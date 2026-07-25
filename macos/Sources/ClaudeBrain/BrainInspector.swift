@@ -44,7 +44,8 @@ struct BrainState {
     var hasNorms: Bool = false            // ~/.claude/CLAUDE.md trae el marcador BEGIN claude-brain
     var skills: Set<String> = []          // subcarpetas de ~/.claude/skills con SKILL.md
     var extras: [String] = []             // hooks cableados que no están en el catálogo conocido
-    var version: String? = nil            // sello de ~/.claude/.brain-version (install-brain.sh); nil si no está
+    var version: String? = nil            // sello de ~/.claude/.brain-version línea 1 (install-brain.sh); nil si no está
+    var versionDate: String? = nil        // fecha de instalación (línea 2 del sello); nil en sellos viejos de 1 línea
     var scannedAt: Date = Date()
 
     /// Hooks de tier {global, both} (kind=hook) que install-brain.sh cablea en el ~/.claude global.
@@ -135,13 +136,16 @@ enum BrainInspector {
             }
         }
 
-        // (5) Versión instalada: sello ~/.claude/.brain-version (lo estampa install-brain.sh copiando
-        //     brain/VERSION). Fail-safe: ausente/vacío → nil (instalación previa al sello) y la UI
-        //     simplemente no muestra versión.
+        // (5) Versión instalada: sello ~/.claude/.brain-version (lo estampa install-brain.sh). Contrato
+        //     de 2 líneas: L1 = versión "<PREFIJO>.<count>", L2 = fecha "YYYY-MM-DD". Back-compat de
+        //     LECTURA: si el sello trae 1 sola línea (formato viejo) → versión = L1, fecha = nil.
+        //     Fail-safe: ausente/vacío → nil y la UI simplemente no muestra versión.
         let versionFile = claude.appendingPathComponent(".brain-version")
         if let raw = try? String(contentsOf: versionFile, encoding: .utf8) {
-            let v = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !v.isEmpty { st.version = v }
+            let lines = raw.split(separator: "\n", omittingEmptySubsequences: false)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+            if let v = lines.first, !v.isEmpty { st.version = v }
+            if lines.count >= 2, !lines[1].isEmpty { st.versionDate = lines[1] }
         }
 
         // (6) Extras: hooks cableados que no reconocemos (ni global ni repo-scoped del catálogo)

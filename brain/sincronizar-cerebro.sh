@@ -58,7 +58,11 @@ only_ok() { [ -z "$ONLY" ] && return 0; printf '%s' "$ONLY" | tr ',' '\n' | grep
 
 DST_HOOKS="$DEST/.claude/hooks"
 DST_SET="$DEST/.claude/settings.json"
-VER="$( [ -f "$VERSION_FILE" ] && head -1 "$VERSION_FILE" || echo '?' )"
+# Versión = "<PREFIJO>.<commit-count>" (PREFIJO = brain/VERSION; count = git rev-list del clon brain).
+# Auto-incrementa con cada commit; fallback COUNT=0 si no es repo git. Contrato compartido con install-brain.sh.
+VERPREFIJO="$( [ -f "$VERSION_FILE" ] && head -1 "$VERSION_FILE" | tr -d '[:space:]' || echo '?' )"
+VERCOUNT="$(git -C "$SCRIPT_DIR" rev-list --count HEAD 2>/dev/null || echo 0)"
+VER="$VERPREFIJO.$VERCOUNT"
 
 echo "==> sincronizar-cerebro (v$VER) — FUENTE: $SRC_HOOKS"
 echo "    DESTINO: $DST_HOOKS"
@@ -131,8 +135,8 @@ EOF
 # ── Estampar la versión SOLO en sync COMPLETO: cualquier operación PARCIAL (--only o --prune-only) NO
 # representa esa versión (el repo no queda completo) → estamparla MENTIRÍA sobre el estado del cerebro. ──
 if [ "$APPLY" = 1 ] && [ -z "$ONLY" ] && [ "$PRUNEONLY" != 1 ] && [ -f "$VERSION_FILE" ]; then
-  cp -f "$VERSION_FILE" "$DST_HOOKS/.brain-version"
-  echo ""; echo "  sello: $DST_HOOKS/.brain-version = v$VER"
+  { echo "$VER"; date +%Y-%m-%d; } > "$DST_HOOKS/.brain-version"   # 2 líneas: versión + fecha (contrato)
+  echo ""; echo "  sello: $DST_HOOKS/.brain-version = v$VER · $(date +%Y-%m-%d)"
 elif [ "$APPLY" = 1 ] && { [ -n "$ONLY" ] || [ "$PRUNEONLY" = 1 ]; }; then
   echo ""; echo "  (operación PARCIAL (--only/--prune-only): NO estampo versión — el repo no queda completo en v$VER)"
 fi

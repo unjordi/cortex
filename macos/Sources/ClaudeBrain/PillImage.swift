@@ -19,6 +19,9 @@ enum PillImage {
     private static let labelFont = NSFont.systemFont(ofSize: 8, weight: .regular)
     private static let pctFont   = NSFont.systemFont(ofSize: 8, weight: .bold)
     private static let resetFont = NSFont.systemFont(ofSize: 7, weight: .regular)
+    // Acentos de los avisos del cerebro (hex fijos: llevan su propio color, isTemplate=false).
+    private static let updateHex = "#e8884a"   // ⬆ naranja: update disponible
+    private static let healHex   = "#dc3545"   // ✚ roja:    falta curar el cerebro
 
     static func render(five: RowData, week: RowData, hasError: Bool,
                        update: Bool = false, heal: Bool = false,
@@ -39,11 +42,17 @@ enum PillImage {
             if !rt.isEmpty { w += gap + ceil(width(rt, resetFont)) }
             maxWidth = max(maxWidth, w)
         }
-        // Reserva una columna a la derecha para los avisos del cerebro (🩹 falta pieza / ⬆ update),
-        // para que la píldora te avise sin abrir el popover.
-        let dotD: CGFloat = 6
-        let anyDot = update || heal
-        let totalW = ceil(maxWidth) + 2 + (anyDot ? dotD + 4 : 0)
+        // Reserva a la derecha una COLUMNA de avisos del cerebro, dibujados como glifos
+        // VECTORIALES legibles (no un puntito críptico): ⬆ naranja = update disponible,
+        // ✚ roja = falta curar el cerebro. Si ambos, apilados (cruz arriba, flecha abajo).
+        let anyAviso = update || heal
+        let bothAvisos = update && heal
+        // Badge (fondo redondeado tenue) + glifo. El caso apilado usa un badge menor para que
+        // los dos quepan en los 22px de alto sin encimarse.
+        let badgeSingle: CGFloat = 15, glyphSingle: CGFloat = 11
+        let badgeStack:  CGFloat = 11, glyphStack:  CGFloat = 8
+        let reserveW = bothAvisos ? badgeStack : badgeSingle
+        let totalW = ceil(maxWidth) + 2 + (anyAviso ? reserveW + 4 : 0)
 
         let image = NSImage(size: NSSize(width: totalW, height: height))
         let draw = {
@@ -51,14 +60,21 @@ enum PillImage {
             // Two rows: top row center y=15, bottom row center y=6 (2px inner margins).
             drawRow(rows[0], hasError: hasError, centerY: 15, barX: barX, pctX: pctX)
             drawRow(rows[1], hasError: hasError, centerY: 6,  barX: barX, pctX: pctX)
-            // Avisos del cerebro a la derecha: 🩹 rojo (falta pieza) arriba, ⬆ naranja (update) abajo.
-            if anyDot {
-                let dx = totalW - dotD - 2
-                if heal && update {
-                    drawDot(x: dx, y: 12, d: dotD, hex: "#dc3545")
-                    drawDot(x: dx, y: 3,  d: dotD, hex: "#e8884a")
+            // Avisos del cerebro a la derecha (glifos vectoriales legibles).
+            if anyAviso {
+                if bothAvisos {
+                    // Apilados: cruz roja (heal) arriba, flecha naranja (update) abajo.
+                    let cx = totalW - 2 - badgeStack / 2
+                    drawCross(cx: cx,   cy: 16.5, badge: badgeStack, glyph: glyphStack, hex: healHex)
+                    drawUpArrow(cx: cx, cy: 5.5,  badge: badgeStack, glyph: glyphStack, hex: updateHex)
                 } else {
-                    drawDot(x: dx, y: (height - dotD) / 2, d: dotD, hex: heal ? "#dc3545" : "#e8884a")
+                    let cx = totalW - 2 - badgeSingle / 2
+                    let cy = height / 2
+                    if heal {
+                        drawCross(cx: cx, cy: cy, badge: badgeSingle, glyph: glyphSingle, hex: healHex)
+                    } else {
+                        drawUpArrow(cx: cx, cy: cy, badge: badgeSingle, glyph: glyphSingle, hex: updateHex)
+                    }
                 }
             }
             image.unlockFocus()
@@ -135,9 +151,42 @@ enum PillImage {
         (s as NSString).size(withAttributes: [.font: font]).width
     }
 
-    /// Un puntito relleno (aviso del cerebro) en la píldora de la barra.
-    private static func drawDot(x: CGFloat, y: CGFloat, d: CGFloat, hex: String) {
+    /// Badge redondeado tenue del color del aviso (mejora el contraste del glifo).
+    private static func drawBadge(cx: CGFloat, cy: CGFloat, size: CGFloat, hex: String) {
+        let r = NSRect(x: cx - size / 2, y: cy - size / 2, width: size, height: size)
+        NSColor(hex: hex).withAlphaComponent(0.18).setFill()
+        NSBezierPath(roundedRect: r, xRadius: size * 0.3, yRadius: size * 0.3).fill()
+    }
+
+    /// Flecha "hacia arriba" (aviso: update disponible) — glifo vectorial relleno (cabeza + astil).
+    private static func drawUpArrow(cx: CGFloat, cy: CGFloat, badge: CGFloat, glyph s: CGFloat, hex: String) {
+        drawBadge(cx: cx, cy: cy, size: badge, hex: hex)
+        let top = cy + s / 2, bottom = cy - s / 2
+        let headBaseY = top - s * 0.52   // fin de la cabeza / inicio del astil
+        let hw = s * 0.50                // media anchura de la cabeza (punta ancha)
+        let sw = s * 0.16                // media anchura del astil (angosto)
+        let p = NSBezierPath()
+        p.move(to: NSPoint(x: cx,      y: top))
+        p.line(to: NSPoint(x: cx + hw, y: headBaseY))
+        p.line(to: NSPoint(x: cx + sw, y: headBaseY))
+        p.line(to: NSPoint(x: cx + sw, y: bottom))
+        p.line(to: NSPoint(x: cx - sw, y: bottom))
+        p.line(to: NSPoint(x: cx - sw, y: headBaseY))
+        p.line(to: NSPoint(x: cx - hw, y: headBaseY))
+        p.close()
         NSColor(hex: hex).setFill()
-        NSBezierPath(ovalIn: NSRect(x: x, y: y, width: d, height: d)).fill()
+        p.fill()
+    }
+
+    /// Cruz / símbolo médico "✚" (aviso: falta curar el cerebro) — dos barras redondeadas gruesas.
+    private static func drawCross(cx: CGFloat, cy: CGFloat, badge: CGFloat, glyph s: CGFloat, hex: String) {
+        drawBadge(cx: cx, cy: cy, size: badge, hex: hex)
+        let t = s * 0.36   // grosor de cada barra
+        let r = t * 0.35   // esquinas suaves
+        NSColor(hex: hex).setFill()
+        NSBezierPath(roundedRect: NSRect(x: cx - s / 2, y: cy - t / 2, width: s, height: t),
+                     xRadius: r, yRadius: r).fill()
+        NSBezierPath(roundedRect: NSRect(x: cx - t / 2, y: cy - s / 2, width: t, height: s),
+                     xRadius: r, yRadius: r).fill()
     }
 }

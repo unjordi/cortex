@@ -1004,11 +1004,18 @@ e="$(grep -c 'END claude-brain'   "$GCLAUDE2" 2>/dev/null || echo 0)"
 [ -f "$FAKEHOME2/.claude/hooks/analizar-comando-git.sh" ] && ok "lib analizar-comando-git.sh instalada" || bad "falta lib analizar-comando-git.sh"
 [ -f "$FAKEHOME2/.claude/hooks/detectar-secretos.sh" ] && ok "lib detectar-secretos.sh instalada" || bad "falta lib detectar-secretos.sh"
 # sello de VERSIÓN del brain instalado en ~/.claude/.brain-version (lo lee el tab Cerebro del widget)
-if [ -f "$FAKEHOME2/.claude/.brain-version" ] && \
-   [ "$(cat "$FAKEHOME2/.claude/.brain-version")" = "$(cat "$SCRIPT_DIR/VERSION")" ]; then
-  ok "sello .brain-version estampado en ~/.claude (= brain/VERSION)"
+# Contrato de 2 líneas: L1 = "<PREFIJO>.<count>" (PREFIJO = brain/VERSION seguido de '.' y dígitos);
+# L2 = fecha "YYYY-MM-DD". La versión auto-incrementa (count) → ya NO es igual a brain/VERSION.
+_stamp="$FAKEHOME2/.claude/.brain-version"
+_pref="$(cat "$SCRIPT_DIR/VERSION")"
+_l1="$(sed -n '1p' "$_stamp" 2>/dev/null)"
+_l2="$(sed -n '2p' "$_stamp" 2>/dev/null)"
+if [ -f "$_stamp" ] \
+   && printf '%s' "$_l1" | grep -Eq "^$(printf '%s' "$_pref" | sed 's/[.]/\\./g')\.[0-9]+$" \
+   && printf '%s' "$_l2" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
+  ok "sello .brain-version estampado en ~/.claude (L1 '$_l1' casa PREFIJO.count · L2 '$_l2' es fecha)"
 else
-  bad "falta ~/.claude/.brain-version o no coincide con brain/VERSION"
+  bad "~/.claude/.brain-version ausente o formato inválido (L1='$_l1' L2='$_l2'; esperaba '$_pref.<num>' + fecha)"
 fi
 
 # Bonus: el desinstalador deja settings.json sin las entradas del cerebro y sin el bloque de normas

@@ -122,11 +122,16 @@ fi
 
 # ── (c2) Sello de VERSIÓN del cerebro instalado ──
 # El widget (tab Cerebro de las 3 GUIs) lee ~/.claude/.brain-version — NO el repo — para mostrar
-# qué versión del brain quedó instalada en ESTA máquina. Se estampa copiando brain/VERSION.
-# Idempotente: re-correr simplemente re-estampa la versión actual.
+# qué versión del brain quedó instalada en ESTA máquina. Contrato de DOS LÍNEAS:
+#   línea 1 = versión = "<PREFIJO>.<commit-count>"  (PREFIJO = brain/VERSION, ej. 0.1 · count = git rev-list)
+#   línea 2 = fecha de instalación "YYYY-MM-DD"
+# La versión AUTO-INCREMENTA con cada commit (el count crece); fallback COUNT=0 si no es repo git.
+# Idempotente: re-correr re-estampa la versión y fecha actuales.
 if [ -f "$SCRIPT_DIR/VERSION" ]; then
-  cp -f "$SCRIPT_DIR/VERSION" "$CLAUDE_DIR/.brain-version"
-  echo "ok: versión del cerebro estampada en $CLAUDE_DIR/.brain-version (v$(tr -d '[:space:]' < "$SCRIPT_DIR/VERSION"))"
+  PREFIJO="$(head -1 "$SCRIPT_DIR/VERSION" | tr -d '[:space:]')"
+  COUNT="$(git -C "$SCRIPT_DIR" rev-list --count HEAD 2>/dev/null || echo 0)"
+  { echo "$PREFIJO.$COUNT"; date +%Y-%m-%d; } > "$CLAUDE_DIR/.brain-version"
+  echo "ok: versión del cerebro estampada en $CLAUDE_DIR/.brain-version (v$PREFIJO.$COUNT · $(date +%Y-%m-%d))"
 else
   echo "warn: falta $SCRIPT_DIR/VERSION; no estampé .brain-version"
 fi
