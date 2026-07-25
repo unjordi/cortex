@@ -38,25 +38,13 @@ ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}
 HILO="$ROOT/.claude/memory/hilo-mental-actual.md"
 
 # stdin de SessionStart: {source, transcript_path, session_id, cwd, hook_event_name}.
-# Lo drenamos SIEMPRE (aunque no haya hilo) para no dejar el pipe colgado y para el baseline.
+# Lo drenamos SIEMPRE (aunque no haya hilo) para no dejar el pipe colgado.
 input=$(cat 2>/dev/null || true)
 source=$(printf '%s' "$input" | { jq -r '.source // "startup"' 2>/dev/null || echo startup; })
-tpath=$(printf '%s' "$input" | { jq -r '.transcript_path // empty' 2>/dev/null || echo ""; })
 
-# ── Baseline de contexto (contrato con aviso-contexto.sh; NO tocar su lógica salvo esto) ─────────
-# Al retomar por COMPACTACIÓN fijamos el "watermark" = nº de líneas del transcript ACTUAL en
-# .claude/memory/.contexto-baseline, para que aviso-contexto mida el crecimiento DESPUÉS del corte
-# de compactación (y no dispare por el historial ya compactado). SessionStart SÍ trae transcript_path;
-# si faltara, no inventamos el conteo. Corre ANTES de los early-exit de "sin hilo" a propósito.
-if [ "$source" = "compact" ]; then
-  BASELINE="$ROOT/.claude/memory/.contexto-baseline"
-  if [ -n "${tpath:-}" ] && [ -f "$tpath" ]; then
-    mkdir -p "$(dirname "$BASELINE")" 2>/dev/null || true
-    wc -l < "$tpath" 2>/dev/null | tr -d '[:space:]' > "$BASELINE" 2>/dev/null || true
-  else
-    : # TODO baseline: SessionStart sin transcript_path → no fijamos watermark aquí (no rompe).
-  fi
-fi
+# Nota: este hook YA NO fija un "baseline de contexto". aviso-contexto.sh mide el llenado con los
+# TOKENS REALES del último `usage` del transcript (bandas absolutas), que bajan solos tras un /compact
+# → no necesita un watermark externo. Se retiró el `.contexto-baseline` (antes se escribía aquí).
 
 [ -f "$HILO" ] || exit 0          # sin hilo → nada que rehidratar (silencioso, no estorba)
 
