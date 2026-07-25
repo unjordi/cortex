@@ -53,9 +53,12 @@ scan() {
   done
 
   # (5) versión instalada del brain: sello ~/.claude/.brain-version (lo estampa install-brain.sh).
-  # Fail-safe: ausente → "" (la UI no muestra versión). Sanitizada a charset semver (JSON seguro).
+  # El sello son 2 líneas (L1 versión, L2 fecha); leemos SOLO la L1 — sin `head -1` el `tr -cd`
+  # borra el salto de línea y CONCATENA versión+fecha ("0.1.176"+"2026-07-25" → "0.1.1762026-07-25").
+  # Back-compat: un sello viejo de 1 línea se lee igual. Fail-safe: ausente → "" (UI sin versión).
+  # Sanitizada a charset semver (JSON seguro).
   if [ -f "$CLAUDE/.brain-version" ]; then
-    version="$(tr -cd '0-9A-Za-z.+-' < "$CLAUDE/.brain-version" 2>/dev/null | head -c 32)"
+    version="$(head -1 "$CLAUDE/.brain-version" 2>/dev/null | tr -cd '0-9A-Za-z.+-' | head -c 32)"
   fi
 
   printf '{"present":[%s],"wired":[%s],"hasNorms":%s,"skills":[%s],"version":"%s"}\n' \
