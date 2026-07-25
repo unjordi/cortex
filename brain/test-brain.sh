@@ -914,32 +914,37 @@ rm -rf "$VCFIX"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "== (b6) aviso-contexto: avisa al cruzar banda, debounce, y se resetea con el baseline (compact) =="
+echo "== (b6) aviso-contexto: mide TOKENS del usage, avisa al subir de banda, debounce, y se re-arma al bajar el ctx (compact) =="
+# Techo=100 → bandas: t1=76 (ℹ️) · t2=88 (⚠️) · t3=95 (🚨). El ctx = suma del ÚLTIMO usage del transcript.
 ACROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-ac.XXXXXX")/r"
 mkdir -p "$ACROOT/.claude/memory"
 ACTX="$ACROOT/transcript.jsonl"
-BASE_F="$ACROOT/.claude/memory/.contexto-baseline"
-gen_tx() { : > "$ACTX"; i=0; while [ "$i" -lt "$1" ]; do printf 'x\n' >> "$ACTX"; i=$((i+1)); done; }
-ac() { printf '%s' "{\"transcript_path\":\"$ACTX\"}" | AVISO_CONTEXTO_UMBRAL=10 CLAUDE_PROJECT_DIR="$ACROOT" bash "$HOOKS/aviso-contexto.sh"; }
+# Escribe un transcript cuyo ÚLTIMO usage suma $1 tokens (en cache_read); primera línea sin usage.
+gen_ctx() { printf '%s\n%s\n' '{"type":"user","message":{"role":"user"}}' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$1}}}" > "$ACTX"; }
+ac() { printf '%s' "{\"transcript_path\":\"$ACTX\"}" | AVISO_CONTEXTO_CEILING_TOKENS=100 CLAUDE_PROJECT_DIR="$ACROOT" bash "$HOOKS/aviso-contexto.sh"; }
 has_aviso() { printf '%s' "$1" | jq -e '.hookSpecificOutput.hookEventName == "PostToolUse"' >/dev/null 2>&1; }
-o="$(printf '%s' '{"transcript_path":"/no/existe"}' | AVISO_CONTEXTO_UMBRAL=10 CLAUDE_PROJECT_DIR="$ACROOT" bash "$HOOKS/aviso-contexto.sh")"
+o="$(printf '%s' '{"transcript_path":"/no/existe"}' | AVISO_CONTEXTO_CEILING_TOKENS=100 CLAUDE_PROJECT_DIR="$ACROOT" bash "$HOOKS/aviso-contexto.sh")"
 is_silent "$o" && ok "aviso-contexto: sin transcript → silencio" || bad "aviso-contexto reaccionó sin transcript; got: $o"
-gen_tx 5;  is_silent "$(ac)" && ok "aviso-contexto: delta < umbral → silencio" || bad "aviso-contexto avisó bajo el umbral"
-gen_tx 25; has_aviso "$(ac)" && ok "aviso-contexto: cruza banda nueva → avisa" || bad "aviso-contexto NO avisó al cruzar banda"
+printf '%s\n' '{"type":"user"}' > "$ACTX"
+is_silent "$(ac)" && ok "aviso-contexto: transcript sin usage → silencio (fail-open)" || bad "aviso-contexto reaccionó sin usage"
+gen_ctx 50; is_silent "$(ac)" && ok "aviso-contexto: ctx bajo la banda 1 → silencio" || bad "aviso-contexto avisó bajo el techo"
+gen_ctx 80; has_aviso "$(ac)" && ok "aviso-contexto: cruza banda 1 → avisa" || bad "aviso-contexto NO avisó al cruzar banda 1"
 o="$(ac)"; is_silent "$o" && ok "aviso-contexto: misma banda → debounce (silencio)" || bad "aviso-contexto re-avisó la misma banda; got: $o"
-gen_tx 45; has_aviso "$(ac)" && ok "aviso-contexto: banda mayor → vuelve a avisar" || bad "aviso-contexto NO re-avisó en banda mayor"
-printf '45' > "$BASE_F"
-gen_tx 48; is_silent "$(ac)" && ok "aviso-contexto: tras reset de baseline (compact) → silencio" || bad "aviso-contexto avisó justo tras el reset"
-gen_tx 60; has_aviso "$(ac)" && ok "aviso-contexto: crece tras el reset → avisa de nuevo" || bad "aviso-contexto NO avisó tras crecer post-reset"
+gen_ctx 90; has_aviso "$(ac)" && ok "aviso-contexto: banda mayor → vuelve a avisar" || bad "aviso-contexto NO re-avisó en banda mayor"
+gen_ctx 50; is_silent "$(ac)" && ok "aviso-contexto: ctx bajó (compact) → silencio (re-arma)" || bad "aviso-contexto avisó justo tras bajar el ctx"
+gen_ctx 80; has_aviso "$(ac)" && ok "aviso-contexto: vuelve a subir tras el compact → avisa de nuevo" || bad "aviso-contexto NO avisó tras re-subir"
+# Robustez: un usage de SIDECHAIN (subagente) al final NO debe contaminar la medición del hilo principal.
+printf '%s\n%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":50}}}" '{"isSidechain":true,"message":{"usage":{"cache_read_input_tokens":999}}}' > "$ACTX"
+is_silent "$(ac)" && ok "aviso-contexto: ignora el usage de sidechain (mide el hilo principal)" || bad "aviso-contexto contó el usage del sidechain"
 rm -rf "$(dirname "$ACROOT")"
 # Escalada de urgencia por banda: 1=heads-up (holgura) · 2=checkpoint-ahora · ≥3=INMINENTE + re-checkpoint
 AC2="$(mktemp -d "${TMPDIR:-/tmp}/brain-ac2.XXXXXX")/r"; mkdir -p "$AC2/.claude/memory"; AC2TX="$AC2/t.jsonl"
-gen2() { : > "$AC2TX"; i=0; while [ "$i" -lt "$1" ]; do printf 'x\n' >> "$AC2TX"; i=$((i+1)); done; }
-ac2msg() { printf '%s' "{\"transcript_path\":\"$AC2TX\"}" | AVISO_CONTEXTO_UMBRAL=10 CLAUDE_PROJECT_DIR="$AC2" bash "$HOOKS/aviso-contexto.sh" | jq -r '.hookSpecificOutput.additionalContext // empty'; }
-gen2 15; m="$(ac2msg)"   # delta 15 / umbral 10 = banda 1
+gen2() { printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$1}}}" > "$AC2TX"; }
+ac2msg() { printf '%s' "{\"transcript_path\":\"$AC2TX\"}" | AVISO_CONTEXTO_CEILING_TOKENS=100 CLAUDE_PROJECT_DIR="$AC2" bash "$HOOKS/aviso-contexto.sh" | jq -r '.hookSpecificOutput.additionalContext // empty'; }
+gen2 80; m="$(ac2msg)"   # 80/100 = banda 1
 { printf '%s' "$m" | grep -qi 'holgura' && ! printf '%s' "$m" | grep -q 'INMINENTE'; } \
   && ok "aviso escalada: banda 1 → heads-up (holgura, NO inminente)" || bad "aviso escalada: banda 1 no fue heads-up; got: $m"
-gen2 35; m="$(ac2msg)"   # delta 35 / 10 = banda 3
+gen2 96; m="$(ac2msg)"   # 96/100 = banda 3
 { printf '%s' "$m" | grep -q 'INMINENTE' && printf '%s' "$m" | grep -q 'DE NUEVO'; } \
   && ok "aviso escalada: banda ≥3 → INMINENTE + ORDENA re-checkpoint (DE NUEVO)" || bad "aviso escalada: banda ≥3 no ordenó re-checkpoint; got: $m"
 rm -rf "$(dirname "$AC2")"
