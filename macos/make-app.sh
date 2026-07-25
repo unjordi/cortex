@@ -32,12 +32,17 @@ fi
 
 # Versión EMBEBIDA para el autoupdate (winturbo-style): el SHA + la fecha del commit con que se
 # buildeó y la ruta del clon, para que la app compare contra GitHub y sepa desde dónde re-jalar.
+# El "sha" sigue manejando la DETECCIÓN de update (hash→hash); NO se toca. Se AGREGA "version" =
+# "<PREFIJO>.<commit-count>" (PREFIJO = brain/VERSION; count = git rev-list), la versión que
+# auto-incrementa y se muestra al usuario (espeja el contrato de ~/.claude/.brain-version).
 _sha="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
 _date="$(git -C "$ROOT" show -s --format=%cI HEAD 2>/dev/null || echo "")"
 _repo="$(cd "$ROOT/.." 2>/dev/null && pwd || echo "")"
 _branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
-printf '{"sha":"%s","date":"%s","repo":"%s","branch":"%s"}\n' \
-  "$_sha" "$_date" "$_repo" "$_branch" > "$APP/Contents/Resources/version.json"
+_prefijo="$( [ -f "$ROOT/../brain/VERSION" ] && head -1 "$ROOT/../brain/VERSION" | tr -d '[:space:]' || echo '0.0' )"
+_count="$(git -C "$ROOT" rev-list --count HEAD 2>/dev/null || echo 0)"
+printf '{"sha":"%s","date":"%s","repo":"%s","branch":"%s","version":"%s"}\n' \
+  "$_sha" "$_date" "$_repo" "$_branch" "$_prefijo.$_count" > "$APP/Contents/Resources/version.json"
 
 # Ad-hoc codesign so Gatekeeper/TCC treat it as a stable identity across rebuilds.
 codesign --force --sign - "$APP" >&2 2>/dev/null || true
