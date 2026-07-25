@@ -1,20 +1,26 @@
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Text;
 using System.Runtime.InteropServices;
 
 namespace ClaudeBrain;
 
 /// <summary>
-/// Draws the two-row tray indicator (the Windows analogue of the plasmoid's
-/// compactRepresentation / the mac menu-bar pill): a "5h" mini-bar over a "7d"
-/// mini-bar, each filled by its % and colored by pctColor (accent, or red past
-/// 90%) so it reads on both light and dark taskbars.
+/// Draws the tray indicator. The old two-mini-bar design ("5h" over "7d") was
+/// illegible in a 16-24px square and read as "not even updating", so it now shows
+/// a single glanceable signal:
 ///
-/// The Windows notification area renders a *square* icon (unlike the
-/// variable-width macOS status item / KDE panel), so the numeric %, the
-/// "5h"/"7d" labels and the ⟳reset text — which can't fit legibly beside a bar
-/// at 16-24px — move to the tooltip and the popup. The two bar lengths are the
-/// glanceable signal; hover or click for the exact figures.
+///   • data available  → the <b>5h utilization %</b> as one big auto-scaled number
+///     that fills the square, in claude-orange (<see cref="Fmt.Accent"/>), turning
+///     red (<see cref="Fmt.Danger"/>) past 90% via <see cref="Fmt.PctColor"/>.
+///   • no data / error  → the brand icon (<see cref="BrandIcon.Small"/>), the
+///     "precious" fallback; last resort is a small danger dot so the tray never
+///     goes blank.
+///
+/// The exact figures, the 7d window, labels and ⟳reset live in the tooltip and the
+/// popup — the tray is a single number you can read at a glance. Redrawn on the
+/// 10s tray timer (Program.RedrawIcon); the caller owns the returned HICON and must
+/// call <see cref="Release"/> after swapping it out or the GDI handle leaks.
 /// </summary>
 public static class TrayIconRenderer
 {
@@ -24,27 +30,15 @@ public static class TrayIconRenderer
 
     public readonly record struct Row(double? Pct);
 
-    /// <summary>Build the tray icon at the given square size (px). Caller must
-    /// call <see cref="Release"/> on the returned handle once the icon is
-    /// swapped out, or the GDI icon handle leaks.</summary>
+    /// <summary>Build the tray icon at the given square size (px). <paramref name="week"/> is
+    /// unused now (the 7d figure moved to the tooltip/popup); kept so callers don't change.
+    /// Caller must call <see cref="Release"/> on the returned handle once the icon is swapped
+    /// out, or the GDI icon handle leaks.</summary>
     public static (Icon icon, IntPtr handle) Render(Row five, Row week, bool hasError, int size)
     {
-        using var bmp = new Bitmap(size, size);
-        using (var g = Graphics.FromImage(bmp))
-        {
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-            g.Clear(Color.Transparent);
-
-            // Two rows split vertically; centers at 1/4 and 3/4 height.
-            DrawRow(g, five, hasError, size, centerY: size * 0.27f);
-            DrawRow(g, week, hasError, size, centerY: size * 0.73f);
-        }
-
-        IntPtr h = bmp.GetHicon();
-        // Clone off the handle so the returned Icon owns an independent copy;
-        // we still return the handle so the caller can DestroyIcon it.
-        return (Icon.FromHandle(h), h);
+        _ = week;   // 7d ya no se dibuja en el cuadrito; vive en tooltip/popup.
+        // Con dato de 5h → % grande; sin dato (o error) → ícono de marca.
+        return five.Pct is double pct ? RenderPercent(pct, size) : RenderBrand(size);
     }
 
     public static void Release(IntPtr handle)
@@ -52,47 +46,80 @@ public static class TrayIconRenderer
         if (handle != IntPtr.Zero) DestroyIcon(handle);
     }
 
-    private static void DrawRow(Graphics g, Row r, bool hasError, int size, float centerY)
+    /// El % de 5h como texto grande, centrado y auto-escalado para llenar el cuadrado.
+    /// "NN%" mientras quepa; para 3 dígitos (100) se cae a solo el número, que lee mejor.
+    /// Color naranja-claude, o rojo &gt;90% (misma señal de throttle que las barras/popup).
+    private static (Icon, IntPtr) RenderPercent(double pct, int size)
     {
-        float margin = MathF.Max(1f, size * 0.10f);
-        float barW = size - margin * 2f;
-        float barH = MathF.Max(3f, size * 0.30f);
-        float barX = margin;
-        float barY = centerY - barH / 2f;
-        float radius = barH / 2f;
+        int p = (int)Math.Round(Math.Clamp(pct, 0, 999));
+        string text = p >= 100 ? p.ToString() : $"{p}%";
 
-        // track
-        using (var track = new SolidBrush(Color.FromArgb(hasError ? 60 : 90, 128, 128, 128)))
-            FillRounded(g, track, barX, barY, barW, barH, radius);
+        using var bmp = new Bitmap(size, size);
+        using (var g = Graphics.FromImage(bmp))
+        {
+            g.Clear(Color.Transparent);
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            // AntiAliasGridFit (no ClearType): el fondo es TRANSPARENTE y ClearType asume un
+            // fondo opaco → dejaría flecos de color sobre la barra de tareas. AntiAlias compone
+            // limpio sobre cualquier color de taskbar (claro u oscuro).
+            g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
 
-        // fill
-        if (r.Pct is double p)
-        {
-            float fillW = barW * (float)Math.Clamp(p / 100.0, 0, 1);
-            if (fillW > 1)
-                using (var fb = new SolidBrush(Fmt.PctColor(r.Pct)))
-                    FillRounded(g, fb, barX, barY, fillW, barH, radius);
+            using var sf = new StringFormat(StringFormat.GenericTypographic)
+            {
+                Alignment = StringAlignment.Center,
+                LineAlignment = StringAlignment.Center,
+                FormatFlags = StringFormatFlags.NoWrap | StringFormatFlags.NoClip,
+            };
+            using var font = FitFont(g, text, size);
+            using var brush = new SolidBrush(Fmt.PctColor(pct));
+            g.DrawString(text, font, brush, new RectangleF(0, 0, size, size), sf);
         }
-        else if (hasError)
-        {
-            // no data: a small centered danger nub so the icon still signals.
-            float nub = MathF.Max(2f, barH);
-            using var eb = new SolidBrush(Fmt.Hex(Fmt.Danger));
-            FillRounded(g, eb, barX + (barW - nub) / 2f, barY, nub, barH, radius);
-        }
+
+        IntPtr h = bmp.GetHicon();   // HICON independiente: sobrevive al Dispose del bmp.
+        return (Icon.FromHandle(h), h);
     }
 
-    private static void FillRounded(Graphics g, Brush b, float x, float y, float w, float h, float r)
+    /// El ícono de marca (claude-brain) escalado al size — el fallback "precioso" cuando no hay
+    /// dato de 5h. Si el brand no decodifica, un punto de peligro para no devolver un icono vacío.
+    private static (Icon, IntPtr) RenderBrand(int size)
     {
-        if (w <= 0 || h <= 0) return;
-        r = Math.Min(r, Math.Min(w, h) / 2f);
-        using var path = new GraphicsPath();
-        var d = r * 2f;
-        path.AddArc(x, y, d, d, 180, 90);
-        path.AddArc(x + w - d, y, d, d, 270, 90);
-        path.AddArc(x + w - d, y + h - d, d, d, 0, 90);
-        path.AddArc(x, y + h - d, d, d, 90, 90);
-        path.CloseFigure();
-        g.FillPath(b, path);
+        using var bmp = new Bitmap(size, size);
+        using (var g = Graphics.FromImage(bmp))
+        {
+            g.Clear(Color.Transparent);
+            var brand = BrandIcon.Small();
+            if (brand != null)
+            {
+                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                g.DrawImage(brand, new Rectangle(0, 0, size, size));
+            }
+            else
+            {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                float d = MathF.Max(4f, size * 0.5f);
+                using var eb = new SolidBrush(Fmt.Hex(Fmt.Danger));
+                g.FillEllipse(eb, (size - d) / 2f, (size - d) / 2f, d, d);
+            }
+        }
+
+        IntPtr h = bmp.GetHicon();
+        return (Icon.FromHandle(h), h);
+    }
+
+    /// Fuente Bold que MAXIMIZA el tamaño sin que el texto se salga del cuadrado. Baja desde ~size
+    /// midiendo el string real hasta que ancho y alto caben con un pelín de margen.
+    private static Font FitFont(Graphics g, string text, int size)
+    {
+        float pad = MathF.Max(1f, size * 0.08f);
+        var tf = StringFormat.GenericTypographic;
+        for (float fs = size; fs >= 5f; fs -= 0.5f)
+        {
+            var f = new Font("Segoe UI", fs, FontStyle.Bold, GraphicsUnit.Pixel);
+            var m = g.MeasureString(text, f, PointF.Empty, tf);
+            if (m.Width <= size - pad && m.Height <= size - pad) return f;
+            f.Dispose();
+        }
+        return new Font("Segoe UI", 5f, FontStyle.Bold, GraphicsUnit.Pixel);
     }
 }

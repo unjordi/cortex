@@ -21,6 +21,11 @@ final class Updater: ObservableObject {
     @Published var message: String? = nil
     /// true si podemos auto-actualizar (hay clon en disco); si no, el botón invita a hacerlo a mano.
     @Published var canSelfUpdate = false
+    /// Versión LEGIBLE que auto-incrementa ("<PREFIJO>.<count>", campo `version` de version.json).
+    /// nil en builds viejos sin el campo — no rompe la detección de update (esa va por `sha`).
+    @Published var localVersion: String? = nil
+    /// Fecha del build (prefijo YYYY-MM-DD del campo `date`); nil si falta.
+    @Published var builtAt: String? = nil
 
     private var repoPath = ""
     private var localDate: Date? = nil
@@ -34,6 +39,9 @@ final class Updater: ObservableObject {
               let o = try? JSONSerialization.jsonObject(with: data) as? [String: String] else { return }
         localShort = o["sha"] ?? "?"
         localDate = o["date"].flatMap { ISO8601DateFormatter().date(from: $0) }
+        // Fail-open: campos nuevos ausentes en builds viejos → nil (no rompe la detección por sha).
+        localVersion = (o["version"]?.isEmpty == false) ? o["version"] : nil
+        builtAt = (o["date"]?.isEmpty == false) ? o["date"].map { String($0.prefix(10)) } : nil
         // La ruta EMBEBIDA (o["repo"]) es la del BUILD; en un .app precompilado en CI es la del runner
         // (/Users/runner/work/...) que NO existe en la Mac del usuario → antes canSelfUpdate quedaba
         // false y el botón caía a "actualiza a mano". Resolvemos el clon de instalación LOCAL.

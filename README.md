@@ -157,6 +157,14 @@ El widget no dibuja un póster estático: **lee tu `~/.claude` real** y actúa s
 - **⬆️ Se actualiza** — cada build embebe su versión, consulta `commits/main` en GitHub y ofrece un
   banner que hace **fast-forward y reinstala**. Fail-open, y **nunca te deja sin widget**.
 
+Esas dos señales viven también en la **barra de menú**, sin abrir el popover: una **flecha** cuando hay
+versión nueva y una **cruz** cuando al cerebro le falta una pieza — legibles en barra clara u oscura
+(tamaño real `1×` y ampliado `4×`):
+
+<p align="center"><img src="screenshots/indicador-barra.png" alt="Indicador de la barra de menú: flecha naranja (hay versión nueva) y cruz roja (falta curar el cerebro), en barra clara y oscura" width="680"></p>
+
+<!-- Regenerar esta imagen desde el PillImage.swift actual: bash macos/tools/indicador-preview/render.sh -->
+
 ## El widget — la cara del cerebro
 
 Un daemon en segundo plano consulta el endpoint OAuth `/usage` de Anthropic y una GUI nativa muestra

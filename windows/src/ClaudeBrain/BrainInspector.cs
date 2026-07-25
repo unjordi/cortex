@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -26,7 +27,8 @@ public sealed class BrainState
     public bool HasNorms { get; set; }                      // ~/.claude/CLAUDE.md trae marcador/normas
     public HashSet<string> Skills { get; } = new();         // subcarpetas de ~/.claude/skills con SKILL.md
     public List<string> Extras { get; set; } = new();       // hooks cableados fuera del catálogo
-    public string? Version { get; set; }                    // sello ~/.claude/.brain-version; null si no está
+    public string? Version { get; set; }                    // sello ~/.claude/.brain-version (línea 1); null si no está
+    public string? VersionDate { get; set; }                // fecha del sello (línea 2, YYYY-MM-DD); null en formato viejo de 1 línea
     public DateTime ScannedAt { get; set; } = DateTime.Now;
 
     /// Hooks de tier {global, both} (kind=hook) que install-brain.sh cablea en el ~/.claude global.
@@ -103,7 +105,7 @@ public static class BrainInspector
             string settings = Path.Combine(claude, "settings.json");
             if (File.Exists(settings))
             {
-                using var doc = JsonDocument.Parse(File.ReadAllText(settings));
+                using var doc = JsonDocument.Parse(File.ReadAllText(settings, Encoding.UTF8));
                 if (doc.RootElement.ValueKind == JsonValueKind.Object &&
                     doc.RootElement.TryGetProperty("hooks", out var hooks) &&
                     hooks.ValueKind == JsonValueKind.Object)
@@ -140,7 +142,7 @@ public static class BrainInspector
             string claudeMd = Path.Combine(claude, "CLAUDE.md");
             if (File.Exists(claudeMd))
             {
-                string txt = File.ReadAllText(claudeMd);
+                string txt = File.ReadAllText(claudeMd, Encoding.UTF8);
                 st.HasNorms = txt.Contains("BEGIN claude-brain")
                     || txt.Contains("Definición de \"LISTO\"")
                     || txt.Contains("reflejo de la realidad");
@@ -160,15 +162,18 @@ public static class BrainInspector
         catch { /* fail-safe: sin skills */ }
 
         // (5) Versión instalada del brain: sello ~/.claude/.brain-version (lo estampa
-        //     install-brain.sh copiando brain/VERSION). Fail-safe: ausente/vacío → null
-        //     (instalación previa al sello) y la UI simplemente no muestra versión.
+        //     install-brain.sh copiando brain/VERSION). Formato NUEVO = 2 líneas: línea 1 = versión,
+        //     línea 2 = fecha YYYY-MM-DD. Back-compat: si viene 1 sola línea (formato viejo) →
+        //     versión = esa línea, fecha = null. Fail-safe: ausente/vacío → null (instalación previa
+        //     al sello) y la UI simplemente no muestra versión.
         try
         {
             string verFile = Path.Combine(claude, ".brain-version");
             if (File.Exists(verFile))
             {
-                string v = File.ReadAllText(verFile).Trim();
-                if (v.Length > 0) st.Version = v;
+                var lines = File.ReadAllLines(verFile, Encoding.UTF8);
+                if (lines.Length >= 1 && lines[0].Trim().Length > 0) st.Version = lines[0].Trim();
+                if (lines.Length >= 2 && lines[1].Trim().Length > 0) st.VersionDate = lines[1].Trim();
             }
         }
         catch { /* fail-safe: sin versión */ }

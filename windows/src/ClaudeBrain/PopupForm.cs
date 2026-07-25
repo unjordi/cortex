@@ -1199,9 +1199,14 @@ public sealed class PopupForm : Form
         // El botón-curita SOLO aparece si hay algo que curar; sano → sin botón ni mensaje
         // (el sello verde ya lo dice todo). Así no reservamos su alto cuando no se muestra.
         bool showHeal = missing > 0;
+        // Línea discreta de VERSIÓN del widget (v + fecha de build), espejo del popover macOS. Solo si
+        // el build trae el campo `version` (build viejo/fail-open → null → no se muestra).
+        var up = Updater.Shared;
+        bool showWidget = !string.IsNullOrEmpty(up.LocalVersion);
         int inner = Sc(10), line1H = Sc(17), gap = Sc(7), healH = Sc(26);
+        int wGap = Sc(6), wLineH = Sc(13);
         int boxW = right - pad;
-        int boxH = inner + line1H + (showHeal ? gap + healH : 0) + inner;
+        int boxH = inner + line1H + (showHeal ? gap + healH : 0) + (showWidget ? wGap + wLineH : 0) + inner;
 
         // Fondo del recuadro (primero, para que el texto quede encima).
         using (var bx = new SolidBrush(Blend(_bg, _fg, 0.05)))
@@ -1221,13 +1226,15 @@ public sealed class PopupForm : Form
         {
             g.DrawString(msg, tf, tb, cx + Sc(20), cy);
             // Versión INSTALADA del brain (sello ~/.claude/.brain-version que estampa
-            // install-brain.sh), discreta junto al veredicto. Sin sello → no aparece.
+            // install-brain.sh), con su fecha, discreta junto al veredicto. Sin sello → no aparece.
             if (!string.IsNullOrEmpty(st.Version))
             {
                 int msgW = (int)Math.Ceiling(g.MeasureString(msg, tf).Width);
+                string vtxt = "· v" + st.Version
+                    + (string.IsNullOrEmpty(st.VersionDate) ? "" : " · " + st.VersionDate);
                 using var vf = Px(8.5f, FontStyle.Regular);
                 using var vb = new SolidBrush(Blend(_bg, _fg, 0.5));
-                g.DrawString("· v" + st.Version, vf, vb, cx + Sc(20) + msgW, cy + Sc(2));
+                g.DrawString(vtxt, vf, vb, cx + Sc(20) + msgW, cy + Sc(2));
             }
         }
         using (var clf = Px(8.5f, FontStyle.Regular))
@@ -1270,6 +1277,17 @@ public sealed class PopupForm : Form
         else
         {
             _healHit = Rectangle.Empty;   // sano → sin zona clicable
+        }
+
+        // Línea de versión del WIDGET (discreta, al pie del recuadro): "widget vX.Y.N · YYYY-MM-DD".
+        // La fecha de build (up.BuiltAt, UTC) se muestra en local. Solo si hay `version` embebida.
+        if (showWidget)
+        {
+            string wtxt = "widget v" + up.LocalVersion
+                + (up.BuiltAt is DateTime bt ? " · " + bt.ToLocalTime().ToString("yyyy-MM-dd") : "");
+            using var wf = Px(8.5f, FontStyle.Regular);
+            using var wb = new SolidBrush(Blend(_bg, _fg, 0.45));
+            g.DrawString(wtxt, wf, wb, cx, y + boxH - inner - wLineH + Sc(1));
         }
 
         return y + boxH + Sc(12);
