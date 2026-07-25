@@ -229,7 +229,41 @@ struct PopoverView: View {
             if !model.chats.isEmpty { railButton(4, "message", "Chats") }   // solo si hay chats locales
             railButton(5, "brain", "Cerebro", badge: updater.updateAvailable, heal: brainIncomplete)
             Spacer()
-            HStack(spacing: 6) {
+            // Pie del riel: acciones CONTEXTUALES (solo cuando aplican) + ↻ actualizar + ⏻ salir.
+            // spacing 4 (no 6) para que quepan hasta 4 íconos en los 132px del riel sin encimarse.
+            HStack(spacing: 4) {
+                // ⬆ Actualizar el WIDGET — solo si hay versión nueva (espeja la lógica del updateBanner).
+                if updater.updateAvailable {
+                    Button(action: { updater.runUpdate() }) {
+                        if updater.updating {
+                            ProgressView().controlSize(.small).scaleEffect(0.7).frame(width: 14, height: 14)
+                        } else {
+                            Image(systemName: "arrow.up.circle.fill")
+                        }
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(accent)
+                    .disabled(updater.updating || !updater.canSelfUpdate)
+                    .help(updater.canSelfUpdate
+                          ? "Actualizar el widget (\(updater.localShort) → \(updater.remoteShort))"
+                          : "Hay versión nueva (\(updater.remoteShort)) — actualiza a mano")
+                }
+
+                // 🩹 Curar el CEREBRO global — solo si le falta alguna pieza (mismo criterio que el riel).
+                if brainIncomplete {
+                    Button(action: healBrain) {
+                        if healing {
+                            ProgressView().controlSize(.small).scaleEffect(0.7).frame(width: 14, height: 14)
+                        } else {
+                            Image(systemName: "cross.case.fill")
+                        }
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(Color(hex: "#dc3545"))
+                    .disabled(healing)
+                    .help("Curar el cerebro global: corre install-brain.sh (empaquetado) para completar las piezas que falten.")
+                }
+
                 Button(action: onRefresh) {
                     Image(systemName: "arrow.clockwise")
                 }
@@ -924,6 +958,14 @@ struct PopoverView: View {
 
             extrasSection
 
+            // Versión del WIDGET (campo `version` de version.json, lo estampa make-app.sh) + fecha de
+            // build. Auto-incrementa por commit. Si son nil (build viejo sin el campo) no se muestra.
+            if let wv = updater.localVersion {
+                Text(updater.builtAt.map { "Widget v\(wv) · build \($0)" } ?? "Widget v\(wv)")
+                    .font(.caption2)
+                    .foregroundStyle(label.opacity(0.45))
+            }
+
             Text("Instalado por `install-brain.sh` · probado por `test-brain.sh` · sin `jq` los hooks fallan ABIERTO (no bloquean).")
                 .font(.caption2)
                 .foregroundStyle(label.opacity(0.45))
@@ -1006,9 +1048,10 @@ struct PopoverView: View {
                                  : "Tu cerebro global está incompleto")
                         .font(.caption).fontWeight(.semibold)
                     // Versión INSTALADA del brain (sello ~/.claude/.brain-version, lo estampa
-                    // install-brain.sh). Discreta; si no hay sello (instalación vieja) no aparece.
+                    // install-brain.sh) + fecha de instalación (línea 2 del sello). Discreta; si no
+                    // hay sello (instalación vieja) no aparece; sin fecha (sello de 1 línea) solo v.
                     if let v = st.version {
-                        Text("· v\(v)")
+                        Text(st.versionDate.map { "· v\(v) · \($0)" } ?? "· v\(v)")
                             .font(.caption2)
                             .foregroundStyle(label.opacity(0.5))
                     }
