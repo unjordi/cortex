@@ -39,6 +39,11 @@ internal sealed class Updater
     public bool Updating { get; set; }
     public string LocalShort { get; private set; } = "?";
     public string RemoteShort { get; private set; } = "?";
+    /// Versión legible MAJOR.MINOR.<count> embebida por install.ps1 (campo `version` de version.json).
+    /// null en builds viejos sin el campo (fail-open) → la UI simplemente no la muestra.
+    public string? LocalVersion { get; private set; }
+    /// Fecha del commit con que se buildeó (campo `date` de version.json), UTC. null si falta.
+    public DateTime? BuiltAt => _localDate;
     public string? Message { get; set; }
     /// true si hay clon en disco (podemos auto-actualizar); si no, el banner invita a hacerlo a mano.
     public bool CanSelfUpdate { get; private set; }
@@ -69,6 +74,7 @@ internal sealed class Updater
             using var doc = JsonDocument.Parse(File.ReadAllText(path));
             var root = doc.RootElement;
             LocalShort = root.TryGetProperty("sha", out var sha) ? sha.GetString() ?? "?" : "?";
+            LocalVersion = root.TryGetProperty("version", out var ver) ? ver.GetString() : null;
             _repoPath = root.TryGetProperty("repo", out var repo) ? repo.GetString() ?? "" : "";
             if (root.TryGetProperty("date", out var d)
                 && DateTimeOffset.TryParse(d.GetString(), CultureInfo.InvariantCulture,

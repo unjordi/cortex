@@ -101,9 +101,28 @@ $repoRoot = Split-Path -Parent $here
 $sha    = (git -C $repoRoot rev-parse --short HEAD 2>$null); if (-not $sha)    { $sha = 'unknown' }
 $date   = (git -C $repoRoot show -s --format=%cI HEAD 2>$null); if (-not $date) { $date = '' }
 $branch = (git -C $repoRoot rev-parse --abbrev-ref HEAD 2>$null); if (-not $branch) { $branch = '' }
-$version = [ordered]@{ sha = $sha; date = $date; repo = $repoRoot; branch = $branch }
+
+# Version LEGIBLE que INCREMENTA: MAJOR.MINOR (de brain/VERSION) . <conteo de commits>, p.ej.
+# "0.1.176". Robusto: toma solo los PRIMEROS DOS componentes punteados de brain/VERSION (da igual
+# si dice "0.1.0" o "0.1"); el conteo de commits (git rev-list --count) es el tercer numero y sube
+# con cada commit. Espejo del esquema del lado macOS/brain. NO se edita brain/VERSION, solo se lee.
+# Fail-safe: sin brain/VERSION o sin git -> cae a "0.0" / count 0 sin romper el install.
+$prefix = '0.0'
+$brainVerFile = Join-Path $repoRoot 'brain/VERSION'
+if (Test-Path $brainVerFile) {
+    $raw = (Get-Content $brainVerFile -Raw -ErrorAction SilentlyContinue)
+    if ($raw) {
+        $parts = ($raw.Trim() -split '\.')
+        if     ($parts.Count -ge 2) { $prefix = "$($parts[0]).$($parts[1])" }
+        elseif ($parts.Count -eq 1 -and $parts[0]) { $prefix = "$($parts[0]).0" }
+    }
+}
+$count = (git -C $repoRoot rev-list --count HEAD 2>$null); if (-not $count) { $count = '0' }
+$version_str = "$prefix.$($count.ToString().Trim())"
+
+$version = [ordered]@{ version = $version_str; sha = $sha; date = $date; repo = $repoRoot; branch = $branch }
 $version | ConvertTo-Json -Compress | Set-Content -Path (Join-Path $dest 'version.json') -Encoding utf8
-Write-Host "==> version.json embebido (sha $sha, rama $branch) para el autoupdate." -ForegroundColor Green
+Write-Host "==> version.json embebido (v$version_str, sha $sha, rama $branch) para el autoupdate." -ForegroundColor Green
 
 # Empaqueta el cerebro (brain/) JUNTO al exe para que el boton-curita de la pestana Cerebro
 # pueda correr install-brain.ps1 sin depender de donde este el clon del repo. El boton lo busca
