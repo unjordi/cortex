@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 
 namespace ClaudeBrain;
@@ -101,7 +102,7 @@ public sealed class QuotaService
         try
         {
             if (!File.Exists(file)) return new();
-            return JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(file)) ?? new();
+            return JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(file, Encoding.UTF8)) ?? new();
         }
         catch { return new(); }
     }
@@ -209,7 +210,7 @@ public sealed class QuotaService
         {
             if (File.Exists(StateFile))
             {
-                Snapshot = JsonSerializer.Deserialize<Snapshot>(File.ReadAllText(StateFile));
+                Snapshot = JsonSerializer.Deserialize<Snapshot>(File.ReadAllText(StateFile, Encoding.UTF8));
                 LoadError = null;
             }
         }
@@ -218,7 +219,7 @@ public sealed class QuotaService
         try
         {
             if (File.Exists(StatsFile))
-                Stats = JsonSerializer.Deserialize<Stats>(File.ReadAllText(StatsFile));
+                Stats = JsonSerializer.Deserialize<Stats>(File.ReadAllText(StatsFile, Encoding.UTF8));
         }
         catch { /* stats are best-effort */ }
 
@@ -227,7 +228,7 @@ public sealed class QuotaService
         try
         {
             StatsGlobal = File.Exists(StatsGlobalFile)
-                ? JsonSerializer.Deserialize<Stats>(File.ReadAllText(StatsGlobalFile))
+                ? JsonSerializer.Deserialize<Stats>(File.ReadAllText(StatsGlobalFile, Encoding.UTF8))
                 : null;
         }
         catch { }
@@ -236,14 +237,14 @@ public sealed class QuotaService
         try
         {
             if (File.Exists(ChatsFile) &&
-                JsonSerializer.Deserialize<List<Chat>>(File.ReadAllText(ChatsFile)) is { } c)
+                JsonSerializer.Deserialize<List<Chat>>(File.ReadAllText(ChatsFile, Encoding.UTF8)) is { } c)
                 Chats = c;
         }
         catch { }
         try
         {
             if (File.Exists(SessionsFile) &&
-                JsonSerializer.Deserialize<List<Session>>(File.ReadAllText(SessionsFile)) is { } s)
+                JsonSerializer.Deserialize<List<Session>>(File.ReadAllText(SessionsFile, Encoding.UTF8)) is { } s)
                 Sessions = s;
         }
         catch { }
@@ -395,7 +396,7 @@ public sealed class QuotaService
         try
         {
             if (!File.Exists(CredentialsFile)) return null;
-            using var doc = JsonDocument.Parse(File.ReadAllText(CredentialsFile));
+            using var doc = JsonDocument.Parse(File.ReadAllText(CredentialsFile, Encoding.UTF8));
             if (doc.RootElement.TryGetProperty("claudeAiOauth", out var oauth) &&
                 oauth.TryGetProperty("accessToken", out var tok) &&
                 tok.ValueKind == JsonValueKind.String)
@@ -417,7 +418,7 @@ public sealed class QuotaService
         {
             string path = ClaudeJsonFile;
             if (!File.Exists(path)) return (null, null);
-            using var doc = JsonDocument.Parse(File.ReadAllText(path));
+            using var doc = JsonDocument.Parse(File.ReadAllText(path, Encoding.UTF8));
             if (doc.RootElement.TryGetProperty("oauthAccount", out var acc) &&
                 acc.ValueKind == JsonValueKind.Object)
             {
@@ -440,7 +441,7 @@ public sealed class QuotaService
         try
         {
             if (!File.Exists(AccountPinFile)) return null;
-            var s = File.ReadAllText(AccountPinFile).Trim();
+            var s = File.ReadAllText(AccountPinFile, Encoding.UTF8).Trim();
             return string.IsNullOrEmpty(s) ? null : s;
         }
         catch { return null; }
@@ -578,7 +579,7 @@ public sealed class QuotaService
         {
             string path = ClaudeJsonFile;
             if (!File.Exists(path)) return map;
-            using var doc = JsonDocument.Parse(File.ReadAllText(path));
+            using var doc = JsonDocument.Parse(File.ReadAllText(path, Encoding.UTF8));
             if (doc.RootElement.TryGetProperty("projects", out var projs) &&
                 projs.ValueKind == JsonValueKind.Object)
             {
@@ -615,7 +616,7 @@ public sealed class QuotaService
         try
         {
             reader = new StreamReader(new FileStream(path, FileMode.Open, FileAccess.Read,
-                FileShare.ReadWrite));
+                FileShare.ReadWrite), Encoding.UTF8);   // transcripts .jsonl son UTF-8 (acentos en nombres/proyectos)
         }
         catch { yield break; }
         using (reader)
@@ -742,14 +743,14 @@ public sealed class QuotaService
         try
         {
             if (File.Exists(ChatsFile) &&
-                JsonSerializer.Deserialize<List<Chat>>(File.ReadAllText(ChatsFile)) is { } c)
+                JsonSerializer.Deserialize<List<Chat>>(File.ReadAllText(ChatsFile, Encoding.UTF8)) is { } c)
                 Chats = c;
         }
         catch { }
         try
         {
             if (File.Exists(SessionsFile) &&
-                JsonSerializer.Deserialize<List<Session>>(File.ReadAllText(SessionsFile)) is { } s)
+                JsonSerializer.Deserialize<List<Session>>(File.ReadAllText(SessionsFile, Encoding.UTF8)) is { } s)
                 Sessions = s;
         }
         catch { }
@@ -804,6 +805,8 @@ public sealed class QuotaService
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true,
+                StandardOutputEncoding = Encoding.UTF8,  // el error puede traer acentos → UTF-8 explícito
+                StandardErrorEncoding = Encoding.UTF8,
             };
             psi.ArgumentList.Add(script);
             psi.ArgumentList.Add(id);
@@ -842,7 +845,7 @@ public sealed class QuotaService
         try
         {
             if (File.Exists(SessionsFile) &&
-                JsonSerializer.Deserialize<List<Session>>(File.ReadAllText(SessionsFile)) is { } s)
+                JsonSerializer.Deserialize<List<Session>>(File.ReadAllText(SessionsFile, Encoding.UTF8)) is { } s)
                 Sessions = s;
         }
         catch { /* fail-safe: deja la lista anterior */ }
@@ -888,6 +891,8 @@ public sealed class QuotaService
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true,
+                StandardOutputEncoding = Encoding.UTF8,  // el nombre sugerido es español con acentos
+                StandardErrorEncoding = Encoding.UTF8,
             };
             psi.ArgumentList.Add("-p");
             // --no-session-persistence: `claude -p` ES una sesión de Claude Code y por defecto la
@@ -1018,6 +1023,11 @@ public sealed class QuotaService
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true,
+                // Los hijos (node/ccusage) emiten UTF-8; sin esto, en Windows .NET decodifica su
+                // stdout con la code page ANSI/OEM de la consola → mojibake ("México"→"MÃ©xico").
+                // El default de macOS/Linux ya es UTF-8, por eso solo se veía en Windows.
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8,
             };
             using var proc = Process.Start(psi);
             if (proc == null) return null;
@@ -1031,7 +1041,7 @@ public sealed class QuotaService
     private static void WriteAtomic(string path, string content)
     {
         string tmp = path + ".tmp";
-        File.WriteAllText(tmp, content);
+        File.WriteAllText(tmp, content, new UTF8Encoding(false));   // UTF-8 SIN BOM, de punta a punta
         File.Move(tmp, path, overwrite: true);
     }
 }
