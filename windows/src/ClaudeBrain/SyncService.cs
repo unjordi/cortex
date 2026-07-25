@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 
 namespace ClaudeBrain;
@@ -74,7 +75,7 @@ public static class SyncService
             try
             {
                 string cfg = Path.Combine(cacheDir, "sync-dir");
-                if (File.Exists(cfg)) v = File.ReadAllText(cfg).Trim();
+                if (File.Exists(cfg)) v = File.ReadAllText(cfg, Encoding.UTF8).Trim();
             }
             catch { }
         }
@@ -116,7 +117,7 @@ public static class SyncService
         {
             try
             {
-                var snap = JsonSerializer.Deserialize<SyncSnapshot>(File.ReadAllText(f));
+                var snap = JsonSerializer.Deserialize<SyncSnapshot>(File.ReadAllText(f, Encoding.UTF8));
                 if (snap?.Stats != null && string.Equals(snap.Account, account, StringComparison.Ordinal))
                     snaps.Add(snap);
             }
@@ -237,7 +238,7 @@ public static class SyncService
         {
             if (File.Exists(file))
             {
-                string existing = File.ReadAllText(file).Trim();
+                string existing = File.ReadAllText(file, Encoding.UTF8).Trim();
                 if (!string.IsNullOrEmpty(existing)) return existing;
             }
         }
@@ -258,7 +259,7 @@ public static class SyncService
     private static void WriteAtomic(string path, string content)
     {
         string tmp = path + ".tmp";
-        File.WriteAllText(tmp, content);
+        File.WriteAllText(tmp, content, new UTF8Encoding(false));   // UTF-8 SIN BOM
         File.Move(tmp, path, overwrite: true);
     }
 }
