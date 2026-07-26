@@ -2,11 +2,15 @@ name: Release macOS app
 
 # Cierra el circulo "nosotros subimos -> los demas reciben" para macOS (paridad con release-windows.yml).
 #
-# Cuando 'main' avanza (release deliberado) y toca macos/** (o brain/, que va EMBEBIDO en el .app, o
-# assets/ del que sale el icono), este workflow compila el .app en un runner macOS y lo publica como
-# asset del release rolling 'macos-latest'. El instalador (macos/install.sh) baja ese .app -> instala
-# SIN Xcode/Swift (paridad con el ClaudeBrain.exe de Windows). Fallback: compilar desde fuente
-# (macos/install.sh --build, o si la descarga falla). Se puede disparar a mano (workflow_dispatch).
+# En CADA avance de 'main' se reconstruye + publica el asset .app de macOS (POLITICA 2026-07-26, sin
+# filtro de paths) -> 'macos-latest' NUNCA queda rancio respecto al sha de main. El dedupe-guard de
+# abajo evita recompilar en el runner macOS (el caro) si el .app de ese sha ya esta publicado, asi el
+# costo queda acotado. Porque: con el filtro de paths anterior, cuando main avanzaba SIN tocar
+# macos/**/brain/**/assets/**, el CI no reconstruia y el asset quedaba viejo; el auto-update bajaba
+# SIEMPRE ese .app rancio pero chequeaba contra commits/main = loop infinito de "actualiza". El
+# instalador (macos/install.sh) baja ese .app -> instala SIN Xcode/Swift (paridad con el
+# ClaudeBrain.exe de Windows). Fallback: compilar desde fuente (macos/install.sh --build, o si la
+# descarga falla). Se puede disparar a mano (workflow_dispatch).
 #
 # Nota: el .app queda ad-hoc signed (sin cuenta de desarrollador Apple), asi que al bajarlo el
 # instalador le quita el atributo com.apple.quarantine (si no, Gatekeeper lo bloquea).
@@ -14,11 +18,6 @@ name: Release macOS app
 on:
   push:
     branches: [main]
-    paths:
-      - 'macos/**'
-      - 'brain/**'
-      - 'assets/**'
-      - '.github/workflows/release-macos.yml'
   workflow_dispatch:
 
 permissions:
