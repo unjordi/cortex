@@ -126,6 +126,15 @@ PlasmoidItem {
         onNewData: function(source, data) { disconnectSource(source); reload() }
     }
 
+    // Runner del botón ⏻ "Apagar" (powerOff). Fuente aparte de refreshRunner porque NO queremos
+    // el reload() de este último tras detener (parar no cambia la caché). Solo desconecta al terminar.
+    P5Support.DataSource {
+        id: powerRunner
+        engine: "executable"
+        connectedSources: []
+        onNewData: function(source, data) { disconnectSource(source) }
+    }
+
     // Escritura de los mapas de alias (proyectos-alias.json / sesiones-alias.json). Reusa el engine
     // "executable" (igual que catSource lee con `cat`). Al TERMINAR la escritura dispara el refresh
     // — así el refetch relee el archivo YA escrito (evita la carrera write-vs-refetch). El refresh es
@@ -333,6 +342,23 @@ PlasmoidItem {
     }
     function forceRefresh() {
         refreshRunner.connectSource("systemctl --user start claude-brain.service")
+    }
+    // ⏻ "Apagar" — paridad KDE del botón power de macOS, pero con OTRA semántica a propósito.
+    // En macOS ⏻ = NSApp.terminate: la app de la barra de menús ES el widget Y el recolector, así que
+    // "apagar" mata todo el proceso. En KDE el plasmoide NO es una app cerrable: vive DENTRO de
+    // plasmashell y no puede matarse ni quitarse del panel por sí mismo (eso lo hace el usuario en
+    // Plasma). Lo que SÍ mantiene "vivo" al widget en segundo plano es el timer systemd de usuario
+    // (claude-brain.timer, cada 5 min → dispara el oneshot claude-brain.service = un fetch a la API).
+    // Por eso "apagar" aquí = DETENER esa recolección automática: `systemctl --user stop` del timer
+    // (y del service por si hay un fetch en vuelo). Es la acción más útil y REVERSIBLE:
+    //   · el widget sigue en el panel mostrando el último snapshot en caché;
+    //   · deja de consultar la API cada 5 min (útil p. ej. para no gastar cuota / silenciarlo);
+    //   · se revierte con el ↻ (forceRefresh: arranca el service) o al re-loguear (el timer vuelve
+    //     por WantedBy=timers.target). NO se hace `disable` justo para que el reinicio lo reponga solo.
+    // Decisión abierta a QA de unjordi: si prefiere que ⏻ además haga `disable` (que NO vuelva al
+    // re-loguear) o algo más agresivo, ajustar aquí.
+    function powerOff() {
+        powerRunner.connectSource("systemctl --user stop claude-brain.timer claude-brain.service")
     }
     // Refresh RÁPIDO de la lista de sesiones (sin red): corre SOLO sessions-extract.js y su stdout
     // repobla root.sessions vía sessionsExtractSource. Úsalo tras mover/renombrar una sesión para que
@@ -1151,7 +1177,12 @@ PlasmoidItem {
     // ---------- Full: riel de pestañas a la IZQUIERDA + contenido ----------
     fullRepresentation: RowLayout {
         Layout.preferredWidth: Kirigami.Units.gridUnit * 27
-        Layout.preferredHeight: Kirigami.Units.gridUnit * 17
+        // Altura: 24 gridUnit (~432px con el gridUnit ~18px de Breeze). Antes era 17 → el popover
+        // salía "chaparro" (relación 17/27 = 0.63, muy plano). 24/27 = 0.89 recupera una proporción
+        // cómoda, alineada con el popover de macOS (520×420 → alto = 0.81× el ancho) y con un pelín
+        // extra para la pestaña Cerebro, que es la más densa (salud + N tiers de hooks). El contenido
+        // largo NO desborda: cada pestaña larga (Proyectos/Chats/Cerebro) vive dentro de su PC3.ScrollView.
+        Layout.preferredHeight: Kirigami.Units.gridUnit * 24
         spacing: 0
 
         // Diálogo de renombrado (compartido por proyecto y sesión). Se abre desde el menú de
@@ -1304,11 +1335,33 @@ PlasmoidItem {
             // Sin ícono "cerebro" nativo bueno en Breeze → emoji 🧠 como glifo del riel.
             TabRailButton { idx: 5; emoji: "🧠";                label: "Cerebro" }
             Item { Layout.fillHeight: true }
-            PC3.ToolButton {
-                icon.name: "view-refresh"; flat: true
+            // Pie del riel: ↻ Actualizar ahora + ⏻ Apagar (detener la recolección automática).
+            // Espeja el pie del riel de macOS (refresh + power). Los botones contextuales ⬆/🩹 de macOS
+            // NO se replican aquí porque su función YA está en la pestaña Cerebro (el updBanner ⬆ y el
+            // botón-curita 🩹 de BrainHealth) → paridad funcional sin saturar el riel angosto (6 gridUnit).
+            // Íconos compactos (smallMedium) para que ambos quepan holgados en el ancho del riel.
+            RowLayout {
                 Layout.alignment: Qt.AlignHCenter
-                onClicked: root.forceRefresh()
-                PC3.ToolTip.text: "Actualizar ahora"; PC3.ToolTip.visible: hovered; PC3.ToolTip.delay: 500
+                spacing: Kirigami.Units.smallSpacing
+                PC3.ToolButton {
+                    icon.name: "view-refresh"; flat: true
+                    icon.width: Kirigami.Units.iconSizes.smallMedium
+                    icon.height: Kirigami.Units.iconSizes.smallMedium
+                    onClicked: root.forceRefresh()
+                    PC3.ToolTip.text: "Actualizar ahora"; PC3.ToolTip.visible: hovered; PC3.ToolTip.delay: 500
+                }
+                PC3.ToolButton {
+                    // Ícono de power de Breeze. Semántica: detener la recolección automática (timer
+                    // systemd) — reversible con ↻ o al re-loguear. Ver root.powerOff() para el porqué
+                    // de que en KDE "apagar" NO sea un quit como en macOS.
+                    icon.name: "system-shutdown"; flat: true
+                    icon.width: Kirigami.Units.iconSizes.smallMedium
+                    icon.height: Kirigami.Units.iconSizes.smallMedium
+                    opacity: 0.75
+                    onClicked: root.powerOff()
+                    PC3.ToolTip.text: "Apagar: detiene la actualización automática en segundo plano (cada 5 min). El widget queda con el último dato en caché. Reversible: ↻ vuelve a actualizar y al re-iniciar sesión se reanuda solo."
+                    PC3.ToolTip.visible: hovered; PC3.ToolTip.delay: 500
+                }
             }
         }
 
