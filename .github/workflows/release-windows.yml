@@ -2,21 +2,22 @@ name: Release Windows exe
 
 # Cierra el circulo "nosotros subimos -> los demas reciben" para Windows.
 #
-# Cuando 'main' avanza (= release deliberado que unjordi mergea en la web) y toca windows/**,
-# este workflow compila el widget como .exe SELF-CONTAINED single-file (no necesita .NET runtime
-# ni SDK en la maquina destino) y lo publica como asset del release rolling "windows-latest".
-# El autoupdate del widget (fase 2) baja ese exe y hace swap -> el usuario recibe la actualizacion
-# SIN instalar el .NET SDK ni recompilar. Solo Windows por ahora (mac compila Swift rapido con las
-# Command Line Tools; Linux es QML sin compilar; ambos siguen con el autoupdate git-based actual).
+# En CADA avance de 'main' se reconstruye + publica el asset .exe de Windows (POLITICA 2026-07-26, sin
+# filtro de paths) -> "windows-latest" NUNCA queda rancio respecto al sha de main. Porque: con el filtro
+# de paths anterior, cuando main avanzaba SIN tocar windows/**, el CI no reconstruia y el asset quedaba
+# viejo (llego a estar dos releases atras); el autoupdate bajaba SIEMPRE ese exe rancio pero chequeaba
+# contra commits/main = loop infinito de "actualiza". Este workflow compila el widget como .exe
+# SELF-CONTAINED single-file (no necesita .NET runtime ni SDK en la maquina destino) y lo publica como
+# asset del release rolling "windows-latest". El autoupdate del widget (fase 2) baja ese exe y hace swap
+# -> el usuario recibe la actualizacion SIN instalar el .NET SDK ni recompilar. Solo Windows por ahora
+# (mac compila Swift rapido con las Command Line Tools; Linux es QML sin compilar: sin asset
+# precompilado, sigue con el autoupdate git-based actual).
 #
 # Se puede disparar a mano desde la pestana Actions (workflow_dispatch) para probar / re-publicar.
 
 on:
   push:
     branches: [main]
-    paths:
-      - 'windows/**'
-      - '.github/workflows/release-windows.yml'
   workflow_dispatch:
 
 permissions:
