@@ -6,7 +6,9 @@ name: Release Windows exe
 # filtro de paths) -> "windows-latest" NUNCA queda rancio respecto al sha de main. Porque: con el filtro
 # de paths anterior, cuando main avanzaba SIN tocar windows/**, el CI no reconstruia y el asset quedaba
 # viejo (llego a estar dos releases atras); el autoupdate bajaba SIEMPRE ese exe rancio pero chequeaba
-# contra commits/main = loop infinito de "actualiza". Este workflow compila el widget como .exe
+# contra commits/main = loop infinito de "actualiza". El dedupe-guard de abajo evita recompilar si el
+# .exe de ese sha ya esta publicado, asi el costo queda acotado (paridad con release-macos.yml). Este
+# workflow compila el widget como .exe
 # SELF-CONTAINED single-file (no necesita .NET runtime ni SDK en la maquina destino) y lo publica como
 # asset del release rolling "windows-latest". El autoupdate del widget (fase 2) baja ese exe y hace swap
 # -> el usuario recibe la actualizacion SIN instalar el .NET SDK ni recompilar. Solo Windows por ahora
@@ -29,12 +31,38 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Evita RECOMPILAR el .exe si el de ESTE commit ya esta publicado. Lee el 'build-sha:' del
+      # release rolling y lo compara con el sha actual -> si coincide, salta build + publish. Paridad
+      # con el guard de release-macos.yml (aqui en pwsh, runner Windows).
+      - name: ¿El .exe de este commit ya está publicado? (evita recompilar)
+        id: guard
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $sha = "${{ github.sha }}"
+          $body = gh release view windows-latest --repo $env:GITHUB_REPOSITORY --json body -q .body 2>$null
+          $published = ""
+          if ($body) {
+            $m = [regex]::Match($body, 'build-sha: ([0-9a-f]+)')
+            if ($m.Success) { $published = $m.Groups[1].Value }
+          }
+          if ($published -eq $sha) {
+            "skip=true" >> $env:GITHUB_OUTPUT
+            "El .exe de $sha ya esta en 'windows-latest' -> SALTO compilacion (ahorro de runner)."
+          } else {
+            "skip=false" >> $env:GITHUB_OUTPUT
+            "Publicado: '$published' != actual: $sha -> compilo."
+          }
+
       - name: Setup .NET 10 SDK
+        if: steps.guard.outputs.skip != 'true'
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
 
       - name: Publish self-contained single-file exe
+        if: steps.guard.outputs.skip != 'true'
         shell: pwsh
         run: |
           dotnet publish windows/src/ClaudeBrain/ClaudeBrain.csproj `
@@ -45,6 +73,7 @@ jobs:
           "exe size: $((Get-Item publish/ClaudeBrain.exe).Length) bytes"
 
       - name: Publish rolling 'windows-latest' release with the exe
+        if: steps.guard.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
