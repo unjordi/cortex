@@ -72,17 +72,27 @@ write_error() {
 
 # --- Primary: the OAuth usage endpoint /usage itself reads -------------------
 
-# Claude Code's OAuth token: macOS Keychain first, then the credentials file.
+# Claude Code's OAuth token: el LOGIN ACTIVO primero (llavero de macOS, luego el archivo de
+# credenciales); CLAUDE_CODE_OAUTH_TOKEN solo como FALLBACK headless.
 oauth_token() {
-  # CLAUDE_CODE_OAUTH_TOKEN (token de larga vida de `claude setup-token`) gana si está presente.
-  [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]] && { printf '%s' "$CLAUDE_CODE_OAUTH_TOKEN"; return 0; }
+  # Preferimos el LOGIN ACTIVO para que el widget refleje la cuenta con la que estás logueado AHORA:
+  # el token del llavero (o del .credentials.json) rota en cada `claude login`/`logout`. Llavero
+  # primero, luego el archivo.
   local creds=""
   creds="$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null || true)"
   if [[ -z "$creds" && -r "$CLAUDE_DIR/.credentials.json" ]]; then
     creds="$(<"$CLAUDE_DIR/.credentials.json")"
   fi
-  [[ -n "$creds" ]] || return 1
-  jq -er '.claudeAiOauth.accessToken // empty' <<<"$creds"
+  if [[ -n "$creds" ]]; then
+    local tok
+    tok="$(jq -er '.claudeAiOauth.accessToken // empty' <<<"$creds" 2>/dev/null || true)"
+    [[ -n "$tok" ]] && { printf '%s' "$tok"; return 0; }
+  fi
+  # FALLBACK headless: CLAUDE_CODE_OAUTH_TOKEN (token de larga vida de `claude setup-token`) SOLO si no
+  # hay login local. Antes ganaba, pero un token estático (p. ej. heredado del entorno de launchd)
+  # pisaba el cambio de cuenta → el ↻ mostraba la cuenta vieja tras un logout/login.
+  [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]] && { printf '%s' "$CLAUDE_CODE_OAUTH_TOKEN"; return 0; }
+  return 1
 }
 
 # The account email (display only), from Claude Code's own local config —

@@ -389,24 +389,27 @@ public sealed class QuotaService
 
     private static string? ReadOAuthToken()
     {
-        // CLAUDE_CODE_OAUTH_TOKEN (long-lived token de `claude setup-token`) gana si está presente:
-        // deja al widget leer /usage sin un .credentials.json de sesión iniciada.
-        var envTok = Environment.GetEnvironmentVariable("CLAUDE_CODE_OAUTH_TOKEN");
-        if (!string.IsNullOrEmpty(envTok)) return envTok;
+        // Preferimos el LOGIN ACTIVO (.credentials.json, rota en cada `claude login`/`logout`) para que
+        // el widget refleje la cuenta actual. CLAUDE_CODE_OAUTH_TOKEN (token de larga vida de
+        // `claude setup-token`) queda como FALLBACK headless SOLO si no hay login local — antes ganaba,
+        // pero un token estatico pisaba el cambio de cuenta tras un logout/login.
         try
         {
-            if (!File.Exists(CredentialsFile)) return null;
-            using var doc = JsonDocument.Parse(File.ReadAllText(CredentialsFile, Encoding.UTF8));
-            if (doc.RootElement.TryGetProperty("claudeAiOauth", out var oauth) &&
-                oauth.TryGetProperty("accessToken", out var tok) &&
-                tok.ValueKind == JsonValueKind.String)
+            if (File.Exists(CredentialsFile))
             {
-                var s = tok.GetString();
-                return string.IsNullOrEmpty(s) ? null : s;
+                using var doc = JsonDocument.Parse(File.ReadAllText(CredentialsFile, Encoding.UTF8));
+                if (doc.RootElement.TryGetProperty("claudeAiOauth", out var oauth) &&
+                    oauth.TryGetProperty("accessToken", out var tok) &&
+                    tok.ValueKind == JsonValueKind.String)
+                {
+                    var s = tok.GetString();
+                    if (!string.IsNullOrEmpty(s)) return s;
+                }
             }
         }
         catch { }
-        return null;
+        var envTok = Environment.GetEnvironmentVariable("CLAUDE_CODE_OAUTH_TOKEN");
+        return string.IsNullOrEmpty(envTok) ? null : envTok;
     }
 
     /// Active account (uuid + email) from Claude Code's own config — not in the

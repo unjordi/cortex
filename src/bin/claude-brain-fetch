@@ -64,10 +64,17 @@ write_error() {
 # --- Primary: the OAuth usage endpoint /usage itself reads -------------------
 
 oauth_token() {
-  # CLAUDE_CODE_OAUTH_TOKEN (token de larga vida de `claude setup-token`) gana si está presente.
+  # Preferimos el LOGIN ACTIVO (~/.claude/.credentials.json, rota en cada `claude login`/`logout`) para
+  # que el widget refleje la cuenta actual (Linux no tiene llavero → el archivo de credenciales).
+  if [[ -r "$CLAUDE_DIR/.credentials.json" ]]; then
+    local tok
+    tok="$(jq -er '.claudeAiOauth.accessToken // empty' "$CLAUDE_DIR/.credentials.json" 2>/dev/null || true)"
+    [[ -n "$tok" ]] && { printf '%s' "$tok"; return 0; }
+  fi
+  # FALLBACK headless: CLAUDE_CODE_OAUTH_TOKEN (token de larga vida de `claude setup-token`) SOLO si no
+  # hay login local. Antes ganaba, pero un token estático pisaba el cambio de cuenta.
   [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]] && { printf '%s' "$CLAUDE_CODE_OAUTH_TOKEN"; return 0; }
-  [[ -r "$CLAUDE_DIR/.credentials.json" ]] || return 1
-  jq -er '.claudeAiOauth.accessToken // empty' "$CLAUDE_DIR/.credentials.json"
+  return 1
 }
 
 # The account email (display only), from Claude Code's own local config —
