@@ -949,6 +949,38 @@ gen2 96; m="$(ac2msg)"   # 96/100 = banda 3
   && ok "aviso escalada: banda ≥3 → INMINENTE + ORDENA re-checkpoint (DE NUEVO)" || bad "aviso escalada: banda ≥3 no ordenó re-checkpoint; got: $m"
 rm -rf "$(dirname "$AC2")"
 
+# (b6b) TECHO DERIVADO (sin override): ventana (settings "[1m]"→1M / si no→200K) × pct de auto-compact
+# (CLAUDE_AUTOCOMPACT_PCT_OVERRIDE, o default 92). El override manual AVISO_CONTEXTO_CEILING_TOKENS se
+# desactiva aquí (env -u) para ejercitar la DERIVACIÓN. Antídoto al bug del techo fijo 660K (2026-07-27).
+# $1=model (a settings.json del proyecto, que gana) · $2=pct (o "unset") · $3=ctx → imprime el mensaje.
+ac3() {
+  local root; root="$(mktemp -d "${TMPDIR:-/tmp}/brain-ac3.XXXXXX")/r"; mkdir -p "$root/.claude/memory"
+  printf '{"model":"%s"}' "$1" > "$root/.claude/settings.json"
+  printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$3}}}" > "$root/t.jsonl"
+  local pctenv="-u CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"; [ "$2" != unset ] && pctenv="CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=$2"
+  printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" \
+    | env -u AVISO_CONTEXTO_CEILING_TOKENS $pctenv CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
+    | jq -r '.hookSpecificOutput.additionalContext // empty'
+  rm -rf "$(dirname "$root")"
+}
+# 1M @ 70% → techo 700K. ctx 600K = 85% → banda 1 (holgura) y el mensaje cita el techo real ~700K.
+m="$(ac3 'opus[1m]' 70 600000)"
+{ printf '%s' "$m" | grep -q '700K' && printf '%s' "$m" | grep -qi 'holgura'; } \
+  && ok "aviso techo derivado: 1M @ 70% → techo ~700K, ctx 600K = banda 1 (holgura)" \
+  || bad "aviso techo derivado 1M@70% mal; got: $m"
+# ...y a 500K (<76% de 700K) NO grita (el techo fijo 660K daría 75.7%, casi banda 1 — la derivación NO).
+[ -z "$(ac3 'opus[1m]' 70 500000)" ] \
+  && ok "aviso techo derivado: 1M @ 70%, ctx 500K → silencio (sin gritar temprano)" \
+  || bad "aviso techo derivado 1M@70% gritó a 500K"
+# Modelo sin [1m] y SIN override de pct → ventana 200K, default 92% → techo 184K. ctx 150K = banda 1.
+m="$(ac3 'opus' unset 150000)"
+{ printf '%s' "$m" | grep -q '184K' && printf '%s' "$m" | grep -qi 'holgura'; } \
+  && ok "aviso techo derivado: 200K @ 92% (default) → techo ~184K, ctx 150K = banda 1" \
+  || bad "aviso techo derivado 200K@92% mal; got: $m"
+[ -z "$(ac3 'opus' unset 100000)" ] \
+  && ok "aviso techo derivado: 200K @ 92%, ctx 100K → silencio" \
+  || bad "aviso techo derivado 200K@92% gritó a 100K"
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (b7) dedupe doble-cableado: la copia REPO cede si existe la GLOBAL; corre si no =="
