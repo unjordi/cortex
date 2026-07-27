@@ -24,9 +24,19 @@
 # las imágenes base64 inflan los bytes SIN inflar los tokens (mismo ~665K ctx medía 3 MB o 35 MB según
 # cuántas imágenes) → sesgo. Los tokens del `usage` son la verdad que el CLI mismo usa para auto-compactar.
 #
-# Bandas ABSOLUTAS como % de un techo (auto-compact observado ~660K): ℹ️ 76% · ⚠️ 88% · 🚨 95%. El techo
-# es tunable por env `AVISO_CONTEXTO_CEILING_TOKENS` (default 660000). Al ser absolutas ya NO se necesita
-# baseline: tras un /compact el `usage` baja SOLO → la banda cae SOLA → el aviso se limpia SOLO (auto-cura).
+# Techo = el PUNTO DE AUTO-COMPACT real de ESTA sesión, DERIVADO (no hardcodeado): ventana × pct.
+#   - Ventana: si el modelo elegido trae el marcador "[1m]" (leído de settings.json — user, proyecto o
+#     local, el más específico gana) → 1,000,000 tokens; si no → 200,000. (El transcript NO guarda la
+#     ventana y el modelo sale pelón ahí; settings.json SÍ trae "opus[1m]" → es la señal fiable.)
+#   - pct de auto-compact: env `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` (el CLI la respeta; el usuario puede
+#     bajarla, p. ej. a 70); si no está, default 92 (≈ el del CLI, con holgura para alcanzar a checkpointear).
+# Bandas como % de ESE techo: ℹ️ 76% · ⚠️ 88% · 🚨 95%. Por qué el techo NO es la VENTANA: lo que queremos
+# anticipar es el AUTO-COMPACT (que pega a ventana×pct), no "llenar la ventana" — por eso el % del aviso
+# NO coincide con el % de `/context` (ese es sobre la ventana; denominadores distintos, a propósito).
+# Bug que esto arregla (2026-07-27): el techo estaba FIJO en 660K → en una sesión de 1M @ 70% gritaba
+# "compacta" al 60% de la ventana (band-aid). Escape hatch: `AVISO_CONTEXTO_CEILING_TOKENS` fija el techo
+# a mano y gana sobre la derivación. Al ser absoluto, tras un /compact el `usage` baja SOLO → la banda cae
+# SOLA → el aviso se limpia SOLO (auto-cura), sin baseline.
 #
 # Debounce: solo avisa al SUBIR de banda. La marca .contexto-aviso guarda "<última_banda> <último_ctx>";
 # si el ctx baja (hubo compact / sesión nueva) la banda se recalcula hacia abajo → se re-arma sola.
@@ -47,10 +57,28 @@ MEM="$ROOT/.claude/memory"
 [ -d "$MEM" ] || exit 0                          # repo sin el sistema de memoria → no incumbe
 AVISO_F="$MEM/.contexto-aviso"
 
-# Techo (punto ~auto-compact) tunable por env; guarda contra basura → default razonable.
-CEILING="${AVISO_CONTEXTO_CEILING_TOKENS:-660000}"
-case "$CEILING" in ''|*[!0-9]*) CEILING=660000;; esac
-[ "$CEILING" -gt 0 ] 2>/dev/null || CEILING=660000
+# Techo = punto de auto-compact = ventana_real × pct_autocompact/100. DERIVADO de las señales reales;
+# el override manual `AVISO_CONTEXTO_CEILING_TOKENS` gana sobre todo (escape hatch / tests).
+CEILING="${AVISO_CONTEXTO_CEILING_TOKENS:-}"
+case "$CEILING" in
+  ''|*[!0-9]*)
+    # (1) Ventana real: "[1m]" en el modelo elegido → 1M; si no → 200K. Precedencia settings: user <
+    #     proyecto < local (el más específico gana → lo recorremos en ese orden, nos quedamos el último).
+    model=""
+    for s in "$HOME/.claude/settings.json" "$ROOT/.claude/settings.json" "$ROOT/.claude/settings.local.json"; do
+      [ -f "$s" ] || continue
+      m=$(jq -r '.model // empty' "$s" 2>/dev/null)
+      [ -n "$m" ] && model="$m"
+    done
+    case "$model" in *'[1m]'*) WINDOW=1000000 ;; *) WINDOW=200000 ;; esac
+    # (2) pct de auto-compact: override del usuario (el CLI la respeta) o default 92 (holgura p/ checkpoint).
+    PCT="${CLAUDE_AUTOCOMPACT_PCT_OVERRIDE:-92}"
+    case "$PCT" in ''|*[!0-9]*) PCT=92 ;; esac
+    { [ "$PCT" -ge 1 ] && [ "$PCT" -le 100 ]; } 2>/dev/null || PCT=92
+    CEILING=$(( WINDOW * PCT / 100 ))
+    ;;
+esac
+[ "$CEILING" -gt 0 ] 2>/dev/null || CEILING=$(( 200000 * 92 / 100 ))
 
 # Tokens de contexto ACTUALES = último `usage` del transcript (excluye subagentes/sidechain, que traen
 # su propio usage y contaminarían la medición del hilo principal). fromjson? salta líneas malformadas.
@@ -88,8 +116,9 @@ printf '%s %s\n' "$new_band" "$ctx" > "$AVISO_F" 2>/dev/null || true
 # ¿Cruzamos una banda NUEVA (>=1)? Si no, silencio (debounce).
 { [ "$band" -ge 1 ] && [ "$band" -gt "$last_band" ]; } || exit 0
 
-pct=$(( ctx * 100 / CEILING ))
+pct=$(( ctx * 100 / CEILING ))   # % RUMBO AL AUTO-COMPACT (no % de la ventana → no cuadra con /context, a propósito)
 ctxk=$(( ctx / 1000 ))
+ceilk=$(( CEILING / 1000 ))      # punto de auto-compact en K
 
 # ── Escalada de urgencia por BANDA ───────────────────────────────────────────────────────────────
 #   banda 1  → heads-up con holgura (aún hay margen; solo recuerda el orden checkpoint→compact).
@@ -97,11 +126,11 @@ ctxk=$(( ctx / 1000 ))
 #   banda ≥3 → INMINENTE: RE-checkpoint (aunque ya lo corriste — desde entonces pasó más trabajo y el
 #              hilo quedó atrás) + compacta YA. El hook no puede correr el skill, pero SÍ ordenarlo.
 if [ "$band" -ge 3 ]; then
-  msg="🚨 AUTO-COMPACT INMINENTE (~${ctxk}K tokens de contexto ≈ ${pct}% del techo). Corre \`checkpoint\` DE NUEVO AHORA MISMO —SÍ, aunque YA lo hayas corrido en este tramo: desde entonces pasó más trabajo y el hilo volcado quedó atrás— y ENSEGUIDA compacta (propón /compact al usuario con holgura). Si el auto-compact —contexto lleno, SIN aviso— te gana antes, rehidratarás un hilo VIEJO. Orden inviolable: 1) \`checkpoint\` FRESCO → 2) /compact."
+  msg="🚨 AUTO-COMPACT INMINENTE (~${ctxk}K tokens ≈ ${pct}% del punto de auto-compact ~${ceilk}K). Corre \`checkpoint\` DE NUEVO AHORA MISMO —SÍ, aunque YA lo hayas corrido en este tramo: desde entonces pasó más trabajo y el hilo volcado quedó atrás— y ENSEGUIDA compacta (propón /compact al usuario con holgura). Si el auto-compact —contexto lleno, SIN aviso— te gana antes, rehidratarás un hilo VIEJO. Orden inviolable: 1) \`checkpoint\` FRESCO → 2) /compact."
 elif [ "$band" -ge 2 ]; then
-  msg="⚠️ Contexto ALTO (~${ctxk}K tokens ≈ ${pct}% del techo). REGLA DURA DE ORDEN (no la saltes): ANTES de siquiera PROPONER o hacer un /compact, el skill \`checkpoint\` YA TIENE QUE HABER CORRIDO en este tramo (volcar el HILO a hilo-mental-actual.md, fresco y en la rama actual). Orden OBLIGATORIO: 1) corre \`checkpoint\` AHORA → 2) SOLO DESPUÉS propón un /compact PROACTIVO (con holgura, antes de que el auto-compact —SIN aviso— te gane). Proponer/ejecutar /compact SIN checkpoint fresco antes = perder el hilo reciente: es un ERROR. (Si YA corriste checkpoint en este tramo y sigue fresco, no lo repitas: procede.)"
+  msg="⚠️ Contexto ALTO (~${ctxk}K tokens ≈ ${pct}% rumbo al auto-compact ~${ceilk}K). REGLA DURA DE ORDEN (no la saltes): ANTES de siquiera PROPONER o hacer un /compact, el skill \`checkpoint\` YA TIENE QUE HABER CORRIDO en este tramo (volcar el HILO a hilo-mental-actual.md, fresco y en la rama actual). Orden OBLIGATORIO: 1) corre \`checkpoint\` AHORA → 2) SOLO DESPUÉS propón un /compact PROACTIVO (con holgura, antes de que el auto-compact —SIN aviso— te gane). Proponer/ejecutar /compact SIN checkpoint fresco antes = perder el hilo reciente: es un ERROR. (Si YA corriste checkpoint en este tramo y sigue fresco, no lo repitas: procede.)"
 else
-  msg="ℹ️ Contexto creciendo (~${ctxk}K tokens ≈ ${pct}% del techo). Heads-up (aún hay HOLGURA): cuando vayas a compactar, PRIMERO corre \`checkpoint\` (vuelca el HILO a hilo-mental-actual.md, fresco y en la rama actual) y SOLO DESPUÉS compacta. No compactes sin ese volcado."
+  msg="ℹ️ Contexto creciendo (~${ctxk}K tokens ≈ ${pct}% rumbo al auto-compact ~${ceilk}K). Heads-up (aún hay HOLGURA): cuando vayas a compactar, PRIMERO corre \`checkpoint\` (vuelca el HILO a hilo-mental-actual.md, fresco y en la rama actual) y SOLO DESPUÉS compacta. No compactes sin ese volcado. (El % es RUMBO AL AUTO-COMPACT, no % de tu ventana — por eso no cuadra con /context.)"
 fi
 
 jq -n --arg c "$msg" '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$c}}'
