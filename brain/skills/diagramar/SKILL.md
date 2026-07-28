@@ -66,4 +66,11 @@ dentro de etiquetas normales (usa `<b>…</b>`); `<` y `>` literales como `&lt;`
   ruta), el diagrama se actualiza **en la MISMA tanda** que el cambio, no "después". Un diagrama
   que miente es peor que no tener diagrama. Si el diagrama tiene fuente Y espejo (`.dot` +
   Mermaid), la tanda incluye a AMBOS.
-- **QA visual de un diagrama que generaste tú:** ábrelo (`open`/`xdg-open`), no dejes solo la ruta.
+- **Entregable = auto-contenido (leyenda + normas).** Un flowchart entregable lleva SIEMPRE su
+  **LEYENDA** (qué significa cada forma/color/flecha) y, cuando aplique, las **NORMAS** que rigen el
+  flujo. Es lo que lo hace legible **por sí solo**: quien lo abre entiende la notación y las reglas
+  del juego sin tener que preguntar ni reconstruir el contexto. Un diagrama pelón no es entregable.
+- **QA visual de un diagrama que generaste tú:** ábrelo, no dejes solo la ruta. **OJO con SVG en
+  macOS:** `open archivo.svg` suele caer en **Preview, que NO renderiza SVG** (sale en blanco) →
+  ábrelo en un **navegador** (`open -a "Google Chrome" archivo.svg`, o Safari). PNG/PDF sí van bien
+  con `open`/Preview; en Linux, `xdg-open` respeta el navegador por defecto.
