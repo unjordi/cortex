@@ -13,13 +13,30 @@
 
 # bz_resolver_base ROOT → imprime la base de integración.
 # La base es configurable (CLAUDE_INTEGRACION_BASE): en el flujo mini-develop NO es develop sino TU rama
-# personal (p. ej. `DevelopAna`). Sin override: develop, o la rama por defecto del remoto, o main.
+# personal (convención `Develop<Usuario>`, p. ej. `DevelopAna`). Precedencia sin override:
+#   1) HEAD parado en una mini-develop `Develop<Usuario>` → esa (es la base viva del dev).
+#   2) una rama local `Develop<Usuario>` existe → esa (el día a día del dev vive en su mini-develop;
+#      sus ramitas se integran a la mini, NO directo a develop — así el barrido las ve integradas).
+#   3) fallback clásico: develop, o la rama por defecto del remoto, o main.
+# Sin `Develop*` local (repo de flujo develop puro, p. ej. un solo-dev sobre develop) → cae a (3), intacto.
 bz_resolver_base() {
-  local ROOT="$1" base="${CLAUDE_INTEGRACION_BASE:-}"
+  local ROOT="$1" base="${CLAUDE_INTEGRACION_BASE:-}" cur mini
   if [ -z "$base" ]; then
-    base=develop
-    git -C "$ROOT" rev-parse --verify -q refs/heads/develop >/dev/null 2>&1 \
-      || base=$(git -C "$ROOT" symbolic-ref --short -q refs/remotes/origin/HEAD 2>/dev/null | sed 's#origin/##' || echo main)
+    # (1) HEAD en una mini-develop (Develop<Usuario>; case-sensitive, ≥1 char tras "Develop" → excluye
+    #     el `develop` minúsculas y un `Develop` pelón).
+    cur=$(git -C "$ROOT" symbolic-ref --short -q HEAD 2>/dev/null || true)
+    case "$cur" in Develop?*) base="$cur" ;; esac
+    # (2) preferir una mini-develop LOCAL si la hay (típicamente una sola por clon).
+    if [ -z "$base" ]; then
+      mini=$(git -C "$ROOT" for-each-ref --format='%(refname:short)' 'refs/heads/Develop*' 2>/dev/null | head -1)
+      [ -n "$mini" ] && base="$mini"
+    fi
+    # (3) fallback: develop → rama por defecto del remoto → main.
+    if [ -z "$base" ]; then
+      base=develop
+      git -C "$ROOT" rev-parse --verify -q refs/heads/develop >/dev/null 2>&1 \
+        || base=$(git -C "$ROOT" symbolic-ref --short -q refs/remotes/origin/HEAD 2>/dev/null | sed 's#origin/##' || echo main)
+    fi
   fi
   printf '%s' "$base"
 }
