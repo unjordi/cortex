@@ -34,6 +34,9 @@ El auditor es tan bueno como lo que le des. En orden de impacto:
    MAPA del flujo, no reconstruyéndolo de cero de la cabeza. Sin flowcharts revisados con cuidado, el
    análisis es superficial. Técnicamente opcional, en la práctica es lo que separa un dictamen fino de
    uno genérico. Si no existen, **el primer paso es diagramarlos** (o pedirlos), no arrancar sin ellos.
+   **Regla dura (no la olvides):** cada flowchart que le des DEBE llevar su **LEYENDA** (qué significa
+   cada forma/color/flecha) **y las NORMAS aplicables** — es el contexto MÍNIMO para que entienda la
+   notación y las reglas del juego. Un diagrama pelón, sin leyenda ni normas, lo hace auditar a ciegas.
 2. **Todo el contexto de dominio + investigación** que ya hiciste y documentaste (buenas prácticas del
    rubro, el legado, las reglas de negocio, la arquitectura). Dáselo COMPLETO, no resumido.
 3. **(Opcional) datos de estrés sembrados.** Para auditar un algoritmo, siembra un caso que lo estire
@@ -48,6 +51,17 @@ El auditor es tan bueno como lo que le des. En orden de impacto:
   (el caso brain: hooks/skills/normas/docs que se contradicen o dejan ramas sin cubrir). Entrada: el
   diagrama del sistema "que refleja la REALIDAD, con sus huecos marcados a propósito" + las fuentes.
 
+## Método: INDIVIDUAL → COLECTIVO (dónde puede tronar)
+Cuando hay **varios flowcharts** (lo normal), pídele DOS pasadas, no una:
+1. **Individual** — cada flowchart por separado: ¿dónde puede **tronar SOLO**? (paso faltante, rama sin
+   cubrir, estado imposible, off-by-one, supuesto no dicho).
+2. **Colectivo** — TODOS juntos: ¿dónde pueden **tronar EN CONJUNTO**? Una pieza correcta por sí sola
+   puede **contradecir** a otra, competir por el mismo recurso, o dejar un hueco en la costura entre dos
+   flujos. Esta pasada es la que caza las inconsistencias que ninguna revisión pieza-por-pieza ve.
+
+El dictamen separa los hallazgos **individuales** de los **colectivos** (de costura) — son de naturaleza
+distinta y se atienden distinto.
+
 ## El prompt del agente (persona + encargo)
 Delega con `Task`/subagente. Persona y encargo (adáptalo al target, conserva la ESENCIA):
 
@@ -56,10 +70,18 @@ Delega con `Task`/subagente. Persona y encargo (adáptalo al target, conserva la
 > flowcharts de cada proceso `<rutas>`, la investigación de dominio y buenas prácticas `<rutas>`, y
 > `<datos de estrés / fuentes>`. Analiza con AMBAS lentes: como proceso (¿modela bien la realidad
 > operativa? ¿pasos faltantes, huecos, contradicciones, casos sin cubrir?) y como algoritmo (¿correcto,
-> completo, eficiente? ¿corner cases, estados imposibles, complejidad escondida, off-by-one?). Contra
-> los datos de estrés, razona el resultado paso a paso. **Entrega HALLAZGOS PRIORIZADOS por severidad**
-> (crítico → menor), cada uno con: qué, dónde, por qué es un problema, y una recomendación. **No toques
-> código ni archivos**: tu salida es el dictamen, no un parche.
+> completo, eficiente? ¿corner cases, estados imposibles, complejidad escondida, off-by-one?). Analiza
+> **cada flowchart INDIVIDUALMENTE y luego TODOS JUNTOS**, e indica **dónde pueden tronar individual y
+> colectivamente** (una pieza correcta sola puede contradecir a otra en conjunto). Contra los datos de
+> estrés, razona el resultado paso a paso. **Entrega HALLAZGOS PRIORIZADOS por severidad** (crítico →
+> menor), separando los individuales de los colectivos, cada uno con: qué, dónde, por qué es un problema,
+> y una recomendación. **No toques código ni archivos**: tu salida es el dictamen, no un parche.
+
+### Prompt original (battle-tested — el que lo estrenó, sobre los flowcharts del cerebro)
+> Saca un agente Auditor de Calidad experto en procesos industriales Y análisis de algoritmos y pídele
+> que analice todos nuestros flowcharts individualmente y luego todos juntos y que nos indique en dónde
+> pueden tronar individualmente y colectivamente. No olvides que todos los flowchart que le des lleven
+> la leyenda y las normas para que tenga el contexto mínimo.
 
 ## Reglas duras
 - **Read-only de verdad.** El auditor no muta archivos ni commitea. Corre sin worktree de escritura;
