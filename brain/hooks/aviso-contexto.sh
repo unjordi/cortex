@@ -34,9 +34,17 @@
 # anticipar es el AUTO-COMPACT (que pega a ventana×pct), no "llenar la ventana" — por eso el % del aviso
 # NO coincide con el % de `/context` (ese es sobre la ventana; denominadores distintos, a propósito).
 # Bug que esto arregla (2026-07-27): el techo estaba FIJO en 660K → en una sesión de 1M @ 70% gritaba
-# "compacta" al 60% de la ventana (band-aid). Escape hatch: `AVISO_CONTEXTO_CEILING_TOKENS` fija el techo
-# a mano y gana sobre la derivación. Al ser absoluto, tras un /compact el `usage` baja SOLO → la banda cae
-# SOLA → el aviso se limpia SOLO (auto-cura), sin baseline.
+# "compacta" al 60% de la ventana (band-aid). Escape hatches: `AVISO_CONTEXTO_CEILING_TOKENS` fija el
+# techo ABSOLUTO a mano (gana sobre todo); `AVISO_CONTEXTO_WINDOW_TOKENS` fija la VENTANA. Al ser
+# absoluto, tras un /compact el `usage` baja SOLO → la banda cae SOLA → el aviso se limpia SOLO
+# (auto-cura), sin baseline.
+# Robustez (2026-07-28): la detección de ventana puede FALLAR en runtime (settings a medio escribir,
+# timing, $HOME distinto, un settings de proyecto sin "[1m]") y caer al default chico de 200K → falso
+# "🚨 INMINENTE". Antídoto por invariante FÍSICO: el contexto NO cabe en una ventana menor que él mismo,
+# así que si el ctx MEDIDO supera la ventana detectada, ésta se promueve a 1M (la única mayor conocida
+# de Claude). Ata el techo al dato DURO del transcript, no a leer bien settings. Solo SUBE la ventana →
+# nunca inventa falsos positivos, solo suprime los IMPOSIBLES. Bug real: ctx=381K con la ventana
+# mal-detectada en 200K → techo 140K@70% → falso "INMINENTE" al 38% de una ventana de 1M.
 #
 # Debounce: solo avisa al SUBIR de banda. La marca .contexto-aviso guarda "<última_banda> <último_ctx>";
 # si el ctx baja (hubo compact / sesión nueva) la banda se recalcula hacia abajo → se re-arma sola.
@@ -57,20 +65,44 @@ MEM="$ROOT/.claude/memory"
 [ -d "$MEM" ] || exit 0                          # repo sin el sistema de memoria → no incumbe
 AVISO_F="$MEM/.contexto-aviso"
 
-# Techo = punto de auto-compact = ventana_real × pct_autocompact/100. DERIVADO de las señales reales;
-# el override manual `AVISO_CONTEXTO_CEILING_TOKENS` gana sobre todo (escape hatch / tests).
+# Tokens de contexto ACTUALES = último `usage` del transcript (excluye subagentes/sidechain, que traen
+# su propio usage y contaminarían la medición del hilo principal). fromjson? salta líneas malformadas.
+# Se calcula ANTES del techo porque la AUTO-CORRECCIÓN de ventana (abajo) se ata a este dato DURO.
+ctx=$(tail -n 400 "$tp" 2>/dev/null | jq -rR '
+    fromjson? | select(.isSidechain != true) | (.message.usage // empty)
+    | (.input_tokens // 0) + (.cache_creation_input_tokens // 0) + (.cache_read_input_tokens // 0)
+  ' 2>/dev/null | tail -1 | tr -cd '0-9')
+[ -n "$ctx" ] || exit 0                          # sin usage aún → nada que medir (fail-open)
+
+# Techo = punto de auto-compact = ventana_real × pct_autocompact/100. DERIVADO de las señales reales.
+# Escape hatches (de más fuerte a más débil): `AVISO_CONTEXTO_CEILING_TOKENS` fija el techo ABSOLUTO y
+# gana sobre todo (tests / manual); `AVISO_CONTEXTO_WINDOW_TOKENS` fija la VENTANA a mano; si no hay
+# ninguno, la ventana se DERIVA del modelo. En los casos derivado y por-ventana se aplica la
+# AUTO-CORRECCIÓN por invariante físico (1b).
 CEILING="${AVISO_CONTEXTO_CEILING_TOKENS:-}"
 case "$CEILING" in
   ''|*[!0-9]*)
-    # (1) Ventana real: "[1m]" en el modelo elegido → 1M; si no → 200K. Precedencia settings: user <
-    #     proyecto < local (el más específico gana → lo recorremos en ese orden, nos quedamos el último).
-    model=""
-    for s in "$HOME/.claude/settings.json" "$ROOT/.claude/settings.json" "$ROOT/.claude/settings.local.json"; do
-      [ -f "$s" ] || continue
-      m=$(jq -r '.model // empty' "$s" 2>/dev/null)
-      [ -n "$m" ] && model="$m"
-    done
-    case "$model" in *'[1m]'*) WINDOW=1000000 ;; *) WINDOW=200000 ;; esac
+    # (1) Ventana: override explícito `AVISO_CONTEXTO_WINDOW_TOKENS`, o derivada del modelo — "[1m]" en el
+    #     modelo elegido → 1M; si no → 200K. Precedencia settings: user < proyecto < local (el más
+    #     específico gana → lo recorremos en ese orden, nos quedamos el último).
+    WINDOW="${AVISO_CONTEXTO_WINDOW_TOKENS:-}"
+    case "$WINDOW" in
+      ''|*[!0-9]*)
+        model=""
+        for s in "$HOME/.claude/settings.json" "$ROOT/.claude/settings.json" "$ROOT/.claude/settings.local.json"; do
+          [ -f "$s" ] || continue
+          m=$(jq -r '.model // empty' "$s" 2>/dev/null)
+          [ -n "$m" ] && model="$m"
+        done
+        case "$model" in *'[1m]'*) WINDOW=1000000 ;; *) WINDOW=200000 ;; esac
+        ;;
+    esac
+    # (1b) AUTO-CORRECCIÓN por invariante FÍSICO: el contexto no cabe en una ventana MENOR que él mismo.
+    #      Si la ventana quedó en la chica (200K) por una detección fallida en runtime pero el ctx real
+    #      YA la supera, es imposible que sea una sesión de 200K (habría auto-compactado mucho antes) →
+    #      la única ventana MAYOR conocida de Claude es 1M → promuévela. Ata el techo al dato DURO del
+    #      transcript en vez de a leer bien settings. Solo SUBE la ventana → nunca crea falsos positivos.
+    [ "$ctx" -gt "$WINDOW" ] 2>/dev/null && WINDOW=1000000
     # (2) pct de auto-compact: override del usuario (el CLI la respeta) o default 92 (holgura p/ checkpoint).
     PCT="${CLAUDE_AUTOCOMPACT_PCT_OVERRIDE:-92}"
     case "$PCT" in ''|*[!0-9]*) PCT=92 ;; esac
@@ -79,14 +111,6 @@ case "$CEILING" in
     ;;
 esac
 [ "$CEILING" -gt 0 ] 2>/dev/null || CEILING=$(( 200000 * 92 / 100 ))
-
-# Tokens de contexto ACTUALES = último `usage` del transcript (excluye subagentes/sidechain, que traen
-# su propio usage y contaminarían la medición del hilo principal). fromjson? salta líneas malformadas.
-ctx=$(tail -n 400 "$tp" 2>/dev/null | jq -rR '
-    fromjson? | select(.isSidechain != true) | (.message.usage // empty)
-    | (.input_tokens // 0) + (.cache_creation_input_tokens // 0) + (.cache_read_input_tokens // 0)
-  ' 2>/dev/null | tail -1 | tr -cd '0-9')
-[ -n "$ctx" ] || exit 0                          # sin usage aún → nada que medir (fail-open)
 
 # Umbrales de banda como % del techo (aritmética entera).
 t1=$(( CEILING * 76 / 100 ))   # ℹ️  heads-up con holgura

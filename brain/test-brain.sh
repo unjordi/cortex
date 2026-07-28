@@ -1013,6 +1013,37 @@ m="$(ac3 'opus' unset 150000)"
   && ok "aviso techo derivado: 200K @ 92%, ctx 100K → silencio" \
   || bad "aviso techo derivado 200K@92% gritó a 100K"
 
+# (b6c) ROBUSTEZ de runtime (bug 2026-07-28): la detección de ventana falla en runtime (settings a medio
+# escribir / timing / $HOME distinto) → cae al default chico de 200K → falso "🚨 INMINENTE". AUTO-CORRECCIÓN
+# por invariante FÍSICO: el contexto no cabe en una ventana MENOR que él mismo → si el ctx MEDIDO supera la
+# ventana detectada, ésta se promueve a 1M (única mayor conocida). ac3 con un modelo SIN "[1m]" simula la
+# detección que "falla" y cae a 200K.
+# Repro EXACTO del bug: ctx=381K, ventana mal-detectada en 200K, pct=70 → antes gritaba INMINENTE al 272%
+# del techo 140K; ahora 381K>200K → promueve a 1M → techo 700K → 54% → banda 0 → silencio.
+[ -z "$(ac3 'opus' 70 381000)" ] \
+  && ok "aviso robustez: ctx 381K > ventana detectada 200K → auto-corrige a 1M → silencio (NO falso INMINENTE)" \
+  || bad "aviso robustez: ctx 381K con ventana mal-detectada gritó (regresión del bug 2026-07-28)"
+# La auto-corrección SOLO sube: una sesión GENUINA de 200K con el ctx DENTRO de la ventana sigue avisando
+# (no la sobre-suprime). ctx 135K < 200K → sin promoción → techo 140K@70% → 135K ≥ t3(133K) → banda 3.
+{ printf '%s' "$(ac3 'opus' 70 135000)" | grep -q 'INMINENTE'; } \
+  && ok "aviso robustez: ctx 135K < ventana 200K → sin promoción → sigue avisando (no sobre-suprime)" \
+  || bad "aviso robustez: la auto-corrección suprimió un aviso legítimo de una sesión de 200K"
+# Escape hatch AVISO_CONTEXTO_WINDOW_TOKENS: fija la VENTANA a mano (sobre la derivación del modelo).
+# Ventana 1M forzada @ 70% → techo 700K; ctx 381K = 54% → silencio, aunque el modelo NO diga "[1m]".
+acwin() {
+  local root; root="$(mktemp -d "${TMPDIR:-/tmp}/brain-acw.XXXXXX")/r"; mkdir -p "$root/.claude/memory"
+  printf '{"model":"opus"}' > "$root/.claude/settings.json"
+  printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$2}}}" > "$root/t.jsonl"
+  printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" \
+    | env -u AVISO_CONTEXTO_CEILING_TOKENS \
+        AVISO_CONTEXTO_WINDOW_TOKENS="$1" CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70 CLAUDE_PROJECT_DIR="$root" \
+        bash "$HOOKS/aviso-contexto.sh" | jq -r '.hookSpecificOutput.additionalContext // empty'
+  rm -rf "$(dirname "$root")"
+}
+[ -z "$(acwin 1000000 381000)" ] \
+  && ok "aviso escape hatch: AVISO_CONTEXTO_WINDOW_TOKENS=1M @ 70% → techo 700K, ctx 381K → silencio" \
+  || bad "aviso escape hatch: AVISO_CONTEXTO_WINDOW_TOKENS no respetó la ventana forzada"
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (b7) dedupe doble-cableado: la copia REPO cede si existe la GLOBAL; corre si no =="
