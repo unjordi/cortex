@@ -557,6 +557,38 @@ rm -rf "$LRROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (b3d) bz_resolver_base: AUTO-detecta la mini-develop (Develop<Usuario>) sin CLAUDE_INTEGRACION_BASE =="
+# Bug real (2026-07-28): en un repo con flujo mini-develop (rama personal DevelopUnjordi sacada de develop),
+# el resolver caía a `develop` porque existía local → las ramitas integradas a la MINI se veían "no
+# integradas" y nunca se barrían. La base correcta del dev es su Develop<Usuario>.
+RBROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-rb.XXXXXX")"; RBREPO="$RBROOT/repo"; mkdir -p "$RBREPO"
+git -C "$RBREPO" init -q >/dev/null 2>&1
+git -C "$RBREPO" config user.email t@t >/dev/null 2>&1; git -C "$RBREPO" config user.name tester >/dev/null 2>&1
+git -C "$RBREPO" symbolic-ref HEAD refs/heads/develop >/dev/null 2>&1
+printf 'base\n' > "$RBREPO/a.txt"; git -C "$RBREPO" add a.txt >/dev/null 2>&1; git -C "$RBREPO" commit -qm base >/dev/null 2>&1
+git -C "$RBREPO" branch DevelopUnjordi >/dev/null 2>&1   # mini-develop sacada de develop
+( . "$HOOKS/ramas-zombie.sh"
+  # (1) HEAD en una ramita, con develop Y DevelopUnjordi locales → base = la MINI (no develop)
+  git -C "$RBREPO" checkout -q -b feat/x DevelopUnjordi >/dev/null 2>&1
+  [ "$(bz_resolver_base "$RBREPO")" = "DevelopUnjordi" ] && ok "b3d: mini-develop preferida sobre develop (HEAD en ramita)" || bad "b3d: NO detectó DevelopUnjordi; got: $(bz_resolver_base "$RBREPO")"
+  # (2) HEAD parado en la propia mini → esa misma
+  git -C "$RBREPO" checkout -q DevelopUnjordi >/dev/null 2>&1
+  [ "$(bz_resolver_base "$RBREPO")" = "DevelopUnjordi" ] && ok "b3d: HEAD en la mini → base = la mini" || bad "b3d: HEAD en mini no se resolvió a sí misma; got: $(bz_resolver_base "$RBREPO")"
+  # (3) override explícito SIEMPRE gana
+  [ "$(CLAUDE_INTEGRACION_BASE=otra bz_resolver_base "$RBREPO")" = "otra" ] && ok "b3d: CLAUDE_INTEGRACION_BASE gana sobre la auto-detección" || bad "b3d: el override no ganó"
+)
+# (4) SIN mini-develop (flujo develop puro) → cae a develop, sin regresión
+RB2="$RBROOT/repo2"; mkdir -p "$RB2"; git -C "$RB2" init -q >/dev/null 2>&1
+git -C "$RB2" config user.email t@t >/dev/null 2>&1; git -C "$RB2" config user.name tester >/dev/null 2>&1
+git -C "$RB2" symbolic-ref HEAD refs/heads/develop >/dev/null 2>&1
+printf 'b\n' > "$RB2/a.txt"; git -C "$RB2" add a.txt >/dev/null 2>&1; git -C "$RB2" commit -qm base >/dev/null 2>&1
+( . "$HOOKS/ramas-zombie.sh"
+  [ "$(bz_resolver_base "$RB2")" = "develop" ] && ok "b3d: sin Develop<Usuario> local → base = develop (sin regresión)" || bad "b3d: regresión, no cayó a develop; got: $(bz_resolver_base "$RB2")"
+)
+rm -rf "$RBROOT"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "== (b3c) git-branch-guard: bloquea push/merge REAL a main/develop, NO una MENCIÓN entrecomillada =="
 # HOME AISLADO SIN copia global del hook: si no, la cláusula de dedupe doble-cableado (la copia del
 # repo CEDE cuando existe ~/.claude/hooks/…) haría que el guard salga en silencio en una máquina con el
