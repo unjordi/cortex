@@ -58,17 +58,30 @@ if [ -f "$SRC_HOOKS/MANIFEST" ]; then
 else
   echo "warn: falta $SRC_HOOKS/MANIFEST; no puedo derivar la lista de hooks globales"; GLOBAL_HOOKS=""
 fi
+# Instalación ATÓMICA: cp a un tmp en el MISMO dir + mv (rename atómico). El updater ⬆ puede reescribir
+# ~/.claude/hooks con una sesión VIVA; un `cp -f` in-situ deja una ventana en la que un hook que hace
+# `source` de una lib (p. ej. analizar-comando-git.sh) la leería a medio sobrescribir. El mv/rename es
+# atómico en el mismo filesystem → el hook ve la versión vieja COMPLETA o la nueva COMPLETA, nunca media.
+atomic_install() {  # <src> <dst> [exec]
+  local src="$1" dst="$2" mode="${3:-}" tmp
+  tmp="$(dirname "$dst")/.$(basename "$dst").tmp.$$"
+  if cp -f "$src" "$tmp" 2>/dev/null; then
+    [ "$mode" = exec ] && chmod +x "$tmp" 2>/dev/null
+    mv -f "$tmp" "$dst" 2>/dev/null || { rm -f "$tmp"; return 1; }
+  else
+    rm -f "$tmp" 2>/dev/null; return 1
+  fi
+}
 for h in $GLOBAL_HOOKS; do
   if [ -f "$SRC_HOOKS/$h" ]; then
-    cp -f "$SRC_HOOKS/$h" "$HOOKS_DIR/$h"
-    chmod +x "$HOOKS_DIR/$h"
+    atomic_install "$SRC_HOOKS/$h" "$HOOKS_DIR/$h" exec || echo "warn: no pude instalar el hook $h"
   else
     echo "warn: falta el hook fuente $h"
   fi
 done
 # Config de clasificación de costo (la lee delegacion-comun.sh en $HOME/.claude/agentes-costo.json)
 if [ -f "$SRC_HOOKS/agentes-costo.json" ]; then
-  cp -f "$SRC_HOOKS/agentes-costo.json" "$CLAUDE_DIR/agentes-costo.json"
+  atomic_install "$SRC_HOOKS/agentes-costo.json" "$CLAUDE_DIR/agentes-costo.json" || echo "warn: no pude instalar agentes-costo.json"
 fi
 echo "ok: hooks globales + lib + config de costo copiados a $HOOKS_DIR"
 

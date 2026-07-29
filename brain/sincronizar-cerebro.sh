@@ -105,6 +105,20 @@ wired_in() {
   jq -e --arg pat "/$name\\.sh" 'any(.hooks[]?[]?; ([.hooks[]?.command] | join(" ")) | test($pat))' "$gset" >/dev/null 2>&1
 }
 
+# Instalación ATÓMICA: cp a un tmp en el MISMO dir + mv (rename atómico). Si el sync corre con una sesión
+# VIVA, un `cp -f` in-situ deja una ventana en la que un hook que hace `source` de una lib (p. ej.
+# analizar-comando-git.sh) la leería a medio sobrescribir; el mv/rename evita esa lectura parcial.
+atomic_install() {  # <src> <dst>
+  local src="$1" dst="$2" tmp
+  tmp="$(dirname "$dst")/.$(basename "$dst").tmp.$$"
+  if cp -f "$src" "$tmp" 2>/dev/null; then
+    chmod +x "$tmp" 2>/dev/null
+    mv -f "$tmp" "$dst" 2>/dev/null || { rm -f "$tmp"; return 1; }
+  else
+    rm -f "$tmp" 2>/dev/null; return 1
+  fi
+}
+
 # ── Sincronizar los archivos de tier {repo, both} (se SALTA entero con --prune-only) ──
 n_new=0; n_upd=0; n_ok=0; n_wire=0
 PER_REPO="$(awk '$1!~/^#/ && NF>=3 && ($2=="repo"||$2=="both"){print $1"|"$3}' "$MANIFEST")"
@@ -118,10 +132,10 @@ while [ "$PRUNEONLY" != 1 ] && IFS='|' read -r name kind; do
   if [ ! -f "$src" ]; then echo "  warn: el manifiesto lista $name pero falta $src"; continue; fi
   if [ ! -f "$dst" ]; then
     echo "  NUEVO      $name.sh ($kind)"; n_new=$((n_new+1))
-    [ "$APPLY" = 1 ] && { cp -f "$src" "$dst"; chmod +x "$dst"; }
+    [ "$APPLY" = 1 ] && { atomic_install "$src" "$dst" || echo "  warn: no pude instalar $name.sh"; }
   elif ! diff -q "$src" "$dst" >/dev/null 2>&1; then
     echo "  ACTUALIZA  $name.sh ($kind)  [$(diff "$src" "$dst" 2>/dev/null | grep -cE '^[<>]') líneas ±]"; n_upd=$((n_upd+1))
-    [ "$APPLY" = 1 ] && { cp -f "$src" "$dst"; chmod +x "$dst"; }
+    [ "$APPLY" = 1 ] && { atomic_install "$src" "$dst" || echo "  warn: no pude instalar $name.sh"; }
   else
     n_ok=$((n_ok+1))
   fi
