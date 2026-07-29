@@ -752,6 +752,25 @@ printf '%s' "$(ad)" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null 
   && ok "aviso-drift: con drift NO cachea — re-avisa en la siguiente sesión" || bad "aviso-drift: cacheó un chequeo CON drift (se calló)"
 rm -rf "$ADFIX"
 
+# ── (b5b2) FIX costura #2: aviso-drift DETECTA el drift de CABLEADO (hooks presentes SIN cablear).
+# Antes era CIEGO al wiring: solo sumaba nuevos+act+ret → un repo con "0 nuevos · 0 a actualizar · N
+# cableado faltante" se veía "al día" (bug LIVE comprobado en la plantilla: 3 hooks sin cablear → 0
+# drift). Ahora sincronizar reporta "N cableado faltante" y aviso-drift lo cuenta como drift.
+ADWFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-adw.XXXXXX")"
+ADWROOT="$ADWFIX/repo"; ADWHOME="$ADWFIX/home"; ADWBRAIN="$ADWFIX/clon"
+mkdir -p "$ADWROOT/.claude/hooks" "$ADWHOME" "$ADWBRAIN/brain"
+: > "$ADWROOT/.claude/hooks/.brain-version"
+adw() { printf '%s' '{"source":"startup"}' | HOME="$ADWHOME" CLAUDE_BRAIN_DIR="$ADWBRAIN" CLAUDE_PROJECT_DIR="$ADWROOT" bash "$HOOKS/aviso-drift-cerebro.sh"; }
+# resumen SOLO con cableado faltante>0 (0 nuevos/act/ret) — el caso que antes daba total=0 → "al día"
+printf '#!/usr/bin/env bash\necho "==> resumen: 0 nuevos · 0 a actualizar · 10 ya al día · 0 retirado(s) del cerebro · 10 hooks cableados (kind=hook) · 3 cableado faltante"\n' > "$ADWBRAIN/brain/sincronizar-cerebro.sh"
+printf '%s' "$(adw)" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'DRIFT DEL CEREBRO' \
+  && ok "aviso-drift: cuenta el CABLEADO FALTANTE como drift (antes: ciego → 'al día')" || bad "aviso-drift: sigue CIEGO al cableado faltante (lo dio por al día)"
+# control: sin cableado faltante y sin otros drifts → silencio (no falso positivo)
+rm -rf "$ADWHOME/.claude/memory/.drift-cerebro"
+printf '#!/usr/bin/env bash\necho "==> resumen: 0 nuevos · 0 a actualizar · 10 ya al día · 0 retirado(s) del cerebro · 10 hooks cableados (kind=hook) · 0 cableado faltante"\n' > "$ADWBRAIN/brain/sincronizar-cerebro.sh"
+is_silent "$(adw)" && ok "aviso-drift: 0 cableado faltante y sin otros drifts → silencio (no falso positivo)" || bad "aviso-drift: habló con 0 drift (falso positivo)"
+rm -rf "$ADWFIX"
+
 # ── (b5c) aviso-drift v2: AUTO-APPLY en la mini-develop (Develop<Usuario>) · aviso en ramita ──
 AD2FIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-ad2.XXXXXX")"
 AD2REPO="$AD2FIX/repo"; AD2HOME="$AD2FIX/home"; AD2BRAIN="$AD2FIX/clon"
@@ -1374,6 +1393,22 @@ bash "$SYNC" "$E5T" 2>/dev/null | grep -qE '==> resumen:.*[1-9][0-9]* retirado' 
   && ok "e5: el dry-run REPORTA el retirado en el resumen (aviso-drift lo cuenta como drift)" \
   || ok "e5: (sin retirados pendientes tras el apply — esperado)"
 rm -rf "$E5T"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo "== (e6) FIX #2: sincronizar REPORTA 'cableado faltante' (hook presente sin cablear) → aviso-drift deja de ser ciego al wiring =="
+E6T="$(mktemp -d "${TMPDIR:-/tmp}/brain-e6.XXXXXX")"; mkdir -p "$E6T/.claude/hooks"
+printf '{}' > "$E6T/.claude/settings.json"
+# dry-run sobre un repo con settings.json VACÍO → todos los {repo,both} kind=hook están SIN cablear
+bash "$SYNC" "$E6T" 2>/dev/null | grep -qE '==> resumen:.*[1-9][0-9]* cableado faltante' \
+  && ok "e6: dry-run REPORTA cableado faltante>0 cuando el settings.json no cablea los hooks" \
+  || bad "e6: el resumen NO reporta el cableado faltante (aviso-drift seguiría ciego al wiring)"
+# tras --apply (cablea todos) → cableado faltante baja a 0
+bash "$SYNC" "$E6T" --apply >/dev/null 2>&1
+bash "$SYNC" "$E6T" 2>/dev/null | grep -qE '==> resumen:.*· 0 cableado faltante' \
+  && ok "e6: tras --apply el cableado faltante baja a 0 (ya cablea todos)" \
+  || bad "e6: tras --apply sigue reportando cableado faltante>0"
+rm -rf "$E6T"
+
 echo "== (e4) Windows: bootstrap.ps1 exporta CLAUDE_BRAIN_DIR (los hooks bash hallan la fuente) =="
 # En Windows el clon-fuente vive en %LOCALAPPDATA%\claude-brain-repo, NO en ~/.claude-brain (default de
 # Mac/Linux). Si bootstrap.ps1 no exporta CLAUDE_BRAIN_DIR, el hook bash aviso-drift-cerebro cae a

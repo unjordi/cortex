@@ -53,7 +53,12 @@ act=$(printf '%s' "$resumen"    | grep -oE '[0-9]+ a actualizar' | grep -oE '[0-
 # dejando p. ej. precompact-volcar-estado cableado y rompiendo el CLI). El --apply del auto-sync los
 # poda solo (lista RETIRED), sin --prune-orphans.
 ret=$(printf '%s' "$resumen"    | grep -oE '[0-9]+ retirado'     | grep -oE '[0-9]+' || echo 0)
-total=$(( ${nuevos:-0} + ${act:-0} + ${ret:-0} ))
+# Drift de CABLEADO: hooks presentes en .claude/hooks pero cuyo comando NO está en settings.json.
+# Antes este hook era CIEGO al wiring (solo sumaba nuevos+act+ret) → un repo con "0 nuevos · 0 a
+# actualizar · N cableado faltante" se reportaba "al día" aunque tuviera hooks sin cablear (bug ALTO,
+# comprobado en la plantilla). sincronizar ahora reporta "N cableado faltante" y aquí lo contamos.
+falta=$(printf '%s' "$resumen"  | grep -oE '[0-9]+ cableado faltante' | grep -oE '[0-9]+' || echo 0)
+total=$(( ${nuevos:-0} + ${act:-0} + ${ret:-0} + ${falta:-0} ))
 
 if [ "$total" -eq 0 ]; then
   printf '%s' "$now" > "$stamp" 2>/dev/null || true

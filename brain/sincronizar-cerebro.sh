@@ -95,6 +95,16 @@ register_hook() {
     ' "$gset" > "$tmp" 2>/dev/null && [ -s "$tmp" ]; then mv "$tmp" "$gset"; else rm -f "$tmp"; echo "  warn: no pude cablear ($pat)"; fi
 }
 
+# wired_in <settings.json> <nombre-hook>  → 0 si algún command del settings.json cita .../<nombre>.sh.
+# Base de la detección de CABLEADO FALTANTE (abajo). Sin jq NO podemos saberlo de forma fiable → damos
+# "cableado" (fail-open: no inflar el contador faltante) para no reportar falso drift.
+wired_in() {
+  local gset="$1" name="$2"
+  [ -f "$gset" ] || return 1
+  command -v jq >/dev/null 2>&1 || return 0
+  jq -e --arg pat "/$name\\.sh" 'any(.hooks[]?[]?; ([.hooks[]?.command] | join(" ")) | test($pat))' "$gset" >/dev/null 2>&1
+}
+
 # ── Sincronizar los archivos de tier {repo, both} (se SALTA entero con --prune-only) ──
 n_new=0; n_upd=0; n_ok=0; n_wire=0
 PER_REPO="$(awk '$1!~/^#/ && NF>=3 && ($2=="repo"||$2=="both"){print $1"|"$3}' "$MANIFEST")"
@@ -131,6 +141,28 @@ while [ "$PRUNEONLY" != 1 ] && IFS='|' read -r name kind; do
 done <<EOF
 $PER_REPO
 EOF
+
+# ── Drift de CABLEADO: hooks kind=hook de tier {repo,both} cuyo comando NO aparece en el settings.json
+#    destino. Antes esto era INVISIBLE al resumen → aviso-drift-cerebro lo daba por "al día" aunque el
+#    repo tuviera hooks presentes-pero-SIN-cablear (bug de costura ALTO, comprobado en la plantilla: 3
+#    hooks sin cablear se reportaban como 0 drift). Ahora se CUENTA y se REPORTA en el resumen para que
+#    aviso-drift lo trate como drift. Independiente de que el .sh esté presente (si falta ya cuenta como
+#    NUEVO). En --apply los hooks ya se cablearon arriba → este conteo dará 0. Se salta con --prune-only.
+n_missing_wire=0
+if [ "$PRUNEONLY" != 1 ]; then
+  while IFS='|' read -r name kind; do
+    [ -z "$name" ] && continue
+    [ "$kind" = "hook" ] || continue
+    only_ok "$name" || continue
+    [ -n "$(ev_de "$name")" ] || continue   # sin evento no se cablea (ya se avisa arriba)
+    if ! wired_in "$DST_SET" "$name"; then
+      n_missing_wire=$((n_missing_wire+1))
+      echo "  SIN CABLEAR $name.sh — presente en el manifiesto pero su comando NO está en settings.json"
+    fi
+  done <<EOF
+$PER_REPO
+EOF
+fi
 
 # ── Estampar la versión SOLO en sync COMPLETO: cualquier operación PARCIAL (--only o --prune-only) NO
 # representa esa versión (el repo no queda completo) → estamparla MENTIRÍA sobre el estado del cerebro. ──
@@ -195,5 +227,5 @@ if [ -d "$DST_HOOKS" ]; then
 fi
 
 echo ""
-echo "==> resumen: $n_new nuevos · $n_upd a actualizar · $n_ok ya al día · $n_retired retirado(s) del cerebro · $n_wire hooks cableados (kind=hook)"
+echo "==> resumen: $n_new nuevos · $n_upd a actualizar · $n_ok ya al día · $n_retired retirado(s) del cerebro · $n_wire hooks cableados (kind=hook) · $n_missing_wire cableado faltante"
 [ "$APPLY" = 1 ] || echo "    (DRY-RUN — nada escrito. Re-corre con --apply para aplicar.)"
