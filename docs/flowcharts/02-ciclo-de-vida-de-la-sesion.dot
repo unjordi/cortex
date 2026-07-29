@@ -1,0 +1,109 @@
+// 02 — Ciclo de vida de la sesión (claude-brain)  ·  FUENTE editable (Graphviz .dot)
+// Render:  dot -Tsvg 02-ciclo-de-vida-de-la-sesion.dot -o 02-ciclo-de-vida-de-la-sesion.svg
+// Completado 2026-07-29: el esqueleto ya era bueno; se AÑADEN los 2 hooks de SessionStart que faltaban
+// y que MUTAN git (aviso-drift-cerebro, barrer-ramas), el estado de CIERRE de sesión y la LEYENDA.
+// Los 4 hooks reales de SessionStart se cablean en install-brain.sh:103-107 (3 globales) + sesion-inicio (repo).
+digraph flujos {
+  graph [bgcolor="#1b1712", rankdir=TB, fontname="Helvetica", splines=true,
+         nodesep=0.35, ranksep=0.55, pad=0.25];
+  node  [fontname="Helvetica", fontsize=12, fontcolor="#f2ede6", shape=box,
+         style="rounded,filled", fillcolor="#2b2b2b", color="#8a8a8a", penwidth=1.5];
+  edge  [color="#d97757", fontname="Helvetica", fontsize=10, fontcolor="#cfc8c0", penwidth=1.4];
+
+  // ─────────────────────────── LEYENDA (regla dura del skill diagramar) ───────────────────────────
+  subgraph cluster_leyenda {
+    label="LEYENDA"; labeljust="l"; fontname="Times"; fontsize=14; fontcolor="#5fa89e";
+    color="#5fa89e"; penwidth=1.6; style="rounded"; bgcolor="#1b1712";
+    LEY [shape=none, margin=0, label=<
+      <table border="0" cellborder="1" cellspacing="0" cellpadding="5" color="#5fa89e" bgcolor="#1b1712">
+        <tr><td bgcolor="#232323"><font color="#cfc8c0">rectángulo redondo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">paso / estado</font></td></tr>
+        <tr><td bgcolor="#2b2622"><font color="#f2ede6">rombo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">decisión (¿…?)</font></td></tr>
+        <tr><td bgcolor="#2b2b2b" border="2" color="#7fb069"><font color="#f2ede6">🟢 verde</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">estado OK / a trabajar</font></td></tr>
+        <tr><td bgcolor="#2b2b2b" border="2" color="#e08e45"><font color="#f2ede6">🟠 naranja</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">inyección de contexto / aviso</font></td></tr>
+        <tr><td bgcolor="#2b2b2b" border="3" color="#c0392b"><font color="#f2ede6">⚠ borde rojo grueso</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">el hook ESCRIBE git (commit/push/branch -d)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#d97757">→ flecha</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">flujo (ciclo de vida)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#cfc8c0">🔔 hook</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">· 💾 skill · 🔧 bootstrap · 📜 → norma</font></td></tr>
+      </table>>];
+  }
+
+  // ───────────────────────────────────── EL CICLO ─────────────────────────────────────
+  subgraph cluster_f0 {
+    label="① Ciclo de vida de la sesión   (bootstrap 1× · SessionStart cablea 4 hooks · 💾 checkpoint vuelca el hilo · 🔔 aviso-contexto = watermark anti-auto-compact · SessionEnd)";
+    fontname="Times"; fontsize=14; fontcolor="#5fa89e";
+    color="#5fa89e"; penwidth=1.6; style="rounded"; bgcolor="#1b1712";
+
+    OPEN   [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
+            label="abres Claude Code en un folder"];
+    GIT    [shape=diamond, fillcolor="#2b2622", color="#d97757",
+            label="¿repo git CON .claude/\n(cerebro autocontenido)?"];
+    PLAIN  [color="#7fb069",
+            label="🟢  folder simple: sin hooks del repo;\naplican solo los hooks GLOBALES de la máquina\n(en repos personales → auto-mode genérico · P10)"];
+    BOOT   [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
+            label="🔧  bootstrap-claude.sh (UNA vez tras clonar)\ninstala hooks GLOBALES + enlaza el cerebro + verifica git & jq;\nlos hooks del repo se cablean en .claude/settings.json (viajan por git)"];
+
+    // ── SessionStart: los CUATRO hooks reales (install-brain.sh:103-107 + sesion-inicio repo) ──
+    START  [color="#e08e45",
+            label="🔔🧭  sesion-inicio  (SessionStart · POR-REPO)\nsource: startup / resume / compact"];
+    INJECT [color="#e08e45",
+            label="🟠  inyecta additionalContext: rama actual + NORMA de git\n+ ritual anti-hilo (lee MEMORY.md + AGENTS.md; NO declares LISTO sin evidencia)\n+ avisa si lo que ves es de otra rama (P16)\n📜 → 🌿 Flujo de git · 🎯 Def. de LISTO"];
+    REHID  [color="#e08e45",
+            label="🔔🧵  rehidratar-hilo  (SessionStart · GLOBAL)\nreinyecta hilo-mental-actual.md si existe → el HILO vuelve\n+ GATE DE FRESCURA: si mtime>12h o rama distinta → «⚠️ posiblemente OBSOLETO»\n+ en source=compact RESETEA el baseline del watermark SI hay transcript_path\n(silencioso / no-op si no lo hay → puede quedar nag falso de «INMINENTE»)"];
+
+    // ── LOS DOS QUE FALTABAN — y MUTAN git (borde rojo grueso) ──
+    DRIFT  [color="#c0392b", penwidth=3,
+            label="⚠ ESCRIBE git · 🔔🧬  aviso-drift-cerebro  (SessionStart · GLOBAL)\ncorre sincronizar-cerebro en DRY-RUN (diff por contenido vs ~/.claude-brain).\nEn rama Develop* con .claude/ LIMPIO → --apply + git add + commit + PUSH SOLO\n(auto-sync de la copia por-repo). En otra rama / árbol sucio → solo AVISA.\n↳ es la pieza de SESIÓN del flujo de PROPAGACIÓN del cerebro (ver 01)"];
+    BARRER [color="#c0392b", penwidth=3,
+            label="⚠ ESCRIBE git · 🔔🧹  barrer-ramas  (SessionStart · GLOBAL)\nthrottle 24h; lanza limpiar-ramas.sh DETACHED (nohup) que hace `git branch -d`\nde ramas zombie ya integradas (squash-merge / remota borrada / equivalencia de parche).\nConserva trabajo sin integrar; NUNCA toca actual/base/develop/main/Develop*/keep/*"];
+    RACE   [color="#c9a227",
+            label="🟡  co-disparo: aviso-drift (commit/push) y barrer-ramas (branch -d, detached)\nen el MISMO SessionStart sobre el MISMO .git → posible choque en index.lock/ref-locks\n(el proceso detached amplía la ventana). Supuesto de independencia sin serializar"];
+
+    // ── Decisiones de sesion-inicio ──
+    PROT   [shape=diamond, fillcolor="#2b2622", color="#d97757", label="¿rama = develop/main?"];
+    PROTW  [color="#e08e45", label="🟠  + aviso: rama PROTEGIDA →\nsaca una ramita feat/… desde develop"];
+    EST    [shape=diamond, fillcolor="#2b2622", color="#d97757", label="¿existe\nestado-proyecto.md?"];
+    ESTW   [color="#e08e45", label="🟠  + inyecta su Resumen\n(dónde quedó el avance)"];
+    READY  [color="#7fb069", label="🟢  contexto rehidratado → a trabajar\n(sin perder el hilo entre sesiones/compus)"];
+
+    // ── Durante la corrida: watermark + checkpoint ──
+    AVISO  [color="#e08e45",
+            label="🔔📈  aviso-contexto  (PostToolUse · GLOBAL · watermark)\nmide el CRECIMIENTO del contexto desde el último /compact (proxy: líneas del\ntranscript vs baseline; umbral tunable, debounce por banda). Al cruzarlo INYECTA:\n«vuelca con checkpoint y compacta TÚ ahora» → el auto-compact-sorpresa se vuelve fallback raro"];
+    CHECK  [color="#7fb069",
+            label="💾  checkpoint  (skill — TÚ lo invocas, PROACTIVO)\nvuelca el HILO → .claude/memory/hilo-mental-actual.md\n📜 → 🪞 doc=realidad · 💡 cerrar-slice §2 hace este mismo volcado"];
+
+    // ── CIERRE de sesión ──
+    END    [color="#e08e45",
+            label="🔚  SessionEnd / Stop / PreCompact → exportar-sesion-master.sh\n⚠ está cableado en el settings.json GLOBAL (~/.claude), pero NO está en brain/hooks/\ndel repo (grep=0) → probablemente hook PERSONAL de máquina, FUERA del MANIFEST del brain\n(no afirmar que es del cerebro)"];
+
+    // Aristas
+    OPEN -> GIT;
+    GIT -> PLAIN [label="no"];
+    GIT -> BOOT  [label="1ª vez tras clonar\n(bootstrap, UNA vez)"];
+    GIT -> START [label="sí (repo con cerebro) — CADA sesión"];
+    BOOT -> START;
+
+    // Los 4 hooks disparan en la MISMA SessionStart
+    START -> INJECT;
+    START -> REHID  [label="misma SessionStart\n(global + por-repo)"];
+    START -> DRIFT  [label="misma SessionStart\n(global)"];
+    START -> BARRER [label="misma SessionStart\n(global)"];
+    DRIFT -> RACE   [style=dashed];
+    BARRER -> RACE  [style=dashed];
+
+    INJECT -> PROT;
+    PROT -> PROTW [label="sí"];
+    PROT -> EST   [label="no"];
+    PROTW -> EST;
+    EST -> ESTW  [label="sí"];
+    EST -> READY [label="no"];
+    ESTW -> READY;
+    REHID -> READY;
+
+    READY -> AVISO [label="durante la corrida\n(vigila cada tool)"];
+    READY -> CHECK [label="o TÚ en una pausa\n(proactivo)"];
+    AVISO -> CHECK [label="cruza el umbral →\nvuelca + propón /compact"];
+    CHECK -> REHID [label="/compact o auto-compact →\nSessionStart source=compact\n(dispara sesion-inicio + rehidratar-hilo)"];
+    REHID -> READY [label="hilo restaurado →\nsigue sin perderlo"];
+
+    READY -> END [label="cierras / Stop / compacta"];
+  }
+}

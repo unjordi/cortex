@@ -37,5 +37,12 @@ docs/mapa-flujos.svg
 # memoria de dev PRIVADA del widget (historia de debugging/backlog; NO describe el código y NO viaja a repos consumidores)
 .claude/memory/backlog-desarrollo.md
 
-# flowcharts individuales (derivados del mapa, también gitignored) — artefactos locales de visualización
-docs/flowcharts/
+# flowcharts individuales: por default son artefactos locales derivados del mapa maestro (gitignored)…
+docs/flowcharts/*
+# …EXCEPTO 01/02, que se rehicieron con FUENTE .dot editable propia (no dependen del mapa maestro
+# desaparecido). La regla dura de `diagramar` exige versionar la FUENTE: aquí van .dot (fuente) + .svg (vista).
+# (Los otros 9 siguen SIN fuente versionada — hallazgo de procedencia, pendiente de reconstruir su .dot.)
+!docs/flowcharts/01-instalacion-actualizacion-del-cerebro.dot
+!docs/flowcharts/01-instalacion-actualizacion-del-cerebro.svg
+!docs/flowcharts/02-ciclo-de-vida-de-la-sesion.dot
+!docs/flowcharts/02-ciclo-de-vida-de-la-sesion.svg
