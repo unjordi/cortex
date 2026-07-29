@@ -87,27 +87,38 @@ register_hook() {
     ' "$GSET" > "$tmp" 2>/dev/null && [ -s "$tmp" ]; then mv "$tmp" "$GSET"; else rm -f "$tmp"; echo "warn: no pude fusionar hook ($pat)"; fi
 }
 
-register_hook PreToolUse  Bash 'bash "$HOME/.claude/hooks/git-branch-guard.sh"'    'git-branch-guard'
-register_hook PreToolUse  Bash 'bash "$HOME/.claude/hooks/merge-squash-guard.sh"'  'merge-squash-guard'
-register_hook PreToolUse  Bash 'bash "$HOME/.claude/hooks/confirmar-merge-develop.sh"' 'confirmar-merge-develop'
-register_hook PreToolUse  Bash 'bash "$HOME/.claude/hooks/recordar-dashboard.sh"'  'recordar-dashboard'
-register_hook PreToolUse  Bash 'bash "$HOME/.claude/hooks/secret-scan.sh"'         'secret-scan'
-register_hook PreToolUse  Bash 'bash "$HOME/.claude/hooks/entorno-maquina-guard.sh"' 'entorno-maquina-guard'
-register_hook PreToolUse  Bash 'bash "$HOME/.claude/hooks/rama-vieja.sh"'          'rama-vieja'
-register_hook PreToolUse  Bash 'bash "$HOME/.claude/hooks/proteger-arbol.sh"'     'proteger-arbol'
-register_hook PreToolUse  Task 'bash "$HOME/.claude/hooks/limite-gasto.sh"'        'limite-gasto'
-register_hook PreToolUse  Task 'bash "$HOME/.claude/hooks/delegacion-gate.sh"'     'delegacion-gate'
-register_hook PostToolUse Task 'bash "$HOME/.claude/hooks/delegacion-registrar.sh"' 'delegacion-registrar'
-register_hook PostToolUse Task 'bash "$HOME/.claude/hooks/delegacion-reporte.sh"'   'delegacion-reporte'
-# SessionStart sin matcher (matcher vacío ⇒ se omite la clave ⇒ casa TODAS las fuentes: startup/resume/compact/clear)
-register_hook SessionStart '' 'bash "$HOME/.claude/hooks/rehidratar-hilo.sh"'       'rehidratar-hilo'
-# SessionStart sin matcher — anti-drift: avisa si la copia por-repo del cerebro quedó atrás de la fuente única
-register_hook SessionStart '' 'bash "$HOME/.claude/hooks/aviso-drift-cerebro.sh"'   'aviso-drift-cerebro'
-# SessionStart sin matcher — da TRIGGER al barrido de ramas locales ya integradas (throttled 24h, en segundo plano)
-register_hook SessionStart '' 'bash "$HOME/.claude/hooks/barrer-ramas.sh"'           'barrer-ramas'
-# PostToolUse sin matcher (casa TODA tool) — watermark anti-auto-compact: avisa de compactar proactivo
-register_hook PostToolUse '' 'bash "$HOME/.claude/hooks/aviso-contexto.sh"'          'aviso-contexto'
-echo "ok: hooks cableados en $GSET (git-branch-guard, merge-squash-guard, confirmar-merge-develop, recordar-dashboard, secret-scan, entorno-maquina-guard, rama-vieja, proteger-arbol, limite-gasto, delegacion-gate/registrar, rehidratar-hilo, aviso-contexto, aviso-drift-cerebro, barrer-ramas)"
+# Evento+matcher de cada hook GLOBAL a cablear. El MANIFEST declara tier/kind pero NO el evento →
+# esta tabla lo mapea (misma forma que ev_de() en sincronizar-cerebro.sh, que cubre los {repo,both}).
+# Matcher vacío ⇒ se omite la clave ⇒ casa TODAS las fuentes (SessionStart: startup/resume/compact/clear;
+# PostToolUse: toda tool). Al AGREGAR un hook global nuevo al MANIFEST: añádelo aquí — si falta, el loop
+# de abajo AVISA y el drift-check de test-brain (e2) FALLA (no se cablea en silencio).
+ev_de() {
+  case "$1" in
+    git-branch-guard|merge-squash-guard|confirmar-merge-develop|recordar-dashboard|secret-scan|entorno-maquina-guard|rama-vieja|proteger-arbol) echo "PreToolUse|Bash" ;;
+    limite-gasto|delegacion-gate) echo "PreToolUse|Task" ;;
+    delegacion-registrar|delegacion-reporte) echo "PostToolUse|Task" ;;
+    rehidratar-hilo|aviso-drift-cerebro|barrer-ramas) echo "SessionStart|" ;;
+    aviso-contexto) echo "PostToolUse|" ;;
+    *) echo "" ;;
+  esac
+}
+
+# ── Cablear DERIVANDO del MANIFEST (fuente única), no una lista paralela hardcodeada (antídoto al drift
+# latente: antes la COPIA se derivaba del MANIFEST pero el CABLEADO eran 16 register_hook a mano → un
+# hook global nuevo se copiaba pero no se cableaba). Los mismos hooks/eventos que antes; el evento sale
+# de ev_de(). El command conserva el literal `$HOME` (se expande al correr el hook, no aquí). ──
+WIRE_HOOKS="$(awk '$1!~/^#/ && NF>=3 && ($2=="global"||$2=="both") && $3=="hook"{print $1}' "$SRC_HOOKS/MANIFEST" 2>/dev/null)"
+wired_names=""
+for h in $WIRE_HOOKS; do
+  evm="$(ev_de "$h")"
+  if [ -z "$evm" ]; then
+    echo "warn: no tengo evento para cablear el hook global '$h' (agrégalo a ev_de en install-brain.sh) — NO cableado"
+    continue
+  fi
+  register_hook "${evm%%|*}" "${evm#*|}" "bash \"\$HOME/.claude/hooks/$h.sh\"" "$h"
+  wired_names="$wired_names $h"
+done
+echo "ok: hooks cableados en $GSET (derivados del MANIFEST):$wired_names"
 
 # ── (c) Skills genéricas del cerebro (cerrar-slice, orquestar-fanout, …) ──
 if [ -d "$SRC_SKILLS" ]; then

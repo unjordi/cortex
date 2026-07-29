@@ -1290,12 +1290,18 @@ else
   else
     bad "drift: install-brain NO deriva del MANIFEST (¿volvió a una lista hardcodeada?)"
   fi
-  # (4) cada {global,both} kind=hook tiene su register_hook en install-brain (cableado ↔ manifiesto)
+  # (4) install-brain DERIVA el cableado del MANIFEST (ya NO 16 register_hook hardcode) y cada
+  #     {global,both} kind=hook tiene su EVENTO en la tabla ev_de() → se cablea. Si un hook nuevo del
+  #     MANIFEST no está en ev_de(), el instalador lo SALTA (avisa) → este drift-check lo caza.
+  grep -qE 'WIRE_HOOKS=.*awk.*(global.*both|both.*global).*MANIFEST' "$INSTALLER" \
+    && ok "drift: install-brain deriva el CABLEADO del MANIFEST (ev_de + loop, no lista hardcodeada)" \
+    || bad "drift: install-brain NO deriva el cableado del MANIFEST (¿volvió a register_hook hardcode?)"
+  evblock="$(awk '/^ev_de\(\)/,/^}/' "$INSTALLER")"
   miss_wire=0
   for b in $(awk '$1!~/^#/ && NF>=3 && ($2=="global"||$2=="both") && $3=="hook"{print $1}' "$MF"); do
-    grep -q "register_hook.*$b" "$INSTALLER" || { bad "drift: '$b' es {global,both} hook pero NO tiene register_hook en install-brain"; miss_wire=1; }
+    printf '%s' "$evblock" | grep -qw "$b" || { bad "drift: '$b' es {global,both} hook pero NO tiene evento en ev_de() de install-brain (no se cablearía)"; miss_wire=1; }
   done
-  [ "$miss_wire" = 0 ] && ok "drift: cada hook {global,both} del MANIFEST está cableado en install-brain"
+  [ "$miss_wire" = 0 ] && ok "drift: cada hook {global,both} del MANIFEST tiene evento en ev_de() de install-brain (se cablea)"
   # (5) uninstall-brain también deriva del manifiesto (no una 3ª lista que driftee)
   grep -q "MANIFEST" "$SCRIPT_DIR/uninstall-brain.sh" 2>/dev/null \
     && ok "drift: uninstall-brain también deriva del MANIFEST" \
@@ -1408,6 +1414,26 @@ bash "$SYNC" "$E6T" 2>/dev/null | grep -qE '==> resumen:.*· 0 cableado faltante
   && ok "e6: tras --apply el cableado faltante baja a 0 (ya cablea todos)" \
   || bad "e6: tras --apply sigue reportando cableado faltante>0"
 rm -rf "$E6T"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo "== (e7) FIX #3: install-brain DERIVA el cableado del MANIFEST y cablea EXACTAMENTE los {global,both} kind=hook (mismos hooks/eventos que el hardcode anterior) =="
+E7H="$(mktemp -d "${TMPDIR:-/tmp}/brain-e7.XXXXXX")"
+HOME="$E7H" bash "$INSTALLER" >/dev/null 2>&1
+if [ -f "$E7H/.claude/settings.json" ]; then
+  wired=$(jq -r '.hooks[]?[]?.hooks[]?.command' "$E7H/.claude/settings.json" 2>/dev/null | grep -oE '/[a-z-]+\.sh' | sed 's#/##; s#\.sh##' | sort -u)
+  want=$(awk '$1!~/^#/ && NF>=3 && ($2=="global"||$2=="both") && $3=="hook"{print $1}' "$MF" | sort -u)
+  if [ "$wired" = "$want" ]; then ok "e7: install-brain cablea EXACTAMENTE los {global,both} kind=hook del MANIFEST (ni de más ni de menos)"
+  else bad "e7: el set cableado DIFIERE del MANIFEST · sobran/faltan: $(comm -3 <(printf '%s\n' "$wired") <(printf '%s\n' "$want") | tr '\t' '~' | tr '\n' ' ')"; fi
+  # el EVENTO de cada uno es el correcto (los 4 grupos: Bash, Task, SessionStart sin-matcher, PostToolUse sin-matcher)
+  ev_of() { jq -r --arg n "$1" '.hooks | to_entries[] | .key as $k | .value[] | select((([.hooks[]?.command]|join(" "))) | test("/"+$n+"\\.sh")) | ($k + "|" + (.matcher // ""))' "$E7H/.claude/settings.json"; }
+  [ "$(ev_of git-branch-guard)"   = "PreToolUse|Bash" ]  && ok "e7: git-branch-guard → PreToolUse/Bash"        || bad "e7: git-branch-guard evento incorrecto: $(ev_of git-branch-guard)"
+  [ "$(ev_of delegacion-reporte)" = "PostToolUse|Task" ] && ok "e7: delegacion-reporte → PostToolUse/Task"     || bad "e7: delegacion-reporte evento incorrecto: $(ev_of delegacion-reporte)"
+  [ "$(ev_of barrer-ramas)"       = "SessionStart|" ]    && ok "e7: barrer-ramas → SessionStart/(sin matcher)" || bad "e7: barrer-ramas evento incorrecto: $(ev_of barrer-ramas)"
+  [ "$(ev_of aviso-contexto)"     = "PostToolUse|" ]     && ok "e7: aviso-contexto → PostToolUse/(sin matcher)" || bad "e7: aviso-contexto evento incorrecto: $(ev_of aviso-contexto)"
+else
+  bad "e7: install-brain no generó settings.json"
+fi
+rm -rf "$E7H"
 
 echo "== (e4) Windows: bootstrap.ps1 exporta CLAUDE_BRAIN_DIR (los hooks bash hallan la fuente) =="
 # En Windows el clon-fuente vive en %LOCALAPPDATA%\claude-brain-repo, NO en ~/.claude-brain (default de
