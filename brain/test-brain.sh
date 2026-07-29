@@ -1238,6 +1238,7 @@ cerrar-slice|rehidratar-hilo
 checkpoint|rehidratar-hilo
 aviso-contexto|rehidratar-hilo
 aviso-contexto|checkpoint
+aviso-drift-cerebro|barrer-ramas
 limpiar-ramas|limpiar-worktrees
 limpiar-ramas|ramas-zombie
 limpiar-worktrees|ramas-zombie

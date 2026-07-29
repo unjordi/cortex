@@ -67,6 +67,14 @@ fi
 
 detalle=$(printf '%s\n' "$out" | grep -E '(NUEVO|ACTUALIZA|RETIRARÍA)' | sed 's/^[[:space:]]*/    /' | head -12)
 
+# CONCURRENCIA con barrer-ramas (el OTRO SessionStart que MUTA git): SUPUESTO EXPLÍCITO de INDEPENDENCIA.
+# El auto-apply de abajo hace commit+push en la rama ACTUAL (una mini-develop Develop*); barrer-ramas
+# lanza detached un `git branch -d/-D` de ramas ZOMBIE que NUNCA incluyen actual/base/develop/main/
+# Develop*/keep/*. Son refs DISJUNTOS y `git branch -d` no toma `.git/index.lock` (este commit sí, pero
+# el branch -d no) → no compiten por el índice ni por el ref de la rama actual. Contención posible solo
+# transitoria en packed-refs.lock; ambos lados son fail-open (el push es `|| true`) → degrada sin
+# corromper. Ver el comentario gemelo en barrer-ramas.sh. Por eso NO se serializan.
+#
 # ── AUTO-APPLY en TU mini-develop (v2 — con el modelo MINI-DEVELOP institucionalizado): si la sesión
 # abre parada EN una mini-develop (convención Develop<Usuario>) y .claude/ está LIMPIO, el cerebro se
 # actualiza SOLO: apply + commit + push a tu mini (permitido: es tu rama personal; el cambio llega a
