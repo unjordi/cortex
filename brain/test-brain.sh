@@ -791,6 +791,38 @@ printf '%s' "$(ad2)" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null
   && ok "aviso-drift v2: mini con .claude/ sucio → solo avisa (no mezcla cambios)" || bad "aviso-drift v2: auto-aplicó sobre un .claude/ sucio"
 rm -rf "$AD2FIX"
 
+# ── (b5c2) FIX costura #1: el auto-apply STAGEA settings.json (no solo .claude/hooks). Antes
+# `git add .claude/hooks` dejaba el cambio de CABLEADO (settings.json) sin commitear → el wiring nunca
+# viajaba. Ahora `git add -A .claude/` cubre hooks + settings.json + podas. Stub que --apply reescribe
+# AMBOS (hook + settings.json, como register_hook).
+AD3FIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-ad3.XXXXXX")"
+AD3REPO="$AD3FIX/repo"; AD3HOME="$AD3FIX/home"; AD3BRAIN="$AD3FIX/clon"
+mkdir -p "$AD3REPO/.claude/hooks" "$AD3HOME" "$AD3BRAIN/brain"
+git -C "$AD3REPO" init -q >/dev/null 2>&1
+git -C "$AD3REPO" config user.email t@t >/dev/null 2>&1; git -C "$AD3REPO" config user.name Tester >/dev/null 2>&1
+: > "$AD3REPO/.claude/hooks/.brain-version"
+printf '{"hooks":{}}' > "$AD3REPO/.claude/settings.json"
+git -C "$AD3REPO" add -A >/dev/null 2>&1; git -C "$AD3REPO" commit -qm base >/dev/null 2>&1
+git -C "$AD3REPO" checkout -q -b DevelopTester >/dev/null 2>&1
+cat > "$AD3BRAIN/brain/sincronizar-cerebro.sh" <<'STUB'
+#!/usr/bin/env bash
+repo="$1"
+if [ "${2:-}" = "--apply" ]; then
+  printf 'x\n' > "$repo/.claude/hooks/hook-nuevo.sh"
+  printf '{"hooks":{"SessionStart":[{"hooks":[{"command":"bash \\"${CLAUDE_PROJECT_DIR}/.claude/hooks/hook-nuevo.sh\\""}]}]}}' > "$repo/.claude/settings.json"
+fi
+echo "  NUEVO      hook-nuevo.sh (hook)"
+echo "==> resumen: 1 nuevos · 0 a actualizar · 8 ya al día · 0 retirado(s) del cerebro · 8 hooks cableados (kind=hook) · 0 cableado faltante"
+STUB
+ad3out="$(printf '%s' '{"source":"startup"}' | HOME="$AD3HOME" CLAUDE_BRAIN_DIR="$AD3BRAIN" CLAUDE_PROJECT_DIR="$AD3REPO" bash "$HOOKS/aviso-drift-cerebro.sh")"
+printf '%s' "$ad3out" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'AUTO-SINCRONIZADO' \
+  && ok "aviso-drift FIX#1: auto-sincroniza en la mini (apply+commit)" || bad "aviso-drift FIX#1: no auto-sincronizó; got: $ad3out"
+[ -z "$(git -C "$AD3REPO" status --porcelain)" ] \
+  && ok "aviso-drift FIX#1: árbol LIMPIO tras el auto-sync (settings.json commiteado, no sin stagear)" || bad "aviso-drift FIX#1: settings.json quedó SIN commitear (árbol sucio): $(git -C "$AD3REPO" status --porcelain)"
+git -C "$AD3REPO" show --name-only --format= HEAD 2>/dev/null | grep -q 'settings.json' \
+  && ok "aviso-drift FIX#1: el commit de auto-sync INCLUYE settings.json (el cableado viaja)" || bad "aviso-drift FIX#1: el commit NO incluyó settings.json (el cableado no viajaría)"
+rm -rf "$AD3FIX"
+
 # ── (b5d) sembrar-mini-develop: crea la rama desde origin/develop sin tocar el worktree ──
 SMFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-sm.XXXXXX")"
 SMBARE="$SMFIX/remoto.git"; SMREPO="$SMFIX/clon"

@@ -70,9 +70,16 @@ detalle=$(printf '%s\n' "$out" | grep -E '(NUEVO|ACTUALIZA|RETIRARÍA)' | sed 's
 cur=$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
 case "$cur" in
   Develop?*)
+    # Precondición y staging cubren el MISMO alcance (.claude/) COHERENTEMENTE: sincronizar --apply
+    # reescribe tanto .claude/hooks/ (copias + .brain-version) COMO .claude/settings.json (cablea/
+    # de-cablea vía register_hook/dewire_hook). Antes se stageaba solo .claude/hooks → el cambio de
+    # cableado (settings.json) quedaba SIN commitear y el wiring nunca viajaba (bug de costura ALTO).
+    # `git add -A .claude/` stagea AMBOS paths + las PODAS (hooks retirados borrados por --apply), y no
+    # revienta si settings.json aún no existe (el precheck ya garantiza que .claude/ estaba LIMPIO, así
+    # que lo único que se stagea es lo que produjo este --apply).
     if [ -z "$(git -C "$ROOT" status --porcelain -- .claude/ 2>/dev/null)" ] \
        && bash "$SYNC" "$ROOT" --apply >/dev/null 2>&1 \
-       && git -C "$ROOT" add .claude/hooks >/dev/null 2>&1 \
+       && git -C "$ROOT" add -A .claude/ >/dev/null 2>&1 \
        && git -C "$ROOT" commit -q -m "chore(cerebro): auto-sync de la copia por-repo (aviso-drift, $total archivo(s) al día)" >/dev/null 2>&1; then
       git -C "$ROOT" push -q origin "$cur" >/dev/null 2>&1 || true
       sha=$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo "?")
