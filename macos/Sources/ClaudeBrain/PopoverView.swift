@@ -1346,6 +1346,9 @@ struct PopoverView: View {
                     BrainItem("🌳", "proteger-arbol", "git destructivo que orfanaría commits sin pushear → aviso (no bloquea)",
                               "PreToolUse · Bash",
                               "Antes de un git destructivo (reset --hard, rebase, checkout -f, branch -D) que podría orfanar commits sin pushear en el árbol de trabajo, avisa —no bloquea. Antídoto a un caso real: un agente de fan-out reseteó HEAD en el árbol compartido y dejó huérfano un commit del orquestador."),
+                    BrainItem("🧬", "proteger-fuente-cerebro", "editas la copia INSTALADA del cerebro (regenerable) → aviso",
+                              "PreToolUse · Edit/Write/MultiEdit",
+                              "Al editar una skill/hook bajo ~/.claude/skills|hooks que TIENE fuente en el clon canónico (brain/skills|hooks), avisa —no bloquea— que esa copia es REGENERABLE: el próximo install-brain la sobrescribe y la edición muere sin rastro. Redirige a editar la FUENTE y propagar con install-brain/sincronizar. Si no hay fuente (skill/hook puramente local), calla. Corre verificar-cerebro para el drift completo instalada-vs-fuente."),
                 ]),
             BrainTier(
                 emoji: "📜", title: "Normas", color: Color(hex: "#4a90d9"),
