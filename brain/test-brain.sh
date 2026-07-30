@@ -710,8 +710,10 @@ printf '%s' "sigue trabajando, no pares"               | grep -qiE "$CMDCR" && b
 echo ""
 echo "== (b4) dod-verificar: cierre/claim-visual sin evidencia bloquea; con OK o tool de navegador, no =="
 DODTX="$FAKEHOME/dod-transcript.jsonl"
-dod() { # dod "<texto final asistente>" "<línea extra de tool/edit o vacío>"
-  { printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"haz el cambio"}]}}'
+dod() { # dod "<texto final asistente>" "<línea extra de tool/edit o vacío>" "<texto del USUARIO (opcional)>"
+  # $3 = mensaje del USUARIO (default "haz el cambio"). ALTO-1: la marca (1)/(2) se deriva de AQUÍ, no
+  # de la prosa del asistente → los tests de confirmación ponen el OK en el mensaje del usuario.
+  { jq -nc --arg u "${3:-haz el cambio}" '{type:"user",message:{role:"user",content:[{type:"text",text:$u}]}}'
     [ -n "$2" ] && printf '%s\n' "$2"
     jq -nc --arg t "$1" '{type:"assistant",message:{role:"assistant",content:[{type:"text",text:$t}]}}'
   } > "$DODTX"
@@ -724,7 +726,13 @@ is_block "$(dod '¡Cerrado! 🏁 el módulo quedó terminado.' "$EDITR")" && ok 
 is_block "$(dod 'Lo dejé en preview, con tu OK lo cierro.' "$EDITR")" && bad "dod bloqueó lenguaje de estatus" || ok "dod: 'en preview / con tu OK' → no bloquea"
 is_block "$(dod 'Quedó idéntico al mockup, se ve tal cual.' "$EDITR")" && ok "dod B2: claim visual sin browser-tool → bloquea (a ciegas)" || bad "dod B2 NO bloqueó claim visual a ciegas"
 o="$(dod 'En Chrome se ve como el mockup.' "$BROWSERT")"; is_block "$o" && bad "dod B2 bloqueó con browser-tool presente; got: $o" || ok "dod B2: claim visual + browser-tool → no bloquea"
-is_block "$(dod 'Quedó listo; validaste el QA visual y diste el ok.' "$EDITR")" && bad "dod bloqueó con (1) confirmación del usuario" || ok "dod: con (1) confirmación citada del usuario → no bloquea"
+# ALTO-1 (FMEA 2026-07-30): la marca (1)/(2) se deriva del MENSAJE DEL USUARIO, no de la prosa de Claude.
+# (a) confirmación GENUINA del usuario en SU mensaje → no bloquea.
+is_block "$(dod 'Quedó listo el módulo.' "$EDITR" 'sí, lo validé en QA y diste el ok, ciérralo')" && bad "dod ALTO-1: bloqueó con (1) confirmación del USUARIO en su mensaje" || ok "dod ALTO-1: confirmación del USUARIO en su mensaje → no bloquea"
+# (b) AUTO-ATESTIGUAMIENTO: Claude NARRA que el usuario confirmó, pero el usuario NO lo dijo → bloquea.
+is_block "$(dod 'El usuario ya confirmó y dio el visto bueno; quedó listo el módulo.' "$EDITR")" && ok "dod ALTO-1: Claude narra 'el usuario confirmó' sin que el usuario lo dijera → bloquea (no se auto-atestigua)" || bad "dod ALTO-1: el auto-atestiguamiento de Claude satisfizo el candado (bug ALTO-1)"
+# (c) imperativo de cierre del usuario ("sí, quedó, ciérralo") → no bloquea.
+is_block "$(dod 'Quedó terminado el módulo.' "$EDITR" 'sí, quedó, ciérralo')" && bad "dod ALTO-1: bloqueó con autorización expresa de cierre del usuario ('ciérralo')" || ok "dod ALTO-1: 'sí, quedó, ciérralo' del usuario → no bloquea"
 # P1 (precisión): una PREGUNTA no es un cierre, aunque traiga léxico de cierre → NO dispara
 is_block "$(dod '¿ya quedó terminado el módulo?' "$EDITR")" && bad "dod P1: bloqueó una PREGUNTA (falso positivo del UUID)" || ok "dod P1: pregunta con léxico de cierre → no bloquea"
 is_block "$(dod 'Terminé el fix. ¿Lo cierro y abro el MR?' "$EDITR")" && bad "dod P1: bloqueó una oferta que termina preguntando" || ok "dod P1: mensaje que termina en pregunta → no bloquea"
@@ -771,6 +779,16 @@ is_block "$(dod '🎉 El módulo quedó listo.' "$EDITR")" && ok "dod P2b fail-s
 is_block "$(dod 'El módulo de auth quedó listo.' "$EDITR")" && ok "dod dientes: 'el módulo de auth quedó listo' → sigue bloqueando" || bad "dod dientes: dejó pasar 'el módulo de auth quedó listo' (aflojado)"
 is_block "$(dod 'Ya funciona el widget.' "$EDITR")" && ok "dod dientes: 'ya funciona el widget' → sigue bloqueando" || bad "dod dientes: dejó pasar 'ya funciona el widget' (aflojado)"
 is_block "$(dod 'Terminamos la migración.' "$EDITR")" && ok "dod dientes: 'terminamos la migración' → sigue bloqueando" || bad "dod dientes: dejó pasar 'terminamos la migración' (aflojado)"
+# ALTO-2 (FMEA 2026-07-30): un fan-out (tool Task) edita en el transcript del SUB-AGENTE, invisible aquí
+# → un Task en el turno cuenta como POSIBLE código tocado y entra al gate de evidencia (1)/(2).
+TASKT='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Task","input":{}}]}}'
+is_block "$(dod 'La ola quedó lista y en producción.' "$TASKT")" && ok "dod ALTO-2: claim de cierre + solo un Task (sin evidencia/OK) → bloquea (Task = posible código)" || bad "dod ALTO-2: un fan-out (Task) evadió el candado (ciego al sub-agente)"
+is_block "$(dod 'La ola quedó lista.' "$TASKT" 'sí, ya la validé, ciérrala')" && bad "dod ALTO-2: bloqueó con Task + OK del usuario" || ok "dod ALTO-2: Task + confirmación del usuario → no bloquea"
+# MEDIO-1 (FMEA 2026-07-30): los meta-tokens ('definición de listo') se subordinan al claim.
+is_block "$(dod 'Quedó 100% listo — cumplida la definición de listo.' "$EDITR")" && ok "dod MEDIO-1: claim de cierre + 'definición de listo' → bloquea (el meta-token ya no lo salva)" || bad "dod MEDIO-1: el meta-token 'definición de listo' salvó un cierre afirmado (evasión)"
+is_block "$(dod '¿Cuál es tu definición de listo?' "$EDITR")" && bad "dod MEDIO-1: bloqueó una meta-pregunta sin claim ('¿cuál es tu definición de listo?')" || ok "dod MEDIO-1: meta-pregunta sin claim → no bloquea (escapa)"
+# BAJO-2 (FMEA 2026-07-30): la máscara MECH ya no se come un claim del entregable cuando nombra "rama".
+is_block "$(dod 'La rama de pagos quedó lista y funcionando.' "$EDITR")" && ok "dod BAJO-2: 'la rama de pagos quedó lista' → bloquea (la máscara MECH ya no come el claim del entregable)" || bad "dod BAJO-2: la máscara MECH se comió un claim genuino ('la rama de pagos quedó lista')"
 rm -f "$DODTX"
 
 # ─────────────────────────────────────────────────────────────────────────────
