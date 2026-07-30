@@ -46,11 +46,25 @@ bail_open() {  # $1 = motivo. En strict → deny; si no → deja pasar (exit 0).
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
 [ -z "$cmd" ] && exit 0
 
+# Despoja literales entrecomillados ANTES de razonar sobre el comando: reusa acg_despoja_comillas de la
+# lib compartida si está junto al hook, si no un sed equivalente. Así un token DENTRO de una comilla —el
+# `--no-verify` citado en el MENSAJE del commit (A7), o un `git commit`/`git add`/`git push` mencionado en
+# el texto— no altera la decisión del guard. bash-3.2-safe.
+_ACGLIB="$(dirname "$0")/analizar-comando-git.sh"
+# shellcheck source=analizar-comando-git.sh
+[ -f "$_ACGLIB" ] && . "$_ACGLIB"
+if command -v acg_despoja_comillas >/dev/null 2>&1; then
+  cmd_uq=$(acg_despoja_comillas "$cmd")
+else
+  cmd_uq=$(printf '%s' "$cmd" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g")
+fi
+
 # ¿Es un commit o un push? Si no, no es asunto de este guard (NO es "no poder escanear" → nunca strict-bloquea).
-printf '%s' "$cmd" | grep -qE 'git[[:space:]]+(commit|push)' || exit 0
+printf '%s' "$cmd_uq" | grep -qE 'git[[:space:]]+(commit|push)' || exit 0
 # Escapes deliberados (el humano manda) — ganan incluso en strict.
 [ "${CLAUDE_SKIP_SECRET_SCAN:-}" = "1" ] && exit 0
-printf '%s' "$cmd" | grep -qE '(^|[[:space:]])--no-verify([[:space:]]|$)' && exit 0
+# --no-verify como BANDERA real (sobre el cmd despojado), no la palabra dentro del mensaje del commit (A7).
+printf '%s' "$cmd_uq" | grep -qE '(^|[[:space:]])--no-verify([[:space:]]|$)' && exit 0
 
 command -v git >/dev/null 2>&1 || bail_open "git no está en el PATH"
 dir="${CLAUDE_PROJECT_DIR:-.}"

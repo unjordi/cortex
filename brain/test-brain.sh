@@ -398,6 +398,28 @@ o="$(scan5 'git push -u origin feat/limpia')"
 [ -z "$o" ] && ok "secret-scan G5: 1er push de rama nueva LIMPIA → silencio (sin falso positivo)" || bad "secret-scan G5: falso positivo en rama nueva limpia; got: $o"
 rm -rf "$G5ROOT"
 
+# ── FMEA 2026-07-30 · A7 (`--no-verify` en el MENSAJE del commit no debe saltar el escaneo) ──
+echo ""
+echo "== (b2c) secret-scan FMEA A7: --no-verify citado en el mensaje del commit =="
+FMEAREPO="$(mktemp -d "${TMPDIR:-/tmp}/brain-fmea.XXXXXX")"
+git -C "$FMEAREPO" init -q >/dev/null 2>&1
+git -C "$FMEAREPO" symbolic-ref HEAD refs/heads/main >/dev/null 2>&1
+git -C "$FMEAREPO" config user.email t@t >/dev/null 2>&1
+git -C "$FMEAREPO" config user.name  tester >/dev/null 2>&1
+printf 'base limpia\n' > "$FMEAREPO/base.txt"; git -C "$FMEAREPO" add base.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm base >/dev/null 2>&1
+# HOME sin copia global → la dedupe no cede; el input se arma con jq → escapa las comillas del mensaje.
+scanf() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' \
+          | HOME="$FMEAREPO" CLAUDE_PROJECT_DIR="$FMEAREPO" bash "$HOOKS/secret-scan.sh"; }
+fmeareset() { git -C "$FMEAREPO" reset -q >/dev/null 2>&1; rm -f "$FMEAREPO"/*.txt 2>/dev/null; }
+# A7 (1) --no-verify DENTRO del mensaje del commit (secreto staged) → NO salta → BLOQUEA
+fmeareset; printf 'aws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/s3.txt"; git -C "$FMEAREPO" add s3.txt >/dev/null 2>&1
+o="$(scanf 'git commit -m "documenta el flag --no-verify"')"
+printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan A7: --no-verify en el MENSAJE no salta el escaneo → bloquea" || bad "secret-scan A7: --no-verify citado saltó el escaneo; got: $o"
+# A7 (2) --no-verify REAL (bandera) sigue siendo escape legítimo → PASA (silencio)
+o="$(scanf 'git commit --no-verify -m x')"
+[ -z "$o" ] && ok "secret-scan A7: --no-verify como bandera real sigue saltando (escape legítimo)" || bad "secret-scan A7: --no-verify real dejó de saltar; got: $o"
+rm -rf "$FMEAREPO"
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (b2b) entorno-maquina-guard: AVISA (no bloquea) si entra algo machine-specific al .claude/memory/ del repo =="
