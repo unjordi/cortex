@@ -1740,6 +1740,233 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+# (e6) COHERENCIA DE RUTAS CROSS-OS — batch de paridad que FALLA si se olvida un OS.
+# Aserciones ESTÁTICAS sobre el fuente (estilo e4): cada instalador/updater/lector de las 3 GUIs
+# (bash/PowerShell · Swift/macOS · C#/Windows · QML/KDE) mantiene el MISMO contrato de rutas. Origen:
+# docs/auditoria-procesos-fmea-2026-07-30.md, ANEXO "Coherencia de RUTAS cross-OS".
+PR="$SCRIPT_DIR/.."
+
+echo ""
+echo "== (e6.1) install-brain.ps1 sigue siendo LANZADOR DELGADO (delega en bash install-brain.sh) =="
+IBPS="$SCRIPT_DIR/install-brain.ps1"
+if [ -f "$IBPS" ]; then
+  { grep -qF 'install-brain.sh' "$IBPS" && grep -qF '$bashExe' "$IBPS"; } \
+    && ok "e6.1: install-brain.ps1 delega en bash …/install-brain.sh" \
+    || bad "e6.1: install-brain.ps1 NO delega en bash install-brain.sh (¿dejó de ser lanzador delgado?)"
+  # NO reimplementa el cableado (no toca ~/.claude/hooks ni estampa .brain-version — eso es del .sh)
+  grep -qE '\.brain-version|\.claude[/\\]hooks|/hooks/[A-Za-z]' "$IBPS" \
+    && bad "e6.1: install-brain.ps1 parece CABLEAR por su cuenta (menciona hooks/.brain-version)" \
+    || ok "e6.1: install-brain.ps1 NO cabla por su cuenta (sin lógica de hooks/.brain-version)"
+else bad "e6.1: no encuentro install-brain.ps1"; fi
+
+echo ""
+echo "== (e6.2) bootstrap.ps1 alinea a main con 'checkout -B main origin/main' (== bootstrap.sh), no 'pull --ff-only' =="
+BPS2="$PR/bootstrap.ps1"; BSH2="$PR/bootstrap.sh"
+if [ -f "$BPS2" ] && [ -f "$BSH2" ]; then
+  grep -qF 'checkout -B main origin/main' "$BPS2" \
+    && ok "e6.2: bootstrap.ps1 usa 'checkout -B main origin/main'" \
+    || bad "e6.2: bootstrap.ps1 NO usa 'checkout -B main origin/main' (regresión de robustez H3)"
+  grep -qF 'pull --ff-only' "$BPS2" \
+    && bad "e6.2: bootstrap.ps1 aún tiene 'pull --ff-only' (rompe si el clon quedó en rama borrada)" \
+    || ok "e6.2: bootstrap.ps1 ya NO usa 'pull --ff-only'"
+  grep -qF 'checkout -B main origin/main' "$BSH2" \
+    && ok "e6.2: bootstrap.sh usa 'checkout -B main origin/main' (patrón de referencia)" \
+    || bad "e6.2: bootstrap.sh NO usa 'checkout -B main origin/main' (¿cambió la referencia?)"
+else bad "e6.2: no encuentro bootstrap.ps1 / bootstrap.sh"; fi
+
+echo ""
+echo "== (e6.3) ningún .sh/.ps1/.swift/.cs/.qml de envío hardcodea un \$HOME absoluto (/Users/·/home/·C:\\Users) =="
+# Excepciones legítimas: entorno-maquina-guard.sh (su razón de ser ES detectar esas rutas) y
+# test-brain.sh (este harness trae fixtures deliberados con /Users/fulano). Se ignoran comentarios de
+# línea completa (# en sh/ps1, // en swift/cs/qml) y los dirs de build (obj/bin).
+hp_hits=""
+while IFS= read -r f; do
+  case "$f" in */entorno-maquina-guard.sh|*/test-brain.sh) continue;; esac
+  if sed -E 's://.*$::; s:^[[:space:]]*#.*$::' "$f" 2>/dev/null \
+       | grep -qE '/Users/[A-Za-z0-9._-]+|/home/[A-Za-z0-9._-]+|[A-Za-z]:[\\/]Users'; then
+    hp_hits="${hp_hits:+$hp_hits }${f#"$PR"/}"
+  fi
+done < <(cd "$PR" && git ls-files '*.sh' '*.ps1' '*.swift' '*.cs' '*.qml' | grep -vE '/(obj|bin)/' | sed "s|^|$PR/|")
+[ -z "$hp_hits" ] \
+  && ok "e6.3: sin rutas \$HOME absolutas hardcodeadas en código de envío (todas parametrizadas)" \
+  || bad "e6.3: home absoluto hardcodeado en: $hp_hits"
+
+echo ""
+echo "== (e6.4) los 3 updaters resuelven la ruta del clon con FALLBACK + marca (paridad resolveClonePath, H2) =="
+# H2 portado a QML (2026-07-30): antes el plasmoid confiaba CIEGO en version.json.repo (un path horneado
+# en otra máquina / repo movido habilitaba un auto-update que hacía cd a una ruta muerta). Ahora los 3
+# updaters prueban candidatos [embebido → $CLAUDE_BRAIN_DIR → clon canónico] y toman el 1º con su marca.
+Q4="$PR/src/plasmoid/contents/ui/main.qml"
+S4="$PR/macos/Sources/ClaudeBrain/Updater.swift"
+C4="$PR/windows/src/ClaudeBrain/Updater.cs"
+if [ -f "$Q4" ]; then
+  { grep -qF 'resolveRepoPath' "$Q4" && grep -qF 'CLAUDE_BRAIN_DIR' "$Q4" && grep -qF '.claude-brain' "$Q4" && grep -qF 'install.sh' "$Q4"; } \
+    && ok "e6.4[qml]: main.qml resuelve el clon con fallback (\$CLAUDE_BRAIN_DIR / ~/.claude-brain) + marca install.sh" \
+    || bad "e6.4[qml]: main.qml NO resuelve el clon con fallback (H2 sin portar → confía ciego en version.json.repo)"
+else bad "e6.4[qml]: no encuentro main.qml"; fi
+if [ -f "$S4" ]; then
+  { grep -qF 'resolveClonePath' "$S4" && grep -qF 'CLAUDE_BRAIN_DIR' "$S4" && grep -qF '.claude-brain' "$S4" && grep -qF 'macos/install.sh' "$S4"; } \
+    && ok "e6.4[swift]: Updater.swift resuelve el clon con fallback + marca macos/install.sh" \
+    || bad "e6.4[swift]: Updater.swift perdió el fallback de resolveClonePath"
+else bad "e6.4[swift]: no encuentro Updater.swift"; fi
+if [ -f "$C4" ]; then
+  { grep -qF 'ResolveClonePath' "$C4" && grep -qF 'CLAUDE_BRAIN_DIR' "$C4" && grep -qF 'claude-brain-repo' "$C4" && grep -qF 'install.ps1' "$C4"; } \
+    && ok "e6.4[cs]: Updater.cs resuelve el clon con fallback + marca windows/install.ps1" \
+    || bad "e6.4[cs]: Updater.cs perdió el fallback de ResolveClonePath"
+else bad "e6.4[cs]: no encuentro Updater.cs"; fi
+
+echo ""
+echo "== (e6.5) los updaters escapan/citan la ruta del clon en el cd/Set-Location (fix H5) =="
+QML5="$PR/src/plasmoid/contents/ui/main.qml"
+SW5="$PR/macos/Sources/ClaudeBrain/Updater.swift"
+CS5="$PR/windows/src/ClaudeBrain/Updater.cs"
+if [ -f "$QML5" ]; then
+  { grep -qF 'cd " + shq(repo)' "$QML5" && ! grep -qF "cd '\" + repo" "$QML5"; } \
+    && ok "e6.5[qml]: el cd del update escapa la ruta con shq()" \
+    || bad "e6.5[qml]: el cd del update NO usa shq() (una ruta con ' se partiría — regresión H5)"
+else bad "e6.5[qml]: no encuentro main.qml"; fi
+if [ -f "$SW5" ]; then
+  grep -qF "cd '\\(repoPath)'" "$SW5" \
+    && ok "e6.5[swift]: el cd cita la ruta del clon entre comillas" \
+    || bad "e6.5[swift]: el cd NO cita la ruta del clon"
+else bad "e6.5[swift]: no encuentro Updater.swift"; fi
+if [ -f "$CS5" ]; then
+  grep -qF '_repoPath.Replace(' "$CS5" \
+    && ok "e6.5[cs]: la ruta del clon se escapa (Replace de comillas) en el script de update" \
+    || bad "e6.5[cs]: la ruta del clon NO se escapa en el script de update"
+else bad "e6.5[cs]: no encuentro Updater.cs"; fi
+
+echo ""
+echo "== (e6.6) los 4 lectores leen .brain-version desde <home>/.claude =="
+V6="$PR/macos/Sources/ClaudeBrain/BrainInspector.swift $PR/windows/src/ClaudeBrain/BrainInspector.cs $PR/src/plasmoid/contents/brain-scan.sh $SCRIPT_DIR/install-brain.sh"
+v6miss=""
+for f in $V6; do
+  { [ -f "$f" ] && grep -qF '.brain-version' "$f" && grep -qF '.claude' "$f"; } \
+    || v6miss="${v6miss:+$v6miss }$(basename "$f")"
+done
+[ -z "$v6miss" ] \
+  && ok "e6.6: swift/cs/brain-scan.sh/install-brain.sh leen .brain-version bajo ~/.claude" \
+  || bad "e6.6: lectores de .brain-version sin <home>/.claude: $v6miss"
+
+echo ""
+echo "== (e6.7) los .ps1 de arranque puentean HOME <-> USERPROFILE (fix H1) =="
+for f in "$PR/bootstrap.ps1" "$SCRIPT_DIR/install-brain.ps1"; do
+  { [ -f "$f" ] && grep -qE '\$env:HOME *= *\$env:USERPROFILE' "$f"; } \
+    && ok "e6.7: $(basename "$f") exporta HOME=%USERPROFILE% antes de invocar bash" \
+    || bad "e6.7: $(basename "$f") NO puentea HOME<->USERPROFILE (bash instalaría en un ~/.claude que el widget no lee)"
+done
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (e6) MANIFEST bien formado: 3 campos · tier ∈ {global,repo,both} · kind ∈ {hook,lib,script} =="
+# El MANIFEST es la FUENTE ÚNICA; una línea mal formada (2 campos, tier/kind con typo) haría que las
+# rutas que DERIVAN de él (install/sincronizar/drift-check) clasifiquen mal o salten un hook en silencio.
+MF="$HOOKS/MANIFEST"
+if [ ! -f "$MF" ]; then
+  bad "e6: falta el MANIFEST ($MF)"
+else
+  mf_bad=0
+  while read -r name tier kind extra; do
+    [ -z "$name" ] && continue                       # línea en blanco
+    case "$name" in \#*) continue;; esac             # comentario
+    if [ -z "$kind" ] || [ -n "$extra" ]; then
+      bad "e6: línea sin EXACTAMENTE 3 campos: '$name $tier $kind $extra'"; mf_bad=1; continue
+    fi
+    case "$tier" in global|repo|both) ;; *) bad "e6: tier inválido '$tier' (entrada $name)"; mf_bad=1;; esac
+    case "$kind" in hook|lib|script) ;; *) bad "e6: kind inválido '$kind' (entrada $name)"; mf_bad=1;; esac
+  done < "$MF"
+  [ "$mf_bad" = 0 ] && ok "e6: toda línea del MANIFEST tiene 3 campos con tier ∈ {global,repo,both} y kind ∈ {hook,lib,script}"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo "== (e6b) install-brain: EXACTAMENTE 8 hooks en PreToolUse/Bash + aviso-contexto en PostToolUse =="
+# El fan-out de guards sobre Bash es un set CERRADO de 8; aviso-contexto es el 9º pero va en PostToolUse
+# (casa toda tool). Si alguien agrega/quita un register_hook de Bash sin querer, este test lo caza.
+want_bash="git-branch-guard merge-squash-guard confirmar-merge-develop secret-scan recordar-dashboard entorno-maquina-guard rama-vieja proteger-arbol"
+want_bash_sorted="$(printf '%s\n' $want_bash | sort | tr '\n' ' ' | sed 's/ *$//')"
+got_bash="$(grep -E 'register_hook +PreToolUse +Bash' "$INSTALLER" | sed -E "s/.*'([^']*)' *\$/\1/" | sort | tr '\n' ' ' | sed 's/ *$//')"
+if [ "$got_bash" = "$want_bash_sorted" ]; then
+  ok "e6b: PreToolUse/Bash cabla EXACTAMENTE los 8 guards esperados"
+else
+  bad "e6b: el set de register_hook PreToolUse/Bash cambió · got:[$got_bash] want:[$want_bash_sorted]"
+fi
+grep -qE 'register_hook +PostToolUse +.*aviso-contexto' "$INSTALLER" \
+  && ok "e6b: aviso-contexto está cableado en PostToolUse (el 9º, NO en Bash)" \
+  || bad "e6b: aviso-contexto NO está en PostToolUse"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo "== (e6c) doc=realidad: cada kind=hook del MANIFEST aparece en el árbol del README (sA2/B1) =="
+# El árbol del README omitía recordar-cosechar/recordar-unificar-cerebro/barrer-ramas → doc que miente.
+RM="$SCRIPT_DIR/README.md"
+if [ ! -f "$RM" ] || [ ! -f "$MF" ]; then
+  bad "e6c: falta README.md o MANIFEST"
+else
+  miss_rm=0
+  for b in $(awk '$1!~/^#/ && NF>=3 && $3=="hook"{print $1}' "$MF"); do
+    grep -qF "\`$b.sh\`" "$RM" || { bad "e6c: el hook '$b' del MANIFEST NO aparece en el árbol del README"; miss_rm=1; }
+  done
+  [ "$miss_rm" = 0 ] && ok "e6c: todo kind=hook del MANIFEST está documentado en el README"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo "== (e6d) wiring FIELD-check: un settings.json semilla cabla TODOS los kind=hook {repo,both} (C1) =="
+# e2(4) valida la FÁBRICA (register_hook en install-brain). Esto valida el RESULTADO: corre
+# sincronizar-cerebro contra un repo semilla y verifica que su settings.json REAL cablee cada hook
+# {repo,both} — cierra el hueco C1 (drift de cableado invisible entre manifiesto y settings desplegado).
+SYNC2="$SCRIPT_DIR/sincronizar-cerebro.sh"
+if [ ! -f "$SYNC2" ] || [ ! -f "$MF" ]; then
+  bad "e6d: falta sincronizar-cerebro.sh o MANIFEST"
+else
+  E6D="$(mktemp -d "${TMPDIR:-/tmp}/brain-e6d.XXXXXX")"
+  bash "$SYNC2" "$E6D" --apply >/dev/null 2>&1
+  SET6D="$E6D/.claude/settings.json"
+  if [ ! -f "$SET6D" ]; then
+    bad "e6d: sincronizar --apply no creó $SET6D"
+  else
+    miss_wire=0
+    for b in $(awk '$1!~/^#/ && NF>=3 && ($2=="repo"||$2=="both") && $3=="hook"{print $1}' "$MF"); do
+      grep -qF "$b.sh" "$SET6D" || { bad "e6d: '$b' ({repo,both} hook) NO quedó cableado en el settings.json semilla"; miss_wire=$((miss_wire+1)); }
+    done
+    [ "$miss_wire" = 0 ] && ok "e6d: settings.json semilla cabla TODOS los kind=hook {repo,both} del MANIFEST (0 cableado faltante)"
+  fi
+  rm -rf "$E6D"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo "== (e6e) .brain-version bien formado: 2 líneas · v=<PREFIJO>.<count> (count real ≠0) · fecha =="
+# Contrato de DOS LÍNEAS (install-brain / sincronizar): l1 = <PREFIJO>.<commit-count> · l2 = YYYY-MM-DD.
+# El widget del cerebro LEE este estampado; un formato roto = versión mal mostrada.
+if [ ! -f "$SYNC2" ]; then
+  bad "e6e: falta sincronizar-cerebro.sh"
+else
+  E6E="$(mktemp -d "${TMPDIR:-/tmp}/brain-e6e.XXXXXX")"
+  bash "$SYNC2" "$E6E" --apply >/dev/null 2>&1
+  BV="$E6E/.claude/hooks/.brain-version"
+  if [ ! -f "$BV" ]; then
+    bad "e6e: sincronizar --apply no estampó .brain-version en $BV"
+  else
+    nlines="$(grep -c '' "$BV")"
+    l1="$(sed -n '1p' "$BV")"; l2="$(sed -n '2p' "$BV")"
+    [ "$nlines" = 2 ] && ok "e6e: .brain-version tiene 2 líneas" || bad "e6e: .brain-version tiene $nlines líneas (esperaba 2)"
+    if printf '%s' "$l1" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+      ok "e6e: la versión ($l1) casa <PREFIJO>.<count> (num.num.num)"
+    else
+      bad "e6e: la versión '$l1' NO casa el formato num.num.num"
+    fi
+    cnt="${l1##*.}"
+    if [ -n "$cnt" ] && [ "$cnt" -gt 0 ] 2>/dev/null; then
+      ok "e6e: el commit-count del estampado es real (=$cnt, no 0)"
+    else
+      bad "e6e: el commit-count del estampado es 0/ausente ('$l1')"
+    fi
+    printf '%s' "$l2" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' \
+      && ok "e6e: la 2ª línea es una fecha YYYY-MM-DD ($l2)" \
+      || bad "e6e: la 2ª línea NO es una fecha YYYY-MM-DD ('$l2')"
+  fi
+  rm -rf "$E6E"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "==> resultado: $PASS PASS · $FAIL FAIL"
 [ "$FAIL" -eq 0 ]

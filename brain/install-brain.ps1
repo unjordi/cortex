@@ -31,6 +31,14 @@ if (-not $bash) {
 }
 $bashExe = $bash
 
+# -- Puente HOME <-> USERPROFILE (solo Windows) --
+# install-brain.sh cabla el cerebro en $HOME/.claude; el widget (BrainInspector.cs/.swift) lo LEE desde
+# %USERPROFILE%\.claude. En Windows el $HOME de Git Bash puede DIVERGIR de %USERPROFILE% (p.ej. un
+# HOMESHARE de dominio) -> el cerebro quedaria en un ~/.claude que el widget NO mira. Forzamos
+# HOME=%USERPROFILE% para este proceso; el bash hijo (install-brain.sh) lo hereda -> ambos apuntan al
+# MISMO .claude. Este es un .ps1 (solo Windows), no afecta a Mac/Linux.
+if ($env:USERPROFILE) { $env:HOME = $env:USERPROFILE }
+
 # -- PATH: asegurar que 'bash' quede en el PATH de USUARIO (persistente) --
 # Git for Windows / winget ponen git.exe (Git\cmd) en el PATH, pero NO bash.exe (vive en Git\bin).
 # Claude Code corre los hooks con "shell":"bash" -> si bash no esta en el PATH, los guardrails NO
