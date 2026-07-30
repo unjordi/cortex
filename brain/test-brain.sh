@@ -770,6 +770,23 @@ printf '# Hilo mental actual\n> Última actualización: 2026-07-13 · rama otra-
 rhbranch="$(printf '%s' '{"source":"resume"}' | HILO_STALE_HORAS=100000 CLAUDE_PROJECT_DIR="$RHGIT" bash "$HOOKS/rehidratar-hilo.sh")"
 printf '%s' "$rhbranch" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'OBSOLETO' \
   && ok "rehidratar-hilo: hilo de OTRA rama → OBSOLETO (aunque fresco)" || bad "rehidratar-hilo: esperaba OBSOLETO por rama; got: $rhbranch"
+# staleness (A8): hilo de la rama ACTUAL con mtime VIEJO (>12h) → NO obsoleto (la vigencia la manda la
+# rama, no el reloj). Antes, una sesión larga (>12h) en la misma rama enterraba su PROPIO hilo vigente.
+RHSAME="$(mktemp -d "${TMPDIR:-/tmp}/brain-rhs.XXXXXX")"
+git -C "$RHSAME" init -q >/dev/null 2>&1; git -C "$RHSAME" config user.email t@t >/dev/null 2>&1
+git -C "$RHSAME" config user.name tester >/dev/null 2>&1; git -C "$RHSAME" checkout -q -b trabajo-actual >/dev/null 2>&1
+printf 'x\n' > "$RHSAME/a.txt"; git -C "$RHSAME" add a.txt >/dev/null 2>&1; git -C "$RHSAME" commit -qm base >/dev/null 2>&1   # rama con commit → HEAD nombrado (no unborn)
+mkdir -p "$RHSAME/.claude/memory"
+printf '# Hilo mental actual\n> Última actualización: 2026-07-13 · rama trabajo-actual\nMARCA_SAME\n' > "$RHSAME/.claude/memory/hilo-mental-actual.md"
+touch -t 202001010000 "$RHSAME/.claude/memory/hilo-mental-actual.md" 2>/dev/null   # 6 años → age stale por reloj
+rhsame="$(printf '%s' '{"source":"resume"}' | CLAUDE_PROJECT_DIR="$RHSAME" bash "$HOOKS/rehidratar-hilo.sh")"
+rhsame_ctx="$(printf '%s' "$rhsame" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null)"
+printf '%s' "$rhsame_ctx" | grep -q 'POSIBLEMENTE OBSOLETO' \
+  && bad "rehidratar-hilo A8: hilo de la rama ACTUAL con mtime 13h+ se marcó OBSOLETO por edad (falso positivo)" \
+  || ok "rehidratar-hilo A8: hilo de la rama actual con mtime viejo → NO obsoleto (vigencia por rama)"
+printf '%s' "$rhsame_ctx" | grep -q 'HILO MENTAL ACTUAL' \
+  && ok "rehidratar-hilo A8: encabezado normal (rehidrata el hilo vigente pese a la edad)" || bad "rehidratar-hilo A8: no reinyectó con encabezado normal; got: $rhsame_ctx"
+rm -rf "$RHSAME"
 rm -rf "$RHGIT" "$RHROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────

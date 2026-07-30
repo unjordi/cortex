@@ -27,8 +27,12 @@
 #
 # GATE DE FRESCURA (2026-07): antes reinyectaba el hilo SIEMPRE como "🧵 HILO MENTAL ACTUAL", sin
 # validar si estaba viejo o era de OTRA rama → podía presentar contexto ENGAÑOSO como si fuera el
-# vigente. Ahora, si el hilo quedó viejo (mtime > HILO_STALE_HORAS, default 12h) O fue volcado en
-# una rama distinta de la actual, degrada el encabezado a "⚠️ HILO POSIBLEMENTE OBSOLETO".
+# vigente. Ahora, si el hilo fue volcado en una rama DISTINTA de la actual, degrada el encabezado a
+# "⚠️ HILO POSIBLEMENTE OBSOLETO". La antigüedad (mtime > HILO_STALE_HORAS, default 12h) es solo un
+# PROXY de respaldo: se aplica ÚNICAMENTE cuando NO se pudo confirmar que el hilo es de la rama actual.
+# Si la rama del hilo COINCIDE con la actual, la vigencia la manda la rama, NO el reloj — una sesión
+# larga (>12h) en la misma rama sigue trabajando el MISMO hilo, y marcarlo "obsoleto" por edad enterraba
+# el propio hilo vigente (FMEA A8). Sin git / sin línea de rama en el hilo → cae al proxy de edad.
 #
 # NO bloquea. Fail-open. Genérico y stack-agnóstico → se instala GLOBAL (install-brain.sh) y corre
 # en CUALQUIER folder (la mitad "leer"; la mitad "escribir" es el skill checkpoint).
@@ -55,23 +59,36 @@ body=$(cat "$HILO" 2>/dev/null)
 # Fail-open: ante cualquier duda (sin git, sin stat, sin línea de rama) NO marcamos obsoleto.
 stale=0
 
-# (1) antigüedad: mtime del archivo vs umbral en horas (env HILO_STALE_HORAS, default 12)
-horas="${HILO_STALE_HORAS:-12}"
-case "$horas" in ''|*[!0-9]*) horas=12;; esac
-mtime=$(stat -c %Y "$HILO" 2>/dev/null || stat -f %m "$HILO" 2>/dev/null || echo "")   # GNU (Linux) primero; BSD (macOS) de respaldo
-now=$(date +%s 2>/dev/null || echo "")
-if [ -n "$mtime" ] && [ -n "$now" ]; then
-  case "$mtime$now" in
-    ''|*[!0-9]*) ;;
-    *) [ $(( (now - mtime) / 3600 )) -ge "$horas" ] && stale=1;;
-  esac
-fi
-
-# (2) rama: la registrada dentro del hilo ("> Última actualización: <fecha> · rama <rama>") vs la actual
+# (1) RAMA — señal FUERTE de vigencia. La registrada dentro del hilo ("> Última actualización: <fecha>
+#     · rama <rama>") vs la rama actual. Otra rama → contexto de otra tarea → OBSOLETO. Misma rama →
+#     hilo vivo de ESTA línea de trabajo (aunque el archivo tenga horas).
 cur_branch=$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
 hilo_branch=$(printf '%s\n' "$body" | grep -iE 'actualiz.*rama' | head -n1 | sed -E 's/.*[Rr]ama[[:space:]]+//' | awk '{print $1}')
-if [ -n "$hilo_branch" ] && [ -n "$cur_branch" ] && [ "$hilo_branch" != "$cur_branch" ]; then
-  stale=1
+rama_coincide=0
+if [ -n "$hilo_branch" ] && [ -n "$cur_branch" ]; then
+  if [ "$hilo_branch" = "$cur_branch" ]; then
+    rama_coincide=1        # misma rama → vigente por rama, la edad NO lo degrada
+  else
+    stale=1                # otra rama → OBSOLETO
+  fi
+fi
+
+# (2) ANTIGÜEDAD — solo un PROXY de respaldo (mtime vs HILO_STALE_HORAS, default 12h), y SOLO cuando NO
+#     se confirmó que el hilo es de la rama actual. Si la rama COINCIDE, la vigencia la manda la rama y
+#     NO el reloj: una sesión larga (>12h) en la MISMA rama sigue en el MISMO hilo → marcarlo obsoleto
+#     por edad enterraba el propio hilo vigente (FMEA A8). Con rama indeterminada (sin git / sin línea de
+#     rama) sí cae al proxy de edad — es el único indicio disponible.
+if [ "$rama_coincide" -eq 0 ]; then
+  horas="${HILO_STALE_HORAS:-12}"
+  case "$horas" in ''|*[!0-9]*) horas=12;; esac
+  mtime=$(stat -c %Y "$HILO" 2>/dev/null || stat -f %m "$HILO" 2>/dev/null || echo "")   # GNU (Linux) primero; BSD (macOS) de respaldo
+  now=$(date +%s 2>/dev/null || echo "")
+  if [ -n "$mtime" ] && [ -n "$now" ]; then
+    case "$mtime$now" in
+      ''|*[!0-9]*) ;;
+      *) [ $(( (now - mtime) / 3600 )) -ge "$horas" ] && stale=1;;
+    esac
+  fi
 fi
 
 if [ "$stale" -eq 1 ]; then
