@@ -95,6 +95,30 @@ register_hook() {
     ' "$gset" > "$tmp" 2>/dev/null && [ -s "$tmp" ]; then mv "$tmp" "$gset"; else rm -f "$tmp"; echo "  warn: no pude cablear ($pat)"; fi
 }
 
+# wired_in <settings.json> <nombre-hook>  → 0 si algún command del settings.json cita .../<nombre>.sh.
+# Base de la detección de CABLEADO FALTANTE (abajo). Sin jq NO podemos saberlo de forma fiable → damos
+# "cableado" (fail-open: no inflar el contador faltante) para no reportar falso drift.
+wired_in() {
+  local gset="$1" name="$2"
+  [ -f "$gset" ] || return 1
+  command -v jq >/dev/null 2>&1 || return 0
+  jq -e --arg pat "/$name\\.sh" 'any(.hooks[]?[]?; ([.hooks[]?.command] | join(" ")) | test($pat))' "$gset" >/dev/null 2>&1
+}
+
+# Instalación ATÓMICA: cp a un tmp en el MISMO dir + mv (rename atómico). Si el sync corre con una sesión
+# VIVA, un `cp -f` in-situ deja una ventana en la que un hook que hace `source` de una lib (p. ej.
+# analizar-comando-git.sh) la leería a medio sobrescribir; el mv/rename evita esa lectura parcial.
+atomic_install() {  # <src> <dst>
+  local src="$1" dst="$2" tmp
+  tmp="$(dirname "$dst")/.$(basename "$dst").tmp.$$"
+  if cp -f "$src" "$tmp" 2>/dev/null; then
+    chmod +x "$tmp" 2>/dev/null
+    mv -f "$tmp" "$dst" 2>/dev/null || { rm -f "$tmp"; return 1; }
+  else
+    rm -f "$tmp" 2>/dev/null; return 1
+  fi
+}
+
 # ── Sincronizar los archivos de tier {repo, both} (se SALTA entero con --prune-only) ──
 n_new=0; n_upd=0; n_ok=0; n_wire=0
 PER_REPO="$(awk '$1!~/^#/ && NF>=3 && ($2=="repo"||$2=="both"){print $1"|"$3}' "$MANIFEST")"
@@ -108,10 +132,10 @@ while [ "$PRUNEONLY" != 1 ] && IFS='|' read -r name kind; do
   if [ ! -f "$src" ]; then echo "  warn: el manifiesto lista $name pero falta $src"; continue; fi
   if [ ! -f "$dst" ]; then
     echo "  NUEVO      $name.sh ($kind)"; n_new=$((n_new+1))
-    [ "$APPLY" = 1 ] && { cp -f "$src" "$dst"; chmod +x "$dst"; }
+    [ "$APPLY" = 1 ] && { atomic_install "$src" "$dst" || echo "  warn: no pude instalar $name.sh"; }
   elif ! diff -q "$src" "$dst" >/dev/null 2>&1; then
     echo "  ACTUALIZA  $name.sh ($kind)  [$(diff "$src" "$dst" 2>/dev/null | grep -cE '^[<>]') líneas ±]"; n_upd=$((n_upd+1))
-    [ "$APPLY" = 1 ] && { cp -f "$src" "$dst"; chmod +x "$dst"; }
+    [ "$APPLY" = 1 ] && { atomic_install "$src" "$dst" || echo "  warn: no pude instalar $name.sh"; }
   else
     n_ok=$((n_ok+1))
   fi
@@ -131,6 +155,28 @@ while [ "$PRUNEONLY" != 1 ] && IFS='|' read -r name kind; do
 done <<EOF
 $PER_REPO
 EOF
+
+# ── Drift de CABLEADO: hooks kind=hook de tier {repo,both} cuyo comando NO aparece en el settings.json
+#    destino. Antes esto era INVISIBLE al resumen → aviso-drift-cerebro lo daba por "al día" aunque el
+#    repo tuviera hooks presentes-pero-SIN-cablear (bug de costura ALTO, comprobado en la plantilla: 3
+#    hooks sin cablear se reportaban como 0 drift). Ahora se CUENTA y se REPORTA en el resumen para que
+#    aviso-drift lo trate como drift. Independiente de que el .sh esté presente (si falta ya cuenta como
+#    NUEVO). En --apply los hooks ya se cablearon arriba → este conteo dará 0. Se salta con --prune-only.
+n_missing_wire=0
+if [ "$PRUNEONLY" != 1 ]; then
+  while IFS='|' read -r name kind; do
+    [ -z "$name" ] && continue
+    [ "$kind" = "hook" ] || continue
+    only_ok "$name" || continue
+    [ -n "$(ev_de "$name")" ] || continue   # sin evento no se cablea (ya se avisa arriba)
+    if ! wired_in "$DST_SET" "$name"; then
+      n_missing_wire=$((n_missing_wire+1))
+      echo "  SIN CABLEAR $name.sh — presente en el manifiesto pero su comando NO está en settings.json"
+    fi
+  done <<EOF
+$PER_REPO
+EOF
+fi
 
 # ── Estampar la versión SOLO en sync COMPLETO: cualquier operación PARCIAL (--only o --prune-only) NO
 # representa esa versión (el repo no queda completo) → estamparla MENTIRÍA sobre el estado del cerebro. ──
@@ -195,5 +241,5 @@ if [ -d "$DST_HOOKS" ]; then
 fi
 
 echo ""
-echo "==> resumen: $n_new nuevos · $n_upd a actualizar · $n_ok ya al día · $n_retired retirado(s) del cerebro · $n_wire hooks cableados (kind=hook)"
+echo "==> resumen: $n_new nuevos · $n_upd a actualizar · $n_ok ya al día · $n_retired retirado(s) del cerebro · $n_wire hooks cableados (kind=hook) · $n_missing_wire cableado faltante"
 [ "$APPLY" = 1 ] || echo "    (DRY-RUN — nada escrito. Re-corre con --apply para aplicar.)"

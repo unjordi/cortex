@@ -44,6 +44,15 @@ if [ -f "$stamp" ]; then
   [ $(( now - last )) -lt $(( horas * 3600 )) ] && exit 0
 fi
 
+# CONCURRENCIA con aviso-drift-cerebro (el OTRO SessionStart que MUTA git): SUPUESTO EXPLÍCITO de
+# INDEPENDENCIA. En el mismo SessionStart, aviso-drift puede hacer commit+push en la rama ACTUAL (una
+# mini-develop Develop*), mientras este barrido detached hace `git branch -d/-D` de ramas ZOMBIE. Operan
+# sobre refs DISJUNTOS: limpiar-ramas NUNCA toca actual/base/develop/main/Develop*/keep/* (justo las que
+# aviso-drift commitea), y `git branch -d` no toma `.git/index.lock` (no toca staging/HEAD; sí un ref-lock
+# del ref borrado, distinto del ref de la rama actual). La única contención posible es transitoria sobre
+# packed-refs.lock si git empaqueta; AMBOS son fail-open (el push de aviso-drift es `|| true`; el borrado
+# aquí es por-rama y atómico) → una colisión degrada sin corromper y se reintenta al vencer el throttle.
+# Por eso NO se serializan (serializar mataría el barrido en las minis, donde se vive a diario).
 # Marca el throttle ANTES de lanzar (evita relanzar mientras corre) y dispara el barrido detached.
 printf '%s' "$now" > "$stamp" 2>/dev/null || true
 log="$stampdir/${slug:-0}.log"

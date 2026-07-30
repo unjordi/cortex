@@ -752,6 +752,25 @@ printf '%s' "$(ad)" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null 
   && ok "aviso-drift: con drift NO cachea — re-avisa en la siguiente sesión" || bad "aviso-drift: cacheó un chequeo CON drift (se calló)"
 rm -rf "$ADFIX"
 
+# ── (b5b2) FIX costura #2: aviso-drift DETECTA el drift de CABLEADO (hooks presentes SIN cablear).
+# Antes era CIEGO al wiring: solo sumaba nuevos+act+ret → un repo con "0 nuevos · 0 a actualizar · N
+# cableado faltante" se veía "al día" (bug LIVE comprobado en la plantilla: 3 hooks sin cablear → 0
+# drift). Ahora sincronizar reporta "N cableado faltante" y aviso-drift lo cuenta como drift.
+ADWFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-adw.XXXXXX")"
+ADWROOT="$ADWFIX/repo"; ADWHOME="$ADWFIX/home"; ADWBRAIN="$ADWFIX/clon"
+mkdir -p "$ADWROOT/.claude/hooks" "$ADWHOME" "$ADWBRAIN/brain"
+: > "$ADWROOT/.claude/hooks/.brain-version"
+adw() { printf '%s' '{"source":"startup"}' | HOME="$ADWHOME" CLAUDE_BRAIN_DIR="$ADWBRAIN" CLAUDE_PROJECT_DIR="$ADWROOT" bash "$HOOKS/aviso-drift-cerebro.sh"; }
+# resumen SOLO con cableado faltante>0 (0 nuevos/act/ret) — el caso que antes daba total=0 → "al día"
+printf '#!/usr/bin/env bash\necho "==> resumen: 0 nuevos · 0 a actualizar · 10 ya al día · 0 retirado(s) del cerebro · 10 hooks cableados (kind=hook) · 3 cableado faltante"\n' > "$ADWBRAIN/brain/sincronizar-cerebro.sh"
+printf '%s' "$(adw)" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'DRIFT DEL CEREBRO' \
+  && ok "aviso-drift: cuenta el CABLEADO FALTANTE como drift (antes: ciego → 'al día')" || bad "aviso-drift: sigue CIEGO al cableado faltante (lo dio por al día)"
+# control: sin cableado faltante y sin otros drifts → silencio (no falso positivo)
+rm -rf "$ADWHOME/.claude/memory/.drift-cerebro"
+printf '#!/usr/bin/env bash\necho "==> resumen: 0 nuevos · 0 a actualizar · 10 ya al día · 0 retirado(s) del cerebro · 10 hooks cableados (kind=hook) · 0 cableado faltante"\n' > "$ADWBRAIN/brain/sincronizar-cerebro.sh"
+is_silent "$(adw)" && ok "aviso-drift: 0 cableado faltante y sin otros drifts → silencio (no falso positivo)" || bad "aviso-drift: habló con 0 drift (falso positivo)"
+rm -rf "$ADWFIX"
+
 # ── (b5c) aviso-drift v2: AUTO-APPLY en la mini-develop (Develop<Usuario>) · aviso en ramita ──
 AD2FIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-ad2.XXXXXX")"
 AD2REPO="$AD2FIX/repo"; AD2HOME="$AD2FIX/home"; AD2BRAIN="$AD2FIX/clon"
@@ -790,6 +809,130 @@ printf 'sucio\n' >> "$AD2REPO/.claude/hooks/.brain-version"
 printf '%s' "$(ad2)" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'DRIFT DEL CEREBRO' \
   && ok "aviso-drift v2: mini con .claude/ sucio → solo avisa (no mezcla cambios)" || bad "aviso-drift v2: auto-aplicó sobre un .claude/ sucio"
 rm -rf "$AD2FIX"
+
+# ── (b5c2) FIX costura #1: el auto-apply STAGEA settings.json (no solo .claude/hooks). Antes
+# `git add .claude/hooks` dejaba el cambio de CABLEADO (settings.json) sin commitear → el wiring nunca
+# viajaba. Ahora `git add -A .claude/` cubre hooks + settings.json + podas. Stub que --apply reescribe
+# AMBOS (hook + settings.json, como register_hook).
+AD3FIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-ad3.XXXXXX")"
+AD3REPO="$AD3FIX/repo"; AD3HOME="$AD3FIX/home"; AD3BRAIN="$AD3FIX/clon"
+mkdir -p "$AD3REPO/.claude/hooks" "$AD3HOME" "$AD3BRAIN/brain"
+git -C "$AD3REPO" init -q >/dev/null 2>&1
+git -C "$AD3REPO" config user.email t@t >/dev/null 2>&1; git -C "$AD3REPO" config user.name Tester >/dev/null 2>&1
+: > "$AD3REPO/.claude/hooks/.brain-version"
+printf '{"hooks":{}}' > "$AD3REPO/.claude/settings.json"
+git -C "$AD3REPO" add -A >/dev/null 2>&1; git -C "$AD3REPO" commit -qm base >/dev/null 2>&1
+git -C "$AD3REPO" checkout -q -b DevelopTester >/dev/null 2>&1
+cat > "$AD3BRAIN/brain/sincronizar-cerebro.sh" <<'STUB'
+#!/usr/bin/env bash
+repo="$1"
+if [ "${2:-}" = "--apply" ]; then
+  printf 'x\n' > "$repo/.claude/hooks/hook-nuevo.sh"
+  printf '{"hooks":{"SessionStart":[{"hooks":[{"command":"bash \\"${CLAUDE_PROJECT_DIR}/.claude/hooks/hook-nuevo.sh\\""}]}]}}' > "$repo/.claude/settings.json"
+fi
+echo "  NUEVO      hook-nuevo.sh (hook)"
+echo "==> resumen: 1 nuevos · 0 a actualizar · 8 ya al día · 0 retirado(s) del cerebro · 8 hooks cableados (kind=hook) · 0 cableado faltante"
+STUB
+ad3out="$(printf '%s' '{"source":"startup"}' | HOME="$AD3HOME" CLAUDE_BRAIN_DIR="$AD3BRAIN" CLAUDE_PROJECT_DIR="$AD3REPO" bash "$HOOKS/aviso-drift-cerebro.sh")"
+printf '%s' "$ad3out" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'AUTO-SINCRONIZADO' \
+  && ok "aviso-drift FIX#1: auto-sincroniza en la mini (apply+commit)" || bad "aviso-drift FIX#1: no auto-sincronizó; got: $ad3out"
+[ -z "$(git -C "$AD3REPO" status --porcelain)" ] \
+  && ok "aviso-drift FIX#1: árbol LIMPIO tras el auto-sync (settings.json commiteado, no sin stagear)" || bad "aviso-drift FIX#1: settings.json quedó SIN commitear (árbol sucio): $(git -C "$AD3REPO" status --porcelain)"
+git -C "$AD3REPO" show --name-only --format= HEAD 2>/dev/null | grep -q 'settings.json' \
+  && ok "aviso-drift FIX#1: el commit de auto-sync INCLUYE settings.json (el cableado viaja)" || bad "aviso-drift FIX#1: el commit NO incluyó settings.json (el cableado no viajaría)"
+rm -rf "$AD3FIX"
+
+# ── (b5c3) C2 FMEA: guard ANTI-REGRESIÓN — fuente ($BRAIN_DIR) DETRÁS de su origin/main → NO auto-aplica.
+# El sync copia FUENTE→repo; una fuente stale REGRESARÍA el brain y el push la propagaría. La fuente aquí
+# es un repo git con HEAD un commit ATRÁS de su ref origin/main (manipulado directo, sin baile de remotos
+# ni dependencia del nombre de rama default) → fuente_stale=1 → cae al AVISO.
+AD4FIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-ad4.XXXXXX")"
+AD4BRAIN="$AD4FIX/clon"; AD4REPO="$AD4FIX/repo"; AD4HOME="$AD4FIX/home"
+git init -q "$AD4BRAIN" >/dev/null 2>&1
+git -C "$AD4BRAIN" config user.email t@t >/dev/null 2>&1; git -C "$AD4BRAIN" config user.name Tester >/dev/null 2>&1
+git -C "$AD4BRAIN" checkout -q -B main >/dev/null 2>&1
+mkdir -p "$AD4BRAIN/brain"
+printf 'v1\n' > "$AD4BRAIN/marca.txt"; git -C "$AD4BRAIN" add -A >/dev/null 2>&1; git -C "$AD4BRAIN" commit -qm v1 >/dev/null 2>&1
+AD4A=$(git -C "$AD4BRAIN" rev-parse HEAD)
+printf 'v2\n' >> "$AD4BRAIN/marca.txt"; git -C "$AD4BRAIN" commit -qam v2 >/dev/null 2>&1
+git -C "$AD4BRAIN" update-ref refs/remotes/origin/main "$(git -C "$AD4BRAIN" rev-parse HEAD)" >/dev/null 2>&1  # origin/main = v2
+git -C "$AD4BRAIN" reset --hard "$AD4A" -q >/dev/null 2>&1                                                    # HEAD = v1 (1 atrás)
+# stub del sync (reporta drift; con --apply escribiría) — igual al de b5c
+cat > "$AD4BRAIN/brain/sincronizar-cerebro.sh" <<'STUB'
+#!/usr/bin/env bash
+repo="$1"
+[ "${2:-}" = "--apply" ] && printf 'x\n' > "$repo/.claude/hooks/hook-nuevo.sh"
+echo "  NUEVO      hook-nuevo.sh (hook)"
+echo "==> resumen: 1 nuevos · 0 a actualizar · 8 ya al día · 0 retirado(s) del cerebro · 8 hooks cableados (kind=hook) · 0 cableado faltante"
+STUB
+mkdir -p "$AD4REPO/.claude/hooks" "$AD4HOME"
+git -C "$AD4REPO" init -q >/dev/null 2>&1
+git -C "$AD4REPO" config user.email t@t >/dev/null 2>&1; git -C "$AD4REPO" config user.name Tester >/dev/null 2>&1
+: > "$AD4REPO/.claude/hooks/.brain-version"
+git -C "$AD4REPO" add -A >/dev/null 2>&1; git -C "$AD4REPO" commit -qm base >/dev/null 2>&1
+git -C "$AD4REPO" checkout -q -b DevelopTester >/dev/null 2>&1
+n0=$(git -C "$AD4REPO" rev-list --count HEAD)
+ad4out="$(printf '%s' '{"source":"startup"}' | HOME="$AD4HOME" CLAUDE_BRAIN_DIR="$AD4BRAIN" CLAUDE_PROJECT_DIR="$AD4REPO" bash "$HOOKS/aviso-drift-cerebro.sh")"
+printf '%s' "$ad4out" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'DRIFT DEL CEREBRO' \
+  && ok "C2: fuente detrás de origin/main → NO auto-aplica (avisa en vez de regresar)" || bad "C2: auto-aplicó desde una fuente STALE; got: $ad4out"
+{ [ "$(git -C "$AD4REPO" rev-list --count HEAD)" = "$n0" ] && [ ! -f "$AD4REPO/.claude/hooks/hook-nuevo.sh" ]; } \
+  && ok "C2: fuente stale → NO commiteó ni escribió (no empujó regresión)" || bad "C2: ¡commiteó/escribió desde una fuente stale!"
+printf '%s' "$ad4out" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'anti-regresión' \
+  && ok "C2: el aviso EXPLICA la fuente stale (nota anti-regresión)" || bad "C2: el aviso no menciona la fuente stale"
+rm -rf "$AD4FIX"
+
+# ── (b5c4) sA3 FMEA: el patrón de mini-develop es Develop+MAYÚSCULA. Una rama 'Development' (Develop+
+# minúscula) NO es mini-develop → NO auto-aplica (antes 'Develop?*' la casaba y le hacía auto-push).
+AD5FIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-ad5.XXXXXX")"
+AD5REPO="$AD5FIX/repo"; AD5HOME="$AD5FIX/home"; AD5BRAIN="$AD5FIX/clon"
+mkdir -p "$AD5REPO/.claude/hooks" "$AD5HOME" "$AD5BRAIN/brain"
+git -C "$AD5REPO" init -q >/dev/null 2>&1
+git -C "$AD5REPO" config user.email t@t >/dev/null 2>&1; git -C "$AD5REPO" config user.name Tester >/dev/null 2>&1
+: > "$AD5REPO/.claude/hooks/.brain-version"
+git -C "$AD5REPO" add -A >/dev/null 2>&1; git -C "$AD5REPO" commit -qm base >/dev/null 2>&1
+cat > "$AD5BRAIN/brain/sincronizar-cerebro.sh" <<'STUB'
+#!/usr/bin/env bash
+repo="$1"
+[ "${2:-}" = "--apply" ] && printf 'x\n' > "$repo/.claude/hooks/hook-nuevo.sh"
+echo "  NUEVO      hook-nuevo.sh (hook)"
+echo "==> resumen: 1 nuevos · 0 a actualizar · 8 ya al día · 0 retirado(s) del cerebro · 8 hooks cableados (kind=hook) · 0 cableado faltante"
+STUB
+ad5() { printf '%s' '{"source":"startup"}' | HOME="$AD5HOME" CLAUDE_BRAIN_DIR="$AD5BRAIN" CLAUDE_PROJECT_DIR="$AD5REPO" bash "$HOOKS/aviso-drift-cerebro.sh"; }
+git -C "$AD5REPO" checkout -q -b Development >/dev/null 2>&1   # Develop + minúscula = NO es mini-develop
+n0=$(git -C "$AD5REPO" rev-list --count HEAD)
+printf '%s' "$(ad5)" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'DRIFT DEL CEREBRO' \
+  && ok "sA3: rama 'Development' (Develop+minúscula) → AVISA, NO la trata como mini-develop" || bad "sA3: 'Development' recibió trato de mini-develop"
+{ [ "$(git -C "$AD5REPO" rev-list --count HEAD)" = "$n0" ] && [ ! -f "$AD5REPO/.claude/hooks/hook-nuevo.sh" ]; } \
+  && ok "sA3: 'Development' → NO auto-push (regex Develop[A-Z] cerró el falso positivo)" || bad "sA3: ¡auto-push sobre 'Development'!"
+rm -rf "$AD5FIX"
+
+# ── (b5c5) sA3 FMEA: el commit del auto-sync va ACOTADO a .claude/ (git commit -o) — NO barre cambios
+# staged AJENOS del usuario (p. ej. src/ a medio trabajar) al commit de auto-sync.
+AD6FIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-ad6.XXXXXX")"
+AD6REPO="$AD6FIX/repo"; AD6HOME="$AD6FIX/home"; AD6BRAIN="$AD6FIX/clon"
+mkdir -p "$AD6REPO/.claude/hooks" "$AD6REPO/src" "$AD6HOME" "$AD6BRAIN/brain"
+git -C "$AD6REPO" init -q >/dev/null 2>&1
+git -C "$AD6REPO" config user.email t@t >/dev/null 2>&1; git -C "$AD6REPO" config user.name Tester >/dev/null 2>&1
+: > "$AD6REPO/.claude/hooks/.brain-version"; printf 'base\n' > "$AD6REPO/src/foo.txt"
+git -C "$AD6REPO" add -A >/dev/null 2>&1; git -C "$AD6REPO" commit -qm base >/dev/null 2>&1
+git -C "$AD6REPO" checkout -q -b DevelopTester >/dev/null 2>&1
+cat > "$AD6BRAIN/brain/sincronizar-cerebro.sh" <<'STUB'
+#!/usr/bin/env bash
+repo="$1"
+[ "${2:-}" = "--apply" ] && printf 'x\n' > "$repo/.claude/hooks/hook-nuevo.sh"
+echo "  NUEVO      hook-nuevo.sh (hook)"
+echo "==> resumen: 1 nuevos · 0 a actualizar · 8 ya al día · 0 retirado(s) del cerebro · 8 hooks cableados (kind=hook) · 0 cableado faltante"
+STUB
+# el usuario tiene un cambio AJENO staged FUERA de .claude/ (no debe entrar al commit de auto-sync)
+printf 'trabajo a medias\n' >> "$AD6REPO/src/foo.txt"; git -C "$AD6REPO" add src/foo.txt >/dev/null 2>&1
+ad6out="$(printf '%s' '{"source":"startup"}' | HOME="$AD6HOME" CLAUDE_BRAIN_DIR="$AD6BRAIN" CLAUDE_PROJECT_DIR="$AD6REPO" bash "$HOOKS/aviso-drift-cerebro.sh")"
+printf '%s' "$ad6out" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'AUTO-SINCRONIZADO' \
+  && ok "sA3: auto-sincroniza aunque haya cambios ajenos staged fuera de .claude/" || bad "sA3: no auto-sincronizó; got: $ad6out"
+git -C "$AD6REPO" show --name-only --format= HEAD 2>/dev/null | grep -q 'src/foo.txt' \
+  && bad "sA3: ¡el commit de auto-sync BARRIÓ src/foo.txt (commit sin acotar)!" || ok "sA3: el commit de auto-sync NO incluyó src/foo.txt (acotado a .claude/ con -o)"
+git -C "$AD6REPO" diff --cached --name-only 2>/dev/null | grep -q 'src/foo.txt' \
+  && ok "sA3: el cambio ajeno del usuario sigue staged intacto (no se lo llevó el auto-sync)" || bad "sA3: se perdió el staging del cambio ajeno del usuario"
+rm -rf "$AD6FIX"
 
 # ── (b5d) sembrar-mini-develop: crea la rama desde origin/develop sin tocar el worktree ──
 SMFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-sm.XXXXXX")"
@@ -1187,6 +1330,7 @@ cerrar-slice|rehidratar-hilo
 checkpoint|rehidratar-hilo
 aviso-contexto|rehidratar-hilo
 aviso-contexto|checkpoint
+aviso-drift-cerebro|barrer-ramas
 limpiar-ramas|limpiar-worktrees
 limpiar-ramas|ramas-zombie
 limpiar-worktrees|ramas-zombie
@@ -1239,12 +1383,18 @@ else
   else
     bad "drift: install-brain NO deriva del MANIFEST (¿volvió a una lista hardcodeada?)"
   fi
-  # (4) cada {global,both} kind=hook tiene su register_hook en install-brain (cableado ↔ manifiesto)
+  # (4) install-brain DERIVA el cableado del MANIFEST (ya NO 16 register_hook hardcode) y cada
+  #     {global,both} kind=hook tiene su EVENTO en la tabla ev_de() → se cablea. Si un hook nuevo del
+  #     MANIFEST no está en ev_de(), el instalador lo SALTA (avisa) → este drift-check lo caza.
+  grep -qE 'WIRE_HOOKS=.*awk.*(global.*both|both.*global).*MANIFEST' "$INSTALLER" \
+    && ok "drift: install-brain deriva el CABLEADO del MANIFEST (ev_de + loop, no lista hardcodeada)" \
+    || bad "drift: install-brain NO deriva el cableado del MANIFEST (¿volvió a register_hook hardcode?)"
+  evblock="$(awk '/^ev_de\(\)/,/^}/' "$INSTALLER")"
   miss_wire=0
   for b in $(awk '$1!~/^#/ && NF>=3 && ($2=="global"||$2=="both") && $3=="hook"{print $1}' "$MF"); do
-    grep -q "register_hook.*$b" "$INSTALLER" || { bad "drift: '$b' es {global,both} hook pero NO tiene register_hook en install-brain"; miss_wire=1; }
+    printf '%s' "$evblock" | grep -qw "$b" || { bad "drift: '$b' es {global,both} hook pero NO tiene evento en ev_de() de install-brain (no se cablearía)"; miss_wire=1; }
   done
-  [ "$miss_wire" = 0 ] && ok "drift: cada hook {global,both} del MANIFEST está cableado en install-brain"
+  [ "$miss_wire" = 0 ] && ok "drift: cada hook {global,both} del MANIFEST tiene evento en ev_de() de install-brain (se cablea)"
   # (5) uninstall-brain también deriva del manifiesto (no una 3ª lista que driftee)
   grep -q "MANIFEST" "$SCRIPT_DIR/uninstall-brain.sh" 2>/dev/null \
     && ok "drift: uninstall-brain también deriva del MANIFEST" \
@@ -1342,6 +1492,42 @@ bash "$SYNC" "$E5T" 2>/dev/null | grep -qE '==> resumen:.*[1-9][0-9]* retirado' 
   && ok "e5: el dry-run REPORTA el retirado en el resumen (aviso-drift lo cuenta como drift)" \
   || ok "e5: (sin retirados pendientes tras el apply — esperado)"
 rm -rf "$E5T"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo "== (e6) FIX #2: sincronizar REPORTA 'cableado faltante' (hook presente sin cablear) → aviso-drift deja de ser ciego al wiring =="
+E6T="$(mktemp -d "${TMPDIR:-/tmp}/brain-e6.XXXXXX")"; mkdir -p "$E6T/.claude/hooks"
+printf '{}' > "$E6T/.claude/settings.json"
+# dry-run sobre un repo con settings.json VACÍO → todos los {repo,both} kind=hook están SIN cablear
+bash "$SYNC" "$E6T" 2>/dev/null | grep -qE '==> resumen:.*[1-9][0-9]* cableado faltante' \
+  && ok "e6: dry-run REPORTA cableado faltante>0 cuando el settings.json no cablea los hooks" \
+  || bad "e6: el resumen NO reporta el cableado faltante (aviso-drift seguiría ciego al wiring)"
+# tras --apply (cablea todos) → cableado faltante baja a 0
+bash "$SYNC" "$E6T" --apply >/dev/null 2>&1
+bash "$SYNC" "$E6T" 2>/dev/null | grep -qE '==> resumen:.*· 0 cableado faltante' \
+  && ok "e6: tras --apply el cableado faltante baja a 0 (ya cablea todos)" \
+  || bad "e6: tras --apply sigue reportando cableado faltante>0"
+rm -rf "$E6T"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo "== (e7) FIX #3: install-brain DERIVA el cableado del MANIFEST y cablea EXACTAMENTE los {global,both} kind=hook (mismos hooks/eventos que el hardcode anterior) =="
+E7H="$(mktemp -d "${TMPDIR:-/tmp}/brain-e7.XXXXXX")"
+HOME="$E7H" bash "$INSTALLER" >/dev/null 2>&1
+if [ -f "$E7H/.claude/settings.json" ]; then
+  wired=$(jq -r '.hooks[]?[]?.hooks[]?.command' "$E7H/.claude/settings.json" 2>/dev/null | grep -oE '/[a-z-]+\.sh' | sed 's#/##; s#\.sh##' | sort -u)
+  want=$(awk '$1!~/^#/ && NF>=3 && ($2=="global"||$2=="both") && $3=="hook"{print $1}' "$MF" | sort -u)
+  if [ "$wired" = "$want" ]; then ok "e7: install-brain cablea EXACTAMENTE los {global,both} kind=hook del MANIFEST (ni de más ni de menos)"
+  else bad "e7: el set cableado DIFIERE del MANIFEST · sobran/faltan: $(comm -3 <(printf '%s\n' "$wired") <(printf '%s\n' "$want") | tr '\t' '~' | tr '\n' ' ')"; fi
+  # el EVENTO de cada uno es el correcto (los 4 grupos: Bash, Task, SessionStart sin-matcher, PostToolUse sin-matcher)
+  ev_of() { jq -r --arg n "$1" '.hooks | to_entries[] | .key as $k | .value[] | select((([.hooks[]?.command]|join(" "))) | test("/"+$n+"\\.sh")) | ($k + "|" + (.matcher // ""))' "$E7H/.claude/settings.json"; }
+  [ "$(ev_of git-branch-guard)"   = "PreToolUse|Bash" ]  && ok "e7: git-branch-guard → PreToolUse/Bash"        || bad "e7: git-branch-guard evento incorrecto: $(ev_of git-branch-guard)"
+  [ "$(ev_of delegacion-reporte)" = "PostToolUse|Task" ] && ok "e7: delegacion-reporte → PostToolUse/Task"     || bad "e7: delegacion-reporte evento incorrecto: $(ev_of delegacion-reporte)"
+  [ "$(ev_of barrer-ramas)"       = "SessionStart|" ]    && ok "e7: barrer-ramas → SessionStart/(sin matcher)" || bad "e7: barrer-ramas evento incorrecto: $(ev_of barrer-ramas)"
+  [ "$(ev_of aviso-contexto)"     = "PostToolUse|" ]     && ok "e7: aviso-contexto → PostToolUse/(sin matcher)" || bad "e7: aviso-contexto evento incorrecto: $(ev_of aviso-contexto)"
+else
+  bad "e7: install-brain no generó settings.json"
+fi
+rm -rf "$E7H"
+
 echo "== (e4) Windows: bootstrap.ps1 exporta CLAUDE_BRAIN_DIR (los hooks bash hallan la fuente) =="
 # En Windows el clon-fuente vive en %LOCALAPPDATA%\claude-brain-repo, NO en ~/.claude-brain (default de
 # Mac/Linux). Si bootstrap.ps1 no exporta CLAUDE_BRAIN_DIR, el hook bash aviso-drift-cerebro cae a
