@@ -67,6 +67,26 @@ antes de un git destructivo que orfanaría commits sin pushear).
 > el ítem sobre la base correcta. **Integra por CHERRY-PICK del delta** (no `merge`) cuando la base del
 > agente pueda estar vieja — el merge arrastraría el árbol viejo; el cherry-pick trae solo el cambio neto.
 
+> **GOTCHA del worktree — UBICACIÓN equivocada (feedback real de unjordi, 2026-07-29).** Un worktree
+> creado a mano/por agente con `git worktree add <ruta>` puede aterrizar **donde no debe** y ensuciar el
+> folder del usuario. Dos formas vistas de verdad, ambas en la misma sesión:
+> - un **hermano `<repo>.wt/`** al lado del repo, en `~/code/` (el usuario lo VE en Finder y estorba);
+> - un worktree de **OTRO repo ANIDADO dentro** del worktree de un repo distinto
+>   (`potenciaDatabases/.claude/worktrees/agent-XXXX/wt-cablear` era un worktree de `pisamrpclaude`).
+>
+> **Regla dura:** todo worktree va SIEMPRE a **`<ese-mismo-repo>/.claude/worktrees/<nombre>`** — la
+> convención del harness (`isolation: "worktree"` y `EnterWorktree` ya lo hacen bien; el riesgo está en
+> el `git worktree add` MANUAL). Nunca un hermano `.wt`, nunca dentro del árbol de otro repo. Multi-repo:
+> `git -C <repoB> worktree add <repoB>/.claude/worktrees/<nombre>` — la ruta destino pertenece al repo
+> DUEÑO de la rama, no al repo donde estás parado.
+>
+> **Por qué muerde (no es cosmético):** el barredor `limpiar-worktrees.sh` opera por repo; si un worktree
+> de B vive anidado dentro de uno de A, al barrer A como zombie **se lleva el worktree de B y su trabajo
+> sin commitear**, y deja el admin de git de B (`.git/worktrees/<n>/gitdir`) apuntando a una ruta borrada.
+> En el caso real el anidado traía un cambio staged sin commitear (además una REGRESIÓN abandonada).
+> **Al orquestar:** si ves un worktree fuera de `<repo>/.claude/worktrees/`, NO lo barras a ciegas —
+> revisa primero `git -C <wt> status` + si sus commits ya están integrados, y muévelo/ciérralo aparte.
+
 ## Con agentes ACTIVOS — reglas anti-desastre (destiladas de un caso real, 2026-07)
 - **El sub-agente es TERMINAL.** Su prompt DEBE decírselo: *"eres terminal — cuando tu turno acaba NADA
   tuyo sigue corriendo; NO puedes 'lanzar en background' ni esperar notificaciones. Ejecuta el trabajo
@@ -105,6 +125,17 @@ antes de un git destructivo que orfanaría commits sin pushear).
    pueda cerrar solo, sin depender de otro en vuelo). Reparte **archivos disjuntos** (regla anti-choque)
    y **cada agente que toque código va en su WORKTREE AISLADO** (ver regla dura arriba).
 2. **Contrato del agente:** cada agente DEVUELVE, además del trabajo:
+   - **`informe`: la RUTA de un `.md` que el agente ESCRIBIÓ a disco** — nunca el análisis en prosa
+     dentro del valor de retorno. **Regla dura (unjordi 2026-07-30): el reporte de un agente SIEMPRE
+     se entrega como archivo `.md`, aunque el agente no haya usado worktree y aunque "solo investigue".**
+     Lo que vuelve al orquestador es el *resumen ejecutivo + la ruta*; el desarrollo completo vive en el
+     archivo. Porqué: un análisis que solo viaja en el valor de retorno vive únicamente en el CONTEXTO
+     del orquestador → **el siguiente compact lo borra** (caso real: 4 agentes analizaron los módulos
+     sin migrar de `pisamrp_4.6`, entregaron ~30 páginas en prosa, y al compactar se perdieron; lo único
+     que sobrevivió fue lo que alguien había appendeado a la bitácora). Dónde: si el agente trabaja en un
+     worktree, el `.md` va en su rama (viaja con el MR); si NO tiene worktree (agente de solo-lectura /
+     investigación), va a la carpeta de análisis del repo (`docs/`, `.claude/memory/` o el scratchpad de
+     la sesión **solo si es desechable de verdad**). Un informe que vale releer se **versiona**.
    - `qué hizo` (el cambio neto),
    - `base`: la rama y el **SHA real** sobre los que construyó, **verificado con git** (`git rev-parse HEAD^`,
      `git rev-parse --abbrev-ref HEAD`), NO asumido — el orquestador lo re-verifica antes de integrar (ver GOTCHA de base),
