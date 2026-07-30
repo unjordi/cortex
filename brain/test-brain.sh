@@ -500,6 +500,85 @@ rm -rf "$PABARE" "$PAREPO"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (b3a2) proteger-fuente-cerebro: AVISA al editar la copia INSTALADA que TIENE fuente (regenerable) =="
+# Hueco real: una regla escrita en la copia INSTALADA (~/.claude/skills|hooks) muere en el próximo
+# install-brain. El guard avisa (no bloquea) si el file_path cae ahí Y existe la fuente correspondiente.
+PFFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-pf.XXXXXX")"
+PFH="$PFFIX/home"; PFB="$PFFIX/clon"
+mkdir -p "$PFH/.claude/hooks" "$PFH/.claude/skills/cerrar-slice" "$PFB/brain/hooks" "$PFB/brain/skills/cerrar-slice"
+printf 'installed\n' > "$PFH/.claude/hooks/git-branch-guard.sh"          # hook con fuente
+printf 'source\n'    > "$PFB/brain/hooks/git-branch-guard.sh"
+printf 'installed\n' > "$PFH/.claude/skills/cerrar-slice/SKILL.md"       # skill con fuente
+printf 'source\n'    > "$PFB/brain/skills/cerrar-slice/SKILL.md"
+printf 'local\n'     > "$PFH/.claude/hooks/mi-hook-local.sh"             # hook LOCAL (sin fuente)
+pf() { printf '%s' "{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$1\"}}" \
+       | HOME="$PFH" CLAUDE_BRAIN_DIR="$PFB" bash "$HOOKS/proteger-fuente-cerebro.sh"; }
+has_ctx() { printf '%s' "$1" | jq -e '.hookSpecificOutput.additionalContext | test("proteger-fuente-cerebro")' >/dev/null 2>&1; }
+# (1) editar hook INSTALADO que tiene fuente → AVISA
+o="$(pf "$PFH/.claude/hooks/git-branch-guard.sh")"
+has_ctx "$o" && ok "proteger-fuente: editar hook instalado CON fuente → AVISA" || bad "proteger-fuente: no avisó del hook instalado; got: $o"
+# (2) editar skill INSTALADA que tiene fuente → AVISA (y nombra la ruta de la fuente)
+o="$(pf "$PFH/.claude/skills/cerrar-slice/SKILL.md")"
+{ has_ctx "$o" && printf '%s' "$o" | jq -r '.hookSpecificOutput.additionalContext' | grep -qF "$PFB/brain/skills/cerrar-slice/SKILL.md"; } \
+  && ok "proteger-fuente: editar skill instalada CON fuente → AVISA y nombra la fuente" || bad "proteger-fuente: no avisó/no nombró la fuente de la skill; got: $o"
+# (3) editar hook LOCAL (sin fuente) → silencio
+o="$(pf "$PFH/.claude/hooks/mi-hook-local.sh")"
+[ -z "$o" ] && ok "proteger-fuente: hook local SIN fuente → silencio" || bad "proteger-fuente: avisó de un hook local; got: $o"
+# (4) archivo fuera de ~/.claude/skills|hooks → silencio
+o="$(pf "$PFFIX/random.txt")"
+[ -z "$o" ] && ok "proteger-fuente: archivo fuera de skills|hooks → silencio (fuera de alcance)" || bad "proteger-fuente: reaccionó fuera de alcance; got: $o"
+# (5) escape CLAUDE_SKIP_PROTEGER_FUENTE=1 → silencio aunque haya fuente
+o="$(printf '%s' "{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$PFH/.claude/hooks/git-branch-guard.sh\"}}" \
+     | HOME="$PFH" CLAUDE_BRAIN_DIR="$PFB" CLAUDE_SKIP_PROTEGER_FUENTE=1 bash "$HOOKS/proteger-fuente-cerebro.sh")"
+[ -z "$o" ] && ok "proteger-fuente: escape CLAUDE_SKIP_PROTEGER_FUENTE=1 → silencio" || bad "proteger-fuente: el escape no calló; got: $o"
+# (6) fail-open SIN jq (PATH sin jq; bash por ruta absoluta para no depender del PATH) → silencio
+BASHBIN="$(command -v bash)"
+o="$(printf '%s' "{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$PFH/.claude/hooks/git-branch-guard.sh\"}}" \
+     | PATH="/nonexistent-dir" HOME="$PFH" CLAUDE_BRAIN_DIR="$PFB" "$BASHBIN" "$HOOKS/proteger-fuente-cerebro.sh")"
+[ -z "$o" ] && ok "proteger-fuente: fail-open sin jq → silencio (no bloquea)" || bad "proteger-fuente: no falló abierto sin jq; got: $o"
+# OS-parity/estático: el hook usa \$HOME y \${CLAUDE_BRAIN_DIR}, no rutas hardcodeadas de un \$HOME
+grep -qE '/Users/[A-Za-z]|/home/[A-Za-z]' "$HOOKS/proteger-fuente-cerebro.sh" \
+  && bad "proteger-fuente: tiene una ruta hardcodeada de \$HOME (no portable)" \
+  || ok "proteger-fuente: sin rutas hardcodeadas de \$HOME (OS-parity)"
+{ grep -q 'HOME/.claude' "$HOOKS/proteger-fuente-cerebro.sh" && grep -q 'CLAUDE_BRAIN_DIR' "$HOOKS/proteger-fuente-cerebro.sh"; } \
+  && ok "proteger-fuente: deriva rutas de \$HOME y \${CLAUDE_BRAIN_DIR}" || bad "proteger-fuente: no usa \$HOME/\${CLAUDE_BRAIN_DIR}"
+# MANIFEST bien formado con el hook nuevo (tier global, kind hook) + install-brain lo cabla
+grep -qE '^proteger-fuente-cerebro[[:space:]]+global[[:space:]]+hook$' "$HOOKS/MANIFEST" \
+  && ok "proteger-fuente: declarado en el MANIFEST (global hook)" || bad "proteger-fuente: falta/mal en el MANIFEST"
+grep -q 'register_hook.*proteger-fuente-cerebro' "$INSTALLER" \
+  && ok "proteger-fuente: cableado en install-brain.sh" || bad "proteger-fuente: NO cableado en install-brain.sh"
+rm -rf "$PFFIX"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (b3a3) verificar-cerebro: drift-check instalada-vs-fuente (idéntica→0; difiere→la lista; local→ignora) =="
+DVFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-dv.XXXXXX")"
+DVH="$DVFIX/home"; DVB="$DVFIX/clon"
+mkdir -p "$DVH/.claude/hooks" "$DVH/.claude/skills" "$DVB/brain/hooks" "$DVB/brain/skills"
+printf '%s\n' 'alpha  global  hook' > "$DVB/brain/hooks/MANIFEST"   # MANIFEST mínimo para no ensuciar
+dv() { HOME="$DVH" CLAUDE_BRAIN_DIR="$DVB" bash "$HOOKS/verificar-cerebro.sh" 2>&1; }
+# Fase 1 — instalada idéntica a la fuente → 0 drift
+printf 'same\n' > "$DVH/.claude/hooks/alpha.sh"
+printf 'same\n' > "$DVB/brain/hooks/alpha.sh"
+dvout="$(dv)"
+printf '%s' "$dvout" | grep -q 'sin drift instalada-vs-fuente en hooks' \
+  && ok "verificar-cerebro drift: instalada idéntica → 0 drift" || bad "verificar-cerebro drift: no reportó 'sin drift'; got: $dvout"
+# Fase 2 — instalada con una línea EXTRA (y más nueva) → la lista con dirección; un local (sin fuente) → se ignora
+printf 'orig\n'          > "$DVB/brain/hooks/beta.sh";  touch -t 200001010000 "$DVB/brain/hooks/beta.sh"
+printf 'orig\nEXTRA\n'   > "$DVH/.claude/hooks/beta.sh"                       # difiere y es más nueva
+printf 'solo-local\n'    > "$DVH/.claude/hooks/gamma.sh"                      # sin fuente → NO es este drift
+dvout2="$(dv)"
+printf '%s' "$dvout2" | grep -q 'drift instalada≠fuente (hooks): beta.sh' \
+  && ok "verificar-cerebro drift: instalada que difiere → la LISTA" || bad "verificar-cerebro drift: no listó beta.sh; got: $dvout2"
+printf '%s' "$dvout2" | grep -q 'beta.sh.*M.S NUEVA' \
+  && ok "verificar-cerebro drift: distingue dirección (instalada más nueva → portar a la fuente)" || bad "verificar-cerebro drift: no marcó la dirección; got: $dvout2"
+printf '%s' "$dvout2" | grep -q 'gamma.sh' \
+  && bad "verificar-cerebro drift: reportó un archivo LOCAL sin fuente (falso positivo); got: $dvout2" \
+  || ok "verificar-cerebro drift: archivo local sin fuente → NO se reporta"
+rm -rf "$DVFIX"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "== (b3b) limpiar-worktrees: base de integración configurable + detección por cherry (G7) =="
 # Flujo mini-develop: la base es una rama PERSONAL (no develop) y las ramitas se integran por merge
 # LOCAL (a veces squash) → antes quedaban zombies eternos (base fija a develop + sin detección por
@@ -1192,7 +1271,8 @@ limpiar-ramas|ramas-zombie
 limpiar-worktrees|ramas-zombie
 cosechar-sesion|recordar-cosechar
 recordar-unificar-cerebro|unificar-cerebro
-cosechar-sesion|unificar-cerebro"
+cosechar-sesion|unificar-cerebro
+proteger-fuente-cerebro|verificar-cerebro"
 ce_els=()
 for d in "$SCRIPT_DIR"/skills/*/; do [ -d "$d" ] && ce_els+=("$(basename "$d")"); done
 for h in "$HOOKS"/*.sh; do [ -e "$h" ] && ce_els+=("$(basename "$h" .sh)"); done
