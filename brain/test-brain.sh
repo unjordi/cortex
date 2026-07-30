@@ -398,9 +398,9 @@ o="$(scan5 'git push -u origin feat/limpia')"
 [ -z "$o" ] && ok "secret-scan G5: 1er push de rama nueva LIMPIA → silencio (sin falso positivo)" || bad "secret-scan G5: falso positivo en rama nueva limpia; got: $o"
 rm -rf "$G5ROOT"
 
-# ── FMEA 2026-07-30 · A7 (`--no-verify` en el MENSAJE del commit no debe saltar el escaneo) ──
+# ── FMEA 2026-07-30 · A1 (idiom `git add && git commit`) + A7 (`--no-verify` en el MENSAJE) ──
 echo ""
-echo "== (b2c) secret-scan FMEA A7: --no-verify citado en el mensaje del commit =="
+echo "== (b2c) secret-scan FMEA A1/A7: idiom 'git add && git commit' y --no-verify citado en el mensaje =="
 FMEAREPO="$(mktemp -d "${TMPDIR:-/tmp}/brain-fmea.XXXXXX")"
 git -C "$FMEAREPO" init -q >/dev/null 2>&1
 git -C "$FMEAREPO" symbolic-ref HEAD refs/heads/main >/dev/null 2>&1
@@ -411,6 +411,29 @@ printf 'base limpia\n' > "$FMEAREPO/base.txt"; git -C "$FMEAREPO" add base.txt >
 scanf() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' \
           | HOME="$FMEAREPO" CLAUDE_PROJECT_DIR="$FMEAREPO" bash "$HOOKS/secret-scan.sh"; }
 fmeareset() { git -C "$FMEAREPO" reset -q >/dev/null 2>&1; rm -f "$FMEAREPO"/*.txt 2>/dev/null; }
+# A1 (1) `git add secreto && git commit` con un AKIA en un archivo NUEVO aún NO staged → BLOQUEA
+fmeareset; printf 'aws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/secreto.txt"
+o="$(scanf 'git add secreto.txt && git commit -m x')"
+printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan A1: 'git add secreto && git commit' escanea lo que el add estagearía → bloquea" || bad "secret-scan A1: NO bloqueó el idiom add&&commit; got: $o"
+# A1 (2) bypass TOTAL `git add -A && git commit && git push` con sk-ant en archivo por-venir → BLOQUEA
+fmeareset; printf 'tok = sk-ant-abcdefghijklmnopqrstuvwxyz0123\n' > "$FMEAREPO/tok.txt"
+o="$(scanf 'git add -A && git commit -m x && git push')"
+printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan A1: 'git add -A && git commit && git push' (bypass total) → bloquea" || bad "secret-scan A1: bypass total add&&commit&&push NO bloqueado; got: $o"
+# A1 (3) archivo LIMPIO por el mismo idiom → PASA (sin falso positivo)
+fmeareset; printf 'contenido sin secretos\n' > "$FMEAREPO/limpio.txt"
+o="$(scanf 'git add limpio.txt && git commit -m x')"
+[ -z "$o" ] && ok "secret-scan A1: 'git add limpio && git commit' → PASA (sin falso positivo)" || bad "secret-scan A1: falso positivo en archivo limpio; got: $o"
+# A1 (4) secreto PREEXISTENTE en línea NO tocada de un archivo tracked; se cambia OTRA línea → PASA
+#        (tracked: solo se escanea lo AGREGADO vs HEAD, no se re-escanea lo ya versionado).
+fmeareset; printf 'aws = AKIA1234567890ABCDEF\nlinea normal\n' > "$FMEAREPO/pre.txt"
+git -C "$FMEAREPO" add pre.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm pre >/dev/null 2>&1
+printf 'aws = AKIA1234567890ABCDEF\nlinea CAMBIADA\n' > "$FMEAREPO/pre.txt"
+o="$(scanf 'git add pre.txt && git commit -m x')"
+[ -z "$o" ] && ok "secret-scan A1: secreto preexistente en línea no tocada (tracked) → PASA" || bad "secret-scan A1: falso positivo re-escaneando lo ya versionado; got: $o"
+# A1 (5) commit normal con staging PREVIO (sin git add en el comando) → sigue bloqueando (no-regresión)
+fmeareset; printf 'aws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/s2.txt"; git -C "$FMEAREPO" add s2.txt >/dev/null 2>&1
+o="$(scanf 'git commit -m x')"
+printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan A1: commit normal (staging previo) sigue escaneando --cached → bloquea" || bad "secret-scan A1: regresión, commit normal ya no bloquea; got: $o"
 # A7 (1) --no-verify DENTRO del mensaje del commit (secreto staged) → NO salta → BLOQUEA
 fmeareset; printf 'aws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/s3.txt"; git -C "$FMEAREPO" add s3.txt >/dev/null 2>&1
 o="$(scanf 'git commit -m "documenta el flag --no-verify"')"
