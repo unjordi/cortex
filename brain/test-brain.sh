@@ -685,6 +685,58 @@ rm -rf "$RBROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (b3e) bz_es_zombie: regla (b) 'remota borrada' NO borra a ciegas una rama con commits propios (FMEA A5) =="
+# A5/MEDIO-3 (PÉRDIDA DE DATOS): la regla (b) marcaba zombie por "remota ausente" sin re-chequear si la
+# rama traía commits VIVOS no integrados → limpiar-ramas/-worktrees hacían `branch -D` irreversible sobre
+# trabajo real (remota borrada por rename/limpieza, o commits post-merge sin pushear). Fix: (b) solo
+# declara zombie si la rama NO tiene commits propios no equivalentes a la base (git cherry sin '+').
+BZROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-bz.XXXXXX")"; BZBARE="$BZROOT/remote.git"; BZREPO="$BZROOT/repo"
+git init -q --bare "$BZBARE" >/dev/null 2>&1
+git init -q "$BZREPO" >/dev/null 2>&1
+git -C "$BZREPO" symbolic-ref HEAD refs/heads/miDevelop >/dev/null 2>&1
+git -C "$BZREPO" config user.email t@t >/dev/null 2>&1; git -C "$BZREPO" config user.name tester >/dev/null 2>&1
+git -C "$BZREPO" remote add origin "$BZBARE" >/dev/null 2>&1
+printf 'base\n' > "$BZREPO/base.txt"; git -C "$BZREPO" add base.txt >/dev/null 2>&1; git -C "$BZREPO" commit -qm base >/dev/null 2>&1
+git -C "$BZREPO" push -q -u origin miDevelop >/dev/null 2>&1
+( . "$HOOKS/ramas-zombie.sh"
+  # CASO 1 — remota gone CON commits propios NO equivalentes → CONSERVAR (teeth del fix A5)
+  git -C "$BZREPO" checkout -q -b feat/viva miDevelop >/dev/null 2>&1
+  printf 'trabajo-vivo\n' > "$BZREPO/viva.txt"; git -C "$BZREPO" add viva.txt >/dev/null 2>&1; git -C "$BZREPO" commit -qm "commit propio no integrado" >/dev/null 2>&1
+  git -C "$BZREPO" push -q -u origin feat/viva >/dev/null 2>&1
+  git -C "$BZREPO" push -q origin --delete feat/viva >/dev/null 2>&1   # remota borrada (rename/limpieza)
+  git -C "$BZREPO" checkout -q miDevelop >/dev/null 2>&1
+  # teeth: la rama SÍ tiene commit propio ('+') y su remota YA no existe → antes (b) la borraba
+  git -C "$BZREPO" cherry miDevelop feat/viva 2>/dev/null | grep -q '^+' && ok "b3e(teeth): feat/viva tiene commit propio no equivalente ('+')" || bad "b3e(teeth): test mal armado, feat/viva sin '+'"
+  ! git -C "$BZREPO" ls-remote --exit-code --heads origin feat/viva >/dev/null 2>&1 && ok "b3e(teeth): la remota de feat/viva YA no existe (gatillo de la regla b)" || bad "b3e(teeth): la remota seguía existiendo"
+  bz_es_zombie "$BZREPO" feat/viva miDevelop && bad "b3e: A5 REGRESIÓN — remota gone CON commits únicos se declaró zombie (PÉRDIDA DE DATOS)" || ok "b3e: remota gone CON commits únicos no equivalentes → NO zombie (conserva)"
+  # CASO 2 — remota gone SIN commits propios (squash-mergeada, patch-equivalente) → zombie (se barre)
+  git -C "$BZREPO" checkout -q -b feat/hecha miDevelop >/dev/null 2>&1
+  printf 'x\n' > "$BZREPO/f.txt"; git -C "$BZREPO" add f.txt >/dev/null 2>&1; git -C "$BZREPO" commit -qm hecha >/dev/null 2>&1
+  git -C "$BZREPO" push -q -u origin feat/hecha >/dev/null 2>&1
+  git -C "$BZREPO" checkout -q miDevelop >/dev/null 2>&1
+  git -C "$BZREPO" merge --squash feat/hecha >/dev/null 2>&1; git -C "$BZREPO" commit -qm "squash feat/hecha" >/dev/null 2>&1   # integra su parche
+  git -C "$BZREPO" push -q origin --delete feat/hecha >/dev/null 2>&1   # remota borrada al mergear
+  bz_es_zombie "$BZREPO" feat/hecha miDevelop && ok "b3e: remota gone SIN commits únicos (patch-equivalente) → zombie (se barre)" || bad "b3e: no barrió una rama genuinamente integrada con remota gone"
+)
+rm -rf "$BZROOT"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (b3f) delegacion-reporte: solo reacciona a Task, y el nudge es CONDICIONAL a mutación (FMEA MEDIO-6) =="
+# MEDIO-6 (cry-wolf): antes gritaba "appenda bitácora / limpia worktree" para TODO Task, incluidos los
+# read-only (búsquedas, auditorías) → el orquestador se desensibiliza. Fix: el mensaje se subordina a la
+# mutación ("SI tu agente mutó… / SI fue read-only, ignóralo"). No se puede detectar la mutación fiable
+# desde PostToolUse (vive en el transcript del sub-agente), así que se suaviza el texto en vez de adivinar.
+dr() { printf '%s' "$1" | bash "$HOOKS/delegacion-reporte.sh"; }
+is_silent "$(dr '{"tool_name":"Bash"}')" && ok "delegacion-reporte: tool no-Task → silencio" || bad "delegacion-reporte: reaccionó a un no-Task"
+DROUT="$(dr '{"tool_name":"Task"}')"
+printf '%s' "$DROUT" | jq -e '.hookSpecificOutput.hookEventName == "PostToolUse"' >/dev/null 2>&1 \
+  && ok "delegacion-reporte: Task → emite hookSpecificOutput PostToolUse válido" || bad "delegacion-reporte: JSON PostToolUse inválido; got: $DROUT"
+printf '%s' "$DROUT" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -qiE 'si .*mut|read-only' \
+  && ok "delegacion-reporte: el nudge es CONDICIONAL a mutación (no un grito para todo Task)" || bad "delegacion-reporte: el nudge no quedó condicionado a mutación (cry-wolf)"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "== (b3c) git-branch-guard: bloquea push/merge REAL a main/develop, NO una MENCIÓN entrecomillada =="
 # HOME AISLADO SIN copia global del hook: si no, la cláusula de dedupe doble-cableado (la copia del
 # repo CEDE cuando existe ~/.claude/hooks/…) haría que el guard salga en silencio en una máquina con el
@@ -832,6 +884,23 @@ printf '# Hilo mental actual\n> Última actualización: 2026-07-13 · rama otra-
 rhbranch="$(printf '%s' '{"source":"resume"}' | HILO_STALE_HORAS=100000 CLAUDE_PROJECT_DIR="$RHGIT" bash "$HOOKS/rehidratar-hilo.sh")"
 printf '%s' "$rhbranch" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'OBSOLETO' \
   && ok "rehidratar-hilo: hilo de OTRA rama → OBSOLETO (aunque fresco)" || bad "rehidratar-hilo: esperaba OBSOLETO por rama; got: $rhbranch"
+# staleness (A8): hilo de la rama ACTUAL con mtime VIEJO (>12h) → NO obsoleto (la vigencia la manda la
+# rama, no el reloj). Antes, una sesión larga (>12h) en la misma rama enterraba su PROPIO hilo vigente.
+RHSAME="$(mktemp -d "${TMPDIR:-/tmp}/brain-rhs.XXXXXX")"
+git -C "$RHSAME" init -q >/dev/null 2>&1; git -C "$RHSAME" config user.email t@t >/dev/null 2>&1
+git -C "$RHSAME" config user.name tester >/dev/null 2>&1; git -C "$RHSAME" checkout -q -b trabajo-actual >/dev/null 2>&1
+printf 'x\n' > "$RHSAME/a.txt"; git -C "$RHSAME" add a.txt >/dev/null 2>&1; git -C "$RHSAME" commit -qm base >/dev/null 2>&1   # rama con commit → HEAD nombrado (no unborn)
+mkdir -p "$RHSAME/.claude/memory"
+printf '# Hilo mental actual\n> Última actualización: 2026-07-13 · rama trabajo-actual\nMARCA_SAME\n' > "$RHSAME/.claude/memory/hilo-mental-actual.md"
+touch -t 202001010000 "$RHSAME/.claude/memory/hilo-mental-actual.md" 2>/dev/null   # 6 años → age stale por reloj
+rhsame="$(printf '%s' '{"source":"resume"}' | CLAUDE_PROJECT_DIR="$RHSAME" bash "$HOOKS/rehidratar-hilo.sh")"
+rhsame_ctx="$(printf '%s' "$rhsame" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null)"
+printf '%s' "$rhsame_ctx" | grep -q 'POSIBLEMENTE OBSOLETO' \
+  && bad "rehidratar-hilo A8: hilo de la rama ACTUAL con mtime 13h+ se marcó OBSOLETO por edad (falso positivo)" \
+  || ok "rehidratar-hilo A8: hilo de la rama actual con mtime viejo → NO obsoleto (vigencia por rama)"
+printf '%s' "$rhsame_ctx" | grep -q 'HILO MENTAL ACTUAL' \
+  && ok "rehidratar-hilo A8: encabezado normal (rehidrata el hilo vigente pese a la edad)" || bad "rehidratar-hilo A8: no reinyectó con encabezado normal; got: $rhsame_ctx"
+rm -rf "$RHSAME"
 rm -rf "$RHGIT" "$RHROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────
