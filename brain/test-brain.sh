@@ -1457,5 +1457,115 @@ done
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (e6) MANIFEST bien formado: 3 campos · tier ∈ {global,repo,both} · kind ∈ {hook,lib,script} =="
+# El MANIFEST es la FUENTE ÚNICA; una línea mal formada (2 campos, tier/kind con typo) haría que las
+# rutas que DERIVAN de él (install/sincronizar/drift-check) clasifiquen mal o salten un hook en silencio.
+MF="$HOOKS/MANIFEST"
+if [ ! -f "$MF" ]; then
+  bad "e6: falta el MANIFEST ($MF)"
+else
+  mf_bad=0
+  while read -r name tier kind extra; do
+    [ -z "$name" ] && continue                       # línea en blanco
+    case "$name" in \#*) continue;; esac             # comentario
+    if [ -z "$kind" ] || [ -n "$extra" ]; then
+      bad "e6: línea sin EXACTAMENTE 3 campos: '$name $tier $kind $extra'"; mf_bad=1; continue
+    fi
+    case "$tier" in global|repo|both) ;; *) bad "e6: tier inválido '$tier' (entrada $name)"; mf_bad=1;; esac
+    case "$kind" in hook|lib|script) ;; *) bad "e6: kind inválido '$kind' (entrada $name)"; mf_bad=1;; esac
+  done < "$MF"
+  [ "$mf_bad" = 0 ] && ok "e6: toda línea del MANIFEST tiene 3 campos con tier ∈ {global,repo,both} y kind ∈ {hook,lib,script}"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo "== (e6b) install-brain: EXACTAMENTE 8 hooks en PreToolUse/Bash + aviso-contexto en PostToolUse =="
+# El fan-out de guards sobre Bash es un set CERRADO de 8; aviso-contexto es el 9º pero va en PostToolUse
+# (casa toda tool). Si alguien agrega/quita un register_hook de Bash sin querer, este test lo caza.
+want_bash="git-branch-guard merge-squash-guard confirmar-merge-develop secret-scan recordar-dashboard entorno-maquina-guard rama-vieja proteger-arbol"
+want_bash_sorted="$(printf '%s\n' $want_bash | sort | tr '\n' ' ' | sed 's/ *$//')"
+got_bash="$(grep -E 'register_hook +PreToolUse +Bash' "$INSTALLER" | sed -E "s/.*'([^']*)' *\$/\1/" | sort | tr '\n' ' ' | sed 's/ *$//')"
+if [ "$got_bash" = "$want_bash_sorted" ]; then
+  ok "e6b: PreToolUse/Bash cabla EXACTAMENTE los 8 guards esperados"
+else
+  bad "e6b: el set de register_hook PreToolUse/Bash cambió · got:[$got_bash] want:[$want_bash_sorted]"
+fi
+grep -qE 'register_hook +PostToolUse +.*aviso-contexto' "$INSTALLER" \
+  && ok "e6b: aviso-contexto está cableado en PostToolUse (el 9º, NO en Bash)" \
+  || bad "e6b: aviso-contexto NO está en PostToolUse"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo "== (e6c) doc=realidad: cada kind=hook del MANIFEST aparece en el árbol del README (sA2/B1) =="
+# El árbol del README omitía recordar-cosechar/recordar-unificar-cerebro/barrer-ramas → doc que miente.
+RM="$SCRIPT_DIR/README.md"
+if [ ! -f "$RM" ] || [ ! -f "$MF" ]; then
+  bad "e6c: falta README.md o MANIFEST"
+else
+  miss_rm=0
+  for b in $(awk '$1!~/^#/ && NF>=3 && $3=="hook"{print $1}' "$MF"); do
+    grep -qF "\`$b.sh\`" "$RM" || { bad "e6c: el hook '$b' del MANIFEST NO aparece en el árbol del README"; miss_rm=1; }
+  done
+  [ "$miss_rm" = 0 ] && ok "e6c: todo kind=hook del MANIFEST está documentado en el README"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo "== (e6d) wiring FIELD-check: un settings.json semilla cabla TODOS los kind=hook {repo,both} (C1) =="
+# e2(4) valida la FÁBRICA (register_hook en install-brain). Esto valida el RESULTADO: corre
+# sincronizar-cerebro contra un repo semilla y verifica que su settings.json REAL cablee cada hook
+# {repo,both} — cierra el hueco C1 (drift de cableado invisible entre manifiesto y settings desplegado).
+SYNC2="$SCRIPT_DIR/sincronizar-cerebro.sh"
+if [ ! -f "$SYNC2" ] || [ ! -f "$MF" ]; then
+  bad "e6d: falta sincronizar-cerebro.sh o MANIFEST"
+else
+  E6D="$(mktemp -d "${TMPDIR:-/tmp}/brain-e6d.XXXXXX")"
+  bash "$SYNC2" "$E6D" --apply >/dev/null 2>&1
+  SET6D="$E6D/.claude/settings.json"
+  if [ ! -f "$SET6D" ]; then
+    bad "e6d: sincronizar --apply no creó $SET6D"
+  else
+    miss_wire=0
+    for b in $(awk '$1!~/^#/ && NF>=3 && ($2=="repo"||$2=="both") && $3=="hook"{print $1}' "$MF"); do
+      grep -qF "$b.sh" "$SET6D" || { bad "e6d: '$b' ({repo,both} hook) NO quedó cableado en el settings.json semilla"; miss_wire=$((miss_wire+1)); }
+    done
+    [ "$miss_wire" = 0 ] && ok "e6d: settings.json semilla cabla TODOS los kind=hook {repo,both} del MANIFEST (0 cableado faltante)"
+  fi
+  rm -rf "$E6D"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo "== (e6e) .brain-version bien formado: 2 líneas · v=<PREFIJO>.<count> (count real ≠0) · fecha =="
+# Contrato de DOS LÍNEAS (install-brain / sincronizar): l1 = <PREFIJO>.<commit-count> · l2 = YYYY-MM-DD.
+# El widget del cerebro LEE este estampado; un formato roto = versión mal mostrada.
+if [ ! -f "$SYNC2" ]; then
+  bad "e6e: falta sincronizar-cerebro.sh"
+else
+  E6E="$(mktemp -d "${TMPDIR:-/tmp}/brain-e6e.XXXXXX")"
+  bash "$SYNC2" "$E6E" --apply >/dev/null 2>&1
+  BV="$E6E/.claude/hooks/.brain-version"
+  if [ ! -f "$BV" ]; then
+    bad "e6e: sincronizar --apply no estampó .brain-version en $BV"
+  else
+    nlines="$(grep -c '' "$BV")"
+    l1="$(sed -n '1p' "$BV")"; l2="$(sed -n '2p' "$BV")"
+    [ "$nlines" = 2 ] && ok "e6e: .brain-version tiene 2 líneas" || bad "e6e: .brain-version tiene $nlines líneas (esperaba 2)"
+    if printf '%s' "$l1" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+      ok "e6e: la versión ($l1) casa <PREFIJO>.<count> (num.num.num)"
+    else
+      bad "e6e: la versión '$l1' NO casa el formato num.num.num"
+    fi
+    cnt="${l1##*.}"
+    if [ -n "$cnt" ] && [ "$cnt" -gt 0 ] 2>/dev/null; then
+      ok "e6e: el commit-count del estampado es real (=$cnt, no 0)"
+    else
+      bad "e6e: el commit-count del estampado es 0/ausente ('$l1')"
+    fi
+    printf '%s' "$l2" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' \
+      && ok "e6e: la 2ª línea es una fecha YYYY-MM-DD ($l2)" \
+      || bad "e6e: la 2ª línea NO es una fecha YYYY-MM-DD ('$l2')"
+  fi
+  rm -rf "$E6E"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "==> resultado: $PASS PASS · $FAIL FAIL"
 [ "$FAIL" -eq 0 ]
