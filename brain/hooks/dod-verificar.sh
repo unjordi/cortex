@@ -112,11 +112,27 @@ if [ "$claim" != si ]; then
   printf '%s' "$_lastline" | grep -qE '[?？][")»'"'"'”]*$' && exit 0
 fi
 
-# Marca de (1) confirmación de funcionalidad o (2) autorización expresa de cierre, CITADA en el mensaje.
-# (Se computa AQUÍ ARRIBA porque B2 también la usa: si el usuario ya confirmó, citar SU QA visual es
-# válido — no un claim a ciegas de Claude.)
-CONF_RE='confirm[oó]|valid[oó]|validaste|luz verde (expresa|para cerrar)|autoriz[oó]|visto bueno|aprob[oó]|dio el ok|diste (el ok|luz)|me diste (luz|el ok|autoriz)|el (usuario|responsable) (confirm|valid|dio|acept|aprob)|QA (visual|funcional).{0,20}(ok|pas|verde|aprob)'
-printf '%s' "$last" | grep -qiE "$CONF_RE" && conf=si || conf=no
+# Marca de (1) confirmación de funcionalidad o (2) autorización expresa de cierre.
+# ALTO-1 (FMEA 2026-07-30): la marca se deriva de los MENSAJES DEL USUARIO del turno, NUNCA de la
+# prosa del propio Claude ($last). Antes se evaluaba contra $last → Claude narraba "el usuario ya
+# validó" y el candado que prohíbe FABRICAR autorización se AUTO-SATISFACÍA (auto-atestiguamiento). Se
+# leen los mensajes role=user del turno (mismo recorte que $turn); el clasificador auto-mode externo
+# queda como backstop. (Se computa AQUÍ ARRIBA porque B2 también la usa: si el usuario ya confirmó,
+# citar SU QA visual es válido — no un claim a ciegas de Claude.)
+usertext=$(printf '%s\n' "$turn" | jq -rs '
+  [ .[] | select((.message.role // .type)=="user")
+        | ((.message.content // [.message])
+           | if type=="array"
+             then (map(if type=="string" then . elif (.type? == "text") then .text else "" end) | join(" "))
+             else (. // "") end)
+        | select(. != "") ] | join("  ")' 2>/dev/null)
+# Léxico del USUARIO: confirmación de funcionalidad o autorización EXPRESA de cierre (incluye los
+# imperativos de cierre — "ciérralo", "sí, quedó, ciérralo"). NO incluye narración en 3ª persona ("el
+# usuario confirmó"): eso solo lo escribiría Claude, y es justo el auto-atestiguamiento que ALTO-1 veta.
+# Fail-safe: si $usertext queda vacío (error de parseo/turno raro), conf=no → el candado se mantiene
+# ESTRICTO (dirección segura: nunca afloja por un parseo fallido).
+CONF_RE='confirm(o|é|ó|ado|amos)|lo confirm|valid(é|e|o|ó|ado|amos)|lo valid[eé]|luz verde|autoriz(o|é|ó|ado)|visto bueno|aprob(ado|é|ó|amos)|diste (el ok|luz)|dio el ok|me diste (luz|el ok|autoriz)|ci[eé]rra(lo|la|los)?|QA (visual|funcional).{0,20}(ok|pas|verde|aprob)'
+printf '%s' "$usertext" | grep -qiE "$CONF_RE" && conf=si || conf=no
 
 # ── B2: ¿afirma una OBSERVACIÓN VISUAL sin haber mirado la pantalla en ESTE turno? (léxico ANCLADO a
 # mockup/pantalla/chrome/render/QA-visual — no un "se ve bien" casual). Si además NO corrió ninguna
