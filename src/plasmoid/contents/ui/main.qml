@@ -1026,8 +1026,9 @@ PlasmoidItem {
         root.updating = true
         root.updateMessage = ""
         var repo = root.updRepoPath
-        var inner = "cd '" + repo + "' && git fetch origin --quiet && git merge --ff-only origin/main"
-                  + " && bash '" + repo + "/install.sh'"
+        // Escapa la ruta del clon con shq (comillas simples POSIX): una ruta con un ' la partia sin esto.
+        var inner = "cd " + shq(repo) + " && git fetch origin --quiet && git merge --ff-only origin/main"
+                  + " && bash " + shq(repo + "/install.sh")
         var cmd = "nohup bash -lc \"" + inner + "\" >/tmp/claude-brain-update.log 2>&1"
         updateRunSource.connectSource(cmd)
     }
