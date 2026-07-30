@@ -264,20 +264,35 @@ PlasmoidItem {
         engine: "executable"
         connectedSources: []
         onNewData: function(source, data) {
+            var embedded = ""
             if (data["exit code"] === 0 && data.stdout) {
                 try {
                     var o = JSON.parse(data.stdout)
                     root.updLocalShort = o.sha ? o.sha : "?"
-                    root.updRepoPath = o.repo ? o.repo : ""
                     root.updLocalDate = o.date ? o.date : ""
-                    // Auto-update posible solo si version.json trae un repo (clon en disco); si no,
-                    // el botón invita a hacerlo a mano. FAIL-OPEN.
-                    root.updCanSelfUpdate = root.updRepoPath !== ""
+                    embedded = o.repo ? o.repo : ""
                 } catch (e) { /* fail-open: build sin version.json → no molesta */ }
             }
             disconnectSource(source)
+            // H2 — NO confíes ciegamente en version.json.repo: puede no existir en ESTE disco (repo movido,
+            // version.json horneado en otra máquina). Resuelve la ruta REAL con fallback y solo entonces
+            // habilita el auto-update (espeja resolveClonePath de Updater.swift/.cs). Encadena checkUpdateRemote.
+            root.resolveRepoPath(embedded)
+        }
+    }
+
+    // Autoupdate (1b/3): resuelve la ruta REAL del clon con fallback (H2) antes de habilitar el auto-update.
+    P5Support.DataSource {
+        id: repoResolveSource
+        engine: "executable"
+        connectedSources: []
+        onNewData: function(source, data) {
+            var resolved = (data["exit code"] === 0 && data.stdout) ? ("" + data.stdout).trim() : ""
+            root.updRepoPath = resolved
+            root.updCanSelfUpdate = resolved !== ""   // hay clon REAL en disco → botón auto; si no, a mano
+            disconnectSource(source)
             root.updLocalLoaded = true
-            root.checkUpdateRemote()   // encadena la consulta a GitHub
+            root.checkUpdateRemote()   // encadena la consulta a GitHub (igual que antes, ahora tras resolver)
         }
     }
 
@@ -1014,6 +1029,16 @@ PlasmoidItem {
             root.checkUpdateRemote()
         }
     }
+    // H2 — resuelve la ruta REAL del clon con fallback (espeja resolveClonePath de Updater.swift/.cs):
+    // 1º el repo embebido en version.json, 2º $CLAUDE_BRAIN_DIR, 3º el clon canónico $HOME/.claude-brain.
+    // Gana el PRIMERO que exista en disco con la marca install.sh (la misma que runUpdate ejecuta). Así un
+    // version.json horneado en otra máquina / con el repo movido no habilita un auto-update que haría cd a
+    // una ruta muerta. Se resuelve por shell (QML JS no lee env ni prueba archivos). FAIL-OPEN: "" → a mano.
+    function resolveRepoPath(embedded) {
+        var cmd = 'for c in ' + shq(embedded) + ' "$CLAUDE_BRAIN_DIR" "$HOME/.claude-brain"; do '
+                + '[ -n "$c" ] && [ -f "$c/install.sh" ] && { printf %s "$c"; break; }; done'
+        repoResolveSource.connectSource(cmd)
+    }
     function checkUpdateRemote() {
         if (root.updLocalShort === "?") return   // sin version.json (build viejo) → no molesta
         var url = "https://api.github.com/repos/" + root.updSlug + "/commits/main"
@@ -1029,8 +1054,9 @@ PlasmoidItem {
         root.updating = true
         root.updateMessage = ""
         var repo = root.updRepoPath
-        var inner = "cd '" + repo + "' && git fetch origin --quiet && git merge --ff-only origin/main"
-                  + " && bash '" + repo + "/install.sh'"
+        // Escapa la ruta del clon con shq (comillas simples POSIX): una ruta con un ' la partia sin esto.
+        var inner = "cd " + shq(repo) + " && git fetch origin --quiet && git merge --ff-only origin/main"
+                  + " && bash " + shq(repo + "/install.sh")
         var cmd = "nohup bash -lc \"" + inner + "\" >/tmp/claude-brain-update.log 2>&1"
         updateRunSource.connectSource(cmd)
     }
