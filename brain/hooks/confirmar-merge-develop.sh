@@ -64,11 +64,13 @@ tpath=$(printf '%s' "$input" | jq -r '.transcript_path // empty' 2>/dev/null)
 if [ -n "$tpath" ] && [ -f "$tpath" ]; then
   recent=$(tail -n 4000 "$tpath" 2>/dev/null | jq -rs '
     [ .[] | select((.message.role // .type)=="user")
+          | select((.isMeta // false) != true)         # A-06 (FMEA): descarta mensajes META/inyectados (no son del usuario)
           | ((.message.content // [.message])
              | if type=="array"
                then (map(if type=="string" then . elif (.type? == "text") then .text else "" end) | join(" "))
                else (. // "") end)
-          | select(. != "") ]                 # descarta tool_result (mapea a "") → solo texto real del usuario
+          | select(. != "")                   # descarta tool_result (mapea a "") → solo texto real del usuario
+          | select(test("<system-reminder>") | not) ]  # A-06: descarta bloques con marca de inyección (CLAUDE.md/recordatorios)
     | .[-10:] | join("\n")' 2>/dev/null)   # UNA línea por mensaje de usuario → permite filtrar por-línea
 fi                                          # (negación adyacente A3 · id de MR ligado al OK A4)
 
@@ -79,11 +81,14 @@ fi                                          # (negación adyacente A3 · id de M
 #   (A3) NO trae una negación (no|sin|nunca|jamás — cubre "todavía no"/"aún no", que contienen "no");
 #   (A4) si LIGA el OK a un MR-id explícito ("mergea el MR 5"), ese id coincide con el del comando actual.
 #        Un OK GENÉRICO (sin id) conserva el comportamiento por RECENCIA (no se endurece de más).
-NEG_RE='\b(no|sin|nunca|jam[aá]s)\b'
+# A-05 (FMEA): además de no/sin/nunca/jamás, cubre negaciones/prohibiciones frecuentes que traían un verbo
+# de merge y pasaban como OK ("ni se te ocurra mergear el 5", "para nada", "de ninguna manera", "tampoco",
+# "evita"). "ni se te ocurra"/"ni loco" van como frase para no atrapar "ni bien" (= apenas), que NO niega.
+NEG_RE='(\b(no|sin|nunca|jam[aá]s|tampoco|evit[aeé][a-z]*)\b|para nada|de ninguna manera|de ning[uú]n modo|ni se te ocurra|ni loc[ao])'
 # Verbo de merge/OK inmediatamente seguido de (el)? (MR)? #?<n> → marca que el OK va dirigido a ESE MR.
 BOUND_OK_RE='(merg[eé]a[a-zé]*|mérga(lo|los)?|dale( el)? merge|integr[ao][a-zé]*|emp[uú]j[a-zé]*|s[uú]b[a-zé]*|m[aá]nd[a-zé]*|m[eé]t[ae][a-zé]*)[[:space:]]+(el[[:space:]]+)?(mr[[:space:]]+)?#?[0-9]+'
 # MR-id del COMANDO actual (para la ligadura A4). Vacío si el comando no nombra id → A4 no aplica (recencia).
-cur_mrid=$(printf '%s' "$(acg_despoja_comillas "$cmd")" | grep -oiE '(mr[[:space:]]+(merge|accept)|pr[[:space:]]+merge)[[:space:]]+#?[0-9]+' | grep -oE '[0-9]+$')
+cur_mrid=$(acg_mrid "$(acg_despoja_comillas "$cmd")")   # A-04 (FMEA): id tolerante a flags (`--yes 9`), vía la lib
 
 # ¿hay en $recent una línea que sea un OK VÁLIDO (no negado y no ligado a OTRO MR) para $1 (regex de OK)?
 _ok_para_este_merge() {

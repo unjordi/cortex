@@ -12,11 +12,27 @@ acg_despoja_comillas() { printf '%s' "$1" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g";
 # /develop|/main NO genere un falso positivo de destino. (H11.)
 acg_sin_flag_repo() { printf '%s' "$1" | sed -E 's/(--repo|-R)[[:space:]=]+[^[:space:]]+//g'; }
 
+# Colapsa el PREFIJO de opciones globales de git (`-c k=v`, `-C dir`) entre `git` y su subcomando →
+# `git -c http.sslVerify=false push …` se normaliza a `git push …`. Sin esto, la adyacencia `git+push`/
+# `git+commit` que exigen las detecciones se rompía y el comando evadía tanto los git-guards como el
+# escaneo de secretos (A-03, FMEA 2026-07-30). `(…)+` en ERE lo soportan GNU y BSD sed. Solo casa `-c/-C`
+# INMEDIATAMENTE tras `git` (no
+# el `-c` de `git commit -c <commit>`, que va tras el subcomando).
+acg_normaliza_git_prefijo() {
+  printf '%s' "$1" | sed -E 's/git[[:space:]]+((-c|-C)[[:space:]]+[^[:space:]]+[[:space:]]+)+/git /g'
+}
+
 # Raíz y rama actual del repo del PROYECTO (CLAUDE_PROJECT_DIR), no del cwd del hook.
 acg_rama_actual() { git -C "${CLAUDE_PROJECT_DIR:-.}" rev-parse --abbrev-ref HEAD 2>/dev/null; }
 
 # ¿el comando contiene un `git push`?
 acg_es_push() { printf '%s' "$1" | grep -qE 'git[[:space:]]+push([[:space:]]|$)'; }
+
+# Extrae el MR-id del comando: el 1er entero "suelto" (opcional #) tras `mr merge`/`pr merge`, TOLERANTE a
+# flags intermedios (`glab mr merge --yes 9` → 9). Antes se exigía el id ADYACENTE al subcomando (A-04, FMEA).
+acg_mrid() {
+  printf '%s' "$1" | sed -E 's/.*(mr[[:space:]]+(merge|accept)|pr[[:space:]]+merge)[[:space:]]+//' | tr ' ' '\n' | grep -m1 -E '^#?[0-9]+$' | tr -d '#'
+}
 
 # ¿nombra develop/main como DESTINO explícito del push, en el MISMO segmento (no cruza ; && ||),
 # precedido por espacio/:/'/'/'+' (no matchea feat/develop-x)? El '+' cubre el FORCE-REFSPEC
@@ -48,8 +64,16 @@ acg_push_sin_refspec() {
 # develop/main. Opera sobre el cmd SIN comillas ni --repo. Cierra H1 (+ H11/H13). Requiere git para
 # el caso pelón; sin git cae a fail-open en ese caso (backstop = ramas protegidas server-side).
 acg_push_toca_base() {
-  local u; u=$(acg_sin_flag_repo "$(acg_despoja_comillas "$1")")
+  local raw u
+  raw=$(acg_normaliza_git_prefijo "$1")   # A-03: colapsa `git -c/-C …` para no romper la adyacencia git+push
+  # A-01: un destino base ENTRECOMILLADO en el segmento del push (`git push origin "develop"`). despoja_comillas
+  # lo borraría → chequear en CRUDO (sobre el normalizado). El segmento `git[[:space:]]+push[^;&|]*` no cruza
+  # ; && || → un mensaje entrecomillado de OTRO subcomando encadenado no contamina.
+  printf '%s' "$raw" | grep -qE "git[[:space:]]+push[^;&|]*[[:space:]]['\"]\+?(main|develop)(:[^[:space:]'\"]*)?['\"]" && return 0
+  u=$(acg_sin_flag_repo "$(acg_despoja_comillas "$raw")")
   acg_es_push "$u" || return 1
+  # A-02: --all/--mirror empujan TODAS las refs locales (incl develop/main) sin nombrarlas → toca base incondicional.
+  printf '%s' "$u" | grep -qE 'git[[:space:]]+push[^;&|]*[[:space:]](--all|--mirror)([[:space:]]|$)' && return 0
   acg_push_destino_base "$u" && return 0
   if acg_push_sin_refspec "$u"; then
     case "$(acg_rama_actual)" in main|develop) return 0 ;; esac
@@ -115,7 +139,7 @@ acg_destino_de_mr() {
   if printf '%s' "$u" | grep -qE 'glab[[:space:]]+mr'; then tool=glab; else tool=gh; fi
   repo=$(printf '%s' "$raw" | grep -oE '(--repo|-R)[[:space:]=]+[^[:space:]]+' | grep -oE '[^[:space:]=]+$')
   [ -z "$repo" ] && repo=$(git -C "${CLAUDE_PROJECT_DIR:-.}" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|https?://[^/]+/)##; s#\.git$##')
-  mrid=$(printf '%s' "$u" | grep -oE '(mr[[:space:]]+(merge|accept)|pr[[:space:]]+merge)[[:space:]]+#?[0-9]+' | grep -oE '[0-9]+$')
+  mrid=$(acg_mrid "$u")
   [ -n "$mrid" ] || return 0
   key=$(printf '%s' "${repo}|${tool}|${mrid}" | sed 's/[^A-Za-z0-9]/_/g')
   cache="${TMPDIR:-/tmp}/acg-mrdest-${key}"

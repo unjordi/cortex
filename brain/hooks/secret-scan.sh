@@ -58,8 +58,18 @@ if command -v acg_despoja_comillas >/dev/null 2>&1; then
 else
   cmd_uq=$(printf '%s' "$cmd" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g")
 fi
+# A-03 (FMEA): colapsa el prefijo `git -c k=v`/`-C dir` para que `git -c … commit` NO evada la adyacencia
+# git+commit/push del gate (ese prefijo cegaba el escaneo). Reusa el normalizador de la lib si está.
+if command -v acg_normaliza_git_prefijo >/dev/null 2>&1; then
+  cmd_uq=$(acg_normaliza_git_prefijo "$cmd_uq")
+else
+  cmd_uq=$(printf '%s' "$cmd_uq" | sed -E 's/git[[:space:]]+((-c|-C)[[:space:]]+[^[:space:]]+[[:space:]]+)+/git /g')
+fi
 
 # ¿Es un commit o un push? Si no, no es asunto de este guard (NO es "no poder escanear" → nunca strict-bloquea).
+# LÍMITE CONOCIDO (A-07, FMEA): casa el subcomando LITERAL commit/push; un ALIAS de git del usuario (`git ci`,
+# `git psh`) NO matchea → el guard queda inerte en ese caso. Cubrirlo genéricamente exigiría resolver los alias
+# (`git config --get alias.*`) por-máquina; se documenta como límite aceptado (depende de config personal, no universal).
 printf '%s' "$cmd_uq" | grep -qE 'git[[:space:]]+(commit|push)' || exit 0
 # Escapes deliberados (el humano manda) — ganan incluso en strict.
 [ "${CLAUDE_SKIP_SECRET_SCAN:-}" = "1" ] && exit 0

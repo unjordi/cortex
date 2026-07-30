@@ -232,6 +232,15 @@ printf '%s' "$(gb 'git push origin +main')"       | grep -q '"deny"' && ok "gbg 
 is_silent "$(gb 'git push origin feat/x')"        && ok "gbg A2: 'git push origin feat/x' explícito → silencio (sin falso positivo del '+')" || bad "gbg A2: falso positivo al agregar '+' al set (bloqueó una ramita)"
 is_silent "$(gb 'git commit -m "doc: no hacer git push a develop"')" && ok "gbg H13: 'git push a develop' entrecomillado → silencio" || bad "gbg H13: mención entrecomillada disparó"
 is_silent "$(gb 'gh pr merge 5 -R org/develop --squash')" && ok "gbg H11: '-R org/develop' (nombre de repo) → silencio" || bad "gbg H11: -R org/develop disparó falso positivo"
+# ── wave4 (FMEA post-integración 2026-07-30): evasiones de git-branch-guard CERRADAS. Parado en feat/x
+# (rama NO-base): estas formas empujaban a base SIN que el fallback por rama actual disparara. ──
+printf '%s' "$(gb 'git push origin "develop"')" | grep -q '"deny"' && ok "gbg A-01: destino ENTRECOMILLADO develop → deny" || bad "gbg A-01: destino entrecomillado se coló (bypass comillas)"
+printf '%s' "$(gb "git push origin 'main'")"    | grep -q '"deny"' && ok "gbg A-01: destino entrecomillado main (comilla simple) → deny" || bad "gbg A-01: comilla simple se coló"
+printf '%s' "$(gb 'git push --all origin')"     | grep -q '"deny"' && ok "gbg A-02: 'git push --all' → deny (empuja todas las refs, incl base)" || bad "gbg A-02: --all se coló"
+printf '%s' "$(gb 'git push --mirror origin')"  | grep -q '"deny"' && ok "gbg A-02: 'git push --mirror' → deny" || bad "gbg A-02: --mirror se coló"
+printf '%s' "$(gb 'git -c http.sslVerify=false push origin develop')" | grep -q '"deny"' && ok "gbg A-03: prefijo 'git -c … push develop' → deny" || bad "gbg A-03: el prefijo 'git -c' rompió la adyacencia (bypass)"
+printf '%s' "$(gb 'git -C /tmp push origin main')" | grep -q '"deny"' && ok "gbg A-03: prefijo 'git -C dir push main' → deny" || bad "gbg A-03: 'git -C' se coló"
+is_silent "$(gb 'git push origin "feat/x"')"    && ok "gbg A-01: ramita entrecomillada → silencio (sin falso positivo)" || bad "gbg A-01: bloqueó una ramita entrecomillada"
 rm -rf "$GBROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -274,6 +283,18 @@ is_deny "$(cm 'glab mr merge 5 --yes' 'sigue avanzando')" \
 is_silent "$(cm 'glab mr merge 62 --squash --yes' 'ya puedes empujar el brain a main')" \
   && ok "cmd: merge a develop con OK de RELEASE-a-main → pasa (el release cubre su paso a develop)" \
   || bad "cmd: falso-negativo — 'empujar a main' NO destrabó el merge intermedio a develop"
+# ── wave4 (FMEA post-integración 2026-07-30) ──
+# A-04: el id del MR puede ir DESPUÉS de un flag (`glab mr merge --yes 9`). El OK debe ligarse a ESE id.
+is_deny "$(cm 'glab mr merge --yes 9' 'mergea el MR 5')" \
+  && ok "cmd A-04: id tras flag ('--yes 9') → el OK del MR 5 NO autoriza el 9 (deny)" \
+  || bad "cmd A-04: 'glab mr merge --yes 9' tomó el OK de OTRO MR (bypass A-04)"
+is_silent "$(cm 'glab mr merge --yes 9' 'mergea el 9')" \
+  && ok "cmd A-04: id tras flag con OK ligado a ESE id (9) → pasa" || bad "cmd A-04: no reconoció el OK ligado al 9"
+# A-05: negaciones fuera de no/sin/nunca/jamás que traen un verbo de merge NO cuentan como OK.
+is_deny "$(cm 'glab mr merge 5 --yes' 'ni se te ocurra mergear el 5')" \
+  && ok "cmd A-05: 'ni se te ocurra mergear' → deny (negación reconocida)" || bad "cmd A-05: 'ni se te ocurra' pasó como OK (bypass A-05)"
+is_deny "$(cm 'glab mr merge 5 --yes' 'de ninguna manera mergea el 5 ahora')" \
+  && ok "cmd A-05: 'de ninguna manera mergea' → deny" || bad "cmd A-05: 'de ninguna manera' pasó como OK"
 # Blindaje (NO se afloja el camino inverso): un OK de develop NUNCA autoriza un RELEASE a main.
 mock_cm_glab main
 is_deny "$(cm 'glab mr merge 63 --yes' 'mérgalo a develop')" \
@@ -503,6 +524,12 @@ printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan A7: --no-verify en el MEN
 # A7 (2) --no-verify REAL (bandera) sigue siendo escape legítimo → PASA (silencio)
 o="$(scanf 'git commit --no-verify -m x')"
 [ -z "$o" ] && ok "secret-scan A7: --no-verify como bandera real sigue saltando (escape legítimo)" || bad "secret-scan A7: --no-verify real dejó de saltar; got: $o"
+# A-03 (FMEA post-integración): el prefijo `git -c k=v … commit` ya NO ciega el escaneo (antes rompía la
+# adyacencia git+commit del gate). Secreto en un tracked modificado que -a estagearía → BLOQUEA.
+fmeareset; printf 'v\n' > "$FMEAREPO/gc.txt"; git -C "$FMEAREPO" add gc.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm gc >/dev/null 2>&1
+printf 'v\naws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/gc.txt"
+o="$(scanf 'git -c user.email=x commit -am x')"
+printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan A-03: 'git -c … commit -am' escanea (prefijo ya no ciega) → bloquea" || bad "secret-scan A-03: el prefijo 'git -c' cegó el escaneo; got: $o"
 rm -rf "$FMEAREPO"
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1820,6 +1847,16 @@ if [ -f "$BPS" ]; then
 else
   bad "e4: no encuentro bootstrap.ps1"
 fi
+# e4b (C1, FMEA post-integración 2026-07-30): la instalación MANUAL de Windows (install-brain.ps1 sin pasar
+# por bootstrap.ps1) también debe exportar CLAUDE_BRAIN_DIR, o el auto-sync cae MUDO por ese camino.
+IBPS="$SCRIPT_DIR/install-brain.ps1"
+if [ -f "$IBPS" ]; then
+  { grep -q "SetEnvironmentVariable('CLAUDE_BRAIN_DIR'" "$IBPS" && grep -qE "RepoRoot -replace" "$IBPS"; } \
+    && ok "e4b: install-brain.ps1 exporta CLAUDE_BRAIN_DIR (RepoRoot en forward-slash) — instalación manual Win no queda muda" \
+    || bad "e4b: install-brain.ps1 NO exporta CLAUDE_BRAIN_DIR → instalación manual en Windows falla mudo (C1)"
+else
+  bad "e4b: no encuentro install-brain.ps1"
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # (e6) COHERENCIA DE RUTAS CROSS-OS — batch de paridad que FALLA si se olvida un OS.
@@ -1991,6 +2028,32 @@ else
   done
   [ "$miss_rm" = 0 ] && ok "e6c: todo kind=hook del MANIFEST está documentado en el README"
 fi
+# e6c2 (B1, FMEA post-integración 2026-07-30): el árbol del README RAÍZ es la FUENTE que gen-leyenda-arbol
+# parsea para la leyenda de los flowcharts, y NADIE lo vigilaba contra el MANIFEST → drifteó (faltaban 4
+# hooks → leyenda incompleta). Formato de árbol = nombre pelón (sin `.sh`), dentro del bloque 🔒 Hooks Forzosos.
+RMROOT="$SCRIPT_DIR/../README.md"
+if [ -f "$RMROOT" ] && [ -f "$MF" ]; then
+  arbol_root=$(awk '/^🔒[[:space:]]+Hooks[[:space:]]+Forzosos/{c=1} c&&/^```/{exit} c' "$RMROOT")
+  miss_root=0
+  for b in $(awk '$1!~/^#/ && NF>=3 && $3=="hook"{print $1}' "$MF"); do
+    printf '%s' "$arbol_root" | grep -qF "$b" || { bad "e6c2: el hook '$b' del MANIFEST NO está en el árbol del README RAÍZ (la leyenda de los flowcharts lo omitiría)"; miss_root=1; }
+  done
+  [ "$miss_root" = 0 ] && ok "e6c2: todo kind=hook del MANIFEST está en el árbol del README RAÍZ (leyenda de flowcharts completa)"
+else
+  bad "e6c2: falta el README RAÍZ ($RMROOT) o el MANIFEST"
+fi
+# e6c3 (C5, FMEA post-integración 2026-07-30): el generador de la leyenda NO tenía test → un cambio de
+# formato del árbol del README lo rompía en SILENCIO (leyenda vacía). Corre el generador y afirma 4 familias
+# + suficientes filas de pieza (no-vacío).
+GEN="$SCRIPT_DIR/../docs/flowcharts/gen-leyenda-arbol.sh"
+if [ -f "$GEN" ]; then
+  genout=$(bash "$GEN" 2>/dev/null)
+  fams=$(printf '%s' "$genout" | grep -oE '🔒 Hooks Forzosos|🔔 Automático|📜 Normas|💡 Skills' | sort -u | grep -c .)
+  rows=$(printf '%s' "$genout" | grep -cE '<tr><td bgcolor.*</td><td bgcolor')
+  { [ "$fams" -eq 4 ] && [ "$rows" -ge 20 ]; } \
+    && ok "e6c3: gen-leyenda-arbol emite las 4 familias + $rows filas (no vacío)" \
+    || bad "e6c3: gen-leyenda-arbol salió incompleto (familias=$fams, filas=$rows) — ¿cambió el formato del árbol del README?"
+else bad "e6c3: no encuentro gen-leyenda-arbol.sh"; fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo "== (e6d) wiring FIELD-check: un settings.json semilla cabla TODOS los kind=hook {repo,both} (C1) =="

@@ -30,12 +30,16 @@ digraph flujos {
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🖥️ entorno-maquina-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">commit de algo machine-specific (aliases/rutas de $HOME/Rosetta/entorno-maquina.md) al .claude/memory/ del repo → avisa</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🕰️ rama-vieja</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">avisa si la ramita arrastra base vieja</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌳 proteger-arbol</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">git destructivo que orfanaría commits sin pushear → avisa (fan-out: usa worktree aislado)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🛡️ proteger-fuente-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">editar la copia INSTALADA de un hook/skill que tiene fuente en el clon → avisa (se perdería en el próximo sync) (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧹 barrer-ramas</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al abrir sesión barre en 2º plano las ramas locales ya integradas (zombie squash-safe; throttle 24h) (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📝 delegacion-registrar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">materializa el "pregunta una sola vez"</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📮 delegacion-reporte</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al terminar un agente: recuerda registrar avance + limpiar su worktree</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧵 rehidratar-hilo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta hilo-mental-actual.md al abrir/retomar/compactar (GLOBAL) — con gate de frescura</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📈 aviso-contexto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">watermark: avisa "compacta TÚ ahora" antes del auto-compact-sorpresa (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧬 aviso-drift-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">repo brained atrás de la fuente única → en tu mini-develop se AUTO-SINCRONIZA (apply+commit+push); en otra rama, avisa (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧭 sesion-inicio</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta rama + norma + memoria al abrir</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌾 recordar-cosechar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">nudge al cerrar turno: trabajaste y no cosechaste → corre /cosechar-sesion</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">⬆️ recordar-unificar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">tu mini acumuló aprendizajes sin UNIFICAR a develop → sugiere /unificar-cerebro (gemelo ↑ de aviso-drift)</font></td></tr>
         <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>📜 Normas</b></font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎯 Definition of Done</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">verde técnico ≠ Done/Listo/Ya Quedó; exige QA o un OK explícito</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🪞 Doc &lt;= realidad</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cambió algo → su doc se actualiza en la tanda</font></td></tr>
@@ -47,6 +51,7 @@ digraph flujos {
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">💧 rehidratar-hilo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">relee el HILO a mano (gemelo del hook; respaldo si un update del CLI rompe el auto-rehidratado)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧵 orquestar-fanout</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">fan-out sin niñera: asigna del backlog, auto-reporta y limpia al cerrar</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🗺️ diagramar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">diagramas por destino: .dot→dot2yed→yEd (editar a mano) · Mermaid en .md versionado (verse en GitHub)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔬 auditar-proceso-algoritmo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">auditor experto read-only (proceso industrial + algoritmo) → hallazgos priorizados; se alimenta de los flowcharts de diagramar</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌙 turno-nocturno</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">protocolo del turno de noche: eco del contrato, decide-dentro-de-la-cerca, grants durables a disco</font></td></tr>
       </table>>];
     LEY_VAL [shape=none, margin=0, label=<

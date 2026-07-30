@@ -49,7 +49,7 @@ nº de archivo ("ver **05**"), NUNCA circulado ①②③ (iba desfasado −1 sin
 ## 6. Fan-out compartido de un comando git en Bash = 9 hooks (raíz común de 03/04/05)
 Un comando `Bash` con git lo tocan **9 hooks**: **8 ANTES** (PreToolUse/Bash, en PARALELO, sin despachador,
 precedencia `deny>ask>allow`) + **1 DESPUÉS** (📈 aviso-contexto, PostToolUse). Los 8 pre (confirmado en
-`install-brain.sh:90-97`): 🚧 git-branch-guard · 🔗 merge-squash-guard · ✋ confirmar-merge-develop · 🕵️ secret-scan
+la función `ev_de` de `install-brain.sh`): 🚧 git-branch-guard · 🔗 merge-squash-guard · ✋ confirmar-merge-develop · 🕵️ secret-scan
 · 📊 recordar-dashboard · 🖥️ entorno-maquina-guard · 🕰️ rama-vieja · 🌳 proteger-arbol *(4 pueden DENY: los 3 de
 git + secret-scan)*. El 9º: 📈 aviso-contexto (post, no bloquea). 03/04/05 abren con esta raíz y hacen ZOOM
 sobre su subconjunto NOMBRANDO los 9. Prohibido "cascada secuencial" o "los 2 hooks".
