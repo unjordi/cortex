@@ -46,3 +46,6 @@ docs/flowcharts/*
 !docs/flowcharts/01-instalacion-actualizacion-del-cerebro.svg
 !docs/flowcharts/02-ciclo-de-vida-de-la-sesion.dot
 !docs/flowcharts/02-ciclo-de-vida-de-la-sesion.svg
+# El generador de la leyenda (lee el árbol del README → subgraph .dot) y las CONVENCIONES son FUENTE, se versionan.
+!docs/flowcharts/gen-leyenda-arbol.sh
+!docs/flowcharts/CONVENCIONES.md
