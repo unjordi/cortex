@@ -108,6 +108,7 @@ register_hook() {
 ev_de() {
   case "$1" in
     git-branch-guard|merge-squash-guard|confirmar-merge-develop|recordar-dashboard|secret-scan|entorno-maquina-guard|rama-vieja|proteger-arbol) echo "PreToolUse|Bash" ;;
+    proteger-fuente-cerebro) echo "PreToolUse|Edit|Write|MultiEdit" ;;
     limite-gasto|delegacion-gate) echo "PreToolUse|Task" ;;
     delegacion-registrar|delegacion-reporte) echo "PostToolUse|Task" ;;
     rehidratar-hilo|aviso-drift-cerebro|barrer-ramas) echo "SessionStart|" ;;
