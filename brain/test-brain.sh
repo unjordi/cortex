@@ -1360,6 +1360,102 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+# (e6) COHERENCIA DE RUTAS CROSS-OS — batch de paridad que FALLA si se olvida un OS.
+# Aserciones ESTÁTICAS sobre el fuente (estilo e4): cada instalador/updater/lector de las 3 GUIs
+# (bash/PowerShell · Swift/macOS · C#/Windows · QML/KDE) mantiene el MISMO contrato de rutas. Origen:
+# docs/auditoria-procesos-fmea-2026-07-30.md, ANEXO "Coherencia de RUTAS cross-OS".
+PR="$SCRIPT_DIR/.."
+
+echo ""
+echo "== (e6.1) install-brain.ps1 sigue siendo LANZADOR DELGADO (delega en bash install-brain.sh) =="
+IBPS="$SCRIPT_DIR/install-brain.ps1"
+if [ -f "$IBPS" ]; then
+  { grep -qF 'install-brain.sh' "$IBPS" && grep -qF '$bashExe' "$IBPS"; } \
+    && ok "e6.1: install-brain.ps1 delega en bash …/install-brain.sh" \
+    || bad "e6.1: install-brain.ps1 NO delega en bash install-brain.sh (¿dejó de ser lanzador delgado?)"
+  # NO reimplementa el cableado (no toca ~/.claude/hooks ni estampa .brain-version — eso es del .sh)
+  grep -qE '\.brain-version|\.claude[/\\]hooks|/hooks/[A-Za-z]' "$IBPS" \
+    && bad "e6.1: install-brain.ps1 parece CABLEAR por su cuenta (menciona hooks/.brain-version)" \
+    || ok "e6.1: install-brain.ps1 NO cabla por su cuenta (sin lógica de hooks/.brain-version)"
+else bad "e6.1: no encuentro install-brain.ps1"; fi
+
+echo ""
+echo "== (e6.2) bootstrap.ps1 alinea a main con 'checkout -B main origin/main' (== bootstrap.sh), no 'pull --ff-only' =="
+BPS2="$PR/bootstrap.ps1"; BSH2="$PR/bootstrap.sh"
+if [ -f "$BPS2" ] && [ -f "$BSH2" ]; then
+  grep -qF 'checkout -B main origin/main' "$BPS2" \
+    && ok "e6.2: bootstrap.ps1 usa 'checkout -B main origin/main'" \
+    || bad "e6.2: bootstrap.ps1 NO usa 'checkout -B main origin/main' (regresión de robustez H3)"
+  grep -qF 'pull --ff-only' "$BPS2" \
+    && bad "e6.2: bootstrap.ps1 aún tiene 'pull --ff-only' (rompe si el clon quedó en rama borrada)" \
+    || ok "e6.2: bootstrap.ps1 ya NO usa 'pull --ff-only'"
+  grep -qF 'checkout -B main origin/main' "$BSH2" \
+    && ok "e6.2: bootstrap.sh usa 'checkout -B main origin/main' (patrón de referencia)" \
+    || bad "e6.2: bootstrap.sh NO usa 'checkout -B main origin/main' (¿cambió la referencia?)"
+else bad "e6.2: no encuentro bootstrap.ps1 / bootstrap.sh"; fi
+
+echo ""
+echo "== (e6.3) ningún .sh/.ps1/.swift/.cs/.qml de envío hardcodea un \$HOME absoluto (/Users/·/home/·C:\\Users) =="
+# Excepciones legítimas: entorno-maquina-guard.sh (su razón de ser ES detectar esas rutas) y
+# test-brain.sh (este harness trae fixtures deliberados con /Users/fulano). Se ignoran comentarios de
+# línea completa (# en sh/ps1, // en swift/cs/qml) y los dirs de build (obj/bin).
+hp_hits=""
+while IFS= read -r f; do
+  case "$f" in */entorno-maquina-guard.sh|*/test-brain.sh) continue;; esac
+  if sed -E 's://.*$::; s:^[[:space:]]*#.*$::' "$f" 2>/dev/null \
+       | grep -qE '/Users/[A-Za-z0-9._-]+|/home/[A-Za-z0-9._-]+|[A-Za-z]:[\\/]Users'; then
+    hp_hits="${hp_hits:+$hp_hits }${f#"$PR"/}"
+  fi
+done < <(cd "$PR" && git ls-files '*.sh' '*.ps1' '*.swift' '*.cs' '*.qml' | grep -vE '/(obj|bin)/' | sed "s|^|$PR/|")
+[ -z "$hp_hits" ] \
+  && ok "e6.3: sin rutas \$HOME absolutas hardcodeadas en código de envío (todas parametrizadas)" \
+  || bad "e6.3: home absoluto hardcodeado en: $hp_hits"
+
+# (e6.4 — paridad del fallback resolveClonePath en los 3 updaters — OMITIDO a propósito: el puerto a
+#  QML quedó en BACKLOG (ver dictamen, H2). Sin los 3 updaters no se agrega su test para no dejarlo rojo.)
+
+echo ""
+echo "== (e6.5) los updaters escapan/citan la ruta del clon en el cd/Set-Location (fix H5) =="
+QML5="$PR/src/plasmoid/contents/ui/main.qml"
+SW5="$PR/macos/Sources/ClaudeBrain/Updater.swift"
+CS5="$PR/windows/src/ClaudeBrain/Updater.cs"
+if [ -f "$QML5" ]; then
+  { grep -qF 'cd " + shq(repo)' "$QML5" && ! grep -qF "cd '\" + repo" "$QML5"; } \
+    && ok "e6.5[qml]: el cd del update escapa la ruta con shq()" \
+    || bad "e6.5[qml]: el cd del update NO usa shq() (una ruta con ' se partiría — regresión H5)"
+else bad "e6.5[qml]: no encuentro main.qml"; fi
+if [ -f "$SW5" ]; then
+  grep -qF "cd '\\(repoPath)'" "$SW5" \
+    && ok "e6.5[swift]: el cd cita la ruta del clon entre comillas" \
+    || bad "e6.5[swift]: el cd NO cita la ruta del clon"
+else bad "e6.5[swift]: no encuentro Updater.swift"; fi
+if [ -f "$CS5" ]; then
+  grep -qF '_repoPath.Replace(' "$CS5" \
+    && ok "e6.5[cs]: la ruta del clon se escapa (Replace de comillas) en el script de update" \
+    || bad "e6.5[cs]: la ruta del clon NO se escapa en el script de update"
+else bad "e6.5[cs]: no encuentro Updater.cs"; fi
+
+echo ""
+echo "== (e6.6) los 4 lectores leen .brain-version desde <home>/.claude =="
+V6="$PR/macos/Sources/ClaudeBrain/BrainInspector.swift $PR/windows/src/ClaudeBrain/BrainInspector.cs $PR/src/plasmoid/contents/brain-scan.sh $SCRIPT_DIR/install-brain.sh"
+v6miss=""
+for f in $V6; do
+  { [ -f "$f" ] && grep -qF '.brain-version' "$f" && grep -qF '.claude' "$f"; } \
+    || v6miss="${v6miss:+$v6miss }$(basename "$f")"
+done
+[ -z "$v6miss" ] \
+  && ok "e6.6: swift/cs/brain-scan.sh/install-brain.sh leen .brain-version bajo ~/.claude" \
+  || bad "e6.6: lectores de .brain-version sin <home>/.claude: $v6miss"
+
+echo ""
+echo "== (e6.7) los .ps1 de arranque puentean HOME <-> USERPROFILE (fix H1) =="
+for f in "$PR/bootstrap.ps1" "$SCRIPT_DIR/install-brain.ps1"; do
+  { [ -f "$f" ] && grep -qE '\$env:HOME *= *\$env:USERPROFILE' "$f"; } \
+    && ok "e6.7: $(basename "$f") exporta HOME=%USERPROFILE% antes de invocar bash" \
+    || bad "e6.7: $(basename "$f") NO puentea HOME<->USERPROFILE (bash instalaría en un ~/.claude que el widget no lee)"
+done
+
+# ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "==> resultado: $PASS PASS · $FAIL FAIL"
 [ "$FAIL" -eq 0 ]
