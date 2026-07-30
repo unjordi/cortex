@@ -2,8 +2,9 @@
 // Render:  dot -Tsvg 01-instalacion-actualizacion-del-cerebro.dot -o 01-instalacion-actualizacion-del-cerebro.svg
 // Rehecho 2026-07-29 contra el estado REAL del código (MANIFEST + install-brain.sh + sincronizar-cerebro.sh
 // + aviso-drift-cerebro.sh + docs/autoupdate.md). Sustituye al 01 obsoleto que pintaba como "[futuro]/hueco"
-// cosas que YA existen. Los 🔴 que quedan son huecos VIGENTES en develop (algunos atacados por el MR
-// en vuelo fix/brain-drift-costura — aquí se dibuja el estado de develop, no el del MR).
+// cosas que YA existen. Convención de color = CONVENCIONES.md (🔴=DENY · 🚧=hueco/deuda · ⚠=escribe git).
+// Estado a 2026-07-30 (develop con #209 mergeado): DRIFT_CIEGO/DRIFT_STAGE (#209) y WID_ATOM (install-brain
+// atomic_install) quedaron RESUELTOS (🟢); el único 🚧 vigente es BOOT_INV, en la PLANTILLA (fuera de este repo).
 digraph flujos {
   graph [bgcolor="#1b1712", rankdir=TB, fontname="Helvetica", splines=true,
          nodesep=0.35, ranksep=0.55, pad=0.25];
@@ -55,6 +56,7 @@ digraph flujos {
         <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>valencia de color</b></font></td></tr>
         <tr><td bgcolor="#2b2b2b" border="2" color="#7fb069"><font color="#f2ede6">🟢</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">OK / pasa</font></td></tr>
         <tr><td bgcolor="#2b2b2b" border="2" color="#e08e45"><font color="#f2ede6">🟠</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">aviso / ASK (no bloquea)</font></td></tr>
+        <tr><td bgcolor="#2b2b2b" border="2" color="#c9a227"><font color="#f2ede6">🟡</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">latente / frágil (funciona hoy, sin garantía)</font></td></tr>
         <tr><td bgcolor="#2b2b2b" border="2" color="#c0392b"><font color="#f2ede6">🔴</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">DENY / bloqueo (guard OK)</font></td></tr>
         <tr><td bgcolor="#2b2b2b" border="2" color="#9e9e9e"><font color="#f2ede6">🚧</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">hueco / deuda (por construir)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">⚠</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">el paso ESCRIBE git</font></td></tr>
@@ -85,8 +87,8 @@ digraph flujos {
     GUPD     [color="#e08e45",
               label="🟠  re-correr install-brain.sh\nidempotente Y ACTUALIZABLE: refresca hooks, re-cablea,\nREEMPLAZA el bloque de normas en su lugar, re-estampa .brain-version"];
     GLIVE    [color="#7fb069", label="🟢  cerebro GLOBAL vivo en la máquina\n(aplica a TODOS los repos)"];
-    GWIRE    [color="#c9a227",
-              label="🟡  drift LATENTE: install-brain DERIVA la COPIA del MANIFEST (:57)\npero CABLEA con register_hook HARDCODE (:90-109). Agregar un hook global al\nMANIFEST → se COPIA pero NO se cablea (queda .sh muerto). Contraste: sincronizar\nDERIVA copia Y wiring del MANIFEST. Hoy coinciden, pero frágil.\n→ derivar el wiring del MANIFEST, o que test-brain falle si divergen"];
+    GWIRE    [color="#7fb069",
+              label="🟢  install-brain ahora DERIVA la COPIA *y* el CABLEADO del MANIFEST (ev_de + loop),\nno una lista register_hook hardcodeada → agregar un hook global al MANIFEST lo copia\nY lo cablea. test-brain e6b FALLA si el set PreToolUse/Bash diverge del esperado.\nRESUELTO (refactor MANIFEST-derivado + e6b, en develop 2026-07-30)"];
 
     // ── Ruta B: POR-REPO (clon / repo consumidor) ──
     RTIPO    [shape=diamond, fillcolor="#2b2622", color="#d97757", label="POR-REPO:\n¿repo nuevo o existente?"];
@@ -96,8 +98,8 @@ digraph flujos {
               label="🟠  repo EXISTENTE: sembrar .claude/ sigue siendo MANUAL (no scriptado).\naplicar-plantilla-a-proyecto NO copia .claude/ — es un playbook de UI/arquitectura\nque ASUME el cerebro ya presente (hueco moderado, aún vigente)"];
     BOOT     [color="#e08e45",
               label="🔔  bootstrap-claude.sh  (UNA vez tras clonar)\nsymlinkea la memoria + siembra dashboard + norma doc=realidad + verifica jq"];
-    BOOT_INV [color="#c0392b",
-              label="🔴  DRIFT INVERSO (vigente en repos consumidores): el bootstrap-claude.sh de la\nplantilla hace `cp -f` INCONDICIONAL de solo 3 de los 6 `both` (git-branch-guard,\nmerge-squash-guard, recordar-dashboard) → un clon con plantilla VIEJA PISA los\nglobales con versiones stale y quedó corto vs el MANIFEST actual (6 both).\n→ que el bootstrap invoque sincronizar/install-brain derivando del MANIFEST"];
+    BOOT_INV [color="#9e9e9e", style="rounded,filled,dashed",
+              label="🚧  DRIFT INVERSO (vigente en repos CONSUMIDORES, fuera de claude-brain): el\nbootstrap-claude.sh de la plantilla hace `cp -f` INCONDICIONAL de solo 3 de los 6 `both`\n→ un clon con plantilla VIEJA PISA los globales con versiones stale (corto vs el MANIFEST).\n→ que el bootstrap invoque install-brain (que YA deriva del MANIFEST). Pendiente en la plantilla."];
 
     // ── Ruta C: ACTUALIZAR una copia POR-REPO ya instalada (esto era el viejo 🔴 HUECO — hoy RESUELTO) ──
     CUPD     [shape=diamond, fillcolor="#2b2622", color="#d97757",
@@ -106,18 +108,18 @@ digraph flujos {
               label="🟢  sincronizar-cerebro.sh  (YA EXISTE, resuelve el viejo HUECO)\nFUENTE ÚNICA = MANIFEST; despliega por-repo {repo,both}, diff-aware (NO cp -f ciego),\nCABLEA settings.json, ESTAMPA .brain-version (solo en sync COMPLETO), PODA hooks\nRETIRED. DRY-RUN por default; --apply escribe; --only / --prune-orphans"];
     DRIFT    [color="#7fb069",
               label="🟢🔔  aviso-drift-cerebro.sh  (SessionStart · GLOBAL) — es también pieza de 02\ncorre sincronizar en DRY-RUN (diff por CONTENIDO); si la copia por-repo quedó atrás → AVISA.\n⚠ AUTO-APPLY en mini-develop: en rama Develop* con .claude/ limpio → apply+commit+push SOLO\n📜 → 🌿 Flujo de git (en repo compartido «actualizar» = por ramita→MR)"];
-    DRIFT_CIEGO [color="#c0392b",
-              label="🔴  aviso-drift es CIEGO al drift de CABLEADO: cuenta nuevos+actualizar+retirado,\nNUNCA el wiring FALTANTE → reporta «al día» aunque haya hooks presentes-SIN-cablear\n(comprobado en la plantilla: 3 sin cablear; 2 recordar-* muertos).\n[atacado por el MR en vuelo fix/brain-drift-costura — aquí: estado de develop]"];
-    DRIFT_STAGE [color="#c0392b",
-              label="🔴  el AUTO-APPLY hace `git add .claude/hooks` pero sincronizar --apply también\nreescribe settings.json → ese cambio queda SIN commitear (ensucia el árbol,\ncontra su propio contrato). → `git add .claude/hooks .claude/settings.json`\n[también en el MR en vuelo fix/brain-drift-costura]"];
+    DRIFT_CIEGO [color="#7fb069",
+              label="🟢  aviso-drift YA VE el drift de CABLEADO: cuenta también el wiring FALTANTE\n(«N cableado faltante») → ya no reporta «al día» con hooks presentes-SIN-cablear.\nRESUELTO en #209 (en develop, 2026-07-30)"];
+    DRIFT_STAGE [color="#7fb069",
+              label="🟢  el AUTO-APPLY ahora hace `git add -A .claude/` (hooks + settings.json + podas)\n→ el cambio de cableado SÍ se commitea y el árbol queda limpio.\nRESUELTO en #209 (en develop, 2026-07-30)"];
 
     // ── Ruta D: UPDATER del widget (⬆) ──
     WID      [color="#7fb069",
               label="🟢  widget (pestaña Cerebro, 3 GUIs): lee ~/.claude/.brain-version y consulta\ncommits/main de github.com/unjordi/claude-brain (throttle ~15m, fail-open).\nSi main avanzó → dibuja el banner ⬆ Actualizar"];
     WID_ACT  [color="#e08e45",
               label="🟠  al aceptar ⬆: script suelto hace git fetch + merge --ff-only origin/main sobre\n~/.claude-brain y —solo si tuvo éxito— re-corre install.sh/ps1 (reconstruye+relanza,\ndesprendido). Fase 2 Windows: baja el .exe del release (pendiente de QA)"];
-    WID_ATOM [color="#c0392b",
-              label="🔴  atomicidad: el updater reescribe ~/.claude-brain / ~/.claude/hooks con `cp -f`\naunque haya sesión VIVA → un hook que sourcea una lib puede leerla a medio sobrescribir.\nSin escritura atómica (cp a tmp + mv) ni lock. (inferido, no ejecutado)"];
+    WID_ATOM [color="#7fb069",
+              label="🟢  atomicidad: install-brain instala los hooks con atomic_install (cp a tmp + mv,\nrename atómico) → el updater ⬆ ya no deja ventana de lectura a-medio-sobrescribir con sesión VIVA.\nRESUELTO (install-brain.sh atomic_install, en develop)"];
 
     NORMA    [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
               label="📜 → 🧩 toda norma nace con su mecanismo\n📜 → 🪞 doc = realidad (este mapa se actualiza con el código)"];

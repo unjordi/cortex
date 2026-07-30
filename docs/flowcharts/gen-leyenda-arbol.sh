@@ -64,6 +64,7 @@ emit() {
   echo "        <tr><td colspan=\"2\" bgcolor=\"$FAMBG\"><font color=\"$FAMC\"><b>valencia de color</b></font></td></tr>"
   echo "        <tr><td bgcolor=\"#2b2b2b\" border=\"2\" color=\"#7fb069\"><font color=\"$NAMEC\">🟢</font></td><td bgcolor=\"$BG\"><font color=\"$TXT\">OK / pasa</font></td></tr>"
   echo "        <tr><td bgcolor=\"#2b2b2b\" border=\"2\" color=\"#e08e45\"><font color=\"$NAMEC\">🟠</font></td><td bgcolor=\"$BG\"><font color=\"$TXT\">aviso / ASK (no bloquea)</font></td></tr>"
+  echo "        <tr><td bgcolor=\"#2b2b2b\" border=\"2\" color=\"#c9a227\"><font color=\"$NAMEC\">🟡</font></td><td bgcolor=\"$BG\"><font color=\"$TXT\">latente / frágil (funciona hoy, sin garantía)</font></td></tr>"
   echo "        <tr><td bgcolor=\"#2b2b2b\" border=\"2\" color=\"#c0392b\"><font color=\"$NAMEC\">🔴</font></td><td bgcolor=\"$BG\"><font color=\"$TXT\">DENY / bloqueo (guard OK)</font></td></tr>"
   echo "        <tr><td bgcolor=\"#2b2b2b\" border=\"2\" color=\"#9e9e9e\"><font color=\"$NAMEC\">🚧</font></td><td bgcolor=\"$BG\"><font color=\"$TXT\">hueco / deuda (por construir)</font></td></tr>"
   echo "        <tr><td bgcolor=\"$BG\"><font color=\"$NAMEC\">⚠</font></td><td bgcolor=\"$BG\"><font color=\"$TXT\">el paso ESCRIBE git</font></td></tr>"
