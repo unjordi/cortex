@@ -69,8 +69,39 @@ if [ -n "$tpath" ] && [ -f "$tpath" ]; then
                then (map(if type=="string" then . elif (.type? == "text") then .text else "" end) | join(" "))
                else (. // "") end)
           | select(. != "") ]                 # descarta tool_result (mapea a "") → solo texto real del usuario
-    | .[-10:] | join("  ")' 2>/dev/null)
-fi
+    | .[-10:] | join("\n")' 2>/dev/null)   # UNA línea por mensaje de usuario → permite filtrar por-línea
+fi                                          # (negación adyacente A3 · id de MR ligado al OK A4)
+
+# ── A3 (NEGATION-BLIND) + A4 (OK TRANSITIVO) · FMEA 2026-07-30 ────────────────────────────────────
+# Antes: `grep -qiE "$OK_RE" "$recent"` aceptaba la marca SIN polaridad ni ligadura al MR → "no te di
+# autorización todavía" ABRÍA el merge (A3), y un "mergea el MR 5" autorizaba un `merge 9` distinto (A4).
+# Ahora evaluamos MENSAJE-POR-MENSAJE (una línea = un msg de usuario) y una línea SOLO cuenta como OK si:
+#   (A3) NO trae una negación (no|sin|nunca|jamás — cubre "todavía no"/"aún no", que contienen "no");
+#   (A4) si LIGA el OK a un MR-id explícito ("mergea el MR 5"), ese id coincide con el del comando actual.
+#        Un OK GENÉRICO (sin id) conserva el comportamiento por RECENCIA (no se endurece de más).
+NEG_RE='\b(no|sin|nunca|jam[aá]s)\b'
+# Verbo de merge/OK inmediatamente seguido de (el)? (MR)? #?<n> → marca que el OK va dirigido a ESE MR.
+BOUND_OK_RE='(merg[eé]a[a-zé]*|mérga(lo|los)?|dale( el)? merge|integr[ao][a-zé]*|emp[uú]j[a-zé]*|s[uú]b[a-zé]*|m[aá]nd[a-zé]*|m[eé]t[ae][a-zé]*)[[:space:]]+(el[[:space:]]+)?(mr[[:space:]]+)?#?[0-9]+'
+# MR-id del COMANDO actual (para la ligadura A4). Vacío si el comando no nombra id → A4 no aplica (recencia).
+cur_mrid=$(printf '%s' "$(acg_despoja_comillas "$cmd")" | grep -oiE '(mr[[:space:]]+(merge|accept)|pr[[:space:]]+merge)[[:space:]]+#?[0-9]+' | grep -oE '[0-9]+$')
+
+# ¿hay en $recent una línea que sea un OK VÁLIDO (no negado y no ligado a OTRO MR) para $1 (regex de OK)?
+_ok_para_este_merge() {
+  local re="$1" line ids
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    printf '%s' "$line" | grep -qiE "$re"    || continue    # trae una marca de OK
+    printf '%s' "$line" | grep -qiE "$NEG_RE" && continue    # (A3) negada → no cuenta
+    ids=$(printf '%s' "$line" | grep -oiE "$BOUND_OK_RE" | grep -oE '[0-9]+')
+    if [ -n "$ids" ] && [ -n "$cur_mrid" ]; then             # (A4) OK ligado a un MR-id concreto…
+      printf '%s\n' "$ids" | grep -qx "$cur_mrid" || continue # …y NO es este → no autoriza este merge
+    fi
+    return 0                                                 # OK válido (genérico, o ligado a ESTE MR)
+  done <<EOF
+$recent
+EOF
+  return 1
+}
 
 # RELEASE_RE: lenguaje de release-a-main. Se usa en AMBAS ramas — exige release para main, y TAMBIÉN
 # vale como confirmación del merge INTERMEDIO a develop (un release a main pasa forzosamente por
@@ -81,8 +112,8 @@ RELEASE_RE='hasta main|\brelease\b|(a|hacia|hast[ao]) main|liber(a|ar|alo|é)|pr
 
 if [ "$destino" = "main" ]; then
   # RELEASE a main: exige autorización SUPER explícita de release. Un 'mergea' genérico (que vale
-  # para develop) NO autoriza un release a main.
-  printf '%s' "$recent" | grep -qiE "$RELEASE_RE" && exit 0
+  # para develop) NO autoriza un release a main. (A3: una negación adyacente NO cuenta como OK.)
+  _ok_para_este_merge "$RELEASE_RE" && exit 0
   jq -n --arg r "FRENO (RELEASE a main): promover develop→main es una decisión de RELEASE que exige autorización SUPER explícita del usuario para ESTE release (p. ej. 'release a main', 'hasta main', 'libera'), y no la encuentro en el contexto reciente.
   (a) Si ya la dio, CÍTALA y reintenta.
   (b) main es release-only: un 'mergea' genérico (que vale para develop) NO autoriza un release a main. Los releases van SIN squash (conservan historia)." \
@@ -92,9 +123,9 @@ fi
 
 # Destino develop (o desconocido → conservador): confirmación normal. "sigue/avanza" NO cuenta.
 CONF_RE='merg[eé]a|mérga(lo|los)?|dale( el)? merge|haz(lo|le)?( el)? *merge|merge a develop|integra[a-zé ]*a? *develop|s[ií],? merge|ci[eé]rra(lo)?|cierra el slice|ll[eé]va(lo|los)?[a-zé ,]*develop|s[uú]b(e|elo|elos|ir|an|í)[a-zé ,]*develop|m[aá]nda(lo|los)?[a-zé ,]*develop|emp[uú]j(a|á|e)(lo|los|le)?[a-zé ,]*develop|m[eé]te(le|lo|los)?[a-zé ,]*develop|ya (puedes|podés|puedo) mergear|adelante[a-zé ]*(el )?merge|autoriz|luz verde (para|de|expresa)|visto bueno|aprob(ado|é|ó)?|va! *(merge|mr|develop|cierra)'
-printf '%s' "$recent" | grep -qiE "$CONF_RE" && exit 0
+_ok_para_este_merge "$CONF_RE" && exit 0
 # Un OK de RELEASE-a-main también cubre este paso intermedio a develop (el release pasa por develop).
-printf '%s' "$recent" | grep -qiE "$RELEASE_RE" && exit 0
+_ok_para_este_merge "$RELEASE_RE" && exit 0
 
 # ── Autorización DURABLE (sobrevive compactaciones): grant EXPLÍCITO del usuario persistido a disco
 # (lo escribe el skill turno-nocturno al recibir el OK, con la CITA textual del usuario y un

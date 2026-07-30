@@ -172,9 +172,11 @@ write_state 19   # restablece el state.json de ventana para lo que siga
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "== (b1c) merge-squash-guard: EXIGE squash SOLO si destino=develop confirmado (G4) =="
-# Modelo canónico (decisión del usuario): squash únicamente cuando el destino es develop CONFIRMADO;
-# main (release), ramas personales, ramitas y destino INDETERMINADO → libres (nunca se fuerza squash).
+echo "== (b1c) merge-squash-guard: EXIGE squash si destino=develop O indeterminado (G4 + B3) =="
+# Modelo canónico (decisión del usuario): squash cuando el destino es develop CONFIRMADO; main (release)
+# y ramas personales/ramitas → libres. B3 (FMEA 2026-07-30): destino IRRESOLUBLE (timeout/red) → fail-safe
+# EXIGE squash (antes lo dejaba pasar mientras confirmar-merge-develop sí lo trataba como develop → "merge
+# a develop confirmado SIN squash"), salvo señal explícita de release-a-main en el comando.
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null   # caché de destino limpia (la lib cachea por MR-id)
 MSBIN="$FAKEHOME/msbin"; mkdir -p "$MSBIN"
 mock_glab() { printf '#!/usr/bin/env bash\necho '\''{"target_branch":"%s"}'\''\n' "$1" > "$MSBIN/glab"; chmod +x "$MSBIN/glab"; }
@@ -190,8 +192,17 @@ mock_glab DevelopAna; out="$(ms 'glab mr merge 43 --auto-merge --yes')"
 is_silent "$out" && ok "squash-guard G4: destino=rama personal → NO fuerza squash (día a día libre)" || bad "squash-guard G4: forzó squash a rama personal; got: $out"
 mock_glab main; out="$(ms 'glab mr merge 44 --yes')"
 is_silent "$out" && ok "squash-guard G4: destino=main (release) → NO fuerza squash"       || bad "squash-guard G4: forzó squash a un release; got: $out"
+# B3: destino IRRESOLUBLE (sin id → no se puede consultar; equivale a un timeout de red) SIN --squash
+# → fail-safe EXIGE squash (deny). Antes esto pasaba en silencio (el hueco B3).
 out="$(ms 'glab mr merge --auto-merge --yes')"   # sin ID → destino indeterminado
-is_silent "$out" && ok "squash-guard G4: destino INDETERMINADO → NO fuerza squash (fail-safe hacia libre)" || bad "squash-guard G4: forzó squash con destino indeterminado; got: $out"
+is_deny "$out" && ok "squash-guard B3: destino INDETERMINADO sin --squash → deny (fail-safe exige squash)" || bad "squash-guard B3: no forzó squash con destino indeterminado; got: $out"
+# B3: mismo destino irresoluble PERO ya trae --squash → pasa (nada que exigir).
+out="$(ms 'glab mr merge --squash --auto-merge --yes')"
+is_silent "$out" && ok "squash-guard B3: destino INDETERMINADO CON --squash → pasa" || bad "squash-guard B3: bloqueó un merge indeterminado que ya trae squash; got: $out"
+# B3: destino irresoluble PERO el comando SEÑALA release-a-main explícito → NO fuerza squash (no aplasta
+# el histórico de un release cuya red no se pudo consultar). Sin id → destino queda vacío igual.
+out="$(ms 'glab mr merge --yes # release a main')"
+is_silent "$out" && ok "squash-guard B3: indeterminado + señal 'release a main' → NO fuerza squash" || bad "squash-guard B3: forzó squash pese a la señal explícita de release; got: $out"
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
 rm -rf "$MSBIN"
 
@@ -213,6 +224,12 @@ git -C "$GBREPO" checkout -q -b feat/x >/dev/null 2>&1
 is_silent "$(gb 'git push')"              && ok "gbg H1: 'git push' pelón en ramita → silencio (sin falso positivo)" || bad "gbg H1: push pelón en ramita bloqueó"
 is_silent "$(gb 'git push -u origin feat/x')" && ok "gbg: push explícito de la ramita → silencio"                    || bad "gbg: push de ramita bloqueó"
 printf '%s' "$(gb 'git push origin develop')" | grep -q '"deny"' && ok "gbg: 'git push origin develop' explícito → deny (preservado)" || bad "gbg: push explícito a develop NO bloqueó"
+# A2 (FMEA 2026-07-30): el FORCE-REFSPEC `+develop` (el `+` fuerza el push) se colaba porque el set de
+# separadores no incluía '+'. El push FORZADO a base es el más peligroso → debe BLOQUEAR.
+printf '%s' "$(gb 'git push -f origin +develop')" | grep -q '"deny"' && ok "gbg A2: 'git push -f origin +develop' (force-refspec) → deny" || bad "gbg A2: el force-refspec +develop se coló (bypass A2)"
+printf '%s' "$(gb 'git push origin +develop')"    | grep -q '"deny"' && ok "gbg A2: 'git push origin +develop' (force-refspec, sin -f) → deny" || bad "gbg A2: +develop sin -f se coló"
+printf '%s' "$(gb 'git push origin +main')"       | grep -q '"deny"' && ok "gbg A2: 'git push origin +main' (force-refspec) → deny" || bad "gbg A2: +main se coló"
+is_silent "$(gb 'git push origin feat/x')"        && ok "gbg A2: 'git push origin feat/x' explícito → silencio (sin falso positivo del '+')" || bad "gbg A2: falso positivo al agregar '+' al set (bloqueó una ramita)"
 is_silent "$(gb 'git commit -m "doc: no hacer git push a develop"')" && ok "gbg H13: 'git push a develop' entrecomillado → silencio" || bad "gbg H13: mención entrecomillada disparó"
 is_silent "$(gb 'gh pr merge 5 -R org/develop --squash')" && ok "gbg H11: '-R org/develop' (nombre de repo) → silencio" || bad "gbg H11: -R org/develop disparó falso positivo"
 rm -rf "$GBROOT"
@@ -279,6 +296,40 @@ dur=$SECONDS
 { [ -z "$dhang" ] && [ "$dur" -lt 4 ]; } \
   && ok "cmd H5: glab colgado → timeout interno devuelve vacío en ${dur}s (no cuelga hasta que lo maten)" \
   || bad "cmd H5: la consulta colgada NO fue acotada por timeout (dhang='$dhang' dur=${dur}s)"
+rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
+
+# ── A3 (NEGATION-BLIND) · FMEA 2026-07-30 ──
+# ANTES: `grep -qiE` de CONF_RE/RELEASE_RE sin polaridad → una NEGACIÓN abría el merge. Cada caso usa un
+# MR-id distinto para no contaminar la caché de destino por MR-id.
+mock_cm_glab develop
+is_deny "$(cm 'glab mr merge 71 --squash --yes' 'no te di autorización todavía')" \
+  && ok "cmd A3: 'no te di autorización todavía' → deny (negación NO abre el merge)" \
+  || bad "cmd A3: BYPASS — una negación de autorización abrió el merge a develop"
+is_deny "$(cm 'glab mr merge 72 --squash --yes' 'aún no mergees eso')" \
+  && ok "cmd A3: 'aún no mergees eso' → deny" \
+  || bad "cmd A3: 'aún no mergees' dejó pasar el merge"
+is_silent "$(cm 'glab mr merge 73 --squash --yes' 'sí, mergea')" \
+  && ok "cmd A3: 'sí, mergea' → pasa (OK afirmativo, sin falso positivo)" \
+  || bad "cmd A3: FALSO POSITIVO — 'sí, mergea' fue frenado"
+is_silent "$(cm 'glab mr merge 74 --squash --yes' 'mergea el MR')" \
+  && ok "cmd A3: 'mergea el MR' → pasa" \
+  || bad "cmd A3: FALSO POSITIVO — 'mergea el MR' fue frenado"
+is_silent "$(cm 'glab mr merge 75 --squash --yes' 'dale el merge')" \
+  && ok "cmd A3: 'dale el merge' → pasa" \
+  || bad "cmd A3: FALSO POSITIVO — 'dale el merge' fue frenado"
+
+# ── A4 (OK TRANSITIVO) · FMEA 2026-07-30 ──
+# ANTES: un OK reciente autorizaba CUALQUIER merge de la ventana. Ahora, si el OK NOMBRA un MR-id, ese id
+# debe coincidir con el del comando; un OK genérico (sin id) conserva la recencia (no se endurece de más).
+is_deny "$(cm 'glab mr merge 9 --squash --yes' 'mergea el MR 5')" \
+  && ok "cmd A4: OK 'mergea el MR 5' + comando 'merge 9' → deny (no transitivo a otro MR)" \
+  || bad "cmd A4: TRANSITIVIDAD — un OK para el MR 5 autorizó el merge del MR 9"
+is_silent "$(cm 'glab mr merge 5 --squash --yes' 'mergea el 5')" \
+  && ok "cmd A4: OK 'mergea el 5' + comando 'merge 5' → pasa (id coincide)" \
+  || bad "cmd A4: el OK ligado al MR correcto fue frenado (falso positivo)"
+is_silent "$(cm 'glab mr merge 8 --squash --yes' 'dale merge')" \
+  && ok "cmd A4: OK genérico 'dale merge' + cualquier merge → pasa (recencia preservada)" \
+  || bad "cmd A4: un OK genérico dejó de autorizar (endurecimiento de más)"
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
 
 # ── (b1f) confirmar: AUTORIZACIÓN DURABLE en disco (sobrevive compactaciones) + vocabulario "empuja/mete" ──
@@ -397,6 +448,62 @@ printf 'sin secretos\n' > "$G5REPO/nota.txt"; git -C "$G5REPO" add nota.txt >/de
 o="$(scan5 'git push -u origin feat/limpia')"
 [ -z "$o" ] && ok "secret-scan G5: 1er push de rama nueva LIMPIA → silencio (sin falso positivo)" || bad "secret-scan G5: falso positivo en rama nueva limpia; got: $o"
 rm -rf "$G5ROOT"
+
+# ── FMEA 2026-07-30 · A1 (idiom `git add && git commit`) + A7 (`--no-verify` en el MENSAJE) ──
+echo ""
+echo "== (b2c) secret-scan FMEA A1/A7: idiom 'git add && git commit' y --no-verify citado en el mensaje =="
+FMEAREPO="$(mktemp -d "${TMPDIR:-/tmp}/brain-fmea.XXXXXX")"
+git -C "$FMEAREPO" init -q >/dev/null 2>&1
+git -C "$FMEAREPO" symbolic-ref HEAD refs/heads/main >/dev/null 2>&1
+git -C "$FMEAREPO" config user.email t@t >/dev/null 2>&1
+git -C "$FMEAREPO" config user.name  tester >/dev/null 2>&1
+printf 'base limpia\n' > "$FMEAREPO/base.txt"; git -C "$FMEAREPO" add base.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm base >/dev/null 2>&1
+# HOME sin copia global → la dedupe no cede; el input se arma con jq → escapa las comillas del mensaje.
+scanf() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' \
+          | HOME="$FMEAREPO" CLAUDE_PROJECT_DIR="$FMEAREPO" bash "$HOOKS/secret-scan.sh"; }
+fmeareset() { git -C "$FMEAREPO" reset -q >/dev/null 2>&1; rm -f "$FMEAREPO"/*.txt 2>/dev/null; }
+# A1 (1) `git add secreto && git commit` con un AKIA en un archivo NUEVO aún NO staged → BLOQUEA
+fmeareset; printf 'aws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/secreto.txt"
+o="$(scanf 'git add secreto.txt && git commit -m x')"
+printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan A1: 'git add secreto && git commit' escanea lo que el add estagearía → bloquea" || bad "secret-scan A1: NO bloqueó el idiom add&&commit; got: $o"
+# A1 (2) bypass TOTAL `git add -A && git commit && git push` con sk-ant en archivo por-venir → BLOQUEA
+fmeareset; printf 'tok = sk-ant-abcdefghijklmnopqrstuvwxyz0123\n' > "$FMEAREPO/tok.txt"
+o="$(scanf 'git add -A && git commit -m x && git push')"
+printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan A1: 'git add -A && git commit && git push' (bypass total) → bloquea" || bad "secret-scan A1: bypass total add&&commit&&push NO bloqueado; got: $o"
+# A1 (3) archivo LIMPIO por el mismo idiom → PASA (sin falso positivo)
+fmeareset; printf 'contenido sin secretos\n' > "$FMEAREPO/limpio.txt"
+o="$(scanf 'git add limpio.txt && git commit -m x')"
+[ -z "$o" ] && ok "secret-scan A1: 'git add limpio && git commit' → PASA (sin falso positivo)" || bad "secret-scan A1: falso positivo en archivo limpio; got: $o"
+# A1 (4) secreto PREEXISTENTE en línea NO tocada de un archivo tracked; se cambia OTRA línea → PASA
+#        (tracked: solo se escanea lo AGREGADO vs HEAD, no se re-escanea lo ya versionado).
+fmeareset; printf 'aws = AKIA1234567890ABCDEF\nlinea normal\n' > "$FMEAREPO/pre.txt"
+git -C "$FMEAREPO" add pre.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm pre >/dev/null 2>&1
+printf 'aws = AKIA1234567890ABCDEF\nlinea CAMBIADA\n' > "$FMEAREPO/pre.txt"
+o="$(scanf 'git add pre.txt && git commit -m x')"
+[ -z "$o" ] && ok "secret-scan A1: secreto preexistente en línea no tocada (tracked) → PASA" || bad "secret-scan A1: falso positivo re-escaneando lo ya versionado; got: $o"
+# A1 (5) commit normal con staging PREVIO (sin git add en el comando) → sigue bloqueando (no-regresión)
+fmeareset; printf 'aws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/s2.txt"; git -C "$FMEAREPO" add s2.txt >/dev/null 2>&1
+o="$(scanf 'git commit -m x')"
+printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan A1: commit normal (staging previo) sigue escaneando --cached → bloquea" || bad "secret-scan A1: regresión, commit normal ya no bloquea; got: $o"
+# A1 (6) `git commit -am x` con secreto en un archivo TRACKED modificado AÚN NO staged: -a lo auto-estagea
+#        al vuelo → el escaneo debe verlo (antes --cached vacío → CIEGO) → BLOQUEA
+fmeareset; printf 'linea limpia\n' > "$FMEAREPO/t.txt"; git -C "$FMEAREPO" add t.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm t >/dev/null 2>&1
+printf 'linea limpia\naws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/t.txt"
+o="$(scanf 'git commit -am x')"
+printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan A1: 'git commit -am' escanea los tracked que -a auto-estagea → bloquea" || bad "secret-scan A1: 'commit -am' CIEGO al tracked modificado; got: $o"
+# A1 (7) `git commit -a -m x` con cambio en tracked LIMPIO → PASA (sin falso positivo)
+fmeareset; printf 'v1\n' > "$FMEAREPO/u.txt"; git -C "$FMEAREPO" add u.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm u >/dev/null 2>&1
+printf 'v1\nv2 sin secretos\n' > "$FMEAREPO/u.txt"
+o="$(scanf 'git commit -a -m x')"
+[ -z "$o" ] && ok "secret-scan A1: 'git commit -a' con cambio limpio → PASA (sin falso positivo)" || bad "secret-scan A1: falso positivo en 'commit -a' limpio; got: $o"
+# A7 (1) --no-verify DENTRO del mensaje del commit (secreto staged) → NO salta → BLOQUEA
+fmeareset; printf 'aws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/s3.txt"; git -C "$FMEAREPO" add s3.txt >/dev/null 2>&1
+o="$(scanf 'git commit -m "documenta el flag --no-verify"')"
+printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan A7: --no-verify en el MENSAJE no salta el escaneo → bloquea" || bad "secret-scan A7: --no-verify citado saltó el escaneo; got: $o"
+# A7 (2) --no-verify REAL (bandera) sigue siendo escape legítimo → PASA (silencio)
+o="$(scanf 'git commit --no-verify -m x')"
+[ -z "$o" ] && ok "secret-scan A7: --no-verify como bandera real sigue saltando (escape legítimo)" || bad "secret-scan A7: --no-verify real dejó de saltar; got: $o"
+rm -rf "$FMEAREPO"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
@@ -589,6 +696,58 @@ rm -rf "$RBROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (b3e) bz_es_zombie: regla (b) 'remota borrada' NO borra a ciegas una rama con commits propios (FMEA A5) =="
+# A5/MEDIO-3 (PÉRDIDA DE DATOS): la regla (b) marcaba zombie por "remota ausente" sin re-chequear si la
+# rama traía commits VIVOS no integrados → limpiar-ramas/-worktrees hacían `branch -D` irreversible sobre
+# trabajo real (remota borrada por rename/limpieza, o commits post-merge sin pushear). Fix: (b) solo
+# declara zombie si la rama NO tiene commits propios no equivalentes a la base (git cherry sin '+').
+BZROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-bz.XXXXXX")"; BZBARE="$BZROOT/remote.git"; BZREPO="$BZROOT/repo"
+git init -q --bare "$BZBARE" >/dev/null 2>&1
+git init -q "$BZREPO" >/dev/null 2>&1
+git -C "$BZREPO" symbolic-ref HEAD refs/heads/miDevelop >/dev/null 2>&1
+git -C "$BZREPO" config user.email t@t >/dev/null 2>&1; git -C "$BZREPO" config user.name tester >/dev/null 2>&1
+git -C "$BZREPO" remote add origin "$BZBARE" >/dev/null 2>&1
+printf 'base\n' > "$BZREPO/base.txt"; git -C "$BZREPO" add base.txt >/dev/null 2>&1; git -C "$BZREPO" commit -qm base >/dev/null 2>&1
+git -C "$BZREPO" push -q -u origin miDevelop >/dev/null 2>&1
+( . "$HOOKS/ramas-zombie.sh"
+  # CASO 1 — remota gone CON commits propios NO equivalentes → CONSERVAR (teeth del fix A5)
+  git -C "$BZREPO" checkout -q -b feat/viva miDevelop >/dev/null 2>&1
+  printf 'trabajo-vivo\n' > "$BZREPO/viva.txt"; git -C "$BZREPO" add viva.txt >/dev/null 2>&1; git -C "$BZREPO" commit -qm "commit propio no integrado" >/dev/null 2>&1
+  git -C "$BZREPO" push -q -u origin feat/viva >/dev/null 2>&1
+  git -C "$BZREPO" push -q origin --delete feat/viva >/dev/null 2>&1   # remota borrada (rename/limpieza)
+  git -C "$BZREPO" checkout -q miDevelop >/dev/null 2>&1
+  # teeth: la rama SÍ tiene commit propio ('+') y su remota YA no existe → antes (b) la borraba
+  git -C "$BZREPO" cherry miDevelop feat/viva 2>/dev/null | grep -q '^+' && ok "b3e(teeth): feat/viva tiene commit propio no equivalente ('+')" || bad "b3e(teeth): test mal armado, feat/viva sin '+'"
+  ! git -C "$BZREPO" ls-remote --exit-code --heads origin feat/viva >/dev/null 2>&1 && ok "b3e(teeth): la remota de feat/viva YA no existe (gatillo de la regla b)" || bad "b3e(teeth): la remota seguía existiendo"
+  bz_es_zombie "$BZREPO" feat/viva miDevelop && bad "b3e: A5 REGRESIÓN — remota gone CON commits únicos se declaró zombie (PÉRDIDA DE DATOS)" || ok "b3e: remota gone CON commits únicos no equivalentes → NO zombie (conserva)"
+  # CASO 2 — remota gone SIN commits propios (squash-mergeada, patch-equivalente) → zombie (se barre)
+  git -C "$BZREPO" checkout -q -b feat/hecha miDevelop >/dev/null 2>&1
+  printf 'x\n' > "$BZREPO/f.txt"; git -C "$BZREPO" add f.txt >/dev/null 2>&1; git -C "$BZREPO" commit -qm hecha >/dev/null 2>&1
+  git -C "$BZREPO" push -q -u origin feat/hecha >/dev/null 2>&1
+  git -C "$BZREPO" checkout -q miDevelop >/dev/null 2>&1
+  git -C "$BZREPO" merge --squash feat/hecha >/dev/null 2>&1; git -C "$BZREPO" commit -qm "squash feat/hecha" >/dev/null 2>&1   # integra su parche
+  git -C "$BZREPO" push -q origin --delete feat/hecha >/dev/null 2>&1   # remota borrada al mergear
+  bz_es_zombie "$BZREPO" feat/hecha miDevelop && ok "b3e: remota gone SIN commits únicos (patch-equivalente) → zombie (se barre)" || bad "b3e: no barrió una rama genuinamente integrada con remota gone"
+)
+rm -rf "$BZROOT"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (b3f) delegacion-reporte: solo reacciona a Task, y el nudge es CONDICIONAL a mutación (FMEA MEDIO-6) =="
+# MEDIO-6 (cry-wolf): antes gritaba "appenda bitácora / limpia worktree" para TODO Task, incluidos los
+# read-only (búsquedas, auditorías) → el orquestador se desensibiliza. Fix: el mensaje se subordina a la
+# mutación ("SI tu agente mutó… / SI fue read-only, ignóralo"). No se puede detectar la mutación fiable
+# desde PostToolUse (vive en el transcript del sub-agente), así que se suaviza el texto en vez de adivinar.
+dr() { printf '%s' "$1" | bash "$HOOKS/delegacion-reporte.sh"; }
+is_silent "$(dr '{"tool_name":"Bash"}')" && ok "delegacion-reporte: tool no-Task → silencio" || bad "delegacion-reporte: reaccionó a un no-Task"
+DROUT="$(dr '{"tool_name":"Task"}')"
+printf '%s' "$DROUT" | jq -e '.hookSpecificOutput.hookEventName == "PostToolUse"' >/dev/null 2>&1 \
+  && ok "delegacion-reporte: Task → emite hookSpecificOutput PostToolUse válido" || bad "delegacion-reporte: JSON PostToolUse inválido; got: $DROUT"
+printf '%s' "$DROUT" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -qiE 'si .*mut|read-only' \
+  && ok "delegacion-reporte: el nudge es CONDICIONAL a mutación (no un grito para todo Task)" || bad "delegacion-reporte: el nudge no quedó condicionado a mutación (cry-wolf)"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "== (b3c) git-branch-guard: bloquea push/merge REAL a main/develop, NO una MENCIÓN entrecomillada =="
 # HOME AISLADO SIN copia global del hook: si no, la cláusula de dedupe doble-cableado (la copia del
 # repo CEDE cuando existe ~/.claude/hooks/…) haría que el guard salga en silencio en una máquina con el
@@ -614,8 +773,10 @@ printf '%s' "sigue trabajando, no pares"               | grep -qiE "$CMDCR" && b
 echo ""
 echo "== (b4) dod-verificar: cierre/claim-visual sin evidencia bloquea; con OK o tool de navegador, no =="
 DODTX="$FAKEHOME/dod-transcript.jsonl"
-dod() { # dod "<texto final asistente>" "<línea extra de tool/edit o vacío>"
-  { printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"haz el cambio"}]}}'
+dod() { # dod "<texto final asistente>" "<línea extra de tool/edit o vacío>" "<texto del USUARIO (opcional)>"
+  # $3 = mensaje del USUARIO (default "haz el cambio"). ALTO-1: la marca (1)/(2) se deriva de AQUÍ, no
+  # de la prosa del asistente → los tests de confirmación ponen el OK en el mensaje del usuario.
+  { jq -nc --arg u "${3:-haz el cambio}" '{type:"user",message:{role:"user",content:[{type:"text",text:$u}]}}'
     [ -n "$2" ] && printf '%s\n' "$2"
     jq -nc --arg t "$1" '{type:"assistant",message:{role:"assistant",content:[{type:"text",text:$t}]}}'
   } > "$DODTX"
@@ -628,7 +789,13 @@ is_block "$(dod '¡Cerrado! 🏁 el módulo quedó terminado.' "$EDITR")" && ok 
 is_block "$(dod 'Lo dejé en preview, con tu OK lo cierro.' "$EDITR")" && bad "dod bloqueó lenguaje de estatus" || ok "dod: 'en preview / con tu OK' → no bloquea"
 is_block "$(dod 'Quedó idéntico al mockup, se ve tal cual.' "$EDITR")" && ok "dod B2: claim visual sin browser-tool → bloquea (a ciegas)" || bad "dod B2 NO bloqueó claim visual a ciegas"
 o="$(dod 'En Chrome se ve como el mockup.' "$BROWSERT")"; is_block "$o" && bad "dod B2 bloqueó con browser-tool presente; got: $o" || ok "dod B2: claim visual + browser-tool → no bloquea"
-is_block "$(dod 'Quedó listo; validaste el QA visual y diste el ok.' "$EDITR")" && bad "dod bloqueó con (1) confirmación del usuario" || ok "dod: con (1) confirmación citada del usuario → no bloquea"
+# ALTO-1 (FMEA 2026-07-30): la marca (1)/(2) se deriva del MENSAJE DEL USUARIO, no de la prosa de Claude.
+# (a) confirmación GENUINA del usuario en SU mensaje → no bloquea.
+is_block "$(dod 'Quedó listo el módulo.' "$EDITR" 'sí, lo validé en QA y diste el ok, ciérralo')" && bad "dod ALTO-1: bloqueó con (1) confirmación del USUARIO en su mensaje" || ok "dod ALTO-1: confirmación del USUARIO en su mensaje → no bloquea"
+# (b) AUTO-ATESTIGUAMIENTO: Claude NARRA que el usuario confirmó, pero el usuario NO lo dijo → bloquea.
+is_block "$(dod 'El usuario ya confirmó y dio el visto bueno; quedó listo el módulo.' "$EDITR")" && ok "dod ALTO-1: Claude narra 'el usuario confirmó' sin que el usuario lo dijera → bloquea (no se auto-atestigua)" || bad "dod ALTO-1: el auto-atestiguamiento de Claude satisfizo el candado (bug ALTO-1)"
+# (c) imperativo de cierre del usuario ("sí, quedó, ciérralo") → no bloquea.
+is_block "$(dod 'Quedó terminado el módulo.' "$EDITR" 'sí, quedó, ciérralo')" && bad "dod ALTO-1: bloqueó con autorización expresa de cierre del usuario ('ciérralo')" || ok "dod ALTO-1: 'sí, quedó, ciérralo' del usuario → no bloquea"
 # P1 (precisión): una PREGUNTA no es un cierre, aunque traiga léxico de cierre → NO dispara
 is_block "$(dod '¿ya quedó terminado el módulo?' "$EDITR")" && bad "dod P1: bloqueó una PREGUNTA (falso positivo del UUID)" || ok "dod P1: pregunta con léxico de cierre → no bloquea"
 is_block "$(dod 'Terminé el fix. ¿Lo cierro y abro el MR?' "$EDITR")" && bad "dod P1: bloqueó una oferta que termina preguntando" || ok "dod P1: mensaje que termina en pregunta → no bloquea"
@@ -675,6 +842,16 @@ is_block "$(dod '🎉 El módulo quedó listo.' "$EDITR")" && ok "dod P2b fail-s
 is_block "$(dod 'El módulo de auth quedó listo.' "$EDITR")" && ok "dod dientes: 'el módulo de auth quedó listo' → sigue bloqueando" || bad "dod dientes: dejó pasar 'el módulo de auth quedó listo' (aflojado)"
 is_block "$(dod 'Ya funciona el widget.' "$EDITR")" && ok "dod dientes: 'ya funciona el widget' → sigue bloqueando" || bad "dod dientes: dejó pasar 'ya funciona el widget' (aflojado)"
 is_block "$(dod 'Terminamos la migración.' "$EDITR")" && ok "dod dientes: 'terminamos la migración' → sigue bloqueando" || bad "dod dientes: dejó pasar 'terminamos la migración' (aflojado)"
+# ALTO-2 (FMEA 2026-07-30): un fan-out (tool Task) edita en el transcript del SUB-AGENTE, invisible aquí
+# → un Task en el turno cuenta como POSIBLE código tocado y entra al gate de evidencia (1)/(2).
+TASKT='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Task","input":{}}]}}'
+is_block "$(dod 'La ola quedó lista y en producción.' "$TASKT")" && ok "dod ALTO-2: claim de cierre + solo un Task (sin evidencia/OK) → bloquea (Task = posible código)" || bad "dod ALTO-2: un fan-out (Task) evadió el candado (ciego al sub-agente)"
+is_block "$(dod 'La ola quedó lista.' "$TASKT" 'sí, ya la validé, ciérrala')" && bad "dod ALTO-2: bloqueó con Task + OK del usuario" || ok "dod ALTO-2: Task + confirmación del usuario → no bloquea"
+# MEDIO-1 (FMEA 2026-07-30): los meta-tokens ('definición de listo') se subordinan al claim.
+is_block "$(dod 'Quedó 100% listo — cumplida la definición de listo.' "$EDITR")" && ok "dod MEDIO-1: claim de cierre + 'definición de listo' → bloquea (el meta-token ya no lo salva)" || bad "dod MEDIO-1: el meta-token 'definición de listo' salvó un cierre afirmado (evasión)"
+is_block "$(dod '¿Cuál es tu definición de listo?' "$EDITR")" && bad "dod MEDIO-1: bloqueó una meta-pregunta sin claim ('¿cuál es tu definición de listo?')" || ok "dod MEDIO-1: meta-pregunta sin claim → no bloquea (escapa)"
+# BAJO-2 (FMEA 2026-07-30): la máscara MECH ya no se come un claim del entregable cuando nombra "rama".
+is_block "$(dod 'La rama de pagos quedó lista y funcionando.' "$EDITR")" && ok "dod BAJO-2: 'la rama de pagos quedó lista' → bloquea (la máscara MECH ya no come el claim del entregable)" || bad "dod BAJO-2: la máscara MECH se comió un claim genuino ('la rama de pagos quedó lista')"
 rm -f "$DODTX"
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -718,6 +895,23 @@ printf '# Hilo mental actual\n> Última actualización: 2026-07-13 · rama otra-
 rhbranch="$(printf '%s' '{"source":"resume"}' | HILO_STALE_HORAS=100000 CLAUDE_PROJECT_DIR="$RHGIT" bash "$HOOKS/rehidratar-hilo.sh")"
 printf '%s' "$rhbranch" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'OBSOLETO' \
   && ok "rehidratar-hilo: hilo de OTRA rama → OBSOLETO (aunque fresco)" || bad "rehidratar-hilo: esperaba OBSOLETO por rama; got: $rhbranch"
+# staleness (A8): hilo de la rama ACTUAL con mtime VIEJO (>12h) → NO obsoleto (la vigencia la manda la
+# rama, no el reloj). Antes, una sesión larga (>12h) en la misma rama enterraba su PROPIO hilo vigente.
+RHSAME="$(mktemp -d "${TMPDIR:-/tmp}/brain-rhs.XXXXXX")"
+git -C "$RHSAME" init -q >/dev/null 2>&1; git -C "$RHSAME" config user.email t@t >/dev/null 2>&1
+git -C "$RHSAME" config user.name tester >/dev/null 2>&1; git -C "$RHSAME" checkout -q -b trabajo-actual >/dev/null 2>&1
+printf 'x\n' > "$RHSAME/a.txt"; git -C "$RHSAME" add a.txt >/dev/null 2>&1; git -C "$RHSAME" commit -qm base >/dev/null 2>&1   # rama con commit → HEAD nombrado (no unborn)
+mkdir -p "$RHSAME/.claude/memory"
+printf '# Hilo mental actual\n> Última actualización: 2026-07-13 · rama trabajo-actual\nMARCA_SAME\n' > "$RHSAME/.claude/memory/hilo-mental-actual.md"
+touch -t 202001010000 "$RHSAME/.claude/memory/hilo-mental-actual.md" 2>/dev/null   # 6 años → age stale por reloj
+rhsame="$(printf '%s' '{"source":"resume"}' | CLAUDE_PROJECT_DIR="$RHSAME" bash "$HOOKS/rehidratar-hilo.sh")"
+rhsame_ctx="$(printf '%s' "$rhsame" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null)"
+printf '%s' "$rhsame_ctx" | grep -q 'POSIBLEMENTE OBSOLETO' \
+  && bad "rehidratar-hilo A8: hilo de la rama ACTUAL con mtime 13h+ se marcó OBSOLETO por edad (falso positivo)" \
+  || ok "rehidratar-hilo A8: hilo de la rama actual con mtime viejo → NO obsoleto (vigencia por rama)"
+printf '%s' "$rhsame_ctx" | grep -q 'HILO MENTAL ACTUAL' \
+  && ok "rehidratar-hilo A8: encabezado normal (rehidrata el hilo vigente pese a la edad)" || bad "rehidratar-hilo A8: no reinyectó con encabezado normal; got: $rhsame_ctx"
+rm -rf "$RHSAME"
 rm -rf "$RHGIT" "$RHROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────

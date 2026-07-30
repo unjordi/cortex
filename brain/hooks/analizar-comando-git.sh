@@ -19,9 +19,11 @@ acg_rama_actual() { git -C "${CLAUDE_PROJECT_DIR:-.}" rev-parse --abbrev-ref HEA
 acg_es_push() { printf '%s' "$1" | grep -qE 'git[[:space:]]+push([[:space:]]|$)'; }
 
 # ¿nombra develop/main como DESTINO explícito del push, en el MISMO segmento (no cruza ; && ||),
-# precedido por espacio/:/'/' (no matchea feat/develop-x)?
+# precedido por espacio/:/'/'/'+' (no matchea feat/develop-x)? El '+' cubre el FORCE-REFSPEC
+# (`git push origin +develop`, `git push -f origin +develop`) — el push FORZADO a base, el más
+# peligroso, que sin el '+' en el set de separadores se colaba (A2, FMEA 2026-07-30).
 acg_push_destino_base() {
-  printf '%s' "$1" | grep -qE 'git[[:space:]]+push[^;&|]*[[:space:]:/](main|develop)([[:space:]]|$)'
+  printf '%s' "$1" | grep -qE 'git[[:space:]]+push[^;&|]*[[:space:]:/+](main|develop)([[:space:]]|$)'
 }
 
 # ¿el push va SIN un refspec de rama explícito? (pelón, o solo remoto, o `HEAD` → empuja la RAMA
