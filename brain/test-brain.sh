@@ -241,6 +241,10 @@ printf '%s' "$(gb 'git push --mirror origin')"  | grep -q '"deny"' && ok "gbg A-
 printf '%s' "$(gb 'git -c http.sslVerify=false push origin develop')" | grep -q '"deny"' && ok "gbg A-03: prefijo 'git -c … push develop' → deny" || bad "gbg A-03: el prefijo 'git -c' rompió la adyacencia (bypass)"
 printf '%s' "$(gb 'git -C /tmp push origin main')" | grep -q '"deny"' && ok "gbg A-03: prefijo 'git -C dir push main' → deny" || bad "gbg A-03: 'git -C' se coló"
 is_silent "$(gb 'git push origin "feat/x"')"    && ok "gbg A-01: ramita entrecomillada → silencio (sin falso positivo)" || bad "gbg A-01: bloqueó una ramita entrecomillada"
+# N-01 (FMEA ronda 2): refspec ENTRECOMILLADO con la base a la DERECHA del ':' (residuo del raw-check de A-01).
+printf '%s' "$(gb 'git push origin "HEAD:develop"')"     | grep -q '"deny"' && ok "gbg N-01: 'git push origin \"HEAD:develop\"' → deny" || bad "gbg N-01: refspec entrecomillado HEAD:develop se coló"
+printf '%s' "$(gb 'git push origin "mybranch:main"')"    | grep -q '"deny"' && ok "gbg N-01: 'git push origin \"mybranch:main\"' → deny" || bad "gbg N-01: refspec entrecomillado rama:main se coló"
+is_silent "$(gb 'git push origin "HEAD:feat/x"')"        && ok "gbg N-01: refspec entrecomillado a ramita → silencio (sin falso positivo)" || bad "gbg N-01: bloqueó un refspec a ramita"
 rm -rf "$GBROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────

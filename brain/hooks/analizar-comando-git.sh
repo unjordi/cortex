@@ -64,17 +64,20 @@ acg_push_sin_refspec() {
 # develop/main. Opera sobre el cmd SIN comillas ni --repo. Cierra H1 (+ H11/H13). Requiere git para
 # el caso pelón; sin git cae a fail-open en ese caso (backstop = ramas protegidas server-side).
 acg_push_toca_base() {
-  local raw u
+  local raw u pushseg
   raw=$(acg_normaliza_git_prefijo "$1")   # A-03: colapsa `git -c/-C …` para no romper la adyacencia git+push
-  # A-01: un destino base ENTRECOMILLADO en el segmento del push (`git push origin "develop"`). despoja_comillas
-  # lo borraría → chequear en CRUDO (sobre el normalizado). El segmento `git[[:space:]]+push[^;&|]*` no cruza
-  # ; && || → un mensaje entrecomillado de OTRO subcomando encadenado no contamina.
-  printf '%s' "$raw" | grep -qE "git[[:space:]]+push[^;&|]*[[:space:]]['\"]\+?(main|develop)(:[^[:space:]'\"]*)?['\"]" && return 0
   u=$(acg_sin_flag_repo "$(acg_despoja_comillas "$raw")")
-  acg_es_push "$u" || return 1
+  acg_es_push "$u" || return 1            # confirma un push REAL: una mención "git push" DENTRO de comillas
+                                          # (mensaje de commit, H13) NO sobrevive al despoje → no dispara aquí.
+  # A-01 + N-01 (FMEA): el destino de un push REAL puede venir ENTRECOMILLADO — `"develop"`, `"+develop"`,
+  # y la forma refspec con la base a la DERECHA del ':' (`"HEAD:develop"`, `"rama:main"`) — que despoja_comillas
+  # borró. DESQUOTAMOS el SEGMENTO del push (solo los CARACTERES de comilla, conservando el contenido) y
+  # corremos la detección normal de destino. El segmento `git push[^;&|]*` no cruza ; && || → nada de otro
+  # subcomando encadenado entra. (N-01 cerró el residuo del raw-check anterior, que anclaba la base a la comilla.)
+  pushseg=$(printf '%s' "$raw" | grep -oE 'git[[:space:]]+push[^;&|]*' | head -1 | tr -d "'\"")
+  acg_push_destino_base "$pushseg" && return 0
   # A-02: --all/--mirror empujan TODAS las refs locales (incl develop/main) sin nombrarlas → toca base incondicional.
   printf '%s' "$u" | grep -qE 'git[[:space:]]+push[^;&|]*[[:space:]](--all|--mirror)([[:space:]]|$)' && return 0
-  acg_push_destino_base "$u" && return 0
   if acg_push_sin_refspec "$u"; then
     case "$(acg_rama_actual)" in main|develop) return 0 ;; esac
   fi

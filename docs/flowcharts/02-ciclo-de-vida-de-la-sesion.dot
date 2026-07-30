@@ -2,7 +2,7 @@
 // Render:  dot -Tsvg 02-ciclo-de-vida-de-la-sesion.dot -o 02-ciclo-de-vida-de-la-sesion.svg
 // Completado 2026-07-29: el esqueleto ya era bueno; se AÑADEN los 2 hooks de SessionStart que faltaban
 // y que MUTAN git (aviso-drift-cerebro, barrer-ramas), el estado de CIERRE de sesión y la LEYENDA.
-// Los 4 hooks reales de SessionStart se cablean en install-brain.sh:103-107 (3 globales) + sesion-inicio (repo).
+// Los 4 hooks reales de SessionStart se cablean en install-brain.sh (ev_de → SessionStart) (3 globales) + sesion-inicio (repo).
 digraph flujos {
   graph [bgcolor="#1b1712", rankdir=TB, fontname="Helvetica", splines=true,
          nodesep=0.35, ranksep=0.55, pad=0.25];
@@ -83,7 +83,7 @@ digraph flujos {
     BOOT   [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
             label="🔧  bootstrap-claude.sh (UNA vez tras clonar)\ninstala hooks GLOBALES + enlaza el cerebro + verifica git & jq;\nlos hooks del repo se cablean en .claude/settings.json (viajan por git)"];
 
-    // ── SessionStart: los CUATRO hooks reales (install-brain.sh:103-107 + sesion-inicio repo) ──
+    // ── SessionStart: los CUATRO hooks reales (install-brain.sh (ev_de → SessionStart) + sesion-inicio repo) ──
     START  [color="#e08e45",
             label="🔔🧭  sesion-inicio  (SessionStart · POR-REPO)\nsource: startup / resume / compact"];
     INJECT [color="#e08e45",
