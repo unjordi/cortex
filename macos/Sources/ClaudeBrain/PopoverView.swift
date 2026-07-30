@@ -1263,7 +1263,7 @@ struct PopoverView: View {
         }
         if BrainState.knownRepoHooks.contains(name) { return .repoScoped }
         switch name {
-        case "cerrar-slice", "checkpoint", "diagramar", "orquestar-fanout", "turno-nocturno",
+        case "cerrar-slice", "checkpoint", "diagramar", "auditar-proceso-algoritmo", "orquestar-fanout", "turno-nocturno",
              "cosechar-sesion", "unificar-cerebro":
             return st.skills.contains(name) ? .installed : .absent
         case "Definition of Done", "Doc <= realidad", "Flujo de git", "Costo de delegación":
@@ -1380,6 +1380,9 @@ struct PopoverView: View {
                     BrainItem("📐", "diagramar", "diagrama según su DESTINO: yEd editable (.dot→graphml) o Mermaid versionado",
                               "skill · opt-in",
                               "Produce un diagrama eligiendo el flujo según su destino: para EDITAR a mano, modela en .dot (Graphviz) → .graphml de yEd; para VERSE en GitHub/docs, Mermaid en un .md versionado. Regla dura: un diagrama entregable nunca queda solo como artefacto local gitignorado ni widget efímero del chat."),
+                    BrainItem("🔬", "auditar-proceso-algoritmo", "auditor experto READ-ONLY: proceso industrial + algoritmo → hallazgos priorizados",
+                              "skill · opt-in",
+                              "Manda un agente-auditor experto (procesos industriales/logísticos + análisis de algoritmos) a revisar a fondo un flujo de negocio o el propio cerebro, y entregar hallazgos priorizados SIN tocar nada. Aliméntalo con los flowcharts del proceso (skill diagramar, 'los zapatos') + la investigación de dominio + datos de estrés. Hermano de diagramar: primero el mapa, luego el auditor."),
                     BrainItem("🐝", "orquestar-fanout", "fan-out de agentes sin niñera (estado en 2 archivos + contrato de reporte)",
                               "skill · opt-in",
                               "Orquestar trabajo paralelizable en varios agentes SIN niñera: asigna ítems autocontenidos del backlog y, al terminar cada agente, su avance queda registrado (bitácora) y su worktree limpio automáticamente. Modelo de estado sin redundancia: estado-proyecto = backlog vivo, bitácora = pasado append-only."),

@@ -950,6 +950,9 @@ PlasmoidItem {
                 { emoji: "📐", name: "diagramar", desc: "diagrama según su DESTINO: yEd editable (.dot→graphml) o Mermaid versionado",
                   event: "skill · opt-in",
                   detail: "Produce un diagrama eligiendo el flujo según su destino: para EDITAR a mano, modela en .dot (Graphviz) → .graphml de yEd; para VERSE en GitHub/docs, Mermaid en un .md versionado. Regla dura: un diagrama entregable nunca queda solo como artefacto local gitignorado ni widget efímero del chat." },
+                { emoji: "🔬", name: "auditar-proceso-algoritmo", desc: "auditor experto READ-ONLY: proceso industrial + algoritmo → hallazgos priorizados",
+                  event: "skill · opt-in",
+                  detail: "Manda un agente-auditor experto (procesos industriales/logísticos + análisis de algoritmos) a revisar a fondo un flujo de negocio o el propio cerebro, y entregar hallazgos priorizados SIN tocar nada. Aliméntalo con los flowcharts del proceso (skill diagramar, 'los zapatos') + la investigación de dominio + datos de estrés. Hermano de diagramar: primero el mapa, luego el auditor." },
                 { emoji: "🐝", name: "orquestar-fanout", desc: "fan-out de agentes sin niñera (estado en 2 archivos + contrato de reporte)",
                   event: "skill · opt-in",
                   detail: "Orquestar trabajo paralelizable en varios agentes SIN niñera: asigna ítems autocontenidos del backlog y, al terminar cada agente, su avance queda registrado (bitácora) y su worktree limpio automáticamente. Modelo de estado sin redundancia: estado-proyecto = backlog vivo, bitácora = pasado append-only." },
@@ -1072,7 +1075,7 @@ PlasmoidItem {
             return p && w ? "installed" : (p ? "presentNotWired" : "absent")
         }
         if (inArr(root.brainRepoHooks, name)) return "repoScoped"
-        if (["cerrar-slice","checkpoint","diagramar","orquestar-fanout","turno-nocturno","cosechar-sesion","unificar-cerebro"].indexOf(name) !== -1)
+        if (["cerrar-slice","checkpoint","diagramar","auditar-proceso-algoritmo","orquestar-fanout","turno-nocturno","cosechar-sesion","unificar-cerebro"].indexOf(name) !== -1)
             return inArr(st.skills, name) ? "installed" : "absent"
         if (name === "Definition of Done" || name === "Doc <= realidad"
             || name === "Flujo de git" || name === "Costo de delegación")
