@@ -75,14 +75,23 @@ _decl=$(printf '%s' "$last" | sed 's/¿[^?]*?//g')
 # entregable SOBREVIVE al enmascarado y SÍ dispara. "el módulo quedó listo" no se toca (módulo no
 # es sustantivo de proceso). NOTA: "deploy" solo cuenta como mecánico si es "deploy del stack de
 # QA" — un "deploy listo" a secas puede ser el entregable y NO se exenta (fail-safe).
-MECH_N='(checkpoints?|commits?|pushe?s?|pull|fetch|rebase|merge requests?|pull requests?|merges?( local(es)?| de la ramita| de la rama)?|mrs?|prs?|(bitacoras?|bitácoras?)|memorias?|worktrees?|ramitas?|ramas?|builds?|tests?|deploys? (del|al) stack( de qa)?|release prs?|pipelines?|hilo( mental)?|estado-proyecto)'
+# BAJO-2 (FMEA 2026-07-30): "ramita/rama" se QUITARON de la lista genérica de MECH_N. Con `list[oa]`
+# como MECH_D, "la rama de pagos quedó lista" se enmascaraba entero y el claim del ENTREGABLE escapaba
+# (falso negativo). Ahora "rama/ramita" solo se trata como mecánica cuando va con un VERBO DE GIT
+# inequívoco (pushead/mergead/cread…), vía MECH_GITV + su patrón dedicado abajo — nunca con el
+# downgrader genérico "lista/hecha/ok". (Se conserva "merge(s) de la rama(ita)" dentro de MECH_N: ahí
+# la cabeza mecánica es "merge", no la rama.)
+MECH_N='(checkpoints?|commits?|pushe?s?|pull|fetch|rebase|merge requests?|pull requests?|merges?( local(es)?| de la ramita| de la rama)?|mrs?|prs?|(bitacoras?|bitácoras?)|memorias?|worktrees?|builds?|tests?|deploys? (del|al) stack( de qa)?|release prs?|pipelines?|hilo( mental)?|estado-proyecto)'
 MECH_D='(hech[oa]s?|list[oa]s?|ok|corrid[oa]s?|aplicad[oa]s?|actualizad[oa]s?|abiert[oa]s?|cread[oa]s?|pushead[oa]s?|subid[oa]s?|mergead[oa]s?|volcad[oa]s?|escrit[oa]s?|al d(i|í)a)'
+# Verbos de GIT inequívocamente mecánicos: solo con estos se enmascara "rama/ramita" (no con "lista").
+MECH_GITV='(pushead|mergead|cread|subid|rebasead|integrad|borrad|eliminad|bajad)[oa]s?'
 # tr 'A-Z' 'a-z' (rango ASCII explícito): byte-safe en BSD/GNU, no corrompe emojis/acentos; el grep
 # posterior ya es -i. sed con delimitador @ (no hay @ en los patrones) y alternación en vez de
 # corchetes multibyte (portable BSD/GNU).
 _mask=$(printf '%s' "$_decl" | tr 'A-Z' 'a-z' | sed -E \
   -e "s@(^|[^a-z0-9])((✅|☑️|✔️) *)?((listo|hecho|ok) *(—|–|:|,)? *)?((el|la|los|las|tu|mi|un|una) )?${MECH_N}( [^ .,;:!?]+){0,3}( ya)?( qued(o|ó)| est(a|á)n?)? ${MECH_D}@\1@g" \
-  -e "s@(^|[^a-z0-9])((✅|☑️|✔️) *)?${MECH_D}( (el|la|los|las|tu|mi|un|una|del|de la))? ${MECH_N}@\1@g")
+  -e "s@(^|[^a-z0-9])((✅|☑️|✔️) *)?${MECH_D}( (el|la|los|las|tu|mi|un|una|del|de la))? ${MECH_N}@\1@g" \
+  -e "s@(^|[^a-z0-9])((la|mi|una|esta|esa|tu|las) )?(rama|ramas|ramita|ramitas)( de [^ .,;:!?]+)?( ya)?( qued(o|ó)| est(a|á)n?)? ${MECH_GITV}@\1@g")
 printf '%s' "$_mask" | grep -qiE "$CLAIM_RE" && claim=si || claim=no
 
 # ── ESCAPE por DOWNGRADE explícito (léxico PRESCRITO de preview/auto-degradación, o meta-discusión de
@@ -90,8 +99,17 @@ printf '%s' "$_mask" | grep -qiE "$CLAIM_RE" && claim=si || claim=no
 # declarar NO-listo — "el módulo quedó terminado pero lo dejo EN PREVIEW, A TU REVISIÓN" es honesto,
 # no un falso LISTO. (Por eso NO se subordina al claim: sería un falso positivo castigar justo la
 # frase que la norma pide.) ──
-DOWNGRADE_RE='en preview|a tu (revisi|qa)|para tu (revisi|qa|visto)|pendiente de tu|sin mergear|armado sin merge|no (lo |la )?mergeo|no cierro|no declaro|definici[oó]n de .?listo|qu[eé] entiendes por|palabra .?listo'
+DOWNGRADE_RE='en preview|a tu (revisi|qa)|para tu (revisi|qa|visto)|pendiente de tu|sin mergear|armado sin merge|no (lo |la )?mergeo|no cierro|no declaro'
 printf '%s' "$last" | grep -qiE "$DOWNGRADE_RE" && exit 0
+# MEDIO-1 (FMEA 2026-07-30): los meta-tokens (hablar DE la palabra "listo": "definición de listo",
+# "¿qué entiendes por…?", "la palabra listo") NO son léxico de preview — antes escapaban SIEMPRE, así
+# "quedó 100% listo — cumplida la definición de listo" se colaba pese al cierre afirmado. Se subordinan
+# al claim (como WEAK_STATUS_RE abajo): con un CLAIM co-ubicado NO salvan; sin claim (una pregunta/meta
+# genuina, "¿cuál es tu definición de listo?") sí escapan.
+META_LISTO_RE='definici[oó]n de .?listo|qu[eé] entiendes por|palabra .?listo'
+if [ "$claim" != si ]; then
+  printf '%s' "$last" | grep -qiE "$META_LISTO_RE" && exit 0
+fi
 
 # ── ESCAPE por ESTATUS DÉBIL (deferir/avisar/consultar) — SOLO si NO hay un CLAIM de cierre co-ubicado
 # (H4), igual que la pregunta de abajo. Antes esto escapaba SIEMPRE, así "Listo, quedó terminado. Dime
@@ -169,6 +187,14 @@ if [ -z "$codigo" ]; then
       | grep -oE '[^[:space:]|;&<>]+\.[A-Za-z0-9]+$' \
       | grep -vE '\.(md|txt|log)$|^/dev/' | head -1)
   fi
+fi
+# ALTO-2 (FMEA 2026-07-30): un fan-out DELEGA la edición a un SUB-AGENTE (tool Task); sus tool_use viven
+# en OTRO transcript (el del sub-agente), invisibles aquí → un orquestador que delega todo y declara "la
+# ola quedó" nunca disparaba el candado (cuanto MEJOR orquestas, más ciego el gate de LISTO). Un tool_use
+# name=="Task" en el turno se trata como POSIBLE código tocado → entra al gate de evidencia (1)/(2). No
+# podemos ver QUÉ tocó el sub-agente, así que la marca del usuario es lo que exige el cierre de la ola.
+if [ -z "$codigo" ]; then
+  printf '%s' "$turn" | grep -qE '"name"[[:space:]]*:[[:space:]]*"Task"' && codigo="(task-subagente)"
 fi
 [ -z "$codigo" ] && exit 0
 
