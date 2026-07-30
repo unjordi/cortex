@@ -1411,8 +1411,29 @@ done < <(cd "$PR" && git ls-files '*.sh' '*.ps1' '*.swift' '*.cs' '*.qml' | grep
   && ok "e6.3: sin rutas \$HOME absolutas hardcodeadas en código de envío (todas parametrizadas)" \
   || bad "e6.3: home absoluto hardcodeado en: $hp_hits"
 
-# (e6.4 — paridad del fallback resolveClonePath en los 3 updaters — OMITIDO a propósito: el puerto a
-#  QML quedó en BACKLOG (ver dictamen, H2). Sin los 3 updaters no se agrega su test para no dejarlo rojo.)
+echo ""
+echo "== (e6.4) los 3 updaters resuelven la ruta del clon con FALLBACK + marca (paridad resolveClonePath, H2) =="
+# H2 portado a QML (2026-07-30): antes el plasmoid confiaba CIEGO en version.json.repo (un path horneado
+# en otra máquina / repo movido habilitaba un auto-update que hacía cd a una ruta muerta). Ahora los 3
+# updaters prueban candidatos [embebido → $CLAUDE_BRAIN_DIR → clon canónico] y toman el 1º con su marca.
+Q4="$PR/src/plasmoid/contents/ui/main.qml"
+S4="$PR/macos/Sources/ClaudeBrain/Updater.swift"
+C4="$PR/windows/src/ClaudeBrain/Updater.cs"
+if [ -f "$Q4" ]; then
+  { grep -qF 'resolveRepoPath' "$Q4" && grep -qF 'CLAUDE_BRAIN_DIR' "$Q4" && grep -qF '.claude-brain' "$Q4" && grep -qF 'install.sh' "$Q4"; } \
+    && ok "e6.4[qml]: main.qml resuelve el clon con fallback (\$CLAUDE_BRAIN_DIR / ~/.claude-brain) + marca install.sh" \
+    || bad "e6.4[qml]: main.qml NO resuelve el clon con fallback (H2 sin portar → confía ciego en version.json.repo)"
+else bad "e6.4[qml]: no encuentro main.qml"; fi
+if [ -f "$S4" ]; then
+  { grep -qF 'resolveClonePath' "$S4" && grep -qF 'CLAUDE_BRAIN_DIR' "$S4" && grep -qF '.claude-brain' "$S4" && grep -qF 'macos/install.sh' "$S4"; } \
+    && ok "e6.4[swift]: Updater.swift resuelve el clon con fallback + marca macos/install.sh" \
+    || bad "e6.4[swift]: Updater.swift perdió el fallback de resolveClonePath"
+else bad "e6.4[swift]: no encuentro Updater.swift"; fi
+if [ -f "$C4" ]; then
+  { grep -qF 'ResolveClonePath' "$C4" && grep -qF 'CLAUDE_BRAIN_DIR' "$C4" && grep -qF 'claude-brain-repo' "$C4" && grep -qF 'install.ps1' "$C4"; } \
+    && ok "e6.4[cs]: Updater.cs resuelve el clon con fallback + marca windows/install.ps1" \
+    || bad "e6.4[cs]: Updater.cs perdió el fallback de ResolveClonePath"
+else bad "e6.4[cs]: no encuentro Updater.cs"; fi
 
 echo ""
 echo "== (e6.5) los updaters escapan/citan la ruta del clon en el cd/Set-Location (fix H5) =="
