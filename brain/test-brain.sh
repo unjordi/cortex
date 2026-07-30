@@ -172,9 +172,11 @@ write_state 19   # restablece el state.json de ventana para lo que siga
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "== (b1c) merge-squash-guard: EXIGE squash SOLO si destino=develop confirmado (G4) =="
-# Modelo canónico (decisión del usuario): squash únicamente cuando el destino es develop CONFIRMADO;
-# main (release), ramas personales, ramitas y destino INDETERMINADO → libres (nunca se fuerza squash).
+echo "== (b1c) merge-squash-guard: EXIGE squash si destino=develop O indeterminado (G4 + B3) =="
+# Modelo canónico (decisión del usuario): squash cuando el destino es develop CONFIRMADO; main (release)
+# y ramas personales/ramitas → libres. B3 (FMEA 2026-07-30): destino IRRESOLUBLE (timeout/red) → fail-safe
+# EXIGE squash (antes lo dejaba pasar mientras confirmar-merge-develop sí lo trataba como develop → "merge
+# a develop confirmado SIN squash"), salvo señal explícita de release-a-main en el comando.
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null   # caché de destino limpia (la lib cachea por MR-id)
 MSBIN="$FAKEHOME/msbin"; mkdir -p "$MSBIN"
 mock_glab() { printf '#!/usr/bin/env bash\necho '\''{"target_branch":"%s"}'\''\n' "$1" > "$MSBIN/glab"; chmod +x "$MSBIN/glab"; }
@@ -190,8 +192,17 @@ mock_glab DevelopAna; out="$(ms 'glab mr merge 43 --auto-merge --yes')"
 is_silent "$out" && ok "squash-guard G4: destino=rama personal → NO fuerza squash (día a día libre)" || bad "squash-guard G4: forzó squash a rama personal; got: $out"
 mock_glab main; out="$(ms 'glab mr merge 44 --yes')"
 is_silent "$out" && ok "squash-guard G4: destino=main (release) → NO fuerza squash"       || bad "squash-guard G4: forzó squash a un release; got: $out"
+# B3: destino IRRESOLUBLE (sin id → no se puede consultar; equivale a un timeout de red) SIN --squash
+# → fail-safe EXIGE squash (deny). Antes esto pasaba en silencio (el hueco B3).
 out="$(ms 'glab mr merge --auto-merge --yes')"   # sin ID → destino indeterminado
-is_silent "$out" && ok "squash-guard G4: destino INDETERMINADO → NO fuerza squash (fail-safe hacia libre)" || bad "squash-guard G4: forzó squash con destino indeterminado; got: $out"
+is_deny "$out" && ok "squash-guard B3: destino INDETERMINADO sin --squash → deny (fail-safe exige squash)" || bad "squash-guard B3: no forzó squash con destino indeterminado; got: $out"
+# B3: mismo destino irresoluble PERO ya trae --squash → pasa (nada que exigir).
+out="$(ms 'glab mr merge --squash --auto-merge --yes')"
+is_silent "$out" && ok "squash-guard B3: destino INDETERMINADO CON --squash → pasa" || bad "squash-guard B3: bloqueó un merge indeterminado que ya trae squash; got: $out"
+# B3: destino irresoluble PERO el comando SEÑALA release-a-main explícito → NO fuerza squash (no aplasta
+# el histórico de un release cuya red no se pudo consultar). Sin id → destino queda vacío igual.
+out="$(ms 'glab mr merge --yes # release a main')"
+is_silent "$out" && ok "squash-guard B3: indeterminado + señal 'release a main' → NO fuerza squash" || bad "squash-guard B3: forzó squash pese a la señal explícita de release; got: $out"
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
 rm -rf "$MSBIN"
 
@@ -213,6 +224,12 @@ git -C "$GBREPO" checkout -q -b feat/x >/dev/null 2>&1
 is_silent "$(gb 'git push')"              && ok "gbg H1: 'git push' pelón en ramita → silencio (sin falso positivo)" || bad "gbg H1: push pelón en ramita bloqueó"
 is_silent "$(gb 'git push -u origin feat/x')" && ok "gbg: push explícito de la ramita → silencio"                    || bad "gbg: push de ramita bloqueó"
 printf '%s' "$(gb 'git push origin develop')" | grep -q '"deny"' && ok "gbg: 'git push origin develop' explícito → deny (preservado)" || bad "gbg: push explícito a develop NO bloqueó"
+# A2 (FMEA 2026-07-30): el FORCE-REFSPEC `+develop` (el `+` fuerza el push) se colaba porque el set de
+# separadores no incluía '+'. El push FORZADO a base es el más peligroso → debe BLOQUEAR.
+printf '%s' "$(gb 'git push -f origin +develop')" | grep -q '"deny"' && ok "gbg A2: 'git push -f origin +develop' (force-refspec) → deny" || bad "gbg A2: el force-refspec +develop se coló (bypass A2)"
+printf '%s' "$(gb 'git push origin +develop')"    | grep -q '"deny"' && ok "gbg A2: 'git push origin +develop' (force-refspec, sin -f) → deny" || bad "gbg A2: +develop sin -f se coló"
+printf '%s' "$(gb 'git push origin +main')"       | grep -q '"deny"' && ok "gbg A2: 'git push origin +main' (force-refspec) → deny" || bad "gbg A2: +main se coló"
+is_silent "$(gb 'git push origin feat/x')"        && ok "gbg A2: 'git push origin feat/x' explícito → silencio (sin falso positivo del '+')" || bad "gbg A2: falso positivo al agregar '+' al set (bloqueó una ramita)"
 is_silent "$(gb 'git commit -m "doc: no hacer git push a develop"')" && ok "gbg H13: 'git push a develop' entrecomillado → silencio" || bad "gbg H13: mención entrecomillada disparó"
 is_silent "$(gb 'gh pr merge 5 -R org/develop --squash')" && ok "gbg H11: '-R org/develop' (nombre de repo) → silencio" || bad "gbg H11: -R org/develop disparó falso positivo"
 rm -rf "$GBROOT"
@@ -279,6 +296,40 @@ dur=$SECONDS
 { [ -z "$dhang" ] && [ "$dur" -lt 4 ]; } \
   && ok "cmd H5: glab colgado → timeout interno devuelve vacío en ${dur}s (no cuelga hasta que lo maten)" \
   || bad "cmd H5: la consulta colgada NO fue acotada por timeout (dhang='$dhang' dur=${dur}s)"
+rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
+
+# ── A3 (NEGATION-BLIND) · FMEA 2026-07-30 ──
+# ANTES: `grep -qiE` de CONF_RE/RELEASE_RE sin polaridad → una NEGACIÓN abría el merge. Cada caso usa un
+# MR-id distinto para no contaminar la caché de destino por MR-id.
+mock_cm_glab develop
+is_deny "$(cm 'glab mr merge 71 --squash --yes' 'no te di autorización todavía')" \
+  && ok "cmd A3: 'no te di autorización todavía' → deny (negación NO abre el merge)" \
+  || bad "cmd A3: BYPASS — una negación de autorización abrió el merge a develop"
+is_deny "$(cm 'glab mr merge 72 --squash --yes' 'aún no mergees eso')" \
+  && ok "cmd A3: 'aún no mergees eso' → deny" \
+  || bad "cmd A3: 'aún no mergees' dejó pasar el merge"
+is_silent "$(cm 'glab mr merge 73 --squash --yes' 'sí, mergea')" \
+  && ok "cmd A3: 'sí, mergea' → pasa (OK afirmativo, sin falso positivo)" \
+  || bad "cmd A3: FALSO POSITIVO — 'sí, mergea' fue frenado"
+is_silent "$(cm 'glab mr merge 74 --squash --yes' 'mergea el MR')" \
+  && ok "cmd A3: 'mergea el MR' → pasa" \
+  || bad "cmd A3: FALSO POSITIVO — 'mergea el MR' fue frenado"
+is_silent "$(cm 'glab mr merge 75 --squash --yes' 'dale el merge')" \
+  && ok "cmd A3: 'dale el merge' → pasa" \
+  || bad "cmd A3: FALSO POSITIVO — 'dale el merge' fue frenado"
+
+# ── A4 (OK TRANSITIVO) · FMEA 2026-07-30 ──
+# ANTES: un OK reciente autorizaba CUALQUIER merge de la ventana. Ahora, si el OK NOMBRA un MR-id, ese id
+# debe coincidir con el del comando; un OK genérico (sin id) conserva la recencia (no se endurece de más).
+is_deny "$(cm 'glab mr merge 9 --squash --yes' 'mergea el MR 5')" \
+  && ok "cmd A4: OK 'mergea el MR 5' + comando 'merge 9' → deny (no transitivo a otro MR)" \
+  || bad "cmd A4: TRANSITIVIDAD — un OK para el MR 5 autorizó el merge del MR 9"
+is_silent "$(cm 'glab mr merge 5 --squash --yes' 'mergea el 5')" \
+  && ok "cmd A4: OK 'mergea el 5' + comando 'merge 5' → pasa (id coincide)" \
+  || bad "cmd A4: el OK ligado al MR correcto fue frenado (falso positivo)"
+is_silent "$(cm 'glab mr merge 8 --squash --yes' 'dale merge')" \
+  && ok "cmd A4: OK genérico 'dale merge' + cualquier merge → pasa (recencia preservada)" \
+  || bad "cmd A4: un OK genérico dejó de autorizar (endurecimiento de más)"
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
 
 # ── (b1f) confirmar: AUTORIZACIÓN DURABLE en disco (sobrevive compactaciones) + vocabulario "empuja/mete" ──

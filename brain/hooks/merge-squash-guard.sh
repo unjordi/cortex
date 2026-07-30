@@ -31,16 +31,30 @@ acg_es_merge_mr "$cmd" || exit 0
 SQUASH_RE='(--squash([[:space:]]|=|$)|(^|[[:space:]])-s([[:space:]]|$))'
 printf '%s' "$cmd" | grep -qE "$SQUASH_RE" && exit 0
 
-# La obligatoriedad de --squash aplica SÓLO cuando el DESTINO es `develop` (1 commit limpio por slice).
-# Todo lo demás va LIBRE: `main` es RELEASE (conserva historia — JAMÁS se fuerza squash, así un squash
-# olvidado nunca aplasta el histórico de un release), y ramas personales/ramitas son el día a día (a tu
-# gusto). El destino lo resuelve la lib (acg_destino_de_mr): caché por MR-id COMPARTIDA con
-# confirmar-merge-develop (típicamente 1 llamada de red, no 2; no es lock) + timeout interno para no fallar-abierto por muerte
-# del proceso (H5). FAIL-SAFE hacia esa prioridad: si NO podemos confirmar que el destino es `develop`
-# (vacío por timeout/error), NO forzamos squash (nunca arriesgamos aplastar un release por no resolver).
+# La obligatoriedad de --squash aplica cuando el DESTINO es `develop` (1 commit limpio por slice) y —por
+# FAIL-SAFE— también cuando el destino NO se pudo resolver (vacío por timeout/error de red). `main` es
+# RELEASE (conserva historia — JAMÁS se fuerza squash) y las ramas personales/ramitas son el día a día
+# (a tu gusto). El destino lo resuelve la lib (acg_destino_de_mr): caché por MR-id COMPARTIDA con
+# confirmar-merge-develop (típicamente 1 llamada de red, no 2; no es lock) + timeout interno para no
+# fallar-abierto por muerte del proceso (H5).
+#
+# B3 (FMEA 2026-07-30): ANTES un destino irresoluble (timeout de red) NO exigía squash, mientras que
+# confirmar-merge-develop SÍ trataba el vacío como develop → "merge a develop CONFIRMADO, pero SIN
+# squash". Ahora ambos guards FALLAN al MISMO lado: destino irresoluble ⇒ exige squash (conservador),
+# SALVO señal EXPLÍCITA de release-a-main en el propio comando (main mencionado / palabra `release`),
+# para no aplastar el histórico de un release cuya red no se pudo consultar.
+_es_release_explicito() {
+  local u; u=$(acg_sin_flag_repo "$(acg_despoja_comillas "$1")")
+  printf '%s' "$u" | grep -qiE '[[:space:]:/=](main)([[:space:]]|$)|\brelease\b'
+}
 _destino=$(acg_destino_de_mr "$cmd")
-# SOLO `develop` obliga squash; el resto (main/personales/ramitas/desconocido) queda libre.
-[ "$_destino" = "develop" ] || exit 0
+if [ -n "$_destino" ]; then
+  # Destino RESUELTO: solo `develop` obliga squash; main/personales/ramitas van libres.
+  [ "$_destino" = "develop" ] || exit 0
+else
+  # Destino IRRESOLUBLE (timeout/red / sin id): fail-safe → exige squash salvo release explícito en el cmd.
+  _es_release_explicito "$cmd" && exit 0
+fi
 
 # El mensaje cita la herramienta REAL del repo (gh vs glab), no siempre glab (P5).
 if printf '%s' "$cmd" | grep -qE 'gh[[:space:]]+pr'; then
