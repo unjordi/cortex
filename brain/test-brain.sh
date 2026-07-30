@@ -589,6 +589,43 @@ rm -rf "$RBROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (b3e) bz_es_zombie: regla (b) 'remota borrada' NO borra a ciegas una rama con commits propios (FMEA A5) =="
+# A5/MEDIO-3 (PÉRDIDA DE DATOS): la regla (b) marcaba zombie por "remota ausente" sin re-chequear si la
+# rama traía commits VIVOS no integrados → limpiar-ramas/-worktrees hacían `branch -D` irreversible sobre
+# trabajo real (remota borrada por rename/limpieza, o commits post-merge sin pushear). Fix: (b) solo
+# declara zombie si la rama NO tiene commits propios no equivalentes a la base (git cherry sin '+').
+BZROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-bz.XXXXXX")"; BZBARE="$BZROOT/remote.git"; BZREPO="$BZROOT/repo"
+git init -q --bare "$BZBARE" >/dev/null 2>&1
+git init -q "$BZREPO" >/dev/null 2>&1
+git -C "$BZREPO" symbolic-ref HEAD refs/heads/miDevelop >/dev/null 2>&1
+git -C "$BZREPO" config user.email t@t >/dev/null 2>&1; git -C "$BZREPO" config user.name tester >/dev/null 2>&1
+git -C "$BZREPO" remote add origin "$BZBARE" >/dev/null 2>&1
+printf 'base\n' > "$BZREPO/base.txt"; git -C "$BZREPO" add base.txt >/dev/null 2>&1; git -C "$BZREPO" commit -qm base >/dev/null 2>&1
+git -C "$BZREPO" push -q -u origin miDevelop >/dev/null 2>&1
+( . "$HOOKS/ramas-zombie.sh"
+  # CASO 1 — remota gone CON commits propios NO equivalentes → CONSERVAR (teeth del fix A5)
+  git -C "$BZREPO" checkout -q -b feat/viva miDevelop >/dev/null 2>&1
+  printf 'trabajo-vivo\n' > "$BZREPO/viva.txt"; git -C "$BZREPO" add viva.txt >/dev/null 2>&1; git -C "$BZREPO" commit -qm "commit propio no integrado" >/dev/null 2>&1
+  git -C "$BZREPO" push -q -u origin feat/viva >/dev/null 2>&1
+  git -C "$BZREPO" push -q origin --delete feat/viva >/dev/null 2>&1   # remota borrada (rename/limpieza)
+  git -C "$BZREPO" checkout -q miDevelop >/dev/null 2>&1
+  # teeth: la rama SÍ tiene commit propio ('+') y su remota YA no existe → antes (b) la borraba
+  git -C "$BZREPO" cherry miDevelop feat/viva 2>/dev/null | grep -q '^+' && ok "b3e(teeth): feat/viva tiene commit propio no equivalente ('+')" || bad "b3e(teeth): test mal armado, feat/viva sin '+'"
+  ! git -C "$BZREPO" ls-remote --exit-code --heads origin feat/viva >/dev/null 2>&1 && ok "b3e(teeth): la remota de feat/viva YA no existe (gatillo de la regla b)" || bad "b3e(teeth): la remota seguía existiendo"
+  bz_es_zombie "$BZREPO" feat/viva miDevelop && bad "b3e: A5 REGRESIÓN — remota gone CON commits únicos se declaró zombie (PÉRDIDA DE DATOS)" || ok "b3e: remota gone CON commits únicos no equivalentes → NO zombie (conserva)"
+  # CASO 2 — remota gone SIN commits propios (squash-mergeada, patch-equivalente) → zombie (se barre)
+  git -C "$BZREPO" checkout -q -b feat/hecha miDevelop >/dev/null 2>&1
+  printf 'x\n' > "$BZREPO/f.txt"; git -C "$BZREPO" add f.txt >/dev/null 2>&1; git -C "$BZREPO" commit -qm hecha >/dev/null 2>&1
+  git -C "$BZREPO" push -q -u origin feat/hecha >/dev/null 2>&1
+  git -C "$BZREPO" checkout -q miDevelop >/dev/null 2>&1
+  git -C "$BZREPO" merge --squash feat/hecha >/dev/null 2>&1; git -C "$BZREPO" commit -qm "squash feat/hecha" >/dev/null 2>&1   # integra su parche
+  git -C "$BZREPO" push -q origin --delete feat/hecha >/dev/null 2>&1   # remota borrada al mergear
+  bz_es_zombie "$BZREPO" feat/hecha miDevelop && ok "b3e: remota gone SIN commits únicos (patch-equivalente) → zombie (se barre)" || bad "b3e: no barrió una rama genuinamente integrada con remota gone"
+)
+rm -rf "$BZROOT"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "== (b3c) git-branch-guard: bloquea push/merge REAL a main/develop, NO una MENCIÓN entrecomillada =="
 # HOME AISLADO SIN copia global del hook: si no, la cláusula de dedupe doble-cableado (la copia del
 # repo CEDE cuando existe ~/.claude/hooks/…) haría que el guard salga en silencio en una máquina con el
