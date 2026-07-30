@@ -842,6 +842,98 @@ git -C "$AD3REPO" show --name-only --format= HEAD 2>/dev/null | grep -q 'setting
   && ok "aviso-drift FIX#1: el commit de auto-sync INCLUYE settings.json (el cableado viaja)" || bad "aviso-drift FIX#1: el commit NO incluyó settings.json (el cableado no viajaría)"
 rm -rf "$AD3FIX"
 
+# ── (b5c3) C2 FMEA: guard ANTI-REGRESIÓN — fuente ($BRAIN_DIR) DETRÁS de su origin/main → NO auto-aplica.
+# El sync copia FUENTE→repo; una fuente stale REGRESARÍA el brain y el push la propagaría. La fuente aquí
+# es un repo git con HEAD un commit ATRÁS de su ref origin/main (manipulado directo, sin baile de remotos
+# ni dependencia del nombre de rama default) → fuente_stale=1 → cae al AVISO.
+AD4FIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-ad4.XXXXXX")"
+AD4BRAIN="$AD4FIX/clon"; AD4REPO="$AD4FIX/repo"; AD4HOME="$AD4FIX/home"
+git init -q "$AD4BRAIN" >/dev/null 2>&1
+git -C "$AD4BRAIN" config user.email t@t >/dev/null 2>&1; git -C "$AD4BRAIN" config user.name Tester >/dev/null 2>&1
+git -C "$AD4BRAIN" checkout -q -B main >/dev/null 2>&1
+mkdir -p "$AD4BRAIN/brain"
+printf 'v1\n' > "$AD4BRAIN/marca.txt"; git -C "$AD4BRAIN" add -A >/dev/null 2>&1; git -C "$AD4BRAIN" commit -qm v1 >/dev/null 2>&1
+AD4A=$(git -C "$AD4BRAIN" rev-parse HEAD)
+printf 'v2\n' >> "$AD4BRAIN/marca.txt"; git -C "$AD4BRAIN" commit -qam v2 >/dev/null 2>&1
+git -C "$AD4BRAIN" update-ref refs/remotes/origin/main "$(git -C "$AD4BRAIN" rev-parse HEAD)" >/dev/null 2>&1  # origin/main = v2
+git -C "$AD4BRAIN" reset --hard "$AD4A" -q >/dev/null 2>&1                                                    # HEAD = v1 (1 atrás)
+# stub del sync (reporta drift; con --apply escribiría) — igual al de b5c
+cat > "$AD4BRAIN/brain/sincronizar-cerebro.sh" <<'STUB'
+#!/usr/bin/env bash
+repo="$1"
+[ "${2:-}" = "--apply" ] && printf 'x\n' > "$repo/.claude/hooks/hook-nuevo.sh"
+echo "  NUEVO      hook-nuevo.sh (hook)"
+echo "==> resumen: 1 nuevos · 0 a actualizar · 8 ya al día · 0 retirado(s) del cerebro · 8 hooks cableados (kind=hook) · 0 cableado faltante"
+STUB
+mkdir -p "$AD4REPO/.claude/hooks" "$AD4HOME"
+git -C "$AD4REPO" init -q >/dev/null 2>&1
+git -C "$AD4REPO" config user.email t@t >/dev/null 2>&1; git -C "$AD4REPO" config user.name Tester >/dev/null 2>&1
+: > "$AD4REPO/.claude/hooks/.brain-version"
+git -C "$AD4REPO" add -A >/dev/null 2>&1; git -C "$AD4REPO" commit -qm base >/dev/null 2>&1
+git -C "$AD4REPO" checkout -q -b DevelopTester >/dev/null 2>&1
+n0=$(git -C "$AD4REPO" rev-list --count HEAD)
+ad4out="$(printf '%s' '{"source":"startup"}' | HOME="$AD4HOME" CLAUDE_BRAIN_DIR="$AD4BRAIN" CLAUDE_PROJECT_DIR="$AD4REPO" bash "$HOOKS/aviso-drift-cerebro.sh")"
+printf '%s' "$ad4out" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'DRIFT DEL CEREBRO' \
+  && ok "C2: fuente detrás de origin/main → NO auto-aplica (avisa en vez de regresar)" || bad "C2: auto-aplicó desde una fuente STALE; got: $ad4out"
+{ [ "$(git -C "$AD4REPO" rev-list --count HEAD)" = "$n0" ] && [ ! -f "$AD4REPO/.claude/hooks/hook-nuevo.sh" ]; } \
+  && ok "C2: fuente stale → NO commiteó ni escribió (no empujó regresión)" || bad "C2: ¡commiteó/escribió desde una fuente stale!"
+printf '%s' "$ad4out" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'anti-regresión' \
+  && ok "C2: el aviso EXPLICA la fuente stale (nota anti-regresión)" || bad "C2: el aviso no menciona la fuente stale"
+rm -rf "$AD4FIX"
+
+# ── (b5c4) sA3 FMEA: el patrón de mini-develop es Develop+MAYÚSCULA. Una rama 'Development' (Develop+
+# minúscula) NO es mini-develop → NO auto-aplica (antes 'Develop?*' la casaba y le hacía auto-push).
+AD5FIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-ad5.XXXXXX")"
+AD5REPO="$AD5FIX/repo"; AD5HOME="$AD5FIX/home"; AD5BRAIN="$AD5FIX/clon"
+mkdir -p "$AD5REPO/.claude/hooks" "$AD5HOME" "$AD5BRAIN/brain"
+git -C "$AD5REPO" init -q >/dev/null 2>&1
+git -C "$AD5REPO" config user.email t@t >/dev/null 2>&1; git -C "$AD5REPO" config user.name Tester >/dev/null 2>&1
+: > "$AD5REPO/.claude/hooks/.brain-version"
+git -C "$AD5REPO" add -A >/dev/null 2>&1; git -C "$AD5REPO" commit -qm base >/dev/null 2>&1
+cat > "$AD5BRAIN/brain/sincronizar-cerebro.sh" <<'STUB'
+#!/usr/bin/env bash
+repo="$1"
+[ "${2:-}" = "--apply" ] && printf 'x\n' > "$repo/.claude/hooks/hook-nuevo.sh"
+echo "  NUEVO      hook-nuevo.sh (hook)"
+echo "==> resumen: 1 nuevos · 0 a actualizar · 8 ya al día · 0 retirado(s) del cerebro · 8 hooks cableados (kind=hook) · 0 cableado faltante"
+STUB
+ad5() { printf '%s' '{"source":"startup"}' | HOME="$AD5HOME" CLAUDE_BRAIN_DIR="$AD5BRAIN" CLAUDE_PROJECT_DIR="$AD5REPO" bash "$HOOKS/aviso-drift-cerebro.sh"; }
+git -C "$AD5REPO" checkout -q -b Development >/dev/null 2>&1   # Develop + minúscula = NO es mini-develop
+n0=$(git -C "$AD5REPO" rev-list --count HEAD)
+printf '%s' "$(ad5)" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'DRIFT DEL CEREBRO' \
+  && ok "sA3: rama 'Development' (Develop+minúscula) → AVISA, NO la trata como mini-develop" || bad "sA3: 'Development' recibió trato de mini-develop"
+{ [ "$(git -C "$AD5REPO" rev-list --count HEAD)" = "$n0" ] && [ ! -f "$AD5REPO/.claude/hooks/hook-nuevo.sh" ]; } \
+  && ok "sA3: 'Development' → NO auto-push (regex Develop[A-Z] cerró el falso positivo)" || bad "sA3: ¡auto-push sobre 'Development'!"
+rm -rf "$AD5FIX"
+
+# ── (b5c5) sA3 FMEA: el commit del auto-sync va ACOTADO a .claude/ (git commit -o) — NO barre cambios
+# staged AJENOS del usuario (p. ej. src/ a medio trabajar) al commit de auto-sync.
+AD6FIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-ad6.XXXXXX")"
+AD6REPO="$AD6FIX/repo"; AD6HOME="$AD6FIX/home"; AD6BRAIN="$AD6FIX/clon"
+mkdir -p "$AD6REPO/.claude/hooks" "$AD6REPO/src" "$AD6HOME" "$AD6BRAIN/brain"
+git -C "$AD6REPO" init -q >/dev/null 2>&1
+git -C "$AD6REPO" config user.email t@t >/dev/null 2>&1; git -C "$AD6REPO" config user.name Tester >/dev/null 2>&1
+: > "$AD6REPO/.claude/hooks/.brain-version"; printf 'base\n' > "$AD6REPO/src/foo.txt"
+git -C "$AD6REPO" add -A >/dev/null 2>&1; git -C "$AD6REPO" commit -qm base >/dev/null 2>&1
+git -C "$AD6REPO" checkout -q -b DevelopTester >/dev/null 2>&1
+cat > "$AD6BRAIN/brain/sincronizar-cerebro.sh" <<'STUB'
+#!/usr/bin/env bash
+repo="$1"
+[ "${2:-}" = "--apply" ] && printf 'x\n' > "$repo/.claude/hooks/hook-nuevo.sh"
+echo "  NUEVO      hook-nuevo.sh (hook)"
+echo "==> resumen: 1 nuevos · 0 a actualizar · 8 ya al día · 0 retirado(s) del cerebro · 8 hooks cableados (kind=hook) · 0 cableado faltante"
+STUB
+# el usuario tiene un cambio AJENO staged FUERA de .claude/ (no debe entrar al commit de auto-sync)
+printf 'trabajo a medias\n' >> "$AD6REPO/src/foo.txt"; git -C "$AD6REPO" add src/foo.txt >/dev/null 2>&1
+ad6out="$(printf '%s' '{"source":"startup"}' | HOME="$AD6HOME" CLAUDE_BRAIN_DIR="$AD6BRAIN" CLAUDE_PROJECT_DIR="$AD6REPO" bash "$HOOKS/aviso-drift-cerebro.sh")"
+printf '%s' "$ad6out" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'AUTO-SINCRONIZADO' \
+  && ok "sA3: auto-sincroniza aunque haya cambios ajenos staged fuera de .claude/" || bad "sA3: no auto-sincronizó; got: $ad6out"
+git -C "$AD6REPO" show --name-only --format= HEAD 2>/dev/null | grep -q 'src/foo.txt' \
+  && bad "sA3: ¡el commit de auto-sync BARRIÓ src/foo.txt (commit sin acotar)!" || ok "sA3: el commit de auto-sync NO incluyó src/foo.txt (acotado a .claude/ con -o)"
+git -C "$AD6REPO" diff --cached --name-only 2>/dev/null | grep -q 'src/foo.txt' \
+  && ok "sA3: el cambio ajeno del usuario sigue staged intacto (no se lo llevó el auto-sync)" || bad "sA3: se perdió el staging del cambio ajeno del usuario"
+rm -rf "$AD6FIX"
+
 # ── (b5d) sembrar-mini-develop: crea la rama desde origin/develop sin tocar el worktree ──
 SMFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-sm.XXXXXX")"
 SMBARE="$SMFIX/remoto.git"; SMREPO="$SMFIX/clon"

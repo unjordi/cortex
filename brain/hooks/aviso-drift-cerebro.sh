@@ -80,9 +80,25 @@ detalle=$(printf '%s\n' "$out" | grep -E '(NUEVO|ACTUALIZA|RETIRARÍA)' | sed 's
 # actualiza SOLO: apply + commit + push a tu mini (permitido: es tu rama personal; el cambio llega a
 # develop con tu siguiente integración coordinada). En cualquier otra rama, o con .claude/ sucio, o si
 # cualquier paso falla → cae al AVISO de abajo (fail-safe: nunca ensucia una ramita de feature).
+# C2 (FMEA) — GUARD ANTI-REGRESIÓN del auto-sync: el sync copia FUENTE ($BRAIN_DIR) → repo SIEMPRE, sin
+# mirar quién es más nuevo. Si la FUENTE es un install-clone DETRÁS de su propio origin/main (no se
+# actualizó — el updater del widget la mantiene en main por `merge --ff-only origin/main`), aplicarla puede
+# REGRESAR el cerebro del repo a un estado viejo y el push de abajo PROPAGARÍA esa regresión. Por eso NO
+# auto-aplicamos cuando la fuente está atrás. Se mide con el ref LOCAL origin/main (último fetch) → sin red,
+# DETERMINISTA. Guard POSITIVO (tightening puro): fuente_stale=1 SOLO cuando CONFIRMO behind>0; si no hay
+# cómo medir (fuente no-git, sin origin/main, parse raro) conserva el comportamiento previo (auto-aplica) →
+# no regresa el feature, solo bloquea el riesgo medible.
+fuente_stale=0
+if behind=$(git -C "$BRAIN_DIR" rev-list --count HEAD..origin/main 2>/dev/null); then
+  case "$behind" in ''|*[!0-9]*) : ;; 0) : ;; *) fuente_stale=1;; esac
+fi
+
 cur=$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+# sA3 (FMEA) — el patrón de mini-develop es `Develop<Usuario>` en PascalCase (DevelopUnjordi, DevelopChunito):
+# Develop + una MAYÚSCULA. `Develop?*` (viejo) casaba cualquier char → una rama "Development"/"Developx" se
+# trataba falsamente como mini-develop y recibía auto-push. `Develop[A-Z]*` exige la mayúscula del <Usuario>.
 case "$cur" in
-  Develop?*)
+  Develop[A-Z]*)
     # Precondición y staging cubren el MISMO alcance (.claude/) COHERENTEMENTE: sincronizar --apply
     # reescribe tanto .claude/hooks/ (copias + .brain-version) COMO .claude/settings.json (cablea/
     # de-cablea vía register_hook/dewire_hook). Antes se stageaba solo .claude/hooks → el cambio de
@@ -90,10 +106,15 @@ case "$cur" in
     # `git add -A .claude/` stagea AMBOS paths + las PODAS (hooks retirados borrados por --apply), y no
     # revienta si settings.json aún no existe (el precheck ya garantiza que .claude/ estaba LIMPIO, así
     # que lo único que se stagea es lo que produjo este --apply).
-    if [ -z "$(git -C "$ROOT" status --porcelain -- .claude/ 2>/dev/null)" ] \
+    # `git commit -o -- .claude/` (sA3): commit ACOTADO al path .claude/ (--only). El precheck garantiza
+    # .claude/ limpio, pero NO el resto del árbol: sin el pathspec, un `git commit` pelón barrería a este
+    # commit de auto-sync cualquier OTRO cambio staged del usuario (p. ej. src/ a medio trabajar). Con -o
+    # solo entra .claude/ (mods + altas + PODAS de hooks retirados dentro de ese path).
+    if [ "$fuente_stale" = 0 ] \
+       && [ -z "$(git -C "$ROOT" status --porcelain -- .claude/ 2>/dev/null)" ] \
        && bash "$SYNC" "$ROOT" --apply >/dev/null 2>&1 \
        && git -C "$ROOT" add -A .claude/ >/dev/null 2>&1 \
-       && git -C "$ROOT" commit -q -m "chore(cerebro): auto-sync de la copia por-repo (aviso-drift, $total archivo(s) al día)" >/dev/null 2>&1; then
+       && git -C "$ROOT" commit -q -o -m "chore(cerebro): auto-sync de la copia por-repo (aviso-drift, $total archivo(s) al día)" -- .claude/ >/dev/null 2>&1; then
       git -C "$ROOT" push -q origin "$cur" >/dev/null 2>&1 || true
       sha=$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo "?")
       ctx="🧬✅ CEREBRO AUTO-SINCRONIZADO en tu mini-develop ($cur, commit $sha): la copia por-repo estaba $total archivo(s) atrás y se puso al día SOLA (apply+commit+push). Llegará al develop compartido con tu próxima integración coordinada. Qué cambió:
@@ -107,8 +128,12 @@ $detalle"
     fi;;
 esac
 
+# Si la fuente está STALE (C2), avisarlo: propagar desde una fuente vieja regresaría el brain. Primero se actualiza la fuente.
+stale_nota=""
+[ "$fuente_stale" = 1 ] && stale_nota="
+⚠️ OJO (anti-regresión C2): tu FUENTE del cerebro ($BRAIN_DIR) parece DETRÁS de su origin/main — NO auto-sincronicé para no regresar el brain. Actualiza la fuente primero (\`git -C $BRAIN_DIR pull --ff-only\` o abre el widget) y reabre sesión."
 ctx="🧠⚠️ DRIFT DEL CEREBRO POR-REPO: la copia en .claude/hooks/ de ESTE repo está ATRÁS de la fuente única del cerebro ($total archivo(s)):
-$detalle
+$detalle$stale_nota
 Qué hacer: PROPÓN al usuario propagar por el flujo — worktree/ramita desde develop → \`bash $SYNC <worktree> --apply\` → commit → MR a develop. NO edites .claude/hooks/ directo en el árbol de trabajo (en repos compartidos viaja por git y se mezclaría a commits de feature). Nota: en ESTA máquina la copia GLOBAL ya manda (dedupe), pero el drift por-repo afecta a colegas y clones sin bootstrap."
 
 if command -v jq >/dev/null 2>&1; then
