@@ -95,6 +95,8 @@ register_hook PreToolUse  Bash 'bash "$HOME/.claude/hooks/secret-scan.sh"'      
 register_hook PreToolUse  Bash 'bash "$HOME/.claude/hooks/entorno-maquina-guard.sh"' 'entorno-maquina-guard'
 register_hook PreToolUse  Bash 'bash "$HOME/.claude/hooks/rama-vieja.sh"'          'rama-vieja'
 register_hook PreToolUse  Bash 'bash "$HOME/.claude/hooks/proteger-arbol.sh"'     'proteger-arbol'
+# AVISA (no bloquea) al editar la copia INSTALADA de una skill/hook que TIENE fuente en el clon canónico
+register_hook PreToolUse 'Edit|Write|MultiEdit' 'bash "$HOME/.claude/hooks/proteger-fuente-cerebro.sh"' 'proteger-fuente-cerebro'
 register_hook PreToolUse  Task 'bash "$HOME/.claude/hooks/limite-gasto.sh"'        'limite-gasto'
 register_hook PreToolUse  Task 'bash "$HOME/.claude/hooks/delegacion-gate.sh"'     'delegacion-gate'
 register_hook PostToolUse Task 'bash "$HOME/.claude/hooks/delegacion-registrar.sh"' 'delegacion-registrar'
@@ -107,7 +109,7 @@ register_hook SessionStart '' 'bash "$HOME/.claude/hooks/aviso-drift-cerebro.sh"
 register_hook SessionStart '' 'bash "$HOME/.claude/hooks/barrer-ramas.sh"'           'barrer-ramas'
 # PostToolUse sin matcher (casa TODA tool) — watermark anti-auto-compact: avisa de compactar proactivo
 register_hook PostToolUse '' 'bash "$HOME/.claude/hooks/aviso-contexto.sh"'          'aviso-contexto'
-echo "ok: hooks cableados en $GSET (git-branch-guard, merge-squash-guard, confirmar-merge-develop, recordar-dashboard, secret-scan, entorno-maquina-guard, rama-vieja, proteger-arbol, limite-gasto, delegacion-gate/registrar, rehidratar-hilo, aviso-contexto, aviso-drift-cerebro, barrer-ramas)"
+echo "ok: hooks cableados en $GSET (git-branch-guard, merge-squash-guard, confirmar-merge-develop, recordar-dashboard, secret-scan, entorno-maquina-guard, rama-vieja, proteger-arbol, proteger-fuente-cerebro, limite-gasto, delegacion-gate/registrar, rehidratar-hilo, aviso-contexto, aviso-drift-cerebro, barrer-ramas)"
 
 # ── (c) Skills genéricas del cerebro (cerrar-slice, orquestar-fanout, …) ──
 if [ -d "$SRC_SKILLS" ]; then
