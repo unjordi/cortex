@@ -287,6 +287,40 @@ dur=$SECONDS
   || bad "cmd H5: la consulta colgada NO fue acotada por timeout (dhang='$dhang' dur=${dur}s)"
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
 
+# ── A3 (NEGATION-BLIND) · FMEA 2026-07-30 ──
+# ANTES: `grep -qiE` de CONF_RE/RELEASE_RE sin polaridad → una NEGACIÓN abría el merge. Cada caso usa un
+# MR-id distinto para no contaminar la caché de destino por MR-id.
+mock_cm_glab develop
+is_deny "$(cm 'glab mr merge 71 --squash --yes' 'no te di autorización todavía')" \
+  && ok "cmd A3: 'no te di autorización todavía' → deny (negación NO abre el merge)" \
+  || bad "cmd A3: BYPASS — una negación de autorización abrió el merge a develop"
+is_deny "$(cm 'glab mr merge 72 --squash --yes' 'aún no mergees eso')" \
+  && ok "cmd A3: 'aún no mergees eso' → deny" \
+  || bad "cmd A3: 'aún no mergees' dejó pasar el merge"
+is_silent "$(cm 'glab mr merge 73 --squash --yes' 'sí, mergea')" \
+  && ok "cmd A3: 'sí, mergea' → pasa (OK afirmativo, sin falso positivo)" \
+  || bad "cmd A3: FALSO POSITIVO — 'sí, mergea' fue frenado"
+is_silent "$(cm 'glab mr merge 74 --squash --yes' 'mergea el MR')" \
+  && ok "cmd A3: 'mergea el MR' → pasa" \
+  || bad "cmd A3: FALSO POSITIVO — 'mergea el MR' fue frenado"
+is_silent "$(cm 'glab mr merge 75 --squash --yes' 'dale el merge')" \
+  && ok "cmd A3: 'dale el merge' → pasa" \
+  || bad "cmd A3: FALSO POSITIVO — 'dale el merge' fue frenado"
+
+# ── A4 (OK TRANSITIVO) · FMEA 2026-07-30 ──
+# ANTES: un OK reciente autorizaba CUALQUIER merge de la ventana. Ahora, si el OK NOMBRA un MR-id, ese id
+# debe coincidir con el del comando; un OK genérico (sin id) conserva la recencia (no se endurece de más).
+is_deny "$(cm 'glab mr merge 9 --squash --yes' 'mergea el MR 5')" \
+  && ok "cmd A4: OK 'mergea el MR 5' + comando 'merge 9' → deny (no transitivo a otro MR)" \
+  || bad "cmd A4: TRANSITIVIDAD — un OK para el MR 5 autorizó el merge del MR 9"
+is_silent "$(cm 'glab mr merge 5 --squash --yes' 'mergea el 5')" \
+  && ok "cmd A4: OK 'mergea el 5' + comando 'merge 5' → pasa (id coincide)" \
+  || bad "cmd A4: el OK ligado al MR correcto fue frenado (falso positivo)"
+is_silent "$(cm 'glab mr merge 8 --squash --yes' 'dale merge')" \
+  && ok "cmd A4: OK genérico 'dale merge' + cualquier merge → pasa (recencia preservada)" \
+  || bad "cmd A4: un OK genérico dejó de autorizar (endurecimiento de más)"
+rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
+
 # ── (b1f) confirmar: AUTORIZACIÓN DURABLE en disco (sobrevive compactaciones) + vocabulario "empuja/mete" ──
 # El grant lo escribe el skill turno-nocturno con la CITA textual del usuario y vence_epoch; SOLO
 # cubre scope=merge-develop. Caso real 2026-07-12: un OK blanket murió al compactarse el contexto.
