@@ -161,6 +161,13 @@ if [ "$conf" != si ] && printf '%s' "$last" | grep -qiE "$VISUAL_RE"; then
   # G2(b): detecta la tool de navegador por ESTRUCTURA del transcript (un tool_use cuyo "name" es una
   # tool de navegador), NO por la palabra "screenshot" suelta en prosa — si no, decir "no tomé
   # screenshot" suprimía el bloqueo. Solo un tool_use REAL (chrome MCP o el tool `computer`) cuenta.
+  # BAJO-3 (LÍMITE CONOCIDO, FMEA 2026-07-30): esto comprueba SÓLO que exista ALGUNA tool de navegador
+  # en el turno, NO que esa navegación corresponda a la pantalla/pieza que el claim visual afirma. Un
+  # tool_use de navegador para OTRA cosa (abrir docs, un tablero) satisface el gate. Correlacionar la
+  # navegación con la aserción visual concreta no es fiable desde el transcript (no hay forma robusta de
+  # ligar URL/elemento ↔ claim) → NO se fuerza una heurística frágil (produciría falsos positivos que
+  # desgastan el guard). Se acepta el residuo: el gate garantiza "miró UNA pantalla este turno", no "miró
+  # ESA pantalla". El QA visual real sigue siendo del usuario. (Reportado en la auditoría; sin fix limpio.)
   if ! printf '%s' "$turn" | grep -qE '"name"[[:space:]]*:[[:space:]]*"(mcp__claude-in-chrome__[a-z_]+|computer)"'; then
     vreason="DETENTE — afirmaste una OBSERVACIÓN VISUAL ('se ve/quedó como el mockup / en Chrome / la pantalla muestra…') pero en ESTE turno NO corriste NINGUNA tool de navegador/screenshot: lo estás declarando A CIEGAS. No uses léxico de QA visual sin haber mirado la pantalla. Estatus honesto: 'verificado técnicamente, SIN QA visual (a ciegas)' — el QA visual lo hace el usuario o una captura real. (Lección real (2026-07): se insinuó QA de Chrome sin verla y reaparecieron bugs ya resueltos.)"
     jq -n --arg r "$vreason" '{decision:"block", reason:$r}'
