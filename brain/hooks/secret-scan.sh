@@ -87,6 +87,19 @@ if [ "$has_commit" = 1 ] && printf '%s' "$cmd_uq" | grep -qE 'git[[:space:]]+add
   add_args=$(printf '%s' "$cmd_uq" | grep -oE 'git[[:space:]]+add[^;&|]*' | head -1 | sed -E 's/^git[[:space:]]+add[[:space:]]*//')
   addfiles=$(git -C "$dir" add --dry-run $add_args 2>/dev/null | grep "^add '" | sed -E "s/^add '(.*)'\$/\1/")
 fi
+# A1 (residuo `commit -a`/`-am`/`--all`): la bandera -a AUTO-ESTAGEA los tracked MODIFICADOS al crear el
+# commit; en PreToolUse aún no corrió, así que --cached está VACÍO para ellos → el escaneo de commit sería
+# CIEGO (mismo hueco que el `git add` encadenado, pero sin `git add` explícito). Detectamos -a/--all en el
+# SEGMENTO del commit (cmd_uq ya despojó el mensaje entrecomillado, así que un "-a" en el texto no dispara)
+# y sumamos los tracked modificados a addfiles → added_lines los lee con `git diff HEAD -- f` (rama tracked,
+# sin re-escanear lo ya versionado). --diff-filter=ACMR: contenido que entra; D (borrados) no aporta secreto.
+if [ "$has_commit" = 1 ]; then
+  commit_seg=$(printf '%s' "$cmd_uq" | grep -oE 'git[[:space:]]+commit[^;&|]*' | head -1)
+  if printf '%s' "$commit_seg" | grep -qE '(^|[[:space:]])(--all|-[a-z]*a[a-z]*)([[:space:]]|$)'; then
+    tracked_mod=$(git -C "$dir" diff HEAD --name-only --diff-filter=ACMR 2>/dev/null)
+    addfiles=$(printf '%s\n%s\n' "$addfiles" "$tracked_mod" | grep -vE '^$' | sort -u)
+  fi
+fi
 
 # Modo del escaneo primario: si el comando crea un commit, escaneamos lo que ENTRARÁ con ese commit
 # (staging + lo que el add encadenado agregaría) — el commit MANDA aunque también haya un push encadenado

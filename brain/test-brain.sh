@@ -485,6 +485,17 @@ o="$(scanf 'git add pre.txt && git commit -m x')"
 fmeareset; printf 'aws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/s2.txt"; git -C "$FMEAREPO" add s2.txt >/dev/null 2>&1
 o="$(scanf 'git commit -m x')"
 printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan A1: commit normal (staging previo) sigue escaneando --cached → bloquea" || bad "secret-scan A1: regresión, commit normal ya no bloquea; got: $o"
+# A1 (6) `git commit -am x` con secreto en un archivo TRACKED modificado AÚN NO staged: -a lo auto-estagea
+#        al vuelo → el escaneo debe verlo (antes --cached vacío → CIEGO) → BLOQUEA
+fmeareset; printf 'linea limpia\n' > "$FMEAREPO/t.txt"; git -C "$FMEAREPO" add t.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm t >/dev/null 2>&1
+printf 'linea limpia\naws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/t.txt"
+o="$(scanf 'git commit -am x')"
+printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan A1: 'git commit -am' escanea los tracked que -a auto-estagea → bloquea" || bad "secret-scan A1: 'commit -am' CIEGO al tracked modificado; got: $o"
+# A1 (7) `git commit -a -m x` con cambio en tracked LIMPIO → PASA (sin falso positivo)
+fmeareset; printf 'v1\n' > "$FMEAREPO/u.txt"; git -C "$FMEAREPO" add u.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm u >/dev/null 2>&1
+printf 'v1\nv2 sin secretos\n' > "$FMEAREPO/u.txt"
+o="$(scanf 'git commit -a -m x')"
+[ -z "$o" ] && ok "secret-scan A1: 'git commit -a' con cambio limpio → PASA (sin falso positivo)" || bad "secret-scan A1: falso positivo en 'commit -a' limpio; got: $o"
 # A7 (1) --no-verify DENTRO del mensaje del commit (secreto staged) → NO salta → BLOQUEA
 fmeareset; printf 'aws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/s3.txt"; git -C "$FMEAREPO" add s3.txt >/dev/null 2>&1
 o="$(scanf 'git commit -m "documenta el flag --no-verify"')"
