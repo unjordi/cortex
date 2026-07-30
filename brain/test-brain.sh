@@ -626,6 +626,21 @@ rm -rf "$BZROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (b3f) delegacion-reporte: solo reacciona a Task, y el nudge es CONDICIONAL a mutación (FMEA MEDIO-6) =="
+# MEDIO-6 (cry-wolf): antes gritaba "appenda bitácora / limpia worktree" para TODO Task, incluidos los
+# read-only (búsquedas, auditorías) → el orquestador se desensibiliza. Fix: el mensaje se subordina a la
+# mutación ("SI tu agente mutó… / SI fue read-only, ignóralo"). No se puede detectar la mutación fiable
+# desde PostToolUse (vive en el transcript del sub-agente), así que se suaviza el texto en vez de adivinar.
+dr() { printf '%s' "$1" | bash "$HOOKS/delegacion-reporte.sh"; }
+is_silent "$(dr '{"tool_name":"Bash"}')" && ok "delegacion-reporte: tool no-Task → silencio" || bad "delegacion-reporte: reaccionó a un no-Task"
+DROUT="$(dr '{"tool_name":"Task"}')"
+printf '%s' "$DROUT" | jq -e '.hookSpecificOutput.hookEventName == "PostToolUse"' >/dev/null 2>&1 \
+  && ok "delegacion-reporte: Task → emite hookSpecificOutput PostToolUse válido" || bad "delegacion-reporte: JSON PostToolUse inválido; got: $DROUT"
+printf '%s' "$DROUT" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -qiE 'si .*mut|read-only' \
+  && ok "delegacion-reporte: el nudge es CONDICIONAL a mutación (no un grito para todo Task)" || bad "delegacion-reporte: el nudge no quedó condicionado a mutación (cry-wolf)"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "== (b3c) git-branch-guard: bloquea push/merge REAL a main/develop, NO una MENCIÓN entrecomillada =="
 # HOME AISLADO SIN copia global del hook: si no, la cláusula de dedupe doble-cableado (la copia del
 # repo CEDE cuando existe ~/.claude/hooks/…) haría que el guard salga en silencio en una máquina con el
