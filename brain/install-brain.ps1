@@ -71,6 +71,16 @@ if ([Environment]::GetEnvironmentVariable('CLAUDE_CODE_GIT_BASH_PATH','User') -n
 # rara) sigue con CRLF. Aqui quitamos los CR (byte 0x0D) de TODO .sh del repo antes de correr bash,
 # byte a byte para no meter BOM ni tocar la codificacion. Idempotente (si ya esta en LF, no hace nada).
 $RepoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
+# C1 (FMEA post-integracion 2026-07-30): en una instalacion MANUAL de Windows (pwsh -File brain\install-brain.ps1
+# tras un clon a mano, SIN pasar por bootstrap.ps1) CLAUDE_BRAIN_DIR quedaba sin definir -> los hooks bash caian
+# a ~/.claude-brain (inexistente en Windows; aqui el clon vive en %LOCALAPPDATA%\claude-brain-repo) y el auto-sync
+# del cerebro fallaba MUDO. Si no esta definida, la exportamos desde el RepoRoot en FORWARD-SLASH (bash se
+# atraganta con backslashes) -- mismo patron que bootstrap.ps1. Si bootstrap ya la puso, se respeta.
+if (-not $env:CLAUDE_BRAIN_DIR) {
+  $brainBash = $RepoRoot -replace '\\','/'
+  [Environment]::SetEnvironmentVariable('CLAUDE_BRAIN_DIR', $brainBash, 'User')
+  $env:CLAUDE_BRAIN_DIR = $brainBash
+}
 $fixed = 0
 Get-ChildItem -Path $RepoRoot -Recurse -Filter *.sh -File -ErrorAction SilentlyContinue | ForEach-Object {
   $bytes = [IO.File]::ReadAllBytes($_.FullName)

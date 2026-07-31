@@ -57,7 +57,7 @@ else
 fi
 
 # El mensaje cita la herramienta REAL del repo (gh vs glab), no siempre glab (P5).
-if printf '%s' "$cmd" | grep -qE 'gh[[:space:]]+pr'; then
+if printf '%s' "$cmd" | grep -qE 'gh(\.exe)?[[:space:]]+pr'; then
   _rehaz='gh pr merge <id> --squash --subject "<título curado>" --body "$(cat resumen.md)"'
 else
   _rehaz='glab mr merge <id> --squash --squash-message "$(cat resumen.md)" --remove-source-branch --yes'

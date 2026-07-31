@@ -203,6 +203,12 @@ is_silent "$out" && ok "squash-guard B3: destino INDETERMINADO CON --squash → 
 # el histórico de un release cuya red no se pudo consultar). Sin id → destino queda vacío igual.
 out="$(ms 'glab mr merge --yes # release a main')"
 is_silent "$out" && ok "squash-guard B3: indeterminado + señal 'release a main' → NO fuerza squash" || bad "squash-guard B3: forzó squash pese a la señal explícita de release; got: $out"
+# H-R9-01 (FMEA r9): el binario Windows `glab.exe`/`gh.exe` rompía el gate `acg_es_merge_mr` → ambos guards
+# de merge quedaban ciegos (hermano de B4 en el eje merge). (\.exe)? en el reconocimiento lo cierra.
+mock_glab develop; out="$(ms 'glab.exe mr merge 48 --auto-merge --yes')"
+is_deny "$out" && ok "squash-guard H-R9-01: 'glab.exe mr merge' sin --squash → deny (binario Windows)" || bad "squash-guard H-R9-01: 'glab.exe' evadió el guard de squash; got: $out"
+mock_glab develop; out="$(ms 'glab.exe mr merge 49 --squash --auto-merge --yes')"
+is_silent "$out" && ok "squash-guard H-R9-01: 'glab.exe mr merge --squash' → pasa (sin falso positivo)" || bad "squash-guard H-R9-01: bloqueó un glab.exe que ya trae squash; got: $out"
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
 rm -rf "$MSBIN"
 
@@ -232,7 +238,75 @@ printf '%s' "$(gb 'git push origin +main')"       | grep -q '"deny"' && ok "gbg 
 is_silent "$(gb 'git push origin feat/x')"        && ok "gbg A2: 'git push origin feat/x' explícito → silencio (sin falso positivo del '+')" || bad "gbg A2: falso positivo al agregar '+' al set (bloqueó una ramita)"
 is_silent "$(gb 'git commit -m "doc: no hacer git push a develop"')" && ok "gbg H13: 'git push a develop' entrecomillado → silencio" || bad "gbg H13: mención entrecomillada disparó"
 is_silent "$(gb 'gh pr merge 5 -R org/develop --squash')" && ok "gbg H11: '-R org/develop' (nombre de repo) → silencio" || bad "gbg H11: -R org/develop disparó falso positivo"
+# ── wave4 (FMEA post-integración 2026-07-30): evasiones de git-branch-guard CERRADAS. Parado en feat/x
+# (rama NO-base): estas formas empujaban a base SIN que el fallback por rama actual disparara. ──
+printf '%s' "$(gb 'git push origin "develop"')" | grep -q '"deny"' && ok "gbg A-01: destino ENTRECOMILLADO develop → deny" || bad "gbg A-01: destino entrecomillado se coló (bypass comillas)"
+printf '%s' "$(gb "git push origin 'main'")"    | grep -q '"deny"' && ok "gbg A-01: destino entrecomillado main (comilla simple) → deny" || bad "gbg A-01: comilla simple se coló"
+printf '%s' "$(gb 'git push --all origin')"     | grep -q '"deny"' && ok "gbg A-02: 'git push --all' → deny (empuja todas las refs, incl base)" || bad "gbg A-02: --all se coló"
+printf '%s' "$(gb 'git push --mirror origin')"  | grep -q '"deny"' && ok "gbg A-02: 'git push --mirror' → deny" || bad "gbg A-02: --mirror se coló"
+printf '%s' "$(gb 'git -c http.sslVerify=false push origin develop')" | grep -q '"deny"' && ok "gbg A-03: prefijo 'git -c … push develop' → deny" || bad "gbg A-03: el prefijo 'git -c' rompió la adyacencia (bypass)"
+printf '%s' "$(gb 'git -C /tmp push origin main')" | grep -q '"deny"' && ok "gbg A-03: prefijo 'git -C dir push main' → deny" || bad "gbg A-03: 'git -C' se coló"
+is_silent "$(gb 'git push origin "feat/x"')"    && ok "gbg A-01: ramita entrecomillada → silencio (sin falso positivo)" || bad "gbg A-01: bloqueó una ramita entrecomillada"
+# N-01 (FMEA ronda 2): refspec ENTRECOMILLADO con la base a la DERECHA del ':' (residuo del raw-check de A-01).
+printf '%s' "$(gb 'git push origin "HEAD:develop"')"     | grep -q '"deny"' && ok "gbg N-01: 'git push origin \"HEAD:develop\"' → deny" || bad "gbg N-01: refspec entrecomillado HEAD:develop se coló"
+printf '%s' "$(gb 'git push origin "mybranch:main"')"    | grep -q '"deny"' && ok "gbg N-01: 'git push origin \"mybranch:main\"' → deny" || bad "gbg N-01: refspec entrecomillado rama:main se coló"
+is_silent "$(gb 'git push origin "HEAD:feat/x"')"        && ok "gbg N-01: refspec entrecomillado a ramita → silencio (sin falso positivo)" || bad "gbg N-01: bloqueó un refspec a ramita"
+# A-R3-01 (FMEA ronda 3): un push a base ENCADENADO como 2º (o Nº) subcomando. El reescrito de N-01 usaba
+# `head -1` → solo miraba el PRIMER `git push …` → un `git push feat/x ; git push develop` se colaba por el 2º.
+# acg_push_toca_base ahora recorre CADA subcomando (awk gsub [;&|]→\n): cualquiera que toque base BLOQUEA.
+printf '%s' "$(gb 'git push origin feat/x ; git push origin develop')" | grep -q '"deny"' && ok "gbg A-R3-01: push a base ENCADENADO (2º subcomando ';') → deny" || bad "gbg A-R3-01: el push a develop encadenado se coló (head -1)"
+printf '%s' "$(gb 'git push origin feat/x && git push origin main')"   | grep -q '"deny"' && ok "gbg A-R3-01: push a base encadenado ('&&', a main) → deny" || bad "gbg A-R3-01: el push a main encadenado se coló"
+# Y el contraveneno: un push REAL a ramita seguido de un commit cuyo MENSAJE menciona "git push a develop"
+# NO dispara — ese subcomando es el commit, su despoja borra el mensaje → es_push=no → se salta (H13 por-subcomando).
+is_silent "$(gb 'git push origin feat/x && git commit -m "doc: recordar no hacer git push a develop"')" && ok "gbg A-R3-01: push a ramita + commit con 'git push a develop' en el mensaje → silencio (H13)" || bad "gbg A-R3-01: la mención en el mensaje del commit encadenado disparó (falso positivo)"
+# A-R4-01 (FMEA ronda 4): git acepta MUCHAS opciones globales entre `git` y su subcomando (no solo -c/-C).
+# Cada una rompía la adyacencia git+push → evadía TODO el guard. acg_normaliza_git_prefijo ahora colapsa la
+# CLASE (value-eaters por espacio/= + cualquier flag dash-led). Parado en feat/x → estas empujan a base → deny.
+printf '%s' "$(gb 'git --no-pager push origin develop')"     | grep -q '"deny"' && ok "gbg A-R4-01: 'git --no-pager push develop' → deny" || bad "gbg A-R4-01: '--no-pager' rompió la adyacencia (bypass)"
+printf '%s' "$(gb 'git -P push origin develop')"             | grep -q '"deny"' && ok "gbg A-R4-01: 'git -P push develop' → deny" || bad "gbg A-R4-01: '-P' se coló"
+printf '%s' "$(gb 'git --work-tree=/tmp push origin main')"  | grep -q '"deny"' && ok "gbg A-R4-01: 'git --work-tree=/tmp push main' (=-form) → deny" || bad "gbg A-R4-01: '--work-tree=' se coló"
+printf '%s' "$(gb 'git --git-dir /tmp/foo push origin develop')" | grep -q '"deny"' && ok "gbg A-R4-01: 'git --git-dir /tmp/foo push develop' (value por espacio) → deny" || bad "gbg A-R4-01: '--git-dir <dir>' se coló"
+printf '%s' "$(gb 'git --literal-pathspecs push origin main')" | grep -q '"deny"' && ok "gbg A-R4-01: 'git --literal-pathspecs push main' → deny" || bad "gbg A-R4-01: '--literal-pathspecs' se coló"
+is_silent "$(gb 'git --no-pager push origin feat/x')"        && ok "gbg A-R4-01: '--no-pager push feat/x' (ramita) → silencio (sin falso positivo)" || bad "gbg A-R4-01: bloqueó una ramita con prefijo global"
+# A-R5-01 (FMEA ronda 5): el VALOR de un value-eater puede ir ENTRECOMILLADO con ESPACIOS (rutas de Google
+# Drive: "/Users/…/Mi unidad/repo"). El [^space]+ se cortaba en el 1er espacio → evasión total. Quote-aware.
+printf '%s' "$(gb 'git -C "/Users/unjordi/Mi unidad/repo" push origin develop')" | grep -q '"deny"' && ok "gbg A-R5-01: '-C \"…/Mi unidad/…\" push develop' (valor entrecomillado con espacio) → deny" || bad "gbg A-R5-01: el valor entrecomillado con espacio rompió la adyacencia (bypass)"
+printf '%s' "$(gb "git -C '/single quote path/x' push origin main")" | grep -q '"deny"' && ok "gbg A-R5-01: '-C \x27/single quote path/x\x27 push main' (comilla simple con espacio) → deny" || bad "gbg A-R5-01: comilla simple con espacio se coló"
+printf '%s' "$(gb 'git --git-dir="/a b/.git" push origin develop')" | grep -q '"deny"' && ok "gbg A-R5-01: '--git-dir=\"/a b/.git\" push develop' (=-form entrecomillado) → deny" || bad "gbg A-R5-01: --git-dir= entrecomillado se coló"
+printf '%s' "$(gb 'git -c a=b -C "/x y" --no-pager push origin develop')" | grep -q '"deny"' && ok "gbg A-R5-01: prefijos STACKED con valor entrecomillado → deny" || bad "gbg A-R5-01: stacking con valor entrecomillado se coló"
+is_silent "$(gb 'git -C "/Users/unjordi/Mi unidad/repo" push origin feat/x')" && ok "gbg A-R5-01: '-C \"…espacio…\" push feat/x' (ramita) → silencio (sin falso positivo)" || bad "gbg A-R5-01: bloqueó una ramita con -C entrecomillado"
+# A-R6-01 (FMEA ronda 6): la comilla puede ir EN MEDIO del valor (`git -c user.name="a b" push …` —
+# shell-válido, cotidiano). r5 cubrió la comilla al INICIO; el valor MIXTO key="val con espacio" volvía a
+# cortar en el espacio interno → evasión total. El valor se modela como SECUENCIA (char-no-comilla | run "…").
+printf '%s' "$(gb 'git -c user.name="a b" push origin develop')" | grep -q '"deny"' && ok "gbg A-R6-01: '-c user.name=\"a b\" push develop' (comilla EN MEDIO) → deny" || bad "gbg A-R6-01: comilla en medio del valor rompió la adyacencia (bypass)"
+printf '%s' "$(gb "git -c user.name='a b' push origin main")" | grep -q '"deny"' && ok "gbg A-R6-01: '-c user.name=\x27a b\x27 push main' (comilla simple en medio) → deny" || bad "gbg A-R6-01: comilla simple en medio se coló"
+printf '%s' "$(gb 'git -c core.editor="vim -c foo" push origin develop')" | grep -q '"deny"' && ok "gbg A-R6-01: '-c core.editor=\"vim -c foo\" push develop' (valor con espacio y -c adentro) → deny" || bad "gbg A-R6-01: valor con -c interno se coló"
+is_silent "$(gb 'git -c user.name="a b" push origin feat/x')" && ok "gbg A-R6-01: '-c user.name=\"a b\" push feat/x' (ramita) → silencio (sin falso positivo)" || bad "gbg A-R6-01: bloqueó una ramita con -c key entrecomillado"
+is_silent "$(gb 'git commit -m "un mensaje con -C /x y push origin develop adentro"')" && ok "gbg A-R6-01: commit con 'push origin develop' DENTRO del mensaje → silencio (H13, el -c/-C va tras el subcomando)" || bad "gbg A-R6-01: falso positivo, la mención en el mensaje disparó"
+# A-R7-01 (FMEA ronda 7): el espacio del valor puede ir ESCAPADO CON BACKSLASH (`git -c a=b\ c push …` — el
+# shell lo tokeniza como `-c "a=b c"`). El `\` se trataba como char normal y la secuencia se cortaba en el
+# espacio real → misma evasión que r5/r6 por otra vía. Se añade `\\.` (backslash+char) a la secuencia de valor.
+printf '%s' "$(gb 'git -c a=b\ c push origin develop')" | grep -q '"deny"' && ok "gbg A-R7-01: '-c a=b\\ c push develop' (espacio escapado con backslash) → deny" || bad "gbg A-R7-01: el espacio escapado con backslash rompió la adyacencia (bypass)"
+printf '%s' "$(gb 'git -C /a\ b push origin main')" | grep -q '"deny"' && ok "gbg A-R7-01: '-C /a\\ b push main' (espacio escapado, value-eater por espacio) → deny" || bad "gbg A-R7-01: '-C /a\\ b' se coló"
+printf '%s' "$(gb 'git --work-tree=/a\ b push origin develop')" | grep -q '"deny"' && ok "gbg A-R7-01: '--work-tree=/a\\ b push develop' (=-form escapado) → deny" || bad "gbg A-R7-01: '--work-tree=/a\\ b' se coló"
+is_silent "$(gb 'git -c a=b\ c push origin feat/x')" && ok "gbg A-R7-01: '-c a=b\\ c push feat/x' (ramita) → silencio (sin falso positivo)" || bad "gbg A-R7-01: bloqueó una ramita con backslash-escape"
+# B4 (FMEA ronda 8): en Windows el binario es `git.exe`; rompía el `git`+espacio que exigen los detectores
+# → evasión total en un OS soportado (Git Bash). Se colapsa `git.exe`→`git` en posición de ejecutable.
+printf '%s' "$(gb 'git.exe push origin develop')" | grep -q '"deny"' && ok "gbg B4: 'git.exe push develop' (binario Windows) → deny" || bad "gbg B4: 'git.exe' rompió la adyacencia (bypass en Windows/Git Bash)"
+printf '%s' "$(gb 'git.exe -c a=b push origin main')" | grep -q '"deny"' && ok "gbg B4: 'git.exe -c a=b push main' (con prefijo global) → deny" || bad "gbg B4: 'git.exe' + prefijo se coló"
+printf '%s' "$(gb 'ls && git.exe push origin develop')" | grep -q '"deny"' && ok "gbg B4: 'ls && git.exe push develop' (encadenado) → deny" || bad "gbg B4: 'git.exe' encadenado se coló"
+is_silent "$(gb 'git.exe push origin feat/x')" && ok "gbg B4: 'git.exe push feat/x' (ramita) → silencio (sin falso positivo)" || bad "gbg B4: bloqueó una ramita con git.exe"
+is_silent "$(gb 'git commit -m "run git.exe push origin develop luego"')" && ok "gbg B4: 'git.exe push develop' DENTRO del mensaje → silencio (H13)" || bad "gbg B4: falso positivo, git.exe en el mensaje disparó"
 rm -rf "$GBROOT"
+# A-R4-01 (pelón en BASE): parado EN develop, un push pelón con prefijo global debe DENY (el fallback por
+# rama actual se alcanza porque el subcomando SÍ se reconoce como push tras normalizar el prefijo).
+GBROOT2="$(mktemp -d "${TMPDIR:-/tmp}/brain-gb2.XXXXXX")"; GBREPO2="$GBROOT2/repo"; GBHOME2="$GBROOT2/home"; mkdir -p "$GBREPO2" "$GBHOME2"
+git -C "$GBREPO2" init -q >/dev/null 2>&1; git -C "$GBREPO2" config user.email t@t; git -C "$GBREPO2" config user.name t
+git -C "$GBREPO2" commit -q --allow-empty -m init >/dev/null 2>&1; git -C "$GBREPO2" checkout -q -b develop >/dev/null 2>&1
+gb2() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | CLAUDE_PROJECT_DIR="$GBREPO2" HOME="$GBHOME2" bash "$HOOKS/git-branch-guard.sh"; }
+printf '%s' "$(gb2 'git --no-pager push')" | grep -q '"deny"' && ok "gbg A-R4-01: 'git --no-pager push' PELÓN parado EN develop → deny" || bad "gbg A-R4-01: el pelón con --no-pager en develop se coló"
+printf '%s' "$(gb2 'git.exe push')" | grep -q '"deny"' && ok "gbg B4: 'git.exe push' PELÓN parado EN develop → deny" || bad "gbg B4: el pelón 'git.exe push' en develop se coló"
+rm -rf "$GBROOT2"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
@@ -274,6 +348,43 @@ is_deny "$(cm 'glab mr merge 5 --yes' 'sigue avanzando')" \
 is_silent "$(cm 'glab mr merge 62 --squash --yes' 'ya puedes empujar el brain a main')" \
   && ok "cmd: merge a develop con OK de RELEASE-a-main → pasa (el release cubre su paso a develop)" \
   || bad "cmd: falso-negativo — 'empujar a main' NO destrabó el merge intermedio a develop"
+# ── wave4 (FMEA post-integración 2026-07-30) ──
+# A-04: el id del MR puede ir DESPUÉS de un flag (`glab mr merge --yes 9`). El OK debe ligarse a ESE id.
+is_deny "$(cm 'glab mr merge --yes 9' 'mergea el MR 5')" \
+  && ok "cmd A-04: id tras flag ('--yes 9') → el OK del MR 5 NO autoriza el 9 (deny)" \
+  || bad "cmd A-04: 'glab mr merge --yes 9' tomó el OK de OTRO MR (bypass A-04)"
+is_silent "$(cm 'glab mr merge --yes 9' 'mergea el 9')" \
+  && ok "cmd A-04: id tras flag con OK ligado a ESE id (9) → pasa" || bad "cmd A-04: no reconoció el OK ligado al 9"
+# A-05: negaciones fuera de no/sin/nunca/jamás que traen un verbo de merge NO cuentan como OK.
+is_deny "$(cm 'glab mr merge 5 --yes' 'ni se te ocurra mergear el 5')" \
+  && ok "cmd A-05: 'ni se te ocurra mergear' → deny (negación reconocida)" || bad "cmd A-05: 'ni se te ocurra' pasó como OK (bypass A-05)"
+is_deny "$(cm 'glab mr merge 5 --yes' 'de ninguna manera mergea el 5 ahora')" \
+  && ok "cmd A-05: 'de ninguna manera mergea' → deny" || bad "cmd A-05: 'de ninguna manera' pasó como OK"
+# A-R4-03 (FMEA r4): un DEFERIMIENTO/futuro que menciona "mergear el <id>" NO es un OK (DEFER_RE lo descarta).
+is_deny "$(cm 'glab mr merge 5 --yes' 'espera para mergear el 5')" \
+  && ok "cmd A-R4-03: 'espera para mergear el 5' (aplazamiento) → deny" || bad "cmd A-R4-03: 'espera para mergear' pasó como OK"
+is_deny "$(cm 'glab mr merge 5 --yes' 'dejame ver antes de mergear el 5')" \
+  && ok "cmd A-R4-03: 'déjame ver antes de mergear el 5' → deny" || bad "cmd A-R4-03: 'déjame ver antes de' pasó como OK"
+is_deny "$(cm 'glab mr merge 5 --yes' 'todavia estoy revisando, luego mergea el 5')" \
+  && ok "cmd A-R4-03: 'todavía revisando, luego mergea el 5' → deny" || bad "cmd A-R4-03: 'todavía revisando' pasó como OK"
+is_deny "$(cm 'glab mr merge 5 --yes' 'casi listo para mergear el 5')" \
+  && ok "cmd A-R4-03: 'casi listo para mergear el 5' → deny" || bad "cmd A-R4-03: 'casi listo para' pasó como OK"
+# Controles anti-FP: una afirmación NO debe caer por DEFER_RE ("ya revisé, mergea"; "desde luego, mergea").
+is_silent "$(cm 'glab mr merge 5 --yes' 'ya revise, mergea el 5')" \
+  && ok "cmd A-R4-03: 'ya revisé, mergea el 5' → pasa (no es aplazamiento)" || bad "cmd A-R4-03: falso positivo, 'ya revisé' cayó por DEFER_RE"
+is_silent "$(cm 'glab mr merge 5 --yes' 'desde luego, mergea el 5')" \
+  && ok "cmd A-R4-03: 'desde luego, mergea el 5' → pasa (no colisiona con 'luego')" || bad "cmd A-R4-03: falso positivo, 'desde luego' cayó por 'luego'"
+# A-R5-03 (FMEA r5, precisión segura): "déjame probar/revisar/checar … mergea el 5" es aplazamiento → deny.
+# Control: "déjame mergearlo" NO cae (es intención de merge, un OK legítimo) → pasa.
+is_deny "$(cm 'glab mr merge 5 --yes' 'primero dejame probar, luego mergea el 5')" \
+  && ok "cmd A-R5-03: 'déjame probar … mergea el 5' (aplazamiento) → deny" || bad "cmd A-R5-03: 'déjame probar' pasó como OK"
+is_silent "$(cm 'glab mr merge 5 --yes' 'dejame mergearlo el 5')" \
+  && ok "cmd A-R5-03: 'déjame mergearlo' → pasa (intención de merge, no aplazamiento)" || bad "cmd A-R5-03: falso positivo, 'déjame mergearlo' cayó por DEFER_RE"
+# H-R9-01 (FMEA r9): el binario Windows `glab.exe mr merge` evadía el gate → un merge a develop pasaba sin OK.
+is_deny "$(cm 'glab.exe mr merge 5 --yes' 'sigue avanzando')" \
+  && ok "cmd H-R9-01: 'glab.exe mr merge' a develop SIN OK → deny (binario Windows)" || bad "cmd H-R9-01: 'glab.exe' evadió confirmar-merge-develop"
+is_silent "$(cm 'glab.exe mr merge 5 --yes' 'ya revisé, mergea el 5')" \
+  && ok "cmd H-R9-01: 'glab.exe mr merge' a develop CON OK → pasa" || bad "cmd H-R9-01: 'glab.exe' con OK fue bloqueado"
 # Blindaje (NO se afloja el camino inverso): un OK de develop NUNCA autoriza un RELEASE a main.
 mock_cm_glab main
 is_deny "$(cm 'glab mr merge 63 --yes' 'mérgalo a develop')" \
@@ -503,6 +614,40 @@ printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan A7: --no-verify en el MEN
 # A7 (2) --no-verify REAL (bandera) sigue siendo escape legítimo → PASA (silencio)
 o="$(scanf 'git commit --no-verify -m x')"
 [ -z "$o" ] && ok "secret-scan A7: --no-verify como bandera real sigue saltando (escape legítimo)" || bad "secret-scan A7: --no-verify real dejó de saltar; got: $o"
+# A-03 (FMEA post-integración): el prefijo `git -c k=v … commit` ya NO ciega el escaneo (antes rompía la
+# adyacencia git+commit del gate). Secreto en un tracked modificado que -a estagearía → BLOQUEA.
+fmeareset; printf 'v\n' > "$FMEAREPO/gc.txt"; git -C "$FMEAREPO" add gc.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm gc >/dev/null 2>&1
+printf 'v\naws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/gc.txt"
+o="$(scanf 'git -c user.email=x commit -am x')"
+printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan A-03: 'git -c … commit -am' escanea (prefijo ya no ciega) → bloquea" || bad "secret-scan A-03: el prefijo 'git -c' cegó el escaneo; got: $o"
+# A-R4-02 (FMEA r4): las OTRAS opciones globales de git (≠ -c/-C) también rompían la adyacencia git+commit
+# del gate → el escaneo NO corría. El fix generalizado de acg_normaliza_git_prefijo (compartido) las cierra.
+fmeareset; printf 'v\n' > "$FMEAREPO/g2.txt"; git -C "$FMEAREPO" add g2.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm g2 >/dev/null 2>&1
+printf 'v\naws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/g2.txt"
+printf '%s' "$(scanf 'git --no-pager commit -am x')" | grep -q '"deny"' && ok "secret-scan A-R4-02: 'git --no-pager commit -am' escanea → bloquea" || bad "secret-scan A-R4-02: '--no-pager' cegó el escaneo; got: $(scanf 'git --no-pager commit -am x')"
+printf '%s' "$(scanf 'git -P commit -am x')"         | grep -q '"deny"' && ok "secret-scan A-R4-02: 'git -P commit -am' escanea → bloquea" || bad "secret-scan A-R4-02: '-P' cegó el escaneo"
+printf '%s' "$(scanf 'git --work-tree=. commit -am x')" | grep -q '"deny"' && ok "secret-scan A-R4-02: 'git --work-tree=. commit -am' escanea → bloquea" || bad "secret-scan A-R4-02: '--work-tree=' cegó el escaneo"
+# A-R5-02 (FMEA r5): con el despoje ANTES de normalizar, un value-eater con valor ENTRECOMILLADO
+# (`git -C "/ruta" commit`) quedaba vacío y el normalizador se comía `commit` → escaneo CIEGO (¡sin
+# necesitar espacio!). Fix: normalizar el RAW (quote-aware) ANTES de despojar. Secreto en tracked que -a estagea.
+fmeareset; printf 'v\n' > "$FMEAREPO/g3.txt"; git -C "$FMEAREPO" add g3.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm g3 >/dev/null 2>&1
+printf 'v\naws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/g3.txt"
+printf '%s' "$(scanf 'git -C "/nospace" commit -am x')"  | grep -q '"deny"' && ok "secret-scan A-R5-02: 'git -C \"/nospace\" commit -am' (valor entrecomillado sin espacio) escanea → bloquea" || bad "secret-scan A-R5-02: valor entrecomillado cegó el escaneo (despoje antes de normalizar)"
+printf '%s' "$(scanf 'git -C "/a b/repo" commit -am x')" | grep -q '"deny"' && ok "secret-scan A-R5-02: 'git -C \"/a b/repo\" commit -am' (valor entrecomillado con espacio) escanea → bloquea" || bad "secret-scan A-R5-02: valor entrecomillado con espacio cegó el escaneo"
+printf '%s' "$(scanf 'git --work-tree="/a b" commit -am x')" | grep -q '"deny"' && ok "secret-scan A-R5-02: 'git --work-tree=\"/a b\" commit -am' (=-form entrecomillado) escanea → bloquea" || bad "secret-scan A-R5-02: --work-tree= entrecomillado cegó el escaneo"
+# A-R6-01 (FMEA r6): comilla EN MEDIO del valor de un global (`git -c user.name="a b" commit`) → mismo
+# mecanismo de evasión, mismo fix (valor como secuencia). Secreto en tracked que -a estagea.
+fmeareset; printf 'v\n' > "$FMEAREPO/g4.txt"; git -C "$FMEAREPO" add g4.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm g4 >/dev/null 2>&1
+printf 'v\naws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/g4.txt"
+printf '%s' "$(scanf 'git -c user.name="a b" commit -am x')" | grep -q '"deny"' && ok "secret-scan A-R6-01: 'git -c user.name=\"a b\" commit -am' (comilla en medio) escanea → bloquea" || bad "secret-scan A-R6-01: comilla en medio del valor cegó el escaneo"
+# A-R7-01 (FMEA r7): espacio escapado con backslash en el valor global → mismo mecanismo, mismo fix.
+fmeareset; printf 'v\n' > "$FMEAREPO/g5.txt"; git -C "$FMEAREPO" add g5.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm g5 >/dev/null 2>&1
+printf 'v\naws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/g5.txt"
+printf '%s' "$(scanf 'git -c a=b\ c commit -am x')" | grep -q '"deny"' && ok "secret-scan A-R7-01: 'git -c a=b\\ c commit -am' (espacio escapado) escanea → bloquea" || bad "secret-scan A-R7-01: el espacio escapado con backslash cegó el escaneo"
+# B4 (FMEA r8): el binario Windows `git.exe commit` rompía el gate git+commit del escaneo → mismo fix (colapso git.exe→git).
+fmeareset; printf 'v\n' > "$FMEAREPO/g6.txt"; git -C "$FMEAREPO" add g6.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm g6 >/dev/null 2>&1
+printf 'v\naws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/g6.txt"
+printf '%s' "$(scanf 'git.exe commit -am x')" | grep -q '"deny"' && ok "secret-scan B4: 'git.exe commit -am' (binario Windows) escanea → bloquea" || bad "secret-scan B4: 'git.exe' cegó el escaneo"
 rm -rf "$FMEAREPO"
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1820,6 +1965,16 @@ if [ -f "$BPS" ]; then
 else
   bad "e4: no encuentro bootstrap.ps1"
 fi
+# e4b (C1, FMEA post-integración 2026-07-30): la instalación MANUAL de Windows (install-brain.ps1 sin pasar
+# por bootstrap.ps1) también debe exportar CLAUDE_BRAIN_DIR, o el auto-sync cae MUDO por ese camino.
+IBPS="$SCRIPT_DIR/install-brain.ps1"
+if [ -f "$IBPS" ]; then
+  { grep -q "SetEnvironmentVariable('CLAUDE_BRAIN_DIR'" "$IBPS" && grep -qE "RepoRoot -replace" "$IBPS"; } \
+    && ok "e4b: install-brain.ps1 exporta CLAUDE_BRAIN_DIR (RepoRoot en forward-slash) — instalación manual Win no queda muda" \
+    || bad "e4b: install-brain.ps1 NO exporta CLAUDE_BRAIN_DIR → instalación manual en Windows falla mudo (C1)"
+else
+  bad "e4b: no encuentro install-brain.ps1"
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # (e6) COHERENCIA DE RUTAS CROSS-OS — batch de paridad que FALLA si se olvida un OS.
@@ -1991,6 +2146,32 @@ else
   done
   [ "$miss_rm" = 0 ] && ok "e6c: todo kind=hook del MANIFEST está documentado en el README"
 fi
+# e6c2 (B1, FMEA post-integración 2026-07-30): el árbol del README RAÍZ es la FUENTE que gen-leyenda-arbol
+# parsea para la leyenda de los flowcharts, y NADIE lo vigilaba contra el MANIFEST → drifteó (faltaban 4
+# hooks → leyenda incompleta). Formato de árbol = nombre pelón (sin `.sh`), dentro del bloque 🔒 Hooks Forzosos.
+RMROOT="$SCRIPT_DIR/../README.md"
+if [ -f "$RMROOT" ] && [ -f "$MF" ]; then
+  arbol_root=$(awk '/^🔒[[:space:]]+Hooks[[:space:]]+Forzosos/{c=1} c&&/^```/{exit} c' "$RMROOT")
+  miss_root=0
+  for b in $(awk '$1!~/^#/ && NF>=3 && $3=="hook"{print $1}' "$MF"); do
+    printf '%s' "$arbol_root" | grep -qF "$b" || { bad "e6c2: el hook '$b' del MANIFEST NO está en el árbol del README RAÍZ (la leyenda de los flowcharts lo omitiría)"; miss_root=1; }
+  done
+  [ "$miss_root" = 0 ] && ok "e6c2: todo kind=hook del MANIFEST está en el árbol del README RAÍZ (leyenda de flowcharts completa)"
+else
+  bad "e6c2: falta el README RAÍZ ($RMROOT) o el MANIFEST"
+fi
+# e6c3 (C5, FMEA post-integración 2026-07-30): el generador de la leyenda NO tenía test → un cambio de
+# formato del árbol del README lo rompía en SILENCIO (leyenda vacía). Corre el generador y afirma 4 familias
+# + suficientes filas de pieza (no-vacío).
+GEN="$SCRIPT_DIR/../docs/flowcharts/gen-leyenda-arbol.sh"
+if [ -f "$GEN" ]; then
+  genout=$(bash "$GEN" 2>/dev/null)
+  fams=$(printf '%s' "$genout" | grep -oE '🔒 Hooks Forzosos|🔔 Automático|📜 Normas|💡 Skills' | sort -u | grep -c .)
+  rows=$(printf '%s' "$genout" | grep -cE '<tr><td bgcolor.*</td><td bgcolor')
+  { [ "$fams" -eq 4 ] && [ "$rows" -ge 20 ]; } \
+    && ok "e6c3: gen-leyenda-arbol emite las 4 familias + $rows filas (no vacío)" \
+    || bad "e6c3: gen-leyenda-arbol salió incompleto (familias=$fams, filas=$rows) — ¿cambió el formato del árbol del README?"
+else bad "e6c3: no encuentro gen-leyenda-arbol.sh"; fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo "== (e6d) wiring FIELD-check: un settings.json semilla cabla TODOS los kind=hook {repo,both} (C1) =="

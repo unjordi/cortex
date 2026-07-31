@@ -96,9 +96,11 @@ fi
 cur=$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
 # sA3 (FMEA) — el patrón de mini-develop es `Develop<Usuario>` en PascalCase (DevelopUnjordi, DevelopChunito):
 # Develop + una MAYÚSCULA. `Develop?*` (viejo) casaba cualquier char → una rama "Development"/"Developx" se
-# trataba falsamente como mini-develop y recibía auto-push. `Develop[A-Z]*` exige la mayúscula del <Usuario>.
+# trataba falsamente como mini-develop y recibía auto-push. `Develop[[:upper:]]*` exige la mayúscula del
+# <Usuario>. Se usa la CLASE POSIX `[[:upper:]]` (no el rango `[A-Z]`, que en locales UTF-8 con collation
+# a-A-b-B… puede casar minúsculas → `Developer` volvería a colarse; B2 del FMEA post-integración 2026-07-30).
 case "$cur" in
-  Develop[A-Z]*)
+  Develop[[:upper:]]*)
     # Precondición y staging cubren el MISMO alcance (.claude/) COHERENTEMENTE: sincronizar --apply
     # reescribe tanto .claude/hooks/ (copias + .brain-version) COMO .claude/settings.json (cablea/
     # de-cablea vía register_hook/dewire_hook). Antes se stageaba solo .claude/hooks → el cambio de
