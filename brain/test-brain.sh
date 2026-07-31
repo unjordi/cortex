@@ -1295,6 +1295,10 @@ printf '%s' "$ad2out" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/nul
   && ok "aviso-drift v2: el apply escribió y el commit de auto-sync existe" || bad "aviso-drift v2: falta el archivo aplicado o el commit"
 [ -z "$(git -C "$AD2REPO" status --porcelain)" ] \
   && ok "aviso-drift v2: el árbol quedó LIMPIO tras el auto-sync (todo commiteado)" || bad "aviso-drift v2: dejó el árbol sucio"
+# (2b) el mensaje de AUTO-SINCRONIZADO ADEMÁS trae el nudge de la DUPLA (regresión-guard de la ruta más
+# transitada; AD2REPO no tiene AGENTS.md → rama "sin firma"). La bifurcación en sí ya la teethean b5b (7)/(8).
+printf '%s' "$ad2out" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'DUPLA' \
+  && ok "aviso-drift v2: el auto-sync ADEMÁS nudge-ea la DUPLA (ruta más transitada)" || bad "aviso-drift v2: el auto-sync no trajo el nudge de la dupla"
 # (3) en la mini pero con .claude/ SUCIO: no auto-aplica (solo avisa, no mezcla cambios)
 printf 'sucio\n' >> "$AD2REPO/.claude/hooks/.brain-version"
 printf '%s' "$(ad2)" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'DRIFT DEL CEREBRO' \

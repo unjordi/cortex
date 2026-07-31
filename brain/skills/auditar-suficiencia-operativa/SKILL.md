@@ -80,6 +80,21 @@ sobrevivieron una limpieza propia). Guarda el prompt literal: si lo cambias, cam
 4. **Qué quedó LIMPIO**, explícito (para saber qué NO tocar).
 5. **El riesgo #1 restante:** si mañana algo se rompe por documentación, ¿qué sería?
 
+## El prompt del auditor (pegable — destilado de la corrida DUPLA, 2026-07-31)
+Delega con `Task`/subagente `general-purpose`. Adapta el target, conserva la ESENCIA:
+
+> Eres un AUDITOR DE **SUFICIENCIA OPERATIVA** (read-only). NO auditas "los archivos", auditas si ALGUIEN
+> NUEVO puede **HACER las tareas** sin romper nada ni re-investigar. Target: `<repo/doc>` (NO mutes nada; solo
+> LEES). (1) Deriva la LISTA DE TAREAS reales de estas canteras: lo que ROMPIÓ algo · lo DESTRUCTIVO · lo que
+> COSTÓ tiempo · lo RUTINARIO; + las 4 transversales (no deshacer la arquitectura, no resucitar lo descartado,
+> saber qué NO tocar, mantenerlo al día). (2) Califica cada tarea **✅/⚠️/❌ con archivo:línea**, en los zapatos
+> de quien llega mañana (lee el punto de entrada). (3) Barrida de higiene: contradicciones · punteros colgados
+> (cruza cada `[[wikilink]]`/"ver skill X" contra lo que EXISTE) · índices desfasados · datos que mienten
+> (conteos/rutas/fechas) · duplicación. ⚠️ narrativa histórica FECHADA es válida. (4) Entrega: veredicto en 1
+> línea («¿puede alguien nuevo operar esto sin romperlo?») + tabla de tareas con qué falta y dónde debería ir +
+> higiene por severidad (CRÍTICO/ALTO/MEDIO/BAJO) + qué quedó LIMPIO + el riesgo #1. **NO declaras LISTO**: tu
+> dictamen es insumo. Si corres en fan-out, escribe el dictamen a un `.md` y responde SOLO 3 líneas (veredicto+conteo · hallazgos en bullets · ruta).
+
 ## Hermanas
 - **`auditar-coherencia-cerebro` — la OTRA mitad de la DUPLA; va CONMIGO en todo cambio a doc/sistema.** Yo
   audito si es OPERABLE (¿alguien nuevo puede HACER las tareas sin romper ni re-investigar?); ella si es
@@ -87,7 +102,7 @@ sobrevivieron una limpieza propia). Guarda el prompt literal: si lo cambias, cam
   ninguna caza lo de la otra** → córrelas JUNTAS, hasta 0 CRÍTICO/ALTO/MEDIO (los BAJOS se triagean). El FMEA
   `auditar-proceso-algoritmo` es un TERCER eje (¿el algoritmo/flujo es correcto?): se SUMA cuando la capacidad
   audita lógica, no solo docs.
-- `revisar-entregables-agentes` — no creerle a un agente su "listo" (esta skill lo aplica al auditor mismo).
-- `positivar-doc` — answer-first: un doc suficiente pero enterrado sigue fallando la prueba.
+- `revisar-entregables-agentes` (skill **global**, no vive en `brain/skills`) — no creerle a un agente su "listo" (esta skill lo aplica al auditor mismo).
+- `positivar-doc` (skill **global**, no vive en `brain/skills`) — answer-first: un doc suficiente pero enterrado sigue fallando la prueba.
 - `cosechar-sesion` / `checkpoint` — de dónde salen las tareas: lo que pasó hoy.
 - Memoria global `feedback_re-auditar-tras-arreglar` — la norma de la 2ª pasada.
