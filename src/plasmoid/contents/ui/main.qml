@@ -241,6 +241,12 @@ PlasmoidItem {
                     root.brainScannedAt = Qt.formatTime(new Date(), "hh:mm")
                 } catch (e) { /* deja el estado previo si el parse falla */ }
             }
+            // HEAL HONESTO: si este escaneo verifica un heal recién corrido, el veredicto final se basa
+            // en la COMPLETITUD real tras curar (brainIncomplete), no en el exit del instalador.
+            if (root.brainHealVerifying) {
+                root.brainHealVerifying = false
+                root.brainHeal = root.brainIncomplete ? "error" : "ok"
+            }
             disconnectSource(source)
         }
     }
@@ -251,9 +257,14 @@ PlasmoidItem {
         engine: "executable"
         connectedSources: []
         onNewData: function(source, data) {
-            root.brainHeal = (data["exit code"] === 0) ? "ok" : "error"
             disconnectSource(source)
-            root.scanBrain()   // re-lee el estado tras curar
+            // HONESTO (paridad macOS/Windows): el exit 0 del instalador NO basta — sin jq en el PATH,
+            // install-brain.sh sale 0 SIN cablear nada. Solo un instalador que FALLA (exit≠0) es error
+            // inmediato; con exit 0 re-escaneamos y el veredicto ok/error lo fija brainSource según la
+            // completitud REAL (mientras tanto brainHeal sigue en "running" → muestra "Curando…").
+            if (data["exit code"] !== 0) { root.brainHeal = "error"; return }
+            root.brainHealVerifying = true
+            root.scanBrain()   // re-lee el estado tras curar; ahí se decide el veredicto honesto
         }
     }
 
@@ -991,6 +1002,7 @@ PlasmoidItem {
     // emite brain-scan.sh). "" si no hay sello (instalación vieja) → la UI no muestra versión.
     readonly property string brainVersion: (brainState && brainState.version) ? ("" + brainState.version) : ""
     property string brainHeal: ""             // "", "running", "ok", "error" (estado del botón-curita)
+    property bool brainHealVerifying: false   // true entre el heal y el re-escaneo que confirma completitud
     property string brainExpandedKey: ""      // "<tier>-<idx>" de la hoja expandida (solo una a la vez)
 
     // Catálogo conocido (mismos conjuntos que BrainState.knownGlobalHooks / knownRepoHooks del Swift).
@@ -1143,6 +1155,10 @@ PlasmoidItem {
         }
         return n
     }
+    // Cerebro global INCOMPLETO = ya escaneado y faltan piezas globales por cablear. Es la MISMA
+    // condición que usa el recuadro de salud (health.missing > 0) reexpuesta a nivel root para que el
+    // badge 🩹 del riel se vea desde cualquier pestaña. null / aún-sin-leer → false (no alarma a ciegas).
+    readonly property bool brainIncomplete: (brainState !== null) && (brainActive < brainTotal)
     // Hooks cableados fuera del catálogo (sección "➕ OTROS" — doc = realidad completa).
     readonly property var brainExtras: {
         if (!brainState || !brainState.wired) return []
@@ -2083,6 +2099,30 @@ PlasmoidItem {
             }
             PC3.Label { text: label; font.bold: active; color: active ? "#e8884a" : Kirigami.Theme.textColor }
             Item { Layout.fillWidth: true }
+        }
+        // Badge del riel (paridad macOS: railButton(5, badge: updateAvailable, heal: brainIncomplete)):
+        // en la pestaña Cerebro (idx 5) avisa DESDE cualquier pestaña si hay update del widget (⬆, acento)
+        // o si el cerebro global quedó incompleto (🩹, rojo). Sobrio: emojis chicos anclados arriba-derecha;
+        // no roba espacio al riel angosto ni intercepta el clic (no lleva MouseArea propio, deja pasar).
+        Row {
+            visible: idx === 5 && (root.brainIncomplete || root.updateAvailable)
+            anchors.top: parent.top
+            anchors.right: parent.right
+            anchors.topMargin: 1
+            anchors.rightMargin: 3
+            spacing: 1
+            PC3.Label {
+                visible: root.brainIncomplete   // 🩹 rojo = cerebro global incompleto (más urgente, va primero)
+                text: "🩹"
+                color: "#dc3545"
+                font.pointSize: Kirigami.Theme.smallFont.pointSize * 0.8
+            }
+            PC3.Label {
+                visible: root.updateAvailable   // ⬆ acento = hay versión nueva del widget
+                text: "⬆"
+                color: "#e8884a"; font.bold: true
+                font.pointSize: Kirigami.Theme.smallFont.pointSize * 0.8
+            }
         }
         MouseArea { id: mouse; anchors.fill: parent; hoverEnabled: true; onClicked: root.currentTab = idx }
     }
