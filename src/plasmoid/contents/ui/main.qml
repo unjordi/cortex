@@ -989,7 +989,22 @@ PlasmoidItem {
                   detail: "Al cerrar el día, revisa TU propio transcript y appendea los aprendizajes durables (feedback del usuario, lecciones de proceso, gotchas) al FINAL de .claude/memory/aprendizajes.md con atribución (aportó: handle). Separa el grano de la paja (no cosecha trivialidades). Alimenta el inbox append-only (merge=union). NO cierra slice ni hace git." },
                 { emoji: "🧩", name: "unificar-cerebro", desc: "reconciliación semanal del cerebro del equipo mini→develop",
                   event: "skill · opt-in",
-                  detail: "Hermana de cerrar-slice: junta aprendizajes+memorias de las minis hacia develop sin perder atribución/voz ni tocar guardrails. Inventaría el delta, baja primero el brain canónico, resuelve por clase, CURA el log (trenza solapes acreditando a ambos + gradúa lo maduro), verifica test-brain+lint, integra por el carril existente (OK explícito, sin auto-merge, con squash) y anota bitácora." }
+                  detail: "Hermana de cerrar-slice: junta aprendizajes+memorias de las minis hacia develop sin perder atribución/voz ni tocar guardrails. Inventaría el delta, baja primero el brain canónico, resuelve por clase, CURA el log (trenza solapes acreditando a ambos + gradúa lo maduro), verifica test-brain+lint, integra por el carril existente (OK explícito, sin auto-merge, con squash) y anota bitácora." },
+                { emoji: "🎓", name: "investigar-dominio", desc: "ponte experto en un dominio (fan-out DOC-FIRST) → memorias durables + skills",
+                  event: "skill · opt-in",
+                  detail: "Ponerte al día como EXPERTO en un dominio/ecosistema maduro sin investigar al aire: delega un fan-out de agentes a barrer la documentación oficial + issues/foros de cada pieza (método DOC-FIRST), cosecha en DOS capas (memorias de investigación indexadas + skills reutilizables, con la capa profunda separada) y REVISA las decisiones actuales contra el conocimiento nuevo para no arrastrar deuda técnica. Trae plantilla-prompt pegable para encargárselo a otro Claude." },
+                { emoji: "☀️", name: "positivar-doc", desc: "reescribe una doc answer-first: 'ESTO SÍ' (método correcto) antes del 'ESTO NO'",
+                  event: "skill · opt-in",
+                  detail: "Reescribe una memoria/skill/doc para que cada nugget abra con ESTO SÍ (el método/valor correcto y accionable) ANTES del ESTO NO (anti-patrones, gotchas, la historia de lo que se rompió). Answer-first. Úsalo al crear/editar docs o cuando una nota arranque con la historia del fallo y enrede al lector. Reordena/reencuadra SIN perder información. Transversal; una doc inline o bulk delegado a un agente con el mismo contrato." },
+                { emoji: "🕵️", name: "revisar-entregables-agentes", desc: "verifica lo que un agente ENTREGA contra la realidad — no relates su reporte como verdad",
+                  event: "skill · opt-in",
+                  detail: "Verificar lo que un agente/subagente ENTREGA contra la realidad — nunca relatar su reporte como verdad sin comprobarlo. Úsalo cada vez que un agente reporta, sobre todo antes de decirle al usuario 'ya quedó' o de construir encima de su trabajo." },
+                { emoji: "🔍", name: "zoom-screenshot", desc: "recorta y amplía regiones de una captura (ffmpeg) para leer texto fino ilegible",
+                  event: "skill · opt-in",
+                  detail: "Leer/transcribir capturas cuyo texto fino es ilegible al verlas enteras: recorta y amplía regiones con ffmpeg antes de leerlas. Úsalo cuando el usuario deja un screenshot (menús, ajustes, UIs densas) y hay que leer texto pequeño con precisión, o transcribir varias capturas." },
+                { emoji: "🧳", name: "claude-proyecto-autocontenido", desc: "el cerebro de Claude VIVE dentro del proyecto (.claude/ + symlink de slug) → viaja con él",
+                  event: "skill · opt-in",
+                  detail: "Mantener TODO el cerebro de Claude Code de un proyecto (memorias, skills, transcripts, settings) dentro de <proyecto>/.claude/, con un symlink desde ~/.claude/projects/<slug>/ para que Claude lo siga encontrando. Así la memoria/skills viajan con el proyecto (Drive, git, otra máquina) y ninguna sesión arranca amnésica desde otro cwd. Cubre la regla del slug, el bootstrap de un comando (clona-y-listo), el triage de privacidad (qué va al repo vs *.local), la disciplina anti-duplicados y la verificación." }
             ]
         }
     ]
@@ -1101,7 +1116,7 @@ PlasmoidItem {
             return p && w ? "installed" : (p ? "presentNotWired" : "absent")
         }
         if (inArr(root.brainRepoHooks, name)) return "repoScoped"
-        if (["cerrar-slice","checkpoint","diagramar","auditar-proceso-algoritmo","auditar-coherencia-cerebro","auditar-suficiencia-operativa","desinflar-memorias","orquestar-fanout","turno-nocturno","cosechar-sesion","unificar-cerebro"].indexOf(name) !== -1)
+        if (["cerrar-slice","checkpoint","diagramar","auditar-proceso-algoritmo","auditar-coherencia-cerebro","auditar-suficiencia-operativa","desinflar-memorias","orquestar-fanout","turno-nocturno","cosechar-sesion","unificar-cerebro","investigar-dominio","positivar-doc","revisar-entregables-agentes","zoom-screenshot","claude-proyecto-autocontenido"].indexOf(name) !== -1)
             return inArr(st.skills, name) ? "installed" : "absent"
         if (name === "Definition of Done" || name === "Doc <= realidad"
             || name === "Flujo de git" || name === "Costo de delegación")
