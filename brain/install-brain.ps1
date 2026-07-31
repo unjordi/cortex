@@ -98,9 +98,39 @@ if ($fixed -gt 0) { Write-Host "==> claude-brain: normalice a LF $fixed script(s
 # para que el bash hijo (que hereda este PATH) lo vea igual que PowerShell. Verificamos con un bash
 # NO-login (-c), el MISMO modo con que abajo corre install-brain.sh (el check refleja el run).
 $jqCmd = Get-Command jq -ErrorAction SilentlyContinue
-if ($jqCmd) {
-  $jqDir = Split-Path -Parent $jqCmd.Source
+$jqExe = if ($jqCmd) { $jqCmd.Source } else { $null }
+# Si jq NO esta en el PATH, LOCALIZARLO en las rutas conocidas de WinGet (mismo patron con que arriba
+# hallamos bash.exe fuera del PATH). Caso real: `winget install jqlang.jq` deja jq como shim en
+# %LOCALAPPDATA%\Microsoft\WinGet\Links\jq.exe o dentro de ...\WinGet\Packages\jqlang.jq*\...\jq.exe,
+# pero esa carpeta puede NO estar en el PATH -> `command -v jq` en bash falla y el instalador no cablea
+# (y peor: install-brain.sh SALE 0 igual -> el heal del widget diria "curado" mintiendo). Al hallarlo lo
+# agregamos al PATH de este PROCESO (lo hereda el bash hijo, para cablear ya) y al PATH de USUARIO
+# (persistente, para terminales/Claude Code futuros).
+if (-not $jqExe) {
+  $jqLink = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links\jq.exe'
+  if (Test-Path $jqLink) {
+    $jqExe = $jqLink
+  } else {
+    $pkgRoot = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages'
+    if (Test-Path $pkgRoot) {
+      $found = Get-ChildItem -Path $pkgRoot -Filter 'jq.exe' -Recurse -File -ErrorAction SilentlyContinue |
+               Where-Object { $_.Directory.FullName -like '*jqlang.jq*' } | Select-Object -First 1
+      if ($found) { $jqExe = $found.FullName }
+    }
+  }
+}
+if ($jqExe) {
+  $jqDir = Split-Path -Parent $jqExe
+  # PATH del PROCESO: para que el bash hijo (que hereda este PATH) vea jq en esta misma corrida.
   if (($env:PATH -split ';') -notcontains $jqDir) { $env:PATH = $jqDir + ';' + $env:PATH }
+  # PATH de USUARIO (persistente): para que jq siga visible mas alla de esta sesion (igual que Git\bin).
+  $jqUserPath = [Environment]::GetEnvironmentVariable('PATH','User')
+  if ($null -eq $jqUserPath) { $jqUserPath = '' }
+  if (($jqUserPath -split ';') -notcontains $jqDir) {
+    Write-Host "==> claude-brain: agrego '$jqDir' al PATH de usuario (jq lo REQUIEREN los hooks del cerebro)"
+    [Environment]::SetEnvironmentVariable('PATH', ($jqUserPath.TrimEnd(';') + ';' + $jqDir), 'User')
+    $script:pathChanged = $true
+  }
 }
 & $bashExe -c "command -v jq >/dev/null 2>&1"
 if ($LASTEXITCODE -ne 0) {
@@ -125,7 +155,7 @@ Write-Host "==> claude-brain: delegando en bash $Installer"
 $rc = $LASTEXITCODE
 if ($script:pathChanged) {
   Write-Host ""
-  Write-Host "NOTA: agregue 'bash' al PATH de usuario. Para que Claude Code (y tu terminal) lo vean,"
-  Write-Host "  ABRE UNA TERMINAL NUEVA (o reinicia Claude Code). En la actual ya quedo disponible."
+  Write-Host "NOTA: agregue una carpeta (bash y/o jq) al PATH de usuario. Para que Claude Code (y tu"
+  Write-Host "  terminal) la vean, ABRE UNA TERMINAL NUEVA (o reinicia Claude Code). En la actual ya quedo lista."
 }
 exit $rc

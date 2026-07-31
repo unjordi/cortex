@@ -14,6 +14,49 @@ unquoted=$(printf '%s' "$cmd" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g")
 # ¿git DESTRUCTIVO que mueve HEAD / descarta commits?
 printf '%s' "$unquoted" | grep -qE 'git[[:space:]]+(reset[[:space:]]+(--hard|--merge|--keep)|checkout[[:space:]]+(-f|--force)|rebase([[:space:]]|$)|branch[[:space:]]+-D)' || exit 0
 
+# --- PRECISIÓN: `git branch -d/-D <ramas>` (patrón DOMINANTE del corpus de FP, 10+ casos) --------------
+# `git branch -D <rama>` borra LA RAMA NOMBRADA, no HEAD → su único riesgo son los commits PROPIOS de esa
+# rama no integrados a la base; NO los commits sin pushear de la rama ACTUAL. El guard, abajo, cuenta
+# `@{u}..HEAD` (ajeno a la rama borrada) → avisaba en falso en TODA limpieza de ramas ya integradas por
+# SQUASH/cherry-pick estando en una mini-develop con trabajo local. Aquí decidimos el riesgo REAL con
+# ramas-zombie.sh (misma "mergeada" TRIPLE que los barredores limpiar-ramas/worktrees: ancestro de la base
+# | equivalencia de parche squash/cherry | remota-gone sin commits únicos) → sin divergencia. Solo aplica
+# si el comando es SOLO branch -d/-D (sin reset/checkout/rebase, que sí mueven HEAD → peligro real abajo).
+if printf '%s' "$unquoted" | grep -qE 'git[[:space:]]+branch[[:space:]]+-[dD]' \
+   && ! printf '%s' "$unquoted" | grep -qE 'git[[:space:]]+(reset[[:space:]]+--(hard|merge|keep)|checkout[[:space:]]+(-f|--force)|rebase([[:space:]]|$))'; then
+  root=$(git -C "${CLAUDE_PROJECT_DIR:-.}" rev-parse --show-toplevel 2>/dev/null || true)
+  zlib="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/ramas-zombie.sh"
+  if [ -n "$root" ] && [ -f "$zlib" ]; then
+    # shellcheck source=/dev/null
+    . "$zlib"
+    base=$(bz_resolver_base "$root")
+    # tokens tras el -d/-D (hasta pipe/;/&); quita flags sueltos (-r/-f/-q…). Cada token puede ser un
+    # nombre exacto o un glob → se expande contra las ramas LOCALES reales con `git branch --list`.
+    toks=$(printf '%s' "$unquoted" \
+      | grep -oE 'git[[:space:]]+branch[[:space:]]+-[dD][A-Za-z]*[[:space:]]+[^|;&]+' \
+      | sed -E 's/.*branch[[:space:]]+-[dD][A-Za-z]*[[:space:]]+//' \
+      | tr ' ' '\n' | grep -vE '^-')
+    riesgo=""
+    while IFS= read -r tok; do
+      [ -z "$tok" ] && continue
+      while IFS= read -r br; do
+        [ -z "$br" ] && continue
+        bz_es_zombie "$root" "$br" "$base" || riesgo="$riesgo $br"
+      done < <(git -C "$root" branch --list --format='%(refname:short)' "$tok" 2>/dev/null)
+    done <<EOF
+$toks
+EOF
+    # Si ninguna rama nombrada tiene trabajo PROPIO fuera de la base (todas zombies, o el glob no matcheó
+    # nada) → borrado seguro → SILENCIO (mata el FP dominante). Si alguna SÍ → aviso ACOTADO a esa rama.
+    if [ -n "$riesgo" ]; then
+      msg="AVISO (proteger-arbol): git branch -D borraría commits PROPIOS aún NO integrados a '$base' en:$riesgo (no están por ancestro ni por squash/cherry). Si es intencional, adelante; si no, intégralo/pushéalo antes de borrar."
+      jq -n --arg m "$msg" '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$m}}'
+    fi
+    exit 0
+  fi
+  # sin root o sin la lib → cae al comportamiento previo (fail-safe: no perdemos el aviso histórico).
+fi
+
 root=$(git -C "${CLAUDE_PROJECT_DIR:-.}" rev-parse --show-toplevel 2>/dev/null || true)
 [ -z "$root" ] && exit 0
 

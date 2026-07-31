@@ -748,6 +748,36 @@ o="$(paw 'git reset --hard HEAD~1')"
   && ok "proteger-arbol H14: aislado + OTRO objetivo → nota SUAVE (no alarma de árbol compartido)" \
   || bad "H14: aislado hacia otro objetivo no dio nota suave; got: $o"
 git -C "$PAREPO" worktree remove --force "$PAWT" >/dev/null 2>&1; rm -rf "$PAWT"
+
+# --- PRECISIÓN branch -D: NO avisar al borrar ramas ya integradas (patrón DOMINANTE del corpus de FP) ---
+# `git branch -D <rama>` borra la rama nombrada, no HEAD → el guard antes contaba @{u}..HEAD (los commits
+# sin pushear de la rama ACTUAL, ajenos a la borrada) y avisaba en falso en toda limpieza post-squash.
+# Ahora consulta ramas-zombie.sh (ancestro | squash/cherry | remota-gone) y solo avisa si la rama tiene
+# trabajo PROPIO no integrado. La rama actual de PAREPO trae 1 commit local SIN pushear (n=1) → el bug
+# viejo habría gritado en los tres casos de abajo. Declaramos la base con CLAUDE_INTEGRACION_BASE (el
+# override real de la lib) = la rama actual: el fixture clona un bare vacío y no tiene develop/origin-HEAD,
+# pero en repos reales la base SIEMPRE resuelve (mini-develop | develop | origin/HEAD) — no es del hook.
+DEFB2="$(git -C "$PAREPO" rev-parse --abbrev-ref HEAD)"
+paz() { printf '%s' "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"$1\"}}" \
+        | CLAUDE_PROJECT_DIR="$PAREPO" CLAUDE_INTEGRACION_BASE="$DEFB2" bash "$HOOKS/proteger-arbol.sh"; }
+# (1) rama ANCESTRO de la base (apunta a un commit ya en la base) → zombie → SILENCIO
+git -C "$PAREPO" branch pa/ancestro HEAD~1 >/dev/null 2>&1
+o="$(paz 'git branch -D pa/ancestro')"
+[ -z "$o" ] && ok "proteger-arbol: branch -D de rama ANCESTRO de la base → silencio (mata FP dominante)" || bad "proteger-arbol avisó al borrar rama ancestro; got: $o"
+# (2) rama SQUASH/cherry: su parche ya está en la base por equivalencia → zombie → SILENCIO
+git -C "$PAREPO" checkout -q -b pa/squash >/dev/null 2>&1
+printf 'sq\n' >> "$PAREPO/a.txt"; git -C "$PAREPO" add a.txt >/dev/null 2>&1; git -C "$PAREPO" commit -q -m sq >/dev/null 2>&1
+git -C "$PAREPO" checkout -q "$DEFB2" >/dev/null 2>&1
+git -C "$PAREPO" cherry-pick pa/squash >/dev/null 2>&1
+o="$(paz 'git branch -D pa/squash')"
+[ -z "$o" ] && ok "proteger-arbol: branch -D de rama SQUASH/cherry (parche ya en base) → silencio" || bad "proteger-arbol avisó al borrar rama squash-equivalente; got: $o"
+# (3) rama con trabajo PROPIO no integrado → NO zombie → AVISA (acotado a esa rama)
+git -C "$PAREPO" checkout -q -b pa/viva >/dev/null 2>&1
+printf 'viva\n' >> "$PAREPO/a.txt"; git -C "$PAREPO" add a.txt >/dev/null 2>&1; git -C "$PAREPO" commit -q -m viva >/dev/null 2>&1
+git -C "$PAREPO" checkout -q "$DEFB2" >/dev/null 2>&1
+o="$(paz 'git branch -D pa/viva')"
+printf '%s' "$o" | grep -q 'NO integrados' && ok "proteger-arbol: branch -D de rama con trabajo PROPIO no integrado → AVISA (acotado)" || bad "proteger-arbol NO avisó al borrar rama con trabajo vivo; got: $o"
+
 rm -rf "$PABARE" "$PAREPO"
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1179,6 +1209,38 @@ printf '%s' "$adout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null
 printf '# contrato\n' > "$ADROOT/AGENTS.md"
 printf '%s' "$(ad)" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'CONTRA la firma' \
   && ok "aviso-drift (con firma): AGENTS.md presente → dupla CONTRA la firma" || bad "aviso-drift: con AGENTS.md no tomó la rama con-firma"
+
+# (9) CONOCIMIENTO PROPIO (per-repo, imborrable): si el repo trae .claude/memory/conocimiento-propio(.local).md,
+# se RE-INYECTA en CADA SessionStart — incluso SIN drift o con el throttle fresco (no depende del drift).
+# La variante PERSONAL .local.md (gitignored) es la preferida; .md es fallback COMPARTIDO versionado.
+mkdir -p "$ADROOT/.claude/memory"
+printf '# Conocimiento propio\nes tu cerebro, es mi repo, y es nuestro proyecto. La introspección PROPONE; unjordi DECIDE.\n' > "$ADROOT/.claude/memory/conocimiento-propio.local.md"
+# 9a: con drift → identidad + drift viajan JUNTOS en el mismo additionalContext
+adout="$(ad)"
+{ printf '%s' "$adout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'es tu cerebro' \
+  && printf '%s' "$adout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'DRIFT DEL CEREBRO'; } \
+  && ok "aviso-drift: conocimiento propio + drift viajan JUNTOS en un solo additionalContext" || bad "aviso-drift: no combinó identidad + drift; got: $adout"
+# 9b: sync LIMPIO + throttle fresco → SIN drift, pero la identidad SIGUE inyectándose (imborrable)
+printf '#!/usr/bin/env bash\necho "==> resumen: 0 nuevos · 0 a actualizar · 9 ya al día · 7 hooks cableados (kind=hook)"\n' > "$ADBRAIN/brain/sincronizar-cerebro.sh"
+rm -rf "$ADHOME/.claude/memory/.drift-cerebro"
+adout="$(ad)"   # 1er llamado: limpio → cachea stamp; emite SOLO identidad
+{ printf '%s' "$adout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'es tu cerebro' \
+  && ! printf '%s' "$adout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'DRIFT DEL CEREBRO'; } \
+  && ok "aviso-drift: sin drift → inyecta SOLO el conocimiento propio (no depende del drift)" || bad "aviso-drift: sin drift no surface la identidad sola; got: $adout"
+adout2="$(ad)"  # 2º llamado: throttle fresco → salta el drift-check, pero IGUAL re-inyecta la identidad
+printf '%s' "$adout2" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'es tu cerebro' \
+  && ok "aviso-drift: throttle fresco → aún así re-inyecta el conocimiento propio (cada sesión)" || bad "aviso-drift: el throttle se tragó la identidad; got: $adout2"
+# 9c: fallback a la variante COMPARTIDA .md cuando NO hay .local.md (repo que versiona su identidad)
+rm -f "$ADROOT/.claude/memory/conocimiento-propio.local.md"
+printf '# Conocimiento propio (compartido)\nidentidad versionada del repo\n' > "$ADROOT/.claude/memory/conocimiento-propio.md"
+rm -rf "$ADHOME/.claude/memory/.drift-cerebro"
+adout="$(ad)"; adout2="$(ad)"   # 2º call = throttle fresco (sin drift), igual debe traer la identidad
+printf '%s' "$adout2" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'identidad versionada' \
+  && ok "aviso-drift: fallback a conocimiento-propio.md (compartido) cuando no hay .local.md" || bad "aviso-drift: no tomó el fallback .md; got: $adout2"
+# 9d: repo SIN ninguno de los dos → NO inventa identidad (per-repo, no universal) → silencio si no hay drift
+rm -f "$ADROOT/.claude/memory/conocimiento-propio.md"
+rm -rf "$ADHOME/.claude/memory/.drift-cerebro"
+is_silent "$(ad)" && ok "aviso-drift: sin conocimiento-propio(.local).md y sin drift → silencio (per-repo, no universal)" || bad "aviso-drift: habló sin archivo de identidad ni drift"
 rm -rf "$ADFIX"
 
 # ── (b5b2) FIX costura #2: aviso-drift DETECTA el drift de CABLEADO (hooks presentes SIN cablear).
@@ -1588,6 +1650,41 @@ m="$(ac3 'opus' unset 150000)"
 [ -z "$(ac3 'opus' unset 100000)" ] \
   && ok "aviso techo derivado: 200K @ 92%, ctx 100K → silencio" \
   || bad "aviso techo derivado 200K@92% gritó a 100K"
+
+# (b6b-nativo) BUG 2026-07-30 (regresó vía install-brain, jul 31): los modelos 1M-NATIVOS llevan el id
+# PELÓN, SIN el sufijo "[1m]" (opus-4-7/4-8/5, sonnet-5, fable-5, mythos-5). Antes caían al default de
+# 200K → el hook gritaba "INMINENTE" con la ventana real al ~13-19% (Jordi lo vio en Opus 5 y 4.8; el
+# /context marcaba 166K/1M=17% y el hook "89% rumbo al auto-compact"). Repro EXACTO del report: opus-4-8
+# @ 70%, ctx 135K → con la lista por nombre la ventana es 1M → techo 700K → 135K=19% → banda 0 → silencio;
+# SIN ella, 200K → techo 140K → 135K ≥ t3(133K) → falso 🚨. Este test ES el anti-regresión que faltó: el
+# fix de anoche vivió SOLO en el hook global (sin commit al brain) → el siguiente install-brain lo pisó.
+for nativo in claude-opus-4-8 claude-opus-5 claude-opus-4-7 claude-sonnet-5 claude-fable-5 claude-mythos-5; do
+  [ -z "$(ac3 "$nativo" 70 135000)" ] \
+    && ok "aviso 1M-nativo: $nativo (id pelón) → ventana 1M → ctx 135K = silencio (NO falso INMINENTE)" \
+    || bad "aviso 1M-nativo: $nativo NO detectado como 1M → falso positivo (regresión del bug 2026-07-30)"
+done
+# ...pero el 1M-nativo SÍ avisa cuando de verdad se llena: opus-4-8 @ 70%, ctx 680K = 97% de 700K → banda 3.
+{ printf '%s' "$(ac3 'claude-opus-4-8' 70 680000)" | grep -q 'INMINENTE'; } \
+  && ok "aviso 1M-nativo: opus-4-8 @ 70%, ctx 680K = 97% de 700K → SÍ avisa INMINENTE (no sobre-suprime)" \
+  || bad "aviso 1M-nativo: opus-4-8 a 680K NO avisó (sobre-supresión)"
+# Un modelo NO-nativo sin "[1m]" (sonnet-4-5) sigue en 200K: la lista por nombre NO lo promueve.
+m="$(ac3 'claude-sonnet-4-5' unset 150000)"
+{ printf '%s' "$m" | grep -q '184K'; } \
+  && ok "aviso 1M-nativo: sonnet-4-5 (NO nativo, sin [1m]) → sigue 200K (techo 184K)" \
+  || bad "aviso 1M-nativo: sonnet-4-5 se promovió a 1M por error; got: $m"
+
+# (b6b-justif) AUTO-JUSTIFY del mensaje (pedido de Jordi 2026-07-30 "los claudios luego no le creen"):
+# cada aviso cita la PROCEDENCIA del techo (ventana + pct + su FUENTE) para que un Claude nuevo no lo
+# confunda con el viejo bug 1M-vs-200K. También se clobbereó vía install-brain → este test lo blinda.
+m="$(ac3 'claude-opus-4-8' 70 680000)"   # 1M-nativo @ 70%, banda 3 → cita el override deliberado
+{ printf '%s' "$m" | grep -q 'CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70' && printf '%s' "$m" | grep -q 'DELIBERADO'; } \
+  && ok "aviso auto-justify: con override cita CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70 + 'DELIBERADO' (procedencia)" \
+  || bad "aviso auto-justify: el mensaje NO cita la procedencia del techo; got: $m"
+# Rama '(default)' de PROCEDENCIA (sin override de pct): 1M @ 92% → techo 920K; ctx 900K ≥ t3(874K) → banda 3.
+m="$(ac3 'claude-opus-4-8' unset 900000)"
+{ printf '%s' "$m" | grep -q '(default)' && printf '%s' "$m" | grep -q '📐'; } \
+  && ok "aviso auto-justify: sin override cita el techo '(default)' con 📐 (procedencia)" \
+  || bad "aviso auto-justify: rama default no cita procedencia; got: $m"
 
 # (b6c) ROBUSTEZ de runtime (bug 2026-07-28): la detección de ventana falla en runtime (settings a medio
 # escribir / timing / $HOME distinto) → cae al default chico de 200K → falso "🚨 INMINENTE". AUTO-CORRECCIÓN
@@ -2300,6 +2397,47 @@ grep -q '_hoverBottom' "$WPF" 2>/dev/null && ok "e9: Windows — hover del pie t
 kfr="$(awk '/function forceRefresh/{c=1} c{print} c&&/^    }/{exit}' "$QML9" 2>/dev/null)"
 { printf '%s' "$kfr" | grep -q 'updLastCheck = 0' && printf '%s' "$kfr" | grep -q 'checkUpdate()'; } \
   && ok "e9: KDE — forceRefresh fuerza checkUpdate (updLastCheck=0)" || bad "e9: KDE — forceRefresh no fuerza chequeo"
+
+# --- Fix C: BADGE ⬆/🩹 en la pestaña Cerebro (el aviso se ve DESDE CUALQUIER pestaña) ---
+grep -qE 'railButton\(5,.*badge:.*heal:' "$SW_PV" 2>/dev/null && ok "e9: macOS — badge en la pestaña Cerebro" || bad "e9: macOS SIN badge en la tab"
+grep -q 'brainIncomplete' "$QML9" 2>/dev/null && ok "e9: KDE — badge en la pestaña Cerebro (brainIncomplete)" || bad "e9: KDE SIN badge en la tab"
+grep -q 'BrainMissing' "$WPF" 2>/dev/null && ok "e9: Windows — badge en la pestaña Cerebro (BrainMissing)" || bad "e9: Windows SIN badge en la tab"
+
+# --- Fix D: HEAL HONESTO (mensaje según completitud REAL, no exit code — install-brain.sh sale 0 sin jq) ---
+grep -q 'sigue incompleto' "$SW_PV" 2>/dev/null && ok "e9: macOS — heal honesto (según completitud)" || bad "e9: macOS heal NO honesto"
+grep -q 'brainHealVerifying' "$QML9" 2>/dev/null && ok "e9: KDE — heal honesto (re-scan + verdict real)" || bad "e9: KDE heal NO honesto"
+grep -q 'sigue incompleto' "$WPF" 2>/dev/null && ok "e9: Windows — heal honesto (según completitud)" || bad "e9: Windows heal NO honesto"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# e10: install.ps1 (Windows) detecta la CLI ESPECIFICAMENTE, no la app de escritorio.
+# Bug real (Windows "Asistente Dir"): 'claude' resolvia a AppData\Local\AnthropicClaude\claude.exe
+# (la app de escritorio, que NO escribe ~/.claude/.credentials.json) -> el instalador la confundia con
+# la CLI y se saltaba exponer .local\bin -> OAuth sin credenciales. El fix: helper que EXCLUYE la app,
+# prepend del dir de la CLI al PATH (gana a la app), y auth status contra el binario de la CLI.
+WPS1="$SCRIPT_DIR/../windows/install.ps1"
+grep -q 'AnthropicClaude' "$WPS1" 2>/dev/null \
+  && ok "e10: install.ps1 — excluye la app de escritorio al detectar la CLI (AnthropicClaude)" \
+  || bad "e10: install.ps1 — NO distingue la CLI de la app de escritorio"
+grep -q 'Resolve-ClaudeCli' "$WPS1" 2>/dev/null \
+  && ok "e10: install.ps1 — helper Resolve-ClaudeCli (fuente única de detección de la CLI)" \
+  || bad "e10: install.ps1 — sin helper de detección específica de la CLI"
+grep -q 'al frente del PATH' "$WPS1" 2>/dev/null \
+  && ok "e10: install.ps1 — pone la CLI al FRENTE del PATH (gana a la app)" \
+  || bad "e10: install.ps1 — no antepone la CLI en el PATH (la app la taparia)"
+grep -qE '& \$cli auth status' "$WPS1" 2>/dev/null \
+  && ok "e10: install.ps1 — auth status contra el binario de la CLI (no el que resuelva 'claude')" \
+  || bad "e10: install.ps1 — auth status no apunta a la CLI específica"
+
+# e11: RACE del asset 'windows-latest'. Al DESCARGAR el exe, version.json debe reflejar el 'build-sha:'
+# real del asset (que puede ir detras de main mientras el runner reconstruye), NO el HEAD del clon —
+# si no, el widget se cree al dia con un exe viejo y su cerebro empaquetado cuenta hooks de menos
+# (el "(5)" fantasma). Fix: leer build-sha del cuerpo del release y estampar ese sha efectivo.
+grep -q 'effSha' "$WPS1" 2>/dev/null \
+  && ok "e11: install.ps1 — usa sha EFECTIVO (del asset, no HEAD) para el version.json" \
+  || bad "e11: install.ps1 — estampa siempre HEAD del clon (RACE del rolling)"
+grep -q 'build-sha: (\[0-9a-f\]+)' "$WPS1" 2>/dev/null \
+  && ok "e11: install.ps1 — lee el build-sha del cuerpo del release 'windows-latest'" \
+  || bad "e11: install.ps1 — no lee el build-sha del release (no detecta asset rancio)"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""

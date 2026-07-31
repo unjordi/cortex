@@ -1146,7 +1146,13 @@ struct PopoverView: View {
                 let fresh = BrainInspector.inspect()
                 brainState = fresh
                 healing = false
-                healMsg = ok ? "✓ curado" : "✗ error (¿jq instalado?)"
+                // Heal HONESTO (paridad KDE/Windows): el mensaje refleja la COMPLETITUD real tras
+                // re-inspeccionar, NO solo el exit. install-brain.sh SALE 0 aunque no cablee (fail-open
+                // sin jq) → "✓ curado" mentía cuando jq no está en el PATH. `brainIncomplete` lee el
+                // brainState recién refrescado.
+                if !ok { healMsg = "✗ error (¿Git Bash + jq?)" }
+                else if brainIncomplete { healMsg = "✓ corrió, pero sigue incompleto — ¿jq en el PATH?" }
+                else { healMsg = "✓ curado" }
             }
         }
     }
