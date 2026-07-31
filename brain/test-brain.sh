@@ -203,6 +203,12 @@ is_silent "$out" && ok "squash-guard B3: destino INDETERMINADO CON --squash → 
 # el histórico de un release cuya red no se pudo consultar). Sin id → destino queda vacío igual.
 out="$(ms 'glab mr merge --yes # release a main')"
 is_silent "$out" && ok "squash-guard B3: indeterminado + señal 'release a main' → NO fuerza squash" || bad "squash-guard B3: forzó squash pese a la señal explícita de release; got: $out"
+# H-R9-01 (FMEA r9): el binario Windows `glab.exe`/`gh.exe` rompía el gate `acg_es_merge_mr` → ambos guards
+# de merge quedaban ciegos (hermano de B4 en el eje merge). (\.exe)? en el reconocimiento lo cierra.
+mock_glab develop; out="$(ms 'glab.exe mr merge 48 --auto-merge --yes')"
+is_deny "$out" && ok "squash-guard H-R9-01: 'glab.exe mr merge' sin --squash → deny (binario Windows)" || bad "squash-guard H-R9-01: 'glab.exe' evadió el guard de squash; got: $out"
+mock_glab develop; out="$(ms 'glab.exe mr merge 49 --squash --auto-merge --yes')"
+is_silent "$out" && ok "squash-guard H-R9-01: 'glab.exe mr merge --squash' → pasa (sin falso positivo)" || bad "squash-guard H-R9-01: bloqueó un glab.exe que ya trae squash; got: $out"
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
 rm -rf "$MSBIN"
 
@@ -374,6 +380,11 @@ is_deny "$(cm 'glab mr merge 5 --yes' 'primero dejame probar, luego mergea el 5'
   && ok "cmd A-R5-03: 'déjame probar … mergea el 5' (aplazamiento) → deny" || bad "cmd A-R5-03: 'déjame probar' pasó como OK"
 is_silent "$(cm 'glab mr merge 5 --yes' 'dejame mergearlo el 5')" \
   && ok "cmd A-R5-03: 'déjame mergearlo' → pasa (intención de merge, no aplazamiento)" || bad "cmd A-R5-03: falso positivo, 'déjame mergearlo' cayó por DEFER_RE"
+# H-R9-01 (FMEA r9): el binario Windows `glab.exe mr merge` evadía el gate → un merge a develop pasaba sin OK.
+is_deny "$(cm 'glab.exe mr merge 5 --yes' 'sigue avanzando')" \
+  && ok "cmd H-R9-01: 'glab.exe mr merge' a develop SIN OK → deny (binario Windows)" || bad "cmd H-R9-01: 'glab.exe' evadió confirmar-merge-develop"
+is_silent "$(cm 'glab.exe mr merge 5 --yes' 'ya revisé, mergea el 5')" \
+  && ok "cmd H-R9-01: 'glab.exe mr merge' a develop CON OK → pasa" || bad "cmd H-R9-01: 'glab.exe' con OK fue bloqueado"
 # Blindaje (NO se afloja el camino inverso): un OK de develop NUNCA autoriza un RELEASE a main.
 mock_cm_glab main
 is_deny "$(cm 'glab mr merge 63 --yes' 'mérgalo a develop')" \

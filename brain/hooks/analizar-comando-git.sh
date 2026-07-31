@@ -135,7 +135,9 @@ acg_merge_menciona_base() {
 # comillas ni --repo (H11/H13). Un `git merge` LOCAL no matchea → sigue libre.
 acg_es_merge_mr() {
   local u; u=$(acg_sin_flag_repo "$(acg_despoja_comillas "$1")")
-  printf '%s' "$u" | grep -qE '(glab[[:space:]]+mr[[:space:]]+(merge|accept)|gh[[:space:]]+pr[[:space:]]+merge)([[:space:]]|$)' || return 1
+  # `(\.exe)?`: en Windows el binario es `glab.exe`/`gh.exe` — sin esto el `.exe` rompía el
+  # `glab`/`gh`+espacio y ambos guards de merge (squash + confirmar-merge) quedaban ciegos (H-R9-01, hermano de B4).
+  printf '%s' "$u" | grep -qE '(glab(\.exe)?[[:space:]]+mr[[:space:]]+(merge|accept)|gh(\.exe)?[[:space:]]+pr[[:space:]]+merge)([[:space:]]|$)' || return 1
   printf '%s' "$u" | grep -qE '(^|[[:space:]])(--help|-h|--dry-run)([[:space:]]|$)' && return 1
   return 0
 }
@@ -174,7 +176,7 @@ acg_destino_de_mr() {
   command -v jq >/dev/null 2>&1 || return 0
   local raw="$1" u tool repo mrid key cache dest
   u=$(acg_despoja_comillas "$raw")
-  if printf '%s' "$u" | grep -qE 'glab[[:space:]]+mr'; then tool=glab; else tool=gh; fi
+  if printf '%s' "$u" | grep -qE 'glab(\.exe)?[[:space:]]+mr'; then tool=glab; else tool=gh; fi  # (\.exe)?: binario Windows (H-R9-01)
   repo=$(printf '%s' "$raw" | grep -oE '(--repo|-R)[[:space:]=]+[^[:space:]]+' | grep -oE '[^[:space:]=]+$')
   [ -z "$repo" ] && repo=$(git -C "${CLAUDE_PROJECT_DIR:-.}" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|https?://[^/]+/)##; s#\.git$##')
   mrid=$(acg_mrid "$u")
