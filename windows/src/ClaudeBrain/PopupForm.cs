@@ -404,7 +404,11 @@ public sealed class PopupForm : Form
         int szL = Math.Min(maxSzL, (avail - (n - 1) * gapL) / n);
         int sz = Sc(szL), gap = Sc(gapL);
         int y = _rail.Height - sz - Sc(6);
-        float x = Sc(padL);
+        // Fila CENTRADA en el ancho del riel (paridad con macOS). El clamp de tamaño usa avail/padL,
+        // pero cuando sz topa en maxSzL la fila mide menos que avail → si arrancara en padL quedaría
+        // pegada a la izquierda; centramos su ancho real (rowW) en RailW.
+        int rowW = n * sz + (n - 1) * gap;
+        float x = (Sc(RailWLogical) - rowW) / 2f;
         RectangleF Next() { var r = new RectangleF(x, y, sz, sz); x += sz + gap; return r; }
         var update = hasUpd ? Next() : RectangleF.Empty;
         var heal = hasHeal ? Next() : RectangleF.Empty;
