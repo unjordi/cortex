@@ -70,6 +70,15 @@ final class Updater: ObservableObject {
         await check()
     }
 
+    /// Chequeo FORZADO por acción explícita del usuario (botón ↻): SALTA el throttle de 15 min. El
+    /// throttle protege a los chequeos automáticos (tab/timer) del rate-limit anónimo; un clic
+    /// deliberado sí puede consultar. Paridad: KDE forceRefresh y Windows OnRefresh hacen lo mismo.
+    func forceCheck() async {
+        loadLocal()
+        lastCheck = Date()
+        await check()
+    }
+
     private func check() async {
         guard localShort != "?" else { return }   // sin version.json (build viejo) → no molesta
         var req = URLRequest(url: URL(string: "https://api.github.com/repos/\(Self.slug)/commits/main")!)
