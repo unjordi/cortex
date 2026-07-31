@@ -24,10 +24,17 @@ acg_sin_flag_repo() { printf '%s' "$1" | sed -E 's/(--repo|-R)[[:space:]=]+[^[:s
 #     para comerse ese valor) y (b) CUALQUIER otro token dash-led (flag booleano o `--x=val`), así una
 #     global NUEVA de git ya no reabre el hueco. `(…)+` en ERE lo soportan GNU y BSD sed; POSIX
 #     leftmost-longest hace que (a) gane sobre (b) cuando puede comerse el valor.
+#   · A-R5-01 (FMEA r5): el VALOR de un value-eater puede ir ENTRECOMILLADO con ESPACIOS —
+#     `git -C "/Users/unjordi/Mi unidad/repo" push origin develop` (realista: rutas de Google Drive en
+#     esta máquina). El `[^[:space:]]+` se cortaba en el 1er espacio → dejaba `Mi unidad/repo" push…`
+#     colgando y rompía la adyacencia → evasión TOTAL. El valor se hace QUOTE-AWARE: `"..."` / `'...'`
+#     (con espacios adentro) se consume como UNA unidad. IMPORTANTE: este normalizador corre sobre el RAW
+#     (comillas intactas) ANTES de cualquier despoje — un consumidor que primero despoje comillas debe
+#     invertir el orden (normalizar el raw, luego despojar) o el valor entrecomillado queda vacío.
 # Solo casa opciones INMEDIATAMENTE tras `git` y se detiene en el 1er token NO-dash (el subcomando) → el
 # `-c` de `git commit -c <commit>` (tras el subcomando) NO se toca, y `git push -u …` (0 globales) queda intacto.
 acg_normaliza_git_prefijo() {
-  printf '%s' "$1" | sed -E 's/git[[:space:]]+((((-c|-C|--exec-path|--git-dir|--work-tree|--namespace|--attr-source|--config-env|--super-prefix)([[:space:]]+|=)[^[:space:]]+)|(--?[a-zA-Z][a-zA-Z-]*(=[^[:space:]]+)?))[[:space:]]+)+/git /g'
+  printf '%s' "$1" | sed -E "s/git[[:space:]]+((((-c|-C|--exec-path|--git-dir|--work-tree|--namespace|--attr-source|--config-env|--super-prefix)([[:space:]]+|=)(\"[^\"]*\"|'[^']*'|[^[:space:]]+))|(--?[a-zA-Z][a-zA-Z-]*(=(\"[^\"]*\"|'[^']*'|[^[:space:]]+))?))[[:space:]]+)+/git /g"
 }
 
 # Raíz y rama actual del repo del PROYECTO (CLAUDE_PROJECT_DIR), no del cwd del hook.

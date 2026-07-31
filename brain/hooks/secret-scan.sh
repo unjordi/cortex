@@ -53,17 +53,21 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
 _ACGLIB="$(dirname "$0")/analizar-comando-git.sh"
 # shellcheck source=analizar-comando-git.sh
 [ -f "$_ACGLIB" ] && . "$_ACGLIB"
-if command -v acg_despoja_comillas >/dev/null 2>&1; then
-  cmd_uq=$(acg_despoja_comillas "$cmd")
-else
-  cmd_uq=$(printf '%s' "$cmd" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g")
-fi
-# A-03 (FMEA): colapsa el prefijo `git -c k=v`/`-C dir` para que `git -c … commit` NO evada la adyacencia
-# git+commit/push del gate (ese prefijo cegaba el escaneo). Reusa el normalizador de la lib si está.
+# A-03/A-R4-02 (FMEA): colapsa el prefijo de opciones globales de git (`-c k=v`, `-C dir`, `--no-pager`,
+# `--work-tree`, …) para que `git <globales> commit` NO evada la adyacencia git+commit/push del gate (ese
+# prefijo cegaba el escaneo). A-R5-02 (FMEA r5): se NORMALIZA SOBRE EL RAW (comillas intactas) ANTES de
+# despojar — si se despoja primero, un value-eater con valor entrecomillado (`git -C "/ruta" commit`) queda
+# vacío y el normalizador se come el subcomando `commit` → escaneo CIEGO. El normalizador es quote-aware
+# (consume el valor entrecomillado con espacios como una unidad). Orden correcto: normaliza(raw) → despoja.
 if command -v acg_normaliza_git_prefijo >/dev/null 2>&1; then
-  cmd_uq=$(acg_normaliza_git_prefijo "$cmd_uq")
+  cmd_norm=$(acg_normaliza_git_prefijo "$cmd")
 else
-  cmd_uq=$(printf '%s' "$cmd_uq" | sed -E 's/git[[:space:]]+((-c|-C)[[:space:]]+[^[:space:]]+[[:space:]]+)+/git /g')
+  cmd_norm=$(printf '%s' "$cmd" | sed -E "s/git[[:space:]]+((((-c|-C|--exec-path|--git-dir|--work-tree|--namespace|--attr-source|--config-env|--super-prefix)([[:space:]]+|=)(\"[^\"]*\"|'[^']*'|[^[:space:]]+))|(--?[a-zA-Z][a-zA-Z-]*(=(\"[^\"]*\"|'[^']*'|[^[:space:]]+))?))[[:space:]]+)+/git /g")
+fi
+if command -v acg_despoja_comillas >/dev/null 2>&1; then
+  cmd_uq=$(acg_despoja_comillas "$cmd_norm")
+else
+  cmd_uq=$(printf '%s' "$cmd_norm" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g")
 fi
 
 # ¿Es un commit o un push? Si no, no es asunto de este guard (NO es "no poder escanear" → nunca strict-bloquea).

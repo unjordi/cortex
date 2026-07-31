@@ -262,6 +262,13 @@ printf '%s' "$(gb 'git --work-tree=/tmp push origin main')"  | grep -q '"deny"' 
 printf '%s' "$(gb 'git --git-dir /tmp/foo push origin develop')" | grep -q '"deny"' && ok "gbg A-R4-01: 'git --git-dir /tmp/foo push develop' (value por espacio) → deny" || bad "gbg A-R4-01: '--git-dir <dir>' se coló"
 printf '%s' "$(gb 'git --literal-pathspecs push origin main')" | grep -q '"deny"' && ok "gbg A-R4-01: 'git --literal-pathspecs push main' → deny" || bad "gbg A-R4-01: '--literal-pathspecs' se coló"
 is_silent "$(gb 'git --no-pager push origin feat/x')"        && ok "gbg A-R4-01: '--no-pager push feat/x' (ramita) → silencio (sin falso positivo)" || bad "gbg A-R4-01: bloqueó una ramita con prefijo global"
+# A-R5-01 (FMEA ronda 5): el VALOR de un value-eater puede ir ENTRECOMILLADO con ESPACIOS (rutas de Google
+# Drive: "/Users/…/Mi unidad/repo"). El [^space]+ se cortaba en el 1er espacio → evasión total. Quote-aware.
+printf '%s' "$(gb 'git -C "/Users/unjordi/Mi unidad/repo" push origin develop')" | grep -q '"deny"' && ok "gbg A-R5-01: '-C \"…/Mi unidad/…\" push develop' (valor entrecomillado con espacio) → deny" || bad "gbg A-R5-01: el valor entrecomillado con espacio rompió la adyacencia (bypass)"
+printf '%s' "$(gb "git -C '/single quote path/x' push origin main")" | grep -q '"deny"' && ok "gbg A-R5-01: '-C \x27/single quote path/x\x27 push main' (comilla simple con espacio) → deny" || bad "gbg A-R5-01: comilla simple con espacio se coló"
+printf '%s' "$(gb 'git --git-dir="/a b/.git" push origin develop')" | grep -q '"deny"' && ok "gbg A-R5-01: '--git-dir=\"/a b/.git\" push develop' (=-form entrecomillado) → deny" || bad "gbg A-R5-01: --git-dir= entrecomillado se coló"
+printf '%s' "$(gb 'git -c a=b -C "/x y" --no-pager push origin develop')" | grep -q '"deny"' && ok "gbg A-R5-01: prefijos STACKED con valor entrecomillado → deny" || bad "gbg A-R5-01: stacking con valor entrecomillado se coló"
+is_silent "$(gb 'git -C "/Users/unjordi/Mi unidad/repo" push origin feat/x')" && ok "gbg A-R5-01: '-C \"…espacio…\" push feat/x' (ramita) → silencio (sin falso positivo)" || bad "gbg A-R5-01: bloqueó una ramita con -C entrecomillado"
 rm -rf "$GBROOT"
 # A-R4-01 (pelón en BASE): parado EN develop, un push pelón con prefijo global debe DENY (el fallback por
 # rama actual se alcanza porque el subcomando SÍ se reconoce como push tras normalizar el prefijo).
@@ -338,6 +345,12 @@ is_silent "$(cm 'glab mr merge 5 --yes' 'ya revise, mergea el 5')" \
   && ok "cmd A-R4-03: 'ya revisé, mergea el 5' → pasa (no es aplazamiento)" || bad "cmd A-R4-03: falso positivo, 'ya revisé' cayó por DEFER_RE"
 is_silent "$(cm 'glab mr merge 5 --yes' 'desde luego, mergea el 5')" \
   && ok "cmd A-R4-03: 'desde luego, mergea el 5' → pasa (no colisiona con 'luego')" || bad "cmd A-R4-03: falso positivo, 'desde luego' cayó por 'luego'"
+# A-R5-03 (FMEA r5, precisión segura): "déjame probar/revisar/checar … mergea el 5" es aplazamiento → deny.
+# Control: "déjame mergearlo" NO cae (es intención de merge, un OK legítimo) → pasa.
+is_deny "$(cm 'glab mr merge 5 --yes' 'primero dejame probar, luego mergea el 5')" \
+  && ok "cmd A-R5-03: 'déjame probar … mergea el 5' (aplazamiento) → deny" || bad "cmd A-R5-03: 'déjame probar' pasó como OK"
+is_silent "$(cm 'glab mr merge 5 --yes' 'dejame mergearlo el 5')" \
+  && ok "cmd A-R5-03: 'déjame mergearlo' → pasa (intención de merge, no aplazamiento)" || bad "cmd A-R5-03: falso positivo, 'déjame mergearlo' cayó por DEFER_RE"
 # Blindaje (NO se afloja el camino inverso): un OK de develop NUNCA autoriza un RELEASE a main.
 mock_cm_glab main
 is_deny "$(cm 'glab mr merge 63 --yes' 'mérgalo a develop')" \
@@ -580,6 +593,14 @@ printf 'v\naws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/g2.txt"
 printf '%s' "$(scanf 'git --no-pager commit -am x')" | grep -q '"deny"' && ok "secret-scan A-R4-02: 'git --no-pager commit -am' escanea → bloquea" || bad "secret-scan A-R4-02: '--no-pager' cegó el escaneo; got: $(scanf 'git --no-pager commit -am x')"
 printf '%s' "$(scanf 'git -P commit -am x')"         | grep -q '"deny"' && ok "secret-scan A-R4-02: 'git -P commit -am' escanea → bloquea" || bad "secret-scan A-R4-02: '-P' cegó el escaneo"
 printf '%s' "$(scanf 'git --work-tree=. commit -am x')" | grep -q '"deny"' && ok "secret-scan A-R4-02: 'git --work-tree=. commit -am' escanea → bloquea" || bad "secret-scan A-R4-02: '--work-tree=' cegó el escaneo"
+# A-R5-02 (FMEA r5): con el despoje ANTES de normalizar, un value-eater con valor ENTRECOMILLADO
+# (`git -C "/ruta" commit`) quedaba vacío y el normalizador se comía `commit` → escaneo CIEGO (¡sin
+# necesitar espacio!). Fix: normalizar el RAW (quote-aware) ANTES de despojar. Secreto en tracked que -a estagea.
+fmeareset; printf 'v\n' > "$FMEAREPO/g3.txt"; git -C "$FMEAREPO" add g3.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm g3 >/dev/null 2>&1
+printf 'v\naws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/g3.txt"
+printf '%s' "$(scanf 'git -C "/nospace" commit -am x')"  | grep -q '"deny"' && ok "secret-scan A-R5-02: 'git -C \"/nospace\" commit -am' (valor entrecomillado sin espacio) escanea → bloquea" || bad "secret-scan A-R5-02: valor entrecomillado cegó el escaneo (despoje antes de normalizar)"
+printf '%s' "$(scanf 'git -C "/a b/repo" commit -am x')" | grep -q '"deny"' && ok "secret-scan A-R5-02: 'git -C \"/a b/repo\" commit -am' (valor entrecomillado con espacio) escanea → bloquea" || bad "secret-scan A-R5-02: valor entrecomillado con espacio cegó el escaneo"
+printf '%s' "$(scanf 'git --work-tree="/a b" commit -am x')" | grep -q '"deny"' && ok "secret-scan A-R5-02: 'git --work-tree=\"/a b\" commit -am' (=-form entrecomillado) escanea → bloquea" || bad "secret-scan A-R5-02: --work-tree= entrecomillado cegó el escaneo"
 rm -rf "$FMEAREPO"
 
 # ─────────────────────────────────────────────────────────────────────────────

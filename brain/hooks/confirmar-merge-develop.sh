@@ -91,7 +91,7 @@ NEG_RE='(\b(no|sin|nunca|jam[aá]s|tampoco|evit[aeé][a-z]*)\b|para nada|de ning
 # Dirección SEGURA (fail-safe): ante un aplazamiento, re-pide confirmación en vez de mergear. Se omite el
 # `luego` pelón a propósito: colisiona con "desde luego" (= afirmación); esos casos igual caen por
 # todavía/aún/casi-listo. Cuida FP: "ya revisé, mergea" y "desde luego, mergea" NO deben caer aquí.
-DEFER_RE='(\bespera\b|aguanta|antes de|m[aá]s tarde|al rato|cuando (termine|revise|acabe|veas|chec|est[eé])|casi list|todav[ií]a|a[uú]n (no|estoy|est[aá]s)|d[eé]jame ver)'
+DEFER_RE='(\bespera\b|aguanta|antes de|m[aá]s tarde|al rato|cuando (termine|revise|acabe|veas|chec|est[eé])|casi list|todav[ií]a|a[uú]n (no|estoy|est[aá]s)|d[eé]jame (ver|prob|revis|chec|corr|test)[a-zé]*)'
 # Verbo de merge/OK inmediatamente seguido de (el)? (MR)? #?<n> → marca que el OK va dirigido a ESE MR.
 BOUND_OK_RE='(merg[eé]a[a-zé]*|mérga(lo|los)?|dale( el)? merge|integr[ao][a-zé]*|emp[uú]j[a-zé]*|s[uú]b[a-zé]*|m[aá]nd[a-zé]*|m[eé]t[ae][a-zé]*)[[:space:]]+(el[[:space:]]+)?(mr[[:space:]]+)?#?[0-9]+'
 # MR-id del COMANDO actual (para la ligadura A4). Vacío si el comando no nombra id → A4 no aplica (recencia).
