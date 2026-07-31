@@ -50,8 +50,11 @@ cat >/dev/null 2>&1 || true   # drenar stdin (contrato SessionStart)
 # "asienta ese conocimiento propio amarrado al mismo hook" — el que ya dispara fiable en resume/compact,
 # para que "el conocimiento más básico que tienes sobre ti mismo no se te pueda borrar".
 SELF=""
-_self_file="$ROOT/.claude/memory/conocimiento-propio.md"
-[ -f "$_self_file" ] && SELF="$(cat "$_self_file" 2>/dev/null || true)"
+# Prefiere la variante PERSONAL/LOCAL (.local.md → gitignored: no viaja al repo público ni al de un
+# colega); cae a la .md por si un repo quiere una identidad COMPARTIDA versionada. Primero que exista gana.
+for _self_file in "$ROOT/.claude/memory/conocimiento-propio.local.md" "$ROOT/.claude/memory/conocimiento-propio.md"; do
+  [ -f "$_self_file" ] && { SELF="$(cat "$_self_file" 2>/dev/null || true)"; break; }
+done
 
 # emit_and_exit [contexto-de-drift] — emite additionalContext UNA sola vez, anteponiendo el conocimiento
 # propio (si existe) al contexto de drift/auto-sync (si lo hay). Sin ninguno de los dos → silencio.

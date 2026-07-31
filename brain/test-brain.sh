@@ -1210,10 +1210,11 @@ printf '# contrato\n' > "$ADROOT/AGENTS.md"
 printf '%s' "$(ad)" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'CONTRA la firma' \
   && ok "aviso-drift (con firma): AGENTS.md presente → dupla CONTRA la firma" || bad "aviso-drift: con AGENTS.md no tomó la rama con-firma"
 
-# (9) CONOCIMIENTO PROPIO (per-repo, imborrable): si el repo trae .claude/memory/conocimiento-propio.md,
+# (9) CONOCIMIENTO PROPIO (per-repo, imborrable): si el repo trae .claude/memory/conocimiento-propio(.local).md,
 # se RE-INYECTA en CADA SessionStart — incluso SIN drift o con el throttle fresco (no depende del drift).
+# La variante PERSONAL .local.md (gitignored) es la preferida; .md es fallback COMPARTIDO versionado.
 mkdir -p "$ADROOT/.claude/memory"
-printf '# Conocimiento propio\nes tu cerebro, es mi repo, y es nuestro proyecto. La introspección PROPONE; unjordi DECIDE.\n' > "$ADROOT/.claude/memory/conocimiento-propio.md"
+printf '# Conocimiento propio\nes tu cerebro, es mi repo, y es nuestro proyecto. La introspección PROPONE; unjordi DECIDE.\n' > "$ADROOT/.claude/memory/conocimiento-propio.local.md"
 # 9a: con drift → identidad + drift viajan JUNTOS en el mismo additionalContext
 adout="$(ad)"
 { printf '%s' "$adout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'es tu cerebro' \
@@ -1229,10 +1230,17 @@ adout="$(ad)"   # 1er llamado: limpio → cachea stamp; emite SOLO identidad
 adout2="$(ad)"  # 2º llamado: throttle fresco → salta el drift-check, pero IGUAL re-inyecta la identidad
 printf '%s' "$adout2" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'es tu cerebro' \
   && ok "aviso-drift: throttle fresco → aún así re-inyecta el conocimiento propio (cada sesión)" || bad "aviso-drift: el throttle se tragó la identidad; got: $adout2"
-# 9c: repo SIN el archivo → NO inventa identidad (per-repo, no universal) → silencio si tampoco hay drift
+# 9c: fallback a la variante COMPARTIDA .md cuando NO hay .local.md (repo que versiona su identidad)
+rm -f "$ADROOT/.claude/memory/conocimiento-propio.local.md"
+printf '# Conocimiento propio (compartido)\nidentidad versionada del repo\n' > "$ADROOT/.claude/memory/conocimiento-propio.md"
+rm -rf "$ADHOME/.claude/memory/.drift-cerebro"
+adout="$(ad)"; adout2="$(ad)"   # 2º call = throttle fresco (sin drift), igual debe traer la identidad
+printf '%s' "$adout2" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'identidad versionada' \
+  && ok "aviso-drift: fallback a conocimiento-propio.md (compartido) cuando no hay .local.md" || bad "aviso-drift: no tomó el fallback .md; got: $adout2"
+# 9d: repo SIN ninguno de los dos → NO inventa identidad (per-repo, no universal) → silencio si no hay drift
 rm -f "$ADROOT/.claude/memory/conocimiento-propio.md"
 rm -rf "$ADHOME/.claude/memory/.drift-cerebro"
-is_silent "$(ad)" && ok "aviso-drift: sin conocimiento-propio.md y sin drift → silencio (per-repo, no universal)" || bad "aviso-drift: habló sin archivo de identidad ni drift"
+is_silent "$(ad)" && ok "aviso-drift: sin conocimiento-propio(.local).md y sin drift → silencio (per-repo, no universal)" || bad "aviso-drift: habló sin archivo de identidad ni drift"
 rm -rf "$ADFIX"
 
 # ── (b5b2) FIX costura #2: aviso-drift DETECTA el drift de CABLEADO (hooks presentes SIN cablear).
