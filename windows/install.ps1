@@ -199,41 +199,57 @@ Write-Host "Nota: los tokens/sesiones/hora pico salen de tus transcripts locales
 Write-Host "El costo `$ (API-equiv) requiere Node + ccusage en el PATH; si no, sale '-'." -ForegroundColor DarkGray
 
 # -- Claude Code CLI: es lo que el widget MIDE -> asegurarlo (instalador nativo, se auto-actualiza) --
-# El widget lee el token OAuth y los transcripts que escribe el CLI 'claude'. Sin el CLI no hay que medir.
+# El widget lee el token OAuth (~/.claude/.credentials.json) y los transcripts que escribe el CLI
+# 'claude'. Sin el CLI no hay que medir. OJO: la app de ESCRITORIO tambien registra un claude.exe
+# (AppData\Local\AnthropicClaude\claude.exe) que resuelve por 'claude' pero NO escribe .credentials.json
+# ni transcripts como la CLI -> hay que detectar/asegurar la CLI ESPECIFICAMENTE, no cualquier 'claude'.
+# (Caso real: Windows "Asistente Dir": la app tapaba a la CLI de .local\bin en el PATH -> OAuth sin
+# credenciales; y el instalador, al ver la app con Get-Command claude, creia que la CLI ya estaba y se
+# saltaba exponer .local\bin.)
+function Resolve-ClaudeCli {
+    # 1) el binario nativo tipico (lo que deja https://claude.ai/install.ps1)
+    $native = "$env:USERPROFILE\.local\bin\claude.exe"
+    if (Test-Path $native) { return $native }
+    # 2) cualquier claude.exe del PATH que NO sea la app de escritorio
+    Get-Command claude -All -ErrorAction SilentlyContinue |
+        Where-Object { $_.Source -and $_.Source -notmatch 'AnthropicClaude' } |
+        Select-Object -First 1 -ExpandProperty Source
+}
+
+$cli = $null
 if (-not $NoClaudeCode) {
-    if (Get-Command claude -ErrorAction SilentlyContinue) {
+    $cli = Resolve-ClaudeCli
+    if ($cli) {
         Write-Host ""
-        Write-Host "==> Claude Code (CLI) ya esta instalado." -ForegroundColor Green
+        Write-Host "==> Claude Code (CLI) ya esta instalado: $cli" -ForegroundColor Green
     } else {
         Write-Host ""
         Write-Host "==> Instalando Claude Code (CLI) -- es lo que el widget mide (instalador nativo)..." -ForegroundColor Cyan
         try { Invoke-RestMethod https://claude.ai/install.ps1 | Invoke-Expression }
         catch { Write-Host "    No pude instalarlo automaticamente; hazlo a mano: irm https://claude.ai/install.ps1 | iex" -ForegroundColor Yellow }
+        $cli = Resolve-ClaudeCli
     }
-    # Asegurar 'claude' en el PATH de usuario: el instalador nativo deja claude.exe pero su cambio de
-    # PATH no siempre aplica (ni en esta sesion ni de forma persistente confiable). Lo buscamos en los
-    # lugares tipicos y agregamos su bin al PATH de USUARIO (como Git\bin en install-brain.ps1) para
-    # que el usuario pueda hacer 'claude' -> /login y el widget lea el token. (Caso real: Windows de Liora.)
-    if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
-        $roots = @("$env:LOCALAPPDATA", "$env:USERPROFILE\.local", "$env:USERPROFILE\.claude", "$env:APPDATA\npm") | Where-Object { Test-Path $_ }
-        $found = Get-ChildItem $roots -Recurse -Filter "claude.exe" -ErrorAction SilentlyContinue -Depth 4 |
-                 Select-Object -First 1 -ExpandProperty FullName
-        if ($found) {
-            $cdir = Split-Path $found
-            $u = [Environment]::GetEnvironmentVariable('PATH','User'); if (-not $u) { $u = '' }
-            if (($u -split ';') -notcontains $cdir) {
-                [Environment]::SetEnvironmentVariable('PATH', $u.TrimEnd(';') + ';' + $cdir, 'User')
-                $env:PATH = $env:PATH.TrimEnd(';') + ';' + $cdir   # visible ya en esta sesion
-                Write-Host "==> Agregue '$cdir' (claude) al PATH de usuario." -ForegroundColor Green
-            }
+    # Poner el DIR de la CLI AL FRENTE del PATH de usuario (prepend), para que 'claude' gane a la app de
+    # escritorio (que tambien registra claude.exe). Paridad con install.sh en Linux, que expone
+    # ~/.local/bin en el PATH. Prepend (no append) porque la app suele estar ya en el PATH.
+    if ($cli) {
+        $cdir = Split-Path $cli
+        $u = [Environment]::GetEnvironmentVariable('PATH','User'); if (-not $u) { $u = '' }
+        $parts = @($u -split ';' | Where-Object { $_ -ne '' -and $_ -ne $cdir })
+        $newU = (@($cdir) + $parts) -join ';'
+        if ($newU -ne $u) {
+            [Environment]::SetEnvironmentVariable('PATH', $newU, 'User')
+            Write-Host "==> Puse '$cdir' (CLI) al frente del PATH de usuario (gana a la app de escritorio)." -ForegroundColor Green
         }
+        # visible ya en ESTA sesion, tambien al frente
+        $sess = @($env:PATH -split ';' | Where-Object { $_ -ne '' -and $_ -ne $cdir })
+        $env:PATH = (@($cdir) + $sess) -join ';'
     }
 }
 
-# Recordatorio de login (interactivo y por-usuario: el script NO puede hacerlo por ti).
-$cc = Get-Command claude -ErrorAction SilentlyContinue
-if ($cc) {
-    & $cc.Source auth status *> $null
+# Recordatorio de login contra la CLI ESPECIFICA (no la app que resuelva 'claude').
+if ($cli) {
+    & $cli auth status *> $null
     if ($LASTEXITCODE -ne 0) {
         Write-Host ""
         Write-Host "IMPORTANTE: inicia sesion en Claude Code para que el widget muestre tu cuota real:" -ForegroundColor Yellow
@@ -241,6 +257,6 @@ if ($cc) {
     }
 } else {
     Write-Host ""
-    Write-Host "NOTA: 'claude' aun no esta en el PATH (instalacion nueva) -> abre una terminal NUEVA y corre:" -ForegroundColor Yellow
+    Write-Host "NOTA: la CLI 'claude' aun no esta lista -> abre una terminal NUEVA y corre:" -ForegroundColor Yellow
     Write-Host "  claude        (y /login, para que el widget vea tu cuota real)" -ForegroundColor Yellow
 }

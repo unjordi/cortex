@@ -2308,6 +2308,26 @@ grep -q 'brainHealVerifying' "$QML9" 2>/dev/null && ok "e9: KDE — heal honesto
 grep -q 'sigue incompleto' "$WPF" 2>/dev/null && ok "e9: Windows — heal honesto (según completitud)" || bad "e9: Windows heal NO honesto"
 
 # ─────────────────────────────────────────────────────────────────────────────
+# e10: install.ps1 (Windows) detecta la CLI ESPECIFICAMENTE, no la app de escritorio.
+# Bug real (Windows "Asistente Dir"): 'claude' resolvia a AppData\Local\AnthropicClaude\claude.exe
+# (la app de escritorio, que NO escribe ~/.claude/.credentials.json) -> el instalador la confundia con
+# la CLI y se saltaba exponer .local\bin -> OAuth sin credenciales. El fix: helper que EXCLUYE la app,
+# prepend del dir de la CLI al PATH (gana a la app), y auth status contra el binario de la CLI.
+WPS1="$SCRIPT_DIR/../windows/install.ps1"
+grep -q 'AnthropicClaude' "$WPS1" 2>/dev/null \
+  && ok "e10: install.ps1 — excluye la app de escritorio al detectar la CLI (AnthropicClaude)" \
+  || bad "e10: install.ps1 — NO distingue la CLI de la app de escritorio"
+grep -q 'Resolve-ClaudeCli' "$WPS1" 2>/dev/null \
+  && ok "e10: install.ps1 — helper Resolve-ClaudeCli (fuente única de detección de la CLI)" \
+  || bad "e10: install.ps1 — sin helper de detección específica de la CLI"
+grep -q 'al frente del PATH' "$WPS1" 2>/dev/null \
+  && ok "e10: install.ps1 — pone la CLI al FRENTE del PATH (gana a la app)" \
+  || bad "e10: install.ps1 — no antepone la CLI en el PATH (la app la taparia)"
+grep -qE '& \$cli auth status' "$WPS1" 2>/dev/null \
+  && ok "e10: install.ps1 — auth status contra el binario de la CLI (no el que resuelva 'claude')" \
+  || bad "e10: install.ps1 — auth status no apunta a la CLI específica"
+
+# ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "==> resultado: $PASS PASS · $FAIL FAIL"
 [ "$FAIL" -eq 0 ]
