@@ -62,7 +62,7 @@ _ACGLIB="$(dirname "$0")/analizar-comando-git.sh"
 if command -v acg_normaliza_git_prefijo >/dev/null 2>&1; then
   cmd_norm=$(acg_normaliza_git_prefijo "$cmd")
 else
-  cmd_norm=$(printf '%s' "$cmd" | sed -E "s/git[[:space:]]+((((-c|-C|--exec-path|--git-dir|--work-tree|--namespace|--attr-source|--config-env|--super-prefix)([[:space:]]+|=)([^[:space:]\"']|\"[^\"]*\"|'[^']*'|\\\\.)+)|(--?[a-zA-Z][a-zA-Z-]*(=([^[:space:]\"']|\"[^\"]*\"|'[^']*'|\\\\.)+)?))[[:space:]]+)+/git /g")
+  cmd_norm=$(printf '%s' "$cmd" | sed -E 's/(^|[^[:alnum:]._-])git\.exe([[:space:]])/\1git\2/g' | sed -E "s/git[[:space:]]+((((-c|-C|--exec-path|--git-dir|--work-tree|--namespace|--attr-source|--config-env|--super-prefix)([[:space:]]+|=)([^[:space:]\"']|\"[^\"]*\"|'[^']*'|\\\\.)+)|(--?[a-zA-Z][a-zA-Z-]*(=([^[:space:]\"']|\"[^\"]*\"|'[^']*'|\\\\.)+)?))[[:space:]]+)+/git /g")
 fi
 if command -v acg_despoja_comillas >/dev/null 2>&1; then
   cmd_uq=$(acg_despoja_comillas "$cmd_norm")

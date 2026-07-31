@@ -284,6 +284,13 @@ printf '%s' "$(gb 'git -c a=b\ c push origin develop')" | grep -q '"deny"' && ok
 printf '%s' "$(gb 'git -C /a\ b push origin main')" | grep -q '"deny"' && ok "gbg A-R7-01: '-C /a\\ b push main' (espacio escapado, value-eater por espacio) → deny" || bad "gbg A-R7-01: '-C /a\\ b' se coló"
 printf '%s' "$(gb 'git --work-tree=/a\ b push origin develop')" | grep -q '"deny"' && ok "gbg A-R7-01: '--work-tree=/a\\ b push develop' (=-form escapado) → deny" || bad "gbg A-R7-01: '--work-tree=/a\\ b' se coló"
 is_silent "$(gb 'git -c a=b\ c push origin feat/x')" && ok "gbg A-R7-01: '-c a=b\\ c push feat/x' (ramita) → silencio (sin falso positivo)" || bad "gbg A-R7-01: bloqueó una ramita con backslash-escape"
+# B4 (FMEA ronda 8): en Windows el binario es `git.exe`; rompía el `git`+espacio que exigen los detectores
+# → evasión total en un OS soportado (Git Bash). Se colapsa `git.exe`→`git` en posición de ejecutable.
+printf '%s' "$(gb 'git.exe push origin develop')" | grep -q '"deny"' && ok "gbg B4: 'git.exe push develop' (binario Windows) → deny" || bad "gbg B4: 'git.exe' rompió la adyacencia (bypass en Windows/Git Bash)"
+printf '%s' "$(gb 'git.exe -c a=b push origin main')" | grep -q '"deny"' && ok "gbg B4: 'git.exe -c a=b push main' (con prefijo global) → deny" || bad "gbg B4: 'git.exe' + prefijo se coló"
+printf '%s' "$(gb 'ls && git.exe push origin develop')" | grep -q '"deny"' && ok "gbg B4: 'ls && git.exe push develop' (encadenado) → deny" || bad "gbg B4: 'git.exe' encadenado se coló"
+is_silent "$(gb 'git.exe push origin feat/x')" && ok "gbg B4: 'git.exe push feat/x' (ramita) → silencio (sin falso positivo)" || bad "gbg B4: bloqueó una ramita con git.exe"
+is_silent "$(gb 'git commit -m "run git.exe push origin develop luego"')" && ok "gbg B4: 'git.exe push develop' DENTRO del mensaje → silencio (H13)" || bad "gbg B4: falso positivo, git.exe en el mensaje disparó"
 rm -rf "$GBROOT"
 # A-R4-01 (pelón en BASE): parado EN develop, un push pelón con prefijo global debe DENY (el fallback por
 # rama actual se alcanza porque el subcomando SÍ se reconoce como push tras normalizar el prefijo).
@@ -292,6 +299,7 @@ git -C "$GBREPO2" init -q >/dev/null 2>&1; git -C "$GBREPO2" config user.email t
 git -C "$GBREPO2" commit -q --allow-empty -m init >/dev/null 2>&1; git -C "$GBREPO2" checkout -q -b develop >/dev/null 2>&1
 gb2() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | CLAUDE_PROJECT_DIR="$GBREPO2" HOME="$GBHOME2" bash "$HOOKS/git-branch-guard.sh"; }
 printf '%s' "$(gb2 'git --no-pager push')" | grep -q '"deny"' && ok "gbg A-R4-01: 'git --no-pager push' PELÓN parado EN develop → deny" || bad "gbg A-R4-01: el pelón con --no-pager en develop se coló"
+printf '%s' "$(gb2 'git.exe push')" | grep -q '"deny"' && ok "gbg B4: 'git.exe push' PELÓN parado EN develop → deny" || bad "gbg B4: el pelón 'git.exe push' en develop se coló"
 rm -rf "$GBROOT2"
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -625,6 +633,10 @@ printf '%s' "$(scanf 'git -c user.name="a b" commit -am x')" | grep -q '"deny"' 
 fmeareset; printf 'v\n' > "$FMEAREPO/g5.txt"; git -C "$FMEAREPO" add g5.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm g5 >/dev/null 2>&1
 printf 'v\naws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/g5.txt"
 printf '%s' "$(scanf 'git -c a=b\ c commit -am x')" | grep -q '"deny"' && ok "secret-scan A-R7-01: 'git -c a=b\\ c commit -am' (espacio escapado) escanea → bloquea" || bad "secret-scan A-R7-01: el espacio escapado con backslash cegó el escaneo"
+# B4 (FMEA r8): el binario Windows `git.exe commit` rompía el gate git+commit del escaneo → mismo fix (colapso git.exe→git).
+fmeareset; printf 'v\n' > "$FMEAREPO/g6.txt"; git -C "$FMEAREPO" add g6.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm g6 >/dev/null 2>&1
+printf 'v\naws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/g6.txt"
+printf '%s' "$(scanf 'git.exe commit -am x')" | grep -q '"deny"' && ok "secret-scan B4: 'git.exe commit -am' (binario Windows) escanea → bloquea" || bad "secret-scan B4: 'git.exe' cegó el escaneo"
 rm -rf "$FMEAREPO"
 
 # ─────────────────────────────────────────────────────────────────────────────

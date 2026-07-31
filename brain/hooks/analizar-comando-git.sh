@@ -43,8 +43,13 @@ acg_sin_flag_repo() { printf '%s' "$1" | sed -E 's/(--repo|-R)[[:space:]=]+[^[:s
 #     como alternativa de la secuencia → el par escapado se consume como parte del valor.
 # Solo casa opciones INMEDIATAMENTE tras `git` y se detiene en el 1er token NO-dash (el subcomando) → el
 # `-c` de `git commit -c <commit>` (tras el subcomando) NO se toca, y `git push -u …` (0 globales) queda intacto.
+#   · B4 (FMEA r8): en Windows el binario es `git.exe`; `git.exe push origin develop` rompía el `git`+espacio
+#     que exigen TODOS los detectores → evasión total en un OS que la plantilla soporta (Git Bash). 1er sed:
+#     colapsa `git.exe`→`git` en posición de ejecutable (inicio / tras separador) antes de todo lo demás.
 acg_normaliza_git_prefijo() {
-  printf '%s' "$1" | sed -E "s/git[[:space:]]+((((-c|-C|--exec-path|--git-dir|--work-tree|--namespace|--attr-source|--config-env|--super-prefix)([[:space:]]+|=)([^[:space:]\"']|\"[^\"]*\"|'[^']*'|\\\\.)+)|(--?[a-zA-Z][a-zA-Z-]*(=([^[:space:]\"']|\"[^\"]*\"|'[^']*'|\\\\.)+)?))[[:space:]]+)+/git /g"
+  printf '%s' "$1" \
+    | sed -E 's/(^|[^[:alnum:]._-])git\.exe([[:space:]])/\1git\2/g' \
+    | sed -E "s/git[[:space:]]+((((-c|-C|--exec-path|--git-dir|--work-tree|--namespace|--attr-source|--config-env|--super-prefix)([[:space:]]+|=)([^[:space:]\"']|\"[^\"]*\"|'[^']*'|\\\\.)+)|(--?[a-zA-Z][a-zA-Z-]*(=([^[:space:]\"']|\"[^\"]*\"|'[^']*'|\\\\.)+)?))[[:space:]]+)+/git /g"
 }
 
 # Raíz y rama actual del repo del PROYECTO (CLAUDE_PROJECT_DIR), no del cwd del hook.
