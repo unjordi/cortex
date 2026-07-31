@@ -241,6 +241,12 @@ PlasmoidItem {
                     root.brainScannedAt = Qt.formatTime(new Date(), "hh:mm")
                 } catch (e) { /* deja el estado previo si el parse falla */ }
             }
+            // HEAL HONESTO: si este escaneo verifica un heal recién corrido, el veredicto final se basa
+            // en la COMPLETITUD real tras curar (brainIncomplete), no en el exit del instalador.
+            if (root.brainHealVerifying) {
+                root.brainHealVerifying = false
+                root.brainHeal = root.brainIncomplete ? "error" : "ok"
+            }
             disconnectSource(source)
         }
     }
@@ -251,9 +257,14 @@ PlasmoidItem {
         engine: "executable"
         connectedSources: []
         onNewData: function(source, data) {
-            root.brainHeal = (data["exit code"] === 0) ? "ok" : "error"
             disconnectSource(source)
-            root.scanBrain()   // re-lee el estado tras curar
+            // HONESTO (paridad macOS/Windows): el exit 0 del instalador NO basta — sin jq en el PATH,
+            // install-brain.sh sale 0 SIN cablear nada. Solo un instalador que FALLA (exit≠0) es error
+            // inmediato; con exit 0 re-escaneamos y el veredicto ok/error lo fija brainSource según la
+            // completitud REAL (mientras tanto brainHeal sigue en "running" → muestra "Curando…").
+            if (data["exit code"] !== 0) { root.brainHeal = "error"; return }
+            root.brainHealVerifying = true
+            root.scanBrain()   // re-lee el estado tras curar; ahí se decide el veredicto honesto
         }
     }
 
@@ -978,7 +989,22 @@ PlasmoidItem {
                   detail: "Al cerrar el día, revisa TU propio transcript y appendea los aprendizajes durables (feedback del usuario, lecciones de proceso, gotchas) al FINAL de .claude/memory/aprendizajes.md con atribución (aportó: handle). Separa el grano de la paja (no cosecha trivialidades). Alimenta el inbox append-only (merge=union). NO cierra slice ni hace git." },
                 { emoji: "🧩", name: "unificar-cerebro", desc: "reconciliación semanal del cerebro del equipo mini→develop",
                   event: "skill · opt-in",
-                  detail: "Hermana de cerrar-slice: junta aprendizajes+memorias de las minis hacia develop sin perder atribución/voz ni tocar guardrails. Inventaría el delta, baja primero el brain canónico, resuelve por clase, CURA el log (trenza solapes acreditando a ambos + gradúa lo maduro), verifica test-brain+lint, integra por el carril existente (OK explícito, sin auto-merge, con squash) y anota bitácora." }
+                  detail: "Hermana de cerrar-slice: junta aprendizajes+memorias de las minis hacia develop sin perder atribución/voz ni tocar guardrails. Inventaría el delta, baja primero el brain canónico, resuelve por clase, CURA el log (trenza solapes acreditando a ambos + gradúa lo maduro), verifica test-brain+lint, integra por el carril existente (OK explícito, sin auto-merge, con squash) y anota bitácora." },
+                { emoji: "🎓", name: "investigar-dominio", desc: "ponte experto en un dominio (fan-out DOC-FIRST) → memorias durables + skills",
+                  event: "skill · opt-in",
+                  detail: "Ponerte al día como EXPERTO en un dominio/ecosistema maduro sin investigar al aire: delega un fan-out de agentes a barrer la documentación oficial + issues/foros de cada pieza (método DOC-FIRST), cosecha en DOS capas (memorias de investigación indexadas + skills reutilizables, con la capa profunda separada) y REVISA las decisiones actuales contra el conocimiento nuevo para no arrastrar deuda técnica. Trae plantilla-prompt pegable para encargárselo a otro Claude." },
+                { emoji: "☀️", name: "positivar-doc", desc: "reescribe una doc answer-first: 'ESTO SÍ' (método correcto) antes del 'ESTO NO'",
+                  event: "skill · opt-in",
+                  detail: "Reescribe una memoria/skill/doc para que cada nugget abra con ESTO SÍ (el método/valor correcto y accionable) ANTES del ESTO NO (anti-patrones, gotchas, la historia de lo que se rompió). Answer-first. Úsalo al crear/editar docs o cuando una nota arranque con la historia del fallo y enrede al lector. Reordena/reencuadra SIN perder información. Transversal; una doc inline o bulk delegado a un agente con el mismo contrato." },
+                { emoji: "🕵️", name: "revisar-entregables-agentes", desc: "verifica lo que un agente ENTREGA contra la realidad — no relates su reporte como verdad",
+                  event: "skill · opt-in",
+                  detail: "Verificar lo que un agente/subagente ENTREGA contra la realidad — nunca relatar su reporte como verdad sin comprobarlo. Úsalo cada vez que un agente reporta, sobre todo antes de decirle al usuario 'ya quedó' o de construir encima de su trabajo." },
+                { emoji: "🔍", name: "zoom-screenshot", desc: "recorta y amplía regiones de una captura (ffmpeg) para leer texto fino ilegible",
+                  event: "skill · opt-in",
+                  detail: "Leer/transcribir capturas cuyo texto fino es ilegible al verlas enteras: recorta y amplía regiones con ffmpeg antes de leerlas. Úsalo cuando el usuario deja un screenshot (menús, ajustes, UIs densas) y hay que leer texto pequeño con precisión, o transcribir varias capturas." },
+                { emoji: "🧳", name: "claude-proyecto-autocontenido", desc: "el cerebro de Claude VIVE dentro del proyecto (.claude/ + symlink de slug) → viaja con él",
+                  event: "skill · opt-in",
+                  detail: "Mantener TODO el cerebro de Claude Code de un proyecto (memorias, skills, transcripts, settings) dentro de <proyecto>/.claude/, con un symlink desde ~/.claude/projects/<slug>/ para que Claude lo siga encontrando. Así la memoria/skills viajan con el proyecto (Drive, git, otra máquina) y ninguna sesión arranca amnésica desde otro cwd. Cubre la regla del slug, el bootstrap de un comando (clona-y-listo), el triage de privacidad (qué va al repo vs *.local), la disciplina anti-duplicados y la verificación." }
             ]
         }
     ]
@@ -991,6 +1017,7 @@ PlasmoidItem {
     // emite brain-scan.sh). "" si no hay sello (instalación vieja) → la UI no muestra versión.
     readonly property string brainVersion: (brainState && brainState.version) ? ("" + brainState.version) : ""
     property string brainHeal: ""             // "", "running", "ok", "error" (estado del botón-curita)
+    property bool brainHealVerifying: false   // true entre el heal y el re-escaneo que confirma completitud
     property string brainExpandedKey: ""      // "<tier>-<idx>" de la hoja expandida (solo una a la vez)
 
     // Catálogo conocido (mismos conjuntos que BrainState.knownGlobalHooks / knownRepoHooks del Swift).
@@ -1089,7 +1116,7 @@ PlasmoidItem {
             return p && w ? "installed" : (p ? "presentNotWired" : "absent")
         }
         if (inArr(root.brainRepoHooks, name)) return "repoScoped"
-        if (["cerrar-slice","checkpoint","diagramar","auditar-proceso-algoritmo","auditar-coherencia-cerebro","auditar-suficiencia-operativa","desinflar-memorias","orquestar-fanout","turno-nocturno","cosechar-sesion","unificar-cerebro"].indexOf(name) !== -1)
+        if (["cerrar-slice","checkpoint","diagramar","auditar-proceso-algoritmo","auditar-coherencia-cerebro","auditar-suficiencia-operativa","desinflar-memorias","orquestar-fanout","turno-nocturno","cosechar-sesion","unificar-cerebro","investigar-dominio","positivar-doc","revisar-entregables-agentes","zoom-screenshot","claude-proyecto-autocontenido"].indexOf(name) !== -1)
             return inArr(st.skills, name) ? "installed" : "absent"
         if (name === "Definition of Done" || name === "Doc <= realidad"
             || name === "Flujo de git" || name === "Costo de delegación")
@@ -1143,6 +1170,10 @@ PlasmoidItem {
         }
         return n
     }
+    // Cerebro global INCOMPLETO = ya escaneado y faltan piezas globales por cablear. Es la MISMA
+    // condición que usa el recuadro de salud (health.missing > 0) reexpuesta a nivel root para que el
+    // badge 🩹 del riel se vea desde cualquier pestaña. null / aún-sin-leer → false (no alarma a ciegas).
+    readonly property bool brainIncomplete: (brainState !== null) && (brainActive < brainTotal)
     // Hooks cableados fuera del catálogo (sección "➕ OTROS" — doc = realidad completa).
     readonly property var brainExtras: {
         if (!brainState || !brainState.wired) return []
@@ -2083,6 +2114,30 @@ PlasmoidItem {
             }
             PC3.Label { text: label; font.bold: active; color: active ? "#e8884a" : Kirigami.Theme.textColor }
             Item { Layout.fillWidth: true }
+        }
+        // Badge del riel (paridad macOS: railButton(5, badge: updateAvailable, heal: brainIncomplete)):
+        // en la pestaña Cerebro (idx 5) avisa DESDE cualquier pestaña si hay update del widget (⬆, acento)
+        // o si el cerebro global quedó incompleto (🩹, rojo). Sobrio: emojis chicos anclados arriba-derecha;
+        // no roba espacio al riel angosto ni intercepta el clic (no lleva MouseArea propio, deja pasar).
+        Row {
+            visible: idx === 5 && (root.brainIncomplete || root.updateAvailable)
+            anchors.top: parent.top
+            anchors.right: parent.right
+            anchors.topMargin: 1
+            anchors.rightMargin: 3
+            spacing: 1
+            PC3.Label {
+                visible: root.brainIncomplete   // 🩹 rojo = cerebro global incompleto (más urgente, va primero)
+                text: "🩹"
+                color: "#dc3545"
+                font.pointSize: Kirigami.Theme.smallFont.pointSize * 0.8
+            }
+            PC3.Label {
+                visible: root.updateAvailable   // ⬆ acento = hay versión nueva del widget
+                text: "⬆"
+                color: "#e8884a"; font.bold: true
+                font.pointSize: Kirigami.Theme.smallFont.pointSize * 0.8
+            }
         }
         MouseArea { id: mouse; anchors.fill: parent; hoverEnabled: true; onClicked: root.currentTab = idx }
     }

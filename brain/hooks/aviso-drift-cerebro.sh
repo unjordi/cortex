@@ -18,6 +18,14 @@
 # cada inicio de sesión hasta que se propague (esa insistencia es el punto).
 # Fail-open SIEMPRE: sin clon canónico / repo no-brained / cualquier error del sync → silencio.
 #
+# RECORDATORIO DE LA DUPLA (2026-07-31): cuando el cerebro de este repo CAMBIA (auto-sync) o está por
+# hacerlo (drift), es el momento de "¿la realidad sigue cumpliendo la firma?" → el aviso añade un nudge a
+# correr la DUPLA de auditores (suficiencia + coherencia, van juntas). Se cuelga de ESTE hook (que ya corre
+# SessionStart + ya llama a sincronizar + ya sabe cuándo el cerebro se movió) en vez de un hook nuevo.
+# BIFURCA por el esquema firma+detalle: si el repo tiene AGENTS.md instanciado → "audita CONTRA la firma";
+# si NO → la dupla igual funciona (suficiencia deriva su lista; coherencia caza contradicciones) y se sugiere
+# instanciar el esquema. NUNCA lo asume — la mayoría de los repos aún no tienen firma=TOC (hoy solo games-master).
+#
 # CUÁNDO CORRE (verificado 2026-07-31 vs doc oficial de hooks + evidencia real — NO re-investigar):
 # SessionStart dispara con source ∈ {startup, resume, clear, compact, fork} — NO solo en arranque
 # fresco. En particular `claude --resume`/`--continue` → source="resume", y cada `/compact` (auto o
@@ -33,13 +41,51 @@ set -u
 ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 cat >/dev/null 2>&1 || true   # drenar stdin (contrato SessionStart)
 
-# ¿repo brained? (sello del sync, o el hook repo-scoped clásico)
-{ [ -f "$ROOT/.claude/hooks/.brain-version" ] || [ -f "$ROOT/.claude/hooks/dod-verificar.sh" ]; } || exit 0
+# ── CONOCIMIENTO PROPIO (per-repo, imborrable) ──────────────────────────────────────────────────────
+# Si el repo tiene .claude/memory/conocimiento-propio.md, se RE-INYECTA en CADA SessionStart
+# (fresh/resume/compact) — ANTES del throttle y del drift, para que la identidad del proyecto vuelva
+# SIEMPRE (no dependa de que haya drift ni del cache de 6h). Es PER-REPO: cada repo tiene el suyo (o
+# ninguno) → "cada sesión con una personalidad ligeramente distinta"; este hook es GLOBAL y solo lo
+# SURFACE si el archivo existe (no lo propaga ni lo asume universal). Diseño de unjordi (2026-07-31):
+# "asienta ese conocimiento propio amarrado al mismo hook" — el que ya dispara fiable en resume/compact,
+# para que "el conocimiento más básico que tienes sobre ti mismo no se te pueda borrar".
+SELF=""
+# Prefiere la variante PERSONAL/LOCAL (.local.md → gitignored: no viaja al repo público ni al de un
+# colega); cae a la .md por si un repo quiere una identidad COMPARTIDA versionada. Primero que exista gana.
+for _self_file in "$ROOT/.claude/memory/conocimiento-propio.local.md" "$ROOT/.claude/memory/conocimiento-propio.md"; do
+  [ -f "$_self_file" ] && { SELF="$(cat "$_self_file" 2>/dev/null || true)"; break; }
+done
+
+# emit_and_exit [contexto-de-drift] — emite additionalContext UNA sola vez, anteponiendo el conocimiento
+# propio (si existe) al contexto de drift/auto-sync (si lo hay). Sin ninguno de los dos → silencio.
+emit_and_exit() {
+  local extra="${1:-}" out=""
+  if [ -n "$SELF" ] && [ -n "$extra" ]; then
+    out="$SELF
+
+────────────────────────────────────────────────────────────────────────────────
+
+$extra"
+  elif [ -n "$SELF" ]; then out="$SELF"
+  elif [ -n "$extra" ]; then out="$extra"
+  else exit 0
+  fi
+  if command -v jq >/dev/null 2>&1; then
+    jq -n --arg c "$out" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}}'
+  else
+    printf '%s\n' "$out"
+  fi
+  exit 0
+}
+
+# ¿repo brained? (sello del sync, o el hook repo-scoped clásico). El drift-check SÍ requiere cerebro;
+# la identidad NO → si el repo no está brained pero trae conocimiento-propio.md, igual se surface.
+{ [ -f "$ROOT/.claude/hooks/.brain-version" ] || [ -f "$ROOT/.claude/hooks/dod-verificar.sh" ]; } || emit_and_exit ""
 
 # Fuente canónica LOCAL del cerebro = el clon de instalación (lo actualiza el one-liner/bootstrap).
 BRAIN_DIR="${CLAUDE_BRAIN_DIR:-$HOME/.claude-brain}"
 SYNC="$BRAIN_DIR/brain/sincronizar-cerebro.sh"
-[ -f "$SYNC" ] || exit 0
+[ -f "$SYNC" ] || emit_and_exit ""
 
 # Throttle por repo (solo cachea chequeos LIMPIOS).
 horas="${AVISO_DRIFT_HORAS:-6}"; case "$horas" in ''|*[!0-9]*) horas=6;; esac
@@ -50,7 +96,7 @@ now=$(date +%s)
 if [ -f "$stamp" ]; then
   last=$(cat "$stamp" 2>/dev/null || echo 0)
   case "$last" in ''|*[!0-9]*) last=0;; esac
-  [ $(( now - last )) -lt $(( horas * 3600 )) ] && exit 0
+  [ $(( now - last )) -lt $(( horas * 3600 )) ] && emit_and_exit ""
 fi
 
 # DRY-RUN del sync (sin --apply: NO escribe). Error del sync → fail-open.
@@ -73,10 +119,21 @@ total=$(( ${nuevos:-0} + ${act:-0} + ${ret:-0} + ${falta:-0} ))
 
 if [ "$total" -eq 0 ]; then
   printf '%s' "$now" > "$stamp" 2>/dev/null || true
-  exit 0
+  emit_and_exit ""
 fi
 
 detalle=$(printf '%s\n' "$out" | grep -E '(NUEVO|ACTUALIZA|RETIRARÍA)' | sed 's/^[[:space:]]*/    /' | head -12)
+
+# ── Nudge de la DUPLA (suficiencia + coherencia): el cerebro del repo se movió → verifica que sigue
+# coherente y operable. BIFURCA según el esquema firma+detalle esté instanciado (AGENTS.md presente). La
+# dupla FUNCIONA sin firma; solo cambia el encuadre. Se APPENDEA a los dos mensajes de abajo (auto-sync y drift).
+if [ -f "$ROOT/AGENTS.md" ]; then
+  dupla_nota="
+🔎 DUPLA: el cerebro del repo se movió → corre la dupla de auditores (suficiencia + coherencia, van juntas) CONTRA la firma/\`AGENTS.md\` — «¿la realidad sigue cumpliendo la firma?» — antes de integrar/release."
+else
+  dupla_nota="
+🔎 DUPLA: el cerebro del repo se movió → corre la dupla de auditores (suficiencia + coherencia) para verificar que no rompió nada. (Este repo NO tiene instanciado el esquema firma(\`CLAUDE.md\`)+detalle(\`AGENTS.md\`); la dupla funciona igual — considera instanciarlo para auditar «contra la firma».)"
+fi
 
 # CONCURRENCIA con barrer-ramas (el OTRO SessionStart que MUTA git): SUPUESTO EXPLÍCITO de INDEPENDENCIA.
 # El auto-apply de abajo hace commit+push en la rama ACTUAL (una mini-develop Develop*); barrer-ramas
@@ -131,13 +188,8 @@ case "$cur" in
       git -C "$ROOT" push -q origin "$cur" >/dev/null 2>&1 || true
       sha=$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo "?")
       ctx="🧬✅ CEREBRO AUTO-SINCRONIZADO en tu mini-develop ($cur, commit $sha): la copia por-repo estaba $total archivo(s) atrás y se puso al día SOLA (apply+commit+push). Llegará al develop compartido con tu próxima integración coordinada. Qué cambió:
-$detalle"
-      if command -v jq >/dev/null 2>&1; then
-        jq -n --arg c "$ctx" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}}'
-      else
-        printf '%s\n' "$ctx"
-      fi
-      exit 0
+$detalle$dupla_nota"
+      emit_and_exit "$ctx"
     fi;;
 esac
 
@@ -147,11 +199,6 @@ stale_nota=""
 ⚠️ OJO (anti-regresión C2): tu FUENTE del cerebro ($BRAIN_DIR) parece DETRÁS de su origin/main — NO auto-sincronicé para no regresar el brain. Actualiza la fuente primero (\`git -C $BRAIN_DIR pull --ff-only\` o abre el widget) y reabre sesión."
 ctx="🧠⚠️ DRIFT DEL CEREBRO POR-REPO: la copia en .claude/hooks/ de ESTE repo está ATRÁS de la fuente única del cerebro ($total archivo(s)):
 $detalle$stale_nota
-Qué hacer: PROPÓN al usuario propagar por el flujo — worktree/ramita desde develop → \`bash $SYNC <worktree> --apply\` → commit → MR a develop. NO edites .claude/hooks/ directo en el árbol de trabajo (en repos compartidos viaja por git y se mezclaría a commits de feature). Nota: en ESTA máquina la copia GLOBAL ya manda (dedupe), pero el drift por-repo afecta a colegas y clones sin bootstrap."
+Qué hacer: PROPÓN al usuario propagar por el flujo — worktree/ramita desde develop → \`bash $SYNC <worktree> --apply\` → commit → MR a develop. NO edites .claude/hooks/ directo en el árbol de trabajo (en repos compartidos viaja por git y se mezclaría a commits de feature). Nota: en ESTA máquina la copia GLOBAL ya manda (dedupe), pero el drift por-repo afecta a colegas y clones sin bootstrap.$dupla_nota"
 
-if command -v jq >/dev/null 2>&1; then
-  jq -n --arg c "$ctx" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}}'
-else
-  printf '%s\n' "$ctx"
-fi
-exit 0
+emit_and_exit "$ctx"
