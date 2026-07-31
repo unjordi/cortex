@@ -748,6 +748,36 @@ o="$(paw 'git reset --hard HEAD~1')"
   && ok "proteger-arbol H14: aislado + OTRO objetivo → nota SUAVE (no alarma de árbol compartido)" \
   || bad "H14: aislado hacia otro objetivo no dio nota suave; got: $o"
 git -C "$PAREPO" worktree remove --force "$PAWT" >/dev/null 2>&1; rm -rf "$PAWT"
+
+# --- PRECISIÓN branch -D: NO avisar al borrar ramas ya integradas (patrón DOMINANTE del corpus de FP) ---
+# `git branch -D <rama>` borra la rama nombrada, no HEAD → el guard antes contaba @{u}..HEAD (los commits
+# sin pushear de la rama ACTUAL, ajenos a la borrada) y avisaba en falso en toda limpieza post-squash.
+# Ahora consulta ramas-zombie.sh (ancestro | squash/cherry | remota-gone) y solo avisa si la rama tiene
+# trabajo PROPIO no integrado. La rama actual de PAREPO trae 1 commit local SIN pushear (n=1) → el bug
+# viejo habría gritado en los tres casos de abajo. Declaramos la base con CLAUDE_INTEGRACION_BASE (el
+# override real de la lib) = la rama actual: el fixture clona un bare vacío y no tiene develop/origin-HEAD,
+# pero en repos reales la base SIEMPRE resuelve (mini-develop | develop | origin/HEAD) — no es del hook.
+DEFB2="$(git -C "$PAREPO" rev-parse --abbrev-ref HEAD)"
+paz() { printf '%s' "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"$1\"}}" \
+        | CLAUDE_PROJECT_DIR="$PAREPO" CLAUDE_INTEGRACION_BASE="$DEFB2" bash "$HOOKS/proteger-arbol.sh"; }
+# (1) rama ANCESTRO de la base (apunta a un commit ya en la base) → zombie → SILENCIO
+git -C "$PAREPO" branch pa/ancestro HEAD~1 >/dev/null 2>&1
+o="$(paz 'git branch -D pa/ancestro')"
+[ -z "$o" ] && ok "proteger-arbol: branch -D de rama ANCESTRO de la base → silencio (mata FP dominante)" || bad "proteger-arbol avisó al borrar rama ancestro; got: $o"
+# (2) rama SQUASH/cherry: su parche ya está en la base por equivalencia → zombie → SILENCIO
+git -C "$PAREPO" checkout -q -b pa/squash >/dev/null 2>&1
+printf 'sq\n' >> "$PAREPO/a.txt"; git -C "$PAREPO" add a.txt >/dev/null 2>&1; git -C "$PAREPO" commit -q -m sq >/dev/null 2>&1
+git -C "$PAREPO" checkout -q "$DEFB2" >/dev/null 2>&1
+git -C "$PAREPO" cherry-pick pa/squash >/dev/null 2>&1
+o="$(paz 'git branch -D pa/squash')"
+[ -z "$o" ] && ok "proteger-arbol: branch -D de rama SQUASH/cherry (parche ya en base) → silencio" || bad "proteger-arbol avisó al borrar rama squash-equivalente; got: $o"
+# (3) rama con trabajo PROPIO no integrado → NO zombie → AVISA (acotado a esa rama)
+git -C "$PAREPO" checkout -q -b pa/viva >/dev/null 2>&1
+printf 'viva\n' >> "$PAREPO/a.txt"; git -C "$PAREPO" add a.txt >/dev/null 2>&1; git -C "$PAREPO" commit -q -m viva >/dev/null 2>&1
+git -C "$PAREPO" checkout -q "$DEFB2" >/dev/null 2>&1
+o="$(paz 'git branch -D pa/viva')"
+printf '%s' "$o" | grep -q 'NO integrados' && ok "proteger-arbol: branch -D de rama con trabajo PROPIO no integrado → AVISA (acotado)" || bad "proteger-arbol NO avisó al borrar rama con trabajo vivo; got: $o"
+
 rm -rf "$PABARE" "$PAREPO"
 
 # ─────────────────────────────────────────────────────────────────────────────
