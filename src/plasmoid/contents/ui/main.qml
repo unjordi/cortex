@@ -953,6 +953,9 @@ PlasmoidItem {
                 { emoji: "🔬", name: "auditar-proceso-algoritmo", desc: "auditor experto READ-ONLY: proceso industrial + algoritmo → hallazgos priorizados",
                   event: "skill · opt-in",
                   detail: "Manda un agente-auditor experto (procesos industriales/logísticos + análisis de algoritmos) a revisar a fondo un flujo de negocio o el propio cerebro, y entregar hallazgos priorizados SIN tocar nada. Aliméntalo con los flowcharts del proceso (skill diagramar, 'los zapatos') + la investigación de dominio + datos de estrés. Hermano de diagramar: primero el mapa, luego el auditor." },
+                { emoji: "🩺", name: "auditar-coherencia-cerebro", desc: "fan-out READ-ONLY sobre el propio cerebro: evasiones/huecos/drift → loop hasta converger",
+                  event: "skill · opt-in",
+                  detail: "Lanza un fan-out de auditores READ-ONLY sobre la COHERENCIA del propio cerebro (guards+flowcharts+doc): ¿se evade un guard? ¿un flowchart miente vs el código? ¿doc desincronizada? Cada guard se audita POR EJECUCIÓN en un sandbox (no solo lectura). Con OK, itera fix→re-auditar (cada hallazgo con su test) hasta CONVERGER. Es el modo-cerebro de auditar-proceso-algoritmo, empaquetado." },
                 { emoji: "🐝", name: "orquestar-fanout", desc: "fan-out de agentes sin niñera (estado en 2 archivos + contrato de reporte)",
                   event: "skill · opt-in",
                   detail: "Orquestar trabajo paralelizable en varios agentes SIN niñera: asigna ítems autocontenidos del backlog y, al terminar cada agente, su avance queda registrado (bitácora) y su worktree limpio automáticamente. Modelo de estado sin redundancia: estado-proyecto = backlog vivo, bitácora = pasado append-only." },
@@ -1075,7 +1078,7 @@ PlasmoidItem {
             return p && w ? "installed" : (p ? "presentNotWired" : "absent")
         }
         if (inArr(root.brainRepoHooks, name)) return "repoScoped"
-        if (["cerrar-slice","checkpoint","diagramar","auditar-proceso-algoritmo","orquestar-fanout","turno-nocturno","cosechar-sesion","unificar-cerebro"].indexOf(name) !== -1)
+        if (["cerrar-slice","checkpoint","diagramar","auditar-proceso-algoritmo","auditar-coherencia-cerebro","orquestar-fanout","turno-nocturno","cosechar-sesion","unificar-cerebro"].indexOf(name) !== -1)
             return inArr(st.skills, name) ? "installed" : "absent"
         if (name === "Definition of Done" || name === "Doc <= realidad"
             || name === "Flujo de git" || name === "Costo de delegación")

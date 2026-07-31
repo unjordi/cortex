@@ -1263,7 +1263,7 @@ struct PopoverView: View {
         }
         if BrainState.knownRepoHooks.contains(name) { return .repoScoped }
         switch name {
-        case "cerrar-slice", "checkpoint", "diagramar", "auditar-proceso-algoritmo", "orquestar-fanout", "turno-nocturno",
+        case "cerrar-slice", "checkpoint", "diagramar", "auditar-proceso-algoritmo", "auditar-coherencia-cerebro", "orquestar-fanout", "turno-nocturno",
              "cosechar-sesion", "unificar-cerebro":
             return st.skills.contains(name) ? .installed : .absent
         case "Definition of Done", "Doc <= realidad", "Flujo de git", "Costo de delegación":
@@ -1383,6 +1383,9 @@ struct PopoverView: View {
                     BrainItem("🔬", "auditar-proceso-algoritmo", "auditor experto READ-ONLY: proceso industrial + algoritmo → hallazgos priorizados",
                               "skill · opt-in",
                               "Manda un agente-auditor experto (procesos industriales/logísticos + análisis de algoritmos) a revisar a fondo un flujo de negocio o el propio cerebro, y entregar hallazgos priorizados SIN tocar nada. Aliméntalo con los flowcharts del proceso (skill diagramar, 'los zapatos') + la investigación de dominio + datos de estrés. Hermano de diagramar: primero el mapa, luego el auditor."),
+                    BrainItem("🩺", "auditar-coherencia-cerebro", "fan-out READ-ONLY sobre el propio cerebro: evasiones/huecos/drift → loop hasta converger",
+                              "skill · opt-in",
+                              "Lanza un fan-out de auditores READ-ONLY sobre la COHERENCIA del propio cerebro (guards+flowcharts+doc): ¿se evade un guard? ¿un flowchart miente vs el código? ¿doc desincronizada? Cada guard se audita POR EJECUCIÓN en un sandbox (no solo lectura). Con OK, itera fix→re-auditar (cada hallazgo con su test) hasta CONVERGER. Es el modo-cerebro de auditar-proceso-algoritmo, empaquetado."),
                     BrainItem("🐝", "orquestar-fanout", "fan-out de agentes sin niñera (estado en 2 archivos + contrato de reporte)",
                               "skill · opt-in",
                               "Orquestar trabajo paralelizable en varios agentes SIN niñera: asigna ítems autocontenidos del backlog y, al terminar cada agente, su avance queda registrado (bitácora) y su worktree limpio automáticamente. Modelo de estado sin redundancia: estado-proyecto = backlog vivo, bitácora = pasado append-only."),
