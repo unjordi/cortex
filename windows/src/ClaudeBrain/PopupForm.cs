@@ -21,6 +21,9 @@ public sealed class PopupForm : Form
     private readonly Action _onRefresh;
     private int _tab;
     private int _hoverRail = -1;
+    // Botón del pie del riel bajo el cursor: -1 ninguno · 0 ↻ refresh · 1 ⏻ quit. Espeja `_hoverRail`
+    // para darles el MISMO realce de hover que las pestañas (antes eran hover-less). Paridad macOS/KDE.
+    private int _hoverBottom = -1;
 
     // Filtro de rango {hoy·7d·30d·∞} (footer de Resumen/Modelos/Proyectos/Chats). 0=hoy,1=7d,2=30d,3=∞.
     // Default ∞ (histórico completo); persiste al cambiar de pestaña (como el @State de macOS).
@@ -142,7 +145,7 @@ public sealed class PopupForm : Form
         _rail.Paint += RailPaint;
         _rail.MouseDown += RailMouseDown;
         _rail.MouseMove += RailMouseMove;
-        _rail.MouseLeave += (_, _) => { _hoverRail = -1; _rail.Invalidate(); };
+        _rail.MouseLeave += (_, _) => { _hoverRail = -1; _hoverBottom = -1; _rail.Invalidate(); };
 
         _content.Dock = DockStyle.Fill;
         _content.BackColor = _bg;
@@ -281,8 +284,14 @@ public sealed class PopupForm : Form
                 new RectangleF(r.X + Sc(32), r.Y, r.Width - Sc(34), r.Height), sf);
         }
 
-        // bottom row: refresh + quit (fondos redondeados sutiles al hover-less, glifos tenues)
+        // bottom row: refresh + quit (glifos tenues; realce redondeado al hover como las pestañas)
         var (refreshR, quitR) = BottomButtons();
+        if (_hoverBottom >= 0)
+        {
+            var hr = _hoverBottom == 0 ? refreshR : quitR;
+            using var hb = new SolidBrush(Blend(_bg, _fg, 0.06));   // mismo blend que el hover de las pestañas
+            FillRounded(g, hb, hr, Sc(8));
+        }
         using (var b1 = new SolidBrush(Blend(_bg, _fg, 0.7)))
             g.DrawString("⟳", Px(15f, FontStyle.Regular), b1, refreshR, Center());
         // Glifo de "salir" (encendido) dibujado A MANO con GDI+: anillo con hueco arriba + línea
@@ -317,18 +326,33 @@ public sealed class PopupForm : Form
         for (int pos = 0; pos < tabs.Length; pos++)
             if (RailBtnRect(pos).Contains(e.Location)) { SelectTab(tabs[pos]); return; }
         var (refreshR, quitR) = BottomButtons();
-        if (refreshR.Contains(e.Location)) { _onRefresh(); return; }
+        if (refreshR.Contains(e.Location))
+        {
+            _onRefresh();
+            // Además FUERZA el chequeo de versión (salta el throttle de 15 min) para que el botón ⬆
+            // y el banner aparezcan al instante si hay update — paridad con macOS/KDE.
+            Updater.Shared.ForceCheck(() =>
+            {
+                try { BeginInvoke(new Action(() => _content.Invalidate())); } catch { }
+            });
+            return;
+        }
         if (quitR.Contains(e.Location)) { Application.Exit(); }
     }
 
     private void RailMouseMove(object? sender, MouseEventArgs e)
     {
-        int was = _hoverRail;
+        int was = _hoverRail, wasBottom = _hoverBottom;
         _hoverRail = -1;
+        _hoverBottom = -1;
         var tabs = RailTabs();
         for (int pos = 0; pos < tabs.Length; pos++)
             if (RailBtnRect(pos).Contains(e.Location)) { _hoverRail = tabs[pos]; break; }
-        if (was != _hoverRail) _rail.Invalidate();
+        // Botones del pie (↻ refresh · ⏻ quit): mismo hit-test que su click en RailMouseDown.
+        var (refreshR, quitR) = BottomButtons();
+        if (refreshR.Contains(e.Location)) _hoverBottom = 0;
+        else if (quitR.Contains(e.Location)) _hoverBottom = 1;
+        if (was != _hoverRail || wasBottom != _hoverBottom) _rail.Invalidate();
     }
 
     // ================= Content =================

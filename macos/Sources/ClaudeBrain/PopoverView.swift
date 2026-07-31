@@ -235,11 +235,13 @@ struct PopoverView: View {
                 // ⬆ Actualizar el WIDGET — solo si hay versión nueva (espeja la lógica del updateBanner).
                 if updater.updateAvailable {
                     Button(action: { updater.runUpdate() }) {
-                        if updater.updating {
-                            ProgressView().controlSize(.small).scaleEffect(0.7).frame(width: 14, height: 14)
-                        } else {
-                            Image(systemName: "arrow.up.circle.fill")
-                        }
+                        Group {
+                            if updater.updating {
+                                ProgressView().controlSize(.small).scaleEffect(0.7).frame(width: 14, height: 14)
+                            } else {
+                                Image(systemName: "arrow.up.circle.fill")
+                            }
+                        }.hoverHighlight()
                     }
                     .buttonStyle(.borderless)
                     .foregroundStyle(accent)
@@ -252,11 +254,13 @@ struct PopoverView: View {
                 // 🩹 Curar el CEREBRO global — solo si le falta alguna pieza (mismo criterio que el riel).
                 if brainIncomplete {
                     Button(action: healBrain) {
-                        if healing {
-                            ProgressView().controlSize(.small).scaleEffect(0.7).frame(width: 14, height: 14)
-                        } else {
-                            Image(systemName: "cross.case.fill")
-                        }
+                        Group {
+                            if healing {
+                                ProgressView().controlSize(.small).scaleEffect(0.7).frame(width: 14, height: 14)
+                            } else {
+                                Image(systemName: "cross.case.fill")
+                            }
+                        }.hoverHighlight()
                     }
                     .buttonStyle(.borderless)
                     .foregroundStyle(Color(hex: "#dc3545"))
@@ -264,15 +268,18 @@ struct PopoverView: View {
                     .help("Curar el cerebro global: corre install-brain.sh (empaquetado) para completar las piezas que falten.")
                 }
 
-                Button(action: onRefresh) {
-                    Image(systemName: "arrow.clockwise")
+                // ↻ Actualizar ahora: refresca la cuota Y fuerza el chequeo de versión (bypass del throttle
+                // de 15 min — es un clic explícito). Antes solo refrescaba cuota → el banner de update no
+                // aparecía al pedirlo a mano. Paridad: KDE forceRefresh + Windows OnRefresh hacen lo mismo.
+                Button(action: { onRefresh(); Task { await updater.forceCheck() } }) {
+                    Image(systemName: "arrow.clockwise").hoverHighlight()
                 }
                 .buttonStyle(.borderless)
                 .foregroundStyle(label.opacity(0.7))
-                .help("Actualizar ahora")
+                .help("Actualizar ahora (datos + versión)")
 
                 Button(action: { NSApp.terminate(nil) }) {
-                    Image(systemName: "power")
+                    Image(systemName: "power").hoverHighlight()
                 }
                 .buttonStyle(.borderless)
                 .foregroundStyle(label.opacity(0.45))
@@ -1410,6 +1417,23 @@ struct PopoverView: View {
 }
 
 // MARK: - Subcomponents
+
+/// Fondo de hover reutilizable para los botones de ícono del pie del riel (↻ ⏻ ⬆ 🩹): el MISMO realce
+/// que las pestañas (labelColor 8% en un rect redondeado). Antes esos botones no tenían feedback de
+/// hover mientras las pestañas sí → se sentían "muertos". Paridad con KDE (PC3.Button, hover nativo)
+/// y Windows (highlight pintado al hover).
+private struct HoverHighlight: ViewModifier {
+    @State private var hover = false
+    func body(content: Content) -> some View {
+        content
+            .frame(width: 22, height: 22)
+            .background(RoundedRectangle(cornerRadius: 6)
+                .fill(hover ? Color(nsColor: .labelColor).opacity(0.08) : Color.clear))
+            .contentShape(Rectangle())
+            .onHover { hover = $0 }
+    }
+}
+private extension View { func hoverHighlight() -> some View { modifier(HoverHighlight()) } }
 
 /// A rail tab button: active = orange 18% bg + accent bold text/icon; hover = labelColor 8%.
 private struct RailButton: View {
