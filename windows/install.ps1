@@ -98,8 +98,32 @@ Write-Host "==> Instalado en $dest" -ForegroundColor Cyan
 # que puede leer git. El repo raiz es el padre de windows/ ($here). Fail-safe: si git no responde,
 # quedan valores neutros y el chequeo de la app falla-abierto (no molesta).
 $repoRoot = Split-Path -Parent $here
-$sha    = (git -C $repoRoot rev-parse --short HEAD 2>$null); if (-not $sha)    { $sha = 'unknown' }
-$date   = (git -C $repoRoot show -s --format=%cI HEAD 2>$null); if (-not $date) { $date = '' }
+
+# Sha EFECTIVO que describe el binario que quedo instalado:
+#  - compilado desde fuente (-Build / fallback) -> HEAD del clon (es literal lo que se compilo).
+#  - DESCARGADO del rolling -> el 'build-sha:' del cuerpo del release, NO el HEAD del clon. El asset
+#    'windows-latest' puede ir unos minutos DETRAS de main mientras el runner reconstruye (RACE real,
+#    caso Danny): si estamparamos el HEAD del clon, el widget se creeria al dia con un exe viejo (y su
+#    cerebro empaquetado viejo contaria hooks de menos -> el "(5)" fantasma). Estampando la VERDAD del
+#    asset, si va detras de main el widget lo detecta y ofrece "Actualizar" cuando el runner termine.
+#    Paridad con macOS, donde el .app trae su version.json estampado por el CI dentro del bundle.
+# Fail-safe: sin red / sin gh-api / clon sin ese commit -> cae al HEAD del clon (comportamiento previo).
+$effSha = (git -C $repoRoot rev-parse HEAD 2>$null)
+if ($got) {
+    try {
+        $rel = Invoke-RestMethod "https://api.github.com/repos/unjordi/claude-brain/releases/tags/windows-latest" `
+                 -Headers @{ 'User-Agent' = 'claude-brain'; 'Accept' = 'application/vnd.github+json' } -UseBasicParsing
+        $m = [regex]::Match([string]$rel.body, 'build-sha: ([0-9a-f]+)')
+        if ($m.Success -and $m.Groups[1].Value) {
+            $effSha = $m.Groups[1].Value
+            if ($effSha -ne (git -C $repoRoot rev-parse HEAD 2>$null)) {
+                Write-Host "==> OJO: el asset 'windows-latest' va detras de main (build-sha $($effSha.Substring(0,7))); el widget lo detectara y ofrecera actualizar cuando el runner reconstruya." -ForegroundColor Yellow
+            }
+        }
+    } catch { Write-Host "    (no pude leer el build-sha del release; estampo el HEAD del clon)" -ForegroundColor DarkYellow }
+}
+$sha    = if ($effSha) { $effSha.Substring(0, [Math]::Min(7, $effSha.Length)) } else { 'unknown' }
+$date   = (git -C $repoRoot show -s --format=%cI $effSha 2>$null); if (-not $date) { $date = '' }
 $branch = (git -C $repoRoot rev-parse --abbrev-ref HEAD 2>$null); if (-not $branch) { $branch = '' }
 
 # Version LEGIBLE que INCREMENTA: MAJOR.MINOR (de brain/VERSION) . <conteo de commits>, p.ej.
@@ -117,7 +141,11 @@ if (Test-Path $brainVerFile) {
         elseif ($parts.Count -eq 1 -and $parts[0]) { $prefix = "$($parts[0]).0" }
     }
 }
-$count = (git -C $repoRoot rev-list --count HEAD 2>$null); if (-not $count) { $count = '0' }
+# Conteo de commits del sha EFECTIVO (el del asset si se descargo), no de HEAD -> la version legible
+# no sobrepasa al binario real. Fail-safe: si el clon no tiene ese commit, cae a HEAD y luego a 0.
+$count = (git -C $repoRoot rev-list --count $effSha 2>$null)
+if (-not $count) { $count = (git -C $repoRoot rev-list --count HEAD 2>$null) }
+if (-not $count) { $count = '0' }
 $version_str = "$prefix.$($count.ToString().Trim())"
 
 $version = [ordered]@{ version = $version_str; sha = $sha; date = $date; repo = $repoRoot; branch = $branch }
@@ -199,41 +227,57 @@ Write-Host "Nota: los tokens/sesiones/hora pico salen de tus transcripts locales
 Write-Host "El costo `$ (API-equiv) requiere Node + ccusage en el PATH; si no, sale '-'." -ForegroundColor DarkGray
 
 # -- Claude Code CLI: es lo que el widget MIDE -> asegurarlo (instalador nativo, se auto-actualiza) --
-# El widget lee el token OAuth y los transcripts que escribe el CLI 'claude'. Sin el CLI no hay que medir.
+# El widget lee el token OAuth (~/.claude/.credentials.json) y los transcripts que escribe el CLI
+# 'claude'. Sin el CLI no hay que medir. OJO: la app de ESCRITORIO tambien registra un claude.exe
+# (AppData\Local\AnthropicClaude\claude.exe) que resuelve por 'claude' pero NO escribe .credentials.json
+# ni transcripts como la CLI -> hay que detectar/asegurar la CLI ESPECIFICAMENTE, no cualquier 'claude'.
+# (Caso real: Windows "Asistente Dir": la app tapaba a la CLI de .local\bin en el PATH -> OAuth sin
+# credenciales; y el instalador, al ver la app con Get-Command claude, creia que la CLI ya estaba y se
+# saltaba exponer .local\bin.)
+function Resolve-ClaudeCli {
+    # 1) el binario nativo tipico (lo que deja https://claude.ai/install.ps1)
+    $native = "$env:USERPROFILE\.local\bin\claude.exe"
+    if (Test-Path $native) { return $native }
+    # 2) cualquier claude.exe del PATH que NO sea la app de escritorio
+    Get-Command claude -All -ErrorAction SilentlyContinue |
+        Where-Object { $_.Source -and $_.Source -notmatch 'AnthropicClaude' } |
+        Select-Object -First 1 -ExpandProperty Source
+}
+
+$cli = $null
 if (-not $NoClaudeCode) {
-    if (Get-Command claude -ErrorAction SilentlyContinue) {
+    $cli = Resolve-ClaudeCli
+    if ($cli) {
         Write-Host ""
-        Write-Host "==> Claude Code (CLI) ya esta instalado." -ForegroundColor Green
+        Write-Host "==> Claude Code (CLI) ya esta instalado: $cli" -ForegroundColor Green
     } else {
         Write-Host ""
         Write-Host "==> Instalando Claude Code (CLI) -- es lo que el widget mide (instalador nativo)..." -ForegroundColor Cyan
         try { Invoke-RestMethod https://claude.ai/install.ps1 | Invoke-Expression }
         catch { Write-Host "    No pude instalarlo automaticamente; hazlo a mano: irm https://claude.ai/install.ps1 | iex" -ForegroundColor Yellow }
+        $cli = Resolve-ClaudeCli
     }
-    # Asegurar 'claude' en el PATH de usuario: el instalador nativo deja claude.exe pero su cambio de
-    # PATH no siempre aplica (ni en esta sesion ni de forma persistente confiable). Lo buscamos en los
-    # lugares tipicos y agregamos su bin al PATH de USUARIO (como Git\bin en install-brain.ps1) para
-    # que el usuario pueda hacer 'claude' -> /login y el widget lea el token. (Caso real: Windows de Liora.)
-    if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
-        $roots = @("$env:LOCALAPPDATA", "$env:USERPROFILE\.local", "$env:USERPROFILE\.claude", "$env:APPDATA\npm") | Where-Object { Test-Path $_ }
-        $found = Get-ChildItem $roots -Recurse -Filter "claude.exe" -ErrorAction SilentlyContinue -Depth 4 |
-                 Select-Object -First 1 -ExpandProperty FullName
-        if ($found) {
-            $cdir = Split-Path $found
-            $u = [Environment]::GetEnvironmentVariable('PATH','User'); if (-not $u) { $u = '' }
-            if (($u -split ';') -notcontains $cdir) {
-                [Environment]::SetEnvironmentVariable('PATH', $u.TrimEnd(';') + ';' + $cdir, 'User')
-                $env:PATH = $env:PATH.TrimEnd(';') + ';' + $cdir   # visible ya en esta sesion
-                Write-Host "==> Agregue '$cdir' (claude) al PATH de usuario." -ForegroundColor Green
-            }
+    # Poner el DIR de la CLI AL FRENTE del PATH de usuario (prepend), para que 'claude' gane a la app de
+    # escritorio (que tambien registra claude.exe). Paridad con install.sh en Linux, que expone
+    # ~/.local/bin en el PATH. Prepend (no append) porque la app suele estar ya en el PATH.
+    if ($cli) {
+        $cdir = Split-Path $cli
+        $u = [Environment]::GetEnvironmentVariable('PATH','User'); if (-not $u) { $u = '' }
+        $parts = @($u -split ';' | Where-Object { $_ -ne '' -and $_ -ne $cdir })
+        $newU = (@($cdir) + $parts) -join ';'
+        if ($newU -ne $u) {
+            [Environment]::SetEnvironmentVariable('PATH', $newU, 'User')
+            Write-Host "==> Puse '$cdir' (CLI) al frente del PATH de usuario (gana a la app de escritorio)." -ForegroundColor Green
         }
+        # visible ya en ESTA sesion, tambien al frente
+        $sess = @($env:PATH -split ';' | Where-Object { $_ -ne '' -and $_ -ne $cdir })
+        $env:PATH = (@($cdir) + $sess) -join ';'
     }
 }
 
-# Recordatorio de login (interactivo y por-usuario: el script NO puede hacerlo por ti).
-$cc = Get-Command claude -ErrorAction SilentlyContinue
-if ($cc) {
-    & $cc.Source auth status *> $null
+# Recordatorio de login contra la CLI ESPECIFICA (no la app que resuelva 'claude').
+if ($cli) {
+    & $cli auth status *> $null
     if ($LASTEXITCODE -ne 0) {
         Write-Host ""
         Write-Host "IMPORTANTE: inicia sesion en Claude Code para que el widget muestre tu cuota real:" -ForegroundColor Yellow
@@ -241,6 +285,6 @@ if ($cc) {
     }
 } else {
     Write-Host ""
-    Write-Host "NOTA: 'claude' aun no esta en el PATH (instalacion nueva) -> abre una terminal NUEVA y corre:" -ForegroundColor Yellow
+    Write-Host "NOTA: la CLI 'claude' aun no esta lista -> abre una terminal NUEVA y corre:" -ForegroundColor Yellow
     Write-Host "  claude        (y /login, para que el widget vea tu cuota real)" -ForegroundColor Yellow
 }

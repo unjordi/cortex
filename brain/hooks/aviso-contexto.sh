@@ -25,9 +25,10 @@
 # cuántas imágenes) → sesgo. Los tokens del `usage` son la verdad que el CLI mismo usa para auto-compactar.
 #
 # Techo = el PUNTO DE AUTO-COMPACT real de ESTA sesión, DERIVADO (no hardcodeado): ventana × pct.
-#   - Ventana: si el modelo elegido trae el marcador "[1m]" (leído de settings.json — user, proyecto o
-#     local, el más específico gana) → 1,000,000 tokens; si no → 200,000. (El transcript NO guarda la
-#     ventana y el modelo sale pelón ahí; settings.json SÍ trae "opus[1m]" → es la señal fiable.)
+#   - Ventana (leída de settings.json — user < proyecto < local, el más específico gana): 1,000,000 si el
+#     modelo trae el marcador "[1m]" O es un 1M-NATIVO por nombre (opus-4-7/4-8/5, sonnet-5, fable-5,
+#     mythos-5, que llevan el id pelón SIN sufijo); si no, 200,000. (El transcript NO guarda la ventana y
+#     el modelo sale pelón ahí; settings.json SÍ trae el id del modelo → es la señal fiable.) Ver bloque (1).
 #   - pct de auto-compact: env `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` (el CLI la respeta; el usuario puede
 #     bajarla, p. ej. a 70); si no está, default 92 (≈ el del CLI, con holgura para alcanzar a checkpointear).
 # Bandas como % de ESE techo: ℹ️ 76% · ⚠️ 88% · 🚨 95%. Por qué el techo NO es la VENTANA: lo que queremos
@@ -82,9 +83,14 @@ ctx=$(tail -n 400 "$tp" 2>/dev/null | jq -rR '
 CEILING="${AVISO_CONTEXTO_CEILING_TOKENS:-}"
 case "$CEILING" in
   ''|*[!0-9]*)
-    # (1) Ventana: override explícito `AVISO_CONTEXTO_WINDOW_TOKENS`, o derivada del modelo — "[1m]" en el
-    #     modelo elegido → 1M; si no → 200K. Precedencia settings: user < proyecto < local (el más
-    #     específico gana → lo recorremos en ese orden, nos quedamos el último).
+    # (1) Ventana: override explícito `AVISO_CONTEXTO_WINDOW_TOKENS`, o derivada del modelo. La ventana de
+    #     1M se detecta de DOS formas: (a) el marcador "[1m]" en el id del modelo, y (b) los modelos
+    #     1M-NATIVOS que llevan el id PELÓN, SIN sufijo (opus-4-7/4-8/5, sonnet-5, fable-5, mythos-5).
+    #     Sin (b) esos modelos caían al default de 200K → el hook gritaba "¡compacta!" con la ventana real
+    #     al ~13-19% (falso positivo real, jul 2026, Opus 5 y 4.8: /context marcaba 166K/1M=17% y el hook
+    #     "89% rumbo al auto-compact"). La lista es CONSERVADORA: un modelo desconocido asume 200K (avisa
+    #     de MÁS, no de menos), y el invariante físico (1b) corrige hacia 1M en cuanto el ctx pasa de 200K.
+    #     Precedencia settings: user < proyecto < local (el más específico gana → recorremos en ese orden).
     WINDOW="${AVISO_CONTEXTO_WINDOW_TOKENS:-}"
     case "$WINDOW" in
       ''|*[!0-9]*)
@@ -94,7 +100,11 @@ case "$CEILING" in
           m=$(jq -r '.model // empty' "$s" 2>/dev/null)
           [ -n "$m" ] && model="$m"
         done
-        case "$model" in *'[1m]'*) WINDOW=1000000 ;; *) WINDOW=200000 ;; esac
+        case "$model" in
+          *'[1m]'*)                                                      WINDOW=1000000 ;;  # marcador explícito
+          *opus-4-7*|*opus-4-8*|*opus-5*|*sonnet-5*|*fable-5*|*mythos-5*) WINDOW=1000000 ;;  # 1M-NATIVOS (id pelón)
+          *)                                                             WINDOW=200000  ;;  # desconocido → conservador
+        esac
         ;;
     esac
     # (1b) AUTO-CORRECCIÓN por invariante FÍSICO: el contexto no cabe en una ventana MENOR que él mismo.
@@ -144,17 +154,31 @@ pct=$(( ctx * 100 / CEILING ))   # % RUMBO AL AUTO-COMPACT (no % de la ventana �
 ctxk=$(( ctx / 1000 ))
 ceilk=$(( CEILING / 1000 ))      # punto de auto-compact en K
 
+# Procedencia del techo → CADA aviso se AUTO-JUSTIFICA. Si el mensaje no dice DE DÓNDE sale el %, un
+# Claude nuevo lo lee como el bug 1M-vs-200K de antes y NO le cree (Jordi, 2026-07-30: "los claudios
+# luego no le creen"). Cita ventana detectada + pct + su FUENTE (override DELIBERADO vs default).
+if [ -n "${AVISO_CONTEXTO_CEILING_TOKENS:-}" ]; then
+  PROCEDENCIA="📐 Techo fijado a mano por AVISO_CONTEXTO_CEILING_TOKENS=${AVISO_CONTEXTO_CEILING_TOKENS}."
+else
+  wink=$(( ${WINDOW:-200000} / 1000 ))
+  if [ -n "${CLAUDE_AUTOCOMPACT_PCT_OVERRIDE:-}" ]; then
+    PROCEDENCIA="📐 Techo REAL ~${ceilk}K = ${PCT}% de la ventana ${wink}K, por CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=${PCT} (override DELIBERADO de Jordi, NO un bug — créele: el CLI auto-compacta a ese mismo %)."
+  else
+    PROCEDENCIA="📐 Techo REAL ~${ceilk}K = ${PCT}% (default) de la ventana ${wink}K detectada."
+  fi
+fi
+
 # ── Escalada de urgencia por BANDA ───────────────────────────────────────────────────────────────
 #   banda 1  → heads-up con holgura (aún hay margen; solo recuerda el orden checkpoint→compact).
 #   banda 2  → checkpoint AHORA + propón /compact proactivo (mensaje fuerte del orden obligatorio).
 #   banda ≥3 → INMINENTE: RE-checkpoint (aunque ya lo corriste — desde entonces pasó más trabajo y el
 #              hilo quedó atrás) + compacta YA. El hook no puede correr el skill, pero SÍ ordenarlo.
 if [ "$band" -ge 3 ]; then
-  msg="🚨 AUTO-COMPACT INMINENTE (~${ctxk}K tokens ≈ ${pct}% del punto de auto-compact ~${ceilk}K). Corre \`checkpoint\` DE NUEVO AHORA MISMO —SÍ, aunque YA lo hayas corrido en este tramo: desde entonces pasó más trabajo y el hilo volcado quedó atrás— y ENSEGUIDA compacta (propón /compact al usuario con holgura). Si el auto-compact —contexto lleno, SIN aviso— te gana antes, rehidratarás un hilo VIEJO. Orden inviolable: 1) \`checkpoint\` FRESCO → 2) /compact."
+  msg="🚨 AUTO-COMPACT INMINENTE (~${ctxk}K tokens ≈ ${pct}% del punto de auto-compact ~${ceilk}K). Corre \`checkpoint\` DE NUEVO AHORA MISMO —SÍ, aunque YA lo hayas corrido en este tramo: desde entonces pasó más trabajo y el hilo volcado quedó atrás— y ENSEGUIDA compacta (propón /compact al usuario con holgura). Si el auto-compact —contexto lleno, SIN aviso— te gana antes, rehidratarás un hilo VIEJO. Orden inviolable: 1) \`checkpoint\` FRESCO → 2) /compact. ${PROCEDENCIA}"
 elif [ "$band" -ge 2 ]; then
-  msg="⚠️ Contexto ALTO (~${ctxk}K tokens ≈ ${pct}% rumbo al auto-compact ~${ceilk}K). REGLA DURA DE ORDEN (no la saltes): ANTES de siquiera PROPONER o hacer un /compact, el skill \`checkpoint\` YA TIENE QUE HABER CORRIDO en este tramo (volcar el HILO a hilo-mental-actual.md, fresco y en la rama actual). Orden OBLIGATORIO: 1) corre \`checkpoint\` AHORA → 2) SOLO DESPUÉS propón un /compact PROACTIVO (con holgura, antes de que el auto-compact —SIN aviso— te gane). Proponer/ejecutar /compact SIN checkpoint fresco antes = perder el hilo reciente: es un ERROR. (Si YA corriste checkpoint en este tramo y sigue fresco, no lo repitas: procede.)"
+  msg="⚠️ Contexto ALTO (~${ctxk}K tokens ≈ ${pct}% rumbo al auto-compact ~${ceilk}K). REGLA DURA DE ORDEN (no la saltes): ANTES de siquiera PROPONER o hacer un /compact, el skill \`checkpoint\` YA TIENE QUE HABER CORRIDO en este tramo (volcar el HILO a hilo-mental-actual.md, fresco y en la rama actual). Orden OBLIGATORIO: 1) corre \`checkpoint\` AHORA → 2) SOLO DESPUÉS propón un /compact PROACTIVO (con holgura, antes de que el auto-compact —SIN aviso— te gane). Proponer/ejecutar /compact SIN checkpoint fresco antes = perder el hilo reciente: es un ERROR. (Si YA corriste checkpoint en este tramo y sigue fresco, no lo repitas: procede.) ${PROCEDENCIA}"
 else
-  msg="ℹ️ Contexto creciendo (~${ctxk}K tokens ≈ ${pct}% rumbo al auto-compact ~${ceilk}K). Heads-up (aún hay HOLGURA): cuando vayas a compactar, PRIMERO corre \`checkpoint\` (vuelca el HILO a hilo-mental-actual.md, fresco y en la rama actual) y SOLO DESPUÉS compacta. No compactes sin ese volcado. (El % es RUMBO AL AUTO-COMPACT, no % de tu ventana — por eso no cuadra con /context.)"
+  msg="ℹ️ Contexto creciendo (~${ctxk}K tokens ≈ ${pct}% rumbo al auto-compact ~${ceilk}K). Heads-up (aún hay HOLGURA): cuando vayas a compactar, PRIMERO corre \`checkpoint\` (vuelca el HILO a hilo-mental-actual.md, fresco y en la rama actual) y SOLO DESPUÉS compacta. No compactes sin ese volcado. (El % es RUMBO AL AUTO-COMPACT, no % de tu ventana — por eso no cuadra con /context.) ${PROCEDENCIA}"
 fi
 
 jq -n --arg c "$msg" '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$c}}'
