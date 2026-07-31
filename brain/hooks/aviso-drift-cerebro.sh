@@ -17,6 +17,17 @@
 # (default 6; stamp en ~/.claude/memory/.drift-cerebro/). Un chequeo CON drift no se cachea → avisa en
 # cada inicio de sesión hasta que se propague (esa insistencia es el punto).
 # Fail-open SIEMPRE: sin clon canónico / repo no-brained / cualquier error del sync → silencio.
+#
+# CUÁNDO CORRE (verificado 2026-07-31 vs doc oficial de hooks + evidencia real — NO re-investigar):
+# SessionStart dispara con source ∈ {startup, resume, clear, compact, fork} — NO solo en arranque
+# fresco. En particular `claude --resume`/`--continue` → source="resume", y cada `/compact` (auto o
+# manual) → source="compact", LO DISPARAN. Este hook se cablea SIN matcher → corre en TODOS esos
+# source (la doc no lo jura literal para el matcher omitido, pero el commit real que este hook genera
+# — "chore(cerebro): auto-sync de la copia por-repo (aviso-drift, …)" — lo DEMUESTRA empíricamente).
+# Importa porque el flujo real es casi todo --resume + sesiones largas que compactan: la auto-sync se
+# re-chequea en cada resume Y en cada compactación, sin depender de abrir claudes frescos.
+# Doc: code.claude.com/docs/en/hooks (tabla SessionStart + "Hooks can be re-run on resume with
+# --continue or --resume (source = resume or fork)").
 set -u
 
 ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
