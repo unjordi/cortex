@@ -25,9 +25,10 @@
 # cuántas imágenes) → sesgo. Los tokens del `usage` son la verdad que el CLI mismo usa para auto-compactar.
 #
 # Techo = el PUNTO DE AUTO-COMPACT real de ESTA sesión, DERIVADO (no hardcodeado): ventana × pct.
-#   - Ventana: si el modelo elegido trae el marcador "[1m]" (leído de settings.json — user, proyecto o
-#     local, el más específico gana) → 1,000,000 tokens; si no → 200,000. (El transcript NO guarda la
-#     ventana y el modelo sale pelón ahí; settings.json SÍ trae "opus[1m]" → es la señal fiable.)
+#   - Ventana (leída de settings.json — user < proyecto < local, el más específico gana): 1,000,000 si el
+#     modelo trae el marcador "[1m]" O es un 1M-NATIVO por nombre (opus-4-7/4-8/5, sonnet-5, fable-5,
+#     mythos-5, que llevan el id pelón SIN sufijo); si no, 200,000. (El transcript NO guarda la ventana y
+#     el modelo sale pelón ahí; settings.json SÍ trae el id del modelo → es la señal fiable.) Ver bloque (1).
 #   - pct de auto-compact: env `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` (el CLI la respeta; el usuario puede
 #     bajarla, p. ej. a 70); si no está, default 92 (≈ el del CLI, con holgura para alcanzar a checkpointear).
 # Bandas como % de ESE techo: ℹ️ 76% · ⚠️ 88% · 🚨 95%. Por qué el techo NO es la VENTANA: lo que queremos
@@ -82,9 +83,14 @@ ctx=$(tail -n 400 "$tp" 2>/dev/null | jq -rR '
 CEILING="${AVISO_CONTEXTO_CEILING_TOKENS:-}"
 case "$CEILING" in
   ''|*[!0-9]*)
-    # (1) Ventana: override explícito `AVISO_CONTEXTO_WINDOW_TOKENS`, o derivada del modelo — "[1m]" en el
-    #     modelo elegido → 1M; si no → 200K. Precedencia settings: user < proyecto < local (el más
-    #     específico gana → lo recorremos en ese orden, nos quedamos el último).
+    # (1) Ventana: override explícito `AVISO_CONTEXTO_WINDOW_TOKENS`, o derivada del modelo. La ventana de
+    #     1M se detecta de DOS formas: (a) el marcador "[1m]" en el id del modelo, y (b) los modelos
+    #     1M-NATIVOS que llevan el id PELÓN, SIN sufijo (opus-4-7/4-8/5, sonnet-5, fable-5, mythos-5).
+    #     Sin (b) esos modelos caían al default de 200K → el hook gritaba "¡compacta!" con la ventana real
+    #     al ~13-19% (falso positivo real, jul 2026, Opus 5 y 4.8: /context marcaba 166K/1M=17% y el hook
+    #     "89% rumbo al auto-compact"). La lista es CONSERVADORA: un modelo desconocido asume 200K (avisa
+    #     de MÁS, no de menos), y el invariante físico (1b) corrige hacia 1M en cuanto el ctx pasa de 200K.
+    #     Precedencia settings: user < proyecto < local (el más específico gana → recorremos en ese orden).
     WINDOW="${AVISO_CONTEXTO_WINDOW_TOKENS:-}"
     case "$WINDOW" in
       ''|*[!0-9]*)
@@ -94,7 +100,11 @@ case "$CEILING" in
           m=$(jq -r '.model // empty' "$s" 2>/dev/null)
           [ -n "$m" ] && model="$m"
         done
-        case "$model" in *'[1m]'*) WINDOW=1000000 ;; *) WINDOW=200000 ;; esac
+        case "$model" in
+          *'[1m]'*)                                                      WINDOW=1000000 ;;  # marcador explícito
+          *opus-4-7*|*opus-4-8*|*opus-5*|*sonnet-5*|*fable-5*|*mythos-5*) WINDOW=1000000 ;;  # 1M-NATIVOS (id pelón)
+          *)                                                             WINDOW=200000  ;;  # desconocido → conservador
+        esac
         ;;
     esac
     # (1b) AUTO-CORRECCIÓN por invariante FÍSICO: el contexto no cabe en una ventana MENOR que él mismo.

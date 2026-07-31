@@ -1585,6 +1585,28 @@ m="$(ac3 'opus' unset 150000)"
   && ok "aviso techo derivado: 200K @ 92%, ctx 100K → silencio" \
   || bad "aviso techo derivado 200K@92% gritó a 100K"
 
+# (b6b-nativo) BUG 2026-07-30 (regresó vía install-brain, jul 31): los modelos 1M-NATIVOS llevan el id
+# PELÓN, SIN el sufijo "[1m]" (opus-4-7/4-8/5, sonnet-5, fable-5, mythos-5). Antes caían al default de
+# 200K → el hook gritaba "INMINENTE" con la ventana real al ~13-19% (Jordi lo vio en Opus 5 y 4.8; el
+# /context marcaba 166K/1M=17% y el hook "89% rumbo al auto-compact"). Repro EXACTO del report: opus-4-8
+# @ 70%, ctx 135K → con la lista por nombre la ventana es 1M → techo 700K → 135K=19% → banda 0 → silencio;
+# SIN ella, 200K → techo 140K → 135K ≥ t3(133K) → falso 🚨. Este test ES el anti-regresión que faltó: el
+# fix de anoche vivió SOLO en el hook global (sin commit al brain) → el siguiente install-brain lo pisó.
+for nativo in claude-opus-4-8 claude-opus-5 claude-opus-4-7 claude-sonnet-5 claude-fable-5 claude-mythos-5; do
+  [ -z "$(ac3 "$nativo" 70 135000)" ] \
+    && ok "aviso 1M-nativo: $nativo (id pelón) → ventana 1M → ctx 135K = silencio (NO falso INMINENTE)" \
+    || bad "aviso 1M-nativo: $nativo NO detectado como 1M → falso positivo (regresión del bug 2026-07-30)"
+done
+# ...pero el 1M-nativo SÍ avisa cuando de verdad se llena: opus-4-8 @ 70%, ctx 680K = 97% de 700K → banda 3.
+{ printf '%s' "$(ac3 'claude-opus-4-8' 70 680000)" | grep -q 'INMINENTE'; } \
+  && ok "aviso 1M-nativo: opus-4-8 @ 70%, ctx 680K = 97% de 700K → SÍ avisa INMINENTE (no sobre-suprime)" \
+  || bad "aviso 1M-nativo: opus-4-8 a 680K NO avisó (sobre-supresión)"
+# Un modelo NO-nativo sin "[1m]" (sonnet-4-5) sigue en 200K: la lista por nombre NO lo promueve.
+m="$(ac3 'claude-sonnet-4-5' unset 150000)"
+{ printf '%s' "$m" | grep -q '184K'; } \
+  && ok "aviso 1M-nativo: sonnet-4-5 (NO nativo, sin [1m]) → sigue 200K (techo 184K)" \
+  || bad "aviso 1M-nativo: sonnet-4-5 se promovió a 1M por error; got: $m"
+
 # (b6c) ROBUSTEZ de runtime (bug 2026-07-28): la detección de ventana falla en runtime (settings a medio
 # escribir / timing / $HOME distinto) → cae al default chico de 200K → falso "🚨 INMINENTE". AUTO-CORRECCIÓN
 # por invariante FÍSICO: el contexto no cabe en una ventana MENOR que él mismo → si el ctx MEDIDO supera la
