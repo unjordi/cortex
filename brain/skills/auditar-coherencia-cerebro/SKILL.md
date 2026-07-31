@@ -137,9 +137,14 @@ dictamen durable los lista con su razón. Perseguir exóticos indefinidamente es
   de molestar".
 
 ## Familia
-Hermano de [[auditar-proceso-algoritmo]] (la METODOLOGÍA general; este es su modo-cerebro empaquetado),
-de [[diagramar]] (produce los flowcharts que son los zapatos), de [[orquestar-fanout]] (cómo lanzar el
-fan-out sin niñera) y de [[cerrar-slice]] (los hallazgos → backlog, el fix → MR con resumen curado).
+- **La DUPLA — va junto con [[auditar-suficiencia-operativa]] en todo cambio a doc/sistema.** Yo audito
+  CONSISTENCIA (¿se contradice/evade/miente?); ella OPERABILIDAD (¿alguien nuevo puede HACER las tareas sin
+  romper ni re-investigar?). **Lentes disjuntas — ninguna caza lo de la otra** → córrelas JUNTAS hasta converger
+  (0 CRÍTICO/ALTO/MEDIO, BAJOS triaged). El FMEA [[auditar-proceso-algoritmo]] es el TERCER eje (algoritmo/flujo),
+  se suma cuando lo hay.
+- Hermano de [[auditar-proceso-algoritmo]] (la METODOLOGÍA general; este es su modo-cerebro empaquetado),
+  de [[diagramar]] (produce los flowcharts que son los zapatos), de [[orquestar-fanout]] (cómo lanzar el
+  fan-out sin niñera) y de [[cerrar-slice]] (los hallazgos → backlog, el fix → MR con resumen curado).
 
 ## El prompt del auditor (battle-tested — destilado de las 9 rondas)
 Delega con `Task`/subagente `general-purpose`, uno por dimensión. Adapta el target, conserva la ESENCIA:
