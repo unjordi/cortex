@@ -1607,6 +1607,19 @@ m="$(ac3 'claude-sonnet-4-5' unset 150000)"
   && ok "aviso 1M-nativo: sonnet-4-5 (NO nativo, sin [1m]) → sigue 200K (techo 184K)" \
   || bad "aviso 1M-nativo: sonnet-4-5 se promovió a 1M por error; got: $m"
 
+# (b6b-justif) AUTO-JUSTIFY del mensaje (pedido de Jordi 2026-07-30 "los claudios luego no le creen"):
+# cada aviso cita la PROCEDENCIA del techo (ventana + pct + su FUENTE) para que un Claude nuevo no lo
+# confunda con el viejo bug 1M-vs-200K. También se clobbereó vía install-brain → este test lo blinda.
+m="$(ac3 'claude-opus-4-8' 70 680000)"   # 1M-nativo @ 70%, banda 3 → cita el override deliberado
+{ printf '%s' "$m" | grep -q 'CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70' && printf '%s' "$m" | grep -q 'DELIBERADO'; } \
+  && ok "aviso auto-justify: con override cita CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70 + 'DELIBERADO' (procedencia)" \
+  || bad "aviso auto-justify: el mensaje NO cita la procedencia del techo; got: $m"
+# Rama '(default)' de PROCEDENCIA (sin override de pct): 1M @ 92% → techo 920K; ctx 900K ≥ t3(874K) → banda 3.
+m="$(ac3 'claude-opus-4-8' unset 900000)"
+{ printf '%s' "$m" | grep -q '(default)' && printf '%s' "$m" | grep -q '📐'; } \
+  && ok "aviso auto-justify: sin override cita el techo '(default)' con 📐 (procedencia)" \
+  || bad "aviso auto-justify: rama default no cita procedencia; got: $m"
+
 # (b6c) ROBUSTEZ de runtime (bug 2026-07-28): la detección de ventana falla en runtime (settings a medio
 # escribir / timing / $HOME distinto) → cae al default chico de 200K → falso "🚨 INMINENTE". AUTO-CORRECCIÓN
 # por invariante FÍSICO: el contexto no cabe en una ventana MENOR que él mismo → si el ctx MEDIDO supera la

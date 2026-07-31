@@ -154,17 +154,31 @@ pct=$(( ctx * 100 / CEILING ))   # % RUMBO AL AUTO-COMPACT (no % de la ventana �
 ctxk=$(( ctx / 1000 ))
 ceilk=$(( CEILING / 1000 ))      # punto de auto-compact en K
 
+# Procedencia del techo → CADA aviso se AUTO-JUSTIFICA. Si el mensaje no dice DE DÓNDE sale el %, un
+# Claude nuevo lo lee como el bug 1M-vs-200K de antes y NO le cree (Jordi, 2026-07-30: "los claudios
+# luego no le creen"). Cita ventana detectada + pct + su FUENTE (override DELIBERADO vs default).
+if [ -n "${AVISO_CONTEXTO_CEILING_TOKENS:-}" ]; then
+  PROCEDENCIA="📐 Techo fijado a mano por AVISO_CONTEXTO_CEILING_TOKENS=${AVISO_CONTEXTO_CEILING_TOKENS}."
+else
+  wink=$(( ${WINDOW:-200000} / 1000 ))
+  if [ -n "${CLAUDE_AUTOCOMPACT_PCT_OVERRIDE:-}" ]; then
+    PROCEDENCIA="📐 Techo REAL ~${ceilk}K = ${PCT}% de la ventana ${wink}K, por CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=${PCT} (override DELIBERADO de Jordi, NO un bug — créele: el CLI auto-compacta a ese mismo %)."
+  else
+    PROCEDENCIA="📐 Techo REAL ~${ceilk}K = ${PCT}% (default) de la ventana ${wink}K detectada."
+  fi
+fi
+
 # ── Escalada de urgencia por BANDA ───────────────────────────────────────────────────────────────
 #   banda 1  → heads-up con holgura (aún hay margen; solo recuerda el orden checkpoint→compact).
 #   banda 2  → checkpoint AHORA + propón /compact proactivo (mensaje fuerte del orden obligatorio).
 #   banda ≥3 → INMINENTE: RE-checkpoint (aunque ya lo corriste — desde entonces pasó más trabajo y el
 #              hilo quedó atrás) + compacta YA. El hook no puede correr el skill, pero SÍ ordenarlo.
 if [ "$band" -ge 3 ]; then
-  msg="🚨 AUTO-COMPACT INMINENTE (~${ctxk}K tokens ≈ ${pct}% del punto de auto-compact ~${ceilk}K). Corre \`checkpoint\` DE NUEVO AHORA MISMO —SÍ, aunque YA lo hayas corrido en este tramo: desde entonces pasó más trabajo y el hilo volcado quedó atrás— y ENSEGUIDA compacta (propón /compact al usuario con holgura). Si el auto-compact —contexto lleno, SIN aviso— te gana antes, rehidratarás un hilo VIEJO. Orden inviolable: 1) \`checkpoint\` FRESCO → 2) /compact."
+  msg="🚨 AUTO-COMPACT INMINENTE (~${ctxk}K tokens ≈ ${pct}% del punto de auto-compact ~${ceilk}K). Corre \`checkpoint\` DE NUEVO AHORA MISMO —SÍ, aunque YA lo hayas corrido en este tramo: desde entonces pasó más trabajo y el hilo volcado quedó atrás— y ENSEGUIDA compacta (propón /compact al usuario con holgura). Si el auto-compact —contexto lleno, SIN aviso— te gana antes, rehidratarás un hilo VIEJO. Orden inviolable: 1) \`checkpoint\` FRESCO → 2) /compact. ${PROCEDENCIA}"
 elif [ "$band" -ge 2 ]; then
-  msg="⚠️ Contexto ALTO (~${ctxk}K tokens ≈ ${pct}% rumbo al auto-compact ~${ceilk}K). REGLA DURA DE ORDEN (no la saltes): ANTES de siquiera PROPONER o hacer un /compact, el skill \`checkpoint\` YA TIENE QUE HABER CORRIDO en este tramo (volcar el HILO a hilo-mental-actual.md, fresco y en la rama actual). Orden OBLIGATORIO: 1) corre \`checkpoint\` AHORA → 2) SOLO DESPUÉS propón un /compact PROACTIVO (con holgura, antes de que el auto-compact —SIN aviso— te gane). Proponer/ejecutar /compact SIN checkpoint fresco antes = perder el hilo reciente: es un ERROR. (Si YA corriste checkpoint en este tramo y sigue fresco, no lo repitas: procede.)"
+  msg="⚠️ Contexto ALTO (~${ctxk}K tokens ≈ ${pct}% rumbo al auto-compact ~${ceilk}K). REGLA DURA DE ORDEN (no la saltes): ANTES de siquiera PROPONER o hacer un /compact, el skill \`checkpoint\` YA TIENE QUE HABER CORRIDO en este tramo (volcar el HILO a hilo-mental-actual.md, fresco y en la rama actual). Orden OBLIGATORIO: 1) corre \`checkpoint\` AHORA → 2) SOLO DESPUÉS propón un /compact PROACTIVO (con holgura, antes de que el auto-compact —SIN aviso— te gane). Proponer/ejecutar /compact SIN checkpoint fresco antes = perder el hilo reciente: es un ERROR. (Si YA corriste checkpoint en este tramo y sigue fresco, no lo repitas: procede.) ${PROCEDENCIA}"
 else
-  msg="ℹ️ Contexto creciendo (~${ctxk}K tokens ≈ ${pct}% rumbo al auto-compact ~${ceilk}K). Heads-up (aún hay HOLGURA): cuando vayas a compactar, PRIMERO corre \`checkpoint\` (vuelca el HILO a hilo-mental-actual.md, fresco y en la rama actual) y SOLO DESPUÉS compacta. No compactes sin ese volcado. (El % es RUMBO AL AUTO-COMPACT, no % de tu ventana — por eso no cuadra con /context.)"
+  msg="ℹ️ Contexto creciendo (~${ctxk}K tokens ≈ ${pct}% rumbo al auto-compact ~${ceilk}K). Heads-up (aún hay HOLGURA): cuando vayas a compactar, PRIMERO corre \`checkpoint\` (vuelca el HILO a hilo-mental-actual.md, fresco y en la rama actual) y SOLO DESPUÉS compacta. No compactes sin ese volcado. (El % es RUMBO AL AUTO-COMPACT, no % de tu ventana — por eso no cuadra con /context.) ${PROCEDENCIA}"
 fi
 
 jq -n --arg c "$msg" '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$c}}'
