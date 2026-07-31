@@ -269,6 +269,14 @@ printf '%s' "$(gb "git -C '/single quote path/x' push origin main")" | grep -q '
 printf '%s' "$(gb 'git --git-dir="/a b/.git" push origin develop')" | grep -q '"deny"' && ok "gbg A-R5-01: '--git-dir=\"/a b/.git\" push develop' (=-form entrecomillado) → deny" || bad "gbg A-R5-01: --git-dir= entrecomillado se coló"
 printf '%s' "$(gb 'git -c a=b -C "/x y" --no-pager push origin develop')" | grep -q '"deny"' && ok "gbg A-R5-01: prefijos STACKED con valor entrecomillado → deny" || bad "gbg A-R5-01: stacking con valor entrecomillado se coló"
 is_silent "$(gb 'git -C "/Users/unjordi/Mi unidad/repo" push origin feat/x')" && ok "gbg A-R5-01: '-C \"…espacio…\" push feat/x' (ramita) → silencio (sin falso positivo)" || bad "gbg A-R5-01: bloqueó una ramita con -C entrecomillado"
+# A-R6-01 (FMEA ronda 6): la comilla puede ir EN MEDIO del valor (`git -c user.name="a b" push …` —
+# shell-válido, cotidiano). r5 cubrió la comilla al INICIO; el valor MIXTO key="val con espacio" volvía a
+# cortar en el espacio interno → evasión total. El valor se modela como SECUENCIA (char-no-comilla | run "…").
+printf '%s' "$(gb 'git -c user.name="a b" push origin develop')" | grep -q '"deny"' && ok "gbg A-R6-01: '-c user.name=\"a b\" push develop' (comilla EN MEDIO) → deny" || bad "gbg A-R6-01: comilla en medio del valor rompió la adyacencia (bypass)"
+printf '%s' "$(gb "git -c user.name='a b' push origin main")" | grep -q '"deny"' && ok "gbg A-R6-01: '-c user.name=\x27a b\x27 push main' (comilla simple en medio) → deny" || bad "gbg A-R6-01: comilla simple en medio se coló"
+printf '%s' "$(gb 'git -c core.editor="vim -c foo" push origin develop')" | grep -q '"deny"' && ok "gbg A-R6-01: '-c core.editor=\"vim -c foo\" push develop' (valor con espacio y -c adentro) → deny" || bad "gbg A-R6-01: valor con -c interno se coló"
+is_silent "$(gb 'git -c user.name="a b" push origin feat/x')" && ok "gbg A-R6-01: '-c user.name=\"a b\" push feat/x' (ramita) → silencio (sin falso positivo)" || bad "gbg A-R6-01: bloqueó una ramita con -c key entrecomillado"
+is_silent "$(gb 'git commit -m "un mensaje con -C /x y push origin develop adentro"')" && ok "gbg A-R6-01: commit con 'push origin develop' DENTRO del mensaje → silencio (H13, el -c/-C va tras el subcomando)" || bad "gbg A-R6-01: falso positivo, la mención en el mensaje disparó"
 rm -rf "$GBROOT"
 # A-R4-01 (pelón en BASE): parado EN develop, un push pelón con prefijo global debe DENY (el fallback por
 # rama actual se alcanza porque el subcomando SÍ se reconoce como push tras normalizar el prefijo).
@@ -601,6 +609,11 @@ printf 'v\naws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/g3.txt"
 printf '%s' "$(scanf 'git -C "/nospace" commit -am x')"  | grep -q '"deny"' && ok "secret-scan A-R5-02: 'git -C \"/nospace\" commit -am' (valor entrecomillado sin espacio) escanea → bloquea" || bad "secret-scan A-R5-02: valor entrecomillado cegó el escaneo (despoje antes de normalizar)"
 printf '%s' "$(scanf 'git -C "/a b/repo" commit -am x')" | grep -q '"deny"' && ok "secret-scan A-R5-02: 'git -C \"/a b/repo\" commit -am' (valor entrecomillado con espacio) escanea → bloquea" || bad "secret-scan A-R5-02: valor entrecomillado con espacio cegó el escaneo"
 printf '%s' "$(scanf 'git --work-tree="/a b" commit -am x')" | grep -q '"deny"' && ok "secret-scan A-R5-02: 'git --work-tree=\"/a b\" commit -am' (=-form entrecomillado) escanea → bloquea" || bad "secret-scan A-R5-02: --work-tree= entrecomillado cegó el escaneo"
+# A-R6-01 (FMEA r6): comilla EN MEDIO del valor de un global (`git -c user.name="a b" commit`) → mismo
+# mecanismo de evasión, mismo fix (valor como secuencia). Secreto en tracked que -a estagea.
+fmeareset; printf 'v\n' > "$FMEAREPO/g4.txt"; git -C "$FMEAREPO" add g4.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm g4 >/dev/null 2>&1
+printf 'v\naws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/g4.txt"
+printf '%s' "$(scanf 'git -c user.name="a b" commit -am x')" | grep -q '"deny"' && ok "secret-scan A-R6-01: 'git -c user.name=\"a b\" commit -am' (comilla en medio) escanea → bloquea" || bad "secret-scan A-R6-01: comilla en medio del valor cegó el escaneo"
 rm -rf "$FMEAREPO"
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -31,10 +31,16 @@ acg_sin_flag_repo() { printf '%s' "$1" | sed -E 's/(--repo|-R)[[:space:]=]+[^[:s
 #     (con espacios adentro) se consume como UNA unidad. IMPORTANTE: este normalizador corre sobre el RAW
 #     (comillas intactas) ANTES de cualquier despoje — un consumidor que primero despoje comillas debe
 #     invertir el orden (normalizar el raw, luego despojar) o el valor entrecomillado queda vacío.
+#   · A-R6-01 (FMEA r6): la comilla puede ir EN MEDIO del valor — `git -c user.name="a b" push …`
+#     (shell-válido, cotidiano). r5 cubrió la comilla al INICIO (`-C "/ruta"`) pero el valor MIXTO
+#     `key="val con espacio"` no es ni bare-completo ni quoted-completo → el `[^space]+` se cortaba en el
+#     espacio interno y volvía a romper la adyacencia → evasión TOTAL. El VALOR se modela como una SECUENCIA
+#     de (char que no es espacio ni comilla | run "…" | run '…'): `([^[:space:]"']|"[^"]*"|'[^']*')+` — así
+#     `user.name="a b"` = `user.name=` + `"a b"` casa entero, y las comillas donde sea dentro del token se respetan.
 # Solo casa opciones INMEDIATAMENTE tras `git` y se detiene en el 1er token NO-dash (el subcomando) → el
 # `-c` de `git commit -c <commit>` (tras el subcomando) NO se toca, y `git push -u …` (0 globales) queda intacto.
 acg_normaliza_git_prefijo() {
-  printf '%s' "$1" | sed -E "s/git[[:space:]]+((((-c|-C|--exec-path|--git-dir|--work-tree|--namespace|--attr-source|--config-env|--super-prefix)([[:space:]]+|=)(\"[^\"]*\"|'[^']*'|[^[:space:]]+))|(--?[a-zA-Z][a-zA-Z-]*(=(\"[^\"]*\"|'[^']*'|[^[:space:]]+))?))[[:space:]]+)+/git /g"
+  printf '%s' "$1" | sed -E "s/git[[:space:]]+((((-c|-C|--exec-path|--git-dir|--work-tree|--namespace|--attr-source|--config-env|--super-prefix)([[:space:]]+|=)([^[:space:]\"']|\"[^\"]*\"|'[^']*')+)|(--?[a-zA-Z][a-zA-Z-]*(=([^[:space:]\"']|\"[^\"]*\"|'[^']*')+)?))[[:space:]]+)+/git /g"
 }
 
 # Raíz y rama actual del repo del PROYECTO (CLAUDE_PROJECT_DIR), no del cwd del hook.
