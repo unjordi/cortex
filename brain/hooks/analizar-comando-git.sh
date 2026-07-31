@@ -64,23 +64,28 @@ acg_push_sin_refspec() {
 # develop/main. Opera sobre el cmd SIN comillas ni --repo. Cierra H1 (+ H11/H13). Requiere git para
 # el caso pelón; sin git cae a fail-open en ese caso (backstop = ramas protegidas server-side).
 acg_push_toca_base() {
-  local raw u pushseg
+  local raw sub subu subq
   raw=$(acg_normaliza_git_prefijo "$1")   # A-03: colapsa `git -c/-C …` para no romper la adyacencia git+push
-  u=$(acg_sin_flag_repo "$(acg_despoja_comillas "$raw")")
-  acg_es_push "$u" || return 1            # confirma un push REAL: una mención "git push" DENTRO de comillas
-                                          # (mensaje de commit, H13) NO sobrevive al despoje → no dispara aquí.
-  # A-01 + N-01 (FMEA): el destino de un push REAL puede venir ENTRECOMILLADO — `"develop"`, `"+develop"`,
-  # y la forma refspec con la base a la DERECHA del ':' (`"HEAD:develop"`, `"rama:main"`) — que despoja_comillas
-  # borró. DESQUOTAMOS el SEGMENTO del push (solo los CARACTERES de comilla, conservando el contenido) y
-  # corremos la detección normal de destino. El segmento `git push[^;&|]*` no cruza ; && || → nada de otro
-  # subcomando encadenado entra. (N-01 cerró el residuo del raw-check anterior, que anclaba la base a la comilla.)
-  pushseg=$(printf '%s' "$raw" | grep -oE 'git[[:space:]]+push[^;&|]*' | head -1 | tr -d "'\"")
-  acg_push_destino_base "$pushseg" && return 0
-  # A-02: --all/--mirror empujan TODAS las refs locales (incl develop/main) sin nombrarlas → toca base incondicional.
-  printf '%s' "$u" | grep -qE 'git[[:space:]]+push[^;&|]*[[:space:]](--all|--mirror)([[:space:]]|$)' && return 0
-  if acg_push_sin_refspec "$u"; then
-    case "$(acg_rama_actual)" in main|develop) return 0 ;; esac
-  fi
+  # A-R3-01 (FMEA r3): recorre CADA subcomando (separado por ; && || & |). Un push a base en CUALQUIERA
+  # cuenta — un `git push origin feat/x ; git push origin develop` ya no se cuela por el 2º (el head -1
+  # anterior solo miraba el 1º). Cada subcomando se evalúa AISLADO: un "git push …develop" DENTRO del
+  # mensaje de un commit entrecomillado NO cuenta (ese subcomando es el commit; su despoja borra el mensaje
+  # → es_push=no → se salta; preserva H13). En un subcomando que SÍ es push real evaluamos: A-02
+  # (--all/--mirror), destino ENTRECOMILLADO/refspec (A-01/N-01: desquotando ESE subcomando), y el
+  # pelón/HEAD por la rama actual.
+  while IFS= read -r sub; do
+    [ -n "$sub" ] || continue
+    subu=$(acg_sin_flag_repo "$(acg_despoja_comillas "$sub")")
+    acg_es_push "$subu" || continue
+    printf '%s' "$subu" | grep -qE 'git[[:space:]]+push[^;&|]*[[:space:]](--all|--mirror)([[:space:]]|$)' && return 0
+    subq=$(acg_sin_flag_repo "$(printf '%s' "$sub" | tr -d "'\"")")
+    acg_push_destino_base "$subq" && return 0
+    if acg_push_sin_refspec "$subu"; then
+      case "$(acg_rama_actual)" in main|develop) return 0 ;; esac
+    fi
+  done <<EOF
+$(printf '%s' "$raw" | awk '{gsub(/[;&|]/,"\n")}1')
+EOF
   return 1
 }
 

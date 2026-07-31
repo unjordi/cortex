@@ -245,6 +245,14 @@ is_silent "$(gb 'git push origin "feat/x"')"    && ok "gbg A-01: ramita entrecom
 printf '%s' "$(gb 'git push origin "HEAD:develop"')"     | grep -q '"deny"' && ok "gbg N-01: 'git push origin \"HEAD:develop\"' → deny" || bad "gbg N-01: refspec entrecomillado HEAD:develop se coló"
 printf '%s' "$(gb 'git push origin "mybranch:main"')"    | grep -q '"deny"' && ok "gbg N-01: 'git push origin \"mybranch:main\"' → deny" || bad "gbg N-01: refspec entrecomillado rama:main se coló"
 is_silent "$(gb 'git push origin "HEAD:feat/x"')"        && ok "gbg N-01: refspec entrecomillado a ramita → silencio (sin falso positivo)" || bad "gbg N-01: bloqueó un refspec a ramita"
+# A-R3-01 (FMEA ronda 3): un push a base ENCADENADO como 2º (o Nº) subcomando. El reescrito de N-01 usaba
+# `head -1` → solo miraba el PRIMER `git push …` → un `git push feat/x ; git push develop` se colaba por el 2º.
+# acg_push_toca_base ahora recorre CADA subcomando (awk gsub [;&|]→\n): cualquiera que toque base BLOQUEA.
+printf '%s' "$(gb 'git push origin feat/x ; git push origin develop')" | grep -q '"deny"' && ok "gbg A-R3-01: push a base ENCADENADO (2º subcomando ';') → deny" || bad "gbg A-R3-01: el push a develop encadenado se coló (head -1)"
+printf '%s' "$(gb 'git push origin feat/x && git push origin main')"   | grep -q '"deny"' && ok "gbg A-R3-01: push a base encadenado ('&&', a main) → deny" || bad "gbg A-R3-01: el push a main encadenado se coló"
+# Y el contraveneno: un push REAL a ramita seguido de un commit cuyo MENSAJE menciona "git push a develop"
+# NO dispara — ese subcomando es el commit, su despoja borra el mensaje → es_push=no → se salta (H13 por-subcomando).
+is_silent "$(gb 'git push origin feat/x && git commit -m "doc: recordar no hacer git push a develop"')" && ok "gbg A-R3-01: push a ramita + commit con 'git push a develop' en el mensaje → silencio (H13)" || bad "gbg A-R3-01: la mención en el mensaje del commit encadenado disparó (falso positivo)"
 rm -rf "$GBROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────

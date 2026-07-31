@@ -25,7 +25,7 @@ Mnemónico: **rojo relleno = acción rechazada (bien); gris punteado = hueco (ma
 
 ## 3. LA LEYENDA DE CADA CHART = EL ÁRBOL COMPLETO DEL README (íntegro, en TODOS los flowcharts)
 La leyenda que va incrustada en **CADA** flowchart es el **árbol COMPLETO del cerebro** tal como vive en
-`README.md` (líneas ~79-136): las **4 familias con TODAS sus piezas** y el emoji CANÓNICO de cada una —
+`README.md` (el bloque cercado que arranca en «🔒 Hooks Forzosos»): las **4 familias con TODAS sus piezas** y el emoji CANÓNICO de cada una —
 NO una selección, NO una clave compacta de colores. Cada chart lo lleva **íntegro**, para que se lea solo
 sin abrir el README. **Fuente única = el README** (para no driftear, doc=realidad): el bloque de leyenda de
 cada `.dot` se **GENERA desde el árbol del README** (un helper lo lee y emite el subgrafo — no se teclea a

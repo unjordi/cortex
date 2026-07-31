@@ -98,7 +98,7 @@ digraph flujos {
     // ── Ruta B: POR-REPO (clon / repo consumidor) ──
     RTIPO    [shape=diamond, fillcolor="#2b2622", color="#d97757", label="POR-REPO:\n¿repo nuevo o existente?"];
     CLON     [color="#7fb069",
-              label="🟢  repo NUEVO desde la plantilla\nel clon TRAE .claude/ (hooks+settings+skills+memoria) por git — el tooling VIAJA\nen el repo. secret-scan es tier `both` (:26 MANIFEST) → viaja por-repo y YA está\ncableado (el viejo 🔴 «clon+bootstrap no da secret-scan» está RESUELTO)"];
+              label="🟢  repo NUEVO desde la plantilla\nel clon TRAE .claude/ (hooks+settings+skills+memoria) por git — el tooling VIAJA\nen el repo. secret-scan es tier `both` (declarado en el MANIFEST) → viaja por-repo y YA está\ncableado (el viejo 🔴 «clon+bootstrap no da secret-scan» está RESUELTO)"];
     APLICA   [color="#e08e45",
               label="🟠  repo EXISTENTE: sembrar .claude/ sigue siendo MANUAL (no scriptado).\naplicar-plantilla-a-proyecto NO copia .claude/ — es un playbook de UI/arquitectura\nque ASUME el cerebro ya presente (hueco moderado, aún vigente)"];
     BOOT     [color="#e08e45",
