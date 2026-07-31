@@ -1263,7 +1263,7 @@ struct PopoverView: View {
         }
         if BrainState.knownRepoHooks.contains(name) { return .repoScoped }
         switch name {
-        case "cerrar-slice", "checkpoint", "diagramar", "orquestar-fanout", "turno-nocturno",
+        case "cerrar-slice", "checkpoint", "diagramar", "auditar-proceso-algoritmo", "auditar-coherencia-cerebro", "auditar-suficiencia-operativa", "desinflar-memorias", "orquestar-fanout", "turno-nocturno",
              "cosechar-sesion", "unificar-cerebro":
             return st.skills.contains(name) ? .installed : .absent
         case "Definition of Done", "Doc <= realidad", "Flujo de git", "Costo de delegación":
@@ -1346,6 +1346,9 @@ struct PopoverView: View {
                     BrainItem("🌳", "proteger-arbol", "git destructivo que orfanaría commits sin pushear → aviso (no bloquea)",
                               "PreToolUse · Bash",
                               "Antes de un git destructivo (reset --hard, rebase, checkout -f, branch -D) que podría orfanar commits sin pushear en el árbol de trabajo, avisa —no bloquea. Antídoto a un caso real: un agente de fan-out reseteó HEAD en el árbol compartido y dejó huérfano un commit del orquestador."),
+                    BrainItem("🧬", "proteger-fuente-cerebro", "editas la copia INSTALADA del cerebro (regenerable) → aviso",
+                              "PreToolUse · Edit/Write/MultiEdit",
+                              "Al editar una skill/hook bajo ~/.claude/skills|hooks que TIENE fuente en el clon canónico (brain/skills|hooks), avisa —no bloquea— que esa copia es REGENERABLE: el próximo install-brain la sobrescribe y la edición muere sin rastro. Redirige a editar la FUENTE y propagar con install-brain/sincronizar. Si no hay fuente (skill/hook puramente local), calla. Corre verificar-cerebro para el drift completo instalada-vs-fuente."),
                 ]),
             BrainTier(
                 emoji: "📜", title: "Normas", color: Color(hex: "#4a90d9"),
@@ -1377,9 +1380,21 @@ struct PopoverView: View {
                     BrainItem("📐", "diagramar", "diagrama según su DESTINO: yEd editable (.dot→graphml) o Mermaid versionado",
                               "skill · opt-in",
                               "Produce un diagrama eligiendo el flujo según su destino: para EDITAR a mano, modela en .dot (Graphviz) → .graphml de yEd; para VERSE en GitHub/docs, Mermaid en un .md versionado. Regla dura: un diagrama entregable nunca queda solo como artefacto local gitignorado ni widget efímero del chat."),
+                    BrainItem("🔬", "auditar-proceso-algoritmo", "auditor experto READ-ONLY: proceso industrial + algoritmo → hallazgos priorizados",
+                              "skill · opt-in",
+                              "Manda un agente-auditor experto (procesos industriales/logísticos + análisis de algoritmos) a revisar a fondo un flujo de negocio o el propio cerebro, y entregar hallazgos priorizados SIN tocar nada. Aliméntalo con los flowcharts del proceso (skill diagramar, 'los zapatos') + la investigación de dominio + datos de estrés. Hermano de diagramar: primero el mapa, luego el auditor."),
+                    BrainItem("🩺", "auditar-coherencia-cerebro", "fan-out READ-ONLY sobre el propio cerebro: evasiones/huecos/drift → loop hasta converger",
+                              "skill · opt-in",
+                              "Lanza un fan-out de auditores READ-ONLY sobre la COHERENCIA del propio cerebro (guards+flowcharts+doc): ¿se evade un guard? ¿un flowchart miente vs el código? ¿doc desincronizada? Cada guard se audita POR EJECUCIÓN en un sandbox (no solo lectura). Con OK, itera fix→re-auditar (cada hallazgo con su test) hasta CONVERGER. Es el modo-cerebro de auditar-proceso-algoritmo, empaquetado."),
                     BrainItem("🐝", "orquestar-fanout", "fan-out de agentes sin niñera (estado en 2 archivos + contrato de reporte)",
                               "skill · opt-in",
                               "Orquestar trabajo paralelizable en varios agentes SIN niñera: asigna ítems autocontenidos del backlog y, al terminar cada agente, su avance queda registrado (bitácora) y su worktree limpio automáticamente. Modelo de estado sin redundancia: estado-proyecto = backlog vivo, bitácora = pasado append-only."),
+                    BrainItem("🧪", "auditar-suficiencia-operativa", "¿ALCANZA la doc para HACER el trabajo? tareas reales ✅/⚠️/❌ + re-auditar tras arreglar",
+                              "skill · opt-in",
+                              "Audita una doc/cerebro por SUFICIENCIA OPERATIVA, no por coherencia: enumera las tareas reales que alguien tendrá que hacer y las califica ✅/⚠️/❌ con archivo:línea. Exige RE-AUDITAR con el prompt idéntico tras arreglar los hallazgos, porque los arreglos introducen contradicciones nuevas."),
+                    BrainItem("🪶", "desinflar-memorias", "adelgaza memorias sin perder lecciones: narrativa → 1 línea, mitos → ⚰️ Lápidas al final",
+                              "skill · opt-in",
+                              "Desinfla un árbol de memorias inflado de narrativa, tutoriales y conocimiento ya desmentido SIN perder ninguna lección: cada tirada de historia se colapsa a su lección en 1-2 líneas EN SU LUGAR, y los mitos descartados se comprimen a una línea y se mudan a una sección ⚰️ Lápidas AL FINAL del archivo (si los borras, el siguiente agente los re-descubre). No toca la bitácora ni el hilo: son append-only por diseño."),
                     BrainItem("🌙", "turno-nocturno", "Claude trabaja solo de noche: contrato medible, decide-o-parquea, checkpoint c/2h",
                               "skill · opt-in",
                               "Protocolo para dejar a Claude trabajando SOLO de noche: eco del contrato antes de empezar (alcance, criterio de cierre MEDIBLE, lo intocable, dónde queda visible el resultado), preflight de herramientas/quota, regla de decisión (dentro del alcance decide y sigue; fuera, parquea y brinca), autorización durable a disco y checkpoint cada ~2h."),

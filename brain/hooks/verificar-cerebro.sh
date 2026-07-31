@@ -16,9 +16,10 @@ QUIET=0
 [ "${1:-}" = "--quiet" ] && QUIET=1
 
 fail=0
-say()  { [ "$QUIET" = 1 ] || printf '%s\n' "$1"; }
-okln() { [ "$QUIET" = 1 ] || printf '  \xe2\x9c\x93 %s\n' "$1"; }
-badln(){ fail=1; printf '  \xe2\x9c\x97 %s\n' "$1"; }   # las FALLAS siempre se imprimen (aun en --quiet)
+say()   { [ "$QUIET" = 1 ] || printf '%s\n' "$1"; }
+okln()  { [ "$QUIET" = 1 ] || printf '  \xe2\x9c\x93 %s\n' "$1"; }
+badln() { fail=1; printf '  \xe2\x9c\x97 %s\n' "$1"; }   # las FALLAS siempre se imprimen (aun en --quiet)
+warnln(){ [ "$QUIET" = 1 ] || printf '  \xe2\x9a\xa0 %s\n' "$1"; }  # avisos (drift): NO tumban el exit (diagnóstico)
 
 HOOKS_DIR="$HOME/.claude/hooks"
 GSET="$HOME/.claude/settings.json"
@@ -64,6 +65,40 @@ if [ -f "$MANIFEST" ]; then
   [ "$faltan_sh" = 0 ]   && okln "los $total hooks {global,both} del MANIFEST están instalados en $HOOKS_DIR"
   { [ "$faltan_wire" = 0 ] && [ -f "$GSET" ]; } && okln "los $total hooks {global,both} están cableados en settings.json"
 fi
+
+# (4b) DRIFT instalada-vs-fuente: reglas escritas DIRECTO en la copia INSTALADA (~/.claude/skills|hooks)
+# que NO llegaron a la FUENTE (clon canónico brain/skills|hooks) MUEREN en el próximo install-brain (las
+# sobrescribe). Lista los archivos donde la INSTALADA difiere de su FUENTE (posible edit-en-vivo sin
+# portar). Read-only/diagnóstico: NO borra nada y NO tumba el exit (usa warnln, no badln) — la señal
+# LOUD en tiempo real es el guard proteger-fuente-cerebro; esto es el resumen a-demanda.
+BRAIN_HOOKS="$BRAIN_DIR/brain/hooks"
+BRAIN_SKILLS="$BRAIN_DIR/brain/skills"
+SKILLS_DIR="$HOME/.claude/skills"
+drift_scan() {  # $1=label  $2=dir-INSTALADA  $3=dir-FUENTE
+  local label="$1" idir="$2" sdir="$3" inst rel src n=0
+  [ -d "$idir" ] || return 0
+  [ -d "$sdir" ] || { say "  · $label: no hay fuente en $sdir (¿bootstrap? ¿CLAUDE_BRAIN_DIR?) — omito drift"; return 0; }
+  while IFS= read -r inst; do
+    [ -z "$inst" ] && continue
+    rel="${inst#"$idir"/}"
+    src="$sdir/$rel"
+    [ -f "$src" ] || continue           # sin contraparte en la fuente → skill/hook puramente local → no es este drift
+    if ! cmp -s "$inst" "$src"; then
+      n=$((n+1))
+      if [ "$inst" -nt "$src" ]; then
+        warnln "drift instalada≠fuente ($label): $rel — la INSTALADA es MÁS NUEVA → pórtala a la fuente: $src"
+      else
+        warnln "drift instalada≠fuente ($label): $rel — difiere de la fuente $src (revisa la dirección antes de portar)"
+      fi
+    fi
+  done < <(find "$idir" -type f 2>/dev/null)
+  [ "$n" = 0 ] && okln "sin drift instalada-vs-fuente en $label"
+  [ "$n" -gt 0 ] && say "  · $label: $n archivo(s) con drift — edita la FUENTE y re-corre install-brain/sincronizar (no la copia instalada)"
+}
+say ""
+say "🔎 Drift instalada-vs-fuente (edits en vivo que el próximo install-brain borraría):"
+drift_scan hooks  "$HOOKS_DIR"  "$BRAIN_HOOKS"
+drift_scan skills "$SKILLS_DIR" "$BRAIN_SKILLS"
 
 # (5) contexto de repo (si se corre DENTRO de uno): .claude/memory para los hooks que lo necesitan.
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"

@@ -75,7 +75,10 @@ if ($installedSomething) {
 $ref = $env:CLAUDE_BRAIN_REF
 if (Test-Path "$dir\.git") {
   Say "actualizando $dir"; git -C $dir fetch -q origin
-  if ($ref) { git -C $dir checkout -B $ref "origin/$ref" } else { git -C $dir pull --ff-only }
+  # Sin REF: alinear SIEMPRE a main con `checkout -B main origin/main`, NO tirando de la rama actual.
+  # Igual que bootstrap.sh:69: un clon que quedo en una rama vieja/borrada (leftover de dev) rompia el
+  # fast-forward porque su upstream ya no existe en el remoto. Paridad Mac/Linux <-> Windows.
+  if ($ref) { git -C $dir checkout -B $ref "origin/$ref" } else { git -C $dir checkout -B main origin/main }
 } else {
   Say "clonando en $dir"; git clone $repo $dir
   if ($ref) { git -C $dir fetch -q origin; git -C $dir checkout -B $ref "origin/$ref" }
@@ -94,6 +97,15 @@ if ([Environment]::GetEnvironmentVariable('CLAUDE_BRAIN_DIR', 'User') -ne $dirBa
   Say "CLAUDE_BRAIN_DIR = $dirBash (los hooks bash ya hallan la fuente del cerebro)"
 }
 $env:CLAUDE_BRAIN_DIR = $dirBash   # y para ESTA sesion (install-brain.ps1 / hooks que corran ya)
+
+# -- Puente HOME <-> USERPROFILE (solo Windows) --------------------------------
+# El instalador BASH cabla el cerebro en $HOME/.claude (install-brain.sh:36), pero el WIDGET
+# (BrainInspector.cs/.swift) lo LEE desde %USERPROFILE%\.claude. En Windows el $HOME que ve Git Bash
+# puede DIVERGIR de %USERPROFILE% (p.ej. HOME apuntando a un HOMESHARE de dominio) -> el cerebro se
+# instalaria en un ~/.claude que el widget NO mira. Forzamos HOME=%USERPROFILE% para el proceso: el
+# bash hijo (install.ps1 -> install-brain.ps1 -> install-brain.sh) hereda este entorno, asi ambos
+# apuntan al MISMO .claude. Es .ps1 -> solo corre en Windows; no toca Mac/Linux.
+if ($env:USERPROFILE) { $env:HOME = $env:USERPROFILE }
 
 # -- (3) Instalar cerebro (hooks, via Git Bash + jq) + widget de bandeja (.NET) -
 # install.ps1 es el ONE-STOP (cerebro + widget), igual que install.sh en Mac/Linux -> un solo llamado,

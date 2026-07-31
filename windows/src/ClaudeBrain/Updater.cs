@@ -75,16 +75,37 @@ internal sealed class Updater
             var root = doc.RootElement;
             LocalShort = root.TryGetProperty("sha", out var sha) ? sha.GetString() ?? "?" : "?";
             LocalVersion = root.TryGetProperty("version", out var ver) ? ver.GetString() : null;
-            _repoPath = root.TryGetProperty("repo", out var repo) ? repo.GetString() ?? "" : "";
+            string embedded = root.TryGetProperty("repo", out var repo) ? repo.GetString() ?? "" : "";
+            // La ruta EMBEBIDA (version.json.repo) es la del BUILD; en un exe precompilado en CI es la
+            // del runner, que NO existe en la maquina del usuario. Resolvemos el clon LOCAL con la misma
+            // cadena de fallback que macos/Updater.swift (resolveClonePath). Sin esto, un exe de release
+            // dejaba CanSelfUpdate=false y el fallback git-based no arrancaba.
+            _repoPath = ResolveClonePath(embedded);
             if (root.TryGetProperty("date", out var d)
                 && DateTimeOffset.TryParse(d.GetString(), CultureInfo.InvariantCulture,
                     DateTimeStyles.RoundtripKind, out var dt))
                 _localDate = dt.UtcDateTime;
-            // Podemos auto-actualizar si el clon existe y trae el reinstalador de Windows.
-            CanSelfUpdate = _repoPath.Length > 0
-                && File.Exists(Path.Combine(_repoPath, "windows", "install.ps1"));
+            // Podemos auto-actualizar (git-based) si resolvimos un clon con el reinstalador de Windows.
+            CanSelfUpdate = _repoPath.Length > 0;
         }
         catch { /* fail-open */ }
+    }
+
+    /// Clon local para auto-actualizar (git-based). Espeja resolveClonePath de macos/Updater.swift:
+    /// prefiere el EMBEBIDO si existe aqui (build local), luego $CLAUDE_BRAIN_DIR, luego el clon oculto
+    /// que siembra bootstrap.ps1 (%LOCALAPPDATA%\claude-brain-repo). Devuelve "" si ninguno trae
+    /// windows\install.ps1 -> sin auto-update git-based (el banner invita a hacerlo a mano; la ruta de
+    /// DESCARGA del release no necesita clon). CLAUDE_BRAIN_DIR puede venir en forward-slash (asi lo
+    /// exporta bootstrap.ps1 para bash) — Path.Combine/File.Exists lo manejan igual en Windows.
+    private static string ResolveClonePath(string embedded)
+    {
+        string env = Environment.GetEnvironmentVariable("CLAUDE_BRAIN_DIR") ?? "";
+        string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        string localRepo = local.Length > 0 ? Path.Combine(local, "claude-brain-repo") : "";
+        foreach (var c in new[] { embedded, env, localRepo })
+            if (c.Length > 0 && File.Exists(Path.Combine(c, "windows", "install.ps1")))
+                return c;
+        return "";
     }
 
     /// Chequea GitHub como mucho 1×/15 min (evita el rate-limit anónimo). Fire-and-forget desde la

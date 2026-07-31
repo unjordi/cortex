@@ -77,10 +77,16 @@ rm -rf "$OLD_CACHE" "$OLD_CONFIG"
 # Lo aplica también a ESTE proceso para que los pasos siguientes vean lo recién instalado.
 ensure_path_local_bin() {
   local marker="# claude-brain: ~/.local/bin en el PATH (claude, claude-brain-fetch)"
+  local old_marker="# claude-brain: ~/.local/bin en el PATH (claude, claude-quota-fetch)"  # era pre-rebrand
   local block
   printf -v block '\n%s\ncase ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac\n' "$marker"
   local f
   for f in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile"; do
+    # rebrand cleanup: barre el bloque PATH viejo de la era 'claude-quota' (marcador + su línea 'case' siguiente),
+    # que la migración claude-quota→claude-brain no limpiaba → dejaba un bloque PATH duplicado (inofensivo) al actualizar.
+    if [[ -e "$f" ]] && grep -qF "$old_marker" "$f" 2>/dev/null; then
+      awk -v m="$old_marker" 'skip { skip=0; next } index($0,m) { skip=1; next } { print }' "$f" > "$f.cbtmp" && mv "$f.cbtmp" "$f"
+    fi
     if [[ -e "$f" ]] && grep -qF "$marker" "$f" 2>/dev/null; then continue; fi
     printf '%s' "$block" >> "$f"
   done

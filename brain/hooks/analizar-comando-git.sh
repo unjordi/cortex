@@ -12,16 +12,64 @@ acg_despoja_comillas() { printf '%s' "$1" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g";
 # /develop|/main NO genere un falso positivo de destino. (H11.)
 acg_sin_flag_repo() { printf '%s' "$1" | sed -E 's/(--repo|-R)[[:space:]=]+[^[:space:]]+//g'; }
 
+# Colapsa el PREFIJO de opciones globales de git entre `git` y su subcomando → `git --no-pager push …`,
+# `git -c http.sslVerify=false push …`, `git --work-tree=/tmp push …` se normalizan a `git push …`. Sin
+# esto, la adyacencia `git+push`/`git+commit` que exigen las detecciones se rompía y el comando evadía
+# tanto los git-guards como el escaneo de secretos.
+#   · A-03 (FMEA r1): cubrió `-c`/`-C`.
+#   · A-R4-01/02 (FMEA r4): git acepta MUCHAS más globales (`--no-pager`, `-p`/`-P`, `--work-tree`,
+#     `--git-dir`, `--namespace`, `--exec-path`, `--no-replace-objects`, `--literal-pathspecs`, …) → cada
+#     una rompía la adyacencia y evadía TODO el guard de flujo (crítico) y el escaneo de secretos. Se generaliza a la CLASE,
+#     no a la enumeración: (a) el set que consume un VALOR por espacio o `=` (debe ir 1º en la alternación
+#     para comerse ese valor) y (b) CUALQUIER otro token dash-led (flag booleano o `--x=val`), así una
+#     global NUEVA de git ya no reabre el hueco. `(…)+` en ERE lo soportan GNU y BSD sed; POSIX
+#     leftmost-longest hace que (a) gane sobre (b) cuando puede comerse el valor.
+#   · A-R5-01 (FMEA r5): el VALOR de un value-eater puede ir ENTRECOMILLADO con ESPACIOS —
+#     `git -C "/Users/unjordi/Mi unidad/repo" push origin develop` (realista: rutas de Google Drive en
+#     esta máquina). El `[^[:space:]]+` se cortaba en el 1er espacio → dejaba `Mi unidad/repo" push…`
+#     colgando y rompía la adyacencia → evasión TOTAL. El valor se hace QUOTE-AWARE: `"..."` / `'...'`
+#     (con espacios adentro) se consume como UNA unidad. IMPORTANTE: este normalizador corre sobre el RAW
+#     (comillas intactas) ANTES de cualquier despoje — un consumidor que primero despoje comillas debe
+#     invertir el orden (normalizar el raw, luego despojar) o el valor entrecomillado queda vacío.
+#   · A-R6-01 (FMEA r6): la comilla puede ir EN MEDIO del valor — `git -c user.name="a b" push …`
+#     (shell-válido, cotidiano). r5 cubrió la comilla al INICIO (`-C "/ruta"`) pero el valor MIXTO
+#     `key="val con espacio"` no es ni bare-completo ni quoted-completo → el `[^space]+` se cortaba en el
+#     espacio interno y volvía a romper la adyacencia → evasión TOTAL. El VALOR se modela como una SECUENCIA
+#     de (char que no es espacio ni comilla | run "…" | run '…'): `([^[:space:]"']|"[^"]*"|'[^']*')+` — así
+#     `user.name="a b"` = `user.name=` + `"a b"` casa entero, y las comillas donde sea dentro del token se respetan.
+#   · A-R7-01 (FMEA r7): el espacio del valor puede ir ESCAPADO CON BACKSLASH en vez de entrecomillado
+#     (`git -c a=b\ c push …` — el shell lo tokeniza como `-c "a=b c"`). El `\` se trataba como char normal
+#     y la secuencia se cortaba en el espacio real → misma evasión. Se añade `\\.` (backslash+cualquier char)
+#     como alternativa de la secuencia → el par escapado se consume como parte del valor.
+# Solo casa opciones INMEDIATAMENTE tras `git` y se detiene en el 1er token NO-dash (el subcomando) → el
+# `-c` de `git commit -c <commit>` (tras el subcomando) NO se toca, y `git push -u …` (0 globales) queda intacto.
+#   · B4 (FMEA r8): en Windows el binario es `git.exe`; `git.exe push origin develop` rompía el `git`+espacio
+#     que exigen TODOS los detectores → evasión total en un OS que la plantilla soporta (Git Bash). 1er sed:
+#     colapsa `git.exe`→`git` en posición de ejecutable (inicio / tras separador) antes de todo lo demás.
+acg_normaliza_git_prefijo() {
+  printf '%s' "$1" \
+    | sed -E 's/(^|[^[:alnum:]._-])git\.exe([[:space:]])/\1git\2/g' \
+    | sed -E "s/git[[:space:]]+((((-c|-C|--exec-path|--git-dir|--work-tree|--namespace|--attr-source|--config-env|--super-prefix)([[:space:]]+|=)([^[:space:]\"']|\"[^\"]*\"|'[^']*'|\\\\.)+)|(--?[a-zA-Z][a-zA-Z-]*(=([^[:space:]\"']|\"[^\"]*\"|'[^']*'|\\\\.)+)?))[[:space:]]+)+/git /g"
+}
+
 # Raíz y rama actual del repo del PROYECTO (CLAUDE_PROJECT_DIR), no del cwd del hook.
 acg_rama_actual() { git -C "${CLAUDE_PROJECT_DIR:-.}" rev-parse --abbrev-ref HEAD 2>/dev/null; }
 
 # ¿el comando contiene un `git push`?
 acg_es_push() { printf '%s' "$1" | grep -qE 'git[[:space:]]+push([[:space:]]|$)'; }
 
+# Extrae el MR-id del comando: el 1er entero "suelto" (opcional #) tras `mr merge`/`pr merge`, TOLERANTE a
+# flags intermedios (`glab mr merge --yes 9` → 9). Antes se exigía el id ADYACENTE al subcomando (A-04, FMEA).
+acg_mrid() {
+  printf '%s' "$1" | sed -E 's/.*(mr[[:space:]]+(merge|accept)|pr[[:space:]]+merge)[[:space:]]+//' | tr ' ' '\n' | grep -m1 -E '^#?[0-9]+$' | tr -d '#'
+}
+
 # ¿nombra develop/main como DESTINO explícito del push, en el MISMO segmento (no cruza ; && ||),
-# precedido por espacio/:/'/' (no matchea feat/develop-x)?
+# precedido por espacio/:/'/'/'+' (no matchea feat/develop-x)? El '+' cubre el FORCE-REFSPEC
+# (`git push origin +develop`, `git push -f origin +develop`) — el push FORZADO a base, el más
+# peligroso, que sin el '+' en el set de separadores se colaba (A2, FMEA 2026-07-30).
 acg_push_destino_base() {
-  printf '%s' "$1" | grep -qE 'git[[:space:]]+push[^;&|]*[[:space:]:/](main|develop)([[:space:]]|$)'
+  printf '%s' "$1" | grep -qE 'git[[:space:]]+push[^;&|]*[[:space:]:/+](main|develop)([[:space:]]|$)'
 }
 
 # ¿el push va SIN un refspec de rama explícito? (pelón, o solo remoto, o `HEAD` → empuja la RAMA
@@ -46,12 +94,28 @@ acg_push_sin_refspec() {
 # develop/main. Opera sobre el cmd SIN comillas ni --repo. Cierra H1 (+ H11/H13). Requiere git para
 # el caso pelón; sin git cae a fail-open en ese caso (backstop = ramas protegidas server-side).
 acg_push_toca_base() {
-  local u; u=$(acg_sin_flag_repo "$(acg_despoja_comillas "$1")")
-  acg_es_push "$u" || return 1
-  acg_push_destino_base "$u" && return 0
-  if acg_push_sin_refspec "$u"; then
-    case "$(acg_rama_actual)" in main|develop) return 0 ;; esac
-  fi
+  local raw sub subu subq
+  raw=$(acg_normaliza_git_prefijo "$1")   # A-03: colapsa `git -c/-C …` para no romper la adyacencia git+push
+  # A-R3-01 (FMEA r3): recorre CADA subcomando (separado por ; && || & |). Un push a base en CUALQUIERA
+  # cuenta — un `git push origin feat/x ; git push origin develop` ya no se cuela por el 2º (el head -1
+  # anterior solo miraba el 1º). Cada subcomando se evalúa AISLADO: un "git push …develop" DENTRO del
+  # mensaje de un commit entrecomillado NO cuenta (ese subcomando es el commit; su despoja borra el mensaje
+  # → es_push=no → se salta; preserva H13). En un subcomando que SÍ es push real evaluamos: A-02
+  # (--all/--mirror), destino ENTRECOMILLADO/refspec (A-01/N-01: desquotando ESE subcomando), y el
+  # pelón/HEAD por la rama actual.
+  while IFS= read -r sub; do
+    [ -n "$sub" ] || continue
+    subu=$(acg_sin_flag_repo "$(acg_despoja_comillas "$sub")")
+    acg_es_push "$subu" || continue
+    printf '%s' "$subu" | grep -qE 'git[[:space:]]+push[^;&|]*[[:space:]](--all|--mirror)([[:space:]]|$)' && return 0
+    subq=$(acg_sin_flag_repo "$(printf '%s' "$sub" | tr -d "'\"")")
+    acg_push_destino_base "$subq" && return 0
+    if acg_push_sin_refspec "$subu"; then
+      case "$(acg_rama_actual)" in main|develop) return 0 ;; esac
+    fi
+  done <<EOF
+$(printf '%s' "$raw" | awk '{gsub(/[;&|]/,"\n")}1')
+EOF
   return 1
 }
 
@@ -71,7 +135,9 @@ acg_merge_menciona_base() {
 # comillas ni --repo (H11/H13). Un `git merge` LOCAL no matchea → sigue libre.
 acg_es_merge_mr() {
   local u; u=$(acg_sin_flag_repo "$(acg_despoja_comillas "$1")")
-  printf '%s' "$u" | grep -qE '(glab[[:space:]]+mr[[:space:]]+(merge|accept)|gh[[:space:]]+pr[[:space:]]+merge)([[:space:]]|$)' || return 1
+  # `(\.exe)?`: en Windows el binario es `glab.exe`/`gh.exe` — sin esto el `.exe` rompía el
+  # `glab`/`gh`+espacio y ambos guards de merge (squash + confirmar-merge) quedaban ciegos (H-R9-01, hermano de B4).
+  printf '%s' "$u" | grep -qE '(glab(\.exe)?[[:space:]]+mr[[:space:]]+(merge|accept)|gh(\.exe)?[[:space:]]+pr[[:space:]]+merge)([[:space:]]|$)' || return 1
   printf '%s' "$u" | grep -qE '(^|[[:space:]])(--help|-h|--dry-run)([[:space:]]|$)' && return 1
   return 0
 }
@@ -110,10 +176,10 @@ acg_destino_de_mr() {
   command -v jq >/dev/null 2>&1 || return 0
   local raw="$1" u tool repo mrid key cache dest
   u=$(acg_despoja_comillas "$raw")
-  if printf '%s' "$u" | grep -qE 'glab[[:space:]]+mr'; then tool=glab; else tool=gh; fi
+  if printf '%s' "$u" | grep -qE 'glab(\.exe)?[[:space:]]+mr'; then tool=glab; else tool=gh; fi  # (\.exe)?: binario Windows (H-R9-01)
   repo=$(printf '%s' "$raw" | grep -oE '(--repo|-R)[[:space:]=]+[^[:space:]]+' | grep -oE '[^[:space:]=]+$')
   [ -z "$repo" ] && repo=$(git -C "${CLAUDE_PROJECT_DIR:-.}" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|https?://[^/]+/)##; s#\.git$##')
-  mrid=$(printf '%s' "$u" | grep -oE '(mr[[:space:]]+(merge|accept)|pr[[:space:]]+merge)[[:space:]]+#?[0-9]+' | grep -oE '[0-9]+$')
+  mrid=$(acg_mrid "$u")
   [ -n "$mrid" ] || return 0
   key=$(printf '%s' "${repo}|${tool}|${mrid}" | sed 's/[^A-Za-z0-9]/_/g')
   cache="${TMPDIR:-/tmp}/acg-mrdest-${key}"

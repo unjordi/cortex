@@ -264,20 +264,35 @@ PlasmoidItem {
         engine: "executable"
         connectedSources: []
         onNewData: function(source, data) {
+            var embedded = ""
             if (data["exit code"] === 0 && data.stdout) {
                 try {
                     var o = JSON.parse(data.stdout)
                     root.updLocalShort = o.sha ? o.sha : "?"
-                    root.updRepoPath = o.repo ? o.repo : ""
                     root.updLocalDate = o.date ? o.date : ""
-                    // Auto-update posible solo si version.json trae un repo (clon en disco); si no,
-                    // el botón invita a hacerlo a mano. FAIL-OPEN.
-                    root.updCanSelfUpdate = root.updRepoPath !== ""
+                    embedded = o.repo ? o.repo : ""
                 } catch (e) { /* fail-open: build sin version.json → no molesta */ }
             }
             disconnectSource(source)
+            // H2 — NO confíes ciegamente en version.json.repo: puede no existir en ESTE disco (repo movido,
+            // version.json horneado en otra máquina). Resuelve la ruta REAL con fallback y solo entonces
+            // habilita el auto-update (espeja resolveClonePath de Updater.swift/.cs). Encadena checkUpdateRemote.
+            root.resolveRepoPath(embedded)
+        }
+    }
+
+    // Autoupdate (1b/3): resuelve la ruta REAL del clon con fallback (H2) antes de habilitar el auto-update.
+    P5Support.DataSource {
+        id: repoResolveSource
+        engine: "executable"
+        connectedSources: []
+        onNewData: function(source, data) {
+            var resolved = (data["exit code"] === 0 && data.stdout) ? ("" + data.stdout).trim() : ""
+            root.updRepoPath = resolved
+            root.updCanSelfUpdate = resolved !== ""   // hay clon REAL en disco → botón auto; si no, a mano
+            disconnectSource(source)
             root.updLocalLoaded = true
-            root.checkUpdateRemote()   // encadena la consulta a GitHub
+            root.checkUpdateRemote()   // encadena la consulta a GitHub (igual que antes, ahora tras resolver)
         }
     }
 
@@ -898,7 +913,10 @@ PlasmoidItem {
                   detail: "Vigila cuánto creció el contexto desde el último /compact y, al cruzar bandas por debajo del auto-compact, inyecta un aviso escalado (heads-up → checkpoint ahora → inminente) para volcar el hilo con checkpoint y compactar proactivamente. Convierte el auto-compact-sorpresa en caso raro." },
                 { emoji: "🌳", name: "proteger-arbol",            desc: "git destructivo que orfanaría commits sin pushear → aviso (no bloquea)",
                   event: "PreToolUse · Bash",
-                  detail: "Antes de un git destructivo (reset --hard, rebase, checkout -f, branch -D) que podría orfanar commits sin pushear en el árbol de trabajo, avisa —no bloquea. Antídoto a un caso real: un agente de fan-out reseteó HEAD en el árbol compartido y dejó huérfano un commit del orquestador." }
+                  detail: "Antes de un git destructivo (reset --hard, rebase, checkout -f, branch -D) que podría orfanar commits sin pushear en el árbol de trabajo, avisa —no bloquea. Antídoto a un caso real: un agente de fan-out reseteó HEAD en el árbol compartido y dejó huérfano un commit del orquestador." },
+                { emoji: "🧬", name: "proteger-fuente-cerebro",   desc: "editas la copia INSTALADA del cerebro (regenerable) → aviso",
+                  event: "PreToolUse · Edit/Write/MultiEdit",
+                  detail: "Al editar una skill/hook bajo ~/.claude/skills|hooks que TIENE fuente en el clon canónico (brain/skills|hooks), avisa —no bloquea— que esa copia es REGENERABLE: el próximo install-brain la sobrescribe y la edición muere sin rastro. Redirige a editar la FUENTE y propagar con install-brain/sincronizar. Si no hay fuente (skill/hook puramente local), calla. Corre verificar-cerebro para el drift completo instalada-vs-fuente." }
             ]
         },
         {
@@ -932,9 +950,21 @@ PlasmoidItem {
                 { emoji: "📐", name: "diagramar", desc: "diagrama según su DESTINO: yEd editable (.dot→graphml) o Mermaid versionado",
                   event: "skill · opt-in",
                   detail: "Produce un diagrama eligiendo el flujo según su destino: para EDITAR a mano, modela en .dot (Graphviz) → .graphml de yEd; para VERSE en GitHub/docs, Mermaid en un .md versionado. Regla dura: un diagrama entregable nunca queda solo como artefacto local gitignorado ni widget efímero del chat." },
+                { emoji: "🔬", name: "auditar-proceso-algoritmo", desc: "auditor experto READ-ONLY: proceso industrial + algoritmo → hallazgos priorizados",
+                  event: "skill · opt-in",
+                  detail: "Manda un agente-auditor experto (procesos industriales/logísticos + análisis de algoritmos) a revisar a fondo un flujo de negocio o el propio cerebro, y entregar hallazgos priorizados SIN tocar nada. Aliméntalo con los flowcharts del proceso (skill diagramar, 'los zapatos') + la investigación de dominio + datos de estrés. Hermano de diagramar: primero el mapa, luego el auditor." },
+                { emoji: "🩺", name: "auditar-coherencia-cerebro", desc: "fan-out READ-ONLY sobre el propio cerebro: evasiones/huecos/drift → loop hasta converger",
+                  event: "skill · opt-in",
+                  detail: "Lanza un fan-out de auditores READ-ONLY sobre la COHERENCIA del propio cerebro (guards+flowcharts+doc): ¿se evade un guard? ¿un flowchart miente vs el código? ¿doc desincronizada? Cada guard se audita POR EJECUCIÓN en un sandbox (no solo lectura). Con OK, itera fix→re-auditar (cada hallazgo con su test) hasta CONVERGER. Es el modo-cerebro de auditar-proceso-algoritmo, empaquetado." },
                 { emoji: "🐝", name: "orquestar-fanout", desc: "fan-out de agentes sin niñera (estado en 2 archivos + contrato de reporte)",
                   event: "skill · opt-in",
                   detail: "Orquestar trabajo paralelizable en varios agentes SIN niñera: asigna ítems autocontenidos del backlog y, al terminar cada agente, su avance queda registrado (bitácora) y su worktree limpio automáticamente. Modelo de estado sin redundancia: estado-proyecto = backlog vivo, bitácora = pasado append-only." },
+                { emoji: "🧪", name: "auditar-suficiencia-operativa", desc: "¿ALCANZA la doc para HACER el trabajo? tareas reales ✅/⚠️/❌ + re-auditar tras arreglar",
+                  event: "skill · opt-in",
+                  detail: "Audita una doc/cerebro por SUFICIENCIA OPERATIVA, no por coherencia: enumera las tareas reales que alguien tendrá que hacer y las califica ✅/⚠️/❌ con archivo:línea. Exige RE-AUDITAR con el prompt idéntico tras arreglar los hallazgos, porque los arreglos introducen contradicciones nuevas." },
+                { emoji: "🪶", name: "desinflar-memorias", desc: "adelgaza memorias sin perder lecciones: narrativa → 1 línea, mitos → ⚰️ Lápidas al final",
+                  event: "skill · opt-in",
+                  detail: "Desinfla un árbol de memorias inflado de narrativa, tutoriales y conocimiento ya desmentido SIN perder ninguna lección: cada tirada de historia se colapsa a su lección en 1-2 líneas EN SU LUGAR, y los mitos descartados se comprimen a una línea y se mudan a una sección ⚰️ Lápidas AL FINAL del archivo (si los borras, el siguiente agente los re-descubre). No toca la bitácora ni el hilo: son append-only por diseño." },
                 { emoji: "🌙", name: "turno-nocturno", desc: "Claude trabaja solo de noche: contrato medible, decide-o-parquea, checkpoint c/2h",
                   event: "skill · opt-in",
                   detail: "Protocolo para dejar a Claude trabajando SOLO de noche: eco del contrato antes de empezar (alcance, criterio de cierre MEDIBLE, lo intocable, dónde queda visible el resultado), preflight de herramientas/quota, regla de decisión (dentro del alcance decide y sigue; fuera, parquea y brinca), autorización durable a disco y checkpoint cada ~2h." },
@@ -960,7 +990,7 @@ PlasmoidItem {
 
     // Catálogo conocido (mismos conjuntos que BrainState.knownGlobalHooks / knownRepoHooks del Swift).
     // DEBE coincidir con brain/hooks/MANIFEST; lo verifica el drift-check del widget (test-brain.sh).
-    readonly property var brainGlobalHooks: ["git-branch-guard","merge-squash-guard","confirmar-merge-develop","recordar-dashboard","secret-scan","rama-vieja","proteger-arbol","limite-gasto","delegacion-gate","delegacion-registrar","delegacion-reporte","rehidratar-hilo","aviso-contexto","aviso-drift-cerebro","barrer-ramas","entorno-maquina-guard"]
+    readonly property var brainGlobalHooks: ["git-branch-guard","merge-squash-guard","confirmar-merge-develop","recordar-dashboard","secret-scan","rama-vieja","proteger-arbol","proteger-fuente-cerebro","limite-gasto","delegacion-gate","delegacion-registrar","delegacion-reporte","rehidratar-hilo","aviso-contexto","aviso-drift-cerebro","barrer-ramas","entorno-maquina-guard"]
     readonly property var brainRepoHooks:   ["sesion-inicio","dod-verificar","recordar-cosechar","recordar-unificar-cerebro"]
 
     // Ruta del helper bash, resuelta relativa a este main.qml (…/contents/ui/ → …/contents/brain-scan.sh).
@@ -1011,6 +1041,16 @@ PlasmoidItem {
             root.checkUpdateRemote()
         }
     }
+    // H2 — resuelve la ruta REAL del clon con fallback (espeja resolveClonePath de Updater.swift/.cs):
+    // 1º el repo embebido en version.json, 2º $CLAUDE_BRAIN_DIR, 3º el clon canónico $HOME/.claude-brain.
+    // Gana el PRIMERO que exista en disco con la marca install.sh (la misma que runUpdate ejecuta). Así un
+    // version.json horneado en otra máquina / con el repo movido no habilita un auto-update que haría cd a
+    // una ruta muerta. Se resuelve por shell (QML JS no lee env ni prueba archivos). FAIL-OPEN: "" → a mano.
+    function resolveRepoPath(embedded) {
+        var cmd = 'for c in ' + shq(embedded) + ' "$CLAUDE_BRAIN_DIR" "$HOME/.claude-brain"; do '
+                + '[ -n "$c" ] && [ -f "$c/install.sh" ] && { printf %s "$c"; break; }; done'
+        repoResolveSource.connectSource(cmd)
+    }
     function checkUpdateRemote() {
         if (root.updLocalShort === "?") return   // sin version.json (build viejo) → no molesta
         var url = "https://api.github.com/repos/" + root.updSlug + "/commits/main"
@@ -1026,8 +1066,9 @@ PlasmoidItem {
         root.updating = true
         root.updateMessage = ""
         var repo = root.updRepoPath
-        var inner = "cd '" + repo + "' && git fetch origin --quiet && git merge --ff-only origin/main"
-                  + " && bash '" + repo + "/install.sh'"
+        // Escapa la ruta del clon con shq (comillas simples POSIX): una ruta con un ' la partia sin esto.
+        var inner = "cd " + shq(repo) + " && git fetch origin --quiet && git merge --ff-only origin/main"
+                  + " && bash " + shq(repo + "/install.sh")
         var cmd = "nohup bash -lc \"" + inner + "\" >/tmp/claude-brain-update.log 2>&1"
         updateRunSource.connectSource(cmd)
     }
@@ -1043,7 +1084,7 @@ PlasmoidItem {
             return p && w ? "installed" : (p ? "presentNotWired" : "absent")
         }
         if (inArr(root.brainRepoHooks, name)) return "repoScoped"
-        if (["cerrar-slice","checkpoint","diagramar","orquestar-fanout","turno-nocturno","cosechar-sesion","unificar-cerebro"].indexOf(name) !== -1)
+        if (["cerrar-slice","checkpoint","diagramar","auditar-proceso-algoritmo","auditar-coherencia-cerebro","auditar-suficiencia-operativa","desinflar-memorias","orquestar-fanout","turno-nocturno","cosechar-sesion","unificar-cerebro"].indexOf(name) !== -1)
             return inArr(st.skills, name) ? "installed" : "absent"
         if (name === "Definition of Done" || name === "Doc <= realidad"
             || name === "Flujo de git" || name === "Costo de delegación")
