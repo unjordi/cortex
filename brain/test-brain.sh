@@ -1209,6 +1209,30 @@ printf '%s' "$adout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null
 printf '# contrato\n' > "$ADROOT/AGENTS.md"
 printf '%s' "$(ad)" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'CONTRA la firma' \
   && ok "aviso-drift (con firma): AGENTS.md presente → dupla CONTRA la firma" || bad "aviso-drift: con AGENTS.md no tomó la rama con-firma"
+
+# (9) CONOCIMIENTO PROPIO (per-repo, imborrable): si el repo trae .claude/memory/conocimiento-propio.md,
+# se RE-INYECTA en CADA SessionStart — incluso SIN drift o con el throttle fresco (no depende del drift).
+mkdir -p "$ADROOT/.claude/memory"
+printf '# Conocimiento propio\nes tu cerebro, es mi repo, y es nuestro proyecto. La introspección PROPONE; unjordi DECIDE.\n' > "$ADROOT/.claude/memory/conocimiento-propio.md"
+# 9a: con drift → identidad + drift viajan JUNTOS en el mismo additionalContext
+adout="$(ad)"
+{ printf '%s' "$adout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'es tu cerebro' \
+  && printf '%s' "$adout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'DRIFT DEL CEREBRO'; } \
+  && ok "aviso-drift: conocimiento propio + drift viajan JUNTOS en un solo additionalContext" || bad "aviso-drift: no combinó identidad + drift; got: $adout"
+# 9b: sync LIMPIO + throttle fresco → SIN drift, pero la identidad SIGUE inyectándose (imborrable)
+printf '#!/usr/bin/env bash\necho "==> resumen: 0 nuevos · 0 a actualizar · 9 ya al día · 7 hooks cableados (kind=hook)"\n' > "$ADBRAIN/brain/sincronizar-cerebro.sh"
+rm -rf "$ADHOME/.claude/memory/.drift-cerebro"
+adout="$(ad)"   # 1er llamado: limpio → cachea stamp; emite SOLO identidad
+{ printf '%s' "$adout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'es tu cerebro' \
+  && ! printf '%s' "$adout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'DRIFT DEL CEREBRO'; } \
+  && ok "aviso-drift: sin drift → inyecta SOLO el conocimiento propio (no depende del drift)" || bad "aviso-drift: sin drift no surface la identidad sola; got: $adout"
+adout2="$(ad)"  # 2º llamado: throttle fresco → salta el drift-check, pero IGUAL re-inyecta la identidad
+printf '%s' "$adout2" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'es tu cerebro' \
+  && ok "aviso-drift: throttle fresco → aún así re-inyecta el conocimiento propio (cada sesión)" || bad "aviso-drift: el throttle se tragó la identidad; got: $adout2"
+# 9c: repo SIN el archivo → NO inventa identidad (per-repo, no universal) → silencio si tampoco hay drift
+rm -f "$ADROOT/.claude/memory/conocimiento-propio.md"
+rm -rf "$ADHOME/.claude/memory/.drift-cerebro"
+is_silent "$(ad)" && ok "aviso-drift: sin conocimiento-propio.md y sin drift → silencio (per-repo, no universal)" || bad "aviso-drift: habló sin archivo de identidad ni drift"
 rm -rf "$ADFIX"
 
 # ── (b5b2) FIX costura #2: aviso-drift DETECTA el drift de CABLEADO (hooks presentes SIN cablear).

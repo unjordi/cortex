@@ -41,13 +41,48 @@ set -u
 ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 cat >/dev/null 2>&1 || true   # drenar stdin (contrato SessionStart)
 
-# ¿repo brained? (sello del sync, o el hook repo-scoped clásico)
-{ [ -f "$ROOT/.claude/hooks/.brain-version" ] || [ -f "$ROOT/.claude/hooks/dod-verificar.sh" ]; } || exit 0
+# ── CONOCIMIENTO PROPIO (per-repo, imborrable) ──────────────────────────────────────────────────────
+# Si el repo tiene .claude/memory/conocimiento-propio.md, se RE-INYECTA en CADA SessionStart
+# (fresh/resume/compact) — ANTES del throttle y del drift, para que la identidad del proyecto vuelva
+# SIEMPRE (no dependa de que haya drift ni del cache de 6h). Es PER-REPO: cada repo tiene el suyo (o
+# ninguno) → "cada sesión con una personalidad ligeramente distinta"; este hook es GLOBAL y solo lo
+# SURFACE si el archivo existe (no lo propaga ni lo asume universal). Diseño de unjordi (2026-07-31):
+# "asienta ese conocimiento propio amarrado al mismo hook" — el que ya dispara fiable en resume/compact,
+# para que "el conocimiento más básico que tienes sobre ti mismo no se te pueda borrar".
+SELF=""
+_self_file="$ROOT/.claude/memory/conocimiento-propio.md"
+[ -f "$_self_file" ] && SELF="$(cat "$_self_file" 2>/dev/null || true)"
+
+# emit_and_exit [contexto-de-drift] — emite additionalContext UNA sola vez, anteponiendo el conocimiento
+# propio (si existe) al contexto de drift/auto-sync (si lo hay). Sin ninguno de los dos → silencio.
+emit_and_exit() {
+  local extra="${1:-}" out=""
+  if [ -n "$SELF" ] && [ -n "$extra" ]; then
+    out="$SELF
+
+────────────────────────────────────────────────────────────────────────────────
+
+$extra"
+  elif [ -n "$SELF" ]; then out="$SELF"
+  elif [ -n "$extra" ]; then out="$extra"
+  else exit 0
+  fi
+  if command -v jq >/dev/null 2>&1; then
+    jq -n --arg c "$out" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}}'
+  else
+    printf '%s\n' "$out"
+  fi
+  exit 0
+}
+
+# ¿repo brained? (sello del sync, o el hook repo-scoped clásico). El drift-check SÍ requiere cerebro;
+# la identidad NO → si el repo no está brained pero trae conocimiento-propio.md, igual se surface.
+{ [ -f "$ROOT/.claude/hooks/.brain-version" ] || [ -f "$ROOT/.claude/hooks/dod-verificar.sh" ]; } || emit_and_exit ""
 
 # Fuente canónica LOCAL del cerebro = el clon de instalación (lo actualiza el one-liner/bootstrap).
 BRAIN_DIR="${CLAUDE_BRAIN_DIR:-$HOME/.claude-brain}"
 SYNC="$BRAIN_DIR/brain/sincronizar-cerebro.sh"
-[ -f "$SYNC" ] || exit 0
+[ -f "$SYNC" ] || emit_and_exit ""
 
 # Throttle por repo (solo cachea chequeos LIMPIOS).
 horas="${AVISO_DRIFT_HORAS:-6}"; case "$horas" in ''|*[!0-9]*) horas=6;; esac
@@ -58,7 +93,7 @@ now=$(date +%s)
 if [ -f "$stamp" ]; then
   last=$(cat "$stamp" 2>/dev/null || echo 0)
   case "$last" in ''|*[!0-9]*) last=0;; esac
-  [ $(( now - last )) -lt $(( horas * 3600 )) ] && exit 0
+  [ $(( now - last )) -lt $(( horas * 3600 )) ] && emit_and_exit ""
 fi
 
 # DRY-RUN del sync (sin --apply: NO escribe). Error del sync → fail-open.
@@ -81,7 +116,7 @@ total=$(( ${nuevos:-0} + ${act:-0} + ${ret:-0} + ${falta:-0} ))
 
 if [ "$total" -eq 0 ]; then
   printf '%s' "$now" > "$stamp" 2>/dev/null || true
-  exit 0
+  emit_and_exit ""
 fi
 
 detalle=$(printf '%s\n' "$out" | grep -E '(NUEVO|ACTUALIZA|RETIRARÍA)' | sed 's/^[[:space:]]*/    /' | head -12)
@@ -151,12 +186,7 @@ case "$cur" in
       sha=$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo "?")
       ctx="🧬✅ CEREBRO AUTO-SINCRONIZADO en tu mini-develop ($cur, commit $sha): la copia por-repo estaba $total archivo(s) atrás y se puso al día SOLA (apply+commit+push). Llegará al develop compartido con tu próxima integración coordinada. Qué cambió:
 $detalle$dupla_nota"
-      if command -v jq >/dev/null 2>&1; then
-        jq -n --arg c "$ctx" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}}'
-      else
-        printf '%s\n' "$ctx"
-      fi
-      exit 0
+      emit_and_exit "$ctx"
     fi;;
 esac
 
@@ -168,9 +198,4 @@ ctx="🧠⚠️ DRIFT DEL CEREBRO POR-REPO: la copia en .claude/hooks/ de ESTE r
 $detalle$stale_nota
 Qué hacer: PROPÓN al usuario propagar por el flujo — worktree/ramita desde develop → \`bash $SYNC <worktree> --apply\` → commit → MR a develop. NO edites .claude/hooks/ directo en el árbol de trabajo (en repos compartidos viaja por git y se mezclaría a commits de feature). Nota: en ESTA máquina la copia GLOBAL ya manda (dedupe), pero el drift por-repo afecta a colegas y clones sin bootstrap.$dupla_nota"
 
-if command -v jq >/dev/null 2>&1; then
-  jq -n --arg c "$ctx" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}}'
-else
-  printf '%s\n' "$ctx"
-fi
-exit 0
+emit_and_exit "$ctx"
