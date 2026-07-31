@@ -189,6 +189,10 @@ public sealed class PopupForm : Form
         ApplyTheme();
         _rail.BackColor = Blend(_bg, _fg, 0.03);
         _content.BackColor = _bg;
+        // Re-lee el estado REAL del cerebro (~/.claude) al abrir el popup — así el badge ⬆/🩹 de la
+        // pestaña Cerebro y los botones del pie salen correctos DESDE CUALQUIER pestaña, sin tener que
+        // entrar primero a Cerebro. Espeja `.onAppear { brainState = BrainInspector.inspect() }` de macOS.
+        _brainState = BrainInspector.Inspect();
         Invalidate(true);
         _rail.Invalidate();
         _content.Invalidate();
@@ -241,6 +245,26 @@ public sealed class PopupForm : Form
         return new Rectangle(pad, pad + Sc(2) + i * (btnH + gap), _rail.Width - pad * 2, btnH);
     }
 
+    /// Nº de piezas GLOBALES del cerebro que le faltan al `~/.claude` real — el MISMO criterio que usa
+    /// el botón "Curar (N)" y el recuadro de salud de la pestaña Cerebro: del catálogo se cuentan las
+    /// que NO son por-repo y cuyo estado no es Installed. 0 si aún no se ha inspeccionado (`_brainState`
+    /// nulo → badge/curita ocultos). Fuente ÚNICA para el badge 🩹 del riel, el botón 🩹 del pie y el
+    /// veredicto de PaintBrainHealth → una sola definición, sin drift. Espeja `brainIncomplete` (Swift).
+    private int BrainMissing()
+    {
+        var st = _brainState;
+        if (st == null) return 0;
+        int missing = 0;
+        foreach (var tier in BrainTiers)
+            foreach (var it in tier.Items)
+            {
+                var s = st.StatusOf(it.Name);
+                if (s == BrainStatus.RepoScoped) continue;
+                if (s != BrainStatus.Installed) missing++;
+            }
+        return missing;
+    }
+
     private void RailPaint(object? sender, PaintEventArgs e)
     {
         var g = e.Graphics;
@@ -282,15 +306,70 @@ public sealed class PopupForm : Form
                 new RectangleF(r.X + Sc(11), r.Y, Sc(20), r.Height), sf);
             g.DrawString(TabNames[idx], active ? fontB : font, brush,
                 new RectangleF(r.X + Sc(32), r.Y, r.Width - Sc(34), r.Height), sf);
+
+            // Badge de la pestaña Cerebro (idx 5): indicadores chicos a la derecha del nombre — ⬆ (hay
+            // update del widget, acento) y 🩹 (al cerebro le falta una pieza, rojo). VISIBLES desde
+            // CUALQUIER pestaña, no solo dentro de Cerebro. Paridad con `RailButton(badge:heal:)` de macOS:
+            // primero el 🩹 (más urgente, un guardrail no está activo), luego el ⬆; se apilan de derecha
+            // a izquierda.
+            if (idx == TabCerebro)
+            {
+                bool badge = Updater.Shared.UpdateAvailable;
+                bool heal = BrainMissing() > 0;
+                if (badge || heal)
+                {
+                    using var bf = PxFont("Segoe UI Emoji", 10.5f, FontStyle.Regular);
+                    var bsf = new StringFormat { LineAlignment = StringAlignment.Center, Alignment = StringAlignment.Far };
+                    float bx = r.Right - Sc(9);   // borde derecho útil; se acumula hacia la izquierda
+                    if (badge)
+                    {
+                        using var bb = new SolidBrush(_accent);
+                        g.DrawString("⬆", bf, bb, new RectangleF(r.X, r.Y, bx - r.X, r.Height), bsf);
+                        bx -= Sc(15);
+                    }
+                    if (heal)
+                    {
+                        using var hbb = new SolidBrush(_red);
+                        g.DrawString("🩹", bf, hbb, new RectangleF(r.X, r.Y, bx - r.X, r.Height), bsf);
+                    }
+                }
+            }
         }
 
-        // bottom row: refresh + quit (glifos tenues; realce redondeado al hover como las pestañas)
-        var (refreshR, quitR) = BottomButtons();
+        // Pie del riel, de IZQUIERDA a derecha: [⬆ update] [🩹 heal] (contextuales) · ⟳ refresh · ⏻ quit
+        // (glifos tenues; realce redondeado al hover como las pestañas). Los contextuales solo aparecen
+        // cuando aplican (paridad con el HStack del pie de macOS).
+        var up = Updater.Shared;
+        var (updR, healR, refreshR, quitR) = BottomButtons();
         if (_hoverBottom >= 0)
         {
-            var hr = _hoverBottom == 0 ? refreshR : quitR;
-            using var hb = new SolidBrush(Blend(_bg, _fg, 0.06));   // mismo blend que el hover de las pestañas
-            FillRounded(g, hb, hr, Sc(8));
+            RectangleF hr = _hoverBottom switch
+            {
+                0 => refreshR,
+                1 => quitR,
+                2 => updR,
+                3 => healR,
+                _ => RectangleF.Empty,
+            };
+            if (!hr.IsEmpty)
+            {
+                using var hb = new SolidBrush(Blend(_bg, _fg, 0.06));   // mismo blend que el hover de las pestañas
+                FillRounded(g, hb, hr, Sc(8));
+            }
+        }
+        // ⬆ actualizar el WIDGET (acento) — solo si hay versión nueva; ⏳ mientras actualiza.
+        if (!updR.IsEmpty)
+        {
+            using var ub = new SolidBrush(_accent);
+            using var uf = PxFont("Segoe UI Emoji", 11f, FontStyle.Regular);
+            g.DrawString(up.Updating ? "⏳" : "⬆", uf, ub, updR, Center());
+        }
+        // 🩹 curar el CEREBRO global (rojo) — solo si le falta una pieza; ⏳ mientras cura.
+        if (!healR.IsEmpty)
+        {
+            using var hb2 = new SolidBrush(_red);
+            using var hf = PxFont("Segoe UI Emoji", 11f, FontStyle.Regular);
+            g.DrawString(_healing ? "⏳" : "🩹", hf, hb2, healR, Center());
         }
         using (var b1 = new SolidBrush(Blend(_bg, _fg, 0.7)))
             g.DrawString("⟳", Px(15f, FontStyle.Regular), b1, refreshR, Center());
@@ -311,13 +390,27 @@ public sealed class PopupForm : Form
         }
     }
 
-    private (RectangleF refresh, RectangleF quit) BottomButtons()
+    // Pie del riel: [⬆ update] [🩹 heal] (contextuales, solo si aplican) · ⟳ refresh · ⏻ quit.
+    // El tamaño del botón se ADAPTA al nº visible para que hasta 4 quepan en los 132px del riel sin
+    // encimarse (2 botones → 30px como antes; 4 → se encogen). Devuelve Empty los contextuales que no
+    // aplican. Espeja el HStack contextual del pie de macOS (spacing 4, hasta 4 íconos).
+    private (RectangleF update, RectangleF heal, RectangleF refresh, RectangleF quit) BottomButtons()
     {
-        int sz = Sc(30);
+        bool hasUpd = Updater.Shared.UpdateAvailable;
+        bool hasHeal = BrainMissing() > 0;
+        int n = 2 + (hasUpd ? 1 : 0) + (hasHeal ? 1 : 0);
+        int padL = 8, padR = 6, gapL = 4, maxSzL = 30;
+        int avail = RailWLogical - padL - padR;
+        int szL = Math.Min(maxSzL, (avail - (n - 1) * gapL) / n);
+        int sz = Sc(szL), gap = Sc(gapL);
         int y = _rail.Height - sz - Sc(6);
-        var refresh = new RectangleF(Sc(8), y, sz, sz);
-        var quit = new RectangleF(Sc(8) + sz + Sc(6), y, sz, sz);
-        return (refresh, quit);
+        float x = Sc(padL);
+        RectangleF Next() { var r = new RectangleF(x, y, sz, sz); x += sz + gap; return r; }
+        var update = hasUpd ? Next() : RectangleF.Empty;
+        var heal = hasHeal ? Next() : RectangleF.Empty;
+        var refresh = Next();
+        var quit = Next();
+        return (update, heal, refresh, quit);
     }
 
     private void RailMouseDown(object? sender, MouseEventArgs e)
@@ -325,7 +418,11 @@ public sealed class PopupForm : Form
         var tabs = RailTabs();
         for (int pos = 0; pos < tabs.Length; pos++)
             if (RailBtnRect(pos).Contains(e.Location)) { SelectTab(tabs[pos]); return; }
-        var (refreshR, quitR) = BottomButtons();
+        var (updR, healR, refreshR, quitR) = BottomButtons();
+        // ⬆ actualizar el widget / 🩹 curar el cerebro — mismas acciones que el banner/botón de la
+        // pestaña Cerebro, ahora accesibles desde el pie del riel en cualquier pestaña.
+        if (!updR.IsEmpty && updR.Contains(e.Location)) { StartUpdate(); return; }
+        if (!healR.IsEmpty && healR.Contains(e.Location)) { StartHeal(); return; }
         if (refreshR.Contains(e.Location))
         {
             _onRefresh();
@@ -348,10 +445,13 @@ public sealed class PopupForm : Form
         var tabs = RailTabs();
         for (int pos = 0; pos < tabs.Length; pos++)
             if (RailBtnRect(pos).Contains(e.Location)) { _hoverRail = tabs[pos]; break; }
-        // Botones del pie (↻ refresh · ⏻ quit): mismo hit-test que su click en RailMouseDown.
-        var (refreshR, quitR) = BottomButtons();
+        // Botones del pie (⬆ update · 🩹 heal · ⟳ refresh · ⏻ quit): mismo hit-test que su click en
+        // RailMouseDown. Índices: 0 refresh · 1 quit · 2 update · 3 heal (conservados para no recablear).
+        var (updR, healR, refreshR, quitR) = BottomButtons();
         if (refreshR.Contains(e.Location)) _hoverBottom = 0;
         else if (quitR.Contains(e.Location)) _hoverBottom = 1;
+        else if (!updR.IsEmpty && updR.Contains(e.Location)) _hoverBottom = 2;
+        else if (!healR.IsEmpty && healR.Contains(e.Location)) _hoverBottom = 3;
         if (was != _hoverRail || wasBottom != _hoverBottom) _rail.Invalidate();
     }
 
@@ -1174,12 +1274,14 @@ public sealed class PopupForm : Form
         up.Updating = true;
         up.Message = null;
         _content.Invalidate();
+        _rail.Invalidate();   // el ⬆ del pie del riel pasa a ⏳ mientras actualiza
 
         bool launched = up.TryLaunchUpdate();
         if (!launched)
         {
             up.Updating = false;    // no arrancó → Message ya trae el motivo
             _content.Invalidate();
+            _rail.Invalidate();
             return;
         }
 
@@ -1207,17 +1309,9 @@ public sealed class PopupForm : Form
     {
         var st = _brainState!;
         // Globales = piezas del catálogo cuyo estado NO es por-repo (los 8 hooks globales + 4 normas
-        // + 1 skill = 13). Los 4 hooks repo-scoped se excluyen del conteo.
-        int active = 0, total = 0;
-        foreach (var tier in BrainTiers)
-            foreach (var it in tier.Items)
-            {
-                var s = st.StatusOf(it.Name);
-                if (s == BrainStatus.RepoScoped) continue;
-                total++;
-                if (s == BrainStatus.Installed) active++;
-            }
-        int missing = total - active;
+        // + 1 skill = 13). Los 4 hooks repo-scoped se excluyen del conteo. Usa `BrainMissing()` — la
+        // MISMA fuente que el badge 🩹 del riel y el botón del pie → sin drift entre los tres.
+        int missing = BrainMissing();
         bool allGood = missing == 0;
 
         // El botón-curita SOLO aparece si hay algo que curar; sano → sin botón ni mensaje
@@ -1780,6 +1874,7 @@ public sealed class PopupForm : Form
         _healing = true;
         _healMsg = null;
         _content.Invalidate();
+        _rail.Invalidate();   // el pie del riel muestra ⏳ mientras cura
 
         Task.Run(() =>
         {
@@ -1793,8 +1888,19 @@ public sealed class PopupForm : Form
                 {
                     _brainState = BrainInspector.Inspect();
                     _healing = false;
-                    _healMsg = ok ? "✓ curado" : "✗ error (¿Git Bash + jq?)";
+                    // HEAL HONESTO: el mensaje se basa en la COMPLETITUD REAL tras re-inspeccionar, NO en
+                    // el exit code. install-brain.sh SALE 0 aunque NO cablee (p. ej. sin jq → fail-open),
+                    // así que "exit 0" NO garantiza que el cerebro quedó completo → decir "curado" a ciegas
+                    // mentiría. Fuente de verdad = `BrainMissing()` (mismo criterio que "Curar (N)").
+                    int missing = BrainMissing();
+                    if (missing == 0)
+                        _healMsg = "✓ curado";
+                    else if (ok)
+                        _healMsg = $"✓ corrió, pero sigue incompleto ({missing}) — ¿jq en el PATH?";
+                    else
+                        _healMsg = $"✗ error, sigue incompleto ({missing}) — ¿Git Bash + jq?";
                     _content.Invalidate();
+                    _rail.Invalidate();   // el badge/curita del riel refleja el nuevo estado
                 }));
             }
             catch { /* el form pudo cerrarse mientras curaba */ }
