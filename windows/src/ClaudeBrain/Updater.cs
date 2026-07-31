@@ -125,6 +125,16 @@ internal sealed class Updater
         });
     }
 
+    /// Fuerza el chequeo de versión SALTANDO el throttle de 15 min. Lo dispara el botón ↻ (refrescar
+    /// cuota debe además re-chequear versión al instante). Resetea `_lastCheck` y reusa CheckIfStale,
+    /// que corre CheckAsync en un Task y llama `onResult` si UpdateAvailable cambió (para que el botón
+    /// ⬆/banner aparezcan). Espeja `forceCheck()` de macos/Updater.swift.
+    public void ForceCheck(Action onResult)
+    {
+        _lastCheck = null;
+        CheckIfStale(onResult);
+    }
+
     private async Task CheckAsync()
     {
         // Ruta preferida: el release 'windows-latest' (descarga del exe, SIN .NET SDK ni clon). Si

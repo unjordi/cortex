@@ -357,6 +357,11 @@ PlasmoidItem {
     }
     function forceRefresh() {
         refreshRunner.connectSource("systemctl --user start claude-brain.service")
+        // ↻ es un clic EXPLÍCITO → además de refrescar la cuota, fuerza el chequeo de versión saltando
+        // el throttle de 15 min (updLastCheck=0 desactiva el guard de checkUpdate). Antes ↻ era quota-only
+        // y el banner de update no aparecía al pedirlo a mano. Paridad: macOS forceCheck + Windows OnRefresh.
+        root.updLastCheck = 0
+        checkUpdate()
     }
     // ⏻ "Apagar" — paridad KDE del botón power de macOS, pero con OTRA semántica a propósito.
     // En macOS ⏻ = NSApp.terminate: la app de la barra de menús ES el widget Y el recolector, así que

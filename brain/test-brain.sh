@@ -2263,5 +2263,30 @@ done
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (e9) PARIDAD widget: hover en botones del pie + ↻ fuerza el chequeo de versión (3 plataformas) =="
+# Antídoto a que un fix de UI del widget aterrice en 1 plataforma y no en las otras (norma dura: la
+# paridad SIEMPRE se revisa). Chequeo ESTRUCTURAL por-plataforma de los DOS comportamientos.
+SW_PV="$SCRIPT_DIR/../macos/Sources/ClaudeBrain/PopoverView.swift"
+SW_UP="$SCRIPT_DIR/../macos/Sources/ClaudeBrain/Updater.swift"
+QML9="$SCRIPT_DIR/../src/plasmoid/contents/ui/main.qml"
+WPF="$SCRIPT_DIR/../windows/src/ClaudeBrain/PopupForm.cs"
+WUP="$SCRIPT_DIR/../windows/src/ClaudeBrain/Updater.cs"
+
+# --- Fix A: HOVER en los botones del pie del riel ---
+grep -q 'hoverHighlight' "$SW_PV" 2>/dev/null && ok "e9: macOS — hover en botones del pie (hoverHighlight)" || bad "e9: macOS SIN hover en el pie"
+grep -qE 'PC3\.ToolButton' "$QML9" 2>/dev/null && ok "e9: KDE — botones del pie PC3.ToolButton (hover nativo)" || bad "e9: KDE sin PC3.ToolButton"
+grep -q '_hoverBottom' "$WPF" 2>/dev/null && ok "e9: Windows — hover del pie trackeado (_hoverBottom)" || bad "e9: Windows SIN hover del pie"
+
+# --- Fix B: el ↻ (refresh) FUERZA el chequeo de versión saltando el throttle de 15 min ---
+{ grep -q 'func forceCheck' "$SW_UP" && grep -q 'forceCheck' "$SW_PV"; } 2>/dev/null \
+  && ok "e9: macOS — ↻ fuerza chequeo (Updater.forceCheck + botón)" || bad "e9: macOS — ↻ no fuerza chequeo"
+{ grep -q 'ForceCheck' "$WUP" && grep -q 'ForceCheck' "$WPF"; } 2>/dev/null \
+  && ok "e9: Windows — ↻ fuerza chequeo (Updater.ForceCheck + click)" || bad "e9: Windows — ↻ no fuerza chequeo"
+kfr="$(awk '/function forceRefresh/{c=1} c{print} c&&/^    }/{exit}' "$QML9" 2>/dev/null)"
+{ printf '%s' "$kfr" | grep -q 'updLastCheck = 0' && printf '%s' "$kfr" | grep -q 'checkUpdate()'; } \
+  && ok "e9: KDE — forceRefresh fuerza checkUpdate (updLastCheck=0)" || bad "e9: KDE — forceRefresh no fuerza chequeo"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "==> resultado: $PASS PASS · $FAIL FAIL"
 [ "$FAIL" -eq 0 ]
