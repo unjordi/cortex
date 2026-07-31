@@ -25,17 +25,18 @@ Mnemónico: **rojo relleno = acción rechazada (bien); gris punteado = hueco (ma
 
 ## 3. LA LEYENDA DE CADA CHART = EL ÁRBOL COMPLETO DEL README (íntegro, en TODOS los flowcharts)
 La leyenda que va incrustada en **CADA** flowchart es el **árbol COMPLETO del cerebro** tal como vive en
-`README.md` (líneas ~79-136): las **4 familias con TODAS sus piezas** y el emoji CANÓNICO de cada una —
+`README.md` (el bloque cercado que arranca en «🔒 Hooks Forzosos»): las **4 familias con TODAS sus piezas** y el emoji CANÓNICO de cada una —
 NO una selección, NO una clave compacta de colores. Cada chart lo lleva **íntegro**, para que se lea solo
 sin abrir el README. **Fuente única = el README** (para no driftear, doc=realidad): el bloque de leyenda de
 cada `.dot` se **GENERA desde el árbol del README** (un helper lo lee y emite el subgrafo — no se teclea a
 mano en cada chart, eso sería N copias que driftean). La lámina suelta `00-leyenda-arbol.*` queda subsumida:
-el mismo generador que la producía ahora alimenta la leyenda de cada chart. El árbol (espejo del README —
-la fuente es el README, aquí solo de referencia rápida):
-- **🔒 Forzosos** (bloquean/deny): 🚧 git-branch-guard · 🔗 merge-squash-guard · 🕵️ secret-scan · 💸 delegacion-gate · 🛑 limite-gasto · ✋ confirmar-merge-develop (repo) · ✅ dod-verificar (repo)
-- **🔔 Automático** (inyectan/recuerdan): 📊 recordar-dashboard · 🖥️ entorno-maquina-guard · 🕰️ rama-vieja · 🌳 proteger-arbol · 🛡️ proteger-fuente-cerebro · 📝 delegacion-registrar · 📮 delegacion-reporte · 🧵 rehidratar-hilo · 📈 aviso-contexto · 🧬 aviso-drift-cerebro · 🧭 sesion-inicio (repo)
-- **📜 Normas** (el cimiento): 🎯 DoD · 🪞 doc=realidad · 🌿 flujo git · 💰 costo delegación · 🖥️ entorno-máquina-global · 🧾 ningún hallazgo/decisión solo en el chat · ⛏️ post-compact excava · 🧰 Paso 0 inventario · (+ las de global-claude-md)
-- **💡 Skills** (opt-in): 📦 cerrar-slice · 💾 checkpoint · 💧 rehidratar-hilo · 🧵 orquestar-fanout · 🗺️ diagramar · 🌙 turno-nocturno · 🔬 auditar-proceso-algoritmo (al mergear #207)
+el mismo generador que la producía ahora alimenta la leyenda de cada chart.
+
+**Las 4 familias con TODAS sus piezas y su emoji canónico NO se transcriben aquí a propósito** (doc=realidad
++ fuente única): una copia tecleada a mano de la fuente vuelve a driftear (pasó — la copia que vivía aquí se
+quedó atrás del README con hooks de menos y un status stale). Para ver el árbol completo, mira **el bloque
+cercado que arranca en «🔒 Hooks Forzosos» de `README.md`** (la fuente) o **la leyenda ya incrustada en
+cualquier `.dot`** (byte-idéntica, la genera `gen-leyenda-arbol.sh` desde ese mismo bloque).
 
 **Regla:** el emoji de cada pieza es el CANÓNICO del árbol del README (nada de inventar 🔒/💾/⚙ genéricos por pieza; el emoji de familia 🔒🔔📜💡 sí clasifica).
 
@@ -49,7 +50,7 @@ nº de archivo ("ver **05**"), NUNCA circulado ①②③ (iba desfasado −1 sin
 ## 6. Fan-out compartido de un comando git en Bash = 9 hooks (raíz común de 03/04/05)
 Un comando `Bash` con git lo tocan **9 hooks**: **8 ANTES** (PreToolUse/Bash, en PARALELO, sin despachador,
 precedencia `deny>ask>allow`) + **1 DESPUÉS** (📈 aviso-contexto, PostToolUse). Los 8 pre (confirmado en
-`install-brain.sh:90-97`): 🚧 git-branch-guard · 🔗 merge-squash-guard · ✋ confirmar-merge-develop · 🕵️ secret-scan
+la función `ev_de` de `install-brain.sh`): 🚧 git-branch-guard · 🔗 merge-squash-guard · ✋ confirmar-merge-develop · 🕵️ secret-scan
 · 📊 recordar-dashboard · 🖥️ entorno-maquina-guard · 🕰️ rama-vieja · 🌳 proteger-arbol *(4 pueden DENY: los 3 de
 git + secret-scan)*. El 9º: 📈 aviso-contexto (post, no bloquea). 03/04/05 abren con esta raíz y hacen ZOOM
 sobre su subconjunto NOMBRANDO los 9. Prohibido "cascada secuencial" o "los 2 hooks".

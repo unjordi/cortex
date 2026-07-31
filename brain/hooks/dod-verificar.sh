@@ -139,11 +139,13 @@ fi
 # citar SU QA visual es válido — no un claim a ciegas de Claude.)
 usertext=$(printf '%s\n' "$turn" | jq -rs '
   [ .[] | select((.message.role // .type)=="user")
+        | select((.isMeta // false) != true)          # A-06 (FMEA): excluye mensajes META/inyectados
         | ((.message.content // [.message])
            | if type=="array"
              then (map(if type=="string" then . elif (.type? == "text") then .text else "" end) | join(" "))
              else (. // "") end)
-        | select(. != "") ] | join("  ")' 2>/dev/null)
+        | select(. != "")
+        | select(test("<system-reminder>") | not) ] | join("  ")' 2>/dev/null)  # A-06: descarta bloques inyectados (CLAUDE.md/recordatorios) que traen léxico de OK
 # Léxico del USUARIO: confirmación de funcionalidad o autorización EXPRESA de cierre (incluye los
 # imperativos de cierre — "ciérralo", "sí, quedó, ciérralo"). NO incluye narración en 3ª persona ("el
 # usuario confirmó"): eso solo lo escribiría Claude, y es justo el auto-atestiguamiento que ALTO-1 veta.
@@ -168,7 +170,9 @@ if [ "$conf" != si ] && printf '%s' "$last" | grep -qiE "$VISUAL_RE"; then
   # ligar URL/elemento ↔ claim) → NO se fuerza una heurística frágil (produciría falsos positivos que
   # desgastan el guard). Se acepta el residuo: el gate garantiza "miró UNA pantalla este turno", no "miró
   # ESA pantalla". El QA visual real sigue siendo del usuario. (Reportado en la auditoría; sin fix limpio.)
-  if ! printf '%s' "$turn" | grep -qE '"name"[[:space:]]*:[[:space:]]*"(mcp__claude-in-chrome__[a-z_]+|computer)"'; then
+  # A-08 (FMEA): reconoce cualquier driver de navegador MCP (claude-in-chrome/playwright/puppeteer/chrome/
+  # browser), no solo chrome — un claim visual tras `mcp__playwright__screenshot` ya NO da falso bloqueo.
+  if ! printf '%s' "$turn" | grep -qE '"name"[[:space:]]*:[[:space:]]*"(mcp__(claude-in-chrome|playwright|puppeteer|chrome|browser)[a-z0-9_-]*__[a-z_]+|computer)"'; then
     vreason="DETENTE — afirmaste una OBSERVACIÓN VISUAL ('se ve/quedó como el mockup / en Chrome / la pantalla muestra…') pero en ESTE turno NO corriste NINGUNA tool de navegador/screenshot: lo estás declarando A CIEGAS. No uses léxico de QA visual sin haber mirado la pantalla. Estatus honesto: 'verificado técnicamente, SIN QA visual (a ciegas)' — el QA visual lo hace el usuario o una captura real. (Lección real (2026-07): se insinuó QA de Chrome sin verla y reaparecieron bugs ya resueltos.)"
     jq -n --arg r "$vreason" '{decision:"block", reason:$r}'
     exit 0

@@ -32,12 +32,16 @@ digraph flujos {
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🖥️ entorno-maquina-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">commit de algo machine-specific (aliases/rutas de $HOME/Rosetta/entorno-maquina.md) al .claude/memory/ del repo → avisa</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🕰️ rama-vieja</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">avisa si la ramita arrastra base vieja</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌳 proteger-arbol</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">git destructivo que orfanaría commits sin pushear → avisa (fan-out: usa worktree aislado)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🛡️ proteger-fuente-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">editar la copia INSTALADA de un hook/skill que tiene fuente en el clon → avisa (se perdería en el próximo sync) (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧹 barrer-ramas</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al abrir sesión barre en 2º plano las ramas locales ya integradas (zombie squash-safe; throttle 24h) (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📝 delegacion-registrar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">materializa el "pregunta una sola vez"</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📮 delegacion-reporte</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al terminar un agente: recuerda registrar avance + limpiar su worktree</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧵 rehidratar-hilo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta hilo-mental-actual.md al abrir/retomar/compactar (GLOBAL) — con gate de frescura</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📈 aviso-contexto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">watermark: avisa "compacta TÚ ahora" antes del auto-compact-sorpresa (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧬 aviso-drift-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">repo brained atrás de la fuente única → en tu mini-develop se AUTO-SINCRONIZA (apply+commit+push); en otra rama, avisa (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧭 sesion-inicio</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta rama + norma + memoria al abrir</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌾 recordar-cosechar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">nudge al cerrar turno: trabajaste y no cosechaste → corre /cosechar-sesion</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">⬆️ recordar-unificar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">tu mini acumuló aprendizajes sin UNIFICAR a develop → sugiere /unificar-cerebro (gemelo ↑ de aviso-drift)</font></td></tr>
         <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>📜 Normas</b></font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎯 Definition of Done</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">verde técnico ≠ Done/Listo/Ya Quedó; exige QA o un OK explícito</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🪞 Doc &lt;= realidad</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cambió algo → su doc se actualiza en la tanda</font></td></tr>
@@ -49,6 +53,7 @@ digraph flujos {
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">💧 rehidratar-hilo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">relee el HILO a mano (gemelo del hook; respaldo si un update del CLI rompe el auto-rehidratado)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧵 orquestar-fanout</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">fan-out sin niñera: asigna del backlog, auto-reporta y limpia al cerrar</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🗺️ diagramar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">diagramas por destino: .dot→dot2yed→yEd (editar a mano) · Mermaid en .md versionado (verse en GitHub)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔬 auditar-proceso-algoritmo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">auditor experto read-only (proceso industrial + algoritmo) → hallazgos priorizados; se alimenta de los flowcharts de diagramar</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌙 turno-nocturno</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">protocolo del turno de noche: eco del contrato, decide-dentro-de-la-cerca, grants durables a disco</font></td></tr>
       </table>>];
     LEY_VAL [shape=none, margin=0, label=<
@@ -83,7 +88,7 @@ digraph flujos {
     // ── Ruta A: GLOBAL (máquina) = install-brain.sh ──
     GVEZ     [shape=diamond, fillcolor="#2b2622", color="#d97757", label="GLOBAL (máquina):\n¿1ª vez o actualizar?"];
     GINST    [color="#7fb069",
-              label="🟢  install-brain.sh\nDERIVA del MANIFEST la lista {global,both} (:57) → copia hooks+libs a ~/.claude/hooks,\ncablea settings.json, siembra dashboard + entorno-esta-maquina + normas, y ESTAMPA\n~/.claude/.brain-version (sello de versión, :127-132 — YA EXISTE, lo lee el widget).\n(install.sh lo envuelve SOLO en Linux/KDE: +daemon+systemd+plasmoide)"];
+              label="🟢  install-brain.sh\nDERIVA del MANIFEST la lista {global,both} → copia hooks+libs a ~/.claude/hooks,\ncablea settings.json, siembra dashboard + entorno-esta-maquina + normas, y ESTAMPA\n~/.claude/.brain-version (sello de versión — YA EXISTE, lo lee el widget).\n(install.sh lo envuelve SOLO en Linux/KDE: +daemon+systemd+plasmoide)"];
     GUPD     [color="#e08e45",
               label="🟠  re-correr install-brain.sh\nidempotente Y ACTUALIZABLE: refresca hooks, re-cablea,\nREEMPLAZA el bloque de normas en su lugar, re-estampa .brain-version"];
     GLIVE    [color="#7fb069", label="🟢  cerebro GLOBAL vivo en la máquina\n(aplica a TODOS los repos)"];
@@ -93,7 +98,7 @@ digraph flujos {
     // ── Ruta B: POR-REPO (clon / repo consumidor) ──
     RTIPO    [shape=diamond, fillcolor="#2b2622", color="#d97757", label="POR-REPO:\n¿repo nuevo o existente?"];
     CLON     [color="#7fb069",
-              label="🟢  repo NUEVO desde la plantilla\nel clon TRAE .claude/ (hooks+settings+skills+memoria) por git — el tooling VIAJA\nen el repo. secret-scan es tier `both` (:26 MANIFEST) → viaja por-repo y YA está\ncableado (el viejo 🔴 «clon+bootstrap no da secret-scan» está RESUELTO)"];
+              label="🟢  repo NUEVO desde la plantilla\nel clon TRAE .claude/ (hooks+settings+skills+memoria) por git — el tooling VIAJA\nen el repo. secret-scan es tier `both` (declarado en el MANIFEST) → viaja por-repo y YA está\ncableado (el viejo 🔴 «clon+bootstrap no da secret-scan» está RESUELTO)"];
     APLICA   [color="#e08e45",
               label="🟠  repo EXISTENTE: sembrar .claude/ sigue siendo MANUAL (no scriptado).\naplicar-plantilla-a-proyecto NO copia .claude/ — es un playbook de UI/arquitectura\nque ASUME el cerebro ya presente (hueco moderado, aún vigente)"];
     BOOT     [color="#e08e45",
@@ -106,8 +111,8 @@ digraph flujos {
               label="el brain EVOLUCIONÓ: ¿cómo se actualizan\nlos .claude/ de un repo YA instalado?"];
     SYNC     [color="#7fb069",
               label="🟢  sincronizar-cerebro.sh  (YA EXISTE, resuelve el viejo HUECO)\nFUENTE ÚNICA = MANIFEST; despliega por-repo {repo,both}, diff-aware (NO cp -f ciego),\nCABLEA settings.json, ESTAMPA .brain-version (solo en sync COMPLETO), PODA hooks\nRETIRED. DRY-RUN por default; --apply escribe; --only / --prune-orphans"];
-    DRIFT    [color="#7fb069",
-              label="🟢🔔  aviso-drift-cerebro.sh  (SessionStart · GLOBAL) — es también pieza de 02\ncorre sincronizar en DRY-RUN (diff por CONTENIDO); si la copia por-repo quedó atrás → AVISA.\n⚠ AUTO-APPLY en mini-develop: en rama Develop* con .claude/ limpio → apply+commit+push SOLO\n📜 → 🌿 Flujo de git (en repo compartido «actualizar» = por ramita→MR)"];
+    DRIFT    [color="#c0392b", penwidth=3,
+              label="⚠ ESCRIBE git · 🔔🧬  aviso-drift-cerebro.sh  (SessionStart · GLOBAL) — es también pieza de 02\ncorre sincronizar en DRY-RUN (diff por CONTENIDO); si la copia por-repo quedó atrás → AVISA.\n⚠ AUTO-APPLY en mini-develop: en rama Develop* con .claude/ limpio → apply+commit+push SOLO\n📜 → 🌿 Flujo de git (en repo compartido «actualizar» = por ramita→MR)"];
     DRIFT_CIEGO [color="#7fb069",
               label="🟢  aviso-drift YA VE el drift de CABLEADO: cuenta también el wiring FALTANTE\n(«N cableado faltante») → ya no reporta «al día» con hooks presentes-SIN-cablear.\nRESUELTO en #209 (en develop, 2026-07-30)"];
     DRIFT_STAGE [color="#7fb069",
@@ -137,7 +142,7 @@ digraph flujos {
     GVEZ -> GUPD  [label="actualizar"];
     GINST -> GLIVE;
     GUPD  -> GLIVE;
-    GINST -> GWIRE [style=dashed, label="wiring hardcode"];
+    GINST -> GWIRE [style=dashed, label="cableado (deriva del MANIFEST)"];
 
     RTIPO -> CLON   [label="nuevo"];
     RTIPO -> APLICA [label="existente"];

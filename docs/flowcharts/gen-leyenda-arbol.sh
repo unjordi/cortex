@@ -32,9 +32,11 @@ emit() {
   echo "      <table border=\"0\" cellborder=\"1\" cellspacing=\"0\" cellpadding=\"4\" color=\"$BORDER\" bgcolor=\"$BG\">"
   awk -v BG="$BG" -v TXT="$TXT" -v NAMEC="$NAMEC" -v FAMC="$FAMC" -v FAMBG="$FAMBG" '
     function esc(s){ gsub(/&/,"\\&amp;",s); gsub(/</,"\\&lt;",s); gsub(/>/,"\\&gt;",s); return s }
-    # localizar el bloque ``` que arranca con 🔒 Hooks Forzosos
-    /^```/ { if (cap) { exit } infence=!infence; next }
-    infence && /^🔒/ { cap=1 }
+    # Captura ANCLADA directamente a la línea "🔒 Hooks Forzosos" hasta el siguiente cierre ``` (C4, FMEA
+    # post-integración): NO depende del tracking de paridad de fences (un ``` desbalanceado ARRIBA en el
+    # README invertía `infence` y producía una leyenda VACÍA en silencio). Robusto ante ejemplos con ``` arriba.
+    /^🔒[[:space:]]+Hooks[[:space:]]+Forzosos/ { cap=1 }
+    cap && /^```/ { exit }
     !cap { next }
     {
       line=$0
@@ -52,6 +54,7 @@ emit() {
         rest=line;  sub(/^[^[:space:]]+[[:space:]]+/,"",rest)# resto = nombre + descripción
         name=rest;  sub(/[[:space:]][[:space:]]+.*/,"",name) # nombre = hasta el 1er padding de 2+ espacios (puede ser multi-palabra)
         desc=substr(rest, length(name)+1); sub(/^[[:space:]]+/,"",desc)  # descripción = lo que sigue al nombre
+        if (desc=="") desc=" "                               # defensivo: desc vacía (línea sin padding 2+) → <font> no vacío (dot no revienta)
         printf "        <tr><td bgcolor=\"%s\"><font color=\"%s\">%s %s</font></td><td bgcolor=\"%s\"><font color=\"%s\">%s</font></td></tr>\n", \
                BG, NAMEC, esc(emoji), esc(name), BG, TXT, esc(desc)
       }

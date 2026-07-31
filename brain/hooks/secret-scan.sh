@@ -53,13 +53,27 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
 _ACGLIB="$(dirname "$0")/analizar-comando-git.sh"
 # shellcheck source=analizar-comando-git.sh
 [ -f "$_ACGLIB" ] && . "$_ACGLIB"
-if command -v acg_despoja_comillas >/dev/null 2>&1; then
-  cmd_uq=$(acg_despoja_comillas "$cmd")
+# A-03/A-R4-02 (FMEA): colapsa el prefijo de opciones globales de git (`-c k=v`, `-C dir`, `--no-pager`,
+# `--work-tree`, …) para que `git <globales> commit` NO evada la adyacencia git+commit/push del gate (ese
+# prefijo cegaba el escaneo). A-R5-02 (FMEA r5): se NORMALIZA SOBRE EL RAW (comillas intactas) ANTES de
+# despojar — si se despoja primero, un value-eater con valor entrecomillado (`git -C "/ruta" commit`) queda
+# vacío y el normalizador se come el subcomando `commit` → escaneo CIEGO. El normalizador es quote-aware
+# (consume el valor entrecomillado con espacios como una unidad). Orden correcto: normaliza(raw) → despoja.
+if command -v acg_normaliza_git_prefijo >/dev/null 2>&1; then
+  cmd_norm=$(acg_normaliza_git_prefijo "$cmd")
 else
-  cmd_uq=$(printf '%s' "$cmd" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g")
+  cmd_norm=$(printf '%s' "$cmd" | sed -E 's/(^|[^[:alnum:]._-])git\.exe([[:space:]])/\1git\2/g' | sed -E "s/git[[:space:]]+((((-c|-C|--exec-path|--git-dir|--work-tree|--namespace|--attr-source|--config-env|--super-prefix)([[:space:]]+|=)([^[:space:]\"']|\"[^\"]*\"|'[^']*'|\\\\.)+)|(--?[a-zA-Z][a-zA-Z-]*(=([^[:space:]\"']|\"[^\"]*\"|'[^']*'|\\\\.)+)?))[[:space:]]+)+/git /g")
+fi
+if command -v acg_despoja_comillas >/dev/null 2>&1; then
+  cmd_uq=$(acg_despoja_comillas "$cmd_norm")
+else
+  cmd_uq=$(printf '%s' "$cmd_norm" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g")
 fi
 
 # ¿Es un commit o un push? Si no, no es asunto de este guard (NO es "no poder escanear" → nunca strict-bloquea).
+# LÍMITE CONOCIDO (A-07, FMEA): casa el subcomando LITERAL commit/push; un ALIAS de git del usuario (`git ci`,
+# `git psh`) NO matchea → el guard queda inerte en ese caso. Cubrirlo genéricamente exigiría resolver los alias
+# (`git config --get alias.*`) por-máquina; se documenta como límite aceptado (depende de config personal, no universal).
 printf '%s' "$cmd_uq" | grep -qE 'git[[:space:]]+(commit|push)' || exit 0
 # Escapes deliberados (el humano manda) — ganan incluso en strict.
 [ "${CLAUDE_SKIP_SECRET_SCAN:-}" = "1" ] && exit 0
