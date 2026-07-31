@@ -146,6 +146,25 @@ if [ -d "$SRC_SKILLS" ]; then
   done
 fi
 
+# ── (c1b) Opción de modelo Opus 4.8 en el picker + autocompact 70% (bloque `env` de settings.json) ──
+# Cosechado del global de Cachy (2026-07-31). Es config de Claude Code PORTABLE (no de máquina), por eso va
+# en el brain. Idempotente y NO destructivo: setea CADA clave SOLO si falta → un dev que ya eligió otra cosa
+# (o que no quiere Opus 4.8) la conserva; una máquina fresca la recibe. NO toca `.model` (el default del dev).
+set_env_default() {  # <clave> <valor>
+  local k="$1" v="$2" tmp
+  command -v jq >/dev/null 2>&1 || return
+  [ -f "$GSET" ] || echo '{}' > "$GSET"
+  tmp="$(mktemp)" || return
+  if jq --arg k "$k" --arg v "$v" '.env = (.env // {}) | (if .env[$k]==null then .env[$k]=$v else . end)' "$GSET" > "$tmp" 2>/dev/null && [ -s "$tmp" ]; then
+    mv "$tmp" "$GSET"
+  else rm -f "$tmp"; fi
+}
+set_env_default ANTHROPIC_CUSTOM_MODEL_OPTION "claude-opus-4-8"
+set_env_default ANTHROPIC_CUSTOM_MODEL_OPTION_NAME "Opus 4.8"
+set_env_default ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION "Modelo previo - oculto del picker desde Opus 5"
+set_env_default CLAUDE_AUTOCOMPACT_PCT_OVERRIDE "70"
+echo "ok: Opus 4.8 en el picker + autocompact 70% asegurados en $GSET (env; no pisa tu elección ni tu .model)"
+
 # ── (c2) Sello de VERSIÓN del cerebro instalado ──
 # El widget (tab Cerebro de las 3 GUIs) lee ~/.claude/.brain-version — NO el repo — para mostrar
 # qué versión del brain quedó instalada en ESTA máquina. Contrato de DOS LÍNEAS:
