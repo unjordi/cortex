@@ -2233,5 +2233,35 @@ fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (e8) installer: la migración de rebrand barre el bloque PATH viejo 'claude-quota' del rc =="
+# Regresión: la migración claude-quota→claude-brain limpiaba cache/launchd/app pero NO el bloque PATH
+# viejo del rc (marcador '(claude, claude-quota-fetch)') → al actualizar quedaba un 2º bloque PATH
+# duplicado (inofensivo, pero cruft). ensure_path_local_bin (en install.sh y macos/install.sh) ahora
+# lo barre. Se extrae la función y se corre contra un rc falso con el bloque viejo.
+OLD_LINE='# claude-brain: ~/.local/bin en el PATH (claude, claude-quota-fetch)'
+CASE_LINE='case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac'
+for inst in "$SCRIPT_DIR/../install.sh" "$SCRIPT_DIR/../macos/install.sh"; do
+  iname="$(basename "$(dirname "$inst")")/$(basename "$inst")"
+  if [ ! -f "$inst" ]; then bad "e8: no encuentro el instalador $iname"; continue; fi
+  EP="$(mktemp -d "${TMPDIR:-/tmp}/brain-ep.XXXXXX")"
+  { printf '%s\n' 'export FOO=1' ''; printf '%s\n' "$OLD_LINE" "$CASE_LINE" 'alias ll=ls'; } > "$EP/.zshrc"
+  fn="$(sed -n '/^ensure_path_local_bin()/,/^}/p' "$inst")"
+  ( eval "$fn"; HOME="$EP" ensure_path_local_bin ) >/dev/null 2>&1
+  onew="$(grep -c 'claude-brain-fetch' "$EP/.zshrc" 2>/dev/null)"; onew="${onew:-0}"
+  oold="$(grep -c 'claude-quota-fetch' "$EP/.zshrc" 2>/dev/null)"; oold="${oold:-0}"
+  oali="$(grep -c 'alias ll=ls' "$EP/.zshrc" 2>/dev/null)"; oali="${oali:-0}"
+  if [ "$oold" -eq 0 ] && [ "$onew" -eq 1 ] && [ "$oali" -eq 1 ]; then
+    ok "e8: $iname barre el marcador viejo y deja 1 bloque nuevo, sin tocar el resto"
+  else
+    bad "e8: $iname — viejo=$oold nuevo=$onew alias=$oali (esperado viejo=0 nuevo=1 alias=1)"
+  fi
+  ( eval "$fn"; HOME="$EP" ensure_path_local_bin ) >/dev/null 2>&1
+  onew2="$(grep -c 'claude-brain-fetch' "$EP/.zshrc" 2>/dev/null)"; onew2="${onew2:-0}"
+  if [ "$onew2" -eq 1 ]; then ok "e8: $iname idempotente (2ª corrida sigue en 1 bloque)"; else bad "e8: $iname NO idempotente (nuevo=$onew2)"; fi
+  rm -rf "$EP"
+done
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "==> resultado: $PASS PASS · $FAIL FAIL"
 [ "$FAIL" -eq 0 ]
