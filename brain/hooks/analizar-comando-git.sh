@@ -12,14 +12,22 @@ acg_despoja_comillas() { printf '%s' "$1" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g";
 # /develop|/main NO genere un falso positivo de destino. (H11.)
 acg_sin_flag_repo() { printf '%s' "$1" | sed -E 's/(--repo|-R)[[:space:]=]+[^[:space:]]+//g'; }
 
-# Colapsa el PREFIJO de opciones globales de git (`-c k=v`, `-C dir`) entre `git` y su subcomando →
-# `git -c http.sslVerify=false push …` se normaliza a `git push …`. Sin esto, la adyacencia `git+push`/
-# `git+commit` que exigen las detecciones se rompía y el comando evadía tanto los git-guards como el
-# escaneo de secretos (A-03, FMEA 2026-07-30). `(…)+` en ERE lo soportan GNU y BSD sed. Solo casa `-c/-C`
-# INMEDIATAMENTE tras `git` (no
-# el `-c` de `git commit -c <commit>`, que va tras el subcomando).
+# Colapsa el PREFIJO de opciones globales de git entre `git` y su subcomando → `git --no-pager push …`,
+# `git -c http.sslVerify=false push …`, `git --work-tree=/tmp push …` se normalizan a `git push …`. Sin
+# esto, la adyacencia `git+push`/`git+commit` que exigen las detecciones se rompía y el comando evadía
+# tanto los git-guards como el escaneo de secretos.
+#   · A-03 (FMEA r1): cubrió `-c`/`-C`.
+#   · A-R4-01/02 (FMEA r4): git acepta MUCHAS más globales (`--no-pager`, `-p`/`-P`, `--work-tree`,
+#     `--git-dir`, `--namespace`, `--exec-path`, `--no-replace-objects`, `--literal-pathspecs`, …) → cada
+#     una rompía la adyacencia y evadía TODO el guard de flujo (crítico) y el escaneo de secretos. Se generaliza a la CLASE,
+#     no a la enumeración: (a) el set que consume un VALOR por espacio o `=` (debe ir 1º en la alternación
+#     para comerse ese valor) y (b) CUALQUIER otro token dash-led (flag booleano o `--x=val`), así una
+#     global NUEVA de git ya no reabre el hueco. `(…)+` en ERE lo soportan GNU y BSD sed; POSIX
+#     leftmost-longest hace que (a) gane sobre (b) cuando puede comerse el valor.
+# Solo casa opciones INMEDIATAMENTE tras `git` y se detiene en el 1er token NO-dash (el subcomando) → el
+# `-c` de `git commit -c <commit>` (tras el subcomando) NO se toca, y `git push -u …` (0 globales) queda intacto.
 acg_normaliza_git_prefijo() {
-  printf '%s' "$1" | sed -E 's/git[[:space:]]+((-c|-C)[[:space:]]+[^[:space:]]+[[:space:]]+)+/git /g'
+  printf '%s' "$1" | sed -E 's/git[[:space:]]+((((-c|-C|--exec-path|--git-dir|--work-tree|--namespace|--attr-source|--config-env|--super-prefix)([[:space:]]+|=)[^[:space:]]+)|(--?[a-zA-Z][a-zA-Z-]*(=[^[:space:]]+)?))[[:space:]]+)+/git /g'
 }
 
 # Raíz y rama actual del repo del PROYECTO (CLAUDE_PROJECT_DIR), no del cwd del hook.

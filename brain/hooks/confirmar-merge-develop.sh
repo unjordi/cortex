@@ -85,6 +85,13 @@ fi                                          # (negación adyacente A3 · id de M
 # de merge y pasaban como OK ("ni se te ocurra mergear el 5", "para nada", "de ninguna manera", "tampoco",
 # "evita"). "ni se te ocurra"/"ni loco" van como frase para no atrapar "ni bien" (= apenas), que NO niega.
 NEG_RE='(\b(no|sin|nunca|jam[aá]s|tampoco|evit[aeé][a-z]*)\b|para nada|de ninguna manera|de ning[uú]n modo|ni se te ocurra|ni loc[ao])'
+# A-R4-03 (FMEA r4): además de la negación LÉXICA (NEG_RE), descarta el encuadre de APLAZAMIENTO/futuro —
+# el usuario que POSPONE el merge pero menciona "mergear el <id>" NO lo está autorizando ("espera para
+# mergear el 5", "déjame ver antes de mergear el 5", "casi listo para mergear el 5", "todavía revisando…").
+# Dirección SEGURA (fail-safe): ante un aplazamiento, re-pide confirmación en vez de mergear. Se omite el
+# `luego` pelón a propósito: colisiona con "desde luego" (= afirmación); esos casos igual caen por
+# todavía/aún/casi-listo. Cuida FP: "ya revisé, mergea" y "desde luego, mergea" NO deben caer aquí.
+DEFER_RE='(\bespera\b|aguanta|antes de|m[aá]s tarde|al rato|cuando (termine|revise|acabe|veas|chec|est[eé])|casi list|todav[ií]a|a[uú]n (no|estoy|est[aá]s)|d[eé]jame ver)'
 # Verbo de merge/OK inmediatamente seguido de (el)? (MR)? #?<n> → marca que el OK va dirigido a ESE MR.
 BOUND_OK_RE='(merg[eé]a[a-zé]*|mérga(lo|los)?|dale( el)? merge|integr[ao][a-zé]*|emp[uú]j[a-zé]*|s[uú]b[a-zé]*|m[aá]nd[a-zé]*|m[eé]t[ae][a-zé]*)[[:space:]]+(el[[:space:]]+)?(mr[[:space:]]+)?#?[0-9]+'
 # MR-id del COMANDO actual (para la ligadura A4). Vacío si el comando no nombra id → A4 no aplica (recencia).
@@ -97,6 +104,7 @@ _ok_para_este_merge() {
     [ -n "$line" ] || continue
     printf '%s' "$line" | grep -qiE "$re"    || continue    # trae una marca de OK
     printf '%s' "$line" | grep -qiE "$NEG_RE" && continue    # (A3) negada → no cuenta
+    printf '%s' "$line" | grep -qiE "$DEFER_RE" && continue  # (A-R4-03) aplazada/futuro → no cuenta
     ids=$(printf '%s' "$line" | grep -oiE "$BOUND_OK_RE" | grep -oE '[0-9]+')
     if [ -n "$ids" ] && [ -n "$cur_mrid" ]; then             # (A4) OK ligado a un MR-id concreto…
       printf '%s\n' "$ids" | grep -qx "$cur_mrid" || continue # …y NO es este → no autoriza este merge

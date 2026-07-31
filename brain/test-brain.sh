@@ -253,7 +253,24 @@ printf '%s' "$(gb 'git push origin feat/x && git push origin main')"   | grep -q
 # Y el contraveneno: un push REAL a ramita seguido de un commit cuyo MENSAJE menciona "git push a develop"
 # NO dispara — ese subcomando es el commit, su despoja borra el mensaje → es_push=no → se salta (H13 por-subcomando).
 is_silent "$(gb 'git push origin feat/x && git commit -m "doc: recordar no hacer git push a develop"')" && ok "gbg A-R3-01: push a ramita + commit con 'git push a develop' en el mensaje → silencio (H13)" || bad "gbg A-R3-01: la mención en el mensaje del commit encadenado disparó (falso positivo)"
+# A-R4-01 (FMEA ronda 4): git acepta MUCHAS opciones globales entre `git` y su subcomando (no solo -c/-C).
+# Cada una rompía la adyacencia git+push → evadía TODO el guard. acg_normaliza_git_prefijo ahora colapsa la
+# CLASE (value-eaters por espacio/= + cualquier flag dash-led). Parado en feat/x → estas empujan a base → deny.
+printf '%s' "$(gb 'git --no-pager push origin develop')"     | grep -q '"deny"' && ok "gbg A-R4-01: 'git --no-pager push develop' → deny" || bad "gbg A-R4-01: '--no-pager' rompió la adyacencia (bypass)"
+printf '%s' "$(gb 'git -P push origin develop')"             | grep -q '"deny"' && ok "gbg A-R4-01: 'git -P push develop' → deny" || bad "gbg A-R4-01: '-P' se coló"
+printf '%s' "$(gb 'git --work-tree=/tmp push origin main')"  | grep -q '"deny"' && ok "gbg A-R4-01: 'git --work-tree=/tmp push main' (=-form) → deny" || bad "gbg A-R4-01: '--work-tree=' se coló"
+printf '%s' "$(gb 'git --git-dir /tmp/foo push origin develop')" | grep -q '"deny"' && ok "gbg A-R4-01: 'git --git-dir /tmp/foo push develop' (value por espacio) → deny" || bad "gbg A-R4-01: '--git-dir <dir>' se coló"
+printf '%s' "$(gb 'git --literal-pathspecs push origin main')" | grep -q '"deny"' && ok "gbg A-R4-01: 'git --literal-pathspecs push main' → deny" || bad "gbg A-R4-01: '--literal-pathspecs' se coló"
+is_silent "$(gb 'git --no-pager push origin feat/x')"        && ok "gbg A-R4-01: '--no-pager push feat/x' (ramita) → silencio (sin falso positivo)" || bad "gbg A-R4-01: bloqueó una ramita con prefijo global"
 rm -rf "$GBROOT"
+# A-R4-01 (pelón en BASE): parado EN develop, un push pelón con prefijo global debe DENY (el fallback por
+# rama actual se alcanza porque el subcomando SÍ se reconoce como push tras normalizar el prefijo).
+GBROOT2="$(mktemp -d "${TMPDIR:-/tmp}/brain-gb2.XXXXXX")"; GBREPO2="$GBROOT2/repo"; GBHOME2="$GBROOT2/home"; mkdir -p "$GBREPO2" "$GBHOME2"
+git -C "$GBREPO2" init -q >/dev/null 2>&1; git -C "$GBREPO2" config user.email t@t; git -C "$GBREPO2" config user.name t
+git -C "$GBREPO2" commit -q --allow-empty -m init >/dev/null 2>&1; git -C "$GBREPO2" checkout -q -b develop >/dev/null 2>&1
+gb2() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | CLAUDE_PROJECT_DIR="$GBREPO2" HOME="$GBHOME2" bash "$HOOKS/git-branch-guard.sh"; }
+printf '%s' "$(gb2 'git --no-pager push')" | grep -q '"deny"' && ok "gbg A-R4-01: 'git --no-pager push' PELÓN parado EN develop → deny" || bad "gbg A-R4-01: el pelón con --no-pager en develop se coló"
+rm -rf "$GBROOT2"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
@@ -307,6 +324,20 @@ is_deny "$(cm 'glab mr merge 5 --yes' 'ni se te ocurra mergear el 5')" \
   && ok "cmd A-05: 'ni se te ocurra mergear' → deny (negación reconocida)" || bad "cmd A-05: 'ni se te ocurra' pasó como OK (bypass A-05)"
 is_deny "$(cm 'glab mr merge 5 --yes' 'de ninguna manera mergea el 5 ahora')" \
   && ok "cmd A-05: 'de ninguna manera mergea' → deny" || bad "cmd A-05: 'de ninguna manera' pasó como OK"
+# A-R4-03 (FMEA r4): un DEFERIMIENTO/futuro que menciona "mergear el <id>" NO es un OK (DEFER_RE lo descarta).
+is_deny "$(cm 'glab mr merge 5 --yes' 'espera para mergear el 5')" \
+  && ok "cmd A-R4-03: 'espera para mergear el 5' (aplazamiento) → deny" || bad "cmd A-R4-03: 'espera para mergear' pasó como OK"
+is_deny "$(cm 'glab mr merge 5 --yes' 'dejame ver antes de mergear el 5')" \
+  && ok "cmd A-R4-03: 'déjame ver antes de mergear el 5' → deny" || bad "cmd A-R4-03: 'déjame ver antes de' pasó como OK"
+is_deny "$(cm 'glab mr merge 5 --yes' 'todavia estoy revisando, luego mergea el 5')" \
+  && ok "cmd A-R4-03: 'todavía revisando, luego mergea el 5' → deny" || bad "cmd A-R4-03: 'todavía revisando' pasó como OK"
+is_deny "$(cm 'glab mr merge 5 --yes' 'casi listo para mergear el 5')" \
+  && ok "cmd A-R4-03: 'casi listo para mergear el 5' → deny" || bad "cmd A-R4-03: 'casi listo para' pasó como OK"
+# Controles anti-FP: una afirmación NO debe caer por DEFER_RE ("ya revisé, mergea"; "desde luego, mergea").
+is_silent "$(cm 'glab mr merge 5 --yes' 'ya revise, mergea el 5')" \
+  && ok "cmd A-R4-03: 'ya revisé, mergea el 5' → pasa (no es aplazamiento)" || bad "cmd A-R4-03: falso positivo, 'ya revisé' cayó por DEFER_RE"
+is_silent "$(cm 'glab mr merge 5 --yes' 'desde luego, mergea el 5')" \
+  && ok "cmd A-R4-03: 'desde luego, mergea el 5' → pasa (no colisiona con 'luego')" || bad "cmd A-R4-03: falso positivo, 'desde luego' cayó por 'luego'"
 # Blindaje (NO se afloja el camino inverso): un OK de develop NUNCA autoriza un RELEASE a main.
 mock_cm_glab main
 is_deny "$(cm 'glab mr merge 63 --yes' 'mérgalo a develop')" \
@@ -542,6 +573,13 @@ fmeareset; printf 'v\n' > "$FMEAREPO/gc.txt"; git -C "$FMEAREPO" add gc.txt >/de
 printf 'v\naws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/gc.txt"
 o="$(scanf 'git -c user.email=x commit -am x')"
 printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan A-03: 'git -c … commit -am' escanea (prefijo ya no ciega) → bloquea" || bad "secret-scan A-03: el prefijo 'git -c' cegó el escaneo; got: $o"
+# A-R4-02 (FMEA r4): las OTRAS opciones globales de git (≠ -c/-C) también rompían la adyacencia git+commit
+# del gate → el escaneo NO corría. El fix generalizado de acg_normaliza_git_prefijo (compartido) las cierra.
+fmeareset; printf 'v\n' > "$FMEAREPO/g2.txt"; git -C "$FMEAREPO" add g2.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm g2 >/dev/null 2>&1
+printf 'v\naws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/g2.txt"
+printf '%s' "$(scanf 'git --no-pager commit -am x')" | grep -q '"deny"' && ok "secret-scan A-R4-02: 'git --no-pager commit -am' escanea → bloquea" || bad "secret-scan A-R4-02: '--no-pager' cegó el escaneo; got: $(scanf 'git --no-pager commit -am x')"
+printf '%s' "$(scanf 'git -P commit -am x')"         | grep -q '"deny"' && ok "secret-scan A-R4-02: 'git -P commit -am' escanea → bloquea" || bad "secret-scan A-R4-02: '-P' cegó el escaneo"
+printf '%s' "$(scanf 'git --work-tree=. commit -am x')" | grep -q '"deny"' && ok "secret-scan A-R4-02: 'git --work-tree=. commit -am' escanea → bloquea" || bad "secret-scan A-R4-02: '--work-tree=' cegó el escaneo"
 rm -rf "$FMEAREPO"
 
 # ─────────────────────────────────────────────────────────────────────────────

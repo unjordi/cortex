@@ -30,12 +30,13 @@ NO una selección, NO una clave compacta de colores. Cada chart lo lleva **ínte
 sin abrir el README. **Fuente única = el README** (para no driftear, doc=realidad): el bloque de leyenda de
 cada `.dot` se **GENERA desde el árbol del README** (un helper lo lee y emite el subgrafo — no se teclea a
 mano en cada chart, eso sería N copias que driftean). La lámina suelta `00-leyenda-arbol.*` queda subsumida:
-el mismo generador que la producía ahora alimenta la leyenda de cada chart. El árbol (espejo del README —
-la fuente es el README, aquí solo de referencia rápida):
-- **🔒 Forzosos** (bloquean/deny): 🚧 git-branch-guard · 🔗 merge-squash-guard · 🕵️ secret-scan · 💸 delegacion-gate · 🛑 limite-gasto · ✋ confirmar-merge-develop (repo) · ✅ dod-verificar (repo)
-- **🔔 Automático** (inyectan/recuerdan): 📊 recordar-dashboard · 🖥️ entorno-maquina-guard · 🕰️ rama-vieja · 🌳 proteger-arbol · 🛡️ proteger-fuente-cerebro · 📝 delegacion-registrar · 📮 delegacion-reporte · 🧵 rehidratar-hilo · 📈 aviso-contexto · 🧬 aviso-drift-cerebro · 🧭 sesion-inicio (repo)
-- **📜 Normas** (el cimiento): 🎯 DoD · 🪞 doc=realidad · 🌿 flujo git · 💰 costo delegación · 🖥️ entorno-máquina-global · 🧾 ningún hallazgo/decisión solo en el chat · ⛏️ post-compact excava · 🧰 Paso 0 inventario · (+ las de global-claude-md)
-- **💡 Skills** (opt-in): 📦 cerrar-slice · 💾 checkpoint · 💧 rehidratar-hilo · 🧵 orquestar-fanout · 🗺️ diagramar · 🌙 turno-nocturno · 🔬 auditar-proceso-algoritmo (al mergear #207)
+el mismo generador que la producía ahora alimenta la leyenda de cada chart.
+
+**Las 4 familias con TODAS sus piezas y su emoji canónico NO se transcriben aquí a propósito** (doc=realidad
++ fuente única): una copia tecleada a mano de la fuente vuelve a driftear (pasó — la copia que vivía aquí se
+quedó atrás del README con hooks de menos y un status stale). Para ver el árbol completo, mira **el bloque
+cercado que arranca en «🔒 Hooks Forzosos» de `README.md`** (la fuente) o **la leyenda ya incrustada en
+cualquier `.dot`** (byte-idéntica, la genera `gen-leyenda-arbol.sh` desde ese mismo bloque).
 
 **Regla:** el emoji de cada pieza es el CANÓNICO del árbol del README (nada de inventar 🔒/💾/⚙ genéricos por pieza; el emoji de familia 🔒🔔📜💡 sí clasifica).
 
