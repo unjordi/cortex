@@ -1,6 +1,6 @@
 ---
 name: auditar-suficiencia-operativa
-description: Auditar una doc/cerebro por SUFICIENCIA OPERATIVA (¿puede un agente nuevo HACER las tareas sin romper nada ni re-investigar?) en vez de solo por coherencia. Enumera las tareas reales, las califica ✅/⚠️/❌ con archivo:línea, y exige RE-auditar tras arreglar. Úsalo al cerrar una sesión que cambió arquitectura o procedimientos, o cuando el usuario diga "revisa que quede bien asentado / que sepa mantenerlo".
+description: Auditar una doc/cerebro por SUFICIENCIA OPERATIVA (¿puede un agente nuevo HACER las tareas sin romper nada ni re-investigar?) en vez de solo por coherencia. Enumera las tareas reales, las califica ✅/⚠️/❌ con archivo:línea, y exige RE-auditar tras arreglar. Úsalo al cerrar una sesión que cambió arquitectura o procedimientos, o cuando el usuario diga "revisa que quede bien asentado / que sepa mantenerlo". Es la mitad OPERABILIDAD de la DUPLA con auditar-coherencia-cerebro (la mitad CONSISTENCIA): van JUNTAS en un cambio a doc/sistema — ninguna caza lo de la otra.
 ---
 
 # Auditar SUFICIENCIA OPERATIVA (no solo coherencia)

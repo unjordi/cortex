@@ -1,6 +1,6 @@
 ---
 name: auditar-coherencia-cerebro
-description: Manda un fan-out de auditores expertos READ-ONLY a barrer la COHERENCIA del propio cerebro (hooks/guards + flowcharts + normas + doc) buscando evasiones, huecos y doc que miente, y —a petición— itera fix→re-auditar hasta CONVERGER. Es la aplicación al cerebro de la metodología de auditar-proceso-algoritmo (su modo "un SISTEMA"), empaquetada y repetible.
+description: Manda un fan-out de auditores expertos READ-ONLY a barrer la COHERENCIA del propio cerebro (hooks/guards + flowcharts + normas + doc) buscando evasiones, huecos y doc que miente, y —a petición— itera fix→re-auditar hasta CONVERGER. Es la aplicación al cerebro de la metodología de auditar-proceso-algoritmo (su modo "un SISTEMA"), empaquetada y repetible. Es la mitad CONSISTENCIA de la DUPLA con auditar-suficiencia-operativa (la mitad OPERABILIDAD): van JUNTAS en un cambio a doc/sistema — ninguna caza lo de la otra.
 ---
 
 # Auditar la coherencia del cerebro (fan-out read-only, iterativo)
