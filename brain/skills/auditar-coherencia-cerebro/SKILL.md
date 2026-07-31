@@ -20,6 +20,24 @@ No es un comando que Claude ejecute por su cuenta: es la **capacidad invocable**
 > METODOLOGÍA: persona experta, individual→colectivo, leyenda+normas obligatorias). Este skill aporta la
 > ORQUESTACIÓN: qué dimensiones, cómo alimentarlas, la verificación por EJECUCIÓN, el loop y el cierre.
 
+## Introspección: el punto ciego del auto-audit (y por qué igual sirve)
+Auditar tu propio cerebro se llama **introspección**, y tiene un punto ciego que NO se ignora: el
+auditor **comparte el modelo mental de lo que audita** — da por buenas las mismas premisas y no ve los
+mismos huecos. Un `general-purpose` FRESCO alimentado con los "zapatos" mitiga esto (no arrastra el
+contexto ni los supuestos del orquestador), pero **no lo elimina**; y el auditor **no es infalible ni
+se pretende infalible** — se ejercita y mejora en **cada corrida** (es un gate recurrente: típicamente
+uno por release, ver «Cuándo usarlo»), igual que el resto del cerebro. Por eso su veredicto NUNCA se
+toma a ciegas; dos candados lo sujetan:
+- **Los hallazgos son PLAUSIBLES, no verdad.** En la dimensión A se verifican **por EJECUCIÓN** en
+  sandbox; en B/C, contra el código/doc real. Nada se cree por su palabra (de ahí CONFIRMADO vs PLAUSIBLE).
+- **unjordi tiene la última palabra — no por infalible, sino porque el REPO es suyo.** También se
+  equivoca y también necesita ayuda; es una relación de ida y vuelta, no un oráculo que dictamina desde
+  arriba. "Auditado sin hallazgos graves" es *verificado técnicamente*, jamás LISTO: cerrar exige su
+  QA/OK (definición de LISTO). La introspección PROPONE; unjordi DECIDE.
+
+Dicho corto: **es tu cerebro, es mi repo, y es nuestro proyecto.** Las tres a la vez — contenido,
+propiedad y trabajo — de otro modo la introspección se vuelve o un oráculo suelto o un dueño ausente.
+
 ## Cuándo usarlo
 - Tras **integrar cambios a `develop`** (varios PRs, un refactor de wiring, hooks nuevos): barrer que no
   se coló una evasión ni un drift de doc antes de un release a `main`.
@@ -28,7 +46,8 @@ No es un comando que Claude ejecute por su cuenta: es la **capacidad invocable**
   más fino (lección de las 9 rondas — el value-model de git reabrió 5 veces seguidas).
 - Cuando cambien **flowcharts, README-árbol o normas**: verificar que la doc sigue reflejando la realidad
   (doc=realidad) y que las leyendas generadas cuadran con el árbol vivo.
-- Como **gate de coherencia** antes de dar por sólido el cerebro — nunca como sustituto del QA/OK de unjordi.
+- Como **gate de coherencia recurrente antes de CADA release `develop→main`** — barrido de rutina, no
+  evento excepcional; nunca como sustituto del QA/OK de unjordi.
 
 ## Los "zapatos" (inputs OBLIGATORIOS — sin esto el auditor camina descalzo)
 Regla dura heredada de [[auditar-proceso-algoritmo]]: **a cada auditor se le dan los zapatos o audita a
