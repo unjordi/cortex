@@ -2327,6 +2327,17 @@ grep -qE '& \$cli auth status' "$WPS1" 2>/dev/null \
   && ok "e10: install.ps1 — auth status contra el binario de la CLI (no el que resuelva 'claude')" \
   || bad "e10: install.ps1 — auth status no apunta a la CLI específica"
 
+# e11: RACE del asset 'windows-latest'. Al DESCARGAR el exe, version.json debe reflejar el 'build-sha:'
+# real del asset (que puede ir detras de main mientras el runner reconstruye), NO el HEAD del clon —
+# si no, el widget se cree al dia con un exe viejo y su cerebro empaquetado cuenta hooks de menos
+# (el "(5)" fantasma). Fix: leer build-sha del cuerpo del release y estampar ese sha efectivo.
+grep -q 'effSha' "$WPS1" 2>/dev/null \
+  && ok "e11: install.ps1 — usa sha EFECTIVO (del asset, no HEAD) para el version.json" \
+  || bad "e11: install.ps1 — estampa siempre HEAD del clon (RACE del rolling)"
+grep -q 'build-sha: (\[0-9a-f\]+)' "$WPS1" 2>/dev/null \
+  && ok "e11: install.ps1 — lee el build-sha del cuerpo del release 'windows-latest'" \
+  || bad "e11: install.ps1 — no lee el build-sha del release (no detecta asset rancio)"
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "==> resultado: $PASS PASS · $FAIL FAIL"

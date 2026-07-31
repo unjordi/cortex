@@ -98,8 +98,32 @@ Write-Host "==> Instalado en $dest" -ForegroundColor Cyan
 # que puede leer git. El repo raiz es el padre de windows/ ($here). Fail-safe: si git no responde,
 # quedan valores neutros y el chequeo de la app falla-abierto (no molesta).
 $repoRoot = Split-Path -Parent $here
-$sha    = (git -C $repoRoot rev-parse --short HEAD 2>$null); if (-not $sha)    { $sha = 'unknown' }
-$date   = (git -C $repoRoot show -s --format=%cI HEAD 2>$null); if (-not $date) { $date = '' }
+
+# Sha EFECTIVO que describe el binario que quedo instalado:
+#  - compilado desde fuente (-Build / fallback) -> HEAD del clon (es literal lo que se compilo).
+#  - DESCARGADO del rolling -> el 'build-sha:' del cuerpo del release, NO el HEAD del clon. El asset
+#    'windows-latest' puede ir unos minutos DETRAS de main mientras el runner reconstruye (RACE real,
+#    caso Danny): si estamparamos el HEAD del clon, el widget se creeria al dia con un exe viejo (y su
+#    cerebro empaquetado viejo contaria hooks de menos -> el "(5)" fantasma). Estampando la VERDAD del
+#    asset, si va detras de main el widget lo detecta y ofrece "Actualizar" cuando el runner termine.
+#    Paridad con macOS, donde el .app trae su version.json estampado por el CI dentro del bundle.
+# Fail-safe: sin red / sin gh-api / clon sin ese commit -> cae al HEAD del clon (comportamiento previo).
+$effSha = (git -C $repoRoot rev-parse HEAD 2>$null)
+if ($got) {
+    try {
+        $rel = Invoke-RestMethod "https://api.github.com/repos/unjordi/claude-brain/releases/tags/windows-latest" `
+                 -Headers @{ 'User-Agent' = 'claude-brain'; 'Accept' = 'application/vnd.github+json' } -UseBasicParsing
+        $m = [regex]::Match([string]$rel.body, 'build-sha: ([0-9a-f]+)')
+        if ($m.Success -and $m.Groups[1].Value) {
+            $effSha = $m.Groups[1].Value
+            if ($effSha -ne (git -C $repoRoot rev-parse HEAD 2>$null)) {
+                Write-Host "==> OJO: el asset 'windows-latest' va detras de main (build-sha $($effSha.Substring(0,7))); el widget lo detectara y ofrecera actualizar cuando el runner reconstruya." -ForegroundColor Yellow
+            }
+        }
+    } catch { Write-Host "    (no pude leer el build-sha del release; estampo el HEAD del clon)" -ForegroundColor DarkYellow }
+}
+$sha    = if ($effSha) { $effSha.Substring(0, [Math]::Min(7, $effSha.Length)) } else { 'unknown' }
+$date   = (git -C $repoRoot show -s --format=%cI $effSha 2>$null); if (-not $date) { $date = '' }
 $branch = (git -C $repoRoot rev-parse --abbrev-ref HEAD 2>$null); if (-not $branch) { $branch = '' }
 
 # Version LEGIBLE que INCREMENTA: MAJOR.MINOR (de brain/VERSION) . <conteo de commits>, p.ej.
@@ -117,7 +141,11 @@ if (Test-Path $brainVerFile) {
         elseif ($parts.Count -eq 1 -and $parts[0]) { $prefix = "$($parts[0]).0" }
     }
 }
-$count = (git -C $repoRoot rev-list --count HEAD 2>$null); if (-not $count) { $count = '0' }
+# Conteo de commits del sha EFECTIVO (el del asset si se descargo), no de HEAD -> la version legible
+# no sobrepasa al binario real. Fail-safe: si el clon no tiene ese commit, cae a HEAD y luego a 0.
+$count = (git -C $repoRoot rev-list --count $effSha 2>$null)
+if (-not $count) { $count = (git -C $repoRoot rev-list --count HEAD 2>$null) }
+if (-not $count) { $count = '0' }
 $version_str = "$prefix.$($count.ToString().Trim())"
 
 $version = [ordered]@{ version = $version_str; sha = $sha; date = $date; repo = $repoRoot; branch = $branch }
