@@ -18,6 +18,14 @@
 # cada inicio de sesión hasta que se propague (esa insistencia es el punto).
 # Fail-open SIEMPRE: sin clon canónico / repo no-brained / cualquier error del sync → silencio.
 #
+# RECORDATORIO DE LA DUPLA (2026-07-31): cuando el cerebro de este repo CAMBIA (auto-sync) o está por
+# hacerlo (drift), es el momento de "¿la realidad sigue cumpliendo la firma?" → el aviso añade un nudge a
+# correr la DUPLA de auditores (suficiencia + coherencia, van juntas). Se cuelga de ESTE hook (que ya corre
+# SessionStart + ya llama a sincronizar + ya sabe cuándo el cerebro se movió) en vez de un hook nuevo.
+# BIFURCA por el esquema firma+detalle: si el repo tiene AGENTS.md instanciado → "audita CONTRA la firma";
+# si NO → la dupla igual funciona (suficiencia deriva su lista; coherencia caza contradicciones) y se sugiere
+# instanciar el esquema. NUNCA lo asume — la mayoría de los repos aún no tienen firma=TOC (hoy solo games-master).
+#
 # CUÁNDO CORRE (verificado 2026-07-31 vs doc oficial de hooks + evidencia real — NO re-investigar):
 # SessionStart dispara con source ∈ {startup, resume, clear, compact, fork} — NO solo en arranque
 # fresco. En particular `claude --resume`/`--continue` → source="resume", y cada `/compact` (auto o
@@ -78,6 +86,17 @@ fi
 
 detalle=$(printf '%s\n' "$out" | grep -E '(NUEVO|ACTUALIZA|RETIRARÍA)' | sed 's/^[[:space:]]*/    /' | head -12)
 
+# ── Nudge de la DUPLA (suficiencia + coherencia): el cerebro del repo se movió → verifica que sigue
+# coherente y operable. BIFURCA según el esquema firma+detalle esté instanciado (AGENTS.md presente). La
+# dupla FUNCIONA sin firma; solo cambia el encuadre. Se APPENDEA a los dos mensajes de abajo (auto-sync y drift).
+if [ -f "$ROOT/AGENTS.md" ]; then
+  dupla_nota="
+🔎 DUPLA: el cerebro del repo se movió → corre la dupla de auditores (suficiencia + coherencia, van juntas) CONTRA la firma/\`AGENTS.md\` — «¿la realidad sigue cumpliendo la firma?» — antes de integrar/release."
+else
+  dupla_nota="
+🔎 DUPLA: el cerebro del repo se movió → corre la dupla de auditores (suficiencia + coherencia) para verificar que no rompió nada. (Este repo NO tiene instanciado el esquema firma(\`CLAUDE.md\`)+detalle(\`AGENTS.md\`); la dupla funciona igual — considera instanciarlo para auditar «contra la firma».)"
+fi
+
 # CONCURRENCIA con barrer-ramas (el OTRO SessionStart que MUTA git): SUPUESTO EXPLÍCITO de INDEPENDENCIA.
 # El auto-apply de abajo hace commit+push en la rama ACTUAL (una mini-develop Develop*); barrer-ramas
 # lanza detached un `git branch -d/-D` de ramas ZOMBIE que NUNCA incluyen actual/base/develop/main/
@@ -131,7 +150,7 @@ case "$cur" in
       git -C "$ROOT" push -q origin "$cur" >/dev/null 2>&1 || true
       sha=$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo "?")
       ctx="🧬✅ CEREBRO AUTO-SINCRONIZADO en tu mini-develop ($cur, commit $sha): la copia por-repo estaba $total archivo(s) atrás y se puso al día SOLA (apply+commit+push). Llegará al develop compartido con tu próxima integración coordinada. Qué cambió:
-$detalle"
+$detalle$dupla_nota"
       if command -v jq >/dev/null 2>&1; then
         jq -n --arg c "$ctx" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}}'
       else
@@ -147,7 +166,7 @@ stale_nota=""
 ⚠️ OJO (anti-regresión C2): tu FUENTE del cerebro ($BRAIN_DIR) parece DETRÁS de su origin/main — NO auto-sincronicé para no regresar el brain. Actualiza la fuente primero (\`git -C $BRAIN_DIR pull --ff-only\` o abre el widget) y reabre sesión."
 ctx="🧠⚠️ DRIFT DEL CEREBRO POR-REPO: la copia en .claude/hooks/ de ESTE repo está ATRÁS de la fuente única del cerebro ($total archivo(s)):
 $detalle$stale_nota
-Qué hacer: PROPÓN al usuario propagar por el flujo — worktree/ramita desde develop → \`bash $SYNC <worktree> --apply\` → commit → MR a develop. NO edites .claude/hooks/ directo en el árbol de trabajo (en repos compartidos viaja por git y se mezclaría a commits de feature). Nota: en ESTA máquina la copia GLOBAL ya manda (dedupe), pero el drift por-repo afecta a colegas y clones sin bootstrap."
+Qué hacer: PROPÓN al usuario propagar por el flujo — worktree/ramita desde develop → \`bash $SYNC <worktree> --apply\` → commit → MR a develop. NO edites .claude/hooks/ directo en el árbol de trabajo (en repos compartidos viaja por git y se mezclaría a commits de feature). Nota: en ESTA máquina la copia GLOBAL ya manda (dedupe), pero el drift por-repo afecta a colegas y clones sin bootstrap.$dupla_nota"
 
 if command -v jq >/dev/null 2>&1; then
   jq -n --arg c "$ctx" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}}'

@@ -1169,6 +1169,16 @@ printf '%s' "$adout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null
 # (6) el drift NO se cachea → la siguiente sesión vuelve a avisar (insistente hasta sanar)
 printf '%s' "$(ad)" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'DRIFT DEL CEREBRO' \
   && ok "aviso-drift: con drift NO cachea — re-avisa en la siguiente sesión" || bad "aviso-drift: cacheó un chequeo CON drift (se calló)"
+# (7) el aviso ADEMÁS trae el NUDGE de la DUPLA; sin AGENTS.md → rama "sin firma" (sugiere instanciar)
+adout="$(ad)"
+printf '%s' "$adout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'DUPLA' \
+  && ok "aviso-drift: el aviso trae el nudge de la DUPLA" || bad "aviso-drift: no apareció el nudge de la dupla"
+printf '%s' "$adout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'NO tiene instanciado' \
+  && ok "aviso-drift (sin firma): dupla en rama 'sin firma' → sugiere instanciar el esquema" || bad "aviso-drift: no tomó la rama sin-firma"
+# (8) con AGENTS.md (esquema firma+detalle instanciado) → la dupla apunta CONTRA la firma
+printf '# contrato\n' > "$ADROOT/AGENTS.md"
+printf '%s' "$(ad)" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'CONTRA la firma' \
+  && ok "aviso-drift (con firma): AGENTS.md presente → dupla CONTRA la firma" || bad "aviso-drift: con AGENTS.md no tomó la rama con-firma"
 rm -rf "$ADFIX"
 
 # ── (b5b2) FIX costura #2: aviso-drift DETECTA el drift de CABLEADO (hooks presentes SIN cablear).
@@ -1757,7 +1767,8 @@ limpiar-worktrees|ramas-zombie
 cosechar-sesion|recordar-cosechar
 recordar-unificar-cerebro|unificar-cerebro
 cosechar-sesion|unificar-cerebro
-proteger-fuente-cerebro|verificar-cerebro"
+proteger-fuente-cerebro|verificar-cerebro
+auditar-coherencia-cerebro|auditar-suficiencia-operativa"
 ce_els=()
 for d in "$SCRIPT_DIR"/skills/*/; do [ -d "$d" ] && ce_els+=("$(basename "$d")"); done
 for h in "$HOOKS"/*.sh; do [ -e "$h" ] && ce_els+=("$(basename "$h" .sh)"); done

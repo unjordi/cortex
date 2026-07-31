@@ -98,7 +98,7 @@ El cerebro se ordena por *dureza*: arriba lo que te **bloquea** sin negociar; ab
 ├─ 📮 delegacion-reporte       al terminar un agente: recuerda registrar avance + limpiar su worktree
 ├─ 🧵 rehidratar-hilo          reinyecta hilo-mental-actual.md al abrir/retomar/compactar (GLOBAL) — con gate de frescura
 ├─ 📈 aviso-contexto           watermark: avisa "compacta TÚ ahora" antes del auto-compact-sorpresa (GLOBAL)
-├─ 🧬 aviso-drift-cerebro      repo brained atrás de la fuente única → en tu mini-develop se AUTO-SINCRONIZA (apply+commit+push); en otra rama, avisa (GLOBAL)
+├─ 🧬 aviso-drift-cerebro      repo brained atrás de la fuente única → en tu mini-develop se AUTO-SINCRONIZA (apply+commit+push); en otra rama, avisa. Al moverse el cerebro, NUDGE a correr la DUPLA (suficiencia+coherencia; contra la firma si hay AGENTS.md, si no sugiere instanciarla) (GLOBAL)
 └─ 📁 por-repo · viajan en el .claude de cada repo
    ├─ 🧭 sesion-inicio            reinyecta rama + norma + memoria al abrir
    ├─ 🌾 recordar-cosechar        nudge al cerrar turno: trabajaste y no cosechaste → corre /cosechar-sesion

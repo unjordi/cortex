@@ -1,6 +1,6 @@
 ---
 name: auditar-suficiencia-operativa
-description: Auditar una doc/cerebro por SUFICIENCIA OPERATIVA (¿puede un agente nuevo HACER las tareas sin romper nada ni re-investigar?) en vez de solo por coherencia. Enumera las tareas reales, las califica ✅/⚠️/❌ con archivo:línea, y exige RE-auditar tras arreglar. Úsalo al cerrar una sesión que cambió arquitectura o procedimientos, o cuando el usuario diga "revisa que quede bien asentado / que sepa mantenerlo".
+description: Auditar una doc/cerebro por SUFICIENCIA OPERATIVA (¿puede un agente nuevo HACER las tareas sin romper nada ni re-investigar?) en vez de solo por coherencia. Enumera las tareas reales, las califica ✅/⚠️/❌ con archivo:línea, y exige RE-auditar tras arreglar. Úsalo al cerrar una sesión que cambió arquitectura o procedimientos, o cuando el usuario diga "revisa que quede bien asentado / que sepa mantenerlo". Es la mitad OPERABILIDAD de la DUPLA con auditar-coherencia-cerebro (la mitad CONSISTENCIA): van JUNTAS en un cambio a doc/sistema — ninguna caza lo de la otra.
 ---
 
 # Auditar SUFICIENCIA OPERATIVA (no solo coherencia)
@@ -81,6 +81,12 @@ sobrevivieron una limpieza propia). Guarda el prompt literal: si lo cambias, cam
 5. **El riesgo #1 restante:** si mañana algo se rompe por documentación, ¿qué sería?
 
 ## Hermanas
+- **`auditar-coherencia-cerebro` — la OTRA mitad de la DUPLA; va CONMIGO en todo cambio a doc/sistema.** Yo
+  audito si es OPERABLE (¿alguien nuevo puede HACER las tareas sin romper ni re-investigar?); ella si es
+  CONSISTENTE (¿se contradice? ¿los guards se evaden? ¿la doc miente vs el código?). **Lentes disjuntas —
+  ninguna caza lo de la otra** → córrelas JUNTAS, hasta 0 CRÍTICO/ALTO/MEDIO (los BAJOS se triagean). El FMEA
+  `auditar-proceso-algoritmo` es un TERCER eje (¿el algoritmo/flujo es correcto?): se SUMA cuando la capacidad
+  audita lógica, no solo docs.
 - `revisar-entregables-agentes` — no creerle a un agente su "listo" (esta skill lo aplica al auditor mismo).
 - `positivar-doc` — answer-first: un doc suficiente pero enterrado sigue fallando la prueba.
 - `cosechar-sesion` / `checkpoint` — de dónde salen las tareas: lo que pasó hoy.
