@@ -13,7 +13,8 @@
 #       + agentes-costo.json (config). La lista EXACTA se deriva de brain/hooks/MANIFEST.
 #   (b) CABLEADO en ~/.claude/settings.json con "shell":"bash" (idempotente).
 #   (c) SKILLS genéricas (cerrar-slice, orquestar-fanout, checkpoint, rehidratar-hilo, turno-nocturno,
-#       diagramar, cosechar-sesion, unificar-cerebro) en ~/.claude/skills/. La copia GLOBBEA brain/skills/*/
+#       diagramar, cosechar-sesion, unificar-cerebro, auditar-suficiencia-operativa,
+#       desinflar-memorias) en ~/.claude/skills/. La copia GLOBBEA brain/skills/*/
 #       → basta con crear la carpeta de la skill; esta lista es descriptiva.
 #   (d) DASHBOARD del cerebro sembrado en la memoria GLOBAL (slug del HOME) si falta.
 #   (e) NORMAS globales inyectadas en ~/.claude/CLAUDE.md (bloque con marcador, solo si faltan).
