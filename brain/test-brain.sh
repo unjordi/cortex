@@ -2297,6 +2297,16 @@ kfr="$(awk '/function forceRefresh/{c=1} c{print} c&&/^    }/{exit}' "$QML9" 2>/
 { printf '%s' "$kfr" | grep -q 'updLastCheck = 0' && printf '%s' "$kfr" | grep -q 'checkUpdate()'; } \
   && ok "e9: KDE — forceRefresh fuerza checkUpdate (updLastCheck=0)" || bad "e9: KDE — forceRefresh no fuerza chequeo"
 
+# --- Fix C: BADGE ⬆/🩹 en la pestaña Cerebro (el aviso se ve DESDE CUALQUIER pestaña) ---
+grep -qE 'railButton\(5,.*badge:.*heal:' "$SW_PV" 2>/dev/null && ok "e9: macOS — badge en la pestaña Cerebro" || bad "e9: macOS SIN badge en la tab"
+grep -q 'brainIncomplete' "$QML9" 2>/dev/null && ok "e9: KDE — badge en la pestaña Cerebro (brainIncomplete)" || bad "e9: KDE SIN badge en la tab"
+grep -q 'BrainMissing' "$WPF" 2>/dev/null && ok "e9: Windows — badge en la pestaña Cerebro (BrainMissing)" || bad "e9: Windows SIN badge en la tab"
+
+# --- Fix D: HEAL HONESTO (mensaje según completitud REAL, no exit code — install-brain.sh sale 0 sin jq) ---
+grep -q 'sigue incompleto' "$SW_PV" 2>/dev/null && ok "e9: macOS — heal honesto (según completitud)" || bad "e9: macOS heal NO honesto"
+grep -q 'brainHealVerifying' "$QML9" 2>/dev/null && ok "e9: KDE — heal honesto (re-scan + verdict real)" || bad "e9: KDE heal NO honesto"
+grep -q 'sigue incompleto' "$WPF" 2>/dev/null && ok "e9: Windows — heal honesto (según completitud)" || bad "e9: Windows heal NO honesto"
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "==> resultado: $PASS PASS · $FAIL FAIL"
