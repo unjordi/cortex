@@ -49,3 +49,5 @@ docs/flowcharts/*
 # El generador de la leyenda (lee el árbol del README → subgraph .dot) y las CONVENCIONES son FUENTE, se versionan.
 !docs/flowcharts/gen-leyenda-arbol.sh
 !docs/flowcharts/CONVENCIONES.md
+# El parity-check del árbol (README ↔ CLAUDE.md ↔ brain/skills/) es MECANISMO durable — lo corre test-brain.sh/CI, debe viajar.
+!docs/flowcharts/verificar-arbol-sync.sh
