@@ -157,6 +157,14 @@ doc=realidad por construcción (auditar = "¿la realidad sigue cumpliendo la fir
 
 - El auditor de suficiencia **camina cada línea de la firma**: `CLAUDE.md → MEMORY.md → memoria/skill →
   realidad`, y marca el hueco (capacidad sin método, método sin código, doc que miente).
+- **DESTILAR el TOC cuando `MEMORY.md` ya es un índice maduro** (el caso común en un repo tosco — cps
+  tiene `AGENTS.md` de arquitectura pero NINGÚN `CLAUDE.md`, y su firma-misión vive implícita/mezclada
+  dentro de `MEMORY.md`). No inventes el `CLAUDE.md` de cero: **destílalo separando CAPACIDAD de
+  CONOCIMIENTO** — recorre `MEMORY.md` y clasifica cada línea: *¿es una CAPACIDAD* (algo que Claude
+  **hace/opera** aquí: un skill, una rutina, un guard, una tarea) → su título va al TOC del `CLAUDE.md` con
+  su puntero; *¿es CONOCIMIENTO/estado/historia/dominio* (una decisión, un dato, una lección) → se queda en
+  `MEMORY.md` como detalle. El `CLAUDE.md` resultante es ~5-8 líneas `capacidad → puntero`, thin. No se
+  duplica: el TOC apunta, el detalle vive abajo una sola vez.
 - **Alinea `MEMORY.md`** para que su índice tenga exactamente las capacidades que el TOC del `CLAUDE.md`
   declara, en ese orden (si sobra una memoria fuera del mapa: se enlaza desde el índice o se añade al
   TOC). `AGENTS.md` se deja en su carril de arquitectura, no se fuerza a la forma de la firma.
@@ -204,6 +212,7 @@ sea un reflejo del proceso y no un acto de voluntad. (Registrar como frente si s
 
 ## Notas de acoplamiento (decididas por el usuario, persistir)
 - **"la dupla VAN JUNTOS SIEMPRE"** — norma dura; cada firma de las 2 skills menciona a la otra.
-- La **firma vive en el `CLAUDE.md` de cada repo** (= TOC del `AGENTS.md`); el detalle una capa abajo.
+- La **firma vive en el `CLAUDE.md` de cada repo** (= TOC de `MEMORY.md`, el detalle operativo); `AGENTS.md`
+  es el eje APARTE de arquitectura, NO la firma.
 - Este es un skill del **cerebro global** → vive en `~/code/claude-brain/brain/skills/` y viaja por el
   flujo (ramita → MR → develop con `--squash`), como todo el brain.
