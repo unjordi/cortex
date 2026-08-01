@@ -6,11 +6,11 @@
 >
 > **Fuente del árbol** = el bloque «🔒 Hooks Forzosos» de `README.md`; este archivo lo espeja (committeado, nunca
 > vacío en un clon fresco). Un **parity-check** (`docs/flowcharts/verificar-arbol-sync.sh`, en CI) verifica que
-> README ↔ este árbol ↔ los 3 brainTiers de los widgets ↔ `brain/skills/` no driftéen. `gen-leyenda-arbol.sh`
+> README ↔ este árbol ↔ `brain/skills/` no driftéen (los 3 brainTiers de los widgets se verifican APARTE, a mano — fase 2). `gen-leyenda-arbol.sh`
 > genera además las leyendas de los flowcharts. (Generar automáticamente los 3 brainTiers desde la fuente única
 > = decisión PARQUEADA — necesita QA visual de los widgets; hoy la paridad se **verifica**, no se **genera**.)
 
-<!-- ARBOL:START — fuente: README.md «🔒 Hooks Forzosos» · sincronizado por gen-leyenda-arbol.sh · NO editar a mano -->
+<!-- ARBOL:START — fuente: README.md «🔒 Hooks Forzosos» · a mano, VERIFICADO por docs/flowcharts/verificar-arbol-sync.sh (gen-leyenda-arbol.sh NO toca este archivo, solo las leyendas .dot) -->
 ```
 🔒 Hooks Forzosos — hooks que bloquean (deny) · no negociables
 ├─ 🚧 git-branch-guard         push/merge a develop·main → denegado
@@ -69,4 +69,4 @@
 
 > **Sweep doc=realidad hecho (2026-08-01):** el árbol de arriba lista el catálogo COMPLETO de skills de `brain/skills/`
 > (más `consolidar-cerebro`, que llega con el PR #234). Su detalle 1:1 vive en `MEMORY.md`; el parity-check mantiene
-> honestos los 4 catálogos (README ↔ este árbol ↔ 3 brainTiers ↔ `brain/skills/`).
+> honesto el eje **README ↔ este árbol ↔ `brain/skills/`** (los 3 brainTiers de los widgets son fase 2 — se verifican a mano, el check aún NO los cubre).

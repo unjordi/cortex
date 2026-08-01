@@ -145,20 +145,16 @@ sola definición de "mergeada".
 
 ### 🗺️ El mapa del cerebro — fuente de verdad visual
 
-[`docs/mapa-flujos.dot`](docs/mapa-flujos.dot) es el **mapa único** del cerebro: los flowcharts de
-decisión de cada hook (⓪ instalación · ① ciclo de sesión · ② integrar · ③ comando git · ④ push-nudges · ⑤ dod-verificar
-↔ ⑥ cerrar-slice · ⑦ delegar · ⑧ orquestar-fanout), **fieles a la lógica real de los `.sh`**, más las
-📜 **normas** que hacen cumplir (el cimiento), la referencia de lib/skill, y la leyenda con este mismo
-árbol. Cada flujo apunta a la norma/skill que invoca (📜/💡) y viceversa.
+[`docs/mapa-cerebro.md`](docs/mapa-cerebro.md) es el **mapa navegable** del cerebro (Mermaid, se
+renderiza nativo en GitHub — no hace falta Graphviz ni yEd para *verlo*): un flowchart por capa
+(flujo de git y sus guards · ciclo del hilo/contexto · delegación y fan-out · tiers del `MANIFEST`),
+**fieles a la lógica real de los `.sh`**, más las 📜 **normas** que hacen cumplir y la leyenda con este
+mismo árbol.
 
 Es **doc de record** (norma *doc = realidad*): si cambia un hook/norma/skill —alta, baja o cambio de
-lógica— se actualiza `mapa-flujos.dot` **en la misma tanda**, igual que este árbol y el conteo de
-checks de `test-brain.sh`.
-
-- **Ver / regenerar la imagen:** `dot -Tpng docs/mapa-flujos.dot -o docs/mapa-flujos.png` (requiere Graphviz).
-- **Exportar a yEd** (editable, conservando forma/color/etiquetas y agrupando por flujo):
-  `python3 bin/dot2yed.py docs/mapa-flujos.dot docs/mapa-flujos.graphml` — reusa las posiciones y estilos
-  que calcula Graphviz; en yEd se acomoda por flujo. El `.graphml` es artefacto **regenerable** (no se versiona).
+lógica— se actualiza `mapa-cerebro.md` **en la misma tanda**, igual que este árbol y el conteo de
+checks de `test-brain.sh`. Para el mapa *editable a mano* (yEd) el flujo va por el skill `diagramar`;
+el viejo `docs/mapa-flujos.dot` (maestro único en Graphviz) se **retiró el 2026-07-29**.
 
 ## Lo que lo hace vivo — se refleja, se cura, se actualiza
 
