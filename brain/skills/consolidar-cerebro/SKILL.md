@@ -62,12 +62,14 @@ ella se PARQUEA, no se cruza.
   "verifica primero en vivo", no inventes la certeza), cualquier hallazgo que toque **lógica/dinero**.
 - **NO se toca en esta pasada:** develop/main (git flow intacto), código/BD, colecciones/datos vivos,
   PRs ajenos, **ni se afloja ningún guardrail propio**.
-- **Si el repo ES la fuente del template** (produce el cerebro de otros): la pasada es SOLO sobre el cerebro
-  operativo del propio repo (`.claude/`), **JAMÁS sobre el producto que envía** (`brain/`/la plantilla) —
-  positivar/desinflar eso lo propagaría a TODOS los clones.
-- **Cerebro en folder NO-GIT (Drive/Insync):** no hay worktree ni ramitas → **snapshot `.bak` ANTES de mutar**
-  (la red de reversibilidad), mutaciones **SECUENCIALES** del orquestador (evita choques con el sync de Insync),
-  y el cierre no va a `docs/` sino donde ese cerebro guarde su historial.
+- **Si el repo ES la fuente del template** (produce el cerebro de otros): la pasada CONSOLIDA SOLO el cerebro
+  operativo del propio repo (`.claude/`), **JAMÁS el producto que envía** (`brain/`/la plantilla) —
+  positivar/desinflar eso lo propagaría a TODOS los clones. (LEER `brain/` para entender la misión SÍ es lícito;
+  lo prohibido es MUTARLO — leer ≠ mutar.)
+- **Cerebro en folder NO-GIT (Drive/Insync):** no hay worktree ni ramitas → **snapshot `.bak` ANTES de mutar,
+  en scratch LOCAL FUERA del árbol sincronizado** (crearlo DENTRO del Drive dispararía el drift de Insync que
+  ese cerebro suele marcar como su riesgo #1; alternativamente, pausa el sync durante la pasada), mutaciones
+  **SECUENCIALES** del orquestador (evita choques con el sync), y el cierre no va a `docs/` sino donde ese cerebro guarde su historial.
 - **La auditoría es READ-ONLY** sobre `.claude/`; los fixes van DESPUÉS por ramitas → MR con OK.
 
 ---
@@ -194,6 +196,15 @@ doc=realidad por construcción (auditar = "¿la realidad sigue cumpliendo la fir
   Cuando una línea tiene de varias, clasifícala por su naturaleza **DOMINANTE**; si su método vive en 2 lados
   (un skill + un doc-método), el TOC lleva un **puntero COMPUESTO** (`capacidad → skill + doc`). El `CLAUDE.md`
   resultante es thin (~5-8 líneas + secciones); NO duplica: el TOC apunta, el detalle vive abajo una sola vez.
+  - **MAPA DE FUENTES (no todo vive en el entry-point).** No basta clasificar "línea por línea" del índice: las
+    tres clases se surten de lugares distintos, y en un cerebro meta el índice puede ser CONOCIMIENTO puro
+    (índice de memorias sin router) → el TOC saldría vacío si solo miraras ahí. Surte cada clase de su fuente real:
+    **CAPACIDAD ← `.claude/skills/`** (enumera los dirs, N=N, atado a la Fase 3.4) **+** rutinas/guards activos;
+    **NORMA de CONDUCTA ← los docs de criterio/estilo**; **MISIÓN ← `README.md`/el producto** (en un repo-template,
+    leído read-only); **CONOCIMIENTO ← las memorias** (se queda). El TOC es la UNIÓN de esas fuentes, no un filtro del índice.
+  - **Interacción firma ↔ `sesion-inicio`:** crear un `CLAUDE.md` nuevo puede solapar lo que el hook `sesion-inicio`
+    ya reinyecta al arranque (rama, norma de git, orden de leer el índice). Que el `CLAUDE.md` NO duplique eso; si
+    hay que reordenar el hook, se PARQUEA para el humano (es tocar un guard) — no se reescribe en la pasada de cerebro.
 - **AGENTS pesado que MEZCLA** (cps: 3194 líneas con arquitectura + git-flow §8 + workflow §8b + scripts §10):
   no basta "no fuerces AGENTS a firma" — la **mitad inversa** también aplica: lo que ahí sea **proceso/capacidad**
   (no arquitectura) se **enlaza HACIA la firma** (o se dedupea si ya vive en un skill), dejando en `AGENTS.md`
