@@ -4,16 +4,20 @@
 > operativo vive un nivel abajo (en el skill/memoria que cada línea apunta); el índice de conocimiento es
 > `.claude/memory/MEMORY.md`.
 
-## 🧭 Qué ES este repo (y la regla que más importa)
-`claude-brain` es **doble**: (1) la **FUENTE del template del cerebro** de Claude Code (lo que se instala en todos
-los demás repos) y (2) el **widget de cuota** (KDE/macOS/Windows). Su cerebro OPERATIVO —el que gobierna trabajar
-AQUÍ— vive en `.claude/`. El **PRODUCTO que envía** vive en `brain/` (skills/hooks/normas de la plantilla) + los
-launchers del widget.
+## 🧭 Qué ES este repo (y cuándo importa este archivo)
+`claude-brain` es un **WORKSPACE de desarrollo SOLO en las 2 máquinas donde se destila/construye el cerebro**
+(la MacBook de unjordi + esta Cachy) — es AHÍ donde un Claude trabaja ESTE repo y lee este `CLAUDE.md`. En
+**cualquier otra compu es solo una HERRAMIENTA DE INSTALACIÓN**: se clona, se corre el bootstrap/one-liner, y ya
+— **ningún Claude opera dentro**. Así que todo lo de abajo aplica al **Claude que DESARROLLA el brain aquí**.
 
-> 🛑 **Dualidad TEMPLATE-FUENTE (regla dura):** `.claude/` = el cerebro de ESTE repo; `brain/` = el PRODUCTO que
-> viaja a todos los clones. **Consolidar/positivar/desinflar aplica SOLO a `.claude/`, JAMÁS a `brain/`** — tocar
-> el producto como si fuera el cerebro propio lo propagaría a todos los repos. LEER `brain/` para entender la
-> misión es lícito; MUTARLO desde una pasada de cerebro, no (eso va por su propio slice de producto).
+Como workspace (dev) es **doble**: (1) la **FUENTE del template del cerebro** (`brain/` = lo que se instala en
+todos los demás repos) y (2) el **widget de cuota** (KDE/macOS/Windows). El cerebro OPERATIVO de ESTE repo vive
+en `.claude/`.
+
+> 🛑 **Cuando DESARROLLES aquí — Dualidad TEMPLATE-FUENTE:** `.claude/` = el cerebro de ESTE repo; `brain/` = el
+> PRODUCTO que viaja a todos los clones. **Consolidar/positivar/desinflar aplica SOLO a `.claude/`, JAMÁS a
+> `brain/`** — mutar el producto como si fuera el cerebro propio lo propagaría a todos los repos. LEER `brain/`
+> para entender la misión es lícito; MUTARLO desde una pasada de cerebro, no (eso va por su propio slice de producto).
 
 ## 🎯 Misión
 Mantener y publicar, con paridad multi-OS: (a) el **template del cerebro** (`brain/skills`, `brain/hooks`,
