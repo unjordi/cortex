@@ -4,9 +4,11 @@
 > Va en `CLAUDE.md` (no solo en el README) porque **al iniciar una sesión se lee el `CLAUDE.md`, no el README**.
 > El **detalle de cada skill** vive en `.claude/memory/MEMORY.md`; el código del producto, en `brain/`.
 >
-> El árbol de abajo se **sincroniza desde una sola fuente** (el bloque «🔒 Hooks Forzosos» de `README.md`) con
-> `gen-leyenda-arbol.sh` — se **committea** (nunca vacío en un clon fresco) y el generador solo lo mantiene al día.
-> Tocaste el árbol → corre el generador y las copias (este archivo, los 3 brainTiers, las leyendas de los flowcharts) se actualizan solas.
+> **Fuente del árbol** = el bloque «🔒 Hooks Forzosos» de `README.md`; este archivo lo espeja (committeado, nunca
+> vacío en un clon fresco). Un **parity-check** (`docs/flowcharts/verificar-arbol-sync.sh`, en CI) verifica que
+> README ↔ este árbol ↔ los 3 brainTiers de los widgets ↔ `brain/skills/` no driftéen. `gen-leyenda-arbol.sh`
+> genera además las leyendas de los flowcharts. (Generar automáticamente los 3 brainTiers desde la fuente única
+> = decisión PARQUEADA — necesita QA visual de los widgets; hoy la paridad se **verifica**, no se **genera**.)
 
 <!-- ARBOL:START — fuente: README.md «🔒 Hooks Forzosos» · sincronizado por gen-leyenda-arbol.sh · NO editar a mano -->
 ```
@@ -47,17 +49,24 @@
 ├─ 📦 cerrar-slice             build+tests+memoria al día + MR con resumen curado
 ├─ 💾 checkpoint               vuelca el HILO a memoria para compactar sin perderlo (proactivo)
 ├─ 💧 rehidratar-hilo          relee el HILO a mano (gemelo del hook; respaldo si un update del CLI rompe el auto-rehidratado)
-├─ 🧵 orquestar-fanout         fan-out sin niñera: asigna del backlog, auto-reporta y limpia al cerrar
+├─ 🐝 orquestar-fanout         fan-out sin niñera: asigna del backlog, auto-reporta y limpia al cerrar
 ├─ 🗺️ diagramar                diagramas por destino: .dot→dot2yed→yEd (editar a mano) · Mermaid en .md versionado (verse en GitHub)
 ├─ 🔬 auditar-proceso-algoritmo  auditor experto read-only (proceso industrial + algoritmo) → hallazgos priorizados; se alimenta de los flowcharts de diagramar
 ├─ 🩺 auditar-coherencia-cerebro fan-out read-only sobre el PROPIO cerebro (guards+flowcharts+doc): evasiones/huecos/drift, verificado por ejecución → loop hasta converger
 ├─ 🧪 auditar-suficiencia-operativa  ¿ALCANZA la doc para HACER el trabajo sin romper nada ni re-investigar? tareas reales ✅/⚠️/❌ + RE-auditar tras arreglar
 ├─ 🧠 consolidar-cerebro       meta-orquestador: dupla → positivar → desinflar → loop de convergencia → cierre con la FIRMA (CLAUDE+MEMORY)
 ├─ 🪶 desinflar-memorias       adelgaza un árbol de memorias sin perder lecciones: narrativa → lección; mitos descartados → ⚰️ Lápidas AL FINAL
+├─ 🕵️ revisar-entregables-agentes    verifica lo que un agente ENTREGA contra la realidad; no relates su reporte como verdad
+├─ ☀️ positivar-doc                  reescribe answer-first: 'ESTO SÍ' (método correcto) antes del 'ESTO NO'
+├─ 🎓 investigar-dominio             ponte experto en un dominio (fan-out DOC-FIRST) → memorias durables + skills
+├─ 🌾 cosechar-sesion                cosecha local: extrae aprendizajes de tu sesión al inbox del equipo
+├─ 🧩 unificar-cerebro               reconciliación del cerebro del equipo: integra los aprendizajes mini→develop
+├─ 🧳 claude-proyecto-autocontenido  el cerebro VIVE dentro del proyecto (.claude/ + symlink de slug) → viaja con él
+├─ 🔍 zoom-screenshot                recorta y amplía regiones de una captura (ffmpeg) para leer texto fino ilegible
 └─ 🌙 turno-nocturno           protocolo del turno de noche: eco del contrato, decide-dentro-de-la-cerca, grants durables a disco
 ```
 <!-- ARBOL:END -->
 
-> **Nota doc=realidad (pendiente de sweep):** `brain/skills/` tiene MÁS skills que las que este árbol curado muestra
-> (`positivar-doc`, `revisar-entregables-agentes`, `cosechar-sesion`, `investigar-dominio`, `claude-proyecto-autocontenido`,
-> `unificar-cerebro`, `zoom-screenshot`). El **catálogo COMPLETO con su detalle vive en `MEMORY.md`**; el árbol de arriba es la vista curada del README/widget.
+> **Sweep doc=realidad hecho (2026-08-01):** el árbol de arriba lista el catálogo COMPLETO de skills de `brain/skills/`
+> (más `consolidar-cerebro`, que llega con el PR #234). Su detalle 1:1 vive en `MEMORY.md`; el parity-check mantiene
+> honestos los 4 catálogos (README ↔ este árbol ↔ 3 brainTiers ↔ `brain/skills/`).

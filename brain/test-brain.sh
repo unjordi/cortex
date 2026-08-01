@@ -2441,5 +2441,14 @@ grep -q 'build-sha: (\[0-9a-f\]+)' "$WPS1" 2>/dev/null \
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (f) parity del árbol: README ↔ CLAUDE.md ↔ brain/skills/ =="
+if bash "$SCRIPT_DIR/../docs/flowcharts/verificar-arbol-sync.sh" >/dev/null 2>&1; then
+  ok "arbol: README ↔ CLAUDE.md ↔ brain/skills/ en paridad (verificar-arbol-sync.sh)"
+else
+  bad "arbol: DRIFT entre catálogos → corre docs/flowcharts/verificar-arbol-sync.sh para ver cuál"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "==> resultado: $PASS PASS · $FAIL FAIL"
 [ "$FAIL" -eq 0 ]
