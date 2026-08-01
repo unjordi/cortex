@@ -47,6 +47,15 @@ Delega a un agente que **NO sepa qué se tocó** y que se ponga en los zapatos d
 punto de entrada y de ahí lo que haga falta. Para cada tarea: **✅** (lo encuentra y le alcanza) · **⚠️**
 (está pero es ambiguo/incompleto) · **❌** (no está, o lo llevaría a romper algo). **Siempre con archivo:línea.**
 
+> **Qué ES el "punto de entrada" = la FIRMA (contra qué caminas).** No confundas dos sujetos. La **firma**
+> es la **misión/capacidades de Claude aquí**: vive en `CLAUDE.md` (thin, siempre cargado) como **TOC de
+> `MEMORY.md`** (el detalle operativo: memorias + router de skills). La cadena que camina esta auditoría es
+> **`CLAUDE.md → MEMORY.md → la memoria/skill que apunta → realidad (código)`**, marcando el hueco
+> (capacidad prometida sin método, método sin código, doc que miente). `AGENTS.md` es un **eje APARTE**: el
+> contrato de **arquitectura del PROYECTO** (capas, dominio) — eso lo audita la coherencia contra el `.cs`,
+> **no es la firma** y no se le cuelga la misión. (En un brain de hobby sin arquitectura pesada, `AGENTS.md`
+> puede doblar de entry-point; en un repo tosco NO — no mezcles los dos sujetos.)
+
 ### 4. Empaqueta la barrida de higiene en la misma pasada
 Contradicciones · **punteros colgados** (cruza los `[[wikilinks]]`/"ver el skill X" contra los archivos que
 EXISTEN) · índices desfasados (¿el índice lista exactamente lo que hay?) · datos que mienten (conteos, rutas,

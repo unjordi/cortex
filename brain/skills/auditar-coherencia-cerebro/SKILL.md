@@ -64,6 +64,14 @@ ciegas.** Para el cerebro son:
    develop con squash; main release-only con OK super-explícito) y la **definición de LISTO**. El auditor
    necesita saber QUÉ debe pasar para juzgar si el guard lo logra.
 
+> **Cuando el target es el cerebro de un PROYECTO** (no el `claude-brain` meta), los "zapatos" se
+> traducen: audita contra la **FIRMA** (la misión/capacidades de Claude aquí) = `CLAUDE.md` (thin, TOC)
+> → `MEMORY.md` (detalle: memorias + router de skills) → la memoria/skill → **realidad (código)**; y por
+> separado, contra el **`AGENTS.md`** como contrato de **arquitectura del proyecto** (capas, dominio,
+> prohibiciones) medido vs el `.cs`. Son **dos sujetos distintos**: la firma es la misión de Claude,
+> `AGENTS.md` es cómo está hecho el código — la coherencia verifica que **ninguno mienta respecto al
+> código real**, sin confundir uno con el otro.
+
 ## Las dimensiones (una por auditor, en paralelo)
 El cerebro se barre por dimensiones INDEPENDIENTES; se lanza **un auditor por dimensión** (fan-out, ver
 [[orquestar-fanout]]) para que cada uno sea profundo y no se diluya:
