@@ -40,7 +40,7 @@ public sealed class BrainState
         "recordar-dashboard", "secret-scan", "rama-vieja", "proteger-arbol",
         "proteger-fuente-cerebro",
         "limite-gasto", "delegacion-gate", "delegacion-registrar", "delegacion-reporte",
-        "rehidratar-hilo", "aviso-contexto", "aviso-drift-cerebro", "barrer-ramas",
+        "rehidratar-hilo", "aviso-contexto", "aviso-drift-cerebro", "exportar-sesion-master", "barrer-ramas",
         "entorno-maquina-guard",
     };
 

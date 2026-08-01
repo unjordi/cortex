@@ -918,6 +918,9 @@ PlasmoidItem {
                 { emoji: "🧹", name: "barrer-ramas",            desc: "barre ramas locales ya integradas (zombies squash-safe) en 2º plano",
                   event: "SessionStart",
                   detail: "Al iniciar sesión en un repo con remoto, y como mucho cada 24h, lanza limpiar-ramas.sh en segundo plano para borrar las ramas locales ya integradas (MR mergeado con --squash → remota borrada, o commits ya en la base por equivalencia de parche). Conserva todo trabajo sin integrar; nunca toca la actual/base/develop/main/Develop*/keep/*." },
+                { emoji: "💾", name: "exportar-sesion-master",  desc: "auto-export de las sesiones *-master a ~/.claude-sessions (o Drive vía CLAUDE_SESSIONS_DRIVE); detached, sobrevive el cleanup de 30 días",
+                  event: "Stop · SessionEnd · PreCompact",
+                  detail: "Exporta el transcript comprimido de una sesión cuyo título sea *-master (o ya listada en masters.json) a la carpeta de sesiones (default ~/.claude-sessions; override CLAUDE_SESSIONS_DRIVE para una nube → la sesión viaja entre máquinas) para poder --resume la MISMA sesión después. Corre DETACHED (nohup, lock por-sid) con debounce en Stop; SessionEnd fija el estado final y detecta masters nuevos; PreCompact es bonus. Sobrevive el cleanup de 30 días de Claude Code. Silencioso y fail-open: si no es master o falta el motor/node, no hace nada." },
                 { emoji: "🧺", name: "recordar-cosechar",       desc: "trabajaste y no cosechaste aprendizajes → sugiere /cosechar-sesion",
                   event: "Stop",
                   detail: "Al terminar un turno, si hubo trabajo sustantivo reciente en el repo (commits en las últimas horas o cambios de código sin commitear) pero .claude/memory/aprendizajes.md no se tocó, sugiere —no bloquea— correr /cosechar-sesion antes de cerrar si aprendiste algo durable. Throttle fuerte: 1×/día por repo. Fail-open." },
@@ -1022,7 +1025,7 @@ PlasmoidItem {
 
     // Catálogo conocido (mismos conjuntos que BrainState.knownGlobalHooks / knownRepoHooks del Swift).
     // DEBE coincidir con brain/hooks/MANIFEST; lo verifica el drift-check del widget (test-brain.sh).
-    readonly property var brainGlobalHooks: ["git-branch-guard","merge-squash-guard","confirmar-merge-develop","recordar-dashboard","secret-scan","rama-vieja","proteger-arbol","proteger-fuente-cerebro","limite-gasto","delegacion-gate","delegacion-registrar","delegacion-reporte","rehidratar-hilo","aviso-contexto","aviso-drift-cerebro","barrer-ramas","entorno-maquina-guard"]
+    readonly property var brainGlobalHooks: ["git-branch-guard","merge-squash-guard","confirmar-merge-develop","recordar-dashboard","secret-scan","rama-vieja","proteger-arbol","proteger-fuente-cerebro","limite-gasto","delegacion-gate","delegacion-registrar","delegacion-reporte","rehidratar-hilo","aviso-contexto","aviso-drift-cerebro","exportar-sesion-master","barrer-ramas","entorno-maquina-guard"]
     readonly property var brainRepoHooks:   ["sesion-inicio","dod-verificar","recordar-cosechar","recordar-unificar-cerebro"]
 
     // Ruta del helper bash, resuelta relativa a este main.qml (…/contents/ui/ → …/contents/brain-scan.sh).

@@ -114,6 +114,10 @@ ev_de() {
     delegacion-registrar|delegacion-reporte) echo "PostToolUse|Task" ;;
     rehidratar-hilo|aviso-drift-cerebro|barrer-ramas) echo "SessionStart|" ;;
     aviso-contexto) echo "PostToolUse|" ;;
+    # Multi-evento: ev_de puede devolver VARIOS pares "Event|Matcher" separados por espacio; el loop de
+    # cablear registra cada uno. exportar-sesion-master necesita los 3 (Stop=backbone con debounce,
+    # SessionEnd=estado final, PreCompact=bonus) — ver su encabezado.
+    exportar-sesion-master) echo "Stop| SessionEnd| PreCompact|" ;;
     *) echo "" ;;
   esac
 }
@@ -130,7 +134,11 @@ for h in $WIRE_HOOKS; do
     echo "warn: no tengo evento para cablear el hook global '$h' (agrégalo a ev_de en install-brain.sh) — NO cableado"
     continue
   fi
-  register_hook "${evm%%|*}" "${evm#*|}" "bash \"\$HOME/.claude/hooks/$h.sh\"" "$h"
+  # evm puede traer VARIOS pares "Event|Matcher" (space-separated) → cablear cada uno (multi-evento).
+  # register_hook dedupe POR-evento con el patrón $h, así que re-correr no duplica.
+  for pair in $evm; do
+    register_hook "${pair%%|*}" "${pair#*|}" "bash \"\$HOME/.claude/hooks/$h.sh\"" "$h"
+  done
   wired_names="$wired_names $h"
 done
 echo "ok: hooks cableados en $GSET (derivados del MANIFEST):$wired_names"

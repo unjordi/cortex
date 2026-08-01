@@ -2439,6 +2439,27 @@ grep -q 'build-sha: (\[0-9a-f\]+)' "$WPS1" 2>/dev/null \
   && ok "e11: install.ps1 — lee el build-sha del cuerpo del release 'windows-latest'" \
   || bad "e11: install.ps1 — no lee el build-sha del release (no detecta asset rancio)"
 
+# ── exportar-sesion-master: carpeta default (~/.claude-sessions) / override / no-master silencioso / C ──
+echo "== exportar-sesion-master: respaldo de sesiones *-master (carpeta default/override; detached) =="
+EXFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-ex.XXXXXX")"; EXHOME="$EXFIX/home"; mkdir -p "$EXHOME"
+extx="$EXFIX/t.jsonl"; printf '{"type":"user"}\n' > "$extx"   # transcript falso, SIN título *-master
+J_STOP="{\"session_id\":\"deadbeef\",\"transcript_path\":\"$extx\",\"cwd\":\"$EXHOME\",\"hook_event_name\":\"Stop\"}"
+# (1) sin CLAUDE_SESSIONS_DRIVE → usa/crea el default ~/.claude-sessions
+( unset CLAUDE_SESSIONS_DRIVE; printf '%s' "$J_STOP" | HOME="$EXHOME" bash "$HOOKS/exportar-sesion-master.sh" ) >/dev/null 2>&1
+[ -d "$EXHOME/.claude-sessions" ] && ok "exportar-sesion-master: sin override → crea/usa el default ~/.claude-sessions" || bad "exportar-sesion-master: no usó el default ~/.claude-sessions"
+# (2) sesión NO-master (sid no en masters.json, sin título *-master) en Stop → silencio, sin export
+[ -z "$(ls "$EXHOME/.claude-sessions"/*.jsonl.gz 2>/dev/null)" ] && ok "exportar-sesion-master: sesión no-master → NO exporta (silencio)" || bad "exportar-sesion-master: exportó una sesión no-master"
+# (3) override: CLAUDE_SESSIONS_DRIVE apunta la carpeta a otro lado (la crea)
+EXDRIVE="$EXFIX/nube"
+bash -c 'printf "%s" "$1" | HOME="$2" CLAUDE_SESSIONS_DRIVE="$3" bash "$4"' _ "$J_STOP" "$EXHOME" "$EXDRIVE" "$HOOKS/exportar-sesion-master.sh" >/dev/null 2>&1
+[ -d "$EXDRIVE" ] && ok "exportar-sesion-master: CLAUDE_SESSIONS_DRIVE override → usa esa carpeta" || bad "exportar-sesion-master: ignoró el override CLAUDE_SESSIONS_DRIVE"
+# (4) estructural: default en el código + export DETACHED (nohup) con lock por-sid (C: no 'Hook cancelled')
+grep -qF 'CLAUDE_SESSIONS_DRIVE:-$HOME/.claude-sessions' "$HOOKS/exportar-sesion-master.sh" \
+  && ok "exportar-sesion-master: default ~/.claude-sessions en el código (override por env)" || bad "exportar-sesion-master: sin el default ~/.claude-sessions en el código"
+{ grep -qF 'nohup' "$HOOKS/exportar-sesion-master.sh" && grep -qF '.export-$sid.lock' "$HOOKS/exportar-sesion-master.sh"; } \
+  && ok "exportar-sesion-master: export DETACHED (nohup) + lock por-sid (no se ahoga en los grandes)" || bad "exportar-sesion-master: el export no es detached/lockeado"
+rm -rf "$EXFIX"
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "==> resultado: $PASS PASS · $FAIL FAIL"
