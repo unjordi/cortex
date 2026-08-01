@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# seed.sh — siembra las sesiones master de ESTA carpeta (Google Drive) en ~/.claude/projects/
-# de ESTA máquina, para poder `claude --resume` la MISMA conversación aquí.
+# seed.sh — siembra las sesiones master de la CARPETA DE SESIONES en ~/.claude/projects/ de ESTA
+# máquina, para poder `claude --resume` la MISMA conversación aquí. La mitad "sembrar" del sync
+# (la mitad "auto-export" es el hook exportar-sesion-master.sh).
 #
-# La carpeta se sincroniza sola por Google Drive entre las compus de unjordi (Mac <-> Cachy).
-# session-import.js (lo aporta claude-brain) reescribe el cwd de cada sesión a la ruta LOCAL del
-# repo destino, así que el swap /Users<->/home sale solo. seed.sh se autolocaliza ($(dirname $0)),
-# así que no hay rutas de Drive hardcodeadas: funciona en cualquier compu.
+# CARPETA DE SESIONES: default ~/.claude-sessions, override $CLAUDE_SESSIONS_DRIVE (mismo contrato que
+# el hook de export). Si esa carpeta vive en una nube sincronizada (Drive/iCloud), las sesiones viajan
+# entre máquinas. session-import.js (lo aporta claude-brain) reescribe el cwd de cada sesión a la ruta
+# LOCAL del repo destino, así que el swap /Users<->/home sale solo.
+# (Antes seed.sh vivía DENTRO de la carpeta de Drive y se autolocalizaba con $(dirname $0); al mudarse
+#  al brain eso ya no aplica → la carpeta se resuelve por env, no por la ubicación del script.)
 #
 # ROBUSTO POR MÁQUINA: el `target` de masters.json puede NO calzar 1:1 con esta compu —
 #   (a) diferencias de MAYÚSCULAS (macOS es case-insensitive, Linux NO: `code/PowerScripts` vs
@@ -17,8 +20,10 @@
 # Uso:  ./seed.sh            (siembra lo presente cuyo repo destino EXISTA aquí; salta lo demás)
 #       ./seed.sh --force    (re-siembra pisando lo local)
 set -euo pipefail
-DIR="$(cd "$(dirname "$0")" && pwd)"
+DIR="${CLAUDE_SESSIONS_DRIVE:-$HOME/.claude-sessions}"
 FORCE="${1:-}"
+[ -d "$DIR" ] || { echo "seed.sh: no existe la carpeta de sesiones '$DIR' (setea CLAUDE_SESSIONS_DRIVE, o crea ~/.claude-sessions)"; exit 1; }
+[ -f "$DIR/masters.json" ] || { echo "seed.sh: no hay masters.json en '$DIR' (nada que sembrar)"; exit 0; }
 
 IMP=""
 for c in "$HOME/.local/bin/session-import.js" "$HOME/.claude-brain/bin/session-import.js"; do
