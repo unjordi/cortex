@@ -4,6 +4,9 @@
 > Es la fuente de verdad única (código + memoria/skills viajan juntos por el repo).
 > Tras `git clone` en otra máquina: corre `bash .claude/bootstrap-claude.sh` una vez.
 > Memorias personales/sensibles → `*.local.md` (gitignored, no viajan al equipo).
+>
+> **→ Empieza por `CLAUDE.md` (la FIRMA):** las CAPACIDADES + la misión de este repo. Este archivo es el
+> ÍNDICE de CONOCIMIENTO (qué se aprendió), no de capacidades.
 
 - [Claude Brain Widget](claude-brain.md) — qué es y dónde vive (este repo, fuente única); fuente de datos (endpoint OAuth `/usage` + ccusage); look FelixDes (naranja, icono speedometer); popup de 3 pestañas (Límites/Resumen/Modelos); gotchas de iteración en KDE y de la bandeja; replicación multi-OS (macOS con paridad completa desde 2026-07-04, Windows por construir); **POLÍTICA de release 2026-07-26**: cada push a `main` reconstruye TODOS los assets precompilados (sin filtro `paths:`) — antídoto al loop de auto-update por asset rancio
 - [Tema KDE opaco](kde-tema-opaco.md) — fork local "CachyOS Nord (opaco)" para bajar la transparencia de los widgets de KDE (0.81→0.97); revertir con `plasma-apply-desktoptheme CachyOS-Nord-round`
