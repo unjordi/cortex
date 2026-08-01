@@ -65,13 +65,12 @@ ciegas.** Para el cerebro son:
    necesita saber QUÉ debe pasar para juzgar si el guard lo logra.
 
 > **Cuando el target es el cerebro de un PROYECTO** (no el `claude-brain` meta), los "zapatos" se traducen:
-> audita contra la **FIRMA** (la misión/capacidades de Claude aquí) = `CLAUDE.md` (thin, TOC) → el
-> **ENTRY-POINT OPERATIVO REAL** del repo (el doc con "reglas de operación + router de skills") → la
-> memoria/skill → **realidad (código)**. **Ese entry-point VARÍA por repo y se juzga por CONTENIDO, no por
-> nombre:** `AGENTS.md` en games-master, `MEMORY.md`-índice en cps. Por separado, si existe un doc de
-> **arquitectura** (en cps, `AGENTS.md` de 3194 líneas: capas/dominio), la coherencia lo mide vs el `.cs`. La
-> coherencia verifica que **ninguno mienta respecto al código real** — y que no se confunda el ROL de cada doc
-> (un `AGENTS.md` puede ser entry-point operativo O arquitectura según el repo; su contenido lo dice).
+> audita contra la **FIRMA** = `CLAUDE.md` (thin, TOC) → el **detalle operativo** → la memoria/skill →
+> **realidad (código)**. **Para AUDITAR, lee el entry-point operativo REAL, sea cual sea su nombre** (hoy varía:
+> `AGENTS.md` en games-master, `MEMORY.md`-índice en cps). La **CONVENCIÓN destino es `CLAUDE.md`+`MEMORY.md`**
+> (`consolidar-cerebro` migra hacia ella); `AGENTS.md` queda para **arquitectura real** (en cps, 3194 líneas:
+> capas/dominio, medido vs el `.cs`). La coherencia verifica que **ninguno mienta respecto al código real** y que
+> no se confunda el ROL de cada doc (auditar lee la realidad; consolidar la lleva a la convención).
 
 ## Las dimensiones (una por auditor, en paralelo)
 El cerebro se barre por dimensiones INDEPENDIENTES; se lanza **un auditor por dimensión** (fan-out, ver

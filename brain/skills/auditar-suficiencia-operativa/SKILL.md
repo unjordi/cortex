@@ -47,14 +47,13 @@ Delega a un agente que **NO sepa qué se tocó** y que se ponga en los zapatos d
 punto de entrada y de ahí lo que haga falta. Para cada tarea: **✅** (lo encuentra y le alcanza) · **⚠️**
 (está pero es ambiguo/incompleto) · **❌** (no está, o lo llevaría a romper algo). **Siempre con archivo:línea.**
 
-> **Qué ES el "punto de entrada" = la FIRMA (contra qué caminas).** La **firma** es la misión/capacidades de
-> Claude aquí: `CLAUDE.md` (thin, TOC) → el **ENTRY-POINT OPERATIVO REAL** del repo (el doc con "reglas de
-> operación + router de skills") → la memoria/skill → **realidad (código)**. **Ese entry-point VARÍA por repo y
-> se identifica por CONTENIDO, no por nombre:** es `AGENTS.md` en games-master (su `AGENTS.md` es el "LEE ESTO
-> ANTES DE HACER NADA"), tiende a `MEMORY.md` en cps (ahí `AGENTS.md` es arquitectura pura). **Ábrelo y léelo
-> antes de caminar** — clasificar mal el entry-point te hace auditar el archivo equivocado (pasó en el propio
-> gold standard). `AGENTS.md` tiene ROL VARIABLE: arquitectura-del-proyecto (audita coherencia vs el `.cs`) en un
-> repo tosco, o el entry-point operativo mismo en un brain de hobby — júzgalo por su contenido.
+> **Qué ES el "punto de entrada" (contra qué caminas).** La firma es la misión/capacidades de Claude aquí:
+> `CLAUDE.md` (thin, TOC) → el **detalle operativo** (router de skills + conocimiento) → la memoria/skill →
+> **realidad (código)**. **Para AUDITAR, lee el entry-point operativo REAL, sea cual sea su nombre** — hoy varía
+> (games-master usa `AGENTS.md` como su "LEE ESTO ANTES DE HACER NADA"); auditar el archivo equivocado te hace
+> caminar en falso (pasó en el propio gold standard). La **CONVENCIÓN destino es `CLAUDE.md`(firma) +
+> `MEMORY.md`(detalle)** — `consolidar-cerebro` migra hacia ella; `AGENTS.md` queda reservado para arquitectura
+> real. **Reconocer la realidad al auditar ≠ el destino uniforme al consolidar.**
 
 ### 4. Empaqueta la barrida de higiene en la misma pasada
 Contradicciones · **punteros colgados** (cruza los `[[wikilinks]]`/"ver el skill X" contra los archivos que

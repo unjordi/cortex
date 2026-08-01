@@ -1,6 +1,6 @@
 ---
 name: consolidar-cerebro
-description: META-playbook que orquesta la campaña completa de dejar el cerebro de un proyecto SÓLIDO y COMPACTO — que un Claude nuevo (o el usuario) lo opere sin re-investigar ni romper nada, y se lea de un jalón. Encadena skills que YA existen: la DUPLA de auditores (coherencia + suficiencia, van JUNTAS) → positivar-doc → desinflar-memorias → un LOOP de re-auditar con prompt IDÉNTICO hasta 0 ALTO/0 MEDIO → cierre con la FIRMA (CLAUDE.md thin = TOC de las capacidades → el entry-point operativo real del repo, que varía por repo y se juzga por CONTENIDO, no por nombre) y el "prompt bello de arranque". Con una CERCA no-destructiva (solo docs, narrativa fechada intacta, lo destructivo se PARQUEA para el humano) y el tercer eje FMEA opcional cuando hay lógica de riesgo. Úsalo cuando el usuario pida "dale amor a ese repo / que quede sólido y compacto / revisa que quede bien asentado" o tras una sesión que cambió arquitectura/procedimientos.
+description: META-playbook que orquesta la campaña completa de dejar el cerebro de un proyecto SÓLIDO y COMPACTO — que un Claude nuevo (o el usuario) lo opere sin re-investigar ni romper nada, y se lea de un jalón. Encadena skills que YA existen: la DUPLA de auditores (coherencia + suficiencia, van JUNTAS) → positivar-doc → desinflar-memorias → un LOOP de re-auditar con prompt IDÉNTICO hasta 0 ALTO/0 MEDIO → cierre con la FIRMA (CONVENCIÓN uniforme: CLAUDE.md thin = firma/TOC + MEMORY.md = detalle; se audita leyendo la realidad pero se consolida MIGRANDO a la convención; AGENTS.md queda solo para arquitectura real) y el "prompt bello de arranque". Con una CERCA no-destructiva (solo docs, narrativa fechada intacta, lo destructivo se PARQUEA para el humano) y el tercer eje FMEA opcional cuando hay lógica de riesgo. Úsalo cuando el usuario pida "dale amor a ese repo / que quede sólido y compacto / revisa que quede bien asentado" o tras una sesión que cambió arquitectura/procedimientos.
 ---
 
 # Consolidar el cerebro — dejarlo sólido y COMPACTO (meta-orquestador)
@@ -43,11 +43,13 @@ Antes de tocar nada, **ubica el cerebro real** y cuéntalo. Tres cosas:
    cablea y NO es un "hook huérfano"; contarla mal infla falsos hallazgos, como pasó con `detectar-secretos.sh`).
 2. **La ESTRUCTURA de firma:** ¿hay `CLAUDE.md`? ¿`AGENTS.md`? ¿`MEMORY.md`? y sobre todo — **¿cuál es el
    ENTRY-POINT OPERATIVO REAL**, el doc que un Claude nuevo lee primero ("reglas de operación + router de
-   skills")? Ese doc **varía por repo** (ver Fase 6): NO asumas que es `AGENTS.md` NI que es `MEMORY.md` —
-   ábrelo y léelo. La dupla audita CONTRA ese entry-point real (la "firma"), sea cual sea su nombre.
-3. **¿El repo ES la FUENTE del template?** (como `claude-brain`): entonces su cerebro OPERATIVO (`.claude/`)
-   es distinto del PRODUCTO que envía (`brain/`, la plantilla). Audita el operativo; NUNCA toques el producto
-   (ver la Cerca).
+   skills")? Para AUDITAR, NO asumas que es `AGENTS.md` NI `MEMORY.md` — ábrelo y léelo (hoy puede variar:
+   games-master usa AGENTS). Pero el **DESTINO de la consolidación es siempre la CONVENCIÓN `CLAUDE.md`(firma) +
+   `MEMORY.md`(detalle)** (ver Fase 6): si el entry-point real es otro, es candidato a MIGRACIÓN.
+3. **¿El repo ES la FUENTE del template?** (como `claude-brain` — que es workspace SOLO en las 2 máquinas dev, e
+   INSTALADOR en las demás): su cerebro OPERATIVO (`.claude/`) es distinto del PRODUCTO que envía (`brain/`).
+   Audita el operativo; NUNCA toques el producto (ver la Cerca). Es un caso ESTRECHO (aplica solo donde un Claude
+   dev trabaja este repo), no una ley universal.
 
 ## LA CERCA (leer ANTES de tocar — reglas duras)
 La consolidación es una pasada de **DOCS**, no de código. Dentro de esta cerca todo es tuyo; fuera de
@@ -156,34 +158,37 @@ CAPACIDADES que el tooling promete + el puntero a su método. *"La firma es el S
 su método."* Lazo cerrado: la firma es a la vez *lo que prometes* y *contra lo que se audita* →
 doc=realidad por construcción (auditar = "¿la realidad sigue cumpliendo la firma?").
 
-> **La firma NO es un archivo FIJO — es un ROL, y su detalle vive donde el repo REALMENTE lo tenga.**
-> El error a evitar (se cometió en AMBAS direcciones al destilar este skill): **hardcodear el NOMBRE** del
-> archivo. La verdad, validada contra 3 cerebros reales:
-> - **`CLAUDE.md` = la firma thin** (siempre cargada): el TOC de capacidades — la misión de Claude aquí.
-> - Su **DETALLE vive en el ENTRY-POINT OPERATIVO REAL del repo** — el doc con "reglas de operación + router
->   de skills" —, que **varía por repo** y se identifica **por CONTENIDO, no por nombre**: en **games-master es
->   `AGENTS.md`** (su `CLAUDE.md:88` dice literal *"Firma = TOC de AGENTS.md"* y su `AGENTS.md` ES el "LEE ESTO
->   ANTES DE HACER NADA"); en **cps tiende a `MEMORY.md`** (ahí `AGENTS.md` de 3194 líneas es arquitectura pura).
-> - **`AGENTS.md` tiene ROL VARIABLE:** en un repo tosco suele ser la ARQUITECTURA del proyecto (capas, dominio
->   — audita coherencia vs el `.cs`, NO es la firma); en un brain de hobby suele ser el propio entry-point
->   operativo (SÍ es el detalle de la firma). **Júzgalo por su contenido, no por su nombre.**
-> Clasificar mal el entry-point tiene consecuencia real: la suficiencia camina el archivo equivocado (pasó en el
-> propio gold standard) y el Paso 0 puede declarar "no hay firma" y SALTAR esta fase cuando sí hacía falta.
+> **LA CONVENCIÓN: `CLAUDE.md` (firma/TOC) + `MEMORY.md` (detalle). Se AUDITA leyendo la realidad; se CONSOLIDA
+> hacia la convención.** Dos momentos que NO se confunden:
+> - **Al AUDITAR (Paso 0 + dupla): lee el entry-point operativo REAL, sea cual sea su nombre.** NO asumas que es
+>   `MEMORY.md`: games-master hoy usa `AGENTS.md` como su "LEE ESTO ANTES DE HACER NADA" (su `CLAUDE.md:88` dice
+>   literal *"Firma = TOC de AGENTS.md"*). Si auditas contra el archivo equivocado, la suficiencia camina en falso
+>   (pasó en el propio gold standard). Reconocer la realidad ≠ bendecirla.
+> - **Al CONSOLIDAR (esta fase): el DESTINO es la convención UNIFORME** — `CLAUDE.md` = firma thin (TOC de
+>   capacidades + normas de conducta + misión = la misión de Claude aquí) → **`MEMORY.md` = el detalle** (índice
+>   operativo: router de skills + conocimiento). Un cerebro que hoy use OTRO archivo como entry-point (games-master
+>   con AGENTS operativo) se **MIGRA** a la convención: su contenido operativo pasa a `MEMORY.md`, `CLAUDE.md` queda
+>   como su TOC. (Migrar el gold standard es una decisión deliberada del humano — se PARQUEA si su cerebro está en uso.)
+> - **`AGENTS.md` queda RESERVADO para ARQUITECTURA real del proyecto** (el contrato de 3194 líneas de cps: capas,
+>   dominio, prohibiciones — audita coherencia vs el `.cs`). NO es la firma. Un cerebro sin arquitectura pesada
+>   (hobby/meta) NO necesita `AGENTS.md`. **La consistencia gana:** un Claude que salta entre repos aprende UN modelo.
 
-**3 capas, sin duplicar:**
+**3 capas, sin duplicar (la CONVENCIÓN — el destino de toda consolidación):**
 
 | Capa | Dónde | Qué |
 |---|---|---|
-| Firma / checklist (**misión de Claude aquí**) | `CLAUDE.md` (thin, siempre cargado) = **el TOC del entry-point operativo** | ~5-8 líneas `capacidad → puntero al método` |
-| Detalle de cada capacidad | **el ENTRY-POINT OPERATIVO REAL** (`AGENTS.md` en games-master · `MEMORY.md`-índice en cps) → la memoria/skill | el "cómo se opera bien" (thick, on-demand) |
+| Firma / checklist (**misión de Claude aquí**) | `CLAUDE.md` (thin, siempre cargado) = **el TOC** | ~5-8 líneas `capacidad → puntero` + normas de conducta + misión |
+| Detalle | **`MEMORY.md`** (el índice operativo: router de skills + conocimiento) → la memoria/skill | el "cómo se opera bien" (thick, on-demand) |
 | Método de los auditores | las skills (dupla + FMEA) | prompts, ámbito, prohibiciones |
+| *(Eje APARTE, solo si hay ARQUITECTURA real)* | `AGENTS.md` | contrato de **arquitectura del PROYECTO** (cps: capas/dominio) — audita coherencia vs el código, NO es la firma |
 
-> **El eje de ARQUITECTURA es aparte SOLO donde existe como tal:** en un repo tosco, `AGENTS.md` (o el doc de
-> arquitectura) describe *cómo está hecho el código* → lo audita la coherencia vs el `.cs`, no es la firma. Si en
-> tu repo ese mismo doc es en realidad el entry-point operativo (games-master), entonces SÍ es el detalle de la
-> firma. **Un doc, un rol — el que su CONTENIDO dicte**, no su nombre.
+> **Migración a la convención:** si un cerebro hoy usa OTRO archivo como entry-point operativo (games-master usa
+> `AGENTS.md` como su "LEE ESTO ANTES DE HACER NADA"), la consolidación lo MIGRA: el contenido operativo pasa a
+> `MEMORY.md`, `CLAUDE.md` queda como su TOC, y `AGENTS.md` se retira o se reduce a arquitectura real. **Migrar el
+> gold standard es decisión deliberada del humano** — se PARQUEA si su cerebro está en uso. Un cerebro sin
+> arquitectura pesada NO necesita `AGENTS.md`.
 
-- El auditor de suficiencia **camina cada línea de la firma**: `CLAUDE.md → entry-point operativo →
+- El auditor de suficiencia **camina cada línea de la firma**: `CLAUDE.md → MEMORY.md →
   memoria/skill → realidad`, y marca el hueco (capacidad sin método, método sin código, doc que miente).
 - **DESTILAR el `CLAUDE.md`-TOC cuando falta** (el caso común: cps y claude-brain NO tienen `CLAUDE.md`; su
   misión vive implícita/mezclada dentro del entry-point operativo). No lo inventes de cero: **destílalo
@@ -257,7 +262,9 @@ sea un reflejo del proceso y no un acto de voluntad. (Registrar como frente si s
 
 ## Notas de acoplamiento (decididas por el usuario, persistir)
 - **"la dupla VAN JUNTOS SIEMPRE"** — norma dura; cada firma de las 2 skills menciona a la otra.
-- La **firma = `CLAUDE.md` thin (TOC) → el ENTRY-POINT OPERATIVO REAL del repo**, que VARÍA por repo y se juzga
-  por CONTENIDO (`AGENTS.md` en games-master · `MEMORY.md`-índice en cps). **NO se hardcodea el nombre del detalle.**
+- **CONVENCIÓN de firma (decisión de unjordi 2026-08-01): `CLAUDE.md` (firma/TOC) + `MEMORY.md` (detalle) en TODOS
+  los cerebros** — la consistencia gana (un Claude aprende UN modelo). Se **audita** leyendo el entry-point real
+  (que hoy puede variar: games-master usa AGENTS), pero se **consolida MIGRANDO** a la convención. `AGENTS.md` queda
+  reservado para ARQUITECTURA real (cps); un cerebro sin arquitectura pesada no lo necesita.
 - Este es un skill del **cerebro global** → vive en `~/code/claude-brain/brain/skills/` y viaja por el
   flujo (ramita → MR → develop con `--squash`), como todo el brain.
