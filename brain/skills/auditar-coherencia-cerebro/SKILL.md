@@ -64,13 +64,14 @@ ciegas.** Para el cerebro son:
    develop con squash; main release-only con OK super-explícito) y la **definición de LISTO**. El auditor
    necesita saber QUÉ debe pasar para juzgar si el guard lo logra.
 
-> **Cuando el target es el cerebro de un PROYECTO** (no el `claude-brain` meta), los "zapatos" se
-> traducen: audita contra la **FIRMA** (la misión/capacidades de Claude aquí) = `CLAUDE.md` (thin, TOC)
-> → `MEMORY.md` (detalle: memorias + router de skills) → la memoria/skill → **realidad (código)**; y por
-> separado, contra el **`AGENTS.md`** como contrato de **arquitectura del proyecto** (capas, dominio,
-> prohibiciones) medido vs el `.cs`. Son **dos sujetos distintos**: la firma es la misión de Claude,
-> `AGENTS.md` es cómo está hecho el código — la coherencia verifica que **ninguno mienta respecto al
-> código real**, sin confundir uno con el otro.
+> **Cuando el target es el cerebro de un PROYECTO** (no el `claude-brain` meta), los "zapatos" se traducen:
+> audita contra la **FIRMA** (la misión/capacidades de Claude aquí) = `CLAUDE.md` (thin, TOC) → el
+> **ENTRY-POINT OPERATIVO REAL** del repo (el doc con "reglas de operación + router de skills") → la
+> memoria/skill → **realidad (código)**. **Ese entry-point VARÍA por repo y se juzga por CONTENIDO, no por
+> nombre:** `AGENTS.md` en games-master, `MEMORY.md`-índice en cps. Por separado, si existe un doc de
+> **arquitectura** (en cps, `AGENTS.md` de 3194 líneas: capas/dominio), la coherencia lo mide vs el `.cs`. La
+> coherencia verifica que **ninguno mienta respecto al código real** — y que no se confunda el ROL de cada doc
+> (un `AGENTS.md` puede ser entry-point operativo O arquitectura según el repo; su contenido lo dice).
 
 ## Las dimensiones (una por auditor, en paralelo)
 El cerebro se barre por dimensiones INDEPENDIENTES; se lanza **un auditor por dimensión** (fan-out, ver
