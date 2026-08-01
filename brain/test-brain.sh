@@ -1480,9 +1480,9 @@ brslug=$(printf '%s' "$BRREPO" | cksum | awk '{print $1}')
 is_silent "$(br)" && ok "barrer-ramas: throttle — 2ª corrida inmediata → silencio" || bad "barrer-ramas: no respetó el throttle"
 rm -rf "$BRFIX"
 
-# ── (b5g) recordar-cosechar: nudge "trabajaste y no cosechaste" (fail-open; heurístico; throttle; cosechado→silencio) ──
+# ── (b5g) recordar-cosechar: nudge "trabajaste y no dejaste memoria durable" (fail-open; heurístico; throttle; DOS señales: cosecha + backlog) ──
 echo ""
-echo "== (b5g) recordar-cosechar: nudge de cosecha (fail-open sin git; hubo trabajo+sin cosechar → avisa; throttle; cosechado → silencio) =="
+echo "== (b5g) recordar-cosechar: nudge de cosecha + backlog (fail-open sin git; hubo trabajo+sin tocar durable → avisa; throttle; ambas al día → silencio) =="
 RCFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-rc.XXXXXX")"
 RCHOME="$RCFIX/home"; RCREPO="$RCFIX/repo"
 mkdir -p "$RCHOME" "$RCREPO"
@@ -1506,10 +1506,37 @@ rcslug=$(printf '%s' "$RCREPO" | cksum | awk '{print $1}')
   && ok "recordar-cosechar: escribió el stamp del día" || bad "recordar-cosechar: no escribió el stamp"
 # (4) throttle: 2ª corrida el mismo día → silencio
 is_silent "$(rc)" && ok "recordar-cosechar: throttle — 2ª corrida mismo día → silencio" || bad "recordar-cosechar: no respetó el throttle diario"
-# (5) cosechado (aprendizajes.md modificado sin commitear) → silencio aunque haya trabajo (limpiamos el stamp)
+# (5) AMBAS señales al día (aprendizajes.md + estado-proyecto.md tocados sin commitear) → silencio aunque haya trabajo
 rm -rf "$RCHOME/.claude/memory/.recordar-cosechar"
 printf '## 2026-07-21 · aportó: unjordi · algo\nprosa\n\n' >> "$RCREPO/.claude/memory/aprendizajes.md"
-is_silent "$(rc)" && ok "recordar-cosechar: ya se cosechó (log tocado) → silencio" || bad "recordar-cosechar: avisó aunque ya se había cosechado"
+printf '- pendiente X\n' >> "$RCREPO/.claude/memory/estado-proyecto.md"
+is_silent "$(rc)" && ok "recordar-cosechar: cosecha + backlog al día → silencio" || bad "recordar-cosechar: avisó aunque ambas al día"
+
+# ── nueva señal: BACKLOG durable (estado-proyecto.md / bitacora.md) ──
+# (6) hubo trabajo + cosecha OK (aprendizajes.md tocado) pero BACKLOG sin tocar → EMITE el nudge de backlog (📋), sin el de cosecha
+rm -rf "$RCHOME/.claude/memory/.recordar-cosechar"
+rm -f "$RCREPO/.claude/memory/estado-proyecto.md"   # backlog vuelve a estar sin tocar
+rcout="$(rc)"
+printf '%s' "$rcout" | jq -e '.hookSpecificOutput.hookEventName == "Stop"' >/dev/null 2>&1 \
+  && ok "recordar-cosechar: trabajo + backlog sin tocar → emite Stop válido" || bad "recordar-cosechar: JSON inválido; got: $rcout"
+rcctx="$(printf '%s' "$rcout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null)"
+printf '%s' "$rcctx" | grep -q 'backlog durable' \
+  && ok "recordar-cosechar: emite el nudge de BACKLOG cuando estado/bitacora sin tocar" || bad "recordar-cosechar: no emitió el nudge de backlog; got: $rcctx"
+printf '%s' "$rcctx" | grep -q 'cosechar-sesion' \
+  && bad "recordar-cosechar: mezcló el nudge de cosecha (ya estaba cosechado)" || ok "recordar-cosechar: cosecha ya hecha → NO repite ese nudge"
+# (7) backlog tocado (estado-proyecto.md modificado) + cosecha OK → sin nudge de backlog (silencio total)
+rm -rf "$RCHOME/.claude/memory/.recordar-cosechar"
+printf '- pendiente Y\n' >> "$RCREPO/.claude/memory/estado-proyecto.md"
+is_silent "$(rc)" && ok "recordar-cosechar: backlog tocado (estado-proyecto.md) → sin nudge de backlog" || bad "recordar-cosechar: avisó pese a backlog tocado"
+# (7b) backlog tocado vía bitacora.md (quitamos estado-proyecto.md) → sigue contando como backlog OK → silencio
+rm -rf "$RCHOME/.claude/memory/.recordar-cosechar"
+rm -f "$RCREPO/.claude/memory/estado-proyecto.md"
+printf '- 2026-08-01 avance\n' >> "$RCREPO/.claude/memory/bitacora.md"
+is_silent "$(rc)" && ok "recordar-cosechar: backlog tocado vía bitacora.md → sin nudge de backlog" || bad "recordar-cosechar: no reconoció bitacora.md como backlog"
+# (8) sin trabajo sustantivo (quitamos el .cs; los .md no cuentan como código) → silencio total, la nueva señal tampoco dispara
+rm -rf "$RCHOME/.claude/memory/.recordar-cosechar"
+rm -f "$RCREPO/Foo.cs"
+is_silent "$(rc)" && ok "recordar-cosechar: sin trabajo → silencio (nueva señal tampoco dispara)" || bad "recordar-cosechar: avisó sin trabajo"
 rm -rf "$RCFIX"
 
 # ── (b5h) recordar-unificar-cerebro: gemelo hacia arriba (fail-open; delta≥umbral → avisa; en develop → silencio; throttle) ──
