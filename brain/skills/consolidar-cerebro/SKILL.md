@@ -1,6 +1,6 @@
 ---
 name: consolidar-cerebro
-description: META-playbook que orquesta la campaña completa de dejar el cerebro de un proyecto SÓLIDO y COMPACTO — que un Claude nuevo (o el usuario) lo opere sin re-investigar ni romper nada, y se lea de un jalón. Encadena skills que YA existen: la DUPLA de auditores (coherencia + suficiencia, van JUNTAS) → positivar-doc → desinflar-memorias → un LOOP de re-auditar con prompt IDÉNTICO hasta 0 ALTO/0 MEDIO → cierre con la FIRMA (CLAUDE.md = TOC de MEMORY = la misión/capacidades de Claude, distinta del AGENTS de arquitectura) y el "prompt bello de arranque". Con una CERCA no-destructiva (solo docs, narrativa fechada intacta, lo destructivo se PARQUEA para el humano) y el tercer eje FMEA opcional cuando hay lógica de riesgo. Úsalo cuando el usuario pida "dale amor a ese repo / que quede sólido y compacto / revisa que quede bien asentado" o tras una sesión que cambió arquitectura/procedimientos.
+description: META-playbook que orquesta la campaña completa de dejar el cerebro de un proyecto SÓLIDO y COMPACTO — que un Claude nuevo (o el usuario) lo opere sin re-investigar ni romper nada, y se lea de un jalón. Encadena skills que YA existen: la DUPLA de auditores (coherencia + suficiencia, van JUNTAS) → positivar-doc → desinflar-memorias → un LOOP de re-auditar con prompt IDÉNTICO hasta 0 ALTO/0 MEDIO → cierre con la FIRMA (CLAUDE.md thin = TOC de las capacidades → el entry-point operativo real del repo, que varía por repo y se juzga por CONTENIDO, no por nombre) y el "prompt bello de arranque". Con una CERCA no-destructiva (solo docs, narrativa fechada intacta, lo destructivo se PARQUEA para el humano) y el tercer eje FMEA opcional cuando hay lógica de riesgo. Úsalo cuando el usuario pida "dale amor a ese repo / que quede sólido y compacto / revisa que quede bien asentado" o tras una sesión que cambió arquitectura/procedimientos.
 ---
 
 # Consolidar el cerebro — dejarlo sólido y COMPACTO (meta-orquestador)
@@ -38,10 +38,16 @@ aún así más chico que su gemelo; y cps, un repo .NET grande que convergió en
 ---
 
 ## PASO 0 — INVENTARIO (no auditar a ciegas)
-Antes de tocar nada, **ubica el cerebro real** y cuéntalo: ¿cuántas memorias / skills / hooks? ¿hay
-`AGENTS.md` (la **firma**)? ¿hay `CLAUDE.md`? Ejemplo real (cps): *"AGENTS.md de 3164 líneas = la firma
-→ la dupla audita CONTRA la firma; no hay CLAUDE.md; ~35 memorias, 5 skills, 11 hooks → fan-out
-read-only"*. **La dupla BIFURCA según exista o no firma:** si hay `AGENTS.md`, se audita contra ella.
+Antes de tocar nada, **ubica el cerebro real** y cuéntalo. Tres cosas:
+1. **El TAMAÑO:** cuántas memorias / skills / hooks — distinguiendo HOOK de LIB `source`-ada (una lib no se
+   cablea y NO es un "hook huérfano"; contarla mal infla falsos hallazgos, como pasó con `detectar-secretos.sh`).
+2. **La ESTRUCTURA de firma:** ¿hay `CLAUDE.md`? ¿`AGENTS.md`? ¿`MEMORY.md`? y sobre todo — **¿cuál es el
+   ENTRY-POINT OPERATIVO REAL**, el doc que un Claude nuevo lee primero ("reglas de operación + router de
+   skills")? Ese doc **varía por repo** (ver Fase 6): NO asumas que es `AGENTS.md` NI que es `MEMORY.md` —
+   ábrelo y léelo. La dupla audita CONTRA ese entry-point real (la "firma"), sea cual sea su nombre.
+3. **¿El repo ES la FUENTE del template?** (como `claude-brain`): entonces su cerebro OPERATIVO (`.claude/`)
+   es distinto del PRODUCTO que envía (`brain/`, la plantilla). Audita el operativo; NUNCA toques el producto
+   (ver la Cerca).
 
 ## LA CERCA (leer ANTES de tocar — reglas duras)
 La consolidación es una pasada de **DOCS**, no de código. Dentro de esta cerca todo es tuyo; fuera de
@@ -56,6 +62,12 @@ ella se PARQUEA, no se cruza.
   "verifica primero en vivo", no inventes la certeza), cualquier hallazgo que toque **lógica/dinero**.
 - **NO se toca en esta pasada:** develop/main (git flow intacto), código/BD, colecciones/datos vivos,
   PRs ajenos, **ni se afloja ningún guardrail propio**.
+- **Si el repo ES la fuente del template** (produce el cerebro de otros): la pasada es SOLO sobre el cerebro
+  operativo del propio repo (`.claude/`), **JAMÁS sobre el producto que envía** (`brain/`/la plantilla) —
+  positivar/desinflar eso lo propagaría a TODOS los clones.
+- **Cerebro en folder NO-GIT (Drive/Insync):** no hay worktree ni ramitas → **snapshot `.bak` ANTES de mutar**
+  (la red de reversibilidad), mutaciones **SECUENCIALES** del orquestador (evita choques con el sync de Insync),
+  y el cierre no va a `docs/` sino donde ese cerebro guarde su historial.
 - **La auditoría es READ-ONLY** sobre `.claude/`; los fixes van DESPUÉS por ramitas → MR con OK.
 
 ---
@@ -86,6 +98,11 @@ marcó `detectar-secretos.sh` como "hook huérfano" → coherencia lo REFUTÓ po
 `source`-ada, no un hook) = FP anotado, no tocado. Con 4-6 informes, haz el cross-check ANTES de sintetizar.
 
 ## FASE 3 — CONSOLIDAR / ORGANIZAR (positivar → desinflar → dedup)
+> **SALIDA TEMPRANA (gate):** si el Paso 0 + la dupla muestran que el cerebro YA está sano (índice fiel, sin
+> drift, ya compacto, 0 hallazgos accionables), **NO re-trabajes por trabajar** — declara "ya está sano" y salta
+> directo a la Fase 6 (firma/cierre). Positivar/desinflar un cerebro ya bueno solo arriesga cavar hoyos nuevos.
+> Esto es para cerebros ABRUMADOS, no para pulir lo ya pulido (games-master ya estaba sano → casi nada que tocar).
+
 Con los hallazgos verificados, los fixes van por un agente en **worktree AISLADO** (o el orquestador
 secuencial si el cerebro vive en un folder no-git, p. ej. Drive), commits granulares, orquestador revisa
 el diff. El grueso del "quedar compacto":
@@ -97,10 +114,10 @@ el diff. El grueso del "quedar compacto":
    datos irrepetibles. Recortes reales: cps `estado-proyecto` 896→460 (−49%), **0 lecciones perdidas**.
 3. **Un CANÓNICO + PUNTEROS** por dato/tema repetido: una memoria "manda", las hermanas se deducen a un
    puntero. Un dato NO vive en 3 lados; el estado "actual" se DERIVA.
-4. **Índice answer-first y SIN DRIFT:** un solo entry-point (`AGENTS.md` "LEE ESTO ANTES DE HACER
-   NADA"); `MEMORY.md` con el router de skills reflejando las skills REALES (N=N) y puntero arriba
-   "→ Empieza por AGENTS.md". En cps el índice MENTÍA (clúster ETL invisible desde la puerta) →
-   reconstruido 35/35.
+4. **Índice answer-first y SIN DRIFT:** un solo **entry-point operativo** (el doc que traiga reglas +
+   router de skills — es `AGENTS.md` en games-master, el `MEMORY.md`-índice en cps; ver Fase 6), answer-first,
+   con "LEE ESTO ANTES DE HACER NADA" arriba y los punteros al detalle. El router refleja las skills REALES
+   (N=N). En cps el índice MENTÍA (clúster ETL invisible desde la puerta) → reconstruido 35/35.
 5. **Matar el mito en TODAS sus copias:** tras corregir el canónico, `grep` del término viejo por TODO
    el cerebro vivo (incluido `MEMORY.md`) — una sola copia desincronizada ya es doc que miente.
 6. **Reubicar lo genérico/ajeno FUERA del cerebro del proyecto** (lo transversal → global; lo de
@@ -137,37 +154,53 @@ CAPACIDADES que el tooling promete + el puntero a su método. *"La firma es el S
 su método."* Lazo cerrado: la firma es a la vez *lo que prometes* y *contra lo que se audita* →
 doc=realidad por construcción (auditar = "¿la realidad sigue cumpliendo la firma?").
 
-> **Ojo — la firma NO cuelga de `AGENTS.md`.** En un repo tosco de verdad `AGENTS.md` SIEMPRE existe y
-> habla del **PROYECTO** (arquitectura: capas, prohibiciones, modelo de dominio — *cómo está hecho el
-> código*, cps: 3164 líneas). Eso **NO es la misión de Claude en el proyecto** — es un eje APARTE, que
-> audita la **coherencia** contra el `.cs`. La **firma** es otra cosa: la **misión/capacidades de Claude
-> aquí** ("¿qué puedo HACER y cómo?"), que es justo lo que camina la **suficiencia**, y cuyo detalle vive
-> en **`MEMORY.md`** (el índice del know-how operativo + router de skills). Por eso el detalle de la firma
-> es `MEMORY.md`, no `AGENTS.md`. (En un brain de hobby sin arquitectura pesada, `AGENTS.md` puede doblar
-> de entry-point; en un repo tosco NO — no confundas los dos sujetos.)
+> **La firma NO es un archivo FIJO — es un ROL, y su detalle vive donde el repo REALMENTE lo tenga.**
+> El error a evitar (se cometió en AMBAS direcciones al destilar este skill): **hardcodear el NOMBRE** del
+> archivo. La verdad, validada contra 3 cerebros reales:
+> - **`CLAUDE.md` = la firma thin** (siempre cargada): el TOC de capacidades — la misión de Claude aquí.
+> - Su **DETALLE vive en el ENTRY-POINT OPERATIVO REAL del repo** — el doc con "reglas de operación + router
+>   de skills" —, que **varía por repo** y se identifica **por CONTENIDO, no por nombre**: en **games-master es
+>   `AGENTS.md`** (su `CLAUDE.md:88` dice literal *"Firma = TOC de AGENTS.md"* y su `AGENTS.md` ES el "LEE ESTO
+>   ANTES DE HACER NADA"); en **cps tiende a `MEMORY.md`** (ahí `AGENTS.md` de 3194 líneas es arquitectura pura).
+> - **`AGENTS.md` tiene ROL VARIABLE:** en un repo tosco suele ser la ARQUITECTURA del proyecto (capas, dominio
+>   — audita coherencia vs el `.cs`, NO es la firma); en un brain de hobby suele ser el propio entry-point
+>   operativo (SÍ es el detalle de la firma). **Júzgalo por su contenido, no por su nombre.**
+> Clasificar mal el entry-point tiene consecuencia real: la suficiencia camina el archivo equivocado (pasó en el
+> propio gold standard) y el Paso 0 puede declarar "no hay firma" y SALTAR esta fase cuando sí hacía falta.
 
-**3 capas, sin duplicar** (+ el eje de arquitectura, aparte):
+**3 capas, sin duplicar:**
 
 | Capa | Dónde | Qué |
 |---|---|---|
-| Firma / checklist (**misión de Claude aquí**) | `CLAUDE.md` (thin, siempre cargado) = **el TOC de `MEMORY.md`** | ~5 líneas `capacidad → puntero al método` |
-| Detalle de cada capacidad | `MEMORY.md` → la memoria / skill que apunta | el "cómo se opera bien" (thick, on-demand) |
+| Firma / checklist (**misión de Claude aquí**) | `CLAUDE.md` (thin, siempre cargado) = **el TOC del entry-point operativo** | ~5-8 líneas `capacidad → puntero al método` |
+| Detalle de cada capacidad | **el ENTRY-POINT OPERATIVO REAL** (`AGENTS.md` en games-master · `MEMORY.md`-índice en cps) → la memoria/skill | el "cómo se opera bien" (thick, on-demand) |
 | Método de los auditores | las skills (dupla + FMEA) | prompts, ámbito, prohibiciones |
-| *(Eje APARTE, no es la firma)* | `AGENTS.md` | contrato de **arquitectura del PROYECTO** — audita coherencia vs el código, no la misión |
 
-- El auditor de suficiencia **camina cada línea de la firma**: `CLAUDE.md → MEMORY.md → memoria/skill →
-  realidad`, y marca el hueco (capacidad sin método, método sin código, doc que miente).
-- **DESTILAR el TOC cuando `MEMORY.md` ya es un índice maduro** (el caso común en un repo tosco — cps
-  tiene `AGENTS.md` de arquitectura pero NINGÚN `CLAUDE.md`, y su firma-misión vive implícita/mezclada
-  dentro de `MEMORY.md`). No inventes el `CLAUDE.md` de cero: **destílalo separando CAPACIDAD de
-  CONOCIMIENTO** — recorre `MEMORY.md` y clasifica cada línea: *¿es una CAPACIDAD* (algo que Claude
-  **hace/opera** aquí: un skill, una rutina, un guard, una tarea) → su título va al TOC del `CLAUDE.md` con
-  su puntero; *¿es CONOCIMIENTO/estado/historia/dominio* (una decisión, un dato, una lección) → se queda en
-  `MEMORY.md` como detalle. El `CLAUDE.md` resultante es ~5-8 líneas `capacidad → puntero`, thin. No se
-  duplica: el TOC apunta, el detalle vive abajo una sola vez.
-- **Alinea `MEMORY.md`** para que su índice tenga exactamente las capacidades que el TOC del `CLAUDE.md`
-  declara, en ese orden (si sobra una memoria fuera del mapa: se enlaza desde el índice o se añade al
-  TOC). `AGENTS.md` se deja en su carril de arquitectura, no se fuerza a la forma de la firma.
+> **El eje de ARQUITECTURA es aparte SOLO donde existe como tal:** en un repo tosco, `AGENTS.md` (o el doc de
+> arquitectura) describe *cómo está hecho el código* → lo audita la coherencia vs el `.cs`, no es la firma. Si en
+> tu repo ese mismo doc es en realidad el entry-point operativo (games-master), entonces SÍ es el detalle de la
+> firma. **Un doc, un rol — el que su CONTENIDO dicte**, no su nombre.
+
+- El auditor de suficiencia **camina cada línea de la firma**: `CLAUDE.md → entry-point operativo →
+  memoria/skill → realidad`, y marca el hueco (capacidad sin método, método sin código, doc que miente).
+- **DESTILAR el `CLAUDE.md`-TOC cuando falta** (el caso común: cps y claude-brain NO tienen `CLAUDE.md`; su
+  misión vive implícita/mezclada dentro del entry-point operativo). No lo inventes de cero: **destílalo
+  clasificando cada línea del entry-point por su NATURALEZA DOMINANTE**, en TRES clases:
+  - **CAPACIDAD** — algo que Claude **hace/opera** (un skill, una rutina, un guard, una tarea) → al TOC.
+  - **NORMA de CRITERIO/CONDUCTA** — cómo se trabaja aquí ("cómo NO trabajar", `como-trabajar-<user>`, reglas
+    de estilo) → también al TOC (es firma: gobierna la operación), como su propia sección.
+  - **CONOCIMIENTO / estado / historia / dominio** — una decisión, un dato, una lección → se QUEDA en el detalle.
+
+  Cuando una línea tiene de varias, clasifícala por su naturaleza **DOMINANTE**; si su método vive en 2 lados
+  (un skill + un doc-método), el TOC lleva un **puntero COMPUESTO** (`capacidad → skill + doc`). El `CLAUDE.md`
+  resultante es thin (~5-8 líneas + secciones); NO duplica: el TOC apunta, el detalle vive abajo una sola vez.
+- **AGENTS pesado que MEZCLA** (cps: 3194 líneas con arquitectura + git-flow §8 + workflow §8b + scripts §10):
+  no basta "no fuerces AGENTS a firma" — la **mitad inversa** también aplica: lo que ahí sea **proceso/capacidad**
+  (no arquitectura) se **enlaza HACIA la firma** (o se dedupea si ya vive en un skill), dejando en `AGENTS.md`
+  solo la arquitectura real. Separa por CONTENIDO, no por sección.
+- **Alinea el entry-point operativo** para que su índice tenga exactamente las capacidades que el TOC declara,
+  en ese orden (si sobra una fuera del mapa: se enlaza o se añade al TOC). El doc de arquitectura, si existe
+  aparte, se deja en su carril y no se fuerza a la forma de la firma.
 - **Entregable bonito de cierre: el "prompt bello de arranque"** — el reporte matutino curado (1 línea
   de estado + tabla de rondas + "lo único que necesito de ti") para reanudar la sesión-master sin
   trauma. El usuario lo valora explícitamente; va como parte del cierre y se **preserva a disco** (vive
@@ -176,8 +209,9 @@ doc=realidad por construcción (auditar = "¿la realidad sigue cumpliendo la fir
 ## CRITERIO DE "LISTO" (no lo saltes)
 **Convergencia técnica ≠ LISTO.** "0 ALTO/0 MEDIO + memoria al día" es *verificado técnicamente*:
 necesario, insuficiente. El sello final es el **QA/OK del usuario** o su autorización expresa (definición
-mutua de LISTO). Los parqueados quedan visibles en el **dictamen durable versionado**
-(`<repo>/docs/auditoria-<tema>-<fecha>.md`) y en el backlog vivo (`estado-proyecto.md`) — **ningún
+mutua de LISTO). Los parqueados quedan visibles en el **dictamen durable** (repo git:
+`<repo>/docs/auditoria-<tema>-<fecha>.md`; folder no-git: donde ese cerebro guarde su historial, p. ej.
+`.claude/projects/`) y en el backlog vivo (`estado-proyecto.md`) — **ningún
 hallazgo se queda solo en el chat**, aunque solo se atienda un subconjunto.
 
 ---
@@ -212,7 +246,7 @@ sea un reflejo del proceso y no un acto de voluntad. (Registrar como frente si s
 
 ## Notas de acoplamiento (decididas por el usuario, persistir)
 - **"la dupla VAN JUNTOS SIEMPRE"** — norma dura; cada firma de las 2 skills menciona a la otra.
-- La **firma vive en el `CLAUDE.md` de cada repo** (= TOC de `MEMORY.md`, el detalle operativo); `AGENTS.md`
-  es el eje APARTE de arquitectura, NO la firma.
+- La **firma = `CLAUDE.md` thin (TOC) → el ENTRY-POINT OPERATIVO REAL del repo**, que VARÍA por repo y se juzga
+  por CONTENIDO (`AGENTS.md` en games-master · `MEMORY.md`-índice en cps). **NO se hardcodea el nombre del detalle.**
 - Este es un skill del **cerebro global** → vive en `~/code/claude-brain/brain/skills/` y viaja por el
   flujo (ramita → MR → develop con `--squash`), como todo el brain.
