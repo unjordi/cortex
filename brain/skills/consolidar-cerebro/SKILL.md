@@ -188,6 +188,31 @@ doc=realidad por construcción (auditar = "¿la realidad sigue cumpliendo la fir
 > gold standard es decisión deliberada del humano** — se PARQUEA si su cerebro está en uso. Un cerebro sin
 > arquitectura pesada NO necesita `AGENTS.md`.
 
+**ESTRUCTURA CANÓNICA del `CLAUDE.md`-firma (plantilla — decisión de unjordi 2026-08-02).** Secuencia
+OBLIGATORIA: **intro-IDENTIDAD → dónde-va-cada-cosa → ÁRBOL (cercado) → detalle**. El árbol es
+AUTOCONTENIDO (apunta a SUS skills; NO remite a otro archivo tipo AGENTS):
+```
+# <emojis + nombre> — <qué es el proyecto>
+<intro de IDENTIDAD: quién es este claude, el propósito, con quién>
+## Dónde va cada cosa — relativo a esta carpeta
+​```                          ← el ÁRBOL SIEMPRE dentro de un bloque de código (si no, colapsa a prosa en TODO render — lección games)
+📄 CLAUDE.md ─ LA firma (conocimiento del proyecto + reglas duras + 🖋️ árbol de capacidades · cada una → su skill)
+▼ 📄 MEMORY.md ─ el DETALLE DE CADA PUNTO DE LA FIRMA (índice de memorias)
+▼ 📁 skills (how-to) · 📁 hooks (guards)
+​```
+## <abajo: el detalle — reglas duras, conocimiento del proyecto>
+```
+
+**GRADIENTE DE ESTABILIDAD (regla dura — el PORQUÉ de que la firma sea atemporal):** `CLAUDE.md` = como
+`main` · `MEMORY.md` = como `develop` · las memorias + bitácora + estado-proyecto = las ramitas.
+- **`CLAUDE.md`: SOLO estructural y ATEMPORAL.** CERO fechas, CERO "RESUELTO/VERIFICADO/al día/pendiente",
+  CERO estado. Muta casi nunca (solo si cambia la ESTRUCTURA: una capacidad nueva). Así **no se puede
+  pudrir** → doc=realidad *por construcción*.
+- **`MEMORY.md`:** el detalle de cada punto de la firma. Muta poco; tampoco fechas/estado — *ni siquiera aquí*.
+- **Las ramitas:** ahí vive TODO lo volátil (fechas, "RESUELTO 2026-06-25", historia, lápidas ⚰️).
+- En `claude-brain` esto lo VERIFICA `docs/flowcharts/verificar-arbol-sync.sh` (el bloque `ARBOL:START/END`
+  del `CLAUDE.md` debe ir cercado y sin fechas/RESUELTO/VERIFICADO); en otros cerebros es criterio de cierre.
+
 - El auditor de suficiencia **camina cada línea de la firma**: `CLAUDE.md → MEMORY.md →
   memoria/skill → realidad`, y marca el hueco (capacidad sin método, método sin código, doc que miente).
 - **DESTILAR el `CLAUDE.md`-TOC cuando falta** (el caso común: cps y claude-brain NO tienen `CLAUDE.md`; su
