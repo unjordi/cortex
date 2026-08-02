@@ -63,8 +63,32 @@ for s in $R; do
   echo "❌ README árbol lista '$s' que NO existe en brain/skills/ (¿typo o skill borrado?)"; fail=1
 done
 
+# (4) El árbol del CLAUDE.md es CANÓNICO: CERCADO y ATEMPORAL (gradiente de estabilidad — CLAUDE=main).
+# Se inspecciona SOLO el contenido ESTRICTAMENTE entre los marcadores (excluye las propias líneas
+# <!-- ARBOL:START/END --> — la de START menciona 'VERIFICADO' como parte del comentario, no del árbol).
+INNER="$(awk '/<!-- ARBOL:START/{f=1;next} /<!-- ARBOL:END/{f=0} f' CLAUDE.md)"
+if [ -z "$INNER" ]; then
+  echo "❌ CLAUDE.md: no encontré el bloque <!-- ARBOL:START --> … <!-- ARBOL:END --> (o está vacío)."
+  fail=1
+else
+  # (4a) DEBE ir cercado con ``` (si no, el árbol colapsa a prosa en TODO render — lección games).
+  fences="$(printf '%s\n' "$INNER" | grep -c '^```')"
+  first="$(printf '%s\n' "$INNER" | grep -m1 -v '^[[:space:]]*$')"
+  if [ "$fences" -lt 2 ] || [ "$first" != '```' ]; then
+    echo "❌ CLAUDE.md: el árbol entre ARBOL:START/END NO está cercado con \`\`\` (colapsa a prosa al renderizar)."
+    fail=1
+  fi
+  # (4b) ATEMPORAL: sin fechas 20XX-XX-XX ni RESUELTO/VERIFICADO (eso vive en las ramitas, no en el canónico).
+  temporal="$(printf '%s\n' "$INNER" | grep -nE '20[0-9]{2}-[0-9]{2}-[0-9]{2}|RESUELTO|VERIFICADO' || true)"
+  if [ -n "$temporal" ]; then
+    echo "❌ CLAUDE.md: el árbol es ATEMPORAL (gradiente de estabilidad) — quita fechas/estado de estas líneas:"
+    printf '%s\n' "$temporal" | sed 's/^/     /'
+    fail=1
+  fi
+fi
+
 if [ "$fail" -eq 0 ]; then
-  echo "✅ parity-check árbol (fase 1): README ↔ CLAUDE.md ↔ brain/skills/ en paridad."
+  echo "✅ parity-check árbol (fase 1): README ↔ CLAUDE.md ↔ brain/skills/ en paridad · árbol CLAUDE.md cercado y atemporal."
 else
   echo ""
   echo "⚠️  DRIFT del árbol. Sincroniza la familia 💡 Skills en README.md + CLAUDE.md con brain/skills/."

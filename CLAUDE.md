@@ -3,6 +3,8 @@
 > **Esto es la DECLARACIÓN del brain**: el árbol de hooks + normas + skills que se instalan en cada repo.
 > Va en `CLAUDE.md` (no solo en el README) porque **al iniciar una sesión se lee el `CLAUDE.md`, no el README**.
 > El **detalle de cada skill** vive en `.claude/memory/MEMORY.md`; el código del producto, en `brain/`.
+> **Gradiente de estabilidad**: este `CLAUDE.md` es como `main` — SOLO estructural y **ATEMPORAL** (cero fechas/estado;
+> lo volátil vive en `MEMORY.md`≈develop y en memorias/bitácora≈ramitas). Detalle en `.claude/memory/arbol-cerebro-sync.md`.
 >
 > **Fuente del árbol** = el bloque «🔒 Hooks Forzosos» de `README.md`; este archivo lo espeja (committeado, nunca
 > vacío en un clon fresco). Un **parity-check** (`docs/flowcharts/verificar-arbol-sync.sh`, en CI) verifica que

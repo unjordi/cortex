@@ -15,8 +15,10 @@ espejarse.**
 
 > **Parcialmente VERIFICADO (2026-08-01):** `docs/flowcharts/verificar-arbol-sync.sh` (corre en `test-brain.sh`/CI)
 > compara la familia 💡 Skills de **README ↔ CLAUDE.md ↔ `brain/skills/`** y FALLA si driftean — ese eje ya no
-> depende de la disciplina. Los **3 brainTiers de los widgets AÚN se mantienen a mano** (generarlos/verificarlos
-> desde la fuente = parqueado, necesita QA visual de los widgets); para ELLOS sigue aplicando la Regla de abajo.
+> depende de la disciplina. El mismo check también asegura que el árbol del `CLAUDE.md` esté **cercado con ` ``` `
+> y sea ATEMPORAL** (sin fechas `20XX-XX-XX` ni RESUELTO/VERIFICADO — ver "Gradiente de estabilidad" abajo). Los
+> **3 brainTiers de los widgets AÚN se mantienen a mano** (generarlos/verificarlos desde la fuente = parqueado,
+> necesita QA visual de los widgets); para ELLOS sigue aplicando la Regla de abajo.
 
 ## Y la LÓGICA DE ESTADO por GUI (casa NOMBRES → si renombras, renombra aquí también)
 Cada GUI decide "installed/absent/…" por el **nombre** de la pieza. Si cambias el NAME de una norma
@@ -33,6 +35,22 @@ Cada GUI decide "installed/absent/…" por el **nombre** de la pieza. Si cambias
   **◈ azul** (su sistema de auto-reflejo) en su posición. Mismo dato, medio distinto. OK.
 - El widget trae `event` + `detail` (se despliegan al tocar) que el README resume; los `desc` cortos
   sí deben coincidir.
+
+## Gradiente de estabilidad: CLAUDE=main · MEMORY=develop · hojas=ramitas
+> Decisión de unjordi (2026-08-02). El PORQUÉ de que el árbol del `CLAUDE.md` sea ATEMPORAL.
+
+Los archivos del cerebro forman un **gradiente de estabilidad**, igual que las ramas de git:
+- **`CLAUDE.md` = como `main`.** SOLO estructural y **ATEMPORAL**: la firma + el árbol de capacidades.
+  **CERO fechas, CERO "RESUELTO/VERIFICADO/al día/pendiente", CERO estado.** Muta casi nunca — solo si
+  cambia la ESTRUCTURA (una capacidad nueva). Un `CLAUDE.md` sin fechas **no se puede pudrir**: es
+  doc=realidad *por construcción* (nada temporal que quede desactualizado).
+- **`MEMORY.md` = como `develop`.** El detalle de cada punto de la firma (índice de memorias). Muta poco;
+  tampoco lleva fechas/estado — *ni siquiera aquí*.
+- **Las memorias + `bitacora.md` + `estado-proyecto.md` = las ramitas.** Ahí vive TODO lo volátil:
+  fechas, "RESUELTO 2026-06-25", historia, lápidas ⚰️. Es el lugar CORRECTO para lo temporal.
+
+Por eso el bloque `<!-- ARBOL:START/END -->` del `CLAUDE.md` se verifica **cercado + atemporal** en
+`verificar-arbol-sync.sh` (asserts 4a/4b) — el gradiente no depende de la disciplina.
 
 ## Regla
 Al editar la jerarquía: **cambia los 5 catálogos (README + CLAUDE.md + 3 brainTiers) + la lógica de estado
