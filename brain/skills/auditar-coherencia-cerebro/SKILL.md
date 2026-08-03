@@ -64,6 +64,14 @@ ciegas.** Para el cerebro son:
    develop con squash; main release-only con OK super-explícito) y la **definición de LISTO**. El auditor
    necesita saber QUÉ debe pasar para juzgar si el guard lo logra.
 
+> **Cuando el target es el cerebro de un PROYECTO** (no el `claude-brain` meta), los "zapatos" se traducen:
+> audita contra la **FIRMA** = `CLAUDE.md` (thin, TOC) → el **detalle operativo** → la memoria/skill →
+> **realidad (código)**. **Para AUDITAR, lee el entry-point operativo REAL, sea cual sea su nombre** (hoy varía:
+> `AGENTS.md` en games-master, `MEMORY.md`-índice en cps). La **CONVENCIÓN destino es `CLAUDE.md`+`MEMORY.md`**
+> (`consolidar-cerebro` migra hacia ella); `AGENTS.md` queda para **arquitectura real** (en cps, 3194 líneas:
+> capas/dominio, medido vs el `.cs`). La coherencia verifica que **ninguno mienta respecto al código real** y que
+> no se confunda el ROL de cada doc (auditar lee la realidad; consolidar la lleva a la convención).
+
 ## Las dimensiones (una por auditor, en paralelo)
 El cerebro se barre por dimensiones INDEPENDIENTES; se lanza **un auditor por dimensión** (fan-out, ver
 [[orquestar-fanout]]) para que cada uno sea profundo y no se diluya:

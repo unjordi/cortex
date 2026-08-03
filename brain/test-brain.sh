@@ -1869,7 +1869,9 @@ cosechar-sesion|recordar-cosechar
 recordar-unificar-cerebro|unificar-cerebro
 cosechar-sesion|unificar-cerebro
 proteger-fuente-cerebro|verificar-cerebro
-auditar-coherencia-cerebro|auditar-suficiencia-operativa"
+auditar-coherencia-cerebro|auditar-suficiencia-operativa
+auditar-coherencia-cerebro|consolidar-cerebro
+auditar-suficiencia-operativa|consolidar-cerebro"
 ce_els=()
 for d in "$SCRIPT_DIR"/skills/*/; do [ -d "$d" ] && ce_els+=("$(basename "$d")"); done
 for h in "$HOOKS"/*.sh; do [ -e "$h" ] && ce_els+=("$(basename "$h" .sh)"); done
