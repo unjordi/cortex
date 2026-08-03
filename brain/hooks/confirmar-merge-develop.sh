@@ -8,11 +8,11 @@
 #     drama — este candado NO las intercepta. Igual las ramas `epic/*`, `integracion/*` y demás.
 #   - El ÚNICO cruce que pasa por este candado es integrar al `develop` COMPARTIDO (o promover a
 #     `main`) vía MR (`glab mr merge|accept` / `gh pr merge`, incluido armar `--auto-merge`):
-#     BLOQUEA salvo que haya (a) una MARCA de confirmación expresa del usuario en el contexto
-#     reciente, o (b) una AUTORIZACIÓN DURABLE vigente en disco (.claude/memory/
-#     autorizaciones-vigentes.local.md, scope=merge-develop con vencimiento — la escribe el skill
-#     turno-nocturno al recibir un OK blanket del usuario; sobrevive compactaciones). La vía (b)
-#     JAMÁS cubre releases a main.
+#     BLOQUEA salvo que haya (a) autorización EXPRESA del usuario para ESTE merge en el contexto
+#     reciente (la juzga un LLM, ver abajo), o (b) una AUTORIZACIÓN DURABLE vigente en disco
+#     (.claude/memory/autorizaciones-vigentes.local.md, scope=merge-develop con vencimiento — la
+#     escribe el skill turno-nocturno al recibir un OK blanket del usuario; sobrevive compactaciones).
+#     La vía (b) JAMÁS cubre releases a main.
 #
 # ALCANCE: SOLO repos COMPARTIDOS (marca `.claude/repo-compartido`, viaja por git). En repos
 # personales/solo (sin la marca) NO gatea nada → cero fricción ahí; ese caso lo cuidan git-branch-guard
@@ -71,95 +71,70 @@ if [ -n "$tpath" ] && [ -f "$tpath" ]; then
                else (. // "") end)
           | select(. != "")                   # descarta tool_result (mapea a "") → solo texto real del usuario
           | select(test("<system-reminder>") | not) ]  # A-06: descarta bloques con marca de inyección (CLAUDE.md/recordatorios)
-    | .[-10:] | join("\n")' 2>/dev/null)   # UNA línea por mensaje de usuario → permite filtrar por-línea
-fi                                          # (negación adyacente A3 · id de MR ligado al OK A4)
+    | .[-10:] | join("\n")' 2>/dev/null)   # UNA línea por mensaje de usuario, del más viejo al más nuevo
+fi
 
-# ── A3 (NEGATION-BLIND) + A4 (OK TRANSITIVO) · FMEA 2026-07-30 ────────────────────────────────────
-# Antes: `grep -qiE "$OK_RE" "$recent"` aceptaba la marca SIN polaridad ni ligadura al MR → "no te di
-# autorización todavía" ABRÍA el merge (A3), y un "mergea el MR 5" autorizaba un `merge 9` distinto (A4).
-# Ahora evaluamos MENSAJE-POR-MENSAJE (una línea = un msg de usuario) y una línea SOLO cuenta como OK si:
-#   (A3) NO trae una negación (no|sin|nunca|jamás — cubre "todavía no"/"aún no", que contienen "no");
-#   (A4) si LIGA el OK a un MR-id explícito ("mergea el MR 5"), ese id coincide con el del comando actual.
-#        Un OK GENÉRICO (sin id) conserva el comportamiento por RECENCIA (no se endurece de más).
-# A-05 (FMEA): además de no/sin/nunca/jamás, cubre negaciones/prohibiciones frecuentes que traían un verbo
-# de merge y pasaban como OK ("ni se te ocurra mergear el 5", "para nada", "de ninguna manera", "tampoco",
-# "evita"). "ni se te ocurra"/"ni loco" van como frase para no atrapar "ni bien" (= apenas), que NO niega.
-NEG_RE='(\b(no|sin|nunca|jam[aá]s|tampoco|evit[aeé][a-z]*)\b|para nada|de ninguna manera|de ning[uú]n modo|ni se te ocurra|ni loc[ao])'
-# A-R4-03 (FMEA r4): además de la negación LÉXICA (NEG_RE), descarta el encuadre de APLAZAMIENTO/futuro —
-# el usuario que POSPONE el merge pero menciona "mergear el <id>" NO lo está autorizando ("espera para
-# mergear el 5", "déjame ver antes de mergear el 5", "casi listo para mergear el 5", "todavía revisando…").
-# Dirección SEGURA (fail-safe): ante un aplazamiento, re-pide confirmación en vez de mergear. Se omite el
-# `luego` pelón a propósito: colisiona con "desde luego" (= afirmación); esos casos igual caen por
-# todavía/aún/casi-listo. Cuida FP: "ya revisé, mergea" y "desde luego, mergea" NO deben caer aquí.
-DEFER_RE='(\bespera\b|aguanta|antes de|m[aá]s tarde|al rato|cuando (termine|revise|acabe|veas|chec|est[eé])|casi list|todav[ií]a|a[uú]n (no|estoy|est[aá]s)|d[eé]jame (ver|prob|revis|chec|corr|test)[a-zé]*)'
-# Verbo de merge/OK inmediatamente seguido de (el)? (MR)? #?<n> → marca que el OK va dirigido a ESE MR.
-BOUND_OK_RE='(merg[eé]a[a-zé]*|mérga(lo|los)?|dale( el)? merge|integr[ao][a-zé]*|emp[uú]j[a-zé]*|s[uú]b[a-zé]*|m[aá]nd[a-zé]*|m[eé]t[ae][a-zé]*)[[:space:]]+(el[[:space:]]+)?(mr[[:space:]]+)?#?[0-9]+'
-# MR-id del COMANDO actual (para la ligadura A4). Vacío si el comando no nombra id → A4 no aplica (recencia).
-cur_mrid=$(acg_mrid "$(acg_despoja_comillas "$cmd")")   # A-04 (FMEA): id tolerante a flags (`--yes 9`), vía la lib
+# ── JUEZ DE AUTORIZACIÓN (LLM) — reemplaza el pilón de regex frágiles ────────────────────────────────
+# Antes: NEG_RE/NEG_ADJ/DEFER_RE/BOUND_OK_RE/CONF_RE/RELEASE_RE intentaban parsear la INTENCIÓN del
+# usuario en lenguaje natural (español, con slang, frustración, negaciones incidentales, listas de ids).
+# Era whack-a-mole: cada frasing nuevo abría un falso-positivo o un falso-negativo (3 en una sola noche,
+# 2026-08-02: negación-ciega, multi-id, y un cache de destino envenenado). Ahora un modelo chico (Haiku)
+# LEE los mensajes recientes del usuario y JUZGA si autorizó EXPRESAMENTE ESTE merge (este MR-id, este
+# destino). Es comprensión de lectura, robusta al phrasing — lo que un guard de intención debía ser.
+#
+# Fail-safe (conservador, NUNCA fail-open): si el LLM no está disponible (sin `claude` CLI, sin red,
+# timeout, o respuesta ininteligible) → DENY (pide OK a mano). Los tests lo mockean con
+# CLAUDE_MERGE_JUEZ_MOCK (ALLOW|DENY|UNAVAILABLE) para ser deterministas y sin red. Modelo/timeout por env.
+cur_mrid=$(acg_mrid "$(acg_despoja_comillas "$cmd")")   # id del comando (tolerante a flags), vía la lib
 
-# ¿hay en $recent una línea que sea un OK VÁLIDO (no negado y no ligado a OTRO MR) para $1 (regex de OK)?
-_ok_para_este_merge() {
-  local re="$1" line ids
-  while IFS= read -r line; do
-    [ -n "$line" ] || continue
-    printf '%s' "$line" | grep -qiE "$re"    || continue    # trae una marca de OK
-    printf '%s' "$line" | grep -qiE "$NEG_RE" && continue    # (A3) negada → no cuenta
-    printf '%s' "$line" | grep -qiE "$DEFER_RE" && continue  # (A-R4-03) aplazada/futuro → no cuenta
-    ids=$(printf '%s' "$line" | grep -oiE "$BOUND_OK_RE" | grep -oE '[0-9]+')
-    if [ -n "$ids" ] && [ -n "$cur_mrid" ]; then             # (A4) OK ligado a un MR-id concreto…
-      printf '%s\n' "$ids" | grep -qx "$cur_mrid" || continue # …y NO es este → no autoriza este merge
-    fi
-    return 0                                                 # OK válido (genérico, o ligado a ESTE MR)
-  done <<EOF
-$recent
-EOF
-  return 1
+_juez_merge() {   # $1=destino  $2=mrid  $3=mensajes → imprime ALLOW | DENY | UNAVAILABLE
+  [ -n "${CLAUDE_MERGE_JUEZ_MOCK:-}" ] && { printf '%s' "$CLAUDE_MERGE_JUEZ_MOCK"; return 0; }
+  command -v claude >/dev/null 2>&1 || { printf 'UNAVAILABLE'; return 0; }
+  local prompt out
+  prompt="Eres un guardia de seguridad de merges de git. El asistente Claude quiere ejecutar: merge del MR $2 hacia la rama '$1'.
+Tu ÚNICA tarea: decidir si el USUARIO autorizó EXPRESAMENTE ESTE merge (este número de MR y esta rama destino) leyendo sus mensajes recientes.
+
+Reglas:
+- ALLOW solo si el usuario dio una instrucción CLARA de mergear/integrar que aplica a ESTE MR ($2), o un OK inequívoco de mergear a '$1' ahora mismo. Una lista ('mergea 5 y 6') autoriza a TODOS los ids que nombra.
+- Si el destino es 'main': exige lenguaje EXPLÍCITO de RELEASE (release / libera / a main). Un 'mergea' normal NO basta para main.
+- DENY si: no hay autorización, la autorización es para OTRO MR distinto, es una negación ('no mergees eso'), un aplazamiento ('espera', 'todavía no', 'déjame revisar'), o si tienes CUALQUIER duda.
+- Ignora la frustración, quejas o reclamos del usuario; busca ÚNICAMENTE si autorizó ESTE merge.
+
+Mensajes recientes del usuario (del más viejo al más nuevo):
+$3
+
+Responde EXACTAMENTE una palabra en la primera línea: ALLOW o DENY."
+  out=$(timeout "${CLAUDE_MERGE_JUEZ_TIMEOUT:-30}" claude -p "$prompt" --model "${CLAUDE_MERGE_JUEZ_MODEL:-claude-haiku-4-5-20251001}" 2>/dev/null \
+        | grep -oiE 'ALLOW|DENY' | head -1 | tr '[:lower:]' '[:upper:]')
+  [ -n "$out" ] && printf '%s' "$out" || printf 'UNAVAILABLE'
 }
 
-# RELEASE_RE: lenguaje de release-a-main. Se usa en AMBAS ramas — exige release para main, y TAMBIÉN
-# vale como confirmación del merge INTERMEDIO a develop (un release a main pasa forzosamente por
-# develop, así que autorizar el release autoriza su paso a develop). Antídoto al falso-negativo del
-# 2026-07-20: "ya puedes empujar el brain a main" frenó el PR intermedio a develop porque el CONF_RE
-# de develop no reconocía lenguaje de release. La autorización de release es MÁS fuerte, no menos.
-RELEASE_RE='hasta main|\brelease\b|(a|hacia|hast[ao]) main|liber(a|ar|alo|é)|promue?v(e|er)[a-zé ]*main|merge[a-zé ]* a? *main'
-
-if [ "$destino" = "main" ]; then
-  # RELEASE a main: exige autorización SUPER explícita de release. Un 'mergea' genérico (que vale
-  # para develop) NO autoriza un release a main. (A3: una negación adyacente NO cuenta como OK.)
-  _ok_para_este_merge "$RELEASE_RE" && exit 0
-  jq -n --arg r "FRENO (RELEASE a main): promover develop→main es una decisión de RELEASE que exige autorización SUPER explícita del usuario para ESTE release (p. ej. 'release a main', 'hasta main', 'libera'), y no la encuentro en el contexto reciente.
-  (a) Si ya la dio, CÍTALA y reintenta.
-  (b) main es release-only: un 'mergea' genérico (que vale para develop) NO autoriza un release a main. Los releases van SIN squash (conservan historia)." \
-    '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
-  exit 0
+# Grant DURABLE (turno-nocturno): un OK persistido a disco cubre scope=merge-develop (NUNCA main). Fast-path
+# antes de gastar una llamada al LLM. Sobrevive compactaciones; la cita textual registrada es su evidencia.
+if [ "$destino" != "main" ]; then
+  AUTH_FILE="${CLAUDE_PROJECT_DIR:-.}/.claude/memory/autorizaciones-vigentes.local.md"
+  if [ -f "$AUTH_FILE" ]; then
+    now_epoch=$(date +%s)
+    grant=$(awk -v now="$now_epoch" '/scope=merge-develop/ && match($0, /vence_epoch=[0-9]+/) {
+        if (substr($0, RSTART+12, RLENGTH-12) + 0 > now) { print; exit }
+      }' "$AUTH_FILE" 2>/dev/null)
+    [ -n "$grant" ] && exit 0
+  fi
 fi
 
-# Destino develop (o desconocido → conservador): confirmación normal. "sigue/avanza" NO cuenta.
-CONF_RE='merg[eé]a|mérga(lo|los)?|dale( el)? merge|haz(lo|le)?( el)? *merge|merge a develop|integra[a-zé ]*a? *develop|s[ií],? merge|ci[eé]rra(lo)?|cierra el slice|ll[eé]va(lo|los)?[a-zé ,]*develop|s[uú]b(e|elo|elos|ir|an|í)[a-zé ,]*develop|m[aá]nda(lo|los)?[a-zé ,]*develop|emp[uú]j(a|á|e)(lo|los|le)?[a-zé ,]*develop|m[eé]te(le|lo|los)?[a-zé ,]*develop|ya (puedes|podés|puedo) mergear|adelante[a-zé ]*(el )?merge|autoriz|luz verde (para|de|expresa)|visto bueno|aprob(ado|é|ó)?|va! *(merge|mr|develop|cierra)'
-_ok_para_este_merge "$CONF_RE" && exit 0
-# Un OK de RELEASE-a-main también cubre este paso intermedio a develop (el release pasa por develop).
-_ok_para_este_merge "$RELEASE_RE" && exit 0
+veredicto=$(_juez_merge "$destino" "$cur_mrid" "$recent")
+[ "$veredicto" = "ALLOW" ] && exit 0
 
-# ── Autorización DURABLE (sobrevive compactaciones): grant EXPLÍCITO del usuario persistido a disco
-# (lo escribe el skill turno-nocturno al recibir el OK, con la CITA textual del usuario y un
-# vencimiento). SOLO cubre scope=merge-develop — un release a main NUNCA llega aquí (su early-exit
-# está arriba y NO consulta este archivo). Fail-safe: sin archivo / grant vencido / línea malformada
-# → el freno normal de abajo. Caso real (2026-07-12): un OK blanket ("autorizo todos los merges a
-# develop de aquí a mañana a las 10am") murió al COMPACTARSE el contexto (quedó fuera de la ventana
-# de mensajes que escaneamos) → merges legítimos frenados toda la noche. El grant en disco es la
-# versión durable de ese OK; la cita textual registrada es su evidencia.
-AUTH_FILE="${CLAUDE_PROJECT_DIR:-.}/.claude/memory/autorizaciones-vigentes.local.md"
-if [ -f "$AUTH_FILE" ]; then
-  now_epoch=$(date +%s)
-  grant=$(awk -v now="$now_epoch" '/scope=merge-develop/ && match($0, /vence_epoch=[0-9]+/) {
-      if (substr($0, RSTART+12, RLENGTH-12) + 0 > now) { print; exit }
-    }' "$AUTH_FILE" 2>/dev/null)
-  [ -n "$grant" ] && exit 0
+# DENY o UNAVAILABLE → freno, con el mensaje según el caso.
+if [ "$veredicto" = "UNAVAILABLE" ]; then
+  r="FRENO (juez no disponible): no pude consultar el juez de autorización de merge (¿sin 'claude' CLI, sin red, o timeout?). Fail-safe conservador: confirma ESTE merge a mano, o reintenta con el LLM disponible. (Override de modelo/timeout: CLAUDE_MERGE_JUEZ_MODEL / CLAUDE_MERGE_JUEZ_TIMEOUT.)"
+elif [ "$destino" = "main" ]; then
+  r="FRENO (RELEASE a main): el juez no encontró autorización EXPRESA de RELEASE para ESTE release (MR $cur_mrid). main es release-only — pide 'libera/release a main' explícito. Los releases van SIN squash (conservan historia)."
+else
+  r="FRENO (definición de LISTO): el juez no encontró tu confirmación EXPRESA para integrar ESTE MR ($cur_mrid) a develop.
+  (a) Dámela clara para ESTE MR (p. ej. 'mergea el $cur_mrid a develop').
+  (b) O itera sin fricción en tu mini/rama de integración con 'git merge' LOCAL (no pasa por este candado).
+Recuerda: verde técnico != LISTO; 'sigue/avanza' NO autoriza el merge a develop."
 fi
-
-jq -n --arg r "FRENO (definición de LISTO): integrar a develop por MR exige la confirmación EXPRESA del usuario para ESTE cierre, y no la encuentro en el contexto reciente.
-  (a) Si ya te dio el OK explícito, CÍTALO y reintenta.
-  (b) Para seguir iterando SIN fricción: trabaja en una rama de INTEGRACIÓN (integracion/<sprint> o epic/<tema>) y mergea las ramitas ahí con 'git merge' LOCAL (libre, no pasa por este candado); solo el MR de esa rama de integración → develop pasa por aquí.
-Recuerda: verde técnico != LISTO; 'sigue/avanza' NO autoriza el merge a develop." \
-  '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
+jq -n --arg r "$r" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
 exit 0
