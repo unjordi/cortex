@@ -5,10 +5,11 @@
 # el worktree principal; ante duda (offline, sin señal clara) CONSERVA.
 #   uso: limpiar-worktrees.sh [--dry-run]   (desde cualquier lugar del repo)
 #
-# "Mergeada" es TRIPLE porque el flujo SQUASHEA (la rama NO queda de ancestro): (a) ancestro de la base
-# (flujo merge-commit) O (b) la rama fue pusheada y su rama remota YA no existe (se borró al mergear
-# con --delete-branch, típico del squash) O (c) sus commits ya están en la base por EQUIVALENCIA de
-# parche (git cherry) — el caso del merge LOCAL a la rama personal (mini-develop) y los cherry-picks.
+# "Mergeada" es CUÁDRUPLE porque el flujo SQUASHEA (la rama NO queda de ancestro): (a) ancestro de la
+# base O (d) su PR/MR se MERGEÓ en el host (gh/glab — señal AUTORITATIVA que caza el MR-squash, que (b)/(c)
+# CONSERVABAN) O (c) sus commits ya están en la base por EQUIVALENCIA de parche (git cherry — merge LOCAL a
+# la mini-develop y cherry-picks) O (b) la rama fue pusheada y su rama remota YA no existe (se borró al
+# mergear con --delete-branch, típico del squash) Y NO trae commits propios. Detalle en ramas-zombie.sh.
 set -u
 DRY=0; [ "${1:-}" = "--dry-run" ] && DRY=1
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "limpiar-worktrees: no es un repo git" >&2; exit 1; }
