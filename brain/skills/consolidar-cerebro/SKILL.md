@@ -100,6 +100,11 @@ a media auditoría), y **verifica read-only cada hallazgo contra el código/real
 como verdad. El **cross-check entre lentes es donde se cazan los FALSOS POSITIVOS**: en cps, suficiencia
 marcó `detectar-secretos.sh` como "hook huérfano" → coherencia lo REFUTÓ por ejecución (es una LIB
 `source`-ada, no un hook) = FP anotado, no tocado. Con 4-6 informes, haz el cross-check ANTES de sintetizar.
+> **Si un agente REEMPLAZA un doc** (un rebuild de la firma/README/config, no contenido nuevo — típico en la
+> Fase 6): corre el **DIFF DE PRESERVACIÓN** de [[revisar-entregables-agentes]] — `diff` viejo→nuevo y
+> clasifica lo que SOLTÓ (basura temporal botada bien **vs** conocimiento real que hay que preservar/reubicar).
+> Un rebuild falla por OMISIÓN silenciosa, no por afirmar de más (caso real: un rebuild botó una corrección que
+> vivía SOLO en ese archivo).
 
 ## FASE 3 — CONSOLIDAR / ORGANIZAR (positivar → desinflar → dedup)
 > **SALIDA TEMPRANA (gate):** si el Paso 0 + la dupla muestran que el cerebro YA está sano (índice fiel, sin
