@@ -1057,87 +1057,105 @@ is_silent "$(gbg 'grep -rn "git push origin develop" .claude/')"          && ok 
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "== (b4) dod-verificar: cierre/claim-visual sin evidencia bloquea; con OK o tool de navegador, no =="
+echo "== (b4) dod-verificar: JUEZ-Haiku clasifica CIERRE/MARCA/VISUAL; el flujo/estructura es determinista =="
 DODTX="$FAKEHOME/dod-transcript.jsonl"
-dod() { # dod "<texto final asistente>" "<línea extra de tool/edit o vacío>" "<texto del USUARIO (opcional)>"
-  # $3 = mensaje del USUARIO (default "haz el cambio"). ALTO-1: la marca (1)/(2) se deriva de AQUÍ, no
-  # de la prosa del asistente → los tests de confirmación ponen el OK en el mensaje del usuario.
+# dod "<asistente>" "<tool-line o vacío>" "<usuario>" "<mock del juez>" → corre el hook con el juez MOCKEADO.
+# El mock (CLAUDE_DOD_JUEZ_MOCK, formato "CIERRE=.. MARCA=.. VISUAL=.." o "UNAVAILABLE") hace deterministas
+# los tests de FLUJO/ESTRUCTURA (¿tocó código? ¿browser-tool? gating de MARCA, fail-open). La CLASIFICACIÓN
+# real del juez (qué frase es cierre vs estatus) la valida la batería LIVE de abajo.
+dod() {
   { jq -nc --arg u "${3:-haz el cambio}" '{type:"user",message:{role:"user",content:[{type:"text",text:$u}]}}'
     [ -n "$2" ] && printf '%s\n' "$2"
     jq -nc --arg t "$1" '{type:"assistant",message:{role:"assistant",content:[{type:"text",text:$t}]}}'
   } > "$DODTX"
-  printf '%s' "{\"stop_hook_active\":false,\"transcript_path\":\"$DODTX\"}" | bash "$HOOKS/dod-verificar.sh"
+  printf '%s' "{\"stop_hook_active\":false,\"transcript_path\":\"$DODTX\"}" \
+    | CLAUDE_DOD_JUEZ_MOCK="${4:-CIERRE=no MARCA=no VISUAL=no}" bash "$HOOKS/dod-verificar.sh"
 }
 is_block() { printf '%s' "$1" | jq -e '.decision == "block"' >/dev/null 2>&1; }
 EDITR='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","input":{"file_path":"src/Foo.razor"}}]}}'
 BROWSERT='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"mcp__claude-in-chrome__navigate","input":{}}]}}'
-is_block "$(dod '¡Cerrado! 🏁 el módulo quedó terminado.' "$EDITR")" && ok "dod B1: 'cerrado 🏁' + código sin OK → bloquea" || bad "dod B1 NO bloqueó cierre sin evidencia"
-is_block "$(dod 'Lo dejé en preview, con tu OK lo cierro.' "$EDITR")" && bad "dod bloqueó lenguaje de estatus" || ok "dod: 'en preview / con tu OK' → no bloquea"
-is_block "$(dod 'Quedó idéntico al mockup, se ve tal cual.' "$EDITR")" && ok "dod B2: claim visual sin browser-tool → bloquea (a ciegas)" || bad "dod B2 NO bloqueó claim visual a ciegas"
-o="$(dod 'En Chrome se ve como el mockup.' "$BROWSERT")"; is_block "$o" && bad "dod B2 bloqueó con browser-tool presente; got: $o" || ok "dod B2: claim visual + browser-tool → no bloquea"
-# ALTO-1 (FMEA 2026-07-30): la marca (1)/(2) se deriva del MENSAJE DEL USUARIO, no de la prosa de Claude.
-# (a) confirmación GENUINA del usuario en SU mensaje → no bloquea.
-is_block "$(dod 'Quedó listo el módulo.' "$EDITR" 'sí, lo validé en QA y diste el ok, ciérralo')" && bad "dod ALTO-1: bloqueó con (1) confirmación del USUARIO en su mensaje" || ok "dod ALTO-1: confirmación del USUARIO en su mensaje → no bloquea"
-# (b) AUTO-ATESTIGUAMIENTO: Claude NARRA que el usuario confirmó, pero el usuario NO lo dijo → bloquea.
-is_block "$(dod 'El usuario ya confirmó y dio el visto bueno; quedó listo el módulo.' "$EDITR")" && ok "dod ALTO-1: Claude narra 'el usuario confirmó' sin que el usuario lo dijera → bloquea (no se auto-atestigua)" || bad "dod ALTO-1: el auto-atestiguamiento de Claude satisfizo el candado (bug ALTO-1)"
-# (c) imperativo de cierre del usuario ("sí, quedó, ciérralo") → no bloquea.
-is_block "$(dod 'Quedó terminado el módulo.' "$EDITR" 'sí, quedó, ciérralo')" && bad "dod ALTO-1: bloqueó con autorización expresa de cierre del usuario ('ciérralo')" || ok "dod ALTO-1: 'sí, quedó, ciérralo' del usuario → no bloquea"
-# P1 (precisión): una PREGUNTA no es un cierre, aunque traiga léxico de cierre → NO dispara
-is_block "$(dod '¿ya quedó terminado el módulo?' "$EDITR")" && bad "dod P1: bloqueó una PREGUNTA (falso positivo del UUID)" || ok "dod P1: pregunta con léxico de cierre → no bloquea"
-is_block "$(dod 'Terminé el fix. ¿Lo cierro y abro el MR?' "$EDITR")" && bad "dod P1: bloqueó una oferta que termina preguntando" || ok "dod P1: mensaje que termina en pregunta → no bloquea"
-# G1 (precisión): una pregunta co-ubicada NO debe salvar un CLAIM de cierre AFIRMADO en el mismo
-# mensaje (la evasión "Listo, quedó terminado. ¿Reviso algo más?"). El claim se evalúa sobre el texto
-# SIN los tramos ¿…?: si el cierre está afirmado FUERA de la pregunta, se bloquea igual.
-is_block "$(dod 'Listo, quedó terminado el módulo. ¿Reviso algo más?' "$EDITR")" && ok "dod G1: claim afirmado + pregunta aparte → bloquea (no se salva por la pregunta)" || bad "dod G1: la pregunta co-ubicada salvó un cierre afirmado (evasión)"
-is_block "$(dod 'Todo quedó funcionando y en producción. ¿Avanzo con el siguiente?' "$EDITR")" && ok "dod G1: cierre afirmado + pregunta neutra → bloquea" || bad "dod G1: una pregunta neutra evadió un cierre afirmado"
-# H4 (precisión): un ESTATUS DÉBIL (deferir/avisar/consultar) co-ubicado NO salva un CLAIM afirmado —
-# antes "Listo, quedó terminado. Dime si reviso algo más." se salvaba con "dime si".
-is_block "$(dod 'Listo, quedó terminado. Dime si reviso algo más.' "$EDITR")" && ok "dod H4: claim afirmado + estatus débil ('dime si') → bloquea (no lo salva)" || bad "dod H4: un estatus débil salvó un cierre afirmado (evasión)"
-# H4 (contrapeso, NO sobre-disparar): el léxico PRESCRITO de downgrade escapa AUNQUE haya palabra de
-# cierre — "quedó terminado pero lo dejo EN PREVIEW, a tu revisión" es honesto, no un falso LISTO.
-is_block "$(dod 'El módulo quedó terminado, pero lo dejo en preview, a tu revisión.' "$EDITR")" && bad "dod H4: bloqueó el léxico de downgrade PRESCRITO (falso positivo)" || ok "dod H4: 'quedó terminado … en preview / a tu revisión' → no bloquea (downgrade explícito)"
-# H4: un estatus débil SIN claim de cierre sigue escapando (es puro estatus/espera)
-is_block "$(dod 'Voy avanzando; te aviso cuando termine.' "$EDITR")" && bad "dod H4: bloqueó estatus débil sin claim" || ok "dod H4: estatus débil sin claim → no bloquea"
-# G2(a): editar por Bash (sed -i / redirección) SÍ es "tocar código" aunque no haya "file_path".
 BASHSED='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"sed -i \"s/a/b/\" src/Foo.cs"}}]}}'
 BASHREDIR='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"cat > src/Bar.razor <<EOF\ncontenido\nEOF"}}]}}'
 BASHREAD='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"dotnet build 2>/dev/null | tee build.log"}}]}}'
-is_block "$(dod 'Listo, quedó terminado el módulo.' "$BASHSED")" && ok "dod G2a: edición por 'sed -i' (sin file_path) cuenta como código → bloquea" || bad "dod G2a: 'sed -i' evadió el candado (no detectó código tocado)"
-is_block "$(dod 'Listo, quedó terminado el módulo.' "$BASHREDIR")" && ok "dod G2a: redirección '> Bar.razor' cuenta como código → bloquea" || bad "dod G2a: redirección a código evadió el candado"
-is_block "$(dod 'Listo, quedó terminado el módulo.' "$BASHREAD")" && bad "dod G2a: falso positivo — build+tee a .log/dev-null no es tocar código" || ok "dod G2a: build/tee a .log|/dev/null → NO cuenta como código (sin falso positivo)"
-# G2(b): el bloqueo de QA-visual-a-ciegas NO se suprime por la palabra "screenshot" en PROSA;
-# solo un tool_use REAL de navegador lo evita (estructura, no substring).
-is_block "$(dod 'Quedó igual al mockup. No corrí screenshot, pero confío en que se ve bien.' "$EDITR")" && ok "dod G2b: 'screenshot' en prosa (sin browser-tool) → sigue bloqueando (a ciegas)" || bad "dod G2b: la palabra 'screenshot' en prosa suprimió el bloqueo visual"
-# P2a (precisión): un PASO MECÁNICO del proceso ("checkpoint hecho", "push hecho", "MR abierto",
-# "memoria actualizada") NO es un cierre de entregable → no dispara (caso real 2026-07-15: el freno
-# saltó por "✅ Listo — checkpoint hecho"). Se enmascara la frase mecánica y el claim se evalúa
-# sobre el residuo.
-is_block "$(dod '✅ Checkpoint hecho' "$EDITR")" && bad "dod P2a: bloqueó '✅ Checkpoint hecho' (paso mecánico, falso positivo)" || ok "dod P2a: '✅ Checkpoint hecho' → no bloquea (paso mecánico)"
-is_block "$(dod '✅ Listo — checkpoint hecho, hilo volcado.' "$EDITR")" && bad "dod P2a: bloqueó '✅ Listo — checkpoint hecho' (el caso real del 2026-07-15)" || ok "dod P2a: '✅ Listo — checkpoint hecho, hilo volcado' → no bloquea (caso real)"
-is_block "$(dod 'Push hecho a la ramita, MR abierto.' "$EDITR")" && bad "dod P2a: bloqueó 'push hecho…MR abierto' (proceso git, falso positivo)" || ok "dod P2a: 'push hecho a la ramita, MR abierto' → no bloquea (proceso git)"
-is_block "$(dod 'Memoria actualizada y bitácora al día. ✅ Hecho el commit.' "$EDITR")" && bad "dod P2a: bloqueó 'memoria actualizada / bitácora al día / hecho el commit'" || ok "dod P2a: 'memoria actualizada, bitácora al día, hecho el commit' → no bloquea"
-# P2a FAIL-SAFE: si la frase mezcla paso mecánico Y claim de ENTREGABLE, el claim manda → bloquea.
-is_block "$(dod 'Push hecho y la feature ya funciona.' "$EDITR")" && ok "dod P2a fail-safe: 'push hecho Y la feature ya funciona' → bloquea (el claim de entregable manda)" || bad "dod P2a fail-safe: el paso mecánico tapó un claim de entregable (evasión)"
-is_block "$(dod 'MR abierto y el endpoint quedó terminado.' "$EDITR")" && ok "dod P2a fail-safe: 'MR abierto Y el endpoint quedó terminado' → bloquea" || bad "dod P2a fail-safe: 'MR abierto' tapó el cierre del endpoint (evasión)"
-# P2b (precisión): celebración SIN entregable no dispara por sí sola — 🎉 dejó de ser gatillo
-# standalone ("quedó el día" no es "quedó listo/terminado" → no hay claim textual); 🏁 sigue siendo cierre.
-is_block "$(dod '🎉 ¡Qué bonito quedó el día!' "$EDITR")" && bad "dod P2b: bloqueó celebración sin entregable ('🎉 qué bonito quedó el día')" || ok "dod P2b: '🎉 ¡qué bonito quedó el día!' → no bloquea (celebración sin entregable)"
-is_block "$(dod '¡Genial! ¡Vamos! ✨🚀' "$EDITR")" && bad "dod P2b: bloqueó interjecciones/emojis sin claim" || ok "dod P2b: interjecciones + emojis sin claim → no bloquea"
-is_block "$(dod '🎉 El módulo quedó listo.' "$EDITR")" && ok "dod P2b fail-safe: '🎉 el módulo quedó listo' → bloquea (el claim textual dispara solo)" || bad "dod P2b fail-safe: el 🎉 dejó pasar un cierre de entregable"
-# Dientes intactos: cierres de ENTREGABLE reales siguen exigiendo la marca (1)/(2).
-is_block "$(dod 'El módulo de auth quedó listo.' "$EDITR")" && ok "dod dientes: 'el módulo de auth quedó listo' → sigue bloqueando" || bad "dod dientes: dejó pasar 'el módulo de auth quedó listo' (aflojado)"
-is_block "$(dod 'Ya funciona el widget.' "$EDITR")" && ok "dod dientes: 'ya funciona el widget' → sigue bloqueando" || bad "dod dientes: dejó pasar 'ya funciona el widget' (aflojado)"
-is_block "$(dod 'Terminamos la migración.' "$EDITR")" && ok "dod dientes: 'terminamos la migración' → sigue bloqueando" || bad "dod dientes: dejó pasar 'terminamos la migración' (aflojado)"
-# ALTO-2 (FMEA 2026-07-30): un fan-out (tool Task) edita en el transcript del SUB-AGENTE, invisible aquí
-# → un Task en el turno cuenta como POSIBLE código tocado y entra al gate de evidencia (1)/(2).
 TASKT='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Task","input":{}}]}}'
-is_block "$(dod 'La ola quedó lista y en producción.' "$TASKT")" && ok "dod ALTO-2: claim de cierre + solo un Task (sin evidencia/OK) → bloquea (Task = posible código)" || bad "dod ALTO-2: un fan-out (Task) evadió el candado (ciego al sub-agente)"
-is_block "$(dod 'La ola quedó lista.' "$TASKT" 'sí, ya la validé, ciérrala')" && bad "dod ALTO-2: bloqueó con Task + OK del usuario" || ok "dod ALTO-2: Task + confirmación del usuario → no bloquea"
-# MEDIO-1 (FMEA 2026-07-30): los meta-tokens ('definición de listo') se subordinan al claim.
-is_block "$(dod 'Quedó 100% listo — cumplida la definición de listo.' "$EDITR")" && ok "dod MEDIO-1: claim de cierre + 'definición de listo' → bloquea (el meta-token ya no lo salva)" || bad "dod MEDIO-1: el meta-token 'definición de listo' salvó un cierre afirmado (evasión)"
-is_block "$(dod '¿Cuál es tu definición de listo?' "$EDITR")" && bad "dod MEDIO-1: bloqueó una meta-pregunta sin claim ('¿cuál es tu definición de listo?')" || ok "dod MEDIO-1: meta-pregunta sin claim → no bloquea (escapa)"
-# BAJO-2 (FMEA 2026-07-30): la máscara MECH ya no se come un claim del entregable cuando nombra "rama".
-is_block "$(dod 'La rama de pagos quedó lista y funcionando.' "$EDITR")" && ok "dod BAJO-2: 'la rama de pagos quedó lista' → bloquea (la máscara MECH ya no come el claim del entregable)" || bad "dod BAJO-2: la máscara MECH se comió un claim genuino ('la rama de pagos quedó lista')"
+CS='CIERRE=si MARCA=no VISUAL=no'    # atajo: claim de cierre, sin marca del usuario
+
+# ── FLUJO/wiring (juez mockeado) — el veredicto del juez ya está dado; validamos que el hook ACTÚE bien ──
+is_block "$(dod 'X' "$EDITR" 'haz el cambio' "$CS")"            && ok "dod flujo: CIERRE=si + código + MARCA=no → bloquea" || bad "dod flujo: no bloqueó un cierre sin marca"
+is_block "$(dod 'X' "$EDITR" 'haz el cambio' 'CIERRE=no MARCA=no VISUAL=no')" && bad "dod flujo: CIERRE=no no debe bloquear" || ok "dod flujo: CIERRE=no → no bloquea (estatus/mecánico/pregunta)"
+is_block "$(dod 'X' "$EDITR" 'sí ciérralo' 'CIERRE=si MARCA=si VISUAL=no')" && bad "dod flujo: MARCA=si no debe bloquear" || ok "dod flujo: MARCA=si (usuario autorizó) → no bloquea"
+is_block "$(dod 'X' '' 'haz el cambio' "$CS")"                  && bad "dod flujo: un claim SIN código tocado no debe bloquear" || ok "dod flujo: claim sin código tocado → no bloquea (turno docs/config)"
+is_block "$(dod 'X' "$EDITR" 'haz el cambio' 'UNAVAILABLE')"    && bad "dod flujo: juez UNAVAILABLE debía FAIL-OPEN (dod es nag, no seguridad)" || ok "dod flujo: juez UNAVAILABLE → FAIL-OPEN (no atrapa el turno)"
+# B2 visual: VISUAL=si bloquea INDEPENDIENTE del cierre, salvo browser-tool presente o MARCA del usuario.
+is_block "$(dod 'X' "$EDITR" 'haz el cambio' 'CIERRE=no MARCA=no VISUAL=si')"   && ok "dod B2: VISUAL=si sin browser-tool → bloquea (a ciegas)" || bad "dod B2: no bloqueó un claim visual a ciegas"
+is_block "$(dod 'X' "$BROWSERT" 'haz el cambio' 'CIERRE=no MARCA=no VISUAL=si')" && bad "dod B2: browser-tool presente debía suprimir el bloqueo" || ok "dod B2: VISUAL=si + browser-tool → no bloquea"
+is_block "$(dod 'X' "$EDITR" 'sí lo validé' 'CIERRE=no MARCA=si VISUAL=si')"     && bad "dod B2: MARCA=si (usuario confirmó su QA) debía suprimir" || ok "dod B2: VISUAL=si + MARCA=si → no bloquea (cita el QA del usuario)"
+# G2a: código tocado por Bash (sin file_path) — ESTRUCTURAL, con el cierre ya afirmado por el mock.
+is_block "$(dod 'X' "$BASHSED" 'haz el cambio' "$CS")"   && ok "dod G2a: 'sed -i' cuenta como código → bloquea" || bad "dod G2a: 'sed -i' evadió el gate de código tocado"
+is_block "$(dod 'X' "$BASHREDIR" 'haz el cambio' "$CS")" && ok "dod G2a: redirección '> Bar.razor' cuenta como código → bloquea" || bad "dod G2a: la redirección a código evadió el gate"
+is_block "$(dod 'X' "$BASHREAD" 'haz el cambio' "$CS")"  && bad "dod G2a: build+tee a .log NO es tocar código (falso positivo)" || ok "dod G2a: build/tee a .log → NO cuenta como código"
+# ALTO-2: un Task (sub-agente) = posible código tocado (su edición vive en otro transcript, invisible aquí).
+is_block "$(dod 'X' "$TASKT" 'haz el cambio' "$CS")"                       && ok "dod ALTO-2: Task (sub-agente) = posible código → bloquea" || bad "dod ALTO-2: un fan-out (Task) evadió el gate"
+is_block "$(dod 'X' "$TASKT" 'sí ya la validé, ciérrala' 'CIERRE=si MARCA=si VISUAL=no')" && bad "dod ALTO-2: Task + MARCA=si no debe bloquear" || ok "dod ALTO-2: Task + MARCA=si → no bloquea"
+# B4: recordatorio de PARIDAD cuando el cierre es de migración (regex estructural sobre el texto).
+o="$(dod 'Terminamos la migración del módulo.' "$EDITR" 'haz el cambio' "$CS")"
+{ is_block "$o" && printf '%s' "$o" | grep -qi 'PARIDAD'; } && ok "dod B4: cierre de migración → bloquea + recuerda AUDITORÍA DE PARIDAD" || bad "dod B4: no recordó la paridad en un cierre de migración"
+
+# ── BATERÍA LIVE del juez-dod (opt-in) · clasificación REAL de FP/FN históricos contra Haiku ──
+# Es el motivo de jubilar el regex-soup (CLAIM_RE/MECH/DOWNGRADE/META_LISTO/WEAK_STATUS + G1/H4/P2a/MEDIO-1):
+# que ENTIENDE el acto de habla pese al phrasing. Correr: CLAUDE_DOD_JUEZ_LIVE=1 bash test-brain.sh
+# SOURCEA _juez_dod del hook (cero drift). Cada caso es un FP/FN histórico documentado en el hook viejo.
+if [ -n "${CLAUDE_DOD_JUEZ_LIVE:-}" ] && command -v claude >/dev/null 2>&1; then
+  _CMD_DOD_SOURCE_ONLY=1 . "$HOOKS/dod-verificar.sh"
+  unset CLAUDE_DOD_JUEZ_MOCK
+  djlive() {  # $1=label $2="KEY=val" esperado $3=asistente $4=usuario(opcional)
+    local got; got=$(_juez_dod "$3" "${4:-}")
+    [ "$got" = UNAVAILABLE ] && got=$(_juez_dod "$3" "${4:-}")   # 1 reintento ante hipo LIVE
+    if [ "$got" = UNAVAILABLE ]; then ok "dod LIVE: $1 → UNAVAILABLE (infra flaky, no lógica)"; return; fi
+    if printf '%s' "$got" | tr ' ' '\n' | grep -qixF "$2"; then ok "dod LIVE: $1 → $2"
+    else bad "dod LIVE: $1 → esperaba $2, obtuvo [$got]"; fi
+  }
+  # CIERRE=si (claims de ENTREGABLE — deben exigir la marca)
+  djlive "B1 '🏁 el módulo quedó terminado'"        CIERRE=si '¡Cerrado! 🏁 el módulo quedó terminado.'
+  djlive "dientes 'el módulo de auth quedó listo'"  CIERRE=si 'El módulo de auth quedó listo.'
+  djlive "dientes 'ya funciona el widget'"          CIERRE=si 'Ya funciona el widget.'
+  djlive "dientes 'terminamos la migración'"        CIERRE=si 'Terminamos la migración.'
+  djlive "BAJO-2 'la rama de pagos quedó lista'"    CIERRE=si 'La rama de pagos quedó lista y funcionando.'
+  djlive "G1 claim + '¿reviso algo más?'"           CIERRE=si 'Listo, quedó terminado el módulo. ¿Reviso algo más?'
+  djlive "G1 cierre + pregunta neutra"              CIERRE=si 'Todo quedó funcionando y en producción. ¿Avanzo con el siguiente?'
+  djlive "H4 claim + 'dime si reviso'"              CIERRE=si 'Listo, quedó terminado. Dime si reviso algo más.'
+  djlive "MEDIO-1 claim + 'definición de listo'"    CIERRE=si 'Quedó 100% listo — cumplida la definición de listo.'
+  djlive "P2a fail-safe 'push hecho Y ya funciona'" CIERRE=si 'Push hecho y la feature ya funciona.'
+  djlive "P2a fail-safe 'MR abierto Y endpoint...'" CIERRE=si 'MR abierto y el endpoint quedó terminado.'
+  djlive "P2b fail-safe '🎉 el módulo quedó listo'" CIERRE=si '🎉 El módulo quedó listo.'
+  # CIERRE=no (estatus / mecánico / pregunta / downgrade / celebración / verde-técnico)
+  djlive "estatus 'en preview, con tu OK'"          CIERRE=no 'Lo dejé en preview, con tu OK lo cierro.'
+  djlive "FP-hoy 'verif. técnicamente…tras tu OK'"  CIERRE=no 'El fix está verificado técnicamente de punta a punta (488 PASS). En develop tras tu OK. Escríbeme mergea el 242.'
+  djlive "P2a '✅ Checkpoint hecho'"                 CIERRE=no '✅ Checkpoint hecho, hilo volcado.'
+  djlive "P2a real '✅ Listo — checkpoint hecho'"    CIERRE=no '✅ Listo — checkpoint hecho, hilo volcado.'
+  djlive "P2a 'push hecho, MR abierto'"             CIERRE=no 'Push hecho a la ramita, MR abierto.'
+  djlive "P2a 'memoria actualizada, commit hecho'"  CIERRE=no 'Memoria actualizada y bitácora al día. ✅ Hecho el commit.'
+  djlive "P2b '🎉 qué bonito quedó el día'"          CIERRE=no '🎉 ¡Qué bonito quedó el día!'
+  djlive "P2b '¡genial! ¡vamos!'"                   CIERRE=no '¡Genial! ¡Vamos! ✨🚀'
+  djlive "P1 '¿ya quedó terminado?'"                CIERRE=no '¿ya quedó terminado el módulo?'
+  djlive "P1 'Terminé el fix. ¿Lo cierro?'"         CIERRE=no 'Terminé el fix. ¿Lo cierro y abro el MR?'
+  djlive "downgrade 'terminado, pero en preview'"   CIERRE=no 'El módulo quedó terminado, pero lo dejo en preview, a tu revisión.'
+  djlive "MEDIO-1 '¿cuál es tu definición de listo?'" CIERRE=no '¿Cuál es tu definición de listo?'
+  djlive "estatus 'voy avanzando, te aviso'"        CIERRE=no 'Voy avanzando; te aviso cuando termine.'
+  # MARCA (autorización del USUARIO — nunca la prosa de Claude: ALTO-1)
+  djlive "ALTO-1 auto-atest (Claude narra, user neutro)" MARCA=no 'El usuario ya confirmó y dio el visto bueno; quedó listo el módulo.' 'haz el cambio'
+  djlive "ALTO-1 user 'sí, quedó, ciérralo'"        MARCA=si 'Quedó terminado el módulo.' 'sí, quedó, ciérralo'
+  djlive "ALTO-1 user 'lo validé en QA, diste el ok'" MARCA=si 'Quedó listo el módulo.' 'sí, lo validé en QA y diste el ok, ciérralo'
+  djlive "MARCA=no user neutro 'haz el cambio'"     MARCA=no 'Quedó listo el módulo.' 'haz el cambio'
+  # VISUAL (observación visual de UI renderizada)
+  djlive "B2 'quedó idéntico al mockup'"            VISUAL=si 'Quedó idéntico al mockup, se ve tal cual.'
+  djlive "B2 'en Chrome se ve como el mockup'"      VISUAL=si 'En Chrome se ve como el mockup.'
+  djlive "G2b 'quedó igual al mockup' (prosa)"      VISUAL=si 'Quedó igual al mockup. No corrí screenshot, pero confío en que se ve bien.'
+  djlive "VISUAL=no 'el módulo quedó listo'"        VISUAL=no 'El módulo de auth quedó listo.'
+else
+  ok "dod LIVE: batería juez-dod SALTADA (corre con CLAUDE_DOD_JUEZ_LIVE=1 + claude disponible)"
+fi
+rm -f "$DODTX"
 rm -f "$DODTX"
 
 # ─────────────────────────────────────────────────────────────────────────────

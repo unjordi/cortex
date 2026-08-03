@@ -10,23 +10,76 @@
 # "verde técnico" (build/tests/lint) es VERIFICADO TÉCNICAMENTE: necesario, NO suficiente.
 # "sigue/avanza" NO es "listo"; "revisamos en la mañana" ⇒ preview, no listo.
 #
-# El hook DISTINGUE el acto de habla:
-#   - Lenguaje de ESTATUS/ESPERA (pido tu OK / te aviso / en preview / cuando reporte / ¿…?) → NO dispara.
-#   - Lenguaje de CIERRE (quedó/está listo/terminado/cerrado/terminamos/de trancazo/🏁/funciona/a la
-#     par) tras tocar CÓDIGO en ESTE turno → exige una MARCA CITADA de (1) o (2); si falta, BLOQUEA.
-#   - (P2a) Un PASO MECÁNICO del proceso ("checkpoint hecho", "push hecho", "MR abierto", "memoria
-#     actualizada") NO es un cierre de entregable → no dispara. FAIL-SAFE: si la frase mezcla paso
-#     mecánico Y claim de entregable ("push hecho y la feature ya funciona"), el claim manda → dispara.
-#   - (P2b) CELEBRACIÓN sin entregable (🎉🥳✨🚀, "¡genial!", "¡vamos!") no es claim por sí sola; el 🎉
-#     dejó de ser gatillo standalone (🏁 sí sigue siendo cierre — bandera de meta).
-#   - (B2) Afirmar una OBSERVACIÓN VISUAL (se ve/quedó como el mockup/en Chrome/la pantalla…) SIN haber
-#     corrido una tool de navegador/screenshot en el turno → BLOQUEA (lo declara a ciegas).
-#   - (B4) Si el cierre es de MIGRACIÓN, la prueba acordada es una AUDITORÍA DE PARIDAD, no build+tests.
+# ── JUEZ-Haiku (LLM) — reemplaza el PILÓN de regex (CLAIM_RE/DOWNGRADE/META_LISTO/WEAK_STATUS/MECH_*/
+# CONF_RE/VISUAL_RE + la lógica G1/H4/P2a/MEDIO-1) que clasificaba ESTATUS-vs-CIERRE a mano. Era
+# whack-a-mole: cada frasing nuevo abría un FP o un FN (el último, 2026-08-02: "verificado técnicamente
+# de punta a punta … tras tu OK" — puro estatus — disparó porque contenía el token "de punta a punta").
+# Ahora Haiku LEE el último mensaje del asistente + los mensajes del USUARIO del turno y clasifica 3 ejes:
+#   CIERRE = el asistente DECLARA un ENTREGABLE listo/terminado/funciona (claim de cierre), NO estatus/
+#            espera/paso-mecánico/pregunta/downgrade-a-preview/celebración/"verde técnico".
+#   MARCA  = el USUARIO (en SUS propios mensajes) dio (1) confirmación funcional o (2) autorización expresa
+#            de cierre. NUNCA se infiere de la prosa de Claude (ALTO-1: anti auto-atestiguamiento — por eso
+#            el juez recibe SOLO el texto del usuario para este eje).
+#   VISUAL = el asistente afirma una OBSERVACIÓN VISUAL (se ve/quedó como el mockup / en Chrome / la
+#            pantalla muestra / el render). Combinado con "¿corrió una tool de navegador?" (ESTRUCTURAL) da
+#            el bloqueo B2 (QA visual a ciegas).
+# Lo ESTRUCTURAL se queda (no era regex frágil de intención): ¿el turno tocó CÓDIGO? (file_path / sed -i /
+# redirección / Task de sub-agente), ¿corrió una tool de navegador?, build/mem como recordatorio, y el
+# recordatorio B4 de paridad en migraciones.
 #
-# "Este turno" = desde el último mensaje real del usuario (no un turno viejo de la ventana) → así los
-# mensajes de puro estatus/propuesta no heredan el "código tocado" de turnos anteriores (mata falsos
-# positivos). stop_hook_active evita loops. Fail-open ante parseo. Requiere jq.
+# FAIL-SAFE (a diferencia de confirmar-merge-develop, que fail-safe DENY): dod es un NAG de disciplina, no
+# un límite de seguridad. Si el juez no está (sin `claude`, sin red, timeout, o respuesta ininteligible) →
+# FAIL-OPEN (deja cerrar el turno). Bloquear CADA Stop cuando Haiku esté caído atraparía al usuario en un
+# loop sin poder terminar. Mockeable con CLAUDE_DOD_JUEZ_MOCK (tests deterministas); el JUICIO real se
+# prueba LIVE con la batería de FP/FN históricos en test-brain.sh. Modelo/timeout por env.
+#
+# "Este turno" = desde el último mensaje real del usuario. stop_hook_active evita loops. Requiere jq.
 set -u
+
+# _juez_dod($texto_asistente, $texto_usuario) → "CIERRE=si|no MARCA=si|no VISUAL=si|no" | UNAVAILABLE
+# Definido ARRIBA (source-only) para que el test lo corra IDÉNTICO al hook (cero drift).
+_juez_dod() {
+  [ -n "${CLAUDE_DOD_JUEZ_MOCK:-}" ] && { printf '%s' "$CLAUDE_DOD_JUEZ_MOCK"; return 0; }
+  command -v claude >/dev/null 2>&1 || { printf 'UNAVAILABLE'; return 0; }
+  local prompt out c m v
+  prompt="Eres un guardia que hace cumplir la definición de LISTO en un equipo de software. Clasificas UN mensaje del asistente Claude (y los mensajes del usuario del mismo turno) en tres ejes independientes. NO juzgas si el trabajo está bien; solo clasificas el ACTO DE HABLA.
+
+EJE 1 — CIERRE: ¿el ASISTENTE declara que un ENTREGABLE (un módulo, feature, migración, endpoint, página, tarea, la app, el fix, 'el widget', 'lo') está LISTO / terminado / funciona / 'quedó' / 'a la par' / 'de punta a punta' / 'en producción' / 'cerrado' / 'terminamos' / 🏁?
+- CIERRE=si: afirma el cierre de un entregable ('el módulo quedó listo', 'ya funciona el widget', 'terminamos la migración', '🏁 quedó terminado').
+- CIERRE=no cuando es cualquiera de estos (aunque use palabras como 'listo/terminado'):
+  · ESTATUS/PROGRESO: 'voy avanzando', 'te aviso cuando termine', 'sigo con el siguiente'.
+  · ESPERA/PIDE OK: 'en preview', 'a tu revisión', 'con tu OK lo cierro', 'pendiente de tu QA', 'esperando tu OK', 'no lo cierro / no lo mergeo todavía'.
+  · PASO MECÁNICO del proceso (git/memoria/CI, NO un entregable): 'checkpoint hecho', 'push hecho', 'MR abierto', 'commit hecho', 'memoria actualizada', 'bitácora al día', 'la rama quedó pusheada'.
+  · PREGUNTA: '¿ya quedó terminado?', '¿lo cierro y abro el MR?', 'Terminé el fix. ¿Lo cierro?'.
+  · CELEBRACIÓN sin entregable: '🎉 ¡qué bonito quedó el día!', '¡genial! ¡vamos! ✨🚀'.
+  · SOLO VERDE TÉCNICO: 'verificado técnicamente', 'build verde', '488 PASS', 'CI en verde' — eso es verificado técnicamente, NO un cierre de LISTO.
+- REGLA DE CO-UBICACIÓN (importante): si el mensaje AFIRMA un cierre y ADEMÁS cuelga una pregunta o un 'dime si reviso algo más', sigue siendo CIERRE=si (la pregunta tacked-on NO lo salva). PERO si el mensaje DEGRADA explícitamente a preview/revisión ('quedó terminado, PERO lo dejo en preview, a tu revisión') → CIERRE=no: está declarando que NO está listo, aunque diga 'terminado'.
+
+EJE 2 — MARCA: ¿el USUARIO, en SUS propios mensajes de abajo, dio (1) confirmación funcional ('lo validé', 'sí funciona', 'quedó bien', 'QA ok') o (2) autorización EXPRESA de cierre ('ciérralo', 'sí, quedó, ciérralo', 'dale ciérrala', 'luz verde', 'diste el ok', 'lo apruebo')?
+- MARCA=si solo si está en palabras del PROPIO USUARIO. MARCA=no si no hay tal cosa, o si el usuario está vacío. NUNCA infieras MARCA de lo que el asistente diga que el usuario dijo (eso sería auto-atestiguamiento).
+
+EJE 3 — VISUAL: ¿el ASISTENTE hace una ASERCIÓN DE APARIENCIA sobre una UI renderizada — 'se ve/quedó igual/como el mockup', 'en Chrome se ve', 'la pantalla muestra', 'el render se ve bien', 'hice QA visual'?
+- VISUAL=si si el mensaje AFIRMA cómo SE VE la interfaz (comparación con un mockup/diseño, 'se ve bien', 'quedó igual/idéntico'), AUNQUE hedge o admita que 'no corrió un screenshot' o que 'confía en que se ve bien' — lo que cuenta es que hace la aserción de apariencia; si de verdad miró se verifica APARTE (estructural). VISUAL=no si no habla de apariencia visual (aunque diga 'terminado', 'funciona' o 'verificado técnicamente').
+
+MENSAJE DEL ASISTENTE (a clasificar):
+$1
+
+MENSAJES DEL USUARIO EN ESTE TURNO:
+$2
+
+Responde EXACTAMENTE una línea, sin nada más:
+CIERRE=<si|no> MARCA=<si|no> VISUAL=<si|no>"
+  out=$(timeout "${CLAUDE_DOD_JUEZ_TIMEOUT:-30}" claude -p "$prompt" --model "${CLAUDE_DOD_JUEZ_MODEL:-claude-haiku-4-5-20251001}" 2>/dev/null)
+  _dod_flag() { printf '%s' "$1" | grep -oiE "$2=(s[ií]|no)" | head -1 | grep -oiE '(s[ií]|no)' | tr 'A-Z' 'a-z' | sed 's/sí/si/'; }
+  c=$(_dod_flag "$out" CIERRE); m=$(_dod_flag "$out" MARCA); v=$(_dod_flag "$out" VISUAL)
+  if [ -n "$c" ] && [ -n "$m" ] && [ -n "$v" ]; then printf 'CIERRE=%s MARCA=%s VISUAL=%s' "$c" "$m" "$v"
+  else printf 'UNAVAILABLE'; fi
+}
+
+# Los tests SOURCEAN con _CMD_DOD_SOURCE_ONLY=1 para obtener SOLO _juez_dod (sin correr el cuerpo del hook,
+# que llama `exit` y mataría al test). En operación normal la var no está y el hook corre completo.
+[ "${_CMD_DOD_SOURCE_ONLY:-}" = "1" ] && return 0 2>/dev/null
+
 input=$(cat 2>/dev/null || true)
 command -v jq >/dev/null 2>&1 || exit 0
 
@@ -47,174 +100,74 @@ turn=$(printf '%s\n' "$window" | awk '
   END { start = (last ? last : 1); for (i=start; i<=NR; i++) print lines[i] }')
 [ -z "$turn" ] && turn="$window"
 
-# Último mensaje de texto del asistente (dentro del turno actual).
+# Último mensaje de texto del asistente (dentro del turno actual). Sin texto del asistente → nada que juzgar.
 last=$(printf '%s\n' "$turn" | jq -rs '[.[] | select((.message.role // .type)=="assistant") | (.message.content[]? | select(.type=="text") | .text)] | last // ""' 2>/dev/null)
 [ -z "$last" ] && exit 0
 
-# ── CLAIM de cierre (G1): se computa AQUÍ, antes de los escapes por PREGUNTA, porque una pregunta
-# co-ubicada NO debe anular un cierre afirmado en el MISMO mensaje ("Listo, quedó terminado.
-# ¿Reviso algo más?"). Con claim presente, la pregunta ya no salva el turno → se evalúa el claim. ──
-CLAIM_RE='listo para (la )?(producci|desplegar|deploy|salir|mergear)|en producci[oó]n|(ya |todo |esto |lo |la )?(qued[oó]|est[aá]|dej[eé]) *(listo|lista|terminad|completad|funcionando)|(m[oó]dulo|migraci[oó]n|feature|slice|endpoint|p[aá]gina|tarea)[^.]{0,40}(complet|termin|listo|a la par|de punta a punta)|100% (listo|completo|a la par)|de punta a punta|ya (funciona|jala|sirve)|todo (listo|verde|jalando)|\bcerrad[oa]s?\b|\bcerramos\b|\bterminamos\b|de trancazo|🏁|✅ *(listo|hecho|terminad|cerrad|complet)'
-# P2b (precisión): 🎉 se QUITÓ del CLAIM_RE como gatillo standalone — un emoji celebratorio sin claim
-# de entregable en la frase ("🎉 ¡qué bonito quedó el día!") es ánimo, no un cierre; si el 🎉 acompaña
-# un cierre real ("🎉 el módulo quedó listo"), el claim textual dispara solo. 🏁 (bandera de meta) SÍ
-# sigue siendo cierre. Las interjecciones (¡genial!/¡vamos!/✨🚀) nunca fueron gatillo — nada que quitar.
-# El claim se evalúa sobre el texto SIN los tramos de pregunta (¿…?): así "¿ya quedó terminado el
-# módulo?" (léxico de cierre DENTRO de una pregunta) NO cuenta como claim, pero "Listo, quedó
-# terminado. ¿Reviso algo más?" (claim AFIRMADO + pregunta aparte) SÍ. G1 = una pregunta co-ubicada
-# no salva un cierre afirmado; una pregunta que SOLO consulta el estado, sí escapa.
-_decl=$(printf '%s' "$last" | sed 's/¿[^?]*?//g')
-
-# ── P2a (precisión): PASOS MECÁNICOS del proceso NO son cierres de entregable. "Checkpoint hecho",
-# "push hecho", "MR abierto", "bitácora al día", "memoria actualizada" reportan el PROCESO
-# (git/memoria/CI), no un entregable — frenarlos es un falso positivo (caso real 2026-07-15:
-# "✅ Listo — checkpoint hecho" exigió confirmación del usuario por un paso mecánico).
-# Mecánica FAIL-SAFE: se ENMASCARAN esas frases (sustantivo de proceso + participio, en ambos
-# órdenes, con lead-in opcional "✅ listo —") y el CLAIM se evalúa sobre el RESIDUO → si la frase
-# mezcla paso mecánico Y claim de entregable ("push hecho y la feature ya funciona"), el claim de
-# entregable SOBREVIVE al enmascarado y SÍ dispara. "el módulo quedó listo" no se toca (módulo no
-# es sustantivo de proceso). NOTA: "deploy" solo cuenta como mecánico si es "deploy del stack de
-# QA" — un "deploy listo" a secas puede ser el entregable y NO se exenta (fail-safe).
-# BAJO-2 (FMEA 2026-07-30): "ramita/rama" se QUITARON de la lista genérica de MECH_N. Con `list[oa]`
-# como MECH_D, "la rama de pagos quedó lista" se enmascaraba entero y el claim del ENTREGABLE escapaba
-# (falso negativo). Ahora "rama/ramita" solo se trata como mecánica cuando va con un VERBO DE GIT
-# inequívoco (pushead/mergead/cread…), vía MECH_GITV + su patrón dedicado abajo — nunca con el
-# downgrader genérico "lista/hecha/ok". (Se conserva "merge(s) de la rama(ita)" dentro de MECH_N: ahí
-# la cabeza mecánica es "merge", no la rama.)
-MECH_N='(checkpoints?|commits?|pushe?s?|pull|fetch|rebase|merge requests?|pull requests?|merges?( local(es)?| de la ramita| de la rama)?|mrs?|prs?|(bitacoras?|bitácoras?)|memorias?|worktrees?|builds?|tests?|deploys? (del|al) stack( de qa)?|release prs?|pipelines?|hilo( mental)?|estado-proyecto)'
-MECH_D='(hech[oa]s?|list[oa]s?|ok|corrid[oa]s?|aplicad[oa]s?|actualizad[oa]s?|abiert[oa]s?|cread[oa]s?|pushead[oa]s?|subid[oa]s?|mergead[oa]s?|volcad[oa]s?|escrit[oa]s?|al d(i|í)a)'
-# Verbos de GIT inequívocamente mecánicos: solo con estos se enmascara "rama/ramita" (no con "lista").
-MECH_GITV='(pushead|mergead|cread|subid|rebasead|integrad|borrad|eliminad|bajad)[oa]s?'
-# tr 'A-Z' 'a-z' (rango ASCII explícito): byte-safe en BSD/GNU, no corrompe emojis/acentos; el grep
-# posterior ya es -i. sed con delimitador @ (no hay @ en los patrones) y alternación en vez de
-# corchetes multibyte (portable BSD/GNU).
-_mask=$(printf '%s' "$_decl" | tr 'A-Z' 'a-z' | sed -E \
-  -e "s@(^|[^a-z0-9])((✅|☑️|✔️) *)?((listo|hecho|ok) *(—|–|:|,)? *)?((el|la|los|las|tu|mi|un|una) )?${MECH_N}( [^ .,;:!?]+){0,3}( ya)?( qued(o|ó)| est(a|á)n?)? ${MECH_D}@\1@g" \
-  -e "s@(^|[^a-z0-9])((✅|☑️|✔️) *)?${MECH_D}( (el|la|los|las|tu|mi|un|una|del|de la))? ${MECH_N}@\1@g" \
-  -e "s@(^|[^a-z0-9])((la|mi|una|esta|esa|tu|las) )?(rama|ramas|ramita|ramitas)( de [^ .,;:!?]+)?( ya)?( qued(o|ó)| est(a|á)n?)? ${MECH_GITV}@\1@g")
-printf '%s' "$_mask" | grep -qiE "$CLAIM_RE" && claim=si || claim=no
-
-# ── ESCAPE por DOWNGRADE explícito (léxico PRESCRITO de preview/auto-degradación, o meta-discusión de
-# la palabra "listo"): SIEMPRE escapa, incluso con un claim de cierre co-ubicado. Usar este léxico ES
-# declarar NO-listo — "el módulo quedó terminado pero lo dejo EN PREVIEW, A TU REVISIÓN" es honesto,
-# no un falso LISTO. (Por eso NO se subordina al claim: sería un falso positivo castigar justo la
-# frase que la norma pide.) ──
-DOWNGRADE_RE='en preview|a tu (revisi|qa)|para tu (revisi|qa|visto)|pendiente de tu|sin mergear|armado sin merge|no (lo |la )?mergeo|no cierro|no declaro'
-printf '%s' "$last" | grep -qiE "$DOWNGRADE_RE" && exit 0
-# MEDIO-1 (FMEA 2026-07-30): los meta-tokens (hablar DE la palabra "listo": "definición de listo",
-# "¿qué entiendes por…?", "la palabra listo") NO son léxico de preview — antes escapaban SIEMPRE, así
-# "quedó 100% listo — cumplida la definición de listo" se colaba pese al cierre afirmado. Se subordinan
-# al claim (como WEAK_STATUS_RE abajo): con un CLAIM co-ubicado NO salvan; sin claim (una pregunta/meta
-# genuina, "¿cuál es tu definición de listo?") sí escapan.
-META_LISTO_RE='definici[oó]n de .?listo|qu[eé] entiendes por|palabra .?listo'
-if [ "$claim" != si ]; then
-  printf '%s' "$last" | grep -qiE "$META_LISTO_RE" && exit 0
-fi
-
-# ── ESCAPE por ESTATUS DÉBIL (deferir/avisar/consultar) — SOLO si NO hay un CLAIM de cierre co-ubicado
-# (H4), igual que la pregunta de abajo. Antes esto escapaba SIEMPRE, así "Listo, quedó terminado. Dime
-# si reviso algo más." se salvaba con "dime si" pese al cierre AFIRMADO. Un deferral suave NO neutraliza
-# un LISTO afirmado en el mismo mensaje (cierra H4); si NO hay claim, sí escapa (sigue siendo estatus). ──
-WEAK_STATUS_RE='con tu (ok|visto|aprobaci)|dime si|dime c[oó]mo|dime qu[eé]|te aviso|te muestro|cuando .{0,40}(reporte|termine|cierre|entre|merge)|espero (tu|a que|el)|revisamos (en la ma|juntos|al rato|cuando)|si (ya |te )?(qued|late|parece)'
-if [ "$claim" != si ]; then
-  printf '%s' "$last" | grep -qiE "$WEAK_STATUS_RE" && exit 0
-fi
-
-# ── Escape por PREGUNTA — SOLO si NO hay un CLAIM de cierre co-ubicado (G1). El `¿…?` interno y la
-# última línea que termina en `?` son señales de PREGUNTA (pedir input), no de cierre; pero un cierre
-# afirmado en el mismo mensaje NO se salva colgándole una pregunta al final. (P1: mató un falso
-# positivo real — preguntar por un UUID disparaba el guard sin declararse nada listo.) ──
-if [ "$claim" != si ]; then
-  printf '%s' "$last" | grep -qiE '¿[^?]{0,120}\?' && exit 0
-  _lastline=$(printf '%s\n' "$last" | awk 'NF{l=$0} END{print l}')
-  printf '%s' "$_lastline" | grep -qE '[?？][")»'"'"'”]*$' && exit 0
-fi
-
-# Marca de (1) confirmación de funcionalidad o (2) autorización expresa de cierre.
-# ALTO-1 (FMEA 2026-07-30): la marca se deriva de los MENSAJES DEL USUARIO del turno, NUNCA de la
-# prosa del propio Claude ($last). Antes se evaluaba contra $last → Claude narraba "el usuario ya
-# validó" y el candado que prohíbe FABRICAR autorización se AUTO-SATISFACÍA (auto-atestiguamiento). Se
-# leen los mensajes role=user del turno (mismo recorte que $turn); el clasificador auto-mode externo
-# queda como backstop. (Se computa AQUÍ ARRIBA porque B2 también la usa: si el usuario ya confirmó,
-# citar SU QA visual es válido — no un claim a ciegas de Claude.)
+# Texto de los mensajes del USUARIO del turno (para el eje MARCA). ALTO-1: SOLO mensajes role=user, NUNCA
+# la prosa de Claude → el juez no puede auto-atestiguarse una autorización que el usuario no dio. Se
+# excluyen META/inyectados y system-reminders (traen léxico de OK que no es del usuario).
 usertext=$(printf '%s\n' "$turn" | jq -rs '
   [ .[] | select((.message.role // .type)=="user")
-        | select((.isMeta // false) != true)          # A-06 (FMEA): excluye mensajes META/inyectados
+        | select((.isMeta // false) != true)
         | ((.message.content // [.message])
            | if type=="array"
              then (map(if type=="string" then . elif (.type? == "text") then .text else "" end) | join(" "))
              else (. // "") end)
         | select(. != "")
-        | select(test("<system-reminder>") | not) ] | join("  ")' 2>/dev/null)  # A-06: descarta bloques inyectados (CLAUDE.md/recordatorios) que traen léxico de OK
-# Léxico del USUARIO: confirmación de funcionalidad o autorización EXPRESA de cierre (incluye los
-# imperativos de cierre — "ciérralo", "sí, quedó, ciérralo"). NO incluye narración en 3ª persona ("el
-# usuario confirmó"): eso solo lo escribiría Claude, y es justo el auto-atestiguamiento que ALTO-1 veta.
-# Fail-safe: si $usertext queda vacío (error de parseo/turno raro), conf=no → el candado se mantiene
-# ESTRICTO (dirección segura: nunca afloja por un parseo fallido).
-CONF_RE='confirm(o|é|ó|ado|amos)|lo confirm|valid(é|e|o|ó|ado|amos)|lo valid[eé]|luz verde|autoriz(o|é|ó|ado)|visto bueno|aprob(ado|é|ó|amos)|diste (el ok|luz)|dio el ok|me diste (luz|el ok|autoriz)|ci[eé]rra(lo|la|los)?|QA (visual|funcional).{0,20}(ok|pas|verde|aprob)'
-printf '%s' "$usertext" | grep -qiE "$CONF_RE" && conf=si || conf=no
+        | select(test("<system-reminder>") | not) ] | join("  ")' 2>/dev/null)
 
-# ── B2: ¿afirma una OBSERVACIÓN VISUAL sin haber mirado la pantalla en ESTE turno? (léxico ANCLADO a
-# mockup/pantalla/chrome/render/QA-visual — no un "se ve bien" casual). Si además NO corrió ninguna
-# tool de navegador/screenshot en el turno → lo declara A CIEGAS → BLOQUEA. (Lección real: se insinuó
-# QA de Chrome sin ver la pantalla y reaparecieron bugs ya resueltos.) ──
-VISUAL_RE='(qued[oó]|se ve[n]?) (igual|como|tal cual|clavad|idéntic)[^.]{0,25}(mockup|dise[nñ]|legado|pantalla)|lo verifiqu[eé] (en chrome|en el navegador|visualmente|en pantalla)|en chrome (se ve|qued[oó]|funciona|jala|lo prob[eé]|ya)|la pantalla (muestra|se ve|qued)|hice .{0,12}qa visual|qa visual.{0,15}(ok|pas|hecho|verde|aprob|correct)|screenshot (muestra|confirma)|el render (se ve|qued[oó]|correct)|se ve (id[eé]ntic|tal cual|como el (mockup|legado|dise))'
-if [ "$conf" != si ] && printf '%s' "$last" | grep -qiE "$VISUAL_RE"; then
-  # G2(b): detecta la tool de navegador por ESTRUCTURA del transcript (un tool_use cuyo "name" es una
-  # tool de navegador), NO por la palabra "screenshot" suelta en prosa — si no, decir "no tomé
-  # screenshot" suprimía el bloqueo. Solo un tool_use REAL (chrome MCP o el tool `computer`) cuenta.
-  # BAJO-3 (LÍMITE CONOCIDO, FMEA 2026-07-30): esto comprueba SÓLO que exista ALGUNA tool de navegador
-  # en el turno, NO que esa navegación corresponda a la pantalla/pieza que el claim visual afirma. Un
-  # tool_use de navegador para OTRA cosa (abrir docs, un tablero) satisface el gate. Correlacionar la
-  # navegación con la aserción visual concreta no es fiable desde el transcript (no hay forma robusta de
-  # ligar URL/elemento ↔ claim) → NO se fuerza una heurística frágil (produciría falsos positivos que
-  # desgastan el guard). Se acepta el residuo: el gate garantiza "miró UNA pantalla este turno", no "miró
-  # ESA pantalla". El QA visual real sigue siendo del usuario. (Reportado en la auditoría; sin fix limpio.)
-  # A-08 (FMEA): reconoce cualquier driver de navegador MCP (claude-in-chrome/playwright/puppeteer/chrome/
-  # browser), no solo chrome — un claim visual tras `mcp__playwright__screenshot` ya NO da falso bloqueo.
-  if ! printf '%s' "$turn" | grep -qE '"name"[[:space:]]*:[[:space:]]*"(mcp__(claude-in-chrome|playwright|puppeteer|chrome|browser)[a-z0-9_-]*__[a-z_]+|computer)"'; then
-    vreason="DETENTE — afirmaste una OBSERVACIÓN VISUAL ('se ve/quedó como el mockup / en Chrome / la pantalla muestra…') pero en ESTE turno NO corriste NINGUNA tool de navegador/screenshot: lo estás declarando A CIEGAS. No uses léxico de QA visual sin haber mirado la pantalla. Estatus honesto: 'verificado técnicamente, SIN QA visual (a ciegas)' — el QA visual lo hace el usuario o una captura real. (Lección real (2026-07): se insinuó QA de Chrome sin verla y reaparecieron bugs ya resueltos.)"
-    jq -n --arg r "$vreason" '{decision:"block", reason:$r}'
-    exit 0
-  fi
+# ── EL JUEZ clasifica los 3 ejes. FAIL-OPEN si no está disponible (dod es nag, no seguridad). ──
+veredicto=$(_juez_dod "$last" "$usertext")
+[ "$veredicto" = "UNAVAILABLE" ] && exit 0
+_g() { printf '%s' "$veredicto" | grep -oiE "$1=[a-zíí]+" | head -1 | cut -d= -f2 | tr 'A-Z' 'a-z'; }
+cierre=$(_g CIERRE); marca=$(_g MARCA); visual=$(_g VISUAL)
+
+# ── ¿corrió una tool de NAVEGADOR en el turno? (ESTRUCTURAL — por el "name" del tool_use, no por prosa).
+# Reconoce cualquier driver MCP (claude-in-chrome/playwright/puppeteer/chrome/browser) + el tool `computer`.
+browser=no
+printf '%s' "$turn" | grep -qE '"name"[[:space:]]*:[[:space:]]*"(mcp__(claude-in-chrome|playwright|puppeteer|chrome|browser)[a-z0-9_-]*__[a-z_]+|computer)"' && browser=si
+
+# ── B2: OBSERVACIÓN VISUAL a ciegas — afirma haber visto la pantalla SIN correr tool de navegador, y el
+# usuario no lo confirmó. Bloquea INDEPENDIENTE de si tocó código (declarar QA visual a ciegas es el daño). ──
+if [ "$visual" = "si" ] && [ "$marca" != "si" ] && [ "$browser" != "si" ]; then
+  vreason="DETENTE — afirmaste una OBSERVACIÓN VISUAL ('se ve/quedó como el mockup / en Chrome / la pantalla muestra…') pero en ESTE turno NO corriste NINGUNA tool de navegador/screenshot: lo estás declarando A CIEGAS. No uses léxico de QA visual sin haber mirado la pantalla. Estatus honesto: 'verificado técnicamente, SIN QA visual (a ciegas)' — el QA visual lo hace el usuario o una captura real. (Lección real (2026-07): se insinuó QA de Chrome sin verla y reaparecieron bugs ya resueltos.)"
+  jq -n --arg r "$vreason" '{decision:"block", reason:$r}'
+  exit 0
 fi
 
-# ── ¿Afirma CIERRE real? (ya computado arriba como $claim para G1). ──
-[ "$claim" = si ] || exit 0
+# ── Candado principal: solo aplica si el asistente AFIRMA un CIERRE. ──
+[ "$cierre" = "si" ] || exit 0
 
-# ¿El TURNO tocó CÓDIGO (algún archivo que NO sea documentación ni memoria)? Si no, un "listo" no exige
-# verificación técnica (turno de docs/config puro).
+# ¿El TURNO tocó CÓDIGO (algún archivo que NO sea documentación ni memoria)? Si no, un "listo" de docs/config
+# no exige verificación técnica. (ESTRUCTURAL — se conserva íntegro del diseño previo.)
 codigo=$(printf '%s' "$turn" | grep -oE '"file_path":"[^"]+"' | grep -vE '\.(md|txt)"|/\.claude/memory/' | head -1)
-# G2(a): editar por Bash (sed -i / patch / redirección `>`/`tee` a un archivo) NO genera "file_path" →
-# antes parecía que el turno no tocó código (evasión). Inspecciona los comandos Bash del turno.
+# G2(a): editar por Bash (sed -i / patch / redirección `>`/`tee`) NO genera "file_path" → inspecciona los Bash.
 if [ -z "$codigo" ]; then
   _bash=$(printf '%s' "$turn" | jq -rs '[.[] | (.message.content[]? // empty) | select(.type=="tool_use" and .name=="Bash") | (.input.command // "")] | join("\n")' 2>/dev/null)
   if printf '%s' "$_bash" | grep -qE 'sed[[:space:]]+-i|(^|[[:space:]])patch([[:space:]]|$)'; then
-    codigo="(bash-inplace)"   # edición in-place / parche → mutación fuerte (rara vez solo-doc)
+    codigo="(bash-inplace)"
   else
-    # Redirección o tee hacia un archivo con extensión NO-doc (excluye docs, logs y /dev/*).
     codigo=$(printf '%s\n' "$_bash" \
       | grep -oE '(>>?|(^|[[:space:]])tee([[:space:]]+-a)?)[[:space:]]*[^[:space:]|;&<>]+\.[A-Za-z0-9]+' \
       | grep -oE '[^[:space:]|;&<>]+\.[A-Za-z0-9]+$' \
       | grep -vE '\.(md|txt|log)$|^/dev/' | head -1)
   fi
 fi
-# ALTO-2 (FMEA 2026-07-30): un fan-out DELEGA la edición a un SUB-AGENTE (tool Task); sus tool_use viven
-# en OTRO transcript (el del sub-agente), invisibles aquí → un orquestador que delega todo y declara "la
-# ola quedó" nunca disparaba el candado (cuanto MEJOR orquestas, más ciego el gate de LISTO). Un tool_use
-# name=="Task" en el turno se trata como POSIBLE código tocado → entra al gate de evidencia (1)/(2). No
-# podemos ver QUÉ tocó el sub-agente, así que la marca del usuario es lo que exige el cierre de la ola.
+# ALTO-2: un fan-out DELEGA la edición a un SUB-AGENTE (tool Task); sus tool_use viven en OTRO transcript,
+# invisibles aquí → un orquestador que declara "la ola quedó" nunca disparaba. Un Task en el turno = POSIBLE
+# código tocado → entra al gate de evidencia (1)/(2).
 if [ -z "$codigo" ]; then
   printf '%s' "$turn" | grep -qE '"name"[[:space:]]*:[[:space:]]*"Task"' && codigo="(task-subagente)"
 fi
 [ -z "$codigo" ] && exit 0
 
-# Evidencia en el turno (build/tests/lint es SOFT — se reporta; el candado duro es conf).
+# Candado DURO: sin (1)/(2) del USUARIO no se puede declarar LISTO tras tocar código.
+[ "$marca" = "si" ] && exit 0
+
+# Recordatorios SOFT (build/tests/lint y memoria — se reportan, no bloquean por sí solos).
 printf '%s' "$turn" | grep -qiE '(npm|pnpm|yarn|bun)[[:space:]]+(run[[:space:]]+)?(build|test|lint)|dotnet[[:space:]]+(build|test)|make([[:space:]]|$)|cargo[[:space:]]+(build|test|check)|pytest|go[[:space:]]+(build|test)|gradle|mvn|scripts/(build|test)|npm[[:space:]]+ci' && build=si || build=no
 printf '%s' "$turn" | grep -qE '"file_path":"[^"]*\.claude/memory/' && mem=si || mem=no
-
-# Candado DURO: sin (1)/(2) CITADO no se puede declarar LISTO. (build/mem se reportan como recordatorio.)
-[ "$conf" = si ] && exit 0
 
 # B4: si el cierre es de MIGRACIÓN, la prueba acordada NO es build+tests — es una auditoría de PARIDAD.
 mig=""
@@ -223,7 +176,7 @@ printf '%s' "$last" | grep -qiE 'migrac|migrad|paridad|legad' && mig="
 
 reason="DETENTE — declaraste algo LISTO/terminado/funciona tras tocar código, sin cumplir la definición mutua de LISTO.
 Estado de la evidencia de ESTE turno:
-  • marca de (1) funcionalidad CONFIRMADA por el usuario o (2) autorización EXPRESA de cierre: ${conf}  ← REQUERIDO
+  • marca de (1) funcionalidad CONFIRMADA por el usuario o (2) autorización EXPRESA de cierre: ${marca}  ← REQUERIDO
   • verificación técnica (build/tests/lint) citada en el turno: ${build}  (recordatorio)
   • memoria actualizada (.claude/memory/): ${mem}  (recordatorio)${mig}
 Recuerda: verde técnico != LISTO. 'sigue/avanza' NO es 'listo'. Sin (1) o (2) NO puedes declarar LISTO.
