@@ -53,6 +53,10 @@ líneas — el mapa accionable, no la narrativa.
   el historial para encontrar el mapa.
 - Aplican las mismas Reglas DURAS de abajo: no se pierde ni una línea de narrativa/detalle, solo cambia su
   POSICIÓN relativa al bloque accionable — es reordenar el ARCHIVO, no editarlo.
+- **⚠️ EXCEPCIÓN — el `CLAUDE.md` (firma-árbol de un cerebro) NO se reordena.** Su estructura YA es canónica
+  y fija por diseño (identidad → "dónde va cada cosa" → ÁRBOL → detalle) y es lo MÁS estable del cerebro
+  (gradiente `CLAUDE.md`=`main`). Un `AGENTS.md`/`MEMORY.md` sí se reordena; un `CLAUDE.md`, jamás. Ver la
+  Regla DURA de abajo — en él la ÚNICA parte elegible para esta pasada es la prosa de `## Reglas duras`.
 
 ## Mini-ejemplo (antes → después)
 **Antes (enredado, fallo-primero):**
@@ -65,6 +69,12 @@ líneas — el mapa accionable, no la narrativa.
 > ❌ NO `steam -shutdown` por SSH (no alcanza al Steam de la sesión gráfica). ❌ NUNCA `-9` (deja estado sucio).
 
 ## Reglas DURAS (inviolables)
+- **El `CLAUDE.md` es INTOCABLE salvo su sección `## Reglas duras`.** Gradiente de estabilidad del cerebro:
+  `CLAUDE.md`=`main` (SOLO estructura + ATEMPORAL: identidad, "dónde va cada cosa", el ÁRBOL — muta casi nunca) ·
+  `MEMORY.md`=`develop` · memorias/bitácora=ramitas. En una firma-árbol, esta pasada **NO toca la identidad, el
+  "dónde va cada cosa" ni el árbol** (ya son answer-first por construcción); la ÚNICA prosa elegible para
+  positivar es la de `## Reglas duras`. El `MEMORY.md` y las memorias SÍ son terreno normal de la pasada. Ante
+  la duda de si algo es "estructura del `CLAUDE.md`", NO lo toques.
 - **Preserva el 100% de la información.** Es REORDENAR + reencuadrar, NUNCA borrar conocimiento: cada hecho,
   comando, ruta, fuente `[DOC:...]`, tag `[EXP]`/`[INFER]`, link `[[...]]`, número y gotcha se conserva.
 - **No cambies la técnica ni la corrección** (doc=realidad): solo el ORDEN y el fraseo. No "mejores" hechos,
