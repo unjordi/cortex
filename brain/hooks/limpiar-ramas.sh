@@ -28,13 +28,18 @@ ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "limpiar-ramas: no e
 
 base="$(bz_resolver_base "$ROOT")"
 actual="$(git -C "$ROOT" symbolic-ref --short -q HEAD 2>/dev/null || true)"
+# Ramas checked-out en CUALQUIER worktree: git rehúsa `branch -D` sobre ellas (protección propia de git).
+# Se protegen explícitamente para que el reporte no diga "borraría" algo que nunca se borraría — sobre todo
+# ahora que la señal (d) 'PR mergeado' caza ramas integradas que siguen checked-out en el worktree del dev.
+wt_ramas="$(git -C "$ROOT" worktree list --porcelain 2>/dev/null | sed -n 's#^branch refs/heads/##p')"
 
-# Ramas NUNCA candidatas a borrar, pase lo que pase (bases y guardadas a propósito).
+# Ramas NUNCA candidatas a borrar, pase lo que pase (bases, checked-out en un worktree, y guardadas a propósito).
 protegida() {  # $1 = rama
   case "$1" in
     "$base"|"$actual"|develop|main|Develop*|keep/*) return 0 ;;
-    *) return 1 ;;
   esac
+  [ -n "$wt_ramas" ] && printf '%s\n' "$wt_ramas" | grep -qxF "$1" && return 0
+  return 1
 }
 
 borradas=0; conservadas=0

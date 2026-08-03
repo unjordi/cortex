@@ -949,11 +949,16 @@ printf 'y\n' > "$LRREPO/g.txt"; git -C "$LRREPO" add g.txt >/dev/null 2>&1; git 
 # (3) rama keep/ integrada (contenido en base) PERO protegida → conservar pese a ser zombie
 git -C "$LRREPO" checkout -q -b keep/respaldo miDevelop >/dev/null 2>&1
 git -C "$LRREPO" checkout -q miDevelop >/dev/null 2>&1
+# (4) rama integrada (ancestro de base) PERO checked-out en un worktree → protegida (git rehúsa branch -D)
+git -C "$LRREPO" branch feat/en-wt miDevelop >/dev/null 2>&1
+git -C "$LRREPO" worktree add -q "$LRROOT/wt-en" feat/en-wt >/dev/null 2>&1
 lrout="$(cd "$LRREPO" && CLAUDE_INTEGRACION_BASE=miDevelop bash "$HOOKS/limpiar-ramas.sh" --dry-run --no-fetch 2>&1)"
 printf '%s' "$lrout" | grep -q 'borraría: feat/hecha'      && ok "b3c: rama squash-integrada → se barrería"                  || bad "b3c: no marcó feat/hecha para borrar; got: $lrout"
 printf '%s' "$lrout" | grep -q 'CONSERVADA.*feat/viva'     && ok "b3c: rama con trabajo sin integrar → conservada"            || bad "b3c: no conservó feat/viva; got: $lrout"
 printf '%s\n' "$lrout" | grep -v '^limpiar-ramas:' | grep -q 'miDevelop' && bad "b3c: tocó la base/rama actual miDevelop; got: $lrout" || ok "b3c: la base/rama actual (miDevelop) NO se lista para borrar ni conservar"
 printf '%s' "$lrout" | grep -q 'keep/respaldo' && bad "b3c: keep/respaldo NO debe tocarse (protegida)" || ok "b3c: keep/* protegida (no se lista)"
+printf '%s' "$lrout" | grep -q 'feat/en-wt' && bad "b3c: feat/en-wt está checked-out en un worktree → NO debe listarse (branch -D la rehúsa); got: $lrout" || ok "b3c: rama checked-out en un worktree → protegida (no se lista)"
+git -C "$LRREPO" merge-base --is-ancestor feat/en-wt miDevelop 2>/dev/null && ok "b3c(teeth): feat/en-wt ES ancestro de base (zombie real) → solo la protección de worktree la salva" || bad "b3c(teeth): feat/en-wt no era ancestro (test mal armado)"
 # teeth: sin la protección, keep/respaldo sería zombie (ancestro de base) — confirma que la protección es la que lo salva
 git -C "$LRREPO" merge-base --is-ancestor keep/respaldo miDevelop 2>/dev/null && ok "b3c(teeth): keep/respaldo ES ancestro de base (zombie real) → solo la protección lo conserva" || bad "b3c(teeth): keep/respaldo no era ancestro (test mal armado)"
 rm -rf "$LRROOT"
@@ -1026,6 +1031,61 @@ git -C "$BZREPO" push -q -u origin miDevelop >/dev/null 2>&1
   bz_es_zombie "$BZREPO" feat/hecha miDevelop && ok "b3e: remota gone SIN commits únicos (patch-equivalente) → zombie (se barre)" || bad "b3e: no barrió una rama genuinamente integrada con remota gone"
 )
 rm -rf "$BZROOT"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (b3g) bz_es_zombie: señal (d) 'PR/MR mergeado' PODA el MR-squash multi-commit que (b)/(c) conservaban =="
+# EL HUECO (queja real de unjordi): un MR-squash de VARIOS commits a uno NO empareja patch-id (git cherry
+# marca '+') → (b)/(c) CONSERVABAN la clase MÁS común del flujo → nunca se podaba. (d) pregunta al host si
+# el PR/MR se mergeó (mockeado aquí con CLAUDE_BZ_PRCACHE, sin red) y NO borra trabajo post-merge.
+DZROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-dz.XXXXXX")"; DZBARE="$DZROOT/remote.git"; DZREPO="$DZROOT/repo"
+git init -q --bare "$DZBARE" >/dev/null 2>&1
+git init -q "$DZREPO" >/dev/null 2>&1
+git -C "$DZREPO" symbolic-ref HEAD refs/heads/develop >/dev/null 2>&1
+git -C "$DZREPO" config user.email t@t >/dev/null 2>&1; git -C "$DZREPO" config user.name tester >/dev/null 2>&1
+git -C "$DZREPO" remote add origin "$DZBARE" >/dev/null 2>&1
+printf 'base\n' > "$DZREPO/base.txt"; git -C "$DZREPO" add base.txt >/dev/null 2>&1; git -C "$DZREPO" commit -qm base >/dev/null 2>&1
+# feat/multi: 3 commits → el squash a uno NO empareja patch-id (git cherry marca '+')
+git -C "$DZREPO" checkout -q -b feat/multi develop >/dev/null 2>&1
+for n in 1 2 3; do printf 'x\n' > "$DZREPO/f$n.txt"; git -C "$DZREPO" add "f$n.txt" >/dev/null 2>&1; git -C "$DZREPO" commit -qm "c$n" >/dev/null 2>&1; done
+DZ_OID="$(git -C "$DZREPO" rev-parse feat/multi)"
+git -C "$DZREPO" checkout -q develop >/dev/null 2>&1
+git -C "$DZREPO" merge --squash feat/multi >/dev/null 2>&1; git -C "$DZREPO" commit -qm "squash feat/multi (#PR)" >/dev/null 2>&1  # MR-squash 3→1
+DZCACHE="$DZROOT/prcache"; printf 'feat/multi\t%s\n' "$DZ_OID" > "$DZCACHE"   # mock del host: feat/multi → head mergeado
+git -C "$DZREPO" branch feat/viva-sinpr feat/multi >/dev/null 2>&1            # rama viva SIN PR en el cache
+# Se sourcea en ESTE scope (no en subshell) para que ok/bad cuenten y un FAIL falle la suite; la
+# memoización del cache se resetea a mano entre asserts que cambian CLAUDE_BZ_PRCACHE.
+. "$HOOKS/ramas-zombie.sh"
+_bz_reset() { _BZ_PRCACHE_ROOT=""; _BZ_PRCACHE_FILE=""; }
+# teeth: el squash multi-commit deja git cherry con '+' (por eso (b)/(c) conservaban)
+git -C "$DZREPO" cherry develop feat/multi 2>/dev/null | grep -q '^+' \
+  && ok "b3g(teeth): MR-squash multi-commit → git cherry con '+' (la clase que (b)/(c) conservaban)" \
+  || bad "b3g(teeth): el squash emparejó patch-id — test mal armado"
+# teeth: SIN señal (d) (fail-open: origin local, host no reconocido) → conserva = el bug histórico
+_bz_reset; unset CLAUDE_BZ_PRCACHE
+bz_es_zombie "$DZREPO" feat/multi develop \
+  && bad "b3g(teeth): sin (d) declaró zombie — no reproduce el bug" \
+  || ok "b3g(teeth): sin PR-cache (fail-open) → conserva (el bug que (d) arregla)"
+# (d) ON: el PR de feat/multi se mergeó y su head == tip actual → ZOMBIE (se poda el MR-squash)
+_bz_reset; export CLAUDE_BZ_PRCACHE="$DZCACHE"
+bz_es_zombie "$DZREPO" feat/multi develop \
+  && ok "b3g: (d) PR mergeado + head contiene el tip → ZOMBIE (poda el MR-squash)" \
+  || bad "b3g: (d) no podó una rama con PR mergeado"
+# SAFETY: rama viva SIN entrada de PR en el cache → (d) no aplica → CONSERVA
+_bz_reset
+bz_es_zombie "$DZREPO" feat/viva-sinpr develop \
+  && bad "b3g: podó una rama SIN PR mergeado (PÉRDIDA DE DATOS)" \
+  || ok "b3g: rama sin entrada de PR en el cache → (d) no aplica → conserva"
+# SAFETY: trabajo POST-MERGE (commit MÁS ALLÁ del head mergeado) → CONSERVA pese al PR mergeado
+git -C "$DZREPO" checkout -q feat/multi >/dev/null 2>&1
+printf 'post\n' > "$DZREPO/post.txt"; git -C "$DZREPO" add post.txt >/dev/null 2>&1; git -C "$DZREPO" commit -qm post-merge >/dev/null 2>&1
+git -C "$DZREPO" checkout -q develop >/dev/null 2>&1
+_bz_reset
+bz_es_zombie "$DZREPO" feat/multi develop \
+  && bad "b3g: BORRÓ trabajo post-merge (commit más allá del head del PR)" \
+  || ok "b3g: commit post-merge (más allá del head mergeado) → CONSERVA pese al PR mergeado"
+unset CLAUDE_BZ_PRCACHE
+rm -rf "$DZROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""

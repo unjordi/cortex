@@ -4,15 +4,20 @@
 # `limpiar-worktrees.sh` (barre worktrees) y `limpiar-ramas.sh` (barre ramas locales) → una sola
 # definición de "mergeada", sin divergencia (antídoto al drift entre los dos barredores).
 #
-# "Mergeada" es TRIPLE porque el flujo SQUASHEA (la rama NO queda de ancestro): (a) ancestro de la base
-# (flujo merge-commit) O (b) la rama fue pusheada, su rama remota YA no existe (se borró al mergear con
-# --delete-branch, típico del squash → localmente queda marcada `: gone`) Y NO trae commits propios sin
-# integrar O (c) sus commits ya están en la base por EQUIVALENCIA de parche (git cherry) — el merge LOCAL
-# a la rama personal (mini-develop) y los cherry-picks. Un squash de VARIOS commits a uno NO empareja
-# patch-id → se CONSERVA (mejor un zombie de más que borrar trabajo vivo). Una rama NUNCA pusheada y sin
-# equivalencia → se CONSERVA. La regla (b) NUNCA borra a ciegas: si la rama tiene commits propios no
-# equivalentes a la base (git cherry marca '+'), se CONSERVA aunque su remota ya no exista — la ausencia
-# de la remota no prueba integración, y el `branch -D` es irreversible (FMEA A5/MEDIO-3).
+# "Mergeada" es CUÁDRUPLE porque el flujo SQUASHEA (la rama NO queda de ancestro): (a) ancestro de la
+# base (flujo merge-commit) O (d) su PR/MR se MERGEÓ en el host (señal AUTORITATIVA — ver abajo) O (c) sus
+# commits ya están en la base por EQUIVALENCIA de parche (git cherry) — el merge LOCAL a la mini-develop y
+# los cherry-picks O (b) la rama fue pusheada, su rama remota YA no existe (se borró al mergear con
+# --delete-branch, típico del squash → `: gone`) Y NO trae commits propios sin integrar.
+# EL HUECO QUE CIERRA (d): un squash de VARIOS commits a uno NO empareja patch-id → (c) no lo caza y (b)
+# CONSERVA si git cherry marca algún '+' → antes las ramas mergeadas por MR-squash (¡la clase MÁS común de
+# este flujo!) NUNCA se podaban y se acumulaban. La señal fiable no es git, es el HOST: (d) pregunta a
+# gh/glab si el PR/MR de la rama se mergeó — si sí, sus commits están en la base aunque git no los empareje
+# (y solo si el head mergeado CONTIENE el tip local, para no borrar trabajo post-merge). FAIL-OPEN: sin
+# gh/glab, sin red, host no reconocido o error → (d) no aplica y se cae a las señales de git (conservador).
+# Una rama NUNCA pusheada y sin equivalencia → se CONSERVA. La regla (b) NUNCA borra a ciegas: si la rama
+# tiene commits propios no equivalentes a la base (git cherry marca '+'), se CONSERVA aunque su remota ya
+# no exista — la ausencia de la remota no prueba integración, y el `branch -D` es irreversible (FMEA A5/MEDIO-3).
 
 # bz_resolver_base ROOT → imprime la base de integración.
 # La base es configurable (CLAUDE_INTEGRACION_BASE): en el flujo mini-develop NO es develop sino TU rama
@@ -44,10 +49,54 @@ bz_resolver_base() {
   printf '%s' "$base"
 }
 
+# --- Señal (d): ¿el PR/MR de la rama se MERGEÓ en el host? (autoritativa para el flujo SQUASH) --------
+# Se consulta 1× por proceso (memoizado por ROOT). FAIL-OPEN total: sin gh/glab, sin red, host no
+# reconocido o error → cache vacío → (d) no aplica → se cae a las señales de git. TEST: exporta
+# CLAUDE_BZ_PRCACHE=<archivo con líneas 'rama<TAB>sha'> para inyectar el mapa de PRs mergeados sin red.
+_BZ_PRCACHE_FILE=""; _BZ_PRCACHE_ROOT=""
+_bz_run() {  # _bz_run SEGUNDOS cmd... — con timeout si existe (que un host colgado no cuelgue la poda)
+  local t="$1"; shift
+  if command -v timeout >/dev/null 2>&1; then timeout "$t" "$@"; else "$@"; fi
+}
+_bz_cargar_prcache() {  # puebla $_BZ_PRCACHE_FILE (líneas 'rama<TAB>sha') para ROOT, una sola vez
+  local ROOT="$1" url proj
+  [ "$_BZ_PRCACHE_ROOT" = "$ROOT" ] && return 0
+  _BZ_PRCACHE_ROOT="$ROOT"
+  if [ -n "${CLAUDE_BZ_PRCACHE:-}" ]; then _BZ_PRCACHE_FILE="$CLAUDE_BZ_PRCACHE"; return 0; fi
+  _BZ_PRCACHE_FILE="$(mktemp 2>/dev/null)" || { _BZ_PRCACHE_FILE=""; return 0; }
+  url="$(git -C "$ROOT" remote get-url origin 2>/dev/null || true)"
+  # path del proyecto desde el remoto (owner/repo o group/subgrupo/proyecto) → -R, sin `cd` (un `cd`
+  # dispararía un hook chpwd del shell que contaminaría el cache; -R es además más robusto).
+  proj="$(printf '%s' "$url" | sed -E 's#^[a-z]+://[^/]+/##; s#^[^@]+@[^:]+:##; s#\.git$##')"
+  [ -n "$proj" ] || return 0
+  case "$url" in
+    *github*)
+      command -v gh >/dev/null 2>&1 && _bz_run 15 gh -R "$proj" pr list --state merged --limit 300 \
+        --json headRefName,headRefOid --jq '.[] | "\(.headRefName)\t\(.headRefOid)"' \
+        >>"$_BZ_PRCACHE_FILE" 2>/dev/null ;;
+    *gitlab*)
+      command -v glab >/dev/null 2>&1 && _bz_run 15 glab mr list -R "$proj" -M --per-page 300 -F json \
+        --jq '.[] | "\(.source_branch)\t\(.sha)"' \
+        >>"$_BZ_PRCACHE_FILE" 2>/dev/null ;;
+  esac
+  return 0
+}
+# bz_pr_mergeado ROOT BR → 0 si el PR/MR de BR se mergeó y su head CONTIENE el tip actual de BR (todos sus
+# commits integrados). Si BR trae commits MÁS ALLÁ del head mergeado (trabajo post-merge) → 1 (conservar).
+bz_pr_mergeado() {
+  local ROOT="$1" br="$2" oid
+  _bz_cargar_prcache "$ROOT"
+  [ -n "$_BZ_PRCACHE_FILE" ] && [ -s "$_BZ_PRCACHE_FILE" ] || return 1
+  oid="$(awk -F'\t' -v b="$br" '$1==b{print $2; exit}' "$_BZ_PRCACHE_FILE" 2>/dev/null)"
+  [ -n "$oid" ] || return 1
+  git -C "$ROOT" merge-base --is-ancestor "$br" "$oid" 2>/dev/null   # tip de br ⊆ head mergeado → integrada
+}
+
 # bz_es_zombie ROOT BR BASE → 0 si BR ya está integrada a BASE (zombie), 1 si conservar.
 bz_es_zombie() {
   local ROOT="$1" br="$2" base="$3" up cherry
   git -C "$ROOT" merge-base --is-ancestor "$br" "$base" 2>/dev/null && return 0   # (a) ancestro de la base
+  bz_pr_mergeado "$ROOT" "$br" && return 0                                        # (d) PR/MR mergeado (host, autoritativo)
   # (c) squash/cherry a la base: los commits de la rama ya están en base por EQUIVALENCIA de parche
   # (git cherry los marca '-'; NINGUNO '+').
   cherry=$(git -C "$ROOT" cherry "$base" "$br" 2>/dev/null)
