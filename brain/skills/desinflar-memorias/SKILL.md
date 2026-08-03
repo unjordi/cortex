@@ -67,6 +67,10 @@ corto — `(ver ⚰️ Lápidas al final)` — en vez de repetir la explicación
    cambió tanto que quedó falsa.
 
 ## Qué NO se toca, por diseño
+- **El `CLAUDE.md`** (la firma-árbol del cerebro) **salvo su sección `## Reglas duras`.** Gradiente de
+  estabilidad: `CLAUDE.md`=`main` — SOLO estructura + atemporal (identidad, "dónde va cada cosa", el ÁRBOL),
+  muta casi nunca por diseño. Esta pasada **no lo desinfla**: la única prosa que puede adelgazar en él es la de
+  `## Reglas duras`. (El `MEMORY.md`=`develop` y las memorias=ramitas SÍ son el terreno normal del desinflado.)
 - **La bitácora** (o cualquier log append-only): es narrativa fechada a propósito, y varias sesiones
   escriben en ella con `>>`. **No se edita.**
 - **El hilo mental** (memoria de trabajo volátil de otra sesión).
