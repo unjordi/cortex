@@ -1276,7 +1276,7 @@ struct PopoverView: View {
         }
         if BrainState.knownRepoHooks.contains(name) { return .repoScoped }
         switch name {
-        case "cerrar-slice", "checkpoint", "diagramar", "auditar-proceso-algoritmo", "auditar-coherencia-cerebro", "auditar-suficiencia-operativa", "desinflar-memorias", "orquestar-fanout", "turno-nocturno",
+        case "cerrar-slice", "checkpoint", "diagramar", "auditar-proceso-algoritmo", "auditar-coherencia-cerebro", "auditar-suficiencia-operativa", "consolidar-cerebro", "desinflar-memorias", "orquestar-fanout", "turno-nocturno",
              "cosechar-sesion", "unificar-cerebro",
              "investigar-dominio", "positivar-doc", "revisar-entregables-agentes", "zoom-screenshot", "claude-proyecto-autocontenido":
             return st.skills.contains(name) ? .installed : .absent
@@ -1406,6 +1406,9 @@ struct PopoverView: View {
                     BrainItem("🧪", "auditar-suficiencia-operativa", "¿ALCANZA la doc para HACER el trabajo? tareas reales ✅/⚠️/❌ + re-auditar tras arreglar",
                               "skill · opt-in",
                               "Audita una doc/cerebro por SUFICIENCIA OPERATIVA, no por coherencia: enumera las tareas reales que alguien tendrá que hacer y las califica ✅/⚠️/❌ con archivo:línea. Exige RE-AUDITAR con el prompt idéntico tras arreglar los hallazgos, porque los arreglos introducen contradicciones nuevas."),
+                    BrainItem("🧠", "consolidar-cerebro", "meta-orquestador: dupla → positivar → desinflar → loop de convergencia → cierre con la FIRMA",
+                              "skill · opt-in",
+                              "Meta-orquestador que consolida un cerebro de punta a punta: corre la DUPLA de auditores (suficiencia + coherencia) hasta converger, luego positivar-doc y desinflar-memorias, en un loop de convergencia, y cierra generando/actualizando la FIRMA por-contenido (CLAUDE.md + MEMORY.md). No declara LISTO: exige el QA/OK del usuario."),
                     BrainItem("🪶", "desinflar-memorias", "adelgaza memorias sin perder lecciones: narrativa → 1 línea, mitos → ⚰️ Lápidas al final",
                               "skill · opt-in",
                               "Desinfla un árbol de memorias inflado de narrativa, tutoriales y conocimiento ya desmentido SIN perder ninguna lección: cada tirada de historia se colapsa a su lección en 1-2 líneas EN SU LUGAR, y los mitos descartados se comprimen a una línea y se mudan a una sección ⚰️ Lápidas AL FINAL del archivo (si los borras, el siguiente agente los re-descubre). No toca la bitácora ni el hilo: son append-only por diseño."),
