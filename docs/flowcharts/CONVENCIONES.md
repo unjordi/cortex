@@ -2,7 +2,7 @@
 
 > Nace del pase COLECTIVO de la auditoría 2026-07-29 + correcciones de unjordi (2026-07-29 noche): el set
 > no cerraba como sistema (🔴 rojo con sentidos opuestos, solo 2/11 con leyenda, numeración circulada
-> desfasada −1). Este doc fija UNA notación para los 11. **Todo flowchart DEBE seguirlo** e incrustar la
+> desfasada −1). Este doc fija UNA notación para los 5. **Todo flowchart DEBE seguirlo** e incrustar la
 > clave de leyenda. Es la regla dura de `diagramar` ("un diagrama entregable lleva leyenda + normas y se
 > versiona") aplicada al set.
 
@@ -29,8 +29,8 @@ La leyenda que va incrustada en **CADA** flowchart es el **árbol COMPLETO del c
 NO una selección, NO una clave compacta de colores. Cada chart lo lleva **íntegro**, para que se lea solo
 sin abrir el README. **Fuente única = el README** (para no driftear, doc=realidad): el bloque de leyenda de
 cada `.dot` se **GENERA desde el árbol del README** (un helper lo lee y emite el subgrafo — no se teclea a
-mano en cada chart, eso sería N copias que driftean). La lámina suelta `00-leyenda-arbol.*` queda subsumida:
-el mismo generador que la producía ahora alimenta la leyenda de cada chart.
+mano en cada chart, eso sería N copias que driftean). No hay una lámina de leyenda suelta: el mismo
+generador (`gen-leyenda-arbol.sh`) alimenta la leyenda incrustada de cada chart.
 
 **Las 4 familias con TODAS sus piezas y su emoji canónico NO se transcriben aquí a propósito** (doc=realidad
 + fuente única): una copia tecleada a mano de la fuente vuelve a driftear (pasó — la copia que vivía aquí se
@@ -60,7 +60,7 @@ Cada flowchart incrusta DOS cosas dentro de un `subgraph cluster_leyenda`:
 1. **El árbol COMPLETO del README** — las 4 familias con TODAS sus piezas y su emoji canónico. Es la
    leyenda principal. Se **GENERA desde el árbol de `README.md`** (un helper lo lee y emite este subgrafo);
    NO se copia a mano en cada chart → fuente única, sin drift. Al cambiar el README, se re-genera y los
-   11 charts se actualizan de una (doc=realidad).
+   5 charts se actualizan de una (doc=realidad).
 2. **Mini-clave de VALENCIA de color** (secundaria, decodifica el RELLENO de los nodos del diagrama; ver §2).
 
 ```dot

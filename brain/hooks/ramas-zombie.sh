@@ -64,6 +64,8 @@ _bz_cargar_prcache() {  # puebla $_BZ_PRCACHE_FILE (líneas 'rama<TAB>sha') para
   _BZ_PRCACHE_ROOT="$ROOT"
   if [ -n "${CLAUDE_BZ_PRCACHE:-}" ]; then _BZ_PRCACHE_FILE="$CLAUDE_BZ_PRCACHE"; return 0; fi
   _BZ_PRCACHE_FILE="$(mktemp 2>/dev/null)" || { _BZ_PRCACHE_FILE=""; return 0; }
+  # el temp es NUESTRO (no el inyectado) → limpiarlo al salir del proceso; ningún caller usa trap EXIT
+  _BZ_PRCACHE_OWNED="$_BZ_PRCACHE_FILE"; trap 'rm -f "$_BZ_PRCACHE_OWNED" 2>/dev/null' EXIT
   url="$(git -C "$ROOT" remote get-url origin 2>/dev/null || true)"
   # path del proyecto desde el remoto (owner/repo o group/subgrupo/proyecto) → -R, sin `cd` (un `cd`
   # dispararía un hook chpwd del shell que contaminaría el cache; -R es además más robusto).
