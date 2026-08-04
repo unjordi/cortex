@@ -109,6 +109,9 @@ public static class SyncService
     private static Stats? Merge(string syncDir, string account, string nowIso)
     {
         // 1. leer y deserializar cada snapshot (fail-open por archivo), filtrar por cuenta.
+        // (e) SYNC_COMBINE_ALL=1 → combina snapshots de TODAS las cuentas de la carpeta (misma persona,
+        // varias cuentas: p. ej. una por máquina). Sin él, solo la cuenta local (default: aísla cuentas ajenas).
+        bool combineAll = Environment.GetEnvironmentVariable("SYNC_COMBINE_ALL") == "1";
         var snaps = new List<SyncSnapshot>();
         string[] files;
         try { files = Directory.GetFiles(syncDir, "*.json"); }
@@ -118,7 +121,7 @@ public static class SyncService
             try
             {
                 var snap = JsonSerializer.Deserialize<SyncSnapshot>(File.ReadAllText(f, Encoding.UTF8));
-                if (snap?.Stats != null && string.Equals(snap.Account, account, StringComparison.Ordinal))
+                if (snap?.Stats != null && (combineAll || string.Equals(snap.Account, account, StringComparison.Ordinal)))
                     snaps.Add(snap);
             }
             catch { /* snapshot roto o parcial: se ignora */ }
