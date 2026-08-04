@@ -102,7 +102,7 @@ El cerebro se ordena por *dureza*: arriba lo que te **bloquea** sin negociar; ab
 ├─ 🧬 aviso-drift-cerebro      repo brained atrás de la fuente única → en tu mini-develop se AUTO-SINCRONIZA (apply+commit+push); en otra rama, avisa. Al moverse el cerebro, NUDGE a correr la DUPLA (suficiencia+coherencia; contra la firma si hay AGENTS.md, si no sugiere instanciarla) (GLOBAL)
 └─ 📁 por-repo · viajan en el .claude de cada repo
    ├─ 🧭 sesion-inicio            reinyecta rama + norma + memoria al abrir
-   ├─ 🌾 recordar-cosechar        nudge al cerrar turno: trabajaste y no cosechaste → corre /cosechar-sesion
+   ├─ 🌾 recordar-cosechar        espejo TaskList→estado-proyecto.md (auto) + nudge: no cosechaste/no actualizaste backlog
    └─ ⬆️  recordar-unificar-cerebro  tu mini acumuló aprendizajes sin UNIFICAR a develop → sugiere /unificar-cerebro (gemelo ↑ de aviso-drift)
       (💤 precompact-volcar-estado se RETIRÓ: PreCompact no puede inyectar; lo cubren 💾 checkpoint + 🧵 rehidratar-hilo + 📈 aviso-contexto)
 
