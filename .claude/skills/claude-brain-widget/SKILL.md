@@ -49,8 +49,17 @@ la KDE Store (`github.com/FelixDes/claude-kde-usage-widget`), conservando el cos
 
 ## Instalar / actualizar por OS
 - **CachyOS / KDE Plasma 6:** `cd ~/code/claude-brain`
-  - Instalar/actualizar: `kpackagetool6 -t Plasma/Applet -i src/plasmoid`
-    (o `-u` para upgrade). Recargar: `kquitapp6 plasmashell && (kstart plasmashell &)`.
+  - Instalar/actualizar: `kpackagetool6 -t Plasma/Applet -i src/plasmoid` (o `-u` para upgrade).
+  - **Recargar (loop de QA en el PANEL real — el método que SÍ funciona limpio):**
+    **`systemctl --user restart plasma-plasmashell.service`** — plasmashell es servicio de usuario;
+    el restart es *detachado* (no atado al shell de Claude) y revive solo. ❌ NO uses
+    `kquitapp6 plasmashell && kstart plasmashell` desde el shell no-interactivo de Claude: dio
+    **exit 144** (al matar plasmashell se corta la cadena) y dejó el panel sin reiniciar (seguías
+    viendo el widget viejo). ❌ NUNCA `systemctl --user reload` (no tiene ExecReload → lo mata sin
+    revivir). El loop completo de QA: editar QML → `command cp -rf src/plasmoid/contents/.
+    ~/.local/share/plasma/plasmoids/<id>/contents/` → `systemctl --user restart plasma-plasmashell.service`
+    → pedir screenshot a unjordi. Para PROBAR un botón contextual (⬆/🩹 que solo salen si aplican),
+    `sed` un `visible: cond → visible: true` en la copia INSTALADA (no la fuente), QA, y restaurar.
   - **ccusage:** `pkexec npm i -g ccusage` (npm prefix=/usr necesita root); si el
     binario nativo queda sin +x: `pkexec chmod +x /usr/lib/node_modules/ccusage/node_modules/@ccusage/ccusage-linux-x64/bin/ccusage`.
   - **Cambiar el `Id` en metadata.json obliga a quitar y re-agregar** el widget.
