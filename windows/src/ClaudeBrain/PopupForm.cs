@@ -940,7 +940,9 @@ public sealed class PopupForm : Form
         {
             float x = area.X + i * (barW + gap);
             float yTop = area.Bottom;
-            foreach (var seg in days[i].Projects ?? new List<DayProject>())
+            // tokens desc: el orden de apilado NO debe depender de la fuente (stats.json local ordena por
+            // tokens; el merge global, alfabético) → homologado entre "esta máquina" y "todas".
+            foreach (var seg in (days[i].Projects ?? new List<DayProject>()).OrderByDescending(p => p.Tokens).ThenBy(p => p.Project, StringComparer.Ordinal))
             {
                 float h = (float)(area.Height * (seg.Tokens / maxTok));
                 if (h <= 0) continue;
