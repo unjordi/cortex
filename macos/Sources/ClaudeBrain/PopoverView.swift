@@ -544,8 +544,13 @@ struct PopoverView: View {
                     let day = days[i]
                     VStack(spacing: 0) {
                         Spacer(minLength: 0)
-                        ForEach((day.models ?? []).indices, id: \.self) { j in
-                            let seg = day.models![j]
+                        // tokens desc + desempate por nombre: el apilado NO debe depender de la fuente
+                        // (local por tokens; merge global alfabético) → toggle "esta máquina"/"todas" consistente.
+                        let segs = (day.models ?? []).sorted {
+                            ($0.tokens ?? 0) != ($1.tokens ?? 0) ? ($0.tokens ?? 0) > ($1.tokens ?? 0) : ($0.model ?? "") < ($1.model ?? "")
+                        }
+                        ForEach(segs.indices, id: \.self) { j in
+                            let seg = segs[j]
                             Rectangle()
                                 .fill(model.modelColor(seg.model))
                                 .frame(height: h * CGFloat((seg.tokens ?? 0) / maxTok))
@@ -686,8 +691,13 @@ struct PopoverView: View {
                     let day = days[i]
                     VStack(spacing: 0) {
                         Spacer(minLength: 0)
-                        ForEach((day.projects ?? []).indices, id: \.self) { j in
-                            let seg = day.projects![j]
+                        // tokens desc: el orden de apilado NO debe depender de la fuente (stats.json local
+                        // ordena por tokens; el merge global, alfabético) → homologado entre "esta máquina" y "todas".
+                        let segs = (day.projects ?? []).sorted {
+                            ($0.tokens ?? 0) != ($1.tokens ?? 0) ? ($0.tokens ?? 0) > ($1.tokens ?? 0) : ($0.project ?? "") < ($1.project ?? "")
+                        }
+                        ForEach(segs.indices, id: \.self) { j in
+                            let seg = segs[j]
                             Rectangle()
                                 .fill(model.projectColor(seg.project))
                                 .frame(height: h * CGFloat((seg.tokens ?? 0) / maxTok))

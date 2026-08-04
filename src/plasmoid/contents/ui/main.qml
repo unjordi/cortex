@@ -1636,7 +1636,9 @@ PlasmoidItem {
                                     anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.right: parent.right
                                     spacing: 0
                                     Repeater {
-                                        model: day.models
+                                        // tokens desc + desempate por nombre: el apilado NO debe depender de la
+                                        // fuente (local por tokens; merge global alfabético) → toggle 🖥/☁️ consistente.
+                                        model: (day.models || []).slice().sort(function(a, b) { return (b.tokens || 0) - (a.tokens || 0) || ((a.model || "") < (b.model || "") ? -1 : (a.model || "") > (b.model || "") ? 1 : 0) })
                                         delegate: Rectangle {
                                             Layout.fillWidth: true
                                             Layout.preferredHeight: chartArea.height * (modelData.tokens / root.rMaxDayTokens)
@@ -1702,7 +1704,10 @@ PlasmoidItem {
                                     anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.right: parent.right
                                     spacing: 0
                                     Repeater {
-                                        model: day.projects
+                                        // tokens desc: el orden de apilado NO debe depender de la fuente
+                                        // (stats.json local ordena por tokens; el merge global, alfabético) →
+                                        // homologado para que el toggle 🖥/☁️ no reacomode los segmentos.
+                                        model: (day.projects || []).slice().sort(function(a, b) { return (b.tokens || 0) - (a.tokens || 0) || ((a.project || "") < (b.project || "") ? -1 : (a.project || "") > (b.project || "") ? 1 : 0) })
                                         delegate: Rectangle {
                                             Layout.fillWidth: true
                                             Layout.preferredHeight: projChartArea.height * (modelData.tokens / root.rMaxDayProjectTokens)
