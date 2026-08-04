@@ -1,75 +1,62 @@
-# CLAUDE.md — claude-brain · el ÁRBOL del cerebro (lo que este brain instala)
+# 🧠 claude-brain — el cerebro de Claude Code de nuestro equipo (fuente única, viaja a cada clon)
 
-> **Esto es la DECLARACIÓN del brain**: el árbol de hooks + normas + skills que se instalan en cada repo.
-> Va en `CLAUDE.md` (no solo en el README) porque **al iniciar una sesión se lee el `CLAUDE.md`, no el README**.
-> El **detalle de cada skill** vive en `.claude/memory/MEMORY.md`; el código del producto, en `brain/`.
-> **Gradiente de estabilidad**: este `CLAUDE.md` es como `main` — SOLO estructural y **ATEMPORAL** (cero fechas/estado;
-> lo volátil vive en `MEMORY.md`≈develop y en memorias/bitácora≈ramitas). Detalle en `.claude/memory/arbol-cerebro-sync.md`.
->
-> **Fuente del árbol** = el bloque «🔒 Hooks Forzosos» de `README.md`; este archivo lo espeja (committeado, nunca
-> vacío en un clon fresco). Un **parity-check** (`docs/flowcharts/verificar-arbol-sync.sh`, en CI) verifica que
-> README ↔ este árbol ↔ `brain/skills/` no driftéen (los 3 brainTiers de los widgets se verifican APARTE, a mano — fase 2). `gen-leyenda-arbol.sh`
-> genera además las leyendas de los flowcharts. (Generar automáticamente los 3 brainTiers desde la fuente única
-> = decisión PARQUEADA — necesita QA visual de los widgets; hoy la paridad se **verifica**, no se **genera**.)
+Lo que necesitas saber para trabajar aquí:
 
-<!-- ARBOL:START — fuente: README.md «🔒 Hooks Forzosos» · a mano, VERIFICADO por docs/flowcharts/verificar-arbol-sync.sh (gen-leyenda-arbol.sh NO toca este archivo, solo las leyendas .dot) -->
+🎯 Eres el claude-MASTER que **mantiene** este cerebro: los guardarraíles (hooks), skills, memorias y los widgets de cuota que se instalan en TODA máquina/repo del equipo. Aquí no se "usa" el brain: se **CONSTRUYE** y se **PROPAGA**. Dualidad sagrada: `.claude/` es TU cerebro operativo (de este repo); `brain/` es el **PRODUCTO** que viaja a los clones — leer `brain/` es lícito, **mutarlo desde una pasada de cerebro NO** (un cambio ahí viaja a todos).
+
+🧠 **ANTES de construir/auditar/propagar: LEE con `Read`/`Skill` (NO grep/scripts) los skills que apliquen + el backlog vivo `estado-proyecto.md`** — no reinventes lo que ya existe. El árbol de TODO lo que el brain instala y el detalle 1:1 viven en `MEMORY.md`, que se **auto-carga** con este archivo vía `@import` (ya lo tienes en contexto).
+
+## 📁 Dónde va cada cosa — relativo a la raíz del repo · el árbol de instalación → MEMORY.md
+
+`.claude/` = tu cerebro operativo (memorias + skills para OPERAR este repo + hooks por-repo) · `brain/` = el PRODUCTO que viaja (hooks, skills, scripts, `test-brain.sh`) · `docs/` = flowcharts + parity-checks · `src|macos|windows` = los 3 widgets de cuota. La FIRMA de abajo mapea cada capacidad a su artefacto REAL (skill / script / hook), y el ÁRBOL GIGANTE de lo instalado bajó a `MEMORY.md`.
+
 ```
-🔒 Hooks Forzosos — hooks que bloquean (deny) · no negociables
-├─ 🚧 git-branch-guard         push/merge a develop·main → denegado
-├─ 🔗 merge-squash-guard       MR a develop sin --squash → denegado
-├─ 🕵️  secret-scan             commit/push con un secreto → denegado
-├─ 💸 delegacion-gate          delegar al llegar al 90% de tu ventana 5h → pide tu OK
-├─ 🛑 limite-gasto             sin ventana 5h Y sin overage (ambos agotados) → freno duro
-└─ 📁 por-repo · viajan en el .claude de cada repo
-   ├─ ✋ confirmar-merge-develop  merge sin tu OK → denegado
-   └─ ✅ dod-verificar            cierre sin evidencia/OK → denegado; claim visual a ciegas (sin ver la pantalla) también
-
-🔔 Automático — inyectan / recuerdan (no bloquean)
-├─ 📊 recordar-dashboard       en el push recuerda dashboard + doc=realidad (README/docs) — cierre del slice
-├─ 🖥️  entorno-maquina-guard    commit de algo machine-specific (aliases/rutas de $HOME/Rosetta/entorno-maquina.md) al .claude/memory/ del repo → avisa
-├─ 🕰️  rama-vieja              avisa si la ramita arrastra base vieja
-├─ 🌳 proteger-arbol           git destructivo que orfanaría commits sin pushear → avisa (fan-out: usa worktree aislado)
-├─ 🛡️  proteger-fuente-cerebro  editar la copia INSTALADA de un hook/skill que tiene fuente en el clon → avisa (se perdería en el próximo sync) (GLOBAL)
-├─ 🧹 barrer-ramas             al abrir sesión barre en 2º plano las ramas locales ya integradas (zombie squash-safe; throttle 24h) (GLOBAL)
-├─ 💾 exportar-sesion-master   auto-export de las sesiones *-master a ~/.claude-sessions (o Drive); detached, sobrevive el cleanup de 30 días (GLOBAL)
-├─ 📝 delegacion-registrar     materializa el "pregunta una sola vez"
-├─ 📮 delegacion-reporte       al terminar un agente: recuerda registrar avance + limpiar su worktree
-├─ 🧵 rehidratar-hilo          reinyecta hilo-mental-actual.md al abrir/retomar/compactar (GLOBAL) — con gate de frescura
-├─ 📈 aviso-contexto           watermark: avisa "compacta TÚ ahora" antes del auto-compact-sorpresa (GLOBAL)
-├─ 🧬 aviso-drift-cerebro      repo brained atrás de la fuente única → en tu mini-develop se AUTO-SINCRONIZA (apply+commit+push); en otra rama, avisa. Al moverse el cerebro, NUDGE a correr la DUPLA (suficiencia+coherencia; contra la firma si hay AGENTS.md, si no sugiere instanciarla) (GLOBAL)
-└─ 📁 por-repo · viajan en el .claude de cada repo
-   ├─ 🧭 sesion-inicio            reinyecta rama + norma + memoria al abrir
-   ├─ 🌾 recordar-cosechar        nudge al cerrar turno: trabajaste y no cosechaste → corre /cosechar-sesion
-   └─ ⬆️  recordar-unificar-cerebro  tu mini acumuló aprendizajes sin UNIFICAR a develop → sugiere /unificar-cerebro (gemelo ↑ de aviso-drift)
-
-📜 Normas — reglas que Claude se autoimpone (CLAUDE.md)
-├─ 🎯 Definition of Done       verde técnico ≠ Done/Listo/Ya Quedó; exige QA o un OK explícito
-├─ 🪞 Doc <= realidad          cambió algo → su doc se actualiza en la tanda
-├─ 🌿 Flujo de git             ramita → MR → develop; main es release-only
-└─ 💰 Costo de delegación      gratis / incluido / con costo, según tu cuota
-
-💡 Skills — opt-in, las invocas tú  (catálogo COMPLETO con su detalle → MEMORY.md)
-├─ 📦 cerrar-slice             build+tests+memoria al día + MR con resumen curado
-├─ 💾 checkpoint               vuelca el HILO a memoria para compactar sin perderlo (proactivo)
-├─ 💧 rehidratar-hilo          relee el HILO a mano (gemelo del hook; respaldo si un update del CLI rompe el auto-rehidratado)
-├─ 🐝 orquestar-fanout         fan-out sin niñera: asigna del backlog, auto-reporta y limpia al cerrar
-├─ 🗺️ diagramar                diagramas por destino: .dot→dot2yed→yEd (editar a mano) · Mermaid en .md versionado (verse en GitHub)
-├─ 🔬 auditar-proceso-algoritmo  auditor experto read-only (proceso industrial + algoritmo) → hallazgos priorizados; se alimenta de los flowcharts de diagramar
-├─ 🩺 auditar-coherencia-cerebro fan-out read-only sobre el PROPIO cerebro (guards+flowcharts+doc): evasiones/huecos/drift, verificado por ejecución → loop hasta converger
-├─ 🧪 auditar-suficiencia-operativa  ¿ALCANZA la doc para HACER el trabajo sin romper nada ni re-investigar? tareas reales ✅/⚠️/❌ + RE-auditar tras arreglar
-├─ 🧠 consolidar-cerebro       meta-orquestador: dupla → positivar → desinflar → loop de convergencia → cierre con la FIRMA (CLAUDE+MEMORY)
-├─ 🪶 desinflar-memorias       adelgaza un árbol de memorias sin perder lecciones: narrativa → lección; mitos descartados → ⚰️ Lápidas AL FINAL
-├─ 🕵️ revisar-entregables-agentes    verifica lo que un agente ENTREGA contra la realidad; no relates su reporte como verdad
-├─ ☀️ positivar-doc                  reescribe answer-first: 'ESTO SÍ' (método correcto) antes del 'ESTO NO'
-├─ 🎓 investigar-dominio             ponte experto en un dominio (fan-out DOC-FIRST) → memorias durables + skills
-├─ 🌾 cosechar-sesion                cosecha local: extrae aprendizajes de tu sesión al inbox del equipo
-├─ 🧩 unificar-cerebro               reconciliación del cerebro del equipo: integra los aprendizajes mini→develop
-├─ 🧳 claude-proyecto-autocontenido  el cerebro VIVE dentro del proyecto (.claude/ + symlink de slug) → viaja con él
-├─ 🔍 zoom-screenshot                recorta y amplía regiones de una captura (ffmpeg) para leer texto fino ilegible
-└─ 🌙 turno-nocturno           protocolo del turno de noche: eco del contrato, decide-dentro-de-la-cerca, grants durables a disco
+📄 CLAUDE.md ─ LA firma / entry-point (misión + 🖋️ la firma de capacidades + reglas duras)
+│   ├─ 🎯 Misión / identidad ....... claude-master que mantiene y propaga el cerebro
+│   ├─ 🧠 Antes de construir ....... LEE skills (Read/Skill, NO grep) + estado-proyecto.md · MEMORY.md auto-carga (@import)
+│   ├─ 📁 Dónde va cada cosa ....... rutas relativas a la raíz · dualidad .claude/ vs brain/
+│   │
+│   ├─ 🖋️ LA FIRMA — capacidades de operar el cerebro (cada una → su artefacto real)
+│   │     1. Instalar el brain en global (bootstrap) ...... → install.sh · bootstrap.sh · brain/install-brain.sh
+│   │     2. Sincronizar el cerebro a un repo/clon ........ → brain/sincronizar-cerebro.sh (diff-aware, --prune-orphans)
+│   │     3. Sembrar la mini-develop de un dev ............ → brain/sembrar-mini-develop.sh
+│   │     4. Respaldar/exportar las sesiones master ....... → hook exportar-sesion-master + bin/claude-session
+│   │     5. Agregar/editar un hook del cerebro .......... → agregar-hook-cerebro
+│   │     6. Trabajar el widget de cuota (KDE/mac/win) ... → claude-brain-widget · cambiar-icono · publicar-widget
+│   │     7. Auditar + consolidar un cerebro ............. → consolidar-cerebro + (auditar-suficiencia-operativa
+│   │                                                        + auditar-coherencia-cerebro) + auditar-proceso-algoritmo
+│   │     8. Verificar la paridad del árbol (anti-drift) . → docs/flowcharts/verificar-arbol-sync.sh · brain/test-brain.sh
+│   │     9. El ÁRBOL — LO QUE EL BRAIN INSTALA ......... → MEMORY.md (🔒 hooks · 🔔 automáticos · 📜 normas · 💡 skills)
+│   │    Meta: un cerebro que se AUTO-CURA y viaja IDÉNTICO a cada clon/máquina.
+│   │
+│   └─ 🛡️ Reglas duras (detalle completo ↓ en la sección ##)
+│         ├─ 🧬 Dualidad: nunca mutes brain/ desde una pasada de cerebro
+│         ├─ 🌿 Flujo de git: ramita → MR → develop (squash); main = release-only
+│         ├─ 🔒 Integridad de guardarraíles: no aflojes tus propios candados
+│         └─ 🪞 Doc = realidad: cambió algo → su doc en la misma tanda
+▼
+📄 MEMORY.md ─ el DETALLE de la firma + EL ÁRBOL de instalación + índice de memorias
+│   ├─ 🚦 Detalle 1:1 de cada ítem del árbol ....... el how-to/contrato por hook/skill/norma → su artefacto
+│   ├─ 🌳 El árbol — lo que el brain instala ....... 🔒 Forzosos · 🔔 Automático · 📜 Normas · 💡 Skills (+ detalle 1:1)
+│   └─ 🗂️ Índice de memorias por tema
+▼
+📁 .claude/skills/ ─ skills para OPERAR este repo · agregar-hook-cerebro · claude-brain-widget · cambiar-icono · publicar-widget
+📁 .claude/memory/ ─ MEMORY.md (árbol + detalle, @import) + notas de desarrollo · *.local.md personales
+   └─ 🛑 claude-brain NO cablea sus guards por-repo (no hay .claude/hooks/ ni settings.json): corren por la instalación GLOBAL (install-brain.sh) desde brain/hooks/
+📁 brain/ ─ el PRODUCTO que viaja a los clones (hooks · skills · scripts · test-brain.sh) — 🛑 NO mutar desde una pasada de cerebro
+📁 docs/ ─ flowcharts + checks (verificar-arbol-sync.sh · gen-leyenda-arbol.sh) · investigaciones · …
+📁 src/ · macos/ · windows/ ─ los 3 widgets de cuota (los brainTiers espejan el árbol del README)
 ```
-<!-- ARBOL:END -->
 
-> **Sweep doc=realidad hecho (2026-08-01):** el árbol de arriba lista el catálogo COMPLETO de skills de `brain/skills/`
-> (más `consolidar-cerebro`, que llega con el PR #234). Su detalle 1:1 vive en `MEMORY.md`; el parity-check mantiene
-> honesto el eje **README ↔ este árbol ↔ `brain/skills/`** (los 3 brainTiers de los widgets son fase 2 — se verifican a mano, el check aún NO los cubre).
+## 🛡️ Reglas duras
+
+- 🧬 **Dualidad `.claude/` vs `brain/`.** `.claude/` es el cerebro operativo de ESTE repo; `brain/` es el producto que viaja a los clones. Consolidar/positivar/desinflar/reestructurar toca SOLO `.claude/` + la raíz (`CLAUDE.md`, `README.md`, `docs/`). 🛑 Leer `brain/` es lícito; **mutarlo desde una pasada de cerebro NO** — un cambio ahí viaja a todas las máquinas. Detalle → `MEMORY.md`.
+- 🌿 **Flujo de git.** Nunca `git push` a `develop`/`main`; ramita → MR → develop con `--squash`; `main` es **release-only** (promoción deliberada, con OK súper-explícito). Lo hacen cumplir git-branch-guard + merge-squash-guard + confirmar-merge-develop.
+- 🔒 **Integridad de los guardarraíles.** No aflojes tus propios candados de supervisión para desatorarte; los cambios permitidos son de **PRECISIÓN**, con OK explícito para ESE control. Detalle → `MEMORY.md`.
+- 🪞 **Doc = realidad.** Cambió algo → su doc en la MISMA tanda. El árbol vive en varios catálogos (README fuente ↔ `MEMORY.md` ↔ 3 brainTiers de los widgets) + `verificar-arbol-sync.sh`; sincronízalos juntos.
+
+---
+
+**⚙️ Auto-carga (`@import` de Claude Code):** el core estable del cerebro, siempre en contexto.
+
+@.claude/memory/MEMORY.md
