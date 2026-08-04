@@ -814,7 +814,9 @@ public sealed class PopupForm : Form
         {
             float x = area.X + i * (barW + gap);
             float yTop = area.Bottom;
-            foreach (var seg in days[i].Models ?? new List<DayModel>())
+            // tokens desc + desempate por nombre: el apilado NO debe depender de la fuente (local por
+            // tokens; merge global alfabético) → toggle "esta máquina"/"todas" consistente.
+            foreach (var seg in (days[i].Models ?? new List<DayModel>()).OrderByDescending(p => p.Tokens).ThenBy(p => p.Model, StringComparer.Ordinal))
             {
                 float h = (float)(area.Height * (seg.Tokens / maxTok));
                 if (h <= 0) continue;

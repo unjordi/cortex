@@ -544,8 +544,13 @@ struct PopoverView: View {
                     let day = days[i]
                     VStack(spacing: 0) {
                         Spacer(minLength: 0)
-                        ForEach((day.models ?? []).indices, id: \.self) { j in
-                            let seg = day.models![j]
+                        // tokens desc + desempate por nombre: el apilado NO debe depender de la fuente
+                        // (local por tokens; merge global alfabético) → toggle "esta máquina"/"todas" consistente.
+                        let segs = (day.models ?? []).sorted {
+                            ($0.tokens ?? 0) != ($1.tokens ?? 0) ? ($0.tokens ?? 0) > ($1.tokens ?? 0) : ($0.model ?? "") < ($1.model ?? "")
+                        }
+                        ForEach(segs.indices, id: \.self) { j in
+                            let seg = segs[j]
                             Rectangle()
                                 .fill(model.modelColor(seg.model))
                                 .frame(height: h * CGFloat((seg.tokens ?? 0) / maxTok))
