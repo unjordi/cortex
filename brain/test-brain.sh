@@ -1589,9 +1589,9 @@ brslug=$(printf '%s' "$BRREPO" | cksum | awk '{print $1}')
 is_silent "$(br)" && ok "barrer-ramas: throttle — 2ª corrida inmediata → silencio" || bad "barrer-ramas: no respetó el throttle"
 rm -rf "$BRFIX"
 
-# ── (b5g) recordar-cosechar: nudge "trabajaste y no cosechaste" (fail-open; heurístico; throttle; cosechado→silencio) ──
+# ── (b5g) recordar-cosechar: nudge DOBLE (cosecha + backlog durable) (fail-open; heurístico; throttle) ──
 echo ""
-echo "== (b5g) recordar-cosechar: nudge de cosecha (fail-open sin git; hubo trabajo+sin cosechar → avisa; throttle; cosechado → silencio) =="
+echo "== (b5g) recordar-cosechar: nudge doble cosecha+backlog (fail-open sin git; trabajo+sin memoria durable → avisa; throttle; ambas al día → silencio) =="
 RCFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-rc.XXXXXX")"
 RCHOME="$RCFIX/home"; RCREPO="$RCFIX/repo"
 mkdir -p "$RCHOME" "$RCREPO"
@@ -1603,23 +1603,61 @@ git -C "$RCREPO" config user.email t@t >/dev/null 2>&1; git -C "$RCREPO" config 
 # (2) repo con sistema de memoria pero SIN trabajo (sin commits recientes, sin cambios de código) → silencio
 mkdir -p "$RCREPO/.claude/memory"
 is_silent "$(rc)" && ok "recordar-cosechar: sin trabajo sustantivo → silencio" || bad "recordar-cosechar: habló sin trabajo"
-# (3) hubo trabajo (archivo de código sin commitear) y aprendizajes.md sin tocar → AVISA + escribe stamp del día
+# (3) hubo trabajo (código sin commitear) y ni cosecha ni backlog tocados → AVISA AMBAS señales + stamp
 printf 'class X {}\n' > "$RCREPO/Foo.cs"
 rcout="$(rc)"
 printf '%s' "$rcout" | jq -e '.hookSpecificOutput.hookEventName == "Stop"' >/dev/null 2>&1 \
-  && ok "recordar-cosechar: trabajo sin cosechar → emite Stop válido" || bad "recordar-cosechar: JSON inválido; got: $rcout"
+  && ok "recordar-cosechar: trabajo sin memoria durable → emite Stop válido" || bad "recordar-cosechar: JSON inválido; got: $rcout"
 printf '%s' "$rcout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'cosechar-sesion' \
-  && ok "recordar-cosechar: el aviso sugiere /cosechar-sesion" || bad "recordar-cosechar: el aviso no nombra la skill"
+  && ok "recordar-cosechar: avisa la cosecha (nombra la skill)" || bad "recordar-cosechar: no nombró /cosechar-sesion"
+printf '%s' "$rcout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'backlog durable' \
+  && ok "recordar-cosechar: avisa el backlog durable (2ª señal)" || bad "recordar-cosechar: no avisó el backlog"
 rcslug=$(printf '%s' "$RCREPO" | cksum | awk '{print $1}')
 [ -f "$RCHOME/.claude/memory/.recordar-cosechar/$rcslug" ] \
   && ok "recordar-cosechar: escribió el stamp del día" || bad "recordar-cosechar: no escribió el stamp"
 # (4) throttle: 2ª corrida el mismo día → silencio
 is_silent "$(rc)" && ok "recordar-cosechar: throttle — 2ª corrida mismo día → silencio" || bad "recordar-cosechar: no respetó el throttle diario"
-# (5) cosechado (aprendizajes.md modificado sin commitear) → silencio aunque haya trabajo (limpiamos el stamp)
+# (5) cosecha Y backlog al día (aprendizajes + bitacora tocados sin commitear) → silencio aunque haya trabajo
 rm -rf "$RCHOME/.claude/memory/.recordar-cosechar"
 printf '## 2026-07-21 · aportó: unjordi · algo\nprosa\n\n' >> "$RCREPO/.claude/memory/aprendizajes.md"
-is_silent "$(rc)" && ok "recordar-cosechar: ya se cosechó (log tocado) → silencio" || bad "recordar-cosechar: avisó aunque ya se había cosechado"
+printf '- linea de bitacora\n' >> "$RCREPO/.claude/memory/bitacora.md"
+is_silent "$(rc)" && ok "recordar-cosechar: cosecha+backlog al día → silencio" || bad "recordar-cosechar: avisó con ambas señales al día"
 rm -rf "$RCFIX"
+
+# ── (b5g2) recordar-cosechar: ESPEJO del TaskList → bloque fenced en estado-proyecto.md (determinista) ──
+echo ""
+echo "== (b5g2) recordar-cosechar: espejo automático del TaskList (idempotente; no crea el backlog; no auto-suprime el nudge) =="
+EMFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-em.XXXXXX")"
+EMHOME="$EMFIX/home"; EMREPO="$EMFIX/repo"; EMSID="TESTSID"
+mkdir -p "$EMHOME/.claude/tasks/$EMSID" "$EMREPO/.claude/memory"
+git -C "$EMREPO" init -q >/dev/null 2>&1
+git -C "$EMREPO" config user.email t@t >/dev/null 2>&1; git -C "$EMREPO" config user.name tester >/dev/null 2>&1
+em() { printf '{"session_id":"%s"}' "$EMSID" | HOME="$EMHOME" CLAUDE_PROJECT_DIR="$EMREPO" bash "$HOOKS/recordar-cosechar.sh" 2>/dev/null; }
+printf '{"id":"5","subject":"En curso","status":"in_progress"}' > "$EMHOME/.claude/tasks/$EMSID/5.json"
+printf '{"id":"12","subject":"Pendiente A","status":"pending"}' > "$EMHOME/.claude/tasks/$EMSID/12.json"
+printf '{"id":"3","subject":"Hecha","status":"completed"}' > "$EMHOME/.claude/tasks/$EMSID/3.json"
+EMFILE="$EMREPO/.claude/memory/estado-proyecto.md"
+# (6a) SIN estado-proyecto.md → el espejo NO lo crea
+em >/dev/null
+[ ! -f "$EMFILE" ] && ok "espejo: no crea estado-proyecto.md si no existe" || bad "espejo: creó el backlog (no debía)"
+# (6b) CON estado-proyecto.md (commiteado con fecha vieja) → escribe el bloque; salta completadas; preserva prosa
+printf '# Estado\n\nprosa curada.\n' > "$EMFILE"
+git -C "$EMREPO" add -A >/dev/null 2>&1
+GIT_AUTHOR_DATE="2020-01-01T00:00:00" GIT_COMMITTER_DATE="2020-01-01T00:00:00" git -C "$EMREPO" commit -qm base >/dev/null 2>&1
+em >/dev/null
+{ grep -q 'espejo-tasklist:start' "$EMFILE" && grep -q '#5' "$EMFILE" && grep -q '#12' "$EMFILE"; } \
+  && ok "espejo: escribió el bloque con pendientes+en-curso" || bad "espejo: no escribió el bloque esperado"
+grep -q '#3 ' "$EMFILE" && bad "espejo: incluyó una tarea completada (no debía)" || ok "espejo: excluyó las completadas"
+grep -q 'prosa curada' "$EMFILE" && ok "espejo: preservó la prosa curada humana" || bad "espejo: pisó la prosa"
+# (6c) idempotente: 2ª corrida no cambia el archivo
+emh1=$(md5sum "$EMFILE" | awk '{print $1}'); em >/dev/null; emh2=$(md5sum "$EMFILE" | awk '{print $1}')
+[ "$emh1" = "$emh2" ] && ok "espejo: idempotente (2ª corrida = mismo archivo)" || bad "espejo: no idempotente"
+# (6d) el espejo NO auto-suprime el nudge de backlog: trabajo + solo el bloque cambió (no humano) → 📋 sigue
+printf 'class Y {}\n' > "$EMREPO/Foo.cs"
+rm -rf "$EMHOME/.claude/memory/.recordar-cosechar"
+em | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'backlog durable' \
+  && ok "espejo: NO auto-suprime el nudge (cambio solo-bloque ≠ humano)" || bad "espejo: el bloque auto-suprimió el nudge"
+rm -rf "$EMFIX"
 
 # ── (b5h) recordar-unificar-cerebro: gemelo hacia arriba (fail-open; delta≥umbral → avisa; en develop → silencio; throttle) ──
 echo ""
