@@ -54,16 +54,22 @@ la KDE Store (`github.com/FelixDes/claude-kde-usage-widget`), conservando el cos
   - **ccusage:** `pkexec npm i -g ccusage` (npm prefix=/usr necesita root); si el
     binario nativo queda sin +x: `pkexec chmod +x /usr/lib/node_modules/ccusage/node_modules/@ccusage/ccusage-linux-x64/bin/ccusage`.
   - **Cambiar el `Id` en metadata.json obliga a quitar y re-agregar** el widget.
+  - **Preview rápido (LA herramienta para iterar layout/espaciado/visual): `plasmoidviewer -a src/plasmoid`.**
+    Abre una ventana con el widget **sin reinstalar ni recargar plasmashell** → edita el QML,
+    relanza, miras. Es el loop por excelencia para cambios visuales (a unjordi le encantó para el
+    QA de espaciado del popup, 2026-08-04). Lánzalo con `nohup … &` para no bloquear la terminal.
   - **Iteración en vivo — gotchas (importantes):**
+    - **`plasmoidviewer` cachea/ignora el default de propiedades** (ej. `currentTab`) → arranca
+      siempre en la pestaña por defecto, así que **para verificar OTRAS pestañas no sirve**; para
+      eso, en vivo en el panel (clic) + screenshot. (`spectacle -b -n -a/-f` en Wayland es
+      inconsistente.) Para TODO lo demás — espaciado, colores, tamaños, una sola pestaña —
+      plasmoidviewer es lo más rápido.
     - `kpackagetool6 -u` **NO reemplaza los archivos si `KPlugin.Version` no cambió**
-      (ni `-r`+`-i` fue fiable). Para ver tus cambios al iterar: **`command cp -rf
+      (ni `-r`+`-i` fue fiable). Para ver tus cambios en el PANEL real: **`command cp -rf
       src/plasmoid/contents/. ~/.local/share/plasma/plasmoids/<id>/contents/`** y luego
       `kquitapp6 plasmashell && (kstart plasmashell &)`. Para release, **bumpear Version**.
     - El **`cp` de unjordi está aliaseado a `cp -i`** (pregunta y sin TTY responde "no");
       usar **`command cp`**.
-    - **`plasmoidviewer` cachea/ignora el default de propiedades** (ej. `currentTab`) y
-      `spectacle -b -n -a/-f` en Wayland es inconsistente → para verificar pestañas
-      distintas, **mejor en vivo en el panel (clic) y pedir screenshot a unjordi**.
 - **macOS (PARIDAD COMPLETA con el plasmoid desde 2026-07-04, PR #2):**
   `cd ~/code/claude-brain/macos && ./install.sh` (necesita Xcode CLT
   `xcode-select --install`, `jq` via brew, Node via brew + `npm i -g ccusage`).
