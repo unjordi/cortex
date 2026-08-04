@@ -374,23 +374,29 @@ PlasmoidItem {
         root.updLastCheck = 0
         checkUpdate()
     }
-    // ⏻ "Apagar" — paridad KDE del botón power de macOS, pero con OTRA semántica a propósito.
-    // En macOS ⏻ = NSApp.terminate: la app de la barra de menús ES el widget Y el recolector, así que
-    // "apagar" mata todo el proceso. En KDE el plasmoide NO es una app cerrable: vive DENTRO de
-    // plasmashell y no puede matarse ni quitarse del panel por sí mismo (eso lo hace el usuario en
-    // Plasma). Lo que SÍ mantiene "vivo" al widget en segundo plano es el timer systemd de usuario
-    // (claude-brain.timer, cada 5 min → dispara el oneshot claude-brain.service = un fetch a la API).
-    // Por eso "apagar" aquí = DETENER esa recolección automática: `systemctl --user stop` del timer
-    // (y del service por si hay un fetch en vuelo). Es la acción más útil y REVERSIBLE:
-    //   · el widget sigue en el panel mostrando el último snapshot en caché;
-    //   · deja de consultar la API cada 5 min (útil p. ej. para no gastar cuota / silenciarlo);
-    //   · se revierte con el ↻ (forceRefresh: arranca el service) o al re-loguear (el timer vuelve
-    //     por WantedBy=timers.target). NO se hace `disable` justo para que el reinicio lo reponga solo.
-    // Decisión abierta a QA de unjordi: si prefiere que ⏻ además haga `disable` (que NO vuelva al
-    // re-loguear) o algo más agresivo, ajustar aquí.
-    function powerOff() {
+    // ⏸/⏵ PAUSAR / REANUDAR la recolección automática — NO es "apagar" (por eso NO lleva ícono de power).
+    // En macOS ⏻ = NSApp.terminate mata el proceso (la app de barra ES el widget Y el recolector). En KDE
+    // el plasmoide vive DENTRO de plasmashell y no puede matarse solo; lo que lo mantiene recolectando es
+    // el timer systemd de usuario (claude-brain.timer, cada 5 min → oneshot claude-brain.service = un fetch
+    // a la API). Por eso el botón PAUSA/REANUDA ese timer, y su ícono lo dice honesto (media-playback-pause
+    // cuando corre, media-playback-start cuando está pausado):
+    //   · PAUSAR: `systemctl --user stop` del timer (+ el service por si hay un fetch en vuelo). El widget
+    //     se queda con el último snapshot en caché y deja de gastar cuota. Reversible.
+    //   · REANUDAR: `systemctl --user start` del timer + un forceRefresh (trae dato fresco al instante).
+    // NO se hace `disable` a propósito: al re-loguear el timer vuelve por WantedBy=timers.target.
+    // `collectionPaused` es estado de SESIÓN (refleja la última acción del usuario en este arranque del
+    // plasmoide); no consulta systemctl en vivo — suficiente para el caso común (timer corriendo).
+    property bool collectionPaused: false
+    function pauseCollection() {
         powerRunner.connectSource("systemctl --user stop claude-brain.timer claude-brain.service")
+        root.collectionPaused = true
     }
+    function resumeCollection() {
+        powerRunner.connectSource("systemctl --user start claude-brain.timer")
+        root.collectionPaused = false
+        forceRefresh()   // reanuda el ciclo de 5 min y además trae dato fresco YA
+    }
+    function togglePause() { if (root.collectionPaused) resumeCollection(); else pauseCollection() }
     // Refresh RÁPIDO de la lista de sesiones (sin red): corre SOLO sessions-extract.js y su stdout
     // repobla root.sessions vía sessionsExtractSource. Úsalo tras mover/renombrar una sesión para que
     // la lista refleje el cambio al instante, SIN esperar al fetch completo (que se descarta si ya hay
@@ -1418,32 +1424,53 @@ PlasmoidItem {
             // Sin ícono "cerebro" nativo bueno en Breeze → emoji 🧠 como glifo del riel.
             TabRailButton { idx: 5; emoji: "🧠";                label: "Cerebro" }
             Item { Layout.fillHeight: true }
-            // Pie del riel: ↻ Actualizar ahora + ⏻ Apagar (detener la recolección automática).
-            // Espeja el pie del riel de macOS (refresh + power). Los botones contextuales ⬆/🩹 de macOS
-            // NO se replican aquí porque su función YA está en la pestaña Cerebro (el updBanner ⬆ y el
-            // botón-curita 🩹 de BrainHealth) → paridad funcional sin saturar el riel angosto (6 gridUnit).
-            // Íconos compactos (smallMedium) para que ambos quepan holgados en el ancho del riel.
+            // Pie del riel — paridad REAL con macOS (refresh · pausa/reanuda · ⬆ update · 🩹 cura):
+            //   ↻  Actualizar ahora (siempre)
+            //   ⏸/⏵ Pausar/Reanudar la recolección automática (toggle honesto — NO es "apagar")
+            //   ⬆  Actualizar el WIDGET — SOLO si hay versión nueva (paridad del badge del riel macOS)
+            //   🩹 Curar el cerebro global — SOLO si le falta una pieza (paridad del heal badge macOS)
+            // Los contextuales ⬆/🩹 aparecen solo cuando aplican, así que el caso común son 2 botones.
+            // Botones compactos (implicitWidth/Height acotados) para que no se vean enormes ni saturen el
+            // riel angosto (6 gridUnit) — antes el ToolButton default los inflaba.
             RowLayout {
                 Layout.alignment: Qt.AlignHCenter
                 spacing: Kirigami.Units.smallSpacing
+                readonly property int btnSize: Kirigami.Units.iconSizes.smallMedium + Kirigami.Units.smallSpacing * 2
                 PC3.ToolButton {
                     icon.name: "view-refresh"; flat: true
-                    icon.width: Kirigami.Units.iconSizes.smallMedium
-                    icon.height: Kirigami.Units.iconSizes.smallMedium
+                    icon.width: Kirigami.Units.iconSizes.smallMedium; icon.height: Kirigami.Units.iconSizes.smallMedium
+                    implicitWidth: parent.btnSize; implicitHeight: parent.btnSize
                     onClicked: root.forceRefresh()
                     PC3.ToolTip.text: "Actualizar ahora"; PC3.ToolTip.visible: hovered; PC3.ToolTip.delay: 500
                 }
                 PC3.ToolButton {
-                    // Ícono de power de Breeze. Semántica: detener la recolección automática (timer
-                    // systemd) — reversible con ↻ o al re-loguear. Ver root.powerOff() para el porqué
-                    // de que en KDE "apagar" NO sea un quit como en macOS.
-                    icon.name: "system-shutdown"; flat: true
-                    icon.width: Kirigami.Units.iconSizes.smallMedium
-                    icon.height: Kirigami.Units.iconSizes.smallMedium
-                    opacity: 0.75
-                    onClicked: root.powerOff()
-                    PC3.ToolTip.text: "Apagar: detiene la actualización automática en segundo plano (cada 5 min). El widget queda con el último dato en caché. Reversible: ↻ vuelve a actualizar y al re-iniciar sesión se reanuda solo."
+                    // ⏸/⏵ Pausar/Reanudar (ver root.pauseCollection/resumeCollection): el ícono refleja el
+                    // estado real (pausa cuando corre, play cuando está pausado). Semántica honesta ≠ power.
+                    icon.name: root.collectionPaused ? "media-playback-start" : "media-playback-pause"; flat: true
+                    icon.width: Kirigami.Units.iconSizes.smallMedium; icon.height: Kirigami.Units.iconSizes.smallMedium
+                    implicitWidth: parent.btnSize; implicitHeight: parent.btnSize
+                    opacity: 0.85
+                    onClicked: root.togglePause()
+                    PC3.ToolTip.text: root.collectionPaused
+                        ? "Reanudar: reactiva la actualización automática (cada 5 min) y trae dato fresco ya."
+                        : "Pausar: detiene la actualización automática (cada 5 min). El widget queda con el último dato en caché. Reversible con ⏵ o al re-iniciar sesión."
                     PC3.ToolTip.visible: hovered; PC3.ToolTip.delay: 500
+                }
+                PC3.ToolButton {
+                    visible: root.updateAvailable   // ⬆ solo si hay versión nueva del widget
+                    icon.name: "arrow-up"; flat: true
+                    icon.width: Kirigami.Units.iconSizes.smallMedium; icon.height: Kirigami.Units.iconSizes.smallMedium
+                    implicitWidth: parent.btnSize; implicitHeight: parent.btnSize
+                    onClicked: root.runUpdate()
+                    PC3.ToolTip.text: "Nueva versión del widget disponible — actualizar"; PC3.ToolTip.visible: hovered; PC3.ToolTip.delay: 500
+                }
+                PC3.ToolButton {
+                    visible: root.brainIncomplete   // 🩹 solo si al cerebro global le falta alguna pieza
+                    text: "🩹"; flat: true
+                    font.pixelSize: Kirigami.Units.iconSizes.smallMedium
+                    implicitWidth: parent.btnSize; implicitHeight: parent.btnSize
+                    onClicked: root.healBrainGlobal()
+                    PC3.ToolTip.text: "Al cerebro global le falta una pieza — curar (instala lo que falta)"; PC3.ToolTip.visible: hovered; PC3.ToolTip.delay: 500
                 }
             }
         }
