@@ -36,12 +36,13 @@ Lo que necesitas saber para trabajar aquí:
 │         └─ 🪞 Doc = realidad: cambió algo → su doc en la misma tanda
 ▼
 📄 MEMORY.md ─ el DETALLE de la firma + EL ÁRBOL de instalación + índice de memorias
-│   ├─ 🚦 Detalle de cada capacidad (§1..§9) ....... el how-to/contrato, cada una → su artefacto
+│   ├─ 🚦 Detalle 1:1 de cada ítem del árbol ....... el how-to/contrato por hook/skill/norma → su artefacto
 │   ├─ 🌳 El árbol — lo que el brain instala ....... 🔒 Forzosos · 🔔 Automático · 📜 Normas · 💡 Skills (+ detalle 1:1)
 │   └─ 🗂️ Índice de memorias por tema
 ▼
 📁 .claude/skills/ ─ skills para OPERAR este repo · agregar-hook-cerebro · claude-brain-widget · cambiar-icono · publicar-widget
-📁 .claude/hooks/ ─ los guards por-repo (viajan en el .claude de este repo) · …
+📁 .claude/memory/ ─ MEMORY.md (árbol + detalle, @import) + notas de desarrollo · *.local.md personales
+   └─ 🛑 claude-brain NO cablea sus guards por-repo (no hay .claude/hooks/ ni settings.json): corren por la instalación GLOBAL (install-brain.sh) desde brain/hooks/
 📁 brain/ ─ el PRODUCTO que viaja a los clones (hooks · skills · scripts · test-brain.sh) — 🛑 NO mutar desde una pasada de cerebro
 📁 docs/ ─ flowcharts + checks (verificar-arbol-sync.sh · gen-leyenda-arbol.sh) · investigaciones · …
 📁 src/ · macos/ · windows/ ─ los 3 widgets de cuota (los brainTiers espejan el árbol del README)

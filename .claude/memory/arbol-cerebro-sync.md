@@ -1,8 +1,8 @@
 # El árbol del Cerebro vive en 5 lugares — mantenlos EN SYNC (doc <= realidad)
 
 La "pestaña Cerebro" (la jerarquía INVIOLABLE→SKILLS con sus hooks/normas/skills) NO tiene una sola
-fuente: está **duplicada a mano en 4 archivos**, y además hay **lógica de estado por GUI** que casa
-los NOMBRES. Si tocas uno, **tocas los cuatro** — o el widget y el README (o las plataformas entre sí)
+fuente: está **duplicada a mano en 5 archivos**, y además hay **lógica de estado por GUI** que casa
+los NOMBRES. Si tocas uno, **tocas los cinco** — o el widget y el README (o las plataformas entre sí)
 se divergen. Es doc <= realidad aplicado a nosotros: **la realidad (widget) y su doc (README) deben
 espejarse.**
 
