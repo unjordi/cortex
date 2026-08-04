@@ -1461,7 +1461,8 @@ PlasmoidItem {
 
             // ===== Tab 0: Límites =====
             ColumnLayout {
-                spacing: Kirigami.Units.largeSpacing
+                // separación entre bloques > espaciado interno (jerarquía del Mac: entre-secciones 14, interno 6)
+                spacing: Kirigami.Units.gridUnit
                 Kirigami.Heading { level: 3; text: "Límites de uso"; Layout.fillWidth: true }
                 UsageSection { Layout.fillWidth: true; title: "Sesión (5 h)"; block: root.snapshot ? root.snapshot.five_hour : null }
                 UsageSection { Layout.fillWidth: true; title: "Semanal (7 d)"; block: root.snapshot ? root.snapshot.weekly : null }
@@ -2467,7 +2468,8 @@ PlasmoidItem {
         property string title: ""
         property var block: null
         readonly property real pct: block && block.percent !== undefined ? block.percent : -1
-        spacing: Kirigami.Units.smallSpacing
+        // espaciado interno header↔barra↔caption: iguala el "aire" del Mac (spacing 6, no apretujado a la barra)
+        spacing: Kirigami.Units.largeSpacing
         RowLayout {
             Layout.fillWidth: true
             PC3.Label { text: title; Layout.fillWidth: true; font.bold: true }
@@ -2508,7 +2510,8 @@ PlasmoidItem {
         property var extra: null
         readonly property real pct: spend && spend.percent !== undefined && spend.percent !== null ? spend.percent : -1
         visible: spend && spend.enabled === true
-        spacing: Kirigami.Units.smallSpacing
+        // espaciado interno header↔barra↔caption: iguala el "aire" del Mac (spacing 6, no apretujado a la barra)
+        spacing: Kirigami.Units.largeSpacing
         RowLayout {
             Layout.fillWidth: true
             PC3.Label { text: "Gasto real"; Layout.fillWidth: true; font.bold: true }
