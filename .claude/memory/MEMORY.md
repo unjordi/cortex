@@ -7,6 +7,10 @@
 > **→ El `CLAUDE.md` es el ÁRBOL** (qué instala el brain — vista curada). **ESTE archivo es el DETALLE 1:1
 > de cada ítem del árbol**, en el MISMO orden: 🔒 Forzosos → 🔔 Automático → 📜 Normas → 💡 Skills, + el
 > conocimiento de desarrollo al final. Fuente de cada detalle = el `.sh`/`SKILL.md` real (doc=realidad).
+>
+> **📋 Backlog vivo + buzón de quejas/sugerencias de los claudes → [`estado-proyecto.md`](estado-proyecto.md).**
+> Qué sigue, qué se decidió, y dónde cualquier sesión deja su feedback. El panel de to-dos es scratch efímero;
+> lo durable vive ahí. Empieza por ese archivo si vienes a trabajar el brain.
 
 ## 🔒 Hooks Forzosos — bloquean (deny) · no negociables
 ### 🔒 🚧 `git-branch-guard`  ·  PreToolUse/Bash · deny
