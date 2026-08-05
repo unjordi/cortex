@@ -294,20 +294,30 @@ rm -f "$blk" 2>/dev/null || true
 # ── (e) Normas globales en ~/.claude/CLAUDE.md (bloque con marcador; REFRESCA, no solo siembra) ──
 # Idempotente Y actualizable: si el bloque BEGIN/END ya existe, se REEMPLAZA EN SU LUGAR con la versión
 # actual (así las normas nuevas SÍ llegan a instalaciones existentes al re-correr); si no existe, se
-# agrega al final. Conserva intacto todo lo que el usuario tenga fuera del bloque.
+# agrega al final. Conserva intacto todo lo que el usuario tenga fuera del bloque. RED DE SEGURIDAD (la
+# sección personal del usuario NO vive en git): respalda a CLAUDE.md.bak antes del mv, y si hay BEGIN sin
+# END NO toca el archivo (ese caso borraría todo lo posterior al BEGIN).
 if [ ! -f "$SRC_NORMS/global-claude-md.md" ]; then
   echo "warn: no encuentro $SRC_NORMS/global-claude-md.md; no inyecté normas"
 elif [ -f "$GCLAUDE" ] && grep -q 'BEGIN claude-brain' "$GCLAUDE"; then
-  tmp="$(mktemp)" || tmp=""
-  if [ -n "$tmp" ] && awk -v src="$SRC_NORMS/global-claude-md.md" '
-      /<!-- BEGIN claude-brain/ { skip=1; while ((getline l < src) > 0) print l; close(src) }
-      skip==0 { print }
-      /<!-- END claude-brain -->/ { skip=0 }
-    ' "$GCLAUDE" > "$tmp" && [ -s "$tmp" ]; then
-    mv "$tmp" "$GCLAUDE"
-    echo "ok: normas globales del cerebro REFRESCADAS en $GCLAUDE (bloque reemplazado en su lugar)"
+  # Guarda anti-truncado: con BEGIN pero SIN END, el awk deja skip=1 para siempre → BORRARÍA todo lo que
+  # venga tras el BEGIN (incluida la sección PERSONAL del usuario). Si falta el END, NO tocamos el archivo.
+  if ! grep -q 'END claude-brain' "$GCLAUDE"; then
+    echo "warn: $GCLAUDE tiene 'BEGIN claude-brain' SIN su 'END' — NO lo toco (evito borrar tu sección personal). Ciérralo a mano y re-corre."
   else
-    rm -f "$tmp"; echo "warn: no pude refrescar el bloque de normas en $GCLAUDE"
+    tmp="$(mktemp)" || tmp=""
+    if [ -n "$tmp" ] && awk -v src="$SRC_NORMS/global-claude-md.md" '
+        /<!-- BEGIN claude-brain/ { skip=1; while ((getline l < src) > 0) print l; close(src) }
+        skip==0 { print }
+        /<!-- END claude-brain -->/ { skip=0 }
+      ' "$GCLAUDE" > "$tmp" && [ -s "$tmp" ]; then
+      # Red de seguridad: CLAUDE.md trae la sección PERSONAL del usuario, que NO vive en git → backup antes del mv.
+      cp "$GCLAUDE" "$GCLAUDE.bak" 2>/dev/null || true
+      mv "$tmp" "$GCLAUDE"
+      echo "ok: normas globales del cerebro REFRESCADAS en $GCLAUDE (bloque reemplazado en su lugar; respaldo en $GCLAUDE.bak)"
+    else
+      rm -f "$tmp"; echo "warn: no pude refrescar el bloque de normas en $GCLAUDE"
+    fi
   fi
 else
   { [ -f "$GCLAUDE" ] && printf '\n'; cat "$SRC_NORMS/global-claude-md.md"; } >> "$GCLAUDE"
