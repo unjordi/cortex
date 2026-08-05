@@ -23,13 +23,20 @@ set -u
 # ── JUEZ DE AUTORIZACIÓN (LLM) — definido ARRIBA para que los tests lo SOURCEEN idéntico (cero drift con
 # el hook). _juez_merge($destino,$mrid,$mensajes) → ALLOW|DENY|UNAVAILABLE. Reemplaza el pilón de regex
 # frágiles (NEG_RE/BOUND_OK_RE/… que hacían whack-a-mole): es comprensión de lectura (Haiku), robusta al
-# phrasing. Fail-safe conservador: sin `claude`/red/timeout/respuesta ininteligible → UNAVAILABLE→DENY,
+# phrasing. Fail-safe conservador: sin token OAuth/curl-jq/red/timeout/respuesta ininteligible → UNAVAILABLE→DENY,
 # NUNCA fail-open. Mockeable con CLAUDE_MERGE_JUEZ_MOCK (tests deterministas); el JUICIO real se prueba
 # LIVE con la batería de FP/FN históricos en test-brain.sh.
 _juez_merge() {   # $1=destino  $2=mrid  $3=mensajes → imprime ALLOW | DENY | UNAVAILABLE
   [ -n "${CLAUDE_MERGE_JUEZ_MOCK:-}" ] && { printf '%s' "$CLAUDE_MERGE_JUEZ_MOCK"; return 0; }
-  command -v claude >/dev/null 2>&1 || { printf 'UNAVAILABLE'; return 0; }
-  local prompt out
+  command -v curl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1 || { printf 'UNAVAILABLE'; return 0; }
+  # Token OAuth de SUSCRIPCIÓN — MISMO canal que el widget (api.anthropic.com + anthropic-beta:oauth-2025-04-20).
+  # NO `claude -p` (su harness es el lastre, ~50s), NO `--bare`, NO api-key. Orden: env override →
+  # credentials.json (cross-plataforma) → keychain (macOS). Sin token → UNAVAILABLE (fail-safe DENY arriba).
+  local prompt out tok body txt
+  tok="${CLAUDE_CODE_OAUTH_TOKEN:-}"
+  [ -z "$tok" ] && [ -f "$HOME/.claude/.credentials.json" ] && tok=$(jq -er '.claudeAiOauth.accessToken // empty' "$HOME/.claude/.credentials.json" 2>/dev/null)
+  [ -z "$tok" ] && command -v security >/dev/null 2>&1 && tok=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null | jq -er '.claudeAiOauth.accessToken // empty' 2>/dev/null)
+  [ -n "$tok" ] || { printf 'UNAVAILABLE'; return 0; }
   prompt="Eres un guardia de seguridad de merges de git. El asistente Claude quiere ejecutar: merge del MR $2 hacia la rama '$1'.
 Tu ÚNICA tarea: decidir si el USUARIO autorizó EXPRESAMENTE integrar ESTE trabajo a la rama '$1' ahora. Lo que importa es la INTENCIÓN de integrar a '$1'; el NÚMERO de MR ($2) es un artefacto técnico que a menudo NI EXISTÍA cuando el usuario dio el OK. 'EXPRESAMENTE' significa que la intención de integrar es INEQUÍVOCA, NO que el usuario cite un identificador — NO exijas que nombre el número.
 
@@ -49,8 +56,13 @@ Conversación reciente (del más viejo al más nuevo):
 $3
 
 Responde EXACTAMENTE una palabra en la primera línea: ALLOW o DENY."
-  out=$(timeout "${CLAUDE_MERGE_JUEZ_TIMEOUT:-30}" claude -p "$prompt" --model "${CLAUDE_MERGE_JUEZ_MODEL:-claude-haiku-4-5-20251001}" 2>/dev/null \
-        | grep -oiE 'ALLOW|DENY' | head -1 | tr '[:lower:]' '[:upper:]')
+  body=$(jq -n --arg m "${CLAUDE_MERGE_JUEZ_MODEL:-claude-haiku-4-5-20251001}" --arg p "$prompt" \
+          '{model:$m, max_tokens:16, messages:[{role:"user",content:$p}]}')
+  txt=$(curl -sS -m "${CLAUDE_MERGE_JUEZ_TIMEOUT:-20}" https://api.anthropic.com/v1/messages \
+          -H "Authorization: Bearer $tok" -H "anthropic-beta: oauth-2025-04-20" \
+          -H "anthropic-version: 2023-06-01" -H "content-type: application/json" \
+          -d "$body" 2>/dev/null | jq -r '.content[0].text // empty' 2>/dev/null)
+  out=$(printf '%s' "$txt" | grep -oiE 'ALLOW|DENY' | head -1 | tr '[:lower:]' '[:upper:]')
   [ -n "$out" ] && printf '%s' "$out" || printf 'UNAVAILABLE'
 }
 

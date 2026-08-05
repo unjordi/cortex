@@ -418,7 +418,7 @@ JFX
 # a mano y divergía). Semántica: casos DENY = hard-assert de NO-ALLOW (DENY y UNAVAILABLE ambos BLOQUEAN =
 # fail-safe, seguridad); casos ALLOW = hard-assert de ALLOW (son los falsos negativos que este fix corrige;
 # volver a DENY = regresión). UNAVAILABLE en un caso ALLOW = infra flaky, se reporta (con 1 reintento).
-if [ -n "${CLAUDE_MERGE_JUEZ_LIVE:-}" ] && command -v claude >/dev/null 2>&1; then
+if [ -n "${CLAUDE_MERGE_JUEZ_LIVE:-}" ] && command -v curl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
   _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/confirmar-merge-develop.sh"   # trae _juez_merge idéntico al del hook
   unset CLAUDE_MERGE_JUEZ_MOCK
   jlive() {  # $1=label $2=destino $3=mrid $4=esperado(ALLOW|DENY) $5=conversación intercalada
@@ -492,7 +492,7 @@ USUARIO: sí, hazlo"
 ASISTENTE: Listo, #240 mergeado. Queda el #237 pendiente del throttle.
 USUARIO: ok, gracias"
 else
-  ok "cmd LIVE: batería juez-Haiku real SALTADA (corre con CLAUDE_MERGE_JUEZ_LIVE=1 + claude disponible)"
+  ok "cmd LIVE: batería juez-Haiku real SALTADA (corre con CLAUDE_MERGE_JUEZ_LIVE=1 + curl/jq disponibles)"
 fi
 
 # ── (b1f) confirmar: AUTORIZACIÓN DURABLE en disco (sobrevive compactaciones) + vocabulario "empuja/mete" ──
@@ -1170,7 +1170,7 @@ o="$(dod 'Terminamos la migración del módulo.' "$EDITR" 'haz el cambio' "$CS")
 # Es el motivo de jubilar el regex-soup (CLAIM_RE/MECH/DOWNGRADE/META_LISTO/WEAK_STATUS + G1/H4/P2a/MEDIO-1):
 # que ENTIENDE el acto de habla pese al phrasing. Correr: CLAUDE_DOD_JUEZ_LIVE=1 bash test-brain.sh
 # SOURCEA _juez_dod del hook (cero drift). Cada caso es un FP/FN histórico documentado en el hook viejo.
-if [ -n "${CLAUDE_DOD_JUEZ_LIVE:-}" ] && command -v claude >/dev/null 2>&1; then
+if [ -n "${CLAUDE_DOD_JUEZ_LIVE:-}" ] && command -v curl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
   _CMD_DOD_SOURCE_ONLY=1 . "$HOOKS/dod-verificar.sh"
   unset CLAUDE_DOD_JUEZ_MOCK
   djlive() {  # $1=label $2="KEY=val" esperado $3=asistente $4=usuario(opcional)
@@ -1218,7 +1218,7 @@ if [ -n "${CLAUDE_DOD_JUEZ_LIVE:-}" ] && command -v claude >/dev/null 2>&1; then
   djlive "G2b 'quedó igual al mockup' (prosa)"      VISUAL=si 'Quedó igual al mockup. No corrí screenshot, pero confío en que se ve bien.'
   djlive "VISUAL=no 'el módulo quedó listo'"        VISUAL=no 'El módulo de auth quedó listo.'
 else
-  ok "dod LIVE: batería juez-dod SALTADA (corre con CLAUDE_DOD_JUEZ_LIVE=1 + claude disponible)"
+  ok "dod LIVE: batería juez-dod SALTADA (corre con CLAUDE_DOD_JUEZ_LIVE=1 + curl/jq disponibles)"
 fi
 rm -f "$DODTX"
 rm -f "$DODTX"
