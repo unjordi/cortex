@@ -1968,7 +1968,27 @@ n3="$(grep -c 'BEGIN claude-brain' "$G3" 2>/dev/null || echo 0)"
 [ "$n3" = "1" ] && ok "refresh: 1 solo bloque tras refrescar" || bad "refresh: $n3 bloques (esperaba 1)"
 { grep -q 'mi config a mano (antes)' "$G3" && grep -q 'mi config a mano (despues)' "$G3"; } \
   && ok "refresh: conserva la config del usuario alrededor del bloque" || bad "refresh: se comió config del usuario"
+# red de seguridad: al REFRESCAR un bloque existente se deja un respaldo CLAUDE.md.bak (la sección personal NO está en git)
+[ -f "$G3.bak" ] && ok "refresh: respaldo CLAUDE.md.bak creado antes del mv" || bad "refresh: NO se creó CLAUDE.md.bak"
 rm -rf "$FAKEHOME3"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (c3) anti-pérdida: BEGIN claude-brain SIN su END → NO tocar (no comerse la sección personal) =="
+# Caso peligroso: un CLAUDE.md con BEGIN pero sin END (truncado / corrida previa a medias). El awk pondría
+# skip=1 para siempre y borraría TODO lo posterior al BEGIN. La guarda debe DETECTARLO y no tocar el archivo.
+FAKEHOME4="$(mktemp -d "${TMPDIR:-/tmp}/brain-noend.XXXXXX")"
+mkdir -p "$FAKEHOME4/.claude"
+G4="$FAKEHOME4/.claude/CLAUDE.md"
+printf 'seccion PERSONAL imprescindible\n\n<!-- BEGIN claude-brain -->\nbloque a medias sin cierre\nMAS config personal DESPUES del begin\n' > "$G4"
+G4_before="$(cat "$G4")"
+HOME="$FAKEHOME4" bash "$INSTALLER" >/dev/null 2>&1
+{ grep -q 'seccion PERSONAL imprescindible' "$G4" && grep -q 'MAS config personal DESPUES del begin' "$G4"; } \
+  && ok "c3: BEGIN-sin-END NO borró la sección personal (guarda anti-truncado)" \
+  || bad "c3: se PERDIÓ contenido tras un BEGIN sin END (guarda anti-truncado falló)"
+# fail-safe: no debió reescribir el archivo en ese caso (queda idéntico)
+[ "$(cat "$G4")" = "$G4_before" ] && ok "c3: archivo intacto (no tocado ante BEGIN sin END)" || bad "c3: modificó un archivo con BEGIN sin END"
+rm -rf "$FAKEHOME4"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
