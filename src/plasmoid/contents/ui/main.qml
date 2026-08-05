@@ -374,23 +374,29 @@ PlasmoidItem {
         root.updLastCheck = 0
         checkUpdate()
     }
-    // ⏻ "Apagar" — paridad KDE del botón power de macOS, pero con OTRA semántica a propósito.
-    // En macOS ⏻ = NSApp.terminate: la app de la barra de menús ES el widget Y el recolector, así que
-    // "apagar" mata todo el proceso. En KDE el plasmoide NO es una app cerrable: vive DENTRO de
-    // plasmashell y no puede matarse ni quitarse del panel por sí mismo (eso lo hace el usuario en
-    // Plasma). Lo que SÍ mantiene "vivo" al widget en segundo plano es el timer systemd de usuario
-    // (claude-brain.timer, cada 5 min → dispara el oneshot claude-brain.service = un fetch a la API).
-    // Por eso "apagar" aquí = DETENER esa recolección automática: `systemctl --user stop` del timer
-    // (y del service por si hay un fetch en vuelo). Es la acción más útil y REVERSIBLE:
-    //   · el widget sigue en el panel mostrando el último snapshot en caché;
-    //   · deja de consultar la API cada 5 min (útil p. ej. para no gastar cuota / silenciarlo);
-    //   · se revierte con el ↻ (forceRefresh: arranca el service) o al re-loguear (el timer vuelve
-    //     por WantedBy=timers.target). NO se hace `disable` justo para que el reinicio lo reponga solo.
-    // Decisión abierta a QA de unjordi: si prefiere que ⏻ además haga `disable` (que NO vuelva al
-    // re-loguear) o algo más agresivo, ajustar aquí.
-    function powerOff() {
+    // ⏸/⏵ PAUSAR / REANUDAR la recolección automática — NO es "apagar" (por eso NO lleva ícono de power).
+    // En macOS ⏻ = NSApp.terminate mata el proceso (la app de barra ES el widget Y el recolector). En KDE
+    // el plasmoide vive DENTRO de plasmashell y no puede matarse solo; lo que lo mantiene recolectando es
+    // el timer systemd de usuario (claude-brain.timer, cada 5 min → oneshot claude-brain.service = un fetch
+    // a la API). Por eso el botón PAUSA/REANUDA ese timer, y su ícono lo dice honesto (media-playback-pause
+    // cuando corre, media-playback-start cuando está pausado):
+    //   · PAUSAR: `systemctl --user stop` del timer (+ el service por si hay un fetch en vuelo). El widget
+    //     se queda con el último snapshot en caché y deja de gastar cuota. Reversible.
+    //   · REANUDAR: `systemctl --user start` del timer + un forceRefresh (trae dato fresco al instante).
+    // NO se hace `disable` a propósito: al re-loguear el timer vuelve por WantedBy=timers.target.
+    // `collectionPaused` es estado de SESIÓN (refleja la última acción del usuario en este arranque del
+    // plasmoide); no consulta systemctl en vivo — suficiente para el caso común (timer corriendo).
+    property bool collectionPaused: false
+    function pauseCollection() {
         powerRunner.connectSource("systemctl --user stop claude-brain.timer claude-brain.service")
+        root.collectionPaused = true
     }
+    function resumeCollection() {
+        powerRunner.connectSource("systemctl --user start claude-brain.timer")
+        root.collectionPaused = false
+        forceRefresh()   // reanuda el ciclo de 5 min y además trae dato fresco YA
+    }
+    function togglePause() { if (root.collectionPaused) resumeCollection(); else pauseCollection() }
     // Refresh RÁPIDO de la lista de sesiones (sin red): corre SOLO sessions-extract.js y su stdout
     // repobla root.sessions vía sessionsExtractSource. Úsalo tras mover/renombrar una sesión para que
     // la lista refleje el cambio al instante, SIN esperar al fetch completo (que se descarta si ya hay
@@ -918,6 +924,9 @@ PlasmoidItem {
                 { emoji: "🧹", name: "barrer-ramas",            desc: "barre ramas locales ya integradas (zombies squash-safe) en 2º plano",
                   event: "SessionStart",
                   detail: "Al iniciar sesión en un repo con remoto, y como mucho cada 24h, lanza limpiar-ramas.sh en segundo plano para borrar las ramas locales ya integradas (MR mergeado con --squash → remota borrada, o commits ya en la base por equivalencia de parche). Conserva todo trabajo sin integrar; nunca toca la actual/base/develop/main/Develop*/keep/*." },
+                { emoji: "💾", name: "exportar-sesion-master",  desc: "auto-export de las sesiones *-master a ~/.claude-sessions (o Drive vía CLAUDE_SESSIONS_DRIVE); detached, sobrevive el cleanup de 30 días",
+                  event: "Stop · SessionEnd · PreCompact",
+                  detail: "Exporta el transcript comprimido de una sesión cuyo título sea *-master (o ya listada en masters.json) a la carpeta de sesiones (default ~/.claude-sessions; override CLAUDE_SESSIONS_DRIVE para una nube → la sesión viaja entre máquinas) para poder --resume la MISMA sesión después. Corre DETACHED (nohup, lock por-sid) con debounce en Stop; SessionEnd fija el estado final y detecta masters nuevos; PreCompact es bonus. Sobrevive el cleanup de 30 días de Claude Code. Silencioso y fail-open: si no es master o falta el motor/node, no hace nada." },
                 { emoji: "🧺", name: "recordar-cosechar",       desc: "trabajaste y no cosechaste aprendizajes → sugiere /cosechar-sesion",
                   event: "Stop",
                   detail: "Al terminar un turno, si hubo trabajo sustantivo reciente en el repo (commits en las últimas horas o cambios de código sin commitear) pero .claude/memory/aprendizajes.md no se tocó, sugiere —no bloquea— correr /cosechar-sesion antes de cerrar si aprendiste algo durable. Throttle fuerte: 1×/día por repo. Fail-open." },
@@ -978,6 +987,9 @@ PlasmoidItem {
                 { emoji: "🧪", name: "auditar-suficiencia-operativa", desc: "¿ALCANZA la doc para HACER el trabajo? tareas reales ✅/⚠️/❌ + re-auditar tras arreglar",
                   event: "skill · opt-in",
                   detail: "Audita una doc/cerebro por SUFICIENCIA OPERATIVA, no por coherencia: enumera las tareas reales que alguien tendrá que hacer y las califica ✅/⚠️/❌ con archivo:línea. Exige RE-AUDITAR con el prompt idéntico tras arreglar los hallazgos, porque los arreglos introducen contradicciones nuevas." },
+                { emoji: "🧠", name: "consolidar-cerebro", desc: "meta-orquestador: dupla → positivar → desinflar → loop de convergencia → cierre con la FIRMA",
+                  event: "skill · opt-in",
+                  detail: "Meta-orquestador que consolida un cerebro de punta a punta: corre la DUPLA de auditores (suficiencia + coherencia) hasta converger, luego positivar-doc y desinflar-memorias, en un loop de convergencia, y cierra generando/actualizando la FIRMA por-contenido (CLAUDE.md + MEMORY.md). No declara LISTO: exige el QA/OK del usuario." },
                 { emoji: "🪶", name: "desinflar-memorias", desc: "adelgaza memorias sin perder lecciones: narrativa → 1 línea, mitos → ⚰️ Lápidas al final",
                   event: "skill · opt-in",
                   detail: "Desinfla un árbol de memorias inflado de narrativa, tutoriales y conocimiento ya desmentido SIN perder ninguna lección: cada tirada de historia se colapsa a su lección en 1-2 líneas EN SU LUGAR, y los mitos descartados se comprimen a una línea y se mudan a una sección ⚰️ Lápidas AL FINAL del archivo (si los borras, el siguiente agente los re-descubre). No toca la bitácora ni el hilo: son append-only por diseño." },
@@ -1022,7 +1034,7 @@ PlasmoidItem {
 
     // Catálogo conocido (mismos conjuntos que BrainState.knownGlobalHooks / knownRepoHooks del Swift).
     // DEBE coincidir con brain/hooks/MANIFEST; lo verifica el drift-check del widget (test-brain.sh).
-    readonly property var brainGlobalHooks: ["git-branch-guard","merge-squash-guard","confirmar-merge-develop","recordar-dashboard","secret-scan","rama-vieja","proteger-arbol","proteger-fuente-cerebro","limite-gasto","delegacion-gate","delegacion-registrar","delegacion-reporte","rehidratar-hilo","aviso-contexto","aviso-drift-cerebro","barrer-ramas","entorno-maquina-guard"]
+    readonly property var brainGlobalHooks: ["git-branch-guard","merge-squash-guard","confirmar-merge-develop","recordar-dashboard","secret-scan","rama-vieja","proteger-arbol","proteger-fuente-cerebro","limite-gasto","delegacion-gate","delegacion-registrar","delegacion-reporte","rehidratar-hilo","aviso-contexto","aviso-drift-cerebro","exportar-sesion-master","barrer-ramas","entorno-maquina-guard"]
     readonly property var brainRepoHooks:   ["sesion-inicio","dod-verificar","recordar-cosechar","recordar-unificar-cerebro"]
 
     // Ruta del helper bash, resuelta relativa a este main.qml (…/contents/ui/ → …/contents/brain-scan.sh).
@@ -1116,7 +1128,7 @@ PlasmoidItem {
             return p && w ? "installed" : (p ? "presentNotWired" : "absent")
         }
         if (inArr(root.brainRepoHooks, name)) return "repoScoped"
-        if (["cerrar-slice","checkpoint","diagramar","auditar-proceso-algoritmo","auditar-coherencia-cerebro","auditar-suficiencia-operativa","desinflar-memorias","orquestar-fanout","turno-nocturno","cosechar-sesion","unificar-cerebro","investigar-dominio","positivar-doc","revisar-entregables-agentes","zoom-screenshot","claude-proyecto-autocontenido"].indexOf(name) !== -1)
+        if (["cerrar-slice","checkpoint","diagramar","auditar-proceso-algoritmo","auditar-coherencia-cerebro","auditar-suficiencia-operativa","consolidar-cerebro","desinflar-memorias","orquestar-fanout","turno-nocturno","cosechar-sesion","unificar-cerebro","investigar-dominio","positivar-doc","revisar-entregables-agentes","zoom-screenshot","claude-proyecto-autocontenido"].indexOf(name) !== -1)
             return inArr(st.skills, name) ? "installed" : "absent"
         if (name === "Definition of Done" || name === "Doc <= realidad"
             || name === "Flujo de git" || name === "Costo de delegación")
@@ -1193,7 +1205,7 @@ PlasmoidItem {
         id: compactRoot
         hoverEnabled: true
         onClicked: root.expanded = !root.expanded
-        implicitWidth: col.implicitWidth + Kirigami.Units.largeSpacing * 2
+        implicitWidth: row.implicitWidth + Kirigami.Units.largeSpacing * 2
         implicitHeight: Kirigami.Units.iconSizes.medium
         Layout.minimumWidth: implicitWidth
         Layout.preferredWidth: implicitWidth
@@ -1202,17 +1214,42 @@ PlasmoidItem {
         readonly property real rowH: height / 2
         readonly property real fs: Math.max(9, rowH * 0.62)
 
-        ColumnLayout {
-            id: col
+        RowLayout {
+            id: row
             anchors.centerIn: parent
-            spacing: Math.max(1, compactRoot.rowH * 0.1)
-            CompactRow {
-                label: "5h"; pct: root.fivePct; fontPx: compactRoot.fs
-                resetIso: root.snapshot && root.snapshot.five_hour ? root.snapshot.five_hour.resets_at : ""
+            spacing: Kirigami.Units.smallSpacing
+            ColumnLayout {
+                id: col
+                spacing: Math.max(1, compactRoot.rowH * 0.1)
+                CompactRow {
+                    label: "5h"; pct: root.fivePct; fontPx: compactRoot.fs
+                    resetIso: root.snapshot && root.snapshot.five_hour ? root.snapshot.five_hour.resets_at : ""
+                }
+                CompactRow {
+                    label: "7d"; pct: root.weekPct; fontPx: compactRoot.fs
+                    resetIso: root.snapshot && root.snapshot.weekly ? root.snapshot.weekly.resets_at : ""
+                }
             }
-            CompactRow {
-                label: "7d"; pct: root.weekPct; fontPx: compactRoot.fs
-                resetIso: root.snapshot && root.snapshot.weekly ? root.snapshot.weekly.resets_at : ""
+            // Badges ⬆/🩹 en la BANDEJA — paridad con la píldora de la barra del macOS (PillImage.swift):
+            // a la derecha, APILADOS cuando salen los dos, y solo cuando aplican (update disponible / cerebro
+            // incompleto). El RowLayout les reserva su propio ancho → NO enciman el %. Mismos glifos/acento
+            // que el badge del riel y el pie (⬆ #e8884a · 🩹). Un Column (no Layout) salta el hijo oculto.
+            Column {
+                Layout.alignment: Qt.AlignVCenter
+                visible: root.updateAvailable || root.brainIncomplete
+                spacing: 0
+                PC3.Label {
+                    visible: root.updateAvailable
+                    text: "⬆"; color: "#e8884a"; font.bold: true
+                    font.pixelSize: Math.max(8, compactRoot.fs * 0.95)
+                    horizontalAlignment: Text.AlignHCenter
+                }
+                PC3.Label {
+                    visible: root.brainIncomplete
+                    text: "🩹"
+                    font.pixelSize: Math.max(8, compactRoot.fs * 0.95)
+                    horizontalAlignment: Text.AlignHCenter
+                }
             }
         }
     }
@@ -1253,7 +1290,12 @@ PlasmoidItem {
 
     // ---------- Full: riel de pestañas a la IZQUIERDA + contenido ----------
     fullRepresentation: RowLayout {
-        Layout.preferredWidth: Kirigami.Units.gridUnit * 27
+        // Ancho TOTAL del popup, alineado con el macOS canónico (520px). Ojo: gridUnit escala con la fuente,
+        // así que el multiplicador se calibró por QA en el panel real. Con el layout robusto de Proyectos
+        // (in/out ancho natural + % minimumWidth) el ancho ya NO causa cortes; es puro aire para la sección
+        // de detalle (el riel es fijo → todo el extra va al contenido). El ancho del viewport era la causa
+        // RAÍZ del desalineado/corte: con espacio suficiente las columnas caben y se alinean solas.
+        Layout.preferredWidth: Kirigami.Units.gridUnit * 40
         // Altura: 24 gridUnit (~432px con el gridUnit ~18px de Breeze). Antes era 17 → el popover
         // salía "chaparro" (relación 17/27 = 0.63, muy plano). 24/27 = 0.89 recupera una proporción
         // cómoda, alineada con el popover de macOS (520×420 → alto = 0.81× el ancho) y con un pelín
@@ -1399,7 +1441,7 @@ PlasmoidItem {
         // riel vertical de pestañas
         ColumnLayout {
             Layout.fillHeight: true
-            Layout.preferredWidth: Kirigami.Units.gridUnit * 6
+            Layout.preferredWidth: Kirigami.Units.gridUnit * 7   // ~126px, cerca del riel de 132px del macOS canónico (caben 4 íconos al pie sin desbordar)
             Layout.margins: Kirigami.Units.smallSpacing
             spacing: Kirigami.Units.smallSpacing
             TabRailButton { idx: 0; icon: "speedometer";        label: "Límites" }
@@ -1412,31 +1454,60 @@ PlasmoidItem {
             // Sin ícono "cerebro" nativo bueno en Breeze → emoji 🧠 como glifo del riel.
             TabRailButton { idx: 5; emoji: "🧠";                label: "Cerebro" }
             Item { Layout.fillHeight: true }
-            // Pie del riel: ↻ Actualizar ahora + ⏻ Apagar (detener la recolección automática).
-            // Espeja el pie del riel de macOS (refresh + power). Los botones contextuales ⬆/🩹 de macOS
-            // NO se replican aquí porque su función YA está en la pestaña Cerebro (el updBanner ⬆ y el
-            // botón-curita 🩹 de BrainHealth) → paridad funcional sin saturar el riel angosto (6 gridUnit).
-            // Íconos compactos (smallMedium) para que ambos quepan holgados en el ancho del riel.
+            // Pie del riel — MISMO acomodo que el macOS CANÓNICO (rail.swift, HStack en 132px): primero los
+            // CONTEXTUALES (⬆ update · 🩹 cura, solo cuando aplican), luego los FIJOS (↻ refresh · ⏸/⏵ pausa).
+            // Botones SIN chrome (padding 0) y compactos para que hasta 4 quepan en el riel sin desbordarse
+            // — el macOS los tiene borderless. ⬆/🩹 usan los MISMOS glifos que el badge del riel (emoji ⬆
+            // acento / 🩹) vía Label propio (elide none), NO un triángulo genérico de Breeze.
             RowLayout {
                 Layout.alignment: Qt.AlignHCenter
-                spacing: Kirigami.Units.smallSpacing
+                spacing: 2
+                readonly property int btnSize: Kirigami.Units.iconSizes.smallMedium + Kirigami.Units.smallSpacing
+                // ⬆ Actualizar el WIDGET — solo si hay versión nueva (mismo glifo/acento que el badge del riel)
                 PC3.ToolButton {
-                    icon.name: "view-refresh"; flat: true
-                    icon.width: Kirigami.Units.iconSizes.smallMedium
-                    icon.height: Kirigami.Units.iconSizes.smallMedium
+                    visible: root.updateAvailable
+                    flat: true; padding: 0
+                    implicitWidth: parent.btnSize; implicitHeight: parent.btnSize
+                    contentItem: PC3.Label {
+                        text: "⬆"; color: "#e8884a"; font.bold: true
+                        font.pixelSize: Kirigami.Units.iconSizes.smallMedium
+                        horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter; elide: Text.ElideNone
+                    }
+                    onClicked: root.runUpdate()
+                    PC3.ToolTip.text: "Nueva versión del widget disponible — actualizar"; PC3.ToolTip.visible: hovered; PC3.ToolTip.delay: 500
+                }
+                // 🩹 Curar el cerebro global — solo si le falta una pieza (mismo glifo que el badge del riel)
+                PC3.ToolButton {
+                    visible: root.brainIncomplete
+                    flat: true; padding: 0
+                    implicitWidth: parent.btnSize; implicitHeight: parent.btnSize
+                    contentItem: PC3.Label {
+                        text: "🩹"
+                        font.pixelSize: Kirigami.Units.iconSizes.smallMedium
+                        horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter; elide: Text.ElideNone
+                    }
+                    onClicked: root.healBrainGlobal()
+                    PC3.ToolTip.text: "Al cerebro global le falta una pieza — curar (instala lo que falta)"; PC3.ToolTip.visible: hovered; PC3.ToolTip.delay: 500
+                }
+                // ↻ Actualizar ahora (datos + versión)
+                PC3.ToolButton {
+                    icon.name: "view-refresh"; flat: true; padding: 0
+                    icon.width: Kirigami.Units.iconSizes.smallMedium; icon.height: Kirigami.Units.iconSizes.smallMedium
+                    implicitWidth: parent.btnSize; implicitHeight: parent.btnSize
                     onClicked: root.forceRefresh()
                     PC3.ToolTip.text: "Actualizar ahora"; PC3.ToolTip.visible: hovered; PC3.ToolTip.delay: 500
                 }
+                // ⏸/⏵ Pausar/Reanudar la recolección automática (ver root.pauseCollection/resumeCollection):
+                // ícono refleja el estado real. Semántica honesta en KDE ≠ power (NO mata, pausa el timer).
                 PC3.ToolButton {
-                    // Ícono de power de Breeze. Semántica: detener la recolección automática (timer
-                    // systemd) — reversible con ↻ o al re-loguear. Ver root.powerOff() para el porqué
-                    // de que en KDE "apagar" NO sea un quit como en macOS.
-                    icon.name: "system-shutdown"; flat: true
-                    icon.width: Kirigami.Units.iconSizes.smallMedium
-                    icon.height: Kirigami.Units.iconSizes.smallMedium
-                    opacity: 0.75
-                    onClicked: root.powerOff()
-                    PC3.ToolTip.text: "Apagar: detiene la actualización automática en segundo plano (cada 5 min). El widget queda con el último dato en caché. Reversible: ↻ vuelve a actualizar y al re-iniciar sesión se reanuda solo."
+                    icon.name: root.collectionPaused ? "media-playback-start" : "media-playback-pause"; flat: true; padding: 0
+                    icon.width: Kirigami.Units.iconSizes.smallMedium; icon.height: Kirigami.Units.iconSizes.smallMedium
+                    implicitWidth: parent.btnSize; implicitHeight: parent.btnSize
+                    opacity: 0.85
+                    onClicked: root.togglePause()
+                    PC3.ToolTip.text: root.collectionPaused
+                        ? "Reanudar: reactiva la actualización automática (cada 5 min) y trae dato fresco ya."
+                        : "Pausar: detiene la actualización automática (cada 5 min). El widget queda con el último dato en caché. Reversible con ⏵ o al re-iniciar sesión."
                     PC3.ToolTip.visible: hovered; PC3.ToolTip.delay: 500
                 }
             }
@@ -1455,7 +1526,8 @@ PlasmoidItem {
 
             // ===== Tab 0: Límites =====
             ColumnLayout {
-                spacing: Kirigami.Units.largeSpacing
+                // separación entre bloques > espaciado interno (jerarquía del Mac: entre-secciones 14, interno 6)
+                spacing: Kirigami.Units.gridUnit
                 Kirigami.Heading { level: 3; text: "Límites de uso"; Layout.fillWidth: true }
                 UsageSection { Layout.fillWidth: true; title: "Sesión (5 h)"; block: root.snapshot ? root.snapshot.five_hour : null }
                 UsageSection { Layout.fillWidth: true; title: "Semanal (7 d)"; block: root.snapshot ? root.snapshot.weekly : null }
@@ -1564,7 +1636,9 @@ PlasmoidItem {
                                     anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.right: parent.right
                                     spacing: 0
                                     Repeater {
-                                        model: day.models
+                                        // tokens desc + desempate por nombre: el apilado NO debe depender de la
+                                        // fuente (local por tokens; merge global alfabético) → toggle 🖥/☁️ consistente.
+                                        model: (day.models || []).slice().sort(function(a, b) { return (b.tokens || 0) - (a.tokens || 0) || ((a.model || "") < (b.model || "") ? -1 : (a.model || "") > (b.model || "") ? 1 : 0) })
                                         delegate: Rectangle {
                                             Layout.fillWidth: true
                                             Layout.preferredHeight: chartArea.height * (modelData.tokens / root.rMaxDayTokens)
@@ -1584,7 +1658,7 @@ PlasmoidItem {
                     contentWidth: availableWidth   // sin scroll horizontal
                     clip: true
                     ColumnLayout {
-                        width: modelsScroll.availableWidth
+                        width: modelsScroll.availableWidth - Kirigami.Units.gridUnit * 0.75
                         spacing: Kirigami.Units.smallSpacing
                         Repeater {
                             model: root.rModels
@@ -1630,7 +1704,10 @@ PlasmoidItem {
                                     anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.right: parent.right
                                     spacing: 0
                                     Repeater {
-                                        model: day.projects
+                                        // tokens desc: el orden de apilado NO debe depender de la fuente
+                                        // (stats.json local ordena por tokens; el merge global, alfabético) →
+                                        // homologado para que el toggle 🖥/☁️ no reacomode los segmentos.
+                                        model: (day.projects || []).slice().sort(function(a, b) { return (b.tokens || 0) - (a.tokens || 0) || ((a.project || "") < (b.project || "") ? -1 : (a.project || "") > (b.project || "") ? 1 : 0) })
                                         delegate: Rectangle {
                                             Layout.fillWidth: true
                                             Layout.preferredHeight: projChartArea.height * (modelData.tokens / root.rMaxDayProjectTokens)
@@ -1649,7 +1726,7 @@ PlasmoidItem {
                     contentWidth: availableWidth   // sin scroll horizontal
                     clip: true
                     ColumnLayout {
-                        width: projScroll.availableWidth
+                        width: projScroll.availableWidth - Kirigami.Units.gridUnit * 0.75
                         spacing: Kirigami.Units.smallSpacing
                         Repeater {
                             model: root.rProjects
@@ -1696,6 +1773,8 @@ PlasmoidItem {
                                         Rectangle { width: 10; height: 10; radius: 2; color: root.projectColorFor(modelData.project) }
                                         PC3.Label {
                                             text: projName; font.bold: true
+                                            // maxWidth acotado (antes gridUnit*8) para dejar aire a las columnas
+                                            // in/out + %; el Mac también elide el nombre largo (cenamContenidoNa…).
                                             elide: Text.ElideRight; Layout.maximumWidth: Kirigami.Units.gridUnit * 8
                                         }
                                         PC3.Label {
@@ -1707,10 +1786,14 @@ PlasmoidItem {
                                         PC3.Label {
                                             opacity: 0.7
                                             text: root.fmtTok(modelData.in_tok) + " in · " + root.fmtTok(modelData.out_tok) + " out"
+                                            // Ancho NATURAL (como hace 2 semanas): NO se capa. El spacer de arriba
+                                            // absorbe el sobrante y empuja in/out+% a la derecha. Capar el ancho
+                                            // corta el texto (lección de hoy) → no se hace.
                                         }
                                         PC3.Label {
                                             text: modelData.pct.toFixed(1) + "%"; font.bold: true
                                             color: root.projectColorFor(modelData.project)
+                                            // minimumWidth (no preferredWidth/maximumWidth): CRECE para caber → nunca se corta.
                                             Layout.minimumWidth: Kirigami.Units.gridUnit * 2.5; horizontalAlignment: Text.AlignRight
                                         }
                                     }
@@ -1869,7 +1952,7 @@ PlasmoidItem {
                     contentWidth: availableWidth   // sin scroll horizontal
                     clip: true
                     ColumnLayout {
-                        width: chatsScroll.availableWidth
+                        width: chatsScroll.availableWidth - Kirigami.Units.gridUnit * 0.75
                         spacing: Kirigami.Units.smallSpacing
                         Repeater {
                             model: root.rChats.slice(0, 20)
@@ -1945,7 +2028,7 @@ PlasmoidItem {
                 clip: true
                 Component.onCompleted: { root.scanBrain(); root.checkUpdate() }   // primera lectura + chequeo de versión
                 ColumnLayout {
-                    width: cerebroScroll.availableWidth
+                    width: cerebroScroll.availableWidth - Kirigami.Units.gridUnit * 0.75
                     spacing: Kirigami.Units.largeSpacing
                     // Encabezado de marca: ícono claude-brain (ya incluye el destello) + "Cerebro global".
                     RowLayout {
@@ -2461,7 +2544,8 @@ PlasmoidItem {
         property string title: ""
         property var block: null
         readonly property real pct: block && block.percent !== undefined ? block.percent : -1
-        spacing: Kirigami.Units.smallSpacing
+        // espaciado interno header↔barra↔caption: iguala el "aire" del Mac (spacing 6, no apretujado a la barra)
+        spacing: Kirigami.Units.largeSpacing
         RowLayout {
             Layout.fillWidth: true
             PC3.Label { text: title; Layout.fillWidth: true; font.bold: true }
@@ -2502,7 +2586,8 @@ PlasmoidItem {
         property var extra: null
         readonly property real pct: spend && spend.percent !== undefined && spend.percent !== null ? spend.percent : -1
         visible: spend && spend.enabled === true
-        spacing: Kirigami.Units.smallSpacing
+        // espaciado interno header↔barra↔caption: iguala el "aire" del Mac (spacing 6, no apretujado a la barra)
+        spacing: Kirigami.Units.largeSpacing
         RowLayout {
             Layout.fillWidth: true
             PC3.Label { text: "Gasto real"; Layout.fillWidth: true; font.bold: true }

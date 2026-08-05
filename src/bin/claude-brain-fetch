@@ -529,8 +529,11 @@ if [[ -n "${SYNC_DIR_RESOLVED:-}" && -f "$CACHE_DIR/stats.json" ]] && mkdir -p "
     rm -f "$SNAP_TMP"
   fi
   GLOBAL_TMP="$CACHE_DIR/stats-global.json.tmp"
-  if jq -s --arg acct "$ACCT" --arg ts "$NOW_ISO" '
-      map(select(.account == $acct)) as $snaps
+  # (e) SYNC_COMBINE_ALL=1 → combina snapshots de TODAS las cuentas de la carpeta de sync (misma persona,
+  # varias cuentas: p. ej. una por máquina). Sin él, solo la cuenta local (default: aísla cuentas ajenas).
+  SYNC_COMBINE=$([ "${SYNC_COMBINE_ALL:-}" = "1" ] && echo true || echo false)
+  if jq -s --arg acct "$ACCT" --argjson comb "$SYNC_COMBINE" --arg ts "$NOW_ISO" '
+      (if $comb then . else map(select(.account == $acct)) end) as $snaps
       | ([ $snaps[].stats.days[]? ] | group_by(.date) | map({
             date: .[0].date,
             in_tok:  (map(.in_tok  // 0) | add), out_tok: (map(.out_tok // 0) | add),

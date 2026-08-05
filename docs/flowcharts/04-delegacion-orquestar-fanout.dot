@@ -1,13 +1,11 @@
-// 01 — Instalación / actualización del cerebro (claude-brain)  ·  FUENTE editable (Graphviz .dot)
-// Render:  dot -Tsvg 01-instalacion-actualizacion-del-cerebro.dot -o 01-instalacion-actualizacion-del-cerebro.svg
-// Rehecho 2026-07-29 contra el estado REAL del código (MANIFEST + install-brain.sh + sincronizar-cerebro.sh
-// + aviso-drift-cerebro.sh + docs/autoupdate.md). Sustituye al 01 obsoleto que pintaba como "[futuro]/hueco"
-// cosas que YA existen. Convención de color = CONVENCIONES.md (🔴=DENY · 🚧=hueco/deuda · ⚠=escribe git).
-// Estado a 2026-07-30 (develop con #209 mergeado): DRIFT_CIEGO/DRIFT_STAGE (#209) y WID_ATOM (install-brain
-// atomic_install) quedaron RESUELTOS (🟢); el único 🚧 vigente es BOOT_INV, en la PLANTILLA (fuera de este repo).
+// 04 — Delegación / orquestar-fanout (claude-brain)  ·  FUENTE editable (Graphviz .dot)
+// Render:  dot -Tsvg 04-delegacion-orquestar-fanout.dot -o 04-delegacion-orquestar-fanout.svg
+// Construido 2026-08-01 desde el CÓDIGO REAL: hooks limite-gasto, delegacion-gate, delegacion-registrar,
+// delegacion-reporte + lib delegacion-comun.sh (clasificar_delegacion) + agentes-costo.json; scripts
+// limpiar-worktrees.sh / limpiar-ramas.sh; skill orquestar-fanout (contrato de reporte + aislamiento).
 digraph flujos {
   graph [bgcolor="#1b1712", rankdir=TB, fontname="Helvetica", splines=true,
-         nodesep=0.35, ranksep=0.55, pad=0.25];
+         nodesep=0.35, ranksep=0.55, pad=0.25, compound=true];
   node  [fontname="Helvetica", fontsize=12, fontcolor="#f2ede6", shape=box,
          style="rounded,filled", fillcolor="#2b2b2b", color="#8a8a8a", penwidth=1.5];
   edge  [color="#d97757", fontname="Helvetica", fontsize=10, fontcolor="#cfc8c0", penwidth=1.4];
@@ -82,100 +80,87 @@ digraph flujos {
   }
   // <<< LEYENDA-ARBOL <<<
 
-  // ───────────────────────────────────── EL PROCESO ─────────────────────────────────────
-  subgraph cluster_f8 {
-    label="⓪ Instalación / actualización del cerebro   (install-brain · sincronizar-cerebro · bootstrap-claude · aviso-drift · widget ⬆)";
+  // ───────────────────────────────────── EL FLUJO ─────────────────────────────────────
+  subgraph cluster_f0 {
+    label="04 · Delegación / orquestar-fanout   (gate de costo → agente en worktree AISLADO → auto-reporte → el orquestador integra a la mini)";
     fontname="Times"; fontsize=14; fontcolor="#5fa89e";
     color="#5fa89e"; penwidth=1.6; style="rounded"; bgcolor="#1b1712";
 
-    IN       [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
-              label="instalar o actualizar el cerebro\nen esta máquina / repo"];
+    // ── Arranque: orquestador con backlog paralelizable ──
+    BL    [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
+           label="orquestador: backlog con piezas INDEPENDIENTES\n(estado-proyecto.md = fuente de verdad · «aquí empiezas siempre»)\n📜 → default = fan-out + supervisión, NO grind serial"];
+    PREREQ [shape=diamond, fillcolor="#2b2622", color="#d97757",
+            label="¿la sesión vive DENTRO de un repo git?\n(worktrees aislados EXIGEN cwd = repo)"];
+    NOGIT [fillcolor="#f5f5f5", color="#9e9e9e", fontcolor="#333", style="dashed,filled",
+           label="🚧 sin repo: `isolation: worktree` truena\n(«not in a git repository»). Inicia la sesión EN el repo"];
+    SPAWN [color="#7fb069",
+           label="🟢 spawnea N Task con `isolation: worktree`\n(el árbol PRINCIPAL es SOLO del orquestador/humano)"];
 
-    // MANIFEST como FUENTE ÚNICA — de aquí DERIVAN las dos rutas de despliegue.
-    MANIF    [color="#7fb069",
-              label="🟢  brain/hooks/MANIFEST = FUENTE ÚNICA\ndeclara por hook su TIER {global|repo|both} + KIND {hook|lib|script}.\nDe aquí DERIVAN las 2 rutas de despliegue y el drift-check de test-brain\n(antídoto a las 2 listas curadas por separado que divergían)"];
+    // ── PreToolUse/Task: los 2 hooks de costo ──
+    LIM   [shape=diamond, fillcolor="#2b2622", color="#d97757",
+           label="🔒🛑 limite-gasto  (PreToolUse/Task)\n¿ventana 5h AGOTADA (≥99%) Y overage SIN holgura?\n(lee state.json del daemon de cuota; rancio >30min → fail-open)"];
+    LIM_D [fillcolor="#3a2020", color="#c0392b", penwidth=2.5,
+           label="🔴 DENY (freno duro): sin capacidad en NINGÚN lado —\nel agente moriría a medias. NO reintentes en automático.\nEspera el reset · mete saldo · hazlo TÚ sin delegar"];
 
-    AMBITO   [shape=diamond, fillcolor="#2b2622", color="#d97757", label="¿ámbito?"];
+    CLASI [shape=diamond, fillcolor="#2b2622", color="#d97757",
+           label="🔒💸 delegacion-gate  (PreToolUse/Task)\nclasificar_delegacion (lib comun = fuente única con el registrar):\nsubagent_type/model → agentes-costo.json → NIVEL de costo"];
+    NIVEL [shape=diamond, fillcolor="#2b2622", color="#d97757",
+           label="¿NIVEL?\nlocal → gratis · Claude dentro de ventana 5h (<90%) → incluido\nClaude en overage / API de pago / desconocido → metered"];
+    YACON [shape=diamond, fillcolor="#2b2622", color="#d97757",
+           label="¿ya consentido?\ngratis/incluido: 1× por COMPU (delegacion-consentimiento.json)\nmetered: 1× por WORKFLOW (session_id)"];
+    ASK   [color="#e08e45",
+           label="🟠 ASK — pide tu OK (muestra el estado real de tu ventana 5h).\ncoalescer G3/H6: el 1er Task del lote toma un lock (mkdir ~10s);\nlos HERMANOS simultáneos pasan en silencio (solo gratis/incluido).\nun «no» → el Task no corre → no se registra"];
+    PASA  [color="#7fb069",
+           label="🟢 pasa sin preguntar\n(consentimiento ya vigente para este nivel)"];
 
-    // ── Ruta A: GLOBAL (máquina) = install-brain.sh ──
-    GVEZ     [shape=diamond, fillcolor="#2b2622", color="#d97757", label="GLOBAL (máquina):\n¿1ª vez o actualizar?"];
-    GINST    [color="#7fb069",
-              label="🟢  install-brain.sh\nDERIVA del MANIFEST la lista {global,both} → copia hooks+libs a ~/.claude/hooks,\ncablea settings.json, siembra dashboard + entorno-esta-maquina + normas, y ESTAMPA\n~/.claude/.brain-version (sello de versión — YA EXISTE, lo lee el widget).\n(install.sh lo envuelve SOLO en Linux/KDE: +daemon+systemd+plasmoide)"];
-    GUPD     [color="#e08e45",
-              label="🟠  re-correr install-brain.sh\nidempotente Y ACTUALIZABLE: refresca hooks, re-cablea,\nREEMPLAZA el bloque de normas en su lugar, re-estampa .brain-version"];
-    GLIVE    [color="#7fb069", label="🟢  cerebro GLOBAL vivo en la máquina\n(aplica a TODOS los repos)"];
-    GWIRE    [color="#7fb069",
-              label="🟢  install-brain ahora DERIVA la COPIA *y* el CABLEADO del MANIFEST (ev_de + loop),\nno una lista register_hook hardcodeada → agregar un hook global al MANIFEST lo copia\nY lo cablea. test-brain e6b FALLA si el set PreToolUse/Bash diverge del esperado.\nRESUELTO (refactor MANIFEST-derivado + e6b, en develop 2026-07-30)"];
+    // ── El agente corre AISLADO ──
+    AISLA [color="#c0392b", penwidth=3,
+           label="⚠ ESCRIBE git · el AGENTE corre en su WORKTREE AISLADO\n(git reset/checkout/rebase ahí NO puede orfanar los commits del orquestador)\nGOTCHA: el worktree nace en origin/HEAD (≈main) → el agente hace\n`git reset --hard <rama-objetivo>` al arrancar (dispara proteger-arbol = falso positivo H14)"];
+    TRABAJO [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
+             label="el agente hace SU ítem autocontenido y DEVUELVE el contrato:\n{qué hizo · línea-de-bitácora curada · pendiente-para-otro · worktree limpio|dejado-con-nota}"];
 
-    // ── Ruta B: POR-REPO (clon / repo consumidor) ──
-    RTIPO    [shape=diamond, fillcolor="#2b2622", color="#d97757", label="POR-REPO:\n¿repo nuevo o existente?"];
-    CLON     [color="#7fb069",
-              label="🟢  repo NUEVO desde la plantilla\nel clon TRAE .claude/ (hooks+settings+skills+memoria) por git — el tooling VIAJA\nen el repo. secret-scan es tier `both` (declarado en el MANIFEST) → viaja por-repo y YA está\ncableado (el viejo 🔴 «clon+bootstrap no da secret-scan» está RESUELTO)"];
-    APLICA   [color="#e08e45",
-              label="🟠  repo EXISTENTE: sembrar .claude/ sigue siendo MANUAL (no scriptado).\naplicar-plantilla-a-proyecto NO copia .claude/ — es un playbook de UI/arquitectura\nque ASUME el cerebro ya presente (hueco moderado, aún vigente)"];
-    BOOT     [color="#e08e45",
-              label="🔔  bootstrap-claude.sh  (UNA vez tras clonar)\nsymlinkea la memoria + siembra dashboard + norma doc=realidad + verifica jq"];
-    BOOT_INV [color="#9e9e9e", style="rounded,filled,dashed",
-              label="🚧  DRIFT INVERSO (vigente en repos CONSUMIDORES, fuera de claude-brain): el\nbootstrap-claude.sh de la plantilla hace `cp -f` INCONDICIONAL de solo 3 de los 6 `both`\n→ un clon con plantilla VIEJA PISA los globales con versiones stale (corto vs el MANIFEST).\n→ que el bootstrap invoque install-brain (que YA deriva del MANIFEST). Pendiente en la plantilla."];
+    // ── PostToolUse/Task: los 2 hooks de cierre ──
+    REG   [color="#e08e45",
+           label="🔔📝 delegacion-registrar  (PostToolUse/Task)\nsolo corre si el Task CORRIÓ (usuario aprobó) → PERSISTE el consentimiento\n(gratis/incluido: por compu · metered: por workflow) + libera el lock G3"];
+    REP   [color="#e08e45",
+           label="🔔📮 delegacion-reporte  (PostToolUse/Task)\n🟠 nudge CONDICIONAL: «SI tu agente MUTÓ, ciérralo; SI fue read-only, ignora»\n(no puede ver el transcript del sub-agente → subordina a la mutación, sin cry-wolf)"];
 
-    // ── Ruta C: ACTUALIZAR una copia POR-REPO ya instalada (esto era el viejo 🔴 HUECO — hoy RESUELTO) ──
-    CUPD     [shape=diamond, fillcolor="#2b2622", color="#d97757",
-              label="el brain EVOLUCIONÓ: ¿cómo se actualizan\nlos .claude/ de un repo YA instalado?"];
-    SYNC     [color="#7fb069",
-              label="🟢  sincronizar-cerebro.sh  (YA EXISTE, resuelve el viejo HUECO)\nFUENTE ÚNICA = MANIFEST; despliega por-repo {repo,both}, diff-aware (NO cp -f ciego),\nCABLEA settings.json, ESTAMPA .brain-version (solo en sync COMPLETO), PODA hooks\nRETIRED. DRY-RUN por default; --apply escribe; --only / --prune-orphans"];
-    DRIFT    [color="#c0392b", penwidth=3,
-              label="⚠ ESCRIBE git · 🔔🧬  aviso-drift-cerebro.sh  (SessionStart · GLOBAL) — es también pieza de 02\ncorre sincronizar en DRY-RUN (diff por CONTENIDO); si la copia por-repo quedó atrás → AVISA.\n⚠ AUTO-APPLY en mini-develop: en rama Develop* con .claude/ limpio → apply+commit+push SOLO\n📜 → 🌿 Flujo de git (en repo compartido «actualizar» = por ramita→MR)"];
-    DRIFT_CIEGO [color="#7fb069",
-              label="🟢  aviso-drift YA VE el drift de CABLEADO: cuenta también el wiring FALTANTE\n(«N cableado faltante») → ya no reporta «al día» con hooks presentes-SIN-cablear.\nRESUELTO en #209 (en develop, 2026-07-30)"];
-    DRIFT_STAGE [color="#7fb069",
-              label="🟢  el AUTO-APPLY ahora hace `git add -A .claude/` (hooks + settings.json + podas)\n→ el cambio de cableado SÍ se commitea y el árbol queda limpio.\nRESUELTO en #209 (en develop, 2026-07-30)"];
+    // ── El orquestador cierra el loop ──
+    VERIF [shape=diamond, fillcolor="#2b2622", color="#d97757",
+           label="🔬 el orquestador VERIFICA el linaje del commit (NO cree la prosa del reporte, C7):\n`git merge-base --is-ancestor <commit>^ <rama-objetivo>` ¿nació sobre la base correcta?"];
+    DESCARTA [fillcolor="#f5f5f5", color="#9e9e9e", fontcolor="#333", style="dashed,filled",
+              label="🚧 base equivocada (padre = main) → NO integres.\nDescarta la rama y rehaz el ítem sobre la base correcta"];
+    INTEGRA [color="#c0392b", penwidth=3,
+             label="⚠ ESCRIBE git · integra a la MINI (DevelopUnjordi/…) por CHERRY-PICK del delta\n(no `merge`, que arrastraría el árbol viejo). NUNCA saca la mini en un worktree propio:\nla POSEE el folder visible del dev → aísla en FEATURE, integra HACIA la mini"];
+    ESTADO [color="#e08e45",
+            label="🟠 auto-reporte SIN redundancia (2 archivos):\n① APPENDA `>>` una línea a bitacora.md (qué pasó · parallel-safe)\n② CURA el ítem en estado-proyecto.md (qué sigue · backlog vivo)\nTodoWrite = scratch de sesión, NO el backlog durable"];
+    LIMPIA [color="#e08e45",
+            label="🔔🧹 limpieza automática:\nlimpiar-worktrees.sh (borra los de ramas mergeadas, deja los vivos con su pendiente)\nlimpiar-ramas.sh (barre ramas locales ya integradas — squash rompe `git branch -d`)"];
+    FIN   [color="#7fb069", penwidth=2,
+           label="🟢 slice del agente CERRADO\n(estado al día · worktree limpio · sin niñería)"];
 
-    // ── Ruta D: UPDATER del widget (⬆) ──
-    WID      [color="#7fb069",
-              label="🟢  widget (pestaña Cerebro, 3 GUIs): lee ~/.claude/.brain-version y consulta\ncommits/main de github.com/unjordi/claude-brain (throttle ~15m, fail-open).\nSi main avanzó → dibuja el banner ⬆ Actualizar"];
-    WID_ACT  [color="#e08e45",
-              label="🟠  al aceptar ⬆: script suelto hace git fetch + merge --ff-only origin/main sobre\n~/.claude-brain y —solo si tuvo éxito— re-corre install.sh/ps1 (reconstruye+relanza,\ndesprendido). Fase 2 Windows: baja el .exe del release (pendiente de QA)"];
-    WID_ATOM [color="#7fb069",
-              label="🟢  atomicidad: install-brain instala los hooks con atomic_install (cp a tmp + mv,\nrename atómico) → el updater ⬆ ya no deja ventana de lectura a-medio-sobrescribir con sesión VIVA.\nRESUELTO (install-brain.sh atomic_install, en develop)"];
-
-    NORMA    [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
-              label="📜 → 🧩 toda norma nace con su mecanismo\n📜 → 🪞 doc = realidad (este mapa se actualiza con el código)"];
-
-    // Aristas del flujo
-    IN -> AMBITO;
-    MANIF -> GINST [style=dashed, label="deriva {global,both}"];
-    MANIF -> SYNC  [style=dashed, label="deriva {repo,both}"];
-
-    AMBITO -> GVEZ  [label="global"];
-    AMBITO -> RTIPO [label="por-repo"];
-    AMBITO -> WID   [label="updater ⬆"];
-
-    GVEZ -> GINST [label="1ª vez"];
-    GVEZ -> GUPD  [label="actualizar"];
-    GINST -> GLIVE;
-    GUPD  -> GLIVE;
-    GINST -> GWIRE [style=dashed, label="cableado (deriva del MANIFEST)"];
-
-    RTIPO -> CLON   [label="nuevo"];
-    RTIPO -> APLICA [label="existente"];
-    CLON  -> BOOT;
-    APLICA -> BOOT;
-    BOOT -> BOOT_INV;
-
-    GLIVE -> CUPD [label="con el tiempo…"];
-    BOOT  -> CUPD [label="con el tiempo…"];
-    CUPD -> SYNC  [label="a mano / CI"];
-    CUPD -> DRIFT [label="al iniciar sesión"];
-    SYNC -> DRIFT_CIEGO [style=dashed];
-    DRIFT -> DRIFT_CIEGO;
-    DRIFT -> DRIFT_STAGE;
-
-    WID -> WID_ACT;
-    WID_ACT -> WID_ATOM;
-
-    DRIFT_CIEGO -> NORMA [style=dashed];
-    BOOT_INV -> NORMA    [style=dashed];
-    WID_ATOM -> NORMA    [style=dashed];
-    GWIRE -> NORMA       [style=dashed];
+    // Aristas
+    BL -> PREREQ;
+    PREREQ -> NOGIT [label="no"];
+    PREREQ -> SPAWN [label="sí"];
+    SPAWN -> LIM;
+    LIM -> LIM_D [label="AND: ambos agotados"];
+    LIM -> CLASI [label="hay capacidad"];
+    CLASI -> NIVEL;
+    NIVEL -> YACON;
+    YACON -> PASA [label="sí"];
+    YACON -> ASK  [label="no"];
+    ASK -> AISLA  [label="usuario aprueba"];
+    PASA -> AISLA;
+    AISLA -> TRABAJO;
+    TRABAJO -> REG;
+    TRABAJO -> REP [label="mismo PostToolUse/Task"];
+    REG -> VERIF; REP -> VERIF;
+    VERIF -> DESCARTA [label="padre = base\nequivocada"];
+    VERIF -> INTEGRA  [label="linaje OK"];
+    DESCARTA -> BL [label="rehaz el ítem", style=dashed];
+    INTEGRA -> ESTADO;
+    ESTADO -> LIMPIA;
+    LIMPIA -> FIN;
   }
 }

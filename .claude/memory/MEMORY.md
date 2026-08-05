@@ -1,13 +1,202 @@
 # Memory Index — claude-brain
 
-> Cerebro de Claude Code de ESTE repo (`github.com/unjordi/claude-brain`).
-> Es la fuente de verdad única (código + memoria/skills viajan juntos por el repo).
-> Tras `git clone` en otra máquina: corre `bash .claude/bootstrap-claude.sh` una vez.
-> Memorias personales/sensibles → `*.local.md` (gitignored, no viajan al equipo).
+> Cerebro de Claude Code de ESTE repo (`github.com/unjordi/claude-brain`). Fuente de verdad única
+> (código + memoria/skills viajan juntos). Tras `git clone`: `bash .claude/bootstrap-claude.sh` una vez.
+> Personales/sensibles → `*.local.md` (gitignored, no viajan).
+>
+> **→ El `CLAUDE.md` es la FIRMA** (misión + capacidades de operar el cerebro + reglas duras). **ESTE
+> archivo tiene el 🌳 ÁRBOL de instalación** (abajo — qué instala el brain; el bloque `ARBOL` es lo que
+> verifica el parity-check) **y su 🚦 DETALLE 1:1** de cada ítem, en el MISMO orden: 🔒 Forzosos → 🔔
+> Automático → 📜 Normas → 💡 skills, + el conocimiento de desarrollo al final. Fuente de cada detalle
+> = el `.sh`/`SKILL.md` real (doc=realidad).
+>
+> **📋 Backlog vivo + buzón de quejas/sugerencias de los claudes → [`estado-proyecto.md`](estado-proyecto.md).**
+> Qué sigue, qué se decidió, y dónde cualquier sesión deja su feedback. El panel de to-dos es scratch efímero;
+> lo durable vive ahí. Empieza por ese archivo si vienes a trabajar el brain.
 
+# 🌳 El árbol — lo que el brain instala (vista curada · fuente = README «🔒 Hooks Forzosos»)
+
+<!-- ARBOL:START — fuente: README.md «🔒 Hooks Forzosos» · a mano, VERIFICADO por docs/flowcharts/verificar-arbol-sync.sh (gen-leyenda-arbol.sh NO toca este archivo, solo las leyendas .dot) -->
+```
+🔒 Hooks Forzosos — hooks que bloquean (deny) · no negociables
+├─ 🚧 git-branch-guard         push/merge a develop·main → denegado
+├─ 🔗 merge-squash-guard       MR a develop sin --squash → denegado
+├─ 🕵️  secret-scan             commit/push con un secreto → denegado
+├─ 💸 delegacion-gate          delegar al llegar al 90% de tu ventana 5h → pide tu OK
+├─ 🛑 limite-gasto             sin ventana 5h Y sin overage (ambos agotados) → freno duro
+└─ 📁 por-repo · viajan en el .claude de cada repo
+   ├─ ✋ confirmar-merge-develop  merge sin tu OK → denegado
+   └─ ✅ dod-verificar            cierre sin evidencia/OK → denegado; claim visual a ciegas (sin ver la pantalla) también
+
+🔔 Automático — inyectan / recuerdan (no bloquean)
+├─ 📊 recordar-dashboard       en el push recuerda dashboard + doc=realidad (README/docs) — cierre del slice
+├─ 🖥️  entorno-maquina-guard    commit de algo machine-specific (aliases/rutas de $HOME/Rosetta/entorno-maquina.md) al .claude/memory/ del repo → avisa
+├─ 🕰️  rama-vieja              avisa si la ramita arrastra base vieja
+├─ 🌳 proteger-arbol           git destructivo que orfanaría commits sin pushear → avisa (fan-out: usa worktree aislado)
+├─ 🛡️  proteger-fuente-cerebro  editar la copia INSTALADA de un hook/skill que tiene fuente en el clon → avisa (se perdería en el próximo sync) (GLOBAL)
+├─ 🧹 barrer-ramas             al abrir sesión barre en 2º plano las ramas locales ya integradas (zombie squash-safe; throttle 24h) (GLOBAL)
+├─ 📝 delegacion-registrar     materializa el "pregunta una sola vez"
+├─ 📮 delegacion-reporte       al terminar un agente: recuerda registrar avance + limpiar su worktree
+├─ 🧵 rehidratar-hilo          reinyecta hilo-mental-actual.md al abrir/retomar/compactar (GLOBAL) — con gate de frescura
+├─ 📈 aviso-contexto           watermark: avisa "compacta TÚ ahora" antes del auto-compact-sorpresa (GLOBAL)
+├─ 🧬 aviso-drift-cerebro      repo brained atrás de la fuente única → en tu mini-develop se AUTO-SINCRONIZA (apply+commit+push); en otra rama, avisa. Al moverse el cerebro, NUDGE a correr la DUPLA (suficiencia+coherencia; contra la firma si hay AGENTS.md, si no sugiere instanciarla) (GLOBAL)
+└─ 📁 por-repo · viajan en el .claude de cada repo
+   ├─ 🧭 sesion-inicio            reinyecta rama + norma + memoria al abrir
+   ├─ 🌾 recordar-cosechar        nudge al cerrar turno (cosecha + backlog) + ESPEJO determinista del TaskList → estado-proyecto.md
+   └─ ⬆️  recordar-unificar-cerebro  tu mini acumuló aprendizajes sin UNIFICAR a develop → sugiere /unificar-cerebro (gemelo ↑ de aviso-drift)
+
+📜 Normas — reglas que Claude se autoimpone (CLAUDE.md)
+├─ 🎯 Definition of Done       verde técnico ≠ Done/Listo/Ya Quedó; exige QA o un OK explícito
+├─ 🪞 Doc <= realidad          cambió algo → su doc se actualiza en la tanda
+├─ 🌿 Flujo de git             ramita → MR → develop; main es release-only
+└─ 💰 Costo de delegación      gratis / incluido / con costo, según tu cuota
+
+💡 Skills — opt-in, las invocas tú  (catálogo COMPLETO con su detalle → MEMORY.md)
+├─ 📦 cerrar-slice             build+tests+memoria al día + MR con resumen curado
+├─ 💾 checkpoint               vuelca el HILO a memoria para compactar sin perderlo (proactivo)
+├─ 💧 rehidratar-hilo          relee el HILO a mano (gemelo del hook; respaldo si un update del CLI rompe el auto-rehidratado)
+├─ 🐝 orquestar-fanout         fan-out sin niñera: asigna del backlog, auto-reporta y limpia al cerrar
+├─ 🗺️ diagramar                diagramas por destino: .dot→dot2yed→yEd (editar a mano) · Mermaid en .md versionado (verse en GitHub)
+├─ 🔬 auditar-proceso-algoritmo  auditor experto read-only (proceso industrial + algoritmo) → hallazgos priorizados; se alimenta de los flowcharts de diagramar
+├─ 🩺 auditar-coherencia-cerebro fan-out read-only sobre el PROPIO cerebro (guards+flowcharts+doc): evasiones/huecos/drift, verificado por ejecución → loop hasta converger
+├─ 🧪 auditar-suficiencia-operativa  ¿ALCANZA la doc para HACER el trabajo sin romper nada ni re-investigar? tareas reales ✅/⚠️/❌ + RE-auditar tras arreglar
+├─ 🧠 consolidar-cerebro       meta-orquestador: dupla → positivar → desinflar → loop de convergencia → cierre con la FIRMA (CLAUDE+MEMORY)
+├─ 🪶 desinflar-memorias       adelgaza un árbol de memorias sin perder lecciones: narrativa → lección; mitos descartados → ⚰️ Lápidas AL FINAL
+├─ 🕵️ revisar-entregables-agentes    verifica lo que un agente ENTREGA contra la realidad; no relates su reporte como verdad
+├─ ☀️ positivar-doc                  reescribe answer-first: 'ESTO SÍ' (método correcto) antes del 'ESTO NO'
+├─ 🎓 investigar-dominio             ponte experto en un dominio (fan-out DOC-FIRST) → memorias durables + skills
+├─ 🌾 cosechar-sesion                cosecha local: extrae aprendizajes de tu sesión al inbox del equipo
+├─ 🧩 unificar-cerebro               reconciliación del cerebro del equipo: integra los aprendizajes mini→develop
+├─ 🧳 claude-proyecto-autocontenido  el cerebro VIVE dentro del proyecto (.claude/ + symlink de slug) → viaja con él
+├─ 🔍 zoom-screenshot                recorta y amplía regiones de una captura (ffmpeg) para leer texto fino ilegible
+└─ 🌙 turno-nocturno           protocolo del turno de noche: eco del contrato, decide-dentro-de-la-cerca, grants durables a disco
+```
+<!-- ARBOL:END -->
+
+---
+
+# 🚦 Detalle 1:1 de cada ítem del árbol
+
+## 🔒 Hooks Forzosos — bloquean (deny) · no negociables
+### 🔒 🚧 `git-branch-guard`  ·  PreToolUse/Bash · deny
+Wrapper delgado sobre la lib `analizar-comando-git.sh` (`git-branch-guard.sh:22`). Dispara cuando `acg_push_toca_base` da true — push explícito a develop/main **o** push PELÓN/`HEAD`/`--force` estando parado EN develop/main (H1) — o cuando `acg_merge_menciona_base` detecta un merge que nombra la base (`:29`,`:33`). BLOQUEA (deny) y redirige al flujo ramita→MR→develop; a main solo release deliberado (lo vigila confirmar-merge-develop). No hay escape hatch propio (es una norma dura); la lib **ignora menciones entrecomilladas (H13) y valores de `--repo`/`-R` (H11)** para no dar falsos positivos. Fail-**open**: sin `jq` o sin comando parseable → `exit 0` (`:16`,`:19`). Gotcha: dedupe repo/global en `:14` — si es la copia del repo y existe la global, cede (`exit 0`) para no disparar doble; en un clon SIN bootstrap la del repo sí corre.
+
+### 🔒 🔗 `merge-squash-guard`  ·  PreToolUse/Bash · deny
+Dispara cuando `acg_es_merge_mr` reconoce una integración REAL de MR/PR (`glab mr merge|accept`, `gh pr merge`; no ayuda/dry-run — `merge-squash-guard.sh:28`) que NO trae `--squash`/`-s` (`:31-32`). BLOQUEA y exige rehacerlo con `--squash --squash-message "<resumen curado>"`, citando la herramienta REAL del repo (gh vs glab, `:60-64`) — para que develop reciba UN commit limpio por slice. **Target-aware** (`:50-57`): la obligación de squash aplica SOLO si el destino resuelto es `develop`; `main` = RELEASE va SIN squash (conserva historia) y ramas personales van libres. **Fail-safe B3** (FMEA 2026-07-30): destino IRRESOLUBLE (timeout de red) ⇒ **exige squash** (conservador), salvo señal EXPLÍCITA de release en el propio comando (`main` mencionado o palabra `release`, `_es_release_explicito` `:46-49`) — así ambos guards fallan al mismo lado. Escape: `--squash` (cumplir la norma) o `--no-verify` de git no aplica aquí. Fail-**open** sin jq. Gotcha: el destino lo resuelve `acg_destino_de_mr` con **caché por MR-id COMPARTIDA con confirmar-merge-develop** (típicamente 1 llamada de red, no 2) + timeout interno (H5). Dedupe repo/global en `:18`.
+
+### 🔒 🕵️ `secret-scan` (+ lib `detectar-secretos.sh`)  ·  PreToolUse/Bash · deny
+Guard DEFENSIVO: solo actúa si el comando es `git commit` o `git push` (`secret-scan.sh:77`); cualquier otro Bash pasa al instante. En **commit** escanea SOLO lo AGREGADO al staging (`git diff --cached`, líneas `+`); en **push** lo que sale vs upstream `@{u}..HEAD`, o —rama nueva sin upstream (G5, `:150-162`)— el merge-base con origin/develop|origin/main|develop|main (así el 1er push SÍ se revisa). Cubre huecos de evasión: `git add … && git commit` (usa `git add --dry-run`, `:100-103`), `commit -a/-am/--all` (suma tracked modificados, `:110-116`), y normaliza el prefijo de opciones globales de git (`git -C dir commit`, `:62-66`) sobre el RAW antes de despojar comillas (A-R5-02). Detecta vía `ds_buscar` patrones de **ALTA precisión** (AWS AKIA, PEM, Anthropic sk-ant, OpenAI sk-/sk-proj, GitHub gh_*/github_pat, GitLab glpat, Slack xox*, Google AIza, JWT eyJ.eyJ., connection-strings user:pass@host, Password=/Pwd= .NET) — **NO** entropía; excluye placeholders célebres (`ds_safe_re`: AKIAIOSFODNN7EXAMPLE, your-key, `<VAR>`, `Password=$VAR`…). Escapes reales: `git … --no-verify` (bandera real, no la palabra en el mensaje — A7 `:81`) o `CLAUDE_SKIP_SECRET_SCAN=1` (`:79`). Fail-**open** por default ante fallo de INFRAESTRUCTURA (sin jq/git, no-repo, rango indeterminable); `CLAUDE_SECRET_SCAN_STRICT=1` invierte a fail-**closed** (`bail_open` `:38-44`). Gotcha: LÍMITE A-07 — casa el subcomando LITERAL `commit|push`; un ALIAS (`git ci`) queda inerte. Dedupe repo/global en `:25`.
+
+### 🔒 💸 `delegacion-gate`  ·  PreToolUse/Task · ask
+Consentimiento de COSTO al reclutar un agente (tool Task). Clasifica el nivel vía `delegacion-comun.sh` (`delegacion-gate.sh:43`) y PREGUNTA (permissionDecision **ask**, no deny): **gratis** (local) → 1× por COMPU; **incluido** (Claude dentro de la ventana de 5h, sin costo marginal) → 1× por COMPU; **metered** (Claude en overage · API de pago · desconocido) → 1× por WORKFLOW (session_id). El ask muestra el estado REAL de la ventana (`linea_cuota`, %/umbral). Consentimiento durable en `~/.claude/delegacion-consentimiento.json` (lo escribe el PostToolUse `delegacion-registrar`, NO este hook → un "no" no se persiste). **G3** (`:28-36`,`:53`): coalesce de fan-out paralelo — el 1er gate del lote toma un lock atómico (mkdir) y pregunta; los hermanos simultáneos (ventana `CLAUDE_DELEG_COALESCE_S`, def **10s**) pasan en silencio — SOLO para gratis/incluido (costo cero); metered NO se coalesce (cada agente de pago se confirma). **FAIL-SAFE** (`:39`): sin jq → si es Task, pregunta; ante nivel desconocido → metered (conservador). No bloquea trabajo; solo pide OK. Gotcha: no tiene dedupe repo/global (es tier global puro).
+
+### 🔒 🛑 `limite-gasto`  ·  PreToolUse/Task · deny
+FRENO DURO (a diferencia del gate que pregunta): BLOQUEA reclutar un agente SOLO en la condición COMBINADA **AND** (`limite-gasto.sh:48`) — ventana de 5h AGOTADA (`five_hour.percent >= LIMITE_GASTO_5H_PCT`, def **99**) **Y** overage SIN holgura (deshabilitado, o topado, o `utilization >= LIMITE_GASTO_OVERAGE_PCT`, def **100**). Razón: sin cupo del plan ni saldo, el agente moriría a medias. Lee el `state.json` del daemon de cuota (`$XDG_CACHE_HOME/claude-brain/state.json` o el path de macOS, `:21-24`). CLAVE — NO frena por overage solo (con ventana fresca, overage 100% no para; trabajas cubierto por el plan) ni por ventana agotada sola (ahí delegacion-gate PREGUNTA y tú decides). Sin escape hatch explícito; el mensaje sugiere (a) esperar reset, (b) subir tope/meter saldo, (c) hacerlo sin delegar. Fail-**open** (`:16`,`:24`,`:25`): sin jq, sin snapshot, o snapshot **rancio (>30 min)** → no bloquea (nunca frena a ciegas). Gotcha: "habilitado sin dato de util" se asume CON holgura (`:38-45`) → no frena a ciegas.
+
+### 🔒 ✋ `confirmar-merge-develop`  ·  PreToolUse/Bash · deny
+Hace cumplir la **definición de LISTO en el punto del merge**: dispara cuando `acg_es_merge_mr` reconoce una integración server-side REAL de MR/PR (`confirmar-merge-develop.sh:37`; `git merge` local NO cuenta — iterar en tu mini es libre). **ALCANCE**: solo repos COMPARTIDOS con la marca `.claude/repo-compartido`; sin ella no gatea (repos personales mergean sin fricción). **Target-aware** (`acg_destino_de_mr`): destino `develop` (o desconocido→conservador) pide confirmación NORMAL; `main` = RELEASE exige lenguaje EXPLÍCITO de release (un `mergea` genérico NO libera a main); ramas personales/`epic/*`/`integracion/*` pasan sin gate. **JUEZ-Haiku** (`_juez_merge`): LEE la conversación reciente **INTERCALADA** (`USUARIO:`/`ASISTENTE:`, ~10 últimos mensajes de usuario + 4 turnos de arranque, vía `_recent_intercalado`) y juzga si el USUARIO autorizó EXPRESAMENTE ESTE merge (id + destino). **Regla de autoridad dura**: solo los mensajes `USUARIO:` autorizan; los `ASISTENTE:` son contexto para resolver referencias anafóricas ("sí, mergea eso" tras una propuesta), NUNCA autoridad → blindado contra auto-autorización / prompt-injection ("el usuario ya aprobó", cita fabricada). En el ALLOW emite una **nota de higiene** (`--delete-branch` + `limpiar-ramas.sh`). Vía alterna: **autorización DURABLE** en `.claude/memory/autorizaciones-vigentes.local.md` (scope=merge-develop + `vence_epoch`, la escribe turno-nocturno; sobrevive compactaciones) — JAMÁS cubre releases a main. **FAIL-SAFE DENY** si el juez no está (sin `claude`/red/timeout/respuesta ininteligible): aquí SÍ es seguridad (contrasta con `dod-verificar`, fail-open). Fail-**open** solo sin jq; destino irresoluble → se trata como develop (pide OK). Mockeable con `CLAUDE_MERGE_JUEZ_MOCK`; **batería LIVE de 23 FP/FN** en `test-brain.sh` (`CLAUDE_MERGE_JUEZ_LIVE=1`). ⚰️ El **regex-soup se jubiló el 2026-08-02** (NEG_RE/DEFER_RE/BOUND_OK_RE/CONF_RE/RELEASE_RE + A3/A4 hacían whack-a-mole; el detonante fue un OK anafórico —"sí, arranca con #240"— que el regex, ciego al turno del asistente, no resolvía). Gotcha: caché de destino COMPARTIDA con merge-squash-guard; dedupe repo/global.
+
+### 🔒 ✅ `dod-verificar`  ·  Stop · block
+Stop hook que hace cumplir la definición de LISTO al DECLARAR. Un **JUEZ-Haiku** (`_juez_dod`) LEE el último mensaje del asistente del TURNO ACTUAL (desde el último mensaje genuino del usuario, `dod-verificar.sh:44-52`) + los mensajes del USUARIO del turno, y clasifica **3 ejes**: **CIERRE** (¿declara un ENTREGABLE listo/terminado/funciona? vs estatus/espera/paso-mecánico/pregunta/downgrade-a-preview/celebración/"verde técnico"), **MARCA** (¿el USUARIO —en SUS propios mensajes, nunca la prosa de Claude: **ALTO-1** anti auto-atestiguamiento— dio confirmación funcional o autorización expresa de cierre?) y **VISUAL** (¿aserción de apariencia de UI?). BLOQUEA si CIERRE=si tras tocar CÓDIGO y MARCA=no; o (B2) VISUAL=si sin browser-tool en el turno ni MARCA (declara QA visual a ciegas). Lo **ESTRUCTURAL se conserva** (no era regex frágil de intención): "código tocado" = `file_path` no-doc, edición por Bash (`sed -i`/`patch`/`>`/`tee`, G2a) o un `Task` de sub-agente (**ALTO-2**: su edición vive en otro transcript); browser-tool por el `name` del tool_use (chrome/playwright/puppeteer MCP + `computer`); build/tests/lint y memoria se RECUERDAN, no bloquean; **B4** recuerda AUDITORÍA DE PARIDAD en migraciones. **FAIL-OPEN** si el juez no está (sin `claude`/red/timeout): dod es un NAG de disciplina, no un límite de seguridad → nunca atrapa el turno (contrasta con `confirmar-merge-develop`, fail-safe DENY). Mockeable con `CLAUDE_DOD_JUEZ_MOCK` (tests de flujo deterministas); el JUICIO real lo fija una **batería LIVE de 33 FP/FN históricos** en `test-brain.sh` (`CLAUDE_DOD_JUEZ_LIVE=1`). `stop_hook_active` evita loops. ⚰️ El **regex-soup se jubiló el 2026-08-02** (CLAIM_RE/MECH_*/DOWNGRADE_RE/META_LISTO_RE/WEAK_STATUS_RE/VISUAL_RE + la lógica P2a/P2b/G1/H4/MEDIO-1/BAJO-2 hacían whack-a-mole: cada frasing abría un FP/FN — el último, "verificado técnicamente de punta a punta … tras tu OK", disparó en falso; el juez lo resuelve por comprensión de lectura). Es el MISMO hook genérico del brain (sin variantes por repo).
+
+## 🔔 Automático — inyectan / recuerdan (no bloquean)
+
+### 🔔 📊 `recordar-dashboard`  ·  PreToolUse/Bash · aviso
+Antes de un `git push` (ignora un `git push` entrecomillado, dato de grep/MR) RECUERDA dos cosas vía `additionalContext`: (1) actualizar el **Dashboard del cerebro** (append con `>>` a la Bitácora de `dashboard_cerebro.md` en la memoria GLOBAL per-máquina, nunca un Edit); (2) **doc=realidad del proyecto** — analiza los commits a pushear (`@{u}..HEAD`, o merge-base con develop/origin/develop/main si la rama es nueva, `recordar-dashboard.sh:22-33`) y si AGREGAN/QUITAN un hook/skill (`struct=1`) o tocan código/features (`code=1`) SIN tocar doc, muerde con un mensaje específico. Tier **both** (viaja per-repo + global); dedupe doble-cableado (`:10`): la copia del repo cede a la global. Fail-open sin git/jq.
+
+### 🔔 🖥️ `entorno-maquina-guard`  ·  PreToolUse/Bash · aviso
+MECANISMO de la norma "el entorno de MÁQUINA vive GLOBAL, jamás en un repo". Ante un `git commit` (ignora comillas) AVISA —no bloquea— si mete al `.claude/memory/` del repo algo machine-specific que mentiría al clonar en otra compu/OS. Dispara con 2 señales de alta precisión sobre archivos staged bajo `.claude/memory/*.md` (excluye `*.local.md`): (1) **filename-trampa** `entorno-maquina.md` (`:47`); (2) **contenido agregado**: `alias x=`, tools personales (eza/trash/bat/nvim/colima), rutas absolutas de un `$HOME` (`/Users/x/`, `/home/x/`, `C:\Users\`), o "Rosetta" sin condicional en la misma línea (`:62-67`). Solo mira lo que ENTRA (staged; suma worktree si el commit trae `-a/--all`). Tier **both**, dedupe (`:22`). Fail-open sin jq/git.
+
+### 🔔 🕰️ `rama-vieja`  ·  PreToolUse/Bash · aviso
+Antes de un `git push` (ignora comillas) AVISA —no bloquea— si la ramita arrastra base vieja: `git rev-list --count HEAD..origin/develop` ≥ **umbral** (`RAMA_VIEJA_UMBRAL`, default **40**, `:22`). Sugiere `git fetch origin && git rebase origin/develop` + repush con `--force-with-lease`. NO avisa parado en `develop/main/HEAD` ni sin `origin/develop` (`:17-19`). Tier **global** (sin dedupe). Fail-open sin jq/git.
+
+### 🔔 🌳 `proteger-arbol`  ·  PreToolUse/Bash · aviso
+AVISA —no bloquea— antes de un git DESTRUCTIVO que orfanaría commits sin pushear: `git reset --hard/--merge/--keep`, `checkout -f/--force`, `rebase`, `branch -D` (`:15`, ignora comillas). Solo dispara si REALMENTE hay commits en riesgo (`n>0` vs upstream, o vs origin/develop|main, `:22-28`). Distingue **árbol PRINCIPAL compartido** (git-dir==common-dir → alarma completa: antídoto al caso real 2026-07 de un agente de fan-out que reseteó HEAD y orfanó un commit del orquestador) vs **worktree AISLADO** (`gd!=gcd`): ahí SUPRIME el falso positivo del workaround H15 (reset a la propia rama / origin/rama / develop|main, `:45-47`) y si acaso emite una nota SUAVE. Tier **global**. Fail-open sin jq/git.
+
+### 🔔 🛡️ `proteger-fuente-cerebro`  ·  PreToolUse/{Edit,Write,MultiEdit} · aviso
+AVISA —no bloquea— cuando editas la copia INSTALADA de una skill/hook (`~/.claude/skills|hooks/…`) que TIENE fuente correspondiente en el clon canónico (`${CLAUDE_BRAIN_DIR:-$HOME/.claude-brain}/brain/<relsub>`, `:33-43`). Esa edición es REGENERABLE: el próximo `install-brain` la sobrescribe y muere sin rastro → redirige a editar la FUENTE + propagar (install-brain global / sincronizar-cerebro por-repo) + correr verificar-cerebro. Silencio si no hay fuente (skill/hook puramente local). Tier **global** (sin dedupe: no viaja per-repo). Escape: `CLAUDE_SKIP_PROTEGER_FUENTE=1`. Fail-open sin jq/file_path.
+
+### 🔔 🧹 `barrer-ramas` (+ lib `ramas-zombie.sh`)  ·  SessionStart · aviso
+Da el TRIGGER que faltaba a `limpiar-ramas.sh` (kind=script, se instala pero nadie lo dispara → ramas squasheadas se acumulaban a 60+). Al abrir sesión en un repo con remoto, y máx 1×/`BARRER_RAMAS_HORAS` (default **24**, stamp por-repo por cksum del ROOT), lanza `limpiar-ramas.sh` **detached (nohup) en segundo plano** (el `ls-remote` por rama candidata colgaría el arranque) e inyecta un aviso de qué está barriendo. CONSERVA todo trabajo sin integrar; NUNCA toca actual/base/develop/main/**Develop***/keep/*. Escribe el stamp ANTES de lanzar. **Concurrencia con aviso-drift-cerebro** (el otro SessionStart que muta git): supuesto explícito de independencia sobre refs disjuntos, ambos fail-open (`:47-56`). La **lib `ramas-zombie.sh`** (tier global lib, la comparten limpiar-ramas y limpiar-worktrees → sin drift) define "mergeada" CUÁDRUPLE robusta al squash: (a) ancestro de la base, (d) **su PR/MR se MERGEÓ en el host** (gh/glab vía `-R`, señal AUTORITATIVA que caza el MR-squash multi-commit que (b)/(c) conservaban — `git cherry` no empareja un squash N→1, así que antes las ramas de MR-squash, la clase MÁS común del flujo, NUNCA se podaban; solo declara zombie si el head mergeado CONTIENE el tip → no borra trabajo post-merge; FAIL-OPEN sin gh/glab/red/host; mockeable con `CLAUDE_BZ_PRCACHE`), (c) equivalencia de parche (`git cherry` sin `+`), (b) remota borrada Y sin commits propios; y `bz_resolver_base` que en flujo mini-develop resuelve la base a la **`Develop<Usuario>`** local, no a develop. `limpiar-ramas` además protege las ramas checked-out en CUALQUIER worktree (git rehúsa `branch -D` sobre ellas). Baterías `b3g` (señal d) + `b3c` (protección worktree) en `test-brain.sh`. Escape: `CLAUDE_SKIP_BARRER_RAMAS=1`. Fail-open.
+
+### 🔔 📝 `delegacion-registrar`  ·  PostToolUse/Task · aviso (registro silencioso)
+Registra el CONSENTIMIENTO de delegación DESPUÉS de que el agente corrió (o sea: el usuario aprobó el ask del gate; si lo NIEGA, el Task no corre y este hook no dispara). Materializa el "pregunta 1×": **gratis/incluido** → registra por MÁQUINA (`.maquina[k]=true`), **metered** → por WORKFLOW (`.sesion[session_id]`), en `~/.claude/delegacion-consentimiento.json` (`:17-24`). Usa la lib `delegacion-comun.sh` (`clasificar_delegacion`). Además libera el lock de coalescencia del lote (H6, `:29`). No inyecta nudge al modelo; es puro side-effect de estado. Tier **global**. Fail-open sin jq.
+
+### 🔔 📮 `delegacion-reporte`  ·  PostToolUse/Task · aviso
+Cierra el loop de delegación SIN NIÑERA: cuando un Task termina, RECUERDA al orquestador registrar el avance. El nudge es **CONDICIONAL, no un grito para todo Task** (FMEA MEDIO-6 cry-wolf): PostToolUse no puede saber si el agente mutó algo (vive en el transcript del sub-agente), así que el mensaje se subordina — "**SI** tu agente mutó el repo → (1) appenda 1 línea a `.claude/memory/bitacora.md` append-only, (2) actualiza/cierra el ítem en `estado-proyecto.md` (backlog vivo = fuente de verdad), (3) limpia su worktree con `limpiar-worktrees.sh`; **SI** fue read-only, ignórame" (`:28-33`). Contrato lo documenta la skill `orquestar-fanout`. Tier **global**. Fail-open sin jq.
+
+### 🔔 🧵 `rehidratar-hilo`  ·  SessionStart · aviso
+Rehidrata el HILO MENTAL al abrir/retomar/DESPUÉS de compactar: lee `.claude/memory/hilo-mental-actual.md` y lo reinyecta vía `additionalContext` (canal FIABLE de SessionStart, a diferencia de PreCompact que no tiene canal). Silencioso si no existe o está vacío. **GATE DE FRESCURA** (`:58-98`): compara la rama registrada en el hilo (`> …rama <rama>`) vs la actual — otra rama → degrada el header a "⚠️ HILO POSIBLEMENTE OBSOLETO"; misma rama → vigente por rama, la EDAD no lo degrada (FMEA A8: una sesión >12h en la misma rama sigue el mismo hilo). La antigüedad (`HILO_STALE_HORAS`, default **12**h) es solo PROXY de respaldo cuando NO se pudo confirmar la rama. El `additionalContext` es PASIVO (el modelo lo absorbe, no lo anuncia; el anuncio visible lo da el SKILL homónimo a mano). Tier **global**. Fail-open.
+
+### 🔔 📈 `aviso-contexto`  ·  PostToolUse · aviso
+Convierte el AUTO-COMPACT-SORPRESA en caso raro. Mide el llenado con **TOKENS REALES** del último `usage` del transcript (`input + cache_creation + cache_read`, NO output; excluye sidechain), no líneas ni bytes (que subestiman con imágenes base64). Techo = **punto de auto-compact DERIVADO** = ventana × pct: ventana 1M si el modelo trae `[1m]` en settings (user<proyecto<local, el más específico gana) si no 200K, con **auto-corrección por invariante físico** (si ctx>ventana → promueve a 1M, `:105`); pct = `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` o default **92**. Bandas como % del techo: **76% ℹ️** heads-up · **88% ⚠️** checkpoint AHORA + propón /compact · **95% 🚨** INMINENTE (re-correr checkpoint aunque ya se hizo + compactar YA). Debounce por BANDA (`.contexto-aviso` = `<banda> <ctx>`); si el ctx baja tras un /compact, se re-arma solo. Escapes: `AVISO_CONTEXTO_CEILING_TOKENS`, `AVISO_CONTEXTO_WINDOW_TOKENS`. Es PostToolUse porque es el único evento que dispara DURANTE una corrida autónoma larga. Tier **global**. Fail-open sin jq/transcript/usage.
+
+### 🔔 🧬 `aviso-drift-cerebro`  ·  SessionStart · aviso (+ AUTO-SYNC en mini-develop)
+Al iniciar sesión en un repo brained (sello `.brain-version` o `dod-verificar.sh` presente), compara la copia por-repo contra la FUENTE ÚNICA (`~/.claude-brain`) vía `sincronizar-cerebro.sh` en **DRY-RUN por CONTENIDO** (comparar VERSION no sirve, no se bumpea). Cuenta drift = nuevos + a-actualizar + retirados + **cableado faltante** (`:80`). **AUTO-SYNC (gotcha clave, `:132-161`):** si la sesión abre parada EN una mini-develop `Develop[[:upper:]]*` (clase POSIX, no `[A-Z]`, para no colar `Developer`/`Development` — FMEA sA3/B2) y `.claude/` está LIMPIO, el cerebro se actualiza SOLO: `--apply` + `git add -A .claude/` (hooks + settings, para que el cableado viaje) + `commit -o -- .claude/` (acotado, no barre otros staged) + `push` a tu mini. **Guard anti-regresión C2** (`:121-124`): si la FUENTE está detrás de su `origin/main` (`fuente_stale`) NO auto-aplica (regresaría el brain) → cae al AVISO. En cualquier otra rama / `.claude/` sucio / cualquier fallo → AVISO ruidoso (proponer propagar por MR, no editar directo). **Throttle**: `AVISO_DRIFT_HORAS` (default **6**h) solo cachea chequeos LIMPIOS; con drift avisa en cada inicio hasta propagar. Corre con source ∈ {startup, resume, clear, compact, fork}. Añade el **nudge de la DUPLA** (suficiencia+coherencia, bifurca según exista `AGENTS.md`). Tier **global**. Fail-open.
+
+### 🔔 🧭 `sesion-inicio`  ·  SessionStart · aviso
+Rehidrata el "cerebro del repo" al abrir/retomar/compactar. Inyecta `additionalContext` con: **rama actual** (+ aviso si estás en `develop`/`main` protegida), la nota de que lo que ves es de ESTA rama (si algo "desaparece" al cambiar de rama NO es pérdida), la **NORMA DE GIT** (nunca push a develop/main; ramitas→MR→develop; main release-only; el único punto de detenerse es cerrar slice/integrar), el **RITUAL ANTI-PÉRDIDA-DE-HILO** (leer `MEMORY.md` + memorias + `AGENTS.md`, no declarar "listo" sin verificación técnica citada + memoria + confirmación) y un **resumen del estado** extraído de `estado-proyecto.md`/`estado-y-pendientes.md`/`estado.md` (`:34-40`). Versión GENÉRICA stack-agnóstica; el aviso de MIGRACIÓN/paridad NO vive aquí (es del repo consumidor). Tier **repo** (solo si la sesión INICIA en el repo). Fail-open.
+
+### 🔔 🌾 `recordar-cosechar`  ·  Stop · aviso (+ ESPEJO determinista del TaskList)
+Nudge GENTIL "trabajaste y no cosechaste aprendizajes". Al terminar un turno, si hubo **trabajo sustantivo** — (A) commits en las últimas `RECORDAR_COSECHAR_HORAS_TRABAJO` (default **6**h) O (B) working tree con cambios en `*.cs/*.razor/*.ts/*.js/*.sh/*.py/*.sql/*.css/*.html` — Y **no se cosechó** (`aprendizajes.md` no cambió en git ni está modificado sin commitear), sugiere `/cosechar-sesion`. **2ª señal de backlog:** si además hubo trabajo y `estado-proyecto.md` NO se tocó, recuerda actualizar el backlog vivo. Es un PROXY (no distingue trabajo trivial → aviso suave y condicional). **Throttle FUERTE: máx 1×/DÍA/repo** (stamp por cksum del ROOT). **ESPEJO del TaskList (siempre, sin throttle):** vuelca el task-list persistente del harness (`~/.claude/tasks/<sid>/*.json`, vía jq) a un bloque cercado `<!-- espejo-tasklist:start/end -->` en `estado-proyecto.md` — determinista (NO LLM, un hook no puede reescribir tu TodoWrite), idempotente (solo escribe si `cmp` difiere, sin timestamp en el cuerpo → sin churn), NO-crea (`[ -f estado-proyecto.md ] || return 0`), y NO auto-suprime el nudge (el chequeo "tocado por humano" elimina el bloque espejo antes de comparar vs HEAD). Mitad "recuérdame" del par con la skill `cosechar-sesion`. Tier **repo**. Escape: `CLAUDE_SKIP_RECORDAR_COSECHAR=1`. Fail-open, nunca bloquea.
+
+### 🔔 ⬆️ `recordar-unificar-cerebro`  ·  SessionStart · aviso
+Gemelo HACIA ARRIBA de aviso-drift (aquél BAJA de la fuente; éste recuerda SUBIR): al iniciar sesión, cuenta el delta de `.claude/` de la rama actual vs `origin/develop` (three-dot `origin/develop...HEAD`, resalta si incluye `aprendizajes.md`) y avisa —pasivo, no bloquea— para correr `/unificar-cerebro` cuando quieras integrar. **Umbral (cualquiera dispara):** ≥ `RECORDAR_UNIFICAR_ARCHIVOS` (default **5**) archivos, O > `RECORDAR_UNIFICAR_DIAS` (default **7**) días desde el commit más antiguo del delta. No avisa parado en `develop/main/HEAD`. **Throttle: máx 1×/DÍA/repo**. Cierra el ritual semanal (cosechar llena inbox → este recuerda subir → unificar reconcilia). Tier **repo**. Escape: `CLAUDE_SKIP_RECORDAR_UNIFICAR=1`. Fail-open.
+
+## 📜 Normas — reglas que Claude se autoimpone (viven en `CLAUDE.md`)
+
+### 📜 🎯 `Definition of Done`
+Verde técnico (build/tests/lint + memoria al día) ≠ LISTO/Done/"ya quedó". Algo es LISTO **solo** si (1) el usuario confirmó la funcionalidad (QA visual/funcional o una prueba acordada de antemano) **o** (2) autorizó EXPRESAMENTE el cierre de esa cosa concreta. "sigue/avanza" NO autoriza (solo permite trabajar sin pedir permiso a cada paso); la autorización es ACOTADA y NO transitiva. Lo hacen cumplir `dod-verificar` (al DECLARAR) y `confirmar-merge-develop` (al INTEGRAR).
+
+### 📜 🪞 `Doc = realidad`
+Cambió algo real (config aplicada, ruta, comportamiento, decisión) → su doc se actualiza en la **MISMA tanda**, sin preguntar ("¿actualizo la doc?" no se pregunta, se hace). El orden es revisar el estado real → editar. Rastrea las OTRAS copias (grep del valor/nombre viejo): una sola copia desincronizada ya es doc que miente.
+
+### 📜 🌿 `Flujo de git`
+NUNCA `git push` a `develop` ni `main`. Todo va por **ramitas** (`feat/fix/chore/docs`) → **MR/PR** → `develop` (con `--squash`). `main` es **release-only** (deliberado, OK súper-explícito). Modelo **mini-develop por dev** (`Develop<Usuario>`): el día a día itera sin fricción en tu mini; solo el MR mini→develop pasa por el candado (`confirmar-merge-develop`).
+
+### 📜 💰 `Costo de delegación`
+Reclutar un agente cuesta según su nivel (**gratis** local · **incluido** dentro de la ventana 5h · **metered** overage/API de pago/desconocido). Consentimiento window-aware ANTES de delegar; gratis/incluido se pregunta 1×/compu, metered 1×/workflow. Lo piden `delegacion-gate` (pregunta) y `limite-gasto` (freno duro si no hay cupo).
+
+## 💡 Catálogo de skills del producto (`brain/skills/` — el detalle de cada uno)
+> Fuente única = `brain/skills/<nombre>/SKILL.md`. El árbol del `CLAUDE.md` muestra una vista curada; ESTA es la lista COMPLETA.
+
+**Auditar / consolidar un cerebro**
+- **`consolidar-cerebro`** — meta-orquestador de la campaña: dupla → positivar → desinflar → loop de convergencia → cierre con la FIRMA (convención CLAUDE+MEMORY). Orquesta, no reinventa.
+- **`auditar-suficiencia-operativa`** — ¿ALCANZA la doc para HACER las tareas sin romper ni re-investigar? deriva tareas reales de 4 canteras, ✅/⚠️/❌ con archivo:línea, RE-audita tras arreglar. Mitad OPERABILIDAD de la dupla.
+- **`auditar-coherencia-cerebro`** — fan-out read-only sobre el propio cerebro (guards+flowcharts+doc): evasiones/huecos/drift, verificado por EJECUCIÓN, loop hasta converger. Mitad CONSISTENCIA de la dupla.
+- **`auditar-proceso-algoritmo`** — auditor experto read-only (procesos industriales + análisis de algoritmos) sobre un flujo/algoritmo (app o el propio brain): individual→colectivo, hallazgos priorizados. Se alimenta de flowcharts (`diagramar`).
+- **`revisar-entregables-agentes`** — verificar lo que un agente ENTREGA contra la realidad; nunca relatar su "listo" como verdad sin comprobarlo.
+
+**Cierre de trabajo / git**
+- **`cerrar-slice`** — ritual de cierre: verifica (build/tests/lint), memoria al día, confirma con el usuario, ramita → MR → develop con resumen curado.
+- **`cosechar-sesion`** — cosecha LOCAL al cerrar el día: revisa TU transcript y extrae los aprendizajes genuinos a memoria.
+- **`unificar-cerebro`** — reconciliación SEMANAL: junta aprendizajes+memorias de las minis de los devs hacia develop sin perder nada.
+
+**Continuidad del hilo / compactar**
+- **`checkpoint`** — vuelca el estado efímero (el HILO) a memoria durable para compactar/cerrar sin perderlo. DOS niveles (ligero / COMPLETO).
+- **`rehidratar-hilo`** — retoma el HILO tras un /compact o corte: anuncia de qué íbamos y continúa desde el "siguiente paso" (gemelo del hook homónimo).
+
+**Orquestación / delegación**
+- **`orquestar-fanout`** — fan-out sin niñera: worktrees aislados, 2 archivos de estado (bitácora `>>` + estado-proyecto), auto-reporte y limpieza al cerrar.
+- **`turno-nocturno`** — protocolo del turno de noche: eco del contrato, decide-dentro-de-la-cerca, grants durables a disco, checkpoint cada ~2h.
+
+**Memorias / docs**
+- **`positivar-doc`** — reescribe answer-first: "ESTO SÍ" (método correcto) ANTES del "ESTO NO" (anti-patrón/gotcha); preserva el 100%.
+- **`desinflar-memorias`** — adelgaza un árbol de memorias sin perder lecciones: narrativa → su lección en su lugar; mitos descartados → `⚰️ Lápidas` AL FINAL.
+- **`investigar-dominio`** — investigar a fondo un dominio de negocio antes de modelarlo, de fuentes reales (no inventar/suponer).
+
+**Diagramas / visual**
+- **`diagramar`** — diagrama según su DESTINO: `.dot`→`dot2yed`→yEd (editar a mano) · Mermaid en `.md` versionado (verse en GitHub). Un diagrama entregable nunca queda como widget efímero.
+- **`zoom-screenshot`** — leer/transcribir capturas cuyo texto fino es ilegible entero: recorta y amplía regiones con ffmpeg antes de leer.
+
+**Instanciar un cerebro**
+- **`claude-proyecto-autocontenido`** — el cerebro vive en `<proyecto>/.claude/` (memoria+skills+hooks), autocontenido, viaja por git; bootstrap del OS lo enlaza.
+
+## 📚 Conocimiento de desarrollo de este repo (widget + brain)
 - [Claude Brain Widget](claude-brain.md) — qué es y dónde vive (este repo, fuente única); fuente de datos (endpoint OAuth `/usage` + ccusage); look FelixDes (naranja, icono speedometer); popup de 3 pestañas (Límites/Resumen/Modelos); gotchas de iteración en KDE y de la bandeja; replicación multi-OS (macOS con paridad completa desde 2026-07-04, Windows por construir); **POLÍTICA de release 2026-07-26**: cada push a `main` reconstruye TODOS los assets precompilados (sin filtro `paths:`) — antídoto al loop de auto-update por asset rancio
-- [Tema KDE opaco](kde-tema-opaco.md) — fork local "CachyOS Nord (opaco)" para bajar la transparencia de los widgets de KDE (0.81→0.97); revertir con `plasma-apply-desktoptheme CachyOS-Nord-round`
-- [Árbol del Cerebro — sync](arbol-cerebro-sync.md) — la jerarquía de la pestaña Cerebro está DUPLICADA en 4 lugares (README + brainTiers de macOS/Linux/Windows) + lógica de estado por GUI que casa NOMBRES; tocar uno = tocar los 4 o se divergen (doc <= realidad). Diferencia de medio legítima: por-repo va indentado en README, con ◈ en el widget.
+- [Árbol del Cerebro — sync](arbol-cerebro-sync.md) — la jerarquía de la pestaña Cerebro está DUPLICADA en 5 lugares (README + MEMORY.md + brainTiers de macOS/Linux/Windows) + lógica de estado por GUI que casa NOMBRES; tocar uno = tocar los 5 o se divergen (doc <= realidad). Diferencia de medio legítima: por-repo va indentado en README, con ◈ en el widget.
 - [Ecosistema Claude (KB viva)](ecosistema-claude.md) — todo lo aprendido sobre el ecosistema Claude (CLI, chat, API, hooks, cuotas, sesiones) al construir el brain; CRECE con cada hallazgo. Semilla: auth GLOBAL a la máquina (switch de cuenta transparente a la sesión viva), el mensaje "cannot determine safety of Bash" = quota agotado (NO Bash roto), PreCompact no inyecta additionalContext, transcripts por-máquina no viajan.
 - [Estrategia de memoria](estrategia-memoria.md) — PLAN (no ejecutado, en el backlog): 5 fases para hacer el cerebro más eficiente/fluido sin perder el hilo (0 gratis · 1 recall selectivo sin daemon · 2 spike Basic Memory · 3 Serena para código .NET · 4 Graphiti condicional) + qué NO haremos (Mem0/Zep cloud, Letta) + decisiones abiertas.
-- [Feedback: correr comandos sin modificar](feedback_correr-comandos-sin-modificar.md) — al QAear un mecanismo documentado (instalador, one-liner del README), córrelo LITERAL; verifica el estado real antes de "optimizar" con flags/env (2026-07-15: una copia redundante ya existente costó menos que debuggear mi desvío).
+- [Diseño de sync de sesiones](diseno-sync-sesiones.md) — motor GENÉRICO del brain (`bin/`) para mover una sesión/transcript de Claude Code entre máquinas y hacer `claude --resume` en otra compu (reescribe el cwd al slug local); el CANAL de transporte y QUÉ sesiones viajan son elección personal. Liberado a main 2026-07.
+
+> **Excluidos del release** (2026-08-01 se SACARON de este repo → viven en la memoria GLOBAL per-máquina, no en el índice compartido): `kde-tema-opaco` (tweak de tema de ESTA máquina — entorno de máquina va global, jamás en un repo) y `feedback_correr-comandos-sin-modificar` (lección de estilo transversal, no producto del brain).

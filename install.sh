@@ -174,6 +174,10 @@ CRIT_PCT=85
 # (en Linux no hay cliente oficial: mejor pon la ruta explícita del mount de rclone/insync); o una
 # ruta. Ausente/vacío = off (100% local, no sube nada).
 # SYNC_DIR=auto
+# SYNC_COMBINE_ALL=1 → el toggle "todas" combina el uso de TODAS las cuentas de tu carpeta de sync
+# (misma persona, varias cuentas: p. ej. una por máquina). Sin él, solo combina máquinas de la MISMA
+# cuenta (default: aísla cuentas ajenas si compartes la carpeta). Ponlo igual en cada máquina.
+# SYNC_COMBINE_ALL=1
 EOF
 fi
 

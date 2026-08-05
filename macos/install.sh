@@ -208,6 +208,9 @@ CRIT_PCT=85
 # replica, y el widget muestra un toggle "esta máquina / todas". "auto" autodetecta Google Drive;
 # o pon una ruta explícita. Ausente/vacío = off (100% local, no sube nada).
 # SYNC_DIR=auto
+# SYNC_COMBINE_ALL=1 → el toggle "todas" combina el uso de TODAS las cuentas de tu carpeta de sync
+# (misma persona, varias cuentas: p. ej. una por máquina). Sin él, solo la MISMA cuenta. Ponlo en cada máquina.
+# SYNC_COMBINE_ALL=1
 EOF
 fi
 

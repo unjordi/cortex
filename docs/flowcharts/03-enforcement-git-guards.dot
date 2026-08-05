@@ -1,13 +1,11 @@
-// 01 — Instalación / actualización del cerebro (claude-brain)  ·  FUENTE editable (Graphviz .dot)
-// Render:  dot -Tsvg 01-instalacion-actualizacion-del-cerebro.dot -o 01-instalacion-actualizacion-del-cerebro.svg
-// Rehecho 2026-07-29 contra el estado REAL del código (MANIFEST + install-brain.sh + sincronizar-cerebro.sh
-// + aviso-drift-cerebro.sh + docs/autoupdate.md). Sustituye al 01 obsoleto que pintaba como "[futuro]/hueco"
-// cosas que YA existen. Convención de color = CONVENCIONES.md (🔴=DENY · 🚧=hueco/deuda · ⚠=escribe git).
-// Estado a 2026-07-30 (develop con #209 mergeado): DRIFT_CIEGO/DRIFT_STAGE (#209) y WID_ATOM (install-brain
-// atomic_install) quedaron RESUELTOS (🟢); el único 🚧 vigente es BOOT_INV, en la PLANTILLA (fuera de este repo).
+// 03 — Enforcement de los git-guards sobre UN comando git (claude-brain)  ·  FUENTE editable (Graphviz .dot)
+// Render:  dot -Tsvg 03-enforcement-git-guards.dot -o 03-enforcement-git-guards.svg
+// Construido 2026-08-01 desde el CÓDIGO REAL de brain/hooks/ (git-branch-guard, merge-squash-guard,
+// confirmar-merge-develop, secret-scan + la lib analizar-comando-git.sh; recordar-dashboard,
+// entorno-maquina-guard, rama-vieja, proteger-arbol; aviso-contexto). Zoom del fan-out de CONVENCIONES §6.
 digraph flujos {
   graph [bgcolor="#1b1712", rankdir=TB, fontname="Helvetica", splines=true,
-         nodesep=0.35, ranksep=0.55, pad=0.25];
+         nodesep=0.35, ranksep=0.55, pad=0.25, compound=true];
   node  [fontname="Helvetica", fontsize=12, fontcolor="#f2ede6", shape=box,
          style="rounded,filled", fillcolor="#2b2b2b", color="#8a8a8a", penwidth=1.5];
   edge  [color="#d97757", fontname="Helvetica", fontsize=10, fontcolor="#cfc8c0", penwidth=1.4];
@@ -82,100 +80,89 @@ digraph flujos {
   }
   // <<< LEYENDA-ARBOL <<<
 
-  // ───────────────────────────────────── EL PROCESO ─────────────────────────────────────
-  subgraph cluster_f8 {
-    label="⓪ Instalación / actualización del cerebro   (install-brain · sincronizar-cerebro · bootstrap-claude · aviso-drift · widget ⬆)";
+  // ───────────────────────────────────── EL FAN-OUT ─────────────────────────────────────
+  subgraph cluster_f0 {
+    label="03 · Enforcement de los git-guards sobre UN comando git   (PreToolUse/Bash · 8 hooks EN PARALELO, sin despachador · precedencia deny > ask > allow · + 1 PostToolUse)";
     fontname="Times"; fontsize=14; fontcolor="#5fa89e";
     color="#5fa89e"; penwidth=1.6; style="rounded"; bgcolor="#1b1712";
 
-    IN       [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
-              label="instalar o actualizar el cerebro\nen esta máquina / repo"];
+    CMD   [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
+           label="el modelo emite una tool Bash con un comando git/glab/gh\n(push · commit · glab mr merge · git reset …)"];
+    FANOUT [shape=diamond, fillcolor="#2b2622", color="#d97757",
+            label="PreToolUse/Bash → los 8 hooks corren\nEN PARALELO sobre el MISMO comando\n(NO hay cascada secuencial; cada uno decide solo)"];
 
-    // MANIFEST como FUENTE ÚNICA — de aquí DERIVAN las dos rutas de despliegue.
-    MANIF    [color="#7fb069",
-              label="🟢  brain/hooks/MANIFEST = FUENTE ÚNICA\ndeclara por hook su TIER {global|repo|both} + KIND {hook|lib|script}.\nDe aquí DERIVAN las 2 rutas de despliegue y el drift-check de test-brain\n(antídoto a las 2 listas curadas por separado que divergían)"];
+    // ── Preludio COMÚN a todos (documentado en cada hook) ──
+    COMUN [color="#c9a227",
+           label="🟡  preludio común de CADA hook (antes de decidir):\n① dedupe doble-cableado: si soy la copia del REPO y existe la GLOBAL → cedo (exit 0)\n   → un clon SIN bootstrap: la del repo sí corre\n② fail-open: sin jq → exit 0 (no bloquea; es red de seguridad, no cárcel)\n③ despoja comillas + normaliza prefijo `git -c/-C/--work-tree…` + `git.exe`\n   (lib analizar-comando-git.sh = fuente ÚNICA de los git-guards → no divergen)"];
 
-    AMBITO   [shape=diamond, fillcolor="#2b2622", color="#d97757", label="¿ámbito?"];
+    // ── LOS 4 QUE PUEDEN DENEGAR (🔒 forzosos) ──
+    GBG   [shape=diamond, fillcolor="#2b2622", color="#d97757",
+           label="🔒🚧 git-branch-guard\n¿push/merge TOCA base (develop/main)?\n· push explícito · push PELÓN/HEAD/--force parado EN base\n· +develop (force-refspec) · merge que NOMBRA la base"];
+    GBG_D [fillcolor="#3a2020", color="#c0392b", penwidth=2.5,
+           label="🔴 DENY — «no se hace push a develop/main».\nRedirige: ramita feat/… → commit → push ramita → MR → develop.\nNO reintentes. (guard OK = sistema funcionando)"];
 
-    // ── Ruta A: GLOBAL (máquina) = install-brain.sh ──
-    GVEZ     [shape=diamond, fillcolor="#2b2622", color="#d97757", label="GLOBAL (máquina):\n¿1ª vez o actualizar?"];
-    GINST    [color="#7fb069",
-              label="🟢  install-brain.sh\nDERIVA del MANIFEST la lista {global,both} → copia hooks+libs a ~/.claude/hooks,\ncablea settings.json, siembra dashboard + entorno-esta-maquina + normas, y ESTAMPA\n~/.claude/.brain-version (sello de versión — YA EXISTE, lo lee el widget).\n(install.sh lo envuelve SOLO en Linux/KDE: +daemon+systemd+plasmoide)"];
-    GUPD     [color="#e08e45",
-              label="🟠  re-correr install-brain.sh\nidempotente Y ACTUALIZABLE: refresca hooks, re-cablea,\nREEMPLAZA el bloque de normas en su lugar, re-estampa .brain-version"];
-    GLIVE    [color="#7fb069", label="🟢  cerebro GLOBAL vivo en la máquina\n(aplica a TODOS los repos)"];
-    GWIRE    [color="#7fb069",
-              label="🟢  install-brain ahora DERIVA la COPIA *y* el CABLEADO del MANIFEST (ev_de + loop),\nno una lista register_hook hardcodeada → agregar un hook global al MANIFEST lo copia\nY lo cablea. test-brain e6b FALLA si el set PreToolUse/Bash diverge del esperado.\nRESUELTO (refactor MANIFEST-derivado + e6b, en develop 2026-07-30)"];
+    MSG   [shape=diamond, fillcolor="#2b2622", color="#d97757",
+           label="🔒🔗 merge-squash-guard\n¿es `glab mr merge`/`gh pr merge` REAL, SIN --squash?\n→ resuelve DESTINO del MR (lib acg_destino_de_mr,\ncaché por MR-id compartida; timeout 6s)"];
+    MSG_D [fillcolor="#3a2020", color="#c0392b", penwidth=2.5,
+           label="🔴 DENY si destino = develop (o IRRESOLUBLE y NO es\nrelease explícito): integrar a develop SQUASHEA a 1 commit.\nRehaz con --squash --squash-message «resumen curado».\nExención: destino main (release) → SIN squash (conserva historia)"];
 
-    // ── Ruta B: POR-REPO (clon / repo consumidor) ──
-    RTIPO    [shape=diamond, fillcolor="#2b2622", color="#d97757", label="POR-REPO:\n¿repo nuevo o existente?"];
-    CLON     [color="#7fb069",
-              label="🟢  repo NUEVO desde la plantilla\nel clon TRAE .claude/ (hooks+settings+skills+memoria) por git — el tooling VIAJA\nen el repo. secret-scan es tier `both` (declarado en el MANIFEST) → viaja por-repo y YA está\ncableado (el viejo 🔴 «clon+bootstrap no da secret-scan» está RESUELTO)"];
-    APLICA   [color="#e08e45",
-              label="🟠  repo EXISTENTE: sembrar .claude/ sigue siendo MANUAL (no scriptado).\naplicar-plantilla-a-proyecto NO copia .claude/ — es un playbook de UI/arquitectura\nque ASUME el cerebro ya presente (hueco moderado, aún vigente)"];
-    BOOT     [color="#e08e45",
-              label="🔔  bootstrap-claude.sh  (UNA vez tras clonar)\nsymlinkea la memoria + siembra dashboard + norma doc=realidad + verifica jq"];
-    BOOT_INV [color="#9e9e9e", style="rounded,filled,dashed",
-              label="🚧  DRIFT INVERSO (vigente en repos CONSUMIDORES, fuera de claude-brain): el\nbootstrap-claude.sh de la plantilla hace `cp -f` INCONDICIONAL de solo 3 de los 6 `both`\n→ un clon con plantilla VIEJA PISA los globales con versiones stale (corto vs el MANIFEST).\n→ que el bootstrap invoque install-brain (que YA deriva del MANIFEST). Pendiente en la plantilla."];
+    CMDG  [shape=diamond, fillcolor="#2b2622", color="#d97757",
+           label="🔒✋ confirmar-merge-develop\n¿es merge MR REAL Y el repo tiene marca\n.claude/repo-compartido? (repos personales → pasa libre)\n→ DESTINO: main = RELEASE · develop = normal\n(ramas personales Develop*/epic/integracion → pasan libres)"];
+    CMD_OK [shape=diamond, fillcolor="#2b2622", color="#d97757",
+            label="¿hay OK EXPRESO del usuario para ESTE merge?\njuez-LLM (Haiku · claude -p) LEE la conversación intercalada\nUSUARIO/ASISTENTE (OKs anafóricos: ASISTENTE propone → USUARIO acepta)\n· o grant DURABLE vigente en autorizaciones-vigentes.local.md\n· sin claude/red/timeout → UNAVAILABLE → DENY conservador\n(main exige lenguaje SUPER-explícito: «release/hasta main/libera»)"];
+    CMDG_D [fillcolor="#3a2020", color="#c0392b", penwidth=2.5,
+           label="🔴 DENY (definición de LISTO en el punto del merge):\nintegrar a develop/main exige tu OK expreso — cítalo y reintenta.\nverde técnico ≠ LISTO; «sigue/avanza» NO autoriza.\nmain: un «mergea» genérico NO autoriza un release.\n(juez no disponible: sin claude/red/timeout → también DENY)"];
 
-    // ── Ruta C: ACTUALIZAR una copia POR-REPO ya instalada (esto era el viejo 🔴 HUECO — hoy RESUELTO) ──
-    CUPD     [shape=diamond, fillcolor="#2b2622", color="#d97757",
-              label="el brain EVOLUCIONÓ: ¿cómo se actualizan\nlos .claude/ de un repo YA instalado?"];
-    SYNC     [color="#7fb069",
-              label="🟢  sincronizar-cerebro.sh  (YA EXISTE, resuelve el viejo HUECO)\nFUENTE ÚNICA = MANIFEST; despliega por-repo {repo,both}, diff-aware (NO cp -f ciego),\nCABLEA settings.json, ESTAMPA .brain-version (solo en sync COMPLETO), PODA hooks\nRETIRED. DRY-RUN por default; --apply escribe; --only / --prune-orphans"];
-    DRIFT    [color="#c0392b", penwidth=3,
-              label="⚠ ESCRIBE git · 🔔🧬  aviso-drift-cerebro.sh  (SessionStart · GLOBAL) — es también pieza de 02\ncorre sincronizar en DRY-RUN (diff por CONTENIDO); si la copia por-repo quedó atrás → AVISA.\n⚠ AUTO-APPLY en mini-develop: en rama Develop* con .claude/ limpio → apply+commit+push SOLO\n📜 → 🌿 Flujo de git (en repo compartido «actualizar» = por ramita→MR)"];
-    DRIFT_CIEGO [color="#7fb069",
-              label="🟢  aviso-drift YA VE el drift de CABLEADO: cuenta también el wiring FALTANTE\n(«N cableado faltante») → ya no reporta «al día» con hooks presentes-SIN-cablear.\nRESUELTO en #209 (en develop, 2026-07-30)"];
-    DRIFT_STAGE [color="#7fb069",
-              label="🟢  el AUTO-APPLY ahora hace `git add -A .claude/` (hooks + settings.json + podas)\n→ el cambio de cableado SÍ se commitea y el árbol queda limpio.\nRESUELTO en #209 (en develop, 2026-07-30)"];
+    SEC   [shape=diamond, fillcolor="#2b2622", color="#d97757",
+           label="🔒🕵️ secret-scan\n¿el comando es git commit/push?\n→ escanea SOLO lo AGREGADO (staged en commit;\n@{u}..HEAD o merge-base en push; +add --dry-run / -a)\n¿matchea un patrón de alta precisión (AKIA/PEM/tokens)?"];
+    SEC_D [fillcolor="#3a2020", color="#c0392b", penwidth=2.5,
+           label="🔴 DENY — un secreto va a ENTRAR al repo.\nSácalo a env/gestor de secretos; si ya estaba, ROTA la credencial.\nEscapes: --no-verify · CLAUDE_SKIP_SECRET_SCAN=1\n(fail-open si no puede acotar el rango; STRICT=1 → fail-closed)"];
 
-    // ── Ruta D: UPDATER del widget (⬆) ──
-    WID      [color="#7fb069",
-              label="🟢  widget (pestaña Cerebro, 3 GUIs): lee ~/.claude/.brain-version y consulta\ncommits/main de github.com/unjordi/claude-brain (throttle ~15m, fail-open).\nSi main avanzó → dibuja el banner ⬆ Actualizar"];
-    WID_ACT  [color="#e08e45",
-              label="🟠  al aceptar ⬆: script suelto hace git fetch + merge --ff-only origin/main sobre\n~/.claude-brain y —solo si tuvo éxito— re-corre install.sh/ps1 (reconstruye+relanza,\ndesprendido). Fase 2 Windows: baja el .exe del release (pendiente de QA)"];
-    WID_ATOM [color="#7fb069",
-              label="🟢  atomicidad: install-brain instala los hooks con atomic_install (cp a tmp + mv,\nrename atómico) → el updater ⬆ ya no deja ventana de lectura a-medio-sobrescribir con sesión VIVA.\nRESUELTO (install-brain.sh atomic_install, en develop)"];
+    // ── LOS 4 QUE SOLO AVISAN (🔔/📜, no bloquean → additionalContext) ──
+    DASH  [color="#e08e45",
+           label="🔔📊 recordar-dashboard  ·  ¿git push?\n🟠 recuerda: Dashboard del cerebro (append `>>` a Bitácora)\n+ doc=realidad: push toca hooks/skills/features SIN tocar doc → actualízala"];
+    ENTM  [color="#e08e45",
+           label="🔔🖥️ entorno-maquina-guard  ·  ¿git commit?\n🟠 avisa si mete algo MACHINE-SPECIFIC (alias/$HOME/Rosetta,\no un `entorno-maquina.md`) al .claude/memory/ del repo → viajaría y MENTIRÍA"];
+    RAMV  [color="#e08e45",
+           label="🔔🕰️ rama-vieja  ·  ¿git push de una ramita?\n🟠 avisa si está ≥40 commits DETRÁS de origin/develop\n→ rebasa antes (el MR traería ruido/conflictos)"];
+    ARBOL [color="#e08e45",
+           label="🔔🌳 proteger-arbol  ·  ¿git DESTRUCTIVO (reset --hard/checkout -f/rebase/branch -D)?\n🟠 avisa SOLO si orfanaría commits sin pushear.\nSUPRIME el falso positivo en worktree AISLADO (H14/H15)"];
 
-    NORMA    [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
-              label="📜 → 🧩 toda norma nace con su mecanismo\n📜 → 🪞 doc = realidad (este mapa se actualiza con el código)"];
+    // ── Confluencia: precedencia deny > ask > allow ──
+    PREC  [shape=diamond, fillcolor="#2b2622", color="#d97757",
+           label="el CLI combina las 8 decisiones\nprecedencia: deny > ask > allow"];
+    BLOCK [fillcolor="#3a2020", color="#c0392b", penwidth=3,
+           label="🔴 comando BLOQUEADO\n(al menos un guard denegó — el modelo lee el motivo y NO reintenta)"];
+    RUN   [color="#7fb069", penwidth=2,
+           label="⚠ ESCRIBE git · 🟢 el comando git CORRE\n(ningún deny; los avisos 🟠 quedan como contexto para el modelo)"];
 
-    // Aristas del flujo
-    IN -> AMBITO;
-    MANIF -> GINST [style=dashed, label="deriva {global,both}"];
-    MANIF -> SYNC  [style=dashed, label="deriva {repo,both}"];
+    // ── El 9º hook: PostToolUse (no bloquea, no es del flujo git per se) ──
+    POST  [color="#e08e45",
+           label="🔔📈 aviso-contexto  (PostToolUse · GLOBAL · el 9º hook)\ntras CADA tool mide los TOKENS reales del contexto → watermark\n(no es específico de git; ver 05)"];
 
-    AMBITO -> GVEZ  [label="global"];
-    AMBITO -> RTIPO [label="por-repo"];
-    AMBITO -> WID   [label="updater ⬆"];
+    // Aristas del fan-out
+    CMD -> FANOUT;
+    FANOUT -> COMUN [label="cada hook primero corre\nel preludio común"];
+    COMUN -> GBG; COMUN -> MSG; COMUN -> CMDG;
+    COMUN -> SEC; COMUN -> DASH; COMUN -> ENTM; COMUN -> RAMV; COMUN -> ARBOL;
 
-    GVEZ -> GINST [label="1ª vez"];
-    GVEZ -> GUPD  [label="actualizar"];
-    GINST -> GLIVE;
-    GUPD  -> GLIVE;
-    GINST -> GWIRE [style=dashed, label="cableado (deriva del MANIFEST)"];
+    GBG -> GBG_D [label="sí"];
+    MSG -> MSG_D [label="sí (develop\nsin squash)"];
+    CMDG -> CMD_OK [label="merge a\ndevelop/main"];
+    CMD_OK -> CMDG_D [label="no hay OK"];
+    SEC -> SEC_D [label="secreto\ndetectado"];
 
-    RTIPO -> CLON   [label="nuevo"];
-    RTIPO -> APLICA [label="existente"];
-    CLON  -> BOOT;
-    APLICA -> BOOT;
-    BOOT -> BOOT_INV;
+    GBG_D -> PREC; MSG_D -> PREC; CMDG_D -> PREC; SEC_D -> PREC;
+    GBG -> PREC  [label="no toca base", style=dashed];
+    MSG -> PREC  [label="ya trae --squash /\ndestino main / no es merge", style=dashed];
+    CMDG -> PREC [label="no es merge MR /\nrepo personal", style=dashed];
+    CMD_OK -> PREC [label="OK citado /\ngrant durable", style=dashed];
+    SEC -> PREC  [label="sin secreto /\nno es commit-push", style=dashed];
+    DASH -> PREC [style=dashed]; ENTM -> PREC [style=dashed];
+    RAMV -> PREC [style=dashed]; ARBOL -> PREC [style=dashed];
 
-    GLIVE -> CUPD [label="con el tiempo…"];
-    BOOT  -> CUPD [label="con el tiempo…"];
-    CUPD -> SYNC  [label="a mano / CI"];
-    CUPD -> DRIFT [label="al iniciar sesión"];
-    SYNC -> DRIFT_CIEGO [style=dashed];
-    DRIFT -> DRIFT_CIEGO;
-    DRIFT -> DRIFT_STAGE;
-
-    WID -> WID_ACT;
-    WID_ACT -> WID_ATOM;
-
-    DRIFT_CIEGO -> NORMA [style=dashed];
-    BOOT_INV -> NORMA    [style=dashed];
-    WID_ATOM -> NORMA    [style=dashed];
-    GWIRE -> NORMA       [style=dashed];
+    PREC -> BLOCK [label="algún deny"];
+    PREC -> RUN   [label="ningún deny"];
+    RUN -> POST   [label="PostToolUse\ntras ejecutar"];
   }
 }

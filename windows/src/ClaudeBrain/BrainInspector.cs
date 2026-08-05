@@ -40,7 +40,7 @@ public sealed class BrainState
         "recordar-dashboard", "secret-scan", "rama-vieja", "proteger-arbol",
         "proteger-fuente-cerebro",
         "limite-gasto", "delegacion-gate", "delegacion-registrar", "delegacion-reporte",
-        "rehidratar-hilo", "aviso-contexto", "aviso-drift-cerebro", "barrer-ramas",
+        "rehidratar-hilo", "aviso-contexto", "aviso-drift-cerebro", "exportar-sesion-master", "barrer-ramas",
         "entorno-maquina-guard",
     };
 
@@ -63,7 +63,7 @@ public sealed class BrainState
         return name switch
         {
             "cerrar-slice" or "checkpoint" or "diagramar" or "auditar-proceso-algoritmo"
-                or "auditar-coherencia-cerebro" or "auditar-suficiencia-operativa" or "desinflar-memorias"
+                or "auditar-coherencia-cerebro" or "auditar-suficiencia-operativa" or "consolidar-cerebro" or "desinflar-memorias"
                 or "orquestar-fanout" or "turno-nocturno" or "cosechar-sesion" or "unificar-cerebro"
                 or "investigar-dominio" or "positivar-doc" or "revisar-entregables-agentes"
                 or "zoom-screenshot" or "claude-proyecto-autocontenido"

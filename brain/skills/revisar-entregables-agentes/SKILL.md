@@ -44,6 +44,24 @@ Un reporte de agente es una AFIRMACIÓN, no un hecho. Creerle sin verificar tien
 - **Caro (muestrea + invariantes):** re-ejecutar toda la búsqueda del agente, verificar 300 archivos
   uno por uno. Muestra + totales, y dilo.
 
+## El caso REBUILD/REEMPLAZO: el DIFF DE PRESERVACIÓN (lo que un rebuild SILENCIA)
+Cuando el entregable **REEMPLAZA un archivo existente** (un agente reescribe un CLAUDE.md, un README, una
+config "desde cero"), el modo de falla NO es una afirmación falsa — es la **OMISIÓN SILENCIOSA**: el
+rebuild suelta contenido real y no lo dice (no hay un "✓" que verificar). El bucle de arriba no lo caza
+porque el agente no AFIRMA lo que dejó fuera. Antídoto OBLIGATORIO antes de aplicar el reemplazo:
+1. **`diff` viejo → nuevo** y enumera TODO lo que el rebuild QUITÓ (secciones, punteros, datos, comandos, advertencias).
+2. **Clasifica cada cosa quitada:**
+   - **basura temporal/obsoleta botada correctamente** (changelog fechado, estado viejo, duplicación) —
+     PERO verifica que su contenido vigente viva YA en su casa durable (estado-proyecto/memoria), no lo asumas.
+   - **conocimiento REAL** (un gotcha, una corrección, un puntero, una advertencia destructiva, un dato que
+     no se regenera) → NO se pierde: se **preserva/reubica** a su casa durable, o el rebuild se corrige/rechaza.
+3. **Punteros del NUEVO:** cada `[[wikilink]]`/"ver memoria X"/"§Y" que el rebuild introduce debe EXISTIR (colgados = mentira nueva).
+
+> **Por qué es paso DURO (caso real 2026-08-02):** un rebuild de agente del `CLAUDE.md` de powerscripts botó
+> —bien— un changelog fechado, PERO también soltó la corrección `caddy-proxy`/`~/.ssl` que vivía SOLO en ese
+> archivo (las memorias tenían el nombre viejo). Sin el diff de preservación se hubiera perdido la corrección
+> y las memorias seguirían mintiendo. unjordi lo cachó porque confié en el rebuild sin correr ESTE paso.
+
 ## Qué NO hacer
 - ❌ Copiar el reporte del agente al usuario como si fuera tu verificación.
 - ❌ Declarar "LISTO/quedó" con base en el "✓" del agente (verde de agente ≠ verificado — mismo

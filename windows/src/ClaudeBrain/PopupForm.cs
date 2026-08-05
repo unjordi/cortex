@@ -814,7 +814,9 @@ public sealed class PopupForm : Form
         {
             float x = area.X + i * (barW + gap);
             float yTop = area.Bottom;
-            foreach (var seg in days[i].Models ?? new List<DayModel>())
+            // tokens desc + desempate por nombre: el apilado NO debe depender de la fuente (local por
+            // tokens; merge global alfabético) → toggle "esta máquina"/"todas" consistente.
+            foreach (var seg in (days[i].Models ?? new List<DayModel>()).OrderByDescending(p => p.Tokens).ThenBy(p => p.Model, StringComparer.Ordinal))
             {
                 float h = (float)(area.Height * (seg.Tokens / maxTok));
                 if (h <= 0) continue;
@@ -940,7 +942,9 @@ public sealed class PopupForm : Form
         {
             float x = area.X + i * (barW + gap);
             float yTop = area.Bottom;
-            foreach (var seg in days[i].Projects ?? new List<DayProject>())
+            // tokens desc: el orden de apilado NO debe depender de la fuente (stats.json local ordena por
+            // tokens; el merge global, alfabético) → homologado entre "esta máquina" y "todas".
+            foreach (var seg in (days[i].Projects ?? new List<DayProject>()).OrderByDescending(p => p.Tokens).ThenBy(p => p.Project, StringComparer.Ordinal))
             {
                 float h = (float)(area.Height * (seg.Tokens / maxTok));
                 if (h <= 0) continue;
@@ -2003,6 +2007,9 @@ public sealed class PopupForm : Form
             new("♻️", "aviso-drift-cerebro", "la copia del cerebro por-repo quedó atrás de la fuente → aviso",
                 "SessionStart",
                 "Al iniciar sesión en un repo con el cerebro por-repo instalado, compara esa copia contra la fuente única (sincronizar-cerebro.sh en dry-run, diff por contenido) y, si quedó atrás, avisa para que Claude proponga propagar por el flujo (ramita→MR). No escribe al árbol en repos compartidos. Throttle 6h si salió limpio."),
+            new("💾", "exportar-sesion-master", "auto-export de las sesiones *-master a ~/.claude-sessions (o Drive vía CLAUDE_SESSIONS_DRIVE); detached, sobrevive el cleanup de 30 días",
+                "Stop + SessionEnd + PreCompact",
+                "Sin exportar a mano: al final de cada turno (Stop, con debounce ~20 min/sesión), en salida limpia (SessionEnd, donde detecta/registra un master nuevo por su título *-master) y justo antes de compactar (PreCompact), re-exporta el .gz de las sesiones *-master a ~/.claude-sessions (o al Drive de CLAUDE_SESSIONS_DRIVE) para poder --resume la MISMA conversación en otra máquina. Corre detached en 2º plano y sobrevive el cleanup de 30 días de Claude Code."),
             new("🧹", "barrer-ramas", "barre ramas locales ya integradas (zombies squash-safe) en 2º plano",
                 "SessionStart",
                 "Al iniciar sesión en un repo con remoto, y como mucho cada 24h, lanza limpiar-ramas.sh en segundo plano para borrar las ramas locales ya integradas (MR mergeado con --squash → remota borrada, o commits ya en la base por equivalencia de parche). Conserva todo trabajo sin integrar; nunca toca la actual/base/develop/main/Develop*/keep/*."),
@@ -2060,6 +2067,9 @@ public sealed class PopupForm : Form
             new("🧪", "auditar-suficiencia-operativa", "¿ALCANZA la doc para HACER el trabajo? tareas reales ✅/⚠️/❌ + re-auditar tras arreglar",
                 "skill · opt-in",
                 "Audita una doc/cerebro por SUFICIENCIA OPERATIVA, no por coherencia: enumera las tareas reales que alguien tendrá que hacer y las califica ✅/⚠️/❌ con archivo:línea. Exige RE-AUDITAR con el prompt idéntico tras arreglar los hallazgos, porque los arreglos introducen contradicciones nuevas."),
+            new("🧠", "consolidar-cerebro", "meta-orquestador: dupla → positivar → desinflar → loop de convergencia → cierre con la FIRMA",
+                "skill · opt-in",
+                "Meta-orquestador que consolida un cerebro de punta a punta: corre la DUPLA de auditores (suficiencia + coherencia) hasta converger, luego positivar-doc y desinflar-memorias, en un loop de convergencia, y cierra generando/actualizando la FIRMA por-contenido (CLAUDE.md + MEMORY.md). No declara LISTO: exige el QA/OK del usuario."),
             new("🪶", "desinflar-memorias", "adelgaza memorias sin perder lecciones: narrativa → 1 línea, mitos → ⚰️ Lápidas al final",
                 "skill · opt-in",
                 "Desinfla un árbol de memorias inflado de narrativa, tutoriales y conocimiento ya desmentido SIN perder ninguna lección: cada tirada de historia se colapsa a su lección en 1-2 líneas EN SU LUGAR, y los mitos descartados se comprimen a una línea y se mudan a una sección ⚰️ Lápidas AL FINAL del archivo (si los borras, el siguiente agente los re-descubre). No toca la bitácora ni el hilo: son append-only por diseño."),
