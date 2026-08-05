@@ -28,7 +28,7 @@
 # recordatorio B4 de paridad en migraciones.
 #
 # FAIL-SAFE (a diferencia de confirmar-merge-develop, que fail-safe DENY): dod es un NAG de disciplina, no
-# un límite de seguridad. Si el juez no está (sin `claude`, sin red, timeout, o respuesta ininteligible) →
+# un límite de seguridad. Si el juez no está (sin token OAuth, sin curl/jq, sin red, timeout, o respuesta ininteligible) →
 # FAIL-OPEN (deja cerrar el turno). Bloquear CADA Stop cuando Haiku esté caído atraparía al usuario en un
 # loop sin poder terminar. Mockeable con CLAUDE_DOD_JUEZ_MOCK (tests deterministas); el JUICIO real se
 # prueba LIVE con la batería de FP/FN históricos en test-brain.sh. Modelo/timeout por env.
@@ -40,8 +40,15 @@ set -u
 # Definido ARRIBA (source-only) para que el test lo corra IDÉNTICO al hook (cero drift).
 _juez_dod() {
   [ -n "${CLAUDE_DOD_JUEZ_MOCK:-}" ] && { printf '%s' "$CLAUDE_DOD_JUEZ_MOCK"; return 0; }
-  command -v claude >/dev/null 2>&1 || { printf 'UNAVAILABLE'; return 0; }
-  local prompt out c m v
+  command -v curl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1 || { printf 'UNAVAILABLE'; return 0; }
+  # Token OAuth de SUSCRIPCIÓN — MISMO canal que el widget (api.anthropic.com + anthropic-beta:oauth-2025-04-20).
+  # NO `claude -p` (su harness es el lastre, ~50s; dod corre en CADA Stop → el curl ~1s lo vuelve viable), NO
+  # `--bare`, NO api-key. Orden: env override → credentials.json (cross-plataforma) → keychain (macOS).
+  local prompt out c m v tok body txt
+  tok="${CLAUDE_CODE_OAUTH_TOKEN:-}"
+  [ -z "$tok" ] && [ -f "$HOME/.claude/.credentials.json" ] && tok=$(jq -er '.claudeAiOauth.accessToken // empty' "$HOME/.claude/.credentials.json" 2>/dev/null)
+  [ -z "$tok" ] && command -v security >/dev/null 2>&1 && tok=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null | jq -er '.claudeAiOauth.accessToken // empty' 2>/dev/null)
+  [ -n "$tok" ] || { printf 'UNAVAILABLE'; return 0; }
   prompt="Eres un guardia que hace cumplir la definición de LISTO en un equipo de software. Clasificas UN mensaje del asistente Claude (y los mensajes del usuario del mismo turno) en tres ejes independientes. NO juzgas si el trabajo está bien; solo clasificas el ACTO DE HABLA.
 
 EJE 1 — CIERRE: ¿el ASISTENTE declara que un ENTREGABLE (un módulo, feature, migración, endpoint, página, tarea, la app, el fix, 'el widget', 'lo') está LISTO / terminado / funciona / 'quedó' / 'a la par' / 'de punta a punta' / 'en producción' / 'cerrado' / 'terminamos' / 🏁?
@@ -69,7 +76,12 @@ $2
 
 Responde EXACTAMENTE una línea, sin nada más:
 CIERRE=<si|no> MARCA=<si|no> VISUAL=<si|no>"
-  out=$(timeout "${CLAUDE_DOD_JUEZ_TIMEOUT:-30}" claude -p "$prompt" --model "${CLAUDE_DOD_JUEZ_MODEL:-claude-haiku-4-5-20251001}" 2>/dev/null)
+  body=$(jq -n --arg m "${CLAUDE_DOD_JUEZ_MODEL:-claude-haiku-4-5-20251001}" --arg p "$prompt" \
+          '{model:$m, max_tokens:32, messages:[{role:"user",content:$p}]}')
+  out=$(curl -sS -m "${CLAUDE_DOD_JUEZ_TIMEOUT:-20}" https://api.anthropic.com/v1/messages \
+          -H "Authorization: Bearer $tok" -H "anthropic-beta: oauth-2025-04-20" \
+          -H "anthropic-version: 2023-06-01" -H "content-type: application/json" \
+          -d "$body" 2>/dev/null | jq -r '.content[0].text // empty' 2>/dev/null)
   _dod_flag() { printf '%s' "$1" | grep -oiE "$2=(s[ií]|no)" | head -1 | grep -oiE '(s[ií]|no)' | tr 'A-Z' 'a-z' | sed 's/sí/si/'; }
   c=$(_dod_flag "$out" CIERRE); m=$(_dod_flag "$out" MARCA); v=$(_dod_flag "$out" VISUAL)
   if [ -n "$c" ] && [ -n "$m" ] && [ -n "$v" ]; then printf 'CIERRE=%s MARCA=%s VISUAL=%s' "$c" "$m" "$v"
