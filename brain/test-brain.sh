@@ -432,6 +432,27 @@ JFX
   [ "$(pmain main 'ASISTENTE: release a main
 USUARIO: ok gracias')" = DENY ] \
     && ok "piso-main: 'release' en línea del ASISTENTE NO cuenta (autoridad=USUARIO) → DENY" || bad "piso-main: aceptó lenguaje de release del ASISTENTE (auto-autorización)"
+  # SOBRE-MATCH del léxico (auditoría 2026-08): 'liber'/'a main' NO deben casar dentro de otras palabras.
+  [ "$(pmain main 'USUARIO: fue una decisión deliberada, mergea el 999')" = DENY ] \
+    && ok "piso-main: 'deliberada' NO cuenta como 'libera' → DENY" || bad "piso-main: 'deliberada' sobre-matcheó como lenguaje de release"
+  [ "$(pmain main 'USUARIO: dale libertad al equipo y mergea el 999')" = DENY ] \
+    && ok "piso-main: 'libertad' NO cuenta como 'libera' → DENY" || bad "piso-main: 'libertad' sobre-matcheó como lenguaje de release"
+  [ "$(pmain main 'USUARIO: mergea el 999, es para la a maintenance window')" = DENY ] \
+    && ok "piso-main: 'a maintenance' NO cuenta como 'a main' → DENY" || bad "piso-main: 'a maintenance' sobre-matcheó como 'a main'"
+  [ "$(pmain main 'USUARIO: liberar a main el 999')" = ALLOW ] \
+    && ok "piso-main: 'liberar a main' (verbo real) → ALLOW" || bad "piso-main: el anclaje rompió un 'liberar' legítimo"
+  # Residual del anclaje de UN solo lado (auditoría 2026-08, ronda 2): frontera en AMBOS lados.
+  [ "$(pmain main 'USUARIO: promueve el domain, mergea el 999')" = DENY ] \
+    && ok "piso-main: 'domain' NO cuenta como 'main' (frontera previa) → DENY" || bad "piso-main: 'domain' sobre-matcheó como 'main'"
+  [ "$(pmain main 'USUARIO: esto es puro liberalismo, mergea el 999')" = DENY ] \
+    && ok "piso-main: 'liberalismo' NO cuenta como 'libera' (frontera final) → DENY" || bad "piso-main: 'liberalismo' sobre-matcheó como 'libera'"
+  [ "$(pmain main 'USUARIO: el 999 ya quedó liberado a main')" = ALLOW ] \
+    && ok "piso-main: 'liberado a main' (participio real de liberar) → ALLOW" || bad "piso-main: el anclaje rompió un 'liberado' legítimo"
+  # FN de la rama promov con .* desacoplado (auditoría 2026-08, ronda 3): 'promueve' + 'main' suelto de otra frase.
+  [ "$(pmain main 'USUARIO: promueve el domain; la rama main está limpia, mergea el 999')" = DENY ] \
+    && ok "piso-main: 'promueve…'+'main' suelto (sin promoción real) → DENY" || bad "piso-main: puenteó promov con un main de otra frase (falso negativo)"
+  [ "$(pmain main 'USUARIO: promover el 999 a main')" = ALLOW ] \
+    && ok "piso-main: 'promover … a main' (real, vía rama a-main) → ALLOW" || bad "piso-main: bloqueó una promoción legítima a main"
 )
 
 # ── JUEZ LIVE (opt-in) · BATERÍA de FP/FN históricos + adversariales contra el Haiku REAL ──
@@ -2705,9 +2726,9 @@ rm -rf "$EXFIX"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "== (f) parity del árbol: README ↔ CLAUDE.md ↔ brain/skills/ =="
+echo "== (f) parity del árbol: README ↔ MEMORY.md ↔ brain/skills/ =="
 if bash "$SCRIPT_DIR/../docs/flowcharts/verificar-arbol-sync.sh" >/dev/null 2>&1; then
-  ok "arbol: README ↔ CLAUDE.md ↔ brain/skills/ en paridad (verificar-arbol-sync.sh)"
+  ok "arbol: README ↔ MEMORY.md ↔ brain/skills/ en paridad (verificar-arbol-sync.sh)"
 else
   bad "arbol: DRIFT entre catálogos → corre docs/flowcharts/verificar-arbol-sync.sh para ver cuál"
 fi

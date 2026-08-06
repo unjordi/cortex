@@ -81,7 +81,12 @@ Responde EXACTAMENTE una palabra en la primera línea: ALLOW o DENY."
   # un candado angosto para el gate de MÁXIMA consecuencia. Solo destino main CONFIRMADO (el vacío lo cubre el
   # fail-seguro del LLM). AUTORIDAD: solo líneas 'USUARIO:' (nunca ASISTENTE → anti auto-autorización).
   if [ "$1" = "main" ] && [ "$out" = "ALLOW" ]; then
-    printf '%s\n' "$3" | grep -iE '^[[:space:]]*USUARIO:' | grep -iqE 'release|liber|a main|hacia main|promov[a-zé]* .*main|promuev[a-z]* .*main' || out=DENY
+    # tokens ANCLADOS a límite de palabra ([^[:alpha:]], portable BSD+GNU): 'liber' NO casa en
+    # "deliberada"/"libertad" (liber[aeo] + frontera previa), 'a main' NO casa en "a maintenance"
+    # (frontera posterior tras main). Endurecimiento — cierra el falso NEGATIVO del piso (auditoría 2026-08).
+    # "promover a main" YA lo cubre '(a|hacia) main'; una rama 'promov.* .*main' aparte metía un .*
+    # desacoplado que puenteaba un 'promueve' cualquiera con un 'main' suelto de otra frase (falso negativo) → se quitó.
+    printf '%s\n' "$3" | grep -iE '^[[:space:]]*USUARIO:' | grep -iqE '(^|[^[:alpha:]])(release|(liberar?|liberado|liberaci[oó]n|liber[eé]n?|liber[oó])([^[:alpha:]]|$)|(a|hacia) main([^[:alpha:]]|$))' || out=DENY
   fi
   [ -n "$out" ] && printf '%s' "$out" || printf 'UNAVAILABLE'
 }
@@ -151,7 +156,8 @@ destino=$(acg_destino_de_mr "$cmd")
 
 # Ramas personales de integración (Develop<Usuario>, epic/*, integracion/*, feat/*, fix/*…) reciben
 # merge CONTINUO sin gate: ahí vive el día a día del modelo MINI-DEVELOP-por-dev. SOLO el `develop`
-# COMPARTIDO y `main` piden confirmación. destino vacío/desconocido → conservador (se trata como develop).
+# COMPARTIDO y `main` piden confirmación. destino vacío/desconocido → NO pasa libre aquí (requiere -n):
+# cae al juez, que aplica el fail SEGURO (duda + release en juego → main estricto), NUNCA "se asume develop".
 if [ -n "$destino" ] && [ "$destino" != "develop" ] && [ "$destino" != "main" ]; then
   exit 0
 fi
@@ -197,7 +203,7 @@ fi
 
 # DENY o UNAVAILABLE → freno, con el mensaje según el caso.
 if [ "$veredicto" = "UNAVAILABLE" ]; then
-  r="FRENO (juez no disponible): no pude consultar el juez de autorización de merge (¿sin 'claude' CLI, sin red, o timeout?). Fail-safe conservador: confirma ESTE merge a mano, o reintenta con el LLM disponible. (Override de modelo/timeout: CLAUDE_MERGE_JUEZ_MODEL / CLAUDE_MERGE_JUEZ_TIMEOUT.)"
+  r="FRENO (juez no disponible): no pude consultar el juez de autorización de merge (¿sin token OAuth, sin curl/jq, sin red, o timeout?). Fail-safe conservador: confirma ESTE merge a mano, o reintenta con el LLM disponible. (Override de modelo/timeout: CLAUDE_MERGE_JUEZ_MODEL / CLAUDE_MERGE_JUEZ_TIMEOUT.)"
 elif [ "$destino" = "main" ]; then
   r="FRENO (RELEASE a main): el juez no encontró autorización EXPRESA de RELEASE para ESTE release (MR $cur_mrid). main es release-only — pide 'libera/release a main' explícito. Los releases van SIN squash (conservan historia)."
 elif [ "$destino" = "develop" ]; then

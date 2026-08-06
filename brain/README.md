@@ -134,6 +134,16 @@ doble-cableado; (b8) `recordar-dashboard` con fallback a `origin/develop`; (c) i
 `install-brain.sh` corrido 2× (cada hook 1× en `settings.json`, 1 solo bloque de normas) y limpieza por
 `uninstall-brain.sh`.
 
+Los **jueces-Haiku** (`confirmar-merge-develop`, `dod-verificar`) se prueban en **dos capas**: (1)
+**DETERMINISTA**, corre SIEMPRE — el veredicto se mockea con `CLAUDE_MERGE_JUEZ_MOCK`/`CLAUDE_DOD_JUEZ_MOCK`
+(el MOCK cae al **PISO DETERMINISTA de main**, batería `piso-main`, que verifica el override sin red); (2)
+**LIVE opt-in** contra el Haiku real —el JUICIO de qué frase autoriza—, que **requiere `curl` + `jq` + el token
+OAuth de suscripción** (`$CLAUDE_CODE_OAUTH_TOKEN` → `~/.claude/.credentials.json` → keychain macOS):
+```sh
+CLAUDE_MERGE_JUEZ_LIVE=1 CLAUDE_DOD_JUEZ_LIVE=1 bash brain/test-brain.sh   # baterías LIVE de FP/FN (merge + dod)
+```
+Sin las env vars, las baterías LIVE se SALTAN (la suite queda verde sin gastar tokens).
+
 La **CI** (`.github/workflows/ci.yml`) repite en cada push/PR el `bash -n` de todos los `.sh`, el
 `jq empty` de los `.json` y `shellcheck --severity=error`. El cerebro se auto-valida antes de
 distribuirse.
