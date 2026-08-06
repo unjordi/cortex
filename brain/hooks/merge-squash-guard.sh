@@ -19,6 +19,10 @@ case "$0" in "$HOME/.claude/hooks/"*) : ;; *) [ -f "$HOME/.claude/hooks/$(basena
 input=$(cat)
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
 [ -z "$cmd" ] && exit 0
+# cwd del payload → resuelve el repo/destino del MR desde el dir REAL del comando (no CLAUDE_PROJECT_DIR).
+# Mejora la resolución gh/glab del destino (cierra el FP de release-gh por RESOLVER bien, sin tocar el
+# fail-safe). Ausente → vacío → acg_destino_de_mr cae a CLAUDE_PROJECT_DIR (conducta de hoy).
+pcwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
 
 # shellcheck source=analizar-comando-git.sh
 . "$(dirname "$0")/analizar-comando-git.sh"
@@ -47,7 +51,7 @@ _es_release_explicito() {
   local u; u=$(acg_sin_flag_repo "$(acg_despoja_comillas "$1")")
   printf '%s' "$u" | grep -qiE '[[:space:]:/=](main)([[:space:]]|$)|\brelease\b'
 }
-_destino=$(acg_destino_de_mr "$cmd")
+_destino=$(acg_destino_de_mr "$cmd" "$pcwd")
 if [ -n "$_destino" ]; then
   # Destino RESUELTO: solo `develop` obliga squash; main/personales/ramitas van libres.
   [ "$_destino" = "develop" ] || exit 0

@@ -52,8 +52,46 @@ acg_normaliza_git_prefijo() {
     | sed -E "s/git[[:space:]]+((((-c|-C|--exec-path|--git-dir|--work-tree|--namespace|--attr-source|--config-env|--super-prefix)([[:space:]]+|=)([^[:space:]\"']|\"[^\"]*\"|'[^']*'|\\\\.)+)|(--?[a-zA-Z][a-zA-Z-]*(=([^[:space:]\"']|\"[^\"]*\"|'[^']*'|\\\\.)+)?))[[:space:]]+)+/git /g"
 }
 
-# Raíz y rama actual del repo del PROYECTO (CLAUDE_PROJECT_DIR), no del cwd del hook.
-acg_rama_actual() { git -C "${CLAUDE_PROJECT_DIR:-.}" rev-parse --abbrev-ref HEAD 2>/dev/null; }
+# Rama actual del repo OBJETIVO. $1=target_dir (opcional). Retro-compat: SIN arg cae a CLAUDE_PROJECT_DIR
+# (= conducta de hoy, el repo de la SESIÓN); con arg evalúa la rama del repo que el comando REALMENTE toca.
+acg_rama_actual() { git -C "${1:-${CLAUDE_PROJECT_DIR:-.}}" rev-parse --abbrev-ref HEAD 2>/dev/null; }
+
+# ── RESOLVEDOR DE TARGET (cimiento cross-repo, auditoría 2026-08-06) ────────────────────────────────────
+# Los git-guards keyeaban el "repo objetivo" desde CLAUDE_PROJECT_DIR (el repo donde ARRANCÓ la sesión), no
+# desde el repo que el comando REALMENTE toca (otro cwd, un `-C <dir>`, un `cd <dir>`, un `--repo/-R`). Eso
+# producía FN (dejar pasar un push a base en OTRO repo) y FP (gatear/bloquear el repo equivocado). Estos dos
+# helpers resuelven el target por PRECEDENCIA explícita, fuente ÚNICA para los tres guards (no divergen).
+# El `cwd` del payload es la señal correcta para el caso PELÓN: gh/glab/git sin destino resuelven desde el
+# cwd, EXACTAMENTE el dato que la herramienta usaría. bash-3.2-safe · BSD+GNU sed.
+
+# acg_target_dir(cmd, payload_cwd) → DIRECTORIO del repo objetivo. Precedencia: -C > cd/pushd > payload_cwd
+# > CLAUDE_PROJECT_DIR > '.'. Opera sobre el cmd CON comillas INTACTAS (para leer una ruta entrecomillada de
+# -C/cd) y ANTES de acg_normaliza_git_prefijo (que DESPOJA el -C) → por eso el consumidor pasa el segmento
+# ORIGINAL, no el normalizado. El modelo de valor (bare | "…" | '…' | \escapado) reusa el de normaliza_git_prefijo.
+acg_target_dir() {   # $1=cmd  $2=payload_cwd → imprime el dir objetivo
+  local cmd="$1" pcwd="${2:-}" d=""
+  # (1) -C <dir> del git (quote-aware; el `.*` codicioso toma el ÚLTIMO -C, normalmente el único)
+  d=$(printf '%s' "$cmd" | sed -nE "s/.*(^|[^[:alnum:]])-C[[:space:]=]+(\"[^\"]*\"|'[^']*'|([^[:space:]\"']|\\\\.)+).*/\2/p" | head -1)
+  d=$(printf '%s' "$d" | sed -E "s/^[\"']//; s/[\"']\$//")
+  if [ -n "$d" ]; then printf '%s' "$d"; return 0; fi
+  # (2) cd/pushd <dir> en el segmento (quote-aware; el valor NO cruza ;&|)
+  d=$(printf '%s' "$cmd" | sed -nE "s/.*(^|[^[:alnum:]])(cd|pushd)[[:space:]]+(\"[^\"]*\"|'[^']*'|([^[:space:]\"';&|]|\\\\.)+).*/\3/p" | head -1)
+  d=$(printf '%s' "$d" | sed -E "s/^[\"']//; s/[\"']\$//")
+  if [ -n "$d" ]; then printf '%s' "$d"; return 0; fi
+  # (3) payload cwd  (4) CLAUDE_PROJECT_DIR  (5) '.'
+  if [ -n "$pcwd" ]; then printf '%s' "$pcwd"; return 0; fi
+  printf '%s' "${CLAUDE_PROJECT_DIR:-.}"
+}
+
+# acg_target_remote(cmd, payload_cwd) → slug `org/repo` del remoto objetivo (para gh/glab). Precedencia:
+# --repo/-R explícito > remoto `origin` del DIR objetivo (que a su vez sigue -C > cd > cwd > PROJECT_DIR).
+acg_target_remote() {   # $1=cmd  $2=payload_cwd → imprime "org/repo" | vacío
+  local cmd="$1" pcwd="${2:-}" repo dir
+  repo=$(printf '%s' "$cmd" | grep -oE '(--repo|-R)[[:space:]=]+[^[:space:]]+' | grep -oE '[^[:space:]=]+$')
+  if [ -n "$repo" ]; then printf '%s' "$repo"; return 0; fi
+  dir=$(acg_target_dir "$cmd" "$pcwd")
+  git -C "$dir" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|https?://[^/]+/)##; s#\.git$##'
+}
 
 # ¿el comando contiene un `git push`?
 acg_es_push() { printf '%s' "$1" | grep -qE 'git[[:space:]]+push([[:space:]]|$)'; }
@@ -68,8 +106,12 @@ acg_mrid() {
 # precedido por espacio/:/'/'/'+' (no matchea feat/develop-x)? El '+' cubre el FORCE-REFSPEC
 # (`git push origin +develop`, `git push -f origin +develop`) — el push FORZADO a base, el más
 # peligroso, que sin el '+' en el set de separadores se colaba (A2, FMEA 2026-07-30).
+#   · G3/G4 (auditoría 2026-08-06): la FRONTERA posterior era demasiado estricta (`[[:space:]]|$`) → un
+#     metacarácter de shell PEGADO a la base la evadía: `(git push origin develop)` (subshell, `)` pegado)
+#     y `git push origin develop>log` (redirect `>` pegado). Se amplía a `([[:space:]]|$|[)>&|;])` — cierra
+#     ambos. VERIFICADO: casa `develop)`/`develop>` y NO casa `develop-feature`/`feat/develop-x` (cero FP).
 acg_push_destino_base() {
-  printf '%s' "$1" | grep -qE 'git[[:space:]]+push[^;&|]*[[:space:]:/+](main|develop)([[:space:]]|$)'
+  printf '%s' "$1" | grep -qE 'git[[:space:]]+push[^;&|]*[[:space:]:/+](main|develop)([[:space:]]|$|[)>&|;])'
 }
 
 # ¿el push va SIN un refspec de rama explícito? (pelón, o solo remoto, o `HEAD` → empuja la RAMA
@@ -90,31 +132,44 @@ acg_push_sin_refspec() {
   [ "$posargs" -le 1 ]
 }
 
-# ¿el comando EMPUJARÍA a develop/main? — explícito (nombra la rama) O pelón estando parado en
-# develop/main. Opera sobre el cmd SIN comillas ni --repo. Cierra H1 (+ H11/H13). Requiere git para
-# el caso pelón; sin git cae a fail-open en ese caso (backstop = ramas protegidas server-side).
-acg_push_toca_base() {
-  local raw sub subu subq
-  raw=$(acg_normaliza_git_prefijo "$1")   # A-03: colapsa `git -c/-C …` para no romper la adyacencia git+push
+# ¿el comando EMPUJARÍA a develop/main? — explícito (nombra la rama) O pelón cuando el repo OBJETIVO está
+# en develop/main. Opera sobre el cmd SIN comillas ni --repo para la detección; el dir objetivo se resuelve
+# CON comillas (acg_target_dir). Cierra H1 (+ H11/H13) y el FN cross-repo (pelón a OTRO repo en base).
+# FAIL-SAFE del pelón: si la rama del repo objetivo es IRRESOLUBLE (sin git / dir inexistente / no-git),
+# BLOQUEA (nunca fail-open) — backstop adicional = ramas protegidas server-side.
+acg_push_toca_base() {   # $1=cmd  $2=payload_cwd(opcional)
+  local pcwd="${2:-}" orig sub subu subq cd_prefix="" dir rama
   # A-R3-01 (FMEA r3): recorre CADA subcomando (separado por ; && || & |). Un push a base en CUALQUIERA
   # cuenta — un `git push origin feat/x ; git push origin develop` ya no se cuela por el 2º (el head -1
   # anterior solo miraba el 1º). Cada subcomando se evalúa AISLADO: un "git push …develop" DENTRO del
   # mensaje de un commit entrecomillado NO cuenta (ese subcomando es el commit; su despoja borra el mensaje
   # → es_push=no → se salta; preserva H13). En un subcomando que SÍ es push real evaluamos: A-02
   # (--all/--mirror), destino ENTRECOMILLADO/refspec (A-01/N-01: desquotando ESE subcomando), y el
-  # pelón/HEAD por la rama actual.
-  while IFS= read -r sub; do
-    [ -n "$sub" ] || continue
+  # pelón/HEAD por la rama actual DEL REPO OBJETIVO.
+  # RESOLVEDOR CROSS-REPO (2026-08-06): se itera sobre el cmd ORIGINAL (con -C intacto) y se normaliza
+  # CADA segmento (equivalente a normalizar el todo — el prefijo global no cruza ;&|). Para el caso PELÓN,
+  # el dir objetivo se resuelve PER-SEGMENTO (el `-C` del propio segmento, o un `cd <dir>` de un segmento
+  # PREVIO de la cadena) → la rama se evalúa contra el repo que el push REALMENTE toca, no el de la sesión.
+  while IFS= read -r orig; do
+    [ -n "$orig" ] || continue
+    sub=$(acg_normaliza_git_prefijo "$orig")   # A-03: colapsa `git -c/-C …` para no romper la adyacencia git+push
     subu=$(acg_sin_flag_repo "$(acg_despoja_comillas "$sub")")
+    # rastrea un `cd/pushd <dir>` para los segmentos POSTERIORES de la cadena (aplica al push que le sigue)
+    if printf '%s' "$subu" | grep -qE '^[[:space:]]*(cd|pushd)[[:space:]]'; then cd_prefix="$orig"; fi
     acg_es_push "$subu" || continue
     printf '%s' "$subu" | grep -qE 'git[[:space:]]+push[^;&|]*[[:space:]](--all|--mirror)([[:space:]]|$)' && return 0
     subq=$(acg_sin_flag_repo "$(printf '%s' "$sub" | tr -d "'\"")")
     acg_push_destino_base "$subq" && return 0
     if acg_push_sin_refspec "$subu"; then
-      case "$(acg_rama_actual)" in main|develop) return 0 ;; esac
+      dir=$(acg_target_dir "$cd_prefix $orig" "$pcwd")   # -C del segmento > cd previo > cwd > PROJECT_DIR
+      rama=$(acg_rama_actual "$dir")
+      case "$rama" in
+        main|develop) return 0 ;;
+        "")           return 0 ;;   # FAIL-SAFE: rama IRRESOLUBLE en un pelón ⇒ BLOQUEA (nunca fail-open)
+      esac
     fi
   done <<EOF
-$(printf '%s' "$raw" | awk '{gsub(/[;&|]/,"\n")}1')
+$(printf '%s' "$1" | awk '{gsub(/[;&|]/,"\n")}1')
 EOF
   return 1
 }
@@ -123,7 +178,13 @@ EOF
 # de git-branch-guard: mismo comportamiento de antes, pero sobre cmd sin comillas ni --repo → H11/H13).
 acg_merge_menciona_base() {
   local u; u=$(acg_sin_flag_repo "$(acg_despoja_comillas "$1")")
-  printf '%s' "$u" | grep -qE '(glab[[:space:]]+mr[[:space:]]+merge|gh[[:space:]]+pr[[:space:]]+merge)[^;&|]*[[:space:]:/](main|develop)([[:space:]]|$)'
+  # G6 (auditoría 2026-08-06): el 1er POSICIONAL de `gh pr merge <arg>` / `glab mr merge <arg>` es el #/rama
+  # de ORIGEN del MR, NUNCA el destino — un `gh pr merge develop` de un release develop→main NO nombra base
+  # como destino. Antes se trataba CUALQUIER `develop`/`main` tras el subcomando como destino → FP que
+  # bloqueaba el release por CLI. El destino REAL lo resuelve acg_destino_de_mr (target-aware). Aquí solo
+  # cuenta un destino EXPLÍCITO por flag (--base/--target[-branch]/-B). Alineado con acg_es_merge_mr
+  # ((\.exe)? Windows + merge|accept).
+  printf '%s' "$u" | grep -qE '(glab(\.exe)?[[:space:]]+mr[[:space:]]+(merge|accept)|gh(\.exe)?[[:space:]]+pr[[:space:]]+merge)[^;&|]*[[:space:]](--base|--target|--target-branch|-B)[[:space:]=]+(main|develop)([[:space:]]|$|[)>&|;])'
 }
 
 # ¿el comando EJECUTA una integración REAL de MR/PR (server-side), no ayuda/inspección? Reconoce el
@@ -172,13 +233,14 @@ acg__run_timeout() {
 # confirmar trata vacío como develop = pide OK; squash trata !develop = no fuerza, para no aplastar un
 # release por no resolver). Requiere jq (sin jq devuelve vacío).
 ACG_MR_TIMEOUT="${ACG_MR_TIMEOUT:-6}"
-acg_destino_de_mr() {
+acg_destino_de_mr() {   # $1=comando  $2=payload_cwd(opcional)
   command -v jq >/dev/null 2>&1 || return 0
-  local raw="$1" u tool repo mrid key cache dest
+  local raw="$1" pcwd="${2:-}" u tool repo mrid key cache dest
   u=$(acg_despoja_comillas "$raw")
   if printf '%s' "$u" | grep -qE 'glab(\.exe)?[[:space:]]+mr'; then tool=glab; else tool=gh; fi  # (\.exe)?: binario Windows (H-R9-01)
-  repo=$(printf '%s' "$raw" | grep -oE '(--repo|-R)[[:space:]=]+[^[:space:]]+' | grep -oE '[^[:space:]=]+$')
-  [ -z "$repo" ] && repo=$(git -C "${CLAUDE_PROJECT_DIR:-.}" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|https?://[^/]+/)##; s#\.git$##')
+  # Repo objetivo por PRECEDENCIA (--repo/-R > remoto del dir objetivo: -C > cd > cwd > PROJECT_DIR). Antes
+  # el fallback leía SIEMPRE el remoto de CLAUDE_PROJECT_DIR → resolvía el destino del repo equivocado.
+  repo=$(acg_target_remote "$raw" "$pcwd")
   mrid=$(acg_mrid "$u")
   [ -n "$mrid" ] || return 0
   key=$(printf '%s' "${repo}|${tool}|${mrid}" | sed 's/[^A-Za-z0-9]/_/g')
@@ -203,13 +265,12 @@ acg_destino_de_mr() {
 # candidato — NUNCA como autorización (eso lo decide el juez leyendo líneas USUARIO:). Fail-safe: sin
 # jq/binario/red/timeout → imprime vacío → el consumidor degrada a "como hoy" (destino por acg + charla).
 # Devuelve un JSON array normalizado [{number,title,baseRefName,headRefName,isDraft}] o vacío.
-acg_lista_prs_abiertos() {   # $1=comando (para derivar repo/herramienta) → JSON array | vacío
+acg_lista_prs_abiertos() {   # $1=comando (para derivar repo/herramienta)  $2=payload_cwd(opcional) → JSON array | vacío
   command -v jq >/dev/null 2>&1 || return 0
-  local raw="$1" u tool repo key cache out
+  local raw="$1" pcwd="${2:-}" u tool repo key cache out
   u=$(acg_despoja_comillas "$raw")
   if printf '%s' "$u" | grep -qE 'glab(\.exe)?[[:space:]]+mr'; then tool=glab; else tool=gh; fi
-  repo=$(printf '%s' "$raw" | grep -oE '(--repo|-R)[[:space:]=]+[^[:space:]]+' | grep -oE '[^[:space:]=]+$')
-  [ -z "$repo" ] && repo=$(git -C "${CLAUDE_PROJECT_DIR:-.}" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|https?://[^/]+/)##; s#\.git$##')
+  repo=$(acg_target_remote "$raw" "$pcwd")   # --repo/-R > remoto del dir objetivo (no siempre PROJECT_DIR)
   key=$(printf '%s' "${repo}|${tool}|prlist" | sed 's/[^A-Za-z0-9]/_/g')
   cache="${TMPDIR:-/tmp}/acg-prlist-${key}"
   if [ -f "$cache" ]; then cat "$cache"; return 0; fi

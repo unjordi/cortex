@@ -20,6 +20,13 @@
 # intercepta. Complementa a git-branch-guard y merge-squash-guard (exige --squash a develop). Fail-open sin jq.
 set -u
 
+# Lib COMÚN de los jueces (retrieval de token PORTABLE login-activo-first + curl 401-aware + parseo + estados
+# UNAVAILABLE_NOTOKEN/UNAVAILABLE_NET/EXPIRED). Se sourcea con BASH_SOURCE (NO $0) para que funcione IGUAL
+# cuando el hook CORRE y cuando un test lo sourcea con _CMD_JUEZ_SOURCE_ONLY=1 ($0 sería el test; BASH_SOURCE
+# es SIEMPRE este archivo). Va ARRIBA del early-return de source-only para que el test obtenga las funciones.
+# shellcheck source=juez-comun.sh
+. "${BASH_SOURCE[0]%/*}/juez-comun.sh"
+
 # ── JUEZ DE AUTORIZACIÓN (LLM) — definido ARRIBA para que los tests lo SOURCEEN idéntico (cero drift con
 # el hook). Punto de entrada = _juez_merge($destino,$mrid,$mensajes,$hint) → ALLOW|DENY|UNAVAILABLE; un voto
 # individual lo produce _juez_merge_uno (mismo contrato). Reemplaza el pilón de regex frágiles: es comprensión
@@ -42,8 +49,8 @@ set -u
 # Fail-safe conservador: sin token OAuth/curl-jq/red/timeout/respuesta ininteligible → UNAVAILABLE→DENY,
 # NUNCA fail-open. Mocks deterministas: CLAUDE_MERGE_JUEZ_MOCK (veredicto FINAL de la capa-LLM, entra al
 # piso de main) · CLAUDE_MERGE_JUEZ_MOCK_RAW (texto CRUDO de respuesta → prueba parseo+cita sin red).
-_juez_merge_uno() {   # $1=destino  $2=mrid  $3=mensajes  $4=hint(opcional) → imprime ALLOW | DENY | UNAVAILABLE — UN voto
-  local prompt out tok body txt hint cita temp
+_juez_merge_uno() {   # $1=destino  $2=mrid  $3=mensajes  $4=hint(opcional) → imprime ALLOW | DENY | UNAVAILABLE_* — UN voto
+  local prompt out txt hint cita temp _resp _estado
   hint="${4:-}"
   # Temperatura EFECTIVA de ESTA llamada. Default 0 (gate reproducible, comportamiento de UNA llamada INTACTO).
   # Solo el dispatcher de voto múltiple (_juez_merge, VOTES≥2) la sube vía _JUEZ_TEMP; una llamada suelta la deja en 0.
@@ -55,17 +62,12 @@ _juez_merge_uno() {   # $1=destino  $2=mrid  $3=mensajes  $4=hint(opcional) → 
   if [ -n "${CLAUDE_MERGE_JUEZ_MOCK_RAW:-}" ]; then
     txt="$CLAUDE_MERGE_JUEZ_MOCK_RAW"   # respuesta CRUDA mockeada → ejercita el parseo por centinela + el veto de cita
   else
-  command -v curl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1 || { printf 'UNAVAILABLE'; return 0; }
   # PISO barato (capa 4): sin ninguna línea USUARIO: en la ventana no hay autorización POSIBLE → DENY sin
   # gastar la llamada de red. (El mock no pasa por aquí: es para las pruebas de flujo/piso deterministas.)
   printf '%s\n' "$3" | grep -qiE '^[[:space:]]*USUARIO:' || { printf 'DENY'; return 0; }
-  # Token OAuth de SUSCRIPCIÓN — MISMO canal que el widget (api.anthropic.com + anthropic-beta:oauth-2025-04-20).
-  # NO `claude -p` (su harness es el lastre, ~50s), NO `--bare`, NO api-key. Orden: env override →
-  # credentials.json (cross-plataforma) → keychain (macOS). Sin token → UNAVAILABLE (fail-safe DENY arriba).
-  tok="${CLAUDE_CODE_OAUTH_TOKEN:-}"
-  [ -z "$tok" ] && [ -f "$HOME/.claude/.credentials.json" ] && tok=$(jq -er '.claudeAiOauth.accessToken // empty' "$HOME/.claude/.credentials.json" 2>/dev/null)
-  [ -z "$tok" ] && command -v security >/dev/null 2>&1 && tok=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null | jq -er '.claudeAiOauth.accessToken // empty' 2>/dev/null)
-  [ -n "$tok" ] || { printf 'UNAVAILABLE'; return 0; }
+  # Token + curl + reintento-401 + deps: TODO vive en la lib juez-comun.sh (_juez_llamar_api), homologada
+  # con el getter del widget (login-activo-first, honra CLAUDE_CONFIG_DIR). El MISMO canal que el widget
+  # (api.anthropic.com + anthropic-beta:oauth-2025-04-20; NO `claude -p`, NO api-key). Ver la llamada abajo.
   prompt="Eres un guardia de seguridad de merges de git. El asistente Claude quiere ejecutar el merge del MR $2.
 La rama DESTINO del MR, según una consulta factual, es: '$1'.
 - Si NO viene vacía, ESE es el destino AUTORITATIVO: úsalo TAL CUAL. NO lo reinterpretes aunque el USUARIO mencione otra rama (si el destino real es 'main' y el usuario dijo 'a develop', su 'a develop' es un ERROR del usuario, NO una autorización de release — para main SIEMPRE exige lenguaje de release).
@@ -103,12 +105,19 @@ CITA: <texto literal de la línea USUARIO:>
 VEREDICTO: ALLOW
   o
 VEREDICTO: DENY"
-  body=$(jq -n --arg m "${CLAUDE_MERGE_JUEZ_MODEL:-claude-haiku-4-5-20251001}" --arg p "$prompt" --argjson t "$temp" \
-          '{model:$m, max_tokens:768, temperature:$t, messages:[{role:"user",content:$p}]}')
-  txt=$(curl -sS -m "${CLAUDE_MERGE_JUEZ_TIMEOUT:-25}" https://api.anthropic.com/v1/messages \
-          -H "Authorization: Bearer $tok" -H "anthropic-beta: oauth-2025-04-20" \
-          -H "anthropic-version: 2023-06-01" -H "content-type: application/json" \
-          -d "$body" 2>/dev/null | jq -r '.content[0].text // empty' 2>/dev/null)
+  # Llamada REAL vía la lib común (retrieval portable + curl que captura http_code + reintento 1× en 401).
+  # Si vuelve VACÍA, mapeo el ESTADO de la lib a un UNAVAILABLE_* específico que el CUERPO del hook traduce
+  # a un mensaje ACCIONABLE (NOTOKEN→web de GitLab · EXPIRED→reintenta · NET→genérico) — SIEMPRE fail-safe DENY.
+  _resp=$(_juez_llamar_api "${CLAUDE_MERGE_JUEZ_MODEL:-claude-haiku-4-5-20251001}" 768 "${CLAUDE_MERGE_JUEZ_TIMEOUT:-25}" "$temp" "$prompt")
+  _estado=$(printf '%s\n' "$_resp" | head -1)      # línea 1 = estado (subshell-safe; NO el global _JUEZ_ESTADO)
+  txt=$(printf '%s\n' "$_resp" | sed '1d')         # resto = texto del assistant
+  if [ -z "$txt" ]; then
+    case "$_estado" in
+      UNAVAILABLE_NOTOKEN) printf 'UNAVAILABLE_NOTOKEN'; return 0 ;;
+      EXPIRED)             printf 'UNAVAILABLE_EXPIRED'; return 0 ;;
+      *)                   printf 'UNAVAILABLE_NET';     return 0 ;;
+    esac
+  fi
   fi
   # DEBUG opt-in (CLAUDE_MERGE_JUEZ_DEBUG=1): vuelca el CoT crudo a stderr → diagnóstico de FN y tuning
   # del corpus (norma "bitácora de falsos positivos"). Off por default; no toca el veredicto.
@@ -236,9 +245,23 @@ _recent_intercalado() {  # $1=ruta del transcript .jsonl → imprime la conversa
 # en un clon SIN bootstrap la del repo sí corre. NO-debilitante: sigue exigiendo el OK igual.
 case "$0" in "$HOME/.claude/hooks/"*) : ;; *) [ -f "$HOME/.claude/hooks/$(basename "$0")" ] && exit 0 ;; esac
 input=$(cat 2>/dev/null || true)
-command -v jq >/dev/null 2>&1 || exit 0
+# A3 (fail-SAFE, auditoría 2026-08-06): sin jq NO puedo parsear el input para gatear — pero un comando que
+# PARECE un merge de MR NO debe pasar SIN gate (evasión asimétrica: sin token = DENY, sin jq = ALLOW; un
+# agente evadía el candado con un PATH sin jq). Grep CRUDO del input por el subcomando de merge; si aparece
+# → DENY (más ESTRICTO, no afloja nada). Si NO parece merge → exit 0 (no sobre-bloquea comandos normales).
+# La respuesta DENY se arma con printf (no jq) porque justamente no hay jq; el mensaje es un literal fijo.
+if ! command -v jq >/dev/null 2>&1; then
+  if printf '%s' "$input" | grep -qE '(mr[[:space:]]+(merge|accept)|pr[[:space:]]+merge)'; then
+    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"FRENO (sin jq): no puedo verificar la autorización de este merge sin jq instalado, y un merge a develop/main NO pasa sin gate (fail-safe). Instala jq (macOS: brew install jq · Debian/Ubuntu: apt install jq · Windows: winget install jqlang.jq) e reintenta, o integra el MR en la web de GitLab."}}'
+  fi
+  exit 0
+fi
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
 [ -z "$cmd" ] && exit 0
+# cwd del payload = working dir REAL del comando (puede diferir de CLAUDE_PROJECT_DIR). Señal para resolver
+# el repo/destino y la marca compartido/personal del repo que el MR REALMENTE toca. Ausente → vacío → cae a
+# CLAUDE_PROJECT_DIR (conducta de hoy).
+pcwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
 
 # shellcheck source=analizar-comando-git.sh
 . "$(dirname "$0")/analizar-comando-git.sh"
@@ -248,9 +271,36 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
 # de OTRO comando encadenado (`glab mr merge 5 --yes && git status`) YA NO evade el gate (H3).
 acg_es_merge_mr "$cmd" || exit 0
 
-# ALCANCE: solo repos COMPARTIDOS. Sin la marca `.claude/repo-compartido` (que viaja por git en los
-# repos de equipo), este candado no aplica → repos personales/solo mergean a su develop sin pedir OK.
-[ -f "${CLAUDE_PROJECT_DIR:-.}/.claude/repo-compartido" ] || exit 0
+# ALCANCE: solo repos COMPARTIDOS (marca `.claude/repo-compartido`, viaja por git). CROSS-REPO (auditoría
+# 2026-08-06, incidente C1/C2): la marca se resuelve del repo DESTINO del MR (TARGET_ROOT), NO de
+# CLAUDE_PROJECT_DIR (el repo de la SESIÓN). Antes, un `--repo <compartido>` lanzado desde una sesión en un
+# repo PERSONAL (sin marca) escapaba el candado (FN de ALTA consecuencia: integración a un develop compartido
+# SIN OK del usuario), y a la inversa gateaba de más.
+#
+# TARGET_ROOT = raíz del repo del dir objetivo (acg_target_dir: -C > cd > cwd > CLAUDE_PROJECT_DIR). REGLA
+# DURA (§3 práctica): SALTAR el gate (exit 0) SOLO si se confirma POSITIVAMENTE que el destino es PERSONAL;
+# CUALQUIER incertidumbre ⇒ GATEA (fricción de más = molesto pero seguro; saltar de más = brecha). Casos:
+#   · --repo/-R EXPLÍCITO que NO nombra el mismo repo que el dir local (o no resoluble) → OTRO repo, no puedo
+#     leer su marca local → INCIERTO ⇒ GATEA (cierra el FN gemelo `--repo <compartido>` desde sesión personal).
+#   · sin --repo (o --repo == el propio dir local): la marca LOCAL de TARGET_ROOT es autoritativa →
+#       marca presente → COMPARTIDO (gatea) · sin marca + repo git VÁLIDO → PERSONAL confirmado (exit 0) ·
+#       TARGET_ROOT no resoluble a un repo git → INCIERTO ⇒ GATEA.
+TARGET_DIR=$(acg_target_dir "$cmd" "$pcwd")
+TARGET_ROOT=$(git -C "$TARGET_DIR" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$TARGET_DIR")
+_explicit_repo=$(acg_despoja_comillas "$cmd" | grep -oE '(--repo|-R)[[:space:]=]+[^[:space:]]+' | grep -oE '[^[:space:]=]+$')
+if [ -n "$_explicit_repo" ]; then
+  _local_slug=$(git -C "$TARGET_ROOT" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|https?://[^/]+/)##; s#\.git$##')
+  if [ "$_explicit_repo" != "$_local_slug" ]; then
+    : # --repo apunta a OTRO repo (o no resoluble local) → INCIERTO ⇒ GATEA (no exit 0)
+  elif [ ! -f "$TARGET_ROOT/.claude/repo-compartido" ]; then
+    exit 0   # --repo == dir local Y sin marca → PERSONAL confirmado
+  fi
+elif [ -f "$TARGET_ROOT/.claude/repo-compartido" ]; then
+  : # marca local presente → COMPARTIDO ⇒ gatea
+elif git -C "$TARGET_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+  exit 0   # repo git VÁLIDO sin marca → PERSONAL confirmado → sin fricción
+fi
+# (si no cayó en ningún exit 0, se considera COMPARTIDO/INCIERTO → sigue al gate)
 
 # DESTINO del merge: main = RELEASE (autorización SUPER explícita); develop/otro = confirmación normal.
 # Lo resuelve la lib (acg_destino_de_mr): caché por MR-id COMPARTIDA con merge-squash-guard (típicamente
@@ -260,7 +310,7 @@ acg_es_merge_mr "$cmd" || exit 0
 # infiere el destino del contexto con el fail SEGURO (ante duda + lenguaje de release → trata como MAIN,
 # el gate estricto). Antes "vacío → develop" bloqueaba releases legítimos Y era un downgrade (un release a
 # main gateado con reglas de develop). El grant durable de abajo también se endureció a destino=develop.
-destino=$(acg_destino_de_mr "$cmd")
+destino=$(acg_destino_de_mr "$cmd" "$pcwd")
 
 # Ramas personales de integración (Develop<Usuario>, epic/*, integracion/*, feat/*, fix/*…) reciben
 # merge CONTINUO sin gate: ahí vive el día a día del modelo MINI-DEVELOP-por-dev. SOLO el `develop`
@@ -278,7 +328,7 @@ fi
 # vacía/caída → hint "NO DISPONIBLE" y el destino sigue exactamente como lo dejó acg_destino_de_mr (cero
 # regresión respecto a hoy). El id del MR (acg_mrid) se computa aquí para resolver el destino-vacío.
 cur_mrid=$(acg_mrid "$(acg_despoja_comillas "$cmd")")
-prlist=$(acg_lista_prs_abiertos "$cmd")
+prlist=$(acg_lista_prs_abiertos "$cmd" "$pcwd")
 if [ -z "$destino" ] && [ -n "$prlist" ]; then
   d=$(printf '%s' "$prlist" | jq -r --arg id "$cur_mrid" 'map(select((.number|tostring)==$id))[0].baseRefName // empty' 2>/dev/null)
   if [ -n "$d" ]; then
@@ -309,7 +359,7 @@ recent=$(_recent_intercalado "$tpath")
 # cuando la detección de destino fallaba (fail-safe débil). Vacío/desconocido → NO fast-path → decide el juez
 # (que aplica el fail SEGURO: destino incierto + lenguaje de release → main).
 if [ "$destino" = "develop" ]; then
-  AUTH_FILE="${CLAUDE_PROJECT_DIR:-.}/.claude/memory/autorizaciones-vigentes.local.md"
+  AUTH_FILE="$TARGET_ROOT/.claude/memory/autorizaciones-vigentes.local.md"
   if [ -f "$AUTH_FILE" ]; then
     now_epoch=$(date +%s)
     grant=$(awk -v now="$now_epoch" '/scope=merge-develop/ && match($0, /vence_epoch=[0-9]+/) {
@@ -327,9 +377,18 @@ if [ "$veredicto" = "ALLOW" ]; then
   exit 0
 fi
 
-# DENY o UNAVAILABLE → freno, con el mensaje según el caso.
-if [ "$veredicto" = "UNAVAILABLE" ]; then
-  r="FRENO (juez no disponible): no pude consultar el juez de autorización de merge (¿sin token OAuth, sin curl/jq, sin red, o timeout?). Fail-safe conservador: confirma ESTE merge a mano, o reintenta con el LLM disponible. (Override de modelo/timeout: CLAUDE_MERGE_JUEZ_MODEL / CLAUDE_MERGE_JUEZ_TIMEOUT.)"
+# DENY o UNAVAILABLE_* → freno. El juez SIEMPRE es fail-safe DENY aquí; el ESTADO solo cambia el MENSAJE
+# (más accionable), NUNCA la decisión. UNAVAILABLE_NOTOKEN redirige al carril de la WEB (colega/CI/api-key
+# sin token OAuth); UNAVAILABLE_EXPIRED sugiere reintentar (el CLI refresca el token solo); el resto (NET /
+# 'UNAVAILABLE' pelón del mock / ininteligible) es el genérico de siempre.
+if [ "$veredicto" = "UNAVAILABLE_NOTOKEN" ]; then
+  r="FRENO (sin token OAuth para el juez de merge): esta máquina no tiene un token OAuth de Claude alcanzable (¿api-key, CI, o sesión sin login de suscripción?), así que el juez de autorización por CLI NO puede correr aquí. NO abro el merge (fail-safe). Carriles válidos:
+  · Integra ESTE MR en la WEB de GitLab — es el carril NORMAL para develop/main (merge coordinado server-side), no un workaround.
+  · O corre 'claude setup-token' (token de larga vida) / exporta CLAUDE_CODE_OAUTH_TOKEN y reintenta."
+elif [ "$veredicto" = "UNAVAILABLE_EXPIRED" ]; then
+  r="FRENO (token OAuth expirado): tu token de Claude fue RECHAZADO (401) incluso tras un reintento — el CLI lo refresca solo en ~un momento. REINTENTA el merge en unos segundos; si persiste, corre 'claude setup-token' o integra el MR en la web de GitLab. (Fail-safe: no abro el merge sin poder consultar al juez.)"
+elif [ "${veredicto#UNAVAILABLE}" != "$veredicto" ]; then
+  r="FRENO (juez no disponible): no pude consultar el juez de autorización de merge (¿sin red, timeout, o respuesta ininteligible?). Fail-safe conservador: reintenta, o integra el MR en la web de GitLab. (Override de modelo/timeout: CLAUDE_MERGE_JUEZ_MODEL / CLAUDE_MERGE_JUEZ_TIMEOUT.)"
 elif [ "$destino" = "main" ]; then
   r="FRENO (RELEASE a main): el juez no encontró autorización EXPRESA de RELEASE para ESTE release (MR $cur_mrid). main es release-only — pide 'libera/release a main' explícito. Los releases van SIN squash (conservan historia)."
 elif [ "$destino" = "develop" ]; then

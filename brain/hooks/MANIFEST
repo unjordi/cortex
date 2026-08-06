@@ -27,6 +27,7 @@ secret-scan              both    hook
 entorno-maquina-guard    both    hook
 analizar-comando-git     both    lib
 detectar-secretos        both    lib
+juez-comun               both    lib
 
 proteger-arbol           global  hook
 proteger-fuente-cerebro  global  hook
@@ -43,8 +44,10 @@ delegacion-reporte       global  hook
 limpiar-worktrees        global  script
 limpiar-ramas            global  script
 verificar-cerebro        global  script
+barrer-flotilla-cerebro  global  script
 delegacion-comun         global  lib
 ramas-zombie             global  lib
+drift-cerebro-comun      global  lib
 
 dod-verificar            repo    hook
 sesion-inicio            repo    hook
