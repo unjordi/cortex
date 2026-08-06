@@ -1289,6 +1289,7 @@ echo "== (b5b) aviso-drift-cerebro: drift por-repo vs fuente única (stub del sy
 ADFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-ad.XXXXXX")"
 ADROOT="$ADFIX/repo"; ADHOME="$ADFIX/home"; ADBRAIN="$ADFIX/clon"
 mkdir -p "$ADROOT/.claude/hooks" "$ADHOME" "$ADBRAIN/brain"
+: > "$ADROOT/.claude/repo-compartido"   # #46: este bloque prueba el camino COMPARTIDO (el correo) → lleva la marca
 ad() { printf '%s' '{"source":"startup"}' | HOME="$ADHOME" CLAUDE_BRAIN_DIR="$ADBRAIN" CLAUDE_PROJECT_DIR="$ADROOT" bash "$HOOKS/aviso-drift-cerebro.sh"; }
 # (1) repo SIN cerebro por-repo → silencio (no estorba en repos ajenos)
 is_silent "$(ad)" && ok "aviso-drift: repo no-brained → silencio" || bad "aviso-drift: habló en un repo sin cerebro"
@@ -1365,6 +1366,7 @@ ADWFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-adw.XXXXXX")"
 ADWROOT="$ADWFIX/repo"; ADWHOME="$ADWFIX/home"; ADWBRAIN="$ADWFIX/clon"
 mkdir -p "$ADWROOT/.claude/hooks" "$ADWHOME" "$ADWBRAIN/brain"
 : > "$ADWROOT/.claude/hooks/.brain-version"
+: > "$ADWROOT/.claude/repo-compartido"   # #46: camino COMPARTIDO (el correo)
 adw() { printf '%s' '{"source":"startup"}' | HOME="$ADWHOME" CLAUDE_BRAIN_DIR="$ADWBRAIN" CLAUDE_PROJECT_DIR="$ADWROOT" bash "$HOOKS/aviso-drift-cerebro.sh"; }
 # resumen SOLO con cableado faltante>0 (0 nuevos/act/ret) — el caso que antes daba total=0 → "al día"
 printf '#!/usr/bin/env bash\necho "==> resumen: 0 nuevos · 0 a actualizar · 10 ya al día · 0 retirado(s) del cerebro · 10 hooks cableados (kind=hook) · 3 cableado faltante"\n' > "$ADWBRAIN/brain/sincronizar-cerebro.sh"
@@ -1376,6 +1378,32 @@ printf '#!/usr/bin/env bash\necho "==> resumen: 0 nuevos · 0 a actualizar · 10
 is_silent "$(adw)" && ok "aviso-drift: 0 cableado faltante y sin otros drifts → silencio (no falso positivo)" || bad "aviso-drift: habló con 0 drift (falso positivo)"
 rm -rf "$ADWFIX"
 
+# ── (b5b3) #46: repo PERSONAL (SIN marca .claude/repo-compartido) → guards por-repo NUNCA (opción B) ──
+# El default es PERSONAL: no auto-commit/push; si tiene guards del brain que SOBRAN, los FLAGGEA para quitar
+# (no los borra). "Sobran" = .sh en .claude/hooks que TAMBIÉN existen en la fuente del brain; los hooks
+# PROPIOS del repo no cuentan. La memoria/skills no se tocan.
+PADFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-pad.XXXXXX")"
+PADROOT="$PADFIX/repo"; PADHOME="$PADFIX/home"; PADBRAIN="$PADFIX/clon"
+mkdir -p "$PADROOT/.claude/hooks" "$PADHOME" "$PADBRAIN/brain/hooks"
+: > "$PADROOT/.claude/hooks/.brain-version"    # brained (para pasar el precheck y llegar a la bifurcación)
+# SIN marca repo-compartido → PERSONAL. Fuente del brain con un guard (para el match de "sobran").
+printf '#!/usr/bin/env bash\necho "==> resumen: 0 nuevos · 0 a actualizar"\n' > "$PADBRAIN/brain/sincronizar-cerebro.sh"
+: > "$PADBRAIN/brain/hooks/git-branch-guard.sh"
+pad() { printf '%s' '{"source":"startup"}' | HOME="$PADHOME" CLAUDE_BRAIN_DIR="$PADBRAIN" CLAUDE_PROJECT_DIR="$PADROOT" bash "$HOOKS/aviso-drift-cerebro.sh"; }
+# CASO 5: personal CON un guard del brain presente → FLAG "SOBRAN, quítalos" y NADA de auto-sync
+: > "$PADROOT/.claude/hooks/git-branch-guard.sh"
+padout="$(pad)"
+printf '%s' "$padout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'SOBRAN' \
+  && ok "aviso-drift #46: personal CON guard del brain → FLAG 'sobran, quítalos'" || bad "aviso-drift #46: no flaggeó el guard sobrante en personal; got: $padout"
+printf '%s' "$padout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'AUTO-SINCRONIZADO\|DRIFT DEL CEREBRO' \
+  && bad "aviso-drift #46: personal NO debe auto-sincronizar ni tratar guards como 'drift'" || ok "aviso-drift #46: personal no auto-sincroniza (sin commit/push, sin lógica de correo)"
+# CASO 6: personal SIN guards del brain (solo un hook PROPIO del repo) → SILENCIO
+rm -f "$PADROOT/.claude/hooks/git-branch-guard.sh"
+rm -rf "$PADHOME/.claude/memory/.drift-cerebro"
+: > "$PADROOT/.claude/hooks/gate-propio.sh"     # hook PROPIO (no está en la fuente) → no se flaggea
+is_silent "$(pad)" && ok "aviso-drift #46: personal SIN guards del brain (solo hook propio) → silencio" || bad "aviso-drift #46: habló en un personal sano; got: $(pad)"
+rm -rf "$PADFIX"
+
 # ── (b5c) aviso-drift v2: AUTO-APPLY en la mini-develop (Develop<Usuario>) · aviso en ramita ──
 AD2FIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-ad2.XXXXXX")"
 AD2REPO="$AD2FIX/repo"; AD2HOME="$AD2FIX/home"; AD2BRAIN="$AD2FIX/clon"
@@ -1383,6 +1411,7 @@ mkdir -p "$AD2REPO/.claude/hooks" "$AD2HOME" "$AD2BRAIN/brain"
 git -C "$AD2REPO" init -q >/dev/null 2>&1
 git -C "$AD2REPO" config user.email t@t >/dev/null 2>&1; git -C "$AD2REPO" config user.name Tester >/dev/null 2>&1
 : > "$AD2REPO/.claude/hooks/.brain-version"
+: > "$AD2REPO/.claude/repo-compartido"   # #46: camino COMPARTIDO (dentro del commit base → .claude/ limpio)
 git -C "$AD2REPO" add -A >/dev/null 2>&1; git -C "$AD2REPO" commit -qm base >/dev/null 2>&1
 # stub del sync: dry-run reporta drift; con --apply ESCRIBE el hook nuevo en el repo destino
 cat > "$AD2BRAIN/brain/sincronizar-cerebro.sh" <<'STUB'
@@ -1429,6 +1458,7 @@ mkdir -p "$AD3REPO/.claude/hooks" "$AD3HOME" "$AD3BRAIN/brain"
 git -C "$AD3REPO" init -q >/dev/null 2>&1
 git -C "$AD3REPO" config user.email t@t >/dev/null 2>&1; git -C "$AD3REPO" config user.name Tester >/dev/null 2>&1
 : > "$AD3REPO/.claude/hooks/.brain-version"
+: > "$AD3REPO/.claude/repo-compartido"   # #46: COMPARTIDO (dentro del commit base → .claude/ limpio)
 printf '{"hooks":{}}' > "$AD3REPO/.claude/settings.json"
 git -C "$AD3REPO" add -A >/dev/null 2>&1; git -C "$AD3REPO" commit -qm base >/dev/null 2>&1
 git -C "$AD3REPO" checkout -q -b DevelopTester >/dev/null 2>&1
@@ -1478,6 +1508,7 @@ mkdir -p "$AD4REPO/.claude/hooks" "$AD4HOME"
 git -C "$AD4REPO" init -q >/dev/null 2>&1
 git -C "$AD4REPO" config user.email t@t >/dev/null 2>&1; git -C "$AD4REPO" config user.name Tester >/dev/null 2>&1
 : > "$AD4REPO/.claude/hooks/.brain-version"
+: > "$AD4REPO/.claude/repo-compartido"   # #46: COMPARTIDO (para probar el guard C2 de la ruta de correo)
 git -C "$AD4REPO" add -A >/dev/null 2>&1; git -C "$AD4REPO" commit -qm base >/dev/null 2>&1
 git -C "$AD4REPO" checkout -q -b DevelopTester >/dev/null 2>&1
 n0=$(git -C "$AD4REPO" rev-list --count HEAD)
@@ -1498,6 +1529,7 @@ mkdir -p "$AD5REPO/.claude/hooks" "$AD5HOME" "$AD5BRAIN/brain"
 git -C "$AD5REPO" init -q >/dev/null 2>&1
 git -C "$AD5REPO" config user.email t@t >/dev/null 2>&1; git -C "$AD5REPO" config user.name Tester >/dev/null 2>&1
 : > "$AD5REPO/.claude/hooks/.brain-version"
+: > "$AD5REPO/.claude/repo-compartido"   # #46: COMPARTIDO (para probar la regex de mini-develop sA3)
 git -C "$AD5REPO" add -A >/dev/null 2>&1; git -C "$AD5REPO" commit -qm base >/dev/null 2>&1
 cat > "$AD5BRAIN/brain/sincronizar-cerebro.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -1522,7 +1554,7 @@ AD6REPO="$AD6FIX/repo"; AD6HOME="$AD6FIX/home"; AD6BRAIN="$AD6FIX/clon"
 mkdir -p "$AD6REPO/.claude/hooks" "$AD6REPO/src" "$AD6HOME" "$AD6BRAIN/brain"
 git -C "$AD6REPO" init -q >/dev/null 2>&1
 git -C "$AD6REPO" config user.email t@t >/dev/null 2>&1; git -C "$AD6REPO" config user.name Tester >/dev/null 2>&1
-: > "$AD6REPO/.claude/hooks/.brain-version"; printf 'base\n' > "$AD6REPO/src/foo.txt"
+: > "$AD6REPO/.claude/hooks/.brain-version"; printf 'base\n' > "$AD6REPO/src/foo.txt"; : > "$AD6REPO/.claude/repo-compartido"   # #46: COMPARTIDO
 git -C "$AD6REPO" add -A >/dev/null 2>&1; git -C "$AD6REPO" commit -qm base >/dev/null 2>&1
 git -C "$AD6REPO" checkout -q -b DevelopTester >/dev/null 2>&1
 cat > "$AD6BRAIN/brain/sincronizar-cerebro.sh" <<'STUB'
