@@ -21,8 +21,9 @@
 set -u
 
 # ── JUEZ DE AUTORIZACIÓN (LLM) — definido ARRIBA para que los tests lo SOURCEEN idéntico (cero drift con
-# el hook). _juez_merge($destino,$mrid,$mensajes,$hint) → ALLOW|DENY|UNAVAILABLE. Reemplaza el pilón de
-# regex frágiles: es comprensión de lectura (Haiku DESAMORDAZADO), robusta al phrasing. EMPODERADO 2026-08:
+# el hook). Punto de entrada = _juez_merge($destino,$mrid,$mensajes,$hint) → ALLOW|DENY|UNAVAILABLE; un voto
+# individual lo produce _juez_merge_uno (mismo contrato). Reemplaza el pilón de regex frágiles: es comprensión
+# de lectura (Haiku DESAMORDAZADO), robusta al phrasing. EMPODERADO 2026-08:
 #   · Capa 1 — DESAMORDAZAR: max_tokens 16→768 + temperature:0 (gate reproducible) + CoT breve que cierra
 #     con un CENTINELA exacto 'VEREDICTO: ALLOW|DENY'. Parseo por el ÚLTIMO 'VEREDICTO:' (tail -1); sin
 #     centinela (truncado/ininteligible) → out vacío → UNAVAILABLE → fail-safe DENY.
@@ -35,12 +36,19 @@ set -u
 #     referencia vaga ("el release"), NUNCA autorización. Lo arma el hook (acg_hint_candidatos).
 #   · Capa 4 — PISO barato (sin ≥1 USUARIO: en la ventana → DENY sin gastar el LLM) + PISO DETERMINISTA de
 #     main INTACTO (release explícito, abajo).
+#   · LEVER opt-in de VOTO MÚLTIPLE (self-consistency), DEFAULT APAGADO: CLAUDE_MERGE_JUEZ_VOTES (default 1 =
+#     hoy, una sola llamada byte-idéntica) y CLAUDE_MERGE_JUEZ_TEMP (default 0). VOTES≥2 → N votos EN PARALELO,
+#     agregados UNÁNIME-PARA-ALLOW (cualquier DENY/UNAVAILABLE gana). Ver _juez_merge / _juez_agrega_votos abajo.
 # Fail-safe conservador: sin token OAuth/curl-jq/red/timeout/respuesta ininteligible → UNAVAILABLE→DENY,
 # NUNCA fail-open. Mocks deterministas: CLAUDE_MERGE_JUEZ_MOCK (veredicto FINAL de la capa-LLM, entra al
 # piso de main) · CLAUDE_MERGE_JUEZ_MOCK_RAW (texto CRUDO de respuesta → prueba parseo+cita sin red).
-_juez_merge() {   # $1=destino  $2=mrid  $3=mensajes  $4=hint(opcional) → imprime ALLOW | DENY | UNAVAILABLE
-  local prompt out tok body txt hint cita
+_juez_merge_uno() {   # $1=destino  $2=mrid  $3=mensajes  $4=hint(opcional) → imprime ALLOW | DENY | UNAVAILABLE — UN voto
+  local prompt out tok body txt hint cita temp
   hint="${4:-}"
+  # Temperatura EFECTIVA de ESTA llamada. Default 0 (gate reproducible, comportamiento de UNA llamada INTACTO).
+  # Solo el dispatcher de voto múltiple (_juez_merge, VOTES≥2) la sube vía _JUEZ_TEMP; una llamada suelta la deja en 0.
+  temp="${_JUEZ_TEMP:-0}"
+  case "$temp" in ''|*[!0-9.]*) temp=0 ;; esac
   if [ -n "${CLAUDE_MERGE_JUEZ_MOCK:-}" ]; then
     out="$CLAUDE_MERGE_JUEZ_MOCK"   # veredicto FINAL de la capa-LLM: entra IGUAL al PISO de main → testeable DETERMINISTA (sin red)
   else
@@ -95,8 +103,8 @@ CITA: <texto literal de la línea USUARIO:>
 VEREDICTO: ALLOW
   o
 VEREDICTO: DENY"
-  body=$(jq -n --arg m "${CLAUDE_MERGE_JUEZ_MODEL:-claude-haiku-4-5-20251001}" --arg p "$prompt" \
-          '{model:$m, max_tokens:768, temperature:0, messages:[{role:"user",content:$p}]}')
+  body=$(jq -n --arg m "${CLAUDE_MERGE_JUEZ_MODEL:-claude-haiku-4-5-20251001}" --arg p "$prompt" --argjson t "$temp" \
+          '{model:$m, max_tokens:768, temperature:$t, messages:[{role:"user",content:$p}]}')
   txt=$(curl -sS -m "${CLAUDE_MERGE_JUEZ_TIMEOUT:-25}" https://api.anthropic.com/v1/messages \
           -H "Authorization: Bearer $tok" -H "anthropic-beta: oauth-2025-04-20" \
           -H "anthropic-version: 2023-06-01" -H "content-type: application/json" \
@@ -139,6 +147,56 @@ VEREDICTO: DENY"
     printf '%s\n' "$3" | grep -iE '^[[:space:]]*USUARIO:' | grep -iqE '(^|[^[:alpha:]])(release|(liberar?|liberado|liberaci[oó]n|liber[eé]n?|liber[oó])([^[:alpha:]]|$)|(a|hacia) main([^[:alpha:]]|$))' || out=DENY
   fi
   [ -n "$out" ] && printf '%s' "$out" || printf 'UNAVAILABLE'
+}
+
+# _juez_agrega_votos → lee N veredictos por STDIN (uno por línea) e imprime el veredicto AGREGADO.
+# AGREGACIÓN = "UNÁNIME-PARA-ALLOW / cualquier DENY gana": ALLOW SOLO si TODOS los votos son ALLOW; cualquier
+# DENY o UNAVAILABLE (o CERO votos) → DENY. NO es "mayoría / 2 de 3": este es un gate de MÁXIMA consecuencia
+# (integrar a develop/main), así que la self-consistency se sesga a la dirección SEGURA — con voto múltiple
+# hacemos MÁS difícil un ALLOW (todos deben coincidir), NUNCA más fácil. Pura y determinista → testeable sin red.
+_juez_agrega_votos() {
+  local v final=ALLOW seen=0
+  while IFS= read -r v; do
+    v=$(printf '%s' "$v" | tr -d '[:space:]')
+    [ -z "$v" ] && continue
+    seen=1
+    [ "$v" = ALLOW ] || final=DENY
+  done
+  [ "$seen" = 1 ] || final=DENY   # sin ningún voto (todos los subshells fallaron) → DENY (fail-safe conservador)
+  printf '%s' "$final"
+}
+
+# _juez_merge → PUNTO DE ENTRADA del juez. LEVER opt-in de VOTO MÚLTIPLE (self-consistency), DEFAULT APAGADO.
+#   · CLAUDE_MERGE_JUEZ_VOTES (default 1) = comportamiento de HOY: UNA sola llamada, request byte-idéntico
+#     (temp 0). Cualquier valor <2/no-numérico → 1. CERO cambio de conducta si no se enciende el lever.
+#   · VOTES≥2 → N invocaciones INDEPENDIENTES del juez EN PARALELO (subshells background + wait → latencia ~1×,
+#     no N×), cada una su propio veto de cita + piso de main. Se agregan con _juez_agrega_votos (unánime-ALLOW).
+#   · Temperatura: VOTES≥2 usa CLAUDE_MERGE_JUEZ_TEMP (default 0) vía _JUEZ_TEMP. Votar a temp 0 es casi-MOOT
+#     (Haiku ~determinista → N respuestas ~idénticas); el valor del voto aparece a temp>0 (p. ej. 0.4), que
+#     muestrea razonamientos distintos y el unánime-ALLOW filtra los ALLOW frágiles. El default de temp de una
+#     llamada suelta NO cambia (sigue 0).
+#   · PISO de main / VETO de cita: aplican POR-VOTO (dentro de _juez_merge_uno). Como los mensajes ($3) son los
+#     MISMOS para todos los votos, el piso de main es determinista entre votos → un ALLOW FINAL exige que TODOS
+#     los votos fueran ALLOW, y cada uno ya pasó el piso → el piso de main queda garantizado sobre el veredicto FINAL.
+_juez_merge() {   # $1=destino  $2=mrid  $3=mensajes  $4=hint(opcional) → imprime ALLOW | DENY | UNAVAILABLE
+  local votes tmpd i t final
+  votes="${CLAUDE_MERGE_JUEZ_VOTES:-1}"
+  case "$votes" in ''|*[!0-9]*) votes=1 ;; esac
+  [ "$votes" -lt 2 ] && { _juez_merge_uno "$@"; return 0; }
+  # VOTO MÚLTIPLE: N votos en PARALELO, cada uno a su archivo; wait; agregación unánime-ALLOW.
+  tmpd=$(mktemp -d "${TMPDIR:-/tmp}/juez-votos.XXXXXX" 2>/dev/null) || { _juez_merge_uno "$@"; return 0; }
+  t="${CLAUDE_MERGE_JUEZ_TEMP:-0}"
+  i=1
+  while [ "$i" -le "$votes" ]; do
+    # _juez_merge_uno NO emite newline final (contrato de una llamada intacto) → se agrega aquí, UNA por archivo,
+    # para que el `cat` posterior deje UN veredicto por LÍNEA (sin newline se pegarían: ALLOWALLOWALLOW).
+    ( _JUEZ_TEMP="$t" _juez_merge_uno "$@" 2>/dev/null; printf '\n' ) > "$tmpd/v$i" &
+    i=$((i+1))
+  done
+  wait
+  final=$(cat "$tmpd"/v* 2>/dev/null | _juez_agrega_votos)
+  rm -rf "$tmpd"
+  printf '%s' "$final"
 }
 
 # _recent_intercalado($tpath) → arma la CONVERSACIÓN reciente intercalada (USUARIO:/ASISTENTE:) que come el

@@ -499,6 +499,50 @@ VEREDICTO: ALLOW' main 999 'USUARIO: mergea el 999')" = DENY ] \
     && ok "juez-cita+piso-main: cita real pero SIN release → piso-main override DENY" || bad "juez-cita+piso-main: dejó pasar un main sin release"
 )
 
+# ── LEVER opt-in de VOTO MÚLTIPLE (self-consistency), DETERMINISTA sin red · juez EMPODERADO 2026-08 ──
+# Dos piezas: (1) el AGREGADOR puro _juez_agrega_votos (UNÁNIME-PARA-ALLOW / cualquier DENY o UNAVAILABLE gana)
+# — es la LÓGICA del lever, testeable sin paralelismo ni red; (2) el WIRING de _juez_merge (VOTES=1 = una sola
+# llamada idéntica a hoy; VOTES≥2 = N votos EN PARALELO agregados). El MOCK hace cada voto determinista → el
+# camino paralelo real se ejercita end-to-end (mktemp + subshells + wait + agregación + piso de main por-voto).
+( _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/confirmar-merge-develop.sh"
+  ag() { printf '%s\n' "$1" | _juez_agrega_votos; }
+  # (1) AGREGACIÓN — los 5 escenarios pedidos por el diseño del lever:
+  [ "$(ag 'ALLOW
+ALLOW
+ALLOW')" = ALLOW ] && ok "voto-agrega: 3×ALLOW → ALLOW (unánime)" || bad "voto-agrega: 3×ALLOW no dio ALLOW"
+  [ "$(ag 'ALLOW
+ALLOW
+DENY')" = DENY ] && ok "voto-agrega: 2×ALLOW + 1×DENY → DENY (NO es mayoría; cualquier DENY gana)" || bad "voto-agrega: 2A+1D no dio DENY (¿mayoría?)"
+  [ "$(ag 'ALLOW
+DENY
+DENY')" = DENY ] && ok "voto-agrega: 1×ALLOW + 2×DENY → DENY" || bad "voto-agrega: 1A+2D no dio DENY"
+  [ "$(ag 'DENY
+DENY
+DENY')" = DENY ] && ok "voto-agrega: 3×DENY → DENY" || bad "voto-agrega: 3×DENY no dio DENY"
+  [ "$(ag 'ALLOW
+ALLOW
+UNAVAILABLE')" = DENY ] && ok "voto-agrega: 2×ALLOW + 1×UNAVAILABLE → DENY (UNAVAILABLE cuenta como bloqueo)" || bad "voto-agrega: un UNAVAILABLE entre ALLOWs no bloqueó"
+  [ "$(ag '')" = DENY ] && ok "voto-agrega: CERO votos (todos los subshells fallaron) → DENY (fail-safe)" || bad "voto-agrega: sin votos no cayó a DENY"
+  # (2) WIRING de _juez_merge — VOTES=1 (default) == comportamiento de HOY (una sola llamada):
+  CONV='USUARIO: mergea el 5 a develop'
+  [ "$(CLAUDE_MERGE_JUEZ_MOCK=ALLOW _juez_merge develop 5 "$CONV")" = ALLOW ] \
+    && ok "voto-wiring: VOTES ausente (default 1) + MOCK=ALLOW → ALLOW (idéntico a hoy)" || bad "voto-wiring: el default cambió el comportamiento de una llamada"
+  [ "$(CLAUDE_MERGE_JUEZ_VOTES=1 CLAUDE_MERGE_JUEZ_MOCK=DENY _juez_merge develop 5 "$CONV")" = DENY ] \
+    && ok "voto-wiring: VOTES=1 explícito + MOCK=DENY → DENY (una sola llamada)" || bad "voto-wiring: VOTES=1 no se comportó como una sola llamada"
+  [ "$(CLAUDE_MERGE_JUEZ_VOTES=0 CLAUDE_MERGE_JUEZ_MOCK=ALLOW _juez_merge develop 5 "$CONV")" = ALLOW ] \
+    && ok "voto-wiring: VOTES=0/basura → se satura a 1 (una llamada, no rompe)" || bad "voto-wiring: VOTES<2 no cayó al camino de una llamada"
+  # VOTES≥2 → camino PARALELO real (subshells + wait + agregación). Con MOCK cada voto es determinista:
+  [ "$(CLAUDE_MERGE_JUEZ_VOTES=3 CLAUDE_MERGE_JUEZ_MOCK=ALLOW _juez_merge develop 5 "$CONV")" = ALLOW ] \
+    && ok "voto-wiring: VOTES=3 + todos ALLOW → ALLOW (camino paralelo end-to-end)" || bad "voto-wiring: 3 votos ALLOW no agregaron a ALLOW"
+  [ "$(CLAUDE_MERGE_JUEZ_VOTES=3 CLAUDE_MERGE_JUEZ_MOCK=DENY _juez_merge develop 5 "$CONV")" = DENY ] \
+    && ok "voto-wiring: VOTES=3 + todos DENY → DENY" || bad "voto-wiring: 3 votos DENY no agregaron a DENY"
+  # PISO de main POR-VOTO se preserva bajo voto múltiple (los mensajes son iguales → determinista entre votos):
+  [ "$(CLAUDE_MERGE_JUEZ_VOTES=3 CLAUDE_MERGE_JUEZ_MOCK=ALLOW _juez_merge main 999 'USUARIO: mergea el 999')" = DENY ] \
+    && ok "voto-wiring: VOTES=3 a main + ALLOW pero SIN release → piso override POR-VOTO → DENY final" || bad "voto-wiring: el piso de main no aplicó bajo voto múltiple"
+  [ "$(CLAUDE_MERGE_JUEZ_VOTES=3 CLAUDE_MERGE_JUEZ_MOCK=ALLOW _juez_merge main 999 'USUARIO: libera el 999 a main, es el release')" = ALLOW ] \
+    && ok "voto-wiring: VOTES=3 a main + release explícito → todos ALLOW → ALLOW final" || bad "voto-wiring: bloqueó un release legítimo bajo voto múltiple"
+)
+
 # ── DIGESTOR DEL HINT DE CANDIDATOS (capa 3, DETERMINISTA desde un array mock, sin red) ──
 # acg_hint_candidatos convierte la lista de MRs abiertos en el bloque FACTUAL que IDENTIFICA el target
 # (nunca autoriza). Variantes: 1 candidato (INEQUÍVOCO) · ≥2 (exige nombrar) · destino-vacío resuelto por
