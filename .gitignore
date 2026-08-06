@@ -39,15 +39,24 @@ docs/mapa-flujos.svg
 
 # flowcharts individuales: por default son artefactos locales derivados del mapa maestro (gitignored)…
 docs/flowcharts/*
-# …EXCEPTO 01/02, que se rehicieron con FUENTE .dot editable propia (no dependen del mapa maestro
-# desaparecido). La regla dura de `diagramar` exige versionar la FUENTE: aquí van .dot (fuente) + .svg (vista).
-# (Los otros 9 siguen SIN fuente versionada — hallazgo de procedencia, pendiente de reconstruir su .dot.)
+# …EXCEPTO los 5 charts (01–05), que tienen FUENTE .dot editable propia. La regla dura de `diagramar`
+# exige versionar la FUENTE: por cada chart van .dot (fuente) + .svg (vista), whitelisteados abajo.
+# ⚠️ TRAMPA DEL CATCH-ALL: un chart/script NUEVO en docs/flowcharts/ queda IGNORADO por default (regla
+# `docs/flowcharts/*` de arriba) → `git add` lo pierde SIN avisar. Al agregar uno, ponle su línea `!` aquí.
 !docs/flowcharts/01-instalacion-actualizacion-del-cerebro.dot
 !docs/flowcharts/01-instalacion-actualizacion-del-cerebro.svg
 !docs/flowcharts/02-ciclo-de-vida-de-la-sesion.dot
 !docs/flowcharts/02-ciclo-de-vida-de-la-sesion.svg
+!docs/flowcharts/03-enforcement-git-guards.dot
+!docs/flowcharts/03-enforcement-git-guards.svg
+!docs/flowcharts/04-delegacion-orquestar-fanout.dot
+!docs/flowcharts/04-delegacion-orquestar-fanout.svg
+!docs/flowcharts/05-continuidad-checkpoint-compact-rehidratar.dot
+!docs/flowcharts/05-continuidad-checkpoint-compact-rehidratar.svg
 # El generador de la leyenda (lee el árbol del README → subgraph .dot) y las CONVENCIONES son FUENTE, se versionan.
 !docs/flowcharts/gen-leyenda-arbol.sh
 !docs/flowcharts/CONVENCIONES.md
-# El parity-check del árbol (README ↔ CLAUDE.md ↔ brain/skills/) es MECANISMO durable — lo corre test-brain.sh/CI, debe viajar.
+# El parity-check del árbol (README ↔ MEMORY.md ↔ brain/skills/) es MECANISMO durable — lo corre test-brain.sh/CI, debe viajar.
 !docs/flowcharts/verificar-arbol-sync.sh
+# El generador de charts (regenera TODOS los .svg desde sus .dot) es la RUTINA durable de doc=realidad de los flowcharts.
+!docs/flowcharts/gen-charts.sh
