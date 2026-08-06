@@ -1,6 +1,6 @@
 ---
 name: desinflar-memorias
-description: Desinflar un árbol de memorias que se llenó de narrativa, tutoriales y conocimiento ya desmentido — SIN perder ninguna lección. Cada tirada de historia se colapsa a su lección en 1-2 líneas EN SU LUGAR, y los mitos descartados se comprimen a una línea y se mudan a una sección ⚰️ Lápidas AL FINAL del archivo. Úsalo cuando una memoria ya no se pueda leer de un jalón, o cuando el usuario diga "está inflada / no quiero leer 3 párrafos de cómo aprendimos X".
+description: Desinflar un árbol de memorias que se llenó de narrativa, tutoriales y conocimiento ya desmentido — SIN perder ninguna lección. Cada tirada de historia se colapsa a su lección en 1-2 líneas EN SU LUGAR, y los mitos descartados se mudan al `cementerio.md` del cerebro (una lápida = una línea con su ID `🪦#<id>`, vía `cementerio.sh add`), dejando en la memoria solo la referencia inline `(🪦#<id>)` donde haga falta — o nada. Úsalo cuando una memoria ya no se pueda leer de un jalón, o cuando el usuario diga "está inflada / no quiero leer 3 párrafos de cómo aprendimos X".
 ---
 
 # Desinflar memorias (sin perder el valor)
@@ -29,21 +29,25 @@ para que quien lea ese punto del archivo reciba el conocimiento sin el relato.
 Si al colapsar no puedes escribir la lección, **es señal de que ahí no había lección** — o de que no
 la entendiste todavía. En el segundo caso, déjalo y repórtalo; no lo cortes a ciegas.
 
-### 2. Los mitos descartados NO se borran: se comprimen a UNA línea y van al FINAL
+### 2. Los mitos descartados NO se borran: se mudan al `cementerio.md` con un ID
 Si borras "el mito X está descartado", **el siguiente agente lo re-descubre y pierde horas**. Pero si
-lo dejas intercalado, estorba a quien lee lo vigente. Solución: una sección al final.
+lo dejas intercalado, estorba a quien lee lo vigente. Solución: **UN solo `cementerio.md` por cerebro**
+(en `.claude/memory/`), donde cada lápida vive en una línea con un **ID content-hash** (`🪦#<9-hex>`).
+Lo acuña el helper `cementerio.sh add` (determinista: mismo texto = mismo ID = dedup natural):
 
-```markdown
-## ⚰️ Lápidas — descartado, NO re-proponer
-- **Mito «Steam randomiza los appids al abrir» (#9463):** DESCARTADO 2026-07-29 — la causa real era un
-  vdf truncado. El appid es determinista: `crc32(Exe+AppName)`.
-- **SRM / EmuDeck como vía:** RETIRADO 2026-07-29 → hoy se usa el tooling propio.
-- **Timer de respaldo en `daily`:** ⛔ no volver — saltaba siempre las consolas dormidas.
+```bash
+# desde dentro del repo — arg1 = qué murió, arg2 = detalle (cuándo · reemplazo / por qué no re-proponer):
+cementerio.sh add "Mito «Steam randomiza los appids al abrir»" \
+  "DESCARTADO 2026-07-29 — la causa real era un vdf truncado. El appid es determinista: crc32(Exe+AppName)."
+# → imprime (🪦#ab12cd34e): la REFERENCIA para pegar inline donde el punto necesite la advertencia
 ```
 
-Cada lápida = **una línea**: qué se descartó · cuándo · con qué se reemplazó (o por qué). Nada de
-párrafos. Donde el contenido de arriba necesite la advertencia para no equivocarse, deja un puntero
-corto — `(ver ⚰️ Lápidas al final)` — en vez de repetir la explicación.
+Cada lápida = **una línea** en el cementerio: qué murió · cuándo · con qué se reemplazó (o por qué no
+re-proponer). Nada de párrafos, nada de monumento al trauma — esa es la diferencia entre la lápida
+(conocimiento que evita daño) y el monumento (cómo reaccionamos), que sí se colapsa a la línea. En la
+memoria de origen queda **solo la referencia** `(🪦#<id>)` donde el contenido de arriba necesite la
+advertencia — o **NADA** si no la necesita. Nunca un puntero narrativo "esto se mudó a…" (esos se podan).
+Valida las refs↔IDs con `cementerio.sh verify` (falla si hay refs huérfanas).
 
 ## Qué más se corta
 - **Medio tutorial.** Explicaciones genéricas de herramientas que cualquier agente ya sabe (qué es un
@@ -83,8 +87,9 @@ corto — `(ver ⚰️ Lápidas al final)` — en vez de repetir la explicación
 3. Corta con las reglas de arriba. **Ediciones quirúrgicas**, no reescrituras completas.
 4. **Verifica antes de integrar**, y no de palabra:
    - `cmp` sobre los archivos intocables (bitácora, hilo) — deben salir idénticos.
-   - que el heading de `⚰️ Lápidas` esté de verdad en el último tramo de cada archivo (⚠️ busca el
-     **heading**, no la mención: los punteros "ver lápidas al final" dan falsos positivos).
+   - `cementerio.sh verify` sin refs HUÉRFANAS: toda ref `(🪦#<id>)` que dejaste inline apunta a una
+     lápida real del `cementerio.md`. (Los "IDs muertos" que reporta —lápidas que nadie referencia— son
+     informativos, no un error.)
    - que las advertencias destructivas sigan presentes.
    - que todo archivo siga empezando con su frontmatter.
 5. **Integra y borra la copia de trabajo.**

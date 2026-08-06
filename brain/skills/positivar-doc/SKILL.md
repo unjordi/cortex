@@ -37,6 +37,11 @@ respuesta al final.
 - **Docs ya tabulares/referencia pura** (specs, listas de comandos sin narrativa de fallo): normalmente no
   tienen nugget que reordenar — no fuerces la forma `ESTO SÍ`/`ESTO NO` donde no hay una pareja
   método↔anti-patrón que reordenar.
+- **Mito YA descartado (no un gotcha vigente):** si el "ESTO NO" es un callejón MUERTO ("esto se descartó,
+  no re-proponer"), su caso extremo no es quedarse inline abajo: es una **lápida** que vive en el
+  `cementerio.md` del cerebro, referenciada por su ID `🪦#<id>` (una línea, vía `cementerio.sh add`; ver
+  [[desinflar-memorias]] Regla 2). En el nugget queda solo la ref `(🪦#<id>)` si el punto necesita la
+  advertencia — o nada. El cerebro guarda CONOCIMIENTO, no cicatrices.
 
 ## Nivel DOCUMENTO — lo accionable primero (mismo principio, otro nivel)
 **El índice/router/"qué existe y cuándo usarlo"/el contrato "LEE ESTO ANTES DE HACER NADA" va ARRIBA del
