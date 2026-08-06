@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  EJEMPLO de LaunchAgent para el SWEEPER de flotilla del cerebro (barrer-flotilla-cerebro.sh),
+  al estilo de com.local.colima. NO se instala solo: instalar/quitar un LaunchAgent vivo es config
+  de MÁQUINA y la decide unjordi. Este archivo es la plantilla + la receta.
+
+  Qué hace: 1×/día recorre TODOS los repos brained de ~/code y, en los COMPARTIDOS parados en su
+  mini-develop con .claude/ limpio y la fuente no stale, auto-sincroniza la copia por-repo del cerebro
+  (apply+commit+push); el resto lo deja en el reporte. Antídoto al punto ciego de cobertura de
+  aviso-drift-cerebro (que solo ve el repo de arranque de una sesión → MegaFlux se pudrió a drift).
+
+  Cómo agendarlo (cuando unjordi lo decida):
+    1) Sustituye __HOME__ por tu $HOME real (p. ej. /Users/unjordi).
+    2) cp este archivo a ~/Library/LaunchAgents/com.local.drift-flotilla.plist
+    3) launchctl load  ~/Library/LaunchAgents/com.local.drift-flotilla.plist   (o `launchctl bootstrap gui/$(id -u) ...`)
+    Quitar:  launchctl unload ~/Library/LaunchAgents/com.local.drift-flotilla.plist  &&  rm ese archivo.
+  Preview sin agendar:  bash ~/.claude/hooks/barrer-flotilla-cerebro.sh --dry-run
+  Alternativa sin LaunchAgent: la skill `schedule` (routines cron del CLI) o `loop`.
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.local.drift-flotilla</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/bin/bash</string>
+		<string>__HOME__/.claude/hooks/barrer-flotilla-cerebro.sh</string>
+		<string>--quiet</string>
+	</array>
+	<!-- 1×/día a las 09:30 (StartCalendarInterval); ajusta a gusto. NO RunAtLoad (no arrancar en cada login). -->
+	<key>StartCalendarInterval</key>
+	<dict>
+		<key>Hour</key>
+		<integer>9</integer>
+		<key>Minute</key>
+		<integer>30</integer>
+	</dict>
+	<!-- PATH login-like para que git y jq resuelvan (el sync los necesita). -->
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+	</dict>
+	<key>StandardOutPath</key>
+	<string>__HOME__/Library/Logs/drift-flotilla.log</string>
+	<key>StandardErrorPath</key>
+	<string>__HOME__/Library/Logs/drift-flotilla.log</string>
+</dict>
+</plist>

@@ -43,6 +43,14 @@
 # "Este turno" = desde el último mensaje real del usuario. stop_hook_active evita loops. Requiere jq.
 set -u
 
+# Lib COMÚN de los jueces (retrieval de token PORTABLE login-activo-first + curl 401-aware + parseo). Se
+# sourcea con BASH_SOURCE (NO $0) para que funcione IGUAL cuando el hook CORRE y cuando un test lo sourcea
+# con _CMD_DOD_SOURCE_ONLY=1. Va ARRIBA del early-return de source-only para que el test obtenga las funciones.
+# NOTA: dod es fail-OPEN por contrato → cualquier estado de indisponibilidad del token (NOTOKEN/NET/EXPIRED)
+# se colapsa a UNAVAILABLE y deja cerrar el turno (un NAG sin juez NO debe atrapar al usuario en un loop).
+# shellcheck source=juez-comun.sh
+. "${BASH_SOURCE[0]%/*}/juez-comun.sh"
+
 # _juez_dod($texto_asistente, $texto_usuario) → "CIERRE=si|no MARCA=si|no VISUAL=si|no" | UNAVAILABLE
 # Definido ARRIBA (source-only) para que el test lo corra IDÉNTICO al hook (cero drift).
 #
@@ -67,21 +75,16 @@ set -u
 # tests de FLUJO sin red) · CLAUDE_DOD_JUEZ_MOCK_RAW (texto CRUDO de respuesta → ejercita el parseo por
 # centinela + el veto de cita sin red).
 _juez_dod() {
-  local prompt out c m v tok body txt cita norm_user
+  local prompt out c m v txt cita norm_user _resp
   if [ -n "${CLAUDE_DOD_JUEZ_MOCK:-}" ]; then
     printf '%s' "$CLAUDE_DOD_JUEZ_MOCK"; return 0   # veredicto FINAL normalizado → flujo determinista (sin red)
   fi
   if [ -n "${CLAUDE_DOD_JUEZ_MOCK_RAW:-}" ]; then
     txt="$CLAUDE_DOD_JUEZ_MOCK_RAW"                 # respuesta CRUDA mockeada → ejercita parseo + veto de cita
   else
-  command -v curl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1 || { printf 'UNAVAILABLE'; return 0; }
-  # Token OAuth de SUSCRIPCIÓN — MISMO canal que el widget (api.anthropic.com + anthropic-beta:oauth-2025-04-20).
-  # NO `claude -p` (su harness es el lastre, ~50s; dod corre en CADA Stop → el curl ~1s lo vuelve viable), NO
-  # `--bare`, NO api-key. Orden: env override → credentials.json (cross-plataforma) → keychain (macOS).
-  tok="${CLAUDE_CODE_OAUTH_TOKEN:-}"
-  [ -z "$tok" ] && [ -f "$HOME/.claude/.credentials.json" ] && tok=$(jq -er '.claudeAiOauth.accessToken // empty' "$HOME/.claude/.credentials.json" 2>/dev/null)
-  [ -z "$tok" ] && command -v security >/dev/null 2>&1 && tok=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null | jq -er '.claudeAiOauth.accessToken // empty' 2>/dev/null)
-  [ -n "$tok" ] || { printf 'UNAVAILABLE'; return 0; }
+  # Token + curl + reintento-401 + deps: TODO vive en la lib juez-comun.sh (_juez_llamar_api), homologada
+  # con el getter del widget (login-activo-first, honra CLAUDE_CONFIG_DIR). MISMO canal que el widget
+  # (api.anthropic.com + anthropic-beta:oauth-2025-04-20; NO `claude -p`, NO api-key). Ver la llamada abajo.
   prompt="Eres un guardia que hace cumplir la definición de LISTO en un equipo de software. Clasificas UN mensaje del asistente Claude (y los mensajes del usuario del mismo turno) en tres ejes independientes. NO juzgas si el trabajo está bien; solo clasificas el ACTO DE HABLA.
 
 EJE 1 — CIERRE: ¿el ASISTENTE declara que un ENTREGABLE (un módulo, feature, migración, endpoint, página, tarea, la app, el fix, 'el widget', 'lo') está LISTO / terminado / funciona / 'quedó' / 'a la par' / 'de punta a punta' / 'en producción' / 'cerrado' / 'terminamos' / 🏁?
@@ -114,12 +117,12 @@ CITA: <texto literal del mensaje del USUARIO>
 CIERRE: <si|no>
 MARCA: <si|no>
 VISUAL: <si|no>"
-  body=$(jq -n --arg m "${CLAUDE_DOD_JUEZ_MODEL:-claude-haiku-4-5-20251001}" --arg p "$prompt" \
-          '{model:$m, max_tokens:512, temperature:0, messages:[{role:"user",content:$p}]}')
-  txt=$(curl -sS -m "${CLAUDE_DOD_JUEZ_TIMEOUT:-20}" https://api.anthropic.com/v1/messages \
-          -H "Authorization: Bearer $tok" -H "anthropic-beta: oauth-2025-04-20" \
-          -H "anthropic-version: 2023-06-01" -H "content-type: application/json" \
-          -d "$body" 2>/dev/null | jq -r '.content[0].text // empty' 2>/dev/null)
+  # Llamada REAL vía la lib común (retrieval portable + curl 401-aware + reintento). dod es fail-OPEN:
+  # CUALQUIER indisponibilidad (sin token/red/timeout/expiración) → UNAVAILABLE → el hook deja cerrar el
+  # turno (no es un candado). No distingo NOTOKEN/NET/EXPIRED aquí: la decisión es la misma (fail-OPEN).
+  _resp=$(_juez_llamar_api "${CLAUDE_DOD_JUEZ_MODEL:-claude-haiku-4-5-20251001}" 512 "${CLAUDE_DOD_JUEZ_TIMEOUT:-20}" 0 "$prompt")
+  txt=$(printf '%s\n' "$_resp" | sed '1d')   # línea 1 = estado (dod es fail-OPEN → no lo distingue); resto = texto
+  [ -z "$txt" ] && { printf 'UNAVAILABLE'; return 0; }
   fi
   # DEBUG opt-in (CLAUDE_DOD_JUEZ_DEBUG=1): vuelca el CoT crudo a stderr → diagnóstico de FP/FN y tuning del
   # corpus (norma "bitácora de falsos positivos"). Off por default; no toca el veredicto.

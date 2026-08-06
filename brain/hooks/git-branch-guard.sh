@@ -17,6 +17,10 @@ command -v jq >/dev/null 2>&1 || exit 0
 input=$(cat)
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
 [ -z "$cmd" ] && exit 0
+# cwd del payload = working dir REAL del comando (puede diferir de CLAUDE_PROJECT_DIR, fijo al arranque de
+# la sesión). Es la señal correcta para el caso PELÓN cross-repo (un `git push` corre en el cwd, no en el
+# repo de la sesión). Ausente/no confiable → vacío → acg_target_dir cae a CLAUDE_PROJECT_DIR (conducta de hoy).
+pcwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
 
 # shellcheck source=analizar-comando-git.sh
 . "$(dirname "$0")/analizar-comando-git.sh"
@@ -26,7 +30,7 @@ block() {
   exit 0
 }
 
-if acg_push_toca_base "$cmd"; then
+if acg_push_toca_base "$cmd" "$pcwd"; then
   block "NORMA DE GIT (ley interna): no se hace push a main/develop (incluye el push PELÓN estando parado EN develop/main). NO reintentes esto. Haz el cambio por el flujo: ramita (feat/fix/chore/docs) desde develop → commit → push de la ramita → MR/PR → merge a develop. A main solo llega un release deliberado: normalmente el humano en la web de GitLab; por CLI solo con OK súper-explícito (lo vigila confirmar-merge-develop)."
 fi
 

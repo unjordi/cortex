@@ -48,6 +48,12 @@
 # --continue or --resume (source = resume or fork)").
 set -u
 
+# CUERPO PER-REPO compartido con el SWEEPER de flotilla (barrer-flotilla-cerebro.sh): la decisión de
+# drift + el auto-apply viven en la lib drift_chequea_repo → UNA sola implementación (cero drift entre
+# el fast-path interactivo de aquí y el batch del sweeper). Ver drift-cerebro-comun.sh.
+# shellcheck source=drift-cerebro-comun.sh
+. "$(dirname "$0")/drift-cerebro-comun.sh"
+
 ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 cat >/dev/null 2>&1 || true   # drenar stdin (contrato SessionStart)
 
@@ -88,16 +94,11 @@ $extra"
   exit 0
 }
 
-# ¿repo brained? (sello del sync, o el hook repo-scoped clásico). El drift-check SÍ requiere cerebro;
-# la identidad NO → si el repo no está brained pero trae conocimiento-propio.md, igual se surface.
-{ [ -f "$ROOT/.claude/hooks/.brain-version" ] || [ -f "$ROOT/.claude/hooks/dod-verificar.sh" ]; } || emit_and_exit ""
-
-# Fuente canónica LOCAL del cerebro = el clon de instalación (lo actualiza el one-liner/bootstrap).
-BRAIN_DIR="${CLAUDE_BRAIN_DIR:-$HOME/.claude-brain}"
-SYNC="$BRAIN_DIR/brain/sincronizar-cerebro.sh"
-[ -f "$SYNC" ] || emit_and_exit ""
-
-# Throttle por repo (solo cachea chequeos LIMPIOS).
+# Throttle por repo (solo cachea chequeos LIMPIOS). Es un concern INTERACTIVO — el sweeper batch de
+# flotilla NO usa este throttle (corre 1×/día con su propio lock por-repo). Va ANTES de delegar: un
+# chequeo limpio reciente evita re-correr el sync, pero la IDENTIDAD (conocimiento-propio) SIGUE
+# surface-ándose (emit_and_exit "" abajo la incluye si existe) — la identidad es imborrable, no depende
+# del drift ni del cache.
 horas="${AVISO_DRIFT_HORAS:-6}"; case "$horas" in ''|*[!0-9]*) horas=6;; esac
 stampdir="$HOME/.claude/memory/.drift-cerebro"; mkdir -p "$stampdir" 2>/dev/null || true
 slug=$(printf '%s' "$ROOT" | cksum 2>/dev/null | awk '{print $1}')
@@ -109,144 +110,24 @@ if [ -f "$stamp" ]; then
   [ $(( now - last )) -lt $(( horas * 3600 )) ] && emit_and_exit ""
 fi
 
-# ── #46: DISCRIMINAR repo COMPARTIDO vs PERSONAL por la marca .claude/repo-compartido ────────────────
-# El brain por-repo es un CORREO: existe SOLO para viajar por git a máquinas/personas SIN brain global
-# (colegas, clones de repos COMPARTIDOS). TU máquina saca los guards del install GLOBAL + el DEDUPE (la
-# línea `case "$0" ... exit 0` que hace ceder la copia por-repo a la global). Por eso un repo PERSONAL (git
-# o Drive, solo tus máquinas con brain) NO debe llevar guards por-repo — solo memoria/skills; el global ya
-# lo cubre y una copia por-repo solo puede DRIFTAR y estorbar (una pre-dedupe hasta romper: caso powerscripts).
-# Un repo COMPARTIDO SÍ los lleva (en git, para quien no tiene brain global) y se marca con
-# `.claude/repo-compartido` (la MISMA marca que ya usa el juez confirmar-merge-develop). Default = PERSONAL
-# (sin marca): conservador, no auto-empuja a git por accidente. Decisión B (unjordi 2026-08-05): en personal
-# NO se meten guards por-repo y los que SOBREN se FLAGGEAN para quitar (no se borran solos → no destructivo).
-# Ver el diseño completo en la memoria [[diseno-rediseno-auto-sync-46]].
-if [ ! -f "$ROOT/.claude/repo-compartido" ]; then
-  # ── PERSONAL: guards por-repo NUNCA → NO commit/push; si SOBRAN, FLAG a quitar. La memoria/skills del
-  # repo son SUYOS (no del brain) → el sync NO los toca, no son "drift". La métrica aquí NO es el drift-vs-
-  # fuente (eso es para el correo COMPARTIDO) sino "¿tiene guards del brain que sobran?". "Sobran" = .sh en
-  # .claude/hooks que TAMBIÉN existen en la fuente del brain (BRAIN_DIR/brain/hooks); los hooks PROPIOS del
-  # repo (p. ej. gate-steam-edicion.sh) NO están en la fuente → no se flaggean. Fail-open: si algo raro, silencio.
-  sobran=""
-  if [ -d "$ROOT/.claude/hooks" ] && [ -d "$BRAIN_DIR/brain/hooks" ]; then
-    for _h in "$ROOT/.claude/hooks/"*.sh; do
-      [ -e "$_h" ] || continue
-      _b=$(basename "$_h")
-      [ -f "$BRAIN_DIR/brain/hooks/$_b" ] && sobran="$sobran $_b"
-    done
-  fi
-  if [ -n "$sobran" ]; then
-    emit_and_exit "🧹 REPO PERSONAL con guards del cerebro que SOBRAN:${sobran}
-Quítalos — en un repo PERSONAL el brain GLOBAL + el dedupe ya te cubren, así que una copia por-repo solo puede DRIFTAR y estorbar (una pre-dedupe hasta rompió un merge: caso powerscripts). Los guards por-repo son SOLO para repos COMPARTIDOS (marca \`.claude/repo-compartido\`, que viajan por git a quien no tiene brain global). Tu MEMORIA/SKILLS NO se tocan — son tuyos.
-Cómo: borra esos .sh de .claude/hooks/ + sus entradas en .claude/settings.json. NO commiteo ni pusheo nada por ti (personal = sin auto-git). Si en realidad este repo es COMPARTIDO, decláralo con \`touch .claude/repo-compartido\` y re-abre sesión."
-    # NO cachea (como el aviso de drift): insiste en cada arranque hasta que se limpien.
-  fi
-  # Personal SANO (memoria/skills, cero guards del brain) → nada que hacer; cachea limpio.
-  printf '%s' "$now" > "$stamp" 2>/dev/null || true
-  emit_and_exit ""
-fi
+# ── Delegación al CUERPO PER-REPO COMPARTIDO (drift-cerebro-comun.sh). Hace TODO el chequeo per-repo
+# (brained? · fuente? · #46 personal/compartido · drift · C2 anti-regresión · auto-apply+commit+push en la
+# mini-develop) y devuelve STATUS + mensaje. El THROTTLE (arriba) y la IDENTIDAD (conocimiento-propio) son
+# responsabilidad de ESTE hook interactivo — el cuerpo compartido no las conoce (el sweeper batch no las usa).
+# Auto-apply REAL (no dry-run): en la mini-develop, si procede, sincroniza solo. Ver la lib para el detalle.
+_res=$(drift_chequea_repo "$ROOT")
+_status=$(printf '%s\n' "$_res" | head -1 | sed -n 's/^STATUS=//p')
+_msg=$(printf '%s\n' "$_res" | sed '1d')
 
-# ── COMPARTIDO (tiene la marca): el brain por-repo es el CORREO → mantenerlo fresco (comportamiento de
-# siempre: detecta drift; auto-apply+commit+push si estás en tu mini con .claude/ limpio; si no, AVISA). ──
-# DRY-RUN del sync (sin --apply: NO escribe). Error del sync → fail-open.
-out=$(bash "$SYNC" "$ROOT" 2>/dev/null) || exit 0
-resumen=$(printf '%s\n' "$out" | grep -E '==> resumen:' | tail -1)
-[ -n "$resumen" ] || exit 0
-nuevos=$(printf '%s' "$resumen" | grep -oE '[0-9]+ nuevos'       | grep -oE '[0-9]+' || echo 0)
-act=$(printf '%s' "$resumen"    | grep -oE '[0-9]+ a actualizar' | grep -oE '[0-9]+' || echo 0)
-# Los hooks RETIRADOS del cerebro que siguen colgados en el repo TAMBIÉN son drift (antes no se
-# contaban → un repo con solo un hook retirado por limpiar se veía "al día" y nunca se sincronizaba,
-# dejando p. ej. precompact-volcar-estado cableado y rompiendo el CLI). El --apply del auto-sync los
-# poda solo (lista RETIRED), sin --prune-orphans.
-ret=$(printf '%s' "$resumen"    | grep -oE '[0-9]+ retirado'     | grep -oE '[0-9]+' || echo 0)
-# Drift de CABLEADO: hooks presentes en .claude/hooks pero cuyo comando NO está en settings.json.
-# Antes este hook era CIEGO al wiring (solo sumaba nuevos+act+ret) → un repo con "0 nuevos · 0 a
-# actualizar · N cableado faltante" se reportaba "al día" aunque tuviera hooks sin cablear (bug ALTO,
-# comprobado en la plantilla). sincronizar ahora reporta "N cableado faltante" y aquí lo contamos.
-falta=$(printf '%s' "$resumen"  | grep -oE '[0-9]+ cableado faltante' | grep -oE '[0-9]+' || echo 0)
-total=$(( ${nuevos:-0} + ${act:-0} + ${ret:-0} + ${falta:-0} ))
-
-if [ "$total" -eq 0 ]; then
-  printf '%s' "$now" > "$stamp" 2>/dev/null || true
-  emit_and_exit ""
-fi
-
-detalle=$(printf '%s\n' "$out" | grep -E '(NUEVO|ACTUALIZA|RETIRARÍA)' | sed 's/^[[:space:]]*/    /' | head -12)
-
-# ── Nudge de la DUPLA (suficiencia + coherencia): el cerebro del repo se movió → verifica que sigue
-# coherente y operable. BIFURCA según el esquema firma+detalle esté instanciado (AGENTS.md presente). La
-# dupla FUNCIONA sin firma; solo cambia el encuadre. Se APPENDEA a los dos mensajes de abajo (auto-sync y drift).
-if [ -f "$ROOT/AGENTS.md" ]; then
-  dupla_nota="
-🔎 DUPLA: el cerebro del repo se movió → corre la dupla de auditores (suficiencia + coherencia, van juntas) CONTRA la firma/\`AGENTS.md\` — «¿la realidad sigue cumpliendo la firma?» — antes de integrar/release."
-else
-  dupla_nota="
-🔎 DUPLA: el cerebro del repo se movió → corre la dupla de auditores (suficiencia + coherencia) para verificar que no rompió nada. (Este repo NO tiene instanciado el esquema firma(\`CLAUDE.md\`)+detalle(\`AGENTS.md\`); la dupla funciona igual — considera instanciarlo para auditar «contra la firma».)"
-fi
-
-# CONCURRENCIA con barrer-ramas (el OTRO SessionStart que MUTA git): SUPUESTO EXPLÍCITO de INDEPENDENCIA.
-# El auto-apply de abajo hace commit+push en la rama ACTUAL (una mini-develop Develop*); barrer-ramas
-# lanza detached un `git branch -d/-D` de ramas ZOMBIE que NUNCA incluyen actual/base/develop/main/
-# Develop*/keep/*. Son refs DISJUNTOS y `git branch -d` no toma `.git/index.lock` (este commit sí, pero
-# el branch -d no) → no compiten por el índice ni por el ref de la rama actual. Contención posible solo
-# transitoria en packed-refs.lock; ambos lados son fail-open (el push es `|| true`) → degrada sin
-# corromper. Ver el comentario gemelo en barrer-ramas.sh. Por eso NO se serializan.
-#
-# ── AUTO-APPLY en TU mini-develop (v2 — con el modelo MINI-DEVELOP institucionalizado): si la sesión
-# abre parada EN una mini-develop (convención Develop<Usuario>) y .claude/ está LIMPIO, el cerebro se
-# actualiza SOLO: apply + commit + push a tu mini (permitido: es tu rama personal; el cambio llega a
-# develop con tu siguiente integración coordinada). En cualquier otra rama, o con .claude/ sucio, o si
-# cualquier paso falla → cae al AVISO de abajo (fail-safe: nunca ensucia una ramita de feature).
-# C2 (FMEA) — GUARD ANTI-REGRESIÓN del auto-sync: el sync copia FUENTE ($BRAIN_DIR) → repo SIEMPRE, sin
-# mirar quién es más nuevo. Si la FUENTE es un install-clone DETRÁS de su propio origin/main (no se
-# actualizó — el updater del widget la mantiene en main por `merge --ff-only origin/main`), aplicarla puede
-# REGRESAR el cerebro del repo a un estado viejo y el push de abajo PROPAGARÍA esa regresión. Por eso NO
-# auto-aplicamos cuando la fuente está atrás. Se mide con el ref LOCAL origin/main (último fetch) → sin red,
-# DETERMINISTA. Guard POSITIVO (tightening puro): fuente_stale=1 SOLO cuando CONFIRMO behind>0; si no hay
-# cómo medir (fuente no-git, sin origin/main, parse raro) conserva el comportamiento previo (auto-aplica) →
-# no regresa el feature, solo bloquea el riesgo medible.
-fuente_stale=0
-if behind=$(git -C "$BRAIN_DIR" rev-list --count HEAD..origin/main 2>/dev/null); then
-  case "$behind" in ''|*[!0-9]*) : ;; 0) : ;; *) fuente_stale=1;; esac
-fi
-
-cur=$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
-# sA3 (FMEA) — el patrón de mini-develop es `Develop<Usuario>` en PascalCase (DevelopUnjordi, DevelopChunito):
-# Develop + una MAYÚSCULA. `Develop?*` (viejo) casaba cualquier char → una rama "Development"/"Developx" se
-# trataba falsamente como mini-develop y recibía auto-push. `Develop[[:upper:]]*` exige la mayúscula del
-# <Usuario>. Se usa la CLASE POSIX `[[:upper:]]` (no el rango `[A-Z]`, que en locales UTF-8 con collation
-# a-A-b-B… puede casar minúsculas → `Developer` volvería a colarse; B2 del FMEA post-integración 2026-07-30).
-case "$cur" in
-  Develop[[:upper:]]*)
-    # Precondición y staging cubren el MISMO alcance (.claude/) COHERENTEMENTE: sincronizar --apply
-    # reescribe tanto .claude/hooks/ (copias + .brain-version) COMO .claude/settings.json (cablea/
-    # de-cablea vía register_hook/dewire_hook). Antes se stageaba solo .claude/hooks → el cambio de
-    # cableado (settings.json) quedaba SIN commitear y el wiring nunca viajaba (bug de costura ALTO).
-    # `git add -A .claude/` stagea AMBOS paths + las PODAS (hooks retirados borrados por --apply), y no
-    # revienta si settings.json aún no existe (el precheck ya garantiza que .claude/ estaba LIMPIO, así
-    # que lo único que se stagea es lo que produjo este --apply).
-    # `git commit -o -- .claude/` (sA3): commit ACOTADO al path .claude/ (--only). El precheck garantiza
-    # .claude/ limpio, pero NO el resto del árbol: sin el pathspec, un `git commit` pelón barrería a este
-    # commit de auto-sync cualquier OTRO cambio staged del usuario (p. ej. src/ a medio trabajar). Con -o
-    # solo entra .claude/ (mods + altas + PODAS de hooks retirados dentro de ese path).
-    if [ "$fuente_stale" = 0 ] \
-       && [ -z "$(git -C "$ROOT" status --porcelain -- .claude/ 2>/dev/null)" ] \
-       && bash "$SYNC" "$ROOT" --apply >/dev/null 2>&1 \
-       && git -C "$ROOT" add -A .claude/ >/dev/null 2>&1 \
-       && git -C "$ROOT" commit -q -o -m "chore(cerebro): auto-sync de la copia por-repo (aviso-drift, $total archivo(s) al día)" -- .claude/ >/dev/null 2>&1; then
-      git -C "$ROOT" push -q origin "$cur" >/dev/null 2>&1 || true
-      sha=$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo "?")
-      ctx="🧬✅ CEREBRO AUTO-SINCRONIZADO en tu mini-develop ($cur, commit $sha): la copia por-repo estaba $total archivo(s) atrás y se puso al día SOLA (apply+commit+push). Llegará al develop compartido con tu próxima integración coordinada. Qué cambió:
-$detalle$dupla_nota"
-      emit_and_exit "$ctx"
-    fi;;
+# Cachea SOLO los chequeos genuinamente LIMPIOS (personal sano o compartido al día). El flag de guards
+# sobrantes, el drift y el auto-sync NO se cachean (insisten / ya mutaron); "unknown" (sync sin resumen)
+# tampoco → reintenta la próxima sesión en vez de sellar un error transitorio como "al día".
+case "$_status" in
+  clean|personal-clean) printf '%s' "$now" > "$stamp" 2>/dev/null || true ;;
 esac
 
-# Si la fuente está STALE (C2), avisarlo: propagar desde una fuente vieja regresaría el brain. Primero se actualiza la fuente.
-stale_nota=""
-[ "$fuente_stale" = 1 ] && stale_nota="
-⚠️ OJO (anti-regresión C2): tu FUENTE del cerebro ($BRAIN_DIR) parece DETRÁS de su origin/main — NO auto-sincronicé para no regresar el brain. Actualiza la fuente primero (\`git -C $BRAIN_DIR pull --ff-only\` o abre el widget) y reabre sesión."
-ctx="🧠⚠️ DRIFT DEL CEREBRO POR-REPO: la copia en .claude/hooks/ de ESTE repo está ATRÁS de la fuente única del cerebro ($total archivo(s)):
-$detalle$stale_nota
-Qué hacer: PROPÓN al usuario propagar por el flujo — worktree/ramita desde develop → \`bash $SYNC <worktree> --apply\` → commit → MR a develop. NO edites .claude/hooks/ directo en el árbol de trabajo (en repos compartidos viaja por git y se mezclaría a commits de feature). Nota: en ESTA máquina la copia GLOBAL ya manda (dedupe), pero el drift por-repo afecta a colegas y clones sin bootstrap.$dupla_nota"
-
-emit_and_exit "$ctx"
+# Emite: los estados silenciosos solo surface-an la IDENTIDAD (si existe); los ruidosos, identidad + msg.
+case "$_status" in
+  not-brained|no-source|unknown|clean|personal-clean) emit_and_exit "" ;;
+  *) emit_and_exit "$_msg" ;;
+esac
