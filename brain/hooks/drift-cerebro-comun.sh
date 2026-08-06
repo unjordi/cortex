@@ -127,15 +127,38 @@ $detalle"
           return 0
         fi
         if bash "$SYNC" "$ROOT" --apply >/dev/null 2>&1 \
-           && git -C "$ROOT" add -A .claude/ >/dev/null 2>&1 \
-           && git -C "$ROOT" commit -q -o -m "chore(cerebro): auto-sync de la copia por-repo (aviso-drift, $total archivo(s) al día)" -- .claude/ >/dev/null 2>&1; then
-          git -C "$ROOT" push -q origin "$cur" >/dev/null 2>&1 || true
-          local sha
-          sha=$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo "?")
-          printf 'STATUS=%s\n' "synced"
-          printf '%s\n' "🧬✅ CEREBRO AUTO-SINCRONIZADO en tu mini-develop ($cur, commit $sha): la copia por-repo estaba $total archivo(s) atrás y se puso al día SOLA (apply+commit+push). Llegará al develop compartido con tu próxima integración coordinada. Qué cambió:
+           && git -C "$ROOT" add -A .claude/ >/dev/null 2>&1; then
+          # V1 (auditoría 2026-08-06): este auto-commit BYPASSEABA secret-scan — ocurre DENTRO de este
+          # subproceso, NO vía una tool Bash, así que el guard PreToolUse/Bash secret-scan NO lo intercepta.
+          # Un `.claude/` drifteado con un secreto se auto-pusheaba a la mini saltándose el guard defensivo.
+          # Escaneo lo AGREGADO (git diff --cached de .claude/, líneas '+') con la MISMA lib que usa
+          # secret-scan (detectar-secretos.sh → ds_buscar). Si hay match → ABORTA el auto-sync (des-estagea,
+          # NO commitea/pushea) y avisa. Fail-OPEN si falta la lib (no rompe el arranque de sesión).
+          local _sec_lib _added _red
+          _sec_lib="$(dirname "${BASH_SOURCE[0]}")/detectar-secretos.sh"
+          _red=""
+          if [ -f "$_sec_lib" ]; then
+            # shellcheck source=detectar-secretos.sh
+            . "$_sec_lib"
+            _added=$(git -C "$ROOT" diff --cached -- .claude/ 2>/dev/null | grep -E '^\+' | grep -vE '^\+\+\+')
+            _red=$(ds_buscar "$_added" 2>/dev/null | tr '\n' ' ')
+          fi
+          if [ -n "$_red" ]; then
+            git -C "$ROOT" reset -q -- .claude/ >/dev/null 2>&1 || true
+            printf 'STATUS=%s\n' "drift"
+            printf '%s\n' "🚨 AUTO-SYNC DEL CEREBRO ABORTADO — secret-scan detectó lo que parece un SECRETO en el .claude/ que se iba a commitear (redactado):$_red
+NO commiteé ni pusheé nada (des-estageé el cambio; el working tree quedó con la copia aplicada, SIN commitear). Saca el secreto de esa copia por-repo antes de propagar el cerebro; si es un placeholder/falso positivo, sincroniza a mano por el flujo (worktree→ramita→MR). Es la MISMA detección que el guard secret-scan, aplicada al commit que este hook hace por su cuenta."
+            return 0
+          fi
+          if git -C "$ROOT" commit -q -o -m "chore(cerebro): auto-sync de la copia por-repo (aviso-drift, $total archivo(s) al día)" -- .claude/ >/dev/null 2>&1; then
+            git -C "$ROOT" push -q origin "$cur" >/dev/null 2>&1 || true
+            local sha
+            sha=$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo "?")
+            printf 'STATUS=%s\n' "synced"
+            printf '%s\n' "🧬✅ CEREBRO AUTO-SINCRONIZADO en tu mini-develop ($cur, commit $sha): la copia por-repo estaba $total archivo(s) atrás y se puso al día SOLA (apply+commit+push). Llegará al develop compartido con tu próxima integración coordinada. Qué cambió:
 $detalle$dupla_nota"
-          return 0
+            return 0
+          fi
         fi
       fi
       ;;
