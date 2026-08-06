@@ -27,24 +27,57 @@
 # redirección / Task de sub-agente), ¿corrió una tool de navegador?, build/mem como recordatorio, y el
 # recordatorio B4 de paridad en migraciones.
 #
+# El juez está DESAMORDAZADO (EMPODERADO 2026-08, mismo trabajo que _juez_merge): max_tokens 512 +
+# temperature:0 (reproducible — mata el flaky de temp 1.0) + CoT breve con TRES centinelas 'CIERRE:/MARCA:/
+# VISUAL: si|no' parseados por tail -1, y un VETO de CITA determinista para MARCA (anti auto-atestiguamiento).
+# El detalle vive en el comentario de _juez_dod (abajo). CONSCIENTE DE LATENCIA: dod corre en CADA Stop →
+# presupuesto MODERADO + timeout sensato; como es fail-OPEN, un timeout simplemente no bloquea.
+#
 # FAIL-SAFE (a diferencia de confirmar-merge-develop, que fail-safe DENY): dod es un NAG de disciplina, no
 # un límite de seguridad. Si el juez no está (sin token OAuth, sin curl/jq, sin red, timeout, o respuesta ininteligible) →
 # FAIL-OPEN (deja cerrar el turno). Bloquear CADA Stop cuando Haiku esté caído atraparía al usuario en un
-# loop sin poder terminar. Mockeable con CLAUDE_DOD_JUEZ_MOCK (tests deterministas); el JUICIO real se
-# prueba LIVE con la batería de FP/FN históricos en test-brain.sh. Modelo/timeout por env.
+# loop sin poder terminar. Mockeable con CLAUDE_DOD_JUEZ_MOCK (veredicto final, tests de flujo) y
+# CLAUDE_DOD_JUEZ_MOCK_RAW (respuesta cruda → tests deterministas del parseo por centinela + veto de cita);
+# el JUICIO real se prueba LIVE con la batería de FP/FN históricos en test-brain.sh. Modelo/timeout por env.
 #
 # "Este turno" = desde el último mensaje real del usuario. stop_hook_active evita loops. Requiere jq.
 set -u
 
 # _juez_dod($texto_asistente, $texto_usuario) → "CIERRE=si|no MARCA=si|no VISUAL=si|no" | UNAVAILABLE
 # Definido ARRIBA (source-only) para que el test lo corra IDÉNTICO al hook (cero drift).
+#
+# EMPODERADO 2026-08 (mismo trabajo que _juez_merge, adaptado al dod — que es NAG fail-OPEN, no candado):
+#   · Capa 1 — DESAMORDAZAR: max_tokens 32→512 + temperature:0 (reproducible — MATA el flaky de temp 1.0,
+#     p. ej. "MR abierto y el endpoint quedó terminado" parpadeaba CIERRE si/no). CoT MUY breve que cierra
+#     con TRES líneas-centinela EXACTAS 'CIERRE: si|no', 'MARCA: si|no', 'VISUAL: si|no'. Parseo por el
+#     ÚLTIMO centinela de cada eje (tail -1 — el CoT puede mencionar el eje antes; solo cuenta la conclusión).
+#     Si FALTA cualquiera de los tres → out incompleto → UNAVAILABLE → fail-OPEN (dod NO atrapa el turno).
+#   · Capa 2 — VETO de CITA VERIFICADA para MARCA (anti auto-atestiguamiento ALTO-1, ahora DETERMINISTA):
+#     un MARCA=si exige que el LLM devuelva 'CITA: <verbatim del USUARIO>'; un chequeo determinista
+#     re-verifica que esa cita exista TEXTUAL en el texto del USUARIO ($2, que por diseño es SOLO mensajes
+#     role=user). Sin cita, o cita que no cae en el texto del usuario → override MARCA a 'no'. Vuelve "solo
+#     el USUARIO atestigua" un INVARIANTE determinista, inmune a que el LLM se deje llevar por la prosa de
+#     Claude. Nota: override a 'no' es CONSERVADOR para un nag (a lo sumo un recordatorio de más, nunca deja
+#     pasar un cierre sin marca).
+# CONSCIENTE DE LATENCIA (crítico): dod corre en CADA Stop. Presupuesto MODERADO (512, CoT corto → la
+# respuesta real ronda ~100-200 tokens, no llena el techo) + CLAUDE_DOD_JUEZ_TIMEOUT sensato (20s). Como es
+# fail-OPEN, un timeout simplemente NO bloquea (a diferencia del merge, que fail-safe DENY). Costo típico por
+# turno: 1 llamada curl de ~1-3s; el techo alto solo acota casos degenerados, no el caso común.
+# Mocks deterministas: CLAUDE_DOD_JUEZ_MOCK (veredicto FINAL normalizado 'CIERRE=.. MARCA=.. VISUAL=..' →
+# tests de FLUJO sin red) · CLAUDE_DOD_JUEZ_MOCK_RAW (texto CRUDO de respuesta → ejercita el parseo por
+# centinela + el veto de cita sin red).
 _juez_dod() {
-  [ -n "${CLAUDE_DOD_JUEZ_MOCK:-}" ] && { printf '%s' "$CLAUDE_DOD_JUEZ_MOCK"; return 0; }
+  local prompt out c m v tok body txt cita norm_user
+  if [ -n "${CLAUDE_DOD_JUEZ_MOCK:-}" ]; then
+    printf '%s' "$CLAUDE_DOD_JUEZ_MOCK"; return 0   # veredicto FINAL normalizado → flujo determinista (sin red)
+  fi
+  if [ -n "${CLAUDE_DOD_JUEZ_MOCK_RAW:-}" ]; then
+    txt="$CLAUDE_DOD_JUEZ_MOCK_RAW"                 # respuesta CRUDA mockeada → ejercita parseo + veto de cita
+  else
   command -v curl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1 || { printf 'UNAVAILABLE'; return 0; }
   # Token OAuth de SUSCRIPCIÓN — MISMO canal que el widget (api.anthropic.com + anthropic-beta:oauth-2025-04-20).
   # NO `claude -p` (su harness es el lastre, ~50s; dod corre en CADA Stop → el curl ~1s lo vuelve viable), NO
   # `--bare`, NO api-key. Orden: env override → credentials.json (cross-plataforma) → keychain (macOS).
-  local prompt out c m v tok body txt
   tok="${CLAUDE_CODE_OAUTH_TOKEN:-}"
   [ -z "$tok" ] && [ -f "$HOME/.claude/.credentials.json" ] && tok=$(jq -er '.claudeAiOauth.accessToken // empty' "$HOME/.claude/.credentials.json" 2>/dev/null)
   [ -z "$tok" ] && command -v security >/dev/null 2>&1 && tok=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null | jq -er '.claudeAiOauth.accessToken // empty' 2>/dev/null)
@@ -74,18 +107,39 @@ $1
 MENSAJES DEL USUARIO EN ESTE TURNO:
 $2
 
-Responde EXACTAMENTE una línea, sin nada más:
-CIERRE=<si|no> MARCA=<si|no> VISUAL=<si|no>"
+PROTOCOLO DE RESPUESTA — razona MUY BREVE (a lo sumo una frase corta por eje) y termina con EXACTAMENTE estas líneas finales, en este orden y sin nada después:
+- Si MARCA es 'si', ANTES de las tres líneas de veredicto incluye una línea con la CITA VERBATIM del mensaje del USUARIO en que te apoyas, copiada TAL CUAL aparece arriba (mismas palabras, sin parafrasear ni traducir):
+CITA: <texto literal del mensaje del USUARIO>
+- Luego SIEMPRE las tres líneas de veredicto, una por eje:
+CIERRE: <si|no>
+MARCA: <si|no>
+VISUAL: <si|no>"
   body=$(jq -n --arg m "${CLAUDE_DOD_JUEZ_MODEL:-claude-haiku-4-5-20251001}" --arg p "$prompt" \
-          '{model:$m, max_tokens:32, messages:[{role:"user",content:$p}]}')
-  out=$(curl -sS -m "${CLAUDE_DOD_JUEZ_TIMEOUT:-20}" https://api.anthropic.com/v1/messages \
+          '{model:$m, max_tokens:512, temperature:0, messages:[{role:"user",content:$p}]}')
+  txt=$(curl -sS -m "${CLAUDE_DOD_JUEZ_TIMEOUT:-20}" https://api.anthropic.com/v1/messages \
           -H "Authorization: Bearer $tok" -H "anthropic-beta: oauth-2025-04-20" \
           -H "anthropic-version: 2023-06-01" -H "content-type: application/json" \
           -d "$body" 2>/dev/null | jq -r '.content[0].text // empty' 2>/dev/null)
-  _dod_flag() { printf '%s' "$1" | grep -oiE "$2=(s[ií]|no)" | head -1 | grep -oiE '(s[ií]|no)' | tr 'A-Z' 'a-z' | sed 's/sí/si/'; }
-  c=$(_dod_flag "$out" CIERRE); m=$(_dod_flag "$out" MARCA); v=$(_dod_flag "$out" VISUAL)
-  if [ -n "$c" ] && [ -n "$m" ] && [ -n "$v" ]; then printf 'CIERRE=%s MARCA=%s VISUAL=%s' "$c" "$m" "$v"
-  else printf 'UNAVAILABLE'; fi
+  fi
+  # DEBUG opt-in (CLAUDE_DOD_JUEZ_DEBUG=1): vuelca el CoT crudo a stderr → diagnóstico de FP/FN y tuning del
+  # corpus (norma "bitácora de falsos positivos"). Off por default; no toca el veredicto.
+  [ -n "${CLAUDE_DOD_JUEZ_DEBUG:-}" ] && printf '=== JUEZ-DOD CoT ===\n%s\n=== fin ===\n' "$txt" >&2
+  # Parseo por CENTINELA: el ÚLTIMO 'CIERRE|MARCA|VISUAL: si|no' de cada eje (tail -1). Sin los tres → UNAVAILABLE.
+  _dod_sent() { printf '%s\n' "$1" | grep -oiE "$2:[[:space:]]*(s[ií]|no)" | tail -1 | grep -oiE '(s[ií]|no)' | tr '[:upper:]' '[:lower:]' | sed 's/sí/si/'; }
+  c=$(_dod_sent "$txt" CIERRE); m=$(_dod_sent "$txt" MARCA); v=$(_dod_sent "$txt" VISUAL)
+  if [ -z "$c" ] || [ -z "$m" ] || [ -z "$v" ]; then printf 'UNAVAILABLE'; return 0; fi
+  # VETO de CITA VERIFICADA (capa 2): un MARCA=si exige una CITA que exista TEXTUAL en el texto del USUARIO
+  # ($2 = SOLO mensajes role=user por diseño del hook). Normaliza runs de espacio a uno en ambos lados y
+  # quita comillas/decoración envolvente; luego grep -F (substring literal). Sin cita real → override a 'no'
+  # (conservador para un nag: a lo sumo un recordatorio de más, jamás deja colar un cierre sin marca).
+  if [ "$m" = si ]; then
+    # La línea CITA: puede venir decorada ('**CITA:**', '- CITA:'…) → tolera prefijo NO-alfanumérico.
+    cita=$(printf '%s\n' "$txt" | grep -iE '^[^[:alnum:]]*CITA:' | tail -1 | sed -E 's/^[^[:alnum:]]*CITA:[[:space:]]*//I')
+    cita=$(printf '%s' "$cita" | tr -s '[:space:]' ' ' | sed -E "s/^[*\"' ]+//; s/[*\"' ]+$//")
+    norm_user=$(printf '%s' "$2" | tr -s '[:space:]' ' ')
+    if [ -z "$cita" ] || ! printf '%s' "$norm_user" | grep -Fq -- "$cita"; then m=no; fi
+  fi
+  printf 'CIERRE=%s MARCA=%s VISUAL=%s' "$c" "$m" "$v"
 }
 
 # Los tests SOURCEAN con _CMD_DOD_SOURCE_ONLY=1 para obtener SOLO _juez_dod (sin correr el cuerpo del hook,
