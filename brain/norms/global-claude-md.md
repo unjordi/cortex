@@ -243,6 +243,22 @@ confirmación expresa del usuario es integrar la mini (o cualquier rama) a `deve
   dev. Para integrar: merge de la ramita → mini (local o por push) y el folder la ve (`pull`, o lo hace
   Claude). Aísla en worktrees de feature, integra hacia la mini, jamás compitas por el checkout de la mini.
 
+## Cerebro por-repo = CORREO: repo PERSONAL sin guards, repo COMPARTIDO con guards (norma dura)
+El cerebro copiado dentro de `.claude/` de un repo es un **CORREO**: existe SOLO para VIAJAR por git a
+máquinas/personas que NO tienen el brain global (colegas, clones de repos **compartidos**). **TU máquina
+NO saca sus guards de esa copia** — los saca del **install GLOBAL + el DEDUPE** (cada guard trae la línea
+`case "$0" … exit 0` que hace ceder la copia por-repo a la global). De ahí la regla:
+- **Repo PERSONAL** (git o Drive; vive solo en tus máquinas, que ya tienen brain global): **memoria/skills
+  SÍ, guards por-repo NUNCA.** El global+dedupe ya los cubre; una copia por-repo solo puede DRIFTAR y
+  estorbar (una **pre-dedupe** hasta rompió un merge real: powerscripts, jul-21). Si un personal tiene
+  guards del brain, **SOBRAN → quítalos** (`.claude/hooks/*.sh` del brain + sus entradas en `settings.json`).
+- **Repo COMPARTIDO** (viaja a máquinas/personas sin brain — colegas, clones públicos): **guards por-repo
+  SÍ, en git.** Se declara EXPLÍCITAMENTE con la marca **`.claude/repo-compartido`** (la misma que ya usa
+  `confirmar-merge-develop`). **Default = personal** (sin marca): conservador, no auto-empuja a git por error.
+- **Mecanismo** (norma nace con él): `aviso-drift-cerebro` (SessionStart) bifurca por la marca — en
+  COMPARTIDO mantiene el correo fresco (auto-sync en tu mini / avisa); en PERSONAL **no auto-commitea** y
+  **flaggea** los guards que sobran para que los quites (no los borra solo). Detalle: [[diseno-rediseno-auto-sync-46]].
+
 ## Consentimiento de costo de delegación (norma dura)
 Reclutar un agente (Task/subagente) cuesta según su nivel: **gratis** (local), **incluido** (Claude
 dentro de la ventana de 5h — sin costo marginal) o **metered** (Claude en overage, API externa de pago,
