@@ -310,6 +310,65 @@ rm -rf "$GBROOT2"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (b1d-cwd) git-branch-guard TARGET-AWARE cross-repo (F0/F1) + frontera G3/G4 + G6 =="
+# Raíz común de los FN/FP cross-repo (auditoría 2026-08-06): los guards keyeaban la rama/marca desde
+# CLAUDE_PROJECT_DIR (repo de la SESIÓN), no del repo que el comando TOCA (-C / cd / cwd del payload). Aquí:
+# SESS = repo de la sesión (en feat/x) · BASE = OTRO repo en develop · FEAT2 = OTRO repo en una ramita.
+GBX="$(mktemp -d "${TMPDIR:-/tmp}/brain-gbx.XXXXXX")"; SESS="$GBX/sess"; BASE="$GBX/base"; FEAT2="$GBX/feat2"; GBXHOME="$GBX/home"
+mkdir -p "$SESS" "$BASE" "$FEAT2" "$GBXHOME"
+for R in "$SESS" "$BASE" "$FEAT2"; do
+  git -C "$R" init -q >/dev/null 2>&1
+  git -C "$R" config user.email t@t >/dev/null 2>&1; git -C "$R" config user.name t >/dev/null 2>&1
+  git -C "$R" commit -q --allow-empty -m init >/dev/null 2>&1; git -C "$R" branch -M develop >/dev/null 2>&1
+done
+git -C "$SESS" checkout -q -b feat/x >/dev/null 2>&1     # sesión en una ramita (NO base)
+git -C "$FEAT2" checkout -q -b feat/y >/dev/null 2>&1    # otro repo, también en una ramita
+# gbx <cmd> [cwd] → git-branch-guard con CLAUDE_PROJECT_DIR=SESS (feat/x) y, opcional, .cwd en el payload.
+gbx() {
+  if [ -n "${2:-}" ]; then jq -nc --arg c "$1" --arg w "$2" '{tool_name:"Bash",tool_input:{command:$c},cwd:$w}'
+  else                     jq -nc --arg c "$1"                '{tool_name:"Bash",tool_input:{command:$c}}'; fi \
+    | CLAUDE_PROJECT_DIR="$SESS" HOME="$GBXHOME" bash "$HOOKS/git-branch-guard.sh"
+}
+# Frontera G3/G4: metacarácter de shell PEGADO a la base evadía (`([[:space:]]|$)` demasiado estricto).
+printf '%s' "$(gbx '(git push origin develop)')"    | grep -q '"deny"' && ok "gbg G3: '(git push origin develop)' (subshell, ')' pegado) → deny" || bad "gbg G3: el paréntesis pegado se coló"
+printf '%s' "$(gbx 'git push origin develop>log')"  | grep -q '"deny"' && ok "gbg G4: 'git push origin develop>log' (redirect '>' pegado) → deny" || bad "gbg G4: el redirect pegado se coló"
+printf '%s' "$(gbx 'x=$(git push origin main)')"    | grep -q '"deny"' && ok "gbg G3: 'x=\$(git push origin main)' (command-subst) → deny" || bad "gbg G3: el \$()-subst se coló"
+is_silent "$(gbx 'git push origin develop-feature')" && ok "gbg G3/G4: 'develop-feature' (base es PREFIJO de la rama) → silencio (sin FP nuevo)" || bad "gbg G3/G4: 'develop-feature' disparó falso positivo"
+# G1 (FN) target-aware por -C: el pelón toca OTRO repo que está en develop → deny (antes: leía feat/x de la sesión → evadía).
+printf '%s' "$(gbx "git -C $BASE push")"  | grep -q '"deny"' && ok "gbg G1: 'git -C <repo-en-develop> push' (pelón, otro repo) → deny (target-aware)" || bad "gbg G1: FN — pelón a otro repo en develop se coló"
+is_silent "$(gbx "git -C $FEAT2 push")"   && ok "gbg G1: 'git -C <repo-en-ramita> push' (pelón) → silencio (target-aware, sin FP)" || bad "gbg G1: FP — pelón a otro repo en ramita bloqueó"
+# G1 target-aware por CWD del payload: mismo pelón, resuelto por el cwd real del comando.
+printf '%s' "$(gbx 'git push' "$BASE")"   | grep -q '"deny"' && ok "gbg G1: 'git push' pelón con .cwd=<repo-en-develop> → deny (cwd del payload)" || bad "gbg G1: FN — pelón vía cwd a develop se coló"
+is_silent "$(gbx 'git push' "$FEAT2")"    && ok "gbg G1: 'git push' pelón con .cwd=<repo-en-ramita> → silencio (cwd del payload)" || bad "gbg G1: FP — pelón vía cwd a ramita bloqueó"
+# G2 (cd en la cadena): un cd previo en el MISMO compound redirige el repo del push pelón.
+printf '%s' "$(gbx "cd $BASE && git push")" | grep -q '"deny"' && ok "gbg G2: 'cd <repo-en-develop> && git push' (pelón) → deny (cd per-segmento)" || bad "gbg G2: FN — cd+push a develop se coló"
+is_silent "$(gbx "cd $FEAT2 && git push")"  && ok "gbg G2: 'cd <repo-en-ramita> && git push' → silencio (cd per-segmento, sin FP)" || bad "gbg G2: FP — cd+push a ramita bloqueó"
+# FAIL-SAFE: rama IRRESOLUBLE en un pelón (dir inexistente/no-git) ⇒ BLOQUEA (nunca fail-open).
+printf '%s' "$(gbx "git -C $GBX/nope push")" | grep -q '"deny"' && ok "gbg fail-safe: 'git -C <dir-inexistente> push' pelón → deny (rama irresoluble ⇒ bloquea)" || bad "gbg fail-safe: pelón con dir irresoluble NO bloqueó (fail-open)"
+# Retro-compat: SIN .cwd, pelón en la sesión (feat/x) → silencio (conducta de hoy, cae a CLAUDE_PROJECT_DIR).
+is_silent "$(gbx 'git push')" && ok "gbg retro-compat: pelón sin .cwd en la sesión (feat/x) → silencio (cae a CLAUDE_PROJECT_DIR)" || bad "gbg retro-compat: pelón sin .cwd bloqueó en una ramita"
+# G6 (FP): el POSICIONAL de 'gh pr merge <arg>' es el #/rama de ORIGEN, NO destino → un release develop→main
+# por CLI ya no se bloquea en falso; solo un destino EXPLÍCITO por flag (--base/-B/--target) cuenta.
+is_silent "$(gbx 'gh pr merge develop --merge')" && ok "gbg G6: 'gh pr merge develop --merge' (posicional=origen) → silencio (no es destino)" || bad "gbg G6: FP — el posicional 'develop' se trató como destino"
+printf '%s' "$(gbx 'gh pr merge 5 --base develop')" | grep -q '"deny"' && ok "gbg G6: 'gh pr merge 5 --base develop' (destino EXPLÍCITO por flag) → deny" || bad "gbg G6: el destino explícito por --base no bloqueó"
+rm -rf "$GBX"
+
+# ── (b1d-lib) acg_target_dir / acg_target_remote: PRECEDENCIA del resolvedor (F0, DETERMINISTA sin repos) ──
+( . "$HOOKS/analizar-comando-git.sh"
+  CLAUDE_PROJECT_DIR=/proj
+  [ "$(acg_target_dir 'git push' '')" = /proj ]            && ok "target_dir: sin señal → CLAUDE_PROJECT_DIR (fallback retro-compat)" || bad "target_dir: no cayó a CLAUDE_PROJECT_DIR"
+  [ "$(acg_target_dir 'git push' '/cwd')" = /cwd ]         && ok "target_dir: payload_cwd > CLAUDE_PROJECT_DIR" || bad "target_dir: cwd no ganó a PROJECT_DIR"
+  [ "$(acg_target_dir 'git -C /dc push' '/cwd')" = /dc ]   && ok "target_dir: -C > payload_cwd" || bad "target_dir: -C no ganó a cwd"
+  [ "$(acg_target_dir 'cd /cdt && git push' '/cwd')" = /cdt ] && ok "target_dir: cd > payload_cwd" || bad "target_dir: cd no ganó a cwd"
+  [ "$(acg_target_dir 'cd /cdt && git -C /dc push' '')" = /dc ] && ok "target_dir: -C > cd (precedencia máxima)" || bad "target_dir: -C no ganó a cd"
+  [ "$(acg_target_dir 'git -C "/a b/repo" push' '')" = '/a b/repo' ] && ok "target_dir: -C con ruta ENTRECOMILLADA con espacio (quote-aware)" || bad "target_dir: -C entrecomillado con espacio se cortó"
+  # acg_target_remote: --repo/-R gana; sin él deriva del remoto del dir objetivo (aquí PROJECT_DIR no-git → vacío)
+  [ "$(acg_target_remote 'glab mr merge 5 -R org/foo' '')" = org/foo ] && ok "target_remote: --repo/-R explícito gana" || bad "target_remote: -R no ganó"
+  [ -z "$(acg_target_remote 'glab mr merge 5' '')" ]       && ok "target_remote: sin --repo y dir no-git → vacío (fail-safe)" || bad "target_remote: devolvió algo con dir no-git"
+)
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "== (b1e) confirmar-merge-develop: escape ANCLADO al subcomando (H3) + destino cacheado/timeout (H5) =="
 # Antes NO tenía test de comportamiento. H3: el escape casaba `status|list|view` como token suelto en
 # CUALQUIER parte → `glab mr merge 5 && git status` evadía el gate. H5: 2 llamadas de red idénticas +
@@ -556,6 +615,57 @@ UNAVAILABLE')" = DENY ] && ok "voto-agrega: 2×ALLOW + 1×UNAVAILABLE → DENY (
   printf '%s' "$(acg_hint_candidatos "$HA1" develop 999)" | grep -q 'NO figura'      && ok "hint: mrid ausente de la lista → 'NO figura'" || bad "hint: no marcó mrid ausente"
   printf '%s' "$(acg_hint_candidatos '' main 261)"      | grep -q 'NO DISPONIBLE'    && ok "hint: lista vacía/caída → 'NO DISPONIBLE' (degrada limpio)" || bad "hint: no degradó con lista vacía"
 )
+
+# ── (b1e-cross) confirmar-merge CROSS-REPO: marca/AUTH_FILE del repo DESTINO, no de la sesión (F2 · C1/C2) ──
+# La marca `.claude/repo-compartido` se resuelve del TARGET_ROOT (repo que el MR toca), NO de CLAUDE_PROJECT_DIR.
+# Regla dura §3: exit 0 (sin gate) SOLO si se CONFIRMA POSITIVAMENTE personal (ruta local + sin marca); cualquier
+# incertidumbre ⇒ GATEA. Con CLAUDE_MERGE_JUEZ_MOCK=DENY, "gate" se observa como deny; "sin gate" como silencio.
+rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
+XROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-xcm.XXXXXX")"; XSHARED="$XROOT/shared"; XPERSONAL="$XROOT/personal"; XHOME="$XROOT/home"; XBIN="$XROOT/bin"; XTX="$XROOT/tx.jsonl"
+mkdir -p "$XSHARED/.claude" "$XPERSONAL/.claude" "$XHOME" "$XBIN"
+: > "$XSHARED/.claude/repo-compartido"    # SHARED lleva la marca; PERSONAL NO
+git -C "$XSHARED"   init -q >/dev/null 2>&1; git -C "$XSHARED"   remote add origin git@gitlab.com:org/shared.git   >/dev/null 2>&1
+git -C "$XPERSONAL" init -q >/dev/null 2>&1; git -C "$XPERSONAL" remote add origin git@gitlab.com:org/personal.git >/dev/null 2>&1
+printf '#!/usr/bin/env bash\necho '\''{"target_branch":"develop"}'\''\n' > "$XBIN/glab"; chmod +x "$XBIN/glab"
+printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"haz el cambio"}]}}' > "$XTX"
+# xcm <cmd> <CLAUDE_PROJECT_DIR> [cwd] → hook con juez MOCK=DENY (si llega al juez = gate = deny; si exit 0 = silencio).
+xcm() {
+  if [ -n "${3:-}" ]; then jq -nc --arg c "$1" --arg t "$XTX" --arg w "$3" '{tool_input:{command:$c},transcript_path:$t,cwd:$w}'
+  else                     jq -nc --arg c "$1" --arg t "$XTX"                '{tool_input:{command:$c},transcript_path:$t}'; fi \
+    | PATH="$XBIN:$PATH" HOME="$XHOME" CLAUDE_PROJECT_DIR="$2" CLAUDE_MERGE_JUEZ_MOCK=DENY bash "$HOOKS/confirmar-merge-develop.sh"
+}
+# C1 (FN de ALTA consecuencia): sesión en repo PERSONAL (sin marca) mergea a un develop COMPARTIDO vía --repo →
+# antes: marca leída de CLAUDE_PROJECT_DIR (personal) → exit 0 → integración SIN OK. Ahora: --repo != dir local
+# → INCIERTO ⇒ GATEA.
+is_deny "$(xcm 'glab mr merge 9 -R org/shared --yes' "$XPERSONAL")" \
+  && ok "cmd-cross C1: sesión PERSONAL + '--repo org/shared' (compartido) → GATEA (cierra el FN de seguridad)" \
+  || bad "cmd-cross C1: FN — merge a un develop compartido vía --repo desde sesión personal NO gateó"
+# C2 (FP de fricción, dirección segura): sesión COMPARTIDA + '--repo <personal>' → --repo != dir local → INCIERTO
+# ⇒ GATEA. DECISIÓN de diseño: se conserva la fricción porque un slug remoto NO se resuelve fiable a ruta local;
+# la regla dura manda gatear ante incertidumbre (saltar de más = brecha). Documentado en el REPORTE.
+is_deny "$(xcm 'glab mr merge 6 -R org/personal --yes' "$XSHARED")" \
+  && ok "cmd-cross C2: sesión COMPARTIDA + '--repo org/personal' → GATEA (fricción segura: slug no resoluble a ruta local)" \
+  || bad "cmd-cross C2: dejó pasar un --repo cross-repo sin gate"
+# PERSONAL normal (retro-compat, sin fricción): sesión PERSONAL, sin --repo, repo git válido sin marca → exit 0.
+is_silent "$(xcm 'glab mr merge 5 --yes' "$XPERSONAL")" \
+  && ok "cmd-cross: sesión PERSONAL sin --repo (repo válido, sin marca) → silencio (PERSONAL confirmado, cero fricción)" \
+  || bad "cmd-cross: gateó un merge en un repo personal (regresión de fricción)"
+# COMPARTIDO propio (no-regresión): sesión COMPARTIDA, sin --repo, con marca → GATEA como hoy.
+is_deny "$(xcm 'glab mr merge 5 --yes' "$XSHARED")" \
+  && ok "cmd-cross: sesión COMPARTIDA sin --repo (con marca) → GATEA (no-regresión)" \
+  || bad "cmd-cross: no gateó el develop compartido propio"
+# CWD del payload resuelve la marca al repo REAL: sesión PERSONAL pero .cwd=SHARED → TARGET_ROOT=SHARED (con marca) → GATEA.
+is_deny "$(xcm 'glab mr merge 7 --yes' "$XPERSONAL" "$XSHARED")" \
+  && ok "cmd-cross: .cwd=<compartido> desde sesión personal → marca resuelta del cwd → GATEA" \
+  || bad "cmd-cross: el .cwd no redirigió la resolución de la marca al repo compartido"
+# AUTH_FILE se resuelve del TARGET_ROOT: grant durable vive en SHARED; sesión PERSONAL + .cwd=SHARED → fast-path exit 0.
+mkdir -p "$XSHARED/.claude/memory"
+printf 'scope=merge-develop vence_epoch=%s cita="ok blanket"\n' "$(( $(date +%s) + 3600 ))" > "$XSHARED/.claude/memory/autorizaciones-vigentes.local.md"
+is_silent "$(xcm 'glab mr merge 8 --yes' "$XPERSONAL" "$XSHARED")" \
+  && ok "cmd-cross: grant durable en el repo DESTINO (AUTH_FILE del TARGET_ROOT) + .cwd → fast-path exit 0" \
+  || bad "cmd-cross: no leyó el grant durable del repo destino (AUTH_FILE no salió de TARGET_ROOT)"
+rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
+rm -rf "$XROOT"
 
 # ── JUEZ LIVE (opt-in) · BATERÍA de FP/FN históricos + adversariales contra el Haiku REAL ──
 # Es el motivo de jubilar el regex-soup: ENTIENDE la intención pese al phrasing, resuelve referencias
