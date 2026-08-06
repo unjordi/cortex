@@ -27,12 +27,14 @@ set -u
 # NUNCA fail-open. Mockeable con CLAUDE_MERGE_JUEZ_MOCK (tests deterministas); el JUICIO real se prueba
 # LIVE con la batería de FP/FN históricos en test-brain.sh.
 _juez_merge() {   # $1=destino  $2=mrid  $3=mensajes → imprime ALLOW | DENY | UNAVAILABLE
-  [ -n "${CLAUDE_MERGE_JUEZ_MOCK:-}" ] && { printf '%s' "$CLAUDE_MERGE_JUEZ_MOCK"; return 0; }
+  local prompt out tok body txt
+  if [ -n "${CLAUDE_MERGE_JUEZ_MOCK:-}" ]; then
+    out="$CLAUDE_MERGE_JUEZ_MOCK"   # el MOCK entra IGUAL al PISO de main de abajo → el piso es testeable DETERMINISTA (sin red)
+  else
   command -v curl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1 || { printf 'UNAVAILABLE'; return 0; }
   # Token OAuth de SUSCRIPCIÓN — MISMO canal que el widget (api.anthropic.com + anthropic-beta:oauth-2025-04-20).
   # NO `claude -p` (su harness es el lastre, ~50s), NO `--bare`, NO api-key. Orden: env override →
   # credentials.json (cross-plataforma) → keychain (macOS). Sin token → UNAVAILABLE (fail-safe DENY arriba).
-  local prompt out tok body txt
   tok="${CLAUDE_CODE_OAUTH_TOKEN:-}"
   [ -z "$tok" ] && [ -f "$HOME/.claude/.credentials.json" ] && tok=$(jq -er '.claudeAiOauth.accessToken // empty' "$HOME/.claude/.credentials.json" 2>/dev/null)
   [ -z "$tok" ] && command -v security >/dev/null 2>&1 && tok=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null | jq -er '.claudeAiOauth.accessToken // empty' 2>/dev/null)
@@ -71,6 +73,16 @@ Responde EXACTAMENTE una palabra en la primera línea: ALLOW o DENY."
           -H "anthropic-version: 2023-06-01" -H "content-type: application/json" \
           -d "$body" 2>/dev/null | jq -r '.content[0].text // empty' 2>/dev/null)
   out=$(printf '%s' "$txt" | grep -oiE 'ALLOW|DENY' | head -1 | tr '[:lower:]' '[:upper:]')
+  fi
+  # PISO DETERMINISTA del gate de MAIN (defensa en profundidad): un release a main JAMÁS pasa sin lenguaje
+  # de release EXPLÍCITO del USUARIO, INDEPENDIENTE del LLM. Haiku es poco fiable en el 'mergea el X' PELÓN
+  # con destino main (lo ALLOWea; regresión real atrapada en la batería LIVE). destino main + ALLOW + NINGUNA
+  # línea USUARIO con release/libera/a main → DENY. NO es regex-soup de autorización (eso lo hace el LLM): es
+  # un candado angosto para el gate de MÁXIMA consecuencia. Solo destino main CONFIRMADO (el vacío lo cubre el
+  # fail-seguro del LLM). AUTORIDAD: solo líneas 'USUARIO:' (nunca ASISTENTE → anti auto-autorización).
+  if [ "$1" = "main" ] && [ "$out" = "ALLOW" ]; then
+    printf '%s\n' "$3" | grep -iE '^[[:space:]]*USUARIO:' | grep -iqE 'release|liber|a main|hacia main|promov[a-zé]* .*main|promuev[a-z]* .*main' || out=DENY
+  fi
   [ -n "$out" ] && printf '%s' "$out" || printf 'UNAVAILABLE'
 }
 
