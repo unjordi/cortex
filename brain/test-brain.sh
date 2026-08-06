@@ -2446,6 +2446,9 @@ checkpoint|rehidratar-hilo
 aviso-contexto|rehidratar-hilo
 aviso-contexto|checkpoint
 aviso-drift-cerebro|barrer-ramas
+aviso-drift-cerebro|barrer-flotilla-cerebro
+aviso-drift-cerebro|drift-cerebro-comun
+barrer-flotilla-cerebro|drift-cerebro-comun
 limpiar-ramas|limpiar-worktrees
 limpiar-ramas|ramas-zombie
 limpiar-worktrees|ramas-zombie
@@ -3054,6 +3057,82 @@ if bash "$SCRIPT_DIR/../docs/flowcharts/verificar-arbol-sync.sh" >/dev/null 2>&1
 else
   bad "arbol: DRIFT entre catálogos → corre docs/flowcharts/verificar-arbol-sync.sh para ver cuál"
 fi
+
+# ═════════════════════════════════════════════════════════════════════════════
+### F4 SWEEPER
+# Sección DEMARCADA (para reconciliar con otros agentes sin choque): sweeper de flotilla
+# (barrer-flotilla-cerebro.sh) + el cuerpo per-repo compartido (drift-cerebro-comun.sh). Todo DETERMINISTA
+# y OFFLINE: $HOME/$CODE/$BRAIN falsos aislados (mktemp), stub del sync, sin red (el push falla y se tolera).
+echo ""
+echo "== (F4) sweeper de flotilla: descubrimiento + decisión per-repo (dry-run) + lock + teeth (apply) =="
+FLFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-f4.XXXXXX")"
+FLCODE="$FLFIX/code"; FLHOME="$FLFIX/home"; FLBRAIN="$FLFIX/clon"; FLSTATE="$FLFIX/state"; FLREP="$FLFIX/rep.md"
+mkdir -p "$FLCODE" "$FLHOME" "$FLBRAIN/brain/hooks" "$FLSTATE"
+# stub del sync en el brain FALSO: dry-run reporta drift; con --apply escribe el hook nuevo en el destino
+cat > "$FLBRAIN/brain/sincronizar-cerebro.sh" <<'STUB'
+#!/usr/bin/env bash
+repo="$1"
+[ "${2:-}" = "--apply" ] && printf 'x\n' > "$repo/.claude/hooks/hook-nuevo.sh"
+echo "  NUEVO      hook-nuevo.sh (hook)"
+echo "==> resumen: 1 nuevos · 0 a actualizar · 8 ya al día · 0 retirado(s) del cerebro · 8 hooks cableados (kind=hook) · 0 cableado faltante"
+STUB
+: > "$FLBRAIN/brain/hooks/git-branch-guard.sh"   # guard del brain → base del match "sobran" en personales
+
+# repo PERSONAL (sin marca) con un guard del brain presente + sello → personal-flag
+mkdir -p "$FLCODE/repoPersonal/.claude/hooks"
+: > "$FLCODE/repoPersonal/.claude/hooks/.brain-version"
+: > "$FLCODE/repoPersonal/.claude/hooks/git-branch-guard.sh"
+# repo COMPARTIDO en su mini-develop, .claude/ limpio (committeado), sello + marca → would-sync/synced
+FLSH="$FLCODE/repoSharedMini"
+mkdir -p "$FLSH/.claude/hooks"
+git -C "$FLSH" init -q >/dev/null 2>&1
+git -C "$FLSH" config user.email t@t >/dev/null 2>&1; git -C "$FLSH" config user.name Tester >/dev/null 2>&1
+: > "$FLSH/.claude/hooks/.brain-version"; : > "$FLSH/.claude/repo-compartido"
+git -C "$FLSH" add -A >/dev/null 2>&1; git -C "$FLSH" commit -qm base >/dev/null 2>&1
+git -C "$FLSH" checkout -q -b DevelopTester >/dev/null 2>&1
+# dir NO brained (sin sello) → NO debe descubrirse
+mkdir -p "$FLCODE/repoNaked/.claude/hooks"
+
+fl() { HOME="$FLHOME" CLAUDE_BRAIN_DIR="$FLBRAIN" CLAUDE_DRIFT_STATEDIR="$FLSTATE" \
+       bash "$HOOKS/barrer-flotilla-cerebro.sh" "$@" --no-dashboard --report "$FLREP" 2>/dev/null; }
+
+# (1) DESCUBRIMIENTO por el sello: 2 repos brained (personal + shared), el naked se ignora
+flout="$(fl --dry-run --code-dir "$FLCODE")"
+printf '%s' "$flout" | grep -qE '2 repo\(s\)' \
+  && ok "F4 descubrimiento: encuentra los 2 repos brained por .brain-version (ignora el no-brained)" \
+  || bad "F4 descubrimiento: no contó 2 repos brained; got: $(printf '%s' "$flout" | grep 'repo(s)')"
+# (2) DECISIÓN per-repo en dry-run: personal→flag, shared-mini-limpia→would-sync, sin mutar nada
+printf '%s' "$flout" | grep -q '1 personal-flag' \
+  && ok "F4 decisión: repo personal con guard del brain → personal-flag" || bad "F4 decisión: no marcó personal-flag; got: $flout"
+printf '%s' "$flout" | grep -q '1 would-sync' \
+  && ok "F4 decisión: shared en mini-develop limpia + drift → would-sync (dry-run)" || bad "F4 decisión: no detectó would-sync; got: $flout"
+{ [ ! -f "$FLSH/.claude/hooks/hook-nuevo.sh" ] && [ -z "$(git -C "$FLSH" status --porcelain)" ]; } \
+  && ok "F4 dry-run: NO mutó el repo shared (sin apply, sin commit, árbol limpio)" || bad "F4 dry-run: ¡mutó en dry-run!"
+# (3) LOCK por-repo: pre-ocupa el lock del shared → el sweeper lo SALTA (no lo procesa)
+FLSLUG="$(printf '%s' "$FLSH" | cksum 2>/dev/null | awk '{print $1}')"
+mkdir "$FLSTATE/${FLSLUG}.lock"
+fllock="$(fl --dry-run --code-dir "$FLCODE")"
+{ printf '%s' "$fllock" | grep -q '1 lock' && printf '%s' "$fllock" | grep -q '0 would-sync'; } \
+  && ok "F4 lock: repo con lock ocupado → se salta (no lo procesa)" || bad "F4 lock: no respetó el lock; got: $fllock"
+rmdir "$FLSTATE/${FLSLUG}.lock" 2>/dev/null || true
+# (4) TEETH (apply REAL, offline): sobre SOLO el shared (via --roots-file) → synced + commit + árbol limpio
+printf '%s\n' "$FLSH" > "$FLFIX/roots.txt"
+n0=$(git -C "$FLSH" rev-list --count HEAD)
+fl --roots-file "$FLFIX/roots.txt" >/dev/null 2>&1
+{ [ -f "$FLSH/.claude/hooks/hook-nuevo.sh" ] \
+  && [ "$(git -C "$FLSH" rev-list --count HEAD)" -gt "$n0" ] \
+  && git -C "$FLSH" log -1 --format=%s | grep -q 'auto-sync' \
+  && [ -z "$(git -C "$FLSH" status --porcelain)" ]; } \
+  && ok "F4 teeth: apply real en la mini → auto-sync (commit creado, hook aplicado, árbol limpio)" \
+  || bad "F4 teeth: el apply real no auto-sincronizó (commit/archivo/limpieza)"
+# (5) el REPORTE se escribió a --report
+[ -s "$FLREP" ] && grep -q 'Reporte del sweeper de flotilla' "$FLREP" \
+  && ok "F4 reporte: escribe el archivo de reporte con detalle" || bad "F4 reporte: no escribió el reporte"
+# (6) roots-file vacío / code-dir inexistente → 0 repos, sin reventar (fail-open)
+flempty="$(HOME="$FLHOME" CLAUDE_BRAIN_DIR="$FLBRAIN" CLAUDE_DRIFT_STATEDIR="$FLSTATE" bash "$HOOKS/barrer-flotilla-cerebro.sh" --dry-run --code-dir "$FLFIX/nope" --no-dashboard --report "$FLREP" 2>/dev/null)"
+printf '%s' "$flempty" | grep -qE '0 repo\(s\)' \
+  && ok "F4 fail-open: code-dir inexistente → 0 repos, no revienta" || bad "F4 fail-open: no manejó un code-dir inexistente; got: $flempty"
+rm -rf "$FLFIX"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
