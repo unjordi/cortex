@@ -45,6 +45,45 @@ metadata:
   `exportar-sesion-master` ausente de CLAUDE.md) pasa CI en verde. Extenderlo a 🔒/🔔 (README↔CLAUDE.md↔MANIFEST)
   + byte-igualdad de las leyendas `.dot` vs `gen-leyenda-arbol.sh`. · _DUPLA 2026-08-03 (H3, BAJO)._
 
+- **Continuidad MULTI-STREAM del hilo** (`rehidratar-hilo` + `checkpoint`). Que `rehidratar-hilo` inyecte TODOS
+  los `hilo-*.md` (dueño+frescura) y `checkpoint` escriba `hilo-<rol>.md` por auto-identificación, con
+  `hilo-mental-actual.md` como alias legado. Aditivo/retrocompatible → apto para global. Cierra el bug real de
+  dos gemelos pisándose el hilo (2 colisiones en un día). Diseño completo + VERBATIM en
+  [[propuesta-multi-stream-hilos]]. · _rescatada de potenciaDatabases 2026-07-30, verificada vigente 2026-08-05._
+
+- **Lección cps-master: memorias sin auto-refs por Nº DE LÍNEA.** Prohibir referencias tipo `archivo:87` en
+  memorias (se rompen al editar) → usar heading/ancla grepeable; y `desinflar-memorias` debe **REUBICAR** los
+  punteros al cortar (en cps los huerfanó). Aplica a mi propio [[juez-empoderamiento]] (tenía refs `:87`/`:139`). · _retro cps-master 2026-08-05._
+
+- **Lección cps-master: `hilo-mental-actual.md` NO hardcodee la máquina** → `rehidratar-hilo`/`checkpoint`
+  derivan `uname`/`$HOME` en vivo. Empata con la propuesta multi-stream. · _retro cps-master 2026-08-05._
+
+- **`merge-squash-guard`: FP de detección de destino=main en `gh` (releases).** El fail-safe exigió `--squash`
+  en `gh pr merge 267 --merge` (release develop→main del dod) porque NO pudo confirmar que el destino es main
+  → un release a main va SIN squash → bloqueo EN FALSO. Sospecha: la exención consulta el destino vía `glab`
+  y no cubre GitHub/`gh`. Toca un guard de supervisión → cambio de PRECISIÓN con su test adversarial, exige OK
+  EXPLÍCITO de unjordi para ESE control. unjordi: "a la tanda de remakes". · _FP en vivo 2026-08-06 (también en `~/.claude/memory/guards-falsos-positivos.md`)._
+
+- **Mensajes de commit/squash unhelpful.** Revisar por qué los mensajes de commit y —peor— de squash quedan
+  poco informativos; definir/forzar un mínimo de mensaje-resumen curado por slice (¿en `cerrar-slice`/un hook?). · _unjordi 2026-08-05._
+
+- **Guard de TOKENS-antes-de-tareas quedó a medias.** El guard que revisa cuánto presupuesto/tokens hay antes de
+  lanzar tareas (familia `limite-gasto`/`delegacion-gate`) nunca terminó de quedar; retomarlo y cerrarlo. · _unjordi 2026-08-05._
+
+- **potenciaDatabases — dry-run de consolidación (CONVERGIÓ, decisión de unjordi).** Dry-run no-destructivo sobre
+  COPIA: converge en 1 ronda, un solo archivo cambia (`MEMORY.md`, puramente aditivo), cierra 1 hueco ALTO (que un
+  db-master nuevo encuentre su propio hilo + caveat de rehidratación). Recomendado aplicar al real (bajo riesgo).
+  **Decisiones PARQUEADAS para unjordi (NO ejecutadas):** (a) borrar `db-master.md` de 0 bytes; (b) ¿`rehidratar-hilo`
+  elige hilo por rol / renombrar `hilo-mental-actual.md`→`hilo-re-master.md`? (empata con multi-stream); (c) ~20
+  `[[wikilinks]]` de concepto: dejarlos como tags o normalizarlos. NO adelgazar CLAUDE.md (front-load intencional).
+  Es repo de sus 2 masters (re-master/db-master) → decide él. Reporte: `scratchpad/potenciadb-consolidacion/`. · _2026-08-05._
+
+- **MegaFlux (registros_bats_y_buses) — dry-run de consolidación EN CURSO.** Mismo molde no-destructivo que
+  potenciaDB (agente lanzado 2026-08-06). Objetivo: dejar su cerebro sólido/operable para poder **encargarle la
+  tarea al Claude de ESE repo** (unjordi hará mañana un push a PRODUCCIÓN pedido hace 1 semana — el alcance de los
+  cambios lo define unjordi/Felipe, no este master). Además: registros_bats es COMPARTIDO pero le FALTA la marca
+  `.claude/repo-compartido` + sync del brain (ver inventario de cerebros por-repo). · _2026-08-06._
+
 ## ✅ Hecho (anclado a commit+fecha)
 <!-- Enuncia en pasado con su ancla. Ej: "X integrado — <commit>, <fecha>". -->
 - **Juez de merge decide el destino + PISO DETERMINISTA de main** — `6614220` (PR #262), 2026-08-05. El juez
@@ -53,7 +92,21 @@ metadata:
   lenguaje de release del USUARIO → DENY) como defensa en profundidad ante lo poco fiable de Haiku en el
   'mergea' pelón a main. Transporte del juez = curl→api.anthropic.com con token OAuth (NO `claude -p`, ~1.3s).
   Baterías `piso-main` (determinista) + LIVE 28 (merge) verdes.
-- (Migrar aquí los pendientes al cerrarse, con su commit.)
+- **Juez de MERGE EMPODERADO — LIBERADO a main e instalado** — release #265 (`ad0ad68`, v0.2.291), 2026-08-06.
+  Desamordazado (`max_tokens` 16→768) + `temperature:0` + CoT/centinela `VEREDICTO: ALLOW|DENY` (parse `tail -1`,
+  truncado→UNAVAILABLE→DENY) + **veto de cita** (ALLOW exige `CITA:` = span VERBATIM de una línea `USUARIO:`,
+  re-verificado determinista con `grep -Fq`) + hint de PRs abiertos (factual, identifica destino, NUNCA
+  autoriza) + piso barato (sin línea USUARIO→DENY sin LLM) + PISO DETERMINISTA de main. **Triple-lever OPT-IN**
+  (`CLAUDE_MERGE_JUEZ_VOTES` default 1=byte-idéntico; ≥2=votos paralelos, agregación unánime-para-ALLOW /
+  cualquier DENY|UNAVAILABLE gana; `CLAUDE_MERGE_JUEZ_TEMP` default 0). Modelo = **Haiku desamordazado**
+  (Sonnet 4.6 no existe; 4.5 lo rate-limitea el canal OAuth). 467/0 determinista + 5/5 adversariales.
+  **Primer merge CLI real que pasó por él: plantilladotnet !114** (re-sync de la copia por-repo, supersedió el
+  !113 stale que traía el juez amordazado). Diseño+corpus durables en [[juez-empoderamiento]].
+- **Juez del DoD EMPODERADO — en develop, release a main PENDIENTE (PR #267 abierto)** — `6f969c0` (#266), 2026-08-06.
+  `dod-verificar.sh` desamordazado (`max_tokens` 32→512, temp 0) + 3 centinelas `CIERRE:/MARCA:/VISUAL: si|no`
+  (cada uno `tail -1`) + veto de cita sobre `MARCA` + **fail-OPEN preservado** (nunca bloquea en falso por un
+  hipo del canal). +batería `djlive`; el caso antes-flaky ahora estable. **El release #267 (develop→main) quedó
+  para clic web de unjordi** (lo frenó un FP del `merge-squash-guard`, ver Pendientes).
 
 ## 🧭 Decisiones (con su porqué)
 - **2026-08-03 · Convención de firma en TODOS los cerebros:** `CLAUDE.md` = firma-TOC (árbol de capacidades →
