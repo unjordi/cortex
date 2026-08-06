@@ -11,6 +11,22 @@ el gotcha, el incidente).** La historia de lo que se rompió es soporte del *por
 Es el MISMO principio en dos niveles: dentro de un nugget (abajo) y en la ESTRUCTURA del archivo completo
 (`## Nivel DOCUMENTO`, más abajo) — lo accionable arriba, el contexto/historia después, en ambos casos.
 
+## El espíritu: el cerebro guarda CONOCIMIENTO, no cicatrices
+Positivar no es solo REORDENAR (ESTO SÍ antes del ESTO NO) — es FRAMING. **El cerebro es para SABER, no para
+tener miedo.** Guarda qué es verdad, qué hacer y entender de verdad; no cicatrices ni monumentos al fallo.
+- **Reencuadra la lección como el CONOCIMIENTO ganado, no como el susto.** No "creímos algo falso" (cicatriz,
+  auto-flagelo) → sino la verdad accionable que quedó. Ejemplo real: en vez de *"nos equivocamos, los pagos no
+  venían donde creíamos"*, la memoria dice *"¿cómo pagaron si no viene en ningún lado? → no paramos hasta
+  hallarlo"* — quedó como conocimiento VIVO en el ETL de BOSS, no como lápida.
+- **Lo muerto muere con su archivo; no necesita monumento.** Cuando algo se elimina o se reubica, no dejes una
+  lápida narrando la mudanza en OTRO archivo (eso lo poda el desinflador). El conocimiento vivo se queda; el
+  scar-tissue no.
+- **Reconciliación (para no pasarse):** esto es FRAMING, NO borrar avisos reales. Una advertencia destructiva
+  ("esto borra datos") o un "NO re-proponer" TERSO que evita repetir un callejón costoso SÍ son conocimiento
+  (previenen daño) y se quedan — la ⚰️ Lápida de UNA línea del desinflador es conocimiento; el monumento de tres
+  párrafos es miedo. Y tampoco es optimismo falso (ver Reglas duras): reencuadras la MISMA certeza en positivo,
+  no le subes el tono.
+
 ## Por qué
 Un lector debe poder **hacer lo correcto leyendo solo el arranque** de cada nugget, sin vadear un párrafo
 de "esto falló porque… y aquello tampoco… entonces resulta que…". La solución primero = acción inmediata;
