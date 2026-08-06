@@ -1368,6 +1368,52 @@ is_block "$(dod 'X' "$TASKT" 'sí ya la validé, ciérrala' 'CIERRE=si MARCA=si 
 o="$(dod 'Terminamos la migración del módulo.' "$EDITR" 'haz el cambio' "$CS")"
 { is_block "$o" && printf '%s' "$o" | grep -qi 'PARIDAD'; } && ok "dod B4: cierre de migración → bloquea + recuerda AUDITORÍA DE PARIDAD" || bad "dod B4: no recordó la paridad en un cierre de migración"
 
+# ── PARSEO por CENTINELA + VETO de CITA (DETERMINISTA, sin LLM) · EMPODERADO 2026-08 ──
+# El desamordazar cambió el parseo: de una sola línea 'CIERRE=..' a un CoT que termina en 3 centinelas
+# 'CIERRE:/MARCA:/VISUAL: si|no' (parseados por tail -1) + un veto de cita para MARCA. Es el código NUEVO
+# riesgoso: se ejercita con CLAUDE_DOD_JUEZ_MOCK_RAW (respuesta cruda mockeada) SIN tocar la red.
+(
+  _CMD_DOD_SOURCE_ONLY=1 . "$HOOKS/dod-verificar.sh"
+  unset CLAUDE_DOD_JUEZ_MOCK
+  praw() { CLAUDE_DOD_JUEZ_MOCK_RAW="$1" _juez_dod "${2:-X}" "${3:-}"; }
+  R1='Razono: afirma cierre; el usuario autorizó.
+CITA: sí, quedó, ciérralo
+CIERRE: si
+MARCA: si
+VISUAL: no'
+  [ "$(praw "$R1" 'Quedó terminado.' 'sí, quedó, ciérralo')" = 'CIERRE=si MARCA=si VISUAL=no' ] \
+    && ok "dod parseo: CoT + 3 centinelas + cita real → CIERRE=si MARCA=si VISUAL=no" || bad "dod parseo: no armó el veredicto del CoT+centinelas"
+  R2='CITA: lo apruebo todo
+CIERRE: si
+MARCA: si
+VISUAL: no'
+  [ "$(praw "$R2" 'Quedó listo.' 'haz el cambio')" = 'CIERRE=si MARCA=no VISUAL=no' ] \
+    && ok "dod veto-cita: MARCA=si con CITA que NO existe en texto del usuario → override a MARCA=no" || bad "dod veto-cita: no anuló una MARCA cuya cita no está en palabras del usuario"
+  R3='**CITA:** dale luz verde, ciérralo
+CIERRE: si
+MARCA: si
+VISUAL: no'
+  [ "$(praw "$R3" 'Quedó.' 'ok, dale luz verde, ciérralo pues')" = 'CIERRE=si MARCA=si VISUAL=no' ] \
+    && ok "dod veto-cita: CITA decorada (**CITA:**) que SÍ cae en el texto del usuario → MARCA=si se respeta" || bad "dod veto-cita: rompió una cita legítima decorada"
+  R4='MARCA=si sin cita
+CIERRE: si
+MARCA: si
+VISUAL: no'
+  [ "$(praw "$R4" 'Quedó.' 'sí ciérralo')" = 'CIERRE=si MARCA=no VISUAL=no' ] \
+    && ok "dod veto-cita: MARCA=si SIN línea CITA → override a MARCA=no (conservador)" || bad "dod veto-cita: dejó pasar MARCA=si sin cita"
+  R5='Analizo: podría parecer CIERRE: no, pero afirma cierre.
+CIERRE: si
+MARCA: no
+VISUAL: no'
+  [ "$(praw "$R5" 'X' 'haz el cambio')" = 'CIERRE=si MARCA=no VISUAL=no' ] \
+    && ok "dod parseo: el CoT menciona 'CIERRE: no' antes; tail -1 toma el centinela FINAL (si)" || bad "dod parseo: no tomó el ÚLTIMO centinela (tail -1)"
+  [ "$(praw 'CIERRE: si
+MARCA: no' 'X' 'y')" = UNAVAILABLE ] \
+    && ok "dod parseo: falta el centinela VISUAL → UNAVAILABLE → fail-OPEN" || bad "dod parseo: no cayó a UNAVAILABLE con un eje ausente"
+  [ "$(praw 'basura sin centinelas' 'X' 'y')" = UNAVAILABLE ] \
+    && ok "dod parseo: respuesta sin ningún centinela → UNAVAILABLE (fail-OPEN)" || bad "dod parseo: no cayó a UNAVAILABLE ante respuesta ininteligible"
+)
+
 # ── BATERÍA LIVE del juez-dod (opt-in) · clasificación REAL de FP/FN históricos contra Haiku ──
 # Es el motivo de jubilar el regex-soup (CLAIM_RE/MECH/DOWNGRADE/META_LISTO/WEAK_STATUS + G1/H4/P2a/MEDIO-1):
 # que ENTIENDE el acto de habla pese al phrasing. Correr: CLAUDE_DOD_JUEZ_LIVE=1 bash test-brain.sh
@@ -1419,6 +1465,28 @@ if [ -n "${CLAUDE_DOD_JUEZ_LIVE:-}" ] && command -v curl >/dev/null 2>&1 && comm
   djlive "B2 'en Chrome se ve como el mockup'"      VISUAL=si 'En Chrome se ve como el mockup.'
   djlive "G2b 'quedó igual al mockup' (prosa)"      VISUAL=si 'Quedó igual al mockup. No corrí screenshot, pero confío en que se ve bien.'
   djlive "VISUAL=no 'el módulo quedó listo'"        VISUAL=no 'El módulo de auth quedó listo.'
+  # ── CORPUS REAL (cosecha-fn-fp-jueces.md §_juez_dod) · 10 casos MARCA del usuario · veredicto = humano ──
+  # El asistente declara cierre; el eje MARCA lo decide EXCLUSIVAMENTE el texto del USUARIO ($4). Con el
+  # VETO de cita, un MARCA=si exige que la autorización esté LITERAL en palabras del usuario.
+  # dod-TP · marca REAL del usuario (validación funcional o autorización expresa) → MARCA=si
+  djlive "corpus TP 'quedó perfecto el widget'"     MARCA=si 'El widget quedó terminado.' 'quedó perfecto el widget en todos lados'
+  djlive "corpus TP 'ya lo validé y lo veo perfecto'" MARCA=si 'Terminé el módulo.' 'libera a main! ya lo validé y lo veo perfecto'
+  djlive "corpus TP 'se ve bien... súbelo'"         MARCA=si 'Quedó la pantalla.' 'se ve bien. si te late a ti, súbelo.'
+  djlive "corpus TP 'luz verde'"                    MARCA=si 'Cerré el slice.' 'luz verde. gracias por la paciente explicación'
+  # dod-FP · PARECE confirmación pero es PREGUNTA / cierre a medias del USUARIO → MARCA=no
+  djlive "corpus FP 'todo bien???' (pregunta user)" MARCA=no 'Quedó terminado el módulo.' 'todo bien???'
+  djlive "corpus FP 'ya quedó... pero esto??'"      MARCA=no 'Cerré el fix.' 'ya quedó... pero esto debería salir así??'
+  djlive "corpus FP 'ya quedó igualito en win???'"  MARCA=no 'Quedó el fin igual.' 'aaaaantes del main.... ya quedó ese fin igualito en windowS????'
+  # matiz: confirmación CONDICIONADA a un propósito ('para el auditor está perfecto') = marca del entregable relevante
+  djlive "corpus TP-cond 'para el auditor perfecto'" MARCA=si 'Quedó el árbol del readme.' 'pues... no es el arbol del readme TAL CUAL, pero para el auditor está perfecto'
+  # 'ahora sí termina el badge del riel': el corpus lo etiquetó TP, pero 'ahora sí termina X' es AMBIGUO
+  # (declarativo 'ya está terminado' vs imperativo 'ahora termínalo'); Haiku@temp0 lo lee ESTABLE como
+  # imperativo → MARCA=no. Asertamos su lectura ESTABLE y defendible, no la etiqueta discutible del corpus.
+  djlive "corpus 'ahora sí termina el badge' (imperativo)" MARCA=no 'El badge del riel quedó.' 'me encanta, ahora sí termina el badge del riel'
+  # NO-ASERTADO (residual FN documentado): 'ya quedó eso!!!' — corpus TP, pero Haiku@temp0 oscila (≈75%
+  # MARCA=no: lo lee como exclamación de acuerdo, no confirmación funcional). Único caso GENUINAMENTE flaky
+  # a temp 0 (nondeterminismo residual del canal). No se hard-asserta para no meter un test flaky; queda como
+  # residual conocido: el juez-dod es conservador con confirmaciones casuales tipo 'ya quedó eso'.
 else
   ok "dod LIVE: batería juez-dod SALTADA (corre con CLAUDE_DOD_JUEZ_LIVE=1 + curl/jq disponibles)"
 fi
