@@ -1,6 +1,6 @@
 ---
 name: desinflar-memorias
-description: Desinflar un árbol de memorias que se llenó de narrativa, tutoriales y conocimiento ya desmentido — SIN perder ninguna lección. Cada tirada de historia se colapsa a su lección en 1-2 líneas EN SU LUGAR, y los mitos descartados se comprimen a una línea y se mudan a una sección ⚰️ Lápidas AL FINAL del archivo. Úsalo cuando una memoria ya no se pueda leer de un jalón, o cuando el usuario diga "está inflada / no quiero leer 3 párrafos de cómo aprendimos X".
+description: Desinflar un árbol de memorias que se llenó de narrativa, tutoriales y conocimiento ya desmentido — SIN perder ninguna lección. Cada tirada de historia se colapsa a su lección en 1-2 líneas EN SU LUGAR, y los mitos descartados se comprimen a una línea y se mudan a una sección ⚰️ Lápidas AL FINAL del archivo. También poda los punteros-lápida de reubicación (líneas que solo narran que un tema se mudó a otro lado, inútiles para quien lee ESTE archivo). Úsalo cuando una memoria ya no se pueda leer de un jalón, o cuando el usuario diga "está inflada / no quiero leer 3 párrafos de cómo aprendimos X".
 ---
 
 # Desinflar memorias (sin perder el valor)
@@ -54,6 +54,14 @@ corto — `(ver ⚰️ Lápidas al final)` — en vez de repetir la explicación
 - **Pasos ya ejecutados** que no volverán a correrse → "se hizo X el `<fecha>`, resultado Y".
 - **Datos que ya viven en una fuente REGENERABLE** (un CSV, un script que los deriva) → puntero + el
   comando para obtenerlos. Un conteo a mano en una memoria se queda viejo; uno derivado, no.
+- **Punteros-lápida de REUBICACIÓN.** Una línea cuyo único fin es avisar que un tema *se movió a otro
+  lado* — «esto ahora vive en el skill/archivo X», «se sacó de aquí, ver Y» — **no sirve a quien abre
+  ESTE archivo por su objetivo**: le quema tokens contándole la historia de una mudanza que no vino a
+  leer. **Córtala.** El destino se descubre por el registro de skills / el índice (`MEMORY.md`), no por
+  lápidas regadas en documentos ajenos. **Distínguela del puntero ÚTIL** (ese SÍ se queda): el útil
+  ROUTEA al lector a MÁS de lo que vino a buscar aquí — la versión canónica del tema que este archivo
+  toca, el detalle en otra memoria, el comando que regenera un dato. **Test de una línea:** *¿el puntero
+  le da algo que NECESITA para lo que vino a hacer aquí?* Sí → queda; solo narra que algo se mudó → fuera.
 
 ## Qué NO se corta (esta lista es la que protege el valor)
 1. **Los gotchas y las lecciones**, aunque suenen anecdóticos. Son el archivo.
