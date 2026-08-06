@@ -239,6 +239,10 @@ input=$(cat 2>/dev/null || true)
 command -v jq >/dev/null 2>&1 || exit 0
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
 [ -z "$cmd" ] && exit 0
+# cwd del payload = working dir REAL del comando (puede diferir de CLAUDE_PROJECT_DIR). Señal para resolver
+# el repo/destino y la marca compartido/personal del repo que el MR REALMENTE toca. Ausente → vacío → cae a
+# CLAUDE_PROJECT_DIR (conducta de hoy).
+pcwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
 
 # shellcheck source=analizar-comando-git.sh
 . "$(dirname "$0")/analizar-comando-git.sh"
@@ -248,9 +252,36 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
 # de OTRO comando encadenado (`glab mr merge 5 --yes && git status`) YA NO evade el gate (H3).
 acg_es_merge_mr "$cmd" || exit 0
 
-# ALCANCE: solo repos COMPARTIDOS. Sin la marca `.claude/repo-compartido` (que viaja por git en los
-# repos de equipo), este candado no aplica → repos personales/solo mergean a su develop sin pedir OK.
-[ -f "${CLAUDE_PROJECT_DIR:-.}/.claude/repo-compartido" ] || exit 0
+# ALCANCE: solo repos COMPARTIDOS (marca `.claude/repo-compartido`, viaja por git). CROSS-REPO (auditoría
+# 2026-08-06, incidente C1/C2): la marca se resuelve del repo DESTINO del MR (TARGET_ROOT), NO de
+# CLAUDE_PROJECT_DIR (el repo de la SESIÓN). Antes, un `--repo <compartido>` lanzado desde una sesión en un
+# repo PERSONAL (sin marca) escapaba el candado (FN de ALTA consecuencia: integración a un develop compartido
+# SIN OK del usuario), y a la inversa gateaba de más.
+#
+# TARGET_ROOT = raíz del repo del dir objetivo (acg_target_dir: -C > cd > cwd > CLAUDE_PROJECT_DIR). REGLA
+# DURA (§3 práctica): SALTAR el gate (exit 0) SOLO si se confirma POSITIVAMENTE que el destino es PERSONAL;
+# CUALQUIER incertidumbre ⇒ GATEA (fricción de más = molesto pero seguro; saltar de más = brecha). Casos:
+#   · --repo/-R EXPLÍCITO que NO nombra el mismo repo que el dir local (o no resoluble) → OTRO repo, no puedo
+#     leer su marca local → INCIERTO ⇒ GATEA (cierra el FN gemelo `--repo <compartido>` desde sesión personal).
+#   · sin --repo (o --repo == el propio dir local): la marca LOCAL de TARGET_ROOT es autoritativa →
+#       marca presente → COMPARTIDO (gatea) · sin marca + repo git VÁLIDO → PERSONAL confirmado (exit 0) ·
+#       TARGET_ROOT no resoluble a un repo git → INCIERTO ⇒ GATEA.
+TARGET_DIR=$(acg_target_dir "$cmd" "$pcwd")
+TARGET_ROOT=$(git -C "$TARGET_DIR" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$TARGET_DIR")
+_explicit_repo=$(acg_despoja_comillas "$cmd" | grep -oE '(--repo|-R)[[:space:]=]+[^[:space:]]+' | grep -oE '[^[:space:]=]+$')
+if [ -n "$_explicit_repo" ]; then
+  _local_slug=$(git -C "$TARGET_ROOT" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|https?://[^/]+/)##; s#\.git$##')
+  if [ "$_explicit_repo" != "$_local_slug" ]; then
+    : # --repo apunta a OTRO repo (o no resoluble local) → INCIERTO ⇒ GATEA (no exit 0)
+  elif [ ! -f "$TARGET_ROOT/.claude/repo-compartido" ]; then
+    exit 0   # --repo == dir local Y sin marca → PERSONAL confirmado
+  fi
+elif [ -f "$TARGET_ROOT/.claude/repo-compartido" ]; then
+  : # marca local presente → COMPARTIDO ⇒ gatea
+elif git -C "$TARGET_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+  exit 0   # repo git VÁLIDO sin marca → PERSONAL confirmado → sin fricción
+fi
+# (si no cayó en ningún exit 0, se considera COMPARTIDO/INCIERTO → sigue al gate)
 
 # DESTINO del merge: main = RELEASE (autorización SUPER explícita); develop/otro = confirmación normal.
 # Lo resuelve la lib (acg_destino_de_mr): caché por MR-id COMPARTIDA con merge-squash-guard (típicamente
@@ -260,7 +291,7 @@ acg_es_merge_mr "$cmd" || exit 0
 # infiere el destino del contexto con el fail SEGURO (ante duda + lenguaje de release → trata como MAIN,
 # el gate estricto). Antes "vacío → develop" bloqueaba releases legítimos Y era un downgrade (un release a
 # main gateado con reglas de develop). El grant durable de abajo también se endureció a destino=develop.
-destino=$(acg_destino_de_mr "$cmd")
+destino=$(acg_destino_de_mr "$cmd" "$pcwd")
 
 # Ramas personales de integración (Develop<Usuario>, epic/*, integracion/*, feat/*, fix/*…) reciben
 # merge CONTINUO sin gate: ahí vive el día a día del modelo MINI-DEVELOP-por-dev. SOLO el `develop`
@@ -278,7 +309,7 @@ fi
 # vacía/caída → hint "NO DISPONIBLE" y el destino sigue exactamente como lo dejó acg_destino_de_mr (cero
 # regresión respecto a hoy). El id del MR (acg_mrid) se computa aquí para resolver el destino-vacío.
 cur_mrid=$(acg_mrid "$(acg_despoja_comillas "$cmd")")
-prlist=$(acg_lista_prs_abiertos "$cmd")
+prlist=$(acg_lista_prs_abiertos "$cmd" "$pcwd")
 if [ -z "$destino" ] && [ -n "$prlist" ]; then
   d=$(printf '%s' "$prlist" | jq -r --arg id "$cur_mrid" 'map(select((.number|tostring)==$id))[0].baseRefName // empty' 2>/dev/null)
   if [ -n "$d" ]; then
@@ -309,7 +340,7 @@ recent=$(_recent_intercalado "$tpath")
 # cuando la detección de destino fallaba (fail-safe débil). Vacío/desconocido → NO fast-path → decide el juez
 # (que aplica el fail SEGURO: destino incierto + lenguaje de release → main).
 if [ "$destino" = "develop" ]; then
-  AUTH_FILE="${CLAUDE_PROJECT_DIR:-.}/.claude/memory/autorizaciones-vigentes.local.md"
+  AUTH_FILE="$TARGET_ROOT/.claude/memory/autorizaciones-vigentes.local.md"
   if [ -f "$AUTH_FILE" ]; then
     now_epoch=$(date +%s)
     grant=$(awk -v now="$now_epoch" '/scope=merge-develop/ && match($0, /vence_epoch=[0-9]+/) {
