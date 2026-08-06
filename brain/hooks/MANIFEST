@@ -45,6 +45,7 @@ limpiar-worktrees        global  script
 limpiar-ramas            global  script
 verificar-cerebro        global  script
 barrer-flotilla-cerebro  global  script
+cementerio               global  script
 delegacion-comun         global  lib
 ramas-zombie             global  lib
 drift-cerebro-comun      global  lib
