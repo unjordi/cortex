@@ -40,13 +40,7 @@ Dos chequeos OBLIGATORIOS, en orden:
 3. **Disposición delegada ≠ gate tuyo.** Si el usuario mandó algo a OTRO ejecutor ("que lo haga el
    Claude de ese repo", "eso lo ve fulano"), deja de rastrearlo como pendiente TUYO — no es tu backlog.
 
-> Origen: 2026-08-06 — reincidió en una sola sesión (reabrí "M4/M5 de fluxcore espera tu decisión"
-> 3 veces cuando unjordi ya lo había delegado al Claude de ese repo desde el primer mensaje).
-
-## Por qué existe / origen
-La regla "TodoWrite = scratch / backlog durable = `estado-proyecto.md`" vivía **enterrada** en `orquestar-fanout` (un skill de fan-out) → invisible en sesiones SIN agentes. Se **extrajo aquí**, a su home propio, y se le sumó la **higiene de redacción**. Origen: 2026-08-06 — unjordi señaló que `[PARQUEADO]…(hoy)` "se queda stale en 3 patadas" y pidió un skill de to-dos que además **cargue la interfaz** al invocarse.
-
 ## Relación
 - **`cerrar-slice §2`** — asienta el cierre en `estado-proyecto.md` (donde el ESPEJO se vuelve durable).
-- **`orquestar-fanout`** — modelo de estado de dos archivos para el fan-out (deja un puntero acá).
+- **`orquestar-fanout`** — modelo de estado de dos archivos para el fan-out.
 - **`checkpoint`** — vuelca el hilo vivo (`hilo-mental-actual.md`); los pendientes durables ya viven en `estado-proyecto.md`.
