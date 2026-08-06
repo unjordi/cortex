@@ -29,6 +29,20 @@ Un ítem se redacta para que **NO envejezca mal**:
 ❌ `[PARQUEADO] Re-scopear casalianza a 7 guards (nadie lo necesita hoy)`
 ✅ título `Re-scopear casalianza a 7 guards` · estatus `parked` · nota `parqueado 2026-08-06, sin consumidor urgente`
 
+## Regla 3 — antes de marcar algo "pendiente de decisión del usuario"
+Dos chequeos OBLIGATORIOS, en orden:
+1. **¿YA se decidió?** Rastrea el hilo hacia atrás: si el usuario ya dispuso de esto —aunque haya sido
+   varios mensajes antes, o en el enunciado inicial de la tarea— **NO lo reabras como pendiente**.
+   Re-preguntar algo ya resuelto (o peor, INSISTIR en ello) es el desgaste #1.
+2. **Si de verdad está pendiente, CÍTALO.** Nunca escribas "espera tu decisión / pendiente de tu OK"
+   sin enunciar AHÍ MISMO la decisión exacta: las opciones concretas + tu recomendación. Si no la
+   puedes citar en una línea, no está madura para "esperar decisión".
+3. **Disposición delegada ≠ gate tuyo.** Si el usuario mandó algo a OTRO ejecutor ("que lo haga el
+   Claude de ese repo", "eso lo ve fulano"), deja de rastrearlo como pendiente TUYO — no es tu backlog.
+
+> Origen: 2026-08-06 — reincidió en una sola sesión (reabrí "M4/M5 de fluxcore espera tu decisión"
+> 3 veces cuando unjordi ya lo había delegado al Claude de ese repo desde el primer mensaje).
+
 ## Por qué existe / origen
 La regla "TodoWrite = scratch / backlog durable = `estado-proyecto.md`" vivía **enterrada** en `orquestar-fanout` (un skill de fan-out) → invisible en sesiones SIN agentes. Se **extrajo aquí**, a su home propio, y se le sumó la **higiene de redacción**. Origen: 2026-08-06 — unjordi señaló que `[PARQUEADO]…(hoy)` "se queda stale en 3 patadas" y pidió un skill de to-dos que además **cargue la interfaz** al invocarse.
 
