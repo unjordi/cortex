@@ -1340,6 +1340,34 @@ rm -rf "$DVFIX"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (b3h) cementerio.sh: add acuña ID determinista + dedup · verify caza ref huérfana =="
+CEMFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-cem.XXXXXX")"
+CEMMEM="$CEMFIX/.claude/memory"; mkdir -p "$CEMMEM"
+cem_h() { if command -v shasum >/dev/null 2>&1; then shasum -a 1; else sha1sum; fi; }   # mismo detector que el script
+cem() { CLAUDE_MEMORY_DIR="$CEMMEM" bash "$HOOKS/cementerio.sh" "$@"; }
+# (1) add acuña un ID content-hash DETERMINISTA (9 hex de sha1 del "qué murió") y devuelve la ref
+id1="$(cem add "Mito de prueba" "detalle X" | tr -d '()')"          # (🪦#xxxxxxxxx) → 🪦#xxxxxxxxx
+want="🪦#$(printf '%s' 'Mito de prueba' | cem_h | cut -c1-9)"
+[ "$id1" = "$want" ] && ok "cementerio add: ID content-hash determinista ($id1)" || bad "cementerio add: ID no determinista (got '$id1' want '$want')"
+# (2) crea cementerio.md con el header + la entrada
+{ grep -q 'Cementerio del cerebro' "$CEMMEM/cementerio.md" && grep -q "### $id1 — Mito de prueba" "$CEMMEM/cementerio.md"; } \
+  && ok "cementerio add: siembra cementerio.md (header + entrada)" || bad "cementerio add: no sembró header/entrada"
+# (3) DEDUP: re-add del MISMO "qué murió" → mismo ID, NO duplica la entrada
+cem add "Mito de prueba" "detalle reworded" >/dev/null
+n=$(grep -c "### $id1 " "$CEMMEM/cementerio.md")
+[ "$n" -eq 1 ] && ok "cementerio add: dedup natural (mismo texto = 1 sola lápida)" || bad "cementerio add: duplicó la lápida (n=$n)"
+# (4) verify LIMPIO: una ref real → sin huérfanas → exit 0
+printf 'ver la lápida (%s) aquí\n' "$id1" > "$CEMMEM/nota.md"
+cem verify >/dev/null 2>&1 && ok "cementerio verify: ref válida → exit 0" || bad "cementerio verify: falló con una ref válida"
+# (5) verify HUÉRFANA: ref a un ID inexistente → la reporta + exit != 0
+printf 'ref mala (🪦#deadbeef1) sin lápida\n' >> "$CEMMEM/nota.md"
+cemout="$(cem verify 2>&1)"; cemrc=$?
+{ [ "$cemrc" -ne 0 ] && printf '%s' "$cemout" | grep -q 'deadbeef1'; } \
+  && ok "cementerio verify: caza ref HUÉRFANA (exit != 0)" || bad "cementerio verify: no cazó la huérfana (rc=$cemrc)"
+rm -rf "$CEMFIX"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "== (b3b) limpiar-worktrees: base de integración configurable + detección por cherry (G7) =="
 # Flujo mini-develop: la base es una rama PERSONAL (no develop) y las ramitas se integran por merge
 # LOCAL (a veces squash) → antes quedaban zombies eternos (base fija a develop + sin detección por
@@ -2625,7 +2653,8 @@ cosechar-sesion|unificar-cerebro
 proteger-fuente-cerebro|verificar-cerebro
 auditar-coherencia-cerebro|auditar-suficiencia-operativa
 auditar-coherencia-cerebro|consolidar-cerebro
-auditar-suficiencia-operativa|consolidar-cerebro"
+auditar-suficiencia-operativa|consolidar-cerebro
+desinflar-memorias|positivar-doc"
 ce_els=()
 for d in "$SCRIPT_DIR"/skills/*/; do [ -d "$d" ] && ce_els+=("$(basename "$d")"); done
 for h in "$HOOKS"/*.sh; do [ -e "$h" ] && ce_els+=("$(basename "$h" .sh)"); done
