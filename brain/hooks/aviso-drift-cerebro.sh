@@ -5,6 +5,16 @@
 # sincronizar-cerebro.sh en DRY-RUN (diff-aware por CONTENIDO — comparar versiones NO sirve: VERSION
 # no se bumpea por cambio) y, si la copia quedó ATRÁS, INYECTA un aviso ruidoso vía additionalContext.
 #
+# REDISEÑO #46 (unjordi + gemelo cachy, 2026-08-05) — BIFURCA por la marca `.claude/repo-compartido`:
+# - COMPARTIDO (tiene la marca): el brain por-repo es un CORREO que viaja por git a quien NO tiene brain
+#   global (colegas/clones) → hay que mantenerlo fresco. Comportamiento de siempre: detecta drift, auto-
+#   apply+commit+push en tu mini-develop con .claude/ limpio, o AVISA para propagar por el flujo.
+# - PERSONAL (sin la marca, el DEFAULT): guards por-repo NUNCA (tu máquina los saca del install GLOBAL +
+#   dedupe; una copia por-repo solo drifta/estorba). NO auto-commit/push; si el repo tiene guards del brain
+#   que SOBRAN, los FLAGGEA para quitar (opción B; no los borra solos). La memoria/skills son suyos, no se tocan.
+# Norma que nace con esto: "repo personal = memoria/skills, NUNCA guards por-repo" (en global-claude-md.md).
+# Diseño completo: memoria [[diseno-rediseno-auto-sync-46]].
+#
 # Diseño de unjordi (2026-07-18): "es tan sencillo como poner un hook en el global para que en el
 # inicio de sesión revise que el local y global sean el mismo y actualice el local si no" — con dos
 # matices acordados en la misma conversación: (a) el comparador es el DIFF real, no la versión; (b) en
@@ -99,6 +109,44 @@ if [ -f "$stamp" ]; then
   [ $(( now - last )) -lt $(( horas * 3600 )) ] && emit_and_exit ""
 fi
 
+# ── #46: DISCRIMINAR repo COMPARTIDO vs PERSONAL por la marca .claude/repo-compartido ────────────────
+# El brain por-repo es un CORREO: existe SOLO para viajar por git a máquinas/personas SIN brain global
+# (colegas, clones de repos COMPARTIDOS). TU máquina saca los guards del install GLOBAL + el DEDUPE (la
+# línea `case "$0" ... exit 0` que hace ceder la copia por-repo a la global). Por eso un repo PERSONAL (git
+# o Drive, solo tus máquinas con brain) NO debe llevar guards por-repo — solo memoria/skills; el global ya
+# lo cubre y una copia por-repo solo puede DRIFTAR y estorbar (una pre-dedupe hasta romper: caso powerscripts).
+# Un repo COMPARTIDO SÍ los lleva (en git, para quien no tiene brain global) y se marca con
+# `.claude/repo-compartido` (la MISMA marca que ya usa el juez confirmar-merge-develop). Default = PERSONAL
+# (sin marca): conservador, no auto-empuja a git por accidente. Decisión B (unjordi 2026-08-05): en personal
+# NO se meten guards por-repo y los que SOBREN se FLAGGEAN para quitar (no se borran solos → no destructivo).
+# Ver el diseño completo en la memoria [[diseno-rediseno-auto-sync-46]].
+if [ ! -f "$ROOT/.claude/repo-compartido" ]; then
+  # ── PERSONAL: guards por-repo NUNCA → NO commit/push; si SOBRAN, FLAG a quitar. La memoria/skills del
+  # repo son SUYOS (no del brain) → el sync NO los toca, no son "drift". La métrica aquí NO es el drift-vs-
+  # fuente (eso es para el correo COMPARTIDO) sino "¿tiene guards del brain que sobran?". "Sobran" = .sh en
+  # .claude/hooks que TAMBIÉN existen en la fuente del brain (BRAIN_DIR/brain/hooks); los hooks PROPIOS del
+  # repo (p. ej. gate-steam-edicion.sh) NO están en la fuente → no se flaggean. Fail-open: si algo raro, silencio.
+  sobran=""
+  if [ -d "$ROOT/.claude/hooks" ] && [ -d "$BRAIN_DIR/brain/hooks" ]; then
+    for _h in "$ROOT/.claude/hooks/"*.sh; do
+      [ -e "$_h" ] || continue
+      _b=$(basename "$_h")
+      [ -f "$BRAIN_DIR/brain/hooks/$_b" ] && sobran="$sobran $_b"
+    done
+  fi
+  if [ -n "$sobran" ]; then
+    emit_and_exit "🧹 REPO PERSONAL con guards del cerebro que SOBRAN:${sobran}
+Quítalos — en un repo PERSONAL el brain GLOBAL + el dedupe ya te cubren, así que una copia por-repo solo puede DRIFTAR y estorbar (una pre-dedupe hasta rompió un merge: caso powerscripts). Los guards por-repo son SOLO para repos COMPARTIDOS (marca \`.claude/repo-compartido\`, que viajan por git a quien no tiene brain global). Tu MEMORIA/SKILLS NO se tocan — son tuyos.
+Cómo: borra esos .sh de .claude/hooks/ + sus entradas en .claude/settings.json. NO commiteo ni pusheo nada por ti (personal = sin auto-git). Si en realidad este repo es COMPARTIDO, decláralo con \`touch .claude/repo-compartido\` y re-abre sesión."
+    # NO cachea (como el aviso de drift): insiste en cada arranque hasta que se limpien.
+  fi
+  # Personal SANO (memoria/skills, cero guards del brain) → nada que hacer; cachea limpio.
+  printf '%s' "$now" > "$stamp" 2>/dev/null || true
+  emit_and_exit ""
+fi
+
+# ── COMPARTIDO (tiene la marca): el brain por-repo es el CORREO → mantenerlo fresco (comportamiento de
+# siempre: detecta drift; auto-apply+commit+push si estás en tu mini con .claude/ limpio; si no, AVISA). ──
 # DRY-RUN del sync (sin --apply: NO escribe). Error del sync → fail-open.
 out=$(bash "$SYNC" "$ROOT" 2>/dev/null) || exit 0
 resumen=$(printf '%s\n' "$out" | grep -E '==> resumen:' | tail -1)

@@ -83,4 +83,4 @@ Cada flowchart incrusta DOS cosas dentro de un `subgraph cluster_leyenda`:
 
 ## 8. Fuente versionada (regla dura)
 Cada flowchart = `.dot` (fuente) + `.svg` (vista) en `docs/flowcharts/`; `.png`/`.graphml` regenerables → gitignored.
-Render: `dot -Tsvg archivo.dot -o archivo.svg`. Cambió el código que un chart describe → se actualiza el `.dot` en la misma tanda (doc=realidad).
+Render de UNO: `dot -Tsvg archivo.dot -o archivo.svg`. Regenerar TODOS (rutina, checa graphviz): `bash docs/flowcharts/gen-charts.sh` (además avisa si algún chart quedó ignorado). ⚠️ **Trampa del catch-all**: `docs/flowcharts/*` está gitignored por default → un chart NUEVO se pierde en `git add` salvo que le agregues su línea `!` en `.gitignore`. Cambió el código que un chart describe → se actualiza el `.dot` **y su `.svg`** en la misma tanda (doc=realidad).

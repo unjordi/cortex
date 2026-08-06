@@ -18,8 +18,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || echo "$SCRIPT_DIR/../..")"
 cd "$ROOT" || { echo "no pude cd a la raíz del repo ($ROOT)"; exit 2; }
 
-# consolidar-cerebro llega con el PR #234 → aún puede no estar en brain/skills/, pero SÍ en los árboles.
-KNOWN_PENDING="consolidar-cerebro"
+# Allow-list: skill YA documentado en los árboles pero aún NO aterrizado en brain/skills/ (recién anunciado).
+# Hoy VACÍO (consolidar-cerebro ya existe). Pon el nombre aquí si vuelve a haber uno pendiente.
+KNOWN_PENDING=""
 
 # Extrae los NOMBRES de skill de la familia 💡 de un archivo con el bloque de árbol (README o MEMORY.md).
 arbol_skills() {
@@ -35,7 +36,9 @@ arbol_skills() {
   ' "$1" | sort -u
 }
 
-B="$(find brain/skills -maxdepth 1 -mindepth 1 -type d -printf '%f\n' | sort -u)"
+# basename vía sed (portable BSD+GNU): -printf es GNU-only → en BSD/macOS fallaba y contaba 0 skills
+# (drift espurio que además cegaba el parity real). Ver auditoría 2026-08.
+B="$(find brain/skills -maxdepth 1 -mindepth 1 -type d | sed 's#.*/##' | sort -u)"
 R="$(arbol_skills README.md)"
 C="$(arbol_skills .claude/memory/MEMORY.md)"
 
@@ -59,7 +62,7 @@ done
 # (3) Skills en el árbol que NO están en brain/skills/ → solo se permite el KNOWN_PENDING.
 for s in $R; do
   echo "$B" | grep -qx "$s" && continue
-  [ "$s" = "$KNOWN_PENDING" ] && { echo "ℹ️  '$s' en el árbol y aún no en brain/skills/ (esperado — PR #234)."; continue; }
+  [ -n "$KNOWN_PENDING" ] && [ "$s" = "$KNOWN_PENDING" ] && { echo "ℹ️  '$s' en el árbol y aún no en brain/skills/ (esperado — allow-list KNOWN_PENDING)."; continue; }
   echo "❌ README árbol lista '$s' que NO existe en brain/skills/ (¿typo o skill borrado?)"; fail=1
 done
 

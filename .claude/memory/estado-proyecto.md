@@ -33,6 +33,13 @@ metadata:
   A-GBG-01 + la DUPLA de cps). **Backstop:** ramas protegidas server-side. Toca un guard de supervisión →
   cambio de PRECISIÓN, exige OK EXPLÍCITO de unjordi para ESE control (con su test adversarial). · _DUPLA 2026-08-03._
 
+- **git-branch-guard: falso NEGATIVO angosto del push PELÓN vía target ≠ `CLAUDE_PROJECT_DIR`.** `acg_rama_actual`
+  resuelve la rama del `CLAUDE_PROJECT_DIR`, NO la del repo objetivo → un `git -C <repo-parado-en-develop> push`
+  (o un `cd`) desde una sesión cuyo `CLAUDE_PROJECT_DIR` está en una ramita NO se bloquea, aunque el push real toque
+  develop. CONFIRMADO por ejecución (DUPLA juez-destino, ronda 1+2, A2). El destino EXPLÍCITO a base SÍ bloquea siempre;
+  **backstop:** ramas protegidas server-side. Toca un guard de supervisión → cambio de PRECISIÓN con su test adversarial,
+  exige **OK EXPLÍCITO de unjordi para ESE control**. Es OTRO guard: su propia ramita/slice, NO mezclar con el juez-merge. · _DUPLA juez-destino 2026-08-05._
+
 - **Extender el parity-check del árbol a hooks/leyendas.** `docs/flowcharts/verificar-arbol-sync.sh` (FASE 1)
   solo cubre la familia 💡 Skills; NO los hooks 🔒/🔔 ni las leyendas → un drift de hook (p. ej.
   `exportar-sesion-master` ausente de CLAUDE.md) pasa CI en verde. Extenderlo a 🔒/🔔 (README↔CLAUDE.md↔MANIFEST)
@@ -40,6 +47,12 @@ metadata:
 
 ## ✅ Hecho (anclado a commit+fecha)
 <!-- Enuncia en pasado con su ancla. Ej: "X integrado — <commit>, <fecha>". -->
+- **Juez de merge decide el destino + PISO DETERMINISTA de main** — `6614220` (PR #262), 2026-08-05. El juez
+  (`confirmar-merge-develop.sh`) infiere el destino cuando `acg_destino_de_mr` viene VACÍO en el entorno-hook,
+  con FAIL SEGURO (duda + release → main estricto, NUNCA develop); + un piso determinista (main+ALLOW sin
+  lenguaje de release del USUARIO → DENY) como defensa en profundidad ante lo poco fiable de Haiku en el
+  'mergea' pelón a main. Transporte del juez = curl→api.anthropic.com con token OAuth (NO `claude -p`, ~1.3s).
+  Baterías `piso-main` (determinista) + LIVE 28 (merge) verdes.
 - (Migrar aquí los pendientes al cerrarse, con su commit.)
 
 ## 🧭 Decisiones (con su porqué)
