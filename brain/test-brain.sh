@@ -558,6 +558,126 @@ VEREDICTO: ALLOW' main 999 'USUARIO: mergea el 999')" = DENY ] \
     && ok "juez-cita+piso-main: cita real pero SIN release → piso-main override DENY" || bad "juez-cita+piso-main: dejó pasar un main sin release"
 )
 
+# ── (b1g) juez-comun.sh: retrieval PORTABLE + curl 401-aware + política sin-token/jq (stubs, SIN red) ──
+# Los mocks de los jueces (CLAUDE_*_JUEZ_MOCK[_RAW]) CORTO-CIRCUITAN el retrieval+curl → el bug del token
+# (401/expiración, CLAUDE_CONFIG_DIR ignorado, sin-token) pasó INVISIBLE. Estos ejercitan la LIB REAL con
+# stubs deterministas de security/curl (jamás red ni credenciales reales; solo tokens FALSOS de prueba).
+JCFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-juez.XXXXXX")"
+# stub de `security` que FALLA (simula máquina SIN el item de keychain de Claude Code: colega/CI/Linux)
+mkdir -p "$JCFIX/nosec"; printf '#!/usr/bin/env bash\nexit 1\n' > "$JCFIX/nosec/security"; chmod +x "$JCFIX/nosec/security"
+# stub de `security` que DEVUELVE un token de llavero (para el test de prioridad login-activo-first)
+mkdir -p "$JCFIX/withsec"; printf '#!/usr/bin/env bash\nprintf %%s '\''{"claudeAiOauth":{"accessToken":"KEYCHAIN_TOK"}}'\''\n' > "$JCFIX/withsec/security"; chmod +x "$JCFIX/withsec/security"
+mkdir -p "$JCFIX/empty" "$JCFIX/home"
+# stubs para los tests a nivel-hook: security(falla) + glab/gh vacíos (destino irresoluble → sin red real)
+mkdir -p "$JCFIX/stubs"; cp "$JCFIX/nosec/security" "$JCFIX/stubs/security"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$JCFIX/stubs/glab"; chmod +x "$JCFIX/stubs/glab"
+cp "$JCFIX/stubs/glab" "$JCFIX/stubs/gh"
+
+# (b) _juez_token HONRA CLAUDE_CONFIG_DIR (el test que HOY faltaba y hubiera cazado el hardcode $HOME/.claude)
+(
+  export PATH="$JCFIX/nosec:$PATH"           # security → falla; jq/grep reales del PATH
+  cfg="$JCFIX/cfg"; mkdir -p "$cfg"; printf '{"claudeAiOauth":{"accessToken":"FILETOKEN_CFGDIR"}}' > "$cfg/.credentials.json"
+  export CLAUDE_CONFIG_DIR="$cfg"; unset CLAUDE_CODE_OAUTH_TOKEN
+  . "$HOOKS/juez-comun.sh"; got="$(_juez_token)"
+  [ "$got" = FILETOKEN_CFGDIR ] \
+    && ok "juez-comun (b): _juez_token HONRA CLAUDE_CONFIG_DIR (lee credentials.json de ahí, no de \$HOME/.claude)" \
+    || bad "juez-comun (b): _juez_token IGNORÓ CLAUDE_CONFIG_DIR (got='$got') — regresó el hardcode"
+)
+# (b) prioridad login-activo-first: llavero GANA sobre el env (anti-stale)
+(
+  export PATH="$JCFIX/withsec:$PATH"; export CLAUDE_CODE_OAUTH_TOKEN="ENV_TOK"; unset CLAUDE_CONFIG_DIR
+  . "$HOOKS/juez-comun.sh"; got="$(_juez_token)"
+  [ "$got" = KEYCHAIN_TOK ] \
+    && ok "juez-comun (b): login-activo-first — el llavero gana sobre el env (nunca queda pineado a un env stale)" \
+    || bad "juez-comun (b): el env pisó al llavero (got='$got') — regresó el env-first frágil"
+)
+# (b) sin token en NINGÚN canal → vacío + return != 0
+(
+  export PATH="$JCFIX/nosec:$PATH"; export CLAUDE_CONFIG_DIR="$JCFIX/empty"; unset CLAUDE_CODE_OAUTH_TOKEN
+  . "$HOOKS/juez-comun.sh"; got="$(_juez_token)"; rc=$?
+  { [ -z "$got" ] && [ "$rc" != 0 ]; } \
+    && ok "juez-comun (b): sin token en ningún canal → _juez_token vacío + return != 0" \
+    || bad "juez-comun (b): no reportó ausencia de token (got='$got' rc=$rc)"
+)
+
+# fake curl 401-aware: 1er llamado → HTTP 401, 2º → HTTP 200 con el cuerpo de $JC_CURL_BODY200. Counter en archivo.
+mkdir -p "$JCFIX/curl401"
+cat > "$JCFIX/curl401/curl" <<'CURLSTUB'
+#!/usr/bin/env bash
+ctr="${JC_CURL_CTR:?}"; n=$(cat "$ctr" 2>/dev/null || echo 0); n=$((n+1)); printf '%s' "$n" > "$ctr"
+if [ "$n" = 1 ]; then printf '%s\n401' '{"type":"error","error":{"type":"authentication_error"}}'
+else printf '%s\n200' "$JC_CURL_BODY200"; fi
+CURLSTUB
+chmod +x "$JCFIX/curl401/curl"
+
+# (a) _juez_llamar_api: 401 → reintenta 1× (re-lee el token del canal vivo) → 200 → OK + texto (retry casi gratis)
+(
+  export PATH="$JCFIX/curl401:$JCFIX/nosec:$PATH"; export CLAUDE_CODE_OAUTH_TOKEN="ENV_TOK"; unset CLAUDE_CONFIG_DIR
+  export JC_CURL_CTR="$JCFIX/ctr_a"; : > "$JC_CURL_CTR"; export JC_CURL_BODY200='{"content":[{"text":"VEREDICTO: ALLOW"}]}'
+  . "$HOOKS/juez-comun.sh"
+  _juez_llamar_api modelo 100 5 0 'prompt' > "$JCFIX/out_a" 2>/dev/null   # directo (no $()) para ver _JUEZ_ESTADO
+  est="$_JUEZ_ESTADO"; out="$(cat "$JCFIX/out_a")"; n="$(cat "$JC_CURL_CTR")"
+  { [ "$est" = OK ] && printf '%s' "$out" | grep -q 'VEREDICTO: ALLOW' && [ "$n" = 2 ]; } \
+    && ok "juez-comun (a): 401 en el 1er curl → reintenta 1× → 200 → estado OK + texto (retry casi gratis)" \
+    || bad "juez-comun (a): no reintentó bien tras el 401 (estado='$est' n_curls='$n')"
+)
+# (a) end-to-end merge: 401→retry→200 con CITA+VEREDICTO reales → ALLOW (un token STALE ya NO es un DENY duro)
+(
+  export PATH="$JCFIX/curl401:$JCFIX/nosec:$PATH"; export CLAUDE_CODE_OAUTH_TOKEN="ENV_TOK"; unset CLAUDE_CONFIG_DIR
+  export JC_CURL_CTR="$JCFIX/ctr_m"; : > "$JC_CURL_CTR"
+  export JC_CURL_BODY200='{"content":[{"text":"CITA: mergea el 240 a develop\nVEREDICTO: ALLOW"}]}'
+  _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/confirmar-merge-develop.sh"; unset CLAUDE_MERGE_JUEZ_MOCK CLAUDE_MERGE_JUEZ_MOCK_RAW
+  got="$(_juez_merge develop 240 'USUARIO: mergea el 240 a develop')"
+  [ "$got" = ALLOW ] \
+    && ok "juez-comun (a): merge 401→retry→200 con cita real → ALLOW end-to-end (token stale ya no tapia el merge)" \
+    || bad "juez-comun (a): el merge no recuperó tras el 401 (got='$got')"
+)
+
+# (c) política SIN token: merge → UNAVAILABLE_NOTOKEN (no genérico), y a nivel hook → DENY + REDIRIGE a la web
+(
+  export PATH="$JCFIX/nosec:$PATH"; export CLAUDE_CONFIG_DIR="$JCFIX/empty"; unset CLAUDE_CODE_OAUTH_TOKEN
+  _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/confirmar-merge-develop.sh"; unset CLAUDE_MERGE_JUEZ_MOCK CLAUDE_MERGE_JUEZ_MOCK_RAW
+  got="$(_juez_merge develop 5 'USUARIO: mergea el 5 a develop')"   # sin token → NOTOKEN antes del curl (sin red)
+  [ "$got" = UNAVAILABLE_NOTOKEN ] \
+    && ok "juez-comun (c): merge sin token en NINGÚN canal → UNAVAILABLE_NOTOKEN (distinto del genérico)" \
+    || bad "juez-comun (c): merge sin token no distinguió NOTOKEN (got='$got')"
+)
+JCREPO="$JCFIX/repo"; mkdir -p "$JCREPO/.claude"; : > "$JCREPO/.claude/repo-compartido"
+git -C "$JCREPO" init -q >/dev/null 2>&1; git -C "$JCREPO" remote add origin git@gitlab.com:org/repo.git >/dev/null 2>&1
+printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"mergea el 5 a develop"}]}}' > "$JCFIX/tx.jsonl"
+out_nt="$(jq -nc --arg c 'glab mr merge 5 --squash' --arg t "$JCFIX/tx.jsonl" '{tool_input:{command:$c},transcript_path:$t}' \
+  | env -u CLAUDE_CODE_OAUTH_TOKEN PATH="$JCFIX/stubs:$PATH" HOME="$JCFIX/home" CLAUDE_CONFIG_DIR="$JCFIX/empty" CLAUDE_PROJECT_DIR="$JCREPO" bash "$HOOKS/confirmar-merge-develop.sh")"
+{ is_deny "$out_nt" && printf '%s' "$out_nt" | grep -qi 'web de GitLab'; } \
+  && ok "juez-comun (c): merge SIN token → DENY que REDIRIGE a la web de GitLab (colega/CI/api-key; NO abre el merge)" \
+  || bad "juez-comun (c): merge sin token no dio el mensaje de redirección a la web; got: $out_nt"
+# (c) dod SIN token → FAIL-OPEN (es un NAG, no un candado): no atrapa el turno
+cat > "$JCFIX/dodtx.jsonl" <<'DTX'
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"haz el cambio"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"sed -i s/a/b/ x.cs"}}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Listo, el módulo quedó terminado y funciona."}]}}
+DTX
+out_dod="$(jq -nc --arg t "$JCFIX/dodtx.jsonl" '{transcript_path:$t,stop_hook_active:false}' \
+  | env -u CLAUDE_CODE_OAUTH_TOKEN PATH="$JCFIX/stubs:$PATH" HOME="$JCFIX/home" CLAUDE_CONFIG_DIR="$JCFIX/empty" bash "$HOOKS/dod-verificar.sh")"
+is_silent "$out_dod" \
+  && ok "juez-comun (c): dod SIN token → FAIL-OPEN (no bloquea el Stop; contrato del nag, no del candado)" \
+  || bad "juez-comun (c): dod sin token NO fue fail-open; got: $out_dod"
+
+# (d) A3 — jq AUSENTE en un comando de merge → DENY (fail-SAFE); antes 'command -v jq || exit 0' = ALLOW (evasión)
+NOJQ="$JCFIX/nojq"; mkdir -p "$NOJQ"
+for _t in cat grep basename sed head tail dirname; do _p="$(command -v "$_t" 2>/dev/null)"; [ -n "$_p" ] && ln -s "$_p" "$NOJQ/$_t"; done
+_realbash="$(command -v bash)"
+out_nojq="$(printf '%s' '{"tool_input":{"command":"glab mr merge 5 --squash"},"transcript_path":""}' \
+  | PATH="$NOJQ" HOME="$JCFIX/home" "$_realbash" "$HOOKS/confirmar-merge-develop.sh")"
+{ is_deny "$out_nojq" && printf '%s' "$out_nojq" | grep -qi 'sin jq'; } \
+  && ok "juez-comun (d): merge SIN jq → DENY (fail-SAFE; cierra la evasión por PATH-sin-jq)" \
+  || bad "juez-comun (d): merge sin jq NO frenó (fail-open); got: $out_nojq"
+out_nojq2="$(printf '%s' '{"tool_input":{"command":"git status"},"transcript_path":""}' \
+  | PATH="$NOJQ" HOME="$JCFIX/home" "$_realbash" "$HOOKS/confirmar-merge-develop.sh")"
+is_silent "$out_nojq2" \
+  && ok "juez-comun (d): comando NO-merge sin jq → silencio (no sobre-bloquea comandos normales)" \
+  || bad "juez-comun (d): sin jq sobre-bloqueó un comando normal; got: $out_nojq2"
+rm -rf "$JCFIX" 2>/dev/null || true
+
 # ── LEVER opt-in de VOTO MÚLTIPLE (self-consistency), DETERMINISTA sin red · juez EMPODERADO 2026-08 ──
 # Dos piezas: (1) el AGREGADOR puro _juez_agrega_votos (UNÁNIME-PARA-ALLOW / cualquier DENY o UNAVAILABLE gana)
 # — es la LÓGICA del lever, testeable sin paralelismo ni red; (2) el WIRING de _juez_merge (VOTES=1 = una sola
@@ -684,13 +804,13 @@ if [ -n "${CLAUDE_MERGE_JUEZ_LIVE:-}" ] && command -v curl >/dev/null 2>&1 && co
   H_DEV1=$(acg_hint_candidatos '[{"number":240,"title":"feat notificaciones","baseRefName":"develop","headRefName":"feat/notif","isDraft":false}]' develop 240)
   jlive() {  # $1=label $2=destino $3=mrid $4=esperado(ALLOW|DENY) $5=conversación intercalada $6=hint(opcional)
     local got; got=$(_juez_merge "$2" "$3" "$5" "${6:-}")
-    [ "$got" = UNAVAILABLE ] && got=$(_juez_merge "$2" "$3" "$5" "${6:-}")   # 1 reintento ante hipo LIVE
+    [ "${got#UNAVAILABLE}" != "$got" ] && got=$(_juez_merge "$2" "$3" "$5" "${6:-}")   # 1 reintento ante hipo LIVE (UNAVAILABLE_*)
     if [ "$4" = DENY ]; then
-      if [ "$got" = DENY ] || [ "$got" = UNAVAILABLE ]; then ok "cmd LIVE-DENY: $1 → $got"
+      if [ "$got" = DENY ] || [ "${got#UNAVAILABLE}" != "$got" ]; then ok "cmd LIVE-DENY: $1 → $got"
       else bad "cmd LIVE-DENY: $1 → ALLOW (debía BLOQUEAR — falso positivo)"; fi
     else
       if [ "$got" = ALLOW ]; then ok "cmd LIVE-ALLOW: $1 → ALLOW"
-      elif [ "$got" = UNAVAILABLE ]; then ok "cmd LIVE-ALLOW: $1 → UNAVAILABLE (infra flaky, no lógica)"
+      elif [ "${got#UNAVAILABLE}" != "$got" ]; then ok "cmd LIVE-ALLOW: $1 → $got (infra flaky, no lógica)"
       else bad "cmd LIVE-ALLOW: $1 → DENY (REGRESIÓN: falso negativo)"; fi
     fi
   }
@@ -1828,6 +1948,50 @@ printf '%s' "$(ad2)" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null
   && ok "aviso-drift v2: mini con .claude/ sucio → solo avisa (no mezcla cambios)" || bad "aviso-drift v2: auto-aplicó sobre un .claude/ sucio"
 rm -rf "$AD2FIX"
 
+# ── (b5c-V1) FIX V1 (auditoría 2026-08-06): el auto-commit del cerebro por-repo BYPASSEABA secret-scan
+# (ocurre DENTRO del subproceso del hook, NO vía una tool Bash → el guard PreToolUse/Bash no lo veía). Ahora
+# drift-cerebro-comun.sh escanea lo AGREGADO al .claude/ (git diff --cached) con detectar-secretos ANTES de
+# commitear; si hay secreto → ABORTA (des-estagea, no commitea/pushea) y avisa. Mismo arnés que b5c.
+V1FIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-v1.XXXXXX")"
+V1REPO="$V1FIX/repo"; V1HOME="$V1FIX/home"; V1BRAIN="$V1FIX/clon"
+mkdir -p "$V1REPO/.claude/hooks" "$V1HOME" "$V1BRAIN/brain"
+git -C "$V1REPO" init -q >/dev/null 2>&1
+git -C "$V1REPO" config user.email t@t >/dev/null 2>&1; git -C "$V1REPO" config user.name Tester >/dev/null 2>&1
+: > "$V1REPO/.claude/hooks/.brain-version"; : > "$V1REPO/.claude/repo-compartido"
+git -C "$V1REPO" add -A >/dev/null 2>&1; git -C "$V1REPO" commit -qm base >/dev/null 2>&1
+git -C "$V1REPO" checkout -q -b DevelopTester >/dev/null 2>&1
+# stub del sync: --apply ESCRIBE un hook con un SECRETO (AKIA…, NO el placeholder EXAMPLE) en el .claude/
+cat > "$V1BRAIN/brain/sincronizar-cerebro.sh" <<'STUB'
+#!/usr/bin/env bash
+repo="$1"
+[ "${2:-}" = "--apply" ] && printf 'TOKEN=AKIAZ7QWERTYUIOP1234\n' > "$repo/.claude/hooks/leak.sh"
+echo "  NUEVO      leak.sh (hook)"
+echo "==> resumen: 1 nuevos · 0 a actualizar · 8 ya al día · 7 hooks cableados (kind=hook)"
+STUB
+v1() { printf '%s' '{"source":"startup"}' | HOME="$V1HOME" CLAUDE_BRAIN_DIR="$V1BRAIN" CLAUDE_PROJECT_DIR="$V1REPO" bash "$HOOKS/aviso-drift-cerebro.sh"; }
+n0=$(git -C "$V1REPO" rev-list --count HEAD)
+v1out="$(v1)"
+printf '%s' "$v1out" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -qi 'ABORTADO' \
+  && ok "V1: auto-sync con un SECRETO en .claude/ → ABORTADO (secret-scan aplicado al auto-commit del propio hook)" \
+  || bad "V1: NO abortó el auto-sync ante un secreto en .claude/; got: $v1out"
+{ [ "$(git -C "$V1REPO" rev-list --count HEAD)" = "$n0" ] && ! git -C "$V1REPO" log -1 --format=%s 2>/dev/null | grep -q auto-sync; } \
+  && ok "V1: el auto-commit NO ocurrió (0 commits nuevos → el secreto no se commiteó ni pusheó)" \
+  || bad "V1: ¡commiteó/avanzó HEAD pese al secreto!"
+# (contra-prueba) el MISMO arnés SIN secreto (contenido benigno) → SÍ auto-sincroniza (no rompimos la ruta feliz)
+cat > "$V1BRAIN/brain/sincronizar-cerebro.sh" <<'STUB'
+#!/usr/bin/env bash
+repo="$1"
+[ "${2:-}" = "--apply" ] && printf 'echo benigno\n' > "$repo/.claude/hooks/limpio.sh"
+echo "  NUEVO      limpio.sh (hook)"
+echo "==> resumen: 1 nuevos · 0 a actualizar · 8 ya al día · 7 hooks cableados (kind=hook)"
+STUB
+git -C "$V1REPO" checkout -q -- .claude/ >/dev/null 2>&1; git -C "$V1REPO" clean -fdq .claude/ >/dev/null 2>&1
+rm -rf "$V1HOME/.claude/memory/.drift-cerebro" 2>/dev/null   # limpia el throttle stamp para re-chequear
+printf '%s' "$(v1)" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'AUTO-SINCRONIZADO' \
+  && ok "V1: contra-prueba — .claude/ SIN secreto → auto-sincroniza normal (el scan no rompió la ruta feliz)" \
+  || bad "V1: la contra-prueba sin secreto NO auto-sincronizó (el scan bloqueó de más)"
+rm -rf "$V1FIX"
+
 # ── (b5c2) FIX costura #1: el auto-apply STAGEA settings.json (no solo .claude/hooks). Antes
 # `git add .claude/hooks` dejaba el cambio de CABLEADO (settings.json) sin commitear → el wiring nunca
 # viajaba. Ahora `git add -A .claude/` cubre hooks + settings.json + podas. Stub que --apply reescribe
@@ -2341,6 +2505,7 @@ e="$(grep -c 'END claude-brain'   "$GCLAUDE2" 2>/dev/null || echo 0)"
 [ -f "$FAKEHOME2/.claude/hooks/delegacion-comun.sh" ]    && ok "lib delegacion-comun.sh instalada" || bad "falta lib delegacion-comun.sh"
 [ -f "$FAKEHOME2/.claude/hooks/analizar-comando-git.sh" ] && ok "lib analizar-comando-git.sh instalada" || bad "falta lib analizar-comando-git.sh"
 [ -f "$FAKEHOME2/.claude/hooks/detectar-secretos.sh" ] && ok "lib detectar-secretos.sh instalada" || bad "falta lib detectar-secretos.sh"
+[ -f "$FAKEHOME2/.claude/hooks/juez-comun.sh" ] && ok "lib juez-comun.sh instalada (global, derivada del MANIFEST both/lib)" || bad "falta lib juez-comun.sh"
 # sello de VERSIÓN del brain instalado en ~/.claude/.brain-version (lo lee el tab Cerebro del widget)
 # Contrato de 2 líneas: L1 = "<PREFIJO>.<count>" (PREFIJO = brain/VERSION seguido de '.' y dígitos);
 # L2 = fecha "YYYY-MM-DD". La versión auto-incrementa (count) → ya NO es igual a brain/VERSION.
@@ -2434,6 +2599,8 @@ analizar-comando-git|confirmar-merge-develop
 confirmar-merge-develop|git-branch-guard
 confirmar-merge-develop|merge-squash-guard
 detectar-secretos|secret-scan
+confirmar-merge-develop|juez-comun
+dod-verificar|juez-comun
 cerrar-slice|merge-squash-guard
 cerrar-slice|recordar-dashboard
 delegacion-comun|delegacion-gate
