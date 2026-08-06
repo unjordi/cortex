@@ -195,3 +195,80 @@ acg_destino_de_mr() {
   fi
   return 0
 }
+
+# Lista de MR/PR ABIERTOS del repo, DIGERIBLE a un HINT de candidatos para el juez de merge (capa 3
+# "contexto de identificación"). UNA sola consulta (`glab mr list` / `gh pr list` según el remoto),
+# acotada por timeout y CACHEADA por repo en TMPDIR (clave distinta a la de acg_destino_de_mr). Sirve
+# para IDENTIFICAR el target de una referencia vaga ("el release", "de todo esto") cuando hay UN solo
+# candidato — NUNCA como autorización (eso lo decide el juez leyendo líneas USUARIO:). Fail-safe: sin
+# jq/binario/red/timeout → imprime vacío → el consumidor degrada a "como hoy" (destino por acg + charla).
+# Devuelve un JSON array normalizado [{number,title,baseRefName,headRefName,isDraft}] o vacío.
+acg_lista_prs_abiertos() {   # $1=comando (para derivar repo/herramienta) → JSON array | vacío
+  command -v jq >/dev/null 2>&1 || return 0
+  local raw="$1" u tool repo key cache out
+  u=$(acg_despoja_comillas "$raw")
+  if printf '%s' "$u" | grep -qE 'glab(\.exe)?[[:space:]]+mr'; then tool=glab; else tool=gh; fi
+  repo=$(printf '%s' "$raw" | grep -oE '(--repo|-R)[[:space:]=]+[^[:space:]]+' | grep -oE '[^[:space:]=]+$')
+  [ -z "$repo" ] && repo=$(git -C "${CLAUDE_PROJECT_DIR:-.}" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|https?://[^/]+/)##; s#\.git$##')
+  key=$(printf '%s' "${repo}|${tool}|prlist" | sed 's/[^A-Za-z0-9]/_/g')
+  cache="${TMPDIR:-/tmp}/acg-prlist-${key}"
+  if [ -f "$cache" ]; then cat "$cache"; return 0; fi
+  if [ "$tool" = glab ]; then
+    # glab mr list --output json → array con iid/title/target_branch/source_branch/draft. Normalizo al
+    # mismo shape que gh (number,title,baseRefName,headRefName,isDraft) para un solo digestor aguas abajo.
+    out=$(acg__run_timeout "$ACG_MR_TIMEOUT" glab mr list ${repo:+-R "$repo"} --output json 2>/dev/null \
+          | jq -c '[.[] | {number:(.iid // .number), title:(.title // ""), baseRefName:(.target_branch // ""), headRefName:(.source_branch // ""), isDraft:((.draft // .work_in_progress) // false)}]' 2>/dev/null)
+  else
+    out=$(acg__run_timeout "$ACG_MR_TIMEOUT" gh pr list ${repo:+-R "$repo"} --state open --limit 50 --json number,title,baseRefName,headRefName,isDraft 2>/dev/null)
+  fi
+  # Solo cachea un ARRAY no vacío válido (un fallo/timeout → vacío → se reintenta la próxima).
+  if [ -n "$out" ] && printf '%s' "$out" | jq -e 'type=="array" and length>0' >/dev/null 2>&1; then
+    printf '%s' "$out" > "$cache" 2>/dev/null
+    printf '%s' "$out"
+  fi
+  return 0
+}
+
+# Digiere el array de acg_lista_prs_abiertos a un BLOQUE de texto plano (HECHOS, no autorización) que
+# ayuda al juez a IDENTIFICAR a qué MR se refiere una autorización vaga del USUARIO. Determinista y
+# testeable con un array mock (sin red). El conteo "hacia esta base hay exactamente 1" es un HECHO
+# computado aquí, no algo que el LLM deba adivinar. Variantes: 1 candidato (INEQUÍVOCO) · ≥2 (exige que
+# el USUARIO nombre) · mrid ausente (¿ya mergeado?) · lista no disponible (resuelve solo con la charla).
+acg_hint_candidatos() {   # $1=json array(o vacío) $2=destino $3=mrid → bloque de texto | vacío
+  command -v jq >/dev/null 2>&1 || return 0
+  local arr="$1" destino="$2" mrid="$3" base cnt cands title head b mrline
+  local head_ln="--- CONTEXTO FACTUAL DE GIT (no es autorización, solo para IDENTIFICAR el MR) ---"
+  local foot_ln="--- fin contexto ---"
+  if [ -z "$arr" ] || ! printf '%s' "$arr" | jq -e 'type=="array"' >/dev/null 2>&1; then
+    printf '%s\nLista de MRs abiertos: NO DISPONIBLE. Resuelve el referente SOLO con la conversación; ante duda, DENY.\n%s' "$head_ln" "$foot_ln"
+    return 0
+  fi
+  # metadatos del MR juzgado (si figura entre los abiertos)
+  title=$(printf '%s' "$arr" | jq -r --arg id "$mrid" 'map(select((.number|tostring)==$id))[0].title // empty' 2>/dev/null | cut -c1-80)
+  head=$(printf '%s' "$arr"  | jq -r --arg id "$mrid" 'map(select((.number|tostring)==$id))[0].headRefName // empty' 2>/dev/null)
+  b=$(printf '%s' "$arr"     | jq -r --arg id "$mrid" 'map(select((.number|tostring)==$id))[0].baseRefName // empty' 2>/dev/null)
+  # base a considerar: el destino resuelto, o (si vacío) el baseRefName del propio MR según la lista
+  base="$destino"; [ -z "$base" ] && base="$b"
+  if [ -n "$title" ]; then
+    mrline="MR juzgado: #$mrid · titulo: \"$title\" · rama: ${head:-?} -> ${b:-?}"
+  else
+    mrline="MR juzgado: #$mrid · NO figura entre los MRs abiertos (¿ya mergeado/cerrado, o id equivocado?) — no asumas nada sobre el; resuelve solo con la conversacion."
+  fi
+  if [ -n "$base" ]; then
+    cnt=$(printf '%s' "$arr" | jq --arg bs "$base" '[.[]|select(.baseRefName==$bs)]|length' 2>/dev/null)
+    cands=$(printf '%s' "$arr" | jq -r --arg bs "$base" '[.[]|select(.baseRefName==$bs)|"#\(.number)"]|join(", ")' 2>/dev/null)
+    if [ "${cnt:-0}" = 1 ]; then
+      printf '%s\n%s\nMRs abiertos hacia %s ahora mismo: 1 (SOLO %s) => una referencia vaga del USUARIO ("el release","esto","todo esto","de todo esto") hacia esa base es INEQUIVOCA: es %s. (Sigue exigiendo que sea el USUARIO quien autorice; el conteo solo identifica, no autoriza.)\n%s' \
+        "$head_ln" "$mrline" "$base" "$cands" "$cands" "$foot_ln"
+    elif [ "${cnt:-0}" -ge 2 ] 2>/dev/null; then
+      printf '%s\n%s\nMRs abiertos hacia %s ahora mismo: %s (%s) => hay VARIOS candidatos: un OK VAGO del USUARIO NO basta, debe nombrar cual (si no, DENY).\n%s' \
+        "$head_ln" "$mrline" "$base" "$cnt" "$cands" "$foot_ln"
+    else
+      printf '%s\n%s\nMRs abiertos hacia %s ahora mismo: 0 (ninguno figura). No asumas un candidato; resuelve solo con la conversacion.\n%s' \
+        "$head_ln" "$mrline" "$base" "$foot_ln"
+    fi
+  else
+    printf '%s\n%s\nNo se pudo determinar la base del MR. Resuelve el referente con la conversacion; ante duda, DENY.\n%s' \
+      "$head_ln" "$mrline" "$foot_ln"
+  fi
+}
