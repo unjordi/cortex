@@ -1,16 +1,16 @@
-// 05 — Continuidad del HILO: checkpoint → compact → rehidratar (claude-brain)  ·  FUENTE editable (.dot)
-// Render:  dot -Tsvg 05-continuidad-checkpoint-compact-rehidratar.dot -o 05-continuidad-checkpoint-compact-rehidratar.svg
-// Construido 2026-08-01 desde el CÓDIGO/DOC REAL: hook aviso-contexto.sh (watermark por TOKENS reales),
-// skill checkpoint (2 niveles → hilo-mental-actual.md), sección `# Compact instructions` del CLAUDE.md,
-// hook rehidratar-hilo.sh (SessionStart, gate de frescura) + su skill gemelo, hook sesion-inicio.sh.
+// 13 — Normas: el cimiento (claude-brain)  ·  FUENTE editable (.dot)
+// Render:  dot -Tsvg 13-normas-el-cimiento.dot -o 13-normas-el-cimiento.svg
+// El PORQUÉ: cada flujo de los charts anteriores hace cumplir una de estas normas (CLAUDE.md / brain/norms/).
+// Reconstruido 2026-08-07. Cross-refs re-numeradas a los NUEVOS nº de archivo (viejo circulado → nuevo):
+//   ② integrar=06 · ③ comando-git=07 · ④ push-nudges=08 · ⑤ declarar-listo=09 · ⑥ cerrar-slice=10 · ⑦ delegar=11 · ⑧ orquestar=12.
+// Re-canoniza el huérfano 10-normas-el-cimiento.svg (sin .dot ni leyenda).
 digraph flujos {
   graph [bgcolor="#1b1712", rankdir=TB, fontname="Helvetica", splines=true,
-         nodesep=0.35, ranksep=0.55, pad=0.25, compound=true];
+         nodesep=0.4, ranksep=0.5, pad=0.25, compound=true];
   node  [fontname="Helvetica", fontsize=12, fontcolor="#f2ede6", shape=box,
-         style="rounded,filled", fillcolor="#2b2b2b", color="#8a8a8a", penwidth=1.5];
+         style="rounded,filled", fillcolor="#2b2622", color="#d97757", penwidth=1.5];
   edge  [color="#d97757", fontname="Helvetica", fontsize=10, fontcolor="#cfc8c0", penwidth=1.4];
 
-  // ─────────────────────────── LEYENDA (regla dura del skill diagramar) ───────────────────────────
   // >>> LEYENDA-ARBOL (generado por gen-leyenda-arbol.sh desde el árbol del README — NO editar a mano) >>>
   subgraph cluster_leyenda {
     label="LEYENDA — árbol completo del cerebro (fuente: README.md)"; labeljust="l"; fontname="Times"; fontsize=14; fontcolor="#5fa89e";
@@ -81,79 +81,32 @@ digraph flujos {
   }
   // <<< LEYENDA-ARBOL <<<
 
-  // ───────────────────────────────────── EL FLUJO ─────────────────────────────────────
+  // ───────────────────────────────────── LAS NORMAS ─────────────────────────────────────
   subgraph cluster_f0 {
-    label="05 · Continuidad del HILO al compactar   (aviso-contexto avisa · checkpoint vuelca hilo-mental-actual.md · Compact instructions lo preserva · rehidratar-hilo lo relee)";
+    label="13 · Normas: el cimiento   (el porqué; cada flujo de los charts anteriores las hace cumplir)";
     fontname="Times"; fontsize=14; fontcolor="#5fa89e";
     color="#5fa89e"; penwidth=1.6; style="rounded"; bgcolor="#1b1712";
 
-    WORK  [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
-           label="corrida larga: muchos tool-calls, el contexto se LLENA\n(el HILO —de qué íbamos AHORA, la decisión a medio cocinar, el siguiente paso—\nsolo vive en el chat: FRÁGIL, se degrada en cada resumen)"];
+    LISTO [label="📜 🎯 Definición de LISTO\nverde técnico ≠ LISTO (build+tests+memoria es necesario\npero NO suficiente): falta (1) QA del usuario o (2) su OK expreso.\nProducto INSTALABLE: verde en 1 máquina ≠ LISTO (checklist multi-OS)\n— hecho cumplir en 09 · 10 · 06"];
+    GIT [label="📜 🌿 Flujo de git\nramita → MR → develop (con squash); main es release-only;\nNUNCA push directo a develop/main.\nel gate confirmar ≠ «no puedes»: con tu OK, Claude mergea por CLI\n— hecho cumplir en 03 · 06"];
+    DOC [label="📜 🪞 doc = realidad\nal cambiar algo, su doc se actualiza en la MISMA tanda\n(README/memoria/dashboard/comentarios)\n— hecho cumplir en 08"];
+    MINI [label="📜 🌱 Modelo MINI-DEVELOP\nramitas → rama personal/integración por merge LOCAL (sin fricción);\nsolo el MR a develop se gatea\n— habilitado en 06"];
+    COSTO [label="📜 💰 Consentimiento de costo de delegación\ndelegar cuesta por nivel: gratis (local) / incluido (ventana 5h) /\nmetered (overage o API externa)\n— hecho cumplir en 11"];
+    ORQ [label="📜 🎼 Orquesta: delega y quédate en el loop\ncon trabajo paralelizable: fan-out + supervisión (no grind serial);\nauto-reporte sin niñera\n— operacionalizada en 12"];
+    AISL [label="📜 🧱 Aislamiento de fan-out\ntodo agente que MUTA/commitea corre en worktree AISLADO,\nnunca en el árbol de trabajo compartido\n— hecho cumplir en 07 · 12"];
+    MECA [label="📜 🧩 Toda norma nace con su mecanismo\nuna norma de higiene/cierre SIN hook/gate/paso operativo\n= el usuario es el único enforcement → no se cumple sola"];
+    INTEG [color="#c9a227", penwidth=2,
+           label="🛡️📜 Integridad de los guardarraíles (norma SIN mecanismo LOCAL)\nClaude NO afloja sus propios candados de supervisión para desatorarse;\ncambiar un control exige el OK EXPLÍCITO a cambiar ESE control (≠ el OK a la acción).\nNO hay hook in-repo que lo imponga: es AUTODISCIPLINA; el enforcement es EXTERNO\n(el clasificador auto-mode = backstop) — aplica a dod 09 · confirmar/squash/branch 06 · proteger-arbol 07"];
+    TMPL [label="📜 🧬 Al templatizar: DOMINIO vs regla genérica\nal derivar un template de un concreto, quita el dominio pero\nCONSERVA las reglas genéricas (diff PORTAR-vs-OK-EXCLUIDO)"];
 
-    // ── El watermark ──
-    AVISO [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="🔔📈 aviso-contexto  (PostToolUse · GLOBAL · tras CADA tool)\nmétrica = TOKENS REALES del último `usage` (no líneas ni bytes)\ntecho DERIVADO = ventana ([1m]→1M, si no 200K) × pct auto-compact (≈92%)\n¿ctx cruza una banda? (ℹ️76% · ⚠️88% · 🚨95%)"];
-    BAND1 [color="#e08e45",
-           label="🟠 banda 1 (ℹ️): heads-up con holgura"];
-    BAND23 [color="#e08e45",
-            label="🟠 banda 2 (⚠️): «checkpoint AHORA + propón /compact»\nbanda ≥3 (🚨 INMINENTE): ORDENA RE-correr checkpoint + compacta YA\n(el hook no corre el skill, pero ORDENA su re-ejecución)"];
-
-    // ── checkpoint (skill, proactivo) ──
-    CHK   [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="💾 checkpoint  (skill — TÚ lo invocas, PROACTIVO)\n¿nivel? viene compact / >2h / crítico → COMPLETO ; pausa casual → ligero\n(ante la duda: COMPLETO)"];
-    DUMP  [color="#7fb069", penwidth=2,
-           label="⚠ ESCRIBE (memoria) · 🟢 vuelca el HILO → .claude/memory/hilo-mental-actual.md\nLIGERO: en qué estamos · decisión abierta · siguiente paso\nCOMPLETO: + PLAN con el CÓMO · RESUELTO HOY (anti-fantasma) · COSECHA DURABLE a memorias/skills\n(en las PROPIAS palabras del modelo → re-instanciar releyendo, no confabular)"];
-
-    // ── El compact ──
-    COMPACT [shape=diamond, fillcolor="#2b2622", color="#d97757",
-             label="COMPACTACIÓN\n/compact manual (proactivo) · o AUTO-COMPACT sorpresa (contexto lleno, sin aviso)"];
-    NOPRE [color="#c9a227",
-           label="🟡 SIN hook de PreCompact (por decisión, no olvido):\nPreCompact no tiene canal para inyectar contexto ni pedir acción → inútil ahí\n(la versión vieja rompía la validación del CLI). El hilo lo salva checkpoint+rehidratar"];
-    CLAUDEMD [color="#e08e45",
-              label="📜 `# Compact instructions` del CLAUDE.md (el CLI RE-LEE el heading al compactar)\n🟠 guía el RESUMEN: preserva el HILO íntegro, la tarea activa y las DECISIONES ABIERTAS\n(NO las cierres al resumir) — complementa, no sustituye, al checkpoint"];
-
-    // ── SessionStart source=compact ──
-    SS    [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="SessionStart  (source = compact / resume / startup)\ndispara los hooks de apertura (ver 02)"];
-    SINI  [color="#e08e45",
-           label="🔔🧭 sesion-inicio  (SessionStart · POR-REPO)\n🟠 reinyecta rama + NORMA de git + orden de leer MEMORY/estado-proyecto/AGENTS"];
-    REHID [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="🔔🧵 rehidratar-hilo  (SessionStart · GLOBAL)\n¿existe hilo-mental-actual.md? → reinyecta vía additionalContext (canal FIABLE)\nGATE DE FRESCURA: ¿la rama del hilo = la actual?"];
-    FRESCO [color="#7fb069",
-            label="🟢 «🧵 HILO MENTAL ACTUAL»\n(rama coincide → la vigencia la manda la RAMA, no el reloj; A8)"];
-    STALE [color="#c9a227",
-           label="🟡 «⚠️ HILO POSIBLEMENTE OBSOLETO»\n(rama distinta, o sin git y mtime > 12h → proxy de respaldo)"];
-
-    // ── Retomar ──
-    RESUME [color="#7fb069", penwidth=2,
-            label="🟢 el harness retoma «the last task» en SILENCIO (prohíbe recap)\n= la rehidratación FUNCIONANDO: retomar la tarea correcta > anunciarla.\nEl additionalContext es PASIVO (el modelo lo TIENE, no lo anuncia solo)"];
-    SKILL [color="#e08e45",
-           label="💧 skill rehidratar-hilo (si TÚ lo invocas): anuncia «↩️ retomé: X» y CONTINÚA\n(reusa el .sh del hook → sin drift; su anuncio vence al «resume en silencio»)"];
-    BACK  [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
-           label="↩️ sigue el MISMO hilo sin perderlo, entre sesiones/compus/compactaciones"];
-
-    // Aristas
-    WORK -> AVISO [label="PostToolUse\nvigila cada tool"];
-    AVISO -> BAND1 [label="banda 1"];
-    AVISO -> BAND23 [label="banda 2 / ≥3"];
-    AVISO -> WORK [label="sin cruzar banda\n(debounce)", style=dashed];
-    BAND1 -> CHK; BAND23 -> CHK;
-    WORK -> CHK [label="o TÚ, proactivo\n(en una pausa / >2h)", style=dashed];
-    CHK -> DUMP;
-    DUMP -> COMPACT;
-    COMPACT -> NOPRE [style=dashed, label="PreCompact\nNO ayuda"];
-    COMPACT -> CLAUDEMD [label="al compactar el CLI\nre-lee el heading"];
-    CLAUDEMD -> SS;
-    NOPRE -> SS [style=dashed];
-    SS -> SINI;
-    SS -> REHID [label="misma SessionStart"];
-    SINI -> RESUME [style=dashed];
-    REHID -> FRESCO [label="rama coincide"];
-    REHID -> STALE  [label="rama distinta /\nmtime>12h"];
-    FRESCO -> RESUME; STALE -> RESUME;
-    RESUME -> SKILL [label="o TÚ invocas\nel skill", style=dashed];
-    RESUME -> BACK;
-    SKILL -> BACK;
-    BACK -> WORK [label="continúa la corrida", style=dashed];
+    // Layout: filas de ~3, con aristas invisibles; INTEG «protege» a los candados que nombra.
+    LISTO -> GIT -> DOC [style=invis];
+    MINI -> COSTO -> ORQ [style=invis];
+    AISL -> MECA -> TMPL [style=invis];
+    DOC -> MINI [style=invis];
+    ORQ -> AISL [style=invis];
+    INTEG -> LISTO [label="protege", style=dashed, constraint=false];
+    INTEG -> GIT [style=dashed, constraint=false];
+    INTEG -> AISL [style=dashed, constraint=false];
   }
 }

@@ -1,8 +1,8 @@
-// 05 — Continuidad del HILO: checkpoint → compact → rehidratar (claude-brain)  ·  FUENTE editable (.dot)
-// Render:  dot -Tsvg 05-continuidad-checkpoint-compact-rehidratar.dot -o 05-continuidad-checkpoint-compact-rehidratar.svg
-// Construido 2026-08-01 desde el CÓDIGO/DOC REAL: hook aviso-contexto.sh (watermark por TOKENS reales),
-// skill checkpoint (2 niveles → hilo-mental-actual.md), sección `# Compact instructions` del CLAUDE.md,
-// hook rehidratar-hilo.sh (SessionStart, gate de frescura) + su skill gemelo, hook sesion-inicio.sh.
+// 12 — Orquestar un fan-out sin niñera (claude-brain)  ·  FUENTE editable (.dot)
+// Render:  dot -Tsvg 12-orquestar-fanout-sin-ninera.dot -o 12-orquestar-fanout-sin-ninera.svg
+// Reconstruido 2026-08-07 desde el skill real brain/skills/orquestar-fanout/SKILL.md + los hooks de soporte
+// (proteger-arbol, delegacion-gate, delegacion-reporte, script limpiar-worktrees.sh). Companion de 04 y 11.
+// Re-canoniza el huérfano 09-orquestar-un-fan-out-sin-ninera.svg (viejo «⑧», sin .dot ni leyenda).
 digraph flujos {
   graph [bgcolor="#1b1712", rankdir=TB, fontname="Helvetica", splines=true,
          nodesep=0.35, ranksep=0.55, pad=0.25, compound=true];
@@ -10,7 +10,6 @@ digraph flujos {
          style="rounded,filled", fillcolor="#2b2b2b", color="#8a8a8a", penwidth=1.5];
   edge  [color="#d97757", fontname="Helvetica", fontsize=10, fontcolor="#cfc8c0", penwidth=1.4];
 
-  // ─────────────────────────── LEYENDA (regla dura del skill diagramar) ───────────────────────────
   // >>> LEYENDA-ARBOL (generado por gen-leyenda-arbol.sh desde el árbol del README — NO editar a mano) >>>
   subgraph cluster_leyenda {
     label="LEYENDA — árbol completo del cerebro (fuente: README.md)"; labeljust="l"; fontname="Times"; fontsize=14; fontcolor="#5fa89e";
@@ -83,77 +82,59 @@ digraph flujos {
 
   // ───────────────────────────────────── EL FLUJO ─────────────────────────────────────
   subgraph cluster_f0 {
-    label="05 · Continuidad del HILO al compactar   (aviso-contexto avisa · checkpoint vuelca hilo-mental-actual.md · Compact instructions lo preserva · rehidratar-hilo lo relee)";
+    label="12 · Orquestar un fan-out sin niñera   (orquestar-fanout · skill — companion de 04/11: fan-out + supervisión, auto-reporte al cerrar)";
     fontname="Times"; fontsize=14; fontcolor="#5fa89e";
     color="#5fa89e"; penwidth=1.6; style="rounded"; bgcolor="#1b1712";
 
-    WORK  [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
-           label="corrida larga: muchos tool-calls, el contexto se LLENA\n(el HILO —de qué íbamos AHORA, la decisión a medio cocinar, el siguiente paso—\nsolo vive en el chat: FRÁGIL, se degrada en cada resumen)"];
+    START [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
+           label="💡 trabajo PARALELIZABLE (varias piezas independientes)\n📜 → 🎼 Orquesta: delega y quédate en el loop"];
 
-    // ── El watermark ──
-    AVISO [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="🔔📈 aviso-contexto  (PostToolUse · GLOBAL · tras CADA tool)\nmétrica = TOKENS REALES del último `usage` (no líneas ni bytes)\ntecho DERIVADO = ventana ([1m]→1M, si no 200K) × pct auto-compact (≈92%)\n¿ctx cruza una banda? (ℹ️76% · ⚠️88% · 🚨95%)"];
-    BAND1 [color="#e08e45",
-           label="🟠 banda 1 (ℹ️): heads-up con holgura"];
-    BAND23 [color="#e08e45",
-            label="🟠 banda 2 (⚠️): «checkpoint AHORA + propón /compact»\nbanda ≥3 (🚨 INMINENTE): ORDENA RE-correr checkpoint + compacta YA\n(el hook no corre el skill, pero ORDENA su re-ejecución)"];
+    P1 [color="#7fb069",
+        label="1 · 📋 Asigna del backlog (estado-proyecto.md = fuente de verdad)\nreparte archivos DISJUNTOS por agente · inicia cada agente EN el repo destino"];
+    AUTOQ [shape=diamond, fillcolor="#2b2622", color="#d97757",
+           label="¿el ítem es AUTOCONTENIDO? (no depende de otro agente en vuelo)"];
+    AUTOQ_W [color="#e08e45", label="🟠 serialízalo o únelo (no lo delegues suelto)"];
 
-    // ── checkpoint (skill, proactivo) ──
-    CHK   [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="💾 checkpoint  (skill — TÚ lo invocas, PROACTIVO)\n¿nivel? viene compact / >2h / crítico → COMPLETO ; pausa casual → ligero\n(ante la duda: COMPLETO)"];
-    DUMP  [color="#7fb069", penwidth=2,
-           label="⚠ ESCRIBE (memoria) · 🟢 vuelca el HILO → .claude/memory/hilo-mental-actual.md\nLIGERO: en qué estamos · decisión abierta · siguiente paso\nCOMPLETO: + PLAN con el CÓMO · RESUELTO HOY (anti-fantasma) · COSECHA DURABLE a memorias/skills\n(en las PROPIAS palabras del modelo → re-instanciar releyendo, no confabular)"];
+    MUTAQ [shape=diamond, fillcolor="#2b2622", color="#d97757",
+           label="¿el agente MUTA archivos / commitea?"];
+    ISO [color="#e08e45",
+         label="🔔🌳 WORKTREE AISLADO (isolation: worktree) — regla DURA\nnunca el árbol compartido; si no se puede aislar, lo hace el orquestador.\nproteger-arbol respalda (ver 07). 📜 → 🧱 Aislamiento de fan-out"];
+    ISO_DEPLOY [color="#e08e45",
+                label="🟠 y NUNCA deployes desde ese worktree: no hereda gitignored → rompe el deploy.\nEl deploy sale del clon PRINCIPAL tras `git pull`"];
+    RO [color="#7fb069", label="🟢 read-only → sin worktree aislado"];
+    GATE [color="#e08e45",
+          label="🔒💸 delegacion-gate · consentimiento de costo (ver 11)"];
 
-    // ── El compact ──
-    COMPACT [shape=diamond, fillcolor="#2b2622", color="#d97757",
-             label="COMPACTACIÓN\n/compact manual (proactivo) · o AUTO-COMPACT sorpresa (contexto lleno, sin aviso)"];
-    NOPRE [color="#c9a227",
-           label="🟡 SIN hook de PreCompact (por decisión, no olvido):\nPreCompact no tiene canal para inyectar contexto ni pedir acción → inútil ahí\n(la versión vieja rompía la validación del CLI). El hilo lo salva checkpoint+rehidratar"];
-    CLAUDEMD [color="#e08e45",
-              label="📜 `# Compact instructions` del CLAUDE.md (el CLI RE-LEE el heading al compactar)\n🟠 guía el RESUMEN: preserva el HILO íntegro, la tarea activa y las DECISIONES ABIERTAS\n(NO las cierres al resumir) — complementa, no sustituye, al checkpoint"];
+    AGENT [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
+           label="🤖 agente TERMINAL — ejecuta el trabajo COMPLETO en su turno (no background);\ndevuelve: qué hizo · línea-bitácora · pendiente · estado del worktree.\nPORTA, no REHAGAS: cita+lee la fuente antes de escribir"];
+    VERIFY [shape=diamond, fillcolor="#2b2622", color="#d97757",
+            label="el orquestador VERIFICA read-only (git / archivo / compila):\n¿el resultado real EXISTE?"];
+    VERIFY_NO [color="#c0392b", penwidth=2,
+               label="🔴 NO lo marques hecho — el reporte NO es evidencia\n(pudo devolver un stub o alucinar «lo dejé en background»). 💡 → 🕵️ revisar-entregables-agentes"];
+    CLOSE [color="#7fb069", penwidth=2,
+           label="⚠ ESCRIBE (memoria) · cierre AUTOMÁTICO al terminar (lo recuerda 🔔📮 delegacion-reporte):\n🟢 APPENDA a bitacora.md (con «>>» · parallel-safe) · 🟢 cierra el ítem en estado-proyecto.md\n(TodoWrite = scratch de sesión, NO el backlog durable)"];
 
-    // ── SessionStart source=compact ──
-    SS    [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="SessionStart  (source = compact / resume / startup)\ndispara los hooks de apertura (ver 02)"];
-    SINI  [color="#e08e45",
-           label="🔔🧭 sesion-inicio  (SessionStart · POR-REPO)\n🟠 reinyecta rama + NORMA de git + orden de leer MEMORY/estado-proyecto/AGENTS"];
-    REHID [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="🔔🧵 rehidratar-hilo  (SessionStart · GLOBAL)\n¿existe hilo-mental-actual.md? → reinyecta vía additionalContext (canal FIABLE)\nGATE DE FRESCURA: ¿la rama del hilo = la actual?"];
-    FRESCO [color="#7fb069",
-            label="🟢 «🧵 HILO MENTAL ACTUAL»\n(rama coincide → la vigencia la manda la RAMA, no el reloj; A8)"];
-    STALE [color="#c9a227",
-           label="🟡 «⚠️ HILO POSIBLEMENTE OBSOLETO»\n(rama distinta, o sin git y mtime > 12h → proxy de respaldo)"];
-
-    // ── Retomar ──
-    RESUME [color="#7fb069", penwidth=2,
-            label="🟢 el harness retoma «the last task» en SILENCIO (prohíbe recap)\n= la rehidratación FUNCIONANDO: retomar la tarea correcta > anunciarla.\nEl additionalContext es PASIVO (el modelo lo TIENE, no lo anuncia solo)"];
-    SKILL [color="#e08e45",
-           label="💧 skill rehidratar-hilo (si TÚ lo invocas): anuncia «↩️ retomé: X» y CONTINÚA\n(reusa el .sh del hook → sin drift; su anuncio vence al «resume en silencio»)"];
-    BACK  [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
-           label="↩️ sigue el MISMO hilo sin perderlo, entre sesiones/compus/compactaciones"];
+    SWEEP [shape=diamond, fillcolor="#2b2622", color="#d97757",
+           label="⚙ limpiar-worktrees.sh · ¿la rama del worktree ya está mergeada?"];
+    SWEEP_YES [color="#7fb069", label="🟢 borra el worktree"];
+    SWEEP_NO [color="#e08e45", label="🟠 déjalo + anota su pendiente en la bitácora"];
 
     // Aristas
-    WORK -> AVISO [label="PostToolUse\nvigila cada tool"];
-    AVISO -> BAND1 [label="banda 1"];
-    AVISO -> BAND23 [label="banda 2 / ≥3"];
-    AVISO -> WORK [label="sin cruzar banda\n(debounce)", style=dashed];
-    BAND1 -> CHK; BAND23 -> CHK;
-    WORK -> CHK [label="o TÚ, proactivo\n(en una pausa / >2h)", style=dashed];
-    CHK -> DUMP;
-    DUMP -> COMPACT;
-    COMPACT -> NOPRE [style=dashed, label="PreCompact\nNO ayuda"];
-    COMPACT -> CLAUDEMD [label="al compactar el CLI\nre-lee el heading"];
-    CLAUDEMD -> SS;
-    NOPRE -> SS [style=dashed];
-    SS -> SINI;
-    SS -> REHID [label="misma SessionStart"];
-    SINI -> RESUME [style=dashed];
-    REHID -> FRESCO [label="rama coincide"];
-    REHID -> STALE  [label="rama distinta /\nmtime>12h"];
-    FRESCO -> RESUME; STALE -> RESUME;
-    RESUME -> SKILL [label="o TÚ invocas\nel skill", style=dashed];
-    RESUME -> BACK;
-    SKILL -> BACK;
-    BACK -> WORK [label="continúa la corrida", style=dashed];
+    START -> P1;
+    P1 -> AUTOQ;
+    AUTOQ -> AUTOQ_W [label="no"];
+    AUTOQ -> MUTAQ [label="sí"];
+    MUTAQ -> ISO [label="sí (muta/commitea)"];
+    MUTAQ -> RO [label="no (read-only)", style=dashed];
+    ISO -> ISO_DEPLOY [style=dashed];
+    ISO -> GATE;
+    RO -> GATE;
+    GATE -> AGENT;
+    AGENT -> VERIFY;
+    VERIFY -> VERIFY_NO [label="no existe"];
+    VERIFY -> CLOSE [label="sí, verificado"];
+    CLOSE -> SWEEP;
+    SWEEP -> SWEEP_YES [label="sí"];
+    SWEEP -> SWEEP_NO [label="no"];
   }
 }

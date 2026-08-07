@@ -1,8 +1,9 @@
-// 05 — Continuidad del HILO: checkpoint → compact → rehidratar (claude-brain)  ·  FUENTE editable (.dot)
-// Render:  dot -Tsvg 05-continuidad-checkpoint-compact-rehidratar.dot -o 05-continuidad-checkpoint-compact-rehidratar.svg
-// Construido 2026-08-01 desde el CÓDIGO/DOC REAL: hook aviso-contexto.sh (watermark por TOKENS reales),
-// skill checkpoint (2 niveles → hilo-mental-actual.md), sección `# Compact instructions` del CLAUDE.md,
-// hook rehidratar-hilo.sh (SessionStart, gate de frescura) + su skill gemelo, hook sesion-inicio.sh.
+// 09 — Declarar «LISTO» al fin de turno: el candado dod-verificar (claude-brain)  ·  FUENTE editable (.dot)
+// Render:  dot -Tsvg 09-declarar-listo-al-fin-de-turno.dot -o 09-declarar-listo-al-fin-de-turno.svg
+// Reconstruido 2026-08-07 desde el CÓDIGO real de brain/hooks/dod-verificar.sh (Stop) + lib juez-comun.sh.
+// ⚠ OJO doc=realidad: el huérfano viejo (05-al-hacer-push… no; 06-declarar-listo-al-fin-de-turno.svg «⑤»)
+// describía la era de REGEX (STATUS_RE/WEAK_STATUS_RE/DOWNGRADE). Hoy dod-verificar usa un JUEZ-LLM (Haiku)
+// de 3 EJES (CIERRE/MARCA/VISUAL) — esta versión refleja el mecanismo ACTUAL. Re-canoniza ese huérfano (sin .dot ni leyenda).
 digraph flujos {
   graph [bgcolor="#1b1712", rankdir=TB, fontname="Helvetica", splines=true,
          nodesep=0.35, ranksep=0.55, pad=0.25, compound=true];
@@ -10,7 +11,6 @@ digraph flujos {
          style="rounded,filled", fillcolor="#2b2b2b", color="#8a8a8a", penwidth=1.5];
   edge  [color="#d97757", fontname="Helvetica", fontsize=10, fontcolor="#cfc8c0", penwidth=1.4];
 
-  // ─────────────────────────── LEYENDA (regla dura del skill diagramar) ───────────────────────────
   // >>> LEYENDA-ARBOL (generado por gen-leyenda-arbol.sh desde el árbol del README — NO editar a mano) >>>
   subgraph cluster_leyenda {
     label="LEYENDA — árbol completo del cerebro (fuente: README.md)"; labeljust="l"; fontname="Times"; fontsize=14; fontcolor="#5fa89e";
@@ -83,77 +83,56 @@ digraph flujos {
 
   // ───────────────────────────────────── EL FLUJO ─────────────────────────────────────
   subgraph cluster_f0 {
-    label="05 · Continuidad del HILO al compactar   (aviso-contexto avisa · checkpoint vuelca hilo-mental-actual.md · Compact instructions lo preserva · rehidratar-hilo lo relee)";
+    label="09 · Declarar «LISTO» al fin de turno   (dod-verificar · Stop · JUEZ-LLM de 3 ejes CIERRE/MARCA/VISUAL — fail-OPEN, es un nag, no seguridad)";
     fontname="Times"; fontsize=14; fontcolor="#5fa89e";
     color="#5fa89e"; penwidth=1.6; style="rounded"; bgcolor="#1b1712";
 
-    WORK  [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
-           label="corrida larga: muchos tool-calls, el contexto se LLENA\n(el HILO —de qué íbamos AHORA, la decisión a medio cocinar, el siguiente paso—\nsolo vive en el chat: FRÁGIL, se degrada en cada resumen)"];
+    STOP [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
+          label="fin de turno (Stop)\nrecorta al TURNO ACTUAL (desde el último mensaje genuino del usuario);\ntoma el último texto del ASISTENTE + el texto del USUARIO del turno\n(stop_hook_active / sin transcript / sin jq → exit 0)"];
 
-    // ── El watermark ──
-    AVISO [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="🔔📈 aviso-contexto  (PostToolUse · GLOBAL · tras CADA tool)\nmétrica = TOKENS REALES del último `usage` (no líneas ni bytes)\ntecho DERIVADO = ventana ([1m]→1M, si no 200K) × pct auto-compact (≈92%)\n¿ctx cruza una banda? (ℹ️76% · ⚠️88% · 🚨95%)"];
-    BAND1 [color="#e08e45",
-           label="🟠 banda 1 (ℹ️): heads-up con holgura"];
-    BAND23 [color="#e08e45",
-            label="🟠 banda 2 (⚠️): «checkpoint AHORA + propón /compact»\nbanda ≥3 (🚨 INMINENTE): ORDENA RE-correr checkpoint + compacta YA\n(el hook no corre el skill, pero ORDENA su re-ejecución)"];
+    JUEZ [shape=diamond, fillcolor="#2b2622", color="#d97757",
+          label="🔒✅ dod-verificar → _juez_dod  (Haiku vía juez-comun.sh)\nclasifica 3 EJES del turno → «CIERRE=.. MARCA=.. VISUAL=..» | UNAVAILABLE\n• CIERRE = el ASISTENTE afirma un entregable LISTO/terminado/funciona/quedó/a la par\n• MARCA  = el USUARIO (en SUS palabras) dio (1) confirmación funcional o (2) OK expreso de cierre\n• VISUAL = el ASISTENTE asevera APARIENCIA de una UI (se ve/como el mockup/en Chrome/la pantalla)"];
+    UNAVAIL [color="#c9a227",
+             label="🟡 UNAVAILABLE (sin token OAuth/red/timeout/respuesta ininteligible)\n→ exit 0 FAIL-OPEN: dod es un NAG, no un candado de seguridad (a diferencia de confirmar-merge, ver 06)"];
 
-    // ── checkpoint (skill, proactivo) ──
-    CHK   [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="💾 checkpoint  (skill — TÚ lo invocas, PROACTIVO)\n¿nivel? viene compact / >2h / crítico → COMPLETO ; pausa casual → ligero\n(ante la duda: COMPLETO)"];
-    DUMP  [color="#7fb069", penwidth=2,
-           label="⚠ ESCRIBE (memoria) · 🟢 vuelca el HILO → .claude/memory/hilo-mental-actual.md\nLIGERO: en qué estamos · decisión abierta · siguiente paso\nCOMPLETO: + PLAN con el CÓMO · RESUELTO HOY (anti-fantasma) · COSECHA DURABLE a memorias/skills\n(en las PROPIAS palabras del modelo → re-instanciar releyendo, no confabular)"];
+    // CIERRE: co-ubicación / downgrade
+    COLOC [shape=diamond, fillcolor="#2b2622", color="#d97757",
+           label="regla de CO-UBICACIÓN del eje CIERRE:\n• claim + pregunta/«dime si reviso algo» colgada → SIGUE siendo CIERRE (la pregunta NO lo salva)\n• DOWNGRADE explícito («quedó, PERO lo dejo en preview / a tu revisión») → CIERRE=no (no dispara)"];
 
-    // ── El compact ──
-    COMPACT [shape=diamond, fillcolor="#2b2622", color="#d97757",
-             label="COMPACTACIÓN\n/compact manual (proactivo) · o AUTO-COMPACT sorpresa (contexto lleno, sin aviso)"];
-    NOPRE [color="#c9a227",
-           label="🟡 SIN hook de PreCompact (por decisión, no olvido):\nPreCompact no tiene canal para inyectar contexto ni pedir acción → inútil ahí\n(la versión vieja rompía la validación del CLI). El hilo lo salva checkpoint+rehidratar"];
-    CLAUDEMD [color="#e08e45",
-              label="📜 `# Compact instructions` del CLAUDE.md (el CLI RE-LEE el heading al compactar)\n🟠 guía el RESUMEN: preserva el HILO íntegro, la tarea activa y las DECISIONES ABIERTAS\n(NO las cierres al resumir) — complementa, no sustituye, al checkpoint"];
+    // VISUAL block
+    VIS [shape=diamond, fillcolor="#2b2622", color="#d97757",
+         label="¿VISUAL=si Y MARCA≠si Y NO corrió tool de navegador este turno?\n(browser detectado por ESTRUCTURA del transcript: tool_use MCP chrome/playwright/puppeteer\no la tool `computer` — NO por la palabra «screenshot» en prosa)"];
+    VIS_D [color="#c0392b", penwidth=2,
+           label="🔴 BLOCK (B2) — QA visual A CIEGAS.\nAfirmaste cómo SE VE sin mirar la pantalla. Estatus honesto:\n«verificado técnicamente, SIN QA visual»; el QA visual lo hace el usuario o una captura real.\n(bloquea INDEPENDIENTE de si el turno tocó código)"];
 
-    // ── SessionStart source=compact ──
-    SS    [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="SessionStart  (source = compact / resume / startup)\ndispara los hooks de apertura (ver 02)"];
-    SINI  [color="#e08e45",
-           label="🔔🧭 sesion-inicio  (SessionStart · POR-REPO)\n🟠 reinyecta rama + NORMA de git + orden de leer MEMORY/estado-proyecto/AGENTS"];
-    REHID [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="🔔🧵 rehidratar-hilo  (SessionStart · GLOBAL)\n¿existe hilo-mental-actual.md? → reinyecta vía additionalContext (canal FIABLE)\nGATE DE FRESCURA: ¿la rama del hilo = la actual?"];
-    FRESCO [color="#7fb069",
-            label="🟢 «🧵 HILO MENTAL ACTUAL»\n(rama coincide → la vigencia la manda la RAMA, no el reloj; A8)"];
-    STALE [color="#c9a227",
-           label="🟡 «⚠️ HILO POSIBLEMENTE OBSOLETO»\n(rama distinta, o sin git y mtime > 12h → proxy de respaldo)"];
+    CIERREQ [shape=diamond, fillcolor="#2b2622", color="#d97757",
+             label="¿el turno AFIRMA un CIERRE? (CIERRE=si)"];
+    NODISPARA [color="#7fb069",
+               label="🟢 no dispara (es ESTATUS/espera, no un cierre)\n«en preview / a tu revisión / verificado técnicamente / pendiente de tu QA» pasan"];
 
-    // ── Retomar ──
-    RESUME [color="#7fb069", penwidth=2,
-            label="🟢 el harness retoma «the last task» en SILENCIO (prohíbe recap)\n= la rehidratación FUNCIONANDO: retomar la tarea correcta > anunciarla.\nEl additionalContext es PASIVO (el modelo lo TIENE, no lo anuncia solo)"];
-    SKILL [color="#e08e45",
-           label="💧 skill rehidratar-hilo (si TÚ lo invocas): anuncia «↩️ retomé: X» y CONTINÚA\n(reusa el .sh del hook → sin drift; su anuncio vence al «resume en silencio»)"];
-    BACK  [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
-           label="↩️ sigue el MISMO hilo sin perderlo, entre sesiones/compus/compactaciones"];
+    CODEQ [shape=diamond, fillcolor="#2b2622", color="#d97757",
+           label="¿el TURNO tocó CÓDIGO? (archivo que NO sea .md/.txt ni .claude/memory/)\nESTRUCTURAL + G2a (edición por Bash: sed -i · patch · redirección `>`/`tee`)\n+ ALTO-2 (un Task que DELEGA la edición a un sub-agente cuenta como posible código)"];
+    MARCAQ [shape=diamond, fillcolor="#2b2622", color="#d97757",
+            label="¿MARCA=si? — el juez exige CITA VERBATIM del USUARIO,\nverificada de forma determinista (_juez_cita_casa) contra sus mensajes\n(nunca se infiere de lo que el asistente diga que el usuario dijo)"];
+    CLOSE [color="#7fb069", penwidth=2,
+           label="🟢 cierra — hay (1) confirmación del usuario o (2) su OK expreso.\nbuild/tests + memoria se RECUERDAN como peldaño, NO como candado (varían por stack).\n📜 → 🎯 Definición de LISTO"];
+    BLOCK [color="#c0392b", penwidth=2,
+           label="🔴 BLOCK — verde técnico ≠ LISTO. Sin (1) ni (2) no se declara LISTO;\n«sigue/avanza» NO cuenta. Da el estatus honesto y espera el OK/QA del usuario.\nB4: si es MIGRACIÓN, la prueba acordada es AUDITORÍA DE PARIDAD, no build+tests"];
+    NOCODE [color="#7fb069",
+            label="🟢 cierra — un «listo» de solo docs/config no exige verificación técnica"];
 
     // Aristas
-    WORK -> AVISO [label="PostToolUse\nvigila cada tool"];
-    AVISO -> BAND1 [label="banda 1"];
-    AVISO -> BAND23 [label="banda 2 / ≥3"];
-    AVISO -> WORK [label="sin cruzar banda\n(debounce)", style=dashed];
-    BAND1 -> CHK; BAND23 -> CHK;
-    WORK -> CHK [label="o TÚ, proactivo\n(en una pausa / >2h)", style=dashed];
-    CHK -> DUMP;
-    DUMP -> COMPACT;
-    COMPACT -> NOPRE [style=dashed, label="PreCompact\nNO ayuda"];
-    COMPACT -> CLAUDEMD [label="al compactar el CLI\nre-lee el heading"];
-    CLAUDEMD -> SS;
-    NOPRE -> SS [style=dashed];
-    SS -> SINI;
-    SS -> REHID [label="misma SessionStart"];
-    SINI -> RESUME [style=dashed];
-    REHID -> FRESCO [label="rama coincide"];
-    REHID -> STALE  [label="rama distinta /\nmtime>12h"];
-    FRESCO -> RESUME; STALE -> RESUME;
-    RESUME -> SKILL [label="o TÚ invocas\nel skill", style=dashed];
-    RESUME -> BACK;
-    SKILL -> BACK;
-    BACK -> WORK [label="continúa la corrida", style=dashed];
+    STOP -> JUEZ;
+    JUEZ -> UNAVAIL [label="UNAVAILABLE", style=dashed];
+    JUEZ -> COLOC [label="veredicto de 3 ejes"];
+    COLOC -> VIS;
+    VIS -> VIS_D [label="sí (a ciegas)"];
+    VIS -> CIERREQ [label="no", style=dashed];
+    CIERREQ -> NODISPARA [label="no", style=dashed];
+    CIERREQ -> CODEQ [label="sí (afirma cierre)"];
+    CODEQ -> NOCODE [label="no (solo docs)", style=dashed];
+    CODEQ -> MARCAQ [label="sí (tocó código)"];
+    MARCAQ -> CLOSE [label="sí (cita verificada)"];
+    MARCAQ -> BLOCK [label="no"];
   }
 }

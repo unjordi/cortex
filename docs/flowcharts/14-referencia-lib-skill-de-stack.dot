@@ -1,16 +1,16 @@
-// 05 — Continuidad del HILO: checkpoint → compact → rehidratar (claude-brain)  ·  FUENTE editable (.dot)
-// Render:  dot -Tsvg 05-continuidad-checkpoint-compact-rehidratar.dot -o 05-continuidad-checkpoint-compact-rehidratar.svg
-// Construido 2026-08-01 desde el CÓDIGO/DOC REAL: hook aviso-contexto.sh (watermark por TOKENS reales),
-// skill checkpoint (2 niveles → hilo-mental-actual.md), sección `# Compact instructions` del CLAUDE.md,
-// hook rehidratar-hilo.sh (SessionStart, gate de frescura) + su skill gemelo, hook sesion-inicio.sh.
+// 14 — Referencia: libs compartidas + skills de stack (sin flujo propio) (claude-brain)  ·  FUENTE editable (.dot)
+// Render:  dot -Tsvg 14-referencia-lib-skill-de-stack.dot -o 14-referencia-lib-skill-de-stack.svg
+// Piezas que NO tienen flujo propio pero SOSTIENEN a los demás charts: las libs `lib` del MANIFEST
+// (fuente ÚNICA que varios hooks sourcean → no divergen) + los skills específicos de stack (viven en el
+// repo consumidor, no en claude-brain). Reconstruido 2026-08-07 desde brain/hooks/MANIFEST.
+// Re-canoniza el huérfano 11-referencia-libskill-de-stack.svg (sin .dot ni leyenda).
 digraph flujos {
   graph [bgcolor="#1b1712", rankdir=TB, fontname="Helvetica", splines=true,
-         nodesep=0.35, ranksep=0.55, pad=0.25, compound=true];
+         nodesep=0.4, ranksep=0.5, pad=0.25, compound=true];
   node  [fontname="Helvetica", fontsize=12, fontcolor="#f2ede6", shape=box,
          style="rounded,filled", fillcolor="#2b2b2b", color="#8a8a8a", penwidth=1.5];
   edge  [color="#d97757", fontname="Helvetica", fontsize=10, fontcolor="#cfc8c0", penwidth=1.4];
 
-  // ─────────────────────────── LEYENDA (regla dura del skill diagramar) ───────────────────────────
   // >>> LEYENDA-ARBOL (generado por gen-leyenda-arbol.sh desde el árbol del README — NO editar a mano) >>>
   subgraph cluster_leyenda {
     label="LEYENDA — árbol completo del cerebro (fuente: README.md)"; labeljust="l"; fontname="Times"; fontsize=14; fontcolor="#5fa89e";
@@ -81,79 +81,26 @@ digraph flujos {
   }
   // <<< LEYENDA-ARBOL <<<
 
-  // ───────────────────────────────────── EL FLUJO ─────────────────────────────────────
+  // ───────────────────────────────────── REFERENCIA ─────────────────────────────────────
   subgraph cluster_f0 {
-    label="05 · Continuidad del HILO al compactar   (aviso-contexto avisa · checkpoint vuelca hilo-mental-actual.md · Compact instructions lo preserva · rehidratar-hilo lo relee)";
+    label="14 · Referencia: libs compartidas + skills de stack   (piezas sin flujo propio que sostienen a los demás charts)";
     fontname="Times"; fontsize=14; fontcolor="#5fa89e";
     color="#5fa89e"; penwidth=1.6; style="rounded"; bgcolor="#1b1712";
 
-    WORK  [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
-           label="corrida larga: muchos tool-calls, el contexto se LLENA\n(el HILO —de qué íbamos AHORA, la decisión a medio cocinar, el siguiente paso—\nsolo vive en el chat: FRÁGIL, se degrada en cada resumen)"];
+    ACG [label="⚙ analizar-comando-git (lib)\nlógica compartida de los git-guards: despoja comillas, normaliza `git -c/-C/--work-tree`,\ndetecta push-que-toca-base y merge-que-nombra-base. FUENTE ÚNICA → no divergen (ver 03/06/07)"];
+    DET [label="⚙ detectar-secretos (lib)\npatrones de alta precisión (AKIA/PEM/sk-ant/sk-/gh_/glpat/xox/AIza) + anti-placeholder.\nla usa secret-scan (ver 07)"];
+    JUEZ [label="⚙ juez-comun (lib)  ·  el JUEZ-LLM compartido (Haiku vía curl→api.anthropic.com, token OAuth)\ntoken + reintento-401 + _juez_cita_casa + votación. FUENTE ÚNICA de comprensión de lenguaje:\nla usan confirmar-merge-develop (ver 06) Y dod-verificar (ver 09) — reemplazó el pilón de regex frágiles"];
+    DELE [label="⚙ delegacion-comun (lib)\nclasificación de costo compartida: la usan delegacion-gate Y delegacion-registrar (ver 11)"];
+    ZOMBIE [label="⚙ ramas-zombie (lib)\nuna sola definición de «rama ya integrada» (squash-merge / remota borrada / equivalencia de parche);\nla usan barrer-ramas y limpiar-ramas.sh (ver 12)"];
+    DRIFT [label="⚙ drift-cerebro-comun (lib)\nlógica compartida del anti-drift del cerebro; la usa aviso-drift-cerebro (ver 01/02)"];
 
-    // ── El watermark ──
-    AVISO [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="🔔📈 aviso-contexto  (PostToolUse · GLOBAL · tras CADA tool)\nmétrica = TOKENS REALES del último `usage` (no líneas ni bytes)\ntecho DERIVADO = ventana ([1m]→1M, si no 200K) × pct auto-compact (≈92%)\n¿ctx cruza una banda? (ℹ️76% · ⚠️88% · 🚨95%)"];
-    BAND1 [color="#e08e45",
-           label="🟠 banda 1 (ℹ️): heads-up con holgura"];
-    BAND23 [color="#e08e45",
-            label="🟠 banda 2 (⚠️): «checkpoint AHORA + propón /compact»\nbanda ≥3 (🚨 INMINENTE): ORDENA RE-correr checkpoint + compacta YA\n(el hook no corre el skill, pero ORDENA su re-ejecución)"];
+    SKILLS [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
+            label="💡 skills específicos de STACK (viven en el repo CONSUMIDOR, no en claude-brain)\np.ej. la plantilla .NET: crear-pagina-blazor · migracion-ef · build-produccion · agregar-seed…\nusan el ritual genérico cerrar-slice (ver 10). claude-brain solo trae los skills GENÉRICOS (ver leyenda 💡)"];
 
-    // ── checkpoint (skill, proactivo) ──
-    CHK   [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="💾 checkpoint  (skill — TÚ lo invocas, PROACTIVO)\n¿nivel? viene compact / >2h / crítico → COMPLETO ; pausa casual → ligero\n(ante la duda: COMPLETO)"];
-    DUMP  [color="#7fb069", penwidth=2,
-           label="⚠ ESCRIBE (memoria) · 🟢 vuelca el HILO → .claude/memory/hilo-mental-actual.md\nLIGERO: en qué estamos · decisión abierta · siguiente paso\nCOMPLETO: + PLAN con el CÓMO · RESUELTO HOY (anti-fantasma) · COSECHA DURABLE a memorias/skills\n(en las PROPIAS palabras del modelo → re-instanciar releyendo, no confabular)"];
-
-    // ── El compact ──
-    COMPACT [shape=diamond, fillcolor="#2b2622", color="#d97757",
-             label="COMPACTACIÓN\n/compact manual (proactivo) · o AUTO-COMPACT sorpresa (contexto lleno, sin aviso)"];
-    NOPRE [color="#c9a227",
-           label="🟡 SIN hook de PreCompact (por decisión, no olvido):\nPreCompact no tiene canal para inyectar contexto ni pedir acción → inútil ahí\n(la versión vieja rompía la validación del CLI). El hilo lo salva checkpoint+rehidratar"];
-    CLAUDEMD [color="#e08e45",
-              label="📜 `# Compact instructions` del CLAUDE.md (el CLI RE-LEE el heading al compactar)\n🟠 guía el RESUMEN: preserva el HILO íntegro, la tarea activa y las DECISIONES ABIERTAS\n(NO las cierres al resumir) — complementa, no sustituye, al checkpoint"];
-
-    // ── SessionStart source=compact ──
-    SS    [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="SessionStart  (source = compact / resume / startup)\ndispara los hooks de apertura (ver 02)"];
-    SINI  [color="#e08e45",
-           label="🔔🧭 sesion-inicio  (SessionStart · POR-REPO)\n🟠 reinyecta rama + NORMA de git + orden de leer MEMORY/estado-proyecto/AGENTS"];
-    REHID [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="🔔🧵 rehidratar-hilo  (SessionStart · GLOBAL)\n¿existe hilo-mental-actual.md? → reinyecta vía additionalContext (canal FIABLE)\nGATE DE FRESCURA: ¿la rama del hilo = la actual?"];
-    FRESCO [color="#7fb069",
-            label="🟢 «🧵 HILO MENTAL ACTUAL»\n(rama coincide → la vigencia la manda la RAMA, no el reloj; A8)"];
-    STALE [color="#c9a227",
-           label="🟡 «⚠️ HILO POSIBLEMENTE OBSOLETO»\n(rama distinta, o sin git y mtime > 12h → proxy de respaldo)"];
-
-    // ── Retomar ──
-    RESUME [color="#7fb069", penwidth=2,
-            label="🟢 el harness retoma «the last task» en SILENCIO (prohíbe recap)\n= la rehidratación FUNCIONANDO: retomar la tarea correcta > anunciarla.\nEl additionalContext es PASIVO (el modelo lo TIENE, no lo anuncia solo)"];
-    SKILL [color="#e08e45",
-           label="💧 skill rehidratar-hilo (si TÚ lo invocas): anuncia «↩️ retomé: X» y CONTINÚA\n(reusa el .sh del hook → sin drift; su anuncio vence al «resume en silencio»)"];
-    BACK  [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
-           label="↩️ sigue el MISMO hilo sin perderlo, entre sesiones/compus/compactaciones"];
-
-    // Aristas
-    WORK -> AVISO [label="PostToolUse\nvigila cada tool"];
-    AVISO -> BAND1 [label="banda 1"];
-    AVISO -> BAND23 [label="banda 2 / ≥3"];
-    AVISO -> WORK [label="sin cruzar banda\n(debounce)", style=dashed];
-    BAND1 -> CHK; BAND23 -> CHK;
-    WORK -> CHK [label="o TÚ, proactivo\n(en una pausa / >2h)", style=dashed];
-    CHK -> DUMP;
-    DUMP -> COMPACT;
-    COMPACT -> NOPRE [style=dashed, label="PreCompact\nNO ayuda"];
-    COMPACT -> CLAUDEMD [label="al compactar el CLI\nre-lee el heading"];
-    CLAUDEMD -> SS;
-    NOPRE -> SS [style=dashed];
-    SS -> SINI;
-    SS -> REHID [label="misma SessionStart"];
-    SINI -> RESUME [style=dashed];
-    REHID -> FRESCO [label="rama coincide"];
-    REHID -> STALE  [label="rama distinta /\nmtime>12h"];
-    FRESCO -> RESUME; STALE -> RESUME;
-    RESUME -> SKILL [label="o TÚ invocas\nel skill", style=dashed];
-    RESUME -> BACK;
-    SKILL -> BACK;
-    BACK -> WORK [label="continúa la corrida", style=dashed];
+    // Layout (sin flujo real; aristas invisibles para ordenar)
+    ACG -> DET -> JUEZ [style=invis];
+    DELE -> ZOMBIE -> DRIFT [style=invis];
+    JUEZ -> DELE [style=invis];
+    DRIFT -> SKILLS [style=invis];
   }
 }

@@ -53,6 +53,26 @@ docs/flowcharts/*
 !docs/flowcharts/04-delegacion-orquestar-fanout.svg
 !docs/flowcharts/05-continuidad-checkpoint-compact-rehidratar.dot
 !docs/flowcharts/05-continuidad-checkpoint-compact-rehidratar.svg
+# Serie de detalle/zoom + cimiento (re-canonizada 2026-08-07 desde los huérfanos «②-⑧/📜/🔩» que quedaron
+# sin .dot ni leyenda; ver el mapeo viejo→nuevo en CONVENCIONES.md §9).
+!docs/flowcharts/06-integrar-rama-a-developmain.dot
+!docs/flowcharts/06-integrar-rama-a-developmain.svg
+!docs/flowcharts/07-comando-git-en-bash-guards.dot
+!docs/flowcharts/07-comando-git-en-bash-guards.svg
+!docs/flowcharts/08-al-hacer-push-nudges.dot
+!docs/flowcharts/08-al-hacer-push-nudges.svg
+!docs/flowcharts/09-declarar-listo-al-fin-de-turno.dot
+!docs/flowcharts/09-declarar-listo-al-fin-de-turno.svg
+!docs/flowcharts/10-cerrar-slice-ritual-de-pasos.dot
+!docs/flowcharts/10-cerrar-slice-ritual-de-pasos.svg
+!docs/flowcharts/11-delegar-un-task-agente.dot
+!docs/flowcharts/11-delegar-un-task-agente.svg
+!docs/flowcharts/12-orquestar-fanout-sin-ninera.dot
+!docs/flowcharts/12-orquestar-fanout-sin-ninera.svg
+!docs/flowcharts/13-normas-el-cimiento.dot
+!docs/flowcharts/13-normas-el-cimiento.svg
+!docs/flowcharts/14-referencia-lib-skill-de-stack.dot
+!docs/flowcharts/14-referencia-lib-skill-de-stack.svg
 # El generador de la leyenda (lee el árbol del README → subgraph .dot) y las CONVENCIONES son FUENTE, se versionan.
 !docs/flowcharts/gen-leyenda-arbol.sh
 !docs/flowcharts/CONVENCIONES.md
