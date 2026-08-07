@@ -1,0 +1,131 @@
+// 10 — Cerrar un slice: el ritual de pasos (claude-brain)  ·  FUENTE editable (.dot)
+// Render:  dot -Tsvg 10-cerrar-slice-ritual-de-pasos.dot -o 10-cerrar-slice-ritual-de-pasos.svg
+// Reconstruido 2026-08-07 desde el skill real brain/skills/cerrar-slice/SKILL.md (5 pasos:
+// verifica → memoria+doc → confirma con el usuario → flujo de git con squash → cosecha).
+// Re-canoniza el huérfano 07-cerrar-un-slice-ritual-de-pasos.svg (viejo «⑥», sin .dot ni leyenda).
+digraph flujos {
+  graph [bgcolor="#1b1712", rankdir=TB, fontname="Helvetica", splines=true,
+         nodesep=0.35, ranksep=0.55, pad=0.25, compound=true];
+  node  [fontname="Helvetica", fontsize=12, fontcolor="#f2ede6", shape=box,
+         style="rounded,filled", fillcolor="#2b2b2b", color="#8a8a8a", penwidth=1.5];
+  edge  [color="#d97757", fontname="Helvetica", fontsize=10, fontcolor="#cfc8c0", penwidth=1.4];
+
+  // >>> LEYENDA-ARBOL (generado por gen-leyenda-arbol.sh desde el árbol del README — NO editar a mano) >>>
+  subgraph cluster_leyenda {
+    label="LEYENDA — árbol completo del cerebro (fuente: README.md)"; labeljust="l"; fontname="Times"; fontsize=14; fontcolor="#5fa89e";
+    color="#5fa89e"; penwidth=1.6; style="rounded"; bgcolor="#1b1712";
+    LEY_ARBOL [shape=none, margin=0, label=<
+      <table border="0" cellborder="1" cellspacing="0" cellpadding="4" color="#5fa89e" bgcolor="#1b1712">
+        <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>🔒 Hooks Forzosos</b></font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🚧 git-branch-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">push/merge a develop·main → denegado</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔗 merge-squash-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">MR a develop sin --squash → denegado</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🕵️ secret-scan</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">commit/push con un secreto → denegado</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">💸 delegacion-gate</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">delegar al llegar al 90% de tu ventana 5h → pide tu OK</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🛑 limite-gasto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">sin ventana 5h Y sin overage (ambos agotados) → freno duro</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">✋ confirmar-merge-develop</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">merge sin tu OK → denegado</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">✅ dod-verificar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cierre sin evidencia/OK → denegado; claim visual a ciegas (sin ver la pantalla) también</font></td></tr>
+        <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>🔔 Automático</b></font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📊 recordar-dashboard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">en el push recuerda dashboard + doc=realidad (README/docs) — cierre del slice</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🖥️ entorno-maquina-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">commit de algo machine-specific (aliases/rutas de $HOME/Rosetta/entorno-maquina.md) al .claude/memory/ del repo → avisa</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🕰️ rama-vieja</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">avisa si la ramita arrastra base vieja</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌳 proteger-arbol</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">git destructivo que orfanaría commits sin pushear → avisa (fan-out: usa worktree aislado)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🛡️ proteger-fuente-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">editar la copia INSTALADA de un hook/skill que tiene fuente en el clon → avisa (se perdería en el próximo sync) (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧹 barrer-ramas</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al abrir sesión barre en 2º plano las ramas locales ya integradas (zombie squash-safe; throttle 24h) (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">💾 exportar-sesion-master</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">auto-export de las sesiones *-master a ~/.claude-sessions (o Drive); detached, sobrevive el cleanup de 30 días (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📝 delegacion-registrar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">materializa el "pregunta una sola vez"</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📮 delegacion-reporte</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al terminar un agente: recuerda registrar avance + limpiar su worktree</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧵 rehidratar-hilo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta hilo-mental-actual.md al abrir/retomar/compactar (GLOBAL) — con gate de frescura</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📈 aviso-contexto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">watermark: avisa "compacta TÚ ahora" antes del auto-compact-sorpresa (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧬 aviso-drift-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">repo brained atrás de la fuente única → en tu mini-develop se AUTO-SINCRONIZA (apply+commit+push); en otra rama, avisa. Al moverse el cerebro, NUDGE a correr la DUPLA (suficiencia+coherencia; contra la firma si hay AGENTS.md, si no sugiere instanciarla) (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧭 sesion-inicio</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta rama + norma + memoria al abrir</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌾 recordar-cosechar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">espejo TaskList→estado-proyecto.md (auto) + nudge: no cosechaste/no actualizaste backlog</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">⬆️ recordar-unificar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">tu mini acumuló aprendizajes sin UNIFICAR a develop → sugiere /unificar-cerebro (gemelo ↑ de aviso-drift)</font></td></tr>
+        <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>📜 Normas</b></font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎯 Definition of Done</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">verde técnico ≠ Done/Listo/Ya Quedó; exige QA o un OK explícito</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🪞 Doc &lt;= realidad</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cambió algo → su doc se actualiza en la tanda</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌿 Flujo de git</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">ramita → MR → develop; main es release-only</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">💰 Costo de delegación</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">gratis / incluido / con costo, según tu cuota</font></td></tr>
+        <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>💡 Skills</b></font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📦 cerrar-slice</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">build+tests+memoria al día + MR con resumen curado</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">💾 checkpoint</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">vuelca el HILO a memoria para compactar sin perderlo (proactivo)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🗂️ to-do</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">carga la interfaz de tareas del harness desde el backlog durable (estado-proyecto.md)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">💧 rehidratar-hilo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">relee el HILO a mano (gemelo del hook; respaldo si un update del CLI rompe el auto-rehidratado)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🐝 orquestar-fanout</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">fan-out sin niñera: asigna del backlog, auto-reporta y limpia al cerrar</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🗺️ diagramar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">diagramas por destino: .dot→dot2yed→yEd (editar a mano) · Mermaid en .md versionado (verse en GitHub)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔬 auditar-proceso-algoritmo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">auditor experto read-only (proceso industrial + algoritmo) → hallazgos priorizados; se alimenta de los flowcharts de diagramar</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🩺 auditar-coherencia-cerebro fan-out read-only sobre el PROPIO cerebro (guards+flowcharts+doc): evasiones/huecos/drift, verificado por ejecución → loop hasta converger; modo-cerebro de auditar-proceso-algoritmo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0"> </font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧪 auditar-suficiencia-operativa</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">¿ALCANZA la doc para HACER el trabajo sin romper nada ni re-investigar? tareas reales ✅/⚠️/❌ con archivo:línea + RE-auditar tras arreglar</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧠 consolidar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">meta-orquestador: dupla → positivar → desinflar → convergencia → cierre con la FIRMA (CLAUDE+MEMORY)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🪶 desinflar-memorias</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">adelgaza un árbol de memorias sin perder lecciones: la narrativa se colapsa a su lección, los mitos descartados van a ⚰️ Lápidas AL FINAL</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🕵️ revisar-entregables-agentes</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">verifica lo que un agente ENTREGA contra la realidad; no relates su reporte como verdad</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">☀️ positivar-doc</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reescribe answer-first: 'ESTO SÍ' (método correcto) antes del 'ESTO NO'</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎓 investigar-dominio</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">ponte experto en un dominio (fan-out DOC-FIRST) → memorias durables + skills</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌾 cosechar-sesion</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cosecha local: extrae aprendizajes de tu sesión al inbox del equipo</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧩 unificar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reconciliación del cerebro del equipo: integra los aprendizajes mini→develop</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧳 claude-proyecto-autocontenido</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">el cerebro VIVE dentro del proyecto (.claude/ + symlink de slug) → viaja con él</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔍 zoom-screenshot</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">recorta y amplía regiones de una captura (ffmpeg) para leer texto fino ilegible</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌙 turno-nocturno</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">protocolo del turno de noche: eco del contrato, decide-dentro-de-la-cerca, grants durables a disco</font></td></tr>
+      </table>>];
+    LEY_VAL [shape=none, margin=0, label=<
+      <table border="0" cellborder="1" cellspacing="0" cellpadding="4" color="#5fa89e" bgcolor="#1b1712">
+        <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>valencia de color</b></font></td></tr>
+        <tr><td bgcolor="#2b2b2b" border="2" color="#7fb069"><font color="#f2ede6">🟢</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">OK / pasa</font></td></tr>
+        <tr><td bgcolor="#2b2b2b" border="2" color="#e08e45"><font color="#f2ede6">🟠</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">aviso / ASK (no bloquea)</font></td></tr>
+        <tr><td bgcolor="#2b2b2b" border="2" color="#c9a227"><font color="#f2ede6">🟡</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">latente / frágil (funciona hoy, sin garantía)</font></td></tr>
+        <tr><td bgcolor="#2b2b2b" border="2" color="#c0392b"><font color="#f2ede6">🔴</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">DENY / bloqueo (guard OK)</font></td></tr>
+        <tr><td bgcolor="#2b2b2b" border="2" color="#9e9e9e"><font color="#f2ede6">🚧</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">hueco / deuda (por construir)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">⚠</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">el paso ESCRIBE git</font></td></tr>
+      </table>>];
+    LEY_ARBOL -> LEY_VAL [style=invis];
+  }
+  // <<< LEYENDA-ARBOL <<<
+
+  // ───────────────────────────────────── EL FLUJO ─────────────────────────────────────
+  subgraph cluster_f0 {
+    label="10 · Cerrar un slice: ritual de 5 pasos   (cerrar-slice · skill — encapsula la definición de LISTO + el flujo de git)";
+    fontname="Times"; fontsize=14; fontcolor="#5fa89e";
+    color="#5fa89e"; penwidth=1.6; style="rounded"; bgcolor="#1b1712";
+
+    START [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
+           label="💡 crees que terminaste un slice\n📜 → 🎯 Definición de LISTO · el candado del Stop es dod-verificar (ver 09)"];
+
+    P1 [color="#7fb069",
+        label="1 · 🔍 Verifica (evidencia real, no tu memoria del chat)\nbuild + tests + lint según tu stack y CITA la salida real (0 errores);\nrevisa AGENTS.md si tocaste capas + QA de NO-REGRESIÓN visual"];
+    DESTR [shape=diamond, fillcolor="#2b2622", color="#d97757",
+           label="¿el diff ELIMINA funcionalidad / entidades / tablas / mucho código?"];
+    DESTR_W [color="#e08e45",
+             label="🟠 PAUSA — es DESTRUCTIVO y NO transitivo (aunque un doc lo respalde):\npreséntalo como PÉRDIDA explícita y pide OK ANTES de ejecutar"];
+    APIQ [shape=diamond, fillcolor="#2b2622", color="#d97757",
+          label="¿cambio de API / DTO / repos / SQL?"];
+    SMOKE [color="#7fb069",
+           label="🟢 smoke E2E (en Docker) al endpoint/flujo tocado\n(build+unit NO ven bugs de runtime)"];
+
+    P2 [color="#7fb069",
+        label="2 · 📝 Memoria + doc (en la MISMA tanda = doc=realidad)\nestado-proyecto → HECHO · bitácora APPENDA «>>» · dashboard GLOBAL «>>»\n(relee el encabezado que tocas, no solo la línea). Es el volcado del skill checkpoint.\n📜 → 🪞 doc=realidad"];
+    P3 [shape=diamond, fillcolor="#2b2622", color="#d97757",
+        label="3 · ✋ Confirma CON EL USUARIO\n¿el slice queda cerrado? el merge a develop NO va sin su OK expreso"];
+    P4 [color="#7fb069", penwidth=2,
+        label="⚠ ESCRIBE git · 4 · 🔗 Flujo de git (tras el OK)\nramita → MR/PR → develop CON --squash (resumen curado en prosa, no el pegote de commits).\nLo hacen cumplir git-branch-guard + merge-squash-guard + confirmar-merge-develop (ver 06)"];
+    P5 [shape=diamond, fillcolor="#2b2622", color="#d97757",
+        label="5 · 🌱 Cosecha\n¿la lección / herramienta es GENÉRICA (no atada a este proyecto)?"];
+    P5_G [color="#7fb069",
+          label="🟢 promuévela a la skill / cerebro global (curación manual)\n+ copia al repo las tools de scratch reusables (mueren al reiniciar)"];
+    P5_L [color="#7fb069",
+          label="🟢 queda en la memoria del repo (no ensucies el global)"];
+
+    // Aristas
+    START -> P1;
+    P1 -> DESTR;
+    DESTR -> DESTR_W [label="sí"];
+    DESTR_W -> APIQ [label="tras OK"];
+    DESTR -> APIQ [label="no", style=dashed];
+    APIQ -> SMOKE [label="sí"];
+    APIQ -> P2 [label="no", style=dashed];
+    SMOKE -> P2;
+    P2 -> P3;
+    P3 -> P4 [label="sí (con OK)"];
+    P4 -> P5;
+    P5 -> P5_G [label="sí (genérica)"];
+    P5 -> P5_L [label="no (del proyecto)", style=dashed];
+  }
+}

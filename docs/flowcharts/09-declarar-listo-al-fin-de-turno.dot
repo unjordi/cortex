@@ -1,0 +1,138 @@
+// 09 — Declarar «LISTO» al fin de turno: el candado dod-verificar (claude-brain)  ·  FUENTE editable (.dot)
+// Render:  dot -Tsvg 09-declarar-listo-al-fin-de-turno.dot -o 09-declarar-listo-al-fin-de-turno.svg
+// Reconstruido 2026-08-07 desde el CÓDIGO real de brain/hooks/dod-verificar.sh (Stop) + lib juez-comun.sh.
+// ⚠ OJO doc=realidad: el huérfano viejo (05-al-hacer-push… no; 06-declarar-listo-al-fin-de-turno.svg «⑤»)
+// describía la era de REGEX (STATUS_RE/WEAK_STATUS_RE/DOWNGRADE). Hoy dod-verificar usa un JUEZ-LLM (Haiku)
+// de 3 EJES (CIERRE/MARCA/VISUAL) — esta versión refleja el mecanismo ACTUAL. Re-canoniza ese huérfano (sin .dot ni leyenda).
+digraph flujos {
+  graph [bgcolor="#1b1712", rankdir=TB, fontname="Helvetica", splines=true,
+         nodesep=0.35, ranksep=0.55, pad=0.25, compound=true];
+  node  [fontname="Helvetica", fontsize=12, fontcolor="#f2ede6", shape=box,
+         style="rounded,filled", fillcolor="#2b2b2b", color="#8a8a8a", penwidth=1.5];
+  edge  [color="#d97757", fontname="Helvetica", fontsize=10, fontcolor="#cfc8c0", penwidth=1.4];
+
+  // >>> LEYENDA-ARBOL (generado por gen-leyenda-arbol.sh desde el árbol del README — NO editar a mano) >>>
+  subgraph cluster_leyenda {
+    label="LEYENDA — árbol completo del cerebro (fuente: README.md)"; labeljust="l"; fontname="Times"; fontsize=14; fontcolor="#5fa89e";
+    color="#5fa89e"; penwidth=1.6; style="rounded"; bgcolor="#1b1712";
+    LEY_ARBOL [shape=none, margin=0, label=<
+      <table border="0" cellborder="1" cellspacing="0" cellpadding="4" color="#5fa89e" bgcolor="#1b1712">
+        <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>🔒 Hooks Forzosos</b></font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🚧 git-branch-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">push/merge a develop·main → denegado</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔗 merge-squash-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">MR a develop sin --squash → denegado</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🕵️ secret-scan</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">commit/push con un secreto → denegado</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">💸 delegacion-gate</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">delegar al llegar al 90% de tu ventana 5h → pide tu OK</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🛑 limite-gasto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">sin ventana 5h Y sin overage (ambos agotados) → freno duro</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">✋ confirmar-merge-develop</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">merge sin tu OK → denegado</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">✅ dod-verificar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cierre sin evidencia/OK → denegado; claim visual a ciegas (sin ver la pantalla) también</font></td></tr>
+        <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>🔔 Automático</b></font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📊 recordar-dashboard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">en el push recuerda dashboard + doc=realidad (README/docs) — cierre del slice</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🖥️ entorno-maquina-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">commit de algo machine-specific (aliases/rutas de $HOME/Rosetta/entorno-maquina.md) al .claude/memory/ del repo → avisa</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🕰️ rama-vieja</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">avisa si la ramita arrastra base vieja</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌳 proteger-arbol</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">git destructivo que orfanaría commits sin pushear → avisa (fan-out: usa worktree aislado)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🛡️ proteger-fuente-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">editar la copia INSTALADA de un hook/skill que tiene fuente en el clon → avisa (se perdería en el próximo sync) (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧹 barrer-ramas</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al abrir sesión barre en 2º plano las ramas locales ya integradas (zombie squash-safe; throttle 24h) (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">💾 exportar-sesion-master</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">auto-export de las sesiones *-master a ~/.claude-sessions (o Drive); detached, sobrevive el cleanup de 30 días (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📝 delegacion-registrar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">materializa el "pregunta una sola vez"</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📮 delegacion-reporte</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al terminar un agente: recuerda registrar avance + limpiar su worktree</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧵 rehidratar-hilo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta hilo-mental-actual.md al abrir/retomar/compactar (GLOBAL) — con gate de frescura</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📈 aviso-contexto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">watermark: avisa "compacta TÚ ahora" antes del auto-compact-sorpresa (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧬 aviso-drift-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">repo brained atrás de la fuente única → en tu mini-develop se AUTO-SINCRONIZA (apply+commit+push); en otra rama, avisa. Al moverse el cerebro, NUDGE a correr la DUPLA (suficiencia+coherencia; contra la firma si hay AGENTS.md, si no sugiere instanciarla) (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧭 sesion-inicio</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta rama + norma + memoria al abrir</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌾 recordar-cosechar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">espejo TaskList→estado-proyecto.md (auto) + nudge: no cosechaste/no actualizaste backlog</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">⬆️ recordar-unificar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">tu mini acumuló aprendizajes sin UNIFICAR a develop → sugiere /unificar-cerebro (gemelo ↑ de aviso-drift)</font></td></tr>
+        <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>📜 Normas</b></font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎯 Definition of Done</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">verde técnico ≠ Done/Listo/Ya Quedó; exige QA o un OK explícito</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🪞 Doc &lt;= realidad</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cambió algo → su doc se actualiza en la tanda</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌿 Flujo de git</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">ramita → MR → develop; main es release-only</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">💰 Costo de delegación</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">gratis / incluido / con costo, según tu cuota</font></td></tr>
+        <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>💡 Skills</b></font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📦 cerrar-slice</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">build+tests+memoria al día + MR con resumen curado</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">💾 checkpoint</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">vuelca el HILO a memoria para compactar sin perderlo (proactivo)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🗂️ to-do</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">carga la interfaz de tareas del harness desde el backlog durable (estado-proyecto.md)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">💧 rehidratar-hilo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">relee el HILO a mano (gemelo del hook; respaldo si un update del CLI rompe el auto-rehidratado)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🐝 orquestar-fanout</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">fan-out sin niñera: asigna del backlog, auto-reporta y limpia al cerrar</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🗺️ diagramar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">diagramas por destino: .dot→dot2yed→yEd (editar a mano) · Mermaid en .md versionado (verse en GitHub)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔬 auditar-proceso-algoritmo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">auditor experto read-only (proceso industrial + algoritmo) → hallazgos priorizados; se alimenta de los flowcharts de diagramar</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🩺 auditar-coherencia-cerebro fan-out read-only sobre el PROPIO cerebro (guards+flowcharts+doc): evasiones/huecos/drift, verificado por ejecución → loop hasta converger; modo-cerebro de auditar-proceso-algoritmo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0"> </font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧪 auditar-suficiencia-operativa</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">¿ALCANZA la doc para HACER el trabajo sin romper nada ni re-investigar? tareas reales ✅/⚠️/❌ con archivo:línea + RE-auditar tras arreglar</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧠 consolidar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">meta-orquestador: dupla → positivar → desinflar → convergencia → cierre con la FIRMA (CLAUDE+MEMORY)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🪶 desinflar-memorias</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">adelgaza un árbol de memorias sin perder lecciones: la narrativa se colapsa a su lección, los mitos descartados van a ⚰️ Lápidas AL FINAL</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🕵️ revisar-entregables-agentes</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">verifica lo que un agente ENTREGA contra la realidad; no relates su reporte como verdad</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">☀️ positivar-doc</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reescribe answer-first: 'ESTO SÍ' (método correcto) antes del 'ESTO NO'</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎓 investigar-dominio</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">ponte experto en un dominio (fan-out DOC-FIRST) → memorias durables + skills</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌾 cosechar-sesion</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cosecha local: extrae aprendizajes de tu sesión al inbox del equipo</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧩 unificar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reconciliación del cerebro del equipo: integra los aprendizajes mini→develop</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧳 claude-proyecto-autocontenido</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">el cerebro VIVE dentro del proyecto (.claude/ + symlink de slug) → viaja con él</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔍 zoom-screenshot</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">recorta y amplía regiones de una captura (ffmpeg) para leer texto fino ilegible</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌙 turno-nocturno</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">protocolo del turno de noche: eco del contrato, decide-dentro-de-la-cerca, grants durables a disco</font></td></tr>
+      </table>>];
+    LEY_VAL [shape=none, margin=0, label=<
+      <table border="0" cellborder="1" cellspacing="0" cellpadding="4" color="#5fa89e" bgcolor="#1b1712">
+        <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>valencia de color</b></font></td></tr>
+        <tr><td bgcolor="#2b2b2b" border="2" color="#7fb069"><font color="#f2ede6">🟢</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">OK / pasa</font></td></tr>
+        <tr><td bgcolor="#2b2b2b" border="2" color="#e08e45"><font color="#f2ede6">🟠</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">aviso / ASK (no bloquea)</font></td></tr>
+        <tr><td bgcolor="#2b2b2b" border="2" color="#c9a227"><font color="#f2ede6">🟡</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">latente / frágil (funciona hoy, sin garantía)</font></td></tr>
+        <tr><td bgcolor="#2b2b2b" border="2" color="#c0392b"><font color="#f2ede6">🔴</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">DENY / bloqueo (guard OK)</font></td></tr>
+        <tr><td bgcolor="#2b2b2b" border="2" color="#9e9e9e"><font color="#f2ede6">🚧</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">hueco / deuda (por construir)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">⚠</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">el paso ESCRIBE git</font></td></tr>
+      </table>>];
+    LEY_ARBOL -> LEY_VAL [style=invis];
+  }
+  // <<< LEYENDA-ARBOL <<<
+
+  // ───────────────────────────────────── EL FLUJO ─────────────────────────────────────
+  subgraph cluster_f0 {
+    label="09 · Declarar «LISTO» al fin de turno   (dod-verificar · Stop · JUEZ-LLM de 3 ejes CIERRE/MARCA/VISUAL — fail-OPEN, es un nag, no seguridad)";
+    fontname="Times"; fontsize=14; fontcolor="#5fa89e";
+    color="#5fa89e"; penwidth=1.6; style="rounded"; bgcolor="#1b1712";
+
+    STOP [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
+          label="fin de turno (Stop)\nrecorta al TURNO ACTUAL (desde el último mensaje genuino del usuario);\ntoma el último texto del ASISTENTE + el texto del USUARIO del turno\n(stop_hook_active / sin transcript / sin jq → exit 0)"];
+
+    JUEZ [shape=diamond, fillcolor="#2b2622", color="#d97757",
+          label="🔒✅ dod-verificar → _juez_dod  (Haiku vía juez-comun.sh)\nclasifica 3 EJES del turno → «CIERRE=.. MARCA=.. VISUAL=..» | UNAVAILABLE\n• CIERRE = el ASISTENTE afirma un entregable LISTO/terminado/funciona/quedó/a la par\n• MARCA  = el USUARIO (en SUS palabras) dio (1) confirmación funcional o (2) OK expreso de cierre\n• VISUAL = el ASISTENTE asevera APARIENCIA de una UI (se ve/como el mockup/en Chrome/la pantalla)"];
+    UNAVAIL [color="#c9a227",
+             label="🟡 UNAVAILABLE (sin token OAuth/red/timeout/respuesta ininteligible)\n→ exit 0 FAIL-OPEN: dod es un NAG, no un candado de seguridad (a diferencia de confirmar-merge, ver 06)"];
+
+    // CIERRE: co-ubicación / downgrade
+    COLOC [shape=diamond, fillcolor="#2b2622", color="#d97757",
+           label="regla de CO-UBICACIÓN del eje CIERRE:\n• claim + pregunta/«dime si reviso algo» colgada → SIGUE siendo CIERRE (la pregunta NO lo salva)\n• DOWNGRADE explícito («quedó, PERO lo dejo en preview / a tu revisión») → CIERRE=no (no dispara)"];
+
+    // VISUAL block
+    VIS [shape=diamond, fillcolor="#2b2622", color="#d97757",
+         label="¿VISUAL=si Y MARCA≠si Y NO corrió tool de navegador este turno?\n(browser detectado por ESTRUCTURA del transcript: tool_use MCP chrome/playwright/puppeteer\no la tool `computer` — NO por la palabra «screenshot» en prosa)"];
+    VIS_D [color="#c0392b", penwidth=2,
+           label="🔴 BLOCK (B2) — QA visual A CIEGAS.\nAfirmaste cómo SE VE sin mirar la pantalla. Estatus honesto:\n«verificado técnicamente, SIN QA visual»; el QA visual lo hace el usuario o una captura real.\n(bloquea INDEPENDIENTE de si el turno tocó código)"];
+
+    CIERREQ [shape=diamond, fillcolor="#2b2622", color="#d97757",
+             label="¿el turno AFIRMA un CIERRE? (CIERRE=si)"];
+    NODISPARA [color="#7fb069",
+               label="🟢 no dispara (es ESTATUS/espera, no un cierre)\n«en preview / a tu revisión / verificado técnicamente / pendiente de tu QA» pasan"];
+
+    CODEQ [shape=diamond, fillcolor="#2b2622", color="#d97757",
+           label="¿el TURNO tocó CÓDIGO? (archivo que NO sea .md/.txt ni .claude/memory/)\nESTRUCTURAL + G2a (edición por Bash: sed -i · patch · redirección `>`/`tee`)\n+ ALTO-2 (un Task que DELEGA la edición a un sub-agente cuenta como posible código)"];
+    MARCAQ [shape=diamond, fillcolor="#2b2622", color="#d97757",
+            label="¿MARCA=si? — el juez exige CITA VERBATIM del USUARIO,\nverificada de forma determinista (_juez_cita_casa) contra sus mensajes\n(nunca se infiere de lo que el asistente diga que el usuario dijo)"];
+    CLOSE [color="#7fb069", penwidth=2,
+           label="🟢 cierra — hay (1) confirmación del usuario o (2) su OK expreso.\nbuild/tests + memoria se RECUERDAN como peldaño, NO como candado (varían por stack).\n📜 → 🎯 Definición de LISTO"];
+    BLOCK [color="#c0392b", penwidth=2,
+           label="🔴 BLOCK — verde técnico ≠ LISTO. Sin (1) ni (2) no se declara LISTO;\n«sigue/avanza» NO cuenta. Da el estatus honesto y espera el OK/QA del usuario.\nB4: si es MIGRACIÓN, la prueba acordada es AUDITORÍA DE PARIDAD, no build+tests"];
+    NOCODE [color="#7fb069",
+            label="🟢 cierra — un «listo» de solo docs/config no exige verificación técnica"];
+
+    // Aristas
+    STOP -> JUEZ;
+    JUEZ -> UNAVAIL [label="UNAVAILABLE", style=dashed];
+    JUEZ -> COLOC [label="veredicto de 3 ejes"];
+    COLOC -> VIS;
+    VIS -> VIS_D [label="sí (a ciegas)"];
+    VIS -> CIERREQ [label="no", style=dashed];
+    CIERREQ -> NODISPARA [label="no", style=dashed];
+    CIERREQ -> CODEQ [label="sí (afirma cierre)"];
+    CODEQ -> NOCODE [label="no (solo docs)", style=dashed];
+    CODEQ -> MARCAQ [label="sí (tocó código)"];
+    MARCAQ -> CLOSE [label="sí (cita verificada)"];
+    MARCAQ -> BLOCK [label="no"];
+  }
+}
