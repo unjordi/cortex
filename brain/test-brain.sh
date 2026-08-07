@@ -2236,6 +2236,97 @@ printf '%s' "$(ad2)" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null
   && ok "aviso-drift v2: mini con .claude/ sucio → solo avisa (no mezcla cambios)" || bad "aviso-drift v2: auto-aplicó sobre un .claude/ sucio"
 rm -rf "$AD2FIX"
 
+# ═════════════════════════════════════════════════════════════════════════════════════════════════════
+echo ""
+echo "== (b5d) sincronizar-cerebro: SKILLS por-repo (tier {both} del SKILLS-MANIFEST; árbol completo; prune) =="
+# Antídoto al síntoma real: las skills brain-genéricas DRIFTABAN como los hooks y NADA las sincronizaba.
+# Fixture: un clon del brain con sincronizar-cerebro REAL + un skills-manifest con una skill `both` (viaja
+# por-repo) y una `global` (NO viaja por-repo). Corre el sync REAL contra un repo destino.
+SKFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-sk.XXXXXX")"
+SKREPO="$SKFIX/repo"; SKBR="$SKFIX/brain"
+mkdir -p "$SKREPO/.claude" "$SKBR/brain/skills/demo-skill/reference" "$SKBR/brain/skills/glob-skill" "$SKBR/brain/hooks"
+printf 'v1\n' > "$SKBR/brain/skills/demo-skill/SKILL.md"
+printf 'ref\n'  > "$SKBR/brain/skills/demo-skill/reference/notes.md"     # subdir → prueba ÁRBOL COMPLETO
+printf 'v1\n' > "$SKBR/brain/skills/glob-skill/SKILL.md"
+printf 'demo-skill both\nglob-skill global\n' > "$SKBR/brain/skills/MANIFEST"
+printf '# sin hooks\n' > "$SKBR/brain/hooks/MANIFEST"
+cp "$SCRIPT_DIR/sincronizar-cerebro.sh" "$SKBR/brain/sincronizar-cerebro.sh"
+SKSY="$SKBR/brain/sincronizar-cerebro.sh"
+# (1) DRY-RUN: reporta las 2 archivos de la skill `both`, NO la `global`, y no escribe nada
+skdry="$(bash "$SKSY" "$SKREPO" 2>&1)"
+{ printf '%s' "$skdry" | grep -q 'skills/demo-skill/SKILL.md' && printf '%s' "$skdry" | grep -q 'skills/demo-skill/reference/notes.md'; } \
+  && ok "sync skills: dry-run reporta el ÁRBOL COMPLETO de la skill both (SKILL.md + reference/)" || bad "sync skills: dry-run no listó el árbol completo; got: $skdry"
+printf '%s' "$skdry" | grep -q 'glob-skill' && bad "sync skills: la skill (global) NO debe viajar por-repo (apareció)" || ok "sync skills: la skill (global) NO viaja por-repo (correcto)"
+[ -d "$SKREPO/.claude/skills/demo-skill" ] && bad "sync skills: dry-run escribió (no debía)" || ok "sync skills: dry-run no escribió nada"
+printf '%s' "$skdry" | grep -q '==> resumen skills:' && ok "sync skills: emite la línea '==> resumen skills:' (la parsea aviso-drift)" || bad "sync skills: falta la línea de resumen de skills"
+# (2) APPLY: despliega el árbol completo + escribe el ledger; la global sigue sin desplegarse
+bash "$SKSY" "$SKREPO" --apply >/dev/null 2>&1
+{ [ -f "$SKREPO/.claude/skills/demo-skill/SKILL.md" ] && [ -f "$SKREPO/.claude/skills/demo-skill/reference/notes.md" ]; } \
+  && ok "sync skills: --apply desplegó el árbol completo (incl. reference/)" || bad "sync skills: --apply no desplegó el árbol completo"
+[ -d "$SKREPO/.claude/skills/glob-skill" ] && bad "sync skills: desplegó una skill (global) por-repo" || ok "sync skills: skill (global) sigue sin desplegarse por-repo"
+grep -qx 'demo-skill' "$SKREPO/.claude/skills/.brain-skills" 2>/dev/null && ok "sync skills: escribió el ledger .brain-skills con la skill desplegada" || bad "sync skills: no escribió el ledger"
+# (3) IDEMPOTENTE: re-apply → 0 nuevas · 0 a actualizar
+printf '%s' "$(bash "$SKSY" "$SKREPO" --apply 2>&1)" | grep -q '==> resumen skills: 0 nuevas · 0 a actualizar' \
+  && ok "sync skills: idempotente (re-apply → 0 nuevas · 0 a actualizar)" || bad "sync skills: no idempotente"
+# (4) UPDATE: editar la fuente → ACTUALIZA
+printf 'v2\n' > "$SKBR/brain/skills/demo-skill/SKILL.md"
+printf '%s' "$(bash "$SKSY" "$SKREPO" 2>&1)" | grep -q 'ACTUALIZA  skills/demo-skill/SKILL.md' \
+  && ok "sync skills: detecta ACTUALIZA cuando la fuente cambia" || bad "sync skills: no detectó el cambio de la fuente"
+bash "$SKSY" "$SKREPO" --apply >/dev/null 2>&1
+# (5) SEGURIDAD: una skill PROPIA del repo (no del brain) NUNCA se toca ni se poda
+mkdir -p "$SKREPO/.claude/skills/repo-own"; printf 'mine\n' > "$SKREPO/.claude/skills/repo-own/SKILL.md"
+# (6) DEMOTE a global → la skill del brain queda HUÉRFANA; --prune-orphans la borra; la propia queda intacta
+printf 'demo-skill global\nglob-skill global\n' > "$SKBR/brain/skills/MANIFEST"
+printf '%s' "$(bash "$SKSY" "$SKREPO" 2>&1)" | grep -q 'HUÉRFANA   skills/demo-skill' \
+  && ok "sync skills: skill del brain demotida a global → reportada HUÉRFANA (por el ledger)" || bad "sync skills: no reportó la huérfana"
+bash "$SKSY" "$SKREPO" --apply --prune-orphans >/dev/null 2>&1
+[ -d "$SKREPO/.claude/skills/demo-skill" ] && bad "sync skills: --prune-orphans no borró la skill huérfana del brain" || ok "sync skills: --prune-orphans borró la skill huérfana del brain"
+[ -f "$SKREPO/.claude/skills/repo-own/SKILL.md" ] && ok "sync skills: la skill PROPIA del repo quedó intacta (ledger nunca la tocó)" || bad "sync skills: ¡borró una skill propia del repo!"
+grep -qx 'demo-skill' "$SKREPO/.claude/skills/.brain-skills" 2>/dev/null && bad "sync skills: el ledger no se limpió tras el prune" || ok "sync skills: el ledger se limpió tras el prune"
+rm -rf "$SKFIX"
+
+# ── (b5d2) aviso-drift: el DRIFT DE SKILLS por-repo alimenta el total (misma bifurcación .claude/repo-compartido)
+SKEFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-ske.XXXXXX")"
+SKEREPO="$SKEFIX/repo"; SKEHOME="$SKEFIX/home"; SKEBR="$SKEFIX/clon"
+mkdir -p "$SKEREPO/.claude/hooks" "$SKEHOME" "$SKEBR/brain"
+: > "$SKEREPO/.claude/hooks/.brain-version"; : > "$SKEREPO/.claude/repo-compartido"   # COMPARTIDO
+ske() { printf '%s' '{"source":"startup"}' | HOME="$SKEHOME" CLAUDE_BRAIN_DIR="$SKEBR" CLAUDE_PROJECT_DIR="$SKEREPO" bash "$HOOKS/aviso-drift-cerebro.sh"; }
+# stub del sync: hooks 0 drift, pero la línea de skills reporta 2 a actualizar → drift TOTAL>0
+printf '#!/usr/bin/env bash\necho "  ACTUALIZA  skills/cerrar-slice/SKILL.md  [4 líneas ±]"\necho "==> resumen: 0 nuevos · 0 a actualizar · 9 ya al día · 0 retirado(s) del cerebro · 9 hooks cableados (kind=hook) · 0 cableado faltante"\necho "==> resumen skills: 0 nuevas · 2 a actualizar · 5 ya al día · 0 huérfana(s)"\n' > "$SKEBR/brain/sincronizar-cerebro.sh"
+printf '%s' "$(ske)" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'DRIFT DEL CEREBRO' \
+  && ok "aviso-drift: el drift de SKILLS por-repo cuenta como drift (antes: ciego a skills)" || bad "aviso-drift: NO contó el drift de skills por-repo"
+printf '%s' "$(ske)" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'skills/cerrar-slice' \
+  && ok "aviso-drift: el detalle incluye las skills drifteadas" || bad "aviso-drift: el detalle no trae las skills"
+# control: 0 drift de hooks Y 0 de skills → silencio (no falso positivo)
+rm -rf "$SKEHOME/.claude/memory/.drift-cerebro"
+printf '#!/usr/bin/env bash\necho "==> resumen: 0 nuevos · 0 a actualizar · 9 ya al día · 0 retirado(s) del cerebro · 9 hooks cableados (kind=hook) · 0 cableado faltante"\necho "==> resumen skills: 0 nuevas · 0 a actualizar · 5 ya al día · 0 huérfana(s)"\n' > "$SKEBR/brain/sincronizar-cerebro.sh"
+is_silent "$(ske)" && ok "aviso-drift: 0 drift de hooks y skills → silencio (no FP)" || bad "aviso-drift: habló con 0 drift de skills (FP)"
+rm -rf "$SKEFIX"
+
+# ── (b5d3) drift_skills_global: drift de la copia GLOBAL de skills (~/.claude/skills) vs la fuente — el
+# equivalente AUTOMÁTICO del doctor verificar-cerebro; antídoto EXACTO al síntoma (~/.claude/skills/to-do
+# editado a mano, drifteado, sin detección). Se prueba la función de la lib directamente + vía aviso-drift.
+SKGFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-skg.XXXXXX")"
+SKGHOME="$SKGFIX/home"; SKGBR="$SKGFIX/brain"
+mkdir -p "$SKGHOME/.claude/skills/to-do" "$SKGBR/brain/skills/to-do"
+printf 'to-do global\n' > "$SKGBR/brain/skills/MANIFEST"
+skg() { ( HOME="$SKGHOME" CLAUDE_BRAIN_DIR="$SKGBR"; . "$HOOKS/drift-cerebro-comun.sh"; drift_skills_global ); }
+# (1) instalada EDITADA EN VIVO (más nueva y distinta) → warn "EDITADOS EN VIVO"
+printf 'FUENTE\n' > "$SKGBR/brain/skills/to-do/SKILL.md"; touch -t 202401010000 "$SKGBR/brain/skills/to-do/SKILL.md"
+printf 'EDIT MANO\n' > "$SKGHOME/.claude/skills/to-do/SKILL.md"; touch -t 202601010000 "$SKGHOME/.claude/skills/to-do/SKILL.md"
+printf '%s' "$(skg)" | grep -q 'EDITADOS EN VIVO' \
+  && ok "drift-skills-global: copia instalada editada en vivo → warn 'EDITADOS EN VIVO' (portar a la fuente)" || bad "drift-skills-global: no detectó el edit-en-vivo"
+# (2) LIMPIA (idénticas) → silencio
+cp "$SKGBR/brain/skills/to-do/SKILL.md" "$SKGHOME/.claude/skills/to-do/SKILL.md"; touch -r "$SKGBR/brain/skills/to-do/SKILL.md" "$SKGHOME/.claude/skills/to-do/SKILL.md"
+is_silent "$(skg)" && ok "drift-skills-global: copia global == fuente → silencio (sin FP)" || bad "drift-skills-global: warned con copia limpia"
+# (3) PRECISIÓN: una skill puramente LOCAL en ~/.claude/skills (sin contraparte fuente) NUNCA se marca
+mkdir -p "$SKGHOME/.claude/skills/local-only"; printf 'x\n' > "$SKGHOME/.claude/skills/local-only/SKILL.md"
+is_silent "$(skg)" && ok "drift-skills-global: skill local-only (sin fuente) ignorada (cero FP)" || bad "drift-skills-global: marcó una skill local-only"
+# (4) fail-open: sin manifiesto de skills en la fuente → silencio (no sé qué es del brain)
+rm -f "$SKGBR/brain/skills/MANIFEST"
+is_silent "$(skg)" && ok "drift-skills-global: sin SKILLS-MANIFEST → fail-open (silencio)" || bad "drift-skills-global: habló sin manifiesto"
+rm -rf "$SKGFIX"
+
 # ── (b5c-V1) FIX V1 (auditoría 2026-08-06): el auto-commit del cerebro por-repo BYPASSEABA secret-scan
 # (ocurre DENTRO del subproceso del hook, NO vía una tool Bash → el guard PreToolUse/Bash no lo veía). Ahora
 # drift-cerebro-comun.sh escanea lo AGREGADO al .claude/ (git diff --cached) con detectar-secretos ANTES de
@@ -2995,6 +3086,7 @@ cosechar-sesion|recordar-cosechar
 recordar-unificar-cerebro|unificar-cerebro
 cosechar-sesion|unificar-cerebro
 proteger-fuente-cerebro|verificar-cerebro
+aviso-drift-cerebro|verificar-cerebro
 auditar-coherencia-cerebro|auditar-suficiencia-operativa
 auditar-coherencia-cerebro|consolidar-cerebro
 auditar-suficiencia-operativa|consolidar-cerebro

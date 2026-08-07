@@ -4,7 +4,9 @@
 # por-repo deja de curarse a mano y se DERIVA del MANIFEST (tier {repo, both}).
 #
 # Qué copia a <repo>/.claude/hooks/: los archivos de tier {repo, both} (hooks + libs que sourcean),
-# NO los global-only (esos los pone el bootstrap en ~/.claude). Además:
+# NO los global-only (esos los pone el bootstrap en ~/.claude). Y a <repo>/.claude/skills/: las SKILLS de
+# tier {both, repo} del brain/skills/MANIFEST (árbol COMPLETO de cada skill, no solo SKILL.md; diff-aware;
+# prune SEGURO por ledger .claude/skills/.brain-skills que nunca toca skills PROPIAS del repo). Además:
 #   - estampa la VERSIÓN del cerebro en <repo>/.claude/hooks/.brain-version (drift por versión detectable),
 #   - CABLEA en <repo>/.claude/settings.json (idempotente, "shell":"bash", ruta ${CLAUDE_PROJECT_DIR}/...)
 #     los hooks de kind=hook de tier {repo, both} (evento por el mapa de abajo),
@@ -284,4 +286,85 @@ fi
 
 echo ""
 echo "==> resumen: $n_new nuevos · $n_upd a actualizar · $n_ok ya al día · $n_retired retirado(s) del cerebro · $n_wire hooks cableados (kind=hook) · $n_missing_wire cableado faltante"
+
+# ══════════════════════════════════════════════════════════════════════════════════════════════════════
+# SKILLS por-repo (tier {both,repo} del SKILLS-MANIFEST). Misma disciplina que los hooks: fuente
+# brain/skills → <repo>/.claude/skills, ÁRBOL COMPLETO de cada skill (no solo SKILL.md — algunas traen
+# reference/ o bootstrap-claude.sh), diff-aware, atómico, idempotente, respeta --apply/--only/--prune-orphans.
+# Emite su PROPIO resumen ("==> resumen skills:") → drift-cerebro-comun lo suma al total (misma bifurcación
+# .claude/repo-compartido: en un repo COMPARTIDO auto-sync en la mini; en PERSONAL ni se corre este sync).
+# Las skills GLOBALES ({global,both}) las despliega el bootstrap/install-brain; aquí solo va lo por-repo.
+# Prune SEGURO por LEDGER: solo toca skills que ESTE sync desplegó (registradas en .claude/skills/.brain-skills);
+# las skills PROPIAS del repo (no del brain) nunca están en el ledger → jamás se tocan.
+SRC_SKILLS="$SCRIPT_DIR/skills"
+SKILLS_MANIFEST="$SRC_SKILLS/MANIFEST"
+DST_SKILLS="$DEST/.claude/skills"
+LEDGER="$DST_SKILLS/.brain-skills"
+
+if [ "$PRUNEONLY" != 1 ] && [ -f "$SKILLS_MANIFEST" ]; then
+  # Skills de tier {both,repo} = las que viajan por-repo. (global-only NO.)
+  PER_REPO_SK="$(awk '$1!~/^#/ && NF>=2 && ($2=="both"||$2=="repo"){print $1}' "$SKILLS_MANIFEST")"
+  sk_new=0; sk_upd=0; sk_ok=0; deployed=""
+  echo ""
+  [ "$APPLY" = 1 ] && mkdir -p "$DST_SKILLS"
+  while IFS= read -r skname; do
+    [ -z "$skname" ] && continue
+    only_ok "$skname" || continue
+    ssk="$SRC_SKILLS/$skname"
+    [ -d "$ssk" ] || { echo "  warn: el SKILLS-MANIFEST lista '$skname' pero falta $ssk"; continue; }
+    deployed="$deployed $skname"
+    # Recorre el ÁRBOL COMPLETO de la skill fuente y diffea archivo por archivo.
+    while IFS= read -r sf; do
+      [ -z "$sf" ] && continue
+      rel="${sf#"$ssk"/}"
+      df="$DST_SKILLS/$skname/$rel"
+      if [ ! -f "$df" ]; then
+        echo "  NUEVA      skills/$skname/$rel"; sk_new=$((sk_new+1))
+        [ "$APPLY" = 1 ] && { mkdir -p "$(dirname "$df")"; atomic_install "$sf" "$df" || echo "  warn: no pude instalar skills/$skname/$rel"; }
+      elif ! diff -q "$sf" "$df" >/dev/null 2>&1; then
+        echo "  ACTUALIZA  skills/$skname/$rel  [$(diff "$sf" "$df" 2>/dev/null | grep -cE '^[<>]') líneas ±]"; sk_upd=$((sk_upd+1))
+        [ "$APPLY" = 1 ] && { mkdir -p "$(dirname "$df")"; atomic_install "$sf" "$df" || echo "  warn: no pude instalar skills/$skname/$rel"; }
+      else
+        sk_ok=$((sk_ok+1))
+      fi
+    done < <(find "$ssk" -type f 2>/dev/null)
+  done <<EOF
+$PER_REPO_SK
+EOF
+
+  # ── Prune de skills del BRAIN retiradas/demotidas: nombre en el LEDGER anterior que YA NO está en
+  #    {both,repo}. Solo skills que ESTE sync desplegó antes → nunca toca skills propias del repo.
+  sk_orph=0
+  if [ -f "$LEDGER" ]; then
+    while IFS= read -r old; do
+      [ -z "$old" ] && continue
+      printf '%s\n' $PER_REPO_SK | grep -qxF "$old" && continue   # sigue siendo brain-por-repo → no es huérfana
+      [ -d "$DST_SKILLS/$old" ] || continue
+      sk_orph=$((sk_orph+1))
+      if [ "$PRUNE" = 1 ] && [ "$APPLY" = 1 ]; then
+        rm -rf "${DST_SKILLS:?}/${old:?}"
+        echo "  RETIRADA   skills/$old — skill del brain ya no {both,repo}: borrada (--prune-orphans, del ledger)"
+      elif [ "$PRUNE" = 1 ]; then
+        echo "  RETIRARÍA  skills/$old — skill del brain ya no {both,repo}: la borraría (usa --apply; estaba en el ledger)"
+      else
+        echo "  HUÉRFANA   skills/$old — skill del brain desplegada antes, ya no {both,repo} (usa --prune-orphans para retirarla)"
+      fi
+    done < "$LEDGER"
+  fi
+
+  # Refresca el LEDGER (solo en --apply COMPLETO — sin --only, que es parcial y no representa el set entero).
+  # El ledger = las skills del brain que SIGUEN desplegadas en disco: las {both,repo} actuales + las
+  # huérfanas que NO se podaron (siguen presentes). Una huérfana pruneada (dir borrado) sale del ledger.
+  if [ "$APPLY" = 1 ] && [ -z "$ONLY" ]; then
+    { printf '%s\n' $deployed; [ -f "$LEDGER" ] && cat "$LEDGER"; } 2>/dev/null | sort -u | while IFS= read -r nm; do
+      [ -n "$nm" ] && [ -d "$DST_SKILLS/$nm" ] && printf '%s\n' "$nm"
+    done > "$LEDGER.tmp.$$" 2>/dev/null
+    if [ -s "$LEDGER.tmp.$$" ]; then mkdir -p "$DST_SKILLS"; mv -f "$LEDGER.tmp.$$" "$LEDGER"
+    else rm -f "$LEDGER.tmp.$$" "$LEDGER" 2>/dev/null; fi
+  fi
+
+  echo "==> resumen skills: $sk_new nuevas · $sk_upd a actualizar · $sk_ok ya al día · $sk_orph huérfana(s)"
+fi
+# ══════════════════════════════════════════════════════════════════════════════════════════════════════
+
 [ "$APPLY" = 1 ] || echo "    (DRY-RUN — nada escrito. Re-corre con --apply para aplicar.)"

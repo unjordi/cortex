@@ -176,7 +176,11 @@ el skill `orquestar-fanout`; la lib `delegacion-comun.sh` comparte la lógica de
 
 [`brain/hooks/MANIFEST`](../brain/hooks/MANIFEST) es la **fuente única**: declara tier (dónde) y
 kind (cómo) de cada pieza, y de ahí **derivan** las dos rutas de instalación y el drift-check de
-`test-brain.sh` — no hay listas curadas por separado que puedan divergir.
+`test-brain.sh` — no hay listas curadas por separado que puedan divergir. Las **skills** tienen su propio
+[`brain/skills/MANIFEST`](../brain/skills/MANIFEST) con el mismo modelo (`global` / `both`): install-brain
+las despliega globalmente (árbol completo) y `sincronizar-cerebro.sh` despliega las `both` por-repo, con el
+mismo drift-check. El drift de skills lo vigila `aviso-drift-cerebro` — per-repo (vía el resumen del sync,
+misma bifurcación `.claude/repo-compartido`) y global (`~/.claude/skills` vs la fuente, warn-only).
 
 ```mermaid
 flowchart LR
@@ -189,8 +193,8 @@ flowchart LR
     end
 
     subgraph destinos["Destinos"]
-        GDIR["🏠 ~/.claude/hooks + settings.json<br/>instala: brain/install-brain.sh<br/>(vía bootstrap / install.sh)<br/>+ skills genéricas en ~/.claude/skills<br/>(auto-descubre brain/skills/*/SKILL.md)"]
-        RDIR["📁 &lt;repo&gt;/.claude/hooks + settings.json<br/>despliega: brain/sincronizar-cerebro.sh<br/>(diff-aware; viaja por git al equipo)"]
+        GDIR["🏠 ~/.claude/hooks + settings.json<br/>instala: brain/install-brain.sh<br/>(vía bootstrap / install.sh)<br/>+ skills {global,both} en ~/.claude/skills<br/>(árbol completo; tier por brain/skills/MANIFEST)"]
+        RDIR["📁 &lt;repo&gt;/.claude/hooks + skills + settings.json<br/>despliega: brain/sincronizar-cerebro.sh<br/>(hooks/libs {repo,both} + skills {both};<br/>diff-aware; viaja por git al equipo)"]
     end
 
     TEST["🧪 brain/test-brain.sh<br/>drift-check (e2): ambas rutas<br/>DEBEN coincidir con el MANIFEST"]

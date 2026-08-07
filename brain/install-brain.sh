@@ -160,14 +160,24 @@ for h in $WIRE_HOOKS; do
 done
 echo "ok: hooks cableados en $GSET (derivados del MANIFEST):$wired_names"
 
-# ── (c) Skills genéricas del cerebro (cerrar-slice, orquestar-fanout, …) ──
+# ── (c) Skills genéricas del cerebro (cerrar-slice, orquestar-fanout, …) — tier {global,both} del
+# brain/skills/MANIFEST (fuente única de tiers; hoy TODAS son `global`). Copia el ÁRBOL COMPLETO de cada
+# skill (no solo SKILL.md — algunas traen reference/ o bootstrap-claude.sh; el `cp -f SKILL.md` anterior los
+# DEJABA FUERA → aparecían como "falta"/drift eterno en verificar-cerebro y en el nuevo drift de skills).
+SKILLS_MANIFEST="$SRC_SKILLS/MANIFEST"
 if [ -d "$SRC_SKILLS" ]; then
-  for sk in "$SRC_SKILLS"/*/; do
-    [ -f "$sk/SKILL.md" ] || continue
-    name="$(basename "$sk")"
+  # Nombres a instalar: del MANIFEST {global,both}; si no hay manifiesto, fallback = todas las carpetas.
+  if [ -f "$SKILLS_MANIFEST" ]; then
+    _sk_names="$(awk '$1!~/^#/ && NF>=2 && ($2=="global"||$2=="both"){print $1}' "$SKILLS_MANIFEST")"
+  else
+    _sk_names="$(for d in "$SRC_SKILLS"/*/; do [ -d "$d" ] && basename "$d"; done)"
+  fi
+  for name in $_sk_names; do
+    sk="$SRC_SKILLS/$name"
+    [ -f "$sk/SKILL.md" ] || { echo "warn: skill '$name' en el manifiesto pero falta $sk/SKILL.md"; continue; }
     mkdir -p "$SKILLS_DIR/$name"
-    cp -f "$sk/SKILL.md" "$SKILLS_DIR/$name/SKILL.md"
-    echo "ok: skill $name instalada en $SKILLS_DIR/$name"
+    cp -Rf "$sk"/. "$SKILLS_DIR/$name"/    # árbol COMPLETO (SKILL.md + subdirs como reference/)
+    echo "ok: skill $name instalada (árbol completo) en $SKILLS_DIR/$name"
   done
 fi
 
