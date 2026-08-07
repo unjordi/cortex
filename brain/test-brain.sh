@@ -2338,6 +2338,22 @@ brslug=$(printf '%s' "$BRREPO" | cksum | awk '{print $1}')
   && ok "barrer-ramas: escribió el stamp de throttle" || bad "barrer-ramas: no escribió el stamp"
 # (4) throttle: 2ª corrida inmediata → silencio (stamp fresco)
 is_silent "$(br)" && ok "barrer-ramas: throttle — 2ª corrida inmediata → silencio" || bad "barrer-ramas: no respetó el throttle"
+# ── Vía (B): trigger AL PUNTO DE MERGE (PostToolUse/Bash). Necesita analizar-comando-git.sh a un lado. ──
+cp "$HOOKS/analizar-comando-git.sh" "$BRHOOKS/analizar-comando-git.sh"
+brm() { printf '%s' "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"$1\"}}" | HOME="$BRHOME" CLAUDE_PROJECT_DIR="$BRREPO" bash "$BRHOOKS/barrer-ramas.sh"; }
+# (5) un `gh pr merge` → LANZA aunque el stamp de SessionStart esté FRESCO (vías independientes): PostToolUse
+#     válido + mensaje de merge + stamp .merge propio.
+mout="$(brm 'gh pr merge 123 --squash')"
+printf '%s' "$mout" | jq -e '.hookSpecificOutput.hookEventName == "PostToolUse"' >/dev/null 2>&1 \
+  && ok "barrer-ramas(B): merge de MR/PR → emite PostToolUse válido (independiente del throttle SessionStart)" || bad "barrer-ramas(B): JSON inválido; got: $mout"
+printf '%s' "$mout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'Merge de MR/PR' \
+  && ok "barrer-ramas(B): el aviso anuncia el barrido tras el merge" || bad "barrer-ramas(B): el aviso no menciona el merge"
+[ -f "$BRHOME/.claude/memory/.barrer-ramas/$brslug.merge" ] \
+  && ok "barrer-ramas(B): escribió el stamp .merge (debounce)" || bad "barrer-ramas(B): no escribió el stamp .merge"
+# (6) un Bash que NO es merge (la inmensa mayoría) → silencio, sin tocar red ni git
+is_silent "$(brm 'ls -la')" && ok "barrer-ramas(B): Bash no-merge → silencio" || bad "barrer-ramas(B): habló con un Bash que no era merge"
+# (7) debounce: 2º merge inmediato → silencio (el barrido recién lanzado ya cubre este)
+is_silent "$(brm 'glab mr merge 7 --squash')" && ok "barrer-ramas(B): debounce — 2º merge inmediato → silencio" || bad "barrer-ramas(B): no respetó el debounce del merge"
 rm -rf "$BRFIX"
 
 # ── (b5g) recordar-cosechar: nudge DOBLE (cosecha + backlog durable) (fail-open; heurístico; throttle) ──
@@ -2981,7 +2997,11 @@ if [ -f "$E7H/.claude/settings.json" ]; then
   ev_of() { jq -r --arg n "$1" '.hooks | to_entries[] | .key as $k | .value[] | select((([.hooks[]?.command]|join(" "))) | test("/"+$n+"\\.sh")) | ($k + "|" + (.matcher // ""))' "$E7H/.claude/settings.json"; }
   [ "$(ev_of git-branch-guard)"   = "PreToolUse|Bash" ]  && ok "e7: git-branch-guard → PreToolUse/Bash"        || bad "e7: git-branch-guard evento incorrecto: $(ev_of git-branch-guard)"
   [ "$(ev_of delegacion-reporte)" = "PostToolUse|Task" ] && ok "e7: delegacion-reporte → PostToolUse/Task"     || bad "e7: delegacion-reporte evento incorrecto: $(ev_of delegacion-reporte)"
-  [ "$(ev_of barrer-ramas)"       = "SessionStart|" ]    && ok "e7: barrer-ramas → SessionStart/(sin matcher)" || bad "e7: barrer-ramas evento incorrecto: $(ev_of barrer-ramas)"
+  # barrer-ramas es DOBLE evento (SessionStart oportunista + PostToolUse/Bash al punto de merge) → ev_of
+  # devuelve DOS líneas; exigimos AMBAS presentes (orden-agnóstico), no igualdad exacta contra una sola.
+  ev_br="$(ev_of barrer-ramas)"
+  { printf '%s\n' "$ev_br" | grep -qx 'SessionStart|' && printf '%s\n' "$ev_br" | grep -qx 'PostToolUse|Bash'; } \
+    && ok "e7: barrer-ramas → SessionStart/(sin matcher) + PostToolUse/Bash (doble trigger)" || bad "e7: barrer-ramas eventos incorrectos: $ev_br"
   [ "$(ev_of aviso-contexto)"     = "PostToolUse|" ]     && ok "e7: aviso-contexto → PostToolUse/(sin matcher)" || bad "e7: aviso-contexto evento incorrecto: $(ev_of aviso-contexto)"
 else
   bad "e7: install-brain no generó settings.json"

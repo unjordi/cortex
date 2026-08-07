@@ -112,8 +112,11 @@ ev_de() {
     proteger-fuente-cerebro) echo "PreToolUse|Edit|Write|MultiEdit" ;;
     limite-gasto|delegacion-gate) echo "PreToolUse|Task" ;;
     delegacion-registrar|delegacion-reporte) echo "PostToolUse|Task" ;;
-    rehidratar-hilo|aviso-drift-cerebro|barrer-ramas) echo "SessionStart|" ;;
+    rehidratar-hilo|aviso-drift-cerebro) echo "SessionStart|" ;;
     aviso-contexto) echo "PostToolUse|" ;;
+    # barrer-ramas: DOBLE trigger del barrido — SessionStart (oportunista, throttled) + PostToolUse/Bash
+    # (al punto de merge, detecta glab/gh merge vía acg_es_merge_mr). Multi-evento como exportar-sesion-master.
+    barrer-ramas) echo "SessionStart| PostToolUse|Bash" ;;
     # Multi-evento: ev_de puede devolver VARIOS pares "Event|Matcher" separados por espacio; el loop de
     # cablear registra cada uno. exportar-sesion-master necesita los 3 (Stop=backbone con debounce,
     # SessionEnd=estado final, PreCompact=bonus) — ver su encabezado.
