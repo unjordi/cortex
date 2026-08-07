@@ -75,7 +75,7 @@ set -u
 # tests de FLUJO sin red) · CLAUDE_DOD_JUEZ_MOCK_RAW (texto CRUDO de respuesta → ejercita el parseo por
 # centinela + el veto de cita sin red).
 _juez_dod() {
-  local prompt out c m v txt cita norm_user _resp
+  local prompt out c m v txt cita _resp
   if [ -n "${CLAUDE_DOD_JUEZ_MOCK:-}" ]; then
     printf '%s' "$CLAUDE_DOD_JUEZ_MOCK"; return 0   # veredicto FINAL normalizado → flujo determinista (sin red)
   fi
@@ -131,16 +131,17 @@ VISUAL: <si|no>"
   _dod_sent() { printf '%s\n' "$1" | grep -oiE "$2:[[:space:]]*(s[ií]|no)" | tail -1 | grep -oiE '(s[ií]|no)' | tr '[:upper:]' '[:lower:]' | sed 's/sí/si/'; }
   c=$(_dod_sent "$txt" CIERRE); m=$(_dod_sent "$txt" MARCA); v=$(_dod_sent "$txt" VISUAL)
   if [ -z "$c" ] || [ -z "$m" ] || [ -z "$v" ]; then printf 'UNAVAILABLE'; return 0; fi
-  # VETO de CITA VERIFICADA (capa 2): un MARCA=si exige una CITA que exista TEXTUAL en el texto del USUARIO
-  # ($2 = SOLO mensajes role=user por diseño del hook). Normaliza runs de espacio a uno en ambos lados y
-  # quita comillas/decoración envolvente; luego grep -F (substring literal). Sin cita real → override a 'no'
-  # (conservador para un nag: a lo sumo un recordatorio de más, jamás deja colar un cierre sin marca).
+  # VETO de CITA VERIFICADA (capa 2): un MARCA=si exige una CITA que se apoye en el texto del USUARIO
+  # ($2 = SOLO mensajes role=user por diseño del hook). El match lo hace _juez_cita_casa (lib juez-comun.sh,
+  # MISMA impl que confirmar-merge → cero drift): normaliza IGUAL ambos lados (minúsculas + acentos +
+  # puntuación) y casa por SUBSTRING o CONTAINMENT de tokens (≥4 tokens, ≥85%). Robusto a la normalización
+  # BENIGNA del LLM (typo/acento/caso) que el viejo `grep -Fq` byte-exacto NO toleraba. Sin cita real →
+  # override a 'no' (conservador para un nag: a lo sumo un recordatorio de más, jamás cuela un cierre sin marca).
   if [ "$m" = si ]; then
     # La línea CITA: puede venir decorada ('**CITA:**', '- CITA:'…) → tolera prefijo NO-alfanumérico.
     cita=$(printf '%s\n' "$txt" | grep -iE '^[^[:alnum:]]*CITA:' | tail -1 | sed -E 's/^[^[:alnum:]]*CITA:[[:space:]]*//I')
     cita=$(printf '%s' "$cita" | tr -s '[:space:]' ' ' | sed -E "s/^[*\"' ]+//; s/[*\"' ]+$//")
-    norm_user=$(printf '%s' "$2" | tr -s '[:space:]' ' ')
-    if [ -z "$cita" ] || ! printf '%s' "$norm_user" | grep -Fq -- "$cita"; then m=no; fi
+    if [ -z "$cita" ] || ! _juez_cita_casa "$cita" "$2"; then m=no; fi
   fi
   printf 'CIERRE=%s MARCA=%s VISUAL=%s' "$c" "$m" "$v"
 }
