@@ -92,15 +92,25 @@ volátil lo que tiene casa durable** → reduce lo que el compact puede siquiera
    ## PLAN COMPLETO (con el CÓMO)
    <TODO lo planeado, ítem por ítem: qué + el MECANISMO de resolución pensado + detalles, gotchas y
     porqués — a fidelidad completa, en TUS propias palabras. NO telegráfico: es lo que te vas a
-    releer para re-instanciarte tras el compact.>
+    releer para re-instanciarte tras el compact. Cada ítem lleva su PROCEDENCIA (ver abajo).>
    ## RESUELTO HOY (no reabrir)
-   <decisiones tomadas + su porqué en una línea cada una. El ANTI-FANTASMA: lo que está aquí NO se
-    re-pregunta ni se re-descubre después de compactar.>
+   <decisiones tomadas + su porqué + su PROCEDENCIA en una línea cada una. El ANTI-FANTASMA: lo que
+    está aquí NO se re-pregunta ni se re-descubre después de compactar.>
    ## COSECHA DURABLE (hecha en esta tanda)
    <qué se promovió EN ESTE checkpoint a su casa durable — memorias del proyecto, skills tocados —
     con sus rutas. La promoción se hace COMO PARTE del checkpoint completo, no "después".>
    ```
    Pon la **FECHA real**: `rehidratar-hilo` la muestra al retomar para que juzgues si el hilo quedó viejo.
+
+   **PROCEDENCIA de cada idea (regla dura — el hilo mental DE LA IDEA, no solo el stub).** Cada ítem del
+   PLAN y cada decisión de RESUELTO llevan de DÓNDE salió y QUIÉN la originó, con un marcador breve:
+   `[user: "<cita textual>"]` si es del usuario · `[INFER-mío]` si es una hipótesis/propuesta TUYA (de
+   Claude) · `[juntos <fecha>]` si se decidió en conversación. **Por qué:** al comprimir se pierde la
+   procedencia y el default es re-leerse la idea PROPIA como si fuera del usuario ("unjordi cree X") →
+   se lava una hipótesis tuya en su voz, primo hermano de fabricar autorización (viola la norma de
+   autorización acotada y NO-transitiva). Marcar la procedencia hace que el LINAJE viaje CON la idea a
+   través del compact. Regla dura al re-resumir: **nunca conviertas un `[INFER-mío]` en un `[user]`**; si
+   no recuerdas el origen, es `[INFER-mío]` (conservador), no del usuario.
 2. **El estado del proyecto (solo si avanzó).** Igual que `cerrar-slice §2`: mueve ítems en
    `estado-proyecto.md` (hecho/pendiente/decidido) y **appendea UNA línea al FINAL** de `bitacora.md`
    con `>>` (`printf '%s\n' '- …' >> bitacora.md`), **no** con un Edit que reescriba (así varias
