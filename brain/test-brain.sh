@@ -80,9 +80,9 @@ run_registrar() {
 is_ask()    { printf '%s' "$1" | jq -e '.hookSpecificOutput.permissionDecision == "ask"' >/dev/null 2>&1; }
 is_silent() { [ -z "$(printf '%s' "$1" | tr -d '[:space:]')" ]; }
 
-payload() { # payload <session> <subagent_type> <model>
-  jq -nc --arg s "$1" --arg t "$2" --arg m "$3" \
-    '{tool_name:"Task", session_id:$s, tool_input:{subagent_type:$t, model:$m}}'
+payload() { # payload <session> <subagent_type> <model> [tool_name=Task]
+  jq -nc --arg s "$1" --arg t "$2" --arg m "$3" --arg tn "${4:-Task}" \
+    '{tool_name:$tn, session_id:$s, tool_input:{subagent_type:$t, model:$m}}'
 }
 
 # Casos base (sin registrar → cada uno debe PREGUNTAR en su primer encuentro)
@@ -106,6 +106,15 @@ is_ask "$out"    && ok "desconocido (default token) → pregunta" || bad "descon
 # Un no-Task no debe incumbir al gate (silencio)
 out="$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"ls"}}' | HOME="$FAKEHOME" XDG_CACHE_HOME="$FAKEHOME/.cache" bash "$HOOKS/delegacion-gate.sh")"
 is_silent "$out" && ok "no-Task (Bash) → gate silencioso" || bad "no-Task → esperaba silencio; got: $out"
+
+# #42: el tool de subagentes se renombró Task→Agent. El gate DEBE disparar con AMBOS nombres,
+# o (como pasó) queda MUERTO y nunca pide consentimiento de costo. (metered + sesión fresca SAG →
+# sin lock de coalescencia de por medio; prueba limpia de que 'Agent' entra al clasificador.)
+rm -f "$CONS"; write_state 99
+out="$(run_gate "$(payload SAG '' sonnet Agent)")"
+is_ask "$out" && ok "#42 · tool 'Agent' (nombre nuevo) → gate pregunta" || bad "#42 · Agent → esperaba ask; got: $out"
+out="$(printf '%s' '{"tool_name":"WebFetch","tool_input":{}}' | HOME="$FAKEHOME" XDG_CACHE_HOME="$FAKEHOME/.cache" bash "$HOOKS/delegacion-gate.sh")"
+is_silent "$out" && ok "no-delegación (WebFetch) → gate silencioso" || bad "WebFetch → esperaba silencio; got: $out"
 
 # Ciclo metered: gate(pregunta) → registrar → gate(silencioso) EN EL MISMO workflow
 rm -f "$CONS"; write_state 99
@@ -1673,7 +1682,7 @@ rm -rf "$DZROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "== (b3f) delegacion-reporte: solo reacciona a Task, y el nudge es CONDICIONAL a mutación (FMEA MEDIO-6) =="
+echo "== (b3f) delegacion-reporte: reacciona a Task|Agent, y el nudge es CONDICIONAL a mutación (FMEA MEDIO-6) =="
 # MEDIO-6 (cry-wolf): antes gritaba "appenda bitácora / limpia worktree" para TODO Task, incluidos los
 # read-only (búsquedas, auditorías) → el orquestador se desensibiliza. Fix: el mensaje se subordina a la
 # mutación ("SI tu agente mutó… / SI fue read-only, ignóralo"). No se puede detectar la mutación fiable
@@ -1685,6 +1694,9 @@ printf '%s' "$DROUT" | jq -e '.hookSpecificOutput.hookEventName == "PostToolUse"
   && ok "delegacion-reporte: Task → emite hookSpecificOutput PostToolUse válido" || bad "delegacion-reporte: JSON PostToolUse inválido; got: $DROUT"
 printf '%s' "$DROUT" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -qiE 'si .*mut|read-only' \
   && ok "delegacion-reporte: el nudge es CONDICIONAL a mutación (no un grito para todo Task)" || bad "delegacion-reporte: el nudge no quedó condicionado a mutación (cry-wolf)"
+# #42: reacciona también al nombre NUEVO del tool (Agent)
+printf '%s' "$(dr '{"tool_name":"Agent"}')" | jq -e '.hookSpecificOutput.hookEventName == "PostToolUse"' >/dev/null 2>&1 \
+  && ok "#42 · delegacion-reporte: 'Agent' (nombre nuevo) → emite reporte" || bad "#42 · delegacion-reporte: no reaccionó a Agent"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
@@ -2996,7 +3008,7 @@ if [ -f "$E7H/.claude/settings.json" ]; then
   # el EVENTO de cada uno es el correcto (los 4 grupos: Bash, Task, SessionStart sin-matcher, PostToolUse sin-matcher)
   ev_of() { jq -r --arg n "$1" '.hooks | to_entries[] | .key as $k | .value[] | select((([.hooks[]?.command]|join(" "))) | test("/"+$n+"\\.sh")) | ($k + "|" + (.matcher // ""))' "$E7H/.claude/settings.json"; }
   [ "$(ev_of git-branch-guard)"   = "PreToolUse|Bash" ]  && ok "e7: git-branch-guard → PreToolUse/Bash"        || bad "e7: git-branch-guard evento incorrecto: $(ev_of git-branch-guard)"
-  [ "$(ev_of delegacion-reporte)" = "PostToolUse|Task" ] && ok "e7: delegacion-reporte → PostToolUse/Task"     || bad "e7: delegacion-reporte evento incorrecto: $(ev_of delegacion-reporte)"
+  [ "$(ev_of delegacion-reporte)" = "PostToolUse|Task|Agent" ] && ok "e7: delegacion-reporte → PostToolUse/(Task|Agent)" || bad "e7: delegacion-reporte evento incorrecto: $(ev_of delegacion-reporte)"
   # barrer-ramas es DOBLE evento (SessionStart oportunista + PostToolUse/Bash al punto de merge) → ev_of
   # devuelve DOS líneas; exigimos AMBAS presentes (orden-agnóstico), no igualdad exacta contra una sola.
   ev_br="$(ev_of barrer-ramas)"

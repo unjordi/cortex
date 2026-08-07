@@ -97,7 +97,8 @@ register_hook() {
       .hooks = (.hooks // {}) |
       .hooks[$ev] = (.hooks[$ev] // []) |
       if any(.hooks[$ev][]?; ([.hooks[]?.command] | join(" ")) | test($pat))
-      then . else .hooks[$ev] += [ (if $m=="" then {} else {"matcher":$m} end) + {"hooks":[{"type":"command","command":$cmd,"shell":"bash"}]} ] end
+      then .hooks[$ev] = [ .hooks[$ev][] | if (([.hooks[]?.command] | join(" ")) | test($pat)) then (if $m=="" then del(.matcher) else .matcher=$m end) else . end ]
+      else .hooks[$ev] += [ (if $m=="" then {} else {"matcher":$m} end) + {"hooks":[{"type":"command","command":$cmd,"shell":"bash"}]} ] end
     ' "$GSET" > "$tmp" 2>/dev/null && [ -s "$tmp" ]; then mv "$tmp" "$GSET"; else rm -f "$tmp"; echo "warn: no pude fusionar hook ($pat)"; fi
 }
 
@@ -110,8 +111,8 @@ ev_de() {
   case "$1" in
     git-branch-guard|merge-squash-guard|confirmar-merge-develop|recordar-dashboard|secret-scan|entorno-maquina-guard|rama-vieja|proteger-arbol) echo "PreToolUse|Bash" ;;
     proteger-fuente-cerebro) echo "PreToolUse|Edit|Write|MultiEdit" ;;
-    limite-gasto|delegacion-gate) echo "PreToolUse|Task" ;;
-    delegacion-registrar|delegacion-reporte) echo "PostToolUse|Task" ;;
+    limite-gasto|delegacion-gate) echo "PreToolUse|Task|Agent" ;;   # Task|Agent: el tool se renombró Agent (antes Task); casar AMBOS o el gate nunca dispara
+    delegacion-registrar|delegacion-reporte) echo "PostToolUse|Task|Agent" ;;
     rehidratar-hilo|aviso-drift-cerebro) echo "SessionStart|" ;;
     aviso-contexto) echo "PostToolUse|" ;;
     # barrer-ramas: DOBLE trigger del barrido — SessionStart (oportunista, throttled) + PostToolUse/Bash

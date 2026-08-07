@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# delegacion-gate.sh — PreToolUse (Task): CONSENTIMIENTO DE COSTO al reclutar un agente.
+# delegacion-gate.sh — PreToolUse (Task|Agent): CONSENTIMIENTO DE COSTO al reclutar un agente.
 #   gratis (local)   → pregunta 1× por COMPU, luego silencioso.
 #   incluido (Claude dentro de la ventana 5h) → pregunta 1× por COMPU (sin costo marginal).
 #   metered (Claude en overage · API de pago · desconocido) → pregunta 1× por WORKFLOW (session_id).
@@ -36,7 +36,7 @@ soy_el_primero_del_lote() {
 }
 
 # FAIL-SAFE: sin jq no clasificamos → si es delegación, pregunta.
-command -v jq >/dev/null 2>&1 || { printf '%s' "$input" | grep -q '"Task"' && ask "No puedo clasificar el costo de la delegación (falta jq). Por seguridad de gasto, ¿autorizas ESTA delegación? (instala jq para el flujo normal)"; exit 0; }
+command -v jq >/dev/null 2>&1 || { printf '%s' "$input" | grep -qE '"(Task|Agent)"' && ask "No puedo clasificar el costo de la delegación (falta jq). Por seguridad de gasto, ¿autorizas ESTA delegación? (instala jq para el flujo normal)"; exit 0; }
 
 # shellcheck source=delegacion-comun.sh
 . "$(dirname "$0")/delegacion-comun.sh"

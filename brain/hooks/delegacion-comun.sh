@@ -17,7 +17,8 @@ clasificar_delegacion() {
   DG_ES_TASK=0; DG_SID="sin-sesion"; DG_TARGET=""; DG_CLASE="token"; DG_FIRMA="desconocido"
   DG_UMBRAL=90; DG_PCT="?"; DG_NIVEL="metered"; DG_KEY=""
 
-  [ "$(printf '%s' "$input" | jq -r '.tool_name // empty' 2>/dev/null)" = "Task" ] || return 0
+  # Agent = nombre nuevo del tool de subagentes (antes Task); aceptar AMBOS o el gate nunca dispara.
+  case "$(printf '%s' "$input" | jq -r '.tool_name // empty' 2>/dev/null)" in Task|Agent) ;; *) return 0 ;; esac
   DG_ES_TASK=1
   DG_SID=$(printf '%s' "$input" | jq -r '.session_id // "sin-sesion"' 2>/dev/null)
   DG_TARGET=$(printf '%s' "$input" | jq -r '[.tool_input.subagent_type // "", .tool_input.model // ""] | join(" ") | ascii_downcase' 2>/dev/null)
