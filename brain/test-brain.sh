@@ -214,6 +214,87 @@ rm -rf "$MSBIN"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (b1c2) merge-squash-guard: CALIDAD del mensaje del squash (develop-scoped, fail-open) =="
+# NUEVO: además de EXIGIR --squash, cuando el destino es develop se valida que el MENSAJE del squash tenga
+# SUSTANCIA — bloquea el título default "Merge pull request #N", el vacío y el placeholder de una palabra.
+# Fuente del mensaje: LITERAL (flag en el cmd) · AUTO (título del MR/PR vía API) · UNVERIFICABLE (PASA).
+# NO afloja nada: la exigencia de squash y la excepción de RELEASE quedan intactas (probadas en b1c).
+MSBIN="$FAKEHOME/msbin"; mkdir -p "$MSBIN"
+# mock glab que devuelve target_branch Y title en el MISMO JSON (destino + mensaje salen de la misma llamada)
+mock_glab_full() { printf '#!/usr/bin/env bash\necho '\''{"target_branch":"%s","title":"%s"}'\''\n' "$1" "$2" > "$MSBIN/glab"; chmod +x "$MSBIN/glab"; }
+# mock gh que responde a `-q .baseRefName` (destino) y `-q .title` (mensaje) según el arg jq-path recibido
+mock_gh_full() { { printf '#!/usr/bin/env bash\n'; printf 'for a in "$@"; do case "$a" in .baseRefName) echo "%s"; exit 0;; .title) echo "%s"; exit 0;; esac; done\necho ""\n' "$1" "$2"; } > "$MSBIN/gh"; chmod +x "$MSBIN/gh"; }
+# runner: payload por jq --arg (soporta comillas/#/$ en el mensaje) + LIMPIA la caché por MR-id en cada caso
+msj() { rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* "${TMPDIR:-/tmp}"/acg-mrmsg-* 2>/dev/null
+        jq -nc --arg c "$1" '{tool_input:{command:$c}}' \
+          | PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$FAKEHOME" bash "$HOOKS/merge-squash-guard.sh"; }
+
+# ── LITERAL (mensaje explícito en el comando; destino develop del mock) ──
+mock_glab develop
+is_deny   "$(msj 'glab mr merge 50 --squash --squash-message "Merge pull request #5 from foo/bar"')" \
+  && ok "msg LITERAL: título default 'Merge pull request #N' → deny" || bad "msg LITERAL: no bloqueó el título default"
+is_deny   "$(msj 'glab mr merge 51 --squash --squash-message "wip"')" \
+  && ok "msg LITERAL: placeholder de una palabra 'wip' → deny" || bad "msg LITERAL: no bloqueó 'wip'"
+is_deny   "$(msj 'glab mr merge 52 --squash --squash-message ""')" \
+  && ok "msg LITERAL: mensaje vacío → deny" || bad "msg LITERAL: no bloqueó el mensaje vacío"
+is_silent "$(msj 'glab mr merge 53 --squash --squash-message "corrige el calculo de IVA en las facturas"')" \
+  && ok "msg LITERAL: resumen con sustancia → pasa (sin FP)" || bad "msg LITERAL: bloqueó un resumen legítimo"
+is_silent "$(msj 'glab mr merge 54 --squash --squash-message "$(cat resumen.md)"')" \
+  && ok "msg UNVERIFICABLE: '\$(cat resumen.md)' (la forma que el propio hook sugiere) → pasa" || bad "msg UNVERIFICABLE: bloqueó la forma sugerida por el hook"
+
+# ── LITERAL gh (--subject/-t) + --fill unverificable ──
+mock_gh_full develop ""
+is_deny   "$(msj 'gh pr merge 55 --squash --subject "Merge pull request #5"')" \
+  && ok "msg LITERAL gh: --subject default → deny" || bad "msg LITERAL gh: no bloqueó el subject default"
+is_silent "$(msj 'gh pr merge 56 --squash --subject "agrega validacion de stock disponible"')" \
+  && ok "msg LITERAL gh: --subject con sustancia → pasa (sin FP)" || bad "msg LITERAL gh: bloqueó un subject legítimo"
+is_silent "$(msj 'gh pr merge 57 --squash --fill')" \
+  && ok "msg UNVERIFICABLE gh: --fill (subject derivado de commits) → pasa" || bad "msg UNVERIFICABLE gh: bloqueó un --fill"
+
+# ── AUTO (sin flag de mensaje → el squash toma el TÍTULO del MR/PR, resuelto vía API) ──
+mock_glab_full develop "Merge pull request #7 from x/y"
+is_deny   "$(msj 'glab mr merge 60 --squash --auto-merge --yes')" \
+  && ok "msg AUTO: título del MR es el default 'Merge pull request #N' → deny (vía API)" || bad "msg AUTO: no bloqueó el título default del MR"
+mock_glab_full develop "actualiza dependencias y corrige el pipeline de CI"
+is_silent "$(msj 'glab mr merge 61 --squash --yes')" \
+  && ok "msg AUTO: título del MR con sustancia → pasa (sin FP)" || bad "msg AUTO: bloqueó un título de MR legítimo"
+mock_glab_full develop "wip"
+is_deny   "$(msj 'glab mr merge 62 --squash --yes')" \
+  && ok "msg AUTO: título del MR es placeholder 'wip' → deny" || bad "msg AUTO: no bloqueó el título placeholder"
+mock_glab develop   # sin title en el JSON → API devuelve vacío → FAIL-OPEN
+is_silent "$(msj 'glab mr merge 63 --squash --yes')" \
+  && ok "msg AUTO: título irresoluble (API vacía) → pasa (FAIL-OPEN, no fuerza)" || bad "msg AUTO: bloqueó con título irresoluble (rompe fail-open)"
+
+# ── FRONTERA: la validación de mensaje es develop-scoped → main/personal quedan LIBRES aunque el msg sea pobre ──
+mock_glab_full main "wip"
+is_silent "$(msj 'glab mr merge 64 --squash --yes')" \
+  && ok "msg scope: destino=main (release) + msg pobre → pasa (fuera de alcance)" || bad "msg scope: bloqueó por mensaje a un release a main"
+mock_glab_full DevelopAna "wip"
+is_silent "$(msj 'glab mr merge 65 --squash --yes')" \
+  && ok "msg scope: destino=rama personal + msg pobre → pasa (fuera de alcance)" || bad "msg scope: bloqueó por mensaje a una rama personal"
+
+# ── funciones PURAS de la lib (deterministas, sin red) ──
+( . "$HOOKS/analizar-comando-git.sh"
+  acg_msg_es_pobre ""                                  && ok "acg_msg_es_pobre: vacío → pobre"                    || bad "acg_msg_es_pobre: no marcó vacío"
+  acg_msg_es_pobre "   "                               && ok "acg_msg_es_pobre: solo-espacios → pobre"            || bad "acg_msg_es_pobre: no marcó solo-espacios"
+  acg_msg_es_pobre "Merge pull request #5 from a/b"    && ok "acg_msg_es_pobre: 'Merge pull request #N' → pobre"  || bad "acg_msg_es_pobre: no marcó el default de plataforma"
+  acg_msg_es_pobre "Merge branch 'develop'"            && ok "acg_msg_es_pobre: 'Merge branch …' → pobre"         || bad "acg_msg_es_pobre: no marcó 'Merge branch'"
+  acg_msg_es_pobre "Merge #7"                          && ok "acg_msg_es_pobre: 'Merge #N' → pobre"               || bad "acg_msg_es_pobre: no marcó 'Merge #N'"
+  acg_msg_es_pobre "wip"                               && ok "acg_msg_es_pobre: 'wip' (1 palabra corta) → pobre"  || bad "acg_msg_es_pobre: no marcó 'wip'"
+  acg_msg_es_pobre "update"                            && ok "acg_msg_es_pobre: 'update' (1 palabra corta) → pobre" || bad "acg_msg_es_pobre: no marcó 'update'"
+  acg_msg_es_pobre "corrige el calculo de IVA"         && bad "acg_msg_es_pobre: marcó un resumen legítimo (FP)"  || ok "acg_msg_es_pobre: resumen multi-palabra → ok"
+  acg_msg_es_pobre "Merge duplicate-detection feature" && bad "acg_msg_es_pobre: FP en 'Merge <algo real>'"       || ok "acg_msg_es_pobre: 'Merge <palabra real> …' (no default) → ok"
+  [ "$(acg_msg_clasificar 'glab mr merge 5 --squash --squash-message "x y"')" = LITERAL ]       && ok "acg_msg_clasificar: --squash-message literal → LITERAL" || bad "acg_msg_clasificar: no clasificó LITERAL"
+  [ "$(acg_msg_clasificar 'glab mr merge 5 --squash --squash-message "$(cat r.md)"')" = UNVERIFICABLE ] && ok "acg_msg_clasificar: valor \$(…) → UNVERIFICABLE" || bad "acg_msg_clasificar: no clasificó UNVERIFICABLE"
+  [ "$(acg_msg_clasificar 'glab mr merge 5 --squash')" = AUTO ]                                 && ok "acg_msg_clasificar: sin flag → AUTO" || bad "acg_msg_clasificar: no clasificó AUTO"
+  [ "$(acg_msg_clasificar 'gh pr merge 5 --squash --fill')" = UNVERIFICABLE ]                    && ok "acg_msg_clasificar: gh --fill → UNVERIFICABLE" || bad "acg_msg_clasificar: no clasificó --fill"
+  [ "$(acg_msg_valor 'gh pr merge 5 --squash --subject "hola mundo"')" = "hola mundo" ]         && ok "acg_msg_valor: extrae --subject entrecomillado con espacio" || bad "acg_msg_valor: no extrajo el valor de --subject"
+)
+rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* "${TMPDIR:-/tmp}"/acg-mrmsg-* 2>/dev/null
+rm -rf "$MSBIN"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "== (b1d) git-branch-guard: push PELÓN / comillas / nombre-de-repo (H1/H11/H13) =="
 GBROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-gb.XXXXXX")"; GBREPO="$GBROOT/repo"; GBHOME="$GBROOT/home"; mkdir -p "$GBREPO" "$GBHOME"
 git -C "$GBREPO" init -q >/dev/null 2>&1
