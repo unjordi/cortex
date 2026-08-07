@@ -70,6 +70,8 @@
 ├─ 🧩 unificar-cerebro               reconciliación del cerebro del equipo: integra los aprendizajes mini→develop
 ├─ 🧳 claude-proyecto-autocontenido  el cerebro VIVE dentro del proyecto (.claude/ + symlink de slug) → viaja con él
 ├─ 🔍 zoom-screenshot                recorta y amplía regiones de una captura (ffmpeg) para leer texto fino ilegible
+├─ 🔩 ingenieria-inversa-gui-db-navegador  ingeniería inversa de app legacy GUI+BD: driving la UI vía navegador + diff de la BD antes/después = doc con evidencia real
+├─ 📕 markdown-a-pdf                 convierte .md a PDF pulido y distribuible vía md-to-pdf (npx, sin instalar) con el gotcha de --css y QA visual real
 └─ 🌙 turno-nocturno           protocolo del turno de noche: eco del contrato, decide-dentro-de-la-cerca, grants durables a disco
 ```
 <!-- ARBOL:END -->
@@ -185,6 +187,8 @@ Reclutar un agente cuesta según su nivel (**gratis** local · **incluido** dent
 - **`positivar-doc`** — reescribe answer-first: "ESTO SÍ" (método correcto) ANTES del "ESTO NO" (anti-patrón/gotcha); preserva el 100%.
 - **`desinflar-memorias`** — adelgaza un árbol de memorias sin perder lecciones: narrativa → su lección en su lugar; mitos descartados → `cementerio.md` del cerebro (una lápida = una línea con su ID `🪦#<id>`, vía `cementerio.sh add`; ref inline `(🪦#<id>)`).
 - **`investigar-dominio`** — investigar a fondo un dominio de negocio antes de modelarlo, de fuentes reales (no inventar/suponer).
+- **`ingenieria-inversa-gui-db-navegador`** — método REUSABLE para hacer ingeniería inversa de un sistema legacy con GUI+BD: driving la UI real vía navegador (claude-in-chrome) + diff del estado (BD/filesystem) antes/después de cada acción → doc con evidencia real, no suposición. Incluye el estándar de DIFF COMPLETO (fingerprint de TODA la BD para atrapar cualquier tabla tocada).
+- **`markdown-a-pdf`** — convierte uno o varios `.md` a PDF pulido y distribuible con `md-to-pdf` vía `npx` (sin instalar). Trae el gotcha que borra TODO el formato (`--stylesheet` reemplaza el tema; usa `--css` para overrides), el CSS anti-corte de tablas entre páginas y el loop de QA visual obligatorio.
 
 **Diagramas / visual**
 - **`diagramar`** — diagrama según su DESTINO: `.dot`→`dot2yed`→yEd (editar a mano) · Mermaid en `.md` versionado (verse en GitHub). Un diagrama entregable nunca queda como widget efímero.

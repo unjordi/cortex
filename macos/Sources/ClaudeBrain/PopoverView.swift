@@ -1288,7 +1288,8 @@ struct PopoverView: View {
         switch name {
         case "cerrar-slice", "checkpoint", "to-do", "diagramar", "auditar-proceso-algoritmo", "auditar-coherencia-cerebro", "auditar-suficiencia-operativa", "consolidar-cerebro", "desinflar-memorias", "orquestar-fanout", "turno-nocturno",
              "cosechar-sesion", "unificar-cerebro",
-             "investigar-dominio", "positivar-doc", "revisar-entregables-agentes", "zoom-screenshot", "claude-proyecto-autocontenido":
+             "investigar-dominio", "positivar-doc", "revisar-entregables-agentes", "zoom-screenshot", "claude-proyecto-autocontenido",
+             "ingenieria-inversa-gui-db-navegador", "markdown-a-pdf":
             return st.skills.contains(name) ? .installed : .absent
         case "Definition of Done", "Doc <= realidad", "Flujo de git", "Costo de delegación":
             return st.hasNorms ? .installed : .absent
@@ -1449,6 +1450,12 @@ struct PopoverView: View {
                     BrainItem("🔍", "zoom-screenshot", "recorta y amplía regiones de una captura (ffmpeg) para leer texto fino ilegible",
                               "skill · opt-in",
                               "Leer/transcribir capturas cuyo texto fino es ilegible al verlas enteras: recorta y amplía regiones con ffmpeg antes de leerlas. Úsalo cuando el usuario deja un screenshot (menús, ajustes, UIs densas) y hay que leer texto pequeño con precisión, o transcribir varias capturas."),
+                    BrainItem("🔩", "ingenieria-inversa-gui-db-navegador", "ingeniería inversa de app legacy GUI+BD: driving la UI vía navegador + diff de la BD antes/después = doc con evidencia real",
+                              "skill · opt-in",
+                              "Método REUSABLE (independiente de app/dominio) para hacer ingeniería inversa de un sistema legacy con GUI + base de datos: driving la UI real vía navegador (claude-in-chrome u otro plugin) mientras se diffea el estado (BD y/o filesystem/config) antes/después de cada acción → documentación con evidencia real en vez de suposición. Incluye el estándar de DIFF COMPLETO ('indistinguible de la GUI'): fingerprint de TODA la BD antes/después para atrapar cualquier tabla tocada, no solo las candidatas. Requiere navegador con automatización, un visor web de la máquina donde corre la GUI y acceso directo a la BD/filesystem."),
+                    BrainItem("📕", "markdown-a-pdf", "convierte .md a PDF pulido y distribuible vía md-to-pdf (npx, sin instalar) con QA visual real",
+                              "skill · opt-in",
+                              "Convertir uno o varios .md a PDF pulido y distribuible (doc técnica, reportes, cualquier entregable que un humano abra fuera del chat) usando md-to-pdf vía npx, sin instalar nada. Incluye el gotcha real que borra TODO el formato (--stylesheet reemplaza el tema default en vez de sumarse — usa --css para overrides), el CSS que evita que las tablas se corten feo entre páginas y el loop de QA visual obligatorio (leer cada página generada, no asumir que renderizó bien)."),
                     BrainItem("🧳", "claude-proyecto-autocontenido", "el cerebro de Claude VIVE dentro del proyecto (.claude/ + symlink de slug) → viaja con él",
                               "skill · opt-in",
                               "Mantener TODO el cerebro de Claude Code de un proyecto (memorias, skills, transcripts, settings) dentro de <proyecto>/.claude/, con un symlink desde ~/.claude/projects/<slug>/ para que Claude lo siga encontrando. Así la memoria/skills viajan con el proyecto (Drive, git, otra máquina) y ninguna sesión arranca amnésica desde otro cwd. Cubre la regla del slug, el bootstrap de un comando (clona-y-listo), el triage de privacidad (qué va al repo vs *.local), la disciplina anti-duplicados y la verificación."),
