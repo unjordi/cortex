@@ -2707,6 +2707,21 @@ else
   bad "~/.claude/.brain-version ausente o formato inválido (L1='$_l1' L2='$_l2'; esperaba '$_pref.<num>' + fecha)"
 fi
 
+# C2: persist_env_active captura el VALOR ACTIVO de una env del brain en settings.json .env (no un
+# default). Un HOME fresco con CLAUDE_SESSIONS_DRIVE exportada al correr install-brain queda con ese
+# valor en .env; SIN la var activa, la clave NO se inventa. (Antídoto a setearla ad-hoc por sesión.)
+FAKEHOME3="$(mktemp -d "${TMPDIR:-/tmp}/brain-c2.XXXXXX")"
+HOME="$FAKEHOME3" CLAUDE_SESSIONS_DRIVE="/tmp/mi-drive-de-sesiones" bash "$INSTALLER" >/dev/null 2>&1
+[ "$(jq -r '.env.CLAUDE_SESSIONS_DRIVE // empty' "$FAKEHOME3/.claude/settings.json" 2>/dev/null)" = "/tmp/mi-drive-de-sesiones" ] \
+  && ok "C2: install-brain persiste CLAUDE_SESSIONS_DRIVE ACTIVA en settings.json (.env)" \
+  || bad "C2: no persistió el valor activo de CLAUDE_SESSIONS_DRIVE"
+FAKEHOME4="$(mktemp -d "${TMPDIR:-/tmp}/brain-c2b.XXXXXX")"
+( unset CLAUDE_SESSIONS_DRIVE; HOME="$FAKEHOME4" bash "$INSTALLER" >/dev/null 2>&1 )
+[ -z "$(jq -r '.env.CLAUDE_SESSIONS_DRIVE // empty' "$FAKEHOME4/.claude/settings.json" 2>/dev/null)" ] \
+  && ok "C2: sin CLAUDE_SESSIONS_DRIVE activa → NO inventa la clave (solo captura lo real)" \
+  || bad "C2: inventó CLAUDE_SESSIONS_DRIVE sin estar activa"
+rm -rf "$FAKEHOME3" "$FAKEHOME4" 2>/dev/null
+
 # Bonus: el desinstalador deja settings.json sin las entradas del cerebro y sin el bloque de normas
 if [ -f "$SCRIPT_DIR/uninstall-brain.sh" ]; then
   HOME="$FAKEHOME2" bash "$SCRIPT_DIR/uninstall-brain.sh" >/dev/null 2>&1
