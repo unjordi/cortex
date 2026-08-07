@@ -10,6 +10,13 @@
 > repos. Esta nota vive en el repo fuente del brain (`claude-brain`, source en `brain/`); al
 > ACTUAR, los cambios de sustrato/normas se hacen en `brain/` y se propagan a los repos consumidores
 > (plantilla, etc.) con `sincronizar-cerebro.sh`.
+>
+> **Este ES el plan del "MCP de memoria tipo graphify / knowledge-graph" (antes ítem #48 del backlog).**
+> Unificado 2026-08-07 (unjordi: *"estos dos son LO MISMO"*): el grafo/MCP consultable NO es un proyecto
+> aparte — es el **destino** de este plan, su **FASE 4** (el grafo temporal), y las guardas de diseño con
+> que unjordi lo quiere + su **precondición dura** (cerebros HERMOSOS Y SÓLIDOS antes de conectar) viven
+> ahora en esa Fase 4. Las Fases 0–3 son el CAMINO barato y reversible hacia él; el grafo es el escalón
+> final "cuando duela", NO el punto de partida.
 
 ## Principios rectores (el filtro que descarta el 80% del hype)
 Toda estrategia se juzga contra estas restricciones DURAS. Lo que las viole, se rechaza aunque gane benchmarks.
@@ -93,15 +100,44 @@ No es memoria: es "mapa del repo". Ataca el OTRO gran costo — quemar contexto 
   un repo real grande (cps u otro). **Decisión abierta 2:** ¿lo documentamos como opción recomendada
   en la skill de instanciar, o queda como preferencia personal de cada dev?
 
-## FASE 4 — Grafo temporal (Graphiti) SOLO "cuando duela" — condicional
-Memoria temporal real ("qué era verdad *cuándo*", bi-temporal). Gana benchmarks (LongMemEval, ~15 pts
-sobre Mem0) pero pide Neo4j/FalkorDB, es por-máquina y NO viaja por git. **Hoy es overkill.**
+## FASE 4 — El GRAFO/MCP de memoria (graphify / knowledge-graph, ex-#48) SOLO "cuando duela" — condicional
+Es el destino del plan y el ítem que unjordi QUIERE: un MCP estilo grafo de conocimiento (graphify /
+knowledge-graph, con sustrato temporal tipo **Graphiti**) para que pendientes, decisiones y hechos **de
+verdad no se olviden** entre sesiones/compactaciones — memoria consultable y ligada, no notas sueltas que
+se caen del chat (el dolor que originó la sesión de rescate). Memoria temporal real ("qué era verdad
+*cuándo*", bi-temporal); Graphiti gana benchmarks (LongMemEval, ~15 pts sobre Mem0) pero pide
+Neo4j/FalkorDB, es por-máquina y NO viaja por git. **Hoy es overkill** — por eso es la ÚLTIMA fase.
 
-- **Gatillo de reconsideración (no antes):** cuando (a) la memoria del proyecto sea tan grande que ni
-  la Fase 1 ni Basic Memory den buen recall, Y (b) necesitemos de verdad "historia de hechos que
-  cambian" (qué decisión estuvo vigente en qué fecha) más allá de lo que `bitacora.md` ya da.
-- **Costo:** ALTO (infra + operación). **Riesgo:** ALTO (rompe principios 1 y 2). **Estado:** archivado
-  con gatillo explícito; no se toca hasta que el dolor sea real y medido.
+- **EL MIEDO DE UNJORDI = LA RESTRICCIÓN DE DISEÑO RECTORA (textual):** *"muero de miedo de que se
+  asienten falsedades e inconsistencias y se rompa todo."* Válido y central: un grafo mal hecho AMPLIFICA
+  justo lo que peleamos (confabulación del juez, pendientes caídos, drift de doc). Por eso NO se construye
+  "a ver qué tal"; nace atado a estas guardas (son el core del diseño, no adornos):
+  - **Grounded o no entra:** todo nodo/afirmación lleva PROVENANCE (commit, archivo:línea, o cita textual
+    del usuario). Sin fuente verificable → no se asienta como hecho (a lo sumo "hipótesis sin confirmar").
+    Es "doc = reflejo de la realidad" hecho mecanismo (principio 3).
+  - **Detección de contradicción:** al escribir un hecho que choca con uno existente, NO se sobreescribe
+    en silencio — se marca conflicto y se pide arbitraje ("una decisión no se queda en el chat").
+  - **Confirmable/reversible por humano:** unjordi puede ver, corregir y BORRAR nodos; nada se cementa sin
+    poder deshacerse. Append con historial, no verdad-absoluta mutable.
+  - **Lo muerto muere:** un hecho revertido va al cementerio (🪦), no queda vigente (positivar-doc / cementerio).
+  - **Arranca READ-mostly:** primero LEE/consulta lo que ya existe (bitácoras, estado, dashboard,
+    cementerio) y lo liga; escribir hechos nuevos es el modo cauto que se habilita DESPUÉS, con las guardas
+    de arriba probadas.
+- **PRECONDICIÓN DURA (la tesis que une todo — unjordi, textual):** *"por eso estoy intentando dejar los
+  cerebros de los repos HERMOSOS Y SÓLIDOS antes de conectarlos a un MCP que propague vicios internos raros
+  con todas las memorias negativamente redactadas y llenas de contradicciones."* → El grafo NO se conecta
+  hasta que los cerebros estén sanos. El programa de HIGIENE de cerebros es el camino crítico previo:
+  positivar-doc (answer-first), desinflar-memorias, cementerio per-cerebro, **auditar-coherencia como GATE**
+  (#44 — precondición dura), matar el drift, y el rescate de pendientes colgados. Métrica de "listo para
+  grafo" por repo = pasa coherencia + sin lápidas vivas + memorias positivas + índice fiel.
+- **Gatillo de reconsideración (no antes):** cuando (a) la memoria del proyecto sea tan grande que ni la
+  Fase 1 ni Basic Memory den buen recall, Y (b) necesitemos de verdad "historia de hechos que cambian"
+  (qué decisión estuvo vigente en qué fecha) más allá de lo que `bitacora.md` ya da, Y (c) la precondición
+  de cerebros-sanos esté cumplida y medida.
+- **Costo:** ALTO (infra + operación). **Riesgo:** ALTO (rompe principios 1 y 2 + el miedo fundado).
+  **Estado:** IDEA delineada, NO construida (requiere diseño propio: ¿graphify existente vs uno propio?
+  ¿esquema de nodos? ¿cómo se puebla desde las memorias actuales sin ensuciarse?). Archivada con gatillo +
+  precondición explícitos; no se toca hasta que el dolor sea real y medido Y los cerebros estén sanos.
 
 ## Transversal — cómo sabremos si sirvió (métricas)
 - Tokens cargados al inicio de sesión (¿bajan con recall selectivo?).
