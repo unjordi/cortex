@@ -74,6 +74,21 @@ set -u
 # Mocks deterministas: CLAUDE_DOD_JUEZ_MOCK (veredicto FINAL normalizado 'CIERRE=.. MARCA=.. VISUAL=..' →
 # tests de FLUJO sin red) · CLAUDE_DOD_JUEZ_MOCK_RAW (texto CRUDO de respuesta → ejercita el parseo por
 # centinela + el veto de cita sin red).
+# _juez_dod_posible_claim($texto_asistente) → return 0 si el mensaje contiene ALGÚN léxico que PUDIERA
+# ser un claim de CIERRE o una aserción VISUAL; return 1 si NO hay NINGUNO. SCREEN NEGATIVO barato: un
+# claim de cierre o una observación visual EXIGEN vocabulario de cierre/apariencia — sin NADA de ese léxico,
+# los tres ejes son 'no' con certeza y el juez devolvería lo mismo. Un MATCH no decide nada (sigue el juez
+# real → cero FPs, a diferencia del viejo CLAIM_RE que DECIDÍA); solo el NO-match salta la llamada de red, y
+# solo en Stops OBVIAMENTE inocuos. GENEROSO/over-inclusive a propósito: errar hacia INCLUIR (llamar al juez)
+# preserva el comportamiento — el único riesgo sería un claim con léxico exótico, cubierto con margen amplio.
+# Deriva del MISMO léxico de los 3 ejes del prompt (cierre + visual). Espejo del PISO barato de
+# _juez_merge_uno (sin USUARIO:→DENY). Emojis fuera del -iE (multibyte no case-foldea fiable). bash-3.2-safe.
+_juez_dod_posible_claim() {
+  printf '%s' "$1" | grep -qiE 'list[oa]|termin|funcion|qued|a la par|de punta a punta|produc|cerr|cierr|complet|implementad|arreglad|resuelt|logr|entreg|desplleg|despleg|deploy|done|ready|se ve|se ven|mockup|pantalla|render|chrome|qa visual|identic|idéntic|igual|dise.o|screenshot|captur|pixel|píxel' && return 0
+  case "$1" in *🏁*|*🎉*|*✅*|*🚀*|*✨*) return 0 ;; esac
+  return 1
+}
+
 _juez_dod() {
   local prompt out c m v txt cita _resp
   if [ -n "${CLAUDE_DOD_JUEZ_MOCK:-}" ]; then
@@ -82,6 +97,11 @@ _juez_dod() {
   if [ -n "${CLAUDE_DOD_JUEZ_MOCK_RAW:-}" ]; then
     txt="$CLAUDE_DOD_JUEZ_MOCK_RAW"                 # respuesta CRUDA mockeada → ejercita parseo + veto de cita
   else
+  # PISO barato (estructural, ANTES de gastar la red): sin NINGÚN léxico de cierre/apariencia en el mensaje
+  # del asistente ($1), los tres ejes son 'no' con certeza → resolvemos el Stop OBVIO sin la llamada al LLM.
+  # (Los mocks NO llegan aquí — ya salieron arriba —, así que los tests de FLUJO con asistente 'X' + mock no
+  # se ven afectados; y la batería LIVE usa frases con léxico → pasan el piso y llegan al juez real.)
+  if ! _juez_dod_posible_claim "$1"; then printf 'CIERRE=no MARCA=no VISUAL=no'; return 0; fi
   # Token + curl + reintento-401 + deps: TODO vive en la lib juez-comun.sh (_juez_llamar_api), homologada
   # con el getter del widget (login-activo-first, honra CLAUDE_CONFIG_DIR). MISMO canal que el widget
   # (api.anthropic.com + anthropic-beta:oauth-2025-04-20; NO `claude -p`, NO api-key). Ver la llamada abajo.

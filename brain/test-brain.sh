@@ -544,6 +544,37 @@ dur=$SECONDS
 { [ -z "$dhang" ] && [ "$dur" -lt 4 ]; } \
   && ok "cmd H5: glab colgado → timeout interno devuelve vacío en ${dur}s" || bad "cmd H5: consulta colgada NO acotada (dhang='$dhang' dur=${dur}s)"
 mock_cm_glab develop
+# ── (b) destino EXPLÍCITO del comando (--base/--target-branch) → sin API, robusto al modo-falla launch-GUI ──
+# Root cause (a): en un launch GUI el subproceso-hook hereda el PATH mínimo de launchd (/usr/bin:/bin), donde
+# jq SÍ está (el guard corre) pero gh/glab NO (solo en /opt/homebrew/bin) → la API salía vacía y el fail-safe
+# frenaba merges legítimos. El fix (b) toma el destino del PROPIO comando cuando viene por flag (sin red/CLI/jq).
+rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
+# Unidad del extractor puro (sin sourcear repo/red).
+( . "$HOOKS/analizar-comando-git.sh"
+  [ "$(acg_destino_explicito_del_comando 'glab mr merge 5 --target-branch main --yes')" = main ] \
+    && ok "cmd (b): extractor lee --target-branch main del comando" || bad "cmd (b): no leyó --target-branch"
+  [ "$(acg_destino_explicito_del_comando 'gh pr merge 9 -B develop')" = develop ] \
+    && ok "cmd (b): extractor lee -B develop (gh) del comando" || bad "cmd (b): no leyó -B (gh)"
+  [ "$(acg_destino_explicito_del_comando 'gh pr merge 9 --base develop')" = develop ] \
+    && ok "cmd (b): extractor lee --base develop (gh) del comando" || bad "cmd (b): no leyó --base"
+  [ -z "$(acg_destino_explicito_del_comando 'glab mr merge 5 --yes')" ] \
+    && ok "cmd (b): comando SIN flag de destino → extractor vacío (cae al lookup por API)" || bad "cmd (b): inventó un destino sin flag" )
+# El destino EXPLÍCITO GANA sobre la API: el stub glab diría 'develop', pero el comando dice --target-branch main.
+mock_cm_glab develop
+dexp=$(PATH="$CMBIN:$PATH" CLAUDE_PROJECT_DIR="$CMREPO" bash -c '. "'"$HOOKS"'/analizar-comando-git.sh"; acg_destino_de_mr "glab mr merge 77 --target-branch main"')
+[ "$dexp" = main ] \
+  && ok "cmd (b): destino explícito (--target-branch main) GANA sobre la API (develop del stub) — sin red" || bad "cmd (b): el destino explícito no ganó sobre la API (got '$dexp')"
+# El fix real: resuelve el destino SIN gh/glab en el PATH (simula el subproceso launch-GUI).
+rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
+dnocli=$(env -i PATH="/usr/bin:/bin" HOME="$CMHOME" bash -c '. "'"$HOOKS"'/analizar-comando-git.sh"; acg_destino_de_mr "gh pr merge 5 --base develop"')
+[ "$dnocli" = develop ] \
+  && ok "cmd (b): --base develop resuelve SIN gh/glab en el PATH (modo-falla launch-GUI) → develop" || bad "cmd (b): no resolvió el destino sin CLI en PATH (got '$dnocli')"
+# Fail-safe INTACTO: sin flag de destino Y sin gh/glab resoluble → vacío (el juez cae a su fail-SEGURO, NUNCA afloja).
+rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
+dfs=$(env -i PATH="/usr/bin:/bin" HOME="$CMHOME" bash -c '. "'"$HOOKS"'/analizar-comando-git.sh"; acg_destino_de_mr "glab mr merge 88"')
+[ -z "$dfs" ] \
+  && ok "cmd (b) fail-safe: SIN flag y SIN gh/glab → destino vacío (el fail-safe del juez sigue frenando)" || bad "cmd (b) fail-safe: debía salir vacío sin destino resoluble (got '$dfs')"
+mock_cm_glab develop
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
 
 # ── (b1e-2) EXTRACCIÓN de contexto intercalado (_recent_intercalado) — DETERMINISTA, sin LLM ──
@@ -1824,6 +1855,23 @@ MARCA: si
 VISUAL: no'
   [ "$(praw "$VE" 'Quedó.' 'cierralo pues pero dale otra luz al boton')" = 'CIERRE=si MARCA=no VISUAL=no' ] \
     && ok "dod veto-robusto (e): CITA de 2 tokens sueltos (no contiguos) → MARCA=no (mínimo 4 tokens veta el containment)" || bad "dod veto-robusto (e): una cita de 2 tokens casó por azar"
+)
+
+# ── PISO BARATO estructural (item #2): sin léxico de cierre/apariencia → 3 ejes 'no' SIN gastar la red ──
+# Ahorra la llamada al juez en los Stops OBVIAMENTE inocuos. SCREEN NEGATIVO/generoso: un MATCH no decide
+# (sigue el juez real → cero FPs); solo el NO-match salta la red. Determinista sin red: el piso retorna
+# ANTES de la llamada API (y DESPUÉS de los mocks → los tests de FLUJO con mock no se ven afectados).
+(
+  _CMD_DOD_SOURCE_ONLY=1 . "$HOOKS/dod-verificar.sh"
+  unset CLAUDE_DOD_JUEZ_MOCK CLAUDE_DOD_JUEZ_MOCK_RAW
+  _juez_dod_posible_claim 'El módulo quedó listo.'          && ok "dod piso: 'quedó listo' → posible claim (pasa al juez)" || bad "dod piso: no reconoció léxico de cierre"
+  _juez_dod_posible_claim 'En Chrome se ve como el mockup.' && ok "dod piso: léxico VISUAL (chrome/mockup/se ve) → posible claim" || bad "dod piso: no reconoció léxico visual"
+  _juez_dod_posible_claim '🏁 terminado'                     && ok "dod piso: emoji 🏁 → posible claim" || bad "dod piso: no reconoció el emoji de cierre"
+  _juez_dod_posible_claim 'Ejecuté el comando y aquí están los resultados del análisis.' \
+    && bad "dod piso: un mensaje inocuo NO debe contar como posible claim" || ok "dod piso: mensaje inocuo (sin léxico) → NO es posible claim"
+  # Integración: mensaje inocuo → el juez resuelve los 3 ejes 'no' SIN red (piso), determinista aun sin token/mock.
+  [ "$(_juez_dod 'Aquí está el resumen de lo que encontré en los archivos.' 'haz el cambio')" = 'CIERRE=no MARCA=no VISUAL=no' ] \
+    && ok "dod piso: Stop inocuo → 'CIERRE=no MARCA=no VISUAL=no' sin llamada al LLM" || bad "dod piso: no cortó en seco un Stop inocuo"
 )
 
 # ── BATERÍA LIVE del juez-dod (opt-in) · clasificación REAL de FP/FN históricos contra Haiku ──
