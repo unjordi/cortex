@@ -3202,16 +3202,16 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-echo "== (e6b) install-brain: EXACTAMENTE 8 hooks en PreToolUse/Bash + aviso-contexto en PostToolUse =="
-# El fan-out de guards sobre Bash es un set CERRADO de 8; aviso-contexto es el 9º pero va en PostToolUse
-# (casa toda tool). El cableado se DERIVA del MANIFEST vía ev_de() en install-brain.sh → verificamos ese
-# mapeo (no líneas register_hook literales: el instalador las colapsó a un loop). Si alguien agrega/quita
-# un guard de Bash del mapeo, este test lo caza.
-want_bash="git-branch-guard merge-squash-guard confirmar-merge-develop secret-scan recordar-dashboard entorno-maquina-guard rama-vieja proteger-arbol"
+echo "== (e6b) install-brain: EXACTAMENTE 9 hooks en PreToolUse/Bash + aviso-contexto en PostToolUse =="
+# El fan-out de guards sobre Bash es un set CERRADO de 9; aviso-contexto va en PostToolUse (casa toda
+# tool). El cableado se DERIVA del MANIFEST vía ev_de() en install-brain.sh → verificamos ese mapeo (no
+# líneas register_hook literales: el instalador las colapsó a un loop). Si alguien agrega/quita un guard
+# de Bash del mapeo, este test lo caza.
+want_bash="git-branch-guard merge-squash-guard confirmar-merge-develop secret-scan recordar-dashboard entorno-maquina-guard no-bypass-deploy rama-vieja proteger-arbol"
 want_bash_sorted="$(printf '%s\n' $want_bash | sort | tr '\n' ' ' | sed 's/ *$//')"
 got_bash="$(grep -E '\) *echo *"PreToolUse\|Bash"' "$INSTALLER" | sed -E 's/\).*//' | tr '|' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -vE '^$' | sort | tr '\n' ' ' | sed 's/ *$//')"
 if [ "$got_bash" = "$want_bash_sorted" ]; then
-  ok "e6b: ev_de() mapea EXACTAMENTE los 8 guards de PreToolUse/Bash"
+  ok "e6b: ev_de() mapea EXACTAMENTE los 9 guards de PreToolUse/Bash"
 else
   bad "e6b: el set PreToolUse/Bash de ev_de() cambió · got:[$got_bash] want:[$want_bash_sorted]"
 fi
@@ -3518,6 +3518,100 @@ flempty="$(HOME="$FLHOME" CLAUDE_BRAIN_DIR="$FLBRAIN" CLAUDE_DRIFT_STATEDIR="$FL
 printf '%s' "$flempty" | grep -qE '0 repo\(s\)' \
   && ok "F4 fail-open: code-dir inexistente → 0 repos, no revienta" || bad "F4 fail-open: no manejó un code-dir inexistente; got: $flempty"
 rm -rf "$FLFIX"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo "== (g1) no-bypass-deploy: AVISA (no bloquea) al correr instalador/deploy a mano; PRECISO (silencio en dry-run/help/CI/mención) =="
+NBD="$HOOKS/no-bypass-deploy.sh"
+# alimenta un comando por stdin (JSON) y devuelve el additionalContext (vacío = silencio)
+nbd_ctx() { printf '{"tool_input":{"command":%s}}' "$(jq -Rn --arg c "$1" '$c')" | bash "$NBD" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null; }
+[ -n "$(nbd_ctx 'bash brain/install-brain.sh')" ] \
+  && ok "g1: install-brain.sh corrido a mano → AVISA (redirige al widget)" || bad "g1: no avisó sobre install-brain.sh a mano"
+printf '%s' "$(nbd_ctx 'bash brain/install-brain.sh')" | grep -qi 'widget' \
+  && ok "g1: el aviso del brain redirige al WIDGET" || bad "g1: el aviso del brain no menciona el widget"
+[ -n "$(nbd_ctx './uninstall-brain.sh')" ] \
+  && ok "g1: uninstall-brain.sh a mano → AVISA" || bad "g1: no avisó sobre uninstall-brain.sh"
+[ -n "$(nbd_ctx 'make deploy')" ] \
+  && ok "g1: 'make deploy' a mano → AVISA genérico (deploy oficial)" || bad "g1: no avisó sobre 'make deploy'"
+[ -n "$(nbd_ctx 'bash deploy.sh')" ] \
+  && ok "g1: deploy.sh a mano → AVISA genérico" || bad "g1: no avisó sobre deploy.sh"
+# PRECISIÓN — casos que NO deben disparar (fail-safe):
+[ -z "$(nbd_ctx 'bash install-brain.sh --dry-run')" ] \
+  && ok "g1: --dry-run NO dispara (no muta)" || bad "g1: disparó en --dry-run (FP)"
+[ -z "$(nbd_ctx 'bash install-brain.sh --help')" ] \
+  && ok "g1: --help NO dispara (no muta)" || bad "g1: disparó en --help (FP)"
+[ -z "$(printf '{"tool_input":{"command":"bash install-brain.sh"}}' | CI=1 bash "$NBD" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)" ] \
+  && ok "g1: en CI NO dispara (el pipeline ES la herramienta)" || bad "g1: disparó en CI (FP)"
+[ -z "$(nbd_ctx 'echo "acuérdate de correr install-brain.sh"')" ] \
+  && ok "g1: mención ENTRECOMILLADA del instalador NO dispara" || bad "g1: disparó sobre una mención entrecomillada (FP)"
+[ -z "$(nbd_ctx 'grep install-brain.sh test-brain.sh')" ] \
+  && ok "g1: el nombre como ARGUMENTO de grep (no ejecución) NO dispara" || bad "g1: disparó sobre 'grep install-brain.sh' (FP)"
+[ -z "$(nbd_ctx 'bash test-brain.sh')" ] \
+  && ok "g1: un script no-instalador NO dispara" || bad "g1: disparó sobre un script cualquiera (FP)"
+[ -z "$(nbd_ctx 'cat install.sh')" ] \
+  && ok "g1: 'cat install.sh' (leer, no ejecutar) NO dispara" || bad "g1: disparó al leer el archivo (FP)"
+# tier both → trae la cláusula de dedupe (la copia por-repo cede a la global)
+grep -q 'case "\$0" in "\$HOME/.claude/hooks/"' "$NBD" \
+  && ok "g1: no-bypass-deploy trae la cláusula de dedupe (tier both)" || bad "g1: falta la cláusula de dedupe en un hook tier both"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo "== (g2) sincronizar-cerebro --disable <hook>: de-cablea + borra el hook nombrado (vía consolidada de retiro) =="
+SYNCD="$SCRIPT_DIR/sincronizar-cerebro.sh"
+G2T="$(mktemp -d "${TMPDIR:-/tmp}/brain-g2.XXXXXX")"; mkdir -p "$G2T/.claude/hooks"
+printf 'exit 0\n' > "$G2T/.claude/hooks/obsoleto.sh"
+printf 'exit 0\n' > "$G2T/.claude/hooks/vigente.sh"
+cat > "$G2T/.claude/settings.json" <<'JSON'
+{"hooks":{"PreToolUse":[
+  {"matcher":"Bash","hooks":[{"type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/obsoleto.sh\"","shell":"bash"}]},
+  {"matcher":"Bash","hooks":[{"type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/vigente.sh\"","shell":"bash"}]}
+]}}
+JSON
+# (1) DRY-RUN: reporta que deshabilitaría, NO borra
+bash "$SYNCD" "$G2T" --disable obsoleto 2>/dev/null | grep -q 'DESHABILITARÍA' \
+  && ok "g2: --disable dry-run REPORTA (DESHABILITARÍA)" || bad "g2: dry-run no reportó DESHABILITARÍA"
+[ -f "$G2T/.claude/hooks/obsoleto.sh" ] \
+  && ok "g2: dry-run NO borró el .sh" || bad "g2: el dry-run borró el hook (debía ser no-op)"
+# (2) --apply: de-cablea + borra SOLO el nombrado
+bash "$SYNCD" "$G2T" --disable obsoleto --apply >/dev/null 2>&1
+[ ! -f "$G2T/.claude/hooks/obsoleto.sh" ] \
+  && ok "g2: --apply BORRÓ el hook nombrado" || bad "g2: --apply no borró el .sh"
+grep -q obsoleto "$G2T/.claude/settings.json" \
+  && bad "g2: el hook sigue CABLEADO tras --disable --apply" || ok "g2: --apply DE-CABLEÓ del settings.json"
+{ [ -f "$G2T/.claude/hooks/vigente.sh" ] && grep -q vigente "$G2T/.claude/settings.json"; } \
+  && ok "g2: --disable NO tocó el otro hook (vigente sigue presente + cableado)" || bad "g2: --disable dañó un hook no nombrado"
+# (3) idempotente: re-correr sobre uno ya ausente → 'ya ausente', sin reventar
+bash "$SYNCD" "$G2T" --disable obsoleto --apply 2>/dev/null | grep -q 'YA AUSENTE' \
+  && ok "g2: --disable es idempotente (segundo pase → YA AUSENTE)" || bad "g2: --disable no reportó YA AUSENTE en el 2º pase"
+# (4) CSV: deshabilita varios de un tiro
+bash "$SYNCD" "$G2T" --disable vigente,inexistente --apply >/dev/null 2>&1
+[ ! -f "$G2T/.claude/hooks/vigente.sh" ] \
+  && ok "g2: --disable acepta CSV (retira 'vigente' junto a un inexistente sin reventar)" || bad "g2: el CSV no retiró 'vigente'"
+rm -rf "$G2T"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo "== (g3) install-brain: SIEMBRA en settings.json .env las env vars ACTIVAS del brain (no en la sesión) =="
+G3H="$(mktemp -d "${TMPDIR:-/tmp}/brain-g3.XXXXXX")"
+HOME="$G3H" CLAUDE_SESSIONS_DRIVE="/tmp/mi-drive-g3" CLAUDE_SESSIONS_DEBOUNCE_MIN="7" bash "$INSTALLER" >/dev/null 2>&1
+[ "$(jq -r '.env.CLAUDE_SESSIONS_DRIVE // ""' "$G3H/.claude/settings.json" 2>/dev/null)" = "/tmp/mi-drive-g3" ] \
+  && ok "g3: CLAUDE_SESSIONS_DRIVE ACTIVA se persiste en .env (siembra, no queda en la sesión)" || bad "g3: no persistió CLAUDE_SESSIONS_DRIVE activa"
+[ "$(jq -r '.env.CLAUDE_SESSIONS_DEBOUNCE_MIN // ""' "$G3H/.claude/settings.json" 2>/dev/null)" = "7" ] \
+  && ok "g3: CLAUDE_SESSIONS_DEBOUNCE_MIN ACTIVA se persiste en .env" || bad "g3: no persistió CLAUDE_SESSIONS_DEBOUNCE_MIN activa"
+# la REGLA está documentada en el instalador (doc=realidad del mecanismo)
+grep -q 'REGLA DE ENV VARS DEL BRAIN' "$INSTALLER" \
+  && ok "g3: la REGLA de env-seeding está documentada en install-brain.sh" || bad "g3: falta documentar la REGLA de env-seeding"
+# NO persiste un valor cuando la var NO está activa (idempotencia / no basura)
+G3H2="$(mktemp -d "${TMPDIR:-/tmp}/brain-g3b.XXXXXX")"
+env -u CLAUDE_SESSIONS_DRIVE -u CLAUDE_SESSIONS_DEBOUNCE_MIN HOME="$G3H2" bash "$INSTALLER" >/dev/null 2>&1
+[ "$(jq -r 'has("env") and (.env|has("CLAUDE_SESSIONS_DRIVE"))' "$G3H2/.claude/settings.json" 2>/dev/null)" != "true" ] \
+  && ok "g3: sin la var activa NO inventa CLAUDE_SESSIONS_DRIVE en .env" || bad "g3: persistió una env var que no estaba activa"
+rm -rf "$G3H" "$G3H2"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo "== (g4) normas nuevas presentes en norms/global-claude-md.md (mecanismo de las normas #12a/#13) =="
+NORMSF="$SCRIPT_DIR/norms/global-claude-md.md"
+grep -q 'Actualiza por la HERRAMIENTA REAL' "$NORMSF" && grep -q 'no-bypass-deploy' "$NORMSF" \
+  && ok "g4: norma 'actualiza por la herramienta real' + su mecanismo (no-bypass-deploy) en las normas" || bad "g4: falta la norma B1 (herramienta real) o su mecanismo en las normas"
+grep -qi 'clic en la web' "$NORMSF" && grep -qi 'vein-popper' "$NORMSF" \
+  && ok "g4: norma 'nunca el clic en la web como escape de un juez que frena' presente" || bad "g4: falta la norma del clic-en-la-web como escape (#13)"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""

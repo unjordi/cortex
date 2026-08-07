@@ -25,6 +25,7 @@ confirmar-merge-develop  both    hook
 recordar-dashboard       both    hook
 secret-scan              both    hook
 entorno-maquina-guard    both    hook
+no-bypass-deploy         both    hook
 analizar-comando-git     both    lib
 detectar-secretos        both    lib
 juez-comun               both    lib

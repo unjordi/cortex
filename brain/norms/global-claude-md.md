@@ -108,6 +108,20 @@ mañana 10am"): mientras esté vigente, se re-cita sin escrúpulo. Caso real (ju
 re-citar una autorización blanket legítima por escrúpulo excesivo y una noche de trabajo quedó
 represada en MRs sin mergear.
 
+### NUNCA ofrezcas "el clic en la web" como escape de un juez que frena en CLI (norma dura)
+Cuando un guard/juez frena una acción por CLI (`confirmar-merge-develop`, `merge-squash-guard`,
+`git-branch-guard`…), la respuesta CORRECTA es UNA de dos: **(1) ARREGLAR lo que el juez señala** —
+dar el resumen de squash, citar el OK real y vigente, corregir el target mal detectado— o **(2) PEDIR
+el OK claro** que el juez exige, en lenguaje inequívoco. **JAMÁS** la salida es "…o mergéalo tú en la
+web de GitLab/GitHub". Ofrecer el clic manual como vía de escape es un **vein-popper**: enruta a la
+persona ALREDEDOR del control en vez de satisfacerlo, traslada a un humano el trabajo que Claude debía
+cerrar por el carril correcto, y vacía de sentido al juez (un control que se sortea con "hazlo a mano"
+no controla nada). Aplica a CUALQUIER juez que frene en CLI, no solo a los merges. La única mención
+legítima de la web es DESCRIPTIVA de un flujo que el usuario YA eligió (p. ej. el release
+`develop→main` que por convención hace el humano en la web) — nunca como salida para desatorar a Claude
+de un juez que acaba de frenar. Corolario de "Integridad de los guardarraíles": si el juez frena en
+falso, se AFINA (con OK explícito, solo precisión); si frena bien, se CUMPLE — no se rodea.
+
 ### Bitácora de falsos positivos de los guards (afinar con corpus, no con anécdotas)
 Cada vez que un guard/hook **frene EN FALSO** (dispara sobre algo que NO era lo que vigila), Claude
 appendea **EN EL MOMENTO** una línea al final de `~/.claude/memory/guards-falsos-positivos.md`
@@ -126,6 +140,21 @@ al usuario como único enforcement → no se cumple sola (pasó con auto-reporte
 se volvieron hooks). Al crear una norma de proceso, **nace con su mecanismo o es solo un buen deseo.**
 Corolario: un mecanismo mal dirigido (un hook con falsos positivos) desgasta la confianza tanto como su
 ausencia — la PRECISIÓN del guard importa igual que su existencia.
+
+## Actualiza por la HERRAMIENTA REAL, nunca corriendo el instalador/deploy a mano (norma dura)
+Actualizar o desplegar algo se hace **SIEMPRE por la herramienta de release del proyecto**, jamás
+invocando su script de instalación/deploy a pelo. Ejemplo canónico: el **cerebro/widget** se actualiza
+con el **widget** (su updater ⬆, que copia atómico + re-cablea + re-sella la versión), **NUNCA** corriendo
+`install-brain.sh` / `install.sh` a mano en una terminal. Por qué muerde: el instalador a mano se salta los
+pasos que la herramienta orquesta (backup, escritura atómica, sello de versión, re-cableado, verificación),
+deja media instalación o una versión que MIENTE sobre lo instalado, y evade el registro que el equipo espera.
+**GENERALIZADO a CUALQUIER herramienta de install/deploy** del proyecto (un `deploy.sh`, un `publish`, un
+`Makefile install`, un `helm`/`kubectl apply` suelto): si el proyecto tiene una vía OFICIAL para aplicar el
+cambio, esa es la única — correr el script crudo por debajo es el anti-patrón. **Excepciones legítimas
+(no disparan):** `--dry-run`/`--help`/`-n` (no mutan), correr dentro de **CI** (ahí el pipeline ES la
+herramienta), o que el usuario pida EXPLÍCITAMENTE el bypass para depurar. **Mecanismo** (la norma nace con
+él): el guard **`no-bypass-deploy`** (PreToolUse/Bash) DETECTA el instalador/deploy corrido a mano y
+**AVISA/redirige** —no bloquea, fail-safe: ante duda no frena—; redirige a la herramienta real.
 
 ## Ningún hallazgo tuyo se queda solo narrado en el chat (norma dura)
 (Su HERMANA para lo que deciden JUNTOS: "Ninguna DECISIÓN se queda solo en el chat", abajo.)

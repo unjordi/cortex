@@ -25,7 +25,15 @@
 #   borra; en dry-run los lista como "RETIRARÍA". Antídoto a un hook retirado que quedó cableado y
 #   rompe (caso real: el viejo precompact-volcar-estado intentaba inyectar y el CLI lo rechazaba).
 #
+# --disable <a,b,c>: DES-CABLEA (quita del settings.json) + BORRA el/los hook(s) NOMBRADO(s) del repo
+#   destino, sin sincronizar nada más. Es la vía ÚNICA y consolidada para retirar un hook obsoleto de
+#   un repo (antes había shims sueltos con su propio `--uninstall` que divergían). Reusa la MISMA lógica
+#   de de-cableado del pruning (dewire_hook, event-agnóstico → cubre los multi-evento del MANIFEST).
+#   DRY-RUN por default (lista "DESHABILITARÍA"); con --apply de-cablea + borra. Idempotente (un hook ya
+#   ausente se reporta y se salta). Funciona aunque el hook NO esté en el manifiesto (ese es el punto).
+#
 # Uso:  bash sincronizar-cerebro.sh <ruta-repo-destino> [--apply] [--only a,b,c] [--prune-orphans]
+#       bash sincronizar-cerebro.sh <ruta-repo-destino> --disable <hook[,hook2,…]> [--apply]
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -33,7 +41,7 @@ SRC_HOOKS="$SCRIPT_DIR/hooks"
 MANIFEST="$SRC_HOOKS/MANIFEST"
 VERSION_FILE="$SCRIPT_DIR/VERSION"
 
-DEST=""; APPLY=0; ONLY=""; PRUNE=0; PRUNEONLY=0
+DEST=""; APPLY=0; ONLY=""; PRUNE=0; PRUNEONLY=0; DISABLE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --apply) APPLY=1 ;;
@@ -41,6 +49,8 @@ while [ $# -gt 0 ]; do
     --only=*) ONLY="${1#--only=}" ;;
     --prune-orphans) PRUNE=1 ;;
     --prune-only) PRUNE=1; PRUNEONLY=1 ;;   # SOLO retira huérfanos; NO sincroniza nada más (fix quirúrgico)
+    --disable) shift; DISABLE="${1:-}" ;;    # SOLO deshabilita el/los hook(s) nombrado(s) (de-cablea + borra)
+    --disable=*) DISABLE="${1#--disable=}" ;;
     -*) echo "ERROR: flag desconocido: $1"; exit 2 ;;
     *) [ -z "$DEST" ] && DEST="$1" || { echo "ERROR: argumento inesperado: $1"; exit 2; } ;;
   esac
@@ -72,7 +82,7 @@ echo ""
 # Evento+matcher para cablear los kind=hook de tier {repo,both}. (Los global-only los cablea el bootstrap.)
 ev_de() {
   case "$1" in
-    git-branch-guard|merge-squash-guard|confirmar-merge-develop|recordar-dashboard|secret-scan|entorno-maquina-guard) echo "PreToolUse|Bash" ;;
+    git-branch-guard|merge-squash-guard|confirmar-merge-develop|recordar-dashboard|secret-scan|entorno-maquina-guard|no-bypass-deploy) echo "PreToolUse|Bash" ;;
     dod-verificar)  echo "Stop|" ;;
     sesion-inicio)  echo "SessionStart|" ;;
     recordar-cosechar) echo "Stop|" ;;
@@ -93,6 +103,24 @@ register_hook() {
       if any(.hooks[$ev][]?; ([.hooks[]?.command] | join(" ")) | test($pat))
       then . else .hooks[$ev] += [ (if $m=="" then {} else {"matcher":$m} end) + {"hooks":[{"type":"command","command":$cmd,"shell":"bash"}]} ] end
     ' "$gset" > "$tmp" 2>/dev/null && [ -s "$tmp" ]; then mv "$tmp" "$gset"; else rm -f "$tmp"; echo "  warn: no pude cablear ($pat)"; fi
+}
+
+# De-cablea del settings.json TODAS las entradas cuyo 'command' cite el basename del hook (jq).
+# Event-agnóstico: recorre TODOS los eventos → cubre los hooks multi-evento del MANIFEST. Lo usan el
+# pruning de huérfanos/retirados y la opción --disable.
+dewire_hook() {
+  local gset="$1" base="$2" tmp
+  command -v jq >/dev/null 2>&1 || { echo "  warn: jq no está; quita a mano '$base' de $gset"; return; }
+  [ -f "$gset" ] || return
+  tmp="$(mktemp)" || return
+  if jq --arg pat "$base\\.sh" '
+      if (.hooks|type)=="object" then
+        .hooks |= ( to_entries
+          | map(.value |= [ .[] | select((([.hooks[]?.command]|join(" "))|test($pat))|not) ])
+          | map(select((.value|type)=="array" and (.value|length)>0)) | from_entries )
+        | (if (.hooks|length)==0 then del(.hooks) else . end)
+      else . end
+    ' "$gset" > "$tmp" 2>/dev/null && [ -s "$tmp" ]; then mv "$tmp" "$gset"; else rm -f "$tmp"; echo "  warn: no pude de-cablear ($base)"; fi
 }
 
 # wired_in <settings.json> <nombre-hook>  → 0 si algún command del settings.json cita .../<nombre>.sh.
@@ -118,6 +146,36 @@ atomic_install() {  # <src> <dst>
     rm -f "$tmp" 2>/dev/null; return 1
   fi
 }
+
+# ── --disable <a,b,c>: retira el/los hook(s) NOMBRADO(s) del repo destino y termina (no sincroniza) ──
+# Vía consolidada para quitar un hook obsoleto de un repo (reemplaza los shims sueltos de `--uninstall`).
+# De-cablea (dewire_hook, event-agnóstico) + borra el .sh. DRY-RUN por default; --apply escribe.
+if [ -n "$DISABLE" ]; then
+  echo "  (--disable: NO sincronizo; solo retiro el/los hook(s) nombrado(s))"
+  n_dis=0; n_miss=0
+  for name in $(printf '%s' "$DISABLE" | tr ',' ' '); do
+    [ -z "$name" ] && continue
+    dst="$DST_HOOKS/$name.sh"
+    present=0; wired=0
+    [ -f "$dst" ] && present=1
+    wired_in "$DST_SET" "$name" && wired=1
+    if [ "$present" = 0 ] && [ "$wired" = 0 ]; then
+      echo "  YA AUSENTE $name (ni .sh ni cableado en settings.json)"; n_miss=$((n_miss+1)); continue
+    fi
+    if [ "$APPLY" = 1 ]; then
+      [ "$wired" = 1 ] && dewire_hook "$DST_SET" "$name"
+      [ "$present" = 1 ] && rm -f "$dst"
+      echo "  DESHABILITADO $name.sh — de-cableado del settings.json + borrado"
+    else
+      echo "  DESHABILITARÍA $name.sh — de-cablearía del settings.json + borraría (usa --apply)"
+    fi
+    n_dis=$((n_dis+1))
+  done
+  echo ""
+  echo "==> resumen (--disable): $n_dis hook(s) a deshabilitar · $n_miss ya ausente(s)"
+  [ "$APPLY" = 1 ] || echo "    (DRY-RUN — nada escrito. Re-corre con --apply para aplicar.)"
+  exit 0
+fi
 
 # ── Sincronizar los archivos de tier {repo, both} (se SALTA entero con --prune-only) ──
 n_new=0; n_upd=0; n_ok=0; n_wire=0
@@ -186,22 +244,6 @@ if [ "$APPLY" = 1 ] && [ -z "$ONLY" ] && [ "$PRUNEONLY" != 1 ] && [ -f "$VERSION
 elif [ "$APPLY" = 1 ] && { [ -n "$ONLY" ] || [ "$PRUNEONLY" = 1 ]; }; then
   echo ""; echo "  (operación PARCIAL (--only/--prune-only): NO estampo versión — el repo no queda completo en v$VER)"
 fi
-
-# De-cablea del settings.json TODAS las entradas cuyo 'command' cite el basename del hook (jq).
-dewire_hook() {
-  local gset="$1" base="$2" tmp
-  command -v jq >/dev/null 2>&1 || { echo "  warn: jq no está; quita a mano '$base' de $gset"; return; }
-  [ -f "$gset" ] || return
-  tmp="$(mktemp)" || return
-  if jq --arg pat "$base\\.sh" '
-      if (.hooks|type)=="object" then
-        .hooks |= ( to_entries
-          | map(.value |= [ .[] | select((([.hooks[]?.command]|join(" "))|test($pat))|not) ])
-          | map(select((.value|type)=="array" and (.value|length)>0)) | from_entries )
-        | (if (.hooks|length)==0 then del(.hooks) else . end)
-      else . end
-    ' "$gset" > "$tmp" 2>/dev/null && [ -s "$tmp" ]; then mv "$tmp" "$gset"; else rm -f "$tmp"; echo "  warn: no pude de-cablear ($base)"; fi
-}
 
 # ── Huérfanos (.sh en el destino que NO están en el manifiesto). Dos clases:
 #    (a) RETIRADOS por el cerebro (en la lista brain/hooks/RETIRED) → se PODAN SOLOS en cualquier
