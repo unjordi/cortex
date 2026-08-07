@@ -1316,9 +1316,11 @@ public sealed class PopupForm : Form
     private int PaintBrainHealth(Graphics g, int pad, int right, int y)
     {
         var st = _brainState!;
-        // Globales = piezas del catálogo cuyo estado NO es por-repo (los 8 hooks globales + 4 normas
-        // + 1 skill = 13). Los 4 hooks repo-scoped se excluyen del conteo. Usa `BrainMissing()` — la
-        // MISMA fuente que el badge 🩹 del riel y el botón del pie → sin drift entre los tres.
+        // Globales = piezas del catálogo cuyo estado NO es por-repo (hooks {global,both} + normas +
+        // skills — el total real crece con el catálogo, no lo fijes aquí como número mágico: te
+        // desincroniza igual que el drift que este mismo widget existe para evitar). Los hooks
+        // repo-scoped se excluyen del conteo. Usa `BrainMissing()` — la MISMA fuente que el badge 🩹
+        // del riel y el botón del pie → sin drift entre los tres.
         int missing = BrainMissing();
         bool allGood = missing == 0;
 
