@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# delegacion-reporte.sh — PostToolUse/Task: cierra el loop de la delegación SIN NIÑERA. Cuando un
+# delegacion-reporte.sh — PostToolUse/(Task|Agent): cierra el loop de la delegación SIN NIÑERA. Cuando un
 # subagente (Task) termina, RECUERDA al orquestador registrar su avance y limpiar su rastro — para
 # que el estado del proyecto no dependa de que el humano lo pida (hueco real: los agentes hacían el
 # trabajo pero no reportaban; el humano tenía que monitorear a mano).
@@ -23,7 +23,7 @@
 set -u
 command -v jq >/dev/null 2>&1 || exit 0
 input=$(cat 2>/dev/null || true)
-[ "$(printf '%s' "$input" | jq -r '.tool_name // empty' 2>/dev/null)" = "Task" ] || exit 0
+case "$(printf '%s' "$input" | jq -r '.tool_name // empty' 2>/dev/null)" in Task|Agent) ;; *) exit 0 ;; esac  # Agent = nombre nuevo del tool (antes Task)
 
 msg="Un subagente (Task) TERMINÓ — punto de reporte, NO lo monitorees a mano.
 SI tu agente MUTÓ el repo (creó/editó archivos, commiteó, dejó un worktree o rama), ciérralo antes de seguir:

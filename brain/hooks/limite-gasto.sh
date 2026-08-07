@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# limite-gasto.sh — PreToolUse/Task: FRENO DURO cuando NO queda capacidad en NINGÚN lado. A diferencia
+# limite-gasto.sh — PreToolUse/(Task|Agent): FRENO DURO cuando NO queda capacidad en NINGÚN lado. A diferencia
 # de delegacion-gate (que PREGUNTA por la ventana de 5h y tú decides), este BLOQUEA reclutar un agente
 # SOLO en la condición COMBINADA: tu ventana de 5h está AGOTADA **Y** tu overage NO tiene holgura
 # (topado o deshabilitado). Ahí no hay ni cupo del plan ni saldo → el agente moriría a medias, mejor no
@@ -15,7 +15,7 @@
 set -u
 command -v jq >/dev/null 2>&1 || exit 0
 input=$(cat 2>/dev/null || true)
-[ "$(printf '%s' "$input" | jq -r '.tool_name // empty' 2>/dev/null)" = "Task" ] || exit 0
+case "$(printf '%s' "$input" | jq -r '.tool_name // empty' 2>/dev/null)" in Task|Agent) ;; *) exit 0 ;; esac  # Agent = nombre nuevo del tool (antes Task)
 
 snap=""
 for c in "${XDG_CACHE_HOME:-$HOME/.cache}/claude-brain/state.json" "$HOME/Library/Caches/claude-brain/state.json"; do
