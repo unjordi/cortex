@@ -108,7 +108,16 @@ VEREDICTO: DENY"
   # Llamada REAL vía la lib común (retrieval portable + curl que captura http_code + reintento 1× en 401).
   # Si vuelve VACÍA, mapeo el ESTADO de la lib a un UNAVAILABLE_* específico que el CUERPO del hook traduce
   # a un mensaje ACCIONABLE (NOTOKEN→web de GitLab · EXPIRED→reintenta · NET→genérico) — SIEMPRE fail-safe DENY.
-  _resp=$(_juez_llamar_api "${CLAUDE_MERGE_JUEZ_MODEL:-claude-haiku-4-5-20251001}" 768 "${CLAUDE_MERGE_JUEZ_TIMEOUT:-25}" "$temp" "$prompt")
+  # TIMEOUT INTERNO (default 8s) — INVARIANTE fail-CLOSED: debe ser ESTRICTAMENTE MENOR que el timeout del
+  # HARNESS con que este hook se cablea en settings.json (el más ajustado hoy = 15s en la copia por-repo). Si
+  # el interno fuera ≥ harness, ante una API colgada el CLI MATARÍA el hook ANTES de que el juez alcance a
+  # emitir su DENY → un fail-CLOSED que cae fail-OPEN (merge PERMITIDO sin evaluar). Antes era 25 (> 15) → el
+  # bug. 8s deja ~7s de holgura para las consultas git previas (acg_destino_de_mr/acg_lista_prs_abiertos, cada
+  # una acotada a ACG_MR_TIMEOUT=6s y cacheadas/compartidas con squash-guard, típicamente tibias) + overhead,
+  # así el hook SIEMPRE alcanza a emitir su fail-safe DENY dentro del presupuesto del harness. Misma disciplina
+  # que ACG_MR_TIMEOUT (ver analizar-comando-git.sh). La invariante la ancla test-brain.sh (bloque b1e).
+  # Overridable por si un consumidor cablea un harness MÁS grande (subir el interno solo si el harness lo cubre).
+  _resp=$(_juez_llamar_api "${CLAUDE_MERGE_JUEZ_MODEL:-claude-haiku-4-5-20251001}" 768 "${CLAUDE_MERGE_JUEZ_TIMEOUT:-8}" "$temp" "$prompt")
   _estado=$(printf '%s\n' "$_resp" | head -1)      # línea 1 = estado (subshell-safe; NO el global _JUEZ_ESTADO)
   txt=$(printf '%s\n' "$_resp" | sed '1d')         # resto = texto del assistant
   if [ -z "$txt" ]; then

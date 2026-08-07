@@ -537,6 +537,23 @@ dur=$SECONDS
 mock_cm_glab develop
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
 
+# H5-bis (#51): INVARIANTE fail-CLOSED — el timeout INTERNO del juez debe ser ESTRICTAMENTE MENOR que el
+# timeout del HARNESS con que el hook se cablea en settings.json. Si el interno fuera ≥ harness, ante una
+# API colgada el CLI mataría el hook ANTES de que el juez emita su DENY → el fail-CLOSED cae fail-OPEN
+# (merge PERMITIDO sin evaluar). Regresión real del estreno: interno=25 > harness=15. HARNESS_MIN = el
+# timeout MÁS AJUSTADO con que un consumidor cablea este hook por-repo (settings.json de plantilladotnet:
+# "timeout":15). Misma disciplina que ACG_MR_TIMEOUT (analizar-comando-git.sh), que ya la respeta a 6s.
+HARNESS_MIN=15
+juez_to=$(grep -oE 'CLAUDE_MERGE_JUEZ_TIMEOUT:-[0-9]+' "$HOOKS/confirmar-merge-develop.sh" | grep -oE '[0-9]+$' | head -1)
+acg_to=$(grep -oE 'ACG_MR_TIMEOUT:-[0-9]+' "$HOOKS/analizar-comando-git.sh" | grep -oE '[0-9]+$' | head -1)
+{ [ -n "$juez_to" ] && [ "$juez_to" -lt "$HARNESS_MIN" ]; } \
+  && ok "cmd H5-bis: timeout interno del juez (${juez_to}s) < harness (${HARNESS_MIN}s) → fail-CLOSED alcanza a emitir DENY" \
+  || bad "cmd H5-bis: FAIL-OPEN latente — timeout interno del juez (${juez_to:-?}s) NO es < harness (${HARNESS_MIN}s)"
+# la holgura debe cubrir además las consultas git previas (ACG_MR_TIMEOUT) + overhead → interno + acg < harness
+{ [ -n "$juez_to" ] && [ -n "$acg_to" ] && [ "$((juez_to + acg_to))" -lt "$HARNESS_MIN" ]; } \
+  && ok "cmd H5-bis: juez(${juez_to}s) + acg(${acg_to}s) < harness (${HARNESS_MIN}s) → presupuesto del hook con margen" \
+  || bad "cmd H5-bis: presupuesto ajustado — juez(${juez_to:-?}s)+acg(${acg_to:-?}s) NO es < harness (${HARNESS_MIN}s)"
+
 # ── (b1e-2) EXTRACCIÓN de contexto intercalado (_recent_intercalado) — DETERMINISTA, sin LLM ──
 # El jq de interleave es el código NUEVO riesgoso del fix "el juez lee MIS turnos" (2026-08-02): si se rompe,
 # el juez ve contexto vacío → regresan los falsos negativos anafóricos. Se testea con fixtures de transcript.
