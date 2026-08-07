@@ -969,6 +969,9 @@ PlasmoidItem {
                 { emoji: "💾", name: "checkpoint", desc: "vuelca el hilo mental a disco para compactar sin perderlo",
                   event: "skill · opt-in",
                   detail: "Vuelca lo efímero del chat (el hilo: qué haces ahora, la decisión abierta, el siguiente paso) a hilo-mental-actual.md, para poder compactar cuanto quieras sin perder el hilo. Es la mitad 'escribir' del par con el hook rehidratar-hilo (la mitad 'leer'). Córrelo antes de un /compact o en una pausa natural." },
+                { emoji: "🗂️", name: "to-do", desc: "carga la interfaz de tareas del harness desde el backlog durable (estado-proyecto.md)",
+                  event: "skill · opt-in",
+                  detail: "El skill de to-dos/backlog. Con /to-do carga la interfaz de tareas del harness poblada AL VUELO desde el backlog durable (estado-proyecto.md) —sin pedirla a mano cada vez— y cura tareas con higiene durable: título = el QUÉ, estatus en su CAMPO (no incrustado en el texto), fechas ABSOLUTAS (nunca 'hoy'). Separación dura: la task-list del harness es SCRATCH de sesión; la fuente de verdad es estado-proyecto.md." },
                 { emoji: "📦", name: "cerrar-slice", desc: "build+tests+memoria al día + MR con resumen curado por slice",
                   event: "skill · opt-in",
                   detail: "Ritual de cierre de un slice: build+tests verdes, memoria al día (bitácora), MR con resumen curado en prosa, y el Paso 5 de cosechar lo genérico de vuelta al cerebro global." },
@@ -1128,7 +1131,7 @@ PlasmoidItem {
             return p && w ? "installed" : (p ? "presentNotWired" : "absent")
         }
         if (inArr(root.brainRepoHooks, name)) return "repoScoped"
-        if (["cerrar-slice","checkpoint","diagramar","auditar-proceso-algoritmo","auditar-coherencia-cerebro","auditar-suficiencia-operativa","consolidar-cerebro","desinflar-memorias","orquestar-fanout","turno-nocturno","cosechar-sesion","unificar-cerebro","investigar-dominio","positivar-doc","revisar-entregables-agentes","zoom-screenshot","claude-proyecto-autocontenido"].indexOf(name) !== -1)
+        if (["cerrar-slice","checkpoint","to-do","diagramar","auditar-proceso-algoritmo","auditar-coherencia-cerebro","auditar-suficiencia-operativa","consolidar-cerebro","desinflar-memorias","orquestar-fanout","turno-nocturno","cosechar-sesion","unificar-cerebro","investigar-dominio","positivar-doc","revisar-entregables-agentes","zoom-screenshot","claude-proyecto-autocontenido"].indexOf(name) !== -1)
             return inArr(st.skills, name) ? "installed" : "absent"
         if (name === "Definition of Done" || name === "Doc <= realidad"
             || name === "Flujo de git" || name === "Costo de delegación")
