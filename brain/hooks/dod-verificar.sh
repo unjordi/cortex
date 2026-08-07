@@ -180,10 +180,20 @@ last=$(printf '%s\n' "$turn" | jq -rs '[.[] | select((.message.role // .type)=="
 usertext=$(printf '%s\n' "$turn" | jq -rs '
   [ .[] | select((.message.role // .type)=="user")
         | select((.isMeta // false) != true)
-        | ((.message.content // [.message])
-           | if type=="array"
-             then (map(if type=="string" then . elif (.type? == "text") then .text else "" end) | join(" "))
-             else (. // "") end)
+        # AskUserQuestion: el OK del usuario dado por el WIDGET llega como tool_result (texto vacío → se perdía
+        # → el juez nunca veía la MARCA (1)/(2) dada por clic). La opción ELEGIDA + notas viven en
+        # .toolUseResult.answers/.annotations (input GENUINO del usuario). SOLO ese campo (AskUserQuestion-
+        # específico); el output de OTRAS tools NO tiene .answers → sigue en texto vacío y se filtra.
+        | ( (try ([ .toolUseResult.answers[]
+                    | select(type=="string" and . != "" and . != "(no option selected)" and . != "(notes only)") ]
+                 + [ .toolUseResult.annotations[]?.notes | select(type=="string" and . != "") ]
+                 | join(" · ")) catch "") as $aq
+          | if $aq != "" then $aq
+            else ((.message.content // [.message])
+                  | if type=="array"
+                    then (map(if type=="string" then . elif (.type? == "text") then .text else "" end) | join(" "))
+                    else (. // "") end)
+            end )
         | select(. != "")
         | select(test("<system-reminder>") | not) ] | join("  ")' 2>/dev/null)
 
