@@ -67,6 +67,7 @@ public sealed class BrainState
                 or "orquestar-fanout" or "turno-nocturno" or "cosechar-sesion" or "unificar-cerebro"
                 or "investigar-dominio" or "positivar-doc" or "revisar-entregables-agentes"
                 or "zoom-screenshot" or "claude-proyecto-autocontenido"
+                or "ingenieria-inversa-gui-db-navegador" or "markdown-a-pdf"
                 => Skills.Contains(name) ? BrainStatus.Installed : BrainStatus.Absent,
             "Definition of Done" or "Doc <= realidad" or "Flujo de git" or "Costo de delegación"
                 => HasNorms ? BrainStatus.Installed : BrainStatus.Absent,
