@@ -25,7 +25,7 @@ Widget de escritorio open-source que muestra los límites de uso de Claude (sesi
 ## Arquitectura por-OS (paridad)
 - **Linux/mac:** script bash `*/bin/claude-brain-fetch` (idéntico entre `macos/bin/` y `src/bin/` por convención) en timer/launchd cada 5 min → `state.json`+`stats.json`. macOS: launchd, token del Keychain, Node vía brew.
 - **Windows:** app de bandeja **WinForms .NET 10** en `windows/` (sin upstream); **hace el fetch en C# ella misma** cada 5 min (piso 5.5 min) → `%LOCALAPPDATA%\claude-brain\{state,stats}.json` (mismo schema). Ícono de bandeja = 2 mini-barras SIN número (la bandeja es cuadrada; % y ⟳reset van a tooltip+popup).
-- **BUILD de Windows en mac:** `dotnet build -p:EnableWindowsTargeting=true` → 0/0 (el .NET SDK cross-targetea). **RUNTIME/UI necesita Windows REAL** (`--shot`/`DrawToBitmap` de WinForms es Windows-only) → QA en VM/otra compu/Chunito. Build req: **.NET 10 SDK**.
+- **BUILD de Windows en mac:** `dotnet build -p:EnableWindowsTargeting=true` → 0/0 (el .NET SDK cross-targetea). **RUNTIME/UI necesita Windows REAL** (`--shot`/`DrawToBitmap` de WinForms es Windows-only) → QA en VM/otra compu/Chunito (🪦#03b0d197a). Build req: **.NET 10 SDK**.
 
 ## Pestañas del popup (riel vertical izquierdo + StackLayout)
 1. **Límites** (original; footer pineado al fondo, SIN ScrollView).
@@ -54,8 +54,8 @@ Widget de escritorio open-source que muestra los límites de uso de Claude (sesi
 - **Mover sesión entre slugs:** `bin/session-move.js` mueve el `.jsonl`, RESPALDA en `~/.claude/session-move-backups/` y reescribe el `cwd` interno (para que `claude --resume` reanude coherente). Los 3 instaladores lo despliegan.
 
 ## Íconos (fuente ÚNICA = SVG)
-`assets/icon.svg` (grande) + `assets/icon-small.svg` (cerebro simple + chispa gruesa para **≤32px**, nítido a 16px en el login item). Render con **rsvg-convert** (librsvg, prereq de macOS): `.icns` (`macos/make-icon.sh` + `iconutil`), plasmoid (`src/plasmoid/contents/icons/claude-brain.svg` + metadata `Icon: "claude-brain"`), Windows `.ico` (packer propio en python, 6 tamaños PNG — no hay ImageMagick).
-- **Login item del daemon:** incrusta el ícono como ícono CUSTOM del archivo vía **`NSWorkspace.setIcon`** (`macos/set-icon.swift`). **NO uses Rez/SetFile** (dejan el resource fork a medias: 286 bytes rotos vs 214KB con setIcon).
+`assets/icon.svg` (grande) + `assets/icon-small.svg` (cerebro simple + chispa gruesa para **≤32px**, nítido a 16px en el login item). Render con **rsvg-convert** (librsvg, prereq de macOS): `.icns` (`macos/make-icon.sh` + `iconutil`), plasmoid (`src/plasmoid/contents/icons/claude-brain.svg` + metadata `Icon: "claude-brain"`), Windows `.ico` (packer propio en python, 6 tamaños PNG — no hay ImageMagick). Diseño actual = **cerebro + chispa**; no volver a los previos (🪦#7faf66200).
+- **Login item del daemon:** incrusta el ícono como ícono CUSTOM del archivo vía **`NSWorkspace.setIcon`** (`macos/set-icon.swift`). **NO uses Rez/SetFile** (dejan el resource fork a medias: 286 bytes rotos vs 214KB con setIcon) (🪦#f21a621da).
 - **GOTCHA:** `make-app.sh`/fetch-icon deben **regenerar SIEMPRE el `.icns` desde el SVG, NO "solo si falta"** — un `.icns` rancio se queda pegado y se instala el ícono viejo (bug real). Ver skill `cambiar-icono`.
 
 ## Rebrand `claude-quota` → `claude-brain` (criterio para futuros cambios)
@@ -75,17 +75,10 @@ El widget saltaba entre dos cuentas (Sesión 5h llegó a 315.3%). **Causa raíz:
 - **Terminal (CLI):** `jordi.serra@pind.mx` (accountUuid `0f969ded-…`, org PindDevelopment).
 - **Claude.app (desktop):** `informatica@pind.mx` (accountUuid `25545a28-…`). El desktop trae su propio Claude Code integrado (`~/Library/Application Support/Claude/claude-code/<ver>`) que escribe el token OAuth en el MISMO item → el último login gana. (El Claude.app se autentica con cookies web cifradas; ese token del llavero es lo único compatible con `/api/oauth/usage`.)
 - **Diagnóstico sin escanear el llavero a ciegas:** comparar `oauthAccount.accountUuid` de `~/.claude.json` (CLI) vs `lastKnownAccountUuid` de `~/Library/Application Support/Claude/config.json` (desktop).
-- **Solución (unjordi):** `claude logout`+`login` en la terminal eligiendo la cuenta del desktop → terminal y desktop coinciden → sin flip-flop. **Fragilidad:** re-loguear la otra cuenta en la terminal lo reactiva (mismo cajón del llavero), pero se **ve** en el footer (cuenta activa).
+- **Solución (unjordi):** `claude logout`+`login` en la terminal eligiendo la cuenta del desktop → terminal y desktop coinciden → sin flip-flop. **Fragilidad:** re-loguear la otra cuenta en la terminal lo reactiva (mismo cajón del llavero), pero se **ve** en el footer (cuenta activa). La prioridad del env-token sobre el login activo se invirtió por esto (🪦#b23fdf3c6).
 - **Blindaje `account-guard` (opt-in, 3 plataformas):** fijas una cuenta esperada (uuid/email) en `~/.config/claude-brain/account` (override `$CLAUDE_BRAIN_ACCOUNT`; Win `%LOCALAPPDATA%\claude-brain\account`). Si la activa (de `~/.claude.json .oauthAccount`) difiere → el fetch marca `account_mismatch:true` y la UI avisa en ROJO. Windows tiene menú de bandeja "Fijar/Quitar cuenta"; mac/KDE editan el archivo a mano. Campos nuevos en `state.json`: `account_uuid`, `account_mismatch`. Sin pin ⇒ comportamiento previo.
 
 ## Pendientes / ideas
 - Publicación en KDE Store (eventual).
 - Paleta Nord opcional en vez de naranja: la nota `kde-tema-opaco` vive en la memoria GLOBAL per-máquina (`~/.claude/projects/-home-unjordi/memory/`), no en este repo (es tweak de máquina).
 - "Mensajes" (Resumen) cuenta líneas crudas, no turnos reales → confirmar/arreglar si unjordi lo pide.
-
-## ⚰️ Lápidas — descartado, NO re-proponer
-- **`dockur/windows` en Docker:** NUNCA jaló en la MacBook de unjordi (2026-07-15) → no es vía de nada. La regla real: **compilar = mac (`EnableWindowsTargeting`); runtime/UI QA = Windows real** (otra compu / Chunito).
-- **Íconos previos:** martillo `applications-development` (feo en el selector) → speedometer/gauge → hoy **cerebro + chispa** (2026-07-11, QA visual OK). No volver a los previos.
-- **Canónico viejo en `scripts/` + Google Drive:** extraído al repo propio el 2026-06-30 (fuente única). No resucitar el layout viejo.
-- **Rez/SetFile para el ícono del login item:** dejan el resource fork a medias → `NSWorkspace.setIcon` (ver GOTCHA de íconos).
-- **`CLAUDE_CODE_OAUTH_TOKEN` con prioridad sobre el login activo:** invertido 2026-07-26 (pisaba el cambio de cuenta) → login activo primero, env-token solo fallback headless.
