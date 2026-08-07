@@ -1,6 +1,6 @@
 ---
 name: checkpoint
-description: Volcado del estado efímero a memoria durable para poder compactar (o cerrar sesión) sin perder el hilo, en DOS NIVELES. LIGERO (pausas naturales, punto de retorno rápido) sobrescribe hilo-mental-actual.md (de qué va la tarea AHORA) y, si el proyecto avanzó, actualiza estado-proyecto.md + bitácora. COMPLETO (OBLIGATORIO antes de cualquier /compact —manual o anunciado por el aviso de contexto— y cada ~2h en corridas largas) agrega el PLAN COMPLETO con el CÓMO, lo RESUELTO HOY y la COSECHA DURABLE a memorias/skills. Es el "volcado compartido" que cerrar-slice §2 también hace. Ante la duda de nivel: COMPLETO.
+description: Volcado del estado efímero a memoria durable para poder compactar (o cerrar sesión) sin perder el hilo, en DOS NIVELES. LIGERO (pausas naturales, punto de retorno rápido) reescribe hilo-mental-actual.md —leyendo antes el previo para no pisar ideas vivas a medio cocinar— (de qué va la tarea AHORA) y, si el proyecto avanzó, actualiza estado-proyecto.md + bitácora. COMPLETO (OBLIGATORIO antes de cualquier /compact —manual o anunciado por el aviso de contexto— y cada ~2h en corridas largas) agrega el PLAN COMPLETO con el CÓMO, lo RESUELTO HOY y la COSECHA DURABLE a memorias/skills. Es el "volcado compartido" que cerrar-slice §2 también hace. Ante la duda de nivel: COMPLETO.
 ---
 
 # Checkpoint — vaciar lo efímero a memoria durable (sin fricción)
@@ -59,12 +59,25 @@ volátil lo que tiene casa durable** → reduce lo que el compact puede siquiera
   rato, vuelca aunque no vayas a compactar todavía.
 
 ## Qué hace (el volcado)
-1. **El HILO (siempre, ambos niveles).** Sobrescribe `.claude/memory/hilo-mental-actual.md` (créalo si
-   no existe: `mkdir -p .claude/memory`). No es log ni backlog — es "de qué va ESTO ahora mismo".
+1. **El HILO (siempre, ambos niveles).** Va a `.claude/memory/hilo-mental-actual.md` (créalo si no
+   existe: `mkdir -p .claude/memory`). No es log ni backlog — es "de qué va ESTO ahora mismo".
+
+   **LEE el hilo previo ANTES de sobrescribir (read-before-overwrite — paso OBLIGATORIO).** El archivo
+   existe justo para cargar ideas a medio cocinar a través de un compact; pisarlo a ciegas puede BORRAR
+   el único vestigio de una. Así que antes de reescribir, lee sus secciones vivas ("Decisión abierta",
+   "Siguiente paso", "Hilos sueltos") y **fusiona en el volcado nuevo lo que el nuevo NO cubra.** Para
+   cada ítem del hilo previo ausente del volcado nuevo, el criterio conservar-vs-descartar es:
+   - **¿Sabes POR QUÉ ya no está?** (lo resolviste / se decidió / quedó superado esta tanda — puedes
+     nombrar qué pasó) → descártalo; su cierre vive en `RESUELTO HOY`.
+   - **¿NO puedes dar cuenta de él?** (no lo reconoces, no sabes qué le pasó — señal de que se cayó del
+     contexto) → **consérvalo textual en el volcado nuevo**: el hilo en disco es su posible ÚNICO rastro.
+   - **Ante la duda, CONSERVAR.** Arrastrar un ítem de más cuesta una línea que luego se limpia sin
+     costo al reconstruir el estado real; perder una idea la pierde para siempre.
+
    Estructura (las tres últimas secciones SOLO en nivel COMPLETO):
    ```markdown
    # Hilo mental actual
-   > Se SOBRESCRIBE (no se appendea). Última actualización: <FECHA> · rama <rama> · nivel <ligero|COMPLETO>.
+   > Se REESCRIBE conservando lo vivo del previo, no se appendea. Última actualización: <FECHA> · rama <rama> · nivel <ligero|COMPLETO>.
 
    ## En qué estamos AHORA
    <1-3 líneas: la tarea viva y su porqué>
