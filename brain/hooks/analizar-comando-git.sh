@@ -258,6 +258,104 @@ acg_destino_de_mr() {   # $1=comando  $2=payload_cwd(opcional)
   return 0
 }
 
+# ── VALIDACIÓN DE LA CALIDAD DEL MENSAJE DE SQUASH (merge-squash-guard) ──────────────────────────────────
+# El squash-guard fuerza `--squash`, pero un squash con mensaje POBRE (título default de la plataforma
+# "Merge pull request #N", vacío o placeholder de una palabra) igual pierde el RESUMEN CURADO que exige
+# cerrar-slice. Estos helpers razonan sobre la FUENTE y la SUSTANCIA del mensaje. Pieza PURA/DETERMINISTA
+# (testeable sin red) salvo acg_mensaje_de_mr (API, mismo patrón que acg_destino_de_mr). bash-3.2-safe.
+
+# ¿De dónde sale el SUBJECT del squash? El mensaje puede venir EXPLÍCITO en el comando (verificable directo)
+# o AUTO-generarse server-side del título del MR/PR (verificable vía API). Clasifica en:
+#   LITERAL       — hay un flag de subject con un valor LITERAL en el comando (glab: --squash-message ·
+#                   gh: --subject/-t) → se valida directo (acg_msg_valor).
+#   UNVERIFICABLE — el valor del flag es una sustitución/variable ($(...)/`...`/${...}/$VAR) o el comando usa
+#                   gh --fill*/--body-file (subject derivado de commits/archivo) → NO verificable en
+#                   PreToolUse → el consumidor PASA (no forzamos, fail-open).
+#   AUTO          — no hay flag de subject → el squash tomará el TÍTULO del MR/PR → validable vía API.
+acg_msg_clasificar() {   # $1=cmd(RAW) → LITERAL | UNVERIFICABLE | AUTO
+  local raw="$1" u tool val
+  u=$(acg_sin_flag_repo "$(acg_despoja_comillas "$raw")")
+  if printf '%s' "$u" | grep -qE 'glab(\.exe)?[[:space:]]+mr'; then tool=glab; else tool=gh; fi
+  # gh --fill*/--body-file → subject/cuerpo derivado de commits o de un ARCHIVO → no verificable aquí.
+  if [ "$tool" = gh ] && printf '%s' "$u" | grep -qE '(^|[[:space:]])(--fill(-first|-verbose)?|--body-file|-F)([[:space:]]|=|$)'; then
+    printf 'UNVERIFICABLE'; return 0
+  fi
+  if [ "$tool" = glab ]; then
+    printf '%s' "$u" | grep -qE '(^|[[:space:]])--squash-message([[:space:]]|=)' || { printf 'AUTO'; return 0; }
+  else
+    printf '%s' "$u" | grep -qE '(^|[[:space:]])(--subject|-t)([[:space:]]|=)' || { printf 'AUTO'; return 0; }
+  fi
+  val=$(acg_msg_valor "$raw")
+  case "$val" in *'$('*|*'`'*|*'${'*|'$'*) printf 'UNVERIFICABLE'; return 0 ;; esac
+  printf 'LITERAL'; return 0
+}
+
+# Extrae el VALOR LITERAL del flag de subject del comando (quote-aware; comillas de envoltura removidas).
+# Opera sobre el RAW (comillas INTACTAS) para leer un valor entrecomillado con espacios. glab: --squash-message
+# · gh: --subject/-t. Devuelve vacío si no hay flag.
+acg_msg_valor() {   # $1=cmd(RAW) → valor literal | vacío
+  local raw="$1" tool v
+  if printf '%s' "$(acg_despoja_comillas "$raw")" | grep -qE 'glab(\.exe)?[[:space:]]+mr'; then tool=glab; else tool=gh; fi
+  if [ "$tool" = glab ]; then
+    v=$(printf '%s' "$raw" | sed -nE "s/.*(^|[[:space:]])--squash-message([[:space:]]+|=)(\"[^\"]*\"|'[^']*'|([^[:space:]\"'])+).*/\3/p" | head -1)
+  else
+    v=$(printf '%s' "$raw" | sed -nE "s/.*(^|[[:space:]])(--subject|-t)([[:space:]]+|=)(\"[^\"]*\"|'[^']*'|([^[:space:]\"'])+).*/\4/p" | head -1)
+  fi
+  printf '%s' "$v" | sed -E "s/^[\"']//; s/[\"']\$//"
+}
+
+# ¿el mensaje/subject de un squash es POBRE (sin sustancia) → hay que BLOQUEAR? Mide el SUBJECT (1ª línea).
+# POBRE (return 0 = "sí, bloquéalo") si:
+#   (a) el mensaje NO tiene NINGÚN carácter alfanumérico (vacío / solo espacios / solo puntuación);
+#   (b) el subject es un DEFAULT de plataforma: "Merge pull request …" (el caso NOMBRADO), "Merge branch …",
+#       "Merge remote-tracking branch …", "Merge request …", o "Merge #N"/"Merge !N";
+#   (c) el subject es UN SOLO TOKEN y mide < 12 caracteres no-espacio (placeholder: "wip"/"fix"/"update"/
+#       "hotfix"/"#5"). Un subject de ≥2 palabras NUNCA cae por (c) — solo (a)/(b).
+# En cualquier otro caso NO es pobre (return 1) → PASA. Umbrales DEFENDIBLES y de BAJO FP: (b) es near-zero
+# FP (nadie escribe eso como su resumen curado); (c) apunta SOLO a placeholders de una palabra (un resumen
+# real "el cambio neto y su porqué" es multi-palabra). Es un PISO anti-basura, NO una vara de calidad
+# (auditor=piso-no-meta): que el mensaje pase NO significa que sea bueno, solo que no es basura evidente.
+acg_msg_es_pobre() {   # $1=mensaje → 0=pobre(bloquear) · 1=ok(pasar)
+  local msg="$1" subject alnum words nonspace
+  subject=$(printf '%s\n' "$msg" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' | grep -m1 -v '^$')
+  alnum=$(printf '%s' "$msg" | tr -cd '[:alnum:]' | wc -c | tr -d '[:space:]')
+  [ "${alnum:-0}" -eq 0 ] && return 0                                                                   # (a)
+  printf '%s' "$subject" | grep -qiE '^merge (pull request|branch|remote-tracking branch|request)([[:space:]]|$)' && return 0   # (b)
+  printf '%s' "$subject" | grep -qiE '^merge [!#]?[0-9]+([[:space:]]|$)' && return 0                     # (b')
+  words=$(printf '%s' "$subject" | wc -w | tr -d '[:space:]')
+  nonspace=$(printf '%s' "$subject" | tr -d '[:space:]' | wc -c | tr -d '[:space:]')
+  [ "${words:-0}" -le 1 ] && [ "${nonspace:-0}" -lt 12 ] && return 0                                    # (c)
+  return 1
+}
+
+# Resuelve el SUBJECT que el squash AUTO-generará server-side (caso AUTO): GitLab usa el TÍTULO del MR como
+# mensaje del squash; GitHub usa el TÍTULO del PR como subject. Mismo patrón que acg_destino_de_mr
+# (repo/tool/mrid por precedencia + timeout + caché por MR-id, con clave PROPIA "|msg" distinta a la de
+# destino). Devuelve el título por stdout (vacío si no se pudo resolver → el consumidor FAIL-OPEN: sin
+# título CONFIRMADO no bloquea). Requiere jq (sin jq devuelve vacío).
+acg_mensaje_de_mr() {   # $1=comando  $2=payload_cwd(opcional) → título del MR/PR | vacío
+  command -v jq >/dev/null 2>&1 || return 0
+  local raw="$1" pcwd="${2:-}" u tool repo mrid key cache titulo
+  u=$(acg_despoja_comillas "$raw")
+  if printf '%s' "$u" | grep -qE 'glab(\.exe)?[[:space:]]+mr'; then tool=glab; else tool=gh; fi
+  repo=$(acg_target_remote "$raw" "$pcwd")
+  mrid=$(acg_mrid "$u")
+  [ -n "$mrid" ] || return 0
+  key=$(printf '%s' "${repo}|${tool}|${mrid}|msg" | sed 's/[^A-Za-z0-9]/_/g')
+  cache="${TMPDIR:-/tmp}/acg-mrmsg-${key}"
+  if [ -f "$cache" ]; then cat "$cache"; return 0; fi
+  if [ "$tool" = glab ]; then
+    titulo=$(acg__run_timeout "$ACG_MR_TIMEOUT" glab api "projects/:id/merge_requests/$mrid" ${repo:+-R "$repo"} 2>/dev/null | jq -r '.title // empty' 2>/dev/null)
+  else
+    titulo=$(acg__run_timeout "$ACG_MR_TIMEOUT" gh pr view "$mrid" ${repo:+-R "$repo"} --json title -q .title 2>/dev/null)
+  fi
+  if [ -n "$titulo" ]; then
+    printf '%s' "$titulo" > "$cache" 2>/dev/null
+    printf '%s' "$titulo"
+  fi
+  return 0
+}
+
 # Lista de MR/PR ABIERTOS del repo, DIGERIBLE a un HINT de candidatos para el juez de merge (capa 3
 # "contexto de identificación"). UNA sola consulta (`glab mr list` / `gh pr list` según el remoto),
 # acotada por timeout y CACHEADA por repo en TMPDIR (clave distinta a la de acg_destino_de_mr). Sirve

@@ -5,9 +5,11 @@
 # rehacerlo con `--squash --squash-message "<resumen curado>"`. Así develop recibe UN commit
 # limpio por slice (la ramita puede traer N commits granulares; se colapsan al integrar).
 #
-# Reparto de responsabilidades: este hook fuerza el SQUASH (mecánico, verificable). La calidad
-# del MENSAJE (un resumen bonito en prosa, no el pegote de commits) la exige la skill cerrar-slice
-# / flujo-mr-gitlab (es criterio, no se puede checar con grep). El candado server-side definitivo
+# Reparto de responsabilidades: este hook fuerza el SQUASH (mecánico) y un PISO de SUSTANCIA del
+# MENSAJE del squash (bloquea el título default "Merge pull request #N", el vacío y el placeholder de
+# una palabra — ver la validación develop-scoped abajo). La CALIDAD del resumen (prosa que explique el
+# cambio neto y su porqué) sigue siendo criterio de la skill cerrar-slice / flujo-mr-gitlab: el hook es
+# un PISO anti-basura (auditor=piso-no-meta), no una vara de calidad. El candado server-side definitivo
 # es el ajuste de GitLab `squash_option=always` (ver flujo-de-trabajo.md).
 #
 # Fail-open ante parseo (sin jq no bloquea). Vive en <repo>/.claude/hooks/ (viaja por git).
@@ -27,13 +29,46 @@ pcwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
 # shellcheck source=analizar-comando-git.sh
 . "$(dirname "$0")/analizar-comando-git.sh"
 
+# Comando-ejemplo tool-aware para rehacer el merge con squash + un mensaje curado (gh vs glab). Fuente
+# ÚNICA para los DOS deny del hook (falta-de-squash y mensaje-pobre) → no divergen.
+_rehaz_sugerido() {
+  if printf '%s' "$1" | grep -qE 'gh(\.exe)?[[:space:]]+pr'; then
+    printf '%s' 'gh pr merge <id> --squash --subject "<título curado>" --body "$(cat resumen.md)"'
+  else
+    printf '%s' 'glab mr merge <id> --squash --squash-message "$(cat resumen.md)" --remove-source-branch --yes'
+  fi
+}
+
 # ¿El comando EJECUTA una integración REAL de MR/PR? (merge/accept glab, pr merge gh; no ayuda/dry-run).
 # La lógica de reconocimiento vive en la lib (fuente única con los otros git-guards → no divergen).
 acg_es_merge_mr "$cmd" || exit 0
 
-# ¿Ya trae squash? (--squash o -s). Si sí, todo bien.
+# ¿Ya trae squash? (--squash o -s). Si SÍ, el SQUASH está garantizado — pero un squash con MENSAJE POBRE
+# (título default de la plataforma "Merge pull request #N", vacío o placeholder de una palabra) igual
+# pierde el resumen curado que exige cerrar-slice. Validamos la CALIDAD del mensaje ANTES de dejar pasar.
 SQUASH_RE='(--squash([[:space:]]|=|$)|(^|[[:space:]])-s([[:space:]]|$))'
-printf '%s' "$cmd" | grep -qE "$SQUASH_RE" && exit 0
+if printf '%s' "$cmd" | grep -qE "$SQUASH_RE"; then
+  # La validación de mensaje es develop-scoped (MISMA frontera que la exigencia de squash): main=release y
+  # ramas personales van libres; destino IRRESOLUBLE ⇒ PASA (la calidad del mensaje es un concern MÁS SUAVE
+  # que el mecánico del squash — bloquear por él sin certeza del alcance sería FP-prone; conservador ≠ tumbar
+  # un merge legítimo). El destino se resuelve con la MISMA lib+caché que comparte confirmar-merge-develop
+  # (cache-hit típico → sin llamada de red extra en el caso develop).
+  _dest_sq=$(acg_destino_de_mr "$cmd" "$pcwd")
+  [ "$_dest_sq" = "develop" ] || exit 0
+  # ¿De dónde sale el subject? LITERAL (flag en el comando → verifica directo) · AUTO (título del MR/PR →
+  # verifica vía API) · UNVERIFICABLE ($()/variable/--fill/--body-file → no verificable en PreToolUse → PASA).
+  case "$(acg_msg_clasificar "$cmd")" in
+    UNVERIFICABLE) exit 0 ;;
+    LITERAL)       _msg=$(acg_msg_valor "$cmd") ;;
+    *)             _msg=$(acg_mensaje_de_mr "$cmd" "$pcwd"); [ -z "$_msg" ] && exit 0 ;;   # API no resolvió → FAIL-OPEN
+  esac
+  acg_msg_es_pobre "$_msg" || exit 0   # el mensaje tiene sustancia → PASA
+  # Mensaje POBRE → DENY: rehacer con un resumen curado (NO afloja la exigencia de squash: la conserva y AÑADE ésta).
+  _rehaz=$(_rehaz_sugerido "$cmd")
+  jq -n --arg r "FLUJO DE GIT (ley interna): el squash a develop debe llevar un RESUMEN CURADO en prosa (el cambio neto y su porqué), NO el título default de la plataforma (\"Merge pull request #N\"), ni un mensaje vacío o de una sola palabra (\"wip\"/\"fix\"/\"update\"). Rehaz el merge con un mensaje con sustancia: $_rehaz  — el mensaje es el resumen del slice, no el pegote de commits. Ver skill cerrar-slice." \
+    '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
+  exit 0
+fi
 
 # La obligatoriedad de --squash aplica cuando el DESTINO es `develop` (1 commit limpio por slice) y —por
 # FAIL-SAFE— también cuando el destino NO se pudo resolver (vacío por timeout/error de red). `main` es
@@ -61,11 +96,7 @@ else
 fi
 
 # El mensaje cita la herramienta REAL del repo (gh vs glab), no siempre glab (P5).
-if printf '%s' "$cmd" | grep -qE 'gh(\.exe)?[[:space:]]+pr'; then
-  _rehaz='gh pr merge <id> --squash --subject "<título curado>" --body "$(cat resumen.md)"'
-else
-  _rehaz='glab mr merge <id> --squash --squash-message "$(cat resumen.md)" --remove-source-branch --yes'
-fi
+_rehaz=$(_rehaz_sugerido "$cmd")
 jq -n --arg r "FLUJO DE GIT (ley interna): integrar a develop SQUASHEA a UN commit limpio por slice. NO reintentes este merge sin squash. Rehazlo con: $_rehaz  — donde el mensaje es un RESUMEN CURADO en prosa del slice (el cambio neto y su porqué), NO el pegote de commits granulares. NOTA: la obligación de squash es SOLO para develop — a main (release) va SIN squash (conserva historia) y tus ramas personales van a tu gusto. Ver skill cerrar-slice." \
   '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
 exit 0
