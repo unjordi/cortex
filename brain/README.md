@@ -15,15 +15,24 @@ no puede cablear `settings.json`.
 
 ```
 brain/
-├── install-brain.sh      # instalador GLOBAL idempotente (hooks + cableado + skill + dashboard + normas)
-├── install-brain.ps1     # lanzador delgado de Windows: verifica bash+jq y delega en install-brain.sh
+├── install-brain.sh      # instalador GLOBAL idempotente (hooks + cableado + skill + dashboard + normas + aliases-activos)
+├── install-brain.ps1     # lanzador Windows: verifica bash+jq, detecta aliases de PowerShell (nativo) y delega en install-brain.sh
 ├── uninstall-brain.sh    # inverso EXACTO del instalador (idempotente)
 ├── test-brain.sh         # pruebas versionadas y repetibles (contra un $HOME falso aislado)
 ├── README.md             # este archivo
-├── hooks/                # los hooks .sh + agentes-costo.json + dashboard_cerebro.template.md
+├── hooks/                # los hooks .sh + libs sourceables + agentes-costo.json + dashboard_cerebro.template.md
+├── lib/                  # libs de INSTALACIÓN (sourceables, NO hooks): detectar-shells.sh (aliases cross-shell)
 ├── skills/               # skills genéricas: cerrar-slice, orquestar-fanout, checkpoint, rehidratar-hilo, turno-nocturno (SKILL.md c/u)
 └── norms/global-claude-md.md  # bloque de normas que se inyecta en ~/.claude/CLAUDE.md
 ```
+
+**Artefacto LEAN de aliases (`~/.claude/aliases-activos.md`, GENERADO per-máquina).** El instalador detecta,
+cross-OS/cross-shell, los aliases/funciones que **sombrean un binario real** (POSIX: `brain/lib/detectar-shells.sh`
+enumera zsh/bash/fish instalados; PowerShell: detector nativo en `install-brain.ps1`) y escribe una vista
+answer-first (el ESCAPE `command <cmd>` primero) en `~/.claude/aliases-activos.md`. El `CLAUDE.md` global la
+importa con `@aliases-activos.md` (@import recursivo → siempre en contexto, sin costar líneas). Es GENERADA y NO
+viaja por git (entorno de máquina = global). En Windows los bloques `<!-- shells:posix -->` y `<!-- shells:powershell -->`
+coexisten sin pisarse.
 
 ## Hooks vs skills — por qué unos bloquean y otros no
 

@@ -36,7 +36,7 @@ echo "==> claude-brain test — \$HOME falso: $FAKEHOME"
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (a) sintaxis: bash -n de los hooks + jq empty de los json =="
-for f in "$HOOKS"/*.sh; do
+for f in "$HOOKS"/*.sh "$SCRIPT_DIR"/lib/*.sh; do
   [ -e "$f" ] || continue
   if bash -n "$f" 2>/dev/null; then ok "bash -n $(basename "$f")"; else bad "bash -n $(basename "$f")"; fi
 done
@@ -2927,6 +2927,93 @@ rm -rf "$G8ROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (ds) detectar-shells.sh: filtrado por SOMBRA (no lista fija), escape, artefacto, fail-safe =="
+# La lib es sourceable → se prueba con fixtures deterministas (dump inyectado + verificador-de-sombra
+# FALSO), sin depender del PATH ni de un tty. Cubre: alias que sombrea un binario SE detecta; alias que
+# NO sombrea se ignora (hueco 'lista fija'); fish space-format; escape `command <cmd>` y NUNCA `/bin/`;
+# fail-safe con dump vacío; y el upsert de bloques posix/powershell que coexisten sin pisarse.
+DSLIB="$SCRIPT_DIR/lib/detectar-shells.sh"
+if [ -f "$DSLIB" ]; then
+  # verificador de sombra FALSO: sólo ls/grep/cat/curl "son binarios reales"
+  # OJO bash-3.2 (macOS): un `)` de un patrón `case` DENTRO de `$(...)` rompe el matcher de paréntesis
+  # ingenuo del parser viejo → el verificador fixture usa grep (sin paréntesis), no `case`.
+  ds_out="$(
+    . "$DSLIB"
+    fake_shadow() { printf ' %s ' ' ls grep cat curl ' | grep -q " $1 "; }
+    dump="$(printf '%s\n' "alias ll='ls -la'" "grep='grep --color'" "gs='git status'" "ls='ls -G'")"
+    echo "POSIX_BITE_START"
+    ds_biting posix fake_shadow "$dump"
+    echo "POSIX_BITE_END"
+    fdump="$(printf '%s\n' "alias ll ls -la" "alias cat bat" "alias gs git status")"
+    echo "FISH_BITE_START"
+    ds_biting fish fake_shadow "$fdump"
+    echo "FISH_BITE_END"
+    echo "EMPTY_START"
+    ds_biting posix fake_shadow ""
+    echo "EMPTY_END"
+  )"
+  # posix: ls y grep muerden (sombrean); ll y gs NO (no hay binario homónimo en el fixture)
+  posix_bite="$(printf '%s\n' "$ds_out" | sed -n '/POSIX_BITE_START/,/POSIX_BITE_END/p')"
+  printf '%s' "$posix_bite" | grep -q '^ls	' && printf '%s' "$posix_bite" | grep -q '^grep	' \
+    && ok "ds: alias que SOMBREA un binario real se detecta (ls, grep)" \
+    || bad "ds: no detectó el alias que sombrea un binario (ls/grep)"
+  printf '%s' "$posix_bite" | grep -q '^gs	' \
+    && bad "ds: alias que NO sombrea (gs) se coló (hueco 'lista fija' reabierto)" \
+    || ok "ds: alias que NO sombrea un binario se IGNORA (gs, ll) — filtrado por sombra, no lista fija"
+  # fish: sólo cat muerde (space-format parseado)
+  fish_bite="$(printf '%s\n' "$ds_out" | sed -n '/FISH_BITE_START/,/FISH_BITE_END/p')"
+  printf '%s' "$fish_bite" | grep -q '^cat	bat' \
+    && ok "ds: fish space-format 'alias cat bat' parseado y filtrado (cat muerde)" \
+    || bad "ds: no parseó/filtró el formato fish (esperaba cat→bat)"
+  printf '%s' "$fish_bite" | grep -q '^gs	' \
+    && bad "ds: fish alias que no sombrea (gs) se coló" \
+    || ok "ds: fish alias que no sombrea se ignora"
+  # fail-safe: dump vacío ⇒ 0 líneas entre los marcadores
+  empty_bite="$(printf '%s\n' "$ds_out" | sed -n '/EMPTY_START/,/EMPTY_END/p' | sed '1d;$d')"
+  [ -z "$(printf '%s' "$empty_bite" | tr -d '[:space:]')" ] \
+    && ok "ds: fail-safe — dump vacío (shell sin rc/tty) ⇒ 0 aliases (no truena)" \
+    || bad "ds: dump vacío produjo salida (esperaba nada); got: $empty_bite"
+  # escape correcto: el header + bullets citan `command <cmd>` y NUNCA `/bin/<cmd>`
+  ds_render="$( . "$DSLIB"; ds_ensure_artifact_header /dev/stdout 2>/dev/null; ds_render_posix 2>/dev/null )"
+  printf '%s' "$ds_render" | grep -q 'command <cmd>' \
+    && ok "ds: el escape recomendado es \`command <cmd>\` (salta funciones y sirve en fish)" \
+    || bad "ds: no encontré 'command <cmd>' en el render (escape shell-aware)"
+  # `/bin/<cmd>` SÓLO puede aparecer como ADVERTENCIA ("NUNCA /bin/<cmd>"), nunca como recomendación:
+  # toda línea que lo cite debe traer 'NUNCA'. Una que lo cite SIN 'NUNCA' sería el bug e/f reabierto.
+  if printf '%s\n' "$ds_render" | grep -F '/bin/<cmd>' | grep -vq 'NUNCA'; then
+    bad "ds: '/bin/<cmd>' aparece como recomendación (bug e/f: la ruta varía por OS)"
+  else
+    ok "ds: '/bin/<cmd>' sólo aparece como advertencia NUNCA (hueco e/f cerrado)"
+  fi
+  # artefacto: header + upsert de posix y powershell coexisten sin pisarse, idempotente
+  DSART="$(mktemp)"
+  (
+    . "$DSLIB"
+    ds_ensure_artifact_header "$DSART"
+    printf 'posix A\nposix B\n' | ds_upsert_block "$DSART" posix
+    printf 'PS uno\n' | ds_upsert_block "$DSART" powershell
+    printf 'posix A2\n' | ds_upsert_block "$DSART" posix   # re-upsert posix
+    ds_ensure_artifact_header "$DSART"                       # header idempotente
+  )
+  npos="$(grep -c 'shells:posix:INICIO' "$DSART" 2>/dev/null || echo 0)"
+  nps="$(grep -c 'shells:powershell:INICIO' "$DSART" 2>/dev/null || echo 0)"
+  nhdr="$(grep -c 'GENERADO por install-brain' "$DSART" 2>/dev/null || echo 0)"
+  { [ "$npos" = 1 ] && [ "$nps" = 1 ] && [ "$nhdr" = 1 ]; } \
+    && ok "ds: artefacto — header(1) + bloque posix(1) + powershell(1) coexisten, upsert idempotente" \
+    || bad "ds: artefacto con conteos inesperados (header=$nhdr posix=$npos ps=$nps; esperaba 1/1/1)"
+  grep -q '^posix A2$' "$DSART" && ! grep -q '^posix B$' "$DSART" \
+    && ok "ds: re-upsert REEMPLAZA el interior del bloque posix (no acumula)" \
+    || bad "ds: el re-upsert no reemplazó el bloque posix"
+  grep -q '^PS uno$' "$DSART" \
+    && ok "ds: el re-upsert de posix PRESERVA el bloque powershell (no se pisan)" \
+    || bad "ds: el bloque powershell se perdió al re-escribir posix"
+  rm -f "$DSART"
+else
+  bad "ds: no encuentro la lib $DSLIB"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "== (c) idempotencia: install-brain.sh 2× contra el \$HOME falso =="
 FAKEHOME2="$(mktemp -d "${TMPDIR:-/tmp}/brain-inst.XXXXXX")"
 HOME="$FAKEHOME2" bash "$INSTALLER" >/dev/null 2>&1
@@ -2941,6 +3028,16 @@ done
 b="$(grep -c 'BEGIN claude-brain' "$GCLAUDE2" 2>/dev/null || echo 0)"
 e="$(grep -c 'END claude-brain'   "$GCLAUDE2" 2>/dev/null || echo 0)"
 { [ "$b" = "1" ] && [ "$e" = "1" ]; } && ok "CLAUDE.md: 1 solo bloque de normas (BEGIN/END)" || bad "CLAUDE.md: BEGIN=$b END=$e (esperaba 1/1)"
+# artefacto LEAN de aliases generado + @import cableado UNA sola vez (idempotente tras 2 installs)
+ART2="$FAKEHOME2/.claude/aliases-activos.md"
+[ -f "$ART2" ] && grep -q 'shells:posix:INICIO' "$ART2" \
+  && ok "aliases-activos.md generado con el bloque posix" || bad "falta aliases-activos.md o su bloque posix"
+grep -q 'GENERADO por install-brain' "$ART2" 2>/dev/null \
+  && ok "aliases-activos.md lleva el header answer-first (marca GENERADO)" || bad "aliases-activos.md sin header GENERADO"
+nimp="$(grep -c '^@aliases-activos.md' "$GCLAUDE2" 2>/dev/null || echo 0)"
+[ "$nimp" = "1" ] && ok "CLAUDE.md: @aliases-activos.md cableado 1× (idempotente)" || bad "CLAUDE.md: @import aparece ${nimp}× (esperaba 1)"
+nmrk="$(grep -c 'brain:import-aliases' "$GCLAUDE2" 2>/dev/null || echo 0)"
+[ "$nmrk" = "1" ] && ok "CLAUDE.md: marcador brain:import-aliases 1× (fuera del bloque BEGIN/END)" || bad "CLAUDE.md: marcador import-aliases ${nmrk}× (esperaba 1)"
 # la skill y la lib deben haber quedado instaladas
 [ -f "$FAKEHOME2/.claude/skills/cerrar-slice/SKILL.md" ] && ok "skill cerrar-slice instalada" || bad "falta skill cerrar-slice"
 [ -f "$FAKEHOME2/.claude/skills/checkpoint/SKILL.md" ]   && ok "skill checkpoint instalada"   || bad "falta skill checkpoint"
@@ -2991,6 +3088,9 @@ if [ -f "$SCRIPT_DIR/uninstall-brain.sh" ]; then
   [ "${left:-x}" = "0" ] && ok "uninstall: 0 entradas del cerebro en settings.json" || bad "uninstall: quedan ${left:-?} entradas"
   grep -q 'BEGIN claude-brain' "$GCLAUDE2" && bad "uninstall: quedó el bloque de normas" || ok "uninstall: bloque de normas removido"
   [ -f "$FAKEHOME2/.claude/hooks/git-branch-guard.sh" ] && bad "uninstall: quedó git-branch-guard.sh" || ok "uninstall: hooks globales removidos"
+  # (e) el @import de aliases + el artefacto GENERADO se limpian (inverso de d3)
+  [ -f "$FAKEHOME2/.claude/aliases-activos.md" ] && bad "uninstall: quedó el artefacto aliases-activos.md" || ok "uninstall: artefacto aliases-activos.md eliminado"
+  grep -q 'brain:import-aliases' "$GCLAUDE2" 2>/dev/null && bad "uninstall: quedó el @import de aliases en CLAUDE.md" || ok "uninstall: @import de aliases removido de CLAUDE.md"
 fi
 rm -rf "$FAKEHOME2"
 

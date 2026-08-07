@@ -139,6 +139,96 @@ if ($LASTEXITCODE -ne 0) {
   Write-Host "  Instalalo: winget install jqlang.jq  (o choco/scoop install jq)"
 }
 
+# -- Detector de aliases de PowerShell NATIVO (bloque <!-- shells:powershell --> del artefacto LEAN) --
+# La lib bash (detectar-shells.sh) cubre zsh/bash/fish y escribe el bloque <!-- shells:posix -->; PowerShell
+# NO lo puede ver (aliases de PS son objetos del runtime, no lineas de un rc). Por eso este detector corre
+# ANTES de delegar a bash y escribe SOLO el bloque powershell. En Windows ambos bloques coexisten (marcados).
+# Regla igual que en POSIX: un alias MUERDE un comando de Claude si SOMBREA un binario real
+# (Get-Command -CommandType Application). Gotcha de 5.1: curl/wget son ALIAS a Invoke-WebRequest y Windows
+# 10+ trae curl.exe real -> el alias lo sombrea (se detecta solo). Salto correcto: & (gcm cmd -CommandType
+# Application).Source, NUNCA /bin/cmd. Todo este .ps1 es ASCII puro (PowerShell 5.1 lee un .ps1 sin BOM
+# como ANSI; un no-ASCII rompe la tokenizacion) -> el artefacto GENERADO si puede llevar UTF-8, este fuente no.
+function Get-PSBitingAliases([string]$psExe) {
+  # Corre en el PS destino (con su perfil, para ver los alias del usuario). Por cada alias cuyo nombre
+  # sombrea una Application real, emite "nombre->definicion". Devuelve tambien edicion/version en la 1a linea.
+  $probe = @'
+$ErrorActionPreference = 'SilentlyContinue'
+$ed = $PSVersionTable.PSEdition; if (-not $ed) { $ed = 'Desktop' }
+$ver = $PSVersionTable.PSVersion.ToString()
+$bite = @()
+foreach ($a in (Get-Alias)) {
+  $app = Get-Command $a.Name -CommandType Application -ErrorAction SilentlyContinue
+  if ($app) { $bite += ('`{0}`->`{1}`' -f $a.Name, $a.Definition) }
+}
+Write-Output ("EDITION`t{0} {1}" -f $ed, $ver)
+Write-Output ("BITE`t" + (($bite | Select-Object -Unique) -join ' * '))
+'@
+  & $psExe -NoLogo -NonInteractive -Command $probe 2>$null
+}
+
+function Write-PSBlock() {
+  $claudeDir = Join-Path $env:HOME '.claude'
+  if (-not (Test-Path $claudeDir)) { New-Item -ItemType Directory -Path $claudeDir -Force | Out-Null }
+  $art = Join-Path $claudeDir 'aliases-activos.md'
+
+  # Enumerar los PowerShell INSTALADOS (pwsh = Core 6+, powershell = Windows PowerShell 5.1).
+  $lines = @()
+  foreach ($name in @('pwsh','powershell')) {
+    $cmd = Get-Command $name -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $cmd) { continue }
+    $out = Get-PSBitingAliases $cmd.Source
+    $edition = ''; $bite = ''
+    foreach ($l in $out) {
+      if ($l -like 'EDITION`t*') { $edition = $l.Substring(8) }
+      elseif ($l -like 'BITE`t*') { $bite = $l.Substring(5) }
+    }
+    if (-not $bite) { $bite = '(ningun alias sombrea un binario real)' }
+    $lines += ('- {0} ({1}): {2}' -f $name, $edition, $bite)
+  }
+  if ($lines.Count -eq 0) { return }  # no hay PowerShell util que reportar
+
+  # Contenido del bloque (ASCII en el fuente; el artefacto ya escrito puede tener UTF-8 de la parte POSIX).
+  $content = @('Muerden en PowerShell (sombrean un binario real -> `& (gcm <cmd> -CommandType Application).Source`):')
+  $content += $lines
+  $content += 'Gotcha 5.1 (Desktop): curl/wget son alias a Invoke-WebRequest (NO son el curl.exe real).'
+
+  Ensure-ArtifactHeader $art
+  Upsert-Block $art 'powershell' $content
+  Write-Host "==> claude-brain: bloque <!-- shells:powershell --> escrito en $art"
+}
+
+function Ensure-ArtifactHeader([string]$file) {
+  if ((Test-Path $file) -and (Select-String -Path $file -Pattern 'GENERADO por install-brain' -SimpleMatch -Quiet)) { return }
+  # Header ASCII (answer-first): el escape PRIMERO. En Mac/Linux lo escribe bash (puede llevar UTF-8);
+  # en Windows lo escribe esto (ASCII) y bash luego lo respeta (ya trae el marcador GENERADO).
+  $header = @(
+    '<!-- GENERADO por install-brain - NO editar a mano; se regenera en cada bootstrap -->',
+    '# Aliases activos de ESTA maquina (per-maquina; NO viaja por git)',
+    '**Saltar un alias/funcion:** POSIX/fish -> `command <cmd>` * PS -> `& (gcm <cmd> -CommandType Application).Source`',
+    '(NUNCA `/bin/<cmd>`: la ruta varia por OS. En fish `\<cmd>` NO salta una funcion.)'
+  )
+  [IO.File]::WriteAllText($file, ($header -join "`n") + "`n", (New-Object System.Text.UTF8Encoding($false)))
+}
+
+function Upsert-Block([string]$file, [string]$name, [string[]]$content) {
+  $begin = "<!-- shells:${name}:INICIO -->"
+  $end   = "<!-- shells:${name}:FIN -->"
+  $existing = if (Test-Path $file) { [IO.File]::ReadAllLines($file) } else { @() }
+  $out = New-Object System.Collections.Generic.List[string]
+  $skip = $false; $replaced = $false
+  foreach ($l in $existing) {
+    if ($l -eq $begin) { $out.Add($begin); foreach ($c in $content) { $out.Add($c) }; $skip = $true; $replaced = $true; continue }
+    if ($l -eq $end)   { $out.Add($end); $skip = $false; continue }
+    if (-not $skip) { $out.Add($l) }
+  }
+  if (-not $replaced) {
+    $out.Add($begin); foreach ($c in $content) { $out.Add($c) }; $out.Add($end)
+  }
+  [IO.File]::WriteAllText($file, ($out -join "`n") + "`n", (New-Object System.Text.UTF8Encoding($false)))
+}
+
+try { Write-PSBlock } catch { Write-Host "aviso: no pude detectar aliases de PowerShell ($($_.Exception.Message)); sigo (bash cubre POSIX)" }
+
 # -- Delegar TODO el trabajo real al instalador .sh (fuente unica, idempotente) --
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Installer = Join-Path $ScriptDir 'install-brain.sh'

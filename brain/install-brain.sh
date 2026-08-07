@@ -43,6 +43,13 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SRC_HOOKS="$SCRIPT_DIR/hooks"
 SRC_SKILLS="$SCRIPT_DIR/skills"
 SRC_NORMS="$SCRIPT_DIR/norms"
+SRC_LIB="$SCRIPT_DIR/lib"
+
+# Lib de INSTALACIÓN (no es un hook): detección cross-shell de aliases que muerden binarios reales, para
+# el bloque detectado de entorno-esta-maquina.md y el artefacto LEAN ~/.claude/aliases-activos.md (@import).
+# Fail-safe: si falta, se degrada (las funciones ds_* no existen → los usos van guardados con command -v).
+# shellcheck source=lib/detectar-shells.sh
+[ -f "$SRC_LIB/detectar-shells.sh" ] && . "$SRC_LIB/detectar-shells.sh"
 
 CLAUDE_DIR="$HOME/.claude"
 HOOKS_DIR="$CLAUDE_DIR/hooks"
@@ -270,24 +277,15 @@ ENTORNO="$CLAUDE_DIR/projects/$HOME_SLUG/memory/entorno-esta-maquina.md"
 # --- detección (best-effort; todo fail-safe a "?") ---
 det_os="$(uname -srm 2>/dev/null || echo '?')"
 det_shell_path="${SHELL:-}"; det_shell="$(basename "${det_shell_path:-sh}")"
-# Aliases: se resuelven en el shell de LOGIN del usuario (ahí viven sus rc), en modo interactivo (-i)
-# para que cargue el .zshrc/.bashrc. Filtramos SOLO líneas 'nombre=...' → el ruido de un rc que imprime
-# algo al arrancar (neofetch, etc.) no matchea. 2>/dev/null traga stderr sin tty.
-alias_dump=""
-if [ -n "$det_shell_path" ] && command -v "$det_shell_path" >/dev/null 2>&1; then
-  alias_dump="$("$det_shell_path" -ic 'alias' 2>/dev/null || true)"
+# Aliases que MUERDEN: detección CROSS-SHELL (zsh/bash/fish INSTALADOS) vía la lib detectar-shells.sh,
+# filtrando a los que SOMBREAN un binario real (no una lista fija). Antes: solo login shell + lista fija
+# de 5 (ls/rm/cp/mv/grep) → se le escapaban `mkdir -p`, `vi`→nvim, y todo lo de fish/otro shell. Fail-safe:
+# si la lib no cargó, cae a una nota mínima. La MISMA detección alimenta el artefacto LEAN (abajo, d3).
+if command -v ds_render_posix_bullets >/dev/null 2>&1; then
+  alias_block="$(ds_render_posix_bullets 2>/dev/null || true)"
+else
+  alias_block="Muerden: (no pude detectar — falta la lib detectar-shells.sh; salta cualquier alias con \`command <cmd>\`)"
 fi
-alias_of() {  # $1 = comando; imprime a qué apunta el alias, o "" si no hay
-  printf '%s\n' "$alias_dump" | sed 's/^alias //' \
-    | grep -E "^$1=" | head -1 | sed "s/^$1=//; s/^'//; s/'\$//; s/^\"//; s/\"\$//"
-}
-alias_bullets=""
-any_alias=0
-for a in ls rm cp mv grep; do
-  v="$(alias_of "$a")"
-  if [ -n "$v" ]; then alias_bullets="${alias_bullets}  - \`$a\` → \`$v\`\n"; any_alias=1
-  else alias_bullets="${alias_bullets}  - \`$a\` → (sin alias)\n"; fi
-done
 tool_bullets=""
 for t in eza trash rg fd bat docker colima; do
   if p="$(command -v "$t" 2>/dev/null)" && [ -n "$p" ]; then tool_bullets="${tool_bullets}  - \`$t\` ✓ (\`$p\`)\n"
@@ -302,8 +300,8 @@ if [ -n "$blk" ]; then
     printf '## Detectado por el bootstrap (%s)\n' "$(date +%Y-%m-%d 2>/dev/null || echo '?')"
     printf -- '- **OS / arch:** `%s`\n' "$det_os"
     printf -- '- **Shell de login:** `%s` (`%s`)\n' "$det_shell" "${det_shell_path:-?}"
-    printf -- '- **Aliases que pueden morder comandos** (salta el alias con `command <cmd>` o `\\<cmd>` — NO con `/bin/<cmd>`: en macOS `grep` vive en `/usr/bin`, no en `/bin`, y `rg`/`eza`/etc. no están en `/bin` en ningún lado; comilla los globs en zsh):\n'
-    printf '%b' "$alias_bullets"
+    printf -- '- **Aliases que muerden comandos** (salta con `command <cmd>` — NUNCA `/bin/<cmd>`: la ruta varía por OS y `rg`/`eza`/etc. no están en `/bin`; en fish `\\<cmd>` tampoco salta una función). Vista LEAN siempre-en-contexto: `~/.claude/aliases-activos.md` (@import):\n'
+    printf '%s\n' "$alias_block" | sed 's/^/  /'
     printf -- '- **Tools clave (presencia):**\n'
     printf '%b' "$tool_bullets"
     printf '<!-- detectado-por-bootstrap:FIN -->\n'
@@ -378,12 +376,47 @@ else
   echo "ok: normas globales del cerebro agregadas a $GCLAUDE"
 fi
 
+# ── (d3) Artefacto LEAN de aliases + @import en el CLAUDE.md global ──
+# El detalle CURADO/verboso vive en entorno-esta-maquina.md (arriba). Este es la VISTA DERIVADA LEAN,
+# answer-first (el ESCAPE primero), pensada para estar SIEMPRE en contexto vía `@import` recursivo del
+# CLAUDE.md — sin costarle líneas al propio CLAUDE.md. Es GENERADO per-máquina → NO viaja por git.
+# En Windows el .ps1 ya escribió el bloque `<!-- shells:powershell -->` ANTES de delegar aquí; esta lib
+# sólo (re)escribe el bloque `<!-- shells:posix -->` → ambos coexisten sin pisarse. Fail-safe: sin la lib,
+# se omite (no rompe la instalación).
+ART="$CLAUDE_DIR/aliases-activos.md"
+if command -v ds_render_posix >/dev/null 2>&1; then
+  ds_ensure_artifact_header "$ART"
+  if ds_render_posix 2>/dev/null | ds_upsert_block "$ART" posix; then
+    echo "ok: artefacto LEAN de aliases (re)generado en $ART (bloque posix)"
+  else
+    echo "warn: no pude generar el bloque posix de $ART"
+  fi
+  # Cablear el @import idempotente, FUERA del bloque BEGIN/END claude-brain (que se regenera): su propio
+  # marcador. Claude Code procesa @imports recursivos → el artefacto queda siempre en contexto.
+  # GUARDA anti-truncado (misma que el bloque de normas): un CLAUDE.md con BEGIN sin END está en estado
+  # PELIGROSO → NO lo tocamos (ni para appendear el @import), para no arriesgar la sección personal.
+  if [ -f "$GCLAUDE" ] && grep -q 'BEGIN claude-brain' "$GCLAUDE" 2>/dev/null && ! grep -q 'END claude-brain' "$GCLAUDE" 2>/dev/null; then
+    echo "warn: $GCLAUDE tiene BEGIN sin END — NO cablo el @import (no toco un archivo en estado peligroso). Ciérralo y re-corre."
+  elif [ -f "$GCLAUDE" ] && grep -q 'brain:import-aliases' "$GCLAUDE" 2>/dev/null; then
+    echo "ok: @import de aliases-activos.md ya cableado en $GCLAUDE (idempotente)"
+  else
+    {
+      [ -f "$GCLAUDE" ] && printf '\n'
+      printf '<!-- brain:import-aliases — VISTA per-máquina de aliases que muerden; GENERADA, NO viaja por git -->\n'
+      printf '@aliases-activos.md\n'
+    } >> "$GCLAUDE"
+    echo "ok: @import de aliases-activos.md cableado en $GCLAUDE (siempre en contexto)"
+  fi
+else
+  echo "warn: lib detectar-shells.sh no disponible; omito el artefacto LEAN de aliases y su @import"
+fi
+
 # fetch.prune global: que `git fetch` borre solos los refs remotos ya eliminados (surface de las ramas
 # `: gone`). Es lo que mantiene fresco el marcador que usa limpiar-ramas.sh. Idempotente y no destructivo.
 if [ "$(git config --global --get fetch.prune 2>/dev/null)" != "true" ]; then
   git config --global fetch.prune true 2>/dev/null && echo "ok: git config --global fetch.prune=true (ramas remotas borradas se limpian solas al hacer fetch)"
 fi
 
-echo "listo: cerebro global instalado (hooks + cableado + skill + sello de versión + dashboard + normas)."
+echo "listo: cerebro global instalado (hooks + cableado + skill + sello de versión + dashboard + normas + aliases-activos)."
 echo "       Los hooks repo-scoped (sesion-inicio, dod-verificar) viven en"
 echo "       brain/hooks/ como fuente: cópialos al .claude/ de cada repo (se cargan al INICIAR ahí)."
