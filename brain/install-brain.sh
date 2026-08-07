@@ -177,6 +177,25 @@ set_env_default ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION "Modelo previo - ocult
 set_env_default CLAUDE_AUTOCOMPACT_PCT_OVERRIDE "70"
 echo "ok: Opus 4.8 en el picker + autocompact 70% asegurados en $GSET (env; no pisa tu elección ni tu .model)"
 
+# ── (c1c) Persistir env vars ACTIVAS del brain (su valor REAL del entorno, NO un default) en settings.json
+# .env, para que TODA sesión las herede sin setearlas a mano en cada arranque. A diferencia de
+# set_env_default (planta un valor fijo si falta), esto CAPTURA lo que ya está activo. Antídoto al drama
+# de CLAUDE_SESSIONS_DRIVE seteada ad-hoc en UNA sesión (en vez de asentada por el instalador): si la
+# tienes exportada al correr el bootstrap, se persiste sola. SET/UPDATE si la var está activa y no vacía;
+# si NO está activa, no toca lo que ya hubiera en settings. Idempotente. ──
+persist_env_active() {  # <clave>
+  local k="$1" v tmp
+  command -v jq >/dev/null 2>&1 || return
+  v="${!k:-}"                    # expansión indirecta (bash); "" si no está activa
+  [ -n "$v" ] || return          # no activa → no tocamos settings
+  [ -f "$GSET" ] || echo '{}' > "$GSET"
+  tmp="$(mktemp)" || return
+  if jq --arg k "$k" --arg v "$v" '.env = (.env // {}) | .env[$k]=$v' "$GSET" > "$tmp" 2>/dev/null && [ -s "$tmp" ]; then
+    mv "$tmp" "$GSET"; echo "ok: env $k persistida en settings.json (.env) = '$v' (valor ACTIVO del entorno)"
+  else rm -f "$tmp"; fi
+}
+for _bv in CLAUDE_SESSIONS_DRIVE CLAUDE_SESSIONS_DEBOUNCE_MIN; do persist_env_active "$_bv"; done
+
 # ── (c2) Sello de VERSIÓN del cerebro instalado ──
 # El widget (tab Cerebro de las 3 GUIs) lee ~/.claude/.brain-version — NO el repo — para mostrar
 # qué versión del brain quedó instalada en ESTA máquina. Contrato de DOS LÍNEAS:
@@ -252,7 +271,7 @@ if [ -n "$blk" ]; then
     printf '## Detectado por el bootstrap (%s)\n' "$(date +%Y-%m-%d 2>/dev/null || echo '?')"
     printf -- '- **OS / arch:** `%s`\n' "$det_os"
     printf -- '- **Shell de login:** `%s` (`%s`)\n' "$det_shell" "${det_shell_path:-?}"
-    printf -- '- **Aliases que pueden morder comandos** (salta el alias con `/bin/<cmd>` o `\\<cmd>`; comilla los globs en zsh):\n'
+    printf -- '- **Aliases que pueden morder comandos** (salta el alias con `command <cmd>` o `\\<cmd>` — NO con `/bin/<cmd>`: en macOS `grep` vive en `/usr/bin`, no en `/bin`, y `rg`/`eza`/etc. no están en `/bin` en ningún lado; comilla los globs en zsh):\n'
     printf '%b' "$alias_bullets"
     printf -- '- **Tools clave (presencia):**\n'
     printf '%b' "$tool_bullets"
