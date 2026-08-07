@@ -2751,6 +2751,59 @@ acwin() {
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (b6c) hud-stale: avisa (advisory) al cambiar de rama/proyecto; first-sight silencioso; stamp per-sesión; solo en repos con backlog =="
+# Detector de staleness del HUD (lista de TODOs). Señal OBJETIVA = (repo root | rama git) vs. lo observado
+# en ESTA sesión (stamp per-session_id). Precisión: first-sight calla, debounce por transición, gate de
+# backlog durable, sesiones concurrentes no se pisan, fail-open sin session_id.
+HSHOME="$(mktemp -d "${TMPDIR:-/tmp}/brain-hs-home.XXXXXX")"
+mkrepo() { # $1=path  $2=branch  $3=backlog(1/0) → crea un repo git con una rama y (opcional) backlog
+  mkdir -p "$1/.claude/memory"; git -C "$1" init -q 2>/dev/null
+  git -C "$1" config user.email t@t >/dev/null 2>&1; git -C "$1" config user.name t >/dev/null 2>&1
+  git -C "$1" checkout -q -b "$2" 2>/dev/null
+  [ "$3" = 1 ] && printf 'x\n' > "$1/.claude/memory/estado-proyecto.md"
+  printf 'r\n' > "$1/README.md"; git -C "$1" add -A >/dev/null 2>&1; git -C "$1" commit -qm init >/dev/null 2>&1
+}
+HSR1="$(mktemp -d "${TMPDIR:-/tmp}/brain-hs-r1.XXXXXX")/repo"; mkrepo "$HSR1" feat/A 1
+HSR2="$(mktemp -d "${TMPDIR:-/tmp}/brain-hs-r2.XXXXXX")/repo"; mkrepo "$HSR2" feat/Z 1
+HSR3="$(mktemp -d "${TMPDIR:-/tmp}/brain-hs-r3.XXXXXX")/repo"; mkrepo "$HSR3" feat/N 0   # SIN backlog
+hs() { printf '%s' "$1" | env HOME="$HSHOME" CLAUDE_PROJECT_DIR="$2" bash "$HOOKS/hud-stale.sh"; }
+has_hud() { printf '%s' "$1" | jq -e '.hookSpecificOutput.hookEventName' >/dev/null 2>&1; }
+# (1) first sight (SessionStart) → registra baseline, calla
+is_silent "$(hs '{"session_id":"S1","source":"startup"}' "$HSR1")" \
+  && ok "hud-stale: first-sight (sin stamp) → silencio (registra baseline)" || bad "hud-stale: avisó en el first-sight"
+# (2) mismo contexto otra vez → silencio (nada cambió)
+is_silent "$(hs '{"session_id":"S1","source":"resume"}' "$HSR1")" \
+  && ok "hud-stale: mismo (root|rama) → silencio (sin cambio)" || bad "hud-stale: avisó sin cambio de contexto"
+# (3) cambio de RAMA en la misma sesión (PostToolUse/Bash) → AVISA, mensaje habla de RAMA + event PostToolUse
+git -C "$HSR1" checkout -q -b feat/B
+o="$(hs '{"session_id":"S1","tool_name":"Bash"}' "$HSR1")"
+{ has_hud "$o" && printf '%s' "$o" | jq -r '.hookSpecificOutput.additionalContext' | grep -qi 'RAMA' \
+  && printf '%s' "$o" | jq -e '.hookSpecificOutput.hookEventName=="PostToolUse"' >/dev/null; } \
+  && ok "hud-stale: cambio de RAMA en sesión → AVISA (PostToolUse, menciona RAMA)" || bad "hud-stale: NO avisó al cambiar de rama; got: $o"
+# (4) tras avisar, mismo estado → debounce (silencio)
+is_silent "$(hs '{"session_id":"S1","tool_name":"Bash"}' "$HSR1")" \
+  && ok "hud-stale: tras avisar la transición → debounce (silencio)" || bad "hud-stale: re-avisó la misma transición"
+# (5) tool que NO es Bash → silencio (gate de evento)
+is_silent "$(hs '{"session_id":"S1","tool_name":"Read"}' "$HSR1")" \
+  && ok "hud-stale: PostToolUse de tool≠Bash → silencio" || bad "hud-stale: reaccionó a una tool que no es Bash"
+# (6) cambio de PROYECTO (otro root) en la misma sesión → AVISA, menciona PROYECTO
+o="$(hs '{"session_id":"S1","tool_name":"Bash"}' "$HSR2")"
+{ has_hud "$o" && printf '%s' "$o" | jq -r '.hookSpecificOutput.additionalContext' | grep -qi 'PROYECTO'; } \
+  && ok "hud-stale: cambio de PROYECTO (cwd) → AVISA (menciona PROYECTO)" || bad "hud-stale: NO avisó al cambiar de proyecto; got: $o"
+# (7) CONCURRENCIA: otra sesión (S2) recién llegada al mismo repo → first-sight silencioso (no cross-talk)
+is_silent "$(hs '{"session_id":"S2","source":"startup"}' "$HSR2")" \
+  && ok "hud-stale: sesión concurrente distinta (S2) → first-sight silencioso (stamp per-sesión, no se pisan)" || bad "hud-stale: una sesión pisó a otra (thrash)"
+# (8) repo SIN backlog durable → silencio (gate de sistema), aunque cambie el contexto
+hs '{"session_id":"S3","source":"startup"}' "$HSR1" >/dev/null   # baseline en repo con backlog
+is_silent "$(hs '{"session_id":"S3","tool_name":"Bash"}' "$HSR3")" \
+  && ok "hud-stale: repo sin backlog durable → silencio (gate de sistema)" || bad "hud-stale: avisó en un repo sin backlog"
+# (9) fail-open: sin session_id → silencio
+is_silent "$(hs '{"source":"startup"}' "$HSR1")" \
+  && ok "hud-stale: sin session_id → silencio (fail-open)" || bad "hud-stale: reaccionó sin session_id"
+rm -rf "$HSHOME" "$(dirname "$HSR1")" "$(dirname "$HSR2")" "$(dirname "$HSR3")" 2>/dev/null
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "== (b7) dedupe doble-cableado: la copia REPO cede si existe la GLOBAL; corre si no =="
 DDNO="$(mktemp -d "${TMPDIR:-/tmp}/brain-ddno.XXXXXX")"
 DDYES="$(mktemp -d "${TMPDIR:-/tmp}/brain-ddyes.XXXXXX")"; mkdir -p "$DDYES/.claude/hooks"
@@ -2945,7 +2998,8 @@ proteger-fuente-cerebro|verificar-cerebro
 auditar-coherencia-cerebro|auditar-suficiencia-operativa
 auditar-coherencia-cerebro|consolidar-cerebro
 auditar-suficiencia-operativa|consolidar-cerebro
-desinflar-memorias|positivar-doc"
+desinflar-memorias|positivar-doc
+hud-stale|to-do"
 ce_els=()
 for d in "$SCRIPT_DIR"/skills/*/; do [ -d "$d" ] && ce_els+=("$(basename "$d")"); done
 for h in "$HOOKS"/*.sh; do [ -e "$h" ] && ce_els+=("$(basename "$h" .sh)"); done

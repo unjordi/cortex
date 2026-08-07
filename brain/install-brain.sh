@@ -125,6 +125,9 @@ ev_de() {
     delegacion-registrar|delegacion-reporte) echo "PostToolUse|Task|Agent" ;;
     rehidratar-hilo|aviso-drift-cerebro) echo "SessionStart|" ;;
     aviso-contexto) echo "PostToolUse|" ;;
+    # hud-stale: DOBLE trigger — SessionStart (capta el cambio de rama/cwd ENTRE sesiones, al retomar) +
+    # PostToolUse/Bash (capta el cambio a MEDIA sesión, justo tras un `git checkout`/`cd`).
+    hud-stale) echo "SessionStart| PostToolUse|Bash" ;;
     # barrer-ramas: DOBLE trigger del barrido — SessionStart (oportunista, throttled) + PostToolUse/Bash
     # (al punto de merge, detecta glab/gh merge vía acg_es_merge_mr). Multi-evento como exportar-sesion-master.
     barrer-ramas) echo "SessionStart| PostToolUse|Bash" ;;

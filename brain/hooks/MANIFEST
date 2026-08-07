@@ -37,6 +37,7 @@ limite-gasto             global  hook
 rehidratar-hilo          global  hook
 aviso-contexto           global  hook
 aviso-drift-cerebro      global  hook
+hud-stale                global  hook
 exportar-sesion-master   global  hook
 barrer-ramas             global  hook
 delegacion-gate          global  hook

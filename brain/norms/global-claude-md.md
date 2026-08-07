@@ -350,6 +350,33 @@ rompe `git branch -d` y `fetch --prune` no toca locales; conserva el trabajo viv
 **Señal de que te desviaste:** el usuario tuvo que PEDIRTE que actualizaras bitácora/estado, o se
 acumularon worktrees/ramas zombies.
 
+## Tu lista de TODOs es TU HUD — mantenla FRESCA, no la dejes driftear (norma dura)
+La lista de TODOs de la terminal (el árbol de checkboxes con ✓, `in_progress`, `+N completed`) es **TU HUD
+de working-memory de la tarea de AHORA** — tu tablero para no perderte mientras ejecutas, **no un reporte
+para el usuario**. Un modelo que corre de corrido tiene un interés propio y egoísta en un tablero fiable de
+"¿voy en orden? ¿qué me falta?": es lo que lo mantiene orientado cuando su contexto se degrada, igual que
+el `hilo-mental-actual.md` lo salva del compact. Ábrela cuando una tarea tenga **≥3 pasos** o vayas a
+trabajar de corrido; manténla como el REFLEJO vivo de tu plan. **División de labor (no las confundas):**
+- **HUD** (lista de TODOs) = descomposición VIVA de ESTA tarea, visible en pantalla; **scratch de sesión**
+  (se **resetea** al cambiar de tarea). Lo que veo para no perderme AHORA.
+- **`hilo-mental-actual.md`** = el HILO en prosa, volcado a disco para sobrevivir un `/compact` (lo escribe
+  `checkpoint`, lo relee `rehidratar-hilo`). Lo que escribo a disco para no perderme tras un compact.
+- **`estado-proyecto.md`** = el BACKLOG DURABLE, fuente de verdad cross-sesión. Lo que sobrevive entre
+  sesiones. **Si HUD y backlog divergen, manda `estado-proyecto.md`.**
+
+**Los dos puentes:** al **ARRANCAR/RETOMAR** una tarea, **SIEMBRA** el HUD del hilo/`estado-proyecto.md`
+(con `/to-do`); al **CERRAR** (checkpoint/cerrar-slice), **VACÍA** lo durable del HUD a
+`estado-proyecto.md`/`bitacora.md` y límpialo. Nunca son la misma escritura, nunca compiten — se relevan
+en los bordes.
+
+**Anti-DRIFT (unjordi, norma dura): "NO QUIERO DRIFT NUNCA Y MENOS EN MI LISTA DE PENDIENTES."** El HUD
+queda STALE al rotar el working tree (cambio de rama/proyecto): sigue mostrando pendientes de la tarea
+anterior. Cuando **cambies de rama git o de proyecto/cwd**, RE-EVALÚA el HUD: si ya no aplica a lo que
+haces, **resetéalo** (re-siémbralo del `estado-proyecto.md` de ESA rama con `/to-do`, o límpialo). El hook
+**`hud-stale`** (advisory) es el mecanismo que te lo RECUERDA en el único momento en que no puedes saberlo
+solo — justo tras rotar de rama/cwd —; detecta por señal OBJETIVA (rama/cwd), nunca por el contenido del
+HUD, y no bloquea. Un aviso que te salva de trabajar con una lista vieja es una herramienta, no un vigilante.
+
 # Compact instructions
 
 > Sección FUNCIONAL, no decorativa: el CLI de Claude Code re-lee este `CLAUDE.md` de disco al compactar
