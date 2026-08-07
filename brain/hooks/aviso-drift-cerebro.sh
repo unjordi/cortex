@@ -75,17 +75,22 @@ done
 # emit_and_exit [contexto-de-drift] — emite additionalContext UNA sola vez, anteponiendo el conocimiento
 # propio (si existe) al contexto de drift/auto-sync (si lo hay). Sin ninguno de los dos → silencio.
 emit_and_exit() {
-  local extra="${1:-}" out=""
-  if [ -n "$SELF" ] && [ -n "$extra" ]; then
-    out="$SELF
+  local extra="${1:-}" out="" part sep=""
+  # Une (en orden, saltando vacíos): SELF (identidad) · $extra (drift/auto-sync per-repo) · GLOBAL_SK_WARN
+  # (drift de la copia GLOBAL de skills). GLOBAL_SK_WARN viaja en TODOS los exit paths (incluso el throttle
+  # per-repo fresco): es un concern per-MÁQUINA con su PROPIO throttle, no depende del drift del repo actual.
+  for part in "$SELF" "$extra" "${GLOBAL_SK_WARN:-}"; do
+    [ -z "$part" ] && continue
+    if [ -z "$out" ]; then out="$part"; else
+      out="$out
 
-────────────────────────────────────────────────────────────────────────────────
+$sep
 
-$extra"
-  elif [ -n "$SELF" ]; then out="$SELF"
-  elif [ -n "$extra" ]; then out="$extra"
-  else exit 0
-  fi
+$part"
+    fi
+    sep="────────────────────────────────────────────────────────────────────────────────"
+  done
+  [ -z "$out" ] && exit 0
   if command -v jq >/dev/null 2>&1; then
     jq -n --arg c "$out" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}}'
   else
@@ -104,6 +109,23 @@ stampdir="$HOME/.claude/memory/.drift-cerebro"; mkdir -p "$stampdir" 2>/dev/null
 slug=$(printf '%s' "$ROOT" | cksum 2>/dev/null | awk '{print $1}')
 stamp="$stampdir/${slug:-0}"
 now=$(date +%s)
+
+# ── DRIFT DE SKILLS GLOBAL (per-máquina) — con su PROPIO throttle (independiente del per-repo). Warn-only.
+# Se computa ANTES del throttle per-repo para que viaje aunque ese throttle corte temprano (emit_and_exit lo
+# incluye en TODOS los exit paths). Solo re-chequea cada AVISO_DRIFT_HORAS; un resultado CON drift NO se
+# cachea (insiste hasta que se porte a la fuente). Es el equivalente AUTOMÁTICO del doctor verificar-cerebro.
+GLOBAL_SK_WARN=""
+sk_stamp="$stampdir/.skills-global"
+sk_skip=0
+if [ -f "$sk_stamp" ]; then
+  sk_last=$(cat "$sk_stamp" 2>/dev/null || echo 0); case "$sk_last" in ''|*[!0-9]*) sk_last=0;; esac
+  [ $(( now - sk_last )) -lt $(( horas * 3600 )) ] && sk_skip=1
+fi
+if [ "$sk_skip" = 0 ]; then
+  GLOBAL_SK_WARN="$(drift_skills_global 2>/dev/null || true)"
+  [ -z "$GLOBAL_SK_WARN" ] && printf '%s' "$now" > "$sk_stamp" 2>/dev/null || true
+fi
+
 if [ -f "$stamp" ]; then
   last=$(cat "$stamp" 2>/dev/null || echo 0)
   case "$last" in ''|*[!0-9]*) last=0;; esac

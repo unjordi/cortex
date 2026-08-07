@@ -1,0 +1,52 @@
+# MANIFEST (skills) — FUENTE ÚNICA del cerebro (claude-brain) para las SKILLS genéricas: declara, por cada
+# carpeta de brain/skills/, su TIER (dónde se despliega). Hermano del brain/hooks/MANIFEST (que hace lo mismo
+# para hooks/libs). De aquí DERIVAN las rutas de instalación de skills y el drift-check → dejan de curarse a
+# mano (antídoto al drift comprobado: ~/.claude/skills/to-do se editó a mano en dev y la copia viva se
+# desincronizó de brain/skills/to-do/ sin que nada lo detectara ni re-sincronizara).
+#
+# Formato:  <nombre-de-la-skill>   <tier>
+#   tier:  global  → solo ~/.claude/skills (lo instala el bootstrap/install-brain; NO viaja por-repo).
+#          both    → AMBOS: global por el bootstrap + viaja POR-REPO en repos COMPARTIDOS (marca
+#                    .claude/repo-compartido) como CORREO — para el colega que clona un repo compartido y
+#                    NO tiene el brain global. Análogo al tier `both` de los hooks.
+#          (no hay tier `repo`-only para skills hoy: una skill genérica del cerebro siempre existe global.)
+#
+# Consumidores (paralelos EXACTOS de los de hooks):
+#   - install-brain.sh       : instala GLOBAL = {global, both} skills (árbol COMPLETO de cada skill).
+#   - sincronizar-cerebro.sh : despliega POR-REPO = {both} skills en <repo>/.claude/skills (solo repos
+#                              COMPARTIDOS; el brain por-repo es el CORREO). Diff-aware, --apply, --prune-orphans.
+#   - drift-cerebro-comun.sh : drift-check per-repo (via el resumen del sync) + drift GLOBAL (instalada≠fuente).
+#   - test-brain.sh          : verifica el sync/drift de skills contra este manifiesto.
+#
+# Líneas '#' y en blanco se ignoran. Skill en brain/skills/ SIN línea aquí → se trata como `global` + AVISO.
+# Al agregar/mover una skill: EDITA AQUÍ y las rutas lo heredan.
+#
+# ── DECISIÓN DE TIER (pendiente de unjordi) ──────────────────────────────────────────────────────────────
+# Seed CONSERVADOR: TODAS en `global` (cero cambio de comportamiento por-repo — no empuja skills nuevas a los
+# repos compartidos hoy). El PLUMBING de `both` está construido y probado; basta cambiar una skill a `both`
+# para que viaje como CORREO. RECOMENDACIÓN para unjordi: marcar `both` las skills COMPAÑERAS de los guards
+# que ya viajan `both` (cerrar-slice, checkpoint, rehidratar-hilo) — así el colega que clona un repo
+# compartido recibe los guards Y las skills que los acompañan. Es un cambio VISIBLE en repos compartidos
+# (aparecerían en su .claude/skills en la próxima auto-sync) → se deja a tu OK explícito.
+
+auditar-coherencia-cerebro       global
+auditar-proceso-algoritmo        global
+auditar-suficiencia-operativa    global
+cerrar-slice                     global
+checkpoint                       global
+claude-proyecto-autocontenido    global
+consolidar-cerebro               global
+cosechar-sesion                  global
+desinflar-memorias               global
+diagramar                        global
+ingenieria-inversa-gui-db-navegador  global
+investigar-dominio               global
+markdown-a-pdf                   global
+orquestar-fanout                 global
+positivar-doc                    global
+rehidratar-hilo                  global
+revisar-entregables-agentes      global
+to-do                            global
+turno-nocturno                   global
+unificar-cerebro                 global
+zoom-screenshot                  global
