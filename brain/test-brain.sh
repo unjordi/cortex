@@ -448,6 +448,20 @@ rm -rf "$GBX"
   [ -z "$(acg_target_remote 'glab mr merge 5' '')" ]       && ok "target_remote: sin --repo y dir no-git → vacío (fail-safe)" || bad "target_remote: devolvió algo con dir no-git"
 )
 
+# ── (b1d-lib) acg_mrid: multi-comando aísla el SEGMENTO del ÚLTIMO merge (fix 2026-08, DETERMINISTA) ──
+# Antes tomaba el 1er entero del BLOB → `gh pr view 272 …; gh pr merge 273 …` devolvía 272 (id EQUIVOCADO,
+# del `view`); el DENY citaba el MR erróneo y detonó el parche "un merge por llamada" que enfureció al usuario.
+( . "$HOOKS/analizar-comando-git.sh"
+  [ "$(acg_mrid 'gh pr view 272 --repo o/r; gh pr merge 273 --yes')" = 273 ] \
+    && ok "acg_mrid: 'gh pr view 272 …; gh pr merge 273 …' → 273 (id del MERGE, no del view; era el bug)" || bad "acg_mrid: multi-comando devolvió el id equivocado (no 273)"
+  [ "$(acg_mrid 'gh pr view 272 && gh pr merge 273 --yes')" = 273 ] \
+    && ok "acg_mrid: cadena con && → 273 (id del último merge)" || bad "acg_mrid: la cadena && no aisló el segmento del merge"
+  [ "$(acg_mrid 'glab mr merge --yes 9')" = 9 ] \
+    && ok "acg_mrid: no-regresión A-04 — 'glab mr merge --yes 9' (flag intermedio) → 9" || bad "acg_mrid: regresión A-04 — no toleró el flag intermedio"
+  [ "$(acg_mrid 'glab mr merge 42 --squash')" = 42 ] \
+    && ok "acg_mrid: comando simple 'glab mr merge 42 --squash' → 42 (sin regresión)" || bad "acg_mrid: el comando simple se rompió"
+)
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (b1e) confirmar-merge-develop: escape ANCLADO al subcomando (H3) + destino cacheado/timeout (H5) =="
@@ -637,6 +651,30 @@ VEREDICTO: ALLOW' main 999 'USUARIO: libera el 999 a main, es el release')" = AL
   [ "$(raw 'CITA: mergea el 999
 VEREDICTO: ALLOW' main 999 'USUARIO: mergea el 999')" = DENY ] \
     && ok "juez-cita+piso-main: cita real pero SIN release → piso-main override DENY" || bad "juez-cita+piso-main: dejó pasar un main sin release"
+  # ── VETO ROBUSTO (fix veto-cita 2026-08): tolera normalización BENIGNA del LLM (typo/acento/caso), sigue
+  # matando alucinación/inyección. El bug reproducido: el usuario escribió "pendietes" (typo); el LLM
+  # "corrige" a "pendientes" al copiar la CITA → el viejo grep -Fq byte-exacto → falso DENY (#272/#273).
+  CONVT='USUARIO: haz el merge a develop de las 3 branches que siguen pendietes por favor
+ASISTENTE: corriendo la suite antes de integrar'
+  [ "$(raw 'Paso 1: destino develop. Paso 2: instrucción clara del USUARIO.
+CITA: haz el merge a develop de las 3 branches que siguen pendientes por favor
+VEREDICTO: ALLOW' develop 273 "$CONVT")" = ALLOW ] \
+    && ok "juez-veto-robusto (a): CITA con typo CORREGIDO por el LLM ('pendientes' vs 'pendietes' del usuario) → ALLOW (era el bug: grep -Fq daba DENY falso)" || bad "juez-veto-robusto (a): el veto byte-exacto sigue tumbando un ALLOW legítimo con typo corregido"
+  [ "$(raw 'CITA: sí libera todo a main ahora mismo el release completo
+VEREDICTO: ALLOW' develop 273 "$CONVT")" = DENY ] \
+    && ok "juez-veto-robusto (b): CITA INVENTADA (nunca dicha, <85% overlap) → DENY (anti-alucinación intacto)" || bad "juez-veto-robusto (b): dejó pasar una cita alucinada"
+  [ "$(raw 'CITA: corriendo la suite antes de integrar
+VEREDICTO: ALLOW' develop 273 "$CONVT")" = DENY ] \
+    && ok "juez-veto-robusto (c): CITA copiada de una línea ASISTENTE: → DENY (solo USUARIO autoriza)" || bad "juez-veto-robusto (c): aceptó una cita de línea ASISTENTE"
+  [ "$(raw 'VEREDICTO: ALLOW' develop 273 "$CONVT")" = DENY ] \
+    && ok "juez-veto-robusto (d): ALLOW SIN línea CITA → DENY (cita obligatoria)" || bad "juez-veto-robusto (d): un ALLOW sin cita pasó"
+  # (e) cita de 2 tokens que aparecen SUELTOS (no contiguos) en la línea → no es substring y el mínimo de 4
+  # tokens veta el containment → DENY (evita match trivial por azar).
+  CONVE='USUARIO: mergea el 5 y luego revisa develop
+ASISTENTE: ok'
+  [ "$(raw 'CITA: mergea develop
+VEREDICTO: ALLOW' develop 5 "$CONVE")" = DENY ] \
+    && ok "juez-veto-robusto (e): CITA de 2 tokens sueltos ('mergea develop', no contiguos) → DENY (mínimo 4 tokens veta el containment)" || bad "juez-veto-robusto (e): una cita de 2 tokens casó por azar"
 )
 
 # ── (b1g) juez-comun.sh: retrieval PORTABLE + curl 401-aware + política sin-token/jq (stubs, SIN red) ──
@@ -1751,6 +1789,29 @@ MARCA: no' 'X' 'y')" = UNAVAILABLE ] \
     && ok "dod parseo: falta el centinela VISUAL → UNAVAILABLE → fail-OPEN" || bad "dod parseo: no cayó a UNAVAILABLE con un eje ausente"
   [ "$(praw 'basura sin centinelas' 'X' 'y')" = UNAVAILABLE ] \
     && ok "dod parseo: respuesta sin ningún centinela → UNAVAILABLE (fail-OPEN)" || bad "dod parseo: no cayó a UNAVAILABLE ante respuesta ininteligible"
+  # ── VETO ROBUSTO espejo del merge (fix veto-cita 2026-08): mismo helper _juez_cita_casa → tolera typo/
+  # acento/caso, sigue exigiendo apoyo en palabras REALES del usuario. Casos ASCII-puros → deterministas
+  # en toda plataforma (macOS sin iconv//TRANSLIT limpio y Linux dan el MISMO resultado). (a) typo corregido
+  # por el LLM al copiar la CITA ('cerrarlo' vs 'cerralo' del usuario) → MARCA=si (byte-exacto daba 'no' falso).
+  VA='Razono: afirma cierre; el usuario confirmó.
+CITA: ya lo probe y funciona bien, cerrarlo pues
+CIERRE: si
+MARCA: si
+VISUAL: no'
+  [ "$(praw "$VA" 'Quedó el módulo.' 'ya lo probe y funciona bien, cerralo pues')" = 'CIERRE=si MARCA=si VISUAL=no' ] \
+    && ok "dod veto-robusto (a): CITA con typo CORREGIDO ('cerrarlo' vs 'cerralo' del usuario) → MARCA=si (byte-exacto daba 'no' falso)" || bad "dod veto-robusto (a): el veto tumbó una MARCA legítima por un typo corregido"
+  VB='CITA: ya lo valide, dale luz verde y cierralo por completo
+CIERRE: si
+MARCA: si
+VISUAL: no'
+  [ "$(praw "$VB" 'Quedó el módulo.' 'haz el cambio y avisame')" = 'CIERRE=si MARCA=no VISUAL=no' ] \
+    && ok "dod veto-robusto (b): CITA inventada (<85% overlap con el texto del usuario) → MARCA=no (anti auto-atestiguamiento)" || bad "dod veto-robusto (b): dejó pasar una MARCA cuya cita no está en palabras del usuario"
+  VE='CITA: cierralo luz
+CIERRE: si
+MARCA: si
+VISUAL: no'
+  [ "$(praw "$VE" 'Quedó.' 'cierralo pues pero dale otra luz al boton')" = 'CIERRE=si MARCA=no VISUAL=no' ] \
+    && ok "dod veto-robusto (e): CITA de 2 tokens sueltos (no contiguos) → MARCA=no (mínimo 4 tokens veta el containment)" || bad "dod veto-robusto (e): una cita de 2 tokens casó por azar"
 )
 
 # ── BATERÍA LIVE del juez-dod (opt-in) · clasificación REAL de FP/FN históricos contra Haiku ──

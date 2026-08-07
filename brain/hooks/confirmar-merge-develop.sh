@@ -50,7 +50,7 @@ set -u
 # NUNCA fail-open. Mocks deterministas: CLAUDE_MERGE_JUEZ_MOCK (veredicto FINAL de la capa-LLM, entra al
 # piso de main) · CLAUDE_MERGE_JUEZ_MOCK_RAW (texto CRUDO de respuesta → prueba parseo+cita sin red).
 _juez_merge_uno() {   # $1=destino  $2=mrid  $3=mensajes  $4=hint(opcional) → imprime ALLOW | DENY | UNAVAILABLE_* — UN voto
-  local prompt out txt hint cita temp _resp _estado
+  local prompt out txt hint cita temp _resp _estado _cand
   hint="${4:-}"
   # Temperatura EFECTIVA de ESTA llamada. Default 0 (gate reproducible, comportamiento de UNA llamada INTACTO).
   # Solo el dispatcher de voto múltiple (_juez_merge, VOTES≥2) la sube vía _JUEZ_TEMP; una llamada suelta la deja en 0.
@@ -125,10 +125,12 @@ VEREDICTO: DENY"
   # Parseo por CENTINELA: el ÚLTIMO 'VEREDICTO: ALLOW|DENY' (tail -1 — el CoT puede mencionar ALLOW/DENY
   # antes; solo cuenta la conclusión). Sin centinela → out vacío → UNAVAILABLE abajo → fail-safe DENY.
   out=$(printf '%s' "$txt" | grep -oiE 'VEREDICTO:[[:space:]]*(ALLOW|DENY)' | tail -1 | grep -oiE '(ALLOW|DENY)' | tr '[:lower:]' '[:upper:]')
-  # VETO de CITA VERIFICADA (capa 2): un ALLOW exige una CITA que exista TEXTUAL en una línea USUARIO: real.
-  # Normaliza IGUAL que _recent_intercalado (colapsa runs de espacio a uno) y quita comillas/espacios
-  # envolventes; luego grep -F (substring literal) contra las líneas '^USUARIO:' de la conversación. Sin
-  # cita, o cita que no cae en una línea USUARIO: real → override a DENY. Mata alucinación e inyección.
+  # VETO de CITA VERIFICADA (capa 2): un ALLOW exige una CITA que se apoye en una línea USUARIO: real.
+  # El match lo hace _juez_cita_casa (lib juez-comun.sh, misma impl que dod → cero drift): normaliza IGUAL
+  # ambos lados (minúsculas + acentos + puntuación) y casa por SUBSTRING o CONTAINMENT de tokens (≥4 tokens,
+  # ≥85%) contra UNA línea USUARIO:. Robusto a la normalización BENIGNA del LLM (typo/acento/caso) que el
+  # viejo `grep -Fq` byte-exacto NO toleraba (un typo corregido invertía el veredicto). Sin cita, o cita que
+  # no se apoya en ninguna línea USUARIO: real → override a DENY. Sigue matando alucinación e inyección.
   if [ "$out" = ALLOW ]; then
     # La línea CITA: puede venir decorada por el LLM ('**CITA:**', '- CITA:', '### CITA:'…) → tolera un
     # prefijo de chars NO-alfanuméricos antes de 'CITA:' (excluye prosa como 'la CITA debe…' que trae alnum).
@@ -137,7 +139,9 @@ VEREDICTO: DENY"
     if [ -z "$cita" ]; then
       out=DENY
     else
-      printf '%s\n' "$3" | grep -iE '^[[:space:]]*USUARIO:' | grep -Fq -- "$cita" || out=DENY
+      # Candidatas = SOLO líneas USUARIO: (jamás ASISTENTE), sin el prefijo de rol → texto crudo del usuario.
+      _cand=$(printf '%s\n' "$3" | grep -iE '^[[:space:]]*USUARIO:' | sed -E 's/^[[:space:]]*USUARIO:[[:space:]]*//I')
+      _juez_cita_casa "$cita" "$_cand" || out=DENY
     fi
   fi
   fi

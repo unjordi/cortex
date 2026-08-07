@@ -98,8 +98,16 @@ acg_es_push() { printf '%s' "$1" | grep -qE 'git[[:space:]]+push([[:space:]]|$)'
 
 # Extrae el MR-id del comando: el 1er entero "suelto" (opcional #) tras `mr merge`/`pr merge`, TOLERANTE a
 # flags intermedios (`glab mr merge --yes 9` → 9). Antes se exigía el id ADYACENTE al subcomando (A-04, FMEA).
+# MULTI-COMANDO (fix 2026-08): primero AÍSLA el SEGMENTO del ÚLTIMO subcomando de merge (parte por ; & |
+# y newline con awk gsub→\n real, portable BSD+GNU, igual que acg_push_toca_base) y extrae el id de ESE
+# segmento. Antes tomaba el 1er entero del BLOB completo → `gh pr view 272 …; gh pr merge 273 …` devolvía
+# 272 (el id EQUIVOCADO, del `view`), no 273 (el `merge` real) → el DENY citaba el MR erróneo.
 acg_mrid() {
-  printf '%s' "$1" | sed -E 's/.*(mr[[:space:]]+(merge|accept)|pr[[:space:]]+merge)[[:space:]]+//' | tr ' ' '\n' | grep -m1 -E '^#?[0-9]+$' | tr -d '#'
+  local seg
+  seg=$(printf '%s' "$1" | awk '{gsub(/[;&|]/,"\n")}1' \
+    | grep -E '(mr[[:space:]]+(merge|accept)|pr[[:space:]]+merge)' | tail -1)
+  [ -n "$seg" ] || seg="$1"
+  printf '%s' "$seg" | sed -E 's/.*(mr[[:space:]]+(merge|accept)|pr[[:space:]]+merge)[[:space:]]+//' | tr ' ' '\n' | grep -m1 -E '^#?[0-9]+$' | tr -d '#'
 }
 
 # ¿nombra develop/main como DESTINO explícito del push, en el MISMO segmento (no cruza ; && ||),
