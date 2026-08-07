@@ -1,0 +1,6 @@
+# Archivos de memoria APPEND-ONLY que varias sesiones/agentes tocan en ramas paralelas.
+# 'union' es un merge driver built-in de git (no requiere setup en .git/config): al fusionar,
+# conserva las líneas de AMBOS lados sin marcar conflicto. Úsalo SOLO en archivos append-only
+# donde el orden de líneas no importa — así el cerebro no se rompe con trabajo en paralelo.
+# (Rutas relativas a ESTE archivo, que vive en .claude/ — no repetir el prefijo .claude/.)
+memory/bitacora.md merge=union

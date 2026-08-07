@@ -73,24 +73,39 @@ Commit y push a la **ramita** van libres, sin pedir permiso. Pero **antes de int
 PREGÚNTALE al usuario si el slice queda cerrado.** El merge a develop no se hace sin esa confirmación
 (un release a main, tampoco — eso lo decide el humano deliberadamente).
 
-## 4. Flujo de git (tras el OK del usuario) — **integra con SQUASH**
-La ramita se colapsa a **UN commit limpio** en develop (lo exige el hook `merge-squash-guard`).
+## 4. Flujo de git (tras el OK del usuario) — **integra con SQUASH, merge INMEDIATO (sin MWPS)**
+La ramita se colapsa a **UN commit limpio** en develop (lo exige el hook `merge-squash-guard`). El
+merge a develop/main es **DELIBERADO e INMEDIATO**: espera a que el pipeline esté verde y mergea YA —
+nunca lo dejes ARMADO para que se dispare solo (ver el porqué abajo).
 
 ```bash
 # GitLab (glab):
 git push -u origin feat/<tema>
 glab mr create --source-branch feat/<tema> --target-branch develop \
   --squash-before-merge --remove-source-branch --title "…" --description "…" --yes
+glab ci status --branch feat/<tema> --live                       # espera a pipeline verde
 glab mr merge <id> --squash --squash-message "$(cat resumen.md)" \
-  --auto-merge --remove-source-branch --yes                     # 1–3 devs → auto-merge
+  --remove-source-branch --yes                     # SIN --auto-merge: merge YA, no encolado
 
 # GitHub (gh):
 git push -u origin feat/<tema>
 gh pr create --base develop --fill
-gh pr merge <id> --squash --auto                                # 1–3 devs → auto-merge
+gh pr checks <id> --watch                                        # espera a que los checks pasen
+gh pr merge <id> --squash                          # SIN --auto: merge YA, no encolado
 
 git checkout develop && git pull --ff-only && git branch -d feat/<tema>
 ```
+
+### Por qué SIN `--auto-merge` / `--auto` (no es "GitHub auto-merge del PR")
+`--auto-merge` en `glab` arma **Merge When Pipeline Succeeds (MWPS)**: el merge **NO** ocurre al correr
+el comando, queda **ENCOLADO** para dispararse solo, sin testigo, cuando el pipeline termine — minutos
+después, en otro momento. `confirmar-merge-develop` exige tu OK **del instante del merge**; encolarlo
+rompe esa garantía (el guard autoriza el comando, pero no controla el evento futuro que arma). Por eso
+la integración coordinada a develop/main **espera el pipeline verde primero y mergea de inmediato**, sin
+dejarlo armado — el "sin fricción de revisión" para 1–3 devs sigue aplicando (nadie más aprueba el MR),
+lo que cambia es que el ACTO de mergear pasa ya, deliberado, no en diferido. (Visto al mergear el !112 de
+claude-brain: quedó en MWPS pese al OK explícito.) El candado server-side definitivo sigue siendo proteger
+las ramas + `squash_option=always` (GitLab).
 
 ### El mensaje-resumen (`--squash-message`) — redáctalo bien, es lo que queda en develop
 Los N commits granulares de la ramita **desaparecen** del histórico de develop; solo queda este mensaje.
@@ -98,9 +113,9 @@ Escríbelo como un **resumen curado en prosa**: título Conventional en español
 **cambio neto y su porqué**. **NO** pegues la lista de commits ni el ruido de "quité el botón / lo regresé
 / hotfix del hotfix" — eso es exactamente lo que el squash borra. Termina con el `Co-Authored-By`.
 
-> Gotcha `glab`: es `--auto-merge`, no `--auto`. El guard bloquea el literal `glab mr merge` como dato
-> (p. ej. en un grep o una descripción) → pásalo por variable/archivo, no en texto plano.
-> El candado server-side definitivo es proteger las ramas + `squash_option=always` (GitLab).
+> Gotcha `glab`: si en algún caso SÍ necesitas encolar (excepción rara, no el default de aquí), la flag
+> es `--auto-merge`, no `--auto` — y el guard bloquea el literal `glab mr merge` como dato (p. ej. en un
+> grep o una descripción) → pásalo por variable/archivo, no en texto plano.
 >
 > Gotchas de commit (destilados de un caso real): el mensaje largo va por **heredoc** (`git commit -F -`) o un
 > archivo ÚNICO en `/tmp` — **NUNCA dentro del repo** (se cuela al árbol) ni reutilizando uno viejo
