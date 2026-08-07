@@ -11,6 +11,11 @@ type: reference
 > al construir el **claude-brain**. Un ítem = un hallazgo, con su **evidencia + fecha**. Añade abajo.
 
 ## Autenticación / cuentas
+- **La Messages API de `api.anthropic.com` ACEPTA el token OAuth de la suscripción** (el mismo login de
+  Claude Code, no una API key) enviándolo como `Authorization: Bearer <oauth>` **+ el header
+  `anthropic-beta: oauth-2025-04-20`** — así puedes hacer `curl` directo al modelo (p. ej. un juez LLM)
+  con tu cuota de suscripción, sin API key aparte. Referencia completa del ecosistema Claude (CLI / OAuth /
+  `curl` al juez): **`docs/referencia-cli-claude-code.md`**.
 - **El login de Claude Code es GLOBAL a la máquina** — un solo credential store en `~/.claude/`, **NO
   por-terminal ni por-sesión.** Consecuencia clave: si haces logout/login a OTRA cuenta (aunque sea en
   otra terminal), **las sesiones ya vivas toman la credencial/cuota nueva en sus SIGUIENTES requests** —
