@@ -1377,6 +1377,9 @@ struct PopoverView: View {
                     BrainItem("🧬", "proteger-fuente-cerebro", "editas la copia INSTALADA del cerebro (regenerable) → aviso",
                               "PreToolUse · Edit/Write/MultiEdit",
                               "Al editar una skill/hook bajo ~/.claude/skills|hooks que TIENE fuente en el clon canónico (brain/skills|hooks), avisa —no bloquea— que esa copia es REGENERABLE: el próximo install-brain la sobrescribe y la edición muere sin rastro. Redirige a editar la FUENTE y propagar con install-brain/sincronizar. Si no hay fuente (skill/hook puramente local), calla. Corre verificar-cerebro para el drift completo instalada-vs-fuente."),
+                    BrainItem("🚧", "no-bypass-deploy", "corres el instalador/deploy a mano en vez de la herramienta oficial → aviso",
+                              "PreToolUse · Bash",
+                              "Avisa —no bloquea— cuando se corre a mano el instalador/deploy de un proyecto en vez de su herramienta oficial: el cerebro/widget se actualiza con el WIDGET (updater ⬆), nunca con install-brain.sh a pelo; generalizado a cualquier install/deploy (deploy.sh, make deploy…). Correr el script crudo se salta backup/atomicidad/sello-de-versión/re-cableado. NO dispara en --dry-run/--help ni en CI ni sobre una mención entrecomillada; fail-safe."),
                 ]),
             BrainTier(
                 emoji: "📜", title: "Normas", color: Color(hex: "#4a90d9"),

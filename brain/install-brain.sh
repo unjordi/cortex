@@ -19,6 +19,16 @@
 #   (d) DASHBOARD del cerebro sembrado en la memoria GLOBAL (slug del HOME) si falta.
 #   (e) NORMAS globales inyectadas en ~/.claude/CLAUDE.md (bloque con marcador, solo si faltan).
 #
+# REGLA DE ENV VARS DEL BRAIN (norma dura del instalador): las env vars que configuran el
+# comportamiento del cerebro se SIEMBRAN en `settings.json` (bloque `.env`) — que Claude Code exporta a
+# TODA sesión —, NUNCA se dejan viviendo solo en el env de una sesión suelta. Motivo: ni el instalador
+# ni el widget (las 3 GUIs) leen el env de una sesión; leen settings.json / archivos en disco. Una var
+# seteada ad-hoc en UNA terminal se pierde al cerrarla y MIENTE al resto (drama real de
+# CLAUDE_SESSIONS_DRIVE seteada en una sesión y ausente en las demás). Dos mecanismos, no confundir:
+#   · set_env_default  → PLANTA un valor fijo SOLO si la clave falta (defaults portables: Opus 4.8, 70%).
+#   · persist_env_active → CAPTURA el valor ACTIVO del entorno si la var está exportada al correr el
+#                          bootstrap (para las tunables que el dev elige). Ambos idempotentes.
+#
 # confirmar-merge-develop AHORA es GLOBAL (candado de merges a develop/main con OK explícito): antes
 # vivía solo por-repo y por eso faltaba donde el repo no lo traía (un caso real 2026-07-11) → promovido a
 # global para que aplique en TODA sesión/clon. NO instala globales los hooks REPO-SCOPED restantes
@@ -109,7 +119,7 @@ register_hook() {
 # de abajo AVISA y el drift-check de test-brain (e2) FALLA (no se cablea en silencio).
 ev_de() {
   case "$1" in
-    git-branch-guard|merge-squash-guard|confirmar-merge-develop|recordar-dashboard|secret-scan|entorno-maquina-guard|rama-vieja|proteger-arbol) echo "PreToolUse|Bash" ;;
+    git-branch-guard|merge-squash-guard|confirmar-merge-develop|recordar-dashboard|secret-scan|entorno-maquina-guard|no-bypass-deploy|rama-vieja|proteger-arbol) echo "PreToolUse|Bash" ;;
     proteger-fuente-cerebro) echo "PreToolUse|Edit|Write|MultiEdit" ;;
     limite-gasto|delegacion-gate) echo "PreToolUse|Task|Agent" ;;   # Task|Agent: el tool se renombró Agent (antes Task); casar AMBOS o el gate nunca dispara
     delegacion-registrar|delegacion-reporte) echo "PostToolUse|Task|Agent" ;;
@@ -194,6 +204,14 @@ persist_env_active() {  # <clave>
     mv "$tmp" "$GSET"; echo "ok: env $k persistida en settings.json (.env) = '$v' (valor ACTIVO del entorno)"
   else rm -f "$tmp"; fi
 }
+# El SET COMPLETO de env vars del brain que se CAPTURAN-si-activas (revisado 2026-08-07). Solo van aquí
+# las tunables DURABLES, GLOBAL-seguras y elegidas por el dev. Deliberadamente EXCLUIDAS:
+#   · rutas que fija el harness/bootstrap (CLAUDE_PROJECT_DIR, CLAUDE_BRAIN_DIR, CLAUDE_DIR, XDG_CACHE_HOME);
+#   · mocks/live de test (CLAUDE_*_JUEZ_MOCK|LIVE|MODEL|TIMEOUT…) — de prueba, jamás persistidas;
+#   · escapes por-invocación (CLAUDE_SKIP_*) — deben morir con el comando, no quedar globales;
+#   · overrides per-repo autodetectados (CLAUDE_INTEGRACION_BASE) — persistirlos GLOBAL mentiría al
+#     siguiente repo (su valor correcto lo autodetecta cada guard). Hoy el brain no expone otra tunable
+#     global-segura → el set son las 2 del export de sesiones-master. Al AGREGAR una tunable así, añádela aquí.
 for _bv in CLAUDE_SESSIONS_DRIVE CLAUDE_SESSIONS_DEBOUNCE_MIN; do persist_env_active "$_bv"; done
 
 # ── (c2) Sello de VERSIÓN del cerebro instalado ──

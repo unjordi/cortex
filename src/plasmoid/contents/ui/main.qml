@@ -941,7 +941,10 @@ PlasmoidItem {
                   detail: "Antes de un git destructivo (reset --hard, rebase, checkout -f, branch -D) que podría orfanar commits sin pushear en el árbol de trabajo, avisa —no bloquea. Antídoto a un caso real: un agente de fan-out reseteó HEAD en el árbol compartido y dejó huérfano un commit del orquestador." },
                 { emoji: "🧬", name: "proteger-fuente-cerebro",   desc: "editas la copia INSTALADA del cerebro (regenerable) → aviso",
                   event: "PreToolUse · Edit/Write/MultiEdit",
-                  detail: "Al editar una skill/hook bajo ~/.claude/skills|hooks que TIENE fuente en el clon canónico (brain/skills|hooks), avisa —no bloquea— que esa copia es REGENERABLE: el próximo install-brain la sobrescribe y la edición muere sin rastro. Redirige a editar la FUENTE y propagar con install-brain/sincronizar. Si no hay fuente (skill/hook puramente local), calla. Corre verificar-cerebro para el drift completo instalada-vs-fuente." }
+                  detail: "Al editar una skill/hook bajo ~/.claude/skills|hooks que TIENE fuente en el clon canónico (brain/skills|hooks), avisa —no bloquea— que esa copia es REGENERABLE: el próximo install-brain la sobrescribe y la edición muere sin rastro. Redirige a editar la FUENTE y propagar con install-brain/sincronizar. Si no hay fuente (skill/hook puramente local), calla. Corre verificar-cerebro para el drift completo instalada-vs-fuente." },
+                { emoji: "🚧", name: "no-bypass-deploy",         desc: "corres el instalador/deploy a mano en vez de la herramienta oficial → aviso",
+                  event: "PreToolUse · Bash",
+                  detail: "Avisa —no bloquea— cuando se corre a mano el instalador/deploy de un proyecto en vez de su herramienta oficial: el cerebro/widget se actualiza con el WIDGET (updater ⬆), nunca con install-brain.sh a pelo; generalizado a cualquier install/deploy (deploy.sh, make deploy…). Correr el script crudo se salta backup/atomicidad/sello-de-versión/re-cableado. NO dispara en --dry-run/--help ni en CI ni sobre una mención entrecomillada; fail-safe." }
             ]
         },
         {
@@ -1043,7 +1046,7 @@ PlasmoidItem {
 
     // Catálogo conocido (mismos conjuntos que BrainState.knownGlobalHooks / knownRepoHooks del Swift).
     // DEBE coincidir con brain/hooks/MANIFEST; lo verifica el drift-check del widget (test-brain.sh).
-    readonly property var brainGlobalHooks: ["git-branch-guard","merge-squash-guard","confirmar-merge-develop","recordar-dashboard","secret-scan","rama-vieja","proteger-arbol","proteger-fuente-cerebro","limite-gasto","delegacion-gate","delegacion-registrar","delegacion-reporte","rehidratar-hilo","aviso-contexto","aviso-drift-cerebro","exportar-sesion-master","barrer-ramas","entorno-maquina-guard"]
+    readonly property var brainGlobalHooks: ["git-branch-guard","merge-squash-guard","confirmar-merge-develop","recordar-dashboard","secret-scan","rama-vieja","proteger-arbol","proteger-fuente-cerebro","limite-gasto","delegacion-gate","delegacion-registrar","delegacion-reporte","rehidratar-hilo","aviso-contexto","aviso-drift-cerebro","exportar-sesion-master","barrer-ramas","entorno-maquina-guard","no-bypass-deploy"]
     readonly property var brainRepoHooks:   ["sesion-inicio","dod-verificar","recordar-cosechar","recordar-unificar-cerebro"]
 
     // Ruta del helper bash, resuelta relativa a este main.qml (…/contents/ui/ → …/contents/brain-scan.sh).
