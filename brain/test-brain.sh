@@ -214,6 +214,87 @@ rm -rf "$MSBIN"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (b1c2) merge-squash-guard: CALIDAD del mensaje del squash (develop-scoped, fail-open) =="
+# NUEVO: además de EXIGIR --squash, cuando el destino es develop se valida que el MENSAJE del squash tenga
+# SUSTANCIA — bloquea el título default "Merge pull request #N", el vacío y el placeholder de una palabra.
+# Fuente del mensaje: LITERAL (flag en el cmd) · AUTO (título del MR/PR vía API) · UNVERIFICABLE (PASA).
+# NO afloja nada: la exigencia de squash y la excepción de RELEASE quedan intactas (probadas en b1c).
+MSBIN="$FAKEHOME/msbin"; mkdir -p "$MSBIN"
+# mock glab que devuelve target_branch Y title en el MISMO JSON (destino + mensaje salen de la misma llamada)
+mock_glab_full() { printf '#!/usr/bin/env bash\necho '\''{"target_branch":"%s","title":"%s"}'\''\n' "$1" "$2" > "$MSBIN/glab"; chmod +x "$MSBIN/glab"; }
+# mock gh que responde a `-q .baseRefName` (destino) y `-q .title` (mensaje) según el arg jq-path recibido
+mock_gh_full() { { printf '#!/usr/bin/env bash\n'; printf 'for a in "$@"; do case "$a" in .baseRefName) echo "%s"; exit 0;; .title) echo "%s"; exit 0;; esac; done\necho ""\n' "$1" "$2"; } > "$MSBIN/gh"; chmod +x "$MSBIN/gh"; }
+# runner: payload por jq --arg (soporta comillas/#/$ en el mensaje) + LIMPIA la caché por MR-id en cada caso
+msj() { rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* "${TMPDIR:-/tmp}"/acg-mrmsg-* 2>/dev/null
+        jq -nc --arg c "$1" '{tool_input:{command:$c}}' \
+          | PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$FAKEHOME" bash "$HOOKS/merge-squash-guard.sh"; }
+
+# ── LITERAL (mensaje explícito en el comando; destino develop del mock) ──
+mock_glab develop
+is_deny   "$(msj 'glab mr merge 50 --squash --squash-message "Merge pull request #5 from foo/bar"')" \
+  && ok "msg LITERAL: título default 'Merge pull request #N' → deny" || bad "msg LITERAL: no bloqueó el título default"
+is_deny   "$(msj 'glab mr merge 51 --squash --squash-message "wip"')" \
+  && ok "msg LITERAL: placeholder de una palabra 'wip' → deny" || bad "msg LITERAL: no bloqueó 'wip'"
+is_deny   "$(msj 'glab mr merge 52 --squash --squash-message ""')" \
+  && ok "msg LITERAL: mensaje vacío → deny" || bad "msg LITERAL: no bloqueó el mensaje vacío"
+is_silent "$(msj 'glab mr merge 53 --squash --squash-message "corrige el calculo de IVA en las facturas"')" \
+  && ok "msg LITERAL: resumen con sustancia → pasa (sin FP)" || bad "msg LITERAL: bloqueó un resumen legítimo"
+is_silent "$(msj 'glab mr merge 54 --squash --squash-message "$(cat resumen.md)"')" \
+  && ok "msg UNVERIFICABLE: '\$(cat resumen.md)' (la forma que el propio hook sugiere) → pasa" || bad "msg UNVERIFICABLE: bloqueó la forma sugerida por el hook"
+
+# ── LITERAL gh (--subject/-t) + --fill unverificable ──
+mock_gh_full develop ""
+is_deny   "$(msj 'gh pr merge 55 --squash --subject "Merge pull request #5"')" \
+  && ok "msg LITERAL gh: --subject default → deny" || bad "msg LITERAL gh: no bloqueó el subject default"
+is_silent "$(msj 'gh pr merge 56 --squash --subject "agrega validacion de stock disponible"')" \
+  && ok "msg LITERAL gh: --subject con sustancia → pasa (sin FP)" || bad "msg LITERAL gh: bloqueó un subject legítimo"
+is_silent "$(msj 'gh pr merge 57 --squash --fill')" \
+  && ok "msg UNVERIFICABLE gh: --fill (subject derivado de commits) → pasa" || bad "msg UNVERIFICABLE gh: bloqueó un --fill"
+
+# ── AUTO (sin flag de mensaje → el squash toma el TÍTULO del MR/PR, resuelto vía API) ──
+mock_glab_full develop "Merge pull request #7 from x/y"
+is_deny   "$(msj 'glab mr merge 60 --squash --auto-merge --yes')" \
+  && ok "msg AUTO: título del MR es el default 'Merge pull request #N' → deny (vía API)" || bad "msg AUTO: no bloqueó el título default del MR"
+mock_glab_full develop "actualiza dependencias y corrige el pipeline de CI"
+is_silent "$(msj 'glab mr merge 61 --squash --yes')" \
+  && ok "msg AUTO: título del MR con sustancia → pasa (sin FP)" || bad "msg AUTO: bloqueó un título de MR legítimo"
+mock_glab_full develop "wip"
+is_deny   "$(msj 'glab mr merge 62 --squash --yes')" \
+  && ok "msg AUTO: título del MR es placeholder 'wip' → deny" || bad "msg AUTO: no bloqueó el título placeholder"
+mock_glab develop   # sin title en el JSON → API devuelve vacío → FAIL-OPEN
+is_silent "$(msj 'glab mr merge 63 --squash --yes')" \
+  && ok "msg AUTO: título irresoluble (API vacía) → pasa (FAIL-OPEN, no fuerza)" || bad "msg AUTO: bloqueó con título irresoluble (rompe fail-open)"
+
+# ── FRONTERA: la validación de mensaje es develop-scoped → main/personal quedan LIBRES aunque el msg sea pobre ──
+mock_glab_full main "wip"
+is_silent "$(msj 'glab mr merge 64 --squash --yes')" \
+  && ok "msg scope: destino=main (release) + msg pobre → pasa (fuera de alcance)" || bad "msg scope: bloqueó por mensaje a un release a main"
+mock_glab_full DevelopAna "wip"
+is_silent "$(msj 'glab mr merge 65 --squash --yes')" \
+  && ok "msg scope: destino=rama personal + msg pobre → pasa (fuera de alcance)" || bad "msg scope: bloqueó por mensaje a una rama personal"
+
+# ── funciones PURAS de la lib (deterministas, sin red) ──
+( . "$HOOKS/analizar-comando-git.sh"
+  acg_msg_es_pobre ""                                  && ok "acg_msg_es_pobre: vacío → pobre"                    || bad "acg_msg_es_pobre: no marcó vacío"
+  acg_msg_es_pobre "   "                               && ok "acg_msg_es_pobre: solo-espacios → pobre"            || bad "acg_msg_es_pobre: no marcó solo-espacios"
+  acg_msg_es_pobre "Merge pull request #5 from a/b"    && ok "acg_msg_es_pobre: 'Merge pull request #N' → pobre"  || bad "acg_msg_es_pobre: no marcó el default de plataforma"
+  acg_msg_es_pobre "Merge branch 'develop'"            && ok "acg_msg_es_pobre: 'Merge branch …' → pobre"         || bad "acg_msg_es_pobre: no marcó 'Merge branch'"
+  acg_msg_es_pobre "Merge #7"                          && ok "acg_msg_es_pobre: 'Merge #N' → pobre"               || bad "acg_msg_es_pobre: no marcó 'Merge #N'"
+  acg_msg_es_pobre "wip"                               && ok "acg_msg_es_pobre: 'wip' (1 palabra corta) → pobre"  || bad "acg_msg_es_pobre: no marcó 'wip'"
+  acg_msg_es_pobre "update"                            && ok "acg_msg_es_pobre: 'update' (1 palabra corta) → pobre" || bad "acg_msg_es_pobre: no marcó 'update'"
+  acg_msg_es_pobre "corrige el calculo de IVA"         && bad "acg_msg_es_pobre: marcó un resumen legítimo (FP)"  || ok "acg_msg_es_pobre: resumen multi-palabra → ok"
+  acg_msg_es_pobre "Merge duplicate-detection feature" && bad "acg_msg_es_pobre: FP en 'Merge <algo real>'"       || ok "acg_msg_es_pobre: 'Merge <palabra real> …' (no default) → ok"
+  [ "$(acg_msg_clasificar 'glab mr merge 5 --squash --squash-message "x y"')" = LITERAL ]       && ok "acg_msg_clasificar: --squash-message literal → LITERAL" || bad "acg_msg_clasificar: no clasificó LITERAL"
+  [ "$(acg_msg_clasificar 'glab mr merge 5 --squash --squash-message "$(cat r.md)"')" = UNVERIFICABLE ] && ok "acg_msg_clasificar: valor \$(…) → UNVERIFICABLE" || bad "acg_msg_clasificar: no clasificó UNVERIFICABLE"
+  [ "$(acg_msg_clasificar 'glab mr merge 5 --squash')" = AUTO ]                                 && ok "acg_msg_clasificar: sin flag → AUTO" || bad "acg_msg_clasificar: no clasificó AUTO"
+  [ "$(acg_msg_clasificar 'gh pr merge 5 --squash --fill')" = UNVERIFICABLE ]                    && ok "acg_msg_clasificar: gh --fill → UNVERIFICABLE" || bad "acg_msg_clasificar: no clasificó --fill"
+  [ "$(acg_msg_valor 'gh pr merge 5 --squash --subject "hola mundo"')" = "hola mundo" ]         && ok "acg_msg_valor: extrae --subject entrecomillado con espacio" || bad "acg_msg_valor: no extrajo el valor de --subject"
+)
+rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* "${TMPDIR:-/tmp}"/acg-mrmsg-* 2>/dev/null
+rm -rf "$MSBIN"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "== (b1d) git-branch-guard: push PELÓN / comillas / nombre-de-repo (H1/H11/H13) =="
 GBROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-gb.XXXXXX")"; GBREPO="$GBROOT/repo"; GBHOME="$GBROOT/home"; mkdir -p "$GBREPO" "$GBHOME"
 git -C "$GBREPO" init -q >/dev/null 2>&1
@@ -365,6 +446,20 @@ rm -rf "$GBX"
   # acg_target_remote: --repo/-R gana; sin él deriva del remoto del dir objetivo (aquí PROJECT_DIR no-git → vacío)
   [ "$(acg_target_remote 'glab mr merge 5 -R org/foo' '')" = org/foo ] && ok "target_remote: --repo/-R explícito gana" || bad "target_remote: -R no ganó"
   [ -z "$(acg_target_remote 'glab mr merge 5' '')" ]       && ok "target_remote: sin --repo y dir no-git → vacío (fail-safe)" || bad "target_remote: devolvió algo con dir no-git"
+)
+
+# ── (b1d-lib) acg_mrid: multi-comando aísla el SEGMENTO del ÚLTIMO merge (fix 2026-08, DETERMINISTA) ──
+# Antes tomaba el 1er entero del BLOB → `gh pr view 272 …; gh pr merge 273 …` devolvía 272 (id EQUIVOCADO,
+# del `view`); el DENY citaba el MR erróneo y detonó el parche "un merge por llamada" que enfureció al usuario.
+( . "$HOOKS/analizar-comando-git.sh"
+  [ "$(acg_mrid 'gh pr view 272 --repo o/r; gh pr merge 273 --yes')" = 273 ] \
+    && ok "acg_mrid: 'gh pr view 272 …; gh pr merge 273 …' → 273 (id del MERGE, no del view; era el bug)" || bad "acg_mrid: multi-comando devolvió el id equivocado (no 273)"
+  [ "$(acg_mrid 'gh pr view 272 && gh pr merge 273 --yes')" = 273 ] \
+    && ok "acg_mrid: cadena con && → 273 (id del último merge)" || bad "acg_mrid: la cadena && no aisló el segmento del merge"
+  [ "$(acg_mrid 'glab mr merge --yes 9')" = 9 ] \
+    && ok "acg_mrid: no-regresión A-04 — 'glab mr merge --yes 9' (flag intermedio) → 9" || bad "acg_mrid: regresión A-04 — no toleró el flag intermedio"
+  [ "$(acg_mrid 'glab mr merge 42 --squash')" = 42 ] \
+    && ok "acg_mrid: comando simple 'glab mr merge 42 --squash' → 42 (sin regresión)" || bad "acg_mrid: el comando simple se rompió"
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -556,6 +651,30 @@ VEREDICTO: ALLOW' main 999 'USUARIO: libera el 999 a main, es el release')" = AL
   [ "$(raw 'CITA: mergea el 999
 VEREDICTO: ALLOW' main 999 'USUARIO: mergea el 999')" = DENY ] \
     && ok "juez-cita+piso-main: cita real pero SIN release → piso-main override DENY" || bad "juez-cita+piso-main: dejó pasar un main sin release"
+  # ── VETO ROBUSTO (fix veto-cita 2026-08): tolera normalización BENIGNA del LLM (typo/acento/caso), sigue
+  # matando alucinación/inyección. El bug reproducido: el usuario escribió "pendietes" (typo); el LLM
+  # "corrige" a "pendientes" al copiar la CITA → el viejo grep -Fq byte-exacto → falso DENY (#272/#273).
+  CONVT='USUARIO: haz el merge a develop de las 3 branches que siguen pendietes por favor
+ASISTENTE: corriendo la suite antes de integrar'
+  [ "$(raw 'Paso 1: destino develop. Paso 2: instrucción clara del USUARIO.
+CITA: haz el merge a develop de las 3 branches que siguen pendientes por favor
+VEREDICTO: ALLOW' develop 273 "$CONVT")" = ALLOW ] \
+    && ok "juez-veto-robusto (a): CITA con typo CORREGIDO por el LLM ('pendientes' vs 'pendietes' del usuario) → ALLOW (era el bug: grep -Fq daba DENY falso)" || bad "juez-veto-robusto (a): el veto byte-exacto sigue tumbando un ALLOW legítimo con typo corregido"
+  [ "$(raw 'CITA: sí libera todo a main ahora mismo el release completo
+VEREDICTO: ALLOW' develop 273 "$CONVT")" = DENY ] \
+    && ok "juez-veto-robusto (b): CITA INVENTADA (nunca dicha, <85% overlap) → DENY (anti-alucinación intacto)" || bad "juez-veto-robusto (b): dejó pasar una cita alucinada"
+  [ "$(raw 'CITA: corriendo la suite antes de integrar
+VEREDICTO: ALLOW' develop 273 "$CONVT")" = DENY ] \
+    && ok "juez-veto-robusto (c): CITA copiada de una línea ASISTENTE: → DENY (solo USUARIO autoriza)" || bad "juez-veto-robusto (c): aceptó una cita de línea ASISTENTE"
+  [ "$(raw 'VEREDICTO: ALLOW' develop 273 "$CONVT")" = DENY ] \
+    && ok "juez-veto-robusto (d): ALLOW SIN línea CITA → DENY (cita obligatoria)" || bad "juez-veto-robusto (d): un ALLOW sin cita pasó"
+  # (e) cita de 2 tokens que aparecen SUELTOS (no contiguos) en la línea → no es substring y el mínimo de 4
+  # tokens veta el containment → DENY (evita match trivial por azar).
+  CONVE='USUARIO: mergea el 5 y luego revisa develop
+ASISTENTE: ok'
+  [ "$(raw 'CITA: mergea develop
+VEREDICTO: ALLOW' develop 5 "$CONVE")" = DENY ] \
+    && ok "juez-veto-robusto (e): CITA de 2 tokens sueltos ('mergea develop', no contiguos) → DENY (mínimo 4 tokens veta el containment)" || bad "juez-veto-robusto (e): una cita de 2 tokens casó por azar"
 )
 
 # ── (b1g) juez-comun.sh: retrieval PORTABLE + curl 401-aware + política sin-token/jq (stubs, SIN red) ──
@@ -1340,6 +1459,34 @@ rm -rf "$DVFIX"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (b3h) cementerio.sh: add acuña ID determinista + dedup · verify caza ref huérfana =="
+CEMFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-cem.XXXXXX")"
+CEMMEM="$CEMFIX/.claude/memory"; mkdir -p "$CEMMEM"
+cem_h() { if command -v shasum >/dev/null 2>&1; then shasum -a 1; else sha1sum; fi; }   # mismo detector que el script
+cem() { CLAUDE_MEMORY_DIR="$CEMMEM" bash "$HOOKS/cementerio.sh" "$@"; }
+# (1) add acuña un ID content-hash DETERMINISTA (9 hex de sha1 del "qué murió") y devuelve la ref
+id1="$(cem add "Mito de prueba" "detalle X" | tr -d '()')"          # (🪦#xxxxxxxxx) → 🪦#xxxxxxxxx
+want="🪦#$(printf '%s' 'Mito de prueba' | cem_h | cut -c1-9)"
+[ "$id1" = "$want" ] && ok "cementerio add: ID content-hash determinista ($id1)" || bad "cementerio add: ID no determinista (got '$id1' want '$want')"
+# (2) crea cementerio.md con el header + la entrada
+{ grep -q 'Cementerio del cerebro' "$CEMMEM/cementerio.md" && grep -q "### $id1 — Mito de prueba" "$CEMMEM/cementerio.md"; } \
+  && ok "cementerio add: siembra cementerio.md (header + entrada)" || bad "cementerio add: no sembró header/entrada"
+# (3) DEDUP: re-add del MISMO "qué murió" → mismo ID, NO duplica la entrada
+cem add "Mito de prueba" "detalle reworded" >/dev/null
+n=$(grep -c "### $id1 " "$CEMMEM/cementerio.md")
+[ "$n" -eq 1 ] && ok "cementerio add: dedup natural (mismo texto = 1 sola lápida)" || bad "cementerio add: duplicó la lápida (n=$n)"
+# (4) verify LIMPIO: una ref real → sin huérfanas → exit 0
+printf 'ver la lápida (%s) aquí\n' "$id1" > "$CEMMEM/nota.md"
+cem verify >/dev/null 2>&1 && ok "cementerio verify: ref válida → exit 0" || bad "cementerio verify: falló con una ref válida"
+# (5) verify HUÉRFANA: ref a un ID inexistente → la reporta + exit != 0
+printf 'ref mala (🪦#deadbeef1) sin lápida\n' >> "$CEMMEM/nota.md"
+cemout="$(cem verify 2>&1)"; cemrc=$?
+{ [ "$cemrc" -ne 0 ] && printf '%s' "$cemout" | grep -q 'deadbeef1'; } \
+  && ok "cementerio verify: caza ref HUÉRFANA (exit != 0)" || bad "cementerio verify: no cazó la huérfana (rc=$cemrc)"
+rm -rf "$CEMFIX"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "== (b3b) limpiar-worktrees: base de integración configurable + detección por cherry (G7) =="
 # Flujo mini-develop: la base es una rama PERSONAL (no develop) y las ramitas se integran por merge
 # LOCAL (a veces squash) → antes quedaban zombies eternos (base fija a develop + sin detección por
@@ -1642,6 +1789,29 @@ MARCA: no' 'X' 'y')" = UNAVAILABLE ] \
     && ok "dod parseo: falta el centinela VISUAL → UNAVAILABLE → fail-OPEN" || bad "dod parseo: no cayó a UNAVAILABLE con un eje ausente"
   [ "$(praw 'basura sin centinelas' 'X' 'y')" = UNAVAILABLE ] \
     && ok "dod parseo: respuesta sin ningún centinela → UNAVAILABLE (fail-OPEN)" || bad "dod parseo: no cayó a UNAVAILABLE ante respuesta ininteligible"
+  # ── VETO ROBUSTO espejo del merge (fix veto-cita 2026-08): mismo helper _juez_cita_casa → tolera typo/
+  # acento/caso, sigue exigiendo apoyo en palabras REALES del usuario. Casos ASCII-puros → deterministas
+  # en toda plataforma (macOS sin iconv//TRANSLIT limpio y Linux dan el MISMO resultado). (a) typo corregido
+  # por el LLM al copiar la CITA ('cerrarlo' vs 'cerralo' del usuario) → MARCA=si (byte-exacto daba 'no' falso).
+  VA='Razono: afirma cierre; el usuario confirmó.
+CITA: ya lo probe y funciona bien, cerrarlo pues
+CIERRE: si
+MARCA: si
+VISUAL: no'
+  [ "$(praw "$VA" 'Quedó el módulo.' 'ya lo probe y funciona bien, cerralo pues')" = 'CIERRE=si MARCA=si VISUAL=no' ] \
+    && ok "dod veto-robusto (a): CITA con typo CORREGIDO ('cerrarlo' vs 'cerralo' del usuario) → MARCA=si (byte-exacto daba 'no' falso)" || bad "dod veto-robusto (a): el veto tumbó una MARCA legítima por un typo corregido"
+  VB='CITA: ya lo valide, dale luz verde y cierralo por completo
+CIERRE: si
+MARCA: si
+VISUAL: no'
+  [ "$(praw "$VB" 'Quedó el módulo.' 'haz el cambio y avisame')" = 'CIERRE=si MARCA=no VISUAL=no' ] \
+    && ok "dod veto-robusto (b): CITA inventada (<85% overlap con el texto del usuario) → MARCA=no (anti auto-atestiguamiento)" || bad "dod veto-robusto (b): dejó pasar una MARCA cuya cita no está en palabras del usuario"
+  VE='CITA: cierralo luz
+CIERRE: si
+MARCA: si
+VISUAL: no'
+  [ "$(praw "$VE" 'Quedó.' 'cierralo pues pero dale otra luz al boton')" = 'CIERRE=si MARCA=no VISUAL=no' ] \
+    && ok "dod veto-robusto (e): CITA de 2 tokens sueltos (no contiguos) → MARCA=no (mínimo 4 tokens veta el containment)" || bad "dod veto-robusto (e): una cita de 2 tokens casó por azar"
 )
 
 # ── BATERÍA LIVE del juez-dod (opt-in) · clasificación REAL de FP/FN históricos contra Haiku ──
@@ -2625,7 +2795,8 @@ cosechar-sesion|unificar-cerebro
 proteger-fuente-cerebro|verificar-cerebro
 auditar-coherencia-cerebro|auditar-suficiencia-operativa
 auditar-coherencia-cerebro|consolidar-cerebro
-auditar-suficiencia-operativa|consolidar-cerebro"
+auditar-suficiencia-operativa|consolidar-cerebro
+desinflar-memorias|positivar-doc"
 ce_els=()
 for d in "$SCRIPT_DIR"/skills/*/; do [ -d "$d" ] && ce_els+=("$(basename "$d")"); done
 for h in "$HOOKS"/*.sh; do [ -e "$h" ] && ce_els+=("$(basename "$h" .sh)"); done

@@ -68,6 +68,59 @@ _juez_deps_ok() { command -v curl >/dev/null 2>&1 && command -v jq >/dev/null 2>
 # duplicado en ambos jueces; el caller normaliza (ALLOW/DENY vs si/no) sobre esta salida cruda.
 _juez_centinela() { printf '%s' "$1" | grep -oiE "$2" 2>/dev/null | tail -1; }
 
+# ── VETO DE CITA robusto (comparte la MISMA implementación entre confirmar-merge-develop y dod-verificar →
+# cero drift; antes cada juez copiaba un `grep -Fq` byte-exacto que INVERTÍA el veredicto ante un typo que el
+# LLM "corregía" al copiar la CITA — bug reproducido en vivo, #272-ALLOW/#273-DENY sobre la misma ventana).
+#
+# _juez_cita_norm $texto → normaliza para comparar: fold de acentos best-effort (iconv) + todo run
+# NO-alfanumérico → un espacio + minúsculas + recorte. LC_ALL=C en los `tr` para ser determinista y portable
+# (bash 3.2 macOS / Linux / Git-Bash). El fold de acentos SOLO se aplica si iconv sale con rc==0 y salida
+# no-vacía: en glibc (Linux) //TRANSLIT limpia bien (í→i, mantiene la palabra íntegra); en macOS/BSD iconv
+# devuelve rc!=0 y BASURA posicional ("sí"→"s'i", inconsistente entre strings) → se DESCARTA y cae al
+# byte-stripping de abajo. Clave: sea cual sea la rama, AMBOS lados se tratan IDÉNTICO — bajo byte-stripping
+# un char acentuado multibyte se vuelve espacio(s) igual en la cita y en la línea, así que el substring/
+# containment sigue casando; el umbral de tokens absorbe los acentos residuales.
+_juez_cita_norm() {
+  local s="$1" out
+  if command -v iconv >/dev/null 2>&1; then
+    out=$(printf '%s' "$s" | iconv -f UTF-8 -t ASCII//TRANSLIT 2>/dev/null) && [ -n "$out" ] && s="$out"
+  fi
+  printf '%s' "$s" | LC_ALL=C tr -c 'A-Za-z0-9' ' ' | LC_ALL=C tr 'A-Z' 'a-z' | tr -s ' ' | sed -E 's/^ //; s/ $//'
+}
+
+# _juez_cita_casa $cita $lineas-candidatas → return 0 si CASA, 1 si NO. El CALLER GARANTIZA que
+# $lineas-candidatas es SOLO texto de rol USUARIO (jamás ASISTENTE) → el invariante "solo el USUARIO
+# autoriza" se conserva DETERMINISTA. Normaliza IGUAL ambos lados y CASA si, para ALGUNA línea candidata,
+# o bien (a) la cita normalizada es SUBSTRING de esa línea (misma semántica que el viejo grep -Fq, pero
+# tolerante a caso/acento/puntuación), o bien (b) CONTAINMENT DE TOKENS: la cita tiene ≥4 tokens y ≥85%
+# de ellos aparecen (como token completo) en ESA UNA línea. El mínimo de 4 tokens + el 85% evitan que una
+# cita corta (2-3 palabras sueltas) o inventada casen por azar → sigue exigiendo solapamiento SUSTANCIAL
+# con una línea de USUARIO real. Solo tolera normalización BENIGNA (typo/acento/caso/puntuación).
+_juez_cita_casa() {
+  local cita_norm line line_norm tok ncita nhit
+  cita_norm=$(_juez_cita_norm "$1")
+  [ -n "$cita_norm" ] || return 1
+  # `while read` en el SHELL ACTUAL (heredoc, NO pipe) → un `return` sale de la función; heredoc con
+  # delimitador ÚNICO (no EOF) y SIN comillas para que $2 se expanda.
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    line_norm=$(_juez_cita_norm "$line")
+    [ -n "$line_norm" ] || continue
+    # (a) substring literal (post-normalización) — equivalente robusto del grep -Fq de antes
+    case "$line_norm" in *"$cita_norm"*) return 0 ;; esac
+    # (b) containment de tokens (≥4 tokens, ≥85% presentes en ESTA línea)
+    ncita=0; nhit=0
+    for tok in $cita_norm; do
+      ncita=$((ncita+1))
+      case " $line_norm " in *" $tok "*) nhit=$((nhit+1)) ;; esac
+    done
+    if [ "$ncita" -ge 4 ] && [ $((nhit*100)) -ge $((85*ncita)) ]; then return 0; fi
+  done <<__JUEZ_CITA_LINEAS__
+$2
+__JUEZ_CITA_LINEAS__
+  return 1
+}
+
 # _juez_curl_crudo $token $body $timeout → stdout: <cuerpo-de-la-respuesta>\n<http_code>. El `-w` de curl
 # ANEXA el código HTTP en su propia línea final → el caller separa cuerpo (sed '$d') de código (tail -n1),
 # distinguiendo un 401 (token rechazado) de una caída de red (código 000 / vacío). NUNCA loguea el token.

@@ -28,7 +28,7 @@ aún así más chico que su gemelo; y cps, un repo .NET grande que convergió en
 - [[auditar-proceso-algoritmo]] — el **tercer eje FMEA**, cuando se audita LÓGICA (no solo docs)…
 - [[diagramar]] — …alimentado por los flowcharts (leyenda + normas) que el FMEA necesita como "zapatos".
 - [[positivar-doc]] — answer-first: "ESTO SÍ" antes de "ESTO NO".
-- [[desinflar-memorias]] — colapsar narrativa a lección + ⚰️ Lápidas al final.
+- [[desinflar-memorias]] — colapsar narrativa a lección + mitos descartados al `cementerio.md` (por ID).
 - [[orquestar-fanout]] — fan-out sin niñera (worktrees aislados, 2 archivos de estado).
 - [[revisar-entregables-agentes]] — no creer el "listo" del agente; verificar contra la realidad.
 - [[checkpoint]] — volcar el hilo antes de compactar (crítico en corridas de N rondas).
@@ -118,8 +118,9 @@ el diff. El grueso del "quedar compacto":
 1. **[[positivar-doc]]** — cada nugget answer-first: la solución/valor accionable ARRIBA, la cautela/
    gotcha/historia del fallo DEBAJO (idealmente `❌ …` compacto). Preserva el 100%, solo reordena.
 2. **[[desinflar-memorias]]** — cada tirada de narrativa/tutorial se colapsa a su **lección en 1-2
-   líneas EN SU LUGAR**; los mitos desmentidos se comprimen a una línea y se mudan a **`## ⚰️ Lápidas`
-   AL FINAL** del archivo. NO se corta: advertencias destructivas, comandos, decisiones con su porqué,
+   líneas EN SU LUGAR**; los mitos desmentidos se mudan al **`cementerio.md`** del cerebro (una lápida =
+   una línea con su ID `🪦#<id>`, vía `cementerio.sh add`), dejando en la memoria solo la ref `(🪦#<id>)`
+   donde haga falta. NO se corta: advertencias destructivas, comandos, decisiones con su porqué,
    datos irrepetibles. Recortes reales: cps `estado-proyecto` 896→460 (−49%), **0 lecciones perdidas**.
 3. **Un CANÓNICO + PUNTEROS** por dato/tema repetido: una memoria "manda", las hermanas se deducen a un
    puntero. Un dato NO vive en 3 lados; el estado "actual" se DERIVA.

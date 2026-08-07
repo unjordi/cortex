@@ -208,6 +208,25 @@ vuelve a tocar base con push.
    CLI exige autorización SUPER explícita (lo hace cumplir `confirmar-merge-develop`); un `mergea`
    genérico NO lo autoriza.
 
+**En la práctica** (mismo flujo, dos CLIs que mapean 1:1 — un repo GitLab solo necesita saber "usa la
+columna `glab`", NO re-documentar la política en una skill propia):
+
+```bash
+git checkout develop && git pull
+git checkout -b feat/<tema>          # ramita desde develop (o desde tu mini-develop)
+# … commits …
+git push -u origin feat/<tema>       # push SOLO a la ramita (idéntico en ambos foros)
+```
+
+| paso | GitHub (`gh`) | GitLab (`glab`) |
+|------|---------------|-----------------|
+| abrir PR/MR | `gh pr create --base develop --fill` | `glab mr create --target-branch develop --fill` |
+| mergear (auto-merge + squash) | `gh pr merge --squash --auto` | `glab mr merge --squash --auto-merge` |
+
+Diffs de flag: `--base` ↔ `--target-branch`, `--auto` ↔ `--auto-merge`, PR ↔ MR; el `git push` es
+idéntico. El merge server-side (auto o revisado) NUNCA es un push a `develop`. Recetario completo (con
+`--squash-message` curado y borrado de rama): skill `cerrar-slice`.
+
 Enforced por: ramas protegidas server-side + los hooks `git-branch-guard`, `merge-squash-guard` y
 `confirmar-merge-develop`.
 

@@ -62,7 +62,7 @@ public sealed class BrainState
         if (KnownRepoHooks.Contains(name)) return BrainStatus.RepoScoped;
         return name switch
         {
-            "cerrar-slice" or "checkpoint" or "diagramar" or "auditar-proceso-algoritmo"
+            "cerrar-slice" or "checkpoint" or "to-do" or "diagramar" or "auditar-proceso-algoritmo"
                 or "auditar-coherencia-cerebro" or "auditar-suficiencia-operativa" or "consolidar-cerebro" or "desinflar-memorias"
                 or "orquestar-fanout" or "turno-nocturno" or "cosechar-sesion" or "unificar-cerebro"
                 or "investigar-dominio" or "positivar-doc" or "revisar-entregables-agentes"
