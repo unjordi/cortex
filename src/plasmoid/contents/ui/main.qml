@@ -1002,6 +1002,9 @@ PlasmoidItem {
                 { emoji: "🧠", name: "consolidar-cerebro", desc: "meta-orquestador: dupla → positivar → desinflar → loop de convergencia → cierre con la FIRMA",
                   event: "skill · opt-in",
                   detail: "Meta-orquestador que consolida un cerebro de punta a punta: corre la DUPLA de auditores (suficiencia + coherencia) hasta converger, luego positivar-doc y desinflar-memorias, en un loop de convergencia, y cierra generando/actualizando la FIRMA por-contenido (CLAUDE.md + MEMORY.md). No declara LISTO: exige el QA/OK del usuario." },
+                { emoji: "📐", name: "canonizar-cerebro", desc: "lleva un cerebro instanciado drifteado a la firma-árbol canónica (reprefija, reescribe CLAUDE+MEMORY, verifica 1:1)",
+                  event: "skill · opt-in",
+                  detail: "Lleva el cerebro de un proyecto INSTANCIADO (cps, fluxcore, plantilladotnet) a la firma-árbol canónica cuando drifteó: memorias sueltas sin prefijo, CLAUDE.md viejo con guards retirados, MEMORY.md plano. Reclasifica cada memoria a su prefijo (dom-/dev-/ux-/qa- + núcleo) con git mv (historia intacta), dedup con RESCATE de datos únicos, reescribe CLAUDE.md a firma-árbol y MEMORY.md a índice-por-prefijo, y verifica el 1:1 con verificar-firma-canonica.sh (el detector del GATE del auditor). Humano-en-el-loop, no auto-mutador ciego." },
                 { emoji: "🪶", name: "desinflar-memorias", desc: "adelgaza memorias sin perder lecciones: narrativa → 1 línea, mitos → ⚰️ Lápidas al final",
                   event: "skill · opt-in",
                   detail: "Desinfla un árbol de memorias inflado de narrativa, tutoriales y conocimiento ya desmentido SIN perder ninguna lección: cada tirada de historia se colapsa a su lección en 1-2 líneas EN SU LUGAR, y los mitos descartados se comprimen a una línea y se mudan a una sección ⚰️ Lápidas AL FINAL del archivo (si los borras, el siguiente agente los re-descubre). No toca la bitácora ni el hilo: son append-only por diseño." },
@@ -1146,7 +1149,7 @@ PlasmoidItem {
             return p && w ? "installed" : (p ? "presentNotWired" : "absent")
         }
         if (inArr(root.brainRepoHooks, name)) return "repoScoped"
-        if (["cerrar-slice","checkpoint","to-do","diagramar","auditar-proceso-algoritmo","auditar-coherencia-cerebro","auditar-suficiencia-operativa","consolidar-cerebro","desinflar-memorias","orquestar-fanout","turno-nocturno","cosechar-sesion","unificar-cerebro","investigar-dominio","positivar-doc","revisar-entregables-agentes","zoom-screenshot","claude-proyecto-autocontenido","ingenieria-inversa-gui-db-navegador","markdown-a-pdf"].indexOf(name) !== -1)
+        if (["cerrar-slice","checkpoint","to-do","diagramar","auditar-proceso-algoritmo","auditar-coherencia-cerebro","auditar-suficiencia-operativa","consolidar-cerebro","canonizar-cerebro","desinflar-memorias","orquestar-fanout","turno-nocturno","cosechar-sesion","unificar-cerebro","investigar-dominio","positivar-doc","revisar-entregables-agentes","zoom-screenshot","claude-proyecto-autocontenido","ingenieria-inversa-gui-db-navegador","markdown-a-pdf"].indexOf(name) !== -1)
             return inArr(st.skills, name) ? "installed" : "absent"
         if (name === "Definition of Done" || name === "Doc <= realidad"
             || name === "Flujo de git" || name === "Costo de delegación")

@@ -126,6 +126,7 @@ El cerebro se ordena por *dureza*: arriba lo que te **bloquea** sin negociar; ab
 ├─ 🩺 auditar-coherencia-cerebro fan-out read-only sobre el PROPIO cerebro (guards+flowcharts+doc): evasiones/huecos/drift, verificado por ejecución → loop hasta converger; modo-cerebro de auditar-proceso-algoritmo
 ├─ 🧪 auditar-suficiencia-operativa  ¿ALCANZA la doc para HACER el trabajo sin romper nada ni re-investigar? tareas reales ✅/⚠️/❌ con archivo:línea + RE-auditar tras arreglar
 ├─ 🧠 consolidar-cerebro       meta-orquestador: dupla → positivar → desinflar → convergencia → cierre con la FIRMA (CLAUDE+MEMORY)
+├─ 📐 canonizar-cerebro        lleva un cerebro instanciado drifteado a la firma-árbol: reprefija memorias (git mv) a dom-/dev-/ux-/qa-, reescribe CLAUDE.md+MEMORY.md, verifica 1:1 con verificar-firma-canonica.sh (detector del GATE #44)
 ├─ 🪶 desinflar-memorias       adelgaza un árbol de memorias sin perder lecciones: la narrativa se colapsa a su lección, los mitos descartados se mudan al cementerio.md (una lápida por ID content-hash 🪦#<id>)
 ├─ 🕵️ revisar-entregables-agentes    verifica lo que un agente ENTREGA contra la realidad; no relates su reporte como verdad
 ├─ ☀️ positivar-doc                  reescribe answer-first: 'ESTO SÍ' (método correcto) antes del 'ESTO NO'
