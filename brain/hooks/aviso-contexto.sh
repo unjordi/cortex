@@ -130,9 +130,15 @@ case "$CEILING" in
     #      transcript en vez de a leer bien settings. Solo SUBE la ventana → nunca crea falsos positivos.
     [ "$ctx" -gt "$WINDOW" ] 2>/dev/null && WINDOW=1000000
     # (2) pct de auto-compact: override del usuario (el CLI la respeta) o default 92 (holgura p/ checkpoint).
-    PCT="${CLAUDE_AUTOCOMPACT_PCT_OVERRIDE:-92}"
-    case "$PCT" in ''|*[!0-9]*) PCT=92 ;; esac
-    { [ "$PCT" -ge 1 ] && [ "$PCT" -le 100 ]; } 2>/dev/null || PCT=92
+    #     PCT_SRC distingue un override VÁLIDO (deliberado) de la caída al default — para que la PROCEDENCIA
+    #     del mensaje NO mienta llamando "override DELIBERADO=92" a un override INVÁLIDO (un typo tipo
+    #     `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70%`, `150`, o con espacios) que en realidad se rechazó y cayó al
+    #     default 92. Bug 2026-08-08: la condición de PROCEDENCIA miraba solo si la env estaba NO-vacía, así
+    #     que un override inválido imprimía "=92 (override DELIBERADO de Jordi, NO un bug — créele)" — justo
+    #     la feature "los claudios luego no le creen" MINTIENDO sobre un valor que el usuario nunca fijó.
+    if [ -n "${CLAUDE_AUTOCOMPACT_PCT_OVERRIDE:-}" ]; then PCT="$CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"; PCT_SRC=override; else PCT=92; PCT_SRC=default; fi
+    case "$PCT" in ''|*[!0-9]*) PCT=92; PCT_SRC=default ;; esac
+    { [ "$PCT" -ge 1 ] && [ "$PCT" -le 100 ]; } 2>/dev/null || { PCT=92; PCT_SRC=default; }
     CEILING=$(( WINDOW * PCT / 100 ))
     ;;
 esac
@@ -195,7 +201,9 @@ if [ -n "${AVISO_CONTEXTO_CEILING_TOKENS:-}" ]; then
   PROCEDENCIA="📐 Techo fijado a mano por AVISO_CONTEXTO_CEILING_TOKENS=${AVISO_CONTEXTO_CEILING_TOKENS}."
 else
   wink=$(( ${WINDOW:-200000} / 1000 ))
-  if [ -n "${CLAUDE_AUTOCOMPACT_PCT_OVERRIDE:-}" ]; then
+  # Cita "override DELIBERADO" SOLO si el override fue VÁLIDO (PCT_SRC=override); un override inválido
+  # cayó a PCT=92 y se reporta como "(default)" — no como un valor que el usuario nunca fijó (bug 2026-08-08).
+  if [ "${PCT_SRC:-default}" = override ]; then
     PROCEDENCIA="📐 Techo REAL ~${ceilk}K = ${PCT}% de la ventana ${wink}K, por CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=${PCT} (override DELIBERADO de Jordi, NO un bug — créele: el CLI auto-compacta a ese mismo %)."
   else
     PROCEDENCIA="📐 Techo REAL ~${ceilk}K = ${PCT}% (default) de la ventana ${wink}K detectada."

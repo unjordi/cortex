@@ -2931,6 +2931,85 @@ acwin() {
   && ok "aviso escape hatch: AVISO_CONTEXTO_WINDOW_TOKENS=1M @ 70% → techo 700K, ctx 381K → silencio" \
   || bad "aviso escape hatch: AVISO_CONTEXTO_WINDOW_TOKENS no respetó la ventana forzada"
 
+# ╔═══════════════════════════════════════════════════════════════════════════════════════════════╗
+# ║ (b6-303) HARDENING de aviso-contexto — bloque AISLADO (agente fix/aviso-contexto-hardening).    ║
+# ║ Compañeros que también tocan aviso-* en paralelo: conflictos se resuelven al integrar.          ║
+# ╚═══════════════════════════════════════════════════════════════════════════════════════════════╝
+# Estos tests DISCRIMINAN: FALLAN contra la versión pre-#303 (sin VERIFICA / sin margen de histéresis)
+# y PASAN contra la actual. Comprobado forense corriendo el MISMO bloque contra `git show 5224aaa^`.
+echo ""
+echo "== (b6-303) aviso-contexto: verificación anti-regresión de #303 (denominador/confabulación + histéresis) + procedencia honesta =="
+# Msg de un escenario de techo DERIVADO (settings.model + CLAUDE_AUTOCOMPACT_PCT_OVERRIDE), dir FRESCO.
+h303_msg() { # $1=model $2=pct(o 'unset') $3=ctx → imprime additionalContext
+  local root; root="$(mktemp -d "${TMPDIR:-/tmp}/brain-h303.XXXXXX")/r"; mkdir -p "$root/.claude/memory"
+  printf '{"model":"%s"}' "$1" > "$root/.claude/settings.json"
+  printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$3}}}" > "$root/t.jsonl"
+  local pe="-u CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"; [ "$2" != unset ] && pe="CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=$2"
+  printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" \
+    | env -u AVISO_CONTEXTO_CEILING_TOKENS $pe CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
+    | jq -r '.hookSpecificOutput.additionalContext // empty'
+  rm -rf "$(dirname "$root")"
+}
+# ── Bug 1 (denominador): REPRO EXACTO del reporte de campo (hook decía "673K/96%" y un Claude confabulaba
+#    "estoy al TOPE de la ventana" con /context marcando ~67%). 673K/1M@70% → 96% del techo 700K = banda 3,
+#    pero 67% de la VENTANA. El aviso ACTUAL debe LIDERAR con el % de la ventana (verificable con /context)
+#    + anti-confabulación. Pre-#303 NO tenía VERIFICA → estas aserciones fallan contra él (DISCRIMINA).
+m="$(h303_msg 'claude-opus-4-8' 70 673000)"
+{ printf '%s' "$m" | grep -q '/context' \
+  && printf '%s' "$m" | grep -q '67% usado' \
+  && printf '%s' "$m" | grep -qi '33% libre' \
+  && printf '%s' "$m" | grep -qi 'No confabules' \
+  && printf '%s' "$m" | grep -q 'tope de la VENTANA'; } \
+  && ok "#303 bug1 repro (673K/1M@70%, banda 3): reconcilia con /context (67% usado/33% libre) + anti-confabulación — NO solo el 96% del auto-compact" \
+  || bad "#303 bug1 REGRESIÓN: el aviso no reconcilia con /context (síntoma pre-#303); got: $m"
+# ...y el escenario textual de la tarea: override=70, ctx a ~66% de la VENTANA (660K/1M) = 94% del techo →
+# banda 2. NO debe gritar 'INMINENTE' y SÍ debe mostrar el 66% de la ventana (para que el Claude no confunda
+# el % del auto-compact con el % de la ventana). El "66% usado" (VERIFICA) es lo que falla pre-#303.
+m="$(h303_msg 'claude-opus-4-8' 70 660000)"
+{ ! printf '%s' "$m" | grep -q 'INMINENTE' \
+  && printf '%s' "$m" | grep -q '66% usado' \
+  && printf '%s' "$m" | grep -qi 'libre'; } \
+  && ok "#303 bug1: ctx a ~66% de la ventana (banda 2) NO grita INMINENTE y muestra el 66% de VENTANA (sin confabular 'tope')" \
+  || bad "#303 bug1: a 66% de ventana confabuló tope/INMINENTE o no reconcilió (síntoma pre-#303); got: $m"
+# ── Bug 2 (histéresis anti-spam): dos invocaciones con ALETEO de tokens dentro de la misma banda NO deben
+#    re-emitir. Techo DERIVADO 700K (1M@70%): t3=665K, margen=CEILING*2/100=14K → re-arma solo si ctx<651K.
+#    Marca PERSISTENTE (mismo root) para encadenar el debounce como en una corrida real.
+H303ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-h303d.XXXXXX")/r"; mkdir -p "$H303ROOT/.claude/memory"
+printf '{"model":"claude-opus-4-8"}' > "$H303ROOT/.claude/settings.json"
+h303_step() { # $1=ctx → additionalContext, @70%, marca persistente (cadena de debounce)
+  printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$1}}}" > "$H303ROOT/t.jsonl"
+  printf '%s' "{\"transcript_path\":\"$H303ROOT/t.jsonl\"}" \
+    | env -u AVISO_CONTEXTO_CEILING_TOKENS CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70 CLAUDE_PROJECT_DIR="$H303ROOT" bash "$HOOKS/aviso-contexto.sh" \
+    | jq -r '.hookSpecificOutput.additionalContext // empty'
+}
+h303_step 680000 >/dev/null                        # primer cruce a banda 3 → avisa (arma la marca)
+o="$(h303_step 655000)"; [ -z "$o" ] \
+  && ok "#303 bug2 histéresis: dip 680K→655K (≥651K, dentro del margen) → NO re-arma (silencio)" \
+  || bad "#303 bug2: el dip de borde re-armó; got: $o"
+o="$(h303_step 680000)"; [ -z "$o" ] \
+  && ok "#303 bug2 histéresis: re-subir 655K→680K tras aleteo → NO re-emite 'en cada tool result' (EL síntoma)" \
+  || bad "#303 bug2 REGRESIÓN: RE-EMITIÓ tras un aleteo de borde (síntoma pre-#303); got: $o"
+o="$(h303_step 400000)"; [ -z "$o" ] \
+  && ok "#303 bug2 histéresis: caída CLARA 680K→400K (<651K, un /compact real) → re-arma en silencio" \
+  || bad "#303 bug2: avisó tras la caída clara; got: $o"
+o="$(h303_step 680000)"; printf '%s' "$o" | grep -q 'INMINENTE' \
+  && ok "#303 bug2 histéresis: tras un compact REAL, re-subir a banda 3 → SÍ re-emite (la histéresis no ahoga avisos legítimos)" \
+  || bad "#303 bug2: no re-emitió tras compact real + re-subida; got: $o"
+rm -rf "$(dirname "$H303ROOT")"
+# ── Procedencia HONESTA (bug latente hallado 2026-08-08): la auto-justificación decía "override DELIBERADO"
+#    con solo mirar si la env estaba NO-vacía → un override INVÁLIDO (typo `70%`, out-of-range, espacios) caía
+#    a PCT=92 pero el mensaje lo vendía como "=92 (override DELIBERADO de Jordi, NO un bug — créele)": la
+#    feature de confianza MINTIENDO sobre un valor que el usuario nunca fijó. Fix: PCT_SRC distingue el
+#    override VÁLIDO del default. (Discrimina: contra el hook sin el fix, la 1ª aserción falla.)
+m="$(h303_msg 'claude-opus-4-8' '70%' 900000)"     # override inválido → debe reportarse como (default)
+{ printf '%s' "$m" | grep -q '(default)' && ! printf '%s' "$m" | grep -q 'DELIBERADO'; } \
+  && ok "aviso procedencia: override INVÁLIDO ('70%') → (default) 92, NO 'override DELIBERADO' (no miente sobre un valor no fijado)" \
+  || bad "aviso procedencia: override inválido se vendió como DELIBERADO (bug latente); got: $m"
+m="$(h303_msg 'claude-opus-4-8' 70 680000)"        # override válido → sigue citando DELIBERADO (no rompe el caso bueno)
+{ printf '%s' "$m" | grep -q 'DELIBERADO' && printf '%s' "$m" | grep -q 'OVERRIDE=70'; } \
+  && ok "aviso procedencia: override VÁLIDO (70) → sí cita 'override DELIBERADO' con =70 (el caso legítimo intacto)" \
+  || bad "aviso procedencia: el override válido perdió su cita DELIBERADO; got: $m"
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (b6c) hud-stale: avisa (advisory) al cambiar de rama/proyecto; first-sight silencioso; stamp per-sesión; solo en repos con backlog =="
