@@ -2780,6 +2780,14 @@ o="$(ac)"; is_silent "$o" && ok "aviso-contexto: misma banda → debounce (silen
 gen_ctx 90; has_aviso "$(ac)" && ok "aviso-contexto: banda mayor → vuelve a avisar" || bad "aviso-contexto NO re-avisó en banda mayor"
 gen_ctx 50; is_silent "$(ac)" && ok "aviso-contexto: ctx bajó (compact) → silencio (re-arma)" || bad "aviso-contexto avisó justo tras bajar el ctx"
 gen_ctx 80; has_aviso "$(ac)" && ok "aviso-contexto: vuelve a subir tras el compact → avisa de nuevo" || bad "aviso-contexto NO avisó tras re-subir"
+# (b6-histeresis) ANTI-SPAM (bug 2026-08-08 "en cada tool result"): un aleteo de pocos tokens en el BORDE
+# de una banda NO debe re-emitir. Techo=100 → t3=95, margen=2 → re-arma solo si ctx<93. ctx 96(banda3,
+# avisa) → 94(dip <borde pero ≥93: NO re-arma) → 96(vuelve: NO re-emite) → 70(caída CLARA <93: re-arma).
+gen_ctx 96; has_aviso "$(ac)" && ok "aviso histéresis: sube a banda 3 → avisa" || bad "aviso histéresis: no avisó al subir a banda 3"
+gen_ctx 94; is_silent "$(ac)" && ok "aviso histéresis: dip pequeño al borde (94, ≥93) → NO re-arma" || bad "aviso histéresis: re-armó con un aleteo minúsculo"
+gen_ctx 96; is_silent "$(ac)" && ok "aviso histéresis: vuelve a 96 tras aleteo → NO re-emite (anti-spam en cada tool result)" || bad "aviso histéresis: RE-EMITIÓ tras un aleteo de borde (el bug)"
+gen_ctx 70; is_silent "$(ac)" && ok "aviso histéresis: caída CLARA (70<93) → re-arma (banda 0 = silencio)" || bad "aviso histéresis: avisó tras caída clara"
+gen_ctx 96; has_aviso "$(ac)" && ok "aviso histéresis: tras caída clara, re-subir a banda 3 → SÍ re-emite" || bad "aviso histéresis: no re-emitió tras una caída real + re-subida"
 # Robustez: un usage de SIDECHAIN (subagente) al final NO debe contaminar la medición del hilo principal.
 printf '%s\n%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":50}}}" '{"isSidechain":true,"message":{"usage":{"cache_read_input_tokens":999}}}' > "$ACTX"
 is_silent "$(ac)" && ok "aviso-contexto: ignora el usage de sidechain (mide el hilo principal)" || bad "aviso-contexto contó el usage del sidechain"
@@ -2862,6 +2870,35 @@ m="$(ac3 'claude-opus-4-8' unset 900000)"
 { printf '%s' "$m" | grep -q '(default)' && printf '%s' "$m" | grep -q '📐'; } \
   && ok "aviso auto-justify: sin override cita el techo '(default)' con 📐 (procedencia)" \
   || bad "aviso auto-justify: rama default no cita procedencia; got: $m"
+
+# (b6b-verificable) DOS MARCOS DE REFERENCIA (bug 2026-08-08): el aviso ANTES solo mostraba el "% del
+# punto de auto-compact" (p. ej. 96% de 700K) — número que NO cuadra con /context (% de la ventana) → un
+# Claude confabulaba "estoy al TOPE de la ventana" y compactaba en pánico con 30-70% de ventana LIBRE
+# (síntoma: hook 673K/96% vs /context 293K/29%). El fix: el mensaje LIDERA con el MISMO número que
+# /context (% de la ventana, VERIFICABLE) + un anti-confabulación explícito. 1M-nativo @ 70%, ctx 600K =
+# banda 1 → pctw=60% usado / 40% libre.
+m="$(ac3 'claude-opus-4-8' 70 600000)"
+{ printf '%s' "$m" | grep -q '/context' && printf '%s' "$m" | grep -q '60% usado' && printf '%s' "$m" | grep -qi 'libre'; } \
+  && ok "aviso verificable: cita el % de la VENTANA que cuadra con /context (60% usado / 40% libre), no solo el % del auto-compact" \
+  || bad "aviso verificable: el mensaje NO reconcilia con /context; got: $m"
+{ printf '%s' "$m" | grep -qi 'No confabules' && printf '%s' "$m" | grep -qi 'tope de la VENTANA'; } \
+  && ok "aviso verificable: incluye el anti-confabulación ('no estás al tope de la ventana')" \
+  || bad "aviso verificable: falta el anti-confabulación; got: $m"
+# La reconciliación con /context aparece INCLUSO en banda 3 (INMINENTE) → el aviso urgente sigue siendo
+# verificable, no dispara el pánico "al tope de ventana". opus-4-8 @ 70%, ctx 680K = 97% de 700K.
+m="$(ac3 'claude-opus-4-8' 70 680000)"
+{ printf '%s' "$m" | grep -q 'INMINENTE' && printf '%s' "$m" | grep -q '/context' && printf '%s' "$m" | grep -qi 'libre'; } \
+  && ok "aviso verificable: incluso en banda 3 (INMINENTE) reconcilia con /context (verificable, sin pánico de ventana)" \
+  || bad "aviso verificable: banda 3 no reconcilia con /context; got: $m"
+# Con techo ABSOLUTO a mano (AVISO_CONTEXTO_CEILING_TOKENS, sin ventana conocida) NO se inventa un % de
+# ventana: la cláusula VERIFICA se omite (no fabrica un número que no puede calcular).
+ACABS="$(mktemp -d "${TMPDIR:-/tmp}/brain-acabs.XXXXXX")/r"; mkdir -p "$ACABS/.claude/memory"
+printf '%s\n' '{"message":{"usage":{"cache_read_input_tokens":96}}}' > "$ACABS/t.jsonl"
+mabs="$(printf '%s' "{\"transcript_path\":\"$ACABS/t.jsonl\"}" | AVISO_CONTEXTO_CEILING_TOKENS=100 CLAUDE_PROJECT_DIR="$ACABS" bash "$HOOKS/aviso-contexto.sh" | jq -r '.hookSpecificOutput.additionalContext // empty')"
+{ printf '%s' "$mabs" | grep -q 'INMINENTE' && ! printf '%s' "$mabs" | grep -q 'CUADRA con /context'; } \
+  && ok "aviso verificable: techo ABSOLUTO (sin ventana) → NO inventa % de ventana (omite VERIFICA)" \
+  || bad "aviso verificable: con techo absoluto fabricó un % de ventana; got: $mabs"
+rm -rf "$(dirname "$ACABS")"
 
 # (b6c) ROBUSTEZ de runtime (bug 2026-07-28): la detección de ventana falla en runtime (settings a medio
 # escribir / timing / $HOME distinto) → cae al default chico de 200K → falso "🚨 INMINENTE". AUTO-CORRECCIÓN
