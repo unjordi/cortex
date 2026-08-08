@@ -26,18 +26,29 @@ function projectsDir() { return path.join(claudeBase(), 'projects'); }
 // Slug tal como lo deriva Claude Code del cwd: cada carácter no alfanumérico -> '-'.
 function slugFromCwd(cwd) { return cwd.replace(/[^a-zA-Z0-9]/g, '-'); }
 
-// Localiza el <id>.jsonl bajo projects/<algún-slug>/. Devuelve {slug, file} o null.
+// Localiza el <id>.jsonl bajo projects/<algún-slug>/. Devuelve {slug, file, collisions} o null.
+// TIE-BREAK DETERMINISTA: si el mismo id existe en >1 slug (p. ej. un move a medias que dejó copia
+// en origen y destino), `readdirSync` los lista en orden de FS ARBITRARIO → antes devolvía el primero
+// que topara (no-determinista: `claude --resume`/session-move podían tomar copias distintas entre
+// corridas). Ahora se recogen TODAS y se elige por (mtime más reciente = la copia viva; empate → slug
+// asc) → estable y reproducible. Las demás van en `collisions` para que el llamador AVISE del duplicado.
 function findSession(id) {
   const dir = projectsDir();
   let slugs;
   try {
     slugs = fs.readdirSync(dir, { withFileTypes: true }).filter(e => e.isDirectory()).map(e => e.name);
   } catch (_) { return null; }
+  const matches = [];
   for (const slug of slugs) {
     const file = path.join(dir, slug, id + '.jsonl');
-    if (fs.existsSync(file)) return { slug, file };
+    let st;
+    try { st = fs.statSync(file); } catch (_) { continue; }
+    if (st.isFile()) matches.push({ slug, file, mtimeMs: st.mtimeMs });
   }
-  return null;
+  if (matches.length === 0) return null;
+  matches.sort((a, b) => (b.mtimeMs - a.mtimeMs) || (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0));
+  const chosen = matches[0];
+  return { slug: chosen.slug, file: chosen.file, collisions: matches.slice(1).map(m => ({ slug: m.slug, file: m.file })) };
 }
 
 // Reescribe el cwd de cada línea JSON del transcript al destino. Preserva tal cual las líneas que no
@@ -63,6 +74,24 @@ function firstCwd(srcText) {
     if (typeof o.cwd === 'string' && o.cwd) return o.cwd;
   }
   return null;
+}
+
+// Frescura de un transcript: {ts, lines}. `ts` = el MAYOR `timestamp` (ms epoch) hallado en las líneas
+// (robusto a reordenamientos); `lines` = nº de líneas JSON parseables (proxy monótono del avance de una
+// conversación append-only). Sirve para decidir si una copia entrante REGRESARÍA una sesión más viva.
+// Devuelve {ts:null, lines:0} si no hay señal (fail-safe: sin señal, no se puede afirmar frescura).
+function lastActivity(srcText) {
+  let ts = null, lines = 0;
+  for (const line of srcText.split('\n')) {
+    if (!line.trim()) continue;
+    let o; try { o = JSON.parse(line); } catch (_) { continue; }
+    lines++;
+    if (typeof o.timestamp === 'string' && o.timestamp) {
+      const t = Date.parse(o.timestamp);
+      if (!Number.isNaN(t) && (ts === null || t > ts)) ts = t;
+    }
+  }
+  return { ts, lines };
 }
 
 // Título legible de la sesión: prioriza el custom-title/ai-title que el CLI nuevo (v2.1.218)
@@ -101,5 +130,5 @@ function writeAlias(id, label) {
 
 module.exports = {
   claudeBase, projectsDir, slugFromCwd, findSession, rewriteCwd,
-  firstCwd, titleFromTranscript, sessionAliases, writeAlias,
+  firstCwd, lastActivity, titleFromTranscript, sessionAliases, writeAlias,
 };

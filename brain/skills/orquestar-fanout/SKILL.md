@@ -23,6 +23,10 @@ default** y mata la redundancia de dónde vive el estado.
   estado-proyecto = *qué sigue*. El estado "actual" se DERIVA (leer ambos), no se triplica.
 - La lista de **TodoWrite** del harness es **scratch de sesión** — el backlog DURABLE es
   estado-proyecto.md. No confundas una con la otra.
+- **Corolario — lo DELEGADO a un artefacto tampoco es el backlog:** un ítem que empujaste al TEXTO de un
+  entregable (sección "Pendientes/Delegados/§ fuera de alcance" de un skill, un dictamen, un README) NO
+  está resuelto ni registrado — es log disfrazado de backlog. Va a estado-proyecto.md con severidad. El
+  paso de cierre que lo exige vive en [[cerrar-slice]].
 
 ## PREREQUISITO: la sesión debe vivir DENTRO de un repo git
 El fan-out con worktrees aislados **exige que el cwd de la sesión sea un repo git** — Claude Code

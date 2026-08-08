@@ -48,6 +48,15 @@ para que no quede apuntando a un tema ya terminado.
   se quedan solo narrados en el chat. Y esa elección del usuario **NO es "el alcance que él acordó"**:
   el corte lo pusiste tú al redactar las opciones; no lo cites como instrucción suya para justificar no
   tocar el resto (ver norma "Ningún hallazgo tuyo se queda solo narrado en el chat").
+- **Lo DELEGADO a un artefacto TAMBIÉN va al backlog (con severidad):** si al cerrar empujaste ítems
+  FUERA de alcance y los dejaste en el TEXTO de un entregable (sección "Pendientes/Delegados/§ fuera de
+  alcance" de un skill, un dictamen, un README), eso **NO los resuelve**: es log disfrazado de backlog.
+  **Bárrelos a `estado-proyecto.md` con severidad y origen ANTES de cerrar** y **CALIFÍCALOS** (un bug
+  destructivo diferido NO es un "pendiente menor"). La pregunta de 2º orden: *¿lo que empujé fuera del
+  muro tiene casa, dueño y severidad, o se evapora?* — un artefacto tidy con su sección numeradita SE
+  SIENTE como cierre y no lo es. Un hook no puede juzgar si tu lista de delegados quedó completa → paso
+  EXPLÍCITO de esta skill. Origen: `reubicar-master §9`, 2026-08-08 — delegó 4 aristas del sync de
+  sesiones al texto del skill, una DESTRUCTIVA, hasta que se cacharon a mano.
 - **Appendea UNA línea al FINAL** de `.claude/memory/bitacora.md` (`- fecha · rama · quién · qué`)
   con `>>` (`printf '%s\n' '- …' >> bitacora.md`), **no** con un Edit que reescriba: el append-al-final
   es lo que deja que varias sesiones/agentes escriban la misma bitácora sin pisarse (dos `>>` no chocan;

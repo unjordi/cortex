@@ -3225,6 +3225,7 @@ delegacion-comun|delegacion-registrar
 delegacion-gate|limite-gasto
 delegacion-reporte|orquestar-fanout
 cerrar-slice|checkpoint
+cerrar-slice|orquestar-fanout
 cerrar-slice|rehidratar-hilo
 checkpoint|rehidratar-hilo
 checkpoint|to-do
@@ -4316,8 +4317,9 @@ COLID="cafe0000-0000-0000-0000-000000000009"
 printf '{"type":"user","cwd":"%s"}\n' "$SRCREPO" > "$PROJ/$OLD_SLUG/$COLID.jsonl"
 printf '{"type":"user","cwd":"%s"}\n' "$DSTREPO" > "$PROJ/$NEW_SLUG/$COLID.jsonl"   # ya existe en destino
 out="$(RUNMOVE "$COLID" --to-cwd "$DSTREPO" 2>&1)"; rc=$?
-# el motor tiene 2 mensajes de colisión (session-move.js:56 'ya está en el slug destino' / :60 'ya tiene…no la piso')
-# y findSession recorre slugs SIN ordenar (readdirSync) → cuál dispara es no-determinista; ambos ABORTAN sin pisar.
+# el motor tiene 2 mensajes de colisión (session-move.js 'ya está en el slug destino' / 'ya tiene…no la piso').
+# findSession ahora elige la copia por mtime de forma DETERMINISTA (fix #1 §9 — ver s1); el destino-ya-existe
+# igual ABORTA sin pisar, que es lo que este test verifica.
 { [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -qiE 'ya tiene|ya est[aá] en el slug|"ok":[[:space:]]*false'; } \
   && ok "g9 colisión: session-move ABORTA sin pisar cuando el destino ya tiene el id" \
   || bad "g9 colisión: no abortó ante id existente en destino"
@@ -4355,6 +4357,94 @@ grep -qiE 'LISTO = QA|QA del humano|QA FUNCIONAL' "$SKILL" && grep -qiE 'preview
   || bad "g12 LISTO: el SKILL declara cierre sin QA del humano o permite auto-merge"
 
 rm -rf "$RMFIX"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (si) session-infra: aristas §9 del skill (tie-break/freshness/target-update/prune-backups) =="
+SIFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-sessinfra.XXXXXX")"
+SIHOME="$SIFIX/home"
+SIPROJ="$SIHOME/.claude/projects"
+mkdir -p "$SIPROJ"
+LIB="$BINRM/session-lib.js"
+
+# ── s1: findSession TIE-BREAK determinista + collisions (mismo id en 2 slugs → gana el mtime más nuevo) ──
+SID1="aa110000-0000-0000-0000-000000000001"
+mkdir -p "$SIPROJ/-slug-vieja" "$SIPROJ/-slug-nueva"
+printf '{"type":"user"}\n' > "$SIPROJ/-slug-vieja/$SID1.jsonl"
+printf '{"type":"user"}\n' > "$SIPROJ/-slug-nueva/$SID1.jsonl"
+node -e 'const fs=require("fs");fs.utimesSync(process.argv[1],new Date("2026-08-01"),new Date("2026-08-01"));fs.utimesSync(process.argv[2],new Date("2026-08-08"),new Date("2026-08-08"));' \
+  "$SIPROJ/-slug-vieja/$SID1.jsonl" "$SIPROJ/-slug-nueva/$SID1.jsonl"
+r1="$(HOME="$SIHOME" node -e 'const r=require(process.argv[1]).findSession(process.argv[2]);process.stdout.write(r.slug+"|"+r.collisions.length)' "$LIB" "$SID1")"
+r2="$(HOME="$SIHOME" node -e 'const r=require(process.argv[1]).findSession(process.argv[2]);process.stdout.write(r.slug+"|"+r.collisions.length)' "$LIB" "$SID1")"
+{ [ "$r1" = "-slug-nueva|1" ] && [ "$r1" = "$r2" ]; } \
+  && ok "s1 tie-break: findSession elige el mtime más nuevo DETERMINISTA y reporta la colisión" \
+  || bad "s1 tie-break: no determinista o sin colisión (r1=$r1 r2=$r2)"
+
+# ── s2: session-import FRESHNESS GATE — --force NO regresa una sesión más viva; --force-stale sí ──
+SREPO="$SIHOME/code/proj-s2"; mkdir -p "$SREPO"
+S2REAL="$(cd "$SREPO" && pwd -P)"
+S2SLUG="$(printf '%s' "$S2REAL" | sed 's/[^a-zA-Z0-9]/-/g')"
+SDRIVE="$SIFIX/drive-s2"; mkdir -p "$SDRIVE" "$SIPROJ/$S2SLUG"
+SID2="bb220000-0000-0000-0000-000000000002"
+# local dest = FRESCO (3 líneas, timestamps 08-08)
+printf '{"type":"user","cwd":"%s","timestamp":"2026-08-08T00:00:00.000Z"}\n{"type":"assistant","cwd":"%s","timestamp":"2026-08-08T00:01:00.000Z"}\n{"type":"user","cwd":"%s","timestamp":"2026-08-08T00:02:00.000Z"}\n' \
+  "$S2REAL" "$S2REAL" "$S2REAL" > "$SIPROJ/$S2SLUG/$SID2.jsonl"
+# .gz entrante = VIEJO (2 líneas, timestamps 08-01)
+node -e 'const z=require("zlib"),fs=require("fs");const c=`{"type":"user","cwd":"/old","timestamp":"2026-08-01T00:00:00.000Z"}\n{"type":"assistant","cwd":"/old","timestamp":"2026-08-01T00:01:00.000Z"}\n`;fs.writeFileSync(process.argv[1],z.gzipSync(Buffer.from(c)));' "$SDRIVE/$SID2.jsonl.gz"
+o2="$(HOME="$SIHOME" node "$BINRM/session-import.js" --repo "$SREPO" --sessions-dir "$SDRIVE" --only "$SID2" --force 2>&1)"
+lc="$(grep -c . "$SIPROJ/$S2SLUG/$SID2.jsonl")"
+{ printf '%s' "$o2" | grep -qi 'más fresco' && [ "$lc" -eq 3 ]; } \
+  && ok "s2 freshness: --force NO regresa la sesión viva (salta 'local más fresco', dest intacto=3)" \
+  || bad "s2 freshness: --force pisó o no reportó (lc=$lc)"
+HOME="$SIHOME" node "$BINRM/session-import.js" --repo "$SREPO" --sessions-dir "$SDRIVE" --only "$SID2" --force-stale >/dev/null 2>&1
+lc2="$(grep -c . "$SIPROJ/$S2SLUG/$SID2.jsonl")"
+{ [ "$lc2" -eq 2 ] && grep -q "\"cwd\":\"$S2REAL\"" "$SIPROJ/$S2SLUG/$SID2.jsonl"; } \
+  && ok "s2 freshness: --force-stale SÍ pisa a propósito (dest=2 líneas, cwd reescrito)" \
+  || bad "s2 freshness: --force-stale no pisó (lc2=$lc2)"
+
+# ── s3: exportar-sesion-master AUTO-ACTUALIZA target de un master YA presente (antes solo añadía) ──
+[ -f "$HOOKS/exportar-sesion-master.sh" ] || bad "s3: falta el hook exportar-sesion-master.sh"
+HDRIVE="$SIFIX/drive-s3"; mkdir -p "$HDRIVE"
+SID3="cc330000-0000-0000-0000-000000000003"
+mkdir -p "$SIHOME/.claude-brain"; ln -s "$BINRM" "$SIHOME/.claude-brain/bin"   # engine visible al hook
+cat > "$HDRIVE/masters.json" <<EOF
+{ "schema": 2, "masters": [ { "id": "$SID3", "name": "s3-master", "target": "code/viejo" } ] }
+EOF
+TPATH="$SIFIX/s3-transcript.jsonl"; printf '{"type":"user"}\n' > "$TPATH"
+NEWCWD="$SIHOME/code/nuevo"; mkdir -p "$NEWCWD"
+printf '{"session_id":"%s","transcript_path":"%s","cwd":"%s","hook_event_name":"SessionEnd"}' "$SID3" "$TPATH" "$NEWCWD" \
+  | HOME="$SIHOME" CLAUDE_SESSIONS_DRIVE="$HDRIVE" bash "$HOOKS/exportar-sesion-master.sh" >/dev/null 2>&1
+newtarget="$(jq -r --arg id "$SID3" '.masters[]|select(.id==$id).target' "$HDRIVE/masters.json")"
+newname="$(jq -r --arg id "$SID3" '.masters[]|select(.id==$id).name' "$HDRIVE/masters.json")"
+{ [ "$newtarget" = "code/nuevo" ] && [ "$newname" = "s3-master" ]; } \
+  && ok "s3 target-update: el hook ACTUALIZA el target de un master movido (name intacto)" \
+  || bad "s3 target-update: target no actualizado (target=$newtarget name=$newname)"
+
+# ── s4: session-move PODA ~/.claude/session-move-backups (conserva KEEP recientes; .bak no crecen sin fin) ──
+S4OLD="$SIHOME/code/s4old"; S4NEW="$SIHOME/code/s4new"; mkdir -p "$S4OLD" "$S4NEW"
+S4SLUG="$(cd "$S4OLD" && pwd -P | sed 's/[^a-zA-Z0-9]/-/g')"
+SID4="dd440000-0000-0000-0000-000000000004"
+mkdir -p "$SIPROJ/$S4SLUG"
+printf '{"type":"user","cwd":"%s"}\n' "$S4OLD" > "$SIPROJ/$S4SLUG/$SID4.jsonl"
+BKDIR="$SIHOME/.claude/session-move-backups"; mkdir -p "$BKDIR"
+node -e 'const fs=require("fs"),p=require("path");const d=process.argv[1];for(let i=1;i<=12;i++){const f=p.join(d,"old."+i+".jsonl.bak");fs.writeFileSync(f,"x");const t=new Date(2026,0,i);fs.utimesSync(f,t,t);}' "$BKDIR"
+HOME="$SIHOME" CLAUDE_SESSION_MOVE_BACKUPS_KEEP=5 node "$BINRM/session-move.js" "$SID4" --to-cwd "$S4NEW" >/dev/null 2>&1
+cnt="$(find "$BKDIR" -name '*.jsonl.bak' | wc -l | tr -d ' ')"
+[ "$cnt" -eq 5 ] \
+  && ok "s4 prune: session-move poda backups a KEEP=5 (13→5)" \
+  || bad "s4 prune: la poda no dejó KEEP=5 (quedaron $cnt)"
+
+# ── s5: MECANISMO anti-§9 — cerrar-slice exige barrer lo DELEGADO en un artefacto al backlog (con severidad) ──
+# grep -F por tokens en UNA sola línea (grep es por-línea: una frase que envuelve NO se caza).
+CS="$SCRIPT_DIR/skills/cerrar-slice/SKILL.md"
+CSO="$SCRIPT_DIR/skills/orquestar-fanout/SKILL.md"
+{ [ -f "$CS" ] && grep -qF 'DELEGADO a un artefacto' "$CS" && grep -qF 'log disfrazado de backlog' "$CS" \
+    && grep -qF 'con severidad y origen ANTES de cerrar' "$CS" \
+    && [ -f "$CSO" ] && grep -qF 'lo DELEGADO a un artefacto tampoco es el backlog' "$CSO"; } \
+  && ok "s5 mecanismo: cerrar-slice ancla el barrido de lo delegado al backlog (+ corolario en orquestar-fanout)" \
+  || bad "s5 mecanismo: falta el paso anti-§9 en cerrar-slice/orquestar-fanout (el hueco del §9 quedaría abierto)"
+
+rm -rf "$SIFIX"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
