@@ -307,6 +307,24 @@ NO saca sus guards de esa copia** — los saca del **install GLOBAL + el DEDUPE*
   COMPARTIDO mantiene el correo fresco (auto-sync en tu mini / avisa); en PERSONAL **no auto-commitea** y
   **flaggea** los guards que sobran para que los quites (no los borra solo). Detalle: [[diseno-rediseno-auto-sync-46]].
 
+### Tiers de hooks/skills: cómo decidir (regla crisp — asienta #81)
+Al AGREGAR un hook/skill al cerebro, su TIER (en `brain/hooks/MANIFEST` / `brain/skills/MANIFEST`) se
+decide con el MISMO patrón repo-compartido de arriba — deja de re-preguntarse "¿global o both?":
+- **`both`** — viaja por-repo EN GIT *y* se instala global por el bootstrap (la cláusula de dedupe hace
+  que la copia por-repo CEDA a la global). Ponlo `both` **SOLO** si el guard/skill debe llegar a clones
+  **COMPARTIDOS** con otras personas/máquinas que NO tienen el brain global (colegas, clones públicos) —
+  es "correo" que viaja para proteger a quien clona sin bootstrap. Un hook `both` DEBE traer la cláusula
+  de dedupe; una skill `both` no la necesita (es markdown que se LEE, no un script que se EJECUTE).
+- **`global`** — solo vive en la máquina del DUEÑO (que ya corrió el bootstrap). **DEFAULT conservador:
+  ante la duda, `global`.** No pongas `both` "por si acaso": si nadie sin brain global va a clonar el repo,
+  es `global`.
+- **`repo`** — solo por-repo, se carga únicamente si la sesión INICIA en ese repo (depende del contexto
+  del repo; p. ej. `dod-verificar`, `sesion-inicio`).
+
+Corolario anti-drift (misma raíz que la norma de arriba): un repo PERSONAL NUNCA lleva guards por-repo
+(global+dedupe ya los cubre); un repo COMPARTIDO se marca explícito con `.claude/repo-compartido` y ahí sí
+viajan los `both`.
+
 ## Consentimiento de costo de delegación (norma dura)
 Reclutar un agente (Task/subagente) cuesta según su nivel: **gratis** (local), **incluido** (Claude
 dentro de la ventana de 5h — sin costo marginal) o **metered** (Claude en overage, API externa de pago,

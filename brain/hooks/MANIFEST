@@ -12,6 +12,22 @@
 #          lib    → solo se copia (los hooks la hacen `source`)
 #          script → solo se copia (standalone; se corre a mano/por cron, no se cablea)
 #
+# ── CÓMO DECIDIR EL TIER (regla crisp — respuesta a TODO "¿global o both?"; #81) ───────────────────────
+# El tier se decide por el PATRÓN REPO-COMPARTIDO (misma lógica que la norma "Cerebro por-repo = CORREO"):
+#   ¿Este guard/lib debe llegar a clones COMPARTIDOS con OTRAS personas/máquinas que NO tienen el brain
+#   global (colegas, clones públicos)?
+#     • SÍ  → `both`   : es CORREO que viaja por-repo EN GIT *y* se instala global por el bootstrap. La
+#                        cláusula de dedupe (`case "$0" … exit 0`) hace que la copia por-repo CEDA a la
+#                        global → sin doble disparo. Solo viaja de verdad a repos marcados
+#                        `.claude/repo-compartido` (default = personal: no auto-empuja a git por error).
+#                        OBLIGATORIO: un hook `both` DEBE traer la cláusula de dedupe.
+#     • NO  → `global` : basta con vivir en la máquina del DUEÑO (que ya corrió el bootstrap). DEFAULT
+#                        CONSERVADOR — ante la duda, `global`, no `both`.
+#     • Depende del CONTEXTO del repo (se carga solo si la sesión INICIA en ese repo) → `repo`.
+# Anti-drift: un repo PERSONAL (solo tuyo) NUNCA lleva guards por-repo (global+dedupe ya los cubre); solo
+# un repo COMPARTIDO (marca `.claude/repo-compartido`) recibe los `both` como correo. NO pongas `both`
+# "por si acaso": si nadie sin brain global va a clonar el repo, es `global`.
+#
 # Consumidores:
 #   - install-brain.sh   : instala GLOBAL = {global, both} (hooks+libs).
 #   - sincronizar-cerebro.sh : despliega POR-REPO = {repo, both} (hooks+libs) desde brain (fuente única).
