@@ -3225,6 +3225,7 @@ delegacion-comun|delegacion-registrar
 delegacion-gate|limite-gasto
 delegacion-reporte|orquestar-fanout
 cerrar-slice|checkpoint
+cerrar-slice|orquestar-fanout
 cerrar-slice|rehidratar-hilo
 checkpoint|rehidratar-hilo
 checkpoint|to-do
@@ -4432,6 +4433,16 @@ cnt="$(find "$BKDIR" -name '*.jsonl.bak' | wc -l | tr -d ' ')"
 [ "$cnt" -eq 5 ] \
   && ok "s4 prune: session-move poda backups a KEEP=5 (13→5)" \
   || bad "s4 prune: la poda no dejó KEEP=5 (quedaron $cnt)"
+
+# ── s5: MECANISMO anti-§9 — cerrar-slice exige barrer lo DELEGADO en un artefacto al backlog (con severidad) ──
+# grep -F por tokens en UNA sola línea (grep es por-línea: una frase que envuelve NO se caza).
+CS="$SCRIPT_DIR/skills/cerrar-slice/SKILL.md"
+CSO="$SCRIPT_DIR/skills/orquestar-fanout/SKILL.md"
+{ [ -f "$CS" ] && grep -qF 'DELEGADO a un artefacto' "$CS" && grep -qF 'log disfrazado de backlog' "$CS" \
+    && grep -qF 'con severidad y origen ANTES de cerrar' "$CS" \
+    && [ -f "$CSO" ] && grep -qF 'lo DELEGADO a un artefacto tampoco es el backlog' "$CSO"; } \
+  && ok "s5 mecanismo: cerrar-slice ancla el barrido de lo delegado al backlog (+ corolario en orquestar-fanout)" \
+  || bad "s5 mecanismo: falta el paso anti-§9 en cerrar-slice/orquestar-fanout (el hueco del §9 quedaría abierto)"
 
 rm -rf "$SIFIX"
 

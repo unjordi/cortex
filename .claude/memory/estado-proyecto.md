@@ -32,11 +32,12 @@ metadata:
     `readdirSync` (orden FS arbitrario) si el id existe en 2 slugs (move a medias) → resume no-determinista.
   - **[BAJO · latente] #4 poda de `~/.claude/session-move-backups/`** (`bin/session-move.js`): sin límite; hoy el
     dir está VACÍO → preventivo (aún no muerde).
-  - **Lección/mecanismo (asentar):** un ítem DELEGADO/diferido escrito en un artefacto entregable (skill, dictamen)
-    NO está resuelto por estar en su texto — es log disfrazado de backlog. Debe aterrizar AQUÍ con severidad antes de
-    cerrar el slice, y el barrido de backlog debe tratar las secciones "Pendientes/Delegados" de artefactos como
-    candidatos. El punto ciego de la introspección: el auditor comparte el frame "out of scope = no es mi problema"
-    y no pregunta "¿lo delegado tiene casa+dueño+severidad?". · _skill reubicar-master §9, 2026-08-08._
+  - **Mecanismo (ASENTADO en `cerrar-slice` + corolario en `orquestar-fanout`, con test `s5`):** el paso de cierre ahora EXIGE barrer al backlog,
+    con severidad, lo que se DELEGÓ al texto de un artefacto entregable (sección "Pendientes/Delegados/§ fuera de
+    alcance" de un skill, un dictamen, un README) ANTES de cerrar — porque eso es log disfrazado de backlog, no
+    resolución. Con la pregunta de 2º orden "¿lo empujado fuera del muro tiene casa+dueño+severidad?" (el punto
+    ciego de la introspección: el auditor comparte el frame "out of scope = no es mi problema"). Nació porque este
+    MISMO §9 dejó las 4 aristas solo en el texto del skill, una de ellas destructiva. · _reubicar-master §9, 2026-08-08._
 
 - **Estándar: `conocimiento-propio` por sesión master.** Volver ESTÁNDAR que toda sesión master escriba su
   propio `conocimiento-propio.local.md` (per-repo en su repo-base, gitignored, re-inyectado en cada
