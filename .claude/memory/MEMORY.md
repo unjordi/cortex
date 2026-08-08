@@ -62,6 +62,7 @@
 ├─ 🩺 auditar-coherencia-cerebro fan-out read-only sobre el PROPIO cerebro (guards+flowcharts+doc): evasiones/huecos/drift, verificado por ejecución → loop hasta converger
 ├─ 🧪 auditar-suficiencia-operativa  ¿ALCANZA la doc para HACER el trabajo sin romper nada ni re-investigar? tareas reales ✅/⚠️/❌ + RE-auditar tras arreglar
 ├─ 🧠 consolidar-cerebro       meta-orquestador: dupla → positivar → desinflar → loop de convergencia → cierre con la FIRMA (CLAUDE+MEMORY)
+├─ 📐 canonizar-cerebro        lleva un cerebro instanciado drifteado a la firma-árbol: reprefija memorias (git mv), reescribe CLAUDE.md+MEMORY.md, verifica 1:1 con verificar-firma-canonica.sh (detector del GATE #44)
 ├─ 🪶 desinflar-memorias       adelgaza un árbol de memorias sin perder lecciones: narrativa → lección; mitos descartados → cementerio.md (por ID 🪦#)
 ├─ 🕵️ revisar-entregables-agentes    verifica lo que un agente ENTREGA contra la realidad; no relates su reporte como verdad
 ├─ ☀️ positivar-doc                  reescribe answer-first: 'ESTO SÍ' (método correcto) antes del 'ESTO NO'
@@ -165,6 +166,7 @@ Reclutar un agente cuesta según su nivel (**gratis** local · **incluido** dent
 
 **Auditar / consolidar un cerebro**
 - **`consolidar-cerebro`** — meta-orquestador de la campaña: dupla → positivar → desinflar → loop de convergencia → cierre con la FIRMA (convención CLAUDE+MEMORY). Orquesta, no reinventa.
+- **`canonizar-cerebro`** — lleva un cerebro INSTANCIADO drifteado (memorias sin prefijo, CLAUDE.md viejo, índice plano) a la firma-árbol canónica: reprefija con `git mv` a `dom-/dev-/ux-/qa-`+núcleo, dedup con rescate, reescribe `CLAUDE.md`+`MEMORY.md`, verifica 1:1 con `verificar-firma-canonica.sh`. Paso ESTRUCTURAL de `consolidar-cerebro`; humano-en-el-loop, no auto-mutador.
 - **`auditar-suficiencia-operativa`** — ¿ALCANZA la doc para HACER las tareas sin romper ni re-investigar? deriva tareas reales de 4 canteras, ✅/⚠️/❌ con archivo:línea, RE-audita tras arreglar. Mitad OPERABILIDAD de la dupla.
 - **`auditar-coherencia-cerebro`** — fan-out read-only sobre el propio cerebro (guards+flowcharts+doc): evasiones/huecos/drift, verificado por EJECUCIÓN, loop hasta converger. Mitad CONSISTENCIA de la dupla.
 - **`auditar-proceso-algoritmo`** — auditor experto read-only (procesos industriales + análisis de algoritmos) sobre un flujo/algoritmo (app o el propio brain): individual→colectivo, hallazgos priorizados. Se alimenta de flowcharts (`diagramar`).
