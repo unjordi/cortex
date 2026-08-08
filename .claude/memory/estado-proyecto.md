@@ -18,6 +18,26 @@ metadata:
 
 ## 🔜 Pendientes (backlog vivo)
 
+- **Aristas del sync de sesiones (delegadas por `reubicar-master` §9) — EN CURSO `fix/session-infra-aristas`.**
+  Las 4 son el subsistema de sync de sesiones (NO del skill; el skill mueve un master, no refactoriza su
+  tooling), y son las aristas EXACTAS que el move real de los masters va a pisar. Origen: `SKILL.md §9` —
+  estaban SOLO en el texto del skill, nunca en este backlog (lección abajo). Por severidad:
+  - **[ALTO · destructivo] #2 freshness-check en `seed.sh --force`** (`brain/sesiones-master/seed.sh:61` →
+    `session-import.js`): `--force` pisa lo local con el `.gz` de Drive SIN comparar frescura → un master VIVO
+    regresa a una copia vieja (turnos recientes perdidos, mudo). Nace con test en `test-brain.sh`.
+  - **[ALTO] #3 auto-registro que ACTUALICE `target`** (`brain/hooks/exportar-sesion-master.sh:139-147`): hoy
+    el bloque solo corre si el sid NO está en masters.json y el node solo hace `push` si `!some(id)` → un master
+    que se MOVIÓ conserva su `target` viejo → `seed` en otra máquina lo siembra al folder equivocado.
+  - **[MEDIO] #1 tie-break determinista en `findSession`** (`bin/session-lib.js:30-41`): devuelve el 1er slug del
+    `readdirSync` (orden FS arbitrario) si el id existe en 2 slugs (move a medias) → resume no-determinista.
+  - **[BAJO · latente] #4 poda de `~/.claude/session-move-backups/`** (`bin/session-move.js`): sin límite; hoy el
+    dir está VACÍO → preventivo (aún no muerde).
+  - **Lección/mecanismo (asentar):** un ítem DELEGADO/diferido escrito en un artefacto entregable (skill, dictamen)
+    NO está resuelto por estar en su texto — es log disfrazado de backlog. Debe aterrizar AQUÍ con severidad antes de
+    cerrar el slice, y el barrido de backlog debe tratar las secciones "Pendientes/Delegados" de artefactos como
+    candidatos. El punto ciego de la introspección: el auditor comparte el frame "out of scope = no es mi problema"
+    y no pregunta "¿lo delegado tiene casa+dueño+severidad?". · _skill reubicar-master §9, 2026-08-08._
+
 - **Estándar: `conocimiento-propio` por sesión master.** Volver ESTÁNDAR que toda sesión master escriba su
   propio `conocimiento-propio.local.md` (per-repo en su repo-base, gitignored, re-inyectado en cada
   SessionStart por el hook `aviso-drift-cerebro`). Cada master lo escribe desde SU lado (no copia el del
