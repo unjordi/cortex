@@ -21,19 +21,21 @@
 # Líneas '#' y en blanco se ignoran. Skill en brain/skills/ SIN línea aquí → se trata como `global` + AVISO.
 # Al agregar/mover una skill: EDITA AQUÍ y las rutas lo heredan.
 #
-# ── DECISIÓN DE TIER (pendiente de unjordi) ──────────────────────────────────────────────────────────────
-# Seed CONSERVADOR: TODAS en `global` (cero cambio de comportamiento por-repo — no empuja skills nuevas a los
-# repos compartidos hoy). El PLUMBING de `both` está construido y probado; basta cambiar una skill a `both`
-# para que viaje como CORREO. RECOMENDACIÓN para unjordi: marcar `both` las skills COMPAÑERAS de los guards
-# que ya viajan `both` (cerrar-slice, checkpoint, rehidratar-hilo) — así el colega que clona un repo
-# compartido recibe los guards Y las skills que los acompañan. Es un cambio VISIBLE en repos compartidos
-# (aparecerían en su .claude/skills en la próxima auto-sync) → se deja a tu OK explícito.
+# ── DECISIÓN DE TIER (unjordi, 2026-08-07) ───────────────────────────────────────────────────────────────
+# Marcadas `both` las 4 skills que un colega en un repo COMPARTIDO usaría — cerrar-slice, checkpoint,
+# rehidratar-hilo (la receta del MR + la continuidad del hilo, compañeras de los guards que ya viajan `both`)
+# y to-do (carga el backlog durable de ESE repo, que en un compartido es estado del EQUIPO). Así el colega
+# que clona un repo COMPARTIDO recibe los guards Y las skills que los acompañan como CORREO. Aparecen en su
+# .claude/skills en la próxima auto-sync. El resto sigue `global` (seed CONSERVADOR — no empuja las demás
+# por-repo). A diferencia de los hooks `both`, una skill NO necesita cláusula de dedupe: es markdown que LEE
+# el modelo, no un script que se EJECUTE → no hay doble disparo. El PLUMBING de `both` está construido y
+# probado; basta cambiar el tier aquí.
 
 auditar-coherencia-cerebro       global
 auditar-proceso-algoritmo        global
 auditar-suficiencia-operativa    global
-cerrar-slice                     global
-checkpoint                       global
+cerrar-slice                     both
+checkpoint                       both
 claude-proyecto-autocontenido    global
 consolidar-cerebro               global
 cosechar-sesion                  global
@@ -44,9 +46,9 @@ investigar-dominio               global
 markdown-a-pdf                   global
 orquestar-fanout                 global
 positivar-doc                    global
-rehidratar-hilo                  global
+rehidratar-hilo                  both
 revisar-entregables-agentes      global
-to-do                            global
+to-do                            both
 turno-nocturno                   global
 unificar-cerebro                 global
 zoom-screenshot                  global
