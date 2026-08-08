@@ -16,9 +16,10 @@ prototipo manual** que se corrió sobre fluxcore (2026-08-07) y lo vuelve un pro
 > (git mv preserva historia, dedup con rescate, no inventar, doc=realidad) + el **detector** que verifica.
 
 ## La firma canónica (el DESTINO — no la inventes, cópiala)
-Definición-de-tipo-de-dato (LÉELAS antes de tocar): `CLAUDE.example-barebones.md` y
-`MEMORY.example-barebones.md` del cortex. **Instancias canónicas de referencia:** `cps` y
-`fluxcore` (su `CLAUDE.md` + `.claude/memory/MEMORY.md` ya cumplen — cópiales la FORMA, no el contenido).
+Definición-de-tipo-de-dato (LÉELAS antes de tocar): `CLAUDE.example-barebones.md`,
+`MEMORY.example-barebones.md` y `como-trabajar-con-usuario.example-barebones.md` del cortex.
+**Instancias canónicas de referencia:** `cps` y `fluxcore` (su `CLAUDE.md` +
+`.claude/memory/MEMORY.md` ya cumplen — cópiales la FORMA, no el contenido).
 
 - **`CLAUDE.md`** (raíz del repo) = **firma-árbol**, secuencia OBLIGATORIA:
   `🎯 Misión/identidad → 🧠 Antes de construir → 📁 Dónde va cada cosa → 🖋️ LA FIRMA (árbol de
@@ -26,8 +27,13 @@ Definición-de-tipo-de-dato (LÉELAS antes de tocar): `CLAUDE.example-barebones.
   ATEMPORAL (gradiente de estabilidad = como `main`): cero fechas, cero "RESUELTO/al día".
 - **`MEMORY.md`** = **detalle 1:1** de la FIRMA + índice de memorias **agrupado POR PREFIJO**
   (`dom-` dominio · `dev-` desarrollo/infra · `ux-` diseño · `qa-` calidad · **núcleo** sin prefijo:
-  `estado-proyecto` · `bitacora` · `aprendizajes` · `como-trabajar-<user>` · `backlog-<tema>` ·
-  `hilo-mental-actual` · `cementerio`). Answer-first: cada nota abre con su RESPUESTA y su ESTADO.
+  `estado-proyecto` · `bitacora` · `aprendizajes` · `backlog-<tema>` · `hilo-mental-actual` ·
+  `cementerio`). Answer-first: cada nota abre con su RESPUESTA y su ESTADO.
+  **Ojo — `como-trabajar-con-<usuario>` NO es una memoria de repo:** es el manual de TRATO de una
+  PERSONA → vive en la **memoria GLOBAL per-máquina** (`~/.claude/projects/<slug>/memory/`, la
+  siembra `install-brain`), NUNCA en el `.claude/memory/` de un repo (viajaría por git y sería ruido
+  para otro dev). No lo indexes en el `MEMORY.md` de un repo. Su barebones es
+  `como-trabajar-con-usuario.example-barebones.md`.
 - **Invariante 1:1:** cada memoria (salvo `*.local.md`) está indexada, y cada enlace del índice
   resuelve a un archivo real. Sección = prefijo = orden del folder → una sola taxonomía, cero drift.
 - **`AGENTS.md`** (si existe) queda para la **ARQUITECTURA real** del proyecto — NO es la firma.
