@@ -89,6 +89,10 @@ ev_de() {
     sesion-inicio)  echo "SessionStart|" ;;
     recordar-cosechar) echo "Stop|" ;;
     recordar-unificar-cerebro) echo "SessionStart|" ;;
+    # hud-stale: DOBLE trigger — SessionStart (cambio de rama/cwd ENTRE sesiones, al retomar) +
+    # PostToolUse/Bash (cambio a MEDIA sesión, tras un `git checkout`/`cd`). MULTI-evento: ev_de puede
+    # devolver VARIOS pares "Event|Matcher" separados por espacio; el loop de cablear registra cada uno.
+    hud-stale) echo "SessionStart| PostToolUse|Bash" ;;
     *) echo "" ;;
   esac
 }
@@ -203,9 +207,12 @@ while [ "$PRUNEONLY" != 1 ] && IFS='|' read -r name kind; do
   if [ "$kind" = "hook" ]; then
     evm="$(ev_de "$name")"
     if [ -n "$evm" ]; then
-      ev="${evm%%|*}"; m="${evm#*|}"
       if [ "$APPLY" = 1 ]; then
-        register_hook "$DST_SET" "$ev" "$m" "bash \"\${CLAUDE_PROJECT_DIR}/.claude/hooks/$name.sh\"" "$name"
+        # evm puede traer VARIOS pares "Event|Matcher" (space-separated) → cablear cada uno (multi-evento).
+        # register_hook dedupe POR-evento con el patrón $name, así que re-correr no duplica.
+        for pair in $evm; do
+          register_hook "$DST_SET" "${pair%%|*}" "${pair#*|}" "bash \"\${CLAUDE_PROJECT_DIR}/.claude/hooks/$name.sh\"" "$name"
+        done
       fi
       n_wire=$((n_wire+1))
     else

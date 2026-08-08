@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# hud-stale.sh — SessionStart + PostToolUse/Bash hook (tier GLOBAL). Avisa —NO bloquea— cuando la lista
+# hud-stale.sh — SessionStart + PostToolUse/Bash hook (tier BOTH). Avisa —NO bloquea— cuando la lista
 # de TODOs de la terminal (el "HUD": el árbol de checkboxes de TodoWrite/TaskList que unjordi ama) quedó
 # STALE porque el CONTEXTO DE TAREA rotó: cambiaste de RAMA git o de PROYECTO/cwd, y el HUD sigue mostrando
 # los pendientes de la tarea ANTERIOR (la queja literal: "me muestra tareas de otro proyecto/sesión").
@@ -40,9 +40,16 @@
 # aviso-contexto), NUNCA bloquea. Reusa la MISMA noción "contexto registrado vs actual" que
 # rehidratar-hilo.sh aplica al HILO (rama del hilo vs rama actual), trasladada al HUD.
 #
-# Genérico y stack-agnóstico → tier GLOBAL (install-brain.sh). Pareja conceptual del skill /to-do (que
-# SIEMBRA el HUD del durable) y de rehidratar-hilo (que relee el HILO). Escape: CLAUDE_SKIP_HUD_STALE=1.
+# Genérico y stack-agnóstico. Tier BOTH: se instala GLOBAL (install-brain.sh) Y viaja POR-REPO a los repos
+# COMPARTIDOS (sincronizar-cerebro.sh) como CORREO, para el colega que clona SIN el brain global. Pareja
+# conceptual del skill /to-do (que SIEMBRA el HUD del durable) y de rehidratar-hilo (que relee el HILO).
+# Escape: CLAUDE_SKIP_HUD_STALE=1.
 set -u
+
+# dedupe doble-cableado: si soy la copia del REPO y la copia GLOBAL existe, cedo (la global maneja esta
+# invocación) → evita el aviso DUPLICADO; en un clon SIN bootstrap (sin copia global) la del repo sí corre.
+# Necesario ahora que hud-stale es tier `both` (viaja per-repo Y global). NO-debilitante: sigue avisando 1×.
+case "$0" in "$HOME/.claude/hooks/"*) : ;; *) [ -f "$HOME/.claude/hooks/$(basename "$0")" ] && exit 0 ;; esac
 
 [ "${CLAUDE_SKIP_HUD_STALE:-0}" = 1 ] && exit 0
 command -v jq >/dev/null 2>&1 || exit 0        # sin jq no podemos parsear el payload → fail-open
