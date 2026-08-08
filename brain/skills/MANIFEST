@@ -45,6 +45,7 @@
 auditar-coherencia-cerebro       global
 auditar-proceso-algoritmo        global
 auditar-suficiencia-operativa    global
+auditor-semantico                global
 cerrar-slice                     both
 checkpoint                       both
 claude-proyecto-autocontenido    global
