@@ -3979,7 +3979,10 @@ rm -rf "$FLFIX"
 echo "== (g1) no-bypass-deploy: AVISA (no bloquea) al correr instalador/deploy a mano; PRECISO (silencio en dry-run/help/CI/mención) =="
 NBD="$HOOKS/no-bypass-deploy.sh"
 # alimenta un comando por stdin (JSON) y devuelve el additionalContext (vacío = silencio)
-nbd_ctx() { printf '{"tool_input":{"command":%s}}' "$(jq -Rn --arg c "$1" '$c')" | bash "$NBD" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null; }
+# OJO: el hook calla en CI (CI/GITHUB_ACTIONS/GITLAB_CI/BUILD_ID) porque ahí el pipeline ES la
+# herramienta. Este test ejercita la vía de AVISO (máquina de dev) → hay que limpiar esas env vars,
+# si no, correr la suite DENTRO de CI (GitHub Actions) daría falsos FAIL en todo el grupo g1.
+nbd_ctx() { printf '{"tool_input":{"command":%s}}' "$(jq -Rn --arg c "$1" '$c')" | env -u CI -u GITHUB_ACTIONS -u GITLAB_CI -u BUILD_ID bash "$NBD" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null; }
 [ -n "$(nbd_ctx 'bash brain/install-brain.sh')" ] \
   && ok "g1: install-brain.sh corrido a mano → AVISA (redirige al widget)" || bad "g1: no avisó sobre install-brain.sh a mano"
 printf '%s' "$(nbd_ctx 'bash brain/install-brain.sh')" | grep -qi 'widget' \
