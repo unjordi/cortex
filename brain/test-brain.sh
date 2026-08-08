@@ -4025,6 +4025,106 @@ grep -qi 'clic en la web' "$NORMSF" && grep -qi 'vein-popper' "$NORMSF" \
   && ok "g4: norma 'nunca el clic en la web como escape de un juez que frena' presente" || bad "g4: falta la norma del clic-en-la-web como escape (#13)"
 
 # ─────────────────────────────────────────────────────────────────────────────
+echo "== (g5) verificar-firma-canonica: DETECTOR de la firma-árbol canónica en un cerebro instanciado =="
+VFC="$SCRIPT_DIR/verificar-firma-canonica.sh"
+bash -n "$VFC" 2>/dev/null && ok "g5: bash -n verificar-firma-canonica.sh" || bad "g5: verificar-firma-canonica.sh no parsea"
+
+# Helper: monta un cerebro instanciado de mentira en un dir temporal.
+mk_good_brain() { # <root>
+  local R="$1"; mkdir -p "$R/.claude/memory"
+  cat > "$R/CLAUDE.md" <<'EOF'
+# ⚡ Proyecto Demo — app de prueba
+🎯 Eres el claude que mantiene Demo.
+🧠 ANTES de construir: LEE los skills + estado-proyecto.md (MEMORY.md auto-carga vía @import).
+## 📁 Dónde va cada cosa
+```
+📄 CLAUDE.md ─ LA firma
+│   ├─ 🖋️ LA FIRMA — índice de MEMORY.md
+│   └─ 🛡️ Reglas duras
+▼ 📄 MEMORY.md
+```
+## 🛡️ Reglas duras
+- 📄 Doc = realidad.
+@.claude/memory/MEMORY.md
+EOF
+  cat > "$R/.claude/memory/MEMORY.md" <<'EOF'
+# Memoria del proyecto Demo
+## 🧭 Núcleo
+- [Estado del proyecto](estado-proyecto.md) — el hub vivo.
+- [Bitácora](bitacora.md) — journal.
+## 🗄️ dom- · dominio
+- [dom-modelo](dom-modelo.md) — agregados.
+## 🛠️ dev- · desarrollo
+- [dev-correr-en-local](dev-correr-en-local.md) — cómo correrlo.
+EOF
+  : > "$R/.claude/memory/estado-proyecto.md"
+  : > "$R/.claude/memory/bitacora.md"
+  : > "$R/.claude/memory/dom-modelo.md"
+  : > "$R/.claude/memory/dev-correr-en-local.md"
+}
+
+# (1) cerebro CANÓNICO → 0 fail, exit 0
+GB="$(mktemp -d "${TMPDIR:-/tmp}/brain-g5-good.XXXXXX")"
+mk_good_brain "$GB"
+OUT="$(bash "$VFC" "$GB" 2>&1)"; RC=$?
+{ [ "$RC" -eq 0 ] && printf '%s' "$OUT" | grep -q 'FIRMA-CANONICA: 0 fail'; } \
+  && ok "g5: cerebro canónico → 0 fail · exit 0" || bad "g5: cerebro canónico dio hallazgos (rc=$RC): $(printf '%s' "$OUT" | grep FIRMA-CANONICA)"
+
+# (2) cerebro DRIFTEADO → fail>0, exit 1. Rompemos 4 cosas: falta 🖋️, memoria sin prefijo,
+#     enlace roto, y prosa con un hook retirado.
+BB="$(mktemp -d "${TMPDIR:-/tmp}/brain-g5-bad.XXXXXX")"
+mk_good_brain "$BB"
+# 2a: quita la sección 🖋️ LA FIRMA del CLAUDE.md
+grep -v '🖋️' "$BB/CLAUDE.md" > "$BB/CLAUDE.md.tmp" && mv "$BB/CLAUDE.md.tmp" "$BB/CLAUDE.md"
+# 2b: mete una memoria SIN prefijo ni núcleo
+: > "$BB/.claude/memory/notas-sueltas.md"
+# 2c: enlace roto en MEMORY.md
+printf '\n- [fantasma](dom-inexistente.md) — no existe.\n' >> "$BB/.claude/memory/MEMORY.md"
+# 2d: prosa con hook retirado
+printf '\n> El hook precompact-volcar-estado vuelca el estado.\n' >> "$BB/CLAUDE.md"
+OUT="$(bash "$VFC" "$BB" 2>&1)"; RC=$?
+[ "$RC" -eq 1 ] && ok "g5: cerebro drifteado → exit 1" || bad "g5: cerebro drifteado NO falló (rc=$RC)"
+printf '%s' "$OUT" | grep -q '🖋️ LA FIRMA' && ok "g5: caza sección de firma ausente (🖋️)" || bad "g5: no cazó la sección 🖋️ ausente"
+printf '%s' "$OUT" | grep -q 'notas-sueltas.md' && ok "g5: caza memoria sin prefijo canónico" || bad "g5: no cazó la memoria sin prefijo"
+printf '%s' "$OUT" | grep -q 'dom-inexistente.md' && ok "g5: caza enlace roto en MEMORY.md" || bad "g5: no cazó el enlace roto"
+printf '%s' "$OUT" | grep -q 'precompact-volcar-estado' && ok "g5: caza hook retirado en la prosa (WARN)" || bad "g5: no cazó el hook retirado"
+
+# (3) memoria real NO indexada → fail (invariante 1:1)
+NB="$(mktemp -d "${TMPDIR:-/tmp}/brain-g5-noidx.XXXXXX")"
+mk_good_brain "$NB"
+: > "$NB/.claude/memory/dom-huerfana.md"   # existe pero NO está en MEMORY.md
+OUT="$(bash "$VFC" "$NB" 2>&1)"; RC=$?
+{ [ "$RC" -eq 1 ] && printf '%s' "$OUT" | grep -q 'NO indexada.*dom-huerfana'; } \
+  && ok "g5: caza memoria real no-indexada (rompe 1:1)" || bad "g5: no cazó la memoria huérfana no-indexada"
+# *.local.md NO se exige indexar ni prefijar (personal/sensible)
+GL="$(mktemp -d "${TMPDIR:-/tmp}/brain-g5-local.XXXXXX")"
+mk_good_brain "$GL"
+: > "$GL/.claude/memory/secretos.local.md"
+OUT="$(bash "$VFC" "$GL" 2>&1)"; RC=$?
+{ [ "$RC" -eq 0 ] && ! printf '%s' "$OUT" | grep -q 'secretos.local.md'; } \
+  && ok "g5: *.local.md se ignora (no exige prefijo ni índice)" || bad "g5: flaggeó un *.local.md (no debería)"
+
+# (4) --strict convierte WARN (drift) en exit 1
+WB="$(mktemp -d "${TMPDIR:-/tmp}/brain-g5-strict.XXXXXX")"
+mk_good_brain "$WB"
+printf '\n> El hook precompact-volcar-estado ya no existe.\n' >> "$WB/.claude/memory/MEMORY.md"
+OUT="$(bash "$VFC" "$WB" 2>&1)"; RC=$?
+{ [ "$RC" -eq 0 ] && printf '%s' "$OUT" | grep -q '1 warn'; } \
+  && ok "g5: WARN solo (sin --strict) → exit 0" || bad "g5: un WARN sin --strict no debía fallar (rc=$RC)"
+bash "$VFC" "$WB" --strict >/dev/null 2>&1; RC=$?
+[ "$RC" -eq 1 ] && ok "g5: --strict trata el WARN como falla (exit 1) — modo GATE" || bad "g5: --strict no falló con WARN (rc=$RC)"
+
+# (5) el META-repo claude-brain se SALTA (su firma vive en README, no en CLAUDE.md-firma)
+MB="$(mktemp -d "${TMPDIR:-/tmp}/brain-g5-meta.XXXXXX")"
+mkdir -p "$MB/brain/hooks" "$MB/docs/flowcharts"
+: > "$MB/brain/hooks/MANIFEST"; : > "$MB/docs/flowcharts/verificar-arbol-sync.sh"
+OUT="$(bash "$VFC" "$MB" 2>&1)"; RC=$?
+{ [ "$RC" -eq 0 ] && printf '%s' "$OUT" | grep -q 'n/a (meta-repo)'; } \
+  && ok "g5: el meta-repo claude-brain se salta (n/a), no se autoflagea" || bad "g5: no detectó el meta-repo (rc=$RC)"
+
+rm -rf "$GB" "$BB" "$NB" "$GL" "$WB" "$MB"
+
+# ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "==> resultado: $PASS PASS · $FAIL FAIL"
 [ "$FAIL" -eq 0 ]
