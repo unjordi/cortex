@@ -3320,6 +3320,51 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+echo "== (e3b) drift-check STATUS: cada skill está en la CLASIFICACIÓN DE ESTADO (StatusOf) de cada widget, no solo con tile (antídoto al punto de estado que sale MAL en silencio) =="
+# El drift-widget (e3) ya exige que cada skill tenga TILE, pero su cover() matchea el nombre en CUALQUIER
+# parte del archivo (basta con que exista el tile) → NO detecta que la skill falte en la lógica de ESTADO.
+# StatusOf() (C#) / status(_:_:) (Swift) / brainStatus() (QML) clasifican cada pieza: si es hook conocido
+# → global/repo; si no, un SWITCH lista las skills; lo que cae al `default`/`_` es "absent" (punto ROJO,
+# MAL) EN SILENCIO. Bug real: una skill con tile pero fuera del switch pinta su estado mal sin avisar.
+# Invariante: cada skill dir de brain/skills está clasificada — o como hook conocido (p. ej. rehidratar-hilo
+# es `both` en el MANIFEST → cae en known-global), o dentro del switch de skills — en los 3 widgets.
+# ACOTAMIENTO (PRECISO, no "en cualquier parte" como cover()): la REGIÓN de clasificación de cada widget =
+# unión de (1) el set known-global · (2) el set known-repo · (3) el bloque del switch de skills, extraídos
+# por anclas ROBUSTAS del propio código (no por nº de línea):
+#   · C#   : `KnownGlobalHooks = new()`…`};` · `KnownRepoHooks = new()`…`};` · `return name switch`…`};`  (todo en BrainInspector.cs)
+#   · Swift: `knownGlobalHooks: Set<String> = [`…`]` · `knownRepoHooks: Set<String> = [`…`]`  (BrainInspector.swift) · `switch name {`…`default:`  (PopoverView.swift)
+#   · QML  : líneas `brainGlobalHooks:` / `brainRepoHooks:` · `function brainStatus`…`^    }`  (main.qml)
+# La membresía se prueba con el token ENTRECOMILLADO exacto ("$n") sobre esa región → no matchea el tile ni
+# subcadenas. FALLA si un skill tiene tile pero no está en StatusOf (el bug de hoy); PASA cuando todos están.
+ROOT="$SCRIPT_DIR/.."
+sk_names=$(for d in "$SCRIPT_DIR"/skills/*/; do [ -f "${d}SKILL.md" ] && basename "$d"; done | sort -u)
+status_cover() {  # label  region
+  smiss=0
+  for n in $sk_names; do
+    printf '%s' "$2" | grep -qF "\"$n\"" || { bad "drift-status[$1]: skill '$n' SIN clasificar en StatusOf (caería en default→absent: su punto de estado saldría MAL en silencio)"; smiss=1; }
+  done
+  [ "$smiss" = 0 ] && ok "drift-status[$1]: toda skill de brain/skills está clasificada en StatusOf (hook conocido o switch de skills)"
+}
+# (Windows / C#) known-sets y switch, todo en BrainInspector.cs
+CS="$ROOT/windows/src/ClaudeBrain/BrainInspector.cs"
+if [ -f "$CS" ]; then
+  win_status_region="$( { sed -n '/KnownGlobalHooks = new()/,/};/p' "$CS"; sed -n '/KnownRepoHooks = new()/,/};/p' "$CS"; awk '/return name switch/,/};/' "$CS"; } )"
+  status_cover win "$win_status_region"
+else bad "drift-status[win]: no encuentro BrainInspector.cs"; fi
+# (macOS / Swift) known-sets en BrainInspector.swift · switch de estado en PopoverView.swift
+SWK="$ROOT/macos/Sources/ClaudeBrain/BrainInspector.swift"; SW="$ROOT/macos/Sources/ClaudeBrain/PopoverView.swift"
+if [ -f "$SWK" ] && [ -f "$SW" ]; then
+  mac_status_region="$( { sed -n '/knownGlobalHooks: Set<String> = \[/,/\]/p' "$SWK"; sed -n '/knownRepoHooks: Set<String> = \[/,/\]/p' "$SWK"; awk '/switch name \{/,/default:/' "$SW"; } )"
+  status_cover mac "$mac_status_region"
+else bad "drift-status[mac]: no encuentro BrainInspector.swift / PopoverView.swift"; fi
+# (plasmoid / QML) known-sets y brainStatus() en el mismo main.qml
+QML="$ROOT/src/plasmoid/contents/ui/main.qml"
+if [ -f "$QML" ]; then
+  qml_status_region="$( { grep 'brainGlobalHooks:' "$QML"; grep 'brainRepoHooks:' "$QML"; sed -n '/function brainStatus/,/^    }/p' "$QML"; } )"
+  status_cover qml "$qml_status_region"
+else bad "drift-status[qml]: no encuentro main.qml"; fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 echo "== (e5) sincronizar: los hooks RETIRADOS (lista RETIRED) se podan SOLOS; los huérfanos propios se conservan =="
 # precompact-volcar-estado quedó cableado en repos y ROMPE el CLI. Antes solo --prune-orphans lo quitaba
 # (y borraba TODO huérfano, incluso hooks propios). Ahora: lista brain/hooks/RETIRED → un huérfano
