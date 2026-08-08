@@ -86,6 +86,14 @@ de 3 desenlaces — jamás fundir borrando una voz:
 promueve:
 - → **skill/hook del brain** si es un mecanismo genérico (rutéalo a `claude-brain`, no a develop).
 - → **norma en `_PROTOCOLO.md` / `AGENTS.md`** si es una regla dura de proceso.
+- → **TRATO / preferencia PERSONAL del usuario** (cómo le gusta que le comuniquen, decidan, trabajen)
+  → su **`~/.claude/projects/-Users-<user>/memory/como-trabajar-con-<user>.md`** GLOBAL per-máquina
+  (es sobre una PERSONA, no un proyecto → **NO sube a develop, NO viaja por git**). Escríbelo
+  answer-first / desinflado a 1-2 líneas, en su sección (Comunicación/Decisiones/Proceso/Git/
+  Preferencias), **con procedencia** (cita literal entre comillas vs `[INFER]`) y **REFERENCIANDO** las
+  normas universales del brain — sin copiarlas. Distínguelo del TRATO **SOBRE OTRO dev** (`sobre:
+  <handle>`): ése se queda en el inbox del equipo (así viaja a su máquina). Molde canónico:
+  `como-trabajar-con-unjordi.md`.
 - → **archivo propio** si creció a un tema autocontenido (`modulo-x.md`).
 Al graduar, deja en el inbox una marca de que se movió (o retíralo si ya vive íntegro en su hogar) —
 pero eso es EDICIÓN curada y deliberada, distinta del append ciego que hace `cosechar-sesion`.

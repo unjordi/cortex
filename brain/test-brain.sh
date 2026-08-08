@@ -4483,6 +4483,30 @@ CSO="$SCRIPT_DIR/skills/orquestar-fanout/SKILL.md"
 
 rm -rf "$SIFIX"
 
+# ── #83 anti-drift: TRATO personal del usuario → archivo GLOBAL como-trabajar-con-<user> ──
+# La regla de ruteo del conocimiento de TRATO/preferencia personal debe vivir como PASO explícito en
+# las skills que procesan/cosechan/consolidan memoria (un hook no puede juzgar semánticamente "trato").
+echo ""
+echo "== #83 anti-drift como-trabajar: las skills de cosecha/consolidación rutean el TRATO al archivo GLOBAL =="
+COS="$SCRIPT_DIR/skills/cosechar-sesion/SKILL.md"
+UNI="$SCRIPT_DIR/skills/unificar-cerebro/SKILL.md"
+DES="$SCRIPT_DIR/skills/desinflar-memorias/SKILL.md"
+RCH="$SCRIPT_DIR/hooks/recordar-cosechar.sh"
+{ [ -f "$COS" ] && grep -qF 'como-trabajar-con-<user>.md' "$COS" && grep -qiE 'NO lo appendees|NO va al inbox|NO este inbox' "$COS" \
+    && grep -qiE 'procedencia|\[INFER\]' "$COS" && grep -qiE 'REFERÉNCIALAS|no las copies|no la copies' "$COS"; } \
+  && ok "#83 cosechar-sesion: rutea el TRATO al archivo GLOBAL (no al inbox), con procedencia y referencia a normas universales" \
+  || bad "#83 cosechar-sesion: falta la regla de ruteo del TRATO al archivo GLOBAL"
+{ [ -f "$UNI" ] && grep -qF 'como-trabajar-con-<user>.md' "$UNI" && grep -qiE 'NO sube a develop|NO viaja por git'  "$UNI"; } \
+  && ok "#83 unificar-cerebro: gradúa el TRATO al archivo GLOBAL per-máquina (no a develop)" \
+  || bad "#83 unificar-cerebro: falta el destino de graduación TRATO → archivo GLOBAL"
+{ [ -f "$DES" ] && grep -qF 'como-trabajar-con-<user>.md' "$DES" && grep -qiE 'MIGRA|migra su lecci' "$DES" \
+    && grep -qiE 'b[oó]rralo|queda vac' "$DES"; } \
+  && ok "#83 desinflar-memorias: migra los feedback-* de TRATO al archivo GLOBAL y borra el vacío" \
+  || bad "#83 desinflar-memorias: falta la migración de TRATO per-repo → archivo GLOBAL"
+{ [ -f "$RCH" ] && grep -qiE 'como-trabajar-con-<user>' "$RCH"; } \
+  && ok "#83 recordar-cosechar: el nudge recuerda que el TRATO va al archivo GLOBAL" \
+  || bad "#83 recordar-cosechar: el nudge no menciona el ruteo del TRATO al archivo GLOBAL"
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "==> resultado: $PASS PASS · $FAIL FAIL"
