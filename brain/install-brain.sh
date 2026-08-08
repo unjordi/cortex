@@ -124,7 +124,7 @@ ev_de() {
     limite-gasto|delegacion-gate) echo "PreToolUse|Task|Agent" ;;   # Task|Agent: el tool se renombró Agent (antes Task); casar AMBOS o el gate nunca dispara
     delegacion-registrar|delegacion-reporte) echo "PostToolUse|Task|Agent" ;;
     rehidratar-hilo|aviso-drift-cerebro) echo "SessionStart|" ;;
-    aviso-contexto) echo "PostToolUse|" ;;
+    aviso-contexto|recordar-orquestar) echo "PostToolUse|" ;;   # casan TODA tool (sin matcher): aviso-contexto mide el ctx; recordar-orquestar cuenta mutaciones/resets p/ el nudge de fan-out
     # barrer-ramas: DOBLE trigger del barrido — SessionStart (oportunista, throttled) + PostToolUse/Bash
     # (al punto de merge, detecta glab/gh merge vía acg_es_merge_mr). Multi-evento como exportar-sesion-master.
     barrer-ramas) echo "SessionStart| PostToolUse|Bash" ;;

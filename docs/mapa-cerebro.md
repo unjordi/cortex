@@ -169,6 +169,9 @@ flowchart TB
 
 El estilo de orquestación (fan-out + supervisión, 2 archivos de estado sin redundancia) lo guía
 el skill `orquestar-fanout`; la lib `delegacion-comun.sh` comparte la lógica de gate/registro.
+El gate de costo es el **freno** (evita runaways); su hermano-**empuje** es `recordar-orquestar`
+(PostToolUse, advisory): tras **N** mutaciones en serie SIN delegar, sugiere el fan-out — se
+**resetea** al lanzar un `Agent`/`Task`, así que solo avisa cuando llevas rato en grind serial.
 
 ---
 
@@ -184,7 +187,7 @@ flowchart LR
 
     subgraph tiers["Tiers declarados"]
         BOTH["tier <b>both</b> — global + por-repo<br/>(con cláusula de dedupe:<br/>la copia del repo cede a la global)<br/><br/>hooks: git-branch-guard ·<br/>merge-squash-guard ·<br/>confirmar-merge-develop ·<br/>recordar-dashboard · secret-scan ·<br/>entorno-maquina-guard<br/>libs: analizar-comando-git ·<br/>detectar-secretos"]
-        GLOBAL["tier <b>global</b> — solo ~/.claude<br/><br/>hooks: proteger-arbol · rama-vieja ·<br/>limite-gasto · rehidratar-hilo ·<br/>aviso-contexto · aviso-drift-cerebro ·<br/>delegacion-gate · delegacion-registrar ·<br/>delegacion-reporte<br/>lib: delegacion-comun · ramas-zombie<br/>script: limpiar-worktrees · limpiar-ramas"]
+        GLOBAL["tier <b>global</b> — solo ~/.claude<br/><br/>hooks: proteger-arbol · rama-vieja ·<br/>limite-gasto · rehidratar-hilo ·<br/>aviso-contexto · aviso-drift-cerebro ·<br/>delegacion-gate · delegacion-registrar ·<br/>delegacion-reporte · recordar-orquestar<br/>lib: delegacion-comun · ramas-zombie<br/>script: limpiar-worktrees · limpiar-ramas"]
         REPO["tier <b>repo</b> — solo &lt;repo&gt;/.claude<br/>(se cargan si la sesión INICIA ahí)<br/><br/>hooks: dod-verificar · sesion-inicio"]
     end
 

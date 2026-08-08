@@ -39,7 +39,7 @@ public sealed class BrainState
         "git-branch-guard", "merge-squash-guard", "confirmar-merge-develop",
         "recordar-dashboard", "secret-scan", "rama-vieja", "proteger-arbol",
         "proteger-fuente-cerebro",
-        "limite-gasto", "delegacion-gate", "delegacion-registrar", "delegacion-reporte",
+        "limite-gasto", "delegacion-gate", "delegacion-registrar", "delegacion-reporte", "recordar-orquestar",
         "rehidratar-hilo", "aviso-contexto", "aviso-drift-cerebro", "exportar-sesion-master", "barrer-ramas",
         "entorno-maquina-guard", "no-bypass-deploy",
     };

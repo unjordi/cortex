@@ -915,6 +915,9 @@ PlasmoidItem {
                 { emoji: "📮", name: "delegacion-reporte",        desc: "un agente de fan-out terminó → recuerda bitácora + estado, sin niñera",
                   event: "PostToolUse · Task",
                   detail: "Cuando un subagente (Task) termina, recuerda al orquestador registrar su avance sin niñera: appendar una línea a bitacora.md (append-only, parallel-safe), cerrar el ítem en estado-proyecto.md y limpiar su worktree. No bloquea." },
+                { emoji: "🎼", name: "recordar-orquestar",        desc: "llevas rato en grind serial sin delegar → sugiere fan-out (advisory)",
+                  event: "PostToolUse",
+                  detail: "Cuenta las mutaciones consecutivas (edits/commits) de la sesión y, al llegar a N (def 10) SIN que haya habido una delegación (Agent/Task) en medio, sugiere —no bloquea— un fan-out si el trabajo restante tiene piezas independientes. Un Agent/Task RESETEA el contador (si delegaste, no te regaña); debounce de N en N. Si el trabajo es intrínsecamente secuencial, se ignora. Contador per-session_id, fail-open, escape CLAUDE_SKIP_RECORDAR_ORQUESTAR=1." },
                 { emoji: "🧵", name: "rehidratar-hilo",           desc: "al retomar/tras compactar reinyecta el hilo mental de la tarea",
                   event: "SessionStart",
                   detail: "Al abrir/retomar sesión o tras compactar, relee .claude/memory/hilo-mental-actual.md y lo reinyecta por additionalContext (canal fiable de SessionStart). Es la mitad 'leer' del par con el skill checkpoint (la mitad 'escribir'). Silencioso si el archivo no existe." },
@@ -1046,7 +1049,7 @@ PlasmoidItem {
 
     // Catálogo conocido (mismos conjuntos que BrainState.knownGlobalHooks / knownRepoHooks del Swift).
     // DEBE coincidir con brain/hooks/MANIFEST; lo verifica el drift-check del widget (test-brain.sh).
-    readonly property var brainGlobalHooks: ["git-branch-guard","merge-squash-guard","confirmar-merge-develop","recordar-dashboard","secret-scan","rama-vieja","proteger-arbol","proteger-fuente-cerebro","limite-gasto","delegacion-gate","delegacion-registrar","delegacion-reporte","rehidratar-hilo","aviso-contexto","aviso-drift-cerebro","exportar-sesion-master","barrer-ramas","entorno-maquina-guard","no-bypass-deploy"]
+    readonly property var brainGlobalHooks: ["git-branch-guard","merge-squash-guard","confirmar-merge-develop","recordar-dashboard","secret-scan","rama-vieja","proteger-arbol","proteger-fuente-cerebro","limite-gasto","delegacion-gate","delegacion-registrar","delegacion-reporte","recordar-orquestar","rehidratar-hilo","aviso-contexto","aviso-drift-cerebro","exportar-sesion-master","barrer-ramas","entorno-maquina-guard","no-bypass-deploy"]
     readonly property var brainRepoHooks:   ["sesion-inicio","dod-verificar","recordar-cosechar","recordar-unificar-cerebro"]
 
     // Ruta del helper bash, resuelta relativa a este main.qml (…/contents/ui/ → …/contents/brain-scan.sh).
