@@ -72,6 +72,13 @@ para que no quede apuntando a un tema ya terminado.
 Commit y push a la **ramita** van libres, sin pedir permiso. Pero **antes de integrar a develop,
 PREGÚNTALE al usuario si el slice queda cerrado.** El merge a develop no se hace sin esa confirmación
 (un release a main, tampoco — eso lo decide el humano deliberadamente).
+- **Al INVITAR a QA, el entorno desplegado debe contener TODO lo que le pides revisar.** Antes de
+  decir "revísalo", verifica que el commit/rama que está desplegado (p. ej. `:9582`) INCLUYE cada ítem
+  de tu lista: si algún fix vive en OTRA rama, recóncilialo (cherry-pick/merge) + **redespliega PRIMERO**.
+  Si por lo que sea no puedes dejar el entorno completo, avísalo por ADELANTADO y explícito ("estos N
+  ítems NO están en este entorno todavía, sáltalos") — **nunca** a media QA. Reconciliar la divergencia
+  de ramas es del ORQUESTADOR, no de quien hace el QA. (Lección real: se pidió QA en un entorno que corría
+  una rama sin los fixes → clicks gastados revisando algo que ahí no estaba resuelto.)
 
 ## 4. Flujo de git (tras el OK del usuario) — **integra con SQUASH, merge INMEDIATO (sin MWPS)**
 La ramita se colapsa a **UN commit limpio** en develop (lo exige el hook `merge-squash-guard`). El
