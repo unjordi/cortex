@@ -3359,6 +3359,24 @@ else
   fi
 fi
 
+# ═══ BLOQUE AÑADIDO (#81 asentar-tiers) — delimitado para merge-friendliness en paralelo ═══════════════
+echo "== (e2-tiers) doc-check: los MANIFEST documentan los 3 tiers + la regla de decisión repo-compartido (#81) =="
+# Asienta la decisión de TIER: el header de cada MANIFEST debe explicar CÓMO DECIDIR el tier (patrón
+# repo-compartido) para que quien agregue un hook/skill sepa qué poner SIN re-preguntar "¿global o both?".
+MFH="$HOOKS/MANIFEST"; MFS="$SCRIPT_DIR/skills/MANIFEST"
+for pair in "hooks:$MFH:both global repo" "skills:$MFS:both global"; do
+  lbl="${pair%%:*}"; rest="${pair#*:}"; mf="${rest%%:*}"; tiers="${rest#*:}"
+  hdr="$(grep '^#' "$mf" 2>/dev/null)"
+  miss=""
+  for t in $tiers; do printf '%s' "$hdr" | grep -qw "$t" || miss="$miss $t"; done
+  printf '%s' "$hdr" | grep -qiE 'CÓMO DECIDIR EL TIER' || miss="$miss <header-decision>"
+  printf '%s' "$hdr" | grep -qi 'repo.compartido\|COMPARTIDO' || miss="$miss <patron-repo-compartido>"
+  [ -z "$miss" ] \
+    && ok "e2-tiers[$lbl]: el MANIFEST documenta los tiers y la regla de decisión repo-compartido" \
+    || bad "e2-tiers[$lbl]: al header del MANIFEST le falta:$miss"
+done
+# ═══ FIN BLOQUE AÑADIDO (#81) ═════════════════════════════════════════════════════════════════════════
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo "== (e3) drift-check WIDGET: el catálogo curado del widget coincide con el MANIFEST + skills (antídoto al que un hook nuevo caiga en OTROS y a una skill sin tile) =="
 # El widget (Windows/C#, macOS/Swift, plasmoid/QML) trae un catálogo CURADO de piezas del cerebro:
