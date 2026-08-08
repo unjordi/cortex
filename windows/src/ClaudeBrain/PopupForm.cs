@@ -2114,6 +2114,9 @@ public sealed class PopupForm : Form
             new("🧳", "claude-proyecto-autocontenido", "el cerebro de Claude VIVE dentro del proyecto (.claude/ + symlink de slug) → viaja con él",
                 "skill · opt-in",
                 "Mantener TODO el cerebro de Claude Code de un proyecto (memorias, skills, transcripts, settings) dentro de <proyecto>/.claude/, con un symlink desde ~/.claude/projects/<slug>/ para que Claude lo siga encontrando. Así la memoria/skills viajan con el proyecto (Drive, git, otra máquina) y ninguna sesión arranca amnésica desde otro cwd. Cubre la regla del slug, el bootstrap de un comando (clona-y-listo), el triage de privacidad (qué va al repo vs *.local), la disciplina anti-duplicados y la verificación."),
+            new("🚚", "reubicar-master", "mover un master —cerebro+sesión— a otra casa/subfolder-repo git, sin lobotomía ni tail",
+                "skill · opt-in",
+                "Muda una sesión master COMPLETA de Claude Code a otro repo (caso canónico: los brain-master a claude-brain) sin dejar nada a medias: transcript re-anclado + cwd reescrito, cerebro del master migrado por su canal correcto, slug global y TODAS las referencias (masters.json target por-id, alias, symlink memory) corregidas de forma ATÓMICA, residuo quirúrgico barrido y doc=realidad. Úsala cuando un --resume cae en un folder muerto, un master quedó a medias (residuo + resume roto), o quieres consolidar los dos brain-master (Mac + Cachy) en claude-brain sin lobotomizarlos, sin fuga a un repo público ni duplicado divergente. Hermana de claude-proyecto-autocontenido (esa define DÓNDE vive el cerebro; ésta lo MUEVE de casa)."),
         ]),
     ];
 
