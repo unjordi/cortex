@@ -1,0 +1,102 @@
+# invariantes-semanticos.yml — Auditor Semántico, Capa 2 (semántica, NO determinista)
+#
+# EJEMPLO / ESQUELETO que viaja con el motor genérico (claude-brain). Cada entrada es una
+# PREGUNTA que hay que volver a hacerse sobre el código ACTUAL — no es un check de bash porque
+# verificarla de verdad exige entender la INTENCIÓN de negocio, no solo la sintaxis (por eso vive
+# aparte de scripts/auditor-semantico/checks/, que sí son deterministas). La skill
+# `auditor-semantico` (.claude/skills/auditor-semantico/) lee este archivo y le pide a un agente
+# con criterio que re-verifique cada pregunta contra la ronda de código que se esté auditando.
+#
+# Las entradas de aquí son invariantes `general` de la arquitectura .NET de la plantilla
+# (existencia de FK antes de guardar, identidad del actor desde el JWT, folios sin condición de
+# carrera, estado terminal que rechaza mutaciones, campo de catálogo no editable por API). SON UN
+# PUNTO DE PARTIDA: cada repo AFINA este archivo a SU dominio — agrega sus propias entradas
+# `proyecto-especifico`, marca resueltas las que arregla, promueve a un check de Capa 1 las que
+# resulten mecánicamente detectables.
+#
+# Cómo crece este archivo (en el repo que lo usa):
+#   - `alcance: general` → aplica a CUALQUIER proyecto derivado de la plantilla. Es lo que viaja
+#     con el motor; se cosecha de vuelta al template si nace una nueva regla arquitectónica.
+#   - `alcance: proyecto-especifico` → es una regla de NEGOCIO de ESTE repo concreto (p. ej. "el
+#     campo X del catálogo Y es fijo"). NO sube al template — vive solo en la copia de ESTE
+#     proyecto, que empieza como este esqueleto y crece con SU propio contexto de dominio, ronda
+#     de auditoría tras ronda.
+#   - Cuando una entrada resulta ser mecánicamente verificable después de todo, promuévela a un
+#     script en checks/ y bórrala de aquí (o márcala `estado: promovida-a-capa-1`).
+#
+# Estados: seed (sembrada al crear el archivo) | activo (pendiente de reverificar) |
+#          resuelto (el fix ya se aplicó y se confirmó) | promovida-a-capa-1
+
+invariantes:
+  - id: fk-existencia-antes-de-guardar
+    alcance: general
+    pregunta: >
+      Para cada Id de referencia a otro agregado (FK) que reciba un servicio de aplicación al
+      crear/actualizar, ¿se valida su existencia ANTES de persistir, con un error de negocio
+      limpio (404/422) — o un Id inexistente revienta como DbUpdateException genérica (500)?
+    origen: >
+      Auditoría de un proyecto derivado, 2026-07-15 — un servicio no validaba las FK recibidas
+      antes de guardar; otro servicio, en el mismo commit, sí lo hacía. Inconsistencia dentro
+      del mismo PR — justo lo que un test de camino feliz no atrapa.
+    estado: seed
+
+  - id: identidad-de-actor-desde-jwt-no-de-input
+    alcance: general
+    pregunta: >
+      Para cualquier campo que registre "quién hizo esto" (firma, aprobación, actor de un
+      evento de dominio), ¿el valor SIEMPRE se deriva del usuario autenticado (claims del
+      JWT), nunca de un Id/nombre que el cliente pueda mandar en el body de la petición?
+    origen: >
+      Auditoría de un proyecto derivado, 2026-07-15 — las firmas se verificaron correctas (usan
+      el usuario actual, rechazan explícitamente un usuario de sesión ajeno). Se deja como
+      pregunta a repetir en cada módulo nuevo con firmas/aprobaciones, porque es fácil regresarla
+      al copiar-pegar un formulario.
+    estado: seed
+
+  - id: generacion-secuencial-sin-condicion-de-carrera
+    alcance: general
+    pregunta: >
+      Para cualquier folio/número consecutivo (p. ej. "OS-AAAA-NNNN"), ¿el conteo + asignación
+      ocurre de forma atómica (lock, transacción o secuencia de BD)? ¿El campo de fecha usado
+      para agrupar (año/periodo del folio) es el MISMO que el usado para contar — no uno para
+      calcular el folio y otro distinto para el conteo?
+    origen: >
+      Auditoría de un proyecto derivado, 2026-07-15 — un servicio calculaba el folio sin lock
+      (mitigado por índice único en BD, pero la petición concurrente perdedora recibe un 500
+      genérico) y usaba un campo de fecha para el folio mientras el conteo agrupaba por OTRO — un
+      registro retroactivo a caballo de fin de año puede desalinearse.
+    estado: seed
+
+  - id: estado-cerrado-rechaza-mutaciones
+    alcance: general
+    pregunta: >
+      Para cualquier agregado con una máquina de estados tipo Borrador → ... → Cerrado/
+      Finalizado, ¿existe un test EXPLÍCITO de que el estado terminal rechace mutaciones
+      (agregar/quitar hijos, editar) — no solo que el camino feliz de cerrar funcione?
+    origen: >
+      Auditoría de un proyecto derivado, 2026-07-15 — el método que cerraba un agregado no tenía
+      ningún test; nada cubría que el estado Cerrado rechazara agregar/quitar hijos.
+    estado: seed
+
+  - id: campo-fijo-de-catalogo-no-editable-via-api
+    alcance: general
+    pregunta: >
+      Cuando la UI trata un campo como solo-lectura porque su valor viene de un catálogo fijo
+      (no editable por el usuario), ¿el SERVIDOR (dominio o validator) impone la misma regla,
+      o basta un POST/PUT directo con el permiso correcto para grabar un valor arbitrario?
+    origen: >
+      Auditoría de un proyecto derivado, 2026-07-15 — un campo con códigos fijos de un catálogo
+      se podía grabar con cualquier valor vía API pese a que la UI lo mostraba solo-lectura; ni
+      el dominio ni los validators lo cruzaban contra el catálogo.
+    estado: seed
+
+  # ── A partir de aquí, CADA repo agrega sus propias entradas `proyecto-especifico` ───────────
+  # Ejemplo de la forma que toman (NO se incluye ninguna real: el dominio no viaja con el motor):
+  #
+  #   - id: <regla-de-negocio-de-este-repo>
+  #     alcance: proyecto-especifico
+  #     pregunta: >
+  #       ¿El servicio X impone la regla de negocio Y del catálogo Z, en vez de aceptar lo que
+  #       mande el cliente?
+  #     origen: "Auditoría <repo> <fecha> (hallazgo <severidad>, agente <id>)."
+  #     estado: activo
