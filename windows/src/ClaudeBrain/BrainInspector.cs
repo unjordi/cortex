@@ -66,7 +66,7 @@ public sealed class BrainState
                 or "auditar-coherencia-cerebro" or "auditar-suficiencia-operativa" or "consolidar-cerebro" or "canonizar-cerebro" or "desinflar-memorias"
                 or "orquestar-fanout" or "turno-nocturno" or "cosechar-sesion" or "unificar-cerebro"
                 or "investigar-dominio" or "positivar-doc" or "revisar-entregables-agentes"
-                or "zoom-screenshot" or "claude-proyecto-autocontenido"
+                or "zoom-screenshot" or "claude-proyecto-autocontenido" or "reubicar-master"
                 or "ingenieria-inversa-gui-db-navegador" or "markdown-a-pdf"
                 => Skills.Contains(name) ? BrainStatus.Installed : BrainStatus.Absent,
             "Definition of Done" or "Doc <= realidad" or "Flujo de git" or "Costo de delegación"

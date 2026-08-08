@@ -3374,6 +3374,51 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+echo "== (e3b) drift-check STATUS: cada skill está en la CLASIFICACIÓN DE ESTADO (StatusOf) de cada widget, no solo con tile (antídoto al punto de estado que sale MAL en silencio) =="
+# El drift-widget (e3) ya exige que cada skill tenga TILE, pero su cover() matchea el nombre en CUALQUIER
+# parte del archivo (basta con que exista el tile) → NO detecta que la skill falte en la lógica de ESTADO.
+# StatusOf() (C#) / status(_:_:) (Swift) / brainStatus() (QML) clasifican cada pieza: si es hook conocido
+# → global/repo; si no, un SWITCH lista las skills; lo que cae al `default`/`_` es "absent" (punto ROJO,
+# MAL) EN SILENCIO. Bug real: una skill con tile pero fuera del switch pinta su estado mal sin avisar.
+# Invariante: cada skill dir de brain/skills está clasificada — o como hook conocido (p. ej. rehidratar-hilo
+# es `both` en el MANIFEST → cae en known-global), o dentro del switch de skills — en los 3 widgets.
+# ACOTAMIENTO (PRECISO, no "en cualquier parte" como cover()): la REGIÓN de clasificación de cada widget =
+# unión de (1) el set known-global · (2) el set known-repo · (3) el bloque del switch de skills, extraídos
+# por anclas ROBUSTAS del propio código (no por nº de línea):
+#   · C#   : `KnownGlobalHooks = new()`…`};` · `KnownRepoHooks = new()`…`};` · `return name switch`…`};`  (todo en BrainInspector.cs)
+#   · Swift: `knownGlobalHooks: Set<String> = [`…`]` · `knownRepoHooks: Set<String> = [`…`]`  (BrainInspector.swift) · `switch name {`…`default:`  (PopoverView.swift)
+#   · QML  : líneas `brainGlobalHooks:` / `brainRepoHooks:` · `function brainStatus`…`^    }`  (main.qml)
+# La membresía se prueba con el token ENTRECOMILLADO exacto ("$n") sobre esa región → no matchea el tile ni
+# subcadenas. FALLA si un skill tiene tile pero no está en StatusOf (el bug de hoy); PASA cuando todos están.
+ROOT="$SCRIPT_DIR/.."
+sk_names=$(for d in "$SCRIPT_DIR"/skills/*/; do [ -f "${d}SKILL.md" ] && basename "$d"; done | sort -u)
+status_cover() {  # label  region
+  smiss=0
+  for n in $sk_names; do
+    printf '%s' "$2" | grep -qF "\"$n\"" || { bad "drift-status[$1]: skill '$n' SIN clasificar en StatusOf (caería en default→absent: su punto de estado saldría MAL en silencio)"; smiss=1; }
+  done
+  [ "$smiss" = 0 ] && ok "drift-status[$1]: toda skill de brain/skills está clasificada en StatusOf (hook conocido o switch de skills)"
+}
+# (Windows / C#) known-sets y switch, todo en BrainInspector.cs
+CS="$ROOT/windows/src/ClaudeBrain/BrainInspector.cs"
+if [ -f "$CS" ]; then
+  win_status_region="$( { sed -n '/KnownGlobalHooks = new()/,/};/p' "$CS"; sed -n '/KnownRepoHooks = new()/,/};/p' "$CS"; awk '/return name switch/,/};/' "$CS"; } )"
+  status_cover win "$win_status_region"
+else bad "drift-status[win]: no encuentro BrainInspector.cs"; fi
+# (macOS / Swift) known-sets en BrainInspector.swift · switch de estado en PopoverView.swift
+SWK="$ROOT/macos/Sources/ClaudeBrain/BrainInspector.swift"; SW="$ROOT/macos/Sources/ClaudeBrain/PopoverView.swift"
+if [ -f "$SWK" ] && [ -f "$SW" ]; then
+  mac_status_region="$( { sed -n '/knownGlobalHooks: Set<String> = \[/,/\]/p' "$SWK"; sed -n '/knownRepoHooks: Set<String> = \[/,/\]/p' "$SWK"; awk '/switch name \{/,/default:/' "$SW"; } )"
+  status_cover mac "$mac_status_region"
+else bad "drift-status[mac]: no encuentro BrainInspector.swift / PopoverView.swift"; fi
+# (plasmoid / QML) known-sets y brainStatus() en el mismo main.qml
+QML="$ROOT/src/plasmoid/contents/ui/main.qml"
+if [ -f "$QML" ]; then
+  qml_status_region="$( { grep 'brainGlobalHooks:' "$QML"; grep 'brainRepoHooks:' "$QML"; sed -n '/function brainStatus/,/^    }/p' "$QML"; } )"
+  status_cover qml "$qml_status_region"
+else bad "drift-status[qml]: no encuentro main.qml"; fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 echo "== (e5) sincronizar: los hooks RETIRADOS (lista RETIRED) se podan SOLOS; los huérfanos propios se conservan =="
 # precompact-volcar-estado quedó cableado en repos y ROMPE el CLI. Antes solo --prune-orphans lo quitaba
 # (y borraba TODO huérfano, incluso hooks propios). Ahora: lista brain/hooks/RETIRED → un huérfano
@@ -3934,7 +3979,10 @@ rm -rf "$FLFIX"
 echo "== (g1) no-bypass-deploy: AVISA (no bloquea) al correr instalador/deploy a mano; PRECISO (silencio en dry-run/help/CI/mención) =="
 NBD="$HOOKS/no-bypass-deploy.sh"
 # alimenta un comando por stdin (JSON) y devuelve el additionalContext (vacío = silencio)
-nbd_ctx() { printf '{"tool_input":{"command":%s}}' "$(jq -Rn --arg c "$1" '$c')" | bash "$NBD" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null; }
+# OJO: el hook calla en CI (CI/GITHUB_ACTIONS/GITLAB_CI/BUILD_ID) porque ahí el pipeline ES la
+# herramienta. Este test ejercita la vía de AVISO (máquina de dev) → hay que limpiar esas env vars,
+# si no, correr la suite DENTRO de CI (GitHub Actions) daría falsos FAIL en todo el grupo g1.
+nbd_ctx() { printf '{"tool_input":{"command":%s}}' "$(jq -Rn --arg c "$1" '$c')" | env -u CI -u GITHUB_ACTIONS -u GITLAB_CI -u BUILD_ID bash "$NBD" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null; }
 [ -n "$(nbd_ctx 'bash brain/install-brain.sh')" ] \
   && ok "g1: install-brain.sh corrido a mano → AVISA (redirige al widget)" || bad "g1: no avisó sobre install-brain.sh a mano"
 printf '%s' "$(nbd_ctx 'bash brain/install-brain.sh')" | grep -qi 'widget' \
@@ -4123,6 +4171,185 @@ OUT="$(bash "$VFC" "$MB" 2>&1)"; RC=$?
   && ok "g5: el meta-repo claude-brain se salta (n/a), no se autoflagea" || bad "g5: no detectó el meta-repo (rc=$RC)"
 
 rm -rf "$GB" "$BB" "$NB" "$GL" "$WB" "$MB"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (rm) reubicar-master: move COMPLETO de un brain-master (no-lobotomía/no-tail/liveness/no-fuga) =="
+
+SKILL="$SCRIPT_DIR/skills/reubicar-master/SKILL.md"
+BINRM="$SCRIPT_DIR/../bin"                              # session-move/import/export.js + session-lib.js
+[ -f "$SKILL" ] || bad "reubicar-master: falta el SKILL.md"
+[ -f "$BINRM/session-lib.js" ] || bad "reubicar-master: falta session-lib.js (motor)"
+
+# $HOME falso + repos origen/destino simulados
+RMFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-reubicar.XXXXXX")"
+RMHOME="$RMFIX/home"
+SRCREPO="$RMHOME/code/plantilladotnet"
+DSTREPO="$RMHOME/code/claude-brain"
+DRIVE="$RMFIX/drive"
+PROJ="$RMHOME/.claude/projects"
+mkdir -p "$SRCREPO/.claude/memory" "$SRCREPO/.claude/skills/instanciar-proyecto" \
+         "$DSTREPO/.claude/memory" "$DSTREPO/.claude/skills/agregar-hook-cerebro" "$DSTREPO/brain" \
+         "$DRIVE" "$PROJ"
+ID="deadbeef-0000-0000-0000-000000000001"
+OLD_SLUG="$(printf '%s' "$SRCREPO" | sed 's/[^a-zA-Z0-9]/-/g')"
+NEW_SLUG="$(printf '%s' "$DSTREPO" | sed 's/[^a-zA-Z0-9]/-/g')"
+mkdir -p "$PROJ/$OLD_SLUG" "$PROJ/$NEW_SLUG"
+
+# transcript falso en el slug viejo, con cwd = origen en cada línea
+printf '{"type":"user","cwd":"%s"}\n{"type":"assistant","cwd":"%s"}\n' "$SRCREPO" "$SRCREPO" \
+  > "$PROJ/$OLD_SLUG/$ID.jsonl"
+# symlink 'memory' COMPARTIDO del slug viejo (simula las ~130 sesiones) + OTRA sesión que NO se debe tocar
+ln -s "$SRCREPO/.claude/memory" "$PROJ/$OLD_SLUG/memory"
+printf '{"type":"user","cwd":"%s"}\n' "$SRCREPO" > "$PROJ/$OLD_SLUG/otra-sesion-viva.jsonl"
+# symlink 'memory' del slug nuevo → el cerebro completo del destino
+ln -s "$DSTREPO/.claude/memory" "$PROJ/$NEW_SLUG/memory"
+# T1 (versionable) + T2 (sensible) + T3 (.NET, se queda) en el origen
+echo "handoff peer claudes" > "$SRCREPO/.claude/memory/handoff-peer-claudes-conciso.md"
+echo "soy claude-brain-cachy-master" > "$SRCREPO/.claude/memory/conocimiento-propio.local.md"
+echo "lo nuestro" > "$SRCREPO/CLAUDE.local.md"
+echo "instanciar .NET" > "$SRCREPO/.claude/skills/instanciar-proyecto/SKILL.md"   # T3
+# .gitignore del destino que (como el real) NO ignora CLAUDE.local.md al inicio
+printf '.claude/memory/*.local.md\n' > "$DSTREPO/.gitignore"
+# masters.json de prueba con el id apuntando al slug/target viejo
+cat > "$DRIVE/masters.json" <<EOF
+{ "schema": 2, "masters": [ { "id": "$ID", "name": "claude-brain-cachy-master", "target": "code/plantilladotnet" } ] }
+EOF
+
+RUNMOVE() { HOME="$RMHOME" node "$BINRM/session-move.js" "$@"; }
+NEWJSONL="$PROJ/$NEW_SLUG/$ID.jsonl"
+
+# ── g1: NO-SELF-MOVE / LIVENESS por mtime (motor unlinkea sin preguntar → la skill debe gatear ANTES) ──
+# El SKILL debe usar mtime que BLOQUEA + self-check, NO fuser/lsof como prueba de cerrada:
+grep -qiE 'mtime' "$SKILL" && ! grep -qiE 'fuser.*(prueba|cerrada|liveness)' "$SKILL" \
+  && grep -qiE 'self.?check|sesión propia|CLAUDE_SESSION_ID' "$SKILL" \
+  && ok "g1 liveness: SKILL gatea por mtime + self-check (fuser/lsof NO como prueba de cerrada)" \
+  || bad "g1 liveness: el SKILL no bloquea por mtime/self-check o usa fuser/lsof como prueba de cerrada"
+# y comprobación viva del riesgo: el motor SÍ unlinkea el origen (por eso el gate va ANTES del motor)
+grep -qF 'fs.unlinkSync(found.file)' "$BINRM/session-move.js" \
+  && ok "g1 liveness: confirmado que session-move.js unlinkea sin preguntar (justifica el gate previo)" \
+  || bad "g1 liveness: session-move.js cambió; re-evaluar el gate"
+
+# ── g2: RE-ANCLAJE — cwd reescrito a destino + jsonl en slug nuevo (comportamiento real del motor) ──
+RUNMOVE "$ID" --to-cwd "$DSTREPO" >/dev/null 2>&1
+[ -f "$NEWJSONL" ] && ok "g2 re-anclaje: el .jsonl aparece en el slug NUEVO" || bad "g2 re-anclaje: no se creó el jsonl nuevo"
+uniqcwd="$(grep -o '"cwd":"[^"]*"' "$NEWJSONL" | sort -u)"
+[ "$uniqcwd" = "\"cwd\":\"$DSTREPO\"" ] \
+  && ok "g2 re-anclaje: cwd reescrito UNIFORME a destino ($uniqcwd)" \
+  || bad "g2 re-anclaje: cwd no uniforme/incorrecto: $uniqcwd"
+
+# ── g3: NO-TAIL / barrido QUIRÚRGICO — exactamente 1 jsonl del id; slug compartido intacto ──
+n="$(find "$PROJ" -name "$ID.jsonl" | wc -l)"
+[ "$n" -eq 1 ] && ok "g3 no-tail: exactamente 1 copia del $ID.jsonl (residuo=0)" || bad "g3 no-tail: hay $n copias del jsonl"
+[ ! -f "$PROJ/$OLD_SLUG/$ID.jsonl" ] && ok "g3 no-tail: el jsonl viejo fue removido del slug compartido" || bad "g3 no-tail: quedó residuo en el slug viejo"
+[ -L "$PROJ/$OLD_SLUG/memory" ] && [ -e "$PROJ/$OLD_SLUG/memory" ] \
+  && ok "g3 no-tail: el symlink 'memory' COMPARTIDO del slug viejo sigue VIVO (no se tocó)" \
+  || bad "g3 no-tail: se dañó el symlink 'memory' compartido"
+[ -f "$PROJ/$OLD_SLUG/otra-sesion-viva.jsonl" ] \
+  && ok "g3 no-tail: las OTRAS sesiones del slug compartido (~130) intactas" \
+  || bad "g3 no-tail: se barrió una sesión ajena del slug compartido"
+
+# ── g4: ATOMICIDAD del target-fix — masters.json target por-id corregido (el fix que evita helios-selene) ──
+tmpm="$(mktemp)"
+jq --arg id "$ID" --arg t "code/claude-brain" '(.masters[]|select(.id==$id)).target=$t' "$DRIVE/masters.json" > "$tmpm" && mv -f "$tmpm" "$DRIVE/masters.json"
+[ "$(jq -r --arg id "$ID" '.masters[]|select(.id==$id).target' "$DRIVE/masters.json")" = "code/claude-brain" ] \
+  && ok "g4 atomicidad: masters.json target por-id → code/claude-brain (no reencarna al slug viejo)" \
+  || bad "g4 atomicidad: el target por-id no quedó corregido"
+# y que el SKILL lo exija en el MISMO bloque que el move (no en un paso suelto):
+grep -qiE 'MISMO bloque|uninterrumpido|at[oó]mic' "$SKILL" \
+  && ok "g4 atomicidad: el SKILL exige move+target-fix en el MISMO bloque (sin ventana para seed/sync)" \
+  || bad "g4 atomicidad: el SKILL no ata move y target-fix atómicamente"
+
+# ── g5: ALIAS real vía la lib (writeAlias, no edición a mano) ──
+HOME="$RMHOME" node -e 'require(process.argv[1]).writeAlias(process.argv[2],process.argv[3])' \
+  "$BINRM/session-lib.js" "$ID" "claude-brain-cachy-master" >/dev/null 2>&1
+[ "$(HOME="$RMHOME" node -e 'console.log((require(process.argv[1]).sessionAliases()[process.argv[2]])||"")' "$BINRM/session-lib.js" "$ID")" = "claude-brain-cachy-master" ] \
+  && ok "g5 alias: writeAlias fijó el nombre legible del master" || bad "g5 alias: el alias no se escribió"
+
+# ── g6: NO-FUGA — G-GITIGNORE blinda CLAUDE.local.md ANTES de depositar (repo público) ──
+for pat in 'CLAUDE.local.md' '.claude/memory/*.local.md'; do
+  grep -qxF "$pat" "$DSTREPO/.gitignore" || printf '%s\n' "$pat" >> "$DSTREPO/.gitignore"
+done
+grep -qxF 'CLAUDE.local.md' "$DSTREPO/.gitignore" \
+  && ok "g6 no-fuga: CLAUDE.local.md quedó en el .gitignore del destino ANTES de depositar" \
+  || bad "g6 no-fuga: CLAUDE.local.md NO está ignorado (riesgo de fuga en repo público)"
+# el SKILL debe ordenar el blindaje ANTES del depósito, y que T3/.NET NO se versione:
+grep -qiE 'blindar.*gitignore|G-GITIGNORE' "$SKILL" && grep -qiE 'ANTES de depositar|antes de tocar' "$SKILL" \
+  && ok "g6 no-fuga: el SKILL blinda el gitignore ANTES de depositar lo sensible" \
+  || bad "g6 no-fuga: el SKILL no ordena blindaje→depósito"
+grep -qiE 'T3|se QUEDA en plantilladotnet|no viaja' "$SKILL" \
+  && ok "g6 no-fuga: el SKILL deja los skills .NET (T3) en plantilladotnet (no al repo público)" \
+  || bad "g6 no-fuga: el SKILL no separa T3"
+
+# ── g7: NO-LOBOTOMÍA — G-PARITY por CONTENIDO (diff -q) sobre T1∪T2; NO por conteo de skills ──
+cp -f "$SRCREPO/.claude/memory/handoff-peer-claudes-conciso.md" "$DSTREPO/.claude/memory/"
+cp -f "$SRCREPO/.claude/memory/conocimiento-propio.local.md"     "$DSTREPO/.claude/memory/"
+cp -f "$SRCREPO/CLAUDE.local.md" "$DSTREPO/CLAUDE.local.md"
+parity=0
+for m in handoff-peer-claudes-conciso.md conocimiento-propio.local.md; do
+  diff -q "$SRCREPO/.claude/memory/$m" "$DSTREPO/.claude/memory/$m" >/dev/null 2>&1 || parity=1
+done
+diff -q "$SRCREPO/CLAUDE.local.md" "$DSTREPO/CLAUDE.local.md" >/dev/null 2>&1 || parity=1
+[ "$parity" -eq 0 ] && ok "g7 no-lobotomía: G-PARITY (diff -q) T1∪T2 idéntico en destino" || bad "g7 no-lobotomía: paridad rota"
+# (negativo anclado a la MEDICIÓN-por-conteo, no al mero token "18 vs 4": el SKILL correcto
+#  MENCIONA "18 vs 4 skills" justo para RECHAZARlo — mismo anti-patrón que el fix g1 de fuser)
+grep -qiE 'diff -q|por CONTENIDO' "$SKILL" && ! grep -qiE 'paridad por conteo|conteo de skills|por (el )?n[uú]mero de skills' "$SKILL" \
+  && ok "g7 no-lobotomía: el SKILL mide paridad por CONTENIDO, no por conteo de skills" \
+  || bad "g7 no-lobotomía: el SKILL mide paridad por conteo (mezcla plantilla con master)"
+
+# ── g8: DANZA sin SSH + handoff a disco + cita del requisito del humano ──
+grep -qiE 'sin SSH|fallback' "$SKILL" && grep -qiE 'handoff-\$ID\.sh|handoff.*a DISCO|escribe.*a disco' "$SKILL" \
+  && ok "g8 danza: el SKILL cubre fallback sin SSH y escribe el handoff a disco (sobrevive compactación)" \
+  || bad "g8 danza: falta el fallback sin SSH o el handoff a disco"
+grep -qiE 'nadie se auto-mueve|el OTRO master|mueve al OTRO|gemelo me mueve' "$SKILL" \
+  && ok "g8 danza: el SKILL consagra 'cada máquina mueve al OTRO con el target cerrado'" \
+  || bad "g8 danza: no queda la invariante de la danza cruzada"
+
+# ── g9: COLISIÓN — el motor ABORTA si el destino ya tiene el id (no pisa) ──
+printf '{"type":"user","cwd":"%s"}\n' "$DSTREPO" > "$PROJ/$NEW_SLUG/collide.jsonl"
+COLID="cafe0000-0000-0000-0000-000000000009"
+printf '{"type":"user","cwd":"%s"}\n' "$SRCREPO" > "$PROJ/$OLD_SLUG/$COLID.jsonl"
+printf '{"type":"user","cwd":"%s"}\n' "$DSTREPO" > "$PROJ/$NEW_SLUG/$COLID.jsonl"   # ya existe en destino
+out="$(RUNMOVE "$COLID" --to-cwd "$DSTREPO" 2>&1)"; rc=$?
+# el motor tiene 2 mensajes de colisión (session-move.js:56 'ya está en el slug destino' / :60 'ya tiene…no la piso')
+# y findSession recorre slugs SIN ordenar (readdirSync) → cuál dispara es no-determinista; ambos ABORTAN sin pisar.
+{ [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -qiE 'ya tiene|ya est[aá] en el slug|"ok":[[:space:]]*false'; } \
+  && ok "g9 colisión: session-move ABORTA sin pisar cuando el destino ya tiene el id" \
+  || bad "g9 colisión: no abortó ante id existente en destino"
+
+# ── g10: IDEMPOTENCIA / corrida a medias — re-correr el barrido y el target-fix es no-op seguro ──
+# el jsonl viejo ya no existe (g3) → el rm defensivo es no-op; el target ya está corregido (g4) → el jq re-aplicado no cambia nada
+before="$(cat "$DRIVE/masters.json")"
+[ -f "$PROJ/$OLD_SLUG/$ID.jsonl" ] && rm -f "$PROJ/$OLD_SLUG/$ID.jsonl"   # rm defensivo idempotente (no falla si no está)
+tmpm="$(mktemp)"; jq --arg id "$ID" --arg t "code/claude-brain" '(.masters[]|select(.id==$id)).target=$t' "$DRIVE/masters.json" > "$tmpm" && mv -f "$tmpm" "$DRIVE/masters.json"
+[ "$(cat "$DRIVE/masters.json")" = "$before" ] \
+  && ok "g10 idempotencia: re-correr barrido+target-fix es no-op (corrida a medias se reanuda, no reinicia)" \
+  || bad "g10 idempotencia: re-correr cambió el estado (no idempotente)"
+
+# ── g11: EXPORT-FIRST — el .gz de Drive queda ≥ la sesión (antídoto a seed --force) ──
+tmpe="$(mktemp -d)"
+HOME="$RMHOME" node "$BINRM/session-export.js" "$ID" --repo "$tmpe" --name "claude-brain-cachy-master" --force >/dev/null 2>&1
+if [ -f "$tmpe/.claude/sessions/$ID.jsonl.gz" ]; then
+  cp -f "$tmpe/.claude/sessions/$ID.jsonl.gz" "$DRIVE/"
+  gzmt="$(stat -c %Y "$DRIVE/$ID.jsonl.gz" 2>/dev/null || echo 0)"
+  jmt="$(stat -c %Y "$NEWJSONL" 2>/dev/null || echo 0)"
+  [ "$gzmt" -ge "$jmt" ] && ok "g11 export-first: el .gz de Drive es ≥ la sesión (seed --force no regresa estado)" || bad "g11 export-first: el .gz quedó más viejo que la sesión"
+else
+  bad "g11 export-first: session-export.js no produjo el .gz"
+fi
+rm -rf "$tmpe"
+
+# ── g12: DECISIONES del humano en RUNTIME (id vigente, T1, escape-hatch, reconstitución, PR) + LISTO=QA ──
+dec=0
+for k in 'id.*vigente' 'Frontera T1|frontera memoria' 'scape.?hatch|overlay' 'reconstituci' 'PR.*develop|mini-develop'; do
+  grep -qiE "$k" "$SKILL" || dec=1
+done
+[ "$dec" -eq 0 ] && ok "g12 decisiones: el SKILL enumera las 5 decisiones del humano en runtime" || bad "g12 decisiones: falta alguna decisión del humano"
+grep -qiE 'LISTO = QA|QA del humano|QA FUNCIONAL' "$SKILL" && grep -qiE 'preview|sin.*auto-merge|no.*auto-merge' "$SKILL" \
+  && ok "g12 LISTO: el SKILL cierra con QA funcional del humano + MR en preview (sin auto-merge)" \
+  || bad "g12 LISTO: el SKILL declara cierre sin QA del humano o permite auto-merge"
+
+rm -rf "$RMFIX"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
