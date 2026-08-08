@@ -63,7 +63,7 @@ public sealed class BrainState
         return name switch
         {
             "cerrar-slice" or "checkpoint" or "to-do" or "diagramar" or "auditar-proceso-algoritmo"
-                or "auditar-coherencia-cerebro" or "auditar-suficiencia-operativa" or "consolidar-cerebro" or "canonizar-cerebro" or "desinflar-memorias"
+                or "auditar-coherencia-cerebro" or "auditar-suficiencia-operativa" or "auditor-semantico" or "consolidar-cerebro" or "canonizar-cerebro" or "desinflar-memorias"
                 or "orquestar-fanout" or "turno-nocturno" or "cosechar-sesion" or "unificar-cerebro"
                 or "investigar-dominio" or "positivar-doc" or "revisar-entregables-agentes"
                 or "zoom-screenshot" or "claude-proyecto-autocontenido" or "reubicar-master"

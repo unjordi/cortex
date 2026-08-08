@@ -189,6 +189,18 @@ unificar-cerebro   ──integración semanal──►  corre test-brain + lint 
    de supervisión → exige OK explícito de unjordi para ESE control (norma de Integridad). No es un cambio
    de "precisión", es un control nuevo.
 
+### La familia de ENFORCEMENT ya viva (dod-verificar, confirmar-merge-develop) — la PRECISIÓN no es adorno
+El gate #44 sería un candado NUEVO, pero el cerebro YA tiene guards de enforcement que **BLOQUEAN**:
+`dod-verificar` (Stop — hace cumplir la definición de LISTO) y `confirmar-merge-develop` (PreToolUse — el
+juez de merge). Son primos del #44: mismo dilema *"¿avisar o BLOQUEAR?"* + la misma norma de Integridad.
+**Nota de precisión (2026-08-08):** `dod-verificar` dispara sobre lenguaje de ESTATUS/cierre **aunque el
+turno YA traiga la marca (1)/(2) citada o sea puro estatus/espera-de-OK** — unjordi vio *"Ran 3 stop
+hooks"* en la cachy, y disparó en esta misma sesión sobre *"#80 cerrado"* que traía su (2) (*"arregla el
+#80"*) + `667 PASS` citados. Registrado en `~/.claude/memory/guards-falsos-positivos.md`. **Lección para
+el #44:** un guard que BLOQUEA con falsos positivos desgasta la confianza **tanto como su ausencia** — la
+PRECISIÓN es requisito, no adorno. Antes de cablear el #44, diséñalo para distinguir *cierre-CON-marca-citada*
+de *claim-sin-marca*, o repetirá el desgaste del dod.
+
 ---
 
 ## Apéndice — hoist de `auditor-semantico` al template (esta rama)
