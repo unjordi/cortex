@@ -40,6 +40,19 @@ metadata:
   **backstop:** ramas protegidas server-side. Toca un guard de supervisión → cambio de PRECISIÓN con su test adversarial,
   exige **OK EXPLÍCITO de unjordi para ESE control**. Es OTRO guard: su propia ramita/slice, NO mezclar con el juez-merge. · _DUPLA juez-destino 2026-08-05._
 
+- **Atar `verificar-firma-canonica.sh` al GATE del auditor (#44).** Construido el DETECTOR determinista
+  `brain/verificar-firma-canonica.sh` (flaggea drift de la firma-árbol en un cerebro INSTANCIADO: secciones
+  ausentes en CLAUDE.md, memorias sin prefijo `dom-/dev-/ux-/qa-`/núcleo, invariante MEMORY↔archivos roto,
+  hooks retirados en la prosa; `--strict` = modo gate) + la skill humano-en-el-loop `canonizar-cerebro`
+  (destila el prototipo de fluxcore). Batería `g5` en `test-brain.sh` (verde). **Falta (#44):** cablear el
+  detector como sub-check del auditor de coherencia y decidir la forma del GATE — ¿lo corre `auditar-coherencia-cerebro`
+  sobre cada cerebro instanciado?, ¿un paso de CI con `--strict` antes de un release?, ¿sobre qué set de repos?
+  · _feat/reconstruir-firma-canonica, sin mergear · 2026-08-08._
+
+- **QA visual de los 3 tiles de `canonizar-cerebro` en los widgets** (macOS PopoverView.swift · Linux main.qml ·
+  Windows PopupForm.cs). Se agregó el tile 📐 + su estado opt-in en las 3 GUIs (5-catálogos en sync, `verificar-arbol-sync.sh`
+  verde), pero NO se compiló ni se vio en pantalla — pendiente el QA visual insustituible. · _feat/reconstruir-firma-canonica · 2026-08-08._
+
 - **Extender el parity-check del árbol a hooks/leyendas.** `docs/flowcharts/verificar-arbol-sync.sh` (FASE 1)
   solo cubre la familia 💡 Skills; NO los hooks 🔒/🔔 ni las leyendas → un drift de hook (p. ej.
   `exportar-sesion-master` ausente de CLAUDE.md) pasa CI en verde. Extenderlo a 🔒/🔔 (README↔CLAUDE.md↔MANIFEST)
