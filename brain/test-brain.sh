@@ -3173,6 +3173,7 @@ delegacion-reporte|orquestar-fanout
 cerrar-slice|checkpoint
 cerrar-slice|rehidratar-hilo
 checkpoint|rehidratar-hilo
+checkpoint|to-do
 aviso-contexto|rehidratar-hilo
 aviso-contexto|checkpoint
 aviso-drift-cerebro|barrer-ramas
