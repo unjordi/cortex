@@ -135,13 +135,25 @@ nohup bash -c '
   rm -f "$lock" 2>/dev/null
 ' _ "$EXP" "$sid" "$title" "$DRIVE" "$lock" >/dev/null 2>&1 &
 
-# ── auto-registrar en masters.json si falta (target = cwd relativo a $HOME → "code/<repo>") ──────
-if [ -f "$mj" ] && [ -n "$cwd" ] && ! grep -q "\"$sid\"" "$mj" 2>/dev/null; then
+# ── registrar/ACTUALIZAR en masters.json (target = cwd relativo a $HOME → "code/<repo>") ─────────
+# Corre SIEMPRE (ya no solo cuando falta el sid): si el master YA está pero se MOVIÓ de folder, su
+# `target` viejo haría que `seed.sh` en otra máquina lo sembrara al lugar equivocado. Ahora: si no está
+# → lo agrega; si está con target distinto → lo ACTUALIZA; y si el título cambió (rename real, no el
+# fallback al sid) → actualiza el name. Solo reescribe el archivo si HUBO cambio (masters.json vive en
+# Drive compartido → no generar churn de sync en cada export).
+if [ -f "$mj" ] && [ -n "$cwd" ]; then
   target="${cwd#"$HOME"/}"
   node -e '
     const fs=require("fs"),p=process.argv[1],id=process.argv[2],name=process.argv[3],target=process.argv[4];
     try{const m=JSON.parse(fs.readFileSync(p,"utf8"));m.masters=m.masters||[];
-      if(!m.masters.some(e=>e.id===id)){m.masters.push({id,name,target});fs.writeFileSync(p,JSON.stringify(m,null,2)+"\n");}
+      const e=m.masters.find(x=>x.id===id); let changed=false;
+      if(!e){ m.masters.push({id,name,target}); changed=true; }
+      else {
+        if(target && e.target!==target){ e.target=target; changed=true; }
+        // name solo si es un título REAL (no el fallback al sid) y de verdad cambió
+        if(name && name!==id && e.name!==name){ e.name=name; changed=true; }
+      }
+      if(changed) fs.writeFileSync(p,JSON.stringify(m,null,2)+"\n");
     }catch(e){}
   ' "$mj" "$sid" "$title" "$target" 2>/dev/null || true
 fi

@@ -18,7 +18,11 @@
 #       → ese master se SALTA (no se siembra a un cwd inexistente ni se malgastan cientos de MB).
 #
 # Uso:  ./seed.sh            (siembra lo presente cuyo repo destino EXISTA aquí; salta lo demás)
-#       ./seed.sh --force    (re-siembra pisando lo local)
+#       ./seed.sh --force        (re-siembra; pisa lo local SALVO que la copia local esté MÁS FRESCA que
+#                                 el .gz — en ese caso la SALTA, para no regresar una sesión viva a una
+#                                 copia vieja. El motor lo reporta como "local más fresco").
+#       ./seed.sh --force-stale  (pisa lo local SIEMPRE, incluso con una copia más vieja; salta el gate
+#                                 de frescura a propósito. Úsalo solo si sabes que quieres regresar).
 set -euo pipefail
 DIR="${CLAUDE_SESSIONS_DRIVE:-$HOME/.claude-sessions}"
 FORCE="${1:-}"
