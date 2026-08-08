@@ -1288,7 +1288,7 @@ struct PopoverView: View {
         switch name {
         case "cerrar-slice", "checkpoint", "to-do", "diagramar", "auditar-proceso-algoritmo", "auditar-coherencia-cerebro", "auditar-suficiencia-operativa", "consolidar-cerebro", "desinflar-memorias", "orquestar-fanout", "turno-nocturno",
              "cosechar-sesion", "unificar-cerebro",
-             "investigar-dominio", "positivar-doc", "revisar-entregables-agentes", "zoom-screenshot", "claude-proyecto-autocontenido",
+             "investigar-dominio", "positivar-doc", "revisar-entregables-agentes", "zoom-screenshot", "claude-proyecto-autocontenido", "reubicar-master",
              "ingenieria-inversa-gui-db-navegador", "markdown-a-pdf":
             return st.skills.contains(name) ? .installed : .absent
         case "Definition of Done", "Doc <= realidad", "Flujo de git", "Costo de delegación":

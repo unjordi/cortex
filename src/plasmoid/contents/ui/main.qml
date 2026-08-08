@@ -1146,7 +1146,7 @@ PlasmoidItem {
             return p && w ? "installed" : (p ? "presentNotWired" : "absent")
         }
         if (inArr(root.brainRepoHooks, name)) return "repoScoped"
-        if (["cerrar-slice","checkpoint","to-do","diagramar","auditar-proceso-algoritmo","auditar-coherencia-cerebro","auditar-suficiencia-operativa","consolidar-cerebro","desinflar-memorias","orquestar-fanout","turno-nocturno","cosechar-sesion","unificar-cerebro","investigar-dominio","positivar-doc","revisar-entregables-agentes","zoom-screenshot","claude-proyecto-autocontenido","ingenieria-inversa-gui-db-navegador","markdown-a-pdf"].indexOf(name) !== -1)
+        if (["cerrar-slice","checkpoint","to-do","diagramar","auditar-proceso-algoritmo","auditar-coherencia-cerebro","auditar-suficiencia-operativa","consolidar-cerebro","desinflar-memorias","orquestar-fanout","turno-nocturno","cosechar-sesion","unificar-cerebro","investigar-dominio","positivar-doc","revisar-entregables-agentes","zoom-screenshot","claude-proyecto-autocontenido","reubicar-master","ingenieria-inversa-gui-db-navegador","markdown-a-pdf"].indexOf(name) !== -1)
             return inArr(st.skills, name) ? "installed" : "absent"
         if (name === "Definition of Done" || name === "Doc <= realidad"
             || name === "Flujo de git" || name === "Costo de delegación")
