@@ -3978,11 +3978,16 @@ rm -rf "$FLFIX"
 # ─────────────────────────────────────────────────────────────────────────────
 echo "== (g1) no-bypass-deploy: AVISA (no bloquea) al correr instalador/deploy a mano; PRECISO (silencio en dry-run/help/CI/mención) =="
 NBD="$HOOKS/no-bypass-deploy.sh"
+# HOME AISLADO (hermético): no-bypass-deploy es tier `both`; su cláusula de dedupe hace `exit 0` si en
+# $HOME/.claude/hooks/ ya hay copia GLOBAL (la instala install-brain). Con un $HOME temporal VACÍO el test
+# no depende de si esta máquina tiene el brain global instalado — antes daba falso-VERDE (sin global) y
+# tras instalar el global daba falso-ROJO (la copia del repo cedía). Ver #80.
+G1H="$(mktemp -d "${TMPDIR:-/tmp}/brain-g1.XXXXXX")"
 # alimenta un comando por stdin (JSON) y devuelve el additionalContext (vacío = silencio)
-# OJO: el hook calla en CI (CI/GITHUB_ACTIONS/GITLAB_CI/BUILD_ID) porque ahí el pipeline ES la
-# herramienta. Este test ejercita la vía de AVISO (máquina de dev) → hay que limpiar esas env vars,
-# si no, correr la suite DENTRO de CI (GitHub Actions) daría falsos FAIL en todo el grupo g1.
-nbd_ctx() { printf '{"tool_input":{"command":%s}}' "$(jq -Rn --arg c "$1" '$c')" | env -u CI -u GITHUB_ACTIONS -u GITLAB_CI -u BUILD_ID bash "$NBD" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null; }
+# Y además el hook calla en CI (CI/GITHUB_ACTIONS/GITLAB_CI/BUILD_ID) porque ahí el pipeline ES la
+# herramienta. Este test ejercita la vía de AVISO (máquina de dev) → limpia esas env vars también.
+# Dos causas de silencio (dedupe-por-global y detección-de-CI), dos blindajes: env -u … + HOME aislado.
+nbd_ctx() { printf '{"tool_input":{"command":%s}}' "$(jq -Rn --arg c "$1" '$c')" | env -u CI -u GITHUB_ACTIONS -u GITLAB_CI -u BUILD_ID HOME="$G1H" bash "$NBD" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null; }
 [ -n "$(nbd_ctx 'bash brain/install-brain.sh')" ] \
   && ok "g1: install-brain.sh corrido a mano → AVISA (redirige al widget)" || bad "g1: no avisó sobre install-brain.sh a mano"
 printf '%s' "$(nbd_ctx 'bash brain/install-brain.sh')" | grep -qi 'widget' \
@@ -3998,7 +4003,7 @@ printf '%s' "$(nbd_ctx 'bash brain/install-brain.sh')" | grep -qi 'widget' \
   && ok "g1: --dry-run NO dispara (no muta)" || bad "g1: disparó en --dry-run (FP)"
 [ -z "$(nbd_ctx 'bash install-brain.sh --help')" ] \
   && ok "g1: --help NO dispara (no muta)" || bad "g1: disparó en --help (FP)"
-[ -z "$(printf '{"tool_input":{"command":"bash install-brain.sh"}}' | CI=1 bash "$NBD" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)" ] \
+[ -z "$(printf '{"tool_input":{"command":"bash install-brain.sh"}}' | CI=1 HOME="$G1H" bash "$NBD" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)" ] \
   && ok "g1: en CI NO dispara (el pipeline ES la herramienta)" || bad "g1: disparó en CI (FP)"
 [ -z "$(nbd_ctx 'echo "acuérdate de correr install-brain.sh"')" ] \
   && ok "g1: mención ENTRECOMILLADA del instalador NO dispara" || bad "g1: disparó sobre una mención entrecomillada (FP)"
