@@ -52,7 +52,7 @@ echo "ok: hooks globales + lib + config de costo eliminados de $HOOKS_DIR"
 
 # ── (b) Des-cablear del settings.json SOLO las entradas de esos hooks (idempotente, jq) ──
 # Patrón que casa el 'command' de las entradas que sembró el instalador (por basename del hook).
-BRAIN_PAT='git-branch-guard\.sh|merge-squash-guard\.sh|confirmar-merge-develop\.sh|recordar-dashboard\.sh|secret-scan\.sh|rama-vieja\.sh|proteger-arbol\.sh|limite-gasto\.sh|rehidratar-hilo\.sh|aviso-contexto\.sh|aviso-drift-cerebro\.sh|barrer-ramas\.sh|delegacion-gate\.sh|delegacion-registrar\.sh|delegacion-reporte\.sh'
+BRAIN_PAT='git-branch-guard\.sh|merge-squash-guard\.sh|confirmar-merge-develop\.sh|recordar-dashboard\.sh|secret-scan\.sh|rama-vieja\.sh|proteger-arbol\.sh|limite-gasto\.sh|rehidratar-hilo\.sh|aviso-contexto\.sh|aviso-drift-cerebro\.sh|hud-stale\.sh|barrer-ramas\.sh|delegacion-gate\.sh|delegacion-registrar\.sh|delegacion-reporte\.sh'
 if command -v jq >/dev/null 2>&1; then
   if [ -f "$GSET" ]; then
     tmp="$(mktemp)" || tmp=""
@@ -108,6 +108,29 @@ if [ -f "$GCLAUDE" ] && grep -q 'BEGIN claude-brain' "$GCLAUDE"; then
   fi
 else
   echo "ok: no hay bloque de normas del cerebro en $GCLAUDE"
+fi
+
+# ── (e) Quitar el @import de aliases-activos.md (marcador propio) + el artefacto GENERADO ──
+# Inverso de (d3) de install-brain. El artefacto es GENERADO per-máquina (no dato curado del usuario) →
+# se elimina. Borra la línea del marcador `brain:import-aliases`, el `@aliases-activos.md` que le sigue y
+# una posible línea en blanco separadora previa. Idempotente (si no están, no hace nada).
+if [ -f "$GCLAUDE" ] && grep -q 'brain:import-aliases' "$GCLAUDE" 2>/dev/null; then
+  tmp="$(mktemp)" || tmp=""
+  if [ -n "$tmp" ] && awk '
+      /brain:import-aliases/ { skip_next=1; next }            # tira la línea del marcador
+      skip_next==1 && /^@aliases-activos\.md[[:space:]]*$/ { skip_next=0; next }   # y el @import que le sigue
+      { skip_next=0; print }
+    ' "$GCLAUDE" > "$tmp"; then
+    mv "$tmp" "$GCLAUDE"
+    echo "ok: @import de aliases-activos.md removido de $GCLAUDE"
+  else
+    [ -n "$tmp" ] && rm -f "$tmp"
+    echo "warn: no pude quitar el @import de $GCLAUDE; hazlo a mano (líneas brain:import-aliases + @aliases-activos.md)"
+  fi
+fi
+if [ -f "$CLAUDE_DIR/aliases-activos.md" ]; then
+  rm -f "$CLAUDE_DIR/aliases-activos.md"
+  echo "ok: artefacto GENERADO aliases-activos.md eliminado (se regenera en el próximo install)"
 fi
 
 echo "listo: cerebro global desinstalado. Se conservaron el dashboard, el registro de"

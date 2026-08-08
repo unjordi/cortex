@@ -18,6 +18,10 @@
 #   - test-brain.sh (e2): drift-check — verifica que ambas rutas coincidan con este manifiesto.
 #
 # Líneas '#' y en blanco se ignoran. Al agregar/mover un hook: EDITA AQUÍ y las rutas lo heredan.
+#
+# SKILLS: tienen su PROPIO manifiesto de tiers en brain/skills/MANIFEST (mismo modelo global/both) — el
+# install-brain despliega las {global,both} globalmente y sincronizar-cerebro las {both} por-repo; el drift
+# de skills (per-repo y global) lo cubre aviso-drift-cerebro/drift-cerebro-comun. Este MANIFEST es SOLO hooks/libs.
 
 git-branch-guard         both    hook
 merge-squash-guard       both    hook
@@ -26,6 +30,7 @@ recordar-dashboard       both    hook
 secret-scan              both    hook
 entorno-maquina-guard    both    hook
 no-bypass-deploy         both    hook
+hud-stale                both    hook
 analizar-comando-git     both    lib
 detectar-secretos        both    lib
 juez-comun               both    lib

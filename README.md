@@ -101,7 +101,8 @@ El cerebro se ordena por *dureza*: arriba lo que te **bloquea** sin negociar; ab
 ├─ 🎼 recordar-orquestar       N mutaciones (edits/commits) en serie SIN delegar → sugiere fan-out (advisory, no bloquea; resetea al delegar) (GLOBAL)
 ├─ 🧵 rehidratar-hilo          reinyecta hilo-mental-actual.md al abrir/retomar/compactar (GLOBAL) — con gate de frescura
 ├─ 📈 aviso-contexto           watermark: avisa "compacta TÚ ahora" antes del auto-compact-sorpresa (GLOBAL)
-├─ 🧬 aviso-drift-cerebro      repo brained atrás de la fuente única → en tu mini-develop se AUTO-SINCRONIZA (apply+commit+push); en otra rama, avisa. Al moverse el cerebro, NUDGE a correr la DUPLA (suficiencia+coherencia; contra la firma si hay AGENTS.md, si no sugiere instanciarla) (GLOBAL)
+├─ 🧬 aviso-drift-cerebro      repo brained atrás de la fuente única (hooks/libs Y skills) → en tu mini-develop se AUTO-SINCRONIZA (apply+commit+push); en otra rama, avisa. ADEMÁS detecta el drift de la copia GLOBAL de skills (~/.claude/skills vs la fuente; warn-only, throttle propio). Al moverse el cerebro, NUDGE a correr la DUPLA (suficiencia+coherencia; contra la firma si hay AGENTS.md, si no sugiere instanciarla) (GLOBAL)
+├─ 🔀 hud-stale                cambiaste de rama/proyecto → tu lista de TODOs (HUD) puede ser de la tarea anterior: avisa (advisory) que la resetees/re-siembres del estado-proyecto.md de esa rama. Señal OBJETIVA (rama/cwd), stamp per-sesión, first-sight silencioso, solo en repos con backlog (GLOBAL)
 └─ 📁 por-repo · viajan en el .claude de cada repo
    ├─ 🧭 sesion-inicio            reinyecta rama + norma + memoria al abrir
    ├─ 🌾 recordar-cosechar        espejo TaskList→estado-proyecto.md (auto) + nudge: no cosechaste/no actualizaste backlog
@@ -139,7 +140,11 @@ El cerebro se ordena por *dureza*: arriba lo que te **bloquea** sin negociar; ab
 ```
 
 Los hooks **por-repo** son fuente en [`brain/hooks/`](brain/hooks/) que cada repo copia a su propio
-`.claude/` y cablea en su `settings.json` — se cargan solo cuando una sesión *inicia* en ese repo. El
+`.claude/` y cablea en su `settings.json` — se cargan solo cuando una sesión *inicia* en ese repo. Las
+**skills** siguen el mismo modelo de tiers en su propio [`brain/skills/MANIFEST`](brain/skills/MANIFEST)
+(`global` = solo `~/.claude/skills`; `both` = además viaja por-repo como CORREO en repos compartidos):
+`sincronizar-cerebro.sh` las despliega por-repo (árbol completo, diff-aware, prune por ledger que jamás
+toca skills propias del repo) y `aviso-drift-cerebro` detecta su drift igual que el de los hooks. El
 cerebro **se autoprueba**: [`brain/test-brain.sh`](brain/test-brain.sh) corre cientos de checks (el número exacto lo imprime la suite) contra un
 `$HOME` aislado, y la CI repite `bash -n` + `jq empty` + `shellcheck` en cada push. Tras un fan-out,
 el helper [`limpiar-worktrees.sh`](brain/hooks/limpiar-worktrees.sh) barre los worktrees de ramas ya

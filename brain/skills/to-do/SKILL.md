@@ -17,17 +17,30 @@ Eso es lo que el usuario espera ver al escribir `/to-do` a secas: su backlog car
 ## Formato de salida: BACKLOG UNIFICADO agrupado por estatus
 Al invocarte, la respuesta NO es una lista plana: es un **listado único agrupado por STATUS**, en
 este orden fijo (mismos emoji-headers, aunque un grupo esté vacío se omite, no se fuerza).
-**Lo VIVO arriba, lo CERRADO al final, las lápidas de cierre** — para que lo accionable se lea primero
-y el histórico no estorbe:
+**Lo VIVO arriba (🟢 atacable → 🟡 no atacable), lo CERRADO al final (✅ esta sesión → ⚪ histórico), las
+lápidas 🪦 al final del todo** — para que lo accionable se lea primero y el histórico no estorbe:
 
-1. **🟢 Abierto y ATACABLE** — se puede trabajar YA (sin bloqueo externo, o solo espera tu "go"; un
-   ítem cuya recomendación ya está hecha y solo falta tu sí es ATACABLE, no un limbo aparte).
+1. **🟢 Abierto y ATACABLE** — se puede trabajar YA: sin bloqueo externo, **o solo espera tu "go"**. Un
+   ítem cuya recomendación ya está hecha y solo falta tu sí es **ATACABLE (🟢), NO una lista/categoría
+   aparte** — "espera tu go" no es un limbo, es trabajo listo para arrancar.
 2. **🟡 Abierto pero NO atacable** — bloqueado de verdad: por un gate, una DECISIÓN de diseño que aún
    no tomas, o una máquina/persona externa. Dilo explícito: **por qué** está bloqueado y qué lo desbloquea.
 3. **✅ Cerrado ESTA sesión** — tabla de 2 columnas `PR / decisión → cierra el to-do`: qué se cerró
    y qué ítem del backlog resuelve. Solo aparece si algo se cerró en la sesión activa.
 4. **⚪ Cerrado (antes de esta sesión)** — histórico, no exige acción; solo contexto.
 5. **🪦 Deprecated / eliminado** — por decisión explícita, **NO re-proponer**. Va al final del todo.
+
+**Lo que la vista NO lleva** (afinado en vivo — el clutter esconde lo accionable y quema tokens/contexto):
+- **SIN subsección `🅿️ Parqueado`.** Un ítem parqueado NO tiene grupo propio: se marca **inline** (su
+  estatus `parked` + una nota datada, ver Regla 2) o simplemente no se lista. Una subsección aparte solo
+  agrega ruido.
+- **SIN referencias externas ni punteros a otro repo/cerebro.** El backlog de UN cerebro lleva **SOLO sus
+  propios ítems vivos.** Si algo vive en OTRO cerebro, **no va aquí** — listarlo solo cuesta lectura,
+  tokens y contexto, y esconde que estaba mal puesto. (Es la cara "salida" de la Regla 3 §3: disposición
+  delegada a otro ejecutor ≠ tu backlog.)
+- **SIN editorializar los ítems parqueados/ajenos.** No los adornes con juicios inventados
+  ("candidato a cerrar", "ya casi", cruces o dependencias que nadie estableció): déjalos **como están**
+  o no los toques. Reorganizas la vista, no reinventas los ítems.
 
 Cada ítem **ABIERTO** (grupos 🟢/🟡) lleva su etiqueta de madurez del plan, al inicio de la línea:
 - **`📘`** — el plan del CÓMO ya está escrito en durable (referencia dónde).
@@ -43,6 +56,7 @@ histórico, no se cargan como tareas del harness.
 - **La task-list / `TodoWrite` del harness = SCRATCH de sesión.** Efímera (se pierde al cerrar/compactar). Es una **VISTA**.
 - **El backlog DURABLE = `.claude/memory/estado-proyecto.md`.** La **FUENTE DE VERDAD** ("aquí empiezas siempre").
 - La interfaz **espeja** el backlog durable, no lo reemplaza. Al **cerrar** una tarea, el cambio se **ASIENTA en `estado-proyecto.md`** (lo hace `cerrar-slice §2`), no solo en la task-list. **Si divergen, manda `estado-proyecto.md`.**
+- **La VISTA es de ESTA rama/repo → RE-SIÉMBRALA al rotar el working tree.** Al cambiar de **rama git** o de **proyecto/cwd**, la task-list del harness NO se resetea sola: sigue mostrando pendientes de la tarea anterior (drift). Cuando cambies de contexto, RE-EVALÚALA — si ya no aplica, límpiala y re-puéblala del `estado-proyecto.md` de ESA rama. El hook **`hud-stale`** te lo RECUERDA (advisory) justo tras rotar de rama/cwd; este skill es la mitad que la RE-SIEMBRA.
 
 ## Regla 2 — Redacción DURABLE (anti-stale)
 Un ítem se redacta para que **NO envejezca mal**:
@@ -78,3 +92,4 @@ Dos chequeos OBLIGATORIOS, en orden:
 - **`cerrar-slice §2`** — asienta el cierre en `estado-proyecto.md` (donde el ESPEJO se vuelve durable).
 - **`orquestar-fanout`** — modelo de estado de dos archivos para el fan-out.
 - **`checkpoint`** — vuelca el hilo vivo (`hilo-mental-actual.md`); los pendientes durables ya viven en `estado-proyecto.md`.
+- **hook `hud-stale`** (global, advisory) — te AVISA cuando cambiaste de rama/proyecto y la vista quedó stale; este skill la RE-SIEMBRA.

@@ -33,6 +33,18 @@ el id contra la API). Empírico, no a ojo.
 **Corpus como batería:** los ~33 casos merge + 10 dod (abajo) → `jlive`/`djlive`, con adversariales de
 "un-solo-candidato" (el hint identifica, no debe empujar a ALLOWear una pregunta/negación).
 
+### Addendum 2026-08-07 — el juez YA ve los OK dados por `AskUserQuestion` (hallazgo #6)
+Un OK que unjordi da por el **widget** de pregunta/opción NO llega como turno de texto de usuario, sino como
+`tool_result` con la respuesta estructurada en `.toolUseResult.answers` (opción elegida / texto propio) y
+`.toolUseResult.annotations.*.notes` (notas libres). La construcción de la ventana (`_recent_intercalado` en
+`confirmar-merge-develop.sh` y el `usertext` de `dod-verificar.sh`) extraía SOLO el texto `type:"text"` → ese
+OK se perdía (texto vacío → filtrado) y el juez lo pedía "en chat plano". Ahora ambas ventanas surfacean la
+opción elegida (+ notas) como una línea **`USUARIO:`**, así el veto de cita la encuentra y cuenta igual que un
+"sí/mergea/dale" tecleado. Es **ADITIVO** (una fuente MÁS de OK del usuario), NO afloja el fail-safe: merge
+sigue fail-CLOSED y dod fail-OPEN. **Superficie de inyección acotada:** SOLO se surfacea `.toolUseResult.answers`
+(input genuino del usuario al hacer clic) — el output arbitrario de OTRAS tools NO tiene ese campo y sigue
+filtrado. Tests deterministas en `test-brain.sh` (tag "extracción #6" y "dod #6").
+
 ## Patrón dominante de FN (del corpus)
 Autorización de alcance GLOBAL sin citar ids ("de todo esto"/"todo"/"libera"/"los dos") + OK anafórico que
 refiere a la propuesta inmediata del asistente → el Haiku conservador lo lee "alcance ambiguo → DENY".
