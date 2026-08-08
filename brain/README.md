@@ -83,6 +83,7 @@ Se dividen en dos **tiers** según su alcance:
 | `delegacion-gate.sh` | PreToolUse/Task | Pide consentimiento de COSTO al reclutar un agente (ver modelo de costo abajo). En fan-out paralelo **coalesce** los asks (gratis/incluido): el 1er gate del lote pregunta, los hermanos pasan en silencio. |
 | `delegacion-registrar.sh` | PostToolUse/Task | Materializa el "pregunta 1×": registra el consentimiento tras un `ask` aprobado. |
 | `delegacion-reporte.sh` | PostToolUse/Task | Tras un `Task`, recuerda el auto-reporte del fan-out (append a bitácora + actualizar estado). |
+| `recordar-orquestar.sh` | PostToolUse (toda tool) | **ADVISORY (no bloquea):** cuenta las mutaciones consecutivas (edits/commits) de la sesión y, al llegar a **N** (`RECORDAR_ORQUESTAR_N`, def 10) SIN una delegación (`Agent`/`Task`) en medio, sugiere un **fan-out** si el trabajo restante tiene piezas independientes (skill `orquestar-fanout`). Un `Agent`/`Task` **RESETEA** el contador (si delegaste, no regaña); debounce de N en N; contador **per-`session_id`**. Si el trabajo es intrínsecamente secuencial, se ignora. Fail-open; escape `CLAUDE_SKIP_RECORDAR_ORQUESTAR=1`. Empuja la norma `orquestar-fanout` ("delega lo paralelizable"), hermano-EMPUJE del gate de costo `delegacion-gate` (que es el freno). |
 | `delegacion-comun.sh` | — (lib) | Librería compartida por el gate y el registrador (`source`). Clasifica el nivel de costo y arma la línea de estado de cuota. **No es un hook por sí sola.** |
 
 Config del gate: **`hooks/agentes-costo.json`** (se copia a `~/.claude/`). Clasifica agentes por

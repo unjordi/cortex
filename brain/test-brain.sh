@@ -1754,6 +1754,60 @@ printf '%s' "$(dr '{"tool_name":"Agent"}')" | jq -e '.hookSpecificOutput.hookEve
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (b3i) recordar-orquestar: cuenta mutaciones EN SERIE, avisa en N, resetea al delegar, debounce, fail-open (#59) =="
+# ADVISORY puro (nunca bloquea): contador per-session_id de mutaciones (Edit/Write/… + git commit) SIN
+# delegar; al llegar a N sugiere fan-out; un Agent/Task RESETEA; debounce de N en N. HOME aislado para
+# el stamp; N=3 para no escribir 10 casos por prueba (la lógica del umbral es la misma).
+ROQH="$(mktemp -d "${TMPDIR:-/tmp}/brain-roq.XXXXXX")"
+ro() { printf '%s' "$1" | RECORDAR_ORQUESTAR_N=3 HOME="$ROQH" bash "$HOOKS/recordar-orquestar.sh"; }
+ro_msg() { printf '%s' "$1" | jq -r '.hookSpecificOutput.additionalContext // empty' 2>/dev/null; }
+EDIT='{"session_id":"s1","tool_name":"Edit","tool_input":{}}'
+READ='{"session_id":"s1","tool_name":"Read","tool_input":{}}'
+AGENT='{"session_id":"s1","tool_name":"Agent","tool_input":{}}'
+COMMIT='{"session_id":"s1","tool_name":"Bash","tool_input":{"command":"git add -A && git commit -m x"}}'
+LOGLK='{"session_id":"s1","tool_name":"Bash","tool_input":{"command":"git log --grep commit"}}'
+# 1) bajo el umbral N=3 → silencio (1ª y 2ª mutación)
+is_silent "$(ro "$EDIT")" && is_silent "$(ro "$EDIT")" && ok "recordar-orquestar: <N mutaciones → silencio (no dispara en trabajo corto)" || bad "recordar-orquestar avisó antes de N"
+# 2) al llegar a N → avisa (mensaje cita 'EN SERIE' + skill orquestar-fanout)
+o="$(ro "$EDIT")"
+{ printf '%s' "$o" | jq -e '.hookSpecificOutput.hookEventName=="PostToolUse"' >/dev/null 2>&1 && ro_msg "$o" | grep -qi 'orquestar-fanout'; } \
+  && ok "recordar-orquestar: N mutaciones en serie → avisa (advisory, sugiere fan-out)" || bad "recordar-orquestar: no avisó al llegar a N; got: $o"
+# 3) advisory: NUNCA deniega
+printf '%s' "$o" | jq -e '(.hookSpecificOutput.permissionDecision // "") == ""' >/dev/null 2>&1 \
+  && ok "recordar-orquestar: additionalContext PASIVO (jamás permissionDecision:deny)" || bad "recordar-orquestar: emitió una decisión de permiso (debe ser advisory)"
+# 4) debounce: 4ª y 5ª mutación NO re-avisan (hasta 2N)
+is_silent "$(ro "$EDIT")" && is_silent "$(ro "$EDIT")" && ok "recordar-orquestar: debounce (no re-avisa entre N y 2N)" || bad "recordar-orquestar re-avisó dentro del bloque"
+# 5) 6ª (=2N) → vuelve a avisar
+printf '%s' "$(ro "$EDIT")" | jq -e '.hookSpecificOutput.hookEventName=="PostToolUse"' >/dev/null 2>&1 \
+  && ok "recordar-orquestar: vuelve a avisar en el siguiente bloque de N (2N)" || bad "recordar-orquestar no re-avisó en 2N"
+# 6) NEUTRAL (Read) no cuenta: tras un reset, 2 edits + muchos Read siguen bajo N → silencio
+printf '0 0\n' > "$ROQH/.claude/.recordar-orquestar/s1"
+ro "$EDIT" >/dev/null; ro "$READ" >/dev/null; ro "$READ" >/dev/null; ro "$EDIT" >/dev/null
+is_silent "$(ro "$READ")" && ok "recordar-orquestar: las tools NEUTRAL (Read) no cuentan ni disparan" || bad "recordar-orquestar contó una tool neutral"
+# 7) RESET al delegar: llega a N-1, un Agent lo pone en 0, y la siguiente mutación NO avisa
+printf '0 0\n' > "$ROQH/.claude/.recordar-orquestar/s1"
+ro "$EDIT" >/dev/null; ro "$EDIT" >/dev/null      # count=2 (=N-1)
+ro "$AGENT" >/dev/null                            # RESET → 0
+{ is_silent "$(ro "$EDIT")" && [ "$(cut -d' ' -f1 "$ROQH/.claude/.recordar-orquestar/s1")" = 1 ]; } \
+  && ok "recordar-orquestar: un Agent/Task RESETEA el contador (no regaña por trabajo que SÍ delegaste)" || bad "recordar-orquestar no reseteó al delegar"
+# 8) git commit CUENTA como mutación; git log --grep NO
+printf '0 0\n' > "$ROQH/.claude/.recordar-orquestar/s1"
+ro "$COMMIT" >/dev/null; c1="$(cut -d' ' -f1 "$ROQH/.claude/.recordar-orquestar/s1")"
+ro "$LOGLK" >/dev/null;  c2="$(cut -d' ' -f1 "$ROQH/.claude/.recordar-orquestar/s1")"
+{ [ "$c1" = 1 ] && [ "$c2" = 1 ]; } && ok "recordar-orquestar: 'git commit' cuenta, 'git log --grep commit' NO (precisión)" || bad "recordar-orquestar: conteo de git incorrecto (commit=$c1, loglook=$c2)"
+# 9) sesiones aisladas: s2 no hereda el conteo de s1
+printf '%s' '{"session_id":"s2","tool_name":"Edit","tool_input":{}}' | RECORDAR_ORQUESTAR_N=3 HOME="$ROQH" bash "$HOOKS/recordar-orquestar.sh" >/dev/null
+[ "$(cut -d' ' -f1 "$ROQH/.claude/.recordar-orquestar/s2")" = 1 ] && ok "recordar-orquestar: contador per-session_id (s2 aislada de s1)" || bad "recordar-orquestar: las sesiones se contaminan"
+# 10) fail-open: sin session_id → silencio y sin tocar disco
+is_silent "$(printf '%s' '{"tool_name":"Edit"}' | HOME="$ROQH" bash "$HOOKS/recordar-orquestar.sh")" \
+  && ok "recordar-orquestar: sin session_id → silencio (fail-open)" || bad "recordar-orquestar reaccionó sin session_id"
+# 11) escape env → silencio aunque cruce el umbral
+is_silent "$(printf '%s' "$EDIT" | CLAUDE_SKIP_RECORDAR_ORQUESTAR=1 RECORDAR_ORQUESTAR_N=1 HOME="$ROQH" bash "$HOOKS/recordar-orquestar.sh")" \
+  && ok "recordar-orquestar: CLAUDE_SKIP_RECORDAR_ORQUESTAR=1 → silencio" || bad "recordar-orquestar ignoró el escape"
+rm -rf "$ROQH"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "== (b3c) git-branch-guard: bloquea push/merge REAL a main/develop, NO una MENCIÓN entrecomillada =="
 # HOME AISLADO SIN copia global del hook: si no, la cláusula de dedupe doble-cableado (la copia del
 # repo CEDE cuando existe ~/.claude/hooks/…) haría que el guard salga en silencio en una máquina con el
@@ -3428,6 +3482,7 @@ if [ -f "$E7H/.claude/settings.json" ]; then
   { printf '%s\n' "$ev_br" | grep -qx 'SessionStart|' && printf '%s\n' "$ev_br" | grep -qx 'PostToolUse|Bash'; } \
     && ok "e7: barrer-ramas → SessionStart/(sin matcher) + PostToolUse/Bash (doble trigger)" || bad "e7: barrer-ramas eventos incorrectos: $ev_br"
   [ "$(ev_of aviso-contexto)"     = "PostToolUse|" ]     && ok "e7: aviso-contexto → PostToolUse/(sin matcher)" || bad "e7: aviso-contexto evento incorrecto: $(ev_of aviso-contexto)"
+  [ "$(ev_of recordar-orquestar)" = "PostToolUse|" ]     && ok "e7: recordar-orquestar → PostToolUse/(sin matcher)" || bad "e7: recordar-orquestar evento incorrecto: $(ev_of recordar-orquestar)"
 else
   bad "e7: install-brain no generó settings.json"
 fi
@@ -3600,11 +3655,11 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-echo "== (e6b) install-brain: EXACTAMENTE 9 hooks en PreToolUse/Bash + aviso-contexto en PostToolUse =="
-# El fan-out de guards sobre Bash es un set CERRADO de 9; aviso-contexto va en PostToolUse (casa toda
-# tool). El cableado se DERIVA del MANIFEST vía ev_de() en install-brain.sh → verificamos ese mapeo (no
-# líneas register_hook literales: el instalador las colapsó a un loop). Si alguien agrega/quita un guard
-# de Bash del mapeo, este test lo caza.
+echo "== (e6b) install-brain: EXACTAMENTE 9 hooks en PreToolUse/Bash + aviso-contexto/recordar-orquestar en PostToolUse (sin matcher) =="
+# El fan-out de guards sobre Bash es un set CERRADO de 9; aviso-contexto y recordar-orquestar van en
+# PostToolUse sin matcher (casan toda tool). El cableado se DERIVA del MANIFEST vía ev_de() en
+# install-brain.sh → verificamos ese mapeo (no líneas register_hook literales: el instalador las colapsó
+# a un loop). Si alguien agrega/quita un guard de Bash del mapeo, este test lo caza.
 want_bash="git-branch-guard merge-squash-guard confirmar-merge-develop secret-scan recordar-dashboard entorno-maquina-guard no-bypass-deploy rama-vieja proteger-arbol"
 want_bash_sorted="$(printf '%s\n' $want_bash | sort | tr '\n' ' ' | sed 's/ *$//')"
 got_bash="$(grep -E '\) *echo *"PreToolUse\|Bash"' "$INSTALLER" | sed -E 's/\).*//' | tr '|' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -vE '^$' | sort | tr '\n' ' ' | sed 's/ *$//')"
@@ -3613,9 +3668,12 @@ if [ "$got_bash" = "$want_bash_sorted" ]; then
 else
   bad "e6b: el set PreToolUse/Bash de ev_de() cambió · got:[$got_bash] want:[$want_bash_sorted]"
 fi
-grep -qE 'aviso-contexto\) *echo *"PostToolUse\|"' "$INSTALLER" \
-  && ok "e6b: aviso-contexto mapeado a PostToolUse (el 9º, NO en Bash)" \
+grep -qE 'aviso-contexto[^)]*\) *echo *"PostToolUse\|"' "$INSTALLER" \
+  && ok "e6b: aviso-contexto mapeado a PostToolUse (sin matcher, NO en Bash)" \
   || bad "e6b: aviso-contexto NO está en PostToolUse"
+grep -qE 'recordar-orquestar[^)]*\) *echo *"PostToolUse\|"' "$INSTALLER" \
+  && ok "e6b: recordar-orquestar mapeado a PostToolUse (sin matcher, NO en Bash)" \
+  || bad "e6b: recordar-orquestar NO está en PostToolUse"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo "== (e6c) doc=realidad: cada kind=hook del MANIFEST aparece en el árbol del README (sA2/B1) =="
@@ -4010,6 +4068,106 @@ grep -q 'Actualiza por la HERRAMIENTA REAL' "$NORMSF" && grep -q 'no-bypass-depl
   && ok "g4: norma 'actualiza por la herramienta real' + su mecanismo (no-bypass-deploy) en las normas" || bad "g4: falta la norma B1 (herramienta real) o su mecanismo en las normas"
 grep -qi 'clic en la web' "$NORMSF" && grep -qi 'vein-popper' "$NORMSF" \
   && ok "g4: norma 'nunca el clic en la web como escape de un juez que frena' presente" || bad "g4: falta la norma del clic-en-la-web como escape (#13)"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo "== (g5) verificar-firma-canonica: DETECTOR de la firma-árbol canónica en un cerebro instanciado =="
+VFC="$SCRIPT_DIR/verificar-firma-canonica.sh"
+bash -n "$VFC" 2>/dev/null && ok "g5: bash -n verificar-firma-canonica.sh" || bad "g5: verificar-firma-canonica.sh no parsea"
+
+# Helper: monta un cerebro instanciado de mentira en un dir temporal.
+mk_good_brain() { # <root>
+  local R="$1"; mkdir -p "$R/.claude/memory"
+  cat > "$R/CLAUDE.md" <<'EOF'
+# ⚡ Proyecto Demo — app de prueba
+🎯 Eres el claude que mantiene Demo.
+🧠 ANTES de construir: LEE los skills + estado-proyecto.md (MEMORY.md auto-carga vía @import).
+## 📁 Dónde va cada cosa
+```
+📄 CLAUDE.md ─ LA firma
+│   ├─ 🖋️ LA FIRMA — índice de MEMORY.md
+│   └─ 🛡️ Reglas duras
+▼ 📄 MEMORY.md
+```
+## 🛡️ Reglas duras
+- 📄 Doc = realidad.
+@.claude/memory/MEMORY.md
+EOF
+  cat > "$R/.claude/memory/MEMORY.md" <<'EOF'
+# Memoria del proyecto Demo
+## 🧭 Núcleo
+- [Estado del proyecto](estado-proyecto.md) — el hub vivo.
+- [Bitácora](bitacora.md) — journal.
+## 🗄️ dom- · dominio
+- [dom-modelo](dom-modelo.md) — agregados.
+## 🛠️ dev- · desarrollo
+- [dev-correr-en-local](dev-correr-en-local.md) — cómo correrlo.
+EOF
+  : > "$R/.claude/memory/estado-proyecto.md"
+  : > "$R/.claude/memory/bitacora.md"
+  : > "$R/.claude/memory/dom-modelo.md"
+  : > "$R/.claude/memory/dev-correr-en-local.md"
+}
+
+# (1) cerebro CANÓNICO → 0 fail, exit 0
+GB="$(mktemp -d "${TMPDIR:-/tmp}/brain-g5-good.XXXXXX")"
+mk_good_brain "$GB"
+OUT="$(bash "$VFC" "$GB" 2>&1)"; RC=$?
+{ [ "$RC" -eq 0 ] && printf '%s' "$OUT" | grep -q 'FIRMA-CANONICA: 0 fail'; } \
+  && ok "g5: cerebro canónico → 0 fail · exit 0" || bad "g5: cerebro canónico dio hallazgos (rc=$RC): $(printf '%s' "$OUT" | grep FIRMA-CANONICA)"
+
+# (2) cerebro DRIFTEADO → fail>0, exit 1. Rompemos 4 cosas: falta 🖋️, memoria sin prefijo,
+#     enlace roto, y prosa con un hook retirado.
+BB="$(mktemp -d "${TMPDIR:-/tmp}/brain-g5-bad.XXXXXX")"
+mk_good_brain "$BB"
+# 2a: quita la sección 🖋️ LA FIRMA del CLAUDE.md
+grep -v '🖋️' "$BB/CLAUDE.md" > "$BB/CLAUDE.md.tmp" && mv "$BB/CLAUDE.md.tmp" "$BB/CLAUDE.md"
+# 2b: mete una memoria SIN prefijo ni núcleo
+: > "$BB/.claude/memory/notas-sueltas.md"
+# 2c: enlace roto en MEMORY.md
+printf '\n- [fantasma](dom-inexistente.md) — no existe.\n' >> "$BB/.claude/memory/MEMORY.md"
+# 2d: prosa con hook retirado
+printf '\n> El hook precompact-volcar-estado vuelca el estado.\n' >> "$BB/CLAUDE.md"
+OUT="$(bash "$VFC" "$BB" 2>&1)"; RC=$?
+[ "$RC" -eq 1 ] && ok "g5: cerebro drifteado → exit 1" || bad "g5: cerebro drifteado NO falló (rc=$RC)"
+printf '%s' "$OUT" | grep -q '🖋️ LA FIRMA' && ok "g5: caza sección de firma ausente (🖋️)" || bad "g5: no cazó la sección 🖋️ ausente"
+printf '%s' "$OUT" | grep -q 'notas-sueltas.md' && ok "g5: caza memoria sin prefijo canónico" || bad "g5: no cazó la memoria sin prefijo"
+printf '%s' "$OUT" | grep -q 'dom-inexistente.md' && ok "g5: caza enlace roto en MEMORY.md" || bad "g5: no cazó el enlace roto"
+printf '%s' "$OUT" | grep -q 'precompact-volcar-estado' && ok "g5: caza hook retirado en la prosa (WARN)" || bad "g5: no cazó el hook retirado"
+
+# (3) memoria real NO indexada → fail (invariante 1:1)
+NB="$(mktemp -d "${TMPDIR:-/tmp}/brain-g5-noidx.XXXXXX")"
+mk_good_brain "$NB"
+: > "$NB/.claude/memory/dom-huerfana.md"   # existe pero NO está en MEMORY.md
+OUT="$(bash "$VFC" "$NB" 2>&1)"; RC=$?
+{ [ "$RC" -eq 1 ] && printf '%s' "$OUT" | grep -q 'NO indexada.*dom-huerfana'; } \
+  && ok "g5: caza memoria real no-indexada (rompe 1:1)" || bad "g5: no cazó la memoria huérfana no-indexada"
+# *.local.md NO se exige indexar ni prefijar (personal/sensible)
+GL="$(mktemp -d "${TMPDIR:-/tmp}/brain-g5-local.XXXXXX")"
+mk_good_brain "$GL"
+: > "$GL/.claude/memory/secretos.local.md"
+OUT="$(bash "$VFC" "$GL" 2>&1)"; RC=$?
+{ [ "$RC" -eq 0 ] && ! printf '%s' "$OUT" | grep -q 'secretos.local.md'; } \
+  && ok "g5: *.local.md se ignora (no exige prefijo ni índice)" || bad "g5: flaggeó un *.local.md (no debería)"
+
+# (4) --strict convierte WARN (drift) en exit 1
+WB="$(mktemp -d "${TMPDIR:-/tmp}/brain-g5-strict.XXXXXX")"
+mk_good_brain "$WB"
+printf '\n> El hook precompact-volcar-estado ya no existe.\n' >> "$WB/.claude/memory/MEMORY.md"
+OUT="$(bash "$VFC" "$WB" 2>&1)"; RC=$?
+{ [ "$RC" -eq 0 ] && printf '%s' "$OUT" | grep -q '1 warn'; } \
+  && ok "g5: WARN solo (sin --strict) → exit 0" || bad "g5: un WARN sin --strict no debía fallar (rc=$RC)"
+bash "$VFC" "$WB" --strict >/dev/null 2>&1; RC=$?
+[ "$RC" -eq 1 ] && ok "g5: --strict trata el WARN como falla (exit 1) — modo GATE" || bad "g5: --strict no falló con WARN (rc=$RC)"
+
+# (5) el META-repo claude-brain se SALTA (su firma vive en README, no en CLAUDE.md-firma)
+MB="$(mktemp -d "${TMPDIR:-/tmp}/brain-g5-meta.XXXXXX")"
+mkdir -p "$MB/brain/hooks" "$MB/docs/flowcharts"
+: > "$MB/brain/hooks/MANIFEST"; : > "$MB/docs/flowcharts/verificar-arbol-sync.sh"
+OUT="$(bash "$VFC" "$MB" 2>&1)"; RC=$?
+{ [ "$RC" -eq 0 ] && printf '%s' "$OUT" | grep -q 'n/a (meta-repo)'; } \
+  && ok "g5: el meta-repo claude-brain se salta (n/a), no se autoflagea" || bad "g5: no detectó el meta-repo (rc=$RC)"
+
+rm -rf "$GB" "$BB" "$NB" "$GL" "$WB" "$MB"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""

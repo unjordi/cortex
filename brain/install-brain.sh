@@ -131,7 +131,7 @@ ev_de() {
     limite-gasto|delegacion-gate) echo "PreToolUse|Task|Agent" ;;   # Task|Agent: el tool se renombró Agent (antes Task); casar AMBOS o el gate nunca dispara
     delegacion-registrar|delegacion-reporte) echo "PostToolUse|Task|Agent" ;;
     rehidratar-hilo|aviso-drift-cerebro) echo "SessionStart|" ;;
-    aviso-contexto) echo "PostToolUse|" ;;
+    aviso-contexto|recordar-orquestar) echo "PostToolUse|" ;;   # casan TODA tool (sin matcher): aviso-contexto mide el ctx; recordar-orquestar cuenta mutaciones/resets p/ el nudge de fan-out
     # hud-stale: DOBLE trigger — SessionStart (capta el cambio de rama/cwd ENTRE sesiones, al retomar) +
     # PostToolUse/Bash (capta el cambio a MEDIA sesión, justo tras un `git checkout`/`cd`).
     hud-stale) echo "SessionStart| PostToolUse|Bash" ;;

@@ -39,7 +39,7 @@ public sealed class BrainState
         "git-branch-guard", "merge-squash-guard", "confirmar-merge-develop",
         "recordar-dashboard", "secret-scan", "rama-vieja", "proteger-arbol",
         "proteger-fuente-cerebro",
-        "limite-gasto", "delegacion-gate", "delegacion-registrar", "delegacion-reporte",
+        "limite-gasto", "delegacion-gate", "delegacion-registrar", "delegacion-reporte", "recordar-orquestar",
         "rehidratar-hilo", "aviso-contexto", "aviso-drift-cerebro", "hud-stale", "exportar-sesion-master", "barrer-ramas",
         "entorno-maquina-guard", "no-bypass-deploy",
     };
@@ -63,7 +63,7 @@ public sealed class BrainState
         return name switch
         {
             "cerrar-slice" or "checkpoint" or "to-do" or "diagramar" or "auditar-proceso-algoritmo"
-                or "auditar-coherencia-cerebro" or "auditar-suficiencia-operativa" or "consolidar-cerebro" or "desinflar-memorias"
+                or "auditar-coherencia-cerebro" or "auditar-suficiencia-operativa" or "consolidar-cerebro" or "canonizar-cerebro" or "desinflar-memorias"
                 or "orquestar-fanout" or "turno-nocturno" or "cosechar-sesion" or "unificar-cerebro"
                 or "investigar-dominio" or "positivar-doc" or "revisar-entregables-agentes"
                 or "zoom-screenshot" or "claude-proyecto-autocontenido" or "reubicar-master"

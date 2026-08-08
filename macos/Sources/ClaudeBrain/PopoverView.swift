@@ -1286,7 +1286,7 @@ struct PopoverView: View {
         }
         if BrainState.knownRepoHooks.contains(name) { return .repoScoped }
         switch name {
-        case "cerrar-slice", "checkpoint", "to-do", "diagramar", "auditar-proceso-algoritmo", "auditar-coherencia-cerebro", "auditar-suficiencia-operativa", "consolidar-cerebro", "desinflar-memorias", "orquestar-fanout", "turno-nocturno",
+        case "cerrar-slice", "checkpoint", "to-do", "diagramar", "auditar-proceso-algoritmo", "auditar-coherencia-cerebro", "auditar-suficiencia-operativa", "consolidar-cerebro", "canonizar-cerebro", "desinflar-memorias", "orquestar-fanout", "turno-nocturno",
              "cosechar-sesion", "unificar-cerebro",
              "investigar-dominio", "positivar-doc", "revisar-entregables-agentes", "zoom-screenshot", "claude-proyecto-autocontenido", "reubicar-master",
              "ingenieria-inversa-gui-db-navegador", "markdown-a-pdf":
@@ -1350,6 +1350,9 @@ struct PopoverView: View {
                     BrainItem("📮", "delegacion-reporte", "un agente de fan-out terminó → recuerda bitácora + estado, sin niñera",
                               "PostToolUse · Task",
                               "Cuando un subagente (Task) termina, recuerda al orquestador registrar su avance sin niñera: appendar una línea a bitacora.md (append-only, parallel-safe), cerrar el ítem en estado-proyecto.md y limpiar su worktree. No bloquea."),
+                    BrainItem("🎼", "recordar-orquestar", "llevas rato en grind serial sin delegar → sugiere fan-out (advisory)",
+                              "PostToolUse",
+                              "Cuenta las mutaciones consecutivas (edits/commits) de la sesión y, al llegar a N (def 10) SIN que haya habido una delegación (Agent/Task) en medio, sugiere —no bloquea— un fan-out si el trabajo restante tiene piezas independientes. Un Agent/Task RESETEA el contador (si delegaste, no te regaña); debounce de N en N. Si el trabajo es intrínsecamente secuencial, se ignora. Contador per-session_id, fail-open, escape CLAUDE_SKIP_RECORDAR_ORQUESTAR=1."),
                     BrainItem("🧵", "rehidratar-hilo", "al retomar/tras compactar reinyecta el hilo mental de la tarea",
                               "SessionStart",
                               "Al abrir/retomar sesión o tras compactar, relee .claude/memory/hilo-mental-actual.md y lo reinyecta por additionalContext (canal fiable de SessionStart). Es la mitad 'leer' del par con el skill checkpoint (la mitad 'escribir'). Silencioso si el archivo no existe."),
@@ -1432,6 +1435,9 @@ struct PopoverView: View {
                     BrainItem("🧠", "consolidar-cerebro", "meta-orquestador: dupla → positivar → desinflar → loop de convergencia → cierre con la FIRMA",
                               "skill · opt-in",
                               "Meta-orquestador que consolida un cerebro de punta a punta: corre la DUPLA de auditores (suficiencia + coherencia) hasta converger, luego positivar-doc y desinflar-memorias, en un loop de convergencia, y cierra generando/actualizando la FIRMA por-contenido (CLAUDE.md + MEMORY.md). No declara LISTO: exige el QA/OK del usuario."),
+                    BrainItem("📐", "canonizar-cerebro", "lleva un cerebro instanciado drifteado a la firma-árbol canónica (reprefija, reescribe CLAUDE+MEMORY, verifica 1:1)",
+                              "skill · opt-in",
+                              "Lleva el cerebro de un proyecto INSTANCIADO (cps, fluxcore, plantilladotnet) a la firma-árbol canónica cuando drifteó: memorias sueltas sin prefijo, CLAUDE.md viejo con guards retirados, MEMORY.md plano. Reclasifica cada memoria a su prefijo (dom-/dev-/ux-/qa- + núcleo) con git mv (historia intacta), dedup con RESCATE de datos únicos, reescribe CLAUDE.md a firma-árbol y MEMORY.md a índice-por-prefijo, y verifica el 1:1 con verificar-firma-canonica.sh (el detector del GATE del auditor). Humano-en-el-loop, no auto-mutador ciego."),
                     BrainItem("🪶", "desinflar-memorias", "adelgaza memorias sin perder lecciones: narrativa → 1 línea, mitos → ⚰️ Lápidas al final",
                               "skill · opt-in",
                               "Desinfla un árbol de memorias inflado de narrativa, tutoriales y conocimiento ya desmentido SIN perder ninguna lección: cada tirada de historia se colapsa a su lección en 1-2 líneas EN SU LUGAR, y los mitos descartados se comprimen a una línea y se mudan a una sección ⚰️ Lápidas AL FINAL del archivo (si los borras, el siguiente agente los re-descubre). No toca la bitácora ni el hilo: son append-only por diseño."),
