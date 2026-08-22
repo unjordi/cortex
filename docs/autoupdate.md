@@ -6,7 +6,7 @@ Cómo se actualiza el widget cuando nosotros subimos una versión y los demás l
 
 Cada plataforma embebe un `version.json` (SHA + fecha del commit con que se buildeó, ruta del clon,
 rama) junto al binario. Al abrir la pestaña **Cerebro**, el widget consulta `commits/main` de
-`github.com/unjordi/claude-brain` (throttle ~15 min, timeout ~6 s, **fail-open**: sin red / sin
+`github.com/unjordi/cortex` (throttle ~15 min, timeout ~6 s, **fail-open**: sin red / sin
 `version.json` / sin clon → no molesta). Si `main` avanzó, dibuja el banner **⬆ Actualizar**.
 
 Al aceptar, un script suelto hace `git fetch` + `git merge --ff-only origin/main` y —**solo si tuvo
@@ -47,19 +47,19 @@ siguen con el modelo git-based, que ahí no duele.
 > laptop de Liora) antes de confiar en él, y el asset del release no existe hasta el primer release a
 > `main` que dispare la Fase 1. Diseño y comportamiento reales:
 
-Cambios en `windows/src/ClaudeBrain/Updater.cs`:
+Cambios en `windows/src/Cortex/Updater.cs`:
 
 1. **Detección de versión** → dejar de comparar contra `commits/main` y comparar contra el
-   **release**: `GET /repos/unjordi/claude-brain/releases/tags/windows-latest`, leer el `build-sha:`
+   **release**: `GET /repos/unjordi/cortex/releases/tags/windows-latest`, leer el `build-sha:`
    del cuerpo (o el `target_commitish`), comparar con el SHA embebido. Así el banner solo aparece
    cuando el **artefacto ya está publicado** (no en el hueco de ~minutos que tarda el build de CI).
    Mantener el **fail-open** (sin release / sin red → no molesta).
 
 2. **Acción de update** → en vez de `git ff` + rebuild:
-   - Descargar el asset `ClaudeBrain.exe` del release a un archivo **temporal** (`%TEMP%`).
+   - Descargar el asset `Cortex.exe` del release a un archivo **temporal** (`%TEMP%`).
    - (Opcional pero recomendado) verificar tamaño/deshabilitar si la descarga viene vacía.
    - Un script `pwsh` desprendido: espera a que el proceso del widget cierre, **reemplaza** el exe en
-     `%LOCALAPPDATA%\Programs\ClaudeBrain\ClaudeBrain.exe` con el temporal, reescribe `version.json`
+     `%LOCALAPPDATA%\Programs\Cortex\Cortex.exe` con el temporal, reescribe `version.json`
      con el nuevo SHA, y **relanza**. (Un exe self-contained single-file NO puede sobreescribirse
      mientras corre → por eso el swap va en el script externo, igual que hoy con el rebuild.)
    - **Fail-open duro:** ante CUALQUIER fallo (descarga, permiso, swap) → NO dejar el widget en mal

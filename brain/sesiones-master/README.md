@@ -36,7 +36,7 @@ cd ~/Mi\ unidad/claude-sessions      # (Cachy: cd /run/media/unjordi/SteamAndFil
 ./seed.sh                             # siembra lo presente (salta lo ya local; --force pisa)
 # luego: párate en la carpeta del master y  claude --resume  → elígela por nombre
 ```
-Requisitos: `claude-brain` instalado (aporta `session-import.js`) + `node`. En la Cachy, que la unidad
+Requisitos: `cortex` instalado (aporta `session-import.js`) + `node`. En la Cachy, que la unidad
 `SteamAndFiles` esté montada y Drive haya terminado de bajar los `.gz`.
 
 ## Actualización automática (hook)

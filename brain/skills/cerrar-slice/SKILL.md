@@ -48,6 +48,15 @@ para que no quede apuntando a un tema ya terminado.
   se quedan solo narrados en el chat. Y esa elección del usuario **NO es "el alcance que él acordó"**:
   el corte lo pusiste tú al redactar las opciones; no lo cites como instrucción suya para justificar no
   tocar el resto (ver norma "Ningún hallazgo tuyo se queda solo narrado en el chat").
+- **Lo DELEGADO a un artefacto TAMBIÉN va al backlog (con severidad):** si al cerrar empujaste ítems
+  FUERA de alcance y los dejaste en el TEXTO de un entregable (sección "Pendientes/Delegados/§ fuera de
+  alcance" de un skill, un dictamen, un README), eso **NO los resuelve**: es log disfrazado de backlog.
+  **Bárrelos a `estado-proyecto.md` con severidad y origen ANTES de cerrar** y **CALIFÍCALOS** (un bug
+  destructivo diferido NO es un "pendiente menor"). La pregunta de 2º orden: *¿lo que empujé fuera del
+  muro tiene casa, dueño y severidad, o se evapora?* — un artefacto tidy con su sección numeradita SE
+  SIENTE como cierre y no lo es. Un hook no puede juzgar si tu lista de delegados quedó completa → paso
+  EXPLÍCITO de esta skill. Origen: `reubicar-master §9`, 2026-08-08 — delegó 4 aristas del sync de
+  sesiones al texto del skill, una DESTRUCTIVA, hasta que se cacharon a mano.
 - **Appendea UNA línea al FINAL** de `.claude/memory/bitacora.md` (`- fecha · rama · quién · qué`)
   con `>>` (`printf '%s\n' '- …' >> bitacora.md`), **no** con un Edit que reescriba: el append-al-final
   es lo que deja que varias sesiones/agentes escriban la misma bitácora sin pisarse (dos `>>` no chocan;
@@ -72,25 +81,47 @@ para que no quede apuntando a un tema ya terminado.
 Commit y push a la **ramita** van libres, sin pedir permiso. Pero **antes de integrar a develop,
 PREGÚNTALE al usuario si el slice queda cerrado.** El merge a develop no se hace sin esa confirmación
 (un release a main, tampoco — eso lo decide el humano deliberadamente).
+- **Al INVITAR a QA, el entorno desplegado debe contener TODO lo que le pides revisar.** Antes de
+  decir "revísalo", verifica que el commit/rama que está desplegado (p. ej. `:9582`) INCLUYE cada ítem
+  de tu lista: si algún fix vive en OTRA rama, recóncilialo (cherry-pick/merge) + **redespliega PRIMERO**.
+  Si por lo que sea no puedes dejar el entorno completo, avísalo por ADELANTADO y explícito ("estos N
+  ítems NO están en este entorno todavía, sáltalos") — **nunca** a media QA. Reconciliar la divergencia
+  de ramas es del ORQUESTADOR, no de quien hace el QA. (Lección real: se pidió QA en un entorno que corría
+  una rama sin los fixes → clicks gastados revisando algo que ahí no estaba resuelto.)
 
-## 4. Flujo de git (tras el OK del usuario) — **integra con SQUASH**
-La ramita se colapsa a **UN commit limpio** en develop (lo exige el hook `merge-squash-guard`).
+## 4. Flujo de git (tras el OK del usuario) — **integra con SQUASH, merge INMEDIATO (sin MWPS)**
+La ramita se colapsa a **UN commit limpio** en develop (lo exige el hook `merge-squash-guard`). El
+merge a develop/main es **DELIBERADO e INMEDIATO**: espera a que el pipeline esté verde y mergea YA —
+nunca lo dejes ARMADO para que se dispare solo (ver el porqué abajo).
 
 ```bash
 # GitLab (glab):
 git push -u origin feat/<tema>
 glab mr create --source-branch feat/<tema> --target-branch develop \
   --squash-before-merge --remove-source-branch --title "…" --description "…" --yes
+glab ci status --branch feat/<tema> --live                       # espera a pipeline verde
 glab mr merge <id> --squash --squash-message "$(cat resumen.md)" \
-  --auto-merge --remove-source-branch --yes                     # 1–3 devs → auto-merge
+  --remove-source-branch --yes                     # SIN --auto-merge: merge YA, no encolado
 
 # GitHub (gh):
 git push -u origin feat/<tema>
 gh pr create --base develop --fill
-gh pr merge <id> --squash --auto                                # 1–3 devs → auto-merge
+gh pr checks <id> --watch                                        # espera a que los checks pasen
+gh pr merge <id> --squash                          # SIN --auto: merge YA, no encolado
 
 git checkout develop && git pull --ff-only && git branch -d feat/<tema>
 ```
+
+### Por qué SIN `--auto-merge` / `--auto` (no es "GitHub auto-merge del PR")
+`--auto-merge` en `glab` arma **Merge When Pipeline Succeeds (MWPS)**: el merge **NO** ocurre al correr
+el comando, queda **ENCOLADO** para dispararse solo, sin testigo, cuando el pipeline termine — minutos
+después, en otro momento. `confirmar-merge-develop` exige tu OK **del instante del merge**; encolarlo
+rompe esa garantía (el guard autoriza el comando, pero no controla el evento futuro que arma). Por eso
+la integración coordinada a develop/main **espera el pipeline verde primero y mergea de inmediato**, sin
+dejarlo armado — el "sin fricción de revisión" para 1–3 devs sigue aplicando (nadie más aprueba el MR),
+lo que cambia es que el ACTO de mergear pasa ya, deliberado, no en diferido. (Visto al mergear el !112 de
+cortex: quedó en MWPS pese al OK explícito.) El candado server-side definitivo sigue siendo proteger
+las ramas + `squash_option=always` (GitLab).
 
 ### El mensaje-resumen (`--squash-message`) — redáctalo bien, es lo que queda en develop
 Los N commits granulares de la ramita **desaparecen** del histórico de develop; solo queda este mensaje.
@@ -98,9 +129,9 @@ Escríbelo como un **resumen curado en prosa**: título Conventional en español
 **cambio neto y su porqué**. **NO** pegues la lista de commits ni el ruido de "quité el botón / lo regresé
 / hotfix del hotfix" — eso es exactamente lo que el squash borra. Termina con el `Co-Authored-By`.
 
-> Gotcha `glab`: es `--auto-merge`, no `--auto`. El guard bloquea el literal `glab mr merge` como dato
-> (p. ej. en un grep o una descripción) → pásalo por variable/archivo, no en texto plano.
-> El candado server-side definitivo es proteger las ramas + `squash_option=always` (GitLab).
+> Gotcha `glab`: si en algún caso SÍ necesitas encolar (excepción rara, no el default de aquí), la flag
+> es `--auto-merge`, no `--auto` — y el guard bloquea el literal `glab mr merge` como dato (p. ej. en un
+> grep o una descripción) → pásalo por variable/archivo, no en texto plano.
 >
 > Gotchas de commit (destilados de un caso real): el mensaje largo va por **heredoc** (`git commit -F -`) o un
 > archivo ÚNICO en `/tmp` — **NUNCA dentro del repo** (se cuela al árbol) ni reutilizando uno viejo
@@ -113,7 +144,7 @@ Antes de dar por cerrado el slice, pregúntate: **¿dejó una lección reutiliza
 convención, un patrón, o hasta una skill nueva)? No lo dejes en "ya me acordaré" — cosecharlo es parte
 del cierre, no un extra.
 - **Genérica** (no atada a este proyecto) → promuévela en la MISMA tanda a la **skill** que le toque
-  y/o al **cerebro global** (`claude-brain` / los hooks y normas de `~/.claude`). Es el punto de
+  y/o al **cerebro global** (`cortex` / los hooks y normas de `~/.claude`). Es el punto de
   curación manual: tú y el usuario deciden qué merece subir (no todo sube — evita ensuciar el global
   con ruido específico del proyecto).
 - **Específica del proyecto** → ya quedó en la memoria del repo (Paso 2); no la subas al global.

@@ -221,10 +221,20 @@ _recent_intercalado() {  # $1=ruta del transcript .jsonl → imprime la conversa
     [ .[]
       | select((.isMeta // false) != true)                # descarta META/inyectados (no son del usuario)
       | { role: (.message.role // .type),
-          text: ((.message.content // [.message])
-                 | if type=="array"
-                   then (map(if type=="string" then . elif (.type? == "text") then .text else "" end) | join(" "))
-                   else (. // "") end) }
+          # AskUserQuestion: la respuesta llega como tool_result (texto vacío arriba → se perdía). La opción
+          # ELEGIDA por el usuario + sus notas viven en .toolUseResult.answers/.annotations (input GENUINO del
+          # usuario al hacer clic) → se surfacea como turno USUARIO. SOLO ese campo (AskUserQuestion-específico);
+          # el output arbitrario de OTRAS tools NO tiene .answers → sigue cayendo a texto vacío y se filtra.
+          text: ( (try ([ .toolUseResult.answers[]
+                          | select(type=="string" and . != "" and . != "(no option selected)" and . != "(notes only)") ]
+                       + [ .toolUseResult.annotations[]?.notes | select(type=="string" and . != "") ]
+                       | join(" · ")) catch "") as $aq
+                | if $aq != "" then $aq
+                  else ((.message.content // [.message])
+                        | if type=="array"
+                          then (map(if type=="string" then . elif (.type? == "text") then .text else "" end) | join(" "))
+                          else (. // "") end)
+                  end ) }
       | select(.role=="user" or .role=="assistant")       # solo turnos de conversación (no tool-result puro)
       | select(.text != "")
       | select(.text | test("<system-reminder>") | not)   # descarta bloques con marca de inyección (CLAUDE.md/recordatorios)
@@ -262,6 +272,10 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
 [ -z "$cmd" ] && exit 0
+# PRE-FILTRO barato (superset conservador, mismo espíritu que proteger-arbol.sh): lo que este guard
+# vigila (integrar un MR/PR real) requiere 'glab'/'gh' en el comando crudo → sin eso, early-exit ANTES
+# de source-lib y del juez LLM. NO toca nada del juez; jamás salta un caso real.
+case "$cmd" in *glab*|*gh*) : ;; *) exit 0 ;; esac
 # cwd del payload = working dir REAL del comando (puede diferir de CLAUDE_PROJECT_DIR). Señal para resolver
 # el repo/destino y la marca compartido/personal del repo que el MR REALMENTE toca. Ausente → vacío → cae a
 # CLAUDE_PROJECT_DIR (conducta de hoy).

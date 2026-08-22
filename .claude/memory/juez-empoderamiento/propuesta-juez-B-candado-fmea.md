@@ -1,7 +1,7 @@
 # Propuesta B — El juez de merge como CANDADO (FMEA de proceso, defensa en profundidad)
 
-**Archivo objeto:** `/Users/unjordi/code/claude-brain/brain/hooks/confirmar-merge-develop.sh`
-**Batería:** `/Users/unjordi/code/claude-brain/brain/test-brain.sh`
+**Archivo objeto:** `/Users/unjordi/code/cortex/brain/hooks/confirmar-merge-develop.sh`
+**Batería:** `/Users/unjordi/code/cortex/brain/test-brain.sh`
 **Restricción rectora:** EMPODERAR, no AFLOJAR. Todo cambio deja el candado **igual de estricto o más**, nunca "que deje de molestar". Fail-safe siempre a DENY. Solo `USUARIO:` autoriza. El piso determinista se queda. Modelo → Sonnet. Latencia ~3-5s tolerable.
 
 ---

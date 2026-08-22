@@ -48,7 +48,7 @@ drift_chequea_repo() {
 
   # Fuente canónica LOCAL del cerebro = el clon de instalación (lo actualiza el one-liner/bootstrap).
   local BRAIN_DIR SYNC
-  BRAIN_DIR="${CLAUDE_BRAIN_DIR:-$HOME/.claude-brain}"
+  BRAIN_DIR="${CLAUDE_BRAIN_DIR:-$HOME/.cortex}"
   SYNC="$BRAIN_DIR/brain/sincronizar-cerebro.sh"
   if [ ! -f "$SYNC" ]; then printf 'STATUS=%s\n' "no-source"; return 0; fi
 
@@ -80,7 +80,7 @@ Cómo: borra esos .sh de .claude/hooks/ + sus entradas en .claude/settings.json.
   # DRY-RUN del sync (sin --apply: NO escribe). Un ERROR del sync (no-cero) o un resumen ausente → NO se
   # pudo determinar el drift → STATUS=unknown: fail-open (el caller surface la identidad pero NO cachea,
   # para reintentar el chequeo en la próxima sesión en vez de sellar un error transitorio como "al día").
-  local out resumen nuevos act ret falta total
+  local out resumen resumen_sk nuevos act ret falta total sk_nue sk_act sk_orph
   out=$(bash "$SYNC" "$ROOT" 2>/dev/null) || { printf 'STATUS=%s\n' "unknown"; return 0; }
   resumen=$(printf '%s\n' "$out" | grep -E '==> resumen:' | tail -1)
   [ -n "$resumen" ] || { printf 'STATUS=%s\n' "unknown"; return 0; }
@@ -88,12 +88,19 @@ Cómo: borra esos .sh de .claude/hooks/ + sus entradas en .claude/settings.json.
   act=$(printf '%s' "$resumen"    | grep -oE '[0-9]+ a actualizar' | grep -oE '[0-9]+' || echo 0)
   ret=$(printf '%s' "$resumen"    | grep -oE '[0-9]+ retirado'     | grep -oE '[0-9]+' || echo 0)
   falta=$(printf '%s' "$resumen"  | grep -oE '[0-9]+ cableado faltante' | grep -oE '[0-9]+' || echo 0)
-  total=$(( ${nuevos:-0} + ${act:-0} + ${ret:-0} + ${falta:-0} ))
+  # SKILLS por-repo: la línea "==> resumen skills:" (SEPARADA de la de hooks; grep '==> resumen:' NO la
+  # captura porque tras "resumen" va " skills" antes del ':'). Drift de skills = nuevas + a actualizar +
+  # huérfanas. Si el sync no emite esa línea (stub viejo / brain sin skills-manifest) → 0, no cambia nada.
+  resumen_sk=$(printf '%s\n' "$out" | grep -E '==> resumen skills:' | tail -1)
+  sk_nue=$(printf '%s' "$resumen_sk"  | grep -oE '[0-9]+ nuevas'       | grep -oE '[0-9]+' || echo 0)
+  sk_act=$(printf '%s' "$resumen_sk"  | grep -oE '[0-9]+ a actualizar' | grep -oE '[0-9]+' || echo 0)
+  sk_orph=$(printf '%s' "$resumen_sk" | grep -oE '[0-9]+ huérfana'     | grep -oE '[0-9]+' || echo 0)
+  total=$(( ${nuevos:-0} + ${act:-0} + ${ret:-0} + ${falta:-0} + ${sk_nue:-0} + ${sk_act:-0} + ${sk_orph:-0} ))
 
   if [ "$total" -eq 0 ]; then printf 'STATUS=%s\n' "clean"; return 0; fi
 
   local detalle
-  detalle=$(printf '%s\n' "$out" | grep -E '(NUEVO|ACTUALIZA|RETIRARÍA)' | sed 's/^[[:space:]]*/    /' | head -12)
+  detalle=$(printf '%s\n' "$out" | grep -E '(NUEVO|NUEVA|ACTUALIZA|RETIRAR|HUÉRFAN)' | sed 's/^[[:space:]]*/    /' | head -14)
 
   # ── Nudge de la DUPLA (suficiencia + coherencia): BIFURCA según AGENTS.md esté instanciado. ──
   local dupla_nota
@@ -172,5 +179,58 @@ $detalle$dupla_nota"
   printf '%s\n' "🧠⚠️ DRIFT DEL CEREBRO POR-REPO: la copia en .claude/hooks/ de ESTE repo está ATRÁS de la fuente única del cerebro ($total archivo(s)):
 $detalle$stale_nota
 Qué hacer: PROPÓN al usuario propagar por el flujo — worktree/ramita desde develop → \`bash $SYNC <worktree> --apply\` → commit → MR a develop. NO edites .claude/hooks/ directo en el árbol de trabajo (en repos compartidos viaja por git y se mezclaría a commits de feature). Nota: en ESTA máquina la copia GLOBAL ya manda (dedupe), pero el drift por-repo afecta a colegas y clones sin bootstrap.$dupla_nota"
+  return 0
+}
+
+# ── drift_skills_global — drift de la copia GLOBAL de skills (~/.claude/skills) vs la FUENTE única
+#    (brain/skills), para las skills de tier {global,both} del SKILLS-MANIFEST. Es el equivalente
+#    AUTOMÁTICO del `drift_scan skills` del doctor verificar-cerebro (manual): antídoto al síntoma real
+#    (~/.claude/skills/to-do se editó a mano en dev → la copia viva DRIFTÓ de la fuente y NADA lo detectaba).
+#    WARN-ONLY (nunca reescribe la copia global: la dirección puede ser "edit en vivo sin portar" = mejora
+#    que se PERDERÍA con un overwrite ciego; el remedio es editar la FUENTE + re-correr install-brain).
+#    Imprime el mensaje humano si hay drift; NADA si está limpia. Devuelve 0 SIEMPRE (fail-open).
+#    PRECISIÓN: solo skills del manifiesto {global,both}; solo compara archivos PRESENTES en la fuente
+#    (una skill/archivo puramente local en ~/.claude/skills, sin contraparte fuente, NO es este drift → se
+#    ignora, cero falso positivo). bash-3.2-safe.
+drift_skills_global() {
+  local BRAIN_DIR SRC_SKILLS INST_SKILLS MAN
+  BRAIN_DIR="${CLAUDE_BRAIN_DIR:-$HOME/.cortex}"
+  SRC_SKILLS="$BRAIN_DIR/brain/skills"
+  INST_SKILLS="$HOME/.claude/skills"
+  MAN="$SRC_SKILLS/MANIFEST"
+  [ -d "$SRC_SKILLS" ] || return 0          # sin fuente → fail-open
+  [ -d "$INST_SKILLS" ] || return 0         # sin copia instalada → nada que comparar
+  [ -f "$MAN" ] || return 0                 # sin manifiesto de skills → no sé qué es del brain → fail-open
+
+  local names editadas stale n_ed n_st sk src inst rel
+  names=$(awk '$1!~/^#/ && NF>=2 && ($2=="global"||$2=="both"){print $1}' "$MAN")
+  editadas=""; stale=""; n_ed=0; n_st=0
+  while IFS= read -r sk; do
+    [ -z "$sk" ] && continue
+    [ -d "$SRC_SKILLS/$sk" ] || continue
+    while IFS= read -r src; do
+      [ -z "$src" ] && continue
+      rel="${src#"$SRC_SKILLS/$sk"/}"
+      inst="$INST_SKILLS/$sk/$rel"
+      [ -f "$inst" ] || { n_st=$((n_st+1)); stale="$stale skills/$sk/$rel(falta)"; continue; }
+      cmp -s "$src" "$inst" && continue
+      if [ "$inst" -nt "$src" ]; then n_ed=$((n_ed+1)); editadas="$editadas skills/$sk/$rel"
+      else n_st=$((n_st+1)); stale="$stale skills/$sk/$rel"; fi
+    done < <(find "$SRC_SKILLS/$sk" -type f 2>/dev/null)
+  done <<EOF
+$names
+EOF
+
+  [ "$n_ed" = 0 ] && [ "$n_st" = 0 ] && return 0   # limpia → silencio
+  local msg="🧠⚠️ DRIFT DE SKILLS (copia GLOBAL ~/.claude/skills vs la fuente única del cerebro):"
+  if [ "$n_ed" -gt 0 ]; then
+    msg="$msg
+  · $n_ed archivo(s) EDITADOS EN VIVO (la copia instalada es MÁS NUEVA que la fuente → tu edición se PERDERÍA en el próximo install-brain). PÓRTALOS a la fuente $SRC_SKILLS y re-corre install-brain:$editadas"
+  fi
+  if [ "$n_st" -gt 0 ]; then
+    msg="$msg
+  · $n_st archivo(s) DESACTUALIZADOS/ausentes en la copia instalada (la fuente cambió y no se re-desplegó). Remedio: re-corre el bootstrap/install-brain (o \`bash $BRAIN_DIR/brain/install-brain.sh\`):$stale"
+  fi
+  printf '%s\n' "$msg"
   return 0
 }

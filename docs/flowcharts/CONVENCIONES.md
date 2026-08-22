@@ -2,7 +2,7 @@
 
 > Nace del pase COLECTIVO de la auditoría 2026-07-29 + correcciones de unjordi (2026-07-29 noche): el set
 > no cerraba como sistema (🔴 rojo con sentidos opuestos, solo 2/11 con leyenda, numeración circulada
-> desfasada −1). Este doc fija UNA notación para los 5. **Todo flowchart DEBE seguirlo** e incrustar la
+> desfasada −1). Este doc fija UNA notación para TODA la serie (01–14, ver §9). **Todo flowchart DEBE seguirlo** e incrustar la
 > clave de leyenda. Es la regla dura de `diagramar` ("un diagrama entregable lleva leyenda + normas y se
 > versiona") aplicada al set.
 
@@ -47,13 +47,15 @@ Sólida = flujo/secuencia · Punteada (`style=dashed`) + etiqueta = referencia c
 Título del chart empieza con su nº de archivo (`06 · Declarar LISTO al fin de turno`); cross-refs citan por
 nº de archivo ("ver **05**"), NUNCA circulado ①②③ (iba desfasado −1 sin índice).
 
-## 6. Fan-out compartido de un comando git en Bash = 9 hooks (raíz común de 03/04/05)
+## 6. Fan-out compartido de un comando git en Bash = 9 hooks (raíz común de 03 y sus zooms 06/07/08)
 Un comando `Bash` con git lo tocan **9 hooks**: **8 ANTES** (PreToolUse/Bash, en PARALELO, sin despachador,
 precedencia `deny>ask>allow`) + **1 DESPUÉS** (📈 aviso-contexto, PostToolUse). Los 8 pre (confirmado en
 la función `ev_de` de `install-brain.sh`): 🚧 git-branch-guard · 🔗 merge-squash-guard · ✋ confirmar-merge-develop · 🕵️ secret-scan
 · 📊 recordar-dashboard · 🖥️ entorno-maquina-guard · 🕰️ rama-vieja · 🌳 proteger-arbol *(4 pueden DENY: los 3 de
-git + secret-scan)*. El 9º: 📈 aviso-contexto (post, no bloquea). 03/04/05 abren con esta raíz y hacen ZOOM
-sobre su subconjunto NOMBRANDO los 9. Prohibido "cascada secuencial" o "los 2 hooks".
+git + secret-scan)*. El 9º: 📈 aviso-contexto (post, no bloquea). El chart **03** es la VISTA de conjunto
+(los 9 en un fan-out); sus **ZOOMS** —**06** (ruta de merge), **07** (secret-scan + proteger-arbol),
+**08** (nudges del push)— abren con esta MISMA raíz y hacen zoom sobre su subconjunto NOMBRANDO los 9.
+Prohibido "cascada secuencial" o "los 2 hooks".
 
 ## 7. Leyenda a incrustar en cada `.dot` = el ÁRBOL COMPLETO del README (generado, NO tecleado)
 Cada flowchart incrusta DOS cosas dentro de un `subgraph cluster_leyenda`:
@@ -84,3 +86,34 @@ Cada flowchart incrusta DOS cosas dentro de un `subgraph cluster_leyenda`:
 ## 8. Fuente versionada (regla dura)
 Cada flowchart = `.dot` (fuente) + `.svg` (vista) en `docs/flowcharts/`; `.png`/`.graphml` regenerables → gitignored.
 Render de UNO: `dot -Tsvg archivo.dot -o archivo.svg`. Regenerar TODOS (rutina, checa graphviz): `bash docs/flowcharts/gen-charts.sh` (además avisa si algún chart quedó ignorado). ⚠️ **Trampa del catch-all**: `docs/flowcharts/*` está gitignored por default → un chart NUEVO se pierde en `git add` salvo que le agregues su línea `!` en `.gitignore`. Cambió el código que un chart describe → se actualiza el `.dot` **y su `.svg`** en la misma tanda (doc=realidad).
+
+## 9. La serie completa (01–14) y el mapeo del rescate 2026-08-07
+La serie **01–05** es la columna de VISTA de conjunto (rehecha 2026-08-01, fiel al código). Los **06–14** se
+**re-canonizaron el 2026-08-07** desde los SVG huérfanos que habían quedado *gitignored SIN `.dot` ni leyenda*
+(deuda de mantenimiento, no basura): se les creó su `.dot` fuente, se inyectó la leyenda-árbol, se corrigió el
+`doc=realidad` (p. ej. `dod-verificar` y `confirmar-merge-develop` hoy usan un **juez-LLM**, no el pilón de regex viejo)
+y se re-numeró para eliminar las colisiones (había dos 03, dos 04, dos 05) y el circulado −1.
+
+| Nº actual | Título | Rol | Huérfano viejo (nombre · circulado) |
+|---|---|---|---|
+| 01 | Instalación / actualización del cerebro | vista | (ya tracked) |
+| 02 | Ciclo de vida de la sesión | vista | (ya tracked; era «①») |
+| 03 | Enforcement de los git-guards (fan-out de 9) | VISTA de conjunto | (ya tracked) |
+| 04 | Delegación / orquestar fan-out | VISTA de conjunto | (ya tracked) |
+| 05 | Continuidad: checkpoint→compact→rehidratar | vista | (ya tracked) |
+| 06 | Integrar una rama a develop/main | zoom de 03 (merge) | `03-integrar-rama-a-developmain` · ② |
+| 07 | Comando git en Bash: guards que lo inspeccionan | zoom de 03 | `04-comando-git-en-bash-guards-que-lo-inspec` · ③ |
+| 08 | Al hacer push: nudges | zoom de 03 | `05-al-hacer-push-nudges` · ④ |
+| 09 | Declarar «LISTO» al fin de turno (dod-verificar) | detalle | `06-declarar-listo-al-fin-de-turno` · ⑤ |
+| 10 | Cerrar un slice: ritual de pasos | detalle | `07-cerrar-un-slice-ritual-de-pasos` · ⑥ |
+| 11 | Delegar un Task/agente | zoom de 04 | `08-delegar-un-taskagente` · ⑦ |
+| 12 | Orquestar un fan-out sin niñera | zoom de 04 | `09-orquestar-un-fan-out-sin-ninera` · ⑧ |
+| 13 | Normas: el cimiento | cimiento | `10-normas-el-cimiento` · 📜 |
+| 14 | Referencia: libs compartidas + skills de stack | referencia | `11-referencia-libskill-de-stack` · 🔩 |
+
+> **VISTA vs ZOOM — decisión de diseño abierta (para unjordi).** 03/04 son las vistas de conjunto que
+> CONSOLIDARON (2026-08-01) el material que 06/07/08 (git-guards) y 11/12 (delegación) muestran EN DETALLE.
+> CONVENCIONES §6 avala esta coexistencia (una VISTA + sus ZOOMS), y por eso el rescate CONSERVA todo. Si en
+> algún momento se decide que las vistas hacen redundantes a los zooms (o viceversa), es una poda DELIBERADA
+> del humano — no la fuerza este rescate. Los SVG huérfanos originales siguen en el árbol de trabajo local
+> (gitignored, sin `.dot`); pueden borrarse a mano: quedaron SUPERSEDIDOS por su versión versionada aquí.

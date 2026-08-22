@@ -1,7 +1,7 @@
-# bootstrap.ps1 - instalador AUTOCONTENIDO de claude-brain para Windows.
+# bootstrap.ps1 - instalador AUTOCONTENIDO de cortex para Windows.
 # Un solo comando (jala los prereqs con winget; no necesitas nada preinstalado salvo winget):
 #
-#   irm https://raw.githubusercontent.com/unjordi/claude-brain/main/bootstrap.ps1 | iex
+#   irm https://raw.githubusercontent.com/unjordi/cortex/main/bootstrap.ps1 | iex
 #
 # Para QA de una RAMA (p. ej. develop) en vez de la default, define CLAUDE_BRAIN_REF antes:
 #   $env:CLAUDE_BRAIN_REF='develop'; irm .../develop/bootstrap.ps1 | iex
@@ -17,13 +17,13 @@ $ErrorActionPreference = 'Stop'
 # "running scripts is disabled on this system" (caso real del onboarding, 2026-07-10).
 try { Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force } catch {}
 
-$repo = 'https://github.com/unjordi/claude-brain'
+$repo = 'https://github.com/unjordi/cortex'
 # %LOCALAPPDATA% (no el perfil visible) para no ensuciar el home del usuario -- paridad con Linux/mac
-# (~/.claude-brain oculto). Nombre "-repo" para no chocar con %LOCALAPPDATA%\claude-brain (cache del
-# daemon: state/stats/account) ni con %LOCALAPPDATA%\Programs\ClaudeBrain (la app instalada).
-$dir  = if ($env:CLAUDE_BRAIN_DIR) { $env:CLAUDE_BRAIN_DIR } else { "$env:LOCALAPPDATA\claude-brain-repo" }
-$oldDir = "$env:USERPROFILE\claude-brain"   # legado (visible): bootstrap.ps1 clonaba aqui antes de ocultarlo (2026-07-15)
-function Say($m) { Write-Host "claude-brain > $m" -ForegroundColor DarkYellow }
+# (~/.cortex oculto). Nombre "-repo" para no chocar con %LOCALAPPDATA%\cortex (cache del
+# daemon: state/stats/account) ni con %LOCALAPPDATA%\Programs\Cortex (la app instalada).
+$dir  = if ($env:CLAUDE_BRAIN_DIR) { $env:CLAUDE_BRAIN_DIR } else { "$env:LOCALAPPDATA\cortex-repo" }
+$oldDir = "$env:USERPROFILE\cortex"   # legado (visible): bootstrap.ps1 clonaba aqui antes de ocultarlo (2026-07-15)
+function Say($m) { Write-Host "cortex > $m" -ForegroundColor DarkYellow }
 
 # Migracion: si ya existe el clon viejo VISIBLE y el nuevo oculto todavia no, muevelo (no lo dupliques).
 # El clon se necesita para que el autoupdate del widget funcione -- no se borra, solo se oculta.
@@ -87,8 +87,8 @@ if ($ref) { Say "instalando la rama '$ref' (QA)" }
 
 # CLAUDE_BRAIN_DIR: exporta la ruta del clon-fuente como env var de USUARIO para que los hooks BASH
 # (aviso-drift-cerebro, sincronizar-cerebro.sh) encuentren la FUENTE en Windows. Sin esto el hook cae a
-# su default de Mac/Linux ($HOME/.claude-brain) -- que en Windows NO existe (aqui clonamos en
-# %LOCALAPPDATA%\claude-brain-repo) -> el auto-sync del cerebro por-repo fallaba MUDO. La ruta se guarda
+# su default de Mac/Linux ($HOME/.cortex) -- que en Windows NO existe (aqui clonamos en
+# %LOCALAPPDATA%\cortex-repo) -> el auto-sync del cerebro por-repo fallaba MUDO. La ruta se guarda
 # en FORWARD-SLASH: bash se atraganta con los backslashes de Windows (mismo motivo que la ruta del .sh
 # del instalador). $dir (con backslashes) se conserva intacto para los usos nativos de PowerShell.
 $dirBash = $dir -replace '\\','/'

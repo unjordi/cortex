@@ -89,7 +89,7 @@ Ninguno cubierto por #209 (costura/flowcharts) ni !110 (plantilla wiring) — so
 ### 🔴 C1 · [CRÍTICO·COSTURA] Punto ciego de CABLEADO — VIVO en la plantilla
 La plantilla tiene 3 `.sh` presentes-SIN-cablear (`entorno-maquina-guard`, `recordar-cosechar`, `recordar-unificar-cerebro`); `aviso-drift` compara CONTENIDO (no wiring) → "al día"; `test-brain` valida instaladores contra `$HOME` falso, nunca un repo real. **Ningún mecanismo mira si un repo cabla lo que el MANIFEST manda.** Detección **CUBIERTO por #209**; el estado vivo = **!110**; el field-check (verificar repo real) = NEW.
 ### 🔴 C2 · [CRÍTICO·COSTURA·NEW] aviso-drift `--apply` puede REGRESAR el brain y auto-commitear+pushear la regresión
-`aviso-drift-cerebro.sh:29` usa `~/.claude-brain` como fuente sin noción de dirección/versión; `sincronizar` solo hace `dst:=src`. Si el clon local quedó ATRÁS, sobrescribe hooks NUEVOS del repo con VIEJOS y (en mini limpia) `add+commit+push` la regresión, en cada SessionStart. **NO cubierto por #209.** **FIX:** exigir que `~/.claude-brain` no esté detrás de su origin (o del `.brain-version` del repo) antes del `--apply`; si no, degradar a AVISO.
+`aviso-drift-cerebro.sh:29` usa `~/.cortex` como fuente sin noción de dirección/versión; `sincronizar` solo hace `dst:=src`. Si el clon local quedó ATRÁS, sobrescribe hooks NUEVOS del repo con VIEJOS y (en mini limpia) `add+commit+push` la regresión, en cada SessionStart. **NO cubierto por #209.** **FIX:** exigir que `~/.cortex` no esté detrás de su origin (o del `.brain-version` del repo) antes del `--apply`; si no, degradar a AVISO.
 ### 🟠 sA1 · [COSTURA·NEW] dedupe cede al global aunque la copia del repo sea MÁS NUEVA → el fix de guard recién mergeado queda inerte en máquinas bootstrapeadas (= corolario B2). **FIX:** ceder al global solo si global ≥ repo por `.brain-version`.
 ### 🟠 sA2 · [NORMA·NEW] "entorno-máquina vive GLOBAL" sin mecanismo activo (guard descableado, C1) + omitida del árbol del README (junto con recordar-cosechar/unificar/barrer-ramas). Doc=realidad rota en el propio mapa.
 ### 🟠 sA3 · [COSTURA·NEW] git ops iniciadas POR el hook (aviso-drift `add/commit/push`) ESQUIVAN a los git-guards (no pasan por Bash) + `Develop?*` demasiado ancho (matchea `Developed`/`DevelopmentX`) + el `git add` puede barrer el índice ya staged del dev. **FIX:** anclar regex `^Develop[A-Z][A-Za-z]*$`; `git commit -o .claude/hooks`.
@@ -105,7 +105,7 @@ Ya atacados por #209 (verificar al mergear): **B1** (git add settings.json + dri
 ## ANEXO — Coherencia de RUTAS cross-OS (auditor de portabilidad, 2026-07-30)
 Respuesta a "confirma coherencia/consistencia de rutas en TODOS los OSes". Veredicto: **coherencia PARCIAL — hay divergencias reales.**
 - **H1 [ALTO]** Windows `$HOME` (bash, `install-brain.sh:36` `CLAUDE_DIR="$HOME/.claude"`) vs `%USERPROFILE%` (`BrainInspector.cs:87`, `.swift:84`) pueden divergir → cerebro instalado donde el widget NO lo lee. Ni bootstrap.ps1 ni install-brain.ps1 puentean HOME↔USERPROFILE. **FIX:** exportar `HOME=$env:USERPROFILE` en los .ps1 antes de invocar bash, o `${USERPROFILE:-$HOME}` en install-brain.sh.
-- **H2 [ALTO]** self-update: `Updater.swift:45-53` (`resolveClonePath`, cadena de fallback CLAUDE_BRAIN_DIR→~/.claude-brain) es robusto; `Updater.cs:60-81` y `main.qml:262-266,995-1006` usan SOLO el repo embebido sin fallback → divergencia. **FIX:** portar `resolveClonePath` a C# y QML.
+- **H2 [ALTO]** self-update: `Updater.swift:45-53` (`resolveClonePath`, cadena de fallback CLAUDE_BRAIN_DIR→~/.cortex) es robusto; `Updater.cs:60-81` y `main.qml:262-266,995-1006` usan SOLO el repo embebido sin fallback → divergencia. **FIX:** portar `resolveClonePath` a C# y QML.
 - **H3 [MEDIO]** `bootstrap.sh:69` usa `checkout -B main origin/main` (abandonó `pull --ff-only` por robustez); `bootstrap.ps1:78` sigue con `pull --ff-only` → Windows sin el fix. **FIX:** alinear bootstrap.ps1.
 - **H4 [BAJO]** `install-brain.ps1` es lanzador delgado hoy (delega en `.sh`) pero sin test que lo blinde. **H5 [MENOR]** `main.qml:1003` `cd '<repo>'` no escapa `'`.
 - **OK:** cero `/Users/`·`/home/`·`C:\Users` hardcodeados en código de envío; cableado uniforme `shell:bash`+`$HOME`/`${CLAUDE_PROJECT_DIR}`; brain dir puenteado en bootstrap.ps1 (ya en test `e4`).
@@ -114,7 +114,7 @@ Respuesta a "confirma coherencia/consistencia de rutas en TODOS los OSes". Vered
 1. install-brain.ps1 sigue delgado (grep `bash.*install-brain.sh` + NO cablea por su cuenta).
 2. bootstrap.ps1 usa `checkout -B main origin/main`, NO `pull --ff-only` (== bootstrap.sh).
 3. ningún .sh/.ps1/.swift/.cs/.qml de envío hardcodea home absoluto (fuera de comentarios/entorno-maquina-guard).
-4. los 3 updaters (swift/cs/qml) referencian CLAUDE_BRAIN_DIR/.claude-brain como fallback (presiona paridad H2).
+4. los 3 updaters (swift/cs/qml) referencian CLAUDE_BRAIN_DIR/.cortex como fallback (presiona paridad H2).
 5. updaters que `cd`/`Set-Location` al clon citan/escapan la ruta (H5).
 6. `.brain-version` se lee desde `<home>/.claude/` en los 4 lectores (swift/cs/brain-scan.sh/install-brain.sh).
 7. puente HOME↔USERPROFILE en los .ps1 (H1) — **nace en FALLO** hasta que se aplique el fix; documenta el gap.
@@ -129,7 +129,7 @@ Respuesta a "confirma coherencia/consistencia de rutas en TODOS los OSes". Vered
 - **H3** ✅ `bootstrap.ps1` alineado a `checkout -B main origin/main` (== `bootstrap.sh:69`); abandonó el fast-forward de la rama actual.
 - **H1** ✅ puente HOME↔USERPROFILE: `bootstrap.ps1` e `install-brain.ps1` exportan `$env:HOME = $env:USERPROFILE` antes de invocar bash (solo Windows; no toca Mac/Linux). El bash hijo hereda el entorno → el cerebro se instala en el MISMO `~/.claude` que lee el widget.
 - **H5** ✅ `main.qml` runUpdate: el `cd`/`bash` del update ahora escapan la ruta del clon con el helper `shq()` (comillas POSIX) — antes `cd '<repo>'` partía una ruta con `'`.
-- **H2 (C#)** ✅ `windows/src/ClaudeBrain/Updater.cs`: portado `ResolveClonePath` espejando `Updater.swift` (embebido → `$CLAUDE_BRAIN_DIR` → `%LOCALAPPDATA%\claude-brain-repo`, verificando `windows\install.ps1`). Antes usaba SOLO el `repo` embebido (ruta del runner de CI, inexistente en la máquina del usuario) → `CanSelfUpdate=false`.
+- **H2 (C#)** ✅ `windows/src/Cortex/Updater.cs`: portado `ResolveClonePath` espejando `Updater.swift` (embebido → `$CLAUDE_BRAIN_DIR` → `%LOCALAPPDATA%\cortex-repo`, verificando `windows\install.ps1`). Antes usaba SOLO el `repo` embebido (ruta del runner de CI, inexistente en la máquina del usuario) → `CanSelfUpdate=false`.
 
 **Backlog (NO arreglado, demasiado riesgoso a ciegas):**
 - **H2 (QML)** ⏳ `src/plasmoid/contents/ui/main.qml` NO recibió el fallback `resolveClonePath`. Motivo: el plasmoid no puede hacer `fileExists` síncrono; resolver el clon exige un round-trip async por `DataSource("executable")` que reestructura el gating de `updCanSelfUpdate`/visibilidad del botón — no verificable estáticamente aquí. Mitigante: en KDE el `install.sh` corre LOCAL (no CI precompilado), así que el `repo` embebido normalmente SÍ existe → el riesgo real es menor que en macOS/Windows. **Pendiente:** portar el fallback en QML con QA en vivo en KDE.

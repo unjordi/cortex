@@ -1,0 +1,66 @@
+# MANIFEST (skills) — FUENTE ÚNICA del cerebro (cortex) para las SKILLS genéricas: declara, por cada
+# carpeta de brain/skills/, su TIER (dónde se despliega). Hermano del brain/hooks/MANIFEST (que hace lo mismo
+# para hooks/libs). De aquí DERIVAN las rutas de instalación de skills y el drift-check → dejan de curarse a
+# mano (antídoto al drift comprobado: ~/.claude/skills/to-do se editó a mano en dev y la copia viva se
+# desincronizó de brain/skills/to-do/ sin que nada lo detectara ni re-sincronizara).
+#
+# Formato:  <nombre-de-la-skill>   <tier>
+#   tier:  global  → solo ~/.claude/skills (lo instala el bootstrap/install-brain; NO viaja por-repo).
+#          both    → AMBOS: global por el bootstrap + viaja POR-REPO en repos COMPARTIDOS (marca
+#                    .claude/repo-compartido) como CORREO — para el colega que clona un repo compartido y
+#                    NO tiene el brain global. Análogo al tier `both` de los hooks.
+#          (no hay tier `repo`-only para skills hoy: una skill genérica del cerebro siempre existe global.)
+#
+# ── CÓMO DECIDIR EL TIER (regla crisp — respuesta a TODO "¿global o both?"; #81) ───────────────────────
+# Mismo PATRÓN REPO-COMPARTIDO que los hooks (norma "Cerebro por-repo = CORREO"):
+#   ¿Esta skill la usaría un COLEGA en un repo COMPARTIDO que NO tiene el brain global?
+#     • SÍ  → `both`   : viaja POR-REPO como CORREO (solo a repos marcados `.claude/repo-compartido`) +
+#                        global por el bootstrap. A diferencia de un hook `both`, una skill NO necesita
+#                        cláusula de dedupe: es markdown que LEE el modelo, no un script que se EJECUTE
+#                        → no hay doble disparo.
+#     • NO  → `global` : basta con vivir en la máquina del DUEÑO (que ya corrió el bootstrap). DEFAULT
+#                        CONSERVADOR — ante la duda, `global`, no `both`.
+# Anti-drift: NO pongas `both` "por si acaso"; solo si un clon compartido SIN brain global la necesita.
+#
+# Consumidores (paralelos EXACTOS de los de hooks):
+#   - install-brain.sh       : instala GLOBAL = {global, both} skills (árbol COMPLETO de cada skill).
+#   - sincronizar-cerebro.sh : despliega POR-REPO = {both} skills en <repo>/.claude/skills (solo repos
+#                              COMPARTIDOS; el brain por-repo es el CORREO). Diff-aware, --apply, --prune-orphans.
+#   - drift-cerebro-comun.sh : drift-check per-repo (via el resumen del sync) + drift GLOBAL (instalada≠fuente).
+#   - test-brain.sh          : verifica el sync/drift de skills contra este manifiesto.
+#
+# Líneas '#' y en blanco se ignoran. Skill en brain/skills/ SIN línea aquí → se trata como `global` + AVISO.
+# Al agregar/mover una skill: EDITA AQUÍ y las rutas lo heredan.
+#
+# ── DECISIÓN DE TIER (unjordi, 2026-08-07) ───────────────────────────────────────────────────────────────
+# Marcadas `both` las 4 skills que un colega en un repo COMPARTIDO usaría — cerrar-slice, checkpoint,
+# rehidratar-hilo (la receta del MR + la continuidad del hilo, compañeras de los guards que ya viajan `both`)
+# y to-do (carga el backlog durable de ESE repo, que en un compartido es estado del EQUIPO). Así el colega
+# que clona un repo COMPARTIDO recibe los guards Y las skills que los acompañan como CORREO. Aparecen en su
+# .claude/skills en la próxima auto-sync. El resto sigue `global` (seed CONSERVADOR — no empuja las demás
+# por-repo). A diferencia de los hooks `both`, una skill NO necesita cláusula de dedupe: es markdown que LEE
+# el modelo, no un script que se EJECUTE → no hay doble disparo. El PLUMBING de `both` está construido y
+# probado; basta cambiar el tier aquí.
+
+auditar-coherencia-cerebro       global
+auditar-proceso-algoritmo        global
+auditar-suficiencia-operativa    global
+auditor-semantico                global
+cerrar-slice                     both
+checkpoint                       both
+claude-proyecto-autocontenido    global
+consolidar-cerebro               global
+cosechar-sesion                  global
+desinflar-memorias               global
+diagramar                        global
+ingenieria-inversa-gui-db-navegador  global
+investigar-dominio               global
+markdown-a-pdf                   global
+orquestar-fanout                 global
+positivar-doc                    global
+rehidratar-hilo                  both
+revisar-entregables-agentes      global
+to-do                            both
+turno-nocturno                   global
+unificar-cerebro                 global
+zoom-screenshot                  global

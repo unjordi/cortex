@@ -1,4 +1,4 @@
-# Claude Brain Widget — macOS menu-bar app
+# Cortex Widget — macOS menu-bar app
 
 The macOS sibling of the [KDE Plasma widget](../README.md). Puts your Claude
 Code subscription usage in the menu bar: a two-row `5h` / `7d` indicator with a
@@ -50,7 +50,7 @@ tab rail on the left:
 - **Modelos** — a stacked bar chart of daily token usage colored per model,
   plus a table with in/out tokens and % share per model.
 - The rail's bottom buttons: **refresh** (kicks off a real fetch via
-  `~/.local/bin/claude-brain-fetch`, not just a cache re-read) and **quit**.
+  `~/.local/bin/cortex-fetch`, not just a cache re-read) and **quit**.
 
 ## How it works
 
@@ -58,14 +58,14 @@ Three pieces, intentionally separated — the same shape as the Linux port:
 
 ```
 ┌────────────────────────────────┐
-│ 1. claude-brain-fetch          │ bash + jq + curl (OAuth) + ccusage
+│ 1. cortex-fetch          │ bash + jq + curl (OAuth) + ccusage
 │    runs every 5 min via        │     ↓ writes
-│    a launchd LaunchAgent        │ ~/Library/Caches/claude-brain/state.json
-│                                  │ ~/Library/Caches/claude-brain/stats.json
+│    a launchd LaunchAgent        │ ~/Library/Caches/cortex/state.json
+│                                  │ ~/Library/Caches/cortex/stats.json
 └────────────────────────────────┘            ↑ reads
                                               │ (every 10s)
 ┌────────────────────────────────┐            │
-│ 2. Claude Brain Widget.app     │────────────┘
+│ 2. Cortex Widget.app     │────────────┘
 │    NSStatusItem 2-row indicator│
 │    + 3-tab SwiftUI popover     │
 └────────────────────────────────┘
@@ -131,10 +131,10 @@ this figure ~10×, so a heavy week can read as hundreds of API-equivalent dollar
 **Self-contained (pulls its own deps — recommended):**
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/unjordi/claude-brain/main/bootstrap.sh | bash
+curl -fsSL https://raw.githubusercontent.com/unjordi/cortex/main/bootstrap.sh | bash
 ```
 
-`bootstrap.sh` installs any missing `jq`/`node` via Homebrew, clones the repo to `~/.claude-brain`,
+`bootstrap.sh` installs any missing `jq`/`node` via Homebrew, clones the repo to `~/.cortex`,
 and runs the top-level `install.sh`. (It won't auto-install Homebrew itself; `swift`/Xcode CLT **solo**
 hace falta si compilas con `--build` — por default se baja el `.app` precompilado.) **Or by hand** from the repo:
 
@@ -153,17 +153,17 @@ Or with [just](https://github.com/casey/just):
 just install
 ```
 
-This **downloads** the precompiled `Claude Brain Widget.app` into `~/Applications` (SIN Xcode/Swift;
+This **downloads** the precompiled `Cortex Widget.app` into `~/Applications` (SIN Xcode/Swift;
 `--build` fuerza compilar desde fuente), installs the fetch script and launchd agent, primes the
 cache with one run, and launches the app. Look for the `5h` / `7d` indicator in your menu bar.
 
 To launch at login: **System Settings → General → Login Items → +** and add
-**Claude Brain Widget**.
+**Cortex Widget**.
 
 ## Tuning the fallback caps
 
 When the OAuth endpoint is reachable the percentages are exact and **no tuning
-is needed** — the caps in `~/.config/claude-brain/limits.env` only matter for
+is needed** — the caps in `~/.config/cortex/limits.env` only matter for
 the offline/no-credentials fallback. To calibrate them, run `/usage` once and
 set each USD cap to **the popover's "$ used" ÷ the `/usage` fraction**, then
 reload the agent:
@@ -171,8 +171,8 @@ reload the agent:
 ```sh
 # e.g. popover shows "$16" on the 5-hour bar and /usage says 36% →
 #   FIVE_HOUR_CAP_USD = 16 / 0.36 ≈ 45
-$EDITOR ~/.config/claude-brain/limits.env
-launchctl kickstart -k gui/$(id -u)/io.github.unjordi.claude-brain
+$EDITOR ~/.config/cortex/limits.env
+launchctl kickstart -k gui/$(id -u)/io.github.unjordi.cortex
 ```
 
 Rough starting points (eyeballed against `/usage` on Max 20x — your mileage will
@@ -188,7 +188,7 @@ vary with how cache-heavy your sessions are):
 
 ```sh
 just build      # compile the release binary
-just app        # assemble Claude Brain Widget.app under build/
+just app        # assemble Cortex Widget.app under build/
 just run        # run the just-built binary in the foreground (logs to terminal)
 just reload     # rebuild + reinstall + relaunch after editing Swift sources
 just refresh    # force one fetch cycle now and print state.json
@@ -206,18 +206,18 @@ binary, `make-app.sh` wraps it in a `.app` bundle with an `LSUIElement` Info.pli
 - **Indicator rows show `…`** — the cache file hasn't been written yet. Run
   `just refresh`; the first `ccusage` run can take a few seconds to cold-start.
 - **Indicator rows show `!`** — the app can't read `state.json`. Check the
-  fetch agent: `cat /tmp/claude-brain.err.log`.
+  fetch agent: `cat /tmp/cortex.err.log`.
 - **No indicator at all** — confirm the app is running
-  (`pgrep -lf ClaudeBrain`); if not, `open "~/Applications/Claude Brain Widget.app"`.
+  (`pgrep -lf Cortex`); if not, `open "~/Applications/Cortex Widget.app"`.
 - **Percentages way off from `/usage`** — check `jq .basis` on
-  `~/Library/Caches/claude-brain/state.json`. If it says `"cost"`, the OAuth
+  `~/Library/Caches/cortex/state.json`. If it says `"cost"`, the OAuth
   endpoint isn't reachable (are Claude Code credentials in your Keychain? are
   you online?) and you're on the calibrated fallback — see above. If it says
   `"oauth"`, the numbers come straight from Anthropic and should match.
 - **Resumen/Modelos tabs empty or stale** — those come from `stats.json`, not
   `state.json`. Check it exists and is fresh:
-  `jq .updated_at ~/Library/Caches/claude-brain/stats.json`. It's written by
-  the same `claude-brain-fetch` run but is best-effort (missing `ccusage` or
+  `jq .updated_at ~/Library/Caches/cortex/stats.json`. It's written by
+  the same `cortex-fetch` run but is best-effort (missing `ccusage` or
   an empty `~/.claude/projects` just leaves it absent, without failing the
   limits fetch).
 
@@ -225,7 +225,7 @@ binary, `make-app.sh` wraps it in a `.app` bundle with an `LSUIElement` Info.pli
 
 ```sh
 just uninstall   # remove app, agent, fetch script (keeps limits.env)
-just purge       # also remove ~/.config/claude-brain and the cache
+just purge       # also remove ~/.config/cortex and the cache
 ```
 
 ## License

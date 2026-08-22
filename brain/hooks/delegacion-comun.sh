@@ -17,7 +17,8 @@ clasificar_delegacion() {
   DG_ES_TASK=0; DG_SID="sin-sesion"; DG_TARGET=""; DG_CLASE="token"; DG_FIRMA="desconocido"
   DG_UMBRAL=90; DG_PCT="?"; DG_NIVEL="metered"; DG_KEY=""
 
-  [ "$(printf '%s' "$input" | jq -r '.tool_name // empty' 2>/dev/null)" = "Task" ] || return 0
+  # Agent = nombre nuevo del tool de subagentes (antes Task); aceptar AMBOS o el gate nunca dispara.
+  case "$(printf '%s' "$input" | jq -r '.tool_name // empty' 2>/dev/null)" in Task|Agent) ;; *) return 0 ;; esac
   DG_ES_TASK=1
   DG_SID=$(printf '%s' "$input" | jq -r '.session_id // "sin-sesion"' 2>/dev/null)
   DG_TARGET=$(printf '%s' "$input" | jq -r '[.tool_input.subagent_type // "", .tool_input.model // ""] | join(" ") | ascii_downcase' 2>/dev/null)
@@ -40,7 +41,7 @@ clasificar_delegacion() {
     claude)
       # snapshot de cuota FRESCO (< 30 min); dentro de ventana (pct < umbral) → incluido; si no → metered
       local snap="" c
-      for c in "${XDG_CACHE_HOME:-$HOME/.cache}/claude-brain/state.json" "$HOME/Library/Caches/claude-brain/state.json"; do
+      for c in "${XDG_CACHE_HOME:-$HOME/.cache}/cortex/state.json" "$HOME/Library/Caches/cortex/state.json"; do
         [ -f "$c" ] && { snap="$c"; break; }
       done
       if [ -n "$snap" ] && [ -z "$(find "$snap" -mmin +30 2>/dev/null)" ]; then
@@ -91,7 +92,7 @@ fmt_tokens() {
 linea_cuota() {
   command -v jq >/dev/null 2>&1 || return 0
   local snap="" c
-  for c in "${XDG_CACHE_HOME:-$HOME/.cache}/claude-brain/state.json" "$HOME/Library/Caches/claude-brain/state.json"; do
+  for c in "${XDG_CACHE_HOME:-$HOME/.cache}/cortex/state.json" "$HOME/Library/Caches/cortex/state.json"; do
     [ -f "$c" ] && { snap="$c"; break; }
   done
   [ -n "$snap" ] || return 0

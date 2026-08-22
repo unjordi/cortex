@@ -1,6 +1,6 @@
 ---
 name: checkpoint
-description: Volcado del estado efímero a memoria durable para poder compactar (o cerrar sesión) sin perder el hilo, en DOS NIVELES. LIGERO (pausas naturales, punto de retorno rápido) reescribe hilo-mental-actual.md —leyendo antes el previo para no pisar ideas vivas a medio cocinar— (de qué va la tarea AHORA) y, si el proyecto avanzó, actualiza estado-proyecto.md + bitácora. COMPLETO (OBLIGATORIO antes de cualquier /compact —manual o anunciado por el aviso de contexto— y cada ~2h en corridas largas) agrega el PLAN COMPLETO con el CÓMO, lo RESUELTO HOY y la COSECHA DURABLE a memorias/skills. Es el "volcado compartido" que cerrar-slice §2 también hace. Ante la duda de nivel: COMPLETO.
+description: Volcado del estado efímero a memoria durable para poder compactar (o cerrar sesión) sin perder el hilo, en DOS NIVELES. LIGERO (pausas naturales, punto de retorno rápido) reescribe hilo-mental-actual.md —leyendo antes el previo para no pisar ideas vivas a medio cocinar— (de qué va la tarea AHORA) y GARANTIZA, antes de sobrescribir, que todo pendiente/decisión DURABLE del hilo ya esté en estado-proyecto.md + bitácora (barrido SIN PÉRDIDA: el hilo volátil sube al backlog durable, nunca al revés). COMPLETO (OBLIGATORIO antes de cualquier /compact —manual o anunciado por el aviso de contexto— y cada ~2h en corridas largas) agrega el PLAN COMPLETO con el CÓMO, lo RESUELTO HOY y la COSECHA DURABLE a memorias/skills. Es el "volcado compartido" que cerrar-slice §2 también hace. Ante la duda de nivel: COMPLETO.
 ---
 
 # Checkpoint — vaciar lo efímero a memoria durable (sin fricción)
@@ -59,6 +59,14 @@ volátil lo que tiene casa durable** → reduce lo que el compact puede siquiera
   rato, vuelca aunque no vayas a compactar todavía.
 
 ## Qué hace (el volcado)
+
+> **GARANTÍA DURA (answer-first): un checkpoint NUNCA pierde nada durable al sobrescribir el hilo.**
+> `hilo-mental-actual.md` es VOLÁTIL y este volcado lo PISA — así que **antes de sobrescribirlo, barre el
+> hilo y sube todo pendiente/decisión DURABLE a `estado-proyecto.md`** (o el backlog durable del repo). La
+> flecha va en UNA dirección: **hilo (volátil) → SUBE al backlog (durable), NUNCA al revés** (el hilo jamás
+> genera ni pisa el HUD/backlog desde la memoria volátil de un Claude — eso invertiría la fuente de verdad).
+> Recién entonces el hilo se puede TIRAR sin perder nada. Mecánica y matices en el paso 2.
+
 1. **El HILO (siempre, ambos niveles).** Va a `.claude/memory/hilo-mental-actual.md` (créalo si no
    existe: `mkdir -p .claude/memory`). No es log ni backlog — es "de qué va ESTO ahora mismo".
 
@@ -92,20 +100,40 @@ volátil lo que tiene casa durable** → reduce lo que el compact puede siquiera
    ## PLAN COMPLETO (con el CÓMO)
    <TODO lo planeado, ítem por ítem: qué + el MECANISMO de resolución pensado + detalles, gotchas y
     porqués — a fidelidad completa, en TUS propias palabras. NO telegráfico: es lo que te vas a
-    releer para re-instanciarte tras el compact.>
+    releer para re-instanciarte tras el compact. Cada ítem lleva su PROCEDENCIA (ver abajo).>
    ## RESUELTO HOY (no reabrir)
-   <decisiones tomadas + su porqué en una línea cada una. El ANTI-FANTASMA: lo que está aquí NO se
-    re-pregunta ni se re-descubre después de compactar.>
+   <decisiones tomadas + su porqué + su PROCEDENCIA en una línea cada una. El ANTI-FANTASMA: lo que
+    está aquí NO se re-pregunta ni se re-descubre después de compactar.>
    ## COSECHA DURABLE (hecha en esta tanda)
    <qué se promovió EN ESTE checkpoint a su casa durable — memorias del proyecto, skills tocados —
     con sus rutas. La promoción se hace COMO PARTE del checkpoint completo, no "después".>
    ```
    Pon la **FECHA real**: `rehidratar-hilo` la muestra al retomar para que juzgues si el hilo quedó viejo.
-2. **El estado del proyecto (solo si avanzó).** Igual que `cerrar-slice §2`: mueve ítems en
-   `estado-proyecto.md` (hecho/pendiente/decidido) y **appendea UNA línea al FINAL** de `bitacora.md`
-   con `>>` (`printf '%s\n' '- …' >> bitacora.md`), **no** con un Edit que reescriba (así varias
-   sesiones no se pisan). Si no avanzó nada del proyecto, este paso se salta — checkpoint puede ser
-   solo-hilo.
+
+   **PROCEDENCIA de cada idea (regla dura — el hilo mental DE LA IDEA, no solo el stub).** Cada ítem del
+   PLAN y cada decisión de RESUELTO llevan de DÓNDE salió y QUIÉN la originó, con un marcador breve:
+   `[user: "<cita textual>"]` si es del usuario · `[INFER-mío]` si es una hipótesis/propuesta TUYA (de
+   Claude) · `[juntos <fecha>]` si se decidió en conversación. **Por qué:** al comprimir se pierde la
+   procedencia y el default es re-leerse la idea PROPIA como si fuera del usuario ("unjordi cree X") →
+   se lava una hipótesis tuya en su voz, primo hermano de fabricar autorización (viola la norma de
+   autorización acotada y NO-transitiva). Marcar la procedencia hace que el LINAJE viaje CON la idea a
+   través del compact. Regla dura al re-resumir: **nunca conviertas un `[INFER-mío]` en un `[user]`**; si
+   no recuerdas el origen, es `[INFER-mío]` (conservador), no del usuario.
+2. **El estado del proyecto — BARRIDO SIN PÉRDIDA del hilo → durable (GARANTÍA DURA, ambos niveles).**
+   Antes de que el paso 1 pise el hilo, **barre el hilo entero y asegura que TODO pendiente y TODA
+   decisión DURABLE que viva en él ya esté en `estado-proyecto.md`** (o el backlog durable equivalente del
+   repo — `estado-y-pendientes.md`; y `bitacora.md` para lo que YA pasó). Es la dirección correcta de la
+   flecha — **hilo (volátil) SUBE a estado-proyecto.md (durable), nunca al revés** —, la misma separación
+   dura del skill `/to-do` (**el HUD/hilo = vista SCRATCH; el backlog durable = fuente de verdad**) y la
+   norma "ninguna DECISIÓN se queda solo en el chat". Así la sobrescritura del hilo queda **SIN PÉRDIDA**:
+   lo que legítimamente se descarta del hilo (paso 1) ya está a salvo en el durable. Mecánica: igual que
+   `cerrar-slice §2` — mueve ítems en `estado-proyecto.md` (hecho/pendiente/decidido) y **appendea UNA
+   línea al FINAL** de `bitacora.md` con `>>` (`printf '%s\n' '- …' >> bitacora.md`), **no** con un Edit
+   que reescriba (así varias sesiones no se pisan). Lo puramente EFÍMERO (el micro-paso siguiente, un
+   razonamiento a medio cocinar SIN decisión aún) NO necesita subir — vive en el hilo y lo cuida el
+   read-before-overwrite del paso 1; **ante la duda de si algo es durable, SUBE** (barato de limpiar, caro
+   de perder). El BARRIDO en sí NO es opcional; si tras barrer no queda nada durable sin subir, el
+   checkpoint puede ser solo-hilo.
 3. **doc = realidad (vistazo).** Si en esta tanda cambiaste comportamiento/config/rutas, actualiza la
    doc que lo describe en la MISMA tanda (no lo dejes para después).
 4. **La cosecha durable (solo COMPLETO).** Antes de cerrar el volcado, pregúntate: *¿qué de lo que

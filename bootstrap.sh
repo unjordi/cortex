@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# bootstrap.sh — instalador AUTOCONTENIDO de claude-brain para Linux/macOS.
+# bootstrap.sh — instalador AUTOCONTENIDO de cortex para Linux/macOS.
 # Un solo comando (no necesitas nada preinstalado salvo el gestor de paquetes del sistema):
 #
-#   curl -fsSL https://raw.githubusercontent.com/unjordi/claude-brain/main/bootstrap.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/unjordi/cortex/main/bootstrap.sh | bash
 #
 # Qué hace: (1) instala los prerrequisitos que falten con el gestor del OS (brew / apt / dnf / pacman
 # / zypper), (2) clona o actualiza el repo, (3) corre ./install.sh (cerebro + daemon + widget).
@@ -12,10 +12,10 @@
 #   curl -fsSL …/develop/bootstrap.sh | CLAUDE_BRAIN_REF=develop bash
 set -euo pipefail
 
-REPO_URL="https://github.com/unjordi/claude-brain"
-DIR="${CLAUDE_BRAIN_DIR:-$HOME/.claude-brain}"
-OLD_DIR="$HOME/claude-brain"   # legacy (visible): bootstrap.sh clonaba aquí antes de ocultarlo (2026-07-15)
-say() { printf '\033[1;38;5;208m🧠 claude-brain\033[0m » %s\n' "$1"; }
+REPO_URL="https://github.com/unjordi/cortex"
+DIR="${CLAUDE_BRAIN_DIR:-$HOME/.cortex}"
+OLD_DIR="$HOME/cortex"   # legacy (visible): bootstrap.sh clonaba aquí antes de ocultarlo (2026-07-15)
+say() { printf '\033[1;38;5;208m🧠 cortex\033[0m » %s\n' "$1"; }
 
 # Migración: si ya existe el clon viejo VISIBLE y el nuevo oculto todavía no, muévelo (no lo dupliques).
 # El clon se necesita para que "Actualizar widget" funcione (guarda su ruta en version.json) — no se

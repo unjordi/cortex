@@ -227,6 +227,22 @@ acg__run_timeout() {
   return "$rc"
 }
 
+# Extrae el destino EXPLÍCITO del PROPIO comando de merge, si viene por flag de base
+# (gh: --base/-B · glab: --target-branch/--target). Es la fuente MÁS confiable del destino y NO cuesta
+# red, ni gh/glab, ni jq: el destino ya está TIPEADO en el comando que disparó el hook. Devuelve la rama
+# por stdout (vacío si el comando no trae flag de base → el caller cae al lookup por API). Trabaja sobre
+# el comando SIN comillas ni --repo (para no confundir un `--repo x/y` con el destino). bash-3.2-safe.
+acg_destino_explicito_del_comando() {   # $1=comando → rama destino | vacío
+  local u m
+  u=$(acg_sin_flag_repo "$(acg_despoja_comillas "$1")")
+  # `grep -oE … | head -1`: el 1er flag de destino con su valor (nombre de rama: letras/dígitos/._/-).
+  # --target-branch va ANTES de --target en la alternación (leftmost-longest de ERE igual lo tomaría, pero
+  # ser explícito es a prueba de balas). Luego se recorta el nombre del flag para dejar solo la rama.
+  m=$(printf '%s' "$u" | grep -oE '(--target-branch|--target|--base|-B)[[:space:]=]+[A-Za-z0-9._/-]+' | head -1)
+  [ -n "$m" ] || return 0
+  printf '%s' "$m" | sed -E 's/^(--target-branch|--target|--base|-B)[[:space:]=]+//'
+}
+
 # Resuelve el target_branch de un MR/PR (glab/gh) para decidir el destino del merge, con:
 #  - CACHÉ por (repo,herramienta,mr-id) en TMPDIR → COMPARTIDA entre merge-squash-guard y
 #    confirmar-merge-develop: el MISMO `glab mr merge` los dispara a AMBOS ⇒ misma clave. Si un hook
@@ -242,8 +258,16 @@ acg__run_timeout() {
 # release por no resolver). Requiere jq (sin jq devuelve vacío).
 ACG_MR_TIMEOUT="${ACG_MR_TIMEOUT:-6}"
 acg_destino_de_mr() {   # $1=comando  $2=payload_cwd(opcional)
-  command -v jq >/dev/null 2>&1 || return 0
   local raw="$1" pcwd="${2:-}" u tool repo mrid key cache dest
+  # (b) PREFERIDO — destino EXPLÍCITO del PROPIO comando (--base/--target-branch): SIN red, SIN gh/glab,
+  # SIN jq. Sortea el modo de falla (a): en un launch GUI de Claude Code el subproceso-hook hereda el PATH
+  # MÍNIMO de launchd (/usr/bin:/bin:…), donde jq SÍ está (/usr/bin/jq → el guard corre y gatea) pero gh/glab
+  # NO (viven solo en /opt/homebrew/bin) → la consulta a la API salía VACÍA y el fail-safe frenaba merges
+  # legítimos. (Auth NO es la causa: gh-keyring y glab-file autentican bien desde un subproceso CUANDO están
+  # en el PATH.) Si el destino NO viene en el comando, se cae al lookup por API de abajo (requiere jq + CLI).
+  dest=$(acg_destino_explicito_del_comando "$raw")
+  [ -n "$dest" ] && { printf '%s' "$dest"; return 0; }
+  command -v jq >/dev/null 2>&1 || return 0
   u=$(acg_despoja_comillas "$raw")
   if printf '%s' "$u" | grep -qE 'glab(\.exe)?[[:space:]]+mr'; then tool=glab; else tool=gh; fi  # (\.exe)?: binario Windows (H-R9-01)
   # Repo objetivo por PRECEDENCIA (--repo/-R > remoto del dir objetivo: -C > cd > cwd > PROJECT_DIR). Antes

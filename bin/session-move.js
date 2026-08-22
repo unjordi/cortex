@@ -12,8 +12,11 @@
  *   - El `cwd` interno de cada línea del transcript se REESCRIBE al cwd destino (salvo --keep-cwd), para
  *     que `claude --resume <id>` reanude coherente DENTRO del proyecto destino y no en la ruta vieja.
  *
- * Seguridad: antes de tocar nada respalda el .jsonl original en ~/.claude/session-move-backups/.
- * Idempotencia/colisión: si el destino ya tiene esa sesión, ABORTA sin tocar (no pisa).
+ * Seguridad: antes de tocar nada respalda el .jsonl original en ~/.claude/session-move-backups/. Ese
+ * dir se PODA (conserva los N más recientes; N = CLAUDE_SESSION_MOVE_BACKUPS_KEEP, default 10) para que
+ * los .bak —cientos de MB c/u— no lo hagan crecer sin límite.
+ * Idempotencia/colisión: si el destino ya tiene esa sesión, ABORTA sin tocar (no pisa). Si el MISMO id
+ * existe en >1 slug de origen, findSession elige la copia viva (mtime) de forma determinista y AVISA.
  *
  * Uso:
  *   node session-move.js <sessionId> --to-cwd <ruta-real-del-proyecto-destino> [--keep-cwd]
@@ -29,6 +32,19 @@ const lib = require('./session-lib.js');   // helpers COMPARTIDOS (fuente única
 function fail(msg) {
   process.stdout.write(JSON.stringify({ ok: false, error: msg }) + '\n');
   process.exit(1);
+}
+
+// Poda de respaldos: conserva los `keep` .bak más recientes (por mtime) y borra el resto. Fail-open:
+// los backups son red de seguridad y un error al podar JAMÁS debe abortar el move. Sin poda, cada move
+// deja un .bak (potencialmente cientos de MB) y el dir crece sin límite.
+function pruneBackups(backupDir, keep) {
+  try {
+    const files = fs.readdirSync(backupDir)
+      .filter(f => f.endsWith('.jsonl.bak'))
+      .map(f => { const fp = path.join(backupDir, f); let mt = 0; try { mt = fs.statSync(fp).mtimeMs; } catch (_) {} return { fp, mt }; })
+      .sort((a, b) => b.mt - a.mt);
+    for (const { fp } of files.slice(keep)) { try { fs.unlinkSync(fp); } catch (_) {} }
+  } catch (_) { /* fail-open: la poda es housekeeping, no crítica */ }
 }
 
 function parseArgs(argv) {
@@ -50,6 +66,11 @@ function main() {
 
   const found = lib.findSession(id);
   if (!found) fail('no encontré la sesión ' + id + ' bajo ' + lib.projectsDir());
+  if (found.collisions && found.collisions.length) {
+    process.stderr.write('AVISO: el id ' + id + ' existe en ' + (found.collisions.length + 1)
+      + ' slugs; uso la copia viva (mtime) del slug "' + found.slug + '". Otros: '
+      + found.collisions.map(c => c.slug).join(', ') + '\n');
+  }
 
   const toSlug = lib.slugFromCwd(toCwd);
   const fromSlug = found.slug;
@@ -64,6 +85,8 @@ function main() {
   fs.mkdirSync(backupDir, { recursive: true });
   const backup = path.join(backupDir, id + '.' + Date.now() + '.jsonl.bak');
   fs.copyFileSync(found.file, backup);
+  const keepEnv = parseInt(process.env.CLAUDE_SESSION_MOVE_BACKUPS_KEEP, 10);
+  pruneBackups(backupDir, (Number.isFinite(keepEnv) && keepEnv >= 0) ? keepEnv : 10);
 
   // 2) leer + (opcional) reescribir cwd interno
   const srcText = fs.readFileSync(found.file, 'utf8');
@@ -79,6 +102,7 @@ function main() {
   process.stdout.write(JSON.stringify({
     ok: true, id, fromSlug, toSlug, toCwd, backup, cwdRewritten,
     lines: outText.split('\n').filter(l => l.trim()).length,
+    collisions: (found.collisions || []).map(c => c.slug),
   }) + '\n');
 }
 main();

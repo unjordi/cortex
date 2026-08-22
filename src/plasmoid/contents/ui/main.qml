@@ -49,7 +49,7 @@ PlasmoidItem {
     // la lee writeAliasSource para decidir el refresh: sesión → rápido (sessions-extract.js), proyecto
     // → fetch completo (afecta la agregación de tokens). Espeja el applyRename kind-aware del macOS.
     property bool lastAliasWasSession: false
-    // Expresión de shell para la base de los mapas (idéntica a claude-brain-fetch / sessions-extract.js).
+    // Expresión de shell para la base de los mapas (idéntica a cortex-fetch / sessions-extract.js).
     readonly property string aliasDir: "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 
     // ---------- Filtro de rango {hoy·7d·30d·∞} (Resumen/Modelos/Proyectos/Chats) ----------
@@ -70,7 +70,7 @@ PlasmoidItem {
     readonly property string cacheDir: {
         const raw = "" + StandardPaths.writableLocation(StandardPaths.GenericCacheLocation)
         const stripped = raw.startsWith("file://") ? raw.substring("file://".length) : raw
-        return stripped + "/claude-brain"
+        return stripped + "/cortex"
     }
 
     P5Support.DataSource {
@@ -204,7 +204,7 @@ PlasmoidItem {
     }
 
     // (B) "Mover a…" una sesión a otro slug: corre el helper node `session-move.js` vía `bash -lc`
-    // (PATH de login, mismo criterio que `claude`/`claude-brain-fetch`, ambos en ~/.local/bin). El
+    // (PATH de login, mismo criterio que `claude`/`cortex-fetch`, ambos en ~/.local/bin). El
     // helper escribe JSON a stdout SIEMPRE (ok:true | ok:false+error, con exit 1 en error) → parseamos
     // stdout pase lo que pase. ok → refreshSessions() (la lista refleja el move YA, rápido y sin red) +
     // forceRefresh() (reconcilia después los conteos por proyecto / agregación); !ok → depositamos el
@@ -307,7 +307,7 @@ PlasmoidItem {
         }
     }
 
-    // Autoupdate (2/3): consulta commits/main de claude-brain en GitHub (curl está en Linux). GitHub
+    // Autoupdate (2/3): consulta commits/main de cortex en GitHub (curl está en Linux). GitHub
     // exige User-Agent. FAIL-OPEN: sin red / rc!=0 / parse fallido → no muestra nada.
     P5Support.DataSource {
         id: updateCheckSource
@@ -350,7 +350,7 @@ PlasmoidItem {
                 root.updateMessage = "✓ actualizado (recarga el widget)"
                 root.updateAvailable = false
             } else {
-                root.updateMessage = "✗ error (revisa /tmp/claude-brain-update.log)"
+                root.updateMessage = "✗ error (revisa /tmp/cortex-update.log)"
             }
         }
     }
@@ -367,7 +367,7 @@ PlasmoidItem {
         catSource.connectSource("cat \"" + aliasDir + "/sesiones-alias.json\" 2>/dev/null")
     }
     function forceRefresh() {
-        refreshRunner.connectSource("systemctl --user start claude-brain.service")
+        refreshRunner.connectSource("systemctl --user start cortex.service")
         // ↻ es un clic EXPLÍCITO → además de refrescar la cuota, fuerza el chequeo de versión saltando
         // el throttle de 15 min (updLastCheck=0 desactiva el guard de checkUpdate). Antes ↻ era quota-only
         // y el banner de update no aparecía al pedirlo a mano. Paridad: macOS forceCheck + Windows OnRefresh.
@@ -377,7 +377,7 @@ PlasmoidItem {
     // ⏸/⏵ PAUSAR / REANUDAR la recolección automática — NO es "apagar" (por eso NO lleva ícono de power).
     // En macOS ⏻ = NSApp.terminate mata el proceso (la app de barra ES el widget Y el recolector). En KDE
     // el plasmoide vive DENTRO de plasmashell y no puede matarse solo; lo que lo mantiene recolectando es
-    // el timer systemd de usuario (claude-brain.timer, cada 5 min → oneshot claude-brain.service = un fetch
+    // el timer systemd de usuario (cortex.timer, cada 5 min → oneshot cortex.service = un fetch
     // a la API). Por eso el botón PAUSA/REANUDA ese timer, y su ícono lo dice honesto (media-playback-pause
     // cuando corre, media-playback-start cuando está pausado):
     //   · PAUSAR: `systemctl --user stop` del timer (+ el service por si hay un fetch en vuelo). El widget
@@ -388,11 +388,11 @@ PlasmoidItem {
     // plasmoide); no consulta systemctl en vivo — suficiente para el caso común (timer corriendo).
     property bool collectionPaused: false
     function pauseCollection() {
-        powerRunner.connectSource("systemctl --user stop claude-brain.timer claude-brain.service")
+        powerRunner.connectSource("systemctl --user stop cortex.timer cortex.service")
         root.collectionPaused = true
     }
     function resumeCollection() {
-        powerRunner.connectSource("systemctl --user start claude-brain.timer")
+        powerRunner.connectSource("systemctl --user start cortex.timer")
         root.collectionPaused = false
         forceRefresh()   // reanuda el ciclo de 5 min y además trae dato fresco YA
     }
@@ -501,7 +501,7 @@ PlasmoidItem {
             // viejo (>60s), el % mostrado sería el de la ventana anterior hasta el próximo fetch.
             // Disparamos forceRefresh() para adelantarlo. Acotado por lastResetRefresh (≥60s) para
             // NO machacar systemctl/API cada tick de 10s; el piso anti-abuso de ~5 min lo aplica
-            // claude-brain.service por dentro (un forceRefresh de más ahí es no-op). Espeja el
+            // cortex.service por dentro (un forceRefresh de más ahí es no-op). Espeja el
             // `(anyResetPassed && age > 60)` de AppDelegate.swift.
             var age = root.snapshotAgeSec()
             if (root.anyResetPassed && age > 60 && (Date.now() - root.lastResetRefresh) > 60000) {
@@ -915,6 +915,9 @@ PlasmoidItem {
                 { emoji: "📮", name: "delegacion-reporte",        desc: "un agente de fan-out terminó → recuerda bitácora + estado, sin niñera",
                   event: "PostToolUse · Task",
                   detail: "Cuando un subagente (Task) termina, recuerda al orquestador registrar su avance sin niñera: appendar una línea a bitacora.md (append-only, parallel-safe), cerrar el ítem en estado-proyecto.md y limpiar su worktree. No bloquea." },
+                { emoji: "🎼", name: "recordar-orquestar",        desc: "llevas rato en grind serial sin delegar → sugiere fan-out (advisory)",
+                  event: "PostToolUse",
+                  detail: "Cuenta las mutaciones consecutivas (edits/commits) de la sesión y, al llegar a N (def 10) SIN que haya habido una delegación (Agent/Task) en medio, sugiere —no bloquea— un fan-out si el trabajo restante tiene piezas independientes. Un Agent/Task RESETEA el contador (si delegaste, no te regaña); debounce de N en N. Si el trabajo es intrínsecamente secuencial, se ignora. Contador per-session_id, fail-open, escape CLAUDE_SKIP_RECORDAR_ORQUESTAR=1." },
                 { emoji: "🧵", name: "rehidratar-hilo",           desc: "al retomar/tras compactar reinyecta el hilo mental de la tarea",
                   event: "SessionStart",
                   detail: "Al abrir/retomar sesión o tras compactar, relee .claude/memory/hilo-mental-actual.md y lo reinyecta por additionalContext (canal fiable de SessionStart). Es la mitad 'leer' del par con el skill checkpoint (la mitad 'escribir'). Silencioso si el archivo no existe." },
@@ -936,12 +939,18 @@ PlasmoidItem {
                 { emoji: "⏳", name: "aviso-contexto",            desc: "el contexto se está llenando → ordena checkpoint y propón /compact",
                   event: "PostToolUse",
                   detail: "Vigila cuánto creció el contexto desde el último /compact y, al cruzar bandas por debajo del auto-compact, inyecta un aviso escalado (heads-up → checkpoint ahora → inminente) para volcar el hilo con checkpoint y compactar proactivamente. Convierte el auto-compact-sorpresa en caso raro." },
+                { emoji: "🔀", name: "hud-stale",                 desc: "cambiaste de rama/proyecto → tu lista de TODOs puede ser de la tarea anterior",
+                  event: "SessionStart · PostToolUse · Bash",
+                  detail: "Avisa —no bloquea— cuando la lista de TODOs de la terminal (el HUD) quedó stale porque el contexto de tarea rotó: cambiaste de rama git o de proyecto/cwd y el HUD sigue mostrando pendientes de la tarea anterior. Detección OBJETIVA (rama/cwd vs. lo observado en esta sesión), nunca lee el contenido de la lista. Stamp per-sesión (no se pisan las sesiones paralelas), first-sight silencioso, solo en repos con backlog durable. Sugiere re-sembrar el HUD del estado-proyecto.md de esa rama con /to-do." },
                 { emoji: "🌳", name: "proteger-arbol",            desc: "git destructivo que orfanaría commits sin pushear → aviso (no bloquea)",
                   event: "PreToolUse · Bash",
                   detail: "Antes de un git destructivo (reset --hard, rebase, checkout -f, branch -D) que podría orfanar commits sin pushear en el árbol de trabajo, avisa —no bloquea. Antídoto a un caso real: un agente de fan-out reseteó HEAD en el árbol compartido y dejó huérfano un commit del orquestador." },
                 { emoji: "🧬", name: "proteger-fuente-cerebro",   desc: "editas la copia INSTALADA del cerebro (regenerable) → aviso",
                   event: "PreToolUse · Edit/Write/MultiEdit",
-                  detail: "Al editar una skill/hook bajo ~/.claude/skills|hooks que TIENE fuente en el clon canónico (brain/skills|hooks), avisa —no bloquea— que esa copia es REGENERABLE: el próximo install-brain la sobrescribe y la edición muere sin rastro. Redirige a editar la FUENTE y propagar con install-brain/sincronizar. Si no hay fuente (skill/hook puramente local), calla. Corre verificar-cerebro para el drift completo instalada-vs-fuente." }
+                  detail: "Al editar una skill/hook bajo ~/.claude/skills|hooks que TIENE fuente en el clon canónico (brain/skills|hooks), avisa —no bloquea— que esa copia es REGENERABLE: el próximo install-brain la sobrescribe y la edición muere sin rastro. Redirige a editar la FUENTE y propagar con install-brain/sincronizar. Si no hay fuente (skill/hook puramente local), calla. Corre verificar-cerebro para el drift completo instalada-vs-fuente." },
+                { emoji: "🚧", name: "no-bypass-deploy",         desc: "corres el instalador/deploy a mano en vez de la herramienta oficial → aviso",
+                  event: "PreToolUse · Bash",
+                  detail: "Avisa —no bloquea— cuando se corre a mano el instalador/deploy de un proyecto en vez de su herramienta oficial: el cerebro/widget se actualiza con el WIDGET (updater ⬆), nunca con install-brain.sh a pelo; generalizado a cualquier install/deploy (deploy.sh, make deploy…). Correr el script crudo se salta backup/atomicidad/sello-de-versión/re-cableado. NO dispara en --dry-run/--help ni en CI ni sobre una mención entrecomillada; fail-safe." }
             ]
         },
         {
@@ -990,9 +999,15 @@ PlasmoidItem {
                 { emoji: "🧪", name: "auditar-suficiencia-operativa", desc: "¿ALCANZA la doc para HACER el trabajo? tareas reales ✅/⚠️/❌ + re-auditar tras arreglar",
                   event: "skill · opt-in",
                   detail: "Audita una doc/cerebro por SUFICIENCIA OPERATIVA, no por coherencia: enumera las tareas reales que alguien tendrá que hacer y las califica ✅/⚠️/❌ con archivo:línea. Exige RE-AUDITAR con el prompt idéntico tras arreglar los hallazgos, porque los arreglos introducen contradicciones nuevas." },
+                { emoji: "🧬", name: "auditor-semantico", desc: "¿el código HACE lo que queremos? 2 capas: checks deterministas + criterio LLM",
+                  event: "skill · opt-in",
+                  detail: "Auditoría SEMÁNTICA de código: verifica que el mecanismo haga lo que queremos que haga (intención de negocio), no solo que compile y pase tests. Capa 1 = checks bash deterministas (scripts/auditor-semantico/, gratis, corre en CI); Capa 2 = re-verifica cada invariante de invariantes-semanticos.yml con criterio LLM + revisión abierta de bugs. Motor genérico (viaja del template); checks/.yml los afina cada repo a su stack/dominio. Cosecha lo hallado: lo mecánico → check nuevo, lo no-determinista → manifiesto." },
                 { emoji: "🧠", name: "consolidar-cerebro", desc: "meta-orquestador: dupla → positivar → desinflar → loop de convergencia → cierre con la FIRMA",
                   event: "skill · opt-in",
                   detail: "Meta-orquestador que consolida un cerebro de punta a punta: corre la DUPLA de auditores (suficiencia + coherencia) hasta converger, luego positivar-doc y desinflar-memorias, en un loop de convergencia, y cierra generando/actualizando la FIRMA por-contenido (CLAUDE.md + MEMORY.md). No declara LISTO: exige el QA/OK del usuario." },
+                { emoji: "📐", name: "canonizar-cerebro", desc: "lleva un cerebro instanciado drifteado a la firma-árbol canónica (reprefija, reescribe CLAUDE+MEMORY, verifica 1:1)",
+                  event: "skill · opt-in",
+                  detail: "Lleva el cerebro de un proyecto INSTANCIADO (cps, fluxcore, plantilladotnet) a la firma-árbol canónica cuando drifteó: memorias sueltas sin prefijo, CLAUDE.md viejo con guards retirados, MEMORY.md plano. Reclasifica cada memoria a su prefijo (dom-/dev-/ux-/qa- + núcleo) con git mv (historia intacta), dedup con RESCATE de datos únicos, reescribe CLAUDE.md a firma-árbol y MEMORY.md a índice-por-prefijo, y verifica el 1:1 con verificar-firma-canonica.sh (el detector del GATE del auditor). Humano-en-el-loop, no auto-mutador ciego." },
                 { emoji: "🪶", name: "desinflar-memorias", desc: "adelgaza memorias sin perder lecciones: narrativa → 1 línea, mitos → ⚰️ Lápidas al final",
                   event: "skill · opt-in",
                   detail: "Desinfla un árbol de memorias inflado de narrativa, tutoriales y conocimiento ya desmentido SIN perder ninguna lección: cada tirada de historia se colapsa a su lección en 1-2 líneas EN SU LUGAR, y los mitos descartados se comprimen a una línea y se mudan a una sección ⚰️ Lápidas AL FINAL del archivo (si los borras, el siguiente agente los re-descubre). No toca la bitácora ni el hilo: son append-only por diseño." },
@@ -1017,9 +1032,18 @@ PlasmoidItem {
                 { emoji: "🔍", name: "zoom-screenshot", desc: "recorta y amplía regiones de una captura (ffmpeg) para leer texto fino ilegible",
                   event: "skill · opt-in",
                   detail: "Leer/transcribir capturas cuyo texto fino es ilegible al verlas enteras: recorta y amplía regiones con ffmpeg antes de leerlas. Úsalo cuando el usuario deja un screenshot (menús, ajustes, UIs densas) y hay que leer texto pequeño con precisión, o transcribir varias capturas." },
+                { emoji: "🔩", name: "ingenieria-inversa-gui-db-navegador", desc: "ingeniería inversa de app legacy GUI+BD: driving la UI vía navegador + diff de la BD antes/después = doc con evidencia real",
+                  event: "skill · opt-in",
+                  detail: "Método REUSABLE (independiente de app/dominio) para hacer ingeniería inversa de un sistema legacy con GUI + base de datos: driving la UI real vía navegador (claude-in-chrome u otro plugin) mientras se diffea el estado (BD y/o filesystem/config) antes/después de cada acción → documentación con evidencia real en vez de suposición. Incluye el estándar de DIFF COMPLETO ('indistinguible de la GUI'): fingerprint de TODA la BD antes/después para atrapar cualquier tabla tocada, no solo las candidatas. Requiere navegador con automatización, un visor web de la máquina donde corre la GUI y acceso directo a la BD/filesystem." },
+                { emoji: "📕", name: "markdown-a-pdf", desc: "convierte .md a PDF pulido y distribuible vía md-to-pdf (npx, sin instalar) con QA visual real",
+                  event: "skill · opt-in",
+                  detail: "Convertir uno o varios .md a PDF pulido y distribuible (doc técnica, reportes, cualquier entregable que un humano abra fuera del chat) usando md-to-pdf vía npx, sin instalar nada. Incluye el gotcha real que borra TODO el formato (--stylesheet reemplaza el tema default en vez de sumarse — usa --css para overrides), el CSS que evita que las tablas se corten feo entre páginas y el loop de QA visual obligatorio (leer cada página generada, no asumir que renderizó bien)." },
                 { emoji: "🧳", name: "claude-proyecto-autocontenido", desc: "el cerebro de Claude VIVE dentro del proyecto (.claude/ + symlink de slug) → viaja con él",
                   event: "skill · opt-in",
-                  detail: "Mantener TODO el cerebro de Claude Code de un proyecto (memorias, skills, transcripts, settings) dentro de <proyecto>/.claude/, con un symlink desde ~/.claude/projects/<slug>/ para que Claude lo siga encontrando. Así la memoria/skills viajan con el proyecto (Drive, git, otra máquina) y ninguna sesión arranca amnésica desde otro cwd. Cubre la regla del slug, el bootstrap de un comando (clona-y-listo), el triage de privacidad (qué va al repo vs *.local), la disciplina anti-duplicados y la verificación." }
+                  detail: "Mantener TODO el cerebro de Claude Code de un proyecto (memorias, skills, transcripts, settings) dentro de <proyecto>/.claude/, con un symlink desde ~/.claude/projects/<slug>/ para que Claude lo siga encontrando. Así la memoria/skills viajan con el proyecto (Drive, git, otra máquina) y ninguna sesión arranca amnésica desde otro cwd. Cubre la regla del slug, el bootstrap de un comando (clona-y-listo), el triage de privacidad (qué va al repo vs *.local), la disciplina anti-duplicados y la verificación." },
+                { emoji: "🚚", name: "reubicar-master", desc: "mover un master —cerebro+sesión— a otra casa/subfolder-repo git, sin lobotomía ni tail",
+                  event: "skill · opt-in",
+                  detail: "Muda una sesión master COMPLETA de Claude Code a otro repo (caso canónico: los brain-master a cortex) sin dejar nada a medias: transcript re-anclado + cwd reescrito, cerebro del master migrado por su canal correcto, slug global y TODAS las referencias (masters.json target por-id, alias, symlink memory) corregidas de forma ATÓMICA, residuo quirúrgico barrido y doc=realidad. Úsala cuando un --resume cae en un folder muerto, un master quedó a medias (residuo + resume roto), o quieres consolidar los dos brain-master (Mac + Cachy) en cortex sin lobotomizarlos, sin fuga a un repo público ni duplicado divergente. Hermana de claude-proyecto-autocontenido (esa define DÓNDE vive el cerebro; ésta lo MUEVE de casa)." }
             ]
         }
     ]
@@ -1037,7 +1061,7 @@ PlasmoidItem {
 
     // Catálogo conocido (mismos conjuntos que BrainState.knownGlobalHooks / knownRepoHooks del Swift).
     // DEBE coincidir con brain/hooks/MANIFEST; lo verifica el drift-check del widget (test-brain.sh).
-    readonly property var brainGlobalHooks: ["git-branch-guard","merge-squash-guard","confirmar-merge-develop","recordar-dashboard","secret-scan","rama-vieja","proteger-arbol","proteger-fuente-cerebro","limite-gasto","delegacion-gate","delegacion-registrar","delegacion-reporte","rehidratar-hilo","aviso-contexto","aviso-drift-cerebro","exportar-sesion-master","barrer-ramas","entorno-maquina-guard"]
+    readonly property var brainGlobalHooks: ["git-branch-guard","merge-squash-guard","confirmar-merge-develop","recordar-dashboard","secret-scan","rama-vieja","proteger-arbol","proteger-fuente-cerebro","limite-gasto","delegacion-gate","delegacion-registrar","delegacion-reporte","recordar-orquestar","rehidratar-hilo","aviso-contexto","aviso-drift-cerebro","hud-stale","exportar-sesion-master","barrer-ramas","entorno-maquina-guard","no-bypass-deploy"]
     readonly property var brainRepoHooks:   ["sesion-inicio","dod-verificar","recordar-cosechar","recordar-unificar-cerebro"]
 
     // Ruta del helper bash, resuelta relativa a este main.qml (…/contents/ui/ → …/contents/brain-scan.sh).
@@ -1055,7 +1079,7 @@ PlasmoidItem {
     // ---------- Autoupdate LIGERO (winturbo-style) del widget ----------
     // Espeja Updater.swift: la versión con que se empaquetó el plasmoid (sha/fecha/repo/branch) va
     // embebida en contents/version.json (la escribe install.sh al empaquetar). Al abrir la pestaña
-    // Cerebro se compara contra commits/main de claude-brain en GitHub; si el repo avanzó, se ofrece un
+    // Cerebro se compara contra commits/main de cortex en GitHub; si el repo avanzó, se ofrece un
     // botón que hace git ff + install.sh. FAIL-OPEN: sin red / sin version.json / sin repo → no molesta.
     property bool updateAvailable: false
     property bool updating: false
@@ -1067,7 +1091,7 @@ PlasmoidItem {
     property bool updLocalLoaded: false     // version.json ya leído (una sola vez)
     property bool updCanSelfUpdate: false   // hay repo en disco → botón auto; si no, "a mano"
     property double updLastCheck: 0         // epoch ms del último chequeo remoto (throttle 15 min)
-    readonly property string updSlug: "unjordi/claude-brain"
+    readonly property string updSlug: "unjordi/cortex"
 
     // Ruta del version.json embebido, relativa a este main.qml (…/contents/ui/ → …/contents/version.json).
     readonly property string versionFile: {
@@ -1089,19 +1113,19 @@ PlasmoidItem {
         }
     }
     // H2 — resuelve la ruta REAL del clon con fallback (espeja resolveClonePath de Updater.swift/.cs):
-    // 1º el repo embebido en version.json, 2º $CLAUDE_BRAIN_DIR, 3º el clon canónico $HOME/.claude-brain.
+    // 1º el repo embebido en version.json, 2º $CLAUDE_BRAIN_DIR, 3º el clon canónico $HOME/.cortex.
     // Gana el PRIMERO que exista en disco con la marca install.sh (la misma que runUpdate ejecuta). Así un
     // version.json horneado en otra máquina / con el repo movido no habilita un auto-update que haría cd a
     // una ruta muerta. Se resuelve por shell (QML JS no lee env ni prueba archivos). FAIL-OPEN: "" → a mano.
     function resolveRepoPath(embedded) {
-        var cmd = 'for c in ' + shq(embedded) + ' "$CLAUDE_BRAIN_DIR" "$HOME/.claude-brain"; do '
+        var cmd = 'for c in ' + shq(embedded) + ' "$CLAUDE_BRAIN_DIR" "$HOME/.cortex"; do '
                 + '[ -n "$c" ] && [ -f "$c/install.sh" ] && { printf %s "$c"; break; }; done'
         repoResolveSource.connectSource(cmd)
     }
     function checkUpdateRemote() {
         if (root.updLocalShort === "?") return   // sin version.json (build viejo) → no molesta
         var url = "https://api.github.com/repos/" + root.updSlug + "/commits/main"
-        updateCheckSource.connectSource("curl -fsSL -H 'User-Agent: claude-brain' '" + url + "'")
+        updateCheckSource.connectSource("curl -fsSL -H 'User-Agent: cortex' '" + url + "'")
     }
     // Jala lo último (fast-forward) y reinstala el plasmoid. NO mata plasmashell (el applet vive dentro).
     // El applet toma la versión nueva al recargar el plasmoide. FAIL-OPEN: sin repo → invita a hacerlo a mano.
@@ -1116,7 +1140,7 @@ PlasmoidItem {
         // Escapa la ruta del clon con shq (comillas simples POSIX): una ruta con un ' la partia sin esto.
         var inner = "cd " + shq(repo) + " && git fetch origin --quiet && git merge --ff-only origin/main"
                   + " && bash " + shq(repo + "/install.sh")
-        var cmd = "nohup bash -lc \"" + inner + "\" >/tmp/claude-brain-update.log 2>&1"
+        var cmd = "nohup bash -lc \"" + inner + "\" >/tmp/cortex-update.log 2>&1"
         updateRunSource.connectSource(cmd)
     }
 
@@ -1131,7 +1155,7 @@ PlasmoidItem {
             return p && w ? "installed" : (p ? "presentNotWired" : "absent")
         }
         if (inArr(root.brainRepoHooks, name)) return "repoScoped"
-        if (["cerrar-slice","checkpoint","to-do","diagramar","auditar-proceso-algoritmo","auditar-coherencia-cerebro","auditar-suficiencia-operativa","consolidar-cerebro","desinflar-memorias","orquestar-fanout","turno-nocturno","cosechar-sesion","unificar-cerebro","investigar-dominio","positivar-doc","revisar-entregables-agentes","zoom-screenshot","claude-proyecto-autocontenido"].indexOf(name) !== -1)
+        if (["cerrar-slice","checkpoint","to-do","diagramar","auditar-proceso-algoritmo","auditar-coherencia-cerebro","auditar-suficiencia-operativa","auditor-semantico","consolidar-cerebro","canonizar-cerebro","desinflar-memorias","orquestar-fanout","turno-nocturno","cosechar-sesion","unificar-cerebro","investigar-dominio","positivar-doc","revisar-entregables-agentes","zoom-screenshot","claude-proyecto-autocontenido","reubicar-master","ingenieria-inversa-gui-db-navegador","markdown-a-pdf"].indexOf(name) !== -1)
             return inArr(st.skills, name) ? "installed" : "absent"
         if (name === "Definition of Done" || name === "Doc <= realidad"
             || name === "Flujo de git" || name === "Costo de delegación")
@@ -2033,7 +2057,7 @@ PlasmoidItem {
                 ColumnLayout {
                     width: cerebroScroll.availableWidth - Kirigami.Units.gridUnit * 0.75
                     spacing: Kirigami.Units.largeSpacing
-                    // Encabezado de marca: ícono claude-brain (ya incluye el destello) + "Cerebro global".
+                    // Encabezado de marca: ícono cortex (ya incluye el destello) + "Cerebro global".
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Kirigami.Units.smallSpacing
@@ -2050,7 +2074,7 @@ PlasmoidItem {
                         // repo (GitHub). Abre el navegador del sistema (espeja mapaButton del Swift).
                         PC3.ToolButton {
                             text: "🗺 mapa"
-                            onClicked: Qt.openUrlExternally("https://github.com/unjordi/claude-brain/blob/main/docs/mapa-cerebro.md")
+                            onClicked: Qt.openUrlExternally("https://github.com/unjordi/cortex/blob/main/docs/mapa-cerebro.md")
                             PC3.ToolTip.text: "Abre el mapa del cerebro (docs/mapa-cerebro.md del repo) en tu navegador."
                             PC3.ToolTip.visible: hovered
                             PC3.ToolTip.delay: 500

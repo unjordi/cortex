@@ -67,6 +67,26 @@ Valida las refs↔IDs con `cementerio.sh verify` (falla si hay refs huérfanas).
   toca, el detalle en otra memoria, el comando que regenera un dato. **Test de una línea:** *¿el puntero
   le da algo que NECESITA para lo que vino a hacer aquí?* Sí → queda; solo narra que algo se mudó → fuera.
 
+## TRATO personal del usuario → MIGRA al archivo GLOBAL, no lo desinfles en el repo
+Una memoria per-repo (típicamente un `feedback-*.md` de trato) que documenta **cómo tratar a la
+PERSONA** — cómo le gusta que le comuniquen, decidan o trabajen con ella — está en el lugar
+equivocado: el TRATO vive en UN solo lugar, la memoria GLOBAL per-máquina
+**`~/.claude/projects/-Users-<user>/memory/como-trabajar-con-<user>.md`** (per-persona → **NO viaja
+por git**; en un repo compartido, además, expone trato personal). Cuando te topes con una al desinflar:
+1. **Migra su LECCIÓN** al `como-trabajar-con-<user>.md` global — answer-first, **1-2 líneas**, en su
+   sección (Comunicación/Decisiones/Proceso/Git/Preferencias), **con procedencia** (cita literal entre
+   comillas vs `[INFER]`, norma `feedback-no-atribuir-mis-ideas-al-usuario`). Si el punto YA es una
+   norma UNIVERSAL del brain (doc=realidad, definición de LISTO, flujo de git, probar-el-flujo-completo,
+   autorización acotada…), **REFERÉNCIALA con el sabor personal — NO la copies.** Molde: las 5 secciones
+   de `como-trabajar-con-unjordi.md`.
+2. **Elimina del repo la mención migrada**; si el `feedback-*.md` queda vacío, **bórralo** y quita su
+   línea de `MEMORY.md`. (Esto NO es cementerio: no es un mito descartado, es conocimiento que se MUDA
+   a su hogar correcto.)
+3. **Distínguelo del conocimiento de PROYECTO** (arquitectura, una decisión de ESTE repo, un gotcha del
+   stack): eso se QUEDA y solo se desinfla en su lugar, como el resto. Y el TRATO **sobre OTRO dev**
+   (que no eres tú/este usuario) migra al global de ESA persona solo si estás en SU máquina; si no lo
+   puedes alcanzar, déjalo (lo reconcilia `unificar-cerebro` por el inbox).
+
 ## Qué NO se corta (esta lista es la que protege el valor)
 1. **Los gotchas y las lecciones**, aunque suenen anecdóticos. Son el archivo.
 2. **Las advertencias destructivas** (🛑 "esto borra datos reales", "verifica antes de escribir"): se

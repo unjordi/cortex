@@ -1,4 +1,4 @@
-# 🧠 claude-brain — el cerebro de Claude Code de nuestro equipo (fuente única, viaja a cada clon)
+# 🧠 cortex — el cerebro de Claude Code de nuestro equipo (fuente única, viaja a cada clon)
 
 Lo que necesitas saber para trabajar aquí:
 
@@ -22,7 +22,7 @@ Lo que necesitas saber para trabajar aquí:
 │   │     3. Sembrar la mini-develop de un dev ............ → brain/sembrar-mini-develop.sh
 │   │     4. Respaldar/exportar las sesiones master ....... → hook exportar-sesion-master + bin/claude-session
 │   │     5. Agregar/editar un hook del cerebro .......... → agregar-hook-cerebro
-│   │     6. Trabajar el widget de cuota (KDE/mac/win) ... → claude-brain-widget · cambiar-icono · publicar-widget
+│   │     6. Trabajar el widget de cuota (KDE/mac/win) ... → cortex-widget · cambiar-icono · publicar-widget
 │   │     7. Auditar + consolidar un cerebro ............. → consolidar-cerebro + (auditar-suficiencia-operativa
 │   │                                                        + auditar-coherencia-cerebro) + auditar-proceso-algoritmo
 │   │     8. Verificar la paridad del árbol (anti-drift) . → docs/flowcharts/verificar-arbol-sync.sh · brain/test-brain.sh
@@ -40,9 +40,9 @@ Lo que necesitas saber para trabajar aquí:
 │   ├─ 🌳 El árbol — lo que el brain instala ....... 🔒 Forzosos · 🔔 Automático · 📜 Normas · 💡 Skills (+ detalle 1:1)
 │   └─ 🗂️ Índice de memorias por tema
 ▼
-📁 .claude/skills/ ─ skills para OPERAR este repo · agregar-hook-cerebro · claude-brain-widget · cambiar-icono · publicar-widget
+📁 .claude/skills/ ─ skills para OPERAR este repo · agregar-hook-cerebro · cortex-widget · cambiar-icono · publicar-widget
 📁 .claude/memory/ ─ MEMORY.md (árbol + detalle, @import) + notas de desarrollo · *.local.md personales
-   └─ 🛑 claude-brain NO cablea sus guards por-repo (no hay .claude/hooks/ ni settings.json): corren por la instalación GLOBAL (install-brain.sh) desde brain/hooks/
+   └─ 🛑 cortex NO cablea sus guards por-repo (no hay .claude/hooks/ ni settings.json): corren por la instalación GLOBAL (install-brain.sh) desde brain/hooks/
 📁 brain/ ─ el PRODUCTO que viaja a los clones (hooks · skills · scripts · test-brain.sh) — 🛑 NO mutar desde una pasada de cerebro
 📁 docs/ ─ flowcharts + checks (verificar-arbol-sync.sh · gen-leyenda-arbol.sh) · investigaciones · …
 📁 src/ · macos/ · windows/ ─ los 3 widgets de cuota (los brainTiers espejan el árbol del README)

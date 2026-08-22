@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# verificar-cerebro.sh — DOCTOR de instalación por-máquina del cerebro (claude-brain). Standalone
+# verificar-cerebro.sh — DOCTOR de instalación por-máquina del cerebro (cortex). Standalone
 # (kind=script): NO se cablea; se corre A MANO. Confirma que ESTA máquina tiene el cerebro instalado
 # y CABLEADO de verdad — antídoto al caso "las instancias de Carlitos/Chunito dejaron de avisar del
 # compact/checkpoint": un hook global (aviso-contexto, barrer-ramas, rehidratar-hilo…) SOLO actúa si
@@ -9,7 +9,7 @@
 #
 #   uso: verificar-cerebro.sh [--quiet]
 #        --quiet → solo imprime si hay FALLA (para un wrapper/hook). Exit 0 = sano; 1 = falta algo.
-# Fuente de "qué debería estar": $CLAUDE_BRAIN_DIR/brain/hooks/MANIFEST (o ~/.claude-brain).
+# Fuente de "qué debería estar": $CLAUDE_BRAIN_DIR/brain/hooks/MANIFEST (o ~/.cortex).
 set -u
 
 QUIET=0
@@ -23,10 +23,10 @@ warnln(){ [ "$QUIET" = 1 ] || printf '  \xe2\x9a\xa0 %s\n' "$1"; }  # avisos (dr
 
 HOOKS_DIR="$HOME/.claude/hooks"
 GSET="$HOME/.claude/settings.json"
-BRAIN_DIR="${CLAUDE_BRAIN_DIR:-$HOME/.claude-brain}"
+BRAIN_DIR="${CLAUDE_BRAIN_DIR:-$HOME/.cortex}"
 MANIFEST="$BRAIN_DIR/brain/hooks/MANIFEST"
 
-say "🩺 Doctor del cerebro (claude-brain) — máquina: $(hostname 2>/dev/null || echo '?')"
+say "🩺 Doctor del cerebro (cortex) — máquina: $(hostname 2>/dev/null || echo '?')"
 
 # (1) jq — requisito duro de los hooks.
 if command -v jq >/dev/null 2>&1; then
@@ -96,6 +96,9 @@ drift_scan() {  # $1=label  $2=dir-INSTALADA  $3=dir-FUENTE
   [ "$n" -gt 0 ] && say "  · $label: $n archivo(s) con drift — edita la FUENTE y re-corre install-brain/sincronizar (no la copia instalada)"
 }
 say ""
+# Nota: el drift de skills GLOBAL también se detecta AUTOMÁTICAMENTE en cada SessionStart (aviso-drift-cerebro
+# → drift_skills_global, warn-only, throttle propio). Este doctor es el resumen A-DEMANDA (verboso: lista
+# completa + dirección de cada archivo); ambos comparten el criterio (fuente brain/skills, tier {global,both}).
 say "🔎 Drift instalada-vs-fuente (edits en vivo que el próximo install-brain borraría):"
 drift_scan hooks  "$HOOKS_DIR"  "$BRAIN_HOOKS"
 drift_scan skills "$SKILLS_DIR" "$BRAIN_SKILLS"

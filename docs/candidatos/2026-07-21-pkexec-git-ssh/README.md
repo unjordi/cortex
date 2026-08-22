@@ -2,7 +2,7 @@
 
 > **Qué es esto:** material de una sesión real (proyecto powerscripts) que salió al **cerebro de
 > máquina** de unjordi (`~/.claude`) y que Jordi quiere **revisar aquí** para decidir cómo integrarlo
-> a los mecanismos/flowcharts de claude-brain. **Ya está VIVO** en su máquina (hook cableado + memorias
+> a los mecanismos/flowcharts de cortex. **Ya está VIVO** en su máquina (hook cableado + memorias
 > escritas); esta carpeta es una COPIA para revisión, no la instalación. No está cableado al `MANIFEST`
 > ni a `test-brain.sh` a propósito (para no forzar decisiones antes de tu revisión).
 
@@ -31,14 +31,14 @@ Hook que DISPARA en el instante dos reglas de máquina que se olvidaban:
   aunque mi prueba dé 200; su experiencia gana (verde técnico ≠ que le sirva).
 
 ## ⚠️ Caveat de OS (decisión tuya al integrar)
-claude-brain es **OS-agnóstico** (los hooks corren bajo bash en Mac/Linux/Windows Git Bash). El hook
+cortex es **OS-agnóstico** (los hooks corren bajo bash en Mac/Linux/Windows Git Bash). El hook
 de **pkexec es específico de CachyOS/KDE** — `pkexec`/el diálogo de KDE no existen igual en Mac/Windows.
 Opciones a decidir:
 - (a) darle un **tier nuevo** en `MANIFEST` tipo `linux-kde`/`maquina` que solo se instale en esa máquina;
 - (b) generalizar el hook a "escalada de privilegios del SO" (pkexec en KDE, `sudo -A`/askpass gráfico
   en otros) — más ambicioso;
 - (c) dejarlo como **instancia** (solo en el `~/.claude` de unjordi, fuera del template) y subir a
-  claude-brain **solo** la parte genérica: el patrón "regla-pasiva-en-CLAUDE.md que no se activa →
+  cortex **solo** la parte genérica: el patrón "regla-pasiva-en-CLAUDE.md que no se activa →
   conviértela en hook de disparo", que sí es OS-agnóstico.
 - La regla `git-SSH` y la de `experiencia-vivida` son **más portables** (git es multiplataforma; la
   segunda es puro comportamiento) → candidatas más limpias a norma genérica.

@@ -184,7 +184,7 @@ estado_tocado_por_humano && backlog_ok=1
 # ── Avisar (gentil, no bloqueante) y marcar el throttle del día ──
 printf '%s' "$hoy" > "$stamp" 2>/dev/null || true
 
-msg_cosecha="🌾 Parece que trabajaste en este repo y no cosechaste aprendizajes hoy. Si aprendiste algo DURABLE (feedback del usuario, una lección de proceso, un gotcha no-obvio), corre \`/cosechar-sesion\` antes de cerrar para appendearlo al inbox del equipo (\`$LOG_REL\`). Si no hubo nada durable, ignórame."
+msg_cosecha="🌾 Parece que trabajaste en este repo y no cosechaste aprendizajes hoy. Si aprendiste algo DURABLE (feedback del usuario, una lección de proceso, un gotcha no-obvio), corre \`/cosechar-sesion\` antes de cerrar para appendearlo al inbox del equipo (\`$LOG_REL\`). OJO: el feedback de TRATO personal (cómo tratar a la PERSONA: no me espejees, no me atribuyas tus ideas, no me pidas permiso para avanzar…) NO va a ese inbox ni a un \`feedback-*.md\` per-repo → va al archivo GLOBAL \`como-trabajar-con-<user>.md\` (\`/cosechar-sesion\` te dice cómo). Si no hubo nada durable, ignórame."
 msg_backlog="📋 Trabajaste y no actualizaste tu backlog durable (\`estado-proyecto.md\` / \`bitacora.md\`). El espejo ya refleja tus PENDIENTES solo, pero las DECISIONES/contexto/porqués los pones tú: refléjalos AHORA (el chat no es la fuente de verdad; el backlog sí). Si no cambió nada del estado, ignórame."
 
 ctx=""

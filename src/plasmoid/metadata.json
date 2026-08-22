@@ -12,12 +12,12 @@
         ],
         "Category": "System Information",
         "Description": "Muestra el uso de tu sesión (5 h) y el límite semanal de Claude",
-        "Icon": "claude-brain",
-        "Id": "io.github.unjordi.claude-brain",
+        "Icon": "cortex",
+        "Id": "io.github.unjordi.cortex",
         "License": "MIT",
-        "Name": "Claude Brain Widget",
+        "Name": "Cortex Widget",
         "Version": "0.1.0",
-        "Website": "https://github.com/unjordi/claude-brain"
+        "Website": "https://github.com/unjordi/cortex"
     },
     "X-Plasma-API-Minimum-Version": "6.0",
     "X-Plasma-API": "declarativeappletscript",

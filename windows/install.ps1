@@ -1,9 +1,9 @@
 #!/usr/bin/env pwsh
-# Install Claude Brain Widget (Windows tray widget).
+# Install Cortex Widget (Windows tray widget).
 #
-# By default DOWNLOADS the precompiled self-contained exe (ClaudeBrain.exe) from the rolling
+# By default DOWNLOADS the precompiled self-contained exe (Cortex.exe) from the rolling
 # 'windows-latest' release -> NO .NET SDK needed. Falls back to building from source (dotnet publish)
-# if the download fails; -Build forces building. Installs to %LOCALAPPDATA%\Programs\ClaudeBrain,
+# if the download fails; -Build forces building. Installs to %LOCALAPPDATA%\Programs\Cortex,
 # registers autostart, and launches. Re-run any time to update in place. Migrates old 'ClaudeQuota'.
 #
 #   pwsh -File install.ps1            # brain (hooks) + widget, autostart, launch  <- ONE-STOP
@@ -27,11 +27,11 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $here    = Split-Path -Parent $MyInvocation.MyCommand.Path
-$proj    = Join-Path $here 'src\ClaudeBrain\ClaudeBrain.csproj'
-$appName  = 'ClaudeBrain'
+$proj    = Join-Path $here 'src\Cortex\Cortex.csproj'
+$appName  = 'Cortex'
 $dest     = Join-Path $env:LOCALAPPDATA "Programs\$appName"
 $exe      = Join-Path $dest "$appName.exe"
-$assetUrl = 'https://github.com/unjordi/claude-brain/releases/download/windows-latest/ClaudeBrain.exe'
+$assetUrl = 'https://github.com/unjordi/cortex/releases/download/windows-latest/Cortex.exe'
 
 # -- Cerebro (hooks + normas), salvo -NoBrain -- ONE-STOP igual que install.sh (Mac/Linux): el
 # instalador deja cerebro + widget, para que el boton "Actualizar" (que corre este script) actualice
@@ -48,13 +48,13 @@ if (-not $NoBrain) {
 }
 
 Write-Host "==> Deteniendo instancia previa (si corre)..." -ForegroundColor Cyan
-Get-Process ClaudeBrain,ClaudeQuota -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process Cortex,ClaudeQuota -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Milliseconds 400
 
 New-Item -ItemType Directory -Force -Path $dest | Out-Null
 
 # Migracion desde el nombre viejo: si un install previo dejo 'ClaudeQuota', quita su autostart y su
-# carpeta para no quedar con dos widgets/dos entradas tras el rename a ClaudeBrain.
+# carpeta para no quedar con dos widgets/dos entradas tras el rename a Cortex.
 Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'ClaudeQuota' -ErrorAction SilentlyContinue
 $oldDest = Join-Path $env:LOCALAPPDATA 'Programs\ClaudeQuota'
 if (Test-Path $oldDest) { Remove-Item $oldDest -Recurse -Force -ErrorAction SilentlyContinue }
@@ -111,8 +111,8 @@ $repoRoot = Split-Path -Parent $here
 $effSha = (git -C $repoRoot rev-parse HEAD 2>$null)
 if ($got) {
     try {
-        $rel = Invoke-RestMethod "https://api.github.com/repos/unjordi/claude-brain/releases/tags/windows-latest" `
-                 -Headers @{ 'User-Agent' = 'claude-brain'; 'Accept' = 'application/vnd.github+json' } -UseBasicParsing
+        $rel = Invoke-RestMethod "https://api.github.com/repos/unjordi/cortex/releases/tags/windows-latest" `
+                 -Headers @{ 'User-Agent' = 'cortex'; 'Accept' = 'application/vnd.github+json' } -UseBasicParsing
         $m = [regex]::Match([string]$rel.body, 'build-sha: ([0-9a-f]+)')
         if ($m.Success -and $m.Groups[1].Value) {
             $effSha = $m.Groups[1].Value
@@ -194,20 +194,20 @@ if ($NoAutostart) {
     Write-Host "==> Autoarranque: activado (inicia con Windows)" -ForegroundColor Green
 }
 
-# Acceso directo en el menu Inicio -> se re-abre tecleando "Claude Brain" (si la cierras, tray app sin
+# Acceso directo en el menu Inicio -> se re-abre tecleando "Cortex" (si la cierras, tray app sin
 # ventana no deja como reinvocarla). Usa WScript.Shell (sin deps). Migra un .lnk viejo con el otro nombre.
 $startMenu = [Environment]::GetFolderPath('Programs')   # %APPDATA%\...\Start Menu\Programs
 Remove-Item (Join-Path $startMenu 'Claude Quota.lnk') -ErrorAction SilentlyContinue   # nombre viejo (migracion)
 try {
-    $lnk = Join-Path $startMenu 'Claude Brain.lnk'
+    $lnk = Join-Path $startMenu 'Cortex.lnk'
     $ws  = New-Object -ComObject WScript.Shell
     $sc  = $ws.CreateShortcut($lnk)
     $sc.TargetPath       = $exe
     $sc.WorkingDirectory = $dest
     $sc.IconLocation     = $exe        # el mismo icono del exe
-    $sc.Description       = 'Claude Brain Widget'
+    $sc.Description       = 'Cortex Widget'
     $sc.Save()
-    Write-Host "==> Acceso directo en el menu Inicio: 'Claude Brain'." -ForegroundColor Green
+    Write-Host "==> Acceso directo en el menu Inicio: 'Cortex'." -ForegroundColor Green
 } catch {
     Write-Host "==> Aviso: no pude crear el acceso directo del menu Inicio ($($_.Exception.Message))." -ForegroundColor Yellow
 }

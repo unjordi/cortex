@@ -1,7 +1,7 @@
-<!-- BEGIN claude-brain (normas globales — no editar a mano; se regeneran con install-brain.sh) -->
-# Normas globales del cerebro (claude-brain)
+<!-- BEGIN cortex (normas globales — no editar a mano; se regeneran con install-brain.sh) -->
+# Normas globales del cerebro (cortex)
 
-> Bloque instalado por `claude-brain` en `~/.claude/CLAUDE.md`. Son normas DURAS y genéricas
+> Bloque instalado por `cortex` en `~/.claude/CLAUDE.md`. Son normas DURAS y genéricas
 > (agnósticas de stack) que aplican a Claude, a los agentes que delega y a toda sesión del equipo.
 
 ## Documentación = reflejo de la realidad (norma dura, NO se pregunta)
@@ -108,6 +108,20 @@ mañana 10am"): mientras esté vigente, se re-cita sin escrúpulo. Caso real (ju
 re-citar una autorización blanket legítima por escrúpulo excesivo y una noche de trabajo quedó
 represada en MRs sin mergear.
 
+### NUNCA ofrezcas "el clic en la web" como escape de un juez que frena en CLI (norma dura)
+Cuando un guard/juez frena una acción por CLI (`confirmar-merge-develop`, `merge-squash-guard`,
+`git-branch-guard`…), la respuesta CORRECTA es UNA de dos: **(1) ARREGLAR lo que el juez señala** —
+dar el resumen de squash, citar el OK real y vigente, corregir el target mal detectado— o **(2) PEDIR
+el OK claro** que el juez exige, en lenguaje inequívoco. **JAMÁS** la salida es "…o mergéalo tú en la
+web de GitLab/GitHub". Ofrecer el clic manual como vía de escape es un **vein-popper**: enruta a la
+persona ALREDEDOR del control en vez de satisfacerlo, traslada a un humano el trabajo que Claude debía
+cerrar por el carril correcto, y vacía de sentido al juez (un control que se sortea con "hazlo a mano"
+no controla nada). Aplica a CUALQUIER juez que frene en CLI, no solo a los merges. La única mención
+legítima de la web es DESCRIPTIVA de un flujo que el usuario YA eligió (p. ej. el release
+`develop→main` que por convención hace el humano en la web) — nunca como salida para desatorar a Claude
+de un juez que acaba de frenar. Corolario de "Integridad de los guardarraíles": si el juez frena en
+falso, se AFINA (con OK explícito, solo precisión); si frena bien, se CUMPLE — no se rodea.
+
 ### Bitácora de falsos positivos de los guards (afinar con corpus, no con anécdotas)
 Cada vez que un guard/hook **frene EN FALSO** (dispara sobre algo que NO era lo que vigila), Claude
 appendea **EN EL MOMENTO** una línea al final de `~/.claude/memory/guards-falsos-positivos.md`
@@ -126,6 +140,21 @@ al usuario como único enforcement → no se cumple sola (pasó con auto-reporte
 se volvieron hooks). Al crear una norma de proceso, **nace con su mecanismo o es solo un buen deseo.**
 Corolario: un mecanismo mal dirigido (un hook con falsos positivos) desgasta la confianza tanto como su
 ausencia — la PRECISIÓN del guard importa igual que su existencia.
+
+## Actualiza por la HERRAMIENTA REAL, nunca corriendo el instalador/deploy a mano (norma dura)
+Actualizar o desplegar algo se hace **SIEMPRE por la herramienta de release del proyecto**, jamás
+invocando su script de instalación/deploy a pelo. Ejemplo canónico: el **cerebro/widget** se actualiza
+con el **widget** (su updater ⬆, que copia atómico + re-cablea + re-sella la versión), **NUNCA** corriendo
+`install-brain.sh` / `install.sh` a mano en una terminal. Por qué muerde: el instalador a mano se salta los
+pasos que la herramienta orquesta (backup, escritura atómica, sello de versión, re-cableado, verificación),
+deja media instalación o una versión que MIENTE sobre lo instalado, y evade el registro que el equipo espera.
+**GENERALIZADO a CUALQUIER herramienta de install/deploy** del proyecto (un `deploy.sh`, un `publish`, un
+`Makefile install`, un `helm`/`kubectl apply` suelto): si el proyecto tiene una vía OFICIAL para aplicar el
+cambio, esa es la única — correr el script crudo por debajo es el anti-patrón. **Excepciones legítimas
+(no disparan):** `--dry-run`/`--help`/`-n` (no mutan), correr dentro de **CI** (ahí el pipeline ES la
+herramienta), o que el usuario pida EXPLÍCITAMENTE el bypass para depurar. **Mecanismo** (la norma nace con
+él): el guard **`no-bypass-deploy`** (PreToolUse/Bash) DETECTA el instalador/deploy corrido a mano y
+**AVISA/redirige** —no bloquea, fail-safe: ante duda no frena—; redirige a la herramienta real.
 
 ## Ningún hallazgo tuyo se queda solo narrado en el chat (norma dura)
 (Su HERMANA para lo que deciden JUNTOS: "Ninguna DECISIÓN se queda solo en el chat", abajo.)
@@ -278,6 +307,24 @@ NO saca sus guards de esa copia** — los saca del **install GLOBAL + el DEDUPE*
   COMPARTIDO mantiene el correo fresco (auto-sync en tu mini / avisa); en PERSONAL **no auto-commitea** y
   **flaggea** los guards que sobran para que los quites (no los borra solo). Detalle: [[diseno-rediseno-auto-sync-46]].
 
+### Tiers de hooks/skills: cómo decidir (regla crisp — asienta #81)
+Al AGREGAR un hook/skill al cerebro, su TIER (en `brain/hooks/MANIFEST` / `brain/skills/MANIFEST`) se
+decide con el MISMO patrón repo-compartido de arriba — deja de re-preguntarse "¿global o both?":
+- **`both`** — viaja por-repo EN GIT *y* se instala global por el bootstrap (la cláusula de dedupe hace
+  que la copia por-repo CEDA a la global). Ponlo `both` **SOLO** si el guard/skill debe llegar a clones
+  **COMPARTIDOS** con otras personas/máquinas que NO tienen el brain global (colegas, clones públicos) —
+  es "correo" que viaja para proteger a quien clona sin bootstrap. Un hook `both` DEBE traer la cláusula
+  de dedupe; una skill `both` no la necesita (es markdown que se LEE, no un script que se EJECUTE).
+- **`global`** — solo vive en la máquina del DUEÑO (que ya corrió el bootstrap). **DEFAULT conservador:
+  ante la duda, `global`.** No pongas `both` "por si acaso": si nadie sin brain global va a clonar el repo,
+  es `global`.
+- **`repo`** — solo por-repo, se carga únicamente si la sesión INICIA en ese repo (depende del contexto
+  del repo; p. ej. `dod-verificar`, `sesion-inicio`).
+
+Corolario anti-drift (misma raíz que la norma de arriba): un repo PERSONAL NUNCA lleva guards por-repo
+(global+dedupe ya los cubre); un repo COMPARTIDO se marca explícito con `.claude/repo-compartido` y ahí sí
+viajan los `both`.
+
 ## Consentimiento de costo de delegación (norma dura)
 Reclutar un agente (Task/subagente) cuesta según su nivel: **gratis** (local), **incluido** (Claude
 dentro de la ventana de 5h — sin costo marginal) o **metered** (Claude en overage, API externa de pago,
@@ -321,6 +368,33 @@ rompe `git branch -d` y `fetch --prune` no toca locales; conserva el trabajo viv
 **Señal de que te desviaste:** el usuario tuvo que PEDIRTE que actualizaras bitácora/estado, o se
 acumularon worktrees/ramas zombies.
 
+## Tu lista de TODOs es TU HUD — mantenla FRESCA, no la dejes driftear (norma dura)
+La lista de TODOs de la terminal (el árbol de checkboxes con ✓, `in_progress`, `+N completed`) es **TU HUD
+de working-memory de la tarea de AHORA** — tu tablero para no perderte mientras ejecutas, **no un reporte
+para el usuario**. Un modelo que corre de corrido tiene un interés propio y egoísta en un tablero fiable de
+"¿voy en orden? ¿qué me falta?": es lo que lo mantiene orientado cuando su contexto se degrada, igual que
+el `hilo-mental-actual.md` lo salva del compact. Ábrela cuando una tarea tenga **≥3 pasos** o vayas a
+trabajar de corrido; manténla como el REFLEJO vivo de tu plan. **División de labor (no las confundas):**
+- **HUD** (lista de TODOs) = descomposición VIVA de ESTA tarea, visible en pantalla; **scratch de sesión**
+  (se **resetea** al cambiar de tarea). Lo que veo para no perderme AHORA.
+- **`hilo-mental-actual.md`** = el HILO en prosa, volcado a disco para sobrevivir un `/compact` (lo escribe
+  `checkpoint`, lo relee `rehidratar-hilo`). Lo que escribo a disco para no perderme tras un compact.
+- **`estado-proyecto.md`** = el BACKLOG DURABLE, fuente de verdad cross-sesión. Lo que sobrevive entre
+  sesiones. **Si HUD y backlog divergen, manda `estado-proyecto.md`.**
+
+**Los dos puentes:** al **ARRANCAR/RETOMAR** una tarea, **SIEMBRA** el HUD del hilo/`estado-proyecto.md`
+(con `/to-do`); al **CERRAR** (checkpoint/cerrar-slice), **VACÍA** lo durable del HUD a
+`estado-proyecto.md`/`bitacora.md` y límpialo. Nunca son la misma escritura, nunca compiten — se relevan
+en los bordes.
+
+**Anti-DRIFT (unjordi, norma dura): "NO QUIERO DRIFT NUNCA Y MENOS EN MI LISTA DE PENDIENTES."** El HUD
+queda STALE al rotar el working tree (cambio de rama/proyecto): sigue mostrando pendientes de la tarea
+anterior. Cuando **cambies de rama git o de proyecto/cwd**, RE-EVALÚA el HUD: si ya no aplica a lo que
+haces, **resetéalo** (re-siémbralo del `estado-proyecto.md` de ESA rama con `/to-do`, o límpialo). El hook
+**`hud-stale`** (advisory) es el mecanismo que te lo RECUERDA en el único momento en que no puedes saberlo
+solo — justo tras rotar de rama/cwd —; detecta por señal OBJETIVA (rama/cwd), nunca por el contenido del
+HUD, y no bloquea. Un aviso que te salva de trabajar con una lista vieja es una herramienta, no un vigilante.
+
 # Compact instructions
 
 > Sección FUNCIONAL, no decorativa: el CLI de Claude Code re-lee este `CLAUDE.md` de disco al compactar
@@ -338,4 +412,4 @@ Al compactar (manual O automático), PRESERVA por encima de todo:
 - Lo último que pidió el usuario y el "feeling" de trabajo (tono, prioridades).
 Prioriza CONTINUIDAD sobre brevedad; NO sobre-resumas hasta perder el hilo. Rutas de archivo, nombres de
 función, comandos y mensajes de error CONCRETOS: consérvalos literales.
-<!-- END claude-brain -->
+<!-- END cortex -->

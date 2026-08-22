@@ -24,6 +24,9 @@ case "$0" in "$HOME/.claude/hooks/"*) : ;; *) [ -f "$HOME/.claude/hooks/$(basena
 command -v jq >/dev/null 2>&1 || exit 0
 cmd=$(jq -r '.tool_input.command // ""' 2>/dev/null)
 [ -z "$cmd" ] && exit 0
+# PRE-FILTRO barato (superset conservador, mismo espíritu que proteger-arbol.sh): este hook solo
+# vigila `git commit` → sin 'git' en el comando crudo, early-exit ANTES del sed de des-entrecomillado.
+case "$cmd" in *git*) : ;; *) exit 0 ;; esac
 # Ignora menciones entrecomilladas (un `git commit` dentro de un grep/echo/mensaje) — como los otros guards.
 unquoted=$(printf '%s' "$cmd" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g")
 printf '%s' "$unquoted" | grep -qE 'git[[:space:]]+commit' || exit 0

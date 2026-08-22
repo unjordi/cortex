@@ -1,6 +1,6 @@
 ---
 name: ecosistema-claude
-description: KB VIVA de todo lo aprendido sobre el ecosistema Claude (CLI, chat/desktop, API, hooks, cuotas, sesiones) al desarrollar claude-brain
+description: KB VIVA de todo lo aprendido sobre el ecosistema Claude (CLI, chat/desktop, API, hooks, cuotas, sesiones) al desarrollar cortex
 type: reference
 ---
 
@@ -8,9 +8,14 @@ type: reference
 
 > Base de conocimiento que **CRECE**: cada cosa no-obvia que descubrimos sobre cómo se comporta
 > Claude Code (CLI), Claude chat/desktop, la API, hooks, cuotas y sesiones — sobre todo lo destilado
-> al construir el **claude-brain**. Un ítem = un hallazgo, con su **evidencia + fecha**. Añade abajo.
+> al construir el **cortex**. Un ítem = un hallazgo, con su **evidencia + fecha**. Añade abajo.
 
 ## Autenticación / cuentas
+- **La Messages API de `api.anthropic.com` ACEPTA el token OAuth de la suscripción** (el mismo login de
+  Claude Code, no una API key) enviándolo como `Authorization: Bearer <oauth>` **+ el header
+  `anthropic-beta: oauth-2025-04-20`** — así puedes hacer `curl` directo al modelo (p. ej. un juez LLM)
+  con tu cuota de suscripción, sin API key aparte. Referencia completa del ecosistema Claude (CLI / OAuth /
+  `curl` al juez): **`docs/referencia-cli-claude-code.md`**.
 - **El login de Claude Code es GLOBAL a la máquina** — un solo credential store en `~/.claude/`, **NO
   por-terminal ni por-sesión.** Consecuencia clave: si haces logout/login a OTRA cuenta (aunque sea en
   otra terminal), **las sesiones ya vivas toman la credencial/cuota nueva en sus SIGUIENTES requests** —
@@ -25,7 +30,7 @@ type: reference
   significa que Bash esté roto:** significa que **se agotó un quota de tokens** (el clasificador de
   seguridad de Bash es una llamada al modelo que no puede correr sin cuota). **Read/Edit/Write siguen
   funcionando** (no pasan por el clasificador); solo **Bash** queda bloqueado, hasta el reset O hasta
-  cambiar de cuenta / habilitar overage. Confirmación rápida: el widget claude-brain muestra el semanal
+  cambiar de cuenta / habilitar overage. Confirmación rápida: el widget cortex muestra el semanal
   y/o la ventana de 5h al 100%. *(2026-07-15.)*
 - Hay dos ventanas **independientes**: **5 h** y **semanal (7 d)**. El widget las muestra por separado
   (+ desglose por modelo). Toparse la semanal no topa necesariamente la de 5h y viceversa.

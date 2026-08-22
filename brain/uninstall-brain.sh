@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # uninstall-brain.sh — INVERSO EXACTO de install-brain.sh. Quita de esta máquina el CEREBRO GLOBAL
-# de Claude Code (claude-brain) que instaló install-brain.sh. Idempotente: re-correrlo es SEGURO
+# de Claude Code (cortex) que instaló install-brain.sh. Idempotente: re-correrlo es SEGURO
 # (si algo ya no está, lo salta sin quejarse).
 #
 # Quita GLOBAL (de ~/.claude):
@@ -12,7 +12,7 @@
 #   (b) DES-CABLEA de ~/.claude/settings.json SOLO las entradas que apuntan a esos hooks (deja
 #       intactas las demás — usa jq); poda los arrays de evento que queden vacíos.
 #   (c) las SKILLS genéricas (cerrar-slice, orquestar-fanout, checkpoint, rehidratar-hilo, turno-nocturno, diagramar, cosechar-sesion, unificar-cerebro) de ~/.claude/skills/.
-#   (d) el BLOQUE de normas de ~/.claude/CLAUDE.md (entre los marcadores BEGIN/END claude-brain).
+#   (d) el BLOQUE de normas de ~/.claude/CLAUDE.md (entre los marcadores BEGIN/END cortex).
 #
 # NO borra (son DATOS del usuario, no instalación):
 #   - el Dashboard del cerebro (dashboard_cerebro.md en la memoria GLOBAL).
@@ -31,7 +31,7 @@ SKILLS_DIR="$CLAUDE_DIR/skills"
 GSET="$CLAUDE_DIR/settings.json"
 GCLAUDE="$CLAUDE_DIR/CLAUDE.md"
 
-echo "==> claude-brain: desinstalando cerebro global de $CLAUDE_DIR"
+echo "==> cortex: desinstalando cerebro global de $CLAUDE_DIR"
 
 # ── (a) Borrar los hooks de tier global + la lib compartida + la config de costo ──
 # Derivado del MANIFEST (fuente única, igual que install-brain) → no es una 3ª lista que driftee.
@@ -52,7 +52,7 @@ echo "ok: hooks globales + lib + config de costo eliminados de $HOOKS_DIR"
 
 # ── (b) Des-cablear del settings.json SOLO las entradas de esos hooks (idempotente, jq) ──
 # Patrón que casa el 'command' de las entradas que sembró el instalador (por basename del hook).
-BRAIN_PAT='git-branch-guard\.sh|merge-squash-guard\.sh|confirmar-merge-develop\.sh|recordar-dashboard\.sh|secret-scan\.sh|rama-vieja\.sh|proteger-arbol\.sh|limite-gasto\.sh|rehidratar-hilo\.sh|aviso-contexto\.sh|aviso-drift-cerebro\.sh|barrer-ramas\.sh|delegacion-gate\.sh|delegacion-registrar\.sh|delegacion-reporte\.sh'
+BRAIN_PAT='git-branch-guard\.sh|merge-squash-guard\.sh|confirmar-merge-develop\.sh|recordar-dashboard\.sh|secret-scan\.sh|rama-vieja\.sh|proteger-arbol\.sh|limite-gasto\.sh|rehidratar-hilo\.sh|aviso-contexto\.sh|aviso-drift-cerebro\.sh|hud-stale\.sh|barrer-ramas\.sh|delegacion-gate\.sh|delegacion-registrar\.sh|delegacion-reporte\.sh'
 if command -v jq >/dev/null 2>&1; then
   if [ -f "$GSET" ]; then
     tmp="$(mktemp)" || tmp=""
@@ -91,23 +91,46 @@ for sk in cerrar-slice orquestar-fanout checkpoint rehidratar-hilo turno-nocturn
 done
 
 # ── (d) Quitar el bloque de normas de ~/.claude/CLAUDE.md (entre los marcadores) ──
-if [ -f "$GCLAUDE" ] && grep -q 'BEGIN claude-brain' "$GCLAUDE"; then
+if [ -f "$GCLAUDE" ] && grep -q 'BEGIN cortex' "$GCLAUDE"; then
   tmp="$(mktemp)" || tmp=""
   # Borra desde la línea del marcador BEGIN hasta la del END (inclusive). Sin sed -i (portable).
   if [ -n "$tmp" ] && awk '
-      /BEGIN claude-brain/ { skip=1 }
+      /BEGIN cortex/ { skip=1 }
       skip != 1 { print }
-      /END claude-brain/   { skip=0 }
+      /END cortex/   { skip=0 }
     ' "$GCLAUDE" > "$tmp"; then
     # Poda una posible línea en blanco al inicio que el bloque dejaba de separador.
     mv "$tmp" "$GCLAUDE"
     echo "ok: bloque de normas del cerebro removido de $GCLAUDE"
   else
     [ -n "$tmp" ] && rm -f "$tmp"
-    echo "warn: no pude editar $GCLAUDE; quita a mano el bloque BEGIN/END claude-brain"
+    echo "warn: no pude editar $GCLAUDE; quita a mano el bloque BEGIN/END cortex"
   fi
 else
   echo "ok: no hay bloque de normas del cerebro en $GCLAUDE"
+fi
+
+# ── (e) Quitar el @import de aliases-activos.md (marcador propio) + el artefacto GENERADO ──
+# Inverso de (d3) de install-brain. El artefacto es GENERADO per-máquina (no dato curado del usuario) →
+# se elimina. Borra la línea del marcador `brain:import-aliases`, el `@aliases-activos.md` que le sigue y
+# una posible línea en blanco separadora previa. Idempotente (si no están, no hace nada).
+if [ -f "$GCLAUDE" ] && grep -q 'brain:import-aliases' "$GCLAUDE" 2>/dev/null; then
+  tmp="$(mktemp)" || tmp=""
+  if [ -n "$tmp" ] && awk '
+      /brain:import-aliases/ { skip_next=1; next }            # tira la línea del marcador
+      skip_next==1 && /^@aliases-activos\.md[[:space:]]*$/ { skip_next=0; next }   # y el @import que le sigue
+      { skip_next=0; print }
+    ' "$GCLAUDE" > "$tmp"; then
+    mv "$tmp" "$GCLAUDE"
+    echo "ok: @import de aliases-activos.md removido de $GCLAUDE"
+  else
+    [ -n "$tmp" ] && rm -f "$tmp"
+    echo "warn: no pude quitar el @import de $GCLAUDE; hazlo a mano (líneas brain:import-aliases + @aliases-activos.md)"
+  fi
+fi
+if [ -f "$CLAUDE_DIR/aliases-activos.md" ]; then
+  rm -f "$CLAUDE_DIR/aliases-activos.md"
+  echo "ok: artefacto GENERADO aliases-activos.md eliminado (se regenera en el próximo install)"
 fi
 
 echo "listo: cerebro global desinstalado. Se conservaron el dashboard, el registro de"

@@ -93,7 +93,7 @@ flowchart TB
     subgraph retomar["Al abrir / retomar / después de compactar (SessionStart)"]
         RH["🧵 rehidratar-hilo (GLOBAL)<br/>relee hilo-mental-actual.md y lo reinyecta<br/>vía additionalContext (con gate de frescura)"]
         SI["🧭 sesion-inicio (POR-REPO)<br/>reinyecta rama + norma de git +<br/>orden de leer MEMORY/estado-proyecto"]
-        DRIFT{"🧬 aviso-drift-cerebro (GLOBAL)<br/>¿repo brained ATRÁS de la<br/>fuente única ~/.claude-brain?<br/>(diff real, no versión)"}
+        DRIFT{"🧬 aviso-drift-cerebro (GLOBAL)<br/>¿repo brained ATRÁS de la<br/>fuente única ~/.cortex?<br/>(diff real, no versión)"}
     end
 
     SYNC["✅ AUTO-SYNC<br/>parado en TU mini-develop y .claude/ limpio →<br/>apply + commit + push a tu mini SOLO;<br/>llega a develop con tu próxima integración"]
@@ -169,6 +169,9 @@ flowchart TB
 
 El estilo de orquestación (fan-out + supervisión, 2 archivos de estado sin redundancia) lo guía
 el skill `orquestar-fanout`; la lib `delegacion-comun.sh` comparte la lógica de gate/registro.
+El gate de costo es el **freno** (evita runaways); su hermano-**empuje** es `recordar-orquestar`
+(PostToolUse, advisory): tras **N** mutaciones en serie SIN delegar, sugiere el fan-out — se
+**resetea** al lanzar un `Agent`/`Task`, así que solo avisa cuando llevas rato en grind serial.
 
 ---
 
@@ -176,7 +179,11 @@ el skill `orquestar-fanout`; la lib `delegacion-comun.sh` comparte la lógica de
 
 [`brain/hooks/MANIFEST`](../brain/hooks/MANIFEST) es la **fuente única**: declara tier (dónde) y
 kind (cómo) de cada pieza, y de ahí **derivan** las dos rutas de instalación y el drift-check de
-`test-brain.sh` — no hay listas curadas por separado que puedan divergir.
+`test-brain.sh` — no hay listas curadas por separado que puedan divergir. Las **skills** tienen su propio
+[`brain/skills/MANIFEST`](../brain/skills/MANIFEST) con el mismo modelo (`global` / `both`): install-brain
+las despliega globalmente (árbol completo) y `sincronizar-cerebro.sh` despliega las `both` por-repo, con el
+mismo drift-check. El drift de skills lo vigila `aviso-drift-cerebro` — per-repo (vía el resumen del sync,
+misma bifurcación `.claude/repo-compartido`) y global (`~/.claude/skills` vs la fuente, warn-only).
 
 ```mermaid
 flowchart LR
@@ -184,13 +191,13 @@ flowchart LR
 
     subgraph tiers["Tiers declarados"]
         BOTH["tier <b>both</b> — global + por-repo<br/>(con cláusula de dedupe:<br/>la copia del repo cede a la global)<br/><br/>hooks: git-branch-guard ·<br/>merge-squash-guard ·<br/>confirmar-merge-develop ·<br/>recordar-dashboard · secret-scan ·<br/>entorno-maquina-guard<br/>libs: analizar-comando-git ·<br/>detectar-secretos"]
-        GLOBAL["tier <b>global</b> — solo ~/.claude<br/><br/>hooks: proteger-arbol · rama-vieja ·<br/>limite-gasto · rehidratar-hilo ·<br/>aviso-contexto · aviso-drift-cerebro ·<br/>delegacion-gate · delegacion-registrar ·<br/>delegacion-reporte<br/>lib: delegacion-comun · ramas-zombie<br/>script: limpiar-worktrees · limpiar-ramas"]
+        GLOBAL["tier <b>global</b> — solo ~/.claude<br/><br/>hooks: proteger-arbol · rama-vieja ·<br/>limite-gasto · rehidratar-hilo ·<br/>aviso-contexto · aviso-drift-cerebro ·<br/>delegacion-gate · delegacion-registrar ·<br/>delegacion-reporte · recordar-orquestar<br/>lib: delegacion-comun · ramas-zombie<br/>script: limpiar-worktrees · limpiar-ramas"]
         REPO["tier <b>repo</b> — solo &lt;repo&gt;/.claude<br/>(se cargan si la sesión INICIA ahí)<br/><br/>hooks: dod-verificar · sesion-inicio"]
     end
 
     subgraph destinos["Destinos"]
-        GDIR["🏠 ~/.claude/hooks + settings.json<br/>instala: brain/install-brain.sh<br/>(vía bootstrap / install.sh)<br/>+ skills genéricas en ~/.claude/skills<br/>(auto-descubre brain/skills/*/SKILL.md)"]
-        RDIR["📁 &lt;repo&gt;/.claude/hooks + settings.json<br/>despliega: brain/sincronizar-cerebro.sh<br/>(diff-aware; viaja por git al equipo)"]
+        GDIR["🏠 ~/.claude/hooks + settings.json<br/>instala: brain/install-brain.sh<br/>(vía bootstrap / install.sh)<br/>+ skills {global,both} en ~/.claude/skills<br/>(árbol completo; tier por brain/skills/MANIFEST)"]
+        RDIR["📁 &lt;repo&gt;/.claude/hooks + skills + settings.json<br/>despliega: brain/sincronizar-cerebro.sh<br/>(hooks/libs {repo,both} + skills {both};<br/>diff-aware; viaja por git al equipo)"]
     end
 
     TEST["🧪 brain/test-brain.sh<br/>drift-check (e2): ambas rutas<br/>DEBEN coincidir con el MANIFEST"]
