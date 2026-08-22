@@ -9,6 +9,9 @@
 # Evita el recordatorio DUPLICADO en cada push (la fricción #1). NO-debilitante: sigue recordando 1×.
 case "$0" in "$HOME/.claude/hooks/"*) : ;; *) [ -f "$HOME/.claude/hooks/$(basename "$0")" ] && exit 0 ;; esac
 cmd=$(jq -r '.tool_input.command // ""' 2>/dev/null)
+# PRE-FILTRO barato (superset conservador, mismo espíritu que proteger-arbol.sh): este hook solo
+# vigila `git push` → sin 'git' en el comando crudo, early-exit ANTES del sed de des-entrecomillado.
+case "$cmd" in *git*) : ;; *) exit 0 ;; esac
 unquoted=$(printf '%s' "$cmd" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g")
 printf '%s' "$unquoted" | grep -qE 'git[[:space:]]+push' || exit 0
 

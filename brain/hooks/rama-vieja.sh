@@ -7,6 +7,9 @@ set -u
 command -v jq >/dev/null 2>&1 || exit 0
 command -v git >/dev/null 2>&1 || exit 0
 cmd=$(jq -r '.tool_input.command // ""' 2>/dev/null)
+# PRE-FILTRO barato (superset conservador, mismo espíritu que proteger-arbol.sh): este hook solo
+# vigila `git push` → sin 'git' en el comando crudo, early-exit ANTES del sed de des-entrecomillado.
+case "$cmd" in *git*) : ;; *) exit 0 ;; esac
 # Ignora un 'git push' que aparezca como DATO entrecomillado (grep, descripción de MR, prueba).
 unquoted=$(printf '%s' "$cmd" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g")
 printf '%s' "$unquoted" | grep -qE 'git[[:space:]]+push' || exit 0

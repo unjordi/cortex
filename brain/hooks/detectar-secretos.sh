@@ -34,11 +34,20 @@ ds_safe_re() {
   printf '%s' 'AKIAIOSFODNN7EXAMPLE|EXAMPLE_KEY|your[-_]?(api[-_]?)?key|xxxx+|<[A-Za-z_]+>|[Pp]ass(word|wd)[[:space:]]*=[[:space:]]*[$%]|[Pp]ass(word|wd)[[:space:]]*=[[:space:]]*["'"'"']?\{|CHANGE[-_]?ME|placeholder|redacted|\*\*\*+'
 }
 
+# Memoización (perf): ds_patrones/ds_safe_re son PURAS/ESTÁTICAS (mismo resultado siempre) pero
+# ds_buscar las recomputaba vía `$(...)` (un fork por invocación) en cada llamada — y se llama una vez
+# POR ARCHIVO tocado en un commit/push. Se calculan UNA sola vez al sourcear esta lib y ds_buscar usa
+# las variables cacheadas. Las funciones públicas se CONSERVAN intactas (por si algo externo las llama
+# directo); solo ds_buscar es la API pública real hoy (verificado: ningún otro hook llama ds_patrones/
+# ds_safe_re directo).
+_DS_PAT="$(ds_patrones)"
+_DS_SAFE_RE="$(ds_safe_re)"
+
 # ds_buscar "<texto>" — imprime hasta 3 coincidencias REDACTADAS (primeros 6 chars + …), una por línea.
 # Devuelve 0 si encontró algo (imprime), 1 si nada. El consumidor decide qué hacer (bloquear, etc.).
 ds_buscar() {
   local found
-  found=$(printf '%s' "$1" | grep -oE "$(ds_patrones)" 2>/dev/null | grep -viE "$(ds_safe_re)" | head -3)
+  found=$(printf '%s' "$1" | grep -oE "$_DS_PAT" 2>/dev/null | grep -viE "$_DS_SAFE_RE" | head -3)
   [ -n "$found" ] || return 1
   printf '%s' "$found" | sed -E 's/(.{6}).*/\1…(redactado)/'
   return 0

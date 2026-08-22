@@ -17,6 +17,10 @@ command -v jq >/dev/null 2>&1 || exit 0
 input=$(cat)
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
 [ -z "$cmd" ] && exit 0
+# PRE-FILTRO barato (superset conservador, mismo espíritu que proteger-arbol.sh): todo lo que este
+# guard vigila requiere 'git'/'glab'/'gh' en el comando crudo → sin eso, early-exit ANTES de gastar
+# sed/grep/source-lib. Jamás salta un caso real (a lo más sigue de más).
+case "$cmd" in *git*|*glab*|*gh*) : ;; *) exit 0 ;; esac
 # cwd del payload = working dir REAL del comando (puede diferir de CLAUDE_PROJECT_DIR, fijo al arranque de
 # la sesión). Es la señal correcta para el caso PELÓN cross-repo (un `git push` corre en el cwd, no en el
 # repo de la sesión). Ausente/no confiable → vacío → acg_target_dir cae a CLAUDE_PROJECT_DIR (conducta de hoy).
