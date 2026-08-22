@@ -108,7 +108,7 @@ volátil lo que tiene casa durable** → reduce lo que el compact puede siquiera
    <qué se promovió EN ESTE checkpoint a su casa durable — memorias del proyecto, skills tocados —
     con sus rutas. La promoción se hace COMO PARTE del checkpoint completo, no "después".>
    ```
-   Pon la **FECHA real**: `rehidratar-hilo` la muestra al retomar para que juzgues si el hilo quedó viejo.
+   Pon la **FECHA real** (córrela con `date` de bash, NO el metadato de sesión): `rehidratar-hilo` la muestra al retomar para que juzgues si el hilo quedó viejo.
 
    **PROCEDENCIA de cada idea (regla dura — el hilo mental DE LA IDEA, no solo el stub).** Cada ítem del
    PLAN y cada decisión de RESUELTO llevan de DÓNDE salió y QUIÉN la originó, con un marcador breve:
