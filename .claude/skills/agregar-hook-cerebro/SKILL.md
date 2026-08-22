@@ -1,7 +1,7 @@
 ---
 name: agregar-hook-cerebro
 description: >
-  Añade un guardrail/hook NUEVO al cerebro global de claude-brain de punta a punta —
+  Añade un guardrail/hook NUEVO al cerebro global de cortex de punta a punta —
   el .sh, su cableado idempotente en install/uninstall, su prueba en test-brain, y su
   entrada en el catálogo de la pestaña "Cerebro" de las 3 GUIs (macOS/Linux/Windows).
   Úsalo cuando quieras sumar una regla nueva (bloqueante o de aviso) al cerebro; destila
@@ -44,10 +44,10 @@ Estilo de la casa (mira `git-branch-guard.sh` / `secret-scan.sh` como plantilla)
 El árbol está duplicado a mano: **README + 3 GUIs**. Toca los CUATRO en la misma tanda con los MISMOS
 `emoji/name/desc` (o el README miente sobre el widget → doc <= realidad; ver memoria [[arbol-cerebro-sync]]):
 - **README** raíz — el bloque de árbol de texto (conectores `├─`/`└─`).
-- **macOS** `macos/Sources/ClaudeBrain/PopoverView.swift` → `brainTiers` (en el tier que toque) +
+- **macOS** `macos/Sources/Cortex/PopoverView.swift` → `brainTiers` (en el tier que toque) +
   `BrainInspector.swift` → `knownGlobalHooks`.
 - **Linux** `src/plasmoid/contents/ui/main.qml` → `brainTiers` + `brainGlobalHooks`.
-- **Windows** `windows/src/ClaudeBrain/PopupForm.cs` → `BrainTiers` + `BrainInspector.cs` → `KnownGlobalHooks`.
+- **Windows** `windows/src/Cortex/PopupForm.cs` → `BrainTiers` + `BrainInspector.cs` → `KnownGlobalHooks`.
 - Tier por dureza: 🔒 INVIOLABLE (bloquea) · 🔔 AUTOMÁTICO (inyecta/recuerda) · 📜 NORMAS · 💡 SKILLS.
 - El estado (activo/faltante) lo lee el inspector de cada GUI. **HOOKS** se casan por basename
   (`knownGlobalHooks`) → renombrar su texto no rompe el estado. **NORMAS** se casan por NAME en la

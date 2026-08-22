@@ -9,25 +9,25 @@
 #   ./install.sh --no-claude-code # skip auto-installing the Claude Code CLI (the widget measures IT)
 #   ./install.sh --no-reload-shell # don't restart plasmashell at the end (default: restart to load changes)
 #
-# This is the MASTER installer for claude-brain: it lays down the shared Claude-Code brain
+# This is the MASTER installer for cortex: it lays down the shared Claude-Code brain
 # (global hooks, delegation-cost governance, skill, norms) AND the quota daemon + optional GUI.
 # Idempotent.
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-BIN_SRC="$ROOT/src/bin/claude-brain-fetch"
+BIN_SRC="$ROOT/src/bin/cortex-fetch"
 UNIT_SRC="$ROOT/src/systemd"
 PLASMOID_SRC="$ROOT/src/plasmoid"
-PLASMOID_ID="io.github.unjordi.claude-brain"
+PLASMOID_ID="io.github.unjordi.cortex"
 OLD_PLASMOID_ID="io.github.unjordi.claude-quota-widget"   # legacy: se elimina en el install (borra el previo)
 BRAIN_INSTALLER="$ROOT/brain/install-brain.sh"
 
-BIN_DEST="$HOME/.local/bin/claude-brain-fetch"
+BIN_DEST="$HOME/.local/bin/cortex-fetch"
 UNIT_DEST="$HOME/.config/systemd/user"
-# Config del widget: con el rebrand COMPLETO (2026-07) pasó a ~/.config/claude-brain (el código lee
+# Config del widget: con el rebrand COMPLETO (2026-07) pasó a ~/.config/cortex (el código lee
 # de ahí). "Borra el previo por completo": NO se migra la config vieja; se instala limpia (defaults).
-LIMITS_DEFAULT="$HOME/.config/claude-brain/limits.env"
+LIMITS_DEFAULT="$HOME/.config/cortex/limits.env"
 
 REINSTALL=0
 SKIP_PLASMOID=0
@@ -51,14 +51,14 @@ done
 # Asegura que ~/.local/bin (donde viven el fetch y, típicamente, el CLI `claude`) esté en el PATH,
 # en zsh Y bash. Idempotente por marcador; crea el rc si falta. Se aplica también a ESTE proceso.
 ensure_path_local_bin() {
-  local marker="# claude-brain: ~/.local/bin en el PATH (claude, claude-brain-fetch)"
-  local old_marker="# claude-brain: ~/.local/bin en el PATH (claude, claude-quota-fetch)"  # era pre-rebrand
+  local marker="# cortex: ~/.local/bin en el PATH (claude, cortex-fetch)"
+  local old_marker="# cortex: ~/.local/bin en el PATH (claude, claude-quota-fetch)"  # era pre-rebrand
   local block
   printf -v block '\n%s\ncase ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac\n' "$marker"
   local f
   for f in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile"; do
     # rebrand cleanup: barre el bloque PATH viejo de la era 'claude-quota' (marcador + su línea 'case' siguiente),
-    # que la migración claude-quota→claude-brain no limpiaba → dejaba un bloque PATH duplicado (inofensivo) al actualizar.
+    # que la migración claude-quota→cortex no limpiaba → dejaba un bloque PATH duplicado (inofensivo) al actualizar.
     if [[ -e "$f" ]] && grep -qF "$old_marker" "$f" 2>/dev/null; then
       awk -v m="$old_marker" 'skip { skip=0; next } index($0,m) { skip=1; next } { print }' "$f" > "$f.cbtmp" && mv "$f.cbtmp" "$f"
     fi
@@ -119,12 +119,12 @@ echo "==> Ensuring ~/.local/bin on PATH (zsh + bash)"
 ensure_path_local_bin
 
 # ── "Borra el previo por completo" (regla 2026-07-15). Idempotente / fail-safe. ──
-# El rebrand claude-quota → claude-brain NO migra nada: ELIMINA el install viejo y reinstala limpio.
+# El rebrand claude-quota → cortex NO migra nada: ELIMINA el install viejo y reinstala limpio.
 echo "==> Eliminando cualquier instalación previa 'claude-quota' (install limpio)"
 # 1) Baja y deshabilita las units VIEJAS (evita timer/daemon duplicado).
 systemctl --user disable --now claude-quota.timer claude-quota.service 2>/dev/null || true
 rm -f "$HOME/.config/systemd/user/claude-quota.timer" "$HOME/.config/systemd/user/claude-quota.service"
-rm -f "$HOME/.local/bin/claude-quota-fetch"   # el fetch viejo (renombrado a claude-brain-fetch)
+rm -f "$HOME/.local/bin/claude-quota-fetch"   # el fetch viejo (renombrado a cortex-fetch)
 systemctl --user daemon-reload 2>/dev/null || true
 # 2) Borra el cache y la config VIEJOS por completo (no migramos: se regeneran limpios).
 rm -rf "$HOME/.cache/claude-quota" "$HOME/.config/claude-quota"
@@ -155,7 +155,7 @@ if [[ ! -f "$LIMITS_DEFAULT" ]]; then
 # unreachable (offline, or no ~/.claude/.credentials.json). When Claude Code's
 # OAuth token is available the widget reads the exact /usage percentages and
 # these caps are ignored.
-# After editing, run: systemctl --user restart claude-brain.service
+# After editing, run: systemctl --user restart cortex.service
 #
 # Basis is API-EQUIVALENT COST (USD), not raw tokens — cache-read tokens
 # dominate raw counts and Anthropic weights them ~0.1x. Calibrate:
@@ -182,24 +182,24 @@ EOF
 fi
 
 echo "==> Installing systemd user units -> $UNIT_DEST"
-install -D -m 0644 "$UNIT_SRC/claude-brain.service" "$UNIT_DEST/claude-brain.service"
-install -D -m 0644 "$UNIT_SRC/claude-brain.timer"   "$UNIT_DEST/claude-brain.timer"
+install -D -m 0644 "$UNIT_SRC/cortex.service" "$UNIT_DEST/cortex.service"
+install -D -m 0644 "$UNIT_SRC/cortex.timer"   "$UNIT_DEST/cortex.timer"
 
 echo "==> Reloading systemd user manager"
 systemctl --user daemon-reload
 
 echo "==> Enabling timer"
-systemctl --user enable --now claude-brain.timer
+systemctl --user enable --now cortex.timer
 
 echo "==> Priming cache with one run"
-systemctl --user start claude-brain.service || true
+systemctl --user start cortex.service || true
 sleep 1
-if [[ -f "$HOME/.cache/claude-brain/state.json" ]]; then
+if [[ -f "$HOME/.cache/cortex/state.json" ]]; then
   echo "    state.json written:"
   jq -c '{status, five: .five_hour.percent, wk: .weekly.percent}' \
-     "$HOME/.cache/claude-brain/state.json" | sed 's/^/    /'
+     "$HOME/.cache/cortex/state.json" | sed 's/^/    /'
 else
-  echo "    (no state.json yet — check: journalctl --user -u claude-brain.service)"
+  echo "    (no state.json yet — check: journalctl --user -u cortex.service)"
 fi
 
 if [[ "$SKIP_PLASMOID" -eq 0 ]]; then
@@ -292,14 +292,14 @@ The Claude-Code brain is installed globally (hooks + delegation-cost governance 
   ~/.claude). See README.md; re-run any time (idempotent). Skip it with --no-brain.
 
 Next steps:
-  - Right-click your Plasma panel -> Add or Manage Widgets -> search "Claude Brain Widget"
+  - Right-click your Plasma panel -> Add or Manage Widgets -> search "Cortex Widget"
   - Drag it onto the panel (or into the system tray slot).
   - Hover for the breakdown; tune caps in: $LIMITS_DEFAULT
 
 Debug:
-  systemctl --user status claude-brain.timer
-  journalctl --user -u claude-brain.service -n 20
-  cat ~/.cache/claude-brain/state.json | jq .
+  systemctl --user status cortex.timer
+  journalctl --user -u cortex.service -n 20
+  cat ~/.cache/cortex/state.json | jq .
 EOF
 
 # Login reminder: sin sesión de Claude Code el widget no ve tu cuota real (solo el fallback calibrado).

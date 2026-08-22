@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# brain-scan.sh — helper del plasmoid Claude Brain Widget (KDE).
+# brain-scan.sh — helper del plasmoid Cortex Widget (KDE).
 #
 # El plasmoid NO puede leer archivos ni correr procesos por sí mismo: lo hace a través del
 # DataSource "executable" de Plasma5Support (el mismo mecanismo con que ya lee state.json/stats.json).
@@ -41,7 +41,7 @@ scan() {
 
   # (3) normas: el marcador de inyección O el texto de las normas escritas a mano (ambas gobiernan)
   if [ -f "$CLAUDE/CLAUDE.md" ] && \
-     grep -qE 'BEGIN claude-brain|Definición de "LISTO"|reflejo de la realidad' "$CLAUDE/CLAUDE.md" 2>/dev/null; then
+     grep -qE 'BEGIN cortex|Definición de "LISTO"|reflejo de la realidad' "$CLAUDE/CLAUDE.md" 2>/dev/null; then
     hasNorms=true
   fi
 
@@ -76,15 +76,15 @@ heal() {
   self="$0"
   here="$(cd "$(dirname "$self")" 2>/dev/null && pwd)"
   for c in \
-    "$HOME/.local/share/plasma/plasmoids/io.github.unjordi.claude-brain/contents/brain/install-brain.sh" \
+    "$HOME/.local/share/plasma/plasmoids/io.github.unjordi.cortex/contents/brain/install-brain.sh" \
     "$here/brain/install-brain.sh" \
     "$here/../../brain/install-brain.sh" \
     "$here/../../../brain/install-brain.sh" \
-    "$HOME/code/claude-brain/brain/install-brain.sh" \
-    "$HOME/.claude-brain/brain/install-brain.sh" \
-    "$HOME/claude-brain/brain/install-brain.sh" \
-    "$HOME/src/claude-brain/brain/install-brain.sh" \
-    "$HOME/Projects/claude-brain/brain/install-brain.sh"; do
+    "$HOME/code/cortex/brain/install-brain.sh" \
+    "$HOME/.cortex/brain/install-brain.sh" \
+    "$HOME/cortex/brain/install-brain.sh" \
+    "$HOME/src/cortex/brain/install-brain.sh" \
+    "$HOME/Projects/cortex/brain/install-brain.sh"; do
     if [ -f "$c" ]; then
       echo "==> usando $c"
       bash "$c"
@@ -92,7 +92,7 @@ heal() {
     fi
   done
   # Fallback tolerante: un alias/lanzador en el PATH, si el usuario lo instaló.
-  if command -v claude-brain-install >/dev/null 2>&1; then claude-brain-install; exit $?; fi
+  if command -v cortex-install >/dev/null 2>&1; then cortex-install; exit $?; fi
   if command -v install-brain.sh   >/dev/null 2>&1; then install-brain.sh;   exit $?; fi
   echo "install-brain.sh no encontrado (ver NOTA DE RUTA en brain-scan.sh)" >&2
   exit 3

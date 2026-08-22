@@ -1,4 +1,4 @@
-# Claude Brain Widget — Windows tray app
+# Cortex Widget — Windows tray app
 
 A native **WinForms tray widget** (.NET 10) that puts your Claude Code
 subscription usage in the Windows notification area. It's the Windows port of
@@ -36,20 +36,20 @@ and renders the same three-tab breakdown.
 
 ## Why a rewrite (not a port of the fetch script)
 
-Linux and macOS run a bash `claude-brain-fetch` script on a systemd/launchd timer
+Linux and macOS run a bash `cortex-fetch` script on a systemd/launchd timer
 that writes a cache file the UI reads. Windows has no bash/jq/curl by default, so
 the always-running tray app **does the fetch itself in C#** every 5 minutes:
 
 ```
 ┌───────────────────────────────────────────────┐
-│  ClaudeBrain.exe (WinForms tray, always on)     │
+│  Cortex.exe (WinForms tray, always on)     │
 │                                                 │
 │  every 5 min ─┬─ 1. OAuth /usage  (HttpClient)  │  → exact 5h / 7d %, resets
 │               ├─ 2. transcripts   (System.Text) │  → tokens/day+model,
 │               │      ~/.claude/projects/*.jsonl │     sessions, msgs, peak hour
 │               └─ 3. ccusage       (if on PATH)  │  → API-equivalent $
 │                        ↓ writes                 │
-│   %LOCALAPPDATA%\claude-brain\{state,stats}.json │  ← same schema as Linux/mac
+│   %LOCALAPPDATA%\cortex\{state,stats}.json │  ← same schema as Linux/mac
 │                        ↓ reads (every 10s tick)  │
 │              tray icon + tooltip + popup         │
 └───────────────────────────────────────────────┘
@@ -79,12 +79,12 @@ extractors.
 
 **Chats / sessions extraction.** `chats.json` and `sessions.json` are produced the
 same way as Linux/macOS: `install.ps1` copies the bundled `bin\chats-extract.js`
-and `bin\sessions-extract.js` next to the exe (`…\Programs\ClaudeBrain\bin`), and
+and `bin\sessions-extract.js` next to the exe (`…\Programs\Cortex\bin`), and
 each fetch runs them with `node` (fail-open: no Node / no script / an error just
 leaves the file absent, so the Chats tab hides and the resume list stays empty).
 `chats-extract.js` reads the desktop app's local IndexedDB (no network);
 `sessions-extract.js` lists `~/.claude/projects/<slug>/*.jsonl`. They write into
-`%LOCALAPPDATA%\claude-brain` alongside `state.json`/`stats.json`.
+`%LOCALAPPDATA%\cortex` alongside `state.json`/`stats.json`.
 
 The `$` values are **API-equivalent** cost (what pay-per-token would have cost),
 labeled "(API equiv local)" — a "how much is my subscription saving me?" signal,
@@ -95,12 +95,12 @@ not an invoice. They're local to this machine's transcripts.
 **Self-contained (pulls its own deps via winget — recommended):**
 
 ```powershell
-irm https://raw.githubusercontent.com/unjordi/claude-brain/main/bootstrap.ps1 | iex
+irm https://raw.githubusercontent.com/unjordi/cortex/main/bootstrap.ps1 | iex
 ```
 
 `bootstrap.ps1` winget-installs anything missing (Git — brings Git Bash, jq, Node; and .NET 10 SDK,
-now only a **build fallback** since the widget install downloads the precompiled `ClaudeBrain.exe`),
-clones the repo to `%LOCALAPPDATA%\claude-brain-repo` (out of the way, not your visible profile
+now only a **build fallback** since the widget install downloads the precompiled `Cortex.exe`),
+clones the repo to `%LOCALAPPDATA%\cortex-repo` (out of the way, not your visible profile
 folder), and runs the brain + widget installers. If winget
 just installed something, open a fresh terminal and re-run so the new `PATH` is visible. **Or by
 hand** from the repo:
@@ -116,11 +116,11 @@ pwsh -File install.ps1 -Build       # build from source instead (needs .NET SDK)
 pwsh -File install.ps1 -NoAutostart # skip the "start with Windows" registration
 ```
 
-By default `install.ps1` **downloads the precompiled, self-contained `ClaudeBrain.exe`**
+By default `install.ps1` **downloads the precompiled, self-contained `Cortex.exe`**
 (bundles the .NET runtime) from the rolling `windows-latest` release — **no .NET SDK needed**.
-It copies it to `%LOCALAPPDATA%\Programs\ClaudeBrain\ClaudeBrain.exe`, sets the `HKCU\…\Run`
+It copies it to `%LOCALAPPDATA%\Programs\Cortex\Cortex.exe`, sets the `HKCU\…\Run`
 autostart entry, and launches it. Re-run any time to update in place; it also migrates an old
-`ClaudeBrain` install (removes its autostart + folder).
+`Cortex` install (removes its autostart + folder).
 
 **Fallback / devs:** if the download fails (e.g. the release is rebuilding, ~1–2 min) it builds from
 source with `dotnet publish` — that path needs the [.NET 10 SDK](https://dotnet.microsoft.com/download).
@@ -137,10 +137,10 @@ this system"*. Solución (elige una):
 ```powershell
 # A) Permitir scripts SOLO en este proceso y re-lanzar (no cambia tu config global):
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
-irm https://raw.githubusercontent.com/unjordi/claude-brain/main/bootstrap.ps1 | iex
+irm https://raw.githubusercontent.com/unjordi/cortex/main/bootstrap.ps1 | iex
 
 # B) O abre PowerShell ya con bypass y corre el one-liner:
-#    powershell -ExecutionPolicy Bypass -NoProfile -Command "irm https://raw.githubusercontent.com/unjordi/claude-brain/main/bootstrap.ps1 | iex"
+#    powershell -ExecutionPolicy Bypass -NoProfile -Command "irm https://raw.githubusercontent.com/unjordi/cortex/main/bootstrap.ps1 | iex"
 
 # C) Persistente para tu usuario (una vez): Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 ```
@@ -150,10 +150,10 @@ irm https://raw.githubusercontent.com/unjordi/claude-brain/main/bootstrap.ps1 | 
 ## Autoupdate ligero (winturbo-style)
 
 Igual que el puerto macOS, `install.ps1` escribe un `version.json` **junto al exe**
-(`%LOCALAPPDATA%\Programs\ClaudeBrain\version.json`) con el `sha`, la `date`, la ruta del
+(`%LOCALAPPDATA%\Programs\Cortex\version.json`) con el `sha`, la `date`, la ruta del
 `repo` (el clon local) y la `branch` del commit con que se buildeó (lee git desde el repo).
 Al abrir la pestaña **Cerebro**, el widget consulta `commits/main` de
-`github.com/unjordi/claude-brain` (throttle 1×/15 min, timeout 6 s, **fail-open**: sin red /
+`github.com/unjordi/cortex` (throttle 1×/15 min, timeout 6 s, **fail-open**: sin red /
 sin `version.json` / sin clon → no molesta). Si el remoto avanzó, dibuja arriba un banner naranja
 **"⬆ Actualizar widget (local → remoto)"**.
 
@@ -171,13 +171,13 @@ a 60 s resetea el banner y avisa. Requiere `git` + `pwsh`/`powershell` en el PAT
 Claude Code and the Claude desktop app can share a single OS credential slot, so a
 re-login on either can silently switch which account the widget reads. To catch
 that, **pin the expected account**: right-click the tray icon → **Fijar esta
-cuenta** (writes the active account's UUID to `%LOCALAPPDATA%\claude-brain\account`).
+cuenta** (writes the active account's UUID to `%LOCALAPPDATA%\cortex\account`).
 If the active account ever differs from the pinned one, the footer turns red with a
 `⚠ … no es la cuenta fijada` warning and the tooltip shows `⚠ otra cuenta`.
 **Quitar cuenta fijada** removes the pin. The file may hold a UUID or an email.
 
 All three platforms share this guard (Linux/macOS read the same pin from
-`~/.config/claude-brain/account`, overridable via `$CLAUDE_BRAIN_ACCOUNT`).
+`~/.config/cortex/account`, overridable via `$CLAUDE_BRAIN_ACCOUNT`).
 
 ## Sync between machines (opt-in)
 
@@ -187,24 +187,24 @@ your machines already share (Google Drive, etc.). Turn it on by setting the sync
 folder in **one** of two ways (the env var wins):
 
 - Env var `CLAUDE_BRAIN_SYNC_DIR`, or
-- a plain-text file `%LOCALAPPDATA%\claude-brain\sync-dir` (same config style as the
+- a plain-text file `%LOCALAPPDATA%\cortex\sync-dir` (same config style as the
   account pin).
 
 The value is either an **explicit path** to the shared folder, or the literal
 `auto` to autodetect Google Drive on Windows. `auto` probes, in order:
 `%USERPROFILE%\My Drive`, `%USERPROFILE%\Google Drive`, `%USERPROFILE%\Mi unidad`,
 `G:\My Drive`, `G:\Mi unidad`, `G:\` — and uses the first that exists, under a
-`claude-brain-sync` subfolder. An explicit path is used **verbatim** (no subfolder
+`cortex-sync` subfolder. An explicit path is used **verbatim** (no subfolder
 appended), so several machines must point at the *same* folder. Empty/unset = off.
 
-How it works (mirrors the mac/linux `claude-brain-fetch` bash+jq exactly, so the
+How it works (mirrors the mac/linux `cortex-fetch` bash+jq exactly, so the
 files are interchangeable across platforms):
 
 1. After each fetch, this machine writes its own snapshot `<hostname>.json` =
    `{ machine, updated_at, account, stats }` into the sync folder (atomic write).
 2. It reads every `*.json` there, keeps only those whose `account` matches this
    machine's (uuid, else email, else `default`), and merges them by day/model/
-   project into `%LOCALAPPDATA%\claude-brain\stats-global.json`.
+   project into `%LOCALAPPDATA%\cortex\stats-global.json`.
 
 The combined view drives a toggle in the footer of **Resumen / Modelos / Proyectos**:
 **🖥 this machine** vs **☁️ all** (the ☁️ pill shows the machine count when >1). The
@@ -216,7 +216,7 @@ file, or a broken snapshot just leaves the last good state and hides the toggle.
 
 ```powershell
 pwsh -File uninstall.ps1             # stop, remove autostart, delete app + cache
-pwsh -File uninstall.ps1 -KeepCache  # keep %LOCALAPPDATA%\claude-brain
+pwsh -File uninstall.ps1 -KeepCache  # keep %LOCALAPPDATA%\cortex
 ```
 
 Your Claude Code credentials and transcripts are never touched.
@@ -224,7 +224,7 @@ Your Claude Code credentials and transcripts are never touched.
 ## Development
 
 ```powershell
-cd windows\src\ClaudeBrain
+cd windows\src\Cortex
 dotnet build                         # compile
 dotnet run                           # run from source (framework-dependent)
 dotnet run -- --shot ..\..\..\shots  # render the 3 popup tabs + tray icons to PNG
@@ -265,5 +265,5 @@ the headless way to eyeball the UI without clicking the tray. Source layout:
 ## License
 
 MIT (same as the rest of the repo — a fork of
-[fuziontech/claude-brain](https://github.com/fuziontech/claude-brain)).
+[fuziontech/cortex](https://github.com/fuziontech/cortex)).
 See [../LICENSE](../LICENSE).

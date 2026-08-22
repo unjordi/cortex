@@ -18,7 +18,7 @@ input=$(cat 2>/dev/null || true)
 case "$(printf '%s' "$input" | jq -r '.tool_name // empty' 2>/dev/null)" in Task|Agent) ;; *) exit 0 ;; esac  # Agent = nombre nuevo del tool (antes Task)
 
 snap=""
-for c in "${XDG_CACHE_HOME:-$HOME/.cache}/claude-brain/state.json" "$HOME/Library/Caches/claude-brain/state.json"; do
+for c in "${XDG_CACHE_HOME:-$HOME/.cache}/cortex/state.json" "$HOME/Library/Caches/cortex/state.json"; do
   [ -f "$c" ] && { snap="$c"; break; }
 done
 [ -z "$snap" ] && exit 0

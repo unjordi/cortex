@@ -1,4 +1,4 @@
-# 🧠 claude-brain — el cerebro de Claude Code de nuestro equipo (fuente única, viaja a cada clon)
+# 🧠 cortex — el cerebro de Claude Code de nuestro equipo (fuente única, viaja a cada clon)
 
 Lo que necesitas saber para trabajar aquí:
 

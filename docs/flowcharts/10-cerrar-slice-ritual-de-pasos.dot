@@ -1,4 +1,4 @@
-// 10 — Cerrar un slice: el ritual de pasos (claude-brain)  ·  FUENTE editable (.dot)
+// 10 — Cerrar un slice: el ritual de pasos (cortex)  ·  FUENTE editable (.dot)
 // Render:  dot -Tsvg 10-cerrar-slice-ritual-de-pasos.dot -o 10-cerrar-slice-ritual-de-pasos.svg
 // Reconstruido 2026-08-07 desde el skill real brain/skills/cerrar-slice/SKILL.md (5 pasos:
 // verifica → memoria+doc → confirma con el usuario → flujo de git con squash → cosecha).

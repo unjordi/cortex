@@ -1,4 +1,4 @@
-// 06 — Integrar una rama a develop/main: los 3 git-guards de la ruta de MERGE (claude-brain)  ·  FUENTE editable (.dot)
+// 06 — Integrar una rama a develop/main: los 3 git-guards de la ruta de MERGE (cortex)  ·  FUENTE editable (.dot)
 // Render:  dot -Tsvg 06-integrar-rama-a-developmain.dot -o 06-integrar-rama-a-developmain.svg
 // ZOOM del subconjunto de MERGE del fan-out de 9 hooks (raíz común en 03 · CONVENCIONES §6):
 // git-branch-guard → merge-squash-guard → confirmar-merge-develop. Reconstruido 2026-08-07 desde el CÓDIGO real

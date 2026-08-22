@@ -1,4 +1,4 @@
-// 04 — Delegación / orquestar-fanout (claude-brain)  ·  FUENTE editable (Graphviz .dot)
+// 04 — Delegación / orquestar-fanout (cortex)  ·  FUENTE editable (Graphviz .dot)
 // Render:  dot -Tsvg 04-delegacion-orquestar-fanout.dot -o 04-delegacion-orquestar-fanout.svg
 // Construido 2026-08-01 desde el CÓDIGO REAL: hooks limite-gasto, delegacion-gate, delegacion-registrar,
 // delegacion-reporte + lib delegacion-comun.sh (clasificar_delegacion) + agentes-costo.json; scripts

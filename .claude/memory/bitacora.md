@@ -1,10 +1,10 @@
 ---
 name: bitacora
-description: Journal append-only de claude-brain — una línea por slice cerrado. merge=union → sin conflictos en paralelo.
+description: Journal append-only de cortex — una línea por slice cerrado. merge=union → sin conflictos en paralelo.
 type: project
 ---
 
-# Bitácora de claude-brain (append-only)
+# Bitácora de cortex (append-only)
 
 > **Una línea por slice cerrado, agregada AL FINAL** (append). Formato:
 > `- AAAA-MM-DD · rama/PR · quién · qué quedó cerrado`.
@@ -16,7 +16,7 @@ type: project
 > de lo YA CERRADO (nace 2026-08-07, B4: antes el backlog dobla como journal mezclando "qué pasó" con
 > "qué sigue" — las líneas de abajo son la siembra inicial, destiladas de sus ✅ HECHO/CERRADO).
 
-- 2026-07-15 · widget macOS · claude+unjordi · fix #146: auto-update del widget roto por el precompilado — `Updater.resolveClonePath` ahora usa el clon LOCAL de instalación (`$HOME/.claude-brain`) en vez del `repo` embebido en build-time del runner de GitHub, que no existía en la Mac del usuario (`canSelfUpdate=false`).
+- 2026-07-15 · widget macOS · claude+unjordi · fix #146: auto-update del widget roto por el precompilado — `Updater.resolveClonePath` ahora usa el clon LOCAL de instalación (`$HOME/.cortex`) en vez del `repo` embebido en build-time del runner de GitHub, que no existía en la Mac del usuario (`canSelfUpdate=false`).
 - 2026-07-18 · macos/install.sh · claude+unjordi · fix #154: `install.sh` (macOS) ahora reinicia la instancia viva (pkill + relanza vía LaunchAgent de autoarranque) al actualizar — antes el `.app` nuevo bajaba a disco pero el binario viejo seguía corriendo en memoria.
 - 2026-07-18 · aviso-drift-cerebro · claude+unjordi · Anti-drift construido (#157 v1 + #159 v2): hook GLOBAL de SessionStart que detecta drift del cerebro por-repo vs el brain global (diff-aware, reusa `sincronizar-cerebro.sh` en dry-run) y auto-sincroniza cuando `.claude/` está limpio y estás en tu mini-develop.
 - 2026-07-18 · main 55652f2 (#147-#152) · claude+unjordi · Paquete "turno nocturno" CONSTRUIDO Y RELEASEADO completo: skill `turno-nocturno` (contrato+autorización durable con vencimiento+relanzador+preflight) + fix de precisión de `confirmar-merge-develop` (autorización durable a disco, vocabulario "empuja/mete todo a develop") + normas nuevas (re-citar un OK vigente es legítimo · ninguna decisión se queda solo en el chat · post-compact se EXCAVA antes de contestar · paso 0 de toda tarea grande = inventario de lo que ya existe) + mockups de Claude siempre a archivo versionado.

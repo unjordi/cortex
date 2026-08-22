@@ -1,8 +1,8 @@
 // set-icon.swift <icono.icns|png> <archivo-destino>
 // Incrusta un ícono custom en CUALQUIER archivo vía la API de Cocoa (NSWorkspace.setIcon), que
 // escribe el recurso + el flag "tiene ícono custom" de forma confiable — a diferencia de Rez/SetFile,
-// que dejan el resource fork a medias. Se usa para brandear el daemon `claude-brain-fetch` (un script
-// pelón) en "Elementos de inicio" con el ícono de Claude Brain. Sin dependencias externas.
+// que dejan el resource fork a medias. Se usa para brandear el daemon `cortex-fetch` (un script
+// pelón) en "Elementos de inicio" con el ícono de Cortex. Sin dependencias externas.
 import AppKit
 let a = CommandLine.arguments
 guard a.count == 3, let img = NSImage(contentsOfFile: a[1]) else {

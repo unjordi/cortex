@@ -2,8 +2,8 @@
 #
 # Run `just --list` to see all targets.
 
-LABEL := "io.github.unjordi.claude-brain"
-STATE := "$HOME/Library/Caches/claude-brain/state.json"
+LABEL := "io.github.unjordi.cortex"
+STATE := "$HOME/Library/Caches/cortex/state.json"
 
 default: help
 
@@ -27,7 +27,7 @@ install:
 install-headless:
     ./install.sh --no-app
 
-# Remove everything (keeps ~/.config/claude-brain/limits.env)
+# Remove everything (keeps ~/.config/cortex/limits.env)
 uninstall:
     ./uninstall.sh
 
@@ -37,14 +37,14 @@ purge:
 
 # Rebuild the app and relaunch it (after editing Swift sources)
 reload: app
-    pkill -f "Claude Brain Widget.app/Contents/MacOS/ClaudeBrain" 2>/dev/null || true
-    rm -rf "$HOME/Applications/Claude Brain Widget.app"
-    cp -R "build/Claude Brain Widget.app" "$HOME/Applications/"
-    open "$HOME/Applications/Claude Brain Widget.app"
+    pkill -f "Cortex Widget.app/Contents/MacOS/Cortex" 2>/dev/null || true
+    rm -rf "$HOME/Applications/Cortex Widget.app"
+    cp -R "build/Cortex Widget.app" "$HOME/Applications/"
+    open "$HOME/Applications/Cortex Widget.app"
 
 # Run the just-built app in the foreground (logs to terminal; Ctrl-C to stop)
 run: build
-    "$(swift build -c release --show-bin-path)/ClaudeBrain"
+    "$(swift build -c release --show-bin-path)/Cortex"
 
 # Force one fetch cycle now (via launchd) and print the result
 refresh:
@@ -58,11 +58,11 @@ status:
 
 # Tail the fetch agent logs
 logs:
-    tail -f /tmp/claude-brain.out.log /tmp/claude-brain.err.log
+    tail -f /tmp/cortex.out.log /tmp/cortex.err.log
 
 # Lint shell scripts (requires shellcheck)
 lint:
-    shellcheck install.sh uninstall.sh make-app.sh bin/claude-brain-fetch
+    shellcheck install.sh uninstall.sh make-app.sh bin/cortex-fetch
 
 # Wipe build artifacts
 clean:

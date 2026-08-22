@@ -2,10 +2,10 @@ using System;
 using System.Drawing;
 using System.IO;
 
-namespace ClaudeBrain;
+namespace Cortex;
 
 /// <summary>
-/// Ícono de marca (claude-brain) embebido como PNG base64. GDI+ no renderiza SVG, así que
+/// Ícono de marca (cortex) embebido como PNG base64. GDI+ no renderiza SVG, así que
 /// dibujamos un raster del ícono en vez del emoji 🧠 en el header de "Cerebro global".
 /// Fuente: assets/icon-small.svg rasterizado a 64×64 con rsvg-convert.
 /// Regenerar:  rsvg-convert -w 64 -h 64 assets/icon-small.svg -o x.png && base64 x.png

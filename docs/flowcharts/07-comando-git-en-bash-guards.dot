@@ -1,4 +1,4 @@
-// 07 — Comando git en Bash: los guards que lo inspeccionan (claude-brain)  ·  FUENTE editable (.dot)
+// 07 — Comando git en Bash: los guards que lo inspeccionan (cortex)  ·  FUENTE editable (.dot)
 // Render:  dot -Tsvg 07-comando-git-en-bash-guards.dot -o 07-comando-git-en-bash-guards.svg
 // ZOOM del fan-out de 9 hooks (raíz común en 03 · CONVENCIONES §6) sobre los dos que NO son de merge:
 // 🔒 secret-scan (bloquea) y 🔔 proteger-arbol (avisa). Reconstruido 2026-08-07 desde el CÓDIGO real

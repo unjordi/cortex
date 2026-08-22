@@ -47,7 +47,7 @@ Instrucción clarísima para un humano, "ruido" que puede despistar al parser co
 |---|---|---|---|---|---|
 | `jajaajaja bien, HAZ EL MERGE A DEVELOP, y arranca con b y c.` | develop | ALLOW | ALLOW probable (es clara) — riesgo bajo | TP/FN | 8e9c3f5e:L9587 |
 | `siiii!! mergea! rebrandea` | develop | ALLOW | borderline (falta destino explícito) | **FN** | 8e9c3f5e:L10686 |
-| `tienes luz verde. haz merge hasta main el claude-brain` | main | ALLOW | DENY posible ("merge hasta main" ≠ "release") | **FN** | 5baa3774:L13473 |
+| `tienes luz verde. haz merge hasta main el cortex` | main | ALLOW | DENY posible ("merge hasta main" ≠ "release") | **FN** | 5baa3774:L13473 |
 | `yo sí lo declaro listo. haz el MR a develop... y a main si puedes!` | develop+main; "y a main si puedes" = release condicional | ALLOW develop; main condicional | DENY posible en main ("si puedes" débil) | **FN** | 5baa3774:L2395 |
 | `ESOOOOOOO!!!! ... adelante con los 4 MR. ;D` | develop; 4 MR armados | ALLOW (los 4) | borderline (no cita ids) | **FN** | 66b2557b:L1183 |
 

@@ -3,7 +3,7 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Text;
 using System.Runtime.InteropServices;
 
-namespace ClaudeBrain;
+namespace Cortex;
 
 /// <summary>
 /// Draws the tray indicator. The old two-mini-bar design ("5h" over "7d") was
@@ -79,7 +79,7 @@ public static class TrayIconRenderer
         return (Icon.FromHandle(h), h);
     }
 
-    /// El ícono de marca (claude-brain) escalado al size — el fallback "precioso" cuando no hay
+    /// El ícono de marca (cortex) escalado al size — el fallback "precioso" cuando no hay
     /// dato de 5h. Si el brand no decodifica, un punto de peligro para no devolver un icono vacío.
     private static (Icon, IntPtr) RenderBrand(int size)
     {

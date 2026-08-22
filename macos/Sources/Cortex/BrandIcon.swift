@@ -1,6 +1,6 @@
 import AppKit
 
-/// Ícono de marca (claude-brain) embebido como PNG base64, para dibujarlo en el header de la
+/// Ícono de marca (cortex) embebido como PNG base64, para dibujarlo en el header de la
 /// pestaña "Cerebro" (en vez del emoji 🧠). Fuente: assets/icon-small.svg rasterizado a 64×64 con
 /// rsvg-convert. Regenerar:  rsvg-convert -w 64 -h 64 assets/icon-small.svg -o x.png && base64 x.png
 enum BrandIcon {

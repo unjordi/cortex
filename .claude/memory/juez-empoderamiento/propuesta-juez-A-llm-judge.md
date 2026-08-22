@@ -1,7 +1,7 @@
 # Propuesta A — Rediseñar `_juez_merge` como un LLM-as-judge de frontera
 
-**Archivo objetivo:** `/Users/unjordi/code/claude-brain/brain/hooks/confirmar-merge-develop.sh` (función `_juez_merge`, líneas 29-92).
-**Arnés:** `/Users/unjordi/code/claude-brain/brain/test-brain.sh` (bloques `piso-main` línea ~418, `jlive` línea ~466, `cm` líneas ~330-460).
+**Archivo objetivo:** `/Users/unjordi/code/cortex/brain/hooks/confirmar-merge-develop.sh` (función `_juez_merge`, líneas 29-92).
+**Arnés:** `/Users/unjordi/code/cortex/brain/test-brain.sh` (bloques `piso-main` línea ~418, `jlive` línea ~466, `cm` líneas ~330-460).
 **Restricciones respetadas:** EMPODERAR no aflojar · solo `USUARIO:` autoriza · main = release explícito · fail-safe DENY · **el piso determinista de main NO se toca** (líneas 83-90) · Sonnet como modelo · latencia 3-5 s OK.
 
 ---

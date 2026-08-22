@@ -1,7 +1,7 @@
 using System.Drawing;
 using Microsoft.Win32;
 
-namespace ClaudeBrain;
+namespace Cortex;
 
 /// <summary>
 /// Entry point + tray host — the Windows analogue of macOS AppDelegate.
@@ -10,7 +10,7 @@ namespace ClaudeBrain;
 /// </summary>
 internal static class Program
 {
-    private const string AppName = "ClaudeBrain";   // exe + nombre del valor de autostart
+    private const string AppName = "Cortex";   // exe + nombre del valor de autostart
     private const string OldAppName = "ClaudeQuota"; // migración: limpiar el autostart viejo
     private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const double StaleThreshold = 330; // 5.5 min, matches the mac port
@@ -30,7 +30,7 @@ internal static class Program
         }
 
         // Single instance.
-        using var mutex = new Mutex(true, "io.github.unjordi.claude-brain", out bool isNew);
+        using var mutex = new Mutex(true, "io.github.unjordi.cortex", out bool isNew);
         if (!isNew) return;
 
         ApplicationConfiguration.Initialize();
@@ -99,7 +99,7 @@ internal static class Program
             _tray = new NotifyIcon
             {
                 Visible = true,
-                Text = "Claude Brain Widget",
+                Text = "Cortex Widget",
                 ContextMenuStrip = BuildMenu(),
             };
             _tray.MouseClick += OnTrayClick;
@@ -276,7 +276,7 @@ internal static class Program
                 using var k = Registry.CurrentUser.CreateSubKey(RunKey);
                 if (k == null) return;
                 // Migración: borra el valor viejo "ClaudeQuota" (si un install previo lo dejó) para
-                // no quedar con dos entradas de autostart tras el rename a ClaudeBrain.
+                // no quedar con dos entradas de autostart tras el rename a Cortex.
                 k.DeleteValue(OldAppName, throwOnMissingValue: false);
                 if (on) k.SetValue(AppName, $"\"{Application.ExecutablePath}\"");
                 else k.DeleteValue(AppName, throwOnMissingValue: false);

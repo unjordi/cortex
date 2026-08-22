@@ -46,7 +46,7 @@ Antes de tocar nada, **ubica el cerebro real** y cuéntalo. Tres cosas:
    skills")? Para AUDITAR, NO asumas que es `AGENTS.md` NI `MEMORY.md` — ábrelo y léelo (hoy puede variar:
    games-master usa AGENTS). Pero el **DESTINO de la consolidación es siempre la CONVENCIÓN `CLAUDE.md`(firma) +
    `MEMORY.md`(detalle)** (ver Fase 6): si el entry-point real es otro, es candidato a MIGRACIÓN.
-3. **¿El repo ES la FUENTE del template?** (como `claude-brain` — que es workspace SOLO en las 2 máquinas dev, e
+3. **¿El repo ES la FUENTE del template?** (como `cortex` — que es workspace SOLO en las 2 máquinas dev, e
    INSTALADOR en las demás): su cerebro OPERATIVO (`.claude/`) es distinto del PRODUCTO que envía (`brain/`).
    Audita el operativo; NUNCA toques el producto (ver la Cerca). Es un caso ESTRECHO (aplica solo donde un Claude
    dev trabaja este repo), no una ley universal.
@@ -216,12 +216,12 @@ AUTOCONTENIDO (apunta a SUS skills; NO remite a otro archivo tipo AGENTS):
   pudrir** → doc=realidad *por construcción*.
 - **`MEMORY.md`:** el detalle de cada punto de la firma. Muta poco; tampoco fechas/estado — *ni siquiera aquí*.
 - **Las ramitas:** ahí vive TODO lo volátil (fechas, "RESUELTO 2026-06-25", historia, lápidas ⚰️).
-- En `claude-brain` esto lo VERIFICA `docs/flowcharts/verificar-arbol-sync.sh` (el bloque `ARBOL:START/END`
+- En `cortex` esto lo VERIFICA `docs/flowcharts/verificar-arbol-sync.sh` (el bloque `ARBOL:START/END`
   del `CLAUDE.md` debe ir cercado y sin fechas/RESUELTO/VERIFICADO); en otros cerebros es criterio de cierre.
 
 - El auditor de suficiencia **camina cada línea de la firma**: `CLAUDE.md → MEMORY.md →
   memoria/skill → realidad`, y marca el hueco (capacidad sin método, método sin código, doc que miente).
-- **DESTILAR el `CLAUDE.md`-TOC cuando falta** (el caso común: cps y claude-brain NO tienen `CLAUDE.md`; su
+- **DESTILAR el `CLAUDE.md`-TOC cuando falta** (el caso común: cps y cortex NO tienen `CLAUDE.md`; su
   misión vive implícita/mezclada dentro del entry-point operativo). No lo inventes de cero: **destílalo
   clasificando cada línea del entry-point por su NATURALEZA DOMINANTE**, en TRES clases:
   - **CAPACIDAD** — algo que Claude **hace/opera** (un skill, una rutina, un guard, una tarea) → al TOC.
@@ -297,5 +297,5 @@ sea un reflejo del proceso y no un acto de voluntad. (Registrar como frente si s
   los cerebros** — la consistencia gana (un Claude aprende UN modelo). Se **audita** leyendo el entry-point real
   (que hoy puede variar: games-master usa AGENTS), pero se **consolida MIGRANDO** a la convención. `AGENTS.md` queda
   reservado para ARQUITECTURA real (cps); un cerebro sin arquitectura pesada no lo necesita.
-- Este es un skill del **cerebro global** → vive en `~/code/claude-brain/brain/skills/` y viaja por el
+- Este es un skill del **cerebro global** → vive en `~/code/cortex/brain/skills/` y viaja por el
   flujo (ramita → MR → develop con `--squash`), como todo el brain.

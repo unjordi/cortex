@@ -1,6 +1,6 @@
 # invariantes-semanticos.yml — Auditor Semántico, Capa 2 (semántica, NO determinista)
 #
-# EJEMPLO / ESQUELETO que viaja con el motor genérico (claude-brain). Cada entrada es una
+# EJEMPLO / ESQUELETO que viaja con el motor genérico (cortex). Cada entrada es una
 # PREGUNTA que hay que volver a hacerse sobre el código ACTUAL — no es un check de bash porque
 # verificarla de verdad exige entender la INTENCIÓN de negocio, no solo la sintaxis (por eso vive
 # aparte de scripts/auditor-semantico/checks/, que sí son deterministas). La skill

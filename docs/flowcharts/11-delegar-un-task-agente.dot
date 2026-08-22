@@ -1,4 +1,4 @@
-// 11 — Delegar un Task/agente: freno de gasto + consentimiento de costo (claude-brain)  ·  FUENTE editable (.dot)
+// 11 — Delegar un Task/agente: freno de gasto + consentimiento de costo (cortex)  ·  FUENTE editable (.dot)
 // Render:  dot -Tsvg 11-delegar-un-task-agente.dot -o 11-delegar-un-task-agente.svg
 // ZOOM (companion de 04) del punto de DELEGAR: limite-gasto (🛑 FRENO) · delegacion-gate (💸 consentimiento)
 // · delegacion-registrar (📝 graba el consentimiento). Reconstruido 2026-08-07 desde el CÓDIGO real

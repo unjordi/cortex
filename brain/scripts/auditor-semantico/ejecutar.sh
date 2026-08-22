@@ -6,7 +6,7 @@
 # nacida de un hallazgo REAL de una auditoría — ver README.md de esta carpeta
 # para el modelo completo (Capa 1 determinista + Capa 2 semántica con LLM).
 #
-# MOTOR GENÉRICO (vive en claude-brain/brain/scripts/): el runner y lib-formato.sh
+# MOTOR GENÉRICO (vive en cortex/brain/scripts/): el runner y lib-formato.sh
 # son agnósticos de stack. Los checks/*.sh que vienen de fábrica son EJEMPLOS de la
 # plantilla .NET (permisos de endpoints, auditoría por ruta, Dapper/DateOnly, grid
 # homologado) — cada repo AFINA su propio catálogo a su stack/dominio (ver README).

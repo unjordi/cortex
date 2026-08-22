@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# install-brain.ps1 - lanzador DELGADO de Windows para el instalador del cerebro (claude-brain).
+# install-brain.ps1 - lanzador DELGADO de Windows para el instalador del cerebro (cortex).
 # Los hooks del cerebro corren bajo BASH en TODAS las plataformas (decision "bash en todos lados",
 # sin drift .sh/.ps1). En Windows eso lo provee Git Bash (viene con Git for Windows). Este script
 # NO reimplementa la logica: solo verifica bash + jq y delega en `bash brain/install-brain.sh`,
@@ -48,7 +48,7 @@ $gitBin = Split-Path -Parent $bashExe
 $userPath = [Environment]::GetEnvironmentVariable('PATH','User')
 if ($null -eq $userPath) { $userPath = '' }
 if (($userPath -split ';') -notcontains $gitBin) {
-  Write-Host "==> claude-brain: agrego '$gitBin' al PATH de usuario (Claude Code necesita 'bash' para los hooks)"
+  Write-Host "==> cortex: agrego '$gitBin' al PATH de usuario (Claude Code necesita 'bash' para los hooks)"
   [Environment]::SetEnvironmentVariable('PATH', ($userPath.TrimEnd(';') + ';' + $gitBin), 'User')
   $env:PATH = $env:PATH.TrimEnd(';') + ';' + $gitBin   # visible ya en esta sesion
   $script:pathChanged = $true
@@ -63,7 +63,7 @@ if (($userPath -split ';') -notcontains $gitBin) {
 if ([Environment]::GetEnvironmentVariable('CLAUDE_CODE_GIT_BASH_PATH','User') -ne $bashExe) {
   [Environment]::SetEnvironmentVariable('CLAUDE_CODE_GIT_BASH_PATH', $bashExe, 'User')
   $env:CLAUDE_CODE_GIT_BASH_PATH = $bashExe
-  Write-Host "==> claude-brain: CLAUDE_CODE_GIT_BASH_PATH -> $bashExe (Claude Code usara Git Bash, no WSL)"
+  Write-Host "==> cortex: CLAUDE_CODE_GIT_BASH_PATH -> $bashExe (Claude Code usara Git Bash, no WSL)"
 }
 
 # -- Auto-sanar CRLF: Git for Windows (core.autocrlf=true) clona los .sh con CRLF y bash muere con el \r --
@@ -73,7 +73,7 @@ if ([Environment]::GetEnvironmentVariable('CLAUDE_CODE_GIT_BASH_PATH','User') -n
 $RepoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 # C1 (FMEA post-integracion 2026-07-30): en una instalacion MANUAL de Windows (pwsh -File brain\install-brain.ps1
 # tras un clon a mano, SIN pasar por bootstrap.ps1) CLAUDE_BRAIN_DIR quedaba sin definir -> los hooks bash caian
-# a ~/.claude-brain (inexistente en Windows; aqui el clon vive en %LOCALAPPDATA%\claude-brain-repo) y el auto-sync
+# a ~/.cortex (inexistente en Windows; aqui el clon vive en %LOCALAPPDATA%\cortex-repo) y el auto-sync
 # del cerebro fallaba MUDO. Si no esta definida, la exportamos desde el RepoRoot en FORWARD-SLASH (bash se
 # atraganta con backslashes) -- mismo patron que bootstrap.ps1. Si bootstrap ya la puso, se respeta.
 if (-not $env:CLAUDE_BRAIN_DIR) {
@@ -89,7 +89,7 @@ Get-ChildItem -Path $RepoRoot -Recurse -Filter *.sh -File -ErrorAction SilentlyC
     $fixed++
   }
 }
-if ($fixed -gt 0) { Write-Host "==> claude-brain: normalice a LF $fixed script(s) .sh que venian con CRLF (fix Git-for-Windows)" }
+if ($fixed -gt 0) { Write-Host "==> cortex: normalice a LF $fixed script(s) .sh que venian con CRLF (fix Git-for-Windows)" }
 
 # -- Dependencia de los hooks: jq (sin jq los guards fallan abierto y no puedo cablear settings.json) --
 # jq lo instala winget en %LOCALAPPDATA%\Microsoft\WinGet\Links (u otra carpeta): ese dir SI esta en el
@@ -127,7 +127,7 @@ if ($jqExe) {
   $jqUserPath = [Environment]::GetEnvironmentVariable('PATH','User')
   if ($null -eq $jqUserPath) { $jqUserPath = '' }
   if (($jqUserPath -split ';') -notcontains $jqDir) {
-    Write-Host "==> claude-brain: agrego '$jqDir' al PATH de usuario (jq lo REQUIEREN los hooks del cerebro)"
+    Write-Host "==> cortex: agrego '$jqDir' al PATH de usuario (jq lo REQUIEREN los hooks del cerebro)"
     [Environment]::SetEnvironmentVariable('PATH', ($jqUserPath.TrimEnd(';') + ';' + $jqDir), 'User')
     $script:pathChanged = $true
   }
@@ -194,7 +194,7 @@ function Write-PSBlock() {
 
   Ensure-ArtifactHeader $art
   Upsert-Block $art 'powershell' $content
-  Write-Host "==> claude-brain: bloque <!-- shells:powershell --> escrito en $art"
+  Write-Host "==> cortex: bloque <!-- shells:powershell --> escrito en $art"
 }
 
 function Ensure-ArtifactHeader([string]$file) {
@@ -236,7 +236,7 @@ if (-not (Test-Path $Installer)) {
   Write-Host "ERROR: no encuentro el instalador $Installer"
   exit 1
 }
-Write-Host "==> claude-brain: delegando en bash $Installer"
+Write-Host "==> cortex: delegando en bash $Installer"
 # Pasar la ruta a bash con '/' (NO '\'): bash lee cada '\U','\A','\L'... de una ruta Windows como
 # secuencia de escape y se COME los backslashes -> "No such file or directory" y el instalador real
 # nunca corre (bug real en Windows, 2026-07-20). Una ruta con forward-slashes (C:/Users/.../

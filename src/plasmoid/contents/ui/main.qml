@@ -49,7 +49,7 @@ PlasmoidItem {
     // la lee writeAliasSource para decidir el refresh: sesión → rápido (sessions-extract.js), proyecto
     // → fetch completo (afecta la agregación de tokens). Espeja el applyRename kind-aware del macOS.
     property bool lastAliasWasSession: false
-    // Expresión de shell para la base de los mapas (idéntica a claude-brain-fetch / sessions-extract.js).
+    // Expresión de shell para la base de los mapas (idéntica a cortex-fetch / sessions-extract.js).
     readonly property string aliasDir: "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 
     // ---------- Filtro de rango {hoy·7d·30d·∞} (Resumen/Modelos/Proyectos/Chats) ----------
@@ -70,7 +70,7 @@ PlasmoidItem {
     readonly property string cacheDir: {
         const raw = "" + StandardPaths.writableLocation(StandardPaths.GenericCacheLocation)
         const stripped = raw.startsWith("file://") ? raw.substring("file://".length) : raw
-        return stripped + "/claude-brain"
+        return stripped + "/cortex"
     }
 
     P5Support.DataSource {
@@ -204,7 +204,7 @@ PlasmoidItem {
     }
 
     // (B) "Mover a…" una sesión a otro slug: corre el helper node `session-move.js` vía `bash -lc`
-    // (PATH de login, mismo criterio que `claude`/`claude-brain-fetch`, ambos en ~/.local/bin). El
+    // (PATH de login, mismo criterio que `claude`/`cortex-fetch`, ambos en ~/.local/bin). El
     // helper escribe JSON a stdout SIEMPRE (ok:true | ok:false+error, con exit 1 en error) → parseamos
     // stdout pase lo que pase. ok → refreshSessions() (la lista refleja el move YA, rápido y sin red) +
     // forceRefresh() (reconcilia después los conteos por proyecto / agregación); !ok → depositamos el
@@ -307,7 +307,7 @@ PlasmoidItem {
         }
     }
 
-    // Autoupdate (2/3): consulta commits/main de claude-brain en GitHub (curl está en Linux). GitHub
+    // Autoupdate (2/3): consulta commits/main de cortex en GitHub (curl está en Linux). GitHub
     // exige User-Agent. FAIL-OPEN: sin red / rc!=0 / parse fallido → no muestra nada.
     P5Support.DataSource {
         id: updateCheckSource
@@ -350,7 +350,7 @@ PlasmoidItem {
                 root.updateMessage = "✓ actualizado (recarga el widget)"
                 root.updateAvailable = false
             } else {
-                root.updateMessage = "✗ error (revisa /tmp/claude-brain-update.log)"
+                root.updateMessage = "✗ error (revisa /tmp/cortex-update.log)"
             }
         }
     }
@@ -367,7 +367,7 @@ PlasmoidItem {
         catSource.connectSource("cat \"" + aliasDir + "/sesiones-alias.json\" 2>/dev/null")
     }
     function forceRefresh() {
-        refreshRunner.connectSource("systemctl --user start claude-brain.service")
+        refreshRunner.connectSource("systemctl --user start cortex.service")
         // ↻ es un clic EXPLÍCITO → además de refrescar la cuota, fuerza el chequeo de versión saltando
         // el throttle de 15 min (updLastCheck=0 desactiva el guard de checkUpdate). Antes ↻ era quota-only
         // y el banner de update no aparecía al pedirlo a mano. Paridad: macOS forceCheck + Windows OnRefresh.
@@ -377,7 +377,7 @@ PlasmoidItem {
     // ⏸/⏵ PAUSAR / REANUDAR la recolección automática — NO es "apagar" (por eso NO lleva ícono de power).
     // En macOS ⏻ = NSApp.terminate mata el proceso (la app de barra ES el widget Y el recolector). En KDE
     // el plasmoide vive DENTRO de plasmashell y no puede matarse solo; lo que lo mantiene recolectando es
-    // el timer systemd de usuario (claude-brain.timer, cada 5 min → oneshot claude-brain.service = un fetch
+    // el timer systemd de usuario (cortex.timer, cada 5 min → oneshot cortex.service = un fetch
     // a la API). Por eso el botón PAUSA/REANUDA ese timer, y su ícono lo dice honesto (media-playback-pause
     // cuando corre, media-playback-start cuando está pausado):
     //   · PAUSAR: `systemctl --user stop` del timer (+ el service por si hay un fetch en vuelo). El widget
@@ -388,11 +388,11 @@ PlasmoidItem {
     // plasmoide); no consulta systemctl en vivo — suficiente para el caso común (timer corriendo).
     property bool collectionPaused: false
     function pauseCollection() {
-        powerRunner.connectSource("systemctl --user stop claude-brain.timer claude-brain.service")
+        powerRunner.connectSource("systemctl --user stop cortex.timer cortex.service")
         root.collectionPaused = true
     }
     function resumeCollection() {
-        powerRunner.connectSource("systemctl --user start claude-brain.timer")
+        powerRunner.connectSource("systemctl --user start cortex.timer")
         root.collectionPaused = false
         forceRefresh()   // reanuda el ciclo de 5 min y además trae dato fresco YA
     }
@@ -501,7 +501,7 @@ PlasmoidItem {
             // viejo (>60s), el % mostrado sería el de la ventana anterior hasta el próximo fetch.
             // Disparamos forceRefresh() para adelantarlo. Acotado por lastResetRefresh (≥60s) para
             // NO machacar systemctl/API cada tick de 10s; el piso anti-abuso de ~5 min lo aplica
-            // claude-brain.service por dentro (un forceRefresh de más ahí es no-op). Espeja el
+            // cortex.service por dentro (un forceRefresh de más ahí es no-op). Espeja el
             // `(anyResetPassed && age > 60)` de AppDelegate.swift.
             var age = root.snapshotAgeSec()
             if (root.anyResetPassed && age > 60 && (Date.now() - root.lastResetRefresh) > 60000) {
@@ -1043,7 +1043,7 @@ PlasmoidItem {
                   detail: "Mantener TODO el cerebro de Claude Code de un proyecto (memorias, skills, transcripts, settings) dentro de <proyecto>/.claude/, con un symlink desde ~/.claude/projects/<slug>/ para que Claude lo siga encontrando. Así la memoria/skills viajan con el proyecto (Drive, git, otra máquina) y ninguna sesión arranca amnésica desde otro cwd. Cubre la regla del slug, el bootstrap de un comando (clona-y-listo), el triage de privacidad (qué va al repo vs *.local), la disciplina anti-duplicados y la verificación." },
                 { emoji: "🚚", name: "reubicar-master", desc: "mover un master —cerebro+sesión— a otra casa/subfolder-repo git, sin lobotomía ni tail",
                   event: "skill · opt-in",
-                  detail: "Muda una sesión master COMPLETA de Claude Code a otro repo (caso canónico: los brain-master a claude-brain) sin dejar nada a medias: transcript re-anclado + cwd reescrito, cerebro del master migrado por su canal correcto, slug global y TODAS las referencias (masters.json target por-id, alias, symlink memory) corregidas de forma ATÓMICA, residuo quirúrgico barrido y doc=realidad. Úsala cuando un --resume cae en un folder muerto, un master quedó a medias (residuo + resume roto), o quieres consolidar los dos brain-master (Mac + Cachy) en claude-brain sin lobotomizarlos, sin fuga a un repo público ni duplicado divergente. Hermana de claude-proyecto-autocontenido (esa define DÓNDE vive el cerebro; ésta lo MUEVE de casa)." }
+                  detail: "Muda una sesión master COMPLETA de Claude Code a otro repo (caso canónico: los brain-master a cortex) sin dejar nada a medias: transcript re-anclado + cwd reescrito, cerebro del master migrado por su canal correcto, slug global y TODAS las referencias (masters.json target por-id, alias, symlink memory) corregidas de forma ATÓMICA, residuo quirúrgico barrido y doc=realidad. Úsala cuando un --resume cae en un folder muerto, un master quedó a medias (residuo + resume roto), o quieres consolidar los dos brain-master (Mac + Cachy) en cortex sin lobotomizarlos, sin fuga a un repo público ni duplicado divergente. Hermana de claude-proyecto-autocontenido (esa define DÓNDE vive el cerebro; ésta lo MUEVE de casa)." }
             ]
         }
     ]
@@ -1079,7 +1079,7 @@ PlasmoidItem {
     // ---------- Autoupdate LIGERO (winturbo-style) del widget ----------
     // Espeja Updater.swift: la versión con que se empaquetó el plasmoid (sha/fecha/repo/branch) va
     // embebida en contents/version.json (la escribe install.sh al empaquetar). Al abrir la pestaña
-    // Cerebro se compara contra commits/main de claude-brain en GitHub; si el repo avanzó, se ofrece un
+    // Cerebro se compara contra commits/main de cortex en GitHub; si el repo avanzó, se ofrece un
     // botón que hace git ff + install.sh. FAIL-OPEN: sin red / sin version.json / sin repo → no molesta.
     property bool updateAvailable: false
     property bool updating: false
@@ -1091,7 +1091,7 @@ PlasmoidItem {
     property bool updLocalLoaded: false     // version.json ya leído (una sola vez)
     property bool updCanSelfUpdate: false   // hay repo en disco → botón auto; si no, "a mano"
     property double updLastCheck: 0         // epoch ms del último chequeo remoto (throttle 15 min)
-    readonly property string updSlug: "unjordi/claude-brain"
+    readonly property string updSlug: "unjordi/cortex"
 
     // Ruta del version.json embebido, relativa a este main.qml (…/contents/ui/ → …/contents/version.json).
     readonly property string versionFile: {
@@ -1113,19 +1113,19 @@ PlasmoidItem {
         }
     }
     // H2 — resuelve la ruta REAL del clon con fallback (espeja resolveClonePath de Updater.swift/.cs):
-    // 1º el repo embebido en version.json, 2º $CLAUDE_BRAIN_DIR, 3º el clon canónico $HOME/.claude-brain.
+    // 1º el repo embebido en version.json, 2º $CLAUDE_BRAIN_DIR, 3º el clon canónico $HOME/.cortex.
     // Gana el PRIMERO que exista en disco con la marca install.sh (la misma que runUpdate ejecuta). Así un
     // version.json horneado en otra máquina / con el repo movido no habilita un auto-update que haría cd a
     // una ruta muerta. Se resuelve por shell (QML JS no lee env ni prueba archivos). FAIL-OPEN: "" → a mano.
     function resolveRepoPath(embedded) {
-        var cmd = 'for c in ' + shq(embedded) + ' "$CLAUDE_BRAIN_DIR" "$HOME/.claude-brain"; do '
+        var cmd = 'for c in ' + shq(embedded) + ' "$CLAUDE_BRAIN_DIR" "$HOME/.cortex"; do '
                 + '[ -n "$c" ] && [ -f "$c/install.sh" ] && { printf %s "$c"; break; }; done'
         repoResolveSource.connectSource(cmd)
     }
     function checkUpdateRemote() {
         if (root.updLocalShort === "?") return   // sin version.json (build viejo) → no molesta
         var url = "https://api.github.com/repos/" + root.updSlug + "/commits/main"
-        updateCheckSource.connectSource("curl -fsSL -H 'User-Agent: claude-brain' '" + url + "'")
+        updateCheckSource.connectSource("curl -fsSL -H 'User-Agent: cortex' '" + url + "'")
     }
     // Jala lo último (fast-forward) y reinstala el plasmoid. NO mata plasmashell (el applet vive dentro).
     // El applet toma la versión nueva al recargar el plasmoide. FAIL-OPEN: sin repo → invita a hacerlo a mano.
@@ -1140,7 +1140,7 @@ PlasmoidItem {
         // Escapa la ruta del clon con shq (comillas simples POSIX): una ruta con un ' la partia sin esto.
         var inner = "cd " + shq(repo) + " && git fetch origin --quiet && git merge --ff-only origin/main"
                   + " && bash " + shq(repo + "/install.sh")
-        var cmd = "nohup bash -lc \"" + inner + "\" >/tmp/claude-brain-update.log 2>&1"
+        var cmd = "nohup bash -lc \"" + inner + "\" >/tmp/cortex-update.log 2>&1"
         updateRunSource.connectSource(cmd)
     }
 
@@ -2057,7 +2057,7 @@ PlasmoidItem {
                 ColumnLayout {
                     width: cerebroScroll.availableWidth - Kirigami.Units.gridUnit * 0.75
                     spacing: Kirigami.Units.largeSpacing
-                    // Encabezado de marca: ícono claude-brain (ya incluye el destello) + "Cerebro global".
+                    // Encabezado de marca: ícono cortex (ya incluye el destello) + "Cerebro global".
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Kirigami.Units.smallSpacing
@@ -2074,7 +2074,7 @@ PlasmoidItem {
                         // repo (GitHub). Abre el navegador del sistema (espeja mapaButton del Swift).
                         PC3.ToolButton {
                             text: "🗺 mapa"
-                            onClicked: Qt.openUrlExternally("https://github.com/unjordi/claude-brain/blob/main/docs/mapa-cerebro.md")
+                            onClicked: Qt.openUrlExternally("https://github.com/unjordi/cortex/blob/main/docs/mapa-cerebro.md")
                             PC3.ToolTip.text: "Abre el mapa del cerebro (docs/mapa-cerebro.md del repo) en tu navegador."
                             PC3.ToolTip.visible: hovered
                             PC3.ToolTip.delay: 500

@@ -5,7 +5,7 @@
 #
 # CARPETA DE SESIONES: default ~/.claude-sessions, override $CLAUDE_SESSIONS_DRIVE (mismo contrato que
 # el hook de export). Si esa carpeta vive en una nube sincronizada (Drive/iCloud), las sesiones viajan
-# entre máquinas. session-import.js (lo aporta claude-brain) reescribe el cwd de cada sesión a la ruta
+# entre máquinas. session-import.js (lo aporta cortex) reescribe el cwd de cada sesión a la ruta
 # LOCAL del repo destino, así que el swap /Users<->/home sale solo.
 # (Antes seed.sh vivía DENTRO de la carpeta de Drive y se autolocalizaba con $(dirname $0); al mudarse
 #  al brain eso ya no aplica → la carpeta se resuelve por env, no por la ubicación del script.)
@@ -30,10 +30,10 @@ FORCE="${1:-}"
 [ -f "$DIR/masters.json" ] || { echo "seed.sh: no hay masters.json en '$DIR' (nada que sembrar)"; exit 0; }
 
 IMP=""
-for c in "$HOME/.local/bin/session-import.js" "$HOME/.claude-brain/bin/session-import.js"; do
+for c in "$HOME/.local/bin/session-import.js" "$HOME/.cortex/bin/session-import.js"; do
   [ -f "$c" ] && IMP="$c" && break
 done
-[ -n "$IMP" ] || { echo "seed.sh: no encuentro session-import.js (¿claude-brain instalado en esta máquina?)"; exit 1; }
+[ -n "$IMP" ] || { echo "seed.sh: no encuentro session-import.js (¿cortex instalado en esta máquina?)"; exit 1; }
 command -v node >/dev/null 2>&1 || { echo "seed.sh: falta node"; exit 1; }
 
 # Resuelve el repo destino de un target relativo a $HOME → imprime la RUTA REAL local, o exit 1 si el

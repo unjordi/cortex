@@ -4,7 +4,7 @@ using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 
-namespace ClaudeBrain;
+namespace Cortex;
 
 /// <summary>
 /// Autoactualización LIGERA del widget, estilo winturbo — puerto Windows de macos/Updater.swift.
@@ -14,7 +14,7 @@ namespace ClaudeBrain;
 /// DOS rutas de update (fail-open en ambas). AMBAS dejan la máquina ONE-STOP (widget + hooks del
 /// cerebro), igual que el botón de Mac/Linux — sin asimetría entre OS:
 ///  1) DESCARGA (preferida, fase 2): consulta el release rolling 'windows-latest'; si trae el asset
-///     ClaudeBrain.exe con un build-sha distinto al embebido, BAJA el exe y hace swap (SIN .NET SDK),
+///     Cortex.exe con un build-sha distinto al embebido, BAJA el exe y hace swap (SIN .NET SDK),
 ///     refresca brain/ (si hay clon) y RE-CABLEA los hooks con el install-brain.ps1 empaquetado.
 ///  2) GIT (fallback pre-release): si no hay release aún, compara `commits/main` y —solo con clon—
 ///     hace `git fetch` + `merge --ff-only` + `install.ps1` (que ya instala cerebro + widget).
@@ -52,9 +52,9 @@ internal sealed class Updater
     private DateTime? _localDate;      // UTC
     private DateTime? _lastCheck;      // UTC
     private bool _loaded;
-    private const string Slug = "unjordi/claude-brain";
+    private const string Slug = "unjordi/cortex";
 
-    // Ruta de DESCARGA (fase 2): URL del asset ClaudeBrain.exe en el release rolling 'windows-latest'
+    // Ruta de DESCARGA (fase 2): URL del asset Cortex.exe en el release rolling 'windows-latest'
     // + su build-sha. Si está presente, actualizamos bajando el exe (SIN clon ni .NET SDK).
     private string? _assetUrl;
     private string _remoteFullSha = "";
@@ -93,7 +93,7 @@ internal sealed class Updater
 
     /// Clon local para auto-actualizar (git-based). Espeja resolveClonePath de macos/Updater.swift:
     /// prefiere el EMBEBIDO si existe aqui (build local), luego $CLAUDE_BRAIN_DIR, luego el clon oculto
-    /// que siembra bootstrap.ps1 (%LOCALAPPDATA%\claude-brain-repo). Devuelve "" si ninguno trae
+    /// que siembra bootstrap.ps1 (%LOCALAPPDATA%\cortex-repo). Devuelve "" si ninguno trae
     /// windows\install.ps1 -> sin auto-update git-based (el banner invita a hacerlo a mano; la ruta de
     /// DESCARGA del release no necesita clon). CLAUDE_BRAIN_DIR puede venir en forward-slash (asi lo
     /// exporta bootstrap.ps1 para bash) — Path.Combine/File.Exists lo manejan igual en Windows.
@@ -101,7 +101,7 @@ internal sealed class Updater
     {
         string env = Environment.GetEnvironmentVariable("CLAUDE_BRAIN_DIR") ?? "";
         string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        string localRepo = local.Length > 0 ? Path.Combine(local, "claude-brain-repo") : "";
+        string localRepo = local.Length > 0 ? Path.Combine(local, "cortex-repo") : "";
         foreach (var c in new[] { embedded, env, localRepo })
             if (c.Length > 0 && File.Exists(Path.Combine(c, "windows", "install.ps1")))
                 return c;
@@ -150,7 +150,7 @@ internal sealed class Updater
         {
             using var req = new HttpRequestMessage(HttpMethod.Get,
                 $"https://api.github.com/repos/{Slug}/commits/main");
-            req.Headers.UserAgent.ParseAdd("claude-brain");   // GitHub lo exige
+            req.Headers.UserAgent.ParseAdd("cortex");   // GitHub lo exige
             req.Headers.Accept.ParseAdd("application/vnd.github+json");
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
             using var resp = await Http.SendAsync(req, cts.Token);
@@ -181,7 +181,7 @@ internal sealed class Updater
         catch { /* fail-open: sin red / json raro / timeout → no molesta */ }
     }
 
-    /// Consulta el release rolling 'windows-latest': si trae el asset ClaudeBrain.exe y un
+    /// Consulta el release rolling 'windows-latest': si trae el asset Cortex.exe y un
     /// 'build-sha:' distinto al embebido, prepara la DESCARGA (no requiere clon ni SDK). Devuelve
     /// true si MANEJÓ el chequeo (haya o no update); false si no hay release/asset/sha comparable →
     /// el llamador cae a la ruta git-based. Fail-open vía el catch del llamador.
@@ -189,7 +189,7 @@ internal sealed class Updater
     {
         using var req = new HttpRequestMessage(HttpMethod.Get,
             $"https://api.github.com/repos/{Slug}/releases/tags/windows-latest");
-        req.Headers.UserAgent.ParseAdd("claude-brain");
+        req.Headers.UserAgent.ParseAdd("cortex");
         req.Headers.Accept.ParseAdd("application/vnd.github+json");
         using var resp = await Http.SendAsync(req, ct);
         if (!resp.IsSuccessStatusCode) return false;   // sin release aún (404) → fallback git-based
@@ -206,11 +206,11 @@ internal sealed class Updater
         }
         if (full.Length == 0) return false;            // sin sha comparable → fallback
 
-        // asset ClaudeBrain.exe
+        // asset Cortex.exe
         string? url = null;
         if (root.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
             foreach (var a in assets.EnumerateArray())
-                if (a.TryGetProperty("name", out var n) && n.GetString() == "ClaudeBrain.exe"
+                if (a.TryGetProperty("name", out var n) && n.GetString() == "Cortex.exe"
                     && a.TryGetProperty("browser_download_url", out var u) && u.GetString() is string dl)
                 { url = dl; break; }
         if (url == null) return false;                 // release sin exe → fallback
@@ -254,7 +254,7 @@ internal sealed class Updater
             "if ($LASTEXITCODE -ne 0) { exit 1 }   # árbol sucio / no-ff → NO relanzar, app intacta\n" +
             $"& '{installPs1.Replace("'", "''")}'\n";
 
-        return LaunchDetached(script, "claude-brain-update.ps1");
+        return LaunchDetached(script, "cortex-update.ps1");
     }
 
     /// Fase 2: descarga el exe del release y hace SWAP. No necesita clon ni .NET SDK. Fail-open
@@ -281,11 +281,11 @@ internal sealed class Updater
         sb.Append($"$repo='{_repoPath.Replace("'", "''")}'\n");
         sb.Append($"$sha='{shortSha.Replace("'", "''")}'\n");
         sb.Append("$dir=Split-Path $exe\n");
-        sb.Append("$tmp=Join-Path $env:TEMP 'ClaudeBrain.new.exe'\n");
+        sb.Append("$tmp=Join-Path $env:TEMP 'Cortex.new.exe'\n");
         sb.Append("Start-Sleep -Seconds 1\n");
         sb.Append("try { Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing } catch { exit 1 }\n");
         sb.Append("if (-not (Test-Path $tmp) -or (Get-Item $tmp).Length -lt 1000000) { exit 1 }\n");
-        sb.Append("Get-Process ClaudeBrain -ErrorAction SilentlyContinue | Stop-Process -Force\n");
+        sb.Append("Get-Process Cortex -ErrorAction SilentlyContinue | Stop-Process -Force\n");
         sb.Append("Start-Sleep -Milliseconds 900\n");
         sb.Append("Copy-Item $tmp $exe -Force\n");
         sb.Append("if (-not $?) { Start-Process $exe; exit 1 }\n");   // copy falló → relanzo la vieja
@@ -306,10 +306,10 @@ internal sealed class Updater
         // autoactualizar y para refrescar el icono/target. Best-effort. Espeja install.ps1.
         sb.Append("$sm=[Environment]::GetFolderPath('Programs')\n");
         sb.Append("Remove-Item (Join-Path $sm 'Claude Quota.lnk') -Force -EA SilentlyContinue\n");   // limpia el shortcut legacy (pre-rebrand)
-        sb.Append("try { $ws=New-Object -ComObject WScript.Shell; $lk=$ws.CreateShortcut((Join-Path $sm 'Claude Brain.lnk')); $lk.TargetPath=$exe; $lk.WorkingDirectory=$dir; $lk.IconLocation=$exe; $lk.Description='Claude Brain Widget'; $lk.Save() } catch {}\n");
+        sb.Append("try { $ws=New-Object -ComObject WScript.Shell; $lk=$ws.CreateShortcut((Join-Path $sm 'Cortex.lnk')); $lk.TargetPath=$exe; $lk.WorkingDirectory=$dir; $lk.IconLocation=$exe; $lk.Description='Cortex Widget'; $lk.Save() } catch {}\n");
         sb.Append("Remove-Item $tmp -Force\n");
         sb.Append("Start-Process $exe\n");
-        return LaunchDetached(sb.ToString(), "claude-brain-update-dl.ps1");
+        return LaunchDetached(sb.ToString(), "cortex-update-dl.ps1");
     }
 
     /// Escribe el script a un .ps1 temporal y lo lanza DETACHADO (UseShellExecute + ventana oculta),

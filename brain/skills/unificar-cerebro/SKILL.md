@@ -16,7 +16,7 @@ qué, sin aplanar la voz, y sin tocar los guardrails delicados.
 > completa a develop*, no *terminar un slice*.
 
 > **Regla de oro que atraviesa todo el ritual:** los **hooks/settings/skills CANÓNICOS del brain se
-> rutean a `claude-brain`** (su MANIFEST es la fuente única) y bajan por `sincronizar-cerebro.sh`.
+> rutean a `cortex`** (su MANIFEST es la fuente única) y bajan por `sincronizar-cerebro.sh`.
 > **JAMÁS** viajan por el MR de la mini a develop. Lo que sube por este MR es MEMORIA+APRENDIZAJES, no
 > cerebro canónico. (Un MR de mini que toque `.claude/hooks/*`/`settings.json`/`.brain-version` es un
 > error de ruteo — sácalo en el Paso 1.)
@@ -49,16 +49,16 @@ Antes de subir nada, sincroniza el cerebro canónico HACIA ABAJO en tu mini para
 LIMPIO de cerebro:
 
 ```
-bash <ruta-a-claude-brain>/brain/sincronizar-cerebro.sh . --apply
+bash <ruta-a-cortex>/brain/sincronizar-cerebro.sh . --apply
 ```
 
 Esto pone la copia por-repo al día desde la fuente única. Los `aprendizajes-*-brain.md` (los que son
-del brain, no del proyecto) se **mueven a claude-brain**, no a develop. Tras este paso, el delta que
+del brain, no del proyecto) se **mueven a cortex**, no a develop. Tras este paso, el delta que
 queda para subir es SOLO memoria+aprendizajes del proyecto.
 
 > Si el sync destapa que la mini tenía **ediciones locales de cerebro canónico** (un hook modificado,
 > un exec-bit flipeado, una skill del brain borrada), eso NO se resuelve aquí subiéndolo: se enruta a
-> un MR contra `claude-brain`. Anótalo y sepáralo.
+> un MR contra `cortex`. Anótalo y sepáralo.
 
 ## Paso 2 — Resuelve por CLASE (sin curar todavía)
 - **Aprendizajes** → `merge=union`: se fusionan solos, no los toques a mano. (La curación es el Paso 3.)
@@ -84,7 +84,7 @@ de 3 desenlaces — jamás fundir borrando una voz:
 
 **(b) GRADÚA lo maduro a su hogar.** Un aprendizaje que ya se estabilizó deja de ser inbox y se
 promueve:
-- → **skill/hook del brain** si es un mecanismo genérico (rutéalo a `claude-brain`, no a develop).
+- → **skill/hook del brain** si es un mecanismo genérico (rutéalo a `cortex`, no a develop).
 - → **norma en `_PROTOCOLO.md` / `AGENTS.md`** si es una regla dura de proceso.
 - → **TRATO / preferencia PERSONAL del usuario** (cómo le gusta que le comuniquen, decidan, trabajen)
   → su **`~/.claude/projects/-Users-<user>/memory/como-trabajar-con-<user>.md`** GLOBAL per-máquina
@@ -100,7 +100,7 @@ pero eso es EDICIÓN curada y deliberada, distinta del append ciego que hace `co
 
 ## Paso 4 — Verifica (el "verde" del cerebro)
 NO hay build. El verde técnico aquí es:
-- `bash <claude-brain>/brain/test-brain.sh` → **0 FAIL** (incluye el drift-check del MANIFEST/widget).
+- `bash <cortex>/brain/test-brain.sh` → **0 FAIL** (incluye el drift-check del MANIFEST/widget).
 - Lint de memoria: frontmatter válido, todo enlazado desde `MEMORY.md`, sin `*.local.md` colado, sin
   rutas muertas, cada entrada de `aprendizajes.md` termina en línea en blanco.
 
@@ -122,5 +122,5 @@ no los evade. Si el candado frena pidiendo confirmación y ya la tienes, cítala
 - **Appendea una línea a `bitacora.md` con `>>`** (append-only, `merge=union` → parallel-safe; nunca
   un Edit que reescriba): qué se unificó, de qué minis, qué se graduó.
 
-> Recuerda: los aprendizajes graduados a **skill/hook/norma del brain** se rutean a `claude-brain` por
+> Recuerda: los aprendizajes graduados a **skill/hook/norma del brain** se rutean a `cortex` por
 > su propio MR — no por el de la mini. El MR de la mini lleva memoria+aprendizajes del proyecto.

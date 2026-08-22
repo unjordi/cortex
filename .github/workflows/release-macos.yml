@@ -9,7 +9,7 @@ name: Release macOS app
 # macos/**/brain/**/assets/**, el CI no reconstruia y el asset quedaba viejo; el auto-update bajaba
 # SIEMPRE ese .app rancio pero chequeaba contra commits/main = loop infinito de "actualiza". El
 # instalador (macos/install.sh) baja ese .app -> instala SIN Xcode/Swift (paridad con el
-# ClaudeBrain.exe de Windows). Fallback: compilar desde fuente (macos/install.sh --build, o si la
+# Cortex.exe de Windows). Fallback: compilar desde fuente (macos/install.sh --build, o si la
 # descarga falla). Se puede disparar a mano (workflow_dispatch).
 #
 # Nota: el .app queda ad-hoc signed (sin cuenta de desarrollador Apple), asi que al bajarlo el
@@ -57,8 +57,8 @@ jobs:
           APP="$(bash macos/make-app.sh)"
           test -d "$APP" || { echo "no se genero el .app"; exit 1; }
           # ditto = zip macOS-correcto: preserva el bundle, symlinks y la firma ad-hoc.
-          ditto -c -k --keepParent "$APP" ClaudeBrainWidget.app.zip
-          ls -la ClaudeBrainWidget.app.zip
+          ditto -c -k --keepParent "$APP" CortexWidget.app.zip
+          ls -la CortexWidget.app.zip
 
       - name: Publish rolling 'macos-latest' release with the .app
         if: steps.guard.outputs.skip != 'true'
@@ -70,10 +70,10 @@ jobs:
           # Rolling: borro el release + su tag y lo recreo apuntando al sha actual, para que
           # 'macos-latest' SIEMPRE refleje el commit del .app publicado (como windows-latest).
           gh release delete macos-latest --cleanup-tag --yes 2>/dev/null || true
-          gh release create macos-latest ClaudeBrainWidget.app.zip \
+          gh release create macos-latest CortexWidget.app.zip \
             --target "$sha" \
             --title "Widget de macOS (rolling)" \
-            --notes "Claude Brain Widget.app para macOS (ad-hoc signed; instala sin Xcode/Swift).
+            --notes "Cortex Widget.app para macOS (ad-hoc signed; instala sin Xcode/Swift).
           build-sha: $sha
           El instalador lo baja, lo descomprime en ~/Applications y le quita el quarantine."
           echo "Publicado macos-latest @ $short"

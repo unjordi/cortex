@@ -1,7 +1,7 @@
-<!-- BEGIN claude-brain (normas globales — no editar a mano; se regeneran con install-brain.sh) -->
-# Normas globales del cerebro (claude-brain)
+<!-- BEGIN cortex (normas globales — no editar a mano; se regeneran con install-brain.sh) -->
+# Normas globales del cerebro (cortex)
 
-> Bloque instalado por `claude-brain` en `~/.claude/CLAUDE.md`. Son normas DURAS y genéricas
+> Bloque instalado por `cortex` en `~/.claude/CLAUDE.md`. Son normas DURAS y genéricas
 > (agnósticas de stack) que aplican a Claude, a los agentes que delega y a toda sesión del equipo.
 
 ## Documentación = reflejo de la realidad (norma dura, NO se pregunta)
@@ -412,4 +412,4 @@ Al compactar (manual O automático), PRESERVA por encima de todo:
 - Lo último que pidió el usuario y el "feeling" de trabajo (tono, prioridades).
 Prioriza CONTINUIDAD sobre brevedad; NO sobre-resumas hasta perder el hilo. Rutas de archivo, nombres de
 función, comandos y mensajes de error CONCRETOS: consérvalos literales.
-<!-- END claude-brain -->
+<!-- END cortex -->

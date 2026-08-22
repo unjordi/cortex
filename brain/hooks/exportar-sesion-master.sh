@@ -21,7 +21,7 @@
 #
 # El export corre DETACHED (nohup … &) con lock por-sid: un transcript grande excede el timeout del hook
 # ("Hook cancelled", caso real cps-master 456 MB) → el hook retorna al instante y el gzip+copy termina en
-# segundo plano. El MOTOR (session-export.js) es genérico y lo aporta claude-brain.
+# segundo plano. El MOTOR (session-export.js) es genérico y lo aporta cortex.
 #
 # CONTRATO: SILENCIOSO y FAIL-OPEN. Si la sesión no es master, falta el motor/node, o el debounce aún no
 # vence → no hace nada y NO bloquea. JAMÁS rompe el turno/cierre (siempre exit 0). Opt-in por convención
@@ -100,9 +100,9 @@ if [ "$event" = "Stop" ]; then
   fi
 fi
 
-# ── localizar el motor (genérico, lo aporta claude-brain) ────────────────────────────────────────
+# ── localizar el motor (genérico, lo aporta cortex) ────────────────────────────────────────
 EXP=""
-for c in "$HOME/.local/bin/session-export.js" "$HOME/.claude-brain/bin/session-export.js"; do
+for c in "$HOME/.local/bin/session-export.js" "$HOME/.cortex/bin/session-export.js"; do
   [ -f "$c" ] && EXP="$c" && break
 done
 [ -n "$EXP" ] || exit 0

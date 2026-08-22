@@ -1,8 +1,8 @@
 <sub>CLAUDE CODE · CEREBRO GLOBAL</sub>
 
-# 🧠 claude-brain
+# 🧠 cortex
 
-[![CI](https://github.com/unjordi/claude-brain/actions/workflows/ci.yml/badge.svg)](https://github.com/unjordi/claude-brain/actions/workflows/ci.yml)
+[![CI](https://github.com/unjordi/cortex/actions/workflows/ci.yml/badge.svg)](https://github.com/unjordi/cortex/actions/workflows/ci.yml)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-cerebro%20global-d97757?style=flat-square&logo=claude&logoColor=white)](https://claude.ai/code)
 [![macOS](https://img.shields.io/badge/macOS-000000?style=flat-square&logo=apple&logoColor=white)](#un-cerebro-tres-caras)
 [![Linux](https://img.shields.io/badge/Linux-333333?style=flat-square&logo=linux&logoColor=white)](#un-cerebro-tres-caras)
@@ -32,11 +32,11 @@ instala. No necesitas nada preinstalado salvo el gestor (`brew`/`apt`/`dnf`/`pac
 
 ```sh
 # Linux / macOS
-curl -fsSL https://raw.githubusercontent.com/unjordi/claude-brain/main/bootstrap.sh | bash
+curl -fsSL https://raw.githubusercontent.com/unjordi/cortex/main/bootstrap.sh | bash
 ```
 ```powershell
 # Windows (PowerShell)
-irm https://raw.githubusercontent.com/unjordi/claude-brain/main/bootstrap.ps1 | iex
+irm https://raw.githubusercontent.com/unjordi/cortex/main/bootstrap.ps1 | iex
 ```
 
 El bootstrap instala los prereqs que falten (git, `jq`, Node; + **.NET 10 SDK** en Windows), clona el
@@ -55,7 +55,7 @@ repo y corre el instalador maestro (**cerebro + daemon + widget**). Idempotente.
 **O a mano**, si ya tienes los prereqs:
 
 ```sh
-git clone https://github.com/unjordi/claude-brain && cd claude-brain
+git clone https://github.com/unjordi/cortex && cd cortex
 ./install.sh                 # todo  ·  --no-gui (sin widget)  ·  --no-brain (sin cerebro)
 ```
 Puerta por OS: **Linux/KDE** → `./install.sh` · **macOS** → [`macos/`](macos/) · **Windows** →
@@ -135,7 +135,7 @@ El cerebro se ordena por *dureza*: arriba lo que te **bloquea** sin negociar; ab
 ├─ 🌾 cosechar-sesion                cosecha local: extrae aprendizajes de tu sesión al inbox del equipo
 ├─ 🧩 unificar-cerebro               reconciliación del cerebro del equipo: integra los aprendizajes mini→develop
 ├─ 🧳 claude-proyecto-autocontenido  el cerebro VIVE dentro del proyecto (.claude/ + symlink de slug) → viaja con él
-├─ 🚚 reubicar-master                muda una sesión master COMPLETA a otro repo (brain-master → claude-brain) sin residuo: transcript+cwd, cerebro, slug y refs atómicas
+├─ 🚚 reubicar-master                muda una sesión master COMPLETA a otro repo (brain-master → cortex) sin residuo: transcript+cwd, cerebro, slug y refs atómicas
 ├─ 🔍 zoom-screenshot                recorta y amplía regiones de una captura (ffmpeg) para leer texto fino ilegible
 ├─ 🔩 ingenieria-inversa-gui-db-navegador  ingeniería inversa de app legacy GUI+BD: driving la UI vía navegador + diff de la BD antes/después = doc con evidencia real
 ├─ 📕 markdown-a-pdf                 convierte .md a PDF pulido y distribuible vía md-to-pdf (npx, sin instalar) con el gotcha de --css y QA visual real
@@ -216,14 +216,14 @@ mismos datos que `/usage`, en tu escritorio, desde cualquier lado. Las pestañas
                  │ cerebro (install-brain.sh)       │ daemon + widget
                  ▼                                  ▼
   ┌───────────────────────────┐   ┌────────────────────────────────┐
-  │  ~/.claude   (EL CEREBRO)  │   │  claude-brain-fetch (daemon)   │
+  │  ~/.claude   (EL CEREBRO)  │   │  cortex-fetch (daemon)   │
   │  hooks/ · settings.json    │   │  systemd / launchd · piso 5 min │
   │  CLAUDE.md · skills/       │   │  bash + jq + curl(OAuth) +ccusage│
   └───────────▲───────────────┘   └────────────────┬───────────────┘
               │ refleja + cura 🩹                   │ escribe
               │  (install-brain.sh)                 ▼
               │                    ┌────────────────────────────────┐
-              │                    │  ~/.cache/claude-brain/         │
+              │                    │  ~/.cache/cortex/         │
               │                    │    state.json · stats.json      │
               │                    └────────────────┬───────────────┘
               │                                     │ lee cada 10 s
@@ -276,7 +276,7 @@ memoria, dashboard ni registro de consentimiento.
 
 ## Créditos
 
-Nació de [`fuziontech/claude-brain`](https://github.com/fuziontech/claude-brain) (MIT),
+Nació de [`fuziontech/cortex`](https://github.com/fuziontech/cortex) (MIT),
 restyleado según [`FelixDes/claude-kde-usage-widget`](https://github.com/FelixDes/claude-kde-usage-widget),
 y luego crecido de "un widget de cuota" a "un cerebro portable de Claude Code con cara de widget".
 Licencia **MIT** (ver [LICENSE](LICENSE); copyright original de fuziontech, conservado).

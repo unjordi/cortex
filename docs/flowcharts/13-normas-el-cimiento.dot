@@ -1,4 +1,4 @@
-// 13 — Normas: el cimiento (claude-brain)  ·  FUENTE editable (.dot)
+// 13 — Normas: el cimiento (cortex)  ·  FUENTE editable (.dot)
 // Render:  dot -Tsvg 13-normas-el-cimiento.dot -o 13-normas-el-cimiento.svg
 // El PORQUÉ: cada flujo de los charts anteriores hace cumplir una de estas normas (CLAUDE.md / brain/norms/).
 // Reconstruido 2026-08-07. Cross-refs re-numeradas a los NUEVOS nº de archivo (viejo circulado → nuevo):

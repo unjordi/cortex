@@ -46,7 +46,7 @@ El diseño detrás de cada requisito, VERBATIM de `handoff-db-master->re-master.
 > rehidratarse. Así que la transición debe ser atómica O el hook trata `hilo-mental-actual.md` como
 > **alias legado** (lo lee además de los `hilo-*.md`).
 
-## Resumen accionable (para implementar en claude-brain)
+## Resumen accionable (para implementar en cortex)
 1. **`rehidratar-hilo` (SessionStart):** inyectar TODOS los `.claude/memory/hilo-*.md`, cada uno etiquetado
    con **dueño + frescura** (no solo el hardcodeado `hilo-mental-actual.md`).
 2. **`checkpoint`:** escribir `hilo-<rol>.md` por **auto-identificación** (el rol sale del `CLAUDE.md` de la

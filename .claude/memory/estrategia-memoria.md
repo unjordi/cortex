@@ -7,7 +7,7 @@
 > con NUESTRAS restricciones, cada una con su mecanismo y su criterio de adopción/rechazo.
 >
 > **Alcance = GLOBAL (todo el ecosistema del brain).** La memoria es un concern que aplica a todos los
-> repos. Esta nota vive en el repo fuente del brain (`claude-brain`, source en `brain/`); al
+> repos. Esta nota vive en el repo fuente del brain (`cortex`, source en `brain/`); al
 > ACTUAR, los cambios de sustrato/normas se hacen en `brain/` y se propagan a los repos consumidores
 > (plantilla, etc.) con `sincronizar-cerebro.sh`.
 >

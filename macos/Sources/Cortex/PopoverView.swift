@@ -6,7 +6,7 @@ import SwiftUI
 /// Modelos / Proyectos), a 1px separator, and the tab content on the right.
 struct PopoverView: View {
     @ObservedObject var model: QuotaModel
-    /// Real fetch trigger (launches claude-brain-fetch, then reloads).
+    /// Real fetch trigger (launches cortex-fetch, then reloads).
     var onRefresh: () -> Void
 
     @State private var tab = 0
@@ -947,7 +947,7 @@ struct PopoverView: View {
     /// Contenido ESTÁTICO (refleja `brain/`); se mantiene a mano cuando cambian las piezas.
     private var cerebroTab: some View {
         VStack(alignment: .leading, spacing: 14) {
-            // Encabezado de marca: ícono claude-brain (icon-small; ya incluye el destello).
+            // Encabezado de marca: ícono cortex (icon-small; ya incluye el destello).
             HStack(spacing: 7) {
                 if let brand = BrandIcon.small {
                     Image(nsImage: brand)
@@ -999,7 +999,7 @@ struct PopoverView: View {
     /// Abre el navegador con NSWorkspace; misma pastilla tenue que los toggles del widget.
     private var mapaButton: some View {
         Button(action: {
-            if let url = URL(string: "https://github.com/unjordi/claude-brain/blob/main/docs/mapa-cerebro.md") {
+            if let url = URL(string: "https://github.com/unjordi/cortex/blob/main/docs/mapa-cerebro.md") {
                 NSWorkspace.shared.open(url)
             }
         }) {
@@ -1476,7 +1476,7 @@ struct PopoverView: View {
                               "Mantener TODO el cerebro de Claude Code de un proyecto (memorias, skills, transcripts, settings) dentro de <proyecto>/.claude/, con un symlink desde ~/.claude/projects/<slug>/ para que Claude lo siga encontrando. Así la memoria/skills viajan con el proyecto (Drive, git, otra máquina) y ninguna sesión arranca amnésica desde otro cwd. Cubre la regla del slug, el bootstrap de un comando (clona-y-listo), el triage de privacidad (qué va al repo vs *.local), la disciplina anti-duplicados y la verificación."),
                     BrainItem("🚚", "reubicar-master", "mover un master —cerebro+sesión— a otra casa/subfolder-repo git, sin lobotomía ni tail",
                               "skill · opt-in",
-                              "Muda una sesión master COMPLETA de Claude Code a otro repo (caso canónico: los brain-master a claude-brain) sin dejar nada a medias: transcript re-anclado + cwd reescrito, cerebro del master migrado por su canal correcto, slug global y TODAS las referencias (masters.json target por-id, alias, symlink memory) corregidas de forma ATÓMICA, residuo quirúrgico barrido y doc=realidad. Úsala cuando un --resume cae en un folder muerto, un master quedó a medias (residuo + resume roto), o quieres consolidar los dos brain-master (Mac + Cachy) en claude-brain sin lobotomizarlos, sin fuga a un repo público ni duplicado divergente. Hermana de claude-proyecto-autocontenido (esa define DÓNDE vive el cerebro; ésta lo MUEVE de casa)."),
+                              "Muda una sesión master COMPLETA de Claude Code a otro repo (caso canónico: los brain-master a cortex) sin dejar nada a medias: transcript re-anclado + cwd reescrito, cerebro del master migrado por su canal correcto, slug global y TODAS las referencias (masters.json target por-id, alias, symlink memory) corregidas de forma ATÓMICA, residuo quirúrgico barrido y doc=realidad. Úsala cuando un --resume cae en un folder muerto, un master quedó a medias (residuo + resume roto), o quieres consolidar los dos brain-master (Mac + Cachy) en cortex sin lobotomizarlos, sin fuga a un repo público ni duplicado divergente. Hermana de claude-proyecto-autocontenido (esa define DÓNDE vive el cerebro; ésta lo MUEVE de casa)."),
                 ]),
         ]
     }

@@ -1,4 +1,4 @@
-// 09 — Declarar «LISTO» al fin de turno: el candado dod-verificar (claude-brain)  ·  FUENTE editable (.dot)
+// 09 — Declarar «LISTO» al fin de turno: el candado dod-verificar (cortex)  ·  FUENTE editable (.dot)
 // Render:  dot -Tsvg 09-declarar-listo-al-fin-de-turno.dot -o 09-declarar-listo-al-fin-de-turno.svg
 // Reconstruido 2026-08-07 desde el CÓDIGO real de brain/hooks/dod-verificar.sh (Stop) + lib juez-comun.sh.
 // ⚠ OJO doc=realidad: el huérfano viejo (05-al-hacer-push… no; 06-declarar-listo-al-fin-de-turno.svg «⑤»)

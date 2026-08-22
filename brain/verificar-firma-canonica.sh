@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # verificar-firma-canonica.sh — DETECTOR (flag, no auto-mutador) de la FIRMA-ÁRBOL canónica
-# en un cerebro INSTANCIADO (los que produce claude-brain: cps, fluxcore, plantilladotnet…).
+# en un cerebro INSTANCIADO (los que produce cortex: cps, fluxcore, plantilladotnet…).
 #
 # Hoy los cerebros DRIFTEAN de la firma canónica (fluxcore estaba plano: memorias sin prefijo,
 # CLAUDE.md viejo con prosa de guards retirados). Este check las CAZA de forma determinista.
 # NO reescribe nada — solo REPORTA desviaciones para que un humano (o la skill `canonizar-cerebro`)
 # las arregle. Es el detector que alimenta el GATE del auditor (#44).
 #
-# La firma canónica (ver CLAUDE.example-barebones.md / MEMORY.example-barebones.md del claude-brain,
+# La firma canónica (ver CLAUDE.example-barebones.md / MEMORY.example-barebones.md del cortex,
 # instancia de referencia = cps y fluxcore):
 #   CLAUDE.md (raíz) = firma-árbol: 🎯 Misión → 🧠 Antes de construir → 📁 Dónde va cada cosa →
 #                      🖋️ LA FIRMA (árbol capacidades→artefactos) → 🛡️ Reglas duras → @import MEMORY.md
@@ -15,7 +15,7 @@
 #                      (dom-/dev-/ux-/qa- + núcleo sin prefijo)
 #   Invariante 1:1   = cada memoria (salvo *.local.md) indexada; cada enlace resuelve a archivo real.
 #
-# NO aplica al META-repo claude-brain en sí (su árbol vive en README, no en un CLAUDE.md-firma; su
+# NO aplica al META-repo cortex en sí (su árbol vive en README, no en un CLAUDE.md-firma; su
 # .claude/memory/ no usa prefijos dom-/dev-/ux-/qa-). Para ESE, el check es docs/flowcharts/verificar-arbol-sync.sh.
 #
 # Uso:  bash brain/verificar-firma-canonica.sh [RUTA_DEL_CEREBRO] [--strict]
@@ -56,9 +56,9 @@ info() { printf '  ·  %s\n' "$1"; }
 
 echo "==> verificar-firma-canonica · cerebro: $TARGET"
 
-# Guardarraíl: no confundir el META-repo claude-brain con un cerebro instanciado.
+# Guardarraíl: no confundir el META-repo cortex con un cerebro instanciado.
 if [ -f "$TARGET/brain/hooks/MANIFEST" ] && [ -f "$TARGET/docs/flowcharts/verificar-arbol-sync.sh" ]; then
-  echo "  ·  Parece el META-repo claude-brain (tiene brain/hooks/MANIFEST): su firma vive en README,"
+  echo "  ·  Parece el META-repo cortex (tiene brain/hooks/MANIFEST): su firma vive en README,"
   echo "     no en un CLAUDE.md-firma. Usa docs/flowcharts/verificar-arbol-sync.sh para ESE árbol. Nada que auditar aquí."
   echo "FIRMA-CANONICA: 0 fail · 0 warn · n/a (meta-repo)"
   exit 0

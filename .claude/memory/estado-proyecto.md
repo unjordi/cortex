@@ -1,11 +1,11 @@
 ---
 name: estado-proyecto
-description: Backlog VIVO y compartido de claude-brain — la fuente de verdad de qué sigue, qué se decidió y qué quejas/sugerencias tienen los claudes. Cualquier sesión (master o no, cualquier máquina) escribe aquí; NO en el panel de to-dos (ese es scratch efímero de sesión). Aquí empiezas siempre.
+description: Backlog VIVO y compartido de cortex — la fuente de verdad de qué sigue, qué se decidió y qué quejas/sugerencias tienen los claudes. Cualquier sesión (master o no, cualquier máquina) escribe aquí; NO en el panel de to-dos (ese es scratch efímero de sesión). Aquí empiezas siempre.
 metadata:
   type: project
 ---
 
-# Estado del proyecto — claude-brain (el cerebro compartible)
+# Estado del proyecto — cortex (el cerebro compartible)
 
 > **Aquí empiezas.** Este es el backlog DURABLE del cerebro: qué sigue, qué se decidió, y el buzón donde
 > cualquier claude deja sus quejas y sugerencias. El **panel de to-dos de una sesión es scratch efímero**;
@@ -50,7 +50,7 @@ metadata:
 
 - **Endurecer git-branch-guard contra evasión por subshell/`$()`.** `analizar-comando-git.sh` ancla la rama
   con `(main|develop)([[:space:]]|$)`; un `)` de subshell o `$(...)` la evade: `(cd /tmp && git push origin
-  develop)` y `x=$(git push origin develop)` PASAN. Confirmado por ejecución en DOS auditorías (claude-brain
+  develop)` y `x=$(git push origin develop)` PASAN. Confirmado por ejecución en DOS auditorías (cortex
   A-GBG-01 + la DUPLA de cps). **Backstop:** ramas protegidas server-side. Toca un guard de supervisión →
   cambio de PRECISIÓN, exige OK EXPLÍCITO de unjordi para ESE control (con su test adversarial). · _DUPLA 2026-08-03._
 

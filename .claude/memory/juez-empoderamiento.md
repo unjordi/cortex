@@ -67,7 +67,7 @@ Cuando haya que RE-diseñar/empoderar un mecanismo del cerebro sin decidir a ojo
 
 ### Prompt — Cosechador de FN/FP reales de transcripts
 ```
-Eres un cosechador READ-ONLY de casos REALES para robustecer la batería de los jueces-Haiku del cerebro `claude-brain` (`_juez_merge` en `confirmar-merge-develop.sh` y `_juez_dod` en `dod-verificar.sh`). NO MUTAS NADA; solo LEES y reportas.
+Eres un cosechador READ-ONLY de casos REALES para robustecer la batería de los jueces-Haiku del cerebro `cortex` (`_juez_merge` en `confirmar-merge-develop.sh` y `_juez_dod` en `dod-verificar.sh`). NO MUTAS NADA; solo LEES y reportas.
 
 **Contexto de qué juzgan (para que sepas qué es FN/FP):**
 - **_juez_merge**: dado el destino (develop/main/vacío), el id del MR, y la conversación reciente intercalada (`USUARIO:`/`ASISTENTE:`), decide ALLOW/DENY si el USUARIO autorizó EXPRESAMENTE integrar ESE MR a ESE destino. Reglas duras: solo líneas `USUARIO:` autorizan (nunca `ASISTENTE:` → anti auto-autorización); main = RELEASE exige lenguaje explícito de release; resuelve OKs anafóricos ("sí, mergea eso" tras una propuesta del asistente).
@@ -88,10 +88,10 @@ Eres un cosechador READ-ONLY de casos REALES para robustecer la batería de los 
 
 ### Prompt A — lente LLM-as-judge
 ```
-Eres un EXPERTO en diseño de **LLM-as-judge** (clasificadores/jueces basados en LLM de frontera) y análisis de algoritmos, READ-ONLY. Meta: proponer cómo hacer MÁS EFECTIVO Y PODEROSO el "juez de merge" del cerebro `claude-brain` — SIN aflojar el gate. NO MUTAS NADA; entregas propuestas priorizadas.
+Eres un EXPERTO en diseño de **LLM-as-judge** (clasificadores/jueces basados en LLM de frontera) y análisis de algoritmos, READ-ONLY. Meta: proponer cómo hacer MÁS EFECTIVO Y PODEROSO el "juez de merge" del cerebro `cortex` — SIN aflojar el gate. NO MUTAS NADA; entregas propuestas priorizadas.
 
 **Qué es el juez (léelo de verdad):**
-- Archivo: `/Users/unjordi/code/claude-brain/brain/hooks/confirmar-merge-develop.sh` (función `_juez_merge`). Batería/arnés: `/Users/unjordi/code/claude-brain/brain/test-brain.sh` (bloques `piso-main`, `jlive`, `cm`).
+- Archivo: `/Users/unjordi/code/cortex/brain/hooks/confirmar-merge-develop.sh` (función `_juez_merge`). Batería/arnés: `/Users/unjordi/code/cortex/brain/test-brain.sh` (bloques `piso-main`, `jlive`, `cm`).
 - Es un hook **PreToolUse/Bash BLOQUEANTE**: cuando el usuario intenta `gh pr merge`/`glab mr merge` a develop/main, el juez decide ALLOW/DENY leyendo la conversación reciente intercalada (`USUARIO:`/`ASISTENTE:`) + el destino + el id del MR. Juzga si el USUARIO autorizó EXPRESAMENTE integrar ESE MR a ESE destino.
 - **Estado ACTUAL (lo débil):** modelo `claude-haiku-4-5` (tier chico), **`max_tokens:16`** (¡amordazado, no puede razonar!), veredicto por match exacto de texto, transporte curl→api.anthropic.com con token OAuth (~1.3s), timeout 20s, fail-safe DENY si no responde. Hay un **PISO DETERMINISTA de main** aparte (defensa en profundidad, independiente del LLM) que NO se toca.
 
@@ -106,10 +106,10 @@ Eres un EXPERTO en diseño de **LLM-as-judge** (clasificadores/jueces basados en
 
 ### Prompt B — lente candado de seguridad / FMEA de proceso
 ```
-Eres un EXPERTO en INGENIERÍA DE SEGURIDAD DE PROCESOS (FMEA, defensa en profundidad, sistemas de control con fail-safe) y análisis de algoritmos, READ-ONLY. Meta: proponer cómo hacer MÁS SÓLIDO Y PODEROSO el "juez de merge" del cerebro `claude-brain` — como CANDADO de un flujo de git — SIN aflojarlo. NO MUTAS NADA; entregas propuestas priorizadas.
+Eres un EXPERTO en INGENIERÍA DE SEGURIDAD DE PROCESOS (FMEA, defensa en profundidad, sistemas de control con fail-safe) y análisis de algoritmos, READ-ONLY. Meta: proponer cómo hacer MÁS SÓLIDO Y PODEROSO el "juez de merge" del cerebro `cortex` — como CANDADO de un flujo de git — SIN aflojarlo. NO MUTAS NADA; entregas propuestas priorizadas.
 
 **Qué es el juez (léelo):**
-- Archivo: `/Users/unjordi/code/claude-brain/brain/hooks/confirmar-merge-develop.sh` (`_juez_merge` + el bloque del PISO DETERMINISTA de main + los mensajes de FRENO). Batería: `/Users/unjordi/code/claude-brain/brain/test-brain.sh`.
+- Archivo: `/Users/unjordi/code/cortex/brain/hooks/confirmar-merge-develop.sh` (`_juez_merge` + el bloque del PISO DETERMINISTA de main + los mensajes de FRENO). Batería: `/Users/unjordi/code/cortex/brain/test-brain.sh`.
 - Hook **PreToolUse/Bash BLOQUEANTE**: gatea `gh pr merge`/`glab mr merge` a develop/main. Hace cumplir la **definición de LISTO** en el punto del merge: exige confirmación EXPRESA del usuario. main = RELEASE exige lenguaje super-explícito. Hay una vía de autorización DURABLE (`autorizaciones-vigentes.local.md`, scope=merge-develop, nunca main).
 - Dos capas HOY: (1) el juez-LLM (Haiku, amordazado a `max_tokens:16`), (2) un **PISO DETERMINISTA** de main (regex anclado: main+ALLOW sin lenguaje de release → DENY), independiente del LLM. fail-safe DENY si el LLM no responde.
 
@@ -124,10 +124,10 @@ Eres un EXPERTO en INGENIERÍA DE SEGURIDAD DE PROCESOS (FMEA, defensa en profun
 
 ### Prompt C — lente suficiencia de información / contexto
 ```
-Eres un EXPERTO en DISEÑO DE CONTEXTO PARA AGENTES/decisiones (suficiencia de información: ¿qué necesita SABER quien decide para decidir bien?) y análisis de algoritmos, READ-ONLY. Meta: proponer cómo hacer MÁS EFECTIVO Y PODEROSO el "juez de merge" del cerebro `claude-brain` alimentándolo con el CONTEXTO correcto — SIN aflojar el gate. NO MUTAS NADA; entregas propuestas priorizadas.
+Eres un EXPERTO en DISEÑO DE CONTEXTO PARA AGENTES/decisiones (suficiencia de información: ¿qué necesita SABER quien decide para decidir bien?) y análisis de algoritmos, READ-ONLY. Meta: proponer cómo hacer MÁS EFECTIVO Y PODEROSO el "juez de merge" del cerebro `cortex` alimentándolo con el CONTEXTO correcto — SIN aflojar el gate. NO MUTAS NADA; entregas propuestas priorizadas.
 
 **Qué es el juez (léelo):**
-- Archivo: `/Users/unjordi/code/claude-brain/brain/hooks/confirmar-merge-develop.sh` (`_juez_merge`, y `_recent_intercalado` que arma la conversación que come el juez). Batería: `/Users/unjordi/code/claude-brain/brain/test-brain.sh`. Lib de contexto git: `/Users/unjordi/code/claude-brain/brain/hooks/analizar-comando-git.sh` (tiene `acg_destino_de_mr`, `acg_rama_actual`, etc.).
+- Archivo: `/Users/unjordi/code/cortex/brain/hooks/confirmar-merge-develop.sh` (`_juez_merge`, y `_recent_intercalado` que arma la conversación que come el juez). Batería: `/Users/unjordi/code/cortex/brain/test-brain.sh`. Lib de contexto git: `/Users/unjordi/code/cortex/brain/hooks/analizar-comando-git.sh` (tiene `acg_destino_de_mr`, `acg_rama_actual`, etc.).
 - Hoy el juez decide **casi a ciegas**: recibe SOLO (a) la conversación reciente intercalada USUARIO/ASISTENTE, (b) el destino (que a veces viene VACÍO porque `acg_destino_de_mr` falla en el entorno-hook), (c) el id del MR. Modelo Haiku amordazado (`max_tokens:16`).
 
 **El problema (falso negativo real):** "haz el release a main **de todo esto**" → DENY, porque el juez NO SABE que hay UN SOLO PR de release abierto (#261) → no puede resolver que "todo esto"/"el release" = ESE MR. Un humano lo resuelve trivial porque VE la lista de PRs. Si el usuario nombra el MR → ALLOW.

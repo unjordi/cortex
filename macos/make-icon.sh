@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Generate macos/build/AppIcon.icns from the shared SVG masters (assets/icon.svg + icon-small.svg).
 #
-# Identidad "Claude Brain": squircle grafito + cerebro crema + chispa de Claude naranja. El SVG es la
+# Identidad "Cortex": squircle grafito + cerebro crema + chispa de Claude naranja. El SVG es la
 # ÚNICA fuente (texto, versionable); aquí se rasteriza por tamaño y se empaqueta en .icns.
 #   - Tamaños GRANDES (>=128): assets/icon.svg (con surcos + chispa fina, se lee con detalle).
 #   - Tamaños CHICOS (16/32): assets/icon-small.svg (cerebro simple + chispa gruesa, lee nítido en el

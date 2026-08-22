@@ -1,4 +1,4 @@
-// 08 — Al hacer push: los nudges que se disparan (claude-brain)  ·  FUENTE editable (.dot)
+// 08 — Al hacer push: los nudges que se disparan (cortex)  ·  FUENTE editable (.dot)
 // Render:  dot -Tsvg 08-al-hacer-push-nudges.dot -o 08-al-hacer-push-nudges.svg
 // ZOOM del fan-out de 9 hooks (raíz común en 03 · CONVENCIONES §6) sobre los nudges (🔔, no bloquean):
 // recordar-dashboard (dashboard + doc=realidad) y rama-vieja (base atrasada). Reconstruido 2026-08-07

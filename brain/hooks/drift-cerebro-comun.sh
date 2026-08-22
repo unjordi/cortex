@@ -48,7 +48,7 @@ drift_chequea_repo() {
 
   # Fuente canónica LOCAL del cerebro = el clon de instalación (lo actualiza el one-liner/bootstrap).
   local BRAIN_DIR SYNC
-  BRAIN_DIR="${CLAUDE_BRAIN_DIR:-$HOME/.claude-brain}"
+  BRAIN_DIR="${CLAUDE_BRAIN_DIR:-$HOME/.cortex}"
   SYNC="$BRAIN_DIR/brain/sincronizar-cerebro.sh"
   if [ ! -f "$SYNC" ]; then printf 'STATUS=%s\n' "no-source"; return 0; fi
 
@@ -194,7 +194,7 @@ Qué hacer: PROPÓN al usuario propagar por el flujo — worktree/ramita desde d
 #    ignora, cero falso positivo). bash-3.2-safe.
 drift_skills_global() {
   local BRAIN_DIR SRC_SKILLS INST_SKILLS MAN
-  BRAIN_DIR="${CLAUDE_BRAIN_DIR:-$HOME/.claude-brain}"
+  BRAIN_DIR="${CLAUDE_BRAIN_DIR:-$HOME/.cortex}"
   SRC_SKILLS="$BRAIN_DIR/brain/skills"
   INST_SKILLS="$HOME/.claude/skills"
   MAN="$SRC_SKILLS/MANIFEST"

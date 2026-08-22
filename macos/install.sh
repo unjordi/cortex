@@ -9,7 +9,7 @@
 #   ./install.sh --no-claude-code # skip auto-installing the Claude Code CLI (the widget measures IT)
 #   ./install.sh --build      # compila el .app desde fuente (necesita Xcode CLT) en vez de bajar el precompilado
 #
-# This is the macOS MASTER installer for claude-brain: it lays down the shared Claude-Code brain
+# This is the macOS MASTER installer for cortex: it lays down the shared Claude-Code brain
 # (global hooks, delegation-cost governance, skill, norms) AND the quota daemon + optional app.
 # Idempotent. Por DEFAULT baja el .app PRECOMPILADO del release 'macos-latest' (SIN Xcode/Swift),
 # paridad con el .exe de Windows; si la descarga falla, compila desde fuente como fallback.
@@ -17,22 +17,22 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-FETCH_SRC="$ROOT/bin/claude-brain-fetch"
-PLIST_SRC="$ROOT/launchd/io.github.unjordi.claude-brain.plist"
-LABEL="io.github.unjordi.claude-brain"
+FETCH_SRC="$ROOT/bin/cortex-fetch"
+PLIST_SRC="$ROOT/launchd/io.github.unjordi.cortex.plist"
+LABEL="io.github.unjordi.cortex"
 BRAIN_INSTALLER="$ROOT/../brain/install-brain.sh"
 
-FETCH_DEST="$HOME/.local/bin/claude-brain-fetch"
+FETCH_DEST="$HOME/.local/bin/cortex-fetch"
 PLIST_DEST="$HOME/Library/LaunchAgents/$LABEL.plist"
-# Config del widget: con el rebrand COMPLETO (2026-07) pasó a ~/.config/claude-brain (el código lee
+# Config del widget: con el rebrand COMPLETO (2026-07) pasó a ~/.config/cortex (el código lee
 # de ahí). "Borra el previo por completo": NO se migra la config vieja; se instala limpia (defaults).
-LIMITS_DEFAULT="$HOME/.config/claude-brain/limits.env"
+LIMITS_DEFAULT="$HOME/.config/cortex/limits.env"
 APPS_DIR="$HOME/Applications"
-STATE_FILE="$HOME/Library/Caches/claude-brain/state.json"
-APP_NAME="Claude Brain Widget"
+STATE_FILE="$HOME/Library/Caches/cortex/state.json"
+APP_NAME="Cortex Widget"
 # .app precompilado del release rolling 'macos-latest' (lo publica release-macos.yml). Paridad con
-# el ClaudeBrain.exe de Windows: instalar SIN Xcode/Swift. Repo público → descarga sin auth.
-APP_ASSET_URL="https://github.com/unjordi/claude-brain/releases/download/macos-latest/ClaudeBrainWidget.app.zip"
+# el Cortex.exe de Windows: instalar SIN Xcode/Swift. Repo público → descarga sin auth.
+APP_ASSET_URL="https://github.com/unjordi/cortex/releases/download/macos-latest/CortexWidget.app.zip"
 
 SKIP_APP=0
 SKIP_CCUSAGE=0
@@ -52,7 +52,7 @@ for arg in "$@"; do
 done
 
 # --- "Borra el previo por completo" (regla 2026-07-15) -----------------------------------------
-# El rebrand claude-quota -> claude-brain NO migra ni conserva nada del install viejo: lo ELIMINA y
+# El rebrand claude-quota -> cortex NO migra ni conserva nada del install viejo: lo ELIMINA y
 # reinstala limpio. Idempotente y fail-safe: si nada viejo existe, cada paso es un no-op silencioso.
 OLD_LABEL="io.github.unjordi.claude-quota"
 OLD_PLIST="$HOME/Library/LaunchAgents/$OLD_LABEL.plist"
@@ -76,14 +76,14 @@ rm -rf "$OLD_CACHE" "$OLD_CONFIG"
 # en zsh Y bash (macOS default es zsh, pero no asumas). Idempotente por marcador; crea el rc si falta.
 # Lo aplica también a ESTE proceso para que los pasos siguientes vean lo recién instalado.
 ensure_path_local_bin() {
-  local marker="# claude-brain: ~/.local/bin en el PATH (claude, claude-brain-fetch)"
-  local old_marker="# claude-brain: ~/.local/bin en el PATH (claude, claude-quota-fetch)"  # era pre-rebrand
+  local marker="# cortex: ~/.local/bin en el PATH (claude, cortex-fetch)"
+  local old_marker="# cortex: ~/.local/bin en el PATH (claude, claude-quota-fetch)"  # era pre-rebrand
   local block
   printf -v block '\n%s\ncase ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac\n' "$marker"
   local f
   for f in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile"; do
     # rebrand cleanup: barre el bloque PATH viejo de la era 'claude-quota' (marcador + su línea 'case' siguiente),
-    # que la migración claude-quota→claude-brain no limpiaba → dejaba un bloque PATH duplicado (inofensivo) al actualizar.
+    # que la migración claude-quota→cortex no limpiaba → dejaba un bloque PATH duplicado (inofensivo) al actualizar.
     if [[ -e "$f" ]] && grep -qF "$old_marker" "$f" 2>/dev/null; then
       awk -v m="$old_marker" 'skip { skip=0; next } index($0,m) { skip=1; next } { print }' "$f" > "$f.cbtmp" && mv "$f.cbtmp" "$f"
     fi
@@ -110,7 +110,7 @@ need jq
 # rsvg-convert (librsvg): rasteriza el SVG del ícono (app + login item del daemon). Opcional pero
 # recomendado; sin él, el ícono no se (re)genera y queda el genérico.
 if ! command -v rsvg-convert >/dev/null 2>&1; then
-  if command -v brew >/dev/null 2>&1; then echo "==> Instalando librsvg (para el ícono de Claude Brain)"; brew install librsvg || true
+  if command -v brew >/dev/null 2>&1; then echo "==> Instalando librsvg (para el ícono de Cortex)"; brew install librsvg || true
   else echo "warn: falta rsvg-convert (brew install librsvg) — el ícono no se (re)generará"; fi
 fi
 
@@ -151,15 +151,15 @@ for _s in session-lib.js session-export.js session-import.js claude-session; do
   [[ -f "$_src" ]] && install -m 0755 "$_src" "$(dirname "$FETCH_DEST")/$_s"
 done
 
-# Ícono del daemon en "Elementos de inicio": claude-brain-fetch es un script pelón → macOS le pone el
-# genérico "exec". Le incrustamos el ícono de Claude Brain como ícono CUSTOM del archivo vía
+# Ícono del daemon en "Elementos de inicio": cortex-fetch es un script pelón → macOS le pone el
+# genérico "exec". Le incrustamos el ícono de Cortex como ícono CUSTOM del archivo vía
 # NSWorkspace.setIcon (set-icon.swift), reusando AppIcon.icns (trae la variante chica nítida en 16/32).
 # Fail-safe: sin swift/rsvg o sin icns, se salta (el daemon corre igual, solo sin ícono bonito).
 ICNS="$ROOT/build/AppIcon.icns"
 bash "$ROOT/make-icon.sh" >/dev/null 2>&1 || true   # regenera SIEMPRE desde el SVG (no reusar un .icns rancio)
 if [[ -f "$ICNS" && -f "$ROOT/set-icon.swift" ]] && command -v swift >/dev/null 2>&1; then
   if swift "$ROOT/set-icon.swift" "$ICNS" "$FETCH_DEST" 2>/dev/null; then
-    echo "    ícono de Claude Brain incrustado en el daemon (login item)"
+    echo "    ícono de Cortex incrustado en el daemon (login item)"
   fi
 fi
 
@@ -190,7 +190,7 @@ if [[ ! -f "$LIMITS_DEFAULT" ]]; then
 # the OAuth token is available the widget reads the exact /usage percentages
 # and these caps are ignored.
 # After editing, reload the agent:
-#   launchctl kickstart -k gui/$(id -u)/io.github.unjordi.claude-brain
+#   launchctl kickstart -k gui/$(id -u)/io.github.unjordi.cortex
 #
 # Basis is API-EQUIVALENT COST (in USD), not raw tokens — cache-read tokens
 # dominate raw counts and Anthropic weights them ~0.1x. Calibrate:
@@ -229,7 +229,7 @@ if [[ -f "$STATE_FILE" ]]; then
   echo "    state.json written:"
   jq -c '{status, five: .five_hour.percent, wk: .weekly.percent}' "$STATE_FILE" | sed 's/^/    /'
 else
-  echo "    (no state.json yet — check /tmp/claude-brain.err.log)"
+  echo "    (no state.json yet — check /tmp/cortex.err.log)"
 fi
 
 if [[ "$SKIP_APP" -eq 0 ]]; then
@@ -241,7 +241,7 @@ if [[ "$SKIP_APP" -eq 0 ]]; then
   #    fuente. --build fuerza compilar (devs). Espeja install.ps1 de Windows.
   if [[ "$BUILD" -eq 0 ]]; then
     echo "==> Bajando el .app precompilado del release 'macos-latest' (sin Xcode/Swift)..."
-    TMPZ="$(mktemp -t claude-brain-app-XXXX).zip"
+    TMPZ="$(mktemp -t cortex-app-XXXX).zip"
     if curl -fsSL "$APP_ASSET_URL" -o "$TMPZ" 2>/dev/null && [[ -s "$TMPZ" ]]; then
       rm -rf "$INSTALLED_APP"
       # ditto = unzip macOS-correcto (preserva el bundle/symlinks/atributos del .app)
@@ -306,6 +306,6 @@ Next steps:
 
 Debug:
   launchctl print gui/$(id -u)/$LABEL | grep -E 'state|last exit'
-  cat /tmp/claude-brain.err.log
+  cat /tmp/cortex.err.log
   jq . "$STATE_FILE"
 EOF

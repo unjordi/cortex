@@ -4,7 +4,7 @@ using System.Drawing.Drawing2D;
 using System.Threading.Tasks;
 using Microsoft.Win32;
 
-namespace ClaudeBrain;
+namespace Cortex;
 
 /// <summary>
 /// The click-to-open breakdown, a borderless transient form. Mirrors the
@@ -1131,7 +1131,7 @@ public sealed class PopupForm : Form
         // Salvaguarda: si nunca se leyó el estado (p. ej. paint directo en tab 4), léelo ahora.
         _brainState ??= BrainInspector.Inspect();
 
-        // Encabezado de marca: ícono claude-brain (ya incluye el destello) + "Cerebro global".
+        // Encabezado de marca: ícono cortex (ya incluye el destello) + "Cerebro global".
         int hx = pad;
         // El ícono de marca (icon-small.svg rasterizado, vía BrandIcon) en vez del emoji 🧠: GDI+ no
         // dibuja SVG, así que es un PNG embebido. Si por lo que sea no decodifica, cae al emoji.
@@ -1688,7 +1688,7 @@ public sealed class PopupForm : Form
         {
             Process.Start(new ProcessStartInfo
             {
-                FileName = "https://github.com/unjordi/claude-brain/blob/main/docs/mapa-cerebro.md",
+                FileName = "https://github.com/unjordi/cortex/blob/main/docs/mapa-cerebro.md",
                 UseShellExecute = true,
             });
         }
@@ -2125,7 +2125,7 @@ public sealed class PopupForm : Form
                 "Mantener TODO el cerebro de Claude Code de un proyecto (memorias, skills, transcripts, settings) dentro de <proyecto>/.claude/, con un symlink desde ~/.claude/projects/<slug>/ para que Claude lo siga encontrando. Así la memoria/skills viajan con el proyecto (Drive, git, otra máquina) y ninguna sesión arranca amnésica desde otro cwd. Cubre la regla del slug, el bootstrap de un comando (clona-y-listo), el triage de privacidad (qué va al repo vs *.local), la disciplina anti-duplicados y la verificación."),
             new("🚚", "reubicar-master", "mover un master —cerebro+sesión— a otra casa/subfolder-repo git, sin lobotomía ni tail",
                 "skill · opt-in",
-                "Muda una sesión master COMPLETA de Claude Code a otro repo (caso canónico: los brain-master a claude-brain) sin dejar nada a medias: transcript re-anclado + cwd reescrito, cerebro del master migrado por su canal correcto, slug global y TODAS las referencias (masters.json target por-id, alias, symlink memory) corregidas de forma ATÓMICA, residuo quirúrgico barrido y doc=realidad. Úsala cuando un --resume cae en un folder muerto, un master quedó a medias (residuo + resume roto), o quieres consolidar los dos brain-master (Mac + Cachy) en claude-brain sin lobotomizarlos, sin fuga a un repo público ni duplicado divergente. Hermana de claude-proyecto-autocontenido (esa define DÓNDE vive el cerebro; ésta lo MUEVE de casa)."),
+                "Muda una sesión master COMPLETA de Claude Code a otro repo (caso canónico: los brain-master a cortex) sin dejar nada a medias: transcript re-anclado + cwd reescrito, cerebro del master migrado por su canal correcto, slug global y TODAS las referencias (masters.json target por-id, alias, symlink memory) corregidas de forma ATÓMICA, residuo quirúrgico barrido y doc=realidad. Úsala cuando un --resume cae en un folder muerto, un master quedó a medias (residuo + resume roto), o quieres consolidar los dos brain-master (Mac + Cachy) en cortex sin lobotomizarlos, sin fuga a un repo público ni duplicado divergente. Hermana de claude-proyecto-autocontenido (esa define DÓNDE vive el cerebro; ésta lo MUEVE de casa)."),
         ]),
     ];
 

@@ -1,4 +1,4 @@
-// 05 — Continuidad del HILO: checkpoint → compact → rehidratar (claude-brain)  ·  FUENTE editable (.dot)
+// 05 — Continuidad del HILO: checkpoint → compact → rehidratar (cortex)  ·  FUENTE editable (.dot)
 // Render:  dot -Tsvg 05-continuidad-checkpoint-compact-rehidratar.dot -o 05-continuidad-checkpoint-compact-rehidratar.svg
 // Construido 2026-08-01 desde el CÓDIGO/DOC REAL: hook aviso-contexto.sh (watermark por TOKENS reales),
 // skill checkpoint (2 niveles → hilo-mental-actual.md), sección `# Compact instructions` del CLAUDE.md,

@@ -120,7 +120,7 @@ rompe esa garantía (el guard autoriza el comando, pero no controla el evento fu
 la integración coordinada a develop/main **espera el pipeline verde primero y mergea de inmediato**, sin
 dejarlo armado — el "sin fricción de revisión" para 1–3 devs sigue aplicando (nadie más aprueba el MR),
 lo que cambia es que el ACTO de mergear pasa ya, deliberado, no en diferido. (Visto al mergear el !112 de
-claude-brain: quedó en MWPS pese al OK explícito.) El candado server-side definitivo sigue siendo proteger
+cortex: quedó en MWPS pese al OK explícito.) El candado server-side definitivo sigue siendo proteger
 las ramas + `squash_option=always` (GitLab).
 
 ### El mensaje-resumen (`--squash-message`) — redáctalo bien, es lo que queda en develop
@@ -144,7 +144,7 @@ Antes de dar por cerrado el slice, pregúntate: **¿dejó una lección reutiliza
 convención, un patrón, o hasta una skill nueva)? No lo dejes en "ya me acordaré" — cosecharlo es parte
 del cierre, no un extra.
 - **Genérica** (no atada a este proyecto) → promuévela en la MISMA tanda a la **skill** que le toque
-  y/o al **cerebro global** (`claude-brain` / los hooks y normas de `~/.claude`). Es el punto de
+  y/o al **cerebro global** (`cortex` / los hooks y normas de `~/.claude`). Es el punto de
   curación manual: tú y el usuario deciden qué merece subir (no todo sube — evita ensuciar el global
   con ruido específico del proyecto).
 - **Específica del proyecto** → ya quedó en la memoria del repo (Paso 2); no la subas al global.

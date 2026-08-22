@@ -1,4 +1,4 @@
-// 02 — Ciclo de vida de la sesión (claude-brain)  ·  FUENTE editable (Graphviz .dot)
+// 02 — Ciclo de vida de la sesión (cortex)  ·  FUENTE editable (Graphviz .dot)
 // Render:  dot -Tsvg 02-ciclo-de-vida-de-la-sesion.dot -o 02-ciclo-de-vida-de-la-sesion.svg
 // Completado 2026-07-29: el esqueleto ya era bueno; se AÑADEN los 2 hooks de SessionStart que faltaban
 // y que MUTAN git (aviso-drift-cerebro, barrer-ramas), el estado de CIERRE de sesión y la LEYENDA.
@@ -106,7 +106,7 @@ digraph flujos {
 
     // ── LOS DOS QUE FALTABAN — y MUTAN git (borde rojo grueso) ──
     DRIFT  [color="#c0392b", penwidth=3,
-            label="⚠ ESCRIBE git · 🔔🧬  aviso-drift-cerebro  (SessionStart · GLOBAL)\ncorre sincronizar-cerebro en DRY-RUN (diff por contenido vs ~/.claude-brain).\nEn rama Develop* con .claude/ LIMPIO → --apply + git add + commit + PUSH SOLO\n(auto-sync de la copia por-repo). En otra rama / árbol sucio → solo AVISA.\n↳ es la pieza de SESIÓN del flujo de PROPAGACIÓN del cerebro (ver 01)"];
+            label="⚠ ESCRIBE git · 🔔🧬  aviso-drift-cerebro  (SessionStart · GLOBAL)\ncorre sincronizar-cerebro en DRY-RUN (diff por contenido vs ~/.cortex).\nEn rama Develop* con .claude/ LIMPIO → --apply + git add + commit + PUSH SOLO\n(auto-sync de la copia por-repo). En otra rama / árbol sucio → solo AVISA.\n↳ es la pieza de SESIÓN del flujo de PROPAGACIÓN del cerebro (ver 01)"];
     BARRER [color="#c0392b", penwidth=3,
             label="⚠ ESCRIBE git · 🔔🧹  barrer-ramas  (SessionStart · GLOBAL)\nthrottle 24h; lanza limpiar-ramas.sh DETACHED (nohup) que hace `git branch -d`\nde ramas zombie ya integradas (squash-merge / remota borrada / equivalencia de parche).\nConserva trabajo sin integrar; NUNCA toca actual/base/develop/main/Develop*/keep/*"];
     RACE   [color="#c9a227",

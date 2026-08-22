@@ -2,7 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
-namespace ClaudeBrain;
+namespace Cortex;
 
 /// <summary>
 /// Estado de instalación de una pieza del cerebro, leído de la realidad (`~/.claude`).
@@ -148,7 +148,7 @@ public static class BrainInspector
             if (File.Exists(claudeMd))
             {
                 string txt = File.ReadAllText(claudeMd, Encoding.UTF8);
-                st.HasNorms = txt.Contains("BEGIN claude-brain")
+                st.HasNorms = txt.Contains("BEGIN cortex")
                     || txt.Contains("Definición de \"LISTO\"")
                     || txt.Contains("reflejo de la realidad");
             }

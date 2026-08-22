@@ -3,7 +3,7 @@
 # Uso: bash macos/tools/indicador-preview/render.sh
 set -eu
 DIR="$(cd "$(dirname "$0")" && pwd)"
-PILL="$DIR/../../Sources/ClaudeBrain/PillImage.swift"
+PILL="$DIR/../../Sources/Cortex/PillImage.swift"
 OUT="$DIR/../../../screenshots/indicador-barra.png"
 TMP="$(mktemp -d)"
 swiftc -O -o "$TMP/preview" "$DIR/stubs.swift" "$PILL" "$DIR/main.swift" -framework AppKit

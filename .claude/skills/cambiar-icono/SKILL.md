@@ -1,15 +1,15 @@
 ---
 name: cambiar-icono
 description: >
-  Cambia o regenera el ícono del widget claude-brain (el cerebro + chispa de Claude) en las 3
+  Cambia o regenera el ícono del widget cortex (el cerebro + chispa de Claude) en las 3
   plataformas Y el ícono del login item del daemon. Fuente única = SVG; render por plataforma con
   rsvg/iconutil/packer .ico; login item vía NSWorkspace.setIcon. Incluye los gotchas reales
   (regenerar SIEMPRE, no reusar el .icns rancio; NO usar Rez; reventar la caché de íconos).
 ---
 
-# cambiar-icono — el ícono de Claude Brain en las 3 plataformas + login item
+# cambiar-icono — el ícono de Cortex en las 3 plataformas + login item
 
-Repo `~/code/claude-brain` (GitHub `unjordi/claude-brain`). El ícono es **cerebro rosado (base Noto
+Repo `~/code/cortex` (GitHub `unjordi/cortex`). El ícono es **cerebro rosado (base Noto
 Emoji, mirando a la derecha) + asterisco naranja de Claude, sobre squircle grafito**. Identidad del
 cerebro Noto establecida el 2026-07-15 (antes: cerebro crema dibujado a mano; y aún antes, un medidor).
 El cerebro deriva de Noto Emoji (Apache-2.0) → **acreditado en `NOTICE`** (requisito de la licencia).
@@ -33,18 +33,18 @@ Para cambiar el diseño: edita los SVG, renderiza a PNG para autoevaluar (`rsvg-
 ## Regenerar por plataforma
 - **macOS (.icns):** `bash macos/make-icon.sh` → rasteriza los SVG en el .iconset (chica en 16/32,
   grande en 128+) y arma `macos/build/AppIcon.icns`. `make-app.sh` lo copia a la `.app`.
-- **Linux (plasmoid):** el SVG grande vive en `src/plasmoid/contents/icons/claude-brain.svg` y
-  `metadata.json` tiene `"Icon": "claude-brain"`. Si cambias el arte, re-copia `assets/icon.svg` ahí.
+- **Linux (plasmoid):** el SVG grande vive en `src/plasmoid/contents/icons/cortex.svg` y
+  `metadata.json` tiene `"Icon": "cortex"`. Si cambias el arte, re-copia `assets/icon.svg` ahí.
 - **Windows (.ico):** corre **`bash windows/make-ico.sh`** — rsvg-convert a PNGs (16/32 de la chica,
-  48/64/128/256 de la grande) → python empaca `windows/src/ClaudeBrain/ClaudeBrain.ico` multi-tamaño
+  48/64/128/256 de la grande) → python empaca `windows/src/Cortex/Cortex.ico` multi-tamaño
   (PNG-embedded, válido Vista+). Espejo Windows de `macos/make-icon.sh`; NO depende de ImageMagick.
   Es el ícono del **exe/ventana** (el del tray lo dibuja `TrayIconRenderer.cs` en código, no el .ico).
 
-## Login item del daemon (el ícono del `claude-brain-fetch` en "Elementos de inicio")
+## Login item del daemon (el ícono del `cortex-fetch` en "Elementos de inicio")
 El daemon es un **script pelón** → macOS le pone el genérico "exec". Se le incrusta el ícono como
 **ícono CUSTOM del archivo** vía `macos/set-icon.swift` (que usa `NSWorkspace.setIcon`). Lo hace el
 `install.sh` de macOS tras instalar el fetch. Manual:
-`swift macos/set-icon.swift macos/build/AppIcon.icns ~/.local/bin/claude-brain-fetch`
+`swift macos/set-icon.swift macos/build/AppIcon.icns ~/.local/bin/cortex-fetch`
 
 ## GOTCHAS (aprendidos a la mala el 2026-07-11)
 1. **Regenerar SIEMPRE desde el SVG, NO "solo si falta".** `make-app.sh` y el paso de fetch-icon del

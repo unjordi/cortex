@@ -19,7 +19,7 @@
 
 ## 1. Diagnóstico — por qué HOY es inconsistente (anclado al corpus)
 
-Barrido de `~/.claude-brain` (`grep` de `TodoWrite`, `scratch`, `lista de tareas`, `estado-proyecto`, `backlog`). La lista
+Barrido de `~/.cortex` (`grep` de `TodoWrite`, `scratch`, `lista de tareas`, `estado-proyecto`, `backlog`). La lista
 de TodoWrite del harness aparece **exactamente 3 veces, TODAS en negativo** — nunca se le da un trabajo propio ni un ritual:
 
 1. `brain/skills/orquestar-fanout/SKILL.md` — "La lista de **TodoWrite** del harness es **scratch de sesión** — el backlog DURABLE es estado-proyecto.md. No confundas una con la otra."

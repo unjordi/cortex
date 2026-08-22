@@ -8,7 +8,7 @@
 # pero NO este sentido (instalada→fuente) — por eso este guard.
 #
 # Doc=realidad: la única copia que sobrevive un re-install es la del clon canónico
-# (${CLAUDE_BRAIN_DIR:-$HOME/.claude-brain}/brain/…). Editar la instalada es editar un artefacto que
+# (${CLAUDE_BRAIN_DIR:-$HOME/.cortex}/brain/…). Editar la instalada es editar un artefacto que
 # se re-genera; el aviso redirige a la fuente y recuerda propagar (install-brain / sincronizar-cerebro).
 #
 # - Solo avisa si el file_path cae bajo $HOME/.claude/skills/ o $HOME/.claude/hooks/ Y existe la fuente
@@ -36,7 +36,7 @@ case "$fp" in
   *) exit 0 ;;
 esac
 
-BRAIN_DIR="${CLAUDE_BRAIN_DIR:-$HOME/.claude-brain}"
+BRAIN_DIR="${CLAUDE_BRAIN_DIR:-$HOME/.cortex}"
 src="$BRAIN_DIR/brain/$relsub"
 
 # Sin fuente correspondiente → skill/hook puramente local → NO es este error → silencio.
