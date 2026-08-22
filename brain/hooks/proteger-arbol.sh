@@ -9,6 +9,10 @@ command -v jq >/dev/null 2>&1 || exit 0
 input=$(cat 2>/dev/null || true)
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
 [ -z "$cmd" ] && exit 0
+# PRE-FILTRO barato (en-proceso): todo lo que este hook vigila (git reset/checkout/rebase/branch -D)
+# contiene 'git' → sin 'git' en el comando, no hay nada que vigilar → early-exit ANTES de sed/grep en el
+# camino COMÚN. Conservador: un git destructivo SIEMPRE contiene 'git' → jamás se salta un caso real.
+case "$cmd" in *git*) : ;; *) exit 0 ;; esac
 # Quita literales entrecomillados para no matchear 'git reset' como dato.
 unquoted=$(printf '%s' "$cmd" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g")
 # ¿git DESTRUCTIVO que mueve HEAD / descarta commits?
