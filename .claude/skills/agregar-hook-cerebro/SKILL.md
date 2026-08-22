@@ -1,7 +1,7 @@
 ---
 name: agregar-hook-cerebro
 description: >
-  Añade un guardrail/hook NUEVO al cerebro global de claude-brain de punta a punta —
+  Añade un guardrail/hook NUEVO al cerebro global de cortex de punta a punta —
   el .sh, su cableado idempotente en install/uninstall, su prueba en test-brain, y su
   entrada en el catálogo de la pestaña "Cerebro" de las 3 GUIs (macOS/Linux/Windows).
   Úsalo cuando quieras sumar una regla nueva (bloqueante o de aviso) al cerebro; destila

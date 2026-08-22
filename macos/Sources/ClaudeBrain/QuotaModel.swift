@@ -3,7 +3,7 @@ import SwiftUI
 
 // MARK: - state.json (límites)
 
-/// One usage bucket (5-hour block or weekly), as written by claude-brain-fetch.
+/// One usage bucket (5-hour block or weekly), as written by cortex-fetch.
 struct Bucket: Codable {
     let percent: Double?
     let cost_usd: Double?
@@ -189,30 +189,30 @@ final class QuotaModel: ObservableObject {
     @Published var sessions: [Session] = []
     @Published var loadError: String?
 
-    /// ~/Library/Caches/claude-brain/state.json — same path the fetch script writes.
+    /// ~/Library/Caches/cortex/state.json — same path the fetch script writes.
     static var stateURL: URL {
         let cache = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        return cache.appendingPathComponent("claude-brain/state.json")
+        return cache.appendingPathComponent("cortex/state.json")
     }
-    /// ~/Library/Caches/claude-brain/stats.json — local ccusage breakdown.
+    /// ~/Library/Caches/cortex/stats.json — local ccusage breakdown.
     static var statsURL: URL {
         let cache = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        return cache.appendingPathComponent("claude-brain/stats.json")
+        return cache.appendingPathComponent("cortex/stats.json")
     }
-    /// ~/Library/Caches/claude-brain/stats-global.json — vista fusionada de todas las máquinas (sync (e)).
+    /// ~/Library/Caches/cortex/stats-global.json — vista fusionada de todas las máquinas (sync (e)).
     static var statsGlobalURL: URL {
         let cache = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        return cache.appendingPathComponent("claude-brain/stats-global.json")
+        return cache.appendingPathComponent("cortex/stats-global.json")
     }
-    /// ~/Library/Caches/claude-brain/chats.json — conversaciones del app de escritorio (fuente local).
+    /// ~/Library/Caches/cortex/chats.json — conversaciones del app de escritorio (fuente local).
     static var chatsURL: URL {
         let cache = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        return cache.appendingPathComponent("claude-brain/chats.json")
+        return cache.appendingPathComponent("cortex/chats.json")
     }
-    /// ~/Library/Caches/claude-brain/sessions.json — sesiones de Claude Code por proyecto.
+    /// ~/Library/Caches/cortex/sessions.json — sesiones de Claude Code por proyecto.
     static var sessionsURL: URL {
         let cache = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        return cache.appendingPathComponent("claude-brain/sessions.json")
+        return cache.appendingPathComponent("cortex/sessions.json")
     }
 
     /// ~/.claude (o CLAUDE_CONFIG_DIR) — base de los mapas de alias que escribe el widget.
@@ -265,8 +265,8 @@ final class QuotaModel: ObservableObject {
     // MARK: - Shell-out a los helpers node / al CLI claude (features de sesión)
 
     /// Directorio donde viven EN RUNTIME los helpers node (`sessions-extract.js`, `session-move.js`)
-    /// y el CLI `claude`: el MISMO `~/.local/bin` donde el app instala y corre `claude-brain-fetch`
-    /// (ver AppDelegate.fetchScript, `claude-brain-fetch`) y desde donde el fetch resuelve sus `.js` vía `dirname "$0"`.
+    /// y el CLI `claude`: el MISMO `~/.local/bin` donde el app instala y corre `cortex-fetch`
+    /// (ver AppDelegate.fetchScript, `cortex-fetch`) y desde donde el fetch resuelve sus `.js` vía `dirname "$0"`.
     /// No se hardcodea la ruta del script aparte: se deriva de esta base, igual que el resto del app.
     static var binDir: URL {
         FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".local/bin")

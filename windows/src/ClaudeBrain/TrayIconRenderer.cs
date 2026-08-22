@@ -79,7 +79,7 @@ public static class TrayIconRenderer
         return (Icon.FromHandle(h), h);
     }
 
-    /// El ícono de marca (claude-brain) escalado al size — el fallback "precioso" cuando no hay
+    /// El ícono de marca (cortex) escalado al size — el fallback "precioso" cuando no hay
     /// dato de 5h. Si el brand no decodifica, un punto de peligro para no devolver un icono vacío.
     private static (Icon, IntPtr) RenderBrand(int size)
     {

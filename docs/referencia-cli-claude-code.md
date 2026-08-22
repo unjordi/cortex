@@ -1,9 +1,9 @@
 # Referencia Claude Code CLI + ecosistema Claude
 
-> Wiki local de referencia para trabajar/desarrollar sobre el ecosistema Claude (con foco en el widget de cuota de `claude-brain`).
+> Wiki local de referencia para trabajar/desarrollar sobre el ecosistema Claude (con foco en el widget de cuota de `cortex`).
 > **Fecha de captura:** 2026-08-05.
 > **Fuentes oficiales:** documentación de Claude Code en `https://code.claude.com/docs/en/…` (los viejos `docs.anthropic.com/en/docs/claude-code/*` y `docs.claude.com/en/docs/claude-code/*` **redirigen 301** aquí). Índice máquina-legible: `https://code.claude.com/docs/llms.txt`.
-> **Fuente de la WebAPI interna de uso/cuota:** NO está en la doc oficial → se documenta desde el **código del propio widget** (`~/.claude-brain/…`), que ya la consume en producción, citando `archivo:línea`.
+> **Fuente de la WebAPI interna de uso/cuota:** NO está en la doc oficial → se documenta desde el **código del propio widget** (`~/.cortex/…`), que ya la consume en producción, citando `archivo:línea`.
 > Regla dura de este documento: lo que la doc oficial no dice, va marcado como **hueco**, no se inventa.
 
 ---
@@ -61,7 +61,7 @@ Es decir, **`--bare` te obliga a usar API key de pago** (o `apiKeyHelper`), NO t
    - `--exclude-dynamic-system-prompt-sections` mueve las secciones per-máquina al primer mensaje de usuario (arranque más liviano).
    - Este ES el patrón que usa el propio widget: `claude -p --no-session-persistence <prompt>` (NUNCA `--bare`), justamente porque depende del login OAuth activo — ver `QuotaModel.swift:313-317`.
 
-2. **Headless en CI / launchd (sin login interactivo) conservando la SUSCRIPCIÓN:** genera un **token OAuth de larga vida** con `claude setup-token` y expórtalo como **`CLAUDE_CODE_OAUTH_TOKEN`**. Ese token es entitlement de suscripción (NO facturación por token de la API). Confirmado por el código del widget: `CLAUDE_CODE_OAUTH_TOKEN` = "token de larga vida de `claude setup-token`", usado como fallback headless (`claude-brain-fetch:91-94`).
+2. **Headless en CI / launchd (sin login interactivo) conservando la SUSCRIPCIÓN:** genera un **token OAuth de larga vida** con `claude setup-token` y expórtalo como **`CLAUDE_CODE_OAUTH_TOKEN`**. Ese token es entitlement de suscripción (NO facturación por token de la API). Confirmado por el código del widget: `CLAUDE_CODE_OAUTH_TOKEN` = "token de larga vida de `claude setup-token`", usado como fallback headless (`cortex-fetch:91-94`).
 
 **Regla mental:** `--bare` = arranque mínimo **pero** exige API key (bolsa de pago). Suscripción OAuth = `claude -p` normal **o** `CLAUDE_CODE_OAUTH_TOKEN`. No existe un flag documentado que a la vez dé "arranque mínimo tipo `--bare`" **y** OAuth de suscripción → ver [Huecos](#18-huecos-lo-que-la-doc-oficial-no-responde).
 
@@ -402,7 +402,7 @@ Fuente: [desktop], [overview]. App standalone (macOS universal, Windows x64/ARM6
 - **Mismo motor y config que el CLI:** cada superficie conecta al MISMO engine de Claude Code, así que tus `CLAUDE.md`, settings y MCP servers funcionan en todas. [overview]
 - **Diferencias vs CLI:** UI visual — sesiones en paralelo con aislamiento git, revisión visual de diffs, editor/terminal integrados, preview del app, monitoreo de PRs, side chats, computer use, Dispatch desde el teléfono, tareas programadas locales.
 - **Handoff:** `/desktop` (alias `/app`) continúa la sesión de terminal en la app (requiere subscripción claude.ai; mac + Windows x64). Cada superficie mantiene su propio historial de sesiones.
-- **Dato para el widget:** la app cachea sus conversaciones en un **IndexedDB local** (Snappy + V8) que `chats-extract.js` lee sin red ni cookies (`claude-brain-fetch:495-505`). El CLI y la app **comparten el mismo slot de credencial** de la máquina (ver §16).
+- **Dato para el widget:** la app cachea sus conversaciones en un **IndexedDB local** (Snappy + V8) que `chats-extract.js` lee sin red ni cookies (`cortex-fetch:495-505`). El CLI y la app **comparten el mismo slot de credencial** de la máquina (ver §16).
 
 ---
 
@@ -426,7 +426,7 @@ Fuente: [costs], [headless]. **Son bolsas/cuentas DISTINTAS.** No se mezclan.
 
 ## 15. 🎯 La WebAPI interna de USO/CUOTA (fuente del widget)
 
-**No documentada oficialmente.** Verdad = el código del widget, que ya la consume en producción. Rutas: `~/.claude-brain/macos/bin/claude-brain-fetch` (mac), `~/.claude-brain/src/bin/claude-brain-fetch` (Linux), modelo Swift `~/.claude-brain/macos/Sources/ClaudeBrain/QuotaModel.swift`.
+**No documentada oficialmente.** Verdad = el código del widget, que ya la consume en producción. Rutas: `~/.cortex/macos/bin/cortex-fetch` (mac), `~/.cortex/src/bin/cortex-fetch` (Linux), modelo Swift `~/.cortex/macos/Sources/ClaudeBrain/QuotaModel.swift`.
 
 ### Endpoint
 ```
@@ -434,20 +434,20 @@ GET https://api.anthropic.com/api/oauth/usage
   Authorization: Bearer <accessToken>
   anthropic-beta: oauth-2025-04-20
 ```
-- macOS: `claude-brain-fetch:121-123`; Linux: `src/bin/claude-brain-fetch:103-105`.
+- macOS: `cortex-fetch:121-123`; Linux: `src/bin/cortex-fetch:103-105`.
 - Es "los mismos datos que `/usage` muestra dentro de Claude Code", leídos con el token OAuth que Claude Code ya guarda (cabecera del script, líneas 2-8).
-- Sanity check: la respuesta debe traer `.five_hour.utilization != null` (`claude-brain-fetch:125`).
+- Sanity check: la respuesta debe traer `.five_hour.utilization != null` (`cortex-fetch:125`).
 
 ### De dónde sale el token (orden de preferencia)
-Función `oauth_token()` (`claude-brain-fetch:77-96`):
+Función `oauth_token()` (`cortex-fetch:77-96`):
 1. **macOS Keychain:** `security find-generic-password -s "Claude Code-credentials" -w` → JSON con `.claudeAiOauth.accessToken` (`:82`, `:88`).
-2. **Archivo:** `$CLAUDE_CONFIG_DIR/.credentials.json` o `~/.claude/.credentials.json`, mismo path JSON `.claudeAiOauth.accessToken` (`:83-85`, `:88`). (En Linux es la fuente primaria: `src/bin/claude-brain-fetch:66-73`.)
+2. **Archivo:** `$CLAUDE_CONFIG_DIR/.credentials.json` o `~/.claude/.credentials.json`, mismo path JSON `.claudeAiOauth.accessToken` (`:83-85`, `:88`). (En Linux es la fuente primaria: `src/bin/cortex-fetch:66-73`.)
 3. **Fallback headless:** env `CLAUDE_CODE_OAUTH_TOKEN` (token de larga vida de `claude setup-token`), SOLO si no hay login local (`:91-94`).
 - Se prefiere el **login activo** para reflejar la cuenta con la que estás logueado AHORA (el token rota en cada `login`/`logout`).
 - Email/UUID de la cuenta **no** están en el token: se leen de `~/.claude.json` (`.oauthAccount.emailAddress`, `.oauthAccount.accountUuid`) — `:102`, `:105`. La ruta de `.claude.json` honra `CLAUDE_CONFIG_DIR` (`:41-45`).
 
 ### Forma de la respuesta (campos que el widget consume)
-Del `jq` en `claude-brain-fetch:186-279` y los structs Swift en `QuotaModel.swift:5-57`:
+Del `jq` en `cortex-fetch:186-279` y los structs Swift en `QuotaModel.swift:5-57`:
 - **`.five_hour`** — ventana de 5 horas: `.utilization` (0–100, %), `.resets_at` (ISO; el script normaliza fracciones/`+00:00`→`Z`). (`:212-213`, `:220`)
 - **`.seven_day`** — ventana **semanal** (7 días): `.utilization`, `.resets_at`. (`:214-215`, `:224`)
 - **`.limits[]`** — límites acotados en el tiempo (solo en modo oauth). Cada uno: `.kind` (`session` | `weekly_all` | `weekly_scoped`), `.scope.model.display_name` (nombre del modelo, solo en `weekly_scoped`), `.percent`, `.resets_at`, `.severity`, `.is_active`. (`:255-264`; struct `LimitEntry` `QuotaModel.swift:16-23`). El widget renderiza dinámicamente los `weekly_scoped` con modelo (`QuotaModel.swift:406-408`).
@@ -455,10 +455,10 @@ Del `jq` en `claude-brain-fetch:186-279` y los structs Swift en `QuotaModel.swif
 - **`.extra_usage`** — **overage / créditos de sobreuso**: `.used_credits`, `.monthly_limit`, `.currency`, `.utilization`, `.is_enabled`. (`:272-278`; struct `ExtraUsage` `QuotaModel.swift:35-41`).
 
 ### Cómo lo materializa el widget
-- Snapshot normalizado → `~/Library/Caches/claude-brain/state.json` (mac) / `~/.cache/claude-brain/state.json` (Linux). Campos: `basis` (`"oauth"` datos reales | `"cost"` estimado local), `status` (`ok|warn|crit` por umbrales `WARN_PCT`/`CRIT_PCT`), `five_hour`, `weekly`, `limits`, `spend`, `extra_usage`, `account_email/uuid`, `account_mismatch` (`claude-brain-fetch:227-279`, struct `Snapshot` `QuotaModel.swift:44-57`).
+- Snapshot normalizado → `~/Library/Caches/cortex/state.json` (mac) / `~/.cache/cortex/state.json` (Linux). Campos: `basis` (`"oauth"` datos reales | `"cost"` estimado local), `status` (`ok|warn|crit` por umbrales `WARN_PCT`/`CRIT_PCT`), `five_hour`, `weekly`, `limits`, `spend`, `extra_usage`, `account_email/uuid`, `account_mismatch` (`cortex-fetch:227-279`, struct `Snapshot` `QuotaModel.swift:44-57`).
 - **Fallback sin OAuth:** estima por costo con `ccusage` (constantes `FIVE_HOUR_CAP_USD`/`WEEKLY_CAP_USD`, `:33-34`). En ese modo NO hay `limits`/`spend`/`extra_usage`.
 - Stats locales (por día/modelo/proyecto, sesiones, mensajes, hora pico) → `stats.json`, parseando `~/.claude/projects/**/*.jsonl` con grep/awk (dedup por `msg_id`). Chats de la app → `chats.json`; sesiones → `sessions.json`.
-- **Guard de identidad:** como el CLI y Claude.app comparten un solo slot de credencial, un re-login puede cambiar de cuenta en silencio → `account_mismatch` avisa si la cuenta activa ≠ la fijada en `~/.config/claude-brain/account` (`:107-117`).
+- **Guard de identidad:** como el CLI y Claude.app comparten un solo slot de credencial, un re-login puede cambiar de cuenta en silencio → `account_mismatch` avisa si la cuenta activa ≠ la fijada en `~/.config/cortex/account` (`:107-117`).
 
 ---
 
@@ -471,7 +471,7 @@ Fuente: [overview], [headless], + código del widget.
   - **macOS:** Keychain, item genérico `"Claude Code-credentials"` (JSON con `.claudeAiOauth.accessToken`).
   - **Linux (y fallback mac):** `~/.claude/.credentials.json` (o `$CLAUDE_CONFIG_DIR/.credentials.json`), JSON `.claudeAiOauth.accessToken`.
   - El token **rota** en cada `login`/`logout`.
-- **El login es GLOBAL a la máquina:** un solo credential store, **no** por-terminal. **El CLI y Claude.app comparten ese slot** → un re-login en una superficie cambia la identidad para todas (documentado en el código del widget, `claude-brain-fetch:109-110`, `src/bin/claude-brain-fetch:91-92`).
+- **El login es GLOBAL a la máquina:** un solo credential store, **no** por-terminal. **El CLI y Claude.app comparten ese slot** → un re-login en una superficie cambia la identidad para todas (documentado en el código del widget, `cortex-fetch:109-110`, `src/bin/cortex-fetch:91-92`).
 - **Cuenta (email/uuid):** en `~/.claude.json` → `.oauthAccount.emailAddress` / `.accountUuid` (no en el token).
 - **Diferencia con API key:** OAuth = entitlement de suscripción (bolsa del plan, ventanas 5h/semanal). `ANTHROPIC_API_KEY` = facturación por token vía Console (otra bolsa). `--bare` ignora OAuth y exige API key.
 - **Refresh / expiración del access token:** el `.credentials.json` normalmente trae también refresh token y expiry, pero la **mecánica exacta de refresh no está documentada oficialmente** → [hueco](#18-huecos-lo-que-la-doc-oficial-no-responde).
@@ -490,7 +490,7 @@ Fuente: [overview], [headless], + código del widget.
 | CLI en Bedrock/Vertex/Foundry | Credenciales del cloud | Cuenta cloud (por token) | Budget/limits del cloud |
 | Claude.app (Code) | OAuth suscripción (mismo slot que el CLI) | Plan | 5h + semanal |
 | Claude Code web / mobile | claude.ai (suscripción) | Plan | 5h + semanal |
-| **Widget claude-brain** | Reusa el OAuth del CLI (keychain/archivo) o `CLAUDE_CODE_OAUTH_TOKEN`; fallback ccusage | Lee la bolsa del plan vía `api/oauth/usage`; fallback = estimación por costo local | Reporta 5h (`.five_hour`) + semanal (`.seven_day`) + limits por modelo + spend + overage |
+| **Widget cortex** | Reusa el OAuth del CLI (keychain/archivo) o `CLAUDE_CODE_OAUTH_TOKEN`; fallback ccusage | Lee la bolsa del plan vía `api/oauth/usage`; fallback = estimación por costo local | Reporta 5h (`.five_hour`) + semanal (`.seven_day`) + limits por modelo + spend + overage |
 
 Claves:
 - **Suscripción y API de pago son bolsas separadas.** Un dev se mide según cómo se autenticó.
@@ -513,4 +513,4 @@ Claves:
 
 ### Apéndice: mapa de fuentes citadas
 - Docs oficiales (todas bajo `https://code.claude.com/docs/en/`): `overview`, `cli-reference`, `headless`, `sub-agents`, `hooks`, `settings`, `memory`, `sessions`, `mcp`, `skills`, `commands`, `costs`, `desktop`, `context-window`, `env-vars`, `permission-modes`, `agent-sdk/overview`. Índice: `https://code.claude.com/docs/llms.txt`.
-- Código del widget (fuente de la WebAPI interna): `/Users/unjordi/.claude-brain/macos/bin/claude-brain-fetch`, `/Users/unjordi/.claude-brain/src/bin/claude-brain-fetch`, `/Users/unjordi/.claude-brain/macos/Sources/ClaudeBrain/QuotaModel.swift`.
+- Código del widget (fuente de la WebAPI interna): `/Users/unjordi/.cortex/macos/bin/cortex-fetch`, `/Users/unjordi/.cortex/src/bin/cortex-fetch`, `/Users/unjordi/.cortex/macos/Sources/ClaudeBrain/QuotaModel.swift`.

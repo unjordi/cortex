@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Fetches Claude Code 5-hour and weekly usage and writes a normalized JSON
-# snapshot to ~/.cache/claude-brain/state.json.
+# snapshot to ~/.cache/cortex/state.json.
 #
 # Primary source: Anthropic's OAuth usage endpoint — the same data `/usage`
 # shows inside Claude Code, read with the OAuth token Claude Code already
@@ -11,7 +11,7 @@
 # the *_CAP_USD calibration constants below. ccusage is also still used to
 # enrich the snapshot with API-equivalent $ figures when available.
 #
-# Override defaults by exporting in ~/.config/claude-brain/limits.env
+# Override defaults by exporting in ~/.config/cortex/limits.env
 # (the systemd unit sources it).
 
 set -euo pipefail
@@ -25,7 +25,7 @@ WEEKLY_CAP_USD="${WEEKLY_CAP_USD:-9000}"
 WARN_PCT="${WARN_PCT:-60}"
 CRIT_PCT="${CRIT_PCT:-85}"
 
-CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/claude-brain"
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/cortex"
 # Config de Claude Code: honra CLAUDE_CONFIG_DIR (si está, el .claude vive ahí), si no ~/.claude.
 CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 # ~/.claude.json (cuenta + nombres de proyecto): bajo CLAUDE_CONFIG_DIR si vive ahí, si no en ~.
@@ -87,10 +87,10 @@ ACCOUNT_EMAIL="$(account_email 2>/dev/null || true)"
 ACCOUNT_UUID="$(jq -er '.oauthAccount.accountUuid // empty' "$CLAUDE_JSON" 2>/dev/null || true)"
 
 # Account guard (opt-in): if a pinned account (uuid OR email) is configured in
-# $CLAUDE_BRAIN_ACCOUNT (default ~/.config/claude-brain/account) and the active
+# $CLAUDE_BRAIN_ACCOUNT (default ~/.config/cortex/account) and the active
 # account differs, flag a mismatch so the UI warns — the CLI + Claude.app share
 # one credential slot and a re-login can silently switch identities.
-ACCOUNT_PIN_FILE="${CLAUDE_BRAIN_ACCOUNT:-$HOME/.config/claude-brain/account}"
+ACCOUNT_PIN_FILE="${CLAUDE_BRAIN_ACCOUNT:-$HOME/.config/cortex/account}"
 ACCOUNT_PIN=""
 [[ -r "$ACCOUNT_PIN_FILE" ]] && ACCOUNT_PIN="$(head -n1 "$ACCOUNT_PIN_FILE" | tr -d '[:space:]')"
 ACCOUNT_MISMATCH=false
@@ -504,7 +504,7 @@ resolve_sync_dir() {
   if [[ "$v" != "auto" ]]; then printf '%s' "$v"; return; fi
   local d
   for d in "$HOME/GoogleDrive" "$HOME/google-drive" "$HOME/Google Drive" "$HOME/Insync"/*/"Google Drive" "$HOME/Mi unidad"; do
-    [[ -d "$d" ]] && { printf '%s/claude-brain-sync' "$d"; return; }
+    [[ -d "$d" ]] && { printf '%s/cortex-sync' "$d"; return; }
   done
 }
 SYNC_DIR_RESOLVED="$(resolve_sync_dir || true)"
@@ -512,7 +512,7 @@ if [[ -n "${SYNC_DIR_RESOLVED:-}" && -f "$CACHE_DIR/stats.json" ]] && mkdir -p "
   # machine-id ESTABLE: el snapshot se nombra por este id, NO por el hostname (evita que una máquina
   # que cambia de nombre genere varios snapshots y el merge multiplique). En Linux systemd existe
   # /etc/machine-id (muy estable); si no, se genera un uuid y se persiste. El nombre bonito va aparte.
-  MID_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/claude-brain/machine-id"
+  MID_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/cortex/machine-id"
   MACHINE_ID="$(cat "$MID_FILE" 2>/dev/null || true)"
   if [[ -z "$MACHINE_ID" ]]; then
     MACHINE_ID="$(cat /etc/machine-id 2>/dev/null || uuidgen 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"

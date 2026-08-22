@@ -12,7 +12,7 @@ test automatizado puede juzgar por sí solo, por eso necesita un LLM con criteri
 
 > **Motor genérico + catálogo por-repo.** El motor (`ejecutar.sh`, `lib-formato.sh`) y el
 > esqueleto (`invariantes-semanticos.yml` con solo invariantes `general`) viajan desde el
-> template (`claude-brain`). Los `checks/*.sh` de fábrica son EJEMPLOS de la plantilla .NET —
+> template (`cortex`). Los `checks/*.sh` de fábrica son EJEMPLOS de la plantilla .NET —
 > cada repo afina su propio catálogo a su stack/dominio. Si en ESTE repo el `.yml` ya creció con
 > entradas `proyecto-especifico`, úsalo tal cual (trae tanto los `general` heredados como el
 > dominio acumulado aquí).
@@ -63,7 +63,7 @@ Por cada hallazgo nuevo confirmado, decide dónde vive:
   texto en cada script.
 - **Requiere criterio/intención de negocio** → agrégalo a `invariantes-semanticos.yml`:
   - `alcance: general` si aplica a cualquier proyecto derivado de la plantilla → cosecha la
-    entrada de vuelta al TEMPLATE (`claude-brain`), para que viaje a futuros clones.
+    entrada de vuelta al TEMPLATE (`cortex`), para que viaje a futuros clones.
   - `alcance: proyecto-especifico` si es una regla de negocio de ESTE repo concreto → va solo
     en la copia de ESTE proyecto, no en el template.
 - Actualiza `estado` de las entradas re-verificadas (`resuelto` si ya se arregló y se

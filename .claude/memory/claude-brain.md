@@ -1,6 +1,6 @@
 ---
-name: claude-brain
-description: "Widget KDE+macOS+Windows de límites de uso de Claude; repo propio github.com/unjordi/claude-brain (fork de fuziontech restyleado al look FelixDes)"
+name: cortex
+description: "Widget KDE+macOS+Windows de límites de uso de Claude; repo propio github.com/unjordi/cortex (fork de fuziontech restyleado al look FelixDes)"
 metadata: 
   node_type: memory
   type: project
@@ -10,7 +10,7 @@ metadata:
 Widget de escritorio open-source que muestra los límites de uso de Claude (sesión 5h + semanal de claude.ai), en **paridad macOS/Linux/Windows**.
 
 ## Casa canónica e instalación
-- **Fuente de verdad ÚNICA:** repo propio **`github.com/unjordi/claude-brain`** (fork público de fuziontech), clonado en `~/code/claude-brain`. El código y el CEREBRO de Claude (`.claude/`) viajan juntos por el repo. `origin`=tu fork; `upstream`=fuziontech (jalar mejoras / eventual PR upstream).
+- **Fuente de verdad ÚNICA:** repo propio **`github.com/unjordi/cortex`** (fork público de fuziontech), clonado en `~/code/cortex`. El código y el CEREBRO de Claude (`.claude/`) viajan juntos por el repo. `origin`=tu fork; `upstream`=fuziontech (jalar mejoras / eventual PR upstream).
 - **En otra máquina:** clonar y `bash .claude/bootstrap-claude.sh` una vez (enlaza la memoria al slug de esa máquina; skills se autocargan).
 - **Instalar el plasmoid (KDE):** `kpackagetool6 -t Plasma/Applet -i/-u <path>/src/plasmoid` (no hay `just`). Preview: `plasmoidviewer -a <path>` + spectacle. Recargar: `kquitapp6 plasmashell && kstart plasmashell`. `ccusage` global vía pkexec (su binario nativo necesitó `chmod +x`).
 - **Instalar Windows:** `pwsh -File windows/install.ps1` → publica un `.exe` self-contained single-file (~110 MB) a `%LOCALAPPDATA%\Programs\ClaudeBrain` + autoarranque `HKCU\...\Run`.
@@ -23,8 +23,8 @@ Widget de escritorio open-source que muestra los límites de uso de Claude (sesi
 - **`account_email`** (footer): de `~/.claude.json` → `.oauthAccount.emailAddress` — **NO** está en `.credentials.json`/Keychain (que solo trae el token). Nuevo campo `account_email` en `state.json`; si null, cae al texto viejo.
 
 ## Arquitectura por-OS (paridad)
-- **Linux/mac:** script bash `*/bin/claude-brain-fetch` (idéntico entre `macos/bin/` y `src/bin/` por convención) en timer/launchd cada 5 min → `state.json`+`stats.json`. macOS: launchd, token del Keychain, Node vía brew.
-- **Windows:** app de bandeja **WinForms .NET 10** en `windows/` (sin upstream); **hace el fetch en C# ella misma** cada 5 min (piso 5.5 min) → `%LOCALAPPDATA%\claude-brain\{state,stats}.json` (mismo schema). Ícono de bandeja = 2 mini-barras SIN número (la bandeja es cuadrada; % y ⟳reset van a tooltip+popup).
+- **Linux/mac:** script bash `*/bin/cortex-fetch` (idéntico entre `macos/bin/` y `src/bin/` por convención) en timer/launchd cada 5 min → `state.json`+`stats.json`. macOS: launchd, token del Keychain, Node vía brew.
+- **Windows:** app de bandeja **WinForms .NET 10** en `windows/` (sin upstream); **hace el fetch en C# ella misma** cada 5 min (piso 5.5 min) → `%LOCALAPPDATA%\cortex\{state,stats}.json` (mismo schema). Ícono de bandeja = 2 mini-barras SIN número (la bandeja es cuadrada; % y ⟳reset van a tooltip+popup).
 - **BUILD de Windows en mac:** `dotnet build -p:EnableWindowsTargeting=true` → 0/0 (el .NET SDK cross-targetea). **RUNTIME/UI necesita Windows REAL** (`--shot`/`DrawToBitmap` de WinForms es Windows-only) → QA en VM/otra compu/Chunito (🪦#03b0d197a). Build req: **.NET 10 SDK**.
 
 ## Pestañas del popup (riel vertical izquierdo + StackLayout)
@@ -44,7 +44,7 @@ Widget de escritorio open-source que muestra los límites de uso de Claude (sesi
 - **ccusage agrega TODOS los CLIs de IA de la máquina** (Claude Code + Gemini/Codex/OpenCode/Amp/Droid si están) → **Modelos/Resumen NO están acotados a Claude**; **Proyectos SÍ** (solo lee `~/.claude/projects`) → su total puede ser menor, no es bug. Para acotar Modelos/Resumen a Claude: ver `ccusage claude daily` (subcomando).
 - **macOS — `popover.contentSize` (AppKit) y `.frame()` (SwiftUI raíz) son DOS fuentes de verdad que deben COINCIDIR a mano** (ambas `520×420`). No hay binding automático fiable: si difieren, el `NSHostingController` re-negocia el tamaño tras el 1er render y el popover se ve "saltado"/mal alineado. Si tocas el alto de una pestaña, actualiza los dos lugares juntos (`AppDelegate.swift` + `PopoverView.swift`; no hay ScrollView en Límites).
 - **macOS — íconos del rail en bold** partían "Resumen" en 2 líneas → rail a 132pt + `lineLimit(1)`.
-- **Reset semanal (fallback `basis:"cost"` cuando el endpoint cae):** NO adivines "próximo lunes 00:00 UTC" (el reset real de esta cuenta es **viernes 5am local = 11:00 UTC**). El fetch hereda el `resets_at` del run ANTERIOR *solo si ese run tenía `basis:"oauth"`* y sigue en el futuro (compara ISO-8601 "Z" lexicográficamente, válido). Aplica a `five_hour` y `weekly` en ambos `*/bin/claude-brain-fetch`.
+- **Reset semanal (fallback `basis:"cost"` cuando el endpoint cae):** NO adivines "próximo lunes 00:00 UTC" (el reset real de esta cuenta es **viernes 5am local = 11:00 UTC**). El fetch hereda el `resets_at` del run ANTERIOR *solo si ese run tenía `basis:"oauth"`* y sigue en el futuro (compara ISO-8601 "Z" lexicográficamente, válido). Aplica a `five_hour` y `weekly` en ambos `*/bin/cortex-fetch`.
 - **Bandeja/tray:** (1) las mini-barras COLAPSAN a ancho 0 → la barra necesita `Layout.minimumWidth` (no solo `preferredWidth`). (2) el widget se EMPALMA con los vecinos → el panel reserva `Layout.min/preferred/maxWidth` de la compactRepresentation, **NO** `implicitWidth`. Etiqueta del `$`: `(API equiv local)`. unjordi lo tiene EN LA BANDEJA (no en el panel).
 - **`$ duplicado` NO es bug:** five_hour y weekly coinciden al inicio de semana porque el semanal arranca = solo el bloque de 5h activo y se separa conforme avanza la semana (block vs weekly de fuentes distintas).
 - **Refresh tras mover/renombrar sesión:** NO uses el fetch completo (lento) — re-corre SOLO `sessions-extract.js` y recarga al instante (`QuotaModel.refreshSessions` / `sessionsExtractSource` / `RefreshSessionsAsync`).
@@ -54,15 +54,15 @@ Widget de escritorio open-source que muestra los límites de uso de Claude (sesi
 - **Mover sesión entre slugs:** `bin/session-move.js` mueve el `.jsonl`, RESPALDA en `~/.claude/session-move-backups/` y reescribe el `cwd` interno (para que `claude --resume` reanude coherente). Los 3 instaladores lo despliegan.
 
 ## Íconos (fuente ÚNICA = SVG)
-`assets/icon.svg` (grande) + `assets/icon-small.svg` (cerebro simple + chispa gruesa para **≤32px**, nítido a 16px en el login item). Render con **rsvg-convert** (librsvg, prereq de macOS): `.icns` (`macos/make-icon.sh` + `iconutil`), plasmoid (`src/plasmoid/contents/icons/claude-brain.svg` + metadata `Icon: "claude-brain"`), Windows `.ico` (packer propio en python, 6 tamaños PNG — no hay ImageMagick). Diseño actual = **cerebro + chispa**; no volver a los previos (🪦#7faf66200).
+`assets/icon.svg` (grande) + `assets/icon-small.svg` (cerebro simple + chispa gruesa para **≤32px**, nítido a 16px en el login item). Render con **rsvg-convert** (librsvg, prereq de macOS): `.icns` (`macos/make-icon.sh` + `iconutil`), plasmoid (`src/plasmoid/contents/icons/cortex.svg` + metadata `Icon: "cortex"`), Windows `.ico` (packer propio en python, 6 tamaños PNG — no hay ImageMagick). Diseño actual = **cerebro + chispa**; no volver a los previos (🪦#7faf66200).
 - **Login item del daemon:** incrusta el ícono como ícono CUSTOM del archivo vía **`NSWorkspace.setIcon`** (`macos/set-icon.swift`). **NO uses Rez/SetFile** (dejan el resource fork a medias: 286 bytes rotos vs 214KB con setIcon) (🪦#f21a621da).
 - **GOTCHA:** `make-app.sh`/fetch-icon deben **regenerar SIEMPRE el `.icns` desde el SVG, NO "solo si falta"** — un `.icns` rancio se queda pegado y se instala el ícono viejo (bug real). Ver skill `cambiar-icono`.
 
-## Rebrand `claude-quota` → `claude-brain` (criterio para futuros cambios)
-- **RENOMBRA lo visible/runtime:** `.app` "Claude Brain Widget", daemon `claude-brain-fetch`, launchd `io.github.unjordi.claude-brain`, systemd `claude-brain.{service,timer}`, cache `~/{Library/Caches,.cache}/claude-brain` (+ `%LOCALAPPDATA%\claude-brain`), logs `/tmp/claude-brain.*`.
-- **CONSERVA lo invisible/que rompería:** dir de config **`~/.config/claude-brain`** (ahí viven `limits.env`/`machine-id`/`account`; moverlo pierde calibración+identidad de sync), env vars **`CLAUDE_BRAIN_ACCOUNT`/`_SYNC_DIR`**, User-Agent **`claude-brain`**, carpeta de nube **`claude-brain-sync`**, namespace **`ClaudeBrain`** (C#/Swift), **Id del plasmoid** (renombrarlo hace desaparecer el applet del panel), nombre del repo/dir.
+## Rebrand `claude-quota` → `cortex` (criterio para futuros cambios)
+- **RENOMBRA lo visible/runtime:** `.app` "Claude Brain Widget", daemon `cortex-fetch`, launchd `io.github.unjordi.cortex`, systemd `cortex.{service,timer}`, cache `~/{Library/Caches,.cache}/cortex` (+ `%LOCALAPPDATA%\cortex`), logs `/tmp/cortex.*`.
+- **CONSERVA lo invisible/que rompería:** dir de config **`~/.config/cortex`** (ahí viven `limits.env`/`machine-id`/`account`; moverlo pierde calibración+identidad de sync), env vars **`CLAUDE_BRAIN_ACCOUNT`/`_SYNC_DIR`**, User-Agent **`cortex`**, carpeta de nube **`cortex-sync`**, namespace **`ClaudeBrain`** (C#/Swift), **Id del plasmoid** (renombrarlo hace desaparecer el applet del panel), nombre del repo/dir.
 - **Migración** idempotente en cada instalador: baja el daemon viejo, borra la app vieja, MUEVE cache viejo→nuevo (config quieto). Barre el bloque PATH viejo del rc (marcador `(claude, claude-quota-fetch)`) en `ensure_path_local_bin` (test `e8`), que antes dejaba un 2º bloque PATH duplicado.
-- **Clon oculto del bootstrap (PR #138):** `bootstrap.sh` → `~/.claude-brain` (migra un clon viejo visible `~/claude-brain` vía `mv`); `bootstrap.ps1` → `%LOCALAPPDATA%\claude-brain-repo` (`-repo` para no chocar con el cache `%LOCALAPPDATA%\claude-brain` ni la app `%LOCALAPPDATA%\Programs\ClaudeBrain`). El autoupdate lo NECESITA (no se puede borrar tras instalar). `brain-scan.sh` conoce la ruta nueva.
+- **Clon oculto del bootstrap (PR #138):** `bootstrap.sh` → `~/.cortex` (migra un clon viejo visible `~/cortex` vía `mv`); `bootstrap.ps1` → `%LOCALAPPDATA%\cortex-repo` (`-repo` para no chocar con el cache `%LOCALAPPDATA%\cortex` ni la app `%LOCALAPPDATA%\Programs\ClaudeBrain`). El autoupdate lo NECESITA (no se puede borrar tras instalar). `brain-scan.sh` conoce la ruta nueva.
 
 ## Autoupdate + política de release
 - Cada GUI embebe `version.json` (sha+fecha+repo) al buildear; consulta `commits/main` y ofrece banner "Actualizar widget" que hace **ff a `origin/main` + reinstala** (fail-open; nunca te deja sin widget). **Solo es real desde un release a main con el clon limpio.** Detalle: `docs/autoupdate.md`.
@@ -76,7 +76,7 @@ El widget saltaba entre dos cuentas (Sesión 5h llegó a 315.3%). **Causa raíz:
 - **Claude.app (desktop):** `informatica@pind.mx` (accountUuid `25545a28-…`). El desktop trae su propio Claude Code integrado (`~/Library/Application Support/Claude/claude-code/<ver>`) que escribe el token OAuth en el MISMO item → el último login gana. (El Claude.app se autentica con cookies web cifradas; ese token del llavero es lo único compatible con `/api/oauth/usage`.)
 - **Diagnóstico sin escanear el llavero a ciegas:** comparar `oauthAccount.accountUuid` de `~/.claude.json` (CLI) vs `lastKnownAccountUuid` de `~/Library/Application Support/Claude/config.json` (desktop).
 - **Solución (unjordi):** `claude logout`+`login` en la terminal eligiendo la cuenta del desktop → terminal y desktop coinciden → sin flip-flop. **Fragilidad:** re-loguear la otra cuenta en la terminal lo reactiva (mismo cajón del llavero), pero se **ve** en el footer (cuenta activa). La prioridad del env-token sobre el login activo se invirtió por esto (🪦#b23fdf3c6).
-- **Blindaje `account-guard` (opt-in, 3 plataformas):** fijas una cuenta esperada (uuid/email) en `~/.config/claude-brain/account` (override `$CLAUDE_BRAIN_ACCOUNT`; Win `%LOCALAPPDATA%\claude-brain\account`). Si la activa (de `~/.claude.json .oauthAccount`) difiere → el fetch marca `account_mismatch:true` y la UI avisa en ROJO. Windows tiene menú de bandeja "Fijar/Quitar cuenta"; mac/KDE editan el archivo a mano. Campos nuevos en `state.json`: `account_uuid`, `account_mismatch`. Sin pin ⇒ comportamiento previo.
+- **Blindaje `account-guard` (opt-in, 3 plataformas):** fijas una cuenta esperada (uuid/email) en `~/.config/cortex/account` (override `$CLAUDE_BRAIN_ACCOUNT`; Win `%LOCALAPPDATA%\cortex\account`). Si la activa (de `~/.claude.json .oauthAccount`) difiere → el fetch marca `account_mismatch:true` y la UI avisa en ROJO. Windows tiene menú de bandeja "Fijar/Quitar cuenta"; mac/KDE editan el archivo a mano. Campos nuevos en `state.json`: `account_uuid`, `account_mismatch`. Sin pin ⇒ comportamiento previo.
 
 ## Pendientes / ideas
 - Publicación en KDE Store (eventual).

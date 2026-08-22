@@ -10,7 +10,7 @@
 param([switch]$KeepCache)
 
 $ErrorActionPreference = 'SilentlyContinue'
-$cache   = Join-Path $env:LOCALAPPDATA 'claude-brain'    # dir de cache interno (state/stats/machine-id/account)
+$cache   = Join-Path $env:LOCALAPPDATA 'cortex'    # dir de cache interno (state/stats/machine-id/account)
 $cacheOld = Join-Path $env:LOCALAPPDATA 'claude-quota'   # nombre viejo del cache (migracion): se limpia igual
 $runKey  = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 

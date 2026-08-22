@@ -16,7 +16,7 @@
 set -eu
 
 # install → delega al instalador único del cerebro (que copia el hook + lo cablea desde el MANIFEST).
-BRAIN="${CLAUDE_BRAIN_DIR:-$HOME/.claude-brain}"
+BRAIN="${CLAUDE_BRAIN_DIR:-$HOME/.cortex}"
 if [ ! -f "$BRAIN/brain/install-brain.sh" ]; then
   echo "install-hook: no encuentro install-brain en '$BRAIN' (setea CLAUDE_BRAIN_DIR o clona el cerebro)."
   exit 1

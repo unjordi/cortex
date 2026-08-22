@@ -10,7 +10,7 @@ este sistema, 2026-07-15).
 
 ## Motor genérico vs. checks de ejemplo (LÉEME primero)
 
-Este directorio es un **MOTOR GENÉRICO** que vive en el template (`claude-brain/brain/scripts/`)
+Este directorio es un **MOTOR GENÉRICO** que vive en el template (`cortex/brain/scripts/`)
 y viaja a cada repo:
 
 - **Genérico (agnóstico de stack):** `ejecutar.sh` (el runner) y `lib-formato.sh` (el formato de
@@ -101,7 +101,7 @@ motor) vs `proyecto-especifico` (vive solo en la copia del repo que la originó)
      `invariantes-semanticos.yml` (general si aplica a cualquier clon; `proyecto-especifico` si
      es una regla de negocio de ESE repo).
 3. Los invariantes `general` y los checks agnósticos que nazcan se cosechan de vuelta al
-   template (`claude-brain`); las reglas de dominio se quedan en el repo.
+   template (`cortex`); las reglas de dominio se quedan en el repo.
 4. `cerrar-slice` invoca la Capa 1 como parte de la verificación de cada slice — ver
    `.claude/skills/cerrar-slice/SKILL.md`.
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # aviso-drift-cerebro.sh — SessionStart hook (tier GLOBAL). Al INICIAR sesión en un repo que tiene el
 # cerebro POR-REPO instalado (sello .brain-version o el hook repo-scoped clásico), compara esa copia
-# contra la FUENTE ÚNICA local (el clon de instalación ~/.claude-brain, o $CLAUDE_BRAIN_DIR) usando
+# contra la FUENTE ÚNICA local (el clon de instalación ~/.cortex, o $CLAUDE_BRAIN_DIR) usando
 # sincronizar-cerebro.sh en DRY-RUN (diff-aware por CONTENIDO — comparar versiones NO sirve: VERSION
 # no se bumpea por cambio) y, si la copia quedó ATRÁS, INYECTA un aviso ruidoso vía additionalContext.
 #

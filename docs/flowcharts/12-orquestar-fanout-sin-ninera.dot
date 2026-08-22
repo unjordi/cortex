@@ -1,4 +1,4 @@
-// 12 — Orquestar un fan-out sin niñera (claude-brain)  ·  FUENTE editable (.dot)
+// 12 — Orquestar un fan-out sin niñera (cortex)  ·  FUENTE editable (.dot)
 // Render:  dot -Tsvg 12-orquestar-fanout-sin-ninera.dot -o 12-orquestar-fanout-sin-ninera.svg
 // Reconstruido 2026-08-07 desde el skill real brain/skills/orquestar-fanout/SKILL.md + los hooks de soporte
 // (proteger-arbol, delegacion-gate, delegacion-reporte, script limpiar-worktrees.sh). Companion de 04 y 11.

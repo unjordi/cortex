@@ -10,7 +10,7 @@ OnBootSec=30s
 OnUnitActiveSec=5min
 AccuracySec=15s
 Persistent=true
-Unit=claude-brain.service
+Unit=cortex.service
 
 [Install]
 WantedBy=timers.target

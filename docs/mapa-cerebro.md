@@ -93,7 +93,7 @@ flowchart TB
     subgraph retomar["Al abrir / retomar / después de compactar (SessionStart)"]
         RH["🧵 rehidratar-hilo (GLOBAL)<br/>relee hilo-mental-actual.md y lo reinyecta<br/>vía additionalContext (con gate de frescura)"]
         SI["🧭 sesion-inicio (POR-REPO)<br/>reinyecta rama + norma de git +<br/>orden de leer MEMORY/estado-proyecto"]
-        DRIFT{"🧬 aviso-drift-cerebro (GLOBAL)<br/>¿repo brained ATRÁS de la<br/>fuente única ~/.claude-brain?<br/>(diff real, no versión)"}
+        DRIFT{"🧬 aviso-drift-cerebro (GLOBAL)<br/>¿repo brained ATRÁS de la<br/>fuente única ~/.cortex?<br/>(diff real, no versión)"}
     end
 
     SYNC["✅ AUTO-SYNC<br/>parado en TU mini-develop y .claude/ limpio →<br/>apply + commit + push a tu mini SOLO;<br/>llega a develop con tu próxima integración"]

@@ -1,4 +1,4 @@
-# MANIFEST (skills) — FUENTE ÚNICA del cerebro (claude-brain) para las SKILLS genéricas: declara, por cada
+# MANIFEST (skills) — FUENTE ÚNICA del cerebro (cortex) para las SKILLS genéricas: declara, por cada
 # carpeta de brain/skills/, su TIER (dónde se despliega). Hermano del brain/hooks/MANIFEST (que hace lo mismo
 # para hooks/libs). De aquí DERIVAN las rutas de instalación de skills y el drift-check → dejan de curarse a
 # mano (antídoto al drift comprobado: ~/.claude/skills/to-do se editó a mano en dev y la copia viva se

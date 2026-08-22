@@ -156,11 +156,11 @@ que muestra cómo sembrar la marca en un repo sandbox):
   (reconcile de MEMORIA entre gemelos) en `backlog-desarrollo.md` — ejes distintos del mismo problema.
 
 ## 🧭 Contexto de arranque (por si se retoma en frío)
-- Hook real: `~/code/claude-brain/brain/hooks/aviso-drift-cerebro.sh`. Léelo ENTERO primero — está
+- Hook real: `~/code/cortex/brain/hooks/aviso-drift-cerebro.sh`. Léelo ENTERO primero — está
   exhaustivamente comentado y el diseño viejo vive en su cabecera.
 - El marcador ya-vivo: `grep -rn repo-compartido brain/` → confirmar-merge-develop.sh + test-brain.sh.
 - El dedupe: `grep -n 'case "$0"' brain/hooks/*.sh` → la línea que hace ceder la copia por-repo a la global.
-- Fuente única del brain en cada máquina: `~/.claude-brain` (o `$CLAUDE_BRAIN_DIR`); install global con
-  `bash ~/.claude-brain/brain/install-brain.sh`.
+- Fuente única del brain en cada máquina: `~/.cortex` (o `$CLAUDE_BRAIN_DIR`); install global con
+  `bash ~/.cortex/brain/install-brain.sh`.
 - Este análisis salió del hilo de trabajo de Cachy (#46) tras el incidente powerscripts (jul-21, copia
   pre-dedupe) y el barrido de drift sobre todos los repos personales/compartidos.

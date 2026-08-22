@@ -1,4 +1,4 @@
-# Auditoría — flowcharts 01 (Propagación) y 02 (Sesión) del cerebro `claude-brain`
+# Auditoría — flowcharts 01 (Propagación) y 02 (Sesión) del cerebro `cortex`
 
 > Auditor de Calidad (experto en procesos industriales/FMEA + análisis de algoritmos), read-only.
 > **Fecha: 2026-07-29.** Estreno del skill `auditar-proceso-algoritmo` sobre dos módulos del propio brain.
@@ -49,7 +49,7 @@ Ambos flowcharts modelan bien la ARQUITECTURA conceptual, pero **ninguno es hoy 
   marca "⚠ ESCRIBE git" y enlazarlos a 01.
 - **[MEDIO] No hay estado de CIERRE de sesión.** El ciclo solo abre y reentra por compactación; no dibuja
   SessionEnd/Stop. **NOTA DEL ORQUESTADOR (corrección):** el auditor concluyó "`exportar-sesion-master.sh` no
-  existe" porque grepeó solo el working clone `~/code/claude-brain`. **SÍ existe y CORRE** en el global
+  existe" porque grepeó solo el working clone `~/code/cortex`. **SÍ existe y CORRE** en el global
   (`~/.claude/settings.json` lo cablea en SessionEnd/Stop/PreCompact; se observó `PreCompact … completed`). El
   desajuste real: o es un hook **personal/global de máquina** (no del MANIFEST del brain) — y entonces mi encargo
   lo listó mal como pieza del brain —, **o** es un hook desplegado SIN fuente en el repo del brain (drift de
@@ -101,7 +101,7 @@ Ambos flowcharts modelan bien la ARQUITECTURA conceptual, pero **ninguno es hoy 
   sobre el mismo `.git`.** Ambos disparan en el mismo SessionStart → posible choque en `.git/index.lock`/ref-locks;
   el proceso detached amplía la ventana. Ni 01 ni 02 muestran el co-disparo ni lo detached. → serializar o
   documentar la independencia como supuesto explícito.
-- **[MEDIO — inferido, NO ejecutado] El updater ⬆ reescribe `~/.claude-brain`/`~/.claude/hooks` con sesión viva.**
+- **[MEDIO — inferido, NO ejecutado] El updater ⬆ reescribe `~/.cortex`/`~/.claude/hooks` con sesión viva.**
   `fetch + merge --ff-only + install.sh`; `install-brain.sh:61-64` hace `cp -f` sobre `~/.claude/hooks/*.sh`. Si
   corre durante una sesión, un hook que sourcea una lib (`analizar-comando-git.sh`) puede leerla a medio
   sobrescribir. Costura sin protección de concurrencia; ninguno de los dos charts la modela. → escritura atómica

@@ -64,7 +64,7 @@ ciegas.** Para el cerebro son:
    develop con squash; main release-only con OK super-explícito) y la **definición de LISTO**. El auditor
    necesita saber QUÉ debe pasar para juzgar si el guard lo logra.
 
-> **Cuando el target es el cerebro de un PROYECTO** (no el `claude-brain` meta), los "zapatos" se traducen:
+> **Cuando el target es el cerebro de un PROYECTO** (no el `cortex` meta), los "zapatos" se traducen:
 > audita contra la **FIRMA** = `CLAUDE.md` (thin, TOC) → el **detalle operativo** → la memoria/skill →
 > **realidad (código)**. **Para AUDITAR, lee el entry-point operativo REAL, sea cual sea su nombre** (hoy varía:
 > `AGENTS.md` en games-master, `MEMORY.md`-índice en cps). La **CONVENCIÓN destino es `CLAUDE.md`+`MEMORY.md`**
@@ -158,7 +158,7 @@ dictamen durable los lista con su razón. Perseguir exóticos indefinidamente es
 Delega con `Task`/subagente `general-purpose`, uno por dimensión. Adapta el target, conserva la ESENCIA:
 
 > Eres un AUDITOR FMEA READ-ONLY de `<dimensión: los git-guards / la fidelidad de los flowcharts / el
-> instalador y wiring>` del repo `claude-brain`. NO MUTAS NADA (nada de git add/commit/checkout/edit en
+> instalador y wiring>` del repo `cortex`. NO MUTAS NADA (nada de git add/commit/checkout/edit en
 > el worktree del orquestador); LEES y —para guards— EJECUTAS los scripts en un sandbox efímero (mktemp).
 > Árbol a auditar: `<ruta del worktree @ commit>`. Contexto/zapatos: el árbol del README (bloque «🔒 Hooks
 > Forzosos»), los flowcharts con su leyenda + CONVENCIONES.md, el `brain/hooks/MANIFEST`, el código real

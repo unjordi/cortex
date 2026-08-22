@@ -28,7 +28,7 @@
 # NINGÚN cambio de esta lib afloja un fail-safe: el reintento en 401 solo REDUCE los falsos DENY por token
 # STALE (el CLI refresca el keychain en el ínterin) — el veredicto ante un fallo GENUINO no cambia.
 
-# _juez_dir → directorio de config de Claude, HONRANDO CLAUDE_CONFIG_DIR (homologado con claude-brain-fetch,
+# _juez_dir → directorio de config de Claude, HONRANDO CLAUDE_CONFIG_DIR (homologado con cortex-fetch,
 # el getter del widget). ARREGLA el hardcode `$HOME/.claude` de los jueces viejos → portable si el dev movió
 # su config a otra ruta.
 _juez_dir() { printf '%s' "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"; }
@@ -50,7 +50,7 @@ _juez_token_de_archivo() {          # Linux / Windows-gitbash / macOS-sin-llaver
 _juez_token_de_env()  { [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && printf '%s' "$CLAUDE_CODE_OAUTH_TOKEN"; }
 
 # _juez_token → retrieval PORTABLE, LOGIN-ACTIVO-FIRST (llavero → archivo → env). Homologado con el getter
-# del widget (claude-brain-fetch, tras fix/token-login-activo-primero): el canal VIVO (llavero/archivo)
+# del widget (cortex-fetch, tras fix/token-login-activo-primero): el canal VIVO (llavero/archivo)
 # auto-rota en cada `claude login` → nunca queda pineado a una cuenta/expiración vieja; el env es la RED DE
 # SEGURIDAD headless (colega sin llavero, CI). Imprime el token en stdout, o vacío + return 1. NO loguea el valor.
 _juez_token() {

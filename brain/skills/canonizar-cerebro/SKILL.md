@@ -1,11 +1,11 @@
 ---
 name: canonizar-cerebro
-description: Lleva el cerebro de un proyecto INSTANCIADO (los que produce claude-brain — cps, fluxcore, plantilladotnet…) a la FIRMA-ÁRBOL canónica cuando drifteó: memorias sueltas sin prefijo, CLAUDE.md viejo con prosa de guards retirados, MEMORY.md plano. Reclasifica cada memoria a su prefijo (dom-/dev-/ux-/qa- + núcleo) con `git mv` (historia intacta), dedup con RESCATE de datos únicos, reescribe CLAUDE.md a firma-árbol y MEMORY.md a índice-por-prefijo, y VERIFICA el 1:1 con el detector `verificar-firma-canonica.sh`. Humano-en-el-loop, NO auto-mutador ciego. Úsalo cuando un cerebro instanciado no respeta la estructura canónica (córrele el detector y lo verás), o como el paso ESTRUCTURAL dentro de `consolidar-cerebro`.
+description: Lleva el cerebro de un proyecto INSTANCIADO (los que produce cortex — cps, fluxcore, plantilladotnet…) a la FIRMA-ÁRBOL canónica cuando drifteó: memorias sueltas sin prefijo, CLAUDE.md viejo con prosa de guards retirados, MEMORY.md plano. Reclasifica cada memoria a su prefijo (dom-/dev-/ux-/qa- + núcleo) con `git mv` (historia intacta), dedup con RESCATE de datos únicos, reescribe CLAUDE.md a firma-árbol y MEMORY.md a índice-por-prefijo, y VERIFICA el 1:1 con el detector `verificar-firma-canonica.sh`. Humano-en-el-loop, NO auto-mutador ciego. Úsalo cuando un cerebro instanciado no respeta la estructura canónica (córrele el detector y lo verás), o como el paso ESTRUCTURAL dentro de `consolidar-cerebro`.
 ---
 
 # Canonizar un cerebro instanciado — llevarlo a la firma-árbol (humano-en-el-loop)
 
-Un cerebro que claude-brain instancia (cps, fluxcore, plantilladotnet, los repos .NET del equipo)
+Un cerebro que cortex instancia (cps, fluxcore, plantilladotnet, los repos .NET del equipo)
 DEBE respetar una **estructura canónica** — la misma en todos, para que un Claude que salta entre
 repos aprenda **UN** modelo. Con el tiempo DRIFTEAN: memorias sueltas sin prefijo, un `CLAUDE.md`
 viejo que nombra guards ya retirados, un `MEMORY.md` plano sin taxonomía. Este skill **destila el
@@ -17,7 +17,7 @@ prototipo manual** que se corrió sobre fluxcore (2026-08-07) y lo vuelve un pro
 
 ## La firma canónica (el DESTINO — no la inventes, cópiala)
 Definición-de-tipo-de-dato (LÉELAS antes de tocar): `CLAUDE.example-barebones.md` y
-`MEMORY.example-barebones.md` del claude-brain. **Instancias canónicas de referencia:** `cps` y
+`MEMORY.example-barebones.md` del cortex. **Instancias canónicas de referencia:** `cps` y
 `fluxcore` (su `CLAUDE.md` + `.claude/memory/MEMORY.md` ya cumplen — cópiales la FORMA, no el contenido).
 
 - **`CLAUDE.md`** (raíz del repo) = **firma-árbol**, secuencia OBLIGATORIA:

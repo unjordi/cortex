@@ -2,8 +2,8 @@
 #
 # Run `just --list` to see all targets.
 
-LABEL := "io.github.unjordi.claude-brain"
-STATE := "$HOME/Library/Caches/claude-brain/state.json"
+LABEL := "io.github.unjordi.cortex"
+STATE := "$HOME/Library/Caches/cortex/state.json"
 
 default: help
 
@@ -27,7 +27,7 @@ install:
 install-headless:
     ./install.sh --no-app
 
-# Remove everything (keeps ~/.config/claude-brain/limits.env)
+# Remove everything (keeps ~/.config/cortex/limits.env)
 uninstall:
     ./uninstall.sh
 
@@ -58,11 +58,11 @@ status:
 
 # Tail the fetch agent logs
 logs:
-    tail -f /tmp/claude-brain.out.log /tmp/claude-brain.err.log
+    tail -f /tmp/cortex.out.log /tmp/cortex.err.log
 
 # Lint shell scripts (requires shellcheck)
 lint:
-    shellcheck install.sh uninstall.sh make-app.sh bin/claude-brain-fetch
+    shellcheck install.sh uninstall.sh make-app.sh bin/cortex-fetch
 
 # Wipe build artifacts
 clean:

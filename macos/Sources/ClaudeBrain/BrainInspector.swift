@@ -41,7 +41,7 @@ enum BrainStatus {
 struct BrainState {
     var presentHooks: Set<String> = []   // basenames sin .sh en ~/.claude/hooks
     var wiredHooks: Set<String> = []      // basenames referenciados en settings.json
-    var hasNorms: Bool = false            // ~/.claude/CLAUDE.md trae el marcador BEGIN claude-brain
+    var hasNorms: Bool = false            // ~/.claude/CLAUDE.md trae el marcador BEGIN cortex
     var skills: Set<String> = []          // subcarpetas de ~/.claude/skills con SKILL.md
     var extras: [String] = []             // hooks cableados que no están en el catálogo conocido
     var version: String? = nil            // sello de ~/.claude/.brain-version línea 1 (install-brain.sh); nil si no está
@@ -123,7 +123,7 @@ enum BrainInspector {
         //     efecto real, no solo si pasaron por install-brain.sh).
         let claudeMd = claude.appendingPathComponent("CLAUDE.md")
         if let txt = try? String(contentsOf: claudeMd, encoding: .utf8) {
-            st.hasNorms = txt.contains("BEGIN claude-brain")
+            st.hasNorms = txt.contains("BEGIN cortex")
                 || txt.contains("Definición de \"LISTO\"")
                 || txt.contains("reflejo de la realidad")
         }

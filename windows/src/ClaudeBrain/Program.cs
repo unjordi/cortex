@@ -30,7 +30,7 @@ internal static class Program
         }
 
         // Single instance.
-        using var mutex = new Mutex(true, "io.github.unjordi.claude-brain", out bool isNew);
+        using var mutex = new Mutex(true, "io.github.unjordi.cortex", out bool isNew);
         if (!isNew) return;
 
         ApplicationConfiguration.Initialize();

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-brain.sh — pruebas VERSIONADAS y REPETIBLES del cerebro (claude-brain). No toca tu ~/.claude:
+# test-brain.sh — pruebas VERSIONADAS y REPETIBLES del cerebro (cortex). No toca tu ~/.claude:
 # todo corre contra un $HOME FALSO aislado (mktemp) que se borra al final.
 #
 # Cubre:
@@ -31,7 +31,7 @@ FAKEHOME="$(mktemp -d "${TMPDIR:-/tmp}/brain-test.XXXXXX")"
 cleanup() { rm -rf "$FAKEHOME"; }
 trap cleanup EXIT
 
-echo "==> claude-brain test — \$HOME falso: $FAKEHOME"
+echo "==> cortex test — \$HOME falso: $FAKEHOME"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
@@ -54,7 +54,7 @@ echo ""
 echo "== (b) gate de delegación (\$HOME falso, snapshot de cuota de prueba) =="
 
 CDIR="$FAKEHOME/.claude"
-CACHE="$FAKEHOME/.cache/claude-brain"
+CACHE="$FAKEHOME/.cache/cortex"
 CONS="$CDIR/delegacion-consentimiento.json"
 mkdir -p "$CDIR" "$CACHE"
 cp "$HOOKS/agentes-costo.json" "$CDIR/agentes-costo.json"
@@ -3195,8 +3195,8 @@ for pat in git-branch-guard merge-squash-guard confirmar-merge-develop recordar-
   n="$(jq --arg p "$pat" '[.hooks[]?[]? | select(([.hooks[]?.command]|join(" "))|test($p))] | length' "$GSET2" 2>/dev/null)"
   if [ "$n" = "1" ]; then ok "settings.json: $pat cableado 1× (idempotente)"; else bad "settings.json: $pat aparece ${n:-?}× (esperaba 1)"; fi
 done
-b="$(grep -c 'BEGIN claude-brain' "$GCLAUDE2" 2>/dev/null || echo 0)"
-e="$(grep -c 'END claude-brain'   "$GCLAUDE2" 2>/dev/null || echo 0)"
+b="$(grep -c 'BEGIN cortex' "$GCLAUDE2" 2>/dev/null || echo 0)"
+e="$(grep -c 'END cortex'   "$GCLAUDE2" 2>/dev/null || echo 0)"
 { [ "$b" = "1" ] && [ "$e" = "1" ]; } && ok "CLAUDE.md: 1 solo bloque de normas (BEGIN/END)" || bad "CLAUDE.md: BEGIN=$b END=$e (esperaba 1/1)"
 # artefacto LEAN de aliases generado + @import cableado UNA sola vez (idempotente tras 2 installs)
 ART2="$FAKEHOME2/.claude/aliases-activos.md"
@@ -3256,7 +3256,7 @@ if [ -f "$SCRIPT_DIR/uninstall-brain.sh" ]; then
   HOME="$FAKEHOME2" bash "$SCRIPT_DIR/uninstall-brain.sh" >/dev/null 2>&1
   left="$(jq '[.hooks[]?[]? | select(([.hooks[]?.command]|join(" "))|test("git-branch-guard|merge-squash-guard|recordar-dashboard|delegacion-gate|delegacion-registrar"))] | length' "$GSET2" 2>/dev/null)"
   [ "${left:-x}" = "0" ] && ok "uninstall: 0 entradas del cerebro en settings.json" || bad "uninstall: quedan ${left:-?} entradas"
-  grep -q 'BEGIN claude-brain' "$GCLAUDE2" && bad "uninstall: quedó el bloque de normas" || ok "uninstall: bloque de normas removido"
+  grep -q 'BEGIN cortex' "$GCLAUDE2" && bad "uninstall: quedó el bloque de normas" || ok "uninstall: bloque de normas removido"
   [ -f "$FAKEHOME2/.claude/hooks/git-branch-guard.sh" ] && bad "uninstall: quedó git-branch-guard.sh" || ok "uninstall: hooks globales removidos"
   # (e) el @import de aliases + el artefacto GENERADO se limpian (inverso de d3)
   [ -f "$FAKEHOME2/.claude/aliases-activos.md" ] && bad "uninstall: quedó el artefacto aliases-activos.md" || ok "uninstall: artefacto aliases-activos.md eliminado"
@@ -3270,11 +3270,11 @@ echo "== (c2) refresh de normas: un bloque VIEJO se REEMPLAZA en su lugar =="
 FAKEHOME3="$(mktemp -d "${TMPDIR:-/tmp}/brain-refresh.XXXXXX")"
 mkdir -p "$FAKEHOME3/.claude"
 G3="$FAKEHOME3/.claude/CLAUDE.md"
-printf 'mi config a mano (antes)\n\n<!-- BEGIN claude-brain -->\nNORMA VIEJA OBSOLETA\n<!-- END claude-brain -->\n\nmi config a mano (despues)\n' > "$G3"
+printf 'mi config a mano (antes)\n\n<!-- BEGIN cortex -->\nNORMA VIEJA OBSOLETA\n<!-- END cortex -->\n\nmi config a mano (despues)\n' > "$G3"
 HOME="$FAKEHOME3" bash "$INSTALLER" >/dev/null 2>&1
 grep -q 'NORMA VIEJA OBSOLETA' "$G3" && bad "refresh: quedó la norma vieja (no reemplazó)" || ok "refresh: la norma vieja fue reemplazada"
 grep -q 'Definición de' "$G3" && ok "refresh: el bloque nuevo quedó" || bad "refresh: falta el bloque nuevo"
-n3="$(grep -c 'BEGIN claude-brain' "$G3" 2>/dev/null || echo 0)"
+n3="$(grep -c 'BEGIN cortex' "$G3" 2>/dev/null || echo 0)"
 [ "$n3" = "1" ] && ok "refresh: 1 solo bloque tras refrescar" || bad "refresh: $n3 bloques (esperaba 1)"
 { grep -q 'mi config a mano (antes)' "$G3" && grep -q 'mi config a mano (despues)' "$G3"; } \
   && ok "refresh: conserva la config del usuario alrededor del bloque" || bad "refresh: se comió config del usuario"
@@ -3284,13 +3284,13 @@ rm -rf "$FAKEHOME3"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "== (c3) anti-pérdida: BEGIN claude-brain SIN su END → NO tocar (no comerse la sección personal) =="
+echo "== (c3) anti-pérdida: BEGIN cortex SIN su END → NO tocar (no comerse la sección personal) =="
 # Caso peligroso: un CLAUDE.md con BEGIN pero sin END (truncado / corrida previa a medias). El awk pondría
 # skip=1 para siempre y borraría TODO lo posterior al BEGIN. La guarda debe DETECTARLO y no tocar el archivo.
 FAKEHOME4="$(mktemp -d "${TMPDIR:-/tmp}/brain-noend.XXXXXX")"
 mkdir -p "$FAKEHOME4/.claude"
 G4="$FAKEHOME4/.claude/CLAUDE.md"
-printf 'seccion PERSONAL imprescindible\n\n<!-- BEGIN claude-brain -->\nbloque a medias sin cierre\nMAS config personal DESPUES del begin\n' > "$G4"
+printf 'seccion PERSONAL imprescindible\n\n<!-- BEGIN cortex -->\nbloque a medias sin cierre\nMAS config personal DESPUES del begin\n' > "$G4"
 G4_before="$(cat "$G4")"
 HOME="$FAKEHOME4" bash "$INSTALLER" >/dev/null 2>&1
 { grep -q 'seccion PERSONAL imprescindible' "$G4" && grep -q 'MAS config personal DESPUES del begin' "$G4"; } \
@@ -3624,9 +3624,9 @@ fi
 rm -rf "$E7H"
 
 echo "== (e4) Windows: bootstrap.ps1 exporta CLAUDE_BRAIN_DIR (los hooks bash hallan la fuente) =="
-# En Windows el clon-fuente vive en %LOCALAPPDATA%\claude-brain-repo, NO en ~/.claude-brain (default de
+# En Windows el clon-fuente vive en %LOCALAPPDATA%\cortex-repo, NO en ~/.cortex (default de
 # Mac/Linux). Si bootstrap.ps1 no exporta CLAUDE_BRAIN_DIR, el hook bash aviso-drift-cerebro cae a
-# $HOME/.claude-brain (inexistente) y el auto-sync por-repo falla MUDO. Guard de regresión.
+# $HOME/.cortex (inexistente) y el auto-sync por-repo falla MUDO. Guard de regresión.
 BPS="$SCRIPT_DIR/../bootstrap.ps1"
 if [ -f "$BPS" ]; then
   grep -q "SetEnvironmentVariable('CLAUDE_BRAIN_DIR'" "$BPS" \
@@ -3711,17 +3711,17 @@ Q4="$PR/src/plasmoid/contents/ui/main.qml"
 S4="$PR/macos/Sources/ClaudeBrain/Updater.swift"
 C4="$PR/windows/src/ClaudeBrain/Updater.cs"
 if [ -f "$Q4" ]; then
-  { grep -qF 'resolveRepoPath' "$Q4" && grep -qF 'CLAUDE_BRAIN_DIR' "$Q4" && grep -qF '.claude-brain' "$Q4" && grep -qF 'install.sh' "$Q4"; } \
-    && ok "e6.4[qml]: main.qml resuelve el clon con fallback (\$CLAUDE_BRAIN_DIR / ~/.claude-brain) + marca install.sh" \
+  { grep -qF 'resolveRepoPath' "$Q4" && grep -qF 'CLAUDE_BRAIN_DIR' "$Q4" && grep -qF '.cortex' "$Q4" && grep -qF 'install.sh' "$Q4"; } \
+    && ok "e6.4[qml]: main.qml resuelve el clon con fallback (\$CLAUDE_BRAIN_DIR / ~/.cortex) + marca install.sh" \
     || bad "e6.4[qml]: main.qml NO resuelve el clon con fallback (H2 sin portar → confía ciego en version.json.repo)"
 else bad "e6.4[qml]: no encuentro main.qml"; fi
 if [ -f "$S4" ]; then
-  { grep -qF 'resolveClonePath' "$S4" && grep -qF 'CLAUDE_BRAIN_DIR' "$S4" && grep -qF '.claude-brain' "$S4" && grep -qF 'macos/install.sh' "$S4"; } \
+  { grep -qF 'resolveClonePath' "$S4" && grep -qF 'CLAUDE_BRAIN_DIR' "$S4" && grep -qF '.cortex' "$S4" && grep -qF 'macos/install.sh' "$S4"; } \
     && ok "e6.4[swift]: Updater.swift resuelve el clon con fallback + marca macos/install.sh" \
     || bad "e6.4[swift]: Updater.swift perdió el fallback de resolveClonePath"
 else bad "e6.4[swift]: no encuentro Updater.swift"; fi
 if [ -f "$C4" ]; then
-  { grep -qF 'ResolveClonePath' "$C4" && grep -qF 'CLAUDE_BRAIN_DIR' "$C4" && grep -qF 'claude-brain-repo' "$C4" && grep -qF 'install.ps1' "$C4"; } \
+  { grep -qF 'ResolveClonePath' "$C4" && grep -qF 'CLAUDE_BRAIN_DIR' "$C4" && grep -qF 'cortex-repo' "$C4" && grep -qF 'install.ps1' "$C4"; } \
     && ok "e6.4[cs]: Updater.cs resuelve el clon con fallback + marca windows/install.ps1" \
     || bad "e6.4[cs]: Updater.cs perdió el fallback de ResolveClonePath"
 else bad "e6.4[cs]: no encuentro Updater.cs"; fi
@@ -3911,11 +3911,11 @@ fi
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (e8) installer: la migración de rebrand barre el bloque PATH viejo 'claude-quota' del rc =="
-# Regresión: la migración claude-quota→claude-brain limpiaba cache/launchd/app pero NO el bloque PATH
+# Regresión: la migración claude-quota→cortex limpiaba cache/launchd/app pero NO el bloque PATH
 # viejo del rc (marcador '(claude, claude-quota-fetch)') → al actualizar quedaba un 2º bloque PATH
 # duplicado (inofensivo, pero cruft). ensure_path_local_bin (en install.sh y macos/install.sh) ahora
 # lo barre. Se extrae la función y se corre contra un rc falso con el bloque viejo.
-OLD_LINE='# claude-brain: ~/.local/bin en el PATH (claude, claude-quota-fetch)'
+OLD_LINE='# cortex: ~/.local/bin en el PATH (claude, claude-quota-fetch)'
 CASE_LINE='case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac'
 for inst in "$SCRIPT_DIR/../install.sh" "$SCRIPT_DIR/../macos/install.sh"; do
   iname="$(basename "$(dirname "$inst")")/$(basename "$inst")"
@@ -3924,7 +3924,7 @@ for inst in "$SCRIPT_DIR/../install.sh" "$SCRIPT_DIR/../macos/install.sh"; do
   { printf '%s\n' 'export FOO=1' ''; printf '%s\n' "$OLD_LINE" "$CASE_LINE" 'alias ll=ls'; } > "$EP/.zshrc"
   fn="$(sed -n '/^ensure_path_local_bin()/,/^}/p' "$inst")"
   ( eval "$fn"; HOME="$EP" ensure_path_local_bin ) >/dev/null 2>&1
-  onew="$(grep -c 'claude-brain-fetch' "$EP/.zshrc" 2>/dev/null)"; onew="${onew:-0}"
+  onew="$(grep -c 'cortex-fetch' "$EP/.zshrc" 2>/dev/null)"; onew="${onew:-0}"
   oold="$(grep -c 'claude-quota-fetch' "$EP/.zshrc" 2>/dev/null)"; oold="${oold:-0}"
   oali="$(grep -c 'alias ll=ls' "$EP/.zshrc" 2>/dev/null)"; oali="${oali:-0}"
   if [ "$oold" -eq 0 ] && [ "$onew" -eq 1 ] && [ "$oali" -eq 1 ]; then
@@ -3933,7 +3933,7 @@ for inst in "$SCRIPT_DIR/../install.sh" "$SCRIPT_DIR/../macos/install.sh"; do
     bad "e8: $iname — viejo=$oold nuevo=$onew alias=$oali (esperado viejo=0 nuevo=1 alias=1)"
   fi
   ( eval "$fn"; HOME="$EP" ensure_path_local_bin ) >/dev/null 2>&1
-  onew2="$(grep -c 'claude-brain-fetch' "$EP/.zshrc" 2>/dev/null)"; onew2="${onew2:-0}"
+  onew2="$(grep -c 'cortex-fetch' "$EP/.zshrc" 2>/dev/null)"; onew2="${onew2:-0}"
   if [ "$onew2" -eq 1 ]; then ok "e8: $iname idempotente (2ª corrida sigue en 1 bloque)"; else bad "e8: $iname NO idempotente (nuevo=$onew2)"; fi
   rm -rf "$EP"
 done
@@ -4302,13 +4302,13 @@ OUT="$(bash "$VFC" "$WB" 2>&1)"; RC=$?
 bash "$VFC" "$WB" --strict >/dev/null 2>&1; RC=$?
 [ "$RC" -eq 1 ] && ok "g5: --strict trata el WARN como falla (exit 1) — modo GATE" || bad "g5: --strict no falló con WARN (rc=$RC)"
 
-# (5) el META-repo claude-brain se SALTA (su firma vive en README, no en CLAUDE.md-firma)
+# (5) el META-repo cortex se SALTA (su firma vive en README, no en CLAUDE.md-firma)
 MB="$(mktemp -d "${TMPDIR:-/tmp}/brain-g5-meta.XXXXXX")"
 mkdir -p "$MB/brain/hooks" "$MB/docs/flowcharts"
 : > "$MB/brain/hooks/MANIFEST"; : > "$MB/docs/flowcharts/verificar-arbol-sync.sh"
 OUT="$(bash "$VFC" "$MB" 2>&1)"; RC=$?
 { [ "$RC" -eq 0 ] && printf '%s' "$OUT" | grep -q 'n/a (meta-repo)'; } \
-  && ok "g5: el meta-repo claude-brain se salta (n/a), no se autoflagea" || bad "g5: no detectó el meta-repo (rc=$RC)"
+  && ok "g5: el meta-repo cortex se salta (n/a), no se autoflagea" || bad "g5: no detectó el meta-repo (rc=$RC)"
 
 rm -rf "$GB" "$BB" "$NB" "$GL" "$WB" "$MB"
 
@@ -4325,7 +4325,7 @@ BINRM="$SCRIPT_DIR/../bin"                              # session-move/import/ex
 RMFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-reubicar.XXXXXX")"
 RMHOME="$RMFIX/home"
 SRCREPO="$RMHOME/code/plantilladotnet"
-DSTREPO="$RMHOME/code/claude-brain"
+DSTREPO="$RMHOME/code/cortex"
 DRIVE="$RMFIX/drive"
 PROJ="$RMHOME/.claude/projects"
 mkdir -p "$SRCREPO/.claude/memory" "$SRCREPO/.claude/skills/instanciar-proyecto" \
@@ -4391,9 +4391,9 @@ n="$(find "$PROJ" -name "$ID.jsonl" | wc -l)"
 
 # ── g4: ATOMICIDAD del target-fix — masters.json target por-id corregido (el fix que evita helios-selene) ──
 tmpm="$(mktemp)"
-jq --arg id "$ID" --arg t "code/claude-brain" '(.masters[]|select(.id==$id)).target=$t' "$DRIVE/masters.json" > "$tmpm" && mv -f "$tmpm" "$DRIVE/masters.json"
-[ "$(jq -r --arg id "$ID" '.masters[]|select(.id==$id).target' "$DRIVE/masters.json")" = "code/claude-brain" ] \
-  && ok "g4 atomicidad: masters.json target por-id → code/claude-brain (no reencarna al slug viejo)" \
+jq --arg id "$ID" --arg t "code/cortex" '(.masters[]|select(.id==$id)).target=$t' "$DRIVE/masters.json" > "$tmpm" && mv -f "$tmpm" "$DRIVE/masters.json"
+[ "$(jq -r --arg id "$ID" '.masters[]|select(.id==$id).target' "$DRIVE/masters.json")" = "code/cortex" ] \
+  && ok "g4 atomicidad: masters.json target por-id → code/cortex (no reencarna al slug viejo)" \
   || bad "g4 atomicidad: el target por-id no quedó corregido"
 # y que el SKILL lo exija en el MISMO bloque que el move (no en un paso suelto):
 grep -qiE 'MISMO bloque|uninterrumpido|at[oó]mic' "$SKILL" \
@@ -4462,7 +4462,7 @@ out="$(RUNMOVE "$COLID" --to-cwd "$DSTREPO" 2>&1)"; rc=$?
 # el jsonl viejo ya no existe (g3) → el rm defensivo es no-op; el target ya está corregido (g4) → el jq re-aplicado no cambia nada
 before="$(cat "$DRIVE/masters.json")"
 [ -f "$PROJ/$OLD_SLUG/$ID.jsonl" ] && rm -f "$PROJ/$OLD_SLUG/$ID.jsonl"   # rm defensivo idempotente (no falla si no está)
-tmpm="$(mktemp)"; jq --arg id "$ID" --arg t "code/claude-brain" '(.masters[]|select(.id==$id)).target=$t' "$DRIVE/masters.json" > "$tmpm" && mv -f "$tmpm" "$DRIVE/masters.json"
+tmpm="$(mktemp)"; jq --arg id "$ID" --arg t "code/cortex" '(.masters[]|select(.id==$id)).target=$t' "$DRIVE/masters.json" > "$tmpm" && mv -f "$tmpm" "$DRIVE/masters.json"
 [ "$(cat "$DRIVE/masters.json")" = "$before" ] \
   && ok "g10 idempotencia: re-correr barrido+target-fix es no-op (corrida a medias se reanuda, no reinicia)" \
   || bad "g10 idempotencia: re-correr cambió el estado (no idempotente)"
@@ -4540,7 +4540,7 @@ lc2="$(grep -c . "$SIPROJ/$S2SLUG/$SID2.jsonl")"
 [ -f "$HOOKS/exportar-sesion-master.sh" ] || bad "s3: falta el hook exportar-sesion-master.sh"
 HDRIVE="$SIFIX/drive-s3"; mkdir -p "$HDRIVE"
 SID3="cc330000-0000-0000-0000-000000000003"
-mkdir -p "$SIHOME/.claude-brain"; ln -s "$BINRM" "$SIHOME/.claude-brain/bin"   # engine visible al hook
+mkdir -p "$SIHOME/.cortex"; ln -s "$BINRM" "$SIHOME/.cortex/bin"   # engine visible al hook
 cat > "$HDRIVE/masters.json" <<EOF
 { "schema": 2, "masters": [ { "id": "$SID3", "name": "s3-master", "target": "code/viejo" } ] }
 EOF

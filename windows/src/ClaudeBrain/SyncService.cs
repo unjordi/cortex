@@ -5,7 +5,7 @@ namespace ClaudeBrain;
 
 /// <summary>
 /// (e) Sync entre máquinas vía carpeta de nube — el análogo C# del bloque "(e) Sync entre máquinas"
-/// del script bash src/bin/claude-brain-fetch (mac/linux).
+/// del script bash src/bin/cortex-fetch (mac/linux).
 ///
 /// OPT-IN: se activa solo si CLAUDE_BRAIN_SYNC_DIR (env) o el archivo de config `sync-dir` está puesto,
 /// así ninguna máquina sube nada sin que lo actives. El valor "auto" autodetecta Google Drive en Windows.
@@ -15,7 +15,7 @@ namespace ClaudeBrain;
 /// </summary>
 public static class SyncService
 {
-    private const string SyncSubfolder = "claude-brain-sync";
+    private const string SyncSubfolder = "cortex-sync";
 
     /// <summary>
     /// Produce el sync: escribe el snapshot propio y fusiona los de la misma cuenta.
@@ -65,7 +65,7 @@ public static class SyncService
     /// <summary>
     /// env CLAUDE_BRAIN_SYNC_DIR gana; si no, el archivo de config `sync-dir` (texto plano) en cacheDir.
     /// Vacío/ausente = off (null). Valor "auto" autodetecta Google Drive en Windows; cualquier otro valor
-    /// se usa TAL CUAL (sin subcarpeta, igual que el bash). En "auto" se agrega la subcarpeta claude-brain-sync.
+    /// se usa TAL CUAL (sin subcarpeta, igual que el bash). En "auto" se agrega la subcarpeta cortex-sync.
     /// </summary>
     public static string? ResolveSyncDir(string cacheDir)
     {

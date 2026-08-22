@@ -6,7 +6,7 @@ Cómo se actualiza el widget cuando nosotros subimos una versión y los demás l
 
 Cada plataforma embebe un `version.json` (SHA + fecha del commit con que se buildeó, ruta del clon,
 rama) junto al binario. Al abrir la pestaña **Cerebro**, el widget consulta `commits/main` de
-`github.com/unjordi/claude-brain` (throttle ~15 min, timeout ~6 s, **fail-open**: sin red / sin
+`github.com/unjordi/cortex` (throttle ~15 min, timeout ~6 s, **fail-open**: sin red / sin
 `version.json` / sin clon → no molesta). Si `main` avanzó, dibuja el banner **⬆ Actualizar**.
 
 Al aceptar, un script suelto hace `git fetch` + `git merge --ff-only origin/main` y —**solo si tuvo
@@ -50,7 +50,7 @@ siguen con el modelo git-based, que ahí no duele.
 Cambios en `windows/src/ClaudeBrain/Updater.cs`:
 
 1. **Detección de versión** → dejar de comparar contra `commits/main` y comparar contra el
-   **release**: `GET /repos/unjordi/claude-brain/releases/tags/windows-latest`, leer el `build-sha:`
+   **release**: `GET /repos/unjordi/cortex/releases/tags/windows-latest`, leer el `build-sha:`
    del cuerpo (o el `target_commitish`), comparar con el SHA embebido. Así el banner solo aparece
    cuando el **artefacto ya está publicado** (no en el hueco de ~minutos que tarda el build de CI).
    Mantener el **fail-open** (sin release / sin red → no molesta).

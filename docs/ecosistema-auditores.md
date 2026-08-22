@@ -1,6 +1,6 @@
 # Ecosistema de auditores del cerebro — mapa para la revisión
 
-> Material para revisar CON unjordi. Mapea TODAS las piezas de auditoría del cerebro (claude-brain),
+> Material para revisar CON unjordi. Mapea TODAS las piezas de auditoría del cerebro (cortex),
 > qué audita cada una, sus entradas/salidas, sus SOLAPAMIENTOS y cómo COMPONEN entre sí — y cierra con
 > las preguntas abiertas, sobre todo el cableado del **gate #44**.
 > Fecha: 2026-08-08 · rama `feat/auditor-semantico-al-template`.
@@ -87,7 +87,7 @@ CABLEADO** (ver §Gate #44 y §Preguntas abiertas).
 - **Composición:** es el paso de VERIFICACIÓN de `canonizar-cerebro`, y el detector que **alimenta el
   gate #44** (sub-check de `auditar-coherencia-cerebro` en modo gate). Su batería vive en `test-brain.sh`
   (bloque `g5`).
-- **OJO — alcance:** NO aplica al META-repo `claude-brain` en sí (su árbol vive en README, no en un
+- **OJO — alcance:** NO aplica al META-repo `cortex` en sí (su árbol vive en README, no en un
   CLAUDE.md-firma; sus memorias no usan prefijos). Para ESE hay un HERMANO:
   `docs/flowcharts/verificar-arbol-sync.sh` (paridad README ↔ MEMORY.md ↔ dirnames de `brain/skills/`).
 
@@ -128,7 +128,7 @@ consolidar-cerebro ──orquesta──► DUPLA → positivar-doc → desinflar
 
 canonizar-cerebro ──paso de verificación──► verificar-firma-canonica.sh  ◄── (gate #44: sub-check de
                                                         │                      auditar-coherencia, PROPUESTO)
-                                        (hermano para el meta-repo claude-brain:
+                                        (hermano para el meta-repo cortex:
                                          docs/flowcharts/verificar-arbol-sync.sh)
 
 auditor-semantico  ──ORTOGONAL──►  audita CÓDIGO de producto (no el cerebro)
@@ -145,7 +145,7 @@ unificar-cerebro   ──integración semanal──►  corre test-brain + lint 
   y la de suficiencia encontró 5 huecos, uno crítico).
 - **`verificar-firma-canonica.sh` vs `verificar-arbol-sync.sh`:** MISMA idea (drift estructural),
   OBJETOS distintos — el primero para cerebros INSTANCIADOS (firma CLAUDE.md+MEMORY.md por prefijos), el
-  segundo para el META-repo `claude-brain` (paridad README↔MEMORY↔brain/skills). No intercambiables.
+  segundo para el META-repo `cortex` (paridad README↔MEMORY↔brain/skills). No intercambiables.
 - **`consolidar-cerebro` vs `canonizar-cerebro`:** consolidar CONTIENE conceptualmente el objetivo de
   canonizar (cierre con la FIRMA), pero canonizar es la migración estructural aislada. Consolidar =
   campaña; canonizar = un paso de esa campaña, invocable solo.
@@ -173,7 +173,7 @@ unificar-cerebro   ──integración semanal──►  corre test-brain + lint 
 1. **¿Dónde vive el sub-check?** ¿Se agrega a `auditar-coherencia-cerebro` como paso determinista
    explícito (correr `verificar-firma-canonica.sh --strict` sobre el repo y tratar su exit≠0 como
    hallazgo ALTO)? ¿O es un hook aparte en el punto de release?
-2. **¿Sobre QUÉ repos corre?** El detector NO aplica al meta-repo `claude-brain` (usa el hermano
+2. **¿Sobre QUÉ repos corre?** El detector NO aplica al meta-repo `cortex` (usa el hermano
    `verificar-arbol-sync.sh`). ¿El gate corre sobre cada cerebro INSTANCIADO (cps, fluxcore,
    plantilladotnet)? ¿Quién dispara el barrido — una sesión en cada repo, o un job central que los
    recorre?
@@ -211,8 +211,8 @@ de *claim-sin-marca*, o repetirá el desgaste del dod.
 - **Quedó per-repo (dominio):** la entrada `proyecto-especifico` de fluxcore (checklist117) se quitó del
   `.yml` de ejemplo; cada repo agrega su dominio. Los 4 checks de ejemplo son de la arquitectura .NET de
   la plantilla — un repo no-.NET los reemplaza.
-- **Pregunta abierta del hoist:** los checks Capa 1 son .NET-plantilla-shaped, pero `claude-brain`
-  propaga a TODOS los repos. ¿El motor genérico + skill viven en `claude-brain` (como aquí) y los checks
+- **Pregunta abierta del hoist:** los checks Capa 1 son .NET-plantilla-shaped, pero `cortex`
+  propaga a TODOS los repos. ¿El motor genérico + skill viven en `cortex` (como aquí) y los checks
   .NET se afinan/propagan vía la plantilla .NET (`plantilladotnet`)? ¿O `brain/scripts/` crece una ruta
   de propagación propia (hoy NO existe: ni `install-brain.sh` ni `sincronizar-cerebro.sh` conocen
   `brain/scripts/` → el payload de Capa 1 no se propaga solo a un repo consumidor todavía)?

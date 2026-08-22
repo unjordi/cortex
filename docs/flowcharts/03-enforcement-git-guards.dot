@@ -1,4 +1,4 @@
-// 03 — Enforcement de los git-guards sobre UN comando git (claude-brain)  ·  FUENTE editable (Graphviz .dot)
+// 03 — Enforcement de los git-guards sobre UN comando git (cortex)  ·  FUENTE editable (Graphviz .dot)
 // Render:  dot -Tsvg 03-enforcement-git-guards.dot -o 03-enforcement-git-guards.svg
 // Construido 2026-08-01 desde el CÓDIGO REAL de brain/hooks/ (git-branch-guard, merge-squash-guard,
 // confirmar-merge-develop, secret-scan + la lib analizar-comando-git.sh; recordar-dashboard,

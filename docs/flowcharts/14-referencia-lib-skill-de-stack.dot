@@ -1,8 +1,8 @@
-// 14 — Referencia: libs compartidas + skills de stack (sin flujo propio) (claude-brain)  ·  FUENTE editable (.dot)
+// 14 — Referencia: libs compartidas + skills de stack (sin flujo propio) (cortex)  ·  FUENTE editable (.dot)
 // Render:  dot -Tsvg 14-referencia-lib-skill-de-stack.dot -o 14-referencia-lib-skill-de-stack.svg
 // Piezas que NO tienen flujo propio pero SOSTIENEN a los demás charts: las libs `lib` del MANIFEST
 // (fuente ÚNICA que varios hooks sourcean → no divergen) + los skills específicos de stack (viven en el
-// repo consumidor, no en claude-brain). Reconstruido 2026-08-07 desde brain/hooks/MANIFEST.
+// repo consumidor, no en cortex). Reconstruido 2026-08-07 desde brain/hooks/MANIFEST.
 // Re-canoniza el huérfano 11-referencia-libskill-de-stack.svg (sin .dot ni leyenda).
 digraph flujos {
   graph [bgcolor="#1b1712", rankdir=TB, fontname="Helvetica", splines=true,
@@ -95,7 +95,7 @@ digraph flujos {
     DRIFT [label="⚙ drift-cerebro-comun (lib)\nlógica compartida del anti-drift del cerebro; la usa aviso-drift-cerebro (ver 01/02)"];
 
     SKILLS [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
-            label="💡 skills específicos de STACK (viven en el repo CONSUMIDOR, no en claude-brain)\np.ej. la plantilla .NET: crear-pagina-blazor · migracion-ef · build-produccion · agregar-seed…\nusan el ritual genérico cerrar-slice (ver 10). claude-brain solo trae los skills GENÉRICOS (ver leyenda 💡)"];
+            label="💡 skills específicos de STACK (viven en el repo CONSUMIDOR, no en cortex)\np.ej. la plantilla .NET: crear-pagina-blazor · migracion-ef · build-produccion · agregar-seed…\nusan el ritual genérico cerrar-slice (ver 10). cortex solo trae los skills GENÉRICOS (ver leyenda 💡)"];
 
     // Layout (sin flujo real; aristas invisibles para ordenar)
     ACG -> DET -> JUEZ [style=invis];

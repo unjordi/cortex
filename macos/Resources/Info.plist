@@ -7,7 +7,7 @@
 	<key>CFBundleDisplayName</key>
 	<string>Claude Brain Widget</string>
 	<key>CFBundleIdentifier</key>
-	<string>io.github.unjordi.claude-brain</string>
+	<string>io.github.unjordi.cortex</string>
 	<key>CFBundleExecutable</key>
 	<string>ClaudeBrain</string>
 	<key>CFBundleIconFile</key>

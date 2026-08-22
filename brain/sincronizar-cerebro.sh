@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# sincronizar-cerebro.sh — despliega/actualiza la copia POR-REPO del cerebro (claude-brain) en un repo
+# sincronizar-cerebro.sh — despliega/actualiza la copia POR-REPO del cerebro (cortex) en un repo
 # consumidor (p. ej. un repo .NET), desde brain/ como FUENTE ÚNICA. Antídoto al drift: la copia
 # por-repo deja de curarse a mano y se DERIVA del MANIFEST (tier {repo, both}).
 #

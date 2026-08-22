@@ -2,12 +2,12 @@
 name: reubicar-master
 description: >-
   Muda una sesión master COMPLETA de Claude Code a otro repo (caso canónico: los brain-master a
-  `claude-brain`) SIN dejar nada a medias — transcript re-anclado + cwd reescrito, cerebro del master
+  `cortex`) SIN dejar nada a medias — transcript re-anclado + cwd reescrito, cerebro del master
   migrado por su canal correcto, slug global y TODAS las referencias (masters.json target por-id,
   alias, symlink `memory`) corregidas de forma ATÓMICA, residuo QUIRÚRGICO barrido y doc=realidad.
   Úsala cuando: un `--resume` cae en un folder muerto; un master quedó "a medias" (residuo + resume
   roto, anti-ejemplo helios-selene); o quieres consolidar los dos brain-master (Mac + Cachy) en
-  `claude-brain` sin lobotomizarlos, sin fuga a un repo público ni duplicado divergente. Hermana de
+  `cortex` sin lobotomizarlos, sin fuga a un repo público ni duplicado divergente. Hermana de
   `claude-proyecto-autocontenido` (esa define DÓNDE vive el cerebro; ésta lo MUEVE de casa).
 ---
 
@@ -23,7 +23,7 @@ funcional del humano**, no el verde técnico.
 ## Cuándo usarla · Cuándo NO
 **SÍ:**
 - Consolidar los brain-master (`claude-brain-cachy-master` en Cachy, `claude-brain-master` en Mac) dentro
-  de `claude-brain` — su casa real (lo dice su `CLAUDE.local.md`), no `plantilladotnet` (donde el cwd los
+  de `cortex` — su casa real (lo dice su `CLAUDE.local.md`), no `plantilladotnet` (donde el cwd los
   ancló por accidente histórico).
 - Un `claude --resume <id>` que reanuda en un folder que ya no es la casa del master ("folder muerto").
 - Un master que quedó a medias tras un intento previo (residuo en el slug viejo + resume roto = el
@@ -33,7 +33,7 @@ funcional del humano**, no el verde técnico.
 - Un mover-sesiones genérico entre proyectos cualesquiera (para eso está `session-move.js` directo, o el
   menú "Mover a…" del widget). Esta skill es para un **master** (persiste/viaja) con **cerebro** detrás.
 - Limpiar sesiones stale/muertas (otra misión, fuera de alcance).
-- Tocar `brain/` de claude-brain (es el PRODUCTO que viaja a los clones; leerlo es lícito, mutarlo desde
+- Tocar `brain/` de cortex (es el PRODUCTO que viaja a los clones; leerlo es lícito, mutarlo desde
   una pasada de reubicación **jamás** — regla dura del `CLAUDE.local.md`).
 - Una ruta "solo reorganizar sin mover el cwd": **DESCARTADA por el humano** (00-decisiones). El requisito
   es el move COMPLETO (route b FULL). Bajar el alcance NO es una opción de esta skill.
@@ -59,17 +59,17 @@ memorias que se ven parado en plantilladotnet". **No lo es.** Esos skills son .N
 plantilla del equipo, autocargados solo porque el cwd era la plantilla); el oficio del master es MANTENER
 el cerebro. Se clasifica por **PROPIEDAD** y cada tier viaja por su canal:
 
-| TIER | Qué es | Canal | Va a claude-brain |
+| TIER | Qué es | Canal | Va a cortex |
 |---|---|---|---|
-| **T1 — cerebro personal PÚBLICO-SEGURO** | memorias de mantener-el-cerebro, genéricas/compartibles (`handoff-peer-claudes-conciso.md`, `plan-molde-cerebros.md`, `diseno-unificar-cerebro.md`, …). Skills: NINGUNO viaja (las 4 de mantenimiento — `agregar-hook-cerebro`, `claude-brain-widget`, `cambiar-icono`, `publicar-widget` — YA viven en `claude-brain/.claude/skills`; las ~35 transversales son GLOBAL y se auto-cargan solas) | **versionado por PR** (merge dedup por CONTENIDO en `claude-brain/.claude/memory`) | **SÍ** |
+| **T1 — cerebro personal PÚBLICO-SEGURO** | memorias de mantener-el-cerebro, genéricas/compartibles (`handoff-peer-claudes-conciso.md`, `plan-molde-cerebros.md`, `diseno-unificar-cerebro.md`, …). Skills: NINGUNO viaja (las 4 de mantenimiento — `agregar-hook-cerebro`, `cortex-widget`, `cambiar-icono`, `publicar-widget` — YA viven en `cortex/.claude/skills`; las ~35 transversales son GLOBAL y se auto-cargan solas) | **versionado por PR** (merge dedup por CONTENIDO en `cortex/.claude/memory`) | **SÍ** |
 | **T2 — cerebro personal SENSIBLE** | identidad y autorizaciones (`conocimiento-propio.local.md`, `autorizaciones-vigentes.local.md`, y el `CLAUDE.local.md` de la raíz) | **bundle en Drive** (gitignored) — git NO los propaga | **SÍ, gitignored per-máquina** |
 | **T3 — PRODUCTO de la plantilla .NET** | los 18 skills .NET + memorias de plantilla/proyecto (`_PROTOCOLO.md`, `flujo-de-trabajo.md`, `decisiones-infra.md`, `release-develop-main.md`, `modulo-notificaciones.md`, `lecciones-migracion-cps.md`, `estado-proyecto.md`, `bitacora.md`, `entorno-maquina.md`, …) | **SE QUEDA en plantilladotnet** | **NO** |
 
-**Por qué así, no de otra forma:** `claude-brain` es **PÚBLICO** [verificado: `git@github.com:unjordi/claude-brain.git`]
+**Por qué así, no de otra forma:** `cortex` es **PÚBLICO** [verificado: `git@github.com:unjordi/cortex.git`]
 y su `.gitignore` **NO ignora** `.claude/skills/*` ni el `CLAUDE.local.md` de la raíz [verificado:
 `git check-ignore .claude/skills/foo CLAUDE.local.md` no los lista]. Commitear T3 ahí = **fuga + duplicado
 divergente** de la plantilla del equipo. Resultado del corte:
-- **claude-brain** queda con el master + su cerebro COMPLETO (T1∪T2 + las GLOBAL que ya viajan) **sin** los
+- **cortex** queda con el master + su cerebro COMPLETO (T1∪T2 + las GLOBAL que ya viajan) **sin** los
   18 skills .NET. Cero lobotomía.
 - **plantilladotnet** queda íntegro y canónico como plantilla .NET. Nadie la vacía.
 - Cero fuga, cero duplicado. Ambos extremos enteros. **Esto NO es hacer menos: es la descomposición
@@ -77,7 +77,7 @@ divergente** de la plantilla del equipo. Resultado del corte:
 
 ### 1.1 · Escape-hatch T3 (opt-in, Decisión #3) — overlay GITIGNORED, nunca versionado
 Si el humano QUIERE que el master conserve acceso vivo a los skills .NET en su nueva casa **sin filtrarlos**:
-copiarlos a `claude-brain/.claude/skills/` en local **y** añadir el patrón al `.gitignore` del destino, p. ej.:
+copiarlos a `cortex/.claude/skills/` en local **y** añadir el patrón al `.gitignore` del destino, p. ej.:
 ```bash
 grep -qxF '.claude/skills/_plantilla-*/' "$DST_REPO/.gitignore" || printf '%s\n' '.claude/skills/_plantilla-*/' >> "$DST_REPO/.gitignore"
 # copiar cada skill .NET bajo un prefijo que calce el patrón ignorado, p.ej. .claude/skills/_plantilla-instanciar-proyecto/
@@ -90,7 +90,7 @@ Presentes-pero-no-commiteados → cero lobotomía + cero fuga. **Default: NO** (
 ```bash
 set -euo pipefail
 SRC_REPO="/home/unjordi/code/plantilladotnet"
-DST_REPO="/home/unjordi/code/claude-brain"
+DST_REPO="/home/unjordi/code/cortex"
 SRC="$SRC_REPO/.claude"
 DST="$DST_REPO/.claude"
 BIN="$DST_REPO/bin"                                              # session-move/import/export.js + session-lib.js
@@ -99,7 +99,7 @@ GLOBAL_MEM="$HOME/.claude/projects/-home-unjordi/memory"          # cerebro de M
 MASTER_NAME="claude-brain-cachy-master"                          # identidad PER-MÁQUINA (Mac usa claude-brain-master)
 ID=""                                                            # ← Decisión #1: el <id> vigente (ver G-ID)
 OLD_SLUG="$(printf '%s' "$SRC_REPO" | sed 's/[^a-zA-Z0-9]/-/g')"  # -home-unjordi-code-plantilladotnet (COMPARTIDO ~130 sesiones)
-NEW_SLUG="$(printf '%s' "$DST_REPO" | sed 's/[^a-zA-Z0-9]/-/g')"  # -home-unjordi-code-claude-brain
+NEW_SLUG="$(printf '%s' "$DST_REPO" | sed 's/[^a-zA-Z0-9]/-/g')"  # -home-unjordi-code-cortex
 JSONL="$HOME/.claude/projects/$OLD_SLUG/$ID.jsonl"
 NEW_JSONL="$HOME/.claude/projects/$NEW_SLUG/$ID.jsonl"
 MJ="$DRIVE/masters.json"
@@ -147,7 +147,7 @@ CERRADA"*. En cross-máquina el mtime se chequea en el host remoto (`ssh <host> 
 > self-check). Por eso el move de cada master lo dispara **el OTRO** — ver la danza §6.
 
 ### G-GITIGNORE · BLINDAR el `.gitignore` del destino ANTES de depositar nada sensible
-`claude-brain` es público y su `.gitignore` **no** cubre el `CLAUDE.local.md` de la raíz [verificado].
+`cortex` es público y su `.gitignore` **no** cubre el `CLAUDE.local.md` de la raíz [verificado].
 Depositarlo sin blindar lo dejaría TRACKEADO = fuga. Se blinda ANTES de tocar T2:
 ```bash
 for pat in 'CLAUDE.local.md' '.claude/memory/*.local.md' '.claude/settings.local.json'; do
@@ -281,13 +281,13 @@ tar -C "$DST/memory" -xzf "$DRIVE/$ID.brain-local.tgz"
 [ -f "$DST/memory/$T2_ROOT" ] && /bin/mv -f "$DST/memory/$T2_ROOT" "$DST_REPO/$T2_ROOT"   # CLAUDE.local.md va a la RAÍZ
 git -C "$DST_REPO" status --porcelain | grep -iE 'local\.md|CLAUDE\.local' && { echo "FUGA: sensible visible a git"; exit 1; } || true
 # doc=realidad de la identidad: "corro desde plantilladotnet (mi base)" ya es FALSO → revisar a ojo tras editar:
-#   conocimiento-propio.local.md del DESTINO: "corro desde claude-brain (mi nueva base), antes desde plantilladotnet"
+#   conocimiento-propio.local.md del DESTINO: "corro desde cortex (mi nueva base), antes desde plantilladotnet"
 # BARRIDO QUIRÚRGICO del slug COMPARTIDO (~130 sesiones): SOLO el <id>.jsonl. El move local ya lo unlinkeó;
 # esto es defensivo/idempotente (por si quedó copia o se vino de import). NUNCA el symlink 'memory'.
 [ -f "$HOME/.claude/projects/$OLD_SLUG/$ID.jsonl" ] && /bin/rm -f "$HOME/.claude/projects/$OLD_SLUG/$ID.jsonl"
 find "$HOME/.claude/projects/$OLD_SLUG" -maxdepth 1 -name memory -type l   # VERIFICAR que el symlink compartido SIGUE vivo
-# symlink 'memory' del slug NUEVO → el cerebro COMPLETO (ya apunta a claude-brain/.claude/memory [verificado]):
-readlink "$HOME/.claude/projects/$NEW_SLUG/memory"     # → /home/unjordi/code/claude-brain/.claude/memory
+# symlink 'memory' del slug NUEVO → el cerebro COMPLETO (ya apunta a cortex/.claude/memory [verificado]):
+readlink "$HOME/.claude/projects/$NEW_SLUG/memory"     # → /home/unjordi/code/cortex/.claude/memory
 find -L "$DST" -type l                                 # sin symlinks rotos; si faltara: bash "$DST_REPO/bootstrap-claude.sh"
 ```
 
@@ -296,12 +296,12 @@ find -L "$DST" -type l                                 # sin symlinks rotos; si 
   `confirmar-merge-develop`/`merge-squash-guard`). **NUNCA `--auto-merge`** — integridad de guardarraíles.
   Sin OK, queda en la mini-develop (Decisión #5). Solo lo versionable (T1 + gitignore); jamás
   `.jsonl`/`*.local.md`/`brain/`.
-- Actualizar: **dashboard global** (Mapa: el master ahora vive en `code/claude-brain` + bitácora fechada
+- Actualizar: **dashboard global** (Mapa: el master ahora vive en `code/cortex` + bitácora fechada
   con `>>`), `estado-proyecto.md`, y el `CLAUDE.local.md`/README de plantilladotnet si mencionaba al master
   como residente. **Registrar la RUEDA** (el TAIL que a helios-selene le faltó).
-- **LISTO = QA del humano.** `claude --resume $ID` parado en `claude-brain`; confirmar: (a) reanuda sin
+- **LISTO = QA del humano.** `claude --resume $ID` parado en `cortex`; confirmar: (a) reanuda sin
   folder muerto; (b) identidad cargada (conocimiento-propio re-inyectado por `aviso-drift-cerebro`);
-  (c) las 4 skills de claude-brain + las GLOBAL aparecen; (d) las memorias-del-master (T1∪T2) están;
+  (c) las 4 skills de cortex + las GLOBAL aparecen; (d) las memorias-del-master (T1∪T2) están;
   (e) `masters.json`/alias correctos. **Verde técnico ≠ LISTO. No se declara a ciegas.**
 
 ---
@@ -323,20 +323,20 @@ el plano de datos** (transporta el `.gz` + el bundle T2); **git-PR** lleva T1. E
 ya es LOCAL a su máquina — SSH no transporta el `.jsonl`, solo ORDENA el move allá.
 
 **Preflight SSH:** `ssh -o BatchMode=yes -o ConnectTimeout=8 unjordi@macbook-pro-de-unjordi.local 'echo ok'`
-(key-auth + mDNS) + verificar `node` y `~/code/claude-brain` remotos.
+(key-auth + mDNS) + verificar `node` y `~/code/cortex` remotos.
 
-**Coreografía (consolidar los dos brain-master en claude-brain):**
+**Coreografía (consolidar los dos brain-master en cortex):**
 1. **Preparar (esta sesión VIVA — solo lo NO-destructivo):** G-ID/G-RECONSTITUTE(S0)/G-GITIGNORE/S1(T1 por
    PR)/S2(bundle T2). Esta sesión NO se mueve a sí misma (G-LIVENESS: mtime caliente).
 2. **unjordi CIERRA el gemelo Mac (`<id-mac>`).** Desde Cachy, por SSH, el gemelo (o un shell remoto) corre
-   S3–S6 para `<id-mac>` con `session-import.js --repo /Users/unjordi/code/claude-brain` (import re-deriva
+   S3–S6 para `<id-mac>` con `session-import.js --repo /Users/unjordi/code/cortex` (import re-deriva
    el slug `/Users/...` y hace el swap solo). Su identidad T2 viaja por el bundle Drive `locals-<master-mac>`;
    T1 le llega con `git pull` del PR mergeado.
-3. **unjordi resume el gemelo** en su nueva casa (Mac `claude-brain`) → gemelo vivo con cerebro completo.
-4. **unjordi CIERRA esta sesión Cachy (`$ID`).** El gemelo (ahora vivo en claude-brain) por SSH corre S3–S6
-   para `$ID` con `--to-cwd /home/unjordi/code/claude-brain`. **Así el gemelo me mueve a MÍ** — yo no me
+3. **unjordi resume el gemelo** en su nueva casa (Mac `cortex`) → gemelo vivo con cerebro completo.
+4. **unjordi CIERRA esta sesión Cachy (`$ID`).** El gemelo (ahora vivo en cortex) por SSH corre S3–S6
+   para `$ID` con `--to-cwd /home/unjordi/code/cortex`. **Así el gemelo me mueve a MÍ** — yo no me
    auto-muevo (estoy cerrada).
-5. **unjordi resume Cachy** en `claude-brain` → cerebro completo. QA (§S6) en cada máquina.
+5. **unjordi resume Cachy** en `cortex` → cerebro completo. QA (§S6) en cada máquina.
 
 **Cómo sobrevive el orquestador a su propia reubicación:** esta sesión orquesta el paso 2 (mueve al gemelo);
 NO puede ejecutar su propio paso 4 (debe estar cerrada) → lo ejecuta el gemelo. "Sobrevive" reapareciendo con

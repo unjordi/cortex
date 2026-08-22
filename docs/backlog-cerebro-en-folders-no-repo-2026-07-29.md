@@ -48,7 +48,7 @@ necesitaría. Resultado observado: fricción sin protección + ausencia del úni
 7. **Marcar confianza de cada dato** `[DOC]/[EXP]/[SUPUESTO]` — un `[SUPUESTO]` fosilizado como ley
    (appid "determinista") costó una noche.
 
-## PROPUESTAS concretas para el claude-brain (el backlog)
+## PROPUESTAS concretas para el cortex (el backlog)
 - **P1 — "Modo/perfil non-git" (o detección):** que los git-guards (`git-branch-guard`, `merge-squash-guard`,
   `confirmar-merge-develop`, `barrer-ramas`, `rama-vieja`) hagan **no-op silencioso** cuando
   `git rev-parse --is-inside-work-tree` falle. Cambio de PRECISIÓN (no afloja nada — solo no dispara donde no

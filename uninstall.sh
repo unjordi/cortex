@@ -2,7 +2,7 @@
 # Remove the Claude Code quota widget AND the shared Claude-Code brain. Idempotent.
 #
 #   ./uninstall.sh            # remove everything (widget + brain)
-#   ./uninstall.sh --keep-cfg # keep ~/.config/claude-brain/limits.env
+#   ./uninstall.sh --keep-cfg # keep ~/.config/cortex/limits.env
 #   ./uninstall.sh --no-brain # remove only the widget; leave the Claude-Code brain installed
 
 set -euo pipefail
@@ -10,7 +10,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 BRAIN_UNINSTALLER="$ROOT/brain/uninstall-brain.sh"
 
-PLASMOID_ID="io.github.unjordi.claude-brain"
+PLASMOID_ID="io.github.unjordi.cortex"
 KEEP_CFG=0
 SKIP_BRAIN=0
 for arg in "$@"; do
@@ -31,15 +31,15 @@ if [[ "$SKIP_BRAIN" -eq 0 ]]; then
 fi
 
 echo "==> Stopping and disabling timer"
-systemctl --user disable --now claude-brain.timer 2>/dev/null || true
+systemctl --user disable --now cortex.timer 2>/dev/null || true
 
 echo "==> Removing systemd user units"
-rm -f "$HOME/.config/systemd/user/claude-brain.timer"
-rm -f "$HOME/.config/systemd/user/claude-brain.service"
+rm -f "$HOME/.config/systemd/user/cortex.timer"
+rm -f "$HOME/.config/systemd/user/cortex.service"
 systemctl --user daemon-reload || true
 
 echo "==> Removing fetch script"
-rm -f "$HOME/.local/bin/claude-brain-fetch"
+rm -f "$HOME/.local/bin/cortex-fetch"
 
 echo "==> Removing plasmoid"
 if command -v kpackagetool6 >/dev/null 2>&1; then
@@ -47,11 +47,11 @@ if command -v kpackagetool6 >/dev/null 2>&1; then
 fi
 
 echo "==> Removing cache"
-rm -rf "$HOME/.cache/claude-brain"
+rm -rf "$HOME/.cache/cortex"
 
 if [[ "$KEEP_CFG" -eq 0 ]]; then
   echo "==> Removing config"
-  rm -rf "$HOME/.config/claude-brain"
+  rm -rf "$HOME/.config/cortex"
 fi
 
 echo "Done."

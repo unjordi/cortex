@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install-brain.sh — instalador del CEREBRO GLOBAL compartible de Claude Code (claude-brain).
+# install-brain.sh — instalador del CEREBRO GLOBAL compartible de Claude Code (cortex).
 # "Corre una vez y tu máquina queda con los guardrails, la gobernanza de costo de delegación,
 # la skill de cierre, el dashboard y las normas globales." Re-correrlo es SEGURO (idempotente).
 #
@@ -57,7 +57,7 @@ SKILLS_DIR="$CLAUDE_DIR/skills"
 GSET="$CLAUDE_DIR/settings.json"
 GCLAUDE="$CLAUDE_DIR/CLAUDE.md"
 
-echo "==> claude-brain: instalando cerebro global en $CLAUDE_DIR"
+echo "==> cortex: instalando cerebro global en $CLAUDE_DIR"
 mkdir -p "$HOOKS_DIR" "$SKILLS_DIR"
 
 # Dependencia de los hooks: jq. Sin jq, el git-branch-guard y el gate de delegación fallan ABIERTO.
@@ -314,7 +314,7 @@ elif [ ! -f "$ENTORNO" ]; then
   mkdir -p "$(dirname "$ENTORNO")"
   {
     printf -- '---\nname: entorno-esta-maquina\ndescription: Entorno de ESTA máquina (shell/aliases, OS/arch, runtime local). Es PER-MÁQUINA: vive SOLO en la memoria global, NUNCA en un repo (viajaría por git y mentiría en otra compu/OS). Lo siembra el bootstrap del cerebro y Claude lo va actualizando.\nmetadata:\n  node_type: memory\n  type: reference\n---\n\n'
-    printf '# Entorno de ESTA máquina — sembrado por claude-brain\n\n'
+    printf '# Entorno de ESTA máquina — sembrado por cortex\n\n'
     printf '> **REGLA DURA — por qué este archivo es GLOBAL y no de repo:** el entorno de MÁQUINA (OS,\n'
     printf '> shell, aliases, rutas de tu `$HOME`, runtime local: Docker/BD/certs) es de **esta** compu;\n'
     printf '> en un repo viajaría por git y **mentiría** al clonar en otra máquina/OS. Por eso vive AQUÍ\n'
@@ -351,17 +351,17 @@ rm -f "$blk" 2>/dev/null || true
 # END NO toca el archivo (ese caso borraría todo lo posterior al BEGIN).
 if [ ! -f "$SRC_NORMS/global-claude-md.md" ]; then
   echo "warn: no encuentro $SRC_NORMS/global-claude-md.md; no inyecté normas"
-elif [ -f "$GCLAUDE" ] && grep -q 'BEGIN claude-brain' "$GCLAUDE"; then
+elif [ -f "$GCLAUDE" ] && grep -q 'BEGIN cortex' "$GCLAUDE"; then
   # Guarda anti-truncado: con BEGIN pero SIN END, el awk deja skip=1 para siempre → BORRARÍA todo lo que
   # venga tras el BEGIN (incluida la sección PERSONAL del usuario). Si falta el END, NO tocamos el archivo.
-  if ! grep -q 'END claude-brain' "$GCLAUDE"; then
-    echo "warn: $GCLAUDE tiene 'BEGIN claude-brain' SIN su 'END' — NO lo toco (evito borrar tu sección personal). Ciérralo a mano y re-corre."
+  if ! grep -q 'END cortex' "$GCLAUDE"; then
+    echo "warn: $GCLAUDE tiene 'BEGIN cortex' SIN su 'END' — NO lo toco (evito borrar tu sección personal). Ciérralo a mano y re-corre."
   else
     tmp="$(mktemp)" || tmp=""
     if [ -n "$tmp" ] && awk -v src="$SRC_NORMS/global-claude-md.md" '
-        /<!-- BEGIN claude-brain/ { skip=1; while ((getline l < src) > 0) print l; close(src) }
+        /<!-- BEGIN cortex/ { skip=1; while ((getline l < src) > 0) print l; close(src) }
         skip==0 { print }
-        /<!-- END claude-brain -->/ { skip=0 }
+        /<!-- END cortex -->/ { skip=0 }
       ' "$GCLAUDE" > "$tmp" && [ -s "$tmp" ]; then
       # Red de seguridad: CLAUDE.md trae la sección PERSONAL del usuario, que NO vive en git → backup antes del mv.
       cp "$GCLAUDE" "$GCLAUDE.bak" 2>/dev/null || true
@@ -391,11 +391,11 @@ if command -v ds_render_posix >/dev/null 2>&1; then
   else
     echo "warn: no pude generar el bloque posix de $ART"
   fi
-  # Cablear el @import idempotente, FUERA del bloque BEGIN/END claude-brain (que se regenera): su propio
+  # Cablear el @import idempotente, FUERA del bloque BEGIN/END cortex (que se regenera): su propio
   # marcador. Claude Code procesa @imports recursivos → el artefacto queda siempre en contexto.
   # GUARDA anti-truncado (misma que el bloque de normas): un CLAUDE.md con BEGIN sin END está en estado
   # PELIGROSO → NO lo tocamos (ni para appendear el @import), para no arriesgar la sección personal.
-  if [ -f "$GCLAUDE" ] && grep -q 'BEGIN claude-brain' "$GCLAUDE" 2>/dev/null && ! grep -q 'END claude-brain' "$GCLAUDE" 2>/dev/null; then
+  if [ -f "$GCLAUDE" ] && grep -q 'BEGIN cortex' "$GCLAUDE" 2>/dev/null && ! grep -q 'END cortex' "$GCLAUDE" 2>/dev/null; then
     echo "warn: $GCLAUDE tiene BEGIN sin END — NO cablo el @import (no toco un archivo en estado peligroso). Ciérralo y re-corre."
   elif [ -f "$GCLAUDE" ] && grep -q 'brain:import-aliases' "$GCLAUDE" 2>/dev/null; then
     echo "ok: @import de aliases-activos.md ya cableado en $GCLAUDE (idempotente)"

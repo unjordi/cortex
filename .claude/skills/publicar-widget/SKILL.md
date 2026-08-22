@@ -1,7 +1,7 @@
 ---
 name: publicar-widget
 description: >
-  Publica un cambio del widget/cerebro claude-brain por el flujo de git del equipo —
+  Publica un cambio del widget/cerebro cortex por el flujo de git del equipo —
   ramita → MR → develop (squash) → release a main (merge-commit) — y esquiva los gotchas
   reales (guard de squash cacheado que bloquea el CLI a main, conflicto de rebase tras un
   squash, y el autoupdate por version.json). Úsalo para cerrar/soltar cualquier slice del repo.
@@ -9,7 +9,7 @@ description: >
 
 # publicar-widget — flujo de release del widget/cerebro (con gotchas)
 
-Repo `github.com/unjordi/claude-brain` (GitHub). Norma dura: **NUNCA push a develop/main**; todo
+Repo `github.com/unjordi/cortex` (GitHub). Norma dura: **NUNCA push a develop/main**; todo
 por ramita → PR. Al integrar a develop se **SQUASHEA**; los releases a main van **SIN squash**.
 
 ## Flujo normal (a develop)
@@ -17,8 +17,8 @@ por ramita → PR. Al integrar a develop se **SQUASHEA**; los releases a main va
 git checkout -b feat/<tema> origin/develop     # SIEMPRE desde develop ACTUALIZADO
 # … commits en la ramita (libres, sin preguntar) …
 git push -u origin feat/<tema>
-gh pr create --repo unjordi/claude-brain --base develop --head feat/<tema> --title … --body …
-gh pr merge <n> --repo unjordi/claude-brain --squash --delete-branch
+gh pr create --repo unjordi/cortex --base develop --head feat/<tema> --title … --body …
+gh pr merge <n> --repo unjordi/cortex --squash --delete-branch
 ```
 El **merge a develop necesita el OK EXPLÍCITO de unjordi** (lo exige el flujo y el hook
 `confirmar-merge-develop`); los commits/push a la ramita NO.

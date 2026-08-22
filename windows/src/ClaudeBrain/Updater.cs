@@ -52,7 +52,7 @@ internal sealed class Updater
     private DateTime? _localDate;      // UTC
     private DateTime? _lastCheck;      // UTC
     private bool _loaded;
-    private const string Slug = "unjordi/claude-brain";
+    private const string Slug = "unjordi/cortex";
 
     // Ruta de DESCARGA (fase 2): URL del asset ClaudeBrain.exe en el release rolling 'windows-latest'
     // + su build-sha. Si está presente, actualizamos bajando el exe (SIN clon ni .NET SDK).
@@ -93,7 +93,7 @@ internal sealed class Updater
 
     /// Clon local para auto-actualizar (git-based). Espeja resolveClonePath de macos/Updater.swift:
     /// prefiere el EMBEBIDO si existe aqui (build local), luego $CLAUDE_BRAIN_DIR, luego el clon oculto
-    /// que siembra bootstrap.ps1 (%LOCALAPPDATA%\claude-brain-repo). Devuelve "" si ninguno trae
+    /// que siembra bootstrap.ps1 (%LOCALAPPDATA%\cortex-repo). Devuelve "" si ninguno trae
     /// windows\install.ps1 -> sin auto-update git-based (el banner invita a hacerlo a mano; la ruta de
     /// DESCARGA del release no necesita clon). CLAUDE_BRAIN_DIR puede venir en forward-slash (asi lo
     /// exporta bootstrap.ps1 para bash) — Path.Combine/File.Exists lo manejan igual en Windows.
@@ -101,7 +101,7 @@ internal sealed class Updater
     {
         string env = Environment.GetEnvironmentVariable("CLAUDE_BRAIN_DIR") ?? "";
         string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        string localRepo = local.Length > 0 ? Path.Combine(local, "claude-brain-repo") : "";
+        string localRepo = local.Length > 0 ? Path.Combine(local, "cortex-repo") : "";
         foreach (var c in new[] { embedded, env, localRepo })
             if (c.Length > 0 && File.Exists(Path.Combine(c, "windows", "install.ps1")))
                 return c;
@@ -150,7 +150,7 @@ internal sealed class Updater
         {
             using var req = new HttpRequestMessage(HttpMethod.Get,
                 $"https://api.github.com/repos/{Slug}/commits/main");
-            req.Headers.UserAgent.ParseAdd("claude-brain");   // GitHub lo exige
+            req.Headers.UserAgent.ParseAdd("cortex");   // GitHub lo exige
             req.Headers.Accept.ParseAdd("application/vnd.github+json");
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
             using var resp = await Http.SendAsync(req, cts.Token);
@@ -189,7 +189,7 @@ internal sealed class Updater
     {
         using var req = new HttpRequestMessage(HttpMethod.Get,
             $"https://api.github.com/repos/{Slug}/releases/tags/windows-latest");
-        req.Headers.UserAgent.ParseAdd("claude-brain");
+        req.Headers.UserAgent.ParseAdd("cortex");
         req.Headers.Accept.ParseAdd("application/vnd.github+json");
         using var resp = await Http.SendAsync(req, ct);
         if (!resp.IsSuccessStatusCode) return false;   // sin release aún (404) → fallback git-based
@@ -254,7 +254,7 @@ internal sealed class Updater
             "if ($LASTEXITCODE -ne 0) { exit 1 }   # árbol sucio / no-ff → NO relanzar, app intacta\n" +
             $"& '{installPs1.Replace("'", "''")}'\n";
 
-        return LaunchDetached(script, "claude-brain-update.ps1");
+        return LaunchDetached(script, "cortex-update.ps1");
     }
 
     /// Fase 2: descarga el exe del release y hace SWAP. No necesita clon ni .NET SDK. Fail-open
@@ -309,7 +309,7 @@ internal sealed class Updater
         sb.Append("try { $ws=New-Object -ComObject WScript.Shell; $lk=$ws.CreateShortcut((Join-Path $sm 'Claude Brain.lnk')); $lk.TargetPath=$exe; $lk.WorkingDirectory=$dir; $lk.IconLocation=$exe; $lk.Description='Claude Brain Widget'; $lk.Save() } catch {}\n");
         sb.Append("Remove-Item $tmp -Force\n");
         sb.Append("Start-Process $exe\n");
-        return LaunchDetached(sb.ToString(), "claude-brain-update-dl.ps1");
+        return LaunchDetached(sb.ToString(), "cortex-update-dl.ps1");
     }
 
     /// Escribe el script a un .ps1 temporal y lo lanza DETACHADO (UseShellExecute + ventana oculta),

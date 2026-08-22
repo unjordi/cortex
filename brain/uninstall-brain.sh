@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # uninstall-brain.sh — INVERSO EXACTO de install-brain.sh. Quita de esta máquina el CEREBRO GLOBAL
-# de Claude Code (claude-brain) que instaló install-brain.sh. Idempotente: re-correrlo es SEGURO
+# de Claude Code (cortex) que instaló install-brain.sh. Idempotente: re-correrlo es SEGURO
 # (si algo ya no está, lo salta sin quejarse).
 #
 # Quita GLOBAL (de ~/.claude):
@@ -12,7 +12,7 @@
 #   (b) DES-CABLEA de ~/.claude/settings.json SOLO las entradas que apuntan a esos hooks (deja
 #       intactas las demás — usa jq); poda los arrays de evento que queden vacíos.
 #   (c) las SKILLS genéricas (cerrar-slice, orquestar-fanout, checkpoint, rehidratar-hilo, turno-nocturno, diagramar, cosechar-sesion, unificar-cerebro) de ~/.claude/skills/.
-#   (d) el BLOQUE de normas de ~/.claude/CLAUDE.md (entre los marcadores BEGIN/END claude-brain).
+#   (d) el BLOQUE de normas de ~/.claude/CLAUDE.md (entre los marcadores BEGIN/END cortex).
 #
 # NO borra (son DATOS del usuario, no instalación):
 #   - el Dashboard del cerebro (dashboard_cerebro.md en la memoria GLOBAL).
@@ -31,7 +31,7 @@ SKILLS_DIR="$CLAUDE_DIR/skills"
 GSET="$CLAUDE_DIR/settings.json"
 GCLAUDE="$CLAUDE_DIR/CLAUDE.md"
 
-echo "==> claude-brain: desinstalando cerebro global de $CLAUDE_DIR"
+echo "==> cortex: desinstalando cerebro global de $CLAUDE_DIR"
 
 # ── (a) Borrar los hooks de tier global + la lib compartida + la config de costo ──
 # Derivado del MANIFEST (fuente única, igual que install-brain) → no es una 3ª lista que driftee.
@@ -91,20 +91,20 @@ for sk in cerrar-slice orquestar-fanout checkpoint rehidratar-hilo turno-nocturn
 done
 
 # ── (d) Quitar el bloque de normas de ~/.claude/CLAUDE.md (entre los marcadores) ──
-if [ -f "$GCLAUDE" ] && grep -q 'BEGIN claude-brain' "$GCLAUDE"; then
+if [ -f "$GCLAUDE" ] && grep -q 'BEGIN cortex' "$GCLAUDE"; then
   tmp="$(mktemp)" || tmp=""
   # Borra desde la línea del marcador BEGIN hasta la del END (inclusive). Sin sed -i (portable).
   if [ -n "$tmp" ] && awk '
-      /BEGIN claude-brain/ { skip=1 }
+      /BEGIN cortex/ { skip=1 }
       skip != 1 { print }
-      /END claude-brain/   { skip=0 }
+      /END cortex/   { skip=0 }
     ' "$GCLAUDE" > "$tmp"; then
     # Poda una posible línea en blanco al inicio que el bloque dejaba de separador.
     mv "$tmp" "$GCLAUDE"
     echo "ok: bloque de normas del cerebro removido de $GCLAUDE"
   else
     [ -n "$tmp" ] && rm -f "$tmp"
-    echo "warn: no pude editar $GCLAUDE; quita a mano el bloque BEGIN/END claude-brain"
+    echo "warn: no pude editar $GCLAUDE; quita a mano el bloque BEGIN/END cortex"
   fi
 else
   echo "ok: no hay bloque de normas del cerebro en $GCLAUDE"

@@ -31,7 +31,7 @@ $proj    = Join-Path $here 'src\ClaudeBrain\ClaudeBrain.csproj'
 $appName  = 'ClaudeBrain'
 $dest     = Join-Path $env:LOCALAPPDATA "Programs\$appName"
 $exe      = Join-Path $dest "$appName.exe"
-$assetUrl = 'https://github.com/unjordi/claude-brain/releases/download/windows-latest/ClaudeBrain.exe'
+$assetUrl = 'https://github.com/unjordi/cortex/releases/download/windows-latest/ClaudeBrain.exe'
 
 # -- Cerebro (hooks + normas), salvo -NoBrain -- ONE-STOP igual que install.sh (Mac/Linux): el
 # instalador deja cerebro + widget, para que el boton "Actualizar" (que corre este script) actualice
@@ -111,8 +111,8 @@ $repoRoot = Split-Path -Parent $here
 $effSha = (git -C $repoRoot rev-parse HEAD 2>$null)
 if ($got) {
     try {
-        $rel = Invoke-RestMethod "https://api.github.com/repos/unjordi/claude-brain/releases/tags/windows-latest" `
-                 -Headers @{ 'User-Agent' = 'claude-brain'; 'Accept' = 'application/vnd.github+json' } -UseBasicParsing
+        $rel = Invoke-RestMethod "https://api.github.com/repos/unjordi/cortex/releases/tags/windows-latest" `
+                 -Headers @{ 'User-Agent' = 'cortex'; 'Accept' = 'application/vnd.github+json' } -UseBasicParsing
         $m = [regex]::Match([string]$rel.body, 'build-sha: ([0-9a-f]+)')
         if ($m.Success -and $m.Groups[1].Value) {
             $effSha = $m.Groups[1].Value

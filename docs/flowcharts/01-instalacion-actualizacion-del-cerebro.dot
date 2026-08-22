@@ -1,4 +1,4 @@
-// 01 — Instalación / actualización del cerebro (claude-brain)  ·  FUENTE editable (Graphviz .dot)
+// 01 — Instalación / actualización del cerebro (cortex)  ·  FUENTE editable (Graphviz .dot)
 // Render:  dot -Tsvg 01-instalacion-actualizacion-del-cerebro.dot -o 01-instalacion-actualizacion-del-cerebro.svg
 // Rehecho 2026-07-29 contra el estado REAL del código (MANIFEST + install-brain.sh + sincronizar-cerebro.sh
 // + aviso-drift-cerebro.sh + docs/autoupdate.md). Sustituye al 01 obsoleto que pintaba como "[futuro]/hueco"
@@ -117,7 +117,7 @@ digraph flujos {
     BOOT     [color="#e08e45",
               label="🔔  bootstrap-claude.sh  (UNA vez tras clonar)\nsymlinkea la memoria + siembra dashboard + norma doc=realidad + verifica jq"];
     BOOT_INV [color="#9e9e9e", style="rounded,filled,dashed",
-              label="🚧  DRIFT INVERSO (vigente en repos CONSUMIDORES, fuera de claude-brain): el\nbootstrap-claude.sh de la plantilla hace `cp -f` INCONDICIONAL de solo 3 de los 6 `both`\n→ un clon con plantilla VIEJA PISA los globales con versiones stale (corto vs el MANIFEST).\n→ que el bootstrap invoque install-brain (que YA deriva del MANIFEST). Pendiente en la plantilla."];
+              label="🚧  DRIFT INVERSO (vigente en repos CONSUMIDORES, fuera de cortex): el\nbootstrap-claude.sh de la plantilla hace `cp -f` INCONDICIONAL de solo 3 de los 6 `both`\n→ un clon con plantilla VIEJA PISA los globales con versiones stale (corto vs el MANIFEST).\n→ que el bootstrap invoque install-brain (que YA deriva del MANIFEST). Pendiente en la plantilla."];
 
     // ── Ruta C: ACTUALIZAR una copia POR-REPO ya instalada (esto era el viejo 🔴 HUECO — hoy RESUELTO) ──
     CUPD     [shape=diamond, fillcolor="#2b2622", color="#d97757",
@@ -133,9 +133,9 @@ digraph flujos {
 
     // ── Ruta D: UPDATER del widget (⬆) ──
     WID      [color="#7fb069",
-              label="🟢  widget (pestaña Cerebro, 3 GUIs): lee ~/.claude/.brain-version y consulta\ncommits/main de github.com/unjordi/claude-brain (throttle ~15m, fail-open).\nSi main avanzó → dibuja el banner ⬆ Actualizar"];
+              label="🟢  widget (pestaña Cerebro, 3 GUIs): lee ~/.claude/.brain-version y consulta\ncommits/main de github.com/unjordi/cortex (throttle ~15m, fail-open).\nSi main avanzó → dibuja el banner ⬆ Actualizar"];
     WID_ACT  [color="#e08e45",
-              label="🟠  al aceptar ⬆: script suelto hace git fetch + merge --ff-only origin/main sobre\n~/.claude-brain y —solo si tuvo éxito— re-corre install.sh/ps1 (reconstruye+relanza,\ndesprendido). Fase 2 Windows: baja el .exe del release (pendiente de QA)"];
+              label="🟠  al aceptar ⬆: script suelto hace git fetch + merge --ff-only origin/main sobre\n~/.cortex y —solo si tuvo éxito— re-corre install.sh/ps1 (reconstruye+relanza,\ndesprendido). Fase 2 Windows: baja el .exe del release (pendiente de QA)"];
     WID_ATOM [color="#7fb069",
               label="🟢  atomicidad: install-brain instala los hooks con atomic_install (cp a tmp + mv,\nrename atómico) → el updater ⬆ ya no deja ventana de lectura a-medio-sobrescribir con sesión VIVA.\nRESUELTO (install-brain.sh atomic_install, en develop)"];
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# cementerio.sh — helper del "CEMENTERIO per-cerebro" (claude-brain). Standalone (kind=script): NO se
+# cementerio.sh — helper del "CEMENTERIO per-cerebro" (cortex). Standalone (kind=script): NO se
 # cablea; se corre A MANO desde dentro de un repo (como limpiar-ramas.sh / verificar-cerebro.sh).
 #
 # LA IDEA: las "lápidas" (mitos descartados, callejones muertos, "NO re-proponer") ya no viven INLINE

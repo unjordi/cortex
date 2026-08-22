@@ -19,7 +19,7 @@ Para mapas densos donde el layout automático no basta y un humano va a rearregl
    `fontcolor` para el estilo y `\l` para líneas alineadas a la izquierda.
 2. **Convierte con dot2yed:**
    ```sh
-   python3 ~/.claude-brain/bin/dot2yed.py entrada.dot salida.graphml
+   python3 ~/.cortex/bin/dot2yed.py entrada.dot salida.graphml
    ```
    (En un clon del repo: `python3 bin/dot2yed.py …`.) Aprovecha que `dot -Tjson` YA calculó
    posiciones, tamaños y estilos → el `.graphml` abre en yEd **ya acomodado** con el layout de

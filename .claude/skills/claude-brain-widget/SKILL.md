@@ -1,31 +1,31 @@
 ---
-name: claude-brain-widget
+name: cortex-widget
 description: >
   Trabaja el widget de límites de uso de Claude de unjordi (sesión 5h + semanal,
   como "Tus límites de uso" de claude.ai) que vive en su repo propio
-  github.com/unjordi/claude-brain (clonado en ~/code/claude-brain).
+  github.com/unjordi/cortex (clonado en ~/code/cortex).
   Úsalo para instalarlo/actualizarlo en CachyOS/KDE, macOS o la VM de Windows
   (las 3 con paridad: KDE plasmoid, mac menu-bar Swift, Windows tray WinForms .NET),
   restylearlo (look del de la KDE Store: tarjeta naranja + indicador de bandeja de
   2 filas con mini-barras), tocar la fuente de datos (endpoint OAuth /usage +
   ccusage), o arreglar el icono/empalme en la bandeja. Fork MIT de
-  github.com/fuziontech/claude-brain.
+  github.com/fuziontech/cortex.
 ---
 
-# claude-brain — widget de límites de uso de Claude (multi-OS)
+# cortex — widget de límites de uso de Claude (multi-OS)
 
-Fork de `github.com/fuziontech/claude-brain` (MIT) restyleado al look del de
+Fork de `github.com/fuziontech/cortex` (MIT) restyleado al look del de
 la KDE Store (`github.com/FelixDes/claude-kde-usage-widget`), conservando el costo
-"$ API equiv" que FelixDes no trae. Detalle e historia: memoria [[claude-brain]].
+"$ API equiv" que FelixDes no trae. Detalle e historia: memoria [[cortex]].
 
 ## Dónde vive (importante)
-- **Canónico (desde 2026-06-30):** repo propio **`github.com/unjordi/claude-brain`**
-  (fork público de fuziontech), clonado en `~/code/claude-brain`. **Fuente de verdad
+- **Canónico (desde 2026-06-30):** repo propio **`github.com/unjordi/cortex`**
+  (fork público de fuziontech), clonado en `~/code/cortex`. **Fuente de verdad
   única:** código + cerebro de Claude (`.claude/memory` y `.claude/skills`) viajan juntos por
   el repo. **Edita siempre aquí.** A otra máquina (MacBook): `git clone` + `bash
   .claude/bootstrap-claude.sh` una vez. `origin`=tu fork, `upstream`=fuziontech.
 - **Ya NO vive en `scripts/`** (estaba ahí + Drive hasta el 2026-06-30; se extrajo para no
-  duplicar). Si ves una copia en `scripts/claude-brain/`, es obsoleta.
+  duplicar). Si ves una copia en `scripts/cortex/`, es obsoleta.
 - Rebrandeado al namespace **`io.github.unjordi.*`**. LICENSE MIT original (copyright
   fuziontech) intacta — no borrarla; el crédito se conserva.
 
@@ -37,8 +37,8 @@ la KDE Store (`github.com/FelixDes/claude-kde-usage-widget`), conservando el cos
   máquina) → se etiqueta **"(API equiv local)"** para que no parezca roto cuando
   coincide con el % (p. ej. el primer día de la semana, ver memoria).
 - Pipeline: un script `fetch` (bash en Linux/mac) corre cada 5 min (systemd timer /
-  launchd) y escribe `~/.cache/claude-brain/state.json` (límites) y
-  `~/.cache/claude-brain/stats.json` (stats); la UI solo lee esos caches.
+  launchd) y escribe `~/.cache/cortex/state.json` (límites) y
+  `~/.cache/cortex/stats.json` (stats); la UI solo lee esos caches.
 - **`stats.json`** alimenta las pestañas Resumen/Modelos (todo LOCAL de esa máquina):
   - `days[]` / `models[]` salen de **`ccusage daily --json --breakdown`** (¡el `--json`
     es obligatorio o devuelve tabla y rompe el jq!).
@@ -48,7 +48,7 @@ la KDE Store (`github.com/FelixDes/claude-kde-usage-widget`), conservando el cos
     histograma de `"timestamp"` ajustado a hora local (`date +%z`, ojo octal: usar `10#`).
 
 ## Instalar / actualizar por OS
-- **CachyOS / KDE Plasma 6:** `cd ~/code/claude-brain`
+- **CachyOS / KDE Plasma 6:** `cd ~/code/cortex`
   - Instalar/actualizar: `kpackagetool6 -t Plasma/Applet -i src/plasmoid` (o `-u` para upgrade).
   - **Recargar (loop de QA en el PANEL real — el método que SÍ funciona limpio):**
     **`systemctl --user restart plasma-plasmashell.service`** — plasmashell es servicio de usuario;
@@ -80,24 +80,24 @@ la KDE Store (`github.com/FelixDes/claude-kde-usage-widget`), conservando el cos
     - El **`cp` de unjordi está aliaseado a `cp -i`** (pregunta y sin TTY responde "no");
       usar **`command cp`**.
 - **macOS (PARIDAD COMPLETA con el plasmoid desde 2026-07-04, PR #2):**
-  `cd ~/code/claude-brain/macos && ./install.sh` (necesita Xcode CLT
+  `cd ~/code/cortex/macos && ./install.sh` (necesita Xcode CLT
   `xcode-select --install`, `jq` via brew, Node via brew + `npm i -g ccusage`).
   App de barra de menú Swift (AppKit + SwiftUI, popover de 3 pestañas y barra de
   2 filas idénticos al plasmoid) + agente launchd cada 5 min. Bundle
-  `io.github.unjordi.claude-brain`, app en `~/Applications/Claude Brain Widget.app`.
+  `io.github.unjordi.cortex`, app en `~/Applications/Claude Brain Widget.app`.
   - **Token OAuth:** en Mac sale del **Keychain** (`security find-generic-password
     -s "Claude Code-credentials"`); no suele existir `~/.claude/.credentials.json`.
   - **Iterar:** tras editar Swift, `pkill -f 'Claude Brain Widget.app'` ANTES de re-correr
     `./install.sh` — `open` sobre una app ya corriendo solo la activa, NO relanza
     el binario nuevo.
-  - **Fetch:** el bloque de `stats.json` de `macos/bin/claude-brain-fetch` es
+  - **Fetch:** el bloque de `stats.json` de `macos/bin/cortex-fetch` es
     IDÉNTICO al de `src/bin/` (BSD-safe: bash 3.2, `date -v`, BSD grep) — si se
-    toca uno, replicar en el otro. Caches en `~/Library/Caches/claude-brain/`.
+    toca uno, replicar en el otro. Caches en `~/Library/Caches/cortex/`.
   - **Icono:** `make-icon.sh` genera `AppIcon.icns` programáticamente (Swift
     here-doc, gauge naranja sobre squircle grafito; sin binarios en el repo) y
     `make-app.sh` lo mete al bundle. El **cache de iconos de macOS es terco**:
     tras instalar, `killall Finder` y reabrir Ajustes; a veces solo aparece al
-    siguiente login. El script `claude-brain-fetch` en "Elementos de inicio"
+    siguiente login. El script `cortex-fetch` en "Elementos de inicio"
     siempre saldrá con icono "exec" genérico (macOS no da icono a scripts).
   - Los helpers de UI (pctColor, relativeTime, fmtTok/fmtInt/fmtHour,
     prettyModel, modelPalette, rachas, heatmap) viven en `QuotaModel.swift` y
@@ -110,7 +110,7 @@ la KDE Store (`github.com/FelixDes/claude-kde-usage-widget`), conservando el cos
   lanza. Requisito de build: **.NET 10 SDK**.
   - **Sin bash/jq/curl/Node en runtime:** a diferencia de Linux/mac (script bash en
     timer), la app **hace el fetch ella misma en C#** cada 5 min (piso 5.5 min) y
-    escribe `%LOCALAPPDATA%\claude-brain\{state,stats}.json` (mismo schema, cross-OS).
+    escribe `%LOCALAPPDATA%\cortex\{state,stats}.json` (mismo schema, cross-OS).
   - **Fuente de datos:** el endpoint OAuth `/usage` (token de
     `%USERPROFILE%\.claude\.credentials.json`, vía `HttpClient`) da los **%** y resets;
     los **tokens/días/modelos/sesiones/mensajes/hora pico** salen de **parsear los
@@ -150,17 +150,17 @@ la KDE Store (`github.com/FelixDes/claude-kde-usage-widget`), conservando el cos
   (no basta `implicitWidth`) o el system tray no le reserva ancho y **se empalma** con
   los íconos vecinos.
 
-## Git (repo propio github.com/unjordi/claude-brain)
+## Git (repo propio github.com/unjordi/cortex)
 Aplica la NORMA de unjordi: **flujo `ramita → develop → main`** (corregido 2026-07-04; antes,
 PRs #1–#3, se usaba `main` como base directa — ya NO). Nunca push directo a `develop` ni `main`.
-- Ramita `feat/fix/chore/…` desde `develop` → `gh pr create --repo unjordi/claude-brain
+- Ramita `feat/fix/chore/…` desde `develop` → `gh pr create --repo unjordi/cortex
   --base develop` → merge server-side **con `--squash`** (`gh pr merge <n> --squash`; 1–3 devs =
   al instante). Tras el merge, **limpia la ramita a mano** (`git push origin --delete <rama>`):
   el auto-delete del repo está APAGADO (para que `develop` no se borre en releases), así que las
   ramitas ya no se autoborran.
 - `develop` **existe** (se creó 2026-07-04). Si algún día falta, recréalo desde `main` server-side:
-  `MAIN_SHA=$(gh api repos/unjordi/claude-brain/git/refs/heads/main -q .object.sha) && gh
-  api repos/unjordi/claude-brain/git/refs -f ref=refs/heads/develop -f sha="$MAIN_SHA"`
+  `MAIN_SHA=$(gh api repos/unjordi/cortex/git/refs/heads/main -q .object.sha) && gh
+  api repos/unjordi/cortex/git/refs -f ref=refs/heads/develop -f sha="$MAIN_SHA"`
   (NO pushear a develop localmente — la norma lo prohíbe).
 - **Release `develop → main`:** decisión DELIBERADA que unjordi pide explícito; va **SIN squash**
   y **lo mergea unjordi** (PR con `--base main`; el hook `merge-squash-guard` bloquea el merge si
