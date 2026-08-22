@@ -3,7 +3,7 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Text;
 using System.Runtime.InteropServices;
 
-namespace ClaudeBrain;
+namespace Cortex;
 
 /// <summary>
 /// Draws the tray indicator. The old two-mini-bar design ("5h" over "7d") was

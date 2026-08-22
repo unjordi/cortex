@@ -13,7 +13,7 @@ Widget de escritorio open-source que muestra los límites de uso de Claude (sesi
 - **Fuente de verdad ÚNICA:** repo propio **`github.com/unjordi/cortex`** (fork público de fuziontech), clonado en `~/code/cortex`. El código y el CEREBRO de Claude (`.claude/`) viajan juntos por el repo. `origin`=tu fork; `upstream`=fuziontech (jalar mejoras / eventual PR upstream).
 - **En otra máquina:** clonar y `bash .claude/bootstrap-claude.sh` una vez (enlaza la memoria al slug de esa máquina; skills se autocargan).
 - **Instalar el plasmoid (KDE):** `kpackagetool6 -t Plasma/Applet -i/-u <path>/src/plasmoid` (no hay `just`). Preview: `plasmoidviewer -a <path>` + spectacle. Recargar: `kquitapp6 plasmashell && kstart plasmashell`. `ccusage` global vía pkexec (su binario nativo necesitó `chmod +x`).
-- **Instalar Windows:** `pwsh -File windows/install.ps1` → publica un `.exe` self-contained single-file (~110 MB) a `%LOCALAPPDATA%\Programs\ClaudeBrain` + autoarranque `HKCU\...\Run`.
+- **Instalar Windows:** `pwsh -File windows/install.ps1` → publica un `.exe` self-contained single-file (~110 MB) a `%LOCALAPPDATA%\Programs\Cortex` + autoarranque `HKCU\...\Run`.
 - **QA de una rama sin merge:** `bootstrap` acepta `CLAUDE_BRAIN_REF` → `curl …/develop/bootstrap.sh | CLAUDE_BRAIN_REF=<rama> bash` (Win: `$env:CLAUDE_BRAIN_REF='<rama>'; irm …/develop/bootstrap.ps1 | iex`).
 
 ## De dónde salen los datos
@@ -59,10 +59,10 @@ Widget de escritorio open-source que muestra los límites de uso de Claude (sesi
 - **GOTCHA:** `make-app.sh`/fetch-icon deben **regenerar SIEMPRE el `.icns` desde el SVG, NO "solo si falta"** — un `.icns` rancio se queda pegado y se instala el ícono viejo (bug real). Ver skill `cambiar-icono`.
 
 ## Rebrand `claude-quota` → `cortex` (criterio para futuros cambios)
-- **RENOMBRA lo visible/runtime:** `.app` "Claude Brain Widget", daemon `cortex-fetch`, launchd `io.github.unjordi.cortex`, systemd `cortex.{service,timer}`, cache `~/{Library/Caches,.cache}/cortex` (+ `%LOCALAPPDATA%\cortex`), logs `/tmp/cortex.*`.
-- **CONSERVA lo invisible/que rompería:** dir de config **`~/.config/cortex`** (ahí viven `limits.env`/`machine-id`/`account`; moverlo pierde calibración+identidad de sync), env vars **`CLAUDE_BRAIN_ACCOUNT`/`_SYNC_DIR`**, User-Agent **`cortex`**, carpeta de nube **`cortex-sync`**, namespace **`ClaudeBrain`** (C#/Swift), **Id del plasmoid** (renombrarlo hace desaparecer el applet del panel), nombre del repo/dir.
+- **RENOMBRA lo visible/runtime:** `.app` "Cortex Widget", daemon `cortex-fetch`, launchd `io.github.unjordi.cortex`, systemd `cortex.{service,timer}`, cache `~/{Library/Caches,.cache}/cortex` (+ `%LOCALAPPDATA%\cortex`), logs `/tmp/cortex.*`.
+- **CONSERVA lo invisible/que rompería:** dir de config **`~/.config/cortex`** (ahí viven `limits.env`/`machine-id`/`account`; moverlo pierde calibración+identidad de sync), env vars **`CLAUDE_BRAIN_ACCOUNT`/`_SYNC_DIR`**, User-Agent **`cortex`**, carpeta de nube **`cortex-sync`**, namespace **`Cortex`** (C#/Swift), **Id del plasmoid** (renombrarlo hace desaparecer el applet del panel), nombre del repo/dir.
 - **Migración** idempotente en cada instalador: baja el daemon viejo, borra la app vieja, MUEVE cache viejo→nuevo (config quieto). Barre el bloque PATH viejo del rc (marcador `(claude, claude-quota-fetch)`) en `ensure_path_local_bin` (test `e8`), que antes dejaba un 2º bloque PATH duplicado.
-- **Clon oculto del bootstrap (PR #138):** `bootstrap.sh` → `~/.cortex` (migra un clon viejo visible `~/cortex` vía `mv`); `bootstrap.ps1` → `%LOCALAPPDATA%\cortex-repo` (`-repo` para no chocar con el cache `%LOCALAPPDATA%\cortex` ni la app `%LOCALAPPDATA%\Programs\ClaudeBrain`). El autoupdate lo NECESITA (no se puede borrar tras instalar). `brain-scan.sh` conoce la ruta nueva.
+- **Clon oculto del bootstrap (PR #138):** `bootstrap.sh` → `~/.cortex` (migra un clon viejo visible `~/cortex` vía `mv`); `bootstrap.ps1` → `%LOCALAPPDATA%\cortex-repo` (`-repo` para no chocar con el cache `%LOCALAPPDATA%\cortex` ni la app `%LOCALAPPDATA%\Programs\Cortex`). El autoupdate lo NECESITA (no se puede borrar tras instalar). `brain-scan.sh` conoce la ruta nueva.
 
 ## Autoupdate + política de release
 - Cada GUI embebe `version.json` (sha+fecha+repo) al buildear; consulta `commits/main` y ofrece banner "Actualizar widget" que hace **ff a `origin/main` + reinstala** (fail-open; nunca te deja sin widget). **Solo es real desde un release a main con el clon limpio.** Detalle: `docs/autoupdate.md`.

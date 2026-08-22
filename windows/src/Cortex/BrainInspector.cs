@@ -2,7 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
-namespace ClaudeBrain;
+namespace Cortex;
 
 /// <summary>
 /// Estado de instalación de una pieza del cerebro, leído de la realidad (`~/.claude`).

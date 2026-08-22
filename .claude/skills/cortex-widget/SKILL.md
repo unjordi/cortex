@@ -84,10 +84,10 @@ la KDE Store (`github.com/FelixDes/claude-kde-usage-widget`), conservando el cos
   `xcode-select --install`, `jq` via brew, Node via brew + `npm i -g ccusage`).
   App de barra de menú Swift (AppKit + SwiftUI, popover de 3 pestañas y barra de
   2 filas idénticos al plasmoid) + agente launchd cada 5 min. Bundle
-  `io.github.unjordi.cortex`, app en `~/Applications/Claude Brain Widget.app`.
+  `io.github.unjordi.cortex`, app en `~/Applications/Cortex Widget.app`.
   - **Token OAuth:** en Mac sale del **Keychain** (`security find-generic-password
     -s "Claude Code-credentials"`); no suele existir `~/.claude/.credentials.json`.
-  - **Iterar:** tras editar Swift, `pkill -f 'Claude Brain Widget.app'` ANTES de re-correr
+  - **Iterar:** tras editar Swift, `pkill -f 'Cortex Widget.app'` ANTES de re-correr
     `./install.sh` — `open` sobre una app ya corriendo solo la activa, NO relanza
     el binario nuevo.
   - **Fetch:** el bloque de `stats.json` de `macos/bin/cortex-fetch` es
@@ -106,7 +106,7 @@ la KDE Store (`github.com/FelixDes/claude-kde-usage-widget`), conservando el cos
   **WinForms .NET 10** en `windows/` (no hay upstream; fuziontech es solo KDE+macOS).
   `cd windows && pwsh -File install.ps1` → publica un **.exe self-contained
   single-file** (~110 MB, no requiere runtime en el destino), lo instala en
-  `%LOCALAPPDATA%\Programs\ClaudeBrain`, pone el autoarranque (`HKCU\...\Run`) y lo
+  `%LOCALAPPDATA%\Programs\Cortex`, pone el autoarranque (`HKCU\...\Run`) y lo
   lanza. Requisito de build: **.NET 10 SDK**.
   - **Sin bash/jq/curl/Node en runtime:** a diferencia de Linux/mac (script bash en
     timer), la app **hace el fetch ella misma en C#** cada 5 min (piso 5.5 min) y

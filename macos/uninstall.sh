@@ -13,7 +13,7 @@ BRAIN_UNINSTALLER="$ROOT/../brain/uninstall-brain.sh"
 LABEL="io.github.unjordi.cortex"
 FETCH_DEST="$HOME/.local/bin/cortex-fetch"
 PLIST_DEST="$HOME/Library/LaunchAgents/$LABEL.plist"
-APP_DEST="$HOME/Applications/Claude Brain Widget.app"
+APP_DEST="$HOME/Applications/Cortex Widget.app"
 CONFIG_DIR="$HOME/.config/cortex"
 CACHE_DIR="$HOME/Library/Caches/cortex"
 
@@ -37,8 +37,8 @@ if [[ "$SKIP_BRAIN" -eq 0 ]]; then
 fi
 
 echo "==> Stopping app"
-osascript -e 'tell application "Claude Brain Widget" to quit' 2>/dev/null || true
-pkill -f "Claude Brain Widget.app/Contents/MacOS/ClaudeBrain" 2>/dev/null || true
+osascript -e 'tell application "Cortex Widget" to quit' 2>/dev/null || true
+pkill -f "Cortex Widget.app/Contents/MacOS/Cortex" 2>/dev/null || true
 
 echo "==> Unloading launchd agents (fetch + autoarranque del widget)"
 launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true

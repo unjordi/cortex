@@ -1,7 +1,7 @@
 using System.Text;
 using System.Text.Json;
 
-namespace ClaudeBrain;
+namespace Cortex;
 
 /// <summary>
 /// (e) Sync entre máquinas vía carpeta de nube — el análogo C# del bloque "(e) Sync entre máquinas"

@@ -426,7 +426,7 @@ Fuente: [costs], [headless]. **Son bolsas/cuentas DISTINTAS.** No se mezclan.
 
 ## 15. 🎯 La WebAPI interna de USO/CUOTA (fuente del widget)
 
-**No documentada oficialmente.** Verdad = el código del widget, que ya la consume en producción. Rutas: `~/.cortex/macos/bin/cortex-fetch` (mac), `~/.cortex/src/bin/cortex-fetch` (Linux), modelo Swift `~/.cortex/macos/Sources/ClaudeBrain/QuotaModel.swift`.
+**No documentada oficialmente.** Verdad = el código del widget, que ya la consume en producción. Rutas: `~/.cortex/macos/bin/cortex-fetch` (mac), `~/.cortex/src/bin/cortex-fetch` (Linux), modelo Swift `~/.cortex/macos/Sources/Cortex/QuotaModel.swift`.
 
 ### Endpoint
 ```
@@ -513,4 +513,4 @@ Claves:
 
 ### Apéndice: mapa de fuentes citadas
 - Docs oficiales (todas bajo `https://code.claude.com/docs/en/`): `overview`, `cli-reference`, `headless`, `sub-agents`, `hooks`, `settings`, `memory`, `sessions`, `mcp`, `skills`, `commands`, `costs`, `desktop`, `context-window`, `env-vars`, `permission-modes`, `agent-sdk/overview`. Índice: `https://code.claude.com/docs/llms.txt`.
-- Código del widget (fuente de la WebAPI interna): `/Users/unjordi/.cortex/macos/bin/cortex-fetch`, `/Users/unjordi/.cortex/src/bin/cortex-fetch`, `/Users/unjordi/.cortex/macos/Sources/ClaudeBrain/QuotaModel.swift`.
+- Código del widget (fuente de la WebAPI interna): `/Users/unjordi/.cortex/macos/bin/cortex-fetch`, `/Users/unjordi/.cortex/src/bin/cortex-fetch`, `/Users/unjordi/.cortex/macos/Sources/Cortex/QuotaModel.swift`.

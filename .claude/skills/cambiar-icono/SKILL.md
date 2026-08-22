@@ -7,7 +7,7 @@ description: >
   (regenerar SIEMPRE, no reusar el .icns rancio; NO usar Rez; reventar la caché de íconos).
 ---
 
-# cambiar-icono — el ícono de Claude Brain en las 3 plataformas + login item
+# cambiar-icono — el ícono de Cortex en las 3 plataformas + login item
 
 Repo `~/code/cortex` (GitHub `unjordi/cortex`). El ícono es **cerebro rosado (base Noto
 Emoji, mirando a la derecha) + asterisco naranja de Claude, sobre squircle grafito**. Identidad del
@@ -36,7 +36,7 @@ Para cambiar el diseño: edita los SVG, renderiza a PNG para autoevaluar (`rsvg-
 - **Linux (plasmoid):** el SVG grande vive en `src/plasmoid/contents/icons/cortex.svg` y
   `metadata.json` tiene `"Icon": "cortex"`. Si cambias el arte, re-copia `assets/icon.svg` ahí.
 - **Windows (.ico):** corre **`bash windows/make-ico.sh`** — rsvg-convert a PNGs (16/32 de la chica,
-  48/64/128/256 de la grande) → python empaca `windows/src/ClaudeBrain/ClaudeBrain.ico` multi-tamaño
+  48/64/128/256 de la grande) → python empaca `windows/src/Cortex/Cortex.ico` multi-tamaño
   (PNG-embedded, válido Vista+). Espejo Windows de `macos/make-icon.sh`; NO depende de ImageMagick.
   Es el ícono del **exe/ventana** (el del tray lo dibuja `TrayIconRenderer.cs` en código, no el .ico).
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regenera windows/src/ClaudeBrain/ClaudeBrain.ico desde los SVG maestros (assets/icon.svg +
+# Regenera windows/src/Cortex/Cortex.ico desde los SVG maestros (assets/icon.svg +
 # icon-small.svg). Es el ícono de la APP/exe (ventana, barra de tareas, Agregar/Quitar programas);
 # el ícono VIVO del tray lo dibuja TrayIconRenderer.cs en código (barras de cuota), no este .ico.
 #
@@ -10,7 +10,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BIG="$ROOT/assets/icon.svg"
 SMALL="$ROOT/assets/icon-small.svg"
-OUT="$ROOT/windows/src/ClaudeBrain/ClaudeBrain.ico"
+OUT="$ROOT/windows/src/Cortex/Cortex.ico"
 
 command -v rsvg-convert >/dev/null 2>&1 || { echo "make-ico: falta rsvg-convert (brew install librsvg / apt install librsvg2-bin)" >&2; exit 1; }
 command -v python3 >/dev/null 2>&1 || { echo "make-ico: falta python3" >&2; exit 1; }

@@ -3486,14 +3486,14 @@ else
     [ "$miss" = 0 ] && ok "drift-widget[$1]: todo hook del MANIFEST y toda skill tienen tile"
   }
   # (Windows / C#) known-sets en BrainInspector.cs · tiles en PopupForm.cs
-  CS="$ROOT/windows/src/ClaudeBrain/BrainInspector.cs"; CSD="$ROOT/windows/src/ClaudeBrain/PopupForm.cs"
+  CS="$ROOT/windows/src/Cortex/BrainInspector.cs"; CSD="$ROOT/windows/src/Cortex/PopupForm.cs"
   if [ -f "$CS" ] && [ -f "$CSD" ]; then
     cmp_set win "known-global" "$(sed -n '/KnownGlobalHooks = new()/,/};/p' "$CS" | qtok)" "$mf_global"
     cmp_set win "known-repo"   "$(sed -n '/KnownRepoHooks = new()/,/};/p'   "$CS" | qtok)" "$mf_repo"
     cover   win "$CSD"
   else bad "drift-widget[win]: no encuentro BrainInspector.cs / PopupForm.cs"; fi
   # (macOS / Swift) known-sets en BrainInspector.swift · tiles en PopoverView.swift
-  SW="$ROOT/macos/Sources/ClaudeBrain/BrainInspector.swift"; SWD="$ROOT/macos/Sources/ClaudeBrain/PopoverView.swift"
+  SW="$ROOT/macos/Sources/Cortex/BrainInspector.swift"; SWD="$ROOT/macos/Sources/Cortex/PopoverView.swift"
   if [ -f "$SW" ] && [ -f "$SWD" ]; then
     cmp_set mac "known-global" "$(sed -n '/knownGlobalHooks: Set<String> = \[/,/\]/p' "$SW" | qtok)" "$mf_global"
     cmp_set mac "known-repo"   "$(sed -n '/knownRepoHooks: Set<String> = \[/,/\]/p'   "$SW" | qtok)" "$mf_repo"
@@ -3535,13 +3535,13 @@ status_cover() {  # label  region
   [ "$smiss" = 0 ] && ok "drift-status[$1]: toda skill de brain/skills está clasificada en StatusOf (hook conocido o switch de skills)"
 }
 # (Windows / C#) known-sets y switch, todo en BrainInspector.cs
-CS="$ROOT/windows/src/ClaudeBrain/BrainInspector.cs"
+CS="$ROOT/windows/src/Cortex/BrainInspector.cs"
 if [ -f "$CS" ]; then
   win_status_region="$( { sed -n '/KnownGlobalHooks = new()/,/};/p' "$CS"; sed -n '/KnownRepoHooks = new()/,/};/p' "$CS"; awk '/return name switch/,/};/' "$CS"; } )"
   status_cover win "$win_status_region"
 else bad "drift-status[win]: no encuentro BrainInspector.cs"; fi
 # (macOS / Swift) known-sets en BrainInspector.swift · switch de estado en PopoverView.swift
-SWK="$ROOT/macos/Sources/ClaudeBrain/BrainInspector.swift"; SW="$ROOT/macos/Sources/ClaudeBrain/PopoverView.swift"
+SWK="$ROOT/macos/Sources/Cortex/BrainInspector.swift"; SW="$ROOT/macos/Sources/Cortex/PopoverView.swift"
 if [ -f "$SWK" ] && [ -f "$SW" ]; then
   mac_status_region="$( { sed -n '/knownGlobalHooks: Set<String> = \[/,/\]/p' "$SWK"; sed -n '/knownRepoHooks: Set<String> = \[/,/\]/p' "$SWK"; awk '/switch name \{/,/default:/' "$SW"; } )"
   status_cover mac "$mac_status_region"
@@ -3708,8 +3708,8 @@ echo "== (e6.4) los 3 updaters resuelven la ruta del clon con FALLBACK + marca (
 # en otra máquina / repo movido habilitaba un auto-update que hacía cd a una ruta muerta). Ahora los 3
 # updaters prueban candidatos [embebido → $CLAUDE_BRAIN_DIR → clon canónico] y toman el 1º con su marca.
 Q4="$PR/src/plasmoid/contents/ui/main.qml"
-S4="$PR/macos/Sources/ClaudeBrain/Updater.swift"
-C4="$PR/windows/src/ClaudeBrain/Updater.cs"
+S4="$PR/macos/Sources/Cortex/Updater.swift"
+C4="$PR/windows/src/Cortex/Updater.cs"
 if [ -f "$Q4" ]; then
   { grep -qF 'resolveRepoPath' "$Q4" && grep -qF 'CLAUDE_BRAIN_DIR' "$Q4" && grep -qF '.cortex' "$Q4" && grep -qF 'install.sh' "$Q4"; } \
     && ok "e6.4[qml]: main.qml resuelve el clon con fallback (\$CLAUDE_BRAIN_DIR / ~/.cortex) + marca install.sh" \
@@ -3729,8 +3729,8 @@ else bad "e6.4[cs]: no encuentro Updater.cs"; fi
 echo ""
 echo "== (e6.5) los updaters escapan/citan la ruta del clon en el cd/Set-Location (fix H5) =="
 QML5="$PR/src/plasmoid/contents/ui/main.qml"
-SW5="$PR/macos/Sources/ClaudeBrain/Updater.swift"
-CS5="$PR/windows/src/ClaudeBrain/Updater.cs"
+SW5="$PR/macos/Sources/Cortex/Updater.swift"
+CS5="$PR/windows/src/Cortex/Updater.cs"
 if [ -f "$QML5" ]; then
   { grep -qF 'cd " + shq(repo)' "$QML5" && ! grep -qF "cd '\" + repo" "$QML5"; } \
     && ok "e6.5[qml]: el cd del update escapa la ruta con shq()" \
@@ -3749,7 +3749,7 @@ else bad "e6.5[cs]: no encuentro Updater.cs"; fi
 
 echo ""
 echo "== (e6.6) los 4 lectores leen .brain-version desde <home>/.claude =="
-V6="$PR/macos/Sources/ClaudeBrain/BrainInspector.swift $PR/windows/src/ClaudeBrain/BrainInspector.cs $PR/src/plasmoid/contents/brain-scan.sh $SCRIPT_DIR/install-brain.sh"
+V6="$PR/macos/Sources/Cortex/BrainInspector.swift $PR/windows/src/Cortex/BrainInspector.cs $PR/src/plasmoid/contents/brain-scan.sh $SCRIPT_DIR/install-brain.sh"
 v6miss=""
 for f in $V6; do
   { [ -f "$f" ] && grep -qF '.brain-version' "$f" && grep -qF '.claude' "$f"; } \
@@ -3943,11 +3943,11 @@ echo ""
 echo "== (e9) PARIDAD widget: hover en botones del pie + ↻ fuerza el chequeo de versión (3 plataformas) =="
 # Antídoto a que un fix de UI del widget aterrice en 1 plataforma y no en las otras (norma dura: la
 # paridad SIEMPRE se revisa). Chequeo ESTRUCTURAL por-plataforma de los DOS comportamientos.
-SW_PV="$SCRIPT_DIR/../macos/Sources/ClaudeBrain/PopoverView.swift"
-SW_UP="$SCRIPT_DIR/../macos/Sources/ClaudeBrain/Updater.swift"
+SW_PV="$SCRIPT_DIR/../macos/Sources/Cortex/PopoverView.swift"
+SW_UP="$SCRIPT_DIR/../macos/Sources/Cortex/Updater.swift"
 QML9="$SCRIPT_DIR/../src/plasmoid/contents/ui/main.qml"
-WPF="$SCRIPT_DIR/../windows/src/ClaudeBrain/PopupForm.cs"
-WUP="$SCRIPT_DIR/../windows/src/ClaudeBrain/Updater.cs"
+WPF="$SCRIPT_DIR/../windows/src/Cortex/PopupForm.cs"
+WUP="$SCRIPT_DIR/../windows/src/Cortex/Updater.cs"
 
 # --- Fix A: HOVER en los botones del pie del riel ---
 grep -q 'hoverHighlight' "$SW_PV" 2>/dev/null && ok "e9: macOS — hover en botones del pie (hoverHighlight)" || bad "e9: macOS SIN hover en el pie"

@@ -1,4 +1,4 @@
-Claude Brain Widget
+Cortex Widget
 Copyright (c) unjordi
 
 This product includes third-party artwork:
@@ -7,7 +7,7 @@ This product includes third-party artwork:
 Noto Emoji  —  brain glyph (U+1F9E0)
 --------------------------------------------------------------------------------
 The brain shape in this project's icon (assets/icon.svg, assets/icon-small.svg,
-and the derived AppIcon.icns / ClaudeBrain.ico / plasmoid cortex.svg) is
+and the derived AppIcon.icns / Cortex.ico / plasmoid cortex.svg) is
 derived from the "brain" emoji of the Noto Emoji project by Google.
 
     Noto Emoji — https://github.com/googlefonts/noto-emoji

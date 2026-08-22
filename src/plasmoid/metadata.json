@@ -15,7 +15,7 @@
         "Icon": "cortex",
         "Id": "io.github.unjordi.cortex",
         "License": "MIT",
-        "Name": "Claude Brain Widget",
+        "Name": "Cortex Widget",
         "Version": "0.1.0",
         "Website": "https://github.com/unjordi/cortex"
     },

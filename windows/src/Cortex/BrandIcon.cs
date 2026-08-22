@@ -2,7 +2,7 @@ using System;
 using System.Drawing;
 using System.IO;
 
-namespace ClaudeBrain;
+namespace Cortex;
 
 /// <summary>
 /// Ícono de marca (cortex) embebido como PNG base64. GDI+ no renderiza SVG, así que

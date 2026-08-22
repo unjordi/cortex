@@ -4,7 +4,7 @@ using System.Drawing.Drawing2D;
 using System.Threading.Tasks;
 using Microsoft.Win32;
 
-namespace ClaudeBrain;
+namespace Cortex;
 
 /// <summary>
 /// The click-to-open breakdown, a borderless transient form. Mirrors the

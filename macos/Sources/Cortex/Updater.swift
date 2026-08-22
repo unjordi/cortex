@@ -112,7 +112,7 @@ final class Updater: ObservableObject {
         // la nueva). Si el merge aborta (árbol sucio / no-ff), NO mata nada y la app sigue viva → sin
         // riesgo de quedarte sin widget. El `pkill` va justo antes de reinstalar, no a ciegas.
         let inner = "sleep 1; cd '\(repoPath)' && git fetch origin --quiet && git merge --ff-only origin/main "
-            + "&& { pkill -f 'Claude Brain Widget.app/Contents/MacOS/ClaudeBrain'; bash '\(repoPath)/macos/install.sh'; }"
+            + "&& { pkill -f 'Cortex Widget.app/Contents/MacOS/Cortex'; bash '\(repoPath)/macos/install.sh'; }"
         let cmd = "nohup bash -lc \"\(inner)\" >/tmp/cortex-update.log 2>&1 &"
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/bin/bash")

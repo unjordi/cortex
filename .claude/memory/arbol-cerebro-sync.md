@@ -9,9 +9,9 @@ espejarse.**
 ## Los 5 catálogos (mismo emoji / name / desc / evento / detalle)
 1. **README** raíz — el bloque de árbol de texto (` ``` ` con conectores `├─`/`└─`). **FUENTE del árbol.**
 2. **MEMORY.md** (`.claude/memory/`, auto-cargado por `@import` del CLAUDE.md) — el mismo árbol, entre `<!-- ARBOL:START/END -->`. El CLAUDE.md ahora es la FIRMA de capacidades; el árbol de instalación bajó aquí (se lee vía @import al iniciar).
-3. **macOS** — `macos/Sources/ClaudeBrain/PopoverView.swift`, propiedad `brainTiers`.
+3. **macOS** — `macos/Sources/Cortex/PopoverView.swift`, propiedad `brainTiers`.
 4. **Linux** — `src/plasmoid/contents/ui/main.qml`, propiedad `brainTiers`.
-5. **Windows** — `windows/src/ClaudeBrain/PopupForm.cs`, `BrainTiers`.
+5. **Windows** — `windows/src/Cortex/PopupForm.cs`, `BrainTiers`.
 
 > **Parcialmente VERIFICADO (2026-08-01):** `docs/flowcharts/verificar-arbol-sync.sh` (corre en `test-brain.sh`/CI)
 > compara la familia 💡 Skills de **README ↔ MEMORY.md ↔ `brain/skills/`** y FALLA si driftean — ese eje ya no

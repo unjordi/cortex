@@ -20,7 +20,7 @@ try { Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force } catch 
 $repo = 'https://github.com/unjordi/cortex'
 # %LOCALAPPDATA% (no el perfil visible) para no ensuciar el home del usuario -- paridad con Linux/mac
 # (~/.cortex oculto). Nombre "-repo" para no chocar con %LOCALAPPDATA%\cortex (cache del
-# daemon: state/stats/account) ni con %LOCALAPPDATA%\Programs\ClaudeBrain (la app instalada).
+# daemon: state/stats/account) ni con %LOCALAPPDATA%\Programs\Cortex (la app instalada).
 $dir  = if ($env:CLAUDE_BRAIN_DIR) { $env:CLAUDE_BRAIN_DIR } else { "$env:LOCALAPPDATA\cortex-repo" }
 $oldDir = "$env:USERPROFILE\cortex"   # legado (visible): bootstrap.ps1 clonaba aqui antes de ocultarlo (2026-07-15)
 function Say($m) { Write-Host "cortex > $m" -ForegroundColor DarkYellow }

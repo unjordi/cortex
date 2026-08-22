@@ -29,10 +29,10 @@ PLIST_DEST="$HOME/Library/LaunchAgents/$LABEL.plist"
 LIMITS_DEFAULT="$HOME/.config/cortex/limits.env"
 APPS_DIR="$HOME/Applications"
 STATE_FILE="$HOME/Library/Caches/cortex/state.json"
-APP_NAME="Claude Brain Widget"
+APP_NAME="Cortex Widget"
 # .app precompilado del release rolling 'macos-latest' (lo publica release-macos.yml). Paridad con
-# el ClaudeBrain.exe de Windows: instalar SIN Xcode/Swift. Repo público → descarga sin auth.
-APP_ASSET_URL="https://github.com/unjordi/cortex/releases/download/macos-latest/ClaudeBrainWidget.app.zip"
+# el Cortex.exe de Windows: instalar SIN Xcode/Swift. Repo público → descarga sin auth.
+APP_ASSET_URL="https://github.com/unjordi/cortex/releases/download/macos-latest/CortexWidget.app.zip"
 
 SKIP_APP=0
 SKIP_CCUSAGE=0
@@ -110,7 +110,7 @@ need jq
 # rsvg-convert (librsvg): rasteriza el SVG del ícono (app + login item del daemon). Opcional pero
 # recomendado; sin él, el ícono no se (re)genera y queda el genérico.
 if ! command -v rsvg-convert >/dev/null 2>&1; then
-  if command -v brew >/dev/null 2>&1; then echo "==> Instalando librsvg (para el ícono de Claude Brain)"; brew install librsvg || true
+  if command -v brew >/dev/null 2>&1; then echo "==> Instalando librsvg (para el ícono de Cortex)"; brew install librsvg || true
   else echo "warn: falta rsvg-convert (brew install librsvg) — el ícono no se (re)generará"; fi
 fi
 
@@ -152,14 +152,14 @@ for _s in session-lib.js session-export.js session-import.js claude-session; do
 done
 
 # Ícono del daemon en "Elementos de inicio": cortex-fetch es un script pelón → macOS le pone el
-# genérico "exec". Le incrustamos el ícono de Claude Brain como ícono CUSTOM del archivo vía
+# genérico "exec". Le incrustamos el ícono de Cortex como ícono CUSTOM del archivo vía
 # NSWorkspace.setIcon (set-icon.swift), reusando AppIcon.icns (trae la variante chica nítida en 16/32).
 # Fail-safe: sin swift/rsvg o sin icns, se salta (el daemon corre igual, solo sin ícono bonito).
 ICNS="$ROOT/build/AppIcon.icns"
 bash "$ROOT/make-icon.sh" >/dev/null 2>&1 || true   # regenera SIEMPRE desde el SVG (no reusar un .icns rancio)
 if [[ -f "$ICNS" && -f "$ROOT/set-icon.swift" ]] && command -v swift >/dev/null 2>&1; then
   if swift "$ROOT/set-icon.swift" "$ICNS" "$FETCH_DEST" 2>/dev/null; then
-    echo "    ícono de Claude Brain incrustado en el daemon (login item)"
+    echo "    ícono de Cortex incrustado en el daemon (login item)"
   fi
 fi
 

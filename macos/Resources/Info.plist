@@ -3,13 +3,13 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleName</key>
-	<string>Claude Brain Widget</string>
+	<string>Cortex Widget</string>
 	<key>CFBundleDisplayName</key>
-	<string>Claude Brain Widget</string>
+	<string>Cortex Widget</string>
 	<key>CFBundleIdentifier</key>
 	<string>io.github.unjordi.cortex</string>
 	<key>CFBundleExecutable</key>
-	<string>ClaudeBrain</string>
+	<string>Cortex</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
 	<key>CFBundlePackageType</key>

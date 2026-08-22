@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# brain-scan.sh — helper del plasmoid Claude Brain Widget (KDE).
+# brain-scan.sh — helper del plasmoid Cortex Widget (KDE).
 #
 # El plasmoid NO puede leer archivos ni correr procesos por sí mismo: lo hace a través del
 # DataSource "executable" de Plasma5Support (el mismo mecanismo con que ya lee state.json/stats.json).

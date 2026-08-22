@@ -1,4 +1,4 @@
-# Claude Brain Widget — macOS menu-bar app
+# Cortex Widget — macOS menu-bar app
 
 The macOS sibling of the [KDE Plasma widget](../README.md). Puts your Claude
 Code subscription usage in the menu bar: a two-row `5h` / `7d` indicator with a
@@ -65,7 +65,7 @@ Three pieces, intentionally separated — the same shape as the Linux port:
 └────────────────────────────────┘            ↑ reads
                                               │ (every 10s)
 ┌────────────────────────────────┐            │
-│ 2. Claude Brain Widget.app     │────────────┘
+│ 2. Cortex Widget.app     │────────────┘
 │    NSStatusItem 2-row indicator│
 │    + 3-tab SwiftUI popover     │
 └────────────────────────────────┘
@@ -153,12 +153,12 @@ Or with [just](https://github.com/casey/just):
 just install
 ```
 
-This **downloads** the precompiled `Claude Brain Widget.app` into `~/Applications` (SIN Xcode/Swift;
+This **downloads** the precompiled `Cortex Widget.app` into `~/Applications` (SIN Xcode/Swift;
 `--build` fuerza compilar desde fuente), installs the fetch script and launchd agent, primes the
 cache with one run, and launches the app. Look for the `5h` / `7d` indicator in your menu bar.
 
 To launch at login: **System Settings → General → Login Items → +** and add
-**Claude Brain Widget**.
+**Cortex Widget**.
 
 ## Tuning the fallback caps
 
@@ -188,7 +188,7 @@ vary with how cache-heavy your sessions are):
 
 ```sh
 just build      # compile the release binary
-just app        # assemble Claude Brain Widget.app under build/
+just app        # assemble Cortex Widget.app under build/
 just run        # run the just-built binary in the foreground (logs to terminal)
 just reload     # rebuild + reinstall + relaunch after editing Swift sources
 just refresh    # force one fetch cycle now and print state.json
@@ -208,7 +208,7 @@ binary, `make-app.sh` wraps it in a `.app` bundle with an `LSUIElement` Info.pli
 - **Indicator rows show `!`** — the app can't read `state.json`. Check the
   fetch agent: `cat /tmp/cortex.err.log`.
 - **No indicator at all** — confirm the app is running
-  (`pgrep -lf ClaudeBrain`); if not, `open "~/Applications/Claude Brain Widget.app"`.
+  (`pgrep -lf Cortex`); if not, `open "~/Applications/Cortex Widget.app"`.
 - **Percentages way off from `/usage`** — check `jq .basis` on
   `~/Library/Caches/cortex/state.json`. If it says `"cost"`, the OAuth
   endpoint isn't reachable (are Claude Code credentials in your Keychain? are

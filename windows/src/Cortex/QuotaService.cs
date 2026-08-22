@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 
-namespace ClaudeBrain;
+namespace Cortex;
 
 /// <summary>
 /// The Windows data pipeline — the C# analogue of src/bin/cortex-fetch.
