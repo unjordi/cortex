@@ -272,6 +272,10 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
 [ -z "$cmd" ] && exit 0
+# PRE-FILTRO barato (superset conservador, mismo espíritu que proteger-arbol.sh): lo que este guard
+# vigila (integrar un MR/PR real) requiere 'glab'/'gh' en el comando crudo → sin eso, early-exit ANTES
+# de source-lib y del juez LLM. NO toca nada del juez; jamás salta un caso real.
+case "$cmd" in *glab*|*gh*) : ;; *) exit 0 ;; esac
 # cwd del payload = working dir REAL del comando (puede diferir de CLAUDE_PROJECT_DIR). Señal para resolver
 # el repo/destino y la marca compartido/personal del repo que el MR REALMENTE toca. Ausente → vacío → cae a
 # CLAUDE_PROJECT_DIR (conducta de hoy).

@@ -46,6 +46,11 @@ bail_open() {  # $1 = motivo. En strict → deny; si no → deja pasar (exit 0).
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
 [ -z "$cmd" ] && exit 0
 
+# PRE-FILTRO barato (superset conservador, mismo espíritu que proteger-arbol.sh): este guard solo actúa
+# sobre `git commit`/`git push` → sin 'git' en el comando crudo, early-exit ANTES de cualquier
+# normalización/despoja-comillas. Jamás salta un caso real.
+case "$cmd" in *git*) : ;; *) exit 0 ;; esac
+
 # Despoja literales entrecomillados ANTES de razonar sobre el comando: reusa acg_despoja_comillas de la
 # lib compartida si está junto al hook, si no un sed equivalente. Así un token DENTRO de una comilla —el
 # `--no-verify` citado en el MENSAJE del commit (A7), o un `git commit`/`git add`/`git push` mencionado en

@@ -25,6 +25,16 @@ input=$(cat 2>/dev/null || true)
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
 [ -z "$cmd" ] && exit 0
 
+# PRE-FILTRO barato (capa determinista, en-proceso): si el comando NO menciona NINGÚN gatillo posible
+# (install/deploy/publish/make/just — 'uninstall-brain' contiene 'install'), no puede disparar → early-exit
+# ANTES de gastar sed/tr/grep (~5 subprocesos) en el camino COMÚN. Conservador: filtra sobre el cmd CRUDO
+# (superset de lo que verían los regex tras des-entrecomillar) → JAMÁS salta un caso que sí debería avisar;
+# a lo más CONTINÚA de más (p. ej. 'deploy' dentro de comillas), y ahí el chequeo real decide. nocasematch
+# (bash≥3.1, macOS-safe) para cubrir INSTALL/Deploy/etc. sin re-lowercasear aquí.
+shopt -s nocasematch 2>/dev/null
+case "$cmd" in *install*|*deploy*|*publish*|*make*|*just*) : ;; *) exit 0 ;; esac
+shopt -u nocasematch 2>/dev/null
+
 # Quita literales entrecomillados → una MENCIÓN del instalador (grep/echo/doc) no dispara.
 unquoted=$(printf '%s' "$cmd" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g")
 

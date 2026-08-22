@@ -21,6 +21,10 @@ case "$0" in "$HOME/.claude/hooks/"*) : ;; *) [ -f "$HOME/.claude/hooks/$(basena
 input=$(cat)
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
 [ -z "$cmd" ] && exit 0
+# PRE-FILTRO barato (superset conservador, mismo espíritu que proteger-arbol.sh): lo que este guard
+# vigila (glab mr merge|accept, gh pr merge) requiere 'glab'/'gh' en el comando crudo → sin eso,
+# early-exit ANTES de gastar sed/grep/source-lib. Jamás salta un caso real.
+case "$cmd" in *glab*|*gh*) : ;; *) exit 0 ;; esac
 # cwd del payload → resuelve el repo/destino del MR desde el dir REAL del comando (no CLAUDE_PROJECT_DIR).
 # Mejora la resolución gh/glab del destino (cierra el FP de release-gh por RESOLVER bien, sin tocar el
 # fail-safe). Ausente → vacío → acg_destino_de_mr cae a CLAUDE_PROJECT_DIR (conducta de hoy).
