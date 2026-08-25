@@ -27,6 +27,15 @@
 #              no un candado de seguridad; bloquear cada Stop sin juez atraparía al usuario en un loop).
 # NINGÚN cambio de esta lib afloja un fail-safe: el reintento en 401 solo REDUCE los falsos DENY por token
 # STALE (el CLI refresca el keychain en el ínterin) — el veredicto ante un fallo GENUINO no cambia.
+#
+# ── BACKEND LOCAL OPT-IN (Ollama) — default INTACTO en Haiku/Anthropic ─────────────────────────────────
+# Si `CLAUDE_JUEZ_LOCAL_MODEL` trae el nombre de un modelo Ollama, `_juez_llamar_api` usa un backend LOCAL
+# GRATIS (POST a $OLLAMA/api/chat) en vez de Anthropic; sin la env, el comportamiento es BYTE-IDÉNTICO al de
+# hoy (Haiku). El local NO usa token (Ollama corre sin auth). Config: `CLAUDE_JUEZ_LOCAL_MODEL` (activa),
+# `CLAUDE_JUEZ_LOCAL_URL` | `AXON_OLLAMA_URL` (base, default http://localhost:11434), `CLAUDE_JUEZ_LOCAL_TIMEOUT`
+# (seg, default 60). El fail-safe es EL MISMO: éxito → OK + content de Ollama; deps ausentes / Ollama caído /
+# timeout / HTTP != 200 / content vacío → UNAVAILABLE_NET (txt vacío, rc != 0) → merge fail-SAFE DENY, dod
+# fail-OPEN. Un juez de seguridad con backend local caído SIGUE bloqueando — jamás inventa un OK ante fallo.
 
 # _juez_dir → directorio de config de Claude, HONRANDO CLAUDE_CONFIG_DIR (homologado con cortex-fetch,
 # el getter del widget). ARREGLA el hardcode `$HOME/.claude` de los jueces viejos → portable si el dev movió
@@ -131,6 +140,16 @@ _juez_curl_crudo() {
     -d "$2" 2>/dev/null
 }
 
+# _juez_curl_local $url-base $body $timeout → stdout: <cuerpo-de-la-respuesta>\n<http_code>. Gemelo LOCAL de
+# _juez_curl_crudo para el backend Ollama (`POST $url/api/chat`) — SIN token/OAuth (Ollama corre local, sin
+# auth). MISMO formato de salida (cuerpo + `\n<http_code>`) → el caller separa idéntico (sed '$d' / tail -n1)
+# y distingue una caída de red (código 000 / vacío) de un 200. Ollama caído/timeout → curl da código vacío →
+# el caller lo mapea a UNAVAILABLE_NET (fail preservado: NUNCA un OK falso). NO hay secreto que loguear aquí.
+_juez_curl_local() {
+  curl -sS -m "$3" -w '\n%{http_code}' "$1/api/chat" \
+    -H "content-type: application/json" -d "$2" 2>/dev/null
+}
+
 # _juez_llamar_api $modelo $max_tokens $timeout $temperature $prompt
 #   → stdout: PRIMERA línea = ESTADO (OK|UNAVAILABLE_NOTOKEN|UNAVAILABLE_NET|EXPIRED); RESTO = el TEXTO del
 #     assistant (content[0].text) en OK, o vacío ante fallo. El caller hace `head -1`=estado, `sed '1d'`=texto.
@@ -143,6 +162,49 @@ _juez_curl_crudo() {
 _juez_llamar_api() {
   local modelo="$1" maxtok="$2" timeout="$3" temp="$4" prompt="$5" tok body resp http body_txt txt est rc
   est=UNAVAILABLE_NET; txt=""; rc=1
+  # ── BACKEND LOCAL opt-in (Ollama) ────────────────────────────────────────────────────────────────────
+  # Activado SOLO si CLAUDE_JUEZ_LOCAL_MODEL trae el nombre de un modelo Ollama (p.ej. qwen3:30b-...). SIN esa
+  # env este bloque NO se toca y el comportamiento es BYTE-IDÉNTICO al camino Anthropic/Haiku de abajo (cero
+  # regresión: default INTACTO). Mismo contrato de retorno (línea 1 = ESTADO, resto = texto) + MISMO fail-safe:
+  # cualquier fallo local (deps ausentes · Ollama caído/timeout · HTTP != 200 · cuerpo/content vacío) → est
+  # UNAVAILABLE_NET con txt VACÍO y rc != 0 — EXACTAMENTE el mismo estado de indisponibilidad de red que el
+  # path Haiku, así que dod sigue fail-OPEN y merge sigue fail-SAFE DENY. NUNCA inventa un OK/ALLOW ante fallo.
+  if [ -n "${CLAUDE_JUEZ_LOCAL_MODEL:-}" ]; then
+    local lurl ltimeout
+    lurl="${CLAUDE_JUEZ_LOCAL_URL:-${AXON_OLLAMA_URL:-http://localhost:11434}}"; lurl="${lurl%/}"
+    ltimeout="${CLAUDE_JUEZ_LOCAL_TIMEOUT:-60}"
+    if ! _juez_deps_ok; then
+      est=UNAVAILABLE_NET
+    else
+      case "$temp"     in ''|*[!0-9.]*) temp=0 ;; esac
+      case "$maxtok"   in ''|*[!0-9]*)  maxtok=512 ;; esac
+      case "$ltimeout" in ''|*[!0-9]*)  ltimeout=60 ;; esac
+      # think:false (sin cadena de razonamiento) · temperature/num_predict del ARG (mismo contrato que Haiku:
+      # temp del $4, max_tokens del $2) · num_ctx holgado. stream:false → una sola respuesta JSON parseable.
+      body=$(jq -n --arg m "$CLAUDE_JUEZ_LOCAL_MODEL" --arg p "$prompt" --argjson mt "$maxtok" --argjson t "$temp" \
+              '{model:$m, think:false, stream:false,
+                options:{temperature:$t, num_predict:$mt, num_ctx:8192},
+                messages:[{role:"user",content:$p}]}' 2>/dev/null)
+      if [ -z "$body" ]; then
+        est=UNAVAILABLE_NET
+      else
+        resp="$(_juez_curl_local "$lurl" "$body" "$ltimeout")"
+        http="$(printf '%s' "$resp" | tail -n1)"; body_txt="$(printf '%s' "$resp" | sed '$d')"
+        if [ "$http" = 200 ]; then
+          txt=$(printf '%s' "$body_txt" | jq -r '.message.content // empty' 2>/dev/null)
+          # content vacío (Ollama respondió 200 pero sin cuerpo útil) NO es un OK: se trata como indisponible
+          # → fail preservado. Solo un content NO vacío es OK.
+          if [ -n "$txt" ]; then est=OK; rc=0; else est=UNAVAILABLE_NET; fi
+        else
+          est=UNAVAILABLE_NET   # curl falló (http vacío/000) / timeout / HTTP != 200 → Ollama caído o error
+        fi
+      fi
+    fi
+    _JUEZ_ESTADO="$est"
+    printf '%s\n%s' "$est" "$txt"
+    return "$rc"
+  fi
+  # ── BACKEND DEFAULT (Anthropic/Haiku vía OAuth) — INTACTO ────────────────────────────────────────────
   if ! _juez_deps_ok; then
     est=UNAVAILABLE_NET
   elif ! tok="$(_juez_token)" || [ -z "$tok" ]; then
