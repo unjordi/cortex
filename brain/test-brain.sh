@@ -3208,6 +3208,11 @@ nimp="$(grep -c '^@aliases-activos.md' "$GCLAUDE2" 2>/dev/null || echo 0)"
 [ "$nimp" = "1" ] && ok "CLAUDE.md: @aliases-activos.md cableado 1× (idempotente)" || bad "CLAUDE.md: @import aparece ${nimp}× (esperaba 1)"
 nmrk="$(grep -c 'brain:import-aliases' "$GCLAUDE2" 2>/dev/null || echo 0)"
 [ "$nmrk" = "1" ] && ok "CLAUDE.md: marcador brain:import-aliases 1× (fuera del bloque BEGIN/END)" || bad "CLAUDE.md: marcador import-aliases ${nmrk}× (esperaba 1)"
+# como-trabajar-con-<usuario>.md sembrado en la memoria GLOBAL per-máquina (esqueleto de TRATO, NO viaja por git)
+CT2="$(find "$FAKEHOME2/.claude/projects" -name 'como-trabajar-con-*.md' -type f 2>/dev/null | head -1)"
+{ [ -n "$CT2" ] && grep -q 'Cómo trabajar con' "$CT2"; } \
+  && ok "como-trabajar-con-<usuario>.md sembrado en la memoria GLOBAL (esqueleto de TRATO)" \
+  || bad "falta como-trabajar-con-<usuario>.md sembrado (o sin encabezado esperado)"
 # la skill y la lib deben haber quedado instaladas
 [ -f "$FAKEHOME2/.claude/skills/cerrar-slice/SKILL.md" ] && ok "skill cerrar-slice instalada" || bad "falta skill cerrar-slice"
 [ -f "$FAKEHOME2/.claude/skills/checkpoint/SKILL.md" ]   && ok "skill checkpoint instalada"   || bad "falta skill checkpoint"

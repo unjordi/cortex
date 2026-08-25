@@ -1288,7 +1288,7 @@ struct PopoverView: View {
         switch name {
         case "cerrar-slice", "checkpoint", "to-do", "diagramar", "auditar-proceso-algoritmo", "auditar-coherencia-cerebro", "auditar-suficiencia-operativa", "auditor-semantico", "consolidar-cerebro", "canonizar-cerebro", "desinflar-memorias", "orquestar-fanout", "turno-nocturno",
              "cosechar-sesion", "unificar-cerebro",
-             "investigar-dominio", "positivar-doc", "revisar-entregables-agentes", "zoom-screenshot", "claude-proyecto-autocontenido", "reubicar-master",
+             "investigar-dominio", "construir-missing-manual", "positivar-doc", "revisar-entregables-agentes", "zoom-screenshot", "claude-proyecto-autocontenido", "reubicar-master",
              "ingenieria-inversa-gui-db-navegador", "markdown-a-pdf":
             return st.skills.contains(name) ? .installed : .absent
         case "Definition of Done", "Doc <= realidad", "Flujo de git", "Costo de delegación":
@@ -1456,6 +1456,9 @@ struct PopoverView: View {
                     BrainItem("🎓", "investigar-dominio", "ponte experto en un dominio (fan-out DOC-FIRST) → memorias durables + skills",
                               "skill · opt-in",
                               "Ponerte al día como EXPERTO en un dominio/ecosistema maduro sin investigar al aire: delega un fan-out de agentes a barrer la documentación oficial + issues/foros de cada pieza (método DOC-FIRST), cosecha en DOS capas (memorias de investigación indexadas + skills reutilizables, con la capa profunda separada) y REVISA las decisiones actuales contra el conocimiento nuevo para no arrastrar deuda técnica. Trae plantilla-prompt pegable para encargárselo a otro Claude."),
+                    BrainItem("📚", "construir-missing-manual", "fabrica el manual/wiki de referencia exhaustivo que no existe (fan-out que investiga 1× y hornea) → artefacto consultable OFFLINE",
+                              "skill · opt-in",
+                              "FABRICAR el manual/wiki de referencia EXHAUSTIVO que debería existir y no existe (o vive disperso/solo-en-la-web), como un artefacto CONSULTABLE OFFLINE: un skill-monstruo con un documento por sub-tema, construido por fan-out de agentes que investigan a fondo UNA vez y hornean todo para no volver a internet nunca. Úsalo cuando tú o el usuario digan 'necesito la documentación de X y ni existe / está regada / no quiero volver a buscarla', con variantes por OS/proveedor/componente. NO es investigar-dominio (eso es volverte experto + auditar tus decisiones); esto PRODUCE el artefacto de referencia."),
                     BrainItem("☀️", "positivar-doc", "reescribe una doc answer-first: 'ESTO SÍ' (método correcto) antes del 'ESTO NO'",
                               "skill · opt-in",
                               "Reescribe una memoria/skill/doc para que cada nugget abra con ESTO SÍ (el método/valor correcto y accionable) ANTES del ESTO NO (anti-patrones, gotchas, la historia de lo que se rompió). Answer-first. Úsalo al crear/editar docs o cuando una nota arranque con la historia del fallo y enrede al lector. Reordena/reencuadra SIN perder información. Transversal; una doc inline o bulk delegado a un agente con el mismo contrato."),

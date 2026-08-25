@@ -14,16 +14,31 @@ set -euo pipefail
 
 REPO_URL="https://github.com/unjordi/cortex"
 DIR="${CLAUDE_BRAIN_DIR:-$HOME/.cortex}"
-OLD_DIR="$HOME/cortex"   # legacy (visible): bootstrap.sh clonaba aquí antes de ocultarlo (2026-07-15)
 say() { printf '\033[1;38;5;208m🧠 cortex\033[0m » %s\n' "$1"; }
 
-# Migración: si ya existe el clon viejo VISIBLE y el nuevo oculto todavía no, muévelo (no lo dupliques).
-# El clon se necesita para que "Actualizar widget" funcione (guarda su ruta en version.json) — no se
-# borra, solo se oculta para no ensuciar $HOME.
-if [[ -d "$OLD_DIR/.git" && ! -e "$DIR" ]]; then
-  say "migrando el clon de $OLD_DIR a $DIR (ya no vive visible en \$HOME)"
-  mv "$OLD_DIR" "$DIR"
-fi
+# Migración del clon de eras viejas → $DIR (~/.cortex; respeta CLAUDE_BRAIN_DIR). El clon se necesita
+# para que "Actualizar widget" funcione (guarda su ruta en version.json): no se borra, se REUBICA. La
+# era intermedia 'claude-brain' vivía en ~/.claude-brain (oculto) o ~/claude-brain (visible, pre-
+# ocultamiento 2026-07-15). Si existe y $DIR aún no, muévelo y reapunta el remote a cortex; si $DIR ya
+# existe, borra el huérfano. Idempotente/fail-safe. (El #312 renombró el OLD_DIR mecánicamente a
+# ~/cortex —un dir visible que NUNCA existió—; ese puntero muerto se quitó, las rutas reales van abajo.)
+for _brain_old in "$HOME/.claude-brain" "$HOME/claude-brain"; do
+  [[ -d "$_brain_old/.git" ]] || continue
+  # NUNCA operes sobre el destino ACTIVO: si $DIR (CLAUDE_BRAIN_DIR) ES esta ruta vieja, sáltala — si no,
+  # el else borraría el clon VIVO. -ef compara device+inodo (atrapa symlink/trailing-slash cuando ambos
+  # existen); el string-compare (trailing slash stripped) cubre el caso de $DIR aún inexistente.
+  if [[ "$_brain_old" -ef "$DIR" ]] || [[ "${_brain_old%/}" == "${DIR%/}" ]]; then
+    continue
+  fi
+  if [[ ! -e "$DIR" ]]; then
+    say "migrando el clon de $_brain_old a $DIR (rename claude-brain → cortex)"
+    mv "$_brain_old" "$DIR"
+    git -C "$DIR" remote set-url origin "$REPO_URL" 2>/dev/null || true
+  else
+    say "quitando el clon huérfano $_brain_old (ya existe $DIR)"
+    rm -rf "$_brain_old" 2>/dev/null || true
+  fi
+done
 
 # ── (1) Prerrequisitos ──────────────────────────────────────────────────────
 # git + jq (guardias) + node/npm (ccusage). En macOS además clang/swift vienen con Xcode CLT.
