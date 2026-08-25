@@ -80,3 +80,8 @@ docs/flowcharts/*
 !docs/flowcharts/verificar-arbol-sync.sh
 # El generador de charts (regenera TODOS los .svg desde sus .dot) es la RUTINA durable de doc=realidad de los flowcharts.
 !docs/flowcharts/gen-charts.sh
+
+# hilo-mental per-dev (volátil, se reescribe seguido) + backlog unificado superseded (parche local)
+.claude/memory/hilo-mental-actual.md
+.claude/memory/hilo-mental-overflow.md
+.claude/memory/BACKLOG-UNIFICADO.md

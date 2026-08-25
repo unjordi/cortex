@@ -7,6 +7,11 @@ metadata:
 
 # Estado del proyecto — cortex (el cerebro compartible)
 
+> ⚠️ **INTERINO (2026-08-09 → reubicar-master):** el backlog de dev VIVO se consolidó en
+> **`BACKLOG-UNIFICADO.md`** (el working único). **Empieza AHÍ.** Este archivo (tracked/compartido) conserva
+> su contenido hasta que **reubicar-master** lo re-canonice al molde de `estado-proyecto` y resuelva el wart
+> "tracked estado-proyecto ↔ BU untracked/local".
+
 > **Aquí empiezas.** Este es el backlog DURABLE del cerebro: qué sigue, qué se decidió, y el buzón donde
 > cualquier claude deja sus quejas y sugerencias. El **panel de to-dos de una sesión es scratch efímero**;
 > lo que debe sobrevivir a la sesión/compactación vive AQUÍ. Léelo (junto a `MEMORY.md`) antes de tocar nada.
