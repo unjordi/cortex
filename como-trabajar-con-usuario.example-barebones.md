@@ -49,7 +49,7 @@ CONTRATO DE ESTA NOTA (por qué así):
   y trabajen; su vocabulario propio; sus gotchas de proceso. Con procedencia (cita textual vs inferencia tuya).
 - QUÉ NO va aquí: las NORMAS UNIVERSALES del brain (doc=realidad, definición de LISTO, flujo de git,
   medir-no-afirmar-de-memoria, probar-el-flujo-completo, autorización acotada). Esas viven en
-  `~/.claude/CLAUDE.md` (bloque claude-brain) y aplican a CUALQUIER usuario → aquí solo se REFERENCIAN.
+  `~/.claude/CLAUDE.md` (bloque cortex) y aplican a CUALQUIER usuario → aquí solo se REFERENCIAN.
 - POR QUÉ ES GLOBAL Y NO DE REPO: es sobre una PERSONA, no un proyecto. En un repo viajaría por git y sería
   ruido (o mentiría) para otro dev que clone. Misma norma que `entorno-esta-maquina.md` y el dashboard:
   vive SOLO en la memoria global per-máquina (`~/.claude/projects/‹slug-del-HOME›/memory/`), NO en git.
