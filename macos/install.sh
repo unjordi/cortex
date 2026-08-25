@@ -89,14 +89,14 @@ launchctl bootout "gui/$(id -u)/$BRAIN_LABEL" 2>/dev/null || true
 launchctl bootout "gui/$(id -u)/$BRAIN_LABEL.widget" 2>/dev/null || true
 launchctl unload "$BRAIN_PLIST" 2>/dev/null || true
 launchctl unload "$BRAIN_WIDGET_PLIST" 2>/dev/null || true
-rm -f "$BRAIN_PLIST" "$BRAIN_WIDGET_PLIST" "$BRAIN_FETCH"
+rm -f "$BRAIN_PLIST" "$BRAIN_WIDGET_PLIST" "$BRAIN_FETCH" 2>/dev/null || true
 # 2) Cierra y borra la app vieja (que no quede el widget viejo en la barra). SOLO el binario dentro
 #    del bundle claude-brain; los helpers compartidos de ~/.local/bin NO se tocan (los usa cortex-fetch).
 osascript -e 'tell application "Claude Brain Widget" to quit' 2>/dev/null || true
 pkill -f "Claude Brain Widget.app/Contents/MacOS/" 2>/dev/null || true
-rm -rf "$BRAIN_APP"
+rm -rf "$BRAIN_APP" 2>/dev/null || true
 # 3) Borra el cache y la config VIEJOS por completo (se regeneran limpios bajo ~/…/cortex).
-rm -rf "$BRAIN_CACHE" "$BRAIN_CONFIG"
+rm -rf "$BRAIN_CACHE" "$BRAIN_CONFIG" 2>/dev/null || true
 
 # Asegura que ~/.local/bin (donde viven el fetch y, típicamente, el CLI `claude`) esté en el PATH,
 # en zsh Y bash (macOS default es zsh, pero no asumas). Idempotente por marcador; crea el rc si falta.

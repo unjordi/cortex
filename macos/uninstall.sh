@@ -64,10 +64,10 @@ osascript -e 'tell application "Claude Brain Widget" to quit' 2>/dev/null || tru
 pkill -f "Claude Brain Widget.app/Contents/MacOS/" 2>/dev/null || true
 launchctl bootout "gui/$(id -u)/$BRAIN_LABEL" 2>/dev/null || true
 launchctl bootout "gui/$(id -u)/$BRAIN_LABEL.widget" 2>/dev/null || true
-rm -f "$HOME/Library/LaunchAgents/$BRAIN_LABEL.plist" "$HOME/Library/LaunchAgents/$BRAIN_LABEL.widget.plist" "$HOME/.local/bin/claude-brain-fetch"
-rm -rf "$HOME/Applications/Claude Brain Widget.app"
+rm -f "$HOME/Library/LaunchAgents/$BRAIN_LABEL.plist" "$HOME/Library/LaunchAgents/$BRAIN_LABEL.widget.plist" "$HOME/.local/bin/claude-brain-fetch" 2>/dev/null || true
+rm -rf "$HOME/Applications/Claude Brain Widget.app" 2>/dev/null || true
 if [[ "$PURGE" -eq 1 ]]; then
-  rm -rf "$HOME/Library/Caches/claude-brain" "$HOME/.config/claude-brain"
+  rm -rf "$HOME/Library/Caches/claude-brain" "$HOME/.config/claude-brain" 2>/dev/null || true
 fi
 
 echo "Done."

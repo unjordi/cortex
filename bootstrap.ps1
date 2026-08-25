@@ -22,23 +22,22 @@ $repo = 'https://github.com/unjordi/cortex'
 # (~/.cortex oculto). Nombre "-repo" para no chocar con %LOCALAPPDATA%\cortex (cache del
 # daemon: state/stats/account) ni con %LOCALAPPDATA%\Programs\Cortex (la app instalada).
 $dir  = if ($env:CLAUDE_BRAIN_DIR) { $env:CLAUDE_BRAIN_DIR } else { "$env:LOCALAPPDATA\cortex-repo" }
-$oldDir = "$env:USERPROFILE\cortex"   # legado (visible): bootstrap.ps1 clonaba aqui antes de ocultarlo (2026-07-15)
 function Say($m) { Write-Host "cortex > $m" -ForegroundColor DarkYellow }
 
-# Migracion: si ya existe el clon viejo VISIBLE y el nuevo oculto todavia no, muevelo (no lo dupliques).
-# El clon se necesita para que el autoupdate del widget funcione -- no se borra, solo se oculta.
-if ((Test-Path "$oldDir\.git") -and -not (Test-Path $dir)) {
-  Say "migrando el clon de $oldDir a $dir (ya no vive visible en el perfil)"
-  Move-Item -Path $oldDir -Destination $dir
-}
-
-# Migracion de la era INTERMEDIA 'claude-brain' (rename claude-brain -> cortex, #312): el clon vivia en
-# %LOCALAPPDATA%\claude-brain-repo (oculto) o %USERPROFILE%\claude-brain (visible, pre-ocultamiento). Si
-# existe y $dir aun no, muevelo y reapunta el remote a cortex; si $dir ya existe, borra el huerfano.
-# El #312 renombro estos vars mecanicamente a cortex-repo/cortex, dirs que NUNCA existieron en la era
-# claude-brain -> sin esto, el clon de esa era quedaba atras. Idempotente/fail-safe.
+# Migracion del clon de eras viejas -> $dir. El clon se necesita para el autoupdate del widget: no se
+# borra, se REUBICA. La era intermedia 'claude-brain' vivia en %LOCALAPPDATA%\claude-brain-repo (oculto)
+# o %USERPROFILE%\claude-brain (visible, pre-ocultamiento). Si existe y $dir aun no, muevelo y reapunta
+# el remote a cortex; si $dir ya existe, borra el huerfano. Idempotente/fail-safe. (El #312 renombro el
+# $oldDir mecanicamente a %USERPROFILE%\cortex -un dir visible que NUNCA existio-; ese puntero muerto se
+# quito, las rutas reales de la era claude-brain van abajo.)
 foreach ($brainOld in @("$env:LOCALAPPDATA\claude-brain-repo", "$env:USERPROFILE\claude-brain")) {
   if (-not (Test-Path "$brainOld\.git")) { continue }
+  # NUNCA operes sobre el destino ACTIVO: si $dir (CLAUDE_BRAIN_DIR, que la era claude-brain PERSISTIO
+  # con FORWARD-SLASH) resuelve a esta MISMA ruta vieja, saltala -> si no, el else borraria el clon VIVO
+  # (era SISTEMATICO en Windows). Resolve-Path normaliza slashes/casing; un -eq crudo NO lo atrapa (\ vs /).
+  $roOld = (Resolve-Path -LiteralPath $brainOld -ErrorAction SilentlyContinue).Path
+  $roDir = (Resolve-Path -LiteralPath $dir -ErrorAction SilentlyContinue).Path
+  if ($roOld -and $roDir -and ($roOld -eq $roDir)) { continue }
   if (-not (Test-Path $dir)) {
     Say "migrando el clon de $brainOld a $dir (rename claude-brain -> cortex)"
     Move-Item -Path $brainOld -Destination $dir

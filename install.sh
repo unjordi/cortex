@@ -145,11 +145,11 @@ rm -rf "$HOME/.cache/claude-quota" "$HOME/.config/claude-quota"
 echo "==> Eliminando cualquier instalación previa 'claude-brain' (era intermedia del rename a cortex)"
 # 1) Deshabilita y borra las units VIEJAS (evita timer/daemon duplicado).
 systemctl --user disable --now claude-brain.timer claude-brain.service 2>/dev/null || true
-rm -f "$HOME/.config/systemd/user/claude-brain.timer" "$HOME/.config/systemd/user/claude-brain.service"
-rm -f "$HOME/.local/bin/claude-brain-fetch"   # el fetch viejo (renombrado a cortex-fetch); NO toca los helpers compartidos
+rm -f "$HOME/.config/systemd/user/claude-brain.timer" "$HOME/.config/systemd/user/claude-brain.service" 2>/dev/null || true
+rm -f "$HOME/.local/bin/claude-brain-fetch" 2>/dev/null || true   # el fetch viejo (renombrado a cortex-fetch); NO toca los helpers compartidos
 systemctl --user daemon-reload 2>/dev/null || true
 # 2) Borra el cache y la config VIEJOS por completo (se regeneran limpios bajo ~/…/cortex).
-rm -rf "$HOME/.cache/claude-brain" "$HOME/.config/claude-brain"
+rm -rf "$HOME/.cache/claude-brain" "$HOME/.config/claude-brain" 2>/dev/null || true
 
 echo "==> Installing fetch script -> $BIN_DEST"
 install -D -m 0755 "$BIN_SRC" "$BIN_DEST"
