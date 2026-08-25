@@ -21,7 +21,10 @@ Tabla de entornos con su gate. Omítela si el proyecto no tiene un pipeline veri
 > El estado vigente vive arriba en **📍 Dónde estamos**.
 - [Estado del proyecto](estado-proyecto.md) — el HUB vivo (hecho/pendiente/fuera-por-decisión). Empieza aquí.
 - [Bitácora](bitacora.md) — journal append-only, una línea por slice (`merge=union` → sin conflictos en paralelo).
-- ‹aprendizajes.md · como-trabajar-‹usuario›.md · backlog-‹tema›.md — si aplican›
+- ‹aprendizajes.md · backlog-‹tema›.md — si aplican›
+> **Nota:** `como-trabajar-con-‹usuario›.md` (manual de TRATO de una persona) **NO va aquí**: es
+> per-máquina, vive en la memoria GLOBAL (`~/.claude/projects/‹slug›/memory/`, la siembra `install-brain`),
+> NUNCA en el repo — viajaría por git y sería ruido para otro dev. No lo indexes en este MEMORY.md.
 
 ## 🗄️ dom- · dominio y datos
 > Arquitectura/dominio formal = `AGENTS.md`. Aquí, el dominio FINO. Léelo antes de tocar el modelo.
@@ -40,7 +43,8 @@ Tabla de entornos con su gate. Omítela si el proyecto no tiene un pipeline veri
 CONTRATO DE ESTA FIRMA (por qué así):
 - Es el DETALLE 1:1 de la 🖋️ FIRMA del `CLAUDE.md` (firma-árbol) + el índice de memorias por tema.
 - Convención de nombres: prefijos `dom-`/`dev-`/`ux-`/`qa-` + NÚCLEO sin prefijo
-  (estado-proyecto · bitacora · aprendizajes · como-trabajar-‹usuario› · backlog-‹tema› · hilo-mental-actual · MEMORY).
+  (estado-proyecto · bitacora · aprendizajes · backlog-‹tema› · hilo-mental-actual · MEMORY).
+  `como-trabajar-con-‹usuario›` NO es memoria de repo (es per-máquina, memoria GLOBAL — ver Núcleo arriba).
 - El índice se agrupa POR PREFIJO (= orden del folder) → cero drift entre índice y archivos.
 - INVARIANTE: cada archivo real (salvo `*.local.md` gitignored) está indexado, y cada enlace resuelve a un archivo real (1:1).
 - Answer-first: cada línea abre con la RESPUESTA y el ESTADO de la nota, no con su historia.

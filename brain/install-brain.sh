@@ -16,7 +16,8 @@
 #       diagramar, cosechar-sesion, unificar-cerebro, auditar-suficiencia-operativa,
 #       desinflar-memorias) en ~/.claude/skills/. La copia GLOBBEA brain/skills/*/
 #       → basta con crear la carpeta de la skill; esta lista es descriptiva.
-#   (d) DASHBOARD del cerebro sembrado en la memoria GLOBAL (slug del HOME) si falta.
+#   (d) DASHBOARD del cerebro + entorno-esta-maquina.md + como-trabajar-con-<usuario>.md sembrados en la
+#       memoria GLOBAL (slug del HOME) si faltan (esqueletos per-máquina que NO viajan por git).
 #   (e) NORMAS globales inyectadas en ~/.claude/CLAUDE.md (bloque con marcador, solo si faltan).
 #
 # REGLA DE ENV VARS DEL BRAIN (norma dura del instalador): las env vars que configuran el
@@ -343,6 +344,27 @@ else
 fi
 rm -f "$blk" 2>/dev/null || true
 
+# ── (d2b) "Cómo trabajar con <usuario>" en la memoria GLOBAL per-máquina si falta ──
+# Manual de TRATO de la PERSONA (cómo le gusta que le comuniquen/decidan/trabajen). Misma norma dura que
+# el entorno y el dashboard: es de UNA persona-instancia, no de un proyecto → en un repo viajaría por git
+# y sería ruido para otro dev que clone. Por eso vive AQUÍ (memoria global per-máquina, NO viaja por git).
+# El bootstrap SIEMBRA el esqueleto (barebones de la raíz del brain) con el nombre del usuario real;
+# después ‹usuario›/Claude lo llenan con lo REAL. IDEMPOTENTE y no-destructivo: si ya existe, no lo toca.
+USUARIO="$(id -un 2>/dev/null || echo "${USER:-usuario}")"
+COMOTRAB="$CLAUDE_DIR/projects/$HOME_SLUG/memory/como-trabajar-con-$USUARIO.md"
+BAREBONES_CT="$SCRIPT_DIR/../como-trabajar-con-usuario.example-barebones.md"
+if [ ! -f "$COMOTRAB" ]; then
+  mkdir -p "$(dirname "$COMOTRAB")"
+  if [ -f "$BAREBONES_CT" ]; then
+    cp "$BAREBONES_CT" "$COMOTRAB"
+  else
+    printf -- '---\nname: como-trabajar-con-%s\ndescription: Cómo le gusta a %s que Claude le comunique, decida y trabaje — TRATO personal, no normas del brain. Per-máquina, NO viaja por git.\nmetadata:\n  node_type: memory\n  type: feedback\n---\n\n# Cómo trabajar con %s\n\n> TRATO de esta PERSONA (comunicación, decisiones, proceso, git, preferencias). NO dupliques las normas\n> UNIVERSALES del brain (viven en ~/.claude/CLAUDE.md) — aquí SOLO lo personal. Per-máquina, NO viaja por git.\n\n## 🗣️ Comunicación y trato\n## ✅ Decisiones y autorización\n## 🛠️ Proceso de trabajo\n## 🌿 Git / repos\n## 🎯 Preferencias concretas\n' "$USUARIO" "$USUARIO" "$USUARIO" > "$COMOTRAB"
+  fi
+  echo "ok: como-trabajar-con-$USUARIO.md sembrado en $COMOTRAB (esqueleto; ‹usuario›/Claude lo llenan)"
+else
+  echo "ok: como-trabajar-con-$USUARIO.md ya existe ($COMOTRAB)"
+fi
+
 # ── (e) Normas globales en ~/.claude/CLAUDE.md (bloque con marcador; REFRESCA, no solo siembra) ──
 # Idempotente Y actualizable: si el bloque BEGIN/END ya existe, se REEMPLAZA EN SU LUGAR con la versión
 # actual (así las normas nuevas SÍ llegan a instalaciones existentes al re-correr); si no existe, se
@@ -417,6 +439,6 @@ if [ "$(git config --global --get fetch.prune 2>/dev/null)" != "true" ]; then
   git config --global fetch.prune true 2>/dev/null && echo "ok: git config --global fetch.prune=true (ramas remotas borradas se limpian solas al hacer fetch)"
 fi
 
-echo "listo: cerebro global instalado (hooks + cableado + skill + sello de versión + dashboard + normas + aliases-activos)."
+echo "listo: cerebro global instalado (hooks + cableado + skill + sello de versión + dashboard + entorno + como-trabajar + normas + aliases-activos)."
 echo "       Los hooks repo-scoped (sesion-inicio, dod-verificar) viven en"
 echo "       brain/hooks/ como fuente: cópialos al .claude/ de cada repo (se cargan al INICIAR ahí)."
