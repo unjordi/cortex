@@ -21,6 +21,7 @@ UNIT_SRC="$ROOT/src/systemd"
 PLASMOID_SRC="$ROOT/src/plasmoid"
 PLASMOID_ID="io.github.unjordi.cortex"
 OLD_PLASMOID_ID="io.github.unjordi.claude-quota-widget"   # legacy: se elimina en el install (borra el previo)
+OLD_PLASMOID_ID_BRAIN="io.github.unjordi.claude-brain"    # era intermedia (rename claude-brain→cortex, #312)
 BRAIN_INSTALLER="$ROOT/brain/install-brain.sh"
 
 BIN_DEST="$HOME/.local/bin/cortex-fetch"
@@ -52,16 +53,24 @@ done
 # en zsh Y bash. Idempotente por marcador; crea el rc si falta. Se aplica también a ESTE proceso.
 ensure_path_local_bin() {
   local marker="# cortex: ~/.local/bin en el PATH (claude, cortex-fetch)"
-  local old_marker="# cortex: ~/.local/bin en el PATH (claude, claude-quota-fetch)"  # era pre-rebrand
-  local block
+  # rebrand cleanup: marcadores de eras VIEJAS cuyo bloque PATH (marcador + su línea 'case' siguiente)
+  # hay que barrer para no dejar un bloque PATH duplicado (inofensivo) al actualizar. OJO: el rename
+  # claude-brain→cortex (#312) renombró MECÁNICAMENTE el string del old_marker a
+  # '# cortex: …claude-quota-fetch', que NUNCA se escribió en ningún rc → el bloque real de la era
+  # 'claude-brain' quedaba SIN barrer. Estos son los strings que las eras previas SÍ escribieron.
+  local old_markers=(
+    "# claude-brain: ~/.local/bin en el PATH (claude, claude-brain-fetch)"  # era claude-brain
+    "# claude-brain: ~/.local/bin en el PATH (claude, claude-quota-fetch)"  # era claude-quota (la barría #220)
+  )
+  local block om
   printf -v block '\n%s\ncase ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac\n' "$marker"
   local f
   for f in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile"; do
-    # rebrand cleanup: barre el bloque PATH viejo de la era 'claude-quota' (marcador + su línea 'case' siguiente),
-    # que la migración claude-quota→cortex no limpiaba → dejaba un bloque PATH duplicado (inofensivo) al actualizar.
-    if [[ -e "$f" ]] && grep -qF "$old_marker" "$f" 2>/dev/null; then
-      awk -v m="$old_marker" 'skip { skip=0; next } index($0,m) { skip=1; next } { print }' "$f" > "$f.cbtmp" && mv "$f.cbtmp" "$f"
-    fi
+    for om in "${old_markers[@]}"; do
+      if [[ -e "$f" ]] && grep -qF "$om" "$f" 2>/dev/null; then
+        awk -v m="$om" 'skip { skip=0; next } index($0,m) { skip=1; next } { print }' "$f" > "$f.cbtmp" && mv "$f.cbtmp" "$f"
+      fi
+    done
     if [[ -e "$f" ]] && grep -qF "$marker" "$f" 2>/dev/null; then continue; fi
     printf '%s' "$block" >> "$f"
   done
@@ -128,6 +137,19 @@ rm -f "$HOME/.local/bin/claude-quota-fetch"   # el fetch viejo (renombrado a cor
 systemctl --user daemon-reload 2>/dev/null || true
 # 2) Borra el cache y la config VIEJOS por completo (no migramos: se regeneran limpios).
 rm -rf "$HOME/.cache/claude-quota" "$HOME/.config/claude-quota"
+
+# ── Barre la era INTERMEDIA 'claude-brain' (rename claude-brain → cortex, #312). Idempotente/fail-safe. ──
+# El #312 renombró todo a 'cortex' pero NO dejó barrido de la era 'claude-brain': quien la tenía quedaba
+# con DOBLE timer/daemon + DOBLE plasmoid tras actualizar. Gemelo del bloque de arriba (claude-quota).
+# (El plasmoid viejo se quita junto al OLD_PLASMOID_ID, más abajo, donde vive kpackagetool6.)
+echo "==> Eliminando cualquier instalación previa 'claude-brain' (era intermedia del rename a cortex)"
+# 1) Deshabilita y borra las units VIEJAS (evita timer/daemon duplicado).
+systemctl --user disable --now claude-brain.timer claude-brain.service 2>/dev/null || true
+rm -f "$HOME/.config/systemd/user/claude-brain.timer" "$HOME/.config/systemd/user/claude-brain.service"
+rm -f "$HOME/.local/bin/claude-brain-fetch"   # el fetch viejo (renombrado a cortex-fetch); NO toca los helpers compartidos
+systemctl --user daemon-reload 2>/dev/null || true
+# 2) Borra el cache y la config VIEJOS por completo (se regeneran limpios bajo ~/…/cortex).
+rm -rf "$HOME/.cache/claude-brain" "$HOME/.config/claude-brain"
 
 echo "==> Installing fetch script -> $BIN_DEST"
 install -D -m 0755 "$BIN_SRC" "$BIN_DEST"
@@ -226,8 +248,10 @@ if [[ "$SKIP_PLASMOID" -eq 0 ]]; then
     echo "==> Removing existing plasmoid (if any)"
     kpackagetool6 -t Plasma/Applet -r "$PLASMOID_ID" 2>/dev/null || true
   fi
-  # Borra el plasmoid VIEJO (Id legacy) SIEMPRE — que no queden 2 widgets tras el rename del Id.
+  # Borra los plasmoides VIEJOS (Ids legacy) SIEMPRE — que no queden 2 widgets tras el rename del Id.
+  # claude-quota-widget (era vieja-vieja) y claude-brain (era intermedia del rename #312).
   kpackagetool6 -t Plasma/Applet -r "$OLD_PLASMOID_ID" 2>/dev/null || true
+  kpackagetool6 -t Plasma/Applet -r "$OLD_PLASMOID_ID_BRAIN" 2>/dev/null || true
   echo "==> Installing plasmoid"
   if kpackagetool6 -t Plasma/Applet -l 2>/dev/null | grep -q "^${PLASMOID_ID}$"; then
     kpackagetool6 -t Plasma/Applet -u "$PLASMOID_SRC"

@@ -54,4 +54,19 @@ if [[ "$KEEP_CFG" -eq 0 ]]; then
   rm -rf "$HOME/.config/cortex"
 fi
 
+# Barre la era INTERMEDIA 'claude-brain' (rename claude-brain → cortex, #312) por si quedó atrás:
+# units, fetch, plasmoid, cache/config. Idempotente/fail-safe. SOLO el fetch de la era vieja; los
+# helpers compartidos de ~/.local/bin NO se tocan.
+echo "==> Barriendo restos de la era 'claude-brain' (si los hay)"
+systemctl --user disable --now claude-brain.timer claude-brain.service 2>/dev/null || true
+rm -f "$HOME/.config/systemd/user/claude-brain.timer" "$HOME/.config/systemd/user/claude-brain.service" "$HOME/.local/bin/claude-brain-fetch"
+systemctl --user daemon-reload 2>/dev/null || true
+if command -v kpackagetool6 >/dev/null 2>&1; then
+  kpackagetool6 -t Plasma/Applet -r "io.github.unjordi.claude-brain" 2>/dev/null || true
+fi
+rm -rf "$HOME/.cache/claude-brain"
+if [[ "$KEEP_CFG" -eq 0 ]]; then
+  rm -rf "$HOME/.config/claude-brain"
+fi
+
 echo "Done."

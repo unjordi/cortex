@@ -25,6 +25,23 @@ if [[ -d "$OLD_DIR/.git" && ! -e "$DIR" ]]; then
   mv "$OLD_DIR" "$DIR"
 fi
 
+# Migración de la era INTERMEDIA 'claude-brain' (rename claude-brain → cortex, #312): el clon vivía en
+# ~/.claude-brain (oculto) o ~/claude-brain (visible, pre-ocultamiento). Si existe y el nuevo $DIR aún
+# no, muévelo y reapunta el remote a cortex; si $DIR ya existe, borra el huérfano (evita doble clon).
+# Respeta CLAUDE_BRAIN_DIR (usa $DIR). Idempotente/fail-safe. El #312 renombró OLD_DIR mecánicamente a
+# ~/cortex, un dir visible que NUNCA existió → sin esto, el clon de la era claude-brain quedaba atrás.
+for _brain_old in "$HOME/.claude-brain" "$HOME/claude-brain"; do
+  [[ -d "$_brain_old/.git" ]] || continue
+  if [[ ! -e "$DIR" ]]; then
+    say "migrando el clon de $_brain_old a $DIR (rename claude-brain → cortex)"
+    mv "$_brain_old" "$DIR"
+    git -C "$DIR" remote set-url origin "$REPO_URL" 2>/dev/null || true
+  else
+    say "quitando el clon huérfano $_brain_old (ya existe $DIR)"
+    rm -rf "$_brain_old" 2>/dev/null || true
+  fi
+done
+
 # ── (1) Prerrequisitos ──────────────────────────────────────────────────────
 # git + jq (guardias) + node/npm (ccusage). En macOS además clang/swift vienen con Xcode CLT.
 need=(git jq)

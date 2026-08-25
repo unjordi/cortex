@@ -32,6 +32,23 @@ if ((Test-Path "$oldDir\.git") -and -not (Test-Path $dir)) {
   Move-Item -Path $oldDir -Destination $dir
 }
 
+# Migracion de la era INTERMEDIA 'claude-brain' (rename claude-brain -> cortex, #312): el clon vivia en
+# %LOCALAPPDATA%\claude-brain-repo (oculto) o %USERPROFILE%\claude-brain (visible, pre-ocultamiento). Si
+# existe y $dir aun no, muevelo y reapunta el remote a cortex; si $dir ya existe, borra el huerfano.
+# El #312 renombro estos vars mecanicamente a cortex-repo/cortex, dirs que NUNCA existieron en la era
+# claude-brain -> sin esto, el clon de esa era quedaba atras. Idempotente/fail-safe.
+foreach ($brainOld in @("$env:LOCALAPPDATA\claude-brain-repo", "$env:USERPROFILE\claude-brain")) {
+  if (-not (Test-Path "$brainOld\.git")) { continue }
+  if (-not (Test-Path $dir)) {
+    Say "migrando el clon de $brainOld a $dir (rename claude-brain -> cortex)"
+    Move-Item -Path $brainOld -Destination $dir
+    try { git -C $dir remote set-url origin $repo } catch {}
+  } else {
+    Say "quitando el clon huerfano $brainOld (ya existe $dir)"
+    Remove-Item -Path $brainOld -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
+
 # -- (1) Prerrequisitos con winget (idempotente) ------------------------------
 if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
   Say 'Necesitas winget (App Installer, de la Microsoft Store). Instalalo y re-corre.'; return

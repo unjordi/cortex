@@ -72,21 +72,55 @@ rm -rf "$OLD_APP"
 # 3) Borra el cache y la config VIEJOS por completo (no migramos: se regeneran limpios).
 rm -rf "$OLD_CACHE" "$OLD_CONFIG"
 
+# --- Barre la era INTERMEDIA 'claude-brain' (rename claude-brain → cortex, #312) ----------------
+# El #312 renombró todo a 'cortex' pero NO dejó barrido de la era 'claude-brain': quien la tenía
+# instalada quedaba con DOBLE widget + DOBLE daemon tras actualizar. Gemelo del bloque de arriba
+# (claude-quota). Idempotente y fail-safe: si nada viejo existe, cada paso es un no-op silencioso.
+BRAIN_LABEL="io.github.unjordi.claude-brain"
+BRAIN_PLIST="$HOME/Library/LaunchAgents/$BRAIN_LABEL.plist"
+BRAIN_WIDGET_PLIST="$HOME/Library/LaunchAgents/$BRAIN_LABEL.widget.plist"
+BRAIN_FETCH="$HOME/.local/bin/claude-brain-fetch"
+BRAIN_APP="$HOME/Applications/Claude Brain Widget.app"
+BRAIN_CACHE="$HOME/Library/Caches/claude-brain"
+BRAIN_CONFIG="$HOME/.config/claude-brain"
+echo "==> Eliminando cualquier instalación previa 'claude-brain' (era intermedia del rename a cortex)"
+# 1) Baja y elimina AMBOS LaunchAgents viejos (daemon + widget) — que no queden 2 daemons ni 2 widgets.
+launchctl bootout "gui/$(id -u)/$BRAIN_LABEL" 2>/dev/null || true
+launchctl bootout "gui/$(id -u)/$BRAIN_LABEL.widget" 2>/dev/null || true
+launchctl unload "$BRAIN_PLIST" 2>/dev/null || true
+launchctl unload "$BRAIN_WIDGET_PLIST" 2>/dev/null || true
+rm -f "$BRAIN_PLIST" "$BRAIN_WIDGET_PLIST" "$BRAIN_FETCH"
+# 2) Cierra y borra la app vieja (que no quede el widget viejo en la barra). SOLO el binario dentro
+#    del bundle claude-brain; los helpers compartidos de ~/.local/bin NO se tocan (los usa cortex-fetch).
+osascript -e 'tell application "Claude Brain Widget" to quit' 2>/dev/null || true
+pkill -f "Claude Brain Widget.app/Contents/MacOS/" 2>/dev/null || true
+rm -rf "$BRAIN_APP"
+# 3) Borra el cache y la config VIEJOS por completo (se regeneran limpios bajo ~/…/cortex).
+rm -rf "$BRAIN_CACHE" "$BRAIN_CONFIG"
+
 # Asegura que ~/.local/bin (donde viven el fetch y, típicamente, el CLI `claude`) esté en el PATH,
 # en zsh Y bash (macOS default es zsh, pero no asumas). Idempotente por marcador; crea el rc si falta.
 # Lo aplica también a ESTE proceso para que los pasos siguientes vean lo recién instalado.
 ensure_path_local_bin() {
   local marker="# cortex: ~/.local/bin en el PATH (claude, cortex-fetch)"
-  local old_marker="# cortex: ~/.local/bin en el PATH (claude, claude-quota-fetch)"  # era pre-rebrand
-  local block
+  # rebrand cleanup: marcadores de eras VIEJAS cuyo bloque PATH (marcador + su línea 'case' siguiente)
+  # hay que barrer para no dejar un bloque PATH duplicado (inofensivo) al actualizar. OJO: el rename
+  # claude-brain→cortex (#312) renombró MECÁNICAMENTE el string del old_marker a
+  # '# cortex: …claude-quota-fetch', que NUNCA se escribió en ningún rc → el bloque real de la era
+  # 'claude-brain' quedaba SIN barrer. Estos son los strings que las eras previas SÍ escribieron.
+  local old_markers=(
+    "# claude-brain: ~/.local/bin en el PATH (claude, claude-brain-fetch)"  # era claude-brain
+    "# claude-brain: ~/.local/bin en el PATH (claude, claude-quota-fetch)"  # era claude-quota (la barría #220)
+  )
+  local block om
   printf -v block '\n%s\ncase ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac\n' "$marker"
   local f
   for f in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile"; do
-    # rebrand cleanup: barre el bloque PATH viejo de la era 'claude-quota' (marcador + su línea 'case' siguiente),
-    # que la migración claude-quota→cortex no limpiaba → dejaba un bloque PATH duplicado (inofensivo) al actualizar.
-    if [[ -e "$f" ]] && grep -qF "$old_marker" "$f" 2>/dev/null; then
-      awk -v m="$old_marker" 'skip { skip=0; next } index($0,m) { skip=1; next } { print }' "$f" > "$f.cbtmp" && mv "$f.cbtmp" "$f"
-    fi
+    for om in "${old_markers[@]}"; do
+      if [[ -e "$f" ]] && grep -qF "$om" "$f" 2>/dev/null; then
+        awk -v m="$om" 'skip { skip=0; next } index($0,m) { skip=1; next } { print }' "$f" > "$f.cbtmp" && mv "$f.cbtmp" "$f"
+      fi
+    done
     if [[ -e "$f" ]] && grep -qF "$marker" "$f" 2>/dev/null; then continue; fi
     printf '%s' "$block" >> "$f"
   done

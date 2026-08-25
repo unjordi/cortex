@@ -48,21 +48,27 @@ if (-not $NoBrain) {
 }
 
 Write-Host "==> Deteniendo instancia previa (si corre)..." -ForegroundColor Cyan
-Get-Process Cortex,ClaudeQuota -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process Cortex,ClaudeBrain,ClaudeQuota -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Milliseconds 400
 
 New-Item -ItemType Directory -Force -Path $dest | Out-Null
 
-# Migracion desde el nombre viejo: si un install previo dejo 'ClaudeQuota', quita su autostart y su
-# carpeta para no quedar con dos widgets/dos entradas tras el rename a Cortex.
-Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'ClaudeQuota' -ErrorAction SilentlyContinue
-$oldDest = Join-Path $env:LOCALAPPDATA 'Programs\ClaudeQuota'
-if (Test-Path $oldDest) { Remove-Item $oldDest -Recurse -Force -ErrorAction SilentlyContinue }
+# Migracion desde los nombres viejos: si un install previo dejo 'ClaudeQuota' (era vieja-vieja) o
+# 'ClaudeBrain' (era intermedia del rename #312), quita su autostart y su carpeta para no quedar con
+# dos widgets/dos entradas tras el rename a Cortex.
+foreach ($old in @('ClaudeQuota','ClaudeBrain')) {
+    Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name $old -ErrorAction SilentlyContinue
+    $oldDest = Join-Path $env:LOCALAPPDATA "Programs\$old"
+    if (Test-Path $oldDest) { Remove-Item $oldDest -Recurse -Force -ErrorAction SilentlyContinue }
+}
 
-# "Borra el previo por completo" (regla 2026-07-15): NO migramos el cache del nombre viejo; lo
+# "Borra el previo por completo" (regla 2026-07-15): NO migramos el cache de los nombres viejos; los
 # ELIMINAMOS. El install nuevo regenera limpio (machine-id/account/calibracion se re-crean solos).
-$oldCache = Join-Path $env:LOCALAPPDATA 'claude-quota'
-if (Test-Path $oldCache) { Remove-Item $oldCache -Recurse -Force -ErrorAction SilentlyContinue; Write-Host "==> Cache viejo 'claude-quota' eliminado (install limpio)." -ForegroundColor Green }
+# 'claude-quota' (era vieja-vieja) y 'claude-brain' (era intermedia del rename #312).
+foreach ($oldCacheName in @('claude-quota','claude-brain')) {
+    $oldCache = Join-Path $env:LOCALAPPDATA $oldCacheName
+    if (Test-Path $oldCache) { Remove-Item $oldCache -Recurse -Force -ErrorAction SilentlyContinue; Write-Host "==> Cache viejo '$oldCacheName' eliminado (install limpio)." -ForegroundColor Green }
+}
 
 # Preferimos BAJAR el exe precompilado del release (SIN .NET SDK). Fallback: compilar desde fuente
 # (requiere SDK). -Build fuerza compilar (devs). Nota: si el release se esta re-construyendo, la
@@ -197,7 +203,8 @@ if ($NoAutostart) {
 # Acceso directo en el menu Inicio -> se re-abre tecleando "Cortex" (si la cierras, tray app sin
 # ventana no deja como reinvocarla). Usa WScript.Shell (sin deps). Migra un .lnk viejo con el otro nombre.
 $startMenu = [Environment]::GetFolderPath('Programs')   # %APPDATA%\...\Start Menu\Programs
-Remove-Item (Join-Path $startMenu 'Claude Quota.lnk') -ErrorAction SilentlyContinue   # nombre viejo (migracion)
+Remove-Item (Join-Path $startMenu 'Claude Quota.lnk') -ErrorAction SilentlyContinue   # nombre viejo-viejo (migracion)
+Remove-Item (Join-Path $startMenu 'Claude Brain.lnk') -ErrorAction SilentlyContinue   # era intermedia claude-brain (#312)
 try {
     $lnk = Join-Path $startMenu 'Cortex.lnk'
     $ws  = New-Object -ComObject WScript.Shell
