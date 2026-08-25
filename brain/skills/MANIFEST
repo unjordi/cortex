@@ -50,6 +50,7 @@ cerrar-slice                     both
 checkpoint                       both
 claude-proyecto-autocontenido    global
 consolidar-cerebro               global
+construir-missing-manual         global
 cosechar-sesion                  global
 desinflar-memorias               global
 diagramar                        global

@@ -1023,6 +1023,9 @@ PlasmoidItem {
                 { emoji: "🎓", name: "investigar-dominio", desc: "ponte experto en un dominio (fan-out DOC-FIRST) → memorias durables + skills",
                   event: "skill · opt-in",
                   detail: "Ponerte al día como EXPERTO en un dominio/ecosistema maduro sin investigar al aire: delega un fan-out de agentes a barrer la documentación oficial + issues/foros de cada pieza (método DOC-FIRST), cosecha en DOS capas (memorias de investigación indexadas + skills reutilizables, con la capa profunda separada) y REVISA las decisiones actuales contra el conocimiento nuevo para no arrastrar deuda técnica. Trae plantilla-prompt pegable para encargárselo a otro Claude." },
+                { emoji: "📚", name: "construir-missing-manual", desc: "fabrica el manual/wiki de referencia exhaustivo que no existe (fan-out que investiga 1× y hornea) → artefacto consultable OFFLINE",
+                  event: "skill · opt-in",
+                  detail: "FABRICAR el manual/wiki de referencia EXHAUSTIVO que debería existir y no existe (o vive disperso/solo-en-la-web), como un artefacto CONSULTABLE OFFLINE: un skill-monstruo con un documento por sub-tema, construido por fan-out de agentes que investigan a fondo UNA vez y hornean todo para no volver a internet nunca. Úsalo cuando tú o el usuario digan 'necesito la documentación de X y ni existe / está regada / no quiero volver a buscarla', con variantes por OS/proveedor/componente. NO es investigar-dominio (eso es volverte experto + auditar tus decisiones); esto PRODUCE el artefacto de referencia." },
                 { emoji: "☀️", name: "positivar-doc", desc: "reescribe una doc answer-first: 'ESTO SÍ' (método correcto) antes del 'ESTO NO'",
                   event: "skill · opt-in",
                   detail: "Reescribe una memoria/skill/doc para que cada nugget abra con ESTO SÍ (el método/valor correcto y accionable) ANTES del ESTO NO (anti-patrones, gotchas, la historia de lo que se rompió). Answer-first. Úsalo al crear/editar docs o cuando una nota arranque con la historia del fallo y enrede al lector. Reordena/reencuadra SIN perder información. Transversal; una doc inline o bulk delegado a un agente con el mismo contrato." },
@@ -1155,7 +1158,7 @@ PlasmoidItem {
             return p && w ? "installed" : (p ? "presentNotWired" : "absent")
         }
         if (inArr(root.brainRepoHooks, name)) return "repoScoped"
-        if (["cerrar-slice","checkpoint","to-do","diagramar","auditar-proceso-algoritmo","auditar-coherencia-cerebro","auditar-suficiencia-operativa","auditor-semantico","consolidar-cerebro","canonizar-cerebro","desinflar-memorias","orquestar-fanout","turno-nocturno","cosechar-sesion","unificar-cerebro","investigar-dominio","positivar-doc","revisar-entregables-agentes","zoom-screenshot","claude-proyecto-autocontenido","reubicar-master","ingenieria-inversa-gui-db-navegador","markdown-a-pdf"].indexOf(name) !== -1)
+        if (["cerrar-slice","checkpoint","to-do","diagramar","auditar-proceso-algoritmo","auditar-coherencia-cerebro","auditar-suficiencia-operativa","auditor-semantico","consolidar-cerebro","canonizar-cerebro","desinflar-memorias","orquestar-fanout","turno-nocturno","cosechar-sesion","unificar-cerebro","investigar-dominio","construir-missing-manual","positivar-doc","revisar-entregables-agentes","zoom-screenshot","claude-proyecto-autocontenido","reubicar-master","ingenieria-inversa-gui-db-navegador","markdown-a-pdf"].indexOf(name) !== -1)
             return inArr(st.skills, name) ? "installed" : "absent"
         if (name === "Definition of Done" || name === "Doc <= realidad"
             || name === "Flujo de git" || name === "Costo de delegación")
