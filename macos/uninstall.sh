@@ -55,4 +55,19 @@ else
   echo "    keeping config: $CONFIG_DIR/limits.env"
 fi
 
+# Barre la era INTERMEDIA 'claude-brain' (rename claude-brain → cortex, #312) por si quedó atrás:
+# AMBOS LaunchAgents (daemon + widget), fetch, app, cache/config. Idempotente/fail-safe. SOLO el
+# fetch de la era vieja; los helpers compartidos de ~/.local/bin NO se tocan.
+echo "==> Barriendo restos de la era 'claude-brain' (si los hay)"
+BRAIN_LABEL="io.github.unjordi.claude-brain"
+osascript -e 'tell application "Claude Brain Widget" to quit' 2>/dev/null || true
+pkill -f "Claude Brain Widget.app/Contents/MacOS/" 2>/dev/null || true
+launchctl bootout "gui/$(id -u)/$BRAIN_LABEL" 2>/dev/null || true
+launchctl bootout "gui/$(id -u)/$BRAIN_LABEL.widget" 2>/dev/null || true
+rm -f "$HOME/Library/LaunchAgents/$BRAIN_LABEL.plist" "$HOME/Library/LaunchAgents/$BRAIN_LABEL.widget.plist" "$HOME/.local/bin/claude-brain-fetch" 2>/dev/null || true
+rm -rf "$HOME/Applications/Claude Brain Widget.app" 2>/dev/null || true
+if [[ "$PURGE" -eq 1 ]]; then
+  rm -rf "$HOME/Library/Caches/claude-brain" "$HOME/.config/claude-brain" 2>/dev/null || true
+fi
+
 echo "Done."
