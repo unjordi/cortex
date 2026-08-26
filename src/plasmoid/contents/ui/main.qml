@@ -1143,8 +1143,13 @@ PlasmoidItem {
         root.updateMessage = ""
         var repo = root.updRepoPath
         // Escapa la ruta del clon con shq (comillas simples POSIX): una ruta con un ' la partia sin esto.
-        var inner = "cd " + shq(repo) + " && git fetch origin --quiet && git merge --ff-only origin/main"
-                  + " && bash " + shq(repo + "/install.sh")
+        // MIGRACIÓN DEL CLON (rename claude-brain→cortex): si vive bajo el nombre VIEJO y ~/.cortex no
+        // existe, renómbralo ANTES del ff → el nombre canónico queda y el próximo update lo halla directo.
+        // Vars sin comillas (rutas ~/.cortex, ~/.claude-brain sin espacios) → no rompen el `bash -lc "..."`.
+        var inner = "SRC=" + shq(repo) + "; DST=$HOME/.cortex; "
+                  + "[ $SRC != $DST ] && [ -d $SRC ] && [ ! -e $DST ] && mv $SRC $DST; "
+                  + "DIR=$DST; [ -d $DIR/.git ] || DIR=$SRC; "
+                  + "cd $DIR && git fetch origin --quiet && git merge --ff-only origin/main && bash $DIR/install.sh"
         var cmd = "nohup bash -lc \"" + inner + "\" >/tmp/cortex-update.log 2>&1"
         updateRunSource.connectSource(cmd)
     }
