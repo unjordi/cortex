@@ -54,8 +54,35 @@ Estos son evasiones por ofuscación de shell inherentes a un guard basado en an�
 shell). El backstop real: ramas protegidas server-side en GitLab. NO perseguir indefinidamente (modo de falla
 del skill `auditar-coherencia-cerebro`); documentados y aceptados.
 
+## secret-scan / detectar-secretos — auditado por EJECUCIÓN (source de la lib `ds_buscar`)
+> Filosofía declarada: PRECISIÓN > exhaustividad (patrones de formato inconfundible, no entropía; "mejor
+> no molestar"). El audit prueba dentro de ESA promesa: (a) secretos de un formato que dice cubrir pero
+> evaden, y (b) falsos positivos que contradicen "no molestar". 4 hallazgos, todos CONFIRMADOS por ejecución.
+
+### S1 · AWS `ASIA…` (STS temporales) EVADEN — MEDIO, CONFIRMADO
+- `detectar-secretos.sh:13` — patrón `AKIA[0-9A-Z]{16}` solo caza claves permanentes. Las **temporales STS**
+  empiezan con `ASIA` (mismo formato, 16 chars) y son secretos exfiltrables reales. Prueba: `ASIAY34FZKBOKMUTVV7A` → **PASA**.
+- Fix (precisión-preservador): `(AKIA|ASIA)[0-9A-Z]{16}`. (`AROA`/`AIDA`/`ANPA` son IDs de rol/usuario, NO secretos → NO añadir.)
+
+### S2 · OpenAI `sk-svcacct-…` (service-account keys) EVADEN — MEDIO, CONFIRMADO
+- El patrón clásico `sk-[A-Za-z0-9]{32,}` falla porque el `-` de `svcacct-` corta el run alfanumérico; y no
+  hay patrón `sk-svcacct-` (sí hay `sk-ant-`/`sk-proj-`). Prueba: `sk-svcacct-A1b2…O5p6` → **PASA**.
+- Fix: añadir `(sk-svcacct-[A-Za-z0-9_-]{20,})` (mismo estilo alta-precisión que `sk-proj-`).
+
+### S3/S4 · connstrings de EJEMPLO con creds-placeholder → FALSO POSITIVO — BAJO, CONFIRMADO
+- El patrón connstring `scheme://user:pass@` caza `postgres://user:password@localhost:5432/db` y
+  `redis://user:pass@localhost` → **DETECTA** (ambos son ejemplos típicos de README con placeholder). Viola
+  "mejor no molestar": bloquearía el commit de un README con un ejemplo de connstring.
+- Fix (debatible, precisión): añadir a `ds_safe_re` los valores-placeholder obvios como pass en connstring
+  (`:password@`, `:pass@`, `:changeme@`, `:user@`). TRADE-OFF: un password real perezoso ("password") se
+  volvería FN — por eso es candidato a discutir, no fix obvio. (Un token REAL en URL —`glpat-…`, `sk-…`— SÍ
+  se sigue cazando por su propio patrón; solo se relajarían los placeholders léxicos.)
+
+### secret-scan — lo que SÍ caza bien (controles verdes)
+`AKIA` real, `sk-ant-`, `glpat-` suelto y **en URL**, JWT, connstring con token real → DETECTA. `AKIA…EXAMPLE`
+(docs), git SHA, `Password=$VAR` → PASA (safe_re correcto). El núcleo es sólido; los 4 hallazgos son de borde.
+
 ## Qué NO se auditó (pendiente, para una pasada con OK/tiempo)
-- `secret-scan.sh` + `detectar-secretos.sh` (44/44 en test-brain, no re-fuzzeado esta noche).
 - `confirmar-merge-develop.sh` (422 líneas, target-aware) y `merge-squash-guard.sh`.
 - Coherencia doc↔código (dimensión C) y suficiencia operativa del cerebro de cortex.
 - La pasada colectiva (costura entre guards).
