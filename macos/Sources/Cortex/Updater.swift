@@ -116,8 +116,15 @@ final class Updater: ObservableObject {
         // origin/main tiene éxito: mata la instancia vieja y corre install.sh (que reconstruye y abre
         // la nueva). Si el merge aborta (árbol sucio / no-ff), NO mata nada y la app sigue viva → sin
         // riesgo de quedarte sin widget. El `pkill` va justo antes de reinstalar, no a ciegas.
-        let inner = "sleep 1; cd '\(repoPath)' && git fetch origin --quiet && git merge --ff-only origin/main "
-            + "&& { pkill -f 'Cortex Widget.app/Contents/MacOS/Cortex'; bash '\(repoPath)/macos/install.sh'; }"
+        // MIGRACIÓN DEL CLON (rename claude-brain→cortex): si el clon vive bajo el nombre VIEJO y ~/.cortex
+        // aún no existe, lo renombra ANTES de actualizar → el nombre canónico queda y el próximo update lo
+        // halla directo (sin depender del fallback). Rutas sin espacios (~/.cortex, ~/.claude-brain) → vars sin comillas.
+        let canonical = FileManager.default.homeDirectoryForCurrentUser.path + "/.cortex"
+        let inner = "sleep 1; SRC='\(repoPath)'; DST='\(canonical)'; "
+            + "[ $SRC != $DST ] && [ -d $SRC ] && [ ! -e $DST ] && mv $SRC $DST; "
+            + "DIR=$DST; [ -d $DIR/.git ] || DIR=$SRC; "
+            + "cd $DIR && git fetch origin --quiet && git merge --ff-only origin/main "
+            + "&& { pkill -f 'Cortex Widget.app/Contents/MacOS/Cortex'; bash $DIR/macos/install.sh; }"
         let cmd = "nohup bash -lc \"\(inner)\" >/tmp/cortex-update.log 2>&1 &"
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/bin/bash")

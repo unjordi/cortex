@@ -241,20 +241,22 @@ internal sealed class Updater
             return false;
         }
 
-        string installPs1 = Path.Combine(_repoPath, "windows", "install.ps1");
-        // Script temporal: ff-merge y, SOLO si tuvo éxito, correr install.ps1 (que detiene la
-        // instancia vieja soltando el lock del exe, reconstruye y relanza). Si el ff aborta, sale
-        // sin tocar nada. Corre en su propio proceso pwsh/powershell → sobrevive a que install.ps1
-        // mate al widget.
+        // Script temporal: MIGRA el clon (rename claude-brain-repo→cortex-repo) si aplica, luego ff-merge
+        // y, SOLO si tuvo éxito, corre install.ps1 (detiene la instancia vieja soltando el lock del exe,
+        // reconstruye y relanza). Si el ff aborta, sale sin tocar nada. Corre en su propio proceso
+        // pwsh/powershell → sobrevive a que install.ps1 mate al widget. install.ps1 se resuelve del $repo
+        // YA migrado (no del _repoPath viejo), para que apunte al nombre canónico tras el rename.
         string script =
             "$ErrorActionPreference = 'SilentlyContinue'\n" +
             $"$repo = '{_repoPath.Replace("'", "''")}'\n" +
+            "$canon = Join-Path $env:LOCALAPPDATA 'cortex-repo'\n" +
+            "if ($repo -ne $canon -and (Test-Path $repo) -and -not (Test-Path $canon)) { Move-Item -LiteralPath $repo -Destination $canon; if (Test-Path $canon) { $repo = $canon } }\n" +
             "Start-Sleep -Seconds 1\n" +
             "git -C $repo fetch origin\n" +
             "if ($LASTEXITCODE -ne 0) { exit 1 }\n" +
             "git -C $repo merge --ff-only origin/main\n" +
             "if ($LASTEXITCODE -ne 0) { exit 1 }   # árbol sucio / no-ff → NO relanzar, app intacta\n" +
-            $"& '{installPs1.Replace("'", "''")}'\n";
+            "& (Join-Path $repo 'windows\\install.ps1')\n";
 
         return LaunchDetached(script, "cortex-update.ps1");
     }
