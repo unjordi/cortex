@@ -1,5 +1,12 @@
 # Auditoría adversarial — git-branch-guard (turno nocturno 2026-08-26)
 
+> **⚠️ RE-VERIFICADO contra `develop` actual (`fbb9bd3`, 2026-08-26).** La primera pasada corrió sobre un
+> clon 14 commits atrás; tras sincronizar, los diffs de esos commits en los guards son SOLO de perf
+> (memoización de `ds_patrones`/`ds_safe_re`; pre-filtros `case "$cmd" in *git*)` de early-exit) — **NO
+> tocan los patrones ni la lib `analizar-comando-git.sh`**. Todos los hallazgos de abajo se re-corrieron
+> contra `fbb9bd3` y SIGUEN válidos. (El único "hallazgo" que quedó stale — 2 skills huérfanas del
+> `skills/MANIFEST` — YA estaba arreglado en develop por `783794a #312`, así que NO se reporta.)
+
 > **Método:** tripla híbrida — qwen3.8:27b propone vectores de evasión (lente adversarial), Claude los
 > VERIFICA POR EJECUCIÓN contra el guard REAL en un sandbox git (mismo enfoque que `brain/test-brain.sh`,
 > con el dedupe neutralizado vía `HOME` vacío para ejercitar la copia de `brain/`). Alcance: los guards de
