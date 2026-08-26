@@ -3811,19 +3811,22 @@ if [ -f "$C4" ]; then
 else bad "e6.4[cs]: no encuentro Updater.cs"; fi
 
 echo ""
-echo "== (e6.5) los updaters escapan/citan la ruta del clon en el cd/Set-Location (fix H5) =="
+echo "== (e6.5) los updaters escapan/citan la ruta del clon en la asignación SRC= que alimenta el cd (fix H5) =="
+# La migración del clon (rename claude-brain→cortex) movió el escape shq/comilla del `cd` directo a la
+# asignación `SRC=shq(repo)` / `SRC='\(repoPath)'` que precede al `mv`+`cd`. H5 (una ' en la ruta la
+# partiría) sigue cubierto: el repoPath se escapa en SRC=. El assert apunta a SRC=, no al `cd` viejo.
 QML5="$PR/src/plasmoid/contents/ui/main.qml"
 SW5="$PR/macos/Sources/Cortex/Updater.swift"
 CS5="$PR/windows/src/Cortex/Updater.cs"
 if [ -f "$QML5" ]; then
-  { grep -qF 'cd " + shq(repo)' "$QML5" && ! grep -qF "cd '\" + repo" "$QML5"; } \
-    && ok "e6.5[qml]: el cd del update escapa la ruta con shq()" \
-    || bad "e6.5[qml]: el cd del update NO usa shq() (una ruta con ' se partiría — regresión H5)"
+  { grep -qF 'SRC=" + shq(repo)' "$QML5" && ! grep -qF "cd '\" + repo" "$QML5"; } \
+    && ok "e6.5[qml]: la ruta del clon se escapa con shq() en la asignación SRC= que alimenta el cd" \
+    || bad "e6.5[qml]: la ruta del clon NO se escapa con shq() (una ruta con ' se partiría — regresión H5)"
 else bad "e6.5[qml]: no encuentro main.qml"; fi
 if [ -f "$SW5" ]; then
-  grep -qF "cd '\\(repoPath)'" "$SW5" \
-    && ok "e6.5[swift]: el cd cita la ruta del clon entre comillas" \
-    || bad "e6.5[swift]: el cd NO cita la ruta del clon"
+  grep -qF "SRC='\\(repoPath)'" "$SW5" \
+    && ok "e6.5[swift]: la ruta del clon se cita entre comillas en la asignación SRC= que alimenta el cd" \
+    || bad "e6.5[swift]: la ruta del clon NO se cita en SRC="
 else bad "e6.5[swift]: no encuentro Updater.swift"; fi
 if [ -f "$CS5" ]; then
   grep -qF '_repoPath.Replace(' "$CS5" \
@@ -3999,7 +4002,10 @@ echo "== (e8) installer: la migración de rebrand barre el bloque PATH viejo 'cl
 # viejo del rc (marcador '(claude, claude-quota-fetch)') → al actualizar quedaba un 2º bloque PATH
 # duplicado (inofensivo, pero cruft). ensure_path_local_bin (en install.sh y macos/install.sh) ahora
 # lo barre. Se extrae la función y se corre contra un rc falso con el bloque viejo.
-OLD_LINE='# cortex: ~/.local/bin en el PATH (claude, claude-quota-fetch)'
+# El marcador VIEJO real que las eras previas SÍ escribieron lleva el prefijo '# claude-brain:'
+# (era claude-brain). El rename #312 renombró mecánicamente el old_marker a '# cortex: …', string que
+# NUNCA se escribió en ningún rc → sembrarlo aquí probaba un fantasma. ensure_path_local_bin barre el real.
+OLD_LINE='# claude-brain: ~/.local/bin en el PATH (claude, claude-quota-fetch)'
 CASE_LINE='case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac'
 for inst in "$SCRIPT_DIR/../install.sh" "$SCRIPT_DIR/../macos/install.sh"; do
   iname="$(basename "$(dirname "$inst")")/$(basename "$inst")"
