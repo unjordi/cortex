@@ -42,3 +42,4 @@ type: project
 - 2026-08-09 · #70 · claude+unjordi · cosecha cps↔fluxcore cerrada (grueso: #83/#81/#306/#305 + aprendizajes/settings a fluxcore). No más grind "1 ítem a la vez".
 - **[worktrees pendientes tras barrido]**
   - worktree `wt-comotrabajar` (rama `feat/como-trabajar-con-usuario`) sin mergear a develop — retomar o cerrar.
+- 2026-08-25/26 · cortex-master · Rename claude-brain→cortex + emergencia Cachy (claude 2.1.243 segfault→rollback 2.1.241) + 6 PRs a develop (#315-318 skills/instalador-doble-widget/limpieza, #322/#323 widget self-update robusto al rename) + release #319 a main (bc83604) + casa limpia (cruft/zombies) + checkpoint completo pre-mudanza. Pendiente: release de #322/#323, verificar botón Curar, mudanza del slug.

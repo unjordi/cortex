@@ -63,3 +63,14 @@ type: reference
   reaccionar. `SessionEnd`/`PreCompact`/`PostCompact` reciben `transcript_path`+`cwd`+`session_id` (útiles
   para exportar/archivar, no para adelgazar). El CLI nuevo ya escribe `custom-title`/`ai-title` DENTRO del
   jsonl (antes se derivaban a mano en `sessions-extract.js`).
+
+## Gotcha: una versión del CLI `claude` puede SEGFAULTEAR al arrancar → rollback por symlink
+Incidente 2026-08-25 (Cachy/CachyOS, glibc 2.44 rolling): `claude` no abría (ni `--resume`) en NINGÚN
+master. Causa: el auto-update instaló **v2.1.243**, que **segfaultea** (`claude --version` → exit **139**);
+la previa **2.1.241** corría perfecto. Sin libs faltantes (`ldd` limpio) → build malo / incompat con glibc
+bleeding-edge, no config ni PATH. **Diagnóstico:** el CLI nativo vive en `~/.local/share/claude/versions/<v>`
+con un symlink `~/.local/bin/claude`→`versions/<actual>`; correr cada versión directo (`versions/2.1.241 --version`)
+aísla cuál está rota. **Fix (rollback):** `ln -sfn ~/.local/share/claude/versions/2.1.241 ~/.local/bin/claude`.
+**Caveat:** el instalador nativo auto-actualiza a la ÚLTIMA al arrancar → si "latest" sigue rota, re-rompe;
+mitigación: dejar la terminal ABIERTA (la sesión viva ya corre en memoria con la buena) hasta que salga una
+versión > la rota, o pinear. NO es de config/entorno → aplica en cualquier máquina, no solo la Cachy.

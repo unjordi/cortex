@@ -1,6 +1,6 @@
 ---
 name: checkpoint
-description: Volcado del estado efímero a memoria durable para poder compactar (o cerrar sesión) sin perder el hilo, en DOS NIVELES. LIGERO (pausas naturales, punto de retorno rápido) reescribe hilo-mental-actual.md —leyendo antes el previo para no pisar ideas vivas a medio cocinar— (de qué va la tarea AHORA) y GARANTIZA, antes de sobrescribir, que todo pendiente/decisión DURABLE del hilo ya esté en estado-proyecto.md + bitácora (barrido SIN PÉRDIDA: el hilo volátil sube al backlog durable, nunca al revés). COMPLETO (OBLIGATORIO antes de cualquier /compact —manual o anunciado por el aviso de contexto— y cada ~2h en corridas largas) agrega el PLAN COMPLETO con el CÓMO, lo RESUELTO HOY y la COSECHA DURABLE a memorias/skills. Es el "volcado compartido" que cerrar-slice §2 también hace. Ante la duda de nivel: COMPLETO.
+description: Volcado del estado efímero a memoria durable para poder compactar (o cerrar sesión) sin perder el hilo, en DOS NIVELES. LIGERO (pausas naturales, punto de retorno rápido) reescribe hilo-mental-actual.md —leyendo antes el previo para no pisar ideas vivas a medio cocinar— (de qué va la tarea AHORA) y GARANTIZA, antes de sobrescribir, que todo pendiente/decisión DURABLE del hilo ya esté en estado-proyecto.md + bitácora (barrido SIN PÉRDIDA: el hilo volátil sube al backlog durable, nunca al revés). COMPLETO (OBLIGATORIO antes de cualquier /compact —manual o anunciado por el aviso de contexto— y cada ~2h en corridas largas) abre con el 🗂️ ÁRBOL de memorias+tooling (3 ramas: actualizadas-hoy / a-leer-para-lo-que-sigue / tooling) al PRINCIPIO y luego agrega el PLAN COMPLETO con el CÓMO, lo RESUELTO HOY y la COSECHA DURABLE a memorias/skills. Es el "volcado compartido" que cerrar-slice §2 también hace. Ante la duda de nivel: COMPLETO.
 ---
 
 # Checkpoint — vaciar lo efímero a memoria durable (sin fricción)
@@ -17,12 +17,14 @@ archivos durables en disco, para que **compactar cuanto quieras NO cueste el hil
 
 ## Los DOS NIVELES (y cómo elegir)
 
-- **LIGERO** — pausas naturales, punto de retorno rápido. El hilo terso (en qué estamos / decisión
-  abierta / siguiente paso / hilos sueltos) + estado-proyecto/bitácora si avanzó. Cuesta segundos.
+- **LIGERO** — pausas naturales, punto de retorno rápido. El hilo terso (memorias/tooling en lista
+  simple + en qué estamos / decisión abierta / siguiente paso / hilos sueltos) + estado-proyecto/
+  bitácora si avanzó. Cuesta segundos.
 - **COMPLETO** — **OBLIGATORIO antes de cualquier `/compact`** (manual, o cuando el hook
-  `aviso-contexto` anuncie que viene) **y cada ~2h en corridas largas/nocturnas**. Además del hilo
-  terso, el `hilo-mental-actual.md` crece con TRES secciones (PLAN COMPLETO con el CÓMO · RESUELTO
-  HOY · COSECHA DURABLE — ver abajo) y la cosecha a memorias/skills se hace COMO PARTE del checkpoint.
+  `aviso-contexto` anuncie que viene) **y cada ~2h en corridas largas/nocturnas**. Abre con el
+  **🗂️ ÁRBOL de memorias + tooling** (ver abajo) y, además del hilo terso, el `hilo-mental-actual.md`
+  crece con TRES secciones (PLAN COMPLETO con el CÓMO · RESUELTO HOY · COSECHA DURABLE — ver abajo) y
+  la cosecha a memorias/skills se hace COMO PARTE del checkpoint.
 
 **Criterio de elección:** ¿viene un compact? ¿llevas >2h de corrida? ¿la implementación que sigue es
 crítica? → **COMPLETO**. ¿Pausa casual entre sub-pasos? → ligero. **Ante la duda, COMPLETO**:
@@ -82,11 +84,26 @@ volátil lo que tiene casa durable** → reduce lo que el compact puede siquiera
    - **Ante la duda, CONSERVAR.** Arrastrar un ítem de más cuesta una línea que luego se limpia sin
      costo al reconstruir el estado real; perder una idea la pierde para siempre.
 
-   Estructura (las tres últimas secciones SOLO en nivel COMPLETO):
+   Estructura (el 🗂️ ÁRBOL y las tres últimas secciones, SOLO en nivel COMPLETO):
    ```markdown
    # Hilo mental actual
    > Se REESCRIBE conservando lo vivo del previo, no se appendea. Última actualización: <FECHA> · rama <rama> · nivel <ligero|COMPLETO>.
+   > Si el hilo pasa de ~200 líneas: corta el excedente a `hilo-mental-actual-overflow.md` y AVÍSALO aquí (ver "Regla de OVERFLOW" abajo).
 
+   ## 🗂️ ÁRBOL — memorias y tooling (SIEMPRE al principio · LÉELO PRIMERO al rehidratar)
+   <!-- LIGERO: basta una LISTA simple de las memorias/skills/scripts que el tema toca, cada una con su RUTA, agrupada por sub-tema. -->
+   <!-- COMPLETO: el ÁRBOL de 3 ramas, en un bloque de código para leerlo de un vistazo (modelo de la firma-árbol del CLAUDE.md canónico): -->
+   ```
+   📁 MEMORIAS ACTUALIZADAS HOY (<fecha>) — <dónde viven: ramita/MR/repo si aplica>
+   ├─ <ruta de la memoria> ......... <qué cambió, en UNA línea>
+   └─ ...
+   📁 INSUMOS A LEER PARA LO QUE SIGUE — <de qué tarea/expediente, con su ruta base>
+   ├─ <ruta> ....................... <por qué leerlo / qué aporta>
+   └─ ...
+   🔧 TOOLING INTEGRADO / RELEVANTE
+   ├─ <script/skill/herramienta + RUTA> ... <qué hace / estado (desplegado, en MR, pendiente)>
+   └─ <accesos y comandos clave (ssh, URLs, puertos)>
+   ```
    ## En qué estamos AHORA
    <1-3 líneas: la tarea viva y su porqué>
    ## Decisión abierta / lo que razonamos
@@ -109,6 +126,42 @@ volátil lo que tiene casa durable** → reduce lo que el compact puede siquiera
     con sus rutas. La promoción se hace COMO PARTE del checkpoint completo, no "después".>
    ```
    Pon la **FECHA real** (córrela con `date` de bash, NO el metadato de sesión): `rehidratar-hilo` la muestra al retomar para que juzgues si el hilo quedó viejo.
+
+   **🗂️ ÁRBOL de memorias + tooling al PRINCIPIO (regla dura).** El hilo SIEMPRE abre con las memorias
+   durables + herramientas/scripts que el tema toca, **cada una con su RUTA** — es la lista "lee esto al
+   rehidratar" (antídoto a declarar "ya rehidraté" sin leer la memoria del tema, lección cara) y evita
+   re-grepear el árbol cada vez. Va como PRIMERA sección, antes de "En qué estamos". La FORMA depende del
+   nivel:
+   - **LIGERO** — una **lista simple** con rutas, agrupada por sub-tema. Basta para un punto de retorno rápido.
+   - **COMPLETO** — el **🗂️ ÁRBOL de 3 ramas** en un bloque de código (modelo de la firma-árbol del
+     `CLAUDE.md` canónico), para que se lea de un vistazo: **📁 MEMORIAS ACTUALIZADAS HOY** (lo que tocaste
+     esta tanda, con su ramita/MR) · **📁 INSUMOS A LEER PARA LO QUE SIGUE** (lo que hay que abrir para
+     retomar la tarea activa) · **🔧 TOOLING INTEGRADO / RELEVANTE** (scripts/skills/accesos, con su estado).
+     La prosa "sin drama" (En qué estamos / Decisión abierta / Siguiente paso …) va DESPUÉS del árbol.
+     Origen de este formato: unjordi, 2026-08-25 — *"así deberíamos hacerlo siempre… actualiza tu skill
+     drifteante"* tras ver un checkpoint con este árbol al principio.
+   - **Anti-drift (sub-regla dura): cuando una memoria se MUEVE / FUSIONA / RENOMBRA, sincroniza el árbol/
+     lista en la MISMA tanda** — igual que `RESUELTO HOY` registra el cambio, el puntero de MEMORIAS debe
+     reflejarlo, o se contradicen dentro del mismo hilo y la lista deja de ahorrarte el grep (su único
+     propósito). Es doc=realidad aplicado al propio hilo. Y al CONTESTAR "¿qué memorias hay de X?",
+     **arranca de esta lista como HUD** y verifica/extiende contra disco — no grepees desde cero ignorándola.
+     (Lección real 2026-08-20: la lista quedó con los 5 slugs viejos de red mientras `RESUELTO` ya decía
+     "fusión hecha" → se grepeó el árbol de todos modos.)
+
+   **⚠️ Regla de OVERFLOW (>~200 líneas) `[SIN CONFIRMAR — dato de docs, validar el límite exacto]`.** El
+   import/autostart del hilo al arrancar sesión **trunca pasando las ~200 líneas**. Si `hilo-mental-actual.md`
+   supera ~200 líneas, corta el excedente a `hilo-mental-actual-overflow.md` (mismo dir) y **MENCIÓNALO en las
+   primeras líneas del hilo principal** ("…continúa en overflow"), para que el rehidratado sepa que hay más y
+   lo lea. En el principal deja lo VIVO (🗂️ árbol de memorias/tooling, en qué estamos, decisión abierta,
+   siguiente paso); al overflow van PLAN/RESUELTO/COSECHA extensos.
+
+   **⭐ Estándar de calidad — 9 ejes (canónicos; corpus de pedidos reales en `corpus-checkpoint-frases.local.md`).**
+   Un buen checkpoint es: **COMPLETO** (nada del hilo fuera) · **MINUCIOSO** (las minucias que si no re-descubrirías)
+   · **ACCIONABLE** (datos/rutas/comandos/siguiente-paso, no descripción) · **DURABLE** (en piedra, para NO
+   necesitar desinflado) · **SIN EDITORIALIZAR** (seco, solo hechos) · **SIN RESUMIR** (literales, no comprimir)
+   · **SEGUIDO/PROACTIVO** (antes del techo, no de último momento) · **A SUS CASAS** (a cada destino durable que
+   toque) · **CON PROCEDENCIA**. Anti-patrones: volátil · editorializado · resumido · escatimado en detalle
+   técnico · contaminado con temas irrelevantes · de último momento.
 
    **PROCEDENCIA de cada idea (regla dura — el hilo mental DE LA IDEA, no solo el stub).** Cada ítem del
    PLAN y cada decisión de RESUELTO llevan de DÓNDE salió y QUIÉN la originó, con un marcador breve:

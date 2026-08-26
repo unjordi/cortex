@@ -50,14 +50,19 @@ final class Updater: ObservableObject {
     }
 
     /// Clon local para auto-actualizar. Prefiere el embebido si EXISTE aquí (build local), luego
-    /// $CLAUDE_BRAIN_DIR, luego ~/.cortex (el clon oculto que siembra el bootstrap). Devuelve ""
-    /// si ninguno tiene macos/install.sh → sin auto-update (el botón invita a hacerlo a mano).
+    /// $CLAUDE_BRAIN_DIR, luego ~/.cortex (el clon oculto que siembra el bootstrap), y como FALLBACK
+    /// el nombre viejo ~/.claude-brain (pre-rename): mid-migración claude-brain→cortex el clon aún
+    /// puede estar bajo el nombre viejo, y sin este fallback el widget no lo hallaba → canSelfUpdate
+    /// quedaba false → "actualiza a mano", justo cuando el update es el que MIGRA el clon a ~/.cortex
+    /// (círculo vicioso). Con el fallback: el ⬆ funciona sobre ~/.claude-brain y el install.sh migra.
+    /// Devuelve "" si ninguno tiene macos/install.sh → sin auto-update (el botón invita a hacerlo a mano).
     private static func resolveClonePath(embedded: String) -> String {
         let fm = FileManager.default
         var candidates: [String] = []
         if !embedded.isEmpty { candidates.append(embedded) }
         if let env = ProcessInfo.processInfo.environment["CLAUDE_BRAIN_DIR"], !env.isEmpty { candidates.append(env) }
         candidates.append(fm.homeDirectoryForCurrentUser.path + "/.cortex")
+        candidates.append(fm.homeDirectoryForCurrentUser.path + "/.claude-brain")   // fallback pre-rename
         for c in candidates where fm.fileExists(atPath: c + "/macos/install.sh") { return c }
         return ""
     }
@@ -111,8 +116,15 @@ final class Updater: ObservableObject {
         // origin/main tiene éxito: mata la instancia vieja y corre install.sh (que reconstruye y abre
         // la nueva). Si el merge aborta (árbol sucio / no-ff), NO mata nada y la app sigue viva → sin
         // riesgo de quedarte sin widget. El `pkill` va justo antes de reinstalar, no a ciegas.
-        let inner = "sleep 1; cd '\(repoPath)' && git fetch origin --quiet && git merge --ff-only origin/main "
-            + "&& { pkill -f 'Cortex Widget.app/Contents/MacOS/Cortex'; bash '\(repoPath)/macos/install.sh'; }"
+        // MIGRACIÓN DEL CLON (rename claude-brain→cortex): si el clon vive bajo el nombre VIEJO y ~/.cortex
+        // aún no existe, lo renombra ANTES de actualizar → el nombre canónico queda y el próximo update lo
+        // halla directo (sin depender del fallback). Rutas sin espacios (~/.cortex, ~/.claude-brain) → vars sin comillas.
+        let canonical = FileManager.default.homeDirectoryForCurrentUser.path + "/.cortex"
+        let inner = "sleep 1; SRC='\(repoPath)'; DST='\(canonical)'; "
+            + "[ $SRC != $DST ] && [ -d $SRC ] && [ ! -e $DST ] && mv $SRC $DST; "
+            + "DIR=$DST; [ -d $DIR/.git ] || DIR=$SRC; "
+            + "cd $DIR && git fetch origin --quiet && git merge --ff-only origin/main "
+            + "&& { pkill -f 'Cortex Widget.app/Contents/MacOS/Cortex'; bash $DIR/macos/install.sh; }"
         let cmd = "nohup bash -lc \"\(inner)\" >/tmp/cortex-update.log 2>&1 &"
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/bin/bash")

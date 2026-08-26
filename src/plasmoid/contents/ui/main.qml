@@ -1116,12 +1116,14 @@ PlasmoidItem {
         }
     }
     // H2 — resuelve la ruta REAL del clon con fallback (espeja resolveClonePath de Updater.swift/.cs):
-    // 1º el repo embebido en version.json, 2º $CLAUDE_BRAIN_DIR, 3º el clon canónico $HOME/.cortex.
+    // 1º el repo embebido en version.json, 2º $CLAUDE_BRAIN_DIR, 3º el clon canónico $HOME/.cortex,
+    // 4º FALLBACK pre-rename $HOME/.claude-brain (mid-migración el clon aún puede estar bajo el nombre
+    // viejo; sin esto canSelfUpdate quedaba false → "a mano" justo cuando el update es el que migra el clon).
     // Gana el PRIMERO que exista en disco con la marca install.sh (la misma que runUpdate ejecuta). Así un
     // version.json horneado en otra máquina / con el repo movido no habilita un auto-update que haría cd a
     // una ruta muerta. Se resuelve por shell (QML JS no lee env ni prueba archivos). FAIL-OPEN: "" → a mano.
     function resolveRepoPath(embedded) {
-        var cmd = 'for c in ' + shq(embedded) + ' "$CLAUDE_BRAIN_DIR" "$HOME/.cortex"; do '
+        var cmd = 'for c in ' + shq(embedded) + ' "$CLAUDE_BRAIN_DIR" "$HOME/.cortex" "$HOME/.claude-brain"; do '
                 + '[ -n "$c" ] && [ -f "$c/install.sh" ] && { printf %s "$c"; break; }; done'
         repoResolveSource.connectSource(cmd)
     }
@@ -1141,8 +1143,13 @@ PlasmoidItem {
         root.updateMessage = ""
         var repo = root.updRepoPath
         // Escapa la ruta del clon con shq (comillas simples POSIX): una ruta con un ' la partia sin esto.
-        var inner = "cd " + shq(repo) + " && git fetch origin --quiet && git merge --ff-only origin/main"
-                  + " && bash " + shq(repo + "/install.sh")
+        // MIGRACIÓN DEL CLON (rename claude-brain→cortex): si vive bajo el nombre VIEJO y ~/.cortex no
+        // existe, renómbralo ANTES del ff → el nombre canónico queda y el próximo update lo halla directo.
+        // Vars sin comillas (rutas ~/.cortex, ~/.claude-brain sin espacios) → no rompen el `bash -lc "..."`.
+        var inner = "SRC=" + shq(repo) + "; DST=$HOME/.cortex; "
+                  + "[ $SRC != $DST ] && [ -d $SRC ] && [ ! -e $DST ] && mv $SRC $DST; "
+                  + "DIR=$DST; [ -d $DIR/.git ] || DIR=$SRC; "
+                  + "cd $DIR && git fetch origin --quiet && git merge --ff-only origin/main && bash $DIR/install.sh"
         var cmd = "nohup bash -lc \"" + inner + "\" >/tmp/cortex-update.log 2>&1"
         updateRunSource.connectSource(cmd)
     }
