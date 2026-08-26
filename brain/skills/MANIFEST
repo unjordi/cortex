@@ -46,6 +46,7 @@ auditar-coherencia-cerebro       global
 auditar-proceso-algoritmo        global
 auditar-suficiencia-operativa    global
 auditor-semantico                global
+canonizar-cerebro                global
 cerrar-slice                     both
 checkpoint                       both
 claude-proyecto-autocontenido    global
@@ -60,6 +61,7 @@ markdown-a-pdf                   global
 orquestar-fanout                 global
 positivar-doc                    global
 rehidratar-hilo                  both
+reubicar-master                  global
 revisar-entregables-agentes      global
 to-do                            both
 turno-nocturno                   global
