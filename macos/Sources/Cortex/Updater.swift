@@ -50,14 +50,19 @@ final class Updater: ObservableObject {
     }
 
     /// Clon local para auto-actualizar. Prefiere el embebido si EXISTE aquí (build local), luego
-    /// $CLAUDE_BRAIN_DIR, luego ~/.cortex (el clon oculto que siembra el bootstrap). Devuelve ""
-    /// si ninguno tiene macos/install.sh → sin auto-update (el botón invita a hacerlo a mano).
+    /// $CLAUDE_BRAIN_DIR, luego ~/.cortex (el clon oculto que siembra el bootstrap), y como FALLBACK
+    /// el nombre viejo ~/.claude-brain (pre-rename): mid-migración claude-brain→cortex el clon aún
+    /// puede estar bajo el nombre viejo, y sin este fallback el widget no lo hallaba → canSelfUpdate
+    /// quedaba false → "actualiza a mano", justo cuando el update es el que MIGRA el clon a ~/.cortex
+    /// (círculo vicioso). Con el fallback: el ⬆ funciona sobre ~/.claude-brain y el install.sh migra.
+    /// Devuelve "" si ninguno tiene macos/install.sh → sin auto-update (el botón invita a hacerlo a mano).
     private static func resolveClonePath(embedded: String) -> String {
         let fm = FileManager.default
         var candidates: [String] = []
         if !embedded.isEmpty { candidates.append(embedded) }
         if let env = ProcessInfo.processInfo.environment["CLAUDE_BRAIN_DIR"], !env.isEmpty { candidates.append(env) }
         candidates.append(fm.homeDirectoryForCurrentUser.path + "/.cortex")
+        candidates.append(fm.homeDirectoryForCurrentUser.path + "/.claude-brain")   // fallback pre-rename
         for c in candidates where fm.fileExists(atPath: c + "/macos/install.sh") { return c }
         return ""
     }

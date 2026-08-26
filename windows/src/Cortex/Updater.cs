@@ -102,7 +102,9 @@ internal sealed class Updater
         string env = Environment.GetEnvironmentVariable("CLAUDE_BRAIN_DIR") ?? "";
         string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         string localRepo = local.Length > 0 ? Path.Combine(local, "cortex-repo") : "";
-        foreach (var c in new[] { embedded, env, localRepo })
+        // FALLBACK pre-rename: mid-migración claude-brain→cortex el clon puede seguir con el nombre viejo.
+        string localRepoOld = local.Length > 0 ? Path.Combine(local, "claude-brain-repo") : "";
+        foreach (var c in new[] { embedded, env, localRepo, localRepoOld })
             if (c.Length > 0 && File.Exists(Path.Combine(c, "windows", "install.ps1")))
                 return c;
         return "";
