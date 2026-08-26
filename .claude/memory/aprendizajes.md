@@ -27,3 +27,16 @@ El bug del juez de merge NO era "qué opina Haiku hoy": Haiku juzgaba bien. Lo t
 de unjordi: *"no supe pedirle las cosas a Haiku por andar queriendo acotarlo"*. Lección: containment de
 tokens > eco byte-exacto; una capa determinista de seguridad debe tolerar normalización benigna sin aflojar
 el invariante. Doble auditoría independiente (una a ciegas) fue lo que lo destapó — no el autodiagnóstico.
+
+## 2026-08-26 · cortex-master — lecciones de la jornada rename+widget
+- **"El widget es el camino" (regla dura de unjordi):** ante un widget que no se auto-actualiza, el fix va
+  EN el widget (editar→release→el widget hace el update), JAMÁS desatascar el clon a mano. Me distraje
+  "arreglando" la Mac 2× con `mv` manual; unjordi lo paró ("no me desatasques, no te distraigas"). El
+  camino de update es el producto, no un band-aid por-máquina. (Hermano de la regla "no correr install a mano".)
+- **No inventes "chicken-and-egg" como si fuera irresoluble:** cuando lo hice, la respuesta obvia era
+  "que exista ~/.cortex" (o que el widget lo clone/renombre). Buscar la solución simple antes de dramatizar.
+- **Escape de release DISEÑADO de merge-squash-guard:** un release a main va SIN squash; si su detección de
+  destino in-hook flaquea y exige squash, la salida legítima es su señal de release EXPLÍCITA en el comando
+  (marcador veraz), NO squashear el release, NO ir a la web, NO aflojar el guard.
+- **Bug in-hook target-confirm** (juez + merge-squash): `gh pr view` dentro del hook flaquea → FRENO falso;
+  suele pasar al REINTENTO (transitorio). Corpus creciendo → afinar con datos.
