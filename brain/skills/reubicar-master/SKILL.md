@@ -44,9 +44,9 @@ funcional del humano**, no el verde técnico.
 2. **NO-SELF-MOVE-EN-VIVO** — nunca mueve un `.jsonl` reciente ni la sesión propia. `G-LIVENESS` bloquea
    por **mtime** + self-check + cita humana. `session-move.js:77` unlinkea sin preguntar → mover una viva
    parte el transcript.
-3. **NO-TAIL** — re-ancla + corrige TODAS las referencias (masters.json por-id, alias, slug) de forma
-   **atómica**, barre residuo quirúrgico y deja doc=realidad. Todo o nada; el tail es lo que a
-   helios-selene le faltó.
+3. **NO-TAIL** — re-ancla + corrige TODAS las referencias (masters.json por-id, alias, slug) en un bloque
+   ininterrumpido, respaldado y re-entrante (efectivamente todo-o-nada por recuperación, NO atómico de FS — ver §8),
+   barre residuo quirúrgico y deja doc=realidad. El tail es lo que a helios-selene le faltó.
 4. **NO-FUGA / NO-DUPLICADO** — nada del template .NET entra **versionado** a un repo público; lo sensible
    viaja por canal gitignored per-máquina; `brain/` no se toca.
 
@@ -123,6 +123,13 @@ T2_ROOT="CLAUDE.local.md"                                                   # en
 > **G-PARITY NO es un gate pass-before-mutation:** es una POSTCONDICIÓN de S1–S3 que se DEFINE aquí pero se
 > EVALÚA después de migrar (por eso antes de migrar es esperable que falle).
 
+### G-SELF-MOVE · check TEMPRANO de auto-movimiento (antes de cualquier otro gate)
+Si la sesión que EJECUTA el skill es la que se quiere mover, aborta de inmediato con un mensaje claro (el
+self-check también vive en G-LIVENESS, pero aquí es lo PRIMERO y explica la salida — no un fallo a media corrida):
+```bash
+[ "$ID" = "${CLAUDE_SESSION_ID:-}" ] && { echo "BLOQUEO: No puedes mover la sesión que EJECUTA el skill; ciérrala y dispárala desde la OTRA máquina o un shell plano (ver la danza §6)"; exit 1; }
+```
+
 ### G-ID · resolver el `<id>` vigente (masters.json tiene DUPLICADOS por nombre)
 [verificado] dos `claude-brain-cachy-master` (`7a6960de`, `9cbc2856`) y dos `claude-brain-master`
 (`761c82d9`, `1dd207df`), todos con target `code/plantilladotnet`. `session-lib.findSession` devuelve
@@ -165,6 +172,11 @@ git -C "$DST_REPO" check-ignore CLAUDE.local.md \
     .claude/memory/conocimiento-propio.local.md \
     .claude/memory/autorizaciones-vigentes.local.md \
   || { echo "G-GITIGNORE: alguno NO quedó ignorado ⇒ ABORTA (riesgo de fuga)"; exit 1; }
+
+# Verificar que NO estén YA trackeados (añadir a .gitignore NO des-trackea archivos ya en el índice)
+if git -C "$DST_REPO" ls-files --error-unmatch CLAUDE.local.md .claude/memory/*.local.md 2>/dev/null; then
+  echo "G-GITIGNORE: sensible YA trackeado ⇒ git rm --cached antes"; exit 1
+fi
 ```
 
 ### G-PARITY · POSTCONDICIÓN (de S1–S3), no gate preflight · el destino tendrá el cerebro-del-master COMPLETO — por CONTENIDO (`diff -q`)
@@ -217,8 +229,11 @@ de secretos limpio.
 cd "$DST_REPO"; git checkout develop && git pull --ff-only
 git checkout -b "docs/reubicar-$MASTER_NAME"
 # escaneo de secretos ANTES de commitear lo que se co-ubica:
-grep -rinE 'pass(word|wd)?|secret|token|api[_-]?key|credential|\.env\b' \
-  $(for m in $MEMORIAS_T1; do echo "$SRC/memory/$m"; done) && echo "REVISAR secreto antes de commitear" || true
+if grep -rinE 'pass(word|wd)?|secret|token|api[_-]?key|credential|\.env\b' \
+  $(for m in $MEMORIAS_T1; do echo "$SRC/memory/$m"; done); then
+  echo "BLOQUEO: Secreto detectado en T1. NO commitear a repo público."
+  exit 1
+fi
 for m in $MEMORIAS_T1; do
   if [ -e "$DST/memory/$m" ] && ! diff -q "$SRC/memory/$m" "$DST/memory/$m" >/dev/null 2>&1; then
     echo "CONFLICTO $m: existe distinto en destino → reconciliar con humano (no piso)"
@@ -401,3 +416,5 @@ por-id serializada, nunca en ambas máquinas dentro de la ventana de sync.
 - Freshness-check en `seed.sh --force` (hoy pisa con `.gz` viejo).
 - Que el auto-registro del hook ACTUALICE `target` de un id ya presente (hoy solo añade, `exportar-sesion-master.sh:144`).
 - Poda de `~/.claude/session-move-backups/` (se acumulan `.jsonl` de cientos de MB).
+- Lock/actualización atómica de masters.json junto al move (hoy hay micro-ventana entre el move y el `jq` del target → un proceso externo podría leer el target viejo).
+- `findSession` podría desempatar por `lastActivity`/nº-líneas y no solo por `mtime` (edge: un backup viejo restaurado con `mtime` nuevo se elegiría siendo contenido antiguo).
