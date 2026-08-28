@@ -115,20 +115,28 @@ T2_ROOT="CLAUDE.local.md"                                                   # en
 
 ---
 
-## 3 · GATES DUROS (preflight — NINGUNA mutación antes de que TODOS pasen)
+## 3 · GATES DUROS (NINGUNA mutación DESTRUCTIVA / del transcript antes de que pasen)
+
+> **Alcance del "preflight":** G-ID y G-GITIGNORE se satisfacen antes de tocar nada. **G-LIVENESS** gatea
+> específicamente el move DESTRUCTIVO (S3 export-first / S4) — por eso el flujo §5 corre el prep
+> NO-destructivo (S1 commitea un PR, S2 crea un bundle; ninguno toca el `.jsonl` objetivo) ANTES de él.
+> **G-PARITY NO es un gate pass-before-mutation:** es una POSTCONDICIÓN de S1–S3 que se DEFINE aquí pero se
+> EVALÚA después de migrar (por eso antes de migrar es esperable que falle).
 
 ### G-ID · resolver el `<id>` vigente (masters.json tiene DUPLICADOS por nombre)
 [verificado] dos `claude-brain-cachy-master` (`7a6960de`, `9cbc2856`) y dos `claude-brain-master`
-(`761c82d9`, `1dd207df`), todos con target `code/plantilladotnet`. `session-lib.findSession` recorre slugs
-con `fs.readdirSync` **sin ordenar** (`session-lib.js:34-39`) → no-determinista con id duplicado. **El
-humano elige el `<id>` vigente por máquina; el skill lo CITA textual y puebla `ID=`.** (Pendiente delegado
-al brain: tie-break determinista en `findSession`.)
+(`761c82d9`, `1dd207df`), todos con target `code/plantilladotnet`. `session-lib.findSession` devuelve
+DETERMINISTA el de **mtime más reciente** (desempate alfabético por slug, `session-lib.js:49`) → con id
+duplicado elige el más nuevo, que con duplicados suele ser el vivo. Aun así el gate NO desaparece: ahora es
+una **CONFIRMACIÓN** — el humano confirma que el `<id>` auto-seleccionado por mtime es el que quiere mover,
+lo CITA textual y puebla `ID=`.
 ```bash
 grep -n '"id"\|"name"' "$MJ"                     # listar candidatos para que el humano elija
 [ -n "$ID" ] || { echo "G-ID: falta el <id> vigente (Decisión #1)"; exit 1; }
 ```
 
 ### G-LIVENESS · la sesión objetivo está CERRADA — por **mtime que BLOQUEA** (NO `fuser`/`lsof`)
+Gatea el move DESTRUCTIVO (S3+); el prep NO-destructivo S1/S2 corre antes que él (ver nota de §3).
 `fuser`/`lsof` sobre el `.jsonl` es **falso-negativo**: Claude Code appendea-y-cierra el fd, no lo sostiene
 → inútil como prueba de "cerrada". Sirve solo como señal EXTRA (si da positivo, seguro está viva). La
 prueba de CERRADA = **mtime frío + self-check + cita humana + sin lock de export**:
@@ -159,7 +167,7 @@ git -C "$DST_REPO" check-ignore CLAUDE.local.md \
   || { echo "G-GITIGNORE: alguno NO quedó ignorado ⇒ ABORTA (riesgo de fuga)"; exit 1; }
 ```
 
-### G-PARITY · el destino tendrá el cerebro-del-master COMPLETO — por CONTENIDO (`diff -q`)
+### G-PARITY · POSTCONDICIÓN (de S1–S3), no gate preflight · el destino tendrá el cerebro-del-master COMPLETO — por CONTENIDO (`diff -q`)
 No se mide "18 vs 4 skills" (mezcla plantilla con master). Se mide que **lo clasificado del-master**
 (T1∪T2) esté idéntico en el destino:
 ```bash
@@ -171,7 +179,7 @@ diff -q "$SRC_REPO/$T2_ROOT" "$DST_REPO/$T2_ROOT" >/dev/null 2>&1 || { echo "PAR
 [ "$fail" -eq 0 ] || { echo "G-PARITY: BLOQUEA hasta migrar (S2/S3)"; exit 1; }
 [ -d "$DST_REPO/brain" ] || { echo "G-PARITY: falta brain/ en destino (¿repo equivocado?)"; exit 1; }   # y JAMÁS se muta
 ```
-(G-PARITY se re-corre como postcondición de S3; antes de migrar es esperable que falle.)
+(Se DEFINE aquí pero se EVALÚA como postcondición tras S3, NO como gate pass-before-mutation; antes de migrar es esperable que falle. El check `diff -q` de arriba es su definición.)
 
 ---
 
@@ -386,10 +394,10 @@ por-id serializada, nunca en ambas máquinas dentro de la ventana de sync.
 | Rollback por `seed --force` | `.gz` viejo + target viejo | export-first (S3) con sesión cerrada + target atómico (S4) |
 | Borrar symlink `memory` compartido | barrido no-quirúrgico en slug de ~130 sesiones | barrer SOLO `<id>.jsonl`; verificar que el symlink sigue vivo |
 | Conflicto Drive de masters.json | edición concurrente de UN archivo | edición por-id serializada; vigilar `masters (1).json` |
+| Move NO atómico (a medias) | `session-move.js` hace copy-a-slug-nuevo + unlink-viejo (no es un rename atómico) | respaldado (backup `session-move.js:62-66`) + aborta-si-colisiona (`:60`) + máquina de estados re-entrante: la postcondición S4 detecta un estado a medias y reanuda |
 | Backups sin poda | `session-move.js` respalda sin límite | anotar poda de `~/.claude/session-move-backups/` |
 
 ## 9 · Pendientes DELEGADOS al brain (fuera del skill)
-- Tie-break determinista en `session-lib.findSession` (hoy no-determinista con id duplicado, `:34-39`).
 - Freshness-check en `seed.sh --force` (hoy pisa con `.gz` viejo).
 - Que el auto-registro del hook ACTUALICE `target` de un id ya presente (hoy solo añade, `exportar-sesion-master.sh:144`).
 - Poda de `~/.claude/session-move-backups/` (se acumulan `.jsonl` de cientos de MB).
