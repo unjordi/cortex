@@ -44,6 +44,17 @@ metadata:
     ciego de la introspección: el auditor comparte el frame "out of scope = no es mi problema"). Nació porque este
     MISMO §9 dejó las 4 aristas solo en el texto del skill, una de ellas destructiva. · _reubicar-master §9, 2026-08-08._
 
+- **`limpiar-ramas.sh` barre mal las ramas squasheadas (dos fallos, vistos en vivo · axon 2026-08-29).**
+  (1) **Base detectada por el cwd de la sesión, no por el repo objetivo:** parado en `plantilladotnet` (cwd de
+  la sesión), al barrer `axon` agarró `DevelopUnjordi` como base en vez del `develop` de axon → corrió sobre el
+  repo equivocado y no tocó una sola rama del objetivo. Misma raíz que el FN del git-branch-guard por
+  `target ≠ CLAUDE_PROJECT_DIR` (abajo). (2) **No ve a través del squash+develop-avanzado:** conservó 6 `fix/*`
+  YA integradas (su diff vs develop era "develop que avanzó", no trabajo único) y a la vez marcó `router` (una
+  mini) como borrable → under-barre lo rancio Y over-barre lo vivo. Toca `brain/hooks/limpiar-ramas.sh` (+ su
+  disparador `barrer-ramas.sh`). Nace con test (sandbox: squash-merge → la rama debe detectarse integrada;
+  cwd≠repo-objetivo → base correcta). ⚠️ Se dio por "arreglado" antes (detección de squash-merge) y quedó a
+  medias — la limpieza post-merge de hoy lo destapó. · _axon-master, 2026-08-29._
+
 - **Estándar: `conocimiento-propio` por sesión master.** Volver ESTÁNDAR que toda sesión master escriba su
   propio `conocimiento-propio.local.md` (per-repo en su repo-base, gitignored, re-inyectado en cada
   SessionStart por el hook `aviso-drift-cerebro`). Cada master lo escribe desde SU lado (no copia el del
