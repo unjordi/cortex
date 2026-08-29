@@ -153,6 +153,37 @@ antes de un git destructivo que orfanaría commits sin pushear).
      los DEJA y anota su pendiente en la bitácora para quien lo retome).
    → No monitoreas a los agentes: el reporte y la limpieza son el cierre estándar.
 
+## Delegar CHURN a `axon` en la Cachy — corredor LOCAL a $0
+Para **CHURN** (greps, conteos, repros, transformaciones deterministas, barridos, screenshots) delega a
+**`axon` en la Cachy**, no a un subagente Claude: **tier "gratis"** en el gate (`delegacion-gate`), elige
+el modelo solo, tiene **ojos** (VLM, tool `VerImagen`) y **manos** (browser CDP/BiDi + GUI de Windows por SSH). Reserva Claude para criterio fino /
+contexto grande / frontera. **Verifica su salida** ([[revisar-entregables-agentes]]) y **aíslalo** si muta.
+
+**Usa estos comandos directamente. Solo diagnostica SI FALLA.**
+```bash
+# delegar churn ($0, local):
+ssh cachy '~/code/axon/bin/axon run "<tarea>" --dir <path> --local-only --max-turns 6'
+# ver modelos vivos:
+ssh cachy 'ollama ls'
+```
+- Ruta COMPLETA `~/code/axon/bin/axon` (el `axon` a secas es alias interactivo; en `ssh` no-interactivo no existe).
+- Flags: `--local-only` ($0) · `--model <n>` (p.ej. `gpt-oss:120b`, offload a RAM) · `--max-turns N` · `--dir <path>` · `--json`.
+- Modelos: `qwen3:4b` · `qwen3:14b` · `qwen3.8:27b` (default, VRAM 32GB) · `qwen2.5vl:7b` (visión) · `gpt-oss:120b` (65GB, RAM).
+- Si falla: la Cachy es zsh y expande `=` → no uses `===` en comandos remotos; para scripts usa `ssh cachy 'bash -s' <<'EOF'`.
+
+**Ejemplo real (2026-08-29 · $0 · 5s · correcto):**
+```
+$ ssh cachy '~/code/axon/bin/axon run "cuenta los .ts en src/router, responde SOLO el numero" --dir ~/code/axon --local-only'
+axon run · dir=~/code/axon · local=qwen3.8:27b · frontera=off
+[turn 1] local → Glob {"pattern":"src/router/**/*.ts"} … ok
+[turn 2] local → finish ✓
+✔ 2 turnos · 2 local / 0 frontera · $0.0000 · 5.0s
+Respuesta: 11
+```
+
+`axon` = harness de la gemela (`~/code/axon`, GitHub `unjordi/axon`, turf de ella — lo USO, no lo muto).
+Roadmap de capacidades: `~/code/axon/docs/harness-research/roadmap/ROADMAP.md`.
+
 ## Hooks/tools que lo sostienen
 - **`delegacion-gate`** (PreToolUse/Task) — consentimiento de costo por ventana de 5h (ver el flujo de gasto).
 - **`delegacion-reporte`** (PostToolUse/Task) — tras cada subagente, recuerda registrar avance + limpiar worktree.
