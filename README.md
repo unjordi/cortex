@@ -94,7 +94,7 @@ El cerebro se ordena por *dureza*: arriba lo que te **bloquea** sin negociar; ab
 ├─ 🕰️  rama-vieja              avisa si la ramita arrastra base vieja
 ├─ 🌳 proteger-arbol           git destructivo que orfanaría commits sin pushear → avisa (fan-out: usa worktree aislado)
 ├─ 🛡️  proteger-fuente-cerebro  editar la copia INSTALADA de un hook/skill que tiene fuente en el clon → avisa (se perdería en el próximo sync) (GLOBAL)
-├─ 🧹 barrer-ramas             al abrir sesión barre en 2º plano las ramas locales ya integradas (zombie squash-safe; throttle 24h) (GLOBAL)
+├─ 🧹 barrer-ramas             al abrir sesión / al punto del merge barre en 2º plano ramas locales + remota huérfana + worktrees ya integrados (zombie squash-safe; throttle 24h) (GLOBAL)
 ├─ 💾 exportar-sesion-master   auto-export de las sesiones *-master a ~/.claude-sessions (o Drive); detached, sobrevive el cleanup de 30 días (GLOBAL)
 ├─ 📝 delegacion-registrar     materializa el "pregunta una sola vez"
 ├─ 📮 delegacion-reporte       al terminar un agente: recuerda registrar avance + limpiar su worktree
@@ -155,8 +155,10 @@ el helper [`limpiar-worktrees.sh`](brain/hooks/limpiar-worktrees.sh) barre los w
 mergeadas y deja anotado en la bitácora el pendiente de los que sigan vivos; y
 [`limpiar-ramas.sh`](brain/hooks/limpiar-ramas.sh) barre las **ramas locales** ya integradas (antídoto
 a la acumulación de ramitas squasheadas: el squash rompe `git branch -d` y `fetch --prune` no toca
-locales). Ambos comparten la lógica "zombie" ([`ramas-zombie.sh`](brain/hooks/ramas-zombie.sh)) → una
-sola definición de "mergeada".
+locales) y, si tras borrar la local su **rama REMOTA** aún cuelga (un MR squash-mergeado sin
+`--delete-branch`), la borra también (fail-open sin red). Ambos comparten la lógica "zombie"
+([`ramas-zombie.sh`](brain/hooks/ramas-zombie.sh)) → una sola definición de "mergeada", y `barrer-ramas`
+los lanza a **ambos** (ramas + worktrees) en el mismo trigger.
 
 ### 🗺️ El mapa del cerebro — fuente de verdad visual
 

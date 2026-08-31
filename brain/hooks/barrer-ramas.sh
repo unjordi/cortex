@@ -64,12 +64,20 @@ ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo 
 git -C "$ROOT" remote | grep -q . 2>/dev/null || exit 0   # sin remoto no hay ramas squasheadas-y-borradas
 LIMPIAR="$(dirname "$0")/limpiar-ramas.sh"
 [ -f "$LIMPIAR" ] || exit 0
+# 1b — al punto del merge nace TANTO un ramo local zombie COMO (tras un fan-out) un worktree zombie. Ambos
+# barredores comparten la MISMA lib de "zombie" (ramas-zombie.sh) → misma decisión, sin divergencia. El de
+# worktrees es OPCIONAL (un clon podría no traerlo): si está a un lado, se lanza junto al de ramas.
+LIMPIAR_WT="$(dirname "$0")/limpiar-worktrees.sh"
 
 stampdir="$HOME/.claude/memory/.barrer-ramas"; mkdir -p "$stampdir" 2>/dev/null || true
 slug=$(printf '%s' "$ROOT" | cksum 2>/dev/null | awk '{print $1}'); slug="${slug:-0}"
 now=$(date +%s)
 log="$stampdir/${slug}.log"
-lanzar() { ( cd "$ROOT" && nohup bash "$LIMPIAR" >"$log" 2>&1 & ) >/dev/null 2>&1 || true; }
+logwt="$stampdir/${slug}.worktrees.log"
+lanzar() {
+  ( cd "$ROOT" && nohup bash "$LIMPIAR" >"$log" 2>&1 & ) >/dev/null 2>&1 || true
+  [ -f "$LIMPIAR_WT" ] && ( cd "$ROOT" && nohup bash "$LIMPIAR_WT" >"$logwt" 2>&1 & ) >/dev/null 2>&1 || true
+}
 
 # ── Vía (B): TRIGGER AL PUNTO DE MERGE (inmediato; debounce corto anti-estampida de ráfaga de merges). ──
 if [ "$es_merge" = 1 ]; then
@@ -81,7 +89,7 @@ if [ "$es_merge" = 1 ]; then
   fi
   printf '%s' "$now" > "$mstamp" 2>/dev/null || true
   lanzar
-  ctx="🧹 Merge de MR/PR detectado → barriendo en segundo plano las ramas locales que quedaron integradas (zombies squash-safe: MR mergeado / remota borrada / equivalencia de parche; conserva trabajo sin integrar y nunca toca actual/base/develop/main/Develop*/keep/*). Detalle: ${log}. Para verlo sin borrar: \`limpiar-ramas.sh --dry-run\`."
+  ctx="🧹 Merge de MR/PR detectado → barriendo en segundo plano las ramas locales Y los worktrees que quedaron integrados (zombies squash-safe: MR mergeado / remota borrada / equivalencia de parche; también borra la rama REMOTA huérfana si el merge no la limpió; conserva trabajo sin integrar y nunca toca actual/base/develop/main/Develop*/keep/*). Detalle: ${log} · ${logwt}. Para verlo sin borrar: \`limpiar-ramas.sh --dry-run\` / \`limpiar-worktrees.sh --dry-run\`."
   if [ "$have_jq" = 1 ]; then
     jq -n --arg c "$ctx" '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$c}}'
   else
@@ -101,7 +109,7 @@ fi
 printf '%s' "$now" > "$stamp" 2>/dev/null || true
 lanzar
 
-ctx="🧹 Barriendo ramas locales YA integradas de este repo en segundo plano (zombies squash-safe: MR mergeado / remota borrada / equivalencia de parche; conserva trabajo sin integrar y nunca toca actual/base/develop/main/Develop*/keep/*). Throttle ${horas}h. Detalle del último barrido: ${log}. Para verlo sin borrar: \`limpiar-ramas.sh --dry-run\`."
+ctx="🧹 Barriendo ramas locales Y worktrees YA integrados de este repo en segundo plano (zombies squash-safe: MR mergeado / remota borrada / equivalencia de parche; también borra la rama REMOTA huérfana si el merge no la limpió; conserva trabajo sin integrar y nunca toca actual/base/develop/main/Develop*/keep/*). Throttle ${horas}h. Detalle del último barrido: ${log} · ${logwt}. Para verlo sin borrar: \`limpiar-ramas.sh --dry-run\` / \`limpiar-worktrees.sh --dry-run\`."
 if [ "$have_jq" = 1 ]; then
   jq -n --arg c "$ctx" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}}'
 else

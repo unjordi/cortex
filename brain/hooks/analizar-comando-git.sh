@@ -360,6 +360,55 @@ acg_msg_es_pobre() {   # $1=mensaje → 0=pobre(bloquear) · 1=ok(pasar)
   return 1
 }
 
+# ── VARA DE PROFUNDIDAD/TRAZABILIDAD/ANTI-EDITORIALIZACIÓN (solo el consumidor decide a qué FUENTE aplicar) ──
+# acg_msg_es_pobre es el PISO anti-basura (aplica a LITERAL y AUTO). Las funciones de ABAJO son la VARA
+# más alta que merge-squash-guard aplica SOLO al mensaje LITERAL (el que el agente TIPEÓ inline): un título
+# AUTO del MR es corto por naturaleza y no lo redactó el agente aquí → no se le exige rama ni ≥12 palabras.
+# El caso `--squash-message "$(cat resumen.md)"` es UNVERIFICABLE aguas arriba → nunca llega a estas varas
+# (fail-open ya documentado): por eso endurecen SOLO el literal inline, que es el camino desaconsejado.
+
+# (3a) ¿el resumen LITERAL es DEMASIADO SUPERFICIAL para describir un slice? Piso de PROFUNDIDAD: < 12
+# PALABRAS (un resumen del "cambio neto y su porqué" es multi-cláusula; un placeholder de 3-4 palabras no
+# lo es). Mide el mensaje COMPLETO (no solo el subject). return 0 = superficial (bloquear).
+acg_msg_es_superficial() {   # $1=mensaje → 0=superficial(bloquear) · 1=ok
+  local words
+  words=$(printf '%s' "$1" | wc -w | tr -d '[:space:]')
+  [ "${words:-0}" -lt 12 ]
+}
+
+# (2a) ¿al resumen LITERAL le falta TODO rastro de TRAZABILIDAD rama→commit? El squash BORRA el merge-commit
+# de la plataforma (que traía el #id del MR/PR) → sin un rastro en el propio mensaje, `git log develop` no
+# dice de qué ramita salió el commit. "Rastro" = un patrón de RAMA (feat/ fix/ chore/ hotfix/ docs/ seguido
+# del nombre) O un id de MR/PR (!123 / #456). return 0 = falta traza (bloquear).
+#   Precisión: solo se INVOCA sobre el LITERAL (el agente lo tipeó, puede añadir la línea `Rama:`/`MR:`); el
+#   patrón de rama exige la barra + ≥1 char de nombre (no casa un "fix" suelto), y el id exige [!#]+dígitos.
+acg_msg_falta_traza() {   # $1=mensaje → 0=falta traza(bloquear) · 1=trae traza(pasar)
+  printf '%s' "$1" | grep -qE '(^|[^A-Za-z0-9/])(feat|fix|chore|hotfix|docs)/[A-Za-z0-9._-]' && return 1
+  printf '%s' "$1" | grep -qE '[!#][0-9]+' && return 1
+  return 0
+}
+
+# (3b-DENY) ¿el mensaje EDITORIALIZA con marcadores INEQUÍVOCOS de proceso / memoria interna del asistente?
+# Estos hablan de CÓMO se llegó al código (deliberación, análisis, la sesión), no de QUÉ hace el código.
+# CRITERIO deny (near-zero FP): patrones que SOLO aparecen narrando el PROCESO — nadie los usa en un resumen
+# curado del cambio neto. Los AMBIGUOS ("se cambió/actualizó/corrigió" — pueden ser prosa legítima) NO van
+# aquí: se ADVIERTEN aparte (acg_msg_narra_acciones), no se bloquean. Stems ASCII (sin clases multibyte,
+# robusto BSD/GNU/locale): `decidi` casa "decidió"/"decidio"; `identific` "identificó"; `procedi` "procedió".
+acg_msg_editorializa() {   # $1=mensaje → 0=editorializa(bloquear) · 1=limpio
+  printf '%s' "$1" | grep -qiE 'tras[[:space:]]+analiz|se[[:space:]]+decidi|se[[:space:]]+identific|el[[:space:]]+asistente|en[[:space:]]+esta[[:space:]]+sesi|se[[:space:]]+procedi'
+}
+
+# (3a-ii/3b-WARN) ¿el mensaje NARRA una LISTA DE ACCIONES (pasado pasivo "se <verbo>") en vez del cambio
+# neto y su porqué? Señal: ≥2 cláusulas "se <verbo-de-acción>" (se cambió, se actualizó, se corrigió, se
+# agregó…). Es AMBIGUO — UNA sola cláusula así puede ser prosa legítima → NO se bloquea; ≥2 sugiere el
+# pegote de commits que el squash debía RESUMIR. El consumidor lo ADVIERTE (additionalContext), NUNCA deny:
+# precisión > agresividad. Stems ASCII + `-i`; grep -o cuenta cada ocurrencia.
+acg_msg_narra_acciones() {   # $1=mensaje → 0=parece lista de acciones(advertir) · 1=no
+  local n
+  n=$(printf '%s\n' "$1" | grep -oiE 'se[[:space:]]+(cambi|actualiz|corrig|agreg|elimin|modific|refactoriz|reemplaz|implement|ajust|arregl|borr|cre|mov|quit)[a-z]*' | grep -c . )
+  [ "${n:-0}" -ge 2 ]
+}
+
 # Resuelve el SUBJECT que el squash AUTO-generará server-side (caso AUTO): GitLab usa el TÍTULO del MR como
 # mensaje del squash; GitHub usa el TÍTULO del PR como subject. Mismo patrón que acg_destino_de_mr
 # (repo/tool/mrid por precedencia + timeout + caché por MR-id, con clave PROPIA "|msg" distinta a la de
