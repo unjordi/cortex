@@ -124,15 +124,19 @@ falso, se AFINA (con OK explícito, solo precisión); si frena bien, se CUMPLE �
 
 ### Bitácora de falsos positivos de los guards (afinar con corpus, no con anécdotas)
 Cada vez que un guard/hook **frene EN FALSO** (dispara sobre algo que NO era lo que vigila), Claude
-appendea **EN EL MOMENTO** una línea al final de `~/.claude/memory/guards-falsos-positivos.md`
-(créalo, con su dir, si no existe) con `>>` (append-only, nunca un Edit):
+appendea **EN EL MOMENTO** una línea al final de `docs/guards-falsos-positivos.md` **del repo
+`cortex`** (créalo si no existe) con `>>` (append-only, nunca un Edit):
 `- <fecha> · <guard> · "<frase o comando citado que disparó>" · <por qué era falso positivo>`.
-Cuando se acumulen **~5 casos de un MISMO guard**, propón al usuario una pasada de **TUNING DE
-PRECISIÓN** con ese corpus (cada fix nace con su test). Razón de ser: el afinamiento de guards no debe
-depender de la anécdota de UNA sesión — el corpus cross-sesión es lo que permite tunear con datos
-(terapia con información de más de una experiencia, no de una sola). Esto **NO autoriza aflojar
-guards**: la norma de Integridad de arriba sigue aplicando — cambios solo de precisión, con OK
-explícito del usuario.
+**Vive DENTRO del repo cortex** (trackeado en git, no en `~/.claude/memory/` per-máquina): así el
+corpus viaja por `develop` a TODAS las máquinas (Cachy incluida) en vez de quedarse fragmentado y
+aislado en cada una — el afinamiento necesita ver los FP de TODAS las sesiones/máquinas, no solo la
+de una computadora. (Decisión 2026-08-31, unjordi: "muévelo al cortex, no lo copies" — reemplaza el
+diseño anterior de archivo local per-máquina.) Cuando se acumulen **~5 casos de un MISMO guard**,
+propón al usuario una pasada de **TUNING DE PRECISIÓN** con ese corpus (cada fix nace con su test).
+Razón de ser: el afinamiento de guards no debe depender de la anécdota de UNA sesión — el corpus
+cross-sesión Y cross-máquina es lo que permite tunear con datos (terapia con información de más de
+una experiencia, no de una sola). Esto **NO autoriza aflojar guards**: la norma de Integridad de
+arriba sigue aplicando — cambios solo de precisión, con OK explícito del usuario.
 
 ## Toda norma nace con su mecanismo (norma dura)
 Una norma de higiene/cierre **SIN un mecanismo que la haga cumplir** (hook, gate o paso operativo) deja
