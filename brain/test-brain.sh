@@ -246,8 +246,8 @@ is_deny   "$(msj 'glab mr merge 51 --squash --squash-message "wip"')" \
   && ok "msg LITERAL: placeholder de una palabra 'wip' → deny" || bad "msg LITERAL: no bloqueó 'wip'"
 is_deny   "$(msj 'glab mr merge 52 --squash --squash-message ""')" \
   && ok "msg LITERAL: mensaje vacío → deny" || bad "msg LITERAL: no bloqueó el mensaje vacío"
-is_silent "$(msj 'glab mr merge 53 --squash --squash-message "corrige el calculo de IVA en las facturas"')" \
-  && ok "msg LITERAL: resumen con sustancia → pasa (sin FP)" || bad "msg LITERAL: bloqueó un resumen legítimo"
+is_silent "$(msj 'glab mr merge 53 --squash --squash-message "corrige el calculo de IVA en las facturas: el total ahora suma el impuesto por linea. Rama: fix/iva, MR: !53"')" \
+  && ok "msg LITERAL: resumen con sustancia + traza (≥12 palabras) → pasa (sin FP)" || bad "msg LITERAL: bloqueó un resumen legítimo con traza"
 is_silent "$(msj 'glab mr merge 54 --squash --squash-message "$(cat resumen.md)"')" \
   && ok "msg UNVERIFICABLE: '\$(cat resumen.md)' (la forma que el propio hook sugiere) → pasa" || bad "msg UNVERIFICABLE: bloqueó la forma sugerida por el hook"
 
@@ -255,8 +255,8 @@ is_silent "$(msj 'glab mr merge 54 --squash --squash-message "$(cat resumen.md)"
 mock_gh_full develop ""
 is_deny   "$(msj 'gh pr merge 55 --squash --subject "Merge pull request #5"')" \
   && ok "msg LITERAL gh: --subject default → deny" || bad "msg LITERAL gh: no bloqueó el subject default"
-is_silent "$(msj 'gh pr merge 56 --squash --subject "agrega validacion de stock disponible"')" \
-  && ok "msg LITERAL gh: --subject con sustancia → pasa (sin FP)" || bad "msg LITERAL gh: bloqueó un subject legítimo"
+is_silent "$(msj 'gh pr merge 56 --squash --subject "agrega validacion de stock disponible antes de confirmar el pedido para evitar sobreventa. Rama: feat/stock, PR: #56"')" \
+  && ok "msg LITERAL gh: --subject con sustancia + traza → pasa (sin FP)" || bad "msg LITERAL gh: bloqueó un subject legítimo con traza"
 is_silent "$(msj 'gh pr merge 57 --squash --fill')" \
   && ok "msg UNVERIFICABLE gh: --fill (subject derivado de commits) → pasa" || bad "msg UNVERIFICABLE gh: bloqueó un --fill"
 
@@ -282,6 +282,30 @@ mock_glab_full DevelopAna "wip"
 is_silent "$(msj 'glab mr merge 65 --squash --yes')" \
   && ok "msg scope: destino=rama personal + msg pobre → pasa (fuera de alcance)" || bad "msg scope: bloqueó por mensaje a una rama personal"
 
+# ── (3a) PROFUNDIDAD + (2a) TRAZABILIDAD + (3b) EDITORIALIZACIÓN — SOLO el LITERAL, destino develop ──
+mock_glab develop
+# 3a: LITERAL < 12 palabras → deny (demasiado corto para un resumen del cambio neto)
+is_deny   "$(msj 'glab mr merge 66 --squash --squash-message "corrige el IVA en facturas"')" \
+  && ok "msg 3a: LITERAL corto (<12 palabras) → deny (superficial)" || bad "msg 3a: no bloqueó un resumen literal demasiado corto"
+# 2a: LITERAL ≥12 palabras PERO sin rama/MR-id → deny (trazabilidad rama→commit perdida)
+is_deny   "$(msj 'glab mr merge 67 --squash --squash-message "corrige el calculo del impuesto al valor agregado en todas las facturas emitidas durante el periodo fiscal vigente"')" \
+  && ok "msg 2a: LITERAL largo SIN rama/MR-id → deny (falta trazabilidad)" || bad "msg 2a: no bloqueó un resumen sin trazabilidad"
+# 2a: el MISMO mensaje pero CON una línea de traza → pasa (sin FP)
+is_silent "$(msj 'glab mr merge 68 --squash --squash-message "corrige el calculo del impuesto al valor agregado en todas las facturas emitidas. Rama: fix/iva, MR: !67"')" \
+  && ok "msg 2a: LITERAL largo + traza (Rama:/MR:) → pasa (sin FP)" || bad "msg 2a: bloqueó un resumen con traza"
+# 3b-DENY: editorialización inequívoca de proceso, aun con traza y largo → deny
+is_deny   "$(msj 'glab mr merge 69 --squash --squash-message "tras analizar el middleware se decidio reemplazar la validacion de tokens por completo. Rama: fix/x, MR: !9"')" \
+  && ok "msg 3b: editorializa el proceso ('tras analizar'/'se decidió') → deny" || bad "msg 3b: no bloqueó la editorialización de proceso"
+# 3b-WARN: lista de acciones (≥2 'se <verbo>') pero sin marcador-duro, con traza y largo → NO deny, additionalContext
+warnout="$(msj 'glab mr merge 71 --squash --squash-message "se cambio la logica de tokens y se actualizo el middleware para validar el claim exp del servidor. Rama: feat/auth, MR: !12"')"
+{ ! is_deny "$warnout" && printf '%s' "$warnout" | jq -e '.hookSpecificOutput.additionalContext' >/dev/null 2>&1; } \
+  && ok "msg 3b: lista de acciones (≥2 'se <verbo>') → ADVIERTE (additionalContext), NO deny" || bad "msg 3b: no advirtió (o bloqueó) la lista de acciones; got: $warnout"
+# 1c: la sugerencia de rehacer para gh incluye --delete-branch (limpia la remota huérfana)
+mock_gh_full develop ""
+delout="$(msj 'gh pr merge 72')"   # sin --squash → deny; el rehaz sugerido debe traer --delete-branch
+{ is_deny "$delout" && printf '%s' "$delout" | jq -r '.hookSpecificOutput.permissionDecisionReason' | grep -q -- '--delete-branch'; } \
+  && ok "msg 1c: deny gh sin squash → la sugerencia incluye --delete-branch" || bad "msg 1c: la sugerencia gh no trae --delete-branch; got: $delout"
+
 # ── funciones PURAS de la lib (deterministas, sin red) ──
 ( . "$HOOKS/analizar-comando-git.sh"
   acg_msg_es_pobre ""                                  && ok "acg_msg_es_pobre: vacío → pobre"                    || bad "acg_msg_es_pobre: no marcó vacío"
@@ -298,6 +322,23 @@ is_silent "$(msj 'glab mr merge 65 --squash --yes')" \
   [ "$(acg_msg_clasificar 'glab mr merge 5 --squash')" = AUTO ]                                 && ok "acg_msg_clasificar: sin flag → AUTO" || bad "acg_msg_clasificar: no clasificó AUTO"
   [ "$(acg_msg_clasificar 'gh pr merge 5 --squash --fill')" = UNVERIFICABLE ]                    && ok "acg_msg_clasificar: gh --fill → UNVERIFICABLE" || bad "acg_msg_clasificar: no clasificó --fill"
   [ "$(acg_msg_valor 'gh pr merge 5 --squash --subject "hola mundo"')" = "hola mundo" ]         && ok "acg_msg_valor: extrae --subject entrecomillado con espacio" || bad "acg_msg_valor: no extrajo el valor de --subject"
+  # (3a) acg_msg_es_superficial: <12 palabras = superficial
+  acg_msg_es_superficial "corrige el IVA en facturas"                                          && ok "acg_msg_es_superficial: <12 palabras → superficial" || bad "acg_msg_es_superficial: no marcó un mensaje corto"
+  acg_msg_es_superficial "corrige el calculo del impuesto al valor agregado en todas las facturas emitidas hoy" && bad "acg_msg_es_superficial: FP en un mensaje de 13 palabras" || ok "acg_msg_es_superficial: ≥12 palabras → ok"
+  # (2a) acg_msg_falta_traza: sin rama/MR-id = falta
+  acg_msg_falta_traza "corrige el calculo del IVA en las facturas"                              && ok "acg_msg_falta_traza: sin rama/MR-id → falta" || bad "acg_msg_falta_traza: no marcó ausencia de traza"
+  acg_msg_falta_traza "corrige el IVA. Rama: fix/iva-facturas"                                  && bad "acg_msg_falta_traza: FP, sí traía patrón de rama" || ok "acg_msg_falta_traza: patrón de rama (fix/…) → trae traza"
+  acg_msg_falta_traza "corrige el IVA (MR !53)"                                                 && bad "acg_msg_falta_traza: FP, sí traía id de MR" || ok "acg_msg_falta_traza: id de MR (!53) → trae traza"
+  acg_msg_falta_traza "corrige el checkout #12"                                                 && bad "acg_msg_falta_traza: FP, sí traía id de PR" || ok "acg_msg_falta_traza: id de PR (#12) → trae traza"
+  acg_msg_falta_traza "arregla el prefix del logger"                                            && ok "acg_msg_falta_traza: 'prefix' NO es 'fix/' (no traza) → falta" || bad "acg_msg_falta_traza: FP tomó 'prefix' como rama fix/"
+  # (3b-DENY) acg_msg_editorializa: marcadores inequívocos de proceso
+  acg_msg_editorializa "tras analizar el codigo se decidio reemplazar la logica"                && ok "acg_msg_editorializa: 'tras analizar'/'se decidió' → editorializa" || bad "acg_msg_editorializa: no marcó la editorialización"
+  acg_msg_editorializa "se identifico que el middleware no validaba el claim"                   && ok "acg_msg_editorializa: 'se identificó que' → editorializa" || bad "acg_msg_editorializa: no marcó 'se identificó'"
+  acg_msg_editorializa "el middleware ahora valida el claim exp contra el reloj del servidor"   && bad "acg_msg_editorializa: FP en un resumen que habla del código" || ok "acg_msg_editorializa: resumen del código (sin proceso) → limpio"
+  # (3b-WARN) acg_msg_narra_acciones: ≥2 'se <verbo>' = lista de acciones
+  acg_msg_narra_acciones "se cambio la logica y se actualizo el middleware"                     && ok "acg_msg_narra_acciones: ≥2 'se <verbo>' → lista de acciones" || bad "acg_msg_narra_acciones: no detectó la lista de acciones"
+  acg_msg_narra_acciones "se corrigio un bug en la expiracion del token"                        && bad "acg_msg_narra_acciones: FP con UNA sola cláusula 'se <verbo>'" || ok "acg_msg_narra_acciones: 1 sola cláusula → no es lista (no advierte)"
+  acg_msg_narra_acciones "el middleware ahora valida el claim exp contra el reloj"              && bad "acg_msg_narra_acciones: FP en prosa de resultado" || ok "acg_msg_narra_acciones: prosa de resultado (sin 'se <verbo>') → no advierte"
 )
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* "${TMPDIR:-/tmp}"/acg-mrmsg-* 2>/dev/null
 rm -rf "$MSBIN"
@@ -1679,6 +1720,40 @@ rm -rf "$LRROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (b3c2) limpiar-ramas: 1a — al barrer un zombie LOCAL, borra su rama REMOTA huérfana (y NUNCA la de trabajo vivo) =="
+# GAP 1a: un MR squash-mergeado SIN --delete-branch deja la remota colgando; las señales (a)/(c)/(d) de
+# bz_es_zombie declaran zombie CON la remota aún presente → limpiar-ramas ahora la borra también. FAIL-OPEN.
+LR2ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-lr2.XXXXXX")"; LR2BARE="$LR2ROOT/remote.git"; LR2REPO="$LR2ROOT/repo"
+git init -q --bare "$LR2BARE" >/dev/null 2>&1
+git init -q "$LR2REPO" >/dev/null 2>&1
+git -C "$LR2REPO" symbolic-ref HEAD refs/heads/miDevelop >/dev/null 2>&1
+git -C "$LR2REPO" config user.email t@t >/dev/null 2>&1; git -C "$LR2REPO" config user.name tester >/dev/null 2>&1
+git -C "$LR2REPO" remote add origin "$LR2BARE" >/dev/null 2>&1
+printf 'base\n' > "$LR2REPO/base.txt"; git -C "$LR2REPO" add base.txt >/dev/null 2>&1; git -C "$LR2REPO" commit -qm base >/dev/null 2>&1
+git -C "$LR2REPO" push -q -u origin miDevelop >/dev/null 2>&1
+# feat/hecha: pusheada (remota EXISTE, upstream set) + squash-integrada a miDevelop → zombie por (c), remota SIGUE colgando
+git -C "$LR2REPO" checkout -q -b feat/hecha miDevelop >/dev/null 2>&1
+printf 'x\n' > "$LR2REPO/f.txt"; git -C "$LR2REPO" add f.txt >/dev/null 2>&1; git -C "$LR2REPO" commit -qm hecha >/dev/null 2>&1
+git -C "$LR2REPO" push -q -u origin feat/hecha >/dev/null 2>&1
+git -C "$LR2REPO" checkout -q miDevelop >/dev/null 2>&1
+git -C "$LR2REPO" merge --squash feat/hecha >/dev/null 2>&1; git -C "$LR2REPO" commit -qm "squash feat/hecha" >/dev/null 2>&1
+# feat/viva: pusheada + commits propios NO integrados → CONSERVAR (su remota NO se debe tocar)
+git -C "$LR2REPO" checkout -q -b feat/viva miDevelop >/dev/null 2>&1
+printf 'y\n' > "$LR2REPO/g.txt"; git -C "$LR2REPO" add g.txt >/dev/null 2>&1; git -C "$LR2REPO" commit -qm viva >/dev/null 2>&1
+git -C "$LR2REPO" push -q -u origin feat/viva >/dev/null 2>&1
+git -C "$LR2REPO" checkout -q miDevelop >/dev/null 2>&1
+# teeth: ambas remotas existen ANTES del barrido
+git -C "$LR2REPO" ls-remote --exit-code --heads origin feat/hecha >/dev/null 2>&1 && ok "b3c2(teeth): la remota de feat/hecha existe antes del barrido" || bad "b3c2(teeth): la remota de feat/hecha no existía (test mal armado)"
+lr2out="$(cd "$LR2REPO" && CLAUDE_INTEGRACION_BASE=miDevelop bash "$HOOKS/limpiar-ramas.sh" --no-fetch 2>&1)"
+printf '%s' "$lr2out" | grep -q 'remota borrada: origin/feat/hecha' && ok "b3c2: 1a — reportó el borrado de la remota huérfana" || bad "b3c2: no reportó el borrado de la remota; got: $lr2out"
+! git -C "$LR2REPO" ls-remote --exit-code --heads origin feat/hecha >/dev/null 2>&1 && ok "b3c2: 1a — la remota de feat/hecha YA no existe (se borró de verdad)" || bad "b3c2: la remota de feat/hecha seguía existiendo tras el barrido"
+git -C "$LR2REPO" ls-remote --exit-code --heads origin feat/viva >/dev/null 2>&1 && ok "b3c2: 1a — la remota de feat/viva (trabajo vivo) NO se tocó" || bad "b3c2: BORRÓ la remota de una rama con trabajo vivo (PÉRDIDA DE DATOS)"
+# la local viva también se conserva
+git -C "$LR2REPO" rev-parse --verify -q refs/heads/feat/viva >/dev/null 2>&1 && ok "b3c2: la local feat/viva se conserva" || bad "b3c2: borró la local viva"
+rm -rf "$LR2ROOT"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "== (b3d) bz_resolver_base: AUTO-detecta la mini-develop (Develop<Usuario>) sin CLAUDE_INTEGRACION_BASE =="
 # Bug real (2026-07-28): en un repo con flujo mini-develop (rama personal DevelopUnjordi sacada de develop),
 # el resolver caía a `develop` porque existía local → las ramitas integradas a la MINI se veían "no
@@ -2687,7 +2762,11 @@ mkdir -p "$BRHOME" "$BRHOOKS" "$BRREPO"
 # Copia el hook + un STUB de limpiar-ramas junto a él: dirname resuelve a ESTA carpeta → usa el stub (sin red).
 cp "$HOOKS/barrer-ramas.sh" "$BRHOOKS/barrer-ramas.sh"
 printf '#!/usr/bin/env bash\ntouch "%s/.barrido"\n' "$BRFIX" > "$BRHOOKS/limpiar-ramas.sh"; chmod +x "$BRHOOKS/limpiar-ramas.sh"
+# 1b: STUB de limpiar-worktrees junto al hook → barrer-ramas debe lanzarlo TAMBIÉN (mismo trigger/detach).
+printf '#!/usr/bin/env bash\ntouch "%s/.barrido-wt"\n' "$BRFIX" > "$BRHOOKS/limpiar-worktrees.sh"; chmod +x "$BRHOOKS/limpiar-worktrees.sh"
 br() { printf '%s' '{"source":"startup"}' | HOME="$BRHOME" CLAUDE_PROJECT_DIR="$BRREPO" bash "$BRHOOKS/barrer-ramas.sh"; }
+# poll acotado por un marker (los barredores corren detached vía nohup → esperamos su touch, ~ms)
+_wait_marker() { local f="$1" i=0; while [ "$i" -lt 40 ]; do [ -f "$f" ] && return 0; i=$((i+1)); sleep 0.05; done; return 1; }
 # (1) no es repo git → silencio (fail-open, no estorba)
 is_silent "$(br)" && ok "barrer-ramas: no-git → silencio" || bad "barrer-ramas: habló fuera de un repo git"
 git -C "$BRREPO" init -q >/dev/null 2>&1
@@ -2703,6 +2782,9 @@ printf '%s' "$brout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null
 brslug=$(printf '%s' "$BRREPO" | cksum | awk '{print $1}')
 [ -f "$BRHOME/.claude/memory/.barrer-ramas/$brslug" ] \
   && ok "barrer-ramas: escribió el stamp de throttle" || bad "barrer-ramas: no escribió el stamp"
+# 1b: la MISMA corrida lanzó AMBOS barredores (ramas + worktrees), detached → poll por sus markers
+_wait_marker "$BRFIX/.barrido"    && ok "barrer-ramas: lanzó limpiar-ramas (marker)" || bad "barrer-ramas: no lanzó limpiar-ramas"
+_wait_marker "$BRFIX/.barrido-wt" && ok "barrer-ramas: 1b — lanzó TAMBIÉN limpiar-worktrees (marker)" || bad "barrer-ramas: 1b — no lanzó limpiar-worktrees"
 # (4) throttle: 2ª corrida inmediata → silencio (stamp fresco)
 is_silent "$(br)" && ok "barrer-ramas: throttle — 2ª corrida inmediata → silencio" || bad "barrer-ramas: no respetó el throttle"
 # ── Vía (B): trigger AL PUNTO DE MERGE (PostToolUse/Bash). Necesita analizar-comando-git.sh a un lado. ──
@@ -4718,6 +4800,17 @@ RCH="$SCRIPT_DIR/hooks/recordar-cosechar.sh"
 { [ -f "$RCH" ] && grep -qiE 'como-trabajar-con-<user>' "$RCH"; } \
   && ok "#83 recordar-cosechar: el nudge recuerda que el TRATO va al archivo GLOBAL" \
   || bad "#83 recordar-cosechar: el nudge no menciona el ruteo del TRATO al archivo GLOBAL"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== 2b/3c cerrar-slice §4: el mensaje-resumen exige TRAZABILIDAD (Rama:/MR:) y describe el CÓDIGO (no el proceso) =="
+CSL="$SCRIPT_DIR/skills/cerrar-slice/SKILL.md"
+{ [ -f "$CSL" ] && grep -qiE 'Rama: *<nombre' "$CSL" && grep -qiE 'MR/PR: *!?<id>|MR: *!' "$CSL" && grep -qiE 'trazabilidad' "$CSL"; } \
+  && ok "2b: cerrar-slice §4 exige la línea Rama:/MR: para trazabilidad rama→commit" \
+  || bad "2b: cerrar-slice §4 no documenta la traza Rama:/MR:"
+{ [ -f "$CSL" ] && grep -qF '❌' "$CSL" && grep -qF '✅' "$CSL" && grep -qiE 'se decidi|tras analiz' "$CSL" && grep -qiE 'habla del (PROCESO|CÓDIGO)|del CÓDIGO' "$CSL"; } \
+  && ok "3c: cerrar-slice §4 trae el par de contra-ejemplos ❌proceso / ✅código" \
+  || bad "3c: cerrar-slice §4 no trae los contra-ejemplos de editorialización"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""

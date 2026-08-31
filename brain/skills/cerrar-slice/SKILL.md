@@ -129,6 +129,20 @@ Escríbelo como un **resumen curado en prosa**: título Conventional en español
 **cambio neto y su porqué**. **NO** pegues la lista de commits ni el ruido de "quité el botón / lo regresé
 / hotfix del hotfix" — eso es exactamente lo que el squash borra. Termina con el `Co-Authored-By`.
 
+**Incluye la TRAZABILIDAD rama→commit (2a).** El squash BORRA el merge-commit de la plataforma (que traía
+el `#id` del MR/PR) → sin un rastro en el propio mensaje, un `git log develop` no dice de qué ramita salió
+cada commit. Por eso el cuerpo **DEBE** incluir una línea `Rama: <nombre-rama>` y una `MR/PR: !<id>` (o
+`#<id>`). El hook `merge-squash-guard` bloquea un `--squash-message` LITERAL que no traiga ese rastro.
+
+**Describe el CÓDIGO, no el PROCESO (sin editorializar).** El resumen dice *qué hace el código ahora* y
+*por qué*, **no** cómo llegaste a él. Nada de "se decidió / tras analizar / el asistente notó que / se
+identificó que / en esta sesión / se procedió a" — eso es memoria interna del proceso, no el cambio neto
+(el hook lo bloquea). Y evita el **pegote de acciones** ("se cambió X. Se actualizó Y. Se corrigió Z."):
+es la lista de commits que el squash debía RESUMIR, no un resumen.
+- ❌ *"Se analizó el middleware y se decidió reemplazar la validación de tokens."* → habla del PROCESO.
+- ✅ *"El middleware ahora valida el claim `exp` contra el reloj del servidor en lugar del cliente,
+  eliminando la ventana de replay de 30 s. Rama: fix/token-exp · MR: !123"* → habla del CÓDIGO, con traza.
+
 > Gotcha `glab`: si en algún caso SÍ necesitas encolar (excepción rara, no el default de aquí), la flag
 > es `--auto-merge`, no `--auto` — y el guard bloquea el literal `glab mr merge` como dato (p. ej. en un
 > grep o una descripción) → pásalo por variable/archivo, no en texto plano.
