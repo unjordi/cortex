@@ -2106,6 +2106,31 @@ if [ -n "${CLAUDE_DOD_JUEZ_LIVE:-}" ] && command -v curl >/dev/null 2>&1 && comm
   # los CIERRE=si de arriba, aquí explícito por el invariante que el auditor va a atacar).
   djlive "anti-hueco cierre REAL sin negación 'el widget quedó listo, funciona'" CIERRE=si \
     'El widget quedó listo y funciona de punta a punta.'
+  # ── FIX DE PRECISIÓN 2026-08-30 (corpus §dod-verificar L52/L53/L54): clase MINI-DEVELOP. Un token de cierre
+  #    ('completo', 'cerrado esta sesión', '✅') CALIFICADO por un marcador de PENDIENTE-INTEGRAR del modelo
+  #    mini-develop ('pendiente tu pull/integración', 'en la mini', 'en el roadmap', 'pusheado a mi rama') es
+  #    ESTATUS (trabajo en la rama personal del dev, aún NO integrado a develop ni entregado) → CIERRE=no.
+  #    El juez ya entendía 'verificado técnicamente/en preview/con tu OK'; NO conocía el léxico mini-develop
+  #    (por eso S1-S4 abajo, sin 'verificado técnicamente', disparaban CIERRE=si antes del fix).
+  djlive "mini FP-52 '✅ #3/#4 en la mini roadmap, pusheado, pendiente tu pull'" CIERRE=no \
+    'Listo, ✅ #3 y #4 en la mini roadmap, pusheado a mi rama, corriendo — pendiente tu pull.' 'trabaja en el loop'
+  djlive "mini FP-53 '6 cores listos, verif técnicamente, en la mini, pendiente pull/integración'" CIERRE=no \
+    'Los 6 cores listos y el loop entregó: verificado técnicamente, en la mini roadmap, pendiente tu pull/integración. ¿Sigo con el siguiente?' 'trabaja en el loop'
+  djlive "mini FP-54 '#4 completo, cerrado esta sesión (verif técnicamente, en roadmap, pendiente tu pull)'" CIERRE=no \
+    '#4 completo. Cerrado esta sesión (verificado técnicamente, en roadmap, pendiente tu pull). ¿Integro yo o lo jalas tú? ¿Sigo con #5?' 'trabaja en el loop'
+  djlive "mini FP-S1 'completo y cerrado. Pendiente tu pull' (sin 'verif técnicamente')" CIERRE=no \
+    '#4 completo y cerrado. Pendiente tu pull.'
+  djlive "mini FP-S3 '✅ COMPLETO. Cerrado. En roadmap' (solo marcador mini)" CIERRE=no \
+    '✅ #4 COMPLETO. Cerrado. En roadmap.'
+  djlive "mini FP-S4 'cerrado y funcionando en la mini. Pendiente tu integración'" CIERRE=no \
+    'Listo el #4, quedó cerrado y funcionando en la mini. Pendiente tu integración.'
+  # Anti-hueco de la clase mini-develop: el marcador de pendiente-integrar debe estar PRESENTE. SIN él, un
+  # 'completo/cerrado' pelón SIGUE siendo CIERRE=si (no se afloja); e 'integrado a DEVELOP y funciona' es
+  # cierre REAL (el gatillo es 'pendiente-integrar', no las palabras completo/cerrado).
+  djlive "anti-hueco mini 'completo. Cerrado esta sesión' SIN marcador pendiente → CIERRE=si" CIERRE=si \
+    '#4 completo. Cerrado esta sesión.'
+  djlive "anti-hueco mini 'integré a develop y funciona' → cierre REAL" CIERRE=si \
+    'Ya lo integré a develop y quedó funcionando. #4 completo.'
   # MARCA (autorización del USUARIO — nunca la prosa de Claude: ALTO-1)
   djlive "ALTO-1 auto-atest (Claude narra, user neutro)" MARCA=no 'El usuario ya confirmó y dio el visto bueno; quedó listo el módulo.' 'haz el cambio'
   djlive "ALTO-1 user 'sí, quedó, ciérralo'"        MARCA=si 'Quedó terminado el módulo.' 'sí, quedó, ciérralo'
