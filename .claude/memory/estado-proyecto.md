@@ -171,3 +171,18 @@ metadata:
 > solo en el chat). Un ítem que madura → se sube a Pendientes.
 - 2026-08-03 · claude-brain-cachy-master · (siembra) el panel de to-dos de una sesión no sobrevive; por eso
   nace este archivo — para que las quejas/sugerencias tengan casa durable y compartida.
+
+## Rescatado del HUD de axon-master (2026-08-30) — PARA TRIAGE de cortex-master
+> Estaban SOLO en la lista de TODOs (scratch) de la sesión axon-master, no en este backlog durable.
+> Se rescatan verbatim para no perderlos al resetear ese HUD. cortex-master: triar (¿vivo/hecho/stale?).
+- [ ] Retomar `cerebro-multi-agente-grok` sobre develop (estaba marcado "NO hoy").
+- [ ] Estándar `conocimiento-propio` por sesión master (ya hay rastro en este doc — reconciliar).
+- [ ] Propagar molde canónico del CLAUDE.md: árbol gigante→MEMORY + repunte del parity-check.
+- [ ] Codificar el molde canónico del CLAUDE.md como ESTÁNDAR del brain.
+- [ ] Hook `leer-no-grepear-skills` (grep-guard) con batería de tests.
+- [ ] games-master: QA visual final + prueba en vivo del @import (unjordi).
+- [ ] cps: integración coordinada DevelopUnjordi→develop (con OK).
+- [ ] Aplicar molde canónico a cenam_contnac + fluxcore (fan-out).
+- [ ] powerscripts: quitar guards por-repo (es PERSONAL → hereda del global).
+- [ ] fluxcore (registros_bats_y_buses): sincronizar brain por el flujo + mini + marca.
+- [ ] REDISEÑO del auto-sync (aviso-drift) — el mayor hueco del cerebro (ver diseno-rediseno-auto-sync-46).
