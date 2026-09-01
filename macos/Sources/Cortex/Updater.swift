@@ -27,6 +27,26 @@ final class Updater: ObservableObject {
     /// Fecha del build (prefijo YYYY-MM-DD del campo `date`); nil si falta.
     @Published var builtAt: String? = nil
 
+    /// El escape REAL para una máquina que no puede auto-actualizar (build vieja sin fallback #322,
+    /// clon corrupto, etc.): migra `~/.claude-brain`→`~/.cortex`, alinea a origin/main y reinstala.
+    /// Ni `install.sh` ni `install-brain.sh` a secas migran el clon — SOLO bootstrap.sh lo hace.
+    static let bootstrapOneLiner =
+        "curl -fsSL https://raw.githubusercontent.com/unjordi/cortex/main/bootstrap.sh | bash"
+
+    /// Ruta del clon que SÍ encontramos en disco (para mostrarla en el mensaje "a mano"), aunque no
+    /// sirva para auto-actualizar (p.ej. le falta macos/install.sh). Preferimos el nombre VIEJO
+    /// (~/.claude-brain) porque es la señal de que el usuario cayó en el rename #312 sin migrar; si no
+    /// existe, mostramos ~/.cortex. "" si no hay ningún clon visible.
+    @Published var discoveredClonePath = ""
+
+    /// Mensaje "actualiza a mano" HONESTO: el one-liner real de bootstrap (no `git pull && ./install.sh`,
+    /// que no migra el clon) + la ruta descubierta cuando la hay, para que el usuario sepa DÓNDE está
+    /// parado antes de correrlo.
+    var manualUpdateHint: String {
+        let where_ = discoveredClonePath.isEmpty ? "" : " (tu clon: \(discoveredClonePath))"
+        return "No puedo auto-actualizar\(where_). Corre en tu terminal:\n\(Self.bootstrapOneLiner)"
+    }
+
     private var repoPath = ""
     private var localDate: Date? = nil
     private var lastCheck: Date? = nil
@@ -47,6 +67,21 @@ final class Updater: ObservableObject {
         // false y el botón caía a "actualiza a mano". Resolvemos el clon de instalación LOCAL.
         repoPath = Self.resolveClonePath(embedded: o["repo"] ?? "")
         canSelfUpdate = !repoPath.isEmpty
+        discoveredClonePath = Self.discoverClonePathForDisplay()
+    }
+
+    /// Para el mensaje "a mano": ¿hay ALGÚN clon visible en disco, aunque no sirva para auto-actualizar?
+    /// Nombre viejo primero (es la señal de "te quedaste en el rename"), luego el canónico.
+    private static func discoverClonePathForDisplay() -> String {
+        let fm = FileManager.default
+        let home = fm.homeDirectoryForCurrentUser.path
+        if let env = ProcessInfo.processInfo.environment["CLAUDE_BRAIN_DIR"], !env.isEmpty,
+           fm.fileExists(atPath: env) { return env }
+        let old = home + "/.claude-brain"
+        if fm.fileExists(atPath: old) { return old }
+        let new = home + "/.cortex"
+        if fm.fileExists(atPath: new) { return new }
+        return ""
     }
 
     /// Clon local para auto-actualizar. Prefiere el embebido si EXISTE aquí (build local), luego
@@ -108,7 +143,7 @@ final class Updater: ObservableObject {
     /// el proceso (nohup) para que sobreviva a que la app se cierre, y sale para que install.sh abra la nueva.
     func runUpdate() {
         guard canSelfUpdate, !repoPath.isEmpty else {
-            message = "actualiza a mano: git pull && ./install.sh"
+            message = manualUpdateHint
             return
         }
         updating = true; message = nil

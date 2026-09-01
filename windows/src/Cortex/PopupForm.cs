@@ -1241,12 +1241,13 @@ public sealed class PopupForm : Form
         using (var icB = new SolidBrush(_accent))
             g.DrawString(icon, icF, icB, cx, cy - Sc(1));
 
-        // Texto: espeja los tres estados del banner macOS.
+        // Texto: espeja los tres estados del banner macOS. Corto para la línea SIEMPRE visible; el
+        // one-liner completo de bootstrap + la ruta descubierta salen en up.Message al pulsar (abajo).
         string text = up.Updating
             ? "Actualizando… (se relanza sola)"
             : up.CanSelfUpdate
                 ? $"Actualizar widget ({up.LocalShort} → {up.RemoteShort})"
-                : $"Hay versión nueva ({up.RemoteShort}) — actualiza a mano";
+                : $"Hay versión nueva ({up.RemoteShort}) — actualiza con bootstrap.ps1";
         using (var tf = Px(10f, FontStyle.Bold))
         using (var tb = new SolidBrush(_accent))
             g.DrawString(text, tf, tb, cx + iconW, cy);
