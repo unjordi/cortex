@@ -2954,254 +2954,171 @@ rm -rf "$VCFIX"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "== (b6) aviso-contexto: mide TOKENS del usage, avisa al subir de banda, debounce, y se re-arma al bajar el ctx (compact) =="
-# Techo=100 → bandas: t1=76 (ℹ️) · t2=88 (⚠️) · t3=95 (🚨). El ctx = suma del ÚLTIMO usage del transcript.
+echo "== (b6) aviso-contexto: REPORTERO TONTO (rediseño 2026-09-01, ver docs/rediseno-aviso-contexto-2026-09-01.md) =="
+# Contrato NUEVO (commit b479ac9): sin bandas/techo derivado/escalada/histéresis-por-margen — el hook
+# solo SURFACE ctx/ventana/% crudos y debounce GRUESO por PASOS de 50K tokens (STEP=ctx/50000; avisa
+# solo al CRUZAR un escalón nuevo). Estos tests reemplazan al contrato viejo (bandas 76/88/95 sobre un
+# techo=ventana×pct) que este rediseño retiró DELIBERADAMENTE.
 ACROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-ac.XXXXXX")/r"
 mkdir -p "$ACROOT/.claude/memory"
 ACTX="$ACROOT/transcript.jsonl"
-# Escribe un transcript cuyo ÚLTIMO usage suma $1 tokens (en cache_read); primera línea sin usage.
 gen_ctx() { printf '%s\n%s\n' '{"type":"user","message":{"role":"user"}}' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$1}}}" > "$ACTX"; }
-ac() { printf '%s' "{\"transcript_path\":\"$ACTX\"}" | AVISO_CONTEXTO_CEILING_TOKENS=100 CLAUDE_PROJECT_DIR="$ACROOT" bash "$HOOKS/aviso-contexto.sh"; }
+ac() { printf '%s' "{\"transcript_path\":\"$ACTX\"}" | CLAUDE_PROJECT_DIR="$ACROOT" bash "$HOOKS/aviso-contexto.sh"; }
 has_aviso() { printf '%s' "$1" | jq -e '.hookSpecificOutput.hookEventName == "PostToolUse"' >/dev/null 2>&1; }
-o="$(printf '%s' '{"transcript_path":"/no/existe"}' | AVISO_CONTEXTO_CEILING_TOKENS=100 CLAUDE_PROJECT_DIR="$ACROOT" bash "$HOOKS/aviso-contexto.sh")"
+o="$(printf '%s' '{"transcript_path":"/no/existe"}' | CLAUDE_PROJECT_DIR="$ACROOT" bash "$HOOKS/aviso-contexto.sh")"
 is_silent "$o" && ok "aviso-contexto: sin transcript → silencio" || bad "aviso-contexto reaccionó sin transcript; got: $o"
 printf '%s\n' '{"type":"user"}' > "$ACTX"
 is_silent "$(ac)" && ok "aviso-contexto: transcript sin usage → silencio (fail-open)" || bad "aviso-contexto reaccionó sin usage"
-gen_ctx 50; is_silent "$(ac)" && ok "aviso-contexto: ctx bajo la banda 1 → silencio" || bad "aviso-contexto avisó bajo el techo"
-gen_ctx 80; has_aviso "$(ac)" && ok "aviso-contexto: cruza banda 1 → avisa" || bad "aviso-contexto NO avisó al cruzar banda 1"
-o="$(ac)"; is_silent "$o" && ok "aviso-contexto: misma banda → debounce (silencio)" || bad "aviso-contexto re-avisó la misma banda; got: $o"
-gen_ctx 90; has_aviso "$(ac)" && ok "aviso-contexto: banda mayor → vuelve a avisar" || bad "aviso-contexto NO re-avisó en banda mayor"
-gen_ctx 50; is_silent "$(ac)" && ok "aviso-contexto: ctx bajó (compact) → silencio (re-arma)" || bad "aviso-contexto avisó justo tras bajar el ctx"
-gen_ctx 80; has_aviso "$(ac)" && ok "aviso-contexto: vuelve a subir tras el compact → avisa de nuevo" || bad "aviso-contexto NO avisó tras re-subir"
-# (b6-histeresis) ANTI-SPAM (bug 2026-08-08 "en cada tool result"): un aleteo de pocos tokens en el BORDE
-# de una banda NO debe re-emitir. Techo=100 → t3=95, margen=2 → re-arma solo si ctx<93. ctx 96(banda3,
-# avisa) → 94(dip <borde pero ≥93: NO re-arma) → 96(vuelve: NO re-emite) → 70(caída CLARA <93: re-arma).
-gen_ctx 96; has_aviso "$(ac)" && ok "aviso histéresis: sube a banda 3 → avisa" || bad "aviso histéresis: no avisó al subir a banda 3"
-gen_ctx 94; is_silent "$(ac)" && ok "aviso histéresis: dip pequeño al borde (94, ≥93) → NO re-arma" || bad "aviso histéresis: re-armó con un aleteo minúsculo"
-gen_ctx 96; is_silent "$(ac)" && ok "aviso histéresis: vuelve a 96 tras aleteo → NO re-emite (anti-spam en cada tool result)" || bad "aviso histéresis: RE-EMITIÓ tras un aleteo de borde (el bug)"
-gen_ctx 70; is_silent "$(ac)" && ok "aviso histéresis: caída CLARA (70<93) → re-arma (banda 0 = silencio)" || bad "aviso histéresis: avisó tras caída clara"
-gen_ctx 96; has_aviso "$(ac)" && ok "aviso histéresis: tras caída clara, re-subir a banda 3 → SÍ re-emite" || bad "aviso histéresis: no re-emitió tras una caída real + re-subida"
-# Robustez: un usage de SIDECHAIN (subagente) al final NO debe contaminar la medición del hilo principal.
-printf '%s\n%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":50}}}" '{"isSidechain":true,"message":{"usage":{"cache_read_input_tokens":999}}}' > "$ACTX"
-is_silent "$(ac)" && ok "aviso-contexto: ignora el usage de sidechain (mide el hilo principal)" || bad "aviso-contexto contó el usage del sidechain"
+# Debounce por ESCALÓN de 50K (ventana forzada a 1M para números limpios): ctx bajo el 1er escalón → silencio.
+export AVISO_CONTEXTO_WINDOW_TOKENS=1000000
+gen_ctx 10000; is_silent "$(ac)" && ok "aviso-contexto: ctx bajo el 1er escalón de 50K → silencio" || bad "aviso-contexto avisó bajo el 1er escalón"
+gen_ctx 80000; has_aviso "$(ac)" && ok "aviso-contexto: cruza el escalón 1 (50K) → avisa" || bad "aviso-contexto NO avisó al cruzar el escalón 1"
+o="$(ac)"; is_silent "$o" && ok "aviso-contexto: mismo escalón → debounce (silencio)" || bad "aviso-contexto re-avisó el mismo escalón; got: $o"
+gen_ctx 95000; is_silent "$(ac)" && ok "aviso-contexto: sube DENTRO del mismo escalón (80K→95K, ambos en [50K,100K)) → sigue en debounce" || bad "aviso-contexto re-avisó sin cruzar escalón nuevo"
+gen_ctx 150000; has_aviso "$(ac)" && ok "aviso-contexto: cruza el escalón 3 (150K) → vuelve a avisar" || bad "aviso-contexto NO avisó al cruzar el escalón 3"
+gen_ctx 80000; is_silent "$(ac)" && ok "aviso-contexto: ctx bajó (compact) a un escalón menor → silencio (se re-arma)" || bad "aviso-contexto avisó justo tras bajar el ctx"
+gen_ctx 150000; has_aviso "$(ac)" && ok "aviso-contexto: vuelve a subir al escalón 3 tras el compact → avisa de nuevo" || bad "aviso-contexto NO avisó tras re-subir"
+# Robustez: un usage de SIDECHAIN (subagente) al final NO debe contaminar la medición del hilo principal
+# (esta exclusión NO cambió con el rediseño — sigue viva en el hook, línea "select(.isSidechain != true)").
+printf '%s\n%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":50}}}" '{"isSidechain":true,"message":{"usage":{"cache_read_input_tokens":999999}}}' > "$ACTX"
+is_silent "$(ac)" && ok "aviso-contexto: ignora el usage de sidechain (mide el hilo principal, ctx=50 → escalón 0)" || bad "aviso-contexto contó el usage del sidechain"
+unset AVISO_CONTEXTO_WINDOW_TOKENS
 rm -rf "$(dirname "$ACROOT")"
-# Escalada de urgencia por banda: 1=heads-up (holgura) · 2=checkpoint-ahora · ≥3=INMINENTE + re-checkpoint
-AC2="$(mktemp -d "${TMPDIR:-/tmp}/brain-ac2.XXXXXX")/r"; mkdir -p "$AC2/.claude/memory"; AC2TX="$AC2/t.jsonl"
-gen2() { printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$1}}}" > "$AC2TX"; }
-ac2msg() { printf '%s' "{\"transcript_path\":\"$AC2TX\"}" | AVISO_CONTEXTO_CEILING_TOKENS=100 CLAUDE_PROJECT_DIR="$AC2" bash "$HOOKS/aviso-contexto.sh" | jq -r '.hookSpecificOutput.additionalContext // empty'; }
-gen2 80; m="$(ac2msg)"   # 80/100 = banda 1
-{ printf '%s' "$m" | grep -qi 'holgura' && ! printf '%s' "$m" | grep -q 'INMINENTE'; } \
-  && ok "aviso escalada: banda 1 → heads-up (holgura, NO inminente)" || bad "aviso escalada: banda 1 no fue heads-up; got: $m"
-gen2 96; m="$(ac2msg)"   # 96/100 = banda 3
-{ printf '%s' "$m" | grep -q 'INMINENTE' && printf '%s' "$m" | grep -q 'DE NUEVO'; } \
-  && ok "aviso escalada: banda ≥3 → INMINENTE + ORDENA re-checkpoint (DE NUEVO)" || bad "aviso escalada: banda ≥3 no ordenó re-checkpoint; got: $m"
-rm -rf "$(dirname "$AC2")"
 
-# (b6b) TECHO DERIVADO (sin override): ventana (settings "[1m]"→1M / si no→200K) × pct de auto-compact
-# (CLAUDE_AUTOCOMPACT_PCT_OVERRIDE, o default 92). El override manual AVISO_CONTEXTO_CEILING_TOKENS se
-# desactiva aquí (env -u) para ejercitar la DERIVACIÓN. Antídoto al bug del techo fijo 660K (2026-07-27).
-# $1=model (a settings.json del proyecto, que gana) · $2=pct (o "unset") · $3=ctx → imprime el mensaje.
-ac3() {
+# (b6-neutro) LOCK-IN del diseño "reportero tonto": el mensaje NUNCA editorializa por nivel de llenado
+# (nada de bandas/urgencia/veredictos) y NUNCA reporta un "techo"/pct fantasma — solo el dato crudo.
+# Guarda contra que alguien reintroduzca por accidente la lógica que este rediseño retiró a propósito.
+ac_msg() { # $1=ctx $2=model(opcional) → imprime additionalContext (dir fresco)
+  local root; root="$(mktemp -d "${TMPDIR:-/tmp}/brain-acn.XXXXXX")/r"; mkdir -p "$root/.claude/memory"
+  [ -n "${2:-}" ] && printf '{"model":"%s"}' "$2" > "$root/.claude/settings.json"
+  printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$1}}}" > "$root/t.jsonl"
+  printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" | env CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
+    | jq -r '.hookSpecificOutput.additionalContext // empty'
+  rm -rf "$(dirname "$root")"
+}
+for ctx in 50000 950000; do
+  m="$(ac_msg "$ctx" 'claude-opus-4-8')"
+  { ! printf '%s' "$m" | grep -qE 'INMINENTE|holgura|DELIBERADO|CLAUDE_AUTOCOMPACT_PCT_OVERRIDE|📐|🚨|⚠️|ℹ️|banda'; } \
+    && ok "aviso neutro: ctx=$ctx NO trae lenguaje de banda/urgencia/procedencia (reportero tonto, sin veredicto)" \
+    || bad "aviso neutro: ctx=$ctx reintrodujo lenguaje de banda/urgencia/pct-fantasma; got: $m"
+  printf '%s' "$m" | grep -q '/context' \
+    && ok "aviso neutro: ctx=$ctx sigue apuntando a /context como autoritativo" \
+    || bad "aviso neutro: ctx=$ctx perdió la referencia a /context; got: $m"
+done
+
+# (b6-math) CORRECTITUD numérica: el % de ventana y el % libre (con la reserva del 5% para el checkpoint)
+# deben cuadrar EXACTO con la aritmética entera que el hook documenta — el mismo número que /context.
+math_check() { # $1=ctx $2=window(vía escape hatch) → valida pctw/libre extraídos del mensaje
+  local ctx="$1" window="$2" m re ctxk pctw wink libre exp_pctw exp_libre
+  m="$(ac_msg_win "$ctx" "$window")"
+  re='Contexto: ([0-9]+)K tokens \(~([0-9]+)% de tu ventana ([0-9]+)K, ([0-9]+)% libre'
+  if [[ "$m" =~ $re ]]; then
+    ctxk="${BASH_REMATCH[1]}"; pctw="${BASH_REMATCH[2]}"; wink="${BASH_REMATCH[3]}"; libre="${BASH_REMATCH[4]}"
+    exp_pctw=$(( ctx * 100 / window ))
+    exp_libre=$(( 100 - exp_pctw - 5 )); [ "$exp_libre" -lt 0 ] && exp_libre=0
+    { [ "$pctw" = "$exp_pctw" ] && [ "$libre" = "$exp_libre" ] && [ "$wink" = "$(( window / 1000 ))" ]; } \
+      && ok "aviso math: ctx=$ctx ventana=$window → %ventana=$pctw (esperado $exp_pctw) y libre=$libre (esperado $exp_libre) cuadran" \
+      || bad "aviso math: ctx=$ctx ventana=$window → %ventana=$pctw/libre=$libre NO cuadran con lo esperado ($exp_pctw/$exp_libre); got: $m"
+  else
+    bad "aviso math: no se pudo parsear el mensaje para ctx=$ctx; got: $m"
+  fi
+}
+ac_msg_win() { # $1=ctx $2=window → additionalContext, dir fresco, ventana forzada
+  local root; root="$(mktemp -d "${TMPDIR:-/tmp}/brain-acm.XXXXXX")/r"; mkdir -p "$root/.claude/memory"
+  printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$1}}}" > "$root/t.jsonl"
+  printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" \
+    | env AVISO_CONTEXTO_WINDOW_TOKENS="$2" CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
+    | jq -r '.hookSpecificOutput.additionalContext // empty'
+  rm -rf "$(dirname "$root")"
+}
+math_check 673000 1000000
+math_check 150000 200000
+math_check 950000 1000000
+
+# (b6b) autoCompactWindow: se reporta CRUDO tal como viene en settings.json — sin validarlo ni derivar
+# un techo con él (residuo aceptado #3 del rediseño: "reportero tonto: reporta el dato tal cual").
+acw_msg() { # $1=ctx $2=autoCompactWindow(o vacío) → additionalContext
+  local root; root="$(mktemp -d "${TMPDIR:-/tmp}/brain-acw.XXXXXX")/r"; mkdir -p "$root/.claude/memory"
+  if [ -n "${2:-}" ]; then printf '{"model":"opus","autoCompactWindow":%s}' "$2" > "$root/.claude/settings.json"
+  else printf '{"model":"opus"}' > "$root/.claude/settings.json"; fi
+  printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$1}}}" > "$root/t.jsonl"
+  printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" | env CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
+    | jq -r '.hookSpecificOutput.additionalContext // empty'
+  rm -rf "$(dirname "$root")"
+}
+{ printf '%s' "$(acw_msg 80000 543210)" | grep -q 'autoCompactWindow: 543210'; } \
+  && ok "aviso autoCompactWindow: presente en settings.json → se cita CRUDO (543210)" \
+  || bad "aviso autoCompactWindow: no citó el valor crudo de settings.json"
+{ printf '%s' "$(acw_msg 80000)" | grep -q 'autoCompactWindow: no seteado'; } \
+  && ok "aviso autoCompactWindow: ausente en settings.json → reporta 'no seteado' (no inventa un número)" \
+  || bad "aviso autoCompactWindow: inventó un valor sin settings.json"
+
+# (b6c) VENTANA DETECTADA: marcador "[1m]" / lista de 1M-NATIVOS por nombre pelón (opus-4-7/4-8/5,
+# sonnet-5, fable-5, mythos-5) siguen promoviendo a 1M — esta detección NO cambió con el rediseño (solo
+# se le quitó el techo=ventana×pct que se calculaba ENCIMA de ella). BUG 2026-07-30: sin la lista por
+# nombre, esos modelos caían a 200K y el hook viejo gritaba "INMINENTE" con la ventana real al ~13-19%.
+# Ahora se verifica reportando la VENTANA correcta en vez de un veredicto de silencio/grito.
+ac3() { # $1=model $2=ctx → additionalContext, dir fresco (sin override de ventana: ejercita la derivación)
   local root; root="$(mktemp -d "${TMPDIR:-/tmp}/brain-ac3.XXXXXX")/r"; mkdir -p "$root/.claude/memory"
   printf '{"model":"%s"}' "$1" > "$root/.claude/settings.json"
-  printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$3}}}" > "$root/t.jsonl"
-  local pctenv="-u CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"; [ "$2" != unset ] && pctenv="CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=$2"
-  printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" \
-    | env -u AVISO_CONTEXTO_CEILING_TOKENS $pctenv CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
+  printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$2}}}" > "$root/t.jsonl"
+  printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" | env CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
     | jq -r '.hookSpecificOutput.additionalContext // empty'
   rm -rf "$(dirname "$root")"
 }
-# 1M @ 70% → techo 700K. ctx 600K = 85% → banda 1 (holgura) y el mensaje cita el techo real ~700K.
-m="$(ac3 'opus[1m]' 70 600000)"
-{ printf '%s' "$m" | grep -q '700K' && printf '%s' "$m" | grep -qi 'holgura'; } \
-  && ok "aviso techo derivado: 1M @ 70% → techo ~700K, ctx 600K = banda 1 (holgura)" \
-  || bad "aviso techo derivado 1M@70% mal; got: $m"
-# ...y a 500K (<76% de 700K) NO grita (el techo fijo 660K daría 75.7%, casi banda 1 — la derivación NO).
-[ -z "$(ac3 'opus[1m]' 70 500000)" ] \
-  && ok "aviso techo derivado: 1M @ 70%, ctx 500K → silencio (sin gritar temprano)" \
-  || bad "aviso techo derivado 1M@70% gritó a 500K"
-# Modelo sin [1m] y SIN override de pct → ventana 200K, default 92% → techo 184K. ctx 150K = banda 1.
-m="$(ac3 'opus' unset 150000)"
-{ printf '%s' "$m" | grep -q '184K' && printf '%s' "$m" | grep -qi 'holgura'; } \
-  && ok "aviso techo derivado: 200K @ 92% (default) → techo ~184K, ctx 150K = banda 1" \
-  || bad "aviso techo derivado 200K@92% mal; got: $m"
-[ -z "$(ac3 'opus' unset 100000)" ] \
-  && ok "aviso techo derivado: 200K @ 92%, ctx 100K → silencio" \
-  || bad "aviso techo derivado 200K@92% gritó a 100K"
-
-# (b6b-nativo) BUG 2026-07-30 (regresó vía install-brain, jul 31): los modelos 1M-NATIVOS llevan el id
-# PELÓN, SIN el sufijo "[1m]" (opus-4-7/4-8/5, sonnet-5, fable-5, mythos-5). Antes caían al default de
-# 200K → el hook gritaba "INMINENTE" con la ventana real al ~13-19% (Jordi lo vio en Opus 5 y 4.8; el
-# /context marcaba 166K/1M=17% y el hook "89% rumbo al auto-compact"). Repro EXACTO del report: opus-4-8
-# @ 70%, ctx 135K → con la lista por nombre la ventana es 1M → techo 700K → 135K=19% → banda 0 → silencio;
-# SIN ella, 200K → techo 140K → 135K ≥ t3(133K) → falso 🚨. Este test ES el anti-regresión que faltó: el
-# fix de anoche vivió SOLO en el hook global (sin commit al brain) → el siguiente install-brain lo pisó.
+m="$(ac3 'opus[1m]' 600000)"
+{ printf '%s' "$m" | grep -q 'ventana 1000K' && printf '%s' "$m" | grep -q '~60%'; } \
+  && ok "aviso ventana: marcador '[1m]' → ventana 1000K, ctx 600K = 60%" \
+  || bad "aviso ventana: marcador [1m] mal derivado; got: $m"
+m="$(ac3 'opus' 150000)"
+{ printf '%s' "$m" | grep -q 'ventana 200K' && printf '%s' "$m" | grep -q '~75%'; } \
+  && ok "aviso ventana: modelo sin marcador ni 1M-nativo → ventana 200K, ctx 150K = 75%" \
+  || bad "aviso ventana: default 200K mal derivado; got: $m"
 for nativo in claude-opus-4-8 claude-opus-5 claude-opus-4-7 claude-sonnet-5 claude-fable-5 claude-mythos-5; do
-  [ -z "$(ac3 "$nativo" 70 135000)" ] \
-    && ok "aviso 1M-nativo: $nativo (id pelón) → ventana 1M → ctx 135K = silencio (NO falso INMINENTE)" \
-    || bad "aviso 1M-nativo: $nativo NO detectado como 1M → falso positivo (regresión del bug 2026-07-30)"
+  m="$(ac3 "$nativo" 135000)"
+  { printf '%s' "$m" | grep -q 'ventana 1000K' && printf '%s' "$m" | grep -q '~13%'; } \
+    && ok "aviso 1M-nativo: $nativo (id pelón) → ventana 1000K (13%), NO 200K (regresión del bug 2026-07-30)" \
+    || bad "aviso 1M-nativo: $nativo NO detectado como 1M; got: $m"
 done
-# ...pero el 1M-nativo SÍ avisa cuando de verdad se llena: opus-4-8 @ 70%, ctx 680K = 97% de 700K → banda 3.
-{ printf '%s' "$(ac3 'claude-opus-4-8' 70 680000)" | grep -q 'INMINENTE'; } \
-  && ok "aviso 1M-nativo: opus-4-8 @ 70%, ctx 680K = 97% de 700K → SÍ avisa INMINENTE (no sobre-suprime)" \
-  || bad "aviso 1M-nativo: opus-4-8 a 680K NO avisó (sobre-supresión)"
-# Un modelo NO-nativo sin "[1m]" (sonnet-4-5) sigue en 200K: la lista por nombre NO lo promueve.
-m="$(ac3 'claude-sonnet-4-5' unset 150000)"
-{ printf '%s' "$m" | grep -q '184K'; } \
-  && ok "aviso 1M-nativo: sonnet-4-5 (NO nativo, sin [1m]) → sigue 200K (techo 184K)" \
+# ...y el 1M-nativo SIGUE avisando (no se sobre-suprime) cuando de verdad se llena: opus-4-8 @ ctx 680K.
+o="$(ac3 'claude-opus-4-8' 680000)"
+{ [ -n "$o" ] && printf '%s' "$o" | grep -q 'ventana 1000K' && printf '%s' "$o" | grep -q '~68%'; } \
+  && ok "aviso 1M-nativo: opus-4-8 a ctx 680K SÍ avisa (ventana 1000K, 68%) — no sobre-suprime" \
+  || bad "aviso 1M-nativo: opus-4-8 a 680K NO avisó (sobre-supresión); got: $o"
+# Un modelo NO-nativo cuyo nombre se PARECE pero no matchea el patrón (sonnet-4-5 ≠ sonnet-5) NO se promueve.
+m="$(ac3 'claude-sonnet-4-5' 150000)"
+{ printf '%s' "$m" | grep -q 'ventana 200K'; } \
+  && ok "aviso 1M-nativo: sonnet-4-5 (parecido pero NO nativo) → sigue en 200K (el patrón no lo matchea de más)" \
   || bad "aviso 1M-nativo: sonnet-4-5 se promovió a 1M por error; got: $m"
 
-# (b6b-justif) AUTO-JUSTIFY del mensaje (pedido de Jordi 2026-07-30 "los claudios luego no le creen"):
-# cada aviso cita la PROCEDENCIA del techo (ventana + pct + su FUENTE) para que un Claude nuevo no lo
-# confunda con el viejo bug 1M-vs-200K. También se clobbereó vía install-brain → este test lo blinda.
-m="$(ac3 'claude-opus-4-8' 70 680000)"   # 1M-nativo @ 70%, banda 3 → cita el override deliberado
-{ printf '%s' "$m" | grep -q 'CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70' && printf '%s' "$m" | grep -q 'DELIBERADO'; } \
-  && ok "aviso auto-justify: con override cita CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70 + 'DELIBERADO' (procedencia)" \
-  || bad "aviso auto-justify: el mensaje NO cita la procedencia del techo; got: $m"
-# Rama '(default)' de PROCEDENCIA (sin override de pct): 1M @ 92% → techo 920K; ctx 900K ≥ t3(874K) → banda 3.
-m="$(ac3 'claude-opus-4-8' unset 900000)"
-{ printf '%s' "$m" | grep -q '(default)' && printf '%s' "$m" | grep -q '📐'; } \
-  && ok "aviso auto-justify: sin override cita el techo '(default)' con 📐 (procedencia)" \
-  || bad "aviso auto-justify: rama default no cita procedencia; got: $m"
+# (b6d) INVARIANTE FÍSICO (sin cambios por el rediseño): el ctx no cabe en una ventana MENOR que él mismo
+# → si el ctx medido supera la ventana detectada, se promueve a 1M. Solo SUBE (nunca crea falsos positivos).
+m="$(ac3 'opus' 381000)"     # ventana naive 200K, ctx 381K > 200K → invariante promueve a 1M
+{ printf '%s' "$m" | grep -q 'ventana 1000K' && printf '%s' "$m" | grep -q '~38%'; } \
+  && ok "aviso invariante: ctx 381K > ventana detectada 200K → auto-corrige a 1000K (38%)" \
+  || bad "aviso invariante: ctx 381K con ventana mal-detectada no se auto-corrigió; got: $m"
+m="$(ac3 'opus' 135000)"     # ctx 135K < 200K → SIN promoción (no sobre-corrige una sesión genuina de 200K)
+{ printf '%s' "$m" | grep -q 'ventana 200K' && printf '%s' "$m" | grep -q '~67%'; } \
+  && ok "aviso invariante: ctx 135K < ventana 200K → SIN promoción (no sobre-corrige lo genuino)" \
+  || bad "aviso invariante: promovió de más una sesión legítima de 200K; got: $m"
 
-# (b6b-verificable) DOS MARCOS DE REFERENCIA (bug 2026-08-08): el aviso ANTES solo mostraba el "% del
-# punto de auto-compact" (p. ej. 96% de 700K) — número que NO cuadra con /context (% de la ventana) → un
-# Claude confabulaba "estoy al TOPE de la ventana" y compactaba en pánico con 30-70% de ventana LIBRE
-# (síntoma: hook 673K/96% vs /context 293K/29%). El fix: el mensaje LIDERA con el MISMO número que
-# /context (% de la ventana, VERIFICABLE) + un anti-confabulación explícito. 1M-nativo @ 70%, ctx 600K =
-# banda 1 → pctw=60% usado / 40% libre.
-m="$(ac3 'claude-opus-4-8' 70 600000)"
-{ printf '%s' "$m" | grep -q '/context' && printf '%s' "$m" | grep -q '60% usado' && printf '%s' "$m" | grep -qi 'libre'; } \
-  && ok "aviso verificable: cita el % de la VENTANA que cuadra con /context (60% usado / 40% libre), no solo el % del auto-compact" \
-  || bad "aviso verificable: el mensaje NO reconcilia con /context; got: $m"
-{ printf '%s' "$m" | grep -qi 'No confabules' && printf '%s' "$m" | grep -qi 'tope de la VENTANA'; } \
-  && ok "aviso verificable: incluye el anti-confabulación ('no estás al tope de la ventana')" \
-  || bad "aviso verificable: falta el anti-confabulación; got: $m"
-# La reconciliación con /context aparece INCLUSO en banda 3 (INMINENTE) → el aviso urgente sigue siendo
-# verificable, no dispara el pánico "al tope de ventana". opus-4-8 @ 70%, ctx 680K = 97% de 700K.
-m="$(ac3 'claude-opus-4-8' 70 680000)"
-{ printf '%s' "$m" | grep -q 'INMINENTE' && printf '%s' "$m" | grep -q '/context' && printf '%s' "$m" | grep -qi 'libre'; } \
-  && ok "aviso verificable: incluso en banda 3 (INMINENTE) reconcilia con /context (verificable, sin pánico de ventana)" \
-  || bad "aviso verificable: banda 3 no reconcilia con /context; got: $m"
-# Con techo ABSOLUTO a mano (AVISO_CONTEXTO_CEILING_TOKENS, sin ventana conocida) NO se inventa un % de
-# ventana: la cláusula VERIFICA se omite (no fabrica un número que no puede calcular).
-ACABS="$(mktemp -d "${TMPDIR:-/tmp}/brain-acabs.XXXXXX")/r"; mkdir -p "$ACABS/.claude/memory"
-printf '%s\n' '{"message":{"usage":{"cache_read_input_tokens":96}}}' > "$ACABS/t.jsonl"
-mabs="$(printf '%s' "{\"transcript_path\":\"$ACABS/t.jsonl\"}" | AVISO_CONTEXTO_CEILING_TOKENS=100 CLAUDE_PROJECT_DIR="$ACABS" bash "$HOOKS/aviso-contexto.sh" | jq -r '.hookSpecificOutput.additionalContext // empty')"
-{ printf '%s' "$mabs" | grep -q 'INMINENTE' && ! printf '%s' "$mabs" | grep -q 'CUADRA con /context'; } \
-  && ok "aviso verificable: techo ABSOLUTO (sin ventana) → NO inventa % de ventana (omite VERIFICA)" \
-  || bad "aviso verificable: con techo absoluto fabricó un % de ventana; got: $mabs"
-rm -rf "$(dirname "$ACABS")"
-
-# (b6c) ROBUSTEZ de runtime (bug 2026-07-28): la detección de ventana falla en runtime (settings a medio
-# escribir / timing / $HOME distinto) → cae al default chico de 200K → falso "🚨 INMINENTE". AUTO-CORRECCIÓN
-# por invariante FÍSICO: el contexto no cabe en una ventana MENOR que él mismo → si el ctx MEDIDO supera la
-# ventana detectada, ésta se promueve a 1M (única mayor conocida). ac3 con un modelo SIN "[1m]" simula la
-# detección que "falla" y cae a 200K.
-# Repro EXACTO del bug: ctx=381K, ventana mal-detectada en 200K, pct=70 → antes gritaba INMINENTE al 272%
-# del techo 140K; ahora 381K>200K → promueve a 1M → techo 700K → 54% → banda 0 → silencio.
-[ -z "$(ac3 'opus' 70 381000)" ] \
-  && ok "aviso robustez: ctx 381K > ventana detectada 200K → auto-corrige a 1M → silencio (NO falso INMINENTE)" \
-  || bad "aviso robustez: ctx 381K con ventana mal-detectada gritó (regresión del bug 2026-07-28)"
-# La auto-corrección SOLO sube: una sesión GENUINA de 200K con el ctx DENTRO de la ventana sigue avisando
-# (no la sobre-suprime). ctx 135K < 200K → sin promoción → techo 140K@70% → 135K ≥ t3(133K) → banda 3.
-{ printf '%s' "$(ac3 'opus' 70 135000)" | grep -q 'INMINENTE'; } \
-  && ok "aviso robustez: ctx 135K < ventana 200K → sin promoción → sigue avisando (no sobre-suprime)" \
-  || bad "aviso robustez: la auto-corrección suprimió un aviso legítimo de una sesión de 200K"
-# Escape hatch AVISO_CONTEXTO_WINDOW_TOKENS: fija la VENTANA a mano (sobre la derivación del modelo).
-# Ventana 1M forzada @ 70% → techo 700K; ctx 381K = 54% → silencio, aunque el modelo NO diga "[1m]".
-acwin() {
-  local root; root="$(mktemp -d "${TMPDIR:-/tmp}/brain-acw.XXXXXX")/r"; mkdir -p "$root/.claude/memory"
+# (b6e) ESCAPE HATCH AVISO_CONTEXTO_WINDOW_TOKENS: fija la ventana a mano, DISTINTO del fallback del
+# invariante físico — se prueban ambos caminos con el MISMO ctx/modelo para que se puedan diferenciar.
+acwin() { # $1=window(vacío=sin forzar) $2=ctx → additionalContext, modelo 'opus' (naive 200K)
+  local root; root="$(mktemp -d "${TMPDIR:-/tmp}/brain-acwin.XXXXXX")/r"; mkdir -p "$root/.claude/memory"
   printf '{"model":"opus"}' > "$root/.claude/settings.json"
   printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$2}}}" > "$root/t.jsonl"
-  printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" \
-    | env -u AVISO_CONTEXTO_CEILING_TOKENS \
-        AVISO_CONTEXTO_WINDOW_TOKENS="$1" CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70 CLAUDE_PROJECT_DIR="$root" \
-        bash "$HOOKS/aviso-contexto.sh" | jq -r '.hookSpecificOutput.additionalContext // empty'
-  rm -rf "$(dirname "$root")"
-}
-[ -z "$(acwin 1000000 381000)" ] \
-  && ok "aviso escape hatch: AVISO_CONTEXTO_WINDOW_TOKENS=1M @ 70% → techo 700K, ctx 381K → silencio" \
-  || bad "aviso escape hatch: AVISO_CONTEXTO_WINDOW_TOKENS no respetó la ventana forzada"
-
-# ╔═══════════════════════════════════════════════════════════════════════════════════════════════╗
-# ║ (b6-303) HARDENING de aviso-contexto — bloque AISLADO (agente fix/aviso-contexto-hardening).    ║
-# ║ Compañeros que también tocan aviso-* en paralelo: conflictos se resuelven al integrar.          ║
-# ╚═══════════════════════════════════════════════════════════════════════════════════════════════╝
-# Estos tests DISCRIMINAN: FALLAN contra la versión pre-#303 (sin VERIFICA / sin margen de histéresis)
-# y PASAN contra la actual. Comprobado forense corriendo el MISMO bloque contra `git show 5224aaa^`.
-echo ""
-echo "== (b6-303) aviso-contexto: verificación anti-regresión de #303 (denominador/confabulación + histéresis) + procedencia honesta =="
-# Msg de un escenario de techo DERIVADO (settings.model + CLAUDE_AUTOCOMPACT_PCT_OVERRIDE), dir FRESCO.
-h303_msg() { # $1=model $2=pct(o 'unset') $3=ctx → imprime additionalContext
-  local root; root="$(mktemp -d "${TMPDIR:-/tmp}/brain-h303.XXXXXX")/r"; mkdir -p "$root/.claude/memory"
-  printf '{"model":"%s"}' "$1" > "$root/.claude/settings.json"
-  printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$3}}}" > "$root/t.jsonl"
-  local pe="-u CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"; [ "$2" != unset ] && pe="CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=$2"
-  printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" \
-    | env -u AVISO_CONTEXTO_CEILING_TOKENS $pe CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
+  local envw=(); [ -n "$1" ] && envw=(AVISO_CONTEXTO_WINDOW_TOKENS="$1")
+  printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" | env "${envw[@]}" CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
     | jq -r '.hookSpecificOutput.additionalContext // empty'
   rm -rf "$(dirname "$root")"
 }
-# ── Bug 1 (denominador): REPRO EXACTO del reporte de campo (hook decía "673K/96%" y un Claude confabulaba
-#    "estoy al TOPE de la ventana" con /context marcando ~67%). 673K/1M@70% → 96% del techo 700K = banda 3,
-#    pero 67% de la VENTANA. El aviso ACTUAL debe LIDERAR con el % de la ventana (verificable con /context)
-#    + anti-confabulación. Pre-#303 NO tenía VERIFICA → estas aserciones fallan contra él (DISCRIMINA).
-m="$(h303_msg 'claude-opus-4-8' 70 673000)"
-{ printf '%s' "$m" | grep -q '/context' \
-  && printf '%s' "$m" | grep -q '67% usado' \
-  && printf '%s' "$m" | grep -qi '33% libre' \
-  && printf '%s' "$m" | grep -qi 'No confabules' \
-  && printf '%s' "$m" | grep -q 'tope de la VENTANA'; } \
-  && ok "#303 bug1 repro (673K/1M@70%, banda 3): reconcilia con /context (67% usado/33% libre) + anti-confabulación — NO solo el 96% del auto-compact" \
-  || bad "#303 bug1 REGRESIÓN: el aviso no reconcilia con /context (síntoma pre-#303); got: $m"
-# ...y el escenario textual de la tarea: override=70, ctx a ~66% de la VENTANA (660K/1M) = 94% del techo →
-# banda 2. NO debe gritar 'INMINENTE' y SÍ debe mostrar el 66% de la ventana (para que el Claude no confunda
-# el % del auto-compact con el % de la ventana). El "66% usado" (VERIFICA) es lo que falla pre-#303.
-m="$(h303_msg 'claude-opus-4-8' 70 660000)"
-{ ! printf '%s' "$m" | grep -q 'INMINENTE' \
-  && printf '%s' "$m" | grep -q '66% usado' \
-  && printf '%s' "$m" | grep -qi 'libre'; } \
-  && ok "#303 bug1: ctx a ~66% de la ventana (banda 2) NO grita INMINENTE y muestra el 66% de VENTANA (sin confabular 'tope')" \
-  || bad "#303 bug1: a 66% de ventana confabuló tope/INMINENTE o no reconcilió (síntoma pre-#303); got: $m"
-# ── Bug 2 (histéresis anti-spam): dos invocaciones con ALETEO de tokens dentro de la misma banda NO deben
-#    re-emitir. Techo DERIVADO 700K (1M@70%): t3=665K, margen=CEILING*2/100=14K → re-arma solo si ctx<651K.
-#    Marca PERSISTENTE (mismo root) para encadenar el debounce como en una corrida real.
-H303ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-h303d.XXXXXX")/r"; mkdir -p "$H303ROOT/.claude/memory"
-printf '{"model":"claude-opus-4-8"}' > "$H303ROOT/.claude/settings.json"
-h303_step() { # $1=ctx → additionalContext, @70%, marca persistente (cadena de debounce)
-  printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$1}}}" > "$H303ROOT/t.jsonl"
-  printf '%s' "{\"transcript_path\":\"$H303ROOT/t.jsonl\"}" \
-    | env -u AVISO_CONTEXTO_CEILING_TOKENS CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70 CLAUDE_PROJECT_DIR="$H303ROOT" bash "$HOOKS/aviso-contexto.sh" \
-    | jq -r '.hookSpecificOutput.additionalContext // empty'
-}
-h303_step 680000 >/dev/null                        # primer cruce a banda 3 → avisa (arma la marca)
-o="$(h303_step 655000)"; [ -z "$o" ] \
-  && ok "#303 bug2 histéresis: dip 680K→655K (≥651K, dentro del margen) → NO re-arma (silencio)" \
-  || bad "#303 bug2: el dip de borde re-armó; got: $o"
-o="$(h303_step 680000)"; [ -z "$o" ] \
-  && ok "#303 bug2 histéresis: re-subir 655K→680K tras aleteo → NO re-emite 'en cada tool result' (EL síntoma)" \
-  || bad "#303 bug2 REGRESIÓN: RE-EMITIÓ tras un aleteo de borde (síntoma pre-#303); got: $o"
-o="$(h303_step 400000)"; [ -z "$o" ] \
-  && ok "#303 bug2 histéresis: caída CLARA 680K→400K (<651K, un /compact real) → re-arma en silencio" \
-  || bad "#303 bug2: avisó tras la caída clara; got: $o"
-o="$(h303_step 680000)"; printf '%s' "$o" | grep -q 'INMINENTE' \
-  && ok "#303 bug2 histéresis: tras un compact REAL, re-subir a banda 3 → SÍ re-emite (la histéresis no ahoga avisos legítimos)" \
-  || bad "#303 bug2: no re-emitió tras compact real + re-subida; got: $o"
-rm -rf "$(dirname "$H303ROOT")"
-# ── Procedencia HONESTA (bug latente hallado 2026-08-08): la auto-justificación decía "override DELIBERADO"
-#    con solo mirar si la env estaba NO-vacía → un override INVÁLIDO (typo `70%`, out-of-range, espacios) caía
-#    a PCT=92 pero el mensaje lo vendía como "=92 (override DELIBERADO de Jordi, NO un bug — créele)": la
-#    feature de confianza MINTIENDO sobre un valor que el usuario nunca fijó. Fix: PCT_SRC distingue el
-#    override VÁLIDO del default. (Discrimina: contra el hook sin el fix, la 1ª aserción falla.)
-m="$(h303_msg 'claude-opus-4-8' '70%' 900000)"     # override inválido → debe reportarse como (default)
-{ printf '%s' "$m" | grep -q '(default)' && ! printf '%s' "$m" | grep -q 'DELIBERADO'; } \
-  && ok "aviso procedencia: override INVÁLIDO ('70%') → (default) 92, NO 'override DELIBERADO' (no miente sobre un valor no fijado)" \
-  || bad "aviso procedencia: override inválido se vendió como DELIBERADO (bug latente); got: $m"
-m="$(h303_msg 'claude-opus-4-8' 70 680000)"        # override válido → sigue citando DELIBERADO (no rompe el caso bueno)
-{ printf '%s' "$m" | grep -q 'DELIBERADO' && printf '%s' "$m" | grep -q 'OVERRIDE=70'; } \
-  && ok "aviso procedencia: override VÁLIDO (70) → sí cita 'override DELIBERADO' con =70 (el caso legítimo intacto)" \
-  || bad "aviso procedencia: el override válido perdió su cita DELIBERADO; got: $m"
+{ printf '%s' "$(acwin 500000 300000)" | grep -q 'ventana 500K' && printf '%s' "$(acwin 500000 300000)" | grep -q '~60%'; } \
+  && ok "aviso escape hatch: WINDOW_TOKENS=500K forzada (ctx 300K < 500K, sin invariante) → respeta 500K (60%)" \
+  || bad "aviso escape hatch: WINDOW_TOKENS no se respetó; got: $(acwin 500000 300000)"
+{ printf '%s' "$(acwin '' 300000)" | grep -q 'ventana 1000K' && printf '%s' "$(acwin '' 300000)" | grep -qi '~30%'; } \
+  && ok "aviso escape hatch: SIN forzar (mismo ctx/modelo) → cae al invariante físico (1M, 30%), distinto del override" \
+  || bad "aviso escape hatch: el fallback sin override no coincidió con el invariante; got: $(acwin '' 300000)"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
@@ -3561,7 +3478,13 @@ auditar-coherencia-cerebro|auditar-suficiencia-operativa
 auditar-coherencia-cerebro|consolidar-cerebro
 auditar-suficiencia-operativa|consolidar-cerebro
 desinflar-memorias|positivar-doc
-hud-stale|to-do"
+hud-stale|to-do
+drift-cerebro-comun|exportar-sesion-master
+drift-cerebro-comun|proteger-fuente-cerebro
+drift-cerebro-comun|verificar-cerebro"
+# Los 3 pares de arriba (OLA1): exportar-sesion-master, proteger-fuente-cerebro y verificar-cerebro
+# ahora SOURCEAN drift-cerebro-comun.sh para reusar su resolve_brain_dir() — es lib<->consumidor
+# (igual que delegacion-comun|delegacion-gate arriba), no una dependencia circular real.
 ce_els=()
 for d in "$SCRIPT_DIR"/skills/*/; do [ -d "$d" ] && ce_els+=("$(basename "$d")"); done
 for h in "$HOOKS"/*.sh; do [ -e "$h" ] && ce_els+=("$(basename "$h" .sh)"); done
