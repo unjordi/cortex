@@ -230,6 +230,11 @@ cierre=$(_g CIERRE); marca=$(_g MARCA); visual=$(_g VISUAL)
 browser=no
 printf '%s' "$turn" | grep -qE '"name"[[:space:]]*:[[:space:]]*"(mcp__(claude-in-chrome|playwright|puppeteer|chrome|browser)[a-z0-9_-]*__[a-z_]+|computer)"' && browser=si
 
+# ── PRECISIÓN: Read de imagen RASTERIZADA (p.ej. /tmp/render.png tras pdftoppm) TAMBIÉN cuenta como "mirar la pantalla".
+# Busca un tool_use con name="Read" y file_path/path terminando en extensión de imagen (.png .jpg .jpeg .gif .webp .bmp).
+# `[^}]*` (no `.*`) limita el match al MISMO objeto tool_use → un Read de un .ts + un .png en OTRA tool del turno NO lo suprime en falso.
+printf '%s' "$turn" | grep -qiE '"name"[[:space:]]*:[[:space:]]*"Read"[^}]*"(file_path|path)"[[:space:]]*:[[:space:]]*"[^"]*\.(png|jpg|jpeg|gif|webp|bmp)"' && browser=si
+
 # ── B2: OBSERVACIÓN VISUAL a ciegas — afirma haber visto la pantalla SIN correr tool de navegador, y el
 # usuario no lo confirmó. Bloquea INDEPENDIENTE de si tocó código (declarar QA visual a ciegas es el daño). ──
 if [ "$visual" = "si" ] && [ "$marca" != "si" ] && [ "$browser" != "si" ]; then
