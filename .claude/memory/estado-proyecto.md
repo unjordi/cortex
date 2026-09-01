@@ -149,6 +149,16 @@ metadata:
   - **Ya-en-backlog (arriba):** git-branch-guard subshell `$()` + FN target≠CLAUDE_PROJECT_DIR · merge-squash gh-main · limpiar-ramas squash.
   - _Los axones `dupla-release`/`flowcharts-sesion`/`procesos-fmea` toparon maxturns (sin reconciliar); re-correr con candado de tope-de-lectura o modelo 120b para cerrar su cobertura._
 
+- **Ciclo INSTALL/UPDATE — reconciliación de la auditoría FMEA 2026-07-30 (verificado 2026-09-01).** Los
+  hallazgos del ciclo install/update NUNCA se habían migrado a este backlog (vivían solo en
+  `docs/auditoria-procesos-fmea-2026-07-30.md` → el doc MENTÍA marcándolos abiertos). Verificado contra el
+  código de hoy: **one-stop installer** ✅ (2026-07-23, `docs/autoupdate.md`) · **H1** (puente HOME↔USERPROFILE
+  en los `.ps1`) ✅ · **H2** (resolveClonePath con fallback) ✅ en `main.qml`/Swift. **SIGUE ABIERTO (único
+  install-cycle vivo):** **H2 en `Updater.cs` (Windows)** — NO tiene el fallback `resolveClonePath` (embedded →
+  `$CLAUDE_BRAIN_DIR` → `~/.cortex` → `~/.claude-brain`) → la divergencia del self-update persiste en Windows;
+  portar `resolveClonePath` a C#. **Por verificar aún** (no revisados esta pasada): el field-check (verificar
+  que un repo real cablee el MANIFEST) + el lote A1-A8/B3/C2 de la FMEA. · _reconciliado por axon-master 2026-09-01._
+
 ## ✅ Hecho (anclado a commit+fecha)
 <!-- Enuncia en pasado con su ancla. Ej: "X integrado — <commit>, <fecha>". -->
 - **Juez de merge decide el destino + PISO DETERMINISTA de main** — `6614220` (PR #262), 2026-08-05. El juez
