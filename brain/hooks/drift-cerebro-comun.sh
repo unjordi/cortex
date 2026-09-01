@@ -35,6 +35,26 @@
 # completo, etc.) son idénticas a las que vivían en aviso-drift-cerebro.sh — ver ahí el detalle histórico.
 # Guardado bash-3.2-safe (sin arrays asociativos ni ${x^^}).
 
+# resolve_brain_dir — resuelve el clon de instalación del cerebro, con el MISMO orden/fallback que ya
+# tienen los 3 widgets (#322): $CLAUDE_BRAIN_DIR → ~/.cortex → ~/.claude-brain (nombre PRE-rename),
+# prefiriendo el primero que EXISTA (test -d). Fail-open: si ninguno existe, cae al default histórico
+# ~/.cortex (mismo comportamiento de siempre) — NUNCA bloquea ni falla.
+# Por qué: antes de esto, todo el tooling bash (este archivo, verificar-cerebro.sh,
+# proteger-fuente-cerebro.sh, exportar-sesion-master.sh, sesiones-master/install-hook.sh) resolvía con
+# `${CLAUDE_BRAIN_DIR:-$HOME/.cortex}` a secas — SIN el fallback a `~/.claude-brain`. En una máquina cuyo
+# clon quedó bajo el nombre VIEJO (rename #312 sin migrar), `~/.cortex` no existe → autosync/verificación/
+# protección de fuente quedaban CIEGOS (fail-open silencioso), asimetría con los widgets que sí migraron
+# (auditoría 2026-08-29, §4 C2 / hallazgo AUTOSYNC). Única implementación — todo lo demás la llama, no la
+# reimplementa. Imprime la ruta por stdout, sin trailing slash.
+resolve_brain_dir() {
+  if [ -n "${CLAUDE_BRAIN_DIR:-}" ] && [ -d "${CLAUDE_BRAIN_DIR:-}" ]; then
+    printf '%s\n' "$CLAUDE_BRAIN_DIR"; return 0
+  fi
+  [ -d "$HOME/.cortex" ] && { printf '%s\n' "$HOME/.cortex"; return 0; }
+  [ -d "$HOME/.claude-brain" ] && { printf '%s\n' "$HOME/.claude-brain"; return 0; }
+  printf '%s\n' "$HOME/.cortex"
+}
+
 # drift_chequea_repo <ROOT> [DRY_RUN]
 drift_chequea_repo() {
   local ROOT="$1" DRY_RUN=0
@@ -48,7 +68,7 @@ drift_chequea_repo() {
 
   # Fuente canónica LOCAL del cerebro = el clon de instalación (lo actualiza el one-liner/bootstrap).
   local BRAIN_DIR SYNC
-  BRAIN_DIR="${CLAUDE_BRAIN_DIR:-$HOME/.cortex}"
+  BRAIN_DIR="$(resolve_brain_dir)"
   SYNC="$BRAIN_DIR/brain/sincronizar-cerebro.sh"
   if [ ! -f "$SYNC" ]; then printf 'STATUS=%s\n' "no-source"; return 0; fi
 
@@ -194,7 +214,7 @@ Qué hacer: PROPÓN al usuario propagar por el flujo — worktree/ramita desde d
 #    ignora, cero falso positivo). bash-3.2-safe.
 drift_skills_global() {
   local BRAIN_DIR SRC_SKILLS INST_SKILLS MAN
-  BRAIN_DIR="${CLAUDE_BRAIN_DIR:-$HOME/.cortex}"
+  BRAIN_DIR="$(resolve_brain_dir)"
   SRC_SKILLS="$BRAIN_DIR/brain/skills"
   INST_SKILLS="$HOME/.claude/skills"
   MAN="$SRC_SKILLS/MANIFEST"

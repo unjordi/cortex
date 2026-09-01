@@ -16,7 +16,17 @@
 set -eu
 
 # install → delega al instalador único del cerebro (que copia el hook + lo cablea desde el MANIFEST).
-BRAIN="${CLAUDE_BRAIN_DIR:-$HOME/.cortex}"
+# resolve_brain_dir() vive en brain/hooks/drift-cerebro-comun.sh — mismo orden/fallback que los widgets
+# (#322): $CLAUDE_BRAIN_DIR → ~/.cortex → ~/.claude-brain (nombre viejo). Si la lib no está (caso raro),
+# cae al default histórico sin el fallback.
+SELFDIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$SELFDIR/../hooks/drift-cerebro-comun.sh" ]; then
+  # shellcheck source=../hooks/drift-cerebro-comun.sh
+  . "$SELFDIR/../hooks/drift-cerebro-comun.sh"
+  BRAIN="$(resolve_brain_dir)"
+else
+  BRAIN="${CLAUDE_BRAIN_DIR:-$HOME/.cortex}"
+fi
 if [ ! -f "$BRAIN/brain/install-brain.sh" ]; then
   echo "install-hook: no encuentro install-brain en '$BRAIN' (setea CLAUDE_BRAIN_DIR o clona el cerebro)."
   exit 1
