@@ -36,7 +36,17 @@ case "$fp" in
   *) exit 0 ;;
 esac
 
-BRAIN_DIR="${CLAUDE_BRAIN_DIR:-$HOME/.cortex}"
+# resolve_brain_dir() vive en drift-cerebro-comun.sh (misma carpeta, fuente y una vez instalado) — mismo
+# orden/fallback que los widgets (#322): $CLAUDE_BRAIN_DIR → ~/.cortex → ~/.claude-brain. Si la lib no
+# está (caso raro), cae al default histórico sin el fallback (fail-open, este guard nunca bloquea).
+_selfdir="$(dirname "$0")"
+if [ -f "$_selfdir/drift-cerebro-comun.sh" ]; then
+  # shellcheck source=drift-cerebro-comun.sh
+  . "$_selfdir/drift-cerebro-comun.sh"
+  BRAIN_DIR="$(resolve_brain_dir)"
+else
+  BRAIN_DIR="${CLAUDE_BRAIN_DIR:-$HOME/.cortex}"
+fi
 src="$BRAIN_DIR/brain/$relsub"
 
 # Sin fuente correspondiente → skill/hook puramente local → NO es este error → silencio.
