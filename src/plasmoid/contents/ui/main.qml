@@ -1154,8 +1154,9 @@ PlasmoidItem {
         var url = "https://api.github.com/repos/" + root.updSlug + "/commits/main"
         updateCheckSource.connectSource("curl -fsSL -H 'User-Agent: cortex' '" + url + "'")
     }
-    // Jala lo último (fast-forward) y reinstala el plasmoid. NO mata plasmashell (el applet vive dentro).
-    // El applet toma la versión nueva al recargar el plasmoide. FAIL-OPEN: sin repo → invita a hacerlo a mano.
+    // Jala lo último (fuerza-alinea a origin/main, mismo patrón que bootstrap.sh) y reinstala el
+    // plasmoid. NO mata plasmashell (el applet vive dentro). El applet toma la versión nueva al
+    // recargar el plasmoide. FAIL-OPEN: sin repo → invita a hacerlo a mano.
     function runUpdate() {
         if (!root.updCanSelfUpdate || root.updRepoPath === "") {
             root.updateMessage = root.updManualHint
@@ -1166,12 +1167,15 @@ PlasmoidItem {
         var repo = root.updRepoPath
         // Escapa la ruta del clon con shq (comillas simples POSIX): una ruta con un ' la partia sin esto.
         // MIGRACIÓN DEL CLON (rename claude-brain→cortex): si vive bajo el nombre VIEJO y ~/.cortex no
-        // existe, renómbralo ANTES del ff → el nombre canónico queda y el próximo update lo halla directo.
+        // existe, renómbralo ANTES del align → el nombre canónico queda y el próximo update lo halla directo.
         // Vars sin comillas (rutas ~/.cortex, ~/.claude-brain sin espacios) → no rompen el `bash -lc "..."`.
+        // `checkout -B main origin/main` (mismo patrón que bootstrap.sh) FUERZA-ALINEA el clon a
+        // origin/main en vez de `merge --ff-only`, que fallaba PARA SIEMPRE si el clon quedaba en una
+        // rama leftover o con commits locales — este clon es infraestructura, no un checkout de dev.
         var inner = "SRC=" + shq(repo) + "; DST=$HOME/.cortex; "
                   + "[ $SRC != $DST ] && [ -d $SRC ] && [ ! -e $DST ] && mv $SRC $DST; "
                   + "DIR=$DST; [ -d $DIR/.git ] || DIR=$SRC; "
-                  + "cd $DIR && git fetch origin --quiet && git merge --ff-only origin/main && bash $DIR/install.sh"
+                  + "cd $DIR && git fetch origin --quiet && git checkout -B main origin/main && bash $DIR/install.sh"
         var cmd = "nohup bash -lc \"" + inner + "\" >/tmp/cortex-update.log 2>&1"
         updateRunSource.connectSource(cmd)
     }
@@ -2158,7 +2162,7 @@ PlasmoidItem {
                             enabled: !root.updating && root.updCanSelfUpdate && root.updateAvailable
                             onClicked: root.runUpdate()
                             PC3.ToolTip.text: root.updCanSelfUpdate
-                                ? "Corre git fetch + merge --ff-only origin/main + install.sh en tu clon. En KDE el applet toma la versión nueva al recargar el plasmoide (kquitapp6 plasmashell && kstart plasmashell, o re-loguear)."
+                                ? "Corre git fetch + checkout -B main origin/main + install.sh en tu clon (fuerza-alinea a origin/main, igual que bootstrap.sh). En KDE el applet toma la versión nueva al recargar el plasmoide (kquitapp6 plasmashell && kstart plasmashell, o re-loguear)."
                                 : root.updManualHint
                             PC3.ToolTip.visible: containsMouse
                             PC3.ToolTip.delay: 500
