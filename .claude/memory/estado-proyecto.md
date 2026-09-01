@@ -134,6 +134,21 @@ metadata:
   cambios lo define unjordi/Felipe, no este master). Además: registros_bats es COMPARTIDO pero le FALTA la marca
   `.claude/repo-compartido` + sync del brain (ver inventario de cerebros por-repo). · _2026-08-06._
 
+- **Cluster de FP/FN de guards — reconciliado por fan-out axon-local (2026-09-01).** Del fan-out read-only sobre
+  los dictámenes (axon `gitguard-2026-08-26`) + el corpus `docs/guards-falsos-positivos.md`, SIGUEN PENDIENTES
+  (cada uno = cambio de PRECISIÓN con test adversarial, **exige OK EXPLÍCITO de unjordi para ESE control**):
+  - **git-branch-guard / `analizar-comando-git.sh`:** el regex de `acg_push_destino_base` mete `/` en la clase
+    separadora → una ramita cuyo NOMBRE termina en `/develop` o `/main` (`feat/develop`, `hotfix/main`,
+    `release/main`, `--delete feat/develop`) se BLOQUEA en falso. Test: esos casos → ALLOW; `develop`/`main`/
+    `HEAD:develop`/`+develop`/`refs/heads/develop` → siguen DENY; `feat/develop-x`/`developer` → ALLOW.
+  - **secret-scan / `detectar-secretos.sh`:** (S1) `AKIA[0-9A-Z]{16}` no caza las STS `ASIA…` → `(AKIA|ASIA)`;
+    (S2) faltan las service-account de OpenAI `sk-svcacct-…`; (S3/S4) el patrón connstring `scheme://user:pass@`
+    da FP sobre placeholders de README (`postgres://user:password@…`) → añadir a `ds_safe_re`. Cada uno con su test.
+  - **dod-verificar:** reconocer un `Read` de imagen `.png/.jpg` RASTERIZADA (pdftoppm) el MISMO turno como
+    evidencia de QA visual (hoy solo whitelistea browser/screenshot) — ~10 FP en el corpus, mordida dominante en la Mac.
+  - **Ya-en-backlog (arriba):** git-branch-guard subshell `$()` + FN target≠CLAUDE_PROJECT_DIR · merge-squash gh-main · limpiar-ramas squash.
+  - _Los axones `dupla-release`/`flowcharts-sesion`/`procesos-fmea` toparon maxturns (sin reconciliar); re-correr con candado de tope-de-lectura o modelo 120b para cerrar su cobertura._
+
 ## ✅ Hecho (anclado a commit+fecha)
 <!-- Enuncia en pasado con su ancla. Ej: "X integrado — <commit>, <fecha>". -->
 - **Juez de merge decide el destino + PISO DETERMINISTA de main** — `6614220` (PR #262), 2026-08-05. El juez
