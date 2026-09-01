@@ -71,8 +71,10 @@ for s in "$HOME/.claude/settings.json" "$ROOT/.claude/settings.json" "$ROOT/.cla
   [ -n "$acw" ] && ACW="$acw"
 done
 
-# CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: reporta crudo (no inventes 92).
-PCT_OVERRIDE="${CLAUDE_AUTOCOMPACT_PCT_OVERRIDE:-no seteado}"
+# NOTA: NO se reporta CLAUDE_AUTOCOMPACT_PCT_OVERRIDE. Es un valor FANTASMA: si el env dice 70% pero la
+# ventana es 1M y el ctx pasa del 70% SIN que el CLI compacte, ese 70 NO gobierna (env stale / no propagada
+# al proceso) → reportarlo MIENTE (unjordi 2026-09-01: "me suena MUY falso"). El dato que SÍ es fiable es el
+# ctx crudo + la ventana; el punto de auto-compact real lo sabe /context, no este hook.
 
 # Debounce GRUESO por PASOS de 50K tokens: emite solo al CRUZAR un nuevo escalón de contexto, NO en cada
 # tool-call (con `ctx > last_ctx` a secas dispararía casi siempre — el ctx sube monótono → ruido). Al
@@ -91,13 +93,12 @@ printf '%s\n' "$step" > "$AVISO_F" 2>/dev/null || true
 ctxk=$(( ctx / 1000 ))
 wink=$(( WINDOW / 1000 ))
 pctw=$(( ctx * 100 / WINDOW ))
-freew=$(( 100 - pctw ))
+# Libre ÚTIL = libre − 5% de RESERVA para el checkpoint mismo (el volcado del hilo consume contexto; no
+# esperes a 0% o el checkpoint no cabe). unjordi 2026-09-01.
+libre=$(( 100 - pctw - 5 )); [ "$libre" -lt 0 ] && libre=0
 
-msg="📊 Contexto: ${ctxk}K tokens (~${pctw}% de tu ventana ${wink}K, ${freew}% libre). "
-msg="${msg}autoCompactWindow: ${ACW}. "
-msg="${msg}CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: ${PCT_OVERRIDE}. "
-msg="${msg}Ventana detectada: ${wink}K. "
-msg="${msg}Recordatorio: si compactas, primero corre \`checkpoint\` (vuelca el hilo fresco), luego /compact. El LLM y /context deciden cuándo."
+msg="📊 Contexto: ${ctxk}K tokens (~${pctw}% de tu ventana ${wink}K, ${libre}% libre — reservé 5% para el checkpoint). autoCompactWindow: ${ACW}."
+msg="${msg}"$'\n'"Recordatorio: sin checkpoint el auto-compact te BORRA el cerebro fresco → mejor checkpoint + /compact, y TÚ decides cuándo (/context manda)."
 
 jq -n --arg c "$msg" '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$c}}'
 exit 0
