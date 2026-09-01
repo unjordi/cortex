@@ -14,7 +14,8 @@
 #     si no está, reporta "no seteado".
 #   - ventana detectada (marcador [1m] / modelos 1M-nativos / default 200K) CON auto-corrección
 #     por invariante físico (si ctx > ventana → 1M). Repórtala.
-#   - CLAUDE_AUTOCOMPACT_PCT_OVERRIDE si está en la env (o "no seteado" — NO inventes 92).
+#   - % de esa ventana + % libre (reservando 5% para el checkpoint).
+#   NO reporta CLAUDE_AUTOCOMPACT_PCT_OVERRIDE — es un valor FANTASMA que miente (ver NOTA abajo).
 #
 # Debounce: solo avisa al SUBIR de contexto (no en cada tool-call). Marca .contexto-aviso guarda
 # el último ctx visto; si el ctx baja (hubo compact / sesión nueva) se re-arma sola.
