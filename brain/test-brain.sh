@@ -1984,6 +1984,9 @@ BASHSED='{"type":"assistant","message":{"role":"assistant","content":[{"type":"t
 BASHREDIR='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"cat > src/Bar.razor <<EOF\ncontenido\nEOF"}}]}}'
 BASHREAD='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"dotnet build 2>/dev/null | tee build.log"}}]}}'
 TASKT='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Task","input":{}}]}}'
+READPNG='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Read","input":{"file_path":"/tmp/render.png"}}]}}'
+# CROSS: Read de un .ts (NO imagen) + un .png como file_path de OTRA tool (Write) → NO debe contar como "miró pantalla" (endurecimiento [^}]* vs .*).
+READCROSS='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Read","input":{"file_path":"/src/foo.ts"}},{"type":"tool_use","name":"Write","input":{"file_path":"/tmp/y.png"}}]}}'
 CS='CIERRE=si MARCA=no VISUAL=no'    # atajo: claim de cierre, sin marca del usuario
 
 # ── FLUJO/wiring (juez mockeado) — el veredicto del juez ya está dado; validamos que el hook ACTÚE bien ──
@@ -1996,6 +1999,10 @@ is_block "$(dod 'X' "$EDITR" 'haz el cambio' 'UNAVAILABLE')"    && bad "dod fluj
 is_block "$(dod 'X' "$EDITR" 'haz el cambio' 'CIERRE=no MARCA=no VISUAL=si')"   && ok "dod B2: VISUAL=si sin browser-tool → bloquea (a ciegas)" || bad "dod B2: no bloqueó un claim visual a ciegas"
 is_block "$(dod 'X' "$BROWSERT" 'haz el cambio' 'CIERRE=no MARCA=no VISUAL=si')" && bad "dod B2: browser-tool presente debía suprimir el bloqueo" || ok "dod B2: VISUAL=si + browser-tool → no bloquea"
 is_block "$(dod 'X' "$EDITR" 'sí lo validé' 'CIERRE=no MARCA=si VISUAL=si')"     && bad "dod B2: MARCA=si (usuario confirmó su QA) debía suprimir" || ok "dod B2: VISUAL=si + MARCA=si → no bloquea (cita el QA del usuario)"
+# B2 PRECISIÓN: Read de imagen rasterizada (p.ej. /tmp/render.png) TAMBIÉN cuenta como "mirar la pantalla".
+is_block "$(dod 'se ve limpio' "$READPNG" 'haz el cambio' 'CIERRE=no MARCA=no VISUAL=si')" && bad "dod B2-PNG: VISUAL=si + Read de .png debía suprimir el bloqueo" || ok "dod B2-PNG: VISUAL=si + Read(/tmp/render.png) → no bloquea (rasterizada cuenta como visual)"
+is_block "$(dod 'se ve limpio' "$EDITR" 'haz el cambio' 'CIERRE=no MARCA=no VISUAL=si')"   && ok "dod B2-NEG: VISUAL=si sin Read de imagen y sin browser-tool → bloquea (a ciegas)" || bad "dod B2-NEG: no bloqueó un claim visual a ciegas sin Read de imagen"
+is_block "$(dod 'se ve limpio' "$READCROSS" 'haz el cambio' 'CIERRE=no MARCA=no VISUAL=si')" && ok "dod B2-CROSS: Read de .ts + .png en OTRA tool → SIGUE bloqueando (el [^}]* no cruza de tool)" || bad "dod B2-CROSS: sobre-match cruzó de tool y suprimió B2 en falso"
 # G2a: código tocado por Bash (sin file_path) — ESTRUCTURAL, con el cierre ya afirmado por el mock.
 is_block "$(dod 'X' "$BASHSED" 'haz el cambio' "$CS")"   && ok "dod G2a: 'sed -i' cuenta como código → bloquea" || bad "dod G2a: 'sed -i' evadió el gate de código tocado"
 is_block "$(dod 'X' "$BASHREDIR" 'haz el cambio' "$CS")" && ok "dod G2a: redirección '> Bar.razor' cuenta como código → bloquea" || bad "dod G2a: la redirección a código evadió el gate"
