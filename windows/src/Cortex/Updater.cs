@@ -48,6 +48,26 @@ internal sealed class Updater
     /// true si hay clon en disco (podemos auto-actualizar); si no, el banner invita a hacerlo a mano.
     public bool CanSelfUpdate { get; private set; }
 
+    /// El escape REAL para una máquina que no puede auto-actualizar (espeja Updater.swift/main.qml):
+    /// migra el clon al nombre canónico, alinea a origin/main y reinstala. Ni install.ps1 a secas ni
+    /// un git pull manual migran `claude-brain-repo`→`cortex-repo` — SOLO bootstrap.ps1 lo hace.
+    private const string BootstrapOneLiner =
+        "irm https://raw.githubusercontent.com/unjordi/cortex/main/bootstrap.ps1 | iex";
+
+    /// Ruta de un clon que SÍ vemos en disco (aunque no sirva para auto-actualizar, p.ej. sin
+    /// windows\install.ps1), para mostrarla en el mensaje "a mano". null si no hay ninguno visible.
+    public string? DiscoveredClonePath { get; private set; }
+
+    /// Mensaje "a mano" HONESTO: el one-liner real de bootstrap + la ruta descubierta cuando la hay.
+    public string ManualUpdateHint
+    {
+        get
+        {
+            string where_ = string.IsNullOrEmpty(DiscoveredClonePath) ? "" : $" (tu clon: {DiscoveredClonePath})";
+            return $"No puedo auto-actualizar{where_}. Corre en PowerShell: {BootstrapOneLiner}";
+        }
+    }
+
     private string _repoPath = "";
     private DateTime? _localDate;      // UTC
     private DateTime? _lastCheck;      // UTC
@@ -81,6 +101,7 @@ internal sealed class Updater
             // cadena de fallback que macos/Updater.swift (resolveClonePath). Sin esto, un exe de release
             // dejaba CanSelfUpdate=false y el fallback git-based no arrancaba.
             _repoPath = ResolveClonePath(embedded);
+            DiscoveredClonePath = DiscoverClonePathForDisplay();
             if (root.TryGetProperty("date", out var d)
                 && DateTimeOffset.TryParse(d.GetString(), CultureInfo.InvariantCulture,
                     DateTimeStyles.RoundtripKind, out var dt))
@@ -108,6 +129,22 @@ internal sealed class Updater
             if (c.Length > 0 && File.Exists(Path.Combine(c, "windows", "install.ps1")))
                 return c;
         return "";
+    }
+
+    /// Para el mensaje "a mano": ¿hay ALGÚN clon visible en disco, aunque no sirva para auto-actualizar?
+    /// Nombre viejo primero (es la señal de "te quedaste en el rename"), luego el canónico. Mismo orden
+    /// que resolveClonePath/resolveRepoPath en macOS/Linux.
+    private static string? DiscoverClonePathForDisplay()
+    {
+        string env = Environment.GetEnvironmentVariable("CLAUDE_BRAIN_DIR") ?? "";
+        if (env.Length > 0 && Directory.Exists(env)) return env;
+        string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (local.Length == 0) return null;
+        string oldRepo = Path.Combine(local, "claude-brain-repo");
+        if (Directory.Exists(oldRepo)) return oldRepo;
+        string newRepo = Path.Combine(local, "cortex-repo");
+        if (Directory.Exists(newRepo)) return newRepo;
+        return null;
     }
 
     /// Chequea GitHub como mucho 1×/15 min (evita el rate-limit anónimo). Fire-and-forget desde la
@@ -237,7 +274,7 @@ internal sealed class Updater
         // Ruta git-based (fallback pre-release): requiere clon con el reinstalador de Windows.
         if (!CanSelfUpdate || _repoPath.Length == 0)
         {
-            Message = "actualiza a mano: git pull && pwsh -File windows\\install.ps1";
+            Message = ManualUpdateHint;
             return false;
         }
 
