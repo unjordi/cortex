@@ -298,9 +298,12 @@ PlasmoidItem {
         engine: "executable"
         connectedSources: []
         onNewData: function(source, data) {
-            var resolved = (data["exit code"] === 0 && data.stdout) ? ("" + data.stdout).trim() : ""
+            var lines = (data["exit code"] === 0 && data.stdout) ? ("" + data.stdout).split("\n") : []
+            var resolved = (lines[0] || "").trim()
+            var discovered = (lines[1] || "").trim()
             root.updRepoPath = resolved
             root.updCanSelfUpdate = resolved !== ""   // hay clon REAL en disco → botón auto; si no, a mano
+            root.updDiscoveredClonePath = discovered
             disconnectSource(source)
             root.updLocalLoaded = true
             root.checkUpdateRemote()   // encadena la consulta a GitHub (igual que antes, ahora tras resolver)
@@ -1096,6 +1099,20 @@ PlasmoidItem {
     property double updLastCheck: 0         // epoch ms del último chequeo remoto (throttle 15 min)
     readonly property string updSlug: "unjordi/cortex"
 
+    // El escape REAL para una máquina que no puede auto-actualizar (espeja Updater.swift/.cs): migra
+    // ~/.claude-brain→~/.cortex, alinea a origin/main y reinstala. Ni install.sh ni install-brain.sh a
+    // secas migran el clon — SOLO bootstrap.sh lo hace.
+    readonly property string updBootstrapOneLiner:
+        "curl -fsSL https://raw.githubusercontent.com/unjordi/cortex/main/bootstrap.sh | bash"
+    // Ruta de un clon que SÍ vemos en disco (aunque no sirva para auto-actualizar, p.ej. sin install.sh),
+    // para mostrarla en el mensaje "a mano". "" si no hay ninguno visible.
+    property string updDiscoveredClonePath: ""
+    // Mensaje "a mano" HONESTO: el one-liner real de bootstrap + la ruta descubierta cuando la hay.
+    readonly property string updManualHint: {
+        var where_ = root.updDiscoveredClonePath !== "" ? (" (tu clon: " + root.updDiscoveredClonePath + ")") : ""
+        return "No puedo auto-actualizar" + where_ + ". Corre en tu terminal: " + root.updBootstrapOneLiner
+    }
+
     // Ruta del version.json embebido, relativa a este main.qml (…/contents/ui/ → …/contents/version.json).
     readonly property string versionFile: {
         var u = "" + Qt.resolvedUrl("../version.json")
@@ -1122,9 +1139,14 @@ PlasmoidItem {
     // Gana el PRIMERO que exista en disco con la marca install.sh (la misma que runUpdate ejecuta). Así un
     // version.json horneado en otra máquina / con el repo movido no habilita un auto-update que haría cd a
     // una ruta muerta. Se resuelve por shell (QML JS no lee env ni prueba archivos). FAIL-OPEN: "" → a mano.
+    // Además del repo AUTO-actualizable (1ª línea), descubre cualquier clon VISIBLE en disco (2ª línea,
+    // aunque no sirva para auto-actualizar) para mostrarlo en el mensaje "a mano" — nombre viejo primero
+    // (señal de "te quedaste en el rename #312"), luego el canónico. Mismo orden que Updater.swift/.cs.
     function resolveRepoPath(embedded) {
         var cmd = 'for c in ' + shq(embedded) + ' "$CLAUDE_BRAIN_DIR" "$HOME/.cortex" "$HOME/.claude-brain"; do '
-                + '[ -n "$c" ] && [ -f "$c/install.sh" ] && { printf %s "$c"; break; }; done'
+                + '[ -n "$c" ] && [ -f "$c/install.sh" ] && { printf "%s\\n" "$c"; break; }; done; '
+                + 'for d in "$CLAUDE_BRAIN_DIR" "$HOME/.claude-brain" "$HOME/.cortex"; do '
+                + '[ -n "$d" ] && [ -e "$d" ] && { printf "%s\\n" "$d"; break; }; done'
         repoResolveSource.connectSource(cmd)
     }
     function checkUpdateRemote() {
@@ -1132,11 +1154,12 @@ PlasmoidItem {
         var url = "https://api.github.com/repos/" + root.updSlug + "/commits/main"
         updateCheckSource.connectSource("curl -fsSL -H 'User-Agent: cortex' '" + url + "'")
     }
-    // Jala lo último (fast-forward) y reinstala el plasmoid. NO mata plasmashell (el applet vive dentro).
-    // El applet toma la versión nueva al recargar el plasmoide. FAIL-OPEN: sin repo → invita a hacerlo a mano.
+    // Jala lo último (fuerza-alinea a origin/main, mismo patrón que bootstrap.sh) y reinstala el
+    // plasmoid. NO mata plasmashell (el applet vive dentro). El applet toma la versión nueva al
+    // recargar el plasmoide. FAIL-OPEN: sin repo → invita a hacerlo a mano.
     function runUpdate() {
         if (!root.updCanSelfUpdate || root.updRepoPath === "") {
-            root.updateMessage = "actualiza a mano: git pull && ./install.sh"
+            root.updateMessage = root.updManualHint
             return
         }
         root.updating = true
@@ -1144,12 +1167,15 @@ PlasmoidItem {
         var repo = root.updRepoPath
         // Escapa la ruta del clon con shq (comillas simples POSIX): una ruta con un ' la partia sin esto.
         // MIGRACIÓN DEL CLON (rename claude-brain→cortex): si vive bajo el nombre VIEJO y ~/.cortex no
-        // existe, renómbralo ANTES del ff → el nombre canónico queda y el próximo update lo halla directo.
+        // existe, renómbralo ANTES del align → el nombre canónico queda y el próximo update lo halla directo.
         // Vars sin comillas (rutas ~/.cortex, ~/.claude-brain sin espacios) → no rompen el `bash -lc "..."`.
+        // `checkout -B main origin/main` (mismo patrón que bootstrap.sh) FUERZA-ALINEA el clon a
+        // origin/main en vez de `merge --ff-only`, que fallaba PARA SIEMPRE si el clon quedaba en una
+        // rama leftover o con commits locales — este clon es infraestructura, no un checkout de dev.
         var inner = "SRC=" + shq(repo) + "; DST=$HOME/.cortex; "
                   + "[ $SRC != $DST ] && [ -d $SRC ] && [ ! -e $DST ] && mv $SRC $DST; "
                   + "DIR=$DST; [ -d $DIR/.git ] || DIR=$SRC; "
-                  + "cd $DIR && git fetch origin --quiet && git merge --ff-only origin/main && bash $DIR/install.sh"
+                  + "cd $DIR && git fetch origin --quiet && git checkout -B main origin/main && bash $DIR/install.sh"
         var cmd = "nohup bash -lc \"" + inner + "\" >/tmp/cortex-update.log 2>&1"
         updateRunSource.connectSource(cmd)
     }
@@ -2124,7 +2150,9 @@ PlasmoidItem {
                                          ? root.updateMessage
                                          : (root.updCanSelfUpdate
                                             ? "⬆ Actualizar widget (" + root.updLocalShort + " → " + root.updRemoteShort + ")"
-                                            : "⬆ Hay versión nueva (" + root.updRemoteShort + ") — actualiza a mano"))
+                                            // Corto para el label SIEMPRE visible; el comando + la ruta
+                                            // descubierta van en el tooltip de abajo (updManualHint).
+                                            : "⬆ Hay versión nueva (" + root.updRemoteShort + ") — actualiza con bootstrap.sh"))
                             }
                         }
                         MouseArea {
@@ -2134,8 +2162,8 @@ PlasmoidItem {
                             enabled: !root.updating && root.updCanSelfUpdate && root.updateAvailable
                             onClicked: root.runUpdate()
                             PC3.ToolTip.text: root.updCanSelfUpdate
-                                ? "Corre git fetch + merge --ff-only origin/main + install.sh en tu clon. En KDE el applet toma la versión nueva al recargar el plasmoide (kquitapp6 plasmashell && kstart plasmashell, o re-loguear)."
-                                : "No hay 'repo' en version.json; actualiza a mano con git pull && ./install.sh."
+                                ? "Corre git fetch + checkout -B main origin/main + install.sh en tu clon (fuerza-alinea a origin/main, igual que bootstrap.sh). En KDE el applet toma la versión nueva al recargar el plasmoide (kquitapp6 plasmashell && kstart plasmashell, o re-loguear)."
+                                : root.updManualHint
                             PC3.ToolTip.visible: containsMouse
                             PC3.ToolTip.delay: 500
                         }

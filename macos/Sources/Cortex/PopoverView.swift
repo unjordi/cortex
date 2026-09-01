@@ -248,7 +248,7 @@ struct PopoverView: View {
                     .disabled(updater.updating || !updater.canSelfUpdate)
                     .help(updater.canSelfUpdate
                           ? "Actualizar el widget (\(updater.localShort) → \(updater.remoteShort))"
-                          : "Hay versión nueva (\(updater.remoteShort)) — actualiza a mano")
+                          : "Hay versión nueva (\(updater.remoteShort)). \(updater.manualUpdateHint)")
                 }
 
                 // 🩹 Curar el CEREBRO global — solo si le falta alguna pieza (mismo criterio que el riel).
@@ -1030,7 +1030,9 @@ struct PopoverView: View {
                          ? "Actualizando… (se relanza sola)"
                          : (updater.canSelfUpdate
                             ? "Actualizar widget (\(updater.localShort) → \(updater.remoteShort))"
-                            : "Hay versión nueva (\(updater.remoteShort)) — actualiza a mano"))
+                            // Corto para el label SIEMPRE visible (no hay espacio para el one-liner
+                            // completo); el comando + la ruta descubierta van en el tooltip de abajo.
+                            : "Hay versión nueva (\(updater.remoteShort)) — actualiza con bootstrap.sh"))
                         .font(.caption).fontWeight(.semibold)
                     Spacer(minLength: 0)
                 }
@@ -1043,7 +1045,7 @@ struct PopoverView: View {
             .disabled(updater.updating || !updater.canSelfUpdate)
             .help(updater.canSelfUpdate
                   ? "Corre git pull + install.sh en tu clon y relanza el widget con la versión nueva."
-                  : "No encuentro el clon del repo; actualiza a mano con git pull && ./install.sh.")
+                  : updater.manualUpdateHint)
         }
     }
 

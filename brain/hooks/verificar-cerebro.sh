@@ -23,7 +23,17 @@ warnln(){ [ "$QUIET" = 1 ] || printf '  \xe2\x9a\xa0 %s\n' "$1"; }  # avisos (dr
 
 HOOKS_DIR="$HOME/.claude/hooks"
 GSET="$HOME/.claude/settings.json"
-BRAIN_DIR="${CLAUDE_BRAIN_DIR:-$HOME/.cortex}"
+SELFDIR="$(cd "$(dirname "$0")" && pwd)"
+# resolve_brain_dir() vive en drift-cerebro-comun.sh (misma carpeta, fuente y una vez instalado) — mismo
+# orden/fallback que los widgets (#322): $CLAUDE_BRAIN_DIR → ~/.cortex → ~/.claude-brain. Si la lib no
+# está (caso raro), cae al default histórico sin el fallback (fail-open, no bloquea el doctor).
+if [ -f "$SELFDIR/drift-cerebro-comun.sh" ]; then
+  # shellcheck source=drift-cerebro-comun.sh
+  . "$SELFDIR/drift-cerebro-comun.sh"
+  BRAIN_DIR="$(resolve_brain_dir)"
+else
+  BRAIN_DIR="${CLAUDE_BRAIN_DIR:-$HOME/.cortex}"
+fi
 MANIFEST="$BRAIN_DIR/brain/hooks/MANIFEST"
 
 say "🩺 Doctor del cerebro (cortex) — máquina: $(hostname 2>/dev/null || echo '?')"

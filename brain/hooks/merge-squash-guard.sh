@@ -37,7 +37,9 @@ pcwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
 # ÚNICA para los DOS deny del hook (falta-de-squash y mensaje-pobre) → no divergen.
 _rehaz_sugerido() {
   if printf '%s' "$1" | grep -qE 'gh(\.exe)?[[:space:]]+pr'; then
-    printf '%s' 'gh pr merge <id> --squash --subject "<título curado>" --body "$(cat resumen.md)"'
+    # --delete-branch: borra la rama de ORIGEN al integrar (el equivalente gh de --remove-source-branch de
+    # glab). Sin él, la remota queda colgando tras el squash-merge (limpieza incompleta — gap 1c del dictamen).
+    printf '%s' 'gh pr merge <id> --squash --delete-branch --subject "<título curado>" --body "$(cat resumen.md)"'
   else
     printf '%s' 'glab mr merge <id> --squash --squash-message "$(cat resumen.md)" --remove-source-branch --yes'
   fi
@@ -61,17 +63,47 @@ if printf '%s' "$cmd" | grep -qE "$SQUASH_RE"; then
   [ "$_dest_sq" = "develop" ] || exit 0
   # ¿De dónde sale el subject? LITERAL (flag en el comando → verifica directo) · AUTO (título del MR/PR →
   # verifica vía API) · UNVERIFICABLE ($()/variable/--fill/--body-file → no verificable en PreToolUse → PASA).
-  case "$(acg_msg_clasificar "$cmd")" in
+  _clase=$(acg_msg_clasificar "$cmd")
+  case "$_clase" in
     UNVERIFICABLE) exit 0 ;;
     LITERAL)       _msg=$(acg_msg_valor "$cmd") ;;
     *)             _msg=$(acg_mensaje_de_mr "$cmd" "$pcwd"); [ -z "$_msg" ] && exit 0 ;;   # API no resolvió → FAIL-OPEN
   esac
-  acg_msg_es_pobre "$_msg" || exit 0   # el mensaje tiene sustancia → PASA
-  # Mensaje POBRE → DENY: rehacer con un resumen curado (NO afloja la exigencia de squash: la conserva y AÑADE ésta).
   _rehaz=$(_rehaz_sugerido "$cmd")
-  jq -n --arg r "FLUJO DE GIT (ley interna): el squash a develop debe llevar un RESUMEN CURADO en prosa (el cambio neto y su porqué), NO el título default de la plataforma (\"Merge pull request #N\"), ni un mensaje vacío o de una sola palabra (\"wip\"/\"fix\"/\"update\"). Rehaz el merge con un mensaje con sustancia: $_rehaz  — el mensaje es el resumen del slice, no el pegote de commits. Ver skill cerrar-slice." \
-    '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
-  exit 0
+  # ── DENY (piso duro): se calcula UNA razón; cualquier condición dispara el bloqueo. Orden de prioridad
+  #    de la razón citada: piso-anti-basura → editorialización-dura → (solo LITERAL) profundidad → trazabilidad.
+  _deny=""
+  # (piso base, LITERAL y AUTO) vacío / default de plataforma / placeholder de una palabra.
+  if acg_msg_es_pobre "$_msg"; then
+    _deny="el squash a develop debe llevar un RESUMEN CURADO en prosa (el cambio neto y su porqué), NO el título default de la plataforma (\"Merge pull request #N\"), ni un mensaje vacío o de una sola palabra (\"wip\"/\"fix\"/\"update\")."
+  fi
+  # (3b-DENY, LITERAL y AUTO) editorialización con marcadores INEQUÍVOCOS de proceso — near-zero FP.
+  if [ -z "$_deny" ] && acg_msg_editorializa "$_msg"; then
+    _deny="el mensaje EDITORIALIZA el PROCESO (\"se decidió\" / \"tras analizar\" / \"el asistente\" / \"se identificó que\" / \"en esta sesión\" / \"se procedió a\"). El resumen debe describir QUÉ HACE EL CÓDIGO ahora, no CÓMO se llegó a él."
+  fi
+  # (3a profundidad + 2a trazabilidad) SOLO LITERAL: el agente TIPEÓ el mensaje inline (puede añadir la
+  # línea `Rama:`/`MR:` y prosa). El título AUTO del MR es corto por naturaleza → no se le exige nada de esto.
+  if [ -z "$_deny" ] && [ "$_clase" = LITERAL ]; then
+    if acg_msg_es_superficial "$_msg"; then
+      _deny="el resumen del slice es DEMASIADO CORTO (< 12 palabras) para describir el cambio neto y su porqué. Escríbelo como prosa que diga qué hace el código ahora y por qué."
+    elif acg_msg_falta_traza "$_msg"; then
+      _deny="al resumen le falta TRAZABILIDAD rama→commit: incluye \"Rama: <feat/…>\" y \"MR/PR: !<id>\" (o #<id>). El squash borra el merge-commit de la plataforma que traía el #id → sin esto, 'git log develop' no dice de qué ramita salió el commit."
+    fi
+  fi
+  if [ -n "$_deny" ]; then
+    # NO afloja la exigencia de squash (ya garantizada); AÑADE la vara de calidad del mensaje.
+    jq -n --arg r "FLUJO DE GIT (ley interna): $_deny  Rehaz el merge con un mensaje con sustancia: $_rehaz  — el mensaje es el resumen del slice, no el pegote de commits. Ver skill cerrar-slice." \
+      '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
+    exit 0
+  fi
+  # ── WARN (advertir, NO bloquear): narración de LISTA DE ACCIONES (≥2 "se <verbo>"). additionalContext y PASA.
+  #    Ambiguo por naturaleza → nunca deny (precisión > agresividad): solo nudgea a reescribir el resumen.
+  if acg_msg_narra_acciones "$_msg"; then
+    jq -n --arg c "FLUJO DE GIT: el resumen del squash PARECE una LISTA DE ACCIONES (\"se cambió…, se actualizó…, se corrigió…\") en vez del CAMBIO NETO y su porqué. No bloqueo el merge, pero considera reescribirlo describiendo QUÉ HACE EL CÓDIGO ahora. Ver skill cerrar-slice." \
+      '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$c}}'
+    exit 0
+  fi
+  exit 0   # el mensaje tiene sustancia → PASA
 fi
 
 # La obligatoriedad de --squash aplica cuando el DESTINO es `develop` (1 commit limpio por slice) y —por

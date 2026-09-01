@@ -246,8 +246,8 @@ is_deny   "$(msj 'glab mr merge 51 --squash --squash-message "wip"')" \
   && ok "msg LITERAL: placeholder de una palabra 'wip' → deny" || bad "msg LITERAL: no bloqueó 'wip'"
 is_deny   "$(msj 'glab mr merge 52 --squash --squash-message ""')" \
   && ok "msg LITERAL: mensaje vacío → deny" || bad "msg LITERAL: no bloqueó el mensaje vacío"
-is_silent "$(msj 'glab mr merge 53 --squash --squash-message "corrige el calculo de IVA en las facturas"')" \
-  && ok "msg LITERAL: resumen con sustancia → pasa (sin FP)" || bad "msg LITERAL: bloqueó un resumen legítimo"
+is_silent "$(msj 'glab mr merge 53 --squash --squash-message "corrige el calculo de IVA en las facturas: el total ahora suma el impuesto por linea. Rama: fix/iva, MR: !53"')" \
+  && ok "msg LITERAL: resumen con sustancia + traza (≥12 palabras) → pasa (sin FP)" || bad "msg LITERAL: bloqueó un resumen legítimo con traza"
 is_silent "$(msj 'glab mr merge 54 --squash --squash-message "$(cat resumen.md)"')" \
   && ok "msg UNVERIFICABLE: '\$(cat resumen.md)' (la forma que el propio hook sugiere) → pasa" || bad "msg UNVERIFICABLE: bloqueó la forma sugerida por el hook"
 
@@ -255,8 +255,8 @@ is_silent "$(msj 'glab mr merge 54 --squash --squash-message "$(cat resumen.md)"
 mock_gh_full develop ""
 is_deny   "$(msj 'gh pr merge 55 --squash --subject "Merge pull request #5"')" \
   && ok "msg LITERAL gh: --subject default → deny" || bad "msg LITERAL gh: no bloqueó el subject default"
-is_silent "$(msj 'gh pr merge 56 --squash --subject "agrega validacion de stock disponible"')" \
-  && ok "msg LITERAL gh: --subject con sustancia → pasa (sin FP)" || bad "msg LITERAL gh: bloqueó un subject legítimo"
+is_silent "$(msj 'gh pr merge 56 --squash --subject "agrega validacion de stock disponible antes de confirmar el pedido para evitar sobreventa. Rama: feat/stock, PR: #56"')" \
+  && ok "msg LITERAL gh: --subject con sustancia + traza → pasa (sin FP)" || bad "msg LITERAL gh: bloqueó un subject legítimo con traza"
 is_silent "$(msj 'gh pr merge 57 --squash --fill')" \
   && ok "msg UNVERIFICABLE gh: --fill (subject derivado de commits) → pasa" || bad "msg UNVERIFICABLE gh: bloqueó un --fill"
 
@@ -282,6 +282,30 @@ mock_glab_full DevelopAna "wip"
 is_silent "$(msj 'glab mr merge 65 --squash --yes')" \
   && ok "msg scope: destino=rama personal + msg pobre → pasa (fuera de alcance)" || bad "msg scope: bloqueó por mensaje a una rama personal"
 
+# ── (3a) PROFUNDIDAD + (2a) TRAZABILIDAD + (3b) EDITORIALIZACIÓN — SOLO el LITERAL, destino develop ──
+mock_glab develop
+# 3a: LITERAL < 12 palabras → deny (demasiado corto para un resumen del cambio neto)
+is_deny   "$(msj 'glab mr merge 66 --squash --squash-message "corrige el IVA en facturas"')" \
+  && ok "msg 3a: LITERAL corto (<12 palabras) → deny (superficial)" || bad "msg 3a: no bloqueó un resumen literal demasiado corto"
+# 2a: LITERAL ≥12 palabras PERO sin rama/MR-id → deny (trazabilidad rama→commit perdida)
+is_deny   "$(msj 'glab mr merge 67 --squash --squash-message "corrige el calculo del impuesto al valor agregado en todas las facturas emitidas durante el periodo fiscal vigente"')" \
+  && ok "msg 2a: LITERAL largo SIN rama/MR-id → deny (falta trazabilidad)" || bad "msg 2a: no bloqueó un resumen sin trazabilidad"
+# 2a: el MISMO mensaje pero CON una línea de traza → pasa (sin FP)
+is_silent "$(msj 'glab mr merge 68 --squash --squash-message "corrige el calculo del impuesto al valor agregado en todas las facturas emitidas. Rama: fix/iva, MR: !67"')" \
+  && ok "msg 2a: LITERAL largo + traza (Rama:/MR:) → pasa (sin FP)" || bad "msg 2a: bloqueó un resumen con traza"
+# 3b-DENY: editorialización inequívoca de proceso, aun con traza y largo → deny
+is_deny   "$(msj 'glab mr merge 69 --squash --squash-message "tras analizar el middleware se decidio reemplazar la validacion de tokens por completo. Rama: fix/x, MR: !9"')" \
+  && ok "msg 3b: editorializa el proceso ('tras analizar'/'se decidió') → deny" || bad "msg 3b: no bloqueó la editorialización de proceso"
+# 3b-WARN: lista de acciones (≥2 'se <verbo>') pero sin marcador-duro, con traza y largo → NO deny, additionalContext
+warnout="$(msj 'glab mr merge 71 --squash --squash-message "se cambio la logica de tokens y se actualizo el middleware para validar el claim exp del servidor. Rama: feat/auth, MR: !12"')"
+{ ! is_deny "$warnout" && printf '%s' "$warnout" | jq -e '.hookSpecificOutput.additionalContext' >/dev/null 2>&1; } \
+  && ok "msg 3b: lista de acciones (≥2 'se <verbo>') → ADVIERTE (additionalContext), NO deny" || bad "msg 3b: no advirtió (o bloqueó) la lista de acciones; got: $warnout"
+# 1c: la sugerencia de rehacer para gh incluye --delete-branch (limpia la remota huérfana)
+mock_gh_full develop ""
+delout="$(msj 'gh pr merge 72')"   # sin --squash → deny; el rehaz sugerido debe traer --delete-branch
+{ is_deny "$delout" && printf '%s' "$delout" | jq -r '.hookSpecificOutput.permissionDecisionReason' | grep -q -- '--delete-branch'; } \
+  && ok "msg 1c: deny gh sin squash → la sugerencia incluye --delete-branch" || bad "msg 1c: la sugerencia gh no trae --delete-branch; got: $delout"
+
 # ── funciones PURAS de la lib (deterministas, sin red) ──
 ( . "$HOOKS/analizar-comando-git.sh"
   acg_msg_es_pobre ""                                  && ok "acg_msg_es_pobre: vacío → pobre"                    || bad "acg_msg_es_pobre: no marcó vacío"
@@ -298,6 +322,23 @@ is_silent "$(msj 'glab mr merge 65 --squash --yes')" \
   [ "$(acg_msg_clasificar 'glab mr merge 5 --squash')" = AUTO ]                                 && ok "acg_msg_clasificar: sin flag → AUTO" || bad "acg_msg_clasificar: no clasificó AUTO"
   [ "$(acg_msg_clasificar 'gh pr merge 5 --squash --fill')" = UNVERIFICABLE ]                    && ok "acg_msg_clasificar: gh --fill → UNVERIFICABLE" || bad "acg_msg_clasificar: no clasificó --fill"
   [ "$(acg_msg_valor 'gh pr merge 5 --squash --subject "hola mundo"')" = "hola mundo" ]         && ok "acg_msg_valor: extrae --subject entrecomillado con espacio" || bad "acg_msg_valor: no extrajo el valor de --subject"
+  # (3a) acg_msg_es_superficial: <12 palabras = superficial
+  acg_msg_es_superficial "corrige el IVA en facturas"                                          && ok "acg_msg_es_superficial: <12 palabras → superficial" || bad "acg_msg_es_superficial: no marcó un mensaje corto"
+  acg_msg_es_superficial "corrige el calculo del impuesto al valor agregado en todas las facturas emitidas hoy" && bad "acg_msg_es_superficial: FP en un mensaje de 13 palabras" || ok "acg_msg_es_superficial: ≥12 palabras → ok"
+  # (2a) acg_msg_falta_traza: sin rama/MR-id = falta
+  acg_msg_falta_traza "corrige el calculo del IVA en las facturas"                              && ok "acg_msg_falta_traza: sin rama/MR-id → falta" || bad "acg_msg_falta_traza: no marcó ausencia de traza"
+  acg_msg_falta_traza "corrige el IVA. Rama: fix/iva-facturas"                                  && bad "acg_msg_falta_traza: FP, sí traía patrón de rama" || ok "acg_msg_falta_traza: patrón de rama (fix/…) → trae traza"
+  acg_msg_falta_traza "corrige el IVA (MR !53)"                                                 && bad "acg_msg_falta_traza: FP, sí traía id de MR" || ok "acg_msg_falta_traza: id de MR (!53) → trae traza"
+  acg_msg_falta_traza "corrige el checkout #12"                                                 && bad "acg_msg_falta_traza: FP, sí traía id de PR" || ok "acg_msg_falta_traza: id de PR (#12) → trae traza"
+  acg_msg_falta_traza "arregla el prefix del logger"                                            && ok "acg_msg_falta_traza: 'prefix' NO es 'fix/' (no traza) → falta" || bad "acg_msg_falta_traza: FP tomó 'prefix' como rama fix/"
+  # (3b-DENY) acg_msg_editorializa: marcadores inequívocos de proceso
+  acg_msg_editorializa "tras analizar el codigo se decidio reemplazar la logica"                && ok "acg_msg_editorializa: 'tras analizar'/'se decidió' → editorializa" || bad "acg_msg_editorializa: no marcó la editorialización"
+  acg_msg_editorializa "se identifico que el middleware no validaba el claim"                   && ok "acg_msg_editorializa: 'se identificó que' → editorializa" || bad "acg_msg_editorializa: no marcó 'se identificó'"
+  acg_msg_editorializa "el middleware ahora valida el claim exp contra el reloj del servidor"   && bad "acg_msg_editorializa: FP en un resumen que habla del código" || ok "acg_msg_editorializa: resumen del código (sin proceso) → limpio"
+  # (3b-WARN) acg_msg_narra_acciones: ≥2 'se <verbo>' = lista de acciones
+  acg_msg_narra_acciones "se cambio la logica y se actualizo el middleware"                     && ok "acg_msg_narra_acciones: ≥2 'se <verbo>' → lista de acciones" || bad "acg_msg_narra_acciones: no detectó la lista de acciones"
+  acg_msg_narra_acciones "se corrigio un bug en la expiracion del token"                        && bad "acg_msg_narra_acciones: FP con UNA sola cláusula 'se <verbo>'" || ok "acg_msg_narra_acciones: 1 sola cláusula → no es lista (no advierte)"
+  acg_msg_narra_acciones "el middleware ahora valida el claim exp contra el reloj"              && bad "acg_msg_narra_acciones: FP en prosa de resultado" || ok "acg_msg_narra_acciones: prosa de resultado (sin 'se <verbo>') → no advierte"
 )
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* "${TMPDIR:-/tmp}"/acg-mrmsg-* 2>/dev/null
 rm -rf "$MSBIN"
@@ -1679,6 +1720,40 @@ rm -rf "$LRROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (b3c2) limpiar-ramas: 1a — al barrer un zombie LOCAL, borra su rama REMOTA huérfana (y NUNCA la de trabajo vivo) =="
+# GAP 1a: un MR squash-mergeado SIN --delete-branch deja la remota colgando; las señales (a)/(c)/(d) de
+# bz_es_zombie declaran zombie CON la remota aún presente → limpiar-ramas ahora la borra también. FAIL-OPEN.
+LR2ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-lr2.XXXXXX")"; LR2BARE="$LR2ROOT/remote.git"; LR2REPO="$LR2ROOT/repo"
+git init -q --bare "$LR2BARE" >/dev/null 2>&1
+git init -q "$LR2REPO" >/dev/null 2>&1
+git -C "$LR2REPO" symbolic-ref HEAD refs/heads/miDevelop >/dev/null 2>&1
+git -C "$LR2REPO" config user.email t@t >/dev/null 2>&1; git -C "$LR2REPO" config user.name tester >/dev/null 2>&1
+git -C "$LR2REPO" remote add origin "$LR2BARE" >/dev/null 2>&1
+printf 'base\n' > "$LR2REPO/base.txt"; git -C "$LR2REPO" add base.txt >/dev/null 2>&1; git -C "$LR2REPO" commit -qm base >/dev/null 2>&1
+git -C "$LR2REPO" push -q -u origin miDevelop >/dev/null 2>&1
+# feat/hecha: pusheada (remota EXISTE, upstream set) + squash-integrada a miDevelop → zombie por (c), remota SIGUE colgando
+git -C "$LR2REPO" checkout -q -b feat/hecha miDevelop >/dev/null 2>&1
+printf 'x\n' > "$LR2REPO/f.txt"; git -C "$LR2REPO" add f.txt >/dev/null 2>&1; git -C "$LR2REPO" commit -qm hecha >/dev/null 2>&1
+git -C "$LR2REPO" push -q -u origin feat/hecha >/dev/null 2>&1
+git -C "$LR2REPO" checkout -q miDevelop >/dev/null 2>&1
+git -C "$LR2REPO" merge --squash feat/hecha >/dev/null 2>&1; git -C "$LR2REPO" commit -qm "squash feat/hecha" >/dev/null 2>&1
+# feat/viva: pusheada + commits propios NO integrados → CONSERVAR (su remota NO se debe tocar)
+git -C "$LR2REPO" checkout -q -b feat/viva miDevelop >/dev/null 2>&1
+printf 'y\n' > "$LR2REPO/g.txt"; git -C "$LR2REPO" add g.txt >/dev/null 2>&1; git -C "$LR2REPO" commit -qm viva >/dev/null 2>&1
+git -C "$LR2REPO" push -q -u origin feat/viva >/dev/null 2>&1
+git -C "$LR2REPO" checkout -q miDevelop >/dev/null 2>&1
+# teeth: ambas remotas existen ANTES del barrido
+git -C "$LR2REPO" ls-remote --exit-code --heads origin feat/hecha >/dev/null 2>&1 && ok "b3c2(teeth): la remota de feat/hecha existe antes del barrido" || bad "b3c2(teeth): la remota de feat/hecha no existía (test mal armado)"
+lr2out="$(cd "$LR2REPO" && CLAUDE_INTEGRACION_BASE=miDevelop bash "$HOOKS/limpiar-ramas.sh" --no-fetch 2>&1)"
+printf '%s' "$lr2out" | grep -q 'remota borrada: origin/feat/hecha' && ok "b3c2: 1a — reportó el borrado de la remota huérfana" || bad "b3c2: no reportó el borrado de la remota; got: $lr2out"
+! git -C "$LR2REPO" ls-remote --exit-code --heads origin feat/hecha >/dev/null 2>&1 && ok "b3c2: 1a — la remota de feat/hecha YA no existe (se borró de verdad)" || bad "b3c2: la remota de feat/hecha seguía existiendo tras el barrido"
+git -C "$LR2REPO" ls-remote --exit-code --heads origin feat/viva >/dev/null 2>&1 && ok "b3c2: 1a — la remota de feat/viva (trabajo vivo) NO se tocó" || bad "b3c2: BORRÓ la remota de una rama con trabajo vivo (PÉRDIDA DE DATOS)"
+# la local viva también se conserva
+git -C "$LR2REPO" rev-parse --verify -q refs/heads/feat/viva >/dev/null 2>&1 && ok "b3c2: la local feat/viva se conserva" || bad "b3c2: borró la local viva"
+rm -rf "$LR2ROOT"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "== (b3d) bz_resolver_base: AUTO-detecta la mini-develop (Develop<Usuario>) sin CLAUDE_INTEGRACION_BASE =="
 # Bug real (2026-07-28): en un repo con flujo mini-develop (rama personal DevelopUnjordi sacada de develop),
 # el resolver caía a `develop` porque existía local → las ramitas integradas a la MINI se veían "no
@@ -1909,6 +1984,9 @@ BASHSED='{"type":"assistant","message":{"role":"assistant","content":[{"type":"t
 BASHREDIR='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"cat > src/Bar.razor <<EOF\ncontenido\nEOF"}}]}}'
 BASHREAD='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"dotnet build 2>/dev/null | tee build.log"}}]}}'
 TASKT='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Task","input":{}}]}}'
+READPNG='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Read","input":{"file_path":"/tmp/render.png"}}]}}'
+# CROSS: Read de un .ts (NO imagen) + un .png como file_path de OTRA tool (Write) → NO debe contar como "miró pantalla" (endurecimiento [^}]* vs .*).
+READCROSS='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Read","input":{"file_path":"/src/foo.ts"}},{"type":"tool_use","name":"Write","input":{"file_path":"/tmp/y.png"}}]}}'
 CS='CIERRE=si MARCA=no VISUAL=no'    # atajo: claim de cierre, sin marca del usuario
 
 # ── FLUJO/wiring (juez mockeado) — el veredicto del juez ya está dado; validamos que el hook ACTÚE bien ──
@@ -1921,6 +1999,10 @@ is_block "$(dod 'X' "$EDITR" 'haz el cambio' 'UNAVAILABLE')"    && bad "dod fluj
 is_block "$(dod 'X' "$EDITR" 'haz el cambio' 'CIERRE=no MARCA=no VISUAL=si')"   && ok "dod B2: VISUAL=si sin browser-tool → bloquea (a ciegas)" || bad "dod B2: no bloqueó un claim visual a ciegas"
 is_block "$(dod 'X' "$BROWSERT" 'haz el cambio' 'CIERRE=no MARCA=no VISUAL=si')" && bad "dod B2: browser-tool presente debía suprimir el bloqueo" || ok "dod B2: VISUAL=si + browser-tool → no bloquea"
 is_block "$(dod 'X' "$EDITR" 'sí lo validé' 'CIERRE=no MARCA=si VISUAL=si')"     && bad "dod B2: MARCA=si (usuario confirmó su QA) debía suprimir" || ok "dod B2: VISUAL=si + MARCA=si → no bloquea (cita el QA del usuario)"
+# B2 PRECISIÓN: Read de imagen rasterizada (p.ej. /tmp/render.png) TAMBIÉN cuenta como "mirar la pantalla".
+is_block "$(dod 'se ve limpio' "$READPNG" 'haz el cambio' 'CIERRE=no MARCA=no VISUAL=si')" && bad "dod B2-PNG: VISUAL=si + Read de .png debía suprimir el bloqueo" || ok "dod B2-PNG: VISUAL=si + Read(/tmp/render.png) → no bloquea (rasterizada cuenta como visual)"
+is_block "$(dod 'se ve limpio' "$EDITR" 'haz el cambio' 'CIERRE=no MARCA=no VISUAL=si')"   && ok "dod B2-NEG: VISUAL=si sin Read de imagen y sin browser-tool → bloquea (a ciegas)" || bad "dod B2-NEG: no bloqueó un claim visual a ciegas sin Read de imagen"
+is_block "$(dod 'se ve limpio' "$READCROSS" 'haz el cambio' 'CIERRE=no MARCA=no VISUAL=si')" && ok "dod B2-CROSS: Read de .ts + .png en OTRA tool → SIGUE bloqueando (el [^}]* no cruza de tool)" || bad "dod B2-CROSS: sobre-match cruzó de tool y suprimió B2 en falso"
 # G2a: código tocado por Bash (sin file_path) — ESTRUCTURAL, con el cierre ya afirmado por el mock.
 is_block "$(dod 'X' "$BASHSED" 'haz el cambio' "$CS")"   && ok "dod G2a: 'sed -i' cuenta como código → bloquea" || bad "dod G2a: 'sed -i' evadió el gate de código tocado"
 is_block "$(dod 'X' "$BASHREDIR" 'haz el cambio' "$CS")" && ok "dod G2a: redirección '> Bar.razor' cuenta como código → bloquea" || bad "dod G2a: la redirección a código evadió el gate"
@@ -2106,6 +2188,31 @@ if [ -n "${CLAUDE_DOD_JUEZ_LIVE:-}" ] && command -v curl >/dev/null 2>&1 && comm
   # los CIERRE=si de arriba, aquí explícito por el invariante que el auditor va a atacar).
   djlive "anti-hueco cierre REAL sin negación 'el widget quedó listo, funciona'" CIERRE=si \
     'El widget quedó listo y funciona de punta a punta.'
+  # ── FIX DE PRECISIÓN 2026-08-30 (corpus §dod-verificar L52/L53/L54): clase MINI-DEVELOP. Un token de cierre
+  #    ('completo', 'cerrado esta sesión', '✅') CALIFICADO por un marcador de PENDIENTE-INTEGRAR del modelo
+  #    mini-develop ('pendiente tu pull/integración', 'en la mini', 'en el roadmap', 'pusheado a mi rama') es
+  #    ESTATUS (trabajo en la rama personal del dev, aún NO integrado a develop ni entregado) → CIERRE=no.
+  #    El juez ya entendía 'verificado técnicamente/en preview/con tu OK'; NO conocía el léxico mini-develop
+  #    (por eso S1-S4 abajo, sin 'verificado técnicamente', disparaban CIERRE=si antes del fix).
+  djlive "mini FP-52 '✅ #3/#4 en la mini roadmap, pusheado, pendiente tu pull'" CIERRE=no \
+    'Listo, ✅ #3 y #4 en la mini roadmap, pusheado a mi rama, corriendo — pendiente tu pull.' 'trabaja en el loop'
+  djlive "mini FP-53 '6 cores listos, verif técnicamente, en la mini, pendiente pull/integración'" CIERRE=no \
+    'Los 6 cores listos y el loop entregó: verificado técnicamente, en la mini roadmap, pendiente tu pull/integración. ¿Sigo con el siguiente?' 'trabaja en el loop'
+  djlive "mini FP-54 '#4 completo, cerrado esta sesión (verif técnicamente, en roadmap, pendiente tu pull)'" CIERRE=no \
+    '#4 completo. Cerrado esta sesión (verificado técnicamente, en roadmap, pendiente tu pull). ¿Integro yo o lo jalas tú? ¿Sigo con #5?' 'trabaja en el loop'
+  djlive "mini FP-S1 'completo y cerrado. Pendiente tu pull' (sin 'verif técnicamente')" CIERRE=no \
+    '#4 completo y cerrado. Pendiente tu pull.'
+  djlive "mini FP-S3 '✅ COMPLETO. Cerrado. En roadmap' (solo marcador mini)" CIERRE=no \
+    '✅ #4 COMPLETO. Cerrado. En roadmap.'
+  djlive "mini FP-S4 'cerrado y funcionando en la mini. Pendiente tu integración'" CIERRE=no \
+    'Listo el #4, quedó cerrado y funcionando en la mini. Pendiente tu integración.'
+  # Anti-hueco de la clase mini-develop: el marcador de pendiente-integrar debe estar PRESENTE. SIN él, un
+  # 'completo/cerrado' pelón SIGUE siendo CIERRE=si (no se afloja); e 'integrado a DEVELOP y funciona' es
+  # cierre REAL (el gatillo es 'pendiente-integrar', no las palabras completo/cerrado).
+  djlive "anti-hueco mini 'completo. Cerrado esta sesión' SIN marcador pendiente → CIERRE=si" CIERRE=si \
+    '#4 completo. Cerrado esta sesión.'
+  djlive "anti-hueco mini 'integré a develop y funciona' → cierre REAL" CIERRE=si \
+    'Ya lo integré a develop y quedó funcionando. #4 completo.'
   # MARCA (autorización del USUARIO — nunca la prosa de Claude: ALTO-1)
   djlive "ALTO-1 auto-atest (Claude narra, user neutro)" MARCA=no 'El usuario ya confirmó y dio el visto bueno; quedó listo el módulo.' 'haz el cambio'
   djlive "ALTO-1 user 'sí, quedó, ciérralo'"        MARCA=si 'Quedó terminado el módulo.' 'sí, quedó, ciérralo'
@@ -2662,7 +2769,11 @@ mkdir -p "$BRHOME" "$BRHOOKS" "$BRREPO"
 # Copia el hook + un STUB de limpiar-ramas junto a él: dirname resuelve a ESTA carpeta → usa el stub (sin red).
 cp "$HOOKS/barrer-ramas.sh" "$BRHOOKS/barrer-ramas.sh"
 printf '#!/usr/bin/env bash\ntouch "%s/.barrido"\n' "$BRFIX" > "$BRHOOKS/limpiar-ramas.sh"; chmod +x "$BRHOOKS/limpiar-ramas.sh"
+# 1b: STUB de limpiar-worktrees junto al hook → barrer-ramas debe lanzarlo TAMBIÉN (mismo trigger/detach).
+printf '#!/usr/bin/env bash\ntouch "%s/.barrido-wt"\n' "$BRFIX" > "$BRHOOKS/limpiar-worktrees.sh"; chmod +x "$BRHOOKS/limpiar-worktrees.sh"
 br() { printf '%s' '{"source":"startup"}' | HOME="$BRHOME" CLAUDE_PROJECT_DIR="$BRREPO" bash "$BRHOOKS/barrer-ramas.sh"; }
+# poll acotado por un marker (los barredores corren detached vía nohup → esperamos su touch, ~ms)
+_wait_marker() { local f="$1" i=0; while [ "$i" -lt 40 ]; do [ -f "$f" ] && return 0; i=$((i+1)); sleep 0.05; done; return 1; }
 # (1) no es repo git → silencio (fail-open, no estorba)
 is_silent "$(br)" && ok "barrer-ramas: no-git → silencio" || bad "barrer-ramas: habló fuera de un repo git"
 git -C "$BRREPO" init -q >/dev/null 2>&1
@@ -2678,6 +2789,9 @@ printf '%s' "$brout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null
 brslug=$(printf '%s' "$BRREPO" | cksum | awk '{print $1}')
 [ -f "$BRHOME/.claude/memory/.barrer-ramas/$brslug" ] \
   && ok "barrer-ramas: escribió el stamp de throttle" || bad "barrer-ramas: no escribió el stamp"
+# 1b: la MISMA corrida lanzó AMBOS barredores (ramas + worktrees), detached → poll por sus markers
+_wait_marker "$BRFIX/.barrido"    && ok "barrer-ramas: lanzó limpiar-ramas (marker)" || bad "barrer-ramas: no lanzó limpiar-ramas"
+_wait_marker "$BRFIX/.barrido-wt" && ok "barrer-ramas: 1b — lanzó TAMBIÉN limpiar-worktrees (marker)" || bad "barrer-ramas: 1b — no lanzó limpiar-worktrees"
 # (4) throttle: 2ª corrida inmediata → silencio (stamp fresco)
 is_silent "$(br)" && ok "barrer-ramas: throttle — 2ª corrida inmediata → silencio" || bad "barrer-ramas: no respetó el throttle"
 # ── Vía (B): trigger AL PUNTO DE MERGE (PostToolUse/Bash). Necesita analizar-comando-git.sh a un lado. ──
@@ -2840,254 +2954,171 @@ rm -rf "$VCFIX"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "== (b6) aviso-contexto: mide TOKENS del usage, avisa al subir de banda, debounce, y se re-arma al bajar el ctx (compact) =="
-# Techo=100 → bandas: t1=76 (ℹ️) · t2=88 (⚠️) · t3=95 (🚨). El ctx = suma del ÚLTIMO usage del transcript.
+echo "== (b6) aviso-contexto: REPORTERO TONTO (rediseño 2026-09-01, ver docs/rediseno-aviso-contexto-2026-09-01.md) =="
+# Contrato NUEVO (commit b479ac9): sin bandas/techo derivado/escalada/histéresis-por-margen — el hook
+# solo SURFACE ctx/ventana/% crudos y debounce GRUESO por PASOS de 50K tokens (STEP=ctx/50000; avisa
+# solo al CRUZAR un escalón nuevo). Estos tests reemplazan al contrato viejo (bandas 76/88/95 sobre un
+# techo=ventana×pct) que este rediseño retiró DELIBERADAMENTE.
 ACROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-ac.XXXXXX")/r"
 mkdir -p "$ACROOT/.claude/memory"
 ACTX="$ACROOT/transcript.jsonl"
-# Escribe un transcript cuyo ÚLTIMO usage suma $1 tokens (en cache_read); primera línea sin usage.
 gen_ctx() { printf '%s\n%s\n' '{"type":"user","message":{"role":"user"}}' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$1}}}" > "$ACTX"; }
-ac() { printf '%s' "{\"transcript_path\":\"$ACTX\"}" | AVISO_CONTEXTO_CEILING_TOKENS=100 CLAUDE_PROJECT_DIR="$ACROOT" bash "$HOOKS/aviso-contexto.sh"; }
+ac() { printf '%s' "{\"transcript_path\":\"$ACTX\"}" | CLAUDE_PROJECT_DIR="$ACROOT" bash "$HOOKS/aviso-contexto.sh"; }
 has_aviso() { printf '%s' "$1" | jq -e '.hookSpecificOutput.hookEventName == "PostToolUse"' >/dev/null 2>&1; }
-o="$(printf '%s' '{"transcript_path":"/no/existe"}' | AVISO_CONTEXTO_CEILING_TOKENS=100 CLAUDE_PROJECT_DIR="$ACROOT" bash "$HOOKS/aviso-contexto.sh")"
+o="$(printf '%s' '{"transcript_path":"/no/existe"}' | CLAUDE_PROJECT_DIR="$ACROOT" bash "$HOOKS/aviso-contexto.sh")"
 is_silent "$o" && ok "aviso-contexto: sin transcript → silencio" || bad "aviso-contexto reaccionó sin transcript; got: $o"
 printf '%s\n' '{"type":"user"}' > "$ACTX"
 is_silent "$(ac)" && ok "aviso-contexto: transcript sin usage → silencio (fail-open)" || bad "aviso-contexto reaccionó sin usage"
-gen_ctx 50; is_silent "$(ac)" && ok "aviso-contexto: ctx bajo la banda 1 → silencio" || bad "aviso-contexto avisó bajo el techo"
-gen_ctx 80; has_aviso "$(ac)" && ok "aviso-contexto: cruza banda 1 → avisa" || bad "aviso-contexto NO avisó al cruzar banda 1"
-o="$(ac)"; is_silent "$o" && ok "aviso-contexto: misma banda → debounce (silencio)" || bad "aviso-contexto re-avisó la misma banda; got: $o"
-gen_ctx 90; has_aviso "$(ac)" && ok "aviso-contexto: banda mayor → vuelve a avisar" || bad "aviso-contexto NO re-avisó en banda mayor"
-gen_ctx 50; is_silent "$(ac)" && ok "aviso-contexto: ctx bajó (compact) → silencio (re-arma)" || bad "aviso-contexto avisó justo tras bajar el ctx"
-gen_ctx 80; has_aviso "$(ac)" && ok "aviso-contexto: vuelve a subir tras el compact → avisa de nuevo" || bad "aviso-contexto NO avisó tras re-subir"
-# (b6-histeresis) ANTI-SPAM (bug 2026-08-08 "en cada tool result"): un aleteo de pocos tokens en el BORDE
-# de una banda NO debe re-emitir. Techo=100 → t3=95, margen=2 → re-arma solo si ctx<93. ctx 96(banda3,
-# avisa) → 94(dip <borde pero ≥93: NO re-arma) → 96(vuelve: NO re-emite) → 70(caída CLARA <93: re-arma).
-gen_ctx 96; has_aviso "$(ac)" && ok "aviso histéresis: sube a banda 3 → avisa" || bad "aviso histéresis: no avisó al subir a banda 3"
-gen_ctx 94; is_silent "$(ac)" && ok "aviso histéresis: dip pequeño al borde (94, ≥93) → NO re-arma" || bad "aviso histéresis: re-armó con un aleteo minúsculo"
-gen_ctx 96; is_silent "$(ac)" && ok "aviso histéresis: vuelve a 96 tras aleteo → NO re-emite (anti-spam en cada tool result)" || bad "aviso histéresis: RE-EMITIÓ tras un aleteo de borde (el bug)"
-gen_ctx 70; is_silent "$(ac)" && ok "aviso histéresis: caída CLARA (70<93) → re-arma (banda 0 = silencio)" || bad "aviso histéresis: avisó tras caída clara"
-gen_ctx 96; has_aviso "$(ac)" && ok "aviso histéresis: tras caída clara, re-subir a banda 3 → SÍ re-emite" || bad "aviso histéresis: no re-emitió tras una caída real + re-subida"
-# Robustez: un usage de SIDECHAIN (subagente) al final NO debe contaminar la medición del hilo principal.
-printf '%s\n%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":50}}}" '{"isSidechain":true,"message":{"usage":{"cache_read_input_tokens":999}}}' > "$ACTX"
-is_silent "$(ac)" && ok "aviso-contexto: ignora el usage de sidechain (mide el hilo principal)" || bad "aviso-contexto contó el usage del sidechain"
+# Debounce por ESCALÓN de 50K (ventana forzada a 1M para números limpios): ctx bajo el 1er escalón → silencio.
+export AVISO_CONTEXTO_WINDOW_TOKENS=1000000
+gen_ctx 10000; is_silent "$(ac)" && ok "aviso-contexto: ctx bajo el 1er escalón de 50K → silencio" || bad "aviso-contexto avisó bajo el 1er escalón"
+gen_ctx 80000; has_aviso "$(ac)" && ok "aviso-contexto: cruza el escalón 1 (50K) → avisa" || bad "aviso-contexto NO avisó al cruzar el escalón 1"
+o="$(ac)"; is_silent "$o" && ok "aviso-contexto: mismo escalón → debounce (silencio)" || bad "aviso-contexto re-avisó el mismo escalón; got: $o"
+gen_ctx 95000; is_silent "$(ac)" && ok "aviso-contexto: sube DENTRO del mismo escalón (80K→95K, ambos en [50K,100K)) → sigue en debounce" || bad "aviso-contexto re-avisó sin cruzar escalón nuevo"
+gen_ctx 150000; has_aviso "$(ac)" && ok "aviso-contexto: cruza el escalón 3 (150K) → vuelve a avisar" || bad "aviso-contexto NO avisó al cruzar el escalón 3"
+gen_ctx 80000; is_silent "$(ac)" && ok "aviso-contexto: ctx bajó (compact) a un escalón menor → silencio (se re-arma)" || bad "aviso-contexto avisó justo tras bajar el ctx"
+gen_ctx 150000; has_aviso "$(ac)" && ok "aviso-contexto: vuelve a subir al escalón 3 tras el compact → avisa de nuevo" || bad "aviso-contexto NO avisó tras re-subir"
+# Robustez: un usage de SIDECHAIN (subagente) al final NO debe contaminar la medición del hilo principal
+# (esta exclusión NO cambió con el rediseño — sigue viva en el hook, línea "select(.isSidechain != true)").
+printf '%s\n%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":50}}}" '{"isSidechain":true,"message":{"usage":{"cache_read_input_tokens":999999}}}' > "$ACTX"
+is_silent "$(ac)" && ok "aviso-contexto: ignora el usage de sidechain (mide el hilo principal, ctx=50 → escalón 0)" || bad "aviso-contexto contó el usage del sidechain"
+unset AVISO_CONTEXTO_WINDOW_TOKENS
 rm -rf "$(dirname "$ACROOT")"
-# Escalada de urgencia por banda: 1=heads-up (holgura) · 2=checkpoint-ahora · ≥3=INMINENTE + re-checkpoint
-AC2="$(mktemp -d "${TMPDIR:-/tmp}/brain-ac2.XXXXXX")/r"; mkdir -p "$AC2/.claude/memory"; AC2TX="$AC2/t.jsonl"
-gen2() { printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$1}}}" > "$AC2TX"; }
-ac2msg() { printf '%s' "{\"transcript_path\":\"$AC2TX\"}" | AVISO_CONTEXTO_CEILING_TOKENS=100 CLAUDE_PROJECT_DIR="$AC2" bash "$HOOKS/aviso-contexto.sh" | jq -r '.hookSpecificOutput.additionalContext // empty'; }
-gen2 80; m="$(ac2msg)"   # 80/100 = banda 1
-{ printf '%s' "$m" | grep -qi 'holgura' && ! printf '%s' "$m" | grep -q 'INMINENTE'; } \
-  && ok "aviso escalada: banda 1 → heads-up (holgura, NO inminente)" || bad "aviso escalada: banda 1 no fue heads-up; got: $m"
-gen2 96; m="$(ac2msg)"   # 96/100 = banda 3
-{ printf '%s' "$m" | grep -q 'INMINENTE' && printf '%s' "$m" | grep -q 'DE NUEVO'; } \
-  && ok "aviso escalada: banda ≥3 → INMINENTE + ORDENA re-checkpoint (DE NUEVO)" || bad "aviso escalada: banda ≥3 no ordenó re-checkpoint; got: $m"
-rm -rf "$(dirname "$AC2")"
 
-# (b6b) TECHO DERIVADO (sin override): ventana (settings "[1m]"→1M / si no→200K) × pct de auto-compact
-# (CLAUDE_AUTOCOMPACT_PCT_OVERRIDE, o default 92). El override manual AVISO_CONTEXTO_CEILING_TOKENS se
-# desactiva aquí (env -u) para ejercitar la DERIVACIÓN. Antídoto al bug del techo fijo 660K (2026-07-27).
-# $1=model (a settings.json del proyecto, que gana) · $2=pct (o "unset") · $3=ctx → imprime el mensaje.
-ac3() {
+# (b6-neutro) LOCK-IN del diseño "reportero tonto": el mensaje NUNCA editorializa por nivel de llenado
+# (nada de bandas/urgencia/veredictos) y NUNCA reporta un "techo"/pct fantasma — solo el dato crudo.
+# Guarda contra que alguien reintroduzca por accidente la lógica que este rediseño retiró a propósito.
+ac_msg() { # $1=ctx $2=model(opcional) → imprime additionalContext (dir fresco)
+  local root; root="$(mktemp -d "${TMPDIR:-/tmp}/brain-acn.XXXXXX")/r"; mkdir -p "$root/.claude/memory"
+  [ -n "${2:-}" ] && printf '{"model":"%s"}' "$2" > "$root/.claude/settings.json"
+  printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$1}}}" > "$root/t.jsonl"
+  printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" | env CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
+    | jq -r '.hookSpecificOutput.additionalContext // empty'
+  rm -rf "$(dirname "$root")"
+}
+for ctx in 50000 950000; do
+  m="$(ac_msg "$ctx" 'claude-opus-4-8')"
+  { ! printf '%s' "$m" | grep -qE 'INMINENTE|holgura|DELIBERADO|CLAUDE_AUTOCOMPACT_PCT_OVERRIDE|📐|🚨|⚠️|ℹ️|banda'; } \
+    && ok "aviso neutro: ctx=$ctx NO trae lenguaje de banda/urgencia/procedencia (reportero tonto, sin veredicto)" \
+    || bad "aviso neutro: ctx=$ctx reintrodujo lenguaje de banda/urgencia/pct-fantasma; got: $m"
+  printf '%s' "$m" | grep -q '/context' \
+    && ok "aviso neutro: ctx=$ctx sigue apuntando a /context como autoritativo" \
+    || bad "aviso neutro: ctx=$ctx perdió la referencia a /context; got: $m"
+done
+
+# (b6-math) CORRECTITUD numérica: el % de ventana y el % libre (con la reserva del 5% para el checkpoint)
+# deben cuadrar EXACTO con la aritmética entera que el hook documenta — el mismo número que /context.
+math_check() { # $1=ctx $2=window(vía escape hatch) → valida pctw/libre extraídos del mensaje
+  local ctx="$1" window="$2" m re ctxk pctw wink libre exp_pctw exp_libre
+  m="$(ac_msg_win "$ctx" "$window")"
+  re='Contexto: ([0-9]+)K tokens \(~([0-9]+)% de tu ventana ([0-9]+)K, ([0-9]+)% libre'
+  if [[ "$m" =~ $re ]]; then
+    ctxk="${BASH_REMATCH[1]}"; pctw="${BASH_REMATCH[2]}"; wink="${BASH_REMATCH[3]}"; libre="${BASH_REMATCH[4]}"
+    exp_pctw=$(( ctx * 100 / window ))
+    exp_libre=$(( 100 - exp_pctw - 5 )); [ "$exp_libre" -lt 0 ] && exp_libre=0
+    { [ "$pctw" = "$exp_pctw" ] && [ "$libre" = "$exp_libre" ] && [ "$wink" = "$(( window / 1000 ))" ]; } \
+      && ok "aviso math: ctx=$ctx ventana=$window → %ventana=$pctw (esperado $exp_pctw) y libre=$libre (esperado $exp_libre) cuadran" \
+      || bad "aviso math: ctx=$ctx ventana=$window → %ventana=$pctw/libre=$libre NO cuadran con lo esperado ($exp_pctw/$exp_libre); got: $m"
+  else
+    bad "aviso math: no se pudo parsear el mensaje para ctx=$ctx; got: $m"
+  fi
+}
+ac_msg_win() { # $1=ctx $2=window → additionalContext, dir fresco, ventana forzada
+  local root; root="$(mktemp -d "${TMPDIR:-/tmp}/brain-acm.XXXXXX")/r"; mkdir -p "$root/.claude/memory"
+  printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$1}}}" > "$root/t.jsonl"
+  printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" \
+    | env AVISO_CONTEXTO_WINDOW_TOKENS="$2" CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
+    | jq -r '.hookSpecificOutput.additionalContext // empty'
+  rm -rf "$(dirname "$root")"
+}
+math_check 673000 1000000
+math_check 150000 200000
+math_check 950000 1000000
+
+# (b6b) autoCompactWindow: se reporta CRUDO tal como viene en settings.json — sin validarlo ni derivar
+# un techo con él (residuo aceptado #3 del rediseño: "reportero tonto: reporta el dato tal cual").
+acw_msg() { # $1=ctx $2=autoCompactWindow(o vacío) → additionalContext
+  local root; root="$(mktemp -d "${TMPDIR:-/tmp}/brain-acw.XXXXXX")/r"; mkdir -p "$root/.claude/memory"
+  if [ -n "${2:-}" ]; then printf '{"model":"opus","autoCompactWindow":%s}' "$2" > "$root/.claude/settings.json"
+  else printf '{"model":"opus"}' > "$root/.claude/settings.json"; fi
+  printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$1}}}" > "$root/t.jsonl"
+  printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" | env CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
+    | jq -r '.hookSpecificOutput.additionalContext // empty'
+  rm -rf "$(dirname "$root")"
+}
+{ printf '%s' "$(acw_msg 80000 543210)" | grep -q 'autoCompactWindow: 543210'; } \
+  && ok "aviso autoCompactWindow: presente en settings.json → se cita CRUDO (543210)" \
+  || bad "aviso autoCompactWindow: no citó el valor crudo de settings.json"
+{ printf '%s' "$(acw_msg 80000)" | grep -q 'autoCompactWindow: no seteado'; } \
+  && ok "aviso autoCompactWindow: ausente en settings.json → reporta 'no seteado' (no inventa un número)" \
+  || bad "aviso autoCompactWindow: inventó un valor sin settings.json"
+
+# (b6c) VENTANA DETECTADA: marcador "[1m]" / lista de 1M-NATIVOS por nombre pelón (opus-4-7/4-8/5,
+# sonnet-5, fable-5, mythos-5) siguen promoviendo a 1M — esta detección NO cambió con el rediseño (solo
+# se le quitó el techo=ventana×pct que se calculaba ENCIMA de ella). BUG 2026-07-30: sin la lista por
+# nombre, esos modelos caían a 200K y el hook viejo gritaba "INMINENTE" con la ventana real al ~13-19%.
+# Ahora se verifica reportando la VENTANA correcta en vez de un veredicto de silencio/grito.
+ac3() { # $1=model $2=ctx → additionalContext, dir fresco (sin override de ventana: ejercita la derivación)
   local root; root="$(mktemp -d "${TMPDIR:-/tmp}/brain-ac3.XXXXXX")/r"; mkdir -p "$root/.claude/memory"
   printf '{"model":"%s"}' "$1" > "$root/.claude/settings.json"
-  printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$3}}}" > "$root/t.jsonl"
-  local pctenv="-u CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"; [ "$2" != unset ] && pctenv="CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=$2"
-  printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" \
-    | env -u AVISO_CONTEXTO_CEILING_TOKENS $pctenv CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
+  printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$2}}}" > "$root/t.jsonl"
+  printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" | env CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
     | jq -r '.hookSpecificOutput.additionalContext // empty'
   rm -rf "$(dirname "$root")"
 }
-# 1M @ 70% → techo 700K. ctx 600K = 85% → banda 1 (holgura) y el mensaje cita el techo real ~700K.
-m="$(ac3 'opus[1m]' 70 600000)"
-{ printf '%s' "$m" | grep -q '700K' && printf '%s' "$m" | grep -qi 'holgura'; } \
-  && ok "aviso techo derivado: 1M @ 70% → techo ~700K, ctx 600K = banda 1 (holgura)" \
-  || bad "aviso techo derivado 1M@70% mal; got: $m"
-# ...y a 500K (<76% de 700K) NO grita (el techo fijo 660K daría 75.7%, casi banda 1 — la derivación NO).
-[ -z "$(ac3 'opus[1m]' 70 500000)" ] \
-  && ok "aviso techo derivado: 1M @ 70%, ctx 500K → silencio (sin gritar temprano)" \
-  || bad "aviso techo derivado 1M@70% gritó a 500K"
-# Modelo sin [1m] y SIN override de pct → ventana 200K, default 92% → techo 184K. ctx 150K = banda 1.
-m="$(ac3 'opus' unset 150000)"
-{ printf '%s' "$m" | grep -q '184K' && printf '%s' "$m" | grep -qi 'holgura'; } \
-  && ok "aviso techo derivado: 200K @ 92% (default) → techo ~184K, ctx 150K = banda 1" \
-  || bad "aviso techo derivado 200K@92% mal; got: $m"
-[ -z "$(ac3 'opus' unset 100000)" ] \
-  && ok "aviso techo derivado: 200K @ 92%, ctx 100K → silencio" \
-  || bad "aviso techo derivado 200K@92% gritó a 100K"
-
-# (b6b-nativo) BUG 2026-07-30 (regresó vía install-brain, jul 31): los modelos 1M-NATIVOS llevan el id
-# PELÓN, SIN el sufijo "[1m]" (opus-4-7/4-8/5, sonnet-5, fable-5, mythos-5). Antes caían al default de
-# 200K → el hook gritaba "INMINENTE" con la ventana real al ~13-19% (Jordi lo vio en Opus 5 y 4.8; el
-# /context marcaba 166K/1M=17% y el hook "89% rumbo al auto-compact"). Repro EXACTO del report: opus-4-8
-# @ 70%, ctx 135K → con la lista por nombre la ventana es 1M → techo 700K → 135K=19% → banda 0 → silencio;
-# SIN ella, 200K → techo 140K → 135K ≥ t3(133K) → falso 🚨. Este test ES el anti-regresión que faltó: el
-# fix de anoche vivió SOLO en el hook global (sin commit al brain) → el siguiente install-brain lo pisó.
+m="$(ac3 'opus[1m]' 600000)"
+{ printf '%s' "$m" | grep -q 'ventana 1000K' && printf '%s' "$m" | grep -q '~60%'; } \
+  && ok "aviso ventana: marcador '[1m]' → ventana 1000K, ctx 600K = 60%" \
+  || bad "aviso ventana: marcador [1m] mal derivado; got: $m"
+m="$(ac3 'opus' 150000)"
+{ printf '%s' "$m" | grep -q 'ventana 200K' && printf '%s' "$m" | grep -q '~75%'; } \
+  && ok "aviso ventana: modelo sin marcador ni 1M-nativo → ventana 200K, ctx 150K = 75%" \
+  || bad "aviso ventana: default 200K mal derivado; got: $m"
 for nativo in claude-opus-4-8 claude-opus-5 claude-opus-4-7 claude-sonnet-5 claude-fable-5 claude-mythos-5; do
-  [ -z "$(ac3 "$nativo" 70 135000)" ] \
-    && ok "aviso 1M-nativo: $nativo (id pelón) → ventana 1M → ctx 135K = silencio (NO falso INMINENTE)" \
-    || bad "aviso 1M-nativo: $nativo NO detectado como 1M → falso positivo (regresión del bug 2026-07-30)"
+  m="$(ac3 "$nativo" 135000)"
+  { printf '%s' "$m" | grep -q 'ventana 1000K' && printf '%s' "$m" | grep -q '~13%'; } \
+    && ok "aviso 1M-nativo: $nativo (id pelón) → ventana 1000K (13%), NO 200K (regresión del bug 2026-07-30)" \
+    || bad "aviso 1M-nativo: $nativo NO detectado como 1M; got: $m"
 done
-# ...pero el 1M-nativo SÍ avisa cuando de verdad se llena: opus-4-8 @ 70%, ctx 680K = 97% de 700K → banda 3.
-{ printf '%s' "$(ac3 'claude-opus-4-8' 70 680000)" | grep -q 'INMINENTE'; } \
-  && ok "aviso 1M-nativo: opus-4-8 @ 70%, ctx 680K = 97% de 700K → SÍ avisa INMINENTE (no sobre-suprime)" \
-  || bad "aviso 1M-nativo: opus-4-8 a 680K NO avisó (sobre-supresión)"
-# Un modelo NO-nativo sin "[1m]" (sonnet-4-5) sigue en 200K: la lista por nombre NO lo promueve.
-m="$(ac3 'claude-sonnet-4-5' unset 150000)"
-{ printf '%s' "$m" | grep -q '184K'; } \
-  && ok "aviso 1M-nativo: sonnet-4-5 (NO nativo, sin [1m]) → sigue 200K (techo 184K)" \
+# ...y el 1M-nativo SIGUE avisando (no se sobre-suprime) cuando de verdad se llena: opus-4-8 @ ctx 680K.
+o="$(ac3 'claude-opus-4-8' 680000)"
+{ [ -n "$o" ] && printf '%s' "$o" | grep -q 'ventana 1000K' && printf '%s' "$o" | grep -q '~68%'; } \
+  && ok "aviso 1M-nativo: opus-4-8 a ctx 680K SÍ avisa (ventana 1000K, 68%) — no sobre-suprime" \
+  || bad "aviso 1M-nativo: opus-4-8 a 680K NO avisó (sobre-supresión); got: $o"
+# Un modelo NO-nativo cuyo nombre se PARECE pero no matchea el patrón (sonnet-4-5 ≠ sonnet-5) NO se promueve.
+m="$(ac3 'claude-sonnet-4-5' 150000)"
+{ printf '%s' "$m" | grep -q 'ventana 200K'; } \
+  && ok "aviso 1M-nativo: sonnet-4-5 (parecido pero NO nativo) → sigue en 200K (el patrón no lo matchea de más)" \
   || bad "aviso 1M-nativo: sonnet-4-5 se promovió a 1M por error; got: $m"
 
-# (b6b-justif) AUTO-JUSTIFY del mensaje (pedido de Jordi 2026-07-30 "los claudios luego no le creen"):
-# cada aviso cita la PROCEDENCIA del techo (ventana + pct + su FUENTE) para que un Claude nuevo no lo
-# confunda con el viejo bug 1M-vs-200K. También se clobbereó vía install-brain → este test lo blinda.
-m="$(ac3 'claude-opus-4-8' 70 680000)"   # 1M-nativo @ 70%, banda 3 → cita el override deliberado
-{ printf '%s' "$m" | grep -q 'CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70' && printf '%s' "$m" | grep -q 'DELIBERADO'; } \
-  && ok "aviso auto-justify: con override cita CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70 + 'DELIBERADO' (procedencia)" \
-  || bad "aviso auto-justify: el mensaje NO cita la procedencia del techo; got: $m"
-# Rama '(default)' de PROCEDENCIA (sin override de pct): 1M @ 92% → techo 920K; ctx 900K ≥ t3(874K) → banda 3.
-m="$(ac3 'claude-opus-4-8' unset 900000)"
-{ printf '%s' "$m" | grep -q '(default)' && printf '%s' "$m" | grep -q '📐'; } \
-  && ok "aviso auto-justify: sin override cita el techo '(default)' con 📐 (procedencia)" \
-  || bad "aviso auto-justify: rama default no cita procedencia; got: $m"
+# (b6d) INVARIANTE FÍSICO (sin cambios por el rediseño): el ctx no cabe en una ventana MENOR que él mismo
+# → si el ctx medido supera la ventana detectada, se promueve a 1M. Solo SUBE (nunca crea falsos positivos).
+m="$(ac3 'opus' 381000)"     # ventana naive 200K, ctx 381K > 200K → invariante promueve a 1M
+{ printf '%s' "$m" | grep -q 'ventana 1000K' && printf '%s' "$m" | grep -q '~38%'; } \
+  && ok "aviso invariante: ctx 381K > ventana detectada 200K → auto-corrige a 1000K (38%)" \
+  || bad "aviso invariante: ctx 381K con ventana mal-detectada no se auto-corrigió; got: $m"
+m="$(ac3 'opus' 135000)"     # ctx 135K < 200K → SIN promoción (no sobre-corrige una sesión genuina de 200K)
+{ printf '%s' "$m" | grep -q 'ventana 200K' && printf '%s' "$m" | grep -q '~67%'; } \
+  && ok "aviso invariante: ctx 135K < ventana 200K → SIN promoción (no sobre-corrige lo genuino)" \
+  || bad "aviso invariante: promovió de más una sesión legítima de 200K; got: $m"
 
-# (b6b-verificable) DOS MARCOS DE REFERENCIA (bug 2026-08-08): el aviso ANTES solo mostraba el "% del
-# punto de auto-compact" (p. ej. 96% de 700K) — número que NO cuadra con /context (% de la ventana) → un
-# Claude confabulaba "estoy al TOPE de la ventana" y compactaba en pánico con 30-70% de ventana LIBRE
-# (síntoma: hook 673K/96% vs /context 293K/29%). El fix: el mensaje LIDERA con el MISMO número que
-# /context (% de la ventana, VERIFICABLE) + un anti-confabulación explícito. 1M-nativo @ 70%, ctx 600K =
-# banda 1 → pctw=60% usado / 40% libre.
-m="$(ac3 'claude-opus-4-8' 70 600000)"
-{ printf '%s' "$m" | grep -q '/context' && printf '%s' "$m" | grep -q '60% usado' && printf '%s' "$m" | grep -qi 'libre'; } \
-  && ok "aviso verificable: cita el % de la VENTANA que cuadra con /context (60% usado / 40% libre), no solo el % del auto-compact" \
-  || bad "aviso verificable: el mensaje NO reconcilia con /context; got: $m"
-{ printf '%s' "$m" | grep -qi 'No confabules' && printf '%s' "$m" | grep -qi 'tope de la VENTANA'; } \
-  && ok "aviso verificable: incluye el anti-confabulación ('no estás al tope de la ventana')" \
-  || bad "aviso verificable: falta el anti-confabulación; got: $m"
-# La reconciliación con /context aparece INCLUSO en banda 3 (INMINENTE) → el aviso urgente sigue siendo
-# verificable, no dispara el pánico "al tope de ventana". opus-4-8 @ 70%, ctx 680K = 97% de 700K.
-m="$(ac3 'claude-opus-4-8' 70 680000)"
-{ printf '%s' "$m" | grep -q 'INMINENTE' && printf '%s' "$m" | grep -q '/context' && printf '%s' "$m" | grep -qi 'libre'; } \
-  && ok "aviso verificable: incluso en banda 3 (INMINENTE) reconcilia con /context (verificable, sin pánico de ventana)" \
-  || bad "aviso verificable: banda 3 no reconcilia con /context; got: $m"
-# Con techo ABSOLUTO a mano (AVISO_CONTEXTO_CEILING_TOKENS, sin ventana conocida) NO se inventa un % de
-# ventana: la cláusula VERIFICA se omite (no fabrica un número que no puede calcular).
-ACABS="$(mktemp -d "${TMPDIR:-/tmp}/brain-acabs.XXXXXX")/r"; mkdir -p "$ACABS/.claude/memory"
-printf '%s\n' '{"message":{"usage":{"cache_read_input_tokens":96}}}' > "$ACABS/t.jsonl"
-mabs="$(printf '%s' "{\"transcript_path\":\"$ACABS/t.jsonl\"}" | AVISO_CONTEXTO_CEILING_TOKENS=100 CLAUDE_PROJECT_DIR="$ACABS" bash "$HOOKS/aviso-contexto.sh" | jq -r '.hookSpecificOutput.additionalContext // empty')"
-{ printf '%s' "$mabs" | grep -q 'INMINENTE' && ! printf '%s' "$mabs" | grep -q 'CUADRA con /context'; } \
-  && ok "aviso verificable: techo ABSOLUTO (sin ventana) → NO inventa % de ventana (omite VERIFICA)" \
-  || bad "aviso verificable: con techo absoluto fabricó un % de ventana; got: $mabs"
-rm -rf "$(dirname "$ACABS")"
-
-# (b6c) ROBUSTEZ de runtime (bug 2026-07-28): la detección de ventana falla en runtime (settings a medio
-# escribir / timing / $HOME distinto) → cae al default chico de 200K → falso "🚨 INMINENTE". AUTO-CORRECCIÓN
-# por invariante FÍSICO: el contexto no cabe en una ventana MENOR que él mismo → si el ctx MEDIDO supera la
-# ventana detectada, ésta se promueve a 1M (única mayor conocida). ac3 con un modelo SIN "[1m]" simula la
-# detección que "falla" y cae a 200K.
-# Repro EXACTO del bug: ctx=381K, ventana mal-detectada en 200K, pct=70 → antes gritaba INMINENTE al 272%
-# del techo 140K; ahora 381K>200K → promueve a 1M → techo 700K → 54% → banda 0 → silencio.
-[ -z "$(ac3 'opus' 70 381000)" ] \
-  && ok "aviso robustez: ctx 381K > ventana detectada 200K → auto-corrige a 1M → silencio (NO falso INMINENTE)" \
-  || bad "aviso robustez: ctx 381K con ventana mal-detectada gritó (regresión del bug 2026-07-28)"
-# La auto-corrección SOLO sube: una sesión GENUINA de 200K con el ctx DENTRO de la ventana sigue avisando
-# (no la sobre-suprime). ctx 135K < 200K → sin promoción → techo 140K@70% → 135K ≥ t3(133K) → banda 3.
-{ printf '%s' "$(ac3 'opus' 70 135000)" | grep -q 'INMINENTE'; } \
-  && ok "aviso robustez: ctx 135K < ventana 200K → sin promoción → sigue avisando (no sobre-suprime)" \
-  || bad "aviso robustez: la auto-corrección suprimió un aviso legítimo de una sesión de 200K"
-# Escape hatch AVISO_CONTEXTO_WINDOW_TOKENS: fija la VENTANA a mano (sobre la derivación del modelo).
-# Ventana 1M forzada @ 70% → techo 700K; ctx 381K = 54% → silencio, aunque el modelo NO diga "[1m]".
-acwin() {
-  local root; root="$(mktemp -d "${TMPDIR:-/tmp}/brain-acw.XXXXXX")/r"; mkdir -p "$root/.claude/memory"
+# (b6e) ESCAPE HATCH AVISO_CONTEXTO_WINDOW_TOKENS: fija la ventana a mano, DISTINTO del fallback del
+# invariante físico — se prueban ambos caminos con el MISMO ctx/modelo para que se puedan diferenciar.
+acwin() { # $1=window(vacío=sin forzar) $2=ctx → additionalContext, modelo 'opus' (naive 200K)
+  local root; root="$(mktemp -d "${TMPDIR:-/tmp}/brain-acwin.XXXXXX")/r"; mkdir -p "$root/.claude/memory"
   printf '{"model":"opus"}' > "$root/.claude/settings.json"
   printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$2}}}" > "$root/t.jsonl"
-  printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" \
-    | env -u AVISO_CONTEXTO_CEILING_TOKENS \
-        AVISO_CONTEXTO_WINDOW_TOKENS="$1" CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70 CLAUDE_PROJECT_DIR="$root" \
-        bash "$HOOKS/aviso-contexto.sh" | jq -r '.hookSpecificOutput.additionalContext // empty'
-  rm -rf "$(dirname "$root")"
-}
-[ -z "$(acwin 1000000 381000)" ] \
-  && ok "aviso escape hatch: AVISO_CONTEXTO_WINDOW_TOKENS=1M @ 70% → techo 700K, ctx 381K → silencio" \
-  || bad "aviso escape hatch: AVISO_CONTEXTO_WINDOW_TOKENS no respetó la ventana forzada"
-
-# ╔═══════════════════════════════════════════════════════════════════════════════════════════════╗
-# ║ (b6-303) HARDENING de aviso-contexto — bloque AISLADO (agente fix/aviso-contexto-hardening).    ║
-# ║ Compañeros que también tocan aviso-* en paralelo: conflictos se resuelven al integrar.          ║
-# ╚═══════════════════════════════════════════════════════════════════════════════════════════════╝
-# Estos tests DISCRIMINAN: FALLAN contra la versión pre-#303 (sin VERIFICA / sin margen de histéresis)
-# y PASAN contra la actual. Comprobado forense corriendo el MISMO bloque contra `git show 5224aaa^`.
-echo ""
-echo "== (b6-303) aviso-contexto: verificación anti-regresión de #303 (denominador/confabulación + histéresis) + procedencia honesta =="
-# Msg de un escenario de techo DERIVADO (settings.model + CLAUDE_AUTOCOMPACT_PCT_OVERRIDE), dir FRESCO.
-h303_msg() { # $1=model $2=pct(o 'unset') $3=ctx → imprime additionalContext
-  local root; root="$(mktemp -d "${TMPDIR:-/tmp}/brain-h303.XXXXXX")/r"; mkdir -p "$root/.claude/memory"
-  printf '{"model":"%s"}' "$1" > "$root/.claude/settings.json"
-  printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$3}}}" > "$root/t.jsonl"
-  local pe="-u CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"; [ "$2" != unset ] && pe="CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=$2"
-  printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" \
-    | env -u AVISO_CONTEXTO_CEILING_TOKENS $pe CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
+  local envw=(); [ -n "$1" ] && envw=(AVISO_CONTEXTO_WINDOW_TOKENS="$1")
+  printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" | env "${envw[@]}" CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
     | jq -r '.hookSpecificOutput.additionalContext // empty'
   rm -rf "$(dirname "$root")"
 }
-# ── Bug 1 (denominador): REPRO EXACTO del reporte de campo (hook decía "673K/96%" y un Claude confabulaba
-#    "estoy al TOPE de la ventana" con /context marcando ~67%). 673K/1M@70% → 96% del techo 700K = banda 3,
-#    pero 67% de la VENTANA. El aviso ACTUAL debe LIDERAR con el % de la ventana (verificable con /context)
-#    + anti-confabulación. Pre-#303 NO tenía VERIFICA → estas aserciones fallan contra él (DISCRIMINA).
-m="$(h303_msg 'claude-opus-4-8' 70 673000)"
-{ printf '%s' "$m" | grep -q '/context' \
-  && printf '%s' "$m" | grep -q '67% usado' \
-  && printf '%s' "$m" | grep -qi '33% libre' \
-  && printf '%s' "$m" | grep -qi 'No confabules' \
-  && printf '%s' "$m" | grep -q 'tope de la VENTANA'; } \
-  && ok "#303 bug1 repro (673K/1M@70%, banda 3): reconcilia con /context (67% usado/33% libre) + anti-confabulación — NO solo el 96% del auto-compact" \
-  || bad "#303 bug1 REGRESIÓN: el aviso no reconcilia con /context (síntoma pre-#303); got: $m"
-# ...y el escenario textual de la tarea: override=70, ctx a ~66% de la VENTANA (660K/1M) = 94% del techo →
-# banda 2. NO debe gritar 'INMINENTE' y SÍ debe mostrar el 66% de la ventana (para que el Claude no confunda
-# el % del auto-compact con el % de la ventana). El "66% usado" (VERIFICA) es lo que falla pre-#303.
-m="$(h303_msg 'claude-opus-4-8' 70 660000)"
-{ ! printf '%s' "$m" | grep -q 'INMINENTE' \
-  && printf '%s' "$m" | grep -q '66% usado' \
-  && printf '%s' "$m" | grep -qi 'libre'; } \
-  && ok "#303 bug1: ctx a ~66% de la ventana (banda 2) NO grita INMINENTE y muestra el 66% de VENTANA (sin confabular 'tope')" \
-  || bad "#303 bug1: a 66% de ventana confabuló tope/INMINENTE o no reconcilió (síntoma pre-#303); got: $m"
-# ── Bug 2 (histéresis anti-spam): dos invocaciones con ALETEO de tokens dentro de la misma banda NO deben
-#    re-emitir. Techo DERIVADO 700K (1M@70%): t3=665K, margen=CEILING*2/100=14K → re-arma solo si ctx<651K.
-#    Marca PERSISTENTE (mismo root) para encadenar el debounce como en una corrida real.
-H303ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-h303d.XXXXXX")/r"; mkdir -p "$H303ROOT/.claude/memory"
-printf '{"model":"claude-opus-4-8"}' > "$H303ROOT/.claude/settings.json"
-h303_step() { # $1=ctx → additionalContext, @70%, marca persistente (cadena de debounce)
-  printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$1}}}" > "$H303ROOT/t.jsonl"
-  printf '%s' "{\"transcript_path\":\"$H303ROOT/t.jsonl\"}" \
-    | env -u AVISO_CONTEXTO_CEILING_TOKENS CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70 CLAUDE_PROJECT_DIR="$H303ROOT" bash "$HOOKS/aviso-contexto.sh" \
-    | jq -r '.hookSpecificOutput.additionalContext // empty'
-}
-h303_step 680000 >/dev/null                        # primer cruce a banda 3 → avisa (arma la marca)
-o="$(h303_step 655000)"; [ -z "$o" ] \
-  && ok "#303 bug2 histéresis: dip 680K→655K (≥651K, dentro del margen) → NO re-arma (silencio)" \
-  || bad "#303 bug2: el dip de borde re-armó; got: $o"
-o="$(h303_step 680000)"; [ -z "$o" ] \
-  && ok "#303 bug2 histéresis: re-subir 655K→680K tras aleteo → NO re-emite 'en cada tool result' (EL síntoma)" \
-  || bad "#303 bug2 REGRESIÓN: RE-EMITIÓ tras un aleteo de borde (síntoma pre-#303); got: $o"
-o="$(h303_step 400000)"; [ -z "$o" ] \
-  && ok "#303 bug2 histéresis: caída CLARA 680K→400K (<651K, un /compact real) → re-arma en silencio" \
-  || bad "#303 bug2: avisó tras la caída clara; got: $o"
-o="$(h303_step 680000)"; printf '%s' "$o" | grep -q 'INMINENTE' \
-  && ok "#303 bug2 histéresis: tras un compact REAL, re-subir a banda 3 → SÍ re-emite (la histéresis no ahoga avisos legítimos)" \
-  || bad "#303 bug2: no re-emitió tras compact real + re-subida; got: $o"
-rm -rf "$(dirname "$H303ROOT")"
-# ── Procedencia HONESTA (bug latente hallado 2026-08-08): la auto-justificación decía "override DELIBERADO"
-#    con solo mirar si la env estaba NO-vacía → un override INVÁLIDO (typo `70%`, out-of-range, espacios) caía
-#    a PCT=92 pero el mensaje lo vendía como "=92 (override DELIBERADO de Jordi, NO un bug — créele)": la
-#    feature de confianza MINTIENDO sobre un valor que el usuario nunca fijó. Fix: PCT_SRC distingue el
-#    override VÁLIDO del default. (Discrimina: contra el hook sin el fix, la 1ª aserción falla.)
-m="$(h303_msg 'claude-opus-4-8' '70%' 900000)"     # override inválido → debe reportarse como (default)
-{ printf '%s' "$m" | grep -q '(default)' && ! printf '%s' "$m" | grep -q 'DELIBERADO'; } \
-  && ok "aviso procedencia: override INVÁLIDO ('70%') → (default) 92, NO 'override DELIBERADO' (no miente sobre un valor no fijado)" \
-  || bad "aviso procedencia: override inválido se vendió como DELIBERADO (bug latente); got: $m"
-m="$(h303_msg 'claude-opus-4-8' 70 680000)"        # override válido → sigue citando DELIBERADO (no rompe el caso bueno)
-{ printf '%s' "$m" | grep -q 'DELIBERADO' && printf '%s' "$m" | grep -q 'OVERRIDE=70'; } \
-  && ok "aviso procedencia: override VÁLIDO (70) → sí cita 'override DELIBERADO' con =70 (el caso legítimo intacto)" \
-  || bad "aviso procedencia: el override válido perdió su cita DELIBERADO; got: $m"
+{ printf '%s' "$(acwin 500000 300000)" | grep -q 'ventana 500K' && printf '%s' "$(acwin 500000 300000)" | grep -q '~60%'; } \
+  && ok "aviso escape hatch: WINDOW_TOKENS=500K forzada (ctx 300K < 500K, sin invariante) → respeta 500K (60%)" \
+  || bad "aviso escape hatch: WINDOW_TOKENS no se respetó; got: $(acwin 500000 300000)"
+{ printf '%s' "$(acwin '' 300000)" | grep -q 'ventana 1000K' && printf '%s' "$(acwin '' 300000)" | grep -qi '~30%'; } \
+  && ok "aviso escape hatch: SIN forzar (mismo ctx/modelo) → cae al invariante físico (1M, 30%), distinto del override" \
+  || bad "aviso escape hatch: el fallback sin override no coincidió con el invariante; got: $(acwin '' 300000)"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
@@ -3447,7 +3478,13 @@ auditar-coherencia-cerebro|auditar-suficiencia-operativa
 auditar-coherencia-cerebro|consolidar-cerebro
 auditar-suficiencia-operativa|consolidar-cerebro
 desinflar-memorias|positivar-doc
-hud-stale|to-do"
+hud-stale|to-do
+drift-cerebro-comun|exportar-sesion-master
+drift-cerebro-comun|proteger-fuente-cerebro
+drift-cerebro-comun|verificar-cerebro"
+# Los 3 pares de arriba (OLA1): exportar-sesion-master, proteger-fuente-cerebro y verificar-cerebro
+# ahora SOURCEAN drift-cerebro-comun.sh para reusar su resolve_brain_dir() — es lib<->consumidor
+# (igual que delegacion-comun|delegacion-gate arriba), no una dependencia circular real.
 ce_els=()
 for d in "$SCRIPT_DIR"/skills/*/; do [ -d "$d" ] && ce_els+=("$(basename "$d")"); done
 for h in "$HOOKS"/*.sh; do [ -e "$h" ] && ce_els+=("$(basename "$h" .sh)"); done
@@ -4693,6 +4730,17 @@ RCH="$SCRIPT_DIR/hooks/recordar-cosechar.sh"
 { [ -f "$RCH" ] && grep -qiE 'como-trabajar-con-<user>' "$RCH"; } \
   && ok "#83 recordar-cosechar: el nudge recuerda que el TRATO va al archivo GLOBAL" \
   || bad "#83 recordar-cosechar: el nudge no menciona el ruteo del TRATO al archivo GLOBAL"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== 2b/3c cerrar-slice §4: el mensaje-resumen exige TRAZABILIDAD (Rama:/MR:) y describe el CÓDIGO (no el proceso) =="
+CSL="$SCRIPT_DIR/skills/cerrar-slice/SKILL.md"
+{ [ -f "$CSL" ] && grep -qiE 'Rama: *<nombre' "$CSL" && grep -qiE 'MR/PR: *!?<id>|MR: *!' "$CSL" && grep -qiE 'trazabilidad' "$CSL"; } \
+  && ok "2b: cerrar-slice §4 exige la línea Rama:/MR: para trazabilidad rama→commit" \
+  || bad "2b: cerrar-slice §4 no documenta la traza Rama:/MR:"
+{ [ -f "$CSL" ] && grep -qF '❌' "$CSL" && grep -qF '✅' "$CSL" && grep -qiE 'se decidi|tras analiz' "$CSL" && grep -qiE 'habla del (PROCESO|CÓDIGO)|del CÓDIGO' "$CSL"; } \
+  && ok "3c: cerrar-slice §4 trae el par de contra-ejemplos ❌proceso / ✅código" \
+  || bad "3c: cerrar-slice §4 no trae los contra-ejemplos de editorialización"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""

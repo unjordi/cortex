@@ -3,8 +3,11 @@
 #
 # By default DOWNLOADS the precompiled self-contained exe (Cortex.exe) from the rolling
 # 'windows-latest' release -> NO .NET SDK needed. Falls back to building from source (dotnet publish)
-# if the download fails; -Build forces building. Installs to %LOCALAPPDATA%\Programs\Cortex,
-# registers autostart, and launches. Re-run any time to update in place. Migrates old 'ClaudeQuota'.
+# if the download fails; -Build forces building. Also falls back to building from source if the
+# downloaded exe's 'build-sha' (from the release body) is behind the clon's HEAD and a .NET SDK is
+# available (C4, docs/reaudit-ola1-2026-09-01.md) -- otherwise it just warns and keeps the stale exe.
+# Installs to %LOCALAPPDATA%\Programs\Cortex, registers autostart, and launches. Re-run any time to
+# update in place. Migrates old 'ClaudeQuota'.
 #
 #   pwsh -File install.ps1            # brain (hooks) + widget, autostart, launch  <- ONE-STOP
 #   pwsh -File install.ps1 -Build     # build from source instead (needs .NET SDK)
@@ -122,8 +125,30 @@ if ($got) {
         $m = [regex]::Match([string]$rel.body, 'build-sha: ([0-9a-f]+)')
         if ($m.Success -and $m.Groups[1].Value) {
             $effSha = $m.Groups[1].Value
-            if ($effSha -ne (git -C $repoRoot rev-parse HEAD 2>$null)) {
+            $headSha = (git -C $repoRoot rev-parse HEAD 2>$null)
+            if ($effSha -ne $headSha) {
                 Write-Host "==> OJO: el asset 'windows-latest' va detras de main (build-sha $($effSha.Substring(0,7))); el widget lo detectara y ofrecera actualizar cuando el runner reconstruya." -ForegroundColor Yellow
+                # C4 (docs/reaudit-ola1-2026-09-01.md): la mitigacion previa (commit cf0a5285) solo
+                # avisaba sin cerrar la ventana. La EXTENDEMOS: si hay SDK de .NET, recompilar desde
+                # fuente en vez de conformarse con el asset rancio -- mismo patron que el fallback de
+                # arriba (linea ~90), reusado aqui para el caso "SI bajo pero va detras de HEAD".
+                if (Get-Command dotnet -ErrorAction SilentlyContinue) {
+                    Write-Host "    ...compilo desde fuente en su lugar (SDK de .NET disponible)." -ForegroundColor Cyan
+                    $pub = Join-Path $here 'publish'
+                    if (Test-Path $pub) { Remove-Item $pub -Recurse -Force }
+                    dotnet publish $proj -c $Configuration -r win-x64 --self-contained true `
+                        -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
+                        -o $pub
+                    if ($LASTEXITCODE -eq 0) {
+                        Copy-Item (Join-Path $pub "$appName.exe") $exe -Force
+                        $effSha = $headSha
+                        Write-Host "    listo: exe recompilado desde HEAD ($($effSha.Substring(0,7)))." -ForegroundColor Green
+                    } else {
+                        Write-Host "    dotnet publish fallo ($LASTEXITCODE); me quedo con el exe descargado (quedara pendiente hasta que el runner alcance)." -ForegroundColor Yellow
+                    }
+                } else {
+                    Write-Host "    sin .NET SDK no puedo compilar; me quedo con el exe descargado (el widget ofrecera 'Actualizar' cuando el runner alcance)." -ForegroundColor Yellow
+                }
             }
         }
     } catch { Write-Host "    (no pude leer el build-sha del release; estampo el HEAD del clon)" -ForegroundColor DarkYellow }

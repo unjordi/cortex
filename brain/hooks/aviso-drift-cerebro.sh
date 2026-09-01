@@ -77,9 +77,10 @@ done
 emit_and_exit() {
   local extra="${1:-}" out="" part sep=""
   # Une (en orden, saltando vacíos): SELF (identidad) · $extra (drift/auto-sync per-repo) · GLOBAL_SK_WARN
-  # (drift de la copia GLOBAL de skills). GLOBAL_SK_WARN viaja en TODOS los exit paths (incluso el throttle
-  # per-repo fresco): es un concern per-MÁQUINA con su PROPIO throttle, no depende del drift del repo actual.
-  for part in "$SELF" "$extra" "${GLOBAL_SK_WARN:-}"; do
+  # (drift de la copia GLOBAL de skills) · MIGRACION_WARN (huella local de clon sin migrar). Los dos
+  # últimos viajan en TODOS los exit paths (incluso el throttle per-repo fresco): son concerns per-MÁQUINA
+  # con su PROPIO throttle, no dependen del drift del repo actual.
+  for part in "$SELF" "$extra" "${GLOBAL_SK_WARN:-}" "${MIGRACION_WARN:-}"; do
     [ -z "$part" ] && continue
     if [ -z "$out" ]; then out="$part"; else
       out="$out
@@ -124,6 +125,29 @@ fi
 if [ "$sk_skip" = 0 ]; then
   GLOBAL_SK_WARN="$(drift_skills_global 2>/dev/null || true)"
   [ -z "$GLOBAL_SK_WARN" ] && printf '%s' "$now" > "$sk_stamp" 2>/dev/null || true
+fi
+
+# ── HUELLA LOCAL DE MÁQUINA SIN MIGRAR (rename #312 claude-brain→cortex) — SOLO test -d LOCAL, JAMÁS red
+# (nunca `git fetch`/llamada de red: esto es un nudge advisory, no un chequeo de versión). Si el clon de
+# instalación sigue bajo el nombre VIEJO (~/.claude-brain con su .git) y el nuevo (~/.cortex) NO existe,
+# esta máquina es la población en limbo del rename (auditoría 2026-08-29, C1/AUTOSYNC): el resolver bash
+# YA tiene el fallback (resolve_brain_dir, C2) así que autosync/verificación/protección de fuente siguen
+# vivos aquí, pero el WIDGET viejo puede seguir atascado sin self-update (build vieja sin #322) → sugiere
+# re-instalar con el one-liner del bootstrap para cerrar el loop de una vez. Throttle propio ~1×/día
+# (independiente de AVISO_DRIFT_HORAS: esto no cambia con el drift del repo). Fail-open, nunca bloquea.
+MIGRACION_WARN=""
+mig_stamp="$stampdir/.migracion-limbo"
+mig_skip=0
+if [ -f "$mig_stamp" ]; then
+  mig_last=$(cat "$mig_stamp" 2>/dev/null || echo 0); case "$mig_last" in ''|*[!0-9]*) mig_last=0;; esac
+  [ $(( now - mig_last )) -lt 86400 ] && mig_skip=1
+fi
+if [ "$mig_skip" = 0 ]; then
+  if [ -d "$HOME/.claude-brain/.git" ] && [ ! -d "$HOME/.cortex" ]; then
+    MIGRACION_WARN="🧠➡️ TU CLON DEL CEREBRO sigue con el nombre VIEJO (~/.claude-brain) — el rename a cortex (~/.cortex) nunca migró en esta máquina. El tooling bash ya te sigue viendo (fallback), pero el widget puede seguir atascado sin poder auto-actualizarse. Re-instala con:
+curl -fsSL https://raw.githubusercontent.com/unjordi/cortex/main/bootstrap.sh | bash"
+  fi
+  printf '%s' "$now" > "$mig_stamp" 2>/dev/null || true
 fi
 
 if [ -f "$stamp" ]; then

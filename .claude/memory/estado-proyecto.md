@@ -44,6 +44,17 @@ metadata:
     ciego de la introspección: el auditor comparte el frame "out of scope = no es mi problema"). Nació porque este
     MISMO §9 dejó las 4 aristas solo en el texto del skill, una de ellas destructiva. · _reubicar-master §9, 2026-08-08._
 
+- **`limpiar-ramas.sh` barre mal las ramas squasheadas (dos fallos, vistos en vivo · axon 2026-08-29).**
+  (1) **Base detectada por el cwd de la sesión, no por el repo objetivo:** parado en `plantilladotnet` (cwd de
+  la sesión), al barrer `axon` agarró `DevelopUnjordi` como base en vez del `develop` de axon → corrió sobre el
+  repo equivocado y no tocó una sola rama del objetivo. Misma raíz que el FN del git-branch-guard por
+  `target ≠ CLAUDE_PROJECT_DIR` (abajo). (2) **No ve a través del squash+develop-avanzado:** conservó 6 `fix/*`
+  YA integradas (su diff vs develop era "develop que avanzó", no trabajo único) y a la vez marcó `router` (una
+  mini) como borrable → under-barre lo rancio Y over-barre lo vivo. Toca `brain/hooks/limpiar-ramas.sh` (+ su
+  disparador `barrer-ramas.sh`). Nace con test (sandbox: squash-merge → la rama debe detectarse integrada;
+  cwd≠repo-objetivo → base correcta). ⚠️ Se dio por "arreglado" antes (detección de squash-merge) y quedó a
+  medias — la limpieza post-merge de hoy lo destapó. · _axon-master, 2026-08-29._
+
 - **Estándar: `conocimiento-propio` por sesión master.** Volver ESTÁNDAR que toda sesión master escriba su
   propio `conocimiento-propio.local.md` (per-repo en su repo-base, gitignored, re-inyectado en cada
   SessionStart por el hook `aviso-drift-cerebro`). Cada master lo escribe desde SU lado (no copia el del
@@ -123,6 +134,31 @@ metadata:
   cambios lo define unjordi/Felipe, no este master). Además: registros_bats es COMPARTIDO pero le FALTA la marca
   `.claude/repo-compartido` + sync del brain (ver inventario de cerebros por-repo). · _2026-08-06._
 
+- **Cluster de FP/FN de guards — reconciliado por fan-out axon-local (2026-09-01).** Del fan-out read-only sobre
+  los dictámenes (axon `gitguard-2026-08-26`) + el corpus `docs/guards-falsos-positivos.md`, SIGUEN PENDIENTES
+  (cada uno = cambio de PRECISIÓN con test adversarial, **exige OK EXPLÍCITO de unjordi para ESE control**):
+  - **git-branch-guard / `analizar-comando-git.sh`:** el regex de `acg_push_destino_base` mete `/` en la clase
+    separadora → una ramita cuyo NOMBRE termina en `/develop` o `/main` (`feat/develop`, `hotfix/main`,
+    `release/main`, `--delete feat/develop`) se BLOQUEA en falso. Test: esos casos → ALLOW; `develop`/`main`/
+    `HEAD:develop`/`+develop`/`refs/heads/develop` → siguen DENY; `feat/develop-x`/`developer` → ALLOW.
+  - **secret-scan / `detectar-secretos.sh`:** (S1) `AKIA[0-9A-Z]{16}` no caza las STS `ASIA…` → `(AKIA|ASIA)`;
+    (S2) faltan las service-account de OpenAI `sk-svcacct-…`; (S3/S4) el patrón connstring `scheme://user:pass@`
+    da FP sobre placeholders de README (`postgres://user:password@…`) → añadir a `ds_safe_re`. Cada uno con su test.
+  - **dod-verificar:** reconocer un `Read` de imagen `.png/.jpg` RASTERIZADA (pdftoppm) el MISMO turno como
+    evidencia de QA visual (hoy solo whitelistea browser/screenshot) — ~10 FP en el corpus, mordida dominante en la Mac.
+  - **Ya-en-backlog (arriba):** git-branch-guard subshell `$()` + FN target≠CLAUDE_PROJECT_DIR · merge-squash gh-main · limpiar-ramas squash.
+  - _Los axones `dupla-release`/`flowcharts-sesion`/`procesos-fmea` toparon maxturns (sin reconciliar); re-correr con candado de tope-de-lectura o modelo 120b para cerrar su cobertura._
+
+- **Ciclo INSTALL/UPDATE — reconciliación de la auditoría FMEA 2026-07-30 (verificado 2026-09-01).** Los
+  hallazgos del ciclo install/update NUNCA se habían migrado a este backlog (vivían solo en
+  `docs/auditoria-procesos-fmea-2026-07-30.md` → el doc MENTÍA marcándolos abiertos). Verificado contra el
+  código de hoy: **one-stop installer** ✅ (2026-07-23, `docs/autoupdate.md`) · **H1** (puente HOME↔USERPROFILE
+  en los `.ps1`) ✅ · **H2** (resolveClonePath con fallback) ✅ en `main.qml`/Swift. **SIGUE ABIERTO (único
+  install-cycle vivo):** **H2 en `Updater.cs` (Windows)** — NO tiene el fallback `resolveClonePath` (embedded →
+  `$CLAUDE_BRAIN_DIR` → `~/.cortex` → `~/.claude-brain`) → la divergencia del self-update persiste en Windows;
+  portar `resolveClonePath` a C#. **Por verificar aún** (no revisados esta pasada): el field-check (verificar
+  que un repo real cablee el MANIFEST) + el lote A1-A8/B3/C2 de la FMEA. · _reconciliado por axon-master 2026-09-01._
+
 ## ✅ Hecho (anclado a commit+fecha)
 <!-- Enuncia en pasado con su ancla. Ej: "X integrado — <commit>, <fecha>". -->
 - **Juez de merge decide el destino + PISO DETERMINISTA de main** — `6614220` (PR #262), 2026-08-05. El juez
@@ -160,3 +196,18 @@ metadata:
 > solo en el chat). Un ítem que madura → se sube a Pendientes.
 - 2026-08-03 · claude-brain-cachy-master · (siembra) el panel de to-dos de una sesión no sobrevive; por eso
   nace este archivo — para que las quejas/sugerencias tengan casa durable y compartida.
+
+## Rescatado del HUD de axon-master (2026-08-30) — PARA TRIAGE de cortex-master
+> Estaban SOLO en la lista de TODOs (scratch) de la sesión axon-master, no en este backlog durable.
+> Se rescatan verbatim para no perderlos al resetear ese HUD. cortex-master: triar (¿vivo/hecho/stale?).
+- [ ] Retomar `cerebro-multi-agente-grok` sobre develop (estaba marcado "NO hoy").
+- [ ] Estándar `conocimiento-propio` por sesión master (ya hay rastro en este doc — reconciliar).
+- [ ] Propagar molde canónico del CLAUDE.md: árbol gigante→MEMORY + repunte del parity-check.
+- [ ] Codificar el molde canónico del CLAUDE.md como ESTÁNDAR del brain.
+- [ ] Hook `leer-no-grepear-skills` (grep-guard) con batería de tests.
+- [ ] games-master: QA visual final + prueba en vivo del @import (unjordi).
+- [ ] cps: integración coordinada DevelopUnjordi→develop (con OK).
+- [ ] Aplicar molde canónico a cenam_contnac + fluxcore (fan-out).
+- [ ] powerscripts: quitar guards por-repo (es PERSONAL → hereda del global).
+- [ ] fluxcore (registros_bats_y_buses): sincronizar brain por el flujo + mini + marca.
+- [ ] REDISEÑO del auto-sync (aviso-drift) — el mayor hueco del cerebro (ver diseno-rediseno-auto-sync-46).

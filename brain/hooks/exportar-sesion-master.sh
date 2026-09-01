@@ -101,8 +101,19 @@ if [ "$event" = "Stop" ]; then
 fi
 
 # ── localizar el motor (genérico, lo aporta cortex) ────────────────────────────────────────
+# resolve_brain_dir() vive en drift-cerebro-comun.sh (misma carpeta, fuente y una vez instalado) — mismo
+# orden/fallback que los widgets (#322): $CLAUDE_BRAIN_DIR → ~/.cortex → ~/.claude-brain (nombre viejo).
+# Si la lib no está (caso raro), cae al default histórico sin el fallback (fail-open, nunca bloquea).
+_selfdir="$(dirname "$0")"
+if [ -f "$_selfdir/drift-cerebro-comun.sh" ]; then
+  # shellcheck source=drift-cerebro-comun.sh
+  . "$_selfdir/drift-cerebro-comun.sh"
+  BRAIN_DIR="$(resolve_brain_dir)"
+else
+  BRAIN_DIR="${CLAUDE_BRAIN_DIR:-$HOME/.cortex}"
+fi
 EXP=""
-for c in "$HOME/.local/bin/session-export.js" "$HOME/.cortex/bin/session-export.js"; do
+for c in "$HOME/.local/bin/session-export.js" "$BRAIN_DIR/bin/session-export.js"; do
   [ -f "$c" ] && EXP="$c" && break
 done
 [ -n "$EXP" ] || exit 0
