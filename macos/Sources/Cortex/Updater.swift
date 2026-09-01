@@ -147,10 +147,15 @@ final class Updater: ObservableObject {
             return
         }
         updating = true; message = nil
-        // Script DETACHADO (nohup → sobrevive a que la app se cierre). Solo si el fast-forward a
+        // Script DETACHADO (nohup → sobrevive a que la app se cierre). Solo si el fetch+alinear a
         // origin/main tiene éxito: mata la instancia vieja y corre install.sh (que reconstruye y abre
-        // la nueva). Si el merge aborta (árbol sucio / no-ff), NO mata nada y la app sigue viva → sin
-        // riesgo de quedarte sin widget. El `pkill` va justo antes de reinstalar, no a ciegas.
+        // la nueva). `checkout -B main origin/main` (mismo patrón que bootstrap.sh:84) FUERZA-ALINEA
+        // el clon a origin/main, descartando cualquier rama leftover o commit local — este clon es un
+        // artefacto de infraestructura, no un checkout de desarrollo del usuario; antes, `merge --ff-only`
+        // fallaba PARA SIEMPRE si el clon quedaba en una rama leftover o con commits locales, dejando el
+        // botón ⬆ "sin completar" sin diagnóstico. Si el fetch/checkout fallan (p. ej. sin red), NO mata
+        // nada y la app sigue viva → sin riesgo de quedarte sin widget. El `pkill` va justo antes de
+        // reinstalar, no a ciegas.
         // MIGRACIÓN DEL CLON (rename claude-brain→cortex): si el clon vive bajo el nombre VIEJO y ~/.cortex
         // aún no existe, lo renombra ANTES de actualizar → el nombre canónico queda y el próximo update lo
         // halla directo (sin depender del fallback). Rutas sin espacios (~/.cortex, ~/.claude-brain) → vars sin comillas.
@@ -158,7 +163,7 @@ final class Updater: ObservableObject {
         let inner = "sleep 1; SRC='\(repoPath)'; DST='\(canonical)'; "
             + "[ $SRC != $DST ] && [ -d $SRC ] && [ ! -e $DST ] && mv $SRC $DST; "
             + "DIR=$DST; [ -d $DIR/.git ] || DIR=$SRC; "
-            + "cd $DIR && git fetch origin --quiet && git merge --ff-only origin/main "
+            + "cd $DIR && git fetch origin --quiet && git checkout -B main origin/main "
             + "&& { pkill -f 'Cortex Widget.app/Contents/MacOS/Cortex'; bash $DIR/macos/install.sh; }"
         let cmd = "nohup bash -lc \"\(inner)\" >/tmp/cortex-update.log 2>&1 &"
         let p = Process()
