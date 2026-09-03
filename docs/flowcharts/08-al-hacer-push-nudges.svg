@@ -137,7 +137,7 @@
 <text xml:space="preserve" text-anchor="start" x="549.38" y="-1388" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">📈 aviso&#45;contexto</text>
 <polygon fill="#1b1712" stroke="none" points="1175,-1379.25 1175,-1405 2640,-1405 2640,-1379.25 1175,-1379.25"/>
 <polygon fill="none" stroke="#5fa89e" points="1175,-1379.25 1175,-1405 2640,-1405 2640,-1379.25 1175,-1379.25"/>
-<text xml:space="preserve" text-anchor="start" x="1686.25" y="-1388.75" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">watermark: avisa &quot;compacta TÚ ahora&quot; antes del auto&#45;compact&#45;sorpresa (GLOBAL)</text>
+<text xml:space="preserve" text-anchor="start" x="1595.12" y="-1388.75" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">reporta el watermark de contexto CRUDO (tokens · ventana · %); sin bandas ni veredicto — /context manda (GLOBAL)</text>
 <polygon fill="#1b1712" stroke="none" points="16,-1353.5 16,-1379.25 1175,-1379.25 1175,-1353.5 16,-1353.5"/>
 <polygon fill="none" stroke="#5fa89e" points="16,-1353.5 16,-1379.25 1175,-1379.25 1175,-1353.5 16,-1353.5"/>
 <text xml:space="preserve" text-anchor="start" x="540" y="-1362.25" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🧬 aviso&#45;drift&#45;cerebro</text>

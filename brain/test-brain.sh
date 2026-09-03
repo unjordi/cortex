@@ -3102,6 +3102,35 @@ gen_ctx 150000; has_aviso "$(ac)" && ok "aviso-contexto: vuelve a subir al escal
 # (esta exclusión NO cambió con el rediseño — sigue viva en el hook, línea "select(.isSidechain != true)").
 printf '%s\n%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":50}}}" '{"isSidechain":true,"message":{"usage":{"cache_read_input_tokens":999999}}}' > "$ACTX"
 is_silent "$(ac)" && ok "aviso-contexto: ignora el usage de sidechain (mide el hilo principal, ctx=50 → escalón 0)" || bad "aviso-contexto contó el usage del sidechain"
+# (b6-staleness) FP post-compact (corpus 2026-09-01): el ÚLTIMO usage EN DISCO puede ser el PRE-compact
+# (la llamada interna de resumen manda el contexto completo → su input_tokens es el tamaño VIEJO). El hook
+# se ancla al boundary `isCompactSummary:true`: tras compactar, si aún NO hay usage fresco, NO reporta el
+# tamaño viejo. TEST DOBLE — (a) el FP ya-NO, (b) la señal real SÍ sobrevive, (c) el fresco tapa al viejo.
+gen_raw() { printf '%s\n' "$@" > "$ACTX"; rm -f "$ACROOT/.claude/memory/.contexto-aviso"; }  # transcript a medida + debounce limpio
+# (a) FP ya-NO: usage grande PRE-compact + boundary, SIN usage fresco después → SILENCIO (no grita el viejo)
+gen_raw \
+  '{"message":{"usage":{"cache_read_input_tokens":944000}}}' \
+  '{"type":"system"}' \
+  '{"type":"user","isCompactSummary":true,"message":{"role":"user","content":"resumen"}}' \
+  '{"type":"attachment"}'
+o="$(ac)"; is_silent "$o" \
+  && ok "aviso-contexto: post-compact SIN usage fresco → silencio (NO reporta el ctx PRE-compact viejo, FP staleness)" \
+  || bad "aviso-contexto reportó el tamaño PRE-compact tras un /compact (FP de staleness); got: $o"
+# (b) real-SÍ: ctx genuinamente alto (944K) SIN compact de por medio → SIGUE reportándose (el fix no mata la señal)
+gen_raw \
+  '{"type":"user","message":{"role":"user"}}' \
+  '{"message":{"usage":{"cache_read_input_tokens":944000}}}'
+o="$(ac)"; has_aviso "$o" \
+  && ok "aviso-contexto: ctx alto (944K) SIN compact → SÍ reporta (la señal real sobrevive el anclaje al boundary)" \
+  || bad "aviso-contexto silenció un contexto genuinamente alto sin compact (mutiló el reporte real); got: $o"
+# (c) post-compact CON usage fresco tras el boundary → reporta el FRESCO (60K), NUNCA el viejo (944K)
+gen_raw \
+  '{"message":{"usage":{"cache_read_input_tokens":944000}}}' \
+  '{"type":"user","isCompactSummary":true,"message":{"role":"user","content":"resumen"}}' \
+  '{"message":{"usage":{"cache_read_input_tokens":60000}}}'
+o="$(ac)"; { printf '%s' "$o" | grep -q '60K tokens' && ! printf '%s' "$o" | grep -q '944K tokens'; } \
+  && ok "aviso-contexto: post-compact CON usage fresco → reporta el FRESCO (60K), no el PRE-compact (944K)" \
+  || bad "aviso-contexto reportó el ctx PRE-compact en vez del fresco post-compact; got: $o"
 unset AVISO_CONTEXTO_WINDOW_TOKENS
 rm -rf "$(dirname "$ACROOT")"
 
@@ -3124,6 +3153,11 @@ for ctx in 50000 950000; do
   printf '%s' "$m" | grep -q '/context' \
     && ok "aviso neutro: ctx=$ctx sigue apuntando a /context como autoritativo" \
     || bad "aviso neutro: ctx=$ctx perdió la referencia a /context; got: $m"
+  # Des-veredictado (2026-09-03): el cierre REPORTA (dónde manda /context, qué hace el CLI) y DEFIERE la
+  # decisión al lector; NO recomienda un curso ("mejor checkpoint+compact") ni asusta ("te BORRA el cerebro").
+  { ! printf '%s' "$m" | grep -qiE 'mejor checkpoint|te BORRA|BORRA el cerebro|compacta (YA|TÚ ahora)'; } \
+    && ok "aviso neutro: ctx=$ctx sin recomendación/veredicto de acción (des-veredictado, reportero tonto)" \
+    || bad "aviso neutro: ctx=$ctx reintrodujo un veredicto/recomendación ('mejor checkpoint'/'te BORRA'); got: $m"
 done
 
 # (b6-math) CORRECTITUD numérica: el % de ventana y el % libre (con la reserva del 5% para el checkpoint)

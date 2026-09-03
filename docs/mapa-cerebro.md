@@ -86,7 +86,7 @@ tiene canal para inyectar ni turno del modelo — por eso se retiró `precompact
 ```mermaid
 flowchart TB
     TRABAJO["💬 Sesión trabajando<br/>(el HILO vive solo en el contexto — frágil)"]
-    AC["📈 aviso-contexto (PostToolUse, GLOBAL)<br/>watermark del contexto: avisa ANTES<br/>del auto-compact-sorpresa, escala por banda<br/>(1 heads-up · 2 checkpoint AHORA · ≥3 inminente)"]
+    AC["📈 aviso-contexto (PostToolUse, GLOBAL)<br/>REPORTERO TONTO: surface el watermark CRUDO<br/>(tokens · ventana · % · autoCompactWindow); sin<br/>bandas ni veredicto — /context manda, tú decides"]
     CP["💾 skill checkpoint (manual, proactivo)<br/>vuelca el HILO a .claude/memory/hilo-mental-actual.md<br/>ligero (pausa) o COMPLETO (antes de compact:<br/>PLAN con el CÓMO · RESUELTO HOY · COSECHA)"]
     COMPACT["🗜️ /compact (o auto-compact)<br/>el resumen comprime — pero el hilo YA está en disco"]
 
@@ -101,7 +101,7 @@ flowchart TB
     SIGUE["🔁 la sesión continúa CON el hilo<br/>(skill rehidratar-hilo = gemelo manual del hook,<br/>respaldo si un update del CLI lo rompe)"]
 
     TRABAJO --> AC
-    AC -->|"ordena volcar"| CP
+    AC -->|"reporta el % → tú decides volcar"| CP
     TRABAJO -->|"pausa natural / cada ~2h"| CP
     CP --> COMPACT
     COMPACT --> retomar
