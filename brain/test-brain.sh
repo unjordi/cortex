@@ -3578,6 +3578,37 @@ done
 # ═══ FIN BLOQUE AÑADIDO (#81) ═════════════════════════════════════════════════════════════════════════
 
 # ─────────────────────────────────────────────────────────────────────────────
+echo "== (e2-skills) drift-check: el SKILLS-MANIFEST es COMPLETO — toda brain/skills/*/SKILL.md declarada, sin huérfanos =="
+# Hermano del (e2) de arriba: (e2) ya exige que TODO brain/hooks/*.sh esté en el hooks/MANIFEST (bloques 1/2);
+# ESTE hace lo MISMO para las SKILLS contra brain/skills/MANIFEST — la mitad que faltaba. RIESGO que cierra
+# (detectado por unjordi): una skill en brain/skills/<n>/SKILL.md que NO esté en brain/skills/MANIFEST la
+# OMITE en SILENCIO tanto el sync por-repo (PER_REPO_SK = awk sobre {both,repo} del MANIFEST en
+# sincronizar-cerebro.sh) como el install-brain global (deriva del mismo MANIFEST) → el repo/colega nunca la
+# recibe y nada lo detecta. Bidireccional: también caza una entrada del MANIFEST que apunte a una skill
+# inexistente (huérfana). Formato del SKILLS-MANIFEST: "<nombre> <tier>" (2 columnas; '#'/blancos se ignoran).
+MFS="$SCRIPT_DIR/skills/MANIFEST"
+if [ ! -f "$MFS" ]; then
+  bad "drift-skills: falta el SKILLS-MANIFEST ($MFS)"
+else
+  # (1) toda skill REAL (dir con SKILL.md) de brain/skills está declarada en el SKILLS-MANIFEST
+  miss_sk=0
+  for d in "$SCRIPT_DIR"/skills/*/; do
+    [ -f "${d}SKILL.md" ] || continue
+    b="$(basename "$d")"
+    awk '$1!~/^#/ && NF>=2{print $1}' "$MFS" | grep -qxF "$b" \
+      || { bad "drift-skills: la skill '$b' (brain/skills/$b/SKILL.md) NO está en el SKILLS-MANIFEST → el sync/install la OMITE en silencio"; miss_sk=1; }
+  done
+  [ "$miss_sk" = 0 ] && ok "drift-skills: toda brain/skills/*/SKILL.md está declarada en el SKILLS-MANIFEST"
+  # (2) toda entrada del SKILLS-MANIFEST tiene su carpeta con SKILL.md (ninguna entrada apunta a la nada)
+  miss_skfile=0
+  for b in $(awk '$1!~/^#/ && NF>=2{print $1}' "$MFS"); do
+    [ -f "$SCRIPT_DIR/skills/$b/SKILL.md" ] \
+      || { bad "drift-skills: el SKILLS-MANIFEST lista '$b' pero falta brain/skills/$b/SKILL.md (entrada huérfana)"; miss_skfile=1; }
+  done
+  [ "$miss_skfile" = 0 ] && ok "drift-skills: toda entrada del SKILLS-MANIFEST tiene su carpeta con SKILL.md"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 echo "== (e3) drift-check WIDGET: el catálogo curado del widget coincide con el MANIFEST + skills (antídoto al que un hook nuevo caiga en OTROS y a una skill sin tile) =="
 # El widget (Windows/C#, macOS/Swift, plasmoid/QML) trae un catálogo CURADO de piezas del cerebro:
 #   (1) los conjuntos known-global / known-repo que clasifican cada hook (si un hook NO está aquí,
