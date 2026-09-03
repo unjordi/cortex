@@ -1546,6 +1546,23 @@ git -C "$PAREPO" checkout -q "$DEFB2" >/dev/null 2>&1
 o="$(paz 'git branch -D pa/viva')"
 printf '%s' "$o" | grep -q 'NO integrados' && ok "proteger-arbol: branch -D de rama con trabajo PROPIO no integrado → AVISA (acotado)" || bad "proteger-arbol NO avisó al borrar rama con trabajo vivo; got: $o"
 
+# --- PRECISIÓN heredoc: NO matchear un git destructivo escrito como PROSA dentro de un `<<EOF … EOF` ----
+# El cuerpo de un heredoc es STDIN (dato que se appendea a un .md, un mensaje), NUNCA shell ejecutable →
+# igual que se ignoran los literales entrecomillados. Aquí PAREPO está en DEFB2 con commits SIN pushear
+# (n>0) → el bug viejo escaneaba el cuerpo y gritaba "ORFANAR" al ver el texto 'git reset --hard'.
+# (a) FP-ya-no: heredoc plano con 'git reset --hard' como prosa → SILENCIO
+o="$(pa 'cat >> aprendizajes.md <<EOF\nleccion: git reset --hard mini borra el arbol compartido\nEOF')"
+[ -z "$o" ] && ok "proteger-arbol: 'git reset --hard' como prosa en un heredoc → silencio (FP heredoc)" || bad "proteger-arbol matcheó texto de un heredoc; got: $o"
+# (a2) FP-ya-no: delimitador ENTRECOMILLADO `<<'EOF'` (y otro token git) → SILENCIO
+o="$(pa 'cat >> nota.md <<'"'"'EOF'"'"'\ngit rebase -i main\nEOF')"
+[ -z "$o" ] && ok "proteger-arbol: heredoc con delimitador entrecomillado → silencio" || bad "proteger-arbol matcheó heredoc <<'EOF'; got: $o"
+# (b) TEETH: un git destructivo REAL va FUERA del heredoc (tras el cierre) → el filtro NO lo ciega → AVISA
+o="$(pa 'cat >> nota.md <<EOF\ntexto inocuo\nEOF\ngit reset --hard HEAD~1')"
+printf '%s' "$o" | grep -q 'ORFANAR' && ok "proteger-arbol: reset REAL tras cerrar el heredoc → AVISA (dientes intactos)" || bad "el filtro de heredoc cegó un reset real; got: $o"
+# (c) FP-ya-no (isolation): compound complejo SIN git (process-substitution + redirect a /tmp) → SILENCIO
+o="$(pa 'paste <(grep func a.sh) <(grep func b.ps1) > /tmp/cmp.txt')"
+[ -z "$o" ] && ok "proteger-arbol: process-substitution + redirect a /tmp sin git → silencio (FP isolation)" || bad "proteger-arbol reaccionó a un compound sin git; got: $o"
+
 rm -rf "$PABARE" "$PAREPO"
 
 # ─────────────────────────────────────────────────────────────────────────────
