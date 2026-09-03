@@ -4275,6 +4275,26 @@ printf '%s' "$(nbd_ctx 'bash brain/install-brain.sh')" | grep -qi 'widget' \
   && ok "g1: un script no-instalador NO dispara" || bad "g1: disparó sobre un script cualquiera (FP)"
 [ -z "$(nbd_ctx 'cat install.sh')" ] \
   && ok "g1: 'cat install.sh' (leer, no ejecutar) NO dispara" || bad "g1: disparó al leer el archivo (FP)"
+# corpus de FP reales (docs/guards-falsos-positivos.md 2026-08-08/2026-08-29): el nombre del instalador
+# como ARGUMENTO de git/grep/ls con una SUBCARPETA de por medio ("brain/install-brain.sh") NO es
+# ejecución — antes un "/" suelto pegado al basename bastaba como prefijo y disparaba en falso.
+[ -z "$(nbd_ctx 'git add brain/install-brain.sh brain/test-brain.sh && git commit -m "fix install-brain"')" ] \
+  && ok "g1: 'git add <path>/install-brain.sh' (commit del instalador, no ejecución) NO dispara" || bad "g1: disparó sobre git add de install-brain.sh con subcarpeta (FP)"
+[ -z "$(nbd_ctx 'git log --since=2026-08-01 -- brain/install-brain.sh')" ] \
+  && ok "g1: 'git log -- <path>/install-brain.sh' (forense read-only) NO dispara" || bad "g1: disparó sobre git log -- con subcarpeta (FP)"
+[ -z "$(nbd_ctx 'git show HEAD~1:brain/install-brain.sh')" ] \
+  && ok "g1: 'git show REF:<path>/install-brain.sh' (lectura de una revisión) NO dispara" || bad "g1: disparó sobre git show REF:path (FP)"
+[ -z "$(nbd_ctx 'git diff -- scripts/deploy.sh')" ] \
+  && ok "g1: 'git diff -- <path>/deploy.sh' (genérico, no solo brain) NO dispara" || bad "g1: disparó sobre git diff -- con subcarpeta genérica (FP)"
+[ -z "$(nbd_ctx 'ls -1 install.sh bootstrap.sh uninstall.sh')" ] \
+  && ok "g1: 'ls -1 install.sh ...' (listado, no ejecución) NO dispara" || bad "g1: disparó sobre ls -1 (FP)"
+# los mismos POSITIVOS reales con subcarpeta SIGUEN avisando (el fix no debe abrir hueco a la ejecución real)
+[ -n "$(nbd_ctx 'bash brain/install-brain.sh')" ] \
+  && ok "g1: 'bash brain/install-brain.sh' (ejecución real con subcarpeta) SIGUE avisando" || bad "g1: dejó de avisar sobre ejecución real con subcarpeta"
+[ -n "$(nbd_ctx './scripts/deploy.sh')" ] \
+  && ok "g1: './scripts/deploy.sh' (ejecución real relativa con subcarpeta) SIGUE avisando" || bad "g1: dejó de avisar sobre ./scripts/deploy.sh"
+[ -n "$(nbd_ctx '/usr/local/bin/install.sh')" ] \
+  && ok "g1: ruta ABSOLUTA ejecutada directo SIGUE avisando" || bad "g1: dejó de avisar sobre ruta absoluta ejecutada"
 # tier both → trae la cláusula de dedupe (la copia por-repo cede a la global)
 grep -q 'case "\$0" in "\$HOME/.claude/hooks/"' "$NBD" \
   && ok "g1: no-bypass-deploy trae la cláusula de dedupe (tier both)" || bad "g1: falta la cláusula de dedupe en un hook tier both"
