@@ -250,6 +250,16 @@ is_silent "$(msj 'glab mr merge 53 --squash --squash-message "corrige el calculo
   && ok "msg LITERAL: resumen con sustancia + traza (≥12 palabras) → pasa (sin FP)" || bad "msg LITERAL: bloqueó un resumen legítimo con traza"
 is_silent "$(msj 'glab mr merge 54 --squash --squash-message "$(cat resumen.md)"')" \
   && ok "msg UNVERIFICABLE: '\$(cat resumen.md)' (la forma que el propio hook sugiere) → pasa" || bad "msg UNVERIFICABLE: bloqueó la forma sugerida por el hook"
+# ── MULTILÍNEA INLINE (fix #42/#46): un --squash-message con SALTOS DE LÍNEA reales y SUSTANCIA ya NO se
+#    trunca al 1er token ni exige la forma $(cat archivo). El sed line-based veía solo la 1ª línea → FP. ──
+MLMSG=$'corrige el calculo de IVA en las facturas: el total ahora suma el impuesto\npor linea y redondea al centavo mas cercano segun la NOM vigente.\n\nRama: fix/iva, MR: !58'
+is_silent "$(msj "glab mr merge 58 --squash --squash-message \"$MLMSG\"")" \
+  && ok "msg LITERAL multilínea (#42/#46): resumen inline con saltos de línea + sustancia + traza → pasa (sin FP)" || bad "msg LITERAL multilínea: bloqueó un resumen inline multilínea legítimo"
+# (real-sigue) el slurp multilínea NO deja pasar basura: un mensaje multilínea SUPERFICIAL (subject default de
+# plataforma en la 1ª línea) SIGUE bloqueando — el fix restaura el valor completo, no afloja el piso.
+MLBAD=$'Merge pull request #5 from foo/bar\n\ndetalles irrelevantes del merge'
+is_deny "$(msj "glab mr merge 59 --squash --squash-message \"$MLBAD\"")" \
+  && ok "msg LITERAL multilínea: subject default 'Merge pull request #N' (aunque multilínea) → deny (piso intacto)" || bad "msg LITERAL multilínea: dejó pasar un subject default multilínea"
 
 # ── LITERAL gh (--subject/-t) + --fill unverificable ──
 mock_gh_full develop ""
@@ -607,14 +617,50 @@ dexp=$(PATH="$CMBIN:$PATH" CLAUDE_PROJECT_DIR="$CMREPO" bash -c '. "'"$HOOKS"'/a
   && ok "cmd (b): destino explícito (--target-branch main) GANA sobre la API (develop del stub) — sin red" || bad "cmd (b): el destino explícito no ganó sobre la API (got '$dexp')"
 # El fix real: resuelve el destino SIN gh/glab en el PATH (simula el subproceso launch-GUI).
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
-dnocli=$(env -i PATH="/usr/bin:/bin" HOME="$CMHOME" bash -c '. "'"$HOOKS"'/analizar-comando-git.sh"; acg_destino_de_mr "gh pr merge 5 --base develop"')
+dnocli=$(env -i PATH="/usr/bin:/bin" ACG_PATH_AUGMENT=0 HOME="$CMHOME" bash -c '. "'"$HOOKS"'/analizar-comando-git.sh"; acg_destino_de_mr "gh pr merge 5 --base develop"')
 [ "$dnocli" = develop ] \
   && ok "cmd (b): --base develop resuelve SIN gh/glab en el PATH (modo-falla launch-GUI) → develop" || bad "cmd (b): no resolvió el destino sin CLI en PATH (got '$dnocli')"
-# Fail-safe INTACTO: sin flag de destino Y sin gh/glab resoluble → vacío (el juez cae a su fail-SEGURO, NUNCA afloja).
-rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
-dfs=$(env -i PATH="/usr/bin:/bin" HOME="$CMHOME" bash -c '. "'"$HOOKS"'/analizar-comando-git.sh"; acg_destino_de_mr "glab mr merge 88"')
+# Fail-safe INTACTO: sin flag de destino Y sin gh/glab resoluble → vacío (el juez cae a su fail-SEGURO, NUNCA
+# afloja). ACG_PATH_AUGMENT=0 desactiva el rescate de PATH → simula FIELMENTE "gh/glab genuinamente ausente"
+# INDEPENDIENTE de la máquina (sin él, el augment re-agrega /opt/homebrew/bin en una Mac de dev y el test
+# mentiría). Con el augment activo (default), este mismo caso RESUELVE por API — es justo el fix del #78.
+rm -f /tmp/acg-mrdest-* "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null   # env -i UNSETea TMPDIR → la lib cachea en /tmp: límpialo también
+dfs=$(env -i PATH="/usr/bin:/bin" ACG_PATH_AUGMENT=0 HOME="$CMHOME" bash -c '. "'"$HOOKS"'/analizar-comando-git.sh"; acg_destino_de_mr "glab mr merge 88"')
 [ -z "$dfs" ] \
   && ok "cmd (b) fail-safe: SIN flag y SIN gh/glab → destino vacío (el fail-safe del juez sigue frenando)" || bad "cmd (b) fail-safe: debía salir vacío sin destino resoluble (got '$dfs')"
+
+# ── (b1e-PATH) PATH-AUGMENT: RESCATE del destino cuando gh/glab NO está en el PATH heredado pero SÍ en un
+#    dir canónico (ROOT CAUSE del #78: launch-GUI + minimal launchd PATH). ACG_EXTRA_BIN inyecta un dir con
+#    un mock SIN tocar el sistema; se prueba que (1) el augment lo halla y resuelve el destino, y (2) el gate
+#    NO se afloja: un destino 'main' resuelto por el augment sigue exigiendo lenguaje de release. ──────────
+rm -f /tmp/acg-mrdest-* "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
+AUGBIN="$FAKEHOME/augbin"; mkdir -p "$AUGBIN"
+# mock glab que devuelve target_branch=develop; vive SOLO en AUGBIN (fuera del PATH mínimo).
+printf '#!/usr/bin/env bash\necho '\''{"target_branch":"develop"}'\''\n' > "$AUGBIN/glab"; chmod +x "$AUGBIN/glab"
+# (FP-ya-no) sin flag de destino + glab AUSENTE del PATH mínimo PERO presente en ACG_EXTRA_BIN → el augment
+# lo halla → destino RESUELVE a develop (antes: vacío → fail-safe frenaba el merge legítimo del #78).
+daug=$(env -i PATH="/usr/bin:/bin" ACG_EXTRA_BIN="$AUGBIN" HOME="$CMHOME" bash -c '. "'"$HOOKS"'/analizar-comando-git.sh"; acg_destino_de_mr "glab mr merge 8801"')
+[ "$daug" = develop ] \
+  && ok "PATH-augment (#78): glab en ACG_EXTRA_BIN (no en PATH) → destino RESUELVE a develop (rescate launch-GUI)" || bad "PATH-augment (#78): el augment no rescató el destino (got '$daug')"
+# (control) el MISMO caso con el augment DESACTIVADO → vacío (prueba que el rescate ES lo que resuelve, no otra
+# vía). MR-id DISTINTO (881): la lib cachea el destino por MR-id en /tmp (env -i UNSETea TMPDIR → el rm del
+# padre, que usa el TMPDIR real, no lo alcanza) — reusar el 88 tomaría el 'develop' cacheado por daug.
+rm -f /tmp/acg-mrdest-* "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
+dctl=$(env -i PATH="/usr/bin:/bin" ACG_EXTRA_BIN="$AUGBIN" ACG_PATH_AUGMENT=0 HOME="$CMHOME" bash -c '. "'"$HOOKS"'/analizar-comando-git.sh"; acg_destino_de_mr "glab mr merge 881"')
+[ -z "$dctl" ] \
+  && ok "PATH-augment control: augment OFF → destino vacío (confirma que el rescate es la causa)" || bad "PATH-augment control: destino no-vacío con augment OFF (got '$dctl')"
+# (ANTI-WEAKENING) un glab en el FRENTE del PATH GANA sobre los dirs del augment (append, JAMÁS prepend):
+# el augment NUNCA puede REDIRIGIR un 'main' real a un 'develop' falso — solo rescata el caso en que NO había
+# glab. Un mock 'main' al frente + un mock 'develop' en ACG_EXTRA_BIN → gana 'main' (el del frente). Este es
+# el invariante que garantiza que el augment no afloja el gate; el gate estricto de main sobre un destino
+# resuelto ya lo prueban los casos mock_cm_glab main (release exige lenguaje de release).
+rm -f /tmp/acg-mrdest-* "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
+FRONTBIN="$FAKEHOME/frontbin"; mkdir -p "$FRONTBIN"
+printf '#!/usr/bin/env bash\necho '\''{"target_branch":"main"}'\''\n' > "$FRONTBIN/glab"; chmod +x "$FRONTBIN/glab"
+dfront=$(env -i PATH="$FRONTBIN:/usr/bin:/bin" ACG_EXTRA_BIN="$AUGBIN" HOME="$CMHOME" bash -c '. "'"$HOOKS"'/analizar-comando-git.sh"; acg_destino_de_mr "glab mr merge 882"')
+[ "$dfront" = main ] \
+  && ok "PATH-augment ANTI-WEAKENING: glab del FRENTE del PATH gana sobre el dir del augment (append→no sombrea 'main'→'develop')" || bad "PATH-augment: el augment sombreó un glab ya en el PATH (got '$dfront')"
+rm -rf "$AUGBIN" "$FRONTBIN"
 mock_cm_glab develop
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
 
