@@ -136,7 +136,7 @@ digraph flujos {
     RAMV  [color="#e08e45",
            label="🔔🕰️ rama-vieja  ·  ¿git push de una ramita?\n🟠 avisa si está ≥40 commits DETRÁS de origin/develop\n→ rebasa antes (el MR traería ruido/conflictos)"];
     ARBOL [color="#e08e45",
-           label="🔔🌳 proteger-arbol  ·  ¿git DESTRUCTIVO (reset --hard/checkout -f/rebase/branch -D)?\n🟠 avisa SOLO si orfanaría commits sin pushear.\nSUPRIME el falso positivo en worktree AISLADO (H14/H15)"];
+           label="🔔🌳 proteger-arbol  ·  ¿git DESTRUCTIVO (reset --hard/checkout -f/rebase/branch -d/-D)?\n🟠 reset/checkout/rebase: avisa si orfanaría commits sin pushear (@{u}..HEAD).\nbranch -d/-D SOLO: decide por chequeo ZOMBIE per-rama (ancestro | squash/cherry | remota-gone),\ncalla si todas ya están integradas (mata el FP dominante). SUPRIME el FP en worktree AISLADO (H14/H15)"];
 
     // ── Confluencia: precedencia deny > ask > allow ──
     PREC  [shape=diamond, fillcolor="#2b2622", color="#d97757",
