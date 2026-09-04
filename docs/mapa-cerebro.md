@@ -190,9 +190,9 @@ flowchart LR
     MANIFEST["📜 brain/hooks/MANIFEST<br/>fuente ÚNICA: tier + kind por pieza"]
 
     subgraph tiers["Tiers declarados"]
-        BOTH["tier <b>both</b> — global + por-repo<br/>(con cláusula de dedupe:<br/>la copia del repo cede a la global)<br/><br/>hooks: git-branch-guard ·<br/>merge-squash-guard ·<br/>confirmar-merge-develop ·<br/>recordar-dashboard · secret-scan ·<br/>entorno-maquina-guard<br/>libs: analizar-comando-git ·<br/>detectar-secretos"]
-        GLOBAL["tier <b>global</b> — solo ~/.claude<br/><br/>hooks: proteger-arbol · rama-vieja ·<br/>limite-gasto · rehidratar-hilo ·<br/>aviso-contexto · aviso-drift-cerebro ·<br/>delegacion-gate · delegacion-registrar ·<br/>delegacion-reporte · recordar-orquestar<br/>lib: delegacion-comun · ramas-zombie<br/>script: limpiar-worktrees · limpiar-ramas"]
-        REPO["tier <b>repo</b> — solo &lt;repo&gt;/.claude<br/>(se cargan si la sesión INICIA ahí)<br/><br/>hooks: dod-verificar · sesion-inicio"]
+        BOTH["tier <b>both</b> — global + por-repo<br/>(con cláusula de dedupe:<br/>la copia del repo cede a la global)<br/><br/>hooks: git-branch-guard ·<br/>merge-squash-guard ·<br/>confirmar-merge-develop ·<br/>recordar-dashboard · secret-scan ·<br/>entorno-maquina-guard · no-bypass-deploy ·<br/>hud-stale<br/>libs: analizar-comando-git ·<br/>detectar-secretos · juez-comun"]
+        GLOBAL["tier <b>global</b> — solo ~/.claude<br/><br/>hooks: proteger-arbol · proteger-fuente-cerebro ·<br/>rama-vieja · limite-gasto · rehidratar-hilo ·<br/>aviso-contexto · aviso-drift-cerebro ·<br/>exportar-sesion-master · barrer-ramas ·<br/>delegacion-gate · delegacion-registrar ·<br/>delegacion-reporte · recordar-orquestar<br/>libs: delegacion-comun · ramas-zombie · drift-cerebro-comun<br/>scripts: limpiar-worktrees · limpiar-ramas ·<br/>verificar-cerebro · barrer-flotilla-cerebro · cementerio"]
+        REPO["tier <b>repo</b> — solo &lt;repo&gt;/.claude<br/>(se cargan si la sesión INICIA ahí)<br/><br/>hooks: dod-verificar · sesion-inicio ·<br/>recordar-cosechar · recordar-unificar-cerebro"]
     end
 
     subgraph destinos["Destinos"]
