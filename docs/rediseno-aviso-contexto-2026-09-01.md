@@ -47,3 +47,17 @@ deliberado") RESUELTAS. Residuos BAJO documentados y aceptados (cosméticos / ed
 Metodología del loop: auditor FMEA one-shot con zapatos (referencia-cli + hook) → fixer con la dirección
 "reportero tonto" → orquestador cazó/arregló la regresión del debounce (grueso por pasos de 50K) → re-auditor
 declaró CONVERGENCIA. Verificado: bash -n, fail-open, happy-path emite dato crudo, debounce por-escalón.
+
+## Follow-up 2026-09-03 — dos FP que el rediseño no tocó (rama fix/tune-aviso-contexto)
+La auditoría `docs/audit-aviso-contexto-2026-09-03.md` confirmó que el rediseño cambió QUÉ se reporta pero
+NO cómo se localiza el dato ni el cierre del mensaje. Dos arreglos de PRECISIÓN (test doble cada uno):
+1. **Staleness post-compact (ALTO).** El `usage` que el hook tomaba era el ÚLTIMO en disco — que justo tras
+   un `/compact` es el de la llamada interna de resumen (manda el contexto completo → su `input_tokens` es el
+   tamaño VIEJO pre-compact). Ahora la medición se **ANCLA al último boundary `isCompactSummary:true`**: un
+   `reduce` descarta todo `usage` anterior al compact; si aún no hay `usage` fresco después del boundary → ctx
+   vacío → fail-open (silencio), en vez de gritar el tamaño viejo. La señal real (ctx alto SIN compact) SIGUE
+   reportándose.
+2. **Des-veredictar el "Recordatorio" (MEDIO).** La línea "sin checkpoint el auto-compact te BORRA el cerebro
+   fresco → mejor checkpoint + /compact" era una RECOMENDACIÓN de acción, no un dato — contra el principio
+   "reportero tonto". Sustituida por un cierre NEUTRO que solo reporta (dónde manda `/context`, qué hace el
+   CLI) y defiere la decisión al lector. Lock-in test añadido para que no se cuele otro imperativo.

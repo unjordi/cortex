@@ -250,6 +250,16 @@ is_silent "$(msj 'glab mr merge 53 --squash --squash-message "corrige el calculo
   && ok "msg LITERAL: resumen con sustancia + traza (≥12 palabras) → pasa (sin FP)" || bad "msg LITERAL: bloqueó un resumen legítimo con traza"
 is_silent "$(msj 'glab mr merge 54 --squash --squash-message "$(cat resumen.md)"')" \
   && ok "msg UNVERIFICABLE: '\$(cat resumen.md)' (la forma que el propio hook sugiere) → pasa" || bad "msg UNVERIFICABLE: bloqueó la forma sugerida por el hook"
+# ── MULTILÍNEA INLINE (fix #42/#46): un --squash-message con SALTOS DE LÍNEA reales y SUSTANCIA ya NO se
+#    trunca al 1er token ni exige la forma $(cat archivo). El sed line-based veía solo la 1ª línea → FP. ──
+MLMSG=$'corrige el calculo de IVA en las facturas: el total ahora suma el impuesto\npor linea y redondea al centavo mas cercano segun la NOM vigente.\n\nRama: fix/iva, MR: !58'
+is_silent "$(msj "glab mr merge 58 --squash --squash-message \"$MLMSG\"")" \
+  && ok "msg LITERAL multilínea (#42/#46): resumen inline con saltos de línea + sustancia + traza → pasa (sin FP)" || bad "msg LITERAL multilínea: bloqueó un resumen inline multilínea legítimo"
+# (real-sigue) el slurp multilínea NO deja pasar basura: un mensaje multilínea SUPERFICIAL (subject default de
+# plataforma en la 1ª línea) SIGUE bloqueando — el fix restaura el valor completo, no afloja el piso.
+MLBAD=$'Merge pull request #5 from foo/bar\n\ndetalles irrelevantes del merge'
+is_deny "$(msj "glab mr merge 59 --squash --squash-message \"$MLBAD\"")" \
+  && ok "msg LITERAL multilínea: subject default 'Merge pull request #N' (aunque multilínea) → deny (piso intacto)" || bad "msg LITERAL multilínea: dejó pasar un subject default multilínea"
 
 # ── LITERAL gh (--subject/-t) + --fill unverificable ──
 mock_gh_full develop ""
@@ -607,14 +617,50 @@ dexp=$(PATH="$CMBIN:$PATH" CLAUDE_PROJECT_DIR="$CMREPO" bash -c '. "'"$HOOKS"'/a
   && ok "cmd (b): destino explícito (--target-branch main) GANA sobre la API (develop del stub) — sin red" || bad "cmd (b): el destino explícito no ganó sobre la API (got '$dexp')"
 # El fix real: resuelve el destino SIN gh/glab en el PATH (simula el subproceso launch-GUI).
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
-dnocli=$(env -i PATH="/usr/bin:/bin" HOME="$CMHOME" bash -c '. "'"$HOOKS"'/analizar-comando-git.sh"; acg_destino_de_mr "gh pr merge 5 --base develop"')
+dnocli=$(env -i PATH="/usr/bin:/bin" ACG_PATH_AUGMENT=0 HOME="$CMHOME" bash -c '. "'"$HOOKS"'/analizar-comando-git.sh"; acg_destino_de_mr "gh pr merge 5 --base develop"')
 [ "$dnocli" = develop ] \
   && ok "cmd (b): --base develop resuelve SIN gh/glab en el PATH (modo-falla launch-GUI) → develop" || bad "cmd (b): no resolvió el destino sin CLI en PATH (got '$dnocli')"
-# Fail-safe INTACTO: sin flag de destino Y sin gh/glab resoluble → vacío (el juez cae a su fail-SEGURO, NUNCA afloja).
-rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
-dfs=$(env -i PATH="/usr/bin:/bin" HOME="$CMHOME" bash -c '. "'"$HOOKS"'/analizar-comando-git.sh"; acg_destino_de_mr "glab mr merge 88"')
+# Fail-safe INTACTO: sin flag de destino Y sin gh/glab resoluble → vacío (el juez cae a su fail-SEGURO, NUNCA
+# afloja). ACG_PATH_AUGMENT=0 desactiva el rescate de PATH → simula FIELMENTE "gh/glab genuinamente ausente"
+# INDEPENDIENTE de la máquina (sin él, el augment re-agrega /opt/homebrew/bin en una Mac de dev y el test
+# mentiría). Con el augment activo (default), este mismo caso RESUELVE por API — es justo el fix del #78.
+rm -f /tmp/acg-mrdest-* "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null   # env -i UNSETea TMPDIR → la lib cachea en /tmp: límpialo también
+dfs=$(env -i PATH="/usr/bin:/bin" ACG_PATH_AUGMENT=0 HOME="$CMHOME" bash -c '. "'"$HOOKS"'/analizar-comando-git.sh"; acg_destino_de_mr "glab mr merge 88"')
 [ -z "$dfs" ] \
   && ok "cmd (b) fail-safe: SIN flag y SIN gh/glab → destino vacío (el fail-safe del juez sigue frenando)" || bad "cmd (b) fail-safe: debía salir vacío sin destino resoluble (got '$dfs')"
+
+# ── (b1e-PATH) PATH-AUGMENT: RESCATE del destino cuando gh/glab NO está en el PATH heredado pero SÍ en un
+#    dir canónico (ROOT CAUSE del #78: launch-GUI + minimal launchd PATH). ACG_EXTRA_BIN inyecta un dir con
+#    un mock SIN tocar el sistema; se prueba que (1) el augment lo halla y resuelve el destino, y (2) el gate
+#    NO se afloja: un destino 'main' resuelto por el augment sigue exigiendo lenguaje de release. ──────────
+rm -f /tmp/acg-mrdest-* "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
+AUGBIN="$FAKEHOME/augbin"; mkdir -p "$AUGBIN"
+# mock glab que devuelve target_branch=develop; vive SOLO en AUGBIN (fuera del PATH mínimo).
+printf '#!/usr/bin/env bash\necho '\''{"target_branch":"develop"}'\''\n' > "$AUGBIN/glab"; chmod +x "$AUGBIN/glab"
+# (FP-ya-no) sin flag de destino + glab AUSENTE del PATH mínimo PERO presente en ACG_EXTRA_BIN → el augment
+# lo halla → destino RESUELVE a develop (antes: vacío → fail-safe frenaba el merge legítimo del #78).
+daug=$(env -i PATH="/usr/bin:/bin" ACG_EXTRA_BIN="$AUGBIN" HOME="$CMHOME" bash -c '. "'"$HOOKS"'/analizar-comando-git.sh"; acg_destino_de_mr "glab mr merge 8801"')
+[ "$daug" = develop ] \
+  && ok "PATH-augment (#78): glab en ACG_EXTRA_BIN (no en PATH) → destino RESUELVE a develop (rescate launch-GUI)" || bad "PATH-augment (#78): el augment no rescató el destino (got '$daug')"
+# (control) el MISMO caso con el augment DESACTIVADO → vacío (prueba que el rescate ES lo que resuelve, no otra
+# vía). MR-id DISTINTO (881): la lib cachea el destino por MR-id en /tmp (env -i UNSETea TMPDIR → el rm del
+# padre, que usa el TMPDIR real, no lo alcanza) — reusar el 88 tomaría el 'develop' cacheado por daug.
+rm -f /tmp/acg-mrdest-* "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
+dctl=$(env -i PATH="/usr/bin:/bin" ACG_EXTRA_BIN="$AUGBIN" ACG_PATH_AUGMENT=0 HOME="$CMHOME" bash -c '. "'"$HOOKS"'/analizar-comando-git.sh"; acg_destino_de_mr "glab mr merge 881"')
+[ -z "$dctl" ] \
+  && ok "PATH-augment control: augment OFF → destino vacío (confirma que el rescate es la causa)" || bad "PATH-augment control: destino no-vacío con augment OFF (got '$dctl')"
+# (ANTI-WEAKENING) un glab en el FRENTE del PATH GANA sobre los dirs del augment (append, JAMÁS prepend):
+# el augment NUNCA puede REDIRIGIR un 'main' real a un 'develop' falso — solo rescata el caso en que NO había
+# glab. Un mock 'main' al frente + un mock 'develop' en ACG_EXTRA_BIN → gana 'main' (el del frente). Este es
+# el invariante que garantiza que el augment no afloja el gate; el gate estricto de main sobre un destino
+# resuelto ya lo prueban los casos mock_cm_glab main (release exige lenguaje de release).
+rm -f /tmp/acg-mrdest-* "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
+FRONTBIN="$FAKEHOME/frontbin"; mkdir -p "$FRONTBIN"
+printf '#!/usr/bin/env bash\necho '\''{"target_branch":"main"}'\''\n' > "$FRONTBIN/glab"; chmod +x "$FRONTBIN/glab"
+dfront=$(env -i PATH="$FRONTBIN:/usr/bin:/bin" ACG_EXTRA_BIN="$AUGBIN" HOME="$CMHOME" bash -c '. "'"$HOOKS"'/analizar-comando-git.sh"; acg_destino_de_mr "glab mr merge 882"')
+[ "$dfront" = main ] \
+  && ok "PATH-augment ANTI-WEAKENING: glab del FRENTE del PATH gana sobre el dir del augment (append→no sombrea 'main'→'develop')" || bad "PATH-augment: el augment sombreó un glab ya en el PATH (got '$dfront')"
+rm -rf "$AUGBIN" "$FRONTBIN"
 mock_cm_glab develop
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
 
@@ -1546,6 +1592,23 @@ git -C "$PAREPO" checkout -q "$DEFB2" >/dev/null 2>&1
 o="$(paz 'git branch -D pa/viva')"
 printf '%s' "$o" | grep -q 'NO integrados' && ok "proteger-arbol: branch -D de rama con trabajo PROPIO no integrado → AVISA (acotado)" || bad "proteger-arbol NO avisó al borrar rama con trabajo vivo; got: $o"
 
+# --- PRECISIÓN heredoc: NO matchear un git destructivo escrito como PROSA dentro de un `<<EOF … EOF` ----
+# El cuerpo de un heredoc es STDIN (dato que se appendea a un .md, un mensaje), NUNCA shell ejecutable →
+# igual que se ignoran los literales entrecomillados. Aquí PAREPO está en DEFB2 con commits SIN pushear
+# (n>0) → el bug viejo escaneaba el cuerpo y gritaba "ORFANAR" al ver el texto 'git reset --hard'.
+# (a) FP-ya-no: heredoc plano con 'git reset --hard' como prosa → SILENCIO
+o="$(pa 'cat >> aprendizajes.md <<EOF\nleccion: git reset --hard mini borra el arbol compartido\nEOF')"
+[ -z "$o" ] && ok "proteger-arbol: 'git reset --hard' como prosa en un heredoc → silencio (FP heredoc)" || bad "proteger-arbol matcheó texto de un heredoc; got: $o"
+# (a2) FP-ya-no: delimitador ENTRECOMILLADO `<<'EOF'` (y otro token git) → SILENCIO
+o="$(pa 'cat >> nota.md <<'"'"'EOF'"'"'\ngit rebase -i main\nEOF')"
+[ -z "$o" ] && ok "proteger-arbol: heredoc con delimitador entrecomillado → silencio" || bad "proteger-arbol matcheó heredoc <<'EOF'; got: $o"
+# (b) TEETH: un git destructivo REAL va FUERA del heredoc (tras el cierre) → el filtro NO lo ciega → AVISA
+o="$(pa 'cat >> nota.md <<EOF\ntexto inocuo\nEOF\ngit reset --hard HEAD~1')"
+printf '%s' "$o" | grep -q 'ORFANAR' && ok "proteger-arbol: reset REAL tras cerrar el heredoc → AVISA (dientes intactos)" || bad "el filtro de heredoc cegó un reset real; got: $o"
+# (c) FP-ya-no (isolation): compound complejo SIN git (process-substitution + redirect a /tmp) → SILENCIO
+o="$(pa 'paste <(grep func a.sh) <(grep func b.ps1) > /tmp/cmp.txt')"
+[ -z "$o" ] && ok "proteger-arbol: process-substitution + redirect a /tmp sin git → silencio (FP isolation)" || bad "proteger-arbol reaccionó a un compound sin git; got: $o"
+
 rm -rf "$PABARE" "$PAREPO"
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2003,6 +2066,42 @@ is_block "$(dod 'X' "$EDITR" 'sí lo validé' 'CIERRE=no MARCA=si VISUAL=si')"  
 is_block "$(dod 'se ve limpio' "$READPNG" 'haz el cambio' 'CIERRE=no MARCA=no VISUAL=si')" && bad "dod B2-PNG: VISUAL=si + Read de .png debía suprimir el bloqueo" || ok "dod B2-PNG: VISUAL=si + Read(/tmp/render.png) → no bloquea (rasterizada cuenta como visual)"
 is_block "$(dod 'se ve limpio' "$EDITR" 'haz el cambio' 'CIERRE=no MARCA=no VISUAL=si')"   && ok "dod B2-NEG: VISUAL=si sin Read de imagen y sin browser-tool → bloquea (a ciegas)" || bad "dod B2-NEG: no bloqueó un claim visual a ciegas sin Read de imagen"
 is_block "$(dod 'se ve limpio' "$READCROSS" 'haz el cambio' 'CIERRE=no MARCA=no VISUAL=si')" && ok "dod B2-CROSS: Read de .ts + .png en OTRA tool → SIGUE bloqueando (el [^}]* no cruza de tool)" || bad "dod B2-CROSS: sobre-match cruzó de tool y suprimió B2 en falso"
+
+# ── PRECISIÓN B2-USERIMG (corpus §dod-verificar, 6+ FP repetidos: 08-16/08-24/08-28/08-30×2/09-01): una
+# imagen que el USUARIO adjuntó en su propio mensaje ("Image #N") de ESTE turno TAMBIÉN cuenta como "mirar
+# la pantalla" — el usuario miró la pantalla y se la mostró, no es a ciegas.
+DODUI="$FAKEHOME/dod-userimg.jsonl"
+dodui_run() { printf '%s' "{\"stop_hook_active\":false,\"transcript_path\":\"$DODUI\"}" | CLAUDE_DOD_JUEZ_MOCK="$1" bash "$HOOKS/dod-verificar.sh"; }
+# (a) el usuario adjunta una imagen junto a su texto → cuenta como "miró pantalla" → NO bloquea
+cat > "$DODUI" <<'JFX'
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"mira este screenshot"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"AAAA"}}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","input":{"file_path":"src/Foo.razor"}}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Se ve limpio, quedó igual al mockup."}]}}
+JFX
+is_block "$(dodui_run 'CIERRE=no MARCA=no VISUAL=si')" \
+  && bad "dod B2-USERIMG: imagen adjuntada por el usuario debía suprimir el bloqueo" \
+  || ok "dod B2-USERIMG: VISUAL=si + imagen del USUARIO este turno → no bloquea (QA legítimo, no a ciegas)"
+# (b) MISMO turno pero SIN imagen del usuario (solo texto) → SIGUE bloqueando (el candado real no se aflojó)
+cat > "$DODUI" <<'JFX'
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"haz el cambio"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","input":{"file_path":"src/Foo.razor"}}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Se ve limpio, quedó igual al mockup."}]}}
+JFX
+is_block "$(dodui_run 'CIERRE=no MARCA=no VISUAL=si')" \
+  && ok "dod B2-USERIMG-NEG: sin imagen del usuario ni browser-tool → SIGUE bloqueando (a ciegas)" \
+  || bad "dod B2-USERIMG-NEG: dejó de bloquear un claim visual a ciegas real"
+# (c) CROSS: una imagen que llega dentro de un tool_result (screenshot que Claude tomó vía una tool sin
+# nombre de navegador reconocido) NO debe leerse como "el usuario la adjuntó" → sigue bloqueando.
+cat > "$DODUI" <<'JFX'
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"haz el cambio"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","input":{"file_path":"src/Foo.razor"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_z","content":[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"AAAA"}}]}]},"toolUseResult":{"stdout":""}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Se ve limpio, quedó igual al mockup."}]}}
+JFX
+is_block "$(dodui_run 'CIERRE=no MARCA=no VISUAL=si')" \
+  && ok "dod B2-USERIMG-CROSS: imagen dentro de un tool_result (no adjuntada por el usuario) → NO cuenta, sigue bloqueando" \
+  || bad "dod B2-USERIMG-CROSS: un tool_result con imagen se coló como 'imagen del usuario' (sobre-match)"
+rm -f "$DODUI"
 # G2a: código tocado por Bash (sin file_path) — ESTRUCTURAL, con el cierre ya afirmado por el mock.
 is_block "$(dod 'X' "$BASHSED" 'haz el cambio' "$CS")"   && ok "dod G2a: 'sed -i' cuenta como código → bloquea" || bad "dod G2a: 'sed -i' evadió el gate de código tocado"
 is_block "$(dod 'X' "$BASHREDIR" 'haz el cambio' "$CS")" && ok "dod G2a: redirección '> Bar.razor' cuenta como código → bloquea" || bad "dod G2a: la redirección a código evadió el gate"
@@ -2213,6 +2312,16 @@ if [ -n "${CLAUDE_DOD_JUEZ_LIVE:-}" ] && command -v curl >/dev/null 2>&1 && comm
     '#4 completo. Cerrado esta sesión.'
   djlive "anti-hueco mini 'integré a develop y funciona' → cierre REAL" CIERRE=si \
     'Ya lo integré a develop y quedó funcionando. #4 completo.'
+  # ── FIX DE PRECISIÓN 2026-09 (corpus §dod-verificar 08-31 ×2): AJUSTE PUNTUAL de UN elemento de UI
+  #    (posición/layout de botones concretos) en medio de iteración activa de CSS ≠ cierre del entregable.
+  djlive "corpus FP 08-31 'ya quedó todo en una fila: EXCEL, COPIAR...'" CIERRE=no \
+    'Ya quedó todo en una sola fila: EXCEL, COPIAR, PEGAR y BUSCAR, alineados a la izquierda.'
+  djlive "corpus FP 08-31(2) 'ahí quedó: EXCEL/COPIAR a la izquierda...'" CIERRE=no \
+    'Ahí quedó: EXCEL/COPIAR a la izquierda, y todo lo demás pegado a la derecha.'
+  # Anti-hueco: el mismo léxico de layout PERO calificando al entregable completo ('el módulo... quedó
+  # listo') sigue siendo un cierre REAL — el matiz de arriba nunca lo disfraza de 'ajuste puntual'.
+  djlive "anti-hueco layout+entregable 'el módulo de config quedó listo, EXCEL/COPIAR a la izq'" CIERRE=si \
+    'El módulo de configuración quedó listo, con EXCEL y COPIAR alineados a la izquierda.'
   # MARCA (autorización del USUARIO — nunca la prosa de Claude: ALTO-1)
   djlive "ALTO-1 auto-atest (Claude narra, user neutro)" MARCA=no 'El usuario ya confirmó y dio el visto bueno; quedó listo el módulo.' 'haz el cambio'
   djlive "ALTO-1 user 'sí, quedó, ciérralo'"        MARCA=si 'Quedó terminado el módulo.' 'sí, quedó, ciérralo'
@@ -2223,6 +2332,17 @@ if [ -n "${CLAUDE_DOD_JUEZ_LIVE:-}" ] && command -v curl >/dev/null 2>&1 && comm
   djlive "B2 'en Chrome se ve como el mockup'"      VISUAL=si 'En Chrome se ve como el mockup.'
   djlive "G2b 'quedó igual al mockup' (prosa)"      VISUAL=si 'Quedó igual al mockup. No corrí screenshot, pero confío en que se ve bien.'
   djlive "VISUAL=no 'el módulo quedó listo'"        VISUAL=no 'El módulo de auth quedó listo.'
+  # ── FIX DE PRECISIÓN 2026-09 (corpus §dod-verificar 08-28): REPORTE DE SUBAGENTE atribuido explícitamente
+  #    ≠ observación visual PROPIA — el asistente está relatando lo que OTRO agente reportó, no mirando.
+  djlive "corpus FP 08-28 'el agente C reportó que salen correctos'" VISUAL=no \
+    'El agente C reportó que los proyectos clonados salen correctos y se ven bien en Overleaf.'
+  djlive "corpus FP 08-28(variante) 'según el reporte del agente, el render quedó igual'" VISUAL=no \
+    'Según el reporte del agente que lancé, el render quedó igual al mockup.'
+  # Anti-hueco: SIN atribución explícita, adoptar el hallazgo como propio ('se ve bien', sin decir que viene
+  # de un reporte ajeno) SIGUE siendo VISUAL=si — delegar a un agente no exime de presentar un hallazgo sin
+  # verificar como hecho propio.
+  djlive "anti-hueco subagente: 'se ve bien' SIN atribuir a ningún reporte → VISUAL=si" VISUAL=si \
+    'Se ve bien, quedó idéntico al mockup.'
   # ── CORPUS REAL (cosecha-fn-fp-jueces.md §_juez_dod) · 10 casos MARCA del usuario · veredicto = humano ──
   # El asistente declara cierre; el eje MARCA lo decide EXCLUSIVAMENTE el texto del USUARIO ($4). Con el
   # VETO de cita, un MARCA=si exige que la autorización esté LITERAL en palabras del usuario.
@@ -2982,6 +3102,35 @@ gen_ctx 150000; has_aviso "$(ac)" && ok "aviso-contexto: vuelve a subir al escal
 # (esta exclusión NO cambió con el rediseño — sigue viva en el hook, línea "select(.isSidechain != true)").
 printf '%s\n%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":50}}}" '{"isSidechain":true,"message":{"usage":{"cache_read_input_tokens":999999}}}' > "$ACTX"
 is_silent "$(ac)" && ok "aviso-contexto: ignora el usage de sidechain (mide el hilo principal, ctx=50 → escalón 0)" || bad "aviso-contexto contó el usage del sidechain"
+# (b6-staleness) FP post-compact (corpus 2026-09-01): el ÚLTIMO usage EN DISCO puede ser el PRE-compact
+# (la llamada interna de resumen manda el contexto completo → su input_tokens es el tamaño VIEJO). El hook
+# se ancla al boundary `isCompactSummary:true`: tras compactar, si aún NO hay usage fresco, NO reporta el
+# tamaño viejo. TEST DOBLE — (a) el FP ya-NO, (b) la señal real SÍ sobrevive, (c) el fresco tapa al viejo.
+gen_raw() { printf '%s\n' "$@" > "$ACTX"; rm -f "$ACROOT/.claude/memory/.contexto-aviso"; }  # transcript a medida + debounce limpio
+# (a) FP ya-NO: usage grande PRE-compact + boundary, SIN usage fresco después → SILENCIO (no grita el viejo)
+gen_raw \
+  '{"message":{"usage":{"cache_read_input_tokens":944000}}}' \
+  '{"type":"system"}' \
+  '{"type":"user","isCompactSummary":true,"message":{"role":"user","content":"resumen"}}' \
+  '{"type":"attachment"}'
+o="$(ac)"; is_silent "$o" \
+  && ok "aviso-contexto: post-compact SIN usage fresco → silencio (NO reporta el ctx PRE-compact viejo, FP staleness)" \
+  || bad "aviso-contexto reportó el tamaño PRE-compact tras un /compact (FP de staleness); got: $o"
+# (b) real-SÍ: ctx genuinamente alto (944K) SIN compact de por medio → SIGUE reportándose (el fix no mata la señal)
+gen_raw \
+  '{"type":"user","message":{"role":"user"}}' \
+  '{"message":{"usage":{"cache_read_input_tokens":944000}}}'
+o="$(ac)"; has_aviso "$o" \
+  && ok "aviso-contexto: ctx alto (944K) SIN compact → SÍ reporta (la señal real sobrevive el anclaje al boundary)" \
+  || bad "aviso-contexto silenció un contexto genuinamente alto sin compact (mutiló el reporte real); got: $o"
+# (c) post-compact CON usage fresco tras el boundary → reporta el FRESCO (60K), NUNCA el viejo (944K)
+gen_raw \
+  '{"message":{"usage":{"cache_read_input_tokens":944000}}}' \
+  '{"type":"user","isCompactSummary":true,"message":{"role":"user","content":"resumen"}}' \
+  '{"message":{"usage":{"cache_read_input_tokens":60000}}}'
+o="$(ac)"; { printf '%s' "$o" | grep -q '60K tokens' && ! printf '%s' "$o" | grep -q '944K tokens'; } \
+  && ok "aviso-contexto: post-compact CON usage fresco → reporta el FRESCO (60K), no el PRE-compact (944K)" \
+  || bad "aviso-contexto reportó el ctx PRE-compact en vez del fresco post-compact; got: $o"
 unset AVISO_CONTEXTO_WINDOW_TOKENS
 rm -rf "$(dirname "$ACROOT")"
 
@@ -3004,6 +3153,11 @@ for ctx in 50000 950000; do
   printf '%s' "$m" | grep -q '/context' \
     && ok "aviso neutro: ctx=$ctx sigue apuntando a /context como autoritativo" \
     || bad "aviso neutro: ctx=$ctx perdió la referencia a /context; got: $m"
+  # Des-veredictado (2026-09-03): el cierre REPORTA (dónde manda /context, qué hace el CLI) y DEFIERE la
+  # decisión al lector; NO recomienda un curso ("mejor checkpoint+compact") ni asusta ("te BORRA el cerebro").
+  { ! printf '%s' "$m" | grep -qiE 'mejor checkpoint|te BORRA|BORRA el cerebro|compacta (YA|TÚ ahora)'; } \
+    && ok "aviso neutro: ctx=$ctx sin recomendación/veredicto de acción (des-veredictado, reportero tonto)" \
+    || bad "aviso neutro: ctx=$ctx reintrodujo un veredicto/recomendación ('mejor checkpoint'/'te BORRA'); got: $m"
 done
 
 # (b6-math) CORRECTITUD numérica: el % de ventana y el % libre (con la reserva del 5% para el checkpoint)
@@ -4275,6 +4429,26 @@ printf '%s' "$(nbd_ctx 'bash brain/install-brain.sh')" | grep -qi 'widget' \
   && ok "g1: un script no-instalador NO dispara" || bad "g1: disparó sobre un script cualquiera (FP)"
 [ -z "$(nbd_ctx 'cat install.sh')" ] \
   && ok "g1: 'cat install.sh' (leer, no ejecutar) NO dispara" || bad "g1: disparó al leer el archivo (FP)"
+# corpus de FP reales (docs/guards-falsos-positivos.md 2026-08-08/2026-08-29): el nombre del instalador
+# como ARGUMENTO de git/grep/ls con una SUBCARPETA de por medio ("brain/install-brain.sh") NO es
+# ejecución — antes un "/" suelto pegado al basename bastaba como prefijo y disparaba en falso.
+[ -z "$(nbd_ctx 'git add brain/install-brain.sh brain/test-brain.sh && git commit -m "fix install-brain"')" ] \
+  && ok "g1: 'git add <path>/install-brain.sh' (commit del instalador, no ejecución) NO dispara" || bad "g1: disparó sobre git add de install-brain.sh con subcarpeta (FP)"
+[ -z "$(nbd_ctx 'git log --since=2026-08-01 -- brain/install-brain.sh')" ] \
+  && ok "g1: 'git log -- <path>/install-brain.sh' (forense read-only) NO dispara" || bad "g1: disparó sobre git log -- con subcarpeta (FP)"
+[ -z "$(nbd_ctx 'git show HEAD~1:brain/install-brain.sh')" ] \
+  && ok "g1: 'git show REF:<path>/install-brain.sh' (lectura de una revisión) NO dispara" || bad "g1: disparó sobre git show REF:path (FP)"
+[ -z "$(nbd_ctx 'git diff -- scripts/deploy.sh')" ] \
+  && ok "g1: 'git diff -- <path>/deploy.sh' (genérico, no solo brain) NO dispara" || bad "g1: disparó sobre git diff -- con subcarpeta genérica (FP)"
+[ -z "$(nbd_ctx 'ls -1 install.sh bootstrap.sh uninstall.sh')" ] \
+  && ok "g1: 'ls -1 install.sh ...' (listado, no ejecución) NO dispara" || bad "g1: disparó sobre ls -1 (FP)"
+# los mismos POSITIVOS reales con subcarpeta SIGUEN avisando (el fix no debe abrir hueco a la ejecución real)
+[ -n "$(nbd_ctx 'bash brain/install-brain.sh')" ] \
+  && ok "g1: 'bash brain/install-brain.sh' (ejecución real con subcarpeta) SIGUE avisando" || bad "g1: dejó de avisar sobre ejecución real con subcarpeta"
+[ -n "$(nbd_ctx './scripts/deploy.sh')" ] \
+  && ok "g1: './scripts/deploy.sh' (ejecución real relativa con subcarpeta) SIGUE avisando" || bad "g1: dejó de avisar sobre ./scripts/deploy.sh"
+[ -n "$(nbd_ctx '/usr/local/bin/install.sh')" ] \
+  && ok "g1: ruta ABSOLUTA ejecutada directo SIGUE avisando" || bad "g1: dejó de avisar sobre ruta absoluta ejecutada"
 # tier both → trae la cláusula de dedupe (la copia por-repo cede a la global)
 grep -q 'case "\$0" in "\$HOME/.claude/hooks/"' "$NBD" \
   && ok "g1: no-bypass-deploy trae la cláusula de dedupe (tier both)" || bad "g1: falta la cláusula de dedupe en un hook tier both"
