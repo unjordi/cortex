@@ -110,7 +110,7 @@ digraph flujos {
 
     // VISUAL block
     VIS [shape=diamond, fillcolor="#2b2622", color="#d97757",
-         label="¿VISUAL=si Y MARCA≠si Y NO corrió tool de navegador este turno?\n(browser detectado por ESTRUCTURA del transcript: tool_use MCP chrome/playwright/puppeteer\no la tool `computer` — NO por la palabra «screenshot» en prosa)"];
+         label="¿VISUAL=si Y MARCA≠si Y este turno NO hubo evidencia visual real?\n(evidencia = corrió tool de navegador —tool_use MCP chrome/playwright/puppeteer o la tool `computer`—\nO el USUARIO adjuntó una IMAGEN en el turno; detectado por ESTRUCTURA del transcript,\nNO por la palabra «screenshot» en prosa. VISUAL=no además si la apariencia está ATRIBUIDA a un reporte de subagente)"];
     VIS_D [color="#c0392b", penwidth=2,
            label="🔴 BLOCK (B2) — QA visual A CIEGAS.\nAfirmaste cómo SE VE sin mirar la pantalla. Estatus honesto:\n«verificado técnicamente, SIN QA visual»; el QA visual lo hace el usuario o una captura real.\n(bloquea INDEPENDIENTE de si el turno tocó código)"];
 
