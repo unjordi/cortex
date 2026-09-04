@@ -142,9 +142,11 @@ digraph flujos {
 
     // ── Ruta D: UPDATER del widget (⬆) ──
     WID      [color="#7fb069",
-              label="🟢  widget (pestaña Cerebro, 3 GUIs): lee ~/.claude/.brain-version y consulta\ncommits/main de github.com/unjordi/cortex (throttle ~15m, fail-open).\nSi main avanzó → dibuja el banner ⬆ Actualizar"];
+              label="🟢  widget (pestaña Cerebro, 3 GUIs): compara el SHA EMBEBIDO del build (version.json,\nque escribe make-app.sh) contra commits/main de github.com/unjordi/cortex (throttle ~15m, fail-open).\nSi el sha DIFIERE y es más nuevo → banner ⬆ Actualizar. (La píldora de salud muestra ~/.claude/.brain-version,\nsello APARTE que estampa install-brain.sh — no es lo que dispara el ⬆)"];
     WID_ACT  [color="#e08e45",
-              label="🟠  al aceptar ⬆: script suelto hace git fetch + merge --ff-only origin/main sobre\n~/.cortex y —solo si tuvo éxito— re-corre install.sh/ps1 (reconstruye+relanza,\ndesprendido). Fase 2 Windows: baja el .exe del release (pendiente de QA)"];
+              label="🟠  al aceptar ⬆: script DESPRENDIDO (nohup bash -lc) resuelve el clon local\n(resolveClonePath: embebido→$CLAUDE_BRAIN_DIR→~/.cortex→fallback ~/.claude-brain), lo MIGRA al nombre canónico si hace\nfalta, y hace git fetch + `checkout -B main origin/main` (FUERZA-alinea; descarta rama/commits leftover)\n→ re-corre install.sh/ps1 (reconstruye+relanza). Fail-open: sin clon con macos/install.sh → invita a\nactualizar a mano con el one-liner de bootstrap"];
+    WID_ASSET [color="#c9a227",
+              label="🟡  install.sh baja por DEFAULT el .app/.exe PRECOMPILADO del release rolling 'macos-latest'/\n'windows-latest' (release-macos.yml/release-windows.yml lo republica en CADA push a main, SIN filtro de\npaths → nunca rancio respecto al sha de main). Guard de staleness (#346): si el build-sha del asset ≠ HEAD\ndel clon y hay Xcode CLT → compila desde fuente en vez de instalar un asset rancio (antídoto al loop 'actualiza')"];
     WID_ATOM [color="#7fb069",
               label="🟢  atomicidad: install-brain instala los hooks con atomic_install (cp a tmp + mv,\nrename atómico) → el updater ⬆ ya no deja ventana de lectura a-medio-sobrescribir con sesión VIVA.\nRESUELTO (install-brain.sh atomic_install, en develop)"];
 
@@ -181,7 +183,8 @@ digraph flujos {
     DRIFT -> DRIFT_STAGE;
 
     WID -> WID_ACT;
-    WID_ACT -> WID_ATOM;
+    WID_ACT -> WID_ASSET [label="reinstala"];
+    WID_ASSET -> WID_ATOM;
 
     DRIFT_CIEGO -> NORMA [style=dashed];
     BOOT_INV -> NORMA    [style=dashed];
