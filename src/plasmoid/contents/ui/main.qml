@@ -1168,14 +1168,18 @@ PlasmoidItem {
         // Escapa la ruta del clon con shq (comillas simples POSIX): una ruta con un ' la partia sin esto.
         // MIGRACIÓN DEL CLON (rename claude-brain→cortex): si vive bajo el nombre VIEJO y ~/.cortex no
         // existe, renómbralo ANTES del align → el nombre canónico queda y el próximo update lo halla directo.
-        // Vars sin comillas (rutas ~/.cortex, ~/.claude-brain sin espacios) → no rompen el `bash -lc "..."`.
+        // OJO — NO quites los \$ de SRC/DST/DIR/HOME: `inner` viaja DENTRO de las comillas DOBLES del
+        // `bash -lc "..."` de `cmd`, que el engine "executable" corre por un shell EXTERNO. El \ es lo único
+        // que impide que ese shell EXTERNO expanda esas vars a VACÍO (aún no existen ahí) antes de que corra
+        // el bash INTERNO. Sin el \: `cd` queda pelón → $HOME → `git fetch` fuera de todo repo →
+        // "fatal: not a git repository" y el update nunca converge. Con \$ las expande el bash INTERNO.
         // `checkout -B main origin/main` (mismo patrón que bootstrap.sh) FUERZA-ALINEA el clon a
         // origin/main en vez de `merge --ff-only`, que fallaba PARA SIEMPRE si el clon quedaba en una
         // rama leftover o con commits locales — este clon es infraestructura, no un checkout de dev.
-        var inner = "SRC=" + shq(repo) + "; DST=$HOME/.cortex; "
-                  + "[ $SRC != $DST ] && [ -d $SRC ] && [ ! -e $DST ] && mv $SRC $DST; "
-                  + "DIR=$DST; [ -d $DIR/.git ] || DIR=$SRC; "
-                  + "cd $DIR && git fetch origin --quiet && git checkout -B main origin/main && bash $DIR/install.sh"
+        var inner = "SRC=" + shq(repo) + "; DST=\\$HOME/.cortex; "
+                  + "[ \\$SRC != \\$DST ] && [ -d \\$SRC ] && [ ! -e \\$DST ] && mv \\$SRC \\$DST; "
+                  + "DIR=\\$DST; [ -d \\$DIR/.git ] || DIR=\\$SRC; "
+                  + "cd \\$DIR && git fetch origin --quiet && git checkout -B main origin/main && bash \\$DIR/install.sh"
         var cmd = "nohup bash -lc \"" + inner + "\" >/tmp/cortex-update.log 2>&1"
         updateRunSource.connectSource(cmd)
     }
