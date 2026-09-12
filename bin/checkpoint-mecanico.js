@@ -16,9 +16,10 @@
  *   - archivos escritos (Write/Edit/NotebookEdit), con conteo
  *   - archivos escritos VÍA BASH (redirección `>`/`>>`, `tee`) — heurística, ver "LÍMITES" abajo
  *   - skills invocadas (conteo)
- *   - comandos bash más frecuentes (primeros 2 tokens, tras despojar una asignación de variable al
- *     frente; navegación/exploración y asignaciones-sin-comando EXCLUIDAS de verdad, no solo
- *     despriorizadas — ver B-2 en LÍMITES) + "RESUELTO HOY": mensajes de commit (`-m`, `-F -` con
+ *   - comandos bash más frecuentes (herramienta + subcomando significativo, tras despojar asignación de
+ *     variable, envoltorios `sudo`/`timeout N`/`command`/`env`/`nohup` y un `cd <repo> &&`/`;` inicial —
+ *     ver C-1 en LÍMITES; navegación/exploración y asignaciones-sin-comando EXCLUIDAS de verdad, no solo
+ *     despriorizadas — ver B-2) + "RESUELTO HOY": mensajes de commit (`-m`, `-F -` con
  *     heredoc, `-F <archivo>`) y de integración por squash (`gh pr merge --subject`,
  *     `glab mr merge --squash-message`), verbatim
  *   - cwds y ramas (gitBranch) vistos
@@ -67,6 +68,23 @@
  *     frecuencia. Antes de clasificar, se despoja cualquier asignación de variable al frente
  *     (`despojarAsignaciones`): así `WT=/tmp/x; cd $WT` se juzga por el `cd` real que ejecuta, no por el
  *     valor —siempre distinto o no— de la variable que lo precede.
+ *   · C-1 · agrupar por los 2 primeros tokens DESDE EL INICIO del comando dejaba honesto-pero-vacío el top:
+ *     casi todo comando real en modo auto llega prefijado por `cd <repo> && …`, así que el primer token
+ *     era casi siempre `cd` — y `esNavegacion` lo descartaba ENTERO, escondiendo la herramienta real que
+ *     sigue (`git commit`, `gh pr merge`, `bash brain/test-brain.sh`…). MEDIDO 2026-09-11 sobre el tramo
+ *     real: 87 de 101 comandos arrancan con `cd … &&`/`cd …;`; el top sobrevivía con solo 4 entradas
+ *     (dos invocaciones de intérprete, `mkdir -p`, `df -h`) — honesto (no miente el orden), pero no decía
+ *     QUÉ se hizo. Se despoja el segmento de navegación INICIAL (solo `cd`: su argumento es casi siempre
+ *     una ruta simple, sin operadores de shell embebidos) cuando trae algo encadenado después
+ *     (`saltarCdEncadenado`), y también los envoltorios `sudo`, `timeout N` (con sus propias flags),
+ *     `command`, `env`, `nohup` (`despojarEnvoltorios`) — en loop con `despojarAsignaciones`, hasta que
+ *     ninguno cambie nada más. Un `cd` SIN nada encadenado después sigue siendo navegación pura y se
+ *     descarta igual que antes (A-4/B-2 no cambian). La CLAVE en sí deja de ser "los 2 primeros tokens a
+ *     secas": `tomarClaveConSubcomando` toma la herramienta y hasta 2 tokens más MIENTRAS sean parte del
+ *     subcomando (no una flag `-x`, no un número suelto, no el arranque de una cadena/heredoc citado, no
+ *     un operador de shell) — así `gh pr merge`/`gh pr view` quedan en claves DISTINTAS (antes ambos
+ *     colapsaban a `gh pr`, mezclando integraciones con simples consultas) y un heredoc/cadena larga ya no
+ *     rompe la clave (se corta ahí, no se cuela como texto).
  *   · Las escrituras-por-bash también descartan destinos que no son un archivo real: una redirección `>`
  *     que en realidad es el CIERRE de una etiqueta (`<command-name>/to-do</command-name>`, una cita del
  *     propio harness embebida en un heredoc-fixture) se detecta porque la corrida de texto sin espacio
@@ -211,11 +229,75 @@ function despojarAsignaciones(cmdRaw) {
 // asignación sin comando encadenado); `extraer()` solo hace `add()` cuando NO es null. Con el ruido
 // excluido en la inserción, `topComandos()` (arriba, sin tocar) recibe un mapa de un solo grupo y su
 // concatenación señal+ruido degenera a un solo `sort` — monótono por construcción, no por accidente.
+// ── C-1 · envoltorios que anteceden al comando real sin decir QUÉ se hizo: `sudo`, `timeout N` (con o
+// sin sus propias flags, p. ej. `timeout -k 5 900 cmd`), `command`, `env`, `nohup`. Se despojan con el
+// mismo espíritu que `despojarAsignaciones` — quitar lo que antecede, no lo que importa — antes de tomar
+// la clave. MEDIDO 2026-09-11: `timeout 900 bash brain/test-brain.sh …` (5 corridas de la suite en el
+// tramo real) quedaba con el número de segundos como si fuera el comando, en vez de `bash …`.
+const RE_WRAPPER_TIMEOUT = /^timeout\s+(?:-\S+(?:\s+\S+)?\s+)*\d+[smhd]?\s+/;
+const RE_WRAPPER_SIMPLE = /^(?:sudo|command|env|nohup)\s+/;
+function despojarEnvoltorios(s) {
+  for (;;) {
+    let m = s.match(RE_WRAPPER_TIMEOUT);
+    if (m) { s = s.slice(m[0].length); continue; }
+    m = s.match(RE_WRAPPER_SIMPLE);
+    if (m) { s = s.slice(m[0].length); continue; }
+    break;
+  }
+  return s;
+}
+// ── C-1 (el hallazgo principal, ver LÍMITES arriba) · un `cd <repo> &&`/`cd <repo>;` inicial no es más
+// que otro envoltorio — pero `esNavegacion` lo veía como EL comando (primer token = `cd`) y descartaba
+// la línea entera, escondiendo lo que de verdad se hizo después. Se salta SOLO el `cd` (su argumento es
+// casi siempre una ruta simple, sin `&&`/`;`/`||` propios) y SOLO cuando trae algo encadenado detrás; un
+// `cd` sin nada después sigue siendo navegación pura (A-4/B-2 intactos: nunca cambia su resultado).
+const RE_CD_INICIAL = /^cd\b[^\n]*?(?:&&|;|\|\|)\s*/;
+function saltarCdEncadenado(s) {
+  const m = s.match(RE_CD_INICIAL);
+  return m ? s.slice(m[0].length) : s;
+}
+// ── C-1 · un token deja de pertenecer al "subcomando" (deja de decir QUÉ se hizo) en cuanto es una flag
+// (`-q`, `--squash`), el arranque de una cadena/heredoc citado (`"…`, `'…`, `` `… ``) — ahí empieza el
+// ARGUMENTO, no el verbo —, un operador de shell (`>`, `|`, `&`, `;`, `(`), un número suelto (un PR id,
+// unos segundos: no nombra la acción) o un token gigante (un blob, no una palabra de subcomando).
+function esTokenLimiteDeClave(t) {
+  if (!t) return true;
+  if (t[0] === '-') return true;
+  if (t[0] === '"' || t[0] === "'" || t[0] === '`') return true;
+  if ('><|&;()'.indexOf(t[0]) >= 0) return true;
+  if (t.length > 40) return true;
+  if (/^\d+$/.test(t)) return true;
+  return false;
+}
+// La clave deja de ser "los 2 primeros tokens a secas": toma la herramienta y HASTA 2 tokens más
+// mientras sigan siendo parte del subcomando — así `gh pr merge`/`gh pr view`/`gh pr checks` quedan en
+// claves DISTINTAS (antes `gh pr` los mezclaba a todos, escondiendo cuáles de esas llamadas eran
+// integraciones reales) y `git commit -F -`/`ssh loki "…"` se cortan en el operador/cadena citada en vez
+// de arrastrar el heredoc o el comando remoto completo dentro de la clave.
+function tomarClaveConSubcomando(resto) {
+  const tokens = String(resto).trim().split(/\s+/);
+  if (!tokens[0]) return null;
+  const partes = [tokens[0]];
+  for (let i = 1; i < tokens.length && partes.length < 3; i++) {
+    if (esTokenLimiteDeClave(tokens[i])) break;
+    partes.push(tokens[i]);
+  }
+  return partes.join(' ');
+}
 function claveComandoSeñal(cmdRaw) {
-  const { resto } = despojarAsignaciones(cmdRaw);
-  if (!resto) return null; // asignación pura, sin comando después: no dice qué se hizo
-  const clave = resto.split(/\s+/).slice(0, 2).join(' ');
-  if (esNavegacion(clave)) return null;
+  let resto = String(cmdRaw).trim();
+  for (;;) {
+    const antes = resto;
+    const a = despojarAsignaciones(resto);
+    resto = a.resto;
+    if (!resto) return null; // asignación pura, sin comando después: no dice qué se hizo
+    resto = despojarEnvoltorios(resto).trim();
+    resto = saltarCdEncadenado(resto).trim();
+    if (resto === antes) break; // ya no hay más envoltorio/cd/asignación que despojar: estable
+  }
+  if (!resto) return null;
+  const clave = tomarClaveConSubcomando(resto);
+  if (!clave || esNavegacion(clave)) return null;
   return clave;
 }
 // MEDIDO 2026-09-11: 6 de 10 escrituras-por-bash eran temporales (`/tmp/suite-*.log`…) desplazando a las
@@ -570,11 +652,16 @@ function renderAndamio(meta, r, ctxRepo, avisoSubagente) {
       + 'córrelo con `--ventana todo` si de verdad quieres el acumulado.');
   }
   lines.push('');
-  lines.push(`## 🗂️ Archivos tocados con Write/Edit (exacto) — top ${TOP_N} de ${r.escrituras.size}`);
+  // ── C-2 · el encabezado "top N de M" promete N entradas — pero un CAP posterior (temporales de
+  // topBashEscrituras, o simplemente menos de TOP_N distintas) puede recortar la lista DESPUÉS de que el
+  // encabezado ya se calculó con TOP_N fijo. MEDIDO 2026-09-11: "top 10 de 16" renderizando 6 — el lector
+  // no puede saber si faltan 4 porque se filtraron o porque nunca existieron. El encabezado usa el largo
+  // REAL de lo que se va a renderizar (nunca TOP_N a secas), así nunca promete más de lo que muestra.
+  lines.push(`## 🗂️ Archivos tocados con Write/Edit (exacto) — top ${escrituras.length} de ${r.escrituras.size}`);
   for (const e of escrituras) lines.push(`- ${e.item} (${e.n}×)`);
   if (!escrituras.length) lines.push('- (ninguno)');
   lines.push('');
-  lines.push(`## 🗂️ Archivos escritos desde Bash (HEURÍSTICA: \`>\`, \`>>\`, \`tee\`) — top ${TOP_N} de ${r.bashEscrituras.size}`);
+  lines.push(`## 🗂️ Archivos escritos desde Bash (HEURÍSTICA: \`>\`, \`>>\`, \`tee\`) — top ${bashEsc.length} de ${r.bashEscrituras.size}`);
   lines.push('<!-- No confundir con la lista de arriba: ésta es heurística sobre la línea de comando. No ve');
   lines.push('     `sed -i`, `cp`/`mv`, ni lo que escriba un script invocado. Útil en modo auto, donde buena');
   lines.push('     parte de las escrituras NO pasan por la tool Write/Edit. -->');
@@ -585,11 +672,12 @@ function renderAndamio(meta, r, ctxRepo, avisoSubagente) {
   for (const e of skills) lines.push(`- ${e.item} (${e.n}×)`);
   if (!skills.length) lines.push('- (ninguna)');
   lines.push('');
-  lines.push(`## RESUELTO HOY — mensajes de \`git commit\` (${r.commits.length} en el tramo, últimos ${TOP_N})`);
+  const commitsMostrados = Math.min(TOP_N, r.commits.length);
+  lines.push(`## RESUELTO HOY — mensajes de \`git commit\` (${r.commits.length} en el tramo, últimos ${commitsMostrados})`);
   for (const m of r.commits.slice(-TOP_N)) lines.push(`- ${m}`);
   if (!r.commits.length) lines.push('- (sin commits detectados en el tramo)');
   lines.push('');
-  lines.push(`## Comandos Bash más frecuentes (top ${TOP_N})`);
+  lines.push(`## Comandos Bash más frecuentes (top ${comandos.length} de ${r.comandos.size})`);
   for (const e of comandos) lines.push(`- \`${e.item}\` (${e.n}×)`);
   if (!comandos.length) lines.push('- (ninguno)');
   lines.push('');
@@ -763,4 +851,5 @@ module.exports = {
   extraer, renderAndamio, metaBarata, isNoisyUserText, destinosDeEscrituraBash, extraerCommits,
   topPriorizado, topComandos, topBashEscrituras, esNavegacion, esTemporal, subagenteMasFresco,
   despojarAsignaciones, claveComandoSeñal, precedidoPorAngulo,
+  despojarEnvoltorios, saltarCdEncadenado, tomarClaveConSubcomando,
 };

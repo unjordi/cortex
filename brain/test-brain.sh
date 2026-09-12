@@ -4185,6 +4185,124 @@ node -e '
 rm -rf "$M2EDIR"
 
 echo ""
+echo "== (m2f) checkpoint-mecanico.js: C-1/C-2, QA sobre el render REAL del 2026-09-11 (loop 3) =="
+# C-1: un `cd <repo> &&`/`cd <repo>;` inicial no es EL comando — es el mismo tipo de envoltorio que una
+# asignación de variable — pero la clave vieja (2 primeros tokens DESDE EL INICIO) siempre veía `cd`
+# primero y descartaba la línea ENTERA. MEDIDO 2026-09-11: 87 de 101 comandos del tramo real arrancaban
+# así; el top sobrevivía con 4 entradas que no decían nada (`python3 -`, `printf`, `mkdir -p`, `df -h`).
+node -e '
+  const {claveComandoSeñal} = require(process.argv[1]);
+  const r1 = claveComandoSeñal("cd /Users/unjordi/code/cortex && git commit -q -F - <<MSG");
+  if (r1 !== "git commit") { console.error("cd&&git commit: " + JSON.stringify(r1)); process.exit(1); }
+  const r2 = claveComandoSeñal("WT=/tmp/x; cd \"$WT\" && timeout 900 bash brain/test-brain.sh > /tmp/x.log 2>&1");
+  if (r2 !== "bash brain/test-brain.sh") { console.error("var+cd+timeout+bash: " + JSON.stringify(r2)); process.exit(1); }
+  // un `cd` SIN nada encadenado después sigue siendo navegación pura (A-4/B-2 no cambian).
+  const r3 = claveComandoSeñal("cd /Users/unjordi/code/cortex");
+  if (r3 !== null) { console.error("cd SOLO debía seguir excluido: " + JSON.stringify(r3)); process.exit(1); }
+' "$CKPT_MEC" \
+  && ok "m2f CONTRA LA FALLA (C-1a): un \`cd <repo> &&\` inicial se salta (no se descarta la línea entera); un \`cd\` SIN nada encadenado sigue excluido igual que antes" \
+  || bad "m2f CONTRA LA FALLA (C-1a): el \`cd\` inicial sigue escondiendo el comando real, o dejó de excluir la navegación pura"
+
+# C-1: envoltorios `sudo`/`timeout N`/`command`/`env`/`nohup` tampoco son EL comando.
+node -e '
+  const {claveComandoSeñal} = require(process.argv[1]);
+  const r1 = claveComandoSeñal("timeout 540 gh pr checks 406 --repo x --watch --fail-fast");
+  if (r1 !== "gh pr checks") { console.error("timeout+gh: " + JSON.stringify(r1)); process.exit(1); }
+  const r2 = claveComandoSeñal("sudo systemctl restart nginx");
+  if (r2 !== "systemctl restart nginx") { console.error("sudo: " + JSON.stringify(r2)); process.exit(1); }
+' "$CKPT_MEC" \
+  && ok "m2f CONTRA LA FALLA (C-1b): \`timeout N\` y \`sudo\` se despojan como envoltorio, no como el comando" \
+  || bad "m2f CONTRA LA FALLA (C-1b): un envoltorio (timeout/sudo) se coló como si fuera el comando real"
+
+# C-1: la clave vieja (2 tokens a secas) colapsaba TODOS los subcomandos de `gh pr`/`glab mr` en una sola
+# entrada (`gh pr`), mezclando una integración real (`merge`) con una simple consulta (`view`/`checks`).
+node -e '
+  const {claveComandoSeñal} = require(process.argv[1]);
+  const merge = claveComandoSeñal("gh pr merge 405 --repo unjordi/cortex --squash --delete-branch");
+  const view = claveComandoSeñal("gh pr view 389 --repo unjordi/cortex --json title");
+  if (merge === view) { console.error("gh pr merge/view colapsaron a la misma clave: " + JSON.stringify(merge)); process.exit(1); }
+  if (merge !== "gh pr merge") { console.error("gh pr merge: " + JSON.stringify(merge)); process.exit(1); }
+' "$CKPT_MEC" \
+  && ok "m2f CONTRA LA FALLA (C-1c): \`gh pr merge\` y \`gh pr view\` quedan en claves DISTINTAS (antes ambos colapsaban a \`gh pr\`)" \
+  || bad "m2f CONTRA LA FALLA (C-1c): distintos subcomandos de \`gh pr\` se siguen mezclando en una sola clave"
+
+# C-1 end-to-end: fixture FIEL a la forma real del tramo medido (cd-prefijado, timeout+suite, squash del
+# foro) — sobre el render completo (extraer + renderAndamio), el top debe nombrar al menos una
+# herramienta del trabajo. Antes de este arreglo, con este MISMO fixture, las 4 entradas que sobrevivían
+# eran genéricas (intérpretes/utilerías) porque el `cd … &&` inicial escondía TODO lo demás.
+M2FDIR="$(mktemp -d "${TMPDIR:-/tmp}/brain-m2f.XXXXXX")"
+M2FFIX="$M2FDIR/c1.jsonl"
+node -e '
+  const fs = require("fs");
+  const w = fs.createWriteStream(process.argv[1]);
+  const L = (o) => w.write(JSON.stringify(o) + "\n");
+  const bash = (cmd) => L({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", name: "Bash", input: { command: cmd } }] } });
+  for (let i = 0; i < 4; i++) bash("cd /Users/unjordi/code/cortex && python3 -c \"print(1)\"");
+  for (let i = 0; i < 3; i++) bash("printf \"%s\\n\" hola");
+  bash("mkdir -p /tmp/x");
+  bash("df -h");
+  bash("cd /Users/unjordi/code/cortex && gh pr merge 405 --repo unjordi/cortex --squash --delete-branch --subject x");
+  bash("WT=/tmp/w; cd \"$WT\" && timeout 900 bash brain/test-brain.sh > /tmp/s.log 2>&1");
+  w.end();
+' "$M2FFIX"
+node -e '
+  const { extraer, renderAndamio } = require(process.argv[1]);
+  const r = extraer(process.argv[2], 12, { ventana: "todo" });
+  const md = renderAndamio(r, r, null, null);
+  const sec = md.split("Comandos Bash")[1].split("## ")[0];
+  const VERBOS = ["ssh", "gh ", "glab", "git ", "node ", "bash ", "docker", "scp"];
+  const nombra = sec.split("\n").some((l) => l.startsWith("- ") && VERBOS.some((v) => l.toLowerCase().includes(v)));
+  if (!nombra) { console.error("EL TOP SIGUE SIN NOMBRAR UNA HERRAMIENTA DEL TRABAJO:\n" + sec); process.exit(1); }
+' "$CKPT_MEC" "$M2FFIX" \
+  && ok "m2f CONTRA LA FALLA (C-1 end-to-end): sobre un tramo fiel al real (cd-prefijado, timeout+suite, squash), el top de comandos nombra al menos una herramienta del trabajo" \
+  || bad "m2f CONTRA LA FALLA (C-1 end-to-end): el top de comandos sigue sin decir qué se hizo sobre un tramo fiel al real"
+rm -rf "$M2FDIR"
+
+# C-2: el encabezado "top N de M" no puede prometer más entradas de las que renderiza. Repro FIEL a las
+# proporciones MEDIDAS 2026-09-11 (3 escrituras REALES contra 13 temporales, 16 destinos distintos en
+# total): `topBashEscrituras(m, 10)` topa las temporales a como máximo tantas como señal real haya (3), así
+# que renderiza 6 —no 10— aunque haya 16 destinos distintos ("top 10 de 16" renderizando 6).
+node -e '
+  const { topBashEscrituras } = require(process.argv[1]);
+  const m = new Map();
+  for (let i = 0; i < 3; i++) m.set("archivo-repo-" + i + ".md", 1);
+  for (let i = 0; i < 13; i++) m.set("/tmp/temporal-" + i + ".log", 1);
+  const t = topBashEscrituras(m, 10);
+  if (t.length >= 10) { console.error("el repro no reproduce el recorte: " + t.length); process.exit(1); }
+  if (t.length !== 6) { console.error("se esperaban 6 (tope = señal real x2), salieron " + t.length); process.exit(1); }
+' "$CKPT_MEC" \
+  && ok "m2f (repro de apoyo C-2): confirma que \`topBashEscrituras\` SÍ recorta bajo TOP_N cuando hay más temporales que señal (precondición del hallazgo)" \
+  || bad "m2f (repro de apoyo C-2): topBashEscrituras dejó de recortar — el repro de C-2 ya no aplica"
+
+node -e '
+  const { extraer, renderAndamio } = require(process.argv[1]);
+  const fs = require("fs");
+  const dir = fs.mkdtempSync("/tmp/brain-m2f-c2-");
+  const f = dir + "/t.jsonl";
+  const w = fs.createWriteStream(f);
+  const L = (o) => w.write(JSON.stringify(o) + "\n");
+  const bash = (cmd) => L({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", name: "Bash", input: { command: cmd } }] } });
+  for (let i = 0; i < 3; i++) bash("cat >> archivo-repo-" + i + ".md <<EOF\nx\nEOF");
+  for (let i = 0; i < 13; i++) bash("echo x > /tmp/temporal-" + i + ".log");
+  w.end();
+  w.on("finish", () => {
+    const r = extraer(f, 12, { ventana: "todo" });
+    const md = renderAndamio(r, r, null, null);
+    fs.rmSync(dir, { recursive: true, force: true });
+    const m = md.match(/escritos desde Bash[^\n]*top (\d+) de (\d+)/);
+    if (!m) { console.error("no encontré el encabezado"); process.exit(1); }
+    const prometidas = parseInt(m[1], 10);
+    const sec = md.split("escritos desde Bash")[1].split("## ")[0];
+    const renderizadas = sec.split("\n").filter((l) => l.startsWith("- ") && l !== "- (ninguno)").length;
+    if (prometidas !== renderizadas) {
+      console.error("PROMETE " + prometidas + " PERO RENDERIZA " + renderizadas); process.exit(1);
+    }
+  });
+' "$CKPT_MEC" \
+  && ok "m2f CONTRA LA FALLA (C-2): el encabezado de escrituras-por-bash usa el largo REAL de lo renderizado, nunca TOP_N a secas — deja de prometer de más" \
+  || bad "m2f CONTRA LA FALLA (C-2): el encabezado sigue prometiendo más entradas de las que renderiza"
+
+echo ""
 echo "== (m2b) checkpoint-mecanico.sh: hook de PreCompact — detached, lock por-sid, escritura atómica =="
 grep -qF 'nohup' "$SCRIPT_DIR/hooks/checkpoint-mecanico.sh" \
   && ok "m2b: el hook corre DETACHED (nohup) — no bloquea el evento PreCompact con un transcript grande" \
