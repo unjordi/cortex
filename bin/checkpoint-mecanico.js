@@ -16,9 +16,11 @@
  *   - archivos escritos (Write/Edit/NotebookEdit), con conteo
  *   - archivos escritos VÍA BASH (redirección `>`/`>>`, `tee`) — heurística, ver "LÍMITES" abajo
  *   - skills invocadas (conteo)
- *   - comandos bash más frecuentes (primeros 2 tokens, navegación despriorizada) + "RESUELTO HOY":
- *     mensajes de commit (`-m`, `-F -` con heredoc, `-F <archivo>`) y de integración por squash
- *     (`gh pr merge --subject`, `glab mr merge --squash-message`), verbatim
+ *   - comandos bash más frecuentes (primeros 2 tokens, tras despojar una asignación de variable al
+ *     frente; navegación/exploración y asignaciones-sin-comando EXCLUIDAS de verdad, no solo
+ *     despriorizadas — ver B-2 en LÍMITES) + "RESUELTO HOY": mensajes de commit (`-m`, `-F -` con
+ *     heredoc, `-F <archivo>`) y de integración por squash (`gh pr merge --subject`,
+ *     `glab mr merge --squash-message`), verbatim
  *   - cwds y ramas (gitBranch) vistos
  *   - compactaciones previas (marcador isCompactSummary) y tokens de contexto del ÚLTIMO usage
  *   - los últimos N mensajes de usuario, VERBATIM (filtra saludos/ruido de tool-result)
@@ -55,6 +57,22 @@
  *   · `--self` no distingue con CERTEZA un hilo principal de un subagente (no hay env var documentada que
  *     lo haga — ver §6 de `docs/referencia-cli-claude-code.md`): usa una verificación POSITIVA por
  *     filesystem (sidecar de sub-agente más fresco que el transcript resuelto) y AVISA sin bloquear.
+ *   · El "top de comandos" EXCLUYE de verdad la navegación/exploración (`cd`, `ls`, `grep`…) y las
+ *     asignaciones de variable sin comando encadenado (`WT=/tmp/x`, sin nada después) — no se limita a
+ *     despriorizarlas ni a reordenarlas en un segundo grupo. MEDIDO 2026-09-11: reordenar en dos grupos
+ *     (señal primero, ruido después, cada uno ordenado) hacía que el propio `.md` presentara un top-10
+ *     PLANO donde un comando de 37× aparecía por debajo de entradas de 1× — nada declaraba que había dos
+ *     grupos, y esa lista "ordenada a medias" es indistinguible de una que miente. El filtrado real
+ *     (excluir en la inserción, no reordenar al renderizar) deja UNA lista, honestamente monótona por
+ *     frecuencia. Antes de clasificar, se despoja cualquier asignación de variable al frente
+ *     (`despojarAsignaciones`): así `WT=/tmp/x; cd $WT` se juzga por el `cd` real que ejecuta, no por el
+ *     valor —siempre distinto o no— de la variable que lo precede.
+ *   · Las escrituras-por-bash también descartan destinos que no son un archivo real: una redirección `>`
+ *     que en realidad es el CIERRE de una etiqueta (`<command-name>/to-do</command-name>`, una cita del
+ *     propio harness embebida en un heredoc-fixture) se detecta porque la corrida de texto sin espacio
+ *     que antecede al `>` trae un `<` — no es un operador de shell, es un tag — y la puntuación de
+ *     cierre ajena pegada al destino (`archivo.md",` de un heredoc que arma texto/JSON) se recorta antes
+ *     de contarlo, para que no aparezca como una entrada DISTINTA del mismo archivo con el conteo partido.
  *
  * Salida: un `.md` "andamio" — SIDECAR, nunca `hilo-mental-actual.md` (ese lo escribe el modelo con
  * criterio; pisarlo a ciegas desde un proceso mecánico sin turno sería exactamente el riesgo que la
@@ -150,14 +168,77 @@ function esNavegacion(cmdKey) {
   const primerToken = String(cmdKey).trim().split(/\s+/)[0] || '';
   return NAV_PREFIJOS.has(primerToken);
 }
+// `topPriorizado`/`topComandos` se CONSERVAN tal cual (siguen exportados y los sigue ejercitando el test
+// m2c-A-4 con un mapa mixto armado a mano): agrupar-en-dos-y-concatenar es válido cuando alguien te pasa
+// un mapa que YA trae ruido mezclado. Lo que cambió (hallazgo B-2, ver `claveComandoSeñal` abajo) es que
+// el mapa `R.comandos` que de verdad alimenta el render/JSON en producción YA NO admite ruido al insertar
+// — así que en la práctica `topPriorizado` recibe un mapa de un solo grupo y el resultado sale
+// naturalmente monótono, sin tener que reordenar/etiquetar nada al renderizar.
 function topComandos(map, n) { return topPriorizado(map, n, esNavegacion); }
+
+// ── B-2 (efecto lateral): una asignación de variable al frente (`WT=/private/tmp/…; cd $WT`,
+// `CI=1 npm test`, `export FOO=bar && cmd`) hacía que `esNavegacion` mirara el TOKEN EQUIVOCADO — el
+// nombre/valor de la variable, no el comando real que sigue — y ese comando quedaba clasificado como
+// "señal" aunque no diga qué se hizo (MEDIDO 2026-09-11: `WT=/private/tmp/…; cd` 16×, `SP=…` 1×,
+// `DASH=…` 3× colándose en el top como si fueran trabajo real). Se despoja la asignación ANTES de
+// clasificar, así el comando se juzga por lo que HACE, no por el valor —siempre distinto o no— de la
+// variable que lo precede. Si tras despojar no queda nada (la línea ES solo la asignación, sin comando
+// encadenado), tampoco dice qué se hizo: se descarta igual.
+const RE_ASIGNACION_INICIAL = /^(?:export\s+)?[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)/;
+function despojarAsignaciones(cmdRaw) {
+  let s = String(cmdRaw).trim();
+  let hubo = false;
+  for (;;) {
+    const m = s.match(RE_ASIGNACION_INICIAL);
+    if (!m) break;
+    s = s.slice(m[0].length).trim();
+    hubo = true;
+    const sep = s.match(/^(?:;|&&|\|\|)\s*/);
+    if (sep) s = s.slice(sep[0].length).trim();
+    if (!s) break;
+  }
+  return { resto: s, hubo };
+}
+// ── B-2 (el hallazgo principal): `topPriorizado` reordena en DOS grupos (señal primero, ruido después)
+// pero cada grupo se sigue sorteando por frecuencia — el render presentaba eso como un "top 10" plano,
+// sin declarar que hay dos grupos, y un lector ve un 37× por debajo de entradas de 1× y deja de confiar
+// en el orden de TODA la lista (MEDIDO 2026-09-11: `[16,3,3,1,1,1,1,37,22,7]`, el 37× en la posición 8).
+// Se optó por filtrar de verdad en la FUENTE (opción "b" del hallazgo) en vez de declarar los grupos en
+// el render (opción "a"): el consumidor que de verdad le exige orden monótono a este dato es el propio
+// oráculo de QA, que lee el JSON `topComandos` — un array plano, no dos sublistas —, así que la
+// corrección tiene que vivir en el DATO, no solo en cómo el `.md` lo presenta. `claveComandoSeñal`
+// devuelve `null` para lo que es ruido (navegación, tras despojar la asignación) o pura plumbing (una
+// asignación sin comando encadenado); `extraer()` solo hace `add()` cuando NO es null. Con el ruido
+// excluido en la inserción, `topComandos()` (arriba, sin tocar) recibe un mapa de un solo grupo y su
+// concatenación señal+ruido degenera a un solo `sort` — monótono por construcción, no por accidente.
+function claveComandoSeñal(cmdRaw) {
+  const { resto } = despojarAsignaciones(cmdRaw);
+  if (!resto) return null; // asignación pura, sin comando después: no dice qué se hizo
+  const clave = resto.split(/\s+/).slice(0, 2).join(' ');
+  if (esNavegacion(clave)) return null;
+  return clave;
+}
 // MEDIDO 2026-09-11: 6 de 10 escrituras-por-bash eran temporales (`/tmp/suite-*.log`…) desplazando a las
 // del repo (bitácora, docs). El destino real (Write/Edit exacto) NO se toca — solo esta heurística.
 function esTemporal(ruta) {
   const r = String(ruta);
   return r.startsWith('/tmp/') || r === '/tmp' || r.startsWith('/private/tmp/') || r === '/private/tmp';
 }
-function topBashEscrituras(map, n) { return topPriorizado(map, n, esTemporal); }
+// NO usa `topPriorizado` a secas (efecto colateral de B-1, medido al arreglarlo): concatenar señal+ruido
+// sin tope, cuando la señal real es escasa, deja que /tmp rellene TODO el resto del cupo — en el tramo
+// real medido, solo 3 destinos distintos son del repo contra 13 de /tmp, así que un simple concat+slice
+// mete 7 de 10 en temporales (viola el "sin desplazar al repo" que este colector promete). Se topa el
+// número de temporales admitidos a, como máximo, tantos como señal real haya — así el resultado nunca
+// puede tener MÁS temporales que señal, sin ocultar /tmp del todo cuando sí hay hueco.
+function topBashEscrituras(map, n) {
+  const entries = [...map.entries()];
+  const señal = entries.filter(([k]) => !esTemporal(k)).sort((a, b) => b[1] - a[1]);
+  const ruido = entries.filter(([k]) => esTemporal(k)).sort((a, b) => b[1] - a[1]);
+  const señalCount = Math.min(señal.length, n);
+  const ruidoCount = Math.max(0, Math.min(ruido.length, n - señalCount, señalCount));
+  return [...señal.slice(0, señalCount), ...ruido.slice(0, ruidoCount)]
+    .map(([k, v]) => ({ item: k, n: v }));
+}
 
 // ── Escrituras hechas DENTRO de un comando Bash (heurística DECLARADA, nunca mezclada con Write/Edit).
 // Captura destinos de redirección (`> f`, `>> f`) y de `tee [-a] f`. Descarta lo que no es un archivo:
@@ -166,16 +247,45 @@ function topBashEscrituras(map, n) { return topPriorizado(map, n, esTemporal); }
 // descarta cualquier destino que aún traiga una variable SIN EXPANDIR (`$VAR/…`, `${VAR}/…`).
 const RE_REDIR = /(?:^|[^0-9>&=|<-])>>?\s*(?:&\s*)?("[^"]*"|'[^']*'|[^\s;|&()<>]+)/g;
 const RE_TEE = /\btee\b\s+(?:-a\s+)?("[^"]*"|'[^']*'|[^\s;|&()<>]+)/g;
+// ── B-1 · el mismo tipo de falla que `empiezaComandoReal` ataja para los commits: el patrón (aquí, un
+// `>` de redirección) casa dentro de una cadena CITADA, no en un comando real. MEDIDO 2026-09-11:
+// `<command-name>/to-do</command-name>` — una cita textual del harness embebida en un heredoc-fixture de
+// python, NO un comando — hizo match porque el `>` de CIERRE de la etiqueta queda pegado a `/to-do` sin
+// espacio de por medio; `destinosDeEscrituraBash` la leyó como una redirección real a `/to-do`.
+// `empiezaComandoReal` NO sirve tal cual aquí: ese detector exige que el token arranque tras un
+// SEPARADOR de shell (`;&|`\n(` o inicio de cadena) — válido para "¿empieza un comando nuevo?", pero un
+// `>` de redirección real casi siempre sigue PEGADO a la última palabra de un comando/argumento
+// (`echo x >> f`, incluso `echo x>f` sin espacio), nunca a un separador — aplicado tal cual, rechazaría
+// TODAS las redirecciones reales. La señal que sí generaliza: si la CORRIDA de caracteres sin espacio
+// que antecede al `>` contiene un `<`, no es un operador de shell — es el cierre de una etiqueta/tag
+// (`<algo>`), y el match se descarta entero.
+function precedidoPorAngulo(s, idxGt) {
+  let j = idxGt - 1;
+  while (j >= 0 && !/\s/.test(s[j])) {
+    if (s[j] === '<') return true;
+    j--;
+  }
+  return false;
+}
 function destinosDeEscrituraBash(cmd) {
   const out = [];
   const cosechar = (re, texto) => {
     re.lastIndex = 0;
     let m;
     while ((m = re.exec(texto)) !== null) {
+      if (re === RE_REDIR) {
+        const idxGt = m.index + m[0].indexOf('>');
+        if (precedidoPorAngulo(texto, idxGt)) continue;
+      }
       let d = m[1] || '';
       if (d.length > 1 && ((d[0] === '"' && d[d.length - 1] === '"') || (d[0] === "'" && d[d.length - 1] === "'"))) {
         d = d.slice(1, -1);
       }
+      // Puntuación de CIERRE ajena pegada al destino (la comilla+coma de un heredoc que arma texto/JSON,
+      // no del comando real): se recorta ANTES de validar. Sin esto, `.claude/memory/bitacora.md",`
+      // quedaba como una entrada DISTINTA de `.claude/memory/bitacora.md` — el mismo archivo con su
+      // conteo partido en dos. Se recorta un carácter a la vez porque puede venir en combo (`",`, `');`).
+      while (d.length && '"\',;)'.includes(d[d.length - 1])) d = d.slice(0, -1);
       if (!d || d[0] === '&' || /^\d+$/.test(d)) continue;          // 2>&1, >&2, fd sueltos
       if (/^\/dev\//.test(d)) continue;                              // sumideros
       if (d === '/' || d.length < 3) continue;                       // no es un destino
@@ -380,7 +490,10 @@ function extraer(file, nMsgs, opts) {
         if (b.name === 'Skill' && i.skill) add(R.skills, i.skill);
         if (b.name === 'Bash' && i.command) {
           const cmd = String(i.command);
-          add(R.comandos, cmd.trim().split(/\s+/).slice(0, 2).join(' '));
+          // Filtrado REAL en la fuente (B-2, ver `claveComandoSeñal`): navegación y asignaciones-sin-
+          // comando nunca entran a R.comandos, así el top que sale de aquí ya no necesita reordenarse.
+          const claveCmd = claveComandoSeñal(cmd);
+          if (claveCmd) add(R.comandos, claveCmd);
           // DEDUPE por texto exacto: un reintento (push --force-with-lease tras un fallo, un `gh pr
           // merge` corrido 2-3 veces hasta que el guard/CI lo dejó pasar) es el MISMO mensaje repetido —
           // sin esto, "últimos N" se llena de copias idénticas y desplaza a otras decisiones reales del
@@ -649,4 +762,5 @@ if (require.main === module) main();
 module.exports = {
   extraer, renderAndamio, metaBarata, isNoisyUserText, destinosDeEscrituraBash, extraerCommits,
   topPriorizado, topComandos, topBashEscrituras, esNavegacion, esTemporal, subagenteMasFresco,
+  despojarAsignaciones, claveComandoSeñal, precedidoPorAngulo,
 };

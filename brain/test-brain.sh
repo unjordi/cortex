@@ -4085,6 +4085,106 @@ node -e '
   || bad "m2c CONTRA LA FALLA (A-6): una ruta con \$VAR sin expandir se coló en las escrituras por bash"
 
 echo ""
+echo "== (m2d) checkpoint-mecanico.js: 2 REGRESIONES del arreglo de A-1..A-6 (QA sobre el render real, 2026-09-11) =="
+# B-1: `<command-name>/to-do</command-name>` es una CITA del propio harness (texto de un heredoc-fixture
+# de python, no un comando) — pero el '>' de CIERRE de la etiqueta queda pegado a "/to-do" sin espacio,
+# y la heurística de redirección lo leyó como `> /to-do`. Repro: un heredoc real que escribe un .py cuyo
+# CONTENIDO cita esa etiqueta — la redirección real del propio `cat >` debe sobrevivir, la cita no.
+node -e '
+  const {destinosDeEscrituraBash} = require(process.argv[1]);
+  const cmd = "cat > /tmp/fixture.py <<PY\nL.append(u(\"<command-name>/to-do</command-name>\", \"2026-01-01T03:05:00Z\"))\nPY";
+  const out = destinosDeEscrituraBash(cmd);
+  if (out.includes("/to-do")) { console.error("LA CITA DEL TAG SE LEYÓ COMO REDIRECCIÓN: " + JSON.stringify(out)); process.exit(1); }
+  if (!out.includes("/tmp/fixture.py")) { console.error("SE PERDIÓ LA REDIRECCIÓN REAL DEL cat >: " + JSON.stringify(out)); process.exit(1); }
+' "$CKPT_MEC" \
+  && ok "m2d CONTRA LA FALLA (B-1a): \`<command-name>/to-do</command-name>\` (cita del harness dentro de un heredoc) ya no se lee como \`> /to-do\`; la redirección real del mismo comando sí sobrevive" \
+  || bad "m2d CONTRA LA FALLA (B-1a): la cita de una etiqueta \`<...>\` se coló como destino de escritura"
+
+# B-1: puntuación de CIERRE ajena (comilla+coma de un heredoc que arma texto/JSON) pegada al destino —
+# `.claude/memory/bitacora.md",` en vez de `.claude/memory/bitacora.md` — que además DUPLICABA la
+# entrada limpia del mismo archivo (el mismo destino con el conteo partido en dos claves distintas).
+node -e '
+  const {destinosDeEscrituraBash} = require(process.argv[1]);
+  const cmd = "L.append(bash(\"printf %s hola >> .claude/memory/bitacora.md\", \"2026-01-01T08:30:00Z\"))";
+  const out = destinosDeEscrituraBash(cmd);
+  if (!out.includes(".claude/memory/bitacora.md")) { console.error("NO CAZÓ EL DESTINO: " + JSON.stringify(out)); process.exit(1); }
+  if (out.some((d) => d !== ".claude/memory/bitacora.md")) { console.error("DESTINO CON PUNTUACIÓN PEGADA: " + JSON.stringify(out)); process.exit(1); }
+' "$CKPT_MEC" \
+  && ok "m2d CONTRA LA FALLA (B-1b): recorta la comilla+coma de cierre pegadas al destino (\`bitacora.md\",\` → \`bitacora.md\`)" \
+  || bad "m2d CONTRA LA FALLA (B-1b): el destino sigue saliendo con la puntuación de la sintaxis ajena pegada"
+
+# B-1: esa puntuación pegada, sin recortar, hacía que el MISMO archivo apareciera dos veces en el mapa
+# (la entrada limpia y la sucia) con el conteo partido — verificado a nivel de extraer(), no solo del
+# extractor de destinos, para probar que el merge de verdad ocurre en el mapa que alimenta el render.
+M2DDIR="$(mktemp -d "${TMPDIR:-/tmp}/brain-m2d.XXXXXX")"
+M2DFIX="$M2DDIR/dup.jsonl"
+node -e '
+  const fs = require("fs");
+  const w = fs.createWriteStream(process.argv[1]);
+  const L = (o) => w.write(JSON.stringify(o) + "\n");
+  const bash = (cmd) => L({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", name: "Bash", input: { command: cmd } }] } });
+  bash("printf a >> .claude/memory/bitacora.md");
+  bash("printf b >> .claude/memory/bitacora.md");
+  bash("L.append(bash(\"printf %s hola >> .claude/memory/bitacora.md\", \"2026-01-01T08:30:00Z\"))");
+  w.end();
+' "$M2DFIX"
+node -e '
+  const { extraer } = require(process.argv[1]);
+  const r = extraer(process.argv[2], 12, { ventana: "todo" });
+  const claves = [...r.bashEscrituras.keys()].filter((k) => k.includes("bitacora.md"));
+  if (claves.length !== 1 || r.bashEscrituras.get(".claude/memory/bitacora.md") !== 3) {
+    console.error("QUEDÓ PARTIDO: " + JSON.stringify([...r.bashEscrituras.entries()])); process.exit(1);
+  }
+' "$CKPT_MEC" "$M2DFIX" \
+  && ok "m2d CONTRA LA FALLA (B-1 dedupe): la entrada sucia y la limpia del MISMO archivo se fusionan en una sola clave con el conteo completo (3), no dos partidas" \
+  || bad "m2d CONTRA LA FALLA (B-1 dedupe): el mismo archivo sigue apareciendo dos veces con el conteo partido"
+rm -rf "$M2DDIR"
+
+# B-2: `topPriorizado` reordena en dos grupos (señal, ruido) pero el render lo presenta como un top-10
+# PLANO — un 37× cae por debajo de entradas de 1× sin que nada declare que hay dos grupos. Repro FIEL a
+# las frecuencias medidas [16,3,3,1,1,1,1,37,22,7]: una asignación de variable con un \`cd\` encadenado
+# (16×, valor constante) y dos asignaciones SIN comando encadenado (3× y 1×) se colaban como "señal" solo
+# porque el primer token no es de navegación — sin decir qué se hizo — mientras 3 comandos de navegación
+# de alto volumen (cd 37×, ls 22×, grep 7×) quedaban BAJO cuatro comandos reales de 1×.
+M2EDIR="$(mktemp -d "${TMPDIR:-/tmp}/brain-m2e.XXXXXX")"
+M2EFIX="$M2EDIR/b2.jsonl"
+node -e '
+  const fs = require("fs");
+  const w = fs.createWriteStream(process.argv[1]);
+  const L = (o) => w.write(JSON.stringify(o) + "\n");
+  const bash = (cmd) => L({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", name: "Bash", input: { command: cmd } }] } });
+  for (let i = 0; i < 16; i++) bash("WT=/private/tmp/fixed; cd /Users/unjordi/code/cortex");
+  for (let i = 0; i < 3; i++) bash("DASH=aaaa");
+  bash("SP=bbbb");
+  for (let i = 0; i < 3; i++) bash("npm test");
+  bash("git status");
+  bash("node build.js");
+  bash("python3 script.py");
+  for (let i = 0; i < 37; i++) bash("cd /Users/unjordi/code/cortex");
+  for (let i = 0; i < 22; i++) bash("ls -la /tmp");
+  for (let i = 0; i < 7; i++) bash("grep -n foo bar.txt");
+  w.end();
+' "$M2EFIX"
+node -e '
+  const { extraer, topComandos } = require(process.argv[1]);
+  const r = extraer(process.argv[2], 12, { ventana: "todo" });
+  const claves = [...r.comandos.keys()];
+  const coladas = claves.filter((k) => /^(cd|ls|grep)\b/.test(k) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(k));
+  if (coladas.length) { console.error("RUIDO/ASIGNACIÓN SIN DESPOJAR EN comandos: " + JSON.stringify(coladas)); process.exit(1); }
+  const t = topComandos(r.comandos, 10);
+  const ns = t.map((x) => x.n);
+  for (let i = 0; i < ns.length - 1; i++) {
+    if (ns[i] < ns[i + 1]) { console.error("EL TOP NO SALE ORDENADO POR FRECUENCIA: " + JSON.stringify(ns)); process.exit(1); }
+  }
+  if (!t.length || t[0].item !== "npm test" || t[0].n !== 3) {
+    console.error("EL COMANDO REAL NO ENCABEZA: " + JSON.stringify(t)); process.exit(1);
+  }
+' "$CKPT_MEC" "$M2EFIX" \
+  && ok "m2d CONTRA LA FALLA (B-2): la navegación (cd/ls/grep) y las asignaciones sin comando encadenado quedan EXCLUIDAS de \`R.comandos\` en la fuente — el top que sale de ahí ya es una sola lista honestamente ordenada por frecuencia, sin reordenar en dos grupos" \
+  || bad "m2d CONTRA LA FALLA (B-2): el top de comandos sigue mezclando ruido/asignaciones con la señal real, o sale desordenado por frecuencia"
+rm -rf "$M2EDIR"
+
+echo ""
 echo "== (m2b) checkpoint-mecanico.sh: hook de PreCompact — detached, lock por-sid, escritura atómica =="
 grep -qF 'nohup' "$SCRIPT_DIR/hooks/checkpoint-mecanico.sh" \
   && ok "m2b: el hook corre DETACHED (nohup) — no bloquea el evento PreCompact con un transcript grande" \
