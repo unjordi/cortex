@@ -149,8 +149,20 @@ Los hooks **por-repo** son fuente en [`brain/hooks/`](brain/hooks/) que cada rep
 **skills** siguen el mismo modelo de tiers en su propio [`brain/skills/MANIFEST`](brain/skills/MANIFEST)
 (`global` = solo `~/.claude/skills`; `both` = además viaja por-repo como CORREO en repos compartidos):
 `sincronizar-cerebro.sh` las despliega por-repo (árbol completo, diff-aware, prune por ledger que jamás
-toca skills propias del repo) y `aviso-drift-cerebro` detecta su drift igual que el de los hooks. El
-cerebro **se autoprueba**: [`brain/test-brain.sh`](brain/test-brain.sh) corre cientos de checks (el número exacto lo imprime la suite) contra un
+toca skills propias del repo) y `aviso-drift-cerebro` detecta su drift igual que el de los hooks.
+
+Cuando el repo es **PERSONAL** (sin la marca `.claude/repo-compartido`), `aviso-drift-cerebro` FLAGGEA
+los guards del brain que sobran ahí (el global+dedupe de tu máquina ya los cubre) pero, a propósito, NO
+los borra solo. `sincronizar-cerebro.sh --limpiar-personal [--apply]` es la limpieza real: REHÚSA si el
+repo está marcado `.claude/repo-compartido`, y retira SOLO los archivos de tier `both` (el único
+redundante con el install global) + su cableado en `settings.json` + el sello `.brain-version` —
+NUNCA los de tier `repo` (sin equivalente global; siguen haciendo falta ahí, personal o no) ni la
+memoria/skills del repo, que son suyos. `--incluir-skills` extiende el retiro a las skills del brain
+por-repo, pero solo las que constan en el ledger `.claude/skills/.brain-skills` (la procedencia exacta
+de lo que este mismo sync desplegó); sin ledger, no toca ninguna. DRY-RUN por default, como el resto
+del script.
+
+El cerebro **se autoprueba**: [`brain/test-brain.sh`](brain/test-brain.sh) corre cientos de checks (el número exacto lo imprime la suite) contra un
 `$HOME` aislado, y la CI repite `bash -n` + `jq empty` + `shellcheck` en cada push. Tras un fan-out,
 el helper [`limpiar-worktrees.sh`](brain/hooks/limpiar-worktrees.sh) barre los worktrees de ramas ya
 mergeadas y deja anotado en la bitácora el pendiente de los que sigan vivos; y
