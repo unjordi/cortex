@@ -44,7 +44,6 @@ flowchart LR
     MSG["🔗 merge-squash-guard<br/>MR a develop sin --squash → DENEGADO<br/>(destino main = exento: release sin squash)"]
     CMD["✋ confirmar-merge-develop<br/>merge sin OK expreso → DENEGADO<br/>target-aware: develop pide OK normal,<br/>main exige marca de RELEASE<br/>(un OK de release también cubre su paso a develop)"]
     SS["🕵️ secret-scan<br/>commit/push con secreto → DENEGADO"]
-    RV["🕰️ rama-vieja<br/>base vieja al push → AVISA"]
     RD["📊 recordar-dashboard<br/>al push: dashboard + doc=realidad → RECUERDA"]
     EMG["🖥️ entorno-maquina-guard<br/>commit de algo machine-specific<br/>al .claude/memory/ del repo → AVISA"]
     LIB["📚 lib analizar-comando-git.sh<br/>(lógica compartida: qué comando toca una base)"]
@@ -55,7 +54,6 @@ flowchart LR
     CMD -.->|candado del cruce| DEVELOP
     CMD -.->|candado súper-explícito| MAIN
     SS -.->|escanea lo que ENTRA| RAMITA
-    RV -.->|aviso en el push| RAMITA
     RD -.->|nudge en el push| RAMITA
     EMG -.->|escanea lo que ENTRA al commit| RAMITA
     LIB -.-> GBG
@@ -66,7 +64,6 @@ flowchart LR
     style MSG fill:#7f1d1d,color:#fff
     style CMD fill:#7f1d1d,color:#fff
     style SS fill:#7f1d1d,color:#fff
-    style RV fill:#78350f,color:#fff
     style RD fill:#78350f,color:#fff
     style EMG fill:#78350f,color:#fff
     style LIB fill:#374151,color:#fff
@@ -191,8 +188,9 @@ flowchart LR
 
     subgraph tiers["Tiers declarados"]
         BOTH["tier <b>both</b> — global + por-repo<br/>(con cláusula de dedupe:<br/>la copia del repo cede a la global)<br/><br/>hooks: git-branch-guard ·<br/>merge-squash-guard ·<br/>confirmar-merge-develop ·<br/>recordar-dashboard · secret-scan ·<br/>entorno-maquina-guard · no-bypass-deploy ·<br/>hud-stale<br/>libs: analizar-comando-git ·<br/>detectar-secretos · juez-comun"]
-        GLOBAL["tier <b>global</b> — solo ~/.claude<br/><br/>hooks: proteger-arbol · proteger-fuente-cerebro ·<br/>rama-vieja · limite-gasto · rehidratar-hilo ·<br/>aviso-contexto · aviso-drift-cerebro ·<br/>exportar-sesion-master · barrer-ramas ·<br/>delegacion-gate · delegacion-registrar ·<br/>delegacion-reporte · recordar-orquestar<br/>libs: delegacion-comun · ramas-zombie · drift-cerebro-comun<br/>scripts: limpiar-worktrees · limpiar-ramas ·<br/>verificar-cerebro · barrer-flotilla-cerebro · cementerio"]
+        GLOBAL["tier <b>global</b> — solo ~/.claude<br/><br/>hooks: proteger-arbol · proteger-fuente-cerebro ·<br/>limite-gasto · rehidratar-hilo ·<br/>aviso-contexto · aviso-drift-cerebro ·<br/>exportar-sesion-master · barrer-ramas ·<br/>delegacion-gate · delegacion-registrar ·<br/>delegacion-reporte · recordar-orquestar<br/>libs: delegacion-comun · ramas-zombie · drift-cerebro-comun<br/>scripts: limpiar-worktrees · limpiar-ramas ·<br/>verificar-cerebro · barrer-flotilla-cerebro · cementerio"]
         REPO["tier <b>repo</b> — solo &lt;repo&gt;/.claude<br/>(se cargan si la sesión INICIA ahí)<br/><br/>hooks: dod-verificar · sesion-inicio ·<br/>recordar-cosechar · recordar-unificar-cerebro"]
+        RETIRADO["🪦 tier <b>retirado</b> — LÁPIDA, no despliega nada<br/>(fecha + motivo en columnas 4+)<br/><br/>hooks: rama-vieja (2026-09-15)"]
     end
 
     subgraph destinos["Destinos"]
@@ -205,16 +203,20 @@ flowchart LR
     MANIFEST --> BOTH
     MANIFEST --> GLOBAL
     MANIFEST --> REPO
+    MANIFEST --> RETIRADO
     BOTH -->|"install-brain.sh"| GDIR
     BOTH -->|"sincronizar-cerebro.sh"| RDIR
     GLOBAL -->|"install-brain.sh"| GDIR
     REPO -->|"sincronizar-cerebro.sh"| RDIR
+    RETIRADO -.->|"install-brain.sh PODA<br/>(borra .sh + de-cablea)"| GDIR
+    RETIRADO -.->|"sincronizar-cerebro.sh PODA<br/>(huérfano por retiro, sin --prune-orphans)"| RDIR
     TEST -.->|verifica| GDIR
     TEST -.->|verifica| RDIR
     TEST -.->|contra| MANIFEST
 
     style MANIFEST fill:#1e3a5f,color:#fff
     style TEST fill:#4a1d6e,color:#fff
+    style RETIRADO fill:#3f1d1d,color:#fff
 ```
 
 **Kinds:** `hook` se cablea en `settings.json` (evento) · `lib` solo se copia (los hooks la hacen

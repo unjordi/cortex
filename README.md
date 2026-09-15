@@ -91,7 +91,6 @@ El cerebro se ordena por *dureza*: arriba lo que te **bloquea** sin negociar; ab
 ├─ 📊 recordar-dashboard       en el push recuerda dashboard + doc=realidad (README/docs) — cierre del slice
 ├─ 🖥️  entorno-maquina-guard    commit de algo machine-specific (aliases/rutas de $HOME/Rosetta/entorno-maquina.md) al .claude/memory/ del repo → avisa
 ├─ 🚧 no-bypass-deploy         correr el instalador/deploy a mano (install-brain.sh/deploy.sh) en vez de la herramienta oficial (el widget) → avisa (fail-safe: no --dry-run/--help/CI)
-├─ 🕰️  rama-vieja              avisa si la ramita arrastra base vieja
 ├─ 🌳 proteger-arbol           git destructivo que orfanaría commits sin pushear → avisa (fan-out: usa worktree aislado)
 ├─ 🛡️  proteger-fuente-cerebro  editar la copia INSTALADA de un hook/skill que tiene fuente en el clon → avisa (se perdería en el próximo sync) (GLOBAL)
 ├─ 🧹 barrer-ramas             al abrir sesión / al punto del merge barre en 2º plano ramas locales + remota huérfana + worktrees ya integrados (zombie squash-safe; throttle 24h) (GLOBAL)
@@ -304,8 +303,10 @@ depender de en qué te toque trabajar.
 
 ## Contribuir al cerebro
 
-Las piezas por dentro (los tres tiers de hooks, cómo probarlas, instalar/desinstalar el cerebro
-suelto) viven en **[`brain/README.md`](brain/README.md)** — la doc para contribuidores. Sumar un
+Las piezas por dentro (los tiers de hooks —`global`/`repo`/`both`, más el tier `retirado` que marca
+una LÁPIDA en el MANIFEST para que install-brain/sincronizar-cerebro la poden de las máquinas que la
+tenían instalada— cómo probarlas, instalar/desinstalar el cerebro suelto) viven en
+**[`brain/README.md`](brain/README.md)** — la doc para contribuidores. Sumar un
 guardrail o cortar un release está documentado en las skills del repo:
 [`agregar-hook-cerebro`](.claude/skills/agregar-hook-cerebro/SKILL.md) y
 [`publicar-widget`](.claude/skills/publicar-widget/SKILL.md).

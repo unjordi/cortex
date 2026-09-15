@@ -56,7 +56,7 @@ invocable como comando → `prompt` a mano (no depende de ninguna feature del CL
 
 ## Los hooks — qué hace cada uno
 
-Se dividen en dos **tiers** según su alcance:
+Se dividen en **tiers** según su alcance (más el tier `retirado`, que no despliega nada — ver abajo):
 
 ### Tier GLOBAL (los instala `install-brain.sh` en `~/.claude/hooks/`, aplican a TODOS los repos)
 
@@ -68,7 +68,6 @@ Se dividen en dos **tiers** según su alcance:
 | `proteger-arbol.sh` | PreToolUse/Bash | Protege el árbol de trabajo compartido: bloquea que un agente de fan-out corra `git reset`/`checkout`/`rebase` en el árbol principal (orfanaría commits del orquestador). |
 | `proteger-fuente-cerebro.sh` | PreToolUse/Edit\|Write\|MultiEdit | AVISA (no bloquea, fail-open) al editar la copia INSTALADA de un hook/skill del cerebro cuando existe su FUENTE en el clon canónico (`~/.cortex` o `$CLAUDE_BRAIN_DIR`): la edición a la instalada se perdería en el próximo `install`/sync y no viajaría por git. Redirige a editar la fuente. Escape: `CLAUDE_SKIP_PROTEGER_FUENTE=1`. Su gemelo de detección tardía es el drift-check de `verificar-cerebro`. |
 | `secret-scan.sh` | PreToolUse/Bash | Bloquea un `git commit`/`git push` si lo que entra al repo trae un SECRETO (AWS/PEM/Anthropic/OpenAI/GitHub/GitLab/Slack/Google). Escanea también el **1er push de una rama nueva** (sin upstream) vs el merge-base con `develop`/`main`. Escapes: `--no-verify` / `CLAUDE_SKIP_SECRET_SCAN=1`. |
-| `rama-vieja.sh` | PreToolUse/Bash | Antes de un `git push`, AVISA (no bloquea) si la ramita está muy atrás de `origin/develop` (base vieja → MR con ruido). Umbral `RAMA_VIEJA_UMBRAL` (def 40). |
 | `limite-gasto.sh` | PreToolUse/Task | FRENO DURO: bloquea reclutar agentes cuando el gasto real rebasa un techo (`LIMITE_GASTO_OVERAGE_PCT` def 90 / `LIMITE_GASTO_5H_PCT` def off). Complementa al gate (que pregunta). |
 | `recordar-dashboard.sh` | PreToolUse/Bash | Antes de un `git push`, RECUERDA (no bloquea) actualizar el dashboard del cerebro. |
 | `entorno-maquina-guard.sh` | PreToolUse/Bash | AVISA (no bloquea) si un `git commit` mete al `.claude/memory/` del repo algo específico-de-esta-máquina (un `entorno-maquina.md`, aliases personales, rutas de un `$HOME`, "Rosetta" sin condicional) — viajaría por git y mentiría al clonar en otra compu/OS. Eso vive SOLO en la memoria GLOBAL per-máquina (`entorno-esta-maquina.md`); el repo deja lo portable/condicional. Mecanismo de la norma dura homónima. |
@@ -104,6 +103,32 @@ la sesión INICIA en ese repo**.
 | `recordar-unificar-cerebro.sh` | SessionStart | Gemelo HACIA ARRIBA de `aviso-drift-cerebro`: aquél avisa cuando la copia por-repo quedó ATRÁS de la fuente (hay que BAJAR); éste avisa cuando TU mini acumuló aprendizajes+memorias sin UNIFICAR a `develop` (hay que SUBIR). Cuenta el delta de `.claude/` de la rama actual vs `origin/develop` y, si supera el umbral, sugiere `/unificar-cerebro`. NO escribe nada al árbol (integrar es deliberado, por MR): solo DETECTA y AVISA. |
 
 > **`precompact-volcar-estado.sh` se RETIRÓ** (PreCompact no puede inyectar contexto ni pedir acción): compactar sin perder el hilo lo cubren el skill `checkpoint` (escribe el hilo) + `rehidratar-hilo` (lo relee, con gate de frescura) + el watermark `aviso-contexto` (avisa antes del auto-compact).
+
+> **`rama-vieja.sh` se RETIRÓ** (2026-09-15): avisar del síntoma (una ramita rezagada) no es el trabajo —
+> lo correcto es que los git-guards gobiernen el flujo para que no se acumulen ramas rezagadas en primer
+> lugar. Es la primera LÁPIDA del tier `retirado` (ver abajo).
+
+### Tier RETIRADO (lápidas — no despliega nada, solo lo PODA)
+
+Un hook `retirado` en el MANIFEST es una **lápida**: el brain ya lo mató (su `.sh` se borró de
+`brain/hooks/`), pero la entrada SE CONSERVA con dos columnas extra — fecha de retiro y motivo en pocas
+palabras — para que quien lea el MANIFEST en un año entienda por qué murió sin abrir `git log`. Es la
+única lápida que este repo permite: en el **código** un comentario-lápida está prohibido (para eso está
+git); en un **MANIFEST que gobierna la instalación**, una lápida deja de ser narrativa y pasa a ser
+**instrucción ejecutable** — la lista de qué podar.
+
+Quitar un hook del MANIFEST a secas NO lo retira de las máquinas que ya lo tenían instalado (el `.sh`
+copiado y su cableado en `settings.json` se quedan, disparando ya invisibles para el MANIFEST — el hueco
+real que motivó este tier). Con `retirado`:
+- **`install-brain.sh`** deriva la lista de retirados y, por cada uno, borra su `~/.claude/hooks/<n>.sh`
+  y de-cablea SOLO esa entrada de `settings.json` — idempotente, conservador con hooks ajenos, y lo DICE
+  cuando actúa (con el nombre y el motivo).
+- **`sincronizar-cerebro.sh`** trata un `retirado` como huérfano PODABLE por-repo en cualquier `--apply`
+  (sin necesitar `--prune-orphans`): "huérfano" dejó de significar solo "ausente del manifiesto" y pasó a
+  significar "no debe estar instalado aquí" — un tier `retirado` cae ahí aunque SÍ esté listado.
+- **Todo lector que clasifica por tier** (el widget, `verificar-cerebro.sh`, `drift-cerebro-comun.sh`, los
+  drift-checks de `test-brain.sh`) filtra por tier EXPLÍCITO ({global,both}/{repo,both}/etc.), así que un
+  `retirado` no se cuela como hook vivo por construcción — no requieren cambio al agregar una lápida.
 
 ## Modelo de costo de delegación (3 niveles + ventana + consentimiento)
 
