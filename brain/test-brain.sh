@@ -3975,6 +3975,334 @@ node -e '
 rm -rf "$M2DIR"
 
 echo ""
+echo "== (m2c) checkpoint-mecanico.js: hallazgos de QA sobre el render real (2026-09-11) =="
+# 6 hallazgos medidos corriendo el extractor sobre el transcript VIVO de una sesión real (A-1..A-6). Cada
+# uno CONTRA LA FALLA del detector viejo, verificado con el propio código real que los disparó.
+
+# A-1: el detector viejo (`/git commit[^\n]*?-m\s+(["'])…/`) solo veía `-m "…"` — invisible para la forma
+# que la norma del equipo OBLIGA (`-F -` + heredoc, mensajes multilínea) y para `-F <archivo>`.
+node -e '
+  const {extraerCommits} = require(process.argv[1]);
+  const stdin = "git commit -q -F - <<'"'"'MSG'"'"'\nfix(x): el arreglo con prosa curada\n\ncuerpo largo\nMSG";
+  const r1 = extraerCommits(stdin);
+  if (r1.length !== 1 || r1[0] !== "fix(x): el arreglo con prosa curada") { console.error("F-STDIN: " + JSON.stringify(r1)); process.exit(1); }
+  const r2 = extraerCommits("git commit -F /tmp/msg.txt");
+  if (r2.length !== 1 || !/no recuperable/.test(r2[0]) || !r2[0].includes("/tmp/msg.txt")) { console.error("F-FILE: " + JSON.stringify(r2)); process.exit(1); }
+  if (!r2[0].includes("no se inventa")) { console.error("F-FILE sin marca honesta: " + JSON.stringify(r2)); process.exit(1); }
+  const r3 = extraerCommits("git commit -m \"chore(y): commit con -m normal\"");
+  if (r3.length !== 1 || r3[0] !== "chore(y): commit con -m normal") { console.error("DASH-M: " + JSON.stringify(r3)); process.exit(1); }
+' "$CKPT_MEC" \
+  && ok "m2c CONTRA LA FALLA (A-1): \`-F -\`+heredoc y \`-F <archivo>\` se detectan (el viejo solo veía \`-m\`); \`-m\` normal sigue andando" \
+  || bad "m2c CONTRA LA FALLA (A-1): el detector de commits no cubre -F -/-F archivo, o rompió -m"
+
+# A-1: la integración de este equipo es por squash-merge desde el foro (gh/glab), no solo git-commit; el
+# detector viejo no la veía en absoluto.
+node -e '
+  const {extraerCommits} = require(process.argv[1]);
+  const gh = "gh pr merge 405 --repo unjordi/cortex --squash --delete-branch \\\n  --subject \"fix(gitignore): el andamio (#405)\" \\\n  --body \"cuerpo largo\n multilínea\" 2>&1 | tail -3";
+  const r1 = extraerCommits(gh);
+  if (r1.length !== 1 || r1[0] !== "fix(gitignore): el andamio (#405)") { console.error("GH: " + JSON.stringify(r1)); process.exit(1); }
+  const glab = "glab mr merge 12 --squash --squash-message \"feat(x): título del squash\"";
+  const r2 = extraerCommits(glab);
+  if (r2.length !== 1 || r2[0] !== "feat(x): título del squash") { console.error("GLAB: " + JSON.stringify(r2)); process.exit(1); }
+' "$CKPT_MEC" \
+  && ok "m2c CONTRA LA FALLA (A-1b): \`gh pr merge --subject\` (con line-continuation) y \`glab mr merge --squash-message\` cuentan como resuelto" \
+  || bad "m2c CONTRA LA FALLA (A-1b): no detecta la integración por squash del foro"
+
+# A-1 regresión: la prosa que MENCIONA un patrón de commit (documentación, o código de una fixture vieja
+# citado dentro de un heredoc que solo ESCRIBE un archivo) no debe leerse como un commit real — MEDIDO
+# 2026-09-11: la prosa de un commit real que explicaba el bug del detector viejo ("solo ve `-m \"…\"`")
+# se leía a sí misma como un commit con mensaje "…", y un heredoc que escribía una fixture vieja a disco
+# aportaba un commit fantasma con el CÓDIGO PYTHON como mensaje.
+node -e '
+  const {extraerCommits} = require(process.argv[1]);
+  const prosa = "cat >> notas.md <<'"'"'MD'"'"'\nEl detector viejo `-m \"…\"` fallaba. Explicación: solo ve `-m \"…\"`.\nMD";
+  const r1 = extraerCommits(prosa);
+  if (r1.length !== 0) { console.error("PROSA coló un commit fantasma: " + JSON.stringify(r1)); process.exit(1); }
+  const fixture = "cat > viejo.py <<'"'"'PY'"'"'\nL.append(bash(\"git commit -m \\\"texto de fixture\\\"\", ts))\nPY";
+  const r2 = extraerCommits(fixture);
+  if (r2.length !== 0) { console.error("FIXTURE EMBEBIDA coló un commit fantasma: " + JSON.stringify(r2)); process.exit(1); }
+' "$CKPT_MEC" \
+  && ok "m2c CONTRA LA FALLA (A-1 regresión): prosa/código citado que solo MENCIONA \"git commit\" no cuenta como un commit real (exige arrancar tras un separador de shell)" \
+  || bad "m2c CONTRA LA FALLA (A-1 regresión): coló un commit fantasma desde prosa o una fixture embebida"
+
+# A-2: el rótulo de la sección invita a citar "VERBATIM" — plomería del harness (caveat/stdout de un
+# comando local, notificación de agente, /compact pelón) NO debe colarse como si la hubiera escrito el
+# usuario; un mensaje real y corto SÍ debe sobrevivir (no es un filtro por longitud).
+node -e '
+  const {isNoisyUserText} = require(process.argv[1]);
+  const ruido = [
+    "<local-command-caveat>Caveat: ...</local-command-caveat>",
+    "<local-command-stdout>\x1b[2mCompacted\x1b[22m</local-command-stdout>",
+    "<task-notification><task-id>abc</task-id><status>failed</status></task-notification>",
+    "## Context Usage\n\n**Tokens:** 877.9k / 1m (88%)",
+    "/compact",
+    "<command-name>/to-do</command-name>",
+    "<system-reminder>algo inyectado</system-reminder>",
+  ];
+  for (const t of ruido) if (!isNoisyUserText(t)) { console.error("NO FILTRÓ: " + JSON.stringify(t)); process.exit(1); }
+  const reales = ["haz los merges en ese orden", "adelante", "Córrelo sobre tu transcript"];
+  for (const t of reales) if (isNoisyUserText(t)) { console.error("FILTRÓ UNO REAL: " + JSON.stringify(t)); process.exit(1); }
+' "$CKPT_MEC" \
+  && ok "m2c CONTRA LA FALLA (A-2): filtra la plomería del harness (local-command/task-notification/system-reminder/Context Usage//compact) y conserva citas reales cortas" \
+  || bad "m2c CONTRA LA FALLA (A-2): coló plomería del harness como cita del usuario, o mató una cita real"
+
+# A-4: agrupar por los 2 primeros tokens hace que cd/ls/grep (exploración) ganen por VOLUMEN sobre el
+# comando que dice qué se hizo; topComandos debe priorizar señal sobre navegación sin OCULTAR esta última.
+node -e '
+  const {topComandos} = require(process.argv[1]);
+  const m = new Map([["cd /repo", 30], ["grep -n foo", 15], ["bash brain/test-brain.sh", 1]]);
+  const t = topComandos(m, 2).map(x => x.item);
+  if (t[0] !== "bash brain/test-brain.sh") { console.error("NAV GANÓ EL TOP: " + JSON.stringify(t)); process.exit(1); }
+  const t3 = topComandos(m, 3).map(x => x.item);
+  if (!t3.includes("cd /repo")) { console.error("LA NAV DESAPARECIÓ DEL TODO: " + JSON.stringify(t3)); process.exit(1); }
+' "$CKPT_MEC" \
+  && ok "m2c CONTRA LA FALLA (A-4): el trabajo real sube sobre la navegación de alto volumen, sin ocultarla del todo" \
+  || bad "m2c CONTRA LA FALLA (A-4): la navegación sigue monopolizando (o desapareciendo del) el top de comandos"
+
+# A-5: /tmp acumula basura desechable (logs de suite, archivos de paso) en volumen mucho mayor que las
+# escrituras al repo (bitácora, docs); topBashEscrituras debe priorizar el repo sin censurar /tmp.
+node -e '
+  const {topBashEscrituras} = require(process.argv[1]);
+  const m = new Map([["/tmp/suite-1.log", 9], ["/tmp/suite-2.log", 7], [".claude/memory/bitacora.md", 1]]);
+  const t = topBashEscrituras(m, 2).map(x => x.item);
+  if (t[0] !== ".claude/memory/bitacora.md") { console.error("TMP GANÓ EL TOP: " + JSON.stringify(t)); process.exit(1); }
+' "$CKPT_MEC" \
+  && ok "m2c CONTRA LA FALLA (A-5): una escritura al repo sube sobre el volumen de /tmp" \
+  || bad "m2c CONTRA LA FALLA (A-5): /tmp sigue desplazando al repo en las escrituras por bash"
+
+# A-6: una variable de shell SIN EXPANDIR (`$VAR/…`) pasa el filtro de "parece ruta" (tiene `/` y
+# extensión) pero la ruta real es DESCONOCIDA — reproducido tal cual se midió: la escritura vive DENTRO
+# del cuerpo de un heredoc de python que arma un comando bash con la variable embebida (no un `> $VAR`
+# suelto, que ya filtraba por la falta de "parece archivo").
+node -e '
+  const {destinosDeEscrituraBash} = require(process.argv[1]);
+  const cmd = "python3 - <<'"'"'PY'"'"'\nimport subprocess\nsubprocess.run(\"echo x > $RHREC3/.claude/memory/hilo-mental-actual.andamio.md\", shell=True)\nPY";
+  const out = destinosDeEscrituraBash(cmd);
+  if (out.some(d => d.includes("$"))) { console.error("VARIABLE SIN EXPANDIR COLÓ: " + JSON.stringify(out)); process.exit(1); }
+' "$CKPT_MEC" \
+  && ok "m2c CONTRA LA FALLA (A-6): reproducido con una variable embebida DENTRO de un heredoc de python (como en el render real) y descartado, no inventado" \
+  || bad "m2c CONTRA LA FALLA (A-6): una ruta con \$VAR sin expandir se coló en las escrituras por bash"
+
+echo ""
+echo "== (m2d) checkpoint-mecanico.js: 2 REGRESIONES del arreglo de A-1..A-6 (QA sobre el render real, 2026-09-11) =="
+# B-1: `<command-name>/to-do</command-name>` es una CITA del propio harness (texto de un heredoc-fixture
+# de python, no un comando) — pero el '>' de CIERRE de la etiqueta queda pegado a "/to-do" sin espacio,
+# y la heurística de redirección lo leyó como `> /to-do`. Repro: un heredoc real que escribe un .py cuyo
+# CONTENIDO cita esa etiqueta — la redirección real del propio `cat >` debe sobrevivir, la cita no.
+node -e '
+  const {destinosDeEscrituraBash} = require(process.argv[1]);
+  const cmd = "cat > /tmp/fixture.py <<PY\nL.append(u(\"<command-name>/to-do</command-name>\", \"2026-01-01T03:05:00Z\"))\nPY";
+  const out = destinosDeEscrituraBash(cmd);
+  if (out.includes("/to-do")) { console.error("LA CITA DEL TAG SE LEYÓ COMO REDIRECCIÓN: " + JSON.stringify(out)); process.exit(1); }
+  if (!out.includes("/tmp/fixture.py")) { console.error("SE PERDIÓ LA REDIRECCIÓN REAL DEL cat >: " + JSON.stringify(out)); process.exit(1); }
+' "$CKPT_MEC" \
+  && ok "m2d CONTRA LA FALLA (B-1a): \`<command-name>/to-do</command-name>\` (cita del harness dentro de un heredoc) ya no se lee como \`> /to-do\`; la redirección real del mismo comando sí sobrevive" \
+  || bad "m2d CONTRA LA FALLA (B-1a): la cita de una etiqueta \`<...>\` se coló como destino de escritura"
+
+# B-1: puntuación de CIERRE ajena (comilla+coma de un heredoc que arma texto/JSON) pegada al destino —
+# `.claude/memory/bitacora.md",` en vez de `.claude/memory/bitacora.md` — que además DUPLICABA la
+# entrada limpia del mismo archivo (el mismo destino con el conteo partido en dos claves distintas).
+node -e '
+  const {destinosDeEscrituraBash} = require(process.argv[1]);
+  const cmd = "L.append(bash(\"printf %s hola >> .claude/memory/bitacora.md\", \"2026-01-01T08:30:00Z\"))";
+  const out = destinosDeEscrituraBash(cmd);
+  if (!out.includes(".claude/memory/bitacora.md")) { console.error("NO CAZÓ EL DESTINO: " + JSON.stringify(out)); process.exit(1); }
+  if (out.some((d) => d !== ".claude/memory/bitacora.md")) { console.error("DESTINO CON PUNTUACIÓN PEGADA: " + JSON.stringify(out)); process.exit(1); }
+' "$CKPT_MEC" \
+  && ok "m2d CONTRA LA FALLA (B-1b): recorta la comilla+coma de cierre pegadas al destino (\`bitacora.md\",\` → \`bitacora.md\`)" \
+  || bad "m2d CONTRA LA FALLA (B-1b): el destino sigue saliendo con la puntuación de la sintaxis ajena pegada"
+
+# B-1: esa puntuación pegada, sin recortar, hacía que el MISMO archivo apareciera dos veces en el mapa
+# (la entrada limpia y la sucia) con el conteo partido — verificado a nivel de extraer(), no solo del
+# extractor de destinos, para probar que el merge de verdad ocurre en el mapa que alimenta el render.
+M2DDIR="$(mktemp -d "${TMPDIR:-/tmp}/brain-m2d.XXXXXX")"
+M2DFIX="$M2DDIR/dup.jsonl"
+node -e '
+  const fs = require("fs");
+  const w = fs.createWriteStream(process.argv[1]);
+  const L = (o) => w.write(JSON.stringify(o) + "\n");
+  const bash = (cmd) => L({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", name: "Bash", input: { command: cmd } }] } });
+  bash("printf a >> .claude/memory/bitacora.md");
+  bash("printf b >> .claude/memory/bitacora.md");
+  bash("L.append(bash(\"printf %s hola >> .claude/memory/bitacora.md\", \"2026-01-01T08:30:00Z\"))");
+  w.end();
+' "$M2DFIX"
+node -e '
+  const { extraer } = require(process.argv[1]);
+  const r = extraer(process.argv[2], 12, { ventana: "todo" });
+  const claves = [...r.bashEscrituras.keys()].filter((k) => k.includes("bitacora.md"));
+  if (claves.length !== 1 || r.bashEscrituras.get(".claude/memory/bitacora.md") !== 3) {
+    console.error("QUEDÓ PARTIDO: " + JSON.stringify([...r.bashEscrituras.entries()])); process.exit(1);
+  }
+' "$CKPT_MEC" "$M2DFIX" \
+  && ok "m2d CONTRA LA FALLA (B-1 dedupe): la entrada sucia y la limpia del MISMO archivo se fusionan en una sola clave con el conteo completo (3), no dos partidas" \
+  || bad "m2d CONTRA LA FALLA (B-1 dedupe): el mismo archivo sigue apareciendo dos veces con el conteo partido"
+rm -rf "$M2DDIR"
+
+# B-2: `topPriorizado` reordena en dos grupos (señal, ruido) pero el render lo presenta como un top-10
+# PLANO — un 37× cae por debajo de entradas de 1× sin que nada declare que hay dos grupos. Repro FIEL a
+# las frecuencias medidas [16,3,3,1,1,1,1,37,22,7]: una asignación de variable con un \`cd\` encadenado
+# (16×, valor constante) y dos asignaciones SIN comando encadenado (3× y 1×) se colaban como "señal" solo
+# porque el primer token no es de navegación — sin decir qué se hizo — mientras 3 comandos de navegación
+# de alto volumen (cd 37×, ls 22×, grep 7×) quedaban BAJO cuatro comandos reales de 1×.
+M2EDIR="$(mktemp -d "${TMPDIR:-/tmp}/brain-m2e.XXXXXX")"
+M2EFIX="$M2EDIR/b2.jsonl"
+node -e '
+  const fs = require("fs");
+  const w = fs.createWriteStream(process.argv[1]);
+  const L = (o) => w.write(JSON.stringify(o) + "\n");
+  const bash = (cmd) => L({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", name: "Bash", input: { command: cmd } }] } });
+  for (let i = 0; i < 16; i++) bash("WT=/private/tmp/fixed; cd /Users/unjordi/code/cortex");
+  for (let i = 0; i < 3; i++) bash("DASH=aaaa");
+  bash("SP=bbbb");
+  for (let i = 0; i < 3; i++) bash("npm test");
+  bash("git status");
+  bash("node build.js");
+  bash("python3 script.py");
+  for (let i = 0; i < 37; i++) bash("cd /Users/unjordi/code/cortex");
+  for (let i = 0; i < 22; i++) bash("ls -la /tmp");
+  for (let i = 0; i < 7; i++) bash("grep -n foo bar.txt");
+  w.end();
+' "$M2EFIX"
+node -e '
+  const { extraer, topComandos } = require(process.argv[1]);
+  const r = extraer(process.argv[2], 12, { ventana: "todo" });
+  const claves = [...r.comandos.keys()];
+  const coladas = claves.filter((k) => /^(cd|ls|grep)\b/.test(k) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(k));
+  if (coladas.length) { console.error("RUIDO/ASIGNACIÓN SIN DESPOJAR EN comandos: " + JSON.stringify(coladas)); process.exit(1); }
+  const t = topComandos(r.comandos, 10);
+  const ns = t.map((x) => x.n);
+  for (let i = 0; i < ns.length - 1; i++) {
+    if (ns[i] < ns[i + 1]) { console.error("EL TOP NO SALE ORDENADO POR FRECUENCIA: " + JSON.stringify(ns)); process.exit(1); }
+  }
+  if (!t.length || t[0].item !== "npm test" || t[0].n !== 3) {
+    console.error("EL COMANDO REAL NO ENCABEZA: " + JSON.stringify(t)); process.exit(1);
+  }
+' "$CKPT_MEC" "$M2EFIX" \
+  && ok "m2d CONTRA LA FALLA (B-2): la navegación (cd/ls/grep) y las asignaciones sin comando encadenado quedan EXCLUIDAS de \`R.comandos\` en la fuente — el top que sale de ahí ya es una sola lista honestamente ordenada por frecuencia, sin reordenar en dos grupos" \
+  || bad "m2d CONTRA LA FALLA (B-2): el top de comandos sigue mezclando ruido/asignaciones con la señal real, o sale desordenado por frecuencia"
+rm -rf "$M2EDIR"
+
+echo ""
+echo "== (m2f) checkpoint-mecanico.js: C-1/C-2, QA sobre el render REAL del 2026-09-11 (loop 3) =="
+# C-1: un `cd <repo> &&`/`cd <repo>;` inicial no es EL comando — es el mismo tipo de envoltorio que una
+# asignación de variable — pero la clave vieja (2 primeros tokens DESDE EL INICIO) siempre veía `cd`
+# primero y descartaba la línea ENTERA. MEDIDO 2026-09-11: 87 de 101 comandos del tramo real arrancaban
+# así; el top sobrevivía con 4 entradas que no decían nada (`python3 -`, `printf`, `mkdir -p`, `df -h`).
+node -e '
+  const {claveComandoSeñal} = require(process.argv[1]);
+  const r1 = claveComandoSeñal("cd /Users/unjordi/code/cortex && git commit -q -F - <<MSG");
+  if (r1 !== "git commit") { console.error("cd&&git commit: " + JSON.stringify(r1)); process.exit(1); }
+  const r2 = claveComandoSeñal("WT=/tmp/x; cd \"$WT\" && timeout 900 bash brain/test-brain.sh > /tmp/x.log 2>&1");
+  if (r2 !== "bash brain/test-brain.sh") { console.error("var+cd+timeout+bash: " + JSON.stringify(r2)); process.exit(1); }
+  // un `cd` SIN nada encadenado después sigue siendo navegación pura (A-4/B-2 no cambian).
+  const r3 = claveComandoSeñal("cd /Users/unjordi/code/cortex");
+  if (r3 !== null) { console.error("cd SOLO debía seguir excluido: " + JSON.stringify(r3)); process.exit(1); }
+' "$CKPT_MEC" \
+  && ok "m2f CONTRA LA FALLA (C-1a): un \`cd <repo> &&\` inicial se salta (no se descarta la línea entera); un \`cd\` SIN nada encadenado sigue excluido igual que antes" \
+  || bad "m2f CONTRA LA FALLA (C-1a): el \`cd\` inicial sigue escondiendo el comando real, o dejó de excluir la navegación pura"
+
+# C-1: envoltorios `sudo`/`timeout N`/`command`/`env`/`nohup` tampoco son EL comando.
+node -e '
+  const {claveComandoSeñal} = require(process.argv[1]);
+  const r1 = claveComandoSeñal("timeout 540 gh pr checks 406 --repo x --watch --fail-fast");
+  if (r1 !== "gh pr checks") { console.error("timeout+gh: " + JSON.stringify(r1)); process.exit(1); }
+  const r2 = claveComandoSeñal("sudo systemctl restart nginx");
+  if (r2 !== "systemctl restart nginx") { console.error("sudo: " + JSON.stringify(r2)); process.exit(1); }
+' "$CKPT_MEC" \
+  && ok "m2f CONTRA LA FALLA (C-1b): \`timeout N\` y \`sudo\` se despojan como envoltorio, no como el comando" \
+  || bad "m2f CONTRA LA FALLA (C-1b): un envoltorio (timeout/sudo) se coló como si fuera el comando real"
+
+# C-1: la clave vieja (2 tokens a secas) colapsaba TODOS los subcomandos de `gh pr`/`glab mr` en una sola
+# entrada (`gh pr`), mezclando una integración real (`merge`) con una simple consulta (`view`/`checks`).
+node -e '
+  const {claveComandoSeñal} = require(process.argv[1]);
+  const merge = claveComandoSeñal("gh pr merge 405 --repo unjordi/cortex --squash --delete-branch");
+  const view = claveComandoSeñal("gh pr view 389 --repo unjordi/cortex --json title");
+  if (merge === view) { console.error("gh pr merge/view colapsaron a la misma clave: " + JSON.stringify(merge)); process.exit(1); }
+  if (merge !== "gh pr merge") { console.error("gh pr merge: " + JSON.stringify(merge)); process.exit(1); }
+' "$CKPT_MEC" \
+  && ok "m2f CONTRA LA FALLA (C-1c): \`gh pr merge\` y \`gh pr view\` quedan en claves DISTINTAS (antes ambos colapsaban a \`gh pr\`)" \
+  || bad "m2f CONTRA LA FALLA (C-1c): distintos subcomandos de \`gh pr\` se siguen mezclando en una sola clave"
+
+# C-1 end-to-end: fixture FIEL a la forma real del tramo medido (cd-prefijado, timeout+suite, squash del
+# foro) — sobre el render completo (extraer + renderAndamio), el top debe nombrar al menos una
+# herramienta del trabajo. Antes de este arreglo, con este MISMO fixture, las 4 entradas que sobrevivían
+# eran genéricas (intérpretes/utilerías) porque el `cd … &&` inicial escondía TODO lo demás.
+M2FDIR="$(mktemp -d "${TMPDIR:-/tmp}/brain-m2f.XXXXXX")"
+M2FFIX="$M2FDIR/c1.jsonl"
+node -e '
+  const fs = require("fs");
+  const w = fs.createWriteStream(process.argv[1]);
+  const L = (o) => w.write(JSON.stringify(o) + "\n");
+  const bash = (cmd) => L({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", name: "Bash", input: { command: cmd } }] } });
+  for (let i = 0; i < 4; i++) bash("cd /Users/unjordi/code/cortex && python3 -c \"print(1)\"");
+  for (let i = 0; i < 3; i++) bash("printf \"%s\\n\" hola");
+  bash("mkdir -p /tmp/x");
+  bash("df -h");
+  bash("cd /Users/unjordi/code/cortex && gh pr merge 405 --repo unjordi/cortex --squash --delete-branch --subject x");
+  bash("WT=/tmp/w; cd \"$WT\" && timeout 900 bash brain/test-brain.sh > /tmp/s.log 2>&1");
+  w.end();
+' "$M2FFIX"
+node -e '
+  const { extraer, renderAndamio } = require(process.argv[1]);
+  const r = extraer(process.argv[2], 12, { ventana: "todo" });
+  const md = renderAndamio(r, r, null, null);
+  const sec = md.split("Comandos Bash")[1].split("## ")[0];
+  const VERBOS = ["ssh", "gh ", "glab", "git ", "node ", "bash ", "docker", "scp"];
+  const nombra = sec.split("\n").some((l) => l.startsWith("- ") && VERBOS.some((v) => l.toLowerCase().includes(v)));
+  if (!nombra) { console.error("EL TOP SIGUE SIN NOMBRAR UNA HERRAMIENTA DEL TRABAJO:\n" + sec); process.exit(1); }
+' "$CKPT_MEC" "$M2FFIX" \
+  && ok "m2f CONTRA LA FALLA (C-1 end-to-end): sobre un tramo fiel al real (cd-prefijado, timeout+suite, squash), el top de comandos nombra al menos una herramienta del trabajo" \
+  || bad "m2f CONTRA LA FALLA (C-1 end-to-end): el top de comandos sigue sin decir qué se hizo sobre un tramo fiel al real"
+rm -rf "$M2FDIR"
+
+# C-2: el encabezado "top N de M" no puede prometer más entradas de las que renderiza. Repro FIEL a las
+# proporciones MEDIDAS 2026-09-11 (3 escrituras REALES contra 13 temporales, 16 destinos distintos en
+# total): `topBashEscrituras(m, 10)` topa las temporales a como máximo tantas como señal real haya (3), así
+# que renderiza 6 —no 10— aunque haya 16 destinos distintos ("top 10 de 16" renderizando 6).
+node -e '
+  const { topBashEscrituras } = require(process.argv[1]);
+  const m = new Map();
+  for (let i = 0; i < 3; i++) m.set("archivo-repo-" + i + ".md", 1);
+  for (let i = 0; i < 13; i++) m.set("/tmp/temporal-" + i + ".log", 1);
+  const t = topBashEscrituras(m, 10);
+  if (t.length >= 10) { console.error("el repro no reproduce el recorte: " + t.length); process.exit(1); }
+  if (t.length !== 6) { console.error("se esperaban 6 (tope = señal real x2), salieron " + t.length); process.exit(1); }
+' "$CKPT_MEC" \
+  && ok "m2f (repro de apoyo C-2): confirma que \`topBashEscrituras\` SÍ recorta bajo TOP_N cuando hay más temporales que señal (precondición del hallazgo)" \
+  || bad "m2f (repro de apoyo C-2): topBashEscrituras dejó de recortar — el repro de C-2 ya no aplica"
+
+node -e '
+  const { extraer, renderAndamio } = require(process.argv[1]);
+  const fs = require("fs");
+  const dir = fs.mkdtempSync("/tmp/brain-m2f-c2-");
+  const f = dir + "/t.jsonl";
+  const w = fs.createWriteStream(f);
+  const L = (o) => w.write(JSON.stringify(o) + "\n");
+  const bash = (cmd) => L({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", name: "Bash", input: { command: cmd } }] } });
+  for (let i = 0; i < 3; i++) bash("cat >> archivo-repo-" + i + ".md <<EOF\nx\nEOF");
+  for (let i = 0; i < 13; i++) bash("echo x > /tmp/temporal-" + i + ".log");
+  w.end();
+  w.on("finish", () => {
+    const r = extraer(f, 12, { ventana: "todo" });
+    const md = renderAndamio(r, r, null, null);
+    fs.rmSync(dir, { recursive: true, force: true });
+    const m = md.match(/escritos desde Bash[^\n]*top (\d+) de (\d+)/);
+    if (!m) { console.error("no encontré el encabezado"); process.exit(1); }
+    const prometidas = parseInt(m[1], 10);
+    const sec = md.split("escritos desde Bash")[1].split("## ")[0];
+    const renderizadas = sec.split("\n").filter((l) => l.startsWith("- ") && l !== "- (ninguno)").length;
+    if (prometidas !== renderizadas) {
+      console.error("PROMETE " + prometidas + " PERO RENDERIZA " + renderizadas); process.exit(1);
+    }
+  });
+' "$CKPT_MEC" \
+  && ok "m2f CONTRA LA FALLA (C-2): el encabezado de escrituras-por-bash usa el largo REAL de lo renderizado, nunca TOP_N a secas — deja de prometer de más" \
+  || bad "m2f CONTRA LA FALLA (C-2): el encabezado sigue prometiendo más entradas de las que renderiza"
+
+echo ""
 echo "== (m2b) checkpoint-mecanico.sh: hook de PreCompact — detached, lock por-sid, escritura atómica =="
 grep -qF 'nohup' "$SCRIPT_DIR/hooks/checkpoint-mecanico.sh" \
   && ok "m2b: el hook corre DETACHED (nohup) — no bloquea el evento PreCompact con un transcript grande" \
@@ -4145,12 +4473,27 @@ touch -t 202601010000 "$F1S/.claude/memory/hilo-mental-actual.andamio.md"
 printf '%s' "$(f1self 2>&1)" | jq -e '.ensure == "regenerado"' >/dev/null 2>&1 \
   && ok "f1f: con el andamio ATRÁS del transcript, --ensure lo regenera" \
   || bad "f1f: --ensure no regeneró un andamio stale"
-# CONTRA LA FALLA (fail-CLOSED): dentro de un SUBAGENTE, CLAUDE_CODE_SESSION_ID es el sid del PADRE
-# (MEDIDO 2026-09-11). Regenerar ahí produciría el andamio de OTRA sesión: un artefacto que certifica
-# lo que no verificó. Debe NEGARSE, no adivinar.
-f1self 1 >/dev/null 2>&1 \
-  && bad "f1f CONTRA LA FALLA: --self corrió dentro de un SUBAGENTE (habría escrito el andamio del PADRE)" \
-  || ok "f1f CONTRA LA FALLA: --self FALLA CERRADO con CLAUDE_CODE_CHILD_SESSION=1 (el sid del entorno es el del padre)"
+# A-3 (2026-09-11): el candado usaba CLAUDE_CODE_CHILD_SESSION==='1' para fallar cerrado "dentro de un
+# subagente". MEDIDO: esa variable vale '1' TAMBIÉN en el Bash del hilo PRINCIPAL (CLI 2.1.x, macOS) —
+# no distingue nada, y bloqueaba el 100% de los usos legítimos. Ahora NO bloquea por esa señal.
+touch -t 202601010000 "$F1S/.claude/memory/hilo-mental-actual.andamio.md"
+F1SOUT3="$(f1self 1 2>&1)"; F1SRC3=$?
+[ "$F1SRC3" -eq 0 ] && printf '%s' "$F1SOUT3" | jq -e '.ensure == "regenerado"' >/dev/null 2>&1 \
+  && ok "f1f CONTRA LA FALLA (A-3): --self YA NO rechaza CLAUDE_CODE_CHILD_SESSION=1 (esa señal se mide también en el hilo principal, no distingue nada)" \
+  || bad "f1f CONTRA LA FALLA (A-3): --self siguió bloqueando con CLAUDE_CODE_CHILD_SESSION=1; rc=$F1SRC3: $(printf '%s' "$F1SOUT3" | tail -2 | tr '\n' ' ')"
+# La verificación POSITIVA que lo reemplaza: un sidecar de sub-agente MÁS FRESCO que el transcript
+# resuelto se AVISA (stderr, no bloquea) — mejor un andamio con la duda anotada que ninguno.
+F1SIDECAR="$F1D/cfg/projects/$F1SLUG/$F1SID/subagents"; mkdir -p "$F1SIDECAR"
+printf '%s\n' '{"type":"assistant"}' > "$F1SIDECAR/agent-fresco.jsonl"
+touch -t 202601010000 "$F1S/.claude/memory/hilo-mental-actual.andamio.md"
+F1SERR="$(f1self 2>&1 >/dev/null)"
+printf '%s' "$F1SERR" | grep -qi 'sub-agente' \
+  && ok "f1f: con un sidecar de sub-agente MÁS FRESCO que el transcript resuelto, --self AVISA por stderr (verificación positiva, no un env var que no distingue)" \
+  || bad "f1f: no avisó habiendo un sidecar de sub-agente más fresco"
+printf '%s' "$F1SERR" | grep -q 'SUBAGENTE' \
+  && bad "f1f: el aviso repite el token en MAYÚSCULAS del bloqueo viejo (falso positivo del oráculo de QA que mide justamente eso)" \
+  || ok "f1f: el aviso no reintroduce el token en mayúsculas del bloqueo viejo"
+rm -rf "$F1SIDECAR"
 ( cd "$F1S" && env CLAUDE_CONFIG_DIR="$F1D/cfg" CLAUDE_CODE_SESSION_ID= \
   node "$SCRIPT_DIR/../bin/checkpoint-mecanico.js" --self --ensure ) >/dev/null 2>&1 \
   && bad "f1f: --self corrió sin CLAUDE_CODE_SESSION_ID (¿contra qué transcript?)" \
