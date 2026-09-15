@@ -12,13 +12,25 @@
 # un PISO anti-basura (auditor=piso-no-meta), no una vara de calidad. El candado server-side definitivo
 # es el ajuste de GitLab `squash_option=always` (ver flujo-de-trabajo.md).
 #
-# Fail-open ante parseo (sin jq no bloquea). Vive en <repo>/.claude/hooks/ (viaja por git).
+# M7 (auditoría 2026-09-15 §2.3, homologación): SIN jq, fail-CLOSED si el comando PARECE un merge de
+# MR/PR (superset conservador) -- antes fail-open silencioso dejaba pasar CUALQUIER merge sin squash con
+# solo quitar jq del PATH. Ver el gate explícito más abajo, tras leer el input. Vive en <repo>/.claude/hooks/
+# (viaja por git).
 
 # dedupe doble-cableado: si soy la copia del REPO y la copia GLOBAL existe, cedo (la global maneja
 # esta invocación) → evita disparo doble en máquina con el cerebro global; en un clon SIN bootstrap
 # (sin copia global) la del repo sí corre. NO-debilitante: sigue disparando 1× y denegando igual.
 case "$0" in "$HOME/.claude/hooks/"*) : ;; *) [ -f "$HOME/.claude/hooks/$(basename "$0")" ] && exit 0 ;; esac
 input=$(cat)
+# M7: SIN jq no podemos parsear el comando -- pero un merge de MR/PR sin poder VERIFICAR el squash NO debe
+# colarse (evasión asimétrica idéntica a la que confirmar-merge-develop ya cerró con A3). Grep CRUDO del
+# input; si parece un merge real, DENY con causa clara; si no, exit 0 (no sobre-bloquea).
+if ! command -v jq >/dev/null 2>&1; then
+  if printf '%s' "$input" | grep -qE '(mr[[:space:]]+(merge|accept)|pr[[:space:]]+merge)'; then
+    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"FRENO (sin jq): no puedo verificar si este merge ya trae --squash sin jq instalado, y un merge a develop SIEMPRE se squashea (fail-safe, no afloja nada). Instala jq (macOS: brew install jq · Debian/Ubuntu: apt install jq · Windows: winget install jqlang.jq) e reintenta."}}'
+  fi
+  exit 0
+fi
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
 [ -z "$cmd" ] && exit 0
 # PRE-FILTRO barato (superset conservador, mismo espíritu que proteger-arbol.sh): lo que este guard

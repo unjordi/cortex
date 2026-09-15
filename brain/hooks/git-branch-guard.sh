@@ -13,8 +13,20 @@
 # invocación) → evita disparo doble; en un clon SIN bootstrap (sin copia global) la del repo sí corre.
 case "$0" in "$HOME/.claude/hooks/"*) : ;; *) [ -f "$HOME/.claude/hooks/$(basename "$0")" ] && exit 0 ;; esac
 
-command -v jq >/dev/null 2>&1 || exit 0
 input=$(cat)
+# M7 (auditoría 2026-09-15 §2.3, homologación): SIN jq no podemos parsear el input para gatear con
+# precisión -- pero un comando que PARECE un push/merge a base NO debe pasar SIN gate. Antes: fail-open
+# SILENCIOSO (evasión asimétrica idéntica a la que confirmar-merge-develop ya cerró con A3 -- "un PATH sin
+# jq apaga la norma más absoluta del sistema"). Grep CRUDO del input (sin comillas del JSON despojadas,
+# pero 'git … push'/'push … develop|main'/merge de MR bastan como SUPERSET conservador): si aparece,
+# DENY con causa clara (más ESTRICTO, no afloja nada); si NO parece lo que este guard vigila, exit 0 (no
+# sobre-bloquea comandos normales). El mensaje se arma con printf (no jq, justo porque no hay jq).
+if ! command -v jq >/dev/null 2>&1; then
+  if printf '%s' "$input" | grep -qE 'git[[:space:]]+push|(mr[[:space:]]+(merge|accept)|pr[[:space:]]+merge)'; then
+    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"FRENO (sin jq): no puedo verificar si este push/merge toca develop/main sin jq instalado, y NUNCA se hace push/merge directo a develop/main (fail-safe, no afloja nada). Instala jq (macOS: brew install jq · Debian/Ubuntu: apt install jq · Windows: winget install jqlang.jq) e reintenta. Si esto NO tocaba develop/main, resuélvelo por el flujo de ramitas de todos modos -- no hay forma de confirmarlo sin jq."}}'
+  fi
+  exit 0
+fi
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
 [ -z "$cmd" ] && exit 0
 # PRE-FILTRO barato (superset conservador, mismo espíritu que proteger-arbol.sh): todo lo que este

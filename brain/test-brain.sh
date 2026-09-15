@@ -737,6 +737,32 @@ rm -rf "$M9R"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (b1d-m7) M7 (auditoría 2026-09-15 §2.3): entorno degradado (sin jq) homologado — fail-CLOSED =="
+# Antes: git-branch-guard hacía 'command -v jq || exit 0' (fail-OPEN silencioso — un PATH sin jq apagaba
+# 'nunca push a develop/main') y merge-squash-guard, sin chequeo explícito, degradaba igual (cmd vacío por
+# el jq ausente → exit 0). confirmar-merge-develop YA tenía el endurecimiento A3 (2026-08-06): esta es la
+# MISMA política, homologada a los otros dos. secret-scan/proteger-arbol CONSERVAN su fail-open declarado
+# (son red de seguridad/advisory, no el candado de "nunca push a base"); secret-scan ya avisa RUIDOSO.
+NOJQ7="$FAKEHOME/nojq7"; mkdir -p "$NOJQ7"
+for _t in bash grep sed cat basename dirname head tail printf awk; do _p="$(command -v "$_t" 2>/dev/null)"; [ -n "$_p" ] && ln -sf "$_p" "$NOJQ7/$_t"; done
+gb_nojq() { jq -nc --arg c "$1" '{tool_input:{command:$c}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" bash "$HOOKS/git-branch-guard.sh"; }
+ms_nojq() { jq -nc --arg c "$1" '{tool_input:{command:$c}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" bash "$HOOKS/merge-squash-guard.sh"; }
+mkdir -p "$FAKEHOME/nojq7home"
+is_deny "$(gb_nojq 'git push origin develop')" \
+  && ok "M7: git-branch-guard SIN jq + push a develop → DENY (antes: fail-open silencioso)" \
+  || bad "M7: git-branch-guard SIN jq dejó pasar un push a develop"
+is_silent "$(gb_nojq 'ls -la')" \
+  && ok "M7: git-branch-guard SIN jq + comando no-git → silencio (no sobre-bloquea)" \
+  || bad "M7: git-branch-guard SIN jq bloqueó un comando que no le toca"
+is_deny "$(ms_nojq 'glab mr merge 5 --yes')" \
+  && ok "M7: merge-squash-guard SIN jq + merge sin --squash → DENY (antes: fail-open silencioso)" \
+  || bad "M7: merge-squash-guard SIN jq dejó pasar un merge sin squash"
+is_silent "$(ms_nojq 'ls -la')" \
+  && ok "M7: merge-squash-guard SIN jq + comando no-merge → silencio (no sobre-bloquea)" \
+  || bad "M7: merge-squash-guard SIN jq bloqueó un comando que no le toca"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "== (b1e) confirmar-merge-develop: escape ANCLADO al subcomando (H3) + destino cacheado/timeout (H5) =="
 # Antes NO tenía test de comportamiento. H3: el escape casaba `status|list|view` como token suelto en
 # CUALQUIER parte → `glab mr merge 5 && git status` evadía el gate. H5: 2 llamadas de red idénticas +
