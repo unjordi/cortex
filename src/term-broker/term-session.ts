@@ -262,6 +262,12 @@ export class ShellSessionPool {
     // /dev/null: así un REPL interactivo (claude, vim, python) recibe EOF y SALE en vez de robarse el pipe de
     // comandos del shell y colgar la sesión entera (el bug de "[detenido]"). El comando va en su propia línea
     // para no romperse con comentarios `#` o quotes sin cerrar en una sola línea.
+    // ⚠️ REVERSO del grupo (no-subshell): un comando que hace `exec`/`exit` SÍ se lleva el shell de la sesión
+    //    (el `{ }` no lo aísla) → el sentinel de abajo nunca imprime → `onShellDeath` reporta "el shell de la
+    //    sesión terminó" con code:null, y el cliente pierde el stdout que ya produjo. Un cliente que manda un
+    //    one-shot con exec/exit (introspección, resolver-y-correr un helper) DEBE envolverlo en un SUBSHELL
+    //    `( … )` de su lado. Ver axon `broker-run.ts` ("CONTRATO DEL COMANDO") y `brokerHelperCommand` — bug
+    //    real axon #197 (el widget del broker daba "[ SIN DATOS ]" por mandar `exec bash helper` a pelo).
     const wrapped = `{\n${next.cmd}\n} </dev/null\n`;
     try {
       sess.child.stdin.write(wrapped);
