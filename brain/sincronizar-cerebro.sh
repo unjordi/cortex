@@ -34,8 +34,34 @@
 #   DRY-RUN por default (lista "DESHABILITARÍA"); con --apply de-cablea + borra. Idempotente (un hook ya
 #   ausente se reporta y se salta). Funciona aunque el hook NO esté en el manifiesto (ese es el punto).
 #
+# --limpiar-personal: retira de un repo PERSONAL (sin la marca .claude/repo-compartido) TODO lo que el
+#   cerebro instaló ahí — SOLO los archivos de tier `both` del MANIFEST (hooks+libs+scripts) + su
+#   cableado en settings.json + el sello .brain-version. Es el mecanismo que le faltaba a la norma
+#   "Cerebro por-repo = CORREO": aviso-drift-cerebro ya FLAGGEABA los guards sobrantes en un repo
+#   personal, pero nunca los quitaba (opción B deliberada) — este flag es la limpieza que antes había
+#   que hacer a mano.
+#   Por qué SOLO tier `both` (no `repo`, no `global`): `both` es el ÚNICO tier redundante con el install
+#   GLOBAL+dedupe de esta máquina (razón de ser de la norma). Un hook `repo` (dod-verificar,
+#   sesion-inicio, recordar-cosechar, recordar-unificar-cerebro) NO tiene equivalente global — vive
+#   SOLO por-repo por diseño — y sigue haciendo falta en CUALQUIER repo, personal o compartido; tratarlo
+#   como "sobrante" es el FP ya documentado en docs/guards-falsos-positivos.md (2026-09-08: el chequeo
+#   de "sobran" de drift-cerebro-comun.sh no mira el tier y llegó a marcar como sobrante un hook `repo`
+#   que sí hacía falta, rompiendo el candado DoD real de un repo). Este flag no repite ese error.
+#   REHÚSA en un repo COMPARTIDO (marca .claude/repo-compartido presente): ahí los guards por-repo SÍ
+#   deben viajar como correo, así que limpiarlos sería el daño que la norma previene. Fail-closed ante
+#   la duda: solo actúa sobre archivos que constan en el MANIFEST con tier `both`.
+#   DRY-RUN por default (lista "RETIRARÍA"); --apply de-cablea + borra. Idempotente. Respeta --only.
+#   --incluir-skills (opcional, junto con --limpiar-personal): además retira las SKILLS del brain que
+#   este mismo sync desplegó por-repo — pero SOLO las que constan en el LEDGER
+#   (.claude/skills/.brain-skills), el registro exacto de lo que ESTE mecanismo puso ahí. Sin ledger no
+#   hay procedencia fiable → no se toca ninguna skill (fail-closed), aunque haya carpetas bajo
+#   .claude/skills/ que compartan nombre con una skill del brain. NO es el default: una skill del repo
+#   con el mismo nombre que una skill global sería indistinguible sin el ledger, y el propio encargo
+#   pide que memoria/skills de un repo personal NO se toquen salvo pedido explícito.
+#
 # Uso:  bash sincronizar-cerebro.sh <ruta-repo-destino> [--apply] [--only a,b,c] [--prune-orphans]
 #       bash sincronizar-cerebro.sh <ruta-repo-destino> --disable <hook[,hook2,…]> [--apply]
+#       bash sincronizar-cerebro.sh <ruta-repo-destino> --limpiar-personal [--incluir-skills] [--apply] [--only a,b,c]
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -43,7 +69,7 @@ SRC_HOOKS="$SCRIPT_DIR/hooks"
 MANIFEST="$SRC_HOOKS/MANIFEST"
 VERSION_FILE="$SCRIPT_DIR/VERSION"
 
-DEST=""; APPLY=0; ONLY=""; PRUNE=0; PRUNEONLY=0; DISABLE=""
+DEST=""; APPLY=0; ONLY=""; PRUNE=0; PRUNEONLY=0; DISABLE=""; LIMPIAR_PERSONAL=0; INCLUIR_SKILLS=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --apply) APPLY=1 ;;
@@ -53,6 +79,8 @@ while [ $# -gt 0 ]; do
     --prune-only) PRUNE=1; PRUNEONLY=1 ;;   # SOLO retira huérfanos; NO sincroniza nada más (fix quirúrgico)
     --disable) shift; DISABLE="${1:-}" ;;    # SOLO deshabilita el/los hook(s) nombrado(s) (de-cablea + borra)
     --disable=*) DISABLE="${1#--disable=}" ;;
+    --limpiar-personal) LIMPIAR_PERSONAL=1 ;;   # retira TODO lo tier `both` de un repo PERSONAL (ver cabecera)
+    --incluir-skills) INCLUIR_SKILLS=1 ;;        # con --limpiar-personal: también retira skills DEL LEDGER
     -*) echo "ERROR: flag desconocido: $1"; exit 2 ;;
     *) [ -z "$DEST" ] && DEST="$1" || { echo "ERROR: argumento inesperado: $1"; exit 2; } ;;
   esac
@@ -179,6 +207,87 @@ if [ -n "$DISABLE" ]; then
   done
   echo ""
   echo "==> resumen (--disable): $n_dis hook(s) a deshabilitar · $n_miss ya ausente(s)"
+  [ "$APPLY" = 1 ] || echo "    (DRY-RUN — nada escrito. Re-corre con --apply para aplicar.)"
+  exit 0
+fi
+
+# ── --limpiar-personal: retira de un repo PERSONAL todo lo que el cerebro instaló (ver cabecera para
+# el porqué del alcance = tier `both` ÚNICAMENTE). REHÚSA de plano si el repo está marcado COMPARTIDO
+# (fail-closed: ante la marca, ni siquiera se calcula qué retiraría). DRY-RUN por default; --apply
+# de-cablea + borra. Respeta --only (para un retiro puntual). Termina el script (no sincroniza nada más).
+if [ "$LIMPIAR_PERSONAL" = 1 ]; then
+  echo "  (--limpiar-personal: NO sincronizo; retiro del repo PERSONAL lo que el cerebro instaló — tier 'both' únicamente)"
+  if [ -f "$DEST/.claude/repo-compartido" ]; then
+    echo "ERROR: $DEST está marcado .claude/repo-compartido (repo COMPARTIDO) — --limpiar-personal se REHÚSA aquí."
+    echo "  En un repo COMPARTIDO los guards por-repo SÍ deben viajar en git (protegen a colegas/clones sin bootstrap);"
+    echo "  retirarlos sería justo el daño que la norma \"Cerebro por-repo = CORREO\" previene."
+    echo "  Si la marca es un error, quítala (rm $DEST/.claude/repo-compartido) y re-corre. Si el repo SÍ es compartido, no uses este flag."
+    exit 1
+  fi
+
+  n_ret=0
+  # Candidatos = SOLO tier `both` del MANIFEST (hook/lib/script) — no `repo` (sin equivalente global,
+  # ver cabecera y docs/guards-falsos-positivos.md 2026-09-08), no `global` (nunca los deja aquí este sync).
+  BOTH_ENTRIES="$(awk '$1!~/^#/ && NF>=3 && $2=="both"{print $1"|"$3}' "$MANIFEST")"
+  if [ -d "$DST_HOOKS" ]; then
+    while IFS='|' read -r name kind; do
+      [ -z "$name" ] && continue
+      only_ok "$name" || continue
+      dst="$DST_HOOKS/$name.sh"
+      [ -f "$dst" ] || continue
+      wired=0
+      [ "$kind" = "hook" ] && wired_in "$DST_SET" "$name" && wired=1
+      if [ "$APPLY" = 1 ]; then
+        [ "$wired" = 1 ] && dewire_hook "$DST_SET" "$name"
+        rm -f "$dst"
+        if [ "$wired" = 1 ]; then echo "  RETIRADO   $name.sh ($kind, tier both) — de-cableado + borrado"
+        else echo "  RETIRADO   $name.sh ($kind, tier both) — borrado"; fi
+      else
+        if [ "$wired" = 1 ]; then echo "  RETIRARÍA  $name.sh ($kind, tier both) — de-cablearía del settings.json + borraría"
+        else echo "  RETIRARÍA  $name.sh ($kind, tier both) — borraría"; fi
+      fi
+      n_ret=$((n_ret+1))
+    done <<EOF
+$BOTH_ENTRIES
+EOF
+    # El sello .brain-version lo escribe ESTE MISMO mecanismo (nadie más) → siempre es del cerebro.
+    if only_ok ".brain-version" && [ -f "$DST_HOOKS/.brain-version" ]; then
+      if [ "$APPLY" = 1 ]; then rm -f "$DST_HOOKS/.brain-version"; echo "  RETIRADO   .brain-version (sello propio de este sync)"
+      else echo "  RETIRARÍA  .brain-version (sello propio de este sync)"; fi
+      n_ret=$((n_ret+1))
+    fi
+  fi
+  [ "$n_ret" = 0 ] && echo "  YA LIMPIO — nada de tier 'both' presente en .claude/hooks/"
+
+  # ── Skills (opt-in): SOLO por LEDGER (.claude/skills/.brain-skills) — el registro exacto de lo que
+  # ESTE sync desplegó ahí antes. Sin ledger, no hay procedencia fiable → NO se toca ninguna skill.
+  n_sk=0
+  DST_SKILLS_LP="$DEST/.claude/skills"; LEDGER_LP="$DST_SKILLS_LP/.brain-skills"
+  if [ "$INCLUIR_SKILLS" = 1 ]; then
+    if [ -f "$LEDGER_LP" ]; then
+      while IFS= read -r skname; do
+        [ -z "$skname" ] && continue
+        only_ok "$skname" || continue
+        [ -d "$DST_SKILLS_LP/$skname" ] || continue
+        if [ "$APPLY" = 1 ]; then
+          rm -rf "${DST_SKILLS_LP:?}/${skname:?}"
+          echo "  RETIRADA   skills/$skname (en el ledger — el cerebro la desplegó aquí)"
+        else
+          echo "  RETIRARÍA  skills/$skname (en el ledger — usa --apply)"
+        fi
+        n_sk=$((n_sk+1))
+      done < "$LEDGER_LP"
+      [ "$APPLY" = 1 ] && [ "$n_sk" -gt 0 ] && rm -f "$LEDGER_LP"
+    else
+      echo "  (--incluir-skills: sin ledger .claude/skills/.brain-skills → sin procedencia fiable, NO toco skills)"
+    fi
+  elif [ -f "$LEDGER_LP" ]; then
+    n_led=$(grep -vc '^[[:space:]]*$' "$LEDGER_LP" 2>/dev/null || echo 0)
+    [ "${n_led:-0}" -gt 0 ] && echo "  (info: $n_led skill(s) del cerebro en .claude/skills/ según el ledger — NO se tocan; usa --incluir-skills para retirarlas también)"
+  fi
+
+  echo ""
+  echo "==> resumen (--limpiar-personal): $n_ret archivo(s) de tier both retirado(s) · $n_sk skill(s) retirada(s)"
   [ "$APPLY" = 1 ] || echo "    (DRY-RUN — nada escrito. Re-corre con --apply para aplicar.)"
   exit 0
 fi

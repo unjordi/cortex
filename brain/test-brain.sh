@@ -5557,6 +5557,97 @@ bash "$SYNCD" "$G2T" --disable vigente,inexistente --apply >/dev/null 2>&1
 rm -rf "$G2T"
 
 # ─────────────────────────────────────────────────────────────────────────────
+echo "== (g2b) sincronizar-cerebro --limpiar-personal: retira SOLO tier 'both' de un repo PERSONAL, deja lo demás intacto =="
+SYNCLP="$SCRIPT_DIR/sincronizar-cerebro.sh"
+G2B="$(mktemp -d "${TMPDIR:-/tmp}/brain-g2b.XXXXXX")"; mkdir -p "$G2B/.claude/hooks" "$G2B/.claude/memory"
+# tier both: hook + su lib (candidatos a retirar)
+printf 'exit 0\n' > "$G2B/.claude/hooks/git-branch-guard.sh"
+printf ': lib\n' > "$G2B/.claude/hooks/analizar-comando-git.sh"
+# tier repo: SIN equivalente global — debe SOBREVIVIR (el FP ya documentado, 2026-09-08, trataba esto como sobrante)
+printf 'exit 0\n' > "$G2B/.claude/hooks/dod-verificar.sh"
+# hook PROPIO del repo (no del brain) — debe SOBREVIVIR siempre
+printf 'exit 0\n' > "$G2B/.claude/hooks/mi-hook-propio.sh"
+cat > "$G2B/.claude/settings.json" <<'JSON'
+{"hooks":{"PreToolUse":[
+  {"matcher":"Bash","hooks":[{"type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/git-branch-guard.sh\"","shell":"bash"}]}
+],"Stop":[
+  {"hooks":[{"type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/dod-verificar.sh\"","shell":"bash"}]}
+]}}
+JSON
+: > "$G2B/.claude/hooks/.brain-version"
+echo "conocimiento del dominio, jamás se toca" > "$G2B/.claude/memory/MEMORY.md"
+
+# (1) DRY-RUN: reporta, no escribe nada
+g2bout="$(bash "$SYNCLP" "$G2B" --limpiar-personal 2>/dev/null)"
+printf '%s' "$g2bout" | grep -q 'RETIRARÍA  git-branch-guard.sh' \
+  && ok "g2b: dry-run REPORTA el hook tier both como candidato" || bad "g2b: dry-run no reportó git-branch-guard.sh; got: $g2bout"
+printf '%s' "$g2bout" | grep -q 'dod-verificar' \
+  && bad "g2b: dry-run mencionó dod-verificar (tier repo) — NO debía tocarlo/mencionarlo como sobrante" \
+  || ok "g2b: dry-run NO trata el hook tier 'repo' (dod-verificar) como sobrante"
+[ -f "$G2B/.claude/hooks/git-branch-guard.sh" ] \
+  && ok "g2b: dry-run NO borró nada" || bad "g2b: ¡el dry-run ya borró un archivo!"
+
+# (2) --apply: retira SOLO tier both + su cableado + el sello; conserva tier repo + hook propio + memoria
+bash "$SYNCLP" "$G2B" --limpiar-personal --apply >/dev/null 2>&1
+[ ! -f "$G2B/.claude/hooks/git-branch-guard.sh" ] && [ ! -f "$G2B/.claude/hooks/analizar-comando-git.sh" ] \
+  && ok "g2b: --apply BORRÓ el hook+lib de tier both" || bad "g2b: el hook/lib tier both sobrevivió al --apply"
+[ ! -f "$G2B/.claude/hooks/.brain-version" ] \
+  && ok "g2b: --apply retiró el sello .brain-version" || bad "g2b: el sello .brain-version sobrevivió"
+grep -q git-branch-guard "$G2B/.claude/settings.json" \
+  && bad "g2b: git-branch-guard sigue CABLEADO tras --apply" || ok "g2b: --apply DE-CABLEÓ git-branch-guard del settings.json"
+[ -f "$G2B/.claude/hooks/dod-verificar.sh" ] && grep -q dod-verificar "$G2B/.claude/settings.json" \
+  && ok "g2b: el hook tier 'repo' (dod-verificar) SOBREVIVIÓ intacto y sigue cableado (sin equivalente global)" \
+  || bad "g2b: ¡se tocó un hook tier 'repo' que no tenía por qué retirarse!"
+[ -f "$G2B/.claude/hooks/mi-hook-propio.sh" ] \
+  && ok "g2b: el hook PROPIO del repo sobrevivió" || bad "g2b: ¡se borró un hook propio del repo!"
+[ -f "$G2B/.claude/memory/MEMORY.md" ] && grep -q 'jamás se toca' "$G2B/.claude/memory/MEMORY.md" \
+  && ok "g2b: la MEMORIA del repo quedó intacta" || bad "g2b: ¡la memoria del repo se tocó!"
+
+# (3) idempotente: segunda pasada → YA LIMPIO, sin fallar
+bash "$SYNCLP" "$G2B" --limpiar-personal --apply 2>/dev/null | grep -q 'YA LIMPIO' \
+  && ok "g2b: --limpiar-personal es idempotente (2ª pasada → YA LIMPIO)" || bad "g2b: la 2ª pasada no reportó YA LIMPIO"
+
+# (4) settings.json sigue siendo JSON válido tras el de-cableado
+jq empty "$G2B/.claude/settings.json" 2>/dev/null \
+  && ok "g2b: settings.json sigue siendo JSON válido tras limpiar" || bad "g2b: settings.json quedó inválido"
+rm -rf "$G2B"
+
+echo "== (g2b) --limpiar-personal REHÚSA en un repo marcado .claude/repo-compartido =="
+G2BS="$(mktemp -d "${TMPDIR:-/tmp}/brain-g2bs.XXXXXX")"; mkdir -p "$G2BS/.claude/hooks"
+: > "$G2BS/.claude/repo-compartido"
+printf 'exit 0\n' > "$G2BS/.claude/hooks/git-branch-guard.sh"
+g2bs_rc=0
+bash "$SYNCLP" "$G2BS" --limpiar-personal >/dev/null 2>&1 || g2bs_rc=$?
+[ "$g2bs_rc" -ne 0 ] \
+  && ok "g2b: repo COMPARTIDO → --limpiar-personal sale con error (exit≠0), no en silencio" || bad "g2b: debía fallar (exit≠0) en un repo compartido"
+[ -f "$G2BS/.claude/hooks/git-branch-guard.sh" ] \
+  && ok "g2b: repo COMPARTIDO → el hook SOBREVIVIÓ (rehúso, no borro)" || bad "g2b: ¡borró un hook en un repo compartido!"
+rm -rf "$G2BS"
+
+echo "== (g2b) --limpiar-personal --incluir-skills: SOLO retira lo que consta en el LEDGER, nunca sin él =="
+G2BK="$(mktemp -d "${TMPDIR:-/tmp}/brain-g2bk.XXXXXX")"
+mkdir -p "$G2BK/.claude/skills/cerrar-slice" "$G2BK/.claude/skills/mi-skill-propia"
+: > "$G2BK/.claude/skills/cerrar-slice/SKILL.md"; : > "$G2BK/.claude/skills/mi-skill-propia/SKILL.md"
+printf 'cerrar-slice\n' > "$G2BK/.claude/skills/.brain-skills"
+# sin --incluir-skills: ni se menciona apply, solo el aviso informativo; nada se borra
+bash "$SYNCLP" "$G2BK" --limpiar-personal --apply >/dev/null 2>&1
+[ -d "$G2BK/.claude/skills/cerrar-slice" ] \
+  && ok "g2b: sin --incluir-skills, la skill del ledger SOBREVIVE (opt-in real)" || bad "g2b: ¡borró una skill sin pedirlo!"
+# con --incluir-skills: retira SOLO la que está en el ledger
+bash "$SYNCLP" "$G2BK" --limpiar-personal --incluir-skills --apply >/dev/null 2>&1
+[ ! -d "$G2BK/.claude/skills/cerrar-slice" ] \
+  && ok "g2b: --incluir-skills retiró la skill QUE CONSTA en el ledger" || bad "g2b: --incluir-skills no retiró la skill del ledger"
+[ -d "$G2BK/.claude/skills/mi-skill-propia" ] \
+  && ok "g2b: --incluir-skills NUNCA toca una skill que NO consta en el ledger (aunque conviva ahí)" || bad "g2b: ¡se llevó una skill que no estaba en el ledger!"
+rm -rf "$G2BK"
+G2BNL="$(mktemp -d "${TMPDIR:-/tmp}/brain-g2bnl.XXXXXX")"
+mkdir -p "$G2BNL/.claude/skills/cerrar-slice"; : > "$G2BNL/.claude/skills/cerrar-slice/SKILL.md"   # SIN ledger
+bash "$SYNCLP" "$G2BNL" --limpiar-personal --incluir-skills --apply >/dev/null 2>&1
+[ -d "$G2BNL/.claude/skills/cerrar-slice" ] \
+  && ok "g2b: --incluir-skills SIN ledger no toca nada (fail-closed: sin procedencia fiable)" || bad "g2b: ¡borró una skill sin ledger (procedencia no verificada)!"
+rm -rf "$G2BNL"
+
+# ─────────────────────────────────────────────────────────────────────────────
 echo "== (g3) install-brain: SIEMBRA en settings.json .env las env vars ACTIVAS del brain (no en la sesión) =="
 G3H="$(mktemp -d "${TMPDIR:-/tmp}/brain-g3.XXXXXX")"
 HOME="$G3H" CLAUDE_SESSIONS_DRIVE="/tmp/mi-drive-g3" CLAUDE_SESSIONS_DEBOUNCE_MIN="7" bash "$INSTALLER" >/dev/null 2>&1

@@ -310,6 +310,13 @@ NO saca sus guards de esa copia** — los saca del **install GLOBAL + el DEDUPE*
 - **Mecanismo** (norma nace con él): `aviso-drift-cerebro` (SessionStart) bifurca por la marca — en
   COMPARTIDO mantiene el correo fresco (auto-sync en tu mini / avisa); en PERSONAL **no auto-commitea** y
   **flaggea** los guards que sobran para que los quites (no los borra solo). Detalle: [[diseno-rediseno-auto-sync-46]].
+  **La LIMPIEZA misma** (antes manual) la hace `sincronizar-cerebro.sh --limpiar-personal [--apply]`:
+  REHÚSA de plano si el repo está marcado `.claude/repo-compartido`, y retira SOLO los archivos de tier
+  `both` (el único tier redundante con el install global+dedupe) + su cableado + el sello
+  `.brain-version` — nunca los de tier `repo` (`dod-verificar`, `sesion-inicio`…, que no tienen
+  equivalente global y siguen haciendo falta ahí) ni la memoria/skills del repo. `--incluir-skills`
+  suma el retiro de skills, pero solo las que constan en el ledger `.claude/skills/.brain-skills`
+  (opt-in, fail-closed sin ese registro).
 
 ### Tiers de hooks/skills: cómo decidir (regla crisp — asienta #81)
 Al AGREGAR un hook/skill al cerebro, su TIER (en `brain/hooks/MANIFEST` / `brain/skills/MANIFEST`) se
