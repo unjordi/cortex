@@ -240,6 +240,17 @@ mock_glab develop; out="$(ms 'glab.exe mr merge 48 --auto-merge --yes')"
 is_deny "$out" && ok "squash-guard H-R9-01: 'glab.exe mr merge' sin --squash → deny (binario Windows)" || bad "squash-guard H-R9-01: 'glab.exe' evadió el guard de squash; got: $out"
 mock_glab develop; out="$(ms 'glab.exe mr merge 49 --squash --auto-merge --yes')"
 is_silent "$out" && ok "squash-guard H-R9-01: 'glab.exe mr merge --squash' → pasa (sin falso positivo)" || bad "squash-guard H-R9-01: bloqueó un glab.exe que ya trae squash; got: $out"
+# Cobertura NUEVA (auditoría externa del arnés, 2026-09-15): git-branch-guard y entorno-maquina-guard ya
+# tenían el caso eval/bash-c (M1); merge-squash-guard NO lo tenía pese a compartir la MISMA lib despoja-
+# comillas. Cierra el hueco de cobertura — M1 ya lo arregla de fondo (acg_es_merge_mr reinyecta el span de
+# un ejecutor), este test solo lo BLINDA hacia adelante. `ms()` interpola el comando SIN escapar comillas
+# (rompería el JSON con un `eval "…"` embebido) → estos dos casos arman el payload con jq -nc.
+msj_raw() { jq -nc --arg c "$1" '{tool_input:{command:$c}}' | PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$FAKEHOME" bash "$HOOKS/merge-squash-guard.sh"; }
+mock_glab develop
+out="$(msj_raw 'eval "glab mr merge 91 --yes"')"
+is_deny "$out" && ok "squash-guard M1-cobertura: 'eval \"glab mr merge…\"' NO evade — sigue exigiendo squash" || bad "squash-guard M1-cobertura: eval evadió el guard de squash; got: $out"
+out="$(msj_raw 'bash -c "glab mr merge 92 --yes"')"
+is_deny "$out" && ok "squash-guard M1-cobertura: 'bash -c \"glab mr merge…\"' NO evade — sigue exigiendo squash" || bad "squash-guard M1-cobertura: bash -c evadió el guard de squash; got: $out"
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
 rm -rf "$MSBIN"
 
@@ -682,6 +693,15 @@ printf '%s' "$o" | grep -q '"deny"' && ok "M2: secret-scan — 'git -C <otro-rep
 o="$(m2scan "cd $M2B && git commit -m x")"
 printf '%s' "$o" | grep -q '"deny"' && ok "M2: secret-scan — 'cd <otro-repo> && git commit' con secreto en el OTRO → deny" \
   || bad "M2: secret-scan CIEGO — 'cd <otro> &&' con secreto no escaneó; got: $o"
+# Cobertura NUEVA (auditoría externa del arnés, 2026-09-15): m2scan (arriba) nunca varía CLAUDE_PROJECT_DIR
+# — solo prueba `.cwd`. Falta el caso GEMELO que proteger-arbol SÍ tiene un poco más abajo: CLAUDE_PROJECT_DIR
+# apuntando EXPLÍCITAMENTE a un repo A (limpio) mientras el comando toca REALMENTE el repo B (con el secreto)
+# vía `-C`. Si el guard leyera CLAUDE_PROJECT_DIR en vez de resolver el target real, este caso escanearía A
+# (limpio) y dejaría pasar el secreto de B.
+o="$(printf '%s' "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git -C $M2B commit -m x\"},\"cwd\":\"$M2A\"}" \
+     | HOME="$M2A" CLAUDE_PROJECT_DIR="$M2A" bash "$HOOKS/secret-scan.sh")"
+printf '%s' "$o" | grep -q '"deny"' && ok "M2-cobertura: secret-scan — CLAUDE_PROJECT_DIR=A explícito + '-C B' con secreto en B → deny (no escaneó A por error)" \
+  || bad "M2-cobertura: secret-scan escaneó CLAUDE_PROJECT_DIR en vez del repo que el -C REALMENTE toca; got: $o"
 git -C "$M2A" commit -q --allow-empty -m sinpush >/dev/null 2>&1   # commit sin pushear en A → riesgo real si el reset fuera EN A
 o=$(printf '%s' "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git -C $M2B reset --hard HEAD~1\"},\"cwd\":\"$M2A\"}" | CLAUDE_PROJECT_DIR="$M2A" bash "$HOOKS/proteger-arbol.sh")
 [ -z "$o" ] && ok "M2: proteger-arbol — 'git -C <otro-repo> reset --hard' sin riesgo EN ESE repo → silencio (ya no evalúa el árbol equivocado)" \
@@ -758,6 +778,15 @@ is_deny "$(cm 'glab mr merge 5 --yes && git status' DENY)" \
 is_deny "$(cm 'glab.exe mr merge 5 --yes' DENY)" \
   && ok "cmd H-R9-01: 'glab.exe mr merge' reconocido como merge (Windows) → gateado" \
   || bad "cmd H-R9-01: 'glab.exe' evadió el gate"
+# Cobertura NUEVA (auditoría externa del arnés, 2026-09-15): git-branch-guard/entorno-maquina-guard/
+# merge-squash-guard/secret-scan ya tenían el caso eval/bash-c (M1); confirmar-merge-develop NO lo tenía
+# pese a compartir la MISMA lib despoja-comillas (cm() ya arma el JSON con jq -nc, quote-safe).
+is_deny "$(cm 'eval "glab mr merge 5 --yes"' DENY)" \
+  && ok "cmd M1-cobertura: 'eval \"glab mr merge…\"' NO evade — sigue gateando" \
+  || bad "cmd M1-cobertura: eval evadió el gate de confirmar-merge-develop"
+is_deny "$(cm 'bash -c "glab mr merge 5 --yes"' DENY)" \
+  && ok "cmd M1-cobertura: 'bash -c \"glab mr merge…\"' NO evade — sigue gateando" \
+  || bad "cmd M1-cobertura: bash -c evadió el gate de confirmar-merge-develop"
 # Inspección genuina (no es merge|accept) → silencio (ni siquiera consulta al juez).
 is_silent "$(cm 'glab mr view 5' DENY)" \
   && ok "cmd: 'glab mr view' (inspección) → silencio (no es un merge)" || bad "cmd: bloqueó una inspección"
@@ -1583,6 +1612,17 @@ o="$(scan 'git commit -m x')"
 # (4) un no-git → silencio
 o="$(scan 'ls -la')"
 [ -z "$o" ] && ok "secret-scan ignora comandos no-git" || bad "secret-scan reaccionó a no-git; got: $o"
+# Cobertura NUEVA (auditoría externa del arnés, 2026-09-15): git-branch-guard/entorno-maquina-guard/
+# merge-squash-guard ya tenían el caso eval/bash-c (M1); secret-scan NO lo tenía pese a compartir la MISMA
+# lib despoja-comillas. `scan()` interpola SIN escapar comillas (rompería el JSON) → jq -nc aquí.
+printf 'aws_key = AKIA1234567890ABCDEF\n' > "$SCANREPO/config.txt"
+git -C "$SCANREPO" add config.txt >/dev/null 2>&1
+scan_raw() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | HOME="$SCANREPO" CLAUDE_PROJECT_DIR="$SCANREPO" bash "$HOOKS/secret-scan.sh"; }
+o="$(scan_raw 'eval "git commit -m x"')"
+printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan M1-cobertura: 'eval \"git commit…\"' NO evade — sigue escaneando" || bad "secret-scan M1-cobertura: eval evadió el escaneo de secretos; got: $o"
+o="$(scan_raw 'bash -c "git commit -m x"')"
+printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan M1-cobertura: 'bash -c \"git commit…\"' NO evade — sigue escaneando" || bad "secret-scan M1-cobertura: bash -c evadió el escaneo de secretos; got: $o"
+git -C "$SCANREPO" reset -q >/dev/null 2>&1; rm -f "$SCANREPO/config.txt"
 # ── §D: patrones NUEVOS (JWT, connection string, Password=) vía la lib detectar-secretos ──
 reset_scan() { git -C "$SCANREPO" reset -q >/dev/null 2>&1; rm -f "$SCANREPO"/*.txt 2>/dev/null; }
 # (A1 multi-add) `git add safe && git add secret && git commit` en UN comando: los adds NO corrieron en
