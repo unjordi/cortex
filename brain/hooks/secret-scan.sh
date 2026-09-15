@@ -61,6 +61,12 @@ bail_open() {  # $1 = motivo. En strict → deny; si no → deja pasar (exit 0).
 
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
 [ -z "$cmd" ] && exit 0
+# M2 (auditoría 2026-09-15, CRÍTICO §3.1): cwd del payload = working dir REAL del comando (puede diferir
+# de CLAUDE_PROJECT_DIR, fijo al arranque de la sesión). Sin esto, un `git -C <otro-repo> commit`, un
+# `cd <otro-repo> && git commit`, o simplemente un comando corrido desde OTRO cwd (el patrón NORMAL de un
+# worktree aislado de fan-out) escaneaba el repo EQUIVOCADO — un secreto en el repo que el comando REALMENTE
+# toca pasaba SIN escanear, y este es el ÚNICO control anti-credenciales del sistema (sin backstop server-side).
+pcwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
 
 # PRE-FILTRO barato (superset conservador, mismo espíritu que proteger-arbol.sh): este guard solo actúa
 # sobre `git commit`/`git push` → sin 'git' en el comando crudo, early-exit ANTES de cualquier
@@ -102,8 +108,22 @@ printf '%s' "$cmd_uq" | grep -qE 'git[[:space:]]+(commit|push)' || exit 0
 printf '%s' "$cmd_uq" | grep -qE '(^|[[:space:]])--no-verify([[:space:]]|$)' && exit 0
 
 command -v git >/dev/null 2>&1 || bail_open "git no está en el PATH"
-dir="${CLAUDE_PROJECT_DIR:-.}"
+# M2: resuelve el DIR objetivo por la MISMA lib que git-branch-guard/merge-squash-guard/confirmar-merge-
+# develop (acg_target_dir: -C > cd/pushd > cwd del payload > CLAUDE_PROJECT_DIR > '.') — antes este guard
+# era, junto con proteger-arbol, el único de los 5 que NO la usaba pese a tenerla sourceada 3 líneas arriba.
+if command -v acg_target_dir >/dev/null 2>&1; then
+  dir=$(acg_target_dir "$cmd" "$pcwd")
+else
+  dir="${pcwd:-${CLAUDE_PROJECT_DIR:-.}}"
+fi
 git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 || bail_open "no es un repo git ($dir)"
+# El resto de este guard combina `git -C "$dir" diff/add -- "$f"` con rutas RELATIVAS A LA RAÍZ del repo
+# (las que devuelve `git diff --name-only`). Si $dir resolvió a un SUBDIRECTORIO (p. ej. el cwd real del
+# comando vive en `repo/src/foo`, el caso NORMAL de una sesión parada ahí) esas rutas root-relative dejan
+# de casar con archivos reales bajo $dir → el escaneo saldría CIEGO por partida doble. Se resuelve a la
+# RAÍZ (git ya sabe encontrarla desde cualquier subdir) — mantiene el repo CORRECTO que M2 acaba de fijar,
+# solo corrige el punto exacto del árbol donde se para a mirar.
+dir=$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$dir")
 
 # shellcheck source=detectar-secretos.sh
 . "$(dirname "$0")/detectar-secretos.sh"   # patrones + ds_buscar (lógica; §D)

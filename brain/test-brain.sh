@@ -597,6 +597,77 @@ rm -rf "$GBX"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (b1d-m1) M1 (auditoría 2026-09-15): segmentación ejecutor-aware — eval/bash -c/heredoc =="
+# CRÍTICO §2.2/§3.2: acg_despoja_comillas trataba TODO span entrecomillado como dato inerte → un
+# `eval "git push origin develop"` / `bash -c "…"` era invisible para los 5 git-guards. Y el filtro de
+# heredoc (antes solo en proteger-arbol) descartaba TODO cuerpo sin mirar el consumidor → FP con `cat >>
+# doc.md <<EOF` pero FN simétrico con `bash <<EOF … EOF`. Un solo criterio (acg_segmentos_ejecutables) para
+# los dos, cerrado UNA vez en la lib → hereda git-branch-guard (vía acg_push_toca_base) sin tocar su código.
+is_deny "$(gb 'eval "git push origin develop"')" \
+  && ok "M1: 'eval \"git push origin develop\"' NO evade — deny" || bad "M1: FN — eval evadió git-branch-guard"
+is_deny "$(gb 'bash -c "git push origin develop"')" \
+  && ok "M1: 'bash -c \"git push origin develop\"' NO evade — deny" || bad "M1: FN — bash -c evadió git-branch-guard"
+is_deny "$(gb "sh -c 'git push origin develop'")" \
+  && ok "M1: \"sh -c 'git push origin develop'\" (comilla simple) NO evade — deny" || bad "M1: FN — sh -c con comilla simple evadió"
+is_silent "$(gb "$(printf 'cat > d.md <<EOF\ngit push origin develop\nEOF')")" \
+  && ok "M1: heredoc a 'cat' con 'push origin develop' de PROSA → silencio (FP heredoc cerrado)" \
+  || bad "M1: FP — heredoc a un escritor disparó (el cuerpo es dato, no código)"
+is_deny "$(gb "$(printf 'bash <<EOF\ngit push origin develop\nEOF')")" \
+  && ok "M1: heredoc a 'bash' con el push REAL adentro → deny (heredoc-ejecutor SÍ dispara)" \
+  || bad "M1: FN — heredoc alimentando un intérprete quedó invisible"
+# eval/bash -c NO deben aflojar la detección de dato genuino (H13 intacto): un push a develop MENCIONADO
+# dentro del mensaje de un commit sigue sin disparar (el mensaje no es un ejecutor).
+is_silent "$(gb 'git commit -m "recuerda: nunca bash -c \"git push origin develop\""')" \
+  && ok "M1: H13 intacto — 'bash -c \"…\"' dentro de un MENSAJE de commit sigue sin disparar" \
+  || bad "M1: el endurecimiento de eval/-c rompió H13 (un dato citado ahora dispara)"
+
+# proteger-arbol: MISMOS dos casos, la dirección que el filtro viejo tenía OPUESTA (§3.8).
+PAM1BARE="$(mktemp -d "${TMPDIR:-/tmp}/brain-pam1.XXXXXX")/remote.git"
+PAM1="$(mktemp -d "${TMPDIR:-/tmp}/brain-pam1.XXXXXX")/wt"
+git init --bare -q "$PAM1BARE" >/dev/null 2>&1
+git clone -q "$PAM1BARE" "$PAM1" >/dev/null 2>&1
+git -C "$PAM1" config user.email t@t >/dev/null 2>&1; git -C "$PAM1" config user.name t >/dev/null 2>&1
+git -C "$PAM1" commit -q --allow-empty -m base >/dev/null 2>&1
+git -C "$PAM1" push -q origin HEAD >/dev/null 2>&1
+git -C "$PAM1" branch --set-upstream-to=origin/"$(git -C "$PAM1" rev-parse --abbrev-ref HEAD)" >/dev/null 2>&1
+git -C "$PAM1" commit -q --allow-empty -m sinpush >/dev/null 2>&1   # 1 commit sin pushear → hay riesgo que avisar
+pam1() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' \
+         | CLAUDE_PROJECT_DIR="$PAM1" bash "$HOOKS/proteger-arbol.sh"; }
+o="$(pam1 "$(printf 'cat >> n.md <<EOF\ngit reset --hard HEAD~1\nEOF')")"
+[ -z "$o" ] && ok "M1: proteger-arbol — heredoc a 'cat' con 'reset --hard' de PROSA → silencio" || bad "M1: proteger-arbol FP — heredoc-escritor disparó; got: $o"
+o="$(pam1 "$(printf 'bash <<EOF\ngit reset --hard HEAD~1\nEOF')")"
+printf '%s' "$o" | grep -q 'ORFANAR' && ok "M1: proteger-arbol — heredoc a 'bash' con el reset REAL adentro → AVISA (el FN viejo, cerrado)" \
+  || bad "M1: proteger-arbol FN — heredoc-ejecutor quedó invisible; got: $o"
+rm -rf "$PAM1"
+
+echo ""
+echo "== (b1d-m2) M2 (auditoría 2026-09-15, CRÍTICO §3.1/§2.4): secret-scan y proteger-arbol dejan de ser ciegos cross-repo =="
+# Antes secret-scan escaneaba SIEMPRE CLAUDE_PROJECT_DIR (el repo de la SESIÓN) y proteger-arbol NI
+# sourceaba la lib: un `git -C <otro-repo>` / `cd <otro-repo> && …` / un cwd distinto (el patrón NORMAL de
+# un worktree aislado de fan-out) quedaba invisible — un secreto pasaba SIN escanear, un reset destructivo
+# no avisaba. Ambos ahora resuelven el target por acg_target_dir (misma lib que git-branch-guard).
+M2A="$(mktemp -d "${TMPDIR:-/tmp}/brain-m2a.XXXXXX")"; M2B="$(mktemp -d "${TMPDIR:-/tmp}/brain-m2b.XXXXXX")"
+git -C "$M2A" init -q >/dev/null 2>&1; git -C "$M2A" config user.email t@t >/dev/null 2>&1; git -C "$M2A" config user.name t >/dev/null 2>&1
+git -C "$M2A" commit -q --allow-empty -m base >/dev/null 2>&1
+git -C "$M2B" init -q >/dev/null 2>&1; git -C "$M2B" config user.email t@t >/dev/null 2>&1; git -C "$M2B" config user.name t >/dev/null 2>&1
+git -C "$M2B" commit -q --allow-empty -m base >/dev/null 2>&1
+printf 'aws_key = AKIA1234567890ABCDEF\n' > "$M2B/config.txt"; git -C "$M2B" add config.txt >/dev/null 2>&1
+m2scan() { printf '%s' "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"$1\"},\"cwd\":\"$M2A\"}" \
+           | HOME="$M2A" bash "$HOOKS/secret-scan.sh"; }
+o="$(m2scan "git -C $M2B commit -m x")"
+printf '%s' "$o" | grep -q '"deny"' && ok "M2: secret-scan — 'git -C <otro-repo> commit' con secreto en el OTRO → deny (cross-repo, antes ciego)" \
+  || bad "M2: secret-scan CIEGO — 'git -C <otro>' con secreto no escaneó; got: $o"
+o="$(m2scan "cd $M2B && git commit -m x")"
+printf '%s' "$o" | grep -q '"deny"' && ok "M2: secret-scan — 'cd <otro-repo> && git commit' con secreto en el OTRO → deny" \
+  || bad "M2: secret-scan CIEGO — 'cd <otro> &&' con secreto no escaneó; got: $o"
+git -C "$M2A" commit -q --allow-empty -m sinpush >/dev/null 2>&1   # commit sin pushear en A → riesgo real si el reset fuera EN A
+o=$(printf '%s' "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git -C $M2B reset --hard HEAD~1\"},\"cwd\":\"$M2A\"}" | CLAUDE_PROJECT_DIR="$M2A" bash "$HOOKS/proteger-arbol.sh")
+[ -z "$o" ] && ok "M2: proteger-arbol — 'git -C <otro-repo> reset --hard' sin riesgo EN ESE repo → silencio (ya no evalúa el árbol equivocado)" \
+  || bad "M2: proteger-arbol evaluó el árbol EQUIVOCADO (CLAUDE_PROJECT_DIR en vez del -C); got: $o"
+rm -rf "$M2A" "$M2B"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "== (b1e) confirmar-merge-develop: escape ANCLADO al subcomando (H3) + destino cacheado/timeout (H5) =="
 # Antes NO tenía test de comportamiento. H3: el escape casaba `status|list|view` como token suelto en
 # CUALQUIER parte → `glab mr merge 5 && git status` evadía el gate. H5: 2 llamadas de red idénticas +
@@ -1579,11 +1650,16 @@ printf '%s' "$(scanf 'git --work-tree=. commit -am x')" | grep -q '"deny"' && ok
 # A-R5-02 (FMEA r5): con el despoje ANTES de normalizar, un value-eater con valor ENTRECOMILLADO
 # (`git -C "/ruta" commit`) quedaba vacío y el normalizador se comía `commit` → escaneo CIEGO (¡sin
 # necesitar espacio!). Fix: normalizar el RAW (quote-aware) ANTES de despojar. Secreto en tracked que -a estagea.
+# M2 (auditoría 2026-09-15): desde que secret-scan HONRA -C para resolver el dir objetivo (antes siempre
+# escaneaba CLAUDE_PROJECT_DIR, ciego al propio -C), el valor de -C debe ser un repo REAL (si no, el guard
+# ahora fail-abre correctamente sobre un dir irresoluble) — se usa FMEAREPO (con un subdir CON espacio para
+# seguir cubriendo el caso "valor entrecomillado con espacio"), no una ruta inventada.
 fmeareset; printf 'v\n' > "$FMEAREPO/g3.txt"; git -C "$FMEAREPO" add g3.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm g3 >/dev/null 2>&1
 printf 'v\naws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/g3.txt"
-printf '%s' "$(scanf 'git -C "/nospace" commit -am x')"  | grep -q '"deny"' && ok "secret-scan A-R5-02: 'git -C \"/nospace\" commit -am' (valor entrecomillado sin espacio) escanea → bloquea" || bad "secret-scan A-R5-02: valor entrecomillado cegó el escaneo (despoje antes de normalizar)"
-printf '%s' "$(scanf 'git -C "/a b/repo" commit -am x')" | grep -q '"deny"' && ok "secret-scan A-R5-02: 'git -C \"/a b/repo\" commit -am' (valor entrecomillado con espacio) escanea → bloquea" || bad "secret-scan A-R5-02: valor entrecomillado con espacio cegó el escaneo"
-printf '%s' "$(scanf 'git --work-tree="/a b" commit -am x')" | grep -q '"deny"' && ok "secret-scan A-R5-02: 'git --work-tree=\"/a b\" commit -am' (=-form entrecomillado) escanea → bloquea" || bad "secret-scan A-R5-02: --work-tree= entrecomillado cegó el escaneo"
+mkdir -p "$FMEAREPO/a b"
+printf '%s' "$(scanf "git -C \"$FMEAREPO\" commit -am x")"  | grep -q '"deny"' && ok "secret-scan A-R5-02: 'git -C \"\$repo\" commit -am' (valor entrecomillado sin espacio) escanea → bloquea" || bad "secret-scan A-R5-02: valor entrecomillado cegó el escaneo (despoje antes de normalizar)"
+printf '%s' "$(scanf "git -C \"$FMEAREPO/a b\" commit -am x")" | grep -q '"deny"' && ok "secret-scan A-R5-02: 'git -C \"\$repo/a b\"' (valor entrecomillado CON espacio, subdir real) escanea → bloquea" || bad "secret-scan A-R5-02: valor entrecomillado con espacio cegó el escaneo"
+printf '%s' "$(scanf "git --work-tree=\"$FMEAREPO/a b\" commit -am x")" | grep -q '"deny"' && ok "secret-scan A-R5-02: 'git --work-tree=\"\$repo/a b\"' (=-form entrecomillado, con espacio) escanea → bloquea" || bad "secret-scan A-R5-02: --work-tree= entrecomillado cegó el escaneo"
 # A-R6-01 (FMEA r6): comilla EN MEDIO del valor de un global (`git -c user.name="a b" commit`) → mismo
 # mecanismo de evasión, mismo fix (valor como secuencia). Secreto en tracked que -a estagea.
 fmeareset; printf 'v\n' > "$FMEAREPO/g4.txt"; git -C "$FMEAREPO" add g4.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm g4 >/dev/null 2>&1
@@ -4962,7 +5038,8 @@ drift-cerebro-comun|proteger-fuente-cerebro
 drift-cerebro-comun|verificar-cerebro
 checkpoint|checkpoint-mecanico
 checkpoint|contrato-hilo
-barrer-flotilla-cerebro|limpiar-residuo"
+barrer-flotilla-cerebro|limpiar-residuo
+analizar-comando-git|proteger-arbol"
 # auditar-coherencia-cerebro|auditar-proceso-algoritmo: FAMILIA declarada, no ciclo — proceso-algoritmo
 # es la METODOLOGÍA y apunta a secciones CONCRETAS de coherencia-cerebro (que es su modo-cerebro
 # empaquetado) donde vive el detalle; el contenido está en los dos lados, así que el lector no da vueltas.
@@ -4977,6 +5054,10 @@ barrer-flotilla-cerebro|limpiar-residuo"
 # checkpoint|contrato-hilo (F1, 2026-09-11): la lib es el CONTRATO del footer del hilo — la skill la
 # corre al volcar (fail-loud) y la lib documenta a su consumidor. Es lib<->consumidor, como los 3
 # pares de drift-cerebro-comun de arriba; el contenido no rebota entre los dos.
+# analizar-comando-git|proteger-arbol (M1/M2, auditoría 2026-09-15): proteger-arbol AHORA sourcea la lib
+# (antes vivía fuera del candado común, ciego a -C/git.exe/cross-repo) — es lib<->consumidor, como
+# delegacion-comun|delegacion-gate. La lib solo MENCIONA a proteger-arbol en un comentario (por qué el
+# heredoc-aware reemplaza su viejo filtro propio); no hay un source de vuelta ni contenido que rebote.
 ce_els=()
 for d in "$SCRIPT_DIR"/skills/*/; do [ -d "$d" ] && ce_els+=("$(basename "$d")"); done
 for h in "$HOOKS"/*.sh; do [ -e "$h" ] && ce_els+=("$(basename "$h" .sh)"); done

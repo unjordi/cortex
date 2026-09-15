@@ -28,9 +28,60 @@ acg__augmenta_path() {
 }
 acg__augmenta_path
 
+# ── M1 (auditoría 2026-09-15): SEGMENTACIÓN ejecutor-aware — ENTRADA ÚNICA de los 9 guards que antes
+# copiaban a mano "quita lo entrecomillado" (7 sitios, 3 políticas de despoje distintas). Cierra DOS
+# huecos OPUESTOS con el MISMO criterio (nunca hay que elegir un lado):
+#   (a) FALSO NEGATIVO — `eval "git push origin develop"` / `bash -c "…"` / `sh -c '…'`: el span
+#       entrecomillado ES shell que el intérprete va a EJECUTAR, no dato inerte → antes acg_despoja_comillas
+#       lo borraba entero y los 5 git-guards quedaban ciegos al comando real. Se REINYECTA sin comillas.
+#   (b) el CUERPO de un heredoc (`<<[-]DELIM … DELIM`) es STDIN: dato si alimenta un ESCRITOR (cat/tee/
+#       >>archivo/…) — nunca se ejecuta — pero ES CÓDIGO si alimenta un INTÉRPRETE (bash/sh/zsh/dash/ksh/
+#       python[3]/perl/ruby/pwsh: `bash <<EOF … EOF`). El filtro viejo de proteger-arbol descartaba TODO
+#       heredoc sin mirar el consumidor: cerraba el FP de `cat >> doc.md <<EOF` pero abría el FN simétrico
+#       de `bash <<EOF … EOF` (commit invisible). Un solo criterio decide los dos: el TOKEN antes de `<<`.
+# acg_segmentos_ejecutables(cmd) → cmd con los heredocs resueltos (cuerpo conservado o descartado según el
+# consumidor) y los spans entrecomillados de un EJECUTOR reinyectados; el resto de comillas (dato) las
+# quita acg_despoja_comillas (abajo), que ahora es un WRAPPER de esta función — cada caller que ya la usaba
+# (16 sitios en esta lib + 3 hooks) hereda el fix sin tocar su propio código.
+acg_segmentos_ejecutables() {   # $1=cmd → texto con heredocs resueltos + comillas de EJECUTOR reinyectadas
+  local cmd="$1" t
+  t=$(printf '%s' "$cmd" | awk -v sq="'" -v dq='"' '
+    BEGIN{ inhd=0; keep=0 }
+    inhd==1 {
+      s=$0; sub(/^[ \t]*/,"",s)
+      if (s==delim) { inhd=0; next }
+      if (keep==1) print
+      next
+    }
+    {
+      re="<<-?[ \t]*[" sq dq "]?[A-Za-z_][A-Za-z0-9_]*[" sq dq "]?"
+      if (match($0, re)) {
+        pre = substr($0, 1, RSTART-1)
+        sub(/[ \t]+$/, "", pre)                        # quita el espacio pegado a "<<" (si no, el gsub de
+        tok = pre                                       # abajo se come TODO el token: greedy hasta el ÚLTIMO separador)
+        gsub(/^.*[ \t;&|]/, "", tok)                 # último token antes de "<<" (el comando que consume)
+        gsub(/\.exe$/, "", tok)                        # tolera el binario Windows (bash.exe, sh.exe)
+        d = substr($0, RSTART, RLENGTH); sub(/^<<-?[ \t]*/,"",d); gsub("[" sq dq "]","",d)
+        delim = d; inhd = 1
+        keep = (tok ~ /^(bash|sh|zsh|dash|ksh|python3?|perl|ruby|pwsh)$/) ? 1 : 0
+      }
+      print
+    }')
+  # Spans entrecomillados precedidos de un EJECUTOR (eval "…" · bash/sh/zsh/dash/ksh -c "…") → REINYECTA
+  # el contenido SIN comillas (es código). El resto de comillas (dato) las quita acg_despoja_comillas.
+  t=$(printf '%s' "$t" | sed -E 's/(^|[[:space:]])(eval|-c)[[:space:]]+"([^"]*)"/\1\2 \3/g')
+  t=$(printf '%s' "$t" | sed -E "s/(^|[[:space:]])(eval|-c)[[:space:]]+'([^']*)'/\1\2 \3/g")
+  printf '%s\n' "$t"
+}
+
 # Quita literales entre comillas simples o dobles → un "git push a develop" dentro de un mensaje de
-# commit / dato de un grep / doc NO dispara los guards. (Fix #2 · H13.)
-acg_despoja_comillas() { printf '%s' "$1" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g"; }
+# commit / dato de un grep / doc NO dispara los guards (Fix #2 · H13), PERO ya no a ciegas: primero pasa
+# por acg_segmentos_ejecutables (arriba), que resuelve heredocs y reinyecta lo que un ejecutor SÍ corre.
+acg_despoja_comillas() { printf '%s' "$(acg_segmentos_ejecutables "$1")" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g"; }
+
+# ¿el comando contiene un `git commit`? (mismo ancla que acg_es_push — evita el drift de "grep sin
+# frontera" que ya divergió en 2 de los hooks que hacían su propia copia a mano, auditoría 2026-09-15).
+acg_es_commit() { printf '%s' "$1" | grep -qE 'git[[:space:]]+commit([[:space:]]|$)'; }
 
 # Quita el VALOR de --repo/-R (p. ej. "-R org/develop") para que un repo cuyo nombre termine en
 # /develop|/main NO genere un falso positivo de destino. (H11.)
@@ -261,10 +312,15 @@ acg_push_toca_base() {   # $1=cmd  $2=payload_cwd(opcional)
       esac
     fi
   done <<EOF
-$(printf '%s' "$1" | awk '{gsub(/[;&|]/,"\n")}1')
+$(acg_segmentos_ejecutables "$1" | awk '{gsub(/[;&|]/,"\n")}1')
 EOF
   return 1
 }
+# M1 (nota de orden, no repetir el bug): el heredoc se resuelve SOBRE EL TODO, ANTES de partir en líneas/
+# subcomandos — un cmd con newlines REALES ya llega partido en registros al loop de arriba, así que si el
+# split ocurriera antes, cada línea del CUERPO de un heredoc (p. ej. "git push origin develop" dentro de un
+# `cat > d.md <<EOF`) se evaluaría COMO SI fuera su propio subcomando, sin que el consumidor (`cat` vs
+# `bash`) fuera visible ya — el contexto de "a quién alimenta" se pierde en cuanto se parte por línea.
 
 # ¿el comando mergea un MR/PR nombrando develop·main como destino? (para el bloqueo de release-a-main
 # de git-branch-guard: mismo comportamiento de antes, pero sobre cmd sin comillas ni --repo → H11/H13).
