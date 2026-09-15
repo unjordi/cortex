@@ -195,20 +195,13 @@ Casos reales (jul 2026): dos decisiones ya resueltas resucitaron como "decisione
 carga" y frenaron una noche entera de ETL; otra (un modelo nullable) el usuario tuvo que re-enseñarla
 CON SCREENSHOT.
 
-## Post-compact: EXCAVA antes de contestar (norma dura)
-Tras una compactación, ante cualquier "¿te acuerdas de X?" / "¿dónde quedó Y?", la respuesta se
-construye **EXCAVANDO** — `hilo-mental-actual.md`, bitácora, `estado-proyecto.md`, o el propio
-transcript — **ANTES de contestar. NUNCA respondas desde el resumen comprimido con confianza:**
-confabular con seguridad cuesta más que un "déjame verificar". Caso real (jul 2026): Claude aceptó
-con entusiasmo la culpa… del mockup EQUIVOCADO ("¡El de las OTs!" cuando era el de operaciones),
-confabulado desde el resumen.
-
-## Paso 0 de toda tarea grande: INVENTARIO de lo que ya existe (norma dura)
-Antes de construir (un ETL, un módulo, un mecanismo), **barre qué ya existe** — skills, memorias,
-scripts, sub-transcripts, código previo — y **construye SOBRE ello**, no desde cero. "Voy a la fuente
-real, no invento" debe ser el ARRANQUE de la tarea, no la disculpa después. Casos reales (jul 2026):
-se reconstruyó desde cero un mecanismo de ubicaciones que ya existía del sprint anterior, y se afirmó
-de memoria un modelo de transportistas que contradecía lo ya investigado.
+## Recupera de tu contexto vivo; EXCAVA/verifica solo lo que NO tienes (norma dura)
+EXCAVA solo cuando la respuesta NO está en tu contexto vivo — post-compact, sesión anterior, algo
+genuinamente desconocido (incluye barrer qué ya existe ANTES de construir: skills, memorias, scripts,
+código previo, para construir SOBRE ello y no desde cero). Si es algo de ESTA sesión (lo acabas de
+hacer, está en los mensajes/hilo) o que el usuario acaba de afirmar → responde desde ahí; re-escarbar
+contexto vivo es churn y desconfianza, no diligencia. Verificar aplica a ASEVERAR lo incierto, no a
+recuperar lo que ya tienes.
 
 ## Al templatizar: DOMINIO vs regla genérica (norma dura)
 Al derivar un TEMPLATE de un proyecto concreto (o al genericizar algo), distingue **mecánicamente** lo de
