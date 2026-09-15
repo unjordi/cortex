@@ -16,17 +16,18 @@ queda registrada abajo porque explica QUÉ hacer al re-vendorizar: [Divergencia 
 | archivo | origen en axon | líneas (al vendorizar = hoy) |
 |---|---|---|
 | `term-host-broker.ts` | `src/server/term-host-broker.ts` | 516 |
-| `term-session.ts` | `src/server/term-session.ts` | 321 |
+| `term-session.ts` | `src/server/term-session.ts` | 327 |
 | `term-pty-bridge.ts` | `src/server/term-pty-bridge.ts` | 115 |
 | `ws.ts` | `src/server/ws.ts` | 598 |
 | `pty-session.ts` | `src/server/pty-session.ts` | 331 |
-| | **total** | **1881** |
+| | **total** | **1887** |
 
-**Commit de origen:** `1079574` (`origin/develop` de axon, 2026-09-09) — el commit en que el
-endurecimiento de la auditoría adversarial ya vive río arriba, **y que está en `develop`**. Ese detalle no es cosmético: el pin anterior
-apuntaba a un commit que solo existía en la rama de trabajo, y esa rama se borra al integrarse por squash —
-el sha se habría vuelto inalcanzable y con él los tres chequeos anti-drift de abajo. **Un pin siempre a un
-commit de una rama permanente.** Antes fue `3a82d76`, `44f463d` y `ed482fb` (los tres del 2026-09-09), y antes `341fb53` (2026-09-07), re-vendorizado desde
+**Commit de origen:** `2d8adae` (`origin/develop` de axon, 2026-09-15) — re-vendorizado para traer el
+comentario del REVERSO del grupo `{ }` en `term-session.ts` (un `exec`/`exit` del cliente mata la sesión
+antes del sentinel; cross-ref al CONTRATO de `broker-run.ts`), par documental del fix del widget del broker
+(axon #197). **Un pin siempre a un commit de una rama permanente** (por eso a `develop`, no a la rama de
+trabajo que se borra al integrarse por squash → el sha se volvería inalcanzable y con él los tres chequeos
+anti-drift de abajo). Antes fue `1079574` (2026-09-09), `3a82d76`, `44f463d` y `ed482fb` (los tres del 2026-09-09), y antes `341fb53` (2026-09-07), re-vendorizado desde
 `cf840e6` para traer el **socket unix** (`fix/term-broker-alcanzable`, #75): un cliente en
 contenedor NO alcanza un bind a loopback del host, así que la copia anterior servía un broker que la
 terminal del widget no podía usar. De paso llegan `GET /health` (lo que sondea el badge) y el
@@ -94,7 +95,7 @@ con ese commit, el bloque se SALTA contando el ⚠️, nunca falla en falso.
 La receta equivalente, a mano, contra el **commit fijado** y no contra la punta móvil:
 
 ```bash
-VEND=1079574   # el commit anotado arriba — NO 'origin/develop'
+VEND=2d8adae   # el commit anotado arriba — NO 'origin/develop'
 for f in term-host-broker term-session term-pty-bridge ws pty-session; do
   # OJO a las LLAVES: `${VEND}:`, no `$VEND:`. En zsh —el login shell de muchas máquinas— la segunda
   # forma se lee como el modificador de expansión `:s`, y el `show` falla en los cinco archivos: la
