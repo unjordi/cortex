@@ -314,18 +314,25 @@ acg_es_merge_mr "$cmd" || exit 0
 # TARGET_ROOT = raíz del repo del dir objetivo (acg_target_dir: -C > cd > cwd > CLAUDE_PROJECT_DIR). REGLA
 # DURA (§3 práctica): SALTAR el gate (exit 0) SOLO si se confirma POSITIVAMENTE que el destino es PERSONAL;
 # CUALQUIER incertidumbre ⇒ GATEA (fricción de más = molesto pero seguro; saltar de más = brecha). Casos:
-#   · --repo/-R EXPLÍCITO que NO nombra el mismo repo que el dir local (o no resoluble) → OTRO repo, no puedo
-#     leer su marca local → INCIERTO ⇒ GATEA (cierra el FN gemelo `--repo <compartido>` desde sesión personal).
+#   · --repo/-R EXPLÍCITO con un slug LITERAL que NO nombra el mismo repo que el dir local (o no resoluble)
+#     → OTRO repo, no puedo leer su marca local → INCIERTO ⇒ GATEA (cierra el FN gemelo `--repo
+#     <compartido>` desde sesión personal).
+#   · --repo/-R OPACO (M9, auditoría 2026-09-15: el valor es una sustitución de shell — `--repo "$R"` — no
+#     un slug que podamos comparar) → NO es "otro repo": se trata como si no hubiera --repo, y decide la
+#     marca LOCAL de TARGET_ROOT (lo que el shell habría resuelto de todos modos, ya que $R no es legible
+#     aquí en PreToolUse). Antes `acg_despoja_comillas` BORRABA el valor entrecomillado y el grep siguiente
+#     capturaba el FLAG SIGUIENTE (p. ej. `--squash`) como si fuera el slug del repo — bug de mecanismo, no
+#     de incertidumbre genuina (ver acg_repo_explicito).
 #   · sin --repo (o --repo == el propio dir local): la marca LOCAL de TARGET_ROOT es autoritativa →
 #       marca presente → COMPARTIDO (gatea) · sin marca + repo git VÁLIDO → PERSONAL confirmado (exit 0) ·
 #       TARGET_ROOT no resoluble a un repo git → INCIERTO ⇒ GATEA.
 TARGET_DIR=$(acg_target_dir "$cmd" "$pcwd")
 TARGET_ROOT=$(git -C "$TARGET_DIR" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$TARGET_DIR")
-_explicit_repo=$(acg_despoja_comillas "$cmd" | grep -oE '(--repo|-R)[[:space:]=]+[^[:space:]]+' | grep -oE '[^[:space:]=]+$')
-if [ -n "$_explicit_repo" ]; then
+_explicit_repo=$(acg_repo_explicito "$cmd")
+if [ -n "$_explicit_repo" ] && [ "$_explicit_repo" != "OPACO" ]; then
   _local_slug=$(git -C "$TARGET_ROOT" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|https?://[^/]+/)##; s#\.git$##')
   if [ "$_explicit_repo" != "$_local_slug" ]; then
-    : # --repo apunta a OTRO repo (o no resoluble local) → INCIERTO ⇒ GATEA (no exit 0)
+    : # --repo apunta a OTRO repo LITERAL (o no resoluble local) → INCIERTO ⇒ GATEA (no exit 0)
   elif [ ! -f "$TARGET_ROOT/.claude/repo-compartido" ]; then
     exit 0   # --repo == dir local Y sin marca → PERSONAL confirmado
   fi

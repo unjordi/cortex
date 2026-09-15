@@ -183,10 +183,35 @@ acg_target_dir() {   # $1=cmd  $2=payload_cwd → imprime el dir objetivo
 
 # acg_target_remote(cmd, payload_cwd) → slug `org/repo` del remoto objetivo (para gh/glab). Precedencia:
 # --repo/-R explícito > remoto `origin` del DIR objetivo (que a su vez sigue -C > cd > cwd > PROJECT_DIR).
+
+# M9 (auditoría 2026-09-15 §2.5/§4.3): extrae el valor de --repo/-R como UNIDAD (bare | "…" | '…'), no con
+# `[^[:space:]]+` que se corta en el primer espacio. Antes, con `--repo "$R" --squash` sobre el cmd RAW,
+# `[^[:space:]]+` capturaba `"$R"` completo (con comillas) → `acg_target_remote` devolvía el slug CON
+# comillas → la consulta fallaba garantizado. Y si el CALLER despojaba comillas ANTES de grep (como hacía
+# confirmar-merge-develop) el valor `"$R"` se BORRABA entero, dejando `--repo  --squash`, y el grep se comía
+# el FLAG SIGUIENTE (`--squash`) como si fuera el slug — el guard creía que el repo se llamaba "--squash".
+# Devuelve el slug LITERAL, o el token "OPACO" si el valor contiene una sustitución de shell ($/`/${) — un
+# --repo "$VAR" es OPACO (no sabemos a qué repo apunta), NO "otro repo": el caller debe caer al remoto del
+# dir objetivo (lo que el shell habría resuelto), NUNCA tratarlo como "repo ajeno ⇒ incierto ⇒ gatea".
+acg_repo_explicito() {   # $1=cmd(RAW, comillas intactas) → slug LITERAL | "OPACO" | vacío
+  local cmd="$1" m v
+  m=$(printf '%s' "$cmd" | grep -oE "(--repo|-R)[[:space:]=]+(\"[^\"]*\"|'[^']*'|[^[:space:]]+)" | head -1)
+  [ -n "$m" ] || { printf ''; return 0; }
+  v=$(printf '%s' "$m" | sed -E "s/^(--repo|-R)[[:space:]=]+//")
+  case "$v" in
+    \"*\") v="${v#\"}"; v="${v%\"}" ;;
+    \'*\') v="${v#\'}"; v="${v%\'}" ;;
+  esac
+  case "$v" in *'$'*|*'`'*) printf 'OPACO'; return 0 ;; esac
+  printf '%s' "$v"
+}
+
 acg_target_remote() {   # $1=cmd  $2=payload_cwd → imprime "org/repo" | vacío
   local cmd="$1" pcwd="${2:-}" repo dir
-  repo=$(printf '%s' "$cmd" | grep -oE '(--repo|-R)[[:space:]=]+[^[:space:]]+' | grep -oE '[^[:space:]=]+$')
-  if [ -n "$repo" ]; then printf '%s' "$repo"; return 0; fi
+  repo=$(acg_repo_explicito "$cmd")
+  # OPACO (--repo "$VAR": no sabemos a qué repo apunta) → NO es un slug usable; cae al remoto del dir
+  # objetivo, igual que si no hubiera --repo (M9: opaco ≠ ajeno).
+  if [ -n "$repo" ] && [ "$repo" != "OPACO" ]; then printf '%s' "$repo"; return 0; fi
   dir=$(acg_target_dir "$cmd" "$pcwd")
   git -C "$dir" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|https?://[^/]+/)##; s#\.git$##'
 }

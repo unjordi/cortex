@@ -666,6 +666,36 @@ o=$(printf '%s' "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git -C $M
   || bad "M2: proteger-arbol evaluó el árbol EQUIVOCADO (CLAUDE_PROJECT_DIR en vez del -C); got: $o"
 rm -rf "$M2A" "$M2B"
 
+echo ""
+echo "== (b1d-m9) M9 (auditoría 2026-09-15 §2.5): --repo \"\$VAR\" es OPACO, no OTRO repo =="
+# Bug DOBLE con el mismo origen: el value-eater '[^[:space:]]+' se cortaba en el primer espacio y no
+# capturaba el token entrecomillado como UNIDAD. (1) acg_target_remote devolvía el slug CON comillas
+# ('"$R"') → la consulta de red fallaba garantizado. (2) el caller que despojaba comillas ANTES de grep
+# (confirmar-merge-develop) veía el valor BORRADO y el grep siguiente capturaba el FLAG SIGUIENTE
+# (--squash) como si fuera el slug del repo — creía que el repo se llamaba "--squash".
+# NOTA DE MECANISMO (hallazgo propio, no pedido por el dictamen): un bloque `( … ok … )` entre paréntesis
+# es un SUBSHELL — el incremento de PASS/FAIL adentro NUNCA llega al contador del padre (verificado:
+# `PASS=0; ok(){ PASS=$((PASS+1));}; ( ok;ok;ok ); echo $PASS` imprime 0). Docenas de bloques de ESTE
+# archivo (acg_mrid, target_dir, …) ya usan ese patrón — sus "PASS:" SÍ se imprimen pero NO suman al total
+# final: el resultado global lleva rato subestimando cuántos checks realmente pasan. Fuera de alcance
+# arreglarlo aquí (arreglo de una sola línea × decenas de sitios, en un archivo que otro agente puede estar
+# tocando); lo reporto y este bloque NUEVO, deliberadamente, NO usa subshell — sourcea la lib inline.
+. "$HOOKS/analizar-comando-git.sh"
+[ "$(acg_repo_explicito 'gh pr merge 12 --repo org/proyecto --squash')" = "org/proyecto" ] \
+  && ok "M9: --repo con slug LITERAL → se lee tal cual" || bad "M9: no leyó el slug literal"
+[ "$(acg_repo_explicito 'gh pr merge 12 --repo "$R" --squash')" = "OPACO" ] \
+  && ok "M9: --repo \"\$R\" (sustitución de shell) → OPACO, NUNCA '--squash' ni con comillas" \
+  || bad "M9: no detectó el valor opaco (regresó al bug viejo)"
+[ -z "$(acg_repo_explicito 'gh pr merge 12 --squash')" ] \
+  && ok "M9: sin --repo → vacío (no inventa un slug)" || bad "M9: inventó un slug sin --repo"
+M9R=$(mktemp -d "${TMPDIR:-/tmp}/m9r.XXXXXX")
+git -C "$M9R" init -q >/dev/null 2>&1
+git -C "$M9R" remote add origin git@gitlab.com:org/proyecto.git >/dev/null 2>&1
+[ "$(acg_target_remote 'gh pr merge 12 --repo "$R" --squash' "$M9R")" = "org/proyecto" ] \
+  && ok "M9: acg_target_remote con --repo OPACO cae al remoto del dir objetivo (no al literal '\"\$R\"' ni a '--squash')" \
+  || bad "M9: acg_target_remote no cayó al remoto real con --repo opaco"
+rm -rf "$M9R"
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (b1e) confirmar-merge-develop: escape ANCLADO al subcomando (H3) + destino cacheado/timeout (H5) =="
