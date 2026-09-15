@@ -10,10 +10,15 @@
 #   - estampa la VERSIÓN del cerebro en <repo>/.claude/hooks/.brain-version (drift por versión detectable),
 #   - CABLEA en <repo>/.claude/settings.json (idempotente, "shell":"bash", ruta ${CLAUDE_PROJECT_DIR}/...)
 #     los hooks de kind=hook de tier {repo, both} (evento por el mapa de abajo),
-#   - PODA los hooks RETIRADOS: un .sh en el destino que NO está en el manifiesto PERO SÍ en la lista
-#     brain/hooks/RETIRED (hooks que el cerebro ya retiró, p. ej. precompact-volcar-estado) se de-cablea
-#     + borra SOLO en cualquier --apply (seguro: el brain lo declaró muerto). Los demás huérfanos
-#     (posibles hooks PROPIOS del repo) solo se REPORTAN; --prune-orphans los retira (decisión deliberada).
+#   - PODA los hooks RETIRADOS: "huérfano" ya NO significa solo "no está en el manifiesto" — significa
+#     "no debe estar instalado aquí", y bajo esa definición caen DOS casos: (a) un .sh que el manifiesto
+#     no declara en NINGÚN tier, y (b) un .sh que el manifiesto SÍ declara pero con tier `retirado` (la
+#     lápida — el cerebro lo mató a propósito). Ambos se de-cablean + borran SOLOS en cualquier --apply,
+#     sin necesitar --prune-orphans (igual de seguro: el brain lo declaró muerto). La lista brain/hooks/RETIRED
+#     es la forma LEGADA de declarar (b) (hooks retirados antes de que existiera el tier `retirado` en el
+#     MANIFEST, p. ej. precompact-volcar-estado) y se sigue honrando en unión con el tier. Los huérfanos
+#     de verdad DESCONOCIDOS (posibles hooks PROPIOS del repo, no declarados en ningún lado) solo se
+#     REPORTAN; --prune-orphans los retira (decisión deliberada).
 #
 # SEGURO por default: DRY-RUN (muestra qué cambiaría, no escribe). Con --apply copia y cablea.
 # NO es `cp -f` ciego: diffea archivo por archivo y solo toca los que cambian. Requiere jq para cablear.
@@ -22,10 +27,13 @@
 #   acotado (p. ej. solo la lib + los wrappers que cambiaron) sin arrastrar drift de otros archivos
 #   que se reconcilian en otro momento. Siempre respeta el tier del manifiesto (solo {repo,both}).
 #
-# --prune-orphans: RETIRA (de-wire del settings.json + borra el .sh) los huérfanos = archivos en el
-#   destino que ya NO están en el manifiesto (el cerebro los retiró). Es DESTRUCTIVO → solo con --apply
-#   borra; en dry-run los lista como "RETIRARÍA". Antídoto a un hook retirado que quedó cableado y
-#   rompe (caso real: el viejo precompact-volcar-estado intentaba inyectar y el CLI lo rechazaba).
+# --prune-orphans: RETIRA (de-wire del settings.json + borra el .sh) los huérfanos DESCONOCIDOS = archivos
+#   en el destino que NO constan en el manifiesto en ningún tier (posibles hooks propios del repo). Es
+#   DESTRUCTIVO → solo con --apply borra; en dry-run los lista como "RETIRARÍA". Los huérfanos por
+#   RETIRO (tier `retirado` del MANIFEST, o legado en brain/hooks/RETIRED) se retiran SIEMPRE en
+#   cualquier --apply — no necesitan este flag, porque el cerebro ya los declaró muertos (ver arriba).
+#   Antídoto a un hook retirado que quedó cableado y rompe (caso real: el viejo precompact-volcar-estado
+#   intentaba inyectar y el CLI lo rechazaba).
 #
 # --disable <a,b,c>: DES-CABLEA (quita del settings.json) + BORRA el/los hook(s) NOMBRADO(s) del repo
 #   destino, sin sincronizar nada más. Es la vía ÚNICA y consolidada para retirar un hook obsoleto de
@@ -363,27 +371,36 @@ elif [ "$APPLY" = 1 ] && { [ -n "$ONLY" ] || [ "$PRUNEONLY" = 1 ]; }; then
   echo ""; echo "  (operación PARCIAL (--only/--prune-only): NO estampo versión — el repo no queda completo en v$VER)"
 fi
 
-# ── Huérfanos (.sh en el destino que NO están en el manifiesto). Dos clases:
-#    (a) RETIRADOS por el cerebro (en la lista brain/hooks/RETIRED) → se PODAN SOLOS en cualquier
-#        --apply (de-cablear + borrar), sin --prune-orphans: el brain los declaró muertos = seguro.
-#    (b) DESCONOCIDOS (posible hook PROPIO del repo) → solo se reportan; --prune-orphans los retira. ──
+# ── Huérfanos (.sh en el destino que NO DEBE estar instalado aquí). "Huérfano" NO es solo "ausente del
+#    manifiesto": un tier `retirado` SÍ está en el manifiesto y es huérfano igual (es la lápida — el
+#    cerebro lo mató a propósito). Dos clases, incluidas AMBAS bajo la misma poda automática:
+#    (a) RETIRADOS por el cerebro — tier `retirado` en el MANIFEST, o (legado) nombrado en
+#        brain/hooks/RETIRED — se PODAN SOLOS en cualquier --apply (de-cablear + borrar), sin
+#        --prune-orphans: el brain los declaró muertos = seguro.
+#    (b) DESCONOCIDOS (ni en el manifiesto en ningún tier, ni en RETIRED — posible hook PROPIO del repo)
+#        → solo se reportan; --prune-orphans los retira. ──
 RETIRED_FILE="$SRC_HOOKS/RETIRED"
-es_retirado() { [ -f "$RETIRED_FILE" ] && awk '$1!~/^#/ && NF{print $1}' "$RETIRED_FILE" | grep -qxF "$1"; }
+es_retirado() {
+  { [ -f "$RETIRED_FILE" ] && awk '$1!~/^#/ && NF{print $1}' "$RETIRED_FILE";
+    awk '$1!~/^#/ && NF>=3 && $2=="retirado"{print $1}' "$MANIFEST"; } | grep -qxF "$1"
+}
 echo ""
 n_orph=0; n_retired=0
 if [ -d "$DST_HOOKS" ]; then
   for f in "$DST_HOOKS"/*.sh; do
     [ -e "$f" ] || continue
     b="$(basename "$f" .sh)"
-    awk '$1!~/^#/ && NF>=3 {print $1}' "$MANIFEST" | grep -qxF "$b" && continue   # en el manifiesto → no es huérfano
+    # "en el manifiesto → no es huérfano" YA NO vale para tier `retirado` (ESA es la lápida): excluirlo
+    # explícitamente de este chequeo es lo que deja caer a un `retirado` en la rama es_retirado() de abajo.
+    awk '$1!~/^#/ && NF>=3 && $2!="retirado" {print $1}' "$MANIFEST" | grep -qxF "$b" && continue
     if es_retirado "$b"; then
       # (a) RETIRADO por el cerebro → poda AUTOMÁTICA (no requiere --prune-orphans).
       n_retired=$((n_retired+1))
       if [ "$APPLY" = 1 ]; then
         dewire_hook "$DST_SET" "$b"; rm -f "$f"
-        echo "  RETIRADO   $b.sh — retirado del cerebro (RETIRED): de-cableado + borrado (auto)"
+        echo "  RETIRADO   $b.sh — retirado del cerebro (tier retirado/RETIRED): de-cableado + borrado (auto)"
       else
-        echo "  RETIRARÍA  $b.sh — retirado del cerebro (RETIRED): --apply lo de-cablea + borra SOLO (auto)"
+        echo "  RETIRARÍA  $b.sh — retirado del cerebro (tier retirado/RETIRED): --apply lo de-cablea + borra SOLO (auto)"
       fi
     else
       # (b) huérfano DESCONOCIDO → solo --prune-orphans lo retira.
