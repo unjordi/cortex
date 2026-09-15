@@ -218,6 +218,35 @@ hacer, está en los mensajes/hilo) o que el usuario acaba de afirmar → respond
 contexto vivo es churn y desconfianza, no diligencia. Verificar aplica a ASEVERAR lo incierto, no a
 recuperar lo que ya tienes.
 
+## Los tests miden si el código hace lo que DEBE hacer, no si su tooling está bien programado (norma dura)
+**Que los tests midan si el código hace lo que DEBE hacer, no si su tooling está bien programado.**
+La pregunta correcta no es *"¿el programa corre sin tronar?"* sino **"¿hace lo que DEBE hacer, y se
+niega a hacer lo que NO debe?"**.
+
+**El corte.** Todo lo que verifica la PLOMERÍA —que la función existe, que el archivo se generó, que
+el comando salió con 0, que el mensaje trae cierto texto— mide el tooling. Lo que verifica el
+PROPÓSITO —que la entrada inválida se rechaza y la válida se acepta, que el efecto observable en el
+mundo es el que debía ser— mide la intención. Solo lo segundo es el contrato; lo primero cambia
+mañana sin que el propósito cambie.
+
+**Por qué es norma dura y no preferencia de estilo:** un arnés de **1011 asertos daba PASS · 0 FAIL**
+mientras el sistema que probaba tenía **dos defectos CRÍTICOS vivos**. No faltaban pruebas: faltaba
+que probaran lo correcto. **Un verde que no significa nada es peor que no tener pruebas**, porque
+impide buscar el hueco justo donde uno cree que ya hay cobertura.
+
+**Cómo se aplica al escribir un test:**
+- Pregúntate **¿este aserto puede fallar alguna vez?** Si comparas algo consigo mismo, grepeas un
+  patrón que siempre está, o compruebas que un comando "no truene" sin mirar QUÉ hizo, no es un test.
+- Verifica el **EFECTO, no el andamio**: qué cambió en el mundo, no que la maquinaria se ejecutó.
+- **Cubre las dos direcciones.** Probar solo que algo rechaza lo inválido es media prueba: también
+  hay que probar que **acepta lo válido**, o nace un falso positivo que nadie detecta.
+- **El setup que falla en silencio es el peor enemigo**: deja el aserto probando el caso vacío, así
+  que pasa siempre y verifica nada. Comprueba que tu escenario se montó antes de aseverar sobre él.
+- Al agregar cobertura, **comprueba que tu test FALLA contra el código viejo**, no solo que pasa
+  contra el nuevo. Un test que nunca vio rojo no ha demostrado que detecta algo.
+- *Ejemplo en guards (ilustración, no la norma):* comprobar que imprime cierto mensaje es tooling;
+  comprobar que **bloquea lo que debe bloquear y deja pasar lo que debe pasar** es intención.
+
 ## Al templatizar: DOMINIO vs regla genérica (norma dura)
 Al derivar un TEMPLATE de un proyecto concreto (o al genericizar algo), distingue **mecánicamente** lo de
 **DOMINIO** (quitar) de la **REGLA GENÉRICA** (conservar) — un diff *PORTAR-vs-OK-EXCLUIDO* como método por
