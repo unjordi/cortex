@@ -1,6 +1,6 @@
 ---
 name: checkpoint
-description: Volcado del estado efímero a memoria durable para poder compactar (o cerrar sesión) sin perder el hilo, en DOS NIVELES. LIGERO (pausas naturales, punto de retorno rápido) reescribe hilo-mental-actual.md —leyendo antes el previo para no pisar ideas vivas a medio cocinar— (de qué va la tarea AHORA) y GARANTIZA, antes de sobrescribir, que todo pendiente/decisión DURABLE del hilo ya esté en estado-proyecto.md + bitácora (barrido SIN PÉRDIDA: el hilo volátil sube al backlog durable, nunca al revés). COMPLETO (OBLIGATORIO antes de cualquier /compact —manual o anunciado por el aviso de contexto— y cada ~2h en corridas largas) abre con el 🗂️ ÁRBOL de memorias+tooling (3 ramas: actualizadas-hoy / a-leer-para-lo-que-sigue / tooling) al PRINCIPIO y luego agrega el PLAN COMPLETO con el CÓMO, lo RESUELTO HOY y la COSECHA DURABLE a memorias/skills. Es el "volcado compartido" que cerrar-slice §2 también hace. Ante la duda de nivel: COMPLETO.
+description: Volcado del estado efímero a memoria durable para poder compactar (o cerrar sesión) sin perder el hilo, en DOS NIVELES. LIGERO (pausas naturales, punto de retorno rápido) reescribe hilo-mental-actual.md —leyendo antes el previo para no pisar ideas vivas a medio cocinar— (de qué va la tarea AHORA) y GARANTIZA, antes de sobrescribir, que todo pendiente/decisión DURABLE del hilo ya esté en estado-proyecto.md + bitácora (barrido SIN PÉRDIDA: el hilo volátil sube al backlog durable, nunca al revés). COMPLETO (OBLIGATORIO antes de cualquier /compact —manual o anunciado por el aviso de contexto— y cada ~2h en corridas largas) abre con el 🗂️ ÁRBOL de memorias+tooling (3 ramas: actualizadas-hoy / a-leer-para-lo-que-sigue / tooling) al PRINCIPIO y luego agrega el DISEÑO de lo que se construye (diagnóstico + contrato de cada pieza nueva + invariante verificable + qué NO es), el PLAN COMPLETO con el CÓMO, lo RESUELTO HOY y la COSECHA DURABLE a memorias/skills. Es el "volcado compartido" que cerrar-slice §2 también hace. Ante la duda de nivel: COMPLETO.
 ---
 
 # Checkpoint — vaciar lo efímero a memoria durable (sin fricción)
@@ -23,8 +23,8 @@ archivos durables en disco, para que **compactar cuanto quieras NO cueste el hil
 - **COMPLETO** — **OBLIGATORIO antes de cualquier `/compact`** (manual, o cuando el hook
   `aviso-contexto` anuncie que viene) **y cada ~2h en corridas largas/nocturnas**. Abre con el
   **🗂️ ÁRBOL de memorias + tooling** (ver abajo) y, además del hilo terso, el `hilo-mental-actual.md`
-  crece con TRES secciones (PLAN COMPLETO con el CÓMO · RESUELTO HOY · COSECHA DURABLE — ver abajo) y
-  la cosecha a memorias/skills se hace COMO PARTE del checkpoint.
+  crece con CUATRO secciones (DISEÑO de lo construido · PLAN COMPLETO con el CÓMO · RESUELTO HOY ·
+  COSECHA DURABLE — ver abajo) y la cosecha a memorias/skills se hace COMO PARTE del checkpoint.
 
 **Criterio de elección:** ¿viene un compact? ¿llevas >2h de corrida? ¿la implementación que sigue es
 crítica? → **COMPLETO**. ¿Pausa casual entre sub-pasos? → ligero. **Ante la duda, COMPLETO**:
@@ -129,6 +129,11 @@ compact puede perder.
    <pequeños pendientes de contexto que el resumen perdería>
 
    <!-- ▼ SOLO nivel COMPLETO ▼ -->
+   ## DISEÑO — el modelo de lo que se está construyendo
+   <Por cada pieza NUEVA en construcción (no cada vez que el hilo se toca — solo mientras hay una
+    construcción en vuelo): diagnóstico de fondo en UNA frase · contrato (qué recibe, qué devuelve, qué
+    pasa cuando FALLA) · la invariante VERIFICABLE que lo sostiene · qué NO es. Con PROCEDENCIA. Ver
+    detalle abajo.>
    ## PLAN COMPLETO (con el CÓMO)
    <TODO lo planeado, ítem por ítem: qué + el MECANISMO de resolución pensado + detalles, gotchas y
     porqués — a fidelidad completa, en TUS propias palabras. NO telegráfico: es lo que te vas a
@@ -168,15 +173,39 @@ compact puede perder.
      propósito). Es doc=realidad aplicado al propio hilo. Y al CONTESTAR "¿qué memorias hay de X?",
      **arranca de esta lista como HUD** y verifica/extiende contra disco — no grepees desde cero ignorándola.
 
+   **DISEÑO de lo construido (regla dura, SOLO nivel COMPLETO, mientras haya una pieza nueva en vuelo).**
+   Un plan dice QUÉ vas a hacer y con qué MECANISMO; el diseño dice qué idea de fondo sostiene la
+   construcción. Sin él, quien retoma (tú mismo tras compactar, o un sucesor) hereda punteros a archivos,
+   no el modelo — y tiene que releer las fuentes para reconstruirlo, exactamente el trabajo que este
+   skill existe para evitar. Por cada pieza nueva:
+   - **Diagnóstico de fondo, en UNA frase.** El problema real que se resuelve, no el síntoma.
+   - **Contrato de cada pieza nueva.** Qué recibe, qué devuelve, y qué pasa cuando FALLA (silencioso,
+     aborta, reintenta). Sin el contrato de falla, un sucesor no puede distinguir "así se diseñó" de "se
+     rompió".
+   - **La invariante VERIFICABLE que la sostiene.** Una condición medible — la que un test o un grep
+     podría confirmar — no una intención ("debería quedar bien").
+   - **Qué NO es.** Las confusiones probables: el objetivo mal-leído que alguien podría asumir al ver el
+     código a medias. (Ejemplo del patrón: "el updater ya no escribe `/etc/hosts`" leído como el
+     objetivo, cuando el objetivo real es que escriba CANALIZADO — dejar de escribir sería la FALLA, no
+     el logro.)
+   Va **EN el hilo**, nunca solo en un archivo aparte que el hilo apunte: un puntero sobrevive al
+   compact, el modelo no. Si el diseño de fondo vive en un dictamen/doc largo, EXTRAE aquí el resumen
+   operativo (los cuatro puntos de arriba) — el puntero al doc completo es un EXTRA, no un sustituto.
+   Con PROCEDENCIA igual que el PLAN (ver abajo). **Nivel LIGERO:** no lleva esta sección estructurada;
+   si hay una decisión de diseño a medio cocinar, basta una línea del diagnóstico + qué-NO-es bajo
+   "Decisión abierta" — la versión completa (contrato + invariante) es de COMPLETO.
+
    **⚠️ Regla de OVERFLOW (>~200 líneas) `[SIN CONFIRMAR — dato de docs, validar el límite exacto]`.** El
    import/autostart del hilo al arrancar sesión **trunca pasando las ~200 líneas**. Si `hilo-mental-actual.md`
    supera ~200 líneas, corta el excedente a `hilo-mental-actual-overflow.md` (mismo dir) y **MENCIÓNALO en las
    primeras líneas del hilo principal** ("…continúa en overflow"), para que el rehidratado sepa que hay más y
    lo lea. En el principal deja lo VIVO (🗂️ árbol de memorias/tooling, en qué estamos, decisión abierta,
-   siguiente paso); al overflow van PLAN/RESUELTO/COSECHA extensos.
+   siguiente paso, **y el DISEÑO** — es corto y es el modelo que todo lo demás necesita para tener sentido);
+   al overflow van PLAN/RESUELTO/COSECHA extensos.
 
    **⭐ Estándar de calidad — 9 ejes (canónicos; corpus de pedidos reales en `corpus-checkpoint-frases.local.md`).**
-   Un buen checkpoint es: **COMPLETO** (nada del hilo fuera) · **MINUCIOSO** (las minucias que si no re-descubrirías)
+   Un buen checkpoint es: **COMPLETO** (nada del hilo fuera — incluye el DISEÑO de lo construido, no solo
+   el plan) · **MINUCIOSO** (las minucias que si no re-descubrirías)
    · **ACCIONABLE** (datos/rutas/comandos/siguiente-paso, no descripción) · **DURABLE** (en piedra, para NO
    necesitar desinflado) · **SIN EDITORIALIZAR** (seco, solo hechos) · **SIN RESUMIR** (literales, no comprimir)
    · **SEGUIDO/PROACTIVO** (antes del techo, no de último momento) · **A SUS CASAS** (a cada destino durable que
@@ -184,7 +213,8 @@ compact puede perder.
    técnico · contaminado con temas irrelevantes · de último momento.
 
    **PROCEDENCIA de cada idea (regla dura — el hilo mental DE LA IDEA, no solo el stub).** Cada ítem del
-   PLAN y cada decisión de RESUELTO llevan de DÓNDE salió y QUIÉN la originó, con un marcador breve:
+   DISEÑO, del PLAN y cada decisión de RESUELTO llevan de DÓNDE salió y QUIÉN la originó, con un marcador
+   breve:
    `[user: "<cita textual>"]` si es del usuario · `[INFER-mío]` si es una hipótesis/propuesta TUYA (de
    Claude) · `[juntos <fecha>]` si se decidió en conversación. **Por qué:** al comprimir se pierde la
    procedencia y el default es releer una idea PROPIA como si fuera del usuario — fabricar autorización
