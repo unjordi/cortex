@@ -145,6 +145,21 @@ se volvieron hooks). Al crear una norma de proceso, **nace con su mecanismo o es
 Corolario: un mecanismo mal dirigido (un hook con falsos positivos) desgasta la confianza tanto como su
 ausencia — la PRECISIÓN del guard importa igual que su existencia.
 
+## Un comentario inline INFORMA; el que FRENA es el mecanismo (norma de estilo)
+Corolario de "toda norma nace con su mecanismo", aplicado al código: un comentario **no impide** que se
+reintroduzca un bug — solo INFORMA a quien lo lea. Lo que lo IMPIDE es un test/guard (que pone rojo el CI) o
+que el patrón peligroso solo se pueda escribir en UN chokepoint. Por eso un comentario inline se **gana su
+lugar** solo si: **(a)** dice un *porqué* NO-obvio, **en el punto exacto** donde se mete la pata; **(b)** cabe
+en **pocas líneas**; **(c)** cuando protege contra un bug, **apunta al mecanismo** que sí lo frena (el test,
+el guard) en vez de fingir que la prosa protege; **(d)** la regla vive en **UN** lugar canónico — los demás
+puntos la **referencian**, no la duplican. **Lo que se borra:** la caja ASCII decorativa (`┌─│─└`), el
+párrafo que narra la historia del incidente en el código (esa va al commit/memoria, no al inline), el mismo
+contrato repetido en 3 archivos. Un comentario que nadie lee por largo/decorado no informó a nadie: es peor
+que uno breve. Regla espejo de "documentación = reflejo de la realidad": un comentario grande también DRIFTEA
+más fácil (nadie actualiza 25 líneas al cambiar el código) → menos superficie, menos mentira. (Destilado real,
+2026-09-15: una caja ASCII de 25 líneas + un GOTCHA duplicado se adelgazaron a −35/+10 líneas apuntando al test
+`runnerSesion`, que es el que de verdad frena el bug del broker.)
+
 ## Actualiza por la HERRAMIENTA REAL, nunca corriendo el instalador/deploy a mano (norma dura)
 Actualizar o desplegar algo se hace **SIEMPRE por la herramienta de release del proyecto**, jamás
 invocando su script de instalación/deploy a pelo. Ejemplo canónico: el **cerebro/widget** se actualiza
@@ -195,20 +210,13 @@ Casos reales (jul 2026): dos decisiones ya resueltas resucitaron como "decisione
 carga" y frenaron una noche entera de ETL; otra (un modelo nullable) el usuario tuvo que re-enseñarla
 CON SCREENSHOT.
 
-## Post-compact: EXCAVA antes de contestar (norma dura)
-Tras una compactación, ante cualquier "¿te acuerdas de X?" / "¿dónde quedó Y?", la respuesta se
-construye **EXCAVANDO** — `hilo-mental-actual.md`, bitácora, `estado-proyecto.md`, o el propio
-transcript — **ANTES de contestar. NUNCA respondas desde el resumen comprimido con confianza:**
-confabular con seguridad cuesta más que un "déjame verificar". Caso real (jul 2026): Claude aceptó
-con entusiasmo la culpa… del mockup EQUIVOCADO ("¡El de las OTs!" cuando era el de operaciones),
-confabulado desde el resumen.
-
-## Paso 0 de toda tarea grande: INVENTARIO de lo que ya existe (norma dura)
-Antes de construir (un ETL, un módulo, un mecanismo), **barre qué ya existe** — skills, memorias,
-scripts, sub-transcripts, código previo — y **construye SOBRE ello**, no desde cero. "Voy a la fuente
-real, no invento" debe ser el ARRANQUE de la tarea, no la disculpa después. Casos reales (jul 2026):
-se reconstruyó desde cero un mecanismo de ubicaciones que ya existía del sprint anterior, y se afirmó
-de memoria un modelo de transportistas que contradecía lo ya investigado.
+## Recupera de tu contexto vivo; EXCAVA/verifica solo lo que NO tienes (norma dura)
+EXCAVA solo cuando la respuesta NO está en tu contexto vivo — post-compact, sesión anterior, algo
+genuinamente desconocido (incluye barrer qué ya existe ANTES de construir: skills, memorias, scripts,
+código previo, para construir SOBRE ello y no desde cero). Si es algo de ESTA sesión (lo acabas de
+hacer, está en los mensajes/hilo) o que el usuario acaba de afirmar → responde desde ahí; re-escarbar
+contexto vivo es churn y desconfianza, no diligencia. Verificar aplica a ASEVERAR lo incierto, no a
+recuperar lo que ya tienes.
 
 ## Al templatizar: DOMINIO vs regla genérica (norma dura)
 Al derivar un TEMPLATE de un proyecto concreto (o al genericizar algo), distingue **mecánicamente** lo de

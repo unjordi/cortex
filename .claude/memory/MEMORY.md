@@ -217,3 +217,4 @@ Reclutar un agente cuesta según su nivel (**gratis** local · **incluido** dent
 - [⚰️ Cementerio](cementerio.md) — UNA casa para las lápidas de ESTE cerebro (mitos descartados / "NO re-proponer"), cada una con su ID `🪦#<9-hex>`. Las memorias solo dejan la ref inline `(🪦#<id>)` — o nada. Se acuña/valida con el helper `cementerio.sh` (`add`/`verify`).
 
 > **Excluidos del release** (2026-08-01 se SACARON de este repo → viven en la memoria GLOBAL per-máquina, no en el índice compartido): `kde-tema-opaco` (tweak de tema de ESTA máquina — entorno de máquina va global, jamás en un repo) y `feedback_correr-comandos-sin-modificar` (lección de estilo transversal, no producto del brain).
+- [Auditoría de consolidación de guards (2026-09-15)](auditoria-consolidacion-guards-2026-09-15.md) — los git-guards comparten el defecto del toolkit WG: 7 copias del mismo paso crítico y una lib que cubre la mitad. 2 críticos, 11 mecanismos con test.

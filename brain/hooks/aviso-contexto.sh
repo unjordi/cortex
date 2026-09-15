@@ -13,11 +13,13 @@
 #
 # Datos que surface:
 #   - ctx actual (tokens del último usage DESPUÉS del último boundary de compact).
-#   - autoCompactWindow LEÍDO de settings.json (user < proyecto < local; jq '.autoCompactWindow');
-#     si no está, reporta "no seteado".
-#   - ventana detectada (marcador [1m] / modelos 1M-nativos / default 200K) CON auto-corrección
-#     por invariante físico (si ctx > ventana → 1M). Repórtala.
-#   - % de esa ventana + % libre (reservando 5% para el checkpoint).
+#   - autoCompactWindow + autoCompactEnabled LEÍDOS de settings.json (user < proyecto < local); si
+#     autoCompactWindow no está, reporta "no seteado".
+#   - ventana del modelo detectada (marcador [1m] / modelos 1M-nativos / default 200K) CON
+#     auto-corrección por invariante físico (si ctx > ventana → 1M).
+#   - % contra la VENTANA GOBERNANTE (la que /context mide, no la del modelo): autoCompactWindow cuando
+#     el auto-compact está ACTIVO y ACW es número válido; si no (no seteado / desactivado / override
+#     manual), la ventana del modelo. + % libre (reservando 5% para el checkpoint).
 #   NO reporta CLAUDE_AUTOCOMPACT_PCT_OVERRIDE — es un valor FANTASMA que miente (ver NOTA abajo).
 #
 # Debounce: solo avisa al SUBIR de contexto (no en cada tool-call). Marca .contexto-aviso guarda
@@ -96,21 +98,44 @@ for s in "$HOME/.claude/settings.json" "$ROOT/.claude/settings.json" "$ROOT/.cla
   [ -n "$acw" ] && ACW="$acw"
 done
 
+# autoCompactEnabled: default true; solo `false` explícito (o el env DISABLE_AUTO_COMPACT) desactiva el
+# auto-compact. Precedencia user < proyecto < local; null/ausente NO override (jq: null→empty, false→"false").
+ac_enabled=true
+for s in "$HOME/.claude/settings.json" "$ROOT/.claude/settings.json" "$ROOT/.claude/settings.local.json"; do
+  [ -f "$s" ] || continue
+  e=$(jq -r 'if .autoCompactEnabled == null then empty else (.autoCompactEnabled|tostring) end' "$s" 2>/dev/null)
+  [ -n "$e" ] && ac_enabled="$e"
+done
+case "${DISABLE_AUTO_COMPACT:-}" in ''|0|false|FALSE|no|NO) : ;; *) ac_enabled=false ;; esac
+
+# VENTANA GOBERNANTE (GOV) = contra la que /context mide el %. El auto-compact dispara al acercarse a
+# autoCompactWindow, NO a la ventana del modelo → el % se mide contra ACW cuando el auto-compact está
+# ACTIVO y ACW es número válido; si no (no seteado / desactivado), cae a la ventana del modelo. El
+# override manual AVISO_CONTEXTO_WINDOW_TOKENS (ya reflejado en WINDOW) gana sobre ACW.
+acw_num=""
+case "$ACW" in ''|*[!0-9]*) : ;; *) [ "$ACW" -gt 0 ] 2>/dev/null && acw_num="$ACW" ;; esac
+forced=""
+case "${AVISO_CONTEXTO_WINDOW_TOKENS:-}" in ''|*[!0-9]*) : ;; *) forced=1 ;; esac
+GOV="$WINDOW"; govsrc="model"
+if [ -z "$forced" ] && [ "$ac_enabled" = "true" ] && [ -n "$acw_num" ]; then
+  GOV="$acw_num"; govsrc="acw"
+fi
+
 # NOTA: NO se reporta CLAUDE_AUTOCOMPACT_PCT_OVERRIDE. Es un valor FANTASMA: si el env dice 70% pero la
 # ventana es 1M y el ctx pasa del 70% SIN que el CLI compacte, ese 70 NO gobierna (env stale / no propagada
 # al proceso) → reportarlo MIENTE (unjordi 2026-09-01: "me suena MUY falso"). El dato que SÍ es fiable es el
 # ctx crudo + la ventana; el punto de auto-compact real lo sabe /context, no este hook.
 
-# Debounce GRUESO por PASOS, RELATIVOS a la ventana (C3/M4, auditoría 2026-09-11): un escalón ABSOLUTO de
-# 50K quedaba CIEGO en ventanas de 200K — el último escalón posible caía al 75% y de ahí el hook enmudecía
-# hasta el auto-compact (~92-95%): ~20 puntos de silencio justo en la zona de peligro. STEP = 5% de la
-# ventana (WINDOW/20): con ventana de 1M eso YA da 50K, así que el contrato viejo (medido/testeado con esa
-# ventana) queda intacto. Cerca del techo (pctw≥85%, que es donde la resolución más importa) el escalón se
-# afina a 1% de la ventana (WINDOW/100) — para no perder distinción justo donde antes "todo daba 0% libre".
+# Debounce GRUESO por PASOS, RELATIVOS a la ventana GOBERNANTE (C3/M4, auditoría 2026-09-11): un escalón
+# ABSOLUTO de 50K quedaba CIEGO en ventanas de 200K — el último escalón posible caía al 75% y de ahí el hook
+# enmudecía hasta el auto-compact (~92-95%): ~20 puntos de silencio justo en la zona de peligro. STEP = 5%
+# de GOV (GOV/20): con GOV de 1M eso YA da 50K, así que el contrato viejo (medido/testeado con esa ventana)
+# queda intacto. Cerca del techo (pctw≥85%, donde la resolución más importa) el escalón se afina a 1% de GOV
+# (GOV/100). Se mide contra GOV, no la del modelo, para que la resolución siga el punto de compact real.
 # Al compactar (ctx baja) el escalón baja → last_step > step → se re-arma solo para la próxima subida.
-pctw_pre=$(( ctx * 100 / WINDOW ))
-STEP=$(( WINDOW / 20 ))
-[ "$pctw_pre" -ge 85 ] && STEP=$(( WINDOW / 100 ))
+pctw_pre=$(( ctx * 100 / GOV ))
+STEP=$(( GOV / 20 ))
+[ "$pctw_pre" -ge 85 ] && STEP=$(( GOV / 100 ))
 [ "$STEP" -gt 0 ] || STEP=1
 step=$(( ctx / STEP ))
 last_step=0
@@ -124,7 +149,8 @@ printf '%s\n' "$step" > "$AVISO_F" 2>/dev/null || true
 # ── Mensaje neutro: datos crudos + recordatorio del orden checkpoint→compact ──────────────────
 ctxk=$(( ctx / 1000 ))
 wink=$(( WINDOW / 1000 ))
-pctw=$(( ctx * 100 / WINDOW ))
+govk=$(( GOV / 1000 ))
+pctw=$(( ctx * 100 / GOV ))
 # Libre ÚTIL = libre − 5% de RESERVA para el checkpoint mismo (el volcado del hilo consume contexto; no
 # esperes a 0% o el checkpoint no cabe). unjordi 2026-09-01.
 # C3 (auditoría 2026-09-11): SIN CLAMP. El clamp a 0 saturaba la señal justo donde más importa — de 95%
@@ -134,7 +160,21 @@ pctw=$(( ctx * 100 / WINDOW ))
 RESERVA_PCT=5
 libre=$(( 100 - pctw - RESERVA_PCT ))
 
-msg="📊 Contexto: ${ctxk}K tokens (~${pctw}% de tu ventana ${wink}K, ${libre}% libre — reservé ${RESERVA_PCT}% para el checkpoint). autoCompactWindow: ${ACW}."
+# El % va contra la ventana GOBERNANTE (govsrc). Con ACW se nombra como tal + la ventana del modelo como
+# dato extra; al caer a la del modelo se reporta ACW crudo (con nota si el auto-compact está desactivado,
+# que explica por qué ACW NO gobierna).
+if [ "$govsrc" = "acw" ]; then
+  win_txt="~${pctw}% de autoCompactWindow ${govk}K"
+  acw_txt="autoCompactWindow: ${ACW} · ventana del modelo: ${wink}K."
+else
+  win_txt="~${pctw}% de tu ventana ${govk}K"
+  if [ "$ac_enabled" != "true" ] && [ -n "$acw_num" ]; then
+    acw_txt="autoCompactWindow: ${ACW} (auto-compact desactivado)."
+  else
+    acw_txt="autoCompactWindow: ${ACW}."
+  fi
+fi
+msg="📊 Contexto: ${ctxk}K tokens (${win_txt}, ${libre}% libre — reservé ${RESERVA_PCT}% para el checkpoint). ${acw_txt}"
 # Cierre NEUTRO: dato + deferencia, sin veredicto. El hook REPORTA (dónde está el número autoritativo, qué
 # hace el CLI); NO recomienda un curso ("mejor checkpoint+compact"). La decisión es del lector (unjordi:
 # "cada quién decide cómo morirse"; /context manda).
