@@ -250,7 +250,7 @@ releer las fuentes para reconstruir el modelo — le basta con LEER el hilo. Si 
 grepear código, abrir un dictamen de cientos de líneas o reconstruir un contrato desde cero, el
 checkpoint ANTERIOR falló — no el lector por preguntar.
 
-Esto no contradice la norma dura "post-compact: EXCAVA antes de contestar" — resuelve un caso distinto
+Esto no contradice la norma dura "Recupera de tu contexto vivo; EXCAVA/verifica solo lo que NO tienes" — resuelve un caso distinto
 al que esa norma cubre:
 - **El hilo NO TIENE la respuesta** → excavar (bitácora, `estado-proyecto.md`, el transcript) sigue
   siendo lo correcto. Y además es la SEÑAL de que el checkpoint anterior quedó corto: corrígelo en el
