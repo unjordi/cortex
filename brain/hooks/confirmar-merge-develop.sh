@@ -27,6 +27,15 @@ set -u
 # shellcheck source=juez-comun.sh
 . "${BASH_SOURCE[0]%/*}/juez-comun.sh"
 
+# ¿Hay lenguaje EXPLÍCITO de release (release/libera/a main/a master) en ALGUNA línea 'USUARIO:' de la
+# ventana? Tokens ANCLADOS a límite de palabra (portable BSD+GNU): 'liber' no casa en "deliberada"/
+# "libertad", 'a main' no casa en "a maintenance". FUENTE ÚNICA para el PISO de main (§3.5/M5, abajo) y el
+# GRANT durable con destino desconocido (§3.6/M6, cuerpo del hook) — antes esta cerca vivía SOLO dentro del
+# piso; M6 la reusa para no divergir en DOS lugares la misma pregunta de seguridad ("¿esto es un release?").
+_lexico_release_en_ventana() {   # $1=mensajes(intercalados USUARIO:/ASISTENTE:) → 0=SÍ hay release · 1=no
+  printf '%s\n' "$1" | grep -iE '^[[:space:]]*USUARIO:' | grep -iqE '(^|[^[:alpha:]])(release|(liberar?|liberado|liberaci[oó]n|liber[eé]n?|liber[oó])([^[:alpha:]]|$)|(a|hacia) (main|master)([^[:alpha:]]|$))'
+}
+
 # ── JUEZ DE AUTORIZACIÓN (LLM) — definido ARRIBA para que los tests lo SOURCEEN idéntico (cero drift con
 # el hook). Punto de entrada = _juez_merge($destino,$mrid,$mensajes,$hint) → ALLOW|DENY|UNAVAILABLE; un voto
 # individual lo produce _juez_merge_uno (mismo contrato). Reemplaza el pilón de regex frágiles: es comprensión
@@ -149,16 +158,24 @@ VEREDICTO: DENY"
   # de release EXPLÍCITO del USUARIO, INDEPENDIENTE del LLM. Haiku es poco fiable en el 'mergea el X' PELÓN
   # con destino main (lo ALLOWea; regresión real atrapada en la batería LIVE). destino main + ALLOW + NINGUNA
   # línea USUARIO con release/libera/a main → DENY. NO es regex-soup de autorización (eso lo hace el LLM): es
-  # un candado angosto para el gate de MÁXIMA consecuencia. Solo destino main CONFIRMADO (el vacío lo cubre el
-  # fail-seguro del LLM). AUTORIDAD: solo líneas 'USUARIO:' (nunca ASISTENTE → anti auto-autorización).
-  # master = alias de main en muchos repos (legacy incluidos) → misma base de RELEASE, mismo piso estricto.
-  if { [ "$1" = "main" ] || [ "$1" = "master" ]; } && [ "$out" = "ALLOW" ]; then
+  # un candado angosto para el gate de MÁXIMA consecuencia. AUTORIDAD: solo líneas 'USUARIO:' (nunca ASISTENTE
+  # → anti auto-autorización). master = alias de main en muchos repos (legacy incluidos) → misma base de
+  # RELEASE, mismo piso estricto.
+  # M5 (auditoría 2026-09-15 §3.5, 🔴 APRIETA): destino VACÍO ("$1" = "") TAMBIÉN pasa por el piso. Antes el
+  # comentario decía "el vacío lo cubre el fail-seguro del LLM" — pero el LLM ES probabilístico, y el piso
+  # existe PRECISAMENTE porque el LLM falla en el 'mergea' pelón a main (línea de arriba, regresión LIVE). Un
+  # destino DESCONOCIDO (consulta caída por PATH/red/timeout — el corpus documenta que es "TODO release a
+  # main por CLI desde una sesión lanzada por GUI, siempre", no un borde) dejaba el gate de MÁXIMA consecuencia
+  # en manos EXCLUSIVAS del componente que el propio código ya admite que falla ahí. Con destino desconocido,
+  # el más ESTRICTO de los dos gates posibles (develop vs main) debe ganar — la MISMA regla que ya rige el
+  # prompt del juez ("ante duda del destino, el más ESTRICTO gana"), ahora aplicada también al piso.
+  if { [ "$1" = "main" ] || [ "$1" = "master" ] || [ -z "$1" ]; } && [ "$out" = "ALLOW" ]; then
     # tokens ANCLADOS a límite de palabra ([^[:alpha:]], portable BSD+GNU): 'liber' NO casa en
     # "deliberada"/"libertad" (liber[aeo] + frontera previa), 'a main' NO casa en "a maintenance"
     # (frontera posterior tras main). Endurecimiento — cierra el falso NEGATIVO del piso (auditoría 2026-08).
     # "promover a main" YA lo cubre '(a|hacia) main'; una rama 'promov.* .*main' aparte metía un .*
     # desacoplado que puenteaba un 'promueve' cualquiera con un 'main' suelto de otra frase (falso negativo) → se quitó.
-    printf '%s\n' "$3" | grep -iE '^[[:space:]]*USUARIO:' | grep -iqE '(^|[^[:alpha:]])(release|(liberar?|liberado|liberaci[oó]n|liber[eé]n?|liber[oó])([^[:alpha:]]|$)|(a|hacia) (main|master)([^[:alpha:]]|$))' || out=DENY
+    _lexico_release_en_ventana "$3" || out=DENY
   fi
   [ -n "$out" ] && printf '%s' "$out" || printf 'UNAVAILABLE'
 }
@@ -396,11 +413,17 @@ recent=$(_recent_intercalado "$tpath")
 
 # Grant DURABLE (turno-nocturno): un OK persistido a disco cubre scope=merge-develop (NUNCA main). Fast-path
 # antes de gastar una llamada al LLM. Sobrevive compactaciones; la cita textual registrada es su evidencia.
-# SEGURIDAD (#fix destino): SOLO se honra con destino CONFIRMADO 'develop' — NO con destino vacío/desconocido.
-# Antes era `!= main`, que trataba el vacío como no-main → un grant de develop podía colar un release a main
-# cuando la detección de destino fallaba (fail-safe débil). Vacío/desconocido → NO fast-path → decide el juez
-# (que aplica el fail SEGURO: destino incierto + lenguaje de release → main).
-if [ "$destino" = "develop" ]; then
+# SEGURIDAD (#fix destino): SOLO se honra con destino CONFIRMADO 'develop', O destino DESCONOCIDO CON UNA
+# CERCA (M6, auditoría 2026-09-15 §3.6, 🔴 AMPLÍA cuándo el grant vale, nunca lo debilita hacia main):
+#   antes, un destino VACÍO por fallo de ENTORNO (PATH/red/timeout) hacía que el archivo NI SE LEYERA — un
+#   fallo de ENTORNO revocaba una autorización que el usuario YA escribió a disco. Eso viola la norma dura
+#   "re-citar un OK real es legítimo" y le pide al usuario repetir algo que ya dio. Ahora: destino vacío
+#   TAMBIÉN consulta el grant, SIEMPRE que NINGUNA línea 'USUARIO:' de la ventana traiga léxico de release
+#   (_lexico_release_en_ventana, la MISMA cerca que usa el piso de main) — así JAMÁS cuela un release a main
+#   por esta vía: un grant de scope=merge-develop no autoriza main, y sin léxico de release el destino
+#   desconocido no puede ser un release consciente. Si SÍ hay léxico de release, decide el juez (que aplica
+#   el fail SEGURO: destino incierto + lenguaje de release → trata como main, el gate estricto).
+if [ "$destino" = "develop" ] || { [ -z "$destino" ] && ! _lexico_release_en_ventana "$recent"; }; then
   AUTH_FILE="$TARGET_ROOT/.claude/memory/autorizaciones-vigentes.local.md"
   if [ -f "$AUTH_FILE" ]; then
     now_epoch=$(date +%s)

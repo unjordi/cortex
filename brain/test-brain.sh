@@ -968,6 +968,16 @@ USUARIO: ok gracias')" = DENY ] \
     && ok "piso-main: destino master + 'libera a master' → ALLOW" || bad "piso-main: bloqueó un release LEGÍTIMO a master"
   [ "$(pmain master 'USUARIO: haz el release a master')" = ALLOW ] \
     && ok "piso-main: destino master + 'release a master' → ALLOW" || bad "piso-main: bloqueó 'release a master'"
+  # M5 (auditoría 2026-09-15 §3.5, 🔴 APRIETA): destino VACÍO/DESCONOCIDO (consulta caída por PATH/red/
+  # timeout) TAMBIÉN pasa por el piso — antes el comentario decía "el vacío lo cubre el fail-seguro del
+  # LLM", pero el LLM es justo el componente que el propio código admite que falla en el 'mergea' pelón a
+  # main. Con destino desconocido, el gate MÁS ESTRICTO (main) debe ganar.
+  [ "$(pmain '' 'USUARIO: mergealo ya')" = DENY ] \
+    && ok "M5: destino DESCONOCIDO + ALLOW + 'mergealo ya' (sin release) → piso override a DENY" \
+    || bad "M5: el piso NO frenó un release-potencial con destino desconocido y sin lenguaje de release"
+  [ "$(pmain '' 'USUARIO: libera el 999 a main, es el release')" = ALLOW ] \
+    && ok "M5: destino DESCONOCIDO + ALLOW + lenguaje de release EXPLÍCITO → pasa (el piso no aplasta un release legítimo)" \
+    || bad "M5: el piso bloqueó un release legítimo con destino desconocido pese al lenguaje de release"
 )
 
 # ── VETO DE CITA VERIFICADA + PARSEO POR CENTINELA (capa 1+2, DETERMINISTA sin red) · juez EMPODERADO 2026-08 ──
@@ -1509,6 +1519,21 @@ mock_cm_glab develop
 is_deny "$(cm 'glab mr merge 65 --squash --yes' DENY)" \
   && ok "cmd b1f: sin archivo de grants → deny normal (sin cambios de baseline)" \
   || bad "cmd b1f: sin archivo el guard dejó de frenar"
+# (6) M6 (auditoría 2026-09-15 §3.6, 🔴 AMPLÍA): grant VIGENTE + destino DESCONOCIDO (comando de merge SIN
+#     id numérico → acg_mrid vacío → acg_destino_de_mr no puede resolver, DESCONOCIDO:SIN-MRID) + SIN
+#     léxico de release en la ventana → el grant SE CONSULTA y pasa. Antes: el `if [ "$destino" = develop ]`
+#     hacía que el archivo NI SE LEYERA con destino vacío → un fallo de entorno revocaba una autorización
+#     que el usuario YA escribió a disco.
+printf -- '- scope=merge-develop vence_epoch=%s vence="+1h" cita="ok, sigue" registrada=hoy\n' "$(( $(date +%s) + 3600 ))" > "$AUTHF"
+is_silent "$(cm 'glab mr merge --yes' DENY 'ok, sigue')" \
+  && ok "M6: grant vigente + destino DESCONOCIDO + SIN léxico de release → el grant SE CONSULTA y pasa" \
+  || bad "M6: un destino desconocido revocó (sin ni leer) un grant vigente"
+# (7) MISMO grant vigente, pero la ventana SÍ trae léxico de release → la CERCA de seguridad gana: el grant
+#     NUNCA decide (no cubre main); pasa al juez (mockeado DENY aquí) → freno. Así M6 jamás cuela un release
+#     a main por esta vía, aunque el destino real fuera 'develop' y la consulta simplemente haya fallado.
+is_deny "$(cm 'glab mr merge --yes' DENY 'libera esto a main, es el release')" \
+  && ok "M6: grant vigente + destino DESCONOCIDO + CON léxico de release → la cerca lo excluye, decide el juez (freno)" \
+  || bad "M6: el grant coló un posible release a main con destino desconocido (la cerca de release no frenó)"
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
 rm -rf "$CMROOT"
 

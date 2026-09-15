@@ -435,12 +435,24 @@ acg_destino_explicito_del_comando() {   # $1=comando → rama destino | vacío
 #    (verificado: `ev_de()`/el registrador de hooks no emite ese campo), así que NINGÚN hook de esta
 #    familia tiene un timeout EXTERNO que lo mate — la única protección real es este timeout INTERNO.
 
-# Devuelve el destino por stdout (vacío si no se pudo resolver → el consumidor aplica SU fail-policy:
-# confirmar trata vacío como develop = pide OK; squash trata !develop = no fuerza, para no aplastar un
-# release por no resolver). Requiere jq (sin jq devuelve vacío).
+# ── M3 (auditoría 2026-09-15 §3.3/§4.2/§4.3): ACG_DEST_CONF — el destino deja de ser "rana o vacío" y pasa
+# a traer, además, la CONFIANZA con que se resolvió. Antes "fuera de alcance" (rama personal, repo
+# personal) y "no pude resolver" (parseo/red/PATH/dir) colapsaban en el MISMO vacío silencioso (§4.2) →
+# de ahí salían a la vez el FP dominante (gate que frena por fallo de entorno, §3.3) y el FN dominante
+# (guard que asume mal, §3.4). Ahora TODO consumidor puede distinguir "no aplica" (rama resuelta que no es
+# develop/main) de "sí aplica pero no sé cuál" (DESCONOCIDO:<motivo>), y M4/M5/M6/M8 leen ese motivo en vez
+# de adivinarlo. Motivos declarados: SIN-CLI (no jq) · DIR-IRRESOLUBLE (target_dir no existe) · SIN-MRID
+# (no se ancló ningún id de MR/PR) · SLUG-OPACO (--repo "$VAR" Y el remoto local tampoco resuelve, M9) ·
+# SIN-RED (ni gh ni glab alcanzables en el PATH) · TIMEOUT (la consulta corrió y no volvió a tiempo/vacía).
+# acg__destino_de_mr_full(cmd, pcwd) → DOS líneas por stdout: (1) destino | vacío  (2) CONF, uno de
+# EXPLICITO|API|CACHE-DE-CREACION|DESCONOCIDO:<motivo>. Único sitio que TOCA la caché (evita que el
+# resolvedor de destino y el de confianza diverjan, el mismo defecto de sustrato que motivó este dictamen).
+# Cachea las DOS líneas juntas: recomputar la confianza de un resultado YA resuelto es un cache-hit (no
+# cuesta una 2ª llamada de red) — así `acg_destino_de_mr` (retro-compat, 1 línea) y `acg_destino_conf`
+# (nueva) pueden llamarse por separado sin duplicar trabajo ni divergir.
 ACG_MR_TIMEOUT="${ACG_MR_TIMEOUT:-6}"
-acg_destino_de_mr() {   # $1=comando  $2=payload_cwd(opcional)
-  local raw="$1" pcwd="${2:-}" u tool repo mrid key cache dest dir
+acg__destino_de_mr_full() {   # $1=comando  $2=payload_cwd(opcional) → 2 líneas: destino \n CONF
+  local raw="$1" pcwd="${2:-}" u tool repo mrid key cache cache_c dest dir out
   # (b) PREFERIDO — destino EXPLÍCITO del PROPIO comando (--base/--target-branch): SIN red, SIN gh/glab,
   # SIN jq. Sortea el modo de falla (a): en un launch GUI de Claude Code el subproceso-hook hereda el PATH
   # MÍNIMO de launchd (/usr/bin:/bin:…), donde jq SÍ está (/usr/bin/jq → el guard corre y gatea) pero gh/glab
@@ -448,32 +460,61 @@ acg_destino_de_mr() {   # $1=comando  $2=payload_cwd(opcional)
   # legítimos. (Auth NO es la causa: gh-keyring y glab-file autentican bien desde un subproceso CUANDO están
   # en el PATH.) Si el destino NO viene en el comando, se cae al lookup por API de abajo (requiere jq + CLI).
   dest=$(acg_destino_explicito_del_comando "$raw")
-  [ -n "$dest" ] && { printf '%s' "$dest"; return 0; }
-  command -v jq >/dev/null 2>&1 || return 0
+  if [ -n "$dest" ]; then printf '%s\nEXPLICITO\n' "$dest"; return 0; fi
+  if ! command -v jq >/dev/null 2>&1; then printf '\nDESCONOCIDO:SIN-CLI\n'; return 0; fi
+  dir=$(acg_target_dir "$raw" "$pcwd")   # cwd de la consulta: el dir que el comando REALMENTE toca
+  if [ -z "$dir" ] || [ ! -d "$dir" ]; then printf '\nDESCONOCIDO:DIR-IRRESOLUBLE\n'; return 0; fi
   u=$(acg_despoja_comillas "$raw")
   if printf '%s' "$u" | grep -qE 'glab(\.exe)?[[:space:]]+mr'; then tool=glab; else tool=gh; fi  # (\.exe)?: binario Windows (H-R9-01)
+  mrid=$(acg_mrid "$u")
+  if [ -z "$mrid" ]; then printf '\nDESCONOCIDO:SIN-MRID\n'; return 0; fi
   # Repo objetivo por PRECEDENCIA (--repo/-R > remoto del dir objetivo: -C > cd > cwd > PROJECT_DIR). Antes
   # el fallback leía SIEMPRE el remoto de CLAUDE_PROJECT_DIR → resolvía el destino del repo equivocado.
   repo=$(acg_target_remote "$raw" "$pcwd")
-  dir=$(acg_target_dir "$raw" "$pcwd")   # cwd de la consulta: el dir que el comando REALMENTE toca
-  mrid=$(acg_mrid "$u")
-  [ -n "$mrid" ] || return 0
+  # M9: un --repo OPACO ($VAR) que ADEMÁS no resuelve al remoto local (repo git sin 'origin', o el dir no es
+  # un repo) es SLUG-OPACO de verdad — no "otro repo", pero tampoco uno que podamos consultar.
+  if [ -z "$repo" ] && [ "$(acg_repo_explicito "$raw")" = "OPACO" ]; then printf '\nDESCONOCIDO:SLUG-OPACO\n'; return 0; fi
   # La clave del caché incluye el DIR cuando el slug del remoto sale vacío: si no, dos repos distintos con
   # slug irresoluble compartían la MISMA entrada de caché y uno heredaba la base del otro.
   key=$(printf '%s' "${repo:-$dir}|${tool}|${mrid}" | sed 's/[^A-Za-z0-9]/_/g')
   cache="${TMPDIR:-/tmp}/acg-mrdest-${key}"
   if [ -f "$cache" ]; then cat "$cache"; return 0; fi
+  # CACHE-DE-CREACION (§4.3, "el hallazgo que desatora todo"): si un `pr create --base X`/`mr create
+  # --target-branch X` de ESTE MR quedó cacheado por (repo,tool,mrid) — lo escribe otro proceso al crear el
+  # MR, cuando el id YA es conocido — se consume SIN red. Carril opt-in: si el archivo no existe (nadie lo
+  # escribió todavía), simplemente no aporta nada y se sigue al lookup por API de abajo.
+  cache_c="${TMPDIR:-/tmp}/acg-mrdest-creacion-${key}"
+  if [ -f "$cache_c" ]; then
+    dest=$(cat "$cache_c" 2>/dev/null)
+    if [ -n "$dest" ]; then
+      printf '%s\nCACHE-DE-CREACION\n' "$dest" > "$cache" 2>/dev/null
+      cat "$cache"; return 0
+    fi
+  fi
+  command -v "$tool" >/dev/null 2>&1 || { printf '\nDESCONOCIDO:SIN-RED\n'; return 0; }
   if [ "$tool" = glab ]; then
-    dest=$(acg__run_en_dir "$dir" "$ACG_MR_TIMEOUT" glab api "projects/:id/merge_requests/$mrid" ${repo:+-R "$repo"} 2>/dev/null | jq -r '.target_branch // empty' 2>/dev/null)
+    out=$(acg__run_en_dir "$dir" "$ACG_MR_TIMEOUT" glab api "projects/:id/merge_requests/$mrid" ${repo:+-R "$repo"} 2>/dev/null | jq -r '.target_branch // empty' 2>/dev/null)
   else
-    dest=$(acg__run_en_dir "$dir" "$ACG_MR_TIMEOUT" gh pr view "$mrid" ${repo:+-R "$repo"} --json baseRefName -q .baseRefName 2>/dev/null)
+    out=$(acg__run_en_dir "$dir" "$ACG_MR_TIMEOUT" gh pr view "$mrid" ${repo:+-R "$repo"} --json baseRefName -q .baseRefName 2>/dev/null)
   fi
-  if [ -n "$dest" ]; then
-    printf '%s' "$dest" > "$cache" 2>/dev/null
-    printf '%s' "$dest"
+  if [ -n "$out" ]; then
+    printf '%s\nAPI\n' "$out" > "$cache" 2>/dev/null
+    cat "$cache"; return 0
   fi
+  printf '\nDESCONOCIDO:TIMEOUT\n'
   return 0
 }
+
+# Devuelve el destino por stdout (vacío si no se pudo resolver → el consumidor aplica SU fail-policy:
+# confirmar trata vacío como develop = pide OK; squash trata !develop = no fuerza, para no aplastar un
+# release por no resolver). Requiere jq (sin jq devuelve vacío). RETRO-COMPAT: mismo contrato de SIEMPRE
+# (1 línea, sin newline final) — es un wrapper de acg__destino_de_mr_full que descarta la CONF.
+acg_destino_de_mr() { acg__destino_de_mr_full "$1" "${2:-}" | sed -n '1p'; }
+
+# M3: la CONFIANZA con que se resolvió el ÚLTIMO acg_destino_de_mr del MISMO (cmd,pcwd) — EXPLICITO | API |
+# CACHE-DE-CREACION | DESCONOCIDO:<motivo>. Comparte caché con acg_destino_de_mr (cache-hit, sin 2ª llamada
+# de red). El consumidor la usa para decidir POLÍTICA (M4), no solo el valor del destino.
+acg_destino_conf() { acg__destino_de_mr_full "$1" "${2:-}" | sed -n '2p'; }
 
 # ── VALIDACIÓN DE LA CALIDAD DEL MENSAJE DE SQUASH (merge-squash-guard) ──────────────────────────────────
 # El squash-guard fuerza `--squash`, pero un squash con mensaje POBRE (título default de la plataforma
