@@ -96,9 +96,22 @@ if printf '%s' "$cmd" | grep -qE "$SQUASH_RE"; then
   if [ -z "$_deny" ] && acg_msg_editorializa "$_msg"; then
     _deny="el mensaje EDITORIALIZA el PROCESO (\"se decidió\" / \"tras analizar\" / \"el asistente\" / \"se identificó que\" / \"en esta sesión\" / \"se procedió a\"). El resumen debe describir QUÉ HACE EL CÓDIGO ahora, no CÓMO se llegó a él."
   fi
-  # (3a profundidad + 2a trazabilidad) SOLO LITERAL: el agente TIPEÓ el mensaje inline (puede añadir la
-  # línea `Rama:`/`MR:` y prosa). El título AUTO del MR es corto por naturaleza → no se le exige nada de esto.
-  if [ -z "$_deny" ] && [ "$_clase" = LITERAL ]; then
+  # M8 (auditoría 2026-09-15 §3.9): con `gh`, `--subject`/`-t` fija el TÍTULO — la convención del equipo (y
+  # el propio mensaje de deny de este guard) pone el RESUMEN CURADO en `--body`. Si el comando trae un
+  # `--body`/`-F`/`--body-file` con ALGO (aunque sea OPACO, `--body "$(cat resumen.md)"`, el caso
+  # recomendado por `_rehaz_sugerido`), la profundidad/trazabilidad NO se le exige al título — el título es
+  # corto por naturaleza cuando el resumen real vive en el body. El piso anti-basura y la editorialización
+  # (arriba) SIGUEN aplicando al título (nadie debe poner ahí un default de plataforma o basura).
+  _gh_tiene_body=0
+  if printf '%s' "$cmd" | grep -qE 'gh(\.exe)?[[:space:]]+pr' \
+     && printf '%s' "$cmd" | grep -qE '(^|[[:space:]])(--body|-F|--body-file)([[:space:]]+|=)[^[:space:]]'; then
+    _gh_tiene_body=1
+  fi
+  # (3a profundidad + 2a trazabilidad) SOLO LITERAL sin body separado: el agente TIPEÓ el mensaje inline
+  # (puede añadir la línea `Rama:`/`MR:` y prosa). El título AUTO del MR es corto por naturaleza → no se le
+  # exige nada de esto; y (M8) un título `gh` con `--body` propio tampoco — la vara se movería al body, que
+  # es OPACO en el caso recomendado y por eso no se puede verificar aquí (fail-open, igual que UNVERIFICABLE).
+  if [ -z "$_deny" ] && [ "$_clase" = LITERAL ] && [ "$_gh_tiene_body" = 0 ]; then
     if acg_msg_es_superficial "$_msg"; then
       _deny="el resumen del slice es DEMASIADO CORTO (< 12 palabras) para describir el cambio neto y su porqué. Escríbelo como prosa que diga qué hace el código ahora y por qué."
     elif acg_msg_falta_traza "$_msg"; then

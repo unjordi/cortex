@@ -123,7 +123,7 @@ VEREDICTO: ALLOW
 VEREDICTO: DENY"
   # Llamada REAL vía la lib común (retrieval portable + curl que captura http_code + reintento 1× en 401).
   # Si vuelve VACÍA, mapeo el ESTADO de la lib a un UNAVAILABLE_* específico que el CUERPO del hook traduce
-  # a un mensaje ACCIONABLE (NOTOKEN→web de GitLab · EXPIRED→reintenta · NET→genérico) — SIEMPRE fail-safe DENY.
+  # a un mensaje ACCIONABLE (NOTOKEN→cómo conseguir un token · EXPIRED→reintenta · NET→genérico) — SIEMPRE fail-safe DENY.
   _resp=$(_juez_llamar_api "${CLAUDE_MERGE_JUEZ_MODEL:-claude-haiku-4-5-20251001}" 768 "${CLAUDE_MERGE_JUEZ_TIMEOUT:-25}" "$temp" "$prompt")
   _estado=$(printf '%s\n' "$_resp" | head -1)      # línea 1 = estado (subshell-safe; NO el global _JUEZ_ESTADO)
   txt=$(printf '%s\n' "$_resp" | sed '1d')         # resto = texto del assistant
@@ -254,7 +254,7 @@ input=$(cat 2>/dev/null || true)
 # La respuesta DENY se arma con printf (no jq) porque justamente no hay jq; el mensaje es un literal fijo.
 if ! command -v jq >/dev/null 2>&1; then
   if printf '%s' "$input" | grep -qE '(mr[[:space:]]+(merge|accept)|pr[[:space:]]+merge)'; then
-    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"FRENO (sin jq): no puedo verificar la autorización de este merge sin jq instalado, y un merge a develop/main NO pasa sin gate (fail-safe). Instala jq (macOS: brew install jq · Debian/Ubuntu: apt install jq · Windows: winget install jqlang.jq) e reintenta, o integra el MR en la web de GitLab."}}'
+    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"FRENO (sin jq): no puedo verificar la autorización de este merge sin jq instalado, y un merge a develop/main NO pasa sin gate (fail-safe). Instala jq (macOS: brew install jq · Debian/Ubuntu: apt install jq · Windows: winget install jqlang.jq) e reintenta."}}'
   fi
   exit 0
 fi
@@ -397,32 +397,55 @@ if [ "$veredicto" = "ALLOW" ]; then
   exit 0
 fi
 
+# M8 (auditoría 2026-09-15 §3.10): cita del MR-id, UNA sola vez, SIN texto roto cuando viene vacío ("MR
+# ()" — un mrid vacío no significa "no hay MR que integrar": `glab mr merge`/`gh pr merge` SIN id mergean
+# el MR de la rama ACTUAL, un patrón legítimo y común que sigue exigiendo el MISMO gate; lo único que
+# cambia es que no hay un número que citar). acg_es_merge_mr YA confirmó que esto es un merge real.
+if [ -n "$cur_mrid" ]; then _mr_cita=" (MR $cur_mrid)"; else _mr_cita=""; fi
+
 # DENY o UNAVAILABLE_* → freno. El juez SIEMPRE es fail-safe DENY aquí; el ESTADO solo cambia el MENSAJE
-# (más accionable), NUNCA la decisión. UNAVAILABLE_NOTOKEN redirige al carril de la WEB (colega/CI/api-key
-# sin token OAuth); UNAVAILABLE_EXPIRED sugiere reintentar (el CLI refresca el token solo); el resto (NET /
-# 'UNAVAILABLE' pelón del mock / ininteligible) es el genérico de siempre.
+# (más accionable), NUNCA la decisión. M8 (auditoría 2026-09-15 §3.11, norma dura anti-vein-popper): se
+# RETIRARON las 4 menciones de "integra el MR en la web de GitLab" — un guard que frena en CLI se SATISFACE
+# (arreglando la causa) o se ARREGLA (afinando el detector), JAMÁS se rodea mandando a la persona a la web.
+# Los 3 casos de abajo (NOTOKEN/EXPIRED/red) ya traen su salida CONFORME sin necesitar la web.
 if [ "$veredicto" = "UNAVAILABLE_NOTOKEN" ]; then
-  r="FRENO (sin token OAuth para el juez de merge): esta máquina no tiene un token OAuth de Claude alcanzable (¿api-key, CI, o sesión sin login de suscripción?), así que el juez de autorización por CLI NO puede correr aquí. NO abro el merge (fail-safe). Carriles válidos:
-  · Integra ESTE MR en la WEB de GitLab — es el carril NORMAL para develop/main (merge coordinado server-side), no un workaround.
-  · O corre 'claude setup-token' (token de larga vida) / exporta CLAUDE_CODE_OAUTH_TOKEN y reintenta."
+  r="FRENO (sin token OAuth para el juez de merge): esta máquina no tiene un token OAuth de Claude alcanzable (¿api-key, CI, o sesión sin login de suscripción?), así que el juez de autorización por CLI NO puede correr aquí. NO abro el merge (fail-safe). Corre 'claude setup-token' (token de larga vida) / exporta CLAUDE_CODE_OAUTH_TOKEN y reintenta."
 elif [ "$veredicto" = "UNAVAILABLE_EXPIRED" ]; then
-  r="FRENO (token OAuth expirado): tu token de Claude fue RECHAZADO (401) incluso tras un reintento — el CLI lo refresca solo en ~un momento. REINTENTA el merge en unos segundos; si persiste, corre 'claude setup-token' o integra el MR en la web de GitLab. (Fail-safe: no abro el merge sin poder consultar al juez.)"
+  r="FRENO (token OAuth expirado): tu token de Claude fue RECHAZADO (401) incluso tras un reintento — el CLI lo refresca solo en ~un momento. REINTENTA el merge en unos segundos; si persiste, corre 'claude setup-token'. (Fail-safe: no abro el merge sin poder consultar al juez.)"
 elif [ "${veredicto#UNAVAILABLE}" != "$veredicto" ]; then
-  r="FRENO (juez no disponible): no pude consultar el juez de autorización de merge (¿sin red, timeout, o respuesta ininteligible?). Fail-safe conservador: reintenta, o integra el MR en la web de GitLab. (Override de modelo/timeout: CLAUDE_MERGE_JUEZ_MODEL / CLAUDE_MERGE_JUEZ_TIMEOUT.)"
+  r="FRENO (juez no disponible): no pude consultar el juez de autorización de merge (¿sin red, timeout, o respuesta ininteligible?). Fail-safe conservador: reintenta. (Override de modelo/timeout: CLAUDE_MERGE_JUEZ_MODEL / CLAUDE_MERGE_JUEZ_TIMEOUT.)"
 elif [ "$destino" = "main" ] || [ "$destino" = "master" ]; then
-  r="FRENO (RELEASE a $destino): el juez no encontró autorización EXPRESA de RELEASE para ESTE release (MR $cur_mrid). $destino es release-only — pide 'libera/release a $destino' explícito. Los releases van SIN squash (conservan historia)."
+  r="FRENO (RELEASE a $destino): el juez no encontró autorización EXPRESA de RELEASE para este release${_mr_cita}. $destino es release-only — pide 'libera/release a $destino' explícito. Los releases van SIN squash (conservan historia)."
 elif [ "$destino" = "develop" ]; then
-  r="FRENO (definición de LISTO): el juez no encontró tu confirmación EXPRESA para integrar ESTE MR ($cur_mrid) a develop.
-  (a) Dámela clara para ESTE MR (p. ej. 'mergea el $cur_mrid a develop').
+  r="FRENO (definición de LISTO): el juez no encontró tu confirmación EXPRESA para integrar este MR${_mr_cita} a develop.
+  (a) Dámela clara para ESTE MR (p. ej. 'mergea esto a develop').
   (b) O itera sin fricción en tu mini/rama de integración con 'git merge' LOCAL (no pasa por este candado).
 Recuerda: verde técnico != LISTO; 'sigue/avanza' NO autoriza el merge a develop."
 else
-  # destino INDETERMINADO (la consulta de la base falló en el entorno del hook): no sé si es develop o main.
-  # El juez decidió con el fail SEGURO (ante duda, reglas de main). El mensaje cubre AMBOS destinos.
-  r="FRENO (definición de LISTO): no pude CONFIRMAR el destino del MR $cur_mrid (la consulta de la base falló en el entorno del hook) y el juez no halló autorización clara para el destino que infirió del contexto.
-  · Si integras a develop: dilo claro (p. ej. 'mergea el $cur_mrid a develop').
-  · Si es un RELEASE a main: usa lenguaje de release explícito (p. ej. 'libera / release a main el $cur_mrid').
+  # M8 (auditoría 2026-09-15 §3.10/§4.2, sobre M3): destino DESCONOCIDO — antes esta rama SIEMPRE pedía
+  # "dilo más claro", aunque la causa real fuera un fallo de ENTORNO (sin jq/gh/glab/red/dir) que repetir
+  # la autorización NO arregla. acg_destino_conf (M3) declara el MOTIVO real; si es de entorno, el mensaje
+  # dice la causa + su arreglo en vez de pedirle al usuario que se repita. Si el motivo es genuinamente de
+  # LENGUAJE (SIN-MRID: un merge del branch actual sin id, el juez no pudo inferir el destino de la charla),
+  # sí tiene sentido pedir que lo diga más claro — ahí se conserva ese pedido.
+  _conf=$(acg_destino_conf "$cmd" "$pcwd")
+  _motivo="${_conf#DESCONOCIDO:}"
+  case "$_motivo" in
+    SIN-CLI)         _causa="no puedo confirmar el destino${_mr_cita}: jq no está en el PATH de este proceso." ;;
+    SIN-RED)         _causa="no puedo confirmar el destino${_mr_cita}: ni gh ni glab están alcanzables en el PATH de este proceso." ;;
+    TIMEOUT)         _causa="no puedo confirmar el destino${_mr_cita}: la consulta a gh/glab corrió pero no respondió a tiempo (¿sin red, o la API está lenta?)." ;;
+    DIR-IRRESOLUBLE) _causa="no puedo confirmar el destino${_mr_cita}: no ubico el directorio del repo que este comando REALMENTE toca." ;;
+    SLUG-OPACO)      _causa="no puedo confirmar el destino${_mr_cita}: el --repo es una variable de shell y el remoto local tampoco resolvió." ;;
+    *)               _causa="" ;;   # SIN-MRID u otro: no es un fallo de entorno resoluble por Claude — cae al mensaje de lenguaje de abajo
+  esac
+  if [ -n "$_causa" ]; then
+    r="FRENO (definición de LISTO): $_causa Repetir la autorización NO va a destrabar esto — es un problema de ENTORNO, no de permiso. Arréglalo (instala/expón la herramienta que falta, o corre desde el repo/dir correcto) y reintenta. Mientras tanto, sigue disponible iterar en tu mini/rama con 'git merge' LOCAL (no pasa por este candado)."
+  else
+    r="FRENO (definición de LISTO): no pude confirmar el destino${_mr_cita} (la consulta de la base falló en el entorno del hook) y el juez no halló autorización clara para el destino que infirió del contexto.
+  · Si integras a develop: dilo claro (p. ej. 'mergea esto a develop').
+  · Si es un RELEASE a main: usa lenguaje de release explícito (p. ej. 'libera / release a main esto').
   · O itera en tu mini/rama con 'git merge' LOCAL (no pasa por este candado)."
+  fi
 fi
 jq -n --arg r "$r" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
 exit 0

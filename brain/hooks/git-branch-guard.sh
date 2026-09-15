@@ -46,12 +46,15 @@ block() {
   exit 0
 }
 
+# M8 (auditoría 2026-09-15 §3.11, norma dura anti-vein-popper): se RETIRÓ "normalmente el humano en la web
+# de GitLab" de ambos mensajes — un guard que frena en CLI se SATISFACE (con OK súper-explícito, lo vigila
+# confirmar-merge-develop) o se ARREGLA, JAMÁS se rodea mandando a la persona a hacerlo a mano en la web.
 if acg_push_toca_base "$cmd" "$pcwd"; then
-  block "NORMA DE GIT (ley interna): no se hace push a main/develop (incluye el push PELÓN estando parado EN develop/main). NO reintentes esto. Haz el cambio por el flujo: ramita (feat/fix/chore/docs) desde develop → commit → push de la ramita → MR/PR → merge a develop. A main solo llega un release deliberado: normalmente el humano en la web de GitLab; por CLI solo con OK súper-explícito (lo vigila confirmar-merge-develop)."
+  block "NORMA DE GIT (ley interna): no se hace push a main/develop (incluye el push PELÓN estando parado EN develop/main). NO reintentes esto. Haz el cambio por el flujo: ramita (feat/fix/chore/docs) desde develop → commit → push de la ramita → MR/PR → merge a develop. A main solo llega un release deliberado, con OK súper-explícito por CLI (lo vigila confirmar-merge-develop)."
 fi
 
 if acg_merge_menciona_base "$cmd"; then
-  block "NORMA DE GIT (ley interna): este comando nombra un merge directo a develop/main. NO lo hagas así. El trabajo se integra por el flujo: ramita → MR → develop (con OK expreso, lo vigila confirmar-merge-develop). A main = release deliberado: normalmente el humano en la web de GitLab; por CLI solo con OK súper-explícito (también confirmar-merge-develop). NO reintentes el merge que nombra la base."
+  block "NORMA DE GIT (ley interna): este comando nombra un merge directo a develop/main. NO lo hagas así. El trabajo se integra por el flujo: ramita → MR → develop (con OK expreso, lo vigila confirmar-merge-develop). A main = release deliberado, con OK súper-explícito por CLI (también confirmar-merge-develop). NO reintentes el merge que nombra la base."
 fi
 
 exit 0

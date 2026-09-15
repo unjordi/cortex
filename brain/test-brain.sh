@@ -302,6 +302,16 @@ is_silent "$(msj 'gh pr merge 56 --squash --subject "agrega validacion de stock 
   && ok "msg LITERAL gh: --subject con sustancia + traza → pasa (sin FP)" || bad "msg LITERAL gh: bloqueó un subject legítimo con traza"
 is_silent "$(msj 'gh pr merge 57 --squash --fill')" \
   && ok "msg UNVERIFICABLE gh: --fill (subject derivado de commits) → pasa" || bad "msg UNVERIFICABLE gh: bloqueó un --fill"
+# M8 (auditoría 2026-09-15 §3.9): con gh, --subject fija el TÍTULO; la convención pone el RESUMEN CURADO en
+# --body. Un --subject CORTO (sin traza, <12 palabras) con un --body separado (aunque OPACO, la forma que
+# el propio hook sugiere) NO debe forzar la vara de profundidad/trazabilidad sobre el título.
+is_silent "$(msj 'gh pr merge 90 --squash --subject "fix: IVA" --body "$(cat resumen.md)"')" \
+  && ok "M8: gh --subject CORTO + --body separado (opaco) → pasa (la vara se mueve al body, no al título)" \
+  || bad "M8: exigió profundidad/traza en un título gh que tiene --body separado"
+# Control: el MISMO --subject corto SIN --body → sigue exigiendo profundidad/traza (M8 no aflojó el default).
+is_deny "$(msj 'gh pr merge 91 --squash --subject "fix: IVA"')" \
+  && ok "M8 control: gh --subject CORTO SIN --body → sigue exigiendo profundidad (no aflojó)" \
+  || bad "M8 control: aflojó la vara de profundidad para un --subject corto sin --body"
 
 # ── AUTO (sin flag de mensaje → el squash toma el TÍTULO del MR/PR, resuelto vía API) ──
 mock_glab_full develop "Merge pull request #7 from x/y"
@@ -397,7 +407,13 @@ git -C "$GBREPO" branch -M develop >/dev/null 2>&1
 # HOME sin copia global → corre la copia del repo (no cede por dedupe)
 gb() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | CLAUDE_PROJECT_DIR="$GBREPO" HOME="$GBHOME" bash "$HOOKS/git-branch-guard.sh"; }
 git -C "$GBREPO" checkout -q develop >/dev/null 2>&1
-printf '%s' "$(gb 'git push')"        | grep -q '"deny"' && ok "gbg H1: 'git push' pelón en develop → deny"          || bad "gbg H1: push pelón en develop NO bloqueó"
+out_gbpush="$(gb 'git push')"
+printf '%s' "$out_gbpush"        | grep -q '"deny"' && ok "gbg H1: 'git push' pelón en develop → deny"          || bad "gbg H1: push pelón en develop NO bloqueó"
+# M8 (auditoría 2026-09-15 §3.11, norma dura anti-vein-popper): el mensaje de bloqueo YA NO ofrece "hazlo en
+# la web de GitLab" como escape — se satisface (OK súper-explícito por CLI) o se arregla, nunca se rodea.
+printf '%s' "$out_gbpush" | grep -qi 'web de GitLab' \
+  && bad "M8: git-branch-guard sigue ofreciendo 'la web de GitLab' como escape (norma anti-vein-popper)" \
+  || ok "M8: git-branch-guard NO ofrece la web como escape del bloqueo"
 printf '%s' "$(gb 'git push --force')"| grep -q '"deny"' && ok "gbg H1: 'git push --force' pelón en develop → deny"  || bad "gbg H1: push --force pelón NO bloqueó"
 printf '%s' "$(gb 'git push origin HEAD')" | grep -q '"deny"' && ok "gbg H1: 'git push origin HEAD' en develop → deny" || bad "gbg H1: push HEAD en develop NO bloqueó"
 git -C "$GBREPO" checkout -q -b feat/x >/dev/null 2>&1
@@ -1197,7 +1213,7 @@ chmod +x "$JCFIX/curl401/curl"
     || bad "juez-comun (a): el merge no recuperó tras el 401 (got='$got')"
 )
 
-# (c) política SIN token: merge → UNAVAILABLE_NOTOKEN (no genérico), y a nivel hook → DENY + REDIRIGE a la web
+# (c) política SIN token: merge → UNAVAILABLE_NOTOKEN (no genérico), y a nivel hook → DENY + carril CONFORME (setup-token)
 (
   export PATH="$JCFIX/nosec:$PATH"; export CLAUDE_CONFIG_DIR="$JCFIX/empty"; unset CLAUDE_CODE_OAUTH_TOKEN
   _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/confirmar-merge-develop.sh"; unset CLAUDE_MERGE_JUEZ_MOCK CLAUDE_MERGE_JUEZ_MOCK_RAW
@@ -1211,9 +1227,12 @@ git -C "$JCREPO" init -q >/dev/null 2>&1; git -C "$JCREPO" remote add origin git
 printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"mergea el 5 a develop"}]}}' > "$JCFIX/tx.jsonl"
 out_nt="$(jq -nc --arg c 'glab mr merge 5 --squash' --arg t "$JCFIX/tx.jsonl" '{tool_input:{command:$c},transcript_path:$t}' \
   | env -u CLAUDE_CODE_OAUTH_TOKEN PATH="$JCFIX/stubs:$PATH" HOME="$JCFIX/home" CLAUDE_CONFIG_DIR="$JCFIX/empty" CLAUDE_PROJECT_DIR="$JCREPO" bash "$HOOKS/confirmar-merge-develop.sh")"
-{ is_deny "$out_nt" && printf '%s' "$out_nt" | grep -qi 'web de GitLab'; } \
-  && ok "juez-comun (c): merge SIN token → DENY que REDIRIGE a la web de GitLab (colega/CI/api-key; NO abre el merge)" \
-  || bad "juez-comun (c): merge sin token no dio el mensaje de redirección a la web; got: $out_nt"
+# M8 (auditoría 2026-09-15 §3.11, norma dura anti-vein-popper): YA NO redirige a la web de GitLab (retirado
+# — un guard que frena en CLI se SATISFACE o se ARREGLA, nunca se rodea mandando a la persona a la web);
+# el carril CONFORME que sí ofrece es 'claude setup-token' / CLAUDE_CODE_OAUTH_TOKEN.
+{ is_deny "$out_nt" && ! printf '%s' "$out_nt" | grep -qi 'web de GitLab' && printf '%s' "$out_nt" | grep -qi 'setup-token'; } \
+  && ok "juez-comun (c): merge SIN token → DENY con el carril CONFORME (setup-token), SIN redirigir a la web" \
+  || bad "juez-comun (c): el mensaje sin token no dio el carril conforme o siguió mencionando la web; got: $out_nt"
 # (c) dod SIN token → FAIL-OPEN (es un NAG, no un candado): no atrapa el turno
 cat > "$JCFIX/dodtx.jsonl" <<'DTX'
 {"type":"user","message":{"role":"user","content":[{"type":"text","text":"haz el cambio"}]}}
@@ -1557,6 +1576,30 @@ USUARIO: ¿ya está listo el 240 para merge?" "$H_DEV1"
 else
   ok "cmd LIVE: batería juez-Haiku real SALTADA (corre con CLAUDE_MERGE_JUEZ_LIVE=1 + curl/jq disponibles)"
 fi
+
+# M8 (auditoría 2026-09-15 §3.10/§4.2, sobre M3): destino DESCONOCIDO por fallo de ENTORNO (ni gh ni glab
+# alcanzables) → el mensaje dice la CAUSA REAL + "repetir la autorización NO va a destrabar esto", en vez
+# de pedirle al usuario que "lo diga más claro" (inútil: el problema no es de lenguaje, es de PATH).
+M8ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-m8.XXXXXX")"; M8REPO="$M8ROOT/repo"; M8HOME="$M8ROOT/home"
+mkdir -p "$M8REPO/.claude" "$M8HOME"
+: > "$M8REPO/.claude/repo-compartido"
+git -C "$M8REPO" init -q >/dev/null 2>&1
+git -C "$M8REPO" remote add origin git@gitlab.com:org/repo.git >/dev/null 2>&1
+M8TX="$M8ROOT/tx.jsonl"; printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"mergealo ya"}]}}' > "$M8TX"
+M8NOCLI="$M8ROOT/noclibin"; mkdir -p "$M8NOCLI"
+for _t in bash grep sed cat basename dirname head tail printf awk jq date mktemp tr wc sort cut git; do
+  _p="$(command -v "$_t" 2>/dev/null)"; [ -n "$_p" ] && ln -sf "$_p" "$M8NOCLI/$_t"
+done
+rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
+out_m8="$(jq -nc --arg c 'glab mr merge 42 --yes' --arg t "$M8TX" '{tool_input:{command:$c},transcript_path:$t}' \
+  | PATH="$M8NOCLI" HOME="$M8HOME" CLAUDE_PROJECT_DIR="$M8REPO" ACG_PATH_AUGMENT=0 CLAUDE_MERGE_JUEZ_MOCK=DENY bash "$HOOKS/confirmar-merge-develop.sh")"
+{ is_deny "$out_m8" && printf '%s' "$out_m8" | grep -qi 'ni gh ni glab' && printf '%s' "$out_m8" | grep -qi 'Repetir la autorizaci'; } \
+  && ok "M8: destino DESCONOCIDO por SIN-RED → mensaje da la causa REAL (ni gh ni glab) + 'repetir NO destraba'" \
+  || bad "M8: el mensaje de entorno no citó la causa real o pidió repetir la autorización; got: $out_m8"
+{ ! printf '%s' "$out_m8" | grep -q 'MR ()'; } \
+  && ok "M8: sin mrid resoluble en el flag de destino, el mensaje NO cita 'MR ()' roto" \
+  || bad "M8: el mensaje citó un 'MR ()' roto"
+rm -rf "$M8ROOT"
 
 # ── (b1f) confirmar: AUTORIZACIÓN DURABLE en disco (sobrevive compactaciones) + vocabulario "empuja/mete" ──
 # El grant lo escribe el skill turno-nocturno con la CITA textual del usuario y vence_epoch; SOLO
