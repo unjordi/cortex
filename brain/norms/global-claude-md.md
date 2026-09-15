@@ -211,9 +211,9 @@ se reconstruyó desde cero un mecanismo de ubicaciones que ya existía del sprin
 de memoria un modelo de transportistas que contradecía lo ya investigado.
 
 ## Los tests miden si el código hace lo que DEBE hacer, no si su tooling está bien programado (norma dura)
-La formulación es de unjordi y es el criterio entero: **un test vale por lo que prueba que el código
-HACE**, no por comprobar que su maquinaria está bien escrita. La pregunta correcta no es *"¿el
-programa corre sin tronar?"* sino **"¿hace lo que DEBE hacer, y se niega a hacer lo que NO debe?"**.
+**Que los tests midan si el código hace lo que DEBE hacer, no si su tooling está bien programado.**
+La pregunta correcta no es *"¿el programa corre sin tronar?"* sino **"¿hace lo que DEBE hacer, y se
+niega a hacer lo que NO debe?"**.
 
 **El corte.** Todo lo que verifica la PLOMERÍA —que la función existe, que el archivo se generó, que
 el comando salió con 0, que el mensaje trae cierto texto— mide el tooling. Lo que verifica el
