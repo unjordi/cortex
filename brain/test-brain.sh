@@ -20,15 +20,23 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOKS="$SCRIPT_DIR/hooks"
 INSTALLER="$SCRIPT_DIR/install-brain.sh"
 
-PASS=0; FAIL=0
-ok()   { PASS=$((PASS+1)); printf '  PASS: %s\n' "$1"; }
-bad()  { FAIL=$((FAIL+1)); printf '  FAIL: %s\n' "$1"; }
+# CONTADOR inmune a subshells (auditoría 2026-09-15, Hallazgo #0, CRÍTICO): docenas de bloques de este
+# archivo corren sus aserciones dentro de `( … )` (subshell) — un `ok`/`bad` ahí SÍ imprime su línea, pero
+# el incremento de una variable de shell (`PASS=$((PASS+1))`) ocurre en el PROCESO HIJO y muere con él: el
+# padre nunca se entera. MEDIDO por canario: `PASS=0; ok(){ PASS=$((PASS+1));}; ( ok;ok;ok ); echo $PASS`
+# imprime 0. El resultado que este script IMPRIMÍA subestimaba sistemáticamente cuántos checks pasaban —
+# y, peor, un `bad` dentro de un subshell nunca subía $FAIL: el script podía cerrar en "0 FAIL" (exit 0)
+# con FALLAS reales impresas en pantalla que nadie contaba. Fix: el conteo real vive en un ARCHIVO (un
+# `>>` sobrevive cualquier fork()), no en una variable — inmune a CUALQUIER profundidad de subshell.
+CALLLOG="$(mktemp "${TMPDIR:-/tmp}/brain-test-calllog.XXXXXX")"
+ok()   { printf '  PASS: %s\n' "$1"; printf 'OK\n'  >> "$CALLLOG"; }
+bad()  { printf '  FAIL: %s\n' "$1"; printf 'BAD\n' >> "$CALLLOG"; }
 
 command -v jq >/dev/null 2>&1 || { echo "ERROR: se requiere jq para las pruebas"; exit 1; }
 
 # $HOME falso aislado (se limpia al salir)
 FAKEHOME="$(mktemp -d "${TMPDIR:-/tmp}/brain-test.XXXXXX")"
-cleanup() { rm -rf "$FAKEHOME"; }
+cleanup() { rm -rf "$FAKEHOME" "$CALLLOG"; }
 trap cleanup EXIT
 
 echo "==> cortex test — \$HOME falso: $FAKEHOME"
@@ -687,13 +695,10 @@ echo "== (b1d-m9) M9 (auditoría 2026-09-15 §2.5): --repo \"\$VAR\" es OPACO, n
 # ('"$R"') → la consulta de red fallaba garantizado. (2) el caller que despojaba comillas ANTES de grep
 # (confirmar-merge-develop) veía el valor BORRADO y el grep siguiente capturaba el FLAG SIGUIENTE
 # (--squash) como si fuera el slug del repo — creía que el repo se llamaba "--squash".
-# NOTA DE MECANISMO (hallazgo propio, no pedido por el dictamen): un bloque `( … ok … )` entre paréntesis
-# es un SUBSHELL — el incremento de PASS/FAIL adentro NUNCA llega al contador del padre (verificado:
-# `PASS=0; ok(){ PASS=$((PASS+1));}; ( ok;ok;ok ); echo $PASS` imprime 0). Docenas de bloques de ESTE
-# archivo (acg_mrid, target_dir, …) ya usan ese patrón — sus "PASS:" SÍ se imprimen pero NO suman al total
-# final: el resultado global lleva rato subestimando cuántos checks realmente pasan. Fuera de alcance
-# arreglarlo aquí (arreglo de una sola línea × decenas de sitios, en un archivo que otro agente puede estar
-# tocando); lo reporto y este bloque NUEVO, deliberadamente, NO usa subshell — sourcea la lib inline.
+# El bug de conteo dentro de subshells que este comentario documentaba (un `( … ok … )` no sumaba a
+# PASS/FAIL del padre) quedó CERRADO: `ok`/`bad` cuentan por un archivo (CALLLOG, arriba), inmune a
+# cualquier profundidad de subshell — auditoría 2026-09-15, Hallazgo #0. Este bloque sigue sin usar
+# subshell (sourcea la lib inline) por costumbre, no por necesidad.
 . "$HOOKS/analizar-comando-git.sh"
 [ "$(acg_repo_explicito 'gh pr merge 12 --repo org/proyecto --squash')" = "org/proyecto" ] \
   && ok "M9: --repo con slug LITERAL → se lee tal cual" || bad "M9: no leyó el slug literal"
@@ -7455,5 +7460,7 @@ rm -rf "$H2CODE" "$H2HOME"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+PASS=$(grep -c '^OK$'  "$CALLLOG" 2>/dev/null); PASS="${PASS:-0}"
+FAIL=$(grep -c '^BAD$' "$CALLLOG" 2>/dev/null); FAIL="${FAIL:-0}"
 echo "==> resultado: $PASS PASS · $FAIL FAIL"
 [ "$FAIL" -eq 0 ]
