@@ -1000,9 +1000,6 @@ PlasmoidItem {
                 { emoji: "🖥️", name: "entorno-maquina-guard",     desc: "commit de algo machine-specific al .claude/memory/ del repo → aviso",
                   event: "PreToolUse · Bash",
                   detail: "Mecanismo de la norma 'el entorno de MÁQUINA vive GLOBAL, jamás en un repo': si un `git commit` mete al .claude/memory/ del repo algo específico-de-esta-máquina (un entorno-maquina.md, aliases personales, rutas de tu $HOME, 'Rosetta' sin condicional) avisa —no bloquea—, porque viaja por git y miente al clonar en otra compu/OS. Eso vive SOLO en la memoria GLOBAL per-máquina (entorno-esta-maquina.md); el repo deja lo portable/condicional." },
-                { emoji: "🕰️", name: "rama-vieja",                desc: "push de ramita muy atrás de develop → aviso (no bloquea)",
-                  event: "PreToolUse · Bash",
-                  detail: "Antes de un push, si la ramita está muchos commits detrás de origin/develop (base vieja → el MR trae ruido/conflictos), avisa —no bloquea— y sugiere rebasar. Umbral configurable (RAMA_VIEJA_UMBRAL, def 40)." },
                 { emoji: "📝", name: "delegacion-registrar",      desc: "registra el consentimiento (materializa el “pregunta 1×”)",
                   event: "PostToolUse · Task",
                   detail: "Tras un consentimiento aprobado lo registra para no volver a preguntar (1× por máquina o por workflow, según el nivel de costo). Materializa el 'pregunta una sola vez'." },
@@ -1161,7 +1158,7 @@ PlasmoidItem {
 
     // Catálogo conocido (mismos conjuntos que BrainState.knownGlobalHooks / knownRepoHooks del Swift).
     // DEBE coincidir con brain/hooks/MANIFEST; lo verifica el drift-check del widget (test-brain.sh).
-    readonly property var brainGlobalHooks: ["git-branch-guard","merge-squash-guard","confirmar-merge-develop","recordar-dashboard","secret-scan","rama-vieja","proteger-arbol","proteger-fuente-cerebro","limite-gasto","delegacion-gate","delegacion-registrar","delegacion-reporte","recordar-orquestar","rehidratar-hilo","aviso-contexto","aviso-drift-cerebro","hud-stale","exportar-sesion-master","checkpoint-mecanico","barrer-ramas","entorno-maquina-guard","no-bypass-deploy"]
+    readonly property var brainGlobalHooks: ["git-branch-guard","merge-squash-guard","confirmar-merge-develop","recordar-dashboard","secret-scan","proteger-arbol","proteger-fuente-cerebro","limite-gasto","delegacion-gate","delegacion-registrar","delegacion-reporte","recordar-orquestar","rehidratar-hilo","aviso-contexto","aviso-drift-cerebro","hud-stale","exportar-sesion-master","checkpoint-mecanico","barrer-ramas","entorno-maquina-guard","no-bypass-deploy"]
     readonly property var brainRepoHooks:   ["sesion-inicio","dod-verificar","recordar-cosechar","recordar-unificar-cerebro"]
 
     // ---------- Pestaña BROKER (idx 6) ----------
