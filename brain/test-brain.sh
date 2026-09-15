@@ -1721,6 +1721,16 @@ printf 'alias ls=eza\n' > "$EMREPO/notas.md"
 git -C "$EMREPO" add notas.md >/dev/null 2>&1
 o="$(emg 'git commit -m x')"
 [ -z "$o" ] && ok "entorno-maquina-guard: archivo fuera de .claude/memory/ → silencio (fuera de alcance)" || bad "entorno-maquina-guard: reaccionó fuera de .claude/memory/; got: $o"
+# M1 (auditoría 2026-09-15 §2.1): el despoje-a-mano se unificó con la lib compartida — un `bash -c "git
+# commit -m x"` ya no evade este aviso (antes lo evadía: el sed a mano trataba TODO lo entrecomillado como
+# dato).
+emreset
+printf 'alias ls=eza\n' > "$EMREPO/.claude/memory/correr-en-local.md"
+git -C "$EMREPO" add .claude/memory/correr-en-local.md >/dev/null 2>&1
+o="$(emg "bash -c 'git commit -m x'")"
+printf '%s' "$o" | grep -q 'CONTENIDO machine-specific' \
+  && ok "M1: entorno-maquina-guard — 'bash -c \"git commit …\"' ya no evade (unificado con la lib)" \
+  || bad "M1: entorno-maquina-guard — 'bash -c' evadió el aviso; got: $o"
 rm -rf "$EMREPO"
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -10,10 +10,20 @@
 case "$0" in "$HOME/.claude/hooks/"*) : ;; *) [ -f "$HOME/.claude/hooks/$(basename "$0")" ] && exit 0 ;; esac
 cmd=$(jq -r '.tool_input.command // ""' 2>/dev/null)
 # PRE-FILTRO barato (superset conservador, mismo espíritu que proteger-arbol.sh): este hook solo
-# vigila `git push` → sin 'git' en el comando crudo, early-exit ANTES del sed de des-entrecomillado.
+# vigila `git push` → sin 'git' en el comando crudo, early-exit ANTES de sourcear la lib.
 case "$cmd" in *git*) : ;; *) exit 0 ;; esac
-unquoted=$(printf '%s' "$cmd" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g")
-printf '%s' "$unquoted" | grep -qE 'git[[:space:]]+push' || exit 0
+# M1 (auditoría 2026-09-15 §2.1): el despoje era una copia a mano SIN el ancla ([[:space:]]|$) que sí
+# tiene acg_es_push() — ya había empezado a divergir. Se unifica con la lib compartida.
+# shellcheck source=analizar-comando-git.sh
+_ACGLIB="$(dirname "$0")/analizar-comando-git.sh"
+[ -f "$_ACGLIB" ] && . "$_ACGLIB"
+if command -v acg_despoja_comillas >/dev/null 2>&1; then
+  unquoted=$(acg_despoja_comillas "$cmd")
+  acg_es_push "$unquoted" || exit 0
+else
+  unquoted=$(printf '%s' "$cmd" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g")
+  printf '%s' "$unquoted" | grep -qE 'git[[:space:]]+push([[:space:]]|$)' || exit 0
+fi
 
 DASH="RECORDATORIO (cerebro autocontenido): antes de completar este push, revisa/actualiza el Dashboard del cerebro (dashboard_cerebro.md en la memoria GLOBAL de esta maquina: ~/.claude/projects/<slug-del-HOME>/memory/) — APPENDEA una linea al FINAL de la Bitacora con >> (p. ej. printf '%s\\n' '- FECHA - rama - que' >> \"\$DASH\"), NO edites arriba: el append-al-final no choca con otras sesiones de Claude que escriben este mismo archivo a la vez (dos >> no se pisan; un Edit tropieza con 'File modified since read'). Ajusta Mapa/Infra/Cabos sueltos solo si cambio el layout de memoria, repos o proyectos. La memoria GLOBAL es solo config de ESTA maquina; lo de un proyecto vive en su .claude/. Esto es parte de CERRAR bien el slice (skill cerrar-slice): dashboard + doc=realidad + memoria + resumen curado."
 

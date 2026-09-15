@@ -8,11 +8,21 @@ command -v jq >/dev/null 2>&1 || exit 0
 command -v git >/dev/null 2>&1 || exit 0
 cmd=$(jq -r '.tool_input.command // ""' 2>/dev/null)
 # PRE-FILTRO barato (superset conservador, mismo espíritu que proteger-arbol.sh): este hook solo
-# vigila `git push` → sin 'git' en el comando crudo, early-exit ANTES del sed de des-entrecomillado.
+# vigila `git push` → sin 'git' en el comando crudo, early-exit ANTES de sourcear la lib.
 case "$cmd" in *git*) : ;; *) exit 0 ;; esac
-# Ignora un 'git push' que aparezca como DATO entrecomillado (grep, descripción de MR, prueba).
-unquoted=$(printf '%s' "$cmd" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g")
-printf '%s' "$unquoted" | grep -qE 'git[[:space:]]+push' || exit 0
+# M1 (auditoría 2026-09-15 §2.1): el despoje era una copia a mano SIN el ancla ([[:space:]]|$) que sí
+# tiene acg_es_push() — ya había empezado a divergir. Se unifica con la lib compartida.
+# shellcheck source=analizar-comando-git.sh
+_ACGLIB="$(dirname "$0")/analizar-comando-git.sh"
+[ -f "$_ACGLIB" ] && . "$_ACGLIB"
+if command -v acg_despoja_comillas >/dev/null 2>&1; then
+  unquoted=$(acg_despoja_comillas "$cmd")
+  acg_es_push "$unquoted" || exit 0
+else
+  # Ignora un 'git push' que aparezca como DATO entrecomillado (grep, descripción de MR, prueba).
+  unquoted=$(printf '%s' "$cmd" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g")
+  printf '%s' "$unquoted" | grep -qE 'git[[:space:]]+push([[:space:]]|$)' || exit 0
+fi
 
 dir="${CLAUDE_PROJECT_DIR:-.}"
 git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
