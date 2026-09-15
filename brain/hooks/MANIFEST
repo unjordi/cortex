@@ -3,11 +3,31 @@
 # → dejan de divergir a mano (antídoto a H2/H7: hoy install-brain.sh y la copia por-repo del consumidor
 # eran dos listas curadas por separado).
 #
-# Formato:  <nombre-sin-.sh>   <tier>   <kind>
-#   tier:  global  → solo ~/.claude/hooks (lo instala el bootstrap; NO viaja por-repo)
-#          repo    → solo <repo>/.claude/hooks (se carga si la sesión INICIA en el repo)
-#          both    → AMBOS (global por bootstrap + viaja por-repo por si se clona SIN bootstrap);
-#                    estos DEBEN traer la cláusula de dedupe (la copia del repo cede a la global)
+# Formato:  <nombre-sin-.sh>   <tier>   <kind>   [fecha-retiro]   [motivo…]
+#   tier:  global    → solo ~/.claude/hooks (lo instala el bootstrap; NO viaja por-repo)
+#          repo      → solo <repo>/.claude/hooks (se carga si la sesión INICIA en el repo)
+#          both      → AMBOS (global por bootstrap + viaja por-repo por si se clona SIN bootstrap);
+#                      estos DEBEN traer la cláusula de dedupe (la copia del repo cede a la global)
+#          retirado  → LÁPIDA: el cerebro YA MATÓ este hook (su .sh se borró de brain/hooks/) pero
+#                      la entrada se CONSERVA aquí a propósito, con columnas 4/5+ = fecha de retiro y
+#                      motivo en pocas palabras (para que alguien que lea el MANIFEST en un año entienda
+#                      por qué murió sin abrir git). Es la ÚNICA lápida permitida en este repo: en el
+#                      CÓDIGO un comentario-lápida está prohibido (para eso está git), pero en un
+#                      MANIFEST que gobierna la INSTALACIÓN una lápida deja de ser narrativa y pasa a
+#                      ser INSTRUCCIÓN EJECUTABLE — la lista de qué podar. install-brain.sh la usa para
+#                      PODAR máquinas donde el hook quedó instalado+cableado de una versión vieja del
+#                      brain: borra su ~/.claude/hooks/<nombre>.sh y de-cablea SOLO esa entrada del
+#                      settings.json (idempotente; no toca hooks propios del usuario). Por la MISMA
+#                      razón, sincronizar-cerebro.sh trata un `retirado` como huérfano PODABLE en
+#                      cualquier --apply (sin necesitar --prune-orphans): "huérfano" ya no significa
+#                      solo "ausente del manifiesto" sino "no debe estar instalado aquí", y un tier
+#                      `retirado` cae ahí aunque SÍ esté listado. NINGÚN otro consumidor (install-brain
+#                      al INSTALAR, uninstall-brain al desinstalar TODO, sincronizar-cerebro al
+#                      DESPLEGAR, verificar-cerebro/drift-cerebro-comun/verificar-firma-canonica al
+#                      diagnosticar, ni el widget) debe tratar un `retirado` como un hook VIVO — sus
+#                      filtros por tier ({global,both}/{repo,both}/{global,both,repo}) ya lo excluyen
+#                      por construcción; si agregas un consumidor nuevo, que filtre por tier EXPLÍCITO,
+#                      nunca por "toda línea no-comentario" (ese patrón sí se traga un `retirado`).
 #   kind:  hook   → se cablea en settings.json (evento)
 #          lib    → solo se copia (los hooks la hacen `source`)
 #          script → solo se copia (standalone; se corre a mano/por cron, no se cablea)
@@ -53,7 +73,6 @@ juez-comun               both    lib
 
 proteger-arbol           global  hook
 proteger-fuente-cerebro  global  hook
-rama-vieja               global  hook
 limite-gasto             global  hook
 rehidratar-hilo          global  hook
 aviso-contexto           global  hook
@@ -80,3 +99,6 @@ dod-verificar            repo    hook
 sesion-inicio            repo    hook
 recordar-cosechar        repo    hook
 recordar-unificar-cerebro repo   hook
+
+# ── LÁPIDAS (tier retirado) — ver header ──
+rama-vieja               retirado  hook  2026-09-15  avisar del síntoma no es el trabajo; el flujo lo gobiernan los git-guards
