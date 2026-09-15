@@ -6,7 +6,7 @@
 # Instala GLOBAL (en ~/.claude, aplica a TODOS los repos de esta máquina):
 #   (a) HOOKS de tier {global, both} en ~/.claude/hooks/ — la LISTA se DERIVA de brain/hooks/MANIFEST
 #       (fuente única; ya no se cura a mano en paralelo con la copia por-repo). Incluye git-branch-guard,
-#       merge-squash-guard, confirmar-merge-develop, recordar-dashboard, secret-scan, rama-vieja,
+#       merge-squash-guard, confirmar-merge-develop, recordar-dashboard, secret-scan,
 #       proteger-arbol (PreToolUse/Bash), delegacion-gate + limite-gasto (PreToolUse/Task),
 #       delegacion-registrar/reporte (PostToolUse/Task), rehidratar-hilo + aviso-contexto (SessionStart/
 #       PostToolUse) + libs `delegacion-comun.sh`, `analizar-comando-git.sh`, `detectar-secretos.sh`
@@ -112,6 +112,62 @@ if [ -f "$SRC_HOOKS/MANIFEST" ]; then
     [ -f "$HOOKS_DIR/$rh" ] && rm -f "$HOOKS_DIR/$rh" && echo "poda: retiré el hook repo-tier huérfano '$rh' del global $HOOKS_DIR (se cablea per-repo, nunca global)"
   done
 fi
+# ── (a3) PODA DE RETIRADOS (LÁPIDAS del MANIFEST) ───────────────────────────────────────────────────
+# Un tier `retirado` es una LÁPIDA: el brain ya mató este hook (su .sh se borró de brain/hooks/), pero
+# quitar la entrada del MANIFEST NO alcanza para limpiar una máquina que YA lo tenía instalado — el .sh
+# copiado y su cableado en settings.json se quedan ahí, disparando ya invisibles para el MANIFEST (el
+# HUECO que motivó este mecanismo: caso real rama-vieja). Este bloque SÍ poda: por cada retirado, borra
+# su $HOOKS_DIR/<nombre>.sh y de-cablea ÚNICAMENTE su propia entrada de $GSET (nunca toca hooks ajenos).
+# Idempotente (si ya no está ni instalado ni cableado, no reporta nada — no es un error) y lo DICE
+# cuando sí actúa (con el nombre y el motivo del MANIFEST, si lo trae). Fail-safe con $GSET inválido:
+# NO lo reescribe a medias — avisa y deja el cableado intacto (aun así borra el .sh, que ya es código
+# muerto y no arriesga nada por sí solo).
+if [ -f "$SRC_HOOKS/MANIFEST" ]; then
+  RETIRED_ENTRIES="$(awk '$1!~/^#/ && NF>=3 && $2=="retirado"{ reason=""; for(i=5;i<=NF;i++) reason=reason (i>5?" ":"") $i; print $1"\t"reason }' "$SRC_HOOKS/MANIFEST")"
+else
+  RETIRED_ENTRIES=""
+fi
+if [ -n "$RETIRED_ENTRIES" ]; then
+  while IFS="$(printf '\t')" read -r rname rreason; do
+    [ -z "$rname" ] && continue
+    podado_sh=0
+    if [ -f "$HOOKS_DIR/$rname.sh" ]; then
+      rm -f "$HOOKS_DIR/$rname.sh" && podado_sh=1
+    fi
+    podado_wire=0
+    if command -v jq >/dev/null 2>&1 && [ -f "$GSET" ]; then
+      if ! jq empty "$GSET" 2>/dev/null; then
+        echo "ERROR: $GSET es JSON INVÁLIDO — NO podo el cableado retirado de '$rname' para no arriesgar el archivo (settings corrupto te deja sin NINGÚN guard). Repáralo (jq . \"$GSET\") y re-corre." >&2
+      elif jq -e --arg pat "/$rname\\.sh" 'any(.hooks[]?[]?; ([.hooks[]?.command] | join(" ")) | test($pat))' "$GSET" >/dev/null 2>&1; then
+        rtmp="$(mktemp)" || rtmp=""
+        if [ -n "$rtmp" ] && jq --arg pat "$rname\\.sh" '
+            if (.hooks|type)=="object" then
+              .hooks |= ( to_entries
+                | map(.value |= [ .[] | select((([.hooks[]?.command]|join(" "))|test($pat))|not) ])
+                | map(select((.value|type)=="array" and (.value|length)>0)) | from_entries )
+              | (if (.hooks|length)==0 then del(.hooks) else . end)
+            else . end
+          ' "$GSET" > "$rtmp" 2>/dev/null && [ -s "$rtmp" ]; then
+          mv "$rtmp" "$GSET"; podado_wire=1
+        else
+          rm -f "$rtmp"; echo "warn: no pude de-cablear el hook retirado '$rname' de $GSET"
+        fi
+      fi
+    fi
+    if [ "$podado_sh" = 1 ] || [ "$podado_wire" = 1 ]; then
+      motivo_txt=""; [ -n "$rreason" ] && motivo_txt=" — motivo del retiro: $rreason"
+      accion=""
+      [ "$podado_sh" = 1 ] && accion="borré $HOOKS_DIR/$rname.sh"
+      if [ "$podado_wire" = 1 ]; then
+        [ -n "$accion" ] && accion="$accion + "
+        accion="${accion}de-cableé su entrada en $GSET"
+      fi
+      echo "poda: '$rname' es tier retirado (lápida del MANIFEST) → $accion$motivo_txt"
+    fi
+  done <<EOF
+$RETIRED_ENTRIES
+EOF
+fi
 # Config de clasificación de costo (la lee delegacion-comun.sh en $HOME/.claude/agentes-costo.json)
 if [ -f "$SRC_HOOKS/agentes-costo.json" ]; then
   atomic_install "$SRC_HOOKS/agentes-costo.json" "$CLAUDE_DIR/agentes-costo.json" || echo "warn: no pude instalar agentes-costo.json"
@@ -150,7 +206,7 @@ register_hook() {
 # de abajo AVISA y el drift-check de test-brain (e2) FALLA (no se cablea en silencio).
 ev_de() {
   case "$1" in
-    git-branch-guard|merge-squash-guard|confirmar-merge-develop|recordar-dashboard|secret-scan|entorno-maquina-guard|no-bypass-deploy|rama-vieja|proteger-arbol) echo "PreToolUse|Bash" ;;
+    git-branch-guard|merge-squash-guard|confirmar-merge-develop|recordar-dashboard|secret-scan|entorno-maquina-guard|no-bypass-deploy|proteger-arbol) echo "PreToolUse|Bash" ;;
     proteger-fuente-cerebro) echo "PreToolUse|Edit|Write|MultiEdit" ;;
     limite-gasto|delegacion-gate) echo "PreToolUse|Task|Agent" ;;   # Task|Agent: el tool se renombró Agent (antes Task); casar AMBOS o el gate nunca dispara
     delegacion-registrar|delegacion-reporte) echo "PostToolUse|Task|Agent" ;;

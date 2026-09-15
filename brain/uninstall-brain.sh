@@ -5,10 +5,12 @@
 #
 # Quita GLOBAL (de ~/.claude):
 #   (a) los HOOKS de tier global que copió el instalador → git-branch-guard, merge-squash-guard,
-#       confirmar-merge-develop, recordar-dashboard, secret-scan, rama-vieja, proteger-arbol,
+#       confirmar-merge-develop, recordar-dashboard, secret-scan, proteger-arbol,
 #       limite-gasto, rehidratar-hilo, delegacion-gate/registrar/reporte, libs (delegacion-comun,
 #       analizar-comando-git, detectar-secretos), limpiar-worktrees (script) + ~/.claude/agentes-costo.json.
-#       La lista EXACTA se deriva de brain/hooks/MANIFEST (misma fuente que install-brain).
+#       La lista EXACTA se deriva de brain/hooks/MANIFEST (misma fuente que install-brain), e INCLUYE
+#       tier `retirado` (lápidas, p. ej. rama-vieja): un uninstall COMPLETO también las limpia de
+#       máquinas viejas, sin depender de que antes haya corrido un install-brain que las podara.
 #   (b) DES-CABLEA de ~/.claude/settings.json SOLO las entradas que apuntan a esos hooks (deja
 #       intactas las demás — usa jq); poda los arrays de evento que queden vacíos.
 #   (c) las SKILLS genéricas (cerrar-slice, orquestar-fanout, checkpoint, rehidratar-hilo, turno-nocturno, diagramar, cosechar-sesion, unificar-cerebro) de ~/.claude/skills/.
@@ -35,8 +37,11 @@ echo "==> cortex: desinstalando cerebro global de $CLAUDE_DIR"
 
 # ── (a) Borrar los hooks de tier global + la lib compartida + la config de costo ──
 # Derivado del MANIFEST (fuente única, igual que install-brain) → no es una 3ª lista que driftee.
+# Incluye tier `retirado` (lápidas): un desinstalador COMPLETO debe limpiar máquinas viejas que se
+# quedaron con un hook retirado instalado (install-brain también lo poda en cada re-corrida, pero un
+# uninstall directo sin pasar antes por un install-brain reciente no debe dejarlo atrás).
 if [ -f "$MANIFEST" ]; then
-  GLOBAL_HOOKS="$(awk '$1!~/^#/ && NF>=3 && ($2=="global"||$2=="both"){print $1".sh"}' "$MANIFEST")"
+  GLOBAL_HOOKS="$(awk '$1!~/^#/ && NF>=3 && ($2=="global"||$2=="both"||$2=="retirado"){print $1".sh"}' "$MANIFEST")"
 else
   echo "warn: falta $MANIFEST; caigo a la lista embebida (compatibilidad)"
   GLOBAL_HOOKS="git-branch-guard.sh merge-squash-guard.sh confirmar-merge-develop.sh recordar-dashboard.sh \
@@ -57,7 +62,7 @@ echo "ok: hooks globales + lib + config de costo eliminados de $HOOKS_DIR"
 # proteger-fuente-cerebro y recordar-orquestar → tras un uninstall quedaban 5 cableados ZOMBIE en
 # settings.json apuntando a hooks ya borrados del disco (Claude Code invocaría hooks inexistentes).
 if [ -f "$MANIFEST" ]; then
-  BRAIN_PAT="$(awk '$1!~/^#/ && NF>=3 && ($2=="global"||$2=="both") && $3=="hook"{print $1}' "$MANIFEST" | sed 's/$/\\.sh/' | paste -sd'|' -)"
+  BRAIN_PAT="$(awk '$1!~/^#/ && NF>=3 && ($2=="global"||$2=="both"||$2=="retirado") && $3=="hook"{print $1}' "$MANIFEST" | sed 's/$/\\.sh/' | paste -sd'|' -)"
 fi
 # Fallback COMPLETO si falta el MANIFEST (los 21 {global,both} kind=hook actuales — sin omisiones):
 [ -n "${BRAIN_PAT:-}" ] || BRAIN_PAT='git-branch-guard\.sh|merge-squash-guard\.sh|confirmar-merge-develop\.sh|recordar-dashboard\.sh|secret-scan\.sh|entorno-maquina-guard\.sh|no-bypass-deploy\.sh|hud-stale\.sh|rama-vieja\.sh|proteger-arbol\.sh|proteger-fuente-cerebro\.sh|limite-gasto\.sh|rehidratar-hilo\.sh|aviso-contexto\.sh|aviso-drift-cerebro\.sh|exportar-sesion-master\.sh|barrer-ramas\.sh|delegacion-gate\.sh|delegacion-registrar\.sh|delegacion-reporte\.sh|recordar-orquestar\.sh'

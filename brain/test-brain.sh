@@ -5041,12 +5041,14 @@ else
     awk '$1!~/^#/ && NF>=3{print $1}' "$MF" | grep -qxF "$b" || { bad "drift: $b.sh NO está en el MANIFEST (hook sin tier declarado)"; miss_mf=1; }
   done
   [ "$miss_mf" = 0 ] && ok "drift: todo *.sh de brain/hooks está declarado en el MANIFEST"
-  # (2) toda entrada del manifiesto tiene su archivo
+  # (2) toda entrada del manifiesto tiene su archivo — EXCEPTO tier `retirado` (la LÁPIDA): su .sh se
+  #     borró de brain/hooks/ a propósito; exigirlo aquí rompería la lápida misma (un consumidor que no
+  #     filtre por tier explícito se traga un `retirado` como si fuera un hook vivo).
   miss_file=0
-  for b in $(awk '$1!~/^#/ && NF>=3{print $1}' "$MF"); do
+  for b in $(awk '$1!~/^#/ && NF>=3 && $2!="retirado"{print $1}' "$MF"); do
     [ -f "$HOOKS/$b.sh" ] || { bad "drift: el MANIFEST lista '$b' pero falta $HOOKS/$b.sh"; miss_file=1; }
   done
-  [ "$miss_file" = 0 ] && ok "drift: toda entrada del MANIFEST tiene su .sh"
+  [ "$miss_file" = 0 ] && ok "drift: toda entrada del MANIFEST (no-retirada) tiene su .sh"
   # (3) install-brain DERIVA GLOBAL del manifiesto (no una lista hardcodeada paralela) y no está vacía
   derived="$(awk '$1!~/^#/ && NF>=3 && ($2=="global"||$2=="both"){print $1".sh"}' "$MF")"
   if grep -q "awk.*global.*both.*MANIFEST\|MANIFEST.*awk" "$INSTALLER" && [ -n "$derived" ]; then
@@ -5302,6 +5304,32 @@ bash "$SYNC" "$E5T" 2>/dev/null | grep -qE '==> resumen:.*[1-9][0-9]* retirado' 
 rm -rf "$E5T"
 
 # ─────────────────────────────────────────────────────────────────────────────
+echo "== (e5b) sincronizar: 'huérfano' == 'no debe estar instalado aquí' — un tier retirado del MANIFEST"
+echo "         se poda IGUAL que el legado RETIRED, SIN --prune-orphans; lo vivo {repo,both} y lo propio se conservan =="
+# Antes de esta ola, 'huérfano' significaba SOLO 'ausente del MANIFEST' → una entrada tier=retirado (que
+# SÍ está listada, solo que muerta) NO caía ahí y sobrevivía. rama-vieja es la LÁPIDA real (MANIFEST,
+# 2026-09-15): simula una máquina/repo VIEJO que la tenía instalada de antes de que se retirara.
+E5B="$(mktemp -d "${TMPDIR:-/tmp}/brain-e5b.XXXXXX")"; mkdir -p "$E5B/.claude/hooks"
+printf 'exit 0\n' > "$E5B/.claude/hooks/rama-vieja.sh"                 # LÁPIDA del MANIFEST (tier retirado)
+printf 'exit 0\n' > "$E5B/.claude/hooks/mi-hook-propio-e5b.sh"          # huérfano DESCONOCIDO (propio del repo)
+printf '{"hooks":{"PreToolUse":[{"hooks":[{"command":"bash \\"${CLAUDE_PROJECT_DIR}/.claude/hooks/rama-vieja.sh\\""}]}]}}' > "$E5B/.claude/settings.json"
+bash "$SYNC" "$E5B" --apply >/dev/null 2>&1
+[ ! -f "$E5B/.claude/hooks/rama-vieja.sh" ] \
+  && ok "e5b: --apply (SIN --prune-orphans) borró rama-vieja.sh — tier retirado del MANIFEST se poda solo" \
+  || bad "e5b: rama-vieja.sh (tier retirado) sobrevivió al --apply sin --prune-orphans"
+grep -q 'rama-vieja' "$E5B/.claude/settings.json" 2>/dev/null \
+  && bad "e5b: rama-vieja sigue CABLEADO en settings.json tras el --apply" \
+  || ok "e5b: rama-vieja quedó DE-CABLEADO del settings.json"
+[ -f "$E5B/.claude/hooks/mi-hook-propio-e5b.sh" ] \
+  && ok "e5b: el huérfano DESCONOCIDO (propio) se CONSERVÓ — la redefinición de huérfano no se comió lo ajeno" \
+  || bad "e5b: ¡se borró un huérfano propio sin --prune-orphans (falso positivo de la redefinición)!"
+# dirección inversa: un hook VIVO {repo,both} recién desplegado por ESTE MISMO --apply sigue en pie
+[ -f "$E5B/.claude/hooks/git-branch-guard.sh" ] \
+  && ok "e5b: un hook VIVO (tier both, p. ej. git-branch-guard) SIGUE instalado — la redefinición no podó de más" \
+  || bad "e5b: ¡un hook vivo {repo,both} desapareció junto con el retirado!"
+rm -rf "$E5B"
+
+# ─────────────────────────────────────────────────────────────────────────────
 echo "== (e6) FIX #2: sincronizar REPORTA 'cableado faltante' (hook presente sin cablear) → aviso-drift deja de ser ciego al wiring =="
 E6T="$(mktemp -d "${TMPDIR:-/tmp}/brain-e6.XXXXXX")"; mkdir -p "$E6T/.claude/hooks"
 printf '{}' > "$E6T/.claude/settings.json"
@@ -5340,6 +5368,49 @@ else
   bad "e7: install-brain no generó settings.json"
 fi
 rm -rf "$E7H"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (e7b) install-brain: PODA DE RETIRADOS (lápidas del MANIFEST) — borra .sh + de-cablea SOLO esa"
+echo "        entrada, lo dice por nombre, es idempotente y NUNCA toca un hook ajeno del usuario =="
+# Simula una máquina VIEJA que instaló rama-vieja ANTES de que se retirara (tier `retirado` en el
+# MANIFEST, 2026-09-15): el .sh sigue copiado y cableado — el HUECO real que motivó este mecanismo.
+E8H="$(mktemp -d "${TMPDIR:-/tmp}/brain-e8.XXXXXX")"; mkdir -p "$E8H/.claude/hooks"
+printf 'exit 0\n' > "$E8H/.claude/hooks/rama-vieja.sh"
+printf 'exit 0\n' > "$E8H/.claude/hooks/mi-hook-usuario-e8.sh"      # hook PROPIO del usuario, ajeno al brain
+printf '%s' '{"hooks":{"PreToolUse":[
+  {"hooks":[{"type":"command","command":"bash \"$HOME/.claude/hooks/rama-vieja.sh\"","shell":"bash"}]},
+  {"hooks":[{"type":"command","command":"bash \"$HOME/.claude/hooks/mi-hook-usuario-e8.sh\"","shell":"bash"}]}
+]}}' > "$E8H/.claude/settings.json"
+e8out1="$(HOME="$E8H" bash "$INSTALLER" 2>&1)"
+[ ! -f "$E8H/.claude/hooks/rama-vieja.sh" ] \
+  && ok "e7b: 1ª corrida — borró ~/.claude/hooks/rama-vieja.sh (tier retirado)" \
+  || bad "e7b: rama-vieja.sh (retirado) sobrevivió a install-brain"
+grep -q 'rama-vieja' "$E8H/.claude/settings.json" 2>/dev/null \
+  && bad "e7b: rama-vieja sigue cableado en settings.json tras install-brain" \
+  || ok "e7b: rama-vieja quedó de-cableado de settings.json"
+printf '%s' "$e8out1" | grep -qE "poda:.*'rama-vieja'.*retirado.*avisar del síntoma" \
+  && ok "e7b: install-brain LO DICE — reporta el nombre + el motivo del MANIFEST (poda no silenciosa)" \
+  || bad "e7b: install-brain no reportó la poda de rama-vieja con nombre+motivo; got: $(printf '%s' "$e8out1" | grep -i 'rama-vieja')"
+[ -f "$E8H/.claude/hooks/mi-hook-usuario-e8.sh" ] \
+  && ok "e7b: el hook PROPIO del usuario (ajeno al brain) NO se tocó" \
+  || bad "e7b: ¡install-brain borró un hook ajeno del usuario!"
+grep -q 'mi-hook-usuario-e8' "$E8H/.claude/settings.json" 2>/dev/null \
+  && ok "e7b: el cableado del hook propio del usuario SIGUE intacto en settings.json" \
+  || bad "e7b: ¡install-brain de-cableó un hook ajeno del usuario!"
+[ -f "$E8H/.claude/hooks/git-branch-guard.sh" ] \
+  && ok "e7b: un hook VIVO ({global,both}, p. ej. git-branch-guard) SÍ se instaló normalmente" \
+  || bad "e7b: install-brain no instaló los hooks vivos junto con la poda de retirados"
+# Idempotencia: 2ª corrida sin nada que podar → sin el mensaje de poda, sin error, hook propio intacto.
+e8out2="$(HOME="$E8H" bash "$INSTALLER" 2>&1)"; e8rc2=$?
+[ "$e8rc2" = 0 ] && ok "e7b: 2ª corrida (idempotente) sale con éxito (exit 0)" || bad "e7b: 2ª corrida falló (exit $e8rc2)"
+printf '%s' "$e8out2" | grep -q "poda:.*rama-vieja" \
+  && bad "e7b: la 2ª corrida REPORTÓ podar rama-vieja de nuevo (no era idempotente — ya no había nada que hacer)" \
+  || ok "e7b: 2ª corrida NO reporta re-podar rama-vieja (ya no hay nada que hacer; idempotente y silenciosa)"
+[ -f "$E8H/.claude/hooks/mi-hook-usuario-e8.sh" ] && grep -q 'mi-hook-usuario-e8' "$E8H/.claude/settings.json" 2>/dev/null \
+  && ok "e7b: tras la 2ª corrida el hook propio del usuario SIGUE intacto" \
+  || bad "e7b: el hook propio del usuario se perdió entre corridas"
+rm -rf "$E8H"
 
 echo "== (e4) Windows: bootstrap.ps1 exporta CLAUDE_BRAIN_DIR (los hooks bash hallan la fuente) =="
 # En Windows el clon-fuente vive en %LOCALAPPDATA%\cortex-repo, NO en ~/.cortex (default de
@@ -5490,9 +5561,11 @@ done
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "== (e6) MANIFEST bien formado: 3 campos · tier ∈ {global,repo,both} · kind ∈ {hook,lib,script} =="
+echo "== (e6) MANIFEST bien formado: 3 campos · tier ∈ {global,repo,both,retirado} · kind ∈ {hook,lib,script} =="
 # El MANIFEST es la FUENTE ÚNICA; una línea mal formada (2 campos, tier/kind con typo) haría que las
 # rutas que DERIVAN de él (install/sincronizar/drift-check) clasifiquen mal o salten un hook en silencio.
+# EXCEPCIÓN a propósito: tier `retirado` (la LÁPIDA) SÍ tolera columnas EXTRA (fecha de retiro + motivo,
+# ambas opcionales) — es el único tier con más de 3 campos por diseño (ver header del MANIFEST).
 MF="$HOOKS/MANIFEST"
 if [ ! -f "$MF" ]; then
   bad "e6: falta el MANIFEST ($MF)"
@@ -5501,22 +5574,29 @@ else
   while read -r name tier kind extra; do
     [ -z "$name" ] && continue                       # línea en blanco
     case "$name" in \#*) continue;; esac             # comentario
-    if [ -z "$kind" ] || [ -n "$extra" ]; then
-      bad "e6: línea sin EXACTAMENTE 3 campos: '$name $tier $kind $extra'"; mf_bad=1; continue
+    if [ -z "$kind" ]; then
+      bad "e6: línea sin al menos 3 campos: '$name $tier $kind $extra'"; mf_bad=1; continue
     fi
-    case "$tier" in global|repo|both) ;; *) bad "e6: tier inválido '$tier' (entrada $name)"; mf_bad=1;; esac
+    case "$tier" in
+      global|repo|both)
+        if [ -n "$extra" ]; then bad "e6: línea sin EXACTAMENTE 3 campos: '$name $tier $kind $extra'"; mf_bad=1; continue; fi
+        ;;
+      retirado) : ;;   # tolera fecha+motivo en las columnas 4+ (la lápida)
+      *) bad "e6: tier inválido '$tier' (entrada $name)"; mf_bad=1; continue ;;
+    esac
     case "$kind" in hook|lib|script) ;; *) bad "e6: kind inválido '$kind' (entrada $name)"; mf_bad=1;; esac
   done < "$MF"
-  [ "$mf_bad" = 0 ] && ok "e6: toda línea del MANIFEST tiene 3 campos con tier ∈ {global,repo,both} y kind ∈ {hook,lib,script}"
+  [ "$mf_bad" = 0 ] && ok "e6: toda línea del MANIFEST tiene tier ∈ {global,repo,both,retirado} y kind ∈ {hook,lib,script} (retirado tolera columnas extra; los demás EXACTAMENTE 3 campos)"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-echo "== (e6b) install-brain: EXACTAMENTE 9 hooks en PreToolUse/Bash + aviso-contexto/recordar-orquestar en PostToolUse (sin matcher) =="
-# El fan-out de guards sobre Bash es un set CERRADO de 9; aviso-contexto y recordar-orquestar van en
+echo "== (e6b) install-brain: EXACTAMENTE 8 hooks en PreToolUse/Bash + aviso-contexto/recordar-orquestar en PostToolUse (sin matcher) =="
+# El fan-out de guards sobre Bash es un set CERRADO de 8 (rama-vieja se RETIRÓ — tier `retirado` en el
+# MANIFEST — y salió de este set); aviso-contexto y recordar-orquestar van en
 # PostToolUse sin matcher (casan toda tool). El cableado se DERIVA del MANIFEST vía ev_de() en
 # install-brain.sh → verificamos ese mapeo (no líneas register_hook literales: el instalador las colapsó
 # a un loop). Si alguien agrega/quita un guard de Bash del mapeo, este test lo caza.
-want_bash="git-branch-guard merge-squash-guard confirmar-merge-develop secret-scan recordar-dashboard entorno-maquina-guard no-bypass-deploy rama-vieja proteger-arbol"
+want_bash="git-branch-guard merge-squash-guard confirmar-merge-develop secret-scan recordar-dashboard entorno-maquina-guard no-bypass-deploy proteger-arbol"
 want_bash_sorted="$(printf '%s\n' $want_bash | sort | tr '\n' ' ' | sed 's/ *$//')"
 got_bash="$(grep -E '\) *echo *"PreToolUse\|Bash"' "$INSTALLER" | sed -E 's/\).*//' | tr '|' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -vE '^$' | sort | tr '\n' ' ' | sed 's/ *$//')"
 if [ "$got_bash" = "$want_bash_sorted" ]; then
@@ -5534,12 +5614,14 @@ grep -qE 'recordar-orquestar[^)]*\) *echo *"PostToolUse\|"' "$INSTALLER" \
 # ─────────────────────────────────────────────────────────────────────────────
 echo "== (e6c) doc=realidad: cada kind=hook del MANIFEST aparece en el árbol del README (sA2/B1) =="
 # El árbol del README omitía recordar-cosechar/recordar-unificar-cerebro/barrer-ramas → doc que miente.
+# Tier `retirado` (lápidas) se EXCLUYE a propósito: un hook muerto NO debe seguir en el árbol de hooks
+# VIVOS — lo contrario sería la MISMA doc que miente que este chequeo existe para cazar.
 RM="$SCRIPT_DIR/README.md"
 if [ ! -f "$RM" ] || [ ! -f "$MF" ]; then
   bad "e6c: falta README.md o MANIFEST"
 else
   miss_rm=0
-  for b in $(awk '$1!~/^#/ && NF>=3 && $3=="hook"{print $1}' "$MF"); do
+  for b in $(awk '$1!~/^#/ && NF>=3 && $2!="retirado" && $3=="hook"{print $1}' "$MF"); do
     grep -qF "\`$b.sh\`" "$RM" || { bad "e6c: el hook '$b' del MANIFEST NO aparece en el árbol del README"; miss_rm=1; }
   done
   [ "$miss_rm" = 0 ] && ok "e6c: todo kind=hook del MANIFEST está documentado en el README"
@@ -5551,7 +5633,7 @@ RMROOT="$SCRIPT_DIR/../README.md"
 if [ -f "$RMROOT" ] && [ -f "$MF" ]; then
   arbol_root=$(awk '/^🔒[[:space:]]+Hooks[[:space:]]+Forzosos/{c=1} c&&/^```/{exit} c' "$RMROOT")
   miss_root=0
-  for b in $(awk '$1!~/^#/ && NF>=3 && $3=="hook"{print $1}' "$MF"); do
+  for b in $(awk '$1!~/^#/ && NF>=3 && $2!="retirado" && $3=="hook"{print $1}' "$MF"); do
     printf '%s' "$arbol_root" | grep -qF "$b" || { bad "e6c2: el hook '$b' del MANIFEST NO está en el árbol del README RAÍZ (la leyenda de los flowcharts lo omitiría)"; miss_root=1; }
   done
   [ "$miss_root" = 0 ] && ok "e6c2: todo kind=hook del MANIFEST está en el árbol del README RAÍZ (leyenda de flowcharts completa)"
