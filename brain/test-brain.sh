@@ -1037,9 +1037,15 @@ cat > "$JCFIX/dodtx.jsonl" <<'DTX'
 DTX
 out_dod="$(jq -nc --arg t "$JCFIX/dodtx.jsonl" '{transcript_path:$t,stop_hook_active:false}' \
   | env -u CLAUDE_CODE_OAUTH_TOKEN PATH="$JCFIX/stubs:$PATH" HOME="$JCFIX/home" CLAUDE_CONFIG_DIR="$JCFIX/empty" bash "$HOOKS/dod-verificar.sh")"
-is_silent "$out_dod" \
-  && ok "juez-comun (c): dod SIN token → FAIL-OPEN (no bloquea el Stop; contrato del nag, no del candado)" \
-  || bad "juez-comun (c): dod sin token NO fue fail-open; got: $out_dod"
+# A5 (auditoría 2026-09-15): dod SIN token sigue FAIL-OPEN (no bloquea el Stop — es un nag, no un
+# candado), pero YA NO en silencio total: deja un additionalContext visible de que el candado de LISTO
+# no evaluó este turno. Antes: is_silent (nadie se enteraba). Ahora: no bloquea + SÍ avisa.
+printf '%s' "$out_dod" | jq -e '.decision == "block"' >/dev/null 2>&1 \
+  && bad "juez-comun (c): dod sin token BLOQUEÓ el Stop (debía seguir fail-open)" \
+  || ok "juez-comun (c): dod SIN token → FAIL-OPEN (no bloquea el Stop; contrato del nag, no del candado)"
+printf '%s' "$out_dod" | jq -r '.hookSpecificOutput.additionalContext // empty' 2>/dev/null | grep -qi 'no pudo evaluar' \
+  && ok "juez-comun (c) / A5: dod sin token deja CONSTANCIA visible (ya no es silencio total ante fail-open)" \
+  || bad "juez-comun (c) / A5: dod sin token sigue en silencio total; got: $out_dod"
 
 # (d) A3 — jq AUSENTE en un comando de merge → DENY (fail-SAFE); antes 'command -v jq || exit 0' = ALLOW (evasión)
 NOJQ="$JCFIX/nojq"; mkdir -p "$NOJQ"
@@ -1797,6 +1803,53 @@ grep -qE 'proteger-fuente-cerebro\)[[:space:]]*echo[[:space:]]*"PreToolUse\|Edit
   && ok "proteger-fuente: cableado (ev_de → PreToolUse/Edit|Write|MultiEdit, derivado del MANIFEST)" \
   || bad "proteger-fuente: NO mapeado en ev_de() de install-brain.sh (no se cablearía)"
 rm -rf "$PFFIX"
+
+echo "== (b3a2b) verificar-contrato-hilo CONTRA LA FALLA (M3, auditoría 2026-09-15): verificar_hilo ya NO depende de que el modelo la invoque a mano =="
+# Antes: contrato-hilo.sh traía verificar_hilo() pero SOLO se disparaba si la prosa de checkpoint/SKILL.md
+# lograba que el modelo la corriera manualmente — 3 pasadas de auditoría independientes confirmaron que
+# ningún evento la disparaba sola. Ahora un PostToolUse/Edit|Write|MultiEdit la corre SIEMPRE que se
+# escribe hilo-mental-actual.md, sin depender del modelo.
+VCHFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-vch.XXXXXX")"
+mkdir -p "$VCHFIX/sin-footer/.claude/memory" "$VCHFIX/con-footer/.claude/memory" "$VCHFIX/otra"
+VCHSF="$VCHFIX/sin-footer/.claude/memory/hilo-mental-actual.md"      # el nombre EXACTO importa (el hook filtra por él)
+VCHCF="$VCHFIX/con-footer/.claude/memory/hilo-mental-actual.md"
+VCHOM="$VCHFIX/otra/otra-memoria.md"
+vch() { printf '%s' "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$1\"}}" | bash "$HOOKS/verificar-contrato-hilo.sh"; }
+has_vch_ctx() { printf '%s' "$1" | jq -e '.hookSpecificOutput.additionalContext | test("verificar-contrato-hilo")' >/dev/null 2>&1; }
+# (1) CONTRA LA FALLA: hilo SIN footer (rama/fecha) → el hook AVISA solo, sin que nadie lo invoque a mano
+printf '%s\n' '# Hilo mental actual' '' 'Trabajando en el bug X, sin footer todavía.' > "$VCHSF"
+o="$(vch "$VCHSF")"
+has_vch_ctx "$o" && ok "verificar-contrato-hilo CONTRA LA FALLA: hilo SIN footer → avisa SOLO tras el Write (antes exigía invocación manual)" \
+  || bad "verificar-contrato-hilo CONTRA LA FALLA: no avisó de un hilo sin footer (verificar_hilo sigue sin dispararse sola); got: $o"
+printf '%s' "$o" | jq -r '.hookSpecificOutput.additionalContext' | grep -q 'CONTRATO-HILO' \
+  && ok "verificar-contrato-hilo: el aviso trae los motivos REALES de verificar_hilo (footer/fecha), no un mensaje genérico" \
+  || bad "verificar-contrato-hilo: el aviso no incluye los motivos de contrato-hilo.sh"
+# (2) hilo CON footer completo → silencio (contrato cumplido, nada que avisar)
+printf '%s\n' '# Hilo mental actual' '> Última actualización: 2026-09-15 · rama fix/promesas-sin-cableado · nivel COMPLETO' '' 'Todo en orden.' > "$VCHCF"
+o="$(vch "$VCHCF")"
+[ -z "$o" ] && ok "verificar-contrato-hilo: hilo CON footer completo → silencio (nada que avisar)" || bad "verificar-contrato-hilo: avisó de un hilo que SÍ cumple el contrato; got: $o"
+# (3) archivo que NO es hilo-mental-actual.md → fuera de alcance, silencio
+printf '%s\n' 'contenido irrelevante' > "$VCHOM"
+o="$(vch "$VCHOM")"
+[ -z "$o" ] && ok "verificar-contrato-hilo: archivo fuera de alcance (no es hilo-mental-actual.md) → silencio" || bad "verificar-contrato-hilo: reaccionó fuera de alcance; got: $o"
+# (4) escape CLAUDE_SKIP_VERIFICAR_HILO=1 → silencio aunque el hilo esté roto
+o="$(printf '%s' "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$VCHSF\"}}" | CLAUDE_SKIP_VERIFICAR_HILO=1 bash "$HOOKS/verificar-contrato-hilo.sh")"
+[ -z "$o" ] && ok "verificar-contrato-hilo: escape CLAUDE_SKIP_VERIFICAR_HILO=1 → silencio" || bad "verificar-contrato-hilo: el escape no calló; got: $o"
+# (5) fail-open SIN jq → silencio (no bloquea)
+o="$(printf '%s' "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$VCHSF\"}}" | PATH="/nonexistent-dir" "$(command -v bash)" "$HOOKS/verificar-contrato-hilo.sh")"
+[ -z "$o" ] && ok "verificar-contrato-hilo: fail-open sin jq → silencio (no bloquea)" || bad "verificar-contrato-hilo: no falló abierto sin jq; got: $o"
+# (6) NUNCA bloquea (decision:block) — es un nag, no un candado
+o="$(vch "$VCHSF")"
+printf '%s' "$o" | jq -e '.decision == "block"' >/dev/null 2>&1 \
+  && bad "verificar-contrato-hilo: BLOQUEÓ (debía solo avisar, nunca bloquear)" \
+  || ok "verificar-contrato-hilo: nunca bloquea, solo avisa (additionalContext)"
+# MANIFEST + cableado (mismo patrón que proteger-fuente-cerebro, pero PostToolUse en vez de Pre)
+grep -qE '^verificar-contrato-hilo[[:space:]]+global[[:space:]]+hook$' "$HOOKS/MANIFEST" \
+  && ok "verificar-contrato-hilo: declarado en el MANIFEST (global hook)" || bad "verificar-contrato-hilo: falta/mal en el MANIFEST"
+grep -qE 'verificar-contrato-hilo\)[[:space:]]*echo[[:space:]]*"PostToolUse\|Edit' "$INSTALLER" \
+  && ok "verificar-contrato-hilo: cableado (ev_de → PostToolUse/Edit|Write|MultiEdit, derivado del MANIFEST)" \
+  || bad "verificar-contrato-hilo: NO mapeado en ev_de() de install-brain.sh (no se cablearía)"
+rm -rf "$VCHFIX"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
@@ -2687,11 +2740,18 @@ VISUAL: no'
   _juez_dod_posible_claim 'El módulo quedó listo.'          && ok "dod piso: 'quedó listo' → posible claim (pasa al juez)" || bad "dod piso: no reconoció léxico de cierre"
   _juez_dod_posible_claim 'En Chrome se ve como el mockup.' && ok "dod piso: léxico VISUAL (chrome/mockup/se ve) → posible claim" || bad "dod piso: no reconoció léxico visual"
   _juez_dod_posible_claim '🏁 terminado'                     && ok "dod piso: emoji 🏁 → posible claim" || bad "dod piso: no reconoció el emoji de cierre"
-  _juez_dod_posible_claim 'Ejecuté el comando y aquí están los resultados del análisis.' \
-    && bad "dod piso: un mensaje inocuo NO debe contar como posible claim" || ok "dod piso: mensaje inocuo (sin léxico) → NO es posible claim"
+  _juez_dod_posible_claim 'Ejecuté el comando y vi los resultados.' \
+    && bad "dod piso: un mensaje inocuo NO debe contar como posible claim" || ok "dod piso: mensaje inocuo CORTO (sin léxico) → NO es posible claim"
   # Integración: mensaje inocuo → el juez resuelve los 3 ejes 'no' SIN red (piso), determinista aun sin token/mock.
-  [ "$(_juez_dod 'Aquí está el resumen de lo que encontré en los archivos.' 'haz el cambio')" = 'CIERRE=no MARCA=no VISUAL=no' ] \
-    && ok "dod piso: Stop inocuo → 'CIERRE=no MARCA=no VISUAL=no' sin llamada al LLM" || bad "dod piso: no cortó en seco un Stop inocuo"
+  [ "$(_juez_dod 'Aquí está el resumen de los archivos.' 'haz el cambio')" = 'CIERRE=no MARCA=no VISUAL=no' ] \
+    && ok "dod piso: Stop inocuo CORTO → 'CIERRE=no MARCA=no VISUAL=no' sin llamada al LLM" || bad "dod piso: no cortó en seco un Stop inocuo"
+  # A4 (auditoría 2026-09-15) CONTRA LA FALLA: el falso negativo REPRODUCIDO por el dictamen — un cierre
+  # GENUINO parafraseado que evade TODO el léxico fijo ("opera correctamente"/"están usando" no matchea
+  # ninguna palabra de la lista de arriba). Antes el piso lo resolvía 'no' con certeza SIN llamar al juez
+  # (falso negativo mecánico); ahora, por longitud (11 palabras), SIGUE al juez real.
+  _juez_dod_posible_claim 'el endpoint ya opera correctamente y los usuarios lo están usando' \
+    && ok "dod piso A4 CONTRA LA FALLA: paráfrasis de cierre SIN léxico de la lista (11 palabras) → posible claim (llega al juez)" \
+    || bad "dod piso A4 CONTRA LA FALLA: la paráfrasis siguió evadiendo el piso (falso negativo mecánico vivo)"
 )
 
 # ── BATERÍA LIVE del juez-dod (opt-in) · clasificación REAL de FP/FN históricos contra Haiku ──
@@ -4856,6 +4916,45 @@ if [ -f "$SCRIPT_DIR/uninstall-brain.sh" ]; then
 fi
 rm -rf "$FAKEHOME2"
 
+# (A1) install-brain.sh / uninstall-brain.sh HONRAN CLAUDE_CONFIG_DIR, no solo HOME (auditoría
+# 2026-09-15): antes CLAUDE_DIR="$HOME/.claude" estaba hardcodeado, mientras juez-comun.sh/dod-verificar.sh/
+# confirmar-merge-develop.sh ya tratan CLAUDE_CONFIG_DIR como la fuente resuelta → con la var seteada, el
+# instalador escribía TODO el cableado en $HOME/.claude (que el harness no lee) — instalación 100% silenciosa
+# y no-funcional. $HOME y $CLAUDE_CONFIG_DIR van DELIBERADAMENTE en dirs distintos para que el test falle si
+# el instalador regresa al hardcode.
+A1HOME="$(mktemp -d "${TMPDIR:-/tmp}/brain-a1-home.XXXXXX")"
+A1CFG="$(mktemp -d "${TMPDIR:-/tmp}/brain-a1-cfg.XXXXXX")"
+HOME="$A1HOME" CLAUDE_CONFIG_DIR="$A1CFG" bash "$INSTALLER" >/dev/null 2>&1
+[ -f "$A1CFG/hooks/git-branch-guard.sh" ] \
+  && ok "A1: install-brain con CLAUDE_CONFIG_DIR seteada instala en \$CLAUDE_CONFIG_DIR/hooks (no en \$HOME/.claude)" \
+  || bad "A1: install-brain NO instaló en \$CLAUDE_CONFIG_DIR (hardcode de \$HOME/.claude sigue vivo)"
+[ -f "$A1CFG/settings.json" ] && jq -e '.hooks' "$A1CFG/settings.json" >/dev/null 2>&1 \
+  && ok "A1: settings.json cableado en \$CLAUDE_CONFIG_DIR" \
+  || bad "A1: settings.json no quedó cableado en \$CLAUDE_CONFIG_DIR"
+[ ! -d "$A1HOME/.claude" ] \
+  && ok "A1: \$HOME/.claude NO se creó (el instalador ya no escribe ahí cuando CLAUDE_CONFIG_DIR difiere)" \
+  || bad "A1: \$HOME/.claude se creó de todos modos — el hardcode sigue escribiendo por partida doble"
+HOME="$A1HOME" CLAUDE_CONFIG_DIR="$A1CFG" bash "$SCRIPT_DIR/uninstall-brain.sh" >/dev/null 2>&1
+[ ! -f "$A1CFG/hooks/git-branch-guard.sh" ] \
+  && ok "A1: uninstall-brain con CLAUDE_CONFIG_DIR seteada desinstala del MISMO dir que instaló (inverso exacto)" \
+  || bad "A1: uninstall-brain no limpió \$CLAUDE_CONFIG_DIR (quedó git-branch-guard.sh)"
+rm -rf "$A1HOME" "$A1CFG"
+
+# (A2) sesion-inicio.sh CONTRA LA FALLA: ya NO le miente a cada sesión sobre lo que dod-verificar hace
+# (auditoría 2026-09-15). Antes decía "el hook Stop (dod-verificar) lo revisa" refiriéndose a
+# build/tests/lint/memoria — dod-verificar NUNCA los corre; solo exige la MARCA CITADA de (1)/(2).
+A2REPO="$(mktemp -d "${TMPDIR:-/tmp}/brain-a2-repo.XXXXXX")"
+git -C "$A2REPO" init -q 2>/dev/null; git -C "$A2REPO" config user.email t@t >/dev/null 2>&1
+git -C "$A2REPO" config user.name t >/dev/null 2>&1
+A2OUT="$(printf '%s' '{"source":"startup"}' | CLAUDE_PROJECT_DIR="$A2REPO" bash "$HOOKS/sesion-inicio.sh" 2>/dev/null)"
+printf '%s' "$A2OUT" | grep -qi 'lo revisa y bloquea el cierre si falta' \
+  && bad "A2 CONTRA LA FALLA: sesion-inicio.sh sigue afirmando que dod-verificar REVISA build/tests/lint (mentira repetida en cada sesión)" \
+  || ok "A2 CONTRA LA FALLA: sesion-inicio.sh ya NO afirma que dod-verificar revisa build/tests/lint/memoria"
+printf '%s' "$A2OUT" | grep -qi 'build/tests/lint/memoria son TU responsabilidad' \
+  && ok "A2: sesion-inicio.sh describe con precisión lo que dod-verificar SÍ hace (exige la marca citada, no corre verificación técnica)" \
+  || bad "A2: falta la descripción precisa del comportamiento real de dod-verificar"
+rm -rf "$A2REPO"
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (c2) refresh de normas: un bloque VIEJO se REEMPLAZA en su lugar =="
@@ -5539,6 +5638,33 @@ if [ -f "$GEN" ]; then
     && ok "e6c3: gen-leyenda-arbol emite las 4 familias + $rows filas (no vacío)" \
     || bad "e6c3: gen-leyenda-arbol salió incompleto (familias=$fams, filas=$rows) — ¿cambió el formato del árbol del README?"
 else bad "e6c3: no encuentro gen-leyenda-arbol.sh"; fi
+
+# (A6) doc=realidad CONTRA LA FALLA: auditor-semantico/SKILL.md + su README de scripts ya NO afirman que
+# la Capa 1 (brain/scripts/auditor-semantico/) se instala/viaja SOLA a cada repo (auditoría 2026-09-15).
+# Verificado en código: ni install-brain.sh ni sincronizar-cerebro.sh tocan brain/scripts/ en NINGÚN lado
+# (solo copian brain/hooks/ y brain/skills/) → la propagación automática que la doc vieja prometía NUNCA
+# existió. Este test es doble candado: (1) el código sigue sin tocar brain/scripts (si alguien lo cablea,
+# hay que volver a subir la promesa de la doc) y (2) la doc ya no reclama lo que el código no hace.
+! grep -q 'brain/scripts' "$SCRIPT_DIR/install-brain.sh" 2>/dev/null \
+  && ! grep -q 'brain/scripts' "$SCRIPT_DIR/sincronizar-cerebro.sh" 2>/dev/null \
+  && ok "A6: confirmado en código — ni install-brain.sh ni sincronizar-cerebro.sh propagan brain/scripts/ (la doc vieja mentía)" \
+  || bad "A6: install-brain.sh o sincronizar-cerebro.sh YA tocan brain/scripts/ — actualiza la doc de auditor-semantico para reflejar que SÍ se propaga"
+ASSKILL="$SCRIPT_DIR/skills/auditor-semantico/SKILL.md"
+if [ -f "$ASSKILL" ]; then
+  grep -qi 'no.*instala.*autom\|vendea a mano\|no.*se.*instala.*solo\|NO APLICA todavía' "$ASSKILL" \
+    && ok "A6 CONTRA LA FALLA: auditor-semantico/SKILL.md ya avisa que Capa 1 NO se instala sola (hay que vendearla a mano)" \
+    || bad "A6 CONTRA LA FALLA: auditor-semantico/SKILL.md sigue sin avisar que Capa 1 no se propaga sola"
+else
+  bad "A6: no encuentro $ASSKILL"
+fi
+ASREADME="$SCRIPT_DIR/scripts/auditor-semantico/README.md"
+if [ -f "$ASREADME" ]; then
+  grep -qi 'no viaja solo\|VENDEA A MANO' "$ASREADME" \
+    && ok "A6 CONTRA LA FALLA: brain/scripts/auditor-semantico/README.md ya NO afirma 'viaja a cada repo' sin matiz" \
+    || bad "A6 CONTRA LA FALLA: el README de scripts sigue afirmando propagación automática inexistente"
+else
+  bad "A6: no encuentro $ASREADME"
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo "== (e6d) wiring FIELD-check: un settings.json semilla cabla TODOS los kind=hook {repo,both} (C1) =="

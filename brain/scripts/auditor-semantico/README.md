@@ -10,8 +10,11 @@ este sistema, 2026-07-15).
 
 ## Motor genérico vs. checks de ejemplo (LÉEME primero)
 
-Este directorio es un **MOTOR GENÉRICO** que vive en el template (`cortex/brain/scripts/`)
-y viaja a cada repo:
+Este directorio es un **MOTOR GENÉRICO** que vive en el template (`cortex/brain/scripts/`).
+**No viaja solo** (auditoría 2026-09-15): a diferencia de `brain/hooks/` y `brain/skills/`,
+`brain/scripts/` no tiene tier ni mecanismo en `install-brain.sh`/`sincronizar-cerebro.sh` que lo
+copie a ningún repo — cada repo consumidor lo **VENDEA A MANO** (copia este directorio completo a
+su propio `scripts/auditor-semantico/`) y desde ahí lo afina:
 
 - **Genérico (agnóstico de stack):** `ejecutar.sh` (el runner) y `lib-formato.sh` (el formato de
   salida honesto de Capa 1). No conocen ningún stack ni dominio.

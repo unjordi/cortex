@@ -86,6 +86,15 @@ set -u
 _juez_dod_posible_claim() {
   printf '%s' "$1" | grep -qiE 'list[oa]|termin|funcion|qued|a la par|de punta a punta|produc|cerr|cierr|complet|implementad|arreglad|resuelt|logr|entreg|desplleg|despleg|deploy|done|ready|se ve|se ven|mockup|pantalla|render|chrome|qa visual|identic|idéntic|igual|dise.o|screenshot|captur|pixel|píxel' && return 0
   case "$1" in *🏁*|*🎉*|*✅*|*🚀*|*✨*) return 0 ;; esac
+  # PISO POR LONGITUD (A4, auditoría 2026-09-15): el léxico fijo de arriba lo evade una paráfrasis
+  # GENUINA de cierre sin ninguna de esas palabras ("el endpoint ya opera correctamente y los usuarios
+  # lo están usando" no matchea nada de la lista) → el juez real nunca llegaba a verla. Perseguir cada
+  # sinónimo es el mismo whack-a-mole que este juez LLM fue diseñado para reemplazar (ver cabecera del
+  # archivo); el contrato es SEMÁNTICO, no de vocabulario. En vez de engordar la lista sin fin, cualquier
+  # mensaje que NO sea trivialmente corto (< 11 palabras: acks de una línea tipo "ok, sigo con lo
+  # siguiente" o "voy a revisar el archivo ahora") SIGUE al juez real — el costo de red solo se ahorra
+  # en turnos obviamente inocuos, nunca en prosa sustantiva que PODRÍA ser un cierre parafraseado.
+  [ "$(printf '%s' "$1" | wc -w | tr -d ' ')" -ge 11 ] 2>/dev/null && return 0
   return 1
 }
 
@@ -175,7 +184,14 @@ VISUAL: <si|no>"
 [ "${_CMD_DOD_SOURCE_ONLY:-}" = "1" ] && return 0 2>/dev/null
 
 input=$(cat 2>/dev/null || true)
-command -v jq >/dev/null 2>&1 || exit 0
+# Sin jq no hay forma de parsear el transcript ni de construir el JSON del veredicto → el candado se
+# apaga (fail-OPEN, coherente con el resto del cerebro: "sin jq los guards fallan abierto"). Pero eso NO
+# debe pasar en SILENCIO (A5/A3 auditoría 2026-09-15): sin ningún rastro, nadie se entera de que el turno
+# se cerró SIN que la definición de LISTO se evaluara. Aviso en texto plano (no requiere jq).
+if ! command -v jq >/dev/null 2>&1; then
+  printf '%s\n' 'AVISO (dod-verificar): falta jq en el PATH — el candado de LISTO NO evaluó este turno (fail-open, no bloquea). Instala jq para que vuelva a operar.'
+  exit 0
+fi
 
 active=$(printf '%s' "$input" | jq -r '.stop_hook_active // false' 2>/dev/null)
 [ "$active" = "true" ] && exit 0
@@ -223,7 +239,16 @@ usertext=$(printf '%s\n' "$turn" | jq -rs '
 
 # ── EL JUEZ clasifica los 3 ejes. FAIL-OPEN si no está disponible (dod es nag, no seguridad). ──
 veredicto=$(_juez_dod "$last" "$usertext")
-[ "$veredicto" = "UNAVAILABLE" ] && exit 0
+# A5 (auditoría 2026-09-15): fail-OPEN se CONSERVA (dod es un nag de disciplina, no un candado de
+# seguridad — no atrapar al usuario en un loop por un hipo de red/token). Pero antes se apagaba en
+# SILENCIO TOTAL: nadie se enteraba de que el candado de LISTO no evaluó este turno. Ahora deja
+# CONSTANCIA visible (additionalContext), sin bloquear — mismo patrón que no-bypass-deploy.sh (avisa,
+# nunca bloquea).
+if [ "$veredicto" = "UNAVAILABLE" ]; then
+  _aviso_unavail='AVISO (dod-verificar): el candado de LISTO NO pudo evaluar este turno — el juez LLM no está disponible (sin token/red/timeout/respuesta ininteligible). Fail-open: el turno se cierra igual, pero SIN el chequeo de la marca (1)/(2). No lo tomes como verificado.'
+  jq -n --arg r "$_aviso_unavail" '{hookSpecificOutput:{hookEventName:"Stop",additionalContext:$r}}'
+  exit 0
+fi
 _g() { printf '%s' "$veredicto" | grep -oiE "$1=[a-zíí]+" | head -1 | cut -d= -f2 | tr 'A-Z' 'a-z'; }
 cierre=$(_g CIERRE); marca=$(_g MARCA); visual=$(_g VISUAL)
 

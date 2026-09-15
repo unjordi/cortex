@@ -25,7 +25,13 @@ set -u
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 MANIFEST="$SCRIPT_DIR/hooks/MANIFEST"
-CLAUDE_DIR="$HOME/.claude"
+
+# Misma lib que install-brain.sh: resuelve el dir HONRANDO CLAUDE_CONFIG_DIR (A1, auditoría 2026-09-15) —
+# "INVERSO EXACTO de install-brain.sh" exige la MISMA resolución, o desinstala del sitio equivocado.
+# shellcheck source=lib/entorno-comun.sh
+[ -f "$SCRIPT_DIR/lib/entorno-comun.sh" ] && . "$SCRIPT_DIR/lib/entorno-comun.sh"
+
+CLAUDE_DIR="$(command -v claude_config_dir >/dev/null 2>&1 && claude_config_dir || printf '%s' "${CLAUDE_CONFIG_DIR:-$HOME/.claude}")"
 HOOKS_DIR="$CLAUDE_DIR/hooks"
 SKILLS_DIR="$CLAUDE_DIR/skills"
 GSET="$CLAUDE_DIR/settings.json"

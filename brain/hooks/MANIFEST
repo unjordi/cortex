@@ -65,6 +65,7 @@ delegacion-gate          global  hook
 delegacion-registrar     global  hook
 delegacion-reporte       global  hook
 recordar-orquestar       global  hook
+verificar-contrato-hilo  global  hook
 limpiar-worktrees        global  script
 limpiar-ramas            global  script
 limpiar-residuo          global  script

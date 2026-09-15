@@ -52,7 +52,13 @@ SRC_LIB="$SCRIPT_DIR/lib"
 # shellcheck source=lib/detectar-shells.sh
 [ -f "$SRC_LIB/detectar-shells.sh" ] && . "$SRC_LIB/detectar-shells.sh"
 
-CLAUDE_DIR="$HOME/.claude"
+# Lib de INSTALACIÓN: resuelve el directorio de config HONRANDO CLAUDE_CONFIG_DIR (misma lógica que
+# juez-comun.sh usa en runtime — ver brain/lib/entorno-comun.sh). Fail-safe: si falta, cae al mismo
+# fallback inline (nunca deja CLAUDE_DIR sin resolver).
+# shellcheck source=lib/entorno-comun.sh
+[ -f "$SRC_LIB/entorno-comun.sh" ] && . "$SRC_LIB/entorno-comun.sh"
+
+CLAUDE_DIR="$(command -v claude_config_dir >/dev/null 2>&1 && claude_config_dir || printf '%s' "${CLAUDE_CONFIG_DIR:-$HOME/.claude}")"
 HOOKS_DIR="$CLAUDE_DIR/hooks"
 SKILLS_DIR="$CLAUDE_DIR/skills"
 GSET="$CLAUDE_DIR/settings.json"
@@ -152,6 +158,9 @@ ev_de() {
   case "$1" in
     git-branch-guard|merge-squash-guard|confirmar-merge-develop|recordar-dashboard|secret-scan|entorno-maquina-guard|no-bypass-deploy|rama-vieja|proteger-arbol) echo "PreToolUse|Bash" ;;
     proteger-fuente-cerebro) echo "PreToolUse|Edit|Write|MultiEdit" ;;
+    # verificar-contrato-hilo (M3, auditoría 2026-09-15): PostToolUse (no Pre) — necesita el archivo YA
+    # escrito para verificar su footer; solo avisa, nunca bloquea (ver cabecera del hook).
+    verificar-contrato-hilo) echo "PostToolUse|Edit|Write|MultiEdit" ;;
     limite-gasto|delegacion-gate) echo "PreToolUse|Task|Agent" ;;   # Task|Agent: el tool se renombró Agent (antes Task); casar AMBOS o el gate nunca dispara
     delegacion-registrar|delegacion-reporte) echo "PostToolUse|Task|Agent" ;;
     rehidratar-hilo|aviso-drift-cerebro) echo "SessionStart|" ;;

@@ -2,9 +2,11 @@
 name: orquestar-fanout
 description: >
   Orquestar un fan-out de agentes SIN NIÑERA: asignar ítems autocontenidos del backlog, y que al
-  terminar cada agente su avance quede registrado y su worktree limpio AUTOMÁTICAMENTE — no
-  monitoreándolos a mano. Define el modelo de estado (2 archivos, sin redundancia) y el contrato de
-  reporte. Úsalo cuando delegues trabajo paralelizable a varios agentes.
+  terminar cada agente el hook `delegacion-reporte` te RECUERDE automáticamente registrar su avance
+  y limpiar su worktree — no monitoreándolos a mano. El registro/limpieza en sí los haces TÚ (el
+  hook solo inyecta el recordatorio; no escribe bitácora/estado ni verifica que lo hayas hecho).
+  Define el modelo de estado (2 archivos, sin redundancia) y el contrato de reporte. Úsalo cuando
+  delegues trabajo paralelizable a varios agentes.
 ---
 
 # orquestar-fanout — fan-out con auto-reporte (sin niñera)

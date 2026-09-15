@@ -1045,6 +1045,9 @@ PlasmoidItem {
                 { emoji: "🧬", name: "proteger-fuente-cerebro",   desc: "editas la copia INSTALADA del cerebro (regenerable) → aviso",
                   event: "PreToolUse · Edit/Write/MultiEdit",
                   detail: "Al editar una skill/hook bajo ~/.claude/skills|hooks que TIENE fuente en el clon canónico (brain/skills|hooks), avisa —no bloquea— que esa copia es REGENERABLE: el próximo install-brain la sobrescribe y la edición muere sin rastro. Redirige a editar la FUENTE y propagar con install-brain/sincronizar. Si no hay fuente (skill/hook puramente local), calla. Corre verificar-cerebro para el drift completo instalada-vs-fuente." },
+                { emoji: "🧵", name: "verificar-contrato-hilo",   desc: "escribiste hilo-mental-actual.md sin el footer de rama/fecha → aviso",
+                  event: "PostToolUse · Edit/Write/MultiEdit",
+                  detail: "Corre verificar_hilo() (contrato-hilo.sh) sobre hilo-mental-actual.md en cada escritura. Antes esa función solo se disparaba si el modelo la invocaba a mano desde la prosa de checkpoint — ahora es automático. Avisa —no bloquea— si falta el footer '> Última actualización: <fecha> · rama <x> · nivel <y>': sin él, rehidratar-hilo degrada un hilo VIGENTE a '⚠️ posiblemente OBSOLETO'. Escape: CLAUDE_SKIP_VERIFICAR_HILO=1." },
                 { emoji: "🚧", name: "no-bypass-deploy",         desc: "corres el instalador/deploy a mano en vez de la herramienta oficial → aviso",
                   event: "PreToolUse · Bash",
                   detail: "Avisa —no bloquea— cuando se corre a mano el instalador/deploy de un proyecto en vez de su herramienta oficial: el cerebro/widget se actualiza con el WIDGET (updater ⬆), nunca con install-brain.sh a pelo; generalizado a cualquier install/deploy (deploy.sh, make deploy…). Correr el script crudo se salta backup/atomicidad/sello-de-versión/re-cableado. NO dispara en --dry-run/--help ni en CI ni sobre una mención entrecomillada; fail-safe." }
@@ -1161,7 +1164,7 @@ PlasmoidItem {
 
     // Catálogo conocido (mismos conjuntos que BrainState.knownGlobalHooks / knownRepoHooks del Swift).
     // DEBE coincidir con brain/hooks/MANIFEST; lo verifica el drift-check del widget (test-brain.sh).
-    readonly property var brainGlobalHooks: ["git-branch-guard","merge-squash-guard","confirmar-merge-develop","recordar-dashboard","secret-scan","rama-vieja","proteger-arbol","proteger-fuente-cerebro","limite-gasto","delegacion-gate","delegacion-registrar","delegacion-reporte","recordar-orquestar","rehidratar-hilo","aviso-contexto","aviso-drift-cerebro","hud-stale","exportar-sesion-master","checkpoint-mecanico","barrer-ramas","entorno-maquina-guard","no-bypass-deploy"]
+    readonly property var brainGlobalHooks: ["git-branch-guard","merge-squash-guard","confirmar-merge-develop","recordar-dashboard","secret-scan","rama-vieja","proteger-arbol","proteger-fuente-cerebro","verificar-contrato-hilo","limite-gasto","delegacion-gate","delegacion-registrar","delegacion-reporte","recordar-orquestar","rehidratar-hilo","aviso-contexto","aviso-drift-cerebro","hud-stale","exportar-sesion-master","checkpoint-mecanico","barrer-ramas","entorno-maquina-guard","no-bypass-deploy"]
     readonly property var brainRepoHooks:   ["sesion-inicio","dod-verificar","recordar-cosechar","recordar-unificar-cerebro"]
 
     // ---------- Pestaña BROKER (idx 6) ----------

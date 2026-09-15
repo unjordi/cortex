@@ -1,6 +1,6 @@
 ---
 name: auditor-semantico
-description: Auditoría semántica de un módulo/diff/merge — verifica que el código HAGA LO QUE QUEREMOS QUE HAGA (intención de negocio), no solo que compile y pase tests. Corre primero la Capa 1 determinista (scripts/auditor-semantico/checks/) y luego re-verifica con criterio cada invariante de scripts/auditor-semantico/invariantes-semanticos.yml contra el alcance dado, más una revisión abierta de bugs nuevos. Al final, cosecha lo que encuentre: promueve lo mecánico a un check nuevo, lo no-determinista al manifiesto. Úsala al cerrar un slice grande, tras aplicar la plantilla a un proyecto, o cuando quieras una segunda opinión independiente sobre código propio o de otra IA/dev.
+description: Auditoría semántica de un módulo/diff/merge — verifica que el código HAGA LO QUE QUEREMOS QUE HAGA (intención de negocio), no solo que compile y pase tests. SI el repo ya tiene scripts/auditor-semantico/checks/ (vendido a mano desde cortex/brain/scripts/, NO instalado automático — ver nota abajo), corre primero esa Capa 1 determinista; luego, con o sin Capa 1, re-verifica con criterio cada invariante de scripts/auditor-semantico/invariantes-semanticos.yml contra el alcance dado, más una revisión abierta de bugs nuevos. Al final, cosecha lo que encuentre: promueve lo mecánico a un check nuevo, lo no-determinista al manifiesto. Úsala al cerrar un slice grande, tras aplicar la plantilla a un proyecto, o cuando quieras una segunda opinión independiente sobre código propio o de otra IA/dev.
 ---
 
 # Auditor Semántico
@@ -10,12 +10,15 @@ semántica) antes de correr esta skill por primera vez en un repo. Resumen: un t
 verifica sintaxis/integración; esta skill verifica **intención de negocio** — lo que ningún
 test automatizado puede juzgar por sí solo, por eso necesita un LLM con criterio.
 
-> **Motor genérico + catálogo por-repo.** El motor (`ejecutar.sh`, `lib-formato.sh`) y el
-> esqueleto (`invariantes-semanticos.yml` con solo invariantes `general`) viajan desde el
-> template (`cortex`). Los `checks/*.sh` de fábrica son EJEMPLOS de la plantilla .NET —
-> cada repo afina su propio catálogo a su stack/dominio. Si en ESTE repo el `.yml` ya creció con
-> entradas `proyecto-especifico`, úsalo tal cual (trae tanto los `general` heredados como el
-> dominio acumulado aquí).
+> **Motor genérico + catálogo por-repo — y NADA de esto se instala solo (auditoría 2026-09-15).**
+> `cortex/brain/scripts/auditor-semantico/` (motor `ejecutar.sh`/`lib-formato.sh` + los `checks/*.sh`
+> de ejemplo .NET + el esqueleto `invariantes-semanticos.yml`) es la fuente que un repo VENDEA A
+> MANO a su propio `scripts/auditor-semantico/` — ni `install-brain.sh` ni `sincronizar-cerebro.sh`
+> lo copian (esos solo instalan `brain/hooks/` y `brain/skills/`; `brain/scripts/` no tiene tier ni
+> mecanismo de propagación). Si ESTE repo YA tiene `scripts/auditor-semantico/checks/`, úsalo tal
+> cual (paso 1 abajo); si NO lo tiene, el paso 1 (Capa 1) simplemente NO APLICA todavía — ve directo
+> al paso 2 (Capa 2, LLM) y, si quieres Capa 1 aquí, copia `cortex/brain/scripts/auditor-semantico/`
+> a `<este-repo>/scripts/auditor-semantico/` y afina los checks a este stack/dominio.
 
 ## 0. Define el alcance
 Antes de arrancar, deja claro (con el usuario si hace falta) QUÉ se audita: un commit/rango de
@@ -23,7 +26,10 @@ commits, una rama antes de abrir MR, o el repo completo. Auditar "todo" en un re
 es gratis — prioriza lo reciente/riesgoso (dinero, auth, tenancy, borrados) sobre CRUD trivial
 ya revisado antes.
 
-## 1. Corre la Capa 1 (gratis, primero)
+## 1. Corre la Capa 1, SI este repo la tiene (gratis, primero)
+Si `scripts/auditor-semantico/ejecutar.sh` NO existe en este repo, SÁLTATE este paso — no es un
+error ni un hueco tuyo, es que nadie ha vendido Capa 1 aquí todavía (ver nota arriba) — y ve
+directo al paso 2.
 ```bash
 ./scripts/auditor-semantico/ejecutar.sh
 ```

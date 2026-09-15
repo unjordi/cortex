@@ -23,12 +23,12 @@ case "$branch" in
 esac
 lines+=("")
 lines+=("NORMA DE GIT (dura, la hace cumplir el hook git-branch-guard): NUNCA push a develop/main; todo va a ramitas (feat/fix/chore/docs) → MR → develop; main es release-only (normalmente lo promueve el humano en la web de GitLab; por CLI solo con OK súper-explícito, lo vigila confirmar-merge-develop).")
-lines+=("→ FLUJO DE GIT: en una RAMITA de trabajo, commitea y pushea a la ramita LIBREMENTE, sin preguntar ('¿commiteo? ¿pusheo?' → no preguntes, hazlo). El ÚNICO punto donde te DETIENES a confirmar es CERRAR EL SLICE / integrar a develop: antes del MR (a) verifícalo tú — la verificación técnica que aplique a tu stack (build/tests/lint) verde + memoria al día (el hook Stop lo checa) y (b) el merge a develop exige confirmación EXPRESA del usuario (lo hace cumplir el hook confirmar-merge-develop). Release a main = decisión humana en la web.")
+lines+=("→ FLUJO DE GIT: en una RAMITA de trabajo, commitea y pushea a la ramita LIBREMENTE, sin preguntar ('¿commiteo? ¿pusheo?' → no preguntes, hazlo). El ÚNICO punto donde te DETIENES a confirmar es CERRAR EL SLICE / integrar a develop: antes del MR (a) verifícalo TÚ MISMO — la verificación técnica que aplique a tu stack (build/tests/lint) verde + memoria al día (es TU responsabilidad; ningún hook la corre por ti) y (b) el merge a develop exige confirmación EXPRESA del usuario (lo hace cumplir el hook confirmar-merge-develop). Release a main = decisión humana en la web.")
 lines+=("")
 lines+=("RITUAL ANTI-PÉRDIDA-DE-HILO:")
 lines+=("1) Lee .claude/memory/MEMORY.md (índice) y las memorias del proyecto que liste (dónde quedó el avance: hecho/pendiente/fuera-por-decisión).")
 lines+=("2) Si el repo tiene AGENTS.md (contrato de arquitectura), léelo antes de crear o modificar código.")
-lines+=("3) NO declares nada 'listo/en producción' sin la verificación técnica que aplique (build/tests/lint) citada + la memoria actualizada + confirmación del usuario — el hook Stop (dod-verificar) lo revisa y bloquea el cierre si falta.")
+lines+=("3) NO declares nada 'listo/en producción' sin la verificación técnica que aplique (build/tests/lint) citada + la memoria actualizada + confirmación del usuario. build/tests/lint/memoria son TU responsabilidad — el hook Stop (dod-verificar) NO los corre ni los revisa; lo que SÍ hace y BLOQUEA el cierre es exigir la MARCA CITADA de (1) confirmación funcional del usuario o (2) su autorización expresa, cuando el turno declara un cierre.")
 
 # Resumen del estado (si el proyecto ya tiene un archivo de estado; tolera varios nombres de convención)
 for f in estado-proyecto estado-y-pendientes estado; do

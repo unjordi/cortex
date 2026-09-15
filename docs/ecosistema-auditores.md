@@ -99,12 +99,17 @@ CABLEADO** (ver §Gate #44 y §Preguntas abiertas).
   opcional cuando hay lógica de riesgo. CERCA no-destructiva (solo docs; lo destructivo se PARQUEA).
 - **No reinventa:** encadena skills que YA existen. Es el "cómo" de una campaña, con orden/cerca/cierre.
 
-### 7. `canonizar-cerebro` — el paso ESTRUCTURAL (migración a la firma)
+### 7. `canonizar-cerebro` — STANDALONE (migración a la firma)
 - **Qué hace:** lleva un cerebro instanciado DRIFTEADO a la firma-árbol canónica: reprefija memorias con
   `git mv` (historia intacta), dedup con rescate de datos únicos, reescribe `CLAUDE.md` a firma-árbol y
   `MEMORY.md` a índice-por-prefijo, y **verifica el 1:1 con `verificar-firma-canonica.sh`**.
-- **Distinción con consolidar:** consolidar = campaña AMPLIA (coherencia+suficiencia+higiene+convergencia);
-  canonizar = la MIGRACIÓN estructural a la convención. Humano-en-el-loop, no auto-mutador ciego.
+- **Distinción con consolidar:** consolidar = campaña AMPLIA (coherencia+suficiencia+higiene+convergencia)
+  sobre CUALQUIER cerebro (incluido `cortex` mismo); canonizar = la MIGRACIÓN estructural a la convención,
+  SOLO para proyectos INSTANCIADOS. NO es un paso invocado por `consolidar-cerebro` (corrección
+  2026-09-15: `consolidar-cerebro/SKILL.md` nunca la invocó — 0 grep; era `canonizar-cerebro/SKILL.md`
+  el que se reclamaba parte de esa cadena sin que la orquestadora lo supiera — se corrigió su
+  `description` para dejar de afirmarlo). Se invoca DIRECTO cuando `verificar-firma-canonica.sh` detecta
+  drift. Humano-en-el-loop, no auto-mutador ciego.
 
 ### 8. `unificar-cerebro` — reconciliación SEMANAL del cerebro del equipo
 - **Qué hace:** junta los aprendizajes+memorias de las minis de los devs hacia `develop` sin perder

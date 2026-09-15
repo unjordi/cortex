@@ -94,6 +94,7 @@ El cerebro se ordena por *dureza*: arriba lo que te **bloquea** sin negociar; ab
 ├─ 🕰️  rama-vieja              avisa si la ramita arrastra base vieja
 ├─ 🌳 proteger-arbol           git destructivo que orfanaría commits sin pushear → avisa (fan-out: usa worktree aislado)
 ├─ 🛡️  proteger-fuente-cerebro  editar la copia INSTALADA de un hook/skill que tiene fuente en el clon → avisa (se perdería en el próximo sync) (GLOBAL)
+├─ 🧶 verificar-contrato-hilo  escribiste hilo-mental-actual.md sin el footer de rama/fecha → avisa (verificar_hilo ya no depende de que el modelo la invoque a mano) (GLOBAL)
 ├─ 🧹 barrer-ramas             al abrir sesión / al punto del merge barre en 2º plano ramas locales + remota huérfana + worktrees ya integrados (zombie squash-safe; throttle 24h) (GLOBAL)
 ├─ 💾 exportar-sesion-master   auto-export de las sesiones *-master a ~/.claude-sessions (o Drive); detached, sobrevive el cleanup de 30 días (GLOBAL)
 ├─ 🗂️ checkpoint-mecanico      PreCompact: extractor mecánico (streaming, 0 tokens) escribe el andamio del TRAMO VIVO a hilo-mental-actual.andamio.md (GLOBAL; el skill lo regenera con --self --ensure)

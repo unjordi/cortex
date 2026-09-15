@@ -361,10 +361,12 @@ orquestador/humano. Un agente que corre `git reset`/`checkout`/`rebase` en el á
 orfanar los commits del orquestador (lección real, 2026-07). Si un ítem no se puede aislar, lo hace
 el orquestador. Lo respalda el guard `proteger-arbol`.
 
-**Reporte sin niñera + estado sin redundancia (skill `orquestar-fanout`).** Al orquestar, NO monitorees
-a los agentes a mano ni actualices el estado tú al final: el cierre de CADA agente es AUTOMÁTICO —
-appendas su avance **al FINAL** de `bitacora.md` (con `>>`, no con un Edit) y actualizas el ítem en `estado-proyecto.md`
-(el BACKLOG VIVO = fuente de verdad, "aquí empiezas siempre"). **Dos archivos, roles claros, cero
+**Reporte sin niñera + estado sin redundancia (skill `orquestar-fanout`).** Al orquestar, NO esperes a
+que un humano te pida cerrar el loop: al terminar CADA agente, el hook `delegacion-reporte` te lo
+RECUERDA automáticamente (el registro en sí lo escribes TÚ, el hook no escribe nada — es un nudge, no
+un candado) — appendas su avance **al FINAL** de `bitacora.md` (con `>>`, no con un Edit) y actualizas
+el ítem en `estado-proyecto.md` (el BACKLOG VIVO = fuente de verdad, "aquí empiezas siempre"). **Dos
+archivos, roles claros, cero
 redundancia:** bitácora = *qué pasó* (aquí appendan los agentes); estado-proyecto = *qué sigue* (lo cura
 el orquestador). El **append-al-final con `>>`** (no un Edit que reescribe) es lo que deja que varias
 sesiones/agentes escriban la MISMA bitácora a la vez sin pisarse — dos `>>` no chocan; un Edit tropieza
