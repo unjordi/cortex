@@ -96,3 +96,4 @@ CLAUDE.local.md
 # de PreCompact en CADA repo con el cerebro. El andamio en sí lo cubre el patrón de familia hilo-mental-*;
 # éstos NO caen ahí y quedaban como untracked permanente (y el .log puede llevar rutas de la máquina).
 .claude/memory/.checkpoint-mecanico*
+.cortex-wt/

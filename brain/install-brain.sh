@@ -6,7 +6,7 @@
 # Instala GLOBAL (en ~/.claude, aplica a TODOS los repos de esta máquina):
 #   (a) HOOKS de tier {global, both} en ~/.claude/hooks/ — la LISTA se DERIVA de brain/hooks/MANIFEST
 #       (fuente única; ya no se cura a mano en paralelo con la copia por-repo). Incluye git-branch-guard,
-#       merge-squash-guard, confirmar-merge-develop, recordar-dashboard, secret-scan, rama-vieja,
+#       merge-squash-guard, confirmar-merge-develop, recordar-dashboard, secret-scan,
 #       proteger-arbol (PreToolUse/Bash), delegacion-gate + limite-gasto (PreToolUse/Task),
 #       delegacion-registrar/reporte (PostToolUse/Task), rehidratar-hilo + aviso-contexto (SessionStart/
 #       PostToolUse) + libs `delegacion-comun.sh`, `analizar-comando-git.sh`, `detectar-secretos.sh`
@@ -150,7 +150,7 @@ register_hook() {
 # de abajo AVISA y el drift-check de test-brain (e2) FALLA (no se cablea en silencio).
 ev_de() {
   case "$1" in
-    git-branch-guard|merge-squash-guard|confirmar-merge-develop|recordar-dashboard|secret-scan|entorno-maquina-guard|no-bypass-deploy|rama-vieja|proteger-arbol) echo "PreToolUse|Bash" ;;
+    git-branch-guard|merge-squash-guard|confirmar-merge-develop|recordar-dashboard|secret-scan|entorno-maquina-guard|no-bypass-deploy|proteger-arbol) echo "PreToolUse|Bash" ;;
     proteger-fuente-cerebro) echo "PreToolUse|Edit|Write|MultiEdit" ;;
     limite-gasto|delegacion-gate) echo "PreToolUse|Task|Agent" ;;   # Task|Agent: el tool se renombró Agent (antes Task); casar AMBOS o el gate nunca dispara
     delegacion-registrar|delegacion-reporte) echo "PostToolUse|Task|Agent" ;;

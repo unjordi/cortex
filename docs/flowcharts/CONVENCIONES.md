@@ -51,7 +51,7 @@ nº de archivo ("ver **05**"), NUNCA circulado ①②③ (iba desfasado −1 sin
 Un comando `Bash` con git dispara **9 hooks PreToolUse/Bash** EN PARALELO (sin despachador, precedencia
 `deny>ask>allow`) + hooks PostToolUse. Los 9 pre (confirmado en la función `ev_de` de `install-brain.sh`,
 que mapea todos ellos a `PreToolUse|Bash`): 🚧 git-branch-guard · 🔗 merge-squash-guard · ✋ confirmar-merge-develop · 🕵️ secret-scan
-· 📊 recordar-dashboard · 🖥️ entorno-maquina-guard · 🕰️ rama-vieja · 🌳 proteger-arbol · 🚧 no-bypass-deploy *(4 pueden DENY: los 3 de
+· 📊 recordar-dashboard · 🖥️ entorno-maquina-guard · 🌳 proteger-arbol · 🚧 no-bypass-deploy *(4 pueden DENY: los 3 de
 git + secret-scan)*. De esos 9, **8 INSPECCIONAN git**; el 9º —**no-bypass-deploy**— corre en el mismo fan-out pero
 **NO-OPEA sobre un comando git** (solo actúa ante un instalador/deploy corrido a mano). En PostToolUse sobre ese Bash
 corren 📈 aviso-contexto y 🎼 recordar-orquestar (toda tool) + 🔀 hud-stale y 🧹 barrer-ramas (Bash) — ninguno bloquea; los

@@ -5516,7 +5516,7 @@ echo "== (e6b) install-brain: EXACTAMENTE 9 hooks en PreToolUse/Bash + aviso-con
 # PostToolUse sin matcher (casan toda tool). El cableado se DERIVA del MANIFEST vía ev_de() en
 # install-brain.sh → verificamos ese mapeo (no líneas register_hook literales: el instalador las colapsó
 # a un loop). Si alguien agrega/quita un guard de Bash del mapeo, este test lo caza.
-want_bash="git-branch-guard merge-squash-guard confirmar-merge-develop secret-scan recordar-dashboard entorno-maquina-guard no-bypass-deploy rama-vieja proteger-arbol"
+want_bash="git-branch-guard merge-squash-guard confirmar-merge-develop secret-scan recordar-dashboard entorno-maquina-guard no-bypass-deploy proteger-arbol"
 want_bash_sorted="$(printf '%s\n' $want_bash | sort | tr '\n' ' ' | sed 's/ *$//')"
 got_bash="$(grep -E '\) *echo *"PreToolUse\|Bash"' "$INSTALLER" | sed -E 's/\).*//' | tr '|' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -vE '^$' | sort | tr '\n' ' ' | sed 's/ *$//')"
 if [ "$got_bash" = "$want_bash_sorted" ]; then

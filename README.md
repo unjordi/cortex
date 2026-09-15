@@ -91,7 +91,6 @@ El cerebro se ordena por *dureza*: arriba lo que te **bloquea** sin negociar; ab
 ├─ 📊 recordar-dashboard       en el push recuerda dashboard + doc=realidad (README/docs) — cierre del slice
 ├─ 🖥️  entorno-maquina-guard    commit de algo machine-specific (aliases/rutas de $HOME/Rosetta/entorno-maquina.md) al .claude/memory/ del repo → avisa
 ├─ 🚧 no-bypass-deploy         correr el instalador/deploy a mano (install-brain.sh/deploy.sh) en vez de la herramienta oficial (el widget) → avisa (fail-safe: no --dry-run/--help/CI)
-├─ 🕰️  rama-vieja              avisa si la ramita arrastra base vieja
 ├─ 🌳 proteger-arbol           git destructivo que orfanaría commits sin pushear → avisa (fan-out: usa worktree aislado)
 ├─ 🛡️  proteger-fuente-cerebro  editar la copia INSTALADA de un hook/skill que tiene fuente en el clon → avisa (se perdería en el próximo sync) (GLOBAL)
 ├─ 🧹 barrer-ramas             al abrir sesión / al punto del merge barre en 2º plano ramas locales + remota huérfana + worktrees ya integrados (zombie squash-safe; throttle 24h) (GLOBAL)

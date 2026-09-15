@@ -53,7 +53,6 @@ juez-comun               both    lib
 
 proteger-arbol           global  hook
 proteger-fuente-cerebro  global  hook
-rama-vieja               global  hook
 limite-gasto             global  hook
 rehidratar-hilo          global  hook
 aviso-contexto           global  hook
