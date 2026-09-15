@@ -29,6 +29,9 @@ case "$cmd" in *glab*|*gh*) : ;; *) exit 0 ;; esac
 # Mejora la resolución gh/glab del destino (cierra el FP de release-gh por RESOLVER bien, sin tocar el
 # fail-safe). Ausente → vacío → acg_destino_de_mr cae a CLAUDE_PROJECT_DIR (conducta de hoy).
 pcwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
+# M4 (auditoría 2026-09-15 §3.4): transcript_path para leer la MISMA señal de "¿hay release en la
+# conversación?" que usa confirmar-merge-develop — cierra la contradicción de destino-irresoluble abajo.
+tpath=$(printf '%s' "$input" | jq -r '.transcript_path // empty' 2>/dev/null)
 
 # shellcheck source=analizar-comando-git.sh
 . "$(dirname "$0")/analizar-comando-git.sh"
@@ -116,11 +119,18 @@ fi
 # B3 (FMEA 2026-07-30): ANTES un destino irresoluble (timeout de red) NO exigía squash, mientras que
 # confirmar-merge-develop SÍ trataba el vacío como develop → "merge a develop CONFIRMADO, pero SIN
 # squash". Ahora ambos guards FALLAN al MISMO lado: destino irresoluble ⇒ exige squash (conservador),
-# SALVO señal EXPLÍCITA de release-a-main en el propio comando (main mencionado / palabra `release`),
-# para no aplastar el histórico de un release cuya red no se pudo consultar.
+# SALVO señal EXPLÍCITA de release-a-main — en el propio COMANDO (main mencionado / palabra `release`) O
+# (M4, auditoría 2026-09-15 §3.4) en la CONVERSACIÓN reciente, vía la MISMA señal que usa el piso de main
+# de confirmar-merge-develop (acg_lexico_release sobre acg_recent_intercalado). Antes este guard solo veía
+# el texto del comando: un release legítimo cuya intención vivía SOLO en la charla (típico — el usuario NO
+# repite "release" dentro del `glab mr merge 63 --yes`) hacía que confirmar-merge-develop lo reconociera
+# como release (por conversación) mientras ESTE guard, ciego a ella, forzaba squash sobre el MISMO release
+# — "dos guards, el MISMO comando, la MISMA incógnita, CONCLUSIONES OPUESTAS". No AFLOJA la exigencia de
+# squash para un develop genuino sin señal de release en NINGÚN lado (comando NI conversación).
 _es_release_explicito() {
   local u; u=$(acg_sin_flag_repo "$(acg_despoja_comillas "$1")")
-  printf '%s' "$u" | grep -qiE '[[:space:]:/=](main)([[:space:]]|$)|\brelease\b'
+  printf '%s' "$u" | grep -qiE '[[:space:]:/=](main)([[:space:]]|$)|\brelease\b' && return 0
+  acg_lexico_release "$(acg_recent_intercalado "$tpath")"
 }
 _destino=$(acg_destino_de_mr "$cmd" "$pcwd")
 if [ -n "$_destino" ]; then

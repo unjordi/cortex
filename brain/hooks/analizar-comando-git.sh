@@ -747,3 +747,61 @@ acg_hint_candidatos() {   # $1=json array(o vacío) $2=destino $3=mrid → bloqu
       "$head_ln" "$mrline" "$foot_ln"
   fi
 }
+
+# ── M4 (auditoría 2026-09-15 §2.3/§3.4): UNA sola fuente para "¿hay lenguaje de release / qué dijo el
+# usuario recientemente?" — antes vivía SOLO dentro de confirmar-merge-develop.sh, así que merge-squash-guard
+# (el otro guard que decide sobre el MISMO destino desconocido) no tenía forma de ver la MISMA señal y
+# discrepaba: con un destino IRRESOLUBLE, confirmar-merge-develop podía reconocer un release legítimo por la
+# CONVERSACIÓN mientras merge-squash-guard, ciego a ella, forzaba squash sobre ESE MISMO release (§3.4,
+# "dos guards, el MISMO comando, la MISMA incógnita, CONCLUSIONES OPUESTAS"). Moverlas aquí no cambia su
+# comportamiento (son wrappers 1:1 en el consumidor original) — solo las vuelve CONSULTABLES por cualquier
+# guard de la familia, para que la incertidumbre se resuelva con la MISMA información en todos lados.
+
+# acg_recent_intercalado($tpath) → arma la CONVERSACIÓN reciente intercalada (USUARIO:/ASISTENTE:), del más
+# viejo al más nuevo. Ancla en el 10º mensaje de USUARIO desde el final + 4 turnos de arranque (contexto del
+# asistente); filtra meta/system-reminder/tool-result puro; surfacea AskUserQuestion (.toolUseResult.answers/
+# .annotations) y el mensaje MID-TURN absorbido (queue-operation reason=absorbed_mid_turn →
+# {"type":"attachment","attachment":{"type":"queued_command","origin":{"kind":"human"}}}) como turno USUARIO
+# — con AUTORIDAD estricta (origin.kind=="human" exacto; cualquier otro valor/ausente NO se surfacea).
+acg_recent_intercalado() {  # $1=ruta del transcript .jsonl → imprime la conversación intercalada, o vacío
+  [ -n "${1:-}" ] && [ -f "$1" ] || return 0
+  tail -n 6000 "$1" 2>/dev/null | jq -rs '
+    [ .[]
+      | select((.isMeta // false) != true)                # descarta META/inyectados (no son del usuario)
+      | ( if (.type == "attachment")
+             and ((.attachment.type? // "") == "queued_command")
+             and ((.attachment.origin.kind? // "") == "human")
+          then (.attachment.prompt? // "") else "" end ) as $qc
+      | { role: (if $qc != "" then "user" else (.message.role // .type) end),
+          text: ( if $qc != "" then $qc else
+                  ( (try ([ .toolUseResult.answers[]
+                          | select(type=="string" and . != "" and . != "(no option selected)" and . != "(notes only)") ]
+                       + [ .toolUseResult.annotations[]?.notes | select(type=="string" and . != "") ]
+                       | join(" · ")) catch "") as $aq
+                | if $aq != "" then $aq
+                  else ((.message.content // [.message])
+                        | if type=="array"
+                          then (map(if type=="string" then . elif (.type? == "text") then .text else "" end) | join(" "))
+                          else (. // "") end)
+                  end ) end ) }
+      | select(.role=="user" or .role=="assistant")       # solo turnos de conversación (no tool-result puro)
+      | select(.text != "")
+      | select(.text | test("<system-reminder>") | not)   # descarta bloques con marca de inyección (CLAUDE.md/recordatorios)
+      | { role, text: (.text | gsub("\\s+";" ")) } ] as $t
+    | ([ range(0; ($t|length)) | select($t[.].role=="user") ]) as $u
+    | (if ($u|length) >= 10 then $u[-10] else ($u[0] // 0) end) as $a
+    | (if $a >= 4 then $a-4 else 0 end) as $s
+    | $t[$s:]
+    | map( if .role=="user" then "USUARIO: " + .text
+           else "ASISTENTE: " + (.text[0:700]) end )
+    | join("\n")' 2>/dev/null   # conversación intercalada, del más viejo al más nuevo, marcada por rol
+}
+
+# ¿Hay lenguaje EXPLÍCITO de release (release/libera/a main/a master) en ALGUNA línea 'USUARIO:' de la
+# ventana? Tokens ANCLADOS a límite de palabra (portable BSD+GNU): 'liber' no casa en "deliberada"/
+# "libertad", 'a main' no casa en "a maintenance". Fuente ÚNICA para el PISO de main de confirmar-merge-
+# develop Y (M4) para el fail-safe de destino-irresoluble de merge-squash-guard — misma pregunta, misma
+# respuesta, en vez de que cada guard la conteste con su propia heurística.
+acg_lexico_release() {   # $1=mensajes(intercalados USUARIO:/ASISTENTE:) → 0=SÍ hay release · 1=no
+  printf '%s\n' "$1" | grep -iE '^[[:space:]]*USUARIO:' | grep -iqE '(^|[^[:alpha:]])(release|(liberar?|liberado|liberaci[oó]n|liber[eé]n?|liber[oó])([^[:alpha:]]|$)|(a|hacia) (main|master)([^[:alpha:]]|$))'
+}

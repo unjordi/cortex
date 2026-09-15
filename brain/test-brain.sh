@@ -212,6 +212,20 @@ is_silent "$out" && ok "squash-guard B3: destino INDETERMINADO CON --squash → 
 # el histórico de un release cuya red no se pudo consultar). Sin id → destino queda vacío igual.
 out="$(ms 'glab mr merge --yes # release a main')"
 is_silent "$out" && ok "squash-guard B3: indeterminado + señal 'release a main' → NO fuerza squash" || bad "squash-guard B3: forzó squash pese a la señal explícita de release; got: $out"
+# M4 (auditoría 2026-09-15 §3.4, costura): destino IRRESOLUBLE + el COMANDO no menciona release/main, pero
+# la CONVERSACIÓN reciente SÍ trae lenguaje de release → antes este guard era CIEGO a la charla (solo leía
+# el texto del comando) y forzaba squash sobre un release que confirmar-merge-develop YA reconocía como
+# legítimo por conversación — "MISMO comando, MISMA incógnita, CONCLUSIONES OPUESTAS". Ahora ambos guards
+# leen la MISMA señal (acg_lexico_release sobre acg_recent_intercalado).
+M4TX=$(mktemp)
+printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"libera esto a main, es el release"}]}}' > "$M4TX"
+msT() { PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$FAKEHOME" bash "$HOOKS/merge-squash-guard.sh" <<<"$(jq -nc --arg c "$1" --arg t "$M4TX" '{tool_input:{command:$c},transcript_path:$t}')"; }
+out="$(msT 'glab mr merge --yes')"   # sin ID → destino indeterminado; SIN release en el TEXTO del comando
+is_silent "$out" && ok "M4: destino INDETERMINADO + release SOLO en la conversación → NO fuerza squash (antes ciego a la charla)" || bad "M4: forzó squash pese al release en la conversación; got: $out"
+# Control: MISMO comando, SIN transcript de release → sigue exigiendo squash (M4 no aflojó el default).
+out="$(ms 'glab mr merge --yes')"
+is_deny "$out" && ok "M4 control: destino INDETERMINADO sin release en NINGÚN lado → sigue exigiendo squash" || bad "M4 control: aflojó la exigencia de squash sin señal de release"
+rm -f "$M4TX"
 # H-R9-01 (FMEA r9): el binario Windows `glab.exe`/`gh.exe` rompía el gate `acg_es_merge_mr` → ambos guards
 # de merge quedaban ciegos (hermano de B4 en el eje merge). (\.exe)? en el reconocimiento lo cierra.
 mock_glab develop; out="$(ms 'glab.exe mr merge 48 --auto-merge --yes')"

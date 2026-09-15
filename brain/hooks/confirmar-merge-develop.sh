@@ -27,14 +27,21 @@ set -u
 # shellcheck source=juez-comun.sh
 . "${BASH_SOURCE[0]%/*}/juez-comun.sh"
 
-# ¿Hay lenguaje EXPLÍCITO de release (release/libera/a main/a master) en ALGUNA línea 'USUARIO:' de la
-# ventana? Tokens ANCLADOS a límite de palabra (portable BSD+GNU): 'liber' no casa en "deliberada"/
-# "libertad", 'a main' no casa en "a maintenance". FUENTE ÚNICA para el PISO de main (§3.5/M5, abajo) y el
-# GRANT durable con destino desconocido (§3.6/M6, cuerpo del hook) — antes esta cerca vivía SOLO dentro del
-# piso; M6 la reusa para no divergir en DOS lugares la misma pregunta de seguridad ("¿esto es un release?").
-_lexico_release_en_ventana() {   # $1=mensajes(intercalados USUARIO:/ASISTENTE:) → 0=SÍ hay release · 1=no
-  printf '%s\n' "$1" | grep -iE '^[[:space:]]*USUARIO:' | grep -iqE '(^|[^[:alpha:]])(release|(liberar?|liberado|liberaci[oó]n|liber[eé]n?|liber[oó])([^[:alpha:]]|$)|(a|hacia) (main|master)([^[:alpha:]]|$))'
-}
+# M4 (auditoría 2026-09-15 §2.3/§3.4): _recent_intercalado/_lexico_release_en_ventana ahora son WRAPPERS
+# retro-compat de acg_recent_intercalado/acg_lexico_release (movidas a la lib compartida — ver el
+# comentario largo ahí: "una sola fuente para la misma pregunta", consultable también por merge-squash-guard
+# para cerrar la contradicción §3.4 sin aflojar el fail-safe de ninguno de los dos guards). La lib se
+# sourcea ARRIBA SOLO en modo TEST (_CMD_JUEZ_SOURCE_ONLY=1, el script hace `return 0` antes de llegar a su
+# sourceo normal de abajo) — en OPERACIÓN NORMAL la lib se sigue sourceando en su posición de SIEMPRE
+# (después del gate "sin jq" A3, más abajo): sourcearla ANTES de ese gate dispararía acg__augmenta_path
+# (rescate de PATH) y "encontraría" un jq real del sistema, anulando el fail-safe A3 para el caso
+# genuinamente sin jq (regresión medida: rompía el test 'juez-comun (d)').
+if [ "${_CMD_JUEZ_SOURCE_ONLY:-}" = "1" ]; then
+  # shellcheck source=analizar-comando-git.sh
+  . "${BASH_SOURCE[0]%/*}/analizar-comando-git.sh"
+fi
+_recent_intercalado() { acg_recent_intercalado "$@"; }
+_lexico_release_en_ventana() { acg_lexico_release "$@"; }
 
 # ── JUEZ DE AUTORIZACIÓN (LLM) — definido ARRIBA para que los tests lo SOURCEEN idéntico (cero drift con
 # el hook). Punto de entrada = _juez_merge($destino,$mrid,$mensajes,$hint) → ALLOW|DENY|UNAVAILABLE; un voto
@@ -228,58 +235,6 @@ _juez_merge() {   # $1=destino  $2=mrid  $3=mensajes  $4=hint(opcional) → impr
   final=$(cat "$tmpd"/v* 2>/dev/null | _juez_agrega_votos)
   rm -rf "$tmpd"
   printf '%s' "$final"
-}
-
-# _recent_intercalado($tpath) → arma la CONVERSACIÓN reciente intercalada (USUARIO:/ASISTENTE:) que come el
-# juez. Extraída a función para poder testearla DETERMINISTA con un fixture de transcript (el jq de interleave
-# es el código nuevo riesgoso). Ver el diseño en el comentario de abajo (ancla 10º-usuario + 4 de arranque).
-_recent_intercalado() {  # $1=ruta del transcript .jsonl → imprime la conversación intercalada, o vacío
-  [ -n "${1:-}" ] && [ -f "$1" ] || return 0
-  tail -n 6000 "$1" 2>/dev/null | jq -rs '
-    [ .[]
-      | select((.isMeta // false) != true)                # descarta META/inyectados (no son del usuario)
-      # MENSAJE MID-TURN del usuario (fix del FP 2026-09-08, clase "PR19"): lo que el usuario escribe MIENTRAS
-      # el turno corre NO queda como turno {"type":"user"} — el CLI lo ABSORBE dentro del turno en curso
-      # (queue-operation con reason=absorbed_mid_turn, visto en los transcripts desde el 2026-08-25) y lo
-      # persiste como {"type":"attachment","attachment":{"type":"queued_command","prompt":"<texto>",
-      # "origin":{"kind":"human"}}}. Sin esta rama la ventana del juez NO CONTENÍA la autorización y el guard
-      # frenaba con el OK en la mano ("mejor mergea el PR19…", rechazado 3 veces). Se toma `.attachment.prompt`
-      # (el texto CRUDO tecleado), NUNCA `.rendered` (que viene envuelto en <system-reminder>).
-      # AUTORIDAD INTACTA: se exige `origin.kind == "human"` ESTRICTO (campo ausente u otro valor → NO se
-      # surfacea, fail-closed) → solo input tecleado por la persona autoriza, y el veto de CITA sigue
-      # re-verificando el ALLOW contra estas mismas líneas USUARIO:.
-      | ( if (.type == "attachment")
-             and ((.attachment.type? // "") == "queued_command")
-             and ((.attachment.origin.kind? // "") == "human")
-          then (.attachment.prompt? // "") else "" end ) as $qc
-      | { role: (if $qc != "" then "user" else (.message.role // .type) end),
-          # AskUserQuestion: la respuesta llega como tool_result (texto vacío arriba → se perdía). La opción
-          # ELEGIDA por el usuario + sus notas viven en .toolUseResult.answers/.annotations (input GENUINO del
-          # usuario al hacer clic) → se surfacea como turno USUARIO. SOLO ese campo (AskUserQuestion-específico);
-          # el output arbitrario de OTRAS tools NO tiene .answers → sigue cayendo a texto vacío y se filtra.
-          text: ( if $qc != "" then $qc else
-                  ( (try ([ .toolUseResult.answers[]
-                          | select(type=="string" and . != "" and . != "(no option selected)" and . != "(notes only)") ]
-                       + [ .toolUseResult.annotations[]?.notes | select(type=="string" and . != "") ]
-                       | join(" · ")) catch "") as $aq
-                | if $aq != "" then $aq
-                  else ((.message.content // [.message])
-                        | if type=="array"
-                          then (map(if type=="string" then . elif (.type? == "text") then .text else "" end) | join(" "))
-                          else (. // "") end)
-                  end ) end ) }
-      | select(.role=="user" or .role=="assistant")       # solo turnos de conversación (no tool-result puro)
-      | select(.text != "")
-      | select(.text | test("<system-reminder>") | not)   # descarta bloques con marca de inyección (CLAUDE.md/recordatorios)
-      | { role, text: (.text | gsub("\\s+";" ")) } ] as $t
-    # ancla en el 10º mensaje de USUARIO desde el final; +4 turnos de arranque para el contexto del asistente
-    | ([ range(0; ($t|length)) | select($t[.].role=="user") ]) as $u
-    | (if ($u|length) >= 10 then $u[-10] else ($u[0] // 0) end) as $a
-    | (if $a >= 4 then $a-4 else 0 end) as $s
-    | $t[$s:]
-    | map( if .role=="user" then "USUARIO: " + .text
-           else "ASISTENTE: " + (.text[0:700]) end )
-    | join("\n")' 2>/dev/null   # conversación intercalada, del más viejo al más nuevo, marcada por rol
 }
 
 # Los tests SOURCEAN con _CMD_JUEZ_SOURCE_ONLY=1 para obtener SOLO las funciones (_juez_merge,
