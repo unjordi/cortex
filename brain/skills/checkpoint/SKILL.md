@@ -244,6 +244,24 @@ compact puede perder.
    checkpoint** (no lo agendes), y regístralo en `## COSECHA DURABLE` con sus rutas. Lo que ya vive en
    disco es lo único que el compact no puede perder.
 
+## El estándar: que ESCARBAR sea innecesario
+El hilo se escribe para que la siguiente instancia (tú mismo tras compactar, o un sucesor) NO tenga que
+releer las fuentes para reconstruir el modelo — le basta con LEER el hilo. Si al retomar hace falta
+grepear código, abrir un dictamen de cientos de líneas o reconstruir un contrato desde cero, el
+checkpoint ANTERIOR falló — no el lector por preguntar.
+
+Esto no contradice la norma dura "post-compact: EXCAVA antes de contestar" — resuelve un caso distinto
+al que esa norma cubre:
+- **El hilo NO TIENE la respuesta** → excavar (bitácora, `estado-proyecto.md`, el transcript) sigue
+  siendo lo correcto. Y además es la SEÑAL de que el checkpoint anterior quedó corto: corrígelo en el
+  próximo.
+- **El hilo SÍ TIENE la respuesta, escrita por ti mismo** → úsala directamente. Volver a escarbar cuando
+  ya la dejaste escrita es el desperdicio que este estándar elimina.
+
+Regla operativa al retomar: LEE el hilo primero. Si responde la pregunta, ahí termina — no repitas el
+grep. Si no responde, excava — y el hueco que encontraste es el defecto a corregir en el SIGUIENTE
+checkpoint, no una falla tuya por haber preguntado.
+
 ## Qué NO es
 - **No es `cerrar-slice`.** Checkpoint es SOLO el volcado; no verifica build/tests, no abre MR, no
   cosecha aprendizajes de cierre de slice. Cuando de verdad terminaste un slice, usa `cerrar-slice`
