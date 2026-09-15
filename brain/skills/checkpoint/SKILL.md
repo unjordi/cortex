@@ -28,26 +28,19 @@ archivos durables en disco, para que **compactar cuanto quieras NO cueste el hil
 
 **Criterio de elección:** ¿viene un compact? ¿llevas >2h de corrida? ¿la implementación que sigue es
 crítica? → **COMPLETO**. ¿Pausa casual entre sub-pasos? → ligero. **Ante la duda, COMPLETO**:
-sub-volcar cuesta una noche (pasó de verdad); sobre-volcar cuesta 2 minutos.
+sub-volcar cuesta una noche de trabajo; sobre-volcar cuesta 2 minutos.
 
-## Por qué el nivel COMPLETO funciona (anatomía del descubrimiento)
+## Por qué el nivel COMPLETO existe
 
-Nació de un descubrimiento de unjordi (2026-07-18): antes de un compact crítico, en vez del checkpoint
-terso, le pidió a su Claude — *"puedes hacer una memoria super temporal con TODO lo que tienes planeado
-ahorita, todos los pendientes, el mecanismo y detalles de cómo los quieres resolver, y toda la lista de
-cosas que resolvimos hoy? y actualizar las memorias y skills de etl? haciendo eso ya podemos hacer el
-compact con calma"* — y funcionó "perfecto de perfectolandia". La anatomía de por qué:
+Un resumen de compactación trata bien la narrativa, pero AMPUTA dos cosas que solo COMPLETO repone:
+- El **CÓMO** del plan — un resumen conserva "pendiente: X" pero pierde "se resolvía con Y porque Z".
+  Por eso el PLAN (o el DISEÑO, ver abajo) se vuelca completo, no telegráfico.
+- Lo **RESUELTO** — si no se escribe explícito, revive como pendiente fantasma tras compactar. Por eso
+  la sección anti-fantasma.
 
-En el contexto viven **3 tipos de estado**, y el resumen del compact solo trata bien uno:
-1. **La narrativa** — lo único que el resumen conserva (con pérdida).
-2. **Las intenciones procedimentales** — el PLAN con su CÓMO. Lo MÁS frágil: un resumen conserva
-   "pendiente: X" pero amputa "lo iba a resolver con Y porque Z". Por eso el PLAN se vuelca completo.
-3. **Lo RESUELTO** — decisiones ya tomadas. Si no se escriben, **reviven como pendientes fantasma**
-   tras compactar (caso real: frenaron una noche entera de ETL). Por eso la sección anti-fantasma.
-
-El volcado **en las PROPIAS palabras del modelo** permite re-instanciarse releyendo textual, en vez de
-reconstruir desde un resumen ajeno (= confabular). Y "actualizar memorias/skills" **desaloja del canal
-volátil lo que tiene casa durable** → reduce lo que el compact puede siquiera perder.
+El volcado va en las PROPIAS palabras del modelo (releer textual, no reconstruir desde un resumen ajeno)
+y "actualizar memorias/skills" desaloja del canal volátil lo que ya tiene casa durable — reduce lo que el
+compact puede perder.
 
 ## Cuándo correrlo
 - **Antes de un `/compact` manual** — lo más importante. **Nivel COMPLETO, sin excepción.**
@@ -78,14 +71,12 @@ volátil lo que tiene casa durable** → reduce lo que el compact puede siquiera
         --self --ensure          # regenera SOLO si quedó atrás del transcript; si no, dice "no-op"
    cat .claude/memory/hilo-mental-actual.andamio.md
    ```
-   **Por qué es TU paso y no solo del hook** (restricción dura de unjordi, textual: *"no que PreCompact
-   sea el único mecanismo"*): el hook `checkpoint-mecanico` solo corre en `PreCompact`, y la mayoría de
-   los checkpoints NO vienen de una compactación (medido: ~5 volcados por cada compact). Sin este paso,
-   un `/checkpoint` a mano encuentra el andamio viejo **o ausente, sin poder distinguir cuál** — un
-   insumo de frescura desconocida presentado como vigente, que es justo el modo de falla que el gate del
-   hilo existe para evitar. Con `--ensure`, el andamio SIEMPRE está al día cuando lo lees, venga o no de
-   un compact. (Dentro de un SUBAGENTE `--self` se niega a correr y lo dice: el `CLAUDE_CODE_SESSION_ID`
-   que ve un subagente es el del PADRE y regeneraría el andamio de otra sesión.)
+   **Corre este paso SIEMPRE, no solo cuando ya hubo un `PreCompact`:** el hook `checkpoint-mecanico`
+   solo dispara en `PreCompact`, y la mayoría de los checkpoints NO vienen de una compactación (medido:
+   ~5 volcados por cada compact). Sin este paso, un `/checkpoint` a mano encuentra el andamio viejo o
+   ausente, sin poder distinguir cuál. Con `--ensure`, el andamio SIEMPRE está al día cuando lo lees,
+   venga o no de un compact. (Dentro de un SUBAGENTE `--self` se niega a correr y lo dice: el
+   `CLAUDE_CODE_SESSION_ID` que ve un subagente es el del PADRE, y regeneraría el andamio de OTRA sesión.)
    El andamio te da GRATIS y sin gastar ventana: el 🗂️ árbol de archivos tocados (los de Write/Edit y,
    aparte, los escritos desde Bash), las skills invocadas, los `git commit` del tramo y **las últimas
    citas TEXTUALES del usuario** — la materia prima de la PROCEDENCIA `[user: "…"]`, que reconstruida de
@@ -171,15 +162,11 @@ volátil lo que tiene casa durable** → reduce lo que el compact puede siquiera
      esta tanda, con su ramita/MR) · **📁 INSUMOS A LEER PARA LO QUE SIGUE** (lo que hay que abrir para
      retomar la tarea activa) · **🔧 TOOLING INTEGRADO / RELEVANTE** (scripts/skills/accesos, con su estado).
      La prosa "sin drama" (En qué estamos / Decisión abierta / Siguiente paso …) va DESPUÉS del árbol.
-     Origen de este formato: unjordi, 2026-08-25 — *"así deberíamos hacerlo siempre… actualiza tu skill
-     drifteante"* tras ver un checkpoint con este árbol al principio.
    - **Anti-drift (sub-regla dura): cuando una memoria se MUEVE / FUSIONA / RENOMBRA, sincroniza el árbol/
      lista en la MISMA tanda** — igual que `RESUELTO HOY` registra el cambio, el puntero de MEMORIAS debe
      reflejarlo, o se contradicen dentro del mismo hilo y la lista deja de ahorrarte el grep (su único
      propósito). Es doc=realidad aplicado al propio hilo. Y al CONTESTAR "¿qué memorias hay de X?",
      **arranca de esta lista como HUD** y verifica/extiende contra disco — no grepees desde cero ignorándola.
-     (Lección real 2026-08-20: la lista quedó con los 5 slugs viejos de red mientras `RESUELTO` ya decía
-     "fusión hecha" → se grepeó el árbol de todos modos.)
 
    **⚠️ Regla de OVERFLOW (>~200 líneas) `[SIN CONFIRMAR — dato de docs, validar el límite exacto]`.** El
    import/autostart del hilo al arrancar sesión **trunca pasando las ~200 líneas**. Si `hilo-mental-actual.md`
@@ -200,11 +187,10 @@ volátil lo que tiene casa durable** → reduce lo que el compact puede siquiera
    PLAN y cada decisión de RESUELTO llevan de DÓNDE salió y QUIÉN la originó, con un marcador breve:
    `[user: "<cita textual>"]` si es del usuario · `[INFER-mío]` si es una hipótesis/propuesta TUYA (de
    Claude) · `[juntos <fecha>]` si se decidió en conversación. **Por qué:** al comprimir se pierde la
-   procedencia y el default es re-leerse la idea PROPIA como si fuera del usuario ("unjordi cree X") →
-   se lava una hipótesis tuya en su voz, primo hermano de fabricar autorización (viola la norma de
-   autorización acotada y NO-transitiva). Marcar la procedencia hace que el LINAJE viaje CON la idea a
-   través del compact. Regla dura al re-resumir: **nunca conviertas un `[INFER-mío]` en un `[user]`**; si
-   no recuerdas el origen, es `[INFER-mío]` (conservador), no del usuario.
+   procedencia y el default es releer una idea PROPIA como si fuera del usuario — fabricar autorización
+   que nunca existió. Marcar la procedencia hace que el LINAJE viaje CON la idea a través del compact.
+   Regla dura al re-resumir: **nunca conviertas un `[INFER-mío]` en un `[user]`**; si no recuerdas el
+   origen, es `[INFER-mío]` (conservador), no del usuario.
 2. **El estado del proyecto — BARRIDO SIN PÉRDIDA del hilo → durable (GARANTÍA DURA, ambos niveles).**
    Antes de que el paso 1 pise el hilo, **barre el hilo entero y asegura que TODO pendiente y TODA
    decisión DURABLE que viva en él ya esté en `estado-proyecto.md`** (o el backlog durable equivalente del
