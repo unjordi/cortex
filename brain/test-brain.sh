@@ -3655,9 +3655,14 @@ echo "== (b6) aviso-contexto: REPORTERO TONTO (rediseño 2026-09-01, ver docs/re
 # techo=ventana×pct) que este rediseño retiró DELIBERADAMENTE.
 ACROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-ac.XXXXXX")/r"
 mkdir -p "$ACROOT/.claude/memory"
+# HOME aislado (vacío) para TODOS los helpers de aviso-contexto: sin él, el hook lee el ~/.claude/settings.json
+# REAL del dev (autoCompactWindow/autoCompactEnabled) como capa "user" y contamina la medición → tests no
+# deterministas (la aserción 'no seteado' fallaba en una máquina con autoCompactWindow en settings). Con HOME
+# vacío solo gobierna la capa de proyecto ($root) que cada test escribe. (Aislamiento cazado 2026-09-14.)
+ACHOME="$(mktemp -d "${TMPDIR:-/tmp}/brain-achome.XXXXXX")"
 ACTX="$ACROOT/transcript.jsonl"
 gen_ctx() { printf '%s\n%s\n' '{"type":"user","message":{"role":"user"}}' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$1}}}" > "$ACTX"; }
-ac() { printf '%s' "{\"transcript_path\":\"$ACTX\"}" | CLAUDE_PROJECT_DIR="$ACROOT" bash "$HOOKS/aviso-contexto.sh"; }
+ac() { printf '%s' "{\"transcript_path\":\"$ACTX\"}" | HOME="$ACHOME" CLAUDE_PROJECT_DIR="$ACROOT" bash "$HOOKS/aviso-contexto.sh"; }
 has_aviso() { printf '%s' "$1" | jq -e '.hookSpecificOutput.hookEventName == "PostToolUse"' >/dev/null 2>&1; }
 o="$(printf '%s' '{"transcript_path":"/no/existe"}' | CLAUDE_PROJECT_DIR="$ACROOT" bash "$HOOKS/aviso-contexto.sh")"
 is_silent "$o" && ok "aviso-contexto: sin transcript → silencio" || bad "aviso-contexto reaccionó sin transcript; got: $o"
@@ -3674,7 +3679,7 @@ gen_ctx 80000; is_silent "$(ac)" && ok "aviso-contexto: ctx bajó (compact) a un
 gen_ctx 150000; has_aviso "$(ac)" && ok "aviso-contexto: vuelve a subir al escalón 3 tras el compact → avisa de nuevo" || bad "aviso-contexto NO avisó tras re-subir"
 # (F3, auditoría 2026-09-09) el debounce se keyea POR SESIÓN: dos sesiones concurrentes en el MISMO repo
 # NO se pisan el escalón (antes, stamp per-repo → thrash: la de ctx alto re-emitía y la baja se silenciaba).
-ac_sid() { printf '%s' "{\"transcript_path\":\"$ACTX\",\"session_id\":\"$1\"}" | CLAUDE_PROJECT_DIR="$ACROOT" bash "$HOOKS/aviso-contexto.sh"; }
+ac_sid() { printf '%s' "{\"transcript_path\":\"$ACTX\",\"session_id\":\"$1\"}" | HOME="$ACHOME" CLAUDE_PROJECT_DIR="$ACROOT" bash "$HOOKS/aviso-contexto.sh"; }
 gen_ctx 250000   # escalón 5, virgen para ambas sesiones
 has_aviso "$(ac_sid sesA)" && ok "aviso-contexto F3: sesión A cruza escalón nuevo → avisa" || bad "aviso-contexto F3: sesión A no avisó"
 is_silent "$(ac_sid sesA)" && ok "aviso-contexto F3: sesión A mismo escalón → debounce (su propio stamp)" || bad "aviso-contexto F3: sesión A re-avisó su propio escalón"
@@ -3722,7 +3727,7 @@ ac_msg() { # $1=ctx $2=model(opcional) → imprime additionalContext (dir fresco
   local root; root="$(mktemp -d "${TMPDIR:-/tmp}/brain-acn.XXXXXX")/r"; mkdir -p "$root/.claude/memory"
   [ -n "${2:-}" ] && printf '{"model":"%s"}' "$2" > "$root/.claude/settings.json"
   printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$1}}}" > "$root/t.jsonl"
-  printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" | env CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
+  printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" | env HOME="$ACHOME" CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
     | jq -r '.hookSpecificOutput.additionalContext // empty'
   rm -rf "$(dirname "$root")"
 }
@@ -3762,7 +3767,7 @@ ac_msg_win() { # $1=ctx $2=window → additionalContext, dir fresco, ventana for
   local root; root="$(mktemp -d "${TMPDIR:-/tmp}/brain-acm.XXXXXX")/r"; mkdir -p "$root/.claude/memory"
   printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$1}}}" > "$root/t.jsonl"
   printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" \
-    | env AVISO_CONTEXTO_WINDOW_TOKENS="$2" CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
+    | env HOME="$ACHOME" AVISO_CONTEXTO_WINDOW_TOKENS="$2" CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
     | jq -r '.hookSpecificOutput.additionalContext // empty'
   rm -rf "$(dirname "$root")"
 }
@@ -3777,7 +3782,7 @@ acw_msg() { # $1=ctx $2=autoCompactWindow(o vacío) → additionalContext
   if [ -n "${2:-}" ]; then printf '{"model":"opus","autoCompactWindow":%s}' "$2" > "$root/.claude/settings.json"
   else printf '{"model":"opus"}' > "$root/.claude/settings.json"; fi
   printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$1}}}" > "$root/t.jsonl"
-  printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" | env CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
+  printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" | env HOME="$ACHOME" CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
     | jq -r '.hookSpecificOutput.additionalContext // empty'
   rm -rf "$(dirname "$root")"
 }
@@ -3797,7 +3802,7 @@ ac3() { # $1=model $2=ctx → additionalContext, dir fresco (sin override de ven
   local root; root="$(mktemp -d "${TMPDIR:-/tmp}/brain-ac3.XXXXXX")/r"; mkdir -p "$root/.claude/memory"
   printf '{"model":"%s"}' "$1" > "$root/.claude/settings.json"
   printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$2}}}" > "$root/t.jsonl"
-  printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" | env CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
+  printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" | env HOME="$ACHOME" CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
     | jq -r '.hookSpecificOutput.additionalContext // empty'
   rm -rf "$(dirname "$root")"
 }
@@ -3844,7 +3849,7 @@ acwin() { # $1=window(vacío=sin forzar) $2=ctx → additionalContext, modelo 'o
   printf '{"model":"opus"}' > "$root/.claude/settings.json"
   printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$2}}}" > "$root/t.jsonl"
   local envw=(); [ -n "$1" ] && envw=(AVISO_CONTEXTO_WINDOW_TOKENS="$1")
-  printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" | env "${envw[@]}" CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
+  printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" | env HOME="$ACHOME" "${envw[@]}" CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
     | jq -r '.hookSpecificOutput.additionalContext // empty'
   rm -rf "$(dirname "$root")"
 }
@@ -3865,7 +3870,7 @@ ac200() { # $1=ctx → additionalContext, ventana forzada a 200K, dir/stamp fres
   local root; root="$(mktemp -d "${TMPDIR:-/tmp}/brain-ac200.XXXXXX")/r"; mkdir -p "$root/.claude/memory"
   printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$1}}}" > "$root/t.jsonl"
   printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" \
-    | env AVISO_CONTEXTO_WINDOW_TOKENS=200000 CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
+    | env HOME="$ACHOME" AVISO_CONTEXTO_WINDOW_TOKENS=200000 CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
     | jq -r '.hookSpecificOutput.additionalContext // empty'
   rm -rf "$(dirname "$root")"
 }
@@ -3892,13 +3897,39 @@ AC1MROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-ac1m.XXXXXX")/r"; mkdir -p "$AC1MRO
 ac1m() { # $1=ctx → additionalContext ('' si el hook quedó SILENCIOSO — igual que is_silent en el resto del archivo)
   printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$1}}}" > "$AC1MROOT/t.jsonl"
   printf '%s' "{\"transcript_path\":\"$AC1MROOT/t.jsonl\"}" \
-    | env AVISO_CONTEXTO_WINDOW_TOKENS=1000000 CLAUDE_PROJECT_DIR="$AC1MROOT" bash "$HOOKS/aviso-contexto.sh" \
+    | env HOME="$ACHOME" AVISO_CONTEXTO_WINDOW_TOKENS=1000000 CLAUDE_PROJECT_DIR="$AC1MROOT" bash "$HOOKS/aviso-contexto.sh" \
     | jq -r '.hookSpecificOutput.additionalContext // empty'
 }
 { ! is_silent "$(ac1m 80000)" && is_silent "$(ac1m 95000)"; } \
   && ok "aviso retro-compat: con ventana 1M, STEP sigue siendo 50K (80K cruza escalón, 95K sigue en el mismo)" \
   || bad "aviso retro-compat: el escalón de 1M cambió de tamaño (rompe el contrato viejo)"
 rm -rf "$(dirname "$AC1MROOT")"
+
+echo ""
+echo "== (b6g) aviso-contexto: el % se mide contra la VENTANA GOBERNANTE, no la del modelo (fix 2026-09-14) =="
+# Bug real: /context mostraba 615K/900K=68% (el auto-compact dispara al acercarse a autoCompactWindow=900K),
+# pero el hook decía "~60% de tu ventana 1000K" (la del modelo). El % debe medir contra autoCompactWindow
+# cuando el auto-compact está ACTIVO; caer a la ventana del modelo solo cuando ACW no está seteado o el
+# auto-compact está DESACTIVADO. HOME aislado ($ACHOME): la capa de proyecto ($root) es la única que gobierna.
+ac_gov() { # $1=ctx $2=autoCompactWindow $3=autoCompactEnabled(true/false) → additionalContext
+  local root; root="$(mktemp -d "${TMPDIR:-/tmp}/brain-gov.XXXXXX")/r"; mkdir -p "$root/.claude/memory"
+  printf '{"model":"claude-opus-4-8","autoCompactWindow":%s,"autoCompactEnabled":%s}' "$2" "$3" > "$root/.claude/settings.json"
+  printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$1}}}" > "$root/t.jsonl"
+  printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" | env HOME="$ACHOME" CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
+    | jq -r '.hookSpecificOutput.additionalContext // empty'
+  rm -rf "$(dirname "$root")"
+}
+# auto-compact ACTIVO + ACW=900K (modelo 1M-nativo), ctx=615K → 68% contra ACW (NO 61% contra la del modelo)
+m="$(ac_gov 615000 900000 true)"
+{ printf '%s' "$m" | grep -q '~68% de autoCompactWindow 900K' && printf '%s' "$m" | grep -q 'ventana del modelo: 1000K'; } \
+  && ok "aviso gobernante: auto-compact activo → % contra autoCompactWindow (615/900=68%) + ventana del modelo como dato extra" \
+  || bad "aviso gobernante: NO midió contra autoCompactWindow con el auto-compact activo (el bug reportado 2026-09-14); got: $m"
+# auto-compact DESACTIVADO + ACW=900K → cae a la ventana del MODELO (615/1000=61%), con nota del porqué
+m="$(ac_gov 615000 900000 false)"
+{ printf '%s' "$m" | grep -q '~61% de tu ventana 1000K' && printf '%s' "$m" | grep -q 'auto-compact desactivado'; } \
+  && ok "aviso gobernante: auto-compact DESACTIVADO → % contra la ventana del modelo (61%) + nota 'desactivado' (ACW no gobierna)" \
+  || bad "aviso gobernante: usó autoCompactWindow como techo pese al auto-compact desactivado; got: $m"
+rm -rf "$ACHOME"
 
 echo ""
 echo "== (m1) doc=realidad: ningún doc niega el hook de PreCompact que install-brain.sh SÍ cablea (C1, auditoría 2026-09-11) =="
