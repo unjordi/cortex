@@ -99,7 +99,7 @@ compact puede perder.
    - **Ante la duda, CONSERVAR.** Arrastrar un ítem de más cuesta una línea que luego se limpia sin
      costo al reconstruir el estado real; perder una idea la pierde para siempre.
 
-   Estructura (el 🗂️ ÁRBOL y las tres últimas secciones, SOLO en nivel COMPLETO):
+   Estructura (el 🗂️ ÁRBOL y las cuatro últimas secciones, SOLO en nivel COMPLETO):
    ```markdown
    # Hilo mental actual
    > Se REESCRIBE conservando lo vivo del previo, no se appendea. Última actualización: <FECHA> · rama <rama> · nivel <ligero|COMPLETO>.
