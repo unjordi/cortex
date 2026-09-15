@@ -90,6 +90,10 @@ docs/flowcharts/*
 
 # Worktrees locales de sesiones de trabajo (nunca se versionan: son checkouts, no contenido).
 .git-worktrees/
+# Los worktrees de agentes se crean HOY en .cortex-wt/ (7 vivos al 2026-09-15), no en la ruta de
+# arriba. Se ignoran las dos: mover los existentes con agentes dentro los rompe. Unificar en una
+# sola ruta es un slice aparte.
+.cortex-wt/
 CLAUDE.local.md
 
 # Andamio del checkpoint: sus ARTEFACTOS DE PROCESO (lock por-sid y log del extractor) los escribe el hook
