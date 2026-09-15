@@ -428,9 +428,13 @@ acg_destino_explicito_del_comando() {   # $1=comando → rama destino | vacío
 #    es un lock — bajo ejecución REALMENTE simultánea ambos podrían leer el caché vacío y llamar los
 #    dos (2 llamadas idénticas, inocuo). Solo cachea un resultado NO vacío (un vacío por timeout/error
 #    se reintenta la próxima).
-#  - TIMEOUT interno corto (ACG_MR_TIMEOUT, default 6s < el timeout del hook en settings.json: 10s/15s)
-#    para que el proceso SIEMPRE termine y EMITA su decisión, en vez de que el CLI lo mate por colgarse
-#    y trate el merge como "sin deny" (fail-open por muerte del proceso, H5).
+#  - TIMEOUT interno corto (ACG_MR_TIMEOUT, default 6s) para que el proceso SIEMPRE termine y EMITA su
+#    decisión, en vez de que el CLI lo mate por colgarse y trate el merge como "sin deny" (fail-open por
+#    muerte del proceso, H5). M11 (auditoría 2026-09-15 §3.12, doc=realidad): esto YA NO se compara contra
+#    "el timeout del hook en settings.json" — install-brain.sh cablea los hooks SIN clave `timeout`
+#    (verificado: `ev_de()`/el registrador de hooks no emite ese campo), así que NINGÚN hook de esta
+#    familia tiene un timeout EXTERNO que lo mate — la única protección real es este timeout INTERNO.
+
 # Devuelve el destino por stdout (vacío si no se pudo resolver → el consumidor aplica SU fail-policy:
 # confirmar trata vacío como develop = pide OK; squash trata !develop = no fuerza, para no aplastar un
 # release por no resolver). Requiere jq (sin jq devuelve vacío).
