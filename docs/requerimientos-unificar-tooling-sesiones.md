@@ -708,24 +708,30 @@ La GUI hace que esa config sea **visible y editable**, no la vuelve compartida.
 Pendiente de re-plantear en lenguaje llano. **No se toma por default**: hasta que la decisión sea suya,
 R-6/T-6 se implementan conservando el comportamiento actual.
 
-## D-3 — DECIDIDA, y corrige la recomendación
+## D-3 — ANULADA: la pregunta no dijo de qué hablaba, y se contestó sobre otra cosa
 
-> *"si la sesión es un agente parado en un worktree, el default es su upstream inmediato: la rama de la que
-> lo forkearon, que IDEALMENTE nunca debe ser main, pero puede ser una minidevelop y si el default es main
-> SIN MEDIR, entonces va a estar arrojando falsos positivos por doquier"*
+> *"SOBRE D-3: estamos hablando de mudanza/checkpoint o de los guards? porque yo entendí/asumí que
+> hablábamos de los guards y respondí en función de eso!"*
 
-La recomendación (b) decía *"normalizar a la raíz del repo"*. La decisión la **precisa y la corrige**:
-- **El default es el UPSTREAM INMEDIATO** — aquello de lo que el worktree/rama fue forkeado —, no un valor
-  fijo elegido de antemano.
-- **Nunca `main` por default.** Puede ser perfectamente una mini-develop (`Develop<Usuario>`).
-- **Y la regla de método que vale más que el caso:** un default **asumido sin medir** genera falsos
-  positivos en cascada. Si el upstream no se puede determinar, **se mide o se conserva el anterior** —
-  jamás se inventa uno.
+**La pregunta era sobre el campo `target` de `masters.json`** — una RUTA DE DIRECTORIO que le dice a
+`seed.sh` dónde sembrar la sesión en otra máquina. No tiene nada que ver con ramas ni con los guards.
+La respuesta se dio creyendo que el tema eran los guards, así que **NO es una decisión sobre D-3** y se
+retira como tal. D-3 queda **SIN DECIDIR**, pendiente de re-plantearse con su contexto explícito.
 
-Nota de precisión para quien implemente: el campo `target` de `masters.json` es hoy una **ruta de
-directorio** (dónde sembrar la sesión en otra máquina), no una rama. La decisión se aplica en su espíritu
-exacto: resolver la referencia real de la que el worktree depende (su repo padre), **medida**, y ante
-imposibilidad conservar el valor previo — nunca colapsar a un default fijo sin comprobarlo.
+Culpa del planteamiento: la pregunta llegó en una lista de siete junto a decisiones de otros subsistemas,
+sin decir de cuál era cada una.
+
+### Pero lo que respondió es un CRITERIO VÁLIDO, y su lugar son los guards
+
+> *"si la sesión es un agente parado en un worktree, el default es su upstream inmediato: la rama de la
+> que lo forkearon, que IDEALMENTE nunca debe ser main, pero puede ser una minidevelop y si el default es
+> main SIN MEDIR, entonces va a estar arrojando falsos positivos por doquier"*
+
+Esto se guarda como criterio de diseño **de los guards de git**, donde aplica literalmente y donde hay un
+hallazgo abierto que lo encarna: el auditor semántico midió que el piso determinista de `main` se apaga
+cuando el LLM escribe `DESTINO_INFERIDO: develop`, **sin re-verificación determinista** — es decir, un
+destino ASUMIDO SIN MEDIR gobernando un candado. La regla de unjordi lo cubre de frente: **el default se
+mide o se conserva el anterior; jamás se inventa**, y `main` nunca es default.
 
 ## D-4 — PENDIENTE DE SU RESPUESTA (la pregunta no daba los datos)
 
