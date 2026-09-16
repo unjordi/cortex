@@ -1,0 +1,168 @@
+// 03 — PROPUESTO: lógica INTERNA de reubicar-master.sh (+ su handoff) tras la unificación
+// (las mismas fases P0–P7 del chart 02, pero con gates que fallan CERRADO y un punto de no retorno).
+// FUENTE editable (.dot)   ·   Render:  dot -Tsvg 03-logica-reubicar-propuesta.dot -o 03-logica-reubicar-propuesta.svg
+// ⚠️ ESTE CHART ES LA **PROPUESTA**. Solo se marcan como CAMBIO los nodos que un R-n toca; el resto
+// del guion (gates, candado, S7) se conserva tal cual — la unificación NO reabre lo que ya está sólido.
+digraph reubicar_propuesta {
+  graph [bgcolor="#1b1712", rankdir=TB, fontname="Helvetica", splines=true,
+         nodesep=0.35, ranksep=0.48, pad=0.25, compound=true];
+  node  [fontname="Helvetica", fontsize=12, fontcolor="#f2ede6", shape=box,
+         style="rounded,filled", fillcolor="#2b2b2b", color="#8a8a8a", penwidth=1.5];
+  edge  [color="#d97757", fontname="Helvetica", fontsize=10, fontcolor="#cfc8c0", penwidth=1.4];
+
+  // ─────────────────────────── LEYENDA (regla dura del skill diagramar) ───────────────────────────
+  // >>> LEYENDA-ARBOL (generado por gen-leyenda-arbol.sh desde el árbol del README — NO editar a mano) >>>
+  subgraph cluster_leyenda {
+    label="LEYENDA — árbol completo del cerebro (fuente: README.md)"; labeljust="l"; fontname="Times"; fontsize=14; fontcolor="#5fa89e";
+    color="#5fa89e"; penwidth=1.6; style="rounded"; bgcolor="#1b1712";
+    LEY_ARBOL [shape=none, margin=0, label=<
+      <table border="0" cellborder="1" cellspacing="0" cellpadding="4" color="#5fa89e" bgcolor="#1b1712">
+        <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>🔒 Hooks Forzosos</b></font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🚧 git-branch-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">push/merge a develop·main → denegado</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔗 merge-squash-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">MR a develop sin --squash → denegado</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🕵️ secret-scan</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">commit/push con un secreto → denegado</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">💸 delegacion-gate</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">delegar al llegar al 90% de tu ventana 5h → pide tu OK</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🛑 limite-gasto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">sin ventana 5h Y sin overage (ambos agotados) → freno duro</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">✋ confirmar-merge-develop</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">merge sin tu OK → denegado</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">✅ dod-verificar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cierre sin evidencia/OK → denegado; claim visual a ciegas (sin ver la pantalla) también</font></td></tr>
+        <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>🔔 Automático</b></font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📊 recordar-dashboard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">en el push recuerda dashboard + doc=realidad (README/docs) — cierre del slice</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🖥️ entorno-maquina-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">commit de algo machine-specific (aliases/rutas de $HOME/Rosetta/entorno-maquina.md) al .claude/memory/ del repo → avisa</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🚧 no-bypass-deploy</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">correr el instalador/deploy a mano (install-brain.sh/deploy.sh) en vez de la herramienta oficial (el widget) → avisa (fail-safe: no --dry-run/--help/CI)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌳 proteger-arbol</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">git destructivo que orfanaría commits sin pushear → avisa (fan-out: usa worktree aislado)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🛡️ proteger-fuente-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">editar la copia INSTALADA de un hook/skill que tiene fuente en el clon → avisa (se perdería en el próximo sync) (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧹 barrer-ramas</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al abrir sesión / al punto del merge barre en 2º plano ramas locales + remota huérfana + worktrees ya integrados (zombie squash-safe; throttle 24h) (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">💾 exportar-sesion-master</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">auto-export de las sesiones *-master a ~/.claude-sessions (o Drive); detached, sobrevive el cleanup de 30 días (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🗂️ checkpoint-mecanico</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">PreCompact: extractor mecánico (streaming, 0 tokens) escribe el andamio del TRAMO VIVO a hilo-mental-actual.andamio.md (GLOBAL; el skill lo regenera con --self --ensure)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📝 delegacion-registrar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">materializa el "pregunta una sola vez"</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📮 delegacion-reporte</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al terminar un agente: recuerda registrar avance + limpiar su worktree</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎼 recordar-orquestar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">N mutaciones (edits/commits) en serie SIN delegar → sugiere fan-out (advisory, no bloquea; resetea al delegar) (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧵 rehidratar-hilo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta hilo-mental-actual.md + el andamio (si es más fresco) al abrir/retomar/compactar (GLOBAL) — gate de frescura + edad</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📈 aviso-contexto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reporta el watermark de contexto CRUDO (tokens · ventana · %); sin bandas ni veredicto — /context manda (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧬 aviso-drift-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">repo brained atrás de la fuente única (hooks/libs Y skills) → en tu mini-develop se AUTO-SINCRONIZA (apply+commit+push); en otra rama, avisa. ADEMÁS detecta el drift de la copia GLOBAL de skills (~/.claude/skills vs la fuente; warn-only, throttle propio). Al moverse el cerebro, NUDGE a correr la DUPLA (suficiencia+coherencia; contra la firma si hay AGENTS.md, si no sugiere instanciarla) (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔀 hud-stale</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cambiaste de rama/proyecto → tu lista de TODOs (HUD) puede ser de la tarea anterior: avisa (advisory) que la resetees/re-siembres del estado-proyecto.md de esa rama. Señal OBJETIVA (rama/cwd), stamp per-sesión, first-sight silencioso, solo en repos con backlog (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧭 sesion-inicio</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta rama + norma + memoria al abrir</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌾 recordar-cosechar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">espejo TaskList→estado-proyecto.md (auto) + nudge: no cosechaste/no actualizaste backlog</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">⬆️ recordar-unificar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">tu mini acumuló aprendizajes sin UNIFICAR a develop → sugiere /unificar-cerebro (gemelo ↑ de aviso-drift)</font></td></tr>
+        <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>📜 Normas</b></font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎯 Definition of Done</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">verde técnico ≠ Done/Listo/Ya Quedó; exige QA o un OK explícito</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🪞 Doc &lt;= realidad</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cambió algo → su doc se actualiza en la tanda</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌿 Flujo de git</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">ramita → MR → develop; main es release-only</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">💰 Costo de delegación</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">gratis / incluido / con costo, según tu cuota</font></td></tr>
+        <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>💡 Skills</b></font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📦 cerrar-slice</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">build+tests+memoria al día + MR con resumen curado</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">💾 checkpoint</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">vuelca el HILO a memoria para compactar sin perderlo (proactivo)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🗂️ to-do</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">carga la interfaz de tareas del harness desde el backlog durable (estado-proyecto.md)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">💧 rehidratar-hilo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">relee el HILO a mano (gemelo del hook; respaldo si un update del CLI rompe el auto-rehidratado)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🐝 orquestar-fanout</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">fan-out sin niñera: asigna del backlog, auto-reporta y limpia al cerrar</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🗺️ diagramar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">diagramas por destino: .dot→dot2yed→yEd (editar a mano) · Mermaid en .md versionado (verse en GitHub)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔬 auditar-proceso-algoritmo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">auditor experto read-only (proceso industrial + algoritmo) → hallazgos priorizados; se alimenta de los flowcharts de diagramar</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🩺 auditar-coherencia-cerebro fan-out read-only sobre el PROPIO cerebro (guards+flowcharts+doc): evasiones/huecos/drift, verificado por ejecución → loop hasta converger; modo-cerebro de auditar-proceso-algoritmo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0"> </font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧪 auditar-suficiencia-operativa</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">¿ALCANZA la doc para HACER el trabajo sin romper nada ni re-investigar? tareas reales ✅/⚠️/❌ con archivo:línea + RE-auditar tras arreglar</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧬 auditor-semantico</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">¿el código HACE lo que queremos? Capa 1 checks deterministas (scripts/, gratis, en CI) + Capa 2 criterio LLM sobre invariantes-semanticos.yml; motor genérico, catálogo por-repo</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧠 consolidar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">meta-orquestador: dupla → positivar → desinflar → convergencia → cierre con la FIRMA (CLAUDE+MEMORY)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📐 canonizar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">lleva un cerebro instanciado drifteado a la firma-árbol: reprefija memorias (git mv) a dom-/dev-/ux-/qa-, reescribe CLAUDE.md+MEMORY.md, verifica 1:1 con verificar-firma-canonica.sh (detector del GATE #44)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🪶 desinflar-memorias</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">adelgaza un árbol de memorias sin perder lecciones: la narrativa se colapsa a su lección, los mitos descartados se mudan al cementerio.md (una lápida por ID content-hash 🪦#&lt;id&gt;)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🕵️ revisar-entregables-agentes</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">verifica lo que un agente ENTREGA contra la realidad; no relates su reporte como verdad</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">☀️ positivar-doc</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reescribe answer-first: 'ESTO SÍ' (método correcto) antes del 'ESTO NO'</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎓 investigar-dominio</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">ponte experto en un dominio (fan-out DOC-FIRST) → memorias durables + skills</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📚 construir-missing-manual</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">fabrica el manual/wiki de referencia exhaustivo que no existe (fan-out que investiga 1× y hornea) → artefacto consultable OFFLINE</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌾 cosechar-sesion</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cosecha local: extrae aprendizajes de tu sesión al inbox del equipo</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧩 unificar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reconciliación del cerebro del equipo: integra los aprendizajes mini→develop</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧳 claude-proyecto-autocontenido</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">el cerebro VIVE dentro del proyecto (.claude/ + symlink de slug) → viaja con él</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🚚 reubicar-master</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">muda una sesión master COMPLETA a otro repo (brain-master → cortex) sin residuo: transcript+cwd, cerebro, slug y refs atómicas</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔍 zoom-screenshot</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">recorta y amplía regiones de una captura (ffmpeg) para leer texto fino ilegible</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔩 ingenieria-inversa-gui-db-navegador</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">ingeniería inversa de app legacy GUI+BD: driving la UI vía navegador + diff de la BD antes/después = doc con evidencia real</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📕 markdown-a-pdf</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">convierte .md a PDF pulido y distribuible vía md-to-pdf (npx, sin instalar) con el gotcha de --css y QA visual real</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌙 turno-nocturno</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">protocolo del turno de noche: eco del contrato, decide-dentro-de-la-cerca, grants durables a disco</font></td></tr>
+      </table>>];
+    LEY_VAL [shape=none, margin=0, label=<
+      <table border="0" cellborder="1" cellspacing="0" cellpadding="4" color="#5fa89e" bgcolor="#1b1712">
+        <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>valencia de color</b></font></td></tr>
+        <tr><td bgcolor="#2b2b2b" border="2" color="#7fb069"><font color="#f2ede6">🟢</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">OK / pasa</font></td></tr>
+        <tr><td bgcolor="#2b2b2b" border="2" color="#e08e45"><font color="#f2ede6">🟠</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">aviso / ASK (no bloquea)</font></td></tr>
+        <tr><td bgcolor="#2b2b2b" border="2" color="#c9a227"><font color="#f2ede6">🟡</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">latente / frágil (funciona hoy, sin garantía)</font></td></tr>
+        <tr><td bgcolor="#2b2b2b" border="2" color="#c0392b"><font color="#f2ede6">🔴</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">DENY / bloqueo (guard OK)</font></td></tr>
+        <tr><td bgcolor="#2b2b2b" border="2" color="#9e9e9e"><font color="#f2ede6">🚧</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">hueco / deuda (por construir)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">⚠</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">el paso ESCRIBE git</font></td></tr>
+      </table>>];
+    LEY_ARBOL -> LEY_VAL [style=invis];
+  }
+  // <<< LEYENDA-ARBOL <<<
+
+  subgraph cluster_f0 {
+    label="03 · PROPUESTO — lógica interna de LA MUDANZA. Contrato invariante: FALLA CERRADO. Mismas fases que el chart 02, distinta política de falla.   [PROPUESTA]";
+    fontname="Times"; fontsize=14; fontcolor="#5fa89e";
+    color="#5fa89e"; penwidth=1.6; style="rounded"; bgcolor="#1b1712";
+
+    IN [style="rounded,filled", fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
+        label="ENTRADA · el HUMANO, desde un shell PLANO\n--id · --dst-repo · --master-name [--nombre-nuevo] (Decisiones #0/#0b/#1 de §7: se PREGUNTAN, no se asumen)"];
+
+    // ── P1 primero: aquí la carpeta es un PREFLIGHT, no un detalle ──
+    P1 [fillcolor="#eceff1", color="#607d8b", fontcolor="#2b2b2b",
+        label="P1 · RESOLVER LA CARPETA DE SESIONES   —  lib-sesiones.sh :: sesiones_dir   (R-1)\n⟵ CAMBIO: la MISMA función que llama el hook. Hoy son dos resoluciones con políticas opuestas."];
+    G1 [shape=diamond, fillcolor="#2b2622", color="#d97757",
+        label="¿carpeta resuelta, montada, con masters.json legible\ny SIN copia-en-conflicto de Drive?"];
+    D1 [fillcolor="#ffebee", color="#c62828", fontcolor="#2b2b2b", penwidth=2,
+        label="🔴 ABORTA (fail-closed) — nada se mutó\nUna mudanza que no sabe dónde está el registro no puede empezar."];
+
+    // ── P0: aquí SÍ hay que buscar ──
+    P0 [fillcolor="#eceff1", color="#607d8b", fontcolor="#2b2b2b",
+        label="P0 · LOCALIZAR el transcript   —  G-LIVENESS  (find sobre TODOS los slugs)\nAsimetría irreducible con el hook: aquí nadie te entrega el transcript, hay que ENCONTRARLO,\ny «cuántas copias hay» es en sí mismo un gate.  ≠ 1 copia ⇒ bloqueo con limpieza manual."];
+
+    // ── P2 ──
+    P2 [shape=diamond, fillcolor="#2b2622", color="#d97757",
+        label="P2 · ¿APLICA? / preflight de NOMBRE   —  lib-sesiones.sh :: sesiones_es_master   (R-5)\n⟵ CAMBIO: hoy el preludio RE-IMPLEMENTA la regla del sufijo `-master` que el hook ya tiene\n(y encima la documenta: reubicar-master.sh:611-618). Pasa a LLAMARLA.\nUn nombre final sin `-master` APAGA el auto-export ⇒ sigue siendo abort."];
+
+    // ── P3 ──
+    P3 [shape=diamond, fillcolor="#2b2622", color="#d97757",
+        label="P3 · QUIESCENCIA   —  G-SELF-MOVE · G-QUIESCE (por artefacto) · lock de export   (R-4)\n⟵ CAMBIO: el `.export-<id>.lock` se consulta con `sesiones_lock_vigente`, que RESPETA la caducidad.\nHOY: `[ -f … ] && _abort` sin mirar edad ⇒ un lock huérfano bloquea PARA SIEMPRE una mudanza\n(medido: .export-c6330bed-….lock lleva 3 días en el Drive) mientras el hook ya lo ignora."];
+    D3 [fillcolor="#ffebee", color="#c62828", fontcolor="#2b2b2b", penwidth=2,
+        label="🔴 BLOQUEA (fail-closed)\nsoy la sesión objetivo · sesión ajena caliente en el slug origen/destino ·\nfaltan las CITAS HUMANAS (REUBICAR_LIVENESS_OK / REUBICAR_QUIESCE_OK)"];
+
+    DRY [fillcolor="#fff8e1", color="#f9a825", fontcolor="#2b2b2b",
+         label="🟠 MODO=dry — imprime el PLAN y SALE antes de mutar. SIEMPRE primero.\nReplica los chequeos de full para no dar un plan silencioso sobre un estado que full bloquearía."];
+
+    // ── P4 ──
+    P4 [color="#7fb069", penwidth=2,
+        label="P4 · S3 export-first   —  bin/session-export.js  (EL MISMO binario que usa el hook)\n🟢 Esta es la fase donde la tesis de unjordi es LITERALMENTE cierta: respaldar y mudar\nejecutan la MISMA llamada. Aquí es síncrona y su fallo ABORTA; en el hook es detached y su fallo se traga.\n⟵ CAMBIO (R-8): verifica gzip -t Y renglones, igual que el hook."];
+
+    PNR [fillcolor="#ffebee", color="#c62828", fontcolor="#2b2b2b", penwidth=3,
+         label="⚠🔴 PUNTO DE NO RETORNO\nDe aquí en adelante el diseño es «no abortar donde continuar es inofensivo»,\ny cada paso deja su marca en $DRIVE/reubicar-<id>.state para reanudar por ESTADO, no por adivinanza."];
+
+    // ── P5 ──
+    P5 [fillcolor="#eceff1", color="#607d8b", fontcolor="#2b2b2b", penwidth=3,
+        label="⚠ P5 · APLICAR   —  LA FASE QUE EL RESPALDO NO TIENE\nS4: session-move.js --to-cwd --git-branch  (slug + cwd de cada línea + gitBranch del último evento + sidecar)\nS4-2c: chmod 600  ·  S5: depositar T2 sin pisar (el HILO se CO-UBICA) + barrido quirúrgico + cero symlinks\nSin esta fase, «mudar» ES «respaldar». Con ella, no hay lib que las pueda unificar de punta a punta."];
+
+    // ── P6 ──
+    P6 [color="#7fb069", penwidth=2,
+        label="P6 · REGISTRAR   —  session-registry.js masters upsert  +  alias set   (R-2 · R-3 · R-7)\n⟵ CAMBIO: los 13 `node -e` inline (slug, alias_keys, writeAlias, rewriteTranscriptStream) pasan al CLI.\nMotivo NO cosmético: un `node -e` inline no tiene man-page, no tiene test propio y no falla con\nun contrato — y el candado del handoff lo embebe TEXTUALMENTE, así que se congela con sus bugs."];
+
+    // ── P7 ──
+    P7 [shape=diamond, fillcolor="#2b2622", color="#d97757",
+        label="P7 · POSTCONDICIONES (aseveradas, no reportadas)\n1 sola copia del .jsonl · cwd único = destino · último par (cwd,rama) · modo 600 ·\nmasters.json target|name · alias = nombre final · ningún alias AJENO perdido ·\ncero symlinks · G-SIDECAR sin huérfanos"];
+    D7 [fillcolor="#ffebee", color="#c62828", fontcolor="#2b2b2b", penwidth=2,
+        label="🔴 ABORTA con inventario de estado\n(paso alcanzado · origen · destino · masters.json · las 3 capas de respaldo)\nRe-correr el guion detecta el estado y continúa."];
+
+    QA [fillcolor="#fff8e1", color="#f9a825", fontcolor="#2b2b2b",
+        label="🟠 NO ES LISTO — el sello lo pone el humano\nclaude --resume <id> parado en el destino → QA funcional (§S6)"];
+    S7 [color="#7fb069", penwidth=2,
+        label="🟢 MODO=s7 · OBLIGATORIO tras el QA — porque un resume MUTA el transcript\nre-mide las invariantes, repara con _reancla si el resume contaminó el cwd, y re-corre P7.\nCota del bucle S6→S7: máximo 2 iteraciones; a la tercera, PARA y escala."];
+
+    CAND [style="dashed,filled", fillcolor="#f5f5f5", color="#9e9e9e", fontcolor="#2b2b2b",
+          label="🚧 RIESGO DE MIGRACIÓN que esta unificación introduce  (documento §5)\nEl candado `_verificar_handoff` exige el PRELUDIO embebido BYTE A BYTE y una lista de símbolos\n(_SIMBOLOS_PRELUDIO) + marcadores de paso. Tocar el preludio SIN actualizar esas listas en el MISMO\ncommit hace que el generador RECHACE todo handoff nuevo — por diseño, y está bien que así sea.\nY hay un handoff YA escrito en el Drive (handoff-761c82d9….sh, 2026-09-10) que embebe el preludio VIEJO:\ncorrerlo tras la unificación invocaría la lib NUEVA con supuestos VIEJOS, y el sello LIB_SHA solo AVISA."];
+  }
+
+  IN -> P1 -> G1;
+  G1 -> D1 [label="no"];
+  G1 -> P0 [label="sí"];
+  P0 -> P2 -> P3;
+  P3 -> D3  [label="algo vivo / falta una cita"];
+  P3 -> DRY [label="MODO=dry"];
+  P3 -> P4  [label="MODO=full · gates en verde"];
+  P4 -> PNR -> P5 -> P6 -> P7;
+  P7 -> D7 [label="alguna aserción falla"];
+  P7 -> QA [label="todas pasan"];
+  QA -> S7 -> P7 [label="re-mide (MODO=s7)", style=dashed];
+  P6 -> CAND [style=dashed, color="#9e9e9e"];
+}
