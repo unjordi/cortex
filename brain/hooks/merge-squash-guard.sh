@@ -87,8 +87,14 @@ acg_es_merge_mr "$cmd" || exit 0
 # ¿Ya trae squash? (--squash o -s). Si SÍ, el SQUASH está garantizado — pero un squash con MENSAJE POBRE
 # (título default de la plataforma "Merge pull request #N", vacío o placeholder de una palabra) igual
 # pierde el resumen curado que exige cerrar-slice. Validamos la CALIDAD del mensaje ANTES de dejar pasar.
+# H6 (auditoría semántica 2026-09-16, MEDIO, CONFIRMADO): este es el ÚNICO chequeo de la familia que corría
+# sobre $cmd RAW, sin pasar por acg_despoja_comillas -- la función que existe justamente para que una
+# mención ENTRECOMILLADA de "--squash" (un --description/--subject que la CITE, o un " -s " suelto dentro de
+# un texto libre) no cuente como si el flag estuviera de verdad. Medido: `--description "rehazlo con
+# --squash y listo"` hacía creer al guard que YA había squash. Se evalúa sobre el cmd DESPOJADO.
 SQUASH_RE='(--squash([[:space:]]|=|$)|(^|[[:space:]])-s([[:space:]]|$))'
-if printf '%s' "$cmd" | grep -qE "$SQUASH_RE"; then
+_cmd_sqflag=$(acg_despoja_comillas "$cmd")
+if printf '%s' "$_cmd_sqflag" | grep -qE "$SQUASH_RE"; then
   # La validación de mensaje es develop-scoped (MISMA frontera que la exigencia de squash): main=release y
   # ramas personales van libres; destino IRRESOLUBLE ⇒ PASA (la calidad del mensaje es un concern MÁS SUAVE
   # que el mecánico del squash — bloquear por él sin certeza del alcance sería FP-prone; conservador ≠ tumbar
@@ -172,10 +178,15 @@ fi
 # como release (por conversación) mientras ESTE guard, ciego a ella, forzaba squash sobre el MISMO release
 # — "dos guards, el MISMO comando, la MISMA incógnita, CONCLUSIONES OPUESTAS". No AFLOJA la exigencia de
 # squash para un develop genuino sin señal de release en NINGÚN lado (comando NI conversación).
+# H4 (auditoría de ejecución 2026-09-16, MEDIO, CONFIRMADO): acg_lexico_release miraba TODA la ventana sin
+# anclarla al MR de ESTE comando -- un "libera a main el PR 390" (OTRO MR) le prestaba su señal al merge del
+# PR 391, desactivando --squash de un merge a develop genuino. acg_lexico_release_para_mr ancla la señal al
+# mrid de ESTE comando (líneas sin id nombrado siguen aplicando genérico, igual que antes).
 _es_release_explicito() {
-  local u; u=$(acg_sin_flag_repo "$(acg_despoja_comillas "$1")")
+  local u mrid; u=$(acg_sin_flag_repo "$(acg_despoja_comillas "$1")")
   printf '%s' "$u" | grep -qiE '[[:space:]:/=](main)([[:space:]]|$)|\brelease\b' && return 0
-  acg_lexico_release "$(acg_recent_intercalado "$tpath")"
+  mrid=$(acg_mrid "$u")
+  acg_lexico_release_para_mr "$(acg_recent_intercalado "$tpath")" "$mrid"
 }
 _destino=$(acg_destino_de_mr "$cmd" "$pcwd")
 if [ -n "$_destino" ]; then

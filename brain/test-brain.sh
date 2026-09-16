@@ -270,6 +270,41 @@ out="$(msj_raw 'eval "glab mr merge 91 --yes"')"
 is_deny "$out" && ok "squash-guard M1-cobertura: 'eval \"glab mr merge…\"' NO evade — sigue exigiendo squash" || bad "squash-guard M1-cobertura: eval evadió el guard de squash; got: $out"
 out="$(msj_raw 'bash -c "glab mr merge 92 --yes"')"
 is_deny "$out" && ok "squash-guard M1-cobertura: 'bash -c \"glab mr merge…\"' NO evade — sigue exigiendo squash" || bad "squash-guard M1-cobertura: bash -c evadió el guard de squash; got: $out"
+
+# H6 (auditoría semántica 2026-09-16, MEDIO, CONFIRMADO): SQUASH_RE corría sobre $cmd RAW, sin pasar por
+# acg_despoja_comillas -- una mención ENTRECOMILLADA de "--squash" (en --description/--subject) bastaba para
+# que el guard creyera que YA había squash. Medido: `--description "rehazlo con --squash y listo"` colaba un
+# merge a develop SIN squash de verdad.
+mock_glab develop
+out="$(msj_raw 'glab mr merge 93 --yes --description "rehazlo con --squash y listo"')"
+is_deny "$out" && ok "H6: mención ENTRECOMILLADA de '--squash' (en --description) → SIGUE exigiendo squash (antes: creía que ya lo tenía)" \
+  || bad "H6: REGRESIÓN — una mención citada de --squash coló un merge a develop sin squash real; got: $out"
+out="$(msj_raw 'gh pr merge 94 --subject "arregla el -s de tar"')"
+is_deny "$out" && ok "H6: mención ENTRECOMILLADA de ' -s ' suelto (en --subject) → SIGUE exigiendo squash" \
+  || bad "H6: REGRESIÓN — un ' -s ' citado coló un merge sin squash; got: $out"
+out="$(msj_raw 'glab mr merge 95 --squash --squash-message "resumen real del cambio y su porqué, con Rama: feat/x MR: !95"')"
+is_silent "$out" && ok "H6: --squash REAL (fuera de comillas) sigue reconociéndose — sin regresión del caso legítimo" \
+  || bad "H6: REGRESIÓN — el --squash real dejó de reconocerse tras exigir despoja_comillas; got: $out"
+
+# H4 (auditoría de ejecución 2026-09-16, MEDIO, CONFIRMADO): el fail-safe de destino IRRESOLUBLE usaba
+# acg_lexico_release SOBRE TODA la ventana, sin anclarla al MR de ESTE comando -- un "libera a main el PR
+# 390" (OTRO MR) le prestaba su señal al merge del PR 391, desactivando --squash de un merge a develop
+# genuino. Ancla la señal al mrid de ESTE comando (acg_lexico_release_para_mr).
+H4TX=$(mktemp)
+printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"libera a main el PR 390"}]}}' > "$H4TX"
+rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
+# PATH SIN glab/MSBIN a propósito: fuerza destino genuinamente INDETERMINADO (DESCONOCIDO:SIN-RED) aunque el
+# comando SÍ traiga un id numérico (390/391) -- necesitamos que acg_mrid resuelva el id (para probar el
+# ANCLAJE) pero que acg_destino_de_mr NO lo resuelva (para caer al fail-safe donde vive _es_release_explicito).
+msT4() { PATH="/usr/bin:/bin" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$FAKEHOME" bash "$HOOKS/merge-squash-guard.sh" <<<"$(jq -nc --arg c "$1" --arg t "$H4TX" '{tool_input:{command:$c},transcript_path:$t}')"; }
+out="$(msT4 'glab mr merge 391 --yes')"   # sin mock de destino → indeterminado; release es de OTRO id (390)
+is_deny "$out" && ok "H4: release-de-OTRO-PR (390) en la ventana → el merge del 391 SIGUE exigiendo squash (antes: se colaba)" \
+  || bad "H4: REGRESIÓN — el lenguaje de release de otro PR desactivó --squash de este merge; got: $out"
+out="$(msT4 'glab mr merge 390 --yes')"   # mismo id que el mencionado en la ventana → sí aplica
+is_silent "$out" && ok "H4: release del MISMO PR (390) mencionado en la ventana → sigue exentando --squash (sin regresión)" \
+  || bad "H4: REGRESIÓN — anclar al mrid rompió el caso legítimo (release del mismo MR); got: $out"
+rm -f "$H4TX"
+
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
 rm -rf "$MSBIN"
 
@@ -403,6 +438,15 @@ delout="$(msj 'gh pr merge 72')"   # sin --squash → deny; el rehaz sugerido de
   acg_msg_falta_traza "corrige el IVA (MR !53)"                                                 && bad "acg_msg_falta_traza: FP, sí traía id de MR" || ok "acg_msg_falta_traza: id de MR (!53) → trae traza"
   acg_msg_falta_traza "corrige el checkout #12"                                                 && bad "acg_msg_falta_traza: FP, sí traía id de PR" || ok "acg_msg_falta_traza: id de PR (#12) → trae traza"
   acg_msg_falta_traza "arregla el prefix del logger"                                            && ok "acg_msg_falta_traza: 'prefix' NO es 'fix/' (no traza) → falta" || bad "acg_msg_falta_traza: FP tomó 'prefix' como rama fix/"
+  # H8 (auditoría semántica 2026-09-16, BAJO, CONFIRMADO): el set de prefijos era angosto (solo
+  # feat/fix/chore/hotfix/docs) — "Rama: refactor/…"/"test/…"/"perf/…"/"ci/…" SÍ traen la rama pero el
+  # mensaje decía "falta trazabilidad". Ampliado a los prefijos de conventional-commit de uso real.
+  acg_msg_falta_traza "reordena el módulo. Rama: refactor/sustrato-guards"                        && bad "H8: 'refactor/…' se marcó como SIN traza (FN)" || ok "H8: 'refactor/…' → SÍ trae traza"
+  acg_msg_falta_traza "cobertura nueva. Rama: test/cobertura-eval-bashc"                          && bad "H8: 'test/…' se marcó como SIN traza (FN)" || ok "H8: 'test/…' → SÍ trae traza"
+  acg_msg_falta_traza "acelera la consulta. Rama: perf/indices-estructura"                        && bad "H8: 'perf/…' se marcó como SIN traza (FN)" || ok "H8: 'perf/…' → SÍ trae traza"
+  acg_msg_falta_traza "arregla el pipeline. Rama: ci/fix-cache-key"                               && bad "H8: 'ci/…' se marcó como SIN traza (FN)" || ok "H8: 'ci/…' → SÍ trae traza"
+  acg_msg_falta_traza "revisión de intención. Rama: audit/guards-fmea"                            && bad "H8: 'audit/…' se marcó como SIN traza (FN)" || ok "H8: 'audit/…' → SÍ trae traza"
+  acg_msg_falta_traza "un cambio cualquiera sin ninguna traza"                                    && ok "H8 control: sin rama NI id → SIGUE marcando falta de traza (no se aflojó de más)" || bad "H8 control: REGRESIÓN — un mensaje genuinamente sin traza dejó de marcarse"
   # (3b-DENY) acg_msg_editorializa: marcadores inequívocos de proceso
   acg_msg_editorializa "tras analizar el codigo se decidio reemplazar la logica"                && ok "acg_msg_editorializa: 'tras analizar'/'se decidió' → editorializa" || bad "acg_msg_editorializa: no marcó la editorialización"
   acg_msg_editorializa "se identifico que el middleware no validaba el claim"                   && ok "acg_msg_editorializa: 'se identificó que' → editorializa" || bad "acg_msg_editorializa: no marcó 'se identificó'"
@@ -824,39 +868,148 @@ rm -rf "$M9R"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "== (b1d-medio) MEDIO (auditoría FMEA 2026-09-16 §1.5, CONFIRMADO): CACHE-DE-CREACION solo se confía si es MÍA =="
-# Sin escritor legítimo hoy (pendiente ya declarado), CUALQUIER archivo con este nombre predecible en /tmp
-# era, antes, de MÁXIMA confianza. Mínimo defendible: solo confiar si es del MISMO uid y sin permisos de
-# grupo/otros. acg__cache_creacion_es_mia YA está sourceada (la lib se cargó arriba para el bloque M9).
+echo "== (b1d-h2exec) H2 (auditoría de ejecución 2026-09-16, MEDIO, CONFIRMADO): destino de PUSH opaco (\$VAR) GATEA, simétrico a M9 =="
+# acg_push_destino_base es una regex sobre literales, SIN detección de opacidad -- a diferencia de
+# acg_repo_explicito (M9, arriba), que SÍ marca OPACO ante \$/backtick y falla cerrado. Medido: `git push
+# origin "\$RAMA"` quedaba CIEGO (ni acg_push_destino_base ni acg_push_sin_refspec lo cubrían, porque SÍ hay
+# un refspec, solo que es opaco).
+acg_push_destino_opaco 'git push origin "$RAMA"' \
+  && ok "H2: acg_push_destino_opaco detecta '\$RAMA' (sustitución de shell) → OPACO" \
+  || bad "H2: no detectó la opacidad de \"\$RAMA\""
+acg_push_destino_opaco 'git push origin feat/mi-cambio' \
+  && bad "H2: REGRESIÓN — una rama LITERAL normal se marcó como opaca (falso positivo)" \
+  || ok "H2: una rama literal normal NO se marca opaca"
+acg_push_toca_base 'git push origin "$RAMA"' \
+  && ok "H2: acg_push_toca_base ahora GATEA un push con destino opaco (antes: SILENCIO, ciego)" \
+  || bad "H2: REGRESIÓN — un push con destino \"\$RAMA\" sigue sin gatear"
+acg_push_toca_base 'git push origin `echo develop`' \
+  && ok "H2: destino via \`cmd\` (backtick) → también gatea" \
+  || bad "H2: un destino via backtick no gateó"
+acg_push_toca_base 'git push origin ${BASE:-develop}' \
+  && ok "H2: destino via \${VAR:-default} → también gatea" \
+  || bad "H2: un destino via \${VAR:-default} no gateó"
+acg_push_toca_base 'git push origin feat/mi-cambio' \
+  && bad "H2: REGRESIÓN — un push a una ramita literal normal quedó bloqueado (falso positivo nuevo)" \
+  || ok "H2: control — push a ramita literal normal sigue SIN gatear"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (b1d-medio) MEDIO/H3-semántico (auditoría FMEA 2026-09-16 §1.5 + auditoría semántica H3): CACHE-DE-CREACION"
+echo "   solo se confía si es MÍA, Y el canal ENTERO está apagado por default (sin escritor legítimo) =="
+# acg__cache_creacion_es_mia se GENERALIZÓ a acg__cache_confiable (uid+perm+TTL, reusada por los 3 cachés de
+# la lib — ver bloque H1exec abajo). Además, H3 (auditoría semántica 2026-09-16): "hoy no hay escritor
+# legítimo" vale para CUALQUIER uid, incluido el propio (un agente del propio usuario, a punto de correr el
+# merge, puede escribir un 0600 propio) — el chequeo de permisos protege del VECINO, no del actor que este
+# guard vigila. El canal CACHE-DE-CREACION queda apagado por default (ACG_CACHE_CREACION=1 para encenderlo).
 M3T=$(mktemp "${TMPDIR:-/tmp}/m3cc.XXXXXX")
 printf 'develop\n' > "$M3T"
 chmod 600 "$M3T"
-acg__cache_creacion_es_mia "$M3T" \
-  && ok "MEDIO: archivo 0600 del mismo uid → se confía (caso legítimo del futuro escritor)" \
-  || bad "MEDIO: un archivo legítimo (0600, mío) se rechazó — sobre-endurecido"
+acg__cache_confiable "$M3T" \
+  && ok "MEDIO: archivo 0600 del mismo uid, reciente → se confía (caso legítimo del futuro escritor)" \
+  || bad "MEDIO: un archivo legítimo (0600, mío, reciente) se rechazó — sobre-endurecido"
 chmod 644 "$M3T"
-acg__cache_creacion_es_mia "$M3T" \
+acg__cache_confiable "$M3T" \
   && bad "MEDIO: un archivo LEGIBLE POR OTROS (0644) se confió — el plante de otro proceso pasa" \
   || ok "MEDIO: archivo 0644 (legible por otros) → NO se confía"
 chmod 664 "$M3T"
-acg__cache_creacion_es_mia "$M3T" \
+acg__cache_confiable "$M3T" \
   && bad "MEDIO: un archivo ESCRIBIBLE POR GRUPO (0664) se confió" \
   || ok "MEDIO: archivo 0664 (escribible por grupo) → NO se confía"
 rm -f "$M3T"
-# End-to-end por acg__destino_de_mr_full: un archivo con permisos abiertos NO debe resolver por esta vía.
+# End-to-end por acg__destino_de_mr_full: SIN encender el flag, ni siquiera un archivo 0600 PROPIO resuelve
+# por esta vía (H3: el canal completo está apagado, no solo el permiso).
 M3ROOT=$(mktemp -d "${TMPDIR:-/tmp}/m3e2e.XXXXXX")
 ( export TMPDIR="$M3ROOT"
   M3REPO="$M3ROOT/repo"; mkdir -p "$M3REPO"; git -C "$M3REPO" init -q >/dev/null 2>&1
   git -C "$M3REPO" remote add origin git@gitlab.com:org/repo.git >/dev/null 2>&1
   key=$(printf '%s' "org/repo|glab|321" | sed 's/[^A-Za-z0-9]/_/g')
   echo "develop" > "$M3ROOT/acg-mrdest-creacion-${key}"
-  chmod 644 "$M3ROOT/acg-mrdest-creacion-${key}"
+  chmod 600 "$M3ROOT/acg-mrdest-creacion-${key}"
   out=$(PATH="/usr/bin:/bin" acg__destino_de_mr_full "glab mr merge 321 --yes" "$M3REPO" 2>/dev/null)
   case "$out" in *CACHE-DE-CREACION*) echo BAD ;; *) echo GOOD ;; esac
 ) | tail -1 | grep -q GOOD \
-  && ok "MEDIO (e2e): archivo de creación plantado con permisos 0644 → acg__destino_de_mr_full lo IGNORA (no resuelve vía CACHE-DE-CREACION)" \
-  || bad "MEDIO (e2e): un archivo de creación con permisos abiertos se consumió como de máxima confianza"
-rm -rf "$M3ROOT"
+  && ok "H3: SIN ACG_CACHE_CREACION=1, ni siquiera un archivo 0600 PROPIO resuelve vía CACHE-DE-CREACION (canal apagado por default)" \
+  || bad "H3: REGRESIÓN — el canal CACHE-DE-CREACION resolvió sin que nadie lo encendiera explícitamente"
+# Con el flag ENCENDIDO explícitamente, el chequeo de permisos vuelve a aplicar (defensa en profundidad).
+M3ROOT2=$(mktemp -d "${TMPDIR:-/tmp}/m3e2e2.XXXXXX")
+( export TMPDIR="$M3ROOT2"
+  M3REPO2="$M3ROOT2/repo"; mkdir -p "$M3REPO2"; git -C "$M3REPO2" init -q >/dev/null 2>&1
+  git -C "$M3REPO2" remote add origin git@gitlab.com:org/repo.git >/dev/null 2>&1
+  key=$(printf '%s' "org/repo|glab|322" | sed 's/[^A-Za-z0-9]/_/g')
+  echo "develop" > "$M3ROOT2/acg-mrdest-creacion-${key}"
+  chmod 600 "$M3ROOT2/acg-mrdest-creacion-${key}"
+  out=$(PATH="/usr/bin:/bin" ACG_CACHE_CREACION=1 acg__destino_de_mr_full "glab mr merge 322 --yes" "$M3REPO2" 2>/dev/null)
+  case "$out" in *CACHE-DE-CREACION*) echo GOOD ;; *) echo BAD ;; esac
+) | tail -1 | grep -q GOOD \
+  && ok "MEDIO: CON ACG_CACHE_CREACION=1 explícito + archivo 0600 propio → SÍ resuelve (el flag es opt-in, no está roto)" \
+  || bad "MEDIO: encender el flag explícitamente no habilitó el canal para el caso legítimo"
+rm -rf "$M3ROOT" "$M3ROOT2"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (b1d-h1exec) H1 (auditoría de ejecución 2026-09-16, ALTO, CONFIRMADO): el caché REGULAR de destino"
+echo "   (acg-mrdest-*) ya NO se sirve sin validar dueño/permisos/EDAD =="
+# Bypass TOTAL medido: un archivo plantado con destino 'DevelopUnjordi' y perm 0666 se servía como si fuera
+# la respuesta de la API de hace un segundo -- y encima con confianza 'API' (la máxima). El fix MEDIO
+# original solo endureció al hermano -creacion-*; ESTE es el que de verdad gatea confirmar-merge-develop Y
+# merge-squash-guard (comparten la misma caché de destino).
+H1EROOT=$(mktemp -d "${TMPDIR:-/tmp}/h1e.XXXXXX")
+( export TMPDIR="$H1EROOT"
+  H1EREPO="$H1EROOT/repo"; mkdir -p "$H1EREPO"; git -C "$H1EREPO" init -q >/dev/null 2>&1
+  git -C "$H1EREPO" remote add origin git@gitlab.com:org/proyecto.git >/dev/null 2>&1
+  key=$(printf '%s' "org/proyecto|glab|5" | sed 's/[^A-Za-z0-9]/_/g')
+  printf 'DevelopUnjordi\nAPI\n' > "$H1EROOT/acg-mrdest-${key}"
+  chmod 666 "$H1EROOT/acg-mrdest-${key}"
+  out=$(PATH="/usr/bin:/bin" acg__destino_de_mr_full "glab mr merge 5 --yes" "$H1EREPO" 2>/dev/null)
+  case "$out" in *DevelopUnjordi*) echo BAD ;; *) echo GOOD ;; esac
+) | tail -1 | grep -q GOOD \
+  && ok "H1exec: caché plantado (perm 0666) con destino 'DevelopUnjordi' → IGNORADO (antes: bypass total del gate)" \
+  || bad "H1exec: REGRESIÓN — el caché plantado con permisos abiertos se sirvió como si fuera de la API"
+# El caso LEGÍTIMO (mismo contenido, permisos correctos -- los que la propia lib usa al escribir) SIGUE
+# sirviéndose (el fix no rompe el caching real).
+H1EROOT2=$(mktemp -d "${TMPDIR:-/tmp}/h1e2.XXXXXX")
+( export TMPDIR="$H1EROOT2"
+  H1EREPO2="$H1EROOT2/repo"; mkdir -p "$H1EREPO2"; git -C "$H1EREPO2" init -q >/dev/null 2>&1
+  git -C "$H1EREPO2" remote add origin git@gitlab.com:org/proyecto.git >/dev/null 2>&1
+  key=$(printf '%s' "org/proyecto|glab|6" | sed 's/[^A-Za-z0-9]/_/g')
+  printf 'develop\nAPI\n' > "$H1EROOT2/acg-mrdest-${key}"
+  chmod 600 "$H1EROOT2/acg-mrdest-${key}"
+  out=$(PATH="/usr/bin:/bin" acg__destino_de_mr_full "glab mr merge 6 --yes" "$H1EREPO2" 2>/dev/null)
+  case "$out" in *develop*API*) echo GOOD ;; *) echo BAD ;; esac
+) | tail -1 | grep -q GOOD \
+  && ok "H1exec: caché legítimo (perm 0600, el que la propia lib escribe) → SIGUE sirviéndose (sin regresión de caching)" \
+  || bad "H1exec: REGRESIÓN — el endurecimiento rompió el cache-hit legítimo"
+# TTL: un caché VIEJO (mtime de 2020), aunque tenga permisos correctos, ya NO se sirve — antes era eterno
+# (solo lo barría limpiar-residuo.sh manualmente, hasta 7 días de ventana).
+H1EROOT3=$(mktemp -d "${TMPDIR:-/tmp}/h1e3.XXXXXX")
+( export TMPDIR="$H1EROOT3"
+  H1EREPO3="$H1EROOT3/repo"; mkdir -p "$H1EREPO3"; git -C "$H1EREPO3" init -q >/dev/null 2>&1
+  git -C "$H1EREPO3" remote add origin git@gitlab.com:org/proyecto.git >/dev/null 2>&1
+  key=$(printf '%s' "org/proyecto|glab|7" | sed 's/[^A-Za-z0-9]/_/g')
+  printf 'develop\nAPI\n' > "$H1EROOT3/acg-mrdest-${key}"
+  chmod 600 "$H1EROOT3/acg-mrdest-${key}"
+  touch -t 202001010000 "$H1EROOT3/acg-mrdest-${key}"
+  out=$(PATH="/usr/bin:/bin" acg__destino_de_mr_full "glab mr merge 7 --yes" "$H1EREPO3" 2>/dev/null)
+  case "$out" in *develop*API*) echo BAD ;; *) echo GOOD ;; esac
+) | tail -1 | grep -q GOOD \
+  && ok "H1exec: caché VIEJO (mtime 2020, permisos correctos) → NO se confía (TTL, antes: eterno)" \
+  || bad "H1exec: REGRESIÓN — un caché de años de antigüedad se sirvió como fresco"
+# Round-trip: la propia escritura de la lib (vía lookup por API) debe seguir siendo LEGIBLE en la siguiente
+# llamada -- el chmod 600 en la escritura es lo que evita que el fix se auto-invalide (un `>` normal crea con
+# permisos típicos 644, que el propio acg__cache_confiable rechazaría).
+H1EROOT4=$(mktemp -d "${TMPDIR:-/tmp}/h1e4.XXXXXX")
+H1EBIN="$H1EROOT4/bin"; mkdir -p "$H1EBIN"
+printf '#!/usr/bin/env bash\necho '\''{"target_branch":"develop"}'\''\n' > "$H1EBIN/glab"; chmod +x "$H1EBIN/glab"
+H1EREPO4="$H1EROOT4/repo"; mkdir -p "$H1EREPO4"; git -C "$H1EREPO4" init -q >/dev/null 2>&1
+git -C "$H1EREPO4" remote add origin git@gitlab.com:org/proyecto.git >/dev/null 2>&1
+( export TMPDIR="$H1EROOT4"; PATH="$H1EBIN:/usr/bin:/bin"; acg__destino_de_mr_full "glab mr merge 9 --yes" "$H1EREPO4" >/dev/null 2>&1 )
+key9=$(printf '%s' "org/proyecto|glab|9" | sed 's/[^A-Za-z0-9]/_/g')
+_perm9=$(stat -f '%Lp' "$H1EROOT4/acg-mrdest-${key9}" 2>/dev/null || stat -c '%a' "$H1EROOT4/acg-mrdest-${key9}" 2>/dev/null)
+out2=$(TMPDIR="$H1EROOT4" PATH="/usr/bin:/bin" acg__destino_de_mr_full "glab mr merge 9 --yes" "$H1EREPO4" 2>/dev/null)   # SIN glab en PATH -> debe ser cache-hit
+{ [ "$_perm9" = "600" ] && case "$out2" in *develop*API*) true ;; *) false ;; esac; } \
+  && ok "H1exec: round-trip escritura→lectura sigue funcionando (perm=$_perm9, chmod 600 en la escritura evita auto-invalidar el caché)" \
+  || bad "H1exec: REGRESIÓN — la propia escritura del caché (perm=$_perm9) quedó ilegible para su propio lector; got: $out2"
+rm -rf "$H1EROOT" "$H1EROOT2" "$H1EROOT3" "$H1EROOT4"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
@@ -867,8 +1020,18 @@ echo "== (b1d-m7) M7 (auditoría 2026-09-15 §2.3): entorno degradado (sin jq) h
 # MISMA política, homologada a los otros dos. secret-scan/proteger-arbol CONSERVAN su fail-open declarado
 # (son red de seguridad/advisory, no el candado de "nunca push a base"); secret-scan ya avisa RUIDOSO.
 NOJQ7="$FAKEHOME/nojq7"
-_mkbin_real "$NOJQ7" bash grep sed cat basename dirname head tail printf awk tr
-gb_nojq() { jq -nc --arg c "$1" '{tool_input:{command:$c}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" bash "$HOOKS/git-branch-guard.sh"; }
+_mkbin_real "$NOJQ7" bash grep sed cat basename dirname head tail printf awk tr git
+# H1 (auditoría semántica 2026-09-16): git-branch-guard SIN jq ahora reusa acg_push_toca_base de verdad (con
+# `git` real en PATH, no solo texto) para lograr PARIDAD con el camino con-jq — así que un push PELÓN (sin
+# rama nombrada) necesita un repo git REAL y determinista para probar el fail-safe (rama actual = base ⇒
+# bloquea) sin depender de en qué rama esté PARADO el propio arnés al correr. GBNOJQ_BASEREPO queda checked
+# out en 'develop' a propósito.
+GBNOJQ_BASEREPO="$FAKEHOME/nojq7-baserepo"; mkdir -p "$GBNOJQ_BASEREPO"
+git -C "$GBNOJQ_BASEREPO" init -q >/dev/null 2>&1
+git -C "$GBNOJQ_BASEREPO" config user.email t@t >/dev/null 2>&1; git -C "$GBNOJQ_BASEREPO" config user.name t >/dev/null 2>&1
+git -C "$GBNOJQ_BASEREPO" commit -q --allow-empty -m base >/dev/null 2>&1
+git -C "$GBNOJQ_BASEREPO" checkout -q -b develop >/dev/null 2>&1
+gb_nojq() { jq -nc --arg c "$1" '{tool_input:{command:$c}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" CLAUDE_PROJECT_DIR="$GBNOJQ_BASEREPO" bash "$HOOKS/git-branch-guard.sh"; }
 ms_nojq() { jq -nc --arg c "$1" '{tool_input:{command:$c}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" bash "$HOOKS/merge-squash-guard.sh"; }
 mkdir -p "$FAKEHOME/nojq7home"
 is_deny "$(gb_nojq 'git push origin develop')" \
@@ -904,9 +1067,18 @@ is_deny "$(gb_nojq 'git push')" \
 is_deny "$(gb_nojq 'git push origin develop')" \
   && ok "ALTO-2: SIN jq, push EXPLÍCITO a develop → SIGUE bloqueado" \
   || bad "ALTO-2: SIN jq, push explícito a develop dejó de bloquearse — AFLOJAMIENTO"
-is_deny "$(gb_nojq 'glab mr merge 5 --yes')" \
-  && ok "ALTO-2: SIN jq, mr merge → SIGUE SIEMPRE bloqueado (no hay precisión posible sin jq: el destino sale de la API)" \
-  || bad "ALTO-2: SIN jq, un mr merge dejó de bloquearse — AFLOJAMIENTO"
+# H1 (auditoría semántica 2026-09-16): el rediseño reusa acg_merge_menciona_base para PARIDAD exacta con
+# el camino CON jq -- y ESE nunca bloqueaba un `mr merge 5` genérico (sin --target-branch explícito): no es
+# el trabajo de ESTE guard (que solo vigila "nombra la base DIRECTO"), es el de confirmar-merge-develop
+# (autorización) y merge-squash-guard (squash) -- AMBOS siguen bloqueando CUALQUIER merge sin jq, sin cambio
+# (ver sus propios tests de M7 abajo). Antes de H1, la heurística propia de ALTO-2 bloqueaba de más aquí por
+# accidente (no por diseño) -- eso SÍ se corrigió, a favor de la paridad real.
+is_silent "$(gb_nojq 'glab mr merge 5 --yes')" \
+  && ok "ALTO-2/H1: SIN jq, mr merge SIN destino explícito → silencio en ESTE guard (paridad con el camino CON jq; confirmar-merge-develop/merge-squash-guard lo bloquean igual, sin cambio)" \
+  || bad "ALTO-2/H1: un mr merge genérico quedó bloqueado por git-branch-guard — rompe la paridad con el camino con-jq"
+is_deny "$(gb_nojq 'glab mr merge 5 --target-branch develop --yes')" \
+  && ok "ALTO-2/H1: SIN jq, mr merge que SÍ nombra develop como destino explícito → SIGUE bloqueado (esto sí es el trabajo de este guard)" \
+  || bad "ALTO-2/H1: REGRESIÓN — un merge con destino explícito a develop dejó de bloquearse"
 is_silent "$(jq -nc --arg c 'git push' '{tool_input:{command:$c}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 bash "$HOOKS/git-branch-guard.sh")" \
   && ok "ALTO-2: SIN jq + CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 (escape EXPLÍCITO y auditado) → deja pasar, el humano manda" \
   || bad "ALTO-2: el escape explícito CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL no funcionó"
@@ -923,6 +1095,51 @@ is_deny "$(cm_nojq 'glab mr merge 5 --yes')" \
 is_silent "$(jq -nc --arg c 'glab mr merge 5 --yes' '{tool_input:{command:$c}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 bash "$HOOKS/confirmar-merge-develop.sh")" \
   && ok "ALTO-2: confirmar-merge-develop SIN jq + escape explícito → deja pasar" \
   || bad "ALTO-2: confirmar-merge-develop no honró el escape explícito"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (b1d-h1) H1 (auditoría semántica 2026-09-16, ALTO, CONFIRMADO): SIN jq, git-branch-guard razona"
+echo "   sobre el COMANDO real, NUNCA sobre 'description' u otros campos del JSON crudo =="
+# Medido por la auditoría: el fixture ORIGINAL de b1d-alto2 (arriba) construye el payload SIN 'description' —
+# el campo que cambia la respuesta es justo el que el fixture omitía. gb_nojq_full monta el payload REAL
+# (command + description), la premisa hostil exacta del hallazgo.
+gb_nojq_full() { jq -nc --arg c "$1" --arg d "$2" '{tool_input:{command:$c,description:$d}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" CLAUDE_PROJECT_DIR="$GBNOJQ_BASEREPO" bash "$HOOKS/git-branch-guard.sh"; }
+is_silent "$(gb_nojq_full 'git push -u origin feat/mi-cambio' 'Empujar la ramita del MR a develop')" \
+  && ok "H1: SIN jq, ramita legítima + description que MENCIONA 'develop' → silencio (antes: DENY por leer el JSON crudo)" \
+  || bad "H1: REGRESIÓN — la description volvió a filtrarse al detector y bloqueó una ramita legítima"
+is_silent "$(gb_nojq_full 'git push -u origin fix/main-menu' 'arregla el menu principal')" \
+  && ok "H1: SIN jq, rama 'fix/main-menu' + description sin relación → silencio" \
+  || bad "H1: REGRESIÓN — 'fix/main-menu' se bloqueó (¿la palabra 'main' del NOMBRE de la rama coló?)"
+is_silent "$(gb_nojq_full 'git push -u origin feat/develop-x' 'nueva feature')" \
+  && ok "H1: SIN jq, rama 'feat/develop-x' (contiene 'develop' como SUBSTRING, no como base) → silencio" \
+  || bad "H1: REGRESIÓN — 'feat/develop-x' se bloqueó por contener la palabra 'develop'"
+is_deny "$(gb_nojq_full 'git push origin develop' 'release')" \
+  && ok "H1: SIN jq, push EXPLÍCITO a develop (con o sin description) → SIGUE bloqueado" \
+  || bad "H1: REGRESIÓN — push explícito a develop dejó de bloquearse"
+is_deny "$(gb_nojq_full 'git push' 'algo')" \
+  && ok "H1: SIN jq, push PELÓN → SIGUE bloqueado (fail-safe cuando no se puede resolver la rama actual)" \
+  || bad "H1: REGRESIÓN — un push pelón dejó de bloquearse"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (b1d-h5exec) H5 (auditoría de ejecución 2026-09-16, BAJO-MEDIO, CONFIRMADO): siembra de repo/rama"
+echo "   base VACÍA tiene un carril explícito (CLAUDE_GIT_GUARD_SEED=1), incluso CON jq presente =="
+# Corpus L4/L114: sembrar un repo (0 commits) o crear develop por primera vez son la ÚNICA excepción que la
+# norma global declara para un push directo a base — y el único escape que YA existía
+# (CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL) solo se leía en la rama SIN jq. Con jq presente (el caso normal) el
+# operador quedaba sin carril.
+gb_seed() { jq -nc --arg c "$1" '{tool_input:{command:$c}}' | HOME="$FAKEHOME/seedhome" CLAUDE_GIT_GUARD_SEED=1 bash "$HOOKS/git-branch-guard.sh"; }
+gb_noseed() { jq -nc --arg c "$1" '{tool_input:{command:$c}}' | HOME="$FAKEHOME/seedhome" bash "$HOOKS/git-branch-guard.sh"; }
+mkdir -p "$FAKEHOME/seedhome"
+is_deny "$(gb_noseed 'git push -u origin main')" \
+  && ok "H5: CON jq, siembra de repo vacío (push a main) SIN el escape → sigue bloqueado (comportamiento previo intacto)" \
+  || bad "H5: sin el escape, la siembra pasó igual — el control de este test está mal armado"
+is_silent "$(gb_seed 'git push -u origin main')" \
+  && ok "H5: CON jq + CLAUDE_GIT_GUARD_SEED=1 (escape EXPLÍCITO y auditado) → deja pasar la siembra" \
+  || bad "H5: el escape CLAUDE_GIT_GUARD_SEED no funcionó con jq presente"
+is_deny "$(gb_seed 'glab mr merge 5 --target-branch develop --yes')" \
+  && ok "H5: CLAUDE_GIT_GUARD_SEED=1 NO es un bypass general — un merge que NOMBRA develop como destino SIGUE bloqueado" \
+  || bad "H5: REGRESIÓN — el escape de siembra aflojó algo que no era suyo (merge con destino explícito)"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
@@ -5407,7 +5624,8 @@ drift-cerebro-comun|verificar-cerebro
 checkpoint|checkpoint-mecanico
 checkpoint|contrato-hilo
 barrer-flotilla-cerebro|limpiar-residuo
-analizar-comando-git|proteger-arbol"
+analizar-comando-git|proteger-arbol
+analizar-comando-git|limpiar-residuo"
 # auditar-coherencia-cerebro|auditar-proceso-algoritmo: FAMILIA declarada, no ciclo — proceso-algoritmo
 # es la METODOLOGÍA y apunta a secciones CONCRETAS de coherencia-cerebro (que es su modo-cerebro
 # empaquetado) donde vive el detalle; el contenido está en los dos lados, así que el lector no da vueltas.
@@ -5426,6 +5644,11 @@ analizar-comando-git|proteger-arbol"
 # (antes vivía fuera del candado común, ciego a -C/git.exe/cross-repo) — es lib<->consumidor, como
 # delegacion-comun|delegacion-gate. La lib solo MENCIONA a proteger-arbol en un comentario (por qué el
 # heredoc-aware reemplaza su viejo filtro propio); no hay un source de vuelta ni contenido que rebote.
+# analizar-comando-git|limpiar-residuo (auditoría de ejecución 2026-09-16, H1): acg__cache_confiable usa
+# CLAUDE_RESIDUO_DIAS_TMP como fallback de TTL para que ambos compartan la MISMA política declarada (7 días)
+# sobre la MISMA familia de archivos (acg-mrdest-*) — limpiar-residuo YA mencionaba a analizar-comando-git
+# (los barre); ahora la lib menciona a limpiar-residuo EN UN COMENTARIO para explicar de dónde sale el
+# default. Ninguno sourcea al otro ni hay contenido que rebote — es acuerdo de POLÍTICA, no dependencia.
 ce_els=()
 for d in "$SCRIPT_DIR"/skills/*/; do [ -d "$d" ] && ce_els+=("$(basename "$d")"); done
 for h in "$HOOKS"/*.sh; do [ -e "$h" ] && ce_els+=("$(basename "$h" .sh)"); done

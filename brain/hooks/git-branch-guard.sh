@@ -14,39 +14,48 @@
 case "$0" in "$HOME/.claude/hooks/"*) : ;; *) [ -f "$HOME/.claude/hooks/$(basename "$0")" ] && exit 0 ;; esac
 
 input=$(cat)
-# ALTO-2 (auditoría FMEA 2026-09-16 §1.4, CONFIRMADO): sin jq no podemos parsear el comando -- pero
-# bloquear TODO push (incluido push a tu propia ramita/mini-develop, el caso MÁS común) deja al operador
-# SIN CARRIL. Precisión (NO relajación): un `git push` que nombra EXPLÍCITAMENTE ≥2 tokens tras 'push'
-# (remoto + rama) y NINGUNO de ellos es develop/main/master/HEAD es, por definición, un push a una rama
-# que NO es la base -- se deja pasar. Todo lo demás (push PELÓN sin rama -- el caso H1 exacto, donde la
-# rama peligrosa es la ACTUALMENTE ligada, invisible en el texto -- o que SÍ menciona la base) sigue
-# bloqueado. mr/pr merge NUNCA se afloja aquí: sin jq no hay forma de verificar squash/autorización.
-_m7_push_riesgosa_sin_jq() {   # $1=input crudo → 0(riesgosa→bloquea) | 1(rama explícita no-base→pasa)
-  local seg rest n
-  seg=$(printf '%s' "$1" | grep -oE 'push([[:space:]][^&|;]*)?' | head -1)
-  [ -z "$seg" ] && return 0
-  printf '%s' "$seg" | grep -qiE '(^|[^[:alpha:]])(develop|main|master|HEAD)([^[:alpha:]]|$)' && return 0
-  rest=$(printf '%s' "$seg" | sed -E 's/^push[[:space:]]*//' \
-    | sed -E 's/(^|[[:space:]])(-u|--set-upstream|-f|--force|--force-with-lease(=[^[:space:]]*)?|--all|--tags|--follow-tags|--no-verify|--dry-run|-n|--delete|-d|--quiet|-q|--verbose|-v)([[:space:]]|$)/\1/g')
-  rest=$(printf '%s' "$rest" | tr -s '[:space:]' ' ' | sed -E 's/^ +//; s/ +$//')
-  [ -z "$rest" ] && return 0
-  n=$(printf '%s\n' "$rest" | tr ' ' '\n' | grep -c .)
-  [ "$n" -lt 2 ] && return 0
-  return 1
+
+_ACGLIB="$(dirname "$0")/analizar-comando-git.sh"
+# H1 (auditoría semántica 2026-09-16, ALTO): extrae el valor LITERAL del campo "command" del JSON (nunca
+# el blob crudo completo) -- acota a un rango entre comillas que respeta escapes (\. | [^"\]), el mismo
+# patrón estándar de extracción de cadena JSON. Usado SOLO en el carril sin-jq (con jq, se usa jq de verdad).
+_json_campo_command() {
+  printf '%s' "$1" | sed -nE 's/.*"command"[[:space:]]*:[[:space:]]*"((\\.|[^"\\])*)".*/\1/p' | head -1
 }
+_json_campo_cwd() {
+  printf '%s' "$1" | sed -nE 's/.*"cwd"[[:space:]]*:[[:space:]]*"((\\.|[^"\\])*)".*/\1/p' | head -1
+}
+
 if ! command -v jq >/dev/null 2>&1; then
-  # Escape EXPLÍCITO y auditado (mismo espíritu que CLAUDE_SKIP_SECRET_SCAN): el operador YA confirmó que,
-  # sin jq, esto es su ramita/mini-develop personal -- nunca un bypass silencioso, el humano manda.
-  [ "${CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL:-}" = "1" ] && exit 0
-  _riesgo=0
-  if printf '%s' "$input" | grep -qE 'git[[:space:]]+push'; then
-    _m7_push_riesgosa_sin_jq "$input" && _riesgo=1
+  # ALTO-2 (auditoría FMEA 2026-09-16 §1.4): sin jq, bloquear TODO push (incluida tu propia ramita/mini-
+  # develop) deja al operador SIN CARRIL.
+  # H1 (auditoría semántica 2026-09-16, CONFIRMADO): la corrección ORIGINAL de ALTO-2 razonaba sobre el
+  # JSON CRUDO completo (sin extraer el comando), así que un campo "description" que solo MENCIONA
+  # "develop" ("Empujar la ramita del MR a develop") bastaba para bloquear un push a una ramita legítima --
+  # exactamente la mordida que ALTO-2 existía para eliminar. Fix de raíz: extraer SOLO el campo "command"
+  # (arriba) y, si se logra, reusar la MISMA función `acg_push_toca_base`/`acg_merge_menciona_base` del
+  # camino CON jq (ninguna de las dos necesita jq: son texto+git puro) -- PARIDAD exacta con el camino
+  # normal, no una heurística propia más laxa o más estricta.
+  _cmd_sinjq=$(_json_campo_command "$input")
+  _cwd_sinjq=$(_json_campo_cwd "$input")
+  _sinjq_ok=0
+  if [ -n "$_cmd_sinjq" ] && [ -f "$_ACGLIB" ] && bash -n "$_ACGLIB" >/dev/null 2>&1; then
+    # shellcheck source=analizar-comando-git.sh
+    . "$_ACGLIB"
+    if command -v acg_push_toca_base >/dev/null 2>&1; then
+      _sinjq_ok=1
+      if acg_push_toca_base "$_cmd_sinjq" "$_cwd_sinjq" || acg_merge_menciona_base "$_cmd_sinjq"; then
+        printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"FRENO (sin jq): sin jq instalado igual pude leer el comando real (no el JSON crudo) y SÍ toca develop/main -- NUNCA se hace push/merge directo a develop/main (fail-safe, no afloja nada). Si esto es TU PROPIA ramita/mini-develop y estás seguro de que no toca develop/main, exporta CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 en el ENTORNO de la sesión (no como prefijo del comando: este hook corre en un proceso aparte) y reintenta -- o instala jq (macOS: brew install jq · Debian/Ubuntu: apt install jq · Windows: winget install jqlang.jq)."}}'
+      fi
+    fi
   fi
-  if printf '%s' "$input" | grep -qE '(mr[[:space:]]+(merge|accept)|pr[[:space:]]+merge)'; then
-    _riesgo=1
-  fi
-  if [ "$_riesgo" = 1 ]; then
-    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"FRENO (sin jq): no puedo verificar si este push/merge toca develop/main sin jq instalado, y NUNCA se hace push/merge directo a develop/main (fail-safe, no afloja nada). Si esto es TU PROPIA ramita/mini-develop y estás seguro de que no toca develop/main, exporta CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 para esta sesión y reintenta -- o instala jq (macOS: brew install jq · Debian/Ubuntu: apt install jq · Windows: winget install jqlang.jq)."}}'
+  if [ "$_sinjq_ok" = 0 ]; then
+    # Fallback conservador (no se pudo extraer 'command' del JSON, o la lib no cargó): mismo superset de
+    # SIEMPRE sobre el input crudo -- más ruidoso que el camino de arriba, pero JAMÁS dispara MENOS.
+    [ "${CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL:-}" = "1" ] && exit 0
+    if printf '%s' "$input" | grep -qE 'git[[:space:]]+push|(mr[[:space:]]+(merge|accept)|pr[[:space:]]+merge)'; then
+      printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"FRENO (sin jq): no pude extraer el comando del JSON del hook, y NUNCA se hace push/merge directo a develop/main sin poder verificarlo (fail-safe, no afloja nada). Si esto es TU PROPIA ramita/mini-develop, exporta CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 en el ENTORNO de la sesión (no como prefijo del comando) y reintenta -- o instala jq."}}'
+    fi
   fi
   exit 0
 fi
