@@ -21,7 +21,11 @@
 #   · POLÍTICA por juez (vive en CADA juez, no aquí — codificar el fail-safe en la lib acoplaría seguridad
 #     a mecánica). RESUMEN del contrato, para que quede en UN solo lugar:
 #       merge (confirmar-merge-develop) = fail-CLOSED: vacío/UNAVAILABLE_* → DENY. El estado solo cambia el
-#              MENSAJE: NOTOKEN → DENY + redirección al carril de la WEB de GitLab (o `claude setup-token`);
+#              MENSAJE: NOTOKEN → DENY + corre `claude setup-token` / exporta CLAUDE_CODE_OAUTH_TOKEN (H5,
+#              auditoría de ejecución 2026-09-16: M8, auditoría 2026-09-15 §3.11, retiró la redirección a la
+#              WEB de GitLab de los 4 mensajes del guard por la norma anti-vein-popper — "un guard que frena
+#              en CLI se SATISFACE o se ARREGLA, jamás se rodea mandando a la persona a la web"; esta cabecera,
+#              la definición ÚNICA del contrato, seguía prescribiendo el patrón que la norma prohíbe);
 #              EXPIRED → DENY + "reintenta, el CLI refresca el token solo"; NET → DENY genérico. SIEMPRE DENY.
 #       dod (dod-verificar)             = fail-OPEN: vacío/UNAVAILABLE_* → exit 0 (es un NAG de disciplina,
 #              no un candado de seguridad; bloquear cada Stop sin juez atraparía al usuario en un loop).

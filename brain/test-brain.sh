@@ -8010,6 +8010,30 @@ rm -rf "$H2CODE" "$H2HOME"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (b1d-h5doc) H5 (auditoría de ejecución 2026-09-16, MEDIO, CONFIRMADO): el CONTRATO de fail-safe ya"
+echo "   NO prescribe el escape a la WEB que M8 retiró de los mensajes reales =="
+# juez-comun.sh:24 es la cabecera que el propio archivo declara "definición ÚNICA" del contrato de
+# fail-safe -- pero seguía documentando "NOTOKEN → DENY + redirección al carril de la WEB de GitLab" pese a
+# que M8 (auditoría 2026-09-15 §3.11) retiró esa redirección de los 4 mensajes reales por la norma anti-
+# vein-popper. Quien implemente el PRÓXIMO juez leyendo el contrato la reintroduciría.
+# NOTA de test: se filtran las líneas de COMENTARIO (^\s*#) al buscar la frase retirada -- los propios
+# comentarios de ESTE fix (incluido el de arriba) la CITAN históricamente para explicar qué se quitó, lo cual
+# es documentación legítima (norma "presente=se queda, pasado=se va" con la excepción de la lección). Lo que
+# importa es que NINGÚN mensaje/JSON real (código vivo, no comentario) la ofrezca como salida.
+! grep -v '^[[:space:]]*#' "$HOOKS/juez-comun.sh" | grep -qi 'web de gitlab\|en la web' \
+  && ok "H5: juez-comun.sh ya NO prescribe la redirección a la web de GitLab en código vivo (solo la CITA en comentario, como historia)" \
+  || bad "H5: REGRESIÓN — el CÓDIGO VIVO (no un comentario) sigue prescribiendo el escape a la web que M8 ya retiró"
+grep -qi 'setup-token' "$HOOKS/juez-comun.sh" \
+  && ok "H5: el contrato SÍ documenta el remedio real (claude setup-token / CLAUDE_CODE_OAUTH_TOKEN)" \
+  || bad "H5: el contrato no documenta ningún remedio real para NOTOKEN"
+for _g in git-branch-guard.sh merge-squash-guard.sh confirmar-merge-develop.sh secret-scan.sh proteger-arbol.sh; do
+  grep -v '^[[:space:]]*#' "$HOOKS/$_g" | grep -qi 'web de gitlab\|en la web' \
+    && bad "H5 control: $_g todavía menciona la web como escape en CÓDIGO VIVO (norma anti-vein-popper violada)" \
+    || ok "H5 control: $_g no ofrece la web como escape en código vivo (ya lo verificaba M8, sigue intacto)"
+done
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 PASS=$(grep -c '^OK$'  "$CALLLOG" 2>/dev/null); PASS="${PASS:-0}"
 FAIL=$(grep -c '^BAD$' "$CALLLOG" 2>/dev/null); FAIL="${FAIL:-0}"
 echo "==> resultado: $PASS PASS · $FAIL FAIL"
