@@ -31,7 +31,6 @@
 🔔 Automático — inyectan / recuerdan (no bloquean)
 ├─ 📊 recordar-dashboard       en el push recuerda dashboard + doc=realidad (README/docs) — cierre del slice
 ├─ 🖥️  entorno-maquina-guard    commit de algo machine-specific (aliases/rutas de $HOME/Rosetta/entorno-maquina.md) al .claude/memory/ del repo → avisa
-├─ 🕰️  rama-vieja              avisa si la ramita arrastra base vieja
 ├─ 🌳 proteger-arbol           git destructivo que orfanaría commits sin pushear → avisa (fan-out: usa worktree aislado)
 ├─ 🛡️  proteger-fuente-cerebro  editar la copia INSTALADA de un hook/skill que tiene fuente en el clon → avisa (se perdería en el próximo sync) (GLOBAL)
 ├─ 🧹 barrer-ramas             al abrir sesión barre en 2º plano las ramas locales ya integradas (zombie squash-safe; throttle 24h) (GLOBAL)
@@ -113,9 +112,6 @@ Antes de un `git push` (ignora un `git push` entrecomillado, dato de grep/MR) RE
 
 ### 🔔 🖥️ `entorno-maquina-guard`  ·  PreToolUse/Bash · aviso
 MECANISMO de la norma "el entorno de MÁQUINA vive GLOBAL, jamás en un repo". Ante un `git commit` (ignora comillas) AVISA —no bloquea— si mete al `.claude/memory/` del repo algo machine-specific que mentiría al clonar en otra compu/OS. Dispara con 2 señales de alta precisión sobre archivos staged bajo `.claude/memory/*.md` (excluye `*.local.md`): (1) **filename-trampa** `entorno-maquina.md` (`:47`); (2) **contenido agregado**: `alias x=`, tools personales (eza/trash/bat/nvim/colima), rutas absolutas de un `$HOME` (`/Users/x/`, `/home/x/`, `C:\Users\`), o "Rosetta" sin condicional en la misma línea (`:62-67`). Solo mira lo que ENTRA (staged; suma worktree si el commit trae `-a/--all`). Tier **both**, dedupe (`:22`). Fail-open sin jq/git.
-
-### 🔔 🕰️ `rama-vieja`  ·  PreToolUse/Bash · aviso
-Antes de un `git push` (ignora comillas) AVISA —no bloquea— si la ramita arrastra base vieja: `git rev-list --count HEAD..origin/develop` ≥ **umbral** (`RAMA_VIEJA_UMBRAL`, default **40**, `:22`). Sugiere `git fetch origin && git rebase origin/develop` + repush con `--force-with-lease`. NO avisa parado en `develop/main/HEAD` ni sin `origin/develop` (`:17-19`). Tier **global** (sin dedupe). Fail-open sin jq/git.
 
 ### 🔔 🌳 `proteger-arbol`  ·  PreToolUse/Bash · aviso
 AVISA —no bloquea— antes de un git DESTRUCTIVO que orfanaría commits sin pushear: `git reset --hard/--merge/--keep`, `checkout -f/--force`, `rebase`, `branch -D` (`:15`, ignora comillas). Solo dispara si REALMENTE hay commits en riesgo (`n>0` vs upstream, o vs origin/develop|main, `:22-28`). Distingue **árbol PRINCIPAL compartido** (git-dir==common-dir → alarma completa: antídoto al caso real 2026-07 de un agente de fan-out que reseteó HEAD y orfanó un commit del orquestador) vs **worktree AISLADO** (`gd!=gcd`): ahí SUPRIME el falso positivo del workaround H15 (reset a la propia rama / origin/rama / develop|main, `:45-47`) y si acaso emite una nota SUAVE. Tier **global**. Fail-open sin jq/git.

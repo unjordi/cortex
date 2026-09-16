@@ -2,7 +2,7 @@
 // Render:  dot -Tsvg 03-enforcement-git-guards.dot -o 03-enforcement-git-guards.svg
 // Construido 2026-08-01 desde el CÓDIGO REAL de brain/hooks/ (git-branch-guard, merge-squash-guard,
 // confirmar-merge-develop, secret-scan + la lib analizar-comando-git.sh; recordar-dashboard,
-// entorno-maquina-guard, rama-vieja, proteger-arbol; aviso-contexto). Zoom del fan-out de CONVENCIONES §6.
+// entorno-maquina-guard, no-bypass-deploy, proteger-arbol; aviso-contexto). Zoom del fan-out de CONVENCIONES §6.
 digraph flujos {
   graph [bgcolor="#1b1712", rankdir=TB, fontname="Helvetica", splines=true,
          nodesep=0.35, ranksep=0.55, pad=0.25, compound=true];
@@ -29,15 +29,15 @@ digraph flujos {
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📊 recordar-dashboard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">en el push recuerda dashboard + doc=realidad (README/docs) — cierre del slice</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🖥️ entorno-maquina-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">commit de algo machine-specific (aliases/rutas de $HOME/Rosetta/entorno-maquina.md) al .claude/memory/ del repo → avisa</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🚧 no-bypass-deploy</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">correr el instalador/deploy a mano (install-brain.sh/deploy.sh) en vez de la herramienta oficial (el widget) → avisa (fail-safe: no --dry-run/--help/CI)</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🕰️ rama-vieja</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">avisa si la ramita arrastra base vieja</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌳 proteger-arbol</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">git destructivo que orfanaría commits sin pushear → avisa (fan-out: usa worktree aislado)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🛡️ proteger-fuente-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">editar la copia INSTALADA de un hook/skill que tiene fuente en el clon → avisa (se perdería en el próximo sync) (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧹 barrer-ramas</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al abrir sesión / al punto del merge barre en 2º plano ramas locales + remota huérfana + worktrees ya integrados (zombie squash-safe; throttle 24h) (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">💾 exportar-sesion-master</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">auto-export de las sesiones *-master a ~/.claude-sessions (o Drive); detached, sobrevive el cleanup de 30 días (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🗂️ checkpoint-mecanico</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">PreCompact: extractor mecánico (streaming, 0 tokens) escribe el andamio del TRAMO VIVO a hilo-mental-actual.andamio.md (GLOBAL; el skill lo regenera con --self --ensure)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📝 delegacion-registrar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">materializa el "pregunta una sola vez"</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📮 delegacion-reporte</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al terminar un agente: recuerda registrar avance + limpiar su worktree</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎼 recordar-orquestar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">N mutaciones (edits/commits) en serie SIN delegar → sugiere fan-out (advisory, no bloquea; resetea al delegar) (GLOBAL)</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧵 rehidratar-hilo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta hilo-mental-actual.md al abrir/retomar/compactar (GLOBAL) — con gate de frescura</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧵 rehidratar-hilo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta hilo-mental-actual.md + el andamio (si es más fresco) al abrir/retomar/compactar (GLOBAL) — gate de frescura + edad</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📈 aviso-contexto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reporta el watermark de contexto CRUDO (tokens · ventana · %); sin bandas ni veredicto — /context manda (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧬 aviso-drift-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">repo brained atrás de la fuente única (hooks/libs Y skills) → en tu mini-develop se AUTO-SINCRONIZA (apply+commit+push); en otra rama, avisa. ADEMÁS detecta el drift de la copia GLOBAL de skills (~/.claude/skills vs la fuente; warn-only, throttle propio). Al moverse el cerebro, NUDGE a correr la DUPLA (suficiencia+coherencia; contra la firma si hay AGENTS.md, si no sugiere instanciarla) (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔀 hud-stale</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cambiaste de rama/proyecto → tu lista de TODOs (HUD) puede ser de la tarea anterior: avisa (advisory) que la resetees/re-siembres del estado-proyecto.md de esa rama. Señal OBJETIVA (rama/cwd), stamp per-sesión, first-sight silencioso, solo en repos con backlog (GLOBAL)</font></td></tr>
@@ -92,21 +92,21 @@ digraph flujos {
 
   // ───────────────────────────────────── EL FAN-OUT ─────────────────────────────────────
   subgraph cluster_f0 {
-    label="03 · Enforcement de los git-guards sobre UN comando git   (PreToolUse/Bash · 9 hooks EN PARALELO, sin despachador · precedencia deny > ask > allow · + PostToolUse)";
+    label="03 · Enforcement de los git-guards sobre UN comando git   (PreToolUse/Bash · 8 hooks EN PARALELO, sin despachador · precedencia deny > ask > allow · + PostToolUse)";
     fontname="Times"; fontsize=14; fontcolor="#5fa89e";
     color="#5fa89e"; penwidth=1.6; style="rounded"; bgcolor="#1b1712";
 
     CMD   [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
            label="el modelo emite una tool Bash con un comando git/glab/gh\n(push · commit · glab mr merge · git reset …)"];
     FANOUT [shape=diamond, fillcolor="#2b2622", color="#d97757",
-            label="PreToolUse/Bash → 9 hooks corren EN PARALELO sobre el MISMO comando\n(NO hay cascada secuencial; cada uno decide solo). Abajo se detallan los 8 que\nINSPECCIONAN git; el 9º —no-bypass-deploy— también dispara pero NO-OPEA\nsobre un comando git (solo actúa ante un instalador/deploy a mano)"];
+            label="PreToolUse/Bash → 8 hooks corren EN PARALELO sobre el MISMO comando\n(NO hay cascada secuencial; cada uno decide solo). Abajo se detallan los 7 que\nINSPECCIONAN git; el 8º —no-bypass-deploy— también dispara pero NO-OPEA\nsobre un comando git (solo actúa ante un instalador/deploy a mano)"];
 
     // ── Preludio de CADA hook (①② — casi universal, NO 100%; ③④ son de la LIB, solo 4 hooks) ──
     COMUN [color="#c9a227",
-           label="🟡  preludio de CADA hook (antes de decidir):\n① dedupe doble-cableado: si soy la copia del REPO y existe la GLOBAL → cedo (exit 0)\n   presente en GBG/MSG/CMDG/SEC/DASH/ENTM; AUSENTE en rama-vieja y proteger-arbol\n   (arrancan directo en `command -v jq`) → un clon SIN bootstrap: la del repo sí corre\n② fail-open GENERAL: sin jq → exit 0 (no bloquea; red de seguridad, no cárcel)\n   ⚠ EXCEPCIÓN fail-SAFE (se ENDURECE, no se afloja):\n   · confirmar-merge-develop: sin jq + el comando CRUDO parece merge (mr merge|accept,\n     pr merge) → 🔴 DENY igual (anti-evasión «sin token=DENY, sin jq=ALLOW», A3)\n   ⚠ secret-scan es DISTINTO — sin jq → SIEMPRE fail-open (ni con STRICT=1;\n     no puede ni emitir el deny sin jq); STRICT=1 solo endurece a fail-CLOSED\n     otra infra faltante CON jq presente (git ausente / no-es-repo / rango\n     del diff indeterminable)"];
+           label="🟡  preludio de CADA hook (antes de decidir):\n① dedupe doble-cableado: si soy la copia del REPO y existe la GLOBAL → cedo (exit 0)\n   presente en GBG/MSG/CMDG/SEC/DASH/ENTM; AUSENTE en proteger-arbol\n   (arrancan directo en `command -v jq`) → un clon SIN bootstrap: la del repo sí corre\n② fail-open GENERAL: sin jq → exit 0 (no bloquea; red de seguridad, no cárcel)\n   ⚠ EXCEPCIÓN fail-SAFE (se ENDURECE, no se afloja):\n   · confirmar-merge-develop: sin jq + el comando CRUDO parece merge (mr merge|accept,\n     pr merge) → 🔴 DENY igual (anti-evasión «sin token=DENY, sin jq=ALLOW», A3)\n   ⚠ secret-scan es DISTINTO — sin jq → SIEMPRE fail-open (ni con STRICT=1;\n     no puede ni emitir el deny sin jq); STRICT=1 solo endurece a fail-CLOSED\n     otra infra faltante CON jq presente (git ausente / no-es-repo / rango\n     del diff indeterminable)"];
 
     LIB   [color="#c9a227",
-           label="🟡 sub-preludio de la LIB analizar-comando-git.sh — SOLO en los\nque la sourcean: GBG · MSG · CMDG · SEC (NO en DASH/ENTM/RAMV/ARBOL):\n③ augmenta PATH (gh/glab de /opt/homebrew·/usr/local·~/.local/bin, al FINAL) → destino/MR\n   RESOLUBLES por API; sin esto el PATH mínimo de launchd los ocultaba y el fail-safe\n   frenaba merges/releases YA autorizados (root cause #78; ACG_PATH_AUGMENT=0 lo apaga)\n④ despoja comillas + normaliza prefijo `git -c/-C/--work-tree…` + `git.exe`\n   (fuente ÚNICA de los 4 → no divergen; los avisos y proteger-arbol hacen su\n   PROPIO despojo inline vía sed y NO obtienen esto — p. ej. `git -c k=v push`\n   puede evadir su chequeo de adyacencia git+push)"];
+           label="🟡 sub-preludio de la LIB analizar-comando-git.sh — SOLO en los\nque la sourcean: GBG · MSG · CMDG · SEC (NO en DASH/ENTM/ARBOL):\n③ augmenta PATH (gh/glab de /opt/homebrew·/usr/local·~/.local/bin, al FINAL) → destino/MR\n   RESOLUBLES por API; sin esto el PATH mínimo de launchd los ocultaba y el fail-safe\n   frenaba merges/releases YA autorizados (root cause #78; ACG_PATH_AUGMENT=0 lo apaga)\n④ despoja comillas + normaliza prefijo `git -c/-C/--work-tree…` + `git.exe`\n   (fuente ÚNICA de los 4 → no divergen; los avisos y proteger-arbol hacen su\n   PROPIO despojo inline vía sed y NO obtienen esto — p. ej. `git -c k=v push`\n   puede evadir su chequeo de adyacencia git+push)"];
 
     // ── LOS 4 QUE PUEDEN DENEGAR (🔒 forzosos) ──
     GBG   [shape=diamond, fillcolor="#2b2622", color="#d97757",
@@ -144,14 +144,12 @@ digraph flujos {
            label="🔔📊 recordar-dashboard  ·  ¿git push?\n🟠 recuerda: Dashboard del cerebro (append `>>` a Bitácora)\n+ doc=realidad: push toca hooks/skills/features SIN tocar doc → actualízala"];
     ENTM  [color="#e08e45",
            label="🔔🖥️ entorno-maquina-guard  ·  ¿git commit?\n🟠 avisa si mete algo MACHINE-SPECIFIC (alias/$HOME/Rosetta,\no un `entorno-maquina.md`) al .claude/memory/ del repo → viajaría y MENTIRÍA"];
-    RAMV  [color="#e08e45",
-           label="🔔🕰️ rama-vieja  ·  ¿git push de una ramita?\n🟠 avisa si está ≥40 commits DETRÁS de origin/develop\n→ rebasa antes (el MR traería ruido/conflictos)"];
     ARBOL [color="#e08e45",
            label="🔔🌳 proteger-arbol  ·  ¿git DESTRUCTIVO (reset --hard/checkout -f/rebase/branch -D)?\n🟠 reset/checkout/rebase: avisa si orfanaría commits sin pushear (@{u}..HEAD).\nbranch -D SOLO (force-delete; el gate de entrada solo casa `-D` mayúscula —\n`git branch -d` minúscula NUNCA llega al guard, git ya rehúsa borrar ramas no\nintegradas): decide por chequeo ZOMBIE per-rama (ancestro | squash/cherry |\nremota-gone), calla si todas ya están integradas (mata el FP dominante).\nSUPRIME el FP en worktree AISLADO (H14/H15)"];
 
     // ── Confluencia: precedencia deny > ask > allow ──
     PREC  [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="el CLI combina las 8 decisiones\nprecedencia: deny > ask > allow"];
+           label="el CLI combina las 7 decisiones\nprecedencia: deny > ask > allow"];
     BLOCK [fillcolor="#3a2020", color="#c0392b", penwidth=3,
            label="🔴 comando BLOQUEADO\n(al menos un guard denegó — el modelo lee el motivo y NO reintenta)"];
     RUN   [color="#7fb069", penwidth=3,
@@ -166,7 +164,7 @@ digraph flujos {
     FANOUT -> COMUN [label="cada hook primero corre\nsu preludio ①②"];
     COMUN -> LIB [label="GBG/MSG/CMDG/SEC\nademás corren ③④\n(sourcean la lib)"];
     LIB -> GBG; LIB -> MSG; LIB -> CMDG; LIB -> SEC;
-    COMUN -> DASH; COMUN -> ENTM; COMUN -> RAMV; COMUN -> ARBOL;
+    COMUN -> DASH; COMUN -> ENTM; COMUN -> ARBOL;
 
     GBG -> GBG_D [label="sí"];
     MSG -> MSQ [label="es merge MR real"];
@@ -189,7 +187,7 @@ digraph flujos {
     CMD_OK -> PREC [label="OK citado /\ngrant durable"];
     SEC -> PREC  [label="sin secreto /\nno es commit-push"];
     DASH -> PREC; ENTM -> PREC;
-    RAMV -> PREC; ARBOL -> PREC;
+    ARBOL -> PREC;
 
     PREC -> BLOCK [label="algún deny"];
     PREC -> RUN   [label="ningún deny"];
