@@ -21,9 +21,19 @@ pcwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
 # salta un caso real.
 case "$cmd" in *git*) : ;; *) exit 0 ;; esac
 
-# shellcheck source=analizar-comando-git.sh
+# CRÍTICO-1 (auditoría FMEA 2026-09-16 §1.1, CONFIRMADO): sourcear un archivo con error de SINTAXIS mata el
+# proceso ENTERO con exit 1 -- este hook YA es advisory/fail-open por diseño, pero antes ni siquiera llegaba
+# a su propio fallback heredoc-ciego (abajo): el `.` normal mataba el proceso ANTES de que el `command -v
+# acg_despoja_comillas` de abajo pudiera preguntar. Se prueba el source en un SUBSHELL primero: si truena
+# ahí, el crash queda AISLADO (el proceso padre sigue vivo) y el hook DEGRADA a su fallback propio en vez de
+# desaparecer sin avisar. Snippet IDÉNTICO en los 5 guards; a propósito FUERA de la lib.
 _ACGLIB="$(dirname "$0")/analizar-comando-git.sh"
-[ -f "$_ACGLIB" ] && . "$_ACGLIB"
+if [ -f "$_ACGLIB" ] && ( . "$_ACGLIB" ) >/dev/null 2>&1; then
+  # shellcheck source=analizar-comando-git.sh
+  . "$_ACGLIB"
+else
+  [ -f "$_ACGLIB" ] && printf '%s: analizar-comando-git.sh existe pero no cargó (error de sintaxis) -- usando el fallback heredoc-ciego propio. `bash -n "%s"` localiza el error.\n' "$(basename "$0")" "$_ACGLIB" >&2
+fi
 
 # M1 (auditoría 2026-09-15 §3.8): el filtro de heredoc PROPIO de este hook (descartaba TODO cuerpo de
 # heredoc sin mirar el consumidor) cerró el FP de `cat >> doc.md <<EOF` pero abrió el FN simétrico —

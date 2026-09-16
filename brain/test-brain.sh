@@ -724,6 +724,58 @@ o=$(printf '%s' "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git -C $M
   || bad "M2: proteger-arbol evaluó el árbol EQUIVOCADO (CLAUDE_PROJECT_DIR en vez del -C); got: $o"
 rm -rf "$M2A" "$M2B"
 
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (b1d-critico1) CRÍTICO-1 (auditoría FMEA 2026-09-16 §1.1, CONFIRMADO): un error de SINTAXIS en la"
+echo "   lib compartida NO tumba los 5 guards en silencio — fallan RUIDOSO/CERRADO en vez de desaparecer =="
+# Reproduce EXACTO el método de la auditoría: copia los 5 hooks + la lib a un sandbox, inyecta un error de
+# sintaxis REAL (paréntesis sin cerrar en acg_despoja_comillas — el bug más mundano), y alimenta cada guard
+# con un comando que DEBE bloquear. ANTES del fix: los 5 morían con stdout VACÍO y exit=1 (que el harness
+# trata como NO-bloqueante → el sistema quedaba sin NINGÚN candado, en silencio). AHORA: cada uno responde
+# (deny ruidoso, o degrada a su propio fallback) en vez de esfumarse.
+C1SB="$(mktemp -d "${TMPDIR:-/tmp}/brain-crit1.XXXXXX")"; mkdir -p "$C1SB/hooks" "$C1SB/home"
+for f in analizar-comando-git.sh git-branch-guard.sh merge-squash-guard.sh confirmar-merge-develop.sh \
+         secret-scan.sh proteger-arbol.sh detectar-secretos.sh juez-comun.sh ramas-zombie.sh; do
+  cp "$HOOKS/$f" "$C1SB/hooks/$f" 2>/dev/null
+done
+# Inyecta un paréntesis SIN CERRAR en acg_despoja_comillas (bash -3.2-safe, una sola línea real de la lib).
+perl -0pi -e "s/acg_despoja_comillas\(\) \{ printf '%s' \"\\\$\(acg_segmentos_ejecutables \"\\\$1\"\)\"/acg_despoja_comillas() { printf '%s' \"\\\$(acg_segmentos_ejecutables \"\\\$1\"/" "$C1SB/hooks/analizar-comando-git.sh"
+bash -n "$C1SB/hooks/analizar-comando-git.sh" >/dev/null 2>&1 \
+  && bad "CRÍTICO-1 (setup): la inyección de sintaxis no rompió la lib — el test no prueba nada" \
+  || ok "CRÍTICO-1 (setup): lib con error de sintaxis REAL confirmada (bash -n falla) — arranca la prueba"
+c1out() { printf '%s' "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"$2\"}}" | HOME="$C1SB/home" CLAUDE_PROJECT_DIR="${3:-$C1SB/home}" bash "$C1SB/hooks/$1" 2>/dev/null; }
+is_deny "$(c1out git-branch-guard.sh 'git push origin develop')" \
+  && ok "CRÍTICO-1: lib ROTA + git-branch-guard + push a develop → DENY ruidoso (antes: exit=1 silencioso, el push PASABA)" \
+  || bad "CRÍTICO-1: REGRESIÓN — git-branch-guard con lib rota dejó pasar un push a develop en silencio"
+is_deny "$(c1out merge-squash-guard.sh 'glab mr merge 5 --yes')" \
+  && ok "CRÍTICO-1: lib ROTA + merge-squash-guard + merge sin squash → DENY ruidoso" \
+  || bad "CRÍTICO-1: REGRESIÓN — merge-squash-guard con lib rota dejó pasar un merge sin squash en silencio"
+is_deny "$(c1out confirmar-merge-develop.sh 'glab mr merge 5 --yes')" \
+  && ok "CRÍTICO-1: lib ROTA + confirmar-merge-develop + merge sin OK → DENY ruidoso" \
+  || bad "CRÍTICO-1: REGRESIÓN — confirmar-merge-develop con lib rota dejó pasar un merge sin autorización en silencio"
+C1SCAN="$C1SB/scanrepo"; mkdir -p "$C1SCAN"; git -C "$C1SCAN" init -q >/dev/null 2>&1
+git -C "$C1SCAN" config user.email t@t >/dev/null 2>&1; git -C "$C1SCAN" config user.name t >/dev/null 2>&1
+printf 'aws_key = AKIA1234567890ABCDEF\n' > "$C1SCAN/config.txt"; git -C "$C1SCAN" add config.txt >/dev/null 2>&1
+is_deny "$(c1out secret-scan.sh 'git commit -m wip' "$C1SCAN")" \
+  && ok "CRÍTICO-1: lib ROTA + secret-scan + secreto en staging → DEGRADA a su fallback sed y SIGUE atrapando el secreto (antes: exit=1 silencioso, sin backstop — el ÚNICO control anti-credenciales del sistema)" \
+  || bad "CRÍTICO-1: REGRESIÓN — secret-scan con lib rota dejó pasar un secreto (backstop de emergencia falló)"
+C1TREE="$C1SB/treerepo"; mkdir -p "$C1TREE"; git -C "$C1TREE" init -q >/dev/null 2>&1
+git -C "$C1TREE" config user.email t@t >/dev/null 2>&1; git -C "$C1TREE" config user.name t >/dev/null 2>&1
+echo base > "$C1TREE/a.txt"; git -C "$C1TREE" add a.txt >/dev/null 2>&1; git -C "$C1TREE" commit -qm base >/dev/null 2>&1
+git -C "$C1TREE" update-ref refs/remotes/origin/main HEAD >/dev/null 2>&1
+git -C "$C1TREE" branch -u origin/main >/dev/null 2>&1
+echo work > "$C1TREE/a.txt"; git -C "$C1TREE" commit -qam work >/dev/null 2>&1
+out=$(c1out proteger-arbol.sh 'git reset --hard HEAD~1' "$C1TREE")
+printf '%s' "$out" | grep -qi 'ORFANAR' \
+  && ok "CRÍTICO-1: lib ROTA + proteger-arbol + reset destructivo con commit sin pushear → DEGRADA a su fallback heredoc-ciego y SIGUE avisando (antes: exit=1 silencioso, cero aviso)" \
+  || bad "CRÍTICO-1: REGRESIÓN — proteger-arbol con lib rota dejó de avisar sobre un reset destructivo real"
+# Control: con la lib SANA (los hooks ORIGINALES, sin tocar) el comportamiento normal sigue intacto — el
+# fix no introduce fricción cuando la lib está bien.
+is_deny "$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"git push origin develop"}}' | HOME="$C1SB/home-ctrl" bash "$HOOKS/git-branch-guard.sh")" \
+  && ok "CRÍTICO-1 (control, lib sana): git-branch-guard sigue bloqueando un push a develop normalmente" \
+  || bad "CRÍTICO-1 (control): REGRESIÓN — con la lib intacta, git-branch-guard dejó de bloquear"
+rm -rf "$C1SB"
+
 echo ""
 echo "== (b1d-m9) M9 (auditoría 2026-09-15 §2.5): --repo \"\$VAR\" es OPACO, no OTRO repo =="
 # Bug DOBLE con el mismo origen: el value-eater '[^[:space:]]+' se cortaba en el primer espacio y no

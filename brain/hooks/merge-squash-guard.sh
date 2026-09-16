@@ -45,8 +45,23 @@ pcwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
 # conversación?" que usa confirmar-merge-develop — cierra la contradicción de destino-irresoluble abajo.
 tpath=$(printf '%s' "$input" | jq -r '.transcript_path // empty' 2>/dev/null)
 
-# shellcheck source=analizar-comando-git.sh
-. "$(dirname "$0")/analizar-comando-git.sh"
+# CRÍTICO-1 (auditoría FMEA 2026-09-16 §1.1, CONFIRMADO): sourcear un archivo con error de SINTAXIS mata el
+# proceso ENTERO con exit 1 -- que el harness trata como NO-bloqueante (silencio total: el guard desaparece
+# y el merge sin squash PASA sin gate). Se prueba el source en un SUBSHELL primero: si truena ahí, el crash
+# queda AISLADO (el proceso padre sigue vivo) y este guard falla RUIDOSO y CERRADO en vez de esfumarse.
+# Snippet IDÉNTICO en los 5 guards; a propósito FUERA de la lib (si la lib está rota, sourcear otro archivo
+# para blindarse de ella no sirve de nada).
+_ACGLIB="$(dirname "$0")/analizar-comando-git.sh"
+if [ -f "$_ACGLIB" ] && ( . "$_ACGLIB" ) >/dev/null 2>&1; then
+  # shellcheck source=analizar-comando-git.sh
+  . "$_ACGLIB"
+else
+  printf '%s: analizar-comando-git.sh no cargó (ausente o con error de sintaxis) -- este guard queda SIN su lógica de detección; `bash -n "%s"` localiza el error.\n' "$(basename "$0")" "$_ACGLIB" >&2
+  if printf '%s' "$cmd" | grep -qE 'merge|accept'; then
+    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"FRENO (lib rota): analizar-comando-git.sh no cargó (error de sintaxis) y sin ella no puedo verificar si este merge trae --squash -- fail-safe, no afloja nada. Repara la lib (bash -n analizar-comando-git.sh la localiza) y reintenta; un merge a develop SIEMPRE se squashea."}}'
+  fi
+  exit 0
+fi
 
 # Comando-ejemplo tool-aware para rehacer el merge con squash + un mensaje curado (gh vs glab). Fuente
 # ÚNICA para los DOS deny del hook (falta-de-squash y mensaje-pobre) → no divergen.

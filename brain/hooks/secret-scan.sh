@@ -77,9 +77,21 @@ case "$cmd" in *git*) : ;; *) exit 0 ;; esac
 # lib compartida si está junto al hook, si no un sed equivalente. Así un token DENTRO de una comilla —el
 # `--no-verify` citado en el MENSAJE del commit (A7), o un `git commit`/`git add`/`git push` mencionado en
 # el texto— no altera la decisión del guard. bash-3.2-safe.
+# CRÍTICO-1 (auditoría FMEA 2026-09-16 §1.1, CONFIRMADO): sourcear un archivo con error de SINTAXIS mata el
+# proceso ENTERO con exit 1 -- que el harness trata como NO-bloqueante. secret-scan es "el ÚNICO control
+# anti-credenciales del sistema, sin backstop server-side" (comentario original arriba): un typo de sintaxis
+# en la lib compartida apagaba ESTA red de seguridad en silencio total, exactamente igual que los otros 4
+# guards. Se prueba el source en un SUBSHELL primero: si truena ahí, el crash queda AISLADO (el proceso
+# padre sigue vivo) y el guard DEGRADA a su propio fallback sed (el `command -v acg_despoja_comillas` de
+# abajo ya sabía hacerlo -- el bug era que nunca llegaba a preguntarlo porque el `.` normal lo mataba antes).
+# Snippet IDÉNTICO en los 5 guards; a propósito FUERA de la lib.
 _ACGLIB="$(dirname "$0")/analizar-comando-git.sh"
-# shellcheck source=analizar-comando-git.sh
-[ -f "$_ACGLIB" ] && . "$_ACGLIB"
+if [ -f "$_ACGLIB" ] && ( . "$_ACGLIB" ) >/dev/null 2>&1; then
+  # shellcheck source=analizar-comando-git.sh
+  . "$_ACGLIB"
+else
+  [ -f "$_ACGLIB" ] && printf '%s: analizar-comando-git.sh existe pero no cargó (error de sintaxis) -- usando el fallback sed propio (menos preciso). `bash -n "%s"` localiza el error.\n' "$(basename "$0")" "$_ACGLIB" >&2
+fi
 # A-03/A-R4-02 (FMEA): colapsa el prefijo de opciones globales de git (`-c k=v`, `-C dir`, `--no-pager`,
 # `--work-tree`, …) para que `git <globales> commit` NO evada la adyacencia git+commit/push del gate (ese
 # prefijo cegaba el escaneo). A-R5-02 (FMEA r5): se NORMALIZA SOBRE EL RAW (comillas intactas) ANTES de
