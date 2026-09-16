@@ -1688,21 +1688,34 @@ mock_cm_glab develop
 is_deny "$(cm 'glab mr merge 65 --squash --yes' DENY)" \
   && ok "cmd b1f: sin archivo de grants → deny normal (sin cambios de baseline)" \
   || bad "cmd b1f: sin archivo el guard dejó de frenar"
-# (6) M6 (auditoría 2026-09-15 §3.6, 🔴 AMPLÍA): grant VIGENTE + destino DESCONOCIDO (comando de merge SIN
-#     id numérico → acg_mrid vacío → acg_destino_de_mr no puede resolver, DESCONOCIDO:SIN-MRID) + SIN
-#     léxico de release en la ventana → el grant SE CONSULTA y pasa. Antes: el `if [ "$destino" = develop ]`
-#     hacía que el archivo NI SE LEYERA con destino vacío → un fallo de entorno revocaba una autorización
-#     que el usuario YA escribió a disco.
+# (6) CRÍTICO-3 (auditoría FMEA 2026-09-16 §1.3, CONFIRMADO por A/B contra develop): M6 (auditoría
+#     2026-09-15 §3.6) había AMPLIADO el fast-path del grant a destino DESCONOCIDO con la cerca "sin léxico
+#     de release en la ventana" — pero esa cerca confunde "el usuario no habló de release EN LA CHARLA" con
+#     "el MR no apunta a main" (un HECHO del propio MR, ajeno a la conversación). Con un grant vigente +
+#     destino irresoluble (timeout/red) + charla vaga SIN palabra "release", el fast-path dejaba pasar el
+#     merge EN SILENCIO sin llamar NUNCA a `_juez_merge` — si el MR de verdad apuntaba a main, colaba un
+#     release sin ningún gate. FIX: el grant SOLO se consulta con destino CONFIRMADO 'develop'; con destino
+#     desconocido SIEMPRE cae al juez (que con M5-bis, si la conversación es inequívoca sobre develop, igual
+#     ALLOWea sin exigir léxico de release — el grant deja de ser NECESARIO ahí) — y si el juez tampoco es
+#     alcanzable (mismo fallo de red), DENY: el comportamiento PRE-M6 que la auditoría confirmó correcto.
 printf -- '- scope=merge-develop vence_epoch=%s vence="+1h" cita="ok, sigue" registrada=hoy\n' "$(( $(date +%s) + 3600 ))" > "$AUTHF"
-is_silent "$(cm 'glab mr merge --yes' DENY 'ok, sigue')" \
-  && ok "M6: grant vigente + destino DESCONOCIDO + SIN léxico de release → el grant SE CONSULTA y pasa" \
-  || bad "M6: un destino desconocido revocó (sin ni leer) un grant vigente"
-# (7) MISMO grant vigente, pero la ventana SÍ trae léxico de release → la CERCA de seguridad gana: el grant
-#     NUNCA decide (no cubre main); pasa al juez (mockeado DENY aquí) → freno. Así M6 jamás cuela un release
-#     a main por esta vía, aunque el destino real fuera 'develop' y la consulta simplemente haya fallado.
+is_deny "$(cm 'glab mr merge --yes' DENY 'ok, sigue')" \
+  && ok "CRÍTICO-3 (post-fix): grant vigente + destino DESCONOCIDO + juez DENY → deny (el grant YA NO salta el juez con destino sin confirmar)" \
+  || bad "CRÍTICO-3: REGRESIÓN — el grant sigue saltándose el juez con destino desconocido (el hueco de seguridad volvió)"
+is_deny "$(cm 'glab mr merge --yes' UNAVAILABLE 'ok, sigue')" \
+  && ok "CRÍTICO-3 (post-fix): grant vigente + destino DESCONOCIDO + juez UNAVAILABLE (red caída, escenario real de turno-nocturno) → deny, fail-safe" \
+  || bad "CRÍTICO-3: REGRESIÓN — con el juez inalcanzable el grant coló el merge de todos modos"
+# (7) MISMO grant vigente, pero la ventana SÍ trae léxico de release → sigue cayendo al juez (mockeado DENY
+#     aquí) → freno. Sin cambio de comportamiento (ya no dependía de esta cerca para estar seguro).
 is_deny "$(cm 'glab mr merge --yes' DENY 'libera esto a main, es el release')" \
-  && ok "M6: grant vigente + destino DESCONOCIDO + CON léxico de release → la cerca lo excluye, decide el juez (freno)" \
-  || bad "M6: el grant coló un posible release a main con destino desconocido (la cerca de release no frenó)"
+  && ok "CRÍTICO-3: grant vigente + destino DESCONOCIDO + CON léxico de release → decide el juez (freno, sin cambio)" \
+  || bad "CRÍTICO-3: el grant coló un posible release a main con destino desconocido"
+# (8) regresión del camino SEGURO de M6 (el que SÍ debía quedarse): destino CONFIRMADO develop + grant
+#     vigente → sigue pasando SIN llamar al juez (mock=DENY prueba que el fast-path lo evita).
+mock_cm_glab develop
+is_silent "$(cm 'glab mr merge 66 --squash --yes' DENY)" \
+  && ok "CRÍTICO-3: regresión — grant vigente + destino CONFIRMADO develop → SIGUE pasando por el fast-path (no se tocó la parte segura de M6)" \
+  || bad "CRÍTICO-3: REGRESIÓN — el fast-path seguro (destino=develop confirmado) se rompió al cerrar el hueco"
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
 rm -rf "$CMROOT"
 

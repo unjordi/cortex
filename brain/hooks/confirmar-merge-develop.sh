@@ -383,17 +383,23 @@ recent=$(_recent_intercalado "$tpath")
 
 # Grant DURABLE (turno-nocturno): un OK persistido a disco cubre scope=merge-develop (NUNCA main). Fast-path
 # antes de gastar una llamada al LLM. Sobrevive compactaciones; la cita textual registrada es su evidencia.
-# SEGURIDAD (#fix destino): SOLO se honra con destino CONFIRMADO 'develop', O destino DESCONOCIDO CON UNA
-# CERCA (M6, auditoría 2026-09-15 §3.6, 🔴 AMPLÍA cuándo el grant vale, nunca lo debilita hacia main):
-#   antes, un destino VACÍO por fallo de ENTORNO (PATH/red/timeout) hacía que el archivo NI SE LEYERA — un
-#   fallo de ENTORNO revocaba una autorización que el usuario YA escribió a disco. Eso viola la norma dura
-#   "re-citar un OK real es legítimo" y le pide al usuario repetir algo que ya dio. Ahora: destino vacío
-#   TAMBIÉN consulta el grant, SIEMPRE que NINGUNA línea 'USUARIO:' de la ventana traiga léxico de release
-#   (_lexico_release_en_ventana, la MISMA cerca que usa el piso de main) — así JAMÁS cuela un release a main
-#   por esta vía: un grant de scope=merge-develop no autoriza main, y sin léxico de release el destino
-#   desconocido no puede ser un release consciente. Si SÍ hay léxico de release, decide el juez (que aplica
-#   el fail SEGURO: destino incierto + lenguaje de release → trata como main, el gate estricto).
-if [ "$destino" = "develop" ] || { [ -z "$destino" ] && ! _lexico_release_en_ventana "$recent"; }; then
+# SEGURIDAD (#fix destino): SOLO se honra con destino CONFIRMADO 'develop'.
+#
+# M6 (auditoría 2026-09-15 §3.6) había AMPLIADO este fast-path a destino DESCONOCIDO también, con la cerca
+# "ninguna línea USUARIO: trae léxico de release". CRÍTICO (auditoría FMEA 2026-09-16 §1.3, CONFIRMADO por
+# A/B contra develop): esa cerca confunde DOS proposiciones distintas — "el usuario no habló de release EN
+# LA VENTANA reciente" (sobre la CONVERSACIÓN) con "el MR no apunta a main" (un HECHO del propio MR, fijado
+# cuando se creó, ajeno a lo que se haya hablado en los últimos ~10 mensajes). Con un grant vigente (p. ej.
+# de turno-nocturno) + la consulta del destino real FALLADA (red/timeout — más probable durante una corrida
+# larga desatendida) + ausencia casual de la palabra "release" en la charla, el fast-path dejaba pasar el
+# merge EN SILENCIO, sin llamar NUNCA a `_juez_merge` (por tanto sin pasar tampoco por el piso M5) — si ese
+# MR apuntaba de verdad a main, el grant de develop acababa de colar un release sin ningún gate. Revertido:
+# el grant SOLO se consulta con destino CONFIRMADO develop. Con destino desconocido, SIEMPRE cae al juez de
+# abajo (que con la corrección M5-bis de arriba, si la conversación es inequívoca sobre develop, igual
+# ALLOWea sin exigir léxico de release — así el grant deja de ser NECESARIO para ese caso legítimo) y, si
+# el juez tampoco es alcanzable (mismo fallo de red que tumbó la consulta del destino), el fail-safe es DENY
+# — exactamente el comportamiento PRE-M6, que la auditoría confirmó como el correcto por A/B.
+if [ "$destino" = "develop" ]; then
   AUTH_FILE="$TARGET_ROOT/.claude/memory/autorizaciones-vigentes.local.md"
   if [ -f "$AUTH_FILE" ]; then
     now_epoch=$(date +%s)
