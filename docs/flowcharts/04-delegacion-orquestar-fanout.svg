@@ -92,34 +92,34 @@
 <text xml:space="preserve" text-anchor="start" x="1868.62" y="-3127.12" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">correr el instalador/deploy a mano (install&#45;brain.sh/deploy.sh) en vez de la herramienta oficial (el widget) → avisa (fail&#45;safe: no &#45;&#45;dry&#45;run/&#45;&#45;help/CI)</text>
 <polygon fill="#1b1712" stroke="none" points="16.12,-3093 16.12,-3118.75 1175.12,-3118.75 1175.12,-3093 16.12,-3093"/>
 <polygon fill="none" stroke="#5fa89e" points="16.12,-3093 16.12,-3118.75 1175.12,-3118.75 1175.12,-3093 16.12,-3093"/>
-<text xml:space="preserve" text-anchor="start" x="560" y="-3101.75" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🕰️ rama&#45;vieja</text>
+<text xml:space="preserve" text-anchor="start" x="550.62" y="-3101.75" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🌳 proteger&#45;arbol</text>
 <polygon fill="#1b1712" stroke="none" points="1175.12,-3093 1175.12,-3118.75 3327.88,-3118.75 3327.88,-3093 1175.12,-3093"/>
 <polygon fill="none" stroke="#5fa89e" points="1175.12,-3093 1175.12,-3118.75 3327.88,-3118.75 3327.88,-3093 1175.12,-3093"/>
-<text xml:space="preserve" text-anchor="start" x="2156.25" y="-3102.5" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">avisa si la ramita arrastra base vieja</text>
+<text xml:space="preserve" text-anchor="start" x="2016.75" y="-3101.38" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">git destructivo que orfanaría commits sin pushear → avisa (fan&#45;out: usa worktree aislado)</text>
 <polygon fill="#1b1712" stroke="none" points="16.12,-3067.25 16.12,-3093 1175.12,-3093 1175.12,-3067.25 16.12,-3067.25"/>
 <polygon fill="none" stroke="#5fa89e" points="16.12,-3067.25 16.12,-3093 1175.12,-3093 1175.12,-3067.25 16.12,-3067.25"/>
-<text xml:space="preserve" text-anchor="start" x="550.62" y="-3076" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🌳 proteger&#45;arbol</text>
+<text xml:space="preserve" text-anchor="start" x="525.5" y="-3076" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🛡️ proteger&#45;fuente&#45;cerebro</text>
 <polygon fill="#1b1712" stroke="none" points="1175.12,-3067.25 1175.12,-3093 3327.88,-3093 3327.88,-3067.25 1175.12,-3067.25"/>
 <polygon fill="none" stroke="#5fa89e" points="1175.12,-3067.25 1175.12,-3093 3327.88,-3093 3327.88,-3067.25 1175.12,-3067.25"/>
-<text xml:space="preserve" text-anchor="start" x="2016.75" y="-3075.62" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">git destructivo que orfanaría commits sin pushear → avisa (fan&#45;out: usa worktree aislado)</text>
+<text xml:space="preserve" text-anchor="start" x="1925.62" y="-3075.62" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">editar la copia INSTALADA de un hook/skill que tiene fuente en el clon → avisa (se perdería en el próximo sync) (GLOBAL)</text>
 <polygon fill="#1b1712" stroke="none" points="16.12,-3041.5 16.12,-3067.25 1175.12,-3067.25 1175.12,-3041.5 16.12,-3041.5"/>
 <polygon fill="none" stroke="#5fa89e" points="16.12,-3041.5 16.12,-3067.25 1175.12,-3067.25 1175.12,-3041.5 16.12,-3041.5"/>
-<text xml:space="preserve" text-anchor="start" x="525.5" y="-3050.25" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🛡️ proteger&#45;fuente&#45;cerebro</text>
+<text xml:space="preserve" text-anchor="start" x="554" y="-3050.25" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🧹 barrer&#45;ramas</text>
 <polygon fill="#1b1712" stroke="none" points="1175.12,-3041.5 1175.12,-3067.25 3327.88,-3067.25 3327.88,-3041.5 1175.12,-3041.5"/>
 <polygon fill="none" stroke="#5fa89e" points="1175.12,-3041.5 1175.12,-3067.25 3327.88,-3067.25 3327.88,-3041.5 1175.12,-3041.5"/>
-<text xml:space="preserve" text-anchor="start" x="1925.62" y="-3049.88" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">editar la copia INSTALADA de un hook/skill que tiene fuente en el clon → avisa (se perdería en el próximo sync) (GLOBAL)</text>
+<text xml:space="preserve" text-anchor="start" x="1833.75" y="-3051" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">al abrir sesión / al punto del merge barre en 2º plano ramas locales + remota huérfana + worktrees ya integrados (zombie squash&#45;safe; throttle 24h) (GLOBAL)</text>
 <polygon fill="#1b1712" stroke="none" points="16.12,-3015.75 16.12,-3041.5 1175.12,-3041.5 1175.12,-3015.75 16.12,-3015.75"/>
 <polygon fill="none" stroke="#5fa89e" points="16.12,-3015.75 16.12,-3041.5 1175.12,-3041.5 1175.12,-3015.75 16.12,-3015.75"/>
-<text xml:space="preserve" text-anchor="start" x="554" y="-3024.5" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🧹 barrer&#45;ramas</text>
+<text xml:space="preserve" text-anchor="start" x="527" y="-3024.5" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">💾 exportar&#45;sesion&#45;master</text>
 <polygon fill="#1b1712" stroke="none" points="1175.12,-3015.75 1175.12,-3041.5 3327.88,-3041.5 3327.88,-3015.75 1175.12,-3015.75"/>
 <polygon fill="none" stroke="#5fa89e" points="1175.12,-3015.75 1175.12,-3041.5 3327.88,-3041.5 3327.88,-3015.75 1175.12,-3015.75"/>
-<text xml:space="preserve" text-anchor="start" x="1833.75" y="-3025.25" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">al abrir sesión / al punto del merge barre en 2º plano ramas locales + remota huérfana + worktrees ya integrados (zombie squash&#45;safe; throttle 24h) (GLOBAL)</text>
+<text xml:space="preserve" text-anchor="start" x="1929.75" y="-3025.25" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">auto&#45;export de las sesiones *&#45;master a ~/.claude&#45;sessions (o Drive); detached, sobrevive el cleanup de 30 días (GLOBAL)</text>
 <polygon fill="#1b1712" stroke="none" points="16.12,-2990 16.12,-3015.75 1175.12,-3015.75 1175.12,-2990 16.12,-2990"/>
 <polygon fill="none" stroke="#5fa89e" points="16.12,-2990 16.12,-3015.75 1175.12,-3015.75 1175.12,-2990 16.12,-2990"/>
-<text xml:space="preserve" text-anchor="start" x="527" y="-2998.75" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">💾 exportar&#45;sesion&#45;master</text>
+<text xml:space="preserve" text-anchor="start" x="531.5" y="-2998.75" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🗂️ checkpoint&#45;mecanico</text>
 <polygon fill="#1b1712" stroke="none" points="1175.12,-2990 1175.12,-3015.75 3327.88,-3015.75 3327.88,-2990 1175.12,-2990"/>
 <polygon fill="none" stroke="#5fa89e" points="1175.12,-2990 1175.12,-3015.75 3327.88,-3015.75 3327.88,-2990 1175.12,-2990"/>
-<text xml:space="preserve" text-anchor="start" x="1929.75" y="-2999.5" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">auto&#45;export de las sesiones *&#45;master a ~/.claude&#45;sessions (o Drive); detached, sobrevive el cleanup de 30 días (GLOBAL)</text>
+<text xml:space="preserve" text-anchor="start" x="1788" y="-2999.5" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">PreCompact: extractor mecánico (streaming, 0 tokens) escribe el andamio del TRAMO VIVO a hilo&#45;mental&#45;actual.andamio.md (GLOBAL; el skill lo regenera con &#45;&#45;self &#45;&#45;ensure)</text>
 <polygon fill="#1b1712" stroke="none" points="16.12,-2964.25 16.12,-2990 1175.12,-2990 1175.12,-2964.25 16.12,-2964.25"/>
 <polygon fill="none" stroke="#5fa89e" points="16.12,-2964.25 16.12,-2990 1175.12,-2990 1175.12,-2964.25 16.12,-2964.25"/>
 <text xml:space="preserve" text-anchor="start" x="534.88" y="-2973" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">📝 delegacion&#45;registrar</text>
@@ -143,7 +143,7 @@
 <text xml:space="preserve" text-anchor="start" x="551" y="-2895.75" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🧵 rehidratar&#45;hilo</text>
 <polygon fill="#1b1712" stroke="none" points="1175.12,-2887 1175.12,-2912.75 3327.88,-2912.75 3327.88,-2887 1175.12,-2887"/>
 <polygon fill="none" stroke="#5fa89e" points="1175.12,-2887 1175.12,-2912.75 3327.88,-2912.75 3327.88,-2887 1175.12,-2887"/>
-<text xml:space="preserve" text-anchor="start" x="2005.12" y="-2896.5" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">reinyecta hilo&#45;mental&#45;actual.md al abrir/retomar/compactar (GLOBAL) — con gate de frescura</text>
+<text xml:space="preserve" text-anchor="start" x="1912.5" y="-2896.5" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">reinyecta hilo&#45;mental&#45;actual.md + el andamio (si es más fresco) al abrir/retomar/compactar (GLOBAL) — gate de frescura + edad</text>
 <polygon fill="#1b1712" stroke="none" points="16.12,-2861.25 16.12,-2887 1175.12,-2887 1175.12,-2861.25 16.12,-2861.25"/>
 <polygon fill="none" stroke="#5fa89e" points="16.12,-2861.25 16.12,-2887 1175.12,-2887 1175.12,-2861.25 16.12,-2861.25"/>
 <text xml:space="preserve" text-anchor="start" x="549.5" y="-2870" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">📈 aviso&#45;contexto</text>
