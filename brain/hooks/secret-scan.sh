@@ -81,12 +81,14 @@ case "$cmd" in *git*) : ;; *) exit 0 ;; esac
 # proceso ENTERO con exit 1 -- que el harness trata como NO-bloqueante. secret-scan es "el ÚNICO control
 # anti-credenciales del sistema, sin backstop server-side" (comentario original arriba): un typo de sintaxis
 # en la lib compartida apagaba ESTA red de seguridad en silencio total, exactamente igual que los otros 4
-# guards. Se prueba el source en un SUBSHELL primero: si truena ahí, el crash queda AISLADO (el proceso
-# padre sigue vivo) y el guard DEGRADA a su propio fallback sed (el `command -v acg_despoja_comillas` de
-# abajo ya sabía hacerlo -- el bug era que nunca llegaba a preguntarlo porque el `.` normal lo mataba antes).
+# guards. H7 (auditoría semántica 2026-09-16, BAJO): la sonda ORIGINAL sourceaba en un SUBSHELL y trataba
+# CUALQUIER exit≠0 como "lib rota" -- pero ese código es el del ÚLTIMO comando de la lib, no un diagnóstico
+# de sintaxis. `bash -n` ES el veredicto de sintaxis (solo parsea, nunca ejecuta): si pasa, el `source` real
+# ya no puede tronar por sintaxis; si no, el guard DEGRADA a su propio fallback sed (el `command -v
+# acg_despoja_comillas` de abajo ya sabía hacerlo -- el bug era que nunca llegaba a preguntarlo).
 # Snippet IDÉNTICO en los 5 guards; a propósito FUERA de la lib.
 _ACGLIB="$(dirname "$0")/analizar-comando-git.sh"
-if [ -f "$_ACGLIB" ] && ( . "$_ACGLIB" ) >/dev/null 2>&1; then
+if [ -f "$_ACGLIB" ] && bash -n "$_ACGLIB" >/dev/null 2>&1; then
   # shellcheck source=analizar-comando-git.sh
   . "$_ACGLIB"
 else

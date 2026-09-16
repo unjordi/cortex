@@ -72,12 +72,15 @@ pcwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
 
 # CRÍTICO-1 (auditoría FMEA 2026-09-16 §1.1, CONFIRMADO): sourcear un archivo con error de SINTAXIS mata el
 # proceso ENTERO con exit 1 -- que el harness trata como NO-bloqueante (silencio total: el guard desaparece
-# y el push/merge PASA sin gate). Se prueba el source en un SUBSHELL primero: si truena ahí, el crash queda
-# AISLADO (el proceso padre sigue vivo) y este guard falla RUIDOSO y CERRADO en vez de esfumarse. Snippet
-# IDÉNTICO en los 5 guards; a propósito FUERA de la lib (si la lib está rota, sourcear otro archivo para
-# blindarse de ella no sirve de nada).
-_ACGLIB="$(dirname "$0")/analizar-comando-git.sh"
-if [ -f "$_ACGLIB" ] && ( . "$_ACGLIB" ) >/dev/null 2>&1; then
+# y el push/merge PASA sin gate). H7 (auditoría semántica 2026-09-16, BAJO): la sonda ORIGINAL sourceaba la
+# lib en un subshell y trataba CUALQUIER exit≠0 como "lib rota" -- pero el código de salida de un `source`
+# es el del ÚLTIMO comando de la lib, no un diagnóstico de sintaxis: un `false`/grep-sin-match al final de
+# una lib PERFECTAMENTE válida (bash -n la aprueba) bastaba para declarar "error de sintaxis" y tumbar el
+# guard a deny-total, con un mensaje que manda a `bash -n` y este CONTESTARÍA que está bien. Fix: `bash -n`
+# ES el veredicto de sintaxis (solo PARSEA, nunca ejecuta -- inmune al código de salida de runtime), y si
+# pasa, el `source` real ya no puede tronar por sintaxis. Snippet IDÉNTICO en los 5 guards; a propósito
+# FUERA de la lib (si la lib está rota, sourcear otro archivo para blindarse de ella no sirve de nada).
+if [ -f "$_ACGLIB" ] && bash -n "$_ACGLIB" >/dev/null 2>&1; then
   # shellcheck source=analizar-comando-git.sh
   . "$_ACGLIB"
 else

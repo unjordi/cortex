@@ -837,6 +837,22 @@ printf '%s' "$out" | grep -qi 'ORFANAR' \
 is_deny "$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"git push origin develop"}}' | HOME="$C1SB/home-ctrl" bash "$HOOKS/git-branch-guard.sh")" \
   && ok "CRÍTICO-1 (control, lib sana): git-branch-guard sigue bloqueando un push a develop normalmente" \
   || bad "CRÍTICO-1 (control): REGRESIÓN — con la lib intacta, git-branch-guard dejó de bloquear"
+# H7 (auditoría semántica 2026-09-16, BAJO, CONFIRMADO): la sonda ORIGINAL (subshell + exit code) confundía
+# "error de sintaxis" con "la lib terminó en un comando que devuelve ≠0" — un `false` al final de una lib
+# PERFECTAMENTE válida (bash -n la aprueba) bastaba para declarar "lib rota" y tumbar el guard a deny-total.
+# `bash -n` (el fix) es inmune: solo PARSEA, nunca ejecuta, así que el código de salida del ÚLTIMO comando de
+# la lib no lo afecta.
+C1SB2=$(mktemp -d "${TMPDIR:-/tmp}/brain-crit1-h7.XXXXXX"); mkdir -p "$C1SB2/hooks"
+cp "$HOOKS/analizar-comando-git.sh" "$C1SB2/hooks/"; cp "$HOOKS/git-branch-guard.sh" "$C1SB2/hooks/"
+printf '\nfalse\n' >> "$C1SB2/hooks/analizar-comando-git.sh"
+bash -n "$C1SB2/hooks/analizar-comando-git.sh" >/dev/null 2>&1 \
+  && ok "H7 (setup): lib con 'false' final SIGUE siendo sintácticamente válida (bash -n la aprueba) — arranca la prueba" \
+  || bad "H7 (setup): la inyección de 'false' rompió la sintaxis — el test no prueba lo que debe"
+out_h7=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"git push -u origin feat/mi-cambio"}}' | HOME="$C1SB2/home" bash "$C1SB2/hooks/git-branch-guard.sh" 2>/dev/null)
+is_silent "$out_h7" \
+  && ok "H7: lib con 'false' final (sintaxis VÁLIDA) + push a la propia ramita → silencio (antes: la sonda vieja la declaraba 'rota' y bloqueaba TODO)" \
+  || bad "H7: REGRESIÓN — una lib sintácticamente válida con un 'false' al final se tumbó a deny-total; got: $out_h7"
+rm -rf "$C1SB2"
 rm -rf "$C1SB"
 
 echo ""
