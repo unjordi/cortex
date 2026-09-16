@@ -5653,6 +5653,19 @@ if [ -f "$GEN" ]; then
     || bad "e6c3: gen-leyenda-arbol salió incompleto (familias=$fams, filas=$rows) — ¿cambió el formato del árbol del README?"
 else bad "e6c3: no encuentro gen-leyenda-arbol.sh"; fi
 
+# e6c4: la leyenda que el generador PRODUCE tiene que ser la que los charts TRAEN INCRUSTADA. e6c2 vigila
+# que el README liste todo hook y e6c3 que el generador no salga vacío — las dos pasaban en verde mientras
+# los 14 .dot arrastraban una leyenda vieja (rama-vieja ya retirado, checkpoint-mecanico ausente), porque
+# NADIE comparaba la salida contra los archivos. Medir que la maquinaria corre no es medir que su resultado
+# está puesto: esto compara byte a byte y falla si algún chart quedó atrás.
+if [ -f "$GEN" ]; then
+  if bash "$GEN" --check >/dev/null 2>&1; then
+    ok "e6c4: la leyenda incrustada en cada .dot es byte-igual a la que genera el árbol del README"
+  else
+    bad "e6c4: DRIFT de leyenda — algún .dot quedó con una leyenda vieja (corre: bash docs/flowcharts/gen-leyenda-arbol.sh --check para ver cuál, y --inject <f> para regenerarlo)"
+  fi
+fi
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo "== (e6d) wiring FIELD-check: un settings.json semilla cabla TODOS los kind=hook {repo,both} (C1) =="
 # e2(4) valida la FÁBRICA (register_hook en install-brain). Esto valida el RESULTADO: corre
