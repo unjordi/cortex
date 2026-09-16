@@ -805,6 +805,42 @@ rm -rf "$M9R"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (b1d-medio) MEDIO (auditoría FMEA 2026-09-16 §1.5, CONFIRMADO): CACHE-DE-CREACION solo se confía si es MÍA =="
+# Sin escritor legítimo hoy (pendiente ya declarado), CUALQUIER archivo con este nombre predecible en /tmp
+# era, antes, de MÁXIMA confianza. Mínimo defendible: solo confiar si es del MISMO uid y sin permisos de
+# grupo/otros. acg__cache_creacion_es_mia YA está sourceada (la lib se cargó arriba para el bloque M9).
+M3T=$(mktemp "${TMPDIR:-/tmp}/m3cc.XXXXXX")
+printf 'develop\n' > "$M3T"
+chmod 600 "$M3T"
+acg__cache_creacion_es_mia "$M3T" \
+  && ok "MEDIO: archivo 0600 del mismo uid → se confía (caso legítimo del futuro escritor)" \
+  || bad "MEDIO: un archivo legítimo (0600, mío) se rechazó — sobre-endurecido"
+chmod 644 "$M3T"
+acg__cache_creacion_es_mia "$M3T" \
+  && bad "MEDIO: un archivo LEGIBLE POR OTROS (0644) se confió — el plante de otro proceso pasa" \
+  || ok "MEDIO: archivo 0644 (legible por otros) → NO se confía"
+chmod 664 "$M3T"
+acg__cache_creacion_es_mia "$M3T" \
+  && bad "MEDIO: un archivo ESCRIBIBLE POR GRUPO (0664) se confió" \
+  || ok "MEDIO: archivo 0664 (escribible por grupo) → NO se confía"
+rm -f "$M3T"
+# End-to-end por acg__destino_de_mr_full: un archivo con permisos abiertos NO debe resolver por esta vía.
+M3ROOT=$(mktemp -d "${TMPDIR:-/tmp}/m3e2e.XXXXXX")
+( export TMPDIR="$M3ROOT"
+  M3REPO="$M3ROOT/repo"; mkdir -p "$M3REPO"; git -C "$M3REPO" init -q >/dev/null 2>&1
+  git -C "$M3REPO" remote add origin git@gitlab.com:org/repo.git >/dev/null 2>&1
+  key=$(printf '%s' "org/repo|glab|321" | sed 's/[^A-Za-z0-9]/_/g')
+  echo "develop" > "$M3ROOT/acg-mrdest-creacion-${key}"
+  chmod 644 "$M3ROOT/acg-mrdest-creacion-${key}"
+  out=$(PATH="/usr/bin:/bin" acg__destino_de_mr_full "glab mr merge 321 --yes" "$M3REPO" 2>/dev/null)
+  case "$out" in *CACHE-DE-CREACION*) echo BAD ;; *) echo GOOD ;; esac
+) | tail -1 | grep -q GOOD \
+  && ok "MEDIO (e2e): archivo de creación plantado con permisos 0644 → acg__destino_de_mr_full lo IGNORA (no resuelve vía CACHE-DE-CREACION)" \
+  || bad "MEDIO (e2e): un archivo de creación con permisos abiertos se consumió como de máxima confianza"
+rm -rf "$M3ROOT"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "== (b1d-m7) M7 (auditoría 2026-09-15 §2.3): entorno degradado (sin jq) homologado — fail-CLOSED =="
 # Antes: git-branch-guard hacía 'command -v jq || exit 0' (fail-OPEN silencioso — un PATH sin jq apagaba
 # 'nunca push a develop/main') y merge-squash-guard, sin chequeo explícito, degradaba igual (cmd vacío por

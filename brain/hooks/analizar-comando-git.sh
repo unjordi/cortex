@@ -451,6 +451,16 @@ acg_destino_explicito_del_comando() {   # $1=comando → rama destino | vacío
 # cuesta una 2ª llamada de red) — así `acg_destino_de_mr` (retro-compat, 1 línea) y `acg_destino_conf`
 # (nueva) pueden llamarse por separado sin duplicar trabajo ni divergir.
 ACG_MR_TIMEOUT="${ACG_MR_TIMEOUT:-6}"
+# acg__cache_creacion_es_mia(path) → 0 si el archivo de CACHE-DE-CREACION es del MISMO uid que este proceso
+# Y no tiene permisos de grupo/otros (portable BSD `stat -f` / GNU `stat -c`; sin `stat` en el PATH, fail
+# CERRADO — no confiar es lo seguro, la peor consecuencia es un cache-miss que cae al lookup por API).
+acg__cache_creacion_es_mia() {
+  local f="$1" uid perm
+  uid=$(stat -f '%u' "$f" 2>/dev/null || stat -c '%u' "$f" 2>/dev/null) || return 1
+  perm=$(stat -f '%Lp' "$f" 2>/dev/null || stat -c '%a' "$f" 2>/dev/null) || return 1
+  [ "$uid" = "$(id -u)" ] || return 1
+  case "$perm" in *00) return 0 ;; *) return 1 ;; esac
+}
 acg__destino_de_mr_full() {   # $1=comando  $2=payload_cwd(opcional) → 2 líneas: destino \n CONF
   local raw="$1" pcwd="${2:-}" u tool repo mrid key cache cache_c dest dir out
   # (b) PREFERIDO — destino EXPLÍCITO del PROPIO comando (--base/--target-branch): SIN red, SIN gh/glab,
@@ -484,7 +494,16 @@ acg__destino_de_mr_full() {   # $1=comando  $2=payload_cwd(opcional) → 2 líne
   # MR, cuando el id YA es conocido — se consume SIN red. Carril opt-in: si el archivo no existe (nadie lo
   # escribió todavía), simplemente no aporta nada y se sigue al lookup por API de abajo.
   cache_c="${TMPDIR:-/tmp}/acg-mrdest-creacion-${key}"
-  if [ -f "$cache_c" ]; then
+  # MEDIO (auditoría FMEA 2026-09-16 §1.5, CONFIRMADO): esta ruta es PREDECIBLE en un /tmp compartido entre
+  # todos los procesos del usuario y, hoy, SIN escritor legítimo (pendiente ya declarado en la bitácora) —
+  # cualquier archivo con este nombre es, hoy, garantizado NO-genuino, y aun así se consumía como de MÁXIMA
+  # confianza (mayor que el caché regular de arriba, que al menos ganó una respuesta real de API alguna vez).
+  # Mínimo defendible AHORA (sin inventar la atadura completa —hash de session_id/HMAC— que le toca al
+  # escritor cuando se implemente, no a este lector): solo se confía en el archivo si es MÍO (mismo UID que
+  # este proceso) y NO es legible/escribible por grupo ni otros (permisos terminados en "00", p. ej. 0600 o
+  # 0700 — "propios del usuario", como pide la auditoría). Un archivo con permisos de grupo/otros, o de OTRO
+  # dueño, se IGNORA (cae al lookup por API de abajo) en vez de confiarse a ciegas.
+  if [ -f "$cache_c" ] && acg__cache_creacion_es_mia "$cache_c"; then
     dest=$(cat "$cache_c" 2>/dev/null)
     if [ -n "$dest" ]; then
       printf '%s\nCACHE-DE-CREACION\n' "$dest" > "$cache" 2>/dev/null
