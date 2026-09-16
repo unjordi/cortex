@@ -96,8 +96,19 @@ block() {
 # M8 (auditoría 2026-09-15 §3.11, norma dura anti-vein-popper): se RETIRÓ "normalmente el humano en la web
 # de GitLab" de ambos mensajes — un guard que frena en CLI se SATISFACE (con OK súper-explícito, lo vigila
 # confirmar-merge-develop) o se ARREGLA, JAMÁS se rodea mandando a la persona a hacerlo a mano en la web.
-if acg_push_toca_base "$cmd" "$pcwd"; then
-  block "NORMA DE GIT (ley interna): no se hace push a main/develop (incluye el push PELÓN estando parado EN develop/main). NO reintentes esto. Haz el cambio por el flujo: ramita (feat/fix/chore/docs) desde develop → commit → push de la ramita → MR/PR → merge a develop. A main solo llega un release deliberado, con OK súper-explícito por CLI (lo vigila confirmar-merge-develop)."
+#
+# H5 (auditoría de ejecución 2026-09-16 §H5, BAJO-MEDIO): la SIEMBRA de un repo/rama base VACÍA (0 commits)
+# es la ÚNICA excepción que la norma global declara para un push directo a base ("si un repo no tiene
+# develop, créalo") — y hasta aquí este guard no la distinguía de un push normal, SIN escape cuando jq está
+# presente (el único escape existente, CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL, solo se lee en la rama sin-jq).
+# Escape EXPLÍCITO y auditado (mismo espíritu que CLAUDE_SKIP_SECRET_SCAN), acotado a ESTE chequeo (nunca a
+# `acg_merge_menciona_base`, que no tiene nada que ver con sembrar): el operador CONFIRMA que este push es
+# la siembra inicial, no una integración saltándose el flujo. Se exporta en el ENTORNO de la sesión (perfil
+# de shell / bloque "env" de ~/.claude/settings.json) — un prefijo inline en el propio comando de Bash NO
+# llega al proceso de este hook (son procesos distintos), así que nunca es auto-servible por un agente a
+# mitad de turno sin que el humano ya lo haya puesto ahí.
+if [ "${CLAUDE_GIT_GUARD_SEED:-}" != "1" ] && acg_push_toca_base "$cmd" "$pcwd"; then
+  block "NORMA DE GIT (ley interna): no se hace push a main/develop (incluye el push PELÓN estando parado EN develop/main). NO reintentes esto. Haz el cambio por el flujo: ramita (feat/fix/chore/docs) desde develop → commit → push de la ramita → MR/PR → merge a develop. A main solo llega un release deliberado, con OK súper-explícito por CLI (lo vigila confirmar-merge-develop). Si esto es la SIEMBRA inicial de un repo/rama vacía (0 commits — la única excepción de la norma), exporta CLAUDE_GIT_GUARD_SEED=1 en el ENTORNO de la sesión (no como prefijo del comando) y reintenta."
 fi
 
 if acg_merge_menciona_base "$cmd"; then

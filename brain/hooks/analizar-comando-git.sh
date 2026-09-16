@@ -675,8 +675,12 @@ acg_msg_es_superficial() {   # $1=mensaje → 0=superficial(bloquear) · 1=ok
 # del nombre) O un id de MR/PR (!123 / #456). return 0 = falta traza (bloquear).
 #   Precisión: solo se INVOCA sobre el LITERAL (el agente lo tipeó, puede añadir la línea `Rama:`/`MR:`); el
 #   patrón de rama exige la barra + ≥1 char de nombre (no casa un "fix" suelto), y el id exige [!#]+dígitos.
+# H8 (auditoría semántica 2026-09-16, BAJO, CONFIRMADO): el set de prefijos era demasiado angosto —
+# "Rama: refactor/sustrato - …"/"test/…"/"perf/…"/"ci/…" SÍ traen la rama (trazabilidad real) pero el
+# mensaje decía "falta TRAZABILIDAD" sobre un resumen que la tenía. Ampliado a los prefijos de
+# conventional-commit de uso real en este repo (esta misma rama trae commits `test(brain):`).
 acg_msg_falta_traza() {   # $1=mensaje → 0=falta traza(bloquear) · 1=trae traza(pasar)
-  printf '%s' "$1" | grep -qE '(^|[^A-Za-z0-9/])(feat|fix|chore|hotfix|docs)/[A-Za-z0-9._-]' && return 1
+  printf '%s' "$1" | grep -qE '(^|[^A-Za-z0-9/])(feat|fix|chore|hotfix|docs|refactor|test|perf|ci|build|style|audit|revert)/[A-Za-z0-9._-]' && return 1
   printf '%s' "$1" | grep -qE '[!#][0-9]+' && return 1
   return 0
 }

@@ -29,10 +29,13 @@ if ! command -v jq >/dev/null 2>&1; then
   # ALTO-2 (auditoría FMEA 2026-09-16 §1.4, CONFIRMADO): sin jq no hay forma de resolver el DESTINO real del
   # MR (sale de la API, nunca del texto del comando) -- bloquea también un merge a tu mini-develop personal.
   # Escape EXPLÍCITO y auditado (mismo espíritu que CLAUDE_SKIP_SECRET_SCAN): el operador YA confirmó que,
-  # sin jq, este merge es a su rama personal -- nunca un bypass silencioso, el humano manda.
+  # sin jq, este merge es a su rama personal -- nunca un bypass silencioso, el humano manda. Se exporta en el
+  # ENTORNO de la sesión (perfil de shell / bloque "env" de ~/.claude/settings.json) -- un prefijo inline en
+  # el propio comando de Bash NO llega a este hook (proceso aparte), así que un agente no puede auto-
+  # otorgárselo a mitad de turno sin que el humano ya lo haya puesto ahí (auditoría semántica 2026-09-16).
   [ "${CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL:-}" = "1" ] && exit 0
   if printf '%s' "$input" | grep -qE '(mr[[:space:]]+(merge|accept)|pr[[:space:]]+merge)'; then
-    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"FRENO (sin jq): no puedo verificar si este merge ya trae --squash sin jq instalado, y un merge a develop SIEMPRE se squashea (fail-safe, no afloja nada). Si esto es TU PROPIA rama personal/mini-develop y estás seguro de que no es a develop, exporta CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 para esta sesión y reintenta -- o instala jq (macOS: brew install jq · Debian/Ubuntu: apt install jq · Windows: winget install jqlang.jq)."}}'
+    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"FRENO (sin jq): no puedo verificar si este merge ya trae --squash sin jq instalado, y un merge a develop SIEMPRE se squashea (fail-safe, no afloja nada). Si esto es TU PROPIA rama personal/mini-develop y estás seguro de que no es a develop, exporta CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 en el ENTORNO de la sesión (no como prefijo del comando) y reintenta -- o instala jq (macOS: brew install jq · Debian/Ubuntu: apt install jq · Windows: winget install jqlang.jq)."}}'
   fi
   exit 0
 fi

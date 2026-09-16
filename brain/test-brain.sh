@@ -2043,6 +2043,33 @@ mock_cm_glab develop
 is_silent "$(cm 'glab mr merge 66 --squash --yes' DENY)" \
   && ok "CRÍTICO-3: regresión — grant vigente + destino CONFIRMADO develop → SIGUE pasando por el fast-path (no se tocó la parte segura de M6)" \
   || bad "CRÍTICO-3: REGRESIÓN — el fast-path seguro (destino=develop confirmado) se rompió al cerrar el hueco"
+rm -f "$AUTHF" 2>/dev/null
+
+# H3 (auditoría de ejecución 2026-09-16, MEDIO, CONFIRMADO): acg_recent_intercalado lee `tail -n 6000` del
+# transcript -- si la autorización real queda FUERA de esa ventana (turno-nocturno, horas de trabajo
+# autónomo), el mensaje CULPABA AL USUARIO ("no encontré tu confirmación EXPRESA") en vez de nombrar la
+# causa real (la ventana no alcanzó). Repro EXACTO: 1 línea de autorización + 6200 turnos de asistente.
+H3TX="$CMROOT/h3tx.jsonl"
+{
+  printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"mergea el MR 5 a develop cuando termines"}]}}'
+  i=1; while [ "$i" -le 6200 ]; do printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"trabajando"}]}}'; i=$((i+1)); done
+} > "$H3TX"
+mock_cm_glab develop
+out_h3=$(jq -nc --arg c 'glab mr merge 5 --squash --yes' --arg t "$H3TX" '{tool_input:{command:$c},transcript_path:$t}' \
+  | PATH="$CMBIN:$PATH" HOME="$CMHOME" CLAUDE_PROJECT_DIR="$CMREPO" CLAUDE_MERGE_JUEZ_MOCK=DENY bash "$HOOKS/confirmar-merge-develop.sh")
+{ is_deny "$out_h3" && printf '%s' "$out_h3" | grep -qi 'FUERA de mi ventana' && ! printf '%s' "$out_h3" | grep -qi 'no encontré tu confirmación'; } \
+  && ok "H3: transcript de 6201 líneas con el OK en la línea 1 → el mensaje nombra la CAUSA (ventana truncada), no culpa al usuario" \
+  || bad "H3: REGRESIÓN — el mensaje sigue culpando al usuario pese a que la autorización quedó fuera de la ventana; got: $out_h3"
+# Control: mismo transcript pero CORTO (la autorización SÍ cae dentro de la ventana) → sigue pasando normal.
+H3TX2="$CMROOT/h3tx2.jsonl"
+printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"mergea el MR 5 a develop"}]}}' > "$H3TX2"
+out_h3b=$(jq -nc --arg c 'glab mr merge 5 --squash --yes' --arg t "$H3TX2" '{tool_input:{command:$c},transcript_path:$t}' \
+  | PATH="$CMBIN:$PATH" HOME="$CMHOME" CLAUDE_PROJECT_DIR="$CMREPO" CLAUDE_MERGE_JUEZ_MOCK=ALLOW bash "$HOOKS/confirmar-merge-develop.sh")
+# ALLOW legítimo trae su nota de higiene (additionalContext, no vacío) -- lo que NO debe pasar es un deny
+# citando "ventana truncada" sobre un transcript corto normal.
+{ ! is_deny "$out_h3b" && ! printf '%s' "$out_h3b" | grep -qi 'FUERA de mi ventana'; } \
+  && ok "H3 control: transcript CORTO (autorización dentro de la ventana) → sigue pasando normal (sin falso 'ventana truncada')" \
+  || bad "H3 control: REGRESIÓN — un transcript corto normal disparó el mensaje de ventana truncada, o se bloqueó; got: $out_h3b"
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
 rm -rf "$CMROOT"
 

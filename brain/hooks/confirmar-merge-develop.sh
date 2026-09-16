@@ -408,6 +408,26 @@ hint=$(acg_hint_candidatos "$prlist" "$destino" "$cur_mrid")
 tpath=$(printf '%s' "$input" | jq -r '.transcript_path // empty' 2>/dev/null)
 recent=$(_recent_intercalado "$tpath")
 
+# H3 (auditoría de ejecución 2026-09-16, MEDIO, CONFIRMADO): acg_recent_intercalado lee `tail -n 6000` del
+# transcript. En una corrida larga (turno-nocturno, un agente autónomo de horas) la autorización real del
+# usuario puede quedar FUERA de esa ventana — medido: transcript de 6201 líneas con el OK ("mergea el MR 5 a
+# develop cuando termines") en la línea 1, seguido de 6200 turnos de asistente, deja CERO líneas USUARIO: en
+# la ventana. El piso barato de _juez_merge_uno entonces dice "no hay confirmación" y el mensaje de abajo
+# CULPA AL USUARIO ("no encontré tu confirmación EXPRESA") en vez de nombrar la causa real (la ventana no
+# alcanzó). Repetir el OK no arregla nada si el agente sigue horas después sin que el usuario vuelva a
+# escribir — es el patrón "muerde de más → el humano lo hace a mano" en su forma más cara (pega justo en
+# turno-nocturno). Se detecta aquí (antes de llamar al juez, que igual va a fallar el piso barato) y se
+# reusa el MISMO patrón de mensaje-por-causa que ya existe para los DESCONOCIDO:<motivo> de entorno más
+# abajo — nombra la causa, no exige repetir lo que ya se dijo, y deja el carril de 'git merge' local.
+_ventana_sin_usuario=1
+printf '%s' "$recent" | grep -qiE '^[[:space:]]*USUARIO:' && _ventana_sin_usuario=0
+_ventana_truncada=0
+if [ "$_ventana_sin_usuario" = 1 ] && [ -n "$tpath" ] && [ -f "$tpath" ]; then
+  _tp_lineas=$(wc -l < "$tpath" 2>/dev/null | tr -d '[:space:]')
+  case "$_tp_lineas" in ''|*[!0-9]*) _tp_lineas=0 ;; esac
+  [ "$_tp_lineas" -gt 6000 ] && _ventana_truncada=1
+fi
+
 # (cur_mrid ya se computó arriba, junto al hint de candidatos). El JUEZ (_juez_merge) está definido ARRIBA.
 
 # Grant DURABLE (turno-nocturno): un OK persistido a disco cubre scope=merge-develop (NUNCA main). Fast-path
@@ -464,6 +484,8 @@ elif [ "$veredicto" = "UNAVAILABLE_EXPIRED" ]; then
   r="FRENO (token OAuth expirado): tu token de Claude fue RECHAZADO (401) incluso tras un reintento — el CLI lo refresca solo en ~un momento. REINTENTA el merge en unos segundos; si persiste, corre 'claude setup-token'. (Fail-safe: no abro el merge sin poder consultar al juez.)"
 elif [ "${veredicto#UNAVAILABLE}" != "$veredicto" ]; then
   r="FRENO (juez no disponible): no pude consultar el juez de autorización de merge (¿sin red, timeout, o respuesta ininteligible?). Fail-safe conservador: reintenta. (Override de modelo/timeout: CLAUDE_MERGE_JUEZ_MODEL / CLAUDE_MERGE_JUEZ_TIMEOUT.)"
+elif [ "$_ventana_truncada" = 1 ]; then
+  r="FRENO (definición de LISTO): el transcript de esta sesión tiene ${_tp_lineas} líneas y solo puedo leer las últimas ~6000 — si diste tu autorización antes de eso, quedó FUERA de mi ventana. No es que no hayas autorizado: es que no llegué a verlo. Repetir el OK AQUÍ, en un mensaje reciente, destraba esto${_mr_cita} (p. ej. 'mergea esto a develop'); o itera con 'git merge' LOCAL en tu mini (no pasa por este candado)."
 elif [ "$destino" = "main" ] || [ "$destino" = "master" ]; then
   r="FRENO (RELEASE a $destino): el juez no encontró autorización EXPRESA de RELEASE para este release${_mr_cita}. $destino es release-only — pide 'libera/release a $destino' explícito. Los releases van SIN squash (conservan historia)."
 elif [ "$destino" = "develop" ]; then
