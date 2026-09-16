@@ -2833,6 +2833,42 @@ rm -f "$DODTX"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (b4z) dod-verificar: COHERENCIA de timeouts — el crédito del juez cabe bajo el harness (fix carrera 2026-09-16) =="
+# Bug real medido en telemetría (transcripts jsonl, agosto 2026, project plantilladotnet): el harness del
+# Stop hook mata el proceso a los "timeout" segundos cableados en el settings.json del repo consumidor
+# (15s, verificado en despliegues reales), mientras CLAUDE_DOD_JUEZ_TIMEOUT (el crédito que el hook le da a
+# SU PROPIO curl) era 20s — MAYOR que el harness: una carrera que el hook SIEMPRE perdía, matado 5s ANTES
+# de que el juez agotara su propio presupuesto. 71 de 71 disparos de Stop en agosto murieron en ese muro
+# (~15000-15076ms), 15s de espera muerta y SIN veredicto cada vez — pese a que dod es fail-OPEN (el timeout
+# ni siquiera bloqueaba: solo desperdiciaba el turno).
+# Este test mide la INTENCIÓN (el presupuesto exterior CUBRE al interior, con margen para el resto del
+# hook), no la plomería ("el número es 10"): extrae AMBOS valores del propio archivo fuente (única fuente,
+# ver el CONTRATO DE COHERENCIA DE TIMEOUTS junto al `source` de juez-comun.sh en dod-verificar.sh) y
+# afirma la desigualdad — si alguien sube el crédito del juez sin subir el mínimo asumido del harness (o
+# baja el mínimo del harness sin bajar el crédito del juez), el test se cae, sin importar los números
+# concretos que use cada lado.
+DODSH="$HOOKS/dod-verificar.sh"
+dodj_interno=$(grep -oE 'CLAUDE_DOD_JUEZ_TIMEOUT:-[0-9]+' "$DODSH" | grep -oE '[0-9]+$')
+dodj_harness=$(grep -oE '_DOD_HARNESS_TIMEOUT_MINIMO=[0-9]+' "$DODSH" | grep -oE '[0-9]+$')
+[ -n "$dodj_interno" ] && [ -n "$dodj_harness" ] \
+  && ok "dod: el contrato de timeouts está declarado y es grepeable (interno=${dodj_interno}s, harness-mínimo=${dodj_harness}s)" \
+  || bad "dod: no pude extraer el crédito interno del juez (CLAUDE_DOD_JUEZ_TIMEOUT:-N, leí '${dodj_interno:-<vacío>}') y/o el mínimo del harness (_DOD_HARNESS_TIMEOUT_MINIMO=N, leí '${dodj_harness:-<vacío>}') del propio dod-verificar.sh — sin un contrato declarado y grepeable, los dos números pueden driftear en silencio (la carrera original)"
+
+# Margen exigido sobre el overhead REAL del resto del hook (tail -n 1500 del transcript + los jq/awk que
+# arman el turno + build del prompt + parseo de la respuesta), medido en telemetría real SIN llamada de red
+# (caso "screen-out local", agosto-septiembre 2026, plantilladotnet): p99 ≈ 953ms. 3s de margen es holgado
+# a propósito (fail-open: de sobra, nunca de menos).
+DODJ_MARGEN_MINIMO=3
+if [ -n "$dodj_interno" ] && [ -n "$dodj_harness" ]; then
+  [ "$((dodj_interno + DODJ_MARGEN_MINIMO))" -le "$dodj_harness" ] \
+    && ok "dod: coherencia de timeouts — interno(${dodj_interno}s) + margen(${DODJ_MARGEN_MINIMO}s) <= harness-mínimo(${dodj_harness}s): el hook YA NO puede perder la carrera contra su propio harness" \
+    || bad "dod: INCOHERENTE — interno(${dodj_interno}s) + margen(${DODJ_MARGEN_MINIMO}s) > harness-mínimo(${dodj_harness}s): el harness mataría el proceso ANTES de que el juez agote su crédito (revivió la carrera del 2026-09-16)"
+else
+  bad "dod: coherencia de timeouts — SALTADO (no pude leer alguno de los dos valores del contrato)"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "== (b5) compactación: precompact RETIRADO + rehidratar-hilo (inyecta + gate de staleness) =="
 # precompact-volcar-estado se RETIRÓ (2026-07): PreCompact no puede inyectar contexto ni pedir acción
 # (no hay turno antes de compactar) → era peso muerto. El "no perder el hilo" lo hacen checkpoint
