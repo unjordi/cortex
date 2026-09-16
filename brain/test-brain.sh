@@ -88,6 +88,25 @@ run_registrar() {
 is_ask()    { printf '%s' "$1" | jq -e '.hookSpecificOutput.permissionDecision == "ask"' >/dev/null 2>&1; }
 is_silent() { [ -z "$(printf '%s' "$1" | tr -d '[:space:]')" ]; }
 
+# BAJO (auditoría FMEA 2026-09-16 §1.6, INVESTIGADO): el arnés construía sus PATHs restringidos ("sin jq")
+# con `_p="$(command -v "$_t")"; ln -s "$_p" ...` — bajo el Bash tool de Claude Code, `grep` (y a veces otros
+# coreutils) puede estar cableado como FUNCIÓN de shell exportada (envoltorio propio del harness, documentado
+# en la memoria de máquina), y `command -v` en ESE caso devuelve el NOMBRE ("grep"), no una ruta. Reproducido
+# EN VIVO: eso crea un symlink "grep -> grep" que se APUNTA A SÍ MISMO — el binario "desaparece" del PATH
+# restringido y cualquier prueba que dependa de él falla, de forma no determinista según qué shell haya
+# iniciado ESA corrida del arnés (exactamente el patrón 1205→1206 de una corrida a otra). `_mkbin_real`
+# resuelve SIEMPRE contra las rutas CANÓNICAS del sistema (nunca `command -v`, inmune a funciones de shell
+# exportadas) — determinista sin importar qué envoltorio tenga el shell que lanza el arnés.
+_mkbin_real() {   # _mkbin_real <dir-destino> <tool...>
+  local dir="$1" t d; shift
+  mkdir -p "$dir"
+  for t in "$@"; do
+    for d in /usr/bin /bin /usr/local/bin /opt/homebrew/bin; do
+      if [ -x "$d/$t" ]; then ln -sf "$d/$t" "$dir/$t"; break; fi
+    done
+  done
+}
+
 payload() { # payload <session> <subagent_type> <model> [tool_name=Task]
   jq -nc --arg s "$1" --arg t "$2" --arg m "$3" --arg tn "${4:-Task}" \
     '{tool_name:$tn, session_id:$s, tool_input:{subagent_type:$t, model:$m}}'
@@ -1391,9 +1410,9 @@ is_silent "$out_dod" \
   || bad "juez-comun (c): dod sin token NO fue fail-open; got: $out_dod"
 
 # (d) A3 — jq AUSENTE en un comando de merge → DENY (fail-SAFE); antes 'command -v jq || exit 0' = ALLOW (evasión)
-NOJQ="$JCFIX/nojq"; mkdir -p "$NOJQ"
-for _t in cat grep basename sed head tail dirname; do _p="$(command -v "$_t" 2>/dev/null)"; [ -n "$_p" ] && ln -s "$_p" "$NOJQ/$_t"; done
-_realbash="$(command -v bash)"
+NOJQ="$JCFIX/nojq"
+_mkbin_real "$NOJQ" cat grep basename sed head tail dirname bash
+_realbash="$NOJQ/bash"
 out_nojq="$(printf '%s' '{"tool_input":{"command":"glab mr merge 5 --squash"},"transcript_path":""}' \
   | PATH="$NOJQ" HOME="$JCFIX/home" "$_realbash" "$HOOKS/confirmar-merge-develop.sh")"
 { is_deny "$out_nojq" && printf '%s' "$out_nojq" | grep -qi 'sin jq'; } \
@@ -1731,10 +1750,8 @@ mkdir -p "$M8REPO/.claude" "$M8HOME"
 git -C "$M8REPO" init -q >/dev/null 2>&1
 git -C "$M8REPO" remote add origin git@gitlab.com:org/repo.git >/dev/null 2>&1
 M8TX="$M8ROOT/tx.jsonl"; printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"mergealo ya"}]}}' > "$M8TX"
-M8NOCLI="$M8ROOT/noclibin"; mkdir -p "$M8NOCLI"
-for _t in bash grep sed cat basename dirname head tail printf awk jq date mktemp tr wc sort cut git; do
-  _p="$(command -v "$_t" 2>/dev/null)"; [ -n "$_p" ] && ln -sf "$_p" "$M8NOCLI/$_t"
-done
+M8NOCLI="$M8ROOT/noclibin"
+_mkbin_real "$M8NOCLI" bash grep sed cat basename dirname head tail printf awk jq date mktemp tr wc sort cut git
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
 out_m8="$(jq -nc --arg c 'glab mr merge 42 --yes' --arg t "$M8TX" '{tool_input:{command:$c},transcript_path:$t}' \
   | PATH="$M8NOCLI" HOME="$M8HOME" CLAUDE_PROJECT_DIR="$M8REPO" ACG_PATH_AUGMENT=0 CLAUDE_MERGE_JUEZ_MOCK=DENY bash "$HOOKS/confirmar-merge-develop.sh")"
@@ -1888,9 +1905,9 @@ rm -rf "$NONGIT"
 # (2) sin jq: un guard DEFENSIVO NO calla. Antes: `exit 0` mudo (red apagada en silencio + STRICT ignorado).
 # Ahora: STRICT sin jq → fail-CLOSED por exit 2 (bloqueo que no necesita jq); default → aviso ruidoso + pasa;
 # no-git → silencio; escapes (SKIP/--no-verify) respetados. Simula "sin jq" con un PATH mínimo (cat+basename).
-NOJQ="$(mktemp -d "${TMPDIR:-/tmp}/brain-nojq.XXXXXX")"; NOJQBIN="$NOJQ/bin"; NOJQHOME="$NOJQ/home"; mkdir -p "$NOJQBIN" "$NOJQHOME"
-for _b in cat basename; do ln -s "$(command -v "$_b")" "$NOJQBIN/$_b"; done
-BASH_ABS="$(command -v bash)"
+NOJQ="$(mktemp -d "${TMPDIR:-/tmp}/brain-nojq.XXXXXX")"; NOJQBIN="$NOJQ/bin"; NOJQHOME="$NOJQ/home"; mkdir -p "$NOJQHOME"
+_mkbin_real "$NOJQBIN" cat basename bash
+BASH_ABS="$NOJQBIN/bash"
 printf '%s' '{"tool_input":{"command":"git commit -m x"}}' | PATH="$NOJQBIN" HOME="$NOJQHOME" CLAUDE_SECRET_SCAN_STRICT=1 "$BASH_ABS" "$HOOKS/secret-scan.sh" >/dev/null 2>&1
 [ "$?" -eq 2 ] && ok "secret-scan (2): sin jq + STRICT=1 → fail-CLOSED (exit 2)" || bad "secret-scan (2): sin jq + STRICT no bloqueó (exit != 2)"
 err="$(printf '%s' '{"tool_input":{"command":"git commit -m x"}}' | PATH="$NOJQBIN" HOME="$NOJQHOME" "$BASH_ABS" "$HOOKS/secret-scan.sh" 2>&1 >/dev/null)"; rc=$?
