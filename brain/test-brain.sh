@@ -811,8 +811,8 @@ echo "== (b1d-m7) M7 (auditoría 2026-09-15 §2.3): entorno degradado (sin jq) h
 # el jq ausente → exit 0). confirmar-merge-develop YA tenía el endurecimiento A3 (2026-08-06): esta es la
 # MISMA política, homologada a los otros dos. secret-scan/proteger-arbol CONSERVAN su fail-open declarado
 # (son red de seguridad/advisory, no el candado de "nunca push a base"); secret-scan ya avisa RUIDOSO.
-NOJQ7="$FAKEHOME/nojq7"; mkdir -p "$NOJQ7"
-for _t in bash grep sed cat basename dirname head tail printf awk; do _p="$(command -v "$_t" 2>/dev/null)"; [ -n "$_p" ] && ln -sf "$_p" "$NOJQ7/$_t"; done
+NOJQ7="$FAKEHOME/nojq7"
+_mkbin_real "$NOJQ7" bash grep sed cat basename dirname head tail printf awk tr
 gb_nojq() { jq -nc --arg c "$1" '{tool_input:{command:$c}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" bash "$HOOKS/git-branch-guard.sh"; }
 ms_nojq() { jq -nc --arg c "$1" '{tool_input:{command:$c}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" bash "$HOOKS/merge-squash-guard.sh"; }
 mkdir -p "$FAKEHOME/nojq7home"
@@ -828,6 +828,46 @@ is_deny "$(ms_nojq 'glab mr merge 5 --yes')" \
 is_silent "$(ms_nojq 'ls -la')" \
   && ok "M7: merge-squash-guard SIN jq + comando no-merge → silencio (no sobre-bloquea)" \
   || bad "M7: merge-squash-guard SIN jq bloqueó un comando que no le toca"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (b1d-alto2) ALTO-2 (auditoría FMEA 2026-09-16 §1.4, CONFIRMADO): SIN jq, git-branch-guard ya NO"
+echo "   bloquea push a tu PROPIA ramita/mini-develop (el camino MÁS transitado) — sigue bloqueando bare/base/mr =="
+# Medido por la propia auditoría: ANTES de este fix, SIN jq, `git push -u origin feat/mi-cambio` (push a tu
+# PROPIA ramita, el caso más común de TODOS) quedaba DENY -- sin ningún carril. La corrección es de
+# PRECISIÓN (un push que nombra EXPLÍCITAMENTE ≥2 tokens tras 'push', ninguno develop/main/master/HEAD, es
+# por definición una rama NO-base) -- nunca relajación: bare push y mr/pr merge siguen SIEMPRE bloqueados.
+is_silent "$(gb_nojq 'git push -u origin feat/mi-cambio')" \
+  && ok "ALTO-2: SIN jq, push a TU ramita (feat/mi-cambio) → silencio (antes: DENY sin carril)" \
+  || bad "ALTO-2: SIN jq, push a la propia ramita sigue bloqueado (regresión NO resuelta)"
+is_silent "$(gb_nojq 'git push origin DevelopUnjordi')" \
+  && ok "ALTO-2: SIN jq, push a TU mini-develop personal (DevelopUnjordi) → silencio" \
+  || bad "ALTO-2: SIN jq, push a la propia mini-develop sigue bloqueado"
+is_deny "$(gb_nojq 'git push')" \
+  && ok "ALTO-2: SIN jq, push PELÓN (sin rama nombrada, el caso H1 real) → SIGUE bloqueado (no se afloja)" \
+  || bad "ALTO-2: SIN jq, un push pelón (potencialmente a develop/main) dejó de bloquearse — AFLOJAMIENTO"
+is_deny "$(gb_nojq 'git push origin develop')" \
+  && ok "ALTO-2: SIN jq, push EXPLÍCITO a develop → SIGUE bloqueado" \
+  || bad "ALTO-2: SIN jq, push explícito a develop dejó de bloquearse — AFLOJAMIENTO"
+is_deny "$(gb_nojq 'glab mr merge 5 --yes')" \
+  && ok "ALTO-2: SIN jq, mr merge → SIGUE SIEMPRE bloqueado (no hay precisión posible sin jq: el destino sale de la API)" \
+  || bad "ALTO-2: SIN jq, un mr merge dejó de bloquearse — AFLOJAMIENTO"
+is_silent "$(jq -nc --arg c 'git push' '{tool_input:{command:$c}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 bash "$HOOKS/git-branch-guard.sh")" \
+  && ok "ALTO-2: SIN jq + CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 (escape EXPLÍCITO y auditado) → deja pasar, el humano manda" \
+  || bad "ALTO-2: el escape explícito CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL no funcionó"
+is_deny "$(ms_nojq 'glab mr merge 5 --yes')" \
+  && ok "ALTO-2: merge-squash-guard SIN jq, mr merge → SIGUE bloqueado (destino no verificable sin jq; sin precisión de texto posible)" \
+  || bad "ALTO-2: merge-squash-guard SIN jq dejó de bloquear un mr merge — AFLOJAMIENTO"
+is_silent "$(jq -nc --arg c 'glab mr merge 5 --yes' '{tool_input:{command:$c}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 bash "$HOOKS/merge-squash-guard.sh")" \
+  && ok "ALTO-2: merge-squash-guard SIN jq + escape explícito → deja pasar" \
+  || bad "ALTO-2: merge-squash-guard no honró el escape explícito"
+cm_nojq() { jq -nc --arg c "$1" '{tool_input:{command:$c}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" bash "$HOOKS/confirmar-merge-develop.sh"; }
+is_deny "$(cm_nojq 'glab mr merge 5 --yes')" \
+  && ok "ALTO-2: confirmar-merge-develop SIN jq, mr merge → SIGUE bloqueado" \
+  || bad "ALTO-2: confirmar-merge-develop SIN jq dejó de bloquear un mr merge — AFLOJAMIENTO"
+is_silent "$(jq -nc --arg c 'glab mr merge 5 --yes' '{tool_input:{command:$c}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 bash "$HOOKS/confirmar-merge-develop.sh")" \
+  && ok "ALTO-2: confirmar-merge-develop SIN jq + escape explícito → deja pasar" \
+  || bad "ALTO-2: confirmar-merge-develop no honró el escape explícito"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""

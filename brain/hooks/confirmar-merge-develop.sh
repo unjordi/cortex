@@ -286,8 +286,15 @@ input=$(cat 2>/dev/null || true)
 # → DENY (más ESTRICTO, no afloja nada). Si NO parece merge → exit 0 (no sobre-bloquea comandos normales).
 # La respuesta DENY se arma con printf (no jq) porque justamente no hay jq; el mensaje es un literal fijo.
 if ! command -v jq >/dev/null 2>&1; then
+  # ALTO-2 (auditoría FMEA 2026-09-16 §1.4, CONFIRMADO): sin jq NO hay forma de leer la respuesta de la API
+  # para saber si el destino real es develop o main — a diferencia del push (git-branch-guard), aquí no hay
+  # precisión de texto posible (el destino NUNCA está en el comando, se resuelve por API). Bloquear TODO
+  # merge sin distinguir tu mini-develop personal de develop/main deja al operador SIN CARRIL. Escape
+  # EXPLÍCITO y auditado (mismo espíritu que CLAUDE_SKIP_SECRET_SCAN): el operador YA confirmó que, sin jq,
+  # ESTE merge es a su rama personal — nunca un bypass silencioso, el humano manda.
+  [ "${CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL:-}" = "1" ] && exit 0
   if printf '%s' "$input" | grep -qE '(mr[[:space:]]+(merge|accept)|pr[[:space:]]+merge)'; then
-    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"FRENO (sin jq): no puedo verificar la autorización de este merge sin jq instalado, y un merge a develop/main NO pasa sin gate (fail-safe). Instala jq (macOS: brew install jq · Debian/Ubuntu: apt install jq · Windows: winget install jqlang.jq) e reintenta."}}'
+    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"FRENO (sin jq): no puedo verificar la autorización de este merge sin jq instalado, y un merge a develop/main NO pasa sin gate (fail-safe). Si esto es TU PROPIA rama personal/mini-develop y estás seguro de que no toca develop/main, exporta CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 para esta sesión y reintenta — o instala jq (macOS: brew install jq · Debian/Ubuntu: apt install jq · Windows: winget install jqlang.jq)."}}'
   fi
   exit 0
 fi

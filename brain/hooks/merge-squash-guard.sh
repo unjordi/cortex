@@ -26,8 +26,13 @@ input=$(cat)
 # colarse (evasión asimétrica idéntica a la que confirmar-merge-develop ya cerró con A3). Grep CRUDO del
 # input; si parece un merge real, DENY con causa clara; si no, exit 0 (no sobre-bloquea).
 if ! command -v jq >/dev/null 2>&1; then
+  # ALTO-2 (auditoría FMEA 2026-09-16 §1.4, CONFIRMADO): sin jq no hay forma de resolver el DESTINO real del
+  # MR (sale de la API, nunca del texto del comando) -- bloquea también un merge a tu mini-develop personal.
+  # Escape EXPLÍCITO y auditado (mismo espíritu que CLAUDE_SKIP_SECRET_SCAN): el operador YA confirmó que,
+  # sin jq, este merge es a su rama personal -- nunca un bypass silencioso, el humano manda.
+  [ "${CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL:-}" = "1" ] && exit 0
   if printf '%s' "$input" | grep -qE '(mr[[:space:]]+(merge|accept)|pr[[:space:]]+merge)'; then
-    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"FRENO (sin jq): no puedo verificar si este merge ya trae --squash sin jq instalado, y un merge a develop SIEMPRE se squashea (fail-safe, no afloja nada). Instala jq (macOS: brew install jq · Debian/Ubuntu: apt install jq · Windows: winget install jqlang.jq) e reintenta."}}'
+    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"FRENO (sin jq): no puedo verificar si este merge ya trae --squash sin jq instalado, y un merge a develop SIEMPRE se squashea (fail-safe, no afloja nada). Si esto es TU PROPIA rama personal/mini-develop y estás seguro de que no es a develop, exporta CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 para esta sesión y reintenta -- o instala jq (macOS: brew install jq · Debian/Ubuntu: apt install jq · Windows: winget install jqlang.jq)."}}'
   fi
   exit 0
 fi
