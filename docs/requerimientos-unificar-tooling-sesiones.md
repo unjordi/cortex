@@ -653,3 +653,119 @@ quedan narrados aquí (norma: ningún hallazgo se queda solo en el documento):
 | G | `brain/sesiones-master/README.md` es doc personal con rutas hardcodeadas en un repo público | **MEDIO** | R-12 |
 | H | handoff de 2026-09-10 en el Drive con el preludio viejo embebido; el sello solo avisa | **MEDIO** | R-14 |
 | I | `session-lib.js` no es ejecutable ni tiene shebang ⇒ la frontera bash↔JS solo se cruza por `node -e` | **MEDIO** | R-7 |
+
+---
+
+# 5-bis · LAS DECISIONES TOMADAS — unjordi, 2026-09-16
+
+> Esta sección **gobierna** sobre las recomendaciones de §5. Donde una decisión contradice la
+> recomendación, manda la decisión. Cada una lleva la cita textual que la origina.
+
+## D-1 — RESUELTA POR ARRIBA: no se elige entre degradar y abortar; se construye una GUI de configuración
+
+> *"Ya es hora de que le pongamos una pestaña de configuración al widget o que despliegue una interfaz
+> nativa para que no quede tan apretado todo ahí, tú decide, pero ya tenemos muchas cosas que me gustaría
+> ver ahí […] todo lo parametrizable por CLI que tú usas para operarlo deberían ser operable también por GUI."*
+
+La recomendación (c) —resolver la ubicación al instalar y escribirla a disco— **sigue siendo el mecanismo
+correcto** y se conserva como R-1. Lo que cambia es dónde vive la decisión de configuración: deja de ser
+una variable de entorno que solo el CLI lee y pasa a ser **config editable por el usuario en una GUI**.
+
+**Lo que unjordi quiere ver ahí** (su lista, verbatim en orden):
+1. `CLAUDE_SESSIONS_DRIVE`
+2. el token OAuth activo
+3. un botón de `install-brain` para invocarlo desde ahí
+4. el % de ventana de contexto global
+5. ejecutar el respaldo de las sesiones master **a voluntad**
+6. refrescar `masters.json`
+7. **seleccionar qué sesiones master queremos** — *"luego el claude-cli las duplica por torpe y no queremos eso"*
+
+**El principio que lo gobierna, y que es más grande que esta lista:** *todo lo parametrizable por CLI
+debe ser operable por GUI.*
+
+**Decisión de forma (delegada a Claude, tomada con medición):** **ventana de Preferencias propia y nativa
+por plataforma**, invocada desde el popover — NO una pestaña dentro del popover. Las tres razones:
+- El popover/popup es **efímero** (se cierra al perder el foco). Un formulario que se cierra a media
+  edición, y operaciones largas como un respaldo o un `install-brain`, no caben ahí. Es exactamente el
+  *"no quede tan apretado"* llevado a su causa.
+- **Ya hay precedente** en el código: `windows/src/Cortex/RenameDialog.cs` es una ventana secundaria.
+- En KDE, un plasmoide tiene su **mecanismo estándar de configuración** propio; forzar una pestaña dentro
+  del popover pelearía con la plataforma en vez de usarla.
+
+**Decisión de arquitectura (la que evita triplicar el trabajo):** las tres GUIs hoy son implementaciones
+PARALELAS —`main.qml` 3493 líneas · `PopoverView.swift` 1662 · `PopupForm.cs` 2239 [MEDIDO]—. La GUI de
+configuración **no reimplementa lógica: invoca los mismos comandos del CLI**. Así cada plataforma aporta
+solo el formulario, y el principio de unjordi se cumple por construcción en vez de por disciplina. Es la
+misma frontera que R-7 ya pide para bash↔JS.
+
+**Qué NO decide esto:** el canal sigue siendo config personal por máquina (restricción #3 del encargo).
+La GUI hace que esa config sea **visible y editable**, no la vuelve compartida.
+
+## D-2 — SIN DECIDIR (la pregunta estaba mal formulada)
+
+> *"no tengo idea de a qué te refieres con «hot path de Stop», así que no puedo decidir."*
+
+Pendiente de re-plantear en lenguaje llano. **No se toma por default**: hasta que la decisión sea suya,
+R-6/T-6 se implementan conservando el comportamiento actual.
+
+## D-3 — DECIDIDA, y corrige la recomendación
+
+> *"si la sesión es un agente parado en un worktree, el default es su upstream inmediato: la rama de la que
+> lo forkearon, que IDEALMENTE nunca debe ser main, pero puede ser una minidevelop y si el default es main
+> SIN MEDIR, entonces va a estar arrojando falsos positivos por doquier"*
+
+La recomendación (b) decía *"normalizar a la raíz del repo"*. La decisión la **precisa y la corrige**:
+- **El default es el UPSTREAM INMEDIATO** — aquello de lo que el worktree/rama fue forkeado —, no un valor
+  fijo elegido de antemano.
+- **Nunca `main` por default.** Puede ser perfectamente una mini-develop (`Develop<Usuario>`).
+- **Y la regla de método que vale más que el caso:** un default **asumido sin medir** genera falsos
+  positivos en cascada. Si el upstream no se puede determinar, **se mide o se conserva el anterior** —
+  jamás se inventa uno.
+
+Nota de precisión para quien implemente: el campo `target` de `masters.json` es hoy una **ruta de
+directorio** (dónde sembrar la sesión en otra máquina), no una rama. La decisión se aplica en su espíritu
+exacto: resolver la referencia real de la que el worktree depende (su repo padre), **medida**, y ante
+imposibilidad conservar el valor previo — nunca colapsar a un default fijo sin comprobarlo.
+
+## D-4 — PENDIENTE DE SU RESPUESTA (la pregunta no daba los datos)
+
+> *"cuáles?! de qué copias hablas?"*
+
+Los datos que faltaban, medidos hoy en `/Users/unjordi/Mi unidad/claude-sessions/`. **Las cuatro copias
+divergen de la fuente, y todas están congeladas el 2026-07-26** (~7 semanas):
+
+| copia en el Drive | fuente en el repo | Drive | repo |
+|---|---|---|---|
+| `exportar-sesion-master.sh` | `brain/hooks/exportar-sesion-master.sh` | 130 líneas | **191** |
+| `install-hook.sh` | `brain/sesiones-master/install-hook.sh` | 51 | 36 |
+| `seed.sh` | `brain/sesiones-master/seed.sh` | 62 | **71** |
+| `README.md` | `brain/README.md` | 62 | **219** |
+
+El hook del Drive tiene **61 líneas menos** que el vivo: le faltan el gatillo `Stop` con debounce y el
+fast-path, entre otras cosas. Quien arranque una máquina nueva desde el Drive instalaría el mecanismo de
+julio. La decisión (borrar dejando un puntero) sigue pendiente de su OK **por ser destructiva sobre el Drive**.
+
+## D-5 — DECIDIDA: instalar `checkpoint-mecanico`, **con el release**
+
+> *"con el release."*
+
+No se cablea en una tanda suelta: entra cuando se libere a `main`, que es la misma liberación que hoy está
+retenida a propósito. Consecuencia operativa mientras tanto: **el andamio mecánico no existe en esta
+máquina**, así que el hilo escrito a mano sigue siendo la única red contra el compact.
+
+## D-6 — DECIDIDA: sanear `masters.json` **desde la GUI de configuración**
+
+> *"lo hacemos desde la GUI de configuración."*
+
+Deja de ser un saneo manual de una vez y pasa a ser **una capacidad del producto** (ítems 6 y 7 de D-1:
+refrescar `masters.json` y elegir qué sesiones son master). R-13 se reformula: no es "corregir 4 targets",
+es "que el usuario pueda ver y corregir el registro". Los 4 targets inválidos son el primer caso de uso.
+
+## D-7 — DECIDIDA: las tandas las agrupa Claude, **por TEMA**
+
+> *"las tandas que consideres. el punto del squash es no spamear de commits el árbol a largo plazo, pero
+> también deberíamos siempre agrupar los squashes por tema."*
+
+El criterio de corte **no es el tamaño ni el riesgo: es la COHERENCIA TEMÁTICA**. Un squash debe poder
+contarse en una frase. Esto es una norma de proceso más allá de este slice: *agrupar siempre los squashes
+por tema*.
