@@ -66,7 +66,7 @@ _lexico_release_en_ventana() { acg_lexico_release "$@"; }
 # NUNCA fail-open. Mocks deterministas: CLAUDE_MERGE_JUEZ_MOCK (veredicto FINAL de la capa-LLM, entra al
 # piso de main) · CLAUDE_MERGE_JUEZ_MOCK_RAW (texto CRUDO de respuesta → prueba parseo+cita sin red).
 _juez_merge_uno() {   # $1=destino  $2=mrid  $3=mensajes  $4=hint(opcional) → imprime ALLOW | DENY | UNAVAILABLE_* — UN voto
-  local prompt out txt hint cita temp _resp _estado _cand
+  local prompt out txt hint cita temp _resp _estado _cand destino_inferido _destino_note
   hint="${4:-}"
   # Temperatura EFECTIVA de ESTA llamada. Default 0 (gate reproducible, comportamiento de UNA llamada INTACTO).
   # Solo el dispatcher de voto múltiple (_juez_merge, VOTES≥2) la sube vía _JUEZ_TEMP; una llamada suelta la deja en 0.
@@ -75,6 +75,17 @@ _juez_merge_uno() {   # $1=destino  $2=mrid  $3=mensajes  $4=hint(opcional) → 
   if [ -n "${CLAUDE_MERGE_JUEZ_MOCK:-}" ]; then
     out="$CLAUDE_MERGE_JUEZ_MOCK"   # veredicto FINAL de la capa-LLM: entra IGUAL al PISO de main → testeable DETERMINISTA (sin red)
   else
+  # M5-bis (auditoría FMEA 2026-09-16, ALTO §1.2): cuando el destino vino VACÍO, le pedimos al juez que
+  # DECLARE qué destino INFIRIÓ (ya lo razona en su CoT) — el piso de abajo lo usa para dejar de aplastar
+  # un merge a develop INEQUÍVOCO solo porque la CONSULTA falló por entorno (ver más abajo).
+  _destino_note=""
+  if [ -z "$1" ]; then
+    _destino_note="
+Como el destino AUTORITATIVO vino VACÍO (la consulta de la base falló), agrega TAMBIÉN, ANTES del veredicto, una línea declarando qué destino INFERISTE de la conversación:
+DESTINO_INFERIDO: develop   (SOLO si la conversación es INEQUÍVOCA de integrar a develop, SIN ninguna mención de main/master/release/promover en NINGÚN turno)
+  o
+DESTINO_INFERIDO: main   (si hay CUALQUIER señal de main/release/ambigüedad, o no estás seguro)"
+  fi
   if [ -n "${CLAUDE_MERGE_JUEZ_MOCK_RAW:-}" ]; then
     txt="$CLAUDE_MERGE_JUEZ_MOCK_RAW"   # respuesta CRUDA mockeada → ejercita el parseo por centinela + el veto de cita
   else
@@ -116,7 +127,7 @@ $3
 
 PROTOCOLO DE RESPUESTA — razona BREVE (2-5 pasos: (1) destino autoritativo (2) ¿instrucción del USUARIO? (3) ¿a qué MR aplica? ¿un solo candidato? (4) si main, ¿lenguaje de release del USUARIO?), y termina así:
 - Si tu veredicto es ALLOW, incluye ANTES del veredicto una línea con la CITA VERBATIM de la línea USUARIO: en que se apoya la autorización, copiada TAL CUAL aparece:
-CITA: <texto literal de la línea USUARIO:>
+CITA: <texto literal de la línea USUARIO:>$_destino_note
 - Termina SIEMPRE con EXACTAMENTE una línea final, sin nada después:
 VEREDICTO: ALLOW
   o
@@ -161,6 +172,18 @@ VEREDICTO: DENY"
     fi
   fi
   fi
+  # M5-bis: destino que el juez INFIRIÓ cuando la consulta vino vacía. CLAUDE_MERGE_JUEZ_MOCK_DESTINO es
+  # el hook de test (determinista, sin red) para fijarlo directo; en operación real sale del CoT (línea
+  # 'DESTINO_INFERIDO:', pedida arriba SOLO cuando $1 vino vacío). Vacío por default (conservador: si no
+  # se pudo inferir nada, NO cuenta como 'develop').
+  destino_inferido=""
+  if [ -n "${CLAUDE_MERGE_JUEZ_MOCK_DESTINO:-}" ]; then
+    destino_inferido=$(printf '%s' "$CLAUDE_MERGE_JUEZ_MOCK_DESTINO" | tr '[:upper:]' '[:lower:]')
+  elif [ -n "${txt:-}" ]; then
+    destino_inferido=$(printf '%s\n' "$txt" | grep -iE '^[^[:alnum:]]*DESTINO_INFERIDO:' | tail -1 \
+      | sed -E 's/^[^[:alnum:]]*DESTINO_INFERIDO:[[:space:]]*//I' \
+      | tr -s '[:space:]' ' ' | sed -E "s/^[*\"' ]+//; s/[*\"' ]+\$//" | tr '[:upper:]' '[:lower:]')
+  fi
   # PISO DETERMINISTA del gate de MAIN (defensa en profundidad): un release a main JAMÁS pasa sin lenguaje
   # de release EXPLÍCITO del USUARIO, INDEPENDIENTE del LLM. Haiku es poco fiable en el 'mergea el X' PELÓN
   # con destino main (lo ALLOWea; regresión real atrapada en la batería LIVE). destino main + ALLOW + NINGUNA
@@ -176,7 +199,17 @@ VEREDICTO: DENY"
   # en manos EXCLUSIVAS del componente que el propio código ya admite que falla ahí. Con destino desconocido,
   # el más ESTRICTO de los dos gates posibles (develop vs main) debe ganar — la MISMA regla que ya rige el
   # prompt del juez ("ante duda del destino, el más ESTRICTO gana"), ahora aplicada también al piso.
-  if { [ "$1" = "main" ] || [ "$1" = "master" ] || [ -z "$1" ]; } && [ "$out" = "ALLOW" ]; then
+  #
+  # M5-bis (auditoría FMEA 2026-09-16, ALTO §1.2, PRECISIÓN — no relaja el piso): medido por ejecución, M5
+  # bloqueaba TAMBIÉN el caso MÁS común y de MENOR consecuencia (integrar a develop) bajo un fallo de
+  # entorno frecuente (timeout de red al resolver el destino), aunque la conversación fuera 100% inequívoca
+  # sobre develop y CERO ambigua sobre main — el piso trataba "destino vacío" como "podría ser main" SIN
+  # mirar qué concluyó el propio juez al leer la MISMA ventana. Ahora el piso NO aplica sobre destino vacío
+  # si el juez declaró explícitamente DESTINO_INFERIDO=develop (arriba): eso exige que la conversación NO
+  # tuviera NINGUNA señal de main/release, la MISMA vara que ya exige el resto del prompt. Si el juez no
+  # pudo inferir nada, infirió main, o es ambiguo (destino_inferido queda vacío/distinto de 'develop') el
+  # piso sigue aplicando EXACTO como antes — cero cambio para el caso que sí debe bloquear.
+  if { [ "$1" = "main" ] || [ "$1" = "master" ] || { [ -z "$1" ] && [ "$destino_inferido" != "develop" ]; }; } && [ "$out" = "ALLOW" ]; then
     # tokens ANCLADOS a límite de palabra ([^[:alpha:]], portable BSD+GNU): 'liber' NO casa en
     # "deliberada"/"libertad" (liber[aeo] + frontera previa), 'a main' NO casa en "a maintenance"
     # (frontera posterior tras main). Endurecimiento — cierra el falso NEGATIVO del piso (auditoría 2026-08).

@@ -1120,6 +1120,23 @@ USUARIO: ok gracias')" = DENY ] \
   [ "$(pmain '' 'USUARIO: libera el 999 a main, es el release')" = ALLOW ] \
     && ok "M5: destino DESCONOCIDO + ALLOW + lenguaje de release EXPLÍCITO → pasa (el piso no aplasta un release legítimo)" \
     || bad "M5: el piso bloqueó un release legítimo con destino desconocido pese al lenguaje de release"
+  # M5-bis (auditoría FMEA 2026-09-16 §1.2, ALTO, PRECISIÓN — no relaja el piso): M5 (arriba) bloqueaba
+  # TAMBIÉN el caso MÁS común (merge a develop) bajo el fallo de entorno MÁS frecuente (timeout de red al
+  # resolver el destino), CONFIRMADO por A/B contra develop con una conversación 100% inequívoca sobre
+  # develop y CERO ambigua sobre main. El juez ahora declara qué destino INFIRIÓ cuando la consulta vino
+  # vacía (DESTINO_INFERIDO, CLAUDE_MERGE_JUEZ_MOCK_DESTINO en test) — el piso solo se salta si esa
+  # inferencia fue EXPLÍCITAMENTE 'develop'; cualquier otra cosa (main, ambiguo, o SIN declarar) deja el
+  # piso EXACTO como antes (cero cambio para el caso que sí debe bloquear).
+  pdest() { CLAUDE_MERGE_JUEZ_MOCK=ALLOW CLAUDE_MERGE_JUEZ_MOCK_DESTINO="$1" _juez_merge '' 999 "$2"; }
+  [ "$(pdest develop 'USUARIO: mergea esto a develop')" = ALLOW ] \
+    && ok "M5-bis: destino vacío + juez INFIERE 'develop' explícito + ALLOW → el piso YA NO lo aplasta (antes: DENY, FP)" \
+    || bad "M5-bis: el piso siguió aplastando un develop inequívoco pese a DESTINO_INFERIDO=develop"
+  [ "$(pdest main 'USUARIO: mergea esto')" = DENY ] \
+    && ok "M5-bis: destino vacío + juez INFIERE 'main' + ALLOW → el piso SIGUE aplicando (DENY, sin cambio)" \
+    || bad "M5-bis: REGRESIÓN — el piso dejó pasar un destino inferido como main sin lenguaje de release"
+  [ "$(pmain '' 'USUARIO: mergealo ya')" = DENY ] \
+    && ok "M5-bis: destino vacío + SIN DESTINO_INFERIDO (juez mudo/mock plano) → el piso SIGUE aplicando por default (conservador)" \
+    || bad "M5-bis: REGRESIÓN — sin declarar inferencia, el piso dejó de aplicar (default dejó de ser conservador)"
 )
 
 # ── VETO DE CITA VERIFICADA + PARSEO POR CENTINELA (capa 1+2, DETERMINISTA sin red) · juez EMPODERADO 2026-08 ──
