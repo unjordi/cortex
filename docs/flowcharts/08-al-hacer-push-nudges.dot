@@ -1,14 +1,14 @@
-// 08 — Al hacer push: los nudges que se disparan (cortex)  ·  FUENTE editable (.dot)
+// 08 — Al hacer push: el nudge que se dispara (cortex)  ·  FUENTE editable (.dot)
 // Render:  dot -Tsvg 08-al-hacer-push-nudges.dot -o 08-al-hacer-push-nudges.svg
-// ZOOM del fan-out de 9 hooks (raíz común en 03 · CONVENCIONES §6) sobre los nudges (🔔, no bloquean)
-// de un `git push`: los 2 PreToolUse en detalle — recordar-dashboard (dashboard + doc=realidad, dispara
-// en CUALQUIER push) y rama-vieja (base atrasada, SOLO en ramitas con origin/develop conocido) — más los
+// ZOOM del fan-out de 8 hooks (raíz común en 03 · CONVENCIONES §6) sobre el nudge (🔔, no bloquea)
+// de un `git push`: el ÚNICO PreToolUse en detalle — recordar-dashboard (dashboard + doc=realidad,
+// dispara en CUALQUIER push) — más los
 // PostToolUse del MISMO comando (CONVENCIONES §6): 📈 aviso-contexto foregrounded aquí, con cross-ref por
-// Nº de archivo a **03** para el detalle de 🎼 recordar-orquestar / 🔀 hud-stale / 🧹 barrer-ramas. ESTOS
-// nudges no bloquean, pero el MISMO push pasa además por los guards DENY-capaces del fan-out de 03
+// Nº de archivo a **03** para el detalle de 🎼 recordar-orquestar / 🔀 hud-stale / 🧹 barrer-ramas. ESTE
+// nudge no bloquea, pero el MISMO push pasa además por los guards DENY-capaces del fan-out de 03
 // (🚧 git-branch-guard → ver 06 · 🕵️ secret-scan → ver 07): un gate explícito antes del terminal deja
 // claro que PUSH_OK es "push que ningún guard DENY frenó", no un procede incondicional. Reconstruido
-// 2026-08-07 desde el CÓDIGO real (brain/hooks/recordar-dashboard.sh, rama-vieja.sh); ampliado tras
+// 2026-08-07 desde el CÓDIGO real (brain/hooks/recordar-dashboard.sh); ampliado tras
 // auditoría de coherencia para cubrir PostToolUse + la mutación real del push, y de nuevo tras la
 // auditoría que señaló que el chart omitía los guards DENY del mismo fan-out.
 // Re-canoniza el huérfano 05-al-hacer-push-nudges.svg (viejo «④», sin .dot ni leyenda).
@@ -37,15 +37,15 @@ digraph flujos {
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📊 recordar-dashboard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">en el push recuerda dashboard + doc=realidad (README/docs) — cierre del slice</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🖥️ entorno-maquina-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">commit de algo machine-specific (aliases/rutas de $HOME/Rosetta/entorno-maquina.md) al .claude/memory/ del repo → avisa</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🚧 no-bypass-deploy</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">correr el instalador/deploy a mano (install-brain.sh/deploy.sh) en vez de la herramienta oficial (el widget) → avisa (fail-safe: no --dry-run/--help/CI)</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🕰️ rama-vieja</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">avisa si la ramita arrastra base vieja</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌳 proteger-arbol</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">git destructivo que orfanaría commits sin pushear → avisa (fan-out: usa worktree aislado)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🛡️ proteger-fuente-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">editar la copia INSTALADA de un hook/skill que tiene fuente en el clon → avisa (se perdería en el próximo sync) (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧹 barrer-ramas</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al abrir sesión / al punto del merge barre en 2º plano ramas locales + remota huérfana + worktrees ya integrados (zombie squash-safe; throttle 24h) (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">💾 exportar-sesion-master</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">auto-export de las sesiones *-master a ~/.claude-sessions (o Drive); detached, sobrevive el cleanup de 30 días (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🗂️ checkpoint-mecanico</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">PreCompact: extractor mecánico (streaming, 0 tokens) escribe el andamio del TRAMO VIVO a hilo-mental-actual.andamio.md (GLOBAL; el skill lo regenera con --self --ensure)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📝 delegacion-registrar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">materializa el "pregunta una sola vez"</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📮 delegacion-reporte</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al terminar un agente: recuerda registrar avance + limpiar su worktree</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎼 recordar-orquestar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">N mutaciones (edits/commits) en serie SIN delegar → sugiere fan-out (advisory, no bloquea; resetea al delegar) (GLOBAL)</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧵 rehidratar-hilo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta hilo-mental-actual.md al abrir/retomar/compactar (GLOBAL) — con gate de frescura</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧵 rehidratar-hilo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta hilo-mental-actual.md + el andamio (si es más fresco) al abrir/retomar/compactar (GLOBAL) — gate de frescura + edad</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📈 aviso-contexto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reporta el watermark de contexto CRUDO (tokens · ventana · %); sin bandas ni veredicto — /context manda (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧬 aviso-drift-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">repo brained atrás de la fuente única (hooks/libs Y skills) → en tu mini-develop se AUTO-SINCRONIZA (apply+commit+push); en otra rama, avisa. ADEMÁS detecta el drift de la copia GLOBAL de skills (~/.claude/skills vs la fuente; warn-only, throttle propio). Al moverse el cerebro, NUDGE a correr la DUPLA (suficiencia+coherencia; contra la firma si hay AGENTS.md, si no sugiere instanciarla) (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔀 hud-stale</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cambiaste de rama/proyecto → tu lista de TODOs (HUD) puede ser de la tarea anterior: avisa (advisory) que la resetees/re-siembres del estado-proyecto.md de esa rama. Señal OBJETIVA (rama/cwd), stamp per-sesión, first-sight silencioso, solo en repos con backlog (GLOBAL)</font></td></tr>
@@ -100,7 +100,7 @@ digraph flujos {
 
   // ───────────────────────────────────── EL FLUJO ─────────────────────────────────────
   subgraph cluster_f0 {
-    label="08 · Al hacer push: nudges PRE (🔔 recordar-dashboard: cualquier push · 🔔 rama-vieja: solo ramita) + POST (🔔 aviso-contexto — ver 03 para recordar-orquestar/hud-stale/barrer-ramas)   (ZOOM del fan-out de 9 de 03 · estos NUDGES no bloquean; los guards DENY del mismo fan-out —🚧 git-branch-guard, 🕵️ secret-scan— viven en 06/07)";
+    label="08 · Al hacer push: nudge PRE (🔔 recordar-dashboard: cualquier push) + POST (🔔 aviso-contexto — ver 03 para recordar-orquestar/hud-stale/barrer-ramas)   (ZOOM del fan-out de 8 de 03 · este NUDGE no bloquea; los guards DENY del mismo fan-out —🚧 git-branch-guard, 🕵️ secret-scan— viven en 06/07)";
     fontname="Times"; fontsize=14; fontcolor="#5fa89e";
     color="#5fa89e"; penwidth=1.6; style="rounded"; bgcolor="#1b1712";
 
@@ -111,7 +111,7 @@ digraph flujos {
     SILENT [color="#7fb069", label="🟢 silencio (no es un `git push`)"];
 
     // ── recordar-dashboard: dispara en CUALQUIER git push, sin leer la rama (recordar-dashboard.sh
-    //    solo filtra `git push` en el comando; el filtro de rama vive SOLO en rama-vieja, más abajo) ──
+    //    solo filtra `git push` en el comando) ──
     DASH [color="#e08e45",
           label="🔔📊 recordar-dashboard\n🟠 recuerda: actualiza el Dashboard GLOBAL del cerebro\n(APPENDA «>>» al final de la Bitácora, NO un Edit — dos «>>» no chocan entre sesiones)"];
     DOCQ [shape=diamond, fillcolor="#2b2622", color="#d97757",
@@ -126,18 +126,6 @@ digraph flujos {
     CODE_W [color="#e08e45",
             label="🟠 recuerda: actualiza la doc que lo DESCRIBE\n(README/memoria/comentarios) en esta MISMA tanda"];
     NADA [color="#7fb069", label="🟢 nada que recordar"];
-
-    // ── rama-vieja: SÍ filtra por rama (excluye develop/main/HEAD) y exige origin/develop conocido;
-    //    umbral configurable por RAMA_VIEJA_UMBRAL (default 40, no fijo) ──
-    RAMPRE [shape=diamond, fillcolor="#2b2622", color="#d97757",
-            label="🕰️ rama-vieja ¿aplica?\n(rama ≠ develop/main/HEAD Y existe origin/develop)"];
-    RAM_NA [color="#7fb069",
-            label="🟢 no evaluable → sin aviso\n(rama develop/main/HEAD, o sin origin/develop — p. ej. clon fresco)"];
-    RAMV [shape=diamond, fillcolor="#2b2622", color="#d97757",
-          label="🔔🕰️ rama-vieja\n¿≥ RAMA_VIEJA_UMBRAL commits DETRÁS de origin/develop?\n(env var, default 40 — no fijo)"];
-    RAMV_OK [color="#7fb069", label="🟢 base fresca, bajo el umbral (sin aviso)"];
-    RAMV_W [color="#e08e45",
-            label="🟠 AVISA: base vieja → el MR traerá ruido/conflictos.\nRebasa antes: `git fetch origin && git rebase origin/develop`\n(repush con --force-with-lease). 📜 → 🌿 Flujo de git"];
 
     // ── convergencia de los NUDGES (no bloquean) → pero el MISMO push sigue sujeto a los guards
     //    DENY-capaces del fan-out de 03 (git-branch-guard, secret-scan) — CONVENCIONES §6 ──
@@ -171,14 +159,7 @@ digraph flujos {
     CODEQ -> CODE_W [label="sí"];
     CODEQ -> NADA [label="no", style=dashed];
 
-    PUSHQ -> RAMPRE [label="sí (git push)"];
-    RAMPRE -> RAM_NA [label="no", style=dashed];
-    RAMPRE -> RAMV [label="sí (push de ramita)"];
-    RAMV -> RAMV_OK [label="no", style=dashed];
-    RAMV -> RAMV_W [label="sí"];
-
     DOC_OK -> GATEQ; HOOK_W -> GATEQ; CODE_W -> GATEQ; NADA -> GATEQ;
-    RAM_NA -> GATEQ; RAMV_OK -> GATEQ; RAMV_W -> GATEQ;
 
     GATEQ -> DENY_STOP [label="sí (guard DENY lo rechaza)", style=dashed];
     GATEQ -> PUSH_OK [label="no"];

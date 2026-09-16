@@ -5,7 +5,7 @@ description: >
   el .sh, su cableado idempotente en install/uninstall, su prueba en test-brain, y su
   entrada en el catálogo de la pestaña "Cerebro" de las 3 GUIs (macOS/Linux/Windows).
   Úsalo cuando quieras sumar una regla nueva (bloqueante o de aviso) al cerebro; destila
-  el proceso real con que se agregaron secret-scan, rama-vieja y limite-gasto.
+  el proceso real con que se agregaron secret-scan, no-bypass-deploy y limite-gasto.
 ---
 
 # agregar-hook-cerebro — sumar un guardrail nuevo al cerebro (end-to-end)
