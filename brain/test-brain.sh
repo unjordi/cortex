@@ -4882,287 +4882,193 @@ rm -rf "$VCFIX"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "== (b6) aviso-contexto: REPORTERO TONTO (rediseño 2026-09-01, ver docs/rediseno-aviso-contexto-2026-09-01.md) =="
-# Contrato NUEVO (commit b479ac9): sin bandas/techo derivado/escalada/histéresis-por-margen — el hook
-# solo SURFACE ctx/ventana/% crudos y debounce GRUESO por PASOS de 50K tokens (STEP=ctx/50000; avisa
-# solo al CRUZAR un escalón nuevo). Estos tests reemplazan al contrato viejo (bandas 76/88/95 sobre un
-# techo=ventana×pct) que este rediseño retiró DELIBERADAMENTE.
-ACROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-ac.XXXXXX")/r"
-mkdir -p "$ACROOT/.claude/memory"
-# HOME aislado (vacío) para TODOS los helpers de aviso-contexto: sin él, el hook lee el ~/.claude/settings.json
-# REAL del dev (autoCompactWindow/autoCompactEnabled) como capa "user" y contamina la medición → tests no
-# deterministas (la aserción 'no seteado' fallaba en una máquina con autoCompactWindow en settings). Con HOME
-# vacío solo gobierna la capa de proyecto ($root) que cada test escribe. (Aislamiento cazado 2026-09-14.)
-ACHOME="$(mktemp -d "${TMPDIR:-/tmp}/brain-achome.XXXXXX")"
-ACTX="$ACROOT/transcript.jsonl"
-gen_ctx() { printf '%s\n%s\n' '{"type":"user","message":{"role":"user"}}' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$1}}}" > "$ACTX"; }
-ac() { printf '%s' "{\"transcript_path\":\"$ACTX\"}" | HOME="$ACHOME" CLAUDE_PROJECT_DIR="$ACROOT" bash "$HOOKS/aviso-contexto.sh"; }
-has_aviso() { printf '%s' "$1" | jq -e '.hookSpecificOutput.hookEventName == "PostToolUse"' >/dev/null 2>&1; }
-o="$(printf '%s' '{"transcript_path":"/no/existe"}' | CLAUDE_PROJECT_DIR="$ACROOT" bash "$HOOKS/aviso-contexto.sh")"
-is_silent "$o" && ok "aviso-contexto: sin transcript → silencio" || bad "aviso-contexto reaccionó sin transcript; got: $o"
-printf '%s\n' '{"type":"user"}' > "$ACTX"
-is_silent "$(ac)" && ok "aviso-contexto: transcript sin usage → silencio (fail-open)" || bad "aviso-contexto reaccionó sin usage"
-# Debounce por ESCALÓN de 50K (ventana forzada a 1M para números limpios): ctx bajo el 1er escalón → silencio.
-export AVISO_CONTEXTO_WINDOW_TOKENS=1000000
-gen_ctx 10000; is_silent "$(ac)" && ok "aviso-contexto: ctx bajo el 1er escalón de 50K → silencio" || bad "aviso-contexto avisó bajo el 1er escalón"
-gen_ctx 80000; has_aviso "$(ac)" && ok "aviso-contexto: cruza el escalón 1 (50K) → avisa" || bad "aviso-contexto NO avisó al cruzar el escalón 1"
-o="$(ac)"; is_silent "$o" && ok "aviso-contexto: mismo escalón → debounce (silencio)" || bad "aviso-contexto re-avisó el mismo escalón; got: $o"
-gen_ctx 95000; is_silent "$(ac)" && ok "aviso-contexto: sube DENTRO del mismo escalón (80K→95K, ambos en [50K,100K)) → sigue en debounce" || bad "aviso-contexto re-avisó sin cruzar escalón nuevo"
-gen_ctx 150000; has_aviso "$(ac)" && ok "aviso-contexto: cruza el escalón 3 (150K) → vuelve a avisar" || bad "aviso-contexto NO avisó al cruzar el escalón 3"
-gen_ctx 80000; is_silent "$(ac)" && ok "aviso-contexto: ctx bajó (compact) a un escalón menor → silencio (se re-arma)" || bad "aviso-contexto avisó justo tras bajar el ctx"
-gen_ctx 150000; has_aviso "$(ac)" && ok "aviso-contexto: vuelve a subir al escalón 3 tras el compact → avisa de nuevo" || bad "aviso-contexto NO avisó tras re-subir"
-# (F3, auditoría 2026-09-09) el debounce se keyea POR SESIÓN: dos sesiones concurrentes en el MISMO repo
-# NO se pisan el escalón (antes, stamp per-repo → thrash: la de ctx alto re-emitía y la baja se silenciaba).
-ac_sid() { printf '%s' "{\"transcript_path\":\"$ACTX\",\"session_id\":\"$1\"}" | HOME="$ACHOME" CLAUDE_PROJECT_DIR="$ACROOT" bash "$HOOKS/aviso-contexto.sh"; }
-gen_ctx 250000   # escalón 5, virgen para ambas sesiones
-has_aviso "$(ac_sid sesA)" && ok "aviso-contexto F3: sesión A cruza escalón nuevo → avisa" || bad "aviso-contexto F3: sesión A no avisó"
-is_silent "$(ac_sid sesA)" && ok "aviso-contexto F3: sesión A mismo escalón → debounce (su propio stamp)" || bad "aviso-contexto F3: sesión A re-avisó su propio escalón"
-has_aviso "$(ac_sid sesB)" && ok "aviso-contexto F3: sesión B (mismo repo/escalón) → AVISA, no la silencia A (sin thrash per-repo)" || bad "aviso-contexto F3: sesión B silenciada por el stamp de A (thrash no resuelto)"
-# Robustez: un usage de SIDECHAIN (subagente) al final NO debe contaminar la medición del hilo principal
-# (esta exclusión NO cambió con el rediseño — sigue viva en el hook, línea "select(.isSidechain != true)").
-printf '%s\n%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":50}}}" '{"isSidechain":true,"message":{"usage":{"cache_read_input_tokens":999999}}}' > "$ACTX"
-is_silent "$(ac)" && ok "aviso-contexto: ignora el usage de sidechain (mide el hilo principal, ctx=50 → escalón 0)" || bad "aviso-contexto contó el usage del sidechain"
-# (b6-staleness) FP post-compact (corpus 2026-09-01): el ÚLTIMO usage EN DISCO puede ser el PRE-compact
-# (la llamada interna de resumen manda el contexto completo → su input_tokens es el tamaño VIEJO). El hook
-# se ancla al boundary `isCompactSummary:true`: tras compactar, si aún NO hay usage fresco, NO reporta el
-# tamaño viejo. TEST DOBLE — (a) el FP ya-NO, (b) la señal real SÍ sobrevive, (c) el fresco tapa al viejo.
-gen_raw() { printf '%s\n' "$@" > "$ACTX"; rm -f "$ACROOT/.claude/memory/.contexto-aviso"; }  # transcript a medida + debounce limpio
-# (a) FP ya-NO: usage grande PRE-compact + boundary, SIN usage fresco después → SILENCIO (no grita el viejo)
-gen_raw \
-  '{"message":{"usage":{"cache_read_input_tokens":944000}}}' \
-  '{"type":"system"}' \
-  '{"type":"user","isCompactSummary":true,"message":{"role":"user","content":"resumen"}}' \
-  '{"type":"attachment"}'
-o="$(ac)"; is_silent "$o" \
-  && ok "aviso-contexto: post-compact SIN usage fresco → silencio (NO reporta el ctx PRE-compact viejo, FP staleness)" \
-  || bad "aviso-contexto reportó el tamaño PRE-compact tras un /compact (FP de staleness); got: $o"
-# (b) real-SÍ: ctx genuinamente alto (944K) SIN compact de por medio → SIGUE reportándose (el fix no mata la señal)
-gen_raw \
-  '{"type":"user","message":{"role":"user"}}' \
-  '{"message":{"usage":{"cache_read_input_tokens":944000}}}'
-o="$(ac)"; has_aviso "$o" \
-  && ok "aviso-contexto: ctx alto (944K) SIN compact → SÍ reporta (la señal real sobrevive el anclaje al boundary)" \
-  || bad "aviso-contexto silenció un contexto genuinamente alto sin compact (mutiló el reporte real); got: $o"
-# (c) post-compact CON usage fresco tras el boundary → reporta el FRESCO (60K), NUNCA el viejo (944K)
-gen_raw \
-  '{"message":{"usage":{"cache_read_input_tokens":944000}}}' \
-  '{"type":"user","isCompactSummary":true,"message":{"role":"user","content":"resumen"}}' \
-  '{"message":{"usage":{"cache_read_input_tokens":60000}}}'
-o="$(ac)"; { printf '%s' "$o" | grep -q '60K tokens' && ! printf '%s' "$o" | grep -q '944K tokens'; } \
-  && ok "aviso-contexto: post-compact CON usage fresco → reporta el FRESCO (60K), no el PRE-compact (944K)" \
-  || bad "aviso-contexto reportó el ctx PRE-compact en vez del fresco post-compact; got: $o"
-unset AVISO_CONTEXTO_WINDOW_TOKENS
-rm -rf "$(dirname "$ACROOT")"
-
-# (b6-neutro) LOCK-IN del diseño "reportero tonto": el mensaje NUNCA editorializa por nivel de llenado
-# (nada de bandas/urgencia/veredictos) y NUNCA reporta un "techo"/pct fantasma — solo el dato crudo.
-# Guarda contra que alguien reintroduzca por accidente la lógica que este rediseño retiró a propósito.
-ac_msg() { # $1=ctx $2=model(opcional) → imprime additionalContext (dir fresco)
-  local root; root="$(mktemp -d "${TMPDIR:-/tmp}/brain-acn.XXXXXX")/r"; mkdir -p "$root/.claude/memory"
-  [ -n "${2:-}" ] && printf '{"model":"%s"}' "$2" > "$root/.claude/settings.json"
-  printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$1}}}" > "$root/t.jsonl"
-  printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" | env HOME="$ACHOME" CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
-    | jq -r '.hookSpecificOutput.additionalContext // empty'
-  rm -rf "$(dirname "$root")"
+echo "== (b6) aviso-contexto: HUB que HACE — umbral ALTO/CRÍTICO, dispara el checkpoint mecánico, no gotea (rediseño 2026-09-17) =="
+# Contrato NUEVO (2026-09-17, revisión de unjordi): el hook DEJA de reportar cada 5% y de deferir ("tú
+# decides"). SILENCIO total bajo el umbral ALTO (80% del punto REAL de compact = GOV); al CRUZARLO EJECUTA
+# el checkpoint MECÁNICO (vuelca el andamio a disco, cero tokens de modelo) y emite UNA orden; UNA escalada
+# más al CRÍTICO (92%). El denominador es el punto real (autoCompactWindow si el auto-compact está ACTIVO;
+# si no, la ventana del modelo) y NO miente cuando autoCompactEnabled=false. Cada aserción marcada [↯viejo]
+# FALLA contra el hook viejo (que goteaba por escalón de 5% y nunca disparaba un checkpoint) y pasa con el nuevo.
+ACHOME="$(mktemp -d "${TMPDIR:-/tmp}/brain-achome.XXXXXX")"   # HOME aislado: la capa user real no contamina
+BRAINREPO="$SCRIPT_DIR/.."                                     # trae bin/checkpoint-mecanico.js → el disparo es REAL
+# ac_run <ctx> <window|''> <settingsjson|''> [sid] → deja el mensaje en $ACMSG y el root usado en $ACLAST
+ac_run() {
+  local ctx="$1" win="$2" set="$3" sid="${4:-s1}" root
+  root="$(mktemp -d "${TMPDIR:-/tmp}/brain-ac.XXXXXX")/r"; mkdir -p "$root/.claude/memory"
+  [ -n "$set" ] && printf '%s' "$set" > "$root/.claude/settings.json"
+  printf '%s\n' '{"type":"user","message":{"role":"user","content":"hola"}}' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$ctx}}}" > "$root/t.jsonl"
+  local envw=(); [ -n "$win" ] && envw=(AVISO_CONTEXTO_WINDOW_TOKENS="$win")
+  ACMSG="$(printf '%s' "{\"session_id\":\"$sid\",\"transcript_path\":\"$root/t.jsonl\"}" \
+    | env HOME="$ACHOME" CLAUDE_BRAIN_DIR="$BRAINREPO" "${envw[@]}" CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
+    | jq -r '.hookSpecificOutput.additionalContext // empty')"
+  ACLAST="$root"
 }
-for ctx in 50000 950000; do
-  m="$(ac_msg "$ctx" 'claude-opus-4-8')"
-  { ! printf '%s' "$m" | grep -qE 'INMINENTE|holgura|DELIBERADO|CLAUDE_AUTOCOMPACT_PCT_OVERRIDE|📐|🚨|⚠️|ℹ️|banda'; } \
-    && ok "aviso neutro: ctx=$ctx NO trae lenguaje de banda/urgencia/procedencia (reportero tonto, sin veredicto)" \
-    || bad "aviso neutro: ctx=$ctx reintrodujo lenguaje de banda/urgencia/pct-fantasma; got: $m"
-  printf '%s' "$m" | grep -q '/context' \
-    && ok "aviso neutro: ctx=$ctx sigue apuntando a /context como autoritativo" \
-    || bad "aviso neutro: ctx=$ctx perdió la referencia a /context; got: $m"
-  # Des-veredictado (2026-09-03): el cierre REPORTA (dónde manda /context, qué hace el CLI) y DEFIERE la
-  # decisión al lector; NO recomienda un curso ("mejor checkpoint+compact") ni asusta ("te BORRA el cerebro").
-  { ! printf '%s' "$m" | grep -qiE 'mejor checkpoint|te BORRA|BORRA el cerebro|compacta (YA|TÚ ahora)'; } \
-    && ok "aviso neutro: ctx=$ctx sin recomendación/veredicto de acción (des-veredictado, reportero tonto)" \
-    || bad "aviso neutro: ctx=$ctx reintrodujo un veredicto/recomendación ('mejor checkpoint'/'te BORRA'); got: $m"
+
+# ── (a) NO gotea: silencio total bajo el umbral, aunque el ctx trepe muchos escalones de 5% ──
+GOTEO_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-goteo.XXXXXX")/r"; mkdir -p "$GOTEO_ROOT/.claude/memory"
+ac_step() { # $1=ctx, MISMA sesión/root, ventana 1M forzada
+  printf '%s\n' '{"type":"user","message":{"role":"user"}}' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$1}}}" > "$GOTEO_ROOT/t.jsonl"
+  printf '%s' "{\"session_id\":\"goteo\",\"transcript_path\":\"$GOTEO_ROOT/t.jsonl\"}" \
+    | env HOME="$ACHOME" CLAUDE_BRAIN_DIR="$BRAINREPO" AVISO_CONTEXTO_WINDOW_TOKENS=1000000 CLAUDE_PROJECT_DIR="$GOTEO_ROOT" bash "$HOOKS/aviso-contexto.sh" \
+    | jq -r '.hookSpecificOutput.additionalContext // empty'
+}
+goteo=0
+for c in 300000 400000 500000 600000 700000 750000 780000; do   # 30%→78% de 1M, subiendo
+  [ -n "$(ac_step "$c")" ] && goteo=1
 done
+[ "$goteo" = 0 ] \
+  && ok "[↯viejo] b6a: barrido 30%→78% (misma sesión) → SILENCIO TOTAL, no gotea (el viejo emitía en CADA escalón de 5%)" \
+  || bad "b6a: el hook emitió por debajo del umbral ALTO (¿volvió el goteo por escalón?)"
+rm -rf "$(dirname "$GOTEO_ROOT")"
 
-# (b6-math) CORRECTITUD numérica: el % de ventana y el % libre (con la reserva del 5% para el checkpoint)
-# deben cuadrar EXACTO con la aritmética entera que el hook documenta — el mismo número que /context.
-math_check() { # $1=ctx $2=window(vía escape hatch) → valida pctw/libre extraídos del mensaje
-  local ctx="$1" window="$2" m re ctxk pctw wink libre exp_pctw exp_libre
-  m="$(ac_msg_win "$ctx" "$window")"
-  re='Contexto: ([0-9]+)K tokens \(~([0-9]+)% de tu ventana ([0-9]+)K, ([0-9]+)% libre'
-  if [[ "$m" =~ $re ]]; then
-    ctxk="${BASH_REMATCH[1]}"; pctw="${BASH_REMATCH[2]}"; wink="${BASH_REMATCH[3]}"; libre="${BASH_REMATCH[4]}"
-    exp_pctw=$(( ctx * 100 / window ))
-    exp_libre=$(( 100 - exp_pctw - 5 )); [ "$exp_libre" -lt 0 ] && exp_libre=0
-    { [ "$pctw" = "$exp_pctw" ] && [ "$libre" = "$exp_libre" ] && [ "$wink" = "$(( window / 1000 ))" ]; } \
-      && ok "aviso math: ctx=$ctx ventana=$window → %ventana=$pctw (esperado $exp_pctw) y libre=$libre (esperado $exp_libre) cuadran" \
-      || bad "aviso math: ctx=$ctx ventana=$window → %ventana=$pctw/libre=$libre NO cuadran con lo esperado ($exp_pctw/$exp_libre); got: $m"
-  else
-    bad "aviso math: no se pudo parsear el mensaje para ctx=$ctx; got: $m"
-  fi
-}
-ac_msg_win() { # $1=ctx $2=window → additionalContext, dir fresco, ventana forzada
-  local root; root="$(mktemp -d "${TMPDIR:-/tmp}/brain-acm.XXXXXX")/r"; mkdir -p "$root/.claude/memory"
-  printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$1}}}" > "$root/t.jsonl"
-  printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" \
-    | env HOME="$ACHOME" AVISO_CONTEXTO_WINDOW_TOKENS="$2" CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
-    | jq -r '.hookSpecificOutput.additionalContext // empty'
-  rm -rf "$(dirname "$root")"
-}
-math_check 673000 1000000
-math_check 150000 200000
-math_check 950000 1000000
+# ── (b) al umbral DISPARA el checkpoint mecánico (andamio a disco) + orden, no reporte ──
+ac_run 700000 1000000 ""
+{ [ -z "$ACMSG" ] && [ ! -f "$ACLAST/.claude/memory/hilo-mental-actual.andamio.md" ]; } \
+  && ok "[↯viejo] b6b: bajo el umbral (70% de 1M) → SILENCIO y SIN checkpoint (no dispara nada)" \
+  || bad "b6b: por debajo del umbral habló o disparó un checkpoint; got: $ACMSG"
+rm -rf "$(dirname "$ACLAST")"
+ac_run 820000 1000000 ""
+[ -n "$ACMSG" ] && ok "b6b: cruza el umbral ALTO (82%) → emite la orden" || bad "b6b: no emitió al cruzar el umbral ALTO"
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do [ -f "$ACLAST/.claude/memory/hilo-mental-actual.andamio.md" ] && break; sleep 0.3; done
+[ -s "$ACLAST/.claude/memory/hilo-mental-actual.andamio.md" ] \
+  && ok "[↯viejo] b6b: cruza el umbral → DISPARA el checkpoint mecánico (andamio volcado a disco, cero tokens) — el viejo nunca hacía trabajo" \
+  || bad "b6b: el andamio NO apareció al cruzar el umbral (el hook no disparó el checkpoint mecánico)"
+grep -q 'Andamio mecánico' "$ACLAST/.claude/memory/hilo-mental-actual.andamio.md" 2>/dev/null \
+  && ok "b6b: el andamio trae el encabezado esperado (es el sidecar mecánico, no el hilo)" \
+  || bad "b6b: el contenido del andamio no es el esperado"
+{ printf '%s' "$ACMSG" | grep -qi 'andamio mecánico' && printf '%s' "$ACMSG" | grep -qi '/compact'; } \
+  && ok "b6b: el mensaje ORDENA (checkpoint mecánico hecho + /compact)" || bad "b6b: el mensaje no ordena el checkpoint+compact; got: $ACMSG"
+{ ! printf '%s' "$ACMSG" | grep -qi 'TÚ decides qué hacer'; } \
+  && ok "[↯viejo] b6b: SIN el 'TÚ decides qué hacer' del reportero viejo (el HUB manda, no defiere)" \
+  || bad "b6b: reintrodujo el 'TÚ decides' del diseño reportero viejo; got: $ACMSG"
+rm -rf "$(dirname "$ACLAST")"
 
-# (b6b) autoCompactWindow: se reporta CRUDO tal como viene en settings.json — sin validarlo ni derivar
-# un techo con él (residuo aceptado #3 del rediseño: "reportero tonto: reporta el dato tal cual").
-acw_msg() { # $1=ctx $2=autoCompactWindow(o vacío) → additionalContext
-  local root; root="$(mktemp -d "${TMPDIR:-/tmp}/brain-acw.XXXXXX")/r"; mkdir -p "$root/.claude/memory"
-  if [ -n "${2:-}" ]; then printf '{"model":"opus","autoCompactWindow":%s}' "$2" > "$root/.claude/settings.json"
-  else printf '{"model":"opus"}' > "$root/.claude/settings.json"; fi
-  printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$1}}}" > "$root/t.jsonl"
-  printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" | env HOME="$ACHOME" CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
+# ── escalada ALTO→CRÍTICO y re-arme tras compact (una sola escalada, sin goteo dentro de banda) ──
+ESC_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-esc.XXXXXX")/r"; mkdir -p "$ESC_ROOT/.claude/memory"
+ac_esc() { # $1=ctx, MISMA sesión/root, ventana 1M
+  printf '%s\n' '{"type":"user","message":{"role":"user"}}' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$1}}}" > "$ESC_ROOT/t.jsonl"
+  printf '%s' "{\"session_id\":\"esc\",\"transcript_path\":\"$ESC_ROOT/t.jsonl\"}" \
+    | env HOME="$ACHOME" CLAUDE_BRAIN_DIR="$BRAINREPO" AVISO_CONTEXTO_WINDOW_TOKENS=1000000 CLAUDE_PROJECT_DIR="$ESC_ROOT" bash "$HOOKS/aviso-contexto.sh" \
     | jq -r '.hookSpecificOutput.additionalContext // empty'
-  rm -rf "$(dirname "$root")"
 }
-{ printf '%s' "$(acw_msg 80000 543210)" | grep -q 'autoCompactWindow: 543210'; } \
-  && ok "aviso autoCompactWindow: presente en settings.json → se cita CRUDO (543210)" \
-  || bad "aviso autoCompactWindow: no citó el valor crudo de settings.json"
-{ printf '%s' "$(acw_msg 80000)" | grep -q 'autoCompactWindow: no seteado'; } \
-  && ok "aviso autoCompactWindow: ausente en settings.json → reporta 'no seteado' (no inventa un número)" \
-  || bad "aviso autoCompactWindow: inventó un valor sin settings.json"
+e1="$(ac_esc 820000)"   # cruza ALTO (82%) → emite (banda 1)
+e2="$(ac_esc 850000)"   # sigue en banda 1 (85% < 92%) → SILENCIO (no gotea dentro de banda)
+e3="$(ac_esc 940000)"   # cruza CRÍTICO (94%) → escala (banda 2)
+e4="$(ac_esc 960000)"   # sigue en banda 2 → SILENCIO
+{ [ -n "$e1" ] && [ -z "$e2" ] && [ -n "$e3" ] && [ -z "$e4" ]; } \
+  && ok "[↯viejo] b6-escalada: ALTO emite, 85% CALLA (misma banda), CRÍTICO escala, 96% CALLA — a lo sumo 2 disparos, sin goteo" \
+  || bad "b6-escalada: cadencia mal (e1=$e1 · e2=$e2 · e3=$e3 · e4=$e4)"
+printf '%s' "$e3" | grep -q '🚨' \
+  && ok "b6-escalada: el disparo CRÍTICO va en tono más urgente (🚨 RAYANDO el compact)" || bad "b6-escalada: el crítico no escaló el tono; got: $e3"
+e5="$(ac_esc 300000)"   # ctx baja (compact) → banda 0 → silencio y RE-ARMA
+e6="$(ac_esc 820000)"   # vuelve a subir → emite de nuevo
+{ [ -z "$e5" ] && [ -n "$e6" ]; } \
+  && ok "b6-escalada: tras compact (ctx baja) se RE-ARMA sola → vuelve a disparar al re-cruzar el umbral" || bad "b6-escalada: no se re-armó (e5=$e5 · e6=$e6)"
+rm -rf "$(dirname "$ESC_ROOT")"
 
-# (b6c) VENTANA DETECTADA: marcador "[1m]" / lista de 1M-NATIVOS por nombre pelón (opus-4-7/4-8/5,
-# sonnet-5, fable-5, mythos-5) siguen promoviendo a 1M — esta detección NO cambió con el rediseño (solo
-# se le quitó el techo=ventana×pct que se calculaba ENCIMA de ella). BUG 2026-07-30: sin la lista por
-# nombre, esos modelos caían a 200K y el hook viejo gritaba "INMINENTE" con la ventana real al ~13-19%.
-# Ahora se verifica reportando la VENTANA correcta en vez de un veredicto de silencio/grito.
-ac3() { # $1=model $2=ctx → additionalContext, dir fresco (sin override de ventana: ejercita la derivación)
-  local root; root="$(mktemp -d "${TMPDIR:-/tmp}/brain-ac3.XXXXXX")/r"; mkdir -p "$root/.claude/memory"
-  printf '{"model":"%s"}' "$1" > "$root/.claude/settings.json"
-  printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$2}}}" > "$root/t.jsonl"
-  printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" | env HOME="$ACHOME" CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
-    | jq -r '.hookSpecificOutput.additionalContext // empty'
-  rm -rf "$(dirname "$root")"
-}
-m="$(ac3 'opus[1m]' 600000)"
-{ printf '%s' "$m" | grep -q 'ventana 1000K' && printf '%s' "$m" | grep -q '~60%'; } \
-  && ok "aviso ventana: marcador '[1m]' → ventana 1000K, ctx 600K = 60%" \
-  || bad "aviso ventana: marcador [1m] mal derivado; got: $m"
-m="$(ac3 'opus' 150000)"
-{ printf '%s' "$m" | grep -q 'ventana 200K' && printf '%s' "$m" | grep -q '~75%'; } \
-  && ok "aviso ventana: modelo sin marcador ni 1M-nativo → ventana 200K, ctx 150K = 75%" \
-  || bad "aviso ventana: default 200K mal derivado; got: $m"
+# ── (c) DENOMINADOR = el punto REAL de compact (mockea autoCompactWindow) ──
+# ctx 180K: 90% de la ventana del MODELO (opus=200K) pero solo 20% de ACW (900K) → SILENCIO. Si midiera
+# contra el modelo dispararía; que CALLE prueba que el denominador es autoCompactWindow (el punto real).
+ac_run 180000 "" '{"model":"opus","autoCompactWindow":900000,"autoCompactEnabled":true}'
+[ -z "$ACMSG" ] \
+  && ok "[↯viejo] b6c: ctx 90% del modelo pero 20% de autoCompactWindow → SILENCIO (mide contra el punto real, no el modelo)" \
+  || bad "b6c: disparó midiendo contra la ventana del modelo en vez de autoCompactWindow; got: $ACMSG"
+rm -rf "$(dirname "$ACLAST")"
+# ctx 760K: 84% de autoCompactWindow (900K) en un modelo 1M → cruza ALTO, mide y NOMBRA contra ACW.
+ac_run 760000 "" '{"model":"claude-opus-4-8","autoCompactWindow":900000,"autoCompactEnabled":true}'
+printf '%s' "$ACMSG" | grep -q '~84% de autoCompactWindow 900K' \
+  && ok "b6c: 760K/900K=84% nombrado como autoCompactWindow (el punto real), no la ventana 1M del modelo" \
+  || bad "b6c: no midió/nombró contra autoCompactWindow; got: $ACMSG"
+printf '%s' "$ACMSG" | grep -q 'ventana del modelo: 1000K' \
+  && ok "b6c: la ventana del modelo (1000K) va como dato extra honesto" || bad "b6c: perdió la ventana del modelo como dato extra; got: $ACMSG"
+rm -rf "$(dirname "$ACLAST")"
+
+# ── (d) RESPETA autoCompactEnabled=false — no miente sobre el auto-compact ──
+# 170K = 85% de la ventana del modelo (opus=200K). Con el auto-compact APAGADO, ACW no gobierna y el corte
+# NO es automático: el mensaje dice la VERDAD y NUNCA afirma "el auto-compact ... dispara al llenarse la
+# ventana" (la línea FIJA que el hook viejo imprimía SIEMPRE, mintiendo cuando estaba apagado).
+ac_run 170000 "" '{"model":"opus","autoCompactWindow":900000,"autoCompactEnabled":false}'
+printf '%s' "$ACMSG" | grep -qi 'auto-compact APAGADO' \
+  && ok "b6d: autoCompactEnabled=false → dice 'auto-compact APAGADO → el corte lo decides tú'" \
+  || bad "b6d: no comunicó que el auto-compact está apagado; got: $ACMSG"
+{ ! printf '%s' "$ACMSG" | grep -qi 'dispara al llenarse la ventana'; } \
+  && ok "[↯viejo] b6d: NO miente con 'el auto-compact dispara al llenarse la ventana' (la mentira fija del hook viejo)" \
+  || bad "b6d: reintrodujo la afirmación falsa del auto-compact automático con el flag apagado; got: $ACMSG"
+printf '%s' "$ACMSG" | grep -q '~85% de tu ventana 200K' \
+  && ok "b6d: ACW no gobierna con el auto-compact apagado → mide contra la ventana del modelo (85% de 200K)" \
+  || bad "b6d: usó autoCompactWindow como techo pese al auto-compact apagado; got: $ACMSG"
+rm -rf "$(dirname "$ACLAST")"
+
+# ── (b6-ventana) detección de la VENTANA del modelo, leída en el denominador nombrado ──
+acden() { ac_run "$1" "" "{\"model\":\"$2\"}"; printf '%s' "$ACMSG"; }
+printf '%s' "$(acden 850000 'opus[1m]')" | grep -q 'tu ventana 1000K' \
+  && ok "b6-ventana: marcador '[1m]' → 1000K" || bad "b6-ventana: [1m] mal derivado"
+printf '%s' "$(acden 170000 'opus')" | grep -q 'tu ventana 200K' \
+  && ok "b6-ventana: modelo sin marcador ni 1M-nativo → 200K (default)" || bad "b6-ventana: default 200K mal derivado"
 for nativo in claude-opus-4-8 claude-opus-5 claude-opus-4-7 claude-sonnet-5 claude-fable-5 claude-mythos-5; do
-  m="$(ac3 "$nativo" 135000)"
-  { printf '%s' "$m" | grep -q 'ventana 1000K' && printf '%s' "$m" | grep -q '~13%'; } \
-    && ok "aviso 1M-nativo: $nativo (id pelón) → ventana 1000K (13%), NO 200K (regresión del bug 2026-07-30)" \
-    || bad "aviso 1M-nativo: $nativo NO detectado como 1M; got: $m"
+  printf '%s' "$(acden 850000 "$nativo")" | grep -q 'tu ventana 1000K' \
+    && ok "b6-ventana 1M-nativo: $nativo → 1000K" || bad "b6-ventana 1M-nativo: $nativo NO detectado como 1M"
 done
-# ...y el 1M-nativo SIGUE avisando (no se sobre-suprime) cuando de verdad se llena: opus-4-8 @ ctx 680K.
-o="$(ac3 'claude-opus-4-8' 680000)"
-{ [ -n "$o" ] && printf '%s' "$o" | grep -q 'ventana 1000K' && printf '%s' "$o" | grep -q '~68%'; } \
-  && ok "aviso 1M-nativo: opus-4-8 a ctx 680K SÍ avisa (ventana 1000K, 68%) — no sobre-suprime" \
-  || bad "aviso 1M-nativo: opus-4-8 a 680K NO avisó (sobre-supresión); got: $o"
-# Un modelo NO-nativo cuyo nombre se PARECE pero no matchea el patrón (sonnet-4-5 ≠ sonnet-5) NO se promueve.
-m="$(ac3 'claude-sonnet-4-5' 150000)"
-{ printf '%s' "$m" | grep -q 'ventana 200K'; } \
-  && ok "aviso 1M-nativo: sonnet-4-5 (parecido pero NO nativo) → sigue en 200K (el patrón no lo matchea de más)" \
-  || bad "aviso 1M-nativo: sonnet-4-5 se promovió a 1M por error; got: $m"
+printf '%s' "$(acden 170000 'claude-sonnet-4-5')" | grep -q 'tu ventana 200K' \
+  && ok "b6-ventana: sonnet-4-5 (parecido pero NO nativo) → sigue en 200K (el patrón no lo matchea de más)" \
+  || bad "b6-ventana: sonnet-4-5 se promovió a 1M por error"
 
-# (b6d) INVARIANTE FÍSICO (sin cambios por el rediseño): el ctx no cabe en una ventana MENOR que él mismo
-# → si el ctx medido supera la ventana detectada, se promueve a 1M. Solo SUBE (nunca crea falsos positivos).
-m="$(ac3 'opus' 381000)"     # ventana naive 200K, ctx 381K > 200K → invariante promueve a 1M
-{ printf '%s' "$m" | grep -q 'ventana 1000K' && printf '%s' "$m" | grep -q '~38%'; } \
-  && ok "aviso invariante: ctx 381K > ventana detectada 200K → auto-corrige a 1000K (38%)" \
-  || bad "aviso invariante: ctx 381K con ventana mal-detectada no se auto-corrigió; got: $m"
-m="$(ac3 'opus' 135000)"     # ctx 135K < 200K → SIN promoción (no sobre-corrige una sesión genuina de 200K)
-{ printf '%s' "$m" | grep -q 'ventana 200K' && printf '%s' "$m" | grep -q '~67%'; } \
-  && ok "aviso invariante: ctx 135K < ventana 200K → SIN promoción (no sobre-corrige lo genuino)" \
-  || bad "aviso invariante: promovió de más una sesión legítima de 200K; got: $m"
+# ── (b6-invariante) el ctx no cabe en una ventana menor que él → promueve a 1M (solo SUBE) ──
+printf '%s' "$(acden 850000 'opus')" | grep -q 'tu ventana 1000K' \
+  && ok "b6-invariante: ctx 850K > ventana detectada 200K → auto-corrige a 1000K" || bad "b6-invariante: no auto-corrigió"
+printf '%s' "$(acden 170000 'opus')" | grep -q 'tu ventana 200K' \
+  && ok "b6-invariante: ctx 170K < 200K → SIN promoción (no sobre-corrige lo genuino)" || bad "b6-invariante: promovió de más"
 
-# (b6e) ESCAPE HATCH AVISO_CONTEXTO_WINDOW_TOKENS: fija la ventana a mano, DISTINTO del fallback del
-# invariante físico — se prueban ambos caminos con el MISMO ctx/modelo para que se puedan diferenciar.
-acwin() { # $1=window(vacío=sin forzar) $2=ctx → additionalContext, modelo 'opus' (naive 200K)
-  local root; root="$(mktemp -d "${TMPDIR:-/tmp}/brain-acwin.XXXXXX")/r"; mkdir -p "$root/.claude/memory"
-  printf '{"model":"opus"}' > "$root/.claude/settings.json"
-  printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$2}}}" > "$root/t.jsonl"
-  local envw=(); [ -n "$1" ] && envw=(AVISO_CONTEXTO_WINDOW_TOKENS="$1")
-  printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" | env HOME="$ACHOME" "${envw[@]}" CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
-    | jq -r '.hookSpecificOutput.additionalContext // empty'
+# ── (b6-escape-hatch) AVISO_CONTEXTO_WINDOW_TOKENS fija la ventana, distinto del fallback del invariante ──
+ac_run 425000 500000 ""
+printf '%s' "$ACMSG" | grep -q 'tu ventana 500K' \
+  && ok "b6-escape-hatch: WINDOW_TOKENS=500K forzada (85%) → respeta 500K" || bad "b6-escape-hatch: no respetó el override; got: $ACMSG"
+rm -rf "$(dirname "$ACLAST")"
+ac_run 425000 "" '{"model":"opus"}'
+[ -z "$ACMSG" ] \
+  && ok "b6-escape-hatch: SIN forzar (mismo ctx) → invariante 1M (42%) → SILENCIO, distinto del override" || bad "b6-escape-hatch: el fallback no cayó al invariante; got: $ACMSG"
+rm -rf "$(dirname "$ACLAST")"
+
+# ── (b6-staleness) anclaje al último /compact (FP post-compact) — vía emitir/callar ──
+ac_raw() { # $@ = líneas del transcript ; ventana 1M forzada, root fresco
+  local root; root="$(mktemp -d "${TMPDIR:-/tmp}/brain-raw.XXXXXX")/r"; mkdir -p "$root/.claude/memory"
+  printf '%s\n' "$@" > "$root/t.jsonl"
+  ACMSG="$(printf '%s' "{\"session_id\":\"raw\",\"transcript_path\":\"$root/t.jsonl\"}" \
+    | env HOME="$ACHOME" CLAUDE_BRAIN_DIR="$BRAINREPO" AVISO_CONTEXTO_WINDOW_TOKENS=1000000 CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
+    | jq -r '.hookSpecificOutput.additionalContext // empty')"
   rm -rf "$(dirname "$root")"
 }
-{ printf '%s' "$(acwin 500000 300000)" | grep -q 'ventana 500K' && printf '%s' "$(acwin 500000 300000)" | grep -q '~60%'; } \
-  && ok "aviso escape hatch: WINDOW_TOKENS=500K forzada (ctx 300K < 500K, sin invariante) → respeta 500K (60%)" \
-  || bad "aviso escape hatch: WINDOW_TOKENS no se respetó; got: $(acwin 500000 300000)"
-{ printf '%s' "$(acwin '' 300000)" | grep -q 'ventana 1000K' && printf '%s' "$(acwin '' 300000)" | grep -qi '~30%'; } \
-  && ok "aviso escape hatch: SIN forzar (mismo ctx/modelo) → cae al invariante físico (1M, 30%), distinto del override" \
-  || bad "aviso escape hatch: el fallback sin override no coincidió con el invariante; got: $(acwin '' 300000)"
+ac_raw '{"message":{"usage":{"cache_read_input_tokens":944000}}}' '{"type":"user","isCompactSummary":true,"message":{"role":"user","content":"resumen"}}'
+[ -z "$ACMSG" ] \
+  && ok "b6-staleness: post-compact SIN usage fresco → SILENCIO (no reporta el 944K PRE-compact como 94%)" || bad "b6-staleness: gritó el tamaño pre-compact; got: $ACMSG"
+ac_raw '{"type":"user","message":{"role":"user"}}' '{"message":{"usage":{"cache_read_input_tokens":944000}}}'
+{ [ -n "$ACMSG" ] && printf '%s' "$ACMSG" | grep -q '(944K)'; } \
+  && ok "b6-staleness: ctx 944K SIN compact → SÍ emite (94%, la señal real sobrevive el anclaje)" || bad "b6-staleness: silenció un contexto genuinamente alto; got: $ACMSG"
+ac_raw '{"message":{"usage":{"cache_read_input_tokens":944000}}}' '{"type":"user","isCompactSummary":true,"message":{"role":"user","content":"resumen"}}' '{"message":{"usage":{"cache_read_input_tokens":60000}}}'
+[ -z "$ACMSG" ] \
+  && ok "[↯viejo] b6-staleness: post-compact CON fresco 60K → SILENCIO (mide 6% del fresco, no 94% del viejo)" || bad "b6-staleness: midió el ctx pre-compact en vez del fresco; got: $ACMSG"
 
-echo ""
-echo "== (b6f) aviso-contexto: debounce RELATIVO a la ventana + libre SIN saturar en 0 (C3/M4, auditoría 2026-09-11) =="
-# Antes del fix: STEP=50000 absoluto → con ventana 200K el ÚLTIMO escalón posible cae al 75% y de ahí el
-# hook enmudece hasta el auto-compact (~92-95%): ~20 puntos de silencio justo en la zona de peligro. Y
-# `libre` saturaba en 0 desde el 95%, indistinguible de 96/99%. TEST CONTRA LA FALLA: con WINDOW=200000,
-# debe EMITIR al menos una vez entre 85% y 95% (hoy: cero), y 95/96/99% deben reportar `libre` DISTINTO.
-ac200() { # $1=ctx → additionalContext, ventana forzada a 200K, dir/stamp frescos
-  local root; root="$(mktemp -d "${TMPDIR:-/tmp}/brain-ac200.XXXXXX")/r"; mkdir -p "$root/.claude/memory"
-  printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$1}}}" > "$root/t.jsonl"
-  printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" \
-    | env HOME="$ACHOME" AVISO_CONTEXTO_WINDOW_TOKENS=200000 CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
-    | jq -r '.hookSpecificOutput.additionalContext // empty'
-  rm -rf "$(dirname "$root")"
-}
-emitio_entre_85_95=0
-for c in 170000 175000 180000 185000 190000; do   # 85%..95% de 200K
-  m="$(ac200 "$c")"
-  ! is_silent "$m" && emitio_entre_85_95=1
-done
-[ "$emitio_entre_85_95" = 1 ] \
-  && ok "aviso debounce relativo: WINDOW=200K → SÍ emite al menos una vez entre 85% y 95% (antes: silencio total)" \
-  || bad "aviso debounce relativo: WINDOW=200K siguió mudo entre 85% y 95% (STEP no se hizo relativo a la ventana)"
-m95="$(ac200 190000)"; m96="$(ac200 192000)"; m99="$(ac200 198000)"
-{ [ "$m95" != "$m96" ] && [ "$m96" != "$m99" ] && [ "$m95" != "$m99" ]; } \
-  && ok "aviso libre sin saturar: 95%/96%/99% reportan mensajes DISTINTOS (antes: los tres daban '0% libre')" \
-  || bad "aviso libre sin saturar: 95/96/99% siguen siendo indistinguibles; got: [95]=$m95 [96]=$m96 [99]=$m99"
-printf '%s' "$m99" | grep -qE -- '-[0-9]+% libre' \
-  && ok "aviso libre sin saturar: al 99% reporta un déficit NEGATIVO explícito (dato crudo, no clamp a 0)" \
-  || bad "aviso libre sin saturar: al 99% no reportó negativo; got: $m99"
-# Retro-compat: con ventana 1M, STEP=WINDOW/20=50000 — el mismo escalón absoluto que el contrato viejo
-# (las pruebas b6 de arriba, que fuerzan WINDOW=1000000, siguen pasando SIN cambiarlas). El debounce es
-# per-sesión (stamp en disco), así que las DOS llamadas deben compartir el MISMO root/sesión — a
-# diferencia de ac200 (que mide un ctx aislado por llamada y no le importa el debounce entre ellas).
-AC1MROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-ac1m.XXXXXX")/r"; mkdir -p "$AC1MROOT/.claude/memory"
-ac1m() { # $1=ctx → additionalContext ('' si el hook quedó SILENCIOSO — igual que is_silent en el resto del archivo)
-  printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$1}}}" > "$AC1MROOT/t.jsonl"
-  printf '%s' "{\"transcript_path\":\"$AC1MROOT/t.jsonl\"}" \
-    | env HOME="$ACHOME" AVISO_CONTEXTO_WINDOW_TOKENS=1000000 CLAUDE_PROJECT_DIR="$AC1MROOT" bash "$HOOKS/aviso-contexto.sh" \
+# ── (b6-robust) fail-open + exclusión de sidechain + debounce PER-SESIÓN (F3) ──
+o="$(printf '%s' '{"transcript_path":"/no/existe"}' | env HOME="$ACHOME" CLAUDE_PROJECT_DIR="$ACHOME" bash "$HOOKS/aviso-contexto.sh")"
+is_silent "$o" && ok "b6-robust: sin transcript → silencio (fail-open)" || bad "b6-robust: reaccionó sin transcript; got: $o"
+ac_raw '{"type":"user"}'
+[ -z "$ACMSG" ] && ok "b6-robust: transcript sin usage → silencio (fail-open)" || bad "b6-robust: reaccionó sin usage; got: $ACMSG"
+ac_raw '{"message":{"usage":{"cache_read_input_tokens":50}}}' '{"isSidechain":true,"message":{"usage":{"cache_read_input_tokens":999999}}}'
+[ -z "$ACMSG" ] && ok "b6-robust: ignora el usage de sidechain (mide el hilo principal, ctx=50)" || bad "b6-robust: contó el usage del subagente; got: $ACMSG"
+F3ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-f3.XXXXXX")/r"; mkdir -p "$F3ROOT/.claude/memory"
+acf3() { # $1=ctx $2=sid ; MISMO repo/root, ventana 1M
+  printf '%s\n' '{"type":"user","message":{"role":"user"}}' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$1}}}" > "$F3ROOT/t.jsonl"
+  printf '%s' "{\"session_id\":\"$2\",\"transcript_path\":\"$F3ROOT/t.jsonl\"}" \
+    | env HOME="$ACHOME" CLAUDE_BRAIN_DIR="$BRAINREPO" AVISO_CONTEXTO_WINDOW_TOKENS=1000000 CLAUDE_PROJECT_DIR="$F3ROOT" bash "$HOOKS/aviso-contexto.sh" \
     | jq -r '.hookSpecificOutput.additionalContext // empty'
 }
-{ ! is_silent "$(ac1m 80000)" && is_silent "$(ac1m 95000)"; } \
-  && ok "aviso retro-compat: con ventana 1M, STEP sigue siendo 50K (80K cruza escalón, 95K sigue en el mismo)" \
-  || bad "aviso retro-compat: el escalón de 1M cambió de tamaño (rompe el contrato viejo)"
-rm -rf "$(dirname "$AC1MROOT")"
-
-echo ""
-echo "== (b6g) aviso-contexto: el % se mide contra la VENTANA GOBERNANTE, no la del modelo (fix 2026-09-14) =="
-# Bug real: /context mostraba 615K/900K=68% (el auto-compact dispara al acercarse a autoCompactWindow=900K),
-# pero el hook decía "~60% de tu ventana 1000K" (la del modelo). El % debe medir contra autoCompactWindow
-# cuando el auto-compact está ACTIVO; caer a la ventana del modelo solo cuando ACW no está seteado o el
-# auto-compact está DESACTIVADO. HOME aislado ($ACHOME): la capa de proyecto ($root) es la única que gobierna.
-ac_gov() { # $1=ctx $2=autoCompactWindow $3=autoCompactEnabled(true/false) → additionalContext
-  local root; root="$(mktemp -d "${TMPDIR:-/tmp}/brain-gov.XXXXXX")/r"; mkdir -p "$root/.claude/memory"
-  printf '{"model":"claude-opus-4-8","autoCompactWindow":%s,"autoCompactEnabled":%s}' "$2" "$3" > "$root/.claude/settings.json"
-  printf '%s\n' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$1}}}" > "$root/t.jsonl"
-  printf '%s' "{\"transcript_path\":\"$root/t.jsonl\"}" | env HOME="$ACHOME" CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
-    | jq -r '.hookSpecificOutput.additionalContext // empty'
-  rm -rf "$(dirname "$root")"
-}
-# auto-compact ACTIVO + ACW=900K (modelo 1M-nativo), ctx=615K → 68% contra ACW (NO 61% contra la del modelo)
-m="$(ac_gov 615000 900000 true)"
-{ printf '%s' "$m" | grep -q '~68% de autoCompactWindow 900K' && printf '%s' "$m" | grep -q 'ventana del modelo: 1000K'; } \
-  && ok "aviso gobernante: auto-compact activo → % contra autoCompactWindow (615/900=68%) + ventana del modelo como dato extra" \
-  || bad "aviso gobernante: NO midió contra autoCompactWindow con el auto-compact activo (el bug reportado 2026-09-14); got: $m"
-# auto-compact DESACTIVADO + ACW=900K → cae a la ventana del MODELO (615/1000=61%), con nota del porqué
-m="$(ac_gov 615000 900000 false)"
-{ printf '%s' "$m" | grep -q '~61% de tu ventana 1000K' && printf '%s' "$m" | grep -q 'auto-compact desactivado'; } \
-  && ok "aviso gobernante: auto-compact DESACTIVADO → % contra la ventana del modelo (61%) + nota 'desactivado' (ACW no gobierna)" \
-  || bad "aviso gobernante: usó autoCompactWindow como techo pese al auto-compact desactivado; got: $m"
+f3a="$(acf3 820000 sesA)"   # A cruza ALTO → emite
+f3b="$(acf3 820000 sesA)"   # A misma banda → silencio (su propio stamp)
+f3c="$(acf3 820000 sesB)"   # B mismo repo/banda → emite (el stamp de A NO la silencia)
+{ [ -n "$f3a" ] && [ -z "$f3b" ] && [ -n "$f3c" ]; } \
+  && ok "b6-robust F3: debounce PER-SESIÓN (A emite · A re-silencia su banda · B emite pese al stamp de A, sin thrash per-repo)" \
+  || bad "b6-robust F3: el debounce se pisó entre sesiones (a=$f3a · b=$f3b · c=$f3c)"
+rm -rf "$(dirname "$F3ROOT")"
 rm -rf "$ACHOME"
 
 echo ""
@@ -5569,12 +5475,20 @@ node -e '
 
 echo ""
 echo "== (m2b) checkpoint-mecanico.sh: hook de PreCompact — detached, lock por-sid, escritura atómica =="
-grep -qF 'nohup' "$SCRIPT_DIR/hooks/checkpoint-mecanico.sh" \
-  && ok "m2b: el hook corre DETACHED (nohup) — no bloquea el evento PreCompact con un transcript grande" \
-  || bad "m2b: el hook de checkpoint-mecanico ya no es detached"
-grep -qF '_CORTEX_CKPT_MECANICO_RUNNING' "$SCRIPT_DIR/hooks/checkpoint-mecanico.sh" \
-  && ok "m2b: trae centinela anti-recursión por env" \
-  || bad "m2b: falta el centinela anti-recursión"
+# La mecánica (nohup/lock/anti-recursión) se FACTORIZÓ a la lib checkpoint-mecanico-comun.sh (2026-09-17)
+# para que aviso-contexto.sh la comparta SIN drift → los greps miran la LIB; el hook solo debe sourcearla.
+grep -qF 'nohup' "$SCRIPT_DIR/hooks/checkpoint-mecanico-comun.sh" \
+  && ok "m2b: el lanzador corre DETACHED (nohup) — no bloquea el evento con un transcript grande" \
+  || bad "m2b: el lanzador checkpoint-mecanico-comun ya no es detached"
+grep -qF '_CORTEX_CKPT_MECANICO_RUNNING' "$SCRIPT_DIR/hooks/checkpoint-mecanico-comun.sh" \
+  && ok "m2b: el lanzador trae centinela anti-recursión por env" \
+  || bad "m2b: falta el centinela anti-recursión en el lanzador"
+grep -qF 'checkpoint-mecanico-comun.sh' "$SCRIPT_DIR/hooks/checkpoint-mecanico.sh" \
+  && ok "m2b: el hook de PreCompact SOURCEA la lib compartida (una sola definición, sin drift con aviso-contexto)" \
+  || bad "m2b: checkpoint-mecanico.sh no sourcea el lanzador común"
+grep -qE '^checkpoint-mecanico-comun[[:space:]]+global[[:space:]]+lib$' "$SCRIPT_DIR/hooks/MANIFEST" \
+  && ok "m2b: checkpoint-mecanico-comun declarado en el MANIFEST (global lib)" \
+  || bad "m2b: checkpoint-mecanico-comun falta/mal en el MANIFEST"
 M2BDIR="$(mktemp -d "${TMPDIR:-/tmp}/brain-m2b.XXXXXX")/r"
 mkdir -p "$M2BDIR/.claude/memory"
 printf '%s\n' '{"type":"user","message":{"role":"user","content":"hola"}}' \
@@ -6231,7 +6145,10 @@ checkpoint|checkpoint-mecanico
 checkpoint|contrato-hilo
 barrer-flotilla-cerebro|limpiar-residuo
 analizar-comando-git|proteger-arbol
-analizar-comando-git|limpiar-residuo"
+analizar-comando-git|limpiar-residuo
+aviso-contexto|checkpoint-mecanico-comun
+aviso-contexto|checkpoint-mecanico
+checkpoint-mecanico|checkpoint-mecanico-comun"
 # auditar-coherencia-cerebro|auditar-proceso-algoritmo: FAMILIA declarada, no ciclo — proceso-algoritmo
 # es la METODOLOGÍA y apunta a secciones CONCRETAS de coherencia-cerebro (que es su modo-cerebro
 # empaquetado) donde vive el detalle; el contenido está en los dos lados, así que el lector no da vueltas.
@@ -6258,6 +6175,11 @@ analizar-comando-git|limpiar-residuo"
 # sobre la MISMA familia de archivos (acg-mrdest-*) — limpiar-residuo YA mencionaba a analizar-comando-git
 # (los barre); ahora la lib menciona a limpiar-residuo EN UN COMENTARIO para explicar de dónde sale el
 # default. Ninguno sourcea al otro ni hay contenido que rebote — es acuerdo de POLÍTICA, no dependencia.
+# aviso-contexto|checkpoint-mecanico-comun, aviso-contexto|checkpoint-mecanico y
+# checkpoint-mecanico|checkpoint-mecanico-comun (rediseño aviso-contexto 2026-09-17): el lanzador del
+# andamio se FACTORIZÓ a la lib checkpoint-mecanico-comun.sh; aviso-contexto.sh (umbral) y
+# checkpoint-mecanico.sh (PreCompact) la SOURCEAN (lib<->consumidor) y son hooks HERMANOS que se mencionan
+# en sus encabezados (contexto de por qué existen). No es ciclo — la mecánica vive UNA vez, en la lib.
 ce_els=()
 for d in "$SCRIPT_DIR"/skills/*/; do [ -d "$d" ] && ce_els+=("$(basename "$d")"); done
 for h in "$HOOKS"/*.sh; do [ -e "$h" ] && ce_els+=("$(basename "$h" .sh)"); done
