@@ -12,6 +12,10 @@ El punto del skill es que el usuario **no tenga que pedir "muéstrame el to-do" 
 3. **Puebla/refresca la interfaz de tareas del harness** (`TaskCreate`/`TaskUpdate`/`TaskList`; o `TodoWrite` si tu harness la expone) con los ítems VIVOS (grupos 🟢/🟡 de la vista) — ya redactados con la higiene de abajo y con su **estatus real**. Queda renderizada de una.
 4. Si la interfaz **ya trae tareas**, **reconcília** contra el backlog durable (no dupliques): sube lo que falte, corrige estatus, cierra lo hecho.
 
+> **Reconciliar es ACTUAR, no avisar.** Si la task-list divergió del durable, la sincronizas en el acto
+> (`TaskUpdate`/`TaskCreate`); no anuncias que está stale ni que ya espeja el durable. Es tu HUD, no un
+> entregable que se narra: a lo sumo, una línea de que quedó reconciliada.
+
 Eso es lo que el usuario espera ver al escribir `/to-do` a secas: su backlog cargado como interfaz viva, sin fricción.
 
 ## Formato de salida: BACKLOG UNIFICADO agrupado por estatus

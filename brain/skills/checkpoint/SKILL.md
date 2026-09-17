@@ -167,6 +167,9 @@ compact puede perder.
      esta tanda, con su ramita/MR) · **📁 INSUMOS A LEER PARA LO QUE SIGUE** (lo que hay que abrir para
      retomar la tarea activa) · **🔧 TOOLING INTEGRADO / RELEVANTE** (scripts/skills/accesos, con su estado).
      La prosa "sin drama" (En qué estamos / Decisión abierta / Siguiente paso …) va DESPUÉS del árbol.
+   - **Tras el árbol va la VISTA /to-do (backlog por estatus) — regla dura.** Sección `## 📋 BACKLOG`, derivada
+     de `estado-proyecto.md`: **🟢 ATACABLE** (madurez 📘/📝/➖ + dónde el plan) → **🟡 NO atacable** (por qué +
+     qué lo desbloquea) → **✅ Cerrado esta sesión** (PR/decisión → ítem). Es una VISTA de `estado-proyecto.md`; si diverge, CONCILIA Y REINTENTA.
    - **Anti-drift (sub-regla dura): cuando una memoria se MUEVE / FUSIONA / RENOMBRA, sincroniza el árbol/
      lista en la MISMA tanda** — igual que `RESUELTO HOY` registra el cambio, el puntero de MEMORIAS debe
      reflejarlo, o se contradicen dentro del mismo hilo y la lista deja de ahorrarte el grep (su único
