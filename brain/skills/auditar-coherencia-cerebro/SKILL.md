@@ -45,7 +45,11 @@ propiedad y trabajo — de otro modo la introspección se vuelve o un oráculo s
   merge-squash-guard, la lib `analizar-comando-git.sh`): un cambio de precisión puede reabrir un hueco
   más fino (lección de las 9 rondas — el value-model de git reabrió 5 veces seguidas).
 - Cuando cambien **flowcharts, README-árbol o normas**: verificar que la doc sigue reflejando la realidad
-  (doc=realidad) y que las leyendas generadas cuadran con el árbol vivo.
+  (doc=realidad) y que las leyendas generadas cuadran con el árbol vivo. **Regenerar la leyenda no es
+  actualizar el diagrama** — son dos capas distintas del MISMO archivo, y suele haber parity-check solo
+  sobre una. Caso real: se afirmó a dos auditores que unos flowcharts "describían el hoy" porque se había
+  regenerado su leyenda; al medirlo, los charts estaban desfasados en tres puntos y en direcciones
+  opuestas — la leyenda estaba al día, el CONTENIDO no.
 - Como **gate de coherencia recurrente antes de CADA release `develop→main`** — barrido de rutina, no
   evento excepcional; nunca como sustituto del QA/OK de unjordi.
 
@@ -69,6 +73,14 @@ ciegas.** Para el cerebro son:
    ser un **edge REAL** que el diagrama debería depictar o anotar. Blinda contra que el auditor marque como
    "bug del chart" algo que es solo cómo se comporta el guard de verdad. (Decisión unjordi 2026-09-08:
    "aliméntaselos también a los auditores cuando corras el loop sobre ESE flowchart".)
+7. **La rama/commit de REFERENCIA correcta** — si el target es algo ya INSTALADO (una máquina, un clon),
+   la referencia es la rama desde la que se instaló, y eso se **determina, no se asume**. Caso real
+   (sep-2026): un auditor reportó "la máquina corre un cerebro DRIFTADO: 7 hooks difieren y 3 de tier
+   global están ausentes". Falso: al medirlo, **los 30 hooks instalados coincidían byte a byte con
+   `origin/main`, sin una sola excepción**. Los "7 que difieren" difieren de `origin/develop`, que llevaba
+   **30 commits sin liberar**, y los "3 ausentes" **solo existen en develop**. La máquina corría
+   exactamente lo liberado — correcto, porque el release estaba retenido a propósito. El auditor comparó
+   contra la FUENTE en vez de contra lo LIBERADO y llamó "drift" a una decisión deliberada.
 
 > **Cuando el target es el cerebro de un PROYECTO** (no el `cortex` meta), los "zapatos" se traducen:
 > audita contra la **FIRMA** = `CLAUDE.md` (thin, TOC) → el **detalle operativo** → la memoria/skill →
@@ -100,6 +112,20 @@ comillas simples/dobles, comilla en medio del valor, espacios escapados con `\`,
 exacto vive en `brain/test-brain.sh` (bloques `gbg`, `scanf`, `cm`) — que el auditor lo reuse. Sin ejecución,
 el dictamen es superficial y deja pasar justo lo que importa.
 
+**Y ejecutar como el ARNÉS, no como se te ocurra.** Un smoke casero sobre los cinco git-guards dio que
+**ninguno bloqueaba nada** — parecían desdentados. La causa era la invocación: sin el `HOME` falso que usa
+`brain/test-brain.sh`, el hook sale en silencio. Con el arnés real (JSON por stdin escapado con `jq -Rs`,
+`HOME` falso) los mismos guards **denegaban correctamente**. Casi se reporta una regresión inexistente.
+Reusa el arnés del repo para invocar; una invocación casera mide otra cosa.
+
+## La telemetría solo registra lo que HABLA
+Antes de derivar una TASA de una telemetría (frecuencia de disparo, costo, "cuántas veces pasó X"),
+comprueba qué NO queda registrado — los hooks/pasos que no emiten nada no dejan rastro. Caso real: al
+medir el costo de los hooks, los transcripts daban **26 registros para 1110 llamadas Bash**: una
+frecuencia calculada sobre esa muestra está sesgada por construcción. Un dato derivado así ("71 de 71
+disparos murieron en el muro") resultó ser, al medirlo sobre la fuente completa, **67 de 2188 — el
+3.1%**. Regla: antes de derivar una tasa de una telemetría, comprueba qué NO registra.
+
 ## Método: INDIVIDUAL → COLECTIVO (de [[auditar-proceso-algoritmo]])
 Cada auditor hace las **dos pasadas**: primero cada pieza SOLA (¿dónde truena aislada?), luego TODAS
 JUNTAS (¿una pieza correcta contradice a otra, o deja un hueco en la costura?). El dictamen separa los
@@ -112,10 +138,19 @@ nada). Cuando unjordi pide "dale vueltas hasta que salga limpio", el ciclo es:
 2. Presenta los hallazgos; con OK, **arregla en una ramita** (`fix/...` o `feat/...`), y **cada hallazgo
    nace con su TEST** (verificado por ejecución contra el guard real). Corre la suite.
 3. **Re-audita** SOLO lo que tocaste (si solo cambiaste guards, no re-corras la dimensión C intacta) +
-   una batería que intente ROMPER el fix nuevo (los fixes de precisión reabren huecos más finos).
+   una batería que intente ROMPER el fix nuevo (los fixes de precisión reabren huecos más finos). **Y
+   re-mide cualquier hallazgo VIEJO que arrastres de una ronda anterior antes de tratarlo como vigente**
+   — una alarma con fecha describe un estado pasado, no el presente. Caso real: se arrastró tres días una
+   alarma ("única copia de la config en `/tmp`, no bajar ese túnel"); al medirla, la máquina se había
+   reiniciado, `/tmp` se había limpiado y el archivo ya no existía **y el servicio sobrevivió** — levantaba
+   desde disco 25s después del boot. La nota describía un estado anterior a un despliegue posterior. Es la
+   misma falla que este skill ya persigue en la doc (doc=realidad), aplicada a los propios hallazgos.
 4. Repite hasta **CONVERGENCIA**: pídele al auditor que la DECLARE explícitamente ("el modelo resiste;
    los residuos son BAJO/fuera-de-alcance") en vez de inventar un crítico marginal para justificar otra
-   ronda. Convergió cuando no quedan hallazgos CRÍTICO/ALTO/MEDIO accionables.
+   ronda. Convergió cuando no quedan hallazgos CRÍTICO/ALTO/MEDIO accionables. **Declarar convergencia es
+   un resultado VÁLIDO, no una corrida desperdiciada** — sin esa frase explícita en el encargo, el auditor
+   tiende a inventar un hallazgo marginal para justificar la corrida; en una tanda real, **dos dictámenes
+   limpios y fundados valieron tanto como los que traían críticos**, porque ambos permitieron decidir.
 5. **Señala el patrón** si varias rondas destapan la MISMA clase (fue whack-a-mole de regex-vs-shell):
    generaliza el fix a la CLASE, no persigas instancias, y si solo quedan exóticos, **pausa y lleva a
    unjordi la decisión de convergencia** en vez de loopear indefinidamente.
@@ -177,6 +212,8 @@ Delega con `Task`/subagente `general-purpose`, uno por dimensión. Adapta el tar
 > reusa el arnés de `brain/test-brain.sh`. Convención: CONFIRMADO = ejecutado y falla (cita comando +
 > salida); PLAUSIBLE = sospecha sin cierre. Da severidad (CRÍTICO/ALTO/MEDIO/BAJO) + realismo + si hay
 > backstop server-side. Si el sistema resiste, DECLARA CONVERGENCIA explícitamente (no inventes un crítico
-> marginal). Escribe el dictamen COMPLETO a `<scratchpad>/AUDITOR-<X>.md`; tu RESPUESTA final es SOLO:
+> marginal). **Si algo de lo que te dije en este encargo resulta FALSO al medirlo, CORRÍGEME con la
+> evidencia en vez de acomodarlo** — un auditor que trabaja sobre premisas falsas audita otra cosa.
+> Escribe el dictamen COMPLETO a `<scratchpad>/AUDITOR-<X>.md`; tu RESPUESTA final es SOLO:
 > (1) veredicto en una línea (conteo por severidad + si convergió), (2) hallazgos nuevos en bullets de una
 > línea, (3) la ruta del .md. NADA más.
