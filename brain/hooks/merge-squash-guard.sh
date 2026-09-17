@@ -12,13 +12,33 @@
 # un PISO anti-basura (auditor=piso-no-meta), no una vara de calidad. El candado server-side definitivo
 # es el ajuste de GitLab `squash_option=always` (ver flujo-de-trabajo.md).
 #
-# Fail-open ante parseo (sin jq no bloquea). Vive en <repo>/.claude/hooks/ (viaja por git).
+# M7 (auditoría 2026-09-15 §2.3, homologación): SIN jq, fail-CLOSED si el comando PARECE un merge de
+# MR/PR (superset conservador) -- antes fail-open silencioso dejaba pasar CUALQUIER merge sin squash con
+# solo quitar jq del PATH. Ver el gate explícito más abajo, tras leer el input. Vive en <repo>/.claude/hooks/
+# (viaja por git).
 
 # dedupe doble-cableado: si soy la copia del REPO y la copia GLOBAL existe, cedo (la global maneja
 # esta invocación) → evita disparo doble en máquina con el cerebro global; en un clon SIN bootstrap
 # (sin copia global) la del repo sí corre. NO-debilitante: sigue disparando 1× y denegando igual.
 case "$0" in "$HOME/.claude/hooks/"*) : ;; *) [ -f "$HOME/.claude/hooks/$(basename "$0")" ] && exit 0 ;; esac
 input=$(cat)
+# M7: SIN jq no podemos parsear el comando -- pero un merge de MR/PR sin poder VERIFICAR el squash NO debe
+# colarse (evasión asimétrica idéntica a la que confirmar-merge-develop ya cerró con A3). Grep CRUDO del
+# input; si parece un merge real, DENY con causa clara; si no, exit 0 (no sobre-bloquea).
+if ! command -v jq >/dev/null 2>&1; then
+  # ALTO-2 (auditoría FMEA 2026-09-16 §1.4, CONFIRMADO): sin jq no hay forma de resolver el DESTINO real del
+  # MR (sale de la API, nunca del texto del comando) -- bloquea también un merge a tu mini-develop personal.
+  # Escape EXPLÍCITO y auditado (mismo espíritu que CLAUDE_SKIP_SECRET_SCAN): el operador YA confirmó que,
+  # sin jq, este merge es a su rama personal -- nunca un bypass silencioso, el humano manda. Se exporta en el
+  # ENTORNO de la sesión (perfil de shell / bloque "env" de ~/.claude/settings.json) -- un prefijo inline en
+  # el propio comando de Bash NO llega a este hook (proceso aparte), así que un agente no puede auto-
+  # otorgárselo a mitad de turno sin que el humano ya lo haya puesto ahí (auditoría semántica 2026-09-16).
+  [ "${CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL:-}" = "1" ] && exit 0
+  if printf '%s' "$input" | grep -qE '(mr[[:space:]]+(merge|accept)|pr[[:space:]]+merge)'; then
+    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"FRENO (sin jq): no puedo verificar si este merge ya trae --squash sin jq instalado, y un merge a develop SIEMPRE se squashea (fail-safe, no afloja nada). Si esto es TU PROPIA rama personal/mini-develop y estás seguro de que no es a develop, exporta CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 en el ENTORNO de la sesión (no como prefijo del comando) y reintenta -- o instala jq (macOS: brew install jq · Debian/Ubuntu: apt install jq · Windows: winget install jqlang.jq)."}}'
+  fi
+  exit 0
+fi
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
 [ -z "$cmd" ] && exit 0
 # PRE-FILTRO barato (superset conservador, mismo espíritu que proteger-arbol.sh): lo que este guard
@@ -29,9 +49,29 @@ case "$cmd" in *glab*|*gh*) : ;; *) exit 0 ;; esac
 # Mejora la resolución gh/glab del destino (cierra el FP de release-gh por RESOLVER bien, sin tocar el
 # fail-safe). Ausente → vacío → acg_destino_de_mr cae a CLAUDE_PROJECT_DIR (conducta de hoy).
 pcwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
+# M4 (auditoría 2026-09-15 §3.4): transcript_path para leer la MISMA señal de "¿hay release en la
+# conversación?" que usa confirmar-merge-develop — cierra la contradicción de destino-irresoluble abajo.
+tpath=$(printf '%s' "$input" | jq -r '.transcript_path // empty' 2>/dev/null)
 
-# shellcheck source=analizar-comando-git.sh
-. "$(dirname "$0")/analizar-comando-git.sh"
+# CRÍTICO-1 (auditoría FMEA 2026-09-16 §1.1, CONFIRMADO): sourcear un archivo con error de SINTAXIS mata el
+# proceso ENTERO con exit 1 -- que el harness trata como NO-bloqueante (silencio total: el guard desaparece
+# y el merge sin squash PASA sin gate). H7 (auditoría semántica 2026-09-16, BAJO): la sonda ORIGINAL trataba
+# CUALQUIER exit≠0 del `source` como "lib rota" -- pero ese código es el del ÚLTIMO comando de la lib, no un
+# diagnóstico de sintaxis (un `false` final en una lib PERFECTAMENTE válida bastaba para declarar "sintaxis"
+# y tumbar el guard a deny-total). Fix: `bash -n` ES el veredicto de sintaxis (solo parsea, nunca ejecuta).
+# Snippet IDÉNTICO en los 5 guards; a propósito FUERA de la lib (si la lib está rota, sourcear otro archivo
+# para blindarse de ella no sirve de nada).
+_ACGLIB="$(dirname "$0")/analizar-comando-git.sh"
+if [ -f "$_ACGLIB" ] && bash -n "$_ACGLIB" >/dev/null 2>&1; then
+  # shellcheck source=analizar-comando-git.sh
+  . "$_ACGLIB"
+else
+  printf '%s: analizar-comando-git.sh no cargó (ausente o con error de sintaxis) -- este guard queda SIN su lógica de detección; `bash -n "%s"` localiza el error.\n' "$(basename "$0")" "$_ACGLIB" >&2
+  if printf '%s' "$cmd" | grep -qE 'merge|accept'; then
+    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"FRENO (lib rota): analizar-comando-git.sh no cargó (error de sintaxis) y sin ella no puedo verificar si este merge trae --squash -- fail-safe, no afloja nada. Repara la lib (bash -n analizar-comando-git.sh la localiza) y reintenta; un merge a develop SIEMPRE se squashea."}}'
+  fi
+  exit 0
+fi
 
 # Comando-ejemplo tool-aware para rehacer el merge con squash + un mensaje curado (gh vs glab). Fuente
 # ÚNICA para los DOS deny del hook (falta-de-squash y mensaje-pobre) → no divergen.
@@ -52,8 +92,14 @@ acg_es_merge_mr "$cmd" || exit 0
 # ¿Ya trae squash? (--squash o -s). Si SÍ, el SQUASH está garantizado — pero un squash con MENSAJE POBRE
 # (título default de la plataforma "Merge pull request #N", vacío o placeholder de una palabra) igual
 # pierde el resumen curado que exige cerrar-slice. Validamos la CALIDAD del mensaje ANTES de dejar pasar.
+# H6 (auditoría semántica 2026-09-16, MEDIO, CONFIRMADO): este es el ÚNICO chequeo de la familia que corría
+# sobre $cmd RAW, sin pasar por acg_despoja_comillas -- la función que existe justamente para que una
+# mención ENTRECOMILLADA de "--squash" (un --description/--subject que la CITE, o un " -s " suelto dentro de
+# un texto libre) no cuente como si el flag estuviera de verdad. Medido: `--description "rehazlo con
+# --squash y listo"` hacía creer al guard que YA había squash. Se evalúa sobre el cmd DESPOJADO.
 SQUASH_RE='(--squash([[:space:]]|=|$)|(^|[[:space:]])-s([[:space:]]|$))'
-if printf '%s' "$cmd" | grep -qE "$SQUASH_RE"; then
+_cmd_sqflag=$(acg_despoja_comillas "$cmd")
+if printf '%s' "$_cmd_sqflag" | grep -qE "$SQUASH_RE"; then
   # La validación de mensaje es develop-scoped (MISMA frontera que la exigencia de squash): main=release y
   # ramas personales van libres; destino IRRESOLUBLE ⇒ PASA (la calidad del mensaje es un concern MÁS SUAVE
   # que el mecánico del squash — bloquear por él sin certeza del alcance sería FP-prone; conservador ≠ tumbar
@@ -81,9 +127,22 @@ if printf '%s' "$cmd" | grep -qE "$SQUASH_RE"; then
   if [ -z "$_deny" ] && acg_msg_editorializa "$_msg"; then
     _deny="el mensaje EDITORIALIZA el PROCESO (\"se decidió\" / \"tras analizar\" / \"el asistente\" / \"se identificó que\" / \"en esta sesión\" / \"se procedió a\"). El resumen debe describir QUÉ HACE EL CÓDIGO ahora, no CÓMO se llegó a él."
   fi
-  # (3a profundidad + 2a trazabilidad) SOLO LITERAL: el agente TIPEÓ el mensaje inline (puede añadir la
-  # línea `Rama:`/`MR:` y prosa). El título AUTO del MR es corto por naturaleza → no se le exige nada de esto.
-  if [ -z "$_deny" ] && [ "$_clase" = LITERAL ]; then
+  # M8 (auditoría 2026-09-15 §3.9): con `gh`, `--subject`/`-t` fija el TÍTULO — la convención del equipo (y
+  # el propio mensaje de deny de este guard) pone el RESUMEN CURADO en `--body`. Si el comando trae un
+  # `--body`/`-F`/`--body-file` con ALGO (aunque sea OPACO, `--body "$(cat resumen.md)"`, el caso
+  # recomendado por `_rehaz_sugerido`), la profundidad/trazabilidad NO se le exige al título — el título es
+  # corto por naturaleza cuando el resumen real vive en el body. El piso anti-basura y la editorialización
+  # (arriba) SIGUEN aplicando al título (nadie debe poner ahí un default de plataforma o basura).
+  _gh_tiene_body=0
+  if printf '%s' "$cmd" | grep -qE 'gh(\.exe)?[[:space:]]+pr' \
+     && printf '%s' "$cmd" | grep -qE '(^|[[:space:]])(--body|-F|--body-file)([[:space:]]+|=)[^[:space:]]'; then
+    _gh_tiene_body=1
+  fi
+  # (3a profundidad + 2a trazabilidad) SOLO LITERAL sin body separado: el agente TIPEÓ el mensaje inline
+  # (puede añadir la línea `Rama:`/`MR:` y prosa). El título AUTO del MR es corto por naturaleza → no se le
+  # exige nada de esto; y (M8) un título `gh` con `--body` propio tampoco — la vara se movería al body, que
+  # es OPACO en el caso recomendado y por eso no se puede verificar aquí (fail-open, igual que UNVERIFICABLE).
+  if [ -z "$_deny" ] && [ "$_clase" = LITERAL ] && [ "$_gh_tiene_body" = 0 ]; then
     if acg_msg_es_superficial "$_msg"; then
       _deny="el resumen del slice es DEMASIADO CORTO (< 12 palabras) para describir el cambio neto y su porqué. Escríbelo como prosa que diga qué hace el código ahora y por qué."
     elif acg_msg_falta_traza "$_msg"; then
@@ -116,11 +175,23 @@ fi
 # B3 (FMEA 2026-07-30): ANTES un destino irresoluble (timeout de red) NO exigía squash, mientras que
 # confirmar-merge-develop SÍ trataba el vacío como develop → "merge a develop CONFIRMADO, pero SIN
 # squash". Ahora ambos guards FALLAN al MISMO lado: destino irresoluble ⇒ exige squash (conservador),
-# SALVO señal EXPLÍCITA de release-a-main en el propio comando (main mencionado / palabra `release`),
-# para no aplastar el histórico de un release cuya red no se pudo consultar.
+# SALVO señal EXPLÍCITA de release-a-main — en el propio COMANDO (main mencionado / palabra `release`) O
+# (M4, auditoría 2026-09-15 §3.4) en la CONVERSACIÓN reciente, vía la MISMA señal que usa el piso de main
+# de confirmar-merge-develop (acg_lexico_release sobre acg_recent_intercalado). Antes este guard solo veía
+# el texto del comando: un release legítimo cuya intención vivía SOLO en la charla (típico — el usuario NO
+# repite "release" dentro del `glab mr merge 63 --yes`) hacía que confirmar-merge-develop lo reconociera
+# como release (por conversación) mientras ESTE guard, ciego a ella, forzaba squash sobre el MISMO release
+# — "dos guards, el MISMO comando, la MISMA incógnita, CONCLUSIONES OPUESTAS". No AFLOJA la exigencia de
+# squash para un develop genuino sin señal de release en NINGÚN lado (comando NI conversación).
+# H4 (auditoría de ejecución 2026-09-16, MEDIO, CONFIRMADO): acg_lexico_release miraba TODA la ventana sin
+# anclarla al MR de ESTE comando -- un "libera a main el PR 390" (OTRO MR) le prestaba su señal al merge del
+# PR 391, desactivando --squash de un merge a develop genuino. acg_lexico_release_para_mr ancla la señal al
+# mrid de ESTE comando (líneas sin id nombrado siguen aplicando genérico, igual que antes).
 _es_release_explicito() {
-  local u; u=$(acg_sin_flag_repo "$(acg_despoja_comillas "$1")")
-  printf '%s' "$u" | grep -qiE '[[:space:]:/=](main)([[:space:]]|$)|\brelease\b'
+  local u mrid; u=$(acg_sin_flag_repo "$(acg_despoja_comillas "$1")")
+  printf '%s' "$u" | grep -qiE '[[:space:]:/=](main)([[:space:]]|$)|\brelease\b' && return 0
+  mrid=$(acg_mrid "$u")
+  acg_lexico_release_para_mr "$(acg_recent_intercalado "$tpath")" "$mrid"
 }
 _destino=$(acg_destino_de_mr "$cmd" "$pcwd")
 if [ -n "$_destino" ]; then
