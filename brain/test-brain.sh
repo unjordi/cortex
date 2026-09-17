@@ -2660,6 +2660,94 @@ rm -rf "$LR2ROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (b3c4) FIX-2 / C-2: limpiar-ramas EXAMINA las ramas REMOTAS sin contraparte local (antes: invisibles) =="
+# Dictamen higiene de ramas 2026-09-17, C-2: el bucle recorría SOLO `refs/heads`, así que una rama viva en
+# `origin` sin rama local no se examinaba, no se barría y ni siquiera salía en el resumen como omitida.
+# `barrer_remota()` solo alcanza una remota si su LOCAL fue declarada zombie primero — sin local, no hay
+# entrada al código. Medido en el repo real: 12 de las 23 ramas de origin eran exactamente de esa clase
+# (8 residuo ya integrado + 4 con trabajo represado), el 100% de las invisibles.
+C2RAMA_BASE=develop
+C2ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-c2r.XXXXXX")"; C2BARE="$C2ROOT/remote.git"; C2REPO="$C2ROOT/repo"
+git init -q --bare "$C2BARE" >/dev/null 2>&1
+git init -q "$C2REPO" >/dev/null 2>&1
+git -C "$C2REPO" symbolic-ref HEAD "refs/heads/$C2RAMA_BASE" >/dev/null 2>&1
+git -C "$C2REPO" config user.email t@t >/dev/null 2>&1; git -C "$C2REPO" config user.name tester >/dev/null 2>&1
+git -C "$C2REPO" remote add origin "$C2BARE" >/dev/null 2>&1
+printf 'base\n' > "$C2REPO/base.txt"; git -C "$C2REPO" add base.txt >/dev/null 2>&1; git -C "$C2REPO" commit -qm base >/dev/null 2>&1
+git -C "$C2REPO" push -q -u origin "$C2RAMA_BASE" >/dev/null 2>&1
+# feat/D — RESIDUO: squash-integrada a la base, su LOCAL ya se borró, su REMOTA sigue viva. Es el caso
+# exacto de las 8 remotas de población A: el trabajo está integrado, solo sobra el puntero.
+git -C "$C2REPO" checkout -q -b feat/D "$C2RAMA_BASE" >/dev/null 2>&1
+printf 'd\n' > "$C2REPO/d.txt"; git -C "$C2REPO" add d.txt >/dev/null 2>&1; git -C "$C2REPO" commit -qm "trabajo D" >/dev/null 2>&1
+git -C "$C2REPO" push -q -u origin feat/D >/dev/null 2>&1
+git -C "$C2REPO" checkout -q "$C2RAMA_BASE" >/dev/null 2>&1
+git -C "$C2REPO" merge --squash feat/D >/dev/null 2>&1; git -C "$C2REPO" commit -qm "squash de feat/D" >/dev/null 2>&1
+git -C "$C2REPO" push -q origin "$C2RAMA_BASE" >/dev/null 2>&1
+git -C "$C2REPO" branch -D feat/D >/dev/null 2>&1                      # la local se va, la remota queda
+# feat/C — POBLACIÓN B: trabajo jamás integrado, sin local, remota viva. NO se toca: es trabajo represado,
+# no residuo. Que el mecanismo no lo confunda con basura es la mitad del trabajo de este fix.
+git -C "$C2REPO" checkout -q -b feat/C "$C2RAMA_BASE" >/dev/null 2>&1
+printf 'TRABAJO REPRESADO\n' > "$C2REPO/c.txt"; git -C "$C2REPO" add c.txt >/dev/null 2>&1; git -C "$C2REPO" commit -qm "trabajo C sin integrar" >/dev/null 2>&1
+git -C "$C2REPO" push -q -u origin feat/C >/dev/null 2>&1
+git -C "$C2REPO" checkout -q "$C2RAMA_BASE" >/dev/null 2>&1
+git -C "$C2REPO" branch -D feat/C >/dev/null 2>&1
+git -C "$C2REPO" fetch -q --prune origin >/dev/null 2>&1
+# teeth: las dos remotas existen y NINGUNA tiene contraparte local (si no, el test no prueba nada)
+{ git -C "$C2REPO" ls-remote --exit-code --heads origin feat/D >/dev/null 2>&1 \
+  && git -C "$C2REPO" ls-remote --exit-code --heads origin feat/C >/dev/null 2>&1; } \
+  && ok "b3c4(teeth): feat/D y feat/C existen en origin antes del barrido" || bad "b3c4(teeth): faltaba alguna remota (test mal armado)"
+{ ! git -C "$C2REPO" rev-parse --verify -q refs/heads/feat/D >/dev/null 2>&1 \
+  && ! git -C "$C2REPO" rev-parse --verify -q refs/heads/feat/C >/dev/null 2>&1; } \
+  && ok "b3c4(teeth): ninguna de las dos tiene contraparte LOCAL (son las invisibles de C-2)" || bad "b3c4(teeth): había local, el caso de C-2 no se ejercita"
+# ── dry-run: las remota-only aparecen NOMBRADAS, cada una con su veredicto
+c2dry="$(cd "$C2REPO" && CLAUDE_INTEGRACION_BASE="$C2RAMA_BASE" bash "$HOOKS/limpiar-ramas.sh" --dry-run --no-fetch 2>&1)"
+printf '%s' "$c2dry" | grep -q 'origin/feat/D' \
+  && ok "FIX-2: la remota sin local feat/D YA NO es invisible (aparece en la salida)" \
+  || bad "FIX-2: origin/feat/D no aparece por ningún lado — sigue fuera del universo del barredor; got: $c2dry"
+printf '%s' "$c2dry" | grep -q 'borraría: origin/feat/D' \
+  && ok "FIX-2: feat/D se clasifica como INTEGRADA (residuo) por señal squash-safe" \
+  || bad "FIX-2: no clasificó feat/D como integrada; got: $c2dry"
+printf '%s' "$c2dry" | grep -q 'borraría: origin/feat/C' \
+  && bad "FIX-2: propone borrar feat/C, que tiene trabajo jamás integrado (población B)" \
+  || ok "FIX-2: NO propone borrar feat/C (trabajo represado, no residuo)"
+printf '%s' "$c2dry" | grep -q 'CONSERVADA (remota sin local, trabajo sin integrar): origin/feat/C' \
+  && ok "FIX-2: feat/C se CONSERVA y se NOMBRA (deja de ser un silent cap)" \
+  || bad "FIX-2: feat/C no se reportó; got: $c2dry"
+printf '%s' "$c2dry" | grep -q 'Remotas sin local: 2 examinada(s)' \
+  && ok "FIX-2: el resumen deja de mentir — cuenta las 2 remotas sin local como universo aparte" \
+  || bad "FIX-2: el resumen no cuenta las remotas sin local; got: $c2dry"
+# el dry-run no toca nada
+git -C "$C2REPO" ls-remote --exit-code --heads origin feat/D >/dev/null 2>&1 \
+  && ok "FIX-2: --dry-run NO borró la remota (solo reportó)" || bad "FIX-2: ¡el dry-run borró origin/feat/D!"
+# ── corrida REAL: se borra el residuo, sobrevive el trabajo represado
+c2real="$(cd "$C2REPO" && CLAUDE_INTEGRACION_BASE="$C2RAMA_BASE" bash "$HOOKS/limpiar-ramas.sh" --no-fetch 2>&1)"
+! git -C "$C2REPO" ls-remote --exit-code --heads origin feat/D >/dev/null 2>&1 \
+  && ok "FIX-2: tras el barrido REAL, origin/feat/D ya no existe (residuo barrido)" \
+  || bad "FIX-2: origin/feat/D sobrevivió al barrido real; got: $c2real"
+git -C "$C2REPO" ls-remote --exit-code --heads origin feat/C >/dev/null 2>&1 \
+  && ok "FIX-2: origin/feat/C (trabajo represado) sigue INTACTA — la población B no se toca" \
+  || bad "FIX-2: BORRÓ trabajo jamás integrado (PÉRDIDA DE DATOS)"
+# ── la señal (b) NO debe aplicarse a una remota: su premisa es "la remota ya no existe"
+( . "$HOOKS/ramas-zombie.sh"
+  bz_remota_integrada "$C2REPO" feat/C "origin/feat/C" "origin/$C2RAMA_BASE" \
+    && bad "FIX-2: bz_remota_integrada declaró integrada una rama con trabajo propio (¿coló la señal (b)?)" \
+    || ok "FIX-2: bz_remota_integrada solo admite señales POSITIVAS squash-safe (razón=$BZ_RRAZON)"
+)
+# ── ESCAPE: LIMPIAR_RAMAS_SIN_REMOTAS=1 salta la pasada entera (control de que la pasada es opcional)
+git -C "$C2REPO" checkout -q -b feat/E "$C2RAMA_BASE" >/dev/null 2>&1
+printf 'e\n' > "$C2REPO/e.txt"; git -C "$C2REPO" add e.txt >/dev/null 2>&1; git -C "$C2REPO" commit -qm "trabajo E" >/dev/null 2>&1
+git -C "$C2REPO" push -q -u origin feat/E >/dev/null 2>&1
+git -C "$C2REPO" checkout -q "$C2RAMA_BASE" >/dev/null 2>&1
+git -C "$C2REPO" merge --squash feat/E >/dev/null 2>&1; git -C "$C2REPO" commit -qm "squash de feat/E" >/dev/null 2>&1
+git -C "$C2REPO" branch -D feat/E >/dev/null 2>&1
+c2skip="$(cd "$C2REPO" && CLAUDE_INTEGRACION_BASE="$C2RAMA_BASE" LIMPIAR_RAMAS_SIN_REMOTAS=1 bash "$HOOKS/limpiar-ramas.sh" --dry-run --no-fetch 2>&1)"
+printf '%s' "$c2skip" | grep -q 'Remotas sin local: 0 examinada(s)' \
+  && ok "FIX-2: LIMPIAR_RAMAS_SIN_REMOTAS=1 salta la pasada de remotas (escape disponible)" \
+  || bad "FIX-2: el escape no funcionó; got: $c2skip"
+rm -rf "$C2ROOT"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "== (b3c3) limpiar-ramas: REPORTA (nunca borra) ramas de fan-out huérfanas (worktree-agent-*, sin worktree, viejas) =="
 # Queja real (2026-09): "qué pasa con lo que deja detrás... no todo eran ramas con worktree". Un fan-out
 # (isolation:worktree) deja la rama viva si el agente cambió algo; si nadie decide mergear/descartar, la

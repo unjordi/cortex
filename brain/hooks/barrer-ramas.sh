@@ -121,7 +121,7 @@ if [ "$es_merge" = 1 ]; then
   fi
   lanzar || exit 0    # M-1: el debounce marca el ÉXITO del lanzamiento, no el intento
   printf '%s' "$now" > "$mstamp" 2>/dev/null || true
-  ctx="🧹 Merge de MR/PR detectado → barriendo en segundo plano, EN ${ROOT} (el repo donde ocurrió el merge), las ramas locales Y los worktrees que quedaron integrados (zombies squash-safe: MR mergeado / remota borrada / equivalencia de parche; también borra la rama REMOTA huérfana si el merge no la limpió; conserva trabajo sin integrar y nunca toca actual/base/develop/main/Develop*/keep/*). Detalle: ${log} · ${logwt}. Para verlo sin borrar: \`limpiar-ramas.sh --dry-run\` / \`limpiar-worktrees.sh --dry-run\`."
+  ctx="🧹 Merge de MR/PR detectado → barriendo en segundo plano, EN ${ROOT} (el repo donde ocurrió el merge), las ramas locales Y los worktrees que quedaron integrados (zombies squash-safe: MR mergeado / remota borrada / equivalencia de parche; también borra la rama REMOTA huérfana que el merge no limpió, incluidas las remotas que ya no tienen contraparte local; conserva trabajo sin integrar y nunca toca actual/base/develop/main/Develop*/keep/*). Detalle: ${log} · ${logwt}. Para verlo sin borrar: \`limpiar-ramas.sh --dry-run\` / \`limpiar-worktrees.sh --dry-run\`."
   if [ "$have_jq" = 1 ]; then
     jq -n --arg c "$ctx" '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$c}}'
   else
@@ -143,7 +143,7 @@ fi
 lanzar || exit 0    # no se pudo lanzar → NO se sella el throttle ni se anuncia un barrido que no ocurrió
 printf '%s' "$now" > "$stamp" 2>/dev/null || true
 
-ctx="🧹 Barriendo ramas locales Y worktrees YA integrados de ${ROOT} en segundo plano (zombies squash-safe: MR mergeado / remota borrada / equivalencia de parche; también borra la rama REMOTA huérfana si el merge no la limpió; conserva trabajo sin integrar y nunca toca actual/base/develop/main/Develop*/keep/*). Throttle ${horas}h. Detalle del último barrido: ${log} · ${logwt}. Para verlo sin borrar: \`limpiar-ramas.sh --dry-run\` / \`limpiar-worktrees.sh --dry-run\`."
+ctx="🧹 Barriendo ramas locales Y worktrees YA integrados de ${ROOT} en segundo plano (zombies squash-safe: MR mergeado / remota borrada / equivalencia de parche; también borra la rama REMOTA huérfana que el merge no limpió, incluidas las remotas que ya no tienen contraparte local; conserva trabajo sin integrar y nunca toca actual/base/develop/main/Develop*/keep/*). Throttle ${horas}h. Detalle del último barrido: ${log} · ${logwt}. Para verlo sin borrar: \`limpiar-ramas.sh --dry-run\` / \`limpiar-worktrees.sh --dry-run\`."
 if [ "$have_jq" = 1 ]; then
   jq -n --arg c "$ctx" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}}'
 else

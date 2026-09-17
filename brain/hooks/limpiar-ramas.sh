@@ -1,10 +1,19 @@
 #!/usr/bin/env bash
-# limpiar-ramas.sh — barre las RAMAS LOCALES ya integradas de ESTE repo: BORRA las que su MR se mergeó
-# (típicamente con --squash, y el remoto se borró al cerrar → localmente quedan `: gone`) y CONSERVA las
-# que tienen trabajo sin integrar. Antídoto ESTRUCTURAL a la acumulación de ramas squasheadas: el squash
-# rompe la detección de "mergeada" de `git branch -d` (la rama no queda de ancestro) y `fetch --prune`
-# NO borra ramas locales → nadie las barría y se acumulaban (un caso real: 60+ en un repo).
+# limpiar-ramas.sh — barre las ramas ya integradas de ESTE repo, en DOS pasadas: las LOCALES (BORRA las que
+# su MR se mergeó —típicamente con --squash, y el remoto se borró al cerrar → localmente quedan `: gone`—
+# y CONSERVA las que tienen trabajo sin integrar) y, después, las REMOTAS SIN CONTRAPARTE LOCAL. Antídoto
+# ESTRUCTURAL a la acumulación de ramas squasheadas: el squash rompe la detección de "mergeada" de
+# `git branch -d` (la rama no queda de ancestro) y `fetch --prune` NO borra ramas locales → nadie las
+# barría y se acumulaban (un caso real: 60+ en un repo).
 #   uso: limpiar-ramas.sh [--dry-run] [--no-fetch]   (desde cualquier lugar del repo)
+#
+# C-2 — SEGUNDA PASADA (remotas sin local): una rama viva en `origin` cuya local ya no existe era INVISIBLE
+# (el bucle solo recorría `refs/heads`): ni barrida, ni conservada, ni contada como omitida. El flujo la
+# produce constantemente (fan-out en worktrees efímeros, trabajo desde otra máquina, un `branch -D` local
+# que no tocó la remota). Ahora se examinan con señales POSITIVAS squash-safe (a/e/d/c, nunca (b) — su
+# premisa es "la remota ya no existe", justo lo contrario de lo que se evalúa), se borra solo lo demostrado
+# residuo —y solo si su punta sigue siendo la evaluada—, y lo no integrado se conserva NOMBRÁNDOLO.
+# Escape: LIMPIAR_RAMAS_SIN_REMOTAS=1.
 #
 # SEGURO: reusa la MISMA lógica "zombie" (bz_es_zombie) y "protegida" (bz_protegida) que limpiar-worktrees
 # — lib ramas-zombie.sh — conserva ante CUALQUIER duda (rama nunca pusheada, con commits únicos, o squash
@@ -167,6 +176,61 @@ while IFS= read -r br; do
   fi
 done < <(git -C "$ROOT" for-each-ref --format='%(refname:short)' refs/heads 2>/dev/null)
 
+# ── SEGUNDA PASADA: ramas REMOTAS sin contraparte LOCAL ─────────────────────────────────────────────
+# C-2 (dictamen higiene de ramas 2026-09-17, CAUSA RAÍZ #2 del reguero): el bucle de arriba recorre solo
+# `refs/heads`, así que una rama que vive en `origin` y NO tiene rama local no se examina, no se barre y
+# ni siquiera sale en el resumen como omitida — es invisible incluso para el reporte de "no silent caps".
+# Medido: 12 de las 23 ramas de `origin` eran de esa clase (8 ya integradas + 4 con trabajo represado).
+# Y el flujo las produce todo el tiempo: fan-out en worktrees efímeros, trabajo hecho desde otra máquina,
+# o un `branch -D` local que no tocó la remota. `barrer_remota()` solo las alcanza si su LOCAL fue
+# declarada zombie primero: sin local, no hay entrada al código.
+#
+# SEGURIDAD: solo se borra lo DEMOSTRADO residuo por una señal POSITIVA squash-safe (bz_remota_integrada:
+# a/e/d/c, nunca (b)), y solo tras re-verificar contra el remoto que su punta sigue siendo EXACTAMENTE la
+# que evaluamos — si avanzó desde el último fetch, o no se puede consultar, se CONSERVA. Lo no integrado
+# nunca se borra: se nombra. Escape: LIMPIAR_RAMAS_SIN_REMOTAS=1.
+rem_exam=0; rem_borradas=0; rem_cons=0; rem_cons_n=""; rem_omit=0
+if [ "${LIMPIAR_RAMAS_SIN_REMOTAS:-0}" != 1 ]; then
+  for remoto in $(git -C "$ROOT" remote 2>/dev/null); do
+    while IFS= read -r br; do
+      [ -z "$br" ] && continue
+      [ "$br" = "HEAD" ] && continue                 # el puntero de rama por defecto, no una rama
+      rref="$remoto/$br"
+      # ¿tiene contraparte local? entonces ya la evaluó (y, si tocaba, la barrió) la primera pasada.
+      git -C "$ROOT" rev-parse --verify -q "refs/heads/$br" >/dev/null 2>&1 && continue
+      if bz_protegida "$br" "$base" "" ""; then rem_omit=$((rem_omit+1)); continue; fi
+      rem_exam=$((rem_exam+1))
+      # base a comparar: la REMOTA si existe (es la que de verdad refleja lo integrado en el servidor;
+      # si la local va adelante con merges sin pushear, usar la remota CONSERVA más) — si no, la local.
+      baseref="$base"
+      git -C "$ROOT" rev-parse --verify -q "refs/remotes/$remoto/$base" >/dev/null 2>&1 && baseref="$remoto/$base"
+      if bz_remota_integrada "$ROOT" "$br" "$rref" "$baseref"; then
+        if [ "$DRY" = 1 ]; then
+          echo "  [dry] remota sin local, integrada (señal $BZ_RRAZON) → borraría: $rref"; rem_borradas=$((rem_borradas+1))
+        else
+          eval_sha="$(git -C "$ROOT" rev-parse "$rref" 2>/dev/null || true)"
+          live_out="$(git -C "$ROOT" ls-remote --heads "$remoto" "$br" 2>/dev/null)"; live_rc=$?
+          live_sha="$(printf '%s' "$live_out" | awk '{print $1; exit}')"
+          if [ "$live_rc" -ne 0 ]; then
+            echo "  (remota $rref: no se pudo consultar — ¿sin red/permiso? NO se borra)"
+          elif [ -z "$live_sha" ]; then
+            echo "  (remota $rref ya no existe en el servidor — nada que borrar)"
+          elif [ -z "$eval_sha" ] || [ "$live_sha" != "$eval_sha" ]; then
+            echo "  (remota $rref AVANZÓ desde el último fetch → NO se borra: solo se borra la punta evaluada)"
+          elif git -C "$ROOT" push "$remoto" --delete "$br" >/dev/null 2>&1; then
+            rem_borradas=$((rem_borradas+1)); echo "  remota sin local borrada (señal $BZ_RRAZON): $rref"
+          else
+            echo "  (remota $rref cuelga pero no se pudo borrar — ¿sin red/permiso? se omite)"
+          fi
+        fi
+      else
+        rem_cons=$((rem_cons+1)); rem_cons_n="$(_join ', ' "$rem_cons_n" "$rref")"
+        echo "  CONSERVADA (remota sin local, trabajo sin integrar): $rref"
+      fi
+    done < <(git -C "$ROOT" for-each-ref --format='%(refname:strip=3)' "refs/remotes/$remoto" 2>/dev/null)
+  done
+fi
+
 omit_total=$((omit_ba+omit_cv+omit_wt))
 detalle=""
 [ "$omit_ba" -gt 0 ] && detalle="$(_join '; ' "$detalle" "$omit_ba base/actual: $omit_ba_n")"
@@ -175,5 +239,10 @@ detalle=""
 
 resumen="limpiar-ramas: examinadas $total de $total → $borradas integrada(s)$([ "$DRY" = 1 ] && echo ' (dry-run, no borradas)'), $conservadas con trabajo conservada(s), $huerfanas huérfana(s) de fan-out reportada(s) (nunca borradas)"
 [ "$omit_total" -gt 0 ] && resumen="$resumen, $omit_total omitida(s) ($detalle)"
+# C-2: las remotas SIN contraparte local son un universo aparte — se cuentan y se nombran aquí para que el
+# "examinadas N de N" de arriba no se lea como si fuera el total del repo (antes ni existían para el reporte).
+resumen="$resumen. Remotas sin local: $rem_exam examinada(s) → $rem_borradas integrada(s)$([ "$DRY" = 1 ] && echo ' (dry-run, no borradas)'), $rem_cons con trabajo conservada(s)"
+[ "$rem_cons" -gt 0 ] && resumen="$resumen ($rem_cons_n)"
+[ "$rem_omit" -gt 0 ] && resumen="$resumen, $rem_omit protegida(s)"
 resumen="$resumen. Base: $base."
 echo "$resumen"

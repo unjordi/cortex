@@ -181,13 +181,39 @@ _bz_cargar_prcache() {  # puebla $_BZ_PRCACHE_FILE (líneas 'rama<TAB>sha') para
 }
 # bz_pr_mergeado ROOT BR → 0 si el PR/MR de BR se mergeó y su head CONTIENE el tip actual de BR (todos sus
 # commits integrados). Si BR trae commits MÁS ALLÁ del head mergeado (trabajo post-merge) → 1 (conservar).
+# El 3er argumento (opcional) es el REF a contener — por defecto la propia rama local. Existe para que la
+# pasada de ramas REMOTAS sin contraparte local pueda preguntar por el PR de `feat/x` (así se llama en el
+# foro) evaluando el containment sobre `origin/feat/x` (el único ref que existe aquí).
 bz_pr_mergeado() {
-  local ROOT="$1" br="$2" oid
+  local ROOT="$1" br="$2" ref="${3:-$2}" oid
   _bz_cargar_prcache "$ROOT"
   [ -n "$_BZ_PRCACHE_FILE" ] && [ -s "$_BZ_PRCACHE_FILE" ] || return 1
   oid="$(awk -F'\t' -v b="$br" '$1==b{print $2; exit}' "$_BZ_PRCACHE_FILE" 2>/dev/null)"
   [ -n "$oid" ] || return 1
-  git -C "$ROOT" merge-base --is-ancestor "$br" "$oid" 2>/dev/null   # tip de br ⊆ head mergeado → integrada
+  git -C "$ROOT" merge-base --is-ancestor "$ref" "$oid" 2>/dev/null   # tip ⊆ head mergeado → integrada
+}
+
+# bz_remota_integrada ROOT BR REF BASEREF → 0 si la rama REMOTA REF (que NO tiene contraparte local) ya
+# está integrada a BASEREF. Motivo en $BZ_RRAZON (a|e|d|c|vivo).
+#
+# C-2 (dictamen higiene de ramas 2026-09-17): admite SOLO las señales (a)/(e)/(d)/(c). La señal (b)
+# —"la remota ya no existe"— NO aplica aquí: su premisa es justamente lo contrario de lo que estamos
+# evaluando (esta rama existe EN el remoto), así que aplicarla inventaría zombies por construcción.
+# Todas las señales admitidas son POSITIVOS squash-safe: prueban que el contenido YA está en la base, no
+# que "no encontramos rastro". `git cherry` se usa solo en su positivo (ningún '+'), nunca en negativo —
+# bajo squash multi-commit su '+' no prueba nada.
+BZ_RRAZON=""
+bz_remota_integrada() {
+  local ROOT="$1" br="$2" ref="$3" baseref="$4" cherry
+  BZ_RRAZON=""
+  git -C "$ROOT" merge-base --is-ancestor "$ref" "$baseref" 2>/dev/null && { BZ_RRAZON=a; return 0; }   # (a)
+  if git -C "$ROOT" log --format='%B' "$baseref" -- 2>/dev/null | grep -qxF "Rama: $br"; then            # (e)
+    BZ_RRAZON=e; return 0
+  fi
+  bz_pr_mergeado "$ROOT" "$br" "$ref" && { BZ_RRAZON=d; return 0; }                                      # (d)
+  cherry=$(git -C "$ROOT" cherry "$baseref" "$ref" 2>/dev/null)                                          # (c)
+  if [ -n "$cherry" ] && ! printf '%s\n' "$cherry" | grep -q '^+'; then BZ_RRAZON=c; return 0; fi
+  BZ_RRAZON=vivo; return 1
 }
 
 # bz_es_zombie ROOT BR BASE → 0 si BR ya está integrada a BASE (zombie), 1 si conservar. Deja el MOTIVO en
