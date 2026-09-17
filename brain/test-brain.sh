@@ -3040,6 +3040,101 @@ rm -rf "$M2ROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (b3o2) FIX-3 / C-3: base IRRESOLUBLE — bz_resolver_base nunca devuelve cadena VACÍA, y sin base los barredores ABORTAN (PÉRDIDA DE DATOS) =="
+# Dictamen higiene de ramas 2026-09-17, C-3: en el fallback (3) el `|| echo main` se ligaba al PIPELINE, y
+# el pipeline termina en `sed`, que sale 0 con salida VACÍA cuando `symbolic-ref -q` no encontró origin/HEAD
+# → el `echo main` NUNCA corría → base="". Con base vacía TODAS las señales de integración fallan MUDAS
+# (is-ancestor contra "", log de "", git cherry de "") y cualquier rama con la remota `gone` cae a la señal
+# (b) → se declara "integrada" → `git branch -D` sobre trabajo jamás integrado, en segundo plano y sin
+# pedirlo. Sin cobertura hasta hoy: los cuatro tests de base (b3d/b3o) siembran SIEMPRE `develop` o
+# `Develop*`, así que la rama (3) del fallback nunca se ejercitaba — "el fixture solo siembra lo que ya
+# sabes". Condición nada exótica: `origin/HEAD` lo escribe `git clone`; un `git init` + `remote add`, un
+# `remote remove/add`, o un clon cuyo default es master/trunk quedan sin él.
+C3RAMA_BASE=main   # la rama por defecto del fixture (en variable: este archivo NO escribe el literal del
+                   # push a una rama base, para no disparar git-branch-guard sobre el propio test)
+C3ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-c3b.XXXXXX")"; C3BARE="$C3ROOT/remote.git"; C3REPO="$C3ROOT/repo"
+git init -q --bare "$C3BARE" >/dev/null 2>&1
+git init -q "$C3REPO" >/dev/null 2>&1
+git -C "$C3REPO" symbolic-ref HEAD refs/heads/main >/dev/null 2>&1   # SIN develop y SIN Develop* locales
+git -C "$C3REPO" config user.email t@t >/dev/null 2>&1; git -C "$C3REPO" config user.name tester >/dev/null 2>&1
+git -C "$C3REPO" remote add origin "$C3BARE" >/dev/null 2>&1          # remote add (no clone) → SIN origin/HEAD
+printf 'base\n' > "$C3REPO/base.txt"; git -C "$C3REPO" add base.txt >/dev/null 2>&1; git -C "$C3REPO" commit -qm base >/dev/null 2>&1
+git -C "$C3REPO" push -q -u origin "$C3RAMA_BASE" >/dev/null 2>&1
+# feat/valioso: TRABAJO IRREMPLAZABLE, jamás integrado, pusheado y con su remota borrada después (el
+# gatillo de la señal (b)) — exactamente la población B del dictamen: trabajo represado, NO residuo.
+git -C "$C3REPO" checkout -q -b feat/valioso "$C3RAMA_BASE" >/dev/null 2>&1
+printf 'TRABAJO IRREMPLAZABLE\n' > "$C3REPO/valioso.txt"; git -C "$C3REPO" add valioso.txt >/dev/null 2>&1
+git -C "$C3REPO" commit -qm "trabajo que nadie integro nunca" >/dev/null 2>&1
+git -C "$C3REPO" push -q -u origin feat/valioso >/dev/null 2>&1
+git -C "$C3REPO" push -q origin --delete feat/valioso >/dev/null 2>&1
+git -C "$C3REPO" checkout -q "$C3RAMA_BASE" >/dev/null 2>&1
+# teeth: la condición de C-3 está REPRODUCIDA (sin develop, sin Develop*, sin origin/HEAD)
+! git -C "$C3REPO" rev-parse --verify -q refs/heads/develop >/dev/null 2>&1 \
+  && ok "b3o2(teeth): el fixture NO tiene develop local (condición del fallback (3))" || bad "b3o2(teeth): había develop, el fallback no se ejercita"
+! git -C "$C3REPO" symbolic-ref -q refs/remotes/origin/HEAD >/dev/null 2>&1 \
+  && ok "b3o2(teeth): el fixture NO tiene origin/HEAD (condición exacta de C-3)" || bad "b3o2(teeth): había origin/HEAD, el fallback no se ejercita"
+( . "$HOOKS/ramas-zombie.sh"
+  c3base="$(bz_resolver_base "$C3REPO")"
+  [ "$c3base" = "$C3RAMA_BASE" ] \
+    && ok "FIX-3: sin develop y sin origin/HEAD → la base cae al último fallback (el fallback DISPARA)" \
+    || bad "FIX-3: base irresoluble devolvió '$c3base' (vacía = C-3 vivo: toda señal falla muda y (b) borra trabajo)"
+  # con la base bien resuelta, la rama con trabajo propio se CONSERVA (cherry marca '+' contra la base)
+  bz_es_zombie "$C3REPO" feat/valioso "$c3base" \
+    && bad "FIX-3: feat/valioso (trabajo jamás integrado) se declaró ZOMBIE — PÉRDIDA DE DATOS" \
+    || ok "FIX-3: feat/valioso se CONSERVA (trabajo propio no integrado, razón=$BZ_RAZON)"
+)
+# el barredor completo, en dry-run: no debe nombrar feat/valioso como borrable
+c3out="$(cd "$C3REPO" && bash "$HOOKS/limpiar-ramas.sh" --dry-run --no-fetch 2>&1)"
+printf '%s' "$c3out" | grep -q 'integrada → borraría: feat/valioso' \
+  && bad "FIX-3: limpiar-ramas propone borrar feat/valioso — en modo real sería branch -D; got: $c3out" \
+  || ok "FIX-3: limpiar-ramas NO propone borrar feat/valioso"
+printf '%s' "$c3out" | grep -q "Base: $C3RAMA_BASE\." \
+  && ok "FIX-3: el resumen reporta la base resuelta (antes: 'Base: .' — la base vacía era visible y nadie la leía)" \
+  || bad "FIX-3: el resumen no reporta la base resuelta; got: $c3out"
+# CORRIDA REAL (no dry-run): el trabajo sigue ahí. Es el aserto que de verdad mide la pérdida de datos.
+( cd "$C3REPO" && bash "$HOOKS/limpiar-ramas.sh" --no-fetch >/dev/null 2>&1 )
+git -C "$C3REPO" rev-parse --verify -q refs/heads/feat/valioso >/dev/null 2>&1 \
+  && ok "FIX-3: tras el barrido REAL, feat/valioso sigue existiendo (el trabajo no se perdió)" \
+  || bad "FIX-3: el barrido REAL BORRÓ feat/valioso — pérdida de datos confirmada"
+# ── Candado 2: base que NO RESUELVE ⇒ ABORTAR, nunca barrer. Ninguna señal de integración es evaluable
+#    sin base, así que barrer con base irresoluble jamás puede ser correcto, venga el vacío de donde venga.
+c3rc=0
+c3abort="$(cd "$C3REPO" && CLAUDE_INTEGRACION_BASE=rama-que-no-existe bash "$HOOKS/limpiar-ramas.sh" --no-fetch 2>&1)" || c3rc=$?
+[ "$c3rc" -ne 0 ] \
+  && ok "FIX-3: base que no resuelve → limpiar-ramas ABORTA con rc≠0 (rc=$c3rc)" \
+  || bad "FIX-3: base que no resuelve → limpiar-ramas corrió igual (rc=0) y evaluó con una base fantasma"
+printf '%s' "$c3abort" | grep -qi 'irresoluble' \
+  && ok "FIX-3: el aborto DICE por qué (base irresoluble), no muere mudo" \
+  || bad "FIX-3: abortó sin explicar; got: $c3abort"
+printf '%s' "$c3abort" | grep -q 'borraría\|borrada:' \
+  && bad "FIX-3: con base irresoluble llegó a proponer/ejecutar borrados" \
+  || ok "FIX-3: con base irresoluble NO evaluó ni borró ninguna rama"
+git -C "$C3REPO" rev-parse --verify -q refs/heads/feat/valioso >/dev/null 2>&1 \
+  && ok "FIX-3: tras el aborto, feat/valioso intacto" || bad "FIX-3: el aborto igual se llevó feat/valioso"
+# el gemelo estructural: limpiar-worktrees comparte la lib y debe abortar igual
+c3wrc=0
+c3wout="$(cd "$C3REPO" && CLAUDE_INTEGRACION_BASE=rama-que-no-existe bash "$HOOKS/limpiar-worktrees.sh" 2>&1)" || c3wrc=$?
+{ [ "$c3wrc" -ne 0 ] && printf '%s' "$c3wout" | grep -qi 'irresoluble'; } \
+  && ok "FIX-3: limpiar-worktrees ABORTA igual con base irresoluble (gemelos estructurales)" \
+  || bad "FIX-3: limpiar-worktrees NO abortó con base irresoluble (rc=$c3wrc); got: $c3wout"
+# ── CONTROL de la otra dirección (media prueba si falta): con base RESOLUBLE, los barredores SIGUEN
+#    corriendo y barriendo lo que sí es residuo. Un candado que aborta siempre "pasaría" los asertos de arriba.
+git -C "$C3REPO" checkout -q -b feat/hecha "$C3RAMA_BASE" >/dev/null 2>&1
+printf 'x\n' > "$C3REPO/f.txt"; git -C "$C3REPO" add f.txt >/dev/null 2>&1; git -C "$C3REPO" commit -qm hecha >/dev/null 2>&1
+git -C "$C3REPO" push -q -u origin feat/hecha >/dev/null 2>&1
+git -C "$C3REPO" checkout -q "$C3RAMA_BASE" >/dev/null 2>&1
+git -C "$C3REPO" merge --squash feat/hecha >/dev/null 2>&1; git -C "$C3REPO" commit -qm "squash de feat/hecha" >/dev/null 2>&1
+git -C "$C3REPO" push -q origin --delete feat/hecha >/dev/null 2>&1
+c3ok=0
+c3okout="$(cd "$C3REPO" && bash "$HOOKS/limpiar-ramas.sh" --no-fetch 2>&1)" || c3ok=$?
+[ "$c3ok" -eq 0 ] && ok "FIX-3 control: con base RESOLUBLE el barredor NO aborta" || bad "FIX-3 control: abortó con una base perfectamente resoluble (rc=$c3ok)"
+! git -C "$C3REPO" rev-parse --verify -q refs/heads/feat/hecha >/dev/null 2>&1 \
+  && ok "FIX-3 control: y SÍ barre el residuo genuino (feat/hecha, squash-integrada)" \
+  || bad "FIX-3 control: el candado dejó de barrer residuo real; got: $c3okout"
+rm -rf "$C3ROOT"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "== (b3p) limpiar-worktrees: M-4 — un worktree PRUNABLE (directorio ya borrado) no se reporta 'vivo' ni retiene su rama =="
 M4ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-m4.XXXXXX")"; M4REPO="$M4ROOT/repo"; mkdir -p "$M4REPO"
 git -C "$M4REPO" init -q >/dev/null 2>&1

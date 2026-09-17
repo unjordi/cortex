@@ -34,6 +34,12 @@ BITA="$ROOT/.claude/memory/bitacora.md"
 [ "$FETCH" = 1 ] && git -C "$ROOT" fetch --all --prune -q 2>/dev/null
 
 base="$(bz_resolver_base "$ROOT")"
+# C-3 (dictamen 2026-09-17): sin una base que EXISTA, toda señal de integración falla muda y las ramas caen
+# a la señal (b) — la destructiva. Abortar es la única lectura correcta de "no sé contra qué comparar".
+if ! bz_base_valida "$ROOT" "$base"; then
+  echo "limpiar-ramas: base de integración irresoluble ('$base') — NO se barre nada. Crea la base o exporta CLAUDE_INTEGRACION_BASE con una rama que exista, y reintenta." >&2
+  exit 1
+fi
 bz_aviso="$(bz_aviso_base "$ROOT")"
 [ -n "$bz_aviso" ] && echo "  (aviso: $bz_aviso — Base: $base)"   # M-2
 actual="$(git -C "$ROOT" symbolic-ref --short -q HEAD 2>/dev/null || true)"

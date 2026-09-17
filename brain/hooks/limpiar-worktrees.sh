@@ -50,6 +50,12 @@ BITA="$ROOT/.claude/memory/bitacora.md"
 # shellcheck source=ramas-zombie.sh
 . "$(dirname "$0")/ramas-zombie.sh"
 base="$(bz_resolver_base "$ROOT")"
+# C-3 (dictamen 2026-09-17): gemelo estructural del candado de limpiar-ramas — sin una base que EXISTA
+# ninguna señal de integración es evaluable, y aquí el borrado se lleva un worktree entero. Se aborta.
+if ! bz_base_valida "$ROOT" "$base"; then
+  echo "limpiar-worktrees: base de integración irresoluble ('$base') — NO se barre nada. Crea la base o exporta CLAUDE_INTEGRACION_BASE con una rama que exista, y reintenta." >&2
+  exit 1
+fi
 bz_aviso="$(bz_aviso_base "$ROOT")"
 [ -n "$bz_aviso" ] && echo "  (aviso: $bz_aviso — Base: $base)"   # M-2
 es_zombie() { bz_es_zombie "$ROOT" "$1" "$base"; }  # $1 = rama

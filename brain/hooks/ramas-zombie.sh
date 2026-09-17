@@ -68,13 +68,34 @@ bz_resolver_base() {
       fi
     fi
     # (3) fallback: develop → rama por defecto del remoto → main.
+    # C-3 (dictamen higiene de ramas 2026-09-17, PÉRDIDA DE DATOS): el `|| echo main` se ligaba al PIPELINE
+    # entero, y el pipeline TERMINA en `sed` — que sale 0 con salida VACÍA cuando `symbolic-ref -q` no
+    # encontró `origin/HEAD`. El `echo main` no corría nunca y la base quedaba en "". Con base vacía TODAS
+    # las señales de integración fallan MUDAS (is-ancestor/log/cherry contra ""), así que cualquier rama con
+    # su remota `gone` caía a la señal (b), se declaraba "integrada" y se iba en un `git branch -D` pese a
+    # traer trabajo que nadie integró nunca. El fallback a `main` es ahora un paso APARTE, que decide
+    # mirando si la cadena quedó vacía — no el código de salida de un pipeline que no lo refleja.
     if [ -z "$base" ]; then
       base=develop
-      git -C "$ROOT" rev-parse --verify -q refs/heads/develop >/dev/null 2>&1 \
-        || base=$(git -C "$ROOT" symbolic-ref --short -q refs/remotes/origin/HEAD 2>/dev/null | sed 's#origin/##' || echo main)
+      if ! git -C "$ROOT" rev-parse --verify -q refs/heads/develop >/dev/null 2>&1; then
+        base=$(git -C "$ROOT" symbolic-ref --short -q refs/remotes/origin/HEAD 2>/dev/null | sed 's#origin/##')
+        [ -n "$base" ] || base=main
+      fi
     fi
   fi
   printf '%s' "$base"
+}
+
+# bz_base_valida ROOT BASE → 0 si BASE resuelve a un commit REAL en ROOT; 1 si no (vacía o fantasma).
+# C-3, segundo candado (el que de verdad importa): NINGUNA señal de integración es evaluable sin una base
+# que exista — `merge-base --is-ancestor <br> ""`, `log ""`, `git cherry "" <br>` fallan MUDAS y empujan
+# toda rama a la señal (b), que es destructiva. Barrer con base irresoluble no puede ser correcto NUNCA,
+# venga el vacío de donde venga (fallback roto, CLAUDE_INTEGRACION_BASE con un typo, base aún no creada):
+# los barredores lo consultan y ABORTAN en vez de evaluar contra una base fantasma. Ante duda, se conserva.
+bz_base_valida() {
+  local ROOT="$1" base="${2:-}"
+  [ -n "$base" ] || return 1
+  git -C "$ROOT" rev-parse --verify -q "${base}^{commit}" >/dev/null 2>&1
 }
 
 # bz_aviso_base ROOT → imprime (por stdout) un aviso si hay AMBIGÜEDAD real en la base que
