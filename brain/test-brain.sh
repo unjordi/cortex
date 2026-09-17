@@ -4986,6 +4986,7 @@ auditar-coherencia-cerebro|auditar-proceso-algoritmo
 auditar-coherencia-cerebro|auditar-suficiencia-operativa
 auditar-coherencia-cerebro|consolidar-cerebro
 auditar-suficiencia-operativa|consolidar-cerebro
+canonizar-cerebro|consolidar-cerebro
 desinflar-memorias|positivar-doc
 hud-stale|to-do
 drift-cerebro-comun|exportar-sesion-master
@@ -4997,6 +4998,9 @@ barrer-flotilla-cerebro|limpiar-residuo"
 # auditar-coherencia-cerebro|auditar-proceso-algoritmo: FAMILIA declarada, no ciclo — proceso-algoritmo
 # es la METODOLOGÍA y apunta a secciones CONCRETAS de coherencia-cerebro (que es su modo-cerebro
 # empaquetado) donde vive el detalle; el contenido está en los dos lados, así que el lector no da vueltas.
+# canonizar-cerebro|consolidar-cerebro: HANDSHAKE de subordinación, NO ciclo de contenido — la spec de la
+# firma canónica vive UNA sola vez en canonizar (con su detector); consolidar Fase 6 solo la APUNTA como su
+# paso estructural, y canonizar declara que es ese paso. El lector no rebota: la definición está en un lado.
 # Mismo caso que el par con auditar-suficiencia-operativa, ya en la lista.
 # Los 3 pares de arriba (OLA1): exportar-sesion-master, proteger-fuente-cerebro y verificar-cerebro
 # ahora SOURCEAN drift-cerebro-comun.sh para reusar su resolve_brain_dir() — es lib<->consumidor
