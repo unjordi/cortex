@@ -3326,6 +3326,19 @@ is_block "$(dod 'X' "$TASKT" 'sí ya la validé, ciérrala' 'CIERRE=si MARCA=si 
 o="$(dod 'Terminamos la migración del módulo.' "$EDITR" 'haz el cambio' "$CS")"
 { is_block "$o" && printf '%s' "$o" | grep -qi 'PARIDAD'; } && ok "dod B4: cierre de migración → bloquea + recuerda AUDITORÍA DE PARIDAD" || bad "dod B4: no recordó la paridad en un cierre de migración"
 
+# ── CABLE a cerrar-slice (§5.3, decisión #18): el bloqueo de un CIERRE real (tras tocar código, sin marca)
+# nombra el ritual cerrar-slice (ENRIQUECIMIENTO — el candado sigue exigiendo la marca, no afloja nada).
+# FILTRO POR DESTINO en un Stop hook: lo aproxima la clasificación del juez — el trabajo de la MINI-develop es
+# CIERRE=no → el hook NI dispara → el ritual NO se nombra ahí (cero ruido en la iteración de la rama personal). ──
+o_cs="$(dod 'El módulo quedó listo e integrado a develop.' "$EDITR" 'haz el cambio' "$CS")"
+{ is_block "$o_cs" && printf '%s' "$o_cs" | jq -r '.reason' | grep -qi 'cerrar-slice'; } \
+  && ok "dod cable: cierre real + código + MARCA=no → el bloqueo nombra cerrar-slice" \
+  || bad "dod cable: el bloqueo de un cierre real NO nombró cerrar-slice"
+o_cs_mini="$(dod 'Cerré el slice en mi mini-develop, pendiente tu pull a develop.' "$EDITR" 'haz el cambio' 'CIERRE=no MARCA=no VISUAL=no')"
+{ is_silent "$o_cs_mini" && ! printf '%s' "$o_cs_mini" | grep -qi 'cerrar-slice'; } \
+  && ok "dod cable: trabajo en la mini (CIERRE=no) → silencio, sin ruido de cerrar-slice (filtro por destino)" \
+  || bad "dod cable: el trabajo en la mini generó ruido de cerrar-slice (debía callar)"
+
 # ── #6: el OK del usuario dado por AskUserQuestion (widget) llega como tool_result + .toolUseResult.answers,
 # NO como texto de usuario → antes NO entraba a $usertext → el veto de cita no lo encontraba → MARCA se
 # forzaba a 'no'. Ahora la opción elegida se surfacea a $usertext. Se prueba END-TO-END con MOCK_RAW (el
@@ -5746,6 +5759,7 @@ confirmar-merge-develop|merge-squash-guard
 detectar-secretos|secret-scan
 confirmar-merge-develop|juez-comun
 dod-verificar|juez-comun
+cerrar-slice|dod-verificar
 cerrar-slice|merge-squash-guard
 cerrar-slice|recordar-dashboard
 delegacion-comun|delegacion-gate

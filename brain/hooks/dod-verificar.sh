@@ -342,6 +342,12 @@ mig=""
 printf '%s' "$last" | grep -qiE 'migrac|migrad|paridad|legad' && mig="
   • OJO MIGRACIÓN: la prueba ACORDADA para declarar avance NO es build+tests, es una AUDITORÍA DE PARIDAD legado→nuevo (inventario de paridad + el módulo real del legado). Un build verde ≠ paridad; córrela y cítala."
 
+# Cable a cerrar-slice, FILTRADO POR DESTINO: este bloque SOLO se alcanza en un CIERRE genuino (cierre=si +
+# código tocado + sin marca). El "destino develop/main" en un Stop hook (que no ve un comando de merge) lo
+# aproxima la clasificación del juez: el trabajo de la MINI-DEVELOP ('pendiente tu pull', 'en mi mini-develop',
+# 'en el roadmap') el juez lo marca CIERRE=no → el hook NI dispara → el ritual NO se nombra ahí. Así el
+# puntero a cerrar-slice aparece SOLO al declarar un entregable LISTO de verdad (integración coordinada),
+# nunca como ruido en la iteración sin fricción de la rama personal.
 reason="DETENTE — declaraste algo LISTO/terminado/funciona tras tocar código, sin cumplir la definición mutua de LISTO.
 Estado de la evidencia de ESTE turno:
   • marca de (1) funcionalidad CONFIRMADA por el usuario o (2) autorización EXPRESA de cierre: ${marca}  ← REQUERIDO
@@ -352,6 +358,7 @@ Antes de cerrar:
   1) Corre la verificación que aplique a tu stack (build/tests/lint) y CITA la salida.
   2) Actualiza .claude/memory/ (hecho[commit+fecha] / pendiente / fuera-por-decisión).
   3) NO declares LISTO ni integres a develop sin (1) confirmación funcional del usuario o (2) su autorización expresa — y CÍTALA.
+El ritual completo de cierre es la skill cerrar-slice (verifica → cura el --squash-message → MR → merge con tu OK SIN --auto-merge → cosecha aprendizajes/herramientas → manda TODO pendiente restante, incluido lo delegado, al backlog vivo): los pasos que ningún hook juzga por ti.
 Si NO es un cierre (estás dando estatus o esperando su OK), dilo con lenguaje de estatus ('en preview', 'con tu OK', 'te aviso') y podrás cerrar el turno."
 
 jq -n --arg r "$reason" '{decision:"block", reason:$r}'
