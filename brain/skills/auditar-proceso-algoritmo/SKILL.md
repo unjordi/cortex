@@ -102,6 +102,76 @@ Delega con `Task`/subagente. Persona y encargo (adáptalo al target, conserva la
 - **Fan-out si el target es grande.** Si son varios flujos/módulos independientes, lanza un auditor por
   pieza en paralelo (ver [[orquestar-fanout]]) en vez de uno serial gigante.
 
+## Lo que un banco VERDE no prueba (corpus medido, sep-2026)
+
+Destilado de dos sistemas auditados el mismo día: un cerebro con **1232 asertos en verde** que tenía dos
+críticos vivos, y un toolkit con **seis bancos en verde** al que tres lentes le encontraron **18 hallazgos,
+cuatro de ellos críticos**. En ambos, el arnés bendecía la mecánica **sin llegar nunca a la intención**.
+Cuando audites una suite, busca estas seis formas antes que ninguna otra:
+
+- **El fixture INVENTA la realidad.** Los mocks emitían valores que la herramienta real **nunca produce**:
+  un timer monotónico con hora de calendario, un LaunchDaemon ocioso marcado `running`, un nombre de unidad
+  que ya traía su sufijo, un `wg show <nombre lógico>` que el binario no soporta. **No simplificaron la
+  realidad: la fabricaron**, y por eso el verde no significaba nada. → *Cuando se mockea una herramienta, el
+  valor se CAPTURA de su salida real (`systemctl show`, `launchctl print`), no se escribe a mano.*
+- **El caso benigno no prueba el caso peligroso.** El banco probaba el `.conf` **ya en su sitio** — el único
+  camino que no copia — y así no vio un `--dry-run` que **sobrescribía la config de un túnel vivo**. Lo
+  mismo con la concurrencia: probaba dos actores sobre un lock **huérfano** y nunca contra un **dueño vivo**
+  (con un esperador, cero violaciones; con dos, violación siempre). → *Pregunta siempre qué escenario
+  monta el test, y si es el que duele.*
+- **El escenario de prueba monta lo que producción NO monta.** Todos los bancos llamaban a mano una función
+  de setup que `main()` **nunca invocaba**; el producto real salía inerte desde el primer tick y el banco
+  seguía verde. → *Un test que prepara el mundo a mano prueba el mundo preparado a mano.*
+- **La regresión anclada a una referencia MÓVIL se auto-desactiva.** Cuatro bancos comparaban contra `HEAD`:
+  en cuanto avanza la rama, la prueba deja de ver rojo **para siempre**, y la doc seguía citándolas como
+  evidencia de que "el banco sí ve rojo". → *Las regresiones se anclan a SHA fijo.*
+- **El banco que muere a media corrida y sale 0.** Sin imprimir un solo FAIL: indistinguible de un verde.
+  → *Toda suite necesita un centinela (`trap EXIT`) que distinga "terminé" de "me morí".*
+- **Definido ≠ cableado.** Seis de once predicados de verificación existían y **nadie los invocaba** — y
+  eran justo los que medían el EFECTO (el archivo quedó, sobrevive al reboot, el nombre resuelve, el túnel
+  subió); los que sí corrían medían el **registro del scheduler**. → *Verifica que el mecanismo esté
+  INVOCADO desde el camino real, no que exista.*
+
+## Cuándo el defecto no es el defecto: sospecha del NIVEL DE ABSTRACCIÓN
+
+**Si dos rondas de arreglo sobre la misma pieza producen dos FAMILIAS distintas de defectos, deja de
+parchear y pregunta si el problema es dónde vive la pieza.**
+
+Caso que lo destiló (sep-2026): un primitivo de exclusión mutua hecho a mano con `mkdir`. Ronda 1, cuatro
+críticos (bucle infinito, check-then-delete, liberación sin propiedad, lock que sobrevive al reboot). Ronda
+2, sobre el arreglo: **el fix introdujo algo peor** — una ventana de 2–5 ms en la que cinco de cinco
+esperadores entraban a la sección crítica contra un dueño **vivo**, escalando con la contención. La
+pregunta correcta no era "¿cómo arreglo esta ventana?" sino **"¿por qué estamos construyendo a mano un
+primitivo que el sistema operativo ya ofrece?"**. La respuesta estaba a un `man` de distancia: `flock(1)`
+en Linux, `lockf(1)` en macOS (nadie lo miró porque buscaban `flock`, que ahí no existe), `Mutex` del
+kernel en Windows — y con el lock sostenido por el kernel, **las dos familias de defectos dejan de tener
+dónde existir**.
+
+Señales de que estás en este caso: los arreglos son correctos individualmente y aun así aparece otro ·
+la pieza tiene un equivalente en el sistema operativo o en una librería estándar · una plataforma del
+proyecto ya resuelve el problema "gratis" y las otras lo sufren (eso NO es que esa plataforma tenga suerte:
+es que usa el nivel correcto).
+
+## Re-auditar lo que se acaba de reescribir (regla dura)
+
+**Una pieza recién reescrita es lo ÚLTIMO que se da por bueno a la primera**, y menos si es concurrencia,
+seguridad o un primitivo del que cuelga el resto. Un arreglo NO cierra la auditoría: la reabre sobre código
+nuevo que nadie ha mirado. En el caso de arriba, la segunda pasada existió porque se pidió expresamente —
+y encontró que el arreglo había empeorado el sistema. Sin ella se habría desplegado a cinco máquinas.
+
+Corolario para el ORQUESTADOR: al re-auditar, **dile al auditor qué se arregló y pídele que busque lo que
+apareció AL LADO**, no lo que ya se cerró. Y deja explícito que **declarar convergencia es un resultado
+válido y esperado**: un dictamen limpio y fundado vale igual que uno lleno de hallazgos, y sin decirlo el
+auditor tiende a inventar un crítico marginal para justificar la corrida.
+
+## Pídele al auditor que TE corrija
+
+En la tanda que destiló estas reglas, los auditores corrigieron al orquestador **media docena de veces** —
+un supuesto falso en el encargo, una cifra mal medida, una prueba que no era la más valiosa, un diagrama
+que no reflejaba el hoy. Cada corrección mejoró el resultado. **Ponlo en el encargo de forma explícita:**
+*"si algo de lo que te dije resulta falso al medirlo, corrígeme con la evidencia en vez de acomodarlo"*.
+Un auditor que trabaja sobre premisas falsas del orquestador audita otra cosa.
+
 ## Par con diagramar
 [[diagramar]] produce el mapa; **auditar-proceso-algoritmo** lo consume. El flujo natural es:
 `diagramar el proceso (calidad real) → dárselo al auditor → hallazgos priorizados → al backlog`.
