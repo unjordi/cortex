@@ -1,16 +1,19 @@
-// 06 — Integrar una rama a develop/main: los 3 git-guards de la ruta de MERGE (cortex)  ·  FUENTE editable (.dot)
-// Render:  dot -Tsvg 06-integrar-rama-a-developmain.dot -o 06-integrar-rama-a-developmain.svg
-// ZOOM del subconjunto de MERGE del fan-out de 9 hooks (raíz común en 03 · CONVENCIONES §6):
-// git-branch-guard → merge-squash-guard → confirmar-merge-develop. Reconstruido 2026-08-07 desde el CÓDIGO real
-// (brain/hooks/git-branch-guard.sh, merge-squash-guard.sh, confirmar-merge-develop.sh + libs analizar-comando-git.sh
-// y juez-comun.sh). Re-canoniza el huérfano 03-integrar-rama-a-developmain.svg (viejo «②», sin .dot ni leyenda).
-digraph flujos {
+// 00 — HOY (estado ACTUAL, no propuesta): la divergencia MEDIDA entre los tres consumidores del
+// subsistema de sesiones-master.  ·  FUENTE editable (.dot)
+// Render:  dot -Tsvg 00-hoy-divergencia-medida.dot -o 00-hoy-divergencia-medida.svg
+// ⚠️ ESTE CHART ES EL **HOY**. La propuesta vive en 01/02/03 de esta misma carpeta.
+// Construido 2026-09-16 LEYENDO el código real:
+//   brain/hooks/exportar-sesion-master.sh · brain/hooks/checkpoint-mecanico.sh
+//   brain/skills/reubicar-master/reubicar-master.sh · brain/sesiones-master/seed.sh · bin/session-lib.js
+// Cada nodo 🚧/🔴 cita archivo:línea. Documento que lo explica: docs/requerimientos-unificar-tooling-sesiones.md
+digraph hoy_divergencia {
   graph [bgcolor="#1b1712", rankdir=TB, fontname="Helvetica", splines=true,
          nodesep=0.35, ranksep=0.55, pad=0.25, compound=true];
   node  [fontname="Helvetica", fontsize=12, fontcolor="#f2ede6", shape=box,
          style="rounded,filled", fillcolor="#2b2b2b", color="#8a8a8a", penwidth=1.5];
   edge  [color="#d97757", fontname="Helvetica", fontsize=10, fontcolor="#cfc8c0", penwidth=1.4];
 
+  // ─────────────────────────── LEYENDA (regla dura del skill diagramar) ───────────────────────────
   // >>> LEYENDA-ARBOL (generado por gen-leyenda-arbol.sh desde el árbol del README — NO editar a mano) >>>
   subgraph cluster_leyenda {
     label="LEYENDA — árbol completo del cerebro (fuente: README.md)"; labeljust="l"; fontname="Times"; fontsize=14; fontcolor="#5fa89e";
@@ -90,60 +93,59 @@ digraph flujos {
   }
   // <<< LEYENDA-ARBOL <<<
 
-  // ───────────────────────────────────── EL FLUJO ─────────────────────────────────────
   subgraph cluster_f0 {
-    label="06 · Integrar una rama a develop/main   (ZOOM de la ruta de MERGE — raíz común de 9 hooks en 03; aquí 3 pueden DENY —git-branch-guard · merge-squash-guard · confirmar-merge-develop— EVALUADOS EN PARALELO sobre el MISMO comando: el árbol de abajo es la AGREGACIÓN lógica deny-gana, NO el orden real de ejecución — §6)";
+    label="00 · HOY — los mismos 5 conceptos, resueltos por separado en 3 (a veces 4) implementaciones   [ESTADO ACTUAL, no propuesta]";
     fontname="Times"; fontsize=14; fontcolor="#5fa89e";
     color="#5fa89e"; penwidth=1.6; style="rounded"; bgcolor="#1b1712";
 
-    CMD [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
-         label="intento de integrar (comando Bash con git)\n`git push` · `glab mr merge` · `gh pr merge`\n(PreToolUse/Bash → los 8 hooks corren EN PARALELO; ver 03 —7 inspeccionan git, no-bypass-deploy no-opea—.\nAquí hacemos ZOOM en los 3 que gobiernan un MERGE a base)\nNOTA: los 3 rombos de abajo EVALÚAN el MISMO comando EN PARALELO (sin despachador);\nla cadena de rombos es la AGREGACIÓN lógica deny-gana, NO orden de ejecución"];
+    // ── Los consumidores ──
+    HOOK [color="#e08e45",
+          label="🔔 exportar-sesion-master.sh   (191 líneas · tier global · Stop/SessionEnd/PreCompact)\nRESPALDO CONTINUO. Contrato: SILENCIOSO y FAIL-OPEN, siempre exit 0.\nmasters.json ×10 · customTitle ×2 · transcript ×8 · .jsonl ×2 · CLAUDE_SESSIONS_DRIVE ×4 · slug ×0 · session-lib ×0"];
 
-    // ── git-branch-guard ──
-    GBG [shape=diamond, fillcolor="#2b2622", color="#d97757",
-         label="🔒🚧 git-branch-guard\n¿push DIRECTO que TOCA base (develop/main)?\n· push explícito · push PELÓN/HEAD/--force parado EN base · +develop (force-refspec)\n· o un `mr merge`/`pr merge` que NOMBRA la base directo\n· push --all/--mirror · push PELÓN con la rama del repo OBJETIVO IRRESOLUBLE\n  (fail-safe: ante duda BLOQUEA — backstop = ramas protegidas server-side)\n(lib analizar-comando-git.sh = fuente ÚNICA)"];
-    GBG_D [color="#c0392b", penwidth=2,
-           label="🔴 DENY — «no se hace push/merge directo a develop/main».\nHaz ramita feat/… → commit → push ramita → MR. A main: release\ndeliberado, con OK SÚPER-explícito por CLI. NO reintentes.\n(M8, auditoría 2026-09-15: se retiró 'web de GitLab' como escape — norma anti-vein-popper)"];
+    REUB [color="#e08e45",
+          label="💡 reubicar-master.sh   (1331 líneas / 90,912 bytes · skill · genera un handoff ejecutable)\nLA MUDANZA. Contrato: FALLA CERRADO, punto de no retorno explícito, postcondiciones aseveradas.\nmasters.json ×23 · customTitle ×2 · transcript ×24 · .jsonl ×29 · CLAUDE_SESSIONS_DRIVE ×6 · slug ×46 · session-lib ×13"];
 
-    // ── merge-squash-guard ──
-    MSG [shape=diamond, fillcolor="#2b2622", color="#d97757",
-         label="🔒🔗 merge-squash-guard\n¿es `glab mr merge`/`gh pr merge` REAL?\n→ resuelve el DESTINO del MR (lib acg_destino_de_mr; caché por MR-id; timeout ~6s)\ndestino=develop bifurca por SIN/CON --squash — main/personal/no-merge pasan libres"];
-    MSG_D [color="#c0392b", penwidth=2,
-           label="🔴 DENY si destino = develop Y SIN --squash: integrar a develop SQUASHEA a 1 commit limpio/slice.\nRehaz con --squash --squash-message «resumen curado».\nEXENTO: destino main (release) → SIN squash (conserva historia).\nFAIL-SAFE: destino INDETERMINADO y no es release EXPLÍCITO → mantiene la exigencia de squash.\n(M4, auditoría 2026-09-15: 'release explícito' ahora también lee la CONVERSACIÓN reciente,\nno solo el texto del comando — misma señal que el piso de main de confirmar-merge-develop)"];
+    CKPT [color="#e08e45",
+          label="🔔 checkpoint-mecanico.sh   (88 líneas · tier global · PreCompact)\nEXTRAE SIGNIFICADO del transcript al andamio del repo.\nmasters.json ×0 · .jsonl ×0 · CLAUDE_SESSIONS_DRIVE ×0 · slug ×0   ⇒ NO es del subsistema de sesiones"];
 
-    // ── merge-squash-guard, 2ª compuerta: CALIDAD del mensaje (CON --squash, destino develop) ──
-    MSGQ [shape=diamond, fillcolor="#2b2622", color="#d97757",
-          label="🔒🔗 merge-squash-guard — calidad del squash-message\n(destino=develop Y CON --squash: --squash está garantizado, pero el MENSAJE puede ser basura)\n¿mensaje POBRE (título default «Merge pull request #N», vacío, placeholder 1-palabra)\no EDITORIALIZA el proceso («se decidió», «tras analizar»)\no (solo si es LITERAL, tipeado inline, Y gh SIN --body separado) <12 palabras o sin traza «Rama:/MR:»?\nUNVERIFICABLE ($()/--fill/--body-file) o API no resolvió el título AUTO → PASA (fail-open)\n(M8, auditoría 2026-09-15: con gh, un --subject corto CON --body separado —aunque opaco— NO\nfuerza profundidad/traza sobre el título: la convención pone el resumen curado en --body)"];
-    MSGQ_D [color="#c0392b", penwidth=2,
-            label="🔴 DENY — trae --squash pero el MENSAJE es pobre/editorializa/superficial/sin traza:\nno basta el flag, el squash-message es el resumen del slice.\nRehaz con --squash-message «resumen curado en prosa + Rama:/MR: <id>».\n(WARN no-bloqueante aparte, si sustancioso pero narra lista de acciones «se cambió…, se corrigió…»: sugiere reescribir, PASA igual.)"];
+    SEED [color="#e08e45",
+          label="🔔 seed.sh   (4º consumidor, fácil de olvidar)\nSIEMBRA el .gz en esta máquina. Resuelve la carpeta por su cuenta."];
 
-    // ── confirmar-merge-develop (juez-LLM) ──
-    CMD_G [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="🔒✋ confirmar-merge-develop\n¿es un merge MR REAL Y el repo tiene la marca .claude/repo-compartido?\n(repos personales / ramas Develop*·epic·integracion → pasan LIBRES)\n→ DESTINO: main = RELEASE · develop = normal"];
-    CMD_OK [shape=diamond, fillcolor="#2b2622", color="#d97757",
-            label="¿hay OK EXPRESO del usuario para ESTE cierre?\njuez-LLM (Haiku vía juez-comun.sh · curl→api.anthropic.com · token OAuth, NO `claude -p`)\nLEE la conversación intercalada USUARIO/ASISTENTE (OKs anafóricos: el asistente propone → el usuario acepta)\n· M3: acg_destino_conf declara EXPLICITO/API/CACHE-DE-CREACION/DESCONOCIDO:<motivo> — si es de\n  ENTORNO (sin jq/gh/glab/dir), el mensaje dice la CAUSA real: 'repetir la autorización NO destraba esto'\n· o un grant DURABLE vigente en autorizaciones-vigentes.local.md (scope=merge-develop, con vencimiento) —\n  SOLO con destino CONFIRMADO develop (M6 lo había ampliado a destino VACÍO bajo una cerca de léxico-\n  release; CRÍTICO-3, auditoría FMEA 2026-09-16, lo REVIRTIÓ por A/B: colaba un release a main sin gate)\n· PISO DETERMINISTA de main — M5: main O VACÍO/DESCONOCIDO + ALLOW SIN lenguaje de release\n  del USUARIO → DENY (antes el piso solo corría con destino main CONFIRMADO); M5-bis (auditoría FMEA\n  2026-09-16) abre una puerta ANGOSTA con destino VACÍO — 'develop' nombrado EXPLÍCITO por el USUARIO Y\n  ninguna línea (cualquier rol) con main/release/promover — verificado en BASH, no por la palabra del LLM\n· sin token OAuth / red / timeout / respuesta ininteligible → UNAVAILABLE → DENY conservador (fail-CLOSED)\n· SIN jq Y el cmd CRUDO parece mr/pr merge → DENY inmediato «FRENO (sin jq)…» (fail-CLOSED, antes de\n  token/juez); git-branch-guard SIN jq ya no bloquea de más — extrae «command» del JSON (nunca\n  «description») y logra PARIDAD con el camino con-jq (H1, auditoría FMEA 2026-09-16); merge-squash-guard\n  y ESTE guard siguen SIEMPRE cerrados sin jq (sin precisión de texto posible: el destino sale de la API)"];
-    CMD_D [color="#c0392b", penwidth=2,
-           label="🔴 DENY (definición de LISTO en el punto del merge):\nintegrar a develop/main exige tu OK EXPRESO — cítalo y reintenta.\nverde técnico ≠ LISTO; «sigue/avanza» NO autoriza. A main, un «mergea»\ngenérico NO basta: pide lenguaje SUPER-explícito («release / hasta main / libera»).\nMientras: itera en tu mini-develop con `git merge` LOCAL (sin candado)."];
+    // ── El sustrato que YA existe y la capa bash no consume ──
+    LIB  [fillcolor="#232323", color="#5fa89e", penwidth=2,
+          label="🔩 bin/session-lib.js   (617 líneas)\nSe autodescribe: «helpers COMPARTIDOS … Fuente ÚNICA (no divergir)»\nslugFromCwd · normalizeCwd · findSession · scanTranscriptFile · rewriteTranscriptStream\nsessionAliases/writeAlias + locks · copia/borrado recursivo"];
 
-    OK [color="#c0392b", penwidth=3,
-        label="⚠ ESCRIBE git · 🟢 MERGE\ndevelop → con --squash (1 commit curado) · main → release SIN squash\n(el gate ≠ «no puedes»: con tu OK, Claude mergea por CLI sin que des clics)\n📜 → 🌿 Flujo de git · 💡 → 📦 cerrar-slice (arma el MR con el resumen curado)"];
+    NOCLI [style="dashed,filled", fillcolor="#f5f5f5", color="#9e9e9e", fontcolor="#2b2b2b",
+           label="🚧 POR QUÉ bash no la usa — MEDIDO, no inferido\nsession-lib.js NO es ejecutable (-rw-r--r--), NO tiene shebang, solo `module.exports`.\n⇒ desde bash SOLO se alcanza con `node -e '…'` inline.\nreubicar-master lo hace 13 veces (_slug, _alias_keys, writeAlias, rewriteTranscriptStream).\nEl hook NO lo hace ninguna: su fast-path de Stop no puede pagar el arranque de node."];
 
-    PASA [color="#7fb069", penwidth=2,
-          label="🟢 PASA — estos 3 guards NO gobiernan este comando\n(no es un merge/push a base: p. ej. `git push origin feat/x`,\n`glab mr view`, `mr diff`) — el comando corre tal cual, SIN squash ni release"];
+    // ── Los 5 conceptos duplicados ──
+    C1 [fillcolor="#ffebee", color="#c62828", fontcolor="#2b2b2b", penwidth=2,
+        label="🔴 CONCEPTO 1 · ¿DÓNDE está la carpeta de sesiones?   (3 políticas incompatibles)\nhook  exportar-sesion-master.sh:59-60  → default ~/.claude-sessions y `mkdir -p`  ⇒ DEGRADA EN SILENCIO\nseed  sesiones-master/seed.sh:27-29     → mismo default, pero ABORTA si no existe (exit 1)\nreub  reubicar-master.sh:491 + 621-627   → SIN default: ABORTA («un default que apunta a la ruta de OTRA máquina miente»)\nEVIDENCIA DE QUE OCURRIÓ: ~/.claude-sessions/761c82d9….meta.json, exportedAt 2026-08-05,\nhost «MacBook-Pro-de-unjordi.local» vs la copia de Drive (2026-09-09, host «Mac»)."];
 
-    // Aristas — flujo SÓLIDO (secuencia intra-chart); dashed queda RESERVADO a cross-ref a otro chart (§4)
-    CMD -> GBG;
-    GBG -> GBG_D [label="toca base directo"];
-    GBG -> MSG   [label="no toca base\n(es un MR de ramita)"];
-    MSG -> MSG_D [label="destino develop\nSIN --squash\n(o irresoluble, salvo release explícito)"];
-    MSG -> MSGQ  [label="destino develop\nCON --squash"];
-    MSGQ -> MSGQ_D [label="mensaje pobre /\neditorializa / superficial /\nsin traza"];
-    MSGQ -> CMD_G  [label="mensaje sustancioso /\nUNVERIFICABLE / API no resolvió"];
-    MSG -> CMD_G [label="destino main / personal\n(SÍ es merge MR real)"];
-    MSG -> PASA  [label="no es merge real\n(push de ramita, `mr view`, etc.)"];
-    CMD_G -> CMD_OK [label="repo compartido\n+ es merge MR"];
-    CMD_G -> OK     [label="repo personal /\nrama personal"];
-    CMD_OK -> CMD_D [label="sin OK expreso /\njuez UNAVAILABLE /\nsin jq (parece merge) /\nmain sin release"];
-    CMD_OK -> OK    [label="OK citado /\ngrant durable vigente"];
+    C2 [fillcolor="#ffebee", color="#c62828", fontcolor="#2b2b2b", penwidth=2,
+        label="🔴 CONCEPTO 2 · el LOCK de export tiene DOS caducidades\nhook  exportar-sesion-master.sh:128-135 → un lock de >30 min se RECICLA (se ignora)\nreub  reubicar-master.sh (G-LIVENESS)     → `[ -f \"$DRIVE/.export-$ID.lock\" ] && _abort` SIN mirar edad\nEVIDENCIA VIVA: .export-c6330bed-….lock (0 bytes, 2026-09-13) lleva 3 días en el Drive\n⇒ HOY una mudanza de databases-master está bloqueada por un fantasma que el hook ya ignora."];
+
+    C3 [fillcolor="#ffebee", color="#c62828", fontcolor="#2b2b2b", penwidth=2,
+        label="🔴 CONCEPTO 3 · el `target` de masters.json se escribe con el cwd CRUDO\nhook  exportar-sesion-master.sh:161  `target=\"${cwd#\"$HOME\"/}\"` — sin validar que sea un repo\nEVIDENCIA en el masters.json real de esta máquina:\n  fc94c4e1 claudio-master → «code/plantilladotnet/.claude/memory»\n  9cfeed6b games-master  → «…/Juegos/.claude/memory»\n  19590b44 reverse-eng…  → «…/.claude/worktrees/integracion-ronda1»\n  2622f45e rig-master    → «rig-master» (ni siquiera es una ruta)\n⇒ seed.sh sembraría esos masters a un cwd que nadie va a tener."];
+
+    C4 [style="dashed,filled", fillcolor="#f5f5f5", color="#9e9e9e", fontcolor="#2b2b2b",
+        label="🚧 CONCEPTO 4 · «¿es master?» — la regla vive en dos lados y uno DOCUMENTA al otro\nhook  exportar-sesion-master.sh:74-85 → grep del customTitle + sufijo `-master`\nreub  reubicar-master.sh:611-618 → «El hook … decide si una sesión es master leyendo el customTitle\n        … y EXIGE el sufijo -master» y VUELVE A IMPLEMENTAR la comprobación.\nAcoplamiento DOCUMENTADO con implementación DUPLICADA: cero líneas compartidas."];
+
+    C5 [style="dashed,filled", fillcolor="#f5f5f5", color="#9e9e9e", fontcolor="#2b2b2b",
+        label="🚧 CONCEPTO 5 · el ENVOLTORIO de hook, copiado línea a línea\nstdin→jq · guard · lock por-sid con reciclado · `nohup … &` detached · escritura atómica:\nexportar-sesion-master.sh:34-51,128-152  ≈  checkpoint-mecanico.sh:36-45,62-86\nEl 2º lo dice en su propia cabecera: «usa el MISMO patrón ya probado».\nMismo patrón, dos copias, dos caducidades de lock (30 min vs 10 min)."];
+
+    // ── Doc que miente ──
+    DOC [style="dashed,filled", fillcolor="#f5f5f5", color="#9e9e9e", fontcolor="#2b2b2b",
+         label="🚧 DOC QUE MIENTE (medido hoy)\n(a) $DRIVE/masters.json `note` declara el hook «canónico en esta carpeta de Drive, no en el brain público»\n    — falso desde que el hook es tier `global` del MANIFEST.\n(b) Las 3 copias del Drive (exportar-sesion-master.sh · install-hook.sh · seed.sh, todas del 2026-07-26)\n    DIFIEREN de las del repo: el install-hook del Drive aún trae el `--uninstall` retirado y seed.sh aún\n    busca ~/.claude-brain.\n(c) docs/man/ tiene 35 páginas y CERO para la capa bash (export-hook, seed, install-hook, reubicar-master).\n(d) checkpoint-mecanico está en el MANIFEST como tier `global` y NO está cableado en ~/.claude/settings.json\n    (0 menciones) ni existe ~/.claude/hooks/checkpoint-mecanico.sh ⇒ declarado y AUSENTE."];
   }
+
+  HOOK -> C1; SEED -> C1; REUB -> C1;
+  HOOK -> C2; REUB -> C2;
+  HOOK -> C3;
+  HOOK -> C4; REUB -> C4;
+  HOOK -> C5; CKPT -> C5;
+  REUB -> LIB  [label="13 × `node -e` inline", style=dashed];
+  HOOK -> LIB  [label="0 — solo invoca session-export.js\ncomo binario opaco", style=dashed, color="#9e9e9e"];
+  LIB  -> NOCLI [style=dashed, color="#9e9e9e"];
+  C1 -> DOC [style=invis];
 }

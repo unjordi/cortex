@@ -20,15 +20,23 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOKS="$SCRIPT_DIR/hooks"
 INSTALLER="$SCRIPT_DIR/install-brain.sh"
 
-PASS=0; FAIL=0
-ok()   { PASS=$((PASS+1)); printf '  PASS: %s\n' "$1"; }
-bad()  { FAIL=$((FAIL+1)); printf '  FAIL: %s\n' "$1"; }
+# CONTADOR inmune a subshells (auditoría 2026-09-15, Hallazgo #0, CRÍTICO): docenas de bloques de este
+# archivo corren sus aserciones dentro de `( … )` (subshell) — un `ok`/`bad` ahí SÍ imprime su línea, pero
+# el incremento de una variable de shell (`PASS=$((PASS+1))`) ocurre en el PROCESO HIJO y muere con él: el
+# padre nunca se entera. MEDIDO por canario: `PASS=0; ok(){ PASS=$((PASS+1));}; ( ok;ok;ok ); echo $PASS`
+# imprime 0. El resultado que este script IMPRIMÍA subestimaba sistemáticamente cuántos checks pasaban —
+# y, peor, un `bad` dentro de un subshell nunca subía $FAIL: el script podía cerrar en "0 FAIL" (exit 0)
+# con FALLAS reales impresas en pantalla que nadie contaba. Fix: el conteo real vive en un ARCHIVO (un
+# `>>` sobrevive cualquier fork()), no en una variable — inmune a CUALQUIER profundidad de subshell.
+CALLLOG="$(mktemp "${TMPDIR:-/tmp}/brain-test-calllog.XXXXXX")"
+ok()   { printf '  PASS: %s\n' "$1"; printf 'OK\n'  >> "$CALLLOG"; }
+bad()  { printf '  FAIL: %s\n' "$1"; printf 'BAD\n' >> "$CALLLOG"; }
 
 command -v jq >/dev/null 2>&1 || { echo "ERROR: se requiere jq para las pruebas"; exit 1; }
 
 # $HOME falso aislado (se limpia al salir)
 FAKEHOME="$(mktemp -d "${TMPDIR:-/tmp}/brain-test.XXXXXX")"
-cleanup() { rm -rf "$FAKEHOME"; }
+cleanup() { rm -rf "$FAKEHOME" "$CALLLOG"; }
 trap cleanup EXIT
 
 echo "==> cortex test — \$HOME falso: $FAKEHOME"
@@ -79,6 +87,25 @@ run_registrar() {
 }
 is_ask()    { printf '%s' "$1" | jq -e '.hookSpecificOutput.permissionDecision == "ask"' >/dev/null 2>&1; }
 is_silent() { [ -z "$(printf '%s' "$1" | tr -d '[:space:]')" ]; }
+
+# BAJO (auditoría FMEA 2026-09-16 §1.6, INVESTIGADO): el arnés construía sus PATHs restringidos ("sin jq")
+# con `_p="$(command -v "$_t")"; ln -s "$_p" ...` — bajo el Bash tool de Claude Code, `grep` (y a veces otros
+# coreutils) puede estar cableado como FUNCIÓN de shell exportada (envoltorio propio del harness, documentado
+# en la memoria de máquina), y `command -v` en ESE caso devuelve el NOMBRE ("grep"), no una ruta. Reproducido
+# EN VIVO: eso crea un symlink "grep -> grep" que se APUNTA A SÍ MISMO — el binario "desaparece" del PATH
+# restringido y cualquier prueba que dependa de él falla, de forma no determinista según qué shell haya
+# iniciado ESA corrida del arnés (exactamente el patrón 1205→1206 de una corrida a otra). `_mkbin_real`
+# resuelve SIEMPRE contra las rutas CANÓNICAS del sistema (nunca `command -v`, inmune a funciones de shell
+# exportadas) — determinista sin importar qué envoltorio tenga el shell que lanza el arnés.
+_mkbin_real() {   # _mkbin_real <dir-destino> <tool...>
+  local dir="$1" t d; shift
+  mkdir -p "$dir"
+  for t in "$@"; do
+    for d in /usr/bin /bin /usr/local/bin /opt/homebrew/bin; do
+      if [ -x "$d/$t" ]; then ln -sf "$d/$t" "$dir/$t"; break; fi
+    done
+  done
+}
 
 payload() { # payload <session> <subagent_type> <model> [tool_name=Task]
   jq -nc --arg s "$1" --arg t "$2" --arg m "$3" --arg tn "${4:-Task}" \
@@ -212,12 +239,72 @@ is_silent "$out" && ok "squash-guard B3: destino INDETERMINADO CON --squash → 
 # el histórico de un release cuya red no se pudo consultar). Sin id → destino queda vacío igual.
 out="$(ms 'glab mr merge --yes # release a main')"
 is_silent "$out" && ok "squash-guard B3: indeterminado + señal 'release a main' → NO fuerza squash" || bad "squash-guard B3: forzó squash pese a la señal explícita de release; got: $out"
+# M4 (auditoría 2026-09-15 §3.4, costura): destino IRRESOLUBLE + el COMANDO no menciona release/main, pero
+# la CONVERSACIÓN reciente SÍ trae lenguaje de release → antes este guard era CIEGO a la charla (solo leía
+# el texto del comando) y forzaba squash sobre un release que confirmar-merge-develop YA reconocía como
+# legítimo por conversación — "MISMO comando, MISMA incógnita, CONCLUSIONES OPUESTAS". Ahora ambos guards
+# leen la MISMA señal (acg_lexico_release sobre acg_recent_intercalado).
+M4TX=$(mktemp)
+printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"libera esto a main, es el release"}]}}' > "$M4TX"
+msT() { PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$FAKEHOME" bash "$HOOKS/merge-squash-guard.sh" <<<"$(jq -nc --arg c "$1" --arg t "$M4TX" '{tool_input:{command:$c},transcript_path:$t}')"; }
+out="$(msT 'glab mr merge --yes')"   # sin ID → destino indeterminado; SIN release en el TEXTO del comando
+is_silent "$out" && ok "M4: destino INDETERMINADO + release SOLO en la conversación → NO fuerza squash (antes ciego a la charla)" || bad "M4: forzó squash pese al release en la conversación; got: $out"
+# Control: MISMO comando, SIN transcript de release → sigue exigiendo squash (M4 no aflojó el default).
+out="$(ms 'glab mr merge --yes')"
+is_deny "$out" && ok "M4 control: destino INDETERMINADO sin release en NINGÚN lado → sigue exigiendo squash" || bad "M4 control: aflojó la exigencia de squash sin señal de release"
+rm -f "$M4TX"
 # H-R9-01 (FMEA r9): el binario Windows `glab.exe`/`gh.exe` rompía el gate `acg_es_merge_mr` → ambos guards
 # de merge quedaban ciegos (hermano de B4 en el eje merge). (\.exe)? en el reconocimiento lo cierra.
 mock_glab develop; out="$(ms 'glab.exe mr merge 48 --auto-merge --yes')"
 is_deny "$out" && ok "squash-guard H-R9-01: 'glab.exe mr merge' sin --squash → deny (binario Windows)" || bad "squash-guard H-R9-01: 'glab.exe' evadió el guard de squash; got: $out"
 mock_glab develop; out="$(ms 'glab.exe mr merge 49 --squash --auto-merge --yes')"
 is_silent "$out" && ok "squash-guard H-R9-01: 'glab.exe mr merge --squash' → pasa (sin falso positivo)" || bad "squash-guard H-R9-01: bloqueó un glab.exe que ya trae squash; got: $out"
+# Cobertura NUEVA (auditoría externa del arnés, 2026-09-15): git-branch-guard y entorno-maquina-guard ya
+# tenían el caso eval/bash-c (M1); merge-squash-guard NO lo tenía pese a compartir la MISMA lib despoja-
+# comillas. Cierra el hueco de cobertura — M1 ya lo arregla de fondo (acg_es_merge_mr reinyecta el span de
+# un ejecutor), este test solo lo BLINDA hacia adelante. `ms()` interpola el comando SIN escapar comillas
+# (rompería el JSON con un `eval "…"` embebido) → estos dos casos arman el payload con jq -nc.
+msj_raw() { jq -nc --arg c "$1" '{tool_input:{command:$c}}' | PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$FAKEHOME" bash "$HOOKS/merge-squash-guard.sh"; }
+mock_glab develop
+out="$(msj_raw 'eval "glab mr merge 91 --yes"')"
+is_deny "$out" && ok "squash-guard M1-cobertura: 'eval \"glab mr merge…\"' NO evade — sigue exigiendo squash" || bad "squash-guard M1-cobertura: eval evadió el guard de squash; got: $out"
+out="$(msj_raw 'bash -c "glab mr merge 92 --yes"')"
+is_deny "$out" && ok "squash-guard M1-cobertura: 'bash -c \"glab mr merge…\"' NO evade — sigue exigiendo squash" || bad "squash-guard M1-cobertura: bash -c evadió el guard de squash; got: $out"
+
+# H6 (auditoría semántica 2026-09-16, MEDIO, CONFIRMADO): SQUASH_RE corría sobre $cmd RAW, sin pasar por
+# acg_despoja_comillas -- una mención ENTRECOMILLADA de "--squash" (en --description/--subject) bastaba para
+# que el guard creyera que YA había squash. Medido: `--description "rehazlo con --squash y listo"` colaba un
+# merge a develop SIN squash de verdad.
+mock_glab develop
+out="$(msj_raw 'glab mr merge 93 --yes --description "rehazlo con --squash y listo"')"
+is_deny "$out" && ok "H6: mención ENTRECOMILLADA de '--squash' (en --description) → SIGUE exigiendo squash (antes: creía que ya lo tenía)" \
+  || bad "H6: REGRESIÓN — una mención citada de --squash coló un merge a develop sin squash real; got: $out"
+out="$(msj_raw 'gh pr merge 94 --subject "arregla el -s de tar"')"
+is_deny "$out" && ok "H6: mención ENTRECOMILLADA de ' -s ' suelto (en --subject) → SIGUE exigiendo squash" \
+  || bad "H6: REGRESIÓN — un ' -s ' citado coló un merge sin squash; got: $out"
+out="$(msj_raw 'glab mr merge 95 --squash --squash-message "resumen real del cambio y su porqué, con Rama: feat/x MR: !95"')"
+is_silent "$out" && ok "H6: --squash REAL (fuera de comillas) sigue reconociéndose — sin regresión del caso legítimo" \
+  || bad "H6: REGRESIÓN — el --squash real dejó de reconocerse tras exigir despoja_comillas; got: $out"
+
+# H4 (auditoría de ejecución 2026-09-16, MEDIO, CONFIRMADO): el fail-safe de destino IRRESOLUBLE usaba
+# acg_lexico_release SOBRE TODA la ventana, sin anclarla al MR de ESTE comando -- un "libera a main el PR
+# 390" (OTRO MR) le prestaba su señal al merge del PR 391, desactivando --squash de un merge a develop
+# genuino. Ancla la señal al mrid de ESTE comando (acg_lexico_release_para_mr).
+H4TX=$(mktemp)
+printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"libera a main el PR 390"}]}}' > "$H4TX"
+rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
+# PATH SIN glab/MSBIN a propósito: fuerza destino genuinamente INDETERMINADO (DESCONOCIDO:SIN-RED) aunque el
+# comando SÍ traiga un id numérico (390/391) -- necesitamos que acg_mrid resuelva el id (para probar el
+# ANCLAJE) pero que acg_destino_de_mr NO lo resuelva (para caer al fail-safe donde vive _es_release_explicito).
+msT4() { PATH="/usr/bin:/bin" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$FAKEHOME" bash "$HOOKS/merge-squash-guard.sh" <<<"$(jq -nc --arg c "$1" --arg t "$H4TX" '{tool_input:{command:$c},transcript_path:$t}')"; }
+out="$(msT4 'glab mr merge 391 --yes')"   # sin mock de destino → indeterminado; release es de OTRO id (390)
+is_deny "$out" && ok "H4: release-de-OTRO-PR (390) en la ventana → el merge del 391 SIGUE exigiendo squash (antes: se colaba)" \
+  || bad "H4: REGRESIÓN — el lenguaje de release de otro PR desactivó --squash de este merge; got: $out"
+out="$(msT4 'glab mr merge 390 --yes')"   # mismo id que el mencionado en la ventana → sí aplica
+is_silent "$out" && ok "H4: release del MISMO PR (390) mencionado en la ventana → sigue exentando --squash (sin regresión)" \
+  || bad "H4: REGRESIÓN — anclar al mrid rompió el caso legítimo (release del mismo MR); got: $out"
+rm -f "$H4TX"
+
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
 rm -rf "$MSBIN"
 
@@ -269,6 +356,16 @@ is_silent "$(msj 'gh pr merge 56 --squash --subject "agrega validacion de stock 
   && ok "msg LITERAL gh: --subject con sustancia + traza → pasa (sin FP)" || bad "msg LITERAL gh: bloqueó un subject legítimo con traza"
 is_silent "$(msj 'gh pr merge 57 --squash --fill')" \
   && ok "msg UNVERIFICABLE gh: --fill (subject derivado de commits) → pasa" || bad "msg UNVERIFICABLE gh: bloqueó un --fill"
+# M8 (auditoría 2026-09-15 §3.9): con gh, --subject fija el TÍTULO; la convención pone el RESUMEN CURADO en
+# --body. Un --subject CORTO (sin traza, <12 palabras) con un --body separado (aunque OPACO, la forma que
+# el propio hook sugiere) NO debe forzar la vara de profundidad/trazabilidad sobre el título.
+is_silent "$(msj 'gh pr merge 90 --squash --subject "fix: IVA" --body "$(cat resumen.md)"')" \
+  && ok "M8: gh --subject CORTO + --body separado (opaco) → pasa (la vara se mueve al body, no al título)" \
+  || bad "M8: exigió profundidad/traza en un título gh que tiene --body separado"
+# Control: el MISMO --subject corto SIN --body → sigue exigiendo profundidad/traza (M8 no aflojó el default).
+is_deny "$(msj 'gh pr merge 91 --squash --subject "fix: IVA"')" \
+  && ok "M8 control: gh --subject CORTO SIN --body → sigue exigiendo profundidad (no aflojó)" \
+  || bad "M8 control: aflojó la vara de profundidad para un --subject corto sin --body"
 
 # ── AUTO (sin flag de mensaje → el squash toma el TÍTULO del MR/PR, resuelto vía API) ──
 mock_glab_full develop "Merge pull request #7 from x/y"
@@ -341,6 +438,15 @@ delout="$(msj 'gh pr merge 72')"   # sin --squash → deny; el rehaz sugerido de
   acg_msg_falta_traza "corrige el IVA (MR !53)"                                                 && bad "acg_msg_falta_traza: FP, sí traía id de MR" || ok "acg_msg_falta_traza: id de MR (!53) → trae traza"
   acg_msg_falta_traza "corrige el checkout #12"                                                 && bad "acg_msg_falta_traza: FP, sí traía id de PR" || ok "acg_msg_falta_traza: id de PR (#12) → trae traza"
   acg_msg_falta_traza "arregla el prefix del logger"                                            && ok "acg_msg_falta_traza: 'prefix' NO es 'fix/' (no traza) → falta" || bad "acg_msg_falta_traza: FP tomó 'prefix' como rama fix/"
+  # H8 (auditoría semántica 2026-09-16, BAJO, CONFIRMADO): el set de prefijos era angosto (solo
+  # feat/fix/chore/hotfix/docs) — "Rama: refactor/…"/"test/…"/"perf/…"/"ci/…" SÍ traen la rama pero el
+  # mensaje decía "falta trazabilidad". Ampliado a los prefijos de conventional-commit de uso real.
+  acg_msg_falta_traza "reordena el módulo. Rama: refactor/sustrato-guards"                        && bad "H8: 'refactor/…' se marcó como SIN traza (FN)" || ok "H8: 'refactor/…' → SÍ trae traza"
+  acg_msg_falta_traza "cobertura nueva. Rama: test/cobertura-eval-bashc"                          && bad "H8: 'test/…' se marcó como SIN traza (FN)" || ok "H8: 'test/…' → SÍ trae traza"
+  acg_msg_falta_traza "acelera la consulta. Rama: perf/indices-estructura"                        && bad "H8: 'perf/…' se marcó como SIN traza (FN)" || ok "H8: 'perf/…' → SÍ trae traza"
+  acg_msg_falta_traza "arregla el pipeline. Rama: ci/fix-cache-key"                               && bad "H8: 'ci/…' se marcó como SIN traza (FN)" || ok "H8: 'ci/…' → SÍ trae traza"
+  acg_msg_falta_traza "revisión de intención. Rama: audit/guards-fmea"                            && bad "H8: 'audit/…' se marcó como SIN traza (FN)" || ok "H8: 'audit/…' → SÍ trae traza"
+  acg_msg_falta_traza "un cambio cualquiera sin ninguna traza"                                    && ok "H8 control: sin rama NI id → SIGUE marcando falta de traza (no se aflojó de más)" || bad "H8 control: REGRESIÓN — un mensaje genuinamente sin traza dejó de marcarse"
   # (3b-DENY) acg_msg_editorializa: marcadores inequívocos de proceso
   acg_msg_editorializa "tras analizar el codigo se decidio reemplazar la logica"                && ok "acg_msg_editorializa: 'tras analizar'/'se decidió' → editorializa" || bad "acg_msg_editorializa: no marcó la editorialización"
   acg_msg_editorializa "se identifico que el middleware no validaba el claim"                   && ok "acg_msg_editorializa: 'se identificó que' → editorializa" || bad "acg_msg_editorializa: no marcó 'se identificó'"
@@ -364,7 +470,13 @@ git -C "$GBREPO" branch -M develop >/dev/null 2>&1
 # HOME sin copia global → corre la copia del repo (no cede por dedupe)
 gb() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | CLAUDE_PROJECT_DIR="$GBREPO" HOME="$GBHOME" bash "$HOOKS/git-branch-guard.sh"; }
 git -C "$GBREPO" checkout -q develop >/dev/null 2>&1
-printf '%s' "$(gb 'git push')"        | grep -q '"deny"' && ok "gbg H1: 'git push' pelón en develop → deny"          || bad "gbg H1: push pelón en develop NO bloqueó"
+out_gbpush="$(gb 'git push')"
+printf '%s' "$out_gbpush"        | grep -q '"deny"' && ok "gbg H1: 'git push' pelón en develop → deny"          || bad "gbg H1: push pelón en develop NO bloqueó"
+# M8 (auditoría 2026-09-15 §3.11, norma dura anti-vein-popper): el mensaje de bloqueo YA NO ofrece "hazlo en
+# la web de GitLab" como escape — se satisface (OK súper-explícito por CLI) o se arregla, nunca se rodea.
+printf '%s' "$out_gbpush" | grep -qi 'web de GitLab' \
+  && bad "M8: git-branch-guard sigue ofreciendo 'la web de GitLab' como escape (norma anti-vein-popper)" \
+  || ok "M8: git-branch-guard NO ofrece la web como escape del bloqueo"
 printf '%s' "$(gb 'git push --force')"| grep -q '"deny"' && ok "gbg H1: 'git push --force' pelón en develop → deny"  || bad "gbg H1: push --force pelón NO bloqueó"
 printf '%s' "$(gb 'git push origin HEAD')" | grep -q '"deny"' && ok "gbg H1: 'git push origin HEAD' en develop → deny" || bad "gbg H1: push HEAD en develop NO bloqueó"
 git -C "$GBREPO" checkout -q -b feat/x >/dev/null 2>&1
@@ -597,6 +709,456 @@ rm -rf "$GBX"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (b1d-m1) M1 (auditoría 2026-09-15): segmentación ejecutor-aware — eval/bash -c/heredoc =="
+# CRÍTICO §2.2/§3.2: acg_despoja_comillas trataba TODO span entrecomillado como dato inerte → un
+# `eval "git push origin develop"` / `bash -c "…"` era invisible para los 5 git-guards. Y el filtro de
+# heredoc (antes solo en proteger-arbol) descartaba TODO cuerpo sin mirar el consumidor → FP con `cat >>
+# doc.md <<EOF` pero FN simétrico con `bash <<EOF … EOF`. Un solo criterio (acg_segmentos_ejecutables) para
+# los dos, cerrado UNA vez en la lib → hereda git-branch-guard (vía acg_push_toca_base) sin tocar su código.
+is_deny "$(gb 'eval "git push origin develop"')" \
+  && ok "M1: 'eval \"git push origin develop\"' NO evade — deny" || bad "M1: FN — eval evadió git-branch-guard"
+is_deny "$(gb 'bash -c "git push origin develop"')" \
+  && ok "M1: 'bash -c \"git push origin develop\"' NO evade — deny" || bad "M1: FN — bash -c evadió git-branch-guard"
+is_deny "$(gb "sh -c 'git push origin develop'")" \
+  && ok "M1: \"sh -c 'git push origin develop'\" (comilla simple) NO evade — deny" || bad "M1: FN — sh -c con comilla simple evadió"
+is_silent "$(gb "$(printf 'cat > d.md <<EOF\ngit push origin develop\nEOF')")" \
+  && ok "M1: heredoc a 'cat' con 'push origin develop' de PROSA → silencio (FP heredoc cerrado)" \
+  || bad "M1: FP — heredoc a un escritor disparó (el cuerpo es dato, no código)"
+is_deny "$(gb "$(printf 'bash <<EOF\ngit push origin develop\nEOF')")" \
+  && ok "M1: heredoc a 'bash' con el push REAL adentro → deny (heredoc-ejecutor SÍ dispara)" \
+  || bad "M1: FN — heredoc alimentando un intérprete quedó invisible"
+# eval/bash -c NO deben aflojar la detección de dato genuino (H13 intacto): un push a develop MENCIONADO
+# dentro del mensaje de un commit sigue sin disparar (el mensaje no es un ejecutor).
+is_silent "$(gb 'git commit -m "recuerda: nunca bash -c \"git push origin develop\""')" \
+  && ok "M1: H13 intacto — 'bash -c \"…\"' dentro de un MENSAJE de commit sigue sin disparar" \
+  || bad "M1: el endurecimiento de eval/-c rompió H13 (un dato citado ahora dispara)"
+
+# proteger-arbol: MISMOS dos casos, la dirección que el filtro viejo tenía OPUESTA (§3.8).
+PAM1BARE="$(mktemp -d "${TMPDIR:-/tmp}/brain-pam1.XXXXXX")/remote.git"
+PAM1="$(mktemp -d "${TMPDIR:-/tmp}/brain-pam1.XXXXXX")/wt"
+git init --bare -q "$PAM1BARE" >/dev/null 2>&1
+git clone -q "$PAM1BARE" "$PAM1" >/dev/null 2>&1
+git -C "$PAM1" config user.email t@t >/dev/null 2>&1; git -C "$PAM1" config user.name t >/dev/null 2>&1
+git -C "$PAM1" commit -q --allow-empty -m base >/dev/null 2>&1
+git -C "$PAM1" push -q origin HEAD >/dev/null 2>&1
+git -C "$PAM1" branch --set-upstream-to=origin/"$(git -C "$PAM1" rev-parse --abbrev-ref HEAD)" >/dev/null 2>&1
+git -C "$PAM1" commit -q --allow-empty -m sinpush >/dev/null 2>&1   # 1 commit sin pushear → hay riesgo que avisar
+pam1() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' \
+         | CLAUDE_PROJECT_DIR="$PAM1" bash "$HOOKS/proteger-arbol.sh"; }
+o="$(pam1 "$(printf 'cat >> n.md <<EOF\ngit reset --hard HEAD~1\nEOF')")"
+[ -z "$o" ] && ok "M1: proteger-arbol — heredoc a 'cat' con 'reset --hard' de PROSA → silencio" || bad "M1: proteger-arbol FP — heredoc-escritor disparó; got: $o"
+o="$(pam1 "$(printf 'bash <<EOF\ngit reset --hard HEAD~1\nEOF')")"
+printf '%s' "$o" | grep -q 'ORFANAR' && ok "M1: proteger-arbol — heredoc a 'bash' con el reset REAL adentro → AVISA (el FN viejo, cerrado)" \
+  || bad "M1: proteger-arbol FN — heredoc-ejecutor quedó invisible; got: $o"
+rm -rf "$PAM1"
+
+echo ""
+echo "== (b1d-m2) M2 (auditoría 2026-09-15, CRÍTICO §3.1/§2.4): secret-scan y proteger-arbol dejan de ser ciegos cross-repo =="
+# Antes secret-scan escaneaba SIEMPRE CLAUDE_PROJECT_DIR (el repo de la SESIÓN) y proteger-arbol NI
+# sourceaba la lib: un `git -C <otro-repo>` / `cd <otro-repo> && …` / un cwd distinto (el patrón NORMAL de
+# un worktree aislado de fan-out) quedaba invisible — un secreto pasaba SIN escanear, un reset destructivo
+# no avisaba. Ambos ahora resuelven el target por acg_target_dir (misma lib que git-branch-guard).
+M2A="$(mktemp -d "${TMPDIR:-/tmp}/brain-m2a.XXXXXX")"; M2B="$(mktemp -d "${TMPDIR:-/tmp}/brain-m2b.XXXXXX")"
+git -C "$M2A" init -q >/dev/null 2>&1; git -C "$M2A" config user.email t@t >/dev/null 2>&1; git -C "$M2A" config user.name t >/dev/null 2>&1
+git -C "$M2A" commit -q --allow-empty -m base >/dev/null 2>&1
+git -C "$M2B" init -q >/dev/null 2>&1; git -C "$M2B" config user.email t@t >/dev/null 2>&1; git -C "$M2B" config user.name t >/dev/null 2>&1
+git -C "$M2B" commit -q --allow-empty -m base >/dev/null 2>&1
+printf 'aws_key = AKIA1234567890ABCDEF\n' > "$M2B/config.txt"; git -C "$M2B" add config.txt >/dev/null 2>&1
+m2scan() { printf '%s' "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"$1\"},\"cwd\":\"$M2A\"}" \
+           | HOME="$M2A" bash "$HOOKS/secret-scan.sh"; }
+o="$(m2scan "git -C $M2B commit -m x")"
+printf '%s' "$o" | grep -q '"deny"' && ok "M2: secret-scan — 'git -C <otro-repo> commit' con secreto en el OTRO → deny (cross-repo, antes ciego)" \
+  || bad "M2: secret-scan CIEGO — 'git -C <otro>' con secreto no escaneó; got: $o"
+o="$(m2scan "cd $M2B && git commit -m x")"
+printf '%s' "$o" | grep -q '"deny"' && ok "M2: secret-scan — 'cd <otro-repo> && git commit' con secreto en el OTRO → deny" \
+  || bad "M2: secret-scan CIEGO — 'cd <otro> &&' con secreto no escaneó; got: $o"
+# Cobertura NUEVA (auditoría externa del arnés, 2026-09-15): m2scan (arriba) nunca varía CLAUDE_PROJECT_DIR
+# — solo prueba `.cwd`. Falta el caso GEMELO que proteger-arbol SÍ tiene un poco más abajo: CLAUDE_PROJECT_DIR
+# apuntando EXPLÍCITAMENTE a un repo A (limpio) mientras el comando toca REALMENTE el repo B (con el secreto)
+# vía `-C`. Si el guard leyera CLAUDE_PROJECT_DIR en vez de resolver el target real, este caso escanearía A
+# (limpio) y dejaría pasar el secreto de B.
+o="$(printf '%s' "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git -C $M2B commit -m x\"},\"cwd\":\"$M2A\"}" \
+     | HOME="$M2A" CLAUDE_PROJECT_DIR="$M2A" bash "$HOOKS/secret-scan.sh")"
+printf '%s' "$o" | grep -q '"deny"' && ok "M2-cobertura: secret-scan — CLAUDE_PROJECT_DIR=A explícito + '-C B' con secreto en B → deny (no escaneó A por error)" \
+  || bad "M2-cobertura: secret-scan escaneó CLAUDE_PROJECT_DIR en vez del repo que el -C REALMENTE toca; got: $o"
+git -C "$M2A" commit -q --allow-empty -m sinpush >/dev/null 2>&1   # commit sin pushear en A → riesgo real si el reset fuera EN A
+o=$(printf '%s' "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git -C $M2B reset --hard HEAD~1\"},\"cwd\":\"$M2A\"}" | CLAUDE_PROJECT_DIR="$M2A" bash "$HOOKS/proteger-arbol.sh")
+[ -z "$o" ] && ok "M2: proteger-arbol — 'git -C <otro-repo> reset --hard' sin riesgo EN ESE repo → silencio (ya no evalúa el árbol equivocado)" \
+  || bad "M2: proteger-arbol evaluó el árbol EQUIVOCADO (CLAUDE_PROJECT_DIR en vez del -C); got: $o"
+rm -rf "$M2A" "$M2B"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (b1d-critico1) CRÍTICO-1 (auditoría FMEA 2026-09-16 §1.1, CONFIRMADO): un error de SINTAXIS en la"
+echo "   lib compartida NO tumba los 5 guards en silencio — fallan RUIDOSO/CERRADO en vez de desaparecer =="
+# Reproduce EXACTO el método de la auditoría: copia los 5 hooks + la lib a un sandbox, inyecta un error de
+# sintaxis REAL (paréntesis sin cerrar en acg_despoja_comillas — el bug más mundano), y alimenta cada guard
+# con un comando que DEBE bloquear. ANTES del fix: los 5 morían con stdout VACÍO y exit=1 (que el harness
+# trata como NO-bloqueante → el sistema quedaba sin NINGÚN candado, en silencio). AHORA: cada uno responde
+# (deny ruidoso, o degrada a su propio fallback) en vez de esfumarse.
+C1SB="$(mktemp -d "${TMPDIR:-/tmp}/brain-crit1.XXXXXX")"; mkdir -p "$C1SB/hooks" "$C1SB/home"
+for f in analizar-comando-git.sh git-branch-guard.sh merge-squash-guard.sh confirmar-merge-develop.sh \
+         secret-scan.sh proteger-arbol.sh detectar-secretos.sh juez-comun.sh ramas-zombie.sh; do
+  cp "$HOOKS/$f" "$C1SB/hooks/$f" 2>/dev/null
+done
+# Inyecta un paréntesis SIN CERRAR en acg_despoja_comillas (bash -3.2-safe, una sola línea real de la lib).
+perl -0pi -e "s/acg_despoja_comillas\(\) \{ printf '%s' \"\\\$\(acg_segmentos_ejecutables \"\\\$1\"\)\"/acg_despoja_comillas() { printf '%s' \"\\\$(acg_segmentos_ejecutables \"\\\$1\"/" "$C1SB/hooks/analizar-comando-git.sh"
+bash -n "$C1SB/hooks/analizar-comando-git.sh" >/dev/null 2>&1 \
+  && bad "CRÍTICO-1 (setup): la inyección de sintaxis no rompió la lib — el test no prueba nada" \
+  || ok "CRÍTICO-1 (setup): lib con error de sintaxis REAL confirmada (bash -n falla) — arranca la prueba"
+c1out() { printf '%s' "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"$2\"}}" | HOME="$C1SB/home" CLAUDE_PROJECT_DIR="${3:-$C1SB/home}" bash "$C1SB/hooks/$1" 2>/dev/null; }
+is_deny "$(c1out git-branch-guard.sh 'git push origin develop')" \
+  && ok "CRÍTICO-1: lib ROTA + git-branch-guard + push a develop → DENY ruidoso (antes: exit=1 silencioso, el push PASABA)" \
+  || bad "CRÍTICO-1: REGRESIÓN — git-branch-guard con lib rota dejó pasar un push a develop en silencio"
+is_deny "$(c1out merge-squash-guard.sh 'glab mr merge 5 --yes')" \
+  && ok "CRÍTICO-1: lib ROTA + merge-squash-guard + merge sin squash → DENY ruidoso" \
+  || bad "CRÍTICO-1: REGRESIÓN — merge-squash-guard con lib rota dejó pasar un merge sin squash en silencio"
+is_deny "$(c1out confirmar-merge-develop.sh 'glab mr merge 5 --yes')" \
+  && ok "CRÍTICO-1: lib ROTA + confirmar-merge-develop + merge sin OK → DENY ruidoso" \
+  || bad "CRÍTICO-1: REGRESIÓN — confirmar-merge-develop con lib rota dejó pasar un merge sin autorización en silencio"
+C1SCAN="$C1SB/scanrepo"; mkdir -p "$C1SCAN"; git -C "$C1SCAN" init -q >/dev/null 2>&1
+git -C "$C1SCAN" config user.email t@t >/dev/null 2>&1; git -C "$C1SCAN" config user.name t >/dev/null 2>&1
+printf 'aws_key = AKIA1234567890ABCDEF\n' > "$C1SCAN/config.txt"; git -C "$C1SCAN" add config.txt >/dev/null 2>&1
+is_deny "$(c1out secret-scan.sh 'git commit -m wip' "$C1SCAN")" \
+  && ok "CRÍTICO-1: lib ROTA + secret-scan + secreto en staging → DEGRADA a su fallback sed y SIGUE atrapando el secreto (antes: exit=1 silencioso, sin backstop — el ÚNICO control anti-credenciales del sistema)" \
+  || bad "CRÍTICO-1: REGRESIÓN — secret-scan con lib rota dejó pasar un secreto (backstop de emergencia falló)"
+C1TREE="$C1SB/treerepo"; mkdir -p "$C1TREE"; git -C "$C1TREE" init -q >/dev/null 2>&1
+git -C "$C1TREE" config user.email t@t >/dev/null 2>&1; git -C "$C1TREE" config user.name t >/dev/null 2>&1
+echo base > "$C1TREE/a.txt"; git -C "$C1TREE" add a.txt >/dev/null 2>&1; git -C "$C1TREE" commit -qm base >/dev/null 2>&1
+git -C "$C1TREE" update-ref refs/remotes/origin/main HEAD >/dev/null 2>&1
+git -C "$C1TREE" branch -u origin/main >/dev/null 2>&1
+echo work > "$C1TREE/a.txt"; git -C "$C1TREE" commit -qam work >/dev/null 2>&1
+out=$(c1out proteger-arbol.sh 'git reset --hard HEAD~1' "$C1TREE")
+printf '%s' "$out" | grep -qi 'ORFANAR' \
+  && ok "CRÍTICO-1: lib ROTA + proteger-arbol + reset destructivo con commit sin pushear → DEGRADA a su fallback heredoc-ciego y SIGUE avisando (antes: exit=1 silencioso, cero aviso)" \
+  || bad "CRÍTICO-1: REGRESIÓN — proteger-arbol con lib rota dejó de avisar sobre un reset destructivo real"
+# Control: con la lib SANA (los hooks ORIGINALES, sin tocar) el comportamiento normal sigue intacto — el
+# fix no introduce fricción cuando la lib está bien.
+is_deny "$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"git push origin develop"}}' | HOME="$C1SB/home-ctrl" bash "$HOOKS/git-branch-guard.sh")" \
+  && ok "CRÍTICO-1 (control, lib sana): git-branch-guard sigue bloqueando un push a develop normalmente" \
+  || bad "CRÍTICO-1 (control): REGRESIÓN — con la lib intacta, git-branch-guard dejó de bloquear"
+# H7 (auditoría semántica 2026-09-16, BAJO, CONFIRMADO): la sonda ORIGINAL (subshell + exit code) confundía
+# "error de sintaxis" con "la lib terminó en un comando que devuelve ≠0" — un `false` al final de una lib
+# PERFECTAMENTE válida (bash -n la aprueba) bastaba para declarar "lib rota" y tumbar el guard a deny-total.
+# `bash -n` (el fix) es inmune: solo PARSEA, nunca ejecuta, así que el código de salida del ÚLTIMO comando de
+# la lib no lo afecta.
+C1SB2=$(mktemp -d "${TMPDIR:-/tmp}/brain-crit1-h7.XXXXXX"); mkdir -p "$C1SB2/hooks"
+cp "$HOOKS/analizar-comando-git.sh" "$C1SB2/hooks/"; cp "$HOOKS/git-branch-guard.sh" "$C1SB2/hooks/"
+printf '\nfalse\n' >> "$C1SB2/hooks/analizar-comando-git.sh"
+bash -n "$C1SB2/hooks/analizar-comando-git.sh" >/dev/null 2>&1 \
+  && ok "H7 (setup): lib con 'false' final SIGUE siendo sintácticamente válida (bash -n la aprueba) — arranca la prueba" \
+  || bad "H7 (setup): la inyección de 'false' rompió la sintaxis — el test no prueba lo que debe"
+out_h7=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"git push -u origin feat/mi-cambio"}}' | HOME="$C1SB2/home" bash "$C1SB2/hooks/git-branch-guard.sh" 2>/dev/null)
+is_silent "$out_h7" \
+  && ok "H7: lib con 'false' final (sintaxis VÁLIDA) + push a la propia ramita → silencio (antes: la sonda vieja la declaraba 'rota' y bloqueaba TODO)" \
+  || bad "H7: REGRESIÓN — una lib sintácticamente válida con un 'false' al final se tumbó a deny-total; got: $out_h7"
+rm -rf "$C1SB2"
+rm -rf "$C1SB"
+
+echo ""
+echo "== (b1d-m9) M9 (auditoría 2026-09-15 §2.5): --repo \"\$VAR\" es OPACO, no OTRO repo =="
+# Bug DOBLE con el mismo origen: el value-eater '[^[:space:]]+' se cortaba en el primer espacio y no
+# capturaba el token entrecomillado como UNIDAD. (1) acg_target_remote devolvía el slug CON comillas
+# ('"$R"') → la consulta de red fallaba garantizado. (2) el caller que despojaba comillas ANTES de grep
+# (confirmar-merge-develop) veía el valor BORRADO y el grep siguiente capturaba el FLAG SIGUIENTE
+# (--squash) como si fuera el slug del repo — creía que el repo se llamaba "--squash".
+# El bug de conteo dentro de subshells que este comentario documentaba (un `( … ok … )` no sumaba a
+# PASS/FAIL del padre) quedó CERRADO: `ok`/`bad` cuentan por un archivo (CALLLOG, arriba), inmune a
+# cualquier profundidad de subshell — auditoría 2026-09-15, Hallazgo #0. Este bloque sigue sin usar
+# subshell (sourcea la lib inline) por costumbre, no por necesidad.
+. "$HOOKS/analizar-comando-git.sh"
+[ "$(acg_repo_explicito 'gh pr merge 12 --repo org/proyecto --squash')" = "org/proyecto" ] \
+  && ok "M9: --repo con slug LITERAL → se lee tal cual" || bad "M9: no leyó el slug literal"
+[ "$(acg_repo_explicito 'gh pr merge 12 --repo "$R" --squash')" = "OPACO" ] \
+  && ok "M9: --repo \"\$R\" (sustitución de shell) → OPACO, NUNCA '--squash' ni con comillas" \
+  || bad "M9: no detectó el valor opaco (regresó al bug viejo)"
+[ -z "$(acg_repo_explicito 'gh pr merge 12 --squash')" ] \
+  && ok "M9: sin --repo → vacío (no inventa un slug)" || bad "M9: inventó un slug sin --repo"
+M9R=$(mktemp -d "${TMPDIR:-/tmp}/m9r.XXXXXX")
+git -C "$M9R" init -q >/dev/null 2>&1
+git -C "$M9R" remote add origin git@gitlab.com:org/proyecto.git >/dev/null 2>&1
+[ "$(acg_target_remote 'gh pr merge 12 --repo "$R" --squash' "$M9R")" = "org/proyecto" ] \
+  && ok "M9: acg_target_remote con --repo OPACO cae al remoto del dir objetivo (no al literal '\"\$R\"' ni a '--squash')" \
+  || bad "M9: acg_target_remote no cayó al remoto real con --repo opaco"
+rm -rf "$M9R"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (b1d-h2exec) H2 (auditoría de ejecución 2026-09-16, MEDIO, CONFIRMADO): destino de PUSH opaco (\$VAR) GATEA, simétrico a M9 =="
+# acg_push_destino_base es una regex sobre literales, SIN detección de opacidad -- a diferencia de
+# acg_repo_explicito (M9, arriba), que SÍ marca OPACO ante \$/backtick y falla cerrado. Medido: `git push
+# origin "\$RAMA"` quedaba CIEGO (ni acg_push_destino_base ni acg_push_sin_refspec lo cubrían, porque SÍ hay
+# un refspec, solo que es opaco).
+acg_push_destino_opaco 'git push origin "$RAMA"' \
+  && ok "H2: acg_push_destino_opaco detecta '\$RAMA' (sustitución de shell) → OPACO" \
+  || bad "H2: no detectó la opacidad de \"\$RAMA\""
+acg_push_destino_opaco 'git push origin feat/mi-cambio' \
+  && bad "H2: REGRESIÓN — una rama LITERAL normal se marcó como opaca (falso positivo)" \
+  || ok "H2: una rama literal normal NO se marca opaca"
+acg_push_toca_base 'git push origin "$RAMA"' \
+  && ok "H2: acg_push_toca_base ahora GATEA un push con destino opaco (antes: SILENCIO, ciego)" \
+  || bad "H2: REGRESIÓN — un push con destino \"\$RAMA\" sigue sin gatear"
+acg_push_toca_base 'git push origin `echo develop`' \
+  && ok "H2: destino via \`cmd\` (backtick) → también gatea" \
+  || bad "H2: un destino via backtick no gateó"
+acg_push_toca_base 'git push origin ${BASE:-develop}' \
+  && ok "H2: destino via \${VAR:-default} → también gatea" \
+  || bad "H2: un destino via \${VAR:-default} no gateó"
+acg_push_toca_base 'git push origin feat/mi-cambio' \
+  && bad "H2: REGRESIÓN — un push a una ramita literal normal quedó bloqueado (falso positivo nuevo)" \
+  || ok "H2: control — push a ramita literal normal sigue SIN gatear"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (b1d-medio) MEDIO/H3-semántico (auditoría FMEA 2026-09-16 §1.5 + auditoría semántica H3): CACHE-DE-CREACION"
+echo "   solo se confía si es MÍA, Y el canal ENTERO está apagado por default (sin escritor legítimo) =="
+# acg__cache_creacion_es_mia se GENERALIZÓ a acg__cache_confiable (uid+perm+TTL, reusada por los 3 cachés de
+# la lib — ver bloque H1exec abajo). Además, H3 (auditoría semántica 2026-09-16): "hoy no hay escritor
+# legítimo" vale para CUALQUIER uid, incluido el propio (un agente del propio usuario, a punto de correr el
+# merge, puede escribir un 0600 propio) — el chequeo de permisos protege del VECINO, no del actor que este
+# guard vigila. El canal CACHE-DE-CREACION queda apagado por default (ACG_CACHE_CREACION=1 para encenderlo).
+M3T=$(mktemp "${TMPDIR:-/tmp}/m3cc.XXXXXX")
+printf 'develop\n' > "$M3T"
+chmod 600 "$M3T"
+acg__cache_confiable "$M3T" \
+  && ok "MEDIO: archivo 0600 del mismo uid, reciente → se confía (caso legítimo del futuro escritor)" \
+  || bad "MEDIO: un archivo legítimo (0600, mío, reciente) se rechazó — sobre-endurecido"
+chmod 644 "$M3T"
+acg__cache_confiable "$M3T" \
+  && bad "MEDIO: un archivo LEGIBLE POR OTROS (0644) se confió — el plante de otro proceso pasa" \
+  || ok "MEDIO: archivo 0644 (legible por otros) → NO se confía"
+chmod 664 "$M3T"
+acg__cache_confiable "$M3T" \
+  && bad "MEDIO: un archivo ESCRIBIBLE POR GRUPO (0664) se confió" \
+  || ok "MEDIO: archivo 0664 (escribible por grupo) → NO se confía"
+rm -f "$M3T"
+# End-to-end por acg__destino_de_mr_full: SIN encender el flag, ni siquiera un archivo 0600 PROPIO resuelve
+# por esta vía (H3: el canal completo está apagado, no solo el permiso).
+M3ROOT=$(mktemp -d "${TMPDIR:-/tmp}/m3e2e.XXXXXX")
+( export TMPDIR="$M3ROOT"
+  M3REPO="$M3ROOT/repo"; mkdir -p "$M3REPO"; git -C "$M3REPO" init -q >/dev/null 2>&1
+  git -C "$M3REPO" remote add origin git@gitlab.com:org/repo.git >/dev/null 2>&1
+  key=$(printf '%s' "org/repo|glab|321" | sed 's/[^A-Za-z0-9]/_/g')
+  echo "develop" > "$M3ROOT/acg-mrdest-creacion-${key}"
+  chmod 600 "$M3ROOT/acg-mrdest-creacion-${key}"
+  out=$(PATH="/usr/bin:/bin" acg__destino_de_mr_full "glab mr merge 321 --yes" "$M3REPO" 2>/dev/null)
+  case "$out" in *CACHE-DE-CREACION*) echo BAD ;; *) echo GOOD ;; esac
+) | tail -1 | grep -q GOOD \
+  && ok "H3: SIN ACG_CACHE_CREACION=1, ni siquiera un archivo 0600 PROPIO resuelve vía CACHE-DE-CREACION (canal apagado por default)" \
+  || bad "H3: REGRESIÓN — el canal CACHE-DE-CREACION resolvió sin que nadie lo encendiera explícitamente"
+# Con el flag ENCENDIDO explícitamente, el chequeo de permisos vuelve a aplicar (defensa en profundidad).
+M3ROOT2=$(mktemp -d "${TMPDIR:-/tmp}/m3e2e2.XXXXXX")
+( export TMPDIR="$M3ROOT2"
+  M3REPO2="$M3ROOT2/repo"; mkdir -p "$M3REPO2"; git -C "$M3REPO2" init -q >/dev/null 2>&1
+  git -C "$M3REPO2" remote add origin git@gitlab.com:org/repo.git >/dev/null 2>&1
+  key=$(printf '%s' "org/repo|glab|322" | sed 's/[^A-Za-z0-9]/_/g')
+  echo "develop" > "$M3ROOT2/acg-mrdest-creacion-${key}"
+  chmod 600 "$M3ROOT2/acg-mrdest-creacion-${key}"
+  out=$(PATH="/usr/bin:/bin" ACG_CACHE_CREACION=1 acg__destino_de_mr_full "glab mr merge 322 --yes" "$M3REPO2" 2>/dev/null)
+  case "$out" in *CACHE-DE-CREACION*) echo GOOD ;; *) echo BAD ;; esac
+) | tail -1 | grep -q GOOD \
+  && ok "MEDIO: CON ACG_CACHE_CREACION=1 explícito + archivo 0600 propio → SÍ resuelve (el flag es opt-in, no está roto)" \
+  || bad "MEDIO: encender el flag explícitamente no habilitó el canal para el caso legítimo"
+rm -rf "$M3ROOT" "$M3ROOT2"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (b1d-h1exec) H1 (auditoría de ejecución 2026-09-16, ALTO, CONFIRMADO): el caché REGULAR de destino"
+echo "   (acg-mrdest-*) ya NO se sirve sin validar dueño/permisos/EDAD =="
+# Bypass TOTAL medido: un archivo plantado con destino 'DevelopUnjordi' y perm 0666 se servía como si fuera
+# la respuesta de la API de hace un segundo -- y encima con confianza 'API' (la máxima). El fix MEDIO
+# original solo endureció al hermano -creacion-*; ESTE es el que de verdad gatea confirmar-merge-develop Y
+# merge-squash-guard (comparten la misma caché de destino).
+H1EROOT=$(mktemp -d "${TMPDIR:-/tmp}/h1e.XXXXXX")
+( export TMPDIR="$H1EROOT"
+  H1EREPO="$H1EROOT/repo"; mkdir -p "$H1EREPO"; git -C "$H1EREPO" init -q >/dev/null 2>&1
+  git -C "$H1EREPO" remote add origin git@gitlab.com:org/proyecto.git >/dev/null 2>&1
+  key=$(printf '%s' "org/proyecto|glab|5" | sed 's/[^A-Za-z0-9]/_/g')
+  printf 'DevelopUnjordi\nAPI\n' > "$H1EROOT/acg-mrdest-${key}"
+  chmod 666 "$H1EROOT/acg-mrdest-${key}"
+  out=$(PATH="/usr/bin:/bin" acg__destino_de_mr_full "glab mr merge 5 --yes" "$H1EREPO" 2>/dev/null)
+  case "$out" in *DevelopUnjordi*) echo BAD ;; *) echo GOOD ;; esac
+) | tail -1 | grep -q GOOD \
+  && ok "H1exec: caché plantado (perm 0666) con destino 'DevelopUnjordi' → IGNORADO (antes: bypass total del gate)" \
+  || bad "H1exec: REGRESIÓN — el caché plantado con permisos abiertos se sirvió como si fuera de la API"
+# El caso LEGÍTIMO (mismo contenido, permisos correctos -- los que la propia lib usa al escribir) SIGUE
+# sirviéndose (el fix no rompe el caching real).
+H1EROOT2=$(mktemp -d "${TMPDIR:-/tmp}/h1e2.XXXXXX")
+( export TMPDIR="$H1EROOT2"
+  H1EREPO2="$H1EROOT2/repo"; mkdir -p "$H1EREPO2"; git -C "$H1EREPO2" init -q >/dev/null 2>&1
+  git -C "$H1EREPO2" remote add origin git@gitlab.com:org/proyecto.git >/dev/null 2>&1
+  key=$(printf '%s' "org/proyecto|glab|6" | sed 's/[^A-Za-z0-9]/_/g')
+  printf 'develop\nAPI\n' > "$H1EROOT2/acg-mrdest-${key}"
+  chmod 600 "$H1EROOT2/acg-mrdest-${key}"
+  out=$(PATH="/usr/bin:/bin" acg__destino_de_mr_full "glab mr merge 6 --yes" "$H1EREPO2" 2>/dev/null)
+  case "$out" in *develop*API*) echo GOOD ;; *) echo BAD ;; esac
+) | tail -1 | grep -q GOOD \
+  && ok "H1exec: caché legítimo (perm 0600, el que la propia lib escribe) → SIGUE sirviéndose (sin regresión de caching)" \
+  || bad "H1exec: REGRESIÓN — el endurecimiento rompió el cache-hit legítimo"
+# TTL: un caché VIEJO (mtime de 2020), aunque tenga permisos correctos, ya NO se sirve — antes era eterno
+# (solo lo barría limpiar-residuo.sh manualmente, hasta 7 días de ventana).
+H1EROOT3=$(mktemp -d "${TMPDIR:-/tmp}/h1e3.XXXXXX")
+( export TMPDIR="$H1EROOT3"
+  H1EREPO3="$H1EROOT3/repo"; mkdir -p "$H1EREPO3"; git -C "$H1EREPO3" init -q >/dev/null 2>&1
+  git -C "$H1EREPO3" remote add origin git@gitlab.com:org/proyecto.git >/dev/null 2>&1
+  key=$(printf '%s' "org/proyecto|glab|7" | sed 's/[^A-Za-z0-9]/_/g')
+  printf 'develop\nAPI\n' > "$H1EROOT3/acg-mrdest-${key}"
+  chmod 600 "$H1EROOT3/acg-mrdest-${key}"
+  touch -t 202001010000 "$H1EROOT3/acg-mrdest-${key}"
+  out=$(PATH="/usr/bin:/bin" acg__destino_de_mr_full "glab mr merge 7 --yes" "$H1EREPO3" 2>/dev/null)
+  case "$out" in *develop*API*) echo BAD ;; *) echo GOOD ;; esac
+) | tail -1 | grep -q GOOD \
+  && ok "H1exec: caché VIEJO (mtime 2020, permisos correctos) → NO se confía (TTL, antes: eterno)" \
+  || bad "H1exec: REGRESIÓN — un caché de años de antigüedad se sirvió como fresco"
+# Round-trip: la propia escritura de la lib (vía lookup por API) debe seguir siendo LEGIBLE en la siguiente
+# llamada -- el chmod 600 en la escritura es lo que evita que el fix se auto-invalide (un `>` normal crea con
+# permisos típicos 644, que el propio acg__cache_confiable rechazaría).
+H1EROOT4=$(mktemp -d "${TMPDIR:-/tmp}/h1e4.XXXXXX")
+H1EBIN="$H1EROOT4/bin"; mkdir -p "$H1EBIN"
+printf '#!/usr/bin/env bash\necho '\''{"target_branch":"develop"}'\''\n' > "$H1EBIN/glab"; chmod +x "$H1EBIN/glab"
+H1EREPO4="$H1EROOT4/repo"; mkdir -p "$H1EREPO4"; git -C "$H1EREPO4" init -q >/dev/null 2>&1
+git -C "$H1EREPO4" remote add origin git@gitlab.com:org/proyecto.git >/dev/null 2>&1
+( export TMPDIR="$H1EROOT4"; PATH="$H1EBIN:/usr/bin:/bin"; acg__destino_de_mr_full "glab mr merge 9 --yes" "$H1EREPO4" >/dev/null 2>&1 )
+key9=$(printf '%s' "org/proyecto|glab|9" | sed 's/[^A-Za-z0-9]/_/g')
+_perm9=$(stat -f '%Lp' "$H1EROOT4/acg-mrdest-${key9}" 2>/dev/null || stat -c '%a' "$H1EROOT4/acg-mrdest-${key9}" 2>/dev/null)
+out2=$(TMPDIR="$H1EROOT4" PATH="/usr/bin:/bin" acg__destino_de_mr_full "glab mr merge 9 --yes" "$H1EREPO4" 2>/dev/null)   # SIN glab en PATH -> debe ser cache-hit
+{ [ "$_perm9" = "600" ] && case "$out2" in *develop*API*) true ;; *) false ;; esac; } \
+  && ok "H1exec: round-trip escritura→lectura sigue funcionando (perm=$_perm9, chmod 600 en la escritura evita auto-invalidar el caché)" \
+  || bad "H1exec: REGRESIÓN — la propia escritura del caché (perm=$_perm9) quedó ilegible para su propio lector; got: $out2"
+rm -rf "$H1EROOT" "$H1EROOT2" "$H1EROOT3" "$H1EROOT4"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (b1d-m7) M7 (auditoría 2026-09-15 §2.3): entorno degradado (sin jq) homologado — fail-CLOSED =="
+# Antes: git-branch-guard hacía 'command -v jq || exit 0' (fail-OPEN silencioso — un PATH sin jq apagaba
+# 'nunca push a develop/main') y merge-squash-guard, sin chequeo explícito, degradaba igual (cmd vacío por
+# el jq ausente → exit 0). confirmar-merge-develop YA tenía el endurecimiento A3 (2026-08-06): esta es la
+# MISMA política, homologada a los otros dos. secret-scan/proteger-arbol CONSERVAN su fail-open declarado
+# (son red de seguridad/advisory, no el candado de "nunca push a base"); secret-scan ya avisa RUIDOSO.
+NOJQ7="$FAKEHOME/nojq7"
+_mkbin_real "$NOJQ7" bash grep sed cat basename dirname head tail printf awk tr git
+# H1 (auditoría semántica 2026-09-16): git-branch-guard SIN jq ahora reusa acg_push_toca_base de verdad (con
+# `git` real en PATH, no solo texto) para lograr PARIDAD con el camino con-jq — así que un push PELÓN (sin
+# rama nombrada) necesita un repo git REAL y determinista para probar el fail-safe (rama actual = base ⇒
+# bloquea) sin depender de en qué rama esté PARADO el propio arnés al correr. GBNOJQ_BASEREPO queda checked
+# out en 'develop' a propósito.
+GBNOJQ_BASEREPO="$FAKEHOME/nojq7-baserepo"; mkdir -p "$GBNOJQ_BASEREPO"
+git -C "$GBNOJQ_BASEREPO" init -q >/dev/null 2>&1
+git -C "$GBNOJQ_BASEREPO" config user.email t@t >/dev/null 2>&1; git -C "$GBNOJQ_BASEREPO" config user.name t >/dev/null 2>&1
+git -C "$GBNOJQ_BASEREPO" commit -q --allow-empty -m base >/dev/null 2>&1
+git -C "$GBNOJQ_BASEREPO" checkout -q -b develop >/dev/null 2>&1
+gb_nojq() { jq -nc --arg c "$1" '{tool_input:{command:$c}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" CLAUDE_PROJECT_DIR="$GBNOJQ_BASEREPO" bash "$HOOKS/git-branch-guard.sh"; }
+ms_nojq() { jq -nc --arg c "$1" '{tool_input:{command:$c}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" bash "$HOOKS/merge-squash-guard.sh"; }
+mkdir -p "$FAKEHOME/nojq7home"
+is_deny "$(gb_nojq 'git push origin develop')" \
+  && ok "M7: git-branch-guard SIN jq + push a develop → DENY (antes: fail-open silencioso)" \
+  || bad "M7: git-branch-guard SIN jq dejó pasar un push a develop"
+is_silent "$(gb_nojq 'ls -la')" \
+  && ok "M7: git-branch-guard SIN jq + comando no-git → silencio (no sobre-bloquea)" \
+  || bad "M7: git-branch-guard SIN jq bloqueó un comando que no le toca"
+is_deny "$(ms_nojq 'glab mr merge 5 --yes')" \
+  && ok "M7: merge-squash-guard SIN jq + merge sin --squash → DENY (antes: fail-open silencioso)" \
+  || bad "M7: merge-squash-guard SIN jq dejó pasar un merge sin squash"
+is_silent "$(ms_nojq 'ls -la')" \
+  && ok "M7: merge-squash-guard SIN jq + comando no-merge → silencio (no sobre-bloquea)" \
+  || bad "M7: merge-squash-guard SIN jq bloqueó un comando que no le toca"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (b1d-alto2) ALTO-2 (auditoría FMEA 2026-09-16 §1.4, CONFIRMADO): SIN jq, git-branch-guard ya NO"
+echo "   bloquea push a tu PROPIA ramita/mini-develop (el camino MÁS transitado) — sigue bloqueando bare/base/mr =="
+# Medido por la propia auditoría: ANTES de este fix, SIN jq, `git push -u origin feat/mi-cambio` (push a tu
+# PROPIA ramita, el caso más común de TODOS) quedaba DENY -- sin ningún carril. La corrección es de
+# PRECISIÓN (un push que nombra EXPLÍCITAMENTE ≥2 tokens tras 'push', ninguno develop/main/master/HEAD, es
+# por definición una rama NO-base) -- nunca relajación: bare push y mr/pr merge siguen SIEMPRE bloqueados.
+is_silent "$(gb_nojq 'git push -u origin feat/mi-cambio')" \
+  && ok "ALTO-2: SIN jq, push a TU ramita (feat/mi-cambio) → silencio (antes: DENY sin carril)" \
+  || bad "ALTO-2: SIN jq, push a la propia ramita sigue bloqueado (regresión NO resuelta)"
+is_silent "$(gb_nojq 'git push origin DevelopUnjordi')" \
+  && ok "ALTO-2: SIN jq, push a TU mini-develop personal (DevelopUnjordi) → silencio" \
+  || bad "ALTO-2: SIN jq, push a la propia mini-develop sigue bloqueado"
+is_deny "$(gb_nojq 'git push')" \
+  && ok "ALTO-2: SIN jq, push PELÓN (sin rama nombrada, el caso H1 real) → SIGUE bloqueado (no se afloja)" \
+  || bad "ALTO-2: SIN jq, un push pelón (potencialmente a develop/main) dejó de bloquearse — AFLOJAMIENTO"
+is_deny "$(gb_nojq 'git push origin develop')" \
+  && ok "ALTO-2: SIN jq, push EXPLÍCITO a develop → SIGUE bloqueado" \
+  || bad "ALTO-2: SIN jq, push explícito a develop dejó de bloquearse — AFLOJAMIENTO"
+# H1 (auditoría semántica 2026-09-16): el rediseño reusa acg_merge_menciona_base para PARIDAD exacta con
+# el camino CON jq -- y ESE nunca bloqueaba un `mr merge 5` genérico (sin --target-branch explícito): no es
+# el trabajo de ESTE guard (que solo vigila "nombra la base DIRECTO"), es el de confirmar-merge-develop
+# (autorización) y merge-squash-guard (squash) -- AMBOS siguen bloqueando CUALQUIER merge sin jq, sin cambio
+# (ver sus propios tests de M7 abajo). Antes de H1, la heurística propia de ALTO-2 bloqueaba de más aquí por
+# accidente (no por diseño) -- eso SÍ se corrigió, a favor de la paridad real.
+is_silent "$(gb_nojq 'glab mr merge 5 --yes')" \
+  && ok "ALTO-2/H1: SIN jq, mr merge SIN destino explícito → silencio en ESTE guard (paridad con el camino CON jq; confirmar-merge-develop/merge-squash-guard lo bloquean igual, sin cambio)" \
+  || bad "ALTO-2/H1: un mr merge genérico quedó bloqueado por git-branch-guard — rompe la paridad con el camino con-jq"
+is_deny "$(gb_nojq 'glab mr merge 5 --target-branch develop --yes')" \
+  && ok "ALTO-2/H1: SIN jq, mr merge que SÍ nombra develop como destino explícito → SIGUE bloqueado (esto sí es el trabajo de este guard)" \
+  || bad "ALTO-2/H1: REGRESIÓN — un merge con destino explícito a develop dejó de bloquearse"
+is_silent "$(jq -nc --arg c 'git push' '{tool_input:{command:$c}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 bash "$HOOKS/git-branch-guard.sh")" \
+  && ok "ALTO-2: SIN jq + CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 (escape EXPLÍCITO y auditado) → deja pasar, el humano manda" \
+  || bad "ALTO-2: el escape explícito CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL no funcionó"
+is_deny "$(ms_nojq 'glab mr merge 5 --yes')" \
+  && ok "ALTO-2: merge-squash-guard SIN jq, mr merge → SIGUE bloqueado (destino no verificable sin jq; sin precisión de texto posible)" \
+  || bad "ALTO-2: merge-squash-guard SIN jq dejó de bloquear un mr merge — AFLOJAMIENTO"
+is_silent "$(jq -nc --arg c 'glab mr merge 5 --yes' '{tool_input:{command:$c}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 bash "$HOOKS/merge-squash-guard.sh")" \
+  && ok "ALTO-2: merge-squash-guard SIN jq + escape explícito → deja pasar" \
+  || bad "ALTO-2: merge-squash-guard no honró el escape explícito"
+cm_nojq() { jq -nc --arg c "$1" '{tool_input:{command:$c}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" bash "$HOOKS/confirmar-merge-develop.sh"; }
+is_deny "$(cm_nojq 'glab mr merge 5 --yes')" \
+  && ok "ALTO-2: confirmar-merge-develop SIN jq, mr merge → SIGUE bloqueado" \
+  || bad "ALTO-2: confirmar-merge-develop SIN jq dejó de bloquear un mr merge — AFLOJAMIENTO"
+is_silent "$(jq -nc --arg c 'glab mr merge 5 --yes' '{tool_input:{command:$c}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 bash "$HOOKS/confirmar-merge-develop.sh")" \
+  && ok "ALTO-2: confirmar-merge-develop SIN jq + escape explícito → deja pasar" \
+  || bad "ALTO-2: confirmar-merge-develop no honró el escape explícito"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (b1d-h1) H1 (auditoría semántica 2026-09-16, ALTO, CONFIRMADO): SIN jq, git-branch-guard razona"
+echo "   sobre el COMANDO real, NUNCA sobre 'description' u otros campos del JSON crudo =="
+# Medido por la auditoría: el fixture ORIGINAL de b1d-alto2 (arriba) construye el payload SIN 'description' —
+# el campo que cambia la respuesta es justo el que el fixture omitía. gb_nojq_full monta el payload REAL
+# (command + description), la premisa hostil exacta del hallazgo.
+gb_nojq_full() { jq -nc --arg c "$1" --arg d "$2" '{tool_input:{command:$c,description:$d}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" CLAUDE_PROJECT_DIR="$GBNOJQ_BASEREPO" bash "$HOOKS/git-branch-guard.sh"; }
+is_silent "$(gb_nojq_full 'git push -u origin feat/mi-cambio' 'Empujar la ramita del MR a develop')" \
+  && ok "H1: SIN jq, ramita legítima + description que MENCIONA 'develop' → silencio (antes: DENY por leer el JSON crudo)" \
+  || bad "H1: REGRESIÓN — la description volvió a filtrarse al detector y bloqueó una ramita legítima"
+is_silent "$(gb_nojq_full 'git push -u origin fix/main-menu' 'arregla el menu principal')" \
+  && ok "H1: SIN jq, rama 'fix/main-menu' + description sin relación → silencio" \
+  || bad "H1: REGRESIÓN — 'fix/main-menu' se bloqueó (¿la palabra 'main' del NOMBRE de la rama coló?)"
+is_silent "$(gb_nojq_full 'git push -u origin feat/develop-x' 'nueva feature')" \
+  && ok "H1: SIN jq, rama 'feat/develop-x' (contiene 'develop' como SUBSTRING, no como base) → silencio" \
+  || bad "H1: REGRESIÓN — 'feat/develop-x' se bloqueó por contener la palabra 'develop'"
+is_deny "$(gb_nojq_full 'git push origin develop' 'release')" \
+  && ok "H1: SIN jq, push EXPLÍCITO a develop (con o sin description) → SIGUE bloqueado" \
+  || bad "H1: REGRESIÓN — push explícito a develop dejó de bloquearse"
+is_deny "$(gb_nojq_full 'git push' 'algo')" \
+  && ok "H1: SIN jq, push PELÓN → SIGUE bloqueado (fail-safe cuando no se puede resolver la rama actual)" \
+  || bad "H1: REGRESIÓN — un push pelón dejó de bloquearse"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (b1d-h5exec) H5 (auditoría de ejecución 2026-09-16, BAJO-MEDIO, CONFIRMADO): siembra de repo/rama"
+echo "   base VACÍA tiene un carril explícito (CLAUDE_GIT_GUARD_SEED=1), incluso CON jq presente =="
+# Corpus L4/L114: sembrar un repo (0 commits) o crear develop por primera vez son la ÚNICA excepción que la
+# norma global declara para un push directo a base — y el único escape que YA existía
+# (CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL) solo se leía en la rama SIN jq. Con jq presente (el caso normal) el
+# operador quedaba sin carril.
+gb_seed() { jq -nc --arg c "$1" '{tool_input:{command:$c}}' | HOME="$FAKEHOME/seedhome" CLAUDE_GIT_GUARD_SEED=1 bash "$HOOKS/git-branch-guard.sh"; }
+gb_noseed() { jq -nc --arg c "$1" '{tool_input:{command:$c}}' | HOME="$FAKEHOME/seedhome" bash "$HOOKS/git-branch-guard.sh"; }
+mkdir -p "$FAKEHOME/seedhome"
+is_deny "$(gb_noseed 'git push -u origin main')" \
+  && ok "H5: CON jq, siembra de repo vacío (push a main) SIN el escape → sigue bloqueado (comportamiento previo intacto)" \
+  || bad "H5: sin el escape, la siembra pasó igual — el control de este test está mal armado"
+is_silent "$(gb_seed 'git push -u origin main')" \
+  && ok "H5: CON jq + CLAUDE_GIT_GUARD_SEED=1 (escape EXPLÍCITO y auditado) → deja pasar la siembra" \
+  || bad "H5: el escape CLAUDE_GIT_GUARD_SEED no funcionó con jq presente"
+is_deny "$(gb_seed 'glab mr merge 5 --target-branch develop --yes')" \
+  && ok "H5: CLAUDE_GIT_GUARD_SEED=1 NO es un bypass general — un merge que NOMBRA develop como destino SIGUE bloqueado" \
+  || bad "H5: REGRESIÓN — el escape de siembra aflojó algo que no era suyo (merge con destino explícito)"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "== (b1e) confirmar-merge-develop: escape ANCLADO al subcomando (H3) + destino cacheado/timeout (H5) =="
 # Antes NO tenía test de comportamiento. H3: el escape casaba `status|list|view` como token suelto en
 # CUALQUIER parte → `glab mr merge 5 && git status` evadía el gate. H5: 2 llamadas de red idénticas +
@@ -638,6 +1200,15 @@ is_deny "$(cm 'glab mr merge 5 --yes && git status' DENY)" \
 is_deny "$(cm 'glab.exe mr merge 5 --yes' DENY)" \
   && ok "cmd H-R9-01: 'glab.exe mr merge' reconocido como merge (Windows) → gateado" \
   || bad "cmd H-R9-01: 'glab.exe' evadió el gate"
+# Cobertura NUEVA (auditoría externa del arnés, 2026-09-15): git-branch-guard/entorno-maquina-guard/
+# merge-squash-guard/secret-scan ya tenían el caso eval/bash-c (M1); confirmar-merge-develop NO lo tenía
+# pese a compartir la MISMA lib despoja-comillas (cm() ya arma el JSON con jq -nc, quote-safe).
+is_deny "$(cm 'eval "glab mr merge 5 --yes"' DENY)" \
+  && ok "cmd M1-cobertura: 'eval \"glab mr merge…\"' NO evade — sigue gateando" \
+  || bad "cmd M1-cobertura: eval evadió el gate de confirmar-merge-develop"
+is_deny "$(cm 'bash -c "glab mr merge 5 --yes"' DENY)" \
+  && ok "cmd M1-cobertura: 'bash -c \"glab mr merge…\"' NO evade — sigue gateando" \
+  || bad "cmd M1-cobertura: bash -c evadió el gate de confirmar-merge-develop"
 # Inspección genuina (no es merge|accept) → silencio (ni siquiera consulta al juez).
 is_silent "$(cm 'glab mr view 5' DENY)" \
   && ok "cmd: 'glab mr view' (inspección) → silencio (no es un merge)" || bad "cmd: bloqueó una inspección"
@@ -867,6 +1438,33 @@ USUARIO: ok gracias')" = DENY ] \
     && ok "piso-main: destino master + 'libera a master' → ALLOW" || bad "piso-main: bloqueó un release LEGÍTIMO a master"
   [ "$(pmain master 'USUARIO: haz el release a master')" = ALLOW ] \
     && ok "piso-main: destino master + 'release a master' → ALLOW" || bad "piso-main: bloqueó 'release a master'"
+  # M5 (auditoría 2026-09-15 §3.5, 🔴 APRIETA): destino VACÍO/DESCONOCIDO (consulta caída por PATH/red/
+  # timeout) TAMBIÉN pasa por el piso — antes el comentario decía "el vacío lo cubre el fail-seguro del
+  # LLM", pero el LLM es justo el componente que el propio código admite que falla en el 'mergea' pelón a
+  # main. Con destino desconocido, el gate MÁS ESTRICTO (main) debe ganar.
+  [ "$(pmain '' 'USUARIO: mergealo ya')" = DENY ] \
+    && ok "M5: destino DESCONOCIDO + ALLOW + 'mergealo ya' (sin release) → piso override a DENY" \
+    || bad "M5: el piso NO frenó un release-potencial con destino desconocido y sin lenguaje de release"
+  [ "$(pmain '' 'USUARIO: libera el 999 a main, es el release')" = ALLOW ] \
+    && ok "M5: destino DESCONOCIDO + ALLOW + lenguaje de release EXPLÍCITO → pasa (el piso no aplasta un release legítimo)" \
+    || bad "M5: el piso bloqueó un release legítimo con destino desconocido pese al lenguaje de release"
+  # M5-bis (auditoría FMEA 2026-09-16 §1.2, ALTO, PRECISIÓN — no relaja el piso): M5 (arriba) bloqueaba
+  # TAMBIÉN el caso MÁS común (merge a develop) bajo el fallo de entorno MÁS frecuente (timeout de red al
+  # resolver el destino), CONFIRMADO por A/B contra develop con una conversación 100% inequívoca sobre
+  # develop y CERO ambigua sobre main. El juez ahora declara qué destino INFIRIÓ cuando la consulta vino
+  # vacía (DESTINO_INFERIDO, CLAUDE_MERGE_JUEZ_MOCK_DESTINO en test) — el piso solo se salta si esa
+  # inferencia fue EXPLÍCITAMENTE 'develop'; cualquier otra cosa (main, ambiguo, o SIN declarar) deja el
+  # piso EXACTO como antes (cero cambio para el caso que sí debe bloquear).
+  pdest() { CLAUDE_MERGE_JUEZ_MOCK=ALLOW CLAUDE_MERGE_JUEZ_MOCK_DESTINO="$1" _juez_merge '' 999 "$2"; }
+  [ "$(pdest develop 'USUARIO: mergea esto a develop')" = ALLOW ] \
+    && ok "M5-bis: destino vacío + juez INFIERE 'develop' explícito + ALLOW → el piso YA NO lo aplasta (antes: DENY, FP)" \
+    || bad "M5-bis: el piso siguió aplastando un develop inequívoco pese a DESTINO_INFERIDO=develop"
+  [ "$(pdest main 'USUARIO: mergea esto')" = DENY ] \
+    && ok "M5-bis: destino vacío + juez INFIERE 'main' + ALLOW → el piso SIGUE aplicando (DENY, sin cambio)" \
+    || bad "M5-bis: REGRESIÓN — el piso dejó pasar un destino inferido como main sin lenguaje de release"
+  [ "$(pmain '' 'USUARIO: mergealo ya')" = DENY ] \
+    && ok "M5-bis: destino vacío + SIN DESTINO_INFERIDO (juez mudo/mock plano) → el piso SIGUE aplicando por default (conservador)" \
+    || bad "M5-bis: REGRESIÓN — sin declarar inferencia, el piso dejó de aplicar (default dejó de ser conservador)"
 )
 
 # ── VETO DE CITA VERIFICADA + PARSEO POR CENTINELA (capa 1+2, DETERMINISTA sin red) · juez EMPODERADO 2026-08 ──
@@ -1012,7 +1610,7 @@ chmod +x "$JCFIX/curl401/curl"
     || bad "juez-comun (a): el merge no recuperó tras el 401 (got='$got')"
 )
 
-# (c) política SIN token: merge → UNAVAILABLE_NOTOKEN (no genérico), y a nivel hook → DENY + REDIRIGE a la web
+# (c) política SIN token: merge → UNAVAILABLE_NOTOKEN (no genérico), y a nivel hook → DENY + carril CONFORME (setup-token)
 (
   export PATH="$JCFIX/nosec:$PATH"; export CLAUDE_CONFIG_DIR="$JCFIX/empty"; unset CLAUDE_CODE_OAUTH_TOKEN
   _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/confirmar-merge-develop.sh"; unset CLAUDE_MERGE_JUEZ_MOCK CLAUDE_MERGE_JUEZ_MOCK_RAW
@@ -1026,9 +1624,12 @@ git -C "$JCREPO" init -q >/dev/null 2>&1; git -C "$JCREPO" remote add origin git
 printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"mergea el 5 a develop"}]}}' > "$JCFIX/tx.jsonl"
 out_nt="$(jq -nc --arg c 'glab mr merge 5 --squash' --arg t "$JCFIX/tx.jsonl" '{tool_input:{command:$c},transcript_path:$t}' \
   | env -u CLAUDE_CODE_OAUTH_TOKEN PATH="$JCFIX/stubs:$PATH" HOME="$JCFIX/home" CLAUDE_CONFIG_DIR="$JCFIX/empty" CLAUDE_PROJECT_DIR="$JCREPO" bash "$HOOKS/confirmar-merge-develop.sh")"
-{ is_deny "$out_nt" && printf '%s' "$out_nt" | grep -qi 'web de GitLab'; } \
-  && ok "juez-comun (c): merge SIN token → DENY que REDIRIGE a la web de GitLab (colega/CI/api-key; NO abre el merge)" \
-  || bad "juez-comun (c): merge sin token no dio el mensaje de redirección a la web; got: $out_nt"
+# M8 (auditoría 2026-09-15 §3.11, norma dura anti-vein-popper): YA NO redirige a la web de GitLab (retirado
+# — un guard que frena en CLI se SATISFACE o se ARREGLA, nunca se rodea mandando a la persona a la web);
+# el carril CONFORME que sí ofrece es 'claude setup-token' / CLAUDE_CODE_OAUTH_TOKEN.
+{ is_deny "$out_nt" && ! printf '%s' "$out_nt" | grep -qi 'web de GitLab' && printf '%s' "$out_nt" | grep -qi 'setup-token'; } \
+  && ok "juez-comun (c): merge SIN token → DENY con el carril CONFORME (setup-token), SIN redirigir a la web" \
+  || bad "juez-comun (c): el mensaje sin token no dio el carril conforme o siguió mencionando la web; got: $out_nt"
 # (c) dod SIN token → FAIL-OPEN (es un NAG, no un candado): no atrapa el turno
 cat > "$JCFIX/dodtx.jsonl" <<'DTX'
 {"type":"user","message":{"role":"user","content":[{"type":"text","text":"haz el cambio"}]}}
@@ -1042,9 +1643,9 @@ is_silent "$out_dod" \
   || bad "juez-comun (c): dod sin token NO fue fail-open; got: $out_dod"
 
 # (d) A3 — jq AUSENTE en un comando de merge → DENY (fail-SAFE); antes 'command -v jq || exit 0' = ALLOW (evasión)
-NOJQ="$JCFIX/nojq"; mkdir -p "$NOJQ"
-for _t in cat grep basename sed head tail dirname; do _p="$(command -v "$_t" 2>/dev/null)"; [ -n "$_p" ] && ln -s "$_p" "$NOJQ/$_t"; done
-_realbash="$(command -v bash)"
+NOJQ="$JCFIX/nojq"
+_mkbin_real "$NOJQ" cat grep basename sed head tail dirname bash
+_realbash="$NOJQ/bash"
 out_nojq="$(printf '%s' '{"tool_input":{"command":"glab mr merge 5 --squash"},"transcript_path":""}' \
   | PATH="$NOJQ" HOME="$JCFIX/home" "$_realbash" "$HOOKS/confirmar-merge-develop.sh")"
 { is_deny "$out_nojq" && printf '%s' "$out_nojq" | grep -qi 'sin jq'; } \
@@ -1373,6 +1974,28 @@ else
   ok "cmd LIVE: batería juez-Haiku real SALTADA (corre con CLAUDE_MERGE_JUEZ_LIVE=1 + curl/jq disponibles)"
 fi
 
+# M8 (auditoría 2026-09-15 §3.10/§4.2, sobre M3): destino DESCONOCIDO por fallo de ENTORNO (ni gh ni glab
+# alcanzables) → el mensaje dice la CAUSA REAL + "repetir la autorización NO va a destrabar esto", en vez
+# de pedirle al usuario que "lo diga más claro" (inútil: el problema no es de lenguaje, es de PATH).
+M8ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-m8.XXXXXX")"; M8REPO="$M8ROOT/repo"; M8HOME="$M8ROOT/home"
+mkdir -p "$M8REPO/.claude" "$M8HOME"
+: > "$M8REPO/.claude/repo-compartido"
+git -C "$M8REPO" init -q >/dev/null 2>&1
+git -C "$M8REPO" remote add origin git@gitlab.com:org/repo.git >/dev/null 2>&1
+M8TX="$M8ROOT/tx.jsonl"; printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"mergealo ya"}]}}' > "$M8TX"
+M8NOCLI="$M8ROOT/noclibin"
+_mkbin_real "$M8NOCLI" bash grep sed cat basename dirname head tail printf awk jq date mktemp tr wc sort cut git
+rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
+out_m8="$(jq -nc --arg c 'glab mr merge 42 --yes' --arg t "$M8TX" '{tool_input:{command:$c},transcript_path:$t}' \
+  | PATH="$M8NOCLI" HOME="$M8HOME" CLAUDE_PROJECT_DIR="$M8REPO" ACG_PATH_AUGMENT=0 CLAUDE_MERGE_JUEZ_MOCK=DENY bash "$HOOKS/confirmar-merge-develop.sh")"
+{ is_deny "$out_m8" && printf '%s' "$out_m8" | grep -qi 'ni gh ni glab' && printf '%s' "$out_m8" | grep -qi 'Repetir la autorizaci'; } \
+  && ok "M8: destino DESCONOCIDO por SIN-RED → mensaje da la causa REAL (ni gh ni glab) + 'repetir NO destraba'" \
+  || bad "M8: el mensaje de entorno no citó la causa real o pidió repetir la autorización; got: $out_m8"
+{ ! printf '%s' "$out_m8" | grep -q 'MR ()'; } \
+  && ok "M8: sin mrid resoluble en el flag de destino, el mensaje NO cita 'MR ()' roto" \
+  || bad "M8: el mensaje citó un 'MR ()' roto"
+rm -rf "$M8ROOT"
+
 # ── (b1f) confirmar: AUTORIZACIÓN DURABLE en disco (sobrevive compactaciones) + vocabulario "empuja/mete" ──
 # El grant lo escribe el skill turno-nocturno con la CITA textual del usuario y vence_epoch; SOLO
 # cubre scope=merge-develop. Caso real 2026-07-12: un OK blanket murió al compactarse el contexto.
@@ -1408,6 +2031,61 @@ mock_cm_glab develop
 is_deny "$(cm 'glab mr merge 65 --squash --yes' DENY)" \
   && ok "cmd b1f: sin archivo de grants → deny normal (sin cambios de baseline)" \
   || bad "cmd b1f: sin archivo el guard dejó de frenar"
+# (6) CRÍTICO-3 (auditoría FMEA 2026-09-16 §1.3, CONFIRMADO por A/B contra develop): M6 (auditoría
+#     2026-09-15 §3.6) había AMPLIADO el fast-path del grant a destino DESCONOCIDO con la cerca "sin léxico
+#     de release en la ventana" — pero esa cerca confunde "el usuario no habló de release EN LA CHARLA" con
+#     "el MR no apunta a main" (un HECHO del propio MR, ajeno a la conversación). Con un grant vigente +
+#     destino irresoluble (timeout/red) + charla vaga SIN palabra "release", el fast-path dejaba pasar el
+#     merge EN SILENCIO sin llamar NUNCA a `_juez_merge` — si el MR de verdad apuntaba a main, colaba un
+#     release sin ningún gate. FIX: el grant SOLO se consulta con destino CONFIRMADO 'develop'; con destino
+#     desconocido SIEMPRE cae al juez (que con M5-bis, si la conversación es inequívoca sobre develop, igual
+#     ALLOWea sin exigir léxico de release — el grant deja de ser NECESARIO ahí) — y si el juez tampoco es
+#     alcanzable (mismo fallo de red), DENY: el comportamiento PRE-M6 que la auditoría confirmó correcto.
+printf -- '- scope=merge-develop vence_epoch=%s vence="+1h" cita="ok, sigue" registrada=hoy\n' "$(( $(date +%s) + 3600 ))" > "$AUTHF"
+is_deny "$(cm 'glab mr merge --yes' DENY 'ok, sigue')" \
+  && ok "CRÍTICO-3 (post-fix): grant vigente + destino DESCONOCIDO + juez DENY → deny (el grant YA NO salta el juez con destino sin confirmar)" \
+  || bad "CRÍTICO-3: REGRESIÓN — el grant sigue saltándose el juez con destino desconocido (el hueco de seguridad volvió)"
+is_deny "$(cm 'glab mr merge --yes' UNAVAILABLE 'ok, sigue')" \
+  && ok "CRÍTICO-3 (post-fix): grant vigente + destino DESCONOCIDO + juez UNAVAILABLE (red caída, escenario real de turno-nocturno) → deny, fail-safe" \
+  || bad "CRÍTICO-3: REGRESIÓN — con el juez inalcanzable el grant coló el merge de todos modos"
+# (7) MISMO grant vigente, pero la ventana SÍ trae léxico de release → sigue cayendo al juez (mockeado DENY
+#     aquí) → freno. Sin cambio de comportamiento (ya no dependía de esta cerca para estar seguro).
+is_deny "$(cm 'glab mr merge --yes' DENY 'libera esto a main, es el release')" \
+  && ok "CRÍTICO-3: grant vigente + destino DESCONOCIDO + CON léxico de release → decide el juez (freno, sin cambio)" \
+  || bad "CRÍTICO-3: el grant coló un posible release a main con destino desconocido"
+# (8) regresión del camino SEGURO de M6 (el que SÍ debía quedarse): destino CONFIRMADO develop + grant
+#     vigente → sigue pasando SIN llamar al juez (mock=DENY prueba que el fast-path lo evita).
+mock_cm_glab develop
+is_silent "$(cm 'glab mr merge 66 --squash --yes' DENY)" \
+  && ok "CRÍTICO-3: regresión — grant vigente + destino CONFIRMADO develop → SIGUE pasando por el fast-path (no se tocó la parte segura de M6)" \
+  || bad "CRÍTICO-3: REGRESIÓN — el fast-path seguro (destino=develop confirmado) se rompió al cerrar el hueco"
+rm -f "$AUTHF" 2>/dev/null
+
+# H3 (auditoría de ejecución 2026-09-16, MEDIO, CONFIRMADO): acg_recent_intercalado lee `tail -n 6000` del
+# transcript -- si la autorización real queda FUERA de esa ventana (turno-nocturno, horas de trabajo
+# autónomo), el mensaje CULPABA AL USUARIO ("no encontré tu confirmación EXPRESA") en vez de nombrar la
+# causa real (la ventana no alcanzó). Repro EXACTO: 1 línea de autorización + 6200 turnos de asistente.
+H3TX="$CMROOT/h3tx.jsonl"
+{
+  printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"mergea el MR 5 a develop cuando termines"}]}}'
+  i=1; while [ "$i" -le 6200 ]; do printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"trabajando"}]}}'; i=$((i+1)); done
+} > "$H3TX"
+mock_cm_glab develop
+out_h3=$(jq -nc --arg c 'glab mr merge 5 --squash --yes' --arg t "$H3TX" '{tool_input:{command:$c},transcript_path:$t}' \
+  | PATH="$CMBIN:$PATH" HOME="$CMHOME" CLAUDE_PROJECT_DIR="$CMREPO" CLAUDE_MERGE_JUEZ_MOCK=DENY bash "$HOOKS/confirmar-merge-develop.sh")
+{ is_deny "$out_h3" && printf '%s' "$out_h3" | grep -qi 'FUERA de mi ventana' && ! printf '%s' "$out_h3" | grep -qi 'no encontré tu confirmación'; } \
+  && ok "H3: transcript de 6201 líneas con el OK en la línea 1 → el mensaje nombra la CAUSA (ventana truncada), no culpa al usuario" \
+  || bad "H3: REGRESIÓN — el mensaje sigue culpando al usuario pese a que la autorización quedó fuera de la ventana; got: $out_h3"
+# Control: mismo transcript pero CORTO (la autorización SÍ cae dentro de la ventana) → sigue pasando normal.
+H3TX2="$CMROOT/h3tx2.jsonl"
+printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"mergea el MR 5 a develop"}]}}' > "$H3TX2"
+out_h3b=$(jq -nc --arg c 'glab mr merge 5 --squash --yes' --arg t "$H3TX2" '{tool_input:{command:$c},transcript_path:$t}' \
+  | PATH="$CMBIN:$PATH" HOME="$CMHOME" CLAUDE_PROJECT_DIR="$CMREPO" CLAUDE_MERGE_JUEZ_MOCK=ALLOW bash "$HOOKS/confirmar-merge-develop.sh")
+# ALLOW legítimo trae su nota de higiene (additionalContext, no vacío) -- lo que NO debe pasar es un deny
+# citando "ventana truncada" sobre un transcript corto normal.
+{ ! is_deny "$out_h3b" && ! printf '%s' "$out_h3b" | grep -qi 'FUERA de mi ventana'; } \
+  && ok "H3 control: transcript CORTO (autorización dentro de la ventana) → sigue pasando normal (sin falso 'ventana truncada')" \
+  || bad "H3 control: REGRESIÓN — un transcript corto normal disparó el mensaje de ventana truncada, o se bloqueó; got: $out_h3b"
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
 rm -rf "$CMROOT"
 
@@ -1438,6 +2116,17 @@ o="$(scan 'git commit -m x')"
 # (4) un no-git → silencio
 o="$(scan 'ls -la')"
 [ -z "$o" ] && ok "secret-scan ignora comandos no-git" || bad "secret-scan reaccionó a no-git; got: $o"
+# Cobertura NUEVA (auditoría externa del arnés, 2026-09-15): git-branch-guard/entorno-maquina-guard/
+# merge-squash-guard ya tenían el caso eval/bash-c (M1); secret-scan NO lo tenía pese a compartir la MISMA
+# lib despoja-comillas. `scan()` interpola SIN escapar comillas (rompería el JSON) → jq -nc aquí.
+printf 'aws_key = AKIA1234567890ABCDEF\n' > "$SCANREPO/config.txt"
+git -C "$SCANREPO" add config.txt >/dev/null 2>&1
+scan_raw() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | HOME="$SCANREPO" CLAUDE_PROJECT_DIR="$SCANREPO" bash "$HOOKS/secret-scan.sh"; }
+o="$(scan_raw 'eval "git commit -m x"')"
+printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan M1-cobertura: 'eval \"git commit…\"' NO evade — sigue escaneando" || bad "secret-scan M1-cobertura: eval evadió el escaneo de secretos; got: $o"
+o="$(scan_raw 'bash -c "git commit -m x"')"
+printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan M1-cobertura: 'bash -c \"git commit…\"' NO evade — sigue escaneando" || bad "secret-scan M1-cobertura: bash -c evadió el escaneo de secretos; got: $o"
+git -C "$SCANREPO" reset -q >/dev/null 2>&1; rm -f "$SCANREPO/config.txt"
 # ── §D: patrones NUEVOS (JWT, connection string, Password=) vía la lib detectar-secretos ──
 reset_scan() { git -C "$SCANREPO" reset -q >/dev/null 2>&1; rm -f "$SCANREPO"/*.txt 2>/dev/null; }
 # (A1 multi-add) `git add safe && git add secret && git commit` en UN comando: los adds NO corrieron en
@@ -1476,9 +2165,9 @@ rm -rf "$NONGIT"
 # (2) sin jq: un guard DEFENSIVO NO calla. Antes: `exit 0` mudo (red apagada en silencio + STRICT ignorado).
 # Ahora: STRICT sin jq → fail-CLOSED por exit 2 (bloqueo que no necesita jq); default → aviso ruidoso + pasa;
 # no-git → silencio; escapes (SKIP/--no-verify) respetados. Simula "sin jq" con un PATH mínimo (cat+basename).
-NOJQ="$(mktemp -d "${TMPDIR:-/tmp}/brain-nojq.XXXXXX")"; NOJQBIN="$NOJQ/bin"; NOJQHOME="$NOJQ/home"; mkdir -p "$NOJQBIN" "$NOJQHOME"
-for _b in cat basename; do ln -s "$(command -v "$_b")" "$NOJQBIN/$_b"; done
-BASH_ABS="$(command -v bash)"
+NOJQ="$(mktemp -d "${TMPDIR:-/tmp}/brain-nojq.XXXXXX")"; NOJQBIN="$NOJQ/bin"; NOJQHOME="$NOJQ/home"; mkdir -p "$NOJQHOME"
+_mkbin_real "$NOJQBIN" cat basename bash
+BASH_ABS="$NOJQBIN/bash"
 printf '%s' '{"tool_input":{"command":"git commit -m x"}}' | PATH="$NOJQBIN" HOME="$NOJQHOME" CLAUDE_SECRET_SCAN_STRICT=1 "$BASH_ABS" "$HOOKS/secret-scan.sh" >/dev/null 2>&1
 [ "$?" -eq 2 ] && ok "secret-scan (2): sin jq + STRICT=1 → fail-CLOSED (exit 2)" || bad "secret-scan (2): sin jq + STRICT no bloqueó (exit != 2)"
 err="$(printf '%s' '{"tool_input":{"command":"git commit -m x"}}' | PATH="$NOJQBIN" HOME="$NOJQHOME" "$BASH_ABS" "$HOOKS/secret-scan.sh" 2>&1 >/dev/null)"; rc=$?
@@ -1579,11 +2268,16 @@ printf '%s' "$(scanf 'git --work-tree=. commit -am x')" | grep -q '"deny"' && ok
 # A-R5-02 (FMEA r5): con el despoje ANTES de normalizar, un value-eater con valor ENTRECOMILLADO
 # (`git -C "/ruta" commit`) quedaba vacío y el normalizador se comía `commit` → escaneo CIEGO (¡sin
 # necesitar espacio!). Fix: normalizar el RAW (quote-aware) ANTES de despojar. Secreto en tracked que -a estagea.
+# M2 (auditoría 2026-09-15): desde que secret-scan HONRA -C para resolver el dir objetivo (antes siempre
+# escaneaba CLAUDE_PROJECT_DIR, ciego al propio -C), el valor de -C debe ser un repo REAL (si no, el guard
+# ahora fail-abre correctamente sobre un dir irresoluble) — se usa FMEAREPO (con un subdir CON espacio para
+# seguir cubriendo el caso "valor entrecomillado con espacio"), no una ruta inventada.
 fmeareset; printf 'v\n' > "$FMEAREPO/g3.txt"; git -C "$FMEAREPO" add g3.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm g3 >/dev/null 2>&1
 printf 'v\naws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/g3.txt"
-printf '%s' "$(scanf 'git -C "/nospace" commit -am x')"  | grep -q '"deny"' && ok "secret-scan A-R5-02: 'git -C \"/nospace\" commit -am' (valor entrecomillado sin espacio) escanea → bloquea" || bad "secret-scan A-R5-02: valor entrecomillado cegó el escaneo (despoje antes de normalizar)"
-printf '%s' "$(scanf 'git -C "/a b/repo" commit -am x')" | grep -q '"deny"' && ok "secret-scan A-R5-02: 'git -C \"/a b/repo\" commit -am' (valor entrecomillado con espacio) escanea → bloquea" || bad "secret-scan A-R5-02: valor entrecomillado con espacio cegó el escaneo"
-printf '%s' "$(scanf 'git --work-tree="/a b" commit -am x')" | grep -q '"deny"' && ok "secret-scan A-R5-02: 'git --work-tree=\"/a b\" commit -am' (=-form entrecomillado) escanea → bloquea" || bad "secret-scan A-R5-02: --work-tree= entrecomillado cegó el escaneo"
+mkdir -p "$FMEAREPO/a b"
+printf '%s' "$(scanf "git -C \"$FMEAREPO\" commit -am x")"  | grep -q '"deny"' && ok "secret-scan A-R5-02: 'git -C \"\$repo\" commit -am' (valor entrecomillado sin espacio) escanea → bloquea" || bad "secret-scan A-R5-02: valor entrecomillado cegó el escaneo (despoje antes de normalizar)"
+printf '%s' "$(scanf "git -C \"$FMEAREPO/a b\" commit -am x")" | grep -q '"deny"' && ok "secret-scan A-R5-02: 'git -C \"\$repo/a b\"' (valor entrecomillado CON espacio, subdir real) escanea → bloquea" || bad "secret-scan A-R5-02: valor entrecomillado con espacio cegó el escaneo"
+printf '%s' "$(scanf "git --work-tree=\"$FMEAREPO/a b\" commit -am x")" | grep -q '"deny"' && ok "secret-scan A-R5-02: 'git --work-tree=\"\$repo/a b\"' (=-form entrecomillado, con espacio) escanea → bloquea" || bad "secret-scan A-R5-02: --work-tree= entrecomillado cegó el escaneo"
 # A-R6-01 (FMEA r6): comilla EN MEDIO del valor de un global (`git -c user.name="a b" commit`) → mismo
 # mecanismo de evasión, mismo fix (valor como secuencia). Secreto en tracked que -a estagea.
 fmeareset; printf 'v\n' > "$FMEAREPO/g4.txt"; git -C "$FMEAREPO" add g4.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm g4 >/dev/null 2>&1
@@ -1598,6 +2292,55 @@ fmeareset; printf 'v\n' > "$FMEAREPO/g6.txt"; git -C "$FMEAREPO" add g6.txt >/de
 printf 'v\naws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/g6.txt"
 printf '%s' "$(scanf 'git.exe commit -am x')" | grep -q '"deny"' && ok "secret-scan B4: 'git.exe commit -am' (binario Windows) escanea → bloquea" || bad "secret-scan B4: 'git.exe' cegó el escaneo"
 rm -rf "$FMEAREPO"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (b2d) secret-scan DEFECTO #4 (auditoría overhead 2026-09-16): deja de escalar con el Nº de archivos =="
+# Antes: el escaneo primario corría un `git diff -- "$f"` POR ARCHIVO en un bucle -- lineal en archivos
+# tocados; medido en producción: 600s de TIMEOUT con un commit de 105 archivos (`git add -A` + commit
+# masivo). Un guard DEFENSIVO que se pasa de tiempo DEJA DE PROTEGER: se apaga exactamente en el commit
+# más grande, justo donde más fácil se cuela un secreto sin que nadie lo note al revisar.
+#
+# Oráculo (bastante más grande que el caso real de 105, para ver margen): un commit de N archivos con un
+# secreto ESCONDIDO en el archivo Nº 100 -- ni el primero ni el último -- debe (a) seguir bloqueando
+# (la dirección que de verdad importa) Y (b) terminar en un tiempo ACOTADO que NO escale con N. Y el
+# MISMO tamaño, pero limpio, debe pasar en silencio (sin ruido) igual de rápido -- ese es el caso que
+# ANTES se comía el timeout (no el que bloquea: el commit grande y LIMPIO).
+#
+# Contra el código de HOY (bucle por archivo) el assert de tiempo FALLA: medido en esta máquina, N=400
+# tarda ~6s (escala ~12ms/archivo, lineal) vs <1s tras el fix (una sola invocación de `git diff` para
+# TODO el rango, sin importar N). El umbral de 3s dobla el margen sobre el fix y se queda muy por debajo
+# de lo que tarda el código viejo con este mismo N.
+DEFECTO4ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-defecto4.XXXXXX")"; DEFECTO4REPO="$DEFECTO4ROOT/repo"; mkdir -p "$DEFECTO4REPO"
+git -C "$DEFECTO4REPO" init -q >/dev/null 2>&1
+git -C "$DEFECTO4REPO" config user.email t@t >/dev/null 2>&1
+git -C "$DEFECTO4REPO" config user.name  tester >/dev/null 2>&1
+N4=400
+for i in $(seq 1 "$N4"); do printf '#!/usr/bin/env bash\necho linea de relleno\n' > "$DEFECTO4REPO/f_$i.sh"; done
+git -C "$DEFECTO4REPO" add -A >/dev/null 2>&1
+git -C "$DEFECTO4REPO" commit -qm base >/dev/null 2>&1
+for i in $(seq 1 "$N4"); do printf '#!/usr/bin/env bash\necho linea de relleno\n# header agregado\n' > "$DEFECTO4REPO/f_$i.sh"; done
+printf '#!/usr/bin/env bash\necho linea de relleno\n# header agregado\naws_key = AKIA1234567890ABCDEF\n' > "$DEFECTO4REPO/f_100.sh"
+git -C "$DEFECTO4REPO" add -A >/dev/null 2>&1
+SECONDS=0
+out_defecto4=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"git commit -qm x"}}' \
+  | HOME="$DEFECTO4REPO" CLAUDE_PROJECT_DIR="$DEFECTO4REPO" bash "$HOOKS/secret-scan.sh")
+dur_defecto4=$SECONDS
+{ printf '%s' "$out_defecto4" | grep -q '"deny"' && [ "$dur_defecto4" -le 3 ]; } \
+  && ok "secret-scan DEFECTO #4: secreto ESCONDIDO en el archivo #100 de $N4 → sigue bloqueando Y en ${dur_defecto4}s (acotado, no escala con N)" \
+  || bad "secret-scan DEFECTO #4: no bloqueó a tiempo (out contiene deny: $(printf '%s' "$out_defecto4" | grep -c '"deny"'), dur=${dur_defecto4}s) -- ¿volvió el bucle por archivo?"
+# Mismo tamaño, TODO limpio: silencio y en el mismo tiempo acotado (el caso REAL que timeouteaba).
+git -C "$DEFECTO4REPO" reset -q >/dev/null 2>&1
+for i in $(seq 1 "$N4"); do printf '#!/usr/bin/env bash\necho linea de relleno\n# header limpio sin nada especial\n' > "$DEFECTO4REPO/f_$i.sh"; done
+git -C "$DEFECTO4REPO" add -A >/dev/null 2>&1
+SECONDS=0
+out_defecto4_clean=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"git commit -qm x"}}' \
+  | HOME="$DEFECTO4REPO" CLAUDE_PROJECT_DIR="$DEFECTO4REPO" bash "$HOOKS/secret-scan.sh")
+dur_defecto4_clean=$SECONDS
+{ [ -z "$out_defecto4_clean" ] && [ "$dur_defecto4_clean" -le 3 ]; } \
+  && ok "secret-scan DEFECTO #4: commit GRANDE y LIMPIO ($N4 archivos) → silencio Y en ${dur_defecto4_clean}s (antes se comía el timeout aquí)" \
+  || bad "secret-scan DEFECTO #4: commit grande limpio hizo ruido o tardó de más (out='$out_defecto4_clean' dur=${dur_defecto4_clean}s)"
+rm -rf "$DEFECTO4ROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
@@ -1645,6 +2388,16 @@ printf 'alias ls=eza\n' > "$EMREPO/notas.md"
 git -C "$EMREPO" add notas.md >/dev/null 2>&1
 o="$(emg 'git commit -m x')"
 [ -z "$o" ] && ok "entorno-maquina-guard: archivo fuera de .claude/memory/ → silencio (fuera de alcance)" || bad "entorno-maquina-guard: reaccionó fuera de .claude/memory/; got: $o"
+# M1 (auditoría 2026-09-15 §2.1): el despoje-a-mano se unificó con la lib compartida — un `bash -c "git
+# commit -m x"` ya no evade este aviso (antes lo evadía: el sed a mano trataba TODO lo entrecomillado como
+# dato).
+emreset
+printf 'alias ls=eza\n' > "$EMREPO/.claude/memory/correr-en-local.md"
+git -C "$EMREPO" add .claude/memory/correr-en-local.md >/dev/null 2>&1
+o="$(emg "bash -c 'git commit -m x'")"
+printf '%s' "$o" | grep -q 'CONTENIDO machine-specific' \
+  && ok "M1: entorno-maquina-guard — 'bash -c \"git commit …\"' ya no evade (unificado con la lib)" \
+  || bad "M1: entorno-maquina-guard — 'bash -c' evadió el aviso; got: $o"
 rm -rf "$EMREPO"
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2830,6 +3583,42 @@ else
 fi
 rm -f "$DODTX"
 rm -f "$DODTX"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (b4z) dod-verificar: COHERENCIA de timeouts — el crédito del juez cabe bajo el harness (fix carrera 2026-09-16) =="
+# Bug real medido en telemetría (transcripts jsonl, agosto 2026, project plantilladotnet): el harness del
+# Stop hook mata el proceso a los "timeout" segundos cableados en el settings.json del repo consumidor
+# (15s, verificado en despliegues reales), mientras CLAUDE_DOD_JUEZ_TIMEOUT (el crédito que el hook le da a
+# SU PROPIO curl) era 20s — MAYOR que el harness: una carrera que el hook SIEMPRE perdía, matado 5s ANTES
+# de que el juez agotara su propio presupuesto. 71 de 71 disparos de Stop en agosto murieron en ese muro
+# (~15000-15076ms), 15s de espera muerta y SIN veredicto cada vez — pese a que dod es fail-OPEN (el timeout
+# ni siquiera bloqueaba: solo desperdiciaba el turno).
+# Este test mide la INTENCIÓN (el presupuesto exterior CUBRE al interior, con margen para el resto del
+# hook), no la plomería ("el número es 10"): extrae AMBOS valores del propio archivo fuente (única fuente,
+# ver el CONTRATO DE COHERENCIA DE TIMEOUTS junto al `source` de juez-comun.sh en dod-verificar.sh) y
+# afirma la desigualdad — si alguien sube el crédito del juez sin subir el mínimo asumido del harness (o
+# baja el mínimo del harness sin bajar el crédito del juez), el test se cae, sin importar los números
+# concretos que use cada lado.
+DODSH="$HOOKS/dod-verificar.sh"
+dodj_interno=$(grep -oE 'CLAUDE_DOD_JUEZ_TIMEOUT:-[0-9]+' "$DODSH" | grep -oE '[0-9]+$')
+dodj_harness=$(grep -oE '_DOD_HARNESS_TIMEOUT_MINIMO=[0-9]+' "$DODSH" | grep -oE '[0-9]+$')
+[ -n "$dodj_interno" ] && [ -n "$dodj_harness" ] \
+  && ok "dod: el contrato de timeouts está declarado y es grepeable (interno=${dodj_interno}s, harness-mínimo=${dodj_harness}s)" \
+  || bad "dod: no pude extraer el crédito interno del juez (CLAUDE_DOD_JUEZ_TIMEOUT:-N, leí '${dodj_interno:-<vacío>}') y/o el mínimo del harness (_DOD_HARNESS_TIMEOUT_MINIMO=N, leí '${dodj_harness:-<vacío>}') del propio dod-verificar.sh — sin un contrato declarado y grepeable, los dos números pueden driftear en silencio (la carrera original)"
+
+# Margen exigido sobre el overhead REAL del resto del hook (tail -n 1500 del transcript + los jq/awk que
+# arman el turno + build del prompt + parseo de la respuesta), medido en telemetría real SIN llamada de red
+# (caso "screen-out local", agosto-septiembre 2026, plantilladotnet): p99 ≈ 953ms. 3s de margen es holgado
+# a propósito (fail-open: de sobra, nunca de menos).
+DODJ_MARGEN_MINIMO=3
+if [ -n "$dodj_interno" ] && [ -n "$dodj_harness" ]; then
+  [ "$((dodj_interno + DODJ_MARGEN_MINIMO))" -le "$dodj_harness" ] \
+    && ok "dod: coherencia de timeouts — interno(${dodj_interno}s) + margen(${DODJ_MARGEN_MINIMO}s) <= harness-mínimo(${dodj_harness}s): el hook YA NO puede perder la carrera contra su propio harness" \
+    || bad "dod: INCOHERENTE — interno(${dodj_interno}s) + margen(${DODJ_MARGEN_MINIMO}s) > harness-mínimo(${dodj_harness}s): el harness mataría el proceso ANTES de que el juez agote su crédito (revivió la carrera del 2026-09-16)"
+else
+  bad "dod: coherencia de timeouts — SALTADO (no pude leer alguno de los dos valores del contrato)"
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
@@ -4993,7 +5782,9 @@ drift-cerebro-comun|proteger-fuente-cerebro
 drift-cerebro-comun|verificar-cerebro
 checkpoint|checkpoint-mecanico
 checkpoint|contrato-hilo
-barrer-flotilla-cerebro|limpiar-residuo"
+barrer-flotilla-cerebro|limpiar-residuo
+analizar-comando-git|proteger-arbol
+analizar-comando-git|limpiar-residuo"
 # auditar-coherencia-cerebro|auditar-proceso-algoritmo: FAMILIA declarada, no ciclo — proceso-algoritmo
 # es la METODOLOGÍA y apunta a secciones CONCRETAS de coherencia-cerebro (que es su modo-cerebro
 # empaquetado) donde vive el detalle; el contenido está en los dos lados, así que el lector no da vueltas.
@@ -5008,6 +5799,15 @@ barrer-flotilla-cerebro|limpiar-residuo"
 # checkpoint|contrato-hilo (F1, 2026-09-11): la lib es el CONTRATO del footer del hilo — la skill la
 # corre al volcar (fail-loud) y la lib documenta a su consumidor. Es lib<->consumidor, como los 3
 # pares de drift-cerebro-comun de arriba; el contenido no rebota entre los dos.
+# analizar-comando-git|proteger-arbol (M1/M2, auditoría 2026-09-15): proteger-arbol AHORA sourcea la lib
+# (antes vivía fuera del candado común, ciego a -C/git.exe/cross-repo) — es lib<->consumidor, como
+# delegacion-comun|delegacion-gate. La lib solo MENCIONA a proteger-arbol en un comentario (por qué el
+# heredoc-aware reemplaza su viejo filtro propio); no hay un source de vuelta ni contenido que rebote.
+# analizar-comando-git|limpiar-residuo (auditoría de ejecución 2026-09-16, H1): acg__cache_confiable usa
+# CLAUDE_RESIDUO_DIAS_TMP como fallback de TTL para que ambos compartan la MISMA política declarada (7 días)
+# sobre la MISMA familia de archivos (acg-mrdest-*) — limpiar-residuo YA mencionaba a analizar-comando-git
+# (los barre); ahora la lib menciona a limpiar-residuo EN UN COMENTARIO para explicar de dónde sale el
+# default. Ninguno sourcea al otro ni hay contenido que rebote — es acuerdo de POLÍTICA, no dependencia.
 ce_els=()
 for d in "$SCRIPT_DIR"/skills/*/; do [ -d "$d" ] && ce_els+=("$(basename "$d")"); done
 for h in "$HOOKS"/*.sh; do [ -e "$h" ] && ce_els+=("$(basename "$h" .sh)"); done
@@ -5600,7 +6400,7 @@ want_bash="git-branch-guard merge-squash-guard confirmar-merge-develop secret-sc
 want_bash_sorted="$(printf '%s\n' $want_bash | sort | tr '\n' ' ' | sed 's/ *$//')"
 got_bash="$(grep -E '\) *echo *"PreToolUse\|Bash"' "$INSTALLER" | sed -E 's/\).*//' | tr '|' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -vE '^$' | sort | tr '\n' ' ' | sed 's/ *$//')"
 if [ "$got_bash" = "$want_bash_sorted" ]; then
-  ok "e6b: ev_de() mapea EXACTAMENTE los 9 guards de PreToolUse/Bash"
+  ok "e6b: ev_de() mapea EXACTAMENTE los 8 guards de PreToolUse/Bash"
 else
   bad "e6b: el set PreToolUse/Bash de ev_de() cambió · got:[$got_bash] want:[$want_bash_sorted]"
 fi
@@ -7453,5 +8253,31 @@ rm -rf "$H2CODE" "$H2HOME"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (b1d-h5doc) H5 (auditoría de ejecución 2026-09-16, MEDIO, CONFIRMADO): el CONTRATO de fail-safe ya"
+echo "   NO prescribe el escape a la WEB que M8 retiró de los mensajes reales =="
+# juez-comun.sh:24 es la cabecera que el propio archivo declara "definición ÚNICA" del contrato de
+# fail-safe -- pero seguía documentando "NOTOKEN → DENY + redirección al carril de la WEB de GitLab" pese a
+# que M8 (auditoría 2026-09-15 §3.11) retiró esa redirección de los 4 mensajes reales por la norma anti-
+# vein-popper. Quien implemente el PRÓXIMO juez leyendo el contrato la reintroduciría.
+# NOTA de test: se filtran las líneas de COMENTARIO (^\s*#) al buscar la frase retirada -- los propios
+# comentarios de ESTE fix (incluido el de arriba) la CITAN históricamente para explicar qué se quitó, lo cual
+# es documentación legítima (norma "presente=se queda, pasado=se va" con la excepción de la lección). Lo que
+# importa es que NINGÚN mensaje/JSON real (código vivo, no comentario) la ofrezca como salida.
+! grep -v '^[[:space:]]*#' "$HOOKS/juez-comun.sh" | grep -qi 'web de gitlab\|en la web' \
+  && ok "H5: juez-comun.sh ya NO prescribe la redirección a la web de GitLab en código vivo (solo la CITA en comentario, como historia)" \
+  || bad "H5: REGRESIÓN — el CÓDIGO VIVO (no un comentario) sigue prescribiendo el escape a la web que M8 ya retiró"
+grep -qi 'setup-token' "$HOOKS/juez-comun.sh" \
+  && ok "H5: el contrato SÍ documenta el remedio real (claude setup-token / CLAUDE_CODE_OAUTH_TOKEN)" \
+  || bad "H5: el contrato no documenta ningún remedio real para NOTOKEN"
+for _g in git-branch-guard.sh merge-squash-guard.sh confirmar-merge-develop.sh secret-scan.sh proteger-arbol.sh; do
+  grep -v '^[[:space:]]*#' "$HOOKS/$_g" | grep -qi 'web de gitlab\|en la web' \
+    && bad "H5 control: $_g todavía menciona la web como escape en CÓDIGO VIVO (norma anti-vein-popper violada)" \
+    || ok "H5 control: $_g no ofrece la web como escape en código vivo (ya lo verificaba M8, sigue intacto)"
+done
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+PASS=$(grep -c '^OK$'  "$CALLLOG" 2>/dev/null); PASS="${PASS:-0}"
+FAIL=$(grep -c '^BAD$' "$CALLLOG" 2>/dev/null); FAIL="${FAIL:-0}"
 echo "==> resultado: $PASS PASS · $FAIL FAIL"
 [ "$FAIL" -eq 0 ]

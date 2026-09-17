@@ -1,16 +1,16 @@
-// 06 — Integrar una rama a develop/main: los 3 git-guards de la ruta de MERGE (cortex)  ·  FUENTE editable (.dot)
-// Render:  dot -Tsvg 06-integrar-rama-a-developmain.dot -o 06-integrar-rama-a-developmain.svg
-// ZOOM del subconjunto de MERGE del fan-out de 9 hooks (raíz común en 03 · CONVENCIONES §6):
-// git-branch-guard → merge-squash-guard → confirmar-merge-develop. Reconstruido 2026-08-07 desde el CÓDIGO real
-// (brain/hooks/git-branch-guard.sh, merge-squash-guard.sh, confirmar-merge-develop.sh + libs analizar-comando-git.sh
-// y juez-comun.sh). Re-canoniza el huérfano 03-integrar-rama-a-developmain.svg (viejo «②», sin .dot ni leyenda).
-digraph flujos {
+// 03 — PROPUESTO: lógica INTERNA de reubicar-master.sh (+ su handoff) tras la unificación
+// (las mismas fases P0–P7 del chart 02, pero con gates que fallan CERRADO y un punto de no retorno).
+// FUENTE editable (.dot)   ·   Render:  dot -Tsvg 03-logica-reubicar-propuesta.dot -o 03-logica-reubicar-propuesta.svg
+// ⚠️ ESTE CHART ES LA **PROPUESTA**. Solo se marcan como CAMBIO los nodos que un R-n toca; el resto
+// del guion (gates, candado, S7) se conserva tal cual — la unificación NO reabre lo que ya está sólido.
+digraph reubicar_propuesta {
   graph [bgcolor="#1b1712", rankdir=TB, fontname="Helvetica", splines=true,
-         nodesep=0.35, ranksep=0.55, pad=0.25, compound=true];
+         nodesep=0.35, ranksep=0.48, pad=0.25, compound=true];
   node  [fontname="Helvetica", fontsize=12, fontcolor="#f2ede6", shape=box,
          style="rounded,filled", fillcolor="#2b2b2b", color="#8a8a8a", penwidth=1.5];
   edge  [color="#d97757", fontname="Helvetica", fontsize=10, fontcolor="#cfc8c0", penwidth=1.4];
 
+  // ─────────────────────────── LEYENDA (regla dura del skill diagramar) ───────────────────────────
   // >>> LEYENDA-ARBOL (generado por gen-leyenda-arbol.sh desde el árbol del README — NO editar a mano) >>>
   subgraph cluster_leyenda {
     label="LEYENDA — árbol completo del cerebro (fuente: README.md)"; labeljust="l"; fontname="Times"; fontsize=14; fontcolor="#5fa89e";
@@ -90,60 +90,79 @@ digraph flujos {
   }
   // <<< LEYENDA-ARBOL <<<
 
-  // ───────────────────────────────────── EL FLUJO ─────────────────────────────────────
   subgraph cluster_f0 {
-    label="06 · Integrar una rama a develop/main   (ZOOM de la ruta de MERGE — raíz común de 9 hooks en 03; aquí 3 pueden DENY —git-branch-guard · merge-squash-guard · confirmar-merge-develop— EVALUADOS EN PARALELO sobre el MISMO comando: el árbol de abajo es la AGREGACIÓN lógica deny-gana, NO el orden real de ejecución — §6)";
+    label="03 · PROPUESTO — lógica interna de LA MUDANZA. Contrato invariante: FALLA CERRADO. Mismas fases que el chart 02, distinta política de falla.   [PROPUESTA]";
     fontname="Times"; fontsize=14; fontcolor="#5fa89e";
     color="#5fa89e"; penwidth=1.6; style="rounded"; bgcolor="#1b1712";
 
-    CMD [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
-         label="intento de integrar (comando Bash con git)\n`git push` · `glab mr merge` · `gh pr merge`\n(PreToolUse/Bash → los 8 hooks corren EN PARALELO; ver 03 —7 inspeccionan git, no-bypass-deploy no-opea—.\nAquí hacemos ZOOM en los 3 que gobiernan un MERGE a base)\nNOTA: los 3 rombos de abajo EVALÚAN el MISMO comando EN PARALELO (sin despachador);\nla cadena de rombos es la AGREGACIÓN lógica deny-gana, NO orden de ejecución"];
+    IN [style="rounded,filled", fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
+        label="ENTRADA · el HUMANO, desde un shell PLANO\n--id · --dst-repo · --master-name [--nombre-nuevo] (Decisiones #0/#0b/#1 de §7: se PREGUNTAN, no se asumen)"];
 
-    // ── git-branch-guard ──
-    GBG [shape=diamond, fillcolor="#2b2622", color="#d97757",
-         label="🔒🚧 git-branch-guard\n¿push DIRECTO que TOCA base (develop/main)?\n· push explícito · push PELÓN/HEAD/--force parado EN base · +develop (force-refspec)\n· o un `mr merge`/`pr merge` que NOMBRA la base directo\n· push --all/--mirror · push PELÓN con la rama del repo OBJETIVO IRRESOLUBLE\n  (fail-safe: ante duda BLOQUEA — backstop = ramas protegidas server-side)\n(lib analizar-comando-git.sh = fuente ÚNICA)"];
-    GBG_D [color="#c0392b", penwidth=2,
-           label="🔴 DENY — «no se hace push/merge directo a develop/main».\nHaz ramita feat/… → commit → push ramita → MR. A main: release\ndeliberado, con OK SÚPER-explícito por CLI. NO reintentes.\n(M8, auditoría 2026-09-15: se retiró 'web de GitLab' como escape — norma anti-vein-popper)"];
+    // ── P1 primero: aquí la carpeta es un PREFLIGHT, no un detalle ──
+    P1 [fillcolor="#eceff1", color="#607d8b", fontcolor="#2b2b2b",
+        label="P1 · RESOLVER LA CARPETA DE SESIONES   —  lib-sesiones.sh :: sesiones_dir   (R-1)\n⟵ CAMBIO: la MISMA función que llama el hook. Hoy son dos resoluciones con políticas opuestas."];
+    G1 [shape=diamond, fillcolor="#2b2622", color="#d97757",
+        label="¿carpeta resuelta, montada, con masters.json legible\ny SIN copia-en-conflicto de Drive?"];
+    D1 [fillcolor="#ffebee", color="#c62828", fontcolor="#2b2b2b", penwidth=2,
+        label="🔴 ABORTA (fail-closed) — nada se mutó\nUna mudanza que no sabe dónde está el registro no puede empezar."];
 
-    // ── merge-squash-guard ──
-    MSG [shape=diamond, fillcolor="#2b2622", color="#d97757",
-         label="🔒🔗 merge-squash-guard\n¿es `glab mr merge`/`gh pr merge` REAL?\n→ resuelve el DESTINO del MR (lib acg_destino_de_mr; caché por MR-id; timeout ~6s)\ndestino=develop bifurca por SIN/CON --squash — main/personal/no-merge pasan libres"];
-    MSG_D [color="#c0392b", penwidth=2,
-           label="🔴 DENY si destino = develop Y SIN --squash: integrar a develop SQUASHEA a 1 commit limpio/slice.\nRehaz con --squash --squash-message «resumen curado».\nEXENTO: destino main (release) → SIN squash (conserva historia).\nFAIL-SAFE: destino INDETERMINADO y no es release EXPLÍCITO → mantiene la exigencia de squash.\n(M4, auditoría 2026-09-15: 'release explícito' ahora también lee la CONVERSACIÓN reciente,\nno solo el texto del comando — misma señal que el piso de main de confirmar-merge-develop)"];
+    // ── P0: aquí SÍ hay que buscar ──
+    P0 [fillcolor="#eceff1", color="#607d8b", fontcolor="#2b2b2b",
+        label="P0 · LOCALIZAR el transcript   —  G-LIVENESS  (find sobre TODOS los slugs)\nAsimetría irreducible con el hook: aquí nadie te entrega el transcript, hay que ENCONTRARLO,\ny «cuántas copias hay» es en sí mismo un gate.  ≠ 1 copia ⇒ bloqueo con limpieza manual."];
 
-    // ── merge-squash-guard, 2ª compuerta: CALIDAD del mensaje (CON --squash, destino develop) ──
-    MSGQ [shape=diamond, fillcolor="#2b2622", color="#d97757",
-          label="🔒🔗 merge-squash-guard — calidad del squash-message\n(destino=develop Y CON --squash: --squash está garantizado, pero el MENSAJE puede ser basura)\n¿mensaje POBRE (título default «Merge pull request #N», vacío, placeholder 1-palabra)\no EDITORIALIZA el proceso («se decidió», «tras analizar»)\no (solo si es LITERAL, tipeado inline, Y gh SIN --body separado) <12 palabras o sin traza «Rama:/MR:»?\nUNVERIFICABLE ($()/--fill/--body-file) o API no resolvió el título AUTO → PASA (fail-open)\n(M8, auditoría 2026-09-15: con gh, un --subject corto CON --body separado —aunque opaco— NO\nfuerza profundidad/traza sobre el título: la convención pone el resumen curado en --body)"];
-    MSGQ_D [color="#c0392b", penwidth=2,
-            label="🔴 DENY — trae --squash pero el MENSAJE es pobre/editorializa/superficial/sin traza:\nno basta el flag, el squash-message es el resumen del slice.\nRehaz con --squash-message «resumen curado en prosa + Rama:/MR: <id>».\n(WARN no-bloqueante aparte, si sustancioso pero narra lista de acciones «se cambió…, se corrigió…»: sugiere reescribir, PASA igual.)"];
+    // ── P2 ──
+    P2 [shape=diamond, fillcolor="#2b2622", color="#d97757",
+        label="P2 · ¿APLICA? / preflight de NOMBRE   —  lib-sesiones.sh :: sesiones_es_master   (R-5)\n⟵ CAMBIO: hoy el preludio RE-IMPLEMENTA la regla del sufijo `-master` que el hook ya tiene\n(y encima la documenta: reubicar-master.sh:611-618). Pasa a LLAMARLA.\nUn nombre final sin `-master` APAGA el auto-export ⇒ sigue siendo abort."];
 
-    // ── confirmar-merge-develop (juez-LLM) ──
-    CMD_G [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="🔒✋ confirmar-merge-develop\n¿es un merge MR REAL Y el repo tiene la marca .claude/repo-compartido?\n(repos personales / ramas Develop*·epic·integracion → pasan LIBRES)\n→ DESTINO: main = RELEASE · develop = normal"];
-    CMD_OK [shape=diamond, fillcolor="#2b2622", color="#d97757",
-            label="¿hay OK EXPRESO del usuario para ESTE cierre?\njuez-LLM (Haiku vía juez-comun.sh · curl→api.anthropic.com · token OAuth, NO `claude -p`)\nLEE la conversación intercalada USUARIO/ASISTENTE (OKs anafóricos: el asistente propone → el usuario acepta)\n· M3: acg_destino_conf declara EXPLICITO/API/CACHE-DE-CREACION/DESCONOCIDO:<motivo> — si es de\n  ENTORNO (sin jq/gh/glab/dir), el mensaje dice la CAUSA real: 'repetir la autorización NO destraba esto'\n· o un grant DURABLE vigente en autorizaciones-vigentes.local.md (scope=merge-develop, con vencimiento) —\n  SOLO con destino CONFIRMADO develop (M6 lo había ampliado a destino VACÍO bajo una cerca de léxico-\n  release; CRÍTICO-3, auditoría FMEA 2026-09-16, lo REVIRTIÓ por A/B: colaba un release a main sin gate)\n· PISO DETERMINISTA de main — M5: main O VACÍO/DESCONOCIDO + ALLOW SIN lenguaje de release\n  del USUARIO → DENY (antes el piso solo corría con destino main CONFIRMADO); M5-bis (auditoría FMEA\n  2026-09-16) abre una puerta ANGOSTA con destino VACÍO — 'develop' nombrado EXPLÍCITO por el USUARIO Y\n  ninguna línea (cualquier rol) con main/release/promover — verificado en BASH, no por la palabra del LLM\n· sin token OAuth / red / timeout / respuesta ininteligible → UNAVAILABLE → DENY conservador (fail-CLOSED)\n· SIN jq Y el cmd CRUDO parece mr/pr merge → DENY inmediato «FRENO (sin jq)…» (fail-CLOSED, antes de\n  token/juez); git-branch-guard SIN jq ya no bloquea de más — extrae «command» del JSON (nunca\n  «description») y logra PARIDAD con el camino con-jq (H1, auditoría FMEA 2026-09-16); merge-squash-guard\n  y ESTE guard siguen SIEMPRE cerrados sin jq (sin precisión de texto posible: el destino sale de la API)"];
-    CMD_D [color="#c0392b", penwidth=2,
-           label="🔴 DENY (definición de LISTO en el punto del merge):\nintegrar a develop/main exige tu OK EXPRESO — cítalo y reintenta.\nverde técnico ≠ LISTO; «sigue/avanza» NO autoriza. A main, un «mergea»\ngenérico NO basta: pide lenguaje SUPER-explícito («release / hasta main / libera»).\nMientras: itera en tu mini-develop con `git merge` LOCAL (sin candado)."];
+    // ── P3 ──
+    P3 [shape=diamond, fillcolor="#2b2622", color="#d97757",
+        label="P3 · QUIESCENCIA   —  G-SELF-MOVE · G-QUIESCE (por artefacto) · lock de export   (R-4)\n⟵ CAMBIO: el `.export-<id>.lock` se consulta con `sesiones_lock_vigente`, que RESPETA la caducidad.\nHOY: `[ -f … ] && _abort` sin mirar edad ⇒ un lock huérfano bloquea PARA SIEMPRE una mudanza\n(medido: .export-c6330bed-….lock lleva 3 días en el Drive) mientras el hook ya lo ignora."];
+    D3 [fillcolor="#ffebee", color="#c62828", fontcolor="#2b2b2b", penwidth=2,
+        label="🔴 BLOQUEA (fail-closed)\nsoy la sesión objetivo · sesión ajena caliente en el slug origen/destino ·\nfaltan las CITAS HUMANAS (REUBICAR_LIVENESS_OK / REUBICAR_QUIESCE_OK)"];
 
-    OK [color="#c0392b", penwidth=3,
-        label="⚠ ESCRIBE git · 🟢 MERGE\ndevelop → con --squash (1 commit curado) · main → release SIN squash\n(el gate ≠ «no puedes»: con tu OK, Claude mergea por CLI sin que des clics)\n📜 → 🌿 Flujo de git · 💡 → 📦 cerrar-slice (arma el MR con el resumen curado)"];
+    DRY [fillcolor="#fff8e1", color="#f9a825", fontcolor="#2b2b2b",
+         label="🟠 MODO=dry — imprime el PLAN y SALE antes de mutar. SIEMPRE primero.\nReplica los chequeos de full para no dar un plan silencioso sobre un estado que full bloquearía."];
 
-    PASA [color="#7fb069", penwidth=2,
-          label="🟢 PASA — estos 3 guards NO gobiernan este comando\n(no es un merge/push a base: p. ej. `git push origin feat/x`,\n`glab mr view`, `mr diff`) — el comando corre tal cual, SIN squash ni release"];
+    // ── P4 ──
+    P4 [color="#7fb069", penwidth=2,
+        label="P4 · S3 export-first   —  bin/session-export.js  (EL MISMO binario que usa el hook)\n🟢 Esta es la fase donde la tesis de unjordi es LITERALMENTE cierta: respaldar y mudar\nejecutan la MISMA llamada. Aquí es síncrona y su fallo ABORTA; en el hook es detached y su fallo se traga.\n⟵ CAMBIO (R-8): verifica gzip -t Y renglones, igual que el hook."];
 
-    // Aristas — flujo SÓLIDO (secuencia intra-chart); dashed queda RESERVADO a cross-ref a otro chart (§4)
-    CMD -> GBG;
-    GBG -> GBG_D [label="toca base directo"];
-    GBG -> MSG   [label="no toca base\n(es un MR de ramita)"];
-    MSG -> MSG_D [label="destino develop\nSIN --squash\n(o irresoluble, salvo release explícito)"];
-    MSG -> MSGQ  [label="destino develop\nCON --squash"];
-    MSGQ -> MSGQ_D [label="mensaje pobre /\neditorializa / superficial /\nsin traza"];
-    MSGQ -> CMD_G  [label="mensaje sustancioso /\nUNVERIFICABLE / API no resolvió"];
-    MSG -> CMD_G [label="destino main / personal\n(SÍ es merge MR real)"];
-    MSG -> PASA  [label="no es merge real\n(push de ramita, `mr view`, etc.)"];
-    CMD_G -> CMD_OK [label="repo compartido\n+ es merge MR"];
-    CMD_G -> OK     [label="repo personal /\nrama personal"];
-    CMD_OK -> CMD_D [label="sin OK expreso /\njuez UNAVAILABLE /\nsin jq (parece merge) /\nmain sin release"];
-    CMD_OK -> OK    [label="OK citado /\ngrant durable vigente"];
+    PNR [fillcolor="#ffebee", color="#c62828", fontcolor="#2b2b2b", penwidth=3,
+         label="⚠🔴 PUNTO DE NO RETORNO\nDe aquí en adelante el diseño es «no abortar donde continuar es inofensivo»,\ny cada paso deja su marca en $DRIVE/reubicar-<id>.state para reanudar por ESTADO, no por adivinanza."];
+
+    // ── P5 ──
+    P5 [fillcolor="#eceff1", color="#607d8b", fontcolor="#2b2b2b", penwidth=3,
+        label="⚠ P5 · APLICAR   —  LA FASE QUE EL RESPALDO NO TIENE\nS4: session-move.js --to-cwd --git-branch  (slug + cwd de cada línea + gitBranch del último evento + sidecar)\nS4-2c: chmod 600  ·  S5: depositar T2 sin pisar (el HILO se CO-UBICA) + barrido quirúrgico + cero symlinks\nSin esta fase, «mudar» ES «respaldar». Con ella, no hay lib que las pueda unificar de punta a punta."];
+
+    // ── P6 ──
+    P6 [color="#7fb069", penwidth=2,
+        label="P6 · REGISTRAR   —  session-registry.js masters upsert  +  alias set   (R-2 · R-3 · R-7)\n⟵ CAMBIO: los 13 `node -e` inline (slug, alias_keys, writeAlias, rewriteTranscriptStream) pasan al CLI.\nMotivo NO cosmético: un `node -e` inline no tiene man-page, no tiene test propio y no falla con\nun contrato — y el candado del handoff lo embebe TEXTUALMENTE, así que se congela con sus bugs."];
+
+    // ── P7 ──
+    P7 [shape=diamond, fillcolor="#2b2622", color="#d97757",
+        label="P7 · POSTCONDICIONES (aseveradas, no reportadas)\n1 sola copia del .jsonl · cwd único = destino · último par (cwd,rama) · modo 600 ·\nmasters.json target|name · alias = nombre final · ningún alias AJENO perdido ·\ncero symlinks · G-SIDECAR sin huérfanos"];
+    D7 [fillcolor="#ffebee", color="#c62828", fontcolor="#2b2b2b", penwidth=2,
+        label="🔴 ABORTA con inventario de estado\n(paso alcanzado · origen · destino · masters.json · las 3 capas de respaldo)\nRe-correr el guion detecta el estado y continúa."];
+
+    QA [fillcolor="#fff8e1", color="#f9a825", fontcolor="#2b2b2b",
+        label="🟠 NO ES LISTO — el sello lo pone el humano\nclaude --resume <id> parado en el destino → QA funcional (§S6)"];
+    S7 [color="#7fb069", penwidth=2,
+        label="🟢 MODO=s7 · OBLIGATORIO tras el QA — porque un resume MUTA el transcript\nre-mide las invariantes, repara con _reancla si el resume contaminó el cwd, y re-corre P7.\nCota del bucle S6→S7: máximo 2 iteraciones; a la tercera, PARA y escala."];
+
+    CAND [style="dashed,filled", fillcolor="#f5f5f5", color="#9e9e9e", fontcolor="#2b2b2b",
+          label="🚧 RIESGO DE MIGRACIÓN que esta unificación introduce  (documento §5)\nEl candado `_verificar_handoff` exige el PRELUDIO embebido BYTE A BYTE y una lista de símbolos\n(_SIMBOLOS_PRELUDIO) + marcadores de paso. Tocar el preludio SIN actualizar esas listas en el MISMO\ncommit hace que el generador RECHACE todo handoff nuevo — por diseño, y está bien que así sea.\nY hay un handoff YA escrito en el Drive (handoff-761c82d9….sh, 2026-09-10) que embebe el preludio VIEJO:\ncorrerlo tras la unificación invocaría la lib NUEVA con supuestos VIEJOS, y el sello LIB_SHA solo AVISA."];
   }
+
+  IN -> P1 -> G1;
+  G1 -> D1 [label="no"];
+  G1 -> P0 [label="sí"];
+  P0 -> P2 -> P3;
+  P3 -> D3  [label="algo vivo / falta una cita"];
+  P3 -> DRY [label="MODO=dry"];
+  P3 -> P4  [label="MODO=full · gates en verde"];
+  P4 -> PNR -> P5 -> P6 -> P7;
+  P7 -> D7 [label="alguna aserción falla"];
+  P7 -> QA [label="todas pasan"];
+  QA -> S7 -> P7 [label="re-mide (MODO=s7)", style=dashed];
+  P6 -> CAND [style=dashed, color="#9e9e9e"];
 }

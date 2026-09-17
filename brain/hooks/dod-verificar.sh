@@ -51,6 +51,33 @@ set -u
 # shellcheck source=juez-comun.sh
 . "${BASH_SOURCE[0]%/*}/juez-comun.sh"
 
+# ── CONTRATO DE COHERENCIA DE TIMEOUTS (fix 2026-09-16, corrige una carrera real medida en telemetría) ──
+# dod es un hook Stop: el CLI lo mata a los "timeout" segundos cableados en el settings.json del repo
+# consumidor (hoy 15s en todo repo desplegado, p.ej. plantilladotnet/.claude/settings.json). Hasta este fix,
+# el JUEZ tenía crédito interno de 20s (CLAUDE_DOD_JUEZ_TIMEOUT) — MAYOR que esos 15s del harness: una carrera
+# que el hook SIEMPRE pierde, matado 5s ANTES de que su propio juez agotara su presupuesto. Medido en
+# telemetría real (transcripts jsonl, project plantilladotnet, agosto 2026): 71 disparos de Stop, 67 (94%)
+# murieron en el muro de ~15000-15076ms sin producir veredicto — 15s de espera muerta, 71 veces, para nada
+# (dod es fail-OPEN: el timeout ni siquiera bloqueaba, solo desperdiciaba el turno).
+# Por eso el numero que se BAJA es el del JUEZ, no el del harness: un Stop hook lento es justo lo que se
+# quiere evitar (fluidez > checks-sobre-checks), y como dod es fail-open, un timeout interno más corto solo
+# adelanta el "sin veredicto" que de todos modos iba a pasar — sin gastar los 15s completos en el intento.
+# El nuevo presupuesto (10s, ver el default de CLAUDE_DOD_JUEZ_TIMEOUT en _juez_dod) está respaldado por la
+# MISMA telemetría: cuando el juez SÍ responde, la llamada real mide p50≈4.1s p90≈5.4s p95≈5.9s p99≈8.8s
+# (n=1457 llamadas reales de agosto 2026, project plantilladotnet) — 10s cubre el caso normal con ~1.2s de
+# margen sobre el p99, y solo 16 de 3462 invocaciones históricas (0.46%) tardaron más de eso en resolver.
+# INVARIANTE que hace cumplir test-brain.sh (coherencia, no plomería): CLAUDE_DOD_JUEZ_TIMEOUT (interno) +
+# el overhead del RESTO del hook (tail -n 1500 + los jq/awk que arman el turno + build del prompt + parseo
+# de la respuesta — medido p99≈953ms cuando el juez ni se llega a llamar, caso "screen-out local" sin red)
+# debe quedar POR DEBAJO, con margen, del valor mínimo que el settings.json de un repo consumidor DEBE
+# cablear para este hook en el evento Stop. Ese mínimo asumido vive en la siguiente constante — si cambias
+# el default de CLAUDE_DOD_JUEZ_TIMEOUT, ajusta esta constante (o viceversa) para que seguir cumpliendo la
+# desigualdad sea una decisión consciente, no un drift silencioso.
+_DOD_HARNESS_TIMEOUT_MINIMO=15   # segundos; el "timeout" que el settings.json del repo DEBE cablear para
+                                 # este hook en Stop (hoy así en todos los repos desplegados — no lo baja
+                                 # este fix: bajar el harness alargaría la espera cuando SÍ hace falta matar
+                                 # el proceso; el margen se gana bajando el crédito del juez, no subiendo esto).
+
 # _juez_dod($texto_asistente, $texto_usuario) → "CIERRE=si|no MARCA=si|no VISUAL=si|no" | UNAVAILABLE
 # Definido ARRIBA (source-only) para que el test lo corra IDÉNTICO al hook (cero drift).
 #
@@ -68,9 +95,12 @@ set -u
 #     Claude. Nota: override a 'no' es CONSERVADOR para un nag (a lo sumo un recordatorio de más, nunca deja
 #     pasar un cierre sin marca).
 # CONSCIENTE DE LATENCIA (crítico): dod corre en CADA Stop. Presupuesto MODERADO (512, CoT corto → la
-# respuesta real ronda ~100-200 tokens, no llena el techo) + CLAUDE_DOD_JUEZ_TIMEOUT sensato (20s). Como es
-# fail-OPEN, un timeout simplemente NO bloquea (a diferencia del merge, que fail-safe DENY). Costo típico por
-# turno: 1 llamada curl de ~1-3s; el techo alto solo acota casos degenerados, no el caso común.
+# respuesta real ronda ~100-200 tokens, no llena el techo) + CLAUDE_DOD_JUEZ_TIMEOUT sensato (10s — bajado
+# de 20s el 2026-09-16: ese crédito era MAYOR que el "timeout" de 15s que el harness del Stop hook cablea en
+# settings.json, una carrera que el hook siempre perdía; ver el CONTRATO DE COHERENCIA DE TIMEOUTS arriba,
+# junto al `source` de juez-comun.sh, con la telemetría que respalda el nuevo número). Como es fail-OPEN, un
+# timeout simplemente NO bloquea (a diferencia del merge, que fail-safe DENY). Costo típico por turno: 1
+# llamada curl de ~1-6s (p95 real medido); el techo de 10s solo acota casos degenerados, no el caso común.
 # Mocks deterministas: CLAUDE_DOD_JUEZ_MOCK (veredicto FINAL normalizado 'CIERRE=.. MARCA=.. VISUAL=..' →
 # tests de FLUJO sin red) · CLAUDE_DOD_JUEZ_MOCK_RAW (texto CRUDO de respuesta → ejercita el parseo por
 # centinela + el veto de cita sin red).
@@ -144,7 +174,7 @@ VISUAL: <si|no>"
   # Llamada REAL vía la lib común (retrieval portable + curl 401-aware + reintento). dod es fail-OPEN:
   # CUALQUIER indisponibilidad (sin token/red/timeout/expiración) → UNAVAILABLE → el hook deja cerrar el
   # turno (no es un candado). No distingo NOTOKEN/NET/EXPIRED aquí: la decisión es la misma (fail-OPEN).
-  _resp=$(_juez_llamar_api "${CLAUDE_DOD_JUEZ_MODEL:-claude-haiku-4-5-20251001}" 512 "${CLAUDE_DOD_JUEZ_TIMEOUT:-20}" 0 "$prompt")
+  _resp=$(_juez_llamar_api "${CLAUDE_DOD_JUEZ_MODEL:-claude-haiku-4-5-20251001}" 512 "${CLAUDE_DOD_JUEZ_TIMEOUT:-10}" 0 "$prompt")
   txt=$(printf '%s\n' "$_resp" | sed '1d')   # línea 1 = estado (dod es fail-OPEN → no lo distingue); resto = texto
   [ -z "$txt" ] && { printf 'UNAVAILABLE'; return 0; }
   fi

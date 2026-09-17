@@ -35,8 +35,17 @@ shopt -s nocasematch 2>/dev/null
 case "$cmd" in *install*|*deploy*|*publish*|*make*|*just*) : ;; *) exit 0 ;; esac
 shopt -u nocasematch 2>/dev/null
 
-# Quita literales entrecomillados → una MENCIÓN del instalador (grep/echo/doc) no dispara.
-unquoted=$(printf '%s' "$cmd" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g")
+# Quita literales entrecomillados → una MENCIÓN del instalador (grep/echo/doc) no dispara. M1 (auditoría
+# 2026-09-15 §2.1): unifica con la lib compartida (ejecutor/heredoc-aware: un `bash -c "install.sh"` o un
+# heredoc que alimenta un intérprete con el instalador adentro ya no evade este aviso).
+# shellcheck source=analizar-comando-git.sh
+_ACGLIB="$(dirname "$0")/analizar-comando-git.sh"
+[ -f "$_ACGLIB" ] && . "$_ACGLIB"
+if command -v acg_despoja_comillas >/dev/null 2>&1; then
+  unquoted=$(acg_despoja_comillas "$cmd")
+else
+  unquoted=$(printf '%s' "$cmd" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g")
+fi
 
 # Excepciones que NO mutan: dry-run / help. Si aparecen, calla (se está inspeccionando, no desplegando).
 printf '%s' "$unquoted" | grep -qE '(^|[[:space:]])(--dry-run|--help|-h|-n)([[:space:]]|$)' && exit 0
@@ -48,7 +57,11 @@ printf '%s' "$unquoted" | grep -qE '(^|[[:space:]])(--dry-run|--help|-h|-n)([[:s
 # PREFIJO de EJECUCIÓN (no una mención suelta): inicio de comando, tras un separador (;&|`+espacios),
 # o tras un runner (bash/sh/zsh/pwsh -file). Un espacio PELÓN NO cuenta → así `grep install-brain.sh`
 # (el nombre como ARGUMENTO, no ejecución) NO dispara.
-_pfx='(^|[;&|`][[:space:]]*|bash[[:space:]]+|sh[[:space:]]+|zsh[[:space:]]+|pwsh[[:space:]]+-file[[:space:]]+)'
+# M1: '-c[[:space:]]+' se agrega porque acg_despoja_comillas (arriba) ya REINYECTA el contenido de
+# `eval "…"` / `bash|sh|zsh -c "…"` sin comillas — el texto que llega aquí para un `bash -c
+# "./install-brain.sh"` es literalmente "bash -c ./install-brain.sh"; sin esta alternativa el propio
+# _pfx no reconocía "-c" como prefijo de EJECUCIÓN y el aviso se perdía tras la reinyección.
+_pfx='(^|[;&|`][[:space:]]*|bash[[:space:]]+|sh[[:space:]]+|zsh[[:space:]]+|pwsh[[:space:]]+-file[[:space:]]+|-c[[:space:]]+|eval[[:space:]]+)'
 # RUTA opcional entre el prefijo y el basename: solo cuenta si la ruta COMPLETA arranca justo tras el
 # prefijo de arriba (ejecución real: ./foo.sh, /abs/path/foo.sh, bash brain/foo.sh) — antes bastaba un
 # "/" SUELTO pegado al basename como prefijo, y eso disparaba sobre cualquier MENCIÓN con subcarpeta

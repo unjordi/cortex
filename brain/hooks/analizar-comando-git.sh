@@ -28,9 +28,60 @@ acg__augmenta_path() {
 }
 acg__augmenta_path
 
+# ── M1 (auditoría 2026-09-15): SEGMENTACIÓN ejecutor-aware — ENTRADA ÚNICA de los 9 guards que antes
+# copiaban a mano "quita lo entrecomillado" (7 sitios, 3 políticas de despoje distintas). Cierra DOS
+# huecos OPUESTOS con el MISMO criterio (nunca hay que elegir un lado):
+#   (a) FALSO NEGATIVO — `eval "git push origin develop"` / `bash -c "…"` / `sh -c '…'`: el span
+#       entrecomillado ES shell que el intérprete va a EJECUTAR, no dato inerte → antes acg_despoja_comillas
+#       lo borraba entero y los 5 git-guards quedaban ciegos al comando real. Se REINYECTA sin comillas.
+#   (b) el CUERPO de un heredoc (`<<[-]DELIM … DELIM`) es STDIN: dato si alimenta un ESCRITOR (cat/tee/
+#       >>archivo/…) — nunca se ejecuta — pero ES CÓDIGO si alimenta un INTÉRPRETE (bash/sh/zsh/dash/ksh/
+#       python[3]/perl/ruby/pwsh: `bash <<EOF … EOF`). El filtro viejo de proteger-arbol descartaba TODO
+#       heredoc sin mirar el consumidor: cerraba el FP de `cat >> doc.md <<EOF` pero abría el FN simétrico
+#       de `bash <<EOF … EOF` (commit invisible). Un solo criterio decide los dos: el TOKEN antes de `<<`.
+# acg_segmentos_ejecutables(cmd) → cmd con los heredocs resueltos (cuerpo conservado o descartado según el
+# consumidor) y los spans entrecomillados de un EJECUTOR reinyectados; el resto de comillas (dato) las
+# quita acg_despoja_comillas (abajo), que ahora es un WRAPPER de esta función — cada caller que ya la usaba
+# (16 sitios en esta lib + 3 hooks) hereda el fix sin tocar su propio código.
+acg_segmentos_ejecutables() {   # $1=cmd → texto con heredocs resueltos + comillas de EJECUTOR reinyectadas
+  local cmd="$1" t
+  t=$(printf '%s' "$cmd" | awk -v sq="'" -v dq='"' '
+    BEGIN{ inhd=0; keep=0 }
+    inhd==1 {
+      s=$0; sub(/^[ \t]*/,"",s)
+      if (s==delim) { inhd=0; next }
+      if (keep==1) print
+      next
+    }
+    {
+      re="<<-?[ \t]*[" sq dq "]?[A-Za-z_][A-Za-z0-9_]*[" sq dq "]?"
+      if (match($0, re)) {
+        pre = substr($0, 1, RSTART-1)
+        sub(/[ \t]+$/, "", pre)                        # quita el espacio pegado a "<<" (si no, el gsub de
+        tok = pre                                       # abajo se come TODO el token: greedy hasta el ÚLTIMO separador)
+        gsub(/^.*[ \t;&|]/, "", tok)                 # último token antes de "<<" (el comando que consume)
+        gsub(/\.exe$/, "", tok)                        # tolera el binario Windows (bash.exe, sh.exe)
+        d = substr($0, RSTART, RLENGTH); sub(/^<<-?[ \t]*/,"",d); gsub("[" sq dq "]","",d)
+        delim = d; inhd = 1
+        keep = (tok ~ /^(bash|sh|zsh|dash|ksh|python3?|perl|ruby|pwsh)$/) ? 1 : 0
+      }
+      print
+    }')
+  # Spans entrecomillados precedidos de un EJECUTOR (eval "…" · bash/sh/zsh/dash/ksh -c "…") → REINYECTA
+  # el contenido SIN comillas (es código). El resto de comillas (dato) las quita acg_despoja_comillas.
+  t=$(printf '%s' "$t" | sed -E 's/(^|[[:space:]])(eval|-c)[[:space:]]+"([^"]*)"/\1\2 \3/g')
+  t=$(printf '%s' "$t" | sed -E "s/(^|[[:space:]])(eval|-c)[[:space:]]+'([^']*)'/\1\2 \3/g")
+  printf '%s\n' "$t"
+}
+
 # Quita literales entre comillas simples o dobles → un "git push a develop" dentro de un mensaje de
-# commit / dato de un grep / doc NO dispara los guards. (Fix #2 · H13.)
-acg_despoja_comillas() { printf '%s' "$1" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g"; }
+# commit / dato de un grep / doc NO dispara los guards (Fix #2 · H13), PERO ya no a ciegas: primero pasa
+# por acg_segmentos_ejecutables (arriba), que resuelve heredocs y reinyecta lo que un ejecutor SÍ corre.
+acg_despoja_comillas() { printf '%s' "$(acg_segmentos_ejecutables "$1")" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g"; }
+
+# ¿el comando contiene un `git commit`? (mismo ancla que acg_es_push — evita el drift de "grep sin
+# frontera" que ya divergió en 2 de los hooks que hacían su propia copia a mano, auditoría 2026-09-15).
+acg_es_commit() { printf '%s' "$1" | grep -qE 'git[[:space:]]+commit([[:space:]]|$)'; }
 
 # Quita el VALOR de --repo/-R (p. ej. "-R org/develop") para que un repo cuyo nombre termine en
 # /develop|/main NO genere un falso positivo de destino. (H11.)
@@ -132,10 +183,35 @@ acg_target_dir() {   # $1=cmd  $2=payload_cwd → imprime el dir objetivo
 
 # acg_target_remote(cmd, payload_cwd) → slug `org/repo` del remoto objetivo (para gh/glab). Precedencia:
 # --repo/-R explícito > remoto `origin` del DIR objetivo (que a su vez sigue -C > cd > cwd > PROJECT_DIR).
+
+# M9 (auditoría 2026-09-15 §2.5/§4.3): extrae el valor de --repo/-R como UNIDAD (bare | "…" | '…'), no con
+# `[^[:space:]]+` que se corta en el primer espacio. Antes, con `--repo "$R" --squash` sobre el cmd RAW,
+# `[^[:space:]]+` capturaba `"$R"` completo (con comillas) → `acg_target_remote` devolvía el slug CON
+# comillas → la consulta fallaba garantizado. Y si el CALLER despojaba comillas ANTES de grep (como hacía
+# confirmar-merge-develop) el valor `"$R"` se BORRABA entero, dejando `--repo  --squash`, y el grep se comía
+# el FLAG SIGUIENTE (`--squash`) como si fuera el slug — el guard creía que el repo se llamaba "--squash".
+# Devuelve el slug LITERAL, o el token "OPACO" si el valor contiene una sustitución de shell ($/`/${) — un
+# --repo "$VAR" es OPACO (no sabemos a qué repo apunta), NO "otro repo": el caller debe caer al remoto del
+# dir objetivo (lo que el shell habría resuelto), NUNCA tratarlo como "repo ajeno ⇒ incierto ⇒ gatea".
+acg_repo_explicito() {   # $1=cmd(RAW, comillas intactas) → slug LITERAL | "OPACO" | vacío
+  local cmd="$1" m v
+  m=$(printf '%s' "$cmd" | grep -oE "(--repo|-R)[[:space:]=]+(\"[^\"]*\"|'[^']*'|[^[:space:]]+)" | head -1)
+  [ -n "$m" ] || { printf ''; return 0; }
+  v=$(printf '%s' "$m" | sed -E "s/^(--repo|-R)[[:space:]=]+//")
+  case "$v" in
+    \"*\") v="${v#\"}"; v="${v%\"}" ;;
+    \'*\') v="${v#\'}"; v="${v%\'}" ;;
+  esac
+  case "$v" in *'$'*|*'`'*) printf 'OPACO'; return 0 ;; esac
+  printf '%s' "$v"
+}
+
 acg_target_remote() {   # $1=cmd  $2=payload_cwd → imprime "org/repo" | vacío
   local cmd="$1" pcwd="${2:-}" repo dir
-  repo=$(printf '%s' "$cmd" | grep -oE '(--repo|-R)[[:space:]=]+[^[:space:]]+' | grep -oE '[^[:space:]=]+$')
-  if [ -n "$repo" ]; then printf '%s' "$repo"; return 0; fi
+  repo=$(acg_repo_explicito "$cmd")
+  # OPACO (--repo "$VAR": no sabemos a qué repo apunta) → NO es un slug usable; cae al remoto del dir
+  # objetivo, igual que si no hubiera --repo (M9: opaco ≠ ajeno).
+  if [ -n "$repo" ] && [ "$repo" != "OPACO" ]; then printf '%s' "$repo"; return 0; fi
   dir=$(acg_target_dir "$cmd" "$pcwd")
   git -C "$dir" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|https?://[^/]+/)##; s#\.git$##'
 }
@@ -167,6 +243,27 @@ acg_mrid() {
 #     ambos. VERIFICADO: casa `develop)`/`develop>` y NO casa `develop-feature`/`feat/develop-x` (cero FP).
 acg_push_destino_base() {
   printf '%s' "$1" | grep -qE 'git[[:space:]]+push[^;&|]*[[:space:]:/+](main|master|develop)([[:space:]]|$|[)>&|;])'
+}
+
+# H2 (auditoría de ejecución 2026-09-16, MEDIO, CONFIRMADO): ¿el push nombra un destino OPACO (sustitución
+# de shell: $VAR, ${VAR}, `cmd`, $(cmd)) en vez de un literal? Mismo criterio que acg_repo_explicito con
+# --repo "$VAR" (M9): la incertidumbre GATEA, nunca se asume "no es la base" solo porque el TEXTO no la
+# nombra literal — `git push origin "$RAMA"` podría resolver a develop/main en tiempo de shell y el guard
+# quedaría CIEGO (medido: acg_push_destino_base no lo detecta, acg_push_sin_refspec tampoco porque SÍ hay
+# un refspec, solo que es opaco). Opera sobre el segmento CON comillas intactas (acg_despoja_comillas
+# borraría el '$'/backtick junto con el contenido).
+acg_push_destino_opaco() {
+  local seg rest tok
+  seg=$(printf '%s' "$1" | grep -oE 'git[[:space:]]+push[^;&|]*' | head -1)
+  [ -n "$seg" ] || return 1
+  rest=$(printf '%s' "$seg" | sed -E 's/^git[[:space:]]+push[[:space:]]*//')
+  for tok in $rest; do
+    case "$tok" in
+      -*) : ;;
+      *'$'*|*'`'*) return 0 ;;
+    esac
+  done
+  return 1
 }
 
 # ¿el push va SIN un refspec de rama explícito? (pelón, o solo remoto, o `HEAD` → empuja la RAMA
@@ -243,6 +340,11 @@ acg_push_toca_base() {   # $1=cmd  $2=payload_cwd(opcional)
     printf '%s' "$subu" | grep -qE 'git[[:space:]]+push[^;&|]*[[:space:]](--all|--mirror)([[:space:]]|$)' && return 0
     subq=$(acg_sin_flag_repo "$(printf '%s' "$sub" | tr -d "'\"")")
     acg_push_destino_base "$subq" && return 0
+    # H2 (auditoría de ejecución 2026-09-16 §2, MEDIO): destino OPACO (sustitución de shell) → incertidumbre,
+    # GATEA (no se asume "no es la base" solo porque el texto no la nombra literal). Se evalúa sobre `$sub`
+    # (comillas intactas) ANTES de `acg_push_sin_refspec` porque un refspec opaco SÍ cuenta como refspec
+    # (posargs=1) y nunca entraría a la rama pelón de abajo — quedaría silenciosamente sin cubrir.
+    acg_push_destino_opaco "$sub" && return 0
     if acg_push_sin_refspec "$subu"; then
       dir=$(acg_target_dir "$cd_prefix $orig" "$pcwd")   # -C del segmento > cd previo > cwd > PROJECT_DIR
       # Si un checkout/switch PREVIO cambió de rama, el pelón empuja a ESA rama (no a la de HEAD antes del
@@ -261,10 +363,15 @@ acg_push_toca_base() {   # $1=cmd  $2=payload_cwd(opcional)
       esac
     fi
   done <<EOF
-$(printf '%s' "$1" | awk '{gsub(/[;&|]/,"\n")}1')
+$(acg_segmentos_ejecutables "$1" | awk '{gsub(/[;&|]/,"\n")}1')
 EOF
   return 1
 }
+# M1 (nota de orden, no repetir el bug): el heredoc se resuelve SOBRE EL TODO, ANTES de partir en líneas/
+# subcomandos — un cmd con newlines REALES ya llega partido en registros al loop de arriba, así que si el
+# split ocurriera antes, cada línea del CUERPO de un heredoc (p. ej. "git push origin develop" dentro de un
+# `cat > d.md <<EOF`) se evaluaría COMO SI fuera su propio subcomando, sin que el consumidor (`cat` vs
+# `bash`) fuera visible ya — el contexto de "a quién alimenta" se pierde en cuanto se parte por línea.
 
 # ¿el comando mergea un MR/PR nombrando develop·main como destino? (para el bloqueo de release-a-main
 # de git-branch-guard: mismo comportamiento de antes, pero sobre cmd sin comillas ni --repo → H11/H13).
@@ -347,15 +454,54 @@ acg_destino_explicito_del_comando() {   # $1=comando → rama destino | vacío
 #    es un lock — bajo ejecución REALMENTE simultánea ambos podrían leer el caché vacío y llamar los
 #    dos (2 llamadas idénticas, inocuo). Solo cachea un resultado NO vacío (un vacío por timeout/error
 #    se reintenta la próxima).
-#  - TIMEOUT interno corto (ACG_MR_TIMEOUT, default 6s < el timeout del hook en settings.json: 10s/15s)
-#    para que el proceso SIEMPRE termine y EMITA su decisión, en vez de que el CLI lo mate por colgarse
-#    y trate el merge como "sin deny" (fail-open por muerte del proceso, H5).
-# Devuelve el destino por stdout (vacío si no se pudo resolver → el consumidor aplica SU fail-policy:
-# confirmar trata vacío como develop = pide OK; squash trata !develop = no fuerza, para no aplastar un
-# release por no resolver). Requiere jq (sin jq devuelve vacío).
+#  - TIMEOUT interno corto (ACG_MR_TIMEOUT, default 6s) para que el proceso SIEMPRE termine y EMITA su
+#    decisión, en vez de que el CLI lo mate por colgarse y trate el merge como "sin deny" (fail-open por
+#    muerte del proceso, H5). M11 (auditoría 2026-09-15 §3.12, doc=realidad): esto YA NO se compara contra
+#    "el timeout del hook en settings.json" — install-brain.sh cablea los hooks SIN clave `timeout`
+#    (verificado: `ev_de()`/el registrador de hooks no emite ese campo), así que NINGÚN hook de esta
+#    familia tiene un timeout EXTERNO que lo mate — la única protección real es este timeout INTERNO.
+
+# ── M3 (auditoría 2026-09-15 §3.3/§4.2/§4.3): ACG_DEST_CONF — el destino deja de ser "rana o vacío" y pasa
+# a traer, además, la CONFIANZA con que se resolvió. Antes "fuera de alcance" (rama personal, repo
+# personal) y "no pude resolver" (parseo/red/PATH/dir) colapsaban en el MISMO vacío silencioso (§4.2) →
+# de ahí salían a la vez el FP dominante (gate que frena por fallo de entorno, §3.3) y el FN dominante
+# (guard que asume mal, §3.4). Ahora TODO consumidor puede distinguir "no aplica" (rama resuelta que no es
+# develop/main) de "sí aplica pero no sé cuál" (DESCONOCIDO:<motivo>), y M4/M5/M6/M8 leen ese motivo en vez
+# de adivinarlo. Motivos declarados: SIN-CLI (no jq) · DIR-IRRESOLUBLE (target_dir no existe) · SIN-MRID
+# (no se ancló ningún id de MR/PR) · SLUG-OPACO (--repo "$VAR" Y el remoto local tampoco resuelve, M9) ·
+# SIN-RED (ni gh ni glab alcanzables en el PATH) · TIMEOUT (la consulta corrió y no volvió a tiempo/vacía).
+# acg__destino_de_mr_full(cmd, pcwd) → DOS líneas por stdout: (1) destino | vacío  (2) CONF, uno de
+# EXPLICITO|API|CACHE-DE-CREACION|DESCONOCIDO:<motivo>. Único sitio que TOCA la caché (evita que el
+# resolvedor de destino y el de confianza diverjan, el mismo defecto de sustrato que motivó este dictamen).
+# Cachea las DOS líneas juntas: recomputar la confianza de un resultado YA resuelto es un cache-hit (no
+# cuesta una 2ª llamada de red) — así `acg_destino_de_mr` (retro-compat, 1 línea) y `acg_destino_conf`
+# (nueva) pueden llamarse por separado sin duplicar trabajo ni divergir.
 ACG_MR_TIMEOUT="${ACG_MR_TIMEOUT:-6}"
-acg_destino_de_mr() {   # $1=comando  $2=payload_cwd(opcional)
-  local raw="$1" pcwd="${2:-}" u tool repo mrid key cache dest dir
+# H1 (auditoría de ejecución 2026-09-16, ALTO, CONFIRMADO): el caché REGULAR (acg-mrdest-<key>, y sus
+# hermanos acg-mrmsg-*/acg-prlist-*) se leía SIN NINGUNA verificación — ni dueño, ni permisos, ni EDAD. El
+# fix MEDIO original (acg__cache_creacion_es_mia) endureció SOLO al hermano -creacion-* y dejó a ÉSTE, el que
+# de verdad gatea confirmar-merge-develop Y merge-squash-guard, intacto: un archivo plantado con destino
+# 'DevelopUnjordi' (o simplemente VIEJO — un MR re-apuntado de develop a main, operación normal en GitLab/
+# GitHub) se servía como si fuera la respuesta de la API de HACE UN SEGUNDO. Generalizado a
+# acg__cache_confiable (reemplaza acg__cache_creacion_es_mia, mismo criterio + TTL): mismo UID, sin permisos
+# de grupo/otros, Y no más viejo que ACG_CACHE_TTL_DIAS (default: el MISMO `CLAUDE_RESIDUO_DIAS_TMP` que ya
+# declara limpiar-residuo.sh para esta familia de archivos, 7 días — aquí se HACE CUMPLIR en LECTURA, no
+# solo en el barrido periódico manual). portable BSD `stat -f` / GNU `stat -c`; sin `stat`/`date`, fail
+# CERRADO (no confiar es lo seguro; la peor consecuencia es un cache-miss que cae al lookup por API).
+acg__cache_confiable() {   # $1=path → 0=confiable (uid+perm+TTL) · 1=no
+  local f="$1" uid perm mtime now ttl_dias
+  uid=$(stat -f '%u' "$f" 2>/dev/null || stat -c '%u' "$f" 2>/dev/null) || return 1
+  perm=$(stat -f '%Lp' "$f" 2>/dev/null || stat -c '%a' "$f" 2>/dev/null) || return 1
+  mtime=$(stat -f '%m' "$f" 2>/dev/null || stat -c '%Y' "$f" 2>/dev/null) || return 1
+  now=$(date +%s) || return 1
+  [ "$uid" = "$(id -u)" ] || return 1
+  case "$perm" in *00) : ;; *) return 1 ;; esac
+  ttl_dias="${ACG_CACHE_TTL_DIAS:-${CLAUDE_RESIDUO_DIAS_TMP:-7}}"
+  case "$ttl_dias" in ''|*[!0-9]*) ttl_dias=7 ;; esac
+  [ $(( (now - mtime) / 86400 )) -lt "$ttl_dias" ]
+}
+acg__destino_de_mr_full() {   # $1=comando  $2=payload_cwd(opcional) → 2 líneas: destino \n CONF
+  local raw="$1" pcwd="${2:-}" u tool repo mrid key cache cache_c dest dir out
   # (b) PREFERIDO — destino EXPLÍCITO del PROPIO comando (--base/--target-branch): SIN red, SIN gh/glab,
   # SIN jq. Sortea el modo de falla (a): en un launch GUI de Claude Code el subproceso-hook hereda el PATH
   # MÍNIMO de launchd (/usr/bin:/bin:…), donde jq SÍ está (/usr/bin/jq → el guard corre y gatea) pero gh/glab
@@ -363,32 +509,72 @@ acg_destino_de_mr() {   # $1=comando  $2=payload_cwd(opcional)
   # legítimos. (Auth NO es la causa: gh-keyring y glab-file autentican bien desde un subproceso CUANDO están
   # en el PATH.) Si el destino NO viene en el comando, se cae al lookup por API de abajo (requiere jq + CLI).
   dest=$(acg_destino_explicito_del_comando "$raw")
-  [ -n "$dest" ] && { printf '%s' "$dest"; return 0; }
-  command -v jq >/dev/null 2>&1 || return 0
+  if [ -n "$dest" ]; then printf '%s\nEXPLICITO\n' "$dest"; return 0; fi
+  if ! command -v jq >/dev/null 2>&1; then printf '\nDESCONOCIDO:SIN-CLI\n'; return 0; fi
+  dir=$(acg_target_dir "$raw" "$pcwd")   # cwd de la consulta: el dir que el comando REALMENTE toca
+  if [ -z "$dir" ] || [ ! -d "$dir" ]; then printf '\nDESCONOCIDO:DIR-IRRESOLUBLE\n'; return 0; fi
   u=$(acg_despoja_comillas "$raw")
   if printf '%s' "$u" | grep -qE 'glab(\.exe)?[[:space:]]+mr'; then tool=glab; else tool=gh; fi  # (\.exe)?: binario Windows (H-R9-01)
+  mrid=$(acg_mrid "$u")
+  if [ -z "$mrid" ]; then printf '\nDESCONOCIDO:SIN-MRID\n'; return 0; fi
   # Repo objetivo por PRECEDENCIA (--repo/-R > remoto del dir objetivo: -C > cd > cwd > PROJECT_DIR). Antes
   # el fallback leía SIEMPRE el remoto de CLAUDE_PROJECT_DIR → resolvía el destino del repo equivocado.
   repo=$(acg_target_remote "$raw" "$pcwd")
-  dir=$(acg_target_dir "$raw" "$pcwd")   # cwd de la consulta: el dir que el comando REALMENTE toca
-  mrid=$(acg_mrid "$u")
-  [ -n "$mrid" ] || return 0
+  # M9: un --repo OPACO ($VAR) que ADEMÁS no resuelve al remoto local (repo git sin 'origin', o el dir no es
+  # un repo) es SLUG-OPACO de verdad — no "otro repo", pero tampoco uno que podamos consultar.
+  if [ -z "$repo" ] && [ "$(acg_repo_explicito "$raw")" = "OPACO" ]; then printf '\nDESCONOCIDO:SLUG-OPACO\n'; return 0; fi
   # La clave del caché incluye el DIR cuando el slug del remoto sale vacío: si no, dos repos distintos con
   # slug irresoluble compartían la MISMA entrada de caché y uno heredaba la base del otro.
   key=$(printf '%s' "${repo:-$dir}|${tool}|${mrid}" | sed 's/[^A-Za-z0-9]/_/g')
   cache="${TMPDIR:-/tmp}/acg-mrdest-${key}"
-  if [ -f "$cache" ]; then cat "$cache"; return 0; fi
+  # H1: el caché regular SOLO se sirve si es confiable (uid+perm+TTL, ver acg__cache_confiable arriba). Si
+  # existe pero NO es confiable (plantado, o simplemente viejo — p. ej. un MR re-apuntado develop→main), se
+  # trata EXACTO como un cache-miss: cae al lookup por API de abajo, que lo REESCRIBE con la respuesta fresca.
+  if [ -f "$cache" ] && acg__cache_confiable "$cache"; then cat "$cache"; return 0; fi
+  # CACHE-DE-CREACION (§4.3, "el hallazgo que desatora todo"): si un `pr create --base X`/`mr create
+  # --target-branch X` de ESTE MR quedó cacheado por (repo,tool,mrid) — lo escribe otro proceso al crear el
+  # MR, cuando el id YA es conocido — se consume SIN red.
+  # H3 (auditoría semántica 2026-09-16, MEDIO, CONFIRMADO): hoy NO existe el escritor legítimo (pendiente ya
+  # declarado en la bitácora) — la propia premisa del fix MEDIO ("cualquier archivo aquí es NO-genuino") vale
+  # para CUALQUIER uid, incluido el propio: el chequeo de uid+perm(+TTL) protege del VECINO, no del actor que
+  # este guard vigila (un agente del propio usuario, a punto de correr el merge, puede escribir un 0600
+  # propio). Canal ENTERO apagado por default (ACG_CACHE_CREACION=1 para encenderlo) hasta que exista el
+  # escritor real con su atadura (session_id/HMAC) — cuesta una línea, cierra el hueco completo. El chequeo
+  # uid+perm+TTL se conserva como defensa en profundidad para cuando se encienda.
+  cache_c="${TMPDIR:-/tmp}/acg-mrdest-creacion-${key}"
+  if [ "${ACG_CACHE_CREACION:-0}" = "1" ] && [ -f "$cache_c" ] && acg__cache_confiable "$cache_c"; then
+    dest=$(cat "$cache_c" 2>/dev/null)
+    if [ -n "$dest" ]; then
+      printf '%s\nCACHE-DE-CREACION\n' "$dest" > "$cache" 2>/dev/null; chmod 600 "$cache" 2>/dev/null
+      cat "$cache"; return 0
+    fi
+  fi
+  command -v "$tool" >/dev/null 2>&1 || { printf '\nDESCONOCIDO:SIN-RED\n'; return 0; }
   if [ "$tool" = glab ]; then
-    dest=$(acg__run_en_dir "$dir" "$ACG_MR_TIMEOUT" glab api "projects/:id/merge_requests/$mrid" ${repo:+-R "$repo"} 2>/dev/null | jq -r '.target_branch // empty' 2>/dev/null)
+    out=$(acg__run_en_dir "$dir" "$ACG_MR_TIMEOUT" glab api "projects/:id/merge_requests/$mrid" ${repo:+-R "$repo"} 2>/dev/null | jq -r '.target_branch // empty' 2>/dev/null)
   else
-    dest=$(acg__run_en_dir "$dir" "$ACG_MR_TIMEOUT" gh pr view "$mrid" ${repo:+-R "$repo"} --json baseRefName -q .baseRefName 2>/dev/null)
+    out=$(acg__run_en_dir "$dir" "$ACG_MR_TIMEOUT" gh pr view "$mrid" ${repo:+-R "$repo"} --json baseRefName -q .baseRefName 2>/dev/null)
   fi
-  if [ -n "$dest" ]; then
-    printf '%s' "$dest" > "$cache" 2>/dev/null
-    printf '%s' "$dest"
+  if [ -n "$out" ]; then
+    # H1: perm 600 en la ESCRITURA -- si no, el `>` normal (644 con umask 022 típico) haría que la PROPIA
+    # relectura de este caché fallara acg__cache_confiable (permisos de grupo/otros) y anulara el caché entero.
+    printf '%s\nAPI\n' "$out" > "$cache" 2>/dev/null; chmod 600 "$cache" 2>/dev/null
+    cat "$cache"; return 0
   fi
+  printf '\nDESCONOCIDO:TIMEOUT\n'
   return 0
 }
+
+# Devuelve el destino por stdout (vacío si no se pudo resolver → el consumidor aplica SU fail-policy:
+# confirmar trata vacío como develop = pide OK; squash trata !develop = no fuerza, para no aplastar un
+# release por no resolver). Requiere jq (sin jq devuelve vacío). RETRO-COMPAT: mismo contrato de SIEMPRE
+# (1 línea, sin newline final) — es un wrapper de acg__destino_de_mr_full que descarta la CONF.
+acg_destino_de_mr() { acg__destino_de_mr_full "$1" "${2:-}" | sed -n '1p'; }
+
+# M3: la CONFIANZA con que se resolvió el ÚLTIMO acg_destino_de_mr del MISMO (cmd,pcwd) — EXPLICITO | API |
+# CACHE-DE-CREACION | DESCONOCIDO:<motivo>. Comparte caché con acg_destino_de_mr (cache-hit, sin 2ª llamada
+# de red). El consumidor la usa para decidir POLÍTICA (M4), no solo el valor del destino.
+acg_destino_conf() { acg__destino_de_mr_full "$1" "${2:-}" | sed -n '2p'; }
 
 # ── VALIDACIÓN DE LA CALIDAD DEL MENSAJE DE SQUASH (merge-squash-guard) ──────────────────────────────────
 # El squash-guard fuerza `--squash`, pero un squash con mensaje POBRE (título default de la plataforma
@@ -489,8 +675,12 @@ acg_msg_es_superficial() {   # $1=mensaje → 0=superficial(bloquear) · 1=ok
 # del nombre) O un id de MR/PR (!123 / #456). return 0 = falta traza (bloquear).
 #   Precisión: solo se INVOCA sobre el LITERAL (el agente lo tipeó, puede añadir la línea `Rama:`/`MR:`); el
 #   patrón de rama exige la barra + ≥1 char de nombre (no casa un "fix" suelto), y el id exige [!#]+dígitos.
+# H8 (auditoría semántica 2026-09-16, BAJO, CONFIRMADO): el set de prefijos era demasiado angosto —
+# "Rama: refactor/sustrato - …"/"test/…"/"perf/…"/"ci/…" SÍ traen la rama (trazabilidad real) pero el
+# mensaje decía "falta TRAZABILIDAD" sobre un resumen que la tenía. Ampliado a los prefijos de
+# conventional-commit de uso real en este repo (esta misma rama trae commits `test(brain):`).
 acg_msg_falta_traza() {   # $1=mensaje → 0=falta traza(bloquear) · 1=trae traza(pasar)
-  printf '%s' "$1" | grep -qE '(^|[^A-Za-z0-9/])(feat|fix|chore|hotfix|docs)/[A-Za-z0-9._-]' && return 1
+  printf '%s' "$1" | grep -qE '(^|[^A-Za-z0-9/])(feat|fix|chore|hotfix|docs|refactor|test|perf|ci|build|style|audit|revert)/[A-Za-z0-9._-]' && return 1
   printf '%s' "$1" | grep -qE '[!#][0-9]+' && return 1
   return 0
 }
@@ -532,14 +722,16 @@ acg_mensaje_de_mr() {   # $1=comando  $2=payload_cwd(opcional) → título del M
   [ -n "$mrid" ] || return 0
   key=$(printf '%s' "${repo:-$dir}|${tool}|${mrid}|msg" | sed 's/[^A-Za-z0-9]/_/g')
   cache="${TMPDIR:-/tmp}/acg-mrmsg-${key}"
-  if [ -f "$cache" ]; then cat "$cache"; return 0; fi
+  # H1 (auditoría de ejecución 2026-09-16, ALTO): mismo patrón sin-validar que el de destino -- misma
+  # defensa (uid+perm+TTL, acg__cache_confiable).
+  if [ -f "$cache" ] && acg__cache_confiable "$cache"; then cat "$cache"; return 0; fi
   if [ "$tool" = glab ]; then
     titulo=$(acg__run_en_dir "$dir" "$ACG_MR_TIMEOUT" glab api "projects/:id/merge_requests/$mrid" ${repo:+-R "$repo"} 2>/dev/null | jq -r '.title // empty' 2>/dev/null)
   else
     titulo=$(acg__run_en_dir "$dir" "$ACG_MR_TIMEOUT" gh pr view "$mrid" ${repo:+-R "$repo"} --json title -q .title 2>/dev/null)
   fi
   if [ -n "$titulo" ]; then
-    printf '%s' "$titulo" > "$cache" 2>/dev/null
+    printf '%s' "$titulo" > "$cache" 2>/dev/null; chmod 600 "$cache" 2>/dev/null
     printf '%s' "$titulo"
   fi
   return 0
@@ -561,7 +753,10 @@ acg_lista_prs_abiertos() {   # $1=comando (para derivar repo/herramienta)  $2=pa
   dir=$(acg_target_dir "$raw" "$pcwd")       # mismo criterio: la lista se pide EN el dir objetivo
   key=$(printf '%s' "${repo:-$dir}|${tool}|prlist" | sed 's/[^A-Za-z0-9]/_/g')
   cache="${TMPDIR:-/tmp}/acg-prlist-${key}"
-  if [ -f "$cache" ]; then cat "$cache"; return 0; fi
+  # H1 (auditoría de ejecución 2026-09-16, ALTO): mismo patrón sin-validar que el de destino -- misma
+  # defensa (uid+perm+TTL, acg__cache_confiable). Esta lista es solo HINT factual (nunca autorización), pero
+  # comparte el defecto de fondo del canal.
+  if [ -f "$cache" ] && acg__cache_confiable "$cache"; then cat "$cache"; return 0; fi
   if [ "$tool" = glab ]; then
     # glab mr list --output json → array con iid/title/target_branch/source_branch/draft. Normalizo al
     # mismo shape que gh (number,title,baseRefName,headRefName,isDraft) para un solo digestor aguas abajo.
@@ -572,7 +767,7 @@ acg_lista_prs_abiertos() {   # $1=comando (para derivar repo/herramienta)  $2=pa
   fi
   # Solo cachea un ARRAY no vacío válido (un fallo/timeout → vacío → se reintenta la próxima).
   if [ -n "$out" ] && printf '%s' "$out" | jq -e 'type=="array" and length>0' >/dev/null 2>&1; then
-    printf '%s' "$out" > "$cache" 2>/dev/null
+    printf '%s' "$out" > "$cache" 2>/dev/null; chmod 600 "$cache" 2>/dev/null
     printf '%s' "$out"
   fi
   return 0
@@ -620,4 +815,109 @@ acg_hint_candidatos() {   # $1=json array(o vacío) $2=destino $3=mrid → bloqu
     printf '%s\n%s\nNo se pudo determinar la base del MR. Resuelve el referente con la conversacion; ante duda, DENY.\n%s' \
       "$head_ln" "$mrline" "$foot_ln"
   fi
+}
+
+# ── M4 (auditoría 2026-09-15 §2.3/§3.4): UNA sola fuente para "¿hay lenguaje de release / qué dijo el
+# usuario recientemente?" — antes vivía SOLO dentro de confirmar-merge-develop.sh, así que merge-squash-guard
+# (el otro guard que decide sobre el MISMO destino desconocido) no tenía forma de ver la MISMA señal y
+# discrepaba: con un destino IRRESOLUBLE, confirmar-merge-develop podía reconocer un release legítimo por la
+# CONVERSACIÓN mientras merge-squash-guard, ciego a ella, forzaba squash sobre ESE MISMO release (§3.4,
+# "dos guards, el MISMO comando, la MISMA incógnita, CONCLUSIONES OPUESTAS"). Moverlas aquí no cambia su
+# comportamiento (son wrappers 1:1 en el consumidor original) — solo las vuelve CONSULTABLES por cualquier
+# guard de la familia, para que la incertidumbre se resuelva con la MISMA información en todos lados.
+
+# acg_recent_intercalado($tpath) → arma la CONVERSACIÓN reciente intercalada (USUARIO:/ASISTENTE:), del más
+# viejo al más nuevo. Ancla en el 10º mensaje de USUARIO desde el final + 4 turnos de arranque (contexto del
+# asistente); filtra meta/system-reminder/tool-result puro; surfacea AskUserQuestion (.toolUseResult.answers/
+# .annotations) y el mensaje MID-TURN absorbido (queue-operation reason=absorbed_mid_turn →
+# {"type":"attachment","attachment":{"type":"queued_command","origin":{"kind":"human"}}}) como turno USUARIO
+# — con AUTORIDAD estricta (origin.kind=="human" exacto; cualquier otro valor/ausente NO se surfacea).
+acg_recent_intercalado() {  # $1=ruta del transcript .jsonl → imprime la conversación intercalada, o vacío
+  [ -n "${1:-}" ] && [ -f "$1" ] || return 0
+  tail -n 6000 "$1" 2>/dev/null | jq -rs '
+    [ .[]
+      | select((.isMeta // false) != true)                # descarta META/inyectados (no son del usuario)
+      | ( if (.type == "attachment")
+             and ((.attachment.type? // "") == "queued_command")
+             and ((.attachment.origin.kind? // "") == "human")
+          then (.attachment.prompt? // "") else "" end ) as $qc
+      | { role: (if $qc != "" then "user" else (.message.role // .type) end),
+          text: ( if $qc != "" then $qc else
+                  ( (try ([ .toolUseResult.answers[]
+                          | select(type=="string" and . != "" and . != "(no option selected)" and . != "(notes only)") ]
+                       + [ .toolUseResult.annotations[]?.notes | select(type=="string" and . != "") ]
+                       | join(" · ")) catch "") as $aq
+                | if $aq != "" then $aq
+                  else ((.message.content // [.message])
+                        | if type=="array"
+                          then (map(if type=="string" then . elif (.type? == "text") then .text else "" end) | join(" "))
+                          else (. // "") end)
+                  end ) end ) }
+      | select(.role=="user" or .role=="assistant")       # solo turnos de conversación (no tool-result puro)
+      | select(.text != "")
+      | select(.text | test("<system-reminder>") | not)   # descarta bloques con marca de inyección (CLAUDE.md/recordatorios)
+      | { role, text: (.text | gsub("\\s+";" ")) } ] as $t
+    | ([ range(0; ($t|length)) | select($t[.].role=="user") ]) as $u
+    | (if ($u|length) >= 10 then $u[-10] else ($u[0] // 0) end) as $a
+    | (if $a >= 4 then $a-4 else 0 end) as $s
+    | $t[$s:]
+    | map( if .role=="user" then "USUARIO: " + .text
+           else "ASISTENTE: " + (.text[0:700]) end )
+    | join("\n")' 2>/dev/null   # conversación intercalada, del más viejo al más nuevo, marcada por rol
+}
+
+# ¿Hay lenguaje EXPLÍCITO de release (release/libera/a main/a master) en ALGUNA línea 'USUARIO:' de la
+# ventana? Tokens ANCLADOS a límite de palabra (portable BSD+GNU): 'liber' no casa en "deliberada"/
+# "libertad", 'a main' no casa en "a maintenance". Fuente ÚNICA para el PISO de main de confirmar-merge-
+# develop Y (M4) para el fail-safe de destino-irresoluble de merge-squash-guard — misma pregunta, misma
+# respuesta, en vez de que cada guard la conteste con su propia heurística.
+acg_lexico_release() {   # $1=mensajes(intercalados USUARIO:/ASISTENTE:) → 0=SÍ hay release · 1=no
+  printf '%s\n' "$1" | grep -iE '^[[:space:]]*USUARIO:' | grep -iqE '(^|[^[:alpha:]])(release|(liberar?|liberado|liberaci[oó]n|liber[eé]n?|liber[oó])([^[:alpha:]]|$)|(a|hacia) (main|master)([^[:alpha:]]|$))'
+}
+
+# H4 (auditoría de ejecución 2026-09-16, MEDIO, CONFIRMADO): acg_lexico_release mira TODA la ventana, sin
+# anclarla al MR de ESTE comando — un "libera a main el PR 390" (OTRO MR) le prestaba su señal al merge del
+# PR 391, desactivando la exigencia de --squash de un merge a develop genuino. Ancla la señal a $2 (el mrid
+# de ESTE comando, si lo hay): una línea USUARIO con lenguaje de release cuenta SOLO si (a) no nombra NINGÚN
+# id de MR/PR (genérico, "libera esto" — sigue aplicando igual que hoy, no se puede anclar lo que no se
+# nombra) o (b) nombra justo $2. Si nombra otro id distinto, esa línea NO cuenta. Sin $2 (mrid vacío, p. ej.
+# un merge de MR SIN id que integra la rama actual) se comporta EXACTO como acg_lexico_release (no hay a qué
+# anclar). No se usa en el piso de main de confirmar-merge-develop (ese ya recibe el mrid vía $2 del propio
+# _juez_merge_uno con otra semántica) — es específico del fail-safe de destino-irresoluble de squash-guard.
+acg_lexico_release_para_mr() {   # $1=mensajes  $2=mrid(opcional) → 0=SÍ aplica a este MR · 1=no
+  local mrid="${2:-}" linea
+  [ -z "$mrid" ] && { acg_lexico_release "$1"; return $?; }
+  while IFS= read -r linea; do
+    printf '%s' "$linea" | grep -iqE '^[[:space:]]*USUARIO:' || continue
+    printf '%s' "$linea" | grep -iqE '(^|[^[:alpha:]])(release|(liberar?|liberado|liberaci[oó]n|liber[eé]n?|liber[oó])([^[:alpha:]]|$)|(a|hacia) (main|master)([^[:alpha:]]|$))' || continue
+    if printf '%s' "$linea" | grep -qE '#?[0-9]+'; then
+      printf '%s' "$linea" | grep -qE "(^|[^0-9])#?${mrid}([^0-9]|\$)" && return 0
+    else
+      return 0
+    fi
+  done <<EOF
+$(printf '%s\n' "$1")
+EOF
+  return 1
+}
+
+# H2 (auditoría semántica 2026-09-16, ALTO, CONFIRMADO): señal de RIESGO amplia para el piso M5-bis de
+# confirmar-merge-develop — a diferencia de acg_lexico_release (que exige la señal en una línea USUARIO real,
+# porque SOLO el usuario autoriza), esta mira CUALQUIER rol (USUARIO o ASISTENTE): incluso el propio
+# asistente proponiendo un release, o una mención de pasada de 'main'/'master', basta para NO tratar un
+# destino DESCONOCIDO como "inequívocamente develop". El piso M5-bis solo se salta cuando esta función NO
+# encuentra NINGUNA señal en TODA la ventana — nunca cuando el LLM lo "declara" de sí mismo (el juez es
+# probabilístico; esta señal es determinista, verificada en bash, la MISMA doctrina del veto de cita).
+acg_lexico_main_amplio() {   # $1=mensajes(CUALQUIER rol) → 0=hay señal de main/release/promover
+  printf '%s\n' "$1" | grep -iqE '(^|[^[:alpha:]])(release|liberar?|liberado|liberaci[oó]n|liber[eé]n?|liber[oó]|main|master|promov(er|ida|ido|iendo)?)([^[:alpha:]]|$)'
+}
+
+# H2 (auditoría semántica 2026-09-16, ALTO): la MITAD positiva del piso M5-bis. NO basta con "ninguna señal
+# de main" (acg_lexico_main_amplio arriba) para saltar el piso — una ventana MUDA que no menciona NI
+# main NI develop ("perfecto, mergealo") también pasa esa prueba, y es precisamente el caso peligroso que
+# M5 existía para cubrir (destino real podría ser main, la consulta falló, nadie lo dijo). El salto del piso
+# exige EVIDENCIA POSITIVA: una línea USUARIO que nombre 'develop' explícitamente como destino — sin eso, el
+# silencio NO cuenta como "inequívocamente develop", cuenta como "no sé", y el piso se queda.
+acg_lexico_develop_explicito() {   # $1=mensajes → 0=alguna línea USUARIO nombra 'develop' explícitamente
+  printf '%s\n' "$1" | grep -iE '^[[:space:]]*USUARIO:' | grep -iqE '(^|[^[:alpha:]])develop([^[:alpha:]]|$)'
 }

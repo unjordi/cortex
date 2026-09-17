@@ -162,6 +162,35 @@ antes de un git destructivo que orfanaría commits sin pushear).
 
 ## Anti-patrones
 - ❌ Monitorear agentes "de niñera" y actualizar el estado a mano al final. → El auto-reporte es el default.
+
+## Cuando SÍ hay que mirar: distinguir "trabajando" de "colgado"
+
+No monitorear de niñera **no es no mirar nunca**. Un agente puede **entregar su reporte y quedarse colgado**,
+y la interfaz lo seguirá mostrando activo — con su reloj corriendo y sus tokens subiendo. Pasó dos veces el
+mismo día (sep-2026): uno con **1 h 41 m y 304 k tokens** en pantalla llevaba **14 horas sin escribir una
+sola línea**, atascado en un append trivial; otro devolvió tres notificaciones seguidas diciendo *"esperaré
+a que termine"* sin avanzar, con 460 k tokens y 542 llamadas encima.
+
+**El reloj de pantalla es tiempo ACUMULADO, no señal de vida.** La señal fiable es **la última escritura de
+su transcript**:
+
+```bash
+D=~/.claude/projects/<slug>/<session-id>/subagents
+for f in "$D"/agent-*.jsonl; do
+  printf '%-22s hace %6ds · %s\n' "$(basename "$f" .jsonl)" \
+    "$(( $(date +%s) - $(stat -f %m "$f") ))" "$(du -h "$f" | cut -f1)"
+done
+```
+Segundos = trabajando · minutos sin entregable = revisar · horas = zombi, **y se mata** (`TaskStop`). Sus
+commits ya están en su rama: matarlo no pierde nada, y lo que seguía consumiendo era el bucle.
+
+**Un agente agotado no se reanima: se releva.** Si ya hizo su trabajo y entra en bucle de espera, mátalo y
+lanza uno FRESCO con el contexto de lo que falta. Reanudar conserva su contexto —barato— pero también su
+estado degradado.
+
+**No leas su transcript para averiguarlo**: son cientos de MB y te inundan el contexto. El `mtime` contesta
+la pregunta en un comando.
+
 - ❌ Escribir el mismo pendiente en estado-proyecto Y bitácora Y un backlog aparte. → Un dato, un lugar.
 - ❌ Dejar worktrees zombies acumulándose. → `limpiar-worktrees.sh` al cerrar la ola.
 - ❌ Asignar ítems NO autocontenidos (que dependen de otro agente en vuelo). → Serialízalos o únelos.
