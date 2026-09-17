@@ -100,7 +100,7 @@ El cerebro se ordena por *dureza*: arriba lo que te **bloquea** sin negociar; ab
 ├─ 📮 delegacion-reporte       al terminar un agente: recuerda registrar avance + limpiar su worktree
 ├─ 🎼 recordar-orquestar       N mutaciones (edits/commits) en serie SIN delegar → sugiere fan-out (advisory, no bloquea; resetea al delegar) (GLOBAL)
 ├─ 🧵 rehidratar-hilo          reinyecta hilo-mental-actual.md + el andamio (si es más fresco) al abrir/retomar/compactar (GLOBAL) — gate de frescura + edad
-├─ 📈 aviso-contexto           reporta el watermark de contexto CRUDO (tokens · ventana · %); sin bandas ni veredicto — /context manda (GLOBAL)
+├─ 📈 aviso-contexto           al umbral ALTO del punto REAL de compact (80%/92% de autoCompactWindow o la ventana efectiva; % honesto, respeta autoCompactEnabled): VUELCA el checkpoint mecánico solito y ORDENA /checkpoint+/compact. No gotea (silencio bajo el umbral, 1 disparo + 1 escalada) (GLOBAL)
 ├─ 🧬 aviso-drift-cerebro      repo brained atrás de la fuente única (hooks/libs Y skills) → en tu mini-develop se AUTO-SINCRONIZA (apply+commit+push); en otra rama, avisa. ADEMÁS detecta el drift de la copia GLOBAL de skills (~/.claude/skills vs la fuente; warn-only, throttle propio). Al moverse el cerebro, NUDGE a correr la DUPLA (suficiencia+coherencia; contra la firma si hay AGENTS.md, si no sugiere instanciarla) (GLOBAL)
 ├─ 🔀 hud-stale                cambiaste de rama/proyecto → tu lista de TODOs (HUD) puede ser de la tarea anterior: avisa (advisory) que la resetees/re-siembres del estado-proyecto.md de esa rama. Señal OBJETIVA (rama/cwd), stamp per-sesión, first-sight silencioso, solo en repos con backlog (GLOBAL)
 └─ 📁 por-repo · viajan en el .claude de cada repo
@@ -168,7 +168,11 @@ mergeadas y deja anotado en la bitácora el pendiente de los que sigan vivos; y
 [`limpiar-ramas.sh`](brain/hooks/limpiar-ramas.sh) barre las **ramas locales** ya integradas (antídoto
 a la acumulación de ramitas squasheadas: el squash rompe `git branch -d` y `fetch --prune` no toca
 locales) y, si tras borrar la local su **rama REMOTA** aún cuelga (un MR squash-mergeado sin
-`--delete-branch`), la borra también (fail-open sin red). Ambos comparten la lógica "zombie"
+`--delete-branch`), la borra también (fail-open sin red). En una **segunda pasada** examina además las
+ramas **remotas SIN contraparte local** —las que el fan-out en worktrees efímeros, otra máquina o un
+`branch -D` suelto dejan vivas en `origin`, invisibles al recorrido de `refs/heads`—: borra las que una
+señal POSITIVA squash-safe demuestre integradas (y solo si su punta sigue siendo la que evaluó), y las
+que traen trabajo sin integrar las CONSERVA y las NOMBRA. Escape: `LIMPIAR_RAMAS_SIN_REMOTAS=1`. Ambos comparten la lógica "zombie"
 ([`ramas-zombie.sh`](brain/hooks/ramas-zombie.sh)) → una sola definición de "mergeada", y `barrer-ramas`
 los lanza a **ambos** (ramas + worktrees) en el mismo trigger. `limpiar-ramas` además REPORTA (nunca
 borra) las ramas de fan-out abandonadas (convención `worktree-agent-*`, sin worktree vivo, viejas y sin

@@ -25,11 +25,20 @@ command -v jq >/dev/null 2>&1 || exit 0
 cmd=$(jq -r '.tool_input.command // ""' 2>/dev/null)
 [ -z "$cmd" ] && exit 0
 # PRE-FILTRO barato (superset conservador, mismo espíritu que proteger-arbol.sh): este hook solo
-# vigila `git commit` → sin 'git' en el comando crudo, early-exit ANTES del sed de des-entrecomillado.
+# vigila `git commit` → sin 'git' en el comando crudo, early-exit ANTES de sourcear la lib.
 case "$cmd" in *git*) : ;; *) exit 0 ;; esac
-# Ignora menciones entrecomilladas (un `git commit` dentro de un grep/echo/mensaje) — como los otros guards.
-unquoted=$(printf '%s' "$cmd" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g")
-printf '%s' "$unquoted" | grep -qE 'git[[:space:]]+commit' || exit 0
+# M1 (auditoría 2026-09-15 §2.1): el despoje era una copia a mano (sed sin heredoc/ejecutor-aware) — se
+# unifica con la lib compartida (acg_despoja_comillas/acg_es_commit), la MISMA que usan los otros guards.
+# shellcheck source=analizar-comando-git.sh
+_ACGLIB="$(dirname "$0")/analizar-comando-git.sh"
+[ -f "$_ACGLIB" ] && . "$_ACGLIB"
+if command -v acg_despoja_comillas >/dev/null 2>&1; then
+  unquoted=$(acg_despoja_comillas "$cmd")
+  acg_es_commit "$unquoted" || exit 0
+else
+  unquoted=$(printf '%s' "$cmd" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g")
+  printf '%s' "$unquoted" | grep -qE 'git[[:space:]]+commit([[:space:]]|$)' || exit 0
+fi
 
 command -v git >/dev/null 2>&1 || exit 0
 dir="${CLAUDE_PROJECT_DIR:-.}"

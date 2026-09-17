@@ -1,11 +1,11 @@
-// 04 — Delegación / orquestar-fanout (cortex)  ·  FUENTE editable (Graphviz .dot)
-// Render:  dot -Tsvg 04-delegacion-orquestar-fanout.dot -o 04-delegacion-orquestar-fanout.svg
-// Construido 2026-08-01 desde el CÓDIGO REAL: hooks limite-gasto, delegacion-gate, delegacion-registrar,
-// delegacion-reporte + lib delegacion-comun.sh (clasificar_delegacion) + agentes-costo.json; scripts
-// limpiar-worktrees.sh / limpiar-ramas.sh; skill orquestar-fanout (contrato de reporte + aislamiento).
-digraph flujos {
+// 02 — PROPUESTO: lógica INTERNA de exportar-sesion-master.sh tras la unificación
+// (fases, ramas de decisión, dónde falla ABIERTO, dónde está el hot path).  ·  FUENTE editable (.dot)
+// Render:  dot -Tsvg 02-logica-hook-export-propuesta.dot -o 02-logica-hook-export-propuesta.svg
+// ⚠️ ESTE CHART ES LA **PROPUESTA**. Las fases P0–P7 son las del modelo unificado del documento
+// docs/requerimientos-unificar-tooling-sesiones.md §2; los nodos citan su R-n.
+digraph hook_export_propuesta {
   graph [bgcolor="#1b1712", rankdir=TB, fontname="Helvetica", splines=true,
-         nodesep=0.35, ranksep=0.55, pad=0.25, compound=true];
+         nodesep=0.35, ranksep=0.50, pad=0.25, compound=true];
   node  [fontname="Helvetica", fontsize=12, fontcolor="#f2ede6", shape=box,
          style="rounded,filled", fillcolor="#2b2b2b", color="#8a8a8a", penwidth=1.5];
   edge  [color="#d97757", fontname="Helvetica", fontsize=10, fontcolor="#cfc8c0", penwidth=1.4];
@@ -38,7 +38,7 @@ digraph flujos {
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📮 delegacion-reporte</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al terminar un agente: recuerda registrar avance + limpiar su worktree</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎼 recordar-orquestar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">N mutaciones (edits/commits) en serie SIN delegar → sugiere fan-out (advisory, no bloquea; resetea al delegar) (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧵 rehidratar-hilo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta hilo-mental-actual.md + el andamio (si es más fresco) al abrir/retomar/compactar (GLOBAL) — gate de frescura + edad</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📈 aviso-contexto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al umbral ALTO del punto REAL de compact (80%/92% de autoCompactWindow o la ventana efectiva; % honesto, respeta autoCompactEnabled): VUELCA el checkpoint mecánico solito y ORDENA /checkpoint+/compact. No gotea (silencio bajo el umbral, 1 disparo + 1 escalada) (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📈 aviso-contexto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reporta el watermark de contexto CRUDO (tokens · ventana · %); sin bandas ni veredicto — /context manda (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧬 aviso-drift-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">repo brained atrás de la fuente única (hooks/libs Y skills) → en tu mini-develop se AUTO-SINCRONIZA (apply+commit+push); en otra rama, avisa. ADEMÁS detecta el drift de la copia GLOBAL de skills (~/.claude/skills vs la fuente; warn-only, throttle propio). Al moverse el cerebro, NUDGE a correr la DUPLA (suficiencia+coherencia; contra la firma si hay AGENTS.md, si no sugiere instanciarla) (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔀 hud-stale</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cambiaste de rama/proyecto → tu lista de TODOs (HUD) puede ser de la tarea anterior: avisa (advisory) que la resetees/re-siembres del estado-proyecto.md de esa rama. Señal OBJETIVA (rama/cwd), stamp per-sesión, first-sight silencioso, solo en repos con backlog (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧭 sesion-inicio</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta rama + norma + memoria al abrir</font></td></tr>
@@ -90,98 +90,83 @@ digraph flujos {
   }
   // <<< LEYENDA-ARBOL <<<
 
-  // ───────────────────────────────────── EL FLUJO ─────────────────────────────────────
   subgraph cluster_f0 {
-    label="04 · Delegación / orquestar-fanout   (gate de costo → agente en worktree AISLADO → auto-reporte → el orquestador integra a la mini)";
+    label="02 · PROPUESTO — lógica interna del RESPALDO CONTINUO. Contrato invariante: SILENCIOSO, FAIL-OPEN, siempre exit 0.   [PROPUESTA]";
     fontname="Times"; fontsize=14; fontcolor="#5fa89e";
     color="#5fa89e"; penwidth=1.6; style="rounded"; bgcolor="#1b1712";
 
-    // ── Arranque: orquestador con backlog paralelizable ──
-    BL    [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
-           label="orquestador: backlog con piezas INDEPENDIENTES\n(estado-proyecto.md = fuente de verdad · «aquí empiezas siempre»)\n📜 → default = fan-out + supervisión, NO grind serial"];
-    PREREQ [shape=diamond, fillcolor="#2b2622", color="#d97757",
-            label="¿la sesión vive DENTRO de un repo git?\n(worktrees aislados EXIGEN cwd = repo)"];
-    NOGIT [fillcolor="#f5f5f5", color="#9e9e9e", fontcolor="#333", style="dashed,filled",
-           label="🚧 sin repo: `isolation: worktree` truena\n(«not in a git repository»). Inicia la sesión EN el repo"];
-    SPAWN [color="#7fb069",
-           label="🟢 spawnea N Task con `isolation: worktree`\n(el árbol PRINCIPAL es SOLO del orquestador/humano)"];
+    IN [style="rounded,filled", fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
+        label="ENTRADA · stdin del harness\n{session_id, transcript_path, cwd, hook_event_name, stop_hook_active}"];
 
-    // ── PreToolUse/Task: los 2 hooks de costo — PARALELOS (mismo spawn), resueltos por precedencia deny>ask>allow ──
-    LIM   [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="🔒🛑 limite-gasto  (PreToolUse/Task)\n¿ventana 5h AGOTADA (≥99%) Y overage SIN holgura?\n(lee state.json del daemon de cuota; rancio >30min → fail-open;\nsin jq / sin snapshot → fail-open, no frena)"];
-    LIM_D [fillcolor="#3a2020", color="#c0392b", penwidth=2.5,
-           label="🔴 DENY (freno duro): sin capacidad en NINGÚN lado —\nel agente moriría a medias. NO reintentes en automático.\nEspera el reset · mete saldo · hazlo TÚ sin delegar"];
+    // ── P0 ──
+    P0 [fillcolor="#eceff1", color="#607d8b", fontcolor="#2b2b2b",
+        label="P0 · RESOLVER CONTEXTO   —  lib-hook.sh :: hook_leer_stdin   (R-6)\nEl transcript NO se BUSCA: el harness lo ENTREGA. Aquí no hay findSession y no debe haberlo:\nbuscar podría elegir un archivo distinto del que el harness acaba de escribir.\n(Es la asimetría irreducible frente a la mudanza — ver chart 03 P0)"];
+    G0 [shape=diamond, fillcolor="#2b2622", color="#d97757",
+        label="¿sid y transcript presentes?\n¿Stop re-entrante (stop_hook_active)?"];
 
-    CLASI [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="🔒💸 delegacion-gate  (PreToolUse/Task, EN PARALELO con limite-gasto)\nclasificar_delegacion (lib comun = fuente única con el registrar):\nsubagent_type/model → agentes-costo.json → NIVEL de costo"];
-    NIVEL [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="¿NIVEL?\nlocal → gratis · Claude CON snapshot fresco (<30min) y <90% ventana → incluido\nClaude SIN snapshot fresco (rancio >30min o ausente) → metered\n(conservador, aunque la ventana tenga holgura)\nClaude en overage / API de pago / desconocido → metered"];
-    YACON [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="¿ya consentido?\ngratis/incluido: 1× por COMPU (delegacion-consentimiento.json)\nmetered: 1× por WORKFLOW (session_id)"];
-    ASK   [color="#e08e45",
-           label="🟠 ASK — pide tu OK (muestra el estado real de tu ventana 5h).\ncoalescer G3/H6: el 1er Task del lote toma un lock (mkdir ~10s);\nlos HERMANOS simultáneos pasan en silencio (solo gratis/incluido)"];
-    PASA  [color="#7fb069",
-           label="🟢 pasa sin preguntar\n(consentimiento ya vigente para este nivel)"];
-    NIEGA [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
-           label="el usuario NIEGA → el Task NO corre\n(delegacion-registrar/delegacion-reporte no disparan → no se registra consentimiento)\nel ítem queda para rehacer o para no delegarlo"];
+    // ── P1 ──
+    P1 [fillcolor="#eceff1", color="#607d8b", fontcolor="#2b2b2b",
+        label="P1 · RESOLVER LA CARPETA DE SESIONES   —  lib-sesiones.sh :: sesiones_dir   (R-1)\nUNA sola política, la misma que ven reubicar-master y seed.sh.\nCAMBIO respecto a HOY: ya NO se inventa una 2ª ubicación con `mkdir -p` en silencio."];
+    G1 [shape=diamond, fillcolor="#2b2622", color="#d97757",
+        label="¿hay carpeta de sesiones resuelta y montada?"];
+    X1 [fillcolor="#fff8e1", color="#f9a825", fontcolor="#2b2b2b",
+        label="🟠 exit 0 SIN exportar + MIGA DE PAN idempotente\n(una línea fechada en ~/.claude/sesiones-sin-destino.log, no un mensaje por turno)\nRAZÓN: no respaldar un turno es recuperable; respaldar a un sitio que\nel resto del toolchain no lee es la falla que HOY ocurrió en silencio (D-1)."];
 
-    // ── Confluencia: precedencia deny > ask > allow (limite-gasto y delegacion-gate corren en\n    //    paralelo sobre el MISMO Task; el CLI combina sus 2 decisiones antes de dejarlo correr) ──
-    PREC  [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="el CLI combina limite-gasto + delegacion-gate\nprecedencia: deny > ask > allow"];
+    // ── P2 ──
+    P2 [shape=diamond, fillcolor="#2b2622", color="#d97757",
+        label="P2 · ¿APLICA?   —  lib-sesiones.sh :: sesiones_es_master   (R-5)\nLA regla del sufijo `-master` + masters.json vive AQUÍ y solo aquí.\nreubicar-master la LLAMA en vez de re-implementarla (hoy la documenta y la duplica)."];
+    HOT [fillcolor="#e8f5e9", color="#2e7d32", fontcolor="#2b2b2b", penwidth=2,
+         label="🟢 HOT PATH de Stop — PURO BASH, CERO node   (D-2, protegido por el test T-6)\nsid ya en masters.json → grep a ~3 KB.  sid NO listado y evento = Stop → exit 0 aquí mismo.\nEl escaneo caro del customTitle sigue siendo SOLO de SessionEnd/PreCompact."];
+    X2 [style="rounded,filled", fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
+        label="exit 0 — no es master (caso normal, la enorme mayoría de los turnos)"];
 
-    // ── El agente corre AISLADO ──
-    AISLA [color="#c0392b", penwidth=3,
-           label="⚠ ESCRIBE git · el AGENTE corre en su WORKTREE AISLADO\n(git reset/checkout/rebase ahí NO puede orfanar los commits del orquestador)\nGOTCHA: el worktree nace en origin/HEAD (≈main) → el agente hace\n`git reset --hard <rama-objetivo>` al arrancar (dispara proteger-arbol = falso positivo H14)"];
-    TRABAJO [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
-             label="el agente hace SU ítem autocontenido y DEVUELVE el contrato:\n{qué hizo · línea-de-bitácora curada · pendiente-para-otro · worktree limpio|dejado-con-nota}"];
+    // ── P3 ──
+    P3 [shape=diamond, fillcolor="#2b2622", color="#d97757",
+        label="P3 · CONCURRENCIA   —  lib-sesiones.sh :: sesiones_debounce_vence / sesiones_lock_tomar   (R-4)\ndebounce (solo Stop, default 20 min) · lock por-sid con UNA caducidad declarada\nLa MISMA caducidad que reubicar-master consulta: un lock caduco ya no bloquea a nadie."];
+    X3 [style="rounded,filled", fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
+        label="exit 0 — el debounce no venció, o hay un export en vuelo"];
 
-    // ── PostToolUse/Task: los 2 hooks de cierre ──
-    REG   [color="#e08e45",
-           label="🔔📝 delegacion-registrar  (PostToolUse/Task)\nsolo corre si el Task CORRIÓ (usuario aprobó) → PERSISTE el consentimiento\n(gratis/incluido: por compu · metered: por workflow) + libera el lock G3"];
-    REP   [color="#e08e45",
-           label="🔔📮 delegacion-reporte  (PostToolUse/Task)\n🟠 nudge CONDICIONAL: «SI tu agente MUTÓ, ciérralo; SI fue read-only, ignora»\n(no puede ver el transcript del sub-agente → subordina a la mutación, sin cry-wolf)"];
+    // ── P4 ──
+    P4 [color="#7fb069", penwidth=2,
+        label="P4 · RESPALDAR (export-first)  —  DETACHED  `nohup … &`   —  lib-hook.sh :: hook_detached\n🟢 El hook RETORNA aquí: un transcript de cientos de MB excede el timeout del hook\n(caso real: cps-master, 456 MB, «Hook cancelled»). El gzip+copy termina fuera del turno.\nMOTOR: bin/session-export.js — el MISMO binario, con los MISMOS flags, que invoca la mudanza en S3."];
+    V4 [shape=diamond, fillcolor="#2b2622", color="#d97757",
+        label="P7a · VERIFICAR el respaldo   (R-8)\n`gzip -t`  Y  cuenta de renglones ≥ la del origen\n(hoy el hook solo hace gzip -t y la mudanza solo cuenta renglones: cada uno\ncaza una mitad de la clase «export que no cubre la sesión»)"];
+    KEEP [fillcolor="#fff8e1", color="#f9a825", fontcolor="#2b2b2b",
+          label="🟠 NO se copia: se CONSERVA el respaldo anterior\nmejor uno viejo-pero-válido que uno nuevo-corrupto"];
+    PUB [color="#7fb069", penwidth=2,
+         label="🟢 publica  <id>.jsonl.gz  +  <id>.meta.json  en $SESSIONS_DIR"];
 
-    // ── El orquestador cierra el loop ──
-    VERIF [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="🔬 el orquestador VERIFICA el linaje del commit (NO cree la prosa del reporte, C7):\n`git merge-base --is-ancestor <commit>^ <rama-objetivo>` ¿nació sobre la base correcta?"];
-    DESCARTA [fillcolor="#f5f5f5", color="#c0392b", fontcolor="#333", style="dashed,filled", penwidth=3,
-              label="🚧⚠ ESCRIBE git · base equivocada (padre = main) → NO integres.\nDescarta la rama (git branch -D / worktree remove) y rehaz el ítem sobre la base correcta"];
-    INTEGRA [color="#c0392b", penwidth=3,
-             label="⚠ ESCRIBE git · integra a la MINI (DevelopUnjordi/…) por CHERRY-PICK del delta\n(no `merge`, que arrastraría el árbol viejo). NUNCA saca la mini en un worktree propio:\nla POSEE el folder visible del dev → aísla en FEATURE, integra HACIA la mini"];
-    ESTADO [color="#e08e45",
-            label="🟠 auto-reporte SIN redundancia (2 archivos):\n① APPENDA `>>` una línea a bitacora.md (qué pasó · parallel-safe)\n② CURA el ítem en estado-proyecto.md (qué sigue · backlog vivo)\nTodoWrite = scratch de sesión, NO el backlog durable"];
-    LIMPIA [color="#c0392b", penwidth=3,
-            label="⚠ ESCRIBE git · el orquestador limpia (nudge de delegacion-reporte, NO automático):\nlimpiar-worktrees.sh (borra los de ramas mergeadas, deja los vivos con su pendiente)\nlimpiar-ramas.sh (barre ramas locales ya integradas por `git branch -d/-D`)\nbarrer-ramas (SessionStart/merge-MR) NO cubre este cierre por cherry-pick"];
-    FIN   [color="#7fb069", penwidth=2,
-           label="🟢 slice del agente CERRADO\n(estado al día · worktree limpio · sin niñería)"];
+    // ── P6 ──
+    P6 [color="#7fb069", penwidth=2,
+        label="P6 · REGISTRAR   —  session-registry.js masters upsert   (R-2 · R-3 · R-7)\nÚNICO escritor de masters.json: toma el lock, lee-modifica-escribe atómico y RE-LEE para aseverar.\nCAMBIO respecto a HOY: el `target` se NORMALIZA a la RAÍZ DEL REPO (git rev-parse --show-toplevel).\nSi el cwd no resuelve a un repo (un worktree, un `.claude/memory`, una ruta suelta) ⇒ CONSERVA\nel target anterior y anota el descarte; NUNCA escribe un target que seed.sh no podría sembrar."];
+    G6 [shape=diamond, fillcolor="#2b2622", color="#d97757",
+        label="¿el lock de masters.json se pudo tomar?"];
+    X6 [style="rounded,filled", fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
+        label="se SALTA el registro (el próximo export reintenta)\n— nunca se espera bloqueando dentro de un hook"];
 
-    // Aristas
-    BL -> PREREQ;
-    PREREQ -> NOGIT [label="no"];
-    PREREQ -> SPAWN [label="sí"];
-    SPAWN -> LIM   [label="mismo spawn de Task (PARALELO)"];
-    SPAWN -> CLASI [label="mismo spawn de Task (PARALELO)"];
-    LIM -> LIM_D [label="AND: ambos agotados"];
-    LIM -> PREC [style=dashed, label="no (hay capacidad en algún lado)\nfail-open → no frena"];
-    CLASI -> NIVEL;
-    CLASI -> ASK [label="sin jq → fail-safe:\nno puede clasificar el costo, pide OK"];
-    NIVEL -> YACON;
-    YACON -> PASA [label="sí"];
-    YACON -> ASK  [label="no"];
-    ASK -> PREC   [label="usuario aprueba"];
-    ASK -> NIEGA  [label="usuario niega"];
-    PASA -> PREC  [style=dashed, label="allow (gate)"];
-    LIM_D -> PREC [label="DENY: vence a cualquier ASK/allow\nsimultáneo (precedencia)"];
-    PREC -> AISLA [label="ningún DENY → procede"];
-    AISLA -> TRABAJO;
-    TRABAJO -> REG;
-    TRABAJO -> REP [label="mismo PostToolUse/Task"];
-    REG -> VERIF; REP -> VERIF;
-    VERIF -> DESCARTA [label="padre = base\nequivocada"];
-    VERIF -> INTEGRA  [label="linaje OK"];
-    DESCARTA -> BL [label="rehaz el ítem"];
-    INTEGRA -> ESTADO;
-    ESTADO -> LIMPIA;
-    LIMPIA -> FIN;
+    OUT [style="rounded,filled", fillcolor="#e8f5e9", color="#2e7d32", fontcolor="#2b2b2b", penwidth=2,
+         label="🟢 exit 0   — SIEMPRE, por cualquiera de las 6 salidas.\nEl hook corre en CADA turno de CADA sesión: un exit≠0 aquí rompería el cierre de turno\nde toda la máquina. Es la invariante que el test T-7 mide en sus DOS direcciones\n(nunca falla ruidoso · y SÍ exporta cuando todo está bien)."];
+
+    NOTA [style="dashed,filled", fillcolor="#f5f5f5", color="#9e9e9e", fontcolor="#2b2b2b",
+          label="🚧 FASE QUE ESTE CONSUMIDOR NO TIENE — y por eso la tesis se sostiene aquí\nP5 · APLICAR (mover el slug, reescribir el cwd, depositar el cerebro) NO EXISTE en el respaldo.\n«el mecanismo de respaldar master es literalmente la misma mudanza pero sin aplicar» [unjordi]:\nMEDIDO correcto para P0–P4 y P6 — y la prueba más dura es que AMBOS ya invocan el MISMO\nsession-export.js con los mismos flags. Lo que divergía era el bash alrededor, no el motor."];
   }
+
+  IN -> P0 -> G0;
+  G0 -> OUT  [label="no / re-entrante"];
+  G0 -> P1   [label="sí"];
+  P1 -> G1;
+  G1 -> X1   [label="no"];   X1 -> OUT;
+  G1 -> P2   [label="sí"];
+  P2 -> HOT;
+  HOT -> X2  [label="no aplica"];  X2 -> OUT;
+  HOT -> P3  [label="es master"];
+  P3 -> X3   [label="no toca todavía"];  X3 -> OUT;
+  P3 -> P4   [label="toca exportar"];
+  P4 -> V4;
+  V4 -> KEEP [label="falla"];  KEEP -> P6;
+  V4 -> PUB  [label="pasa"];   PUB  -> P6;
+  P6 -> G6;
+  G6 -> X6 [label="no"];  X6 -> OUT;
+  G6 -> OUT [label="sí — registrado y aseverado"];
+  P4 -> NOTA [style=dashed, color="#9e9e9e", label="aquí PARA\n(la mudanza sigue: chart 03)"];
 }

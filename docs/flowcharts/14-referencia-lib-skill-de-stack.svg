@@ -149,7 +149,7 @@
 <text xml:space="preserve" text-anchor="start" x="549.5" y="-1594" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">📈 aviso&#45;contexto</text>
 <polygon fill="#1b1712" stroke="none" points="1175.12,-1585.25 1175.12,-1611 3327.88,-1611 3327.88,-1585.25 1175.12,-1585.25"/>
 <polygon fill="none" stroke="#5fa89e" points="1175.12,-1585.25 1175.12,-1611 3327.88,-1611 3327.88,-1585.25 1175.12,-1585.25"/>
-<text xml:space="preserve" text-anchor="start" x="1939.12" y="-1594.75" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">reporta el watermark de contexto CRUDO (tokens · ventana · %); sin bandas ni veredicto — /context manda (GLOBAL)</text>
+<text xml:space="preserve" text-anchor="start" x="1483.12" y="-1594.75" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">al umbral ALTO del punto REAL de compact (80%/92% de autoCompactWindow o la ventana efectiva; % honesto, respeta autoCompactEnabled): VUELCA el checkpoint mecánico solito y ORDENA /checkpoint+/compact. No gotea (silencio bajo el umbral, 1 disparo + 1 escalada) (GLOBAL)</text>
 <polygon fill="#1b1712" stroke="none" points="16.12,-1559.5 16.12,-1585.25 1175.12,-1585.25 1175.12,-1559.5 16.12,-1559.5"/>
 <polygon fill="none" stroke="#5fa89e" points="16.12,-1559.5 16.12,-1585.25 1175.12,-1585.25 1175.12,-1559.5 16.12,-1559.5"/>
 <text xml:space="preserve" text-anchor="start" x="540.12" y="-1568.25" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🧬 aviso&#45;drift&#45;cerebro</text>

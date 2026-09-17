@@ -1,5 +1,11 @@
 # Rediseño de aviso-contexto — DATO CRUDO, cada quién decide (unjordi 2026-09-01)
 
+> ⚠️ **SUPERSEDIDO por la REVISIÓN 2026-09-17 (unjordi) — ver la sección al final.** El diseño de abajo
+> ("reportero tonto, cada quién decide, debounce por escalón de 5%") fue REVERTIDO por el dueño: el hook
+> ahora HACE trabajo (dispara el checkpoint mecánico al umbral real) y ORDENA, en vez de gotear y deferir.
+> El código VIVO es `brain/hooks/aviso-contexto.sh` (revisión 2026-09-17); lo que sigue queda como registro
+> histórico de por qué el hook dejó de mentir sobre el techo — esa parte (números honestos) SÍ sobrevive.
+
 **Decisión (unjordi):** *"que arroje el dato CRUDO y el estado actual y CADA QUIÉN DECIDE cómo morirse.
 autoCompactWindow suena perfecto."* El hook DEJA de derivar un techo frágil (allowlist de modelos ×
 pct de una env que no se propaga) y de gritar bandas escaladas ("INMINENTE, compacta YA"). En su lugar
@@ -61,3 +67,40 @@ NO cómo se localiza el dato ni el cierre del mensaje. Dos arreglos de PRECISIÓ
    fresco → mejor checkpoint + /compact" era una RECOMENDACIÓN de acción, no un dato — contra el principio
    "reportero tonto". Sustituida por un cierre NEUTRO que solo reporta (dónde manda `/context`, qué hace el
    CLI) y defiere la decisión al lector. Lock-in test añadido para que no se cuele otro imperativo.
+
+## REVISIÓN 2026-09-17 — el hook HACE, no reporta (unjordi REVIERTE "cada quién decide")
+
+**Decisión (unjordi):** el diseño "reportero tonto / cada quién decide" quedó INÚTIL y JODÓN — goteaba
+cada ~5% (30/35/40/45%…), lo que se ignora, y solo AVISABA. La auditoría lo confirmó: **los hooks que
+solo avisan se ignoran** (los 4 `recordar-*` = 5 usos en total); el único con tracción es `checkpoint`
+(80 usos) porque su hook **HACE trabajo real**. Así que el dueño autoriza EXPLÍCITAMENTE que este hook
+**haga MÁS, no menos**: que EMPUJE, no que reporte.
+
+**Qué cambió (código vivo `brain/hooks/aviso-contexto.sh`):**
+1. **Deja de gotear.** SILENCIO total por debajo del umbral. Debounce por **BANDA**, no por escalón de 5%:
+   banda 0 = bajo el umbral ALTO (silencio); banda 1 = cruzó **ALTO (80% de GOV)**; banda 2 = cruzó
+   **CRÍTICO (92% de GOV)**. Dispara **UNA vez** al cruzar ALTO, con **a lo sumo UNA escalada** al CRÍTICO.
+   Al compactar (ctx baja) la banda baja → se re-arma sola. Los umbrales se miden contra el **punto REAL de
+   compact (GOV)**, no contra el 1M pelón.
+2. **Números honestos (esto SÍ se conserva del diseño de arriba).** El denominador es GOV = el punto real
+   de compact: `autoCompactWindow` si está seteado y el auto-compact ACTIVO; si no, la ventana efectiva del
+   modelo. Lee `autoCompactEnabled`: si está en **false**, NO dice "el auto-compact dispara al llenarse la
+   ventana" (era mentira) — dice la verdad: **auto-compact APAGADO → el corte lo decides tú / `/compact`
+   manual**.
+3. **HACE: al cruzar el umbral EJECUTA el checkpoint MECÁNICO.** Invoca el volcado mecánico de estado a
+   disco (`bin/checkpoint-mecanico.js`) — el 🗂️ árbol, RESUELTO HOY, citas del usuario, métricas — a
+   `hilo-mental-actual.andamio.md`, a CERO tokens de modelo. El lanzador se **factorizó** a la lib
+   `brain/hooks/checkpoint-mecanico-comun.sh` (detached · lock por-sid · escritura atómica · anti-recursión),
+   **compartida** con el hook `checkpoint-mecanico.sh` (PreCompact) → una sola definición, sin drift, y con
+   el mismo lock **coordinan** (no vuelcan dos veces seguidas). El checkpoint EN PROSA sigue necesitando al
+   modelo — esto es la red mecánica que corre sola, no su reemplazo; por eso la orden empuja a `/checkpoint`
+   + `/compact`.
+4. **Menos jodón:** salida mínima. Cuando habla (en el umbral) es **UNA línea en tono de ORDEN** — el HUB
+   manda ("volqué el andamio mecánico; haz /checkpoint y considera /compact"), sin el "TÚ decides" de cada
+   turno. El CRÍTICO escala el tono (🚨 RAYANDO el compact · /compact YA).
+
+**Nace-con-test:** los tests `(b6)` de `brain/test-brain.sh` demuestran (a) no dispara bajo el umbral / no
+gotea por-5%, (b) al umbral DISPARA el checkpoint mecánico (el andamio aparece en disco), (c) el denominador
+es el punto real (mockeando `autoCompactWindow`), (d) respeta `autoCompactEnabled=false`. Cada uno marcado
+`[↯viejo]` FALLA contra el hook viejo y pasa con el nuevo (verificado: 14 FAIL al correr la suite contra la
+versión vieja del hook).

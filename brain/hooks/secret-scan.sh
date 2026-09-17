@@ -61,6 +61,12 @@ bail_open() {  # $1 = motivo. En strict → deny; si no → deja pasar (exit 0).
 
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
 [ -z "$cmd" ] && exit 0
+# M2 (auditoría 2026-09-15, CRÍTICO §3.1): cwd del payload = working dir REAL del comando (puede diferir
+# de CLAUDE_PROJECT_DIR, fijo al arranque de la sesión). Sin esto, un `git -C <otro-repo> commit`, un
+# `cd <otro-repo> && git commit`, o simplemente un comando corrido desde OTRO cwd (el patrón NORMAL de un
+# worktree aislado de fan-out) escaneaba el repo EQUIVOCADO — un secreto en el repo que el comando REALMENTE
+# toca pasaba SIN escanear, y este es el ÚNICO control anti-credenciales del sistema (sin backstop server-side).
+pcwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
 
 # PRE-FILTRO barato (superset conservador, mismo espíritu que proteger-arbol.sh): este guard solo actúa
 # sobre `git commit`/`git push` → sin 'git' en el comando crudo, early-exit ANTES de cualquier
@@ -71,9 +77,23 @@ case "$cmd" in *git*) : ;; *) exit 0 ;; esac
 # lib compartida si está junto al hook, si no un sed equivalente. Así un token DENTRO de una comilla —el
 # `--no-verify` citado en el MENSAJE del commit (A7), o un `git commit`/`git add`/`git push` mencionado en
 # el texto— no altera la decisión del guard. bash-3.2-safe.
+# CRÍTICO-1 (auditoría FMEA 2026-09-16 §1.1, CONFIRMADO): sourcear un archivo con error de SINTAXIS mata el
+# proceso ENTERO con exit 1 -- que el harness trata como NO-bloqueante. secret-scan es "el ÚNICO control
+# anti-credenciales del sistema, sin backstop server-side" (comentario original arriba): un typo de sintaxis
+# en la lib compartida apagaba ESTA red de seguridad en silencio total, exactamente igual que los otros 4
+# guards. H7 (auditoría semántica 2026-09-16, BAJO): la sonda ORIGINAL sourceaba en un SUBSHELL y trataba
+# CUALQUIER exit≠0 como "lib rota" -- pero ese código es el del ÚLTIMO comando de la lib, no un diagnóstico
+# de sintaxis. `bash -n` ES el veredicto de sintaxis (solo parsea, nunca ejecuta): si pasa, el `source` real
+# ya no puede tronar por sintaxis; si no, el guard DEGRADA a su propio fallback sed (el `command -v
+# acg_despoja_comillas` de abajo ya sabía hacerlo -- el bug era que nunca llegaba a preguntarlo).
+# Snippet IDÉNTICO en los 5 guards; a propósito FUERA de la lib.
 _ACGLIB="$(dirname "$0")/analizar-comando-git.sh"
-# shellcheck source=analizar-comando-git.sh
-[ -f "$_ACGLIB" ] && . "$_ACGLIB"
+if [ -f "$_ACGLIB" ] && bash -n "$_ACGLIB" >/dev/null 2>&1; then
+  # shellcheck source=analizar-comando-git.sh
+  . "$_ACGLIB"
+else
+  [ -f "$_ACGLIB" ] && printf '%s: analizar-comando-git.sh existe pero no cargó (error de sintaxis) -- usando el fallback sed propio (menos preciso). `bash -n "%s"` localiza el error.\n' "$(basename "$0")" "$_ACGLIB" >&2
+fi
 # A-03/A-R4-02 (FMEA): colapsa el prefijo de opciones globales de git (`-c k=v`, `-C dir`, `--no-pager`,
 # `--work-tree`, …) para que `git <globales> commit` NO evada la adyacencia git+commit/push del gate (ese
 # prefijo cegaba el escaneo). A-R5-02 (FMEA r5): se NORMALIZA SOBRE EL RAW (comillas intactas) ANTES de
@@ -102,8 +122,22 @@ printf '%s' "$cmd_uq" | grep -qE 'git[[:space:]]+(commit|push)' || exit 0
 printf '%s' "$cmd_uq" | grep -qE '(^|[[:space:]])--no-verify([[:space:]]|$)' && exit 0
 
 command -v git >/dev/null 2>&1 || bail_open "git no está en el PATH"
-dir="${CLAUDE_PROJECT_DIR:-.}"
+# M2: resuelve el DIR objetivo por la MISMA lib que git-branch-guard/merge-squash-guard/confirmar-merge-
+# develop (acg_target_dir: -C > cd/pushd > cwd del payload > CLAUDE_PROJECT_DIR > '.') — antes este guard
+# era, junto con proteger-arbol, el único de los 5 que NO la usaba pese a tenerla sourceada 3 líneas arriba.
+if command -v acg_target_dir >/dev/null 2>&1; then
+  dir=$(acg_target_dir "$cmd" "$pcwd")
+else
+  dir="${pcwd:-${CLAUDE_PROJECT_DIR:-.}}"
+fi
 git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 || bail_open "no es un repo git ($dir)"
+# El resto de este guard combina `git -C "$dir" diff/add -- "$f"` con rutas RELATIVAS A LA RAÍZ del repo
+# (las que devuelve `git diff --name-only`). Si $dir resolvió a un SUBDIRECTORIO (p. ej. el cwd real del
+# comando vive en `repo/src/foo`, el caso NORMAL de una sesión parada ahí) esas rutas root-relative dejan
+# de casar con archivos reales bajo $dir → el escaneo saldría CIEGO por partida doble. Se resuelve a la
+# RAÍZ (git ya sabe encontrarla desde cualquier subdir) — mantiene el repo CORRECTO que M2 acaba de fijar,
+# solo corrige el punto exacto del árbol donde se para a mirar.
+dir=$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$dir")
 
 # shellcheck source=detectar-secretos.sh
 . "$(dirname "$0")/detectar-secretos.sh"   # patrones + ds_buscar (lógica; §D)
@@ -152,32 +186,8 @@ fi
 # PreToolUse tampoco vería el commit nuevo). Solo un push PURO (sin commit) usa el rango @{u}..HEAD.
 if [ "$has_commit" = 1 ]; then mode="commit"; else mode="push"; fi
 
-added_lines() {  # imprime SOLO las líneas agregadas de un archivo (sin la cabecera +++).
-  local f="$1"
-  # Escaneo primario según el modo.
-  if [ "$mode" = "commit" ]; then
-    git -C "$dir" diff --cached -- "$f" 2>/dev/null | grep -E '^\+' | grep -vE '^\+\+\+'
-  else
-    git -C "$dir" diff "$BASE..HEAD" -- "$f" 2>/dev/null | grep -E '^\+' | grep -vE '^\+\+\+'
-  fi
-  # A1: + lo que el `git add` encadenado ESTAGEARÍA, si este archivo es uno de ellos.
-  if printf '%s\n' "$addfiles" | grep -qxF "$f"; then
-    if git -C "$dir" ls-files --error-unmatch -- "$f" >/dev/null 2>&1; then
-      # tracked-modificado: solo lo AGREGADO vs HEAD (no re-escanear lo YA versionado → sin falso positivo).
-      git -C "$dir" diff HEAD -- "$f" 2>/dev/null | grep -E '^\+' | grep -vE '^\+\+\+'
-    else
-      # NUEVO/untracked: TODO el archivo es contenido que entra al repo.
-      git -C "$dir" diff --no-index -- /dev/null "$dir/$f" 2>/dev/null | grep -E '^\+' | grep -vE '^\+\+\+'
-    fi
-  fi
-}
-
-# Lista de archivos que cambian.
-if [ "$mode" = "commit" ]; then
-  # staged (--cached) ∪ lo que el `git add` encadenado agregaría (A1): un secreto en un archivo AÚN NO
-  # staged (untracked/nuevo) no aparece en --cached, lo aporta addfiles.
-  files=$(printf '%s\n%s\n' "$(git -C "$dir" diff --cached --name-only --diff-filter=ACM 2>/dev/null)" "$addfiles" | grep -vE '^$' | sort -u)
-else
+# Resuelve BASE (solo modo push) UNA vez; la reusan tanto el diff primario como el listado de archivos.
+if [ "$mode" = "push" ]; then
   BASE=$(git -C "$dir" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null)
   if [ -z "$BASE" ]; then
     # G5: rama NUEVA sin upstream (el 1er push — donde más se cuela un secreto, porque toda la historia
@@ -191,23 +201,108 @@ else
     done
     [ -z "$BASE" ] && bail_open "sin upstream ni base develop/main para acotar el rango del push"
   fi
-  files=$(git -C "$dir" diff "$BASE..HEAD" --name-only --diff-filter=ACM 2>/dev/null)
 fi
-[ -z "$files" ] && exit 0
 
+# DEFECTO medido (auditoría overhead 2026-09-16, §defecto #4): el escaneo primario ANTES corría un
+# `git diff -- "$f"` POR ARCHIVO en un bucle — lineal en archivos tocados; medido en producción: 600 s
+# de TIMEOUT con un commit de 105 archivos (`git add -A` + commit masivo). Y un guard DEFENSIVO que se
+# pasa de tiempo DEJA DE PROTEGER: se apaga exactamente en el commit más grande, que es justo donde más
+# fácil se cuela un secreto sin que nadie lo note al revisar.
+#
+# Fix: UN solo `git diff` cubre TODO el rango (commit: `--cached`; push: `BASE..HEAD`) sin pathspec por
+# archivo — el costo deja de escalar con el número de archivos, solo con el TAMAÑO total del diff (eso
+# es inevitable: hay que leer los bytes al menos una vez). Los addfiles (A1: `git add`/`-a` encadenado)
+# se suman con invocaciones ÚNICAS también: un solo `git diff HEAD -- <todos los tracked>` + un solo
+# `awk` que lee TODOS los untracked nuevos de un jalón (sin invocar `git` por ellos: su contenido
+# íntegro entra igual, ya que `git diff --no-index` solo lo envolvía en formato diff sin aportar nada
+# que las firmas necesiten).
+if [ "$mode" = "commit" ]; then
+  primary_diff=$(git -C "$dir" diff --cached 2>/dev/null)
+else
+  primary_diff=$(git -C "$dir" diff "$BASE..HEAD" 2>/dev/null)
+fi
+
+# addfiles (A1: `git add`/`-a` encadenado): separa tracked/untracked con UNA sola consulta (no una por
+# archivo), y el diff de los tracked en OTRA sola invocación (todos los pathspecs juntos).
+addfiles_tracked_diff=""
+untracked_add_arr=()
+if [ -n "$addfiles" ]; then
+  addfiles_arr=()
+  while IFS= read -r _af; do [ -n "$_af" ] && addfiles_arr+=("$_af"); done <<EOF
+$addfiles
+EOF
+  if [ "${#addfiles_arr[@]}" -gt 0 ]; then
+    tracked_set=$(git -C "$dir" ls-files -- "${addfiles_arr[@]}" 2>/dev/null)
+    tracked_add_arr=()
+    for _af in "${addfiles_arr[@]}"; do
+      if printf '%s\n' "$tracked_set" | grep -qxF "$_af"; then
+        tracked_add_arr+=("$_af")
+      else
+        untracked_add_arr+=("$_af")
+      fi
+    done
+    # tracked-modificado (p. ej. `-a`/`-am`): solo lo AGREGADO vs HEAD, TODOS en una sola invocación
+    # (no re-escanea lo ya versionado → sin falso positivo, igual que antes).
+    [ "${#tracked_add_arr[@]}" -gt 0 ] && addfiles_tracked_diff=$(git -C "$dir" diff HEAD -- "${tracked_add_arr[@]}" 2>/dev/null)
+  fi
+fi
+
+# Parte un diff en pares "archivo<TAB>línea-agregada" — UNA pasada de awk por diff, no por archivo.
+# bash-3.2-safe (awk estándar POSIX, sin extensiones GNU).
+_ds_split_por_archivo() {
+  awk '
+    /^diff --git / { file=""; next }
+    /^\+\+\+ / {
+      f=$0; sub(/^\+\+\+ /, "", f)
+      if (f == "/dev/null") { file=""; next }
+      sub(/^[ab]\//, "", f); file=f; next
+    }
+    /^\+/ { if (file != "") { line=$0; sub(/^\+/, "", line); printf "%s\t%s\n", file, line }; next }
+    { next }
+  '
+}
+by_file=$(printf '%s' "$primary_diff" | _ds_split_por_archivo)
+[ -n "$addfiles_tracked_diff" ] && by_file="${by_file}
+$(printf '%s' "$addfiles_tracked_diff" | _ds_split_por_archivo)"
+if [ "${#untracked_add_arr[@]}" -gt 0 ]; then
+  # nuevo/untracked: TODO el archivo entra al repo. UN solo `awk` recibe TODOS esos archivos como
+  # argumentos (detecta el cambio de archivo por sí solo con FNR==1) — cero invocaciones de `git`, y
+  # cero forks por archivo (uno solo para el lote completo).
+  _uargs=(); for _af in "${untracked_add_arr[@]}"; do _uargs+=("${dir%/}/$_af"); done
+  by_file="${by_file}
+$(awk -v d="${dir%/}/" 'FNR==1{f=FILENAME; if (index(f,d)==1) f=substr(f,length(d)+1)} {print f "\t" $0}' "${_uargs[@]}" 2>/dev/null)"
+fi
+
+# ¿Hay ALGÚN candidato de secreto en TODO lo agregado? Un solo `grep` sobre el total (con el nombre de
+# archivo pegado — no importa, es solo un filtro GRUESO): si no hay nada, termina aquí — CERO
+# invocaciones de `git` o de cualquier otra herramienta por archivo, sin importar si el commit tocó
+# 1 archivo o 10 000 (el caso común, y el que antes se comía los 600 s de timeout).
+candidatos=$(printf '%s\n' "$by_file" | grep -E "$_DS_PAT" 2>/dev/null)
+[ -z "$candidatos" ] && exit 0
+
+# SÍ hubo candidatos: arma el reporte, pero SOLO sobre los archivos que de verdad matchearon — no sobre
+# los N archivos del commit. En el caso típico (el secreto vive en 1 de miles de archivos) esto es una
+# vuelta, no miles: el costo del reporte ahora escala con los HITS, no con el tamaño del commit.
 hits=""
-while IFS= read -r f; do
+seen_files=""
+while IFS=$'\t' read -r f _rest; do
   [ -z "$f" ] && continue
-  red=$(ds_buscar "$(added_lines "$f")" | tr '\n' ' ')   # ds_buscar ya redacta y excluye placeholders (lib)
+  printf '%s\n' "$seen_files" | grep -qxF "$f" && continue   # ya reportado (2ª línea candidata del mismo archivo)
+  seen_files="${seen_files}
+$f"
+  # Todo lo agregado de ESE archivo (no solo la línea candidata) — para que `ds_buscar` aplique el
+  # mismo tope de "hasta 3" y la misma exclusión de placeholders (lib) que siempre, sin duplicar lógica.
+  texto=$(printf '%s\n' "$by_file" | awk -F'\t' -v want="$f" '$1==want{print substr($0, length($1)+2)}')
+  red=$(ds_buscar "$texto" | tr '\n' ' ')   # ds_buscar ya redacta y excluye placeholders (lib)
   if [ -n "$red" ]; then
     hits="${hits}
   • ${f}: ${red}"
   fi
 done <<EOF
-$files
+$candidatos
 EOF
 
-[ -z "$hits" ] && exit 0
+[ -z "$hits" ] && exit 0   # los candidatos gruesos resultaron ser placeholders (safe_re) — sin secreto real
 
 reason="FRENO DE SEGURIDAD (secret-scan): detecté lo que parece un SECRETO en lo que va a entrar al repo (${mode}). NO lo subas: una credencial pusheada queda comprometida aunque la borres.
 Coincidencias (redactadas):${hits}

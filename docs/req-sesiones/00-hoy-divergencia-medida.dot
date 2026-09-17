@@ -1,9 +1,12 @@
-// 04 — Delegación / orquestar-fanout (cortex)  ·  FUENTE editable (Graphviz .dot)
-// Render:  dot -Tsvg 04-delegacion-orquestar-fanout.dot -o 04-delegacion-orquestar-fanout.svg
-// Construido 2026-08-01 desde el CÓDIGO REAL: hooks limite-gasto, delegacion-gate, delegacion-registrar,
-// delegacion-reporte + lib delegacion-comun.sh (clasificar_delegacion) + agentes-costo.json; scripts
-// limpiar-worktrees.sh / limpiar-ramas.sh; skill orquestar-fanout (contrato de reporte + aislamiento).
-digraph flujos {
+// 00 — HOY (estado ACTUAL, no propuesta): la divergencia MEDIDA entre los tres consumidores del
+// subsistema de sesiones-master.  ·  FUENTE editable (.dot)
+// Render:  dot -Tsvg 00-hoy-divergencia-medida.dot -o 00-hoy-divergencia-medida.svg
+// ⚠️ ESTE CHART ES EL **HOY**. La propuesta vive en 01/02/03 de esta misma carpeta.
+// Construido 2026-09-16 LEYENDO el código real:
+//   brain/hooks/exportar-sesion-master.sh · brain/hooks/checkpoint-mecanico.sh
+//   brain/skills/reubicar-master/reubicar-master.sh · brain/sesiones-master/seed.sh · bin/session-lib.js
+// Cada nodo 🚧/🔴 cita archivo:línea. Documento que lo explica: docs/requerimientos-unificar-tooling-sesiones.md
+digraph hoy_divergencia {
   graph [bgcolor="#1b1712", rankdir=TB, fontname="Helvetica", splines=true,
          nodesep=0.35, ranksep=0.55, pad=0.25, compound=true];
   node  [fontname="Helvetica", fontsize=12, fontcolor="#f2ede6", shape=box,
@@ -38,7 +41,7 @@ digraph flujos {
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📮 delegacion-reporte</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al terminar un agente: recuerda registrar avance + limpiar su worktree</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎼 recordar-orquestar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">N mutaciones (edits/commits) en serie SIN delegar → sugiere fan-out (advisory, no bloquea; resetea al delegar) (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧵 rehidratar-hilo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta hilo-mental-actual.md + el andamio (si es más fresco) al abrir/retomar/compactar (GLOBAL) — gate de frescura + edad</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📈 aviso-contexto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al umbral ALTO del punto REAL de compact (80%/92% de autoCompactWindow o la ventana efectiva; % honesto, respeta autoCompactEnabled): VUELCA el checkpoint mecánico solito y ORDENA /checkpoint+/compact. No gotea (silencio bajo el umbral, 1 disparo + 1 escalada) (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📈 aviso-contexto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reporta el watermark de contexto CRUDO (tokens · ventana · %); sin bandas ni veredicto — /context manda (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧬 aviso-drift-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">repo brained atrás de la fuente única (hooks/libs Y skills) → en tu mini-develop se AUTO-SINCRONIZA (apply+commit+push); en otra rama, avisa. ADEMÁS detecta el drift de la copia GLOBAL de skills (~/.claude/skills vs la fuente; warn-only, throttle propio). Al moverse el cerebro, NUDGE a correr la DUPLA (suficiencia+coherencia; contra la firma si hay AGENTS.md, si no sugiere instanciarla) (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔀 hud-stale</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cambiaste de rama/proyecto → tu lista de TODOs (HUD) puede ser de la tarea anterior: avisa (advisory) que la resetees/re-siembres del estado-proyecto.md de esa rama. Señal OBJETIVA (rama/cwd), stamp per-sesión, first-sight silencioso, solo en repos con backlog (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧭 sesion-inicio</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta rama + norma + memoria al abrir</font></td></tr>
@@ -90,98 +93,59 @@ digraph flujos {
   }
   // <<< LEYENDA-ARBOL <<<
 
-  // ───────────────────────────────────── EL FLUJO ─────────────────────────────────────
   subgraph cluster_f0 {
-    label="04 · Delegación / orquestar-fanout   (gate de costo → agente en worktree AISLADO → auto-reporte → el orquestador integra a la mini)";
+    label="00 · HOY — los mismos 5 conceptos, resueltos por separado en 3 (a veces 4) implementaciones   [ESTADO ACTUAL, no propuesta]";
     fontname="Times"; fontsize=14; fontcolor="#5fa89e";
     color="#5fa89e"; penwidth=1.6; style="rounded"; bgcolor="#1b1712";
 
-    // ── Arranque: orquestador con backlog paralelizable ──
-    BL    [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
-           label="orquestador: backlog con piezas INDEPENDIENTES\n(estado-proyecto.md = fuente de verdad · «aquí empiezas siempre»)\n📜 → default = fan-out + supervisión, NO grind serial"];
-    PREREQ [shape=diamond, fillcolor="#2b2622", color="#d97757",
-            label="¿la sesión vive DENTRO de un repo git?\n(worktrees aislados EXIGEN cwd = repo)"];
-    NOGIT [fillcolor="#f5f5f5", color="#9e9e9e", fontcolor="#333", style="dashed,filled",
-           label="🚧 sin repo: `isolation: worktree` truena\n(«not in a git repository»). Inicia la sesión EN el repo"];
-    SPAWN [color="#7fb069",
-           label="🟢 spawnea N Task con `isolation: worktree`\n(el árbol PRINCIPAL es SOLO del orquestador/humano)"];
+    // ── Los consumidores ──
+    HOOK [color="#e08e45",
+          label="🔔 exportar-sesion-master.sh   (191 líneas · tier global · Stop/SessionEnd/PreCompact)\nRESPALDO CONTINUO. Contrato: SILENCIOSO y FAIL-OPEN, siempre exit 0.\nmasters.json ×10 · customTitle ×2 · transcript ×8 · .jsonl ×2 · CLAUDE_SESSIONS_DRIVE ×4 · slug ×0 · session-lib ×0"];
 
-    // ── PreToolUse/Task: los 2 hooks de costo — PARALELOS (mismo spawn), resueltos por precedencia deny>ask>allow ──
-    LIM   [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="🔒🛑 limite-gasto  (PreToolUse/Task)\n¿ventana 5h AGOTADA (≥99%) Y overage SIN holgura?\n(lee state.json del daemon de cuota; rancio >30min → fail-open;\nsin jq / sin snapshot → fail-open, no frena)"];
-    LIM_D [fillcolor="#3a2020", color="#c0392b", penwidth=2.5,
-           label="🔴 DENY (freno duro): sin capacidad en NINGÚN lado —\nel agente moriría a medias. NO reintentes en automático.\nEspera el reset · mete saldo · hazlo TÚ sin delegar"];
+    REUB [color="#e08e45",
+          label="💡 reubicar-master.sh   (1331 líneas / 90,912 bytes · skill · genera un handoff ejecutable)\nLA MUDANZA. Contrato: FALLA CERRADO, punto de no retorno explícito, postcondiciones aseveradas.\nmasters.json ×23 · customTitle ×2 · transcript ×24 · .jsonl ×29 · CLAUDE_SESSIONS_DRIVE ×6 · slug ×46 · session-lib ×13"];
 
-    CLASI [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="🔒💸 delegacion-gate  (PreToolUse/Task, EN PARALELO con limite-gasto)\nclasificar_delegacion (lib comun = fuente única con el registrar):\nsubagent_type/model → agentes-costo.json → NIVEL de costo"];
-    NIVEL [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="¿NIVEL?\nlocal → gratis · Claude CON snapshot fresco (<30min) y <90% ventana → incluido\nClaude SIN snapshot fresco (rancio >30min o ausente) → metered\n(conservador, aunque la ventana tenga holgura)\nClaude en overage / API de pago / desconocido → metered"];
-    YACON [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="¿ya consentido?\ngratis/incluido: 1× por COMPU (delegacion-consentimiento.json)\nmetered: 1× por WORKFLOW (session_id)"];
-    ASK   [color="#e08e45",
-           label="🟠 ASK — pide tu OK (muestra el estado real de tu ventana 5h).\ncoalescer G3/H6: el 1er Task del lote toma un lock (mkdir ~10s);\nlos HERMANOS simultáneos pasan en silencio (solo gratis/incluido)"];
-    PASA  [color="#7fb069",
-           label="🟢 pasa sin preguntar\n(consentimiento ya vigente para este nivel)"];
-    NIEGA [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
-           label="el usuario NIEGA → el Task NO corre\n(delegacion-registrar/delegacion-reporte no disparan → no se registra consentimiento)\nel ítem queda para rehacer o para no delegarlo"];
+    CKPT [color="#e08e45",
+          label="🔔 checkpoint-mecanico.sh   (88 líneas · tier global · PreCompact)\nEXTRAE SIGNIFICADO del transcript al andamio del repo.\nmasters.json ×0 · .jsonl ×0 · CLAUDE_SESSIONS_DRIVE ×0 · slug ×0   ⇒ NO es del subsistema de sesiones"];
 
-    // ── Confluencia: precedencia deny > ask > allow (limite-gasto y delegacion-gate corren en\n    //    paralelo sobre el MISMO Task; el CLI combina sus 2 decisiones antes de dejarlo correr) ──
-    PREC  [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="el CLI combina limite-gasto + delegacion-gate\nprecedencia: deny > ask > allow"];
+    SEED [color="#e08e45",
+          label="🔔 seed.sh   (4º consumidor, fácil de olvidar)\nSIEMBRA el .gz en esta máquina. Resuelve la carpeta por su cuenta."];
 
-    // ── El agente corre AISLADO ──
-    AISLA [color="#c0392b", penwidth=3,
-           label="⚠ ESCRIBE git · el AGENTE corre en su WORKTREE AISLADO\n(git reset/checkout/rebase ahí NO puede orfanar los commits del orquestador)\nGOTCHA: el worktree nace en origin/HEAD (≈main) → el agente hace\n`git reset --hard <rama-objetivo>` al arrancar (dispara proteger-arbol = falso positivo H14)"];
-    TRABAJO [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
-             label="el agente hace SU ítem autocontenido y DEVUELVE el contrato:\n{qué hizo · línea-de-bitácora curada · pendiente-para-otro · worktree limpio|dejado-con-nota}"];
+    // ── El sustrato que YA existe y la capa bash no consume ──
+    LIB  [fillcolor="#232323", color="#5fa89e", penwidth=2,
+          label="🔩 bin/session-lib.js   (617 líneas)\nSe autodescribe: «helpers COMPARTIDOS … Fuente ÚNICA (no divergir)»\nslugFromCwd · normalizeCwd · findSession · scanTranscriptFile · rewriteTranscriptStream\nsessionAliases/writeAlias + locks · copia/borrado recursivo"];
 
-    // ── PostToolUse/Task: los 2 hooks de cierre ──
-    REG   [color="#e08e45",
-           label="🔔📝 delegacion-registrar  (PostToolUse/Task)\nsolo corre si el Task CORRIÓ (usuario aprobó) → PERSISTE el consentimiento\n(gratis/incluido: por compu · metered: por workflow) + libera el lock G3"];
-    REP   [color="#e08e45",
-           label="🔔📮 delegacion-reporte  (PostToolUse/Task)\n🟠 nudge CONDICIONAL: «SI tu agente MUTÓ, ciérralo; SI fue read-only, ignora»\n(no puede ver el transcript del sub-agente → subordina a la mutación, sin cry-wolf)"];
+    NOCLI [style="dashed,filled", fillcolor="#f5f5f5", color="#9e9e9e", fontcolor="#2b2b2b",
+           label="🚧 POR QUÉ bash no la usa — MEDIDO, no inferido\nsession-lib.js NO es ejecutable (-rw-r--r--), NO tiene shebang, solo `module.exports`.\n⇒ desde bash SOLO se alcanza con `node -e '…'` inline.\nreubicar-master lo hace 13 veces (_slug, _alias_keys, writeAlias, rewriteTranscriptStream).\nEl hook NO lo hace ninguna: su fast-path de Stop no puede pagar el arranque de node."];
 
-    // ── El orquestador cierra el loop ──
-    VERIF [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="🔬 el orquestador VERIFICA el linaje del commit (NO cree la prosa del reporte, C7):\n`git merge-base --is-ancestor <commit>^ <rama-objetivo>` ¿nació sobre la base correcta?"];
-    DESCARTA [fillcolor="#f5f5f5", color="#c0392b", fontcolor="#333", style="dashed,filled", penwidth=3,
-              label="🚧⚠ ESCRIBE git · base equivocada (padre = main) → NO integres.\nDescarta la rama (git branch -D / worktree remove) y rehaz el ítem sobre la base correcta"];
-    INTEGRA [color="#c0392b", penwidth=3,
-             label="⚠ ESCRIBE git · integra a la MINI (DevelopUnjordi/…) por CHERRY-PICK del delta\n(no `merge`, que arrastraría el árbol viejo). NUNCA saca la mini en un worktree propio:\nla POSEE el folder visible del dev → aísla en FEATURE, integra HACIA la mini"];
-    ESTADO [color="#e08e45",
-            label="🟠 auto-reporte SIN redundancia (2 archivos):\n① APPENDA `>>` una línea a bitacora.md (qué pasó · parallel-safe)\n② CURA el ítem en estado-proyecto.md (qué sigue · backlog vivo)\nTodoWrite = scratch de sesión, NO el backlog durable"];
-    LIMPIA [color="#c0392b", penwidth=3,
-            label="⚠ ESCRIBE git · el orquestador limpia (nudge de delegacion-reporte, NO automático):\nlimpiar-worktrees.sh (borra los de ramas mergeadas, deja los vivos con su pendiente)\nlimpiar-ramas.sh (barre ramas locales ya integradas por `git branch -d/-D`)\nbarrer-ramas (SessionStart/merge-MR) NO cubre este cierre por cherry-pick"];
-    FIN   [color="#7fb069", penwidth=2,
-           label="🟢 slice del agente CERRADO\n(estado al día · worktree limpio · sin niñería)"];
+    // ── Los 5 conceptos duplicados ──
+    C1 [fillcolor="#ffebee", color="#c62828", fontcolor="#2b2b2b", penwidth=2,
+        label="🔴 CONCEPTO 1 · ¿DÓNDE está la carpeta de sesiones?   (3 políticas incompatibles)\nhook  exportar-sesion-master.sh:59-60  → default ~/.claude-sessions y `mkdir -p`  ⇒ DEGRADA EN SILENCIO\nseed  sesiones-master/seed.sh:27-29     → mismo default, pero ABORTA si no existe (exit 1)\nreub  reubicar-master.sh:491 + 621-627   → SIN default: ABORTA («un default que apunta a la ruta de OTRA máquina miente»)\nEVIDENCIA DE QUE OCURRIÓ: ~/.claude-sessions/761c82d9….meta.json, exportedAt 2026-08-05,\nhost «MacBook-Pro-de-unjordi.local» vs la copia de Drive (2026-09-09, host «Mac»)."];
 
-    // Aristas
-    BL -> PREREQ;
-    PREREQ -> NOGIT [label="no"];
-    PREREQ -> SPAWN [label="sí"];
-    SPAWN -> LIM   [label="mismo spawn de Task (PARALELO)"];
-    SPAWN -> CLASI [label="mismo spawn de Task (PARALELO)"];
-    LIM -> LIM_D [label="AND: ambos agotados"];
-    LIM -> PREC [style=dashed, label="no (hay capacidad en algún lado)\nfail-open → no frena"];
-    CLASI -> NIVEL;
-    CLASI -> ASK [label="sin jq → fail-safe:\nno puede clasificar el costo, pide OK"];
-    NIVEL -> YACON;
-    YACON -> PASA [label="sí"];
-    YACON -> ASK  [label="no"];
-    ASK -> PREC   [label="usuario aprueba"];
-    ASK -> NIEGA  [label="usuario niega"];
-    PASA -> PREC  [style=dashed, label="allow (gate)"];
-    LIM_D -> PREC [label="DENY: vence a cualquier ASK/allow\nsimultáneo (precedencia)"];
-    PREC -> AISLA [label="ningún DENY → procede"];
-    AISLA -> TRABAJO;
-    TRABAJO -> REG;
-    TRABAJO -> REP [label="mismo PostToolUse/Task"];
-    REG -> VERIF; REP -> VERIF;
-    VERIF -> DESCARTA [label="padre = base\nequivocada"];
-    VERIF -> INTEGRA  [label="linaje OK"];
-    DESCARTA -> BL [label="rehaz el ítem"];
-    INTEGRA -> ESTADO;
-    ESTADO -> LIMPIA;
-    LIMPIA -> FIN;
+    C2 [fillcolor="#ffebee", color="#c62828", fontcolor="#2b2b2b", penwidth=2,
+        label="🔴 CONCEPTO 2 · el LOCK de export tiene DOS caducidades\nhook  exportar-sesion-master.sh:128-135 → un lock de >30 min se RECICLA (se ignora)\nreub  reubicar-master.sh (G-LIVENESS)     → `[ -f \"$DRIVE/.export-$ID.lock\" ] && _abort` SIN mirar edad\nEVIDENCIA VIVA: .export-c6330bed-….lock (0 bytes, 2026-09-13) lleva 3 días en el Drive\n⇒ HOY una mudanza de databases-master está bloqueada por un fantasma que el hook ya ignora."];
+
+    C3 [fillcolor="#ffebee", color="#c62828", fontcolor="#2b2b2b", penwidth=2,
+        label="🔴 CONCEPTO 3 · el `target` de masters.json se escribe con el cwd CRUDO\nhook  exportar-sesion-master.sh:161  `target=\"${cwd#\"$HOME\"/}\"` — sin validar que sea un repo\nEVIDENCIA en el masters.json real de esta máquina:\n  fc94c4e1 claudio-master → «code/plantilladotnet/.claude/memory»\n  9cfeed6b games-master  → «…/Juegos/.claude/memory»\n  19590b44 reverse-eng…  → «…/.claude/worktrees/integracion-ronda1»\n  2622f45e rig-master    → «rig-master» (ni siquiera es una ruta)\n⇒ seed.sh sembraría esos masters a un cwd que nadie va a tener."];
+
+    C4 [style="dashed,filled", fillcolor="#f5f5f5", color="#9e9e9e", fontcolor="#2b2b2b",
+        label="🚧 CONCEPTO 4 · «¿es master?» — la regla vive en dos lados y uno DOCUMENTA al otro\nhook  exportar-sesion-master.sh:74-85 → grep del customTitle + sufijo `-master`\nreub  reubicar-master.sh:611-618 → «El hook … decide si una sesión es master leyendo el customTitle\n        … y EXIGE el sufijo -master» y VUELVE A IMPLEMENTAR la comprobación.\nAcoplamiento DOCUMENTADO con implementación DUPLICADA: cero líneas compartidas."];
+
+    C5 [style="dashed,filled", fillcolor="#f5f5f5", color="#9e9e9e", fontcolor="#2b2b2b",
+        label="🚧 CONCEPTO 5 · el ENVOLTORIO de hook, copiado línea a línea\nstdin→jq · guard · lock por-sid con reciclado · `nohup … &` detached · escritura atómica:\nexportar-sesion-master.sh:34-51,128-152  ≈  checkpoint-mecanico.sh:36-45,62-86\nEl 2º lo dice en su propia cabecera: «usa el MISMO patrón ya probado».\nMismo patrón, dos copias, dos caducidades de lock (30 min vs 10 min)."];
+
+    // ── Doc que miente ──
+    DOC [style="dashed,filled", fillcolor="#f5f5f5", color="#9e9e9e", fontcolor="#2b2b2b",
+         label="🚧 DOC QUE MIENTE (medido hoy)\n(a) $DRIVE/masters.json `note` declara el hook «canónico en esta carpeta de Drive, no en el brain público»\n    — falso desde que el hook es tier `global` del MANIFEST.\n(b) Las 3 copias del Drive (exportar-sesion-master.sh · install-hook.sh · seed.sh, todas del 2026-07-26)\n    DIFIEREN de las del repo: el install-hook del Drive aún trae el `--uninstall` retirado y seed.sh aún\n    busca ~/.claude-brain.\n(c) docs/man/ tiene 35 páginas y CERO para la capa bash (export-hook, seed, install-hook, reubicar-master).\n(d) checkpoint-mecanico está en el MANIFEST como tier `global` y NO está cableado en ~/.claude/settings.json\n    (0 menciones) ni existe ~/.claude/hooks/checkpoint-mecanico.sh ⇒ declarado y AUSENTE."];
   }
+
+  HOOK -> C1; SEED -> C1; REUB -> C1;
+  HOOK -> C2; REUB -> C2;
+  HOOK -> C3;
+  HOOK -> C4; REUB -> C4;
+  HOOK -> C5; CKPT -> C5;
+  REUB -> LIB  [label="13 × `node -e` inline", style=dashed];
+  HOOK -> LIB  [label="0 — solo invoca session-export.js\ncomo binario opaco", style=dashed, color="#9e9e9e"];
+  LIB  -> NOCLI [style=dashed, color="#9e9e9e"];
+  C1 -> DOC [style=invis];
 }
