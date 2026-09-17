@@ -8,6 +8,11 @@
 #   gen-leyenda-arbol.sh                 → imprime el subgraph cluster_leyenda a stdout
 #   gen-leyenda-arbol.sh --inject F.dot  → reemplaza en F.dot el bloque entre los marcadores
 #       // >>> LEYENDA-ARBOL ... >>>  y  // <<< LEYENDA-ARBOL <<<  (los deja idempotente-regenerables)
+#   gen-leyenda-arbol.sh --check [F.dot…] → NO muta: compara la leyenda INCRUSTADA con la que genera el
+#       README y sale != 0 si difieren. Sin argumentos verifica todos los .dot de este directorio.
+#       Exit: 0 paridad · 2 a un chart le faltan los marcadores · 3 drift de leyenda.
+#       Es el modo que consume la suite (y con ella el CI): que el generador FUNCIONE no prueba que su
+#       salida esté PUESTA en los charts — ese hueco dejó 14 leyendas viejas con la suite en verde.
 #
 # Fuente del árbol: el bloque cercado (```) del README que arranca con "🔒 Hooks Forzosos".
 # v1 (refinamos poco a poco): tabla HTML por familia, tema oscuro alineado a los charts actuales.
@@ -76,6 +81,33 @@ emit() {
   echo "  }"
   echo "  // <<< LEYENDA-ARBOL <<<"
 }
+
+# Extrae de un chart el bloque de leyenda YA incrustado (con sus dos marcadores), para compararlo.
+extraer_bloque() {
+  awk '/\/\/ >>> LEYENDA-ARBOL/ { p=1 } p { print } /\/\/ <<< LEYENDA-ARBOL <<</ { if (p) exit }' "$1"
+}
+
+if [ "${1:-}" = "--check" ]; then
+  shift
+  if [ "$#" -gt 0 ]; then charts="$*"; else charts="$(ls "$SCRIPT_DIR"/*.dot 2>/dev/null || true)"; fi
+  [ -n "$charts" ] || { echo "gen-leyenda-arbol --check: no hay .dot que verificar" >&2; exit 2; }
+  esperado="$(mktemp)"; emit > "$esperado"
+  rc=0
+  for f in $charts; do
+    if [ ! -f "$f" ]; then
+      echo "gen-leyenda-arbol --check: no existe $f" >&2; rc=2; continue
+    fi
+    if ! grep -q '// >>> LEYENDA-ARBOL' "$f" || ! grep -q '// <<< LEYENDA-ARBOL <<<' "$f"; then
+      echo "gen-leyenda-arbol --check: $f no tiene los marcadores de leyenda" >&2; rc=2; continue
+    fi
+    if ! extraer_bloque "$f" | diff -q - "$esperado" >/dev/null 2>&1; then
+      echo "gen-leyenda-arbol --check: DRIFT en $f — su leyenda no es la que produce el árbol del README (regenera: gen-leyenda-arbol.sh --inject $f)" >&2
+      [ "$rc" = 2 ] || rc=3
+    fi
+  done
+  rm -f "$esperado"
+  exit "$rc"
+fi
 
 if [ "${1:-}" = "--inject" ]; then
   f="${2:-}"; [ -f "$f" ] || { echo "gen-leyenda-arbol --inject: no existe $f" >&2; exit 1; }

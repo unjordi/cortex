@@ -5653,6 +5653,51 @@ if [ -f "$GEN" ]; then
     || bad "e6c3: gen-leyenda-arbol salió incompleto (familias=$fams, filas=$rows) — ¿cambió el formato del árbol del README?"
 else bad "e6c3: no encuentro gen-leyenda-arbol.sh"; fi
 
+# e6c4: la leyenda que el generador PRODUCE tiene que ser la que los charts TRAEN INCRUSTADA. e6c2 vigila
+# que el README liste todo hook y e6c3 que el generador no salga vacío — las dos pasaban en verde mientras
+# los 14 .dot arrastraban una leyenda vieja (rama-vieja ya retirado, checkpoint-mecanico ausente), porque
+# NADIE comparaba la salida contra los archivos. Medir que la maquinaria corre no es medir que su resultado
+# está puesto: esto compara byte a byte y falla si algún chart quedó atrás.
+if [ -f "$GEN" ]; then
+  if bash "$GEN" --check >/dev/null 2>&1; then
+    ok "e6c4: la leyenda incrustada en cada .dot es byte-igual a la que genera el árbol del README"
+  else
+    bad "e6c4: DRIFT de leyenda — algún .dot quedó con una leyenda vieja (corre: bash docs/flowcharts/gen-leyenda-arbol.sh --check para ver cuál, y --inject <f> para regenerarlo)"
+  fi
+fi
+
+# e6c5: el .svg es lo que la gente MIRA, y es una copia derivada más — con su propio drift. Al corregir
+# los .dot (2026-09-16) los 14 .svg commiteados se quedaron mostrando un hook ya retirado: el diagrama
+# decía una cosa y su fuente otra. NO se compara byte a byte contra un `dot` recién corrido (dos versiones
+# de graphviz serializan distinto y eso daría rojo espurio en CI): se comprueba lo que importa del
+# resultado — que el dibujo NOMBRE las piezas vivas y NINGUNA retirada. El `&#45;` es cómo graphviz
+# escapa el guion en el SVG.
+FCDIR="$SCRIPT_DIR/../docs/flowcharts"
+if [ -f "$GEN" ] && [ -d "$FCDIR" ] && [ -f "$MF" ]; then
+  # nombres que la leyenda canónica declara (1ª columna de cada fila de la tabla)
+  piezas=$(bash "$GEN" 2>/dev/null | sed -n 's/.*<font color="#f2ede6">[^ ]* \([^<]*\)<\/font>.*/\1/p' | sort -u)
+  retirados=$(awk '$1!~/^#/ && NF>=3 && $2=="retirado"{print $1}' "$MF")
+  svg_mal=""; svg_n=0
+  for sv in "$FCDIR"/[0-9]*.svg; do
+    [ -e "$sv" ] || continue
+    svg_n=$((svg_n+1))
+    plano=$(sed 's/&#45;/-/g' "$sv")
+    for pz in $piezas; do
+      printf '%s' "$plano" | grep -qF "$pz" || { svg_mal="$svg_mal $(basename "$sv"):falta-$pz"; break; }
+    done
+    for rt in $retirados; do
+      printf '%s' "$plano" | grep -qF "$rt" && svg_mal="$svg_mal $(basename "$sv"):retirado-$rt"
+    done
+  done
+  if [ "$svg_n" -gt 0 ] && [ -z "$svg_mal" ]; then
+    ok "e6c5: los $svg_n .svg dibujan todas las piezas vivas y ninguna retirada"
+  elif [ "$svg_n" = 0 ]; then
+    bad "e6c5: no encontré .svg en $FCDIR (¿se dejaron de commitear?)"
+  else
+    bad "e6c5: .svg RANCIO —$svg_mal — regenéralos con: bash docs/flowcharts/gen-charts.sh --force"
+  fi
+fi
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo "== (e6d) wiring FIELD-check: un settings.json semilla cabla TODOS los kind=hook {repo,both} (C1) =="
 # e2(4) valida la FÁBRICA (register_hook en install-brain). Esto valida el RESULTADO: corre
