@@ -186,32 +186,8 @@ fi
 # PreToolUse tampoco vería el commit nuevo). Solo un push PURO (sin commit) usa el rango @{u}..HEAD.
 if [ "$has_commit" = 1 ]; then mode="commit"; else mode="push"; fi
 
-added_lines() {  # imprime SOLO las líneas agregadas de un archivo (sin la cabecera +++).
-  local f="$1"
-  # Escaneo primario según el modo.
-  if [ "$mode" = "commit" ]; then
-    git -C "$dir" diff --cached -- "$f" 2>/dev/null | grep -E '^\+' | grep -vE '^\+\+\+'
-  else
-    git -C "$dir" diff "$BASE..HEAD" -- "$f" 2>/dev/null | grep -E '^\+' | grep -vE '^\+\+\+'
-  fi
-  # A1: + lo que el `git add` encadenado ESTAGEARÍA, si este archivo es uno de ellos.
-  if printf '%s\n' "$addfiles" | grep -qxF "$f"; then
-    if git -C "$dir" ls-files --error-unmatch -- "$f" >/dev/null 2>&1; then
-      # tracked-modificado: solo lo AGREGADO vs HEAD (no re-escanear lo YA versionado → sin falso positivo).
-      git -C "$dir" diff HEAD -- "$f" 2>/dev/null | grep -E '^\+' | grep -vE '^\+\+\+'
-    else
-      # NUEVO/untracked: TODO el archivo es contenido que entra al repo.
-      git -C "$dir" diff --no-index -- /dev/null "$dir/$f" 2>/dev/null | grep -E '^\+' | grep -vE '^\+\+\+'
-    fi
-  fi
-}
-
-# Lista de archivos que cambian.
-if [ "$mode" = "commit" ]; then
-  # staged (--cached) ∪ lo que el `git add` encadenado agregaría (A1): un secreto en un archivo AÚN NO
-  # staged (untracked/nuevo) no aparece en --cached, lo aporta addfiles.
-  files=$(printf '%s\n%s\n' "$(git -C "$dir" diff --cached --name-only --diff-filter=ACM 2>/dev/null)" "$addfiles" | grep -vE '^$' | sort -u)
-else
+# Resuelve BASE (solo modo push) UNA vez; la reusan tanto el diff primario como el listado de archivos.
+if [ "$mode" = "push" ]; then
   BASE=$(git -C "$dir" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null)
   if [ -z "$BASE" ]; then
     # G5: rama NUEVA sin upstream (el 1er push — donde más se cuela un secreto, porque toda la historia
@@ -225,23 +201,108 @@ else
     done
     [ -z "$BASE" ] && bail_open "sin upstream ni base develop/main para acotar el rango del push"
   fi
-  files=$(git -C "$dir" diff "$BASE..HEAD" --name-only --diff-filter=ACM 2>/dev/null)
 fi
-[ -z "$files" ] && exit 0
 
+# DEFECTO medido (auditoría overhead 2026-09-16, §defecto #4): el escaneo primario ANTES corría un
+# `git diff -- "$f"` POR ARCHIVO en un bucle — lineal en archivos tocados; medido en producción: 600 s
+# de TIMEOUT con un commit de 105 archivos (`git add -A` + commit masivo). Y un guard DEFENSIVO que se
+# pasa de tiempo DEJA DE PROTEGER: se apaga exactamente en el commit más grande, que es justo donde más
+# fácil se cuela un secreto sin que nadie lo note al revisar.
+#
+# Fix: UN solo `git diff` cubre TODO el rango (commit: `--cached`; push: `BASE..HEAD`) sin pathspec por
+# archivo — el costo deja de escalar con el número de archivos, solo con el TAMAÑO total del diff (eso
+# es inevitable: hay que leer los bytes al menos una vez). Los addfiles (A1: `git add`/`-a` encadenado)
+# se suman con invocaciones ÚNICAS también: un solo `git diff HEAD -- <todos los tracked>` + un solo
+# `awk` que lee TODOS los untracked nuevos de un jalón (sin invocar `git` por ellos: su contenido
+# íntegro entra igual, ya que `git diff --no-index` solo lo envolvía en formato diff sin aportar nada
+# que las firmas necesiten).
+if [ "$mode" = "commit" ]; then
+  primary_diff=$(git -C "$dir" diff --cached 2>/dev/null)
+else
+  primary_diff=$(git -C "$dir" diff "$BASE..HEAD" 2>/dev/null)
+fi
+
+# addfiles (A1: `git add`/`-a` encadenado): separa tracked/untracked con UNA sola consulta (no una por
+# archivo), y el diff de los tracked en OTRA sola invocación (todos los pathspecs juntos).
+addfiles_tracked_diff=""
+untracked_add_arr=()
+if [ -n "$addfiles" ]; then
+  addfiles_arr=()
+  while IFS= read -r _af; do [ -n "$_af" ] && addfiles_arr+=("$_af"); done <<EOF
+$addfiles
+EOF
+  if [ "${#addfiles_arr[@]}" -gt 0 ]; then
+    tracked_set=$(git -C "$dir" ls-files -- "${addfiles_arr[@]}" 2>/dev/null)
+    tracked_add_arr=()
+    for _af in "${addfiles_arr[@]}"; do
+      if printf '%s\n' "$tracked_set" | grep -qxF "$_af"; then
+        tracked_add_arr+=("$_af")
+      else
+        untracked_add_arr+=("$_af")
+      fi
+    done
+    # tracked-modificado (p. ej. `-a`/`-am`): solo lo AGREGADO vs HEAD, TODOS en una sola invocación
+    # (no re-escanea lo ya versionado → sin falso positivo, igual que antes).
+    [ "${#tracked_add_arr[@]}" -gt 0 ] && addfiles_tracked_diff=$(git -C "$dir" diff HEAD -- "${tracked_add_arr[@]}" 2>/dev/null)
+  fi
+fi
+
+# Parte un diff en pares "archivo<TAB>línea-agregada" — UNA pasada de awk por diff, no por archivo.
+# bash-3.2-safe (awk estándar POSIX, sin extensiones GNU).
+_ds_split_por_archivo() {
+  awk '
+    /^diff --git / { file=""; next }
+    /^\+\+\+ / {
+      f=$0; sub(/^\+\+\+ /, "", f)
+      if (f == "/dev/null") { file=""; next }
+      sub(/^[ab]\//, "", f); file=f; next
+    }
+    /^\+/ { if (file != "") { line=$0; sub(/^\+/, "", line); printf "%s\t%s\n", file, line }; next }
+    { next }
+  '
+}
+by_file=$(printf '%s' "$primary_diff" | _ds_split_por_archivo)
+[ -n "$addfiles_tracked_diff" ] && by_file="${by_file}
+$(printf '%s' "$addfiles_tracked_diff" | _ds_split_por_archivo)"
+if [ "${#untracked_add_arr[@]}" -gt 0 ]; then
+  # nuevo/untracked: TODO el archivo entra al repo. UN solo `awk` recibe TODOS esos archivos como
+  # argumentos (detecta el cambio de archivo por sí solo con FNR==1) — cero invocaciones de `git`, y
+  # cero forks por archivo (uno solo para el lote completo).
+  _uargs=(); for _af in "${untracked_add_arr[@]}"; do _uargs+=("${dir%/}/$_af"); done
+  by_file="${by_file}
+$(awk -v d="${dir%/}/" 'FNR==1{f=FILENAME; if (index(f,d)==1) f=substr(f,length(d)+1)} {print f "\t" $0}' "${_uargs[@]}" 2>/dev/null)"
+fi
+
+# ¿Hay ALGÚN candidato de secreto en TODO lo agregado? Un solo `grep` sobre el total (con el nombre de
+# archivo pegado — no importa, es solo un filtro GRUESO): si no hay nada, termina aquí — CERO
+# invocaciones de `git` o de cualquier otra herramienta por archivo, sin importar si el commit tocó
+# 1 archivo o 10 000 (el caso común, y el que antes se comía los 600 s de timeout).
+candidatos=$(printf '%s\n' "$by_file" | grep -E "$_DS_PAT" 2>/dev/null)
+[ -z "$candidatos" ] && exit 0
+
+# SÍ hubo candidatos: arma el reporte, pero SOLO sobre los archivos que de verdad matchearon — no sobre
+# los N archivos del commit. En el caso típico (el secreto vive en 1 de miles de archivos) esto es una
+# vuelta, no miles: el costo del reporte ahora escala con los HITS, no con el tamaño del commit.
 hits=""
-while IFS= read -r f; do
+seen_files=""
+while IFS=$'\t' read -r f _rest; do
   [ -z "$f" ] && continue
-  red=$(ds_buscar "$(added_lines "$f")" | tr '\n' ' ')   # ds_buscar ya redacta y excluye placeholders (lib)
+  printf '%s\n' "$seen_files" | grep -qxF "$f" && continue   # ya reportado (2ª línea candidata del mismo archivo)
+  seen_files="${seen_files}
+$f"
+  # Todo lo agregado de ESE archivo (no solo la línea candidata) — para que `ds_buscar` aplique el
+  # mismo tope de "hasta 3" y la misma exclusión de placeholders (lib) que siempre, sin duplicar lógica.
+  texto=$(printf '%s\n' "$by_file" | awk -F'\t' -v want="$f" '$1==want{print substr($0, length($1)+2)}')
+  red=$(ds_buscar "$texto" | tr '\n' ' ')   # ds_buscar ya redacta y excluye placeholders (lib)
   if [ -n "$red" ]; then
     hits="${hits}
   • ${f}: ${red}"
   fi
 done <<EOF
-$files
+$candidatos
 EOF
 
-[ -z "$hits" ] && exit 0
+[ -z "$hits" ] && exit 0   # los candidatos gruesos resultaron ser placeholders (safe_re) — sin secreto real
 
 reason="FRENO DE SEGURIDAD (secret-scan): detecté lo que parece un SECRETO en lo que va a entrar al repo (${mode}). NO lo subas: una credencial pusheada queda comprometida aunque la borres.
 Coincidencias (redactadas):${hits}

@@ -2295,6 +2295,55 @@ rm -rf "$FMEAREPO"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (b2d) secret-scan DEFECTO #4 (auditoría overhead 2026-09-16): deja de escalar con el Nº de archivos =="
+# Antes: el escaneo primario corría un `git diff -- "$f"` POR ARCHIVO en un bucle -- lineal en archivos
+# tocados; medido en producción: 600s de TIMEOUT con un commit de 105 archivos (`git add -A` + commit
+# masivo). Un guard DEFENSIVO que se pasa de tiempo DEJA DE PROTEGER: se apaga exactamente en el commit
+# más grande, justo donde más fácil se cuela un secreto sin que nadie lo note al revisar.
+#
+# Oráculo (bastante más grande que el caso real de 105, para ver margen): un commit de N archivos con un
+# secreto ESCONDIDO en el archivo Nº 100 -- ni el primero ni el último -- debe (a) seguir bloqueando
+# (la dirección que de verdad importa) Y (b) terminar en un tiempo ACOTADO que NO escale con N. Y el
+# MISMO tamaño, pero limpio, debe pasar en silencio (sin ruido) igual de rápido -- ese es el caso que
+# ANTES se comía el timeout (no el que bloquea: el commit grande y LIMPIO).
+#
+# Contra el código de HOY (bucle por archivo) el assert de tiempo FALLA: medido en esta máquina, N=400
+# tarda ~6s (escala ~12ms/archivo, lineal) vs <1s tras el fix (una sola invocación de `git diff` para
+# TODO el rango, sin importar N). El umbral de 3s dobla el margen sobre el fix y se queda muy por debajo
+# de lo que tarda el código viejo con este mismo N.
+DEFECTO4ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-defecto4.XXXXXX")"; DEFECTO4REPO="$DEFECTO4ROOT/repo"; mkdir -p "$DEFECTO4REPO"
+git -C "$DEFECTO4REPO" init -q >/dev/null 2>&1
+git -C "$DEFECTO4REPO" config user.email t@t >/dev/null 2>&1
+git -C "$DEFECTO4REPO" config user.name  tester >/dev/null 2>&1
+N4=400
+for i in $(seq 1 "$N4"); do printf '#!/usr/bin/env bash\necho linea de relleno\n' > "$DEFECTO4REPO/f_$i.sh"; done
+git -C "$DEFECTO4REPO" add -A >/dev/null 2>&1
+git -C "$DEFECTO4REPO" commit -qm base >/dev/null 2>&1
+for i in $(seq 1 "$N4"); do printf '#!/usr/bin/env bash\necho linea de relleno\n# header agregado\n' > "$DEFECTO4REPO/f_$i.sh"; done
+printf '#!/usr/bin/env bash\necho linea de relleno\n# header agregado\naws_key = AKIA1234567890ABCDEF\n' > "$DEFECTO4REPO/f_100.sh"
+git -C "$DEFECTO4REPO" add -A >/dev/null 2>&1
+SECONDS=0
+out_defecto4=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"git commit -qm x"}}' \
+  | HOME="$DEFECTO4REPO" CLAUDE_PROJECT_DIR="$DEFECTO4REPO" bash "$HOOKS/secret-scan.sh")
+dur_defecto4=$SECONDS
+{ printf '%s' "$out_defecto4" | grep -q '"deny"' && [ "$dur_defecto4" -le 3 ]; } \
+  && ok "secret-scan DEFECTO #4: secreto ESCONDIDO en el archivo #100 de $N4 → sigue bloqueando Y en ${dur_defecto4}s (acotado, no escala con N)" \
+  || bad "secret-scan DEFECTO #4: no bloqueó a tiempo (out contiene deny: $(printf '%s' "$out_defecto4" | grep -c '"deny"'), dur=${dur_defecto4}s) -- ¿volvió el bucle por archivo?"
+# Mismo tamaño, TODO limpio: silencio y en el mismo tiempo acotado (el caso REAL que timeouteaba).
+git -C "$DEFECTO4REPO" reset -q >/dev/null 2>&1
+for i in $(seq 1 "$N4"); do printf '#!/usr/bin/env bash\necho linea de relleno\n# header limpio sin nada especial\n' > "$DEFECTO4REPO/f_$i.sh"; done
+git -C "$DEFECTO4REPO" add -A >/dev/null 2>&1
+SECONDS=0
+out_defecto4_clean=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"git commit -qm x"}}' \
+  | HOME="$DEFECTO4REPO" CLAUDE_PROJECT_DIR="$DEFECTO4REPO" bash "$HOOKS/secret-scan.sh")
+dur_defecto4_clean=$SECONDS
+{ [ -z "$out_defecto4_clean" ] && [ "$dur_defecto4_clean" -le 3 ]; } \
+  && ok "secret-scan DEFECTO #4: commit GRANDE y LIMPIO ($N4 archivos) → silencio Y en ${dur_defecto4_clean}s (antes se comía el timeout aquí)" \
+  || bad "secret-scan DEFECTO #4: commit grande limpio hizo ruido o tardó de más (out='$out_defecto4_clean' dur=${dur_defecto4_clean}s)"
+rm -rf "$DEFECTO4ROOT"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "== (b2b) entorno-maquina-guard: AVISA (no bloquea) si entra algo machine-specific al .claude/memory/ del repo =="
 EMREPO="$(mktemp -d "${TMPDIR:-/tmp}/brain-em.XXXXXX")"
 git -C "$EMREPO" init -q >/dev/null 2>&1
