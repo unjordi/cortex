@@ -35,12 +35,34 @@ resulta un falso positivo genuino, documenta la excepción en el código
 (lee la implementación, no solo el docstring) antes de escribir esa excepción: un auditor que
 mienta ("esto está bien" sin haberlo comprobado) es peor que uno que no exista.
 
+**Cuidado con el invariante que un grep textual verifica.** Si la regla se satisface editando
+un MENSAJE en vez de arreglando el código, no es un invariante: es un acuerdo de caballeros con
+el linter. Caso medido: una regla del proyecto ("ningún mutador fuera del punto único") se
+verificaba con un grep de texto; alguien degradó un mensaje real de error para que el grep
+pasara, y el check siguió en verde. Al escribir o revisar un check mecánico, pregúntate si lo
+que mide es COMPORTAMIENTO o STRING — y si es lo segundo, busca una señal que no se pueda
+apagar con un find-and-replace.
+
 ## 2. Re-verifica el manifiesto semántico (Capa 2, con criterio)
 Lee `scripts/auditor-semantico/invariantes-semanticos.yml` de ESTE repo. Para cada entrada con
 `estado: seed` o `activo` **cuyo dominio toque el alcance de esta ronda**, verifica su
 `pregunta` contra el código actual (no contra lo que dice la última auditoría — el código
 pudo haber cambiado). Si ya no aplica (el módulo relacionado no existe en este alcance),
 sáltala sin gastar tokens en ella.
+
+**Lee cada afirmación de la doc/comentario contra el código que tiene AL LADO, no solo contra
+el módulo en general.** La contradicción más cara suele estar a tres líneas, no en otro
+archivo. Casos medidos: un comentario decía *"el ensayo no ejecuta nada, solo LEE el
+archivo"* tres líneas arriba del código que lo ESCRIBÍA; una especificación seguía afirmando
+que el modo de ensayo "coloca el archivo" y llamaba a gatearlo "mejora opcional, no
+bloqueante" — justo lo que la propia auditoría clasificó después como crítico.
+
+**Un contrato escrito en una cabecera se verifica contra TODOS sus consumidores, no contra el
+primero que revises.** Caso medido: la cabecera de una librería documentaba el comportamiento
+ante fallo de sus dos consumidores, y uno de ellos ya no lo cumplía porque un cambio anterior
+le había retirado esa ruta de salida — la doc conservaba lo que el código ya había
+abandonado. Si el invariante habla de "todo consumidor de X", localiza a TODOS antes de
+marcarlo `resuelto`.
 
 ## 3. Revisión abierta (lo que el manifiesto todavía no sabe preguntar)
 Para el alcance definido en el paso 0, busca lo que un test no puede atrapar: reglas de
@@ -49,7 +71,38 @@ condiciones de carrera, datos huérfanos, suplantación de identidad. Si el alca
 (varios módulos/commits grandes), reparte el trabajo en agentes en paralelo (uno por módulo
 natural), cada uno con contexto explícito: qué es este proyecto, qué decisiones de negocio
 son FIRMES (no reabrir), qué secciones de `AGENTS.md` aplican. Pide veredicto de severidad y
-`archivo:línea` concreto — nunca hallazgos vagos.
+`archivo:línea` concreto — nunca hallazgos vagos. **Pídele explícitamente al auditor que TE
+corrija a ti**: "si algo de lo que te dije resulta falso al medirlo, corrígeme con la
+evidencia en vez de acomodarlo" — en una tanda medida, esa corrección mejoró el resultado
+media docena de veces.
+
+**Pasada barata y sistemática: definido ≠ invocado.** Es el hallazgo semántico más rentable
+medido hasta ahora. Por cada función de verificación/validación que el código o la doc
+DECLARE, cuenta sus invocaciones reales con un `grep` desde el camino de ejecución — no
+asumas que "existe" significa "corre". Caso medido: un producto declaraba verificar su
+instalación con once predicados; seis existían y NUNCA se llamaban (una sola aparición: su
+propia definición) — y eran justo los que medían el EFECTO real (el archivo quedó colocado,
+sobrevive al reinicio, el nombre resuelve, el servicio subió), mientras los cinco que sí
+corrían solo medían el registro del planificador. El reporte declaraba `LISTO` habiendo
+comprobado que la maquinaria se instaló, no que hiciera su trabajo. Una función con una sola
+aparición (su propia definición) es código muerto que la doc presenta como garantía.
+
+**Y cuando SÍ se invocan, verifica que no den falsos negativos (o positivos) sistemáticos.**
+Un verificador que siempre falla miente igual que uno que siempre pasa. Caso medido: los tres
+predicados vivos de ese mismo producto fallaban siempre — uno buscaba una unidad de systemd
+sin su sufijo `.service` (así crea el symlink el propio systemd), otro exigía un campo vacío
+por diseño en los timers monotónicos que el producto instala, el tercero rechazaba el estado
+`not running`, que es el estado NORMAL de un daemon ocioso. Medido contra daemons vivos: marcó
+falla en uno que había escrito su log 47 segundos antes. Corre el predicado contra un caso que
+SABES que debe pasar, no solo contra el que debe fallar.
+
+**De qué fuente se fía cada decisión, y si esa fuente puede ser falsificada, estar vacía o
+venir del exterior.** Patrón transversal medido en tres arreglos distintos del mismo sistema,
+los tres etiquetados como "mejora de precisión" y los tres abriendo un agujero: uno leía el
+JSON crudo del payload (un campo de DESCRIPCIÓN entraba al detector y bloqueaba comandos
+legítimos), otro se apoyaba en la palabra del propio LLM sin re-verificarla de forma
+determinista, y otro consumía un archivo de `/tmp` sin validar dueño ni antigüedad. Pregunta
+siempre: ¿quién escribió este dato, puede mentir, y qué pasa si llega vacío o manipulado?
 
 ## 4. Cosecha (el paso que hace crecer el sistema)
 Por cada hallazgo nuevo confirmado, decide dónde vive:
