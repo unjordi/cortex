@@ -168,7 +168,11 @@ mergeadas y deja anotado en la bitácora el pendiente de los que sigan vivos; y
 [`limpiar-ramas.sh`](brain/hooks/limpiar-ramas.sh) barre las **ramas locales** ya integradas (antídoto
 a la acumulación de ramitas squasheadas: el squash rompe `git branch -d` y `fetch --prune` no toca
 locales) y, si tras borrar la local su **rama REMOTA** aún cuelga (un MR squash-mergeado sin
-`--delete-branch`), la borra también (fail-open sin red). Ambos comparten la lógica "zombie"
+`--delete-branch`), la borra también (fail-open sin red). En una **segunda pasada** examina además las
+ramas **remotas SIN contraparte local** —las que el fan-out en worktrees efímeros, otra máquina o un
+`branch -D` suelto dejan vivas en `origin`, invisibles al recorrido de `refs/heads`—: borra las que una
+señal POSITIVA squash-safe demuestre integradas (y solo si su punta sigue siendo la que evaluó), y las
+que traen trabajo sin integrar las CONSERVA y las NOMBRA. Escape: `LIMPIAR_RAMAS_SIN_REMOTAS=1`. Ambos comparten la lógica "zombie"
 ([`ramas-zombie.sh`](brain/hooks/ramas-zombie.sh)) → una sola definición de "mergeada", y `barrer-ramas`
 los lanza a **ambos** (ramas + worktrees) en el mismo trigger. `limpiar-ramas` además REPORTA (nunca
 borra) las ramas de fan-out abandonadas (convención `worktree-agent-*`, sin worktree vivo, viejas y sin

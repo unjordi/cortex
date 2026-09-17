@@ -68,13 +68,34 @@ bz_resolver_base() {
       fi
     fi
     # (3) fallback: develop → rama por defecto del remoto → main.
+    # C-3 (dictamen higiene de ramas 2026-09-17, PÉRDIDA DE DATOS): el `|| echo main` se ligaba al PIPELINE
+    # entero, y el pipeline TERMINA en `sed` — que sale 0 con salida VACÍA cuando `symbolic-ref -q` no
+    # encontró `origin/HEAD`. El `echo main` no corría nunca y la base quedaba en "". Con base vacía TODAS
+    # las señales de integración fallan MUDAS (is-ancestor/log/cherry contra ""), así que cualquier rama con
+    # su remota `gone` caía a la señal (b), se declaraba "integrada" y se iba en un `git branch -D` pese a
+    # traer trabajo que nadie integró nunca. El fallback a `main` es ahora un paso APARTE, que decide
+    # mirando si la cadena quedó vacía — no el código de salida de un pipeline que no lo refleja.
     if [ -z "$base" ]; then
       base=develop
-      git -C "$ROOT" rev-parse --verify -q refs/heads/develop >/dev/null 2>&1 \
-        || base=$(git -C "$ROOT" symbolic-ref --short -q refs/remotes/origin/HEAD 2>/dev/null | sed 's#origin/##' || echo main)
+      if ! git -C "$ROOT" rev-parse --verify -q refs/heads/develop >/dev/null 2>&1; then
+        base=$(git -C "$ROOT" symbolic-ref --short -q refs/remotes/origin/HEAD 2>/dev/null | sed 's#origin/##')
+        [ -n "$base" ] || base=main
+      fi
     fi
   fi
   printf '%s' "$base"
+}
+
+# bz_base_valida ROOT BASE → 0 si BASE resuelve a un commit REAL en ROOT; 1 si no (vacía o fantasma).
+# C-3, segundo candado (el que de verdad importa): NINGUNA señal de integración es evaluable sin una base
+# que exista — `merge-base --is-ancestor <br> ""`, `log ""`, `git cherry "" <br>` fallan MUDAS y empujan
+# toda rama a la señal (b), que es destructiva. Barrer con base irresoluble no puede ser correcto NUNCA,
+# venga el vacío de donde venga (fallback roto, CLAUDE_INTEGRACION_BASE con un typo, base aún no creada):
+# los barredores lo consultan y ABORTAN en vez de evaluar contra una base fantasma. Ante duda, se conserva.
+bz_base_valida() {
+  local ROOT="$1" base="${2:-}"
+  [ -n "$base" ] || return 1
+  git -C "$ROOT" rev-parse --verify -q "${base}^{commit}" >/dev/null 2>&1
 }
 
 # bz_aviso_base ROOT → imprime (por stdout) un aviso si hay AMBIGÜEDAD real en la base que
@@ -108,11 +129,26 @@ _bz_run() {  # _bz_run SEGUNDOS cmd... — con timeout si existe (que un host co
   local t="$1"; shift
   if command -v timeout >/dev/null 2>&1; then timeout "$t" "$@"; else "$@"; fi
 }
+# B-2 (dictamen 2026-09-17): el cap era `300` fijo y MUDO — un repo con más PRs que eso dejaba las ramas
+# viejas fuera de la señal (d) sin decirlo (medido: 433 PRs contra un cap de 300). Ahora el tope es
+# configurable y el default cubre con holgura; `gh --limit` pagina internamente, `glab --per-page` topa en
+# 100 por página en la API de GitLab, así que se PAGINA hasta agotar (o hasta el tope).
+_bz_limite() { local l="${CLAUDE_BZ_PR_LIMIT:-1000}"; case "$l" in ''|*[!0-9]*) l=1000 ;; esac; printf '%s' "$l"; }
+_bz_glab_paginar() {  # $1=proj $2=filtro(-M|-A) $3=archivo destino $4=expresión jq
+  local proj="$1" filtro="$2" dest="$3" jqf="$4" pag=1 n maxp
+  maxp=$(( $(_bz_limite) / 100 )); [ "$maxp" -ge 1 ] || maxp=1
+  while [ "$pag" -le "$maxp" ]; do
+    n=$(_bz_run 15 glab mr list -R "$proj" "$filtro" --per-page 100 --page "$pag" -F json \
+          --jq "$jqf" 2>/dev/null | tee -a "$dest" | wc -l | tr -d ' ')
+    [ "${n:-0}" -lt 100 ] && break
+    pag=$((pag+1))
+  done
+}
 _bz_intentar_gh() {  # $1=ROOT $2=proj — apéndice al cache si gh está disponible
   local ROOT="$1" proj="$2"
   command -v gh >/dev/null 2>&1 || return 0
   _BZ_D_INTENTADO=1
-  _bz_run 15 gh -R "$proj" pr list --state merged --limit 300 \
+  _bz_run 15 gh -R "$proj" pr list --state merged --limit "$(_bz_limite)" \
     --json headRefName,headRefOid --jq '.[] | "\(.headRefName)\t\(.headRefOid)"' \
     >>"$_BZ_PRCACHE_FILE" 2>/dev/null
 }
@@ -120,9 +156,7 @@ _bz_intentar_glab() {  # $1=ROOT $2=proj — apéndice al cache si glab está di
   local ROOT="$1" proj="$2"
   command -v glab >/dev/null 2>&1 || return 0
   _BZ_D_INTENTADO=1
-  _bz_run 15 glab mr list -R "$proj" -M --per-page 300 -F json \
-    --jq '.[] | "\(.source_branch)\t\(.sha)"' \
-    >>"$_BZ_PRCACHE_FILE" 2>/dev/null
+  _bz_glab_paginar "$proj" -M "$_BZ_PRCACHE_FILE" '.[] | "\(.source_branch)\t\(.sha)"'
 }
 _bz_cargar_prcache() {  # puebla $_BZ_PRCACHE_FILE (líneas 'rama<TAB>sha') para ROOT, una sola vez
   local ROOT="$1" url proj host
@@ -160,13 +194,93 @@ _bz_cargar_prcache() {  # puebla $_BZ_PRCACHE_FILE (líneas 'rama<TAB>sha') para
 }
 # bz_pr_mergeado ROOT BR → 0 si el PR/MR de BR se mergeó y su head CONTIENE el tip actual de BR (todos sus
 # commits integrados). Si BR trae commits MÁS ALLÁ del head mergeado (trabajo post-merge) → 1 (conservar).
+# El 3er argumento (opcional) es el REF a contener — por defecto la propia rama local. Existe para que la
+# pasada de ramas REMOTAS sin contraparte local pueda preguntar por el PR de `feat/x` (así se llama en el
+# foro) evaluando el containment sobre `origin/feat/x` (el único ref que existe aquí).
 bz_pr_mergeado() {
-  local ROOT="$1" br="$2" oid
+  local ROOT="$1" br="$2" ref="${3:-$2}" oid
   _bz_cargar_prcache "$ROOT"
   [ -n "$_BZ_PRCACHE_FILE" ] && [ -s "$_BZ_PRCACHE_FILE" ] || return 1
   oid="$(awk -F'\t' -v b="$br" '$1==b{print $2; exit}' "$_BZ_PRCACHE_FILE" 2>/dev/null)"
   [ -n "$oid" ] || return 1
-  git -C "$ROOT" merge-base --is-ancestor "$br" "$oid" 2>/dev/null   # tip de br ⊆ head mergeado → integrada
+  git -C "$ROOT" merge-base --is-ancestor "$ref" "$oid" 2>/dev/null   # tip ⊆ head mergeado → integrada
+}
+
+# --- Estado del PR/MR de una rama — SOLO para el DETECTOR DE REPRESA, jamás para decidir un borrado ---
+# A-4 (dictamen higiene de ramas 2026-09-17): `bz_pr_mergeado` consulta únicamente `--state merged`, así que
+# un PR CERRADO SIN MERGEAR es indistinguible de "nunca hubo PR" — ambos se conservan mudos para siempre. Y
+# la transición "rama pusheada → PR abierto" no la vigila NADIE: es la clase entera de trabajo represado.
+# Esta consulta alimenta el REPORTE, nunca una decisión destructiva, así que su fallo no puede hacer daño:
+# sin gh/glab, sin red o con host no reconocido devuelve DESCONOCIDO y el reporte lo dice tal cual.
+# TEST: CLAUDE_BZ_STCACHE=<archivo con líneas 'rama<TAB>ESTADO<TAB>id'> inyecta el mapa sin red.
+_BZ_STCACHE_FILE=""; _BZ_STCACHE_ROOT=""; _BZ_ST_OK=0
+_bz_cargar_stcache() {
+  local ROOT="$1" url proj host
+  [ "$_BZ_STCACHE_ROOT" = "$ROOT" ] && return 0
+  _BZ_STCACHE_ROOT="$ROOT"
+  if [ -n "${CLAUDE_BZ_STCACHE:-}" ]; then
+    _BZ_STCACHE_FILE="$CLAUDE_BZ_STCACHE"; _BZ_ST_OK=1; return 0
+  fi
+  _BZ_STCACHE_FILE="$(mktemp 2>/dev/null)" || { _BZ_STCACHE_FILE=""; return 0; }
+  url="$(git -C "$ROOT" remote get-url origin 2>/dev/null || true)"
+  case "$url" in *://*|*@*:*) : ;; *) return 0 ;; esac
+  proj="$(printf '%s' "$url" | sed -E 's#^[a-z]+://[^/]+/##; s#^[^@]+@[^:]+:##; s#\.git$##')"
+  [ -n "$proj" ] || return 0
+  host="$(printf '%s' "$url" | sed -E 's#^[a-z]+://##; s#^[^@]+@##; s#[:/].*$##')"
+  case "$host" in
+    gitlab.com|*.gitlab.com) : ;;
+    *) if command -v gh >/dev/null 2>&1; then
+         _bz_run 15 gh -R "$proj" pr list --state all --limit "$(_bz_limite)" \
+           --json headRefName,state,number --jq '.[] | "\(.headRefName)\t\(.state)\t\(.number)"' \
+           >>"$_BZ_STCACHE_FILE" 2>/dev/null && _BZ_ST_OK=1
+       fi ;;
+  esac
+  case "$host" in
+    github.com|*.github.com) : ;;
+    *) if command -v glab >/dev/null 2>&1; then
+         _bz_glab_paginar "$proj" -A "$_BZ_STCACHE_FILE" '.[] | "\(.source_branch)\t\(.state)\t\(.iid)"' \
+           && _BZ_ST_OK=1
+       fi ;;
+  esac
+  return 0
+}
+# bz_pr_estado ROOT BR → "SIN PR" | "PR #n ABIERTO" | "PR #n CERRADO sin merge" | "PR #n MERGEADO" |
+# "estado del PR desconocido". Nunca falla, nunca bloquea: lo peor que dice es que no pudo averiguarlo.
+bz_pr_estado() {
+  local ROOT="$1" br="$2" st
+  _bz_cargar_stcache "$ROOT"
+  { [ "$_BZ_ST_OK" = 1 ] && [ -n "$_BZ_STCACHE_FILE" ]; } || { printf 'estado del PR desconocido (no se pudo consultar el foro)'; return 0; }
+  st="$(awk -F'\t' -v b="$br" '$1==b{print $2"|"$3; exit}' "$_BZ_STCACHE_FILE" 2>/dev/null)"
+  [ -n "$st" ] || { printf 'SIN PR'; return 0; }
+  case "${st%%|*}" in
+    OPEN|opened|locked) printf 'PR #%s ABIERTO' "${st##*|}" ;;
+    CLOSED|closed)      printf 'PR #%s CERRADO sin merge' "${st##*|}" ;;
+    MERGED|merged)      printf 'PR #%s MERGEADO' "${st##*|}" ;;
+    *)                  printf 'estado del PR desconocido (no se pudo consultar el foro)' ;;
+  esac
+}
+
+# bz_remota_integrada ROOT BR REF BASEREF → 0 si la rama REMOTA REF (que NO tiene contraparte local) ya
+# está integrada a BASEREF. Motivo en $BZ_RRAZON (a|e|d|c|vivo).
+#
+# C-2 (dictamen higiene de ramas 2026-09-17): admite SOLO las señales (a)/(e)/(d)/(c). La señal (b)
+# —"la remota ya no existe"— NO aplica aquí: su premisa es justamente lo contrario de lo que estamos
+# evaluando (esta rama existe EN el remoto), así que aplicarla inventaría zombies por construcción.
+# Todas las señales admitidas son POSITIVOS squash-safe: prueban que el contenido YA está en la base, no
+# que "no encontramos rastro". `git cherry` se usa solo en su positivo (ningún '+'), nunca en negativo —
+# bajo squash multi-commit su '+' no prueba nada.
+BZ_RRAZON=""
+bz_remota_integrada() {
+  local ROOT="$1" br="$2" ref="$3" baseref="$4" cherry
+  BZ_RRAZON=""
+  git -C "$ROOT" merge-base --is-ancestor "$ref" "$baseref" 2>/dev/null && { BZ_RRAZON=a; return 0; }   # (a)
+  if git -C "$ROOT" log --format='%B' "$baseref" -- 2>/dev/null | grep -qxF "Rama: $br"; then            # (e)
+    BZ_RRAZON=e; return 0
+  fi
+  bz_pr_mergeado "$ROOT" "$br" "$ref" && { BZ_RRAZON=d; return 0; }                                      # (d)
+  cherry=$(git -C "$ROOT" cherry "$baseref" "$ref" 2>/dev/null)                                          # (c)
+  if [ -n "$cherry" ] && ! printf '%s\n' "$cherry" | grep -q '^+'; then BZ_RRAZON=c; return 0; fi
+  BZ_RRAZON=vivo; return 1
 }
 
 # bz_es_zombie ROOT BR BASE → 0 si BR ya está integrada a BASE (zombie), 1 si conservar. Deja el MOTIVO en

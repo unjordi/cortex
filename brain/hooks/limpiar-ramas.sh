@@ -1,10 +1,19 @@
 #!/usr/bin/env bash
-# limpiar-ramas.sh — barre las RAMAS LOCALES ya integradas de ESTE repo: BORRA las que su MR se mergeó
-# (típicamente con --squash, y el remoto se borró al cerrar → localmente quedan `: gone`) y CONSERVA las
-# que tienen trabajo sin integrar. Antídoto ESTRUCTURAL a la acumulación de ramas squasheadas: el squash
-# rompe la detección de "mergeada" de `git branch -d` (la rama no queda de ancestro) y `fetch --prune`
-# NO borra ramas locales → nadie las barría y se acumulaban (un caso real: 60+ en un repo).
+# limpiar-ramas.sh — barre las ramas ya integradas de ESTE repo, en DOS pasadas: las LOCALES (BORRA las que
+# su MR se mergeó —típicamente con --squash, y el remoto se borró al cerrar → localmente quedan `: gone`—
+# y CONSERVA las que tienen trabajo sin integrar) y, después, las REMOTAS SIN CONTRAPARTE LOCAL. Antídoto
+# ESTRUCTURAL a la acumulación de ramas squasheadas: el squash rompe la detección de "mergeada" de
+# `git branch -d` (la rama no queda de ancestro) y `fetch --prune` NO borra ramas locales → nadie las
+# barría y se acumulaban (un caso real: 60+ en un repo).
 #   uso: limpiar-ramas.sh [--dry-run] [--no-fetch]   (desde cualquier lugar del repo)
+#
+# C-2 — SEGUNDA PASADA (remotas sin local): una rama viva en `origin` cuya local ya no existe era INVISIBLE
+# (el bucle solo recorría `refs/heads`): ni barrida, ni conservada, ni contada como omitida. El flujo la
+# produce constantemente (fan-out en worktrees efímeros, trabajo desde otra máquina, un `branch -D` local
+# que no tocó la remota). Ahora se examinan con señales POSITIVAS squash-safe (a/e/d/c, nunca (b) — su
+# premisa es "la remota ya no existe", justo lo contrario de lo que se evalúa), se borra solo lo demostrado
+# residuo —y solo si su punta sigue siendo la evaluada—, y lo no integrado se conserva NOMBRÁNDOLO.
+# Escape: LIMPIAR_RAMAS_SIN_REMOTAS=1.
 #
 # SEGURO: reusa la MISMA lógica "zombie" (bz_es_zombie) y "protegida" (bz_protegida) que limpiar-worktrees
 # — lib ramas-zombie.sh — conserva ante CUALQUIER duda (rama nunca pusheada, con commits únicos, o squash
@@ -34,6 +43,12 @@ BITA="$ROOT/.claude/memory/bitacora.md"
 [ "$FETCH" = 1 ] && git -C "$ROOT" fetch --all --prune -q 2>/dev/null
 
 base="$(bz_resolver_base "$ROOT")"
+# C-3 (dictamen 2026-09-17): sin una base que EXISTA, toda señal de integración falla muda y las ramas caen
+# a la señal (b) — la destructiva. Abortar es la única lectura correcta de "no sé contra qué comparar".
+if ! bz_base_valida "$ROOT" "$base"; then
+  echo "limpiar-ramas: base de integración irresoluble ('$base') — NO se barre nada. Crea la base o exporta CLAUDE_INTEGRACION_BASE con una rama que exista, y reintenta." >&2
+  exit 1
+fi
 bz_aviso="$(bz_aviso_base "$ROOT")"
 [ -n "$bz_aviso" ] && echo "  (aviso: $bz_aviso — Base: $base)"   # M-2
 actual="$(git -C "$ROOT" symbolic-ref --short -q HEAD 2>/dev/null || true)"
@@ -88,18 +103,22 @@ barrer_remota() {  # $1 = rama zombie   $2 = nombre del remoto   $3 = SHA del ti
   fi
 }
 
-# ── AVISO (NUNCA borra) de ramas de FAN-OUT abandonadas ────────────────────────────────────────────
-# Un fan-out con isolation:"worktree" deja la rama VIVA a propósito cuando el agente cambió algo — el
-# orquestador decide si la mergea o la descarta. Si nadie decide, la rama queda CONSERVADA para siempre
-# (trabajo sin integrar → bz_es_zombie jamás la toca) y se vuelve invisible: "qué pasa con lo que deja
-# detrás... no todo eran ramas con worktree" (queja real, 2026-09). Aquí NO se borra nada — sería el
-# ÚNICO error inaceptable si el agente aún traía algo útil — solo se REPORTA, una vez por PUNTA
-# (rama+sha, dedupe en un stamp por-repo), a la bitácora, para que un humano decida mergear o
-# `git branch -D`. Llega aquí SOLO lo que ya pasó `protegida()` (no checked-out en ningún worktree) y
-# `bz_es_zombie` (no integrada) — nunca una rama viva/protegida.
-# Patrón configurable (default: la convención del harness para worktrees de fan-out) y edad mínima
-# desde el último commit (para no reportar un fan-out todavía en curso).
-HUERF_PATRON="${LIMPIAR_RAMAS_PATRON_HUERFANA:-worktree-agent-*}"
+# ── DETECTOR DE REPRESA: AVISO (NUNCA borra) de ramas que envejecen SIN integrarse ─────────────────
+# A-4 (dictamen higiene de ramas 2026-09-17): recorriendo el ciclo actor por actor, la transición
+# "rama pusheada → PR abierto" no la vigila NADIE — la rama se queda en `origin` sin PR y nadie lo nota.
+# Tampoco un "PR cerrado SIN mergear": `bz_pr_mergeado` solo mira `--state merged`, así que un PR CLOSED es
+# indistinguible de "sin PR" y se conserva mudo para siempre. Aquí no falló la escoba: falló el CIERRE, y
+# barrer mejor no abre un PR. El detector que existía estaba gobernado por un patrón de NOMBRE
+# (`worktree-agent-*`, la convención del harness) que NINGUNA rama de este repo matchea: estaba bien
+# escrito y era INERTE en el repo donde vive. Ahora el criterio es el del problema real —"lleva N días sin
+# actividad y no está integrada"—, aplicado a ramas LOCALES y REMOTAS, reportando además el estado del PR.
+# El patrón de nombre sigue disponible como FILTRO OPCIONAL (LIMPIAR_RAMAS_PATRON_HUERFANA).
+#
+# Aquí NO se borra NADA — sería el único error inaceptable si la rama aún traía algo útil — solo se
+# REPORTA, una vez por PUNTA (rama+sha, dedupe en un stamp por-repo), a la bitácora, para que un humano
+# decida: abrir el MR/PR, mergear o descartar. Llega aquí SOLO lo que ya pasó `bz_protegida` y NO resultó
+# integrado; y la edad mínima evita reportar trabajo todavía en curso.
+HUERF_PATRON="${LIMPIAR_RAMAS_PATRON_HUERFANA:-*}"
 HUERF_DIAS="${LIMPIAR_RAMAS_DIAS_HUERFANA:-14}"
 case "$HUERF_DIAS" in ''|*[!0-9]*) HUERF_DIAS=14 ;; esac
 HUERF_ESTADO="$ROOT/.claude/memory/.ramas-huerfanas-estado"
@@ -107,23 +126,25 @@ huerf_ya_reportada() {  # $1=branch $2=sha -> 0 si ESA punta ya se reportó (no 
   [ -f "$HUERF_ESTADO" ] || return 1
   grep -qxF "$(printf '%s\t%s' "$1" "$2")" "$HUERF_ESTADO" 2>/dev/null
 }
-reportar_huerfana_si_aplica() {  # $1 = rama ya conservada (no zombie, no protegida, sin worktree)
-  local br="$1" sha ts edad_dias
+# $1 = rama conservada (no integrada, no protegida)   $2 = ref a medir (la rama local, o origin/<rama>)
+reportar_represada_si_aplica() {
+  local br="$1" ref="${2:-$1}" sha ts edad_dias estado
   case "$br" in $HUERF_PATRON) ;; *) return 0 ;; esac
-  sha="$(git -C "$ROOT" rev-parse --short "$br" 2>/dev/null)" || return 0
-  ts="$(git -C "$ROOT" log -1 --format=%ct "$br" 2>/dev/null)"; [ -n "$ts" ] || return 0
+  sha="$(git -C "$ROOT" rev-parse --short "$ref" 2>/dev/null)" || return 0
+  ts="$(git -C "$ROOT" log -1 --format=%ct "$ref" 2>/dev/null)"; [ -n "$ts" ] || return 0
   edad_dias=$(( ($(date +%s) - ts) / 86400 ))
   [ "$edad_dias" -ge "$HUERF_DIAS" ] || return 0
   huerf_ya_reportada "$br" "$sha" && return 0
   huerfanas=$((huerfanas + 1))
+  estado="$(bz_pr_estado "$ROOT" "$br")"
   if [ "$DRY" = 1 ]; then
-    echo "  [dry] HUÉRFANA de fan-out, sin worktree (${edad_dias}d) → se reportaría: $br"
+    echo "  [dry] REPRESADA: sin integrar, ${edad_dias}d sin actividad, ${estado} → se reportaría: $ref"
     return 0
   fi
-  [ -f "$BITA" ] && printf -- '- **[rama de fan-out sin worktree]** `%s` — %s día(s) sin actividad, sin worktree vivo, sin integrar. Revisar: mergear o `git branch -D %s`.\n' "$br" "$edad_dias" "$br" >> "$BITA" 2>/dev/null
+  [ -f "$BITA" ] && printf -- '- **[rama represada]** `%s` — %s día(s) sin actividad, sin integrar, %s. Decidir: abrir/retomar el MR/PR, mergear o descartar (NO se borra sola).\n' "$ref" "$edad_dias" "$estado" >> "$BITA" 2>/dev/null
   mkdir -p "$(dirname "$HUERF_ESTADO")" 2>/dev/null
   printf '%s\t%s\n' "$br" "$sha" >> "$HUERF_ESTADO" 2>/dev/null
-  echo "  HUÉRFANA de fan-out, sin worktree (${edad_dias}d) → reportada a bitácora, NO borrada: $br"
+  echo "  REPRESADA: sin integrar, ${edad_dias}d sin actividad, ${estado} → reportada a bitácora, NO borrada: $ref"
 }
 
 borradas=0; conservadas=0; total=0; huerfanas=0
@@ -157,9 +178,65 @@ while IFS= read -r br; do
     else
       conservadas=$((conservadas+1)); echo "  CONSERVADA (trabajo sin integrar): $br"
     fi
-    reportar_huerfana_si_aplica "$br"
+    reportar_represada_si_aplica "$br"
   fi
 done < <(git -C "$ROOT" for-each-ref --format='%(refname:short)' refs/heads 2>/dev/null)
+
+# ── SEGUNDA PASADA: ramas REMOTAS sin contraparte LOCAL ─────────────────────────────────────────────
+# C-2 (dictamen higiene de ramas 2026-09-17, CAUSA RAÍZ #2 del reguero): el bucle de arriba recorre solo
+# `refs/heads`, así que una rama que vive en `origin` y NO tiene rama local no se examina, no se barre y
+# ni siquiera sale en el resumen como omitida — es invisible incluso para el reporte de "no silent caps".
+# Medido: 12 de las 23 ramas de `origin` eran de esa clase (8 ya integradas + 4 con trabajo represado).
+# Y el flujo las produce todo el tiempo: fan-out en worktrees efímeros, trabajo hecho desde otra máquina,
+# o un `branch -D` local que no tocó la remota. `barrer_remota()` solo las alcanza si su LOCAL fue
+# declarada zombie primero: sin local, no hay entrada al código.
+#
+# SEGURIDAD: solo se borra lo DEMOSTRADO residuo por una señal POSITIVA squash-safe (bz_remota_integrada:
+# a/e/d/c, nunca (b)), y solo tras re-verificar contra el remoto que su punta sigue siendo EXACTAMENTE la
+# que evaluamos — si avanzó desde el último fetch, o no se puede consultar, se CONSERVA. Lo no integrado
+# nunca se borra: se nombra. Escape: LIMPIAR_RAMAS_SIN_REMOTAS=1.
+rem_exam=0; rem_borradas=0; rem_cons=0; rem_cons_n=""; rem_omit=0
+if [ "${LIMPIAR_RAMAS_SIN_REMOTAS:-0}" != 1 ]; then
+  for remoto in $(git -C "$ROOT" remote 2>/dev/null); do
+    while IFS= read -r br; do
+      [ -z "$br" ] && continue
+      [ "$br" = "HEAD" ] && continue                 # el puntero de rama por defecto, no una rama
+      rref="$remoto/$br"
+      # ¿tiene contraparte local? entonces ya la evaluó (y, si tocaba, la barrió) la primera pasada.
+      git -C "$ROOT" rev-parse --verify -q "refs/heads/$br" >/dev/null 2>&1 && continue
+      if bz_protegida "$br" "$base" "" ""; then rem_omit=$((rem_omit+1)); continue; fi
+      rem_exam=$((rem_exam+1))
+      # base a comparar: la REMOTA si existe (es la que de verdad refleja lo integrado en el servidor;
+      # si la local va adelante con merges sin pushear, usar la remota CONSERVA más) — si no, la local.
+      baseref="$base"
+      git -C "$ROOT" rev-parse --verify -q "refs/remotes/$remoto/$base" >/dev/null 2>&1 && baseref="$remoto/$base"
+      if bz_remota_integrada "$ROOT" "$br" "$rref" "$baseref"; then
+        if [ "$DRY" = 1 ]; then
+          echo "  [dry] remota sin local, integrada (señal $BZ_RRAZON) → borraría: $rref"; rem_borradas=$((rem_borradas+1))
+        else
+          eval_sha="$(git -C "$ROOT" rev-parse "$rref" 2>/dev/null || true)"
+          live_out="$(git -C "$ROOT" ls-remote --heads "$remoto" "$br" 2>/dev/null)"; live_rc=$?
+          live_sha="$(printf '%s' "$live_out" | awk '{print $1; exit}')"
+          if [ "$live_rc" -ne 0 ]; then
+            echo "  (remota $rref: no se pudo consultar — ¿sin red/permiso? NO se borra)"
+          elif [ -z "$live_sha" ]; then
+            echo "  (remota $rref ya no existe en el servidor — nada que borrar)"
+          elif [ -z "$eval_sha" ] || [ "$live_sha" != "$eval_sha" ]; then
+            echo "  (remota $rref AVANZÓ desde el último fetch → NO se borra: solo se borra la punta evaluada)"
+          elif git -C "$ROOT" push "$remoto" --delete "$br" >/dev/null 2>&1; then
+            rem_borradas=$((rem_borradas+1)); echo "  remota sin local borrada (señal $BZ_RRAZON): $rref"
+          else
+            echo "  (remota $rref cuelga pero no se pudo borrar — ¿sin red/permiso? se omite)"
+          fi
+        fi
+      else
+        rem_cons=$((rem_cons+1)); rem_cons_n="$(_join ', ' "$rem_cons_n" "$rref")"
+        echo "  CONSERVADA (remota sin local, trabajo sin integrar): $rref"
+        reportar_represada_si_aplica "$br" "$rref"
+      fi
+    done < <(git -C "$ROOT" for-each-ref --format='%(refname:strip=3)' "refs/remotes/$remoto" 2>/dev/null)
+  done
+fi
 
 omit_total=$((omit_ba+omit_cv+omit_wt))
 detalle=""
@@ -167,7 +244,12 @@ detalle=""
 [ "$omit_cv" -gt 0 ] && detalle="$(_join '; ' "$detalle" "$omit_cv protegida(s) por convención: $omit_cv_n")"
 [ "$omit_wt" -gt 0 ] && detalle="$(_join '; ' "$detalle" "$omit_wt retenida(s) por worktree: $omit_wt_n")"
 
-resumen="limpiar-ramas: examinadas $total de $total → $borradas integrada(s)$([ "$DRY" = 1 ] && echo ' (dry-run, no borradas)'), $conservadas con trabajo conservada(s), $huerfanas huérfana(s) de fan-out reportada(s) (nunca borradas)"
+resumen="limpiar-ramas: examinadas $total de $total → $borradas integrada(s)$([ "$DRY" = 1 ] && echo ' (dry-run, no borradas)'), $conservadas con trabajo conservada(s), $huerfanas represada(s) reportada(s) (nunca borradas)"
 [ "$omit_total" -gt 0 ] && resumen="$resumen, $omit_total omitida(s) ($detalle)"
+# C-2: las remotas SIN contraparte local son un universo aparte — se cuentan y se nombran aquí para que el
+# "examinadas N de N" de arriba no se lea como si fuera el total del repo (antes ni existían para el reporte).
+resumen="$resumen. Remotas sin local: $rem_exam examinada(s) → $rem_borradas integrada(s)$([ "$DRY" = 1 ] && echo ' (dry-run, no borradas)'), $rem_cons con trabajo conservada(s)"
+[ "$rem_cons" -gt 0 ] && resumen="$resumen ($rem_cons_n)"
+[ "$rem_omit" -gt 0 ] && resumen="$resumen, $rem_omit protegida(s)"
 resumen="$resumen. Base: $base."
 echo "$resumen"

@@ -222,7 +222,7 @@ ms() { PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$FAKEHOME" bash 
 # cada MR tiene su id; aquí es un artefacto de reusar mocks con el mismo número.
 mock_glab develop; out="$(ms 'glab mr merge 42 --auto-merge --yes')"
 is_deny "$out"   && ok "squash-guard G4: destino=develop confirmado, sin --squash → deny" || bad "squash-guard G4: no denegó merge a develop sin squash; got: $out"
-mock_glab develop; out="$(ms 'glab mr merge 42 --squash --auto-merge --yes')"
+mock_glab develop; out="$(ms 'glab mr merge 42 --squash --remove-source-branch --auto-merge --yes')"
 is_silent "$out" && ok "squash-guard G4: develop CON --squash → pasa"                     || bad "squash-guard G4: bloqueó un merge que ya trae squash; got: $out"
 mock_glab DevelopAna; out="$(ms 'glab mr merge 43 --auto-merge --yes')"
 is_silent "$out" && ok "squash-guard G4: destino=rama personal → NO fuerza squash (día a día libre)" || bad "squash-guard G4: forzó squash a rama personal; got: $out"
@@ -233,7 +233,7 @@ is_silent "$out" && ok "squash-guard G4: destino=main (release) → NO fuerza sq
 out="$(ms 'glab mr merge --auto-merge --yes')"   # sin ID → destino indeterminado
 is_deny "$out" && ok "squash-guard B3: destino INDETERMINADO sin --squash → deny (fail-safe exige squash)" || bad "squash-guard B3: no forzó squash con destino indeterminado; got: $out"
 # B3: mismo destino irresoluble PERO ya trae --squash → pasa (nada que exigir).
-out="$(ms 'glab mr merge --squash --auto-merge --yes')"
+out="$(ms 'glab mr merge --squash --remove-source-branch --auto-merge --yes')"
 is_silent "$out" && ok "squash-guard B3: destino INDETERMINADO CON --squash → pasa" || bad "squash-guard B3: bloqueó un merge indeterminado que ya trae squash; got: $out"
 # B3: destino irresoluble PERO el comando SEÑALA release-a-main explícito → NO fuerza squash (no aplasta
 # el histórico de un release cuya red no se pudo consultar). Sin id → destino queda vacío igual.
@@ -257,7 +257,7 @@ rm -f "$M4TX"
 # de merge quedaban ciegos (hermano de B4 en el eje merge). (\.exe)? en el reconocimiento lo cierra.
 mock_glab develop; out="$(ms 'glab.exe mr merge 48 --auto-merge --yes')"
 is_deny "$out" && ok "squash-guard H-R9-01: 'glab.exe mr merge' sin --squash → deny (binario Windows)" || bad "squash-guard H-R9-01: 'glab.exe' evadió el guard de squash; got: $out"
-mock_glab develop; out="$(ms 'glab.exe mr merge 49 --squash --auto-merge --yes')"
+mock_glab develop; out="$(ms 'glab.exe mr merge 49 --squash --remove-source-branch --auto-merge --yes')"
 is_silent "$out" && ok "squash-guard H-R9-01: 'glab.exe mr merge --squash' → pasa (sin falso positivo)" || bad "squash-guard H-R9-01: bloqueó un glab.exe que ya trae squash; got: $out"
 # Cobertura NUEVA (auditoría externa del arnés, 2026-09-15): git-branch-guard y entorno-maquina-guard ya
 # tenían el caso eval/bash-c (M1); merge-squash-guard NO lo tenía pese a compartir la MISMA lib despoja-
@@ -282,7 +282,7 @@ is_deny "$out" && ok "H6: mención ENTRECOMILLADA de '--squash' (en --descriptio
 out="$(msj_raw 'gh pr merge 94 --subject "arregla el -s de tar"')"
 is_deny "$out" && ok "H6: mención ENTRECOMILLADA de ' -s ' suelto (en --subject) → SIGUE exigiendo squash" \
   || bad "H6: REGRESIÓN — un ' -s ' citado coló un merge sin squash; got: $out"
-out="$(msj_raw 'glab mr merge 95 --squash --squash-message "resumen real del cambio y su porqué, con Rama: feat/x MR: !95"')"
+out="$(msj_raw 'glab mr merge 95 --squash --remove-source-branch --squash-message "resumen real del cambio y su porqué, con Rama: feat/x MR: !95"')"
 is_silent "$out" && ok "H6: --squash REAL (fuera de comillas) sigue reconociéndose — sin regresión del caso legítimo" \
   || bad "H6: REGRESIÓN — el --squash real dejó de reconocerse tras exigir despoja_comillas; got: $out"
 
@@ -327,84 +327,84 @@ msj() { rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* "${TMPDIR:-/tmp}"/acg-mrmsg-* 2>/de
 
 # ── LITERAL (mensaje explícito en el comando; destino develop del mock) ──
 mock_glab develop
-is_deny   "$(msj 'glab mr merge 50 --squash --squash-message "Merge pull request #5 from foo/bar"')" \
+is_deny   "$(msj 'glab mr merge 50 --squash --remove-source-branch --squash-message "Merge pull request #5 from foo/bar"')" \
   && ok "msg LITERAL: título default 'Merge pull request #N' → deny" || bad "msg LITERAL: no bloqueó el título default"
-is_deny   "$(msj 'glab mr merge 51 --squash --squash-message "wip"')" \
+is_deny   "$(msj 'glab mr merge 51 --squash --remove-source-branch --squash-message "wip"')" \
   && ok "msg LITERAL: placeholder de una palabra 'wip' → deny" || bad "msg LITERAL: no bloqueó 'wip'"
-is_deny   "$(msj 'glab mr merge 52 --squash --squash-message ""')" \
+is_deny   "$(msj 'glab mr merge 52 --squash --remove-source-branch --squash-message ""')" \
   && ok "msg LITERAL: mensaje vacío → deny" || bad "msg LITERAL: no bloqueó el mensaje vacío"
-is_silent "$(msj 'glab mr merge 53 --squash --squash-message "corrige el calculo de IVA en las facturas: el total ahora suma el impuesto por linea. Rama: fix/iva, MR: !53"')" \
+is_silent "$(msj 'glab mr merge 53 --squash --remove-source-branch --squash-message "corrige el calculo de IVA en las facturas: el total ahora suma el impuesto por linea. Rama: fix/iva, MR: !53"')" \
   && ok "msg LITERAL: resumen con sustancia + traza (≥12 palabras) → pasa (sin FP)" || bad "msg LITERAL: bloqueó un resumen legítimo con traza"
-is_silent "$(msj 'glab mr merge 54 --squash --squash-message "$(cat resumen.md)"')" \
+is_silent "$(msj 'glab mr merge 54 --squash --remove-source-branch --squash-message "$(cat resumen.md)"')" \
   && ok "msg UNVERIFICABLE: '\$(cat resumen.md)' (la forma que el propio hook sugiere) → pasa" || bad "msg UNVERIFICABLE: bloqueó la forma sugerida por el hook"
 # ── MULTILÍNEA INLINE (fix #42/#46): un --squash-message con SALTOS DE LÍNEA reales y SUSTANCIA ya NO se
 #    trunca al 1er token ni exige la forma $(cat archivo). El sed line-based veía solo la 1ª línea → FP. ──
 MLMSG=$'corrige el calculo de IVA en las facturas: el total ahora suma el impuesto\npor linea y redondea al centavo mas cercano segun la NOM vigente.\n\nRama: fix/iva, MR: !58'
-is_silent "$(msj "glab mr merge 58 --squash --squash-message \"$MLMSG\"")" \
+is_silent "$(msj "glab mr merge 58 --squash --remove-source-branch --squash-message \"$MLMSG\"")" \
   && ok "msg LITERAL multilínea (#42/#46): resumen inline con saltos de línea + sustancia + traza → pasa (sin FP)" || bad "msg LITERAL multilínea: bloqueó un resumen inline multilínea legítimo"
 # (real-sigue) el slurp multilínea NO deja pasar basura: un mensaje multilínea SUPERFICIAL (subject default de
 # plataforma en la 1ª línea) SIGUE bloqueando — el fix restaura el valor completo, no afloja el piso.
 MLBAD=$'Merge pull request #5 from foo/bar\n\ndetalles irrelevantes del merge'
-is_deny "$(msj "glab mr merge 59 --squash --squash-message \"$MLBAD\"")" \
+is_deny "$(msj "glab mr merge 59 --squash --remove-source-branch --squash-message \"$MLBAD\"")" \
   && ok "msg LITERAL multilínea: subject default 'Merge pull request #N' (aunque multilínea) → deny (piso intacto)" || bad "msg LITERAL multilínea: dejó pasar un subject default multilínea"
 
 # ── LITERAL gh (--subject/-t) + --fill unverificable ──
 mock_gh_full develop ""
-is_deny   "$(msj 'gh pr merge 55 --squash --subject "Merge pull request #5"')" \
+is_deny   "$(msj 'gh pr merge 55 --squash --delete-branch --subject "Merge pull request #5"')" \
   && ok "msg LITERAL gh: --subject default → deny" || bad "msg LITERAL gh: no bloqueó el subject default"
-is_silent "$(msj 'gh pr merge 56 --squash --subject "agrega validacion de stock disponible antes de confirmar el pedido para evitar sobreventa. Rama: feat/stock, PR: #56"')" \
+is_silent "$(msj 'gh pr merge 56 --squash --delete-branch --subject "agrega validacion de stock disponible antes de confirmar el pedido para evitar sobreventa. Rama: feat/stock, PR: #56"')" \
   && ok "msg LITERAL gh: --subject con sustancia + traza → pasa (sin FP)" || bad "msg LITERAL gh: bloqueó un subject legítimo con traza"
-is_silent "$(msj 'gh pr merge 57 --squash --fill')" \
+is_silent "$(msj 'gh pr merge 57 --squash --delete-branch --fill')" \
   && ok "msg UNVERIFICABLE gh: --fill (subject derivado de commits) → pasa" || bad "msg UNVERIFICABLE gh: bloqueó un --fill"
 # M8 (auditoría 2026-09-15 §3.9): con gh, --subject fija el TÍTULO; la convención pone el RESUMEN CURADO en
 # --body. Un --subject CORTO (sin traza, <12 palabras) con un --body separado (aunque OPACO, la forma que
 # el propio hook sugiere) NO debe forzar la vara de profundidad/trazabilidad sobre el título.
-is_silent "$(msj 'gh pr merge 90 --squash --subject "fix: IVA" --body "$(cat resumen.md)"')" \
+is_silent "$(msj 'gh pr merge 90 --squash --delete-branch --subject "fix: IVA" --body "$(cat resumen.md)"')" \
   && ok "M8: gh --subject CORTO + --body separado (opaco) → pasa (la vara se mueve al body, no al título)" \
   || bad "M8: exigió profundidad/traza en un título gh que tiene --body separado"
 # Control: el MISMO --subject corto SIN --body → sigue exigiendo profundidad/traza (M8 no aflojó el default).
-is_deny "$(msj 'gh pr merge 91 --squash --subject "fix: IVA"')" \
+is_deny "$(msj 'gh pr merge 91 --squash --delete-branch --subject "fix: IVA"')" \
   && ok "M8 control: gh --subject CORTO SIN --body → sigue exigiendo profundidad (no aflojó)" \
   || bad "M8 control: aflojó la vara de profundidad para un --subject corto sin --body"
 
 # ── AUTO (sin flag de mensaje → el squash toma el TÍTULO del MR/PR, resuelto vía API) ──
 mock_glab_full develop "Merge pull request #7 from x/y"
-is_deny   "$(msj 'glab mr merge 60 --squash --auto-merge --yes')" \
+is_deny   "$(msj 'glab mr merge 60 --squash --remove-source-branch --auto-merge --yes')" \
   && ok "msg AUTO: título del MR es el default 'Merge pull request #N' → deny (vía API)" || bad "msg AUTO: no bloqueó el título default del MR"
 mock_glab_full develop "actualiza dependencias y corrige el pipeline de CI"
-is_silent "$(msj 'glab mr merge 61 --squash --yes')" \
+is_silent "$(msj 'glab mr merge 61 --squash --remove-source-branch --yes')" \
   && ok "msg AUTO: título del MR con sustancia → pasa (sin FP)" || bad "msg AUTO: bloqueó un título de MR legítimo"
 mock_glab_full develop "wip"
-is_deny   "$(msj 'glab mr merge 62 --squash --yes')" \
+is_deny   "$(msj 'glab mr merge 62 --squash --remove-source-branch --yes')" \
   && ok "msg AUTO: título del MR es placeholder 'wip' → deny" || bad "msg AUTO: no bloqueó el título placeholder"
 mock_glab develop   # sin title en el JSON → API devuelve vacío → FAIL-OPEN
-is_silent "$(msj 'glab mr merge 63 --squash --yes')" \
+is_silent "$(msj 'glab mr merge 63 --squash --remove-source-branch --yes')" \
   && ok "msg AUTO: título irresoluble (API vacía) → pasa (FAIL-OPEN, no fuerza)" || bad "msg AUTO: bloqueó con título irresoluble (rompe fail-open)"
 
 # ── FRONTERA: la validación de mensaje es develop-scoped → main/personal quedan LIBRES aunque el msg sea pobre ──
 mock_glab_full main "wip"
-is_silent "$(msj 'glab mr merge 64 --squash --yes')" \
+is_silent "$(msj 'glab mr merge 64 --squash --remove-source-branch --yes')" \
   && ok "msg scope: destino=main (release) + msg pobre → pasa (fuera de alcance)" || bad "msg scope: bloqueó por mensaje a un release a main"
 mock_glab_full DevelopAna "wip"
-is_silent "$(msj 'glab mr merge 65 --squash --yes')" \
+is_silent "$(msj 'glab mr merge 65 --squash --remove-source-branch --yes')" \
   && ok "msg scope: destino=rama personal + msg pobre → pasa (fuera de alcance)" || bad "msg scope: bloqueó por mensaje a una rama personal"
 
 # ── (3a) PROFUNDIDAD + (2a) TRAZABILIDAD + (3b) EDITORIALIZACIÓN — SOLO el LITERAL, destino develop ──
 mock_glab develop
 # 3a: LITERAL < 12 palabras → deny (demasiado corto para un resumen del cambio neto)
-is_deny   "$(msj 'glab mr merge 66 --squash --squash-message "corrige el IVA en facturas"')" \
+is_deny   "$(msj 'glab mr merge 66 --squash --remove-source-branch --squash-message "corrige el IVA en facturas"')" \
   && ok "msg 3a: LITERAL corto (<12 palabras) → deny (superficial)" || bad "msg 3a: no bloqueó un resumen literal demasiado corto"
 # 2a: LITERAL ≥12 palabras PERO sin rama/MR-id → deny (trazabilidad rama→commit perdida)
-is_deny   "$(msj 'glab mr merge 67 --squash --squash-message "corrige el calculo del impuesto al valor agregado en todas las facturas emitidas durante el periodo fiscal vigente"')" \
+is_deny   "$(msj 'glab mr merge 67 --squash --remove-source-branch --squash-message "corrige el calculo del impuesto al valor agregado en todas las facturas emitidas durante el periodo fiscal vigente"')" \
   && ok "msg 2a: LITERAL largo SIN rama/MR-id → deny (falta trazabilidad)" || bad "msg 2a: no bloqueó un resumen sin trazabilidad"
 # 2a: el MISMO mensaje pero CON una línea de traza → pasa (sin FP)
-is_silent "$(msj 'glab mr merge 68 --squash --squash-message "corrige el calculo del impuesto al valor agregado en todas las facturas emitidas. Rama: fix/iva, MR: !67"')" \
+is_silent "$(msj 'glab mr merge 68 --squash --remove-source-branch --squash-message "corrige el calculo del impuesto al valor agregado en todas las facturas emitidas. Rama: fix/iva, MR: !67"')" \
   && ok "msg 2a: LITERAL largo + traza (Rama:/MR:) → pasa (sin FP)" || bad "msg 2a: bloqueó un resumen con traza"
 # 3b-DENY: editorialización inequívoca de proceso, aun con traza y largo → deny
-is_deny   "$(msj 'glab mr merge 69 --squash --squash-message "tras analizar el middleware se decidio reemplazar la validacion de tokens por completo. Rama: fix/x, MR: !9"')" \
+is_deny   "$(msj 'glab mr merge 69 --squash --remove-source-branch --squash-message "tras analizar el middleware se decidio reemplazar la validacion de tokens por completo. Rama: fix/x, MR: !9"')" \
   && ok "msg 3b: editorializa el proceso ('tras analizar'/'se decidió') → deny" || bad "msg 3b: no bloqueó la editorialización de proceso"
 # 3b-WARN: lista de acciones (≥2 'se <verbo>') pero sin marcador-duro, con traza y largo → NO deny, additionalContext
-warnout="$(msj 'glab mr merge 71 --squash --squash-message "se cambio la logica de tokens y se actualizo el middleware para validar el claim exp del servidor. Rama: feat/auth, MR: !12"')"
+warnout="$(msj 'glab mr merge 71 --squash --remove-source-branch --squash-message "se cambio la logica de tokens y se actualizo el middleware para validar el claim exp del servidor. Rama: feat/auth, MR: !12"')"
 { ! is_deny "$warnout" && printf '%s' "$warnout" | jq -e '.hookSpecificOutput.additionalContext' >/dev/null 2>&1; } \
   && ok "msg 3b: lista de acciones (≥2 'se <verbo>') → ADVIERTE (additionalContext), NO deny" || bad "msg 3b: no advirtió (o bloqueó) la lista de acciones; got: $warnout"
 # 1c: la sugerencia de rehacer para gh incluye --delete-branch (limpia la remota huérfana)
@@ -412,6 +412,76 @@ mock_gh_full develop ""
 delout="$(msj 'gh pr merge 72')"   # sin --squash → deny; el rehaz sugerido debe traer --delete-branch
 { is_deny "$delout" && printf '%s' "$delout" | jq -r '.hookSpecificOutput.permissionDecisionReason' | grep -q -- '--delete-branch'; } \
   && ok "msg 1c: deny gh sin squash → la sugerencia incluye --delete-branch" || bad "msg 1c: la sugerencia gh no trae --delete-branch; got: $delout"
+
+# ── (b1c4) FIX-4 / A-2: al integrar a develop, el guard EXIGE borrar la rama de origen ──────────────
+echo ""
+echo "== (b1c4) merge-squash-guard: A-2 — un merge a develop sin --delete-branch/--remove-source-branch → deny =="
+# Dictamen higiene de ramas 2026-09-17, A-2: nadie hacía cumplir el borrado de la rama de origen.
+# `--delete-branch` solo aparecía dentro de `_rehaz_sugerido()`, que se emite ÚNICAMENTE en el deny por
+# falta de squash → un merge CORRECTO con squash pasaba sin que nadie mencionara la rama. Y las dos
+# recetas del recetario divergían justo en ese flag (glab traía --remove-source-branch, gh no). Esa
+# asimetría ES la población de remotas huérfanas: PRs mergeados con su rama viva en origin.
+rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
+# el destino de un comando `gh` lo resuelve el mock de GH (el de glab no lo toca): mockear el correcto
+# es lo que hace que estos asertos midan el ALCANCE real (develop / main / rama personal) y no otra cosa.
+mock_gh_full develop ""; out="$(msj 'gh pr merge 90 --squash --subject "corrige el calculo del IVA" --body "Rama: fix/iva"')"
+{ is_deny "$out" && printf '%s' "$out" | grep -q -- '--delete-branch'; } \
+  && ok "FIX-4: gh + squash a develop SIN --delete-branch → deny que NOMBRA el flag" \
+  || bad "FIX-4: pasó un merge a develop que deja la rama colgando en origin; got: $out"
+mock_gh_full develop ""; out="$(msj 'gh pr merge 91 --squash --delete-branch --subject "corrige el calculo del IVA" --body "Rama: fix/iva"')"
+is_silent "$out" && ok "FIX-4: el MISMO comando CON --delete-branch → pasa (la exigencia es solo el flag)" \
+  || bad "FIX-4: bloqueó un merge que ya borra la rama; got: $out"
+mock_glab develop; out="$(msj 'glab mr merge 92 --squash --squash-message "corrige el calculo del IVA en facturas. Rama: fix/iva"')"
+{ is_deny "$out" && printf '%s' "$out" | grep -q -- '--remove-source-branch'; } \
+  && ok "FIX-4: glab pide su flag equivalente (--remove-source-branch), no el de gh" \
+  || bad "FIX-4: con glab no exigió --remove-source-branch; got: $out"
+mock_glab develop; out="$(msj 'glab mr merge 93 --squash --remove-source-branch --squash-message "corrige el calculo del impuesto al valor agregado en las facturas del periodo. Rama: fix/iva"')"
+is_silent "$out" && ok "FIX-4: glab CON --remove-source-branch → pasa" || bad "FIX-4: bloqueó un glab correcto; got: $out"
+# CONTROL — la exigencia es develop-scoped, igual que la del squash: release y ramas personales libres.
+mock_gh_full main ""; out="$(msj 'gh pr merge 94 --squash --subject "release" --body "x"')"
+is_silent "$out" && ok "FIX-4 control: a main (release) NO se exige --delete-branch" || bad "FIX-4 control: exigió el flag en un release; got: $out"
+mock_gh_full DevelopAna ""; out="$(msj 'gh pr merge 95 --squash --subject "wip" --body "x"')"
+is_silent "$out" && ok "FIX-4 control: a una rama personal NO se exige nada (día a día libre)" || bad "FIX-4 control: exigió el flag a una rama personal; got: $out"
+# H6: una MENCIÓN entrecomillada del flag no cuenta como el flag (mismo criterio que el de --squash)
+mock_gh_full develop ""; out="$(msj 'gh pr merge 96 --squash --subject "corrige el IVA" --body "acuerdate de --delete-branch la proxima vez"')"
+is_deny "$out" && ok "FIX-4: una mención ENTRECOMILLADA de --delete-branch no cuenta como el flag (H6)" \
+  || bad "FIX-4: se dejó engañar por la mención del flag dentro de una cadena; got: $out"
+
+# ── (b1c5) FIX-7 / A-3: la trazabilidad `Rama:` deja de depender de la FORMA del comando ────────────
+echo ""
+echo "== (b1c5) merge-squash-guard: A-3 — el resumen que vive en un ARCHIVO LEGIBLE también debe traer la traza =="
+# El comando que el propio guard SUGIERE es `--body "$(cat resumen.md)"`, y esa forma caía a UNVERIFICABLE
+# → exit 0, cero validación: la forma recomendada por el guard era exactamente la que escapaba a su propio
+# chequeo. Medido: solo el 38% de las ramas integradas llevaba la línea `Rama:`. Sin esa señal LOCAL y
+# offline, detectar la integración depende de gh/glab — ausentes del PATH de launchd.
+A3DIR="$FAKEHOME/a3"; mkdir -p "$A3DIR"
+printf 'corrige el calculo del impuesto al valor agregado en todas las facturas emitidas en el periodo fiscal vigente\n' > "$A3DIR/sin-rama.md"
+printf 'corrige el calculo del impuesto al valor agregado en las facturas del periodo fiscal vigente\n\nRama: fix/iva-facturas\nPR: #71\n' > "$A3DIR/con-rama.md"
+mock_gh_full develop ""
+out="$(msj "gh pr merge 97 --squash --delete-branch --subject \"corrige el IVA\" --body \"\$(cat $A3DIR/sin-rama.md)\"")"
+{ is_deny "$out" && printf '%s' "$out" | grep -qi 'trazabilidad'; } \
+  && ok "FIX-7: --body \"\$(cat resumen.md)\" SIN la línea Rama: → deny por trazabilidad (antes: UNVERIFICABLE, pasaba)" \
+  || bad "FIX-7: la forma que el propio guard recomienda sigue escapando a su chequeo; got: $out"
+out="$(msj "gh pr merge 98 --squash --delete-branch --subject \"corrige el IVA\" --body \"\$(cat $A3DIR/con-rama.md)\"")"
+is_silent "$out" && ok "FIX-7: el MISMO comando con un resumen que SÍ trae la traza → pasa (sin FP)" \
+  || bad "FIX-7: bloqueó un resumen que sí traía Rama:/PR:; got: $out"
+out="$(msj "gh pr merge 99 --squash --delete-branch --body-file $A3DIR/sin-rama.md")"
+{ is_deny "$out" && printf '%s' "$out" | grep -qi 'trazabilidad'; } \
+  && ok "FIX-7: --body-file <ruta> también se lee y se le exige la traza" \
+  || bad "FIX-7: --body-file siguió pasando sin validar; got: $out"
+out="$(msj "gh pr merge 100 --squash --delete-branch --body-file $A3DIR/con-rama.md")"
+is_silent "$out" && ok "FIX-7: --body-file con traza → pasa" || bad "FIX-7: FP sobre un body-file correcto; got: $out"
+# FAIL-OPEN preservado: lo que NO se puede leer, no se juzga (una sustitución arbitraria, un archivo ausente)
+out="$(msj 'gh pr merge 101 --squash --delete-branch --subject "corrige el IVA" --body "$(genera-resumen --mr 101)"')"
+is_silent "$out" && ok "FIX-7: una sustitución ARBITRARIA sigue pasando (fail-open intacto)" \
+  || bad "FIX-7: bloqueó por un cuerpo que no podía leer — perdió el fail-open; got: $out"
+out="$(msj "gh pr merge 102 --squash --delete-branch --subject \"corrige el IVA\" --body \"\$(cat $A3DIR/no-existe.md)\"")"
+is_silent "$out" && ok "FIX-7: un archivo INEXISTENTE no se juzga (fail-open, no inventa)" \
+  || bad "FIX-7: bloqueó citando un archivo que no pudo leer; got: $out"
+# CONTROL de alcance: fuera de develop no se exige nada
+mock_gh_full main ""
+out="$(msj "gh pr merge 103 --squash --body-file $A3DIR/sin-rama.md")"
+is_silent "$out" && ok "FIX-7 control: a main (release) no se exige traza" || bad "FIX-7 control: exigió traza en un release; got: $out"
 
 # ── funciones PURAS de la lib (deterministas, sin red) ──
 ( . "$HOOKS/analizar-comando-git.sh"
@@ -2709,7 +2779,95 @@ rm -rf "$LR2ROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "== (b3c3) limpiar-ramas: REPORTA (nunca borra) ramas de fan-out huérfanas (worktree-agent-*, sin worktree, viejas) =="
+echo "== (b3c4) FIX-2 / C-2: limpiar-ramas EXAMINA las ramas REMOTAS sin contraparte local (antes: invisibles) =="
+# Dictamen higiene de ramas 2026-09-17, C-2: el bucle recorría SOLO `refs/heads`, así que una rama viva en
+# `origin` sin rama local no se examinaba, no se barría y ni siquiera salía en el resumen como omitida.
+# `barrer_remota()` solo alcanza una remota si su LOCAL fue declarada zombie primero — sin local, no hay
+# entrada al código. Medido en el repo real: 12 de las 23 ramas de origin eran exactamente de esa clase
+# (8 residuo ya integrado + 4 con trabajo represado), el 100% de las invisibles.
+C2RAMA_BASE=develop
+C2ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-c2r.XXXXXX")"; C2BARE="$C2ROOT/remote.git"; C2REPO="$C2ROOT/repo"
+git init -q --bare "$C2BARE" >/dev/null 2>&1
+git init -q "$C2REPO" >/dev/null 2>&1
+git -C "$C2REPO" symbolic-ref HEAD "refs/heads/$C2RAMA_BASE" >/dev/null 2>&1
+git -C "$C2REPO" config user.email t@t >/dev/null 2>&1; git -C "$C2REPO" config user.name tester >/dev/null 2>&1
+git -C "$C2REPO" remote add origin "$C2BARE" >/dev/null 2>&1
+printf 'base\n' > "$C2REPO/base.txt"; git -C "$C2REPO" add base.txt >/dev/null 2>&1; git -C "$C2REPO" commit -qm base >/dev/null 2>&1
+git -C "$C2REPO" push -q -u origin "$C2RAMA_BASE" >/dev/null 2>&1
+# feat/D — RESIDUO: squash-integrada a la base, su LOCAL ya se borró, su REMOTA sigue viva. Es el caso
+# exacto de las 8 remotas de población A: el trabajo está integrado, solo sobra el puntero.
+git -C "$C2REPO" checkout -q -b feat/D "$C2RAMA_BASE" >/dev/null 2>&1
+printf 'd\n' > "$C2REPO/d.txt"; git -C "$C2REPO" add d.txt >/dev/null 2>&1; git -C "$C2REPO" commit -qm "trabajo D" >/dev/null 2>&1
+git -C "$C2REPO" push -q -u origin feat/D >/dev/null 2>&1
+git -C "$C2REPO" checkout -q "$C2RAMA_BASE" >/dev/null 2>&1
+git -C "$C2REPO" merge --squash feat/D >/dev/null 2>&1; git -C "$C2REPO" commit -qm "squash de feat/D" >/dev/null 2>&1
+git -C "$C2REPO" push -q origin "$C2RAMA_BASE" >/dev/null 2>&1
+git -C "$C2REPO" branch -D feat/D >/dev/null 2>&1                      # la local se va, la remota queda
+# feat/C — POBLACIÓN B: trabajo jamás integrado, sin local, remota viva. NO se toca: es trabajo represado,
+# no residuo. Que el mecanismo no lo confunda con basura es la mitad del trabajo de este fix.
+git -C "$C2REPO" checkout -q -b feat/C "$C2RAMA_BASE" >/dev/null 2>&1
+printf 'TRABAJO REPRESADO\n' > "$C2REPO/c.txt"; git -C "$C2REPO" add c.txt >/dev/null 2>&1; git -C "$C2REPO" commit -qm "trabajo C sin integrar" >/dev/null 2>&1
+git -C "$C2REPO" push -q -u origin feat/C >/dev/null 2>&1
+git -C "$C2REPO" checkout -q "$C2RAMA_BASE" >/dev/null 2>&1
+git -C "$C2REPO" branch -D feat/C >/dev/null 2>&1
+git -C "$C2REPO" fetch -q --prune origin >/dev/null 2>&1
+# teeth: las dos remotas existen y NINGUNA tiene contraparte local (si no, el test no prueba nada)
+{ git -C "$C2REPO" ls-remote --exit-code --heads origin feat/D >/dev/null 2>&1 \
+  && git -C "$C2REPO" ls-remote --exit-code --heads origin feat/C >/dev/null 2>&1; } \
+  && ok "b3c4(teeth): feat/D y feat/C existen en origin antes del barrido" || bad "b3c4(teeth): faltaba alguna remota (test mal armado)"
+{ ! git -C "$C2REPO" rev-parse --verify -q refs/heads/feat/D >/dev/null 2>&1 \
+  && ! git -C "$C2REPO" rev-parse --verify -q refs/heads/feat/C >/dev/null 2>&1; } \
+  && ok "b3c4(teeth): ninguna de las dos tiene contraparte LOCAL (son las invisibles de C-2)" || bad "b3c4(teeth): había local, el caso de C-2 no se ejercita"
+# ── dry-run: las remota-only aparecen NOMBRADAS, cada una con su veredicto
+c2dry="$(cd "$C2REPO" && CLAUDE_INTEGRACION_BASE="$C2RAMA_BASE" bash "$HOOKS/limpiar-ramas.sh" --dry-run --no-fetch 2>&1)"
+printf '%s' "$c2dry" | grep -q 'origin/feat/D' \
+  && ok "FIX-2: la remota sin local feat/D YA NO es invisible (aparece en la salida)" \
+  || bad "FIX-2: origin/feat/D no aparece por ningún lado — sigue fuera del universo del barredor; got: $c2dry"
+printf '%s' "$c2dry" | grep -q 'borraría: origin/feat/D' \
+  && ok "FIX-2: feat/D se clasifica como INTEGRADA (residuo) por señal squash-safe" \
+  || bad "FIX-2: no clasificó feat/D como integrada; got: $c2dry"
+printf '%s' "$c2dry" | grep -q 'borraría: origin/feat/C' \
+  && bad "FIX-2: propone borrar feat/C, que tiene trabajo jamás integrado (población B)" \
+  || ok "FIX-2: NO propone borrar feat/C (trabajo represado, no residuo)"
+printf '%s' "$c2dry" | grep -q 'CONSERVADA (remota sin local, trabajo sin integrar): origin/feat/C' \
+  && ok "FIX-2: feat/C se CONSERVA y se NOMBRA (deja de ser un silent cap)" \
+  || bad "FIX-2: feat/C no se reportó; got: $c2dry"
+printf '%s' "$c2dry" | grep -q 'Remotas sin local: 2 examinada(s)' \
+  && ok "FIX-2: el resumen deja de mentir — cuenta las 2 remotas sin local como universo aparte" \
+  || bad "FIX-2: el resumen no cuenta las remotas sin local; got: $c2dry"
+# el dry-run no toca nada
+git -C "$C2REPO" ls-remote --exit-code --heads origin feat/D >/dev/null 2>&1 \
+  && ok "FIX-2: --dry-run NO borró la remota (solo reportó)" || bad "FIX-2: ¡el dry-run borró origin/feat/D!"
+# ── corrida REAL: se borra el residuo, sobrevive el trabajo represado
+c2real="$(cd "$C2REPO" && CLAUDE_INTEGRACION_BASE="$C2RAMA_BASE" bash "$HOOKS/limpiar-ramas.sh" --no-fetch 2>&1)"
+! git -C "$C2REPO" ls-remote --exit-code --heads origin feat/D >/dev/null 2>&1 \
+  && ok "FIX-2: tras el barrido REAL, origin/feat/D ya no existe (residuo barrido)" \
+  || bad "FIX-2: origin/feat/D sobrevivió al barrido real; got: $c2real"
+git -C "$C2REPO" ls-remote --exit-code --heads origin feat/C >/dev/null 2>&1 \
+  && ok "FIX-2: origin/feat/C (trabajo represado) sigue INTACTA — la población B no se toca" \
+  || bad "FIX-2: BORRÓ trabajo jamás integrado (PÉRDIDA DE DATOS)"
+# ── la señal (b) NO debe aplicarse a una remota: su premisa es "la remota ya no existe"
+( . "$HOOKS/ramas-zombie.sh"
+  bz_remota_integrada "$C2REPO" feat/C "origin/feat/C" "origin/$C2RAMA_BASE" \
+    && bad "FIX-2: bz_remota_integrada declaró integrada una rama con trabajo propio (¿coló la señal (b)?)" \
+    || ok "FIX-2: bz_remota_integrada solo admite señales POSITIVAS squash-safe (razón=$BZ_RRAZON)"
+)
+# ── ESCAPE: LIMPIAR_RAMAS_SIN_REMOTAS=1 salta la pasada entera (control de que la pasada es opcional)
+git -C "$C2REPO" checkout -q -b feat/E "$C2RAMA_BASE" >/dev/null 2>&1
+printf 'e\n' > "$C2REPO/e.txt"; git -C "$C2REPO" add e.txt >/dev/null 2>&1; git -C "$C2REPO" commit -qm "trabajo E" >/dev/null 2>&1
+git -C "$C2REPO" push -q -u origin feat/E >/dev/null 2>&1
+git -C "$C2REPO" checkout -q "$C2RAMA_BASE" >/dev/null 2>&1
+git -C "$C2REPO" merge --squash feat/E >/dev/null 2>&1; git -C "$C2REPO" commit -qm "squash de feat/E" >/dev/null 2>&1
+git -C "$C2REPO" branch -D feat/E >/dev/null 2>&1
+c2skip="$(cd "$C2REPO" && CLAUDE_INTEGRACION_BASE="$C2RAMA_BASE" LIMPIAR_RAMAS_SIN_REMOTAS=1 bash "$HOOKS/limpiar-ramas.sh" --dry-run --no-fetch 2>&1)"
+printf '%s' "$c2skip" | grep -q 'Remotas sin local: 0 examinada(s)' \
+  && ok "FIX-2: LIMPIAR_RAMAS_SIN_REMOTAS=1 salta la pasada de remotas (escape disponible)" \
+  || bad "FIX-2: el escape no funcionó; got: $c2skip"
+rm -rf "$C2ROOT"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (b3c3) limpiar-ramas: REPORTA (nunca borra) las ramas REPRESADAS — viejas y sin integrar (el patrón de nombre es ya solo un filtro OPCIONAL) =="
 # Queja real (2026-09): "qué pasa con lo que deja detrás... no todo eran ramas con worktree". Un fan-out
 # (isolation:worktree) deja la rama viva si el agente cambió algo; si nadie decide mergear/descartar, la
 # rama queda CONSERVADA (bz_es_zombie nunca la toca: tiene commits propios) y se acumula EN SILENCIO. La
@@ -2735,22 +2893,39 @@ GIT_COMMITTER_DATE="@$OLDTS" git -C "$LR3REPO" commit -q -m "feature legítima v
 git -C "$LR3REPO" checkout -q develop >/dev/null 2>&1
 
 lr3dry="$(cd "$LR3REPO" && CLAUDE_INTEGRACION_BASE=develop bash "$HOOKS/limpiar-ramas.sh" --dry-run --no-fetch 2>&1)"
-printf '%s' "$lr3dry" | grep -q 'HUÉRFANA.*worktree-agent-oldstale' \
-  && ok "b3c3: dry-run detecta la huérfana vieja (worktree-agent-oldstale)" || bad "b3c3: no detectó la huérfana; got: $lr3dry"
-printf '%s' "$lr3dry" | grep -q 'worktree-agent-recent.*HUÉRFANA\|HUÉRFANA.*worktree-agent-recent' \
-  && bad "b3c3: reportó la rama RECIENTE (aún en curso) — no debía" || ok "b3c3: la rama reciente NO se reporta (todavía en curso)"
+printf '%s' "$lr3dry" | grep -q 'REPRESADA.*worktree-agent-oldstale' \
+  && ok "b3c3: dry-run detecta la rama vieja sin integrar (worktree-agent-oldstale)" || bad "b3c3: no la detectó; got: $lr3dry"
+printf '%s' "$lr3dry" | grep -q 'worktree-agent-recent.*REPRESADA\|REPRESADA.*worktree-agent-recent' \
+  && bad "b3c3: reportó la rama RECIENTE (aún en curso) — no debía" || ok "b3c3: la rama reciente NO se reporta (todavía en curso, la edad sigue siendo el gate)"
 [ "$(cat "$LR3REPO/.claude/memory/bitacora.md")" = "$(printf '# bitacora')" ] \
   && ok "b3c3: dry-run NO escribe nada a la bitácora" || bad "b3c3: dry-run mutó la bitácora"
 
 cd "$LR3REPO" && CLAUDE_INTEGRACION_BASE=develop bash "$HOOKS/limpiar-ramas.sh" --no-fetch >/dev/null 2>&1
 git -C "$LR3REPO" rev-parse --verify -q refs/heads/worktree-agent-oldstale >/dev/null 2>&1 \
-  && ok "b3c3: la rama huérfana NUNCA se borra (solo se reporta)" || bad "b3c3: ¡BORRÓ la rama huérfana! (pérdida de datos)"
+  && ok "b3c3: la rama represada NUNCA se borra (solo se reporta)" || bad "b3c3: ¡BORRÓ la rama represada! (pérdida de datos)"
 grep -q 'worktree-agent-oldstale' "$LR3REPO/.claude/memory/bitacora.md" \
-  && ok "b3c3: la huérfana quedó anotada en la bitácora del repo" || bad "b3c3: no anotó la huérfana en la bitácora"
+  && ok "b3c3: la represada quedó anotada en la bitácora del repo" || bad "b3c3: no la anotó en la bitácora"
 grep -q 'worktree-agent-recent' "$LR3REPO/.claude/memory/bitacora.md" \
   && bad "b3c3: anotó la rama reciente (no debía)" || ok "b3c3: la reciente no quedó anotada"
+# FIX-5 / A-4: el detector ya NO depende de un patrón de NOMBRE. Una rama vieja y sin integrar se
+# reporta LLAMÉ COMO SE LLAME — el gate por `worktree-agent-*` lo dejaba inerte en cualquier repo cuyo
+# fan-out nombre las ramas de otra forma (en cortex: audit/*, docs/*, fix/*; o sea, NINGUNA matcheaba).
 grep -q 'feat/normal-vieja' "$LR3REPO/.claude/memory/bitacora.md" \
-  && bad "b3c3: anotó una rama que NO matchea el patrón de fan-out (falso positivo)" || ok "b3c3: una rama vieja normal (fuera del patrón) nunca se reporta"
+  && ok "FIX-5: una rama vieja sin integrar se reporta AUNQUE no matchee ningún patrón de fan-out" \
+  || bad "FIX-5: feat/normal-vieja (28d, sin integrar) no se reportó — el detector sigue inerte fuera de worktree-agent-*"
+# el patrón sigue disponible como FILTRO OPCIONAL (control de la otra dirección). El stamp de dedupe se
+# respalda y se restaura: sin eso, vaciarlo aquí haría que la corrida siguiente re-reportara y el aserto de
+# idempotencia de más abajo fallara por culpa del andamio, no del código.
+cp "$LR3REPO/.claude/memory/.ramas-huerfanas-estado" "$LR3ROOT/estado.bak" 2>/dev/null
+: > "$LR3REPO/.claude/memory/.ramas-huerfanas-estado"
+lr3filt="$(cd "$LR3REPO" && CLAUDE_INTEGRACION_BASE=develop LIMPIAR_RAMAS_PATRON_HUERFANA='worktree-agent-*' bash "$HOOKS/limpiar-ramas.sh" --dry-run --no-fetch 2>&1)"
+printf '%s' "$lr3filt" | grep -q 'REPRESADA.*feat/normal-vieja' \
+  && bad "FIX-5: con el filtro de patrón puesto, feat/normal-vieja no debía reportarse" \
+  || ok "FIX-5: LIMPIAR_RAMAS_PATRON_HUERFANA sigue acotando el reporte cuando se pide (filtro opcional)"
+printf '%s' "$lr3filt" | grep -q 'REPRESADA.*worktree-agent-oldstale' \
+  && ok "FIX-5: y con el filtro puesto SÍ sigue reportando lo que matchea (el filtro no rompe nada)" \
+  || bad "FIX-5: con el filtro puesto dejó de reportar hasta lo que matchea; got: $lr3filt"
+cp "$LR3ROOT/estado.bak" "$LR3REPO/.claude/memory/.ramas-huerfanas-estado" 2>/dev/null
 n_lineas_antes="$(grep -c 'worktree-agent-oldstale' "$LR3REPO/.claude/memory/bitacora.md")"
 cd "$LR3REPO" && CLAUDE_INTEGRACION_BASE=develop bash "$HOOKS/limpiar-ramas.sh" --no-fetch >/dev/null 2>&1
 n_lineas_despues="$(grep -c 'worktree-agent-oldstale' "$LR3REPO/.claude/memory/bitacora.md")"
@@ -2758,10 +2933,72 @@ n_lineas_despues="$(grep -c 'worktree-agent-oldstale' "$LR3REPO/.claude/memory/b
   && ok "b3c3: dedupe — una 2ª corrida NO repite el aviso de la misma punta" || bad "b3c3: repitió el aviso (spam de bitácora); antes=$n_lineas_antes después=$n_lineas_despues"
 # patrón/edad configurables
 lr3cfg="$(cd "$LR3REPO" && CLAUDE_INTEGRACION_BASE=develop LIMPIAR_RAMAS_DIAS_HUERFANA=999 bash "$HOOKS/limpiar-ramas.sh" --dry-run --no-fetch 2>&1)"
-printf '%s' "$lr3cfg" | grep -q 'HUÉRFANA' \
+printf '%s' "$lr3cfg" | grep -q 'REPRESADA' \
   && bad "b3c3: LIMPIAR_RAMAS_DIAS_HUERFANA=999 debía silenciar el aviso (nada es tan vieja)" \
   || ok "b3c3: LIMPIAR_RAMAS_DIAS_HUERFANA configurable (umbral alto → sin avisos)"
 rm -rf "$LR3ROOT"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (b3c5) FIX-5 / A-4: DETECTOR DE REPRESA — la rama que envejece sin integrarse se reporta CON el estado de su PR =="
+# Dictamen higiene de ramas 2026-09-17, A-4: recorriendo el ciclo actor por actor, dos transiciones no las
+# vigila NADIE — "rama pusheada → PR abierto" (la rama se queda en origin sin PR y nadie lo nota) y
+# "PR cerrado SIN mergear" (bz_pr_mergeado solo mira --state merged, así que un PR CLOSED es
+# indistinguible de "sin PR" y se conserva mudo para siempre). Aquí no falló la escoba: falló el CIERRE, y
+# barrer mejor no abre un PR. El estado del PR se inyecta con CLAUDE_BZ_STCACHE (sin red).
+A4ROOT2="$(mktemp -d "${TMPDIR:-/tmp}/brain-a4r.XXXXXX")"; A4REPO2="$A4ROOT2/repo"; mkdir -p "$A4REPO2/.claude/memory"
+printf '# bitacora\n' > "$A4REPO2/.claude/memory/bitacora.md"
+git -C "$A4REPO2" init -q >/dev/null 2>&1
+git -C "$A4REPO2" symbolic-ref HEAD refs/heads/develop >/dev/null 2>&1
+git -C "$A4REPO2" config user.email t@t >/dev/null 2>&1; git -C "$A4REPO2" config user.name tester >/dev/null 2>&1
+printf 'base\n' > "$A4REPO2/base.txt"; git -C "$A4REPO2" add base.txt >/dev/null 2>&1; git -C "$A4REPO2" commit -qm base >/dev/null 2>&1
+OLDTS2=$(( $(date +%s) - 20*86400 ))
+# tres ramas de 20 días: una INTEGRADA (se barre), una SIN PR y otra con PR CERRADO sin merge (se reportan)
+for _b in integrada sinpr cerrada; do
+  git -C "$A4REPO2" checkout -q -b "feat/$_b" develop >/dev/null 2>&1
+  printf '%s\n' "$_b" > "$A4REPO2/$_b.txt"; git -C "$A4REPO2" add "$_b.txt" >/dev/null 2>&1
+  GIT_COMMITTER_DATE="@$OLDTS2" git -C "$A4REPO2" commit -q -m "trabajo $_b" --date "@$OLDTS2" >/dev/null 2>&1
+done
+git -C "$A4REPO2" checkout -q develop >/dev/null 2>&1
+git -C "$A4REPO2" merge --squash feat/integrada >/dev/null 2>&1
+git -C "$A4REPO2" commit -qm "squash de feat/integrada
+
+Rama: feat/integrada" >/dev/null 2>&1                         # señal (e): integrada de verdad
+# mapa de estados inyectado (rama<TAB>ESTADO<TAB>id), como lo devolvería el foro
+A4ST="$A4ROOT2/estados.tsv"
+printf 'feat/cerrada\tCLOSED\t77\n' > "$A4ST"                 # feat/sinpr NO aparece → "SIN PR"
+a4out="$(cd "$A4REPO2" && CLAUDE_INTEGRACION_BASE=develop CLAUDE_BZ_STCACHE="$A4ST" bash "$HOOKS/limpiar-ramas.sh" --no-fetch 2>&1)"
+# la integrada se barre; las otras dos NO se borran y AMBAS generan línea de bitácora con su motivo
+! git -C "$A4REPO2" rev-parse --verify -q refs/heads/feat/integrada >/dev/null 2>&1 \
+  && ok "FIX-5: la rama vieja pero INTEGRADA se barre (el detector no estorba al barrido)" \
+  || bad "FIX-5: no barrió feat/integrada; got: $a4out"
+{ git -C "$A4REPO2" rev-parse --verify -q refs/heads/feat/sinpr >/dev/null 2>&1 \
+  && git -C "$A4REPO2" rev-parse --verify -q refs/heads/feat/cerrada >/dev/null 2>&1; } \
+  && ok "FIX-5: las represadas NO se borran (el detector solo reporta, jamás borra)" \
+  || bad "FIX-5: BORRÓ una rama represada — pérdida de datos"
+grep -q 'rama represada.*feat/sinpr.*SIN PR' "$A4REPO2/.claude/memory/bitacora.md" \
+  && ok "FIX-5: la rama pusheada SIN PR se reporta y el reporte dice 'SIN PR'" \
+  || bad "FIX-5: no reportó feat/sinpr con su motivo; bitácora: $(cat "$A4REPO2/.claude/memory/bitacora.md")"
+grep -q 'rama represada.*feat/cerrada.*CERRADO sin merge' "$A4REPO2/.claude/memory/bitacora.md" \
+  && ok "FIX-5: el PR CERRADO SIN MERGEAR se distingue de 'sin PR' (antes: indistinguibles, ambos mudos)" \
+  || bad "FIX-5: no distinguió el PR cerrado; bitácora: $(cat "$A4REPO2/.claude/memory/bitacora.md")"
+grep -q 'feat/integrada' "$A4REPO2/.claude/memory/bitacora.md" \
+  && bad "FIX-5: reportó como represada una rama que SÍ estaba integrada (ruido)" \
+  || ok "FIX-5: la integrada no ensucia el reporte de represas"
+# idempotencia: una 2ª corrida no duplica
+n_a4=$(grep -c 'rama represada' "$A4REPO2/.claude/memory/bitacora.md")
+( cd "$A4REPO2" && CLAUDE_INTEGRACION_BASE=develop CLAUDE_BZ_STCACHE="$A4ST" bash "$HOOKS/limpiar-ramas.sh" --no-fetch >/dev/null 2>&1 )
+n_a4b=$(grep -c 'rama represada' "$A4REPO2/.claude/memory/bitacora.md")
+[ "$n_a4" = "$n_a4b" ] && ok "FIX-5: dedupe por punta — la 2ª corrida no repite el aviso ($n_a4 líneas)" \
+  || bad "FIX-5: duplicó el reporte ($n_a4 → $n_a4b)"
+# sin foro que consultar, el reporte lo DICE en vez de inventar un estado
+: > "$A4REPO2/.claude/memory/.ramas-huerfanas-estado"
+: > "$A4REPO2/.claude/memory/bitacora.md"
+a4nd="$(cd "$A4REPO2" && CLAUDE_INTEGRACION_BASE=develop PATH=/usr/bin:/bin bash "$HOOKS/limpiar-ramas.sh" --dry-run --no-fetch 2>&1)"
+printf '%s' "$a4nd" | grep -q 'estado del PR desconocido' \
+  && ok "FIX-5: sin gh/glab, el reporte DICE que no pudo consultar el foro (no inventa 'SIN PR')" \
+  || bad "FIX-5: afirmó un estado de PR que no pudo consultar; got: $a4nd"
+rm -rf "$A4ROOT2"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
@@ -3019,6 +3256,54 @@ rm -rf "$C3ROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (b3l2) FIX-6 / A-1: un worktree ZOMBIE SUCIO deja PENDIENTE en la bitácora (antes: congelaba la rama en silencio) =="
+# Dictamen higiene de ramas 2026-09-17, A-1: conservar el árbol sucio es CORRECTO (C-3), pero solo la rama
+# `DEJADO (vivo)` alimentaba $pend — el sucio no anotaba nada. Cadena completa: worktree retenido → la rama
+# sale como "retenida por worktree" en limpiar-ramas → nunca se barre, y SIN registro en ningún lado. Sin
+# envejecimiento ni escalación: un solo archivo untracked la congela indefinidamente. Medido en el repo
+# real: 2 de los 8 worktrees que retenían ramas ya integradas estaban sucios — esas dos se congelarían
+# aunque la causa raíz del barrido se arreglara.
+A1ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-a1s.XXXXXX")"; A1REPO="$A1ROOT/repo"; mkdir -p "$A1REPO/.claude/memory"
+git -C "$A1REPO" init -q >/dev/null 2>&1
+git -C "$A1REPO" symbolic-ref HEAD refs/heads/develop >/dev/null 2>&1
+git -C "$A1REPO" config user.email t@t >/dev/null 2>&1; git -C "$A1REPO" config user.name tester >/dev/null 2>&1
+printf 'base\n' > "$A1REPO/a.txt"; git -C "$A1REPO" add a.txt >/dev/null 2>&1; git -C "$A1REPO" commit -qm base >/dev/null 2>&1
+git -C "$A1REPO" branch feat/integrada develop >/dev/null 2>&1      # ancestro de develop → zombie por (a)
+git -C "$A1REPO" worktree add -q "$A1ROOT/wt-sucio" feat/integrada >/dev/null 2>&1
+printf 'analisis a medias\n' > "$A1ROOT/wt-sucio/borrador.md"        # UN archivo untracked: eso basta
+: > "$A1REPO/.claude/memory/bitacora.md"
+# teeth: la rama ES zombie y el árbol SÍ está sucio (si no, el caso de A-1 no se ejercita)
+git -C "$A1REPO" merge-base --is-ancestor feat/integrada develop 2>/dev/null \
+  && ok "b3l2(teeth): feat/integrada ES zombie (ancestro de develop)" || bad "b3l2(teeth): test mal armado"
+[ -n "$(git -C "$A1ROOT/wt-sucio" status --porcelain 2>/dev/null)" ] \
+  && ok "b3l2(teeth): el worktree zombie está SUCIO (1 untracked)" || bad "b3l2(teeth): test mal armado, árbol limpio"
+a1out="$(cd "$A1REPO" && bash "$HOOKS/limpiar-worktrees.sh" 2>&1)"
+printf '%s' "$a1out" | grep -q 'SUCIO' && ok "b3l2: sigue reportando SUCIO y conservando el árbol (C-3 intacto)" || bad "b3l2: regresión de C-3; got: $a1out"
+[ -f "$A1ROOT/wt-sucio/borrador.md" ] && ok "b3l2: el untracked SOBREVIVE (nunca se fuerza)" || bad "b3l2: se destruyó trabajo sin commitear"
+grep -q 'wt-sucio' "$A1REPO/.claude/memory/bitacora.md" 2>/dev/null \
+  && ok "FIX-6: el worktree zombie SUCIO deja PENDIENTE en la bitácora (deja de congelar la rama en silencio)" \
+  || bad "FIX-6: no quedó rastro del worktree sucio en la bitácora — la rama se congela sin que nadie se entere"
+grep -q 'CONGELA esa rama' "$A1REPO/.claude/memory/bitacora.md" 2>/dev/null \
+  && ok "FIX-6: el pendiente DICE la consecuencia (mientras siga sucio, la rama no se barre)" \
+  || bad "FIX-6: el pendiente no explica por qué importa; got: $(cat "$A1REPO/.claude/memory/bitacora.md")"
+# idempotencia: 3 corridas más NO duplican el pendiente (mismo dedupe que A-4 para los vivos)
+for i in 1 2 3; do ( cd "$A1REPO" && bash "$HOOKS/limpiar-worktrees.sh" >/dev/null 2>&1 ); done
+a1n=$(grep -c 'wt-sucio' "$A1REPO/.claude/memory/bitacora.md" 2>/dev/null || echo 0)
+[ "$a1n" = 1 ] && ok "FIX-6: 4 corridas → EXACTAMENTE 1 pendiente (idempotente, como el de los vivos)" \
+  || bad "FIX-6: el pendiente del sucio se re-appendeó ($a1n veces)"
+# CONTROL de la otra dirección: un worktree zombie LIMPIO se borra y NO deja pendiente (si el fix
+# anotara siempre, este aserto lo delataría).
+git -C "$A1REPO" branch feat/limpia develop >/dev/null 2>&1
+git -C "$A1REPO" worktree add -q "$A1ROOT/wt-limpio" feat/limpia >/dev/null 2>&1
+( cd "$A1REPO" && bash "$HOOKS/limpiar-worktrees.sh" >/dev/null 2>&1 )
+[ ! -d "$A1ROOT/wt-limpio" ] && ok "FIX-6 control: el worktree zombie LIMPIO se sigue borrando" || bad "FIX-6 control: dejó de borrar worktrees zombie limpios"
+grep -q 'wt-limpio' "$A1REPO/.claude/memory/bitacora.md" 2>/dev/null \
+  && bad "FIX-6 control: anotó pendiente de un worktree que SÍ se borró (ruido)" \
+  || ok "FIX-6 control: el worktree borrado NO deja pendiente (solo el que de verdad quedó retenido)"
+rm -rf "$A1ROOT"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "== (b3m) limpiar-worktrees: A-2 — una opción DESCONOCIDA (typo) aborta con rc=2, nunca corre en modo destructivo =="
 A2ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-a2.XXXXXX")"; A2REPO="$A2ROOT/repo"; mkdir -p "$A2REPO"
 git -C "$A2REPO" init -q >/dev/null 2>&1
@@ -3086,6 +3371,101 @@ printf '%s' "$m2aviso" | grep -q 'no se adivina' && ok "b3o: M-2 — deja el avi
 m2out="$(cd "$M2REPO" && bash "$HOOKS/limpiar-ramas.sh" --dry-run --no-fetch 2>&1)"
 printf '%s' "$m2out" | grep -q 'aviso:.*no se adivina' && ok "b3o: M-2 — limpiar-ramas.sh también imprime el aviso" || bad "b3o: M-2 — limpiar-ramas.sh no propagó el aviso; got: $m2out"
 rm -rf "$M2ROOT"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (b3o2) FIX-3 / C-3: base IRRESOLUBLE — bz_resolver_base nunca devuelve cadena VACÍA, y sin base los barredores ABORTAN (PÉRDIDA DE DATOS) =="
+# Dictamen higiene de ramas 2026-09-17, C-3: en el fallback (3) el `|| echo main` se ligaba al PIPELINE, y
+# el pipeline termina en `sed`, que sale 0 con salida VACÍA cuando `symbolic-ref -q` no encontró origin/HEAD
+# → el `echo main` NUNCA corría → base="". Con base vacía TODAS las señales de integración fallan MUDAS
+# (is-ancestor contra "", log de "", git cherry de "") y cualquier rama con la remota `gone` cae a la señal
+# (b) → se declara "integrada" → `git branch -D` sobre trabajo jamás integrado, en segundo plano y sin
+# pedirlo. Sin cobertura hasta hoy: los cuatro tests de base (b3d/b3o) siembran SIEMPRE `develop` o
+# `Develop*`, así que la rama (3) del fallback nunca se ejercitaba — "el fixture solo siembra lo que ya
+# sabes". Condición nada exótica: `origin/HEAD` lo escribe `git clone`; un `git init` + `remote add`, un
+# `remote remove/add`, o un clon cuyo default es master/trunk quedan sin él.
+C3RAMA_BASE=main   # la rama por defecto del fixture (en variable: este archivo NO escribe el literal del
+                   # push a una rama base, para no disparar git-branch-guard sobre el propio test)
+C3ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-c3b.XXXXXX")"; C3BARE="$C3ROOT/remote.git"; C3REPO="$C3ROOT/repo"
+git init -q --bare "$C3BARE" >/dev/null 2>&1
+git init -q "$C3REPO" >/dev/null 2>&1
+git -C "$C3REPO" symbolic-ref HEAD refs/heads/main >/dev/null 2>&1   # SIN develop y SIN Develop* locales
+git -C "$C3REPO" config user.email t@t >/dev/null 2>&1; git -C "$C3REPO" config user.name tester >/dev/null 2>&1
+git -C "$C3REPO" remote add origin "$C3BARE" >/dev/null 2>&1          # remote add (no clone) → SIN origin/HEAD
+printf 'base\n' > "$C3REPO/base.txt"; git -C "$C3REPO" add base.txt >/dev/null 2>&1; git -C "$C3REPO" commit -qm base >/dev/null 2>&1
+git -C "$C3REPO" push -q -u origin "$C3RAMA_BASE" >/dev/null 2>&1
+# feat/valioso: TRABAJO IRREMPLAZABLE, jamás integrado, pusheado y con su remota borrada después (el
+# gatillo de la señal (b)) — exactamente la población B del dictamen: trabajo represado, NO residuo.
+git -C "$C3REPO" checkout -q -b feat/valioso "$C3RAMA_BASE" >/dev/null 2>&1
+printf 'TRABAJO IRREMPLAZABLE\n' > "$C3REPO/valioso.txt"; git -C "$C3REPO" add valioso.txt >/dev/null 2>&1
+git -C "$C3REPO" commit -qm "trabajo que nadie integro nunca" >/dev/null 2>&1
+git -C "$C3REPO" push -q -u origin feat/valioso >/dev/null 2>&1
+git -C "$C3REPO" push -q origin --delete feat/valioso >/dev/null 2>&1
+git -C "$C3REPO" checkout -q "$C3RAMA_BASE" >/dev/null 2>&1
+# teeth: la condición de C-3 está REPRODUCIDA (sin develop, sin Develop*, sin origin/HEAD)
+! git -C "$C3REPO" rev-parse --verify -q refs/heads/develop >/dev/null 2>&1 \
+  && ok "b3o2(teeth): el fixture NO tiene develop local (condición del fallback (3))" || bad "b3o2(teeth): había develop, el fallback no se ejercita"
+! git -C "$C3REPO" symbolic-ref -q refs/remotes/origin/HEAD >/dev/null 2>&1 \
+  && ok "b3o2(teeth): el fixture NO tiene origin/HEAD (condición exacta de C-3)" || bad "b3o2(teeth): había origin/HEAD, el fallback no se ejercita"
+( . "$HOOKS/ramas-zombie.sh"
+  c3base="$(bz_resolver_base "$C3REPO")"
+  [ "$c3base" = "$C3RAMA_BASE" ] \
+    && ok "FIX-3: sin develop y sin origin/HEAD → la base cae al último fallback (el fallback DISPARA)" \
+    || bad "FIX-3: base irresoluble devolvió '$c3base' (vacía = C-3 vivo: toda señal falla muda y (b) borra trabajo)"
+  # con la base bien resuelta, la rama con trabajo propio se CONSERVA (cherry marca '+' contra la base)
+  bz_es_zombie "$C3REPO" feat/valioso "$c3base" \
+    && bad "FIX-3: feat/valioso (trabajo jamás integrado) se declaró ZOMBIE — PÉRDIDA DE DATOS" \
+    || ok "FIX-3: feat/valioso se CONSERVA (trabajo propio no integrado, razón=$BZ_RAZON)"
+)
+# el barredor completo, en dry-run: no debe nombrar feat/valioso como borrable
+c3out="$(cd "$C3REPO" && bash "$HOOKS/limpiar-ramas.sh" --dry-run --no-fetch 2>&1)"
+printf '%s' "$c3out" | grep -q 'integrada → borraría: feat/valioso' \
+  && bad "FIX-3: limpiar-ramas propone borrar feat/valioso — en modo real sería branch -D; got: $c3out" \
+  || ok "FIX-3: limpiar-ramas NO propone borrar feat/valioso"
+printf '%s' "$c3out" | grep -q "Base: $C3RAMA_BASE\." \
+  && ok "FIX-3: el resumen reporta la base resuelta (antes: 'Base: .' — la base vacía era visible y nadie la leía)" \
+  || bad "FIX-3: el resumen no reporta la base resuelta; got: $c3out"
+# CORRIDA REAL (no dry-run): el trabajo sigue ahí. Es el aserto que de verdad mide la pérdida de datos.
+( cd "$C3REPO" && bash "$HOOKS/limpiar-ramas.sh" --no-fetch >/dev/null 2>&1 )
+git -C "$C3REPO" rev-parse --verify -q refs/heads/feat/valioso >/dev/null 2>&1 \
+  && ok "FIX-3: tras el barrido REAL, feat/valioso sigue existiendo (el trabajo no se perdió)" \
+  || bad "FIX-3: el barrido REAL BORRÓ feat/valioso — pérdida de datos confirmada"
+# ── Candado 2: base que NO RESUELVE ⇒ ABORTAR, nunca barrer. Ninguna señal de integración es evaluable
+#    sin base, así que barrer con base irresoluble jamás puede ser correcto, venga el vacío de donde venga.
+c3rc=0
+c3abort="$(cd "$C3REPO" && CLAUDE_INTEGRACION_BASE=rama-que-no-existe bash "$HOOKS/limpiar-ramas.sh" --no-fetch 2>&1)" || c3rc=$?
+[ "$c3rc" -ne 0 ] \
+  && ok "FIX-3: base que no resuelve → limpiar-ramas ABORTA con rc≠0 (rc=$c3rc)" \
+  || bad "FIX-3: base que no resuelve → limpiar-ramas corrió igual (rc=0) y evaluó con una base fantasma"
+printf '%s' "$c3abort" | grep -qi 'irresoluble' \
+  && ok "FIX-3: el aborto DICE por qué (base irresoluble), no muere mudo" \
+  || bad "FIX-3: abortó sin explicar; got: $c3abort"
+printf '%s' "$c3abort" | grep -q 'borraría\|borrada:' \
+  && bad "FIX-3: con base irresoluble llegó a proponer/ejecutar borrados" \
+  || ok "FIX-3: con base irresoluble NO evaluó ni borró ninguna rama"
+git -C "$C3REPO" rev-parse --verify -q refs/heads/feat/valioso >/dev/null 2>&1 \
+  && ok "FIX-3: tras el aborto, feat/valioso intacto" || bad "FIX-3: el aborto igual se llevó feat/valioso"
+# el gemelo estructural: limpiar-worktrees comparte la lib y debe abortar igual
+c3wrc=0
+c3wout="$(cd "$C3REPO" && CLAUDE_INTEGRACION_BASE=rama-que-no-existe bash "$HOOKS/limpiar-worktrees.sh" 2>&1)" || c3wrc=$?
+{ [ "$c3wrc" -ne 0 ] && printf '%s' "$c3wout" | grep -qi 'irresoluble'; } \
+  && ok "FIX-3: limpiar-worktrees ABORTA igual con base irresoluble (gemelos estructurales)" \
+  || bad "FIX-3: limpiar-worktrees NO abortó con base irresoluble (rc=$c3wrc); got: $c3wout"
+# ── CONTROL de la otra dirección (media prueba si falta): con base RESOLUBLE, los barredores SIGUEN
+#    corriendo y barriendo lo que sí es residuo. Un candado que aborta siempre "pasaría" los asertos de arriba.
+git -C "$C3REPO" checkout -q -b feat/hecha "$C3RAMA_BASE" >/dev/null 2>&1
+printf 'x\n' > "$C3REPO/f.txt"; git -C "$C3REPO" add f.txt >/dev/null 2>&1; git -C "$C3REPO" commit -qm hecha >/dev/null 2>&1
+git -C "$C3REPO" push -q -u origin feat/hecha >/dev/null 2>&1
+git -C "$C3REPO" checkout -q "$C3RAMA_BASE" >/dev/null 2>&1
+git -C "$C3REPO" merge --squash feat/hecha >/dev/null 2>&1; git -C "$C3REPO" commit -qm "squash de feat/hecha" >/dev/null 2>&1
+git -C "$C3REPO" push -q origin --delete feat/hecha >/dev/null 2>&1
+c3ok=0
+c3okout="$(cd "$C3REPO" && bash "$HOOKS/limpiar-ramas.sh" --no-fetch 2>&1)" || c3ok=$?
+[ "$c3ok" -eq 0 ] && ok "FIX-3 control: con base RESOLUBLE el barredor NO aborta" || bad "FIX-3 control: abortó con una base perfectamente resoluble (rc=$c3ok)"
+! git -C "$C3REPO" rev-parse --verify -q refs/heads/feat/hecha >/dev/null 2>&1 \
+  && ok "FIX-3 control: y SÍ barre el residuo genuino (feat/hecha, squash-integrada)" \
+  || bad "FIX-3 control: el candado dejó de barrer residuo real; got: $c3okout"
+rm -rf "$C3ROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
@@ -4260,6 +4640,58 @@ printf '%s' "$mout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null 
 is_silent "$(brm 'ls -la')" && ok "barrer-ramas(B): Bash no-merge → silencio" || bad "barrer-ramas(B): habló con un Bash que no era merge"
 # (7) debounce: 2º merge inmediato → silencio (el barrido recién lanzado ya cubre este)
 is_silent "$(brm 'glab mr merge 7 --squash')" && ok "barrer-ramas(B): debounce — 2º merge inmediato → silencio" || bad "barrer-ramas(B): no respetó el debounce del merge"
+
+# ── (8) FIX-1 / C-1 (dictamen higiene de ramas 2026-09-17) · CAUSA RAÍZ del reguero ──────────────────
+# La vía (B) resolvía ROOT de CLAUDE_PROJECT_DIR — el repo de la SESIÓN — cuando el merge puede ocurrir
+# en OTRO repo. Medido en vivo: `cortex` no tenía NI UN stamp en ~/.claude/memory/.barrer-ramas/ (nunca
+# fue barrido, ni una vez) mientras un merge suyo sellaba el stamp de `plantilladotnet`. El hook decía
+# "barriendo…" y barría — el repo equivocado. La pieza correcta (acg_target_dir) ya la usan los otros
+# git-guards. Oráculo del EFECTO (no solo del stamp): el stub registra EN QUÉ directorio lo lanzaron.
+BRA="$BRFIX/repoA"; BRB="$BRFIX/repoB"
+mkdir -p "$BRA" "$BRB"
+for _r in "$BRA" "$BRB"; do
+  git -C "$_r" init -q >/dev/null 2>&1
+  git -C "$_r" remote add origin /tmp/fake-no-red >/dev/null 2>&1
+done
+printf '#!/usr/bin/env bash\npwd > "%s/.donde-barrio"\n' "$BRFIX" > "$BRHOOKS/limpiar-ramas.sh"; chmod +x "$BRHOOKS/limpiar-ramas.sh"
+printf '#!/usr/bin/env bash\n:\n' > "$BRHOOKS/limpiar-worktrees.sh"; chmod +x "$BRHOOKS/limpiar-worktrees.sh"
+slugA=$(printf '%s' "$BRA" | cksum | awk '{print $1}')
+slugB=$(printf '%s' "$BRB" | cksum | awk '{print $1}')
+# brm2 CMD CWD — payload PostToolUse/Bash con `.cwd` (como lo manda el harness), CLAUDE_PROJECT_DIR = repoB
+brm2() { printf '%s' "{\"tool_name\":\"Bash\",\"cwd\":\"$2\",\"tool_input\":{\"command\":\"$1\"}}" \
+           | HOME="$BRHOME" CLAUDE_PROJECT_DIR="$BRB" bash "$BRHOOKS/barrer-ramas.sh"; }
+_mismo_dir() {  # compara dos rutas por su forma FÍSICA (macOS: /var → /private/var)
+  local a b; a="$(cd "$1" 2>/dev/null && pwd -P)"; b="$(cd "$2" 2>/dev/null && pwd -P)"
+  [ -n "$a" ] && [ "$a" = "$b" ]
+}
+# (8a) `cd <repoA> && gh pr merge …` con CLAUDE_PROJECT_DIR=repoB → el barrido cae en repoA
+rm -f "$BRFIX/.donde-barrio"
+brm2 'cd '"$BRA"' && gh pr merge 1 --squash --delete-branch' "$BRA" >/dev/null 2>&1
+[ -f "$BRHOME/.claude/memory/.barrer-ramas/$slugA.merge" ] \
+  && ok "FIX-1: el merge en repoA sella el stamp de repoA (no el del proyecto de la sesión)" \
+  || bad "FIX-1: NO se selló el stamp de repoA — el barrido sigue cayendo en el repo equivocado"
+[ -f "$BRHOME/.claude/memory/.barrer-ramas/$slugB.merge" ] \
+  && bad "FIX-1: selló el stamp de repoB (CLAUDE_PROJECT_DIR) pese a que el merge ocurrió en repoA" \
+  || ok "FIX-1: NO tocó el stamp de repoB (el repo de la sesión no se barre por un merge ajeno)"
+_wait_marker "$BRFIX/.donde-barrio"
+_mismo_dir "$(cat "$BRFIX/.donde-barrio" 2>/dev/null || echo /nonexistent)" "$BRA" \
+  && ok "FIX-1: limpiar-ramas se LANZÓ dentro de repoA (efecto, no solo el stamp)" \
+  || bad "FIX-1: limpiar-ramas corrió en '$(cat "$BRFIX/.donde-barrio" 2>/dev/null)' en vez de repoA"
+# (8b) sin `cd` en el comando, el `.cwd` del payload manda sobre CLAUDE_PROJECT_DIR (mismo criterio que
+#      merge-squash-guard, que ya lee .cwd) — es el caso de un merge corrido desde el cwd del repo.
+rm -f "$BRFIX/.donde-barrio" "$BRHOME/.claude/memory/.barrer-ramas/$slugA.merge"
+brm2 'gh pr merge 2 --squash --delete-branch' "$BRA" >/dev/null 2>&1
+[ -f "$BRHOME/.claude/memory/.barrer-ramas/$slugA.merge" ] \
+  && ok "FIX-1: el .cwd del payload resuelve el repo del merge (repoA) sobre CLAUDE_PROJECT_DIR" \
+  || bad "FIX-1: ignoró el .cwd del payload y volvió a caer en CLAUDE_PROJECT_DIR"
+# (8c) CONTROL — la vía (A)/SessionStart NO analiza ningún comando: CLAUDE_PROJECT_DIR sigue siendo lo
+#      correcto ahí. Sin este control, "arreglar" (B) podría romper (A) sin que nadie lo note.
+rm -f "$BRFIX/.donde-barrio"
+printf '%s' '{"source":"startup"}' | HOME="$BRHOME" CLAUDE_PROJECT_DIR="$BRB" bash "$BRHOOKS/barrer-ramas.sh" >/dev/null 2>&1
+[ -f "$BRHOME/.claude/memory/.barrer-ramas/$slugB" ] \
+  && ok "FIX-1 control: la vía (A) SessionStart sigue barriendo CLAUDE_PROJECT_DIR (no hay comando que analizar)" \
+  || bad "FIX-1 control: se rompió la vía (A) — SessionStart ya no barre CLAUDE_PROJECT_DIR"
+_wait_marker "$BRFIX/.donde-barrio"   # que el último stub detached termine antes de borrar el fixture
 rm -rf "$BRFIX"
 
 # ── (b5e2) barrer-ramas: A-5 — lanzar() corre limpiar-worktrees ANTES que limpiar-ramas (SECUENCIAL) ──
