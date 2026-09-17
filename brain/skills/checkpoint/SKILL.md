@@ -277,8 +277,9 @@ checkpoint, no una falla tuya por haber preguntado.
   lo copies a ciegas: sigue siendo un borrador mecánico, no el hilo). Y si el compact te GANA la carrera,
   ya no se pierde: `rehidratar-hilo` (SessionStart) inyecta el andamio junto al hilo cuando es MÁS FRESCO
   que él, con encabezado propio y etiquetado como evidencia — nunca como si fuera tu razonamiento. Tú
-  sigues poniendo el juicio; el andamio te ahorra el grep. `aviso-contexto` además te lo RECUERDA cuando
-  el contexto sube.
+  sigues poniendo el juicio; el andamio te ahorra el grep. Y al umbral ALTO del punto real de compact
+  `aviso-contexto` **DISPARA ese mismo andamio solito** (mismo lanzador que el hook de PreCompact) y te
+  ORDENA correr /checkpoint (la prosa, que sí necesita modelo) + /compact — ya no solo lo recuerda.
 
 ## Compartido vs local
 `hilo-mental-actual.md` es memoria de trabajo **VOLÁTIL** (se sobrescribe seguido) y personal de tu
