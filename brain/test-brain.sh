@@ -4162,6 +4162,58 @@ printf '%s' "$mout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null 
 is_silent "$(brm 'ls -la')" && ok "barrer-ramas(B): Bash no-merge → silencio" || bad "barrer-ramas(B): habló con un Bash que no era merge"
 # (7) debounce: 2º merge inmediato → silencio (el barrido recién lanzado ya cubre este)
 is_silent "$(brm 'glab mr merge 7 --squash')" && ok "barrer-ramas(B): debounce — 2º merge inmediato → silencio" || bad "barrer-ramas(B): no respetó el debounce del merge"
+
+# ── (8) FIX-1 / C-1 (dictamen higiene de ramas 2026-09-17) · CAUSA RAÍZ del reguero ──────────────────
+# La vía (B) resolvía ROOT de CLAUDE_PROJECT_DIR — el repo de la SESIÓN — cuando el merge puede ocurrir
+# en OTRO repo. Medido en vivo: `cortex` no tenía NI UN stamp en ~/.claude/memory/.barrer-ramas/ (nunca
+# fue barrido, ni una vez) mientras un merge suyo sellaba el stamp de `plantilladotnet`. El hook decía
+# "barriendo…" y barría — el repo equivocado. La pieza correcta (acg_target_dir) ya la usan los otros
+# git-guards. Oráculo del EFECTO (no solo del stamp): el stub registra EN QUÉ directorio lo lanzaron.
+BRA="$BRFIX/repoA"; BRB="$BRFIX/repoB"
+mkdir -p "$BRA" "$BRB"
+for _r in "$BRA" "$BRB"; do
+  git -C "$_r" init -q >/dev/null 2>&1
+  git -C "$_r" remote add origin /tmp/fake-no-red >/dev/null 2>&1
+done
+printf '#!/usr/bin/env bash\npwd > "%s/.donde-barrio"\n' "$BRFIX" > "$BRHOOKS/limpiar-ramas.sh"; chmod +x "$BRHOOKS/limpiar-ramas.sh"
+printf '#!/usr/bin/env bash\n:\n' > "$BRHOOKS/limpiar-worktrees.sh"; chmod +x "$BRHOOKS/limpiar-worktrees.sh"
+slugA=$(printf '%s' "$BRA" | cksum | awk '{print $1}')
+slugB=$(printf '%s' "$BRB" | cksum | awk '{print $1}')
+# brm2 CMD CWD — payload PostToolUse/Bash con `.cwd` (como lo manda el harness), CLAUDE_PROJECT_DIR = repoB
+brm2() { printf '%s' "{\"tool_name\":\"Bash\",\"cwd\":\"$2\",\"tool_input\":{\"command\":\"$1\"}}" \
+           | HOME="$BRHOME" CLAUDE_PROJECT_DIR="$BRB" bash "$BRHOOKS/barrer-ramas.sh"; }
+_mismo_dir() {  # compara dos rutas por su forma FÍSICA (macOS: /var → /private/var)
+  local a b; a="$(cd "$1" 2>/dev/null && pwd -P)"; b="$(cd "$2" 2>/dev/null && pwd -P)"
+  [ -n "$a" ] && [ "$a" = "$b" ]
+}
+# (8a) `cd <repoA> && gh pr merge …` con CLAUDE_PROJECT_DIR=repoB → el barrido cae en repoA
+rm -f "$BRFIX/.donde-barrio"
+brm2 'cd '"$BRA"' && gh pr merge 1 --squash --delete-branch' "$BRA" >/dev/null 2>&1
+[ -f "$BRHOME/.claude/memory/.barrer-ramas/$slugA.merge" ] \
+  && ok "FIX-1: el merge en repoA sella el stamp de repoA (no el del proyecto de la sesión)" \
+  || bad "FIX-1: NO se selló el stamp de repoA — el barrido sigue cayendo en el repo equivocado"
+[ -f "$BRHOME/.claude/memory/.barrer-ramas/$slugB.merge" ] \
+  && bad "FIX-1: selló el stamp de repoB (CLAUDE_PROJECT_DIR) pese a que el merge ocurrió en repoA" \
+  || ok "FIX-1: NO tocó el stamp de repoB (el repo de la sesión no se barre por un merge ajeno)"
+_wait_marker "$BRFIX/.donde-barrio"
+_mismo_dir "$(cat "$BRFIX/.donde-barrio" 2>/dev/null || echo /nonexistent)" "$BRA" \
+  && ok "FIX-1: limpiar-ramas se LANZÓ dentro de repoA (efecto, no solo el stamp)" \
+  || bad "FIX-1: limpiar-ramas corrió en '$(cat "$BRFIX/.donde-barrio" 2>/dev/null)' en vez de repoA"
+# (8b) sin `cd` en el comando, el `.cwd` del payload manda sobre CLAUDE_PROJECT_DIR (mismo criterio que
+#      merge-squash-guard, que ya lee .cwd) — es el caso de un merge corrido desde el cwd del repo.
+rm -f "$BRFIX/.donde-barrio" "$BRHOME/.claude/memory/.barrer-ramas/$slugA.merge"
+brm2 'gh pr merge 2 --squash --delete-branch' "$BRA" >/dev/null 2>&1
+[ -f "$BRHOME/.claude/memory/.barrer-ramas/$slugA.merge" ] \
+  && ok "FIX-1: el .cwd del payload resuelve el repo del merge (repoA) sobre CLAUDE_PROJECT_DIR" \
+  || bad "FIX-1: ignoró el .cwd del payload y volvió a caer en CLAUDE_PROJECT_DIR"
+# (8c) CONTROL — la vía (A)/SessionStart NO analiza ningún comando: CLAUDE_PROJECT_DIR sigue siendo lo
+#      correcto ahí. Sin este control, "arreglar" (B) podría romper (A) sin que nadie lo note.
+rm -f "$BRFIX/.donde-barrio"
+printf '%s' '{"source":"startup"}' | HOME="$BRHOME" CLAUDE_PROJECT_DIR="$BRB" bash "$BRHOOKS/barrer-ramas.sh" >/dev/null 2>&1
+[ -f "$BRHOME/.claude/memory/.barrer-ramas/$slugB" ] \
+  && ok "FIX-1 control: la vía (A) SessionStart sigue barriendo CLAUDE_PROJECT_DIR (no hay comando que analizar)" \
+  || bad "FIX-1 control: se rompió la vía (A) — SessionStart ya no barre CLAUDE_PROJECT_DIR"
+_wait_marker "$BRFIX/.donde-barrio"   # que el último stub detached termine antes de borrar el fixture
 rm -rf "$BRFIX"
 
 # ── (b5e2) barrer-ramas: A-5 — lanzar() corre limpiar-worktrees ANTES que limpiar-ramas (SECUENCIAL) ──
