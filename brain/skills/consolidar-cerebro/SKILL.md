@@ -164,90 +164,15 @@ CAPACIDADES que el tooling promete + el puntero a su método. *"La firma es el S
 su método."* Lazo cerrado: la firma es a la vez *lo que prometes* y *contra lo que se audita* →
 doc=realidad por construcción (auditar = "¿la realidad sigue cumpliendo la firma?").
 
-> **LA CONVENCIÓN: `CLAUDE.md` (firma/TOC) + `MEMORY.md` (detalle). Se AUDITA leyendo la realidad; se CONSOLIDA
-> hacia la convención.** Dos momentos que NO se confunden:
-> - **Al AUDITAR (Paso 0 + dupla): lee el entry-point operativo REAL, sea cual sea su nombre.** NO asumas que es
->   `MEMORY.md`: games-master hoy usa `AGENTS.md` como su "LEE ESTO ANTES DE HACER NADA" (su `CLAUDE.md:88` dice
->   literal *"Firma = TOC de AGENTS.md"*). Si auditas contra el archivo equivocado, la suficiencia camina en falso
->   (pasó en el propio gold standard). Reconocer la realidad ≠ bendecirla.
-> - **Al CONSOLIDAR (esta fase): el DESTINO es la convención UNIFORME** — `CLAUDE.md` = firma thin (TOC de
->   capacidades + normas de conducta + misión = la misión de Claude aquí) → **`MEMORY.md` = el detalle** (índice
->   operativo: router de skills + conocimiento). Un cerebro que hoy use OTRO archivo como entry-point (games-master
->   con AGENTS operativo) se **MIGRA** a la convención: su contenido operativo pasa a `MEMORY.md`, `CLAUDE.md` queda
->   como su TOC. (Migrar el gold standard es una decisión deliberada del humano — se PARQUEA si su cerebro está en uso.)
-> - **`AGENTS.md` queda RESERVADO para ARQUITECTURA real del proyecto** (el contrato de 3194 líneas de cps: capas,
->   dominio, prohibiciones — audita coherencia vs el `.cs`). NO es la firma. Un cerebro sin arquitectura pesada
->   (hobby/meta) NO necesita `AGENTS.md`. **La consistencia gana:** un Claude que salta entre repos aprende UN modelo.
-
-**3 capas, sin duplicar (la CONVENCIÓN — el destino de toda consolidación):**
-
-| Capa | Dónde | Qué |
-|---|---|---|
-| Firma / checklist (**misión de Claude aquí**) | `CLAUDE.md` (thin, siempre cargado) = **el TOC** | ~5-8 líneas `capacidad → puntero` + normas de conducta + misión |
-| Detalle | **`MEMORY.md`** (el índice operativo: router de skills + conocimiento) → la memoria/skill | el "cómo se opera bien" (thick, on-demand) |
-| Método de los auditores | las skills (dupla + FMEA) | prompts, ámbito, prohibiciones |
-| *(Eje APARTE, solo si hay ARQUITECTURA real)* | `AGENTS.md` | contrato de **arquitectura del PROYECTO** (cps: capas/dominio) — audita coherencia vs el código, NO es la firma |
-
-> **Migración a la convención:** si un cerebro hoy usa OTRO archivo como entry-point operativo (games-master usa
-> `AGENTS.md` como su "LEE ESTO ANTES DE HACER NADA"), la consolidación lo MIGRA: el contenido operativo pasa a
-> `MEMORY.md`, `CLAUDE.md` queda como su TOC, y `AGENTS.md` se retira o se reduce a arquitectura real. **Migrar el
-> gold standard es decisión deliberada del humano** — se PARQUEA si su cerebro está en uso. Un cerebro sin
-> arquitectura pesada NO necesita `AGENTS.md`.
-
-**ESTRUCTURA CANÓNICA del `CLAUDE.md`-firma (plantilla — decisión de unjordi 2026-08-02).** Secuencia
-OBLIGATORIA: **intro-IDENTIDAD → dónde-va-cada-cosa → ÁRBOL (cercado) → detalle**. El árbol es
-AUTOCONTENIDO (apunta a SUS skills; NO remite a otro archivo tipo AGENTS):
-```
-# <emojis + nombre> — <qué es el proyecto>
-<intro de IDENTIDAD: quién es este claude, el propósito, con quién>
-## Dónde va cada cosa — relativo a esta carpeta
-​```                          ← el ÁRBOL SIEMPRE dentro de un bloque de código (si no, colapsa a prosa en TODO render — lección games)
-📄 CLAUDE.md ─ LA firma (conocimiento del proyecto + reglas duras + 🖋️ árbol de capacidades · cada una → su skill)
-▼ 📄 MEMORY.md ─ el DETALLE DE CADA PUNTO DE LA FIRMA (índice de memorias)
-▼ 📁 skills (how-to) · 📁 hooks (guards)
-​```
-## <abajo: el detalle — reglas duras, conocimiento del proyecto>
-```
-
-**GRADIENTE DE ESTABILIDAD (regla dura — el PORQUÉ de que la firma sea atemporal):** `CLAUDE.md` = como
-`main` · `MEMORY.md` = como `develop` · las memorias + bitácora + estado-proyecto = las ramitas.
-- **`CLAUDE.md`: SOLO estructural y ATEMPORAL.** CERO fechas, CERO "RESUELTO/VERIFICADO/al día/pendiente",
-  CERO estado. Muta casi nunca (solo si cambia la ESTRUCTURA: una capacidad nueva). Así **no se puede
-  pudrir** → doc=realidad *por construcción*.
-- **`MEMORY.md`:** el detalle de cada punto de la firma. Muta poco; tampoco fechas/estado — *ni siquiera aquí*.
-- **Las ramitas:** ahí vive TODO lo volátil (fechas, "RESUELTO 2026-06-25", historia, lápidas ⚰️).
-- En `cortex` esto lo VERIFICA `docs/flowcharts/verificar-arbol-sync.sh` (el bloque `ARBOL:START/END`
-  del `CLAUDE.md` debe ir cercado y sin fechas/RESUELTO/VERIFICADO); en otros cerebros es criterio de cierre.
+> **La spec de la firma canónica vive COMPLETA en [[canonizar-cerebro]]** — su detector
+> `verificar-firma-canonica.sh` es el mecanismo que la hace cumplir, así que ahí es donde vive la definición
+> (estructura del `CLAUDE.md`, `MEMORY.md` por prefijo, gradiente de estabilidad, cómo DESTILAR el TOC cuando
+> falta, y la migración de un cerebro cuyo entry-point operativo hoy es otro archivo). **El paso ESTRUCTURAL
+> de esta campaña ES ese skill: invócalo y corre su detector.** No se re-enuncia aquí — una segunda copia de la
+> spec solo vuelve a driftear (por eso se deduplicó a un solo dueño).
 
 - El auditor de suficiencia **camina cada línea de la firma**: `CLAUDE.md → MEMORY.md →
   memoria/skill → realidad`, y marca el hueco (capacidad sin método, método sin código, doc que miente).
-- **DESTILAR el `CLAUDE.md`-TOC cuando falta** (el caso común: cps y cortex NO tienen `CLAUDE.md`; su
-  misión vive implícita/mezclada dentro del entry-point operativo). No lo inventes de cero: **destílalo
-  clasificando cada línea del entry-point por su NATURALEZA DOMINANTE**, en TRES clases:
-  - **CAPACIDAD** — algo que Claude **hace/opera** (un skill, una rutina, un guard, una tarea) → al TOC.
-  - **NORMA de CRITERIO/CONDUCTA** — cómo se trabaja aquí ("cómo NO trabajar", `como-trabajar-<user>`, reglas
-    de estilo) → también al TOC (es firma: gobierna la operación), como su propia sección.
-  - **CONOCIMIENTO / estado / historia / dominio** — una decisión, un dato, una lección → se QUEDA en el detalle.
-
-  Cuando una línea tiene de varias, clasifícala por su naturaleza **DOMINANTE**; si su método vive en 2 lados
-  (un skill + un doc-método), el TOC lleva un **puntero COMPUESTO** (`capacidad → skill + doc`). El `CLAUDE.md`
-  resultante es thin (~5-8 líneas + secciones); NO duplica: el TOC apunta, el detalle vive abajo una sola vez.
-  - **MAPA DE FUENTES (no todo vive en el entry-point).** No basta clasificar "línea por línea" del índice: las
-    tres clases se surten de lugares distintos, y en un cerebro meta el índice puede ser CONOCIMIENTO puro
-    (índice de memorias sin router) → el TOC saldría vacío si solo miraras ahí. Surte cada clase de su fuente real:
-    **CAPACIDAD ← `.claude/skills/`** (enumera los dirs, N=N, atado a la Fase 3.4) **+** rutinas/guards activos;
-    **NORMA de CONDUCTA ← los docs de criterio/estilo**; **MISIÓN ← `README.md`/el producto** (en un repo-template,
-    leído read-only); **CONOCIMIENTO ← las memorias** (se queda). El TOC es la UNIÓN de esas fuentes, no un filtro del índice.
-  - **Interacción firma ↔ `sesion-inicio`:** crear un `CLAUDE.md` nuevo puede solapar lo que el hook `sesion-inicio`
-    ya reinyecta al arranque (rama, norma de git, orden de leer el índice). Que el `CLAUDE.md` NO duplique eso; si
-    hay que reordenar el hook, se PARQUEA para el humano (es tocar un guard) — no se reescribe en la pasada de cerebro.
-- **AGENTS pesado que MEZCLA** (cps: 3194 líneas con arquitectura + git-flow §8 + workflow §8b + scripts §10):
-  no basta "no fuerces AGENTS a firma" — la **mitad inversa** también aplica: lo que ahí sea **proceso/capacidad**
-  (no arquitectura) se **enlaza HACIA la firma** (o se dedupea si ya vive en un skill), dejando en `AGENTS.md`
-  solo la arquitectura real. Separa por CONTENIDO, no por sección.
-- **Alinea el entry-point operativo** para que su índice tenga exactamente las capacidades que el TOC declara,
-  en ese orden (si sobra una fuera del mapa: se enlaza o se añade al TOC). El doc de arquitectura, si existe
-  aparte, se deja en su carril y no se fuerza a la forma de la firma.
 - **Entregable bonito de cierre: el "prompt bello de arranque"** — el reporte matutino curado (1 línea
   de estado + tabla de rondas + "lo único que necesito de ti") para reanudar la sesión-master sin
   trauma. El usuario lo valora explícitamente; va como parte del cierre y se **preserva a disco** (vive

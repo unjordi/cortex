@@ -36,7 +36,20 @@ Definición-de-tipo-de-dato (LÉELAS antes de tocar): `CLAUDE.example-barebones.
   `como-trabajar-con-usuario.example-barebones.md`.
 - **Invariante 1:1:** cada memoria (salvo `*.local.md`) está indexada, y cada enlace del índice
   resuelve a un archivo real. Sección = prefijo = orden del folder → una sola taxonomía, cero drift.
-- **`AGENTS.md`** (si existe) queda para la **ARQUITECTURA real** del proyecto — NO es la firma.
+- **`AGENTS.md`** (si existe) queda para la **ARQUITECTURA real** del proyecto — NO es la firma. Un cerebro
+  SIN arquitectura pesada (hobby/meta) no necesita `AGENTS.md`. **Si el entry-point operativo REAL de hoy es
+  OTRO archivo** (p. ej. games-master usa `AGENTS.md` como su "LEE ESTO ANTES DE HACER NADA"), canonizar lo
+  MIGRA a la convención: su contenido OPERATIVO pasa a `MEMORY.md`, `CLAUDE.md` queda como su TOC, y `AGENTS.md`
+  se reduce a la arquitectura real (o se retira). Migrar un cerebro **en uso** (un gold standard) es decisión
+  deliberada del humano → se PARQUEA si está en uso.
+- **GRADIENTE DE ESTABILIDAD (el PORQUÉ de que la firma sea atemporal):** `CLAUDE.md` = como `main` (solo
+  estructural, muta casi nunca — solo si cambia la ESTRUCTURA) · `MEMORY.md` = como `develop` (el detalle;
+  muta poco; tampoco fechas/estado *ni siquiera aquí*) · las memorias + `bitacora` + `estado-proyecto` = las
+  ramitas (ahí vive TODO lo volátil: fechas, "RESUELTO 2026-…", historia, lápidas ⚰️). Así el `CLAUDE.md`
+  **no se puede pudrir** → doc=realidad *por construcción*. En el **meta-repo** (cortex, cuya firma vive en el
+  README y cuyo `.claude/memory/` no usa prefijos) el check NO es este detector sino
+  `docs/flowcharts/verificar-arbol-sync.sh` (el bloque `ARBOL:START/END` cercado y sin fechas/RESUELTO/
+  VERIFICADO); `verificar-firma-canonica.sh` auto-detecta el meta-repo y se salta (`n/a`).
 
 ## Cuándo usarlo
 - Un cerebro instanciado no respeta la estructura: memorias sin prefijo, `CLAUDE.md` viejo, índice plano.
@@ -90,6 +103,33 @@ en todo render). En el árbol, **nombra los guards BREVE** (`git-branch-guard, m
 esto **mata la prosa de guards stale por construcción** (el `CLAUDE.md` viejo describía `precompact-volcar-estado`
 en prosa; el árbol no lo nombra → desaparece). ATEMPORAL: sin fechas ni estado. La arquitectura NO va
 aquí: apunta a `AGENTS.md` si existe.
+
+**Si NO hay `CLAUDE.md` aún — destilar el TOC de cero.** El caso común: `cps` y `cortex` no tienen `CLAUDE.md`;
+su misión vive implícita/mezclada dentro del entry-point operativo. No lo inventes: **destílalo clasificando
+cada línea del entry-point por su NATURALEZA DOMINANTE**, en TRES clases:
+- **CAPACIDAD** — algo que Claude **hace/opera** (un skill, una rutina, un guard, una tarea) → al TOC.
+- **NORMA de CRITERIO/CONDUCTA** — cómo se trabaja aquí (reglas de estilo, "cómo NO trabajar",
+  `como-trabajar-<user>`) → también al TOC (es firma: gobierna la operación), como su propia sección.
+- **CONOCIMIENTO / estado / historia / dominio** — una decisión, un dato, una lección → se QUEDA en el detalle.
+
+Cuando una línea tiene de varias, gana la **DOMINANTE**; si su método vive en 2 lados (un skill + un doc-método),
+el TOC lleva un **puntero COMPUESTO** (`capacidad → skill + doc`). El `CLAUDE.md` resultante es thin (~5-8
+líneas + secciones); NO duplica: el TOC apunta, el detalle vive abajo una sola vez.
+- **MAPA DE FUENTES (no todo vive en el entry-point).** Las tres clases se surten de lugares distintos, y en un
+  cerebro **meta** el índice puede ser CONOCIMIENTO puro (índice de memorias sin router) → el TOC saldría vacío
+  si solo miraras ahí. Surte cada clase de su fuente real: **CAPACIDAD ← `.claude/skills/`** (enumera los dirs,
+  N=N) **+** rutinas/guards activos; **NORMA de CONDUCTA ← los docs de criterio/estilo**; **MISIÓN ←
+  `README.md`/el producto** (en un repo-template, leído read-only); **CONOCIMIENTO ← las memorias** (se queda).
+  El TOC es la UNIÓN de esas fuentes, no un filtro del índice.
+- **Interacción firma ↔ `sesion-inicio`:** crear un `CLAUDE.md` nuevo puede solapar lo que el hook
+  `sesion-inicio` ya reinyecta al arranque (rama, norma de git, orden de leer el índice) — que el `CLAUDE.md`
+  NO lo duplique; si hay que reordenar el hook, se PARQUEA para el humano (es tocar un guard).
+- **AGENTS pesado que MEZCLA** (cps: 3194 líneas con arquitectura + git-flow + workflow + scripts): lo que ahí
+  sea **proceso/capacidad** (no arquitectura) se **enlaza HACIA la firma** (o se dedupea si ya vive en un skill),
+  dejando en `AGENTS.md` solo la arquitectura real. Separa por CONTENIDO, no por sección.
+- **Alinea el entry-point operativo** para que su índice tenga exactamente las capacidades que el TOC declara,
+  en ese orden (si sobra una fuera del mapa: se enlaza o se añade al TOC). El doc de arquitectura, si existe
+  aparte, se deja en su carril y no se fuerza a la forma de la firma.
 
 ### 5 · Reescribe `MEMORY.md` a índice-por-prefijo
 Encabezado + `## 📍 Dónde estamos` (hilo + estado-proyecto) + una `##` por prefijo (🧭 núcleo · 🗄️ dom- ·
