@@ -63,14 +63,23 @@ es_zombie() { bz_es_zombie "$ROOT" "$1" "$base"; }  # $1 = rama
 # _intentar_borrar WT — C-3: SIN --force primero (git rehúsa solo si hay cambios sin commitear/untracked).
 # Si rehúsa, NO se fuerza por defecto: se reporta sucio y se conserva. Con --purgar-sucios, se fuerza (opt-in
 # explícito) y se avisa igual. Devuelve 0 si quedó borrado, 1 si se conservó (sucio o error).
+# A-1 (dictamen higiene de ramas 2026-09-17): además deja en $SUCIO_N cuántos archivos lo ensucian, para
+# que el caller pueda anotar el PENDIENTE. Antes el árbol sucio se conservaba (correcto, C-3) pero NO
+# generaba entrada de bitácora: solo la rama `DEJADO (vivo)` la generaba. Resultado: worktree retenido →
+# rama "retenida por worktree" → nunca barrida, y SIN registro en ningún lado. Un solo archivo untracked
+# congelaba la rama indefinidamente, sin envejecimiento ni escalación. Conservar el árbol sucio sigue
+# siendo lo correcto; lo que faltaba era el AVISO.
+SUCIO_N=""
 _intentar_borrar() {
   local wt="$1"
+  SUCIO_N=""
   if git -C "$ROOT" worktree remove "$wt" 2>/dev/null; then return 0; fi
   local n
   n=$(git -C "$wt" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
   if [ "$PURGAR_SUCIOS" = 1 ]; then
     git -C "$ROOT" worktree remove --force "$wt" 2>/dev/null && { echo "  (purgado con --purgar-sucios pese a $n archivo(s) sin commitear)"; return 0; }
   fi
+  SUCIO_N="${n:-?}"
   echo "  SUCIO (no se toca): $wt — ${n:-?} archivo(s) sin commitear/untracked"
   return 1
 }
@@ -96,7 +105,13 @@ while IFS= read -r line; do
           borrados=$((borrados+1))
         else
           if _intentar_borrar "$wt"; then borrados=$((borrados+1)); echo "  borrado zombie: $wt ($br)"
-          else sucios=$((sucios+1)); fi
+          else
+            # A-1: el sucio también genera PENDIENTE (mismo formato y mismo dedupe idempotente que el vivo)
+            # — si no, la rama que retiene queda congelada para siempre sin dejar rastro en ningún lado.
+            sucios=$((sucios+1))
+            pend="$pend
+  - worktree \`${wt##*/}\` (rama \`$br\`, YA integrada a $base) retenido por $SUCIO_N archivo(s) sin commitear/untracked — revisar y limpiar; mientras siga sucio CONGELA esa rama y nadie la barrerá."
+          fi
         fi
       else
         # A-3/A-4: distinguir "vivo confirmado" de "indeterminado" (no se pudo consultar el host) — el

@@ -2748,7 +2748,7 @@ rm -rf "$C2ROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "== (b3c3) limpiar-ramas: REPORTA (nunca borra) ramas de fan-out huérfanas (worktree-agent-*, sin worktree, viejas) =="
+echo "== (b3c3) limpiar-ramas: REPORTA (nunca borra) las ramas REPRESADAS — viejas y sin integrar (el patrón de nombre es ya solo un filtro OPCIONAL) =="
 # Queja real (2026-09): "qué pasa con lo que deja detrás... no todo eran ramas con worktree". Un fan-out
 # (isolation:worktree) deja la rama viva si el agente cambió algo; si nadie decide mergear/descartar, la
 # rama queda CONSERVADA (bz_es_zombie nunca la toca: tiene commits propios) y se acumula EN SILENCIO. La
@@ -2774,22 +2774,39 @@ GIT_COMMITTER_DATE="@$OLDTS" git -C "$LR3REPO" commit -q -m "feature legítima v
 git -C "$LR3REPO" checkout -q develop >/dev/null 2>&1
 
 lr3dry="$(cd "$LR3REPO" && CLAUDE_INTEGRACION_BASE=develop bash "$HOOKS/limpiar-ramas.sh" --dry-run --no-fetch 2>&1)"
-printf '%s' "$lr3dry" | grep -q 'HUÉRFANA.*worktree-agent-oldstale' \
-  && ok "b3c3: dry-run detecta la huérfana vieja (worktree-agent-oldstale)" || bad "b3c3: no detectó la huérfana; got: $lr3dry"
-printf '%s' "$lr3dry" | grep -q 'worktree-agent-recent.*HUÉRFANA\|HUÉRFANA.*worktree-agent-recent' \
-  && bad "b3c3: reportó la rama RECIENTE (aún en curso) — no debía" || ok "b3c3: la rama reciente NO se reporta (todavía en curso)"
+printf '%s' "$lr3dry" | grep -q 'REPRESADA.*worktree-agent-oldstale' \
+  && ok "b3c3: dry-run detecta la rama vieja sin integrar (worktree-agent-oldstale)" || bad "b3c3: no la detectó; got: $lr3dry"
+printf '%s' "$lr3dry" | grep -q 'worktree-agent-recent.*REPRESADA\|REPRESADA.*worktree-agent-recent' \
+  && bad "b3c3: reportó la rama RECIENTE (aún en curso) — no debía" || ok "b3c3: la rama reciente NO se reporta (todavía en curso, la edad sigue siendo el gate)"
 [ "$(cat "$LR3REPO/.claude/memory/bitacora.md")" = "$(printf '# bitacora')" ] \
   && ok "b3c3: dry-run NO escribe nada a la bitácora" || bad "b3c3: dry-run mutó la bitácora"
 
 cd "$LR3REPO" && CLAUDE_INTEGRACION_BASE=develop bash "$HOOKS/limpiar-ramas.sh" --no-fetch >/dev/null 2>&1
 git -C "$LR3REPO" rev-parse --verify -q refs/heads/worktree-agent-oldstale >/dev/null 2>&1 \
-  && ok "b3c3: la rama huérfana NUNCA se borra (solo se reporta)" || bad "b3c3: ¡BORRÓ la rama huérfana! (pérdida de datos)"
+  && ok "b3c3: la rama represada NUNCA se borra (solo se reporta)" || bad "b3c3: ¡BORRÓ la rama represada! (pérdida de datos)"
 grep -q 'worktree-agent-oldstale' "$LR3REPO/.claude/memory/bitacora.md" \
-  && ok "b3c3: la huérfana quedó anotada en la bitácora del repo" || bad "b3c3: no anotó la huérfana en la bitácora"
+  && ok "b3c3: la represada quedó anotada en la bitácora del repo" || bad "b3c3: no la anotó en la bitácora"
 grep -q 'worktree-agent-recent' "$LR3REPO/.claude/memory/bitacora.md" \
   && bad "b3c3: anotó la rama reciente (no debía)" || ok "b3c3: la reciente no quedó anotada"
+# FIX-5 / A-4: el detector ya NO depende de un patrón de NOMBRE. Una rama vieja y sin integrar se
+# reporta LLAMÉ COMO SE LLAME — el gate por `worktree-agent-*` lo dejaba inerte en cualquier repo cuyo
+# fan-out nombre las ramas de otra forma (en cortex: audit/*, docs/*, fix/*; o sea, NINGUNA matcheaba).
 grep -q 'feat/normal-vieja' "$LR3REPO/.claude/memory/bitacora.md" \
-  && bad "b3c3: anotó una rama que NO matchea el patrón de fan-out (falso positivo)" || ok "b3c3: una rama vieja normal (fuera del patrón) nunca se reporta"
+  && ok "FIX-5: una rama vieja sin integrar se reporta AUNQUE no matchee ningún patrón de fan-out" \
+  || bad "FIX-5: feat/normal-vieja (28d, sin integrar) no se reportó — el detector sigue inerte fuera de worktree-agent-*"
+# el patrón sigue disponible como FILTRO OPCIONAL (control de la otra dirección). El stamp de dedupe se
+# respalda y se restaura: sin eso, vaciarlo aquí haría que la corrida siguiente re-reportara y el aserto de
+# idempotencia de más abajo fallara por culpa del andamio, no del código.
+cp "$LR3REPO/.claude/memory/.ramas-huerfanas-estado" "$LR3ROOT/estado.bak" 2>/dev/null
+: > "$LR3REPO/.claude/memory/.ramas-huerfanas-estado"
+lr3filt="$(cd "$LR3REPO" && CLAUDE_INTEGRACION_BASE=develop LIMPIAR_RAMAS_PATRON_HUERFANA='worktree-agent-*' bash "$HOOKS/limpiar-ramas.sh" --dry-run --no-fetch 2>&1)"
+printf '%s' "$lr3filt" | grep -q 'REPRESADA.*feat/normal-vieja' \
+  && bad "FIX-5: con el filtro de patrón puesto, feat/normal-vieja no debía reportarse" \
+  || ok "FIX-5: LIMPIAR_RAMAS_PATRON_HUERFANA sigue acotando el reporte cuando se pide (filtro opcional)"
+printf '%s' "$lr3filt" | grep -q 'REPRESADA.*worktree-agent-oldstale' \
+  && ok "FIX-5: y con el filtro puesto SÍ sigue reportando lo que matchea (el filtro no rompe nada)" \
+  || bad "FIX-5: con el filtro puesto dejó de reportar hasta lo que matchea; got: $lr3filt"
+cp "$LR3ROOT/estado.bak" "$LR3REPO/.claude/memory/.ramas-huerfanas-estado" 2>/dev/null
 n_lineas_antes="$(grep -c 'worktree-agent-oldstale' "$LR3REPO/.claude/memory/bitacora.md")"
 cd "$LR3REPO" && CLAUDE_INTEGRACION_BASE=develop bash "$HOOKS/limpiar-ramas.sh" --no-fetch >/dev/null 2>&1
 n_lineas_despues="$(grep -c 'worktree-agent-oldstale' "$LR3REPO/.claude/memory/bitacora.md")"
@@ -2797,10 +2814,72 @@ n_lineas_despues="$(grep -c 'worktree-agent-oldstale' "$LR3REPO/.claude/memory/b
   && ok "b3c3: dedupe — una 2ª corrida NO repite el aviso de la misma punta" || bad "b3c3: repitió el aviso (spam de bitácora); antes=$n_lineas_antes después=$n_lineas_despues"
 # patrón/edad configurables
 lr3cfg="$(cd "$LR3REPO" && CLAUDE_INTEGRACION_BASE=develop LIMPIAR_RAMAS_DIAS_HUERFANA=999 bash "$HOOKS/limpiar-ramas.sh" --dry-run --no-fetch 2>&1)"
-printf '%s' "$lr3cfg" | grep -q 'HUÉRFANA' \
+printf '%s' "$lr3cfg" | grep -q 'REPRESADA' \
   && bad "b3c3: LIMPIAR_RAMAS_DIAS_HUERFANA=999 debía silenciar el aviso (nada es tan vieja)" \
   || ok "b3c3: LIMPIAR_RAMAS_DIAS_HUERFANA configurable (umbral alto → sin avisos)"
 rm -rf "$LR3ROOT"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (b3c5) FIX-5 / A-4: DETECTOR DE REPRESA — la rama que envejece sin integrarse se reporta CON el estado de su PR =="
+# Dictamen higiene de ramas 2026-09-17, A-4: recorriendo el ciclo actor por actor, dos transiciones no las
+# vigila NADIE — "rama pusheada → PR abierto" (la rama se queda en origin sin PR y nadie lo nota) y
+# "PR cerrado SIN mergear" (bz_pr_mergeado solo mira --state merged, así que un PR CLOSED es
+# indistinguible de "sin PR" y se conserva mudo para siempre). Aquí no falló la escoba: falló el CIERRE, y
+# barrer mejor no abre un PR. El estado del PR se inyecta con CLAUDE_BZ_STCACHE (sin red).
+A4ROOT2="$(mktemp -d "${TMPDIR:-/tmp}/brain-a4r.XXXXXX")"; A4REPO2="$A4ROOT2/repo"; mkdir -p "$A4REPO2/.claude/memory"
+printf '# bitacora\n' > "$A4REPO2/.claude/memory/bitacora.md"
+git -C "$A4REPO2" init -q >/dev/null 2>&1
+git -C "$A4REPO2" symbolic-ref HEAD refs/heads/develop >/dev/null 2>&1
+git -C "$A4REPO2" config user.email t@t >/dev/null 2>&1; git -C "$A4REPO2" config user.name tester >/dev/null 2>&1
+printf 'base\n' > "$A4REPO2/base.txt"; git -C "$A4REPO2" add base.txt >/dev/null 2>&1; git -C "$A4REPO2" commit -qm base >/dev/null 2>&1
+OLDTS2=$(( $(date +%s) - 20*86400 ))
+# tres ramas de 20 días: una INTEGRADA (se barre), una SIN PR y otra con PR CERRADO sin merge (se reportan)
+for _b in integrada sinpr cerrada; do
+  git -C "$A4REPO2" checkout -q -b "feat/$_b" develop >/dev/null 2>&1
+  printf '%s\n' "$_b" > "$A4REPO2/$_b.txt"; git -C "$A4REPO2" add "$_b.txt" >/dev/null 2>&1
+  GIT_COMMITTER_DATE="@$OLDTS2" git -C "$A4REPO2" commit -q -m "trabajo $_b" --date "@$OLDTS2" >/dev/null 2>&1
+done
+git -C "$A4REPO2" checkout -q develop >/dev/null 2>&1
+git -C "$A4REPO2" merge --squash feat/integrada >/dev/null 2>&1
+git -C "$A4REPO2" commit -qm "squash de feat/integrada
+
+Rama: feat/integrada" >/dev/null 2>&1                         # señal (e): integrada de verdad
+# mapa de estados inyectado (rama<TAB>ESTADO<TAB>id), como lo devolvería el foro
+A4ST="$A4ROOT2/estados.tsv"
+printf 'feat/cerrada\tCLOSED\t77\n' > "$A4ST"                 # feat/sinpr NO aparece → "SIN PR"
+a4out="$(cd "$A4REPO2" && CLAUDE_INTEGRACION_BASE=develop CLAUDE_BZ_STCACHE="$A4ST" bash "$HOOKS/limpiar-ramas.sh" --no-fetch 2>&1)"
+# la integrada se barre; las otras dos NO se borran y AMBAS generan línea de bitácora con su motivo
+! git -C "$A4REPO2" rev-parse --verify -q refs/heads/feat/integrada >/dev/null 2>&1 \
+  && ok "FIX-5: la rama vieja pero INTEGRADA se barre (el detector no estorba al barrido)" \
+  || bad "FIX-5: no barrió feat/integrada; got: $a4out"
+{ git -C "$A4REPO2" rev-parse --verify -q refs/heads/feat/sinpr >/dev/null 2>&1 \
+  && git -C "$A4REPO2" rev-parse --verify -q refs/heads/feat/cerrada >/dev/null 2>&1; } \
+  && ok "FIX-5: las represadas NO se borran (el detector solo reporta, jamás borra)" \
+  || bad "FIX-5: BORRÓ una rama represada — pérdida de datos"
+grep -q 'rama represada.*feat/sinpr.*SIN PR' "$A4REPO2/.claude/memory/bitacora.md" \
+  && ok "FIX-5: la rama pusheada SIN PR se reporta y el reporte dice 'SIN PR'" \
+  || bad "FIX-5: no reportó feat/sinpr con su motivo; bitácora: $(cat "$A4REPO2/.claude/memory/bitacora.md")"
+grep -q 'rama represada.*feat/cerrada.*CERRADO sin merge' "$A4REPO2/.claude/memory/bitacora.md" \
+  && ok "FIX-5: el PR CERRADO SIN MERGEAR se distingue de 'sin PR' (antes: indistinguibles, ambos mudos)" \
+  || bad "FIX-5: no distinguió el PR cerrado; bitácora: $(cat "$A4REPO2/.claude/memory/bitacora.md")"
+grep -q 'feat/integrada' "$A4REPO2/.claude/memory/bitacora.md" \
+  && bad "FIX-5: reportó como represada una rama que SÍ estaba integrada (ruido)" \
+  || ok "FIX-5: la integrada no ensucia el reporte de represas"
+# idempotencia: una 2ª corrida no duplica
+n_a4=$(grep -c 'rama represada' "$A4REPO2/.claude/memory/bitacora.md")
+( cd "$A4REPO2" && CLAUDE_INTEGRACION_BASE=develop CLAUDE_BZ_STCACHE="$A4ST" bash "$HOOKS/limpiar-ramas.sh" --no-fetch >/dev/null 2>&1 )
+n_a4b=$(grep -c 'rama represada' "$A4REPO2/.claude/memory/bitacora.md")
+[ "$n_a4" = "$n_a4b" ] && ok "FIX-5: dedupe por punta — la 2ª corrida no repite el aviso ($n_a4 líneas)" \
+  || bad "FIX-5: duplicó el reporte ($n_a4 → $n_a4b)"
+# sin foro que consultar, el reporte lo DICE en vez de inventar un estado
+: > "$A4REPO2/.claude/memory/.ramas-huerfanas-estado"
+: > "$A4REPO2/.claude/memory/bitacora.md"
+a4nd="$(cd "$A4REPO2" && CLAUDE_INTEGRACION_BASE=develop PATH=/usr/bin:/bin bash "$HOOKS/limpiar-ramas.sh" --dry-run --no-fetch 2>&1)"
+printf '%s' "$a4nd" | grep -q 'estado del PR desconocido' \
+  && ok "FIX-5: sin gh/glab, el reporte DICE que no pudo consultar el foro (no inventa 'SIN PR')" \
+  || bad "FIX-5: afirmó un estado de PR que no pudo consultar; got: $a4nd"
+rm -rf "$A4ROOT2"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
@@ -3055,6 +3134,54 @@ printf '%s' "$c3out" | grep -q 'SUCIO' && ok "b3l: C-3 — reportó SUCIO en vez
 [ -f "$C3ROOT/wt-uno/.env" ] && ok "b3l: C-3 — el .env untracked SOBREVIVE" || bad "b3l: C-3 REGRESIÓN — se perdió el .env untracked"
 [ -f "$C3ROOT/wt-uno/borrador.md" ] && ok "b3l: C-3 — el borrador untracked SOBREVIVE" || bad "b3l: C-3 REGRESIÓN — se perdió el borrador"
 rm -rf "$C3ROOT"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (b3l2) FIX-6 / A-1: un worktree ZOMBIE SUCIO deja PENDIENTE en la bitácora (antes: congelaba la rama en silencio) =="
+# Dictamen higiene de ramas 2026-09-17, A-1: conservar el árbol sucio es CORRECTO (C-3), pero solo la rama
+# `DEJADO (vivo)` alimentaba $pend — el sucio no anotaba nada. Cadena completa: worktree retenido → la rama
+# sale como "retenida por worktree" en limpiar-ramas → nunca se barre, y SIN registro en ningún lado. Sin
+# envejecimiento ni escalación: un solo archivo untracked la congela indefinidamente. Medido en el repo
+# real: 2 de los 8 worktrees que retenían ramas ya integradas estaban sucios — esas dos se congelarían
+# aunque la causa raíz del barrido se arreglara.
+A1ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-a1s.XXXXXX")"; A1REPO="$A1ROOT/repo"; mkdir -p "$A1REPO/.claude/memory"
+git -C "$A1REPO" init -q >/dev/null 2>&1
+git -C "$A1REPO" symbolic-ref HEAD refs/heads/develop >/dev/null 2>&1
+git -C "$A1REPO" config user.email t@t >/dev/null 2>&1; git -C "$A1REPO" config user.name tester >/dev/null 2>&1
+printf 'base\n' > "$A1REPO/a.txt"; git -C "$A1REPO" add a.txt >/dev/null 2>&1; git -C "$A1REPO" commit -qm base >/dev/null 2>&1
+git -C "$A1REPO" branch feat/integrada develop >/dev/null 2>&1      # ancestro de develop → zombie por (a)
+git -C "$A1REPO" worktree add -q "$A1ROOT/wt-sucio" feat/integrada >/dev/null 2>&1
+printf 'analisis a medias\n' > "$A1ROOT/wt-sucio/borrador.md"        # UN archivo untracked: eso basta
+: > "$A1REPO/.claude/memory/bitacora.md"
+# teeth: la rama ES zombie y el árbol SÍ está sucio (si no, el caso de A-1 no se ejercita)
+git -C "$A1REPO" merge-base --is-ancestor feat/integrada develop 2>/dev/null \
+  && ok "b3l2(teeth): feat/integrada ES zombie (ancestro de develop)" || bad "b3l2(teeth): test mal armado"
+[ -n "$(git -C "$A1ROOT/wt-sucio" status --porcelain 2>/dev/null)" ] \
+  && ok "b3l2(teeth): el worktree zombie está SUCIO (1 untracked)" || bad "b3l2(teeth): test mal armado, árbol limpio"
+a1out="$(cd "$A1REPO" && bash "$HOOKS/limpiar-worktrees.sh" 2>&1)"
+printf '%s' "$a1out" | grep -q 'SUCIO' && ok "b3l2: sigue reportando SUCIO y conservando el árbol (C-3 intacto)" || bad "b3l2: regresión de C-3; got: $a1out"
+[ -f "$A1ROOT/wt-sucio/borrador.md" ] && ok "b3l2: el untracked SOBREVIVE (nunca se fuerza)" || bad "b3l2: se destruyó trabajo sin commitear"
+grep -q 'wt-sucio' "$A1REPO/.claude/memory/bitacora.md" 2>/dev/null \
+  && ok "FIX-6: el worktree zombie SUCIO deja PENDIENTE en la bitácora (deja de congelar la rama en silencio)" \
+  || bad "FIX-6: no quedó rastro del worktree sucio en la bitácora — la rama se congela sin que nadie se entere"
+grep -q 'CONGELA esa rama' "$A1REPO/.claude/memory/bitacora.md" 2>/dev/null \
+  && ok "FIX-6: el pendiente DICE la consecuencia (mientras siga sucio, la rama no se barre)" \
+  || bad "FIX-6: el pendiente no explica por qué importa; got: $(cat "$A1REPO/.claude/memory/bitacora.md")"
+# idempotencia: 3 corridas más NO duplican el pendiente (mismo dedupe que A-4 para los vivos)
+for i in 1 2 3; do ( cd "$A1REPO" && bash "$HOOKS/limpiar-worktrees.sh" >/dev/null 2>&1 ); done
+a1n=$(grep -c 'wt-sucio' "$A1REPO/.claude/memory/bitacora.md" 2>/dev/null || echo 0)
+[ "$a1n" = 1 ] && ok "FIX-6: 4 corridas → EXACTAMENTE 1 pendiente (idempotente, como el de los vivos)" \
+  || bad "FIX-6: el pendiente del sucio se re-appendeó ($a1n veces)"
+# CONTROL de la otra dirección: un worktree zombie LIMPIO se borra y NO deja pendiente (si el fix
+# anotara siempre, este aserto lo delataría).
+git -C "$A1REPO" branch feat/limpia develop >/dev/null 2>&1
+git -C "$A1REPO" worktree add -q "$A1ROOT/wt-limpio" feat/limpia >/dev/null 2>&1
+( cd "$A1REPO" && bash "$HOOKS/limpiar-worktrees.sh" >/dev/null 2>&1 )
+[ ! -d "$A1ROOT/wt-limpio" ] && ok "FIX-6 control: el worktree zombie LIMPIO se sigue borrando" || bad "FIX-6 control: dejó de borrar worktrees zombie limpios"
+grep -q 'wt-limpio' "$A1REPO/.claude/memory/bitacora.md" 2>/dev/null \
+  && bad "FIX-6 control: anotó pendiente de un worktree que SÍ se borró (ruido)" \
+  || ok "FIX-6 control: el worktree borrado NO deja pendiente (solo el que de verdad quedó retenido)"
+rm -rf "$A1ROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
