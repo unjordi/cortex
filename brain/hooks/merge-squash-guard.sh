@@ -107,6 +107,37 @@ if printf '%s' "$_cmd_sqflag" | grep -qE "$SQUASH_RE"; then
   # (cache-hit típico → sin llamada de red extra en el caso develop).
   _dest_sq=$(acg_destino_de_mr "$cmd" "$pcwd")
   [ "$_dest_sq" = "develop" ] || exit 0
+  _rehaz=$(_rehaz_sugerido "$cmd")
+  # ── A-2 (dictamen higiene de ramas 2026-09-17): EXIGE borrar la rama de origen al integrar a develop.
+  # Nadie lo hacía cumplir: `--delete-branch` solo aparecía dentro de `_rehaz_sugerido()`, que se emite
+  # ÚNICAMENTE en el deny por falta de squash — un merge CORRECTO con squash pasaba sin que nadie
+  # mencionara la rama. Y las dos recetas del recetario divergían justo en ese flag: la de glab traía
+  # `--remove-source-branch` y la de gh no. Esa asimetría ES la población de remotas huérfanas: PRs
+  # mergeados con su rama viva en `origin`, que luego nadie barre. Es disciplina donde hacía falta
+  # mecanismo, y aquí el destino YA está resuelto (sin red extra) → FP cercano a cero. Se evalúa sobre el
+  # cmd DESPOJADO de comillas (H6): una MENCIÓN entrecomillada del flag no cuenta como el flag.
+  _cmd_del=$(acg_despoja_comillas "$cmd")
+  if printf '%s' "$_cmd_del" | grep -qE 'gh(\.exe)?[[:space:]]+pr'; then
+    _flag_del='(--delete-branch([[:space:]]|=|$)|(^|[[:space:]])-d([[:space:]]|$))'
+    _flag_nom='--delete-branch'
+  else
+    _flag_del='(--remove-source-branch([[:space:]]|=|$)|(^|[[:space:]])-d([[:space:]]|$))'
+    _flag_nom='--remove-source-branch'
+  fi
+  if ! printf '%s' "$_cmd_del" | grep -qE "$_flag_del"; then
+    jq -n --arg r "FLUJO DE GIT (ley interna): al integrar a develop, la rama de origen se BORRA en el mismo acto — falta $_flag_nom. Sin él la rama queda colgando en el remoto y nadie la vuelve a mirar: es de ahí que sale la acumulación de ramas viejas en origin. Rehaz el merge con: $_rehaz  — (a main/release y a tus ramas personales no se te exige nada de esto)." \
+      '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
+    exit 0
+  fi
+  # ── A-3: TRAZABILIDAD que no depende de la FORMA del comando. Si el resumen vive en un archivo que SÍ
+  # podemos leer (`--body-file`, o el `$(cat …)` que este mismo guard recomienda), se le exige la traza
+  # rama→commit igual que al mensaje tipeado inline. Lo que no se puede leer sigue pasando sin validar.
+  _cuerpo=$(acg_cuerpo_resoluble "$cmd" "$pcwd")
+  if [ -n "$_cuerpo" ] && acg_msg_falta_traza "$_cuerpo"; then
+    jq -n --arg r "FLUJO DE GIT (ley interna): al resumen del squash le falta TRAZABILIDAD rama→commit: incluye \"Rama: <feat/…>\" y \"MR/PR: !<id>\" (o #<id>). El squash borra el merge-commit de la plataforma que traía el #id → sin esto, 'git log develop' no dice de qué ramita salió el commit. (El resumen se leyó del archivo que cita el comando: la exigencia ya no depende de si lo tipeaste inline o lo pasaste por archivo.)" \
+      '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
+    exit 0
+  fi
   # ¿De dónde sale el subject? LITERAL (flag en el comando → verifica directo) · AUTO (título del MR/PR →
   # verifica vía API) · UNVERIFICABLE ($()/variable/--fill/--body-file → no verificable en PreToolUse → PASA).
   _clase=$(acg_msg_clasificar "$cmd")
@@ -115,7 +146,6 @@ if printf '%s' "$_cmd_sqflag" | grep -qE "$SQUASH_RE"; then
     LITERAL)       _msg=$(acg_msg_valor "$cmd") ;;
     *)             _msg=$(acg_mensaje_de_mr "$cmd" "$pcwd"); [ -z "$_msg" ] && exit 0 ;;   # API no resolvió → FAIL-OPEN
   esac
-  _rehaz=$(_rehaz_sugerido "$cmd")
   # ── DENY (piso duro): se calcula UNA razón; cualquier condición dispara el bloqueo. Orden de prioridad
   #    de la razón citada: piso-anti-basura → editorialización-dura → (solo LITERAL) profundidad → trazabilidad.
   _deny=""

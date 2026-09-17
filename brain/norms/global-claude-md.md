@@ -240,6 +240,24 @@ vuelve a tocar base con push.
    chore/docs/memoria. Si no dijo "release" o "a main", **te quedas en develop.** El release a main por
    CLI exige autorización SUPER explícita (lo hace cumplir `confirmar-merge-develop`); un `mergea`
    genérico NO lo autoriza.
+7. **Al integrar, la rama de origen SE BORRA en el mismo acto** — el flag `--delete-branch` de `gh` es el
+   `--remove-source-branch` de `glab` (mismo efecto, distinto nombre; van en el comando de integración).
+   Sin él la rama queda colgando en el remoto y nadie la vuelve a mirar: así se acumulan las ramas viejas
+   en `origin`. Lo exige `merge-squash-guard` al integrar a `develop`. La ramita LOCAL la barre
+   `limpiar-ramas.sh`.
+
+### En un flujo con SQUASH, `git cherry` y `git branch -d` MIENTEN sobre qué está integrado (norma dura)
+El squash colapsa los N commits de la ramita en **un commit nuevo**: la rama original **no queda de
+ancestro** de la base y sus commits **no tienen equivalente por hash**. Por eso `git branch -d`,
+`git branch --merged` y el `+` de `git cherry` dan un **falso "no integrada"** sobre trabajo que SÍ entró.
+Para responder *"¿esta rama ya entró?"* hay exactamente dos métodos válidos:
+- **`limpiar-ramas.sh`** — decide con señales POSITIVAS squash-safe (ancestro · la línea `Rama: <rama>` en
+  el mensaje del squash · el PR/MR mergeado en el foro · equivalencia de parche sin ningún `+`).
+- **el ESTADO del PR/MR en el foro** — `gh pr view --json state` / `glab mr view`: `MERGED` es la verdad.
+
+`git cherry` sirve SOLO en su positivo (ningún `+` ⇒ los parches ya están en la base); su negativo no
+prueba nada bajo un squash multi-commit. Cualquier test o script que decida "integrada" con `git cherry`
+en negativo, con `git branch -d` o con `git branch --merged` **tiene el bug**.
 
 **En la práctica** (mismo flujo, dos CLIs que mapean 1:1 — un repo GitLab solo necesita saber "usa la
 columna `glab`", NO re-documentar la política en una skill propia):
@@ -374,8 +392,9 @@ CURADAS (Mapa/Cabos) se editan, y esas rara vez. El mismo dato NO se escribe en 
 TodoWrite es SCRATCH de sesión — el backlog DURABLE es estado-proyecto.md. Lo recuerda el hook
 `delegacion-reporte` (PostToolUse/Task); los worktrees zombies los barre `limpiar-worktrees.sh` (borra
 los de ramas mergeadas, deja los vivos anotando su pendiente en la bitácora) y las **ramas locales** ya
-integradas las barre `limpiar-ramas.sh` (antídoto a la acumulación de ramitas squasheadas: el squash
-rompe `git branch -d` y `fetch --prune` no toca locales; conserva el trabajo vivo y las protegidas).
+integradas las barre `limpiar-ramas.sh` (antídoto a la acumulación de ramitas squasheadas: `git branch -d`
+miente bajo squash —ver la norma de arriba— y `fetch --prune` no toca locales; conserva el trabajo vivo y
+las protegidas).
 **Señal de que te desviaste:** el usuario tuvo que PEDIRTE que actualizaras bitácora/estado, o se
 acumularon worktrees/ramas zombies.
 

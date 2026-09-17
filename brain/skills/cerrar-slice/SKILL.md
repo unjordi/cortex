@@ -107,10 +107,20 @@ glab mr merge <id> --squash --squash-message "$(cat resumen.md)" \
 git push -u origin feat/<tema>
 gh pr create --base develop --fill
 gh pr checks <id> --watch                                        # espera a que los checks pasen
-gh pr merge <id> --squash                          # SIN --auto: merge YA, no encolado
+gh pr merge <id> --squash --delete-branch \
+  --subject "…" --body "$(cat resumen.md)"         # SIN --auto: merge YA, no encolado
 
-git checkout develop && git pull --ff-only && git branch -d feat/<tema>
+git checkout develop && git pull --ff-only
+bash ~/.claude/hooks/limpiar-ramas.sh              # barre la ramita local (y su remota si quedó)
 ```
+
+**Las dos recetas son GEMELAS: `--delete-branch` de `gh` es `--remove-source-branch` de `glab`.** Sin ese
+flag la rama queda colgando en el remoto tras el squash y nadie la vuelve a mirar — de ahí sale la
+acumulación de ramas viejas en `origin`. Lo exige `merge-squash-guard` en el merge a `develop`.
+
+**Para borrar la ramita LOCAL usa `limpiar-ramas.sh`, NO `git branch -d`.** En un flujo que integra con
+SQUASH, `git branch -d` **rehúsa** ("not fully merged"): el squash crea un commit NUEVO, así que la rama
+original no queda de ancestro. Es el método que el mecanismo existe para suplir — ver la regla de abajo.
 
 ### Por qué SIN `--auto-merge` / `--auto` (no es "GitHub auto-merge del PR")
 `--auto-merge` en `glab` arma **Merge When Pipeline Succeeds (MWPS)**: el merge **NO** ocurre al correr

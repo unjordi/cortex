@@ -679,6 +679,34 @@ acg_msg_es_superficial() {   # $1=mensaje → 0=superficial(bloquear) · 1=ok
 # "Rama: refactor/sustrato - …"/"test/…"/"perf/…"/"ci/…" SÍ traen la rama (trazabilidad real) pero el
 # mensaje decía "falta TRAZABILIDAD" sobre un resumen que la tenía. Ampliado a los prefijos de
 # conventional-commit de uso real en este repo (esta misma rama trae commits `test(brain):`).
+# acg_cuerpo_resoluble(cmd, payload_cwd) → TEXTO del cuerpo/mensaje del squash cuando PROVIENE DE UN
+# ARCHIVO LEGIBLE; vacío si no se puede resolver (fail-open estricto: lo que no se puede leer, no se juzga).
+#
+# A-3 (dictamen higiene de ramas 2026-09-17): la exigencia de trazabilidad `Rama:`/`MR:` solo se evaluaba
+# sobre la clase LITERAL (mensaje tipeado inline). `--body-file`, `$(cat …)`, variables y `--fill` caen a
+# UNVERIFICABLE → exit 0, cero validación. Y el comando que el propio guard SUGIERE usa `--body "$(cat
+# resumen.md)"`: la forma recomendada por el guard era exactamente la que escapaba a su propio chequeo.
+# Medido sobre las ramas integradas del repo: solo el 38% llevaba la línea `Rama:`. Consecuencia en
+# cadena: sin esa señal LOCAL y offline, detectar la integración depende de gh/glab, ausentes del PATH de
+# launchd — y varias ramas quedan indetectables para siempre. Aquí se resuelven de forma determinista los
+# dos casos que son el grueso del uso real; todo lo demás (una variable, una sustitución arbitraria, un
+# archivo ilegible) sigue pasando sin validar.
+acg_cuerpo_resoluble() {   # $1=cmd(RAW)  $2=cwd del payload (base de las rutas relativas)
+  local raw pcwd="${2:-}" ruta
+  raw=$(printf '%s' "$1" | tr '\n' '\001')
+  # (a) $(cat <ruta>) en cualquier flag de mensaje — la forma que el propio guard recomienda. Se exige una
+  #     sustitución SIMPLE: sin pipes, `;`, `&` ni un segundo comando dentro (si los hay, no se resuelve).
+  ruta=$(printf '%s' "$raw" | sed -nE 's/.*\$\(cat[[:space:]]+([^)|;&[:space:]]+)[[:space:]]*\).*/\1/p' | head -1)
+  # (b) --body-file / -F <ruta> (gh): el cuerpo vive en un archivo, punto.
+  [ -n "$ruta" ] || ruta=$(printf '%s' "$raw" | sed -nE 's/.*(^|[[:space:]])(--body-file|-F)[[:space:]=]+("[^"]*"|[^[:space:]]+).*/\3/p' | head -1)
+  [ -n "$ruta" ] || { printf ''; return 0; }
+  ruta="${ruta#\"}"; ruta="${ruta%\"}"; ruta="${ruta#\'}"; ruta="${ruta%\'}"
+  ruta="$(acg_expande_home "$ruta")"
+  case "$ruta" in /*) : ;; *) [ -n "$pcwd" ] && ruta="$pcwd/$ruta" ;; esac
+  { [ -f "$ruta" ] && [ -r "$ruta" ]; } || { printf ''; return 0; }
+  cat "$ruta" 2>/dev/null
+}
+
 acg_msg_falta_traza() {   # $1=mensaje → 0=falta traza(bloquear) · 1=trae traza(pasar)
   printf '%s' "$1" | grep -qE '(^|[^A-Za-z0-9/])(feat|fix|chore|hotfix|docs|refactor|test|perf|ci|build|style|audit|revert)/[A-Za-z0-9._-]' && return 1
   printf '%s' "$1" | grep -qE '[!#][0-9]+' && return 1
