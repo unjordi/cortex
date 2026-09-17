@@ -117,12 +117,14 @@ git push -u origin feat/<tema>       # push SOLO a la ramita (idéntico en ambos
 | paso | GitHub (`gh`) | GitLab (`glab`) |
 |------|---------------|-----------------|
 | abrir PR/MR | `gh pr create --base develop --fill` | `glab mr create --target-branch develop --fill` |
-| mergear (auto-merge + squash) | `gh pr merge --squash --auto` | `glab mr merge --squash --auto-merge` |
+| mergear a develop (INMEDIATO + squash) | `gh pr merge --squash` | `glab mr merge --squash` |
 
-- Diffs de flag: `--base` ↔ `--target-branch`, `--auto` ↔ `--auto-merge`, PR ↔ MR; el `git push` es idéntico. Recetario completo (con `--squash-message` curado y borrado de rama): skill `cerrar-slice`.
+- **A `develop`/`main` NUNCA `--auto`/`--auto-merge`:** encolan el merge (Merge-When-Pipeline-Succeeds) para dispararse solos SIN testigo y rompen la garantía de `confirmar-merge-develop` (que exige tu OK en el INSTANTE del merge, y protege los releases cableados por CI/CD). El merge a develop es DELIBERADO e INMEDIATO: espera pipeline verde y mergea YA. `--auto-merge` solo es cómodo en tu mini-develop (ramita → mini, que no pasa por candado).
+- Diffs de flag: `--base` ↔ `--target-branch`, PR ↔ MR; el `git push` es idéntico. La receta canónica completa (esperar el pipeline verde, el `--squash-message` curado con trazabilidad rama→commit, el borrado de rama y el porqué del SIN `--auto`) vive en `cerrar-slice §4` — no la dupliques.
 - Enforced por: ramas protegidas server-side + `git-branch-guard`, `merge-squash-guard` y `confirmar-merge-develop`.
 - El gate NO es "no puedes": con tu OK EXPLÍCITO, `confirmar-merge-develop` deja que Claude mergee `develop` por CLI (con `--squash`), SIN clics en la web.
 - Repos SIN los hooks del template (p. ej. uno personal): Claude cae en el clasificador auto-mode genérico → más fricción en git. Al tocar uno así: siémbrale `develop` + los hooks del template, o documenta qué acciones esperar bloqueadas.
+- **Bajo SQUASH, `git cherry`/`git branch -d`/`git branch --merged` MIENTEN en su NEGATIVO:** el squash colapsa los N commits de la ramita en un commit nuevo → la rama no queda de ancestro y sus commits no tienen equivalente por hash, así que dan un falso "no integrada" sobre trabajo que SÍ entró. `git cherry` vale SOLO en su POSITIVO (ningún `+` ⇒ los parches ya están en la base, residuo squash-safe); su negativo no prueba nada. Para "¿ya entró esta rama?" hay dos métodos válidos: `limpiar-ramas.sh` (señales POSITIVAS squash-safe — ancestro · la línea `Rama: <rama>` del squash · el PR/MR mergeado · equivalencia de parche sin `+`) o el ESTADO del PR/MR en el foro (`gh pr view --json state` / `glab mr view`: `MERGED` es la verdad).
 
 ## Modelo MINI-DEVELOP (iterar sin fricción — INSTITUCIONAL en repos compartidos)
 - El día a día vive en tu rama personal de integración ("mini-develop"), convención `Develop<Usuario>` (p. ej. `DevelopAna`), sacada de `develop`. Ahí iteras horas/días sin permiso: ramitas → tu mini con `git merge` LOCAL o MR con auto-merge (ninguno pasa por candado).
