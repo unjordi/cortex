@@ -1,0 +1,151 @@
+// 00 — HOY (estado ACTUAL, no propuesta): la divergencia MEDIDA entre los tres consumidores del
+// subsistema de sesiones-master.  ·  FUENTE editable (.dot)
+// Render:  dot -Tsvg 00-hoy-divergencia-medida.dot -o 00-hoy-divergencia-medida.svg
+// ⚠️ ESTE CHART ES EL **HOY**. La propuesta vive en 01/02/03 de esta misma carpeta.
+// Construido 2026-09-16 LEYENDO el código real:
+//   brain/hooks/exportar-sesion-master.sh · brain/hooks/checkpoint-mecanico.sh
+//   brain/skills/reubicar-master/reubicar-master.sh · brain/sesiones-master/seed.sh · bin/session-lib.js
+// Cada nodo 🚧/🔴 cita archivo:línea. Documento que lo explica: docs/requerimientos-unificar-tooling-sesiones.md
+digraph hoy_divergencia {
+  graph [bgcolor="#1b1712", rankdir=TB, fontname="Helvetica", splines=true,
+         nodesep=0.35, ranksep=0.55, pad=0.25, compound=true];
+  node  [fontname="Helvetica", fontsize=12, fontcolor="#f2ede6", shape=box,
+         style="rounded,filled", fillcolor="#2b2b2b", color="#8a8a8a", penwidth=1.5];
+  edge  [color="#d97757", fontname="Helvetica", fontsize=10, fontcolor="#cfc8c0", penwidth=1.4];
+
+  // ─────────────────────────── LEYENDA (regla dura del skill diagramar) ───────────────────────────
+  // >>> LEYENDA-ARBOL (generado por gen-leyenda-arbol.sh desde el árbol del README — NO editar a mano) >>>
+  subgraph cluster_leyenda {
+    label="LEYENDA — árbol completo del cerebro (fuente: README.md)"; labeljust="l"; fontname="Times"; fontsize=14; fontcolor="#5fa89e";
+    color="#5fa89e"; penwidth=1.6; style="rounded"; bgcolor="#1b1712";
+    LEY_ARBOL [shape=none, margin=0, label=<
+      <table border="0" cellborder="1" cellspacing="0" cellpadding="4" color="#5fa89e" bgcolor="#1b1712">
+        <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>🔒 Hooks Forzosos</b></font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🚧 git-branch-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">push/merge a develop·main → denegado</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔗 merge-squash-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">MR a develop sin --squash → denegado</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🕵️ secret-scan</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">commit/push con un secreto → denegado</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">💸 delegacion-gate</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">delegar al llegar al 90% de tu ventana 5h → pide tu OK</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🛑 limite-gasto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">sin ventana 5h Y sin overage (ambos agotados) → freno duro</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">✋ confirmar-merge-develop</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">merge sin tu OK → denegado</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">✅ dod-verificar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cierre sin evidencia/OK → denegado; claim visual a ciegas (sin ver la pantalla) también</font></td></tr>
+        <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>🔔 Automático</b></font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📊 recordar-dashboard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">en el push recuerda dashboard + doc=realidad (README/docs) — cierre del slice</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🖥️ entorno-maquina-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">commit de algo machine-specific (aliases/rutas de $HOME/Rosetta/entorno-maquina.md) al .claude/memory/ del repo → avisa</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🚧 no-bypass-deploy</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">correr el instalador/deploy a mano (install-brain.sh/deploy.sh) en vez de la herramienta oficial (el widget) → avisa (fail-safe: no --dry-run/--help/CI)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌳 proteger-arbol</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">git destructivo que orfanaría commits sin pushear → avisa (fan-out: usa worktree aislado)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🛡️ proteger-fuente-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">editar la copia INSTALADA de un hook/skill que tiene fuente en el clon → avisa (se perdería en el próximo sync) (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧹 barrer-ramas</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al abrir sesión / al punto del merge barre en 2º plano ramas locales + remota huérfana + worktrees ya integrados (zombie squash-safe; throttle 24h) (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">💾 exportar-sesion-master</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">auto-export de las sesiones *-master a ~/.claude-sessions (o Drive); detached, sobrevive el cleanup de 30 días (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🗂️ checkpoint-mecanico</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">PreCompact: extractor mecánico (streaming, 0 tokens) escribe el andamio del TRAMO VIVO a hilo-mental-actual.andamio.md (GLOBAL; el skill lo regenera con --self --ensure)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📝 delegacion-registrar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">materializa el "pregunta una sola vez"</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📮 delegacion-reporte</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al terminar un agente: recuerda registrar avance + limpiar su worktree</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎼 recordar-orquestar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">N mutaciones (edits/commits) en serie SIN delegar → sugiere fan-out (advisory, no bloquea; resetea al delegar) (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧵 rehidratar-hilo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta hilo-mental-actual.md + el andamio (si es más fresco) al abrir/retomar/compactar (GLOBAL) — gate de frescura + edad</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📈 aviso-contexto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reporta el watermark de contexto CRUDO (tokens · ventana · %); sin bandas ni veredicto — /context manda (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧬 aviso-drift-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">repo brained atrás de la fuente única (hooks/libs Y skills) → en tu mini-develop se AUTO-SINCRONIZA (apply+commit+push); en otra rama, avisa. ADEMÁS detecta el drift de la copia GLOBAL de skills (~/.claude/skills vs la fuente; warn-only, throttle propio). Al moverse el cerebro, NUDGE a correr la DUPLA (suficiencia+coherencia; contra la firma si hay AGENTS.md, si no sugiere instanciarla) (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔀 hud-stale</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cambiaste de rama/proyecto → tu lista de TODOs (HUD) puede ser de la tarea anterior: avisa (advisory) que la resetees/re-siembres del estado-proyecto.md de esa rama. Señal OBJETIVA (rama/cwd), stamp per-sesión, first-sight silencioso, solo en repos con backlog (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧭 sesion-inicio</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta rama + norma + memoria al abrir</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌾 recordar-cosechar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">espejo TaskList→estado-proyecto.md (auto) + nudge: no cosechaste/no actualizaste backlog</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">⬆️ recordar-unificar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">tu mini acumuló aprendizajes sin UNIFICAR a develop → sugiere /unificar-cerebro (gemelo ↑ de aviso-drift)</font></td></tr>
+        <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>📜 Normas</b></font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎯 Definition of Done</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">verde técnico ≠ Done/Listo/Ya Quedó; exige QA o un OK explícito</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🪞 Doc &lt;= realidad</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cambió algo → su doc se actualiza en la tanda</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌿 Flujo de git</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">ramita → MR → develop; main es release-only</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">💰 Costo de delegación</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">gratis / incluido / con costo, según tu cuota</font></td></tr>
+        <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>💡 Skills</b></font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📦 cerrar-slice</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">build+tests+memoria al día + MR con resumen curado</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">💾 checkpoint</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">vuelca el HILO a memoria para compactar sin perderlo (proactivo)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🗂️ to-do</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">carga la interfaz de tareas del harness desde el backlog durable (estado-proyecto.md)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">💧 rehidratar-hilo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">relee el HILO a mano (gemelo del hook; respaldo si un update del CLI rompe el auto-rehidratado)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🐝 orquestar-fanout</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">fan-out sin niñera: asigna del backlog, auto-reporta y limpia al cerrar</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🗺️ diagramar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">diagramas por destino: .dot→dot2yed→yEd (editar a mano) · Mermaid en .md versionado (verse en GitHub)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔬 auditar-proceso-algoritmo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">auditor experto read-only (proceso industrial + algoritmo) → hallazgos priorizados; se alimenta de los flowcharts de diagramar</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🩺 auditar-coherencia-cerebro fan-out read-only sobre el PROPIO cerebro (guards+flowcharts+doc): evasiones/huecos/drift, verificado por ejecución → loop hasta converger; modo-cerebro de auditar-proceso-algoritmo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0"> </font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧪 auditar-suficiencia-operativa</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">¿ALCANZA la doc para HACER el trabajo sin romper nada ni re-investigar? tareas reales ✅/⚠️/❌ con archivo:línea + RE-auditar tras arreglar</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧬 auditor-semantico</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">¿el código HACE lo que queremos? Capa 1 checks deterministas (scripts/, gratis, en CI) + Capa 2 criterio LLM sobre invariantes-semanticos.yml; motor genérico, catálogo por-repo</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧠 consolidar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">meta-orquestador: dupla → positivar → desinflar → convergencia → cierre con la FIRMA (CLAUDE+MEMORY)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📐 canonizar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">lleva un cerebro instanciado drifteado a la firma-árbol: reprefija memorias (git mv) a dom-/dev-/ux-/qa-, reescribe CLAUDE.md+MEMORY.md, verifica 1:1 con verificar-firma-canonica.sh (detector del GATE #44)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🪶 desinflar-memorias</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">adelgaza un árbol de memorias sin perder lecciones: la narrativa se colapsa a su lección, los mitos descartados se mudan al cementerio.md (una lápida por ID content-hash 🪦#&lt;id&gt;)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🕵️ revisar-entregables-agentes</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">verifica lo que un agente ENTREGA contra la realidad; no relates su reporte como verdad</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">☀️ positivar-doc</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reescribe answer-first: 'ESTO SÍ' (método correcto) antes del 'ESTO NO'</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎓 investigar-dominio</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">ponte experto en un dominio (fan-out DOC-FIRST) → memorias durables + skills</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📚 construir-missing-manual</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">fabrica el manual/wiki de referencia exhaustivo que no existe (fan-out que investiga 1× y hornea) → artefacto consultable OFFLINE</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌾 cosechar-sesion</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cosecha local: extrae aprendizajes de tu sesión al inbox del equipo</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧩 unificar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reconciliación del cerebro del equipo: integra los aprendizajes mini→develop</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧳 claude-proyecto-autocontenido</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">el cerebro VIVE dentro del proyecto (.claude/ + symlink de slug) → viaja con él</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🚚 reubicar-master</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">muda una sesión master COMPLETA a otro repo (brain-master → cortex) sin residuo: transcript+cwd, cerebro, slug y refs atómicas</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔍 zoom-screenshot</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">recorta y amplía regiones de una captura (ffmpeg) para leer texto fino ilegible</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔩 ingenieria-inversa-gui-db-navegador</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">ingeniería inversa de app legacy GUI+BD: driving la UI vía navegador + diff de la BD antes/después = doc con evidencia real</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📕 markdown-a-pdf</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">convierte .md a PDF pulido y distribuible vía md-to-pdf (npx, sin instalar) con el gotcha de --css y QA visual real</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌙 turno-nocturno</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">protocolo del turno de noche: eco del contrato, decide-dentro-de-la-cerca, grants durables a disco</font></td></tr>
+      </table>>];
+    LEY_VAL [shape=none, margin=0, label=<
+      <table border="0" cellborder="1" cellspacing="0" cellpadding="4" color="#5fa89e" bgcolor="#1b1712">
+        <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>valencia de color</b></font></td></tr>
+        <tr><td bgcolor="#2b2b2b" border="2" color="#7fb069"><font color="#f2ede6">🟢</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">OK / pasa</font></td></tr>
+        <tr><td bgcolor="#2b2b2b" border="2" color="#e08e45"><font color="#f2ede6">🟠</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">aviso / ASK (no bloquea)</font></td></tr>
+        <tr><td bgcolor="#2b2b2b" border="2" color="#c9a227"><font color="#f2ede6">🟡</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">latente / frágil (funciona hoy, sin garantía)</font></td></tr>
+        <tr><td bgcolor="#2b2b2b" border="2" color="#c0392b"><font color="#f2ede6">🔴</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">DENY / bloqueo (guard OK)</font></td></tr>
+        <tr><td bgcolor="#2b2b2b" border="2" color="#9e9e9e"><font color="#f2ede6">🚧</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">hueco / deuda (por construir)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">⚠</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">el paso ESCRIBE git</font></td></tr>
+      </table>>];
+    LEY_ARBOL -> LEY_VAL [style=invis];
+  }
+  // <<< LEYENDA-ARBOL <<<
+
+  subgraph cluster_f0 {
+    label="00 · HOY — los mismos 5 conceptos, resueltos por separado en 3 (a veces 4) implementaciones   [ESTADO ACTUAL, no propuesta]";
+    fontname="Times"; fontsize=14; fontcolor="#5fa89e";
+    color="#5fa89e"; penwidth=1.6; style="rounded"; bgcolor="#1b1712";
+
+    // ── Los consumidores ──
+    HOOK [color="#e08e45",
+          label="🔔 exportar-sesion-master.sh   (191 líneas · tier global · Stop/SessionEnd/PreCompact)\nRESPALDO CONTINUO. Contrato: SILENCIOSO y FAIL-OPEN, siempre exit 0.\nmasters.json ×10 · customTitle ×2 · transcript ×8 · .jsonl ×2 · CLAUDE_SESSIONS_DRIVE ×4 · slug ×0 · session-lib ×0"];
+
+    REUB [color="#e08e45",
+          label="💡 reubicar-master.sh   (1331 líneas / 90,912 bytes · skill · genera un handoff ejecutable)\nLA MUDANZA. Contrato: FALLA CERRADO, punto de no retorno explícito, postcondiciones aseveradas.\nmasters.json ×23 · customTitle ×2 · transcript ×24 · .jsonl ×29 · CLAUDE_SESSIONS_DRIVE ×6 · slug ×46 · session-lib ×13"];
+
+    CKPT [color="#e08e45",
+          label="🔔 checkpoint-mecanico.sh   (88 líneas · tier global · PreCompact)\nEXTRAE SIGNIFICADO del transcript al andamio del repo.\nmasters.json ×0 · .jsonl ×0 · CLAUDE_SESSIONS_DRIVE ×0 · slug ×0   ⇒ NO es del subsistema de sesiones"];
+
+    SEED [color="#e08e45",
+          label="🔔 seed.sh   (4º consumidor, fácil de olvidar)\nSIEMBRA el .gz en esta máquina. Resuelve la carpeta por su cuenta."];
+
+    // ── El sustrato que YA existe y la capa bash no consume ──
+    LIB  [fillcolor="#232323", color="#5fa89e", penwidth=2,
+          label="🔩 bin/session-lib.js   (617 líneas)\nSe autodescribe: «helpers COMPARTIDOS … Fuente ÚNICA (no divergir)»\nslugFromCwd · normalizeCwd · findSession · scanTranscriptFile · rewriteTranscriptStream\nsessionAliases/writeAlias + locks · copia/borrado recursivo"];
+
+    NOCLI [style="dashed,filled", fillcolor="#f5f5f5", color="#9e9e9e", fontcolor="#2b2b2b",
+           label="🚧 POR QUÉ bash no la usa — MEDIDO, no inferido\nsession-lib.js NO es ejecutable (-rw-r--r--), NO tiene shebang, solo `module.exports`.\n⇒ desde bash SOLO se alcanza con `node -e '…'` inline.\nreubicar-master lo hace 13 veces (_slug, _alias_keys, writeAlias, rewriteTranscriptStream).\nEl hook NO lo hace ninguna: su fast-path de Stop no puede pagar el arranque de node."];
+
+    // ── Los 5 conceptos duplicados ──
+    C1 [fillcolor="#ffebee", color="#c62828", fontcolor="#2b2b2b", penwidth=2,
+        label="🔴 CONCEPTO 1 · ¿DÓNDE está la carpeta de sesiones?   (3 políticas incompatibles)\nhook  exportar-sesion-master.sh:59-60  → default ~/.claude-sessions y `mkdir -p`  ⇒ DEGRADA EN SILENCIO\nseed  sesiones-master/seed.sh:27-29     → mismo default, pero ABORTA si no existe (exit 1)\nreub  reubicar-master.sh:491 + 621-627   → SIN default: ABORTA («un default que apunta a la ruta de OTRA máquina miente»)\nEVIDENCIA DE QUE OCURRIÓ: ~/.claude-sessions/761c82d9….meta.json, exportedAt 2026-08-05,\nhost «MacBook-Pro-de-unjordi.local» vs la copia de Drive (2026-09-09, host «Mac»)."];
+
+    C2 [fillcolor="#ffebee", color="#c62828", fontcolor="#2b2b2b", penwidth=2,
+        label="🔴 CONCEPTO 2 · el LOCK de export tiene DOS caducidades\nhook  exportar-sesion-master.sh:128-135 → un lock de >30 min se RECICLA (se ignora)\nreub  reubicar-master.sh (G-LIVENESS)     → `[ -f \"$DRIVE/.export-$ID.lock\" ] && _abort` SIN mirar edad\nEVIDENCIA VIVA: .export-c6330bed-….lock (0 bytes, 2026-09-13) lleva 3 días en el Drive\n⇒ HOY una mudanza de databases-master está bloqueada por un fantasma que el hook ya ignora."];
+
+    C3 [fillcolor="#ffebee", color="#c62828", fontcolor="#2b2b2b", penwidth=2,
+        label="🔴 CONCEPTO 3 · el `target` de masters.json se escribe con el cwd CRUDO\nhook  exportar-sesion-master.sh:161  `target=\"${cwd#\"$HOME\"/}\"` — sin validar que sea un repo\nEVIDENCIA en el masters.json real de esta máquina:\n  fc94c4e1 claudio-master → «code/plantilladotnet/.claude/memory»\n  9cfeed6b games-master  → «…/Juegos/.claude/memory»\n  19590b44 reverse-eng…  → «…/.claude/worktrees/integracion-ronda1»\n  2622f45e rig-master    → «rig-master» (ni siquiera es una ruta)\n⇒ seed.sh sembraría esos masters a un cwd que nadie va a tener."];
+
+    C4 [style="dashed,filled", fillcolor="#f5f5f5", color="#9e9e9e", fontcolor="#2b2b2b",
+        label="🚧 CONCEPTO 4 · «¿es master?» — la regla vive en dos lados y uno DOCUMENTA al otro\nhook  exportar-sesion-master.sh:74-85 → grep del customTitle + sufijo `-master`\nreub  reubicar-master.sh:611-618 → «El hook … decide si una sesión es master leyendo el customTitle\n        … y EXIGE el sufijo -master» y VUELVE A IMPLEMENTAR la comprobación.\nAcoplamiento DOCUMENTADO con implementación DUPLICADA: cero líneas compartidas."];
+
+    C5 [style="dashed,filled", fillcolor="#f5f5f5", color="#9e9e9e", fontcolor="#2b2b2b",
+        label="🚧 CONCEPTO 5 · el ENVOLTORIO de hook, copiado línea a línea\nstdin→jq · guard · lock por-sid con reciclado · `nohup … &` detached · escritura atómica:\nexportar-sesion-master.sh:34-51,128-152  ≈  checkpoint-mecanico.sh:36-45,62-86\nEl 2º lo dice en su propia cabecera: «usa el MISMO patrón ya probado».\nMismo patrón, dos copias, dos caducidades de lock (30 min vs 10 min)."];
+
+    // ── Doc que miente ──
+    DOC [style="dashed,filled", fillcolor="#f5f5f5", color="#9e9e9e", fontcolor="#2b2b2b",
+         label="🚧 DOC QUE MIENTE (medido hoy)\n(a) $DRIVE/masters.json `note` declara el hook «canónico en esta carpeta de Drive, no en el brain público»\n    — falso desde que el hook es tier `global` del MANIFEST.\n(b) Las 3 copias del Drive (exportar-sesion-master.sh · install-hook.sh · seed.sh, todas del 2026-07-26)\n    DIFIEREN de las del repo: el install-hook del Drive aún trae el `--uninstall` retirado y seed.sh aún\n    busca ~/.claude-brain.\n(c) docs/man/ tiene 35 páginas y CERO para la capa bash (export-hook, seed, install-hook, reubicar-master).\n(d) checkpoint-mecanico está en el MANIFEST como tier `global` y NO está cableado en ~/.claude/settings.json\n    (0 menciones) ni existe ~/.claude/hooks/checkpoint-mecanico.sh ⇒ declarado y AUSENTE."];
+  }
+
+  HOOK -> C1; SEED -> C1; REUB -> C1;
+  HOOK -> C2; REUB -> C2;
+  HOOK -> C3;
+  HOOK -> C4; REUB -> C4;
+  HOOK -> C5; CKPT -> C5;
+  REUB -> LIB  [label="13 × `node -e` inline", style=dashed];
+  HOOK -> LIB  [label="0 — solo invoca session-export.js\ncomo binario opaco", style=dashed, color="#9e9e9e"];
+  LIB  -> NOCLI [style=dashed, color="#9e9e9e"];
+  C1 -> DOC [style=invis];
+}

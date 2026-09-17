@@ -1,0 +1,195 @@
+// 01 — PROPUESTO: interacción de las herramientas tras la unificación (quién invoca a quién,
+// dónde está la frontera bash↔JS, qué toca cada artefacto y bajo qué lock).  ·  FUENTE editable (.dot)
+// Render:  dot -Tsvg 01-interaccion-propuesta.dot -o 01-interaccion-propuesta.svg
+// ⚠️ ESTE CHART ES LA **PROPUESTA**. El estado de HOY está en 00-hoy-divergencia-medida.dot.
+// Cada pieza NUEVA cita el requerimiento que la crea (R-n) de
+// docs/requerimientos-unificar-tooling-sesiones.md — si cambias uno, cambia el otro (doc=realidad).
+digraph interaccion_propuesta {
+  graph [bgcolor="#1b1712", rankdir=TB, fontname="Helvetica", splines=true,
+         nodesep=0.35, ranksep=0.60, pad=0.25, compound=true];
+  node  [fontname="Helvetica", fontsize=12, fontcolor="#f2ede6", shape=box,
+         style="rounded,filled", fillcolor="#2b2b2b", color="#8a8a8a", penwidth=1.5];
+  edge  [color="#d97757", fontname="Helvetica", fontsize=10, fontcolor="#cfc8c0", penwidth=1.4];
+
+  // ─────────────────────────── LEYENDA (regla dura del skill diagramar) ───────────────────────────
+  // >>> LEYENDA-ARBOL (generado por gen-leyenda-arbol.sh desde el árbol del README — NO editar a mano) >>>
+  subgraph cluster_leyenda {
+    label="LEYENDA — árbol completo del cerebro (fuente: README.md)"; labeljust="l"; fontname="Times"; fontsize=14; fontcolor="#5fa89e";
+    color="#5fa89e"; penwidth=1.6; style="rounded"; bgcolor="#1b1712";
+    LEY_ARBOL [shape=none, margin=0, label=<
+      <table border="0" cellborder="1" cellspacing="0" cellpadding="4" color="#5fa89e" bgcolor="#1b1712">
+        <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>🔒 Hooks Forzosos</b></font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🚧 git-branch-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">push/merge a develop·main → denegado</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔗 merge-squash-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">MR a develop sin --squash → denegado</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🕵️ secret-scan</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">commit/push con un secreto → denegado</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">💸 delegacion-gate</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">delegar al llegar al 90% de tu ventana 5h → pide tu OK</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🛑 limite-gasto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">sin ventana 5h Y sin overage (ambos agotados) → freno duro</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">✋ confirmar-merge-develop</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">merge sin tu OK → denegado</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">✅ dod-verificar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cierre sin evidencia/OK → denegado; claim visual a ciegas (sin ver la pantalla) también</font></td></tr>
+        <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>🔔 Automático</b></font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📊 recordar-dashboard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">en el push recuerda dashboard + doc=realidad (README/docs) — cierre del slice</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🖥️ entorno-maquina-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">commit de algo machine-specific (aliases/rutas de $HOME/Rosetta/entorno-maquina.md) al .claude/memory/ del repo → avisa</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🚧 no-bypass-deploy</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">correr el instalador/deploy a mano (install-brain.sh/deploy.sh) en vez de la herramienta oficial (el widget) → avisa (fail-safe: no --dry-run/--help/CI)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌳 proteger-arbol</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">git destructivo que orfanaría commits sin pushear → avisa (fan-out: usa worktree aislado)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🛡️ proteger-fuente-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">editar la copia INSTALADA de un hook/skill que tiene fuente en el clon → avisa (se perdería en el próximo sync) (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧹 barrer-ramas</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al abrir sesión / al punto del merge barre en 2º plano ramas locales + remota huérfana + worktrees ya integrados (zombie squash-safe; throttle 24h) (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">💾 exportar-sesion-master</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">auto-export de las sesiones *-master a ~/.claude-sessions (o Drive); detached, sobrevive el cleanup de 30 días (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🗂️ checkpoint-mecanico</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">PreCompact: extractor mecánico (streaming, 0 tokens) escribe el andamio del TRAMO VIVO a hilo-mental-actual.andamio.md (GLOBAL; el skill lo regenera con --self --ensure)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📝 delegacion-registrar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">materializa el "pregunta una sola vez"</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📮 delegacion-reporte</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al terminar un agente: recuerda registrar avance + limpiar su worktree</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎼 recordar-orquestar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">N mutaciones (edits/commits) en serie SIN delegar → sugiere fan-out (advisory, no bloquea; resetea al delegar) (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧵 rehidratar-hilo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta hilo-mental-actual.md + el andamio (si es más fresco) al abrir/retomar/compactar (GLOBAL) — gate de frescura + edad</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📈 aviso-contexto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reporta el watermark de contexto CRUDO (tokens · ventana · %); sin bandas ni veredicto — /context manda (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧬 aviso-drift-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">repo brained atrás de la fuente única (hooks/libs Y skills) → en tu mini-develop se AUTO-SINCRONIZA (apply+commit+push); en otra rama, avisa. ADEMÁS detecta el drift de la copia GLOBAL de skills (~/.claude/skills vs la fuente; warn-only, throttle propio). Al moverse el cerebro, NUDGE a correr la DUPLA (suficiencia+coherencia; contra la firma si hay AGENTS.md, si no sugiere instanciarla) (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔀 hud-stale</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cambiaste de rama/proyecto → tu lista de TODOs (HUD) puede ser de la tarea anterior: avisa (advisory) que la resetees/re-siembres del estado-proyecto.md de esa rama. Señal OBJETIVA (rama/cwd), stamp per-sesión, first-sight silencioso, solo en repos con backlog (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧭 sesion-inicio</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta rama + norma + memoria al abrir</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌾 recordar-cosechar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">espejo TaskList→estado-proyecto.md (auto) + nudge: no cosechaste/no actualizaste backlog</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">⬆️ recordar-unificar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">tu mini acumuló aprendizajes sin UNIFICAR a develop → sugiere /unificar-cerebro (gemelo ↑ de aviso-drift)</font></td></tr>
+        <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>📜 Normas</b></font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎯 Definition of Done</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">verde técnico ≠ Done/Listo/Ya Quedó; exige QA o un OK explícito</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🪞 Doc &lt;= realidad</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cambió algo → su doc se actualiza en la tanda</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌿 Flujo de git</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">ramita → MR → develop; main es release-only</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">💰 Costo de delegación</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">gratis / incluido / con costo, según tu cuota</font></td></tr>
+        <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>💡 Skills</b></font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📦 cerrar-slice</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">build+tests+memoria al día + MR con resumen curado</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">💾 checkpoint</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">vuelca el HILO a memoria para compactar sin perderlo (proactivo)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🗂️ to-do</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">carga la interfaz de tareas del harness desde el backlog durable (estado-proyecto.md)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">💧 rehidratar-hilo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">relee el HILO a mano (gemelo del hook; respaldo si un update del CLI rompe el auto-rehidratado)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🐝 orquestar-fanout</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">fan-out sin niñera: asigna del backlog, auto-reporta y limpia al cerrar</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🗺️ diagramar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">diagramas por destino: .dot→dot2yed→yEd (editar a mano) · Mermaid en .md versionado (verse en GitHub)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔬 auditar-proceso-algoritmo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">auditor experto read-only (proceso industrial + algoritmo) → hallazgos priorizados; se alimenta de los flowcharts de diagramar</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🩺 auditar-coherencia-cerebro fan-out read-only sobre el PROPIO cerebro (guards+flowcharts+doc): evasiones/huecos/drift, verificado por ejecución → loop hasta converger; modo-cerebro de auditar-proceso-algoritmo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0"> </font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧪 auditar-suficiencia-operativa</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">¿ALCANZA la doc para HACER el trabajo sin romper nada ni re-investigar? tareas reales ✅/⚠️/❌ con archivo:línea + RE-auditar tras arreglar</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧬 auditor-semantico</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">¿el código HACE lo que queremos? Capa 1 checks deterministas (scripts/, gratis, en CI) + Capa 2 criterio LLM sobre invariantes-semanticos.yml; motor genérico, catálogo por-repo</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧠 consolidar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">meta-orquestador: dupla → positivar → desinflar → convergencia → cierre con la FIRMA (CLAUDE+MEMORY)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📐 canonizar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">lleva un cerebro instanciado drifteado a la firma-árbol: reprefija memorias (git mv) a dom-/dev-/ux-/qa-, reescribe CLAUDE.md+MEMORY.md, verifica 1:1 con verificar-firma-canonica.sh (detector del GATE #44)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🪶 desinflar-memorias</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">adelgaza un árbol de memorias sin perder lecciones: la narrativa se colapsa a su lección, los mitos descartados se mudan al cementerio.md (una lápida por ID content-hash 🪦#&lt;id&gt;)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🕵️ revisar-entregables-agentes</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">verifica lo que un agente ENTREGA contra la realidad; no relates su reporte como verdad</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">☀️ positivar-doc</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reescribe answer-first: 'ESTO SÍ' (método correcto) antes del 'ESTO NO'</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎓 investigar-dominio</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">ponte experto en un dominio (fan-out DOC-FIRST) → memorias durables + skills</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📚 construir-missing-manual</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">fabrica el manual/wiki de referencia exhaustivo que no existe (fan-out que investiga 1× y hornea) → artefacto consultable OFFLINE</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌾 cosechar-sesion</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cosecha local: extrae aprendizajes de tu sesión al inbox del equipo</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧩 unificar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reconciliación del cerebro del equipo: integra los aprendizajes mini→develop</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧳 claude-proyecto-autocontenido</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">el cerebro VIVE dentro del proyecto (.claude/ + symlink de slug) → viaja con él</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🚚 reubicar-master</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">muda una sesión master COMPLETA a otro repo (brain-master → cortex) sin residuo: transcript+cwd, cerebro, slug y refs atómicas</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔍 zoom-screenshot</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">recorta y amplía regiones de una captura (ffmpeg) para leer texto fino ilegible</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔩 ingenieria-inversa-gui-db-navegador</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">ingeniería inversa de app legacy GUI+BD: driving la UI vía navegador + diff de la BD antes/después = doc con evidencia real</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📕 markdown-a-pdf</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">convierte .md a PDF pulido y distribuible vía md-to-pdf (npx, sin instalar) con el gotcha de --css y QA visual real</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌙 turno-nocturno</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">protocolo del turno de noche: eco del contrato, decide-dentro-de-la-cerca, grants durables a disco</font></td></tr>
+      </table>>];
+    LEY_VAL [shape=none, margin=0, label=<
+      <table border="0" cellborder="1" cellspacing="0" cellpadding="4" color="#5fa89e" bgcolor="#1b1712">
+        <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>valencia de color</b></font></td></tr>
+        <tr><td bgcolor="#2b2b2b" border="2" color="#7fb069"><font color="#f2ede6">🟢</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">OK / pasa</font></td></tr>
+        <tr><td bgcolor="#2b2b2b" border="2" color="#e08e45"><font color="#f2ede6">🟠</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">aviso / ASK (no bloquea)</font></td></tr>
+        <tr><td bgcolor="#2b2b2b" border="2" color="#c9a227"><font color="#f2ede6">🟡</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">latente / frágil (funciona hoy, sin garantía)</font></td></tr>
+        <tr><td bgcolor="#2b2b2b" border="2" color="#c0392b"><font color="#f2ede6">🔴</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">DENY / bloqueo (guard OK)</font></td></tr>
+        <tr><td bgcolor="#2b2b2b" border="2" color="#9e9e9e"><font color="#f2ede6">🚧</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">hueco / deuda (por construir)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">⚠</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">el paso ESCRIBE git</font></td></tr>
+      </table>>];
+    LEY_ARBOL -> LEY_VAL [style=invis];
+  }
+  // <<< LEYENDA-ARBOL <<<
+
+  subgraph cluster_f0 {
+    label="01 · PROPUESTO — el sustrato compartido, la frontera bash↔JS y quién escribe qué   [PROPUESTA]";
+    fontname="Times"; fontsize=14; fontcolor="#5fa89e";
+    color="#5fa89e"; penwidth=1.6; style="rounded"; bgcolor="#1b1712";
+
+    // ══ Disparadores ══
+    subgraph cluster_trig {
+      label="disparadores"; fontname="Times"; fontsize=12; fontcolor="#8a8a8a";
+      color="#5a5a5a"; style="rounded"; bgcolor="#221d19";
+      EV   [style="rounded,filled", fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
+            label="harness · Stop / SessionEnd / PreCompact\n(entrega por stdin: session_id, transcript_path, cwd, hook_event_name)"];
+      HUM  [style="rounded,filled", fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
+            label="humano, desde un SHELL PLANO\n(mudanza o siembra — jamás desde dentro de la sesión objetivo)"];
+    }
+
+    // ══ Capa BASH — consumidores ══
+    subgraph cluster_bash {
+      label="capa BASH · consumidores  (cada uno conserva su CONTRATO de falla, que NO se unifica)";
+      fontname="Times"; fontsize=12; fontcolor="#8a8a8a";
+      color="#5a5a5a"; style="rounded"; bgcolor="#221d19";
+
+      HOOK [color="#7fb069", penwidth=2,
+            label="🔔 exportar-sesion-master.sh   (Stop/SessionEnd/PreCompact)\n🟢 FAIL-OPEN, SILENCIOSO, siempre exit 0 — corre en CADA turno de CADA sesión\nsu lógica interna: ver chart 02"];
+      CKPT [color="#7fb069", penwidth=2,
+            label="🔔 checkpoint-mecanico.sh   (PreCompact)\n🟢 FAIL-OPEN, SILENCIOSO — NO pertenece al subsistema de sesiones:\ncomparte el ENVOLTORIO de hook, no la pipeline (R-6)"];
+      REUB [color="#e08e45", penwidth=2,
+            label="💡 reubicar-master.sh  →  genera  handoff-<id>.sh\n🟠 FALLA CERRADO · punto de no retorno explícito · postcondiciones aseveradas\nsu lógica interna: ver chart 03"];
+      SEED [color="#7fb069",
+            label="🔔 seed.sh   (siembra en ESTA máquina)\n4º consumidor de la misma carpeta y del mismo masters.json"];
+    }
+
+    // ══ Sustrato BASH compartido (NUEVO) ══
+    subgraph cluster_libsh {
+      label="sustrato BASH compartido  ·  NUEVO  (lo que hoy está duplicado)";
+      fontname="Times"; fontsize=12; fontcolor="#8a8a8a";
+      color="#5fa89e"; style="rounded"; bgcolor="#221d19";
+
+      LSES [fillcolor="#232323", color="#5fa89e", penwidth=2,
+            label="🔩 lib-sesiones.sh   (R-1 · R-4 · R-5)   — el DOMINIO «sesión master»\nsesiones_dir           → UNA política para la carpeta (R-1). Nunca inventa una 2ª ubicación.\nsesiones_es_master     → LA regla del sufijo `-master` + masters.json, en un solo lugar (R-5)\nsesiones_lock_tomar/soltar → UNA caducidad de lock, parametrizada (R-4)\nsesiones_debounce_vence   → el debounce, hoy solo en el hook\n⚠️ PURO BASH, CERO node: es lo único que toca el HOT PATH de Stop (D-2)"];
+
+      LHOOK [fillcolor="#232323", color="#5fa89e", penwidth=2,
+             label="🔩 lib-hook.sh   (R-6)   — el ENVOLTORIO de hook, no el dominio\nhook_leer_stdin (jq con fallback sed) · hook_brain_dir (resolve_brain_dir)\nhook_lock_sid (con reciclado) · hook_detached (nohup … & con centinela anti-recursión)\nLo comparten el export y el checkpoint-mecánico: HOY son dos copias del mismo patrón."];
+    }
+
+    // ══ Frontera / capa JS ══
+    subgraph cluster_js {
+      label="capa JS  ·  la frontera se cruza SOLO por un CLI con contrato (R-7): se prohíbe el `node -e` inline";
+      fontname="Times"; fontsize=12; fontcolor="#8a8a8a";
+      color="#5fa89e"; style="rounded"; bgcolor="#221d19";
+
+      CLI  [fillcolor="#232323", color="#5fa89e", penwidth=2,
+            label="🔩 bin/session-registry.js   (R-7 · R-2 · R-3)   — CLI NUEVO, ejecutable, con man-page\nmasters get|upsert|list   → el ÚNICO escritor de masters.json (lock + escritura atómica + read-after-write)\n                             al upsertar, NORMALIZA el target a la raíz del repo (R-3)\nslug <cwd> · alias get|set · title <transcript>\nSalida JSON por stdout, exit≠0 con {ok:false,error} — el mismo contrato que session-export/move/import"];
+
+      EXP  [label="bin/session-export.js\n(gzip streaming + meta, temp+rename)"];
+      MOV  [label="bin/session-move.js\n(move de slug + cwd + gitBranch + sidecar)"];
+      IMP  [label="bin/session-import.js\n(siembra + freshness gate)"];
+
+      LIB  [fillcolor="#232323", color="#5fa89e", penwidth=2,
+            label="🔩 bin/session-lib.js   — el sustrato ÚNICO que YA existía y ya cumplía su promesa\nslugFromCwd · normalizeCwd · findSession · scanTranscriptFile · rewriteTranscriptStream\nsessionAliases/writeAlias + takeAliasLock\nCAMBIO: deja de ser inalcanzable desde bash (hoy: no ejecutable, sin shebang, solo module.exports)"];
+    }
+
+    // ══ Artefactos ══
+    subgraph cluster_art {
+      label="artefactos COMPARTIDOS  (los recursos en disputa)";
+      fontname="Times"; fontsize=12; fontcolor="#8a8a8a";
+      color="#5a5a5a"; style="rounded"; bgcolor="#221d19";
+
+      DIRS [fillcolor="#eceff1", color="#607d8b", fontcolor="#2b2b2b", penwidth=3,
+            label="⚠ ESCRIBE · $SESSIONS_DIR   (el canal es config PERSONAL por máquina — no vive en el brain)\n<id>.jsonl.gz · <id>.meta.json · masters.json · .export-<id>.lock · masters.json.lock"];
+      JSONL [fillcolor="#eceff1", color="#607d8b", fontcolor="#2b2b2b", penwidth=3,
+             label="⚠ ESCRIBE · ~/.claude/projects/<slug>/<id>.jsonl   (+ su sidecar <id>/)\nlo LEE el hook (se lo entrega el harness) · lo MUEVE la mudanza"];
+      ALIAS [fillcolor="#eceff1", color="#607d8b", fontcolor="#2b2b2b", penwidth=3,
+             label="⚠ ESCRIBE · ~/.claude/sesiones-alias.json   (mapa compartido por TODOS los masters)\nbajo takeAliasLock — salvo el widget de Plasma, que lo escribe desde QML SIN lock (§10 del skill)"];
+      MEM  [fillcolor="#eceff1", color="#607d8b", fontcolor="#2b2b2b", penwidth=3,
+            label="⚠ ESCRIBE · <repo>/.claude/memory/hilo-mental-actual.andamio.md\nsalida del checkpoint-mecánico — OTRO destino, OTRO ciclo de vida"];
+    }
+  }
+
+  // ── invocaciones ──
+  EV -> HOOK; EV -> CKPT;
+  HUM -> REUB; HUM -> SEED;
+
+  HOOK -> LHOOK [label="envoltorio"]; CKPT -> LHOOK [label="envoltorio"];
+  HOOK -> LSES  [label="dominio (hot path: sin node)"]; REUB -> LSES; SEED -> LSES;
+
+  LSES -> CLI [label="solo cuando YA se decidió\nque hay trabajo (fuera del hot path)"];
+  REUB -> CLI [label="reemplaza los 13 `node -e`"];
+  HOOK -> EXP [label="detached (nohup … &)\n+ lock por-sid"];
+  REUB -> EXP [label="S3 export-first (síncrono)"];
+  REUB -> MOV [label="tras el PUNTO DE NO RETORNO"];
+  SEED -> IMP;
+  CKPT -> MEM [label="andamio (atómico)"];
+
+  CLI -> LIB; EXP -> LIB; MOV -> LIB; IMP -> LIB;
+
+  CLI -> DIRS  [label="masters.json\n(masters.json.lock)"];
+  CLI -> ALIAS [label="alias (takeAliasLock)"];
+  EXP -> DIRS  [label=".gz + .meta (temp+rename)"];
+  MOV -> JSONL [label="move + reescritura de cwd"];
+  IMP -> JSONL [label="siembra"];
+  LSES -> DIRS [label=".export-<id>.lock\n(UNA caducidad, R-4)"];
+}
