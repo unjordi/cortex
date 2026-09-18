@@ -44,6 +44,16 @@ if ! command -v jq >/dev/null 2>&1; then
     . "$_ACGLIB"
     if command -v acg_push_toca_base >/dev/null 2>&1; then
       _sinjq_ok=1
+      # ALTO (auditoría de coherencia 2026-09-18, MEDIO en el veredicto): el escape
+      # CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL, que el propio mensaje DENY de abajo promete, solo se leía en
+      # el camino DEGRADADO (_sinjq_ok=0, más abajo) -- este camino PRIMARIO ("sin jq pero el comando SÍ
+      # se pudo extraer", el caso normal desde H1) nunca lo consultaba -> sobre-bloqueo fail-safe (no
+      # brecha: el guard seguía sin dejar pasar nada indebido) para quien exportara la variable creyendo
+      # que destrababa su propio push/mini-develop. Se consulta AQUÍ, antes de evaluar, con la MISMA
+      # semántica que el camino degradado (exit 0 sin más chequeo): el humano manda.
+      if [ "${CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL:-}" = "1" ]; then
+        exit 0
+      fi
       if acg_push_toca_base "$_cmd_sinjq" "$_cwd_sinjq" || acg_merge_menciona_base "$_cmd_sinjq"; then
         printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"FRENO (sin jq): sin jq instalado igual pude leer el comando real (no el JSON crudo) y SÍ toca develop/main -- NUNCA se hace push/merge directo a develop/main (fail-safe, no afloja nada). Si esto es TU PROPIA ramita/mini-develop y estás seguro de que no toca develop/main, exporta CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 en el ENTORNO de la sesión (no como prefijo del comando: este hook corre en un proceso aparte) y reintenta -- o instala jq (macOS: brew install jq · Debian/Ubuntu: apt install jq · Windows: winget install jqlang.jq)."}}'
       fi
