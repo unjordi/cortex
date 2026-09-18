@@ -1899,7 +1899,11 @@ is_deny "$(xcm 'glab mr merge 6 -R org/personal --yes' "$XSHARED")" \
   && ok "cmd-cross C2: sesión COMPARTIDA + '--repo org/personal' → GATEA (fricción segura: slug no resoluble a ruta local)" \
   || bad "cmd-cross C2: dejó pasar un --repo cross-repo sin gate"
 # PERSONAL normal (retro-compat, sin fricción): sesión PERSONAL, sin --repo, repo git válido sin marca → exit 0.
-is_silent "$(xcm 'glab mr merge 5 --yes' "$XPERSONAL")" \
+# CONSOLIDACIÓN 2026-09-17: el mock de glab resuelve develop → el check de SQUASH exige --remove-source-branch
+# antes de llegar al scoping de personal/compartido; XSQOK lo satisface con un mensaje UNVERIFICABLE (fail-open,
+# la forma que el propio hook sugiere) para que este caso ejercite el SCOPING, no el squash (cubierto en b1c).
+XSQOK='--squash --remove-source-branch --squash-message "$(cat resumen.md)"'
+is_silent "$(xcm "glab mr merge 5 $XSQOK --yes" "$XPERSONAL")" \
   && ok "cmd-cross: sesión PERSONAL sin --repo (repo válido, sin marca) → silencio (PERSONAL confirmado, cero fricción)" \
   || bad "cmd-cross: gateó un merge en un repo personal (regresión de fricción)"
 # COMPARTIDO propio (no-regresión): sesión COMPARTIDA, sin --repo, con marca → GATEA como hoy.
@@ -1913,7 +1917,7 @@ is_deny "$(xcm 'glab mr merge 7 --yes' "$XPERSONAL" "$XSHARED")" \
 # AUTH_FILE se resuelve del TARGET_ROOT: grant durable vive en SHARED; sesión PERSONAL + .cwd=SHARED → fast-path exit 0.
 mkdir -p "$XSHARED/.claude/memory"
 printf 'scope=merge-develop vence_epoch=%s cita="ok blanket"\n' "$(( $(date +%s) + 3600 ))" > "$XSHARED/.claude/memory/autorizaciones-vigentes.local.md"
-is_silent "$(xcm 'glab mr merge 8 --yes' "$XPERSONAL" "$XSHARED")" \
+is_silent "$(xcm "glab mr merge 8 $XSQOK --yes" "$XPERSONAL" "$XSHARED")" \
   && ok "cmd-cross: grant durable en el repo DESTINO (AUTH_FILE del TARGET_ROOT) + .cwd → fast-path exit 0" \
   || bad "cmd-cross: no leyó el grant durable del repo destino (AUTH_FILE no salió de TARGET_ROOT)"
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
@@ -2071,7 +2075,10 @@ M8TX="$M8ROOT/tx.jsonl"; printf '%s\n' '{"type":"user","message":{"role":"user",
 M8NOCLI="$M8ROOT/noclibin"
 _mkbin_real "$M8NOCLI" bash grep sed cat basename dirname head tail printf awk jq date mktemp tr wc sort cut git
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
-out_m8="$(jq -nc --arg c 'glab mr merge 42 --yes' --arg t "$M8TX" '{tool_input:{command:$c},transcript_path:$t}' \
+# CONSOLIDACIÓN 2026-09-17: sin gh/glab en el PATH el destino queda SIN-RESOLVER (nunca "develop"), así que
+# el check de squash no exige calidad (remove-source-branch/mensaje) -- basta el flag --squash para pasarlo
+# y llegar al mensaje de ENTORNO que este caso ejercita.
+out_m8="$(jq -nc --arg c 'glab mr merge 42 --squash --yes' --arg t "$M8TX" '{tool_input:{command:$c},transcript_path:$t}' \
   | PATH="$M8NOCLI" HOME="$M8HOME" CLAUDE_PROJECT_DIR="$M8REPO" ACG_PATH_AUGMENT=0 CLAUDE_MERGE_JUEZ_MOCK=DENY bash "$HOOKS/merge-develop-guard.sh")"
 { is_deny "$out_m8" && printf '%s' "$out_m8" | grep -qi 'ni gh ni glab' && printf '%s' "$out_m8" | grep -qi 'Repetir la autorizaci'; } \
   && ok "M8: destino DESCONOCIDO por SIN-RED → mensaje da la causa REAL (ni gh ni glab) + 'repetir NO destraba'" \
@@ -2089,9 +2096,14 @@ echo "== (b1f) confirmar-merge-develop: autorización durable (vence_epoch) + vo
 AUTHF="$CMREPO/.claude/memory/autorizaciones-vigentes.local.md"
 mkdir -p "$CMREPO/.claude/memory"
 mock_cm_glab develop
+# CONSOLIDACIÓN 2026-09-17 (mismo motivo que CMOK arriba en (b1e)): destino=develop confirmado hace que el
+# check de SQUASH exija --remove-source-branch antes de llegar al grant/juez. SQOK = --squash bien formado
+# (mensaje UNVERIFICABLE vía "$(cat resumen.md)", la forma que el propio hook sugiere → fail-open, sin exigir
+# prosa) para que estas pruebas ejerciten el GRANT, no el squash (ya cubierto en (b1c)).
+SQOK='--squash --remove-source-branch --squash-message "$(cat resumen.md)"'
 # (1) grant VIGENTE → permite el merge a develop aunque el transcript no traiga OK.
 printf -- '- scope=merge-develop vence_epoch=%s vence="mañana 10am" cita="autorizo todos los merges a develop hasta mañana 10am" registrada=2026-07-18\n' "$(( $(date +%s) + 3600 ))" > "$AUTHF"
-is_silent "$(cm 'glab mr merge 61 --squash --yes' DENY)" \
+is_silent "$(cm "glab mr merge 61 $SQOK --yes" DENY)" \
   && ok "cmd b1f: grant durable VIGENTE → merge a develop pasa (sobrevive compactación)" \
   || bad "cmd b1f: grant durable vigente NO destrabó el merge a develop"
 # (2) grant VENCIDO → freno normal.
@@ -2141,7 +2153,7 @@ is_deny "$(cm 'glab mr merge --yes' DENY 'libera esto a main, es el release')" \
 # (8) regresión del camino SEGURO de M6 (el que SÍ debía quedarse): destino CONFIRMADO develop + grant
 #     vigente → sigue pasando SIN llamar al juez (mock=DENY prueba que el fast-path lo evita).
 mock_cm_glab develop
-is_silent "$(cm 'glab mr merge 66 --squash --yes' DENY)" \
+is_silent "$(cm "glab mr merge 66 $SQOK --yes" DENY)" \
   && ok "CRÍTICO-3: regresión — grant vigente + destino CONFIRMADO develop → SIGUE pasando por el fast-path (no se tocó la parte segura de M6)" \
   || bad "CRÍTICO-3: REGRESIÓN — el fast-path seguro (destino=develop confirmado) se rompió al cerrar el hueco"
 rm -f "$AUTHF" 2>/dev/null
@@ -2156,7 +2168,7 @@ H3TX="$CMROOT/h3tx.jsonl"
   i=1; while [ "$i" -le 6200 ]; do printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"trabajando"}]}}'; i=$((i+1)); done
 } > "$H3TX"
 mock_cm_glab develop
-out_h3=$(jq -nc --arg c 'glab mr merge 5 --squash --yes' --arg t "$H3TX" '{tool_input:{command:$c},transcript_path:$t}' \
+out_h3=$(jq -nc --arg c "glab mr merge 5 $SQOK --yes" --arg t "$H3TX" '{tool_input:{command:$c},transcript_path:$t}' \
   | PATH="$CMBIN:$PATH" HOME="$CMHOME" CLAUDE_PROJECT_DIR="$CMREPO" CLAUDE_MERGE_JUEZ_MOCK=DENY bash "$HOOKS/merge-develop-guard.sh")
 { is_deny "$out_h3" && printf '%s' "$out_h3" | grep -qi 'FUERA de mi ventana' && ! printf '%s' "$out_h3" | grep -qi 'no encontré tu confirmación'; } \
   && ok "H3: transcript de 6201 líneas con el OK en la línea 1 → el mensaje nombra la CAUSA (ventana truncada), no culpa al usuario" \
@@ -2164,7 +2176,7 @@ out_h3=$(jq -nc --arg c 'glab mr merge 5 --squash --yes' --arg t "$H3TX" '{tool_
 # Control: mismo transcript pero CORTO (la autorización SÍ cae dentro de la ventana) → sigue pasando normal.
 H3TX2="$CMROOT/h3tx2.jsonl"
 printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"mergea el MR 5 a develop"}]}}' > "$H3TX2"
-out_h3b=$(jq -nc --arg c 'glab mr merge 5 --squash --yes' --arg t "$H3TX2" '{tool_input:{command:$c},transcript_path:$t}' \
+out_h3b=$(jq -nc --arg c "glab mr merge 5 $SQOK --yes" --arg t "$H3TX2" '{tool_input:{command:$c},transcript_path:$t}' \
   | PATH="$CMBIN:$PATH" HOME="$CMHOME" CLAUDE_PROJECT_DIR="$CMREPO" CLAUDE_MERGE_JUEZ_MOCK=ALLOW bash "$HOOKS/merge-develop-guard.sh")
 # ALLOW legítimo trae su nota de higiene (additionalContext, no vacío) -- lo que NO debe pasar es un deny
 # citando "ventana truncada" sobre un transcript corto normal.
@@ -5946,7 +5958,7 @@ HOME="$FAKEHOME2" bash "$INSTALLER" >/dev/null 2>&1
 GSET2="$FAKEHOME2/.claude/settings.json"
 GCLAUDE2="$FAKEHOME2/.claude/CLAUDE.md"
 
-for pat in git-branch-guard merge-squash-guard confirmar-merge-develop recordar-dashboard proteger-arbol rehidratar-hilo aviso-contexto delegacion-gate delegacion-registrar; do
+for pat in git-branch-guard merge-develop-guard recordar-dashboard proteger-arbol rehidratar-hilo aviso-contexto delegacion-gate delegacion-registrar; do
   n="$(jq --arg p "$pat" '[.hooks[]?[]? | select(([.hooks[]?.command]|join(" "))|test($p))] | length' "$GSET2" 2>/dev/null)"
   if [ "$n" = "1" ]; then ok "settings.json: $pat cableado 1× (idempotente)"; else bad "settings.json: $pat aparece ${n:-?}× (esperaba 1)"; fi
 done
@@ -6113,15 +6125,13 @@ echo "== (e) sin referencias circulares NUEVAS entre elementos del cerebro =="
 # hooks-hermanos). Un par NUEVO fuera de aqui = posible referencia circular -> revisalo (peor que una
 # contradiccion). El test COMPUTA los pares en cada corrida, no depende de contarlos a mano.
 CE_ALLOW="analizar-comando-git|git-branch-guard
-analizar-comando-git|merge-squash-guard
-analizar-comando-git|confirmar-merge-develop
-confirmar-merge-develop|git-branch-guard
-confirmar-merge-develop|merge-squash-guard
+analizar-comando-git|merge-develop-guard
+git-branch-guard|merge-develop-guard
 detectar-secretos|secret-scan
-confirmar-merge-develop|juez-comun
+juez-comun|merge-develop-guard
 dod-verificar|juez-comun
 cerrar-slice|dod-verificar
-cerrar-slice|merge-squash-guard
+cerrar-slice|merge-develop-guard
 cerrar-slice|recordar-dashboard
 delegacion-comun|delegacion-gate
 delegacion-comun|delegacion-registrar
@@ -6178,6 +6188,10 @@ checkpoint-mecanico|checkpoint-mecanico-comun"
 # el andamio que escribe el hook checkpoint-mecanico.sh, y el hook menciona la skill "checkpoint" en su
 # propio encabezado (contexto de por qué existe) — es la misma relación consumidor<->productor documentada
 # de un par de arriba, no un ciclo.
+# CONSOLIDACIÓN 2026-09-17: merge-squash-guard + confirmar-merge-develop se fusionaron en
+# merge-develop-guard — sus pares con analizar-comando-git (lib<->consumidor), git-branch-guard (hooks
+# hermanos, ambos sobre acg), juez-comun (lib<->consumidor) y cerrar-slice (skill<->guard, como los demás
+# pares de cerrar-slice de arriba) son la MISMA relación benigna de siempre, solo con el nombre nuevo.
 # checkpoint|contrato-hilo (F1, 2026-09-11): la lib es el CONTRATO del footer del hilo — la skill la
 # corre al volcar (fail-loud) y la lib documenta a su consumidor. Es lib<->consumidor, como los 3
 # pares de drift-cerebro-comun de arriba; el contenido no rebota entre los dos.
@@ -6777,17 +6791,18 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-echo "== (e6b) install-brain: EXACTAMENTE 8 hooks en PreToolUse/Bash + aviso-contexto/recordar-orquestar en PostToolUse (sin matcher) =="
-# El fan-out de guards sobre Bash es un set CERRADO de 8 (rama-vieja se RETIRÓ — tier `retirado` en el
-# MANIFEST — y salió de este set); aviso-contexto y recordar-orquestar van en
+echo "== (e6b) install-brain: EXACTAMENTE 7 hooks en PreToolUse/Bash + aviso-contexto/recordar-orquestar en PostToolUse (sin matcher) =="
+# El fan-out de guards sobre Bash es un set CERRADO de 7 (rama-vieja se RETIRÓ — tier `retirado` en el
+# MANIFEST — y salió de este set; CONSOLIDACIÓN 2026-09-17: merge-squash-guard + confirmar-merge-develop
+# se fusionaron en merge-develop-guard, restando 1 al conteo); aviso-contexto y recordar-orquestar van en
 # PostToolUse sin matcher (casan toda tool). El cableado se DERIVA del MANIFEST vía ev_de() en
 # install-brain.sh → verificamos ese mapeo (no líneas register_hook literales: el instalador las colapsó
 # a un loop). Si alguien agrega/quita un guard de Bash del mapeo, este test lo caza.
-want_bash="git-branch-guard merge-squash-guard confirmar-merge-develop secret-scan recordar-dashboard entorno-maquina-guard no-bypass-deploy proteger-arbol"
+want_bash="git-branch-guard merge-develop-guard secret-scan recordar-dashboard entorno-maquina-guard no-bypass-deploy proteger-arbol"
 want_bash_sorted="$(printf '%s\n' $want_bash | sort | tr '\n' ' ' | sed 's/ *$//')"
 got_bash="$(grep -E '\) *echo *"PreToolUse\|Bash"' "$INSTALLER" | sed -E 's/\).*//' | tr '|' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -vE '^$' | sort | tr '\n' ' ' | sed 's/ *$//')"
 if [ "$got_bash" = "$want_bash_sorted" ]; then
-  ok "e6b: ev_de() mapea EXACTAMENTE los 8 guards de PreToolUse/Bash"
+  ok "e6b: ev_de() mapea EXACTAMENTE los 7 guards de PreToolUse/Bash"
 else
   bad "e6b: el set PreToolUse/Bash de ev_de() cambió · got:[$got_bash] want:[$want_bash_sorted]"
 fi

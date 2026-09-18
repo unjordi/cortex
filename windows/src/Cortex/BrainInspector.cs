@@ -36,7 +36,7 @@ public sealed class BrainState
     /// (test-brain.sh, chequeo e-widget). Al agregar/mover un hook en el MANIFEST, refleja aquí.
     public static readonly HashSet<string> KnownGlobalHooks = new()
     {
-        "git-branch-guard", "merge-squash-guard", "confirmar-merge-develop",
+        "git-branch-guard", "merge-develop-guard",
         "recordar-dashboard", "secret-scan", "proteger-arbol",
         "proteger-fuente-cerebro",
         "limite-gasto", "delegacion-gate", "delegacion-registrar", "delegacion-reporte", "recordar-orquestar",

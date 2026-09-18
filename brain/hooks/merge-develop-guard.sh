@@ -383,7 +383,10 @@ if [ "$_sq_aplica" = 1 ]; then
         LITERAL)       _msg=$(acg_msg_valor "$cmd") ;;
         *)             _msg=$(acg_mensaje_de_mr "$cmd" "$pcwd") ;;   # AUTO: título del MR por API (vacío → fail-open)
       esac
-      if [ "$_clase" != UNVERIFICABLE ] && [ -n "$_msg" ]; then
+      # LITERAL corre SIEMPRE (aunque el valor tipeado sea vacío -- eso es precisamente lo que
+      # acg_msg_es_pobre(a) debe cazar). AUTO/UNVERIFICABLE con _msg vacío es fail-open (API no resolvió el
+      # título, o el valor no es verificable aquí) -- ahí sí se salta, como siempre.
+      if [ "$_clase" = LITERAL ] || { [ "$_clase" != UNVERIFICABLE ] && [ -n "$_msg" ]; }; then
         _mdeny=""
         if acg_msg_es_pobre "$_msg"; then
           _mdeny="el squash a develop debe llevar un RESUMEN CURADO en prosa (el cambio neto y su porqué), NO el título default de la plataforma (\"Merge pull request #N\"), ni un mensaje vacío o de una sola palabra (\"wip\"/\"fix\"/\"update\")."

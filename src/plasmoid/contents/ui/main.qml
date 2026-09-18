@@ -967,15 +967,12 @@ PlasmoidItem {
                 { emoji: "🚧", name: "git-branch-guard",       desc: "push/merge a develop·main → denegado, te redirige a ramita→MR",
                   event: "PreToolUse · Bash",
                   detail: "Escanea cada comando: si ve un `git push` o un merge que apunte a develop/main, lo deniega y te recuerda el flujo ramita→MR. Sin jq falla ABIERTO (no bloquea)." },
-                { emoji: "🔗", name: "merge-squash-guard",     desc: "MR a develop sin --squash → denegado (1 commit limpio)",
+                { emoji: "🔗", name: "merge-develop-guard",    desc: "MR a develop sin --squash o sin tu OK → denegado; a main exige OK súper-explícito",
                   event: "PreToolUse · Bash",
-                  detail: "Un `gh pr merge`/`glab mr merge` a develop sin --squash se deniega, para que la ramita colapse a un commit curado. Los releases a main quedan exentos (conservan historia)." },
+                  detail: "Candado ÚNICO del punto de merge (2026-09-17, consolida a los antiguos merge-squash-guard + confirmar-merge-develop). Un `gh pr merge`/`glab mr merge` a develop sin --squash se deniega, para que la ramita colapse a un commit curado; además busca tu OK explícito en el chat reciente antes de integrar. A main exige lenguaje de release ('hasta main', 'libera') y va SIN squash (conserva historia). Un 'sigue/avanza' NO cuenta como autorización." },
                 { emoji: "🕵️", name: "secret-scan",            desc: "commit/push con un secreto → denegado",
                   event: "PreToolUse · Bash",
                   detail: "Escanea lo que ENTRA al repo (staged en commit, saliente en push) buscando llaves/tokens/claves privadas de formato inconfundible (AWS, PEM, Anthropic, OpenAI, GitHub, GitLab, Slack, Google). Si aparece uno → bloquea: una credencial pusheada queda comprometida aunque la borres. Escape: --no-verify." },
-                { emoji: "✋", name: "confirmar-merge-develop", desc: "merge a develop sin tu OK → denegado; a main exige OK súper-explícito",
-                  event: "PreToolUse · Bash",
-                  detail: "Antes de integrar por MR busca tu OK explícito en el chat reciente; a main exige lenguaje de release ('hasta main', 'libera'). Un 'sigue/avanza' NO cuenta como autorización." },
                 { emoji: "✅", name: "dod-verificar",          desc: "Def. of Done (ver Norma 🎯 DoD) sin build+tests+memoria → denegado",
                   event: "Stop",
                   detail: "Al cerrar el turno, si dijiste 'listo/en producción' tras tocar código fuente, exige evidencia de build+tests verdes y memoria al día, o bloquea el cierre." },
@@ -1158,7 +1155,7 @@ PlasmoidItem {
 
     // Catálogo conocido (mismos conjuntos que BrainState.knownGlobalHooks / knownRepoHooks del Swift).
     // DEBE coincidir con brain/hooks/MANIFEST; lo verifica el drift-check del widget (test-brain.sh).
-    readonly property var brainGlobalHooks: ["git-branch-guard","merge-squash-guard","confirmar-merge-develop","recordar-dashboard","secret-scan","proteger-arbol","proteger-fuente-cerebro","limite-gasto","delegacion-gate","delegacion-registrar","delegacion-reporte","recordar-orquestar","rehidratar-hilo","aviso-contexto","aviso-drift-cerebro","hud-stale","exportar-sesion-master","checkpoint-mecanico","barrer-ramas","entorno-maquina-guard","no-bypass-deploy"]
+    readonly property var brainGlobalHooks: ["git-branch-guard","merge-develop-guard","recordar-dashboard","secret-scan","proteger-arbol","proteger-fuente-cerebro","limite-gasto","delegacion-gate","delegacion-registrar","delegacion-reporte","recordar-orquestar","rehidratar-hilo","aviso-contexto","aviso-drift-cerebro","hud-stale","exportar-sesion-master","checkpoint-mecanico","barrer-ramas","entorno-maquina-guard","no-bypass-deploy"]
     readonly property var brainRepoHooks:   ["sesion-inicio","dod-verificar","recordar-cosechar","recordar-unificar-cerebro"]
 
     // ---------- Pestaña BROKER (idx 6) ----------

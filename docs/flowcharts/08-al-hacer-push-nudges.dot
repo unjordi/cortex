@@ -27,11 +27,10 @@ digraph flujos {
       <table border="0" cellborder="1" cellspacing="0" cellpadding="4" color="#5fa89e" bgcolor="#1b1712">
         <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>🔒 Hooks Forzosos</b></font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🚧 git-branch-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">push/merge a develop·main → denegado</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔗 merge-squash-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">MR a develop sin --squash → denegado</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔗 merge-develop-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">MR a develop sin --squash o sin tu OK → denegado; a main exige OK súper-explícito</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🕵️ secret-scan</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">commit/push con un secreto → denegado</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">💸 delegacion-gate</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">delegar al llegar al 90% de tu ventana 5h → pide tu OK</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🛑 limite-gasto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">sin ventana 5h Y sin overage (ambos agotados) → freno duro</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">✋ confirmar-merge-develop</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">merge sin tu OK → denegado</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">✅ dod-verificar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cierre sin evidencia/OK → denegado; claim visual a ciegas (sin ver la pantalla) también</font></td></tr>
         <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>🔔 Automático</b></font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📊 recordar-dashboard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">en el push recuerda dashboard + doc=realidad (README/docs) — cierre del slice</font></td></tr>
