@@ -187,6 +187,11 @@ rm -rf "$CDIR"/.delegacion-ask.*.lock 2>/dev/null
 run_gate "$H6P" >/dev/null 2>&1        # crea el lock del lote
 run_registrar "$H6P"                    # aprobar → registra consentimiento + libera el lock
 ls "$CDIR"/.delegacion-ask.*.lock >/dev/null 2>&1 && bad "H6: el registrar dejó el lock del lote (fantasma)" || ok "H6 · registrar libera el lock de coalescencia al aprobar (sin fantasma)"
+# el registrar emite el DIENTE de revisión crítica al recibir el agente (mecanismo de "agente PROPONE, usuario DECIDE")
+dnt="$(run_registrar "$H6P" 2>/dev/null)"
+printf '%s' "$dnt" | jq -e '.systemMessage | test("PROPONE")' >/dev/null 2>&1 \
+  && ok "H6b · registrar emite el DIENTE de revisión crítica (output del agente PROPONE, no veredicto)" \
+  || bad "H6b: el registrar no emitió el diente de revisión crítica; got: $dnt"
 rm -f "$CONS"; rm -rf "$CDIR"/.delegacion-ask.*.lock 2>/dev/null
 write_state 19
 
