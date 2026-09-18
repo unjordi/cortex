@@ -325,3 +325,46 @@ EOF
   printf '%s\n' "$msg"
   return 0
 }
+
+# ── drift_norms_global — drift del bloque de NORMAS instalado en ~/.claude/CLAUDE.md (marcadores
+#    `<!-- BEGIN cortex … -->` … `<!-- END cortex -->`) vs la fuente única (brain/norms/global-claude-md.md).
+#    Antídoto al hallazgo ALTO-2 de la auditoría de suficiencia operativa (2026-09-18): a diferencia de
+#    hooks/skills (arriba, con su propio drift_*_global), install-brain.sh §(e) SÍ refresca este bloque en
+#    cada re-corrida (reemplaza el contenido completo en su lugar) — el mecanismo de PROPAGACIÓN funciona —
+#    pero NADA avisaba que hacía falta re-correrlo: confirmado en vivo, el propio `~/.claude/CLAUDE.md` de
+#    la máquina de unjordi seguía citando el hook YA retirado `recordar-dashboard` como "un hook te lo
+#    recuerda" pese a que `brain/norms/global-claude-md.md` ya traía el texto correcto, retirado desde
+#    2026-09-18 — el reemplazo funcional (norma en vez de hook) solo sirve si el TEXTO de la norma llega.
+#    Comparación EXACTA (no heurística): install-brain inserta el archivo fuente COMPLETO y VERBATIM entre
+#    sus propios marcadores BEGIN/END (que el propio archivo fuente ya trae) — así que "instalado == fuente"
+#    se reduce a extraer el bloque instalado (desde la línea BEGIN hasta la línea END, ambas inclusive) y
+#    comparar byte a byte contra el archivo fuente completo (cmp -s, sin falsos positivos por mtime/edición
+#    en vivo: es un bloque GENERADO, nunca se edita a mano — a diferencia de hooks/skills no hace falta
+#    distinguir "editado en vivo" de "desactualizado", solo hay UN motivo de drift: re-correr install-brain).
+#    WARN-ONLY (nunca reescribe ~/.claude/CLAUDE.md — esa es la sección PERSONAL del usuario fuera del
+#    bloque, y el remedio real de todos modos es re-correr install-brain, que YA sabe hacerlo con su propia
+#    red de seguridad de backup). Silencio si no hay fuente, no hay CLAUDE.md, o el bloque no está instalado
+#    (fail-open: "aún no instalado" no es "instalado y desactualizado" — eso lo cubre el bootstrap inicial,
+#    no este drift-check). Imprime el mensaje humano si hay drift; NADA si está limpia. bash-3.2-safe.
+drift_norms_global() {
+  local BRAIN_DIR SRC_NORMS INST
+  BRAIN_DIR="$(resolve_brain_dir)"
+  SRC_NORMS="$BRAIN_DIR/brain/norms/global-claude-md.md"
+  INST="$HOME/.claude/CLAUDE.md"
+  [ -f "$SRC_NORMS" ] || return 0    # sin fuente → fail-open
+  [ -f "$INST" ] || return 0         # CLAUDE.md global ni existe → nada que comparar (bootstrap aún no corrió)
+
+  local block
+  block="$(awk '
+    /<!-- BEGIN cortex/ { f=1 }
+    f { print }
+    /<!-- END cortex -->/ { if (f==1) exit }
+  ' "$INST")"
+  [ -n "$block" ] || return 0        # bloque no instalado aún → fail-open (no es "desactualizado")
+
+  if printf '%s\n' "$block" | cmp -s - "$SRC_NORMS"; then
+    return 0                         # byte-idéntico → limpia, silencio
+  fi
+  printf '%s\n' "🧠⚠️ DRIFT DE NORMAS (bloque BEGIN/END cortex de ~/.claude/CLAUDE.md vs la fuente única brain/norms/global-claude-md.md): el bloque instalado quedó ATRÁS de la fuente — normas nuevas/retiradas/corregidas en el repo (p. ej. un hook que se retiró y cuya regla subió a norma) NO llegaron a esta máquina. Remedio: re-corre el bootstrap/install-brain (o \`bash $BRAIN_DIR/brain/install-brain.sh\`) — §(e) REFRESCA el bloque completo en su lugar (respaldo automático en CLAUDE.md.bak, tu sección personal fuera del bloque queda intacta). NO edites el bloque a mano: se regenera y tu edición se perdería."
+  return 0
+}

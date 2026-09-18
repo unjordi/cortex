@@ -4393,6 +4393,41 @@ rm -f "$HKGBR/brain/hooks/MANIFEST"
 is_silent "$(hkg)" && ok "drift-hooks-global: sin HOOKS-MANIFEST → fail-open (silencio)" || bad "drift-hooks-global: habló sin manifiesto"
 rm -rf "$HKGFIX"
 
+# ── (b5d3c) drift_norms_global: gemelo de drift_hooks_global/drift_skills_global pero para el bloque de
+# NORMAS de ~/.claude/CLAUDE.md vs brain/norms/global-claude-md.md. Antídoto al hallazgo ALTO-2 de la
+# auditoría de suficiencia operativa (2026-09-18): install-brain §(e) SÍ refresca el bloque en cada
+# re-corrida, pero nada avisaba que hacía falta re-correrlo — confirmado en vivo (el CLAUDE.md real de
+# unjordi seguía citando `recordar-dashboard`, ya retirado, como "un hook te lo recuerda"). Antes de esta
+# ola, drift_norms_global NI EXISTÍA → cero tests.
+NMGFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-nmg.XXXXXX")"
+NMGHOME="$NMGFIX/home"; NMGBR="$NMGFIX/brain"
+mkdir -p "$NMGHOME/.claude" "$NMGBR/brain/norms"
+nmg() { ( HOME="$NMGHOME" CLAUDE_BRAIN_DIR="$NMGBR"; . "$HOOKS/drift-cerebro-comun.sh"; drift_norms_global ); }
+# (1) sin CLAUDE.md global (bootstrap aún no corrió) → fail-open, silencio (NO es "desactualizado")
+# NOTA de fixture: la fuente REAL (brain/norms/global-claude-md.md) empieza EXACTO en su línea 1 con
+# "<!-- BEGIN cortex" (sin preámbulo) — install-brain copia el archivo COMPLETO entre marcadores, así que
+# "instalado == fuente" solo tiene sentido comparando esa MISMA forma; un preámbulo antes del BEGIN en la
+# fuente sintética rompería la comparación por una razón AJENA al drift real (nunca ocurre en la fuente
+# real). Se replica esa forma aquí a propósito.
+printf '%s\n' '<!-- BEGIN cortex (normas globales) -->' 'regla A' '<!-- END cortex -->' > "$NMGBR/brain/norms/global-claude-md.md"
+is_silent "$(nmg)" && ok "drift-norms-global: sin ~/.claude/CLAUDE.md instalado → fail-open (silencio, no 'desactualizado')" || bad "drift-norms-global: habló sin CLAUDE.md instalado"
+# (2) instalado BYTE-IDÉNTICO a la fuente (mismo bloque + sección personal fuera) → silencio (sin FP)
+{ cat "$NMGBR/brain/norms/global-claude-md.md"; printf '\n# Mi sección personal\nnotas mías\n'; } > "$NMGHOME/.claude/CLAUDE.md"
+is_silent "$(nmg)" && ok "drift-norms-global: bloque instalado == fuente (sección personal fuera, intacta) → silencio (sin FP)" || bad "drift-norms-global: warned con el bloque limpio"
+# (3) la fuente CAMBIÓ (norma nueva/corregida) y el bloque instalado quedó ATRÁS → warn con remedio
+printf '%s\n' '<!-- BEGIN cortex (normas globales) -->' 'regla A corregida' 'regla B nueva' '<!-- END cortex -->' > "$NMGBR/brain/norms/global-claude-md.md"
+nmgout="$(nmg)"
+printf '%s' "$nmgout" | grep -q 'DRIFT DE NORMAS' \
+  && ok "drift-norms-global: fuente cambió → CAZA el drift del bloque instalado" || bad "drift-norms-global: no detectó que la fuente cambió"
+printf '%s' "$nmgout" | grep -qi 'install-brain' \
+  && ok "drift-norms-global: el mensaje señala el remedio real (re-correr install-brain)" || bad "drift-norms-global: el mensaje no dice cómo remediarlo"
+# (4) la sección PERSONAL del usuario (fuera del bloque) NUNCA se toca ni se cuenta — control anti-FP
+grep -q 'Mi sección personal' "$NMGHOME/.claude/CLAUDE.md" && ok "drift-norms-global: NUNCA reescribe el archivo — la sección personal sigue intacta" || bad "drift-norms-global: ¡tocó ~/.claude/CLAUDE.md!"
+# (5) fail-open: sin fuente (brain/norms/global-claude-md.md ausente) → silencio
+rm -f "$NMGBR/brain/norms/global-claude-md.md"
+is_silent "$(nmg)" && ok "drift-norms-global: sin fuente → fail-open (silencio)" || bad "drift-norms-global: habló sin fuente"
+rm -rf "$NMGFIX"
+
 # ── (b5c-V1) FIX V1 (auditoría 2026-08-06): el auto-commit del cerebro por-repo BYPASSEABA secret-scan
 # (ocurre DENTRO del subproceso del hook, NO vía una tool Bash → el guard PreToolUse/Bash no lo veía). Ahora
 # drift-cerebro-comun.sh escanea lo AGREGADO al .claude/ (git diff --cached) con detectar-secretos ANTES de
