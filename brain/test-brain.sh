@@ -6904,6 +6904,41 @@ else
   bad "arbol: DRIFT entre catálogos → corre docs/flowcharts/verificar-arbol-sync.sh para ver cuál"
 fi
 
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (f2) verificar-arbol-sync FASE 1B: también CAZA drift de la familia de HOOKS (🔒+🔔) — antes esta"
+echo "        Fase 1 SOLO comparaba Skills y daba ✅ FALSO ante un drift de hooks real (CRÍTICO-1) =="
+# Fixture: repo git fake con su propio README/MEMORY.md/skills/hooks-MANIFEST — construido copiando el
+# ESTADO REAL ya corregido de este mismo repo (para no repetir a mano el árbol completo) y luego
+# DRIFTEANDO deliberadamente UN SOLO nombre de hook en la copia de MEMORY.md, dejando README intacto —
+# exactamente el patrón del bug real (un guard renombrado en un catálogo y no en el otro). Un checker
+# que no puede dar rojo ante esto no sirve (la propia auditoría de suficiencia lo encontró en ✅ falso).
+ASFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-asfix.XXXXXX")"
+mkdir -p "$ASFIX/.claude/memory" "$ASFIX/brain/hooks" "$ASFIX/docs/flowcharts"
+git -C "$ASFIX" init -q >/dev/null 2>&1
+cp -R "$SCRIPT_DIR/skills" "$ASFIX/brain/skills"
+cp "$HOOKS/MANIFEST" "$ASFIX/brain/hooks/MANIFEST"
+cp "$SCRIPT_DIR/../README.md" "$ASFIX/README.md"
+cp "$SCRIPT_DIR/../.claude/memory/MEMORY.md" "$ASFIX/.claude/memory/MEMORY.md"
+cp "$SCRIPT_DIR/../docs/flowcharts/verificar-arbol-sync.sh" "$ASFIX/docs/flowcharts/verificar-arbol-sync.sh"
+# (1) baseline: el estado REAL (ya corregido en esta misma tanda) está en paridad → ✅
+if bash "$ASFIX/docs/flowcharts/verificar-arbol-sync.sh" >/dev/null 2>&1; then
+  ok "f2: baseline (README/MEMORY reales, ya corregidos) → checker en ✅ (control: no hay falso rojo)"
+else
+  bad "f2: baseline en paridad dio ❌ — revisa README.md/MEMORY.md antes de confiar en el resto de esta batería"
+fi
+# (2) DRIFT deliberado: renombra un hook SOLO en la copia de MEMORY.md (línea EXACTA del árbol, no toca
+#     las docenas de menciones del mismo nombre en el Detalle 1:1 más abajo en el archivo).
+sed -i.bak 's/^├─ 🚧 git-branch-guard /├─ 🚧 git-branch-guard-fantasma /' "$ASFIX/.claude/memory/MEMORY.md"
+f2out="$(bash "$ASFIX/docs/flowcharts/verificar-arbol-sync.sh" 2>&1)"; f2rc=$?
+[ "$f2rc" -ne 0 ] \
+  && ok "f2: drift de UN hook en MEMORY.md (README intacto) → checker CAZA el drift (exit≠0)" \
+  || bad "f2: el checker NO detectó un hook renombrado solo en MEMORY.md — el checker viejo (solo Skills) habría dado el MISMO ✅ falso que encontró la auditoría"
+printf '%s' "$f2out" | grep -qi 'hooks' \
+  && ok "f2: el mensaje de drift señala la familia de Hooks (no solo Skills)" \
+  || bad "f2: el checker falló pero sin mencionar Hooks — ¿sigue siendo el chequeo de Skills el que reventó por otra razón?"
+rm -rf "$ASFIX"
+
 # ═════════════════════════════════════════════════════════════════════════════
 ### F4 SWEEPER
 # Sección DEMARCADA (para reconciliar con otros agentes sin choque): sweeper de flotilla
