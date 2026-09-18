@@ -6,7 +6,7 @@
 # Instala GLOBAL (en ~/.claude, aplica a TODOS los repos de esta máquina):
 #   (a) HOOKS de tier {global, both} en ~/.claude/hooks/ — la LISTA se DERIVA de brain/hooks/MANIFEST
 #       (fuente única; ya no se cura a mano en paralelo con la copia por-repo). Incluye git-branch-guard,
-#       merge-squash-guard, confirmar-merge-develop, recordar-dashboard, secret-scan,
+#       merge-develop-guard, recordar-dashboard, secret-scan,
 #       proteger-arbol (PreToolUse/Bash), delegacion-gate + limite-gasto (PreToolUse/Task),
 #       delegacion-registrar/reporte (PostToolUse/Task), rehidratar-hilo + aviso-contexto (SessionStart/
 #       PostToolUse) + libs `delegacion-comun.sh`, `analizar-comando-git.sh`, `detectar-secretos.sh`
@@ -30,9 +30,11 @@
 #   · persist_env_active → CAPTURA el valor ACTIVO del entorno si la var está exportada al correr el
 #                          bootstrap (para las tunables que el dev elige). Ambos idempotentes.
 #
-# confirmar-merge-develop AHORA es GLOBAL (candado de merges a develop/main con OK explícito): antes
-# vivía solo por-repo y por eso faltaba donde el repo no lo traía (un caso real 2026-07-11) → promovido a
-# global para que aplique en TODA sesión/clon. NO instala globales los hooks REPO-SCOPED restantes
+# merge-develop-guard (candado del punto de merge a develop/main: squash + autorización con OK explícito;
+# CONSOLIDA a los antiguos merge-squash-guard + confirmar-merge-develop) es GLOBAL/both: antes vivían solo
+# por-repo y faltaban donde el repo no los traía (caso real 2026-07-11) → global para que apliquen en TODA
+# sesión/clon. Las lápidas del MANIFEST de los dos viejos los PODAN de máquinas donde quedaron instalados.
+# NO instala globales los hooks REPO-SCOPED restantes
 # (sesion-inicio, dod-verificar): esos viven en brain/hooks/ como FUENTE para
 # que cada repo los copie a su .claude/ y los cablee (se cargan solo si la sesión INICIA en el repo).
 #
@@ -206,7 +208,7 @@ register_hook() {
 # de abajo AVISA y el drift-check de test-brain (e2) FALLA (no se cablea en silencio).
 ev_de() {
   case "$1" in
-    git-branch-guard|merge-squash-guard|confirmar-merge-develop|recordar-dashboard|secret-scan|entorno-maquina-guard|no-bypass-deploy|proteger-arbol) echo "PreToolUse|Bash" ;;
+    git-branch-guard|merge-develop-guard|recordar-dashboard|secret-scan|entorno-maquina-guard|no-bypass-deploy|proteger-arbol) echo "PreToolUse|Bash" ;;
     proteger-fuente-cerebro) echo "PreToolUse|Edit|Write|MultiEdit" ;;
     limite-gasto|delegacion-gate) echo "PreToolUse|Task|Agent" ;;   # Task|Agent: el tool se renombró Agent (antes Task); casar AMBOS o el gate nunca dispara
     delegacion-registrar|delegacion-reporte) echo "PostToolUse|Task|Agent" ;;

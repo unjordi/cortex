@@ -122,8 +122,8 @@ printf '%s' "$cmd_uq" | grep -qE 'git[[:space:]]+(commit|push)' || exit 0
 printf '%s' "$cmd_uq" | grep -qE '(^|[[:space:]])--no-verify([[:space:]]|$)' && exit 0
 
 command -v git >/dev/null 2>&1 || bail_open "git no está en el PATH"
-# M2: resuelve el DIR objetivo por la MISMA lib que git-branch-guard/merge-squash-guard/confirmar-merge-
-# develop (acg_target_dir: -C > cd/pushd > cwd del payload > CLAUDE_PROJECT_DIR > '.') — antes este guard
+# M2: resuelve el DIR objetivo por la MISMA lib que git-branch-guard/merge-develop-guard
+# (acg_target_dir: -C > cd/pushd > cwd del payload > CLAUDE_PROJECT_DIR > '.') — antes este guard
 # era, junto con proteger-arbol, el único de los 5 que NO la usaba pese a tenerla sourceada 3 líneas arriba.
 if command -v acg_target_dir >/dev/null 2>&1; then
   dir=$(acg_target_dir "$cmd" "$pcwd")

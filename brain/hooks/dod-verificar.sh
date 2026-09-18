@@ -33,7 +33,7 @@
 # El detalle vive en el comentario de _juez_dod (abajo). CONSCIENTE DE LATENCIA: dod corre en CADA Stop →
 # presupuesto MODERADO + timeout sensato; como es fail-OPEN, un timeout simplemente no bloquea.
 #
-# FAIL-SAFE (a diferencia de confirmar-merge-develop, que fail-safe DENY): dod es un NAG de disciplina, no
+# FAIL-SAFE (a diferencia de merge-develop-guard, que fail-safe DENY): dod es un NAG de disciplina, no
 # un límite de seguridad. Si el juez no está (sin token OAuth, sin curl/jq, sin red, timeout, o respuesta ininteligible) →
 # FAIL-OPEN (deja cerrar el turno). Bloquear CADA Stop cuando Haiku esté caído atraparía al usuario en un
 # loop sin poder terminar. Mockeable con CLAUDE_DOD_JUEZ_MOCK (veredicto final, tests de flujo) y
