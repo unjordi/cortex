@@ -51,10 +51,33 @@ Cada ítem **ABIERTO** (grupos 🟢/🟡) lleva su etiqueta de madurez del plan,
 - **`📝`** — falta plan; todavía no está escrito.
 - **`➖`** — mecánico/obvio, no necesita plan.
 
-La vista se **deriva** del backlog durable cada vez que invocas — no la persistas como archivo
-paralelo (eso duplicaría la fuente de verdad, ver Regla 1). Al espejar a la interfaz del harness,
+La vista se **deriva** del backlog durable cada vez que invocas. Al espejar a la interfaz del harness,
 solo los grupos 🟢/🟡 son tareas ACTIVAS (`pending`/`in_progress`/`parked`); ✅/🪦/⚪ son contexto
 histórico, no se cargan como tareas del harness.
+
+### La maquinaria MECÁNICA la corre un script — no la re-implementes a mano
+La continuidad mecánica (el ÚLTIMO HUD ⇄ el bloque durable) la dueña la lib **`sincronizar-tasklist.sh`**
+(la misma que corre el hook `recordar-cosechar` en el Stop). Al re-poblar la interfaz, **invócala** en vez
+de re-parsear el bloque a mano:
+
+```bash
+bash "${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/sincronizar-tasklist.sh" sembrar   # → status|id|subject por línea
+```
+
+Eso te da, DETERMINISTA, el set de tareas vivas serializado en el bloque espejo (que viaja por git y
+sobrevive la rotación de session_id). Ese set lo **aplicas al HUD vivo con las tools** (`TaskCreate`/
+`TaskUpdate`) — es la ÚNICA vía que refresca el HUD en pantalla: el harness tiene la lista EN MEMORIA y NO
+re-renderiza si un proceso externo escribe los json (crux medido 2026-09-18). La lib hace la continuidad
+mecánica; TÚ curas encima los ítems NUEVOS del backlog freeform (los grupos 🟢/🟡 que aún no están en el
+bloque). Una lógica, varios disparadores: el Stop la corre en sentido HUD→durable; tú la corres aquí en
+sentido durable→HUD.
+
+**El purismo "no persistas la vista derivada" EVOLUCIONÓ** (contexto nuevo, decisión de unjordi 2026-09-18):
+antes el modo de falla era actualizar SOLO el HUD y olvidar las memorias durables → la regla prohibía un
+archivo paralelo. Ese modo se INVIRTIÓ: hoy el modelo actualiza SOLO `estado-proyecto.md` y OLVIDA el HUD.
+Por eso ahora SÍ se serializa la vista al **bloque `<!-- espejo-tasklist -->` DENTRO de `estado-proyecto.md`**
+(no un archivo aparte) — es la única forma de que el HUD sobreviva la rotación de session_id y viaje por
+git. Sigue habiendo UNA fuente de verdad (el .md); el bloque es su sección-máquina, mantenida sola.
 
 ## Regla 1 — DOS planos, no los confundas
 - **La task-list / `TodoWrite` del harness = SCRATCH de sesión.** Efímera (se pierde al cerrar/compactar). Es una **VISTA**.

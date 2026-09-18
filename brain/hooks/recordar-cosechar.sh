@@ -1,98 +1,59 @@
 #!/usr/bin/env bash
-# recordar-cosechar.sh — Stop hook (tier REPO). ESPEJO automático, silencioso e idempotente: vuelca los
-# PENDIENTES del TaskList vivo de la sesión a un bloque fenced `<!-- espejo-tasklist -->` DENTRO de
-# .claude/memory/estado-proyecto.md, para que el backlog durable (que viaja por git y ven los otros
-# claudios/colegas) refleje la vista de tareas sin fricción. Determinista (lee
-# ~/.claude/tasks/<session-id>/*.json con jq → markdown); NO usa LLM. Solo toca ESE bloque; jamás la
-# prosa curada. Solo si estado-proyecto.md YA existe (no lo crea). NUNCA bloquea.
+# recordar-cosechar.sh — Stop hook (tier REPO). ESPEJO automático, silencioso e idempotente del TaskList
+# vivo → el bloque `<!-- espejo-tasklist -->` DENTRO de .claude/memory/estado-proyecto.md, para que el
+# backlog durable (que viaja por git y ven los otros claudios/colegas) refleje la vista de tareas sin
+# fricción del modelo. Determinista, SIN LLM. Solo toca ESE bloque; jamás la prosa curada. Solo si
+# estado-proyecto.md YA existe (no lo crea). NUNCA bloquea.
 #
-# Overhaul hooks 2026-09-18: este hook hacía DOS cosas — el ESPEJO (mecanismo real, mutación) y un
-# NUDGE de "trabajaste y no dejaste memoria durable" (puramente advisory, medido: ignorado). El NUDGE
-# se RETIRÓ (subió a norma — brain/norms/global-claude-md.md § "Ningún hallazgo tuyo se queda solo
-# narrado" / "Ninguna DECISIÓN se queda solo en el chat"): CERO-PÉRDIDA de la regla, pero deja de ser un
-# hook — es disciplina de cierre de turno, igual que cosechar (skill cosechar-sesion / cerrar-slice §5).
-# El ESPEJO se CONSERVA aquí porque no es "solo un recordatorio": es un mecanismo que MUTA
-# estado-proyecto.md — apagarlo perdía una función real, no una norma.
+# La maquinaria vive en la LIB `sincronizar-tasklist.sh` (UN dueño; el skill to-do la EJECUTA para el
+# sentido inverso — bloque → HUD). Este hook la SOURCEA y dispara el sentido Stop (json → bloque).
+#
+# Rediseño 2026-09-18 (sync bidireccional): antes el espejo escribía RUIDO — con el session_id ROTADO (que
+# el harness cambia sin aviso al arrancar/compactar) el sid del payload apuntaba a una carpeta vacía y el
+# hook PISABA el bloque con "_(sin pendientes)_ · +0", borrando el último espejo bueno. Arreglos en la lib:
+# (1) selección de carpeta ROBUSTA a la rotación (payload sid → si vacío, la más reciente en ventana);
+# (2) ANTI-CLOBBER (nunca pisa un bloque no-vacío con uno vacío). Además vuelve el NUDGE como CERRADOR DE
+# LAZO del HUD: el harness NO refresca el HUD en pantalla desde disco (tiene la lista en memoria) → un hook
+# NO puede sembrar el HUD, SOLO el modelo con las tools de to-do. Así que el nudge AVISA al modelo que
+# actualizó el bloque durable y le sugiere re-sincronizar su task-list. Non-blocking (systemMessage) y solo
+# cuando espejó ≥1 pendiente vivo Y el bloque cambió — no decorativo en cada Stop (esa mitad advisory vaga
+# se retiró; regresa anclada al hecho y con un propósito accionable: cerrar el lazo json→durable→HUD).
 #
 # Fail-open SIEMPRE: no-git / sin jq / cualquier error → silencio, exit 0. NUNCA bloquea.
 # Escape: CLAUDE_SKIP_RECORDAR_COSECHAR=1.
 set -u
 
-payload=$(cat 2>/dev/null || true)   # capturar stdin (contrato Stop trae session_id/transcript_path)
+payload=$(cat 2>/dev/null || true)   # capturar stdin (contrato Stop trae session_id/transcript_path/stop_hook_active)
 
 [ "${CLAUDE_SKIP_RECORDAR_COSECHAR:-0}" = 1 ] && exit 0
+
+# Anti-loop: si este Stop lo disparó otro hook Stop, no re-entrar (el nudge no debe re-avisar en cadena).
+if command -v jq >/dev/null 2>&1; then
+  [ "$(printf '%s' "$payload" | jq -r '.stop_hook_active // false' 2>/dev/null)" = "true" ] && exit 0
+fi
 
 ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo "")}"
 [ -n "$ROOT" ] && git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 
 # Solo aplica a repos con el sistema de memoria (donde vive el backlog).
-MEM="$ROOT/.claude/memory"
-[ -d "$MEM" ] || exit 0
-ESTADO_REL=".claude/memory/estado-proyecto.md"
-ESPEJO_INI="<!-- espejo-tasklist:start -->"
-ESPEJO_FIN="<!-- espejo-tasklist:end -->"
-TAB=$(printf '\t')
+[ -d "$ROOT/.claude/memory" ] || exit 0
 
-# ─────────────────────────────────────────────────────────────────────────────
-# ESPEJO — automático, idempotente, silencioso. Corre en CADA Stop.
-# ─────────────────────────────────────────────────────────────────────────────
-espejar_tasklist() {
-  command -v jq >/dev/null 2>&1 || return 0
-  local estado="$ROOT/$ESTADO_REL"
-  [ -f "$estado" ] || return 0   # NO crea el backlog; solo mantiene su bloque si ya existe.
-  local sid; sid=$(printf '%s' "$payload" | jq -r '.session_id // empty' 2>/dev/null)
-  [ -n "$sid" ] || return 0
-  local tasksdir="$HOME/.claude/tasks/$sid"
-  [ -d "$tasksdir" ] || return 0
+# ── Cargar la lib (blindado: un error de sintaxis en la lib NO tumba el hook) ────────────────────────────
+_STL_LIB="$(dirname "$0")/sincronizar-tasklist.sh"
+if [ -f "$_STL_LIB" ] && bash -n "$_STL_LIB" 2>/dev/null; then
+  # shellcheck source=sincronizar-tasklist.sh
+  . "$_STL_LIB"
+else
+  exit 0   # sin la lib no hay maquinaria; fail-open silencioso (nunca bloquea el Stop).
+fi
 
-  # Cuerpo del bloque desde los task JSON (en curso + pendientes, ordenados: in_progress antes de pending,
-  # luego por id numérico). "in_progress" < "pending" alfabéticamente → el sort los ordena bien.
-  local rows n_done body
-  rows=$(for f in "$tasksdir"/*.json; do
-           [ -f "$f" ] || continue
-           jq -r 'select(.status=="in_progress" or .status=="pending")
-                  | [.status, (.id|tonumber? // 0), (.subject // "")] | @tsv' "$f" 2>/dev/null
-         done | sort -t"$TAB" -k1,1 -k2,2n)
-  n_done=$(grep -l '"status": *"completed"' "$tasksdir"/*.json 2>/dev/null | grep -c . || echo 0)
-  case "$n_done" in ''|*[!0-9]*) n_done=0;; esac
+# ── ESPEJO — json → bloque durable. Devuelve el nº de pendientes espejados. ──────────────────────────────
+n_espejados=$(espejar_tasklist "$payload" "$ROOT" 2>/dev/null || echo 0)
+case "$n_espejados" in ''|*[!0-9]*) n_espejados=0 ;; esac
 
-  body="## 🔄 Pendientes — espejo automático del TaskList (NO editar a mano)
-> Lo mantiene el hook \`recordar-cosechar\` en cada Stop. Refleja el TaskList vivo de la sesión. La
-> curación (decisiones, contexto, prioridades) va AFUERA de este bloque; aquí solo se espeja el estado."
-  if [ -n "$rows" ]; then
-    local st id subj icon
-    while IFS="$TAB" read -r st id subj; do
-      [ -n "$st" ] || continue
-      case "$st" in in_progress) icon="🔸";; *) icon="▫️";; esac
-      body="$body
-- $icon **[$st]** #$id · $subj"
-    done <<EOF2
-$rows
-EOF2
-  else
-    body="$body
-
-_(sin pendientes ni tareas en curso)_"
-  fi
-  body="$body
-
-_(+$n_done completadas · generado automáticamente)_"
-
-  # Escritura idempotente: reemplazar el bloque (o crearlo al final) SOLO si cambió.
-  local tmp; tmp=$(mktemp 2>/dev/null) || return 0
-  if grep -qF "$ESPEJO_INI" "$estado" 2>/dev/null; then
-    awk -v ini="$ESPEJO_INI" -v fin="$ESPEJO_FIN" -v body="$body" '
-      $0==ini { print; print body; skip=1; next }
-      $0==fin { skip=0; print; next }
-      skip==1 { next }
-      { print }
-    ' "$estado" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 0; }
-  else
-    { cat "$estado"; printf '\n%s\n%s\n%s\n' "$ESPEJO_INI" "$body" "$ESPEJO_FIN"; } > "$tmp" 2>/dev/null \
-      || { rm -f "$tmp"; return 0; }
-  fi
-  if cmp -s "$tmp" "$estado" 2>/dev/null; then rm -f "$tmp"; else mv -f "$tmp" "$estado" 2>/dev/null || rm -f "$tmp"; fi
-  return 0
-}
-espejar_tasklist   # fail-open interno; nunca tumba el hook
+# ── NUDGE útil, ATADO al sync real: solo si de verdad espejó pendientes vivos este Stop ──────────────────
+if [ "$n_espejados" -gt 0 ] && command -v jq >/dev/null 2>&1; then
+  msg="🔄 Actualicé el bloque durable de estado-proyecto.md con $n_espejados pendiente(s) de tu TaskList. El HUD en pantalla NO se refresca solo desde disco (el harness tiene la lista en memoria) → cuando convenga, RE-SINCRONIZA tu task-list desde la durable (skill \`to-do\` / lib \`sincronizar-tasklist.sh sembrar\`) para que el HUD quede al día. (La curación —decisiones, prioridades, contexto— va AFUERA del bloque espejo.)"
+  jq -n --arg m "$msg" '{systemMessage:$m}' 2>/dev/null || true
+fi
 exit 0

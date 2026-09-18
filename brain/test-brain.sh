@@ -4787,38 +4787,112 @@ veredicto="$(cat "$ORDERLOG" 2>/dev/null)"
   || bad "A-5: no corrieron secuenciales (limpiar-ramas no esperó a limpiar-worktrees); got: '$veredicto'"
 rm -rf "$A5FIX"
 
-# (b5g) recordar-cosechar NUDGE: RETIRADO overhaul hooks 2026-09-18 (puramente advisory, medido:
-# ignorado). Su regla subió a norma en brain/norms/global-claude-md.md § "Ninguna DECISIÓN se queda
-# solo en el chat". El ESPEJO (mecanismo real, no advisory) SIGUE — ver (b5g2) abajo.
+# (b5g) recordar-cosechar NUDGE: el nudge INCONDICIONAL viejo se retiró (overhaul hooks 2026-09-18,
+# puramente advisory, medido: ignorado; su regla subió a norma en global-claude-md.md § "Ninguna DECISIÓN
+# se queda solo en el chat"). El rediseño 2026-09-18 (sync bidireccional) lo RESTAURÓ ATADO al sync real:
+# solo avisa cuando el espejo mueve ≥1 pendiente vivo — no en cada Stop. Se prueba en (b5g2) caso nudge.
 
-# ── (b5g2) recordar-cosechar: ESPEJO del TaskList → bloque fenced en estado-proyecto.md (determinista) ──
+# ── (b5g2) recordar-cosechar + sincronizar-tasklist: sync bidireccional TaskList ⇄ estado-proyecto.md ──
+# Prueba el EFECTO REAL (no el andamio): el bloque durable refleja los pendientes del TaskList, sobrevive
+# la ROTACIÓN de session_id (bug "+0 · sin pendientes") y se ACTUALIZA al cambiar las tareas (bug del awk
+# de macOS que RECHAZA newline en `-v` → el bloque nunca se re-escribía). Varios de estos asertos FALLAN
+# contra el código viejo (verificado a mano: OLD escribe "sin pendientes" en el mismatch, y NO actualiza
+# un bloque existente en macOS).
 echo ""
-echo "== (b5g2) recordar-cosechar: espejo automático del TaskList (idempotente; no crea el backlog; no auto-suprime el nudge) =="
+echo "== (b5g2) recordar-cosechar: sync bidireccional TaskList ⇄ estado-proyecto.md (efecto real) =="
+_em_hcksum() { cksum "$1" 2>/dev/null | awk '{print $1"-"$2}'; }
+_em_mkrepo() {  # $1=dest → inicializa repo git con estado-proyecto.md commiteado (fecha vieja)
+  mkdir -p "$1/.claude/memory"
+  git -C "$1" init -q >/dev/null 2>&1
+  git -C "$1" config user.email t@t >/dev/null 2>&1; git -C "$1" config user.name tester >/dev/null 2>&1
+  printf '# Estado\n\nprosa curada.\n' > "$1/.claude/memory/estado-proyecto.md"
+  git -C "$1" add -A >/dev/null 2>&1
+  GIT_AUTHOR_DATE="2020-01-01T00:00:00" GIT_COMMITTER_DATE="2020-01-01T00:00:00" git -C "$1" commit -qm base >/dev/null 2>&1
+}
 EMFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-em.XXXXXX")"
-EMHOME="$EMFIX/home"; EMREPO="$EMFIX/repo"; EMSID="TESTSID"
-mkdir -p "$EMHOME/.claude/tasks/$EMSID" "$EMREPO/.claude/memory"
-git -C "$EMREPO" init -q >/dev/null 2>&1
-git -C "$EMREPO" config user.email t@t >/dev/null 2>&1; git -C "$EMREPO" config user.name tester >/dev/null 2>&1
-em() { printf '{"session_id":"%s"}' "$EMSID" | HOME="$EMHOME" CLAUDE_PROJECT_DIR="$EMREPO" bash "$HOOKS/recordar-cosechar.sh" 2>/dev/null; }
+
+# ── Caso 1: sid del payload CASA con su carpeta (camino feliz) ──
+EMHOME="$EMFIX/c1home"; EMREPO="$EMFIX/c1repo"; EMSID="SESION1"
+mkdir -p "$EMHOME/.claude/tasks/$EMSID"; _em_mkrepo "$EMREPO"
+EMFILE="$EMREPO/.claude/memory/estado-proyecto.md"
+em() { printf '{"session_id":"%s"}' "$1" | HOME="$EMHOME" CLAUDE_PROJECT_DIR="$EMREPO" bash "$HOOKS/recordar-cosechar.sh" 2>/dev/null; }
 printf '{"id":"5","subject":"En curso","status":"in_progress"}' > "$EMHOME/.claude/tasks/$EMSID/5.json"
 printf '{"id":"12","subject":"Pendiente A","status":"pending"}' > "$EMHOME/.claude/tasks/$EMSID/12.json"
 printf '{"id":"3","subject":"Hecha","status":"completed"}' > "$EMHOME/.claude/tasks/$EMSID/3.json"
-EMFILE="$EMREPO/.claude/memory/estado-proyecto.md"
-# (6a) SIN estado-proyecto.md → el espejo NO lo crea
-em >/dev/null
-[ ! -f "$EMFILE" ] && ok "espejo: no crea estado-proyecto.md si no existe" || bad "espejo: creó el backlog (no debía)"
-# (6b) CON estado-proyecto.md (commiteado con fecha vieja) → escribe el bloque; salta completadas; preserva prosa
-printf '# Estado\n\nprosa curada.\n' > "$EMFILE"
-git -C "$EMREPO" add -A >/dev/null 2>&1
-GIT_AUTHOR_DATE="2020-01-01T00:00:00" GIT_COMMITTER_DATE="2020-01-01T00:00:00" git -C "$EMREPO" commit -qm base >/dev/null 2>&1
-em >/dev/null
+# 1a: SIN estado-proyecto.md el espejo NO lo crea
+EMFILE2="$EMFIX/nofile/repo/.claude/memory/estado-proyecto.md"; mkdir -p "$EMFIX/nofile/repo/.claude/memory"
+git -C "$EMFIX/nofile/repo" init -q >/dev/null 2>&1
+rm -f "$EMFILE2"; printf '{"session_id":"%s"}' "$EMSID" | HOME="$EMHOME" CLAUDE_PROJECT_DIR="$EMFIX/nofile/repo" bash "$HOOKS/recordar-cosechar.sh" >/dev/null 2>&1
+[ ! -f "$EMFILE2" ] && ok "espejo: no crea estado-proyecto.md si no existe" || bad "espejo: creó el backlog (no debía)"
+# 1b: escribe el bloque con pendientes+en-curso, excluye completadas, preserva prosa
+em "$EMSID" >/dev/null
 { grep -q 'espejo-tasklist:start' "$EMFILE" && grep -q '#5' "$EMFILE" && grep -q '#12' "$EMFILE"; } \
   && ok "espejo: escribió el bloque con pendientes+en-curso" || bad "espejo: no escribió el bloque esperado"
 grep -q '#3 ' "$EMFILE" && bad "espejo: incluyó una tarea completada (no debía)" || ok "espejo: excluyó las completadas"
 grep -q 'prosa curada' "$EMFILE" && ok "espejo: preservó la prosa curada humana" || bad "espejo: pisó la prosa"
-# (6c) idempotente: 2ª corrida no cambia el archivo
-emh1=$(md5sum "$EMFILE" | awk '{print $1}'); em >/dev/null; emh2=$(md5sum "$EMFILE" | awk '{print $1}')
+# 1c: idempotente (2ª corrida = mismo archivo)
+emh1=$(_em_hcksum "$EMFILE"); em "$EMSID" >/dev/null; emh2=$(_em_hcksum "$EMFILE")
 [ "$emh1" = "$emh2" ] && ok "espejo: idempotente (2ª corrida = mismo archivo)" || bad "espejo: no idempotente"
+
+# ── Caso 2 (BUG "+0"): session_id ROTADO — el sid del payload apunta a una carpeta VACÍA, las tareas
+#    vivas están en OTRA carpeta reciente. El espejo debe reflejar las REALES, no "sin pendientes". ──
+EMHOME2="$EMFIX/c2home"; EMREPO2="$EMFIX/c2repo"
+mkdir -p "$EMHOME2/.claude/tasks/GHOST" "$EMHOME2/.claude/tasks/VIVA"; _em_mkrepo "$EMREPO2"
+EMFILE_C2="$EMREPO2/.claude/memory/estado-proyecto.md"
+printf '{"id":"7","subject":"Tarea viva","status":"pending"}' > "$EMHOME2/.claude/tasks/VIVA/7.json"
+touch "$EMHOME2/.claude/tasks/VIVA"   # VIVA = la más reciente no-vacía
+printf '{"session_id":"GHOST"}' | HOME="$EMHOME2" CLAUDE_PROJECT_DIR="$EMREPO2" bash "$HOOKS/recordar-cosechar.sh" >/dev/null 2>&1
+grep -q '#7' "$EMFILE_C2" && ok "espejo: rotación de session_id → cae a la carpeta viva y espeja la tarea REAL (#7)" \
+  || bad "espejo: no recuperó la carpeta viva tras la rotación de session_id"
+grep -q 'sin pendientes' "$EMFILE_C2" && bad "espejo: escribió 'sin pendientes' con tareas vivas presentes (bug +0)" \
+  || ok "espejo: NO escribió 'sin pendientes' habiendo tareas vivas (bug +0 corregido)"
+
+# ── Caso 3 (BUG awk macOS): el bloque YA existe y las tareas CAMBIAN → el bloque debe ACTUALIZARSE
+#    (el awk de BSD rechazaba newline en -v → nunca re-escribía). ──
+EMHOME3="$EMFIX/c3home"; EMREPO3="$EMFIX/c3repo"; S3="SESION3"
+mkdir -p "$EMHOME3/.claude/tasks/$S3"; _em_mkrepo "$EMREPO3"
+EMFILE_C3="$EMREPO3/.claude/memory/estado-proyecto.md"
+em3() { printf '{"session_id":"%s"}' "$S3" | HOME="$EMHOME3" CLAUDE_PROJECT_DIR="$EMREPO3" bash "$HOOKS/recordar-cosechar.sh" 2>/dev/null; }
+printf '{"id":"5","subject":"En curso","status":"in_progress"}' > "$EMHOME3/.claude/tasks/$S3/5.json"
+printf '{"id":"12","subject":"Pendiente A","status":"pending"}' > "$EMHOME3/.claude/tasks/$S3/12.json"
+em3 >/dev/null   # primer espejo (crea el bloque con #5 #12)
+# cambia el TaskList: #5 se completa, aparece #20
+printf '{"id":"5","subject":"En curso","status":"completed"}' > "$EMHOME3/.claude/tasks/$S3/5.json"
+printf '{"id":"20","subject":"Nueva","status":"pending"}' > "$EMHOME3/.claude/tasks/$S3/20.json"
+em3 >/dev/null   # re-espejo sobre bloque existente
+grep -q '#20' "$EMFILE_C3" && ok "espejo: re-espejo ACTUALIZA el bloque existente (#20 aparece; fix awk-newline macOS)" \
+  || bad "espejo: NO actualizó el bloque existente al cambiar el TaskList (bug awk-newline)"
+grep -q '#5 ' "$EMFILE_C3" && bad "espejo: #5 (ya completada) sigue listada tras el re-espejo" \
+  || ok "espejo: la tarea completada #5 desapareció del bloque al re-espejar"
+[ "$(grep -c 'espejo-tasklist:start' "$EMFILE_C3")" = 1 ] && ok "espejo: exactamente UN bloque tras varios re-espejos (no duplica)" \
+  || bad "espejo: se duplicó el bloque espejo"
+grep -q 'prosa curada' "$EMFILE_C3" && ok "espejo: preservó la prosa curada tras el re-espejo" || bad "espejo: pisó la prosa al re-espejar"
+# nudge ATADO al sync: al mover un pendiente vivo, el hook emite systemMessage (advisory, no bloquea)
+printf '{"id":"21","subject":"Otra viva","status":"pending"}' > "$EMHOME3/.claude/tasks/$S3/21.json"
+em3_out=$(em3)
+{ printf '%s' "$em3_out" | grep -q 'systemMessage'; } \
+  && ok "nudge: el hook emite systemMessage cuando el espejo movió pendientes (atado al sync real)" \
+  || bad "nudge: no emitió el recordatorio tras un sync real"
+
+# ── Caso 4 (anti-clobber): bloque no-vacío + carpeta resuelta VACÍA (sin fallback) → NO pisa con vacío. ──
+EMHOME4="$EMFIX/c4home"; EMREPO4="$EMFIX/c4repo"; S4="SESION4"
+mkdir -p "$EMHOME4/.claude/tasks/$S4"; _em_mkrepo "$EMREPO4"
+EMFILE_C4="$EMREPO4/.claude/memory/estado-proyecto.md"
+printf '{"id":"9","subject":"Persistente","status":"pending"}' > "$EMHOME4/.claude/tasks/$S4/9.json"
+printf '{"session_id":"%s"}' "$S4" | HOME="$EMHOME4" CLAUDE_PROJECT_DIR="$EMREPO4" bash "$HOOKS/recordar-cosechar.sh" >/dev/null 2>&1
+rm -f "$EMHOME4/.claude/tasks/$S4"/*.json   # ahora TODAS las carpetas quedan vacías
+printf '{"session_id":"%s"}' "$S4" | HOME="$EMHOME4" CLAUDE_PROJECT_DIR="$EMREPO4" bash "$HOOKS/recordar-cosechar.sh" >/dev/null 2>&1
+grep -q '#9' "$EMFILE_C4" && ok "espejo: anti-clobber — no pisa el último bloque bueno con uno vacío" \
+  || bad "espejo: pisó un bloque no-vacío con uno vacío (anti-clobber roto)"
+
+# ── Caso 5 (INVERSO / sembrar): el CLI 'sembrar' deriva el set de tareas del bloque durable. ──
+sib=$(HOME="$EMHOME3" CLAUDE_PROJECT_DIR="$EMREPO3" bash "$HOOKS/sincronizar-tasklist.sh" sembrar 2>/dev/null)
+{ printf '%s\n' "$sib" | grep -q '^pending|20|Nueva$'; } \
+  && ok "sembrar: deriva del bloque durable el set correcto (pending|20|Nueva)" \
+  || bad "sembrar: no derivó el set esperado del bloque (got: $(printf '%s' "$sib" | tr '\n' ';'))"
+{ printf '%s\n' "$sib" | grep -q '|5|'; } && bad "sembrar: incluyó la tarea completada #5 (no debía)" \
+  || ok "sembrar: excluyó del set la tarea completada"
+
 rm -rf "$EMFIX"
 
 # (b5h) recordar-unificar-cerebro: RETIRADO overhaul hooks 2026-09-18 (puramente advisory, medido:
@@ -6042,7 +6116,10 @@ checkpoint-mecanico|checkpoint-mecanico-comun
 limpiar|limpiar-impl-ramas
 limpiar|limpiar-impl-worktrees
 limpiar|limpiar-impl-residuo
-limpiar|limpiar-impl-flotilla"
+limpiar|limpiar-impl-flotilla
+recordar-cosechar|sincronizar-tasklist
+recordar-cosechar|to-do
+sincronizar-tasklist|to-do"
 # auditar-coherencia-cerebro|auditar-proceso-algoritmo: FAMILIA declarada, no ciclo — proceso-algoritmo
 # es la METODOLOGÍA y apunta a secciones CONCRETAS de coherencia-cerebro (que es su modo-cerebro
 # empaquetado) donde vive el detalle; el contenido está en los dos lados, así que el lector no da vueltas.
@@ -6100,6 +6177,11 @@ limpiar|limpiar-impl-flotilla"
 # (ver MANIFEST); el dispatcher limpiar.sh es el único punto de entrada. Es dispatcher<->implementación
 # (el dispatcher exec-ea cada impl por nombre; cada impl documenta en su cabecera que se invoca vía
 # `limpiar.sh <subcomando>`, no un ciclo de contenido — la lógica de cada barrido vive UNA vez, en su impl.
+# recordar-cosechar|sincronizar-tasklist, recordar-cosechar|to-do, sincronizar-tasklist|to-do (rediseño
+# sync bidireccional del TaskList 2026-09-18): la maquinaria del espejo/sembrado vive UNA vez en la lib
+# sincronizar-tasklist.sh; el hook recordar-cosechar.sh la SOURCEA (lib<->consumidor) y el skill to-do la
+# EJECUTA para el sentido inverso. Hook y skill se mencionan en sus cabeceras (dos disparadores de la MISMA
+# lógica: Stop→durable / /to-do→HUD). No es ciclo — la lógica no rebota, vive en la lib.
 ce_els=()
 for d in "$SCRIPT_DIR"/skills/*/; do [ -d "$d" ] && ce_els+=("$(basename "$d")"); done
 for h in "$HOOKS"/*.sh; do [ -e "$h" ] && ce_els+=("$(basename "$h" .sh)"); done
@@ -8128,8 +8210,9 @@ NORMAS="$SCRIPT_DIR/norms/global-claude-md.md"
     && grep -qiE 'b[oó]rralo|queda vac' "$DES"; } \
   && ok "#83 desinflar-memorias: migra los feedback-* de TRATO al archivo GLOBAL y borra el vacío" \
   || bad "#83 desinflar-memorias: falta la migración de TRATO per-repo → archivo GLOBAL"
-# recordar-cosechar (el NUDGE) se retiró overhaul hooks 2026-09-18 (puramente advisory) — su regla de
-# ruteo del TRATO subió a la norma "Ninguna DECISIÓN se queda solo en el chat" (queda ahí, no en un hook).
+# El NUDGE INCONDICIONAL de recordar-cosechar se retiró (overhaul hooks 2026-09-18) — su regla de ruteo del
+# TRATO subió a la norma "Ninguna DECISIÓN se queda solo en el chat" (queda ahí). (El nudge volvió en el
+# rediseño 2026-09-18 pero ATADO al sync real, no como el recordatorio de cosecha/TRATO que aquí se prueba.)
 { [ -f "$NORMAS" ] && grep -qiE 'como-trabajar-con-<user>' "$NORMAS"; } \
   && ok "#83 norma global: recuerda que el TRATO va al archivo GLOBAL (recordar-cosechar retirado, regla subió aquí)" \
   || bad "#83 norma global: falta el ruteo del TRATO al archivo GLOBAL tras retirar recordar-cosechar"

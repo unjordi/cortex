@@ -334,3 +334,20 @@ que espera, no la que se usa.
 
 Los tres primeros cambian lo que el andamio AFIRMA (omite commits, atribuye al usuario lo que no dijo,
 no corre); los tres últimos son ruido que le baja la densidad.
+
+## Sync bidireccional TaskList ⇄ estado-proyecto.md (2026-09-18, rama feat/recordar-cosechar-sync)
+Rediseño de `recordar-cosechar` + lib `sincronizar-tasklist.sh`: espejo robusto a rotación de session_id,
+anti-clobber, fix del awk-newline de macOS (el bloque nunca se re-escribía), nudge atado al sync, skill
+`to-do` invoca la lib. Verificado técnico: test-brain 1331 PASS · 0 FAIL. Falta QA humano (unjordi) + QA del
+orquestador. Pendientes DERIVADOS (fuera del alcance de este slice, al backlog):
+- **MEDIO — Confirmar si un hook Stop hace visible su `systemMessage`.** rehidratar-hilo lo usa en
+  SessionStart (ahí sí se ve); en Stop es plausible pero NO verificado en vivo. Si no se ve, el nudge es
+  inocuo (exit 0) pero habría que moverlo a otro canal. QA: cerrar un turno con pendientes vivos y observar.
+- **MEDIO — Investigar el orden lectura-json vs hook en SessionStart.** Si el harness leyera los task-json
+  DESPUÉS de correr el hook SessionStart, se podría cablear un auto-seed del HUD al arrancar (durable→json)
+  sin el modelo. Hoy es indocumentado → NO se cableó; el seed va por el skill (modelo aplica con las tools).
+  Si se confirma el orden favorable, evaluar añadir el seed a `sesion-inicio` invocando `sincronizar-tasklist
+  sembrar --write`.
+- **BAJO — Fallback cross-repo del espejo.** Si el sid del payload apunta a carpeta vacía, la lib cae a la
+  carpeta de tareas MÁS RECIENTE (ventana 2h) — que en teoría podría ser de OTRO repo con sesión concurrente.
+  Acotado por la ventana + anti-clobber; sin mapeo repo↔session no hay forma perfecta. Aceptado como tradeoff.
