@@ -75,7 +75,7 @@ contra una estación Windows real por SSH (no simulado).
 
 | Script | Qué hace |
 |---|---|
-| `win-ssh-screenshot.ps1` | Captura la pantalla (DPI-aware, VirtualScreen completo, multi-monitor). `-B64` la imprime en base64. |
+| `win-ssh-screenshot.ps1` | Captura la pantalla (DPI-aware, VirtualScreen completo, multi-monitor). `-Window "título"` para SOLO esa ventana (`PrintWindow` nativo, reusa la técnica Find() de `get-window-coordinates`) — agregado 2026-09-18, **SIN CONFIRMAR en HW real** (solo parse-check de sintaxis). `-B64` la imprime en base64. |
 | `win-ssh-send-click.ps1` | Click izq/der por coordenada `-X -Y` (`-Button right`, `-Double`, `-Window` para enfocar antes). |
 | `win-ssh-send-double-click.ps1` | Doble-click por coordenada (abrir iconos/listas). |
 | `win-ssh-send-keys.ps1` | Teclea `-Keys "texto{ENTER}"` (SendKeys: `{TAB}`,`^a`,`%{F4}`…); `-ClickX/-ClickY` enfoca por clic + teclea en el MISMO proceso (evita perder foco entre un click y un send-keys separados). |
@@ -153,6 +153,13 @@ el centro del botón → `send-click` ahí → `screenshot` para confirmar.
 - Ventanas maximizadas que se traslapan (una hija sobre su padre) pueden hacer que un clic pensado
   para "cerrar la hija" aterrice en el botón de cerrar del PADRE — verifica con
   `get-window-coordinates`/`read-uia -WithRect` el rectángulo exacto antes de clickear a ciegas.
+- **`win-ssh-screenshot.ps1 -Window "título"` (agregado 2026-09-18) queda SIN CONFIRMAR en hardware
+  real** — solo pasó el parse-check de sintaxis (`pwsh -NoProfile`, en una Mac). Usa `PrintWindow`
+  nativo del HWND hallado por título (misma técnica `EnumWindows`+`GetWindowText` que
+  `win-ssh-get-window-coordinates.ps1`, repetida dentro del cuerpo despachado — cada gesto de este
+  kit corre como su propia tarea `/IT` independiente, no comparten proceso). Cae al VirtualScreen
+  completo si el título no se encuentra o `PrintWindow` falla (ventana minimizada/sin superficie).
+  Verifícalo la primera vez que corra contra una estación Windows real y actualiza esta nota.
 
 ## Linux — COMPLETO, verificado en vivo (KDE Wayland)
 13 scripts en [`linux/`](linux/), patrón `linux-ssh-{acción}.ps1` → `.sh`, gemelos estructurales de
@@ -164,7 +171,7 @@ independiente — una lib compartida de detección de entorno no genera drift en
 
 | Script | Qué hace | Verificado en vivo |
 |---|---|---|
-| `linux-ssh-screenshot.sh` | Captura la pantalla (spectacle\|grim\|gnome-screenshot\|import, según compositor). Default = escritorio COMPLETO (todos los monitores, paridad con el VirtualScreen de Windows). `-Display <output>` (por nombre, ej. `HDMI-A-1`) para UN monitor. `-ActiveWindow` (solo spectacle/KDE) para la ventana con foco. `-B64`. | ✅ default 1920×1080 no-negro; ✅ `-Display HDMI-A-1` recortó igual al único output real; ✅ `-Display FAKE-99` cayó a pantalla completa con aviso; ✅ `-ActiveWindow` capturó SOLO el diálogo con foco (594×314, contenido distinto) — máquina de prueba con 1 solo monitor físico, cosido de 2+ reales sin confirmar visual |
+| `linux-ssh-screenshot.sh` | Captura la pantalla (spectacle\|grim\|gnome-screenshot\|import, según compositor). Default = escritorio COMPLETO (todos los monitores, paridad con el VirtualScreen de Windows). `-Display <output>` (por nombre, ej. `HDMI-A-1`) para UN monitor. `-ActiveWindow` (solo spectacle/KDE) para la ventana con foco. `-Window "título"` (agregado 2026-09-18, reusa xdotool de `get-window-coordinates`; vía `import -window <id>` en cachy — `grim` AUSENTE ahí) para SOLO esa ventana. `-B64`. | ✅ default 1920×1080 no-negro; ✅ `-Display HDMI-A-1` recortó igual al único output real; ✅ `-Display FAKE-99` cayó a pantalla completa con aviso; ✅ `-ActiveWindow` capturó SOLO el diálogo con foco (594×314, contenido distinto) — máquina de prueba con 1 solo monitor físico, cosido de 2+ reales sin confirmar visual; `-Window` construido sobre el mismo xdotool ya verificado, resultado pixel-a-pixel de esta pasada: ver nota en la cabecera del script |
 | `linux-ssh-list-windows.sh` | Lista ventanas visibles vía `xdotool search` (solo X11/XWayland — ver límite abajo). `-Filter`, `-Csv`. | ✅ enumeró ventanas reales de la sesión |
 | `linux-ssh-get-window-coordinates.sh` | Rectángulo + CENTRO de una ventana por título (solo nivel-ventana, ver paridad parcial). | Construido, mecanismo = list-windows |
 | `linux-ssh-launch.sh` | Lanza una app en la sesión gráfica (`setsid`+entorno resuelto, sin mecanismo de despacho por-gesto — ver script). | ✅ abrió Kate real en pantalla (PID vivo + screenshot lo confirmó) |
@@ -248,7 +255,7 @@ sintaxis.
 
 | Script | Qué hace | Verificado |
 |---|---|---|
-| `mac-ssh-screenshot.sh` | Captura la pantalla (`screencapture -x`). Default = TODAS las pantallas, 1 archivo c/u (paridad adaptada con el VirtualScreen de Windows — ver gotcha multi-monitor). `-Display N` para UNA pantalla por número. `-Window "título"` para una ventana. `-B64`. | ✅ 3 pantallas REALES (Retina 2992×1934 + 2 externas 3440×1440 c/u), 3 PNG distintos con contenido genuinamente distinto; ✅ `-Display 2` dio la externa correcta |
+| `mac-ssh-screenshot.sh` | Captura la pantalla (`screencapture -x`). Default = TODAS las pantallas, 1 archivo c/u (paridad adaptada con el VirtualScreen de Windows — ver gotcha multi-monitor). `-Display N` para UNA pantalla por número. `-Window "título"` para una ventana (vía `position`/`size` de System Events + `screencapture -R<x,y,w,h>` — fix 2026-09-18, ver gotcha -Window). `-B64`. | ✅ 3 pantallas REALES (Retina 2992×1934 + 2 externas 3440×1440 c/u), 3 PNG distintos con contenido genuinamente distinto; ✅ `-Display 2` dio la externa correcta; ✅ `-Window "claudio-master"` (ventana Alacritty real en monitor externo izquierdo, offset NEGATIVO) dio un PNG de exactamente 1135×825 (== bounds de la ventana, no la pantalla completa); ✅ título inexistente cae a pantalla principal con aviso |
 | `mac-ssh-clipboard.sh` | `-Get`/`-Set "texto"` vía `pbcopy`/`pbpaste` — SIN permiso TCC de por medio. | ✅ round-trip set→get confirmado |
 | `mac-ssh-list-windows.sh` | Enumera procesos+ventanas (nombre, rect) vía `System Events`. `-Filter`, `-Csv`. | ✅ enumeró procesos reales; ventanas probado contra proceso sin ventana abierta (lista vacía correcta) |
 | `mac-ssh-get-processes-list.sh` | Lista procesos (top-N por RSS). NO necesita sesión de consola. `-Name`, `-Csv`. | ✅ listó procesos reales (fix real: ver gotcha `basename`/comm-con-espacios) |
@@ -306,6 +313,14 @@ de seguridad). Queda como la única precondición pendiente de verificar en una 
   default de `mac-ssh-screenshot.sh` ahora captura TODAS las pantallas, una imagen POR pantalla
   (`-1.png`, `-2.png`...), confirmado con las 3 pantallas reales de esta Mac (resoluciones y
   contenido distintos en cada archivo, no duplicados).
+- **`-Window` via `id of window` (System Events) NO sirve en esta macOS (26.6.2)** — hallado por QA
+  en vivo 2026-09-18 al reverificar la implementación que el kit ya traía: `System Events` no expone
+  la propiedad `id` de una ventana genérica de accesibilidad (confirmado con `get properties of
+  window 1`, que no la lista; pedirla explícito truena `-1728`). Fix: se cambió a `position`+`size`
+  (que SÍ son accesibles) + `screencapture -R<x,y,w,h>` (recorte por región en vez de por windowid)
+  — funciona igual con coordenadas NEGATIVAS (ventana en un monitor a la izquierda del principal).
+  Ver cabecera de `mac-ssh-screenshot.sh` para el detalle; VERIFICADO con una ventana real en un
+  monitor externo (offset -3440), PNG de dimensiones exactas.
 
 ### Paridad parcial documentada (no oculta)
 - **`read-text`/`read-uia` NO se portaron** (ni en Linux ni en Mac) — en Mac SÍ sería técnicamente

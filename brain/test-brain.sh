@@ -8651,6 +8651,66 @@ done
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (gui) control-gui-remota-por-ssh: -Window en screenshot, PARIDAD de los 3 OS =="
+# El fix multi-monitor (2026-09-18) dejó el DEFAULT = todas las pantallas; pero "SOLO una ventana
+# por título" quedó dispareja entre OS hasta este mismo slice. Verifica que los 3 screenshot.*
+# exponen `-Window` con la MISMA semántica (substring de título) y el MISMO patrón de fallback
+# (captura completa + aviso) cuando la ventana no se encuentra -- gemelos estructurales, no solo
+# "el flag existe".
+GUISKILL="$SCRIPT_DIR/skills/control-gui-remota-por-ssh"
+MACSHOT="$GUISKILL/mac/mac-ssh-screenshot.sh"
+LINSHOT="$GUISKILL/linux/linux-ssh-screenshot.sh"
+WINSHOT="$GUISKILL/win/win-ssh-screenshot.ps1"
+LINCOORD="$GUISKILL/linux/linux-ssh-get-window-coordinates.sh"
+WINCOORD="$GUISKILL/win/win-ssh-get-window-coordinates.ps1"
+
+if [ -f "$MACSHOT" ] && [ -f "$LINSHOT" ] && [ -f "$WINSHOT" ]; then
+  # sintaxis (estos scripts viven en brain/skills/, fuera del loop (a) que solo cubre hooks/lib)
+  bash -n "$MACSHOT" 2>/dev/null && ok "gui: bash -n mac-ssh-screenshot.sh" || bad "gui: bash -n mac-ssh-screenshot.sh"
+  bash -n "$LINSHOT" 2>/dev/null && ok "gui: bash -n linux-ssh-screenshot.sh" || bad "gui: bash -n linux-ssh-screenshot.sh"
+  [ -f "$LINCOORD" ] && { bash -n "$LINCOORD" 2>/dev/null && ok "gui: bash -n linux-ssh-get-window-coordinates.sh" || bad "gui: bash -n linux-ssh-get-window-coordinates.sh"; }
+
+  if command -v pwsh >/dev/null 2>&1; then
+    if pwsh -NoProfile -Command "\$e=\$null; [System.Management.Automation.Language.Parser]::ParseFile('$WINSHOT', [ref]\$null, [ref]\$e) | Out-Null; exit (\$e.Count -gt 0)" >/dev/null 2>&1; then
+      ok "gui: pwsh parse-check win-ssh-screenshot.ps1"
+    else
+      bad "gui: pwsh parse-check win-ssh-screenshot.ps1 (sintaxis rota)"
+    fi
+    if [ -f "$WINCOORD" ]; then
+      if pwsh -NoProfile -Command "\$e=\$null; [System.Management.Automation.Language.Parser]::ParseFile('$WINCOORD', [ref]\$null, [ref]\$e) | Out-Null; exit (\$e.Count -gt 0)" >/dev/null 2>&1; then
+        ok "gui: pwsh parse-check win-ssh-get-window-coordinates.ps1"
+      else
+        bad "gui: pwsh parse-check win-ssh-get-window-coordinates.ps1 (sintaxis rota)"
+      fi
+    fi
+  else
+    echo "  (pwsh no disponible -> salto el parse-check de los .ps1 de este kit)"
+  fi
+
+  # paridad: los 3 exponen -Window con la misma bandera literal
+  grep -q -- '-Window' "$MACSHOT" && ok "gui: mac-ssh-screenshot.sh expone -Window" || bad "gui: mac-ssh-screenshot.sh NO expone -Window"
+  grep -q -- '-Window' "$LINSHOT" && ok "gui: linux-ssh-screenshot.sh expone -Window" || bad "gui: linux-ssh-screenshot.sh NO expone -Window"
+  grep -q -- '\$Window' "$WINSHOT" && ok "gui: win-ssh-screenshot.ps1 expone -Window" || bad "gui: win-ssh-screenshot.ps1 NO expone -Window"
+
+  # paridad de FALLBACK: los 3 caen a captura completa (no truenan) cuando el título no se encuentra,
+  # y lo avisan -- mismo patrón, no el mismo texto literal (cada OS llama distinto a "todo").
+  grep -qi "no encontre ventana" "$MACSHOT" && ok "gui: mac avisa+cae a completa si no halla el título" || bad "gui: mac no documenta el fallback de -Window sin match"
+  grep -qi "no encontre ventana" "$LINSHOT" && ok "gui: linux avisa+cae a completa si no halla el título" || bad "gui: linux no documenta el fallback de -Window sin match"
+  grep -qi "NOTFOUND" "$WINSHOT" && grep -qi "VirtualScreen completo" "$WINSHOT" && ok "gui: windows avisa+cae a VirtualScreen si no halla el título" || bad "gui: windows no documenta el fallback de -Window sin match"
+
+  # reuso, no reimplementación: linux/win referencian su propio get-window-coordinates como origen
+  # de la técnica de resolución título->geometría/handle (no duplican la enumeración de ventanas).
+  grep -qi "get-window-coordinates" "$LINSHOT" && ok "gui: linux-ssh-screenshot.sh documenta que REUSA get-window-coordinates (no duplica xdotool)" || bad "gui: linux-ssh-screenshot.sh no referencia get-window-coordinates -- ¿duplicó la búsqueda?"
+  grep -qi "get-window-coordinates" "$WINSHOT" && ok "gui: win-ssh-screenshot.ps1 documenta la técnica compartida con get-window-coordinates" || bad "gui: win-ssh-screenshot.ps1 no referencia get-window-coordinates"
+
+  # ASCII: los .ps1 de este kit ya los cubre el guard genérico de la sección (d) más arriba (todo
+  # $REPO_ROOT/**/*.ps1) -- no se repite aquí para no duplicar el mismo chequeo dos veces.
+else
+  bad "gui: no encuentro los 3 screenshot.* del kit control-gui-remota-por-ssh (¿se movió/renombró?)"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 PASS=$(grep -c '^OK$'  "$CALLLOG" 2>/dev/null); PASS="${PASS:-0}"
 FAIL=$(grep -c '^BAD$' "$CALLLOG" 2>/dev/null); FAIL="${FAIL:-0}"
 echo "==> resultado: $PASS PASS · $FAIL FAIL"

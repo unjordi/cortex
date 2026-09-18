@@ -34,6 +34,7 @@
 #   linux-ssh-screenshot.sh                              # DEFAULT: escritorio completo (todos los monitores)
 #   linux-ssh-screenshot.sh -Display HDMI-A-1             # SOLO ese output (nombre, no numero -- ver abajo)
 #   linux-ssh-screenshot.sh -ActiveWindow                 # SOLO la ventana con foco (spectacle -a)
+#   linux-ssh-screenshot.sh -Window "Kate"                # SOLO esa ventana (por titulo -- ver mecanismo arriba)
 #   linux-ssh-screenshot.sh -B64                          # ademas IMPRIME el PNG en base64
 #   linux-ssh-screenshot.sh -Out /tmp/x.png -B64
 #
@@ -50,10 +51,32 @@
 #     completa con un aviso (no lo finge).
 #
 # `-ActiveWindow`: SOLO implementado via spectacle (`-a`, KDE) en esta pasada -- es la ventana con
-# FOCO, no una busqueda por titulo como el `-Window "texto"` de Windows/Mac (adaptacion, no hay
-# forma generica de "buscar ventana por titulo" en Wayland sin AT-SPI/protocolo del compositor, ver
-# el limite ya documentado de list-windows). En grim/gnome-screenshot/import queda SIN CONFIRMAR --
-# cae a pantalla completa con un aviso.
+# FOCO, no una busqueda por titulo. En grim/gnome-screenshot/import queda SIN CONFIRMAR -- cae a
+# pantalla completa con un aviso.
+#
+# `-Window "titulo"` (agregado 2026-09-18, PARIDAD con el `-Window` de Windows/Mac -- misma
+# semantica: substring del titulo, mismo fallback si no se halla): REUSA el MISMO mecanismo que
+# `linux-ssh-get-window-coordinates.sh` (`xdotool search --name` para resolver titulo->window-id,
+# `xdotool getwindowgeometry --shell` para el rectangulo X,Y,W,H) -- no se reimplementa la busqueda.
+# Con el window-id + rectangulo ya resueltos, la CAPTURA en si prueba, en orden, el mecanismo mas
+# nativo/preciso disponible:
+#   1. `import -window <id>` (ImageMagick) -- NATIVO por-ventana, funciona sobre XWayland/X11 igual
+#      que xdotool (mismo id), sin necesitar el rectangulo (ImageMagick pregunta al servidor X el
+#      tamano real de esa window). Es la opcion PRIMARIA -- ImageMagick ya es dependencia opcional
+#      de este kit (se usa como fallback de captura completa desde antes).
+#   2. `grim -g "X,Y WxH"` (wlroots -- Sway/Hyprland) si no hay `import`.
+#   3. Captura completa + `convert -crop WxH+X+Y` (mismo primitivo que ya usaba `-Display`) si ni
+#      `import` ni `grim` sirvieron.
+#   4. Sin ninguna herramienta de recorte: aviso + pantalla completa (mismo patron que `-Display`).
+# Igual que `-ActiveWindow`, esto SOLO alcanza ventanas X11/XWayland (limite ya documentado de
+# `list-windows`/`get-window-coordinates` -- xdotool no ve Wayland nativo).
+#
+# cachy (maquina de prueba real, KDE Wayland) tiene `import` (ImageMagick) presente y `grim`
+# AUSENTE -- confirmado 2026-09-18 (`command -v import/convert/grim` por SSH): la via PRIMARIA
+# (`import -window <id>`) es la que de verdad se ejercitaria ahi. El MISMO xdotool que resuelve el
+# titulo aqui ya esta VERIFICADO en vivo (list-windows/get-window-coordinates, ver SKILL.md); lo que
+# queda por confirmar en esta maquina concreta es el resultado PIXEL a PIXEL de `import -window` --
+# si tu pasada lo corrio, actualiza esta nota con fecha+resultado (dimensiones reales vs esperadas).
 #
 # EXIT: 0 si genero el PNG; 1 si no hay sesion grafica / ninguna herramienta de captura disponible.
 set -u
@@ -66,6 +89,7 @@ B64=0
 WaitMs=0
 Display=""
 ActiveWindow=0
+Window=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -74,6 +98,7 @@ while [ $# -gt 0 ]; do
         -WaitMs) WaitMs="$2"; shift 2 ;;
         -Display) Display="$2"; shift 2 ;;
         -ActiveWindow) ActiveWindow=1; shift ;;
+        -Window) Window="$2"; shift 2 ;;
         *) echo "arg desconocido: $1" >&2; exit 2 ;;
     esac
 done
@@ -117,7 +142,55 @@ capture_full() {
     fi
 }
 
-if [ "$ActiveWindow" -eq 1 ]; then
+# resuelve titulo->window-id->rectangulo REUSANDO el mismo mecanismo de
+# linux-ssh-get-window-coordinates.sh (xdotool search --name / getwindowgeometry --shell), en vez
+# de reimplementar la busqueda.
+capture_window_by_title() {
+    local title="$1" dst="$2"
+    if ! command -v xdotool >/dev/null 2>&1; then
+        echo "AVISO: falta xdotool -- no puedo resolver -Window por titulo, capturo pantalla completa" >&2
+        capture_full "$dst"
+        return
+    fi
+    local wid
+    wid=$(xdotool search --name "$title" 2>/dev/null | head -1)
+    if [ -z "$wid" ]; then
+        echo "no encontre ventana que contenga '$title' -- capturo pantalla completa en su lugar" >&2
+        capture_full "$dst"
+        return
+    fi
+    local geo X Y W H
+    geo=$(xdotool getwindowgeometry --shell "$wid" 2>/dev/null)
+    X=$(printf '%s\n' "$geo" | grep '^X=' | cut -d= -f2)
+    Y=$(printf '%s\n' "$geo" | grep '^Y=' | cut -d= -f2)
+    W=$(printf '%s\n' "$geo" | grep '^WIDTH=' | cut -d= -f2)
+    H=$(printf '%s\n' "$geo" | grep '^HEIGHT=' | cut -d= -f2)
+
+    # 1. import -window <id>: nativo por-ventana, no necesita el rectangulo.
+    if command -v import >/dev/null 2>&1; then
+        DISPLAY="$DISPLAY" import -window "$wid" "$dst" 2>/dev/null
+    fi
+    # 2. grim -g "X,Y WxH": nativo (wlroots), si import no sirvio/no esta.
+    if [ ! -s "$dst" ] && command -v grim >/dev/null 2>&1; then
+        grim -g "${X},${Y} ${W}x${H}" "$dst" 2>/dev/null
+    fi
+    # 3. completa + recorte (mismo primitivo que -Display).
+    if [ ! -s "$dst" ]; then
+        if command -v convert >/dev/null 2>&1; then
+            local tmp="${dst}.full.png"
+            capture_full "$tmp"
+            convert "$tmp" -crop "${W}x${H}+${X}+${Y}" +repage "$dst" 2>/dev/null
+            rm -f "$tmp"
+        else
+            echo "AVISO: no pude recortar por ventana (falta import/grim/convert) -- capturo pantalla completa" >&2
+            capture_full "$dst"
+        fi
+    fi
+}
+
+if [ -n "$Window" ]; then
+    capture_window_by_title "$Window" "$Out"
+elif [ "$ActiveWindow" -eq 1 ]; then
     if command -v spectacle >/dev/null 2>&1; then
         spectacle -b -n -a -o "$Out" >/dev/null 2>&1
     else

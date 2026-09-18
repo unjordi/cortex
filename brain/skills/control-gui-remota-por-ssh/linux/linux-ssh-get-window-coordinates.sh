@@ -12,6 +12,10 @@
 # Este script da lo que SI es robusto y generico: el rectangulo de la VENTANA y su CENTRO, para
 # clickear con `linux-ssh-send-click.sh` sin tener que adivinar por el screenshot solo.
 #
+# REUSADO por linux-ssh-screenshot.sh (agregado 2026-09-18): su modo `-Window "titulo"` resuelve el
+# window-id/rectangulo con el MISMO par de comandos de aqui (xdotool search --name / getwindowgeometry
+# --shell), no reimplementa la busqueda.
+#
 # USO (por SSH):
 #   linux-ssh-get-window-coordinates.sh -Window "MiApp - Herramienta"
 #

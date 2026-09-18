@@ -14,6 +14,18 @@
 # que concederlo UNA vez via System Settings -> Privacidad y seguridad -> Grabacion de pantalla,
 # igual que la excepcion de Red Local de macOS 26 ya documentada en la memoria de maquina.
 #
+# GOTCHA REAL -Window (hallado por QA en vivo 2026-09-18, corregido el mismo dia): la primera
+# implementacion de -Window usaba `id of window` via System Events + `screencapture -l <windowid>`
+# -- en esta macOS (26.6.2) System Events NO expone la propiedad "id" para una ventana de
+# accesibilidad generica (confirmado: "get properties of window 1" no trae "id" en la lista, y
+# pedirla explicito truena "No puede obtenerse id of window ... (-1728)"). FIX: en vez del windowid
+# de Quartz, se usan POSITION+SIZE (que SI son accesibles -- mismo par de propiedades que ya usa
+# mac-ssh-get-window-coordinates.sh) y se captura con `screencapture -R<x,y,w,h>` (recorte por
+# region, no por windowid) -- funciona igual con coordenadas NEGATIVAS (ventana en un monitor a la
+# izquierda del principal). VERIFICADO 2026-09-18: -Window contra una ventana real de Alacritty en
+# el monitor externo izquierdo (posicion -3440,283, tamano 1135x825) dio un PNG de EXACTAMENTE
+# 1135x825 -- ver PNG de QA para el resultado de esta pasada.
+#
 # GOTCHA REAL MULTI-MONITOR (hallado por QA en vivo 2026-09-18, corregido el mismo dia): a
 # diferencia de win-ssh-screenshot.ps1 (que captura el VirtualScreen COMPLETO -- todos los
 # monitores en una sola imagen), `screencapture -x archivo.png` SIN flags captura SOLO la pantalla
@@ -96,10 +108,26 @@ report_one() {
 
 # --- caso 1: ventana especifica por titulo ---
 if [ -n "$Window" ]; then
-    wid=$(mac_dispatch osascript -e "tell application \"System Events\" to return id of (first window whose (name contains \"$Window\")) of (first application process whose (exists (first window whose name contains \"$Window\")))" 2>/dev/null)
+    rect=$(mac_dispatch osascript -e "
+tell application \"System Events\"
+    set procs to every application process whose background only is false
+    repeat with p in procs
+        try
+            set ws to every window of p
+            repeat with w in ws
+                if (name of w as text) contains \"$Window\" then
+                    set wp to position of w
+                    set wsz to size of w
+                    return (item 1 of wp as text) & \",\" & (item 2 of wp as text) & \",\" & (item 1 of wsz as text) & \",\" & (item 2 of wsz as text)
+                end if
+            end repeat
+        end try
+    end repeat
+    return \"\"
+end tell" 2>/dev/null)
     rm -f "$Out"
-    if [ -n "$wid" ]; then
-        mac_dispatch screencapture -x -l "$wid" "$Out" 2>/dev/null
+    if [ -n "$rect" ]; then
+        mac_dispatch screencapture -x -R"$rect" "$Out" 2>/dev/null
     else
         echo "no encontre ventana que contenga '$Window' -- capturo pantalla principal en su lugar" >&2
         mac_dispatch screencapture -x "$Out" 2>/dev/null
