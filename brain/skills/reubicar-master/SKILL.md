@@ -740,8 +740,8 @@ con `sessionAliases()` = `$NOMBRE_FINAL`.
   suyo ahí, es Decisión #7.
 
 ### S6 · doc=realidad + commit + QA FUNCIONAL (humano = sello LISTO)
-- **MR de T1 → develop en PREVIEW** (repo compartido): con OK EXPLÍCITO de unjordi y `--squash` (lo exigen
-  `confirmar-merge-develop`/`merge-squash-guard`). **NUNCA `--auto-merge`** — integridad de guardarraíles.
+- **MR de T1 → develop en PREVIEW** (repo compartido): con OK EXPLÍCITO de unjordi y `--squash` (lo exige
+  `merge-develop-guard`). **NUNCA `--auto-merge`** — integridad de guardarraíles.
   Sin OK, queda en la mini-develop (Decisión #5). Solo lo versionable (T1 + gitignore); jamás
   `.jsonl`/`*.local.md`/`$DST_PROTEGIDO`.
 - Actualizar: **dashboard global** (Mapa: el master ahora vive en `$TARGET` + bitácora fechada con `>>`),
