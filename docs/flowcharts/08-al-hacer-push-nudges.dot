@@ -1,10 +1,8 @@
-// 08 — Al hacer push: el nudge que se dispara (cortex)  ·  FUENTE editable (.dot)
+// 08 — Al hacer push: qué corre y qué quedó como DISCIPLINA (cortex)  ·  FUENTE editable (.dot)
 // Render:  dot -Tsvg 08-al-hacer-push-nudges.dot -o 08-al-hacer-push-nudges.svg
-// ZOOM del fan-out de 8 hooks (raíz común en 03 · CONVENCIONES §6) sobre el nudge (🔔, no bloquea)
-// de un `git push`: el ÚNICO PreToolUse en detalle — recordar-dashboard (dashboard + doc=realidad,
-// dispara en CUALQUIER push) — más los
-// PostToolUse del MISMO comando (CONVENCIONES §6): 📈 aviso-contexto foregrounded aquí, con cross-ref por
-// Nº de archivo a **03** para el detalle de 🎼 recordar-orquestar / 🔀 hud-stale / 🧹 barrer-ramas. ESTE
+// ZOOM del fan-out de 6 hooks (raíz común en 03 · CONVENCIONES §6) sobre el nudge (🔔, no bloquea)
+// de un `git push`, más los PostToolUse del MISMO comando (CONVENCIONES §6): 📈 aviso-contexto
+// foregrounded aquí, con cross-ref por Nº de archivo a **03** para el detalle de 🧹 barrer-ramas. ESTE
 // nudge no bloquea, pero el MISMO push pasa además por los guards DENY-capaces del fan-out de 03
 // (🚧 git-branch-guard → ver 06 · 🕵️ secret-scan → ver 07): un gate explícito antes del terminal deja
 // claro que PUSH_OK es "push que ningún guard DENY frenó", no un procede incondicional. Reconstruido
@@ -12,6 +10,11 @@
 // auditoría de coherencia para cubrir PostToolUse + la mutación real del push, y de nuevo tras la
 // auditoría que señaló que el chart omitía los guards DENY del mismo fan-out.
 // Re-canoniza el huérfano 05-al-hacer-push-nudges.svg (viejo «④», sin .dot ni leyenda).
+// Overhaul hooks 2026-09-18: recordar-dashboard (el ÚNICO PreToolUse de este chart) y
+// recordar-orquestar/hud-stale (dos de los PostToolUse de 03) se RETIRARON —puramente advisory,
+// medido: ignorados. El árbol de decisión de doc=realidad/dashboard SIGUE siendo el modelo correcto de
+// qué revisar al pushear — solo que ahora es un self-check de Claude (norma en
+// brain/norms/global-claude-md.md), no un hook que lo recuerde.
 digraph flujos {
   graph [bgcolor="#1b1712", rankdir=TB, fontname="Helvetica", splines=true,
          nodesep=0.35, ranksep=0.55, pad=0.25, compound=true];
@@ -33,7 +36,6 @@ digraph flujos {
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🛑 limite-gasto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">sin ventana 5h Y sin overage (ambos agotados) → freno duro</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">✅ dod-verificar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cierre sin evidencia/OK → denegado; claim visual a ciegas (sin ver la pantalla) también</font></td></tr>
         <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>🔔 Automático</b></font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📊 recordar-dashboard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">en el push recuerda dashboard + doc=realidad (README/docs) — cierre del slice</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🖥️ entorno-maquina-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">commit de algo machine-specific (aliases/rutas de $HOME/Rosetta/entorno-maquina.md) al .claude/memory/ del repo → avisa</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🚧 no-bypass-deploy</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">correr el instalador/deploy a mano (install-brain.sh/deploy.sh) en vez de la herramienta oficial (el widget) → avisa (fail-safe: no --dry-run/--help/CI)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌳 proteger-arbol</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">git destructivo que orfanaría commits sin pushear → avisa (fan-out: usa worktree aislado)</font></td></tr>
@@ -42,15 +44,11 @@ digraph flujos {
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">💾 exportar-sesion-master</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">auto-export de las sesiones *-master a ~/.claude-sessions (o Drive); detached, sobrevive el cleanup de 30 días (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🗂️ checkpoint-mecanico</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">PreCompact: extractor mecánico (streaming, 0 tokens) escribe el andamio del TRAMO VIVO a hilo-mental-actual.andamio.md (GLOBAL; el skill lo regenera con --self --ensure)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📝 delegacion-registrar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">materializa el "pregunta una sola vez"</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📮 delegacion-reporte</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al terminar un agente: recuerda registrar avance + limpiar su worktree</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎼 recordar-orquestar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">N mutaciones (edits/commits) en serie SIN delegar → sugiere fan-out (advisory, no bloquea; resetea al delegar) (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧵 rehidratar-hilo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta hilo-mental-actual.md + el andamio (si es más fresco) al abrir/retomar/compactar (GLOBAL) — gate de frescura + edad</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📈 aviso-contexto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al umbral ALTO del punto REAL de compact (80%/92% de autoCompactWindow o la ventana efectiva; % honesto, respeta autoCompactEnabled): VUELCA el checkpoint mecánico solito y ORDENA /checkpoint+/compact. No gotea (silencio bajo el umbral, 1 disparo + 1 escalada) (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧬 aviso-drift-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">repo brained atrás de la fuente única (hooks/libs Y skills) → en tu mini-develop se AUTO-SINCRONIZA (apply+commit+push); en otra rama, avisa. ADEMÁS detecta el drift de la copia GLOBAL de skills (~/.claude/skills vs la fuente; warn-only, throttle propio). Al moverse el cerebro, NUDGE a correr la DUPLA (suficiencia+coherencia; contra la firma si hay AGENTS.md, si no sugiere instanciarla) (GLOBAL)</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔀 hud-stale</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cambiaste de rama/proyecto → tu lista de TODOs (HUD) puede ser de la tarea anterior: avisa (advisory) que la resetees/re-siembres del estado-proyecto.md de esa rama. Señal OBJETIVA (rama/cwd), stamp per-sesión, first-sight silencioso, solo en repos con backlog (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧭 sesion-inicio</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta rama + norma + memoria al abrir</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌾 recordar-cosechar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">espejo TaskList→estado-proyecto.md (auto) + nudge: no cosechaste/no actualizaste backlog</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">⬆️ recordar-unificar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">tu mini acumuló aprendizajes sin UNIFICAR a develop → sugiere /unificar-cerebro (gemelo ↑ de aviso-drift)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌾 recordar-cosechar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">espejo automático del TaskList vivo → bloque fenced en estado-proyecto.md (determinista, sin LLM)</font></td></tr>
         <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>📜 Normas</b></font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎯 Definition of Done</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">verde técnico ≠ Done/Listo/Ya Quedó; exige QA o un OK explícito</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🪞 Doc &lt;= realidad</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cambió algo → su doc se actualiza en la tanda</font></td></tr>
@@ -94,7 +92,7 @@ digraph flujos {
 
   // ───────────────────────────────────── EL FLUJO ─────────────────────────────────────
   subgraph cluster_f0 {
-    label="08 · Al hacer push: nudge PRE (🔔 recordar-dashboard: cualquier push) + POST (🔔 aviso-contexto — ver 03 para recordar-orquestar/hud-stale/barrer-ramas)   (ZOOM del fan-out de 8 de 03 · este NUDGE no bloquea; los guards DENY del mismo fan-out —🚧 git-branch-guard, 🕵️ secret-scan— viven en 06/07)";
+    label="08 · Al hacer push: PRE (📜 doc=realidad/dashboard, self-check puro — ya no hay hook aquí) + POST (🔔 aviso-contexto — ver 03 para barrer-ramas)   (ZOOM del fan-out de 6 de 03 · este NUDGE no bloquea; los guards DENY del mismo fan-out —🚧 git-branch-guard, 🕵️ secret-scan— viven en 06/07)";
     fontname="Times"; fontsize=14; fontcolor="#5fa89e";
     color="#5fa89e"; penwidth=1.6; style="rounded"; bgcolor="#1b1712";
 
@@ -104,22 +102,24 @@ digraph flujos {
            label="¿es un `git push`?"];
     SILENT [color="#7fb069", label="🟢 silencio (no es un `git push`)"];
 
-    // ── recordar-dashboard: dispara en CUALQUIER git push, sin leer la rama (recordar-dashboard.sh
-    //    solo filtra `git push` en el comando) ──
-    DASH [color="#e08e45",
-          label="🔔📊 recordar-dashboard\n🟠 recuerda: actualiza el Dashboard GLOBAL del cerebro\n(APPENDA «>>» al final de la Bitácora, NO un Edit — dos «>>» no chocan entre sesiones)"];
+    // ── recordar-dashboard.sh se RETIRÓ (overhaul hooks 2026-09-18, puramente advisory, medido:
+    //    ignorado) — YA NO hay hook PreToolUse que dispare en el push. Lo que sigue es AHORA un
+    //    self-check de Claude (norma "Documentación = reflejo de la realidad" en global-claude-md.md):
+    //    el árbol de decisión es el mismo, solo que nadie te lo recuerda automáticamente. ──
+    DASH [color="#9e9e9e", style="rounded,dashed,filled", fillcolor="#232323",
+          label="📜 self-check (sin hook): antes de pushear, revisa TÚ el Dashboard GLOBAL del cerebro\n(APPENDA «>>» al final de la Bitácora, NO un Edit — dos «>>» no chocan entre sesiones)"];
     DOCQ [shape=diamond, fillcolor="#2b2622", color="#d97757",
           label="doc=realidad: ¿algún commit a pushear TOCA su doc?\n(README / *.md / docs / memoria)"];
     HOOKQ [shape=diamond, fillcolor="#2b2622", color="#d97757",
            label="¿AGREGA/QUITA un hook o skill?"];
     CODEQ [shape=diamond, fillcolor="#2b2622", color="#d97757",
            label="¿toca código / features?"];
-    DOC_OK [color="#7fb069", label="🟢 doc al día (sin recordatorio extra)"];
-    HOOK_W [color="#e08e45",
-            label="🟠 recuerda: actualiza el ÁRBOL del cerebro en README\n+ el conteo de checks de test-brain.sh (fuente única del árbol)"];
-    CODE_W [color="#e08e45",
-            label="🟠 recuerda: actualiza la doc que lo DESCRIBE\n(README/memoria/comentarios) en esta MISMA tanda"];
-    NADA [color="#7fb069", label="🟢 nada que recordar"];
+    DOC_OK [color="#7fb069", label="🟢 doc al día (nada que autocorregir)"];
+    HOOK_W [color="#9e9e9e", style="dashed,filled", fillcolor="#232323",
+            label="📜 self-check: actualiza el ÁRBOL del cerebro en README\n+ el conteo de checks de test-brain.sh (fuente única del árbol)"];
+    CODE_W [color="#9e9e9e", style="dashed,filled", fillcolor="#232323",
+            label="📜 self-check: actualiza la doc que lo DESCRIBE\n(README/memoria/comentarios) en esta MISMA tanda"];
+    NADA [color="#7fb069", label="🟢 nada que actualizar"];
 
     // ── convergencia de los NUDGES (no bloquean) → pero el MISMO push sigue sujeto a los guards
     //    DENY-capaces del fan-out de 03 (git-branch-guard, secret-scan) — CONVENCIONES §6 ──
@@ -139,7 +139,7 @@ digraph flujos {
     CTX [color="#e08e45",
          label="🔔📈 aviso-contexto\n🟠 reporta el watermark de contexto CRUDO (tokens · ventana · %)\nsolo al CRUZAR un escalón de +50K tokens (debounce, STEP=50000)\nsilencioso si no cruza escalón, repo sin .claude/memory, o sin jq/transcript"];
     POST_OTROS [style="rounded,filled", fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
-                label="+ 🔔🎼 recordar-orquestar (toda tool)\n+ 🔔🔀 hud-stale · 🔔🧹 barrer-ramas (Bash)\nninguno bloquea — detalle completo en 03"];
+                label="+ 🔔🧹 barrer-ramas (Bash)\nno bloquea — detalle completo en 03"];
 
     // Aristas
     CMDINIT -> PUSHQ;
