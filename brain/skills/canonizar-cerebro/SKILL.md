@@ -489,8 +489,9 @@ qué, sin aplanar la voz, y sin tocar los guardrails delicados.
 
 ### Disparadores
 - Manual: invoca este modo (el run semanal designado, o cuando el usuario lo pide).
-- El hook `recordar-unificar-cerebro` (SessionStart) avisa —no bloquea— cuando el delta de `.claude/`
-  de tu rama vs `origin/develop` supera el umbral (≥5 archivos o >7 días sin unificar).
+- DISCIPLINA tuya, sin hook que lo recuerde (`recordar-unificar-cerebro` se retiró, overhaul hooks
+  2026-09-18, puramente advisory): cuando el delta de `.claude/` de tu rama vs `origin/develop` acumule
+  ≥5 archivos o >7 días sin unificar, córrelo.
 - Encadenado desde `cerrar-slice` cuando la cosecha de un slice cae en `.claude/`.
 
 ### Paso 0 — Inventario del delta de cada mini
