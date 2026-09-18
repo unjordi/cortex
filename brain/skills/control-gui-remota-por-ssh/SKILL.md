@@ -5,10 +5,9 @@ description: Ver y operar la GUI de escritorio de una máquina remota usando SOL
 
 # Control de GUI remota por SSH
 
-> Nace de la RE de ASPEL SAE9 en el repo `potenciaDatabases` (2026-08-27, estación de prueba real):
-> ahí se construyó y verificó el kit `win-ssh-*` para manejar una estación Windows sin noVNC
-> disponible, solo SSH. Este skill PROMUEVE ese kit a capacidad genérica del cerebro — cualquier
-> sesión/máquina del equipo la tiene, sin depender de qué repo la necesitó primero.
+> El kit `win-ssh-*` está verificado en hardware real (2026-08-27) manejando una estación Windows
+> sin noVNC disponible, solo por SSH. Es una capacidad GENÉRICA del cerebro — cualquier sesión/máquina
+> del equipo la tiene, sin depender de qué repo o proyecto la necesitó primero.
 
 ## Cuándo usar esto
 Cuando la única vía de acceso a una máquina remota es una **sesión de terminal (SSH)** — no hay
