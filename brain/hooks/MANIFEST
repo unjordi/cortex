@@ -3,30 +3,41 @@
 # → dejan de divergir a mano (antídoto a H2/H7: hoy install-brain.sh y la copia por-repo del consumidor
 # eran dos listas curadas por separado).
 #
-# Formato:  <nombre-sin-.sh>   <tier>   <kind>
-#   tier:  global  → solo ~/.claude/hooks (lo instala el bootstrap; NO viaja por-repo)
-#          repo    → solo <repo>/.claude/hooks (se carga si la sesión INICIA en el repo)
-#          both    → AMBOS (global por bootstrap + viaja por-repo por si se clona SIN bootstrap);
-#                    estos DEBEN traer la cláusula de dedupe (la copia del repo cede a la global)
+# Formato:  <nombre-sin-.sh>   <tier>   <kind>   [fecha-retiro]   [motivo…]
+#   tier:  global    → solo ~/.claude/hooks (lo instala el bootstrap; NO viaja por-repo)
+#          repo      → solo <repo>/.claude/hooks (se carga si la sesión INICIA en el repo)
+#          both      → AMBOS (global por bootstrap + viaja por-repo por si se clona SIN bootstrap);
+#                      estos DEBEN traer la cláusula de dedupe (la copia del repo cede a la global)
+#          retirado  → LÁPIDA: el cerebro YA MATÓ este hook (su .sh se borró de brain/hooks/) pero
+#                      la entrada se CONSERVA aquí a propósito, con columnas 4/5+ = fecha de retiro y
+#                      motivo en pocas palabras (para que alguien que lea el MANIFEST en un año entienda
+#                      por qué murió sin abrir git). Es la ÚNICA lápida permitida en este repo: en el
+#                      CÓDIGO un comentario-lápida está prohibido (para eso está git), pero en un
+#                      MANIFEST que gobierna la INSTALACIÓN una lápida deja de ser narrativa y pasa a
+#                      ser INSTRUCCIÓN EJECUTABLE — la lista de qué podar. install-brain.sh la usa para
+#                      PODAR máquinas donde el hook quedó instalado+cableado de una versión vieja del
+#                      brain: borra su ~/.claude/hooks/<nombre>.sh y de-cablea SOLO esa entrada del
+#                      settings.json (idempotente; no toca hooks propios del usuario). Por la MISMA
+#                      razón, sincronizar-cerebro.sh trata un `retirado` como huérfano PODABLE en
+#                      cualquier --apply (sin necesitar --prune-orphans): "huérfano" ya no significa
+#                      solo "ausente del manifiesto" sino "no debe estar instalado aquí", y un tier
+#                      `retirado` cae ahí aunque SÍ esté listado. NINGÚN otro consumidor (install-brain
+#                      al INSTALAR, uninstall-brain al desinstalar TODO, sincronizar-cerebro al
+#                      DESPLEGAR, verificar-cerebro/drift-cerebro-comun/verificar-firma-canonica al
+#                      diagnosticar, ni el widget) debe tratar un `retirado` como un hook VIVO — sus
+#                      filtros por tier ({global,both}/{repo,both}/{global,both,repo}) ya lo excluyen
+#                      por construcción; si agregas un consumidor nuevo, que filtre por tier EXPLÍCITO,
+#                      nunca por "toda línea no-comentario" (ese patrón sí se traga un `retirado`).
 #   kind:  hook   → se cablea en settings.json (evento)
 #          lib    → solo se copia (los hooks la hacen `source`)
 #          script → solo se copia (standalone; se corre a mano/por cron, no se cablea)
 #
-# ── CÓMO DECIDIR EL TIER (regla crisp — respuesta a TODO "¿global o both?"; #81) ───────────────────────
-# El tier se decide por el PATRÓN REPO-COMPARTIDO (misma lógica que la norma "Cerebro por-repo = CORREO"):
-#   ¿Este guard/lib debe llegar a clones COMPARTIDOS con OTRAS personas/máquinas que NO tienen el brain
-#   global (colegas, clones públicos)?
-#     • SÍ  → `both`   : es CORREO que viaja por-repo EN GIT *y* se instala global por el bootstrap. La
-#                        cláusula de dedupe (`case "$0" … exit 0`) hace que la copia por-repo CEDA a la
-#                        global → sin doble disparo. Solo viaja de verdad a repos marcados
-#                        `.claude/repo-compartido` (default = personal: no auto-empuja a git por error).
-#                        OBLIGATORIO: un hook `both` DEBE traer la cláusula de dedupe.
-#     • NO  → `global` : basta con vivir en la máquina del DUEÑO (que ya corrió el bootstrap). DEFAULT
-#                        CONSERVADOR — ante la duda, `global`, no `both`.
-#     • Depende del CONTEXTO del repo (se carga solo si la sesión INICIA en ese repo) → `repo`.
-# Anti-drift: un repo PERSONAL (solo tuyo) NUNCA lleva guards por-repo (global+dedupe ya los cubre); solo
-# un repo COMPARTIDO (marca `.claude/repo-compartido`) recibe los `both` como correo. NO pongas `both`
-# "por si acaso": si nadie sin brain global va a clonar el repo, es `global`.
+# ── CÓMO DECIDIR EL TIER (respuesta a TODO "¿global o both?"; #81) ─────────────────────────────────────
+# La regla completa (el PATRÓN REPO-COMPARTIDO, ejemplos, el porqué) vive en UNA sola fuente —
+# `brain/norms/global-claude-md.md` § "Tiers de hooks/skills: cómo decidir" — este header solo la CITA,
+# no la re-explica (evita que las 2 copias diverjan). En una frase: ¿lo usaría un COLEGA en un repo
+# COMPARTIDO sin brain global? → `both` (CORREO, exige la cláusula de dedupe); si no → `global` (DEFAULT
+# conservador); si depende de que la sesión INICIE en ESE repo → `repo`.
 #
 # Consumidores:
 #   - install-brain.sh   : instala GLOBAL = {global, both} (hooks+libs).
@@ -40,40 +51,53 @@
 # de skills (per-repo y global) lo cubre aviso-drift-cerebro/drift-cerebro-comun. Este MANIFEST es SOLO hooks/libs.
 
 git-branch-guard         both    hook
-merge-squash-guard       both    hook
-confirmar-merge-develop  both    hook
-recordar-dashboard       both    hook
+merge-develop-guard      both    hook
 secret-scan              both    hook
 entorno-maquina-guard    both    hook
 no-bypass-deploy         both    hook
-hud-stale                both    hook
 analizar-comando-git     both    lib
 detectar-secretos        both    lib
 juez-comun               both    lib
 
 proteger-arbol           global  hook
 proteger-fuente-cerebro  global  hook
-rama-vieja               global  hook
 limite-gasto             global  hook
 rehidratar-hilo          global  hook
 aviso-contexto           global  hook
 aviso-drift-cerebro      global  hook
 exportar-sesion-master   global  hook
+checkpoint-mecanico      global  hook
 barrer-ramas             global  hook
 delegacion-gate          global  hook
 delegacion-registrar     global  hook
-delegacion-reporte       global  hook
-recordar-orquestar       global  hook
-limpiar-worktrees        global  script
-limpiar-ramas            global  script
+limpiar                  global  script
+limpiar-impl-ramas       global  script
+limpiar-impl-worktrees   global  script
+limpiar-impl-residuo     global  script
+limpiar-impl-flotilla    global  script
 verificar-cerebro        global  script
-barrer-flotilla-cerebro  global  script
 cementerio               global  script
 delegacion-comun         global  lib
 ramas-zombie             global  lib
 drift-cerebro-comun      global  lib
+contrato-hilo            global  lib
+checkpoint-mecanico-comun global lib
 
 dod-verificar            repo    hook
 sesion-inicio            repo    hook
 recordar-cosechar        repo    hook
-recordar-unificar-cerebro repo   hook
+sincronizar-tasklist     repo    lib
+
+# ── LÁPIDAS (tier retirado) — ver header ──
+rama-vieja               retirado  hook  2026-09-15  avisar del síntoma no es el trabajo; el flujo lo gobiernan los git-guards
+merge-squash-guard       retirado  hook  2026-09-17  CONSOLIDADO en merge-develop-guard (checks de squash del punto de merge, misma lib)
+confirmar-merge-develop  retirado  hook  2026-09-17  CONSOLIDADO en merge-develop-guard (juez de autorización del punto de merge, misma lib)
+limpiar-ramas            retirado  script 2026-09-17 CONSOLIDADO en limpiar.sh ramas (dispatcher único, misma lógica renombrada limpiar-impl-ramas.sh)
+limpiar-worktrees        retirado  script 2026-09-17 CONSOLIDADO en limpiar.sh worktrees (dispatcher único, misma lógica renombrada limpiar-impl-worktrees.sh)
+limpiar-residuo          retirado  script 2026-09-17 CONSOLIDADO en limpiar.sh residuo (dispatcher único, misma lógica renombrada limpiar-impl-residuo.sh)
+barrer-flotilla-cerebro  retirado  script 2026-09-17 CONSOLIDADO en limpiar.sh flotilla (dispatcher único, misma lógica renombrada limpiar-impl-flotilla.sh)
+delegacion-reporte       retirado  hook  2026-09-18 puramente advisory (medido: ignorado); su regla sube a norma "Orquesta" en global-claude-md.md — reporte sin niñera queda como disciplina, no hook
+recordar-orquestar       retirado  hook  2026-09-18 puramente advisory (medido: ignorado); su regla ya vive en la norma "Orquesta: delega lo paralelizable" de global-claude-md.md
+recordar-unificar-cerebro retirado hook  2026-09-18 puramente advisory (medido: ignorado); su regla sube a norma "Modelo MINI-DEVELOP" en global-claude-md.md (unificar periódicamente vía canonizar-cerebro queda a disciplina)
+recordar-dashboard       retirado  hook  2026-09-18 puramente advisory (medido: ignorado); doc=realidad + dashboard ya son norma dura en global-claude-md.md, sin mecanismo por-push
+hud-stale                retirado  hook  2026-09-18 puramente advisory (medido: ignorado); su regla ya vive en la norma "Tu lista de TODOs es TU HUD" de global-claude-md.md

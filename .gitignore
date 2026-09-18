@@ -82,9 +82,21 @@ docs/flowcharts/*
 !docs/flowcharts/gen-charts.sh
 
 # hilo-mental per-dev (volátil, se reescribe seguido) + backlog unificado superseded (parche local)
-.claude/memory/hilo-mental-actual.md
-.claude/memory/hilo-mental-overflow.md
+.claude/memory/hilo-mental-*
+# ↑ patrón de FAMILIA, no nombres exactos: el andamio mecánico (`hilo-mental-actual.andamio.md`, que el
+# hook de PreCompact genera con CITAS TEXTUALES del usuario) se coló sin ignorar cuando se le dio nombre
+# nuevo — en un repo PÚBLICO. Un patrón por familia cubre lo que aún no se ha inventado.
 .claude/memory/BACKLOG-UNIFICADO.md
 
 # Worktrees locales de sesiones de trabajo (nunca se versionan: son checkouts, no contenido).
 .git-worktrees/
+# Los worktrees de agentes se crean HOY en .cortex-wt/ (7 vivos al 2026-09-15), no en la ruta de
+# arriba. Se ignoran las dos: mover los existentes con agentes dentro los rompe. Unificar en una
+# sola ruta es un slice aparte.
+.cortex-wt/
+CLAUDE.local.md
+
+# Andamio del checkpoint: sus ARTEFACTOS DE PROCESO (lock por-sid y log del extractor) los escribe el hook
+# de PreCompact en CADA repo con el cerebro. El andamio en sí lo cubre el patrón de familia hilo-mental-*;
+# éstos NO caen ahí y quedaban como untracked permanente (y el .log puede llevar rutas de la máquina).
+.claude/memory/.checkpoint-mecanico*

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # cementerio.sh — helper del "CEMENTERIO per-cerebro" (cortex). Standalone (kind=script): NO se
-# cablea; se corre A MANO desde dentro de un repo (como limpiar-ramas.sh / verificar-cerebro.sh).
+# cablea; se corre A MANO desde dentro de un repo (como limpiar.sh ramas / verificar-cerebro.sh).
 #
 # LA IDEA: las "lápidas" (mitos descartados, callejones muertos, "NO re-proponer") ya no viven INLINE
 # repartidas por cada memoria con 7 líneas del trauma. Viven en UN solo `.claude/memory/cementerio.md`

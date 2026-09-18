@@ -967,15 +967,12 @@ PlasmoidItem {
                 { emoji: "🚧", name: "git-branch-guard",       desc: "push/merge a develop·main → denegado, te redirige a ramita→MR",
                   event: "PreToolUse · Bash",
                   detail: "Escanea cada comando: si ve un `git push` o un merge que apunte a develop/main, lo deniega y te recuerda el flujo ramita→MR. Sin jq falla ABIERTO (no bloquea)." },
-                { emoji: "🔗", name: "merge-squash-guard",     desc: "MR a develop sin --squash → denegado (1 commit limpio)",
+                { emoji: "🔗", name: "merge-develop-guard",    desc: "MR a develop sin --squash o sin tu OK → denegado; a main exige OK súper-explícito",
                   event: "PreToolUse · Bash",
-                  detail: "Un `gh pr merge`/`glab mr merge` a develop sin --squash se deniega, para que la ramita colapse a un commit curado. Los releases a main quedan exentos (conservan historia)." },
+                  detail: "Candado ÚNICO del punto de merge (2026-09-17, consolida a los antiguos merge-squash-guard + confirmar-merge-develop). Un `gh pr merge`/`glab mr merge` a develop sin --squash se deniega, para que la ramita colapse a un commit curado; además busca tu OK explícito en el chat reciente antes de integrar. A main exige lenguaje de release ('hasta main', 'libera') y va SIN squash (conserva historia). Un 'sigue/avanza' NO cuenta como autorización." },
                 { emoji: "🕵️", name: "secret-scan",            desc: "commit/push con un secreto → denegado",
                   event: "PreToolUse · Bash",
                   detail: "Escanea lo que ENTRA al repo (staged en commit, saliente en push) buscando llaves/tokens/claves privadas de formato inconfundible (AWS, PEM, Anthropic, OpenAI, GitHub, GitLab, Slack, Google). Si aparece uno → bloquea: una credencial pusheada queda comprometida aunque la borres. Escape: --no-verify." },
-                { emoji: "✋", name: "confirmar-merge-develop", desc: "merge a develop sin tu OK → denegado; a main exige OK súper-explícito",
-                  event: "PreToolUse · Bash",
-                  detail: "Antes de integrar por MR busca tu OK explícito en el chat reciente; a main exige lenguaje de release ('hasta main', 'libera'). Un 'sigue/avanza' NO cuenta como autorización." },
                 { emoji: "✅", name: "dod-verificar",          desc: "Def. of Done (ver Norma 🎯 DoD) sin build+tests+memoria → denegado",
                   event: "Stop",
                   detail: "Al cerrar el turno, si dijiste 'listo/en producción' tras tocar código fuente, exige evidencia de build+tests verdes y memoria al día, o bloquea el cierre." },
@@ -994,24 +991,12 @@ PlasmoidItem {
                 { emoji: "🧭", name: "sesion-inicio",             desc: "al abrir/retomar reinyecta rama + norma de git + orden de leer memoria",
                   event: "SessionStart",
                   detail: "Al abrir/retomar sesión o tras compactar, reinyecta la rama actual, la norma de git y la orden de leer MEMORY/estado. Antídoto a 'se me va la onda al cambiar de sesión o compu'." },
-                { emoji: "📊", name: "recordar-dashboard",        desc: "antes de un push, recuerda actualizar el dashboard del cerebro",
-                  event: "PreToolUse · Bash",
-                  detail: "Antes de un `git push` recuerda (no bloquea) actualizar el dashboard del cerebro: una línea a la bitácora + ajustar el mapa si cambió el layout de repos/proyectos." },
                 { emoji: "🖥️", name: "entorno-maquina-guard",     desc: "commit de algo machine-specific al .claude/memory/ del repo → aviso",
                   event: "PreToolUse · Bash",
                   detail: "Mecanismo de la norma 'el entorno de MÁQUINA vive GLOBAL, jamás en un repo': si un `git commit` mete al .claude/memory/ del repo algo específico-de-esta-máquina (un entorno-maquina.md, aliases personales, rutas de tu $HOME, 'Rosetta' sin condicional) avisa —no bloquea—, porque viaja por git y miente al clonar en otra compu/OS. Eso vive SOLO en la memoria GLOBAL per-máquina (entorno-esta-maquina.md); el repo deja lo portable/condicional." },
-                { emoji: "🕰️", name: "rama-vieja",                desc: "push de ramita muy atrás de develop → aviso (no bloquea)",
-                  event: "PreToolUse · Bash",
-                  detail: "Antes de un push, si la ramita está muchos commits detrás de origin/develop (base vieja → el MR trae ruido/conflictos), avisa —no bloquea— y sugiere rebasar. Umbral configurable (RAMA_VIEJA_UMBRAL, def 40)." },
                 { emoji: "📝", name: "delegacion-registrar",      desc: "registra el consentimiento (materializa el “pregunta 1×”)",
                   event: "PostToolUse · Task",
                   detail: "Tras un consentimiento aprobado lo registra para no volver a preguntar (1× por máquina o por workflow, según el nivel de costo). Materializa el 'pregunta una sola vez'." },
-                { emoji: "📮", name: "delegacion-reporte",        desc: "un agente de fan-out terminó → recuerda bitácora + estado, sin niñera",
-                  event: "PostToolUse · Task",
-                  detail: "Cuando un subagente (Task) termina, recuerda al orquestador registrar su avance sin niñera: appendar una línea a bitacora.md (append-only, parallel-safe), cerrar el ítem en estado-proyecto.md y limpiar su worktree. No bloquea." },
-                { emoji: "🎼", name: "recordar-orquestar",        desc: "llevas rato en grind serial sin delegar → sugiere fan-out (advisory)",
-                  event: "PostToolUse",
-                  detail: "Cuenta las mutaciones consecutivas (edits/commits) de la sesión y, al llegar a N (def 10) SIN que haya habido una delegación (Agent/Task) en medio, sugiere —no bloquea— un fan-out si el trabajo restante tiene piezas independientes. Un Agent/Task RESETEA el contador (si delegaste, no te regaña); debounce de N en N. Si el trabajo es intrínsecamente secuencial, se ignora. Contador per-session_id, fail-open, escape CLAUDE_SKIP_RECORDAR_ORQUESTAR=1." },
                 { emoji: "🧵", name: "rehidratar-hilo",           desc: "al retomar/tras compactar reinyecta el hilo mental de la tarea",
                   event: "SessionStart",
                   detail: "Al abrir/retomar sesión o tras compactar, relee .claude/memory/hilo-mental-actual.md y lo reinyecta por additionalContext (canal fiable de SessionStart). Es la mitad 'leer' del par con el skill checkpoint (la mitad 'escribir'). Silencioso si el archivo no existe." },
@@ -1024,18 +1009,15 @@ PlasmoidItem {
                 { emoji: "💾", name: "exportar-sesion-master",  desc: "auto-export de las sesiones *-master a ~/.claude-sessions (o Drive vía CLAUDE_SESSIONS_DRIVE); detached, sobrevive el cleanup de 30 días",
                   event: "Stop · SessionEnd · PreCompact",
                   detail: "Exporta el transcript comprimido de una sesión cuyo título sea *-master (o ya listada en masters.json) a la carpeta de sesiones (default ~/.claude-sessions; override CLAUDE_SESSIONS_DRIVE para una nube → la sesión viaja entre máquinas) para poder --resume la MISMA sesión después. Corre DETACHED (nohup, lock por-sid) con debounce en Stop; SessionEnd fija el estado final y detecta masters nuevos; PreCompact es bonus. Sobrevive el cleanup de 30 días de Claude Code. Silencioso y fail-open: si no es master o falta el motor/node, no hace nada." },
-                { emoji: "🧺", name: "recordar-cosechar",       desc: "trabajaste y no cosechaste aprendizajes → sugiere /cosechar-sesion",
+                { emoji: "🗂️", name: "checkpoint-mecanico",     desc: "el 80% del checkpoint a CERO tokens de modelo, andamio mecánico justo antes de compactar",
+                  event: "PreCompact",
+                  detail: "Justo antes de compactar, corre (detached, lock por-sid, memoria acotada en streaming) bin/checkpoint-mecanico.js sobre el transcript: extrae archivos tocados, mensajes de git commit, citas TEXTUALES del usuario y métricas de sesión — sin gastar tokens de modelo — y las deja en .claude/memory/hilo-mental-actual.andamio.md (sidecar, NUNCA pisa el hilo-mental-actual.md que escribe el modelo). El skill checkpoint lo fusiona; el juicio (en qué estamos, decisión abierta, siguiente paso) lo sigue poniendo el modelo. Fail-open: sin node/jq o sin .claude/memory, no hace nada." },
+                { emoji: "🧺", name: "recordar-cosechar",       desc: "espejo automático del TaskList vivo al backlog durable (estado-proyecto.md)",
                   event: "Stop",
-                  detail: "Al terminar un turno, si hubo trabajo sustantivo reciente en el repo (commits en las últimas horas o cambios de código sin commitear) pero .claude/memory/aprendizajes.md no se tocó, sugiere —no bloquea— correr /cosechar-sesion antes de cerrar si aprendiste algo durable. Throttle fuerte: 1×/día por repo. Fail-open." },
-                { emoji: "🪢", name: "recordar-unificar-cerebro", desc: "tu mini acumuló aprendizajes sin unificar a develop → aviso",
-                  event: "SessionStart",
-                  detail: "Gemelo hacia arriba de aviso-drift-cerebro: al iniciar sesión cuenta el delta de .claude/ (sobre todo aprendizajes.md) de tu rama vs origin/develop y, si supera el umbral (≥5 archivos o >7 días, tunable por env), avisa —no bloquea— para correr /unificar-cerebro cuando quieras integrarlos. No escribe al árbol. Throttle 1×/día por repo." },
+                  detail: "Al terminar un turno, vuelca los PENDIENTES del TaskList vivo de la sesión a un bloque fenced dentro de .claude/memory/estado-proyecto.md (determinista, sin LLM; solo si el .md ya existe). Idempotente y silencioso. El nudge de cosecha/backlog que traía antes se retiró (overhaul hooks 2026-09-18, puramente advisory) — esa disciplina queda en la norma global, no en un hook." },
                 { emoji: "⏳", name: "aviso-contexto",            desc: "el contexto se está llenando → ordena checkpoint y propón /compact",
                   event: "PostToolUse",
                   detail: "Vigila cuánto creció el contexto desde el último /compact y, al cruzar bandas por debajo del auto-compact, inyecta un aviso escalado (heads-up → checkpoint ahora → inminente) para volcar el hilo con checkpoint y compactar proactivamente. Convierte el auto-compact-sorpresa en caso raro." },
-                { emoji: "🔀", name: "hud-stale",                 desc: "cambiaste de rama/proyecto → tu lista de TODOs puede ser de la tarea anterior",
-                  event: "SessionStart · PostToolUse · Bash",
-                  detail: "Avisa —no bloquea— cuando la lista de TODOs de la terminal (el HUD) quedó stale porque el contexto de tarea rotó: cambiaste de rama git o de proyecto/cwd y el HUD sigue mostrando pendientes de la tarea anterior. Detección OBJETIVA (rama/cwd vs. lo observado en esta sesión), nunca lee el contenido de la lista. Stamp per-sesión (no se pisan las sesiones paralelas), first-sight silencioso, solo en repos con backlog durable. Sugiere re-sembrar el HUD del estado-proyecto.md de esa rama con /to-do." },
                 { emoji: "🌳", name: "proteger-arbol",            desc: "git destructivo que orfanaría commits sin pushear → aviso (no bloquea)",
                   event: "PreToolUse · Bash",
                   detail: "Antes de un git destructivo (reset --hard, rebase, checkout -f, branch -D) que podría orfanar commits sin pushear en el árbol de trabajo, avisa —no bloquea. Antídoto a un caso real: un agente de fan-out reseteó HEAD en el árbol compartido y dejó huérfano un commit del orquestador." },
@@ -1135,6 +1117,9 @@ PlasmoidItem {
                 { emoji: "📕", name: "markdown-a-pdf", desc: "convierte .md a PDF pulido y distribuible vía md-to-pdf (npx, sin instalar) con QA visual real",
                   event: "skill · opt-in",
                   detail: "Convertir uno o varios .md a PDF pulido y distribuible (doc técnica, reportes, cualquier entregable que un humano abra fuera del chat) usando md-to-pdf vía npx, sin instalar nada. Incluye el gotcha real que borra TODO el formato (--stylesheet reemplaza el tema default en vez de sumarse — usa --css para overrides), el CSS que evita que las tablas se corten feo entre páginas y el loop de QA visual obligatorio (leer cada página generada, no asumir que renderizó bien)." },
+                { emoji: "🕹️", name: "control-gui-remota-por-ssh", desc: "ver/operar una GUI remota por SSH sin VNC/RDP — screenshot/click/teclado DPI-aware; Windows·Linux·Mac completos (2026-09-18)",
+                  event: "skill · opt-in",
+                  detail: "Ver y operar el escritorio de una máquina remota por SSH puro (sin VNC/RDP): screenshot, clicks, teclado, inspección de ventanas/controles, portapapeles, lanzar/cerrar apps y procesos. Resuelve los dos problemas duros: el aislamiento de logon-session (se despacha cada gesto a la sesión interactiva con una tarea programada) y el DPI-awareness (sin fijarlo, el screenshot sale truncado y los clicks se desvían). Windows: 15 scripts completos y verificados en hardware real. Linux: 13 scripts completos (verificados en cachy KDE/Wayland 2026-09-18); macOS: 13 scripts completos (verificados local 2026-09-18); multi-monitor + captura por-ventana en los tres." },
                 { emoji: "🧳", name: "claude-proyecto-autocontenido", desc: "el cerebro de Claude VIVE dentro del proyecto (.claude/ + symlink de slug) → viaja con él",
                   event: "skill · opt-in",
                   detail: "Mantener TODO el cerebro de Claude Code de un proyecto (memorias, skills, transcripts, settings) dentro de <proyecto>/.claude/, con un symlink desde ~/.claude/projects/<slug>/ para que Claude lo siga encontrando. Así la memoria/skills viajan con el proyecto (Drive, git, otra máquina) y ninguna sesión arranca amnésica desde otro cwd. Cubre la regla del slug, el bootstrap de un comando (clona-y-listo), el triage de privacidad (qué va al repo vs *.local), la disciplina anti-duplicados y la verificación." },
@@ -1158,8 +1143,8 @@ PlasmoidItem {
 
     // Catálogo conocido (mismos conjuntos que BrainState.knownGlobalHooks / knownRepoHooks del Swift).
     // DEBE coincidir con brain/hooks/MANIFEST; lo verifica el drift-check del widget (test-brain.sh).
-    readonly property var brainGlobalHooks: ["git-branch-guard","merge-squash-guard","confirmar-merge-develop","recordar-dashboard","secret-scan","rama-vieja","proteger-arbol","proteger-fuente-cerebro","limite-gasto","delegacion-gate","delegacion-registrar","delegacion-reporte","recordar-orquestar","rehidratar-hilo","aviso-contexto","aviso-drift-cerebro","hud-stale","exportar-sesion-master","barrer-ramas","entorno-maquina-guard","no-bypass-deploy"]
-    readonly property var brainRepoHooks:   ["sesion-inicio","dod-verificar","recordar-cosechar","recordar-unificar-cerebro"]
+    readonly property var brainGlobalHooks: ["git-branch-guard","merge-develop-guard","secret-scan","proteger-arbol","proteger-fuente-cerebro","limite-gasto","delegacion-gate","delegacion-registrar","rehidratar-hilo","aviso-contexto","aviso-drift-cerebro","exportar-sesion-master","checkpoint-mecanico","barrer-ramas","entorno-maquina-guard","no-bypass-deploy"]
+    readonly property var brainRepoHooks:   ["sesion-inicio","dod-verificar","recordar-cosechar"]
 
     // ---------- Pestaña BROKER (idx 6) ----------
     // El broker de terminal es un servicio de systemd --user que hasta hoy solo se veía y se tocaba
@@ -1429,7 +1414,7 @@ PlasmoidItem {
             return p && w ? "installed" : (p ? "presentNotWired" : "absent")
         }
         if (inArr(root.brainRepoHooks, name)) return "repoScoped"
-        if (["cerrar-slice","checkpoint","to-do","diagramar","auditar-proceso-algoritmo","auditar-coherencia-cerebro","auditar-suficiencia-operativa","auditor-semantico","consolidar-cerebro","canonizar-cerebro","desinflar-memorias","orquestar-fanout","turno-nocturno","cosechar-sesion","unificar-cerebro","investigar-dominio","construir-missing-manual","positivar-doc","revisar-entregables-agentes","zoom-screenshot","claude-proyecto-autocontenido","reubicar-master","ingenieria-inversa-gui-db-navegador","markdown-a-pdf"].indexOf(name) !== -1)
+        if (["cerrar-slice","checkpoint","to-do","diagramar","auditar-proceso-algoritmo","auditar-coherencia-cerebro","auditar-suficiencia-operativa","auditor-semantico","consolidar-cerebro","canonizar-cerebro","desinflar-memorias","orquestar-fanout","turno-nocturno","cosechar-sesion","unificar-cerebro","investigar-dominio","construir-missing-manual","positivar-doc","revisar-entregables-agentes","zoom-screenshot","claude-proyecto-autocontenido","reubicar-master","ingenieria-inversa-gui-db-navegador","markdown-a-pdf","control-gui-remota-por-ssh"].indexOf(name) !== -1)
             return inArr(st.skills, name) ? "installed" : "absent"
         if (name === "Definition of Done" || name === "Doc <= realidad"
             || name === "Flujo de git" || name === "Costo de delegación")

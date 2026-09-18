@@ -9,42 +9,82 @@ command -v jq >/dev/null 2>&1 || exit 0
 input=$(cat 2>/dev/null || true)
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
 [ -z "$cmd" ] && exit 0
+# cwd del payload = working dir REAL del comando (M2, auditoría 2026-09-15 §2.4/§3.1): antes este hook NI
+# SOURCEABA la lib compartida y resolvía todo contra CLAUDE_PROJECT_DIR (el repo de la SESIÓN) → un
+# `git -C <otro>`/`cd <otro> && git reset --hard` quedaba CIEGO, y `git.exe`/`git -c k=v` evadían la
+# detección (huecos que la lib ya había cerrado para los otros guards, pero este vivía fuera del candado
+# común). Se resuelve por la MISMA lib (acg_target_dir/acg_normaliza_git_prefijo/acg_despoja_comillas).
+pcwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
 # PRE-FILTRO barato (en-proceso): todo lo que este hook vigila (git reset/checkout/rebase/branch -D)
-# contiene 'git' → sin 'git' en el comando, no hay nada que vigilar → early-exit ANTES de sed/grep en el
-# camino COMÚN. Conservador: un git destructivo SIEMPRE contiene 'git' → jamás se salta un caso real.
+# contiene 'git' → sin 'git' en el comando, no hay nada que vigilar → early-exit ANTES de sourcear la lib
+# y de sed/grep en el camino COMÚN. Conservador: un git destructivo SIEMPRE contiene 'git' → jamás se
+# salta un caso real.
 case "$cmd" in *git*) : ;; *) exit 0 ;; esac
-# Quita CUERPOS de heredoc (`<<EOF … EOF`) antes de escanear: son el STDIN de un comando (dato que
-# se APPENDEA a un .md, un mensaje, prosa), NUNCA shell EJECUTABLE. Mismo criterio que ignorar los
-# literales entrecomillados → quitarlos NO abre hueco: un git destructivo REAL va FUERA del heredoc
-# (en la línea del `<<` o después del cierre) y SOBREVIVE al filtro. Fail-safe: si no se detecta el
-# cierre, el cuerpo se ESCANEA (comportamiento previo), nunca se pierde un caso real por sobre-quitar.
-noheredoc=$(printf '%s' "$cmd" | awk -v sq="'" -v dq='"' '
-  BEGIN{ inhd=0 }
-  inhd==1 { s=$0; sub(/^[ \t]*/,"",s); if (s==delim) inhd=0; next }
-  {
-    re="<<-?[ \t]*[" sq dq "]?[A-Za-z_][A-Za-z0-9_]*[" sq dq "]?"
-    if (match($0, re)) {
-      d=substr($0, RSTART, RLENGTH); sub(/^<<-?[ \t]*/,"",d); gsub("[" sq dq "]","",d)
-      delim=d; inhd=1
-    }
-    print
-  }')
-# Quita literales entrecomillados para no matchear 'git reset' como dato.
-unquoted=$(printf '%s' "$noheredoc" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g")
+
+# CRÍTICO-1 (auditoría FMEA 2026-09-16 §1.1, CONFIRMADO): sourcear un archivo con error de SINTAXIS mata el
+# proceso ENTERO con exit 1 -- este hook YA es advisory/fail-open por diseño, pero antes ni siquiera llegaba
+# a su propio fallback heredoc-ciego (abajo): el `.` normal mataba el proceso ANTES de que el `command -v
+# acg_despoja_comillas` de abajo pudiera preguntar. H7 (auditoría semántica 2026-09-16, BAJO): la sonda
+# ORIGINAL sourceaba en un SUBSHELL y trataba CUALQUIER exit≠0 como "lib rota" -- pero ese código es el del
+# ÚLTIMO comando de la lib, no un diagnóstico de sintaxis. `bash -n` ES el veredicto de sintaxis (solo
+# parsea, nunca ejecuta): si pasa, el hook sourcea de verdad; si no, DEGRADA a su fallback propio en vez de
+# desaparecer sin avisar. Snippet IDÉNTICO en los 5 guards; a propósito FUERA de la lib.
+_ACGLIB="$(dirname "$0")/analizar-comando-git.sh"
+if [ -f "$_ACGLIB" ] && bash -n "$_ACGLIB" >/dev/null 2>&1; then
+  # shellcheck source=analizar-comando-git.sh
+  . "$_ACGLIB"
+else
+  [ -f "$_ACGLIB" ] && printf '%s: analizar-comando-git.sh existe pero no cargó (error de sintaxis) -- usando el fallback heredoc-ciego propio. `bash -n "%s"` localiza el error.\n' "$(basename "$0")" "$_ACGLIB" >&2
+fi
+
+# M1 (auditoría 2026-09-15 §3.8): el filtro de heredoc PROPIO de este hook (descartaba TODO cuerpo de
+# heredoc sin mirar el consumidor) cerró el FP de `cat >> doc.md <<EOF` pero abrió el FN simétrico —
+# `bash <<EOF … EOF` con un `git reset --hard` REAL adentro quedaba invisible. Ahora usa la MISMA
+# segmentación ejecutor-aware de la lib (acg_segmentos_ejecutables/acg_despoja_comillas): conserva el
+# cuerpo SOLO si el `<<` alimenta un intérprete (bash/sh/zsh/…), lo descarta si alimenta un escritor
+# (cat/tee/…) — resuelve las DOS direcciones con el mismo criterio, sin tener que elegir un lado. Si la
+# lib no está disponible (clon roto), cae al filtro heredoc-ciego de siempre (fail-safe: nunca pierde el
+# caso real por sobre-quitar; a lo más re-abre el FN viejo, nunca uno nuevo).
+if command -v acg_despoja_comillas >/dev/null 2>&1; then
+  # ORDEN: normaliza el RAW (comillas intactas, para no cegar un `-C "/ruta"`) → LUEGO despoja/heredoc.
+  unquoted=$(acg_despoja_comillas "$(acg_normaliza_git_prefijo "$cmd")")
+else
+  noheredoc=$(printf '%s' "$cmd" | awk -v sq="'" -v dq='"' '
+    BEGIN{ inhd=0 }
+    inhd==1 { s=$0; sub(/^[ \t]*/,"",s); if (s==delim) inhd=0; next }
+    {
+      re="<<-?[ \t]*[" sq dq "]?[A-Za-z_][A-Za-z0-9_]*[" sq dq "]?"
+      if (match($0, re)) {
+        d=substr($0, RSTART, RLENGTH); sub(/^<<-?[ \t]*/,"",d); gsub("[" sq dq "]","",d)
+        delim=d; inhd=1
+      }
+      print
+    }')
+  unquoted=$(printf '%s' "$noheredoc" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g")
+fi
 # ¿git DESTRUCTIVO que mueve HEAD / descarta commits?
 printf '%s' "$unquoted" | grep -qE 'git[[:space:]]+(reset[[:space:]]+(--hard|--merge|--keep)|checkout[[:space:]]+(-f|--force)|rebase([[:space:]]|$)|branch[[:space:]]+-D)' || exit 0
+
+# M2: DIR objetivo por la lib (-C > cd/pushd > cwd del payload > CLAUDE_PROJECT_DIR > '.'); antes las DOS
+# resoluciones de abajo iban siempre contra CLAUDE_PROJECT_DIR (el repo de la SESIÓN), ciego a un
+# `git -C <otro>`/`cd <otro> && …` — este hook avisaba (o callaba) sobre el árbol EQUIVOCADO.
+if command -v acg_target_dir >/dev/null 2>&1; then
+  TDIR=$(acg_target_dir "$cmd" "$pcwd")
+else
+  TDIR="${pcwd:-${CLAUDE_PROJECT_DIR:-.}}"
+fi
 
 # --- PRECISIÓN: `git branch -d/-D <ramas>` (patrón DOMINANTE del corpus de FP, 10+ casos) --------------
 # `git branch -D <rama>` borra LA RAMA NOMBRADA, no HEAD → su único riesgo son los commits PROPIOS de esa
 # rama no integrados a la base; NO los commits sin pushear de la rama ACTUAL. El guard, abajo, cuenta
 # `@{u}..HEAD` (ajeno a la rama borrada) → avisaba en falso en TODA limpieza de ramas ya integradas por
 # SQUASH/cherry-pick estando en una mini-develop con trabajo local. Aquí decidimos el riesgo REAL con
-# ramas-zombie.sh (misma "mergeada" TRIPLE que los barredores limpiar-ramas/worktrees: ancestro de la base
+# ramas-zombie.sh (misma "mergeada" TRIPLE que los barredores limpiar.sh ramas/worktrees: ancestro de la base
 # | equivalencia de parche squash/cherry | remota-gone sin commits únicos) → sin divergencia. Solo aplica
 # si el comando es SOLO branch -d/-D (sin reset/checkout/rebase, que sí mueven HEAD → peligro real abajo).
 if printf '%s' "$unquoted" | grep -qE 'git[[:space:]]+branch[[:space:]]+-[dD]' \
    && ! printf '%s' "$unquoted" | grep -qE 'git[[:space:]]+(reset[[:space:]]+--(hard|merge|keep)|checkout[[:space:]]+(-f|--force)|rebase([[:space:]]|$))'; then
-  root=$(git -C "${CLAUDE_PROJECT_DIR:-.}" rev-parse --show-toplevel 2>/dev/null || true)
+  root=$(git -C "$TDIR" rev-parse --show-toplevel 2>/dev/null || true)
   zlib="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/ramas-zombie.sh"
   if [ -n "$root" ] && [ -f "$zlib" ]; then
     # shellcheck source=/dev/null
@@ -77,7 +117,7 @@ EOF
   # sin root o sin la lib → cae al comportamiento previo (fail-safe: no perdemos el aviso histórico).
 fi
 
-root=$(git -C "${CLAUDE_PROJECT_DIR:-.}" rev-parse --show-toplevel 2>/dev/null || true)
+root=$(git -C "$TDIR" rev-parse --show-toplevel 2>/dev/null || true)
 [ -z "$root" ] && exit 0
 
 # ¿Cuántos commits se ORFANARÍAN? (los que HEAD tiene y su upstream no; sin upstream → vs origin/develop|main)

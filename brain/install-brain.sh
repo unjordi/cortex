@@ -6,9 +6,9 @@
 # Instala GLOBAL (en ~/.claude, aplica a TODOS los repos de esta máquina):
 #   (a) HOOKS de tier {global, both} en ~/.claude/hooks/ — la LISTA se DERIVA de brain/hooks/MANIFEST
 #       (fuente única; ya no se cura a mano en paralelo con la copia por-repo). Incluye git-branch-guard,
-#       merge-squash-guard, confirmar-merge-develop, recordar-dashboard, secret-scan, rama-vieja,
+#       merge-develop-guard, secret-scan,
 #       proteger-arbol (PreToolUse/Bash), delegacion-gate + limite-gasto (PreToolUse/Task),
-#       delegacion-registrar/reporte (PostToolUse/Task), rehidratar-hilo + aviso-contexto (SessionStart/
+#       delegacion-registrar (PostToolUse/Task), rehidratar-hilo + aviso-contexto (SessionStart/
 #       PostToolUse) + libs `delegacion-comun.sh`, `analizar-comando-git.sh`, `detectar-secretos.sh`
 #       + agentes-costo.json (config). La lista EXACTA se deriva de brain/hooks/MANIFEST.
 #   (b) CABLEADO en ~/.claude/settings.json con "shell":"bash" (idempotente).
@@ -30,9 +30,11 @@
 #   · persist_env_active → CAPTURA el valor ACTIVO del entorno si la var está exportada al correr el
 #                          bootstrap (para las tunables que el dev elige). Ambos idempotentes.
 #
-# confirmar-merge-develop AHORA es GLOBAL (candado de merges a develop/main con OK explícito): antes
-# vivía solo por-repo y por eso faltaba donde el repo no lo traía (un caso real 2026-07-11) → promovido a
-# global para que aplique en TODA sesión/clon. NO instala globales los hooks REPO-SCOPED restantes
+# merge-develop-guard (candado del punto de merge a develop/main: squash + autorización con OK explícito;
+# CONSOLIDA a los antiguos merge-squash-guard + confirmar-merge-develop) es GLOBAL/both: antes vivían solo
+# por-repo y faltaban donde el repo no los traía (caso real 2026-07-11) → global para que apliquen en TODA
+# sesión/clon. Las lápidas del MANIFEST de los dos viejos los PODAN de máquinas donde quedaron instalados.
+# NO instala globales los hooks REPO-SCOPED restantes
 # (sesion-inicio, dod-verificar): esos viven en brain/hooks/ como FUENTE para
 # que cada repo los copie a su .claude/ y los cablee (se cargan solo si la sesión INICIA en el repo).
 #
@@ -112,6 +114,62 @@ if [ -f "$SRC_HOOKS/MANIFEST" ]; then
     [ -f "$HOOKS_DIR/$rh" ] && rm -f "$HOOKS_DIR/$rh" && echo "poda: retiré el hook repo-tier huérfano '$rh' del global $HOOKS_DIR (se cablea per-repo, nunca global)"
   done
 fi
+# ── (a3) PODA DE RETIRADOS (LÁPIDAS del MANIFEST) ───────────────────────────────────────────────────
+# Un tier `retirado` es una LÁPIDA: el brain ya mató este hook (su .sh se borró de brain/hooks/), pero
+# quitar la entrada del MANIFEST NO alcanza para limpiar una máquina que YA lo tenía instalado — el .sh
+# copiado y su cableado en settings.json se quedan ahí, disparando ya invisibles para el MANIFEST (el
+# HUECO que motivó este mecanismo: caso real rama-vieja). Este bloque SÍ poda: por cada retirado, borra
+# su $HOOKS_DIR/<nombre>.sh y de-cablea ÚNICAMENTE su propia entrada de $GSET (nunca toca hooks ajenos).
+# Idempotente (si ya no está ni instalado ni cableado, no reporta nada — no es un error) y lo DICE
+# cuando sí actúa (con el nombre y el motivo del MANIFEST, si lo trae). Fail-safe con $GSET inválido:
+# NO lo reescribe a medias — avisa y deja el cableado intacto (aun así borra el .sh, que ya es código
+# muerto y no arriesga nada por sí solo).
+if [ -f "$SRC_HOOKS/MANIFEST" ]; then
+  RETIRED_ENTRIES="$(awk '$1!~/^#/ && NF>=3 && $2=="retirado"{ reason=""; for(i=5;i<=NF;i++) reason=reason (i>5?" ":"") $i; print $1"\t"reason }' "$SRC_HOOKS/MANIFEST")"
+else
+  RETIRED_ENTRIES=""
+fi
+if [ -n "$RETIRED_ENTRIES" ]; then
+  while IFS="$(printf '\t')" read -r rname rreason; do
+    [ -z "$rname" ] && continue
+    podado_sh=0
+    if [ -f "$HOOKS_DIR/$rname.sh" ]; then
+      rm -f "$HOOKS_DIR/$rname.sh" && podado_sh=1
+    fi
+    podado_wire=0
+    if command -v jq >/dev/null 2>&1 && [ -f "$GSET" ]; then
+      if ! jq empty "$GSET" 2>/dev/null; then
+        echo "ERROR: $GSET es JSON INVÁLIDO — NO podo el cableado retirado de '$rname' para no arriesgar el archivo (settings corrupto te deja sin NINGÚN guard). Repáralo (jq . \"$GSET\") y re-corre." >&2
+      elif jq -e --arg pat "/$rname\\.sh" 'any(.hooks[]?[]?; ([.hooks[]?.command] | join(" ")) | test($pat))' "$GSET" >/dev/null 2>&1; then
+        rtmp="$(mktemp)" || rtmp=""
+        if [ -n "$rtmp" ] && jq --arg pat "$rname\\.sh" '
+            if (.hooks|type)=="object" then
+              .hooks |= ( to_entries
+                | map(.value |= [ .[] | select((([.hooks[]?.command]|join(" "))|test($pat))|not) ])
+                | map(select((.value|type)=="array" and (.value|length)>0)) | from_entries )
+              | (if (.hooks|length)==0 then del(.hooks) else . end)
+            else . end
+          ' "$GSET" > "$rtmp" 2>/dev/null && [ -s "$rtmp" ]; then
+          mv "$rtmp" "$GSET"; podado_wire=1
+        else
+          rm -f "$rtmp"; echo "warn: no pude de-cablear el hook retirado '$rname' de $GSET"
+        fi
+      fi
+    fi
+    if [ "$podado_sh" = 1 ] || [ "$podado_wire" = 1 ]; then
+      motivo_txt=""; [ -n "$rreason" ] && motivo_txt=" — motivo del retiro: $rreason"
+      accion=""
+      [ "$podado_sh" = 1 ] && accion="borré $HOOKS_DIR/$rname.sh"
+      if [ "$podado_wire" = 1 ]; then
+        [ -n "$accion" ] && accion="$accion + "
+        accion="${accion}de-cableé su entrada en $GSET"
+      fi
+      echo "poda: '$rname' es tier retirado (lápida del MANIFEST) → $accion$motivo_txt"
+    fi
+  done <<EOF
+$RETIRED_ENTRIES
+EOF
+fi
 # Config de clasificación de costo (la lee delegacion-comun.sh en $HOME/.claude/agentes-costo.json)
 if [ -f "$SRC_HOOKS/agentes-costo.json" ]; then
   atomic_install "$SRC_HOOKS/agentes-costo.json" "$CLAUDE_DIR/agentes-costo.json" || echo "warn: no pude instalar agentes-costo.json"
@@ -150,15 +208,12 @@ register_hook() {
 # de abajo AVISA y el drift-check de test-brain (e2) FALLA (no se cablea en silencio).
 ev_de() {
   case "$1" in
-    git-branch-guard|merge-squash-guard|confirmar-merge-develop|recordar-dashboard|secret-scan|entorno-maquina-guard|no-bypass-deploy|rama-vieja|proteger-arbol) echo "PreToolUse|Bash" ;;
+    git-branch-guard|merge-develop-guard|secret-scan|entorno-maquina-guard|no-bypass-deploy|proteger-arbol) echo "PreToolUse|Bash" ;;
     proteger-fuente-cerebro) echo "PreToolUse|Edit|Write|MultiEdit" ;;
     limite-gasto|delegacion-gate) echo "PreToolUse|Task|Agent" ;;   # Task|Agent: el tool se renombró Agent (antes Task); casar AMBOS o el gate nunca dispara
-    delegacion-registrar|delegacion-reporte) echo "PostToolUse|Task|Agent" ;;
+    delegacion-registrar) echo "PostToolUse|Task|Agent" ;;
     rehidratar-hilo|aviso-drift-cerebro) echo "SessionStart|" ;;
-    aviso-contexto|recordar-orquestar) echo "PostToolUse|" ;;   # casan TODA tool (sin matcher): aviso-contexto mide el ctx; recordar-orquestar cuenta mutaciones/resets p/ el nudge de fan-out
-    # hud-stale: DOBLE trigger — SessionStart (capta el cambio de rama/cwd ENTRE sesiones, al retomar) +
-    # PostToolUse/Bash (capta el cambio a MEDIA sesión, justo tras un `git checkout`/`cd`).
-    hud-stale) echo "SessionStart| PostToolUse|Bash" ;;
+    aviso-contexto) echo "PostToolUse|" ;;   # casa TODA tool (sin matcher): mide el ctx para el volcado del checkpoint mecánico
     # barrer-ramas: DOBLE trigger del barrido — SessionStart (oportunista, throttled) + PostToolUse/Bash
     # (al punto de merge, detecta glab/gh merge vía acg_es_merge_mr). Multi-evento como exportar-sesion-master.
     barrer-ramas) echo "SessionStart| PostToolUse|Bash" ;;
@@ -166,6 +221,10 @@ ev_de() {
     # cablear registra cada uno. exportar-sesion-master necesita los 3 (Stop=backbone con debounce,
     # SessionEnd=estado final, PreCompact=bonus) — ver su encabezado.
     exportar-sesion-master) echo "Stop| SessionEnd| PreCompact|" ;;
+    # checkpoint-mecanico (M2/X2, auditoría 2026-09-11): SOLO PreCompact — es el único punto donde ya
+    # sabemos que la ventana se pierde AHORA; no necesita el respaldo continuo de Stop/SessionEnd que sí
+    # justifica exportar-sesion-master (ese cubre sesiones de vida larga que nunca "terminan").
+    checkpoint-mecanico) echo "PreCompact|" ;;
     *) echo "" ;;
   esac
 }
@@ -240,6 +299,35 @@ if [ -d "$SRC_SKILLS" ]; then
       echo "warn: no pude instalar skill $name (rollback aplicado; la versión previa sigue en su sitio)"
     fi
   done
+fi
+
+# ── (c2) PODA DE SKILLS RETIRADAS (LÁPIDAS del SKILLS-MANIFEST) ────────────────────────────────────────
+# MISMA mecánica de lápida que (a3) para hooks — ver ese bloque para el porqué completo — con la ÚNICA
+# diferencia de que una skill NO tiene cableado en settings.json (es un folder markdown que se LEE, no un
+# script que se EJECUTE): aquí basta borrar la carpeta instalada, sin de-cablear nada. Sin esto, una
+# máquina que ya corrió install-brain ANTES del retiro se queda con la carpeta zombie para siempre — el
+# MANIFEST deja de listarla como global/both, pero nada la borra, y el listado de skills de CUALQUIER
+# sesión en esa máquina sigue ofreciéndola junto a su reemplazo, sin señal de cuál es el dueño vigente
+# (hallazgo ALTO-1 de la auditoría de suficiencia operativa, 2026-09-18: confirmado en vivo con 5 skills
+# fantasma — consolidar-cerebro/unificar-cerebro/claude-proyecto-autocontenido/cosechar-sesion/
+# revisar-entregables-agentes — todavía instaladas en una máquina bootstrapeada antes del overhaul).
+# Idempotente (si la carpeta ya no está, no reporta nada) y lo DICE cuando sí actúa (nombre + motivo).
+if [ -f "$SKILLS_MANIFEST" ]; then
+  RETIRED_SK_ENTRIES="$(awk '$1!~/^#/ && NF>=2 && $2=="retirado"{ reason=""; for(i=4;i<=NF;i++) reason=reason (i>4?" ":"") $i; print $1"\t"reason }' "$SKILLS_MANIFEST")"
+else
+  RETIRED_SK_ENTRIES=""
+fi
+if [ -n "$RETIRED_SK_ENTRIES" ]; then
+  while IFS="$(printf '\t')" read -r rskname rskreason; do
+    [ -z "$rskname" ] && continue
+    if [ -d "$SKILLS_DIR/$rskname" ]; then
+      rm -rf "${SKILLS_DIR:?}/${rskname:?}"
+      motivo_txt=""; [ -n "$rskreason" ] && motivo_txt=" — motivo del retiro: $rskreason"
+      echo "poda: skill '$rskname' es tier retirado (lápida del SKILLS-MANIFEST) → borré $SKILLS_DIR/$rskname$motivo_txt"
+    fi
+  done <<EOF
+$RETIRED_SK_ENTRIES
+EOF
 fi
 
 # ── (c1b) Opción de modelo Opus 4.8 en el picker + autocompact 70% (bloque `env` de settings.json) ──

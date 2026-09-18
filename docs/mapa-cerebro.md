@@ -41,39 +41,30 @@ flowchart LR
     DEVELOP -->|"MR de RELEASE<br/>OK SÚPER-explícito<br/>SIN squash (conserva historia)"| MAIN
 
     GBG["🚧 git-branch-guard<br/>push/merge directo a develop·main<br/>→ DENEGADO, redirige a ramita"]
-    MSG["🔗 merge-squash-guard<br/>MR a develop sin --squash → DENEGADO<br/>(destino main = exento: release sin squash)"]
-    CMD["✋ confirmar-merge-develop<br/>merge sin OK expreso → DENEGADO<br/>target-aware: develop pide OK normal,<br/>main exige marca de RELEASE<br/>(un OK de release también cubre su paso a develop)"]
+    MDG["🔗 merge-develop-guard<br/>MR a develop sin --squash o sin OK expreso → DENEGADO<br/>target-aware: develop pide OK normal,<br/>main exige marca de RELEASE + SIN squash<br/>(consolida los antiguos merge-squash-guard + confirmar-merge-develop)"]
     SS["🕵️ secret-scan<br/>commit/push con secreto → DENEGADO"]
-    RV["🕰️ rama-vieja<br/>base vieja al push → AVISA"]
-    RD["📊 recordar-dashboard<br/>al push: dashboard + doc=realidad → RECUERDA"]
     EMG["🖥️ entorno-maquina-guard<br/>commit de algo machine-specific<br/>al .claude/memory/ del repo → AVISA"]
     LIB["📚 lib analizar-comando-git.sh<br/>(lógica compartida: qué comando toca una base)"]
 
     GBG -.->|vigila| DEVELOP
     GBG -.->|vigila| MAIN
-    MSG -.->|vigila el MR| DEVELOP
-    CMD -.->|candado del cruce| DEVELOP
-    CMD -.->|candado súper-explícito| MAIN
+    MDG -.->|vigila el MR + candado del cruce| DEVELOP
+    MDG -.->|candado súper-explícito, sin squash| MAIN
     SS -.->|escanea lo que ENTRA| RAMITA
-    RV -.->|aviso en el push| RAMITA
-    RD -.->|nudge en el push| RAMITA
     EMG -.->|escanea lo que ENTRA al commit| RAMITA
     LIB -.-> GBG
-    LIB -.-> MSG
-    LIB -.-> CMD
+    LIB -.-> MDG
 
     style GBG fill:#7f1d1d,color:#fff
-    style MSG fill:#7f1d1d,color:#fff
-    style CMD fill:#7f1d1d,color:#fff
+    style MDG fill:#7f1d1d,color:#fff
     style SS fill:#7f1d1d,color:#fff
-    style RV fill:#78350f,color:#fff
-    style RD fill:#78350f,color:#fff
     style EMG fill:#78350f,color:#fff
     style LIB fill:#374151,color:#fff
 ```
 
 **Leyenda:** rojo = hook que **bloquea** (deny) · ámbar = hook que **avisa/recuerda** (no bloquea)
-· gris = lib compartida (los guards la hacen `source` → no divergen).
+· gris = lib compartida (los guards la hacen `source` → no divergen). (`recordar-dashboard` RETIRADO
+—puramente advisory, medido: ignorado—; doc=realidad ya es norma dura sin mecanismo por-push.)
 
 ---
 
@@ -86,7 +77,7 @@ tiene canal para inyectar ni turno del modelo — por eso se retiró `precompact
 ```mermaid
 flowchart TB
     TRABAJO["💬 Sesión trabajando<br/>(el HILO vive solo en el contexto — frágil)"]
-    AC["📈 aviso-contexto (PostToolUse, GLOBAL)<br/>REPORTERO TONTO: surface el watermark CRUDO<br/>(tokens · ventana · % · autoCompactWindow); sin<br/>bandas ni veredicto — /context manda, tú decides"]
+    AC["📈 aviso-contexto (PostToolUse, GLOBAL)<br/>al umbral ALTO/CRÍTICO del punto REAL de compact<br/>(80%/92% de autoCompactWindow o la ventana efectiva;<br/>% honesto, respeta autoCompactEnabled): VUELCA el<br/>checkpoint mecánico solito y ORDENA /checkpoint+/compact.<br/>No gotea (silencio bajo el umbral, 1 disparo + 1 escalada)"]
     CP["💾 skill checkpoint (manual, proactivo)<br/>vuelca el HILO a .claude/memory/hilo-mental-actual.md<br/>ligero (pausa) o COMPLETO (antes de compact:<br/>PLAN con el CÓMO · RESUELTO HOY · COSECHA)"]
     COMPACT["🗜️ /compact (o auto-compact)<br/>el resumen comprime — pero el hilo YA está en disco"]
 
@@ -101,7 +92,7 @@ flowchart TB
     SIGUE["🔁 la sesión continúa CON el hilo<br/>(skill rehidratar-hilo = gemelo manual del hook,<br/>respaldo si un update del CLI lo rompe)"]
 
     TRABAJO --> AC
-    AC -->|"reporta el % → tú decides volcar"| CP
+    AC -->|"al umbral vuelca el andamio mecánico + ORDENA /checkpoint"| CP
     TRABAJO -->|"pausa natural / cada ~2h"| CP
     CP --> COMPACT
     COMPACT --> retomar
@@ -142,9 +133,8 @@ flowchart TB
     REG["📝 delegacion-registrar<br/>materializa el 'pregunta una sola vez'<br/>(consentimiento persistido)"]
     WT["🌲 agente corre en WORKTREE AISLADO<br/>(isolation: worktree — nunca el árbol compartido)"]
     PA["🌳 proteger-arbol<br/>git destructivo que orfanaría commits<br/>en el árbol compartido → AVISA"]
-    REP["📮 delegacion-reporte (PostToolUse/Task)<br/>al terminar: recuerda appendear bitácora (>>)<br/>+ actualizar estado-proyecto + limpiar worktree"]
-    LW["🧹 limpiar-worktrees.sh (script)<br/>barre worktrees de ramas mergeadas;<br/>los vivos quedan anotados en bitácora"]
-    LR["🧹 limpiar-ramas.sh (script)<br/>barre RAMAS LOCALES ya integradas (squash-safe);<br/>conserva trabajo vivo + protegidas"]
+    LW["🧹 limpiar.sh worktrees (script)<br/>barre worktrees de ramas mergeadas;<br/>los vivos quedan anotados en bitácora"]
+    LR["🧹 limpiar.sh ramas (script)<br/>barre las ramas ya integradas (squash-safe): LOCALES y<br/>REMOTAS sin contraparte local; conserva trabajo vivo +<br/>protegidas y REPORTA las represadas (viejas sin integrar)"]
     FRENO["⛔ FRENO DURO<br/>sin cupo del plan NI saldo:<br/>el agente moriría a medias"]
 
     TASK --> LG
@@ -153,15 +143,13 @@ flowchart TB
     DG -->|"consentimiento dado"| REG
     REG --> WT
     PA -.->|"vigila el árbol compartido"| WT
-    WT --> REP
-    REP --> LW
+    WT -->|"reporte sin niñera<br/>(disciplina, norma 'Orquesta')"| LW
     LW --> LR
 
     style LG fill:#7f1d1d,color:#fff
     style FRENO fill:#7f1d1d,color:#fff
     style DG fill:#78350f,color:#fff
     style REG fill:#78350f,color:#fff
-    style REP fill:#78350f,color:#fff
     style PA fill:#78350f,color:#fff
     style LW fill:#374151,color:#fff
     style LR fill:#374151,color:#fff
@@ -169,9 +157,12 @@ flowchart TB
 
 El estilo de orquestación (fan-out + supervisión, 2 archivos de estado sin redundancia) lo guía
 el skill `orquestar-fanout`; la lib `delegacion-comun.sh` comparte la lógica de gate/registro.
-El gate de costo es el **freno** (evita runaways); su hermano-**empuje** es `recordar-orquestar`
-(PostToolUse, advisory): tras **N** mutaciones en serie SIN delegar, sugiere el fan-out — se
-**resetea** al lanzar un `Agent`/`Task`, así que solo avisa cuando llevas rato en grind serial.
+El gate de costo es el **freno** (evita runaways); el **empuje** hacia delegar y el **reporte sin
+niñera** al cerrar un agente (appendear bitácora `>>` + actualizar `estado-proyecto.md` + limpiar
+worktree) ya NO son hooks (`recordar-orquestar`/`delegacion-reporte` se retiraron —puramente
+advisory, medido: ignorados—): viven como **norma que Claude se autoimpone** ("Orquesta: delega lo
+paralelizable y quédate disponible" en `brain/norms/global-claude-md.md`), reforzada por el skill
+`orquestar-fanout`.
 
 ---
 
@@ -190,9 +181,10 @@ flowchart LR
     MANIFEST["📜 brain/hooks/MANIFEST<br/>fuente ÚNICA: tier + kind por pieza"]
 
     subgraph tiers["Tiers declarados"]
-        BOTH["tier <b>both</b> — global + por-repo<br/>(con cláusula de dedupe:<br/>la copia del repo cede a la global)<br/><br/>hooks: git-branch-guard ·<br/>merge-squash-guard ·<br/>confirmar-merge-develop ·<br/>recordar-dashboard · secret-scan ·<br/>entorno-maquina-guard · no-bypass-deploy ·<br/>hud-stale<br/>libs: analizar-comando-git ·<br/>detectar-secretos · juez-comun"]
-        GLOBAL["tier <b>global</b> — solo ~/.claude<br/><br/>hooks: proteger-arbol · proteger-fuente-cerebro ·<br/>rama-vieja · limite-gasto · rehidratar-hilo ·<br/>aviso-contexto · aviso-drift-cerebro ·<br/>exportar-sesion-master · barrer-ramas ·<br/>delegacion-gate · delegacion-registrar ·<br/>delegacion-reporte · recordar-orquestar<br/>libs: delegacion-comun · ramas-zombie · drift-cerebro-comun<br/>scripts: limpiar-worktrees · limpiar-ramas ·<br/>verificar-cerebro · barrer-flotilla-cerebro · cementerio"]
-        REPO["tier <b>repo</b> — solo &lt;repo&gt;/.claude<br/>(se cargan si la sesión INICIA ahí)<br/><br/>hooks: dod-verificar · sesion-inicio ·<br/>recordar-cosechar · recordar-unificar-cerebro"]
+        BOTH["tier <b>both</b> — global + por-repo<br/>(con cláusula de dedupe:<br/>la copia del repo cede a la global)<br/><br/>hooks: git-branch-guard ·<br/>merge-develop-guard · secret-scan ·<br/>entorno-maquina-guard · no-bypass-deploy<br/>libs: analizar-comando-git ·<br/>detectar-secretos · juez-comun"]
+        GLOBAL["tier <b>global</b> — solo ~/.claude<br/><br/>hooks: proteger-arbol · proteger-fuente-cerebro ·<br/>limite-gasto · rehidratar-hilo ·<br/>aviso-contexto · aviso-drift-cerebro ·<br/>exportar-sesion-master · checkpoint-mecanico ·<br/>barrer-ramas · delegacion-gate · delegacion-registrar<br/>libs: delegacion-comun · ramas-zombie · drift-cerebro-comun ·<br/>contrato-hilo · checkpoint-mecanico-comun<br/>scripts: limpiar (worktrees/ramas/residuo/flotilla) ·<br/>verificar-cerebro · cementerio"]
+        REPO["tier <b>repo</b> — solo &lt;repo&gt;/.claude<br/>(se cargan si la sesión INICIA ahí)<br/><br/>hooks: dod-verificar · sesion-inicio · recordar-cosechar"]
+        RETIRADO["🪦 tier <b>retirado</b> — LÁPIDA, no despliega nada<br/>(fecha + motivo en columnas 4+)<br/><br/>hooks: rama-vieja · merge-squash-guard ·<br/>confirmar-merge-develop · delegacion-reporte ·<br/>recordar-orquestar · recordar-unificar-cerebro ·<br/>recordar-dashboard · hud-stale<br/>scripts: limpiar-ramas · limpiar-worktrees ·<br/>limpiar-residuo · barrer-flotilla-cerebro<br/>(consolidados en limpiar.sh, ver MANIFEST)"]
     end
 
     subgraph destinos["Destinos"]
@@ -205,16 +197,20 @@ flowchart LR
     MANIFEST --> BOTH
     MANIFEST --> GLOBAL
     MANIFEST --> REPO
+    MANIFEST --> RETIRADO
     BOTH -->|"install-brain.sh"| GDIR
     BOTH -->|"sincronizar-cerebro.sh"| RDIR
     GLOBAL -->|"install-brain.sh"| GDIR
     REPO -->|"sincronizar-cerebro.sh"| RDIR
+    RETIRADO -.->|"install-brain.sh PODA<br/>(borra .sh + de-cablea)"| GDIR
+    RETIRADO -.->|"sincronizar-cerebro.sh PODA<br/>(huérfano por retiro, sin --prune-orphans)"| RDIR
     TEST -.->|verifica| GDIR
     TEST -.->|verifica| RDIR
     TEST -.->|contra| MANIFEST
 
     style MANIFEST fill:#1e3a5f,color:#fff
     style TEST fill:#4a1d6e,color:#fff
+    style RETIRADO fill:#3f1d1d,color:#fff
 ```
 
 **Kinds:** `hook` se cablea en `settings.json` (evento) · `lib` solo se copia (los hooks la hacen

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # barrer-ramas.sh — hook (tier GLOBAL) que da TRIGGER al barrido de ramas locales ya integradas, por DOS
-# vías complementarias que comparten el MISMO barredor (`limpiar-ramas.sh`) y la misma noción de "zombie":
+# vías complementarias que comparten el MISMO barredor (`limpiar.sh ramas`) y la misma noción de "zombie":
 #
 #   (A) SessionStart 🔔  — OPORTUNISTA: al abrir/retomar sesión en un repo git, como mucho una vez por
 #       BARRER_RAMAS_HORAS (default 24). Backstop del "volví al día siguiente".
@@ -15,7 +15,7 @@
 # un `ls-remote` POR rama candidata (red) y colgaría el arranque de sesión / el turno. Es SEGURO por
 # construcción (solo borra zombies; CONSERVA ante cualquier duda) → no pide confirmación por corrida.
 #
-# Por qué EXISTE (unjordi, 2026-07-21): `limpiar-ramas` es kind=script en el MANIFEST → se INSTALA pero
+# Por qué EXISTE (unjordi, 2026-07-21): `limpiar.sh` es kind=script en el MANIFEST → se INSTALA pero
 # nadie lo DISPARA; las ramas squasheadas se acumulaban (un repo llegó a 60+). "Norma sin mecanismo = buen
 # deseo": este hook es el mecanismo. La vía (B) se añadió (2026-08-07, #53) porque la (A) solo barría al
 # ABRIR sesión y con throttle de 24h → tras mergear seguías viendo la rama muerta hasta la siguiente
@@ -30,11 +30,18 @@
 #
 # CONCURRENCIA con aviso-drift-cerebro (el OTRO SessionStart que MUTA git): en el mismo SessionStart,
 # aviso-drift puede hacer commit+push en la rama ACTUAL (una mini-develop Develop*), mientras este barrido
-# detached hace `git branch -d/-D` de ramas ZOMBIE. Operan sobre refs DISJUNTOS: limpiar-ramas NUNCA toca
+# detached hace `git branch -d/-D` de ramas ZOMBIE. Operan sobre refs DISJUNTOS: `limpiar.sh ramas` NUNCA toca
 # actual/base/develop/main/Develop*/keep/* (justo las que aviso-drift commitea). Fail-open ambos → una
 # colisión degrada sin corromper.
 #
-# Escape: CLAUDE_SKIP_BARRER_RAMAS=1. Fail-open SIEMPRE: no-git / sin remoto / sin limpiar-ramas / sin jq
+# ORDEN A-5 (auditoría 2026-09-11): las dos herramientas antes se lanzaban EN PARALELO (`&` cada una) —
+# `limpiar.sh ramas` fotografía qué ramas siguen checked-out en un worktree AL ARRANCAR; si `limpiar.sh worktrees`
+# libera un worktree zombie DESPUÉS de esa foto, la rama que retenía queda protegida un ciclo entero (con
+# BARRER_RAMAS_HORAS=24, hasta 2 días para que una rama muera). El ciclo rama↔worktree solo converge en
+# UNA pasada si primero se libera el worktree y LUEGO se barren las ramas — por eso `lanzar()` ahora los
+# corre SECUENCIALES (mismo proceso en background, sin paralelismo entre ellos).
+#
+# Escape: CLAUDE_SKIP_BARRER_RAMAS=1. Fail-open SIEMPRE: no-git / sin remoto / sin limpiar.sh / sin jq
 # (vía B) / cualquier error → silencio, exit 0.
 set -u
 
@@ -49,9 +56,10 @@ tool_name=""; [ "$have_jq" = 1 ] && tool_name=$(printf '%s' "$input" | jq -r '.t
 
 # ── Vía (B): gate de MERGE. Si nos disparó un Bash, solo seguimos si el comando fue un merge de MR/PR.
 #    Cualquier otro Bash (la inmensa mayoría) → silencio inmediato, sin tocar red ni git.
-es_merge=0
+es_merge=0; cmd=""; pcwd=""
 if [ "$tool_name" = "Bash" ]; then
   cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
+  pcwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)   # dir REAL del comando (igual que merge-develop-guard)
   ACG="$(dirname "$0")/analizar-comando-git.sh"
   # shellcheck source=analizar-comando-git.sh
   { [ -n "$cmd" ] && [ -f "$ACG" ] && . "$ACG" && acg_es_merge_mr "$cmd"; } || exit 0
@@ -59,24 +67,51 @@ if [ "$tool_name" = "Bash" ]; then
 fi
 
 # ── Comunes a ambas vías: repo git con remoto y el barredor instalado a un lado (kind=script → misma carpeta).
-ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo "")}"
+#
+# C-1 (dictamen higiene de ramas 2026-09-17) — CAUSA RAÍZ del reguero de 23 ramas: ROOT salía SIEMPRE de
+# CLAUDE_PROJECT_DIR (el repo de la SESIÓN), pero un merge se corre a menudo sobre OTRO repo
+# (`cd ~/code/cortex && gh pr merge …` desde una sesión abierta en otro proyecto). Medido en vivo: `cortex`
+# no tenía NI UN stamp en ~/.claude/memory/.barrer-ramas/ —nunca fue barrido, ni una vez— mientras el
+# disparo de un merge SUYO sellaba el stamp de `plantilladotnet` y barría ESE repo. El hook decía
+# "barriendo…" y barría: el repo equivocado. En la vía (B) el repo objetivo lo resuelve `acg_target_dir`
+# (-C > cd/pushd > .cwd del payload > CLAUDE_PROJECT_DIR), la MISMA pieza que ya usan los otros git-guards.
+# En la vía (A) no hay comando que analizar → CLAUDE_PROJECT_DIR sigue siendo lo correcto.
+ROOT=""
+if [ "$es_merge" = 1 ]; then
+  ROOT="$(acg_target_dir "$cmd" "$pcwd" 2>/dev/null || true)"
+  case "$ROOT" in ''|'.') ROOT="" ;; esac   # sin señal útil → cae al default de abajo
+fi
+[ -n "$ROOT" ] || ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo "")}"
 { [ -n "$ROOT" ] && git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; } || exit 0
 git -C "$ROOT" remote | grep -q . 2>/dev/null || exit 0   # sin remoto no hay ramas squasheadas-y-borradas
-LIMPIAR="$(dirname "$0")/limpiar-ramas.sh"
+LIMPIAR="$(dirname "$0")/limpiar.sh"
 [ -f "$LIMPIAR" ] || exit 0
 # 1b — al punto del merge nace TANTO un ramo local zombie COMO (tras un fan-out) un worktree zombie. Ambos
-# barredores comparten la MISMA lib de "zombie" (ramas-zombie.sh) → misma decisión, sin divergencia. El de
-# worktrees es OPCIONAL (un clon podría no traerlo): si está a un lado, se lanza junto al de ramas.
-LIMPIAR_WT="$(dirname "$0")/limpiar-worktrees.sh"
+# barridos comparten la MISMA lib de "zombie" (ramas-zombie.sh) → misma decisión, sin divergencia, y desde
+# 2026-09-17 el MISMO dispatcher `limpiar.sh` (subcomandos `ramas`/`worktrees`, antes dos ejecutables
+# sueltos). LIMPIAR_WT queda como su propio nombre por claridad de lectura, aunque hoy apunte al mismo
+# archivo que LIMPIAR — un clon SIN el dispatcher (brain viejo) deja `[ -f "$LIMPIAR_WT" ]` en falso y cae
+# al fallback de solo-ramas.
+LIMPIAR_WT="$(dirname "$0")/limpiar.sh"
 
 stampdir="$HOME/.claude/memory/.barrer-ramas"; mkdir -p "$stampdir" 2>/dev/null || true
 slug=$(printf '%s' "$ROOT" | cksum 2>/dev/null | awk '{print $1}'); slug="${slug:-0}"
 now=$(date +%s)
 log="$stampdir/${slug}.log"
 logwt="$stampdir/${slug}.worktrees.log"
+# M-1 (dictamen 2026-09-17): devuelve 0 SOLO si el barrido de verdad se LANZÓ. El throttle marca entonces
+# el ÉXITO del lanzamiento, no el INTENTO — antes el stamp se sellaba ANTES de `lanzar()` y, si el spawn
+# fallaba, el reloj de 24 h ya estaba quemado y nadie lo notaba (el repo se quedaba sin barrer un día).
 lanzar() {
-  ( cd "$ROOT" && nohup bash "$LIMPIAR" >"$log" 2>&1 & ) >/dev/null 2>&1 || true
-  [ -f "$LIMPIAR_WT" ] && ( cd "$ROOT" && nohup bash "$LIMPIAR_WT" >"$logwt" 2>&1 & ) >/dev/null 2>&1 || true
+  # A-5: SECUENCIAL, no paralelo — worktrees PRIMERO (libera worktrees zombie, con eso las ramas que
+  # retenían dejan de estar protegidas) y ramas DESPUÉS, en la MISMA pasada. Sigue siendo background
+  # (nohup … &): no bloquea el turno ni el arranque de sesión.
+  if [ -f "$LIMPIAR_WT" ]; then
+    ( cd "$ROOT" && nohup bash -c 'bash "$1" worktrees >"$2" 2>&1; bash "$3" ramas >"$4" 2>&1' _ "$LIMPIAR_WT" "$logwt" "$LIMPIAR" "$log" & ) >/dev/null 2>&1 || return 1
+  else
+    ( cd "$ROOT" && nohup bash "$LIMPIAR" ramas >"$log" 2>&1 & ) >/dev/null 2>&1 || return 1
+  fi
+  return 0
 }
 
 # ── Vía (B): TRIGGER AL PUNTO DE MERGE (inmediato; debounce corto anti-estampida de ráfaga de merges). ──
@@ -87,9 +122,9 @@ if [ "$es_merge" = 1 ]; then
     mlast=$(cat "$mstamp" 2>/dev/null || echo 0); case "$mlast" in ''|*[!0-9]*) mlast=0;; esac
     [ $(( now - mlast )) -lt "$deb" ] && exit 0    # otro barrido de merge acabó de lanzarse → ya cubre este
   fi
+  lanzar || exit 0    # M-1: el debounce marca el ÉXITO del lanzamiento, no el intento
   printf '%s' "$now" > "$mstamp" 2>/dev/null || true
-  lanzar
-  ctx="🧹 Merge de MR/PR detectado → barriendo en segundo plano las ramas locales Y los worktrees que quedaron integrados (zombies squash-safe: MR mergeado / remota borrada / equivalencia de parche; también borra la rama REMOTA huérfana si el merge no la limpió; conserva trabajo sin integrar y nunca toca actual/base/develop/main/Develop*/keep/*). Detalle: ${log} · ${logwt}. Para verlo sin borrar: \`limpiar-ramas.sh --dry-run\` / \`limpiar-worktrees.sh --dry-run\`."
+  ctx="🧹 Merge de MR/PR detectado → barriendo en segundo plano, EN ${ROOT} (el repo donde ocurrió el merge), las ramas locales Y los worktrees que quedaron integrados (zombies squash-safe: MR mergeado / remota borrada / equivalencia de parche; también borra la rama REMOTA huérfana que el merge no limpió, incluidas las remotas que ya no tienen contraparte local; conserva trabajo sin integrar y nunca toca actual/base/develop/main/Develop*/keep/*). Detalle: ${log} · ${logwt}. Para verlo sin borrar: \`limpiar.sh ramas --dry-run\` / \`limpiar.sh worktrees --dry-run\`."
   if [ "$have_jq" = 1 ]; then
     jq -n --arg c "$ctx" '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$c}}'
   else
@@ -99,17 +134,19 @@ if [ "$es_merge" = 1 ]; then
 fi
 
 # ── Vía (A): TRIGGER OPORTUNISTA AL ABRIR SESIÓN (throttle por repo, BARRER_RAMAS_HORAS). ──
-# Marca el throttle ANTES de lanzar (evita relanzar mientras corre) y dispara el barrido detached.
+# M-1: el throttle se sella TRAS confirmar el lanzamiento (marca el ÉXITO, no el INTENTO). Si el spawn
+# falla, el reloj NO se quema y el siguiente SessionStart reintenta; la ventana de re-lanzamiento que abre
+# esto es de milisegundos y dos barridos concurrentes ya son seguros por construcción (ver cabecera).
 horas="${BARRER_RAMAS_HORAS:-24}"; case "$horas" in ''|*[!0-9]*) horas=24;; esac
 stamp="$stampdir/${slug}"
 if [ -f "$stamp" ]; then
   last=$(cat "$stamp" 2>/dev/null || echo 0); case "$last" in ''|*[!0-9]*) last=0;; esac
   [ $(( now - last )) -lt $(( horas * 3600 )) ] && exit 0
 fi
+lanzar || exit 0    # no se pudo lanzar → NO se sella el throttle ni se anuncia un barrido que no ocurrió
 printf '%s' "$now" > "$stamp" 2>/dev/null || true
-lanzar
 
-ctx="🧹 Barriendo ramas locales Y worktrees YA integrados de este repo en segundo plano (zombies squash-safe: MR mergeado / remota borrada / equivalencia de parche; también borra la rama REMOTA huérfana si el merge no la limpió; conserva trabajo sin integrar y nunca toca actual/base/develop/main/Develop*/keep/*). Throttle ${horas}h. Detalle del último barrido: ${log} · ${logwt}. Para verlo sin borrar: \`limpiar-ramas.sh --dry-run\` / \`limpiar-worktrees.sh --dry-run\`."
+ctx="🧹 Barriendo ramas locales Y worktrees YA integrados de ${ROOT} en segundo plano (zombies squash-safe: MR mergeado / remota borrada / equivalencia de parche; también borra la rama REMOTA huérfana que el merge no limpió, incluidas las remotas que ya no tienen contraparte local; conserva trabajo sin integrar y nunca toca actual/base/develop/main/Develop*/keep/*). Throttle ${horas}h. Detalle del último barrido: ${log} · ${logwt}. Para verlo sin borrar: \`limpiar.sh ramas --dry-run\` / \`limpiar.sh worktrees --dry-run\`."
 if [ "$have_jq" = 1 ]; then
   jq -n --arg c "$ctx" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}}'
 else

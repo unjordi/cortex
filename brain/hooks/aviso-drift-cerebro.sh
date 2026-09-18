@@ -48,7 +48,7 @@
 # --continue or --resume (source = resume or fork)").
 set -u
 
-# CUERPO PER-REPO compartido con el SWEEPER de flotilla (barrer-flotilla-cerebro.sh): la decisión de
+# CUERPO PER-REPO compartido con el SWEEPER de flotilla (limpiar.sh flotilla, antes barrer-flotilla-cerebro.sh): la decisión de
 # drift + el auto-apply viven en la lib drift_chequea_repo → UNA sola implementación (cero drift entre
 # el fast-path interactivo de aquí y el batch del sweeper). Ver drift-cerebro-comun.sh.
 # shellcheck source=drift-cerebro-comun.sh
@@ -78,10 +78,10 @@ emit_and_exit() {
   local extra="${1:-}" out="" part sep=""
   # Une (en orden, saltando vacíos): SELF (identidad) · $extra (drift/auto-sync per-repo) · GLOBAL_SK_WARN
   # (drift de la copia GLOBAL de skills) · GLOBAL_HOOK_WARN (drift de la copia GLOBAL de hooks/libs) ·
-  # MIGRACION_WARN (huella local de clon sin migrar). Los tres últimos viajan en TODOS los exit paths
-  # (incluso el throttle per-repo fresco): son concerns per-MÁQUINA con su PROPIO throttle, no dependen
-  # del drift del repo actual.
-  for part in "$SELF" "$extra" "${GLOBAL_SK_WARN:-}" "${GLOBAL_HOOK_WARN:-}" "${MIGRACION_WARN:-}"; do
+  # GLOBAL_NORMS_WARN (drift del bloque de normas en ~/.claude/CLAUDE.md) · MIGRACION_WARN (huella local de
+  # clon sin migrar). Los cuatro últimos viajan en TODOS los exit paths (incluso el throttle per-repo
+  # fresco): son concerns per-MÁQUINA con su PROPIO throttle, no dependen del drift del repo actual.
+  for part in "$SELF" "$extra" "${GLOBAL_SK_WARN:-}" "${GLOBAL_HOOK_WARN:-}" "${GLOBAL_NORMS_WARN:-}" "${MIGRACION_WARN:-}"; do
     [ -z "$part" ] && continue
     if [ -z "$out" ]; then out="$part"; else
       out="$out
@@ -148,6 +148,27 @@ if [ "$hk_skip" = 0 ]; then
   _rc=$?
   if [ "$_rc" = 0 ] && [ -z "$GLOBAL_HOOK_WARN" ]; then
     printf '%s' "$now" > "$hk_stamp" 2>/dev/null || true
+  fi
+fi
+
+# ── DRIFT DE NORMAS GLOBAL (per-máquina) — con su PROPIO throttle (independiente de skills/hooks). Warn-only.
+# Antídoto al ALTO-2 de la auditoría de suficiencia operativa (2026-09-18): install-brain §(e) SÍ refresca
+# el bloque de normas en ~/.claude/CLAUDE.md en cada re-corrida, pero nada avisaba que hacía falta
+# re-correrlo — confirmado en vivo, la norma seguía citando `recordar-dashboard` (ya retirado) pese a que
+# la fuente ya traía el texto correcto. Solo re-chequea cada AVISO_DRIFT_HORAS; un resultado CON drift NO
+# se cachea (insiste hasta que re-corras install-brain).
+GLOBAL_NORMS_WARN=""
+nm_stamp="$stampdir/.normas-global"
+nm_skip=0
+if [ -f "$nm_stamp" ]; then
+  nm_last=$(cat "$nm_stamp" 2>/dev/null || echo 0); case "$nm_last" in ''|*[!0-9]*) nm_last=0;; esac
+  [ $(( now - nm_last )) -lt $(( horas * 3600 )) ] && nm_skip=1
+fi
+if [ "$nm_skip" = 0 ]; then
+  GLOBAL_NORMS_WARN="$(drift_norms_global 2>/dev/null)"
+  _rc=$?
+  if [ "$_rc" = 0 ] && [ -z "$GLOBAL_NORMS_WARN" ]; then
+    printf '%s' "$now" > "$nm_stamp" 2>/dev/null || true
   fi
 fi
 

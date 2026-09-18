@@ -79,35 +79,31 @@ El cerebro se ordena por *dureza*: arriba lo que te **bloquea** sin negociar; ab
 ```
 🔒 Hooks Forzosos — hooks que bloquean (deny) · no negociables
 ├─ 🚧 git-branch-guard         push/merge a develop·main → denegado
-├─ 🔗 merge-squash-guard       MR a develop sin --squash → denegado
+├─ 🔗 merge-develop-guard      MR a develop sin --squash o sin tu OK → denegado; a main exige OK súper-explícito
 ├─ 🕵️  secret-scan             commit/push con un secreto → denegado
 ├─ 💸 delegacion-gate          delegar al llegar al 90% de tu ventana 5h → pide tu OK
 ├─ 🛑 limite-gasto             sin ventana 5h Y sin overage (ambos agotados) → freno duro
 └─ 📁 por-repo · viajan en el .claude de cada repo
-   ├─ ✋ confirmar-merge-develop  merge sin tu OK → denegado
    └─ ✅ dod-verificar            cierre sin evidencia/OK → denegado; claim visual a ciegas (sin ver la pantalla) también
 
 🔔 Automático — inyectan / recuerdan (no bloquean)
-├─ 📊 recordar-dashboard       en el push recuerda dashboard + doc=realidad (README/docs) — cierre del slice
 ├─ 🖥️  entorno-maquina-guard    commit de algo machine-specific (aliases/rutas de $HOME/Rosetta/entorno-maquina.md) al .claude/memory/ del repo → avisa
 ├─ 🚧 no-bypass-deploy         correr el instalador/deploy a mano (install-brain.sh/deploy.sh) en vez de la herramienta oficial (el widget) → avisa (fail-safe: no --dry-run/--help/CI)
-├─ 🕰️  rama-vieja              avisa si la ramita arrastra base vieja
 ├─ 🌳 proteger-arbol           git destructivo que orfanaría commits sin pushear → avisa (fan-out: usa worktree aislado)
 ├─ 🛡️  proteger-fuente-cerebro  editar la copia INSTALADA de un hook/skill que tiene fuente en el clon → avisa (se perdería en el próximo sync) (GLOBAL)
 ├─ 🧹 barrer-ramas             al abrir sesión / al punto del merge barre en 2º plano ramas locales + remota huérfana + worktrees ya integrados (zombie squash-safe; throttle 24h) (GLOBAL)
 ├─ 💾 exportar-sesion-master   auto-export de las sesiones *-master a ~/.claude-sessions (o Drive); detached, sobrevive el cleanup de 30 días (GLOBAL)
+├─ 🗂️ checkpoint-mecanico      PreCompact: extractor mecánico (streaming, 0 tokens) escribe el andamio del TRAMO VIVO a hilo-mental-actual.andamio.md (GLOBAL; el skill lo regenera con --self --ensure)
 ├─ 📝 delegacion-registrar     materializa el "pregunta una sola vez"
-├─ 📮 delegacion-reporte       al terminar un agente: recuerda registrar avance + limpiar su worktree
-├─ 🎼 recordar-orquestar       N mutaciones (edits/commits) en serie SIN delegar → sugiere fan-out (advisory, no bloquea; resetea al delegar) (GLOBAL)
-├─ 🧵 rehidratar-hilo          reinyecta hilo-mental-actual.md al abrir/retomar/compactar (GLOBAL) — con gate de frescura
-├─ 📈 aviso-contexto           reporta el watermark de contexto CRUDO (tokens · ventana · %); sin bandas ni veredicto — /context manda (GLOBAL)
+├─ 🧵 rehidratar-hilo          reinyecta hilo-mental-actual.md + el andamio (si es más fresco) al abrir/retomar/compactar (GLOBAL) — gate de frescura + edad
+├─ 📈 aviso-contexto           al umbral ALTO del punto REAL de compact (80%/92% de autoCompactWindow o la ventana efectiva; % honesto, respeta autoCompactEnabled): VUELCA el checkpoint mecánico solito y ORDENA /checkpoint+/compact. No gotea (silencio bajo el umbral, 1 disparo + 1 escalada) (GLOBAL)
 ├─ 🧬 aviso-drift-cerebro      repo brained atrás de la fuente única (hooks/libs Y skills) → en tu mini-develop se AUTO-SINCRONIZA (apply+commit+push); en otra rama, avisa. ADEMÁS detecta el drift de la copia GLOBAL de skills (~/.claude/skills vs la fuente; warn-only, throttle propio). Al moverse el cerebro, NUDGE a correr la DUPLA (suficiencia+coherencia; contra la firma si hay AGENTS.md, si no sugiere instanciarla) (GLOBAL)
-├─ 🔀 hud-stale                cambiaste de rama/proyecto → tu lista de TODOs (HUD) puede ser de la tarea anterior: avisa (advisory) que la resetees/re-siembres del estado-proyecto.md de esa rama. Señal OBJETIVA (rama/cwd), stamp per-sesión, first-sight silencioso, solo en repos con backlog (GLOBAL)
 └─ 📁 por-repo · viajan en el .claude de cada repo
    ├─ 🧭 sesion-inicio            reinyecta rama + norma + memoria al abrir
-   ├─ 🌾 recordar-cosechar        espejo TaskList→estado-proyecto.md (auto) + nudge: no cosechaste/no actualizaste backlog
-   └─ ⬆️  recordar-unificar-cerebro  tu mini acumuló aprendizajes sin UNIFICAR a develop → sugiere /unificar-cerebro (gemelo ↑ de aviso-drift)
-      (💤 precompact-volcar-estado se RETIRÓ: PreCompact no puede inyectar; lo cubren 💾 checkpoint + 🧵 rehidratar-hilo + 📈 aviso-contexto)
+   └─ 🌾 recordar-cosechar        espejo automático del TaskList vivo → bloque fenced en estado-proyecto.md (determinista, sin LLM)
+      (💤 precompact-volcar-estado se RETIRÓ: PreCompact no puede inyectar; lo cubren 💾 checkpoint + 🧵 rehidratar-hilo + 📈 aviso-contexto.
+       overhaul hooks 2026-09-18: recordar-dashboard/delegacion-reporte/recordar-orquestar/recordar-unificar-cerebro/hud-stale se RETIRARON
+       —puramente advisory, medido: ignorados— y su regla subió a norma en brain/norms/global-claude-md.md; MANIFEST los lista `retirado`.)
 
 📜 Normas — reglas que Claude se autoimpone (CLAUDE.md)
 ├─ 🎯 Definition of Done       verde técnico ≠ Done/Listo/Ya Quedó; exige QA o un OK explícito
@@ -126,20 +122,16 @@ El cerebro se ordena por *dureza*: arriba lo que te **bloquea** sin negociar; ab
 ├─ 🩺 auditar-coherencia-cerebro fan-out read-only sobre el PROPIO cerebro (guards+flowcharts+doc): evasiones/huecos/drift, verificado por ejecución → loop hasta converger; modo-cerebro de auditar-proceso-algoritmo
 ├─ 🧪 auditar-suficiencia-operativa  ¿ALCANZA la doc para HACER el trabajo sin romper nada ni re-investigar? tareas reales ✅/⚠️/❌ con archivo:línea + RE-auditar tras arreglar
 ├─ 🧬 auditor-semantico        ¿el código HACE lo que queremos? Capa 1 checks deterministas (scripts/, gratis, en CI) + Capa 2 criterio LLM sobre invariantes-semanticos.yml; motor genérico, catálogo por-repo
-├─ 🧠 consolidar-cerebro       meta-orquestador: dupla → positivar → desinflar → convergencia → cierre con la FIRMA (CLAUDE+MEMORY)
-├─ 📐 canonizar-cerebro        lleva un cerebro instanciado drifteado a la firma-árbol: reprefija memorias (git mv) a dom-/dev-/ux-/qa-, reescribe CLAUDE.md+MEMORY.md, verifica 1:1 con verificar-firma-canonica.sh (detector del GATE #44)
+├─ 📐 canonizar-cerebro        DUEÑO del ciclo de vida del cerebro de un proyecto, 4 modos sobre 1 maquinaria: sembrar (nace nativo, sin symlinks) · canonizar (firma-árbol: git mv a dom-/dev-/ux-/qa-, verifica 1:1 con verificar-firma-canonica.sh) · consolidar (dupla → positivar → desinflar → convergencia → FIRMA) · reconciliar (semanal, minis de devs → develop)
 ├─ 🪶 desinflar-memorias       adelgaza un árbol de memorias sin perder lecciones: la narrativa se colapsa a su lección, los mitos descartados se mudan al cementerio.md (una lápida por ID content-hash 🪦#<id>)
-├─ 🕵️ revisar-entregables-agentes    verifica lo que un agente ENTREGA contra la realidad; no relates su reporte como verdad
 ├─ ☀️ positivar-doc                  reescribe answer-first: 'ESTO SÍ' (método correcto) antes del 'ESTO NO'
 ├─ 🎓 investigar-dominio             ponte experto en un dominio (fan-out DOC-FIRST) → memorias durables + skills
 ├─ 📚 construir-missing-manual       fabrica el manual/wiki de referencia exhaustivo que no existe (fan-out que investiga 1× y hornea) → artefacto consultable OFFLINE
-├─ 🌾 cosechar-sesion                cosecha local: extrae aprendizajes de tu sesión al inbox del equipo
-├─ 🧩 unificar-cerebro               reconciliación del cerebro del equipo: integra los aprendizajes mini→develop
-├─ 🧳 claude-proyecto-autocontenido  el cerebro VIVE dentro del proyecto (.claude/ + symlink de slug) → viaja con él
 ├─ 🚚 reubicar-master                muda una sesión master COMPLETA a otro repo (brain-master → cortex) sin residuo: transcript+cwd, cerebro, slug y refs atómicas
 ├─ 🔍 zoom-screenshot                recorta y amplía regiones de una captura (ffmpeg) para leer texto fino ilegible
 ├─ 🔩 ingenieria-inversa-gui-db-navegador  ingeniería inversa de app legacy GUI+BD: driving la UI vía navegador + diff de la BD antes/después = doc con evidencia real
 ├─ 📕 markdown-a-pdf                 convierte .md a PDF pulido y distribuible vía md-to-pdf (npx, sin instalar) con el gotcha de --css y QA visual real
+├─ 🕹️ control-gui-remota-por-ssh     ver/operar una GUI remota por SSH sin VNC/RDP — screenshot/click/teclado DPI-aware; Windows·Linux·Mac completos (multi-monitor + captura por-ventana)
 └─ 🌙 turno-nocturno           protocolo del turno de noche: eco del contrato, decide-dentro-de-la-cerca, grants durables a disco
 ```
 
@@ -148,17 +140,43 @@ Los hooks **por-repo** son fuente en [`brain/hooks/`](brain/hooks/) que cada rep
 **skills** siguen el mismo modelo de tiers en su propio [`brain/skills/MANIFEST`](brain/skills/MANIFEST)
 (`global` = solo `~/.claude/skills`; `both` = además viaja por-repo como CORREO en repos compartidos):
 `sincronizar-cerebro.sh` las despliega por-repo (árbol completo, diff-aware, prune por ledger que jamás
-toca skills propias del repo) y `aviso-drift-cerebro` detecta su drift igual que el de los hooks. El
-cerebro **se autoprueba**: [`brain/test-brain.sh`](brain/test-brain.sh) corre cientos de checks (el número exacto lo imprime la suite) contra un
+toca skills propias del repo) y `aviso-drift-cerebro` detecta su drift igual que el de los hooks.
+
+Cuando el repo es **PERSONAL** (sin la marca `.claude/repo-compartido`), `aviso-drift-cerebro` FLAGGEA
+los guards del brain que sobran ahí (el global+dedupe de tu máquina ya los cubre) pero, a propósito, NO
+los borra solo. `sincronizar-cerebro.sh --limpiar-personal [--apply]` es la limpieza real: REHÚSA si el
+repo está marcado `.claude/repo-compartido`, y retira SOLO los archivos de tier `both` (el único
+redundante con el install global) + su cableado en `settings.json` + el sello `.brain-version` —
+NUNCA los de tier `repo` (sin equivalente global; siguen haciendo falta ahí, personal o no) ni la
+memoria/skills del repo, que son suyos. `--incluir-skills` extiende el retiro a las skills del brain
+por-repo, pero solo las que constan en el ledger `.claude/skills/.brain-skills` (la procedencia exacta
+de lo que este mismo sync desplegó); sin ledger, no toca ninguna. DRY-RUN por default, como el resto
+del script.
+
+El cerebro **se autoprueba**: [`brain/test-brain.sh`](brain/test-brain.sh) corre cientos de checks (el número exacto lo imprime la suite) contra un
 `$HOME` aislado, y la CI repite `bash -n` + `jq empty` + `shellcheck` en cada push. Tras un fan-out,
-el helper [`limpiar-worktrees.sh`](brain/hooks/limpiar-worktrees.sh) barre los worktrees de ramas ya
+el helper [`limpiar.sh worktrees`](brain/hooks/limpiar-impl-worktrees.sh) (dispatcher: `brain/hooks/limpiar.sh`) barre los worktrees de ramas ya
 mergeadas y deja anotado en la bitácora el pendiente de los que sigan vivos; y
-[`limpiar-ramas.sh`](brain/hooks/limpiar-ramas.sh) barre las **ramas locales** ya integradas (antídoto
+[`limpiar.sh ramas`](brain/hooks/limpiar-impl-ramas.sh) barre las **ramas locales** ya integradas (antídoto
 a la acumulación de ramitas squasheadas: el squash rompe `git branch -d` y `fetch --prune` no toca
 locales) y, si tras borrar la local su **rama REMOTA** aún cuelga (un MR squash-mergeado sin
-`--delete-branch`), la borra también (fail-open sin red). Ambos comparten la lógica "zombie"
+`--delete-branch`), la borra también (fail-open sin red). En una **segunda pasada** examina además las
+ramas **remotas SIN contraparte local** —las que el fan-out en worktrees efímeros, otra máquina o un
+`branch -D` suelto dejan vivas en `origin`, invisibles al recorrido de `refs/heads`—: borra las que una
+señal POSITIVA squash-safe demuestre integradas (y solo si su punta sigue siendo la que evaluó), y las
+que traen trabajo sin integrar las CONSERVA y las NOMBRA. Escape: `LIMPIAR_RAMAS_SIN_REMOTAS=1`. Ambos comparten la lógica "zombie"
 ([`ramas-zombie.sh`](brain/hooks/ramas-zombie.sh)) → una sola definición de "mergeada", y `barrer-ramas`
-los lanza a **ambos** (ramas + worktrees) en el mismo trigger.
+los lanza a **ambos** (ramas + worktrees) en el mismo trigger. `limpiar.sh ramas` además REPORTA (nunca
+borra) las ramas de fan-out abandonadas (convención `worktree-agent-*`, sin worktree vivo, viejas y sin
+integrar): una vez por punta a la bitácora del repo, para que un humano decida.
+
+Más allá de ramas/worktrees git, [`limpiar.sh residuo`](brain/hooks/limpiar-impl-residuo.sh) barre el resto
+del residuo de housekeeping que nadie más podaba (queja real, 2026-09: *"qué pasa con lo que deja
+detrás... no todo eran ramas con worktree"*): los respaldos del skill de mudanza (`reubicar-backups/`,
+antes SIN poda alguna), los logs/stamps de `barrer-ramas` acumulados por repo visitado, y las cachés de
+corta vida de `analizar-comando-git`. Retención **por EDAD, nunca por cantidad** (un respaldo existe
+para recuperar un desastre; podar "los primeros N" botaría el único bueno tras una ráfaga). Corre como
+parte de `limpiar.sh flotilla` (reusa su programación diaria) o standalone con `--dry-run` para previsualizar.
 
 ### 🗺️ El mapa del cerebro — fuente de verdad visual
 
@@ -281,8 +299,10 @@ depender de en qué te toque trabajar.
 
 ## Contribuir al cerebro
 
-Las piezas por dentro (los tres tiers de hooks, cómo probarlas, instalar/desinstalar el cerebro
-suelto) viven en **[`brain/README.md`](brain/README.md)** — la doc para contribuidores. Sumar un
+Las piezas por dentro (los tiers de hooks —`global`/`repo`/`both`, más el tier `retirado` que marca
+una LÁPIDA en el MANIFEST para que install-brain/sincronizar-cerebro la poden de las máquinas que la
+tenían instalada— cómo probarlas, instalar/desinstalar el cerebro suelto) viven en
+**[`brain/README.md`](brain/README.md)** — la doc para contribuidores. Sumar un
 guardrail o cortar un release está documentado en las skills del repo:
 [`agregar-hook-cerebro`](.claude/skills/agregar-hook-cerebro/SKILL.md) y
 [`publicar-widget`](.claude/skills/publicar-widget/SKILL.md).

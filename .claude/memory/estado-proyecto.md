@@ -23,6 +23,52 @@ metadata:
 
 ## 🔜 Pendientes (backlog vivo)
 
+- **[MEDIO] F3 del plan de continuidad unificada (`scratchpad/PLAN-checkpoint-mudanza-unificados.md`,
+  2026-09-11) — el INVENTARIO ÚNICO de artefactos de continuidad y `G-CONTINUIDAD`.** Planteado y NO
+  construido. Qué es: un CATÁLOGO (dato, no código) de cada artefacto con su LLAVE (`sessionId` / `slug` /
+  `cwd` / `repo` / `repo×stream`) y su disposición OBLIGATORIA — `VIAJA` · `SOBREVIVE-SOLO` ·
+  `VOLATIL-LOCAL` · `PERDIDA-DECLARADA`, **sin quinta categoría** —, del que DERIVEN: la lista §1.0.2 del
+  skill `reubicar-master` (hoy escrita a mano: no puede seguir siendo correcta más de una versión del
+  harness, que inventa clases nuevas — `workflows/` es reciente), el gate de la mudanza (`G-SIDECAR` pasa
+  a ser UNA FILA del genérico) y la cobertura de `.gitignore`. Invariante clave: un artefacto que el
+  harness invente y nadie clasifique sale **HUÉRFANO** y BLOQUEA, en vez de descubrirse el día que falta.
+  Por qué importa: es la raíz común de los tres agujeros ya pagados uno por uno — el sidecar (#402), el
+  hilo (#402 + esta tanda) y el andamio (nació en #403 y #402 no sabía que existía).
+- **[BAJO] F4 del mismo plan — UNA pasada y UN hook de `PreCompact`.** Planteado y NO construido. Hoy el
+  bucle de streaming está escrito TRES veces (`scanTranscriptFile`, `rewriteTranscriptStream` y el
+  `extraer()` del extractor) y un solo evento `PreCompact` dispara CUATRO recorridos completos del mismo
+  transcript (el `grep` del customTitle + el export gzip + `metaBarata` + `extraer`), con dos hooks que
+  toman locks distintos sobre el mismo archivo. El arreglo: colectores enchufables sobre `session-lib.js`
+  (una pasada, N acumuladores) + un orquestador único del evento. Riesgo BAJO pero NO nulo: toca la lib
+  que el camino destructivo de la mudanza usa DESPUÉS del punto de no retorno ⇒ entra con el preflight de
+  CAPACIDAD del preludio apuntando a los símbolos nuevos, o no entra.
+- **[BAJO] F5 del mismo plan — el JUICIO externo (`claude -p --resume <sid> --fork-session`).** NO
+  construido y NO autorizado: cuesta dinero y pasa por `delegacion-gate`. Va al final por diseño; con F1
+  ya cerrado, el andamio mecánico ya tiene lector, que era el prerrequisito real.
+
+- **[MEDIO, PLAUSIBLE] M-7 del dictamen de barrido de ramas (`scratchpad/AUDITOR-barrido-ramas.md`,
+  2026-09-11) — caps silenciosos en la consulta al foro de `_bz_intentar_gh`/`_bz_intentar_glab`
+  (`ramas-zombie.sh`): `gh … --limit 300` y `glab … --per-page 300`. Dos problemas sin cerrar: (1) un
+  repo con >300 PRs/MRs mergeados deja los viejos fuera del cache y (d) "no encuentra" el PR/MR de una
+  rama vieja → la conserva sin decir que TRUNCÓ la consulta; (2) el `per_page` de la API de GitLab topa
+  en 100, así que el 300 pedido no da lo que promete. El auditor NO lo pudo cerrar sin pegarle a un foro
+  real (por eso quedó PLAUSIBLE, no CONFIRMADO) — exige rediseño (paginar hasta encontrar la rama, o
+  consultar `gh pr list --head <rama>`/`glab mr list` filtrado POR rama en vez de bajar un bulto) y
+  verificación contra un repo con volumen real de PRs/MRs cerrados. Dejado explícitamente FUERA de esta
+  ronda (fix/barrido-ramas-criticos) — no se improvisó.
+- **[BAJO, hallazgo colateral, sin tocar] Tests con `ok`/`bad` dentro de un subshell `( … )` no cuentan
+  para el veredicto de la suite.** Descubierto al verificar "falla sin el fix" de los tests nuevos de
+  `fix/barrido-ramas-criticos`: `test-brain.sh` corre con `set -u` y cuenta PASS/FAIL en variables
+  GLOBALES (`$PASS`/`$FAIL`); los bloques que hacen `( . "$HOOKS/ramas-zombie.sh"; … ok …; … bad … )`
+  imprimen la línea `PASS:`/`FAIL:` (stdout es compartido) pero el incremento de `$PASS`/`$FAIL` ocurre
+  DENTRO del subshell y se pierde al salir — esas aserciones son decorativas, nunca pueden hacer fallar
+  la suite. Confirmado en **`b3d`** (línea ~1969, dos bloques) y **`b3e`** (línea ~1984). El propio
+  comentario de `b3g` (línea ~2043) ya documenta el antídoto correcto ("se sourcea en ESTE scope, no en
+  subshell, para que ok/bad cuenten"), así que el patrón correcto YA existe en el archivo — solo falta
+  aplicarlo a b3d/b3e. Fuera de alcance de esta ronda (no es de los 19 hallazgos del dictamen de ramas);
+  encontrado por accidente al blindar los tests nuevos con esta MISMA verificación. Fix: quitar los
+  paréntesis en esos dos bloques (igual que se hizo para los tests nuevos b3h/b3j/b3o de esta ronda).
+
 - **Broker de terminal trasladado a cortex (#26i, primera pieza) — CÓDIGO LISTO Y AUDITADO EN RAMA;
   FALTA LA MIGRACIÓN EN VIVO (unjordi presente).** Rama `feat/term-broker`. Quedó en el repo:
   `src/term-broker/` (5 `.ts` vendorizados de axon **`341fb53`** + `SHA256SUMS` + 2 probes),
@@ -82,13 +128,15 @@ metadata:
     ciego de la introspección: el auditor comparte el frame "out of scope = no es mi problema"). Nació porque este
     MISMO §9 dejó las 4 aristas solo en el texto del skill, una de ellas destructiva. · _reubicar-master §9, 2026-08-08._
 
-- **`limpiar-ramas.sh` barre mal las ramas squasheadas (dos fallos, vistos en vivo · axon 2026-08-29).**
+- **`limpiar.sh ramas` (antes `limpiar-ramas.sh`, renombrado a `brain/hooks/limpiar-impl-ramas.sh` en la
+  consolidación 2026-09-17 del dispatcher `limpiar.sh` — el bug de abajo NO se tocó, sigue vivo) barre
+  mal las ramas squasheadas (dos fallos, vistos en vivo · axon 2026-08-29).**
   (1) **Base detectada por el cwd de la sesión, no por el repo objetivo:** parado en `plantilladotnet` (cwd de
   la sesión), al barrer `axon` agarró `DevelopUnjordi` como base en vez del `develop` de axon → corrió sobre el
   repo equivocado y no tocó una sola rama del objetivo. Misma raíz que el FN del git-branch-guard por
   `target ≠ CLAUDE_PROJECT_DIR` (abajo). (2) **No ve a través del squash+develop-avanzado:** conservó 6 `fix/*`
   YA integradas (su diff vs develop era "develop que avanzó", no trabajo único) y a la vez marcó `router` (una
-  mini) como borrable → under-barre lo rancio Y over-barre lo vivo. Toca `brain/hooks/limpiar-ramas.sh` (+ su
+  mini) como borrable → under-barre lo rancio Y over-barre lo vivo. Toca `brain/hooks/limpiar-impl-ramas.sh` (+ su
   disparador `barrer-ramas.sh`). Nace con test (sandbox: squash-merge → la rama debe detectarse integrada;
   cwd≠repo-objetivo → base correcta). ⚠️ Se dio por "arreglado" antes (detección de squash-merge) y quedó a
   medias — la limpieza post-merge de hoy lo destapó. · _axon-master, 2026-08-29._
@@ -249,3 +297,57 @@ metadata:
 - [ ] powerscripts: quitar guards por-repo (es PERSONAL → hereda del global).
 - [ ] fluxcore (registros_bats_y_buses): sincronizar brain por el flujo + mini + marca.
 - [ ] REDISEÑO del auto-sync (aviso-drift) — el mayor hueco del cerebro (ver diseno-rediseno-auto-sync-46).
+
+### Andamio del checkpoint — 6 hallazgos de QA sobre el render real (2026-09-11)
+
+Medidos corriendo `bin/checkpoint-mecanico.js` sobre el transcript VIVO de la sesión que acababa de
+integrar #407 (39 986 líneas, 202 MB, 14 compactaciones). Los tres defectos que motivaron #407 quedaron
+cerrados y verificados: ventana viva (707 de 39 986 líneas), citas verbatim en vez del conteo, y el
+colector ya no es ciego a las escrituras por Bash (68 por Write/Edit vs 354 por heredoc en la ventana
+completa). Lo que sigue apareció AL MEDIR el resultado, y sale del mismo molde: el colector mide la forma
+que espera, no la que se usa.
+
+- **A-1 · ALTO — `RESUELTO HOY` salió VACÍO habiendo commits.** El detector es
+  `/git commit[^\n]*?-m\s+(["'])…/`: solo ve `-m "…"`. Todo commit hecho con `-F -` y heredoc —la forma
+  que OBLIGA la norma de resumen en prosa curada— es invisible. En el tramo medido hubo 3 commits locales
+  y 4 merges squash, y la sección reportó 0. Es exactamente la ceguera que #407 corrigió para las
+  escrituras, sin aplicarla a los commits, y pega en la sección ANTI-FANTASMA: su razón de ser es que una
+  decisión ya tomada no resucite como pendiente tras compactar.
+- **A-2 · ALTO — 3 de 7 "mensajes del usuario" son plomería del harness.** Se colaron el
+  `<local-command-caveat>`, el stdout del `/compact` con códigos ANSI y un `<task-notification>` entero
+  (~8 líneas de las 7 entradas). El último es el grave: una notificación de agente es explícitamente NO
+  input del usuario, y el andamio la presenta bajo el rótulo "VERBATIM, para citar con `[user: …]`" —
+  induce justo la atribución falsa que la norma de procedencia existe para impedir, y ahora con evidencia
+  mecánica que la respalda. Filtrar por prefijos conocidos (`<local-command-*`, `<task-notification>`,
+  `<command-name>`, `## Context Usage`) y por el `/compact` pelón.
+- **A-3 · MEDIO — `--self` es inusable desde el hilo principal.** Su candado anti-subagente exige
+  `CLAUDE_CODE_CHILD_SESSION !== '1'`, pero esa variable viene en `1` TAMBIÉN en el Bash del hilo
+  principal (medido en esta máquina, CLI 2.1.x). El candado es correcto en intención y falla cerrado,
+  pero hoy bloquea el 100% de los usos legítimos. Hace falta otra señal para distinguir padre de hijo.
+- **A-4 · MEDIO — "Comandos más frecuentes" no aporta nada al rehidratar.** 8 de las 10 entradas eran
+  `cd`, `ls` y `grep`. Agrupa por los dos primeros tokens, así que lo que gana es la navegación, no el
+  trabajo. Debería filtrar los comandos de navegación/inspección, o agrupar por verbo significativo.
+- **A-5 · BAJO — las escrituras las dominan los temporales.** 7 de 10 eran `/tmp/suite-*.log` y archivos
+  de paso. Conviene despriorizar `/tmp` y el scratchpad frente a lo que vive en un repo.
+- **A-6 · BAJO — rutas guardadas sin expandir.** Apareció `$RHREC3/.claude/memory/…` literal: al
+  rehidratar no lleva a ningún lado. Descartar (o marcar) las rutas con `$` sin resolver.
+
+Los tres primeros cambian lo que el andamio AFIRMA (omite commits, atribuye al usuario lo que no dijo,
+no corre); los tres últimos son ruido que le baja la densidad.
+
+## Sync bidireccional TaskList ⇄ estado-proyecto.md (2026-09-18, rama feat/recordar-cosechar-sync)
+Rediseño de `recordar-cosechar` + lib `sincronizar-tasklist.sh`: espejo robusto a rotación de session_id,
+anti-clobber, fix del awk-newline de macOS (el bloque nunca se re-escribía), nudge atado al sync, skill
+`to-do` invoca la lib. Verificado técnico: test-brain 1331 PASS · 0 FAIL. Falta QA humano (unjordi) + QA del
+orquestador. Pendientes DERIVADOS (fuera del alcance de este slice, al backlog):
+- **MEDIO — Confirmar si un hook Stop hace visible su `systemMessage`.** rehidratar-hilo lo usa en
+  SessionStart (ahí sí se ve); en Stop es plausible pero NO verificado en vivo. Si no se ve, el nudge es
+  inocuo (exit 0) pero habría que moverlo a otro canal. QA: cerrar un turno con pendientes vivos y observar.
+- **MEDIO — Investigar el orden lectura-json vs hook en SessionStart.** Si el harness leyera los task-json
+  DESPUÉS de correr el hook SessionStart, se podría cablear un auto-seed del HUD al arrancar (durable→json)
+  sin el modelo. Hoy es indocumentado → NO se cableó; el seed va por el skill (modelo aplica con las tools).
+  Si se confirma el orden favorable, evaluar añadir el seed a `sesion-inicio` invocando `sincronizar-tasklist
+  sembrar --write`.
+- **BAJO — Fallback cross-repo del espejo.** Si el sid del payload apunta a carpeta vacía, la lib cae a la
+  carpeta de tareas MÁS RECIENTE (ventana 2h) — que en teoría podría ser de OTRO repo con sesión concurrente.
+  Acotado por la ventana + anti-clobber; sin mapeo repo↔session no hay forma perfecta. Aceptado como tradeoff.

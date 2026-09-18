@@ -4,7 +4,7 @@
 # POR QUÉ EXISTE: la lógica "¿la copia por-repo del cerebro de ESTE repo está al día vs la fuente única, y
 # si estoy en mi mini-develop con .claude/ limpio, la sincronizo sola?" la necesitan DOS consumidores:
 #   1. aviso-drift-cerebro.sh  — SessionStart hook, INTERACTIVO, 1 repo (el de arranque). Fast-path.
-#   2. barrer-flotilla-cerebro.sh — SWEEPER batch, N repos de la flotilla (cron/LaunchAgent).
+#   2. limpiar.sh flotilla (antes barrer-flotilla-cerebro.sh) — SWEEPER batch, N repos de la flotilla (cron/LaunchAgent).
 # Antes vivía SOLO en el hook → el sweeper la habría re-implementado y las dos copias driftarían (justo el
 # mal que este cerebro combate). Se extrae AQUÍ para que ambos compartan UNA sola implementación (cero drift).
 #
@@ -113,12 +113,15 @@ Cómo: borra esos .sh de .claude/hooks/ + sus entradas en .claude/settings.json.
   falta=$(printf '%s' "$resumen"  | grep -oE '[0-9]+ cableado faltante' | grep -oE '[0-9]+' || echo 0)
   # SKILLS por-repo: la línea "==> resumen skills:" (SEPARADA de la de hooks; grep '==> resumen:' NO la
   # captura porque tras "resumen" va " skills" antes del ':'). Drift de skills = nuevas + a actualizar +
-  # huérfanas. Si el sync no emite esa línea (stub viejo / brain sin skills-manifest) → 0, no cambia nada.
+  # huérfanas + retiradas (lápida pendiente — mismo gemelo de "ret" en hooks arriba). Si el sync no emite
+  # esa línea (stub viejo / brain sin skills-manifest) → 0, no cambia nada; y si emite la línea VIEJA (sin
+  # el campo "retirada(s)", un stub anterior a esta ola) → sk_ret cae a 0 igual, sin romper el parseo.
   resumen_sk=$(printf '%s\n' "$out" | grep -E '==> resumen skills:' | tail -1)
   sk_nue=$(printf '%s' "$resumen_sk"  | grep -oE '[0-9]+ nuevas'       | grep -oE '[0-9]+' || echo 0)
   sk_act=$(printf '%s' "$resumen_sk"  | grep -oE '[0-9]+ a actualizar' | grep -oE '[0-9]+' || echo 0)
   sk_orph=$(printf '%s' "$resumen_sk" | grep -oE '[0-9]+ huérfana'     | grep -oE '[0-9]+' || echo 0)
-  total=$(( ${nuevos:-0} + ${act:-0} + ${ret:-0} + ${falta:-0} + ${sk_nue:-0} + ${sk_act:-0} + ${sk_orph:-0} ))
+  sk_ret=$(printf '%s' "$resumen_sk"  | grep -oE '[0-9]+ retirada'     | grep -oE '[0-9]+' || echo 0)
+  total=$(( ${nuevos:-0} + ${act:-0} + ${ret:-0} + ${falta:-0} + ${sk_nue:-0} + ${sk_act:-0} + ${sk_orph:-0} + ${sk_ret:-0} ))
 
   if [ "$total" -eq 0 ]; then printf 'STATUS=%s\n' "clean"; return 0; fi
 
@@ -320,5 +323,48 @@ EOF
   · $n_st archivo(s) que la copia instalada tiene DESACTUALIZADOS/ausentes (la fuente se ve más nueva por mtime). Remedio normal: re-corre el bootstrap/install-brain (o \`bash $BRAIN_DIR/brain/install-brain.sh\`). ⚠️ OJO: si EDITASTE esa copia EN VIVO, un \`git pull\` en la fuente pudo re-sellar su mtime y hacerla ver 'más nueva' aunque TU edición sea la real — compara el CONTENIDO antes de re-desplegar o perderías tu cambio (pórtalo a la fuente primero):$stale"
   fi
   printf '%s\n' "$msg"
+  return 0
+}
+
+# ── drift_norms_global — drift del bloque de NORMAS instalado en ~/.claude/CLAUDE.md (marcadores
+#    `<!-- BEGIN cortex … -->` … `<!-- END cortex -->`) vs la fuente única (brain/norms/global-claude-md.md).
+#    Antídoto al hallazgo ALTO-2 de la auditoría de suficiencia operativa (2026-09-18): a diferencia de
+#    hooks/skills (arriba, con su propio drift_*_global), install-brain.sh §(e) SÍ refresca este bloque en
+#    cada re-corrida (reemplaza el contenido completo en su lugar) — el mecanismo de PROPAGACIÓN funciona —
+#    pero NADA avisaba que hacía falta re-correrlo: confirmado en vivo, el propio `~/.claude/CLAUDE.md` de
+#    la máquina de unjordi seguía citando el hook YA retirado `recordar-dashboard` como "un hook te lo
+#    recuerda" pese a que `brain/norms/global-claude-md.md` ya traía el texto correcto, retirado desde
+#    2026-09-18 — el reemplazo funcional (norma en vez de hook) solo sirve si el TEXTO de la norma llega.
+#    Comparación EXACTA (no heurística): install-brain inserta el archivo fuente COMPLETO y VERBATIM entre
+#    sus propios marcadores BEGIN/END (que el propio archivo fuente ya trae) — así que "instalado == fuente"
+#    se reduce a extraer el bloque instalado (desde la línea BEGIN hasta la línea END, ambas inclusive) y
+#    comparar byte a byte contra el archivo fuente completo (cmp -s, sin falsos positivos por mtime/edición
+#    en vivo: es un bloque GENERADO, nunca se edita a mano — a diferencia de hooks/skills no hace falta
+#    distinguir "editado en vivo" de "desactualizado", solo hay UN motivo de drift: re-correr install-brain).
+#    WARN-ONLY (nunca reescribe ~/.claude/CLAUDE.md — esa es la sección PERSONAL del usuario fuera del
+#    bloque, y el remedio real de todos modos es re-correr install-brain, que YA sabe hacerlo con su propia
+#    red de seguridad de backup). Silencio si no hay fuente, no hay CLAUDE.md, o el bloque no está instalado
+#    (fail-open: "aún no instalado" no es "instalado y desactualizado" — eso lo cubre el bootstrap inicial,
+#    no este drift-check). Imprime el mensaje humano si hay drift; NADA si está limpia. bash-3.2-safe.
+drift_norms_global() {
+  local BRAIN_DIR SRC_NORMS INST
+  BRAIN_DIR="$(resolve_brain_dir)"
+  SRC_NORMS="$BRAIN_DIR/brain/norms/global-claude-md.md"
+  INST="$HOME/.claude/CLAUDE.md"
+  [ -f "$SRC_NORMS" ] || return 0    # sin fuente → fail-open
+  [ -f "$INST" ] || return 0         # CLAUDE.md global ni existe → nada que comparar (bootstrap aún no corrió)
+
+  local block
+  block="$(awk '
+    /<!-- BEGIN cortex/ { f=1 }
+    f { print }
+    /<!-- END cortex -->/ { if (f==1) exit }
+  ' "$INST")"
+  [ -n "$block" ] || return 0        # bloque no instalado aún → fail-open (no es "desactualizado")
+
+  if printf '%s\n' "$block" | cmp -s - "$SRC_NORMS"; then
+    return 0                         # byte-idéntico → limpia, silencio
+  fi
+  printf '%s\n' "🧠⚠️ DRIFT DE NORMAS (bloque BEGIN/END cortex de ~/.claude/CLAUDE.md vs la fuente única brain/norms/global-claude-md.md): el bloque instalado quedó ATRÁS de la fuente — normas nuevas/retiradas/corregidas en el repo (p. ej. un hook que se retiró y cuya regla subió a norma) NO llegaron a esta máquina. Remedio: re-corre el bootstrap/install-brain (o \`bash $BRAIN_DIR/brain/install-brain.sh\`) — §(e) REFRESCA el bloque completo en su lugar (respaldo automático en CLAUDE.md.bak, tu sección personal fuera del bloque queda intacta). NO edites el bloque a mano: se regenera y tu edición se perdería."
   return 0
 }

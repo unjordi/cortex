@@ -1,8 +1,11 @@
 // 03 — Enforcement de los git-guards sobre UN comando git (cortex)  ·  FUENTE editable (Graphviz .dot)
 // Render:  dot -Tsvg 03-enforcement-git-guards.dot -o 03-enforcement-git-guards.svg
-// Construido 2026-08-01 desde el CÓDIGO REAL de brain/hooks/ (git-branch-guard, merge-squash-guard,
-// confirmar-merge-develop, secret-scan + la lib analizar-comando-git.sh; recordar-dashboard,
-// entorno-maquina-guard, rama-vieja, proteger-arbol; aviso-contexto). Zoom del fan-out de CONVENCIONES §6.
+// Construido 2026-08-01 desde el CÓDIGO REAL de brain/hooks/ (git-branch-guard, merge-develop-guard
+// —consolida, 2026-09-17, a los antiguos merge-squash-guard + confirmar-merge-develop—, secret-scan +
+// la lib analizar-comando-git.sh;
+// entorno-maquina-guard, no-bypass-deploy, proteger-arbol; aviso-contexto). Zoom del fan-out de CONVENCIONES §6.
+// Overhaul hooks 2026-09-18: recordar-dashboard se RETIRÓ (puramente advisory, medido: ignorado) — su
+// regla subió a norma en brain/norms/global-claude-md.md; el fan-out de PreToolUse/Bash baja de 7 a 6.
 digraph flujos {
   graph [bgcolor="#1b1712", rankdir=TB, fontname="Helvetica", splines=true,
          nodesep=0.35, ranksep=0.55, pad=0.25, compound=true];
@@ -19,31 +22,25 @@ digraph flujos {
       <table border="0" cellborder="1" cellspacing="0" cellpadding="4" color="#5fa89e" bgcolor="#1b1712">
         <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>🔒 Hooks Forzosos</b></font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🚧 git-branch-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">push/merge a develop·main → denegado</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔗 merge-squash-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">MR a develop sin --squash → denegado</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔗 merge-develop-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">MR a develop sin --squash o sin tu OK → denegado; a main exige OK súper-explícito</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🕵️ secret-scan</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">commit/push con un secreto → denegado</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">💸 delegacion-gate</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">delegar al llegar al 90% de tu ventana 5h → pide tu OK</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🛑 limite-gasto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">sin ventana 5h Y sin overage (ambos agotados) → freno duro</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">✋ confirmar-merge-develop</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">merge sin tu OK → denegado</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">✅ dod-verificar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cierre sin evidencia/OK → denegado; claim visual a ciegas (sin ver la pantalla) también</font></td></tr>
         <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>🔔 Automático</b></font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📊 recordar-dashboard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">en el push recuerda dashboard + doc=realidad (README/docs) — cierre del slice</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🖥️ entorno-maquina-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">commit de algo machine-specific (aliases/rutas de $HOME/Rosetta/entorno-maquina.md) al .claude/memory/ del repo → avisa</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🚧 no-bypass-deploy</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">correr el instalador/deploy a mano (install-brain.sh/deploy.sh) en vez de la herramienta oficial (el widget) → avisa (fail-safe: no --dry-run/--help/CI)</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🕰️ rama-vieja</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">avisa si la ramita arrastra base vieja</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌳 proteger-arbol</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">git destructivo que orfanaría commits sin pushear → avisa (fan-out: usa worktree aislado)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🛡️ proteger-fuente-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">editar la copia INSTALADA de un hook/skill que tiene fuente en el clon → avisa (se perdería en el próximo sync) (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧹 barrer-ramas</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al abrir sesión / al punto del merge barre en 2º plano ramas locales + remota huérfana + worktrees ya integrados (zombie squash-safe; throttle 24h) (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">💾 exportar-sesion-master</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">auto-export de las sesiones *-master a ~/.claude-sessions (o Drive); detached, sobrevive el cleanup de 30 días (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🗂️ checkpoint-mecanico</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">PreCompact: extractor mecánico (streaming, 0 tokens) escribe el andamio del TRAMO VIVO a hilo-mental-actual.andamio.md (GLOBAL; el skill lo regenera con --self --ensure)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📝 delegacion-registrar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">materializa el "pregunta una sola vez"</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📮 delegacion-reporte</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al terminar un agente: recuerda registrar avance + limpiar su worktree</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎼 recordar-orquestar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">N mutaciones (edits/commits) en serie SIN delegar → sugiere fan-out (advisory, no bloquea; resetea al delegar) (GLOBAL)</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧵 rehidratar-hilo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta hilo-mental-actual.md al abrir/retomar/compactar (GLOBAL) — con gate de frescura</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📈 aviso-contexto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reporta el watermark de contexto CRUDO (tokens · ventana · %); sin bandas ni veredicto — /context manda (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧵 rehidratar-hilo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta hilo-mental-actual.md + el andamio (si es más fresco) al abrir/retomar/compactar (GLOBAL) — gate de frescura + edad</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📈 aviso-contexto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al umbral ALTO del punto REAL de compact (80%/92% de autoCompactWindow o la ventana efectiva; % honesto, respeta autoCompactEnabled): VUELCA el checkpoint mecánico solito y ORDENA /checkpoint+/compact. No gotea (silencio bajo el umbral, 1 disparo + 1 escalada) (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧬 aviso-drift-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">repo brained atrás de la fuente única (hooks/libs Y skills) → en tu mini-develop se AUTO-SINCRONIZA (apply+commit+push); en otra rama, avisa. ADEMÁS detecta el drift de la copia GLOBAL de skills (~/.claude/skills vs la fuente; warn-only, throttle propio). Al moverse el cerebro, NUDGE a correr la DUPLA (suficiencia+coherencia; contra la firma si hay AGENTS.md, si no sugiere instanciarla) (GLOBAL)</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔀 hud-stale</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cambiaste de rama/proyecto → tu lista de TODOs (HUD) puede ser de la tarea anterior: avisa (advisory) que la resetees/re-siembres del estado-proyecto.md de esa rama. Señal OBJETIVA (rama/cwd), stamp per-sesión, first-sight silencioso, solo en repos con backlog (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧭 sesion-inicio</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta rama + norma + memoria al abrir</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌾 recordar-cosechar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">espejo TaskList→estado-proyecto.md (auto) + nudge: no cosechaste/no actualizaste backlog</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">⬆️ recordar-unificar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">tu mini acumuló aprendizajes sin UNIFICAR a develop → sugiere /unificar-cerebro (gemelo ↑ de aviso-drift)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌾 recordar-cosechar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">espejo automático del TaskList vivo → bloque fenced en estado-proyecto.md (determinista, sin LLM)</font></td></tr>
         <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>📜 Normas</b></font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎯 Definition of Done</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">verde técnico ≠ Done/Listo/Ya Quedó; exige QA o un OK explícito</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🪞 Doc &lt;= realidad</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cambió algo → su doc se actualiza en la tanda</font></td></tr>
@@ -60,20 +57,16 @@ digraph flujos {
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🩺 auditar-coherencia-cerebro fan-out read-only sobre el PROPIO cerebro (guards+flowcharts+doc): evasiones/huecos/drift, verificado por ejecución → loop hasta converger; modo-cerebro de auditar-proceso-algoritmo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0"> </font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧪 auditar-suficiencia-operativa</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">¿ALCANZA la doc para HACER el trabajo sin romper nada ni re-investigar? tareas reales ✅/⚠️/❌ con archivo:línea + RE-auditar tras arreglar</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧬 auditor-semantico</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">¿el código HACE lo que queremos? Capa 1 checks deterministas (scripts/, gratis, en CI) + Capa 2 criterio LLM sobre invariantes-semanticos.yml; motor genérico, catálogo por-repo</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧠 consolidar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">meta-orquestador: dupla → positivar → desinflar → convergencia → cierre con la FIRMA (CLAUDE+MEMORY)</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📐 canonizar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">lleva un cerebro instanciado drifteado a la firma-árbol: reprefija memorias (git mv) a dom-/dev-/ux-/qa-, reescribe CLAUDE.md+MEMORY.md, verifica 1:1 con verificar-firma-canonica.sh (detector del GATE #44)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📐 canonizar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">DUEÑO del ciclo de vida del cerebro de un proyecto, 4 modos sobre 1 maquinaria: sembrar (nace nativo, sin symlinks) · canonizar (firma-árbol: git mv a dom-/dev-/ux-/qa-, verifica 1:1 con verificar-firma-canonica.sh) · consolidar (dupla → positivar → desinflar → convergencia → FIRMA) · reconciliar (semanal, minis de devs → develop)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🪶 desinflar-memorias</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">adelgaza un árbol de memorias sin perder lecciones: la narrativa se colapsa a su lección, los mitos descartados se mudan al cementerio.md (una lápida por ID content-hash 🪦#&lt;id&gt;)</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🕵️ revisar-entregables-agentes</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">verifica lo que un agente ENTREGA contra la realidad; no relates su reporte como verdad</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">☀️ positivar-doc</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reescribe answer-first: 'ESTO SÍ' (método correcto) antes del 'ESTO NO'</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎓 investigar-dominio</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">ponte experto en un dominio (fan-out DOC-FIRST) → memorias durables + skills</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📚 construir-missing-manual</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">fabrica el manual/wiki de referencia exhaustivo que no existe (fan-out que investiga 1× y hornea) → artefacto consultable OFFLINE</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌾 cosechar-sesion</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cosecha local: extrae aprendizajes de tu sesión al inbox del equipo</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧩 unificar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reconciliación del cerebro del equipo: integra los aprendizajes mini→develop</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧳 claude-proyecto-autocontenido</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">el cerebro VIVE dentro del proyecto (.claude/ + symlink de slug) → viaja con él</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🚚 reubicar-master</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">muda una sesión master COMPLETA a otro repo (brain-master → cortex) sin residuo: transcript+cwd, cerebro, slug y refs atómicas</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔍 zoom-screenshot</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">recorta y amplía regiones de una captura (ffmpeg) para leer texto fino ilegible</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔩 ingenieria-inversa-gui-db-navegador</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">ingeniería inversa de app legacy GUI+BD: driving la UI vía navegador + diff de la BD antes/después = doc con evidencia real</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📕 markdown-a-pdf</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">convierte .md a PDF pulido y distribuible vía md-to-pdf (npx, sin instalar) con el gotcha de --css y QA visual real</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🕹️ control-gui-remota-por-ssh</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">ver/operar una GUI remota por SSH sin VNC/RDP — screenshot/click/teclado DPI-aware; Windows·Linux·Mac completos (multi-monitor + captura por-ventana)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌙 turno-nocturno</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">protocolo del turno de noche: eco del contrato, decide-dentro-de-la-cerca, grants durables a disco</font></td></tr>
       </table>>];
     LEY_VAL [shape=none, margin=0, label=<
@@ -92,21 +85,21 @@ digraph flujos {
 
   // ───────────────────────────────────── EL FAN-OUT ─────────────────────────────────────
   subgraph cluster_f0 {
-    label="03 · Enforcement de los git-guards sobre UN comando git   (PreToolUse/Bash · 9 hooks EN PARALELO, sin despachador · precedencia deny > ask > allow · + PostToolUse)";
+    label="03 · Enforcement de los git-guards sobre UN comando git   (PreToolUse/Bash · 6 hooks EN PARALELO, sin despachador · precedencia deny > ask > allow · + PostToolUse)";
     fontname="Times"; fontsize=14; fontcolor="#5fa89e";
     color="#5fa89e"; penwidth=1.6; style="rounded"; bgcolor="#1b1712";
 
     CMD   [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
            label="el modelo emite una tool Bash con un comando git/glab/gh\n(push · commit · glab mr merge · git reset …)"];
     FANOUT [shape=diamond, fillcolor="#2b2622", color="#d97757",
-            label="PreToolUse/Bash → 9 hooks corren EN PARALELO sobre el MISMO comando\n(NO hay cascada secuencial; cada uno decide solo). Abajo se detallan los 8 que\nINSPECCIONAN git; el 9º —no-bypass-deploy— también dispara pero NO-OPEA\nsobre un comando git (solo actúa ante un instalador/deploy a mano)"];
+            label="PreToolUse/Bash → 6 hooks corren EN PARALELO sobre el MISMO comando\n(NO hay cascada secuencial; cada uno decide solo). Abajo se detallan los 5 que\nINSPECCIONAN git; el 6º —no-bypass-deploy— también dispara pero NO-OPEA\nsobre un comando git (solo actúa ante un instalador/deploy a mano)"];
 
-    // ── Preludio de CADA hook (①② — casi universal, NO 100%; ③④ son de la LIB, solo 4 hooks) ──
+    // ── Preludio de CADA hook (①② — casi universal, NO 100%; ③④ son de la LIB, solo hooks que sourcean acg) ──
     COMUN [color="#c9a227",
-           label="🟡  preludio de CADA hook (antes de decidir):\n① dedupe doble-cableado: si soy la copia del REPO y existe la GLOBAL → cedo (exit 0)\n   presente en GBG/MSG/CMDG/SEC/DASH/ENTM; AUSENTE en rama-vieja y proteger-arbol\n   (arrancan directo en `command -v jq`) → un clon SIN bootstrap: la del repo sí corre\n② fail-open GENERAL: sin jq → exit 0 (no bloquea; red de seguridad, no cárcel)\n   ⚠ EXCEPCIÓN fail-SAFE (se ENDURECE, no se afloja):\n   · confirmar-merge-develop: sin jq + el comando CRUDO parece merge (mr merge|accept,\n     pr merge) → 🔴 DENY igual (anti-evasión «sin token=DENY, sin jq=ALLOW», A3)\n   ⚠ secret-scan es DISTINTO — sin jq → SIEMPRE fail-open (ni con STRICT=1;\n     no puede ni emitir el deny sin jq); STRICT=1 solo endurece a fail-CLOSED\n     otra infra faltante CON jq presente (git ausente / no-es-repo / rango\n     del diff indeterminable)"];
+           label="🟡  preludio de CADA hook (antes de decidir):\n① dedupe doble-cableado: si soy la copia del REPO y existe la GLOBAL → cedo (exit 0)\n   presente en GBG/MDG/SEC/ENTM; AUSENTE en proteger-arbol\n   (arrancan directo en `command -v jq`) → un clon SIN bootstrap: la del repo sí corre\n② fail-open GENERAL: sin jq → exit 0 (no bloquea; red de seguridad, no cárcel)\n   ⚠ M7 (auditoría 2026-09-15, HOMOLOGADO — antes solo la fase de autorización lo tenía,\n   hoy consolidada en merge-develop-guard):\n   los DOS guards de flujo se ENDURECEN igual, nunca se aflojan:\n   · git-branch-guard: sin jq, extrae el campo «command» del JSON crudo (nunca\n     razona sobre «description» ni el blob entero, H1 auditoría FMEA 2026-09-16)\n     y reusa acg_push_toca_base/acg_merge_menciona_base de verdad — PARIDAD con el\n     camino con-jq: push a tu ramita/mini-develop pasa, push/merge que toca base\n     🔴 DENY; escape auditado CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 (env de sesión)\n   · merge-develop-guard (fase squash Y fase autorización, MISMO proceso): sin jq\n     + el crudo parece merge de MR/PR (mr merge|accept, pr merge) → 🔴 DENY igual\n     (aquí no hay precisión de texto posible — el destino sale SIEMPRE de la API;\n     anti-evasión «sin token=DENY, sin jq=ALLOW», A3)\n   ⚠ secret-scan es DISTINTO — sin jq → SIEMPRE fail-open (ni con STRICT=1;\n     no puede ni emitir el deny sin jq); STRICT=1 solo endurece a fail-CLOSED\n     otra infra faltante CON jq presente (git ausente / no-es-repo / rango\n     del diff indeterminable)\n   ⚠ CRÍTICO-1 (auditoría FMEA 2026-09-16): un error de SINTAXIS en la lib mataba\n     los guards en SILENCIO (exit 1 = no-bloqueante) — bash -n la prueba ANTES\n     de sourcear; si truena, cada guard falla RUIDOSO/CERRADO en vez de esfumarse"];
 
     LIB   [color="#c9a227",
-           label="🟡 sub-preludio de la LIB analizar-comando-git.sh — SOLO en los\nque la sourcean: GBG · MSG · CMDG · SEC (NO en DASH/ENTM/RAMV/ARBOL):\n③ augmenta PATH (gh/glab de /opt/homebrew·/usr/local·~/.local/bin, al FINAL) → destino/MR\n   RESOLUBLES por API; sin esto el PATH mínimo de launchd los ocultaba y el fail-safe\n   frenaba merges/releases YA autorizados (root cause #78; ACG_PATH_AUGMENT=0 lo apaga)\n④ despoja comillas + normaliza prefijo `git -c/-C/--work-tree…` + `git.exe`\n   (fuente ÚNICA de los 4 → no divergen; los avisos y proteger-arbol hacen su\n   PROPIO despojo inline vía sed y NO obtienen esto — p. ej. `git -c k=v push`\n   puede evadir su chequeo de adyacencia git+push)"];
+           label="🟡 sub-preludio de la LIB analizar-comando-git.sh — la sourcean los 6 del fan-out\n(GBG · MDG · SEC · ARBOL · ENTM · no-bypass-deploy) — M1/M2,\nauditoría 2026-09-15: ya NO quedan despojos inline propios:\n③ augmenta PATH (gh/glab de /opt/homebrew·/usr/local·~/.local/bin, al FINAL) → destino/MR\n   RESOLUBLES por API; sin esto el PATH mínimo de launchd los ocultaba y el fail-safe\n   frenaba merges/releases YA autorizados (root cause #78; ACG_PATH_AUGMENT=0 lo apaga)\n④ despoja comillas + normaliza prefijo `git -c/-C/--work-tree…` + `git.exe`\n   (fuente ÚNICA de los 6 → no divergen; `git -c k=v push` y `git --no-pager\n   branch -D` YA NO evaden — proteger-arbol dejó su despojo inline propio y\n   sourcea esta MISMA lib, verificado por ejecución)"];
 
     // ── LOS 4 QUE PUEDEN DENEGAR (🔒 forzosos) ──
     GBG   [shape=diamond, fillcolor="#2b2622", color="#d97757",
@@ -115,7 +108,7 @@ digraph flujos {
            label="🔴 DENY — «no se hace push a develop/main».\nRedirige: ramita feat/… → commit → push ramita → MR → develop.\nNO reintentes. (guard OK = sistema funcionando)"];
 
     MSG   [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="🔒🔗 merge-squash-guard\n¿es `glab mr merge`/`gh pr merge` REAL?\n→ resuelve DESTINO del MR (lib acg_destino_de_mr,\ncaché por MR-id compartida; timeout 6s)"];
+           label="🔒🔗 merge-develop-guard — fase 1 (squash)\n¿es `glab mr merge`/`gh pr merge` REAL?\n→ resuelve DESTINO del MR (lib acg_destino_de_mr,\ncaché por MR-id compartida; timeout 6s)"];
     MSG_D [fillcolor="#3a2020", color="#c0392b", penwidth=2.5,
            label="🔴 DENY (falta --squash) si destino = develop (o IRRESOLUBLE\ny NO es release explícito): integrar a develop SQUASHEA a 1 commit.\nRehaz con --squash --squash-message «resumen curado».\nExención: destino main (release) → SIN squash (conserva historia)"];
     MSQ   [shape=diamond, fillcolor="#2b2622", color="#d97757",
@@ -128,9 +121,9 @@ digraph flujos {
            label="🟠 WARN (no bloquea) — el mensaje PARECE lista de\nacciones (≥2 «se <verbo>»): additionalContext, sugiere\nreescribir el QUÉ HACE el código, y PASA"];
 
     CMDG  [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="🔒✋ confirmar-merge-develop\n¿es merge MR REAL Y el repo tiene marca\n.claude/repo-compartido? (repos personales → pasa libre)\n→ DESTINO: main = RELEASE · develop = normal\n(ramas personales Develop*/epic/integracion → pasan libres)"];
+           label="🔒✋ merge-develop-guard — fase 2 (autorización)\nMISMO proceso que la fase 1, continúa tras pasar el squash\n¿el repo tiene marca .claude/repo-compartido? (repos personales → pasa libre)\n→ DESTINO: main = RELEASE · develop = normal\n(ramas personales Develop*/epic/integracion → pasan libres)"];
     CMD_OK [shape=diamond, fillcolor="#2b2622", color="#d97757",
-            label="¿hay OK EXPRESO del usuario para ESTE merge?\njuez-LLM (Haiku vía curl→api.anthropic.com · token OAuth · NO claude -p) LEE\nla conversación intercalada USUARIO/ASISTENTE (OKs anafóricos: ASISTENTE propone → USUARIO acepta)\n· o grant DURABLE vigente en autorizaciones-vigentes.local.md\n· destino VACÍO (consulta falla en el hook) → el juez lo INFIERE; FAIL SEGURO: duda + release → main estricto\n· PISO DETERMINISTA de main: main+ALLOW SIN lenguaje de release del USUARIO → DENY (defensa en profundidad)\n· sin credencial OAuth/red/timeout → UNAVAILABLE → DENY conservador\n(main exige lenguaje SUPER-explícito: «release/hasta main/libera»)"];
+            label="¿hay OK EXPRESO del usuario para ESTE merge?\njuez-LLM (Haiku vía curl→api.anthropic.com · token OAuth · NO claude -p) LEE\nla conversación intercalada USUARIO/ASISTENTE (OKs anafóricos: ASISTENTE propone → USUARIO acepta)\n· M3: acg_destino_conf declara EXPLICITO/API/CACHE-DE-CREACION/DESCONOCIDO:<motivo>\n· o grant DURABLE vigente (scope=merge-develop) — SOLO con destino CONFIRMADO develop\n  (M6 lo había ampliado a destino VACÍO bajo una cerca; CRÍTICO-3, auditoría FMEA\n  2026-09-16, lo REVIRTIÓ: esa cerca dejaba pasar un release a main sin gate, medido\n  por A/B — con destino desconocido SIEMPRE cae al juez de abajo)\n· destino VACÍO (consulta falla en el hook) → el juez lo INFIERE; FAIL SEGURO: duda + release → main estricto\n· PISO DETERMINISTA de main — M5: main O VACÍO/DESCONOCIDO +ALLOW SIN lenguaje de\n  release del USUARIO → DENY (antes el piso solo corría con destino main CONFIRMADO);\n  M5-bis (auditoría FMEA 2026-09-16) abre una puerta ANGOSTA con destino VACÍO: solo\n  si una línea USUARIO nombra 'develop' EXPLÍCITO Y ninguna línea (cualquier rol) trae\n  main/release/promover — verificado en BASH, nunca por lo que el LLM diga de sí mismo\n· sin credencial OAuth/red/timeout → UNAVAILABLE → DENY conservador\n(main exige lenguaje SUPER-explícito: «release/hasta main/libera»)"];
     CMDG_D [fillcolor="#3a2020", color="#c0392b", penwidth=2.5,
            label="🔴 DENY (definición de LISTO en el punto del merge):\nintegrar a develop/main exige tu OK expreso — cítalo y reintenta.\nverde técnico ≠ LISTO; «sigue/avanza» NO autoriza.\nmain: un «mergea» genérico NO autoriza un release.\n(juez no disponible: sin credencial OAuth/red/timeout → también DENY)"];
 
@@ -139,19 +132,15 @@ digraph flujos {
     SEC_D [fillcolor="#3a2020", color="#c0392b", penwidth=2.5,
            label="🔴 DENY — un secreto va a ENTRAR al repo.\nSácalo a env/gestor de secretos; si ya estaba, ROTA la credencial.\nEscapes: --no-verify · CLAUDE_SKIP_SECRET_SCAN=1\n(fail-open si no puede acotar el rango; STRICT=1 → fail-closed)"];
 
-    // ── LOS 4 QUE SOLO AVISAN (🔔/📜, no bloquean → additionalContext) ──
-    DASH  [color="#e08e45",
-           label="🔔📊 recordar-dashboard  ·  ¿git push?\n🟠 recuerda: Dashboard del cerebro (append `>>` a Bitácora)\n+ doc=realidad: push toca hooks/skills/features SIN tocar doc → actualízala"];
+    // ── LOS QUE SOLO AVISAN (🔔/📜, no bloquean → additionalContext; +no-bypass-deploy, sin nodo aquí) ──
     ENTM  [color="#e08e45",
            label="🔔🖥️ entorno-maquina-guard  ·  ¿git commit?\n🟠 avisa si mete algo MACHINE-SPECIFIC (alias/$HOME/Rosetta,\no un `entorno-maquina.md`) al .claude/memory/ del repo → viajaría y MENTIRÍA"];
-    RAMV  [color="#e08e45",
-           label="🔔🕰️ rama-vieja  ·  ¿git push de una ramita?\n🟠 avisa si está ≥40 commits DETRÁS de origin/develop\n→ rebasa antes (el MR traería ruido/conflictos)"];
     ARBOL [color="#e08e45",
            label="🔔🌳 proteger-arbol  ·  ¿git DESTRUCTIVO (reset --hard/checkout -f/rebase/branch -D)?\n🟠 reset/checkout/rebase: avisa si orfanaría commits sin pushear (@{u}..HEAD).\nbranch -D SOLO (force-delete; el gate de entrada solo casa `-D` mayúscula —\n`git branch -d` minúscula NUNCA llega al guard, git ya rehúsa borrar ramas no\nintegradas): decide por chequeo ZOMBIE per-rama (ancestro | squash/cherry |\nremota-gone), calla si todas ya están integradas (mata el FP dominante).\nSUPRIME el FP en worktree AISLADO (H14/H15)"];
 
     // ── Confluencia: precedencia deny > ask > allow ──
     PREC  [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="el CLI combina las 8 decisiones\nprecedencia: deny > ask > allow"];
+           label="el CLI combina las 5 decisiones\nprecedencia: deny > ask > allow"];
     BLOCK [fillcolor="#3a2020", color="#c0392b", penwidth=3,
            label="🔴 comando BLOQUEADO\n(al menos un guard denegó — el modelo lee el motivo y NO reintenta)"];
     RUN   [color="#7fb069", penwidth=3,
@@ -159,14 +148,14 @@ digraph flujos {
 
     // ── PostToolUse (no bloquea, no es del flujo git per se) ──
     POST  [color="#e08e45",
-           label="🔔📈 aviso-contexto  (PostToolUse · GLOBAL)\ntras CADA tool mide los TOKENS reales del contexto → watermark\n(no es específico de git; también corren en Post: recordar-orquestar · hud-stale · barrer-ramas — ver 05)"];
+           label="🔔📈 aviso-contexto  (PostToolUse · GLOBAL)\ntras CADA tool mide los TOKENS reales del contexto → watermark\n(no es específico de git; también corre en Post: barrer-ramas — ver 05)"];
 
     // Aristas del fan-out
     CMD -> FANOUT;
     FANOUT -> COMUN [label="cada hook primero corre\nsu preludio ①②"];
-    COMUN -> LIB [label="GBG/MSG/CMDG/SEC\nademás corren ③④\n(sourcean la lib)"];
-    LIB -> GBG; LIB -> MSG; LIB -> CMDG; LIB -> SEC;
-    COMUN -> DASH; COMUN -> ENTM; COMUN -> RAMV; COMUN -> ARBOL;
+    COMUN -> LIB [label="GBG/MDG/SEC\nademás corren ③④\n(sourcean la lib)"];
+    LIB -> GBG; LIB -> MSG; LIB -> SEC;
+    COMUN -> ENTM; COMUN -> ARBOL;
 
     GBG -> GBG_D [label="sí"];
     MSG -> MSQ [label="es merge MR real"];
@@ -181,15 +170,17 @@ digraph flujos {
     GBG_D -> PREC; MSG_D -> PREC; MSG_D2 -> PREC; CMDG_D -> PREC; SEC_D -> PREC;
     GBG -> PREC  [label="no toca base"];
     MSG -> PREC  [label="no es merge\nMR real"];
-    MSQ -> PREC  [label="NO trae --squash,\ndestino main/personal/\nrelease explícito"];
-    MSQ -> PREC  [label="SÍ trae --squash,\ndestino main/personal/\nirresoluble → pasa\n(sin validar mensaje)"];
-    MSGCAL -> PREC [label="mensaje con sustancia"];
-    MSGWARN -> PREC;
-    CMDG -> PREC [label="no es merge MR /\nrepo personal"];
+    // fase 1 (squash) PASA (no lo exige, o ya lo trae con mensaje OK) → continúa a fase 2 (autorización),
+    // el MISMO proceso — antes (guards separados) esto salía del fan-out; hoy sigue dentro del mismo hook.
+    MSQ -> CMDG  [label="NO trae --squash,\ndestino main/personal/\nrelease explícito"];
+    MSQ -> CMDG  [label="SÍ trae --squash,\ndestino main/personal/\nirresoluble\n(sin validar mensaje)"];
+    MSGCAL -> CMDG [label="mensaje con sustancia"];
+    MSGWARN -> CMDG;
+    CMDG -> PREC [label="repo personal /\nrama personal (Develop*/epic/…)"];
     CMD_OK -> PREC [label="OK citado /\ngrant durable"];
     SEC -> PREC  [label="sin secreto /\nno es commit-push"];
-    DASH -> PREC; ENTM -> PREC;
-    RAMV -> PREC; ARBOL -> PREC;
+    ENTM -> PREC;
+    ARBOL -> PREC;
 
     PREC -> BLOCK [label="algún deny"];
     PREC -> RUN   [label="ningún deny"];

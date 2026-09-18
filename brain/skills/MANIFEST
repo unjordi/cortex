@@ -4,23 +4,28 @@
 # mano (antídoto al drift comprobado: ~/.claude/skills/to-do se editó a mano en dev y la copia viva se
 # desincronizó de brain/skills/to-do/ sin que nada lo detectara ni re-sincronizara).
 #
-# Formato:  <nombre-de-la-skill>   <tier>
-#   tier:  global  → solo ~/.claude/skills (lo instala el bootstrap/install-brain; NO viaja por-repo).
-#          both    → AMBOS: global por el bootstrap + viaja POR-REPO en repos COMPARTIDOS (marca
-#                    .claude/repo-compartido) como CORREO — para el colega que clona un repo compartido y
-#                    NO tiene el brain global. Análogo al tier `both` de los hooks.
+# Formato:  <nombre-de-la-skill>   <tier>   [fecha-retiro]   [motivo…]
+#   tier:  global    → solo ~/.claude/skills (lo instala el bootstrap/install-brain; NO viaja por-repo).
+#          both      → AMBOS: global por el bootstrap + viaja POR-REPO en repos COMPARTIDOS (marca
+#                      .claude/repo-compartido) como CORREO — para el colega que clona un repo compartido y
+#                      NO tiene el brain global. Análogo al tier `both` de los hooks.
+#          retirado  → LÁPIDA, MISMA lógica que el tier `retirado` de brain/hooks/MANIFEST (ver su header
+#                      para el detalle completo): el cerebro ya MATÓ esta skill (su carpeta se borró de
+#                      brain/skills/) pero la entrada se CONSERVA aquí con columnas 3/4+ = fecha de retiro
+#                      y motivo. install-brain.sh (poda GLOBAL) y sincronizar-cerebro.sh (poda POR-REPO)
+#                      la usan para PODAR una máquina/repo donde la carpeta quedó instalada de una versión
+#                      vieja del brain — con la ÚNICA diferencia frente a hooks de que una skill NO tiene
+#                      cableado en settings.json (se salta ese paso; es un folder markdown, se borra el
+#                      folder y punto). NUNCA toca una skill PROPIA del usuario (solo las que el brain
+#                      reconoce por nombre en esta lápida).
 #          (no hay tier `repo`-only para skills hoy: una skill genérica del cerebro siempre existe global.)
 #
-# ── CÓMO DECIDIR EL TIER (regla crisp — respuesta a TODO "¿global o both?"; #81) ───────────────────────
-# Mismo PATRÓN REPO-COMPARTIDO que los hooks (norma "Cerebro por-repo = CORREO"):
-#   ¿Esta skill la usaría un COLEGA en un repo COMPARTIDO que NO tiene el brain global?
-#     • SÍ  → `both`   : viaja POR-REPO como CORREO (solo a repos marcados `.claude/repo-compartido`) +
-#                        global por el bootstrap. A diferencia de un hook `both`, una skill NO necesita
-#                        cláusula de dedupe: es markdown que LEE el modelo, no un script que se EJECUTE
-#                        → no hay doble disparo.
-#     • NO  → `global` : basta con vivir en la máquina del DUEÑO (que ya corrió el bootstrap). DEFAULT
-#                        CONSERVADOR — ante la duda, `global`, no `both`.
-# Anti-drift: NO pongas `both` "por si acaso"; solo si un clon compartido SIN brain global la necesita.
+# ── CÓMO DECIDIR EL TIER (respuesta a TODO "¿global o both?"; #81) ─────────────────────────────────────
+# La regla completa (el PATRÓN REPO-COMPARTIDO, ejemplos, el porqué) vive en UNA sola fuente —
+# `brain/norms/global-claude-md.md` § "Tiers de hooks/skills: cómo decidir" — este header solo la CITA,
+# no la re-explica. En una frase: ¿la usaría un COLEGA en un repo COMPARTIDO sin brain global? → `both`
+# (viaja POR-REPO como CORREO, sin cláusula de dedupe — es markdown que se LEE, no se ejecuta); si no →
+# `global` (DEFAULT conservador).
 #
 # Consumidores (paralelos EXACTOS de los de hooks):
 #   - install-brain.sh       : instala GLOBAL = {global, both} skills (árbol COMPLETO de cada skill).
@@ -41,6 +46,8 @@
 # por-repo). A diferencia de los hooks `both`, una skill NO necesita cláusula de dedupe: es markdown que LEE
 # el modelo, no un script que se EJECUTE → no hay doble disparo. El PLUMBING de `both` está construido y
 # probado; basta cambiar el tier aquí.
+# 2026-09-18: sumada `control-gui-remota-por-ssh` como `both` (capacidad genérica usable por cualquier
+# sesión/máquina del equipo, promovida desde potenciaDatabases — no es específica de un repo).
 
 auditar-coherencia-cerebro       global
 auditar-proceso-algoritmo        global
@@ -49,10 +56,8 @@ auditor-semantico                global
 canonizar-cerebro                global
 cerrar-slice                     both
 checkpoint                       both
-claude-proyecto-autocontenido    global
-consolidar-cerebro               global
 construir-missing-manual         global
-cosechar-sesion                  global
+control-gui-remota-por-ssh       both
 desinflar-memorias               global
 diagramar                        global
 ingenieria-inversa-gui-db-navegador  global
@@ -62,8 +67,13 @@ orquestar-fanout                 global
 positivar-doc                    global
 rehidratar-hilo                  both
 reubicar-master                  global
-revisar-entregables-agentes      global
 to-do                            both
 turno-nocturno                   global
-unificar-cerebro                 global
 zoom-screenshot                  global
+
+# ── LÁPIDAS (tier retirado) — ver header ──
+consolidar-cerebro               retirado  2026-09-17  ABSORBIDA por canonizar-cerebro (modo "consolidar": dupla → positivar → desinflar → convergencia → FIRMA)
+unificar-cerebro                 retirado  2026-09-17  ABSORBIDA por canonizar-cerebro (modo "reconciliar": ritual semanal minis-de-devs → develop)
+claude-proyecto-autocontenido    retirado  2026-09-17  ABSORBIDA por canonizar-cerebro (modo "sembrar": cerebro nativo en <proyecto>/.claude/, sin symlinks)
+cosechar-sesion                  retirado  2026-09-17  ABSORBIDA por cerrar-slice §5 (tooling cosechar-aprendizaje.sh, mismo flujo de cierre)
+revisar-entregables-agentes      retirado  2026-09-17  ABSORBIDA por orquestar-fanout (norma + bucle de verificación de lo que un agente entrega)

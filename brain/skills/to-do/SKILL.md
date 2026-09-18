@@ -12,6 +12,10 @@ El punto del skill es que el usuario **no tenga que pedir "muéstrame el to-do" 
 3. **Puebla/refresca la interfaz de tareas del harness** (`TaskCreate`/`TaskUpdate`/`TaskList`; o `TodoWrite` si tu harness la expone) con los ítems VIVOS (grupos 🟢/🟡 de la vista) — ya redactados con la higiene de abajo y con su **estatus real**. Queda renderizada de una.
 4. Si la interfaz **ya trae tareas**, **reconcília** contra el backlog durable (no dupliques): sube lo que falte, corrige estatus, cierra lo hecho.
 
+> **Reconciliar es ACTUAR, no avisar.** Si la task-list divergió del durable, la sincronizas en el acto
+> (`TaskUpdate`/`TaskCreate`); no anuncias que está stale ni que ya espeja el durable. Es tu HUD, no un
+> entregable que se narra: a lo sumo, una línea de que quedó reconciliada.
+
 Eso es lo que el usuario espera ver al escribir `/to-do` a secas: su backlog cargado como interfaz viva, sin fricción.
 
 ## Formato de salida: BACKLOG UNIFICADO agrupado por estatus
@@ -47,16 +51,39 @@ Cada ítem **ABIERTO** (grupos 🟢/🟡) lleva su etiqueta de madurez del plan,
 - **`📝`** — falta plan; todavía no está escrito.
 - **`➖`** — mecánico/obvio, no necesita plan.
 
-La vista se **deriva** del backlog durable cada vez que invocas — no la persistas como archivo
-paralelo (eso duplicaría la fuente de verdad, ver Regla 1). Al espejar a la interfaz del harness,
+La vista se **deriva** del backlog durable cada vez que invocas. Al espejar a la interfaz del harness,
 solo los grupos 🟢/🟡 son tareas ACTIVAS (`pending`/`in_progress`/`parked`); ✅/🪦/⚪ son contexto
 histórico, no se cargan como tareas del harness.
+
+### La maquinaria MECÁNICA la corre un script — no la re-implementes a mano
+La continuidad mecánica (el ÚLTIMO HUD ⇄ el bloque durable) la dueña la lib **`sincronizar-tasklist.sh`**
+(la misma que corre el hook `recordar-cosechar` en el Stop). Al re-poblar la interfaz, **invócala** en vez
+de re-parsear el bloque a mano:
+
+```bash
+bash "${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/sincronizar-tasklist.sh" sembrar   # → status|id|subject por línea
+```
+
+Eso te da, DETERMINISTA, el set de tareas vivas serializado en el bloque espejo (que viaja por git y
+sobrevive la rotación de session_id). Ese set lo **aplicas al HUD vivo con las tools** (`TaskCreate`/
+`TaskUpdate`) — es la ÚNICA vía que refresca el HUD en pantalla: el harness tiene la lista EN MEMORIA y NO
+re-renderiza si un proceso externo escribe los json (crux medido 2026-09-18). La lib hace la continuidad
+mecánica; TÚ curas encima los ítems NUEVOS del backlog freeform (los grupos 🟢/🟡 que aún no están en el
+bloque). Una lógica, varios disparadores: el Stop la corre en sentido HUD→durable; tú la corres aquí en
+sentido durable→HUD.
+
+**El purismo "no persistas la vista derivada" EVOLUCIONÓ** (contexto nuevo, decisión de unjordi 2026-09-18):
+antes el modo de falla era actualizar SOLO el HUD y olvidar las memorias durables → la regla prohibía un
+archivo paralelo. Ese modo se INVIRTIÓ: hoy el modelo actualiza SOLO `estado-proyecto.md` y OLVIDA el HUD.
+Por eso ahora SÍ se serializa la vista al **bloque `<!-- espejo-tasklist -->` DENTRO de `estado-proyecto.md`**
+(no un archivo aparte) — es la única forma de que el HUD sobreviva la rotación de session_id y viaje por
+git. Sigue habiendo UNA fuente de verdad (el .md); el bloque es su sección-máquina, mantenida sola.
 
 ## Regla 1 — DOS planos, no los confundas
 - **La task-list / `TodoWrite` del harness = SCRATCH de sesión.** Efímera (se pierde al cerrar/compactar). Es una **VISTA**.
 - **El backlog DURABLE = `.claude/memory/estado-proyecto.md`.** La **FUENTE DE VERDAD** ("aquí empiezas siempre").
 - La interfaz **espeja** el backlog durable, no lo reemplaza. Al **cerrar** una tarea, el cambio se **ASIENTA en `estado-proyecto.md`** (lo hace `cerrar-slice §2`), no solo en la task-list. **Si divergen, manda `estado-proyecto.md`.**
-- **La VISTA es de ESTA rama/repo → RE-SIÉMBRALA al rotar el working tree.** Al cambiar de **rama git** o de **proyecto/cwd**, la task-list del harness NO se resetea sola: sigue mostrando pendientes de la tarea anterior (drift). Cuando cambies de contexto, RE-EVALÚALA — si ya no aplica, límpiala y re-puéblala del `estado-proyecto.md` de ESA rama. El hook **`hud-stale`** te lo RECUERDA (advisory) justo tras rotar de rama/cwd; este skill es la mitad que la RE-SIEMBRA.
+- **La VISTA es de ESTA rama/repo → RE-SIÉMBRALA al rotar el working tree.** Al cambiar de **rama git** o de **proyecto/cwd**, la task-list del harness NO se resetea sola: sigue mostrando pendientes de la tarea anterior (drift). Cuando cambies de contexto, RE-EVALÚALA — si ya no aplica, límpiala y re-puéblala del `estado-proyecto.md` de ESA rama. Sin hook que te lo recuerde (`hud-stale` se retiró, overhaul hooks 2026-09-18, puramente advisory): nótalo TÚ tras rotar de rama/cwd; este skill es la mitad que la RE-SIEMBRA.
 
 ## Regla 2 — Redacción DURABLE (anti-stale)
 Un ítem se redacta para que **NO envejezca mal**:
@@ -92,4 +119,4 @@ Dos chequeos OBLIGATORIOS, en orden:
 - **`cerrar-slice §2`** — asienta el cierre en `estado-proyecto.md` (donde el ESPEJO se vuelve durable).
 - **`orquestar-fanout`** — modelo de estado de dos archivos para el fan-out.
 - **`checkpoint`** — vuelca el hilo vivo (`hilo-mental-actual.md`); los pendientes durables ya viven en `estado-proyecto.md`.
-- **hook `hud-stale`** (global, advisory) — te AVISA cuando cambiaste de rama/proyecto y la vista quedó stale; este skill la RE-SIEMBRA.
+- Cambiaste de rama/proyecto y la vista quedó stale → NÓTALO tú (sin hook que avise: `hud-stale` se retiró, overhaul hooks 2026-09-18); este skill la RE-SIEMBRA.

@@ -84,7 +84,7 @@ antes de un git destructivo que orfanaría commits sin pushear).
 > `git -C <repoB> worktree add <repoB>/.claude/worktrees/<nombre>` — la ruta destino pertenece al repo
 > DUEÑO de la rama, no al repo donde estás parado.
 >
-> **Por qué muerde (no es cosmético):** el barredor `limpiar-worktrees.sh` opera por repo; si un worktree
+> **Por qué muerde (no es cosmético):** el barredor `limpiar.sh worktrees` opera por repo; si un worktree
 > de B vive anidado dentro de uno de A, al barrer A como zombie **se lleva el worktree de B y su trabajo
 > sin commitear**, y deja el admin de git de B (`.git/worktrees/<n>/gitdir`) apuntando a una ruta borrada.
 > En el caso real el anidado traía un cambio staged sin commitear (además una REGRESIÓN abandonada).
@@ -146,24 +146,105 @@ antes de un git destructivo que orfanaría commits sin pushear).
    - `línea-de-bitácora` curada (prosa, no el pegote de commits),
    - `pendiente` que deje para otro (o "ninguno"),
    - `worktree`: `limpio` (rama mergeada) o `dejado-con-<nota>`.
-3. **Cierra el loop (AUTOMÁTICO al terminar cada agente — lo recuerda el hook `delegacion-reporte`):**
+3. **Cierra el loop al terminar cada agente (DISCIPLINA tuya — `delegacion-reporte` se retiró, overhaul hooks 2026-09-18, puramente advisory, sin hook que lo recuerde):**
    - **APPENDA** la línea a `bitacora.md`.
    - **ACTUALIZA/cierra** el ítem en `estado-proyecto.md` (backlog vivo).
-   - **WORKTREE:** corre `limpiar-worktrees.sh` (borra los de ramas ya mergeadas; los vivos/a-medias
+   - **WORKTREE:** corre `limpiar.sh worktrees` (borra los de ramas ya mergeadas; los vivos/a-medias
      los DEJA y anota su pendiente en la bitácora para quien lo retome).
    → No monitoreas a los agentes: el reporte y la limpieza son el cierre estándar.
 
+## Verificar antes de creer (el bucle de revisión — no le creas al agente su "listo")
+Regla dura (ver norma global): **no relates el reporte de un agente al usuario como verdad, ni
+construyas encima, sin haber verificado sus afirmaciones concretas contra la realidad tú mismo.** Lo
+verificado se relata como verificado; lo no verificado se etiqueta "según el agente, sin verificar aún".
+Dos costos de creerle a ciegas: (1) el error se propaga (el agente confabula o sobre-afirma "✓" y tú lo
+relatas como cierto — el usuario lo descubre después), y (2) nunca mejoras tus prompts (es justo en
+CÓMO tropieza donde está la señal de qué refinar — revisar SIEMPRE es terapia con datos de más de una
+corrida, no anécdota).
+
+**El bucle, por cada agente que reporta:**
+1. **Extrae las afirmaciones concretas y comprobables** ("escribí X en Y", "N items coinciden", "0
+   errores", "corre").
+2. **Verifica cada una contra la fuente real** — barato, tú mismo, sin pedirle QA al usuario: *"escribí/
+   edité Z"* → léelo (¿existe la sección? ¿se truncó el resto?); *"N coinciden / cuenta = K"* → re-mídelo
+   con un comando barato (find/stat/grep/parse), no aceptes el número; *"cambié estado vivo"* → re-lee el
+   estado y confirma que no rompió lo de al lado + que el backup existe; *"corre / funciona / se ve"* → o
+   lo compruebas por una vía programática (proceso, log, exit code), o lo etiquetas NO verificado (no lo
+   declares LISTO).
+3. **Muestrea lo caro.** Si verificar TODO es carísimo (p. ej. 300 items), verifica una muestra
+   representativa (primeros/últimos/aleatorios) + los invariantes (conteos, totales) y DILO ("verifiqué N
+   de M + los totales") — nunca finjas cobertura total. Barato = hazlo siempre (re-contar con un parse,
+   `stat`/`find -printf %s`, `grep -c`, leer el archivo, `diff` contra un backup); caro = muestrea.
+4. **Clasifica el resultado:** CONFIRMADO (lo comprobé) · CORREGIDO (encontré y arreglé un error) ·
+   REFUTADO (la afirmación era falsa → no se relata como hecho, se re-trabaja).
+5. **Cierra el bucle de prompt.** Anota cómo tropezó (dejó "?" por un caso que el prompt no cubría,
+   sobre-afirmó, malinterpretó el alcance) y qué refinar la próxima vez. Si el mismo tropiezo se repite
+   entre agentes, apúntalo a la memoria del proyecto o al estado.
+
+**El caso REBUILD/REEMPLAZO — el DIFF DE PRESERVACIÓN (lo que un rebuild SILENCIA).** Cuando el
+entregable REEMPLAZA un archivo existente (un agente reescribe un `CLAUDE.md`, un README, una config
+"desde cero"), el modo de falla NO es una afirmación falsa — es la OMISIÓN SILENCIOSA: el rebuild suelta
+contenido real y no lo dice (no hay un "✓" que verificar). El bucle de arriba no lo caza porque el agente
+no AFIRMA lo que dejó fuera. Antídoto obligatorio antes de aplicar el reemplazo:
+1. `diff` viejo → nuevo y enumera TODO lo que el rebuild QUITÓ (secciones, punteros, datos, comandos,
+   advertencias).
+2. Clasifica cada cosa quitada: **basura temporal/obsoleta botada correctamente** (changelog fechado,
+   estado viejo, duplicación) — pero verifica que su contenido vigente ya viva en su casa durable, no lo
+   asumas — **vs. conocimiento REAL** (un gotcha, una corrección, un puntero, una advertencia destructiva,
+   un dato que no se regenera) → NO se pierde: se preserva/reubica, o el rebuild se corrige/rechaza.
+3. Cada `[[wikilink]]`/"ver memoria X"/"§Y" que el rebuild introduce debe EXISTIR (colgados = mentira
+   nueva).
+
+Caso real: un rebuild de agente de un `CLAUDE.md` botó —bien— un changelog fechado, PERO también soltó
+una corrección que vivía SOLO en ese archivo (las memorias tenían el nombre viejo); sin el diff de
+preservación se hubiera perdido la corrección.
+
+**Qué NO hacer:** copiar el reporte del agente al usuario como si fuera tu verificación · declarar
+"LISTO/quedó" con base en el "✓" del agente (verde de agente ≠ verificado) · poner al USUARIO a hacer el
+QA de tu agente cuando podías leer el archivo y comprobarlo tú en medio segundo · construir la siguiente
+fase encima de un entregable sin verificar su base.
+
 ## Hooks/tools que lo sostienen
 - **`delegacion-gate`** (PreToolUse/Task) — consentimiento de costo por ventana de 5h (ver el flujo de gasto).
-- **`delegacion-reporte`** (PostToolUse/Task) — tras cada subagente, recuerda registrar avance + limpiar worktree.
-- **`limpiar-worktrees.sh`** — barre worktrees zombies (rama mergeada) y anota los vivos en la bitácora.
+- Cerrar el loop tras cada subagente (registrar avance + limpiar worktree) es DISCIPLINA tuya, sin hook
+  que lo recuerde (`delegacion-reporte` se retiró, overhaul hooks 2026-09-18, puramente advisory).
+- **`limpiar.sh worktrees`** — barre worktrees zombies (rama mergeada) y anota los vivos en la bitácora.
 - **`proteger-arbol`** (PreToolUse/Bash) — avisa antes de un git DESTRUCTIVO (`reset --hard`/`checkout -f`/`rebase`/`branch -D`) que orfanaría commits sin pushear; antídoto al "agente reseteó HEAD en el árbol compartido".
 - **`checkpoint`** (skill) + **`rehidratar-hilo`** (SessionStart) + **`aviso-contexto`** (watermark) — compactar sin perder el hilo del fan-out (el hook `precompact` se retiró: PreCompact no puede inyectar ni pedir acción).
 
 ## Anti-patrones
 - ❌ Monitorear agentes "de niñera" y actualizar el estado a mano al final. → El auto-reporte es el default.
+
+## Cuando SÍ hay que mirar: distinguir "trabajando" de "colgado"
+
+No monitorear de niñera **no es no mirar nunca**. Un agente puede **entregar su reporte y quedarse colgado**,
+y la interfaz lo seguirá mostrando activo — con su reloj corriendo y sus tokens subiendo. Pasó dos veces el
+mismo día (sep-2026): uno con **1 h 41 m y 304 k tokens** en pantalla llevaba **14 horas sin escribir una
+sola línea**, atascado en un append trivial; otro devolvió tres notificaciones seguidas diciendo *"esperaré
+a que termine"* sin avanzar, con 460 k tokens y 542 llamadas encima.
+
+**El reloj de pantalla es tiempo ACUMULADO, no señal de vida.** La señal fiable es **la última escritura de
+su transcript**:
+
+```bash
+D=~/.claude/projects/<slug>/<session-id>/subagents
+for f in "$D"/agent-*.jsonl; do
+  printf '%-22s hace %6ds · %s\n' "$(basename "$f" .jsonl)" \
+    "$(( $(date +%s) - $(stat -f %m "$f") ))" "$(du -h "$f" | cut -f1)"
+done
+```
+Segundos = trabajando · minutos sin entregable = revisar · horas = zombi, **y se mata** (`TaskStop`). Sus
+commits ya están en su rama: matarlo no pierde nada, y lo que seguía consumiendo era el bucle.
+
+**Un agente agotado no se reanima: se releva.** Si ya hizo su trabajo y entra en bucle de espera, mátalo y
+lanza uno FRESCO con el contexto de lo que falta. Reanudar conserva su contexto —barato— pero también su
+estado degradado.
+
+**No leas su transcript para averiguarlo**: son cientos de MB y te inundan el contexto. El `mtime` contesta
+la pregunta en un comando.
+
 - ❌ Escribir el mismo pendiente en estado-proyecto Y bitácora Y un backlog aparte. → Un dato, un lugar.
-- ❌ Dejar worktrees zombies acumulándose. → `limpiar-worktrees.sh` al cerrar la ola.
+- ❌ Dejar worktrees zombies acumulándose. → `limpiar.sh worktrees` al cerrar la ola.
 - ❌ Asignar ítems NO autocontenidos (que dependen de otro agente en vuelo). → Serialízalos o únelos.
 - ❌ Dejar que un agente mute/commitee en el árbol de trabajo COMPARTIDO (o corra `git reset`/`checkout`/`rebase` ahí). → Worktree AISLADO por agente, o lo hace el orquestador. Es lo que orfanó un commit en un caso real.
 - ❌ Creer el reporte de un agente sin verificar el resultado real. → Comprueba read-only (git/archivo/compila) antes de marcar hecho; el agente pudo devolver un stub o "alucinar" trabajo en background.

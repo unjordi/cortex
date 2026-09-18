@@ -1,17 +1,20 @@
-// 08 — Al hacer push: los nudges que se disparan (cortex)  ·  FUENTE editable (.dot)
+// 08 — Al hacer push: qué corre y qué quedó como DISCIPLINA (cortex)  ·  FUENTE editable (.dot)
 // Render:  dot -Tsvg 08-al-hacer-push-nudges.dot -o 08-al-hacer-push-nudges.svg
-// ZOOM del fan-out de 9 hooks (raíz común en 03 · CONVENCIONES §6) sobre los nudges (🔔, no bloquean)
-// de un `git push`: los 2 PreToolUse en detalle — recordar-dashboard (dashboard + doc=realidad, dispara
-// en CUALQUIER push) y rama-vieja (base atrasada, SOLO en ramitas con origin/develop conocido) — más los
-// PostToolUse del MISMO comando (CONVENCIONES §6): 📈 aviso-contexto foregrounded aquí, con cross-ref por
-// Nº de archivo a **03** para el detalle de 🎼 recordar-orquestar / 🔀 hud-stale / 🧹 barrer-ramas. ESTOS
-// nudges no bloquean, pero el MISMO push pasa además por los guards DENY-capaces del fan-out de 03
+// ZOOM del fan-out de 6 hooks (raíz común en 03 · CONVENCIONES §6) sobre el nudge (🔔, no bloquea)
+// de un `git push`, más los PostToolUse del MISMO comando (CONVENCIONES §6): 📈 aviso-contexto
+// foregrounded aquí, con cross-ref por Nº de archivo a **03** para el detalle de 🧹 barrer-ramas. ESTE
+// nudge no bloquea, pero el MISMO push pasa además por los guards DENY-capaces del fan-out de 03
 // (🚧 git-branch-guard → ver 06 · 🕵️ secret-scan → ver 07): un gate explícito antes del terminal deja
 // claro que PUSH_OK es "push que ningún guard DENY frenó", no un procede incondicional. Reconstruido
-// 2026-08-07 desde el CÓDIGO real (brain/hooks/recordar-dashboard.sh, rama-vieja.sh); ampliado tras
+// 2026-08-07 desde el CÓDIGO real (brain/hooks/recordar-dashboard.sh); ampliado tras
 // auditoría de coherencia para cubrir PostToolUse + la mutación real del push, y de nuevo tras la
 // auditoría que señaló que el chart omitía los guards DENY del mismo fan-out.
 // Re-canoniza el huérfano 05-al-hacer-push-nudges.svg (viejo «④», sin .dot ni leyenda).
+// Overhaul hooks 2026-09-18: recordar-dashboard (el ÚNICO PreToolUse de este chart) y
+// recordar-orquestar/hud-stale (dos de los PostToolUse de 03) se RETIRARON —puramente advisory,
+// medido: ignorados. El árbol de decisión de doc=realidad/dashboard SIGUE siendo el modelo correcto de
+// qué revisar al pushear — solo que ahora es un self-check de Claude (norma en
+// brain/norms/global-claude-md.md), no un hook que lo recuerde.
 digraph flujos {
   graph [bgcolor="#1b1712", rankdir=TB, fontname="Helvetica", splines=true,
          nodesep=0.35, ranksep=0.55, pad=0.25, compound=true];
@@ -27,31 +30,25 @@ digraph flujos {
       <table border="0" cellborder="1" cellspacing="0" cellpadding="4" color="#5fa89e" bgcolor="#1b1712">
         <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>🔒 Hooks Forzosos</b></font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🚧 git-branch-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">push/merge a develop·main → denegado</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔗 merge-squash-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">MR a develop sin --squash → denegado</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔗 merge-develop-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">MR a develop sin --squash o sin tu OK → denegado; a main exige OK súper-explícito</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🕵️ secret-scan</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">commit/push con un secreto → denegado</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">💸 delegacion-gate</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">delegar al llegar al 90% de tu ventana 5h → pide tu OK</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🛑 limite-gasto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">sin ventana 5h Y sin overage (ambos agotados) → freno duro</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">✋ confirmar-merge-develop</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">merge sin tu OK → denegado</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">✅ dod-verificar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cierre sin evidencia/OK → denegado; claim visual a ciegas (sin ver la pantalla) también</font></td></tr>
         <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>🔔 Automático</b></font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📊 recordar-dashboard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">en el push recuerda dashboard + doc=realidad (README/docs) — cierre del slice</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🖥️ entorno-maquina-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">commit de algo machine-specific (aliases/rutas de $HOME/Rosetta/entorno-maquina.md) al .claude/memory/ del repo → avisa</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🚧 no-bypass-deploy</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">correr el instalador/deploy a mano (install-brain.sh/deploy.sh) en vez de la herramienta oficial (el widget) → avisa (fail-safe: no --dry-run/--help/CI)</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🕰️ rama-vieja</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">avisa si la ramita arrastra base vieja</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌳 proteger-arbol</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">git destructivo que orfanaría commits sin pushear → avisa (fan-out: usa worktree aislado)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🛡️ proteger-fuente-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">editar la copia INSTALADA de un hook/skill que tiene fuente en el clon → avisa (se perdería en el próximo sync) (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧹 barrer-ramas</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al abrir sesión / al punto del merge barre en 2º plano ramas locales + remota huérfana + worktrees ya integrados (zombie squash-safe; throttle 24h) (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">💾 exportar-sesion-master</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">auto-export de las sesiones *-master a ~/.claude-sessions (o Drive); detached, sobrevive el cleanup de 30 días (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🗂️ checkpoint-mecanico</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">PreCompact: extractor mecánico (streaming, 0 tokens) escribe el andamio del TRAMO VIVO a hilo-mental-actual.andamio.md (GLOBAL; el skill lo regenera con --self --ensure)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📝 delegacion-registrar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">materializa el "pregunta una sola vez"</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📮 delegacion-reporte</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al terminar un agente: recuerda registrar avance + limpiar su worktree</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎼 recordar-orquestar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">N mutaciones (edits/commits) en serie SIN delegar → sugiere fan-out (advisory, no bloquea; resetea al delegar) (GLOBAL)</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧵 rehidratar-hilo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta hilo-mental-actual.md al abrir/retomar/compactar (GLOBAL) — con gate de frescura</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📈 aviso-contexto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reporta el watermark de contexto CRUDO (tokens · ventana · %); sin bandas ni veredicto — /context manda (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧵 rehidratar-hilo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta hilo-mental-actual.md + el andamio (si es más fresco) al abrir/retomar/compactar (GLOBAL) — gate de frescura + edad</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📈 aviso-contexto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al umbral ALTO del punto REAL de compact (80%/92% de autoCompactWindow o la ventana efectiva; % honesto, respeta autoCompactEnabled): VUELCA el checkpoint mecánico solito y ORDENA /checkpoint+/compact. No gotea (silencio bajo el umbral, 1 disparo + 1 escalada) (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧬 aviso-drift-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">repo brained atrás de la fuente única (hooks/libs Y skills) → en tu mini-develop se AUTO-SINCRONIZA (apply+commit+push); en otra rama, avisa. ADEMÁS detecta el drift de la copia GLOBAL de skills (~/.claude/skills vs la fuente; warn-only, throttle propio). Al moverse el cerebro, NUDGE a correr la DUPLA (suficiencia+coherencia; contra la firma si hay AGENTS.md, si no sugiere instanciarla) (GLOBAL)</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔀 hud-stale</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cambiaste de rama/proyecto → tu lista de TODOs (HUD) puede ser de la tarea anterior: avisa (advisory) que la resetees/re-siembres del estado-proyecto.md de esa rama. Señal OBJETIVA (rama/cwd), stamp per-sesión, first-sight silencioso, solo en repos con backlog (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧭 sesion-inicio</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta rama + norma + memoria al abrir</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌾 recordar-cosechar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">espejo TaskList→estado-proyecto.md (auto) + nudge: no cosechaste/no actualizaste backlog</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">⬆️ recordar-unificar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">tu mini acumuló aprendizajes sin UNIFICAR a develop → sugiere /unificar-cerebro (gemelo ↑ de aviso-drift)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌾 recordar-cosechar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">espejo automático del TaskList vivo → bloque fenced en estado-proyecto.md (determinista, sin LLM)</font></td></tr>
         <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>📜 Normas</b></font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎯 Definition of Done</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">verde técnico ≠ Done/Listo/Ya Quedó; exige QA o un OK explícito</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🪞 Doc &lt;= realidad</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cambió algo → su doc se actualiza en la tanda</font></td></tr>
@@ -68,20 +65,16 @@ digraph flujos {
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🩺 auditar-coherencia-cerebro fan-out read-only sobre el PROPIO cerebro (guards+flowcharts+doc): evasiones/huecos/drift, verificado por ejecución → loop hasta converger; modo-cerebro de auditar-proceso-algoritmo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0"> </font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧪 auditar-suficiencia-operativa</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">¿ALCANZA la doc para HACER el trabajo sin romper nada ni re-investigar? tareas reales ✅/⚠️/❌ con archivo:línea + RE-auditar tras arreglar</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧬 auditor-semantico</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">¿el código HACE lo que queremos? Capa 1 checks deterministas (scripts/, gratis, en CI) + Capa 2 criterio LLM sobre invariantes-semanticos.yml; motor genérico, catálogo por-repo</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧠 consolidar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">meta-orquestador: dupla → positivar → desinflar → convergencia → cierre con la FIRMA (CLAUDE+MEMORY)</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📐 canonizar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">lleva un cerebro instanciado drifteado a la firma-árbol: reprefija memorias (git mv) a dom-/dev-/ux-/qa-, reescribe CLAUDE.md+MEMORY.md, verifica 1:1 con verificar-firma-canonica.sh (detector del GATE #44)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📐 canonizar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">DUEÑO del ciclo de vida del cerebro de un proyecto, 4 modos sobre 1 maquinaria: sembrar (nace nativo, sin symlinks) · canonizar (firma-árbol: git mv a dom-/dev-/ux-/qa-, verifica 1:1 con verificar-firma-canonica.sh) · consolidar (dupla → positivar → desinflar → convergencia → FIRMA) · reconciliar (semanal, minis de devs → develop)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🪶 desinflar-memorias</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">adelgaza un árbol de memorias sin perder lecciones: la narrativa se colapsa a su lección, los mitos descartados se mudan al cementerio.md (una lápida por ID content-hash 🪦#&lt;id&gt;)</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🕵️ revisar-entregables-agentes</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">verifica lo que un agente ENTREGA contra la realidad; no relates su reporte como verdad</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">☀️ positivar-doc</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reescribe answer-first: 'ESTO SÍ' (método correcto) antes del 'ESTO NO'</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎓 investigar-dominio</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">ponte experto en un dominio (fan-out DOC-FIRST) → memorias durables + skills</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📚 construir-missing-manual</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">fabrica el manual/wiki de referencia exhaustivo que no existe (fan-out que investiga 1× y hornea) → artefacto consultable OFFLINE</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌾 cosechar-sesion</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cosecha local: extrae aprendizajes de tu sesión al inbox del equipo</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧩 unificar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reconciliación del cerebro del equipo: integra los aprendizajes mini→develop</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧳 claude-proyecto-autocontenido</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">el cerebro VIVE dentro del proyecto (.claude/ + symlink de slug) → viaja con él</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🚚 reubicar-master</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">muda una sesión master COMPLETA a otro repo (brain-master → cortex) sin residuo: transcript+cwd, cerebro, slug y refs atómicas</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔍 zoom-screenshot</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">recorta y amplía regiones de una captura (ffmpeg) para leer texto fino ilegible</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔩 ingenieria-inversa-gui-db-navegador</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">ingeniería inversa de app legacy GUI+BD: driving la UI vía navegador + diff de la BD antes/después = doc con evidencia real</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📕 markdown-a-pdf</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">convierte .md a PDF pulido y distribuible vía md-to-pdf (npx, sin instalar) con el gotcha de --css y QA visual real</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🕹️ control-gui-remota-por-ssh</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">ver/operar una GUI remota por SSH sin VNC/RDP — screenshot/click/teclado DPI-aware; Windows·Linux·Mac completos (multi-monitor + captura por-ventana)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌙 turno-nocturno</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">protocolo del turno de noche: eco del contrato, decide-dentro-de-la-cerca, grants durables a disco</font></td></tr>
       </table>>];
     LEY_VAL [shape=none, margin=0, label=<
@@ -100,7 +93,7 @@ digraph flujos {
 
   // ───────────────────────────────────── EL FLUJO ─────────────────────────────────────
   subgraph cluster_f0 {
-    label="08 · Al hacer push: nudges PRE (🔔 recordar-dashboard: cualquier push · 🔔 rama-vieja: solo ramita) + POST (🔔 aviso-contexto — ver 03 para recordar-orquestar/hud-stale/barrer-ramas)   (ZOOM del fan-out de 9 de 03 · estos NUDGES no bloquean; los guards DENY del mismo fan-out —🚧 git-branch-guard, 🕵️ secret-scan— viven en 06/07)";
+    label="08 · Al hacer push: PRE (📜 doc=realidad/dashboard, self-check puro — ya no hay hook aquí) + POST (🔔 aviso-contexto — ver 03 para barrer-ramas)   (ZOOM del fan-out de 6 de 03 · este NUDGE no bloquea; los guards DENY del mismo fan-out —🚧 git-branch-guard, 🕵️ secret-scan— viven en 06/07)";
     fontname="Times"; fontsize=14; fontcolor="#5fa89e";
     color="#5fa89e"; penwidth=1.6; style="rounded"; bgcolor="#1b1712";
 
@@ -110,34 +103,24 @@ digraph flujos {
            label="¿es un `git push`?"];
     SILENT [color="#7fb069", label="🟢 silencio (no es un `git push`)"];
 
-    // ── recordar-dashboard: dispara en CUALQUIER git push, sin leer la rama (recordar-dashboard.sh
-    //    solo filtra `git push` en el comando; el filtro de rama vive SOLO en rama-vieja, más abajo) ──
-    DASH [color="#e08e45",
-          label="🔔📊 recordar-dashboard\n🟠 recuerda: actualiza el Dashboard GLOBAL del cerebro\n(APPENDA «>>» al final de la Bitácora, NO un Edit — dos «>>» no chocan entre sesiones)"];
+    // ── recordar-dashboard.sh se RETIRÓ (overhaul hooks 2026-09-18, puramente advisory, medido:
+    //    ignorado) — YA NO hay hook PreToolUse que dispare en el push. Lo que sigue es AHORA un
+    //    self-check de Claude (norma "Documentación = reflejo de la realidad" en global-claude-md.md):
+    //    el árbol de decisión es el mismo, solo que nadie te lo recuerda automáticamente. ──
+    DASH [color="#9e9e9e", style="rounded,dashed,filled", fillcolor="#232323",
+          label="📜 self-check (sin hook): antes de pushear, revisa TÚ el Dashboard GLOBAL del cerebro\n(APPENDA «>>» al final de la Bitácora, NO un Edit — dos «>>» no chocan entre sesiones)"];
     DOCQ [shape=diamond, fillcolor="#2b2622", color="#d97757",
           label="doc=realidad: ¿algún commit a pushear TOCA su doc?\n(README / *.md / docs / memoria)"];
     HOOKQ [shape=diamond, fillcolor="#2b2622", color="#d97757",
            label="¿AGREGA/QUITA un hook o skill?"];
     CODEQ [shape=diamond, fillcolor="#2b2622", color="#d97757",
            label="¿toca código / features?"];
-    DOC_OK [color="#7fb069", label="🟢 doc al día (sin recordatorio extra)"];
-    HOOK_W [color="#e08e45",
-            label="🟠 recuerda: actualiza el ÁRBOL del cerebro en README\n+ el conteo de checks de test-brain.sh (fuente única del árbol)"];
-    CODE_W [color="#e08e45",
-            label="🟠 recuerda: actualiza la doc que lo DESCRIBE\n(README/memoria/comentarios) en esta MISMA tanda"];
-    NADA [color="#7fb069", label="🟢 nada que recordar"];
-
-    // ── rama-vieja: SÍ filtra por rama (excluye develop/main/HEAD) y exige origin/develop conocido;
-    //    umbral configurable por RAMA_VIEJA_UMBRAL (default 40, no fijo) ──
-    RAMPRE [shape=diamond, fillcolor="#2b2622", color="#d97757",
-            label="🕰️ rama-vieja ¿aplica?\n(rama ≠ develop/main/HEAD Y existe origin/develop)"];
-    RAM_NA [color="#7fb069",
-            label="🟢 no evaluable → sin aviso\n(rama develop/main/HEAD, o sin origin/develop — p. ej. clon fresco)"];
-    RAMV [shape=diamond, fillcolor="#2b2622", color="#d97757",
-          label="🔔🕰️ rama-vieja\n¿≥ RAMA_VIEJA_UMBRAL commits DETRÁS de origin/develop?\n(env var, default 40 — no fijo)"];
-    RAMV_OK [color="#7fb069", label="🟢 base fresca, bajo el umbral (sin aviso)"];
-    RAMV_W [color="#e08e45",
-            label="🟠 AVISA: base vieja → el MR traerá ruido/conflictos.\nRebasa antes: `git fetch origin && git rebase origin/develop`\n(repush con --force-with-lease). 📜 → 🌿 Flujo de git"];
+    DOC_OK [color="#7fb069", label="🟢 doc al día (nada que autocorregir)"];
+    HOOK_W [color="#9e9e9e", style="dashed,filled", fillcolor="#232323",
+            label="📜 self-check: actualiza el ÁRBOL del cerebro en README\n+ el conteo de checks de test-brain.sh (fuente única del árbol)"];
+    CODE_W [color="#9e9e9e", style="dashed,filled", fillcolor="#232323",
+            label="📜 self-check: actualiza la doc que lo DESCRIBE\n(README/memoria/comentarios) en esta MISMA tanda"];
+    NADA [color="#7fb069", label="🟢 nada que actualizar"];
 
     // ── convergencia de los NUDGES (no bloquean) → pero el MISMO push sigue sujeto a los guards
     //    DENY-capaces del fan-out de 03 (git-branch-guard, secret-scan) — CONVENCIONES §6 ──
@@ -157,7 +140,7 @@ digraph flujos {
     CTX [color="#e08e45",
          label="🔔📈 aviso-contexto\n🟠 reporta el watermark de contexto CRUDO (tokens · ventana · %)\nsolo al CRUZAR un escalón de +50K tokens (debounce, STEP=50000)\nsilencioso si no cruza escalón, repo sin .claude/memory, o sin jq/transcript"];
     POST_OTROS [style="rounded,filled", fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
-                label="+ 🔔🎼 recordar-orquestar (toda tool)\n+ 🔔🔀 hud-stale · 🔔🧹 barrer-ramas (Bash)\nninguno bloquea — detalle completo en 03"];
+                label="+ 🔔🧹 barrer-ramas (Bash)\nno bloquea — detalle completo en 03"];
 
     // Aristas
     CMDINIT -> PUSHQ;
@@ -171,14 +154,7 @@ digraph flujos {
     CODEQ -> CODE_W [label="sí"];
     CODEQ -> NADA [label="no", style=dashed];
 
-    PUSHQ -> RAMPRE [label="sí (git push)"];
-    RAMPRE -> RAM_NA [label="no", style=dashed];
-    RAMPRE -> RAMV [label="sí (push de ramita)"];
-    RAMV -> RAMV_OK [label="no", style=dashed];
-    RAMV -> RAMV_W [label="sí"];
-
     DOC_OK -> GATEQ; HOOK_W -> GATEQ; CODE_W -> GATEQ; NADA -> GATEQ;
-    RAM_NA -> GATEQ; RAMV_OK -> GATEQ; RAMV_W -> GATEQ;
 
     GATEQ -> DENY_STOP [label="sí (guard DENY lo rechaza)", style=dashed];
     GATEQ -> PUSH_OK [label="no"];

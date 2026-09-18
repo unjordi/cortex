@@ -4,8 +4,8 @@
 # FUENTE correspondiente en el clon canónico (brain/skills|hooks/). Antídoto a un HUECO real (cazado
 # por el db-master): una regla escrita directo en la copia INSTALADA es REGENERABLE — el próximo
 # `install-brain` la SOBRESCRIBE con la fuente y la edita MUERE, sin dejar rastro. La fuente única es
-# el clon canónico; la instalada es un DESPLIEGUE. `unificar-cerebro` cubre brain→repo (mini→develop),
-# pero NO este sentido (instalada→fuente) — por eso este guard.
+# el clon canónico; la instalada es un DESPLIEGUE. `canonizar-cerebro` (modo reconciliar) cubre
+# brain→repo (mini→develop), pero NO este sentido (instalada→fuente) — por eso este guard.
 #
 # Doc=realidad: la única copia que sobrevive un re-install es la del clon canónico
 # (${CLAUDE_BRAIN_DIR:-$HOME/.cortex}/brain/…). Editar la instalada es editar un artefacto que

@@ -36,11 +36,11 @@ public sealed class BrainState
     /// (test-brain.sh, chequeo e-widget). Al agregar/mover un hook en el MANIFEST, refleja aquí.
     public static readonly HashSet<string> KnownGlobalHooks = new()
     {
-        "git-branch-guard", "merge-squash-guard", "confirmar-merge-develop",
-        "recordar-dashboard", "secret-scan", "rama-vieja", "proteger-arbol",
+        "git-branch-guard", "merge-develop-guard",
+        "secret-scan", "proteger-arbol",
         "proteger-fuente-cerebro",
-        "limite-gasto", "delegacion-gate", "delegacion-registrar", "delegacion-reporte", "recordar-orquestar",
-        "rehidratar-hilo", "aviso-contexto", "aviso-drift-cerebro", "hud-stale", "exportar-sesion-master", "barrer-ramas",
+        "limite-gasto", "delegacion-gate", "delegacion-registrar",
+        "rehidratar-hilo", "aviso-contexto", "aviso-drift-cerebro", "exportar-sesion-master", "checkpoint-mecanico", "barrer-ramas",
         "entorno-maquina-guard", "no-bypass-deploy",
     };
 
@@ -48,7 +48,7 @@ public sealed class BrainState
     /// DEBE coincidir con brain/hooks/MANIFEST {repo} (lo verifica test-brain.sh).
     public static readonly HashSet<string> KnownRepoHooks = new()
     {
-        "sesion-inicio", "dod-verificar", "recordar-cosechar", "recordar-unificar-cerebro",
+        "sesion-inicio", "dod-verificar", "recordar-cosechar",
     };
 
     /// Estado real de una pieza (por nombre) contra la evidencia leída. Espejo de `status(_:_:)` de Swift.
@@ -67,7 +67,7 @@ public sealed class BrainState
                 or "orquestar-fanout" or "turno-nocturno" or "cosechar-sesion" or "unificar-cerebro"
                 or "investigar-dominio" or "construir-missing-manual" or "positivar-doc" or "revisar-entregables-agentes"
                 or "zoom-screenshot" or "claude-proyecto-autocontenido" or "reubicar-master"
-                or "ingenieria-inversa-gui-db-navegador" or "markdown-a-pdf"
+                or "ingenieria-inversa-gui-db-navegador" or "markdown-a-pdf" or "control-gui-remota-por-ssh"
                 => Skills.Contains(name) ? BrainStatus.Installed : BrainStatus.Absent,
             "Definition of Done" or "Doc <= realidad" or "Flujo de git" or "Costo de delegación"
                 => HasNorms ? BrainStatus.Installed : BrainStatus.Absent,
