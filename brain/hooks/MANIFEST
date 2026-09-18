@@ -60,8 +60,7 @@
 # de skills (per-repo y global) lo cubre aviso-drift-cerebro/drift-cerebro-comun. Este MANIFEST es SOLO hooks/libs.
 
 git-branch-guard         both    hook
-merge-squash-guard       both    hook
-confirmar-merge-develop  both    hook
+merge-develop-guard      both    hook
 recordar-dashboard       both    hook
 secret-scan              both    hook
 entorno-maquina-guard    both    hook
@@ -103,3 +102,5 @@ recordar-unificar-cerebro repo   hook
 
 # ── LÁPIDAS (tier retirado) — ver header ──
 rama-vieja               retirado  hook  2026-09-15  avisar del síntoma no es el trabajo; el flujo lo gobiernan los git-guards
+merge-squash-guard       retirado  hook  2026-09-17  CONSOLIDADO en merge-develop-guard (checks de squash del punto de merge, misma lib)
+confirmar-merge-develop  retirado  hook  2026-09-17  CONSOLIDADO en merge-develop-guard (juez de autorización del punto de merge, misma lib)

@@ -7,9 +7,15 @@ description: Ejecuta el ritual de CIERRE de un slice — verifica (build/tests/l
 
 Encapsula la **"definición de terminado" con evidencia** y el **flujo de git**. Lo refuerzan los hooks
 **Stop** (`dod-verificar`, bloquea "listo" sin evidencia), **git-branch-guard** (bloquea push a
-develop/main), **confirmar-merge-develop** (exige tu OK expreso antes de integrar) y **recordar-dashboard**
-(en el push te recuerda el dashboard + doc=realidad = el Paso 2 de aquí). Sigue el orden — no te saltes
-pasos. Versión **genérica** (agnóstica de stack): sirve para cualquier proyecto que use este cerebro.
+develop/main), **merge-develop-guard** (candado ÚNICO del punto de merge: exige `--squash` + un mensaje con
+sustancia y tu OK expreso antes de integrar — consolida los antiguos `merge-squash-guard` +
+`confirmar-merge-develop`) y **recordar-dashboard** (en el push te recuerda el dashboard + doc=realidad = el
+Paso 2 de aquí). Sigue el orden — no te saltes pasos. Versión **genérica** (agnóstica de stack): sirve para
+cualquier proyecto que use este cerebro.
+
+**La maquinaria del merge vive en el script `cerrar-slice.sh` (junto a este SKILL.md).** Este documento se
+queda con el JUICIO (¿está LISTO? ¿el mensaje cuenta el cambio neto?); el script arma el comando correcto
+(squash, INMEDIATO, sin `--auto`, con rastro, borrando la rama). Ver Paso 4.
 
 ## 1. Verifica (evidencia real, no tu memoria del chat)
 - Corre la **verificación técnica que aplique a tu stack** y **CITA la salida real** (0 errores):
@@ -90,33 +96,34 @@ PREGÚNTALE al usuario si el slice queda cerrado.** El merge a develop no se hac
   una rama sin los fixes → clicks gastados revisando algo que ahí no estaba resuelto.)
 
 ## 4. Flujo de git (tras el OK del usuario) — **integra con SQUASH, merge INMEDIATO (sin MWPS)**
-La ramita se colapsa a **UN commit limpio** en develop (lo exige el hook `merge-squash-guard`). El
-merge a develop/main es **DELIBERADO e INMEDIATO**: espera a que el pipeline esté verde y mergea YA —
-nunca lo dejes ARMADO para que se dispare solo (ver el porqué abajo).
+La ramita se colapsa a **UN commit limpio** en develop (lo exige `merge-develop-guard`). El merge a
+develop es **DELIBERADO e INMEDIATO**: espera a que el pipeline esté verde y mergea YA — nunca lo dejes
+ARMADO para que se dispare solo (ver el porqué abajo).
+
+**El comando de merge lo arma el script `cerrar-slice.sh`** (junto a este SKILL.md) — es la fuente única de
+la receta, para que no driftee copiada en el markdown y en los mensajes del guard. Tú te encargas del
+JUICIO (curar el `resumen.md`); el script hace cumplir squash + sin-`--auto` + rastro + borrar la rama, y
+mapea glab↔gh:
 
 ```bash
-# GitLab (glab):
 git push -u origin feat/<tema>
-glab mr create --source-branch feat/<tema> --target-branch develop \
-  --squash-before-merge --remove-source-branch --title "…" --description "…" --yes
-glab ci status --branch feat/<tema> --live                       # espera a pipeline verde
-glab mr merge <id> --squash --squash-message "$(cat resumen.md)" \
-  --remove-source-branch --yes                     # SIN --auto-merge: merge YA, no encolado
+# glab: glab mr create --source-branch feat/<tema> --target-branch develop --squash-before-merge --remove-source-branch --title "…" --description "…" --yes
+# gh:   gh pr create --base develop --fill
 
-# GitHub (gh):
-git push -u origin feat/<tema>
-gh pr create --base develop --fill
-gh pr checks <id> --watch                                        # espera a que los checks pasen
-gh pr merge <id> --squash --delete-branch \
-  --subject "…" --body "$(cat resumen.md)"         # SIN --auto: merge YA, no encolado
+# … arma el resumen curado en resumen.md (ver abajo) …
+bash <ruta>/cerrar-slice.sh --id <id> --message-file resumen.md --wait-ci   # espera CI verde y mergea YA
+#   (autodetecta glab/gh; --repo <slug LITERAL> si es multi-repo; --dry-run para revisar el comando primero)
 
 git checkout develop && git pull --ff-only
 bash ~/.claude/hooks/limpiar-ramas.sh              # barre la ramita local (y su remota si quedó)
 ```
 
-**Las dos recetas son GEMELAS: `--delete-branch` de `gh` es `--remove-source-branch` de `glab`.** Sin ese
-flag la rama queda colgando en el remoto tras el squash y nadie la vuelve a mirar — de ahí sale la
-acumulación de ramas viejas en `origin`. Lo exige `merge-squash-guard` en el merge a `develop`.
+`<ruta>` = `brain/skills/cerrar-slice/cerrar-slice.sh` en el repo cortex, o `~/.claude/skills/cerrar-slice/cerrar-slice.sh`
+una vez instalado. Corre `cerrar-slice.sh --help` para las opciones.
+
+**Las dos recetas (glab/gh) son GEMELAS: `--delete-branch` de `gh` es `--remove-source-branch` de `glab`** —
+el script las mapea solo. Sin ese flag la rama queda colgando en el remoto tras el squash y nadie la vuelve
+a mirar — de ahí sale la acumulación de ramas viejas en `origin`. Lo exige `merge-develop-guard`.
 
 **Para borrar la ramita LOCAL usa `limpiar-ramas.sh`, NO `git branch -d`.** En un flujo que integra con
 SQUASH, `git branch -d` **rehúsa** ("not fully merged"): el squash crea un commit NUEVO, así que la rama
@@ -125,8 +132,9 @@ original no queda de ancestro. Es el método que el mecanismo existe para suplir
 ### Por qué SIN `--auto-merge` / `--auto` (no es "GitHub auto-merge del PR")
 `--auto-merge` en `glab` arma **Merge When Pipeline Succeeds (MWPS)**: el merge **NO** ocurre al correr
 el comando, queda **ENCOLADO** para dispararse solo, sin testigo, cuando el pipeline termine — minutos
-después, en otro momento. `confirmar-merge-develop` exige tu OK **del instante del merge**; encolarlo
-rompe esa garantía (el guard autoriza el comando, pero no controla el evento futuro que arma). Por eso
+después, en otro momento. `merge-develop-guard` exige tu OK **del instante del merge** (y `cerrar-slice.sh`
+RECHAZA `--auto`/`--auto-merge` de plano); encolarlo rompe esa garantía (el guard autoriza el comando, pero
+no controla el evento futuro que arma). Por eso
 la integración coordinada a develop/main **espera el pipeline verde primero y mergea de inmediato**, sin
 dejarlo armado — el "sin fricción de revisión" para 1–3 devs sigue aplicando (nadie más aprueba el MR),
 lo que cambia es que el ACTO de mergear pasa ya, deliberado, no en diferido. (Visto al mergear el !112 de
@@ -142,7 +150,7 @@ Escríbelo como un **resumen curado en prosa**: título Conventional en español
 **Incluye la TRAZABILIDAD rama→commit (2a).** El squash BORRA el merge-commit de la plataforma (que traía
 el `#id` del MR/PR) → sin un rastro en el propio mensaje, un `git log develop` no dice de qué ramita salió
 cada commit. Por eso el cuerpo **DEBE** incluir una línea `Rama: <nombre-rama>` y una `MR/PR: !<id>` (o
-`#<id>`). El hook `merge-squash-guard` bloquea un `--squash-message` LITERAL que no traiga ese rastro.
+`#<id>`). `merge-develop-guard` (y `cerrar-slice.sh`) bloquean un `--squash-message` que no traiga ese rastro.
 
 **Describe el CÓDIGO, no el PROCESO (sin editorializar).** El resumen dice *qué hace el código ahora* y
 *por qué*, **no** cómo llegaste a él. Nada de "se decidió / tras analizar / el asistente notó que / se
@@ -154,8 +162,8 @@ es la lista de commits que el squash debía RESUMIR, no un resumen.
   eliminando la ventana de replay de 30 s. Rama: fix/token-exp · MR: !123"* → habla del CÓDIGO, con traza.
 
 > Gotcha `glab`: si en algún caso SÍ necesitas encolar (excepción rara, no el default de aquí), la flag
-> es `--auto-merge`, no `--auto` — y el guard bloquea el literal `glab mr merge` como dato (p. ej. en un
-> grep o una descripción) → pásalo por variable/archivo, no en texto plano.
+> es `--auto-merge`, no `--auto`. (`merge-develop-guard` ya IGNORA una MENCIÓN citada de `glab mr merge`
+> —dentro de un `printf`/`echo`/heredoc/`--body`— así que loguear el comando ya no dispara el candado.)
 >
 > Gotchas de commit (destilados de un caso real): el mensaje largo va por **heredoc** (`git commit -F -`) o un
 > archivo ÚNICO en `/tmp` — **NUNCA dentro del repo** (se cuela al árbol) ni reutilizando uno viejo

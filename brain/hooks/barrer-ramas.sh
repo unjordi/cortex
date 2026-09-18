@@ -59,7 +59,7 @@ tool_name=""; [ "$have_jq" = 1 ] && tool_name=$(printf '%s' "$input" | jq -r '.t
 es_merge=0; cmd=""; pcwd=""
 if [ "$tool_name" = "Bash" ]; then
   cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
-  pcwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)   # dir REAL del comando (igual que merge-squash-guard)
+  pcwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)   # dir REAL del comando (igual que merge-develop-guard)
   ACG="$(dirname "$0")/analizar-comando-git.sh"
   # shellcheck source=analizar-comando-git.sh
   { [ -n "$cmd" ] && [ -f "$ACG" ] && . "$ACG" && acg_es_merge_mr "$cmd"; } || exit 0

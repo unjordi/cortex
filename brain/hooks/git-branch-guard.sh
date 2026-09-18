@@ -4,7 +4,7 @@
 # incorrecta. La LÓGICA de "qué toca una base" vive en la lib (fuente ÚNICA de los git-guards → no
 # divergen). Fail-open ante parseo. Vive en <repo>/.claude/hooks/ (viaja por git) y ~/.claude (por máquina).
 # Releases develop→main = acción de release deliberada; normalmente el humano en la web de GitLab, por
-# CLI solo con OK súper-explícito (lo vigila confirmar-merge-develop). Este guard bloquea el PUSH a base.
+# CLI solo con OK súper-explícito (lo vigila merge-develop-guard). Este guard bloquea el PUSH a base.
 #
 # Cubre (via lib): push explícito a develop/main, push PELÓN/`HEAD`/`--force` estando EN develop/main
 # (H1), ignora menciones entrecomilladas (H13) y valores de --repo/-R (repo llamado …/develop, H11).
@@ -98,7 +98,7 @@ block() {
 
 # M8 (auditoría 2026-09-15 §3.11, norma dura anti-vein-popper): se RETIRÓ "normalmente el humano en la web
 # de GitLab" de ambos mensajes — un guard que frena en CLI se SATISFACE (con OK súper-explícito, lo vigila
-# confirmar-merge-develop) o se ARREGLA, JAMÁS se rodea mandando a la persona a hacerlo a mano en la web.
+# merge-develop-guard) o se ARREGLA, JAMÁS se rodea mandando a la persona a hacerlo a mano en la web.
 #
 # H5 (auditoría de ejecución 2026-09-16 §H5, BAJO-MEDIO): la SIEMBRA de un repo/rama base VACÍA (0 commits)
 # es la ÚNICA excepción que la norma global declara para un push directo a base ("si un repo no tiene
@@ -111,11 +111,11 @@ block() {
 # llega al proceso de este hook (son procesos distintos), así que nunca es auto-servible por un agente a
 # mitad de turno sin que el humano ya lo haya puesto ahí.
 if [ "${CLAUDE_GIT_GUARD_SEED:-}" != "1" ] && acg_push_toca_base "$cmd" "$pcwd"; then
-  block "NORMA DE GIT (ley interna): no se hace push a main/develop (incluye el push PELÓN estando parado EN develop/main). NO reintentes esto. Haz el cambio por el flujo: ramita (feat/fix/chore/docs) desde develop → commit → push de la ramita → MR/PR → merge a develop. A main solo llega un release deliberado, con OK súper-explícito por CLI (lo vigila confirmar-merge-develop). Si esto es la SIEMBRA inicial de un repo/rama vacía (0 commits — la única excepción de la norma), exporta CLAUDE_GIT_GUARD_SEED=1 en el ENTORNO de la sesión (no como prefijo del comando) y reintenta."
+  block "NORMA DE GIT (ley interna): no se hace push a main/develop (incluye el push PELÓN estando parado EN develop/main). NO reintentes esto. Haz el cambio por el flujo: ramita (feat/fix/chore/docs) desde develop → commit → push de la ramita → MR/PR → merge a develop. A main solo llega un release deliberado, con OK súper-explícito por CLI (lo vigila merge-develop-guard). Si esto es la SIEMBRA inicial de un repo/rama vacía (0 commits — la única excepción de la norma), exporta CLAUDE_GIT_GUARD_SEED=1 en el ENTORNO de la sesión (no como prefijo del comando) y reintenta."
 fi
 
 if acg_merge_menciona_base "$cmd"; then
-  block "NORMA DE GIT (ley interna): este comando nombra un merge directo a develop/main. NO lo hagas así. El trabajo se integra por el flujo: ramita → MR → develop (con OK expreso, lo vigila confirmar-merge-develop). A main = release deliberado, con OK súper-explícito por CLI (también confirmar-merge-develop). NO reintentes el merge que nombra la base."
+  block "NORMA DE GIT (ley interna): este comando nombra un merge directo a develop/main. NO lo hagas así. El trabajo se integra por el flujo: ramita → MR → develop (con OK expreso, lo vigila merge-develop-guard). A main = release deliberado, con OK súper-explícito por CLI (también merge-develop-guard). NO reintentes el merge que nombra la base."
 fi
 
 exit 0

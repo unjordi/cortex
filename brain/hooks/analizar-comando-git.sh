@@ -1,5 +1,5 @@
 # analizar-comando-git.sh — LIB compartida (NO es un hook; se hace `source`). Razona sobre un comando
-# git/glab/gh para los git-guards (git-branch-guard · merge-squash-guard · confirmar-merge-develop) →
+# git/glab/gh para los git-guards (git-branch-guard · merge-develop-guard) →
 # UNA sola lógica, dejan de divergir (antídoto al drift H2/H13). bash-3.2-safe. El consumidor verifica
 # jq/git si los necesita. Vive junto a los hooks (como delegacion-comun.sh) → viaja en el mismo copy.
 # shellcheck shell=bash
@@ -188,7 +188,7 @@ acg_target_dir() {   # $1=cmd  $2=payload_cwd → imprime el dir objetivo
 # `[^[:space:]]+` que se corta en el primer espacio. Antes, con `--repo "$R" --squash` sobre el cmd RAW,
 # `[^[:space:]]+` capturaba `"$R"` completo (con comillas) → `acg_target_remote` devolvía el slug CON
 # comillas → la consulta fallaba garantizado. Y si el CALLER despojaba comillas ANTES de grep (como hacía
-# confirmar-merge-develop) el valor `"$R"` se BORRABA entero, dejando `--repo  --squash`, y el grep se comía
+# merge-develop-guard) el valor `"$R"` se BORRABA entero, dejando `--repo  --squash`, y el grep se comía
 # el FLAG SIGUIENTE (`--squash`) como si fuera el slug — el guard creía que el repo se llamaba "--squash".
 # Devuelve el slug LITERAL, o el token "OPACO" si el valor contiene una sustitución de shell ($/`/${) — un
 # --repo "$VAR" es OPACO (no sabemos a qué repo apunta), NO "otro repo": el caller debe caer al remoto del
@@ -205,6 +205,12 @@ acg_repo_explicito() {   # $1=cmd(RAW, comillas intactas) → slug LITERAL | "OP
   case "$v" in *'$'*|*'`'*) printf 'OPACO'; return 0 ;; esac
   printf '%s' "$v"
 }
+
+# ¿el --repo/-R del comando trae una VARIABLE de shell sin expandir ($VAR/${..}/$(..)/`..`)? El guard lee
+# el STRING CRUDO en PreToolUse: un valor opaco no se resuelve a un slug, la consulta de destino cae al
+# remoto local (que puede ser OTRO repo) y falla en críptico ("la consulta de base falló"). Detectarlo deja
+# emitir un mensaje ACCIONABLE ("usa el slug LITERAL") en vez del genérico. Reusa acg_repo_explicito (==OPACO).
+acg_repo_opaco() { [ "$(acg_repo_explicito "$1")" = "OPACO" ]; }   # $1=cmd(RAW) → 0=--repo trae $VAR/backtick · 1=no
 
 acg_target_remote() {   # $1=cmd  $2=payload_cwd → imprime "org/repo" | vacío
   local cmd="$1" pcwd="${2:-}" repo dir
@@ -388,18 +394,36 @@ acg_merge_menciona_base() {
 
 # ¿el comando EJECUTA una integración REAL de MR/PR (server-side), no ayuda/inspección? Reconoce el
 # subcomando REAL `glab mr (merge|accept)` / `gh pr merge`. Antídoto a H3: el viejo escape de
-# confirmar-merge-develop casaba `status|list|view` como TOKEN SUELTO en CUALQUIER parte del comando,
+# merge-develop-guard casaba `status|list|view` como TOKEN SUELTO en CUALQUIER parte del comando,
 # así que `glab mr merge 5 --yes && git status` evadía el gate (el `status` del OTRO comando encadenado
 # disparaba el escape). Aquí solo `--help`/`-h`/`--dry-run` (inspección genuina) NO cuentan como merge;
 # `glab mr list|view`/`gh pr view` tampoco disparan porque no matchean merge|accept. Sobre cmd sin
 # comillas ni --repo (H11/H13). Un `git merge` LOCAL no matchea → sigue libre.
 acg_es_merge_mr() {
-  local u; u=$(acg_sin_flag_repo "$(acg_despoja_comillas "$1")")
-  # `(\.exe)?`: en Windows el binario es `glab.exe`/`gh.exe` — sin esto el `.exe` rompía el
-  # `glab`/`gh`+espacio y ambos guards de merge (squash + confirmar-merge) quedaban ciegos (H-R9-01, hermano de B4).
-  printf '%s' "$u" | grep -qE '(glab(\.exe)?[[:space:]]+mr[[:space:]]+(merge|accept)|gh(\.exe)?[[:space:]]+pr[[:space:]]+merge)([[:space:]]|$)' || return 1
-  printf '%s' "$u" | grep -qE '(^|[[:space:]])(--help|-h|--dry-run)([[:space:]]|$)' && return 1
-  return 0
+  local u seg head
+  u=$(acg_sin_flag_repo "$(acg_despoja_comillas "$1")")
+  # TUNING mención-citada (corpus L47/L64/…, ≥5 casos): un `glab/gh … merge` solo cuenta como invocación
+  # REAL si es el COMANDO de un segmento ejecutable — NO si aparece como DATO impreso (un echo/printf que CITA
+  # el subcomando al loguear/documentar un caso — el FP recurrente) ni tras un REDIRECTOR (texto que se ESCRIBE
+  # a un archivo). Se recorre CADA segmento (parte por ; & | y newline, igual que acg_push_toca_base) y para
+  # cada uno: (1) si su comando es un emisor de texto (echo/printf/print, tras prefijos VAR=val) el subcomando
+  # es DATO → se salta; (2) se trunca en el 1er redirector (<,>,<<,>>,<<<) ANTES de buscar el subcomando — un
+  # merge REAL trae su subcomando SIEMPRE ANTES de cualquier redirección, así que truncar nunca pierde uno
+  # legítimo. El cuerpo de un heredoc a un ESCRITOR ya lo descartó acg_segmentos_ejecutables; el que alimenta a
+  # un intérprete (`bash <<EOF`) lo CONSERVÓ y sigue contando. Un `bash -c "glab mr merge"`/`eval "…"` REAL se
+  # preserva: segmentos reinyecta el contenido y su comando (bash/eval) NO es un emisor de texto.
+  # `(\.exe)?`: en Windows el binario es `glab.exe`/`gh.exe` (H-R9-01, hermano de B4).
+  while IFS= read -r seg; do
+    [ -n "$seg" ] || continue
+    printf '%s' "$seg" | grep -qE '^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*(echo|printf|print)([[:space:]]|$)' && continue
+    head=$(printf '%s' "$seg" | sed -E 's/[<>].*$//')
+    printf '%s' "$head" | grep -qE '(glab(\.exe)?[[:space:]]+mr[[:space:]]+(merge|accept)|gh(\.exe)?[[:space:]]+pr[[:space:]]+merge)([[:space:]]|$)' || continue
+    printf '%s' "$head" | grep -qE '(^|[[:space:]])(--help|-h|--dry-run)([[:space:]]|$)' && continue
+    return 0
+  done <<EOF
+$(printf '%s' "$u" | awk '{gsub(/[;&|]/,"\n")}1')
+EOF
+  return 1
 }
 
 # Corre un comando acotado por TIMEOUT (segundos). Usa timeout/gtimeout si existen (Linux, Git Bash,
@@ -448,8 +472,8 @@ acg_destino_explicito_del_comando() {   # $1=comando → rama destino | vacío
 }
 
 # Resuelve el target_branch de un MR/PR (glab/gh) para decidir el destino del merge, con:
-#  - CACHÉ por (repo,herramienta,mr-id) en TMPDIR → COMPARTIDA entre merge-squash-guard y
-#    confirmar-merge-develop: el MISMO `glab mr merge` los dispara a AMBOS ⇒ misma clave. Si un hook
+#  - CACHÉ por (repo,herramienta,mr-id) en TMPDIR → los checks de squash Y de autorización de
+#    merge-develop-guard resuelven el destino UNA vez (misma clave) en vez de 2 llamadas de red. Si un hook
 #    corre ANTES que el otro (el caso normal), el 2º relee el caché ⇒ 1 llamada de red, no 2. Ojo: NO
 #    es un lock — bajo ejecución REALMENTE simultánea ambos podrían leer el caché vacío y llamar los
 #    dos (2 llamadas idénticas, inocuo). Solo cachea un resultado NO vacío (un vacío por timeout/error
@@ -468,7 +492,8 @@ acg_destino_explicito_del_comando() {   # $1=comando → rama destino | vacío
 # (guard que asume mal, §3.4). Ahora TODO consumidor puede distinguir "no aplica" (rama resuelta que no es
 # develop/main) de "sí aplica pero no sé cuál" (DESCONOCIDO:<motivo>), y M4/M5/M6/M8 leen ese motivo en vez
 # de adivinarlo. Motivos declarados: SIN-CLI (no jq) · DIR-IRRESOLUBLE (target_dir no existe) · SIN-MRID
-# (no se ancló ningún id de MR/PR) · SLUG-OPACO (--repo "$VAR" Y el remoto local tampoco resuelve, M9) ·
+# (no se ancló ningún id de MR/PR) · REPO-VARIABLE (--repo "$VAR"/backtick sin expandir: el guard lee el string
+# CRUDO y no sabe a qué repo apunta — Y el remoto local tampoco resuelve, M9; mensaje accionable "usa el slug LITERAL") ·
 # SIN-RED (ni gh ni glab alcanzables en el PATH) · TIMEOUT (la consulta corrió y no volvió a tiempo/vacía).
 # acg__destino_de_mr_full(cmd, pcwd) → DOS líneas por stdout: (1) destino | vacío  (2) CONF, uno de
 # EXPLICITO|API|CACHE-DE-CREACION|DESCONOCIDO:<motivo>. Único sitio que TOCA la caché (evita que el
@@ -480,7 +505,7 @@ ACG_MR_TIMEOUT="${ACG_MR_TIMEOUT:-6}"
 # H1 (auditoría de ejecución 2026-09-16, ALTO, CONFIRMADO): el caché REGULAR (acg-mrdest-<key>, y sus
 # hermanos acg-mrmsg-*/acg-prlist-*) se leía SIN NINGUNA verificación — ni dueño, ni permisos, ni EDAD. El
 # fix MEDIO original (acg__cache_creacion_es_mia) endureció SOLO al hermano -creacion-* y dejó a ÉSTE, el que
-# de verdad gatea confirmar-merge-develop Y merge-squash-guard, intacto: un archivo plantado con destino
+# de verdad gatea merge-develop-guard (squash + autorización), intacto: un archivo plantado con destino
 # 'DevelopUnjordi' (o simplemente VIEJO — un MR re-apuntado de develop a main, operación normal en GitLab/
 # GitHub) se servía como si fuera la respuesta de la API de HACE UN SEGUNDO. Generalizado a
 # acg__cache_confiable (reemplaza acg__cache_creacion_es_mia, mismo criterio + TTL): mismo UID, sin permisos
@@ -521,8 +546,8 @@ acg__destino_de_mr_full() {   # $1=comando  $2=payload_cwd(opcional) → 2 líne
   # el fallback leía SIEMPRE el remoto de CLAUDE_PROJECT_DIR → resolvía el destino del repo equivocado.
   repo=$(acg_target_remote "$raw" "$pcwd")
   # M9: un --repo OPACO ($VAR) que ADEMÁS no resuelve al remoto local (repo git sin 'origin', o el dir no es
-  # un repo) es SLUG-OPACO de verdad — no "otro repo", pero tampoco uno que podamos consultar.
-  if [ -z "$repo" ] && [ "$(acg_repo_explicito "$raw")" = "OPACO" ]; then printf '\nDESCONOCIDO:SLUG-OPACO\n'; return 0; fi
+  # un repo) es REPO-VARIABLE de verdad — no "otro repo", pero tampoco uno que podamos consultar.
+  if [ -z "$repo" ] && acg_repo_opaco "$raw"; then printf '\nDESCONOCIDO:REPO-VARIABLE\n'; return 0; fi
   # La clave del caché incluye el DIR cuando el slug del remoto sale vacío: si no, dos repos distintos con
   # slug irresoluble compartían la MISMA entrada de caché y uno heredaba la base del otro.
   key=$(printf '%s' "${repo:-$dir}|${tool}|${mrid}" | sed 's/[^A-Za-z0-9]/_/g')
@@ -561,6 +586,10 @@ acg__destino_de_mr_full() {   # $1=comando  $2=payload_cwd(opcional) → 2 líne
     printf '%s\nAPI\n' "$out" > "$cache" 2>/dev/null; chmod 600 "$cache" 2>/dev/null
     cat "$cache"; return 0
   fi
+  # $R: si la consulta a la API salió vacía Y el --repo es una VARIABLE de shell sin expandir, la causa más
+  # probable es que el remoto local al que caímos (M9) NO es el repo que $R nombraría → REPO-VARIABLE (mensaje
+  # accionable "usa el slug literal"), no un "timeout" que despista. Corpus 8b3c52e (nunca promovido hasta hoy).
+  if acg_repo_opaco "$raw"; then printf '\nDESCONOCIDO:REPO-VARIABLE\n'; return 0; fi
   printf '\nDESCONOCIDO:TIMEOUT\n'
   return 0
 }
@@ -576,7 +605,7 @@ acg_destino_de_mr() { acg__destino_de_mr_full "$1" "${2:-}" | sed -n '1p'; }
 # de red). El consumidor la usa para decidir POLÍTICA (M4), no solo el valor del destino.
 acg_destino_conf() { acg__destino_de_mr_full "$1" "${2:-}" | sed -n '2p'; }
 
-# ── VALIDACIÓN DE LA CALIDAD DEL MENSAJE DE SQUASH (merge-squash-guard) ──────────────────────────────────
+# ── VALIDACIÓN DE LA CALIDAD DEL MENSAJE DE SQUASH (merge-develop-guard) ──────────────────────────────────
 # El squash-guard fuerza `--squash`, pero un squash con mensaje POBRE (título default de la plataforma
 # "Merge pull request #N", vacío o placeholder de una palabra) igual pierde el RESUMEN CURADO que exige
 # cerrar-slice. Estos helpers razonan sobre la FUENTE y la SUSTANCIA del mensaje. Pieza PURA/DETERMINISTA
@@ -655,7 +684,7 @@ acg_msg_es_pobre() {   # $1=mensaje → 0=pobre(bloquear) · 1=ok(pasar)
 
 # ── VARA DE PROFUNDIDAD/TRAZABILIDAD/ANTI-EDITORIALIZACIÓN (solo el consumidor decide a qué FUENTE aplicar) ──
 # acg_msg_es_pobre es el PISO anti-basura (aplica a LITERAL y AUTO). Las funciones de ABAJO son la VARA
-# más alta que merge-squash-guard aplica SOLO al mensaje LITERAL (el que el agente TIPEÓ inline): un título
+# más alta que merge-develop-guard aplica SOLO al mensaje LITERAL (el que el agente TIPEÓ inline): un título
 # AUTO del MR es corto por naturaleza y no lo redactó el agente aquí → no se le exige rama ni ≥12 palabras.
 # El caso `--squash-message "$(cat resumen.md)"` es UNVERIFICABLE aguas arriba → nunca llega a estas varas
 # (fail-open ya documentado): por eso endurecen SOLO el literal inline, que es el camino desaconsejado.
@@ -846,13 +875,12 @@ acg_hint_candidatos() {   # $1=json array(o vacío) $2=destino $3=mrid → bloqu
 }
 
 # ── M4 (auditoría 2026-09-15 §2.3/§3.4): UNA sola fuente para "¿hay lenguaje de release / qué dijo el
-# usuario recientemente?" — antes vivía SOLO dentro de confirmar-merge-develop.sh, así que merge-squash-guard
-# (el otro guard que decide sobre el MISMO destino desconocido) no tenía forma de ver la MISMA señal y
-# discrepaba: con un destino IRRESOLUBLE, confirmar-merge-develop podía reconocer un release legítimo por la
-# CONVERSACIÓN mientras merge-squash-guard, ciego a ella, forzaba squash sobre ESE MISMO release (§3.4,
-# "dos guards, el MISMO comando, la MISMA incógnita, CONCLUSIONES OPUESTAS"). Moverlas aquí no cambia su
-# comportamiento (son wrappers 1:1 en el consumidor original) — solo las vuelve CONSULTABLES por cualquier
-# guard de la familia, para que la incertidumbre se resuelva con la MISMA información en todos lados.
+# usuario recientemente?", viviendo en la lib. Origen: cuando el squash y la autorización eran DOS guards
+# separados (merge-squash-guard + confirmar-merge-develop, hoy consolidados en merge-develop-guard), la señal
+# vivía SOLO dentro de uno y el otro no podía verla → con un destino IRRESOLUBLE uno reconocía un release
+# legítimo por la CONVERSACIÓN mientras el otro, ciego a ella, forzaba squash sobre ESE MISMO release (§3.4,
+# "dos guards, el MISMO comando, la MISMA incógnita, CONCLUSIONES OPUESTAS"). Vive en la lib para que los
+# checks de squash y de autorización —hoy del MISMO guard— resuelvan la incertidumbre con la MISMA información.
 
 # acg_recent_intercalado($tpath) → arma la CONVERSACIÓN reciente intercalada (USUARIO:/ASISTENTE:), del más
 # viejo al más nuevo. Ancla en el 10º mensaje de USUARIO desde el final + 4 turnos de arranque (contexto del
@@ -897,7 +925,7 @@ acg_recent_intercalado() {  # $1=ruta del transcript .jsonl → imprime la conve
 # ¿Hay lenguaje EXPLÍCITO de release (release/libera/a main/a master) en ALGUNA línea 'USUARIO:' de la
 # ventana? Tokens ANCLADOS a límite de palabra (portable BSD+GNU): 'liber' no casa en "deliberada"/
 # "libertad", 'a main' no casa en "a maintenance". Fuente ÚNICA para el PISO de main de confirmar-merge-
-# develop Y (M4) para el fail-safe de destino-irresoluble de merge-squash-guard — misma pregunta, misma
+# develop Y (M4) para el fail-safe de destino-irresoluble de merge-develop-guard — misma pregunta, misma
 # respuesta, en vez de que cada guard la conteste con su propia heurística.
 acg_lexico_release() {   # $1=mensajes(intercalados USUARIO:/ASISTENTE:) → 0=SÍ hay release · 1=no
   printf '%s\n' "$1" | grep -iE '^[[:space:]]*USUARIO:' | grep -iqE '(^|[^[:alpha:]])(release|(liberar?|liberado|liberaci[oó]n|liber[eé]n?|liber[oó])([^[:alpha:]]|$)|(a|hacia) (main|master)([^[:alpha:]]|$))'
@@ -910,7 +938,7 @@ acg_lexico_release() {   # $1=mensajes(intercalados USUARIO:/ASISTENTE:) → 0=S
 # id de MR/PR (genérico, "libera esto" — sigue aplicando igual que hoy, no se puede anclar lo que no se
 # nombra) o (b) nombra justo $2. Si nombra otro id distinto, esa línea NO cuenta. Sin $2 (mrid vacío, p. ej.
 # un merge de MR SIN id que integra la rama actual) se comporta EXACTO como acg_lexico_release (no hay a qué
-# anclar). No se usa en el piso de main de confirmar-merge-develop (ese ya recibe el mrid vía $2 del propio
+# anclar). No se usa en el piso de main de merge-develop-guard (ese ya recibe el mrid vía $2 del propio
 # _juez_merge_uno con otra semántica) — es específico del fail-safe de destino-irresoluble de squash-guard.
 acg_lexico_release_para_mr() {   # $1=mensajes  $2=mrid(opcional) → 0=SÍ aplica a este MR · 1=no
   local mrid="${2:-}" linea
@@ -930,7 +958,7 @@ EOF
 }
 
 # H2 (auditoría semántica 2026-09-16, ALTO, CONFIRMADO): señal de RIESGO amplia para el piso M5-bis de
-# confirmar-merge-develop — a diferencia de acg_lexico_release (que exige la señal en una línea USUARIO real,
+# merge-develop-guard — a diferencia de acg_lexico_release (que exige la señal en una línea USUARIO real,
 # porque SOLO el usuario autoriza), esta mira CUALQUIER rol (USUARIO o ASISTENTE): incluso el propio
 # asistente proponiendo un release, o una mención de pasada de 'main'/'master', basta para NO tratar un
 # destino DESCONOCIDO como "inequívocamente develop". El piso M5-bis solo se salta cuando esta función NO

@@ -1,8 +1,9 @@
-// 06 — Integrar una rama a develop/main: los 3 git-guards de la ruta de MERGE (cortex)  ·  FUENTE editable (.dot)
+// 06 — Integrar una rama a develop/main: los 2 git-guards de la ruta de MERGE (cortex)  ·  FUENTE editable (.dot)
 // Render:  dot -Tsvg 06-integrar-rama-a-developmain.dot -o 06-integrar-rama-a-developmain.svg
-// ZOOM del subconjunto de MERGE del fan-out de 9 hooks (raíz común en 03 · CONVENCIONES §6):
-// git-branch-guard → merge-squash-guard → confirmar-merge-develop. Reconstruido 2026-08-07 desde el CÓDIGO real
-// (brain/hooks/git-branch-guard.sh, merge-squash-guard.sh, confirmar-merge-develop.sh + libs analizar-comando-git.sh
+// ZOOM del subconjunto de MERGE del fan-out de 8 hooks (raíz común en 03 · CONVENCIONES §6):
+// git-branch-guard → merge-develop-guard (fase squash → fase autorización, MISMO proceso — consolida,
+// 2026-09-17, a los antiguos merge-squash-guard + confirmar-merge-develop). Reconstruido 2026-08-07 desde
+// el CÓDIGO real (brain/hooks/git-branch-guard.sh, merge-develop-guard.sh + libs analizar-comando-git.sh
 // y juez-comun.sh). Re-canoniza el huérfano 03-integrar-rama-a-developmain.svg (viejo «②», sin .dot ni leyenda).
 digraph flujos {
   graph [bgcolor="#1b1712", rankdir=TB, fontname="Helvetica", splines=true,
@@ -19,11 +20,10 @@ digraph flujos {
       <table border="0" cellborder="1" cellspacing="0" cellpadding="4" color="#5fa89e" bgcolor="#1b1712">
         <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>🔒 Hooks Forzosos</b></font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🚧 git-branch-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">push/merge a develop·main → denegado</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔗 merge-squash-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">MR a develop sin --squash → denegado</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔗 merge-develop-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">MR a develop sin --squash o sin tu OK → denegado; a main exige OK súper-explícito</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🕵️ secret-scan</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">commit/push con un secreto → denegado</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">💸 delegacion-gate</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">delegar al llegar al 90% de tu ventana 5h → pide tu OK</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🛑 limite-gasto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">sin ventana 5h Y sin overage (ambos agotados) → freno duro</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">✋ confirmar-merge-develop</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">merge sin tu OK → denegado</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">✅ dod-verificar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cierre sin evidencia/OK → denegado; claim visual a ciegas (sin ver la pantalla) también</font></td></tr>
         <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>🔔 Automático</b></font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📊 recordar-dashboard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">en el push recuerda dashboard + doc=realidad (README/docs) — cierre del slice</font></td></tr>
@@ -92,12 +92,12 @@ digraph flujos {
 
   // ───────────────────────────────────── EL FLUJO ─────────────────────────────────────
   subgraph cluster_f0 {
-    label="06 · Integrar una rama a develop/main   (ZOOM de la ruta de MERGE — raíz común de 9 hooks en 03; aquí 3 pueden DENY —git-branch-guard · merge-squash-guard · confirmar-merge-develop— EVALUADOS EN PARALELO sobre el MISMO comando: el árbol de abajo es la AGREGACIÓN lógica deny-gana, NO el orden real de ejecución — §6)";
+    label="06 · Integrar una rama a develop/main   (ZOOM de la ruta de MERGE — raíz común de 8 hooks en 03; aquí 2 pueden DENY —git-branch-guard · merge-develop-guard— EVALUADOS EN PARALELO sobre el MISMO comando: el árbol de abajo es la AGREGACIÓN lógica deny-gana, NO el orden real de ejecución — §6)";
     fontname="Times"; fontsize=14; fontcolor="#5fa89e";
     color="#5fa89e"; penwidth=1.6; style="rounded"; bgcolor="#1b1712";
 
     CMD [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
-         label="intento de integrar (comando Bash con git)\n`git push` · `glab mr merge` · `gh pr merge`\n(PreToolUse/Bash → los 8 hooks corren EN PARALELO; ver 03 —7 inspeccionan git, no-bypass-deploy no-opea—.\nAquí hacemos ZOOM en los 3 que gobiernan un MERGE a base)\nNOTA: los 3 rombos de abajo EVALÚAN el MISMO comando EN PARALELO (sin despachador);\nla cadena de rombos es la AGREGACIÓN lógica deny-gana, NO orden de ejecución"];
+         label="intento de integrar (comando Bash con git)\n`git push` · `glab mr merge` · `gh pr merge`\n(PreToolUse/Bash → los 7 hooks corren EN PARALELO; ver 03 —6 inspeccionan git, no-bypass-deploy no-opea—.\nAquí hacemos ZOOM en los 2 que gobiernan un MERGE a base)\nNOTA: los 2 rombos de abajo EVALÚAN el MISMO comando EN PARALELO (sin despachador);\nla cadena de rombos es la AGREGACIÓN lógica deny-gana, NO orden de ejecución"];
 
     // ── git-branch-guard ──
     GBG [shape=diamond, fillcolor="#2b2622", color="#d97757",
@@ -105,23 +105,23 @@ digraph flujos {
     GBG_D [color="#c0392b", penwidth=2,
            label="🔴 DENY — «no se hace push/merge directo a develop/main».\nHaz ramita feat/… → commit → push ramita → MR. A main: release\ndeliberado, con OK SÚPER-explícito por CLI. NO reintentes.\n(M8, auditoría 2026-09-15: se retiró 'web de GitLab' como escape — norma anti-vein-popper)"];
 
-    // ── merge-squash-guard ──
+    // ── merge-develop-guard, fase 1 (squash) ──
     MSG [shape=diamond, fillcolor="#2b2622", color="#d97757",
-         label="🔒🔗 merge-squash-guard\n¿es `glab mr merge`/`gh pr merge` REAL?\n→ resuelve el DESTINO del MR (lib acg_destino_de_mr; caché por MR-id; timeout ~6s)\ndestino=develop bifurca por SIN/CON --squash — main/personal/no-merge pasan libres"];
+         label="🔒🔗 merge-develop-guard — fase 1 (squash)\n¿es `glab mr merge`/`gh pr merge` REAL?\n→ resuelve el DESTINO del MR (lib acg_destino_de_mr; caché por MR-id; timeout ~6s)\ndestino=develop bifurca por SIN/CON --squash — main/personal/no-merge pasan libres"];
     MSG_D [color="#c0392b", penwidth=2,
-           label="🔴 DENY si destino = develop Y SIN --squash: integrar a develop SQUASHEA a 1 commit limpio/slice.\nRehaz con --squash --squash-message «resumen curado».\nEXENTO: destino main (release) → SIN squash (conserva historia).\nFAIL-SAFE: destino INDETERMINADO y no es release EXPLÍCITO → mantiene la exigencia de squash.\n(M4, auditoría 2026-09-15: 'release explícito' ahora también lee la CONVERSACIÓN reciente,\nno solo el texto del comando — misma señal que el piso de main de confirmar-merge-develop)"];
+           label="🔴 DENY si destino = develop Y SIN --squash: integrar a develop SQUASHEA a 1 commit limpio/slice.\nRehaz con --squash --squash-message «resumen curado».\nEXENTO: destino main (release) → SIN squash (conserva historia).\nFAIL-SAFE: destino INDETERMINADO y no es release EXPLÍCITO → mantiene la exigencia de squash.\n(M4, auditoría 2026-09-15: 'release explícito' ahora también lee la CONVERSACIÓN reciente,\nno solo el texto del comando — misma señal que el piso de main de la fase 2, abajo)"];
 
-    // ── merge-squash-guard, 2ª compuerta: CALIDAD del mensaje (CON --squash, destino develop) ──
+    // ── merge-develop-guard, fase 1, 2ª compuerta: CALIDAD del mensaje (CON --squash, destino develop) ──
     MSGQ [shape=diamond, fillcolor="#2b2622", color="#d97757",
-          label="🔒🔗 merge-squash-guard — calidad del squash-message\n(destino=develop Y CON --squash: --squash está garantizado, pero el MENSAJE puede ser basura)\n¿mensaje POBRE (título default «Merge pull request #N», vacío, placeholder 1-palabra)\no EDITORIALIZA el proceso («se decidió», «tras analizar»)\no (solo si es LITERAL, tipeado inline, Y gh SIN --body separado) <12 palabras o sin traza «Rama:/MR:»?\nUNVERIFICABLE ($()/--fill/--body-file) o API no resolvió el título AUTO → PASA (fail-open)\n(M8, auditoría 2026-09-15: con gh, un --subject corto CON --body separado —aunque opaco— NO\nfuerza profundidad/traza sobre el título: la convención pone el resumen curado en --body)"];
+          label="🔒🔗 merge-develop-guard — fase 1, calidad del squash-message\n(destino=develop Y CON --squash: --squash está garantizado, pero el MENSAJE puede ser basura)\n¿mensaje POBRE (título default «Merge pull request #N», vacío, placeholder 1-palabra)\no EDITORIALIZA el proceso («se decidió», «tras analizar»)\no (solo si es LITERAL, tipeado inline, Y gh SIN --body separado) <12 palabras o sin traza «Rama:/MR:»?\nUNVERIFICABLE ($()/--fill/--body-file) o API no resolvió el título AUTO → PASA (fail-open)\n(M8, auditoría 2026-09-15: con gh, un --subject corto CON --body separado —aunque opaco— NO\nfuerza profundidad/traza sobre el título: la convención pone el resumen curado en --body)"];
     MSGQ_D [color="#c0392b", penwidth=2,
             label="🔴 DENY — trae --squash pero el MENSAJE es pobre/editorializa/superficial/sin traza:\nno basta el flag, el squash-message es el resumen del slice.\nRehaz con --squash-message «resumen curado en prosa + Rama:/MR: <id>».\n(WARN no-bloqueante aparte, si sustancioso pero narra lista de acciones «se cambió…, se corrigió…»: sugiere reescribir, PASA igual.)"];
 
-    // ── confirmar-merge-develop (juez-LLM) ──
+    // ── merge-develop-guard, fase 2 (autorización, juez-LLM) — MISMO proceso, continúa tras la fase 1 ──
     CMD_G [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="🔒✋ confirmar-merge-develop\n¿es un merge MR REAL Y el repo tiene la marca .claude/repo-compartido?\n(repos personales / ramas Develop*·epic·integracion → pasan LIBRES)\n→ DESTINO: main = RELEASE · develop = normal"];
+           label="🔒✋ merge-develop-guard — fase 2 (autorización)\n¿el repo tiene la marca .claude/repo-compartido?\n(repos personales / ramas Develop*·epic·integracion → pasan LIBRES)\n→ DESTINO: main = RELEASE · develop = normal"];
     CMD_OK [shape=diamond, fillcolor="#2b2622", color="#d97757",
-            label="¿hay OK EXPRESO del usuario para ESTE cierre?\njuez-LLM (Haiku vía juez-comun.sh · curl→api.anthropic.com · token OAuth, NO `claude -p`)\nLEE la conversación intercalada USUARIO/ASISTENTE (OKs anafóricos: el asistente propone → el usuario acepta)\n· M3: acg_destino_conf declara EXPLICITO/API/CACHE-DE-CREACION/DESCONOCIDO:<motivo> — si es de\n  ENTORNO (sin jq/gh/glab/dir), el mensaje dice la CAUSA real: 'repetir la autorización NO destraba esto'\n· o un grant DURABLE vigente en autorizaciones-vigentes.local.md (scope=merge-develop, con vencimiento) —\n  SOLO con destino CONFIRMADO develop (M6 lo había ampliado a destino VACÍO bajo una cerca de léxico-\n  release; CRÍTICO-3, auditoría FMEA 2026-09-16, lo REVIRTIÓ por A/B: colaba un release a main sin gate)\n· PISO DETERMINISTA de main — M5: main O VACÍO/DESCONOCIDO + ALLOW SIN lenguaje de release\n  del USUARIO → DENY (antes el piso solo corría con destino main CONFIRMADO); M5-bis (auditoría FMEA\n  2026-09-16) abre una puerta ANGOSTA con destino VACÍO — 'develop' nombrado EXPLÍCITO por el USUARIO Y\n  ninguna línea (cualquier rol) con main/release/promover — verificado en BASH, no por la palabra del LLM\n· sin token OAuth / red / timeout / respuesta ininteligible → UNAVAILABLE → DENY conservador (fail-CLOSED)\n· SIN jq Y el cmd CRUDO parece mr/pr merge → DENY inmediato «FRENO (sin jq)…» (fail-CLOSED, antes de\n  token/juez); git-branch-guard SIN jq ya no bloquea de más — extrae «command» del JSON (nunca\n  «description») y logra PARIDAD con el camino con-jq (H1, auditoría FMEA 2026-09-16); merge-squash-guard\n  y ESTE guard siguen SIEMPRE cerrados sin jq (sin precisión de texto posible: el destino sale de la API)"];
+            label="¿hay OK EXPRESO del usuario para ESTE cierre?\njuez-LLM (Haiku vía juez-comun.sh · curl→api.anthropic.com · token OAuth, NO `claude -p`)\nLEE la conversación intercalada USUARIO/ASISTENTE (OKs anafóricos: el asistente propone → el usuario acepta)\n· M3: acg_destino_conf declara EXPLICITO/API/CACHE-DE-CREACION/DESCONOCIDO:<motivo> — si es de\n  ENTORNO (sin jq/gh/glab/dir), el mensaje dice la CAUSA real: 'repetir la autorización NO destraba esto'\n· o un grant DURABLE vigente en autorizaciones-vigentes.local.md (scope=merge-develop, con vencimiento) —\n  SOLO con destino CONFIRMADO develop (M6 lo había ampliado a destino VACÍO bajo una cerca de léxico-\n  release; CRÍTICO-3, auditoría FMEA 2026-09-16, lo REVIRTIÓ por A/B: colaba un release a main sin gate)\n· PISO DETERMINISTA de main — M5: main O VACÍO/DESCONOCIDO + ALLOW SIN lenguaje de release\n  del USUARIO → DENY (antes el piso solo corría con destino main CONFIRMADO); M5-bis (auditoría FMEA\n  2026-09-16) abre una puerta ANGOSTA con destino VACÍO — 'develop' nombrado EXPLÍCITO por el USUARIO Y\n  ninguna línea (cualquier rol) con main/release/promover — verificado en BASH, no por la palabra del LLM\n· sin token OAuth / red / timeout / respuesta ininteligible → UNAVAILABLE → DENY conservador (fail-CLOSED)\n· SIN jq Y el cmd CRUDO parece mr/pr merge → DENY inmediato «FRENO (sin jq)…» (fail-CLOSED, antes de\n  token/juez); git-branch-guard SIN jq ya no bloquea de más — extrae «command» del JSON (nunca\n  «description») y logra PARIDAD con el camino con-jq (H1, auditoría FMEA 2026-09-16); la fase 1 (squash)\n  y esta fase 2 (mismo proceso) siguen SIEMPRE cerradas sin jq (sin precisión de texto posible: el destino sale de la API)"];
     CMD_D [color="#c0392b", penwidth=2,
            label="🔴 DENY (definición de LISTO en el punto del merge):\nintegrar a develop/main exige tu OK EXPRESO — cítalo y reintenta.\nverde técnico ≠ LISTO; «sigue/avanza» NO autoriza. A main, un «mergea»\ngenérico NO basta: pide lenguaje SUPER-explícito («release / hasta main / libera»).\nMientras: itera en tu mini-develop con `git merge` LOCAL (sin candado)."];
 

@@ -1,23 +1,32 @@
 #!/usr/bin/env bash
-# confirmar-merge-develop.sh — PreToolUse/Bash: EXIGE confirmación EXPRESA del usuario antes de
-# INTEGRAR a develop/main por MR. Hace cumplir, en el punto exacto del merge, la definición de LISTO.
+# merge-develop-guard.sh — PreToolUse/Bash: CANDADO ÚNICO del punto de merge de un MR/PR a develop/main.
+# CONSOLIDA (2026-09-17) los guards antes separados `merge-squash-guard` (exigía --squash + calidad del
+# mensaje) y `confirmar-merge-develop` (exigía autorización EXPRESA — la definición de LISTO). Un solo
+# proceso, una sola resolución del destino (1 llamada de red, no 2), la UNIÓN de todos sus checks — ninguno
+# se suelta. ESCALERA fail-fast barato→caro:
+#   1. detecta merge-a-MR REAL (acg_es_merge_mr) — UNA vez; `git merge` local / inspección → libre.
+#   2. resuelve el DESTINO (acg_destino_de_mr) — UNA vez, compartido por todos los checks.
+#   3. CHECKS DETERMINISTAS (sin red, sin LLM):
+#        · SQUASH — a develop (o destino irresoluble sin señal de release) EXIGE --squash + --remove-source-
+#          branch/--delete-branch + un mensaje con sustancia y trazabilidad. Aplica a TODO repo (como el viejo
+#          merge-squash-guard: no gateaba por la marca de compartido). Antídoto al histórico ruidoso.
+#        · --auto/--auto-merge A develop/main → DENY: integrar al develop COMPARTIDO / promover a main es
+#          DELIBERADO, jamás en auto-piloto. En tu mini/rama personal el auto-merge SÍ es libre.
+#   4. JUEZ de AUTORIZACIÓN (LLM, target-aware) — al FINAL (lo caro): SOLO en repos COMPARTIDOS (marca
+#      `.claude/repo-compartido`) y solo para develop/main. BLOQUEA salvo (a) autorización EXPRESA del usuario
+#      para ESTE merge en el contexto reciente (la juzga un LLM con veto de cita verificada), o (b) una
+#      AUTORIZACIÓN DURABLE vigente en disco (.claude/memory/autorizaciones-vigentes.local.md, scope=
+#      merge-develop; la escribe turno-nocturno; NUNCA cubre main). main = release-only (OK SUPER-explícito).
 #
-# Modelo "MINI-DEVELOP-por-dev" (acordado con el usuario):
-#   - Cada dev trabaja en su rama personal de integración `Develop<Usuario>` (p. ej.
-#     `DevelopAna`, `DevelopBeto`, `carlos`…): sus ramitas de feature se mergean AHÍ de forma CONTINUA y sin
-#     drama — este candado NO las intercepta. Igual las ramas `epic/*`, `integracion/*` y demás.
-#   - El ÚNICO cruce que pasa por este candado es integrar al `develop` COMPARTIDO (o promover a
-#     `main`) vía MR (`glab mr merge|accept` / `gh pr merge`, incluido armar `--auto-merge`):
-#     BLOQUEA salvo que haya (a) autorización EXPRESA del usuario para ESTE merge en el contexto
-#     reciente (la juzga un LLM, ver abajo), o (b) una AUTORIZACIÓN DURABLE vigente en disco
-#     (.claude/memory/autorizaciones-vigentes.local.md, scope=merge-develop con vencimiento — la
-#     escribe el skill turno-nocturno al recibir un OK blanket del usuario; sobrevive compactaciones).
-#     La vía (b) JAMÁS cubre releases a main.
+# Modelo "MINI-DEVELOP-por-dev": cada dev itera en su rama personal `Develop<Usuario>` (o `epic/*`,
+# `integracion/*`, `feat/*`…) con merge CONTINUO y sin drama — el juez NO las intercepta; el SQUASH sí aplica
+# cuando integras a `develop`. `git merge` LOCAL a cualquier rama nunca se intercepta. Fail-safe sin jq/lib.
 #
-# ALCANCE: SOLO repos COMPARTIDOS (marca `.claude/repo-compartido`, viaja por git). En repos
-# personales/solo (sin la marca) NO gatea nada → cero fricción ahí; ese caso lo cuidan git-branch-guard
-# (no push directo a develop/main) + merge-squash-guard. `git merge` LOCAL a cualquier rama tampoco se
-# intercepta. Complementa a git-branch-guard y merge-squash-guard (exige --squash a develop). Fail-open sin jq.
+# COBERTURA (decisión unjordi 2026-09-17): canónica — reconoce el subcomando REAL `glab mr merge|accept` /
+# `gh pr merge`. NO se agrega pattern-matching de `gh api`/`glab api` (mergear vía API cruda): es un residual
+# ACEPTADO con backstop server-side (ramas protegidas develop/main en el forge) — la línea de defensa dura de
+# ese hueco es el servidor, no un guard que adivine por-forge. git-branch-guard NO entra aquí (otra acción: el
+# push directo a base) — sigue vivo aparte, sobre la MISMA lib analizar-comando-git.sh.
 set -u
 
 # Lib COMÚN de los jueces (retrieval de token PORTABLE login-activo-first + curl 401-aware + parseo + estados
@@ -266,46 +275,31 @@ _juez_merge() {   # $1=destino  $2=mrid  $3=mensajes  $4=hint(opcional) → impr
 
 # dedupe doble-cableado: si soy la copia del REPO y la copia GLOBAL existe, cedo (la global maneja
 # esta invocación) → evita disparo doble (y doble llamada de red) en máquina con el cerebro global;
-# en un clon SIN bootstrap la del repo sí corre. NO-debilitante: sigue exigiendo el OK igual.
+# en un clon SIN bootstrap la del repo sí corre. NO-debilitante: sigue exigiendo squash + OK igual.
 case "$0" in "$HOME/.claude/hooks/"*) : ;; *) [ -f "$HOME/.claude/hooks/$(basename "$0")" ] && exit 0 ;; esac
 input=$(cat 2>/dev/null || true)
-# A3 (fail-SAFE, auditoría 2026-08-06): sin jq NO puedo parsear el input para gatear — pero un comando que
-# PARECE un merge de MR NO debe pasar SIN gate (evasión asimétrica: sin token = DENY, sin jq = ALLOW; un
-# agente evadía el candado con un PATH sin jq). Grep CRUDO del input por el subcomando de merge; si aparece
-# → DENY (más ESTRICTO, no afloja nada). Si NO parece merge → exit 0 (no sobre-bloquea comandos normales).
-# La respuesta DENY se arma con printf (no jq) porque justamente no hay jq; el mensaje es un literal fijo.
+
+# ── SIN jq (fail-SAFE, UNIÓN de los dos guards consolidados): sin jq no puedo parsear el comando ni resolver
+#    el destino real del MR (sale de la API, nunca del texto) — un merge que NO puedo verificar (ni --squash ni
+#    la autorización) NO se cuela (evasión asimétrica que ambos guards ya cerraban con el mismo espíritu). Grep
+#    CRUDO del input; si parece merge → DENY; si no → exit 0. Escape EXPLÍCITO y auditado para tu mini personal
+#    (se exporta en el ENTORNO de la sesión, no como prefijo del comando — proceso aparte, no auto-servible).
 if ! command -v jq >/dev/null 2>&1; then
-  # ALTO-2 (auditoría FMEA 2026-09-16 §1.4, CONFIRMADO): sin jq NO hay forma de leer la respuesta de la API
-  # para saber si el destino real es develop o main — a diferencia del push (git-branch-guard), aquí no hay
-  # precisión de texto posible (el destino NUNCA está en el comando, se resuelve por API). Bloquear TODO
-  # merge sin distinguir tu mini-develop personal de develop/main deja al operador SIN CARRIL. Escape
-  # EXPLÍCITO y auditado (mismo espíritu que CLAUDE_SKIP_SECRET_SCAN): el operador YA confirmó que, sin jq,
-  # ESTE merge es a su rama personal — nunca un bypass silencioso, el humano manda.
   [ "${CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL:-}" = "1" ] && exit 0
   if printf '%s' "$input" | grep -qE '(mr[[:space:]]+(merge|accept)|pr[[:space:]]+merge)'; then
-    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"FRENO (sin jq): no puedo verificar la autorización de este merge sin jq instalado, y un merge a develop/main NO pasa sin gate (fail-safe). Si esto es TU PROPIA rama personal/mini-develop y estás seguro de que no toca develop/main, exporta CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 para esta sesión y reintenta — o instala jq (macOS: brew install jq · Debian/Ubuntu: apt install jq · Windows: winget install jqlang.jq)."}}'
+    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"FRENO (sin jq): sin jq no puedo verificar ni el --squash ni la autorización de este merge, y un merge a develop/main NO pasa sin gate (fail-safe, no afloja nada). Si esto es TU PROPIA rama personal/mini-develop y estás seguro de que no toca develop/main, exporta CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 en el ENTORNO de la sesión (no como prefijo del comando) y reintenta — o instala jq (macOS: brew install jq · Debian/Ubuntu: apt install jq · Windows: winget install jqlang.jq)."}}'
   fi
   exit 0
 fi
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
 [ -z "$cmd" ] && exit 0
-# PRE-FILTRO barato (superset conservador, mismo espíritu que proteger-arbol.sh): lo que este guard
-# vigila (integrar un MR/PR real) requiere 'glab'/'gh' en el comando crudo → sin eso, early-exit ANTES
-# de source-lib y del juez LLM. NO toca nada del juez; jamás salta un caso real.
+# PRE-FILTRO barato (superset conservador): lo que este guard vigila requiere 'glab'/'gh' en el comando crudo.
 case "$cmd" in *glab*|*gh*) : ;; *) exit 0 ;; esac
-# cwd del payload = working dir REAL del comando (puede diferir de CLAUDE_PROJECT_DIR). Señal para resolver
-# el repo/destino y la marca compartido/personal del repo que el MR REALMENTE toca. Ausente → vacío → cae a
-# CLAUDE_PROJECT_DIR (conducta de hoy).
 pcwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
+tpath=$(printf '%s' "$input" | jq -r '.transcript_path // empty' 2>/dev/null)
 
-# CRÍTICO-1 (auditoría FMEA 2026-09-16 §1.1, CONFIRMADO): sourcear un archivo con error de SINTAXIS mata el
-# proceso ENTERO con exit 1 — que el harness trata como NO-bloqueante (silencio total: el guard desaparece,
-# el merge PASA sin gate). H7 (auditoría semántica 2026-09-16, BAJO): la sonda ORIGINAL sourceaba en un
-# SUBSHELL y trataba CUALQUIER exit≠0 como "lib rota" — pero ese código es el del ÚLTIMO comando de la lib,
-# no un diagnóstico de sintaxis (un `false` final en una lib PERFECTAMENTE válida bastaba para tumbar el
-# guard a deny-total). `bash -n` ES el veredicto de sintaxis (solo parsea, nunca ejecuta). Snippet IDÉNTICO
-# en los 5 guards (git-branch-guard/merge-squash-guard/confirmar-merge-develop/secret-scan/proteger-arbol),
-# a propósito FUERA de la lib (si la lib está rota, sourcear otro archivo para blindarse de ella no sirve).
+# source-lib con bash -n guard (fail-safe si la lib está rota) — snippet IDÉNTICO en los git-guards, a
+# propósito FUERA de la lib (si la lib está rota, sourcear otro archivo para blindarse de ella no sirve).
 _ACGLIB="$(dirname "$0")/analizar-comando-git.sh"
 if [ -f "$_ACGLIB" ] && bash -n "$_ACGLIB" >/dev/null 2>&1; then
   # shellcheck source=analizar-comando-git.sh
@@ -313,114 +307,185 @@ if [ -f "$_ACGLIB" ] && bash -n "$_ACGLIB" >/dev/null 2>&1; then
 else
   printf '%s: analizar-comando-git.sh no cargó (ausente o con error de sintaxis) -- este guard queda SIN su lógica de detección; `bash -n "%s"` localiza el error.\n' "$(basename "$0")" "$_ACGLIB" >&2
   if printf '%s' "$cmd" | grep -qE 'merge|accept'; then
-    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"FRENO (lib rota): analizar-comando-git.sh no cargó (error de sintaxis) y sin ella no puedo verificar la autorización de este merge -- fail-safe, no afloja nada. Repara la lib (bash -n analizar-comando-git.sh la localiza) y reintenta; mientras tanto, un merge a develop/main NO pasa sin gate."}}'
+    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"FRENO (lib rota): analizar-comando-git.sh no cargó (error de sintaxis) y sin ella no puedo verificar ni el squash ni la autorización de este merge -- fail-safe, no afloja nada. Repara la lib (bash -n analizar-comando-git.sh la localiza) y reintenta; un merge a develop/main NO pasa sin gate."}}'
   fi
   exit 0
 fi
 
-# ¿Es una INTEGRACIÓN server-side de MR/PR REAL? (git merge local NO cuenta → iterar en integración es
-# libre; ayuda/inspección tampoco). La lib ancla el reconocimiento al subcomando real → un token suelto
-# de OTRO comando encadenado (`glab mr merge 5 --yes && git status`) YA NO evade el gate (H3).
+_deny_json() { jq -n --arg r "$1" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'; }
+# _salir_ok: cierra el guard SIN deny, emitiendo un WARN diferido (si lo hubo) como additionalContext. La
+# consolidación no puede emitir 2 decisiones (2 hooks eran 2 salidas); el WARN no-bloqueante del mensaje del
+# squash se DIFIERE a la salida final para no perderse ni pisar la decisión.
+_salir_ok() {
+  if [ -n "${_warn_ctx:-}" ]; then jq -n --arg c "$_warn_ctx" '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$c}}'; fi
+  exit 0
+}
+
+# ── PASO 1 — ¿es una integración REAL de MR/PR server-side? `git merge` local / inspección / ayuda → libre.
 acg_es_merge_mr "$cmd" || exit 0
 
-# ALCANCE: solo repos COMPARTIDOS (marca `.claude/repo-compartido`, viaja por git). CROSS-REPO (auditoría
-# 2026-08-06, incidente C1/C2): la marca se resuelve del repo DESTINO del MR (TARGET_ROOT), NO de
-# CLAUDE_PROJECT_DIR (el repo de la SESIÓN). Antes, un `--repo <compartido>` lanzado desde una sesión en un
-# repo PERSONAL (sin marca) escapaba el candado (FN de ALTA consecuencia: integración a un develop compartido
-# SIN OK del usuario), y a la inversa gateaba de más.
-#
-# TARGET_ROOT = raíz del repo del dir objetivo (acg_target_dir: -C > cd > cwd > CLAUDE_PROJECT_DIR). REGLA
-# DURA (§3 práctica): SALTAR el gate (exit 0) SOLO si se confirma POSITIVAMENTE que el destino es PERSONAL;
-# CUALQUIER incertidumbre ⇒ GATEA (fricción de más = molesto pero seguro; saltar de más = brecha). Casos:
-#   · --repo/-R EXPLÍCITO con un slug LITERAL que NO nombra el mismo repo que el dir local (o no resoluble)
-#     → OTRO repo, no puedo leer su marca local → INCIERTO ⇒ GATEA (cierra el FN gemelo `--repo
-#     <compartido>` desde sesión personal).
-#   · --repo/-R OPACO (M9, auditoría 2026-09-15: el valor es una sustitución de shell — `--repo "$R"` — no
-#     un slug que podamos comparar) → NO es "otro repo": se trata como si no hubiera --repo, y decide la
-#     marca LOCAL de TARGET_ROOT (lo que el shell habría resuelto de todos modos, ya que $R no es legible
-#     aquí en PreToolUse). Antes `acg_despoja_comillas` BORRABA el valor entrecomillado y el grep siguiente
-#     capturaba el FLAG SIGUIENTE (p. ej. `--squash`) como si fuera el slug del repo — bug de mecanismo, no
-#     de incertidumbre genuina (ver acg_repo_explicito).
-#   · sin --repo (o --repo == el propio dir local): la marca LOCAL de TARGET_ROOT es autoritativa →
-#       marca presente → COMPARTIDO (gatea) · sin marca + repo git VÁLIDO → PERSONAL confirmado (exit 0) ·
-#       TARGET_ROOT no resoluble a un repo git → INCIERTO ⇒ GATEA.
+# ── PASO 2 — DESTINO: UNA sola resolución, compartida por TODOS los checks (caché por MR-id + timeout interno
+#    → 1 llamada de red, no 2 como cuando eran dos hooks). Vacío = irresoluble (el fail-policy lo aplica cada check).
+destino=$(acg_destino_de_mr "$cmd" "$pcwd")
+
+# Comando-ejemplo tool-aware para rehacer con squash + mensaje curado (gh vs glab). Fuente ÚNICA de los deny de squash.
+_rehaz_sugerido() {
+  if printf '%s' "$1" | grep -qE 'gh(\.exe)?[[:space:]]+pr'; then
+    printf '%s' 'gh pr merge <id> --squash --delete-branch --subject "<título curado>" --body "$(cat resumen.md)"'
+  else
+    printf '%s' 'glab mr merge <id> --squash --squash-message "$(cat resumen.md)" --remove-source-branch --yes'
+  fi
+}
+# ¿release explícito? — en el cmd (main/release) o anclado al mrid en la conversación reciente. Sin comillas ni --repo.
+_es_release_explicito() {
+  local u mrid; u=$(acg_sin_flag_repo "$(acg_despoja_comillas "$1")")
+  printf '%s' "$u" | grep -qiE '[[:space:]:/=](main)([[:space:]]|$)|\brelease\b' && return 0
+  mrid=$(acg_mrid "$u")
+  acg_lexico_release_para_mr "$(acg_recent_intercalado "$tpath")" "$mrid"
+}
+
+# ── PASO 3a — CHECK DETERMINISTA: SQUASH (heredado de merge-squash-guard). Develop-scoped + fail-safe cuando el
+#    destino es irresoluble (exige squash salvo release explícito). Aplica a TODO repo (el viejo squash-guard
+#    NUNCA gateó por la marca de compartido) → corre ANTES del scoping de compartido. VIOLACIÓN → DENY (fail-fast).
+SQUASH_RE='(--squash([[:space:]]|=|$)|(^|[[:space:]])-s([[:space:]]|$))'
+_sq_aplica=0
+if [ "$destino" = develop ]; then _sq_aplica=1
+elif [ -z "$destino" ]; then _es_release_explicito "$cmd" || _sq_aplica=1
+fi
+if [ "$_sq_aplica" = 1 ]; then
+  _cmd_sqflag=$(acg_despoja_comillas "$cmd")   # H6: sobre el cmd DESPOJADO — una mención citada de "--squash" no cuenta como el flag
+  if printf '%s' "$_cmd_sqflag" | grep -qE "$SQUASH_RE"; then
+    # TIENE --squash. Las varas de CALIDAD (borrar rama, sustancia, traza) son develop-scoped: solo si el
+    # destino RESOLVIÓ a develop. Un irresoluble-con-squash pasa la calidad (fail-open del concern más suave).
+    if [ "$destino" = develop ]; then
+      _rehaz=$(_rehaz_sugerido "$cmd")
+      # A-2: EXIGE borrar la rama de origen (--remove-source-branch glab / --delete-branch gh). Sobre cmd DESPOJADO (H6).
+      _cmd_del=$(acg_despoja_comillas "$cmd")
+      if printf '%s' "$_cmd_del" | grep -qE 'gh(\.exe)?[[:space:]]+pr'; then
+        _flag_del='(--delete-branch([[:space:]]|=|$)|(^|[[:space:]])-d([[:space:]]|$))'; _flag_nom='--delete-branch'
+      else
+        _flag_del='(--remove-source-branch([[:space:]]|=|$)|(^|[[:space:]])-d([[:space:]]|$))'; _flag_nom='--remove-source-branch'
+      fi
+      if ! printf '%s' "$_cmd_del" | grep -qE "$_flag_del"; then
+        _deny_json "FLUJO DE GIT (ley interna): al integrar a develop, la rama de origen se BORRA en el mismo acto — falta $_flag_nom. Sin él la rama queda colgando en el remoto y nadie la vuelve a mirar: de ahí sale la acumulación de ramas viejas en origin. Rehaz el merge con: $_rehaz  — (a main/release y a tus ramas personales no se te exige nada de esto). Receta completa: brain/skills/cerrar-slice/cerrar-slice.sh."
+        exit 0
+      fi
+      # A-3: si el resumen vive en un archivo LEGIBLE (--body-file / $(cat …)), exige la traza rama→commit igual que inline.
+      _cuerpo=$(acg_cuerpo_resoluble "$cmd" "$pcwd")
+      if [ -n "$_cuerpo" ] && acg_msg_falta_traza "$_cuerpo"; then
+        _deny_json "FLUJO DE GIT (ley interna): al resumen del squash le falta TRAZABILIDAD rama→commit: incluye \"Rama: <feat/…>\" y \"MR/PR: !<id>\" (o #<id>). El squash borra el merge-commit de la plataforma que traía el #id → sin esto, 'git log develop' no dice de qué ramita salió el commit. (El resumen se leyó del archivo que cita el comando.)"
+        exit 0
+      fi
+      # ¿de dónde sale el subject? LITERAL (verifica directo) · AUTO (título del MR/PR vía API) · UNVERIFICABLE (pasa).
+      _clase=$(acg_msg_clasificar "$cmd")
+      case "$_clase" in
+        UNVERIFICABLE) _msg="" ;;
+        LITERAL)       _msg=$(acg_msg_valor "$cmd") ;;
+        *)             _msg=$(acg_mensaje_de_mr "$cmd" "$pcwd") ;;   # AUTO: título del MR por API (vacío → fail-open)
+      esac
+      # LITERAL corre SIEMPRE (aunque el valor tipeado sea vacío -- eso es precisamente lo que
+      # acg_msg_es_pobre(a) debe cazar). AUTO/UNVERIFICABLE con _msg vacío es fail-open (API no resolvió el
+      # título, o el valor no es verificable aquí) -- ahí sí se salta, como siempre.
+      if [ "$_clase" = LITERAL ] || { [ "$_clase" != UNVERIFICABLE ] && [ -n "$_msg" ]; }; then
+        _mdeny=""
+        if acg_msg_es_pobre "$_msg"; then
+          _mdeny="el squash a develop debe llevar un RESUMEN CURADO en prosa (el cambio neto y su porqué), NO el título default de la plataforma (\"Merge pull request #N\"), ni un mensaje vacío o de una sola palabra (\"wip\"/\"fix\"/\"update\")."
+        fi
+        if [ -z "$_mdeny" ] && acg_msg_editorializa "$_msg"; then
+          _mdeny="el mensaje EDITORIALIZA el PROCESO (\"se decidió\" / \"tras analizar\" / \"el asistente\" / \"se identificó que\" / \"en esta sesión\" / \"se procedió a\"). El resumen debe describir QUÉ HACE EL CÓDIGO ahora, no CÓMO se llegó a él."
+        fi
+        _gh_tiene_body=0
+        if printf '%s' "$cmd" | grep -qE 'gh(\.exe)?[[:space:]]+pr' \
+           && printf '%s' "$cmd" | grep -qE '(^|[[:space:]])(--body|-F|--body-file)([[:space:]]+|=)[^[:space:]]'; then
+          _gh_tiene_body=1
+        fi
+        if [ -z "$_mdeny" ] && [ "$_clase" = LITERAL ] && [ "$_gh_tiene_body" = 0 ]; then
+          if acg_msg_es_superficial "$_msg"; then
+            _mdeny="el resumen del slice es DEMASIADO CORTO (< 12 palabras) para describir el cambio neto y su porqué. Escríbelo como prosa que diga qué hace el código ahora y por qué."
+          elif acg_msg_falta_traza "$_msg"; then
+            _mdeny="al resumen le falta TRAZABILIDAD rama→commit: incluye \"Rama: <feat/…>\" y \"MR/PR: !<id>\" (o #<id>). El squash borra el merge-commit de la plataforma que traía el #id → sin esto, 'git log develop' no dice de qué ramita salió el commit."
+          fi
+        fi
+        if [ -n "$_mdeny" ]; then
+          _rehaz=$(_rehaz_sugerido "$cmd")
+          _deny_json "FLUJO DE GIT (ley interna): $_mdeny  Rehaz el merge con un mensaje con sustancia: $_rehaz  — el mensaje es el resumen del slice, no el pegote de commits. Corre brain/skills/cerrar-slice/cerrar-slice.sh (arma el merge curado por ti); ver skill cerrar-slice."
+          exit 0
+        fi
+        # WARN no-bloqueante (narra-acciones ≥2 "se <verbo>"): se DIFIERE a la salida final (ver _salir_ok / ALLOW).
+        if acg_msg_narra_acciones "$_msg"; then
+          _warn_ctx="FLUJO DE GIT: el resumen del squash PARECE una LISTA DE ACCIONES (\"se cambió…, se actualizó…, se corrigió…\") en vez del CAMBIO NETO y su porqué. Considera reescribirlo describiendo QUÉ HACE EL CÓDIGO ahora. Ver skill cerrar-slice."
+        fi
+      fi
+    fi
+    # squash OK → cae al scoping/auth de abajo (NO exit: falta el candado de autorización)
+  else
+    # FALTA --squash → DENY (fail-fast). No afloja nada de lo de abajo: sin squash ni siquiera llega al juez.
+    _rehaz=$(_rehaz_sugerido "$cmd")
+    _deny_json "FLUJO DE GIT (ley interna): integrar a develop SQUASHEA a UN commit limpio por slice. NO reintentes este merge sin squash. Rehazlo con: $_rehaz  — donde el mensaje es un RESUMEN CURADO en prosa del slice (el cambio neto y su porqué), NO el pegote de commits granulares. NOTA: la obligación de squash es SOLO para develop — a main (release) va SIN squash (conserva historia) y tus ramas personales van a tu gusto. Corre brain/skills/cerrar-slice/cerrar-slice.sh; ver skill cerrar-slice."
+    exit 0
+  fi
+fi
+
+# ── PASO 3b — SCOPING de compartido (heredado de confirmar-merge-develop) para el JUEZ y el bloqueo de --auto.
+#    El SQUASH de arriba ya corrió para TODO repo; de aquí para abajo (autorización) SOLO gatea repos
+#    COMPARTIDOS (marca `.claude/repo-compartido` del repo DESTINO). REGLA DURA: saltar el gate SOLO si se
+#    confirma POSITIVAMENTE que el destino es PERSONAL; cualquier incertidumbre ⇒ GATEA.
 TARGET_DIR=$(acg_target_dir "$cmd" "$pcwd")
 TARGET_ROOT=$(git -C "$TARGET_DIR" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$TARGET_DIR")
 _explicit_repo=$(acg_repo_explicito "$cmd")
+_es_personal=0
 if [ -n "$_explicit_repo" ] && [ "$_explicit_repo" != "OPACO" ]; then
   _local_slug=$(git -C "$TARGET_ROOT" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|https?://[^/]+/)##; s#\.git$##')
   if [ "$_explicit_repo" != "$_local_slug" ]; then
-    : # --repo apunta a OTRO repo LITERAL (o no resoluble local) → INCIERTO ⇒ GATEA (no exit 0)
+    : # --repo a OTRO repo LITERAL (o no resoluble local) → INCIERTO ⇒ GATEA
   elif [ ! -f "$TARGET_ROOT/.claude/repo-compartido" ]; then
-    exit 0   # --repo == dir local Y sin marca → PERSONAL confirmado
+    _es_personal=1   # --repo == dir local Y sin marca → PERSONAL confirmado
   fi
 elif [ -f "$TARGET_ROOT/.claude/repo-compartido" ]; then
   : # marca local presente → COMPARTIDO ⇒ gatea
 elif git -C "$TARGET_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
-  exit 0   # repo git VÁLIDO sin marca → PERSONAL confirmado → sin fricción
+  _es_personal=1   # repo git VÁLIDO sin marca → PERSONAL confirmado → sin fricción de auth
 fi
-# (si no cayó en ningún exit 0, se considera COMPARTIDO/INCIERTO → sigue al gate)
+# Repo PERSONAL/mini confirmado → auth y bloqueo de --auto NO aplican (ahí el auto-merge de tu día a día es libre).
+[ "$_es_personal" = 1 ] && _salir_ok
 
-# DESTINO del merge: main = RELEASE (autorización SUPER explícita); develop/otro = confirmación normal.
-# Lo resuelve la lib (acg_destino_de_mr): caché por MR-id COMPARTIDA con merge-squash-guard (típicamente
-# 1 llamada de red, no 2; no es lock) + timeout interno para no fallar-abierto por muerte del proceso (H5).
-# FAIL-SAFE (#fix destino, 2026-08-05): si la consulta NO determina el destino (vacío por timeout/error/gh
-# fuera del PATH del entorno-hook), NO se asume develop. El vacío se PASA AL JUEZ como hint, y el juez
-# infiere el destino del contexto con el fail SEGURO (ante duda + lenguaje de release → trata como MAIN,
-# el gate estricto). Antes "vacío → develop" bloqueaba releases legítimos Y era un downgrade (un release a
-# main gateado con reglas de develop). El grant durable de abajo también se endureció a destino=develop.
-destino=$(acg_destino_de_mr "$cmd" "$pcwd")
+# Ramas personales de DESTINO (DevelopAna, epic/*, integracion/*, feat/*…): el juez NO gatea; solo develop/main/master.
+# destino vacío/desconocido NO pasa libre aquí (requiere -n): cae al juez con su fail SEGURO.
+if [ -n "$destino" ] && [ "$destino" != develop ] && [ "$destino" != main ] && [ "$destino" != master ]; then _salir_ok; fi
 
-# Ramas personales de integración (Develop<Usuario>, epic/*, integracion/*, feat/*, fix/*…) reciben
-# merge CONTINUO sin gate: ahí vive el día a día del modelo MINI-DEVELOP-por-dev. SOLO el `develop`
-# COMPARTIDO, `main` y `master` (alias de main en repos legacy) piden confirmación. destino vacío/desconocido
-# → NO pasa libre aquí (requiere -n): cae al juez, que aplica el fail SEGURO (duda + release en juego → main
-# estricto), NUNCA "se asume develop".
-if [ -n "$destino" ] && [ "$destino" != "develop" ] && [ "$destino" != "main" ] && [ "$destino" != "master" ]; then
-  exit 0
-fi
-
-# CAPA 3 — HINT de candidatos: UNA consulta CACHEADA de MRs abiertos (acg_lista_prs_abiertos). Solo se
-# gasta aquí (destino ∈ {develop, main, ""}), NO en el día a día de ramas personales (que ya salieron
-# arriba). Doble uso: (a) si el destino vino VACÍO, resolverlo desde la lista (baseRefName del propio MR)
-# — mata el FN dominante del release "de todo esto" sin nombrar id, sin una 2ª llamada de red; (b) armar
-# el bloque FACTUAL que el juez usa para IDENTIFICAR el target (jamás para autorizar). Fail-safe: lista
-# vacía/caída → hint "NO DISPONIBLE" y el destino sigue exactamente como lo dejó acg_destino_de_mr (cero
-# regresión respecto a hoy). El id del MR (acg_mrid) se computa aquí para resolver el destino-vacío.
+# CAPA 3 — HINT de candidatos + resolución del destino-vacío desde la lista de MRs abiertos (1 consulta cacheada).
 cur_mrid=$(acg_mrid "$(acg_despoja_comillas "$cmd")")
 prlist=$(acg_lista_prs_abiertos "$cmd" "$pcwd")
 if [ -z "$destino" ] && [ -n "$prlist" ]; then
   d=$(printf '%s' "$prlist" | jq -r --arg id "$cur_mrid" 'map(select((.number|tostring)==$id))[0].baseRefName // empty' 2>/dev/null)
   if [ -n "$d" ]; then
     destino="$d"
-    # si la lista resolvió a una rama personal (ni develop ni main ni master) → libre, como el early-exit de arriba
-    if [ "$destino" != "develop" ] && [ "$destino" != "main" ] && [ "$destino" != "master" ]; then exit 0; fi
+    if [ "$destino" != develop ] && [ "$destino" != main ] && [ "$destino" != master ]; then _salir_ok; fi
   fi
 fi
 hint=$(acg_hint_candidatos "$prlist" "$destino" "$cur_mrid")
 
-# Contexto reciente para el juez: los ÚLTIMOS ~10 MENSAJES DE USUARIO **intercalados con los turnos del
-# ASISTENTE** que los preceden (diseño acordado con el usuario, 2026-08-02). Por qué intercalar: un OK
-# anafórico ("sí", "dale", "mergea eso", "arranca con #240") NO se resuelve leyendo SOLO los mensajes del
-# usuario — el juez necesita ver la PROPUESTA del asistente a la que el usuario dijo "sí". Sin ese contexto,
-# daba falsos negativos (2 en una noche: "sí, arranca con #240" y el clic del question-tool). REGLA DURA (va
-# en el prompt): solo los mensajes USUARIO autorizan; los del ASISTENTE son contexto para resolver referencias,
-# NUNCA autoridad (anti-auto-autorización / anti prompt-injection). Se filtran meta/system-reminder/tool.
-# tail acota costo; el texto del asistente se recorta (las propuestas son cortas; el ruido de tools no importa).
-tpath=$(printf '%s' "$input" | jq -r '.transcript_path // empty' 2>/dev/null)
+# ── PASO 3c — CHECK DETERMINISTA: --auto/--auto-merge A develop/main → DENY. Aquí ya sabemos: repo
+#    COMPARTIDO/incierto + destino ∈ {develop,main,master}. Integrar al develop COMPARTIDO / promover a main es
+#    DELIBERADO, jamás en auto-piloto (en tu mini/rama personal el auto-merge SÍ es libre — ya salió arriba).
+#    Sobre cmd DESPOJADO (una mención citada de --auto no cuenta). glab: --auto-merge · gh: --auto.
+_cmd_auto=$(acg_despoja_comillas "$cmd")
+if printf '%s' "$_cmd_auto" | grep -qE '(^|[[:space:]])(--auto-merge|--auto)([[:space:]]|=|$)'; then
+  if [ "$destino" = main ] || [ "$destino" = master ]; then
+    _deny_json "FLUJO DE GIT (ley interna): un RELEASE a $destino JAMÁS va en --auto/--auto-merge — es una decisión deliberada. Quita el flag de auto y hazlo con OK de release EXPLÍCITO (lo exige el juez). Los releases van SIN squash (conservan historia)."
+  else
+    _deny_json "FLUJO DE GIT (ley interna): integrar a develop es DELIBERADO — NO con --auto/--auto-merge (eso es el día a día de tu mini/rama personal, no del develop COMPARTIDO). Quita el flag de auto e intégralo con squash + OK explícito. Corre brain/skills/cerrar-slice/cerrar-slice.sh (arma el merge sin --auto por ti)."
+  fi
+  exit 0
+fi
+
+# Contexto reciente para el juez: últimos ~10 mensajes de USUARIO intercalados con los turnos del ASISTENTE que
+# los preceden (para resolver un OK anafórico). REGLA DURA (en el prompt): solo USUARIO autoriza.
 recent=$(_recent_intercalado "$tpath")
 
-# H3 (auditoría de ejecución 2026-09-16, MEDIO, CONFIRMADO): acg_recent_intercalado lee `tail -n 6000` del
-# transcript. En una corrida larga (turno-nocturno, un agente autónomo de horas) la autorización real del
-# usuario puede quedar FUERA de esa ventana — medido: transcript de 6201 líneas con el OK ("mergea el MR 5 a
-# develop cuando termines") en la línea 1, seguido de 6200 turnos de asistente, deja CERO líneas USUARIO: en
-# la ventana. El piso barato de _juez_merge_uno entonces dice "no hay confirmación" y el mensaje de abajo
-# CULPA AL USUARIO ("no encontré tu confirmación EXPRESA") en vez de nombrar la causa real (la ventana no
-# alcanzó). Repetir el OK no arregla nada si el agente sigue horas después sin que el usuario vuelva a
-# escribir — es el patrón "muerde de más → el humano lo hace a mano" en su forma más cara (pega justo en
-# turno-nocturno). Se detecta aquí (antes de llamar al juez, que igual va a fallar el piso barato) y se
-# reusa el MISMO patrón de mensaje-por-causa que ya existe para los DESCONOCIDO:<motivo> de entorno más
-# abajo — nombra la causa, no exige repetir lo que ya se dijo, y deja el carril de 'git merge' local.
+# H3 (auditoría de ejecución 2026-09-16): si la autorización real quedó FUERA de la ventana (tail -n 6000 en una
+# corrida larga), el piso barato diría "no hay confirmación" y el mensaje CULPARÍA al usuario. Se detecta aquí y
+# se nombra la causa real (la ventana no alcanzó), sin exigir repetir lo ya dicho.
 _ventana_sin_usuario=1
 printf '%s' "$recent" | grep -qiE '^[[:space:]]*USUARIO:' && _ventana_sin_usuario=0
 _ventana_truncada=0
@@ -430,26 +495,9 @@ if [ "$_ventana_sin_usuario" = 1 ] && [ -n "$tpath" ] && [ -f "$tpath" ]; then
   [ "$_tp_lineas" -gt 6000 ] && _ventana_truncada=1
 fi
 
-# (cur_mrid ya se computó arriba, junto al hint de candidatos). El JUEZ (_juez_merge) está definido ARRIBA.
-
 # Grant DURABLE (turno-nocturno): un OK persistido a disco cubre scope=merge-develop (NUNCA main). Fast-path
-# antes de gastar una llamada al LLM. Sobrevive compactaciones; la cita textual registrada es su evidencia.
-# SEGURIDAD (#fix destino): SOLO se honra con destino CONFIRMADO 'develop'.
-#
-# M6 (auditoría 2026-09-15 §3.6) había AMPLIADO este fast-path a destino DESCONOCIDO también, con la cerca
-# "ninguna línea USUARIO: trae léxico de release". CRÍTICO (auditoría FMEA 2026-09-16 §1.3, CONFIRMADO por
-# A/B contra develop): esa cerca confunde DOS proposiciones distintas — "el usuario no habló de release EN
-# LA VENTANA reciente" (sobre la CONVERSACIÓN) con "el MR no apunta a main" (un HECHO del propio MR, fijado
-# cuando se creó, ajeno a lo que se haya hablado en los últimos ~10 mensajes). Con un grant vigente (p. ej.
-# de turno-nocturno) + la consulta del destino real FALLADA (red/timeout — más probable durante una corrida
-# larga desatendida) + ausencia casual de la palabra "release" en la charla, el fast-path dejaba pasar el
-# merge EN SILENCIO, sin llamar NUNCA a `_juez_merge` (por tanto sin pasar tampoco por el piso M5) — si ese
-# MR apuntaba de verdad a main, el grant de develop acababa de colar un release sin ningún gate. Revertido:
-# el grant SOLO se consulta con destino CONFIRMADO develop. Con destino desconocido, SIEMPRE cae al juez de
-# abajo (que con la corrección M5-bis de arriba, si la conversación es inequívoca sobre develop, igual
-# ALLOWea sin exigir léxico de release — así el grant deja de ser NECESARIO para ese caso legítimo) y, si
-# el juez tampoco es alcanzable (mismo fallo de red que tumbó la consulta del destino), el fail-safe es DENY
-# — exactamente el comportamiento PRE-M6, que la auditoría confirmó como el correcto por A/B.
+# antes del LLM. SOLO se honra con destino CONFIRMADO 'develop' (CRÍTICO FMEA §1.3: con destino desconocido
+# SIEMPRE cae al juez, cuyo fail-safe es DENY — nunca cuela un release por un grant de develop).
 if [ "$destino" = "develop" ]; then
   AUTH_FILE="$TARGET_ROOT/.claude/memory/autorizaciones-vigentes.local.md"
   if [ -f "$AUTH_FILE" ]; then
@@ -457,29 +505,26 @@ if [ "$destino" = "develop" ]; then
     grant=$(awk -v now="$now_epoch" '/scope=merge-develop/ && match($0, /vence_epoch=[0-9]+/) {
         if (substr($0, RSTART+12, RLENGTH-12) + 0 > now) { print; exit }
       }' "$AUTH_FILE" 2>/dev/null)
-    [ -n "$grant" ] && exit 0
+    [ -n "$grant" ] && _salir_ok
   fi
 fi
 
+# ── PASO 4 — JUEZ de AUTORIZACIÓN (LLM, lo caro, al final). Fail-safe SIEMPRE DENY; el ESTADO solo cambia el
+#    MENSAJE (más accionable), NUNCA la decisión. El piso de main (release explícito) vive DENTRO de _juez_merge.
 veredicto=$(_juez_merge "$destino" "$cur_mrid" "$recent" "$hint")
 if [ "$veredicto" = "ALLOW" ]; then
-  # Nota de HIGIENE (no bloquea, solo recuerda): el squash deja la rama huérfana y se acumulan → jaloneo
-  # de "olvidé de dónde salió". additionalContext = mismo canal probado de recordar-dashboard.
-  jq -n '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:"✅ Merge a develop/main autorizado por el juez. NOTA DE HIGIENE: intégralo con --delete-branch, y al cerrar el slice corre brain/hooks/limpiar-ramas.sh — el squash rompe la detección de git branch -d y las ramas ya mergeadas se acumulan (nadie las barre) hasta que se olvida de dónde salieron."}}'
+  # NOTA de HIGIENE (no bloquea): el squash deja la rama huérfana y se acumulan. Se funde el WARN diferido (si hubo).
+  _ctx="✅ Merge a develop/main autorizado por el juez. NOTA DE HIGIENE: intégralo con --remove-source-branch/--delete-branch, y al cerrar el slice corre brain/hooks/limpiar-ramas.sh — el squash rompe la detección de git branch -d y las ramas ya mergeadas se acumulan (nadie las barre) hasta que se olvida de dónde salieron."
+  [ -n "${_warn_ctx:-}" ] && _ctx="$_ctx
+$_warn_ctx"
+  jq -n --arg c "$_ctx" '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$c}}'
   exit 0
 fi
 
-# M8 (auditoría 2026-09-15 §3.10): cita del MR-id, UNA sola vez, SIN texto roto cuando viene vacío ("MR
-# ()" — un mrid vacío no significa "no hay MR que integrar": `glab mr merge`/`gh pr merge` SIN id mergean
-# el MR de la rama ACTUAL, un patrón legítimo y común que sigue exigiendo el MISMO gate; lo único que
-# cambia es que no hay un número que citar). acg_es_merge_mr YA confirmó que esto es un merge real.
+# M8: cita del MR-id UNA vez, sin "MR ()" cuando viene vacío (un merge del branch actual sin id es legítimo).
 if [ -n "$cur_mrid" ]; then _mr_cita=" (MR $cur_mrid)"; else _mr_cita=""; fi
 
-# DENY o UNAVAILABLE_* → freno. El juez SIEMPRE es fail-safe DENY aquí; el ESTADO solo cambia el MENSAJE
-# (más accionable), NUNCA la decisión. M8 (auditoría 2026-09-15 §3.11, norma dura anti-vein-popper): se
-# RETIRARON las 4 menciones de "integra el MR en la web de GitLab" — un guard que frena en CLI se SATISFACE
-# (arreglando la causa) o se ARREGLA (afinando el detector), JAMÁS se rodea mandando a la persona a la web.
-# Los 3 casos de abajo (NOTOKEN/EXPIRED/red) ya traen su salida CONFORME sin necesitar la web.
+# DENY o UNAVAILABLE_* → freno. Anti-vein-popper (M8): JAMÁS "mergéalo en la web"; se SATISFACE o se ARREGLA por CLI.
 if [ "$veredicto" = "UNAVAILABLE_NOTOKEN" ]; then
   r="FRENO (sin token OAuth para el juez de merge): esta máquina no tiene un token OAuth de Claude alcanzable (¿api-key, CI, o sesión sin login de suscripción?), así que el juez de autorización por CLI NO puede correr aquí. NO abro el merge (fail-safe). Corre 'claude setup-token' (token de larga vida) / exporta CLAUDE_CODE_OAUTH_TOKEN y reintenta."
 elif [ "$veredicto" = "UNAVAILABLE_EXPIRED" ]; then
@@ -496,30 +541,29 @@ elif [ "$destino" = "develop" ]; then
   (b) O itera sin fricción en tu mini/rama de integración con 'git merge' LOCAL (no pasa por este candado).
 Recuerda: verde técnico != LISTO; 'sigue/avanza' NO autoriza el merge a develop."
 else
-  # M8 (auditoría 2026-09-15 §3.10/§4.2, sobre M3): destino DESCONOCIDO — antes esta rama SIEMPRE pedía
-  # "dilo más claro", aunque la causa real fuera un fallo de ENTORNO (sin jq/gh/glab/red/dir) que repetir
-  # la autorización NO arregla. acg_destino_conf (M3) declara el MOTIVO real; si es de entorno, el mensaje
-  # dice la causa + su arreglo en vez de pedirle al usuario que se repita. Si el motivo es genuinamente de
-  # LENGUAJE (SIN-MRID: un merge del branch actual sin id, el juez no pudo inferir el destino de la charla),
-  # sí tiene sentido pedir que lo diga más claro — ahí se conserva ese pedido.
+  # destino DESCONOCIDO: si la causa es de ENTORNO o de FORMA del comando, repetir la autorización NO la arregla.
+  # acg_destino_conf (M3) declara el MOTIVO real; REPO-VARIABLE ($R/backtick en --repo) trae su propio mensaje
+  # accionable ("usa el slug LITERAL") — el bug que se filaba como error-de-usuario y nunca se arregló (corpus 8b3c52e).
   _conf=$(acg_destino_conf "$cmd" "$pcwd")
   _motivo="${_conf#DESCONOCIDO:}"
-  case "$_motivo" in
-    SIN-CLI)         _causa="no puedo confirmar el destino${_mr_cita}: jq no está en el PATH de este proceso." ;;
-    SIN-RED)         _causa="no puedo confirmar el destino${_mr_cita}: ni gh ni glab están alcanzables en el PATH de este proceso." ;;
-    TIMEOUT)         _causa="no puedo confirmar el destino${_mr_cita}: la consulta a gh/glab corrió pero no respondió a tiempo (¿sin red, o la API está lenta?)." ;;
-    DIR-IRRESOLUBLE) _causa="no puedo confirmar el destino${_mr_cita}: no ubico el directorio del repo que este comando REALMENTE toca." ;;
-    SLUG-OPACO)      _causa="no puedo confirmar el destino${_mr_cita}: el --repo es una variable de shell y el remoto local tampoco resolvió." ;;
-    *)               _causa="" ;;   # SIN-MRID u otro: no es un fallo de entorno resoluble por Claude — cae al mensaje de lenguaje de abajo
-  esac
-  if [ -n "$_causa" ]; then
-    r="FRENO (definición de LISTO): $_causa Repetir la autorización NO va a destrabar esto — es un problema de ENTORNO, no de permiso. Arréglalo (instala/expón la herramienta que falta, o corre desde el repo/dir correcto) y reintenta. Mientras tanto, sigue disponible iterar en tu mini/rama con 'git merge' LOCAL (no pasa por este candado)."
+  if [ "$_motivo" = "REPO-VARIABLE" ]; then
+    r="FRENO (definición de LISTO): no puedo confirmar el destino${_mr_cita}: el guard lee el string CRUDO y tu --repo trae una VARIABLE de shell (\$…) sin expandir → no resuelvo a qué repo apunta. Reintenta con el SLUG LITERAL (p. ej. --repo org/grupo/repo), sin \$VAR ni un 'cd &&' compound. Repetir la autorización NO destraba esto — es de FORMA del comando, no de permiso. Mientras tanto, itera en tu mini/rama con 'git merge' LOCAL (no pasa por este candado)."
   else
-    r="FRENO (definición de LISTO): no pude confirmar el destino${_mr_cita} (la consulta de la base falló en el entorno del hook) y el juez no halló autorización clara para el destino que infirió del contexto.
+    case "$_motivo" in
+      SIN-CLI)         _causa="no puedo confirmar el destino${_mr_cita}: jq no está en el PATH de este proceso." ;;
+      SIN-RED)         _causa="no puedo confirmar el destino${_mr_cita}: ni gh ni glab están alcanzables en el PATH de este proceso." ;;
+      TIMEOUT)         _causa="no puedo confirmar el destino${_mr_cita}: la consulta a gh/glab corrió pero no respondió a tiempo (¿sin red, o la API está lenta?)." ;;
+      DIR-IRRESOLUBLE) _causa="no puedo confirmar el destino${_mr_cita}: no ubico el directorio del repo que este comando REALMENTE toca." ;;
+      *)               _causa="" ;;   # SIN-MRID u otro: no es un fallo resoluble por Claude — cae al mensaje de lenguaje de abajo
+    esac
+    if [ -n "$_causa" ]; then
+      r="FRENO (definición de LISTO): $_causa Repetir la autorización NO va a destrabar esto — es un problema de ENTORNO, no de permiso. Arréglalo (instala/expón la herramienta que falta, o corre desde el repo/dir correcto) y reintenta. Mientras tanto, sigue disponible iterar en tu mini/rama con 'git merge' LOCAL (no pasa por este candado)."
+    else
+      r="FRENO (definición de LISTO): no pude confirmar el destino${_mr_cita} (la consulta de la base falló en el entorno del hook) y el juez no halló autorización clara para el destino que infirió del contexto.
   · Si integras a develop: dilo claro (p. ej. 'mergea esto a develop').
   · Si es un RELEASE a main: usa lenguaje de release explícito (p. ej. 'libera / release a main esto').
   · O itera en tu mini/rama con 'git merge' LOCAL (no pasa por este candado)."
+    fi
   fi
 fi
-jq -n --arg r "$r" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
-exit 0
+_deny_json "$r"

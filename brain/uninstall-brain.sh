@@ -4,8 +4,9 @@
 # (si algo ya no está, lo salta sin quejarse).
 #
 # Quita GLOBAL (de ~/.claude):
-#   (a) los HOOKS de tier global que copió el instalador → git-branch-guard, merge-squash-guard,
-#       confirmar-merge-develop, recordar-dashboard, secret-scan, proteger-arbol,
+#   (a) los HOOKS de tier global que copió el instalador → git-branch-guard, merge-develop-guard
+#       (consolida los antiguos merge-squash-guard + confirmar-merge-develop, ahora lápidas),
+#       recordar-dashboard, secret-scan, proteger-arbol,
 #       limite-gasto, rehidratar-hilo, delegacion-gate/registrar/reporte, libs (delegacion-comun,
 #       analizar-comando-git, detectar-secretos), limpiar-worktrees (script) + ~/.claude/agentes-costo.json.
 #       La lista EXACTA se deriva de brain/hooks/MANIFEST (misma fuente que install-brain), e INCLUYE
@@ -44,7 +45,7 @@ if [ -f "$MANIFEST" ]; then
   GLOBAL_HOOKS="$(awk '$1!~/^#/ && NF>=3 && ($2=="global"||$2=="both"||$2=="retirado"){print $1".sh"}' "$MANIFEST")"
 else
   echo "warn: falta $MANIFEST; caigo a la lista embebida (compatibilidad)"
-  GLOBAL_HOOKS="git-branch-guard.sh merge-squash-guard.sh confirmar-merge-develop.sh recordar-dashboard.sh \
+  GLOBAL_HOOKS="git-branch-guard.sh merge-develop-guard.sh merge-squash-guard.sh confirmar-merge-develop.sh recordar-dashboard.sh \
                 secret-scan.sh rama-vieja.sh proteger-arbol.sh limite-gasto.sh rehidratar-hilo.sh aviso-contexto.sh \
                 delegacion-gate.sh delegacion-registrar.sh delegacion-reporte.sh delegacion-comun.sh \
                 analizar-comando-git.sh limpiar-worktrees.sh"
@@ -65,7 +66,7 @@ if [ -f "$MANIFEST" ]; then
   BRAIN_PAT="$(awk '$1!~/^#/ && NF>=3 && ($2=="global"||$2=="both"||$2=="retirado") && $3=="hook"{print $1}' "$MANIFEST" | sed 's/$/\\.sh/' | paste -sd'|' -)"
 fi
 # Fallback COMPLETO si falta el MANIFEST (los 21 {global,both} kind=hook actuales — sin omisiones):
-[ -n "${BRAIN_PAT:-}" ] || BRAIN_PAT='git-branch-guard\.sh|merge-squash-guard\.sh|confirmar-merge-develop\.sh|recordar-dashboard\.sh|secret-scan\.sh|entorno-maquina-guard\.sh|no-bypass-deploy\.sh|hud-stale\.sh|rama-vieja\.sh|proteger-arbol\.sh|proteger-fuente-cerebro\.sh|limite-gasto\.sh|rehidratar-hilo\.sh|aviso-contexto\.sh|aviso-drift-cerebro\.sh|exportar-sesion-master\.sh|barrer-ramas\.sh|delegacion-gate\.sh|delegacion-registrar\.sh|delegacion-reporte\.sh|recordar-orquestar\.sh'
+[ -n "${BRAIN_PAT:-}" ] || BRAIN_PAT='git-branch-guard\.sh|merge-develop-guard\.sh|merge-squash-guard\.sh|confirmar-merge-develop\.sh|recordar-dashboard\.sh|secret-scan\.sh|entorno-maquina-guard\.sh|no-bypass-deploy\.sh|hud-stale\.sh|rama-vieja\.sh|proteger-arbol\.sh|proteger-fuente-cerebro\.sh|limite-gasto\.sh|rehidratar-hilo\.sh|aviso-contexto\.sh|aviso-drift-cerebro\.sh|exportar-sesion-master\.sh|barrer-ramas\.sh|delegacion-gate\.sh|delegacion-registrar\.sh|delegacion-reporte\.sh|recordar-orquestar\.sh'
 if command -v jq >/dev/null 2>&1; then
   if [ -f "$GSET" ]; then
     tmp="$(mktemp)" || tmp=""

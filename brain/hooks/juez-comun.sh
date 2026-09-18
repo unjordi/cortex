@@ -1,5 +1,5 @@
 # juez-comun.sh — LIB (NO es un hook; se hace `source`). Infraestructura COMÚN de los dos jueces LLM del
-# cerebro (confirmar-merge-develop.sh · dod-verificar.sh): retrieval PORTABLE del token OAuth, invocación
+# cerebro (merge-develop-guard.sh · dod-verificar.sh): retrieval PORTABLE del token OAuth, invocación
 # curl a api.anthropic.com que CAPTURA el http_code (con reintento en 401), parseo por centinela y chequeo
 # de dependencias. Separar la lógica aquí la hace testeable en aislado y ELIMINA la duplicación que tenían
 # ambos jueces — la misma cadena token/curl estaba copiada LITERAL en los dos, y uno hardcodeaba
@@ -20,7 +20,7 @@
 #       EXPIRED              → 401/403 en el 1er intento Y TAMBIÉN tras el reintento (token vencido/revocado).
 #   · POLÍTICA por juez (vive en CADA juez, no aquí — codificar el fail-safe en la lib acoplaría seguridad
 #     a mecánica). RESUMEN del contrato, para que quede en UN solo lugar:
-#       merge (confirmar-merge-develop) = fail-CLOSED: vacío/UNAVAILABLE_* → DENY. El estado solo cambia el
+#       merge (merge-develop-guard) = fail-CLOSED: vacío/UNAVAILABLE_* → DENY. El estado solo cambia el
 #              MENSAJE: NOTOKEN → DENY + corre `claude setup-token` / exporta CLAUDE_CODE_OAUTH_TOKEN (H5,
 #              auditoría de ejecución 2026-09-16: M8, auditoría 2026-09-15 §3.11, retiró la redirección a la
 #              WEB de GitLab de los 4 mensajes del guard por la norma anti-vein-popper — "un guard que frena
@@ -81,7 +81,7 @@ _juez_deps_ok() { command -v curl >/dev/null 2>&1 && command -v jq >/dev/null 2>
 # duplicado en ambos jueces; el caller normaliza (ALLOW/DENY vs si/no) sobre esta salida cruda.
 _juez_centinela() { printf '%s' "$1" | grep -oiE "$2" 2>/dev/null | tail -1; }
 
-# ── VETO DE CITA robusto (comparte la MISMA implementación entre confirmar-merge-develop y dod-verificar →
+# ── VETO DE CITA robusto (comparte la MISMA implementación entre merge-develop-guard y dod-verificar →
 # cero drift; antes cada juez copiaba un `grep -Fq` byte-exacto que INVERTÍA el veredicto ante un typo que el
 # LLM "corregía" al copiar la CITA — bug reproducido en vivo, #272-ALLOW/#273-DENY sobre la misma ventana).
 #

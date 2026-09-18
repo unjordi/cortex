@@ -215,8 +215,15 @@ echo "== (b1c) merge-squash-guard: EXIGE squash si destino=develop O indetermina
 # a develop confirmado SIN squash"), salvo señal explícita de release-a-main en el comando.
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null   # caché de destino limpia (la lib cachea por MR-id)
 MSBIN="$FAKEHOME/msbin"; mkdir -p "$MSBIN"
+# CONSOLIDACIÓN 2026-09-17: merge-develop-guard es UN solo guard (squash + autorización). Los checks de
+# SQUASH corren para TODO repo, pero el JUEZ y el bloqueo de --auto SOLO gatean repos COMPARTIDOS. Para
+# AISLAR los checks de squash (que estas pruebas ejercitan) el CLAUDE_PROJECT_DIR es un repo PERSONAL (git
+# init SIN la marca .claude/repo-compartido) → el guard confirma "personal" y SALE tras el squash, sin correr
+# el juez ni el bloqueo de --auto. Así un `--squash --auto-merge` a develop PASA aquí (auto libre en tu mini),
+# igual que con el viejo merge-squash-guard. El juez se ejercita en (b1e) con un repo COMPARTIDO (CMREPO).
+MSREPO="$FAKEHOME/msrepo"; mkdir -p "$MSREPO"; git -C "$MSREPO" init -q >/dev/null 2>&1
 mock_glab() { printf '#!/usr/bin/env bash\necho '\''{"target_branch":"%s"}'\''\n' "$1" > "$MSBIN/glab"; chmod +x "$MSBIN/glab"; }
-ms() { PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$FAKEHOME" bash "$HOOKS/merge-squash-guard.sh" <<<"{\"tool_input\":{\"command\":\"$1\"}}"; }
+ms() { PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$MSREPO" bash "$HOOKS/merge-develop-guard.sh" <<<"{\"tool_input\":{\"command\":\"$1\"}}"; }
 # NOTA: la lib cachea el destino por MR-id (compartido squash↔confirmar), así que cada caso usa un
 # MR-id DISTINTO — si no, la caché del 1er caso (develop) contaminaría a los siguientes. En producción
 # cada MR tiene su id; aquí es un artefacto de reusar mocks con el mismo número.
@@ -246,7 +253,7 @@ is_silent "$out" && ok "squash-guard B3: indeterminado + señal 'release a main'
 # leen la MISMA señal (acg_lexico_release sobre acg_recent_intercalado).
 M4TX=$(mktemp)
 printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"libera esto a main, es el release"}]}}' > "$M4TX"
-msT() { PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$FAKEHOME" bash "$HOOKS/merge-squash-guard.sh" <<<"$(jq -nc --arg c "$1" --arg t "$M4TX" '{tool_input:{command:$c},transcript_path:$t}')"; }
+msT() { PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$MSREPO" bash "$HOOKS/merge-develop-guard.sh" <<<"$(jq -nc --arg c "$1" --arg t "$M4TX" '{tool_input:{command:$c},transcript_path:$t}')"; }
 out="$(msT 'glab mr merge --yes')"   # sin ID → destino indeterminado; SIN release en el TEXTO del comando
 is_silent "$out" && ok "M4: destino INDETERMINADO + release SOLO en la conversación → NO fuerza squash (antes ciego a la charla)" || bad "M4: forzó squash pese al release en la conversación; got: $out"
 # Control: MISMO comando, SIN transcript de release → sigue exigiendo squash (M4 no aflojó el default).
@@ -264,7 +271,7 @@ is_silent "$out" && ok "squash-guard H-R9-01: 'glab.exe mr merge --squash' → p
 # comillas. Cierra el hueco de cobertura — M1 ya lo arregla de fondo (acg_es_merge_mr reinyecta el span de
 # un ejecutor), este test solo lo BLINDA hacia adelante. `ms()` interpola el comando SIN escapar comillas
 # (rompería el JSON con un `eval "…"` embebido) → estos dos casos arman el payload con jq -nc.
-msj_raw() { jq -nc --arg c "$1" '{tool_input:{command:$c}}' | PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$FAKEHOME" bash "$HOOKS/merge-squash-guard.sh"; }
+msj_raw() { jq -nc --arg c "$1" '{tool_input:{command:$c}}' | PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$MSREPO" bash "$HOOKS/merge-develop-guard.sh"; }
 mock_glab develop
 out="$(msj_raw 'eval "glab mr merge 91 --yes"')"
 is_deny "$out" && ok "squash-guard M1-cobertura: 'eval \"glab mr merge…\"' NO evade — sigue exigiendo squash" || bad "squash-guard M1-cobertura: eval evadió el guard de squash; got: $out"
@@ -296,7 +303,7 @@ rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
 # PATH SIN glab/MSBIN a propósito: fuerza destino genuinamente INDETERMINADO (DESCONOCIDO:SIN-RED) aunque el
 # comando SÍ traiga un id numérico (390/391) -- necesitamos que acg_mrid resuelva el id (para probar el
 # ANCLAJE) pero que acg_destino_de_mr NO lo resuelva (para caer al fail-safe donde vive _es_release_explicito).
-msT4() { PATH="/usr/bin:/bin" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$FAKEHOME" bash "$HOOKS/merge-squash-guard.sh" <<<"$(jq -nc --arg c "$1" --arg t "$H4TX" '{tool_input:{command:$c},transcript_path:$t}')"; }
+msT4() { PATH="/usr/bin:/bin" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$MSREPO" bash "$HOOKS/merge-develop-guard.sh" <<<"$(jq -nc --arg c "$1" --arg t "$H4TX" '{tool_input:{command:$c},transcript_path:$t}')"; }
 out="$(msT4 'glab mr merge 391 --yes')"   # sin mock de destino → indeterminado; release es de OTRO id (390)
 is_deny "$out" && ok "H4: release-de-OTRO-PR (390) en la ventana → el merge del 391 SIGUE exigiendo squash (antes: se colaba)" \
   || bad "H4: REGRESIÓN — el lenguaje de release de otro PR desactivó --squash de este merge; got: $out"
@@ -323,7 +330,7 @@ mock_gh_full() { { printf '#!/usr/bin/env bash\n'; printf 'for a in "$@"; do cas
 # runner: payload por jq --arg (soporta comillas/#/$ en el mensaje) + LIMPIA la caché por MR-id en cada caso
 msj() { rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* "${TMPDIR:-/tmp}"/acg-mrmsg-* 2>/dev/null
         jq -nc --arg c "$1" '{tool_input:{command:$c}}' \
-          | PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$FAKEHOME" bash "$HOOKS/merge-squash-guard.sh"; }
+          | PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$MSREPO" bash "$HOOKS/merge-develop-guard.sh"; }
 
 # ── LITERAL (mensaje explícito en el comando; destino develop del mock) ──
 mock_glab develop
@@ -860,14 +867,14 @@ rm -rf "$M2A" "$M2B"
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (b1d-critico1) CRÍTICO-1 (auditoría FMEA 2026-09-16 §1.1, CONFIRMADO): un error de SINTAXIS en la"
-echo "   lib compartida NO tumba los 5 guards en silencio — fallan RUIDOSO/CERRADO en vez de desaparecer =="
-# Reproduce EXACTO el método de la auditoría: copia los 5 hooks + la lib a un sandbox, inyecta un error de
+echo "   lib compartida NO tumba los guards en silencio — fallan RUIDOSO/CERRADO en vez de desaparecer =="
+# Reproduce EXACTO el método de la auditoría: copia los guards + la lib a un sandbox, inyecta un error de
 # sintaxis REAL (paréntesis sin cerrar en acg_despoja_comillas — el bug más mundano), y alimenta cada guard
 # con un comando que DEBE bloquear. ANTES del fix: los 5 morían con stdout VACÍO y exit=1 (que el harness
 # trata como NO-bloqueante → el sistema quedaba sin NINGÚN candado, en silencio). AHORA: cada uno responde
 # (deny ruidoso, o degrada a su propio fallback) en vez de esfumarse.
 C1SB="$(mktemp -d "${TMPDIR:-/tmp}/brain-crit1.XXXXXX")"; mkdir -p "$C1SB/hooks" "$C1SB/home"
-for f in analizar-comando-git.sh git-branch-guard.sh merge-squash-guard.sh confirmar-merge-develop.sh \
+for f in analizar-comando-git.sh git-branch-guard.sh merge-develop-guard.sh \
          secret-scan.sh proteger-arbol.sh detectar-secretos.sh juez-comun.sh ramas-zombie.sh; do
   cp "$HOOKS/$f" "$C1SB/hooks/$f" 2>/dev/null
 done
@@ -880,12 +887,9 @@ c1out() { printf '%s' "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"$2\
 is_deny "$(c1out git-branch-guard.sh 'git push origin develop')" \
   && ok "CRÍTICO-1: lib ROTA + git-branch-guard + push a develop → DENY ruidoso (antes: exit=1 silencioso, el push PASABA)" \
   || bad "CRÍTICO-1: REGRESIÓN — git-branch-guard con lib rota dejó pasar un push a develop en silencio"
-is_deny "$(c1out merge-squash-guard.sh 'glab mr merge 5 --yes')" \
-  && ok "CRÍTICO-1: lib ROTA + merge-squash-guard + merge sin squash → DENY ruidoso" \
-  || bad "CRÍTICO-1: REGRESIÓN — merge-squash-guard con lib rota dejó pasar un merge sin squash en silencio"
-is_deny "$(c1out confirmar-merge-develop.sh 'glab mr merge 5 --yes')" \
-  && ok "CRÍTICO-1: lib ROTA + confirmar-merge-develop + merge sin OK → DENY ruidoso" \
-  || bad "CRÍTICO-1: REGRESIÓN — confirmar-merge-develop con lib rota dejó pasar un merge sin autorización en silencio"
+is_deny "$(c1out merge-develop-guard.sh 'glab mr merge 5 --yes')" \
+  && ok "CRÍTICO-1: lib ROTA + merge-develop-guard + merge sin squash/OK → DENY ruidoso (candado consolidado)" \
+  || bad "CRÍTICO-1: REGRESIÓN — merge-develop-guard con lib rota dejó pasar un merge en silencio"
 C1SCAN="$C1SB/scanrepo"; mkdir -p "$C1SCAN"; git -C "$C1SCAN" init -q >/dev/null 2>&1
 git -C "$C1SCAN" config user.email t@t >/dev/null 2>&1; git -C "$C1SCAN" config user.name t >/dev/null 2>&1
 printf 'aws_key = AKIA1234567890ABCDEF\n' > "$C1SCAN/config.txt"; git -C "$C1SCAN" add config.txt >/dev/null 2>&1
@@ -1118,7 +1122,7 @@ git -C "$GBNOJQ_BASEREPO" config user.email t@t >/dev/null 2>&1; git -C "$GBNOJQ
 git -C "$GBNOJQ_BASEREPO" commit -q --allow-empty -m base >/dev/null 2>&1
 git -C "$GBNOJQ_BASEREPO" checkout -q -b develop >/dev/null 2>&1
 gb_nojq() { jq -nc --arg c "$1" '{tool_input:{command:$c}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" CLAUDE_PROJECT_DIR="$GBNOJQ_BASEREPO" bash "$HOOKS/git-branch-guard.sh"; }
-ms_nojq() { jq -nc --arg c "$1" '{tool_input:{command:$c}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" bash "$HOOKS/merge-squash-guard.sh"; }
+ms_nojq() { jq -nc --arg c "$1" '{tool_input:{command:$c}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" bash "$HOOKS/merge-develop-guard.sh"; }
 mkdir -p "$FAKEHOME/nojq7home"
 is_deny "$(gb_nojq 'git push origin develop')" \
   && ok "M7: git-branch-guard SIN jq + push a develop → DENY (antes: fail-open silencioso)" \
@@ -1171,14 +1175,14 @@ is_silent "$(jq -nc --arg c 'git push' '{tool_input:{command:$c}}' | PATH="$NOJQ
 is_deny "$(ms_nojq 'glab mr merge 5 --yes')" \
   && ok "ALTO-2: merge-squash-guard SIN jq, mr merge → SIGUE bloqueado (destino no verificable sin jq; sin precisión de texto posible)" \
   || bad "ALTO-2: merge-squash-guard SIN jq dejó de bloquear un mr merge — AFLOJAMIENTO"
-is_silent "$(jq -nc --arg c 'glab mr merge 5 --yes' '{tool_input:{command:$c}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 bash "$HOOKS/merge-squash-guard.sh")" \
+is_silent "$(jq -nc --arg c 'glab mr merge 5 --yes' '{tool_input:{command:$c}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 bash "$HOOKS/merge-develop-guard.sh")" \
   && ok "ALTO-2: merge-squash-guard SIN jq + escape explícito → deja pasar" \
   || bad "ALTO-2: merge-squash-guard no honró el escape explícito"
-cm_nojq() { jq -nc --arg c "$1" '{tool_input:{command:$c}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" bash "$HOOKS/confirmar-merge-develop.sh"; }
+cm_nojq() { jq -nc --arg c "$1" '{tool_input:{command:$c}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" bash "$HOOKS/merge-develop-guard.sh"; }
 is_deny "$(cm_nojq 'glab mr merge 5 --yes')" \
   && ok "ALTO-2: confirmar-merge-develop SIN jq, mr merge → SIGUE bloqueado" \
   || bad "ALTO-2: confirmar-merge-develop SIN jq dejó de bloquear un mr merge — AFLOJAMIENTO"
-is_silent "$(jq -nc --arg c 'glab mr merge 5 --yes' '{tool_input:{command:$c}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 bash "$HOOKS/confirmar-merge-develop.sh")" \
+is_silent "$(jq -nc --arg c 'glab mr merge 5 --yes' '{tool_input:{command:$c}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 bash "$HOOKS/merge-develop-guard.sh")" \
   && ok "ALTO-2: confirmar-merge-develop SIN jq + escape explícito → deja pasar" \
   || bad "ALTO-2: confirmar-merge-develop no honró el escape explícito"
 
@@ -1249,19 +1253,30 @@ cm() {
   printf '%s\n' "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"$msg\"}]}}" > "$CMTX"
   local m="$mock"; [ "$mock" = LIVE ] && m=""
   jq -nc --arg c "$1" --arg t "$CMTX" '{tool_input:{command:$c},transcript_path:$t}' \
-    | PATH="$CMBIN:$PATH" HOME="$CMHOME" CLAUDE_PROJECT_DIR="$CMREPO" CLAUDE_MERGE_JUEZ_MOCK="$m" bash "$HOOKS/confirmar-merge-develop.sh"
+    | PATH="$CMBIN:$PATH" HOME="$CMHOME" CLAUDE_PROJECT_DIR="$CMREPO" CLAUDE_MERGE_JUEZ_MOCK="$m" bash "$HOOKS/merge-develop-guard.sh"
 }
 mock_cm_glab develop
-# ── FLUJO/wiring (determinista, veredicto del juez mockeado) ──
-out_allow="$(cm 'glab mr merge 5 --yes' ALLOW)"
+# CONSOLIDACIÓN 2026-09-17: merge-develop-guard corre el check de SQUASH ANTES del juez. Para ejercitar el
+# JUEZ (autorización) sobre un merge a develop, el comando debe PASAR primero el squash (traer --squash +
+# --remove-source-branch + un --squash-message con sustancia y rastro) — si no, el guard frena en el squash y
+# nunca llega al juez. CMOK = ese sufijo bien formado; los casos de AUTORIZACIÓN lo añaden. (Los casos que solo
+# prueban DETECCIÓN —H3/eval/glab.exe— NO lo necesitan: is_deny da igual si frena por squash o por juez.)
+CMOK='--squash --remove-source-branch --squash-message "integra el fix del calculo del IVA en las facturas del periodo actual que salia doble. Rama: fix/iva MR: !5"'
+# ── FLUJO/wiring (determinista, veredicto del juez mockeado; con squash bien formado → llega al juez) ──
+out_allow="$(cm "glab mr merge 5 --yes $CMOK" ALLOW)"
 { ! is_deny "$out_allow" && printf '%s' "$out_allow" | grep -qi 'limpiar-ramas'; } \
-  && ok "cmd flujo: juez ALLOW → merge pasa + nota de higiene (limpiar-ramas)" \
+  && ok "cmd flujo: juez ALLOW (tras pasar squash) → merge pasa + nota de higiene (limpiar-ramas)" \
   || bad "cmd flujo: juez ALLOW fue frenado o le faltó la nota de higiene"
-is_deny "$(cm 'glab mr merge 5 --yes' DENY)" \
-  && ok "cmd flujo: juez DENY → merge a develop frenado" || bad "cmd flujo: juez DENY dejó pasar el merge"
-is_deny "$(cm 'glab mr merge 5 --yes' UNAVAILABLE)" \
-  && ok "cmd flujo: juez UNAVAILABLE (sin LLM/red/timeout) → freno (fail-safe conservador, NUNCA fail-open)" \
+is_deny "$(cm "glab mr merge 5 --yes $CMOK" DENY)" \
+  && ok "cmd flujo: squash OK + juez DENY → merge a develop frenado por el juez" || bad "cmd flujo: juez DENY dejó pasar el merge"
+is_deny "$(cm "glab mr merge 5 --yes $CMOK" UNAVAILABLE)" \
+  && ok "cmd flujo: squash OK + juez UNAVAILABLE (sin LLM/red/timeout) → freno (fail-safe conservador, NUNCA fail-open)" \
   || bad "cmd flujo: FAIL-OPEN — sin juez disponible dejó pasar el merge"
+# CONSOLIDACIÓN: el MISMO merge SIN --squash → frena en el check de squash ANTES del juez (fail-fast).
+out_nosq="$(cm 'glab mr merge 5 --yes' ALLOW)"
+{ is_deny "$out_nosq" && printf '%s' "$out_nosq" | grep -qi 'squash'; } \
+  && ok "cmd consolidado: merge a develop SIN --squash → frena en el check de squash (fail-fast, antes del juez)" \
+  || bad "cmd consolidado: un merge a develop sin squash no frenó por squash"
 # H3: 'glab mr merge 5 && git status' sigue reconocido como merge (la lib ancla al subcomando) → gateado.
 is_deny "$(cm 'glab mr merge 5 --yes && git status' DENY)" \
   && ok "cmd H3: 'glab mr merge 5 && git status' → gateado (token 'status' encadenado NO evade)" \
@@ -1270,15 +1285,15 @@ is_deny "$(cm 'glab mr merge 5 --yes && git status' DENY)" \
 is_deny "$(cm 'glab.exe mr merge 5 --yes' DENY)" \
   && ok "cmd H-R9-01: 'glab.exe mr merge' reconocido como merge (Windows) → gateado" \
   || bad "cmd H-R9-01: 'glab.exe' evadió el gate"
-# Cobertura NUEVA (auditoría externa del arnés, 2026-09-15): git-branch-guard/entorno-maquina-guard/
-# merge-squash-guard/secret-scan ya tenían el caso eval/bash-c (M1); confirmar-merge-develop NO lo tenía
-# pese a compartir la MISMA lib despoja-comillas (cm() ya arma el JSON con jq -nc, quote-safe).
+# Cobertura M1 (eval/bash-c): el span entrecomillado de un EJECUTOR se reinyecta → el merge real dentro de
+# `eval "…"` / `bash -c "…"` sigue reconocido y gateado (aquí frena en el squash, que es un deny igual válido
+# para probar la DETECCIÓN — no necesita CMOK). cm() arma el JSON con jq -nc (quote-safe).
 is_deny "$(cm 'eval "glab mr merge 5 --yes"' DENY)" \
   && ok "cmd M1-cobertura: 'eval \"glab mr merge…\"' NO evade — sigue gateando" \
-  || bad "cmd M1-cobertura: eval evadió el gate de confirmar-merge-develop"
+  || bad "cmd M1-cobertura: eval evadió el gate de merge-develop-guard"
 is_deny "$(cm 'bash -c "glab mr merge 5 --yes"' DENY)" \
   && ok "cmd M1-cobertura: 'bash -c \"glab mr merge…\"' NO evade — sigue gateando" \
-  || bad "cmd M1-cobertura: bash -c evadió el gate de confirmar-merge-develop"
+  || bad "cmd M1-cobertura: bash -c evadió el gate de merge-develop-guard"
 # Inspección genuina (no es merge|accept) → silencio (ni siquiera consulta al juez).
 is_silent "$(cm 'glab mr view 5' DENY)" \
   && ok "cmd: 'glab mr view' (inspección) → silencio (no es un merge)" || bad "cmd: bloqueó una inspección"
@@ -1382,7 +1397,7 @@ rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
 # El jq de interleave es el código NUEVO riesgoso del fix "el juez lee MIS turnos" (2026-08-02): si se rompe,
 # el juez ve contexto vacío → regresan los falsos negativos anafóricos. Se testea con fixtures de transcript.
 (
-  _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/confirmar-merge-develop.sh"
+  _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/merge-develop-guard.sh"
   FX=$(mktemp)
   cat > "$FX" <<'JFX'
 {"type":"user","message":{"role":"user","content":[{"type":"text","text":"hola, arranca"}]}}
@@ -1465,7 +1480,7 @@ JFX
 # ── PISO DETERMINISTA del gate de MAIN (corre SIEMPRE, sin LLM) · #fix destino ──
 # El piso vive DENTRO de _juez_merge y aplica AUNQUE el veredicto venga de MOCK → testeable determinista.
 # Verifica: un release a main con LLM=ALLOW pero SIN lenguaje de release del USUARIO → el piso override a DENY.
-( _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/confirmar-merge-develop.sh"
+( _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/merge-develop-guard.sh"
   pmain() { CLAUDE_MERGE_JUEZ_MOCK=ALLOW _juez_merge "$1" 999 "$2"; }
   [ "$(pmain main 'USUARIO: mergea el 999')" = DENY ] \
     && ok "piso-main: 'mergea' pelón a main + LLM=ALLOW → piso override a DENY" || bad "piso-main: NO frenó un release a main SIN lenguaje de release (LLM=ALLOW)"
@@ -1542,7 +1557,7 @@ USUARIO: ok gracias')" = DENY ] \
 # 'VEREDICTO:' (tail -1) y el veto determinista de cita (la CITA de un ALLOW debe existir VERBATIM en una
 # línea USUARIO: real, si no → override DENY). Es la pieza de seguridad que vuelve "solo USUARIO autoriza"
 # un invariante determinista para develop Y main.
-( _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/confirmar-merge-develop.sh"
+( _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/merge-develop-guard.sh"
   CONVU='USUARIO: mergea el 240 a develop
 ASISTENTE: corriendo la suite antes de integrar'
   raw() { CLAUDE_MERGE_JUEZ_MOCK_RAW="$1" _juez_merge "$2" "$3" "$4"; }
@@ -1673,7 +1688,7 @@ chmod +x "$JCFIX/curl401/curl"
   export PATH="$JCFIX/curl401:$JCFIX/nosec:$PATH"; export CLAUDE_CODE_OAUTH_TOKEN="ENV_TOK"; unset CLAUDE_CONFIG_DIR
   export JC_CURL_CTR="$JCFIX/ctr_m"; : > "$JC_CURL_CTR"
   export JC_CURL_BODY200='{"content":[{"text":"CITA: mergea el 240 a develop\nVEREDICTO: ALLOW"}]}'
-  _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/confirmar-merge-develop.sh"; unset CLAUDE_MERGE_JUEZ_MOCK CLAUDE_MERGE_JUEZ_MOCK_RAW
+  _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/merge-develop-guard.sh"; unset CLAUDE_MERGE_JUEZ_MOCK CLAUDE_MERGE_JUEZ_MOCK_RAW
   got="$(_juez_merge develop 240 'USUARIO: mergea el 240 a develop')"
   [ "$got" = ALLOW ] \
     && ok "juez-comun (a): merge 401→retry→200 con cita real → ALLOW end-to-end (token stale ya no tapia el merge)" \
@@ -1683,7 +1698,7 @@ chmod +x "$JCFIX/curl401/curl"
 # (c) política SIN token: merge → UNAVAILABLE_NOTOKEN (no genérico), y a nivel hook → DENY + carril CONFORME (setup-token)
 (
   export PATH="$JCFIX/nosec:$PATH"; export CLAUDE_CONFIG_DIR="$JCFIX/empty"; unset CLAUDE_CODE_OAUTH_TOKEN
-  _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/confirmar-merge-develop.sh"; unset CLAUDE_MERGE_JUEZ_MOCK CLAUDE_MERGE_JUEZ_MOCK_RAW
+  _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/merge-develop-guard.sh"; unset CLAUDE_MERGE_JUEZ_MOCK CLAUDE_MERGE_JUEZ_MOCK_RAW
   got="$(_juez_merge develop 5 'USUARIO: mergea el 5 a develop')"   # sin token → NOTOKEN antes del curl (sin red)
   [ "$got" = UNAVAILABLE_NOTOKEN ] \
     && ok "juez-comun (c): merge sin token en NINGÚN canal → UNAVAILABLE_NOTOKEN (distinto del genérico)" \
@@ -1693,7 +1708,7 @@ JCREPO="$JCFIX/repo"; mkdir -p "$JCREPO/.claude"; : > "$JCREPO/.claude/repo-comp
 git -C "$JCREPO" init -q >/dev/null 2>&1; git -C "$JCREPO" remote add origin git@gitlab.com:org/repo.git >/dev/null 2>&1
 printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"mergea el 5 a develop"}]}}' > "$JCFIX/tx.jsonl"
 out_nt="$(jq -nc --arg c 'glab mr merge 5 --squash' --arg t "$JCFIX/tx.jsonl" '{tool_input:{command:$c},transcript_path:$t}' \
-  | env -u CLAUDE_CODE_OAUTH_TOKEN PATH="$JCFIX/stubs:$PATH" HOME="$JCFIX/home" CLAUDE_CONFIG_DIR="$JCFIX/empty" CLAUDE_PROJECT_DIR="$JCREPO" bash "$HOOKS/confirmar-merge-develop.sh")"
+  | env -u CLAUDE_CODE_OAUTH_TOKEN PATH="$JCFIX/stubs:$PATH" HOME="$JCFIX/home" CLAUDE_CONFIG_DIR="$JCFIX/empty" CLAUDE_PROJECT_DIR="$JCREPO" bash "$HOOKS/merge-develop-guard.sh")"
 # M8 (auditoría 2026-09-15 §3.11, norma dura anti-vein-popper): YA NO redirige a la web de GitLab (retirado
 # — un guard que frena en CLI se SATISFACE o se ARREGLA, nunca se rodea mandando a la persona a la web);
 # el carril CONFORME que sí ofrece es 'claude setup-token' / CLAUDE_CODE_OAUTH_TOKEN.
@@ -1717,12 +1732,12 @@ NOJQ="$JCFIX/nojq"
 _mkbin_real "$NOJQ" cat grep basename sed head tail dirname bash
 _realbash="$NOJQ/bash"
 out_nojq="$(printf '%s' '{"tool_input":{"command":"glab mr merge 5 --squash"},"transcript_path":""}' \
-  | PATH="$NOJQ" HOME="$JCFIX/home" "$_realbash" "$HOOKS/confirmar-merge-develop.sh")"
+  | PATH="$NOJQ" HOME="$JCFIX/home" "$_realbash" "$HOOKS/merge-develop-guard.sh")"
 { is_deny "$out_nojq" && printf '%s' "$out_nojq" | grep -qi 'sin jq'; } \
   && ok "juez-comun (d): merge SIN jq → DENY (fail-SAFE; cierra la evasión por PATH-sin-jq)" \
   || bad "juez-comun (d): merge sin jq NO frenó (fail-open); got: $out_nojq"
 out_nojq2="$(printf '%s' '{"tool_input":{"command":"git status"},"transcript_path":""}' \
-  | PATH="$NOJQ" HOME="$JCFIX/home" "$_realbash" "$HOOKS/confirmar-merge-develop.sh")"
+  | PATH="$NOJQ" HOME="$JCFIX/home" "$_realbash" "$HOOKS/merge-develop-guard.sh")"
 is_silent "$out_nojq2" \
   && ok "juez-comun (d): comando NO-merge sin jq → silencio (no sobre-bloquea comandos normales)" \
   || bad "juez-comun (d): sin jq sobre-bloqueó un comando normal; got: $out_nojq2"
@@ -1776,13 +1791,13 @@ if ( export PATH="$JCFIX/anthropic_ok:$PATH"; export CLAUDE_CODE_OAUTH_TOKEN="EN
 else bad "juez-comun (local c): el branch local rompió el default Anthropic"; fi
 # (d) end-to-end merge — local OK con CITA+VEREDICTO reales → ALLOW (sin token: el local no lo necesita).
 if [ "$( ( export PATH="$JCFIX/local_ok:$PATH"; export CLAUDE_JUEZ_LOCAL_MODEL="qwen3-test"; unset CLAUDE_CODE_OAUTH_TOKEN CLAUDE_CONFIG_DIR
-     _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/confirmar-merge-develop.sh"; unset CLAUDE_MERGE_JUEZ_MOCK CLAUDE_MERGE_JUEZ_MOCK_RAW
+     _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/merge-develop-guard.sh"; unset CLAUDE_MERGE_JUEZ_MOCK CLAUDE_MERGE_JUEZ_MOCK_RAW
      _juez_merge develop 240 'USUARIO: mergea el 240 a develop' ) )" = ALLOW ]; then
   ok "juez-comun (local d): merge vía backend LOCAL (Ollama OK) + cita real → ALLOW end-to-end"
 else bad "juez-comun (local d): el merge por backend local no dio ALLOW"; fi
 # (e) end-to-end merge — local CAÍDO → DENY/UNAVAILABLE (fail-SAFE): Ollama caído SIGUE bloqueando el merge.
 _gote="$( ( export PATH="$JCFIX/local_down:$PATH"; export CLAUDE_JUEZ_LOCAL_MODEL="qwen3-test"; unset CLAUDE_CODE_OAUTH_TOKEN CLAUDE_CONFIG_DIR
-     _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/confirmar-merge-develop.sh"; unset CLAUDE_MERGE_JUEZ_MOCK CLAUDE_MERGE_JUEZ_MOCK_RAW
+     _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/merge-develop-guard.sh"; unset CLAUDE_MERGE_JUEZ_MOCK CLAUDE_MERGE_JUEZ_MOCK_RAW
      _juez_merge develop 240 'USUARIO: mergea el 240 a develop' ) )"
 if [ "$_gote" != ALLOW ] && [ -n "$_gote" ]; then
   ok "juez-comun (local e): merge con Ollama CAÍDO → '$_gote' (fail-SAFE; NO abre el merge)"
@@ -1800,7 +1815,7 @@ rm -rf "$JCFIX" 2>/dev/null || true
 # — es la LÓGICA del lever, testeable sin paralelismo ni red; (2) el WIRING de _juez_merge (VOTES=1 = una sola
 # llamada idéntica a hoy; VOTES≥2 = N votos EN PARALELO agregados). El MOCK hace cada voto determinista → el
 # camino paralelo real se ejercita end-to-end (mktemp + subshells + wait + agregación + piso de main por-voto).
-( _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/confirmar-merge-develop.sh"
+( _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/merge-develop-guard.sh"
   ag() { printf '%s\n' "$1" | _juez_agrega_votos; }
   # (1) AGREGACIÓN — los 5 escenarios pedidos por el diseño del lever:
   [ "$(ag 'ALLOW
@@ -1869,7 +1884,7 @@ printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text"
 xcm() {
   if [ -n "${3:-}" ]; then jq -nc --arg c "$1" --arg t "$XTX" --arg w "$3" '{tool_input:{command:$c},transcript_path:$t,cwd:$w}'
   else                     jq -nc --arg c "$1" --arg t "$XTX"                '{tool_input:{command:$c},transcript_path:$t}'; fi \
-    | PATH="$XBIN:$PATH" HOME="$XHOME" CLAUDE_PROJECT_DIR="$2" CLAUDE_MERGE_JUEZ_MOCK=DENY bash "$HOOKS/confirmar-merge-develop.sh"
+    | PATH="$XBIN:$PATH" HOME="$XHOME" CLAUDE_PROJECT_DIR="$2" CLAUDE_MERGE_JUEZ_MOCK=DENY bash "$HOOKS/merge-develop-guard.sh"
 }
 # C1 (FN de ALTA consecuencia): sesión en repo PERSONAL (sin marca) mergea a un develop COMPARTIDO vía --repo →
 # antes: marca leída de CLAUDE_PROJECT_DIR (personal) → exit 0 → integración SIN OK. Ahora: --repo != dir local
@@ -1884,7 +1899,11 @@ is_deny "$(xcm 'glab mr merge 6 -R org/personal --yes' "$XSHARED")" \
   && ok "cmd-cross C2: sesión COMPARTIDA + '--repo org/personal' → GATEA (fricción segura: slug no resoluble a ruta local)" \
   || bad "cmd-cross C2: dejó pasar un --repo cross-repo sin gate"
 # PERSONAL normal (retro-compat, sin fricción): sesión PERSONAL, sin --repo, repo git válido sin marca → exit 0.
-is_silent "$(xcm 'glab mr merge 5 --yes' "$XPERSONAL")" \
+# CONSOLIDACIÓN 2026-09-17: el mock de glab resuelve develop → el check de SQUASH exige --remove-source-branch
+# antes de llegar al scoping de personal/compartido; XSQOK lo satisface con un mensaje UNVERIFICABLE (fail-open,
+# la forma que el propio hook sugiere) para que este caso ejercite el SCOPING, no el squash (cubierto en b1c).
+XSQOK='--squash --remove-source-branch --squash-message "$(cat resumen.md)"'
+is_silent "$(xcm "glab mr merge 5 $XSQOK --yes" "$XPERSONAL")" \
   && ok "cmd-cross: sesión PERSONAL sin --repo (repo válido, sin marca) → silencio (PERSONAL confirmado, cero fricción)" \
   || bad "cmd-cross: gateó un merge en un repo personal (regresión de fricción)"
 # COMPARTIDO propio (no-regresión): sesión COMPARTIDA, sin --repo, con marca → GATEA como hoy.
@@ -1898,7 +1917,7 @@ is_deny "$(xcm 'glab mr merge 7 --yes' "$XPERSONAL" "$XSHARED")" \
 # AUTH_FILE se resuelve del TARGET_ROOT: grant durable vive en SHARED; sesión PERSONAL + .cwd=SHARED → fast-path exit 0.
 mkdir -p "$XSHARED/.claude/memory"
 printf 'scope=merge-develop vence_epoch=%s cita="ok blanket"\n' "$(( $(date +%s) + 3600 ))" > "$XSHARED/.claude/memory/autorizaciones-vigentes.local.md"
-is_silent "$(xcm 'glab mr merge 8 --yes' "$XPERSONAL" "$XSHARED")" \
+is_silent "$(xcm "glab mr merge 8 $XSQOK --yes" "$XPERSONAL" "$XSHARED")" \
   && ok "cmd-cross: grant durable en el repo DESTINO (AUTH_FILE del TARGET_ROOT) + .cwd → fast-path exit 0" \
   || bad "cmd-cross: no leyó el grant durable del repo destino (AUTH_FILE no salió de TARGET_ROOT)"
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
@@ -1913,7 +1932,7 @@ rm -rf "$XROOT"
 # fail-safe, seguridad); casos ALLOW = hard-assert de ALLOW (son los falsos negativos que este fix corrige;
 # volver a DENY = regresión). UNAVAILABLE en un caso ALLOW = infra flaky, se reporta (con 1 reintento).
 if [ -n "${CLAUDE_MERGE_JUEZ_LIVE:-}" ] && command -v curl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
-  _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/confirmar-merge-develop.sh"   # trae _juez_merge idéntico al del hook
+  _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/merge-develop-guard.sh"   # trae _juez_merge idéntico al del hook
   . "$HOOKS/analizar-comando-git.sh"                              # acg_hint_candidatos para los casos con hint
   unset CLAUDE_MERGE_JUEZ_MOCK CLAUDE_MERGE_JUEZ_MOCK_RAW
   # HINTs deterministas para los adversariales de "un-solo-candidato" (el contexto IDENTIFICA, no autoriza)
@@ -2056,8 +2075,11 @@ M8TX="$M8ROOT/tx.jsonl"; printf '%s\n' '{"type":"user","message":{"role":"user",
 M8NOCLI="$M8ROOT/noclibin"
 _mkbin_real "$M8NOCLI" bash grep sed cat basename dirname head tail printf awk jq date mktemp tr wc sort cut git
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
-out_m8="$(jq -nc --arg c 'glab mr merge 42 --yes' --arg t "$M8TX" '{tool_input:{command:$c},transcript_path:$t}' \
-  | PATH="$M8NOCLI" HOME="$M8HOME" CLAUDE_PROJECT_DIR="$M8REPO" ACG_PATH_AUGMENT=0 CLAUDE_MERGE_JUEZ_MOCK=DENY bash "$HOOKS/confirmar-merge-develop.sh")"
+# CONSOLIDACIÓN 2026-09-17: sin gh/glab en el PATH el destino queda SIN-RESOLVER (nunca "develop"), así que
+# el check de squash no exige calidad (remove-source-branch/mensaje) -- basta el flag --squash para pasarlo
+# y llegar al mensaje de ENTORNO que este caso ejercita.
+out_m8="$(jq -nc --arg c 'glab mr merge 42 --squash --yes' --arg t "$M8TX" '{tool_input:{command:$c},transcript_path:$t}' \
+  | PATH="$M8NOCLI" HOME="$M8HOME" CLAUDE_PROJECT_DIR="$M8REPO" ACG_PATH_AUGMENT=0 CLAUDE_MERGE_JUEZ_MOCK=DENY bash "$HOOKS/merge-develop-guard.sh")"
 { is_deny "$out_m8" && printf '%s' "$out_m8" | grep -qi 'ni gh ni glab' && printf '%s' "$out_m8" | grep -qi 'Repetir la autorizaci'; } \
   && ok "M8: destino DESCONOCIDO por SIN-RED → mensaje da la causa REAL (ni gh ni glab) + 'repetir NO destraba'" \
   || bad "M8: el mensaje de entorno no citó la causa real o pidió repetir la autorización; got: $out_m8"
@@ -2074,9 +2096,14 @@ echo "== (b1f) confirmar-merge-develop: autorización durable (vence_epoch) + vo
 AUTHF="$CMREPO/.claude/memory/autorizaciones-vigentes.local.md"
 mkdir -p "$CMREPO/.claude/memory"
 mock_cm_glab develop
+# CONSOLIDACIÓN 2026-09-17 (mismo motivo que CMOK arriba en (b1e)): destino=develop confirmado hace que el
+# check de SQUASH exija --remove-source-branch antes de llegar al grant/juez. SQOK = --squash bien formado
+# (mensaje UNVERIFICABLE vía "$(cat resumen.md)", la forma que el propio hook sugiere → fail-open, sin exigir
+# prosa) para que estas pruebas ejerciten el GRANT, no el squash (ya cubierto en (b1c)).
+SQOK='--squash --remove-source-branch --squash-message "$(cat resumen.md)"'
 # (1) grant VIGENTE → permite el merge a develop aunque el transcript no traiga OK.
 printf -- '- scope=merge-develop vence_epoch=%s vence="mañana 10am" cita="autorizo todos los merges a develop hasta mañana 10am" registrada=2026-07-18\n' "$(( $(date +%s) + 3600 ))" > "$AUTHF"
-is_silent "$(cm 'glab mr merge 61 --squash --yes' DENY)" \
+is_silent "$(cm "glab mr merge 61 $SQOK --yes" DENY)" \
   && ok "cmd b1f: grant durable VIGENTE → merge a develop pasa (sobrevive compactación)" \
   || bad "cmd b1f: grant durable vigente NO destrabó el merge a develop"
 # (2) grant VENCIDO → freno normal.
@@ -2126,7 +2153,7 @@ is_deny "$(cm 'glab mr merge --yes' DENY 'libera esto a main, es el release')" \
 # (8) regresión del camino SEGURO de M6 (el que SÍ debía quedarse): destino CONFIRMADO develop + grant
 #     vigente → sigue pasando SIN llamar al juez (mock=DENY prueba que el fast-path lo evita).
 mock_cm_glab develop
-is_silent "$(cm 'glab mr merge 66 --squash --yes' DENY)" \
+is_silent "$(cm "glab mr merge 66 $SQOK --yes" DENY)" \
   && ok "CRÍTICO-3: regresión — grant vigente + destino CONFIRMADO develop → SIGUE pasando por el fast-path (no se tocó la parte segura de M6)" \
   || bad "CRÍTICO-3: REGRESIÓN — el fast-path seguro (destino=develop confirmado) se rompió al cerrar el hueco"
 rm -f "$AUTHF" 2>/dev/null
@@ -2141,16 +2168,16 @@ H3TX="$CMROOT/h3tx.jsonl"
   i=1; while [ "$i" -le 6200 ]; do printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"trabajando"}]}}'; i=$((i+1)); done
 } > "$H3TX"
 mock_cm_glab develop
-out_h3=$(jq -nc --arg c 'glab mr merge 5 --squash --yes' --arg t "$H3TX" '{tool_input:{command:$c},transcript_path:$t}' \
-  | PATH="$CMBIN:$PATH" HOME="$CMHOME" CLAUDE_PROJECT_DIR="$CMREPO" CLAUDE_MERGE_JUEZ_MOCK=DENY bash "$HOOKS/confirmar-merge-develop.sh")
+out_h3=$(jq -nc --arg c "glab mr merge 5 $SQOK --yes" --arg t "$H3TX" '{tool_input:{command:$c},transcript_path:$t}' \
+  | PATH="$CMBIN:$PATH" HOME="$CMHOME" CLAUDE_PROJECT_DIR="$CMREPO" CLAUDE_MERGE_JUEZ_MOCK=DENY bash "$HOOKS/merge-develop-guard.sh")
 { is_deny "$out_h3" && printf '%s' "$out_h3" | grep -qi 'FUERA de mi ventana' && ! printf '%s' "$out_h3" | grep -qi 'no encontré tu confirmación'; } \
   && ok "H3: transcript de 6201 líneas con el OK en la línea 1 → el mensaje nombra la CAUSA (ventana truncada), no culpa al usuario" \
   || bad "H3: REGRESIÓN — el mensaje sigue culpando al usuario pese a que la autorización quedó fuera de la ventana; got: $out_h3"
 # Control: mismo transcript pero CORTO (la autorización SÍ cae dentro de la ventana) → sigue pasando normal.
 H3TX2="$CMROOT/h3tx2.jsonl"
 printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"mergea el MR 5 a develop"}]}}' > "$H3TX2"
-out_h3b=$(jq -nc --arg c 'glab mr merge 5 --squash --yes' --arg t "$H3TX2" '{tool_input:{command:$c},transcript_path:$t}' \
-  | PATH="$CMBIN:$PATH" HOME="$CMHOME" CLAUDE_PROJECT_DIR="$CMREPO" CLAUDE_MERGE_JUEZ_MOCK=ALLOW bash "$HOOKS/confirmar-merge-develop.sh")
+out_h3b=$(jq -nc --arg c "glab mr merge 5 $SQOK --yes" --arg t "$H3TX2" '{tool_input:{command:$c},transcript_path:$t}' \
+  | PATH="$CMBIN:$PATH" HOME="$CMHOME" CLAUDE_PROJECT_DIR="$CMREPO" CLAUDE_MERGE_JUEZ_MOCK=ALLOW bash "$HOOKS/merge-develop-guard.sh")
 # ALLOW legítimo trae su nota de higiene (additionalContext, no vacío) -- lo que NO debe pasar es un deny
 # citando "ventana truncada" sobre un transcript corto normal.
 { ! is_deny "$out_h3b" && ! printf '%s' "$out_h3b" | grep -qi 'FUERA de mi ventana'; } \
@@ -5931,7 +5958,7 @@ HOME="$FAKEHOME2" bash "$INSTALLER" >/dev/null 2>&1
 GSET2="$FAKEHOME2/.claude/settings.json"
 GCLAUDE2="$FAKEHOME2/.claude/CLAUDE.md"
 
-for pat in git-branch-guard merge-squash-guard confirmar-merge-develop recordar-dashboard proteger-arbol rehidratar-hilo aviso-contexto delegacion-gate delegacion-registrar; do
+for pat in git-branch-guard merge-develop-guard recordar-dashboard proteger-arbol rehidratar-hilo aviso-contexto delegacion-gate delegacion-registrar; do
   n="$(jq --arg p "$pat" '[.hooks[]?[]? | select(([.hooks[]?.command]|join(" "))|test($p))] | length' "$GSET2" 2>/dev/null)"
   if [ "$n" = "1" ]; then ok "settings.json: $pat cableado 1× (idempotente)"; else bad "settings.json: $pat aparece ${n:-?}× (esperaba 1)"; fi
 done
@@ -6098,15 +6125,13 @@ echo "== (e) sin referencias circulares NUEVAS entre elementos del cerebro =="
 # hooks-hermanos). Un par NUEVO fuera de aqui = posible referencia circular -> revisalo (peor que una
 # contradiccion). El test COMPUTA los pares en cada corrida, no depende de contarlos a mano.
 CE_ALLOW="analizar-comando-git|git-branch-guard
-analizar-comando-git|merge-squash-guard
-analizar-comando-git|confirmar-merge-develop
-confirmar-merge-develop|git-branch-guard
-confirmar-merge-develop|merge-squash-guard
+analizar-comando-git|merge-develop-guard
+git-branch-guard|merge-develop-guard
 detectar-secretos|secret-scan
-confirmar-merge-develop|juez-comun
+juez-comun|merge-develop-guard
 dod-verificar|juez-comun
 cerrar-slice|dod-verificar
-cerrar-slice|merge-squash-guard
+cerrar-slice|merge-develop-guard
 cerrar-slice|recordar-dashboard
 delegacion-comun|delegacion-gate
 delegacion-comun|delegacion-registrar
@@ -6163,6 +6188,10 @@ checkpoint-mecanico|checkpoint-mecanico-comun"
 # el andamio que escribe el hook checkpoint-mecanico.sh, y el hook menciona la skill "checkpoint" en su
 # propio encabezado (contexto de por qué existe) — es la misma relación consumidor<->productor documentada
 # de un par de arriba, no un ciclo.
+# CONSOLIDACIÓN 2026-09-17: merge-squash-guard + confirmar-merge-develop se fusionaron en
+# merge-develop-guard — sus pares con analizar-comando-git (lib<->consumidor), git-branch-guard (hooks
+# hermanos, ambos sobre acg), juez-comun (lib<->consumidor) y cerrar-slice (skill<->guard, como los demás
+# pares de cerrar-slice de arriba) son la MISMA relación benigna de siempre, solo con el nombre nuevo.
 # checkpoint|contrato-hilo (F1, 2026-09-11): la lib es el CONTRATO del footer del hilo — la skill la
 # corre al volcar (fail-loud) y la lib documenta a su consumidor. Es lib<->consumidor, como los 3
 # pares de drift-cerebro-comun de arriba; el contenido no rebota entre los dos.
@@ -6762,17 +6791,18 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-echo "== (e6b) install-brain: EXACTAMENTE 8 hooks en PreToolUse/Bash + aviso-contexto/recordar-orquestar en PostToolUse (sin matcher) =="
-# El fan-out de guards sobre Bash es un set CERRADO de 8 (rama-vieja se RETIRÓ — tier `retirado` en el
-# MANIFEST — y salió de este set); aviso-contexto y recordar-orquestar van en
+echo "== (e6b) install-brain: EXACTAMENTE 7 hooks en PreToolUse/Bash + aviso-contexto/recordar-orquestar en PostToolUse (sin matcher) =="
+# El fan-out de guards sobre Bash es un set CERRADO de 7 (rama-vieja se RETIRÓ — tier `retirado` en el
+# MANIFEST — y salió de este set; CONSOLIDACIÓN 2026-09-17: merge-squash-guard + confirmar-merge-develop
+# se fusionaron en merge-develop-guard, restando 1 al conteo); aviso-contexto y recordar-orquestar van en
 # PostToolUse sin matcher (casan toda tool). El cableado se DERIVA del MANIFEST vía ev_de() en
 # install-brain.sh → verificamos ese mapeo (no líneas register_hook literales: el instalador las colapsó
 # a un loop). Si alguien agrega/quita un guard de Bash del mapeo, este test lo caza.
-want_bash="git-branch-guard merge-squash-guard confirmar-merge-develop secret-scan recordar-dashboard entorno-maquina-guard no-bypass-deploy proteger-arbol"
+want_bash="git-branch-guard merge-develop-guard secret-scan recordar-dashboard entorno-maquina-guard no-bypass-deploy proteger-arbol"
 want_bash_sorted="$(printf '%s\n' $want_bash | sort | tr '\n' ' ' | sed 's/ *$//')"
 got_bash="$(grep -E '\) *echo *"PreToolUse\|Bash"' "$INSTALLER" | sed -E 's/\).*//' | tr '|' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -vE '^$' | sort | tr '\n' ' ' | sed 's/ *$//')"
 if [ "$got_bash" = "$want_bash_sorted" ]; then
-  ok "e6b: ev_de() mapea EXACTAMENTE los 8 guards de PreToolUse/Bash"
+  ok "e6b: ev_de() mapea EXACTAMENTE los 7 guards de PreToolUse/Bash"
 else
   bad "e6b: el set PreToolUse/Bash de ev_de() cambió · got:[$got_bash] want:[$want_bash_sorted]"
 fi
@@ -8641,7 +8671,7 @@ echo "   NO prescribe el escape a la WEB que M8 retiró de los mensajes reales =
 grep -qi 'setup-token' "$HOOKS/juez-comun.sh" \
   && ok "H5: el contrato SÍ documenta el remedio real (claude setup-token / CLAUDE_CODE_OAUTH_TOKEN)" \
   || bad "H5: el contrato no documenta ningún remedio real para NOTOKEN"
-for _g in git-branch-guard.sh merge-squash-guard.sh confirmar-merge-develop.sh secret-scan.sh proteger-arbol.sh; do
+for _g in git-branch-guard.sh merge-develop-guard.sh secret-scan.sh proteger-arbol.sh; do
   grep -v '^[[:space:]]*#' "$HOOKS/$_g" | grep -qi 'web de gitlab\|en la web' \
     && bad "H5 control: $_g todavía menciona la web como escape en CÓDIGO VIVO (norma anti-vein-popper violada)" \
     || ok "H5 control: $_g no ofrece la web como escape en código vivo (ya lo verificaba M8, sigue intacto)"
