@@ -15,8 +15,8 @@ description: >-
   un master debe mudarse al repo que de verdad es su casa, sin lobotomizarlo, sin fuga ni duplicado
   divergente. La maquinaria determinista vive en el script `reubicar-master.sh` que viene JUNTO a este
   skill (genera el handoff, lo verifica por contenido y da los tres comandos para correrlo); este
-  documento es el contrato, las decisiones del humano y el porqué. Hermana de
-  `claude-proyecto-autocontenido` (esa define DÓNDE vive el cerebro; ésta lo MUEVE de casa).
+  documento es el contrato, las decisiones del humano y el porqué. Hermana de `canonizar-cerebro`
+  —modo sembrar— (ese define DÓNDE vive el cerebro; ésta lo MUEVE de casa).
 ---
 
 # reubicar-master — mudar un brain-master COMPLETO a su nueva casa (sin lobotomía, sin tail, sin fuga)
@@ -730,8 +730,9 @@ con `sessionAliases()` = `$NOMBRE_FINAL`.
   SIMLINKS. PUNTO"* · *"son un pinche bug que no logro que dejen de propagar"*. El cerebro del repo se lee
   NATIVO porque el destino es el cwd; el `memory` de un slug es el canal per-máquina y va como
   **DIRECTORIO REAL** o no existe. Medido en Cachy: de 20 slugs con `memory`, los 5 que unjordi considera
-  bien hechos tienen dir real y los 15 con symlink los sembró `claude-proyecto-autocontenido`, que lo
-  PRESCRIBE. Si el bootstrap ya lo creó, se **retira** (borrando solo el enlace, sin `-r` y sin slash
+  bien hechos tienen dir real y los 15 con symlink los sembró el bootstrap del (ya retirado) skill
+  `claude-proyecto-autocontenido`, que lo PRESCRIBÍA — su criterio vive hoy en `canonizar-cerebro` (modo
+  sembrar), SIN symlinks. Si el bootstrap viejo ya lo creó, se **retira** (borrando solo el enlace, sin `-r` y sin slash
   final). El verificador corre **sin `-L`**: con `-L`, `find` sigue el enlace y lo clasifica por su destino
   ⇒ **solo ve los ROTOS** (verificado con fixture: un symlink sano NO aparece) — justo el que no ve los que
   violan la decisión. Y **falla**, no solo imprime.
@@ -1077,7 +1078,7 @@ git), y las ediciones de identidad de S6 (están en el `.t2` de respaldo).
 | **Se mueve la copia MUERTA porque su transcript trae un timestamp AJENO más "reciente"** | el desempate de `findSession` leía el `timestamp` por regex sobre el renglón CRUDO ⇒ el `timestamp` que un `toolUseResult` embebe de una respuesta de API contaba como actividad de la sesión (confirmado por ejecución: una copia de enero con un anidado de 2099 le ganaba a la copia real de hoy). Lo mismo contaminaba el **gate de frescura** de `session-import.js` | el `timestamp` se lee por CAMPO de **primer nivel** (`topLevelString`: un recorrido del renglón llevando la profundidad, sin el `JSON.parse` por línea que haría inviable barrer cientos de MB). Y `G-LIVENESS` sigue **bloqueando** si el id vive en >1 slug: no hay tie-break aceptable para un `unlink` |
 | Borrar el `memory` compartido | barrido no-quirúrgico en un slug de ~130 sesiones | barrer SOLO `<id>.jsonl`; verificar que el `memory` del slug viejo sigue vivo |
 | **Symlink que viola la decisión, con el verificador en verde** | `find -L … -type l` **solo ve los ROTOS** (sigue el enlace y clasifica por su destino; verificado con fixture) | `find "$DST" -type l` **sin `-L`**, y **falla**, no solo imprime |
-| Symlink `memory` re-sembrado en el slug nuevo | `claude-proyecto-autocontenido` lo PRESCRIBE y el bootstrap lo crea | S5 lo retira; `_postcondiciones` (y por tanto S7) verifica que no reapareció |
+| Symlink `memory` re-sembrado en el slug nuevo | lo prescribía el bootstrap del (ya retirado) `claude-proyecto-autocontenido` | S5 lo retira; `_postcondiciones` (y por tanto S7) verifica que no reapareció |
 | Conflicto Drive de `masters.json` | edición concurrente de UN archivo, con el hook del gemelo escribiendo **DETACHED** | preflight **aborta** ante `masters (1).json`; S4 toma el **mismo `mkdir`-lock del hook** y escribe tmp **en el mismo dir** + rename |
 | Move NO atómico (a medias) | copy-a-slug-nuevo + unlink-viejo (no es un rename atómico) | respaldo propio + validación de contenido + **archivo de estado `$ST`** + máquina de estados re-entrante: la reanudación es por ESTADO, no por adivinanza de postcondiciones |
 | **Mudanza revertida por el propio QA** | el resume MUTA, y el hook **por diseño** reescribe el `target` desde el cwd vivo (UPSERT: *"si está con target distinto → lo ACTUALIZA"*), además **detached** | **G-QUIESCE** por artefacto (antes y después) + **S7** re-mide con la MISMA función que S4, con **cota de 2 iteraciones** |

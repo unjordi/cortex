@@ -61,16 +61,11 @@
 ├─ 🩺 auditar-coherencia-cerebro fan-out read-only sobre el PROPIO cerebro (guards+flowcharts+doc): evasiones/huecos/drift, verificado por ejecución → loop hasta converger
 ├─ 🧪 auditar-suficiencia-operativa  ¿ALCANZA la doc para HACER el trabajo sin romper nada ni re-investigar? tareas reales ✅/⚠️/❌ + RE-auditar tras arreglar
 ├─ 🧬 auditor-semantico        ¿el código HACE lo que queremos? Capa 1 checks deterministas (en CI) + Capa 2 criterio LLM sobre invariantes-semanticos.yml; motor genérico, catálogo por-repo
-├─ 🧠 consolidar-cerebro       meta-orquestador: dupla → positivar → desinflar → loop de convergencia → cierre con la FIRMA (CLAUDE+MEMORY)
-├─ 📐 canonizar-cerebro        lleva un cerebro instanciado drifteado a la firma-árbol: reprefija memorias (git mv), reescribe CLAUDE.md+MEMORY.md, verifica 1:1 con verificar-firma-canonica.sh (detector del GATE #44)
+├─ 📐 canonizar-cerebro        DUEÑO del ciclo de vida del cerebro de un proyecto, 4 modos/1 maquinaria: sembrar (nativo, sin symlinks) · canonizar (firma-árbol, git mv, verifica 1:1) · consolidar (dupla → positivar → desinflar → convergencia → FIRMA) · reconciliar (semanal, minis de devs → develop)
 ├─ 🪶 desinflar-memorias       adelgaza un árbol de memorias sin perder lecciones: narrativa → lección; mitos descartados → cementerio.md (por ID 🪦#)
-├─ 🕵️ revisar-entregables-agentes    verifica lo que un agente ENTREGA contra la realidad; no relates su reporte como verdad
 ├─ ☀️ positivar-doc                  reescribe answer-first: 'ESTO SÍ' (método correcto) antes del 'ESTO NO'
 ├─ 🎓 investigar-dominio             ponte experto en un dominio (fan-out DOC-FIRST) → memorias durables + skills
 ├─ 📚 construir-missing-manual       fabrica el manual/wiki de referencia exhaustivo que no existe (fan-out que investiga 1× y hornea) → artefacto consultable OFFLINE
-├─ 🌾 cosechar-sesion                cosecha local: extrae aprendizajes de tu sesión al inbox del equipo
-├─ 🧩 unificar-cerebro               reconciliación del cerebro del equipo: integra los aprendizajes mini→develop
-├─ 🧳 claude-proyecto-autocontenido  el cerebro VIVE dentro del proyecto (.claude/ + symlink de slug) → viaja con él
 ├─ 🚚 reubicar-master                muda una sesión master COMPLETA a otro repo (brain-master → cortex) sin residuo: transcript+cwd, cerebro, slug y refs atómicas
 ├─ 🔍 zoom-screenshot                recorta y amplía regiones de una captura (ffmpeg) para leer texto fino ilegible
 ├─ 🔩 ingenieria-inversa-gui-db-navegador  ingeniería inversa de app legacy GUI+BD: driving la UI vía navegador + diff de la BD antes/después = doc con evidencia real
@@ -164,24 +159,20 @@ Reclutar un agente cuesta según su nivel (**gratis** local · **incluido** dent
 > Fuente única = `brain/skills/<nombre>/SKILL.md`. El árbol del `CLAUDE.md` muestra una vista curada; ESTA es la lista COMPLETA.
 
 **Auditar / consolidar un cerebro**
-- **`consolidar-cerebro`** — meta-orquestador de la campaña: dupla → positivar → desinflar → loop de convergencia → cierre con la FIRMA (convención CLAUDE+MEMORY). Orquesta, no reinventa.
-- **`canonizar-cerebro`** — lleva un cerebro INSTANCIADO drifteado (memorias sin prefijo, CLAUDE.md viejo, índice plano) a la firma-árbol canónica: reprefija con `git mv` a `dom-/dev-/ux-/qa-`+núcleo, dedup con rescate, reescribe `CLAUDE.md`+`MEMORY.md`, verifica 1:1 con `verificar-firma-canonica.sh`. Paso ESTRUCTURAL de `consolidar-cerebro`; humano-en-el-loop, no auto-mutador.
+- **`canonizar-cerebro`** — DUEÑO único del ciclo de vida del cerebro de un proyecto instanciado, con 4 MODOS sobre la misma maquinaria (detector `verificar-firma-canonica.sh` + pull-del-canon `sincronizar-cerebro.sh --apply`): **sembrar** (nace nativo en `<proyecto>/.claude/`, SIN symlinks — absorbió a `claude-proyecto-autocontenido`), **canonizar** (un cerebro drifteado: reprefija con `git mv` a `dom-/dev-/ux-/qa-`+núcleo, dedup con rescate, reescribe `CLAUDE.md`+`MEMORY.md`, verifica 1:1), **consolidar** (campaña amplia: dupla de auditores → positivar → desinflar → loop de convergencia → cierre con la FIRMA — absorbió a `consolidar-cerebro`), **reconciliar** (ritual SEMANAL: junta aprendizajes+memorias de las minis de los devs hacia develop sin perder atribución — absorbió a `unificar-cerebro`). Humano-en-el-loop, no auto-mutador ciego.
 - **`auditar-suficiencia-operativa`** — ¿ALCANZA la doc para HACER las tareas sin romper ni re-investigar? deriva tareas reales de 4 canteras, ✅/⚠️/❌ con archivo:línea, RE-audita tras arreglar. Mitad OPERABILIDAD de la dupla.
 - **`auditar-coherencia-cerebro`** — fan-out read-only sobre el propio cerebro (guards+flowcharts+doc): evasiones/huecos/drift, verificado por EJECUCIÓN, loop hasta converger. Mitad CONSISTENCIA de la dupla.
 - **`auditar-proceso-algoritmo`** — auditor experto read-only (procesos industriales + análisis de algoritmos) sobre un flujo/algoritmo (app o el propio brain): individual→colectivo, hallazgos priorizados. Se alimenta de flowcharts (`diagramar`).
-- **`revisar-entregables-agentes`** — verificar lo que un agente ENTREGA contra la realidad; nunca relatar su "listo" como verdad sin comprobarlo.
 
 **Cierre de trabajo / git**
-- **`cerrar-slice`** — ritual de cierre: verifica (build/tests/lint), memoria al día, confirma con el usuario, ramita → MR → develop con resumen curado.
-- **`cosechar-sesion`** — cosecha LOCAL al cerrar el día: revisa TU transcript y extrae los aprendizajes genuinos a memoria.
-- **`unificar-cerebro`** — reconciliación SEMANAL: junta aprendizajes+memorias de las minis de los devs hacia develop sin perder nada.
+- **`cerrar-slice`** — ritual de cierre: verifica (build/tests/lint), memoria al día, confirma con el usuario, ramita → MR → develop con resumen curado. Su §5 (cosecha) absorbió al skill `cosechar-sesion`: revisa tu transcript y extrae los aprendizajes genuinos a memoria con el script `cosechar-aprendizaje.sh`.
 
 **Continuidad del hilo / compactar**
 - **`checkpoint`** — vuelca el estado efímero (el HILO) a memoria durable para compactar/cerrar sin perderlo. DOS niveles (ligero / COMPLETO).
 - **`rehidratar-hilo`** — retoma el HILO tras un /compact o corte: anuncia de qué íbamos y continúa desde el "siguiente paso" (gemelo del hook homónimo).
 
 **Orquestación / delegación**
-- **`orquestar-fanout`** — fan-out sin niñera: worktrees aislados, 2 archivos de estado (bitácora `>>` + estado-proyecto), auto-reporte y limpieza al cerrar.
+- **`orquestar-fanout`** — fan-out sin niñera: worktrees aislados, 2 archivos de estado (bitácora `>>` + estado-proyecto), auto-reporte y limpieza al cerrar. Incluye el bucle de verificación (no creerle a un agente su "listo", el diff de preservación en rebuilds) que antes vivía en el skill `revisar-entregables-agentes`.
 - **`turno-nocturno`** — protocolo del turno de noche: eco del contrato, decide-dentro-de-la-cerca, grants durables a disco, checkpoint cada ~2h.
 
 **Memorias / docs**
@@ -194,9 +185,6 @@ Reclutar un agente cuesta según su nivel (**gratis** local · **incluido** dent
 **Diagramas / visual**
 - **`diagramar`** — diagrama según su DESTINO: `.dot`→`dot2yed`→yEd (editar a mano) · Mermaid en `.md` versionado (verse en GitHub). Un diagrama entregable nunca queda como widget efímero.
 - **`zoom-screenshot`** — leer/transcribir capturas cuyo texto fino es ilegible entero: recorta y amplía regiones con ffmpeg antes de leer.
-
-**Instanciar un cerebro**
-- **`claude-proyecto-autocontenido`** — el cerebro vive en `<proyecto>/.claude/` (memoria+skills+hooks), autocontenido, viaja por git; bootstrap del OS lo enlaza.
 
 ## 📚 Conocimiento de desarrollo de este repo (widget + brain)
 - [Bitácora](bitacora.md) — journal append-only de slices CERRADOS (una línea por slice, con fecha); `merge=union` (`.claude/.gitattributes`) → sin conflictos en paralelo. Nace 2026-08-07 (B4): separa "qué pasó" (aquí) de "qué sigue" (`backlog-desarrollo.md`, gitignored), sembrada con los ✅ HECHO/CERRADO que el backlog arrastraba.

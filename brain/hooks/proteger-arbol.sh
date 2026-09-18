@@ -79,7 +79,7 @@ fi
 # rama no integrados a la base; NO los commits sin pushear de la rama ACTUAL. El guard, abajo, cuenta
 # `@{u}..HEAD` (ajeno a la rama borrada) → avisaba en falso en TODA limpieza de ramas ya integradas por
 # SQUASH/cherry-pick estando en una mini-develop con trabajo local. Aquí decidimos el riesgo REAL con
-# ramas-zombie.sh (misma "mergeada" TRIPLE que los barredores limpiar-ramas/worktrees: ancestro de la base
+# ramas-zombie.sh (misma "mergeada" TRIPLE que los barredores limpiar.sh ramas/worktrees: ancestro de la base
 # | equivalencia de parche squash/cherry | remota-gone sin commits únicos) → sin divergencia. Solo aplica
 # si el comando es SOLO branch -d/-D (sin reset/checkout/rebase, que sí mueven HEAD → peligro real abajo).
 if printf '%s' "$unquoted" | grep -qE 'git[[:space:]]+branch[[:space:]]+-[dD]' \

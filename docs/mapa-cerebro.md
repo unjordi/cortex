@@ -140,8 +140,8 @@ flowchart TB
     WT["🌲 agente corre en WORKTREE AISLADO<br/>(isolation: worktree — nunca el árbol compartido)"]
     PA["🌳 proteger-arbol<br/>git destructivo que orfanaría commits<br/>en el árbol compartido → AVISA"]
     REP["📮 delegacion-reporte (PostToolUse/Task)<br/>al terminar: recuerda appendear bitácora (>>)<br/>+ actualizar estado-proyecto + limpiar worktree"]
-    LW["🧹 limpiar-worktrees.sh (script)<br/>barre worktrees de ramas mergeadas;<br/>los vivos quedan anotados en bitácora"]
-    LR["🧹 limpiar-ramas.sh (script)<br/>barre las ramas ya integradas (squash-safe): LOCALES y<br/>REMOTAS sin contraparte local; conserva trabajo vivo +<br/>protegidas y REPORTA las represadas (viejas sin integrar)"]
+    LW["🧹 limpiar.sh worktrees (script)<br/>barre worktrees de ramas mergeadas;<br/>los vivos quedan anotados en bitácora"]
+    LR["🧹 limpiar.sh ramas (script)<br/>barre las ramas ya integradas (squash-safe): LOCALES y<br/>REMOTAS sin contraparte local; conserva trabajo vivo +<br/>protegidas y REPORTA las represadas (viejas sin integrar)"]
     FRENO["⛔ FRENO DURO<br/>sin cupo del plan NI saldo:<br/>el agente moriría a medias"]
 
     TASK --> LG

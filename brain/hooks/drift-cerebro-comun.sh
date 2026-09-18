@@ -4,7 +4,7 @@
 # POR QUÉ EXISTE: la lógica "¿la copia por-repo del cerebro de ESTE repo está al día vs la fuente única, y
 # si estoy en mi mini-develop con .claude/ limpio, la sincronizo sola?" la necesitan DOS consumidores:
 #   1. aviso-drift-cerebro.sh  — SessionStart hook, INTERACTIVO, 1 repo (el de arranque). Fast-path.
-#   2. barrer-flotilla-cerebro.sh — SWEEPER batch, N repos de la flotilla (cron/LaunchAgent).
+#   2. limpiar.sh flotilla (antes barrer-flotilla-cerebro.sh) — SWEEPER batch, N repos de la flotilla (cron/LaunchAgent).
 # Antes vivía SOLO en el hook → el sweeper la habría re-implementado y las dos copias driftarían (justo el
 # mal que este cerebro combate). Se extrae AQUÍ para que ambos compartan UNA sola implementación (cero drift).
 #

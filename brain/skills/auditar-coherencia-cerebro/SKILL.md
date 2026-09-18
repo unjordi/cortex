@@ -86,7 +86,7 @@ ciegas.** Para el cerebro son:
 > audita contra la **FIRMA** = `CLAUDE.md` (thin, TOC) → el **detalle operativo** → la memoria/skill →
 > **realidad (código)**. **Para AUDITAR, lee el entry-point operativo REAL, sea cual sea su nombre** (hoy varía:
 > `AGENTS.md` en games-master, `MEMORY.md`-índice en cps). La **CONVENCIÓN destino es `CLAUDE.md`+`MEMORY.md`**
-> (`consolidar-cerebro` migra hacia ella); `AGENTS.md` queda para **arquitectura real** (en cps, 3194 líneas:
+> (`canonizar-cerebro` (modo consolidar) migra hacia ella); `AGENTS.md` queda para **arquitectura real** (en cps, 3194 líneas:
 > capas/dominio, medido vs el `.cs`). La coherencia verifica que **ninguno mienta respecto al código real** y que
 > no se confunda el ROL de cada doc (auditar lee la realidad; consolidar la lleva a la convención).
 

@@ -514,7 +514,7 @@ fi
 veredicto=$(_juez_merge "$destino" "$cur_mrid" "$recent" "$hint")
 if [ "$veredicto" = "ALLOW" ]; then
   # NOTA de HIGIENE (no bloquea): el squash deja la rama huérfana y se acumulan. Se funde el WARN diferido (si hubo).
-  _ctx="✅ Merge a develop/main autorizado por el juez. NOTA DE HIGIENE: intégralo con --remove-source-branch/--delete-branch, y al cerrar el slice corre brain/hooks/limpiar-ramas.sh — el squash rompe la detección de git branch -d y las ramas ya mergeadas se acumulan (nadie las barre) hasta que se olvida de dónde salieron."
+  _ctx="✅ Merge a develop/main autorizado por el juez. NOTA DE HIGIENE: intégralo con --remove-source-branch/--delete-branch, y al cerrar el slice corre brain/hooks/limpiar.sh ramas — el squash rompe la detección de git branch -d y las ramas ya mergeadas se acumulan (nadie las barre) hasta que se olvida de dónde salieron."
   [ -n "${_warn_ctx:-}" ] && _ctx="$_ctx
 $_warn_ctx"
   jq -n --arg c "$_ctx" '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$c}}'

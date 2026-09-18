@@ -2,7 +2,7 @@
 // Render:  dot -Tsvg 04-delegacion-orquestar-fanout.dot -o 04-delegacion-orquestar-fanout.svg
 // Construido 2026-08-01 desde el CÓDIGO REAL: hooks limite-gasto, delegacion-gate, delegacion-registrar,
 // delegacion-reporte + lib delegacion-comun.sh (clasificar_delegacion) + agentes-costo.json; scripts
-// limpiar-worktrees.sh / limpiar-ramas.sh; skill orquestar-fanout (contrato de reporte + aislamiento).
+// limpiar.sh worktrees / limpiar.sh ramas; skill orquestar-fanout (contrato de reporte + aislamiento).
 digraph flujos {
   graph [bgcolor="#1b1712", rankdir=TB, fontname="Helvetica", splines=true,
          nodesep=0.35, ranksep=0.55, pad=0.25, compound=true];
@@ -59,16 +59,11 @@ digraph flujos {
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🩺 auditar-coherencia-cerebro fan-out read-only sobre el PROPIO cerebro (guards+flowcharts+doc): evasiones/huecos/drift, verificado por ejecución → loop hasta converger; modo-cerebro de auditar-proceso-algoritmo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0"> </font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧪 auditar-suficiencia-operativa</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">¿ALCANZA la doc para HACER el trabajo sin romper nada ni re-investigar? tareas reales ✅/⚠️/❌ con archivo:línea + RE-auditar tras arreglar</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧬 auditor-semantico</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">¿el código HACE lo que queremos? Capa 1 checks deterministas (scripts/, gratis, en CI) + Capa 2 criterio LLM sobre invariantes-semanticos.yml; motor genérico, catálogo por-repo</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧠 consolidar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">meta-orquestador: dupla → positivar → desinflar → convergencia → cierre con la FIRMA (CLAUDE+MEMORY)</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📐 canonizar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">lleva un cerebro instanciado drifteado a la firma-árbol: reprefija memorias (git mv) a dom-/dev-/ux-/qa-, reescribe CLAUDE.md+MEMORY.md, verifica 1:1 con verificar-firma-canonica.sh (detector del GATE #44)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📐 canonizar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">DUEÑO del ciclo de vida del cerebro de un proyecto, 4 modos sobre 1 maquinaria: sembrar (nace nativo, sin symlinks) · canonizar (firma-árbol: git mv a dom-/dev-/ux-/qa-, verifica 1:1 con verificar-firma-canonica.sh) · consolidar (dupla → positivar → desinflar → convergencia → FIRMA) · reconciliar (semanal, minis de devs → develop)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🪶 desinflar-memorias</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">adelgaza un árbol de memorias sin perder lecciones: la narrativa se colapsa a su lección, los mitos descartados se mudan al cementerio.md (una lápida por ID content-hash 🪦#&lt;id&gt;)</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🕵️ revisar-entregables-agentes</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">verifica lo que un agente ENTREGA contra la realidad; no relates su reporte como verdad</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">☀️ positivar-doc</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reescribe answer-first: 'ESTO SÍ' (método correcto) antes del 'ESTO NO'</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎓 investigar-dominio</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">ponte experto en un dominio (fan-out DOC-FIRST) → memorias durables + skills</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📚 construir-missing-manual</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">fabrica el manual/wiki de referencia exhaustivo que no existe (fan-out que investiga 1× y hornea) → artefacto consultable OFFLINE</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌾 cosechar-sesion</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cosecha local: extrae aprendizajes de tu sesión al inbox del equipo</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧩 unificar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reconciliación del cerebro del equipo: integra los aprendizajes mini→develop</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧳 claude-proyecto-autocontenido</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">el cerebro VIVE dentro del proyecto (.claude/ + symlink de slug) → viaja con él</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🚚 reubicar-master</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">muda una sesión master COMPLETA a otro repo (brain-master → cortex) sin residuo: transcript+cwd, cerebro, slug y refs atómicas</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔍 zoom-screenshot</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">recorta y amplía regiones de una captura (ffmpeg) para leer texto fino ilegible</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔩 ingenieria-inversa-gui-db-navegador</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">ingeniería inversa de app legacy GUI+BD: driving la UI vía navegador + diff de la BD antes/después = doc con evidencia real</font></td></tr>
@@ -150,7 +145,7 @@ digraph flujos {
     ESTADO [color="#e08e45",
             label="🟠 auto-reporte SIN redundancia (2 archivos):\n① APPENDA `>>` una línea a bitacora.md (qué pasó · parallel-safe)\n② CURA el ítem en estado-proyecto.md (qué sigue · backlog vivo)\nTodoWrite = scratch de sesión, NO el backlog durable"];
     LIMPIA [color="#c0392b", penwidth=3,
-            label="⚠ ESCRIBE git · el orquestador limpia (nudge de delegacion-reporte, NO automático):\nlimpiar-worktrees.sh (borra los de ramas mergeadas, deja los vivos con su pendiente)\nlimpiar-ramas.sh (barre ramas locales ya integradas por `git branch -d/-D`)\nbarrer-ramas (SessionStart/merge-MR) NO cubre este cierre por cherry-pick"];
+            label="⚠ ESCRIBE git · el orquestador limpia (nudge de delegacion-reporte, NO automático):\nlimpiar.sh worktrees (borra los de ramas mergeadas, deja los vivos con su pendiente)\nlimpiar.sh ramas (barre ramas locales ya integradas por `git branch -d/-D`)\nbarrer-ramas (SessionStart/merge-MR) NO cubre este cierre por cherry-pick"];
     FIN   [color="#7fb069", penwidth=2,
            label="🟢 slice del agente CERRADO\n(estado al día · worktree limpio · sin niñería)"];
 

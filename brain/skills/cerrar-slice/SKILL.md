@@ -80,7 +80,7 @@ para que no quede apuntando a un tema ya terminado.
   de su Bitácora con `>>` (no con un Edit) — así no chocas con las otras sesiones de Claude que tocan ese
   archivo a la vez. Ajusta Mapa/Infra/Cabos (secciones curadas, con Edit) solo si cambió el layout de
   repos/memoria/proyectos.
-- **(fan-out)** limpia los worktrees zombies con `limpiar-worktrees.sh` (deja anotado el pendiente de
+- **(fan-out)** limpia los worktrees zombies con `limpiar.sh worktrees` (deja anotado el pendiente de
   los que sigan vivos).
 
 ## 3. Confirma CON EL USUARIO antes del MR/PR
@@ -115,7 +115,7 @@ bash <ruta>/cerrar-slice.sh --id <id> --message-file resumen.md --wait-ci   # es
 #   (autodetecta glab/gh; --repo <slug LITERAL> si es multi-repo; --dry-run para revisar el comando primero)
 
 git checkout develop && git pull --ff-only
-bash ~/.claude/hooks/limpiar-ramas.sh              # barre la ramita local (y su remota si quedó)
+bash ~/.claude/hooks/limpiar.sh ramas              # barre la ramita local (y su remota si quedó)
 ```
 
 `<ruta>` = `brain/skills/cerrar-slice/cerrar-slice.sh` en el repo cortex, o `~/.claude/skills/cerrar-slice/cerrar-slice.sh`
@@ -125,7 +125,7 @@ una vez instalado. Corre `cerrar-slice.sh --help` para las opciones.
 el script las mapea solo. Sin ese flag la rama queda colgando en el remoto tras el squash y nadie la vuelve
 a mirar — de ahí sale la acumulación de ramas viejas en `origin`. Lo exige `merge-develop-guard`.
 
-**Para borrar la ramita LOCAL usa `limpiar-ramas.sh`, NO `git branch -d`.** En un flujo que integra con
+**Para borrar la ramita LOCAL usa `limpiar.sh ramas`, NO `git branch -d`.** En un flujo que integra con
 SQUASH, `git branch -d` **rehúsa** ("not fully merged"): el squash crea un commit NUEVO, así que la rama
 original no queda de ancestro. Es el método que el mecanismo existe para suplir — ver la regla de abajo.
 
@@ -174,12 +174,67 @@ es la lista de commits que el squash debía RESUMIR, no un resumen.
 ## 5. Cosecha de aprendizaje Y de herramientas (¿es genérico? ¿sobrevive al reinicio?)
 Antes de dar por cerrado el slice, pregúntate: **¿dejó una lección reutilizable** (un gotcha, una
 convención, un patrón, o hasta una skill nueva)? No lo dejes en "ya me acordaré" — cosecharlo es parte
-del cierre, no un extra.
+del cierre, no un extra. (Esto absorbe lo que antes era el skill separado `cosechar-sesion`, retirado
+2026-09-17 — este §5 YA ES la cosecha; su maquinaria de append vive en el script `cosechar-aprendizaje.sh`,
+junto a este SKILL.md.)
+
+### 5a. Relee la sesión y separa el GRANO de la PAJA
+Revisa tu propia sesión/transcript y busca los aprendizajes DURABLES — uno se cosecha SOLO si
+sobreviviría a esta sesión y le serviría a otro dev / a un Claude futuro:
+- **SÍ cosechar** (grano): **feedback del usuario** que corrige un comportamiento o fija una
+  preferencia ("no hagas X", "siempre prefiero Y") — salvo que sea TRATO personal (ver 5b); **lecciones
+  de proceso** (un enfoque que falló y por qué, un orden de pasos que resultó correcto); **gotchas
+  técnicos no-obvios** (una trampa del stack/entorno que costó tiempo); una **decisión** con el usuario
+  cuyo porqué conviene preservar (si no vive ya en su doc propio).
+- **NO cosechar** (paja): pasos triviales ("corrí el build, pasó"), lo que ya está documentado, el
+  detalle efímero de UNA tarea (eso va a la bitácora/estado, no aquí), reformulaciones de normas que ya
+  existen, o "aprendizajes" genéricos sin caso real detrás. Si al releer no hay nada durable, **está bien
+  no cosechar nada** — cosechar trivialidades ensucia el inbox y le quita señal a la curación. Calidad
+  sobre cantidad: 1 aprendizaje real vale más que 5 de relleno.
+
+### 5b. RUTEO — el TRATO personal del usuario NO va al inbox del proyecto: va al archivo GLOBAL
+Antes de cosechar, clasifica cada grano por su NATURALEZA: **conocimiento de PROYECTO** (→ inbox del
+repo, `aprendizajes.md`) vs **TRATO personal del usuario** (→ archivo GLOBAL, **NO** este inbox).
+- **TRATO personal** = cómo le gusta a la PERSONA que le comuniques, decidas y trabajes ("no me
+  espejees mi idea", "no me atribuyas tus hipótesis", "no me pidas permiso para avanzar", "arregla por
+  el flujo completo"). Eso **NO va al inbox** del repo (**NO lo appendees** a `aprendizajes.md`, **NO
+  este inbox**): vive en UN solo lugar, la memoria GLOBAL per-máquina
+  `~/.claude/projects/-Users-<user>/memory/como-trabajar-con-<user>.md` — porque es sobre una PERSONA,
+  no un proyecto (viajaría mal por git: mentiría al clonar en otra máquina, y expondría trato personal
+  en un repo compartido). Escríbelo ahí answer-first / desinflado a 1-2 líneas, en su sección (🗣️
+  Comunicación · ✅ Decisiones · 🛠️ Proceso · 🌿 Git · 🎯 Preferencias), **con procedencia** (lo que va
+  entre comillas es cita LITERAL del usuario; lo tuyo va marcado `[INFER]`), y **sin duplicar** las
+  normas UNIVERSALES del brain (doc=realidad, definición de LISTO, flujo de git…) que ya viven en
+  `~/.claude/CLAUDE.md` — **REFERÉNCIALAS** con el sabor personal, no las copies.
+- **Preferencia SOBRE OTRO dev** (`· sobre: <handle>`) SÍ sigue por el inbox del repo: así viaja a su
+  máquina (no tienes su archivo global local para editarlo).
+- **Conocimiento de PROYECTO** (una decisión de este repo con su porqué, un gotcha del stack, una
+  lección de proceso genérica) → va al inbox de siempre, como cualquier otro aprendizaje.
+- **Nunca re-crees un `feedback-*.md` suelto de TRATO** en `.claude/memory/` del repo — es exactamente
+  el drift que esta regla mata (trato duplicado por cada repo, desincronizado entre sí).
+
+### 5c. Appendea con el script (nunca reescribas el archivo a mano)
+Por cada aprendizaje de PROYECTO, usa la maquinaria (garantiza formato + append-only, nunca pisa
+bloques concurrentes de otra sesión/rama):
+```bash
+bash <ruta>/cosechar-aprendizaje.sh --handle <tu-handle> --tema "<tema corto>" \
+     --texto "<prosa: qué se aprendió, el caso real, por qué importa, cómo aplicarlo>"
+#   --sobre <handle>   si el aprendizaje es SOBRE otro dev (no sobre ti)
+#   --archivo <ruta>   default: .claude/memory/aprendizajes.md
+```
+`<ruta>` = `brain/skills/cerrar-slice/cosechar-aprendizaje.sh` en cortex, o
+`~/.claude/skills/cerrar-slice/cosechar-aprendizaje.sh` una vez instalado. El `<tu-handle>` sale de la
+tabla de handles del proyecto (`_PROTOCOLO.md` si existe) o de preguntarle al usuario cuál usar. **NO
+edites bloques viejos** del inbox ni reordenes — el script solo appendea.
+
+### 5d. Genérico → al cerebro global; específico → ya quedó en el repo
 - **Genérica** (no atada a este proyecto) → promuévela en la MISMA tanda a la **skill** que le toque
   y/o al **cerebro global** (`cortex` / los hooks y normas de `~/.claude`). Es el punto de
   curación manual: tú y el usuario deciden qué merece subir (no todo sube — evita ensuciar el global
   con ruido específico del proyecto).
-- **Específica del proyecto** → ya quedó en la memoria del repo (Paso 2); no la subas al global.
+- **Específica del proyecto** → ya quedó en la memoria del repo (Paso 2 + 5c); no la subas al global.
+- **Solo REPORTA** cuántos aprendizajes appendaste y de qué tratan — no es un cierre aparte: es parte de
+  este mismo paso del cierre del slice.
 
 **Persiste las HERRAMIENTAS que construiste en scratch (no solo las lecciones).** Un script/tool
 reusable que armaste durante el slice (un extractor, un `analyze.py`, un one-off que resultó útil)

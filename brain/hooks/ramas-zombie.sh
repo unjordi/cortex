@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ramas-zombie.sh — LIB compartida (no se cablea; se hace `source`). Decide si una rama YA está integrada
 # ("zombie") de forma robusta al flujo SQUASH, resuelve la base de integración, y decide si una rama es
-# INTOCABLE pase lo que pase. La consumen `limpiar-worktrees.sh` (barre worktrees) y `limpiar-ramas.sh`
+# INTOCABLE pase lo que pase. La consumen `limpiar.sh worktrees` (barre worktrees) y `limpiar.sh ramas`
 # (barre ramas locales) → una sola definición de "mergeada" Y de "protegida", sin divergencia (antídoto
 # al drift entre los dos barredores — auditoría 2026-09-11: la protección solo vivía en uno de los dos).
 #
@@ -330,7 +330,7 @@ bz_es_zombie() {
 # a propósito keep/*, o checked-out en CUALQUIER worktree — WT_RAMAS son sus nombres, uno por línea).
 # 1 si no. Deja la RAZÓN en $BZ_PROT_RAZON: base_actual | convencion | worktree.
 #
-# C-2 (auditoría 2026-09-11): antes esta protección SOLO vivía en limpiar-ramas.sh; limpiar-worktrees.sh
+# C-2 (auditoría 2026-09-11): antes esta protección SOLO vivía en limpiar.sh ramas; limpiar.sh worktrees
 # no tenía equivalente y borró el worktree de una mini-develop con trabajo sin commitear y marcó `keep/*`
 # como zombie. Ahora es UNA sola definición que consumen los DOS barredores — igual que bz_es_zombie.
 BZ_PROT_RAZON=""

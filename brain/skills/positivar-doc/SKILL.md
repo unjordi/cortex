@@ -113,8 +113,8 @@ líneas — el mapa accionable, no la narrativa.
 ## Escala
 - **Una doc:** aplícalo inline tú mismo (leer → reordenar nugget por nugget → verificar preservación).
 - **Bulk (todo el repo):** delega a un agente con ESTE MISMO contrato (alcance de archivos + reglas duras +
-  reporte de preservación por archivo), y **revísalo** al terminar ([[revisar-entregables-agentes]]) — no le
-  creas el "listo" sin comprobar contra los archivos.
+  reporte de preservación por archivo), y **revísalo** al terminar (bucle de verificación de
+  [[orquestar-fanout]]) — no le creas el "listo" sin comprobar contra los archivos.
   - **Convención de nombre (firma):** el agente positivador que invoques lleva SIEMPRE el prefijo
     **`good-vibes-`** en su etiqueta/descripción (ej. `good-vibes-answer-first`, `good-vibes-positivar-memorias`).
     Así se reconoce de un vistazo en la lista de agentes que es una pasada de positivado.

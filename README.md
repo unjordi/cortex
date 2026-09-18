@@ -125,16 +125,11 @@ El cerebro se ordena por *dureza*: arriba lo que te **bloquea** sin negociar; ab
 ├─ 🩺 auditar-coherencia-cerebro fan-out read-only sobre el PROPIO cerebro (guards+flowcharts+doc): evasiones/huecos/drift, verificado por ejecución → loop hasta converger; modo-cerebro de auditar-proceso-algoritmo
 ├─ 🧪 auditar-suficiencia-operativa  ¿ALCANZA la doc para HACER el trabajo sin romper nada ni re-investigar? tareas reales ✅/⚠️/❌ con archivo:línea + RE-auditar tras arreglar
 ├─ 🧬 auditor-semantico        ¿el código HACE lo que queremos? Capa 1 checks deterministas (scripts/, gratis, en CI) + Capa 2 criterio LLM sobre invariantes-semanticos.yml; motor genérico, catálogo por-repo
-├─ 🧠 consolidar-cerebro       meta-orquestador: dupla → positivar → desinflar → convergencia → cierre con la FIRMA (CLAUDE+MEMORY)
-├─ 📐 canonizar-cerebro        lleva un cerebro instanciado drifteado a la firma-árbol: reprefija memorias (git mv) a dom-/dev-/ux-/qa-, reescribe CLAUDE.md+MEMORY.md, verifica 1:1 con verificar-firma-canonica.sh (detector del GATE #44)
+├─ 📐 canonizar-cerebro        DUEÑO del ciclo de vida del cerebro de un proyecto, 4 modos sobre 1 maquinaria: sembrar (nace nativo, sin symlinks) · canonizar (firma-árbol: git mv a dom-/dev-/ux-/qa-, verifica 1:1 con verificar-firma-canonica.sh) · consolidar (dupla → positivar → desinflar → convergencia → FIRMA) · reconciliar (semanal, minis de devs → develop)
 ├─ 🪶 desinflar-memorias       adelgaza un árbol de memorias sin perder lecciones: la narrativa se colapsa a su lección, los mitos descartados se mudan al cementerio.md (una lápida por ID content-hash 🪦#<id>)
-├─ 🕵️ revisar-entregables-agentes    verifica lo que un agente ENTREGA contra la realidad; no relates su reporte como verdad
 ├─ ☀️ positivar-doc                  reescribe answer-first: 'ESTO SÍ' (método correcto) antes del 'ESTO NO'
 ├─ 🎓 investigar-dominio             ponte experto en un dominio (fan-out DOC-FIRST) → memorias durables + skills
 ├─ 📚 construir-missing-manual       fabrica el manual/wiki de referencia exhaustivo que no existe (fan-out que investiga 1× y hornea) → artefacto consultable OFFLINE
-├─ 🌾 cosechar-sesion                cosecha local: extrae aprendizajes de tu sesión al inbox del equipo
-├─ 🧩 unificar-cerebro               reconciliación del cerebro del equipo: integra los aprendizajes mini→develop
-├─ 🧳 claude-proyecto-autocontenido  el cerebro VIVE dentro del proyecto (.claude/ + symlink de slug) → viaja con él
 ├─ 🚚 reubicar-master                muda una sesión master COMPLETA a otro repo (brain-master → cortex) sin residuo: transcript+cwd, cerebro, slug y refs atómicas
 ├─ 🔍 zoom-screenshot                recorta y amplía regiones de una captura (ffmpeg) para leer texto fino ilegible
 ├─ 🔩 ingenieria-inversa-gui-db-navegador  ingeniería inversa de app legacy GUI+BD: driving la UI vía navegador + diff de la BD antes/después = doc con evidencia real
@@ -162,9 +157,9 @@ del script.
 
 El cerebro **se autoprueba**: [`brain/test-brain.sh`](brain/test-brain.sh) corre cientos de checks (el número exacto lo imprime la suite) contra un
 `$HOME` aislado, y la CI repite `bash -n` + `jq empty` + `shellcheck` en cada push. Tras un fan-out,
-el helper [`limpiar-worktrees.sh`](brain/hooks/limpiar-worktrees.sh) barre los worktrees de ramas ya
+el helper [`limpiar.sh worktrees`](brain/hooks/limpiar-impl-worktrees.sh) (dispatcher: `brain/hooks/limpiar.sh`) barre los worktrees de ramas ya
 mergeadas y deja anotado en la bitácora el pendiente de los que sigan vivos; y
-[`limpiar-ramas.sh`](brain/hooks/limpiar-ramas.sh) barre las **ramas locales** ya integradas (antídoto
+[`limpiar.sh ramas`](brain/hooks/limpiar-impl-ramas.sh) barre las **ramas locales** ya integradas (antídoto
 a la acumulación de ramitas squasheadas: el squash rompe `git branch -d` y `fetch --prune` no toca
 locales) y, si tras borrar la local su **rama REMOTA** aún cuelga (un MR squash-mergeado sin
 `--delete-branch`), la borra también (fail-open sin red). En una **segunda pasada** examina además las
@@ -173,17 +168,17 @@ ramas **remotas SIN contraparte local** —las que el fan-out en worktrees efím
 señal POSITIVA squash-safe demuestre integradas (y solo si su punta sigue siendo la que evaluó), y las
 que traen trabajo sin integrar las CONSERVA y las NOMBRA. Escape: `LIMPIAR_RAMAS_SIN_REMOTAS=1`. Ambos comparten la lógica "zombie"
 ([`ramas-zombie.sh`](brain/hooks/ramas-zombie.sh)) → una sola definición de "mergeada", y `barrer-ramas`
-los lanza a **ambos** (ramas + worktrees) en el mismo trigger. `limpiar-ramas` además REPORTA (nunca
+los lanza a **ambos** (ramas + worktrees) en el mismo trigger. `limpiar.sh ramas` además REPORTA (nunca
 borra) las ramas de fan-out abandonadas (convención `worktree-agent-*`, sin worktree vivo, viejas y sin
 integrar): una vez por punta a la bitácora del repo, para que un humano decida.
 
-Más allá de ramas/worktrees git, [`limpiar-residuo.sh`](brain/hooks/limpiar-residuo.sh) barre el resto
+Más allá de ramas/worktrees git, [`limpiar.sh residuo`](brain/hooks/limpiar-impl-residuo.sh) barre el resto
 del residuo de housekeeping que nadie más podaba (queja real, 2026-09: *"qué pasa con lo que deja
 detrás... no todo eran ramas con worktree"*): los respaldos del skill de mudanza (`reubicar-backups/`,
 antes SIN poda alguna), los logs/stamps de `barrer-ramas` acumulados por repo visitado, y las cachés de
 corta vida de `analizar-comando-git`. Retención **por EDAD, nunca por cantidad** (un respaldo existe
 para recuperar un desastre; podar "los primeros N" botaría el único bueno tras una ráfaga). Corre como
-parte de `barrer-flotilla-cerebro` (reusa su programación diaria) o standalone con `--dry-run` para previsualizar.
+parte de `limpiar.sh flotilla` (reusa su programación diaria) o standalone con `--dry-run` para previsualizar.
 
 ### 🗺️ El mapa del cerebro — fuente de verdad visual
 

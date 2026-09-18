@@ -4,11 +4,12 @@
 # (hay que BAJAR); éste avisa cuando TU mini acumuló aprendizajes+memorias sin UNIFICAR a develop
 # (hay que SUBIR). Al iniciar sesión, cuenta el delta de `.claude/` (sobre todo aprendizajes.md) de la
 # rama actual vs origin/develop y, si supera el umbral, inyecta un aviso PASIVO y NO bloqueante para
-# correr `/unificar-cerebro` cuando quieras integrar.
+# correr `canonizar-cerebro` (modo reconciliar) cuando quieras integrar.
 #
-# Diseño (unjordi, 2026-07-21): es la capa que cierra el ritual semanal — `cosechar-sesion` llena el
-# inbox local, este hook recuerda subirlo, `unificar-cerebro` lo reconcilia. NO escribe NADA al árbol
-# (integrar es deliberado, por MR con OK explícito): solo DETECTA y AVISA.
+# Diseño (unjordi, 2026-07-21): es la capa que cierra el ritual semanal — `cerrar-slice` §5 llena el
+# inbox local, este hook recuerda subirlo, `canonizar-cerebro` (modo reconciliar) lo reconcilia (absorbió
+# al antiguo skill separado `unificar-cerebro`, retirado 2026-09-17). NO escribe NADA al árbol (integrar
+# es deliberado, por MR con OK explícito): solo DETECTA y AVISA.
 #
 # Umbral (tunable por env, con defaults): avisa si el delta de `.claude/` vs origin/develop supera
 #   ≥ RECORDAR_UNIFICAR_ARCHIVOS (default 5) archivos,  O
@@ -83,7 +84,7 @@ dispara=0
 # ── Avisar (pasivo, no bloqueante) y marcar el throttle del día ──
 printf '%s' "$hoy" > "$stamp" 2>/dev/null || true
 
-ctx="🧩 Tu cerebro tiene $n_files archivo(s) de \`.claude/\` sin unificar a develop$apr — la rama '$cur' lleva ~$dias día(s) acumulando. Cuando quieras integrarlos al cerebro del equipo, corre \`/unificar-cerebro\` (reconcilia por el carril de siempre: OK explícito de unjordi, sin --auto-merge, con --squash). Aviso pasivo, no bloquea; 1×/día por repo."
+ctx="🧩 Tu cerebro tiene $n_files archivo(s) de \`.claude/\` sin unificar a develop$apr — la rama '$cur' lleva ~$dias día(s) acumulando. Cuando quieras integrarlos al cerebro del equipo, corre \`canonizar-cerebro\` en modo reconciliar (reconcilia por el carril de siempre: OK explícito de unjordi, sin --auto-merge, con --squash). Aviso pasivo, no bloquea; 1×/día por repo."
 if command -v jq >/dev/null 2>&1; then
   jq -n --arg c "$ctx" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}}'
 else

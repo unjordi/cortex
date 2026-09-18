@@ -48,7 +48,7 @@
 # --continue or --resume (source = resume or fork)").
 set -u
 
-# CUERPO PER-REPO compartido con el SWEEPER de flotilla (barrer-flotilla-cerebro.sh): la decisión de
+# CUERPO PER-REPO compartido con el SWEEPER de flotilla (limpiar.sh flotilla, antes barrer-flotilla-cerebro.sh): la decisión de
 # drift + el auto-apply viven en la lib drift_chequea_repo → UNA sola implementación (cero drift entre
 # el fast-path interactivo de aquí y el batch del sweeper). Ver drift-cerebro-comun.sh.
 # shellcheck source=drift-cerebro-comun.sh

@@ -125,7 +125,7 @@ git push -u origin feat/<tema>       # push SOLO a la ramita (idéntico en ambos
 - Enforced por: ramas protegidas server-side + `git-branch-guard` y `merge-develop-guard` (candado ÚNICO del punto de merge: squash + autorización — consolida los antiguos `merge-squash-guard` + `confirmar-merge-develop`).
 - El gate NO es "no puedes": con tu OK EXPLÍCITO, `merge-develop-guard` deja que Claude mergee `develop` por CLI (con `--squash`), SIN clics en la web.
 - Repos SIN los hooks del template (p. ej. uno personal): Claude cae en el clasificador auto-mode genérico → más fricción en git. Al tocar uno así: siémbrale `develop` + los hooks del template, o documenta qué acciones esperar bloqueadas.
-- **Bajo SQUASH, `git cherry`/`git branch -d`/`git branch --merged` MIENTEN en su NEGATIVO:** el squash colapsa los N commits de la ramita en un commit nuevo → la rama no queda de ancestro y sus commits no tienen equivalente por hash, así que dan un falso "no integrada" sobre trabajo que SÍ entró. `git cherry` vale SOLO en su POSITIVO (ningún `+` ⇒ los parches ya están en la base, residuo squash-safe); su negativo no prueba nada. Para "¿ya entró esta rama?" hay dos métodos válidos: `limpiar-ramas.sh` (señales POSITIVAS squash-safe — ancestro · la línea `Rama: <rama>` del squash · el PR/MR mergeado · equivalencia de parche sin `+`) o el ESTADO del PR/MR en el foro (`gh pr view --json state` / `glab mr view`: `MERGED` es la verdad).
+- **Bajo SQUASH, `git cherry`/`git branch -d`/`git branch --merged` MIENTEN en su NEGATIVO:** el squash colapsa los N commits de la ramita en un commit nuevo → la rama no queda de ancestro y sus commits no tienen equivalente por hash, así que dan un falso "no integrada" sobre trabajo que SÍ entró. `git cherry` vale SOLO en su POSITIVO (ningún `+` ⇒ los parches ya están en la base, residuo squash-safe); su negativo no prueba nada. Para "¿ya entró esta rama?" hay dos métodos válidos: `limpiar.sh ramas` (señales POSITIVAS squash-safe — ancestro · la línea `Rama: <rama>` del squash · el PR/MR mergeado · equivalencia de parche sin `+`) o el ESTADO del PR/MR en el foro (`gh pr view --json state` / `glab mr view`: `MERGED` es la verdad).
 
 ## Modelo MINI-DEVELOP (iterar sin fricción — INSTITUCIONAL en repos compartidos)
 - El día a día vive en tu rama personal de integración ("mini-develop"), convención `Develop<Usuario>` (p. ej. `DevelopAna`), sacada de `develop`. Ahí iteras horas/días sin permiso: ramitas → tu mini con `git merge` LOCAL o MR con auto-merge (ninguno pasa por candado).
@@ -154,6 +154,12 @@ git push -u origin feat/<tema>       # push SOLO a la ramita (idéntico en ambos
 - Los hooks `delegacion-gate`/`delegacion-registrar` piden consentimiento window-aware: gratis/incluido → 1× por computadora, luego silencioso; metered → 1× por workflow (session_id).
 - El ask muestra el estado real de tu ventana de 5h (%, $ usado de tope, tokens). No delegues a agentes con costo sin ese consentimiento; ante duda de nivel, se trata como metered.
 
+## No relates el reporte de un agente como verdad sin verificarlo (norma dura)
+- No relates el reporte de un agente/subagente al usuario como verdad, ni construyas encima, sin haber verificado sus afirmaciones concretas contra la realidad tú mismo. Lo verificado se relata como verificado; lo no verificado se etiqueta "según el agente, sin verificar aún".
+- Un reporte de agente es una AFIRMACIÓN, no un hecho: puede confabular, sobre-afirmar ("verificado ✓") o equivocarse en un detalle — y solo revisando ves CÓMO tropezó (la señal de qué refinar en el próximo prompt).
+- El caso REBUILD/REEMPLAZO (un agente reescribe un doc/config "desde cero") falla por OMISIÓN SILENCIOSA, no por afirmar de más: nada que verificar porque no hay "✓" — exige el DIFF DE PRESERVACIÓN (viejo→nuevo) antes de aplicar el reemplazo.
+- Mecanismo/detalle operativo (el bucle de verificación barato-vs-caro, CONFIRMADO/CORREGIDO/REFUTADO, el diff de preservación) vive en `orquestar-fanout`.
+
 ## Orquesta: delega lo paralelizable y quédate disponible (norma de estilo)
 - Cuando el trabajo tiene varias piezas independientes, NO las implementes EN SERIE tú solo: delégalas a agentes en paralelo (worktrees/ramas disjuntas) y quédate en el loop como orquestador (revisando diffs, armando los MR, haciendo QA, disponible al usuario). Con volumen paralelizable, el default es fan-out + supervisión. (Respeta el gate de costo.)
 - Señal de desvío: llevas rato implementando en serie y el usuario tuvo que pedirte que volvieras a delegar.
@@ -162,7 +168,7 @@ git push -u origin feat/<tema>       # push SOLO a la ramita (idéntico en ambos
 - Dos archivos, roles claros, cero redundancia: bitácora = *qué pasó* (appendan los agentes); estado-proyecto = *qué sigue* (lo cura el orquestador).
 - El append-al-final con `>>` (no un Edit) deja que varias sesiones/agentes escriban la MISMA bitácora sin pisarse. Aplica igual al dashboard GLOBAL (`dashboard_cerebro.md`): entradas al FINAL con `>>`; solo las secciones CURADAS (Mapa/Cabos) se editan.
 - El mismo dato NO se escribe en 3 lados; el estado "actual" se DERIVA. TodoWrite es SCRATCH de sesión; el backlog DURABLE es `estado-proyecto.md`.
-- Lo recuerda `delegacion-reporte` (PostToolUse/Task); los worktrees zombies los barre `limpiar-worktrees.sh` y las ramas locales ya integradas las barre `limpiar-ramas.sh`.
+- Lo recuerda `delegacion-reporte` (PostToolUse/Task); los worktrees zombies los barre `limpiar.sh worktrees` y las ramas locales ya integradas las barre `limpiar.sh ramas`.
 - Señal de desvío: el usuario tuvo que pedirte actualizar bitácora/estado, o se acumularon worktrees/ramas zombies.
 
 ## Tu lista de TODOs es TU HUD — mantenla FRESCA, no la dejes driftear (norma dura)

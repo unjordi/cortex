@@ -85,7 +85,7 @@ por git**; en un repo compartido, además, expone trato personal). Cuando te top
 3. **Distínguelo del conocimiento de PROYECTO** (arquitectura, una decisión de ESTE repo, un gotcha del
    stack): eso se QUEDA y solo se desinfla en su lugar, como el resto. Y el TRATO **sobre OTRO dev**
    (que no eres tú/este usuario) migra al global de ESA persona solo si estás en SU máquina; si no lo
-   puedes alcanzar, déjalo (lo reconcilia `unificar-cerebro` por el inbox).
+   puedes alcanzar, déjalo (lo reconcilia `canonizar-cerebro` —modo reconciliar— por el inbox).
 
 ## Qué NO se corta (esta lista es la que protege el valor)
 1. **Los gotchas y las lecciones**, aunque suenen anecdóticos. Son el archivo.
@@ -133,4 +133,4 @@ superada se corrige o se manda a las lápidas**; no se copia tal cual solo porqu
 - `auditar-suficiencia-operativa` — audita si la doc ALCANZA para hacer el trabajo. Este skill la
   adelgaza; ése verifica que siga sirviendo. Corre el auditor **después** de desinflar.
 - `positivar-doc` — el orden "ESTO SÍ antes del ESTO NO" dentro de cada sección.
-- `cosechar-sesion` — lo que agrega contenido a las memorias; este skill es su contrapeso.
+- `cerrar-slice` (§5, cosecha) — lo que agrega contenido a las memorias; este skill es su contrapeso.

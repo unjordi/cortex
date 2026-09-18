@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# barrer-flotilla-cerebro.sh — SWEEPER de la FLOTILLA de cerebros (tier global, kind script; NO se cablea
-# a ningún evento). Corre STANDALONE, en batch (cron/LaunchAgent 1×/día), sobre TODOS los repos brained de
-# ~/code — no solo el de arranque de una sesión.
+# limpiar-impl-flotilla.sh — SWEEPER de la FLOTILLA de cerebros (invócalo vía `limpiar.sh flotilla`,
+# NUNCA directo — es implementación interna del dispatcher `limpiar.sh`; antes vivía como el ejecutable
+# suelto `barrer-flotilla-cerebro.sh`, retirado 2026-09-17, ver MANIFEST). Tier global, kind script; NO se
+# cablea a ningún evento. Corre STANDALONE, en batch (cron/LaunchAgent 1×/día), sobre TODOS los repos
+# brained de ~/code — no solo el de arranque de una sesión.
 #
 # POR QUÉ EXISTE (el punto ciego de COBERTURA de aviso-drift-cerebro): aviso-drift es un SessionStart hook
 # → solo ve el repo donde ARRANCÓ la sesión. La flotilla de otros repos brained (MegaFlux, cps, …) se queda
@@ -20,7 +22,7 @@
 # SIEMPRE: nunca muta un .claude/ sucio; el push es `|| true`.
 #
 # Uso:
-#   bash barrer-flotilla-cerebro.sh [--dry-run] [--code-dir <dir>] [--roots-file <f>] [--report <path>] [--quiet] [--no-residuo]
+#   bash limpiar.sh flotilla [--dry-run] [--code-dir <dir>] [--roots-file <f>] [--report <path>] [--quiet] [--no-residuo]
 #     --dry-run       : calcula la decisión de cada repo pero NO escribe/commitea/pushea nada (preview).
 #     --code-dir <d>  : raíz del descubrimiento (default $HOME/code).
 #     --roots-file <f>: en vez de descubrir, lee las rutas de repos (una por línea) de <f> (para tests).
@@ -160,7 +162,7 @@ EOF
 # ── Residuo de housekeeping (best-effort; NUNCA aborta el reporte de drift si falla) ───────────────────
 residuo_linea=""
 if [ "$NO_RESIDUO" != 1 ]; then
-  LIMRES="$SELFDIR/limpiar-residuo.sh"
+  LIMRES="$SELFDIR/limpiar-impl-residuo.sh"
   if [ -f "$LIMRES" ]; then
     if [ "$DRY_RUN" = 1 ]; then residuo_out="$(bash "$LIMRES" --dry-run 2>/dev/null)" || true
     else residuo_out="$(bash "$LIMRES" 2>/dev/null)" || true; fi

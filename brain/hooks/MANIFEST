@@ -32,21 +32,12 @@
 #          lib    → solo se copia (los hooks la hacen `source`)
 #          script → solo se copia (standalone; se corre a mano/por cron, no se cablea)
 #
-# ── CÓMO DECIDIR EL TIER (regla crisp — respuesta a TODO "¿global o both?"; #81) ───────────────────────
-# El tier se decide por el PATRÓN REPO-COMPARTIDO (misma lógica que la norma "Cerebro por-repo = CORREO"):
-#   ¿Este guard/lib debe llegar a clones COMPARTIDOS con OTRAS personas/máquinas que NO tienen el brain
-#   global (colegas, clones públicos)?
-#     • SÍ  → `both`   : es CORREO que viaja por-repo EN GIT *y* se instala global por el bootstrap. La
-#                        cláusula de dedupe (`case "$0" … exit 0`) hace que la copia por-repo CEDA a la
-#                        global → sin doble disparo. Solo viaja de verdad a repos marcados
-#                        `.claude/repo-compartido` (default = personal: no auto-empuja a git por error).
-#                        OBLIGATORIO: un hook `both` DEBE traer la cláusula de dedupe.
-#     • NO  → `global` : basta con vivir en la máquina del DUEÑO (que ya corrió el bootstrap). DEFAULT
-#                        CONSERVADOR — ante la duda, `global`, no `both`.
-#     • Depende del CONTEXTO del repo (se carga solo si la sesión INICIA en ese repo) → `repo`.
-# Anti-drift: un repo PERSONAL (solo tuyo) NUNCA lleva guards por-repo (global+dedupe ya los cubre); solo
-# un repo COMPARTIDO (marca `.claude/repo-compartido`) recibe los `both` como correo. NO pongas `both`
-# "por si acaso": si nadie sin brain global va a clonar el repo, es `global`.
+# ── CÓMO DECIDIR EL TIER (respuesta a TODO "¿global o both?"; #81) ─────────────────────────────────────
+# La regla completa (el PATRÓN REPO-COMPARTIDO, ejemplos, el porqué) vive en UNA sola fuente —
+# `brain/norms/global-claude-md.md` § "Tiers de hooks/skills: cómo decidir" — este header solo la CITA,
+# no la re-explica (evita que las 2 copias diverjan). En una frase: ¿lo usaría un COLEGA en un repo
+# COMPARTIDO sin brain global? → `both` (CORREO, exige la cláusula de dedupe); si no → `global` (DEFAULT
+# conservador); si depende de que la sesión INICIE en ESE repo → `repo`.
 #
 # Consumidores:
 #   - install-brain.sh   : instala GLOBAL = {global, both} (hooks+libs).
@@ -83,11 +74,12 @@ delegacion-gate          global  hook
 delegacion-registrar     global  hook
 delegacion-reporte       global  hook
 recordar-orquestar       global  hook
-limpiar-worktrees        global  script
-limpiar-ramas            global  script
-limpiar-residuo          global  script
+limpiar                  global  script
+limpiar-impl-ramas       global  script
+limpiar-impl-worktrees   global  script
+limpiar-impl-residuo     global  script
+limpiar-impl-flotilla    global  script
 verificar-cerebro        global  script
-barrer-flotilla-cerebro  global  script
 cementerio               global  script
 delegacion-comun         global  lib
 ramas-zombie             global  lib
@@ -104,3 +96,7 @@ recordar-unificar-cerebro repo   hook
 rama-vieja               retirado  hook  2026-09-15  avisar del síntoma no es el trabajo; el flujo lo gobiernan los git-guards
 merge-squash-guard       retirado  hook  2026-09-17  CONSOLIDADO en merge-develop-guard (checks de squash del punto de merge, misma lib)
 confirmar-merge-develop  retirado  hook  2026-09-17  CONSOLIDADO en merge-develop-guard (juez de autorización del punto de merge, misma lib)
+limpiar-ramas            retirado  script 2026-09-17 CONSOLIDADO en limpiar.sh ramas (dispatcher único, misma lógica renombrada limpiar-impl-ramas.sh)
+limpiar-worktrees        retirado  script 2026-09-17 CONSOLIDADO en limpiar.sh worktrees (dispatcher único, misma lógica renombrada limpiar-impl-worktrees.sh)
+limpiar-residuo          retirado  script 2026-09-17 CONSOLIDADO en limpiar.sh residuo (dispatcher único, misma lógica renombrada limpiar-impl-residuo.sh)
+barrer-flotilla-cerebro  retirado  script 2026-09-17 CONSOLIDADO en limpiar.sh flotilla (dispatcher único, misma lógica renombrada limpiar-impl-flotilla.sh)

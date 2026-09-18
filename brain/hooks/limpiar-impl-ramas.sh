@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# limpiar-ramas.sh — barre las ramas ya integradas de ESTE repo, en DOS pasadas: las LOCALES (BORRA las que
+# limpiar-impl-ramas.sh — barre las ramas ya integradas de ESTE repo, en DOS pasadas: las LOCALES (BORRA las que
 # su MR se mergeó —típicamente con --squash, y el remoto se borró al cerrar → localmente quedan `: gone`—
 # y CONSERVA las que tienen trabajo sin integrar) y, después, las REMOTAS SIN CONTRAPARTE LOCAL. Antídoto
 # ESTRUCTURAL a la acumulación de ramas squasheadas: el squash rompe la detección de "mergeada" de
 # `git branch -d` (la rama no queda de ancestro) y `fetch --prune` NO borra ramas locales → nadie las
-# barría y se acumulaban (un caso real: 60+ en un repo).
-#   uso: limpiar-ramas.sh [--dry-run] [--no-fetch]   (desde cualquier lugar del repo)
+# barría y se acumulaban (un caso real: 60+ en un repo). Invócalo vía `limpiar.sh ramas` — es
+# implementación interna del dispatcher `limpiar.sh` (antes el ejecutable suelto `limpiar-ramas.sh`,
+# retirado 2026-09-17, ver MANIFEST).
+#   uso: limpiar.sh ramas [--dry-run] [--no-fetch]   (desde cualquier lugar del repo)
 #
 # C-2 — SEGUNDA PASADA (remotas sin local): una rama viva en `origin` cuya local ya no existe era INVISIBLE
 # (el bucle solo recorría `refs/heads`): ni barrida, ni conservada, ni contada como omitida. El flujo la

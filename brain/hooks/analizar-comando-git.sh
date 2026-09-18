@@ -510,7 +510,7 @@ ACG_MR_TIMEOUT="${ACG_MR_TIMEOUT:-6}"
 # GitHub) se servía como si fuera la respuesta de la API de HACE UN SEGUNDO. Generalizado a
 # acg__cache_confiable (reemplaza acg__cache_creacion_es_mia, mismo criterio + TTL): mismo UID, sin permisos
 # de grupo/otros, Y no más viejo que ACG_CACHE_TTL_DIAS (default: el MISMO `CLAUDE_RESIDUO_DIAS_TMP` que ya
-# declara limpiar-residuo.sh para esta familia de archivos, 7 días — aquí se HACE CUMPLIR en LECTURA, no
+# declara limpiar.sh residuo para esta familia de archivos, 7 días — aquí se HACE CUMPLIR en LECTURA, no
 # solo en el barrido periódico manual). portable BSD `stat -f` / GNU `stat -c`; sin `stat`/`date`, fail
 # CERRADO (no confiar es lo seguro; la peor consecuencia es un cache-miss que cae al lookup por API).
 acg__cache_confiable() {   # $1=path → 0=confiable (uid+perm+TTL) · 1=no
