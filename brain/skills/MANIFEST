@@ -11,16 +11,12 @@
 #                    NO tiene el brain global. Análogo al tier `both` de los hooks.
 #          (no hay tier `repo`-only para skills hoy: una skill genérica del cerebro siempre existe global.)
 #
-# ── CÓMO DECIDIR EL TIER (regla crisp — respuesta a TODO "¿global o both?"; #81) ───────────────────────
-# Mismo PATRÓN REPO-COMPARTIDO que los hooks (norma "Cerebro por-repo = CORREO"):
-#   ¿Esta skill la usaría un COLEGA en un repo COMPARTIDO que NO tiene el brain global?
-#     • SÍ  → `both`   : viaja POR-REPO como CORREO (solo a repos marcados `.claude/repo-compartido`) +
-#                        global por el bootstrap. A diferencia de un hook `both`, una skill NO necesita
-#                        cláusula de dedupe: es markdown que LEE el modelo, no un script que se EJECUTE
-#                        → no hay doble disparo.
-#     • NO  → `global` : basta con vivir en la máquina del DUEÑO (que ya corrió el bootstrap). DEFAULT
-#                        CONSERVADOR — ante la duda, `global`, no `both`.
-# Anti-drift: NO pongas `both` "por si acaso"; solo si un clon compartido SIN brain global la necesita.
+# ── CÓMO DECIDIR EL TIER (respuesta a TODO "¿global o both?"; #81) ─────────────────────────────────────
+# La regla completa (el PATRÓN REPO-COMPARTIDO, ejemplos, el porqué) vive en UNA sola fuente —
+# `brain/norms/global-claude-md.md` § "Tiers de hooks/skills: cómo decidir" — este header solo la CITA,
+# no la re-explica. En una frase: ¿la usaría un COLEGA en un repo COMPARTIDO sin brain global? → `both`
+# (viaja POR-REPO como CORREO, sin cláusula de dedupe — es markdown que se LEE, no se ejecuta); si no →
+# `global` (DEFAULT conservador).
 #
 # Consumidores (paralelos EXACTOS de los de hooks):
 #   - install-brain.sh       : instala GLOBAL = {global, both} skills (árbol COMPLETO de cada skill).
