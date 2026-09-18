@@ -719,8 +719,8 @@
 <title>LIMPIA</title>
 <path fill="#2b2b2b" stroke="#c0392b" stroke-width="3" d="M4334.12,-154C4334.12,-154 3883.88,-154 3883.88,-154 3877.88,-154 3871.88,-148 3871.88,-142 3871.88,-142 3871.88,-105.5 3871.88,-105.5 3871.88,-99.5 3877.88,-93.5 3883.88,-93.5 3883.88,-93.5 4334.12,-93.5 4334.12,-93.5 4340.12,-93.5 4346.12,-99.5 4346.12,-105.5 4346.12,-105.5 4346.12,-142 4346.12,-142 4346.12,-148 4340.12,-154 4334.12,-154"/>
 <text xml:space="preserve" text-anchor="middle" x="4109" y="-138.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">⚠ ESCRIBE git · el orquestador limpia (nudge de delegacion&#45;reporte, NO automático):</text>
-<text xml:space="preserve" text-anchor="middle" x="4109" y="-124.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">limpiar&#45;worktrees.sh (borra los de ramas mergeadas, deja los vivos con su pendiente)</text>
-<text xml:space="preserve" text-anchor="middle" x="4109" y="-111.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">limpiar&#45;ramas.sh (barre ramas locales ya integradas por `git branch &#45;d/&#45;D`)</text>
+<text xml:space="preserve" text-anchor="middle" x="4109" y="-124.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">limpiar.sh worktrees (borra los de ramas mergeadas, deja los vivos con su pendiente)</text>
+<text xml:space="preserve" text-anchor="middle" x="4109" y="-111.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">limpiar.sh ramas (barre ramas locales ya integradas por `git branch &#45;d/&#45;D`)</text>
 <text xml:space="preserve" text-anchor="middle" x="4109" y="-98.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">barrer&#45;ramas (SessionStart/merge&#45;MR) NO cubre este cierre por cherry&#45;pick</text>
 </g>
 <!-- ESTADO&#45;&gt;LIMPIA -->

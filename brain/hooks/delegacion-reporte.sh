@@ -29,7 +29,7 @@ msg="Un subagente (Task) TERMINÓ — punto de reporte, NO lo monitorees a mano.
 SI tu agente MUTÓ el repo (creó/editó archivos, commiteó, dejó un worktree o rama), ciérralo antes de seguir:
 1) BITÁCORA: appenda UNA línea a .claude/memory/bitacora.md (append-only) con qué cambió + su pendiente si dejó algo.
 2) BACKLOG VIVO: actualiza/cierra en .claude/memory/estado-proyecto.md el ítem que le asignaste (esa es la fuente de verdad: dónde estamos + backlog + prioridad). NO dupliques el mismo dato en 3 lados: bitácora=qué pasó, estado-proyecto=qué sigue.
-3) WORKTREE: si dejó uno de una rama YA mergeada, límpialo (corre 'limpiar-worktrees.sh'); si la rama sigue viva o quedó algo a medias, deja el pendiente anotado en la bitácora para quien lo retome.
+3) WORKTREE: si dejó uno de una rama YA mergeada, límpialo (corre 'limpiar.sh worktrees'); si la rama sigue viva o quedó algo a medias, deja el pendiente anotado en la bitácora para quien lo retome.
 SI fue read-only (una búsqueda, una auditoría, una consulta que no tocó archivos): no hay nada que registrar ni limpiar — ignora este recordatorio y sigue."
 
 jq -n --arg m "$msg" '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$m}}'

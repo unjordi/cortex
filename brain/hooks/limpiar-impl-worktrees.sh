@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# limpiar-worktrees.sh — barre los worktrees de git de ESTE repo tras un fan-out: BORRA los de ramas
+# limpiar-impl-worktrees.sh — barre los worktrees de git de ESTE repo tras un fan-out: BORRA los de ramas
 # ya mergeadas (zombies) y DEJA los de ramas vivas/a-medias, anotando su pendiente en la bitácora para
 # quien lo retome. Antídoto a los worktrees zombies que se acumulan (un caso real: 29). SEGURO: nunca toca
 # el worktree principal, nunca toca una rama PROTEGIDA (base/actual/develop/main/Develop*/keep/*), y
-# nunca destruye trabajo sin commitear; ante duda (offline, sin señal clara) CONSERVA.
-#   uso: limpiar-worktrees.sh [--dry-run] [--purgar-sucios]   (desde cualquier lugar del repo)
+# nunca destruye trabajo sin commitear; ante duda (offline, sin señal clara) CONSERVA. Invócalo vía
+# `limpiar.sh worktrees` — es implementación interna del dispatcher `limpiar.sh` (antes el ejecutable
+# suelto `limpiar-worktrees.sh`, retirado 2026-09-17, ver MANIFEST).
+#   uso: limpiar.sh worktrees [--dry-run] [--purgar-sucios]   (desde cualquier lugar del repo)
 #
 # "Mergeada" es QUÍNTUPLE porque el flujo SQUASHEA (la rama NO queda de ancestro): (a) ancestro de la base
 # O (e) el squash trae "Rama: <rama>" en su mensaje (señal local/offline) O (d) su PR/MR se MERGEÓ en el

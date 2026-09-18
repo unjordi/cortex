@@ -503,7 +503,7 @@
 <title>BARRER</title>
 <path fill="#2b2b2b" stroke="#c0392b" stroke-width="3" d="M4797,-1144.25C4797,-1144.25 4325,-1144.25 4325,-1144.25 4319,-1144.25 4313,-1138.25 4313,-1132.25 4313,-1132.25 4313,-1094.25 4313,-1094.25 4313,-1088.25 4319,-1082.25 4325,-1082.25 4325,-1082.25 4797,-1082.25 4797,-1082.25 4803,-1082.25 4809,-1088.25 4809,-1094.25 4809,-1094.25 4809,-1132.25 4809,-1132.25 4809,-1138.25 4803,-1144.25 4797,-1144.25"/>
 <text xml:space="preserve" text-anchor="middle" x="4561" y="-1128.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">⚠ ESCRIBE git · 🔔🧹 &#160;barrer&#45;ramas &#160;(SessionStart · GLOBAL)</text>
-<text xml:space="preserve" text-anchor="middle" x="4561" y="-1113.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">throttle 24h; lanza limpiar&#45;ramas.sh DETACHED (nohup) que hace `git branch &#45;d`</text>
+<text xml:space="preserve" text-anchor="middle" x="4561" y="-1113.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">throttle 24h; lanza limpiar.sh ramas DETACHED (nohup) que hace `git branch &#45;d`</text>
 <text xml:space="preserve" text-anchor="middle" x="4561" y="-1100.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">de ramas zombie ya integradas (squash&#45;merge / remota borrada / equivalencia de parche).</text>
 <text xml:space="preserve" text-anchor="middle" x="4561" y="-1087.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">Conserva trabajo sin integrar; NUNCA toca actual/base/develop/main/Develop*/keep/*</text>
 </g>

@@ -1,7 +1,7 @@
 // 12 — Orquestar un fan-out sin niñera (cortex)  ·  FUENTE editable (.dot)
 // Render:  dot -Tsvg 12-orquestar-fanout-sin-ninera.dot -o 12-orquestar-fanout-sin-ninera.svg
 // Reconstruido 2026-08-07 desde el skill real brain/skills/orquestar-fanout/SKILL.md + los hooks de soporte
-// (proteger-arbol, delegacion-gate, delegacion-reporte, script limpiar-worktrees.sh). Companion de 04 y 11.
+// (proteger-arbol, delegacion-gate, delegacion-reporte, script limpiar.sh worktrees). Companion de 04 y 11.
 // Re-canoniza el huérfano 09-orquestar-un-fan-out-sin-ninera.svg (viejo «⑧», sin .dot ni leyenda).
 digraph flujos {
   graph [bgcolor="#1b1712", rankdir=TB, fontname="Helvetica", splines=true,
@@ -135,12 +135,12 @@ digraph flujos {
            label="cierre AUTOMÁTICO al terminar (lo recuerda 🔔📮 delegacion-reporte):\n🟢 APPENDA a bitacora.md (con «>>» · parallel-safe) · 🟢 cierra el ítem en estado-proyecto.md\n(TodoWrite = scratch de sesión, NO el backlog durable)"];
 
     SWEEP [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="⚙ limpiar-worktrees.sh · ¿la rama del worktree ya está mergeada?"];
+           label="⚙ limpiar.sh worktrees · ¿la rama del worktree ya está mergeada?"];
     SWEEP_YES [color="#c62828", penwidth=3, label="⚠ borra el worktree (`git worktree remove --force` + `prune`)"];
     SWEEP_NO [color="#e08e45", label="🟠 déjalo + anota su pendiente en la bitácora"];
 
     SWEEP2 [shape=diamond, fillcolor="#2b2622", color="#d97757",
-            label="🧹 limpiar-ramas.sh · ¿la rama LOCAL ya está integrada?\n(zombie squash-safe: `git branch -d` no la ve y `fetch --prune` no toca locales)"];
+            label="🧹 limpiar.sh ramas · ¿la rama LOCAL ya está integrada?\n(zombie squash-safe: `git branch -d` no la ve y `fetch --prune` no toca locales)"];
     SWEEP2_YES [color="#c62828", penwidth=3, label="⚠ borra la rama local (`git branch -D`) + su remota huérfana si cuelga (`git push --delete`)"];
     SWEEP2_NO [color="#e08e45", label="🟠 consérvala (Develop*/keep/*/base)"];
 

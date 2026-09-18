@@ -74,11 +74,12 @@ delegacion-gate          global  hook
 delegacion-registrar     global  hook
 delegacion-reporte       global  hook
 recordar-orquestar       global  hook
-limpiar-worktrees        global  script
-limpiar-ramas            global  script
-limpiar-residuo          global  script
+limpiar                  global  script
+limpiar-impl-ramas       global  script
+limpiar-impl-worktrees   global  script
+limpiar-impl-residuo     global  script
+limpiar-impl-flotilla    global  script
 verificar-cerebro        global  script
-barrer-flotilla-cerebro  global  script
 cementerio               global  script
 delegacion-comun         global  lib
 ramas-zombie             global  lib
@@ -95,3 +96,7 @@ recordar-unificar-cerebro repo   hook
 rama-vieja               retirado  hook  2026-09-15  avisar del síntoma no es el trabajo; el flujo lo gobiernan los git-guards
 merge-squash-guard       retirado  hook  2026-09-17  CONSOLIDADO en merge-develop-guard (checks de squash del punto de merge, misma lib)
 confirmar-merge-develop  retirado  hook  2026-09-17  CONSOLIDADO en merge-develop-guard (juez de autorización del punto de merge, misma lib)
+limpiar-ramas            retirado  script 2026-09-17 CONSOLIDADO en limpiar.sh ramas (dispatcher único, misma lógica renombrada limpiar-impl-ramas.sh)
+limpiar-worktrees        retirado  script 2026-09-17 CONSOLIDADO en limpiar.sh worktrees (dispatcher único, misma lógica renombrada limpiar-impl-worktrees.sh)
+limpiar-residuo          retirado  script 2026-09-17 CONSOLIDADO en limpiar.sh residuo (dispatcher único, misma lógica renombrada limpiar-impl-residuo.sh)
+barrer-flotilla-cerebro  retirado  script 2026-09-17 CONSOLIDADO en limpiar.sh flotilla (dispatcher único, misma lógica renombrada limpiar-impl-flotilla.sh)

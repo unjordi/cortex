@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# limpiar-residuo.sh — barre el RESIDUO de housekeeping que ni `limpiar-ramas`/`limpiar-worktrees`
-# (ramas y worktrees git) ni `barrer-flotilla-cerebro` (drift de cerebro) tocan: archivos que el propio
-# cerebro va dejando atrás con el uso normal, sin ningún techo. Queja real de unjordi (2026-09):
+# limpiar-impl-residuo.sh — barre el RESIDUO de housekeeping que ni `limpiar.sh ramas`/`limpiar.sh
+# worktrees` (ramas y worktrees git) ni `limpiar.sh flotilla` (drift de cerebro) tocan: archivos que el
+# propio cerebro va dejando atrás con el uso normal, sin ningún techo. Invócalo vía `limpiar.sh residuo`
+# — es implementación interna del dispatcher `limpiar.sh` (antes el ejecutable suelto
+# `limpiar-residuo.sh`, retirado 2026-09-17, ver MANIFEST). Queja real de unjordi (2026-09):
 # "qué pasa con lo que deja detrás... no todo eran ramas con worktree". Medido en vivo: 178MB en
 # session-move-backups (ese lo poda session-move.js, por CANTIDAD), reubicar-backups SIN poda alguna,
 # 17 logs de barrer-ramas acumulados, cachés de analizar-comando-git en $TMPDIR.
@@ -29,7 +31,7 @@
 #      cachés de corta vida por diseño, no hace falta ser generoso aquí.
 #
 # Uso:
-#   bash limpiar-residuo.sh [--dry-run] [--dias-backups N] [--dias-logs N] [--dias-tmp N] [--quiet]
+#   bash limpiar.sh residuo [--dry-run] [--dias-backups N] [--dias-logs N] [--dias-tmp N] [--quiet]
 # Honra CLAUDE_CONFIG_DIR (o $HOME/.claude) y $TMPDIR — así se aísla en tests sin tocar el ~/.claude real.
 # bash-3.2-safe (macOS/Linux/Git Bash); usa `find -mtime` (portable BSD/GNU), sin GNU-ismos.
 set -u

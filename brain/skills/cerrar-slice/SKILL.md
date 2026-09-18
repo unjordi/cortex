@@ -80,7 +80,7 @@ para que no quede apuntando a un tema ya terminado.
   de su Bitácora con `>>` (no con un Edit) — así no chocas con las otras sesiones de Claude que tocan ese
   archivo a la vez. Ajusta Mapa/Infra/Cabos (secciones curadas, con Edit) solo si cambió el layout de
   repos/memoria/proyectos.
-- **(fan-out)** limpia los worktrees zombies con `limpiar-worktrees.sh` (deja anotado el pendiente de
+- **(fan-out)** limpia los worktrees zombies con `limpiar.sh worktrees` (deja anotado el pendiente de
   los que sigan vivos).
 
 ## 3. Confirma CON EL USUARIO antes del MR/PR
@@ -115,7 +115,7 @@ bash <ruta>/cerrar-slice.sh --id <id> --message-file resumen.md --wait-ci   # es
 #   (autodetecta glab/gh; --repo <slug LITERAL> si es multi-repo; --dry-run para revisar el comando primero)
 
 git checkout develop && git pull --ff-only
-bash ~/.claude/hooks/limpiar-ramas.sh              # barre la ramita local (y su remota si quedó)
+bash ~/.claude/hooks/limpiar.sh ramas              # barre la ramita local (y su remota si quedó)
 ```
 
 `<ruta>` = `brain/skills/cerrar-slice/cerrar-slice.sh` en el repo cortex, o `~/.claude/skills/cerrar-slice/cerrar-slice.sh`
@@ -125,7 +125,7 @@ una vez instalado. Corre `cerrar-slice.sh --help` para las opciones.
 el script las mapea solo. Sin ese flag la rama queda colgando en el remoto tras el squash y nadie la vuelve
 a mirar — de ahí sale la acumulación de ramas viejas en `origin`. Lo exige `merge-develop-guard`.
 
-**Para borrar la ramita LOCAL usa `limpiar-ramas.sh`, NO `git branch -d`.** En un flujo que integra con
+**Para borrar la ramita LOCAL usa `limpiar.sh ramas`, NO `git branch -d`.** En un flujo que integra con
 SQUASH, `git branch -d` **rehúsa** ("not fully merged"): el squash crea un commit NUEVO, así que la rama
 original no queda de ancestro. Es el método que el mecanismo existe para suplir — ver la regla de abajo.
 

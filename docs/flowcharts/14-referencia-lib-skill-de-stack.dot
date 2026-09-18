@@ -94,8 +94,8 @@ digraph flujos {
     DET [label="detectar-secretos (lib)\npatrones de alta precisión (AKIA/PEM/sk-ant/sk-/gh_/glpat/xox/AIza) + anti-placeholder.\nla usan secret-scan (ver 07) Y drift-cerebro-comun para el pre-commit del auto-sync (ver 01/02)"];
     JUEZ [label="juez-comun (lib)  ·  el JUEZ-LLM compartido (Haiku vía curl→api.anthropic.com, token OAuth)\ntoken + reintento-401 + _juez_cita_casa. FUENTE ÚNICA de comprensión de lenguaje:\nla usan merge-develop-guard (ver 06) Y dod-verificar (ver 09) — reemplazó el pilón de regex frágiles.\n(el voto múltiple es un lever propio de merge-develop-guard, default-off; no vive en esta lib — ver 06)"];
     DELE [label="delegacion-comun (lib)\nclasificación de costo compartida: la usan delegacion-gate Y delegacion-registrar (ver 11)"];
-    ZOMBIE [label="ramas-zombie (lib)\nuna sola definición de «rama ya integrada» (squash-merge / remota borrada / equivalencia de parche / ancestro de la base);\nla usan limpiar-ramas.sh, limpiar-worktrees.sh y proteger-arbol.sh (barrer-ramas los dispara) (ver 12)"];
-    DRIFT [label="drift-cerebro-comun (lib)\nlógica compartida del anti-drift del cerebro;\nla usan aviso-drift-cerebro, proteger-fuente-cerebro, exportar-sesion-master, verificar-cerebro y barrer-flotilla-cerebro (ver 01/02)"];
+    ZOMBIE [label="ramas-zombie (lib)\nuna sola definición de «rama ya integrada» (squash-merge / remota borrada / equivalencia de parche / ancestro de la base);\nla usan limpiar.sh ramas, limpiar.sh worktrees y proteger-arbol.sh (barrer-ramas los dispara) (ver 12)"];
+    DRIFT [label="drift-cerebro-comun (lib)\nlógica compartida del anti-drift del cerebro;\nla usan aviso-drift-cerebro, proteger-fuente-cerebro, exportar-sesion-master, verificar-cerebro y limpiar.sh flotilla (ver 01/02)"];
 
     SKILLS [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
             label="💡 skills específicos de STACK (viven en el repo CONSUMIDOR, no en cortex)\np.ej. la plantilla .NET: crear-pagina-blazor · migracion-ef · build-produccion · agregar-seed…\nusan el ritual genérico cerrar-slice (ver 10). cortex solo trae los skills GENÉRICOS (ver leyenda 💡)"];

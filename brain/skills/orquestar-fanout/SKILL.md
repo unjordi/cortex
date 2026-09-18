@@ -84,7 +84,7 @@ antes de un git destructivo que orfanaría commits sin pushear).
 > `git -C <repoB> worktree add <repoB>/.claude/worktrees/<nombre>` — la ruta destino pertenece al repo
 > DUEÑO de la rama, no al repo donde estás parado.
 >
-> **Por qué muerde (no es cosmético):** el barredor `limpiar-worktrees.sh` opera por repo; si un worktree
+> **Por qué muerde (no es cosmético):** el barredor `limpiar.sh worktrees` opera por repo; si un worktree
 > de B vive anidado dentro de uno de A, al barrer A como zombie **se lleva el worktree de B y su trabajo
 > sin commitear**, y deja el admin de git de B (`.git/worktrees/<n>/gitdir`) apuntando a una ruta borrada.
 > En el caso real el anidado traía un cambio staged sin commitear (además una REGRESIÓN abandonada).
@@ -149,7 +149,7 @@ antes de un git destructivo que orfanaría commits sin pushear).
 3. **Cierra el loop (AUTOMÁTICO al terminar cada agente — lo recuerda el hook `delegacion-reporte`):**
    - **APPENDA** la línea a `bitacora.md`.
    - **ACTUALIZA/cierra** el ítem en `estado-proyecto.md` (backlog vivo).
-   - **WORKTREE:** corre `limpiar-worktrees.sh` (borra los de ramas ya mergeadas; los vivos/a-medias
+   - **WORKTREE:** corre `limpiar.sh worktrees` (borra los de ramas ya mergeadas; los vivos/a-medias
      los DEJA y anota su pendiente en la bitácora para quien lo retome).
    → No monitoreas a los agentes: el reporte y la limpieza son el cierre estándar.
 
@@ -207,7 +207,7 @@ fase encima de un entregable sin verificar su base.
 ## Hooks/tools que lo sostienen
 - **`delegacion-gate`** (PreToolUse/Task) — consentimiento de costo por ventana de 5h (ver el flujo de gasto).
 - **`delegacion-reporte`** (PostToolUse/Task) — tras cada subagente, recuerda registrar avance + limpiar worktree.
-- **`limpiar-worktrees.sh`** — barre worktrees zombies (rama mergeada) y anota los vivos en la bitácora.
+- **`limpiar.sh worktrees`** — barre worktrees zombies (rama mergeada) y anota los vivos en la bitácora.
 - **`proteger-arbol`** (PreToolUse/Bash) — avisa antes de un git DESTRUCTIVO (`reset --hard`/`checkout -f`/`rebase`/`branch -D`) que orfanaría commits sin pushear; antídoto al "agente reseteó HEAD en el árbol compartido".
 - **`checkpoint`** (skill) + **`rehidratar-hilo`** (SessionStart) + **`aviso-contexto`** (watermark) — compactar sin perder el hilo del fan-out (el hook `precompact` se retiró: PreCompact no puede inyectar ni pedir acción).
 
@@ -243,7 +243,7 @@ estado degradado.
 la pregunta en un comando.
 
 - ❌ Escribir el mismo pendiente en estado-proyecto Y bitácora Y un backlog aparte. → Un dato, un lugar.
-- ❌ Dejar worktrees zombies acumulándose. → `limpiar-worktrees.sh` al cerrar la ola.
+- ❌ Dejar worktrees zombies acumulándose. → `limpiar.sh worktrees` al cerrar la ola.
 - ❌ Asignar ítems NO autocontenidos (que dependen de otro agente en vuelo). → Serialízalos o únelos.
 - ❌ Dejar que un agente mute/commitee en el árbol de trabajo COMPARTIDO (o corra `git reset`/`checkout`/`rebase` ahí). → Worktree AISLADO por agente, o lo hace el orquestador. Es lo que orfanó un commit en un caso real.
 - ❌ Creer el reporte de un agente sin verificar el resultado real. → Comprueba read-only (git/archivo/compila) antes de marcar hecho; el agente pudo devolver un stub o "alucinar" trabajo en background.

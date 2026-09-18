@@ -1264,8 +1264,8 @@ mock_cm_glab develop
 CMOK='--squash --remove-source-branch --squash-message "integra el fix del calculo del IVA en las facturas del periodo actual que salia doble. Rama: fix/iva MR: !5"'
 # ── FLUJO/wiring (determinista, veredicto del juez mockeado; con squash bien formado → llega al juez) ──
 out_allow="$(cm "glab mr merge 5 --yes $CMOK" ALLOW)"
-{ ! is_deny "$out_allow" && printf '%s' "$out_allow" | grep -qi 'limpiar-ramas'; } \
-  && ok "cmd flujo: juez ALLOW (tras pasar squash) → merge pasa + nota de higiene (limpiar-ramas)" \
+{ ! is_deny "$out_allow" && printf '%s' "$out_allow" | grep -qi 'limpiar\.sh ramas'; } \
+  && ok "cmd flujo: juez ALLOW (tras pasar squash) → merge pasa + nota de higiene (limpiar.sh ramas)" \
   || bad "cmd flujo: juez ALLOW fue frenado o le faltó la nota de higiene"
 is_deny "$(cm "glab mr merge 5 --yes $CMOK" DENY)" \
   && ok "cmd flujo: squash OK + juez DENY → merge a develop frenado por el juez" || bad "cmd flujo: juez DENY dejó pasar el merge"
@@ -2727,7 +2727,7 @@ git -C "$G7REPO" checkout -q -b feat/viva miDevelop >/dev/null 2>&1
 printf 'y\n' > "$G7REPO/g.txt"; git -C "$G7REPO" add g.txt >/dev/null 2>&1; git -C "$G7REPO" commit -qm viva >/dev/null 2>&1
 git -C "$G7REPO" checkout -q miDevelop >/dev/null 2>&1
 git -C "$G7REPO" worktree add -q "$G7ROOT/wt-viva" feat/viva >/dev/null 2>&1
-out="$(cd "$G7REPO" && CLAUDE_INTEGRACION_BASE=miDevelop bash "$HOOKS/limpiar-worktrees.sh" --dry-run 2>&1)"
+out="$(cd "$G7REPO" && CLAUDE_INTEGRACION_BASE=miDevelop bash "$HOOKS/limpiar.sh" worktrees --dry-run 2>&1)"
 printf '%s' "$out" | grep -q 'zombie.*feat/hecha' && ok "G7: ramita squash-mergeada a rama personal (base configurable) → zombie por cherry" || bad "G7: no detectó zombie por cherry; got: $out"
 printf '%s' "$out" | grep -q 'DEJADO.*feat/viva'  && ok "G7: ramita viva no integrada → conservada"                                     || bad "G7: no conservó la ramita viva; got: $out"
 rm -rf "$G7ROOT"
@@ -2755,7 +2755,7 @@ git -C "$LRREPO" checkout -q miDevelop >/dev/null 2>&1
 # (4) rama integrada (ancestro de base) PERO checked-out en un worktree → protegida (git rehúsa branch -D)
 git -C "$LRREPO" branch feat/en-wt miDevelop >/dev/null 2>&1
 git -C "$LRREPO" worktree add -q "$LRROOT/wt-en" feat/en-wt >/dev/null 2>&1
-lrout="$(cd "$LRREPO" && CLAUDE_INTEGRACION_BASE=miDevelop bash "$HOOKS/limpiar-ramas.sh" --dry-run --no-fetch 2>&1)"
+lrout="$(cd "$LRREPO" && CLAUDE_INTEGRACION_BASE=miDevelop bash "$HOOKS/limpiar.sh" ramas --dry-run --no-fetch 2>&1)"
 printf '%s' "$lrout" | grep -q 'borraría: feat/hecha'      && ok "b3c: rama squash-integrada → se barrería"                  || bad "b3c: no marcó feat/hecha para borrar; got: $lrout"
 printf '%s' "$lrout" | grep -q 'CONSERVADA.*feat/viva'     && ok "b3c: rama con trabajo sin integrar → conservada"            || bad "b3c: no conservó feat/viva; got: $lrout"
 printf '%s\n' "$lrout" | grep -v '^limpiar-ramas:' | grep -q 'miDevelop' && bad "b3c: tocó la base/rama actual miDevelop; got: $lrout" || ok "b3c: la base/rama actual (miDevelop) NO se lista para borrar ni conservar"
@@ -2796,7 +2796,7 @@ git -C "$LR2REPO" push -q -u origin feat/viva >/dev/null 2>&1
 git -C "$LR2REPO" checkout -q miDevelop >/dev/null 2>&1
 # teeth: ambas remotas existen ANTES del barrido
 git -C "$LR2REPO" ls-remote --exit-code --heads origin feat/hecha >/dev/null 2>&1 && ok "b3c2(teeth): la remota de feat/hecha existe antes del barrido" || bad "b3c2(teeth): la remota de feat/hecha no existía (test mal armado)"
-lr2out="$(cd "$LR2REPO" && CLAUDE_INTEGRACION_BASE=miDevelop bash "$HOOKS/limpiar-ramas.sh" --no-fetch 2>&1)"
+lr2out="$(cd "$LR2REPO" && CLAUDE_INTEGRACION_BASE=miDevelop bash "$HOOKS/limpiar.sh" ramas --no-fetch 2>&1)"
 printf '%s' "$lr2out" | grep -q 'remota borrada: origin/feat/hecha' && ok "b3c2: 1a — reportó el borrado de la remota huérfana" || bad "b3c2: no reportó el borrado de la remota; got: $lr2out"
 ! git -C "$LR2REPO" ls-remote --exit-code --heads origin feat/hecha >/dev/null 2>&1 && ok "b3c2: 1a — la remota de feat/hecha YA no existe (se borró de verdad)" || bad "b3c2: la remota de feat/hecha seguía existiendo tras el barrido"
 git -C "$LR2REPO" ls-remote --exit-code --heads origin feat/viva >/dev/null 2>&1 && ok "b3c2: 1a — la remota de feat/viva (trabajo vivo) NO se tocó" || bad "b3c2: BORRÓ la remota de una rama con trabajo vivo (PÉRDIDA DE DATOS)"
@@ -2846,7 +2846,7 @@ git -C "$C2REPO" fetch -q --prune origin >/dev/null 2>&1
   && ! git -C "$C2REPO" rev-parse --verify -q refs/heads/feat/C >/dev/null 2>&1; } \
   && ok "b3c4(teeth): ninguna de las dos tiene contraparte LOCAL (son las invisibles de C-2)" || bad "b3c4(teeth): había local, el caso de C-2 no se ejercita"
 # ── dry-run: las remota-only aparecen NOMBRADAS, cada una con su veredicto
-c2dry="$(cd "$C2REPO" && CLAUDE_INTEGRACION_BASE="$C2RAMA_BASE" bash "$HOOKS/limpiar-ramas.sh" --dry-run --no-fetch 2>&1)"
+c2dry="$(cd "$C2REPO" && CLAUDE_INTEGRACION_BASE="$C2RAMA_BASE" bash "$HOOKS/limpiar.sh" ramas --dry-run --no-fetch 2>&1)"
 printf '%s' "$c2dry" | grep -q 'origin/feat/D' \
   && ok "FIX-2: la remota sin local feat/D YA NO es invisible (aparece en la salida)" \
   || bad "FIX-2: origin/feat/D no aparece por ningún lado — sigue fuera del universo del barredor; got: $c2dry"
@@ -2866,7 +2866,7 @@ printf '%s' "$c2dry" | grep -q 'Remotas sin local: 2 examinada(s)' \
 git -C "$C2REPO" ls-remote --exit-code --heads origin feat/D >/dev/null 2>&1 \
   && ok "FIX-2: --dry-run NO borró la remota (solo reportó)" || bad "FIX-2: ¡el dry-run borró origin/feat/D!"
 # ── corrida REAL: se borra el residuo, sobrevive el trabajo represado
-c2real="$(cd "$C2REPO" && CLAUDE_INTEGRACION_BASE="$C2RAMA_BASE" bash "$HOOKS/limpiar-ramas.sh" --no-fetch 2>&1)"
+c2real="$(cd "$C2REPO" && CLAUDE_INTEGRACION_BASE="$C2RAMA_BASE" bash "$HOOKS/limpiar.sh" ramas --no-fetch 2>&1)"
 ! git -C "$C2REPO" ls-remote --exit-code --heads origin feat/D >/dev/null 2>&1 \
   && ok "FIX-2: tras el barrido REAL, origin/feat/D ya no existe (residuo barrido)" \
   || bad "FIX-2: origin/feat/D sobrevivió al barrido real; got: $c2real"
@@ -2886,7 +2886,7 @@ git -C "$C2REPO" push -q -u origin feat/E >/dev/null 2>&1
 git -C "$C2REPO" checkout -q "$C2RAMA_BASE" >/dev/null 2>&1
 git -C "$C2REPO" merge --squash feat/E >/dev/null 2>&1; git -C "$C2REPO" commit -qm "squash de feat/E" >/dev/null 2>&1
 git -C "$C2REPO" branch -D feat/E >/dev/null 2>&1
-c2skip="$(cd "$C2REPO" && CLAUDE_INTEGRACION_BASE="$C2RAMA_BASE" LIMPIAR_RAMAS_SIN_REMOTAS=1 bash "$HOOKS/limpiar-ramas.sh" --dry-run --no-fetch 2>&1)"
+c2skip="$(cd "$C2REPO" && CLAUDE_INTEGRACION_BASE="$C2RAMA_BASE" LIMPIAR_RAMAS_SIN_REMOTAS=1 bash "$HOOKS/limpiar.sh" ramas --dry-run --no-fetch 2>&1)"
 printf '%s' "$c2skip" | grep -q 'Remotas sin local: 0 examinada(s)' \
   && ok "FIX-2: LIMPIAR_RAMAS_SIN_REMOTAS=1 salta la pasada de remotas (escape disponible)" \
   || bad "FIX-2: el escape no funcionó; got: $c2skip"
@@ -2919,7 +2919,7 @@ printf 'z\n' > "$LR3REPO/h.txt"; git -C "$LR3REPO" add h.txt >/dev/null 2>&1
 GIT_COMMITTER_DATE="@$OLDTS" git -C "$LR3REPO" commit -q -m "feature legítima vieja" --date "@$OLDTS" >/dev/null 2>&1
 git -C "$LR3REPO" checkout -q develop >/dev/null 2>&1
 
-lr3dry="$(cd "$LR3REPO" && CLAUDE_INTEGRACION_BASE=develop bash "$HOOKS/limpiar-ramas.sh" --dry-run --no-fetch 2>&1)"
+lr3dry="$(cd "$LR3REPO" && CLAUDE_INTEGRACION_BASE=develop bash "$HOOKS/limpiar.sh" ramas --dry-run --no-fetch 2>&1)"
 printf '%s' "$lr3dry" | grep -q 'REPRESADA.*worktree-agent-oldstale' \
   && ok "b3c3: dry-run detecta la rama vieja sin integrar (worktree-agent-oldstale)" || bad "b3c3: no la detectó; got: $lr3dry"
 printf '%s' "$lr3dry" | grep -q 'worktree-agent-recent.*REPRESADA\|REPRESADA.*worktree-agent-recent' \
@@ -2927,7 +2927,7 @@ printf '%s' "$lr3dry" | grep -q 'worktree-agent-recent.*REPRESADA\|REPRESADA.*wo
 [ "$(cat "$LR3REPO/.claude/memory/bitacora.md")" = "$(printf '# bitacora')" ] \
   && ok "b3c3: dry-run NO escribe nada a la bitácora" || bad "b3c3: dry-run mutó la bitácora"
 
-cd "$LR3REPO" && CLAUDE_INTEGRACION_BASE=develop bash "$HOOKS/limpiar-ramas.sh" --no-fetch >/dev/null 2>&1
+cd "$LR3REPO" && CLAUDE_INTEGRACION_BASE=develop bash "$HOOKS/limpiar.sh" ramas --no-fetch >/dev/null 2>&1
 git -C "$LR3REPO" rev-parse --verify -q refs/heads/worktree-agent-oldstale >/dev/null 2>&1 \
   && ok "b3c3: la rama represada NUNCA se borra (solo se reporta)" || bad "b3c3: ¡BORRÓ la rama represada! (pérdida de datos)"
 grep -q 'worktree-agent-oldstale' "$LR3REPO/.claude/memory/bitacora.md" \
@@ -2945,7 +2945,7 @@ grep -q 'feat/normal-vieja' "$LR3REPO/.claude/memory/bitacora.md" \
 # idempotencia de más abajo fallara por culpa del andamio, no del código.
 cp "$LR3REPO/.claude/memory/.ramas-huerfanas-estado" "$LR3ROOT/estado.bak" 2>/dev/null
 : > "$LR3REPO/.claude/memory/.ramas-huerfanas-estado"
-lr3filt="$(cd "$LR3REPO" && CLAUDE_INTEGRACION_BASE=develop LIMPIAR_RAMAS_PATRON_HUERFANA='worktree-agent-*' bash "$HOOKS/limpiar-ramas.sh" --dry-run --no-fetch 2>&1)"
+lr3filt="$(cd "$LR3REPO" && CLAUDE_INTEGRACION_BASE=develop LIMPIAR_RAMAS_PATRON_HUERFANA='worktree-agent-*' bash "$HOOKS/limpiar.sh" ramas --dry-run --no-fetch 2>&1)"
 printf '%s' "$lr3filt" | grep -q 'REPRESADA.*feat/normal-vieja' \
   && bad "FIX-5: con el filtro de patrón puesto, feat/normal-vieja no debía reportarse" \
   || ok "FIX-5: LIMPIAR_RAMAS_PATRON_HUERFANA sigue acotando el reporte cuando se pide (filtro opcional)"
@@ -2954,12 +2954,12 @@ printf '%s' "$lr3filt" | grep -q 'REPRESADA.*worktree-agent-oldstale' \
   || bad "FIX-5: con el filtro puesto dejó de reportar hasta lo que matchea; got: $lr3filt"
 cp "$LR3ROOT/estado.bak" "$LR3REPO/.claude/memory/.ramas-huerfanas-estado" 2>/dev/null
 n_lineas_antes="$(grep -c 'worktree-agent-oldstale' "$LR3REPO/.claude/memory/bitacora.md")"
-cd "$LR3REPO" && CLAUDE_INTEGRACION_BASE=develop bash "$HOOKS/limpiar-ramas.sh" --no-fetch >/dev/null 2>&1
+cd "$LR3REPO" && CLAUDE_INTEGRACION_BASE=develop bash "$HOOKS/limpiar.sh" ramas --no-fetch >/dev/null 2>&1
 n_lineas_despues="$(grep -c 'worktree-agent-oldstale' "$LR3REPO/.claude/memory/bitacora.md")"
 [ "$n_lineas_antes" = "$n_lineas_despues" ] \
   && ok "b3c3: dedupe — una 2ª corrida NO repite el aviso de la misma punta" || bad "b3c3: repitió el aviso (spam de bitácora); antes=$n_lineas_antes después=$n_lineas_despues"
 # patrón/edad configurables
-lr3cfg="$(cd "$LR3REPO" && CLAUDE_INTEGRACION_BASE=develop LIMPIAR_RAMAS_DIAS_HUERFANA=999 bash "$HOOKS/limpiar-ramas.sh" --dry-run --no-fetch 2>&1)"
+lr3cfg="$(cd "$LR3REPO" && CLAUDE_INTEGRACION_BASE=develop LIMPIAR_RAMAS_DIAS_HUERFANA=999 bash "$HOOKS/limpiar.sh" ramas --dry-run --no-fetch 2>&1)"
 printf '%s' "$lr3cfg" | grep -q 'REPRESADA' \
   && bad "b3c3: LIMPIAR_RAMAS_DIAS_HUERFANA=999 debía silenciar el aviso (nada es tan vieja)" \
   || ok "b3c3: LIMPIAR_RAMAS_DIAS_HUERFANA configurable (umbral alto → sin avisos)"
@@ -2994,7 +2994,7 @@ Rama: feat/integrada" >/dev/null 2>&1                         # señal (e): inte
 # mapa de estados inyectado (rama<TAB>ESTADO<TAB>id), como lo devolvería el foro
 A4ST="$A4ROOT2/estados.tsv"
 printf 'feat/cerrada\tCLOSED\t77\n' > "$A4ST"                 # feat/sinpr NO aparece → "SIN PR"
-a4out="$(cd "$A4REPO2" && CLAUDE_INTEGRACION_BASE=develop CLAUDE_BZ_STCACHE="$A4ST" bash "$HOOKS/limpiar-ramas.sh" --no-fetch 2>&1)"
+a4out="$(cd "$A4REPO2" && CLAUDE_INTEGRACION_BASE=develop CLAUDE_BZ_STCACHE="$A4ST" bash "$HOOKS/limpiar.sh" ramas --no-fetch 2>&1)"
 # la integrada se barre; las otras dos NO se borran y AMBAS generan línea de bitácora con su motivo
 ! git -C "$A4REPO2" rev-parse --verify -q refs/heads/feat/integrada >/dev/null 2>&1 \
   && ok "FIX-5: la rama vieja pero INTEGRADA se barre (el detector no estorba al barrido)" \
@@ -3014,14 +3014,14 @@ grep -q 'feat/integrada' "$A4REPO2/.claude/memory/bitacora.md" \
   || ok "FIX-5: la integrada no ensucia el reporte de represas"
 # idempotencia: una 2ª corrida no duplica
 n_a4=$(grep -c 'rama represada' "$A4REPO2/.claude/memory/bitacora.md")
-( cd "$A4REPO2" && CLAUDE_INTEGRACION_BASE=develop CLAUDE_BZ_STCACHE="$A4ST" bash "$HOOKS/limpiar-ramas.sh" --no-fetch >/dev/null 2>&1 )
+( cd "$A4REPO2" && CLAUDE_INTEGRACION_BASE=develop CLAUDE_BZ_STCACHE="$A4ST" bash "$HOOKS/limpiar.sh" ramas --no-fetch >/dev/null 2>&1 )
 n_a4b=$(grep -c 'rama represada' "$A4REPO2/.claude/memory/bitacora.md")
 [ "$n_a4" = "$n_a4b" ] && ok "FIX-5: dedupe por punta — la 2ª corrida no repite el aviso ($n_a4 líneas)" \
   || bad "FIX-5: duplicó el reporte ($n_a4 → $n_a4b)"
 # sin foro que consultar, el reporte lo DICE en vez de inventar un estado
 : > "$A4REPO2/.claude/memory/.ramas-huerfanas-estado"
 : > "$A4REPO2/.claude/memory/bitacora.md"
-a4nd="$(cd "$A4REPO2" && CLAUDE_INTEGRACION_BASE=develop PATH=/usr/bin:/bin bash "$HOOKS/limpiar-ramas.sh" --dry-run --no-fetch 2>&1)"
+a4nd="$(cd "$A4REPO2" && CLAUDE_INTEGRACION_BASE=develop PATH=/usr/bin:/bin bash "$HOOKS/limpiar.sh" ramas --dry-run --no-fetch 2>&1)"
 printf '%s' "$a4nd" | grep -q 'estado del PR desconocido' \
   && ok "FIX-5: sin gh/glab, el reporte DICE que no pudo consultar el foro (no inventa 'SIN PR')" \
   || bad "FIX-5: afirmó un estado de PR que no pudo consultar; got: $a4nd"
@@ -3198,10 +3198,10 @@ DI_OID="$(git -C "$DIREPO" rev-parse feat/multi)"
 git -C "$DIREPO" checkout -q develop >/dev/null 2>&1
 git -C "$DIREPO" merge --squash feat/multi >/dev/null 2>&1; git -C "$DIREPO" commit -qm "squash sin convencion" >/dev/null 2>&1
 DICACHE="$DIROOT/prcache"; printf 'feat/multi\t%s\n' "$DI_OID" > "$DICACHE"
-diout="$(cd "$DIREPO" && PATH=/usr/bin:/bin bash "$HOOKS/limpiar-ramas.sh" --dry-run --no-fetch 2>&1)"
+diout="$(cd "$DIREPO" && PATH=/usr/bin:/bin bash "$HOOKS/limpiar.sh" ramas --dry-run --no-fetch 2>&1)"
 printf '%s' "$diout" | grep -q 'INDETERMINADA' && ok "b3i: PATH de launchd (sin gh/glab) → reporta INDETERMINADA" || bad "b3i: no reportó INDETERMINADA; got: $diout"
 printf '%s' "$diout" | grep -q 'CONSERVADA (trabajo sin integrar): feat/multi' && bad "b3i: afirmó 'trabajo sin integrar' cuando NO SE PUDO comprobar (mentira de A-3)" || ok "b3i: NO afirma 'trabajo sin integrar' a secas (ya no miente)"
-diout2="$(cd "$DIREPO" && PATH=/usr/bin:/bin CLAUDE_BZ_PRCACHE="$DICACHE" bash "$HOOKS/limpiar-ramas.sh" --dry-run --no-fetch 2>&1)"
+diout2="$(cd "$DIREPO" && PATH=/usr/bin:/bin CLAUDE_BZ_PRCACHE="$DICACHE" bash "$HOOKS/limpiar.sh" ramas --dry-run --no-fetch 2>&1)"
 printf '%s' "$diout2" | grep -q 'borraría: feat/multi' && ok "b3i: con el PR-cache inyectado (equivalente a tener gh/glab) → integrada, se poda" || bad "b3i: con PR-cache inyectado no podó feat/multi; got: $diout2"
 rm -rf "$DIROOT"
 
@@ -3229,7 +3229,7 @@ git -C "$C1A" merge --squash feat/compartida >/dev/null 2>&1; git -C "$C1A" comm
 . "$HOOKS/ramas-zombie.sh"
 bz_es_zombie "$C1A" feat/compartida miDevelop && ok "b3j(teeth): feat/compartida (tip local, SIN el commit del colega) es zombie por contenido" || bad "b3j(teeth): test mal armado, no detectó zombie"
 git -C "$C1A" ls-remote --exit-code --heads origin feat/compartida >/dev/null 2>&1 && ok "b3j(teeth): la remota feat/compartida existe ANTES del barrido (con el commit del colega)" || bad "b3j(teeth): remota no existía, test mal armado"
-c1out="$(cd "$C1A" && CLAUDE_INTEGRACION_BASE=miDevelop bash "$HOOKS/limpiar-ramas.sh" 2>&1)"
+c1out="$(cd "$C1A" && CLAUDE_INTEGRACION_BASE=miDevelop bash "$HOOKS/limpiar.sh" ramas 2>&1)"
 printf '%s' "$c1out" | grep -q 'ADELANTE del tip local' && ok "b3j: C-1 — reportó que la remota va ADELANTE del tip local (NO se borra)" || bad "b3j: no avisó que la remota va adelante; got: $c1out"
 git -C "$C1A" ls-remote --exit-code --heads origin feat/compartida >/dev/null 2>&1 && ok "b3j: C-1 — la remota feat/compartida SIGUE existiendo (el commit del colega SOBREVIVIÓ)" || bad "b3j: C-1 REGRESIÓN — la remota se borró, PÉRDIDA DE DATOS del colega"
 git -C "$C1A" fetch -q origin >/dev/null 2>&1
@@ -3249,11 +3249,11 @@ git -C "$C2REPO" branch keep/no-tocar >/dev/null 2>&1
 git -C "$C2REPO" worktree add -q "$C2ROOT/wt-mini" DevelopUnjordi >/dev/null 2>&1
 git -C "$C2REPO" worktree add -q "$C2ROOT/wt-keep" keep/no-tocar >/dev/null 2>&1
 printf 'trabajo del dia\n' > "$C2ROOT/wt-mini/pendiente.md"
-c2out="$(cd "$C2REPO" && bash "$HOOKS/limpiar-worktrees.sh" --dry-run 2>&1)"
+c2out="$(cd "$C2REPO" && bash "$HOOKS/limpiar.sh" worktrees --dry-run 2>&1)"
 printf '%s' "$c2out" | grep -q 'PROTEGIDA.*wt-mini' && ok "b3k: C-2 — el worktree de la mini-develop (DevelopUnjordi) queda PROTEGIDO" || bad "b3k: NO protegió el worktree de la mini; got: $c2out"
 printf '%s' "$c2out" | grep -q 'PROTEGIDA.*wt-keep' && ok "b3k: C-2 — el worktree de keep/no-tocar queda PROTEGIDO" || bad "b3k: NO protegió keep/*; got: $c2out"
 printf '%s' "$c2out" | grep -qi 'zombie.*wt-mini\|zombie.*wt-keep' && bad "b3k: C-2 REGRESIÓN — listó un worktree protegido como zombie" || ok "b3k: ninguno de los dos se lista como zombie"
-( cd "$C2REPO" && bash "$HOOKS/limpiar-worktrees.sh" >/dev/null 2>&1 )
+( cd "$C2REPO" && bash "$HOOKS/limpiar.sh" worktrees >/dev/null 2>&1 )
 [ -d "$C2ROOT/wt-mini" ] && ok "b3k: C-2 — el DIRECTORIO del worktree de la mini SOBREVIVE al barrido real" || bad "b3k: C-2 REGRESIÓN — el worktree de la mini fue BORRADO (PÉRDIDA DE DATOS)"
 [ -f "$C2ROOT/wt-mini/pendiente.md" ] && ok "b3k: C-2 — el archivo sin commitear SOBREVIVE" || bad "b3k: C-2 REGRESIÓN — se perdió el archivo sin commitear"
 [ -d "$C2ROOT/wt-keep" ] && ok "b3k: C-2 — el worktree de keep/* SOBREVIVE" || bad "b3k: C-2 REGRESIÓN — se borró el worktree de keep/*"
@@ -3274,7 +3274,7 @@ printf 'secreto\n' > "$C3ROOT/wt-uno/.env"
 printf 'analisis a medias\n' > "$C3ROOT/wt-uno/borrador.md"
 git -C "$C3REPO" merge-base --is-ancestor feat/uno develop 2>/dev/null && ok "b3l(teeth): feat/uno ES zombie por contenido (ancestro de develop)" || bad "b3l(teeth): test mal armado"
 [ -n "$(git -C "$C3ROOT/wt-uno" status --porcelain 2>/dev/null)" ] && ok "b3l(teeth): el worktree tiene cambios sin commitear/untracked" || bad "b3l(teeth): test mal armado, árbol limpio"
-c3out="$(cd "$C3REPO" && bash "$HOOKS/limpiar-worktrees.sh" 2>&1)"
+c3out="$(cd "$C3REPO" && bash "$HOOKS/limpiar.sh" worktrees 2>&1)"
 printf '%s' "$c3out" | grep -q 'SUCIO' && ok "b3l: C-3 — reportó SUCIO en vez de forzar el borrado" || bad "b3l: no reportó SUCIO; got: $c3out"
 [ -d "$C3ROOT/wt-uno" ] && ok "b3l: C-3 — el directorio del worktree SOBREVIVE (no se forzó --force)" || bad "b3l: C-3 REGRESIÓN — el worktree fue destruido pese a estar sucio (PÉRDIDA DE DATOS)"
 [ -f "$C3ROOT/wt-uno/.env" ] && ok "b3l: C-3 — el .env untracked SOBREVIVE" || bad "b3l: C-3 REGRESIÓN — se perdió el .env untracked"
@@ -3304,7 +3304,7 @@ git -C "$A1REPO" merge-base --is-ancestor feat/integrada develop 2>/dev/null \
   && ok "b3l2(teeth): feat/integrada ES zombie (ancestro de develop)" || bad "b3l2(teeth): test mal armado"
 [ -n "$(git -C "$A1ROOT/wt-sucio" status --porcelain 2>/dev/null)" ] \
   && ok "b3l2(teeth): el worktree zombie está SUCIO (1 untracked)" || bad "b3l2(teeth): test mal armado, árbol limpio"
-a1out="$(cd "$A1REPO" && bash "$HOOKS/limpiar-worktrees.sh" 2>&1)"
+a1out="$(cd "$A1REPO" && bash "$HOOKS/limpiar.sh" worktrees 2>&1)"
 printf '%s' "$a1out" | grep -q 'SUCIO' && ok "b3l2: sigue reportando SUCIO y conservando el árbol (C-3 intacto)" || bad "b3l2: regresión de C-3; got: $a1out"
 [ -f "$A1ROOT/wt-sucio/borrador.md" ] && ok "b3l2: el untracked SOBREVIVE (nunca se fuerza)" || bad "b3l2: se destruyó trabajo sin commitear"
 grep -q 'wt-sucio' "$A1REPO/.claude/memory/bitacora.md" 2>/dev/null \
@@ -3314,7 +3314,7 @@ grep -q 'CONGELA esa rama' "$A1REPO/.claude/memory/bitacora.md" 2>/dev/null \
   && ok "FIX-6: el pendiente DICE la consecuencia (mientras siga sucio, la rama no se barre)" \
   || bad "FIX-6: el pendiente no explica por qué importa; got: $(cat "$A1REPO/.claude/memory/bitacora.md")"
 # idempotencia: 3 corridas más NO duplican el pendiente (mismo dedupe que A-4 para los vivos)
-for i in 1 2 3; do ( cd "$A1REPO" && bash "$HOOKS/limpiar-worktrees.sh" >/dev/null 2>&1 ); done
+for i in 1 2 3; do ( cd "$A1REPO" && bash "$HOOKS/limpiar.sh" worktrees >/dev/null 2>&1 ); done
 a1n=$(grep -c 'wt-sucio' "$A1REPO/.claude/memory/bitacora.md" 2>/dev/null || echo 0)
 [ "$a1n" = 1 ] && ok "FIX-6: 4 corridas → EXACTAMENTE 1 pendiente (idempotente, como el de los vivos)" \
   || bad "FIX-6: el pendiente del sucio se re-appendeó ($a1n veces)"
@@ -3322,7 +3322,7 @@ a1n=$(grep -c 'wt-sucio' "$A1REPO/.claude/memory/bitacora.md" 2>/dev/null || ech
 # anotara siempre, este aserto lo delataría).
 git -C "$A1REPO" branch feat/limpia develop >/dev/null 2>&1
 git -C "$A1REPO" worktree add -q "$A1ROOT/wt-limpio" feat/limpia >/dev/null 2>&1
-( cd "$A1REPO" && bash "$HOOKS/limpiar-worktrees.sh" >/dev/null 2>&1 )
+( cd "$A1REPO" && bash "$HOOKS/limpiar.sh" worktrees >/dev/null 2>&1 )
 [ ! -d "$A1ROOT/wt-limpio" ] && ok "FIX-6 control: el worktree zombie LIMPIO se sigue borrando" || bad "FIX-6 control: dejó de borrar worktrees zombie limpios"
 grep -q 'wt-limpio' "$A1REPO/.claude/memory/bitacora.md" 2>/dev/null \
   && bad "FIX-6 control: anotó pendiente de un worktree que SÍ se borró (ruido)" \
@@ -3339,7 +3339,7 @@ git -C "$A2REPO" config user.email t@t >/dev/null 2>&1; git -C "$A2REPO" config 
 printf 'base\n' > "$A2REPO/a.txt"; git -C "$A2REPO" add a.txt >/dev/null 2>&1; git -C "$A2REPO" commit -qm base >/dev/null 2>&1
 git -C "$A2REPO" branch feat/x develop >/dev/null 2>&1
 git -C "$A2REPO" worktree add -q "$A2ROOT/wt-x" feat/x >/dev/null 2>&1
-( cd "$A2REPO" && bash "$HOOKS/limpiar-worktrees.sh" --dryrun >/dev/null 2>&1 )
+( cd "$A2REPO" && bash "$HOOKS/limpiar.sh" worktrees --dryrun >/dev/null 2>&1 )
 a2rc=$?
 [ "$a2rc" = 2 ] && ok "b3m: A-2 — '--dryrun' (typo) aborta con rc=2" || bad "b3m: A-2 — rc inesperado ($a2rc), no abortó"
 [ -d "$A2ROOT/wt-x" ] && ok "b3m: A-2 — el worktree SIGUE existiendo (el typo NO ejecutó en modo destructivo)" || bad "b3m: A-2 REGRESIÓN — el typo borró el worktree (PÉRDIDA DE DATOS)"
@@ -3358,7 +3358,7 @@ printf 'y\n' > "$A4REPO/g.txt"; git -C "$A4REPO" add g.txt >/dev/null 2>&1; git 
 git -C "$A4REPO" checkout -q develop >/dev/null 2>&1
 git -C "$A4REPO" worktree add -q "$A4ROOT/wt-viva" feat/viva >/dev/null 2>&1
 : > "$A4REPO/.claude/memory/bitacora.md"
-for i in 1 2 3; do ( cd "$A4REPO" && bash "$HOOKS/limpiar-worktrees.sh" >/dev/null 2>&1 ); done
+for i in 1 2 3; do ( cd "$A4REPO" && bash "$HOOKS/limpiar.sh" worktrees >/dev/null 2>&1 ); done
 n_bloques=$(grep -c 'worktrees pendientes tras barrido' "$A4REPO/.claude/memory/bitacora.md" 2>/dev/null || echo 0)
 [ "$n_bloques" = 1 ] && ok "b3n: A-4 — 3 corridas → EXACTAMENTE 1 bloque en la bitácora (antes: N idénticos)" || bad "b3n: A-4 — se re-appendeó el pendiente ($n_bloques bloques)"
 rm -rf "$A4ROOT"
@@ -3377,7 +3377,7 @@ git -C "$A4BREPO" checkout -q develop >/dev/null 2>&1
 git -C "$A4BREPO" merge --squash feat/multi >/dev/null 2>&1; git -C "$A4BREPO" commit -qm "squash sin convencion" >/dev/null 2>&1
 git -C "$A4BREPO" worktree add -q "$A4BROOT/wt-multi" feat/multi >/dev/null 2>&1
 : > "$A4BREPO/.claude/memory/bitacora.md"
-( cd "$A4BREPO" && PATH=/usr/bin:/bin bash "$HOOKS/limpiar-worktrees.sh" >/dev/null 2>&1 )
+( cd "$A4BREPO" && PATH=/usr/bin:/bin bash "$HOOKS/limpiar.sh" worktrees >/dev/null 2>&1 )
 grep -q 'worktrees pendientes' "$A4BREPO/.claude/memory/bitacora.md" 2>/dev/null && bad "b3n2: A-4 — escribió un pendiente FALSO para un veredicto INDETERMINADO" || ok "b3n2: A-4 — NO escribió pendiente para un veredicto indeterminado (no miente en la bitácora)"
 rm -rf "$A4BROOT"
 
@@ -3395,8 +3395,8 @@ git -C "$M2REPO" branch DevelopUnjordi >/dev/null 2>&1
 m2base="$(bz_resolver_base "$M2REPO")"; m2aviso="$(bz_aviso_base "$M2REPO")"
 [ "$m2base" = "develop" ] && ok "b3o: M-2 — con 2 mini-develop y HEAD en ninguna → cae a develop (no adivina)" || bad "b3o: M-2 — no cayó a develop; got: $m2base"
 printf '%s' "$m2aviso" | grep -q 'no se adivina' && ok "b3o: M-2 — deja el aviso de ambigüedad (bz_aviso_base)" || bad "b3o: M-2 — no avisó la ambigüedad; got: $m2aviso"
-m2out="$(cd "$M2REPO" && bash "$HOOKS/limpiar-ramas.sh" --dry-run --no-fetch 2>&1)"
-printf '%s' "$m2out" | grep -q 'aviso:.*no se adivina' && ok "b3o: M-2 — limpiar-ramas.sh también imprime el aviso" || bad "b3o: M-2 — limpiar-ramas.sh no propagó el aviso; got: $m2out"
+m2out="$(cd "$M2REPO" && bash "$HOOKS/limpiar.sh" ramas --dry-run --no-fetch 2>&1)"
+printf '%s' "$m2out" | grep -q 'aviso:.*no se adivina' && ok "b3o: M-2 — limpiar.sh ramas también imprime el aviso" || bad "b3o: M-2 — limpiar.sh ramas no propagó el aviso; got: $m2out"
 rm -rf "$M2ROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -3445,7 +3445,7 @@ git -C "$C3REPO" checkout -q "$C3RAMA_BASE" >/dev/null 2>&1
     || ok "FIX-3: feat/valioso se CONSERVA (trabajo propio no integrado, razón=$BZ_RAZON)"
 )
 # el barredor completo, en dry-run: no debe nombrar feat/valioso como borrable
-c3out="$(cd "$C3REPO" && bash "$HOOKS/limpiar-ramas.sh" --dry-run --no-fetch 2>&1)"
+c3out="$(cd "$C3REPO" && bash "$HOOKS/limpiar.sh" ramas --dry-run --no-fetch 2>&1)"
 printf '%s' "$c3out" | grep -q 'integrada → borraría: feat/valioso' \
   && bad "FIX-3: limpiar-ramas propone borrar feat/valioso — en modo real sería branch -D; got: $c3out" \
   || ok "FIX-3: limpiar-ramas NO propone borrar feat/valioso"
@@ -3453,14 +3453,14 @@ printf '%s' "$c3out" | grep -q "Base: $C3RAMA_BASE\." \
   && ok "FIX-3: el resumen reporta la base resuelta (antes: 'Base: .' — la base vacía era visible y nadie la leía)" \
   || bad "FIX-3: el resumen no reporta la base resuelta; got: $c3out"
 # CORRIDA REAL (no dry-run): el trabajo sigue ahí. Es el aserto que de verdad mide la pérdida de datos.
-( cd "$C3REPO" && bash "$HOOKS/limpiar-ramas.sh" --no-fetch >/dev/null 2>&1 )
+( cd "$C3REPO" && bash "$HOOKS/limpiar.sh" ramas --no-fetch >/dev/null 2>&1 )
 git -C "$C3REPO" rev-parse --verify -q refs/heads/feat/valioso >/dev/null 2>&1 \
   && ok "FIX-3: tras el barrido REAL, feat/valioso sigue existiendo (el trabajo no se perdió)" \
   || bad "FIX-3: el barrido REAL BORRÓ feat/valioso — pérdida de datos confirmada"
 # ── Candado 2: base que NO RESUELVE ⇒ ABORTAR, nunca barrer. Ninguna señal de integración es evaluable
 #    sin base, así que barrer con base irresoluble jamás puede ser correcto, venga el vacío de donde venga.
 c3rc=0
-c3abort="$(cd "$C3REPO" && CLAUDE_INTEGRACION_BASE=rama-que-no-existe bash "$HOOKS/limpiar-ramas.sh" --no-fetch 2>&1)" || c3rc=$?
+c3abort="$(cd "$C3REPO" && CLAUDE_INTEGRACION_BASE=rama-que-no-existe bash "$HOOKS/limpiar.sh" ramas --no-fetch 2>&1)" || c3rc=$?
 [ "$c3rc" -ne 0 ] \
   && ok "FIX-3: base que no resuelve → limpiar-ramas ABORTA con rc≠0 (rc=$c3rc)" \
   || bad "FIX-3: base que no resuelve → limpiar-ramas corrió igual (rc=0) y evaluó con una base fantasma"
@@ -3474,7 +3474,7 @@ git -C "$C3REPO" rev-parse --verify -q refs/heads/feat/valioso >/dev/null 2>&1 \
   && ok "FIX-3: tras el aborto, feat/valioso intacto" || bad "FIX-3: el aborto igual se llevó feat/valioso"
 # el gemelo estructural: limpiar-worktrees comparte la lib y debe abortar igual
 c3wrc=0
-c3wout="$(cd "$C3REPO" && CLAUDE_INTEGRACION_BASE=rama-que-no-existe bash "$HOOKS/limpiar-worktrees.sh" 2>&1)" || c3wrc=$?
+c3wout="$(cd "$C3REPO" && CLAUDE_INTEGRACION_BASE=rama-que-no-existe bash "$HOOKS/limpiar.sh" worktrees 2>&1)" || c3wrc=$?
 { [ "$c3wrc" -ne 0 ] && printf '%s' "$c3wout" | grep -qi 'irresoluble'; } \
   && ok "FIX-3: limpiar-worktrees ABORTA igual con base irresoluble (gemelos estructurales)" \
   || bad "FIX-3: limpiar-worktrees NO abortó con base irresoluble (rc=$c3wrc); got: $c3wout"
@@ -3487,7 +3487,7 @@ git -C "$C3REPO" checkout -q "$C3RAMA_BASE" >/dev/null 2>&1
 git -C "$C3REPO" merge --squash feat/hecha >/dev/null 2>&1; git -C "$C3REPO" commit -qm "squash de feat/hecha" >/dev/null 2>&1
 git -C "$C3REPO" push -q origin --delete feat/hecha >/dev/null 2>&1
 c3ok=0
-c3okout="$(cd "$C3REPO" && bash "$HOOKS/limpiar-ramas.sh" --no-fetch 2>&1)" || c3ok=$?
+c3okout="$(cd "$C3REPO" && bash "$HOOKS/limpiar.sh" ramas --no-fetch 2>&1)" || c3ok=$?
 [ "$c3ok" -eq 0 ] && ok "FIX-3 control: con base RESOLUBLE el barredor NO aborta" || bad "FIX-3 control: abortó con una base perfectamente resoluble (rc=$c3ok)"
 ! git -C "$C3REPO" rev-parse --verify -q refs/heads/feat/hecha >/dev/null 2>&1 \
   && ok "FIX-3 control: y SÍ barre el residuo genuino (feat/hecha, squash-integrada)" \
@@ -3507,7 +3507,7 @@ printf 'p\n' > "$M4REPO/p.txt"; git -C "$M4REPO" add p.txt >/dev/null 2>&1; git 
 git -C "$M4REPO" checkout -q develop >/dev/null 2>&1
 git -C "$M4REPO" worktree add -q "$M4ROOT/wt-p" feat/p >/dev/null 2>&1
 rm -rf "$M4ROOT/wt-p"
-m4out="$(cd "$M4REPO" && bash "$HOOKS/limpiar-worktrees.sh" --dry-run 2>&1)"
+m4out="$(cd "$M4REPO" && bash "$HOOKS/limpiar.sh" worktrees --dry-run 2>&1)"
 printf '%s' "$m4out" | grep -q 'wt-p' && bad "b3p: M-4 REGRESIÓN — el worktree prunable sigue apareciendo en el reporte (no se podó antes de listar); got: $m4out" || ok "b3p: M-4 — el worktree prunable ya NO aparece (se podó antes de listar)"
 git -C "$M4REPO" worktree list --porcelain 2>/dev/null | grep -q 'wt-p' && bad "b3p: M-4 — el registro del worktree prunable NO se limpió" || ok "b3p: M-4 — el registro del worktree prunable se limpió (git worktree prune)"
 rm -rf "$M4ROOT"
@@ -3527,7 +3527,7 @@ git -C "$M6REPO" merge-base --is-ancestor feat/main-work develop 2>/dev/null && 
 # el path REAL (resuelto por git, p. ej. con /private en macOS) puede diferir del literal de $M6REPO
 # (mktemp bajo $TMPDIR sin resolver symlinks) — comparar contra el que GIT reporta, no el crudo.
 M6REPO_REAL="$(git -C "$M6REPO" rev-parse --show-toplevel)"
-m6out="$(cd "$M6ROOT/wt-q" && bash "$HOOKS/limpiar-worktrees.sh" --dry-run 2>&1)"
+m6out="$(cd "$M6ROOT/wt-q" && bash "$HOOKS/limpiar.sh" worktrees --dry-run 2>&1)"
 printf '%s' "$m6out" | grep -qF "zombie: $M6REPO_REAL (" && bad "b3q: M-6 REGRESIÓN — el worktree PRINCIPAL se propuso como zombie corriendo desde uno enlazado; got: $m6out" || ok "b3q: M-6 — el worktree principal NO se propone como zombie (protegido pese a correr desde otro worktree)"
 rm -rf "$M6ROOT"
 
@@ -3542,7 +3542,7 @@ printf 'base\n' > "$M3REPO/a.txt"; git -C "$M3REPO" add a.txt >/dev/null 2>&1; g
 M3SHA="$(git -C "$M3REPO" rev-parse develop)"
 git -C "$M3REPO" worktree add -q --detach "$M3ROOT/wt-det" "$M3SHA" >/dev/null 2>&1
 git -C "$M3REPO" worktree list --porcelain 2>/dev/null | grep -q '^detached$' && ok "b3r(teeth): el worktree quedó en HEAD detached (sin línea 'branch')" || bad "b3r(teeth): test mal armado"
-m3out="$(cd "$M3REPO" && bash "$HOOKS/limpiar-worktrees.sh" --dry-run 2>&1)"
+m3out="$(cd "$M3REPO" && bash "$HOOKS/limpiar.sh" worktrees --dry-run 2>&1)"
 printf '%s' "$m3out" | grep -q 'DETACHED.*wt-det' && ok "b3r: M-3 — el worktree detached se NOMBRA explícitamente en el reporte" || bad "b3r: M-3 — el worktree detached sigue invisible; got: $m3out"
 rm -rf "$M3ROOT"
 
@@ -4623,11 +4623,17 @@ echo "== (b5e) barrer-ramas: da trigger al barrido (fail-open sin git/remoto; la
 BRFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-br.XXXXXX")"
 BRHOME="$BRFIX/home"; BRHOOKS="$BRFIX/hooks"; BRREPO="$BRFIX/repo"
 mkdir -p "$BRHOME" "$BRHOOKS" "$BRREPO"
-# Copia el hook + un STUB de limpiar-ramas junto a él: dirname resuelve a ESTA carpeta → usa el stub (sin red).
+# Copia el hook + un STUB del dispatcher limpiar.sh junto a él: dirname resuelve a ESTA carpeta → usa el
+# stub (sin red). Un solo archivo, dispatcha por $1 (ramas|worktrees) — igual que el limpiar.sh real.
 cp "$HOOKS/barrer-ramas.sh" "$BRHOOKS/barrer-ramas.sh"
-printf '#!/usr/bin/env bash\ntouch "%s/.barrido"\n' "$BRFIX" > "$BRHOOKS/limpiar-ramas.sh"; chmod +x "$BRHOOKS/limpiar-ramas.sh"
-# 1b: STUB de limpiar-worktrees junto al hook → barrer-ramas debe lanzarlo TAMBIÉN (mismo trigger/detach).
-printf '#!/usr/bin/env bash\ntouch "%s/.barrido-wt"\n' "$BRFIX" > "$BRHOOKS/limpiar-worktrees.sh"; chmod +x "$BRHOOKS/limpiar-worktrees.sh"
+cat > "$BRHOOKS/limpiar.sh" <<EOF
+#!/usr/bin/env bash
+case "\$1" in
+  ramas)     touch "$BRFIX/.barrido" ;;
+  worktrees) touch "$BRFIX/.barrido-wt" ;;
+esac
+EOF
+chmod +x "$BRHOOKS/limpiar.sh"
 br() { printf '%s' '{"source":"startup"}' | HOME="$BRHOME" CLAUDE_PROJECT_DIR="$BRREPO" bash "$BRHOOKS/barrer-ramas.sh"; }
 # poll acotado por un marker (los barredores corren detached vía nohup → esperamos su touch, ~ms)
 _wait_marker() { local f="$1" i=0; while [ "$i" -lt 40 ]; do [ -f "$f" ] && return 0; i=$((i+1)); sleep 0.05; done; return 1; }
@@ -4680,8 +4686,14 @@ for _r in "$BRA" "$BRB"; do
   git -C "$_r" init -q >/dev/null 2>&1
   git -C "$_r" remote add origin /tmp/fake-no-red >/dev/null 2>&1
 done
-printf '#!/usr/bin/env bash\npwd > "%s/.donde-barrio"\n' "$BRFIX" > "$BRHOOKS/limpiar-ramas.sh"; chmod +x "$BRHOOKS/limpiar-ramas.sh"
-printf '#!/usr/bin/env bash\n:\n' > "$BRHOOKS/limpiar-worktrees.sh"; chmod +x "$BRHOOKS/limpiar-worktrees.sh"
+cat > "$BRHOOKS/limpiar.sh" <<EOF
+#!/usr/bin/env bash
+case "\$1" in
+  ramas)     pwd > "$BRFIX/.donde-barrio" ;;
+  worktrees) : ;;
+esac
+EOF
+chmod +x "$BRHOOKS/limpiar.sh"
 slugA=$(printf '%s' "$BRA" | cksum | awk '{print $1}')
 slugB=$(printf '%s' "$BRB" | cksum | awk '{print $1}')
 # brm2 CMD CWD — payload PostToolUse/Bash con `.cwd` (como lo manda el harness), CLAUDE_PROJECT_DIR = repoB
@@ -4743,21 +4755,25 @@ ORDERLOG="$A5FIX/orden.log"
 # (secuencial, mismo proceso). En paralelo, ramas arranca casi al mismo tiempo que worktrees y el marker
 # aún no existe.
 WTDONE="$A5FIX/wt-done"
-cat > "$A5HOOKS/limpiar-worktrees.sh" <<'STUBEOF'
+# Un solo dispatcher stub (como el limpiar.sh real): dispatcha por $1, worktrees duerme y deja el marker,
+# ramas revisa el marker AL ARRANCAR (sin dormir) — solo ve "secuencial" si de verdad esperó.
+cat > "$A5HOOKS/limpiar.sh" <<'STUBEOF'
 #!/usr/bin/env bash
-sleep 0.3
-touch "$(dirname "$0")/../wt-done"
+case "$1" in
+  worktrees)
+    sleep 0.3
+    touch "$(dirname "$0")/../wt-done"
+    ;;
+  ramas)
+    if [ -f "$(dirname "$0")/../wt-done" ]; then
+      printf 'secuencial\n' >> "$(dirname "$0")/../orden.log"
+    else
+      printf 'paralelo\n' >> "$(dirname "$0")/../orden.log"
+    fi
+    ;;
+esac
 STUBEOF
-chmod +x "$A5HOOKS/limpiar-worktrees.sh"
-cat > "$A5HOOKS/limpiar-ramas.sh" <<'STUBEOF'
-#!/usr/bin/env bash
-if [ -f "$(dirname "$0")/../wt-done" ]; then
-  printf 'secuencial\n' >> "$(dirname "$0")/../orden.log"
-else
-  printf 'paralelo\n' >> "$(dirname "$0")/../orden.log"
-fi
-STUBEOF
-chmod +x "$A5HOOKS/limpiar-ramas.sh"
+chmod +x "$A5HOOKS/limpiar.sh"
 printf '%s' '{"source":"startup"}' | HOME="$A5HOME" CLAUDE_PROJECT_DIR="$A5REPO" bash "$A5HOOKS/barrer-ramas.sh" >/dev/null 2>&1
 _wait_archivo() { local f="$1" i=0; while [ "$i" -lt 40 ]; do [ -s "$f" ] && return 0; i=$((i+1)); sleep 0.05; done; return 1; }
 _wait_archivo "$ORDERLOG"
@@ -6145,12 +6161,7 @@ checkpoint|to-do
 aviso-contexto|rehidratar-hilo
 aviso-contexto|checkpoint
 aviso-drift-cerebro|barrer-ramas
-aviso-drift-cerebro|barrer-flotilla-cerebro
 aviso-drift-cerebro|drift-cerebro-comun
-barrer-flotilla-cerebro|drift-cerebro-comun
-limpiar-ramas|limpiar-worktrees
-limpiar-ramas|ramas-zombie
-limpiar-worktrees|ramas-zombie
 proteger-fuente-cerebro|verificar-cerebro
 aviso-drift-cerebro|verificar-cerebro
 auditar-coherencia-cerebro|auditar-proceso-algoritmo
@@ -6167,12 +6178,14 @@ drift-cerebro-comun|proteger-fuente-cerebro
 drift-cerebro-comun|verificar-cerebro
 checkpoint|checkpoint-mecanico
 checkpoint|contrato-hilo
-barrer-flotilla-cerebro|limpiar-residuo
 analizar-comando-git|proteger-arbol
-analizar-comando-git|limpiar-residuo
 aviso-contexto|checkpoint-mecanico-comun
 aviso-contexto|checkpoint-mecanico
-checkpoint-mecanico|checkpoint-mecanico-comun"
+checkpoint-mecanico|checkpoint-mecanico-comun
+limpiar|limpiar-impl-ramas
+limpiar|limpiar-impl-worktrees
+limpiar|limpiar-impl-residuo
+limpiar|limpiar-impl-flotilla"
 # auditar-coherencia-cerebro|auditar-proceso-algoritmo: FAMILIA declarada, no ciclo — proceso-algoritmo
 # es la METODOLOGÍA y apunta a secciones CONCRETAS de coherencia-cerebro (que es su modo-cerebro
 # empaquetado) donde vive el detalle; el contenido está en los dos lados, así que el lector no da vueltas.
@@ -6225,6 +6238,12 @@ checkpoint-mecanico|checkpoint-mecanico-comun"
 # andamio se FACTORIZÓ a la lib checkpoint-mecanico-comun.sh; aviso-contexto.sh (umbral) y
 # checkpoint-mecanico.sh (PreCompact) la SOURCEAN (lib<->consumidor) y son hooks HERMANOS que se mencionan
 # en sus encabezados (contexto de por qué existen). No es ciclo — la mecánica vive UNA vez, en la lib.
+# limpiar|limpiar-impl-{ramas,worktrees,residuo,flotilla} (consolidación 2026-09-17, fase skills): los 4
+# ejecutables sueltos limpiar-ramas.sh/limpiar-worktrees.sh/limpiar-residuo.sh/barrer-flotilla-cerebro.sh
+# se renombraron (git mv, misma lógica) a limpiar-impl-*.sh y quedaron RETIRADOS como nombres públicos
+# (ver MANIFEST); el dispatcher limpiar.sh es el único punto de entrada. Es dispatcher<->implementación
+# (el dispatcher exec-ea cada impl por nombre; cada impl documenta en su cabecera que se invoca vía
+# `limpiar.sh <subcomando>`, no un ciclo de contenido — la lógica de cada barrido vive UNA vez, en su impl.
 ce_els=()
 for d in "$SCRIPT_DIR"/skills/*/; do [ -d "$d" ] && ce_els+=("$(basename "$d")"); done
 for h in "$HOOKS"/*.sh; do [ -e "$h" ] && ce_els+=("$(basename "$h" .sh)"); done
@@ -7139,7 +7158,7 @@ git -C "$FLSH" checkout -q -b DevelopTester >/dev/null 2>&1
 mkdir -p "$FLCODE/repoNaked/.claude/hooks"
 
 fl() { HOME="$FLHOME" CLAUDE_BRAIN_DIR="$FLBRAIN" CLAUDE_DRIFT_STATEDIR="$FLSTATE" \
-       bash "$HOOKS/barrer-flotilla-cerebro.sh" "$@" --no-dashboard --report "$FLREP" 2>/dev/null; }
+       bash "$HOOKS/limpiar.sh" flotilla "$@" --no-dashboard --report "$FLREP" 2>/dev/null; }
 
 # (1) DESCUBRIMIENTO por el sello: 2 repos brained (personal + shared), el naked se ignora
 flout="$(fl --dry-run --code-dir "$FLCODE")"
@@ -7174,7 +7193,7 @@ fl --roots-file "$FLFIX/roots.txt" >/dev/null 2>&1
 [ -s "$FLREP" ] && grep -q 'Reporte del sweeper de flotilla' "$FLREP" \
   && ok "F4 reporte: escribe el archivo de reporte con detalle" || bad "F4 reporte: no escribió el reporte"
 # (6) roots-file vacío / code-dir inexistente → 0 repos, sin reventar (fail-open)
-flempty="$(HOME="$FLHOME" CLAUDE_BRAIN_DIR="$FLBRAIN" CLAUDE_DRIFT_STATEDIR="$FLSTATE" bash "$HOOKS/barrer-flotilla-cerebro.sh" --dry-run --code-dir "$FLFIX/nope" --no-dashboard --report "$FLREP" 2>/dev/null)"
+flempty="$(HOME="$FLHOME" CLAUDE_BRAIN_DIR="$FLBRAIN" CLAUDE_DRIFT_STATEDIR="$FLSTATE" bash "$HOOKS/limpiar.sh" flotilla --dry-run --code-dir "$FLFIX/nope" --no-dashboard --report "$FLREP" 2>/dev/null)"
 printf '%s' "$flempty" | grep -qE '0 repo\(s\)' \
   && ok "F4 fail-open: code-dir inexistente → 0 repos, no revienta" || bad "F4 fail-open: no manejó un code-dir inexistente; got: $flempty"
 rm -rf "$FLFIX"
@@ -8596,7 +8615,7 @@ echo "== (h) limpiar-residuo: barre por EDAD (nunca por cantidad) solo patrones 
 # medidas: respaldos de mudanza sin poda (reubicar-backups), logs de barrer-ramas acumulados, cachés de
 # analizar-comando-git en $TMPDIR. Retención por EDAD (nunca por cantidad — un respaldo es para recuperar
 # un desastre; "los primeros N" botaría el único bueno tras una ráfaga).
-HRESIDUO="$HOOKS/limpiar-residuo.sh"
+HRESIDUO="$HOOKS/limpiar.sh"
 HDIA=86400
 HHOME="$(mktemp -d "${TMPDIR:-/tmp}/brain-hresiduo.XXXXXX")"
 HTMP="$(mktemp -d "${TMPDIR:-/tmp}/brain-hresiduo-tmp.XXXXXX")"
@@ -8616,12 +8635,12 @@ mkdir -p "$HHOME/.claude/reubicar-backups/idOLD.333.t2"; _old 120 "$HHOME/.claud
 : > "$HTMP/acg-mrdest-newkey"
 : > "$HTMP/otro-archivo-cualquiera"; _old 400 "$HTMP/otro-archivo-cualquiera"   # nunca reconocido, aunque viejo
 
-hdry="$(CLAUDE_CONFIG_DIR="$HHOME/.claude" TMPDIR="$HTMP" bash "$HRESIDUO" --dry-run 2>&1)"
+hdry="$(CLAUDE_CONFIG_DIR="$HHOME/.claude" TMPDIR="$HTMP" bash "$HRESIDUO" residuo --dry-run 2>&1)"
 [ -f "$HHOME/.claude/reubicar-backups/idOLD.111.pre-reubicar.jsonl" ] \
   && ok "h: --dry-run NO borra nada (el viejo pre-reubicar sigue ahí)" || bad "h: --dry-run ya borró algo"
 printf '%s' "$hdry" | grep -q 'idOLD.111.pre-reubicar.jsonl' && ok "h: dry-run detecta el backup viejo como candidato" || bad "h: no detectó el backup viejo; got: $hdry"
 
-hout="$(CLAUDE_CONFIG_DIR="$HHOME/.claude" TMPDIR="$HTMP" bash "$HRESIDUO" 2>&1)"
+hout="$(CLAUDE_CONFIG_DIR="$HHOME/.claude" TMPDIR="$HTMP" bash "$HRESIDUO" residuo 2>&1)"
 [ ! -f "$HHOME/.claude/reubicar-backups/idOLD.111.pre-reubicar.jsonl" ] \
   && ok "h: aplica — backup VIEJO de mudanza (120d) se barre" || bad "h: el backup viejo sobrevivió a la aplicación real"
 [ -f "$HHOME/.claude/reubicar-backups/idNEW.222.pre-reubicar.jsonl" ] \
@@ -8642,12 +8661,12 @@ printf '%s' "$hout" | grep -qE '^limpiar-residuo: [0-9]+ elemento' && ok "h: imp
 # umbral configurable por flag: con --dias-backups=99999 ni el backup de 120d (que SÍ se barre por default) es candidato
 : > "$HHOME/.claude/reubicar-backups/idOLD.111.pre-reubicar.jsonl" 2>/dev/null   # re-crea el que la corrida real ya barrió, para probar el flag aislado
 _old 120 "$HHOME/.claude/reubicar-backups/idOLD.111.pre-reubicar.jsonl"
-hnoop="$(CLAUDE_CONFIG_DIR="$HHOME/.claude" TMPDIR="$HTMP" bash "$HRESIDUO" --dry-run --dias-backups=99999 2>&1)"
+hnoop="$(CLAUDE_CONFIG_DIR="$HHOME/.claude" TMPDIR="$HTMP" bash "$HRESIDUO" residuo --dry-run --dias-backups=99999 2>&1)"
 printf '%s' "$hnoop" | grep -q 'idOLD.111' && bad "h: --dias-backups=99999 debía dejar fuera de umbral incluso al backup de 120d" || ok "h: --dias-backups=N configurable (umbral alto → sin candidatos)"
 rm -f "$HHOME/.claude/reubicar-backups/idOLD.111.pre-reubicar.jsonl"
 
 # opción desconocida → error claro, no silencioso
-CLAUDE_CONFIG_DIR="$HHOME/.claude" bash "$HRESIDUO" --flag-inventado >/dev/null 2>&1 \
+CLAUDE_CONFIG_DIR="$HHOME/.claude" bash "$HRESIDUO" residuo --flag-inventado >/dev/null 2>&1 \
   && bad "h: una opción desconocida debía salir con error" || ok "h: opción desconocida → exit≠0 (no falla en silencio)"
 
 rm -rf "$HHOME" "$HTMP"
@@ -8661,11 +8680,11 @@ H2REP="$H2HOME/report.md"
 mkdir -p "$H2HOME/.claude/reubicar-backups"
 : > "$H2HOME/.claude/reubicar-backups/old.1.pre-reubicar.jsonl"
 touch -t "$(date -v-120d +%Y%m%d%H%M 2>/dev/null || date -d '-120 days' +%Y%m%d%H%M)" "$H2HOME/.claude/reubicar-backups/old.1.pre-reubicar.jsonl"
-h2out="$(HOME="$H2HOME" bash "$HOOKS/barrer-flotilla-cerebro.sh" --dry-run --code-dir "$H2CODE" --no-dashboard --report "$H2REP" --quiet 2>&1)"
+h2out="$(HOME="$H2HOME" bash "$HOOKS/limpiar.sh" flotilla --dry-run --code-dir "$H2CODE" --no-dashboard --report "$H2REP" --quiet 2>&1)"
 grep -q 'Residuo de housekeeping' "$H2REP" && ok "h2: el reporte de flotilla incluye la sección de residuo" || bad "h2: falta la sección de residuo en el reporte; got: $(cat "$H2REP")"
 [ -f "$H2HOME/.claude/reubicar-backups/old.1.pre-reubicar.jsonl" ] \
   && ok "h2: --dry-run de flotilla NO borra el residuo (solo lo reporta)" || bad "h2: ¡flotilla en dry-run borró el residuo!"
-HOME="$H2HOME" bash "$HOOKS/barrer-flotilla-cerebro.sh" --dry-run --code-dir "$H2CODE" --no-dashboard --report "$H2REP" --quiet --no-residuo >/dev/null 2>&1
+HOME="$H2HOME" bash "$HOOKS/limpiar.sh" flotilla --dry-run --code-dir "$H2CODE" --no-dashboard --report "$H2REP" --quiet --no-residuo >/dev/null 2>&1
 grep -q 'Residuo de housekeeping' "$H2REP" && bad "h2: --no-residuo debía SALTAR la sección de residuo" || ok "h2: --no-residuo salta el barrido de residuo"
 rm -rf "$H2CODE" "$H2HOME"
 
