@@ -6,9 +6,9 @@
 # Instala GLOBAL (en ~/.claude, aplica a TODOS los repos de esta máquina):
 #   (a) HOOKS de tier {global, both} en ~/.claude/hooks/ — la LISTA se DERIVA de brain/hooks/MANIFEST
 #       (fuente única; ya no se cura a mano en paralelo con la copia por-repo). Incluye git-branch-guard,
-#       merge-develop-guard, recordar-dashboard, secret-scan,
+#       merge-develop-guard, secret-scan,
 #       proteger-arbol (PreToolUse/Bash), delegacion-gate + limite-gasto (PreToolUse/Task),
-#       delegacion-registrar/reporte (PostToolUse/Task), rehidratar-hilo + aviso-contexto (SessionStart/
+#       delegacion-registrar (PostToolUse/Task), rehidratar-hilo + aviso-contexto (SessionStart/
 #       PostToolUse) + libs `delegacion-comun.sh`, `analizar-comando-git.sh`, `detectar-secretos.sh`
 #       + agentes-costo.json (config). La lista EXACTA se deriva de brain/hooks/MANIFEST.
 #   (b) CABLEADO en ~/.claude/settings.json con "shell":"bash" (idempotente).
@@ -208,15 +208,12 @@ register_hook() {
 # de abajo AVISA y el drift-check de test-brain (e2) FALLA (no se cablea en silencio).
 ev_de() {
   case "$1" in
-    git-branch-guard|merge-develop-guard|recordar-dashboard|secret-scan|entorno-maquina-guard|no-bypass-deploy|proteger-arbol) echo "PreToolUse|Bash" ;;
+    git-branch-guard|merge-develop-guard|secret-scan|entorno-maquina-guard|no-bypass-deploy|proteger-arbol) echo "PreToolUse|Bash" ;;
     proteger-fuente-cerebro) echo "PreToolUse|Edit|Write|MultiEdit" ;;
     limite-gasto|delegacion-gate) echo "PreToolUse|Task|Agent" ;;   # Task|Agent: el tool se renombró Agent (antes Task); casar AMBOS o el gate nunca dispara
-    delegacion-registrar|delegacion-reporte) echo "PostToolUse|Task|Agent" ;;
+    delegacion-registrar) echo "PostToolUse|Task|Agent" ;;
     rehidratar-hilo|aviso-drift-cerebro) echo "SessionStart|" ;;
-    aviso-contexto|recordar-orquestar) echo "PostToolUse|" ;;   # casan TODA tool (sin matcher): aviso-contexto mide el ctx; recordar-orquestar cuenta mutaciones/resets p/ el nudge de fan-out
-    # hud-stale: DOBLE trigger — SessionStart (capta el cambio de rama/cwd ENTRE sesiones, al retomar) +
-    # PostToolUse/Bash (capta el cambio a MEDIA sesión, justo tras un `git checkout`/`cd`).
-    hud-stale) echo "SessionStart| PostToolUse|Bash" ;;
+    aviso-contexto) echo "PostToolUse|" ;;   # casa TODA tool (sin matcher): mide el ctx para el volcado del checkpoint mecánico
     # barrer-ramas: DOBLE trigger del barrido — SessionStart (oportunista, throttled) + PostToolUse/Bash
     # (al punto de merge, detecta glab/gh merge vía acg_es_merge_mr). Multi-evento como exportar-sesion-master.
     barrer-ramas) echo "SessionStart| PostToolUse|Bash" ;;

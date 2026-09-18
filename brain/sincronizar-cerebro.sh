@@ -50,7 +50,7 @@
 #   que hacer a mano.
 #   Por qué SOLO tier `both` (no `repo`, no `global`): `both` es el ÚNICO tier redundante con el install
 #   GLOBAL+dedupe de esta máquina (razón de ser de la norma). Un hook `repo` (dod-verificar,
-#   sesion-inicio, recordar-cosechar, recordar-unificar-cerebro) NO tiene equivalente global — vive
+#   sesion-inicio, recordar-cosechar) NO tiene equivalente global — vive
 #   SOLO por-repo por diseño — y sigue haciendo falta en CUALQUIER repo, personal o compartido; tratarlo
 #   como "sobrante" es el FP ya documentado en docs/guards-falsos-positivos.md (2026-09-08: el chequeo
 #   de "sobran" de drift-cerebro-comun.sh no mira el tier y llegó a marcar como sobrante un hook `repo`
@@ -120,15 +120,10 @@ echo ""
 # Evento+matcher para cablear los kind=hook de tier {repo,both}. (Los global-only los cablea el bootstrap.)
 ev_de() {
   case "$1" in
-    git-branch-guard|merge-develop-guard|recordar-dashboard|secret-scan|entorno-maquina-guard|no-bypass-deploy) echo "PreToolUse|Bash" ;;
+    git-branch-guard|merge-develop-guard|secret-scan|entorno-maquina-guard|no-bypass-deploy) echo "PreToolUse|Bash" ;;
     dod-verificar)  echo "Stop|" ;;
     sesion-inicio)  echo "SessionStart|" ;;
     recordar-cosechar) echo "Stop|" ;;
-    recordar-unificar-cerebro) echo "SessionStart|" ;;
-    # hud-stale: DOBLE trigger — SessionStart (cambio de rama/cwd ENTRE sesiones, al retomar) +
-    # PostToolUse/Bash (cambio a MEDIA sesión, tras un `git checkout`/`cd`). MULTI-evento: ev_de puede
-    # devolver VARIOS pares "Event|Matcher" separados por espacio; el loop de cablear registra cada uno.
-    hud-stale) echo "SessionStart| PostToolUse|Bash" ;;
     *) echo "" ;;
   esac
 }

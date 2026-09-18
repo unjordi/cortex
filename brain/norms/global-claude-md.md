@@ -8,6 +8,7 @@
 - Cuando cambia algo (config aplicada, decisión revertida, ruta, comportamiento real), actualiza la doc que lo describe en la MISMA tanda — README, memoria, dashboard, comentarios. No preguntes "¿actualizo la doc?": hazlo.
 - Una doc que miente es peor que no tener doc. El orden SIEMPRE es **revisar el estado real → editar**, no al revés.
 - Antes de cerrar un cambio, pregúntate *¿esto vive en MÁS de un lugar?* (doc duplicada, README y su UI, varias plataformas, un ejemplo, un diagrama, un valor repetido) y rastrea las otras copias (p. ej. un `grep` del valor viejo). Una sola copia desincronizada YA es una doc que miente.
+- **Antes de un `git push`, revisa dos cosas TÚ MISMO** (overhaul hooks 2026-09-18: `recordar-dashboard` era puramente advisory — medido: ignorado — se retiró; sin recordatorio automático por-push): (1) el Dashboard del cerebro (`dashboard_cerebro.md`, memoria GLOBAL de esta máquina) — appendea a su Bitácora con `>>`; (2) si los commits a pushear tocan un hook/skill/feature/estructura SIN tocar su doc (README, árbol del cerebro, memoria), actualízala en la MISMA tanda.
 
 ## El entorno de MÁQUINA vive GLOBAL, jamás en un repo (norma dura)
 - El entorno de MÁQUINA (OS, shell, aliases, rutas personales de un `$HOME`, runtime local Docker/BD/certs) es específico de UNA instancia; en un repo viajaría por git y mentiría al clonar en otra compu u otro OS.
@@ -78,6 +79,7 @@
 
 ## Ninguna DECISIÓN se queda solo en el chat (norma dura)
 - Cuando se TOMA una decisión (de diseño, de datos, de alcance), se persiste a memoria durable EN EL MISMO TURNO — con fecha y contexto (qué se decidió y por qué) — en `estado-proyecto.md`, la nota del tema o el doc de decisiones que aplique. Una decisión que solo vive en el chat revive como "pendiente fantasma" tras una compactación.
+- **Al cerrar un turno con trabajo sustantivo, revisa TÚ (sin que nadie te lo recuerde)** (overhaul hooks 2026-09-18: la mitad NUDGE de `recordar-cosechar` era puramente advisory — medido: ignorado — se retiró; el ESPEJO mecánico del TaskList a `estado-proyecto.md` SIGUE siendo un hook, ese no se tocó): ¿aprendiste algo DURABLE que no cosechaste (`cosechar-sesion` / `cerrar-slice` §5)? ¿el backlog durable (`estado-proyecto.md` fuera del bloque espejo, o `bitacora.md`) refleja lo que avanzaste/decidiste? Si no, ciérralo antes de terminar el turno. Recuerda el ruteo: el TRATO personal (cómo tratar a la PERSONA, no el trabajo) NO va al inbox `aprendizajes.md` ni a un `feedback-*.md` per-repo — va al archivo GLOBAL `como-trabajar-con-<user>.md`.
 
 ## Recupera de tu contexto vivo; EXCAVA/verifica solo lo que NO tienes (norma dura)
 - EXCAVA solo cuando la respuesta NO está en tu contexto vivo — post-compact, sesión anterior, algo genuinamente desconocido (incluye barrer qué ya existe ANTES de construir: skills, memorias, scripts, código previo, para construir SOBRE ello y no desde cero).
@@ -133,6 +135,7 @@ git push -u origin feat/<tema>       # push SOLO a la ramita (idéntico en ambos
 - Sembrado self-service: cada dev crea la suya UNA vez por repo con `sembrar-mini-develop.sh` (la crea desde `origin/develop`, la pushea y en GitLab la protege server-side push/merge=Developer, no borrable). Nadie siembra la mini de otro.
 - Las ramas temáticas de integración (`integracion/<sprint>`, `epic/<tema>`) valen como "minis de tema" con las mismas libertades.
 - Tu mini es donde el cerebro se auto-cura: `aviso-drift-cerebro`, al abrir sesión parado en tu mini con `.claude/` limpio, sincroniza la copia por-repo del cerebro (apply+commit+push a tu mini).
+- **Unificar hacia arriba (tu mini → develop) es disciplina, no hook** (overhaul hooks 2026-09-18: `recordar-unificar-cerebro` era puramente advisory — medido: ignorado — se retiró): cuando tu mini acumule aprendizajes/memorias de `.claude/` sin integrar a `develop` (varios archivos, o llevas días), corre `canonizar-cerebro` en modo reconciliar tú mismo — no esperes un aviso.
 - El folder de trabajo VISIBLE del dev vive SIEMPRE en su mini-develop (su superficie ESTABLE de QA). **Corolario para la IA (norma dura):** Claude trabaja en worktrees de FEATURE y MERGEA hacia la mini; NUNCA saca la mini-develop del dev en un worktree propio (una rama solo puede estar checked-out en UN worktree, y esa rama la posee el folder visible del dev). Para integrar: merge de la ramita → mini (local o por push) y el folder la ve.
 
 ## Cerebro por-repo = CORREO: repo PERSONAL sin guards, repo COMPARTIDO con guards (norma dura)
@@ -162,20 +165,20 @@ git push -u origin feat/<tema>       # push SOLO a la ramita (idéntico en ambos
 
 ## Orquesta: delega lo paralelizable y quédate disponible (norma de estilo)
 - Cuando el trabajo tiene varias piezas independientes, NO las implementes EN SERIE tú solo: delégalas a agentes en paralelo (worktrees/ramas disjuntas) y quédate en el loop como orquestador (revisando diffs, armando los MR, haciendo QA, disponible al usuario). Con volumen paralelizable, el default es fan-out + supervisión. (Respeta el gate de costo.)
-- Señal de desvío: llevas rato implementando en serie y el usuario tuvo que pedirte que volvieras a delegar.
+- Señal de desvío: llevas rato implementando en serie y el usuario tuvo que pedirte que volvieras a delegar. Sin hook que lo cuente (overhaul hooks 2026-09-18: `recordar-orquestar` era puramente advisory — medido: ignorado — se retiró): nota TÚ el patrón "llevo N cambios seguidos sin delegar nada" — si lo que queda es paralelizable, para y arma el fan-out.
 - **Aislamiento (regla dura):** todo agente de fan-out que MUTE archivos o COMMITEE corre en un worktree AISLADO (`isolation: "worktree"`), NUNCA en el árbol compartido/principal (ese es del orquestador/humano) — un agente que corre `git reset`/`checkout`/`rebase` ahí puede orfanar los commits del orquestador. Si un ítem no se puede aislar, lo hace el orquestador. Lo respalda `proteger-arbol`.
 - **Reporte sin niñera (skill `orquestar-fanout`):** NO monitorees a los agentes a mano ni actualices el estado al final; el cierre de cada agente es automático — appenda su avance al FINAL de `bitacora.md` (con `>>`, no un Edit) y actualiza el ítem en `estado-proyecto.md` (el backlog vivo = fuente de verdad).
 - Dos archivos, roles claros, cero redundancia: bitácora = *qué pasó* (appendan los agentes); estado-proyecto = *qué sigue* (lo cura el orquestador).
 - El append-al-final con `>>` (no un Edit) deja que varias sesiones/agentes escriban la MISMA bitácora sin pisarse. Aplica igual al dashboard GLOBAL (`dashboard_cerebro.md`): entradas al FINAL con `>>`; solo las secciones CURADAS (Mapa/Cabos) se editan.
 - El mismo dato NO se escribe en 3 lados; el estado "actual" se DERIVA. TodoWrite es SCRATCH de sesión; el backlog DURABLE es `estado-proyecto.md`.
-- Lo recuerda `delegacion-reporte` (PostToolUse/Task); los worktrees zombies los barre `limpiar.sh worktrees` y las ramas locales ya integradas las barre `limpiar.sh ramas`.
+- Sin hook que lo recuerde (overhaul hooks 2026-09-18: `delegacion-reporte` era puramente advisory — medido: ignorado — se retiró; esta viñeta ES su mecanismo ahora): es disciplina tuya al cierre de CADA agente, no una alarma externa. Los worktrees zombies los barre `limpiar.sh worktrees` y las ramas locales ya integradas las barre `limpiar.sh ramas` (esos SÍ tienen mecanismo: el hook `barrer-ramas`).
 - Señal de desvío: el usuario tuvo que pedirte actualizar bitácora/estado, o se acumularon worktrees/ramas zombies.
 
 ## Tu lista de TODOs es TU HUD — mantenla FRESCA, no la dejes driftear (norma dura)
 - La lista de TODOs de la terminal es TU HUD de working-memory de la tarea de AHORA (tu tablero para no perderte), NO un reporte para el usuario. Ábrela cuando la tarea tenga ≥3 pasos o vayas a trabajar de corrido; manténla como el reflejo vivo de tu plan.
 - **División de labor:** HUD (lista de TODOs) = descomposición VIVA de ESTA tarea, scratch de sesión (se resetea al cambiar de tarea); `hilo-mental-actual.md` = el hilo en prosa volcado a disco para sobrevivir un `/compact` (lo escribe `checkpoint`, lo relee `rehidratar-hilo`); `estado-proyecto.md` = el backlog DURABLE, fuente de verdad cross-sesión. Si HUD y backlog divergen, manda `estado-proyecto.md`.
 - **Los dos puentes:** al ARRANCAR/RETOMAR, SIEMBRA el HUD del hilo/`estado-proyecto.md` (con `/to-do`); al CERRAR (checkpoint/cerrar-slice), VACÍA lo durable del HUD a `estado-proyecto.md`/`bitacora.md` y límpialo.
-- **Anti-DRIFT (norma dura):** el HUD queda STALE al rotar el working tree (cambio de rama/proyecto). Cuando cambies de rama git o de proyecto/cwd, RE-EVALÚA el HUD: si ya no aplica, resetéalo (re-siémbralo del `estado-proyecto.md` de ESA rama con `/to-do`, o límpialo). El hook `hud-stale` (advisory) te lo recuerda tras rotar de rama/cwd; detecta por señal OBJETIVA (rama/cwd), no bloquea.
+- **Anti-DRIFT (norma dura):** el HUD queda STALE al rotar el working tree (cambio de rama/proyecto). Cuando cambies de rama git o de proyecto/cwd, RE-EVALÚA el HUD: si ya no aplica, resetéalo (re-siémbralo del `estado-proyecto.md` de ESA rama con `/to-do`, o límpialo). Sin hook que lo recuerde (overhaul hooks 2026-09-18: `hud-stale` era puramente advisory — medido: ignorado — se retiró): la señal OBJETIVA (cambiaste de rama/cwd) es tuya para notar, cada vez.
 
 # Compact instructions
 
