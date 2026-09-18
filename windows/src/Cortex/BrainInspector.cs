@@ -51,6 +51,13 @@ public sealed class BrainState
         "sesion-inicio", "dod-verificar", "recordar-cosechar",
     };
 
+    /// Los 4 rótulos de NORMA (pseudo-piezas de la pestaña, gobernadas por HasNorms). NO viven en el
+    /// MANIFEST ni se retiran como skills/hooks → enumerarlos es legítimo (no es la lista drift-prone).
+    public static readonly HashSet<string> NormNames = new()
+    {
+        "Definition of Done", "Doc <= realidad", "Flujo de git", "Costo de delegación",
+    };
+
     /// Estado real de una pieza (por nombre) contra la evidencia leída. Espejo de `status(_:_:)` de Swift.
     public BrainStatus StatusOf(string name)
     {
@@ -60,20 +67,20 @@ public sealed class BrainState
             return p && w ? BrainStatus.Installed : (p ? BrainStatus.PresentNotWired : BrainStatus.Absent);
         }
         if (KnownRepoHooks.Contains(name)) return BrainStatus.RepoScoped;
-        return name switch
-        {
-            "cerrar-slice" or "checkpoint" or "to-do" or "diagramar" or "auditar-proceso-algoritmo"
-                or "auditar-coherencia-cerebro" or "auditar-suficiencia-operativa" or "auditor-semantico" or "consolidar-cerebro" or "canonizar-cerebro" or "desinflar-memorias"
-                or "orquestar-fanout" or "turno-nocturno" or "cosechar-sesion" or "unificar-cerebro"
-                or "investigar-dominio" or "construir-missing-manual" or "positivar-doc" or "revisar-entregables-agentes"
-                or "zoom-screenshot" or "claude-proyecto-autocontenido" or "reubicar-master"
-                or "ingenieria-inversa-gui-db-navegador" or "markdown-a-pdf" or "control-gui-remota-por-ssh"
-                => Skills.Contains(name) ? BrainStatus.Installed : BrainStatus.Absent,
-            "Definition of Done" or "Doc <= realidad" or "Flujo de git" or "Costo de delegación"
-                => HasNorms ? BrainStatus.Installed : BrainStatus.Absent,
-            _ => BrainStatus.Absent,
-        };
+        if (NormNames.Contains(name)) return HasNorms ? BrainStatus.Installed : BrainStatus.Absent;
+        // Cualquier OTRO nombre es una SKILL y su estado se DERIVA de la fuente VIVA: los skills
+        // instalados en ~/.claude/skills (= los VIVOS del MANIFEST tras la poda de install-brain). NO
+        // hay lista de nombres tecleada: un RETIRADO no está en Skills → jamás cuenta como instalado
+        // (y el roster lo filtra por lo mismo). Antídoto al drift que subía "incompleto (N)" en rojo.
+        return Skills.Contains(name) ? BrainStatus.Installed : BrainStatus.Absent;
     }
+
+    /// ¿el ítem debe MOSTRARSE / contar, según la fuente VIVA? Hook conocido (== MANIFEST, lo verifica
+    /// test-brain e3), norma por rótulo fijo, o skill INSTALADA. Un RETIRADO no cumple ninguna → NO
+    /// vivo → ESTRUCTURALMENTE ni se muestra ni cuenta como faltante.
+    public bool IsLive(string name)
+        => KnownGlobalHooks.Contains(name) || KnownRepoHooks.Contains(name)
+           || NormNames.Contains(name) || Skills.Contains(name);
 }
 
 /// <summary>
