@@ -37,10 +37,10 @@ public sealed class BrainState
     public static readonly HashSet<string> KnownGlobalHooks = new()
     {
         "git-branch-guard", "merge-develop-guard",
-        "recordar-dashboard", "secret-scan", "proteger-arbol",
+        "secret-scan", "proteger-arbol",
         "proteger-fuente-cerebro",
-        "limite-gasto", "delegacion-gate", "delegacion-registrar", "delegacion-reporte", "recordar-orquestar",
-        "rehidratar-hilo", "aviso-contexto", "aviso-drift-cerebro", "hud-stale", "exportar-sesion-master", "checkpoint-mecanico", "barrer-ramas",
+        "limite-gasto", "delegacion-gate", "delegacion-registrar",
+        "rehidratar-hilo", "aviso-contexto", "aviso-drift-cerebro", "exportar-sesion-master", "checkpoint-mecanico", "barrer-ramas",
         "entorno-maquina-guard", "no-bypass-deploy",
     };
 
@@ -48,7 +48,7 @@ public sealed class BrainState
     /// DEBE coincidir con brain/hooks/MANIFEST {repo} (lo verifica test-brain.sh).
     public static readonly HashSet<string> KnownRepoHooks = new()
     {
-        "sesion-inicio", "dod-verificar", "recordar-cosechar", "recordar-unificar-cerebro",
+        "sesion-inicio", "dod-verificar", "recordar-cosechar",
     };
 
     /// Estado real de una pieza (por nombre) contra la evidencia leída. Espejo de `status(_:_:)` de Swift.
