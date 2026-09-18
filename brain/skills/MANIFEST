@@ -46,6 +46,8 @@
 # por-repo). A diferencia de los hooks `both`, una skill NO necesita cláusula de dedupe: es markdown que LEE
 # el modelo, no un script que se EJECUTE → no hay doble disparo. El PLUMBING de `both` está construido y
 # probado; basta cambiar el tier aquí.
+# 2026-09-18: sumada `control-gui-remota-por-ssh` como `both` (capacidad genérica usable por cualquier
+# sesión/máquina del equipo, promovida desde potenciaDatabases — no es específica de un repo).
 
 auditar-coherencia-cerebro       global
 auditar-proceso-algoritmo        global
@@ -55,6 +57,7 @@ canonizar-cerebro                global
 cerrar-slice                     both
 checkpoint                       both
 construir-missing-manual         global
+control-gui-remota-por-ssh       both
 desinflar-memorias               global
 diagramar                        global
 ingenieria-inversa-gui-db-navegador  global

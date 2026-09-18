@@ -1291,7 +1291,7 @@ struct PopoverView: View {
         case "cerrar-slice", "checkpoint", "to-do", "diagramar", "auditar-proceso-algoritmo", "auditar-coherencia-cerebro", "auditar-suficiencia-operativa", "auditor-semantico", "consolidar-cerebro", "canonizar-cerebro", "desinflar-memorias", "orquestar-fanout", "turno-nocturno",
              "cosechar-sesion", "unificar-cerebro",
              "investigar-dominio", "construir-missing-manual", "positivar-doc", "revisar-entregables-agentes", "zoom-screenshot", "claude-proyecto-autocontenido", "reubicar-master",
-             "ingenieria-inversa-gui-db-navegador", "markdown-a-pdf":
+             "ingenieria-inversa-gui-db-navegador", "markdown-a-pdf", "control-gui-remota-por-ssh":
             return st.skills.contains(name) ? .installed : .absent
         case "Definition of Done", "Doc <= realidad", "Flujo de git", "Costo de delegación":
             return st.hasNorms ? .installed : .absent
@@ -1458,6 +1458,9 @@ struct PopoverView: View {
                     BrainItem("📕", "markdown-a-pdf", "convierte .md a PDF pulido y distribuible vía md-to-pdf (npx, sin instalar) con QA visual real",
                               "skill · opt-in",
                               "Convertir uno o varios .md a PDF pulido y distribuible (doc técnica, reportes, cualquier entregable que un humano abra fuera del chat) usando md-to-pdf vía npx, sin instalar nada. Incluye el gotcha real que borra TODO el formato (--stylesheet reemplaza el tema default en vez de sumarse — usa --css para overrides), el CSS que evita que las tablas se corten feo entre páginas y el loop de QA visual obligatorio (leer cada página generada, no asumir que renderizó bien)."),
+                    BrainItem("🕹️", "control-gui-remota-por-ssh", "ver/operar una GUI remota por SSH sin VNC/RDP — screenshot/click/teclado DPI-aware; Windows completo, Linux/Mac andamio",
+                              "skill · opt-in",
+                              "Ver y operar el escritorio de una máquina remota por SSH puro (sin VNC/RDP): screenshot, clicks, teclado, inspección de ventanas/controles, portapapeles, lanzar/cerrar apps y procesos. Resuelve los dos problemas duros: el aislamiento de logon-session (se despacha cada gesto a la sesión interactiva con una tarea programada) y el DPI-awareness (sin fijarlo, el screenshot sale truncado y los clicks se desvían). Windows: 15 scripts completos y verificados en hardware real. Linux/macOS: solo el andamio del enfoque, marcado sin confirmar."),
                     BrainItem("🧳", "claude-proyecto-autocontenido", "el cerebro de Claude VIVE dentro del proyecto (.claude/ + symlink de slug) → viaja con él",
                               "skill · opt-in",
                               "Mantener TODO el cerebro de Claude Code de un proyecto (memorias, skills, transcripts, settings) dentro de <proyecto>/.claude/, con un symlink desde ~/.claude/projects/<slug>/ para que Claude lo siga encontrando. Así la memoria/skills viajan con el proyecto (Drive, git, otra máquina) y ninguna sesión arranca amnésica desde otro cwd. Cubre la regla del slug, el bootstrap de un comando (clona-y-listo), el triage de privacidad (qué va al repo vs *.local), la disciplina anti-duplicados y la verificación."),
