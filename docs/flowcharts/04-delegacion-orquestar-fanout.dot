@@ -1,8 +1,10 @@
 // 04 — Delegación / orquestar-fanout (cortex)  ·  FUENTE editable (Graphviz .dot)
 // Render:  dot -Tsvg 04-delegacion-orquestar-fanout.dot -o 04-delegacion-orquestar-fanout.svg
-// Construido 2026-08-01 desde el CÓDIGO REAL: hooks limite-gasto, delegacion-gate, delegacion-registrar,
-// delegacion-reporte + lib delegacion-comun.sh (clasificar_delegacion) + agentes-costo.json; scripts
+// Construido 2026-08-01 desde el CÓDIGO REAL: hooks limite-gasto, delegacion-gate, delegacion-registrar
+// + lib delegacion-comun.sh (clasificar_delegacion) + agentes-costo.json; scripts
 // limpiar.sh worktrees / limpiar.sh ramas; skill orquestar-fanout (contrato de reporte + aislamiento).
+// Overhaul hooks 2026-09-18: delegacion-reporte se RETIRÓ (puramente advisory, medido: ignorado) — el
+// cierre del agente (bitácora + estado + limpieza) queda a DISCIPLINA del orquestador, sin nudge.
 digraph flujos {
   graph [bgcolor="#1b1712", rankdir=TB, fontname="Helvetica", splines=true,
          nodesep=0.35, ranksep=0.55, pad=0.25, compound=true];
@@ -25,7 +27,6 @@ digraph flujos {
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🛑 limite-gasto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">sin ventana 5h Y sin overage (ambos agotados) → freno duro</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">✅ dod-verificar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cierre sin evidencia/OK → denegado; claim visual a ciegas (sin ver la pantalla) también</font></td></tr>
         <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>🔔 Automático</b></font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📊 recordar-dashboard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">en el push recuerda dashboard + doc=realidad (README/docs) — cierre del slice</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🖥️ entorno-maquina-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">commit de algo machine-specific (aliases/rutas de $HOME/Rosetta/entorno-maquina.md) al .claude/memory/ del repo → avisa</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🚧 no-bypass-deploy</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">correr el instalador/deploy a mano (install-brain.sh/deploy.sh) en vez de la herramienta oficial (el widget) → avisa (fail-safe: no --dry-run/--help/CI)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌳 proteger-arbol</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">git destructivo que orfanaría commits sin pushear → avisa (fan-out: usa worktree aislado)</font></td></tr>
@@ -34,15 +35,11 @@ digraph flujos {
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">💾 exportar-sesion-master</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">auto-export de las sesiones *-master a ~/.claude-sessions (o Drive); detached, sobrevive el cleanup de 30 días (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🗂️ checkpoint-mecanico</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">PreCompact: extractor mecánico (streaming, 0 tokens) escribe el andamio del TRAMO VIVO a hilo-mental-actual.andamio.md (GLOBAL; el skill lo regenera con --self --ensure)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📝 delegacion-registrar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">materializa el "pregunta una sola vez"</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📮 delegacion-reporte</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al terminar un agente: recuerda registrar avance + limpiar su worktree</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎼 recordar-orquestar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">N mutaciones (edits/commits) en serie SIN delegar → sugiere fan-out (advisory, no bloquea; resetea al delegar) (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧵 rehidratar-hilo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta hilo-mental-actual.md + el andamio (si es más fresco) al abrir/retomar/compactar (GLOBAL) — gate de frescura + edad</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📈 aviso-contexto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al umbral ALTO del punto REAL de compact (80%/92% de autoCompactWindow o la ventana efectiva; % honesto, respeta autoCompactEnabled): VUELCA el checkpoint mecánico solito y ORDENA /checkpoint+/compact. No gotea (silencio bajo el umbral, 1 disparo + 1 escalada) (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧬 aviso-drift-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">repo brained atrás de la fuente única (hooks/libs Y skills) → en tu mini-develop se AUTO-SINCRONIZA (apply+commit+push); en otra rama, avisa. ADEMÁS detecta el drift de la copia GLOBAL de skills (~/.claude/skills vs la fuente; warn-only, throttle propio). Al moverse el cerebro, NUDGE a correr la DUPLA (suficiencia+coherencia; contra la firma si hay AGENTS.md, si no sugiere instanciarla) (GLOBAL)</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔀 hud-stale</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cambiaste de rama/proyecto → tu lista de TODOs (HUD) puede ser de la tarea anterior: avisa (advisory) que la resetees/re-siembres del estado-proyecto.md de esa rama. Señal OBJETIVA (rama/cwd), stamp per-sesión, first-sight silencioso, solo en repos con backlog (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧭 sesion-inicio</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta rama + norma + memoria al abrir</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌾 recordar-cosechar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">espejo TaskList→estado-proyecto.md (auto) + nudge: no cosechaste/no actualizaste backlog</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">⬆️ recordar-unificar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">tu mini acumuló aprendizajes sin UNIFICAR a develop → sugiere /unificar-cerebro (gemelo ↑ de aviso-drift)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌾 recordar-cosechar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">espejo automático del TaskList vivo → bloque fenced en estado-proyecto.md (determinista, sin LLM)</font></td></tr>
         <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>📜 Normas</b></font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎯 Definition of Done</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">verde técnico ≠ Done/Listo/Ya Quedó; exige QA o un OK explícito</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🪞 Doc &lt;= realidad</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cambió algo → su doc se actualiza en la tanda</font></td></tr>
@@ -117,7 +114,7 @@ digraph flujos {
     PASA  [color="#7fb069",
            label="🟢 pasa sin preguntar\n(consentimiento ya vigente para este nivel)"];
     NIEGA [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
-           label="el usuario NIEGA → el Task NO corre\n(delegacion-registrar/delegacion-reporte no disparan → no se registra consentimiento)\nel ítem queda para rehacer o para no delegarlo"];
+           label="el usuario NIEGA → el Task NO corre\n(delegacion-registrar no dispara → no se registra consentimiento)\nel ítem queda para rehacer o para no delegarlo"];
 
     // ── Confluencia: precedencia deny > ask > allow (limite-gasto y delegacion-gate corren en\n    //    paralelo sobre el MISMO Task; el CLI combina sus 2 decisiones antes de dejarlo correr) ──
     PREC  [shape=diamond, fillcolor="#2b2622", color="#d97757",
@@ -129,11 +126,9 @@ digraph flujos {
     TRABAJO [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
              label="el agente hace SU ítem autocontenido y DEVUELVE el contrato:\n{qué hizo · línea-de-bitácora curada · pendiente-para-otro · worktree limpio|dejado-con-nota}"];
 
-    // ── PostToolUse/Task: los 2 hooks de cierre ──
+    // ── PostToolUse/Task: el hook de cierre de consentimiento ──
     REG   [color="#e08e45",
            label="🔔📝 delegacion-registrar  (PostToolUse/Task)\nsolo corre si el Task CORRIÓ (usuario aprobó) → PERSISTE el consentimiento\n(gratis/incluido: por compu · metered: por workflow) + libera el lock G3"];
-    REP   [color="#e08e45",
-           label="🔔📮 delegacion-reporte  (PostToolUse/Task)\n🟠 nudge CONDICIONAL: «SI tu agente MUTÓ, ciérralo; SI fue read-only, ignora»\n(no puede ver el transcript del sub-agente → subordina a la mutación, sin cry-wolf)"];
 
     // ── El orquestador cierra el loop ──
     VERIF [shape=diamond, fillcolor="#2b2622", color="#d97757",
@@ -145,7 +140,7 @@ digraph flujos {
     ESTADO [color="#e08e45",
             label="🟠 auto-reporte SIN redundancia (2 archivos):\n① APPENDA `>>` una línea a bitacora.md (qué pasó · parallel-safe)\n② CURA el ítem en estado-proyecto.md (qué sigue · backlog vivo)\nTodoWrite = scratch de sesión, NO el backlog durable"];
     LIMPIA [color="#c0392b", penwidth=3,
-            label="⚠ ESCRIBE git · el orquestador limpia (nudge de delegacion-reporte, NO automático):\nlimpiar.sh worktrees (borra los de ramas mergeadas, deja los vivos con su pendiente)\nlimpiar.sh ramas (barre ramas locales ya integradas por `git branch -d/-D`)\nbarrer-ramas (SessionStart/merge-MR) NO cubre este cierre por cherry-pick"];
+            label="⚠ ESCRIBE git · el orquestador limpia (DISCIPLINA, sin hook que lo recuerde):\nlimpiar.sh worktrees (borra los de ramas mergeadas, deja los vivos con su pendiente)\nlimpiar.sh ramas (barre ramas locales ya integradas por `git branch -d/-D`)\nbarrer-ramas (SessionStart/merge-MR) NO cubre este cierre por cherry-pick"];
     FIN   [color="#7fb069", penwidth=2,
            label="🟢 slice del agente CERRADO\n(estado al día · worktree limpio · sin niñería)"];
 
@@ -169,8 +164,7 @@ digraph flujos {
     PREC -> AISLA [label="ningún DENY → procede"];
     AISLA -> TRABAJO;
     TRABAJO -> REG;
-    TRABAJO -> REP [label="mismo PostToolUse/Task"];
-    REG -> VERIF; REP -> VERIF;
+    REG -> VERIF; TRABAJO -> VERIF [style=dashed, label="orquestador cierra\npor DISCIPLINA (sin hook\nque lo recuerde, ver 12)"];
     VERIF -> DESCARTA [label="padre = base\nequivocada"];
     VERIF -> INTEGRA  [label="linaje OK"];
     DESCARTA -> BL [label="rehaz el ítem"];

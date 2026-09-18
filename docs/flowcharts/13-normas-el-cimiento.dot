@@ -5,6 +5,9 @@
 // mecanismo YA vivía en la leyenda-árbol pero no tenían tarjeta en el cuerpo; el cluster ahora declara
 // explícito que es un SUBCONJUNTO curado, no el set completo (brain/norms/global-claude-md.md manda).
 // DOC ya NO dice "hecho cumplir en 08": recordar-dashboard es un nudge advisory, no un guard DENY.
+// Overhaul hooks 2026-09-18: recordar-dashboard, recordar-orquestar (parcial: ORQ sigue vía la norma
+// misma, sin hook), hud-stale y la mitad NUDGE de recordar-cosechar se RETIRARON (puramente advisory,
+// medido: ignorados) — DOC/HUD/DECISION pasan de 🟠(nudge) a 📜(self-check puro, sin mecanismo hook).
 // Reconstruido 2026-08-07. Cross-refs re-numeradas a los NUEVOS nº de archivo (viejo circulado → nuevo):
 //   ② integrar=06 · ③ comando-git=07 · ④ push-nudges=08 · ⑤ declarar-listo=09 · ⑥ cerrar-slice=10 · ⑦ delegar=11 · ⑧ orquestar=12.
 // Re-canoniza el huérfano 10-normas-el-cimiento.svg (sin .dot ni leyenda).
@@ -29,7 +32,6 @@ digraph flujos {
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🛑 limite-gasto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">sin ventana 5h Y sin overage (ambos agotados) → freno duro</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">✅ dod-verificar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cierre sin evidencia/OK → denegado; claim visual a ciegas (sin ver la pantalla) también</font></td></tr>
         <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>🔔 Automático</b></font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📊 recordar-dashboard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">en el push recuerda dashboard + doc=realidad (README/docs) — cierre del slice</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🖥️ entorno-maquina-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">commit de algo machine-specific (aliases/rutas de $HOME/Rosetta/entorno-maquina.md) al .claude/memory/ del repo → avisa</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🚧 no-bypass-deploy</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">correr el instalador/deploy a mano (install-brain.sh/deploy.sh) en vez de la herramienta oficial (el widget) → avisa (fail-safe: no --dry-run/--help/CI)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌳 proteger-arbol</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">git destructivo que orfanaría commits sin pushear → avisa (fan-out: usa worktree aislado)</font></td></tr>
@@ -38,15 +40,11 @@ digraph flujos {
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">💾 exportar-sesion-master</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">auto-export de las sesiones *-master a ~/.claude-sessions (o Drive); detached, sobrevive el cleanup de 30 días (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🗂️ checkpoint-mecanico</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">PreCompact: extractor mecánico (streaming, 0 tokens) escribe el andamio del TRAMO VIVO a hilo-mental-actual.andamio.md (GLOBAL; el skill lo regenera con --self --ensure)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📝 delegacion-registrar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">materializa el "pregunta una sola vez"</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📮 delegacion-reporte</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al terminar un agente: recuerda registrar avance + limpiar su worktree</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎼 recordar-orquestar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">N mutaciones (edits/commits) en serie SIN delegar → sugiere fan-out (advisory, no bloquea; resetea al delegar) (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧵 rehidratar-hilo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta hilo-mental-actual.md + el andamio (si es más fresco) al abrir/retomar/compactar (GLOBAL) — gate de frescura + edad</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📈 aviso-contexto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al umbral ALTO del punto REAL de compact (80%/92% de autoCompactWindow o la ventana efectiva; % honesto, respeta autoCompactEnabled): VUELCA el checkpoint mecánico solito y ORDENA /checkpoint+/compact. No gotea (silencio bajo el umbral, 1 disparo + 1 escalada) (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧬 aviso-drift-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">repo brained atrás de la fuente única (hooks/libs Y skills) → en tu mini-develop se AUTO-SINCRONIZA (apply+commit+push); en otra rama, avisa. ADEMÁS detecta el drift de la copia GLOBAL de skills (~/.claude/skills vs la fuente; warn-only, throttle propio). Al moverse el cerebro, NUDGE a correr la DUPLA (suficiencia+coherencia; contra la firma si hay AGENTS.md, si no sugiere instanciarla) (GLOBAL)</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔀 hud-stale</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cambiaste de rama/proyecto → tu lista de TODOs (HUD) puede ser de la tarea anterior: avisa (advisory) que la resetees/re-siembres del estado-proyecto.md de esa rama. Señal OBJETIVA (rama/cwd), stamp per-sesión, first-sight silencioso, solo en repos con backlog (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧭 sesion-inicio</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta rama + norma + memoria al abrir</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌾 recordar-cosechar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">espejo TaskList→estado-proyecto.md (auto) + nudge: no cosechaste/no actualizaste backlog</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">⬆️ recordar-unificar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">tu mini acumuló aprendizajes sin UNIFICAR a develop → sugiere /unificar-cerebro (gemelo ↑ de aviso-drift)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌾 recordar-cosechar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">espejo automático del TaskList vivo → bloque fenced en estado-proyecto.md (determinista, sin LLM)</font></td></tr>
         <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>📜 Normas</b></font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎯 Definition of Done</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">verde técnico ≠ Done/Listo/Ya Quedó; exige QA o un OK explícito</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🪞 Doc &lt;= realidad</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cambió algo → su doc se actualiza en la tanda</font></td></tr>
@@ -96,7 +94,7 @@ digraph flujos {
 
     LISTO [label="📜 🎯 Definición de LISTO\nverde técnico ≠ LISTO (build+tests+memoria es necesario\npero NO suficiente): falta (1) QA del usuario o (2) su OK expreso.\nProducto INSTALABLE: verde en 1 máquina ≠ LISTO (checklist multi-OS)\n— hecho cumplir en 09 · 10 · 06"];
     GIT [label="📜 🌿 Flujo de git\nramita → MR → develop (con squash); main es release-only;\nNUNCA push directo a develop/main.\nel gate confirmar ≠ «no puedes»: con tu OK, Claude mergea por CLI\n— hecho cumplir en 03 · 06"];
-    DOC [color="#e08e45", label="📜 🪞 doc = realidad\n🟠 al cambiar algo, su doc se actualiza en la MISMA tanda\n(README/memoria/dashboard/comentarios)\n— SIN guard DENY: recordado en 08 (🔔 recordar-dashboard = nudge advisory, no bloquea)"];
+    DOC [color="#9e9e9e", style="dashed,filled", fillcolor="#232323", label="📜 🪞 doc = realidad\nal cambiar algo, su doc se actualiza en la MISMA tanda\n(README/memoria/dashboard/comentarios)\n— SIN guard DENY ni hook: self-check puro (ver árbol de decisión en 08)"];
     MINI [label="📜 🌱 Modelo MINI-DEVELOP\nramitas → rama personal/integración por merge LOCAL (sin fricción);\nsolo el MR a develop se gatea\n— habilitado en 06"];
     COSTO [label="📜 💰 Consentimiento de costo de delegación\ndelegar cuesta por nivel: gratis (local) / incluido (ventana 5h) /\nmetered (overage o API externa)\n— hecho cumplir en 11"];
     ORQ [label="📜 🎼 Orquesta: delega y quédate en el loop\ncon trabajo paralelizable: fan-out + supervisión (no grind serial);\nauto-reporte sin niñera\n— operacionalizada en 12"];
@@ -108,14 +106,14 @@ digraph flujos {
 
     // ── 5 normas duras que faltaban: su mecanismo YA vive en la leyenda-árbol (familia 🔔 Automático)
     //    pero no tenían tarjeta aquí. Todas 🟠 (nudge advisory, no guard DENY) — mismo tratamiento que DOC.
-    DECISION [color="#e08e45",
-              label="📜 🗣️ Decisiones / hallazgos NO viven solo en el chat\n🟠 se persisten a estado-proyecto.md/memoria en el MISMO turno\n(lo que TÚ hallas → backlog; lo que se DECIDE junto con el usuario → memoria)\n— nudge 🌾 recordar-cosechar (leyenda; sin chart propio aún)"];
+    DECISION [color="#9e9e9e", style="dashed,filled", fillcolor="#232323",
+              label="📜 🗣️ Decisiones / hallazgos NO viven solo en el chat\nse persisten a estado-proyecto.md/memoria en el MISMO turno\n(lo que TÚ hallas → backlog; lo que se DECIDE junto con el usuario → memoria)\n— SIN nudge: la mitad NUDGE de 🌾 recordar-cosechar se retiró (overhaul hooks 2026-09-18);\nsolo queda su ESPEJO mecánico del TaskList (leyenda; sin chart propio aún)"];
     MAQUINA [color="#e08e45",
              label="📜 🖥️ El entorno de MÁQUINA vive GLOBAL, jamás en un repo\nOS/shell/aliases/rutas de $HOME/runtime local NUNCA en el repo\n(mentiría al clonar en otro OS) — vive en la memoria global per-máquina\n— avisado en 03 (🔔🖥️ entorno-maquina-guard)"];
     HERRAMIENTA [color="#e08e45",
                  label="📜 🚧 Actualiza por la HERRAMIENTA REAL, nunca el instalador a mano\nun install.sh/deploy.sh corrido crudo se salta backup+atómico+sello+verificación\n(excepción: --dry-run/--help/-n, o correr dentro de CI)\n— no-opea sobre git; parte del fan-out de 9 en 03 · 06 · 07 (sin detalle propio)"];
-    HUD [color="#e08e45",
-         label="📜 🔀 Tu lista de TODOs es TU HUD — mantenla fresca\nscratch de sesión (no el backlog durable); resetéala al cambiar de rama/proyecto\nsi diverge del backlog, MANDA estado-proyecto.md\n— avisado en 02 · 08 (🔔🔀 hud-stale)"];
+    HUD [color="#9e9e9e", style="dashed,filled", fillcolor="#232323",
+         label="📜 🔀 Tu lista de TODOs es TU HUD — mantenla fresca\nscratch de sesión (no el backlog durable); resetéala al cambiar de rama/proyecto\nsi diverge del backlog, MANDA estado-proyecto.md\n— SIN hook: anti-drift por tu propio juicio (ver 02)"];
     CORREO [color="#e08e45",
             label="📜 🧬 Cerebro por-repo = CORREO\nrepo PERSONAL: memoria/skills sí, guards por-repo NUNCA (los saca el global+dedupe);\nrepo COMPARTIDO (marca .claude/repo-compartido): guards por-repo SÍ, en git\n— mantenido fresco / avisado en 01 · 02 (🔔🧬 aviso-drift-cerebro)"];
 

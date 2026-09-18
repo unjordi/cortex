@@ -146,7 +146,7 @@ antes de un git destructivo que orfanaría commits sin pushear).
    - `línea-de-bitácora` curada (prosa, no el pegote de commits),
    - `pendiente` que deje para otro (o "ninguno"),
    - `worktree`: `limpio` (rama mergeada) o `dejado-con-<nota>`.
-3. **Cierra el loop (AUTOMÁTICO al terminar cada agente — lo recuerda el hook `delegacion-reporte`):**
+3. **Cierra el loop al terminar cada agente (DISCIPLINA tuya — `delegacion-reporte` se retiró, overhaul hooks 2026-09-18, puramente advisory, sin hook que lo recuerde):**
    - **APPENDA** la línea a `bitacora.md`.
    - **ACTUALIZA/cierra** el ítem en `estado-proyecto.md` (backlog vivo).
    - **WORKTREE:** corre `limpiar.sh worktrees` (borra los de ramas ya mergeadas; los vivos/a-medias
@@ -206,7 +206,8 @@ fase encima de un entregable sin verificar su base.
 
 ## Hooks/tools que lo sostienen
 - **`delegacion-gate`** (PreToolUse/Task) — consentimiento de costo por ventana de 5h (ver el flujo de gasto).
-- **`delegacion-reporte`** (PostToolUse/Task) — tras cada subagente, recuerda registrar avance + limpiar worktree.
+- Cerrar el loop tras cada subagente (registrar avance + limpiar worktree) es DISCIPLINA tuya, sin hook
+  que lo recuerde (`delegacion-reporte` se retiró, overhaul hooks 2026-09-18, puramente advisory).
 - **`limpiar.sh worktrees`** — barre worktrees zombies (rama mergeada) y anota los vivos en la bitácora.
 - **`proteger-arbol`** (PreToolUse/Bash) — avisa antes de un git DESTRUCTIVO (`reset --hard`/`checkout -f`/`rebase`/`branch -D`) que orfanaría commits sin pushear; antídoto al "agente reseteó HEAD en el árbol compartido".
 - **`checkpoint`** (skill) + **`rehidratar-hilo`** (SessionStart) + **`aviso-contexto`** (watermark) — compactar sin perder el hilo del fan-out (el hook `precompact` se retiró: PreCompact no puede inyectar ni pedir acción).

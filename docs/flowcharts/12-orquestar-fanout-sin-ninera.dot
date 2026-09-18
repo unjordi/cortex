@@ -1,7 +1,9 @@
 // 12 — Orquestar un fan-out sin niñera (cortex)  ·  FUENTE editable (.dot)
 // Render:  dot -Tsvg 12-orquestar-fanout-sin-ninera.dot -o 12-orquestar-fanout-sin-ninera.svg
 // Reconstruido 2026-08-07 desde el skill real brain/skills/orquestar-fanout/SKILL.md + los hooks de soporte
-// (proteger-arbol, delegacion-gate, delegacion-reporte, script limpiar.sh worktrees). Companion de 04 y 11.
+// (proteger-arbol, delegacion-gate, script limpiar.sh worktrees). Companion de 04 y 11.
+// Overhaul hooks 2026-09-18: delegacion-reporte se RETIRÓ (puramente advisory, medido: ignorado) — el
+// cierre automático que "recordaba" ahora es DISCIPLINA del orquestador, sin hook.
 // Re-canoniza el huérfano 09-orquestar-un-fan-out-sin-ninera.svg (viejo «⑧», sin .dot ni leyenda).
 digraph flujos {
   graph [bgcolor="#1b1712", rankdir=TB, fontname="Helvetica", splines=true,
@@ -24,7 +26,6 @@ digraph flujos {
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🛑 limite-gasto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">sin ventana 5h Y sin overage (ambos agotados) → freno duro</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">✅ dod-verificar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cierre sin evidencia/OK → denegado; claim visual a ciegas (sin ver la pantalla) también</font></td></tr>
         <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>🔔 Automático</b></font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📊 recordar-dashboard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">en el push recuerda dashboard + doc=realidad (README/docs) — cierre del slice</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🖥️ entorno-maquina-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">commit de algo machine-specific (aliases/rutas de $HOME/Rosetta/entorno-maquina.md) al .claude/memory/ del repo → avisa</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🚧 no-bypass-deploy</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">correr el instalador/deploy a mano (install-brain.sh/deploy.sh) en vez de la herramienta oficial (el widget) → avisa (fail-safe: no --dry-run/--help/CI)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌳 proteger-arbol</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">git destructivo que orfanaría commits sin pushear → avisa (fan-out: usa worktree aislado)</font></td></tr>
@@ -33,15 +34,11 @@ digraph flujos {
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">💾 exportar-sesion-master</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">auto-export de las sesiones *-master a ~/.claude-sessions (o Drive); detached, sobrevive el cleanup de 30 días (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🗂️ checkpoint-mecanico</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">PreCompact: extractor mecánico (streaming, 0 tokens) escribe el andamio del TRAMO VIVO a hilo-mental-actual.andamio.md (GLOBAL; el skill lo regenera con --self --ensure)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📝 delegacion-registrar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">materializa el "pregunta una sola vez"</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">📮 delegacion-reporte</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al terminar un agente: recuerda registrar avance + limpiar su worktree</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎼 recordar-orquestar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">N mutaciones (edits/commits) en serie SIN delegar → sugiere fan-out (advisory, no bloquea; resetea al delegar) (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧵 rehidratar-hilo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta hilo-mental-actual.md + el andamio (si es más fresco) al abrir/retomar/compactar (GLOBAL) — gate de frescura + edad</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📈 aviso-contexto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al umbral ALTO del punto REAL de compact (80%/92% de autoCompactWindow o la ventana efectiva; % honesto, respeta autoCompactEnabled): VUELCA el checkpoint mecánico solito y ORDENA /checkpoint+/compact. No gotea (silencio bajo el umbral, 1 disparo + 1 escalada) (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧬 aviso-drift-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">repo brained atrás de la fuente única (hooks/libs Y skills) → en tu mini-develop se AUTO-SINCRONIZA (apply+commit+push); en otra rama, avisa. ADEMÁS detecta el drift de la copia GLOBAL de skills (~/.claude/skills vs la fuente; warn-only, throttle propio). Al moverse el cerebro, NUDGE a correr la DUPLA (suficiencia+coherencia; contra la firma si hay AGENTS.md, si no sugiere instanciarla) (GLOBAL)</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔀 hud-stale</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cambiaste de rama/proyecto → tu lista de TODOs (HUD) puede ser de la tarea anterior: avisa (advisory) que la resetees/re-siembres del estado-proyecto.md de esa rama. Señal OBJETIVA (rama/cwd), stamp per-sesión, first-sight silencioso, solo en repos con backlog (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧭 sesion-inicio</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta rama + norma + memoria al abrir</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌾 recordar-cosechar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">espejo TaskList→estado-proyecto.md (auto) + nudge: no cosechaste/no actualizaste backlog</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">⬆️ recordar-unificar-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">tu mini acumuló aprendizajes sin UNIFICAR a develop → sugiere /unificar-cerebro (gemelo ↑ de aviso-drift)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌾 recordar-cosechar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">espejo automático del TaskList vivo → bloque fenced en estado-proyecto.md (determinista, sin LLM)</font></td></tr>
         <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>📜 Normas</b></font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎯 Definition of Done</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">verde técnico ≠ Done/Listo/Ya Quedó; exige QA o un OK explícito</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🪞 Doc &lt;= realidad</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cambió algo → su doc se actualiza en la tanda</font></td></tr>
@@ -124,7 +121,7 @@ digraph flujos {
     WASMUT [shape=diamond, fillcolor="#2b2622", color="#d97757",
             label="¿este agente MUTÓ archivos/commiteó (venía de ISO)\no fue READ-ONLY (venía de RO, sin worktree)?"];
     RO_CLOSE [color="#7fb069", penwidth=2,
-              label="cierre AUTOMÁTICO (read-only): 🟢 appenda a bitacora.md · 🟢 cierra el ítem en\nestado-proyecto.md (opcional) — SIN commit que integrar ni worktree/rama que barrer\n(delegacion-reporte.sh: «si fue read-only… ignora este recordatorio y sigue»)"];
+              label="cierre por DISCIPLINA (read-only, sin hook que lo recuerde): 🟢 appenda a bitacora.md\n🟢 cierra el ítem en estado-proyecto.md (opcional) — SIN commit que integrar ni worktree/rama que barrer"];
     LINAGE [shape=diamond, fillcolor="#2b2622", color="#d97757",
             label="¿el PADRE del commit ya está en la rama-objetivo?\n`git merge-base --is-ancestor <commit>^ <rama-objetivo>` (+ `git show --stat`)\nlección C7 2026-07-21: el agente dijo «reseteé a DevelopUnjordi» pero su padre era el tip de main"];
     REHAZ [color="#e08e45",
@@ -132,7 +129,7 @@ digraph flujos {
     INTEGRATE [color="#c62828", penwidth=3,
                label="⚠ INTEGRA por CHERRY-PICK del delta (no merge)\nla base pudo quedar vieja mientras el agente corría en su turno"];
     CLOSE [color="#7fb069", penwidth=2,
-           label="cierre AUTOMÁTICO al terminar (lo recuerda 🔔📮 delegacion-reporte):\n🟢 APPENDA a bitacora.md (con «>>» · parallel-safe) · 🟢 cierra el ítem en estado-proyecto.md\n(TodoWrite = scratch de sesión, NO el backlog durable)"];
+           label="cierre por DISCIPLINA al terminar (sin hook que lo recuerde):\n🟢 APPENDA a bitacora.md (con «>>» · parallel-safe)\n🟢 cierra el ítem en estado-proyecto.md (TodoWrite = scratch de sesión, NO el backlog durable)"];
 
     SWEEP [shape=diamond, fillcolor="#2b2622", color="#d97757",
            label="⚙ limpiar.sh worktrees · ¿la rama del worktree ya está mergeada?"];

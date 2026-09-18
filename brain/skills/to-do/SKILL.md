@@ -60,7 +60,7 @@ histórico, no se cargan como tareas del harness.
 - **La task-list / `TodoWrite` del harness = SCRATCH de sesión.** Efímera (se pierde al cerrar/compactar). Es una **VISTA**.
 - **El backlog DURABLE = `.claude/memory/estado-proyecto.md`.** La **FUENTE DE VERDAD** ("aquí empiezas siempre").
 - La interfaz **espeja** el backlog durable, no lo reemplaza. Al **cerrar** una tarea, el cambio se **ASIENTA en `estado-proyecto.md`** (lo hace `cerrar-slice §2`), no solo en la task-list. **Si divergen, manda `estado-proyecto.md`.**
-- **La VISTA es de ESTA rama/repo → RE-SIÉMBRALA al rotar el working tree.** Al cambiar de **rama git** o de **proyecto/cwd**, la task-list del harness NO se resetea sola: sigue mostrando pendientes de la tarea anterior (drift). Cuando cambies de contexto, RE-EVALÚALA — si ya no aplica, límpiala y re-puéblala del `estado-proyecto.md` de ESA rama. El hook **`hud-stale`** te lo RECUERDA (advisory) justo tras rotar de rama/cwd; este skill es la mitad que la RE-SIEMBRA.
+- **La VISTA es de ESTA rama/repo → RE-SIÉMBRALA al rotar el working tree.** Al cambiar de **rama git** o de **proyecto/cwd**, la task-list del harness NO se resetea sola: sigue mostrando pendientes de la tarea anterior (drift). Cuando cambies de contexto, RE-EVALÚALA — si ya no aplica, límpiala y re-puéblala del `estado-proyecto.md` de ESA rama. Sin hook que te lo recuerde (`hud-stale` se retiró, overhaul hooks 2026-09-18, puramente advisory): nótalo TÚ tras rotar de rama/cwd; este skill es la mitad que la RE-SIEMBRA.
 
 ## Regla 2 — Redacción DURABLE (anti-stale)
 Un ítem se redacta para que **NO envejezca mal**:
@@ -96,4 +96,4 @@ Dos chequeos OBLIGATORIOS, en orden:
 - **`cerrar-slice §2`** — asienta el cierre en `estado-proyecto.md` (donde el ESPEJO se vuelve durable).
 - **`orquestar-fanout`** — modelo de estado de dos archivos para el fan-out.
 - **`checkpoint`** — vuelca el hilo vivo (`hilo-mental-actual.md`); los pendientes durables ya viven en `estado-proyecto.md`.
-- **hook `hud-stale`** (global, advisory) — te AVISA cuando cambiaste de rama/proyecto y la vista quedó stale; este skill la RE-SIEMBRA.
+- Cambiaste de rama/proyecto y la vista quedó stale → NÓTALO tú (sin hook que avise: `hud-stale` se retiró, overhaul hooks 2026-09-18); este skill la RE-SIEMBRA.

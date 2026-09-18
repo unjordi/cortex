@@ -9,8 +9,9 @@ Encapsula la **"definición de terminado" con evidencia** y el **flujo de git**.
 **Stop** (`dod-verificar`, bloquea "listo" sin evidencia), **git-branch-guard** (bloquea push a
 develop/main), **merge-develop-guard** (candado ÚNICO del punto de merge: exige `--squash` + un mensaje con
 sustancia y tu OK expreso antes de integrar — consolida los antiguos `merge-squash-guard` +
-`confirmar-merge-develop`) y **recordar-dashboard** (en el push te recuerda el dashboard + doc=realidad = el
-Paso 2 de aquí). Sigue el orden — no te saltes pasos. Versión **genérica** (agnóstica de stack): sirve para
+`confirmar-merge-develop`). El dashboard + doc=realidad (Paso 2 de aquí) NO tiene hook que lo recuerde
+(`recordar-dashboard` se retiró, overhaul hooks 2026-09-18, puramente advisory) — es self-check tuyo antes
+de pushear. Sigue el orden — no te saltes pasos. Versión **genérica** (agnóstica de stack): sirve para
 cualquier proyecto que use este cerebro.
 
 **La maquinaria del merge vive en el script `cerrar-slice.sh` (junto a este SKILL.md).** Este documento se
