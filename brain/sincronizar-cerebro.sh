@@ -462,12 +462,36 @@ EOF
 
   # ── Prune de skills del BRAIN retiradas/demotidas: nombre en el LEDGER anterior que YA NO está en
   #    {both,repo}. Solo skills que ESTE sync desplegó antes → nunca toca skills propias del repo.
-  sk_orph=0
+  #    UNA sola mecánica de lápida (misma que hooks §"huérfanos", NO dos): dentro de este MISMO loop del
+  #    ledger se bifurca por MOTIVO, igual que hooks bifurcan RETIRADO-del-MANIFEST vs DESCONOCIDO —
+  #    (a) tier `retirado` en el SKILLS-MANIFEST (la LÁPIDA: el brain mató esta skill a propósito) → poda
+  #    AUTOMÁTICA en cualquier --apply, SIN necesitar --prune-orphans (seguro: el brain lo declaró muerto);
+  #    (b) simplemente demotida a `global` (ya no both/repo, pero SIGUE viva como skill global) → sigue
+  #    pidiendo --prune-orphans como antes (no es una lápida, solo cambió de tier). El ledger es la MISMA
+  #    guardia de siempre (solo toca lo que ESTE sync desplegó; una skill propia del repo nunca aparece
+  #    aquí) — no se agregó un segundo mecanismo paralelo, solo un branch dentro del que ya existía.
+  es_retirada_sk() {
+    [ -f "$SKILLS_MANIFEST" ] || return 1
+    awk -v n="$1" '$1!~/^#/ && NF>=2 && $1==n && $2=="retirado"{found=1} END{exit !found}' "$SKILLS_MANIFEST"
+  }
+  sk_orph=0; sk_retirada=0
   if [ -f "$LEDGER" ]; then
     while IFS= read -r old; do
       [ -z "$old" ] && continue
       printf '%s\n' $PER_REPO_SK | grep -qxF "$old" && continue   # sigue siendo brain-por-repo → no es huérfana
       [ -d "$DST_SKILLS/$old" ] || continue
+      if es_retirada_sk "$old"; then
+        # (a) LÁPIDA: poda AUTOMÁTICA, no requiere --prune-orphans.
+        sk_retirada=$((sk_retirada+1))
+        if [ "$APPLY" = 1 ]; then
+          rm -rf "${DST_SKILLS:?}/${old:?}"
+          echo "  RETIRADA   skills/$old — tier retirado (lápida del SKILLS-MANIFEST): borrada (auto, del ledger)"
+        else
+          echo "  RETIRARÍA  skills/$old — tier retirado (lápida del SKILLS-MANIFEST): la borraría (auto, sin --prune-orphans; usa --apply)"
+        fi
+        continue
+      fi
+      # (b) demotida a global (no lápida) → sigue pidiendo --prune-orphans.
       sk_orph=$((sk_orph+1))
       if [ "$PRUNE" = 1 ] && [ "$APPLY" = 1 ]; then
         rm -rf "${DST_SKILLS:?}/${old:?}"
@@ -491,7 +515,7 @@ EOF
     else rm -f "$LEDGER.tmp.$$" "$LEDGER" 2>/dev/null; fi
   fi
 
-  echo "==> resumen skills: $sk_new nuevas · $sk_upd a actualizar · $sk_ok ya al día · $sk_orph huérfana(s)"
+  echo "==> resumen skills: $sk_new nuevas · $sk_upd a actualizar · $sk_ok ya al día · $sk_orph huérfana(s) · $sk_retirada retirada(s) del cerebro"
 fi
 # ══════════════════════════════════════════════════════════════════════════════════════════════════════
 

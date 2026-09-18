@@ -301,6 +301,35 @@ if [ -d "$SRC_SKILLS" ]; then
   done
 fi
 
+# ── (c2) PODA DE SKILLS RETIRADAS (LÁPIDAS del SKILLS-MANIFEST) ────────────────────────────────────────
+# MISMA mecánica de lápida que (a3) para hooks — ver ese bloque para el porqué completo — con la ÚNICA
+# diferencia de que una skill NO tiene cableado en settings.json (es un folder markdown que se LEE, no un
+# script que se EJECUTE): aquí basta borrar la carpeta instalada, sin de-cablear nada. Sin esto, una
+# máquina que ya corrió install-brain ANTES del retiro se queda con la carpeta zombie para siempre — el
+# MANIFEST deja de listarla como global/both, pero nada la borra, y el listado de skills de CUALQUIER
+# sesión en esa máquina sigue ofreciéndola junto a su reemplazo, sin señal de cuál es el dueño vigente
+# (hallazgo ALTO-1 de la auditoría de suficiencia operativa, 2026-09-18: confirmado en vivo con 5 skills
+# fantasma — consolidar-cerebro/unificar-cerebro/claude-proyecto-autocontenido/cosechar-sesion/
+# revisar-entregables-agentes — todavía instaladas en una máquina bootstrapeada antes del overhaul).
+# Idempotente (si la carpeta ya no está, no reporta nada) y lo DICE cuando sí actúa (nombre + motivo).
+if [ -f "$SKILLS_MANIFEST" ]; then
+  RETIRED_SK_ENTRIES="$(awk '$1!~/^#/ && NF>=2 && $2=="retirado"{ reason=""; for(i=4;i<=NF;i++) reason=reason (i>4?" ":"") $i; print $1"\t"reason }' "$SKILLS_MANIFEST")"
+else
+  RETIRED_SK_ENTRIES=""
+fi
+if [ -n "$RETIRED_SK_ENTRIES" ]; then
+  while IFS="$(printf '\t')" read -r rskname rskreason; do
+    [ -z "$rskname" ] && continue
+    if [ -d "$SKILLS_DIR/$rskname" ]; then
+      rm -rf "${SKILLS_DIR:?}/${rskname:?}"
+      motivo_txt=""; [ -n "$rskreason" ] && motivo_txt=" — motivo del retiro: $rskreason"
+      echo "poda: skill '$rskname' es tier retirado (lápida del SKILLS-MANIFEST) → borré $SKILLS_DIR/$rskname$motivo_txt"
+    fi
+  done <<EOF
+$RETIRED_SK_ENTRIES
+EOF
+fi
+
 # ── (c1b) Opción de modelo Opus 4.8 en el picker + autocompact 70% (bloque `env` de settings.json) ──
 # Cosechado del global de Cachy (2026-07-31). Es config de Claude Code PORTABLE (no de máquina), por eso va
 # en el brain. Idempotente y NO destructivo: setea CADA clave SOLO si falta → un dev que ya eligió otra cosa

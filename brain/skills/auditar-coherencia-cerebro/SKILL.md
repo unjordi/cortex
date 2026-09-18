@@ -41,8 +41,8 @@ propiedad y trabajo — de otro modo la introspección se vuelve o un oráculo s
 ## Cuándo usarlo
 - Tras **integrar cambios a `develop`** (varios PRs, un refactor de wiring, hooks nuevos): barrer que no
   se coló una evasión ni un drift de doc antes de un release a `main`.
-- Cuando toques un **guard de supervisión** (git-branch-guard, secret-scan, confirmar-merge-develop,
-  merge-squash-guard, la lib `analizar-comando-git.sh`): un cambio de precisión puede reabrir un hueco
+- Cuando toques un **guard de supervisión** (git-branch-guard, secret-scan, merge-develop-guard,
+  la lib `analizar-comando-git.sh`): un cambio de precisión puede reabrir un hueco
   más fino (lección de las 9 rondas — el value-model de git reabrió 5 veces seguidas).
 - Cuando cambien **flowcharts, README-árbol o normas**: verificar que la doc sigue reflejando la realidad
   (doc=realidad) y que las leyendas generadas cuadran con el árbol vivo. **Regenerar la leyenda no es

@@ -4281,6 +4281,42 @@ bash "$SKSY" "$SKREPO" --apply --prune-orphans >/dev/null 2>&1
 grep -qx 'demo-skill' "$SKREPO/.claude/skills/.brain-skills" 2>/dev/null && bad "sync skills: el ledger no se limpió tras el prune" || ok "sync skills: el ledger se limpió tras el prune"
 rm -rf "$SKFIX"
 
+# ── (b5d-retirado) sincronizar-cerebro: skill tier RETIRADO (lápida del SKILLS-MANIFEST) se poda SOLA,
+#    SIN --prune-orphans — MISMA lápida que hooks (e5b), UNA sola mecánica (el ledger se bifurca por
+#    motivo, no un segundo mecanismo paralelo). Antes de esta ola, una skill retirada per-repo quedaba
+#    demotida a "huérfana genérica" y necesitaba --prune-orphans como cualquier demote a global — un
+#    hueco real: nada distinguía "el brain la mató a propósito" (auto-podable, seguro) de "solo cambió
+#    de tier" (necesita el gesto explícito). Fixture: skill `both` desplegada normal, LUEGO retirada.
+SKRFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-skr.XXXXXX")"
+SKRREPO="$SKRFIX/repo"; SKRBR="$SKRFIX/brain"
+mkdir -p "$SKRREPO/.claude" "$SKRBR/brain/skills/demo-ret-skill" "$SKRBR/brain/hooks"
+printf 'v1\n' > "$SKRBR/brain/skills/demo-ret-skill/SKILL.md"
+printf 'demo-ret-skill both\n' > "$SKRBR/brain/skills/MANIFEST"
+printf '# sin hooks\n' > "$SKRBR/brain/hooks/MANIFEST"
+cp "$SCRIPT_DIR/sincronizar-cerebro.sh" "$SKRBR/brain/sincronizar-cerebro.sh"
+SKRSY="$SKRBR/brain/sincronizar-cerebro.sh"
+bash "$SKRSY" "$SKRREPO" --apply >/dev/null 2>&1
+[ -d "$SKRREPO/.claude/skills/demo-ret-skill" ] || bad "sync skills retirado: setup falló — la skill both no se desplegó"
+grep -qx 'demo-ret-skill' "$SKRREPO/.claude/skills/.brain-skills" 2>/dev/null || bad "sync skills retirado: setup falló — no quedó en el ledger"
+# skill PROPIA del repo, para confirmar que la poda de la lápida NUNCA la toca
+mkdir -p "$SKRREPO/.claude/skills/mi-skill-repo"; printf 'mine\n' > "$SKRREPO/.claude/skills/mi-skill-repo/SKILL.md"
+# ahora se RETIRA (lápida) en vez de solo demotirse a global
+printf 'demo-ret-skill retirado 2026-09-18 fusionada-en-otra\n' > "$SKRBR/brain/skills/MANIFEST"
+skrdry="$(bash "$SKRSY" "$SKRREPO" 2>&1)"
+printf '%s' "$skrdry" | grep -qE 'RETIRAR.*skills/demo-ret-skill.*tier retirado' \
+  && ok "sync skills retirado: dry-run la marca RETIRARÍA (auto, SIN --prune-orphans)" || bad "sync skills retirado: dry-run no la marcó; got: $skrdry"
+printf '%s' "$skrdry" | grep -qE '==> resumen skills:.*[1-9][0-9]* retirada' \
+  && ok "sync skills retirado: el resumen cuenta la retirada pendiente (aviso-drift la ve como drift)" || bad "sync skills retirado: el resumen NO cuenta la retirada pendiente"
+bash "$SKRSY" "$SKRREPO" --apply >/dev/null 2>&1
+[ -d "$SKRREPO/.claude/skills/demo-ret-skill" ] \
+  && bad "sync skills retirado: --apply SIN --prune-orphans NO podó la lápida (regresión)" \
+  || ok "sync skills retirado: --apply SIN --prune-orphans podó la lápida SOLA (auto, misma mecánica que hooks)"
+[ -f "$SKRREPO/.claude/skills/mi-skill-repo/SKILL.md" ] \
+  && ok "sync skills retirado: la skill PROPIA del repo quedó intacta" || bad "sync skills retirado: ¡tocó una skill propia del repo!"
+grep -qx 'demo-ret-skill' "$SKRREPO/.claude/skills/.brain-skills" 2>/dev/null \
+  && bad "sync skills retirado: el ledger no se limpió tras podar la lápida" || ok "sync skills retirado: el ledger se limpió tras podar la lápida"
+rm -rf "$SKRFIX"
+
 # ── (b5d2) aviso-drift: el DRIFT DE SKILLS por-repo alimenta el total (misma bifurcación .claude/repo-compartido)
 SKEFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-ske.XXXXXX")"
 SKEREPO="$SKEFIX/repo"; SKEHOME="$SKEFIX/home"; SKEBR="$SKEFIX/clon"
@@ -4356,6 +4392,41 @@ is_silent "$(hkg)" && ok "drift-hooks-global: un repo-tier distinto en el global
 rm -f "$HKGBR/brain/hooks/MANIFEST"
 is_silent "$(hkg)" && ok "drift-hooks-global: sin HOOKS-MANIFEST → fail-open (silencio)" || bad "drift-hooks-global: habló sin manifiesto"
 rm -rf "$HKGFIX"
+
+# ── (b5d3c) drift_norms_global: gemelo de drift_hooks_global/drift_skills_global pero para el bloque de
+# NORMAS de ~/.claude/CLAUDE.md vs brain/norms/global-claude-md.md. Antídoto al hallazgo ALTO-2 de la
+# auditoría de suficiencia operativa (2026-09-18): install-brain §(e) SÍ refresca el bloque en cada
+# re-corrida, pero nada avisaba que hacía falta re-correrlo — confirmado en vivo (el CLAUDE.md real de
+# unjordi seguía citando `recordar-dashboard`, ya retirado, como "un hook te lo recuerda"). Antes de esta
+# ola, drift_norms_global NI EXISTÍA → cero tests.
+NMGFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-nmg.XXXXXX")"
+NMGHOME="$NMGFIX/home"; NMGBR="$NMGFIX/brain"
+mkdir -p "$NMGHOME/.claude" "$NMGBR/brain/norms"
+nmg() { ( HOME="$NMGHOME" CLAUDE_BRAIN_DIR="$NMGBR"; . "$HOOKS/drift-cerebro-comun.sh"; drift_norms_global ); }
+# (1) sin CLAUDE.md global (bootstrap aún no corrió) → fail-open, silencio (NO es "desactualizado")
+# NOTA de fixture: la fuente REAL (brain/norms/global-claude-md.md) empieza EXACTO en su línea 1 con
+# "<!-- BEGIN cortex" (sin preámbulo) — install-brain copia el archivo COMPLETO entre marcadores, así que
+# "instalado == fuente" solo tiene sentido comparando esa MISMA forma; un preámbulo antes del BEGIN en la
+# fuente sintética rompería la comparación por una razón AJENA al drift real (nunca ocurre en la fuente
+# real). Se replica esa forma aquí a propósito.
+printf '%s\n' '<!-- BEGIN cortex (normas globales) -->' 'regla A' '<!-- END cortex -->' > "$NMGBR/brain/norms/global-claude-md.md"
+is_silent "$(nmg)" && ok "drift-norms-global: sin ~/.claude/CLAUDE.md instalado → fail-open (silencio, no 'desactualizado')" || bad "drift-norms-global: habló sin CLAUDE.md instalado"
+# (2) instalado BYTE-IDÉNTICO a la fuente (mismo bloque + sección personal fuera) → silencio (sin FP)
+{ cat "$NMGBR/brain/norms/global-claude-md.md"; printf '\n# Mi sección personal\nnotas mías\n'; } > "$NMGHOME/.claude/CLAUDE.md"
+is_silent "$(nmg)" && ok "drift-norms-global: bloque instalado == fuente (sección personal fuera, intacta) → silencio (sin FP)" || bad "drift-norms-global: warned con el bloque limpio"
+# (3) la fuente CAMBIÓ (norma nueva/corregida) y el bloque instalado quedó ATRÁS → warn con remedio
+printf '%s\n' '<!-- BEGIN cortex (normas globales) -->' 'regla A corregida' 'regla B nueva' '<!-- END cortex -->' > "$NMGBR/brain/norms/global-claude-md.md"
+nmgout="$(nmg)"
+printf '%s' "$nmgout" | grep -q 'DRIFT DE NORMAS' \
+  && ok "drift-norms-global: fuente cambió → CAZA el drift del bloque instalado" || bad "drift-norms-global: no detectó que la fuente cambió"
+printf '%s' "$nmgout" | grep -qi 'install-brain' \
+  && ok "drift-norms-global: el mensaje señala el remedio real (re-correr install-brain)" || bad "drift-norms-global: el mensaje no dice cómo remediarlo"
+# (4) la sección PERSONAL del usuario (fuera del bloque) NUNCA se toca ni se cuenta — control anti-FP
+grep -q 'Mi sección personal' "$NMGHOME/.claude/CLAUDE.md" && ok "drift-norms-global: NUNCA reescribe el archivo — la sección personal sigue intacta" || bad "drift-norms-global: ¡tocó ~/.claude/CLAUDE.md!"
+# (5) fail-open: sin fuente (brain/norms/global-claude-md.md ausente) → silencio
+rm -f "$NMGBR/brain/norms/global-claude-md.md"
+is_silent "$(nmg)" && ok "drift-norms-global: sin fuente → fail-open (silencio)" || bad "drift-norms-global: habló sin fuente"
+rm -rf "$NMGFIX"
 
 # ── (b5c-V1) FIX V1 (auditoría 2026-08-06): el auto-commit del cerebro por-repo BYPASSEABA secret-scan
 # (ocurre DENTRO del subproceso del hook, NO vía una tool Bash → el guard PreToolUse/Bash no lo veía). Ahora
@@ -6132,6 +6203,9 @@ echo "== (e2-skills) drift-check: el SKILLS-MANIFEST es COMPLETO — toda brain/
 # sincronizar-cerebro.sh) como el install-brain global (deriva del mismo MANIFEST) → el repo/colega nunca la
 # recibe y nada lo detecta. Bidireccional: también caza una entrada del MANIFEST que apunte a una skill
 # inexistente (huérfana). Formato del SKILLS-MANIFEST: "<nombre> <tier>" (2 columnas; '#'/blancos se ignoran).
+# EXCEPCIÓN a propósito (igual que el hooks/MANIFEST): tier `retirado` es la LÁPIDA — su carpeta YA se
+# borró de brain/skills/ a propósito, así que (1) y (2) la EXCLUYEN con $2!="retirado" (si no, una lápida
+# real se leería como "huérfana"/"falta agregarla", ruido que además invitaría a re-crear la carpeta).
 MFS="$SCRIPT_DIR/skills/MANIFEST"
 if [ ! -f "$MFS" ]; then
   bad "drift-skills: falta el SKILLS-MANIFEST ($MFS)"
@@ -6141,17 +6215,25 @@ else
   for d in "$SCRIPT_DIR"/skills/*/; do
     [ -f "${d}SKILL.md" ] || continue
     b="$(basename "$d")"
-    awk '$1!~/^#/ && NF>=2{print $1}' "$MFS" | grep -qxF "$b" \
+    awk '$1!~/^#/ && NF>=2 && $2!="retirado"{print $1}' "$MFS" | grep -qxF "$b" \
       || { bad "drift-skills: la skill '$b' (brain/skills/$b/SKILL.md) NO está en el SKILLS-MANIFEST → el sync/install la OMITE en silencio"; miss_sk=1; }
   done
   [ "$miss_sk" = 0 ] && ok "drift-skills: toda brain/skills/*/SKILL.md está declarada en el SKILLS-MANIFEST"
-  # (2) toda entrada del SKILLS-MANIFEST tiene su carpeta con SKILL.md (ninguna entrada apunta a la nada)
+  # (2) toda entrada VIVA del SKILLS-MANIFEST tiene su carpeta con SKILL.md (ninguna entrada apunta a la nada)
   miss_skfile=0
-  for b in $(awk '$1!~/^#/ && NF>=2{print $1}' "$MFS"); do
+  for b in $(awk '$1!~/^#/ && NF>=2 && $2!="retirado"{print $1}' "$MFS"); do
     [ -f "$SCRIPT_DIR/skills/$b/SKILL.md" ] \
       || { bad "drift-skills: el SKILLS-MANIFEST lista '$b' pero falta brain/skills/$b/SKILL.md (entrada huérfana)"; miss_skfile=1; }
   done
-  [ "$miss_skfile" = 0 ] && ok "drift-skills: toda entrada del SKILLS-MANIFEST tiene su carpeta con SKILL.md"
+  [ "$miss_skfile" = 0 ] && ok "drift-skills: toda entrada VIVA del SKILLS-MANIFEST tiene su carpeta con SKILL.md"
+  # (3) gemelo de la LÁPIDA de hooks: una entrada tier=retirado NUNCA debe seguir teniendo carpeta real
+  # (si la tiene, o no se borró la carpeta, o alguien re-declaró viva una skill que el brain ya mató).
+  ret_bad=0
+  for b in $(awk '$1!~/^#/ && NF>=2 && $2=="retirado"{print $1}' "$MFS"); do
+    [ -d "$SCRIPT_DIR/skills/$b" ] \
+      && { bad "drift-skills: '$b' es tier retirado (lápida) pero brain/skills/$b/ TODAVÍA existe — bórrala o quita la lápida"; ret_bad=1; }
+  done
+  [ "$ret_bad" = 0 ] && ok "drift-skills: ninguna skill retirada (lápida) sigue teniendo carpeta real en brain/skills/"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -6431,6 +6513,42 @@ printf '%s' "$e8out2" | grep -q "poda:.*rama-vieja" \
   && ok "e7b: tras la 2ª corrida el hook propio del usuario SIGUE intacto" \
   || bad "e7b: el hook propio del usuario se perdió entre corridas"
 rm -rf "$E8H"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (e7c) install-brain: PODA DE SKILLS RETIRADAS (lápidas del SKILLS-MANIFEST) — MISMA mecánica que"
+echo "        los hooks (e7b), sin cableado (folder markdown); nunca toca una skill PROPIA del usuario =="
+# Hallazgo ALTO-1 de la auditoría de suficiencia operativa (2026-09-18): el retiro de hooks tenía
+# RETIRED+lápida+auto-poda; las skills NO — confirmado EN VIVO en la máquina de unjordi con 5 skills
+# fantasma (consolidar-cerebro, unificar-cerebro, claude-proyecto-autocontenido, cosechar-sesion,
+# revisar-entregables-agentes) todavía instaladas en ~/.claude/skills pese a estar retiradas en el
+# repo fuente. Simula esa misma máquina VIEJA: la carpeta sigue instalada de antes del retiro.
+E9H="$(mktemp -d "${TMPDIR:-/tmp}/brain-e9.XXXXXX")"; mkdir -p "$E9H/.claude/skills/consolidar-cerebro" "$E9H/.claude/skills/mi-skill-usuario-e9"
+printf 'v-vieja\n' > "$E9H/.claude/skills/consolidar-cerebro/SKILL.md"          # LÁPIDA del SKILLS-MANIFEST
+printf 'propia del usuario, ajena al brain\n' > "$E9H/.claude/skills/mi-skill-usuario-e9/SKILL.md"
+e9out1="$(HOME="$E9H" bash "$INSTALLER" 2>&1)"
+[ ! -d "$E9H/.claude/skills/consolidar-cerebro" ] \
+  && ok "e7c: 1ª corrida — borró ~/.claude/skills/consolidar-cerebro (tier retirado, skill fantasma real)" \
+  || bad "e7c: consolidar-cerebro (retirado) sobrevivió a install-brain"
+printf '%s' "$e9out1" | grep -qE "poda:.*skill 'consolidar-cerebro'.*retirado.*ABSORBIDA por canonizar-cerebro" \
+  && ok "e7c: install-brain LO DICE — reporta el nombre + el motivo del SKILLS-MANIFEST (poda no silenciosa)" \
+  || bad "e7c: install-brain no reportó la poda de consolidar-cerebro con nombre+motivo; got: $(printf '%s' "$e9out1" | grep -i 'consolidar-cerebro')"
+[ -f "$E9H/.claude/skills/mi-skill-usuario-e9/SKILL.md" ] \
+  && ok "e7c: la skill PROPIA del usuario (ajena al brain) NO se tocó" \
+  || bad "e7c: ¡install-brain borró una skill ajena del usuario!"
+[ -d "$E9H/.claude/skills/canonizar-cerebro" ] \
+  && ok "e7c: una skill VIVA (global, p. ej. canonizar-cerebro) SÍ se instaló normalmente junto con la poda" \
+  || bad "e7c: install-brain no instaló las skills vivas junto con la poda de retiradas"
+# Idempotencia: 2ª corrida sin nada que podar → sin el mensaje de poda, sin error, skill propia intacta.
+e9out2="$(HOME="$E9H" bash "$INSTALLER" 2>&1)"; e9rc2=$?
+[ "$e9rc2" = 0 ] && ok "e7c: 2ª corrida (idempotente) sale con éxito (exit 0)" || bad "e7c: 2ª corrida falló (exit $e9rc2)"
+printf '%s' "$e9out2" | grep -q "poda:.*skill 'consolidar-cerebro'" \
+  && bad "e7c: la 2ª corrida REPORTÓ podar consolidar-cerebro de nuevo (no era idempotente)" \
+  || ok "e7c: 2ª corrida NO reporta re-podar consolidar-cerebro (ya no hay nada que hacer; idempotente y silenciosa)"
+[ -f "$E9H/.claude/skills/mi-skill-usuario-e9/SKILL.md" ] \
+  && ok "e7c: tras la 2ª corrida la skill propia del usuario SIGUE intacta" \
+  || bad "e7c: la skill propia del usuario se perdió entre corridas"
+rm -rf "$E9H"
 
 echo "== (e4) Windows: bootstrap.ps1 exporta CLAUDE_BRAIN_DIR (los hooks bash hallan la fuente) =="
 # En Windows el clon-fuente vive en %LOCALAPPDATA%\cortex-repo, NO en ~/.cortex (default de
@@ -6903,6 +7021,41 @@ if bash "$SCRIPT_DIR/../docs/flowcharts/verificar-arbol-sync.sh" >/dev/null 2>&1
 else
   bad "arbol: DRIFT entre catálogos → corre docs/flowcharts/verificar-arbol-sync.sh para ver cuál"
 fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (f2) verificar-arbol-sync FASE 1B: también CAZA drift de la familia de HOOKS (🔒+🔔) — antes esta"
+echo "        Fase 1 SOLO comparaba Skills y daba ✅ FALSO ante un drift de hooks real (CRÍTICO-1) =="
+# Fixture: repo git fake con su propio README/MEMORY.md/skills/hooks-MANIFEST — construido copiando el
+# ESTADO REAL ya corregido de este mismo repo (para no repetir a mano el árbol completo) y luego
+# DRIFTEANDO deliberadamente UN SOLO nombre de hook en la copia de MEMORY.md, dejando README intacto —
+# exactamente el patrón del bug real (un guard renombrado en un catálogo y no en el otro). Un checker
+# que no puede dar rojo ante esto no sirve (la propia auditoría de suficiencia lo encontró en ✅ falso).
+ASFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-asfix.XXXXXX")"
+mkdir -p "$ASFIX/.claude/memory" "$ASFIX/brain/hooks" "$ASFIX/docs/flowcharts"
+git -C "$ASFIX" init -q >/dev/null 2>&1
+cp -R "$SCRIPT_DIR/skills" "$ASFIX/brain/skills"
+cp "$HOOKS/MANIFEST" "$ASFIX/brain/hooks/MANIFEST"
+cp "$SCRIPT_DIR/../README.md" "$ASFIX/README.md"
+cp "$SCRIPT_DIR/../.claude/memory/MEMORY.md" "$ASFIX/.claude/memory/MEMORY.md"
+cp "$SCRIPT_DIR/../docs/flowcharts/verificar-arbol-sync.sh" "$ASFIX/docs/flowcharts/verificar-arbol-sync.sh"
+# (1) baseline: el estado REAL (ya corregido en esta misma tanda) está en paridad → ✅
+if bash "$ASFIX/docs/flowcharts/verificar-arbol-sync.sh" >/dev/null 2>&1; then
+  ok "f2: baseline (README/MEMORY reales, ya corregidos) → checker en ✅ (control: no hay falso rojo)"
+else
+  bad "f2: baseline en paridad dio ❌ — revisa README.md/MEMORY.md antes de confiar en el resto de esta batería"
+fi
+# (2) DRIFT deliberado: renombra un hook SOLO en la copia de MEMORY.md (línea EXACTA del árbol, no toca
+#     las docenas de menciones del mismo nombre en el Detalle 1:1 más abajo en el archivo).
+sed -i.bak 's/^├─ 🚧 git-branch-guard /├─ 🚧 git-branch-guard-fantasma /' "$ASFIX/.claude/memory/MEMORY.md"
+f2out="$(bash "$ASFIX/docs/flowcharts/verificar-arbol-sync.sh" 2>&1)"; f2rc=$?
+[ "$f2rc" -ne 0 ] \
+  && ok "f2: drift de UN hook en MEMORY.md (README intacto) → checker CAZA el drift (exit≠0)" \
+  || bad "f2: el checker NO detectó un hook renombrado solo en MEMORY.md — el checker viejo (solo Skills) habría dado el MISMO ✅ falso que encontró la auditoría"
+printf '%s' "$f2out" | grep -qi 'hooks' \
+  && ok "f2: el mensaje de drift señala la familia de Hooks (no solo Skills)" \
+  || bad "f2: el checker falló pero sin mencionar Hooks — ¿sigue siendo el chequeo de Skills el que reventó por otra razón?"
+rm -rf "$ASFIX"
 
 # ═════════════════════════════════════════════════════════════════════════════
 ### F4 SWEEPER
