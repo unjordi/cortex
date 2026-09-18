@@ -29,6 +29,19 @@ mac_console_user() {
     stat -f%Su /dev/console 2>/dev/null
 }
 
+# mac_display_count() -- cuantas pantallas fisicas hay conectadas (para el default "veo TODO" de
+# mac-ssh-screenshot.sh, paridad con el VirtualScreen completo de win-ssh-screenshot.ps1).
+# Via `system_profiler SPDisplaysDataType` -- NO depende del permiso TCC de Accesibilidad/Grabacion
+# de pantalla (a diferencia de contar "desktops" por System Events), asi que funciona aunque esos
+# permisos aun no esten concedidos. VERIFICADO 2026-09-18 en esta Mac: 3 pantallas reales (Retina
+# integrada + 2 externas), ~0.3s de latencia -- rapido, no hace falta cachear.
+mac_display_count() {
+    local n
+    n=$(system_profiler SPDisplaysDataType 2>/dev/null | grep -c "Resolution:")
+    { [ -z "$n" ] || [ "$n" -lt 1 ]; } 2>/dev/null && n=1
+    echo "$n"
+}
+
 # mac_dispatch <comando...> -- ejecuta el comando en el contexto grafico del usuario de consola.
 # Si YA estas corriendo como ese usuario Y con bootstrap-context de sesion (caso local confirmado),
 # ejecuta DIRECTO (mas rapido, sin capas). Si no, usa `launchctl asuser`.
