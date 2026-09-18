@@ -52,11 +52,9 @@
 
 git-branch-guard         both    hook
 merge-develop-guard      both    hook
-recordar-dashboard       both    hook
 secret-scan              both    hook
 entorno-maquina-guard    both    hook
 no-bypass-deploy         both    hook
-hud-stale                both    hook
 analizar-comando-git     both    lib
 detectar-secretos        both    lib
 juez-comun               both    lib
@@ -72,8 +70,6 @@ checkpoint-mecanico      global  hook
 barrer-ramas             global  hook
 delegacion-gate          global  hook
 delegacion-registrar     global  hook
-delegacion-reporte       global  hook
-recordar-orquestar       global  hook
 limpiar                  global  script
 limpiar-impl-ramas       global  script
 limpiar-impl-worktrees   global  script
@@ -90,7 +86,6 @@ checkpoint-mecanico-comun global lib
 dod-verificar            repo    hook
 sesion-inicio            repo    hook
 recordar-cosechar        repo    hook
-recordar-unificar-cerebro repo   hook
 
 # ── LÁPIDAS (tier retirado) — ver header ──
 rama-vieja               retirado  hook  2026-09-15  avisar del síntoma no es el trabajo; el flujo lo gobiernan los git-guards
@@ -100,3 +95,8 @@ limpiar-ramas            retirado  script 2026-09-17 CONSOLIDADO en limpiar.sh r
 limpiar-worktrees        retirado  script 2026-09-17 CONSOLIDADO en limpiar.sh worktrees (dispatcher único, misma lógica renombrada limpiar-impl-worktrees.sh)
 limpiar-residuo          retirado  script 2026-09-17 CONSOLIDADO en limpiar.sh residuo (dispatcher único, misma lógica renombrada limpiar-impl-residuo.sh)
 barrer-flotilla-cerebro  retirado  script 2026-09-17 CONSOLIDADO en limpiar.sh flotilla (dispatcher único, misma lógica renombrada limpiar-impl-flotilla.sh)
+delegacion-reporte       retirado  hook  2026-09-18 puramente advisory (medido: ignorado); su regla sube a norma "Orquesta" en global-claude-md.md — reporte sin niñera queda como disciplina, no hook
+recordar-orquestar       retirado  hook  2026-09-18 puramente advisory (medido: ignorado); su regla ya vive en la norma "Orquesta: delega lo paralelizable" de global-claude-md.md
+recordar-unificar-cerebro retirado hook  2026-09-18 puramente advisory (medido: ignorado); su regla sube a norma "Modelo MINI-DEVELOP" en global-claude-md.md (unificar periódicamente vía canonizar-cerebro queda a disciplina)
+recordar-dashboard       retirado  hook  2026-09-18 puramente advisory (medido: ignorado); doc=realidad + dashboard ya son norma dura en global-claude-md.md, sin mecanismo por-push
+hud-stale                retirado  hook  2026-09-18 puramente advisory (medido: ignorado); su regla ya vive en la norma "Tu lista de TODOs es TU HUD" de global-claude-md.md

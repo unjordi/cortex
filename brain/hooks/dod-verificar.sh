@@ -4,11 +4,9 @@
 # concreto. El candado DURO es la marca de (1)/(2); la verificación técnica (build/tests/lint) se
 # RECUERDA (varía por stack) pero no se puede detectar de forma fiable en un repo cualquiera.
 #
-# "LISTO" (terminado/funciona/en producción) solo es válido si se cumple UNA de dos:
-#   (1) FUNCIONALIDAD CONFIRMADA por el usuario (o una prueba funcional acordada como suficiente), o
-#   (2) AUTORIZACIÓN EXPRESA de cierre del usuario para ESA cosa concreta.
-# "verde técnico" (build/tests/lint) es VERIFICADO TÉCNICAMENTE: necesario, NO suficiente.
-# "sigue/avanza" NO es "listo"; "revisamos en la mañana" ⇒ preview, no listo.
+# Definición completa de la norma ("LISTO" = (1) confirmación funcional del usuario o (2) autorización
+# EXPRESA de cierre; verde técnico ≠ listo): brain/norms/global-claude-md.md § "Definición de LISTO".
+# Este hook es SOLO el enforcement (el candado); no re-narres la norma aquí — referénciala.
 #
 # ── JUEZ-Haiku (LLM) — reemplaza el PILÓN de regex (CLAIM_RE/DOWNGRADE/META_LISTO/WEAK_STATUS/MECH_*/
 # CONF_RE/VISUAL_RE + la lógica G1/H4/P2a/MEDIO-1) que clasificaba ESTATUS-vs-CIERRE a mano. Era
