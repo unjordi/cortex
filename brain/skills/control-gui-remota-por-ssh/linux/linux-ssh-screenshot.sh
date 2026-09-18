@@ -71,12 +71,16 @@
 # Igual que `-ActiveWindow`, esto SOLO alcanza ventanas X11/XWayland (limite ya documentado de
 # `list-windows`/`get-window-coordinates` -- xdotool no ve Wayland nativo).
 #
-# cachy (maquina de prueba real, KDE Wayland) tiene `import` (ImageMagick) presente y `grim`
-# AUSENTE -- confirmado 2026-09-18 (`command -v import/convert/grim` por SSH): la via PRIMARIA
-# (`import -window <id>`) es la que de verdad se ejercitaria ahi. El MISMO xdotool que resuelve el
-# titulo aqui ya esta VERIFICADO en vivo (list-windows/get-window-coordinates, ver SKILL.md); lo que
-# queda por confirmar en esta maquina concreta es el resultado PIXEL a PIXEL de `import -window` --
-# si tu pasada lo corrio, actualiza esta nota con fecha+resultado (dimensiones reales vs esperadas).
+# VERIFICADO 2026-09-18 EN VIVO en cachy (KDE Plasma 6.7 Wayland; `import` presente, `grim`
+# AUSENTE -- via PRIMARIA de verdad ejercitada): las ventanas XWayland de Steam en esa maquina
+# resultaron estar TODAS `IsUnMapped` (confirmado con `xwininfo` -- geometria reportada pero nada
+# realmente en pantalla, por eso una primera prueba contra ellas dio PNG de 10x10 basura-entra-
+# basura-sale, no un bug del script). Con una ventana X11 REAL y MAPEADA (`xmessage -title
+# "QA Window Test"`, lanzada para esta prueba): `-Window "QA Window Test"` via `import -window <id>`
+# dio un PNG de EXACTAMENTE 182x52 -- igual al rectangulo que reporto `xdotool getwindowgeometry`
+# para esa ventana (X=868 Y=527 WIDTH=182 HEIGHT=52), no el escritorio completo (1920x1080).
+# Tambien confirmado: `-Window` con un titulo que no existe cae a pantalla completa con el aviso
+# esperado, sin tronar.
 #
 # EXIT: 0 si genero el PNG; 1 si no hay sesion grafica / ninguna herramienta de captura disponible.
 set -u

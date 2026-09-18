@@ -171,7 +171,7 @@ independiente — una lib compartida de detección de entorno no genera drift en
 
 | Script | Qué hace | Verificado en vivo |
 |---|---|---|
-| `linux-ssh-screenshot.sh` | Captura la pantalla (spectacle\|grim\|gnome-screenshot\|import, según compositor). Default = escritorio COMPLETO (todos los monitores, paridad con el VirtualScreen de Windows). `-Display <output>` (por nombre, ej. `HDMI-A-1`) para UN monitor. `-ActiveWindow` (solo spectacle/KDE) para la ventana con foco. `-Window "título"` (agregado 2026-09-18, reusa xdotool de `get-window-coordinates`; vía `import -window <id>` en cachy — `grim` AUSENTE ahí) para SOLO esa ventana. `-B64`. | ✅ default 1920×1080 no-negro; ✅ `-Display HDMI-A-1` recortó igual al único output real; ✅ `-Display FAKE-99` cayó a pantalla completa con aviso; ✅ `-ActiveWindow` capturó SOLO el diálogo con foco (594×314, contenido distinto) — máquina de prueba con 1 solo monitor físico, cosido de 2+ reales sin confirmar visual; `-Window` construido sobre el mismo xdotool ya verificado, resultado pixel-a-pixel de esta pasada: ver nota en la cabecera del script |
+| `linux-ssh-screenshot.sh` | Captura la pantalla (spectacle\|grim\|gnome-screenshot\|import, según compositor). Default = escritorio COMPLETO (todos los monitores, paridad con el VirtualScreen de Windows). `-Display <output>` (por nombre, ej. `HDMI-A-1`) para UN monitor. `-ActiveWindow` (solo spectacle/KDE) para la ventana con foco. `-Window "título"` (agregado 2026-09-18, reusa xdotool de `get-window-coordinates`; vía `import -window <id>` en cachy — `grim` AUSENTE ahí) para SOLO esa ventana. `-B64`. | ✅ default 1920×1080 no-negro; ✅ `-Display HDMI-A-1` recortó igual al único output real; ✅ `-Display FAKE-99` cayó a pantalla completa con aviso; ✅ `-ActiveWindow` capturó SOLO el diálogo con foco (594×314, contenido distinto) — máquina de prueba con 1 solo monitor físico, cosido de 2+ reales sin confirmar visual; ✅ `-Window "QA Window Test"` (ventana X11 real `xmessage`, lanzada para la prueba) dio un PNG de EXACTAMENTE 182×52 == el rectángulo real de `xdotool getwindowgeometry`, no el escritorio completo; ✅ título inexistente cae a pantalla completa con aviso |
 | `linux-ssh-list-windows.sh` | Lista ventanas visibles vía `xdotool search` (solo X11/XWayland — ver límite abajo). `-Filter`, `-Csv`. | ✅ enumeró ventanas reales de la sesión |
 | `linux-ssh-get-window-coordinates.sh` | Rectángulo + CENTRO de una ventana por título (solo nivel-ventana, ver paridad parcial). | Construido, mecanismo = list-windows |
 | `linux-ssh-launch.sh` | Lanza una app en la sesión gráfica (`setsid`+entorno resuelto, sin mecanismo de despacho por-gesto — ver script). | ✅ abrió Kate real en pantalla (PID vivo + screenshot lo confirmó) |
@@ -237,6 +237,14 @@ solo alcanzan ventanas X11/XWayland.
   en grim) y `-ActiveWindow` (solo spectacle). `cachy` solo tiene 1 monitor físico — el recorte
   por-output se verificó mecánicamente (coincidió exacto con la imagen completa) pero el cosido
   visual de 2+ monitores reales queda sin confirmar.
+- **`xdotool` puede reportar geometría de una ventana `IsUnMapped`** (hallado por QA en vivo
+  2026-09-18 al probar `-Window`): las ventanas XWayland de Steam en `cachy` (`steamwebhelper`,
+  `Steam`) tienen `id`/geometría consultables aunque `xwininfo` las marque `Map State: IsUnMapped`
+  (no están realmente en pantalla) — capturarlas da un PNG minúsculo/basura, no porque el script
+  falle sino porque no hay nada que capturar. No es un bug de `linux-ssh-screenshot.sh` ni de
+  `get-window-coordinates` — es el estado real de esa ventana. Si un `-Window`/`get-window-coordinates`
+  da un resultado que no cuadra con lo esperado, confírmalo con `xwininfo -id <id> | grep -i map`
+  antes de asumir que el kit falló.
 
 ### Paridad parcial documentada (no oculta)
 - **`get-window-coordinates`** en Linux da el rectángulo/centro de la VENTANA, no de cada CONTROL
