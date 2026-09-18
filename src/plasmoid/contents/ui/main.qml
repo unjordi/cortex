@@ -1078,9 +1078,6 @@ PlasmoidItem {
                 { emoji: "🧬", name: "auditor-semantico", desc: "¿el código HACE lo que queremos? 2 capas: checks deterministas + criterio LLM",
                   event: "skill · opt-in",
                   detail: "Auditoría SEMÁNTICA de código: verifica que el mecanismo haga lo que queremos que haga (intención de negocio), no solo que compile y pase tests. Capa 1 = checks bash deterministas (scripts/auditor-semantico/, gratis, corre en CI); Capa 2 = re-verifica cada invariante de invariantes-semanticos.yml con criterio LLM + revisión abierta de bugs. Motor genérico (viaja del template); checks/.yml los afina cada repo a su stack/dominio. Cosecha lo hallado: lo mecánico → check nuevo, lo no-determinista → manifiesto." },
-                { emoji: "🧠", name: "consolidar-cerebro", desc: "meta-orquestador: dupla → positivar → desinflar → loop de convergencia → cierre con la FIRMA",
-                  event: "skill · opt-in",
-                  detail: "Meta-orquestador que consolida un cerebro de punta a punta: corre la DUPLA de auditores (suficiencia + coherencia) hasta converger, luego positivar-doc y desinflar-memorias, en un loop de convergencia, y cierra generando/actualizando la FIRMA por-contenido (CLAUDE.md + MEMORY.md). No declara LISTO: exige el QA/OK del usuario." },
                 { emoji: "📐", name: "canonizar-cerebro", desc: "lleva un cerebro instanciado drifteado a la firma-árbol canónica (reprefija, reescribe CLAUDE+MEMORY, verifica 1:1)",
                   event: "skill · opt-in",
                   detail: "Lleva el cerebro de un proyecto INSTANCIADO (cps, fluxcore, plantilladotnet) a la firma-árbol canónica cuando drifteó: memorias sueltas sin prefijo, CLAUDE.md viejo con guards retirados, MEMORY.md plano. Reclasifica cada memoria a su prefijo (dom-/dev-/ux-/qa- + núcleo) con git mv (historia intacta), dedup con RESCATE de datos únicos, reescribe CLAUDE.md a firma-árbol y MEMORY.md a índice-por-prefijo, y verifica el 1:1 con verificar-firma-canonica.sh (el detector del GATE del auditor). Humano-en-el-loop, no auto-mutador ciego." },
@@ -1090,12 +1087,6 @@ PlasmoidItem {
                 { emoji: "🌙", name: "turno-nocturno", desc: "Claude trabaja solo de noche: contrato medible, decide-o-parquea, checkpoint c/2h",
                   event: "skill · opt-in",
                   detail: "Protocolo para dejar a Claude trabajando SOLO de noche: eco del contrato antes de empezar (alcance, criterio de cierre MEDIBLE, lo intocable, dónde queda visible el resultado), preflight de herramientas/quota, regla de decisión (dentro del alcance decide y sigue; fuera, parquea y brinca), autorización durable a disco y checkpoint cada ~2h." },
-                { emoji: "🌾", name: "cosechar-sesion", desc: "cosecha local: extrae aprendizajes de tu sesión al inbox del equipo",
-                  event: "skill · opt-in",
-                  detail: "Al cerrar el día, revisa TU propio transcript y appendea los aprendizajes durables (feedback del usuario, lecciones de proceso, gotchas) al FINAL de .claude/memory/aprendizajes.md con atribución (aportó: handle). Separa el grano de la paja (no cosecha trivialidades). Alimenta el inbox append-only (merge=union). NO cierra slice ni hace git." },
-                { emoji: "🧩", name: "unificar-cerebro", desc: "reconciliación semanal del cerebro del equipo mini→develop",
-                  event: "skill · opt-in",
-                  detail: "Hermana de cerrar-slice: junta aprendizajes+memorias de las minis hacia develop sin perder atribución/voz ni tocar guardrails. Inventaría el delta, baja primero el brain canónico, resuelve por clase, CURA el log (trenza solapes acreditando a ambos + gradúa lo maduro), verifica test-brain+lint, integra por el carril existente (OK explícito, sin auto-merge, con squash) y anota bitácora." },
                 { emoji: "🎓", name: "investigar-dominio", desc: "ponte experto en un dominio (fan-out DOC-FIRST) → memorias durables + skills",
                   event: "skill · opt-in",
                   detail: "Ponerte al día como EXPERTO en un dominio/ecosistema maduro sin investigar al aire: delega un fan-out de agentes a barrer la documentación oficial + issues/foros de cada pieza (método DOC-FIRST), cosecha en DOS capas (memorias de investigación indexadas + skills reutilizables, con la capa profunda separada) y REVISA las decisiones actuales contra el conocimiento nuevo para no arrastrar deuda técnica. Trae plantilla-prompt pegable para encargárselo a otro Claude." },
@@ -1105,9 +1096,6 @@ PlasmoidItem {
                 { emoji: "☀️", name: "positivar-doc", desc: "reescribe una doc answer-first: 'ESTO SÍ' (método correcto) antes del 'ESTO NO'",
                   event: "skill · opt-in",
                   detail: "Reescribe una memoria/skill/doc para que cada nugget abra con ESTO SÍ (el método/valor correcto y accionable) ANTES del ESTO NO (anti-patrones, gotchas, la historia de lo que se rompió). Answer-first. Úsalo al crear/editar docs o cuando una nota arranque con la historia del fallo y enrede al lector. Reordena/reencuadra SIN perder información. Transversal; una doc inline o bulk delegado a un agente con el mismo contrato." },
-                { emoji: "🕵️", name: "revisar-entregables-agentes", desc: "verifica lo que un agente ENTREGA contra la realidad — no relates su reporte como verdad",
-                  event: "skill · opt-in",
-                  detail: "Verificar lo que un agente/subagente ENTREGA contra la realidad — nunca relatar su reporte como verdad sin comprobarlo. Úsalo cada vez que un agente reporta, sobre todo antes de decirle al usuario 'ya quedó' o de construir encima de su trabajo." },
                 { emoji: "🔍", name: "zoom-screenshot", desc: "recorta y amplía regiones de una captura (ffmpeg) para leer texto fino ilegible",
                   event: "skill · opt-in",
                   detail: "Leer/transcribir capturas cuyo texto fino es ilegible al verlas enteras: recorta y amplía regiones con ffmpeg antes de leerlas. Úsalo cuando el usuario deja un screenshot (menús, ajustes, UIs densas) y hay que leer texto pequeño con precisión, o transcribir varias capturas." },
@@ -1120,9 +1108,6 @@ PlasmoidItem {
                 { emoji: "🕹️", name: "control-gui-remota-por-ssh", desc: "ver/operar una GUI remota por SSH sin VNC/RDP — screenshot/click/teclado DPI-aware; Windows·Linux·Mac completos (2026-09-18)",
                   event: "skill · opt-in",
                   detail: "Ver y operar el escritorio de una máquina remota por SSH puro (sin VNC/RDP): screenshot, clicks, teclado, inspección de ventanas/controles, portapapeles, lanzar/cerrar apps y procesos. Resuelve los dos problemas duros: el aislamiento de logon-session (se despacha cada gesto a la sesión interactiva con una tarea programada) y el DPI-awareness (sin fijarlo, el screenshot sale truncado y los clicks se desvían). Windows: 15 scripts completos y verificados en hardware real. Linux: 13 scripts completos (verificados en cachy KDE/Wayland 2026-09-18); macOS: 13 scripts completos (verificados local 2026-09-18); multi-monitor + captura por-ventana en los tres." },
-                { emoji: "🧳", name: "claude-proyecto-autocontenido", desc: "el cerebro de Claude VIVE dentro del proyecto (.claude/ + symlink de slug) → viaja con él",
-                  event: "skill · opt-in",
-                  detail: "Mantener TODO el cerebro de Claude Code de un proyecto (memorias, skills, transcripts, settings) dentro de <proyecto>/.claude/, con un symlink desde ~/.claude/projects/<slug>/ para que Claude lo siga encontrando. Así la memoria/skills viajan con el proyecto (Drive, git, otra máquina) y ninguna sesión arranca amnésica desde otro cwd. Cubre la regla del slug, el bootstrap de un comando (clona-y-listo), el triage de privacidad (qué va al repo vs *.local), la disciplina anti-duplicados y la verificación." },
                 { emoji: "🚚", name: "reubicar-master", desc: "mover un master —cerebro+sesión— a otra casa/subfolder-repo git, sin lobotomía ni tail",
                   event: "skill · opt-in",
                   detail: "Muda una sesión master COMPLETA de Claude Code a otro repo (caso canónico: los brain-master a cortex) sin dejar nada a medias: transcript re-anclado + cwd reescrito, cerebro del master migrado por su canal correcto, slug global y TODAS las referencias (masters.json target por-id, alias, symlink memory) corregidas de forma ATÓMICA, residuo quirúrgico barrido y doc=realidad. Úsala cuando un --resume cae en un folder muerto, un master quedó a medias (residuo + resume roto), o quieres consolidar los dos brain-master (Mac + Cachy) en cortex sin lobotomizarlos, sin fuga a un repo público ni duplicado divergente. Hermana de claude-proyecto-autocontenido (esa define DÓNDE vive el cerebro; ésta lo MUEVE de casa)." }
@@ -1145,6 +1130,9 @@ PlasmoidItem {
     // DEBE coincidir con brain/hooks/MANIFEST; lo verifica el drift-check del widget (test-brain.sh).
     readonly property var brainGlobalHooks: ["git-branch-guard","merge-develop-guard","secret-scan","proteger-arbol","proteger-fuente-cerebro","limite-gasto","delegacion-gate","delegacion-registrar","rehidratar-hilo","aviso-contexto","aviso-drift-cerebro","exportar-sesion-master","checkpoint-mecanico","barrer-ramas","entorno-maquina-guard","no-bypass-deploy"]
     readonly property var brainRepoHooks:   ["sesion-inicio","dod-verificar","recordar-cosechar"]
+    // Los 4 rótulos de NORMA (pseudo-piezas, gobernados por hasNorms). NO viven en el MANIFEST ni se
+    // retiran como skills/hooks → enumerarlos es legítimo (no es la lista drift-prone).
+    readonly property var brainNormNames:   ["Definition of Done","Doc <= realidad","Flujo de git","Costo de delegación"]
 
     // ---------- Pestaña BROKER (idx 6) ----------
     // El broker de terminal es un servicio de systemd --user que hasta hoy solo se veía y se tocaba
@@ -1414,12 +1402,24 @@ PlasmoidItem {
             return p && w ? "installed" : (p ? "presentNotWired" : "absent")
         }
         if (inArr(root.brainRepoHooks, name)) return "repoScoped"
-        if (["cerrar-slice","checkpoint","to-do","diagramar","auditar-proceso-algoritmo","auditar-coherencia-cerebro","auditar-suficiencia-operativa","auditor-semantico","consolidar-cerebro","canonizar-cerebro","desinflar-memorias","orquestar-fanout","turno-nocturno","cosechar-sesion","unificar-cerebro","investigar-dominio","construir-missing-manual","positivar-doc","revisar-entregables-agentes","zoom-screenshot","claude-proyecto-autocontenido","reubicar-master","ingenieria-inversa-gui-db-navegador","markdown-a-pdf","control-gui-remota-por-ssh"].indexOf(name) !== -1)
-            return inArr(st.skills, name) ? "installed" : "absent"
-        if (name === "Definition of Done" || name === "Doc <= realidad"
-            || name === "Flujo de git" || name === "Costo de delegación")
+        if (root.brainNormNames.indexOf(name) !== -1)
             return st.hasNorms ? "installed" : "absent"
-        return "absent"
+        // Cualquier OTRO nombre es una SKILL: su estado SALE de la fuente viva (st.skills = los VIVOS
+        // instalados en ~/.claude/skills). NO hay lista de nombres tecleada: un RETIRADO no está en
+        // st.skills → jamás "installed" (y el roster lo filtra por lo mismo). Antídoto al drift que
+        // enumeraba retirados aquí y los sacaba rojos, subiendo el conteo "incompleto (N)".
+        return inArr(st.skills, name) ? "installed" : "absent"
+    }
+    // ¿el ítem es VIVO según la fuente viva? Hook conocido (== MANIFEST, lo verifica test-brain e3),
+    // norma por rótulo fijo, o skill INSTALADA (st.skills). Un RETIRADO no cumple ninguna → NO vivo →
+    // ESTRUCTURALMENTE ni se muestra ni cuenta. Antes de leer ~/.claude (st null) → true (se muestra el
+    // catálogo curado tal cual y se re-filtra al escanear).
+    function isBrainLive(name) {
+        var st = root.brainState
+        if (!st) return true
+        if (inArr(root.brainGlobalHooks, name) || inArr(root.brainRepoHooks, name)) return true
+        if (root.brainNormNames.indexOf(name) !== -1) return true
+        return inArr(st.skills, name)
     }
     // Símbolo/color de cara al usuario COLAPSADOS a binario (los 4 estados se conservan por dentro
     // para el matiz fino del detalle al tocar, vía brainStatusLabel). Espeja BrainStatus.symbol/.color
@@ -1455,14 +1455,17 @@ PlasmoidItem {
     readonly property int brainTotal: {
         if (!brainState) return 0
         var n = 0
-        for (var i = 0; i < brainAllNames.length; i++)
+        for (var i = 0; i < brainAllNames.length; i++) {
+            if (!isBrainLive(brainAllNames[i])) continue   // retirados: fuera de la fuente viva → ni cuentan
             if (brainStatus(brainAllNames[i]) !== "repoScoped") n++
+        }
         return n
     }
     readonly property int brainActive: {
         if (!brainState) return 0
         var n = 0
         for (var i = 0; i < brainAllNames.length; i++) {
+            if (!isBrainLive(brainAllNames[i])) continue
             var s = brainStatus(brainAllNames[i])
             if (s !== "repoScoped" && s === "installed") n++
         }
@@ -3161,6 +3164,15 @@ PlasmoidItem {
         property color accent: Kirigami.Theme.textColor
         property string subtitle: ""
         property var items: []
+        // La LISTA de hojas a mostrar SALE de la fuente viva (retirados filtrados ESTRUCTURALMENTE); la
+        // metadata (emoji/desc/detalle) sigue siendo el catálogo curado (items). Re-evalúa cuando
+        // brainState cambia (isBrainLive lo lee). Un tier que quede vacío no pinta hojas.
+        readonly property var liveItems: {
+            var out = []
+            for (var i = 0; i < items.length; i++)
+                if (root.isBrainLive(items[i].name)) out.push(items[i])
+            return out
+        }
         spacing: Kirigami.Units.smallSpacing
         Rectangle {
             Layout.preferredWidth: 3; Layout.fillHeight: true
@@ -3181,7 +3193,7 @@ PlasmoidItem {
                 font.pointSize: Kirigami.Theme.smallFont.pointSize
             }
             Repeater {
-                model: tier.items
+                model: tier.liveItems
                 delegate: ColumnLayout {
                     id: leaf
                     Layout.fillWidth: true
@@ -3204,7 +3216,7 @@ PlasmoidItem {
                             spacing: Kirigami.Units.smallSpacing
                             PC3.Label {
                                 Layout.alignment: Qt.AlignTop
-                                text: index === tier.items.length - 1 ? "└─" : "├─"
+                                text: index === tier.liveItems.length - 1 ? "└─" : "├─"
                                 font.family: "monospace"; color: tier.accent; opacity: 0.55
                             }
                             PC3.Label {

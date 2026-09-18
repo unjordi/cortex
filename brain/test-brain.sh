@@ -187,6 +187,11 @@ rm -rf "$CDIR"/.delegacion-ask.*.lock 2>/dev/null
 run_gate "$H6P" >/dev/null 2>&1        # crea el lock del lote
 run_registrar "$H6P"                    # aprobar → registra consentimiento + libera el lock
 ls "$CDIR"/.delegacion-ask.*.lock >/dev/null 2>&1 && bad "H6: el registrar dejó el lock del lote (fantasma)" || ok "H6 · registrar libera el lock de coalescencia al aprobar (sin fantasma)"
+# el registrar emite el DIENTE de revisión crítica al recibir el agente (mecanismo de "agente PROPONE, usuario DECIDE")
+dnt="$(run_registrar "$H6P" 2>/dev/null)"
+printf '%s' "$dnt" | jq -e '.systemMessage | test("PROPONE")' >/dev/null 2>&1 \
+  && ok "H6b · registrar emite el DIENTE de revisión crítica (output del agente PROPONE, no veredicto)" \
+  || bad "H6b: el registrar no emitió el diente de revisión crítica; got: $dnt"
 rm -f "$CONS"; rm -rf "$CDIR"/.delegacion-ask.*.lock 2>/dev/null
 write_state 19
 
@@ -6414,49 +6419,83 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-echo "== (e3b) drift-check STATUS: cada skill está en la CLASIFICACIÓN DE ESTADO (StatusOf) de cada widget, no solo con tile (antídoto al punto de estado que sale MAL en silencio) =="
-# El drift-widget (e3) ya exige que cada skill tenga TILE, pero su cover() matchea el nombre en CUALQUIER
-# parte del archivo (basta con que exista el tile) → NO detecta que la skill falte en la lógica de ESTADO.
-# StatusOf() (C#) / status(_:_:) (Swift) / brainStatus() (QML) clasifican cada pieza: si es hook conocido
-# → global/repo; si no, un SWITCH lista las skills; lo que cae al `default`/`_` es "absent" (punto ROJO,
-# MAL) EN SILENCIO. Bug real: una skill con tile pero fuera del switch pinta su estado mal sin avisar.
-# Invariante: cada skill dir de brain/skills está clasificada — o como hook conocido (p. ej. rehidratar-hilo
-# es `both` en el MANIFEST → cae en known-global), o dentro del switch de skills — en los 3 widgets.
-# ACOTAMIENTO (PRECISO, no "en cualquier parte" como cover()): la REGIÓN de clasificación de cada widget =
-# unión de (1) el set known-global · (2) el set known-repo · (3) el bloque del switch de skills, extraídos
-# por anclas ROBUSTAS del propio código (no por nº de línea):
-#   · C#   : `KnownGlobalHooks = new()`…`};` · `KnownRepoHooks = new()`…`};` · `return name switch`…`};`  (todo en BrainInspector.cs)
-#   · Swift: `knownGlobalHooks: Set<String> = [`…`]` · `knownRepoHooks: Set<String> = [`…`]`  (BrainInspector.swift) · `switch name {`…`default:`  (PopoverView.swift)
-#   · QML  : líneas `brainGlobalHooks:` / `brainRepoHooks:` · `function brainStatus`…`^    }`  (main.qml)
-# La membresía se prueba con el token ENTRECOMILLADO exacto ("$n") sobre esa región → no matchea el tile ni
-# subcadenas. FALLA si un skill tiene tile pero no está en StatusOf (el bug de hoy); PASA cuando todos están.
+echo "== (e3b) drift-check STATUS: el clasificador de estado de cada widget resuelve las SKILLS por la FUENTE VIVA (fallthrough a st.skills, SIN lista enumerada) — un retirado no puede colarse ni un vivo salir mal =="
+# ANTES este check exigía que cada skill estuviera DENTRO de un switch enumerado de StatusOf (o su punto de
+# estado salía rojo en silencio). El fix de RAÍZ (2026-09-18) ELIMINÓ ese switch: cualquier nombre que no
+# sea hook conocido ni norma se resuelve por su PRESENCIA en los skills instalados (st.skills = los VIVOS
+# del MANIFEST tras la poda de install-brain). Con eso NINGUNA skill puede quedar mal clasificada por
+# construcción, y un skill RETIRADO no está en st.skills → jamás "installed". El invariante NUEVO
+# (anti-regresión) es doble, sobre la REGIÓN del clasificador (anclas robustas del propio código):
+#   (1) el clasificador termina en el FALLTHROUGH a la fuente viva (st.skills / Skills.Contains), y
+#   (2) NO enumera nombres de skill (si alguien re-teclea una lista, re-nace el drift que este fix mató).
+#   · Swift: `private func status(_ name: String` … primer `^    }`  (PopoverView.swift)
+#   · C#   : `public BrainStatus StatusOf(` … primer `^    }`  (BrainInspector.cs)
+#   · QML  : `function brainStatus(name)` … primer `^    }`  (main.qml)
 ROOT="$SCRIPT_DIR/.."
 sk_names=$(for d in "$SCRIPT_DIR"/skills/*/; do [ -f "${d}SKILL.md" ] && basename "$d"; done | sort -u)
-status_cover() {  # label  region
-  smiss=0
+status_root() {  # label  region  fallthrough_regex
+  printf '%s' "$2" | grep -qE "$3" \
+    && ok "drift-status[$1]: el clasificador resuelve las skills por la FUENTE VIVA (fallthrough a los skills instalados)" \
+    || bad "drift-status[$1]: NO encuentro el fallthrough a la fuente viva (¿se rompió la derivación de skills?)"
+  senum=0
   for n in $sk_names; do
-    printf '%s' "$2" | grep -qF "\"$n\"" || { bad "drift-status[$1]: skill '$n' SIN clasificar en StatusOf (caería en default→absent: su punto de estado saldría MAL en silencio)"; smiss=1; }
+    printf '%s' "$2" | grep -qF "\"$n\"" && { bad "drift-status[$1]: la skill '$n' está ENUMERADA en el clasificador (re-nace la lista drift-prone que el fix eliminó)"; senum=1; }
   done
-  [ "$smiss" = 0 ] && ok "drift-status[$1]: toda skill de brain/skills está clasificada en StatusOf (hook conocido o switch de skills)"
+  [ "$senum" = 0 ] && ok "drift-status[$1]: el clasificador NO enumera nombres de skill (deriva de la fuente viva, sin lista tecleada)"
 }
-# (Windows / C#) known-sets y switch, todo en BrainInspector.cs
+SW="$ROOT/macos/Sources/Cortex/PopoverView.swift"
+if [ -f "$SW" ]; then
+  status_root mac "$(awk '/private func status\(_ name: String/,/^    }/' "$SW")" 'st\.skills\.contains\(name\)'
+else bad "drift-status[mac]: no encuentro PopoverView.swift"; fi
 CS="$ROOT/windows/src/Cortex/BrainInspector.cs"
 if [ -f "$CS" ]; then
-  win_status_region="$( { sed -n '/KnownGlobalHooks = new()/,/};/p' "$CS"; sed -n '/KnownRepoHooks = new()/,/};/p' "$CS"; awk '/return name switch/,/};/' "$CS"; } )"
-  status_cover win "$win_status_region"
+  status_root win "$(awk '/public BrainStatus StatusOf/,/^    }/' "$CS")" 'Skills\.Contains\(name\)'
 else bad "drift-status[win]: no encuentro BrainInspector.cs"; fi
-# (macOS / Swift) known-sets en BrainInspector.swift · switch de estado en PopoverView.swift
-SWK="$ROOT/macos/Sources/Cortex/BrainInspector.swift"; SW="$ROOT/macos/Sources/Cortex/PopoverView.swift"
-if [ -f "$SWK" ] && [ -f "$SW" ]; then
-  mac_status_region="$( { sed -n '/knownGlobalHooks: Set<String> = \[/,/\]/p' "$SWK"; sed -n '/knownRepoHooks: Set<String> = \[/,/\]/p' "$SWK"; awk '/switch name \{/,/default:/' "$SW"; } )"
-  status_cover mac "$mac_status_region"
-else bad "drift-status[mac]: no encuentro BrainInspector.swift / PopoverView.swift"; fi
-# (plasmoid / QML) known-sets y brainStatus() en el mismo main.qml
 QML="$ROOT/src/plasmoid/contents/ui/main.qml"
 if [ -f "$QML" ]; then
-  qml_status_region="$( { grep 'brainGlobalHooks:' "$QML"; grep 'brainRepoHooks:' "$QML"; sed -n '/function brainStatus/,/^    }/p' "$QML"; } )"
-  status_cover qml "$qml_status_region"
+  status_root qml "$(awk '/function brainStatus\(name\)/,/^    }/' "$QML")" 'inArr\(st\.skills, name\)'
 else bad "drift-status[qml]: no encuentro main.qml"; fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo "== (e3c) PARIDAD ROSTER↔MANIFEST: el roster (tiles + known-sets) de CADA widget contra los VIVOS/RETIRADOS"
+echo "         del MANIFEST — FALLA si un widget puede MOSTRAR/contar un RETIRADO (fantasma) o le falta un VIVO =="
+# Antídoto de RAÍZ al bug user-facing (2026-09-18): el widget hardcodeaba su roster y sacaba skills
+# RETIRADOS como rojo "incompleto (N)". e3/e3b ya exigen que cada VIVO tenga tile y se clasifique por la
+# fuente viva; ESTE cierra la dirección inversa que faltaba: NINGÚN nombre RETIRADO del MANIFEST puede
+# aparecer en el roster del widget (ni como tile ni en el clasificador) → estructuralmente no puede salir
+# como fantasma. Un retirado se detecta por su nombre ENTRECOMILLADO exacto ("$r") → NO matchea una mención
+# en prosa dentro de un detalle (p. ej. "…consolida a los antiguos merge-squash-guard…" no lleva comillas
+# propias alrededor del nombre). PRUEBA: va ROJO contra el código viejo (con los 5 skills fantasma) y VERDE
+# tras el fix (roster == VIVOS del MANIFEST).
+SKMF="$SCRIPT_DIR/skills/MANIFEST"; MFHK="$SCRIPT_DIR/hooks/MANIFEST"
+if [ ! -f "$SKMF" ] || [ ! -f "$MFHK" ]; then
+  bad "parity-roster: falta el SKILLS-MANIFEST o el HOOKS-MANIFEST"
+else
+  # VIVOS que el widget DEBE mostrar: skills {global,both} ∪ hooks kind=hook no-retirados.
+  # RETIRADOS que el widget NUNCA debe mostrar: skills tier=retirado ∪ hooks tier=retirado (superset
+  # inofensivo: incluye scripts/libs retirados, que el widget no lista jamás → no dan falso positivo).
+  sk_vivo=$(awk '$1!~/^#/ && ($2=="global"||$2=="both"){print $1}' "$SKMF" | sort -u)
+  sk_ret=$( awk '$1!~/^#/ && $2=="retirado"{print $1}' "$SKMF" | sort -u)
+  hk_vivo=$(awk '$1!~/^#/ && NF>=3 && $3=="hook" && $2!="retirado"{print $1}' "$MFHK" | sort -u)
+  hk_ret=$( awk '$1!~/^#/ && $2=="retirado"{print $1}' "$MFHK" | sort -u)
+  vivo_all=$(printf '%s\n%s\n' "$sk_vivo" "$hk_vivo" | grep -v '^$' | sort -u)
+  ret_all=$( printf '%s\n%s\n' "$sk_ret"  "$hk_ret"  | grep -v '^$' | sort -u)
+  parity_roster() {  # label  file1  file2
+    pghost=0
+    for r in $ret_all; do
+      grep -qhF "\"$r\"" "$2" "$3" 2>/dev/null && { bad "parity-roster[$1]: el RETIRADO '$r' aparece en el roster del widget (fantasma: saldría rojo/incompleto)"; pghost=1; }
+    done
+    [ "$pghost" = 0 ] && ok "parity-roster[$1]: NINGÚN skill/hook RETIRADO del MANIFEST aparece en el roster (sin fantasmas)"
+    pmiss=0
+    for v in $vivo_all; do
+      grep -qhF "\"$v\"" "$2" "$3" 2>/dev/null || { bad "parity-roster[$1]: el VIVO '$v' del MANIFEST NO aparece en el roster del widget"; pmiss=1; }
+    done
+    [ "$pmiss" = 0 ] && ok "parity-roster[$1]: todo skill/hook VIVO del MANIFEST aparece en el roster"
+  }
+  parity_roster mac "$ROOT/macos/Sources/Cortex/PopoverView.swift" "$ROOT/macos/Sources/Cortex/BrainInspector.swift"
+  parity_roster win "$ROOT/windows/src/Cortex/PopupForm.cs"        "$ROOT/windows/src/Cortex/BrainInspector.cs"
+  parity_roster qml "$ROOT/src/plasmoid/contents/ui/main.qml"      /dev/null
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo "== (e5) sincronizar: los hooks RETIRADOS (lista RETIRED) se podan SOLOS; los huérfanos propios se conservan =="
