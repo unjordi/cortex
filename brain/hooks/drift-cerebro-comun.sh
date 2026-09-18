@@ -113,12 +113,15 @@ Cómo: borra esos .sh de .claude/hooks/ + sus entradas en .claude/settings.json.
   falta=$(printf '%s' "$resumen"  | grep -oE '[0-9]+ cableado faltante' | grep -oE '[0-9]+' || echo 0)
   # SKILLS por-repo: la línea "==> resumen skills:" (SEPARADA de la de hooks; grep '==> resumen:' NO la
   # captura porque tras "resumen" va " skills" antes del ':'). Drift de skills = nuevas + a actualizar +
-  # huérfanas. Si el sync no emite esa línea (stub viejo / brain sin skills-manifest) → 0, no cambia nada.
+  # huérfanas + retiradas (lápida pendiente — mismo gemelo de "ret" en hooks arriba). Si el sync no emite
+  # esa línea (stub viejo / brain sin skills-manifest) → 0, no cambia nada; y si emite la línea VIEJA (sin
+  # el campo "retirada(s)", un stub anterior a esta ola) → sk_ret cae a 0 igual, sin romper el parseo.
   resumen_sk=$(printf '%s\n' "$out" | grep -E '==> resumen skills:' | tail -1)
   sk_nue=$(printf '%s' "$resumen_sk"  | grep -oE '[0-9]+ nuevas'       | grep -oE '[0-9]+' || echo 0)
   sk_act=$(printf '%s' "$resumen_sk"  | grep -oE '[0-9]+ a actualizar' | grep -oE '[0-9]+' || echo 0)
   sk_orph=$(printf '%s' "$resumen_sk" | grep -oE '[0-9]+ huérfana'     | grep -oE '[0-9]+' || echo 0)
-  total=$(( ${nuevos:-0} + ${act:-0} + ${ret:-0} + ${falta:-0} + ${sk_nue:-0} + ${sk_act:-0} + ${sk_orph:-0} ))
+  sk_ret=$(printf '%s' "$resumen_sk"  | grep -oE '[0-9]+ retirada'     | grep -oE '[0-9]+' || echo 0)
+  total=$(( ${nuevos:-0} + ${act:-0} + ${ret:-0} + ${falta:-0} + ${sk_nue:-0} + ${sk_act:-0} + ${sk_orph:-0} + ${sk_ret:-0} ))
 
   if [ "$total" -eq 0 ]; then printf 'STATUS=%s\n' "clean"; return 0; fi
 
