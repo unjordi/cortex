@@ -164,7 +164,7 @@ independiente — una lib compartida de detección de entorno no genera drift en
 
 | Script | Qué hace | Verificado en vivo |
 |---|---|---|
-| `linux-ssh-screenshot.sh` | Captura la pantalla (spectacle\|grim\|gnome-screenshot\|import, según compositor). `-B64` la imprime en base64. | ✅ PNG real 1920×1080, ~230KB, no-negro |
+| `linux-ssh-screenshot.sh` | Captura la pantalla (spectacle\|grim\|gnome-screenshot\|import, según compositor). Default = escritorio COMPLETO (todos los monitores, paridad con el VirtualScreen de Windows). `-Display <output>` (por nombre, ej. `HDMI-A-1`) para UN monitor. `-ActiveWindow` (solo spectacle/KDE) para la ventana con foco. `-B64`. | ✅ default 1920×1080 no-negro; ✅ `-Display HDMI-A-1` recortó igual al único output real; ✅ `-Display FAKE-99` cayó a pantalla completa con aviso; ✅ `-ActiveWindow` capturó SOLO el diálogo con foco (594×314, contenido distinto) — máquina de prueba con 1 solo monitor físico, cosido de 2+ reales sin confirmar visual |
 | `linux-ssh-list-windows.sh` | Lista ventanas visibles vía `xdotool search` (solo X11/XWayland — ver límite abajo). `-Filter`, `-Csv`. | ✅ enumeró ventanas reales de la sesión |
 | `linux-ssh-get-window-coordinates.sh` | Rectángulo + CENTRO de una ventana por título (solo nivel-ventana, ver paridad parcial). | Construido, mecanismo = list-windows |
 | `linux-ssh-launch.sh` | Lanza una app en la sesión gráfica (`setsid`+entorno resuelto, sin mecanismo de despacho por-gesto — ver script). | ✅ abrió Kate real en pantalla (PID vivo + screenshot lo confirmó) |
@@ -223,6 +223,13 @@ solo alcanzan ventanas X11/XWayland.
 - **DPI-awareness: NO hizo falta.** A diferencia de Windows, Wayland/X11 entregan resolución FÍSICA
   tal cual — el screenshot verificado salió a resolución completa sin ningún equivalente a
   `SetProcessDPIAware()`.
+- **Multi-monitor (QA 2026-09-18, ver cabecera de `linux-ssh-screenshot.sh`):** a diferencia de
+  macOS, el modo default de spectacle/grim/gnome-screenshot/import YA es "todo el escritorio
+  cosido en una imagen" — no hizo falta ninguna adaptación para el caso default. Lo que SÍ se
+  agregó fue `-Display <output>` (recorte vía `kscreen-doctor`+`convert` en spectacle/KDE, nativo
+  en grim) y `-ActiveWindow` (solo spectacle). `cachy` solo tiene 1 monitor físico — el recorte
+  por-output se verificó mecánicamente (coincidió exacto con la imagen completa) pero el cosido
+  visual de 2+ monitores reales queda sin confirmar.
 
 ### Paridad parcial documentada (no oculta)
 - **`get-window-coordinates`** en Linux da el rectángulo/centro de la VENTANA, no de cada CONTROL
@@ -241,7 +248,7 @@ sintaxis.
 
 | Script | Qué hace | Verificado |
 |---|---|---|
-| `mac-ssh-screenshot.sh` | Captura la pantalla (`screencapture -x`, `-Window` opcional por título). `-B64`. | ✅ PNG real 2992×1934 (Retina), 784KB, no-negro, vía el script real |
+| `mac-ssh-screenshot.sh` | Captura la pantalla (`screencapture -x`). Default = TODAS las pantallas, 1 archivo c/u (paridad adaptada con el VirtualScreen de Windows — ver gotcha multi-monitor). `-Display N` para UNA pantalla por número. `-Window "título"` para una ventana. `-B64`. | ✅ 3 pantallas REALES (Retina 2992×1934 + 2 externas 3440×1440 c/u), 3 PNG distintos con contenido genuinamente distinto; ✅ `-Display 2` dio la externa correcta |
 | `mac-ssh-clipboard.sh` | `-Get`/`-Set "texto"` vía `pbcopy`/`pbpaste` — SIN permiso TCC de por medio. | ✅ round-trip set→get confirmado |
 | `mac-ssh-list-windows.sh` | Enumera procesos+ventanas (nombre, rect) vía `System Events`. `-Filter`, `-Csv`. | ✅ enumeró procesos reales; ventanas probado contra proceso sin ventana abierta (lista vacía correcta) |
 | `mac-ssh-get-processes-list.sh` | Lista procesos (top-N por RSS). NO necesita sesión de consola. `-Name`, `-Csv`. | ✅ listó procesos reales (fix real: ver gotcha `basename`/comm-con-espacios) |
@@ -249,7 +256,7 @@ sintaxis.
 | `mac-ssh-launch.sh` | Lanza una app (`open -a "<App>"` o `-Path` a `.app`/URL/archivo). `-Args`. | Construido sobre el mismo `mac_dispatch` ya verificado (screenshot/clipboard) |
 | `mac-ssh-send-click.sh` | Click izq/der por coordenada `-X -Y` vía `cliclick` (`-Button right`, `-Double`, `-Window`). | Primitivo `cliclick` confirmado sin error; sin click en vivo sobre UI real (ver nota) |
 | `mac-ssh-send-double-click.sh` | Atajo de send-click `-Double`. | Mismo mecanismo que send-click |
-| `mac-ssh-send-keys.sh` | Teclea `-Keys "texto{ENTER}"` (mini-lenguaje + `#`=Cmd, adaptación Mac) vía `System Events keystroke`/`key code`. | Primitivo `keystroke` confirmado funcionando en esta máquina |
+| `mac-ssh-send-keys.sh` | Teclea `-Keys "texto{ENTER}"` (mini-lenguaje + `#`=Cmd, adaptación Mac) — texto literal vía `cliclick t:` (fix 2026-09-18: `System Events keystroke` DESCARTA espacios, ver gotcha), teclas especiales/combos vía `key code`/`keystroke using`. | ✅ QA en vivo del usuario: funciona, espacios incluidos |
 | `mac-ssh-get-window-coordinates.sh` | Rectángulo + CENTRO de cada CONTROL de una ventana (mejor paridad que Linux: Accessibility API expone UI elements). | Mecanismo estándar de Apple; no probado contra ventana con controles variados en esta pasada |
 | `mac-ssh-move-window.sh` | Mueve/redimensiona la ventana de una app `-X -Y [-W -H]` vía `System Events`. | Construido sobre el mismo primitivo que get-window-coordinates |
 | `mac-ssh-maximize-window.sh` | Maximiza (aproximado a bounds de pantalla)/restaura/minimiza (`-State`) por app. | Construido |
@@ -287,6 +294,18 @@ de seguridad). Queda como la única precondición pendiente de verificar en una 
   invoca NO es esa sesión) queda implementado en `mac_dispatch()` pero **SIN CONFIRMAR en un SSH
   genuino** en esta pasada — ver precondición TCC arriba para el porqué. La primera vez que uses el
   kit contra una sesión SSH real, verifícalo y actualiza esta nota con fecha+resultado.
+- **`System Events keystroke "texto con espacios"` DESCARTA los espacios** (hallado por QA en vivo
+  del usuario 2026-09-18, macOS 26.6.2: `"a b c"` salía `"abc"`) — aislado, pasa igual por
+  `mac_dispatch`/`launchctl asuser` directo, así que es el verbo `keystroke`, no el despacho.
+  `mac-ssh-send-keys.sh` usa `cliclick t:` para texto literal (sí teclea espacios); `keystroke`
+  queda solo para teclas especiales/combos (`key code`, `keystroke ... using {modificador down}`).
+- **Multi-monitor (QA 2026-09-18, ver cabecera de `mac-ssh-screenshot.sh`):** a diferencia de
+  Linux, `screencapture -x archivo.png` SIN flags captura SOLO la pantalla PRINCIPAL — confirmado
+  en esta Mac (3 pantallas reales: Retina integrada + 2 externas) que el default daba exactamente
+  lo mismo que `-D 1`. macOS no tiene forma nativa de coser 2+ monitores en una sola imagen — el
+  default de `mac-ssh-screenshot.sh` ahora captura TODAS las pantallas, una imagen POR pantalla
+  (`-1.png`, `-2.png`...), confirmado con las 3 pantallas reales de esta Mac (resoluciones y
+  contenido distintos en cada archivo, no duplicados).
 
 ### Paridad parcial documentada (no oculta)
 - **`read-text`/`read-uia` NO se portaron** (ni en Linux ni en Mac) — en Mac SÍ sería técnicamente
