@@ -153,6 +153,57 @@ antes de un git destructivo que orfanaría commits sin pushear).
      los DEJA y anota su pendiente en la bitácora para quien lo retome).
    → No monitoreas a los agentes: el reporte y la limpieza son el cierre estándar.
 
+## Verificar antes de creer (el bucle de revisión — no le creas al agente su "listo")
+Regla dura (ver norma global): **no relates el reporte de un agente al usuario como verdad, ni
+construyas encima, sin haber verificado sus afirmaciones concretas contra la realidad tú mismo.** Lo
+verificado se relata como verificado; lo no verificado se etiqueta "según el agente, sin verificar aún".
+Dos costos de creerle a ciegas: (1) el error se propaga (el agente confabula o sobre-afirma "✓" y tú lo
+relatas como cierto — el usuario lo descubre después), y (2) nunca mejoras tus prompts (es justo en
+CÓMO tropieza donde está la señal de qué refinar — revisar SIEMPRE es terapia con datos de más de una
+corrida, no anécdota).
+
+**El bucle, por cada agente que reporta:**
+1. **Extrae las afirmaciones concretas y comprobables** ("escribí X en Y", "N items coinciden", "0
+   errores", "corre").
+2. **Verifica cada una contra la fuente real** — barato, tú mismo, sin pedirle QA al usuario: *"escribí/
+   edité Z"* → léelo (¿existe la sección? ¿se truncó el resto?); *"N coinciden / cuenta = K"* → re-mídelo
+   con un comando barato (find/stat/grep/parse), no aceptes el número; *"cambié estado vivo"* → re-lee el
+   estado y confirma que no rompió lo de al lado + que el backup existe; *"corre / funciona / se ve"* → o
+   lo compruebas por una vía programática (proceso, log, exit code), o lo etiquetas NO verificado (no lo
+   declares LISTO).
+3. **Muestrea lo caro.** Si verificar TODO es carísimo (p. ej. 300 items), verifica una muestra
+   representativa (primeros/últimos/aleatorios) + los invariantes (conteos, totales) y DILO ("verifiqué N
+   de M + los totales") — nunca finjas cobertura total. Barato = hazlo siempre (re-contar con un parse,
+   `stat`/`find -printf %s`, `grep -c`, leer el archivo, `diff` contra un backup); caro = muestrea.
+4. **Clasifica el resultado:** CONFIRMADO (lo comprobé) · CORREGIDO (encontré y arreglé un error) ·
+   REFUTADO (la afirmación era falsa → no se relata como hecho, se re-trabaja).
+5. **Cierra el bucle de prompt.** Anota cómo tropezó (dejó "?" por un caso que el prompt no cubría,
+   sobre-afirmó, malinterpretó el alcance) y qué refinar la próxima vez. Si el mismo tropiezo se repite
+   entre agentes, apúntalo a la memoria del proyecto o al estado.
+
+**El caso REBUILD/REEMPLAZO — el DIFF DE PRESERVACIÓN (lo que un rebuild SILENCIA).** Cuando el
+entregable REEMPLAZA un archivo existente (un agente reescribe un `CLAUDE.md`, un README, una config
+"desde cero"), el modo de falla NO es una afirmación falsa — es la OMISIÓN SILENCIOSA: el rebuild suelta
+contenido real y no lo dice (no hay un "✓" que verificar). El bucle de arriba no lo caza porque el agente
+no AFIRMA lo que dejó fuera. Antídoto obligatorio antes de aplicar el reemplazo:
+1. `diff` viejo → nuevo y enumera TODO lo que el rebuild QUITÓ (secciones, punteros, datos, comandos,
+   advertencias).
+2. Clasifica cada cosa quitada: **basura temporal/obsoleta botada correctamente** (changelog fechado,
+   estado viejo, duplicación) — pero verifica que su contenido vigente ya viva en su casa durable, no lo
+   asumas — **vs. conocimiento REAL** (un gotcha, una corrección, un puntero, una advertencia destructiva,
+   un dato que no se regenera) → NO se pierde: se preserva/reubica, o el rebuild se corrige/rechaza.
+3. Cada `[[wikilink]]`/"ver memoria X"/"§Y" que el rebuild introduce debe EXISTIR (colgados = mentira
+   nueva).
+
+Caso real: un rebuild de agente de un `CLAUDE.md` botó —bien— un changelog fechado, PERO también soltó
+una corrección que vivía SOLO en ese archivo (las memorias tenían el nombre viejo); sin el diff de
+preservación se hubiera perdido la corrección.
+
+**Qué NO hacer:** copiar el reporte del agente al usuario como si fuera tu verificación · declarar
+"LISTO/quedó" con base en el "✓" del agente (verde de agente ≠ verificado) · poner al USUARIO a hacer el
+QA de tu agente cuando podías leer el archivo y comprobarlo tú en medio segundo · construir la siguiente
+fase encima de un entregable sin verificar su base.
+
 ## Hooks/tools que lo sostienen
 - **`delegacion-gate`** (PreToolUse/Task) — consentimiento de costo por ventana de 5h (ver el flujo de gasto).
 - **`delegacion-reporte`** (PostToolUse/Task) — tras cada subagente, recuerda registrar avance + limpiar worktree.

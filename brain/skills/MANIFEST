@@ -49,10 +49,7 @@ auditor-semantico                global
 canonizar-cerebro                global
 cerrar-slice                     both
 checkpoint                       both
-claude-proyecto-autocontenido    global
-consolidar-cerebro               global
 construir-missing-manual         global
-cosechar-sesion                  global
 desinflar-memorias               global
 diagramar                        global
 ingenieria-inversa-gui-db-navegador  global
@@ -62,8 +59,6 @@ orquestar-fanout                 global
 positivar-doc                    global
 rehidratar-hilo                  both
 reubicar-master                  global
-revisar-entregables-agentes      global
 to-do                            both
 turno-nocturno                   global
-unificar-cerebro                 global
 zoom-screenshot                  global

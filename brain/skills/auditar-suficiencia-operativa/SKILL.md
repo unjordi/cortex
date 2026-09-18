@@ -70,7 +70,7 @@ punto de entrada y de ahí lo que haga falta. Para cada tarea: **✅** (lo encue
 > **realidad (código)**. **Para AUDITAR, lee el entry-point operativo REAL, sea cual sea su nombre** — hoy varía
 > (games-master usa `AGENTS.md` como su "LEE ESTO ANTES DE HACER NADA"); auditar el archivo equivocado te hace
 > caminar en falso (pasó en el propio gold standard). La **CONVENCIÓN destino es `CLAUDE.md`(firma) +
-> `MEMORY.md`(detalle)** — `consolidar-cerebro` migra hacia ella; `AGENTS.md` queda reservado para arquitectura
+> `MEMORY.md`(detalle)** — `canonizar-cerebro` (modo consolidar) migra hacia ella; `AGENTS.md` queda reservado para arquitectura
 > real. **Reconocer la realidad al auditar ≠ el destino uniforme al consolidar.**
 
 ### 4. Empaqueta la barrida de higiene en la misma pasada
@@ -136,7 +136,7 @@ Delega con `Task`/subagente `general-purpose`. Adapta el target, conserva la ESE
   ninguna caza lo de la otra** → córrelas JUNTAS, hasta 0 CRÍTICO/ALTO/MEDIO (los BAJOS se triagean). El FMEA
   `auditar-proceso-algoritmo` es un TERCER eje (¿el algoritmo/flujo es correcto?): se SUMA cuando la capacidad
   audita lógica, no solo docs.
-- `revisar-entregables-agentes` (skill **global**, no vive en `brain/skills`) — no creerle a un agente su "listo" (esta skill lo aplica al auditor mismo).
+- `orquestar-fanout` — su bucle de verificación es "no creerle a un agente su 'listo'" (esta skill lo aplica al auditor mismo).
 - `positivar-doc` (skill **global**, no vive en `brain/skills`) — answer-first: un doc suficiente pero enterrado sigue fallando la prueba.
-- `cosechar-sesion` / `checkpoint` — de dónde salen las tareas: lo que pasó hoy.
+- `cerrar-slice` (§5, cosecha) / `checkpoint` — de dónde salen las tareas: lo que pasó hoy.
 - Memoria global `feedback_re-auditar-tras-arreglar` — la norma de la 2ª pasada.

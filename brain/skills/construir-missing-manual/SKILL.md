@@ -47,9 +47,10 @@ estructurado por sub-tema, que se investiga a fondo UNA vez y se **hornea para c
 4. **Hornea también la EXPERIENCIA real, no solo la web.** Los hallazgos ya validados en vivo (un fix que
    probaste, un gotcha que te mordió) son oro — dáselos a los agentes como fuente (memorias/scripts reales)
    para que el manual quede **fundado**, no solo web-scrapeado. Marca lo `[SIN CONFIRMAR]` vs lo verificado.
-5. **Orquesta y CIERRA.** Revisa cada entregable contra la realidad ([[revisar-entregables-agentes]]) — no
-   le creas el "listo" a un agente sin abrir sus archivos. Luego **finaliza el `SKILL.md`** (índice real +
-   cross-refs que resuelven), verifica que no haya leaks/placeholders rotos, y registra en bitácora.
+5. **Orquesta y CIERRA.** Revisa cada entregable contra la realidad (bucle de verificación de
+   [[orquestar-fanout]]) — no le creas el "listo" a un agente sin abrir sus archivos. Luego **finaliza el
+   `SKILL.md`** (índice real + cross-refs que resuelven), verifica que no haya leaks/placeholders rotos, y
+   registra en bitácora.
 
 ## Modo COMPLEMENTAR (cuando el manual YA existe) — extender, no reconstruir
 No siempre se parte de cero: a veces el manual ya existe y hay que **extenderlo** (un sub-tema nuevo, un ISP/
@@ -104,5 +105,5 @@ fan-out entonces **complementa, NO reconstruye**:
 
 ## Hermanos
 [[investigar-dominio]] (modo experto para auditar decisiones — te INVOCA a TI como su paso de "fabricar la referencia") · [[orquestar-fanout]] (la mecánica
-del fan-out) · [[positivar-doc]] (answer-first) · [[revisar-entregables-agentes]] (no creerle al agente) ·
+del fan-out, incluido el bucle de verificación — no creerle al agente) · [[positivar-doc]] (answer-first) ·
 [[desinflar-memorias]] (el opuesto: adelgazar) · [[diagramar]] (si el manual pide diagramas).

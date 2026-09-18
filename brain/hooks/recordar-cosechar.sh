@@ -16,7 +16,7 @@
 # Por qué EXISTE (pedido explícito de unjordi): "SIN MEMORIA DURABLE NO SOMOS NADA". El espejo hace que los
 # PENDIENTES estén siempre reflejados sin esfuerzo; el nudge cubre lo que sí necesita JUICIO humano (la
 # prosa: decisiones con su porqué, contexto, bitácora). "Norma sin mecanismo = buen deseo" → este hook es
-# el mecanismo. Es la mitad "recuérdame" del par con la skill `cosechar-sesion` (la mitad "hazlo").
+# el mecanismo. Es la mitad "recuérdame" del par con `cerrar-slice` §5 (la mitad "hazlo").
 #
 # Clave de diseño (el espejo NO auto-suprime el nudge): como el espejo escribe estado-proyecto.md, un
 # chequeo ingenuo "¿estado-proyecto.md modificado?" daría siempre true y mataría el nudge (2). Por eso el
@@ -184,7 +184,7 @@ estado_tocado_por_humano && backlog_ok=1
 # ── Avisar (gentil, no bloqueante) y marcar el throttle del día ──
 printf '%s' "$hoy" > "$stamp" 2>/dev/null || true
 
-msg_cosecha="🌾 Parece que trabajaste en este repo y no cosechaste aprendizajes hoy. Si aprendiste algo DURABLE (feedback del usuario, una lección de proceso, un gotcha no-obvio), corre \`/cosechar-sesion\` antes de cerrar para appendearlo al inbox del equipo (\`$LOG_REL\`). OJO: el feedback de TRATO personal (cómo tratar a la PERSONA: no me espejees, no me atribuyas tus ideas, no me pidas permiso para avanzar…) NO va a ese inbox ni a un \`feedback-*.md\` per-repo → va al archivo GLOBAL \`como-trabajar-con-<user>.md\` (\`/cosechar-sesion\` te dice cómo). Si no hubo nada durable, ignórame."
+msg_cosecha="🌾 Parece que trabajaste en este repo y no cosechaste aprendizajes hoy. Si aprendiste algo DURABLE (feedback del usuario, una lección de proceso, un gotcha no-obvio), cosecharlo es el §5 de \`cerrar-slice\` (skill) — corre su script \`cosechar-aprendizaje.sh\` antes de cerrar para appendearlo al inbox del equipo (\`$LOG_REL\`). OJO: el feedback de TRATO personal (cómo tratar a la PERSONA: no me espejees, no me atribuyas tus ideas, no me pidas permiso para avanzar…) NO va a ese inbox ni a un \`feedback-*.md\` per-repo → va al archivo GLOBAL \`como-trabajar-con-<user>.md\` (\`cerrar-slice\` §5 te dice cómo). Si no hubo nada durable, ignórame."
 msg_backlog="📋 Trabajaste y no actualizaste tu backlog durable (\`estado-proyecto.md\` / \`bitacora.md\`). El espejo ya refleja tus PENDIENTES solo, pero las DECISIONES/contexto/porqués los pones tú: refléjalos AHORA (el chat no es la fuente de verdad; el backlog sí). Si no cambió nada del estado, ignórame."
 
 ctx=""

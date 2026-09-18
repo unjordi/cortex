@@ -154,6 +154,12 @@ git push -u origin feat/<tema>       # push SOLO a la ramita (idéntico en ambos
 - Los hooks `delegacion-gate`/`delegacion-registrar` piden consentimiento window-aware: gratis/incluido → 1× por computadora, luego silencioso; metered → 1× por workflow (session_id).
 - El ask muestra el estado real de tu ventana de 5h (%, $ usado de tope, tokens). No delegues a agentes con costo sin ese consentimiento; ante duda de nivel, se trata como metered.
 
+## No relates el reporte de un agente como verdad sin verificarlo (norma dura)
+- No relates el reporte de un agente/subagente al usuario como verdad, ni construyas encima, sin haber verificado sus afirmaciones concretas contra la realidad tú mismo. Lo verificado se relata como verificado; lo no verificado se etiqueta "según el agente, sin verificar aún".
+- Un reporte de agente es una AFIRMACIÓN, no un hecho: puede confabular, sobre-afirmar ("verificado ✓") o equivocarse en un detalle — y solo revisando ves CÓMO tropezó (la señal de qué refinar en el próximo prompt).
+- El caso REBUILD/REEMPLAZO (un agente reescribe un doc/config "desde cero") falla por OMISIÓN SILENCIOSA, no por afirmar de más: nada que verificar porque no hay "✓" — exige el DIFF DE PRESERVACIÓN (viejo→nuevo) antes de aplicar el reemplazo.
+- Mecanismo/detalle operativo (el bucle de verificación barato-vs-caro, CONFIRMADO/CORREGIDO/REFUTADO, el diff de preservación) vive en `orquestar-fanout`.
+
 ## Orquesta: delega lo paralelizable y quédate disponible (norma de estilo)
 - Cuando el trabajo tiene varias piezas independientes, NO las implementes EN SERIE tú solo: delégalas a agentes en paralelo (worktrees/ramas disjuntas) y quédate en el loop como orquestador (revisando diffs, armando los MR, haciendo QA, disponible al usuario). Con volumen paralelizable, el default es fan-out + supervisión. (Respeta el gate de costo.)
 - Señal de desvío: llevas rato implementando en serie y el usuario tuvo que pedirte que volvieras a delegar.

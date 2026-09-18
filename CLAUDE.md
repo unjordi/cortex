@@ -24,8 +24,8 @@ Lo que necesitas saber para trabajar aquí:
 │   │     5. Respaldar/exportar las sesiones master ....... → hook exportar-sesion-master + bin/claude-session
 │   │     6. Agregar/editar un hook del cerebro .......... → agregar-hook-cerebro
 │   │     7. Trabajar el widget de cuota (KDE/mac/win) ... → cortex-widget · cambiar-icono · publicar-widget
-│   │     8. Auditar + consolidar un cerebro ............. → consolidar-cerebro + (auditar-suficiencia-operativa
-│   │                                                        + auditar-coherencia-cerebro) + auditar-proceso-algoritmo
+│   │     8. Auditar + consolidar/canonizar/sembrar/reconciliar un cerebro → canonizar-cerebro (4 modos) +
+│   │                                                        (auditar-suficiencia-operativa + auditar-coherencia-cerebro)
 │   │     9. Verificar la paridad del árbol (anti-drift) . → docs/flowcharts/verificar-arbol-sync.sh · brain/test-brain.sh
 │   │    10. El ÁRBOL — LO QUE EL BRAIN INSTALA ......... → MEMORY.md (🔒 hooks · 🔔 automáticos · 📜 normas · 💡 skills)
 │   │    Meta: un cerebro que se AUTO-CURA y viaja IDÉNTICO a cada clon/máquina.

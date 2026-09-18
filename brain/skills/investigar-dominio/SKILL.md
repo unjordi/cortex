@@ -58,8 +58,8 @@ Cuando toques código, **cita `archivo:línea`** — una síntesis sin anclas no
   tiene una **capa profunda** (protocolo a nivel bits, formato de wire, algoritmo interno),
   sepárala como skill aparte **DEBAJO** del skill de alto nivel, y enlázalos entre sí.
 - **Transversal vs de-proyecto:** lo específico del ecosistema → `<proyecto>/.claude/skills/` y
-  `memory/`; lo que aplica a CUALQUIER proyecto → global `~/.claude/skills/` (ver
-  `claude-proyecto-autocontenido`).
+  `memory/`; lo que aplica a CUALQUIER proyecto → global `~/.claude/skills/` (ver `canonizar-cerebro`,
+  modo sembrar).
 
 ### 3. Revisar decisiones contra lo aprendido (el para-qué)
 Con el conocimiento fresco, pasa lista a las decisiones vigentes: **cuáles siguen teniendo

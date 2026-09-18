@@ -4786,8 +4786,8 @@ printf 'class X {}\n' > "$RCREPO/Foo.cs"
 rcout="$(rc)"
 printf '%s' "$rcout" | jq -e '.hookSpecificOutput.hookEventName == "Stop"' >/dev/null 2>&1 \
   && ok "recordar-cosechar: trabajo sin memoria durable → emite Stop válido" || bad "recordar-cosechar: JSON inválido; got: $rcout"
-printf '%s' "$rcout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'cosechar-sesion' \
-  && ok "recordar-cosechar: avisa la cosecha (nombra la skill)" || bad "recordar-cosechar: no nombró /cosechar-sesion"
+printf '%s' "$rcout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'cerrar-slice' \
+  && ok "recordar-cosechar: avisa la cosecha (nombra cerrar-slice §5)" || bad "recordar-cosechar: no nombró cerrar-slice"
 printf '%s' "$rcout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'backlog durable' \
   && ok "recordar-cosechar: avisa el backlog durable (2ª señal)" || bad "recordar-cosechar: no avisó el backlog"
 rcslug=$(printf '%s' "$RCREPO" | cksum | awk '{print $1}')
@@ -4865,8 +4865,8 @@ git -C "$RUREPO" add -A >/dev/null 2>&1; git -C "$RUREPO" commit -qm cosecha >/d
 ruout="$(printf '%s' '{"source":"startup"}' | HOME="$RUHOME" CLAUDE_PROJECT_DIR="$RUREPO" RECORDAR_UNIFICAR_ARCHIVOS=1 bash "$HOOKS/recordar-unificar-cerebro.sh")"
 printf '%s' "$ruout" | jq -e '.hookSpecificOutput.hookEventName == "SessionStart"' >/dev/null 2>&1 \
   && ok "recordar-unificar: delta ≥ umbral → emite SessionStart válido" || bad "recordar-unificar: JSON inválido; got: $ruout"
-printf '%s' "$ruout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'unificar-cerebro' \
-  && ok "recordar-unificar: el aviso sugiere /unificar-cerebro" || bad "recordar-unificar: el aviso no nombra la skill"
+printf '%s' "$ruout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'canonizar-cerebro' \
+  && ok "recordar-unificar: el aviso sugiere canonizar-cerebro (modo reconciliar)" || bad "recordar-unificar: el aviso no nombra la skill"
 printf '%s' "$ruout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'aprendizajes' \
   && ok "recordar-unificar: el aviso resalta aprendizajes.md en el delta" || bad "recordar-unificar: no mencionó aprendizajes"
 ruslug=$(printf '%s' "$RUREPO" | cksum | awk '{print $1}')
@@ -6151,16 +6151,15 @@ barrer-flotilla-cerebro|drift-cerebro-comun
 limpiar-ramas|limpiar-worktrees
 limpiar-ramas|ramas-zombie
 limpiar-worktrees|ramas-zombie
-cosechar-sesion|recordar-cosechar
-recordar-unificar-cerebro|unificar-cerebro
-cosechar-sesion|unificar-cerebro
 proteger-fuente-cerebro|verificar-cerebro
 aviso-drift-cerebro|verificar-cerebro
 auditar-coherencia-cerebro|auditar-proceso-algoritmo
 auditar-coherencia-cerebro|auditar-suficiencia-operativa
-auditar-coherencia-cerebro|consolidar-cerebro
-auditar-suficiencia-operativa|consolidar-cerebro
-canonizar-cerebro|consolidar-cerebro
+canonizar-cerebro|desinflar-memorias
+canonizar-cerebro|reubicar-master
+canonizar-cerebro|recordar-unificar-cerebro
+auditar-coherencia-cerebro|canonizar-cerebro
+auditar-suficiencia-operativa|canonizar-cerebro
 desinflar-memorias|positivar-doc
 hud-stale|to-do
 drift-cerebro-comun|exportar-sesion-master
@@ -6177,10 +6176,27 @@ checkpoint-mecanico|checkpoint-mecanico-comun"
 # auditar-coherencia-cerebro|auditar-proceso-algoritmo: FAMILIA declarada, no ciclo — proceso-algoritmo
 # es la METODOLOGÍA y apunta a secciones CONCRETAS de coherencia-cerebro (que es su modo-cerebro
 # empaquetado) donde vive el detalle; el contenido está en los dos lados, así que el lector no da vueltas.
-# canonizar-cerebro|consolidar-cerebro: HANDSHAKE de subordinación, NO ciclo de contenido — la spec de la
-# firma canónica vive UNA sola vez en canonizar (con su detector); consolidar Fase 6 solo la APUNTA como su
-# paso estructural, y canonizar declara que es ese paso. El lector no rebota: la definición está en un lado.
-# Mismo caso que el par con auditar-suficiencia-operativa, ya en la lista.
+# FUSIÓN 2026-09-17 (fase skills): consolidar-cerebro, unificar-cerebro, cosechar-sesion,
+# claude-proyecto-autocontenido y revisar-entregables-agentes se retiraron como skills separados — su
+# contenido se absorbió en canonizar-cerebro (modos consolidar/reconciliar/sembrar) y cerrar-slice §5
+# (cosecha) / orquestar-fanout (bucle de verificación). Nuevos pares FAMILIA, no ciclo:
+# canonizar-cerebro|desinflar-memorias: canonizar (Familia) apunta a desinflar-memorias como higiene de
+# CONTENIDO ortogonal a su ESTRUCTURA; desinflar-memorias (modo reconciliar, antes citaba a
+# unificar-cerebro) apunta de vuelta a canonizar-cerebro por el mismo dato — mismo handshake documentado
+# que ya existía entre los 3 skills fusionados, ahora con el nombre único.
+# canonizar-cerebro|reubicar-master: canonizar (modo sembrar, Familia) declara DÓNDE vive el cerebro;
+# reubicar-master lo MUEVE de casa y cita a canonizar-cerebro como su hermana (antes citaba a
+# claude-proyecto-autocontenido, ya fusionado) — mismo handshake de subordinación que
+# canonizar-cerebro|auditar-suficiencia-operativa (definición vive en un lado, el otro solo apunta).
+# canonizar-cerebro|recordar-unificar-cerebro: el modo reconciliar (antes el skill unificar-cerebro)
+# documenta que el hook `recordar-unificar-cerebro` es su disparador SessionStart, y el hook (tras la
+# fusión) nombra a canonizar-cerebro en su mensaje/comentarios — es hook<->skill documentado, igual que
+# aviso-drift-cerebro|barrer-ramas de arriba, no un ciclo nuevo.
+# auditar-coherencia-cerebro|canonizar-cerebro y auditar-suficiencia-operativa|canonizar-cerebro: MISMO
+# handshake de subordinación que ya vivía entre estos 2 auditores y consolidar-cerebro (ahora modo
+# consolidar de canonizar-cerebro) — la convención CLAUDE.md+MEMORY.md se define UNA vez en
+# canonizar-cerebro; cada auditor solo la CITA como su destino de migración. La definición vive en un
+# lado, el lector no rebota.
 # Los 3 pares de arriba (OLA1): exportar-sesion-master, proteger-fuente-cerebro y verificar-cerebro
 # ahora SOURCEAN drift-cerebro-comun.sh para reusar su resolve_brain_dir() — es lib<->consumidor
 # (igual que delegacion-comun|delegacion-gate arriba), no una dependencia circular real.
@@ -8143,17 +8159,17 @@ rm -rf "$R2FIX"
 # las skills que procesan/cosechan/consolidan memoria (un hook no puede juzgar semánticamente "trato").
 echo ""
 echo "== #83 anti-drift como-trabajar: las skills de cosecha/consolidación rutean el TRATO al archivo GLOBAL =="
-COS="$SCRIPT_DIR/skills/cosechar-sesion/SKILL.md"
-UNI="$SCRIPT_DIR/skills/unificar-cerebro/SKILL.md"
+COS="$SCRIPT_DIR/skills/cerrar-slice/SKILL.md"
+UNI="$SCRIPT_DIR/skills/canonizar-cerebro/SKILL.md"
 DES="$SCRIPT_DIR/skills/desinflar-memorias/SKILL.md"
 RCH="$SCRIPT_DIR/hooks/recordar-cosechar.sh"
 { [ -f "$COS" ] && grep -qF 'como-trabajar-con-<user>.md' "$COS" && grep -qiE 'NO lo appendees|NO va al inbox|NO este inbox' "$COS" \
     && grep -qiE 'procedencia|\[INFER\]' "$COS" && grep -qiE 'REFERÉNCIALAS|no las copies|no la copies' "$COS"; } \
-  && ok "#83 cosechar-sesion: rutea el TRATO al archivo GLOBAL (no al inbox), con procedencia y referencia a normas universales" \
-  || bad "#83 cosechar-sesion: falta la regla de ruteo del TRATO al archivo GLOBAL"
+  && ok "#83 cerrar-slice (§5 cosecha): rutea el TRATO al archivo GLOBAL (no al inbox), con procedencia y referencia a normas universales" \
+  || bad "#83 cerrar-slice: falta la regla de ruteo del TRATO al archivo GLOBAL"
 { [ -f "$UNI" ] && grep -qF 'como-trabajar-con-<user>.md' "$UNI" && grep -qiE 'NO sube a develop|NO viaja por git'  "$UNI"; } \
-  && ok "#83 unificar-cerebro: gradúa el TRATO al archivo GLOBAL per-máquina (no a develop)" \
-  || bad "#83 unificar-cerebro: falta el destino de graduación TRATO → archivo GLOBAL"
+  && ok "#83 canonizar-cerebro (modo reconciliar): gradúa el TRATO al archivo GLOBAL per-máquina (no a develop)" \
+  || bad "#83 canonizar-cerebro: falta el destino de graduación TRATO → archivo GLOBAL"
 { [ -f "$DES" ] && grep -qF 'como-trabajar-con-<user>.md' "$DES" && grep -qiE 'MIGRA|migra su lecci' "$DES" \
     && grep -qiE 'b[oó]rralo|queda vac' "$DES"; } \
   && ok "#83 desinflar-memorias: migra los feedback-* de TRATO al archivo GLOBAL y borra el vacío" \

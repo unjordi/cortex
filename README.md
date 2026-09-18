@@ -125,16 +125,11 @@ El cerebro se ordena por *dureza*: arriba lo que te **bloquea** sin negociar; ab
 ├─ 🩺 auditar-coherencia-cerebro fan-out read-only sobre el PROPIO cerebro (guards+flowcharts+doc): evasiones/huecos/drift, verificado por ejecución → loop hasta converger; modo-cerebro de auditar-proceso-algoritmo
 ├─ 🧪 auditar-suficiencia-operativa  ¿ALCANZA la doc para HACER el trabajo sin romper nada ni re-investigar? tareas reales ✅/⚠️/❌ con archivo:línea + RE-auditar tras arreglar
 ├─ 🧬 auditor-semantico        ¿el código HACE lo que queremos? Capa 1 checks deterministas (scripts/, gratis, en CI) + Capa 2 criterio LLM sobre invariantes-semanticos.yml; motor genérico, catálogo por-repo
-├─ 🧠 consolidar-cerebro       meta-orquestador: dupla → positivar → desinflar → convergencia → cierre con la FIRMA (CLAUDE+MEMORY)
-├─ 📐 canonizar-cerebro        lleva un cerebro instanciado drifteado a la firma-árbol: reprefija memorias (git mv) a dom-/dev-/ux-/qa-, reescribe CLAUDE.md+MEMORY.md, verifica 1:1 con verificar-firma-canonica.sh (detector del GATE #44)
+├─ 📐 canonizar-cerebro        DUEÑO del ciclo de vida del cerebro de un proyecto, 4 modos sobre 1 maquinaria: sembrar (nace nativo, sin symlinks) · canonizar (firma-árbol: git mv a dom-/dev-/ux-/qa-, verifica 1:1 con verificar-firma-canonica.sh) · consolidar (dupla → positivar → desinflar → convergencia → FIRMA) · reconciliar (semanal, minis de devs → develop)
 ├─ 🪶 desinflar-memorias       adelgaza un árbol de memorias sin perder lecciones: la narrativa se colapsa a su lección, los mitos descartados se mudan al cementerio.md (una lápida por ID content-hash 🪦#<id>)
-├─ 🕵️ revisar-entregables-agentes    verifica lo que un agente ENTREGA contra la realidad; no relates su reporte como verdad
 ├─ ☀️ positivar-doc                  reescribe answer-first: 'ESTO SÍ' (método correcto) antes del 'ESTO NO'
 ├─ 🎓 investigar-dominio             ponte experto en un dominio (fan-out DOC-FIRST) → memorias durables + skills
 ├─ 📚 construir-missing-manual       fabrica el manual/wiki de referencia exhaustivo que no existe (fan-out que investiga 1× y hornea) → artefacto consultable OFFLINE
-├─ 🌾 cosechar-sesion                cosecha local: extrae aprendizajes de tu sesión al inbox del equipo
-├─ 🧩 unificar-cerebro               reconciliación del cerebro del equipo: integra los aprendizajes mini→develop
-├─ 🧳 claude-proyecto-autocontenido  el cerebro VIVE dentro del proyecto (.claude/ + symlink de slug) → viaja con él
 ├─ 🚚 reubicar-master                muda una sesión master COMPLETA a otro repo (brain-master → cortex) sin residuo: transcript+cwd, cerebro, slug y refs atómicas
 ├─ 🔍 zoom-screenshot                recorta y amplía regiones de una captura (ffmpeg) para leer texto fino ilegible
 ├─ 🔩 ingenieria-inversa-gui-db-navegador  ingeniería inversa de app legacy GUI+BD: driving la UI vía navegador + diff de la BD antes/después = doc con evidencia real
