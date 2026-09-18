@@ -3547,76 +3547,9 @@ printf '%s' "$m3out" | grep -q 'DETACHED.*wt-det' && ok "b3r: M-3 — el worktre
 rm -rf "$M3ROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────
-echo ""
-echo "== (b3f) delegacion-reporte: reacciona a Task|Agent, y el nudge es CONDICIONAL a mutación (FMEA MEDIO-6) =="
-# MEDIO-6 (cry-wolf): antes gritaba "appenda bitácora / limpia worktree" para TODO Task, incluidos los
-# read-only (búsquedas, auditorías) → el orquestador se desensibiliza. Fix: el mensaje se subordina a la
-# mutación ("SI tu agente mutó… / SI fue read-only, ignóralo"). No se puede detectar la mutación fiable
-# desde PostToolUse (vive en el transcript del sub-agente), así que se suaviza el texto en vez de adivinar.
-dr() { printf '%s' "$1" | bash "$HOOKS/delegacion-reporte.sh"; }
-is_silent "$(dr '{"tool_name":"Bash"}')" && ok "delegacion-reporte: tool no-Task → silencio" || bad "delegacion-reporte: reaccionó a un no-Task"
-DROUT="$(dr '{"tool_name":"Task"}')"
-printf '%s' "$DROUT" | jq -e '.hookSpecificOutput.hookEventName == "PostToolUse"' >/dev/null 2>&1 \
-  && ok "delegacion-reporte: Task → emite hookSpecificOutput PostToolUse válido" || bad "delegacion-reporte: JSON PostToolUse inválido; got: $DROUT"
-printf '%s' "$DROUT" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -qiE 'si .*mut|read-only' \
-  && ok "delegacion-reporte: el nudge es CONDICIONAL a mutación (no un grito para todo Task)" || bad "delegacion-reporte: el nudge no quedó condicionado a mutación (cry-wolf)"
-# #42: reacciona también al nombre NUEVO del tool (Agent)
-printf '%s' "$(dr '{"tool_name":"Agent"}')" | jq -e '.hookSpecificOutput.hookEventName == "PostToolUse"' >/dev/null 2>&1 \
-  && ok "#42 · delegacion-reporte: 'Agent' (nombre nuevo) → emite reporte" || bad "#42 · delegacion-reporte: no reaccionó a Agent"
-
-# ─────────────────────────────────────────────────────────────────────────────
-echo ""
-echo "== (b3i) recordar-orquestar: cuenta mutaciones EN SERIE, avisa en N, resetea al delegar, debounce, fail-open (#59) =="
-# ADVISORY puro (nunca bloquea): contador per-session_id de mutaciones (Edit/Write/… + git commit) SIN
-# delegar; al llegar a N sugiere fan-out; un Agent/Task RESETEA; debounce de N en N. HOME aislado para
-# el stamp; N=3 para no escribir 10 casos por prueba (la lógica del umbral es la misma).
-ROQH="$(mktemp -d "${TMPDIR:-/tmp}/brain-roq.XXXXXX")"
-ro() { printf '%s' "$1" | RECORDAR_ORQUESTAR_N=3 HOME="$ROQH" bash "$HOOKS/recordar-orquestar.sh"; }
-ro_msg() { printf '%s' "$1" | jq -r '.hookSpecificOutput.additionalContext // empty' 2>/dev/null; }
-EDIT='{"session_id":"s1","tool_name":"Edit","tool_input":{}}'
-READ='{"session_id":"s1","tool_name":"Read","tool_input":{}}'
-AGENT='{"session_id":"s1","tool_name":"Agent","tool_input":{}}'
-COMMIT='{"session_id":"s1","tool_name":"Bash","tool_input":{"command":"git add -A && git commit -m x"}}'
-LOGLK='{"session_id":"s1","tool_name":"Bash","tool_input":{"command":"git log --grep commit"}}'
-# 1) bajo el umbral N=3 → silencio (1ª y 2ª mutación)
-is_silent "$(ro "$EDIT")" && is_silent "$(ro "$EDIT")" && ok "recordar-orquestar: <N mutaciones → silencio (no dispara en trabajo corto)" || bad "recordar-orquestar avisó antes de N"
-# 2) al llegar a N → avisa (mensaje cita 'EN SERIE' + skill orquestar-fanout)
-o="$(ro "$EDIT")"
-{ printf '%s' "$o" | jq -e '.hookSpecificOutput.hookEventName=="PostToolUse"' >/dev/null 2>&1 && ro_msg "$o" | grep -qi 'orquestar-fanout'; } \
-  && ok "recordar-orquestar: N mutaciones en serie → avisa (advisory, sugiere fan-out)" || bad "recordar-orquestar: no avisó al llegar a N; got: $o"
-# 3) advisory: NUNCA deniega
-printf '%s' "$o" | jq -e '(.hookSpecificOutput.permissionDecision // "") == ""' >/dev/null 2>&1 \
-  && ok "recordar-orquestar: additionalContext PASIVO (jamás permissionDecision:deny)" || bad "recordar-orquestar: emitió una decisión de permiso (debe ser advisory)"
-# 4) debounce: 4ª y 5ª mutación NO re-avisan (hasta 2N)
-is_silent "$(ro "$EDIT")" && is_silent "$(ro "$EDIT")" && ok "recordar-orquestar: debounce (no re-avisa entre N y 2N)" || bad "recordar-orquestar re-avisó dentro del bloque"
-# 5) 6ª (=2N) → vuelve a avisar
-printf '%s' "$(ro "$EDIT")" | jq -e '.hookSpecificOutput.hookEventName=="PostToolUse"' >/dev/null 2>&1 \
-  && ok "recordar-orquestar: vuelve a avisar en el siguiente bloque de N (2N)" || bad "recordar-orquestar no re-avisó en 2N"
-# 6) NEUTRAL (Read) no cuenta: tras un reset, 2 edits + muchos Read siguen bajo N → silencio
-printf '0 0\n' > "$ROQH/.claude/.recordar-orquestar/s1"
-ro "$EDIT" >/dev/null; ro "$READ" >/dev/null; ro "$READ" >/dev/null; ro "$EDIT" >/dev/null
-is_silent "$(ro "$READ")" && ok "recordar-orquestar: las tools NEUTRAL (Read) no cuentan ni disparan" || bad "recordar-orquestar contó una tool neutral"
-# 7) RESET al delegar: llega a N-1, un Agent lo pone en 0, y la siguiente mutación NO avisa
-printf '0 0\n' > "$ROQH/.claude/.recordar-orquestar/s1"
-ro "$EDIT" >/dev/null; ro "$EDIT" >/dev/null      # count=2 (=N-1)
-ro "$AGENT" >/dev/null                            # RESET → 0
-{ is_silent "$(ro "$EDIT")" && [ "$(cut -d' ' -f1 "$ROQH/.claude/.recordar-orquestar/s1")" = 1 ]; } \
-  && ok "recordar-orquestar: un Agent/Task RESETEA el contador (no regaña por trabajo que SÍ delegaste)" || bad "recordar-orquestar no reseteó al delegar"
-# 8) git commit CUENTA como mutación; git log --grep NO
-printf '0 0\n' > "$ROQH/.claude/.recordar-orquestar/s1"
-ro "$COMMIT" >/dev/null; c1="$(cut -d' ' -f1 "$ROQH/.claude/.recordar-orquestar/s1")"
-ro "$LOGLK" >/dev/null;  c2="$(cut -d' ' -f1 "$ROQH/.claude/.recordar-orquestar/s1")"
-{ [ "$c1" = 1 ] && [ "$c2" = 1 ]; } && ok "recordar-orquestar: 'git commit' cuenta, 'git log --grep commit' NO (precisión)" || bad "recordar-orquestar: conteo de git incorrecto (commit=$c1, loglook=$c2)"
-# 9) sesiones aisladas: s2 no hereda el conteo de s1
-printf '%s' '{"session_id":"s2","tool_name":"Edit","tool_input":{}}' | RECORDAR_ORQUESTAR_N=3 HOME="$ROQH" bash "$HOOKS/recordar-orquestar.sh" >/dev/null
-[ "$(cut -d' ' -f1 "$ROQH/.claude/.recordar-orquestar/s2")" = 1 ] && ok "recordar-orquestar: contador per-session_id (s2 aislada de s1)" || bad "recordar-orquestar: las sesiones se contaminan"
-# 10) fail-open: sin session_id → silencio y sin tocar disco
-is_silent "$(printf '%s' '{"tool_name":"Edit"}' | HOME="$ROQH" bash "$HOOKS/recordar-orquestar.sh")" \
-  && ok "recordar-orquestar: sin session_id → silencio (fail-open)" || bad "recordar-orquestar reaccionó sin session_id"
-# 11) escape env → silencio aunque cruce el umbral
-is_silent "$(printf '%s' "$EDIT" | CLAUDE_SKIP_RECORDAR_ORQUESTAR=1 RECORDAR_ORQUESTAR_N=1 HOME="$ROQH" bash "$HOOKS/recordar-orquestar.sh")" \
-  && ok "recordar-orquestar: CLAUDE_SKIP_RECORDAR_ORQUESTAR=1 → silencio" || bad "recordar-orquestar ignoró el escape"
-rm -rf "$ROQH"
+# (b3f) delegacion-reporte y (b3i) recordar-orquestar: RETIRADOS overhaul hooks 2026-09-18 (puramente
+# advisory, medido: ignorados). Su regla subió a norma en brain/norms/global-claude-md.md § "Orquesta:
+# delega lo paralelizable" — ver MANIFEST (tier retirado) para el rastro de cero-pérdida.
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
@@ -4783,40 +4716,9 @@ veredicto="$(cat "$ORDERLOG" 2>/dev/null)"
   || bad "A-5: no corrieron secuenciales (limpiar-ramas no esperó a limpiar-worktrees); got: '$veredicto'"
 rm -rf "$A5FIX"
 
-# ── (b5g) recordar-cosechar: nudge DOBLE (cosecha + backlog durable) (fail-open; heurístico; throttle) ──
-echo ""
-echo "== (b5g) recordar-cosechar: nudge doble cosecha+backlog (fail-open sin git; trabajo+sin memoria durable → avisa; throttle; ambas al día → silencio) =="
-RCFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-rc.XXXXXX")"
-RCHOME="$RCFIX/home"; RCREPO="$RCFIX/repo"
-mkdir -p "$RCHOME" "$RCREPO"
-rc() { printf '%s' '{}' | HOME="$RCHOME" CLAUDE_PROJECT_DIR="$RCREPO" bash "$HOOKS/recordar-cosechar.sh"; }
-# (1) no es repo git → silencio (fail-open)
-is_silent "$(rc)" && ok "recordar-cosechar: no-git → silencio" || bad "recordar-cosechar: habló fuera de un repo git"
-git -C "$RCREPO" init -q >/dev/null 2>&1
-git -C "$RCREPO" config user.email t@t >/dev/null 2>&1; git -C "$RCREPO" config user.name tester >/dev/null 2>&1
-# (2) repo con sistema de memoria pero SIN trabajo (sin commits recientes, sin cambios de código) → silencio
-mkdir -p "$RCREPO/.claude/memory"
-is_silent "$(rc)" && ok "recordar-cosechar: sin trabajo sustantivo → silencio" || bad "recordar-cosechar: habló sin trabajo"
-# (3) hubo trabajo (código sin commitear) y ni cosecha ni backlog tocados → AVISA AMBAS señales + stamp
-printf 'class X {}\n' > "$RCREPO/Foo.cs"
-rcout="$(rc)"
-printf '%s' "$rcout" | jq -e '.hookSpecificOutput.hookEventName == "Stop"' >/dev/null 2>&1 \
-  && ok "recordar-cosechar: trabajo sin memoria durable → emite Stop válido" || bad "recordar-cosechar: JSON inválido; got: $rcout"
-printf '%s' "$rcout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'cerrar-slice' \
-  && ok "recordar-cosechar: avisa la cosecha (nombra cerrar-slice §5)" || bad "recordar-cosechar: no nombró cerrar-slice"
-printf '%s' "$rcout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'backlog durable' \
-  && ok "recordar-cosechar: avisa el backlog durable (2ª señal)" || bad "recordar-cosechar: no avisó el backlog"
-rcslug=$(printf '%s' "$RCREPO" | cksum | awk '{print $1}')
-[ -f "$RCHOME/.claude/memory/.recordar-cosechar/$rcslug" ] \
-  && ok "recordar-cosechar: escribió el stamp del día" || bad "recordar-cosechar: no escribió el stamp"
-# (4) throttle: 2ª corrida el mismo día → silencio
-is_silent "$(rc)" && ok "recordar-cosechar: throttle — 2ª corrida mismo día → silencio" || bad "recordar-cosechar: no respetó el throttle diario"
-# (5) cosecha Y backlog al día (aprendizajes + bitacora tocados sin commitear) → silencio aunque haya trabajo
-rm -rf "$RCHOME/.claude/memory/.recordar-cosechar"
-printf '## 2026-07-21 · aportó: unjordi · algo\nprosa\n\n' >> "$RCREPO/.claude/memory/aprendizajes.md"
-printf '- linea de bitacora\n' >> "$RCREPO/.claude/memory/bitacora.md"
-is_silent "$(rc)" && ok "recordar-cosechar: cosecha+backlog al día → silencio" || bad "recordar-cosechar: avisó con ambas señales al día"
-rm -rf "$RCFIX"
+# (b5g) recordar-cosechar NUDGE: RETIRADO overhaul hooks 2026-09-18 (puramente advisory, medido:
+# ignorado). Su regla subió a norma en brain/norms/global-claude-md.md § "Ninguna DECISIÓN se queda
+# solo en el chat". El ESPEJO (mecanismo real, no advisory) SIGUE — ver (b5g2) abajo.
 
 # ── (b5g2) recordar-cosechar: ESPEJO del TaskList → bloque fenced en estado-proyecto.md (determinista) ──
 echo ""
@@ -4846,56 +4748,10 @@ grep -q 'prosa curada' "$EMFILE" && ok "espejo: preservó la prosa curada humana
 # (6c) idempotente: 2ª corrida no cambia el archivo
 emh1=$(md5sum "$EMFILE" | awk '{print $1}'); em >/dev/null; emh2=$(md5sum "$EMFILE" | awk '{print $1}')
 [ "$emh1" = "$emh2" ] && ok "espejo: idempotente (2ª corrida = mismo archivo)" || bad "espejo: no idempotente"
-# (6d) el espejo NO auto-suprime el nudge de backlog: trabajo + solo el bloque cambió (no humano) → 📋 sigue
-printf 'class Y {}\n' > "$EMREPO/Foo.cs"
-rm -rf "$EMHOME/.claude/memory/.recordar-cosechar"
-em | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'backlog durable' \
-  && ok "espejo: NO auto-suprime el nudge (cambio solo-bloque ≠ humano)" || bad "espejo: el bloque auto-suprimió el nudge"
 rm -rf "$EMFIX"
 
-# ── (b5h) recordar-unificar-cerebro: gemelo hacia arriba (fail-open; delta≥umbral → avisa; en develop → silencio; throttle) ──
-echo ""
-echo "== (b5h) recordar-unificar-cerebro: aviso de aprendizajes sin unificar (fail-open; delta vs origin/develop; umbral; throttle) =="
-RUFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-ru.XXXXXX")"
-RUHOME="$RUFIX/home"; RUREPO="$RUFIX/repo"
-mkdir -p "$RUHOME" "$RUREPO"
-ru() { printf '%s' '{"source":"startup"}' | HOME="$RUHOME" CLAUDE_PROJECT_DIR="$RUREPO" bash "$HOOKS/recordar-unificar-cerebro.sh"; }
-# (1) no es repo git → silencio (fail-open)
-is_silent "$(ru)" && ok "recordar-unificar: no-git → silencio" || bad "recordar-unificar: habló fuera de un repo git"
-git -C "$RUREPO" init -q >/dev/null 2>&1
-git -C "$RUREPO" config user.email t@t >/dev/null 2>&1; git -C "$RUREPO" config user.name tester >/dev/null 2>&1
-mkdir -p "$RUREPO/.claude/memory"
-printf 'base\n' > "$RUREPO/.claude/memory/aprendizajes.md"
-git -C "$RUREPO" add -A >/dev/null 2>&1; git -C "$RUREPO" commit -qm base >/dev/null 2>&1
-git -C "$RUREPO" branch -M develop >/dev/null 2>&1
-# (2) sin origin/develop → silencio (fail-open, no hay base de comparación)
-is_silent "$(ru)" && ok "recordar-unificar: sin origin/develop → silencio" || bad "recordar-unificar: habló sin base origin/develop"
-git -C "$RUREPO" update-ref refs/remotes/origin/develop "$(git -C "$RUREPO" rev-parse HEAD)" >/dev/null 2>&1
-# (3) parado EN develop → silencio (no es una mini que unificar)
-is_silent "$(ru)" && ok "recordar-unificar: en develop → silencio" || bad "recordar-unificar: avisó estando en develop"
-# rama personal con delta en .claude/ (aprendizaje nuevo)
-git -C "$RUREPO" checkout -q -b DevelopTester >/dev/null 2>&1
-printf 'aprendizaje nuevo\n' >> "$RUREPO/.claude/memory/aprendizajes.md"
-git -C "$RUREPO" add -A >/dev/null 2>&1; git -C "$RUREPO" commit -qm cosecha >/dev/null 2>&1
-# (4) delta ≥ umbral (bajamos el umbral de archivos a 1) → AVISA + stamp; nombra unificar y aprendizajes
-ruout="$(printf '%s' '{"source":"startup"}' | HOME="$RUHOME" CLAUDE_PROJECT_DIR="$RUREPO" RECORDAR_UNIFICAR_ARCHIVOS=1 bash "$HOOKS/recordar-unificar-cerebro.sh")"
-printf '%s' "$ruout" | jq -e '.hookSpecificOutput.hookEventName == "SessionStart"' >/dev/null 2>&1 \
-  && ok "recordar-unificar: delta ≥ umbral → emite SessionStart válido" || bad "recordar-unificar: JSON inválido; got: $ruout"
-printf '%s' "$ruout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'canonizar-cerebro' \
-  && ok "recordar-unificar: el aviso sugiere canonizar-cerebro (modo reconciliar)" || bad "recordar-unificar: el aviso no nombra la skill"
-printf '%s' "$ruout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'aprendizajes' \
-  && ok "recordar-unificar: el aviso resalta aprendizajes.md en el delta" || bad "recordar-unificar: no mencionó aprendizajes"
-ruslug=$(printf '%s' "$RUREPO" | cksum | awk '{print $1}')
-[ -f "$RUHOME/.claude/memory/.recordar-unificar/$ruslug" ] \
-  && ok "recordar-unificar: escribió el stamp del día" || bad "recordar-unificar: no escribió el stamp"
-# (5) throttle: 2ª corrida mismo día → silencio
-is_silent "$(printf '%s' '{"source":"startup"}' | HOME="$RUHOME" CLAUDE_PROJECT_DIR="$RUREPO" RECORDAR_UNIFICAR_ARCHIVOS=1 bash "$HOOKS/recordar-unificar-cerebro.sh")" \
-  && ok "recordar-unificar: throttle — 2ª corrida mismo día → silencio" || bad "recordar-unificar: no respetó el throttle diario"
-# (6) bajo umbral (subimos umbrales muy alto) → silencio aunque haya delta (limpiamos el stamp)
-rm -rf "$RUHOME/.claude/memory/.recordar-unificar"
-is_silent "$(printf '%s' '{"source":"startup"}' | HOME="$RUHOME" CLAUDE_PROJECT_DIR="$RUREPO" RECORDAR_UNIFICAR_ARCHIVOS=99 RECORDAR_UNIFICAR_DIAS=999 bash "$HOOKS/recordar-unificar-cerebro.sh")" \
-  && ok "recordar-unificar: delta bajo umbral → silencio" || bad "recordar-unificar: avisó bajo el umbral"
-rm -rf "$RUFIX"
+# (b5h) recordar-unificar-cerebro: RETIRADO overhaul hooks 2026-09-18 (puramente advisory, medido:
+# ignorado). Su regla subió a norma en brain/norms/global-claude-md.md § "Modelo MINI-DEVELOP".
 
 # ── (b5f) verificar-cerebro: DOCTOR de instalación por-máquina (sano→exit 0, roto→exit 1) ──
 echo ""
@@ -5793,58 +5649,8 @@ if git -C "$SCRIPT_DIR/.." rev-parse --git-dir >/dev/null 2>&1; then
 fi
 rm -rf "$F1D"
 
-# ─────────────────────────────────────────────────────────────────────────────
-echo ""
-echo "== (b6c) hud-stale: avisa (advisory) al cambiar de rama/proyecto; first-sight silencioso; stamp per-sesión; solo en repos con backlog =="
-# Detector de staleness del HUD (lista de TODOs). Señal OBJETIVA = (repo root | rama git) vs. lo observado
-# en ESTA sesión (stamp per-session_id). Precisión: first-sight calla, debounce por transición, gate de
-# backlog durable, sesiones concurrentes no se pisan, fail-open sin session_id.
-HSHOME="$(mktemp -d "${TMPDIR:-/tmp}/brain-hs-home.XXXXXX")"
-mkrepo() { # $1=path  $2=branch  $3=backlog(1/0) → crea un repo git con una rama y (opcional) backlog
-  mkdir -p "$1/.claude/memory"; git -C "$1" init -q 2>/dev/null
-  git -C "$1" config user.email t@t >/dev/null 2>&1; git -C "$1" config user.name t >/dev/null 2>&1
-  git -C "$1" checkout -q -b "$2" 2>/dev/null
-  [ "$3" = 1 ] && printf 'x\n' > "$1/.claude/memory/estado-proyecto.md"
-  printf 'r\n' > "$1/README.md"; git -C "$1" add -A >/dev/null 2>&1; git -C "$1" commit -qm init >/dev/null 2>&1
-}
-HSR1="$(mktemp -d "${TMPDIR:-/tmp}/brain-hs-r1.XXXXXX")/repo"; mkrepo "$HSR1" feat/A 1
-HSR2="$(mktemp -d "${TMPDIR:-/tmp}/brain-hs-r2.XXXXXX")/repo"; mkrepo "$HSR2" feat/Z 1
-HSR3="$(mktemp -d "${TMPDIR:-/tmp}/brain-hs-r3.XXXXXX")/repo"; mkrepo "$HSR3" feat/N 0   # SIN backlog
-hs() { printf '%s' "$1" | env HOME="$HSHOME" CLAUDE_PROJECT_DIR="$2" bash "$HOOKS/hud-stale.sh"; }
-has_hud() { printf '%s' "$1" | jq -e '.hookSpecificOutput.hookEventName' >/dev/null 2>&1; }
-# (1) first sight (SessionStart) → registra baseline, calla
-is_silent "$(hs '{"session_id":"S1","source":"startup"}' "$HSR1")" \
-  && ok "hud-stale: first-sight (sin stamp) → silencio (registra baseline)" || bad "hud-stale: avisó en el first-sight"
-# (2) mismo contexto otra vez → silencio (nada cambió)
-is_silent "$(hs '{"session_id":"S1","source":"resume"}' "$HSR1")" \
-  && ok "hud-stale: mismo (root|rama) → silencio (sin cambio)" || bad "hud-stale: avisó sin cambio de contexto"
-# (3) cambio de RAMA en la misma sesión (PostToolUse/Bash) → AVISA, mensaje habla de RAMA + event PostToolUse
-git -C "$HSR1" checkout -q -b feat/B
-o="$(hs '{"session_id":"S1","tool_name":"Bash"}' "$HSR1")"
-{ has_hud "$o" && printf '%s' "$o" | jq -r '.hookSpecificOutput.additionalContext' | grep -qi 'RAMA' \
-  && printf '%s' "$o" | jq -e '.hookSpecificOutput.hookEventName=="PostToolUse"' >/dev/null; } \
-  && ok "hud-stale: cambio de RAMA en sesión → AVISA (PostToolUse, menciona RAMA)" || bad "hud-stale: NO avisó al cambiar de rama; got: $o"
-# (4) tras avisar, mismo estado → debounce (silencio)
-is_silent "$(hs '{"session_id":"S1","tool_name":"Bash"}' "$HSR1")" \
-  && ok "hud-stale: tras avisar la transición → debounce (silencio)" || bad "hud-stale: re-avisó la misma transición"
-# (5) tool que NO es Bash → silencio (gate de evento)
-is_silent "$(hs '{"session_id":"S1","tool_name":"Read"}' "$HSR1")" \
-  && ok "hud-stale: PostToolUse de tool≠Bash → silencio" || bad "hud-stale: reaccionó a una tool que no es Bash"
-# (6) cambio de PROYECTO (otro root) en la misma sesión → AVISA, menciona PROYECTO
-o="$(hs '{"session_id":"S1","tool_name":"Bash"}' "$HSR2")"
-{ has_hud "$o" && printf '%s' "$o" | jq -r '.hookSpecificOutput.additionalContext' | grep -qi 'PROYECTO'; } \
-  && ok "hud-stale: cambio de PROYECTO (cwd) → AVISA (menciona PROYECTO)" || bad "hud-stale: NO avisó al cambiar de proyecto; got: $o"
-# (7) CONCURRENCIA: otra sesión (S2) recién llegada al mismo repo → first-sight silencioso (no cross-talk)
-is_silent "$(hs '{"session_id":"S2","source":"startup"}' "$HSR2")" \
-  && ok "hud-stale: sesión concurrente distinta (S2) → first-sight silencioso (stamp per-sesión, no se pisan)" || bad "hud-stale: una sesión pisó a otra (thrash)"
-# (8) repo SIN backlog durable → silencio (gate de sistema), aunque cambie el contexto
-hs '{"session_id":"S3","source":"startup"}' "$HSR1" >/dev/null   # baseline en repo con backlog
-is_silent "$(hs '{"session_id":"S3","tool_name":"Bash"}' "$HSR3")" \
-  && ok "hud-stale: repo sin backlog durable → silencio (gate de sistema)" || bad "hud-stale: avisó en un repo sin backlog"
-# (9) fail-open: sin session_id → silencio
-is_silent "$(hs '{"source":"startup"}' "$HSR1")" \
-  && ok "hud-stale: sin session_id → silencio (fail-open)" || bad "hud-stale: reaccionó sin session_id"
-rm -rf "$HSHOME" "$(dirname "$HSR1")" "$(dirname "$HSR2")" "$(dirname "$HSR3")" 2>/dev/null
+# (b6c) hud-stale: RETIRADO overhaul hooks 2026-09-18 (puramente advisory, medido: ignorado). Su regla
+# ya vivía en brain/norms/global-claude-md.md § "Tu lista de TODOs es TU HUD" — solo se retiró el hook.
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
@@ -5859,24 +5665,8 @@ o="$(printf '%s' "$DDCMD" | HOME="$DDYES" bash "$HOOKS/git-branch-guard.sh")"
 is_silent "$o" && ok "dedupe: CON copia global → la copia repo CEDE (silencio; la global maneja)" || bad "dedupe: repo debía ceder con global; got: $o"
 rm -rf "$DDNO" "$DDYES"
 
-# ─────────────────────────────────────────────────────────────────────────────
-echo ""
-echo "== (b8) recordar-dashboard: merge-base cae a origin/develop en clon sin develop local (G8) =="
-# Sin ref LOCAL develop/main (clon fresco / default con otro nombre) el merge-base fallaba y la revisión
-# doc=realidad se auto-anulaba en silencio. Ahora cae a origin/develop|origin/main.
-G8ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-g8.XXXXXX")"; G8HOME="$G8ROOT/home"; mkdir -p "$G8HOME"
-BARE8="$G8ROOT/bare.git"; SRC8="$G8ROOT/src"
-git init --bare -q -b develop "$BARE8" >/dev/null 2>&1
-git clone -q "$BARE8" "$SRC8" >/dev/null 2>&1
-git -C "$SRC8" config user.email t@t >/dev/null 2>&1; git -C "$SRC8" config user.name tester >/dev/null 2>&1
-printf 'base\n' > "$SRC8/base.txt"; git -C "$SRC8" add base.txt >/dev/null 2>&1; git -C "$SRC8" commit -qm base >/dev/null 2>&1
-git -C "$SRC8" push -q origin develop >/dev/null 2>&1
-git -C "$SRC8" checkout -q -b feat/g8 develop >/dev/null 2>&1
-git -C "$SRC8" branch -D develop >/dev/null 2>&1   # simula clon fresco: solo queda origin/develop
-mkdir -p "$SRC8/src"; printf 'x=1\n' > "$SRC8/src/foo.js"; git -C "$SRC8" add src/foo.js >/dev/null 2>&1; git -C "$SRC8" commit -qm code >/dev/null 2>&1
-out="$(printf '%s' '{"tool_input":{"command":"git push -u origin feat/g8"}}' | (cd "$SRC8" && HOME="$G8HOME" bash "$HOOKS/recordar-dashboard.sh"))"
-printf '%s' "$out" | grep -q 'doc=realidad' && ok "G8: sin develop local → merge-base cae a origin/develop → doc=realidad activo" || bad "G8: la revisión doc=realidad se auto-anuló (no cayó a origin/develop); got: $out"
-rm -rf "$G8ROOT"
+# (b8) recordar-dashboard: RETIRADO overhaul hooks 2026-09-18 (puramente advisory, medido: ignorado).
+# doc=realidad + dashboard ya son norma dura en brain/norms/global-claude-md.md (sin mecanismo por-push).
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
@@ -5974,7 +5764,7 @@ HOME="$FAKEHOME2" bash "$INSTALLER" >/dev/null 2>&1
 GSET2="$FAKEHOME2/.claude/settings.json"
 GCLAUDE2="$FAKEHOME2/.claude/CLAUDE.md"
 
-for pat in git-branch-guard merge-develop-guard recordar-dashboard proteger-arbol rehidratar-hilo aviso-contexto delegacion-gate delegacion-registrar; do
+for pat in git-branch-guard merge-develop-guard proteger-arbol rehidratar-hilo aviso-contexto delegacion-gate delegacion-registrar; do
   n="$(jq --arg p "$pat" '[.hooks[]?[]? | select(([.hooks[]?.command]|join(" "))|test($p))] | length' "$GSET2" 2>/dev/null)"
   if [ "$n" = "1" ]; then ok "settings.json: $pat cableado 1× (idempotente)"; else bad "settings.json: $pat aparece ${n:-?}× (esperaba 1)"; fi
 done
@@ -6148,11 +5938,9 @@ juez-comun|merge-develop-guard
 dod-verificar|juez-comun
 cerrar-slice|dod-verificar
 cerrar-slice|merge-develop-guard
-cerrar-slice|recordar-dashboard
 delegacion-comun|delegacion-gate
 delegacion-comun|delegacion-registrar
 delegacion-gate|limite-gasto
-delegacion-reporte|orquestar-fanout
 cerrar-slice|checkpoint
 cerrar-slice|orquestar-fanout
 cerrar-slice|rehidratar-hilo
@@ -6168,11 +5956,9 @@ auditar-coherencia-cerebro|auditar-proceso-algoritmo
 auditar-coherencia-cerebro|auditar-suficiencia-operativa
 canonizar-cerebro|desinflar-memorias
 canonizar-cerebro|reubicar-master
-canonizar-cerebro|recordar-unificar-cerebro
 auditar-coherencia-cerebro|canonizar-cerebro
 auditar-suficiencia-operativa|canonizar-cerebro
 desinflar-memorias|positivar-doc
-hud-stale|to-do
 drift-cerebro-comun|exportar-sesion-master
 drift-cerebro-comun|proteger-fuente-cerebro
 drift-cerebro-comun|verificar-cerebro
@@ -6201,10 +5987,9 @@ limpiar|limpiar-impl-flotilla"
 # reubicar-master lo MUEVE de casa y cita a canonizar-cerebro como su hermana (antes citaba a
 # claude-proyecto-autocontenido, ya fusionado) — mismo handshake de subordinación que
 # canonizar-cerebro|auditar-suficiencia-operativa (definición vive en un lado, el otro solo apunta).
-# canonizar-cerebro|recordar-unificar-cerebro: el modo reconciliar (antes el skill unificar-cerebro)
-# documenta que el hook `recordar-unificar-cerebro` es su disparador SessionStart, y el hook (tras la
-# fusión) nombra a canonizar-cerebro en su mensaje/comentarios — es hook<->skill documentado, igual que
-# aviso-drift-cerebro|barrer-ramas de arriba, no un ciclo nuevo.
+# overhaul hooks 2026-09-18: recordar-unificar-cerebro (SessionStart, puramente advisory) se RETIRÓ —
+# su regla subió a norma en global-claude-md.md § "Modelo MINI-DEVELOP"; canonizar-cerebro (modo
+# reconciliar) ya no tiene un disparador hook, queda a disciplina (ver MANIFEST tier retirado).
 # auditar-coherencia-cerebro|canonizar-cerebro y auditar-suficiencia-operativa|canonizar-cerebro: MISMO
 # handshake de subordinación que ya vivía entre estos 2 auditores y consolidar-cerebro (ahora modo
 # consolidar de canonizar-cerebro) — la convención CLAUDE.md+MEMORY.md se define UNA vez en
@@ -6592,14 +6377,13 @@ if [ -f "$E7H/.claude/settings.json" ]; then
   # el EVENTO de cada uno es el correcto (los 4 grupos: Bash, Task, SessionStart sin-matcher, PostToolUse sin-matcher)
   ev_of() { jq -r --arg n "$1" '.hooks | to_entries[] | .key as $k | .value[] | select((([.hooks[]?.command]|join(" "))) | test("/"+$n+"\\.sh")) | ($k + "|" + (.matcher // ""))' "$E7H/.claude/settings.json"; }
   [ "$(ev_of git-branch-guard)"   = "PreToolUse|Bash" ]  && ok "e7: git-branch-guard → PreToolUse/Bash"        || bad "e7: git-branch-guard evento incorrecto: $(ev_of git-branch-guard)"
-  [ "$(ev_of delegacion-reporte)" = "PostToolUse|Task|Agent" ] && ok "e7: delegacion-reporte → PostToolUse/(Task|Agent)" || bad "e7: delegacion-reporte evento incorrecto: $(ev_of delegacion-reporte)"
+  [ "$(ev_of delegacion-registrar)" = "PostToolUse|Task|Agent" ] && ok "e7: delegacion-registrar → PostToolUse/(Task|Agent)" || bad "e7: delegacion-registrar evento incorrecto: $(ev_of delegacion-registrar)"
   # barrer-ramas es DOBLE evento (SessionStart oportunista + PostToolUse/Bash al punto de merge) → ev_of
   # devuelve DOS líneas; exigimos AMBAS presentes (orden-agnóstico), no igualdad exacta contra una sola.
   ev_br="$(ev_of barrer-ramas)"
   { printf '%s\n' "$ev_br" | grep -qx 'SessionStart|' && printf '%s\n' "$ev_br" | grep -qx 'PostToolUse|Bash'; } \
     && ok "e7: barrer-ramas → SessionStart/(sin matcher) + PostToolUse/Bash (doble trigger)" || bad "e7: barrer-ramas eventos incorrectos: $ev_br"
   [ "$(ev_of aviso-contexto)"     = "PostToolUse|" ]     && ok "e7: aviso-contexto → PostToolUse/(sin matcher)" || bad "e7: aviso-contexto evento incorrecto: $(ev_of aviso-contexto)"
-  [ "$(ev_of recordar-orquestar)" = "PostToolUse|" ]     && ok "e7: recordar-orquestar → PostToolUse/(sin matcher)" || bad "e7: recordar-orquestar evento incorrecto: $(ev_of recordar-orquestar)"
 else
   bad "e7: install-brain no generó settings.json"
 fi
@@ -6826,27 +6610,25 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-echo "== (e6b) install-brain: EXACTAMENTE 7 hooks en PreToolUse/Bash + aviso-contexto/recordar-orquestar en PostToolUse (sin matcher) =="
-# El fan-out de guards sobre Bash es un set CERRADO de 7 (rama-vieja se RETIRÓ — tier `retirado` en el
-# MANIFEST — y salió de este set; CONSOLIDACIÓN 2026-09-17: merge-squash-guard + confirmar-merge-develop
-# se fusionaron en merge-develop-guard, restando 1 al conteo); aviso-contexto y recordar-orquestar van en
-# PostToolUse sin matcher (casan toda tool). El cableado se DERIVA del MANIFEST vía ev_de() en
-# install-brain.sh → verificamos ese mapeo (no líneas register_hook literales: el instalador las colapsó
-# a un loop). Si alguien agrega/quita un guard de Bash del mapeo, este test lo caza.
-want_bash="git-branch-guard merge-develop-guard secret-scan recordar-dashboard entorno-maquina-guard no-bypass-deploy proteger-arbol"
+echo "== (e6b) install-brain: EXACTAMENTE 6 hooks en PreToolUse/Bash + aviso-contexto en PostToolUse (sin matcher) =="
+# El fan-out de guards sobre Bash es un set CERRADO de 6 (rama-vieja se RETIRÓ — tier `retirado` en el
+# MANIFEST; CONSOLIDACIÓN 2026-09-17: merge-squash-guard + confirmar-merge-develop se fusionaron en
+# merge-develop-guard; overhaul hooks 2026-09-18: recordar-dashboard se retiró, puramente advisory —
+# restando 1 más al conteo); aviso-contexto va en PostToolUse sin matcher (casa toda tool). El cableado
+# se DERIVA del MANIFEST vía ev_de() en install-brain.sh → verificamos ese mapeo (no líneas register_hook
+# literales: el instalador las colapsó a un loop). Si alguien agrega/quita un guard de Bash del mapeo,
+# este test lo caza.
+want_bash="git-branch-guard merge-develop-guard secret-scan entorno-maquina-guard no-bypass-deploy proteger-arbol"
 want_bash_sorted="$(printf '%s\n' $want_bash | sort | tr '\n' ' ' | sed 's/ *$//')"
 got_bash="$(grep -E '\) *echo *"PreToolUse\|Bash"' "$INSTALLER" | sed -E 's/\).*//' | tr '|' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -vE '^$' | sort | tr '\n' ' ' | sed 's/ *$//')"
 if [ "$got_bash" = "$want_bash_sorted" ]; then
-  ok "e6b: ev_de() mapea EXACTAMENTE los 7 guards de PreToolUse/Bash"
+  ok "e6b: ev_de() mapea EXACTAMENTE los 6 guards de PreToolUse/Bash"
 else
   bad "e6b: el set PreToolUse/Bash de ev_de() cambió · got:[$got_bash] want:[$want_bash_sorted]"
 fi
 grep -qE 'aviso-contexto[^)]*\) *echo *"PostToolUse\|"' "$INSTALLER" \
   && ok "e6b: aviso-contexto mapeado a PostToolUse (sin matcher, NO en Bash)" \
   || bad "e6b: aviso-contexto NO está en PostToolUse"
-grep -qE 'recordar-orquestar[^)]*\) *echo *"PostToolUse\|"' "$INSTALLER" \
-  && ok "e6b: recordar-orquestar mapeado a PostToolUse (sin matcher, NO en Bash)" \
-  || bad "e6b: recordar-orquestar NO está en PostToolUse"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo "== (e6c) doc=realidad: cada kind=hook del MANIFEST aparece en el árbol del README (sA2/B1) =="
@@ -8181,7 +7963,7 @@ echo "== #83 anti-drift como-trabajar: las skills de cosecha/consolidación rute
 COS="$SCRIPT_DIR/skills/cerrar-slice/SKILL.md"
 UNI="$SCRIPT_DIR/skills/canonizar-cerebro/SKILL.md"
 DES="$SCRIPT_DIR/skills/desinflar-memorias/SKILL.md"
-RCH="$SCRIPT_DIR/hooks/recordar-cosechar.sh"
+NORMAS="$SCRIPT_DIR/norms/global-claude-md.md"
 { [ -f "$COS" ] && grep -qF 'como-trabajar-con-<user>.md' "$COS" && grep -qiE 'NO lo appendees|NO va al inbox|NO este inbox' "$COS" \
     && grep -qiE 'procedencia|\[INFER\]' "$COS" && grep -qiE 'REFERÉNCIALAS|no las copies|no la copies' "$COS"; } \
   && ok "#83 cerrar-slice (§5 cosecha): rutea el TRATO al archivo GLOBAL (no al inbox), con procedencia y referencia a normas universales" \
@@ -8193,9 +7975,11 @@ RCH="$SCRIPT_DIR/hooks/recordar-cosechar.sh"
     && grep -qiE 'b[oó]rralo|queda vac' "$DES"; } \
   && ok "#83 desinflar-memorias: migra los feedback-* de TRATO al archivo GLOBAL y borra el vacío" \
   || bad "#83 desinflar-memorias: falta la migración de TRATO per-repo → archivo GLOBAL"
-{ [ -f "$RCH" ] && grep -qiE 'como-trabajar-con-<user>' "$RCH"; } \
-  && ok "#83 recordar-cosechar: el nudge recuerda que el TRATO va al archivo GLOBAL" \
-  || bad "#83 recordar-cosechar: el nudge no menciona el ruteo del TRATO al archivo GLOBAL"
+# recordar-cosechar (el NUDGE) se retiró overhaul hooks 2026-09-18 (puramente advisory) — su regla de
+# ruteo del TRATO subió a la norma "Ninguna DECISIÓN se queda solo en el chat" (queda ahí, no en un hook).
+{ [ -f "$NORMAS" ] && grep -qiE 'como-trabajar-con-<user>' "$NORMAS"; } \
+  && ok "#83 norma global: recuerda que el TRATO va al archivo GLOBAL (recordar-cosechar retirado, regla subió aquí)" \
+  || bad "#83 norma global: falta el ruteo del TRATO al archivo GLOBAL tras retirar recordar-cosechar"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
