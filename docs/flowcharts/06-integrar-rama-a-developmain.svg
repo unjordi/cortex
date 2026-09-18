@@ -17,7 +17,7 @@
 <g id="clust2" class="cluster">
 <title>cluster_f0</title>
 <path fill="#1b1712" stroke="#5fa89e" stroke-width="1.6" d="M3356,-8C3356,-8 5679,-8 5679,-8 5685,-8 5691,-14 5691,-20 5691,-20 5691,-2334.12 5691,-2334.12 5691,-2340.12 5685,-2346.12 5679,-2346.12 5679,-2346.12 3356,-2346.12 3356,-2346.12 3350,-2346.12 3344,-2340.12 3344,-2334.12 3344,-2334.12 3344,-20 3344,-20 3344,-14 3350,-8 3356,-8"/>
-<text xml:space="preserve" text-anchor="middle" x="4517.5" y="-2328.82" font-family="Times" font-size="14.00" fill="#5fa89e">06 · Integrar una rama a develop/main &#160;&#160;(ZOOM de la ruta de MERGE — raíz común de 8 hooks en 03; aquí 2 pueden DENY —git&#45;branch&#45;guard · merge&#45;develop&#45;guard— EVALUADOS EN PARALELO sobre el MISMO comando: el árbol de abajo es la AGREGACIÓN lógica deny&#45;gana, NO el orden real de ejecución — §6)</text>
+<text xml:space="preserve" text-anchor="middle" x="4517.5" y="-2328.82" font-family="Times" font-size="14.00" fill="#5fa89e">06 · Integrar una rama a develop/main &#160;&#160;(ZOOM de la ruta de MERGE — raíz común de 6 hooks en 03; aquí 2 pueden DENY —git&#45;branch&#45;guard · merge&#45;develop&#45;guard— EVALUADOS EN PARALELO sobre el MISMO comando: el árbol de abajo es la AGREGACIÓN lógica deny&#45;gana, NO el orden real de ejecución — §6)</text>
 </g>
 <!-- LEY_ARBOL -->
 <g id="node1" class="node">
@@ -293,7 +293,7 @@
 <text xml:space="preserve" text-anchor="start" x="518" y="-1688.25" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🕹️ control&#45;gui&#45;remota&#45;por&#45;ssh</text>
 <polygon fill="#1b1712" stroke="none" points="1175.12,-1679.5 1175.12,-1705.25 3327.88,-1705.25 3327.88,-1679.5 1175.12,-1679.5"/>
 <polygon fill="none" stroke="#5fa89e" points="1175.12,-1679.5 1175.12,-1705.25 3327.88,-1705.25 3327.88,-1679.5 1175.12,-1679.5"/>
-<text xml:space="preserve" text-anchor="start" x="1809.75" y="-1689" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">ver/operar una GUI remota por SSH sin VNC/RDP — screenshot/click/teclado DPI&#45;aware; Windows completo (15 scripts verificados), Linux/Mac andamio sin confirmar</text>
+<text xml:space="preserve" text-anchor="start" x="1830.38" y="-1689" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">ver/operar una GUI remota por SSH sin VNC/RDP — screenshot/click/teclado DPI&#45;aware; Windows·Linux·Mac completos (multi&#45;monitor + captura por&#45;ventana)</text>
 <polygon fill="#1b1712" stroke="none" points="16.12,-1653.75 16.12,-1679.5 1175.12,-1679.5 1175.12,-1653.75 16.12,-1653.75"/>
 <polygon fill="none" stroke="#5fa89e" points="16.12,-1653.75 16.12,-1679.5 1175.12,-1679.5 1175.12,-1653.75 16.12,-1653.75"/>
 <text xml:space="preserve" text-anchor="start" x="549.5" y="-1662.5" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🌙 turno&#45;nocturno</text>
@@ -353,7 +353,7 @@
 <path fill="#232323" stroke="#8a8a8a" stroke-width="1.5" d="M4148.75,-2315.12C4148.75,-2315.12 3543.25,-2315.12 3543.25,-2315.12 3537.25,-2315.12 3531.25,-2309.12 3531.25,-2303.12 3531.25,-2303.12 3531.25,-2240.38 3531.25,-2240.38 3531.25,-2234.38 3537.25,-2228.38 3543.25,-2228.38 3543.25,-2228.38 4148.75,-2228.38 4148.75,-2228.38 4154.75,-2228.38 4160.75,-2234.38 4160.75,-2240.38 4160.75,-2240.38 4160.75,-2303.12 4160.75,-2303.12 4160.75,-2309.12 4154.75,-2315.12 4148.75,-2315.12"/>
 <text xml:space="preserve" text-anchor="middle" x="3846" y="-2299.72" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">intento de integrar (comando Bash con git)</text>
 <text xml:space="preserve" text-anchor="middle" x="3846" y="-2286.97" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">`git push` · `glab mr merge` · `gh pr merge`</text>
-<text xml:space="preserve" text-anchor="middle" x="3846" y="-2274.22" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">(PreToolUse/Bash → los 7 hooks corren EN PARALELO; ver 03 —6 inspeccionan git, no&#45;bypass&#45;deploy no&#45;opea—.</text>
+<text xml:space="preserve" text-anchor="middle" x="3846" y="-2274.22" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">(PreToolUse/Bash → los 6 hooks corren EN PARALELO; ver 03 —6 inspeccionan git, no&#45;bypass&#45;deploy no&#45;opea—.</text>
 <text xml:space="preserve" text-anchor="middle" x="3846" y="-2259.22" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">Aquí hacemos ZOOM en los 2 que gobiernan un MERGE a base)</text>
 <text xml:space="preserve" text-anchor="middle" x="3846" y="-2246.47" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">NOTA: los 2 rombos de abajo EVALÚAN el MISMO comando EN PARALELO (sin despachador);</text>
 <text xml:space="preserve" text-anchor="middle" x="3846" y="-2233.72" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">la cadena de rombos es la AGREGACIÓN lógica deny&#45;gana, NO orden de ejecución</text>

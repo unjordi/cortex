@@ -47,17 +47,18 @@ Sólida = flujo/secuencia · Punteada (`style=dashed`) + etiqueta = referencia c
 Título del chart empieza con su nº de archivo (`06 · Declarar LISTO al fin de turno`); cross-refs citan por
 nº de archivo ("ver **05**"), NUNCA circulado ①②③ (iba desfasado −1 sin índice).
 
-## 6. Fan-out compartido de un comando git en Bash = 8 hooks PreToolUse/Bash (raíz común de 03 y sus zooms 06/07/08)
-Un comando `Bash` con git dispara **8 hooks PreToolUse/Bash** EN PARALELO (sin despachador, precedencia
-`deny>ask>allow`) + hooks PostToolUse. Los 8 pre (confirmado en la función `ev_de` de `install-brain.sh`,
-que mapea todos ellos a `PreToolUse|Bash`): 🚧 git-branch-guard · 🔗 merge-squash-guard · ✋ confirmar-merge-develop · 🕵️ secret-scan
-· 📊 recordar-dashboard · 🖥️ entorno-maquina-guard · 🌳 proteger-arbol · 🚧 no-bypass-deploy *(4 pueden DENY: los 3 de
-git + secret-scan)*. De esos 8, **7 INSPECCIONAN git**; el 8º —**no-bypass-deploy**— corre en el mismo fan-out pero
-**NO-OPEA sobre un comando git** (solo actúa ante un instalador/deploy corrido a mano). (🕰️ rama-vieja se RETIRÓ
-2026-09-15 — tier `retirado` en el MANIFEST — y salió de este fan-out.) En PostToolUse sobre ese Bash
-corren 📈 aviso-contexto y 🎼 recordar-orquestar (toda tool) + 🔀 hud-stale y 🧹 barrer-ramas (Bash) — ninguno bloquea; los
+## 6. Fan-out compartido de un comando git en Bash = 6 hooks PreToolUse/Bash (raíz común de 03 y sus zooms 06/07/08)
+Un comando `Bash` con git dispara **6 hooks PreToolUse/Bash** EN PARALELO (sin despachador, precedencia
+`deny>ask>allow`) + hooks PostToolUse. Los 6 pre (confirmado en la función `ev_de` de `install-brain.sh`,
+que mapea todos ellos a `PreToolUse|Bash`): 🚧 git-branch-guard · ✋ merge-develop-guard · 🕵️ secret-scan
+· 🖥️ entorno-maquina-guard · 🌳 proteger-arbol · 🚧 no-bypass-deploy *(3 pueden DENY: git-branch-guard ·
+merge-develop-guard · secret-scan; los otros 3 AVISAN)*. De esos 6, **5 INSPECCIONAN git**; el 6º —**no-bypass-deploy**— corre en el mismo fan-out pero
+**NO-OPEA sobre un comando git** (solo actúa ante un instalador/deploy corrido a mano). (🔗 merge-squash-guard y ✋ confirmar-merge-develop
+se CONSOLIDARON en ✋ merge-develop-guard el 2026-09-17; 📊 recordar-dashboard y 🕰️ rama-vieja se RETIRARON
+— tier `retirado` en el MANIFEST — y salieron de este fan-out.) En PostToolUse sobre ese Bash
+corren 📈 aviso-contexto (toda tool) + 🧹 barrer-ramas (Bash) — ninguno bloquea (🎼 recordar-orquestar y 🔀 hud-stale se RETIRARON overhaul 2026-09-18); los
 charts hacen foco en 📈 aviso-contexto (el watermark). El chart **03** es la VISTA de conjunto; sus **ZOOMS**
-—**06** (ruta de merge), **07** (secret-scan + proteger-arbol), **08** (nudges del push)— abren con esta MISMA raíz de 9
+—**06** (ruta de merge), **07** (secret-scan + proteger-arbol), **08** (nudges del push)— abren con esta MISMA raíz de 6
 y hacen zoom sobre su subconjunto de git-guards. Prohibido "cascada secuencial" o "los 2 hooks".
 
 ## 7. Leyenda a incrustar en cada `.dot` = el ÁRBOL COMPLETO del README (generado, NO tecleado)
@@ -94,14 +95,14 @@ Render de UNO: `dot -Tsvg archivo.dot -o archivo.svg`. Regenerar TODOS (rutina, 
 La serie **01–05** es la columna de VISTA de conjunto (rehecha 2026-08-01, fiel al código). Los **06–14** se
 **re-canonizaron el 2026-08-07** desde los SVG huérfanos que habían quedado *gitignored SIN `.dot` ni leyenda*
 (deuda de mantenimiento, no basura): se les creó su `.dot` fuente, se inyectó la leyenda-árbol, se corrigió el
-`doc=realidad` (p. ej. `dod-verificar` y `confirmar-merge-develop` hoy usan un **juez-LLM**, no el pilón de regex viejo)
+`doc=realidad` (p. ej. `dod-verificar` y `merge-develop-guard` hoy usan un **juez-LLM**, no el pilón de regex viejo)
 y se re-numeró para eliminar las colisiones (había dos 03, dos 04, dos 05) y el circulado −1.
 
 | Nº actual | Título | Rol | Huérfano viejo (nombre · circulado) |
 |---|---|---|---|
 | 01 | Instalación / actualización del cerebro | vista | (ya tracked) |
 | 02 | Ciclo de vida de la sesión | vista | (ya tracked; era «①») |
-| 03 | Enforcement de los git-guards (fan-out de 9) | VISTA de conjunto | (ya tracked) |
+| 03 | Enforcement de los git-guards (fan-out de 6) | VISTA de conjunto | (ya tracked) |
 | 04 | Delegación / orquestar fan-out | VISTA de conjunto | (ya tracked) |
 | 05 | Continuidad: checkpoint→compact→rehidratar | vista | (ya tracked) |
 | 06 | Integrar una rama a develop/main | zoom de 03 (merge) | `03-integrar-rama-a-developmain` · ② |

@@ -17,7 +17,7 @@
 <g id="clust2" class="cluster">
 <title>cluster_f0</title>
 <path fill="#1b1712" stroke="#5fa89e" stroke-width="1.6" d="M3356,-8C3356,-8 5931,-8 5931,-8 5937,-8 5943,-14 5943,-20 5943,-20 5943,-1783.12 5943,-1783.12 5943,-1789.12 5937,-1795.12 5931,-1795.12 5931,-1795.12 3356,-1795.12 3356,-1795.12 3350,-1795.12 3344,-1789.12 3344,-1783.12 3344,-1783.12 3344,-20 3344,-20 3344,-14 3350,-8 3356,-8"/>
-<text xml:space="preserve" text-anchor="middle" x="4643.5" y="-1777.83" font-family="Times" font-size="14.00" fill="#5fa89e">07 · Comando git en Bash: guards que lo inspeccionan &#160;&#160;(ZOOM del fan&#45;out de 9 de 03 · 🔒 secret&#45;scan bloquea · 🔔 proteger&#45;arbol avisa)</text>
+<text xml:space="preserve" text-anchor="middle" x="4643.5" y="-1777.83" font-family="Times" font-size="14.00" fill="#5fa89e">07 · Comando git en Bash: guards que lo inspeccionan &#160;&#160;(ZOOM del fan&#45;out de 6 de 03 · 🔒 secret&#45;scan bloquea · 🔔 proteger&#45;arbol avisa)</text>
 </g>
 <!-- LEY_ARBOL -->
 <g id="node1" class="node">
@@ -293,7 +293,7 @@
 <text xml:space="preserve" text-anchor="start" x="518" y="-1153.75" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🕹️ control&#45;gui&#45;remota&#45;por&#45;ssh</text>
 <polygon fill="#1b1712" stroke="none" points="1175.12,-1145 1175.12,-1170.75 3327.88,-1170.75 3327.88,-1145 1175.12,-1145"/>
 <polygon fill="none" stroke="#5fa89e" points="1175.12,-1145 1175.12,-1170.75 3327.88,-1170.75 3327.88,-1145 1175.12,-1145"/>
-<text xml:space="preserve" text-anchor="start" x="1809.75" y="-1154.5" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">ver/operar una GUI remota por SSH sin VNC/RDP — screenshot/click/teclado DPI&#45;aware; Windows completo (15 scripts verificados), Linux/Mac andamio sin confirmar</text>
+<text xml:space="preserve" text-anchor="start" x="1830.38" y="-1154.5" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">ver/operar una GUI remota por SSH sin VNC/RDP — screenshot/click/teclado DPI&#45;aware; Windows·Linux·Mac completos (multi&#45;monitor + captura por&#45;ventana)</text>
 <polygon fill="#1b1712" stroke="none" points="16.12,-1119.25 16.12,-1145 1175.12,-1145 1175.12,-1119.25 16.12,-1119.25"/>
 <polygon fill="none" stroke="#5fa89e" points="16.12,-1119.25 16.12,-1145 1175.12,-1145 1175.12,-1119.25 16.12,-1119.25"/>
 <text xml:space="preserve" text-anchor="start" x="549.5" y="-1128" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🌙 turno&#45;nocturno</text>
@@ -352,7 +352,7 @@
 <title>CMD</title>
 <path fill="#232323" stroke="#8a8a8a" stroke-width="1.5" d="M5114.88,-1760.38C5114.88,-1760.38 4507.12,-1760.38 4507.12,-1760.38 4501.12,-1760.38 4495.12,-1754.38 4495.12,-1748.38 4495.12,-1748.38 4495.12,-1726.12 4495.12,-1726.12 4495.12,-1720.12 4501.12,-1714.12 4507.12,-1714.12 4507.12,-1714.12 5114.88,-1714.12 5114.88,-1714.12 5120.88,-1714.12 5126.88,-1720.12 5126.88,-1726.12 5126.88,-1726.12 5126.88,-1748.38 5126.88,-1748.38 5126.88,-1754.38 5120.88,-1760.38 5114.88,-1760.38"/>
 <text xml:space="preserve" text-anchor="middle" x="4811" y="-1744.97" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">comando Bash con git (PreToolUse/Bash)</text>
-<text xml:space="preserve" text-anchor="middle" x="4811" y="-1732.22" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">los 9 hooks lo reciben EN PARALELO, sin despachador (ver 03 —8 inspeccionan git, no&#45;bypass&#45;deploy no&#45;opea—).</text>
+<text xml:space="preserve" text-anchor="middle" x="4811" y="-1732.22" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">los 6 hooks lo reciben EN PARALELO, sin despachador (ver 03 —5 inspeccionan git, no&#45;bypass&#45;deploy no&#45;opea—).</text>
 <text xml:space="preserve" text-anchor="middle" x="4811" y="-1719.47" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">ZOOM aquí en 2: secret&#45;scan (defensivo) y proteger&#45;arbol (integridad del árbol)</text>
 </g>
 <!-- SEC -->

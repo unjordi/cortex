@@ -293,7 +293,7 @@
 <text xml:space="preserve" text-anchor="start" x="518" y="-1287.75" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🕹️ control&#45;gui&#45;remota&#45;por&#45;ssh</text>
 <polygon fill="#1b1712" stroke="none" points="1175.12,-1279 1175.12,-1304.75 3327.88,-1304.75 3327.88,-1279 1175.12,-1279"/>
 <polygon fill="none" stroke="#5fa89e" points="1175.12,-1279 1175.12,-1304.75 3327.88,-1304.75 3327.88,-1279 1175.12,-1279"/>
-<text xml:space="preserve" text-anchor="start" x="1809.75" y="-1288.5" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">ver/operar una GUI remota por SSH sin VNC/RDP — screenshot/click/teclado DPI&#45;aware; Windows completo (15 scripts verificados), Linux/Mac andamio sin confirmar</text>
+<text xml:space="preserve" text-anchor="start" x="1830.38" y="-1288.5" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">ver/operar una GUI remota por SSH sin VNC/RDP — screenshot/click/teclado DPI&#45;aware; Windows·Linux·Mac completos (multi&#45;monitor + captura por&#45;ventana)</text>
 <polygon fill="#1b1712" stroke="none" points="16.12,-1253.25 16.12,-1279 1175.12,-1279 1175.12,-1253.25 16.12,-1253.25"/>
 <polygon fill="none" stroke="#5fa89e" points="16.12,-1253.25 16.12,-1279 1175.12,-1279 1175.12,-1253.25 16.12,-1253.25"/>
 <text xml:space="preserve" text-anchor="start" x="549.5" y="-1262" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🌙 turno&#45;nocturno</text>

@@ -1,6 +1,6 @@
 // 07 — Comando git en Bash: los guards que lo inspeccionan (cortex)  ·  FUENTE editable (.dot)
 // Render:  dot -Tsvg 07-comando-git-en-bash-guards.dot -o 07-comando-git-en-bash-guards.svg
-// ZOOM del fan-out de 9 hooks (raíz común en 03 · CONVENCIONES §6) sobre los dos que NO son de merge:
+// ZOOM del fan-out de 6 hooks (raíz común en 03 · CONVENCIONES §6) sobre los dos que NO son de merge:
 // 🔒 secret-scan (bloquea) y 🔔 proteger-arbol (avisa). Reconstruido 2026-08-07 desde el CÓDIGO real
 // (brain/hooks/secret-scan.sh + lib detectar-secretos.sh; proteger-arbol.sh).
 // Re-canoniza el huérfano 04-comando-git-en-bash-guards-que-lo-inspec.svg (viejo «③», sin .dot ni leyenda).
@@ -63,7 +63,7 @@ digraph flujos {
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔍 zoom-screenshot</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">recorta y amplía regiones de una captura (ffmpeg) para leer texto fino ilegible</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔩 ingenieria-inversa-gui-db-navegador</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">ingeniería inversa de app legacy GUI+BD: driving la UI vía navegador + diff de la BD antes/después = doc con evidencia real</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📕 markdown-a-pdf</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">convierte .md a PDF pulido y distribuible vía md-to-pdf (npx, sin instalar) con el gotcha de --css y QA visual real</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🕹️ control-gui-remota-por-ssh</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">ver/operar una GUI remota por SSH sin VNC/RDP — screenshot/click/teclado DPI-aware; Windows completo (15 scripts verificados), Linux/Mac andamio sin confirmar</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🕹️ control-gui-remota-por-ssh</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">ver/operar una GUI remota por SSH sin VNC/RDP — screenshot/click/teclado DPI-aware; Windows·Linux·Mac completos (multi-monitor + captura por-ventana)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌙 turno-nocturno</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">protocolo del turno de noche: eco del contrato, decide-dentro-de-la-cerca, grants durables a disco</font></td></tr>
       </table>>];
     LEY_VAL [shape=none, margin=0, label=<
@@ -82,12 +82,12 @@ digraph flujos {
 
   // ───────────────────────────────────── EL FLUJO ─────────────────────────────────────
   subgraph cluster_f0 {
-    label="07 · Comando git en Bash: guards que lo inspeccionan   (ZOOM del fan-out de 9 de 03 · 🔒 secret-scan bloquea · 🔔 proteger-arbol avisa)";
+    label="07 · Comando git en Bash: guards que lo inspeccionan   (ZOOM del fan-out de 6 de 03 · 🔒 secret-scan bloquea · 🔔 proteger-arbol avisa)";
     fontname="Times"; fontsize=14; fontcolor="#5fa89e";
     color="#5fa89e"; penwidth=1.6; style="rounded"; bgcolor="#1b1712";
 
     CMD [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
-         label="comando Bash con git (PreToolUse/Bash)\nlos 9 hooks lo reciben EN PARALELO, sin despachador (ver 03 —8 inspeccionan git, no-bypass-deploy no-opea—).\nZOOM aquí en 2: secret-scan (defensivo) y proteger-arbol (integridad del árbol)"];
+         label="comando Bash con git (PreToolUse/Bash)\nlos 6 hooks lo reciben EN PARALELO, sin despachador (ver 03 —5 inspeccionan git, no-bypass-deploy no-opea—).\nZOOM aquí en 2: secret-scan (defensivo) y proteger-arbol (integridad del árbol)"];
 
     // ── secret-scan ──
     SEC [shape=diamond, fillcolor="#2b2622", color="#d97757",
