@@ -17,7 +17,7 @@
 <g id="clust2" class="cluster">
 <title>cluster_f0</title>
 <path fill="#1b1712" stroke="#5fa89e" stroke-width="1.6" d="M3356,-8C3356,-8 6126,-8 6126,-8 6132,-8 6138,-14 6138,-20 6138,-20 6138,-3544.25 6138,-3544.25 6138,-3550.25 6132,-3556.25 6126,-3556.25 6126,-3556.25 3356,-3556.25 3356,-3556.25 3350,-3556.25 3344,-3550.25 3344,-3544.25 3344,-3544.25 3344,-20 3344,-20 3344,-14 3350,-8 3356,-8"/>
-<text xml:space="preserve" text-anchor="middle" x="4741" y="-3538.95" font-family="Times" font-size="14.00" fill="#5fa89e">03 · Enforcement de los git&#45;guards sobre UN comando git &#160;&#160;(PreToolUse/Bash · 7 hooks EN PARALELO, sin despachador · precedencia deny &gt; ask &gt; allow · + PostToolUse)</text>
+<text xml:space="preserve" text-anchor="middle" x="4741" y="-3538.95" font-family="Times" font-size="14.00" fill="#5fa89e">03 · Enforcement de los git&#45;guards sobre UN comando git &#160;&#160;(PreToolUse/Bash · 6 hooks EN PARALELO, sin despachador · precedencia deny &gt; ask &gt; allow · + PostToolUse)</text>
 </g>
 <!-- LEY_ARBOL -->
 <g id="node1" class="node">
@@ -293,7 +293,7 @@
 <text xml:space="preserve" text-anchor="start" x="518" y="-2923.75" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🕹️ control&#45;gui&#45;remota&#45;por&#45;ssh</text>
 <polygon fill="#1b1712" stroke="none" points="1175.12,-2915 1175.12,-2940.75 3327.88,-2940.75 3327.88,-2915 1175.12,-2915"/>
 <polygon fill="none" stroke="#5fa89e" points="1175.12,-2915 1175.12,-2940.75 3327.88,-2940.75 3327.88,-2915 1175.12,-2915"/>
-<text xml:space="preserve" text-anchor="start" x="1809.75" y="-2924.5" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">ver/operar una GUI remota por SSH sin VNC/RDP — screenshot/click/teclado DPI&#45;aware; Windows completo (15 scripts verificados), Linux/Mac andamio sin confirmar</text>
+<text xml:space="preserve" text-anchor="start" x="1830.38" y="-2924.5" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">ver/operar una GUI remota por SSH sin VNC/RDP — screenshot/click/teclado DPI&#45;aware; Windows·Linux·Mac completos (multi&#45;monitor + captura por&#45;ventana)</text>
 <polygon fill="#1b1712" stroke="none" points="16.12,-2889.25 16.12,-2915 1175.12,-2915 1175.12,-2889.25 16.12,-2889.25"/>
 <polygon fill="none" stroke="#5fa89e" points="16.12,-2889.25 16.12,-2915 1175.12,-2915 1175.12,-2889.25 16.12,-2889.25"/>
 <text xml:space="preserve" text-anchor="start" x="549.5" y="-2898" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🌙 turno&#45;nocturno</text>

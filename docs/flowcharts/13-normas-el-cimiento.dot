@@ -70,7 +70,7 @@ digraph flujos {
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔍 zoom-screenshot</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">recorta y amplía regiones de una captura (ffmpeg) para leer texto fino ilegible</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔩 ingenieria-inversa-gui-db-navegador</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">ingeniería inversa de app legacy GUI+BD: driving la UI vía navegador + diff de la BD antes/después = doc con evidencia real</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📕 markdown-a-pdf</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">convierte .md a PDF pulido y distribuible vía md-to-pdf (npx, sin instalar) con el gotcha de --css y QA visual real</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🕹️ control-gui-remota-por-ssh</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">ver/operar una GUI remota por SSH sin VNC/RDP — screenshot/click/teclado DPI-aware; Windows completo (15 scripts verificados), Linux/Mac andamio sin confirmar</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🕹️ control-gui-remota-por-ssh</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">ver/operar una GUI remota por SSH sin VNC/RDP — screenshot/click/teclado DPI-aware; Windows·Linux·Mac completos (multi-monitor + captura por-ventana)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌙 turno-nocturno</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">protocolo del turno de noche: eco del contrato, decide-dentro-de-la-cerca, grants durables a disco</font></td></tr>
       </table>>];
     LEY_VAL [shape=none, margin=0, label=<
@@ -112,7 +112,7 @@ digraph flujos {
     MAQUINA [color="#e08e45",
              label="📜 🖥️ El entorno de MÁQUINA vive GLOBAL, jamás en un repo\nOS/shell/aliases/rutas de $HOME/runtime local NUNCA en el repo\n(mentiría al clonar en otro OS) — vive en la memoria global per-máquina\n— avisado en 03 (🔔🖥️ entorno-maquina-guard)"];
     HERRAMIENTA [color="#e08e45",
-                 label="📜 🚧 Actualiza por la HERRAMIENTA REAL, nunca el instalador a mano\nun install.sh/deploy.sh corrido crudo se salta backup+atómico+sello+verificación\n(excepción: --dry-run/--help/-n, o correr dentro de CI)\n— no-opea sobre git; parte del fan-out de 9 en 03 · 06 · 07 (sin detalle propio)"];
+                 label="📜 🚧 Actualiza por la HERRAMIENTA REAL, nunca el instalador a mano\nun install.sh/deploy.sh corrido crudo se salta backup+atómico+sello+verificación\n(excepción: --dry-run/--help/-n, o correr dentro de CI)\n— no-opea sobre git; parte del fan-out de 6 en 03 · 06 · 07 (sin detalle propio)"];
     HUD [color="#9e9e9e", style="dashed,filled", fillcolor="#232323",
          label="📜 🔀 Tu lista de TODOs es TU HUD — mantenla fresca\nscratch de sesión (no el backlog durable); resetéala al cambiar de rama/proyecto\nsi diverge del backlog, MANDA estado-proyecto.md\n— SIN hook: anti-drift por tu propio juicio (ver 02)"];
     CORREO [color="#e08e45",
