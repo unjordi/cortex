@@ -185,6 +185,20 @@ independiente — una lib compartida de detección de entorno no genera drift en
 | `linux-ssh-get-processes-list.sh` | Lista procesos (top-N por RSS). NO necesita sesión gráfica. `-Name`, `-Csv`. | ✅ listó procesos reales |
 | `linux-ssh-kill-process.sh` | Mata por `-Name`/`-Id` (`-WhatIf` primero). NO necesita sesión gráfica. | ✅ mató un proceso real (Kate) tras confirmar con `-WhatIf` |
 
+### Recetas de invocación (Linux — mucho más simple que Windows: los `.sh` no necesitan base64/EncodedCommand)
+Mismos parámetros: `$STA` (`usuario@ip` u hostname), `$KEY` (llave), `-J "$JUMP"` si hay salto.
+```bash
+KEY=/ruta/a/tu_llave ; STA=usuario@host-o-ip     # + -J "$JUMP" a ssh si hace falta salto
+# 1) Desplegar: copia el script + su lib compartida a la estación (una vez; los 13 comparten la lib)
+scp -i "$KEY" linux/linux-ssh-screenshot.sh linux/lib-linux-ssh-env.sh "$STA":/tmp/gui-ssh/
+# 2) Correr: los .sh imprimen texto directo, sin EncodedCommand
+ssh -i "$KEY" "$STA" "bash /tmp/gui-ssh/linux-ssh-screenshot.sh -Out /tmp/gui-ssh/s.png"
+ssh -i "$KEY" "$STA" "bash /tmp/gui-ssh/linux-ssh-list-windows.sh -Filter MiApp"
+# 3) Traer el screenshot: por scp (el base64-por-stdout se atraganta; scp es limpio)
+scp -i "$KEY" "$STA":/tmp/gui-ssh/s.png .    # luego ábrelo/léelo con la tool de imagen de tu agente
+```
+> Primer uso: resuelve el permiso EIS de KWin (abajo) para el INPUT sintético (click/tecla). Screenshot/list/mover-ventana no lo necesitan.
+
 ### GOTCHA REAL Y CRÍTICO: el permiso EIS de KWin (Wayland) para input sintético
 **Verificado 2026-09-18 en cachy.** La PRIMERA vez que `xdotool` intenta mover el mouse o mandar una
 tecla en una sesión KDE Plasma/Wayland, KWin dispara un diálogo GRÁFICO — *"Control remoto: xdotool
@@ -260,6 +274,20 @@ solo alcanzan ventanas X11/XWayland.
 Comparten `mac/lib-mac-ssh-env.sh` (`mac_console_user`/`mac_dispatch`). **Verificado LOCAL el
 2026-09-18** en esta Mac (macOS 26.6.2) — ejecutando los scripts de verdad, no solo revisando
 sintaxis.
+
+### Recetas de invocación (macOS — igual de simple que Linux: `.sh` sin base64, `scp` para el screenshot)
+Mismos parámetros: `$STA` (`usuario@ip`), `$KEY`, `-J "$JUMP"` si hay salto.
+```bash
+KEY=/ruta/a/tu_llave ; STA=usuario@host-o-ip     # + -J "$JUMP" a ssh si hace falta salto
+# 1) Desplegar: script + su lib compartida (una vez; los 13 comparten la lib)
+scp -i "$KEY" mac/mac-ssh-screenshot.sh mac/lib-mac-ssh-env.sh "$STA":/tmp/gui-ssh/
+# 2) Correr (texto directo, sin EncodedCommand)
+ssh -i "$KEY" "$STA" "bash /tmp/gui-ssh/mac-ssh-screenshot.sh -Out /tmp/gui-ssh/s.png"
+ssh -i "$KEY" "$STA" "bash /tmp/gui-ssh/mac-ssh-list-windows.sh -Filter MiApp"
+# 3) Traer el screenshot por scp (default multi-pantalla → s-1.png, s-2.png…)
+scp -i "$KEY" "$STA":/tmp/gui-ssh/'s*.png' .
+```
+> Precondición de una sola vez: permiso TCC (Grabación de pantalla + Accesibilidad) concedido por GUI en la Mac destino, igual que el EIS de KWin en Linux.
 
 | Script | Qué hace | Verificado |
 |---|---|---|
