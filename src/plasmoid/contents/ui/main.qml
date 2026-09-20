@@ -1416,10 +1416,16 @@ PlasmoidItem {
         // `checkout -B main origin/main` (mismo patrón que bootstrap.sh) FUERZA-ALINEA el clon a
         // origin/main en vez de `merge --ff-only`, que fallaba PARA SIEMPRE si el clon quedaba en una
         // rama leftover o con commits locales — este clon es infraestructura, no un checkout de dev.
+        // STASH ANTES DEL checkout -B (paridad con Updater.swift/bootstrap.sh, que YA lo hacen — este
+        // QML se había quedado atrás): sin esto, un ~/.cortex con edits en sitio (p. ej. un SKILL.md
+        // tocado a mano) aborta el checkout y el botón ⬆ queda "sin completar" para siempre, sin
+        // diagnóstico. El stash PRESERVA esos edits (no los descarta como haría un checkout -f).
         var inner = "SRC=" + shq(repo) + "; DST=\\$HOME/.cortex; "
                   + "[ \\$SRC != \\$DST ] && [ -d \\$SRC ] && [ ! -e \\$DST ] && mv \\$SRC \\$DST; "
                   + "DIR=\\$DST; [ -d \\$DIR/.git ] || DIR=\\$SRC; "
-                  + "cd \\$DIR && git fetch origin --quiet && git checkout -B main origin/main && bash \\$DIR/install.sh"
+                  + "cd \\$DIR && git fetch origin --quiet "
+                  + "&& { git stash push -u -m pre-widget-update >/dev/null 2>&1 || true; } "
+                  + "&& git checkout -B main origin/main && bash \\$DIR/install.sh"
         var cmd = "nohup bash -lc \"" + inner + "\" >/tmp/cortex-update.log 2>&1"
         updateRunSource.connectSource(cmd)
     }

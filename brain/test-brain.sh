@@ -9641,6 +9641,65 @@ fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (vj) install.sh SIEMPRE deja contents/version.json en el paquete YA instalado =="
+# Reproduce el bug REAL (evidencia: cachy, plasmoid en 0.2.352 sin version.json → el botón de
+# auto-update nunca aparece): `kpackagetool6 -u` es un NO-OP si `KPlugin.Version` (metadata.json) no
+# cambió -- y nada la bumpea en cada release (gotcha ya documentado en cortex.md#39, nunca antes
+# probado). Un plasmoid instalado/actualizado alguna vez con un kpackagetool6 real que no recopia se
+# queda SIN version.json PARA SIEMPRE: install.sh lo escribe en el árbol FUENTE y lo borra ahí mismo
+# tras "empaquetar" (es temporal, no se versiona) -- si kpackagetool6 no lo copió al DESTINO, no
+# queda en ningún lado. Este probe stubea kpackagetool6 como ese NO-OP (registra la llamada, no toca
+# el destino) y comprueba que el instalador, aun así, garantiza version.json en el paquete instalado.
+if command -v jq >/dev/null 2>&1; then
+  VJROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-vj.XXXXXX")"
+  VJHOME="$VJROOT/home"; VJSTUBS="$VJROOT/stubs"; mkdir -p "$VJHOME" "$VJSTUBS"
+  VJPLASMOID_ID="$(grep -m1 '^PLASMOID_ID=' "$ROOT/install.sh" | sed -E 's/^PLASMOID_ID="([^"]+)".*/\1/')"
+  VJCALLS="$VJROOT/kpt-calls.log"; : > "$VJCALLS"
+
+  # Pre-siembra un install "viejo" (como el de cachy): el paquete YA vive en destino, con TODO el
+  # contenido actual EXCEPTO version.json -- justo lo que deja un kpackagetool6 -u que nunca copió
+  # ese archivo a esa máquina.
+  VJDEST="$VJHOME/.local/share/plasma/plasmoids/$VJPLASMOID_ID/contents"
+  mkdir -p "$VJDEST"
+  cp -R "$ROOT/src/plasmoid/contents/." "$VJDEST/"
+  rm -f "$VJDEST/version.json"
+
+  # Stub de kpackagetool6: `-l` responde "ya está instalado" (fuerza la rama `-u`); CUALQUIER llamada
+  # solo se registra y sale 0, SIN tocar el destino -- exactamente lo que hace el kpackagetool6 REAL
+  # cuando KPlugin.Version no cambió. Si install.sh depende de que kpackagetool6 haga la copia, este
+  # probe lo demuestra sin Plasma/red real (mismo patrón que src/term-broker/probe-instalador.sh).
+  cat > "$VJSTUBS/kpackagetool6" <<EOF
+#!/usr/bin/env bash
+echo "\$*" >> "$VJCALLS"
+case " \$* " in *" -l "*) echo "$VJPLASMOID_ID" ;; esac
+exit 0
+EOF
+  for s in systemctl ccusage npm kquitapp6 kstart plasmashell claude; do
+    printf '#!/usr/bin/env bash\nexit 0\n' > "$VJSTUBS/$s"
+  done
+  chmod +x "$VJSTUBS"/*
+
+  ( export HOME="$VJHOME"; export PATH="$VJSTUBS:/usr/bin:/bin"
+    cd "$ROOT" && bash ./install.sh --no-brain --no-claude-code --no-reload-shell ) \
+    > "$VJROOT/out.txt" 2>&1
+  VJ_RC=$?
+
+  if [ "$VJ_RC" -eq 0 ]; then ok "vj: install.sh sale 0 con el plasmoid ya instalado (rama -u)"
+  else bad "vj: install.sh sale $VJ_RC (ver $VJROOT/out.txt)"; fi
+  if grep -q -- ' -u ' "$VJCALLS"; then ok "vj: tomó la rama kpackagetool6 -u (plasmoid ya listado)"
+  else bad "vj: no tomó -u -- el stub de -l no se leyó como ya instalado"; fi
+  if [ -f "$VJDEST/version.json" ] && jq -e '.sha and .date' "$VJDEST/version.json" >/dev/null 2>&1; then
+    ok "vj: version.json quedó en el paquete INSTALADO tras un -u que no copia nada"
+  else
+    bad "vj: version.json SIGUE ausente del paquete instalado tras -u -- repro del bug real (sin auto-update)"
+  fi
+  rm -rf "$VJROOT"
+else
+  bad "vj: no hay jq -- no puedo verificar version.json embebido"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 PASS=$(grep -c '^OK$'  "$CALLLOG" 2>/dev/null); PASS="${PASS:-0}"
 FAIL=$(grep -c '^BAD$' "$CALLLOG" 2>/dev/null); FAIL="${FAIL:-0}"
 echo "==> resultado: $PASS PASS · $FAIL FAIL"

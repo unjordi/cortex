@@ -560,6 +560,19 @@ if [[ "$SKIP_PLASMOID" -eq 0 && "$DESKTOP_KIND" == kde ]]; then
   else
     kpackagetool6 -t Plasma/Applet -i "$PLASMOID_SRC"
   fi
+  # BUG REAL (cerebro cortex.md#39): `kpackagetool6 -u` NO recopia contenido si `KPlugin.Version`
+  # (metadata.json) no cambió -- y nada la bumpea en cada release. Desde que version.json se
+  # empieza a escribir aquí (#dcdc855, 2026-07-15) TODO update por `-u` sobre un plasmoid ya
+  # instalado antes de esa fecha quedaba SIN version.json para siempre (evidencia real: cachy,
+  # brain 0.2.352). Copia DIRECTA post-kpackagetool6 como red de seguridad determinista, la misma
+  # receta ya validada para iterar en vivo -- bypassa el cacheo de kpackagetool6 por completo, para
+  # este archivo y cualquiera que se agregue a futuro.
+  INSTALLED_CONTENTS="${XDG_DATA_HOME:-$HOME/.local/share}/plasma/plasmoids/$PLASMOID_ID/contents"
+  if [[ -d "$INSTALLED_CONTENTS" ]]; then
+    cp -Rf "$PLASMOID_SRC/contents/." "$INSTALLED_CONTENTS/"
+  else
+    echo "    OJO: no encontré $INSTALLED_CONTENTS tras kpackagetool6 -- version.json podría no haber quedado instalado." >&2
+  fi
   rm -rf "$BRAIN_IN_PKG"   # limpia el árbol fuente tras empaquetar
   rm -f "$VERSION_IN_PKG"  # idem: version.json es temporal, no se versiona
 
