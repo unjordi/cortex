@@ -2471,9 +2471,21 @@ BASHBIN="$(command -v bash)"
 o="$(printf '%s' "{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$PFH/.claude/hooks/no-bypass-deploy.sh\"}}" \
      | PATH="/nonexistent-dir" HOME="$PFH" CLAUDE_BRAIN_DIR="$PFB" "$BASHBIN" "$HOOKS/proteger-fuente-cerebro.sh")"
 [ -z "$o" ] && ok "proteger-fuente: fail-open sin jq → silencio (no bloquea)" || bad "proteger-fuente: no falló abierto sin jq; got: $o"
-# (los source-greps de proteger-fuente se retiraron: los casos (1)-(6) de arriba CORREN el hook y miden
-#  su efecto —avisa con fuente / silencio local / escape / fail-open—; el lint de $HOME hardcodeado lo
-#  cubre e6.3 global; su línea en el MANIFEST y su cableado, la paridad e2 / e6d / e7.)
+# (7) editar el CLON INFRA en sitio (~/.cortex/brain/…) → AVISA "CLON INFRA" (el caso que hizo axon-master)
+o="$(pf "$PFH/.cortex/brain/skills/checkpoint/SKILL.md")"
+{ has_ctx "$o" && printf '%s' "$o" | jq -r '.hookSpecificOutput.additionalContext' | grep -qF "CLON INFRA"; } \
+  && ok "proteger-fuente: editar ~/.cortex/brain en sitio → AVISA (clon infra regenerable)" || bad "proteger-fuente: no avisó del clon infra; got: $o"
+# (7b) idem bajo el nombre pre-rename ~/.claude-brain/brain/…
+o="$(pf "$PFH/.claude-brain/brain/hooks/git-branch-guard.sh")"
+has_ctx "$o" && ok "proteger-fuente: editar ~/.claude-brain/brain en sitio → AVISA" || bad "proteger-fuente: no avisó del clon infra pre-rename; got: $o"
+# (7c) ANTI-FALSO-POSITIVO: un clon de DESARROLLO (ruta NO oculta), aunque CLAUDE_BRAIN_DIR apunte ahí,
+#      es fuente EDITABLE → silencio (no confundirlo con el clon infra oculto)
+o="$(printf '%s' "{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$PFH/code/cortex/brain/skills/checkpoint/SKILL.md\"}}" \
+     | HOME="$PFH" CLAUDE_BRAIN_DIR="$PFH/code/cortex" bash "$HOOKS/proteger-fuente-cerebro.sh")"
+[ -z "$o" ] && ok "proteger-fuente: editar clon de DESARROLLO (no oculto) → silencio (anti-falso-positivo)" || bad "proteger-fuente: avisó de un clon de desarrollo; got: $o"
+# (los source-greps estáticos de proteger-fuente se retiraron: los casos (1)-(7c) CORREN el hook y miden
+#  su efecto —avisa con fuente / clon infra / silencio local-desarrollo / escape / fail-open—; el lint de
+#  $HOME hardcodeado lo cubre e6.3 global; su línea en el MANIFEST y su cableado, la paridad e2 / e6d / e7.)
 rm -rf "$PFFIX"
 
 # ─────────────────────────────────────────────────────────────────────────────

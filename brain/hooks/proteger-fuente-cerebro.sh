@@ -1,19 +1,21 @@
 #!/usr/bin/env bash
 # proteger-fuente-cerebro.sh — PreToolUse/{Edit,Write,MultiEdit}: AVISA (NO bloquea) cuando estás
-# editando la copia INSTALADA de una skill/hook del cerebro (~/.claude/skills|hooks/) que TIENE una
-# FUENTE correspondiente en el clon canónico (brain/skills|hooks/). Antídoto a un HUECO real (cazado
-# por el db-master): una regla escrita directo en la copia INSTALADA es REGENERABLE — el próximo
-# `install-brain` la SOBRESCRIBE con la fuente y la edita MUERE, sin dejar rastro. La fuente única es
-# el clon canónico; la instalada es un DESPLIEGUE. `canonizar-cerebro` (modo reconciliar) cubre
-# brain→repo (mini→develop), pero NO este sentido (instalada→fuente) — por eso este guard.
+# editando una copia REGENERABLE del cerebro, en cualquiera de sus DOS formas:
+#   (A) la copia INSTALADA global (~/.claude/skills|hooks/) que TIENE una FUENTE correspondiente en el
+#       clon canónico (brain/skills|hooks/) → la SOBRESCRIBE el próximo `install-brain`.
+#   (B) el CLON INFRA oculto (~/.cortex/brain/… o ~/.claude-brain/brain/…) — el clon que TODAS las
+#       máquinas tienen y que el updater del widget FUERZA-ALINEA a origin/main (git checkout -B main
+#       origin/main) → tu edición en sitio MUERE en el próximo update del widget.
+# Antídoto a un HUECO real (cazado por el db-master; el caso (B) lo destapó axon-master editando skills
+# EN SITIO en ~/.cortex). En ambos casos la copia es un DESPLIEGUE, no la fuente: la única que sobrevive
+# es el clon de DESARROLLO (p.ej. ~/code/cortex), que se propaga por git. `canonizar-cerebro` (modo
+# reconciliar) cubre brain→repo (mini→develop), pero NO instalada/infra→fuente — por eso este guard.
 #
-# Doc=realidad: la única copia que sobrevive un re-install es la del clon canónico
-# (${CLAUDE_BRAIN_DIR:-$HOME/.cortex}/brain/…). Editar la instalada es editar un artefacto que
-# se re-genera; el aviso redirige a la fuente y recuerda propagar (install-brain / sincronizar-cerebro).
-#
-# - Solo avisa si el file_path cae bajo $HOME/.claude/skills/ o $HOME/.claude/hooks/ Y existe la fuente
-#   correspondiente (mismo relativo) en el clon canónico. Skill/hook PURAMENTE local (sin fuente) →
-#   silencio (no es el error que vigilamos).
+# - (A) avisa sólo si el file_path cae bajo ~/.claude/skills|hooks/ Y existe la fuente correspondiente
+#   en el clon canónico. Skill/hook PURAMENTE local (sin fuente) → silencio.
+# - (B) avisa si el file_path cae bajo ~/.cortex/brain/ o ~/.claude-brain/brain/ (rutas OCULTAS
+#   canónicas del clon infra). Usa esas rutas fijas, NO $CLAUDE_BRAIN_DIR resuelto: si éste apunta a un
+#   clon de DESARROLLO (~/code/cortex), ahí SÍ es fuente editable → NO avisa (anti-falso-positivo).
 # - NUNCA bloquea (additionalContext). FAIL-OPEN: sin jq / sin file_path / cualquier error → exit 0.
 # - Rápido (dispara en CADA Edit/Write/MultiEdit): un jq, un case de prefijo y un test -f.
 # - Escape: env CLAUDE_SKIP_PROTEGER_FUENTE=1.
@@ -28,14 +30,21 @@ command -v jq >/dev/null 2>&1 || exit 0
 fp=$(jq -r '.tool_input.file_path // empty' 2>/dev/null)
 [ -z "$fp" ] && exit 0
 
-# ¿Cae bajo la copia INSTALADA (skills|hooks)? Deriva el relativo (incluye el subdir) → así el mismo
-# relativo aplica a la FUENTE brain/<subdir>/…
+# ¿Qué copia REGENERABLE se edita? (A) instalada global → deriva el relativo para nombrar su fuente;
+# (B) clon infra oculto → avisa directo (no hay "fuente correspondiente" que ofrecer: la fuente es el
+# clon de DESARROLLO, que este guard no localiza de forma fiable).
 case "$fp" in
   "$HOME/.claude/skills/"*) relsub="skills/${fp#"$HOME/.claude/skills/"}" ;;
   "$HOME/.claude/hooks/"*)  relsub="hooks/${fp#"$HOME/.claude/hooks/"}" ;;
+  "$HOME/.cortex/brain/"*|"$HOME/.claude-brain/brain/"*)
+    MSG="AVISO (proteger-fuente-cerebro): estás editando el CLON INFRA del cerebro ($fp). Ese clon (~/.cortex) es REGENERABLE: el updater del widget lo FUERZA-ALINEA a origin/main (git checkout -B main origin/main) y tu edición en sitio se PIERDE sin rastro. NO es una fuente editable — es un DESPLIEGUE que TODAS las máquinas tienen. Edita la FUENTE en tu clon de DESARROLLO de cortex (p.ej. ~/code/cortex), en una ramita, y propaga por git (ramita→MR→develop). Si esta máquina no tiene clon de desarrollo, no lo edites a mano: contribúyelo por git. (AVISA, no bloquea; CLAUDE_SKIP_PROTEGER_FUENTE=1 para silenciar.)"
+    jq -n --arg m "$MSG" '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$m}}'
+    exit 0
+    ;;
   *) exit 0 ;;
 esac
 
+# --- Caso (A): resuelve el clon canónico y avisa sólo si existe la FUENTE correspondiente. ---
 # resolve_brain_dir() vive en drift-cerebro-comun.sh (misma carpeta, fuente y una vez instalado) — mismo
 # orden/fallback que los widgets (#322): $CLAUDE_BRAIN_DIR → ~/.cortex → ~/.claude-brain. Si la lib no
 # está (caso raro), cae al default histórico sin el fallback (fail-open, este guard nunca bloquea).
