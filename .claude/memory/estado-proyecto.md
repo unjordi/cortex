@@ -1,353 +1,162 @@
 ---
 name: estado-proyecto
-description: Backlog VIVO y compartido de cortex — la fuente de verdad de qué sigue, qué se decidió y qué quejas/sugerencias tienen los claudes. Cualquier sesión (master o no, cualquier máquina) escribe aquí; NO en el panel de to-dos (ese es scratch efímero de sesión). Aquí empiezas siempre.
+description: Backlog VIVO y compartible de cortex (el cerebro) — fuente de verdad de qué sigue, qué se decidió y las quejas/sugerencias de los claudes. Cualquier sesión (master o no, cualquier máquina) escribe aquí, NO en el panel de to-dos (scratch efímero). Lee la sección 🧭 BACKLOG al tope.
 metadata:
   type: project
 ---
 
 # Estado del proyecto — cortex (el cerebro compartible)
 
-> ⚠️ **INTERINO (2026-08-09 → reubicar-master):** el backlog de dev VIVO se consolidó en
-> **`BACKLOG-UNIFICADO.md`** (el working único). **Empieza AHÍ.** Este archivo (tracked/compartido) conserva
-> su contenido hasta que **reubicar-master** lo re-canonice al molde de `estado-proyecto` y resuelva el wart
-> "tracked estado-proyecto ↔ BU untracked/local".
+> **Aquí empiezas.** Backlog DURABLE del proyecto: qué sigue, qué se decidió, y el buzón donde cualquier
+> claude deja quejas/sugerencias. El panel de to-dos de una sesión es scratch efímero; lo que debe
+> sobrevivir a la sesión/compactación vive AQUÍ (léelo junto a `MEMORY.md` antes de tocar nada). Cerrado →
+> `bitacora.md`. Cómo mantenerlo → skills `to-do` / `cerrar-slice`. Pendientes/Decisiones se CURAN; el 📮
+> Buzón es append-only con `>>` (dos append no se pisan; un Edit tropieza con "File modified since read").
 
-> **Aquí empiezas.** Este es el backlog DURABLE del cerebro: qué sigue, qué se decidió, y el buzón donde
-> cualquier claude deja sus quejas y sugerencias. El **panel de to-dos de una sesión es scratch efímero**;
-> lo que debe sobrevivir a la sesión/compactación vive AQUÍ. Léelo (junto a `MEMORY.md`) antes de tocar nada.
->
-> **Cómo se escribe:** los **Pendientes** y **Decisiones** se CURAN (edítalos, muévelos, ciérralos). El
-> **📮 Buzón** es append-only: agrega tu línea al FINAL con `>>` (dos append no se pisan; un Edit tropieza
-> con "File modified since read" cuando varias sesiones escriben a la vez). Formato de cierre: mueve el ítem
-> a **Hecho** anclado a commit+fecha.
+## 📌 Dónde estamos (resumen vivo)
+- **cortex mudado a `~/code/cortex`** (era claude-brain; rename claude-brain→cortex ya en main, bc83604).
+  Los 3 backlogs (`estado-proyecto.md` + `backlog-desarrollo.md` + `BACKLOG-UNIFICADO.md`) se CONSOLIDARON
+  aquí (Fase C del EPIC molde) — este es el único backlog vivo.
+- **Jueces empoderados** (merge + DoD) LIBERADOS a main (release #265, v0.2.291); campaña de precisión de
+  guards PARCIAL (MR #351/#353). Quedan FP/FN concretos por afinar (cada uno = precisión + test + OK de unjordi).
+- **EPIC ciclo brain-widget** (romper el loop del rename) EN CURSO: OLA1 integrada a develop (#341/#342);
+  sigue OLA2/OLA3.
+- **Continuidad**: andamio del checkpoint mecánico (#407) integrado; quedan F3/F4/F5 del plan unificado y
+  6 hallazgos de QA del andamio. **Broker de terminal** (#26i) LISTO en rama, falta migración en vivo.
 
-## 🔜 Pendientes (backlog vivo)
+## 🧭 BACKLOG
+> **KEY:** `📘` tiene plan · `➖` mecánico/obvio · `📝` necesita que se DISEÑE el cómo. Grupo 1 (📘/➖) =
+> atacable = el HUD (solo espera tu GO o una decisión puntual). Grupo 2 (📝) = necesita plan, NO entra al HUD.
+> **Test por ítem:** ¿necesita DISEÑAR un plan? Sí→📝 · No (cómo claro, falta tu decisión/go)→ATACABLE.
+> **Estatus** `[pending]`/`[in_progress]`/`[blocked]` lo reescribe la máquina en sitio; el `` `#id` `` es el
+> JOIN KEY con el TaskList; marker/título/contexto son curación HUMANA.
 
-- **[MEDIO] F3 del plan de continuidad unificada (`scratchpad/PLAN-checkpoint-mudanza-unificados.md`,
-  2026-09-11) — el INVENTARIO ÚNICO de artefactos de continuidad y `G-CONTINUIDAD`.** Planteado y NO
-  construido. Qué es: un CATÁLOGO (dato, no código) de cada artefacto con su LLAVE (`sessionId` / `slug` /
-  `cwd` / `repo` / `repo×stream`) y su disposición OBLIGATORIA — `VIAJA` · `SOBREVIVE-SOLO` ·
-  `VOLATIL-LOCAL` · `PERDIDA-DECLARADA`, **sin quinta categoría** —, del que DERIVEN: la lista §1.0.2 del
-  skill `reubicar-master` (hoy escrita a mano: no puede seguir siendo correcta más de una versión del
-  harness, que inventa clases nuevas — `workflows/` es reciente), el gate de la mudanza (`G-SIDECAR` pasa
-  a ser UNA FILA del genérico) y la cobertura de `.gitignore`. Invariante clave: un artefacto que el
-  harness invente y nadie clasifique sale **HUÉRFANO** y BLOQUEA, en vez de descubrirse el día que falta.
-  Por qué importa: es la raíz común de los tres agujeros ya pagados uno por uno — el sidecar (#402), el
-  hilo (#402 + esta tanda) y el andamio (nació en #403 y #402 no sabía que existía).
-- **[BAJO] F4 del mismo plan — UNA pasada y UN hook de `PreCompact`.** Planteado y NO construido. Hoy el
-  bucle de streaming está escrito TRES veces (`scanTranscriptFile`, `rewriteTranscriptStream` y el
-  `extraer()` del extractor) y un solo evento `PreCompact` dispara CUATRO recorridos completos del mismo
-  transcript (el `grep` del customTitle + el export gzip + `metaBarata` + `extraer`), con dos hooks que
-  toman locks distintos sobre el mismo archivo. El arreglo: colectores enchufables sobre `session-lib.js`
-  (una pasada, N acumuladores) + un orquestador único del evento. Riesgo BAJO pero NO nulo: toca la lib
-  que el camino destructivo de la mudanza usa DESPUÉS del punto de no retorno ⇒ entra con el preflight de
-  CAPACIDAD del preludio apuntando a los símbolos nuevos, o no entra.
-- **[BAJO] F5 del mismo plan — el JUICIO externo (`claude -p --resume <sid> --fork-session`).** NO
-  construido y NO autorizado: cuesta dinero y pasa por `delegacion-gate`. Va al final por diseño; con F1
-  ya cerrado, el andamio mecánico ya tiene lector, que era el prerrequisito real.
+### 📬 PRs/MRs abiertos esperando OK
+(ninguno abierto)
 
-- **[MEDIO, PLAUSIBLE] M-7 del dictamen de barrido de ramas (`scratchpad/AUDITOR-barrido-ramas.md`,
-  2026-09-11) — caps silenciosos en la consulta al foro de `_bz_intentar_gh`/`_bz_intentar_glab`
-  (`ramas-zombie.sh`): `gh … --limit 300` y `glab … --per-page 300`. Dos problemas sin cerrar: (1) un
-  repo con >300 PRs/MRs mergeados deja los viejos fuera del cache y (d) "no encuentra" el PR/MR de una
-  rama vieja → la conserva sin decir que TRUNCÓ la consulta; (2) el `per_page` de la API de GitLab topa
-  en 100, así que el 300 pedido no da lo que promete. El auditor NO lo pudo cerrar sin pegarle a un foro
-  real (por eso quedó PLAUSIBLE, no CONFIRMADO) — exige rediseño (paginar hasta encontrar la rama, o
-  consultar `gh pr list --head <rama>`/`glab mr list` filtrado POR rama en vez de bajar un bulto) y
-  verificación contra un repo con volumen real de PRs/MRs cerrados. Dejado explícitamente FUERA de esta
-  ronda (fix/barrido-ramas-criticos) — no se improvisó.
-- **[BAJO, hallazgo colateral, sin tocar] Tests con `ok`/`bad` dentro de un subshell `( … )` no cuentan
-  para el veredicto de la suite.** Descubierto al verificar "falla sin el fix" de los tests nuevos de
-  `fix/barrido-ramas-criticos`: `test-brain.sh` corre con `set -u` y cuenta PASS/FAIL en variables
-  GLOBALES (`$PASS`/`$FAIL`); los bloques que hacen `( . "$HOOKS/ramas-zombie.sh"; … ok …; … bad … )`
-  imprimen la línea `PASS:`/`FAIL:` (stdout es compartido) pero el incremento de `$PASS`/`$FAIL` ocurre
-  DENTRO del subshell y se pierde al salir — esas aserciones son decorativas, nunca pueden hacer fallar
-  la suite. Confirmado en **`b3d`** (línea ~1969, dos bloques) y **`b3e`** (línea ~1984). El propio
-  comentario de `b3g` (línea ~2043) ya documenta el antídoto correcto ("se sourcea en ESTE scope, no en
-  subshell, para que ok/bad cuenten"), así que el patrón correcto YA existe en el archivo — solo falta
-  aplicarlo a b3d/b3e. Fuera de alcance de esta ronda (no es de los 19 hallazgos del dictamen de ramas);
-  encontrado por accidente al blindar los tests nuevos con esta MISMA verificación. Fix: quitar los
-  paréntesis en esos dos bloques (igual que se hizo para los tests nuevos b3h/b3j/b3o de esta ronda).
+### 📘+➖ 1 — Abierto a la espera del GO, o de decisión puntual
 
-- **Broker de terminal trasladado a cortex (#26i, primera pieza) — CÓDIGO LISTO Y AUDITADO EN RAMA;
-  FALTA LA MIGRACIÓN EN VIVO (unjordi presente).** Rama `feat/term-broker`. Quedó en el repo:
-  `src/term-broker/` (5 `.ts` vendorizados de axon **`341fb53`** + `SHA256SUMS` + 2 probes),
-  `bin/cortex-term-broker`, `bin/migrar-term-broker.sh`, `src/systemd/cortex-term-broker.service`,
-  bandera `install.sh --con-term-broker` (opt-in, Linux, token generado 0600), retiro en
-  `uninstall.sh`, `docs/term-broker.md`. Del lado de axon, `feat/term-broker-cliente-solo` (`67bdbae`)
-  ya trae `origin/develop` fusionado.
-  **Segunda pasada (2026-09-07): se atendieron los 10 hallazgos priorizados de la auditoría.**
-  Lo sustantivo: se **re-vendorizó desde `341fb53`** (socket unix + `GET /health` + el manejo de
-  error de `listen()` que faltaba); la unidad ganó `RuntimeDirectory=axon` +
-  `RuntimeDirectoryPreserve=yes` y `StartLimitIntervalSec/Burst` (antes ciclaba para siempre sin
-  llegar nunca a `failed`); el instalador valida OS/prereqs en el **paso 0** y decide por el
-  **endpoint** (`ss` sobre puerto y socket) en vez de por el nombre de una unidad, sin habilitar
-  cuando está ocupado (y deshabilitando lo que una corrida previa habilitó); y la migración es un
-  **script** que verifica con el token real. Verificado: `probe-instalador.sh` **49/49 exit 0**,
-  `probe-broker-vivo.sh` **35/35 exit 0**, `sha256sum -c` 0, `systemd-analyze --user verify` 0,
-  `bash -n` de los 8 scripts. **NO se tocó** el `axon-term-broker.service` que corre (MainPID
-  3203989, NRestarts=0 antes y después).
-  Lo que falta, por severidad:
-  - **[ALTO] la migración en vivo.** Se corre `~/.local/bin/migrar-term-broker.sh` (idempotente,
-    adopta el token legacy para que el `.env` del cliente no cambie, verifica con `/health` +
-    `/run` real y revierte solo si falla). Requiere `./install.sh --con-term-broker` antes, y a
-    unjordi presente porque **cierra sus terminales abiertas**.
-  - **[MEDIO] retirar `src/server/term-host-broker.ts` de axon** (ahora 394 líneas). Sigue
-    DEPRECADO a propósito: borrarlo antes de la migración rompería el servicio vivo, que arranca
-    desde `~/code/axon-run`. MR de follow-up POST-migración.
-  - **[BAJO · MENORES de la auditoría, NO atendidos]** — se dejan explícitos para que no se pierdan:
-    `I-3` el match de path por prefijo (`url.startsWith("/run")` acepta `/runtime`), `I-4`
-    `tokenMatches` usa `Buffer.equals` y no `timingSafeEqual`, `C-5`/`C-6`. Los tres primeros viven
-    en el código **vendorizado**: arreglarlos aquí rompería la copia byte-a-byte, así que van en
-    **axon** y llegan por re-vendorizado. `C-4` (el claim del `env` falso en modo contenedor) e
-    `I-6`/`I-7`/`I-11`/`I-12`/`I-13`/`C-3` SÍ se atendieron.
-  - **[CERRADO] licencia del vendorizado.** unjordi confirmó que axon y cortex son suyos y que la
-    relicencia MIT no es un bloqueo; el `NOTICE` lo dice ahora sin el "de facto".
-  - **[BAJO] el contrato de #26i sigue abierto** para las OTRAS piezas (hwfit, `ollama-ram-pin`,
-    `state.json`): archivo vs socket vs HTTP, descubrimiento, versionado. Este traslado no lo cierra
-    ni lo prejuzga.
+- ➖ [pending] `#82` — **Aplicar el fix de aviso-contexto (#303 + #311, ya en develop) a las máquinas + verificar Cachy.** Vía `updater ⬆` del widget (unjordi; NO `install-brain` a mano).
+- 📘 [pending] **NORTE de fluxcore — reconciliar el alcance** (proyecto de Felipe/COO). Espera decisión de dominio: `CLAUDE.md`/`dom-contexto` = "trazabilidad por nº de serie → QR de evidencia" vs `AGENTS.md` = "flota + telemetría + reportes". Decidido el norte, alinear los 3 docs es mecánico.
+- 📘 [pending] `#292` — **hud-stale refinamiento (seguimiento) — NO bloquea nada.** Espera sí/no: ¿recall del HUD al salir a un dir sin backlog? (DESCARTADO "checkpoint genera el HUD desde el hilo": el HUD viene del BACKLOG `estado-proyecto`. Tier lo resolvió `#81`; skills-tier cerrado.)
+- ➖ [pending] **[widget] Catálogo de hooks del widget DERIVADO del `MANIFEST`** (hoy hardcodeado en `BrainInspector.swift`/`main.qml` → 4 hooks globales caen en "OTROS" + aún lista `precompact-volcar-estado` retirado).
+- ➖ [pending] **[widget] Mostrar la VERSIÓN del brain instalado en el tab "Cerebro"** (`install-brain` estampa `~/.claude/.brain-version`; el widget la lee y pinta).
+- ➖ [pending] **[infra] `install-brain` SIEMBRA las env vars del brain en `settings.json .env`** (idempotente); install/widget sin depender del env de sesión — el update del widget borró `CLAUDE_SESSIONS_DRIVE`.
+- ➖ [pending] **[infra] Extender el parity-check del árbol (`docs/flowcharts/verificar-arbol-sync.sh`, FASE 1) a hooks 🔒/🔔 + leyendas.** Hoy solo cubre 💡 Skills → un drift de hook (p. ej. `exportar-sesion-master` ausente de CLAUDE.md) pasa CI verde. Extender a 🔒/🔔 (README↔CLAUDE.md↔MANIFEST) + byte-igualdad de leyendas `.dot` vs `gen-leyenda-arbol.sh`. · _DUPLA 2026-08-03 (H3, BAJO)._
+- 📘 [pending] **[infra] Continuidad MULTI-STREAM del hilo (`rehidratar-hilo` + `checkpoint`).** Que `rehidratar-hilo` inyecte TODOS los `hilo-*.md` (dueño+frescura) y `checkpoint` escriba `hilo-<rol>.md` por auto-identificación, con `hilo-mental-actual.md` como alias legado. Cierra el bug real de dos gemelos pisándose el hilo (2 colisiones en un día). Incluye: `hilo-mental` NO hardcodee la máquina → derivar `uname`/`$HOME` en vivo. Aditivo/retrocompatible → apto para global. Diseño completo + VERBATIM en `[[propuesta-multi-stream-hilos]]`. · _rescatada de potenciaDatabases 2026-07-30, vigente 2026-08-05; lección cps-master._
+- 📘 [pending] **[infra] `conocimiento-propio` estándar por sesión master.** Volver ESTÁNDAR que toda sesión master escriba su `conocimiento-propio.local.md` (per-repo, gitignored, re-inyectado en cada SessionStart por `aviso-drift-cerebro`), desde el template `EJEMPLO-conocimiento-propio.md` (cada master desde SU lado, no copia del gemelo). Ya lo tienen `claude-brain-master` (Mac, `761c82d9…`) y `claude-brain-cachy-master` (Cachy, `7a6960de…`, 2026-08-03). **Falta:** (a) documentar el paso "siembra tu conocimiento-propio" en el checklist de un master; (b) decidir dónde vive canónicamente el `EJEMPLO` (hoy en Drive `claude-sessions/`) — ¿al brain o personal?; (c) ¿lo siembra `install-brain`/`bootstrap` o es manual? · _decisión de unjordi 2026-08-03._
+- 📘 [pending] **[skill] Formalizar el SKILL de diagramas DOT→yEd** (`bin/dot2yed.py` ya existe): escribir SKILL.md + propagar (¿brain global?).
+- ➖ [pending] **[doc] QA visual de los 3 tiles 📐 de `canonizar-cerebro` en los 3 widgets** (macOS `PopoverView.swift` · Linux `main.qml` · Windows `PopupForm.cs`). Se agregó el tile + estado opt-in (5-catálogos en sync, `verificar-arbol-sync.sh` verde), pero NO se compiló ni se vio en pantalla — QA visual insustituible pendiente. · _feat/reconstruir-firma-canonica 2026-08-08._
+- ➖ [pending] `#47` — **[máquina] QA en el Windows de Danny: paridad `#227` + que "(5) curar cerebro" caiga a 0.**
+- ➖ [pending] **[higiene] Mover los ✅ HECHO de `backlog-desarrollo.md` (preservados en `backlog-desarrollo.md.bak` local) a `bitacora.md`** — el journal ya existe.
+- 📘 [in_progress] `#26i` — **Broker de terminal trasladado a cortex (primera pieza) — CÓDIGO LISTO Y AUDITADO EN RAMA; FALTA LA MIGRACIÓN EN VIVO (unjordi presente).** Rama `feat/term-broker`. En el repo: `src/term-broker/` (5 `.ts` vendorizados de axon `341fb53` + `SHA256SUMS` + 2 probes), `bin/cortex-term-broker`, `bin/migrar-term-broker.sh`, `src/systemd/cortex-term-broker.service`, bandera `install.sh --con-term-broker` (opt-in, Linux, token 0600), retiro en `uninstall.sh`, `docs/term-broker.md`. Del lado de axon, `feat/term-broker-cliente-solo` (`67bdbae`) ya trae `origin/develop` fusionado. **2ª pasada (2026-09-07): 10 hallazgos priorizados atendidos** — re-vendorizado desde `341fb53` (socket unix + `GET /health` + manejo de error de `listen()`); unidad con `RuntimeDirectory=axon` + `RuntimeDirectoryPreserve=yes` + `StartLimitIntervalSec/Burst` (antes ciclaba sin llegar a `failed`); instalador valida OS/prereqs en paso 0 y decide por ENDPOINT (`ss` sobre puerto y socket), no por nombre de unidad; migración por script que verifica con el token real. Verde: `probe-instalador.sh` 49/49, `probe-broker-vivo.sh` 35/35, `sha256sum -c` 0, `systemd-analyze --user verify` 0, `bash -n` de 8 scripts. NO se tocó `axon-term-broker.service` vivo (MainPID 3203989, NRestarts=0). **Falta por severidad:**
+  - **[ALTO] la migración en vivo** — correr `~/.local/bin/migrar-term-broker.sh` (idempotente, adopta el token legacy para que el `.env` del cliente no cambie, verifica con `/health` + `/run` real, revierte si falla). Requiere `./install.sh --con-term-broker` antes, y a unjordi presente porque **cierra sus terminales abiertas**.
+  - **[MEDIO] retirar `src/server/term-host-broker.ts` de axon** (394 líneas), DEPRECADO a propósito: borrarlo antes de migrar rompería el servicio vivo (arranca desde `~/code/axon-run`). MR de follow-up POST-migración.
+  - **[BAJO · MENORES no atendidos, viven en el vendorizado → van en axon por re-vendorizado]:** `I-3` match de path por prefijo (`url.startsWith("/run")` acepta `/runtime`); `I-4` `tokenMatches` usa `Buffer.equals` y no `timingSafeEqual`; `C-5`/`C-6`. (`C-4` env falso en modo contenedor, `I-6/7/11/12/13`, `C-3` SÍ atendidos.)
+  - **[CERRADO] licencia del vendorizado** — unjordi confirmó axon+cortex suyos, relicencia MIT no bloquea; el `NOTICE` lo dice sin el "de facto".
+  - **[BAJO] el contrato de #26i sigue abierto** para las OTRAS piezas (hwfit, `ollama-ram-pin`, `state.json`): archivo vs socket vs HTTP, descubrimiento, versionado. Este traslado no lo cierra ni prejuzga.
+- 📘 [in_progress] **Aristas del sync de sesiones (delegadas por `reubicar-master §9`) — EN CURSO `fix/session-infra-aristas`.** Son el subsistema de sync de sesiones (no del skill) — las aristas EXACTAS que el move real de los masters va a pisar. Por severidad:
+  - **[ALTO · destructivo] #2 freshness-check en `seed.sh --force`** (`brain/sesiones-master/seed.sh:61` → `session-import.js`): `--force` pisa lo local con el `.gz` de Drive SIN comparar frescura → un master VIVO regresa a copia vieja (turnos perdidos, mudo). Nace con test en `test-brain.sh`.
+  - **[ALTO] #3 auto-registro que ACTUALICE `target`** (`brain/hooks/exportar-sesion-master.sh:139-147`): hoy el bloque solo corre si el sid NO está en `masters.json` y el node solo hace `push` si `!some(id)` → un master que se MOVIÓ conserva su `target` viejo → `seed` en otra máquina lo siembra al folder equivocado.
+  - **[MEDIO] #1 tie-break determinista en `findSession`** (`bin/session-lib.js:30-41`): devuelve el 1er slug del `readdirSync` (orden FS arbitrario) si el id existe en 2 slugs → resume no-determinista.
+  - **[BAJO · latente] #4 poda de `~/.claude/session-move-backups/`** (`bin/session-move.js`): sin límite; hoy vacío → preventivo.
+- 📘 [in_progress] **EPIC — CICLO brain-widget (INSTALL→LIMPIEZA→UPDATE→AUTOSYNC): romper el LOOP del rename.** Auditoría read-only (2026-08-29, 4/4 claims verificados) en `docs/auditoria-ciclo-brain-widget-2026-08-29.md`. **Raíz:** la build vieja no puede self-update (sin fallback #322) y "Curar" corre el `install-brain.sh` del bundle SIN git → punto fijo de no-convergencia; ningún botón trae código nuevo. **2 CRÍTICOS · 5 ALTOS · 5 MEDIOS · 3 BAJOS**, plan en 3 olas (DAG en el reporte). Subsume ítems #4/#5/#6/#7/#12 de este grupo. **REFRAME (unjordi 2026-08-29):** los COLEGAS están en build **pre-rename `claude-brain`** con clon `~/.claude-brain` = estado EMPAREJADO → su `resolveClonePath` viejo halla el clon → `canSelfUpdate=TRUE` → su "Actualizar" NO es inerte. VERIFICADO: la cadena congelada SOBREVIVE el rename — GitHub API `claude-brain/commits/main` da 301→cortex (repo-id 1285288132, URLSession sigue el 301) y `git ls-remote`/`fetch` al URL viejo HTTPS devuelve `472e9c7` (redirect de git) → su clic corre `cd ~/.claude-brain && git fetch (redirige) && ff origin/main && bash ~/.claude-brain/macos/install.sh` = jala y corre el `install.sh` NUEVO → el fix viaja en su clic SIN SSH a sus compus. **OBJETIVO (textual):** "cuando le piquen Actualizar a su widget stale, simplemente se actualice sin drama, sin que tenga que conectarme a sus compus." **El slice real:** VERIFICAR+BLINDAR el `macos/install.sh` nuevo con un REPRO FIEL del estado colega (clon HTTPS desechable + pasos exactos del updater viejo `git show e1c143f^:macos/Sources/ClaudeBrain/Updater.swift`), NUNCA corriéndolo en la Mac real. Riesgos a cerrar: (1) asset precompilado atrás de HEAD → garantizar `asset==HEAD`; (2) barrido del "Claude Brain Widget" viejo (#317, sin doble-ícono); (3) borde SSH-remote (menor, redirige con warning). **Auto-cura FORWARD** (blindaje para DESPUÉS): OLA1 sube de "mostrar one-liner" a que la build NUEVA detecte nombre-viejo/clon-atrás y CORRA el equivalente de bootstrap (migrar `~/.claude-brain→~/.cortex` + alinear `origin/main` + reinstalar) en Actualizar Y en Curar; + hook `SessionStart` que avisa el one-liner SOLO por HUELLA LOCAL sin red (`[ -d ~/.claude-brain/.git ] && [ ! -d ~/.cortex ]`), throttle 1×/día — NUNCA `git fetch` en cada compact (unjordi: "no quiero que TODAS las sesiones revisen origin en cada compact"). El chequeo de frescura-vs-origin SE QUEDA en el widget (throttled 1×/15min). **EN CURSO (loop implement→review→integra→re-audita; orquestador=cortex-master, unjordi=decisor):** ✅ **OLA1 INTEGRADA a develop 2026-09-01** — `#341` (`resolve_brain_dir()` fallback + nudge SessionStart local) + `#342` (escape discoverable: one-liner real de bootstrap en los 3 widgets), revisados (bash -n, 3 OS compilan, sin tocar lógica). **Sigue:** re-auditar lo integrado → **OLA2** (`.brain-version` no regresa al curar [#5] · widget ff-align a `origin/main` · asset==HEAD) → **OLA3** (doc=realidad flowchart 01/autoupdate/mapa · catálogo widget derivado del MANIFEST [#4] · parity-check hooks [#7] · barrido por patrón [#317]). _(Subsume los pendientes de `backlog-desarrollo.md`: GAP rename canSelfUpdate=false, "Curar" migre el clon, verificar botón Curar.)_
+- ➖ [pending] **MECANISMO DE RESPALDO del nugget churn-local-tier de `orquestar-fanout` (axon en la Cachy) — NO tocar el canónico aún.** El nugget (delegar CHURN a `axon` a $0 + comandos + ejemplo, sección `## Delegar CHURN a axon…`) es setup único de unjordi → a propósito NO va al canónico (`cortex/brain/skills/orquestar-fanout/SKILL.md`, INTACTO) para no empujarlo a los colegas. **Diseño (asentado 2026-09-07):** la copia POR-REPO de **plantilladotnet** (`.claude/skills/orquestar-fanout/SKILL.md`) es el RESPALDO deliberado; `sincronizar-cerebro` NO la plancha (verificado: sync !115 no la tocó). Cuando un `install-brain`/bootstrap re-deriva el GLOBAL y lo plancha, se RE-PROPAGA: `command cp ~/code/plantilladotnet/.claude/skills/orquestar-fanout/SKILL.md ~/.claude/skills/orquestar-fanout/SKILL.md` (difieren SOLO en el nugget → restaura idéntico). Hecho 2026-09-07: global planchado → re-propagado (global == respaldo). **Reabrir "llevar al canónico" solo cuando los colegas necesiten axon.**
+- ➖ [pending] **[infra] Bajos del audit de SISTEMA proceso 01 (ronda 2/4, 2026-09-08) — robustez/doc, no bugs activos.** Detalle en `docs/auditorias-sistema/01-instalacion-actualizacion.md`.
+  - (ronda 2a) **`conocimiento-propio` sin cap de tamaño** — se reinyecta íntegro en CADA SessionStart (`aviso-drift-cerebro.sh` L~72) → bloat si crece; decidir umbral + aviso "…truncado" (NUNCA truncar la identidad en silencio).
+  - (ronda 2b) **doc+test de `ev_de`** — FIX-4 ya hace exit-1 si un hook queda sin cablear; falta un test que falle si un hook `{global,both} kind=hook` del MANIFEST no tiene entrada en `ev_de()` + doc del checklist "agregar hook → añadir a ev_de".
+  - (ronda 4a) `register_hook` dedupe por substring del comando (`test($pat)`) frágil si un hook custom llama al mismo script con otro path/args → normalizar por basename o id.
+  - (ronda 4b) `Updater.swift` `pkill -f 'Cortex Widget…'` mata TODAS las instancias → matar por PID. _(el crítico del pkill YA se arregló, `92fb814`.)_
+  - (ronda 4c) flowchart GUPD dice "NO hace git fetch/pull" pero install-brain sí escribe `git config --global fetch.prune true` → aclarar el nodo.
+  - (ronda 4d) doc: "bootstrap.sh / widget ⬆ son para máquinas de CONSUMO; para desarrollar el cerebro usa un clon separado" (el `checkout -B` fuerza-alinea; falta el mensaje operativo).
+  - (ronda 4e) helper único de propagación manual del drift cuando la rama ≠ `Develop<user>` (hoy el mensaje dice "worktree→ramita→MR" sin dar comando).
+  - (ronda 4f) check post-copy de `SKILL.md` tras el swap de skills.
+- ➖ [pending] **[higiene] Triar las 3 auditorías fechadas del cerebro de cortex** — `auditoria-consolidacion-guards-2026-09-15.md`, `auditoria-continuidad-hilo-2026-09-09.md`, `auditoria-redundancias-cortex-2026-09-09.md`: decidir por CADA una si es HISTÓRICA (→ mover a historial) o VIVA (se queda). Solo la decisión de clasificación por archivo; el movimiento se hace aparte.
+- ➖ [pending] **[higiene] CONSOLIDACIÓN DE GUARDS M1–M11 (2026-09-15, AUTORIZADA).** Aplicar M1–M11 del dictamen: sustrato único para los 5 git-guards, fusionar `merge-squash`+`confirmar-merge`, cachear el destino del MR al CREARLO, y fixes de la lente semántica (`CLAUDE_CONFIG_DIR`, `sesion-inicio` que miente, `dod-verificar` fail-open). Ver `auditoria-consolidacion-guards-2026-09-15.md`. _(Relacionado con el `guardian-bash` dispatcher de POST-RELEASE en Grupo 2 — coordinar: no reabrir guards de supervisión en víspera de release.)_
 
-- **Aristas del sync de sesiones (delegadas por `reubicar-master` §9) — EN CURSO `fix/session-infra-aristas`.**
-  Las 4 son el subsistema de sync de sesiones (NO del skill; el skill mueve un master, no refactoriza su
-  tooling), y son las aristas EXACTAS que el move real de los masters va a pisar. Origen: `SKILL.md §9` —
-  estaban SOLO en el texto del skill, nunca en este backlog (lección abajo). Por severidad:
-  - **[ALTO · destructivo] #2 freshness-check en `seed.sh --force`** (`brain/sesiones-master/seed.sh:61` →
-    `session-import.js`): `--force` pisa lo local con el `.gz` de Drive SIN comparar frescura → un master VIVO
-    regresa a una copia vieja (turnos recientes perdidos, mudo). Nace con test en `test-brain.sh`.
-  - **[ALTO] #3 auto-registro que ACTUALICE `target`** (`brain/hooks/exportar-sesion-master.sh:139-147`): hoy
-    el bloque solo corre si el sid NO está en masters.json y el node solo hace `push` si `!some(id)` → un master
-    que se MOVIÓ conserva su `target` viejo → `seed` en otra máquina lo siembra al folder equivocado.
-  - **[MEDIO] #1 tie-break determinista en `findSession`** (`bin/session-lib.js:30-41`): devuelve el 1er slug del
-    `readdirSync` (orden FS arbitrario) si el id existe en 2 slugs (move a medias) → resume no-determinista.
-  - **[BAJO · latente] #4 poda de `~/.claude/session-move-backups/`** (`bin/session-move.js`): sin límite; hoy el
-    dir está VACÍO → preventivo (aún no muerde).
-  - **Mecanismo (ASENTADO en `cerrar-slice` + corolario en `orquestar-fanout`, con test `s5`):** el paso de cierre ahora EXIGE barrer al backlog,
-    con severidad, lo que se DELEGÓ al texto de un artefacto entregable (sección "Pendientes/Delegados/§ fuera de
-    alcance" de un skill, un dictamen, un README) ANTES de cerrar — porque eso es log disfrazado de backlog, no
-    resolución. Con la pregunta de 2º orden "¿lo empujado fuera del muro tiene casa+dueño+severidad?" (el punto
-    ciego de la introspección: el auditor comparte el frame "out of scope = no es mi problema"). Nació porque este
-    MISMO §9 dejó las 4 aristas solo en el texto del skill, una de ellas destructiva. · _reubicar-master §9, 2026-08-08._
+### 📝 2 — Abierto pero necesita plan
 
-- **`limpiar.sh ramas` (antes `limpiar-ramas.sh`, renombrado a `brain/hooks/limpiar-impl-ramas.sh` en la
-  consolidación 2026-09-17 del dispatcher `limpiar.sh` — el bug de abajo NO se tocó, sigue vivo) barre
-  mal las ramas squasheadas (dos fallos, vistos en vivo · axon 2026-08-29).**
-  (1) **Base detectada por el cwd de la sesión, no por el repo objetivo:** parado en `plantilladotnet` (cwd de
-  la sesión), al barrer `axon` agarró `DevelopUnjordi` como base en vez del `develop` de axon → corrió sobre el
-  repo equivocado y no tocó una sola rama del objetivo. Misma raíz que el FN del git-branch-guard por
-  `target ≠ CLAUDE_PROJECT_DIR` (abajo). (2) **No ve a través del squash+develop-avanzado:** conservó 6 `fix/*`
-  YA integradas (su diff vs develop era "develop que avanzó", no trabajo único) y a la vez marcó `router` (una
-  mini) como borrable → under-barre lo rancio Y over-barre lo vivo. Toca `brain/hooks/limpiar-impl-ramas.sh` (+ su
-  disparador `barrer-ramas.sh`). Nace con test (sandbox: squash-merge → la rama debe detectarse integrada;
-  cwd≠repo-objetivo → base correcta). ⚠️ Se dio por "arreglado" antes (detección de squash-merge) y quedó a
-  medias — la limpieza post-merge de hoy lo destapó. · _axon-master, 2026-08-29._
+- 📝 [pending] **"Dos Claudes, un Repo" — sync/reconcile del cerebro entre GEMELOS** (mismo usuario, 2 máquinas). Hay algoritmo de 6 pasos esbozado + piezas del ecosistema inventariadas, PERO con decisiones ABIERTAS (¿skill/hook/ambos? ¿`MEMORY.md` a `merge=union`? ¿auto re-indexar huérfanas? ¿solo Mac↔Cachy o N-máquinas?).
+- 📝 [pending] **[ANÁLISIS] Una memoria "how-to-apply" NO cambia el comportamiento en el tool-call — ¿pide guard?** Contexto pasivo no intercepta. Candidato: hook PreToolUse sobre Edit/Write que avise/bloquee si hay worktree de feature vivo y el path apunta al folder RAÍZ (y el archivo es TRACKEADO). **Decidir mecanismo + precisión ANTES de construir** (gran riesgo de falso positivo).
+- 📝 [pending] `#62` — **[BORRADOR] Separar "cerebro-autocontenido" de "memorias-autocontenidas".** Propagar el cerebro por-repo solo si el folder es repo git O compartido-multi-humano explícito; si no, basta global + capa de continuidad (memoria+checkpoint+hilo+bitácora) siempre activa. **B3 REC = SÍ separar** en 2 protocolos; falta el diseño.
+- 📝 [pending] **Hallazgos secundarios de la auditoría de jueces (#2–#5) — "NO atender sin decidir alcance" (unjordi).** #2 hint "VARIOS candidatos→DENY" contradice una autorización EN LOTE; #3 la ventana del juez solo filtra `<system-reminder>` (no `<task-notification>`/`<local-command-stdout>`/`[Request interrupted]`) → superficie de inyección; #4 `temperature:0` NO es determinista; #5 destino robusto (`gh pr view` en vivo). (El #6 —AskUserQuestion— ya cerró: PR #294.)
+- 📝 [pending] `#48` — **Estrategia de memoria del cerebro (5 fases) → su Fase 4 ES el grafo/MCP "graphify".** Plan en `estrategia-memoria.md`: Fases 0–3 = recall barato/reversible sobre los `.md`; **Fase 4 = grafo temporal/MCP** con 5 guardas + **PRECONDICIÓN DURA: cerebros SÓLIDOS antes de conectar → `#44` (gate auditor) es camino crítico.** **DEFERIDO por unjordi (textual):** *"la quiero atacar cuando lleguemos al punto donde ya tenemos estable el claude-brain y todos están fluyendo hermosamente"* — no antes.
+- 📝 [pending] `#44` — **Ecosistema de AUDITORES — ROBUSTECERLO (slice grande APARTE, con unjordi).** `auditor-semantico` ya en el template (#306 + `docs/ecosistema-auditores.md`). Lo pendiente es un SLICE de DISEÑO: volverlos mecanismos que se complementen SIN HUECOS + **cablear el gate #44** (`auditar-coherencia-cerebro` como precondición dura — DEFINIDO pero NO CABLEADO; falta decidir QUÉ bloquea, el mecanismo y la precisión). Incluye **atar `brain/verificar-firma-canonica.sh`** (detector determinista de drift de firma-árbol: secciones ausentes en CLAUDE.md, memorias sin prefijo `dom-/dev-/ux-/qa-`, invariante MEMORY↔archivos roto, hooks retirados; `--strict`=gate; batería `g5` verde) + skill `canonizar-cerebro` como sub-check del auditor de coherencia, decidiendo la forma del GATE (¿por cada cerebro instanciado?, ¿CI con `--strict` antes de release?, ¿sobre qué set de repos?). unjordi (2026-08-08): *"convertirlos en mecanismos que se complementen sin huecos… otro Slice bastante grande."* _(#76 ya cerrado; feat/reconstruir-firma-canonica sin mergear.)_
+- 📝 [in_progress] `#85`–`#88` — **EPIC — MOLDE CANÓNICO de `estado-proyecto.md` (+ amarre to-do/HUD/checkpoint/cerrar-slice).** Esqueleto ÚNICO para todos los cerebros: canónico (propiedad del brain, propagado por el rayo canonizador) + contenido local per-repo; su `## 🧭 BACKLOG` encarna el formato pulido. **Plan de 4 fases** en `plan-molde-estado-proyecto.md`: A) definir el molde (drafts + pulir hasta lock) · B) sembrar `estado-proyecto.example.md` al brain + amarrar los skills (reglas de mtto viven UNA vez en el mecanismo) · C) **canonizar claude-brain** (fundir sus 3 backlogs con el rayo — DESTRUCTIVO, OK explícito + lista de qué se pierde) · D) actualizar auditores para mantener el molde. **Decisiones RESUELTAS (2026-08-09):** espejo del TaskList = el grupo `📘+➖ 1` (no sección aparte); KEY de markers INLINE; `🪦 Deprecated`=UNA sola + `🚫 Intocables` opcional; contrato de línea `- <marker> [<estatus>] `#<id>` — <título> · <contexto>` (la máquina solo reescribe `[estatus]` localizando por `#id`; `recordar-cosechar` no toca marker/título/contexto). **NOTA: esta consolidación ES la Fase C** — al aplicarse, mover este EPIC a "B/D restantes".
+- ➖ [pending] **PRECISIÓN DE GUARDS — campaña PARCIAL (2026-09-03, MR #351/#353).** Corpus consolidado y marcado en `cortex/docs/guards-falsos-positivos.md` (ya el ÚNICO; el global per-máquina se vació con puntero). Cada fix = cambio de PRECISIÓN con test adversarial, **exige OK EXPLÍCITO de unjordi para ESE control** (Integridad de guardarraíles).
+  - **✅ Resueltos:** `proteger-arbol` (filtra cuerpos de heredoc) · `no-bypass-deploy` (ruta en posición de ejecución) · `dod-verificar` (imagen del usuario=QA · reporte-subagente≠visual propio · ajuste-UI≠cierre) · familia git (#78 PATH-augment + slurp multilínea) · `aviso-contexto` staleness post-compact (MR #353, `b4f05d6`: anclaje a `isCompactSummary` + des-veredictar el cierre + 14 flowcharts a doc=realidad).
+  - **SIN ATENDER (concretos, cada uno con su test):**
+    - `git-branch-guard`/`analizar-comando-git.sh`: (i) **evasión por subshell/`$()`** — el ancla `(main|develop)([[:space:]]|$)` deja pasar `(cd /tmp && git push origin develop)` y `x=$(git push origin develop)` (confirmado A-GBG-01 + DUPLA cps); (ii) **FN push PELÓN vía target ≠ `CLAUDE_PROJECT_DIR`** — `acg_rama_actual` resuelve la rama del `CLAUDE_PROJECT_DIR`, no la del repo objetivo → `git -C <repo-en-develop> push` desde sesión en ramita NO se bloquea (confirmado DUPLA juez-destino A2); (iii) **FP `/develop`/`/main`** — el regex de `acg_push_destino_base` mete `/` en la clase separadora → una ramita cuyo NOMBRE termina en `/develop`/`/main` (`feat/develop`, `hotfix/main`, `release/main`, `--delete feat/develop`) se BLOQUEA en falso. Test: esos → ALLOW; `develop`/`main`/`HEAD:develop`/`+develop`/`refs/heads/develop` → siguen DENY; `feat/develop-x`/`developer` → ALLOW. **Backstop de todos:** ramas protegidas server-side.
+    - `secret-scan`/`detectar-secretos.sh`: (S1) `AKIA[0-9A-Z]{16}` no caza las STS `ASIA…` → `(AKIA|ASIA)`; (S2) faltan service-account de OpenAI `sk-svcacct-…`; (S3/S4) el patrón connstring `scheme://user:pass@` da FP sobre placeholders de README (`postgres://user:password@…`) → añadir a `ds_safe_re`.
+    - `dod-verificar`: reconocer un `Read` de imagen `.png/.jpg` RASTERIZADA (pdftoppm) el MISMO turno como evidencia de QA visual (hoy solo whitelistea browser/screenshot) — ~10 FP en el corpus, mordida dominante en la Mac. + (del audit 02) fail-open del juez LLM sin health-check.
+    - `merge-squash-guard`: **FP destino=main en `gh`** — el fail-safe exigió `--squash` en `gh pr merge 267 --merge` (release develop→main) porque no confirma el destino=main vía `gh`/GitHub (la exención consulta por `glab`) → release a main bloqueado en falso. · _FP en vivo 2026-08-06._
+    - `no-bypass-deploy` residual (audit 01): aún dispara con el nombre del instalador como ARGUMENTO en read-only (`git add/log/show/diff --`, `ls`, `grep`, `find`) o dentro de un string en `/tmp` (`bash -lc` con repro) → excluir esos verbos read-only + paths `/tmp`.
+    - `glab mr merge` a **main** lo detecta como develop (glab no le pasa el target al guard).
+    - **guard auth durable**: `autorizaciones-vigentes.local.md` NO cubre `gh pr merge` (el guard lo lee para merges LOCALES por `TARGET_ROOT`; un gh no le da raíz local → sigue pidiendo confirmación). Fix: honrar el grant durable también en gh.
+  - **🚩 FLAGGED — NO tunear si abre hueco (Integridad de guardarraíles):** (1) merge citado dentro de CUERPO DE HEREDOC o literal de string embebido (`python3 - <<'PY'`) → stripearlo abre EVASIÓN; (2) `git-branch` seed de repo vacío (push a main con 0 commits) → bloquear main es la protección central. **NUEVO FLAG:** `rehidratar-hilo.sh:49-51` tiene un comentario RANCIO ("tokens bajan solos tras /compact" + "bandas absolutas") — la asunción falsa que corrige #353; actualizarlo en tanda aparte.
+  - _(Axones `dupla-release`/`flowcharts-sesion`/`procesos-fmea` toparon maxturns sin reconciliar → re-correr con candado de tope-de-lectura o modelo 120b.)_
+- 📝 [pending] `#58` — **[infra] Guard de TOKENS/costo antes de delegar (`delegacion-gate`/`limite-gasto`) quedó a medias** → retomar y cerrar.
+- 📝 [pending] `#61` — **[infra] Skills brain-genéricas DRIFTEAN → extender `sincronizar-cerebro.sh` + `aviso-drift` a las skills** (REC=extender; decisión tomada, falta construir).
+- 📝 [pending] **[infra] Cementerio ÚNICO por cerebro (`cementerio.md`) + lápidas por ID** (hoy inline scattered) — slice dedicado: archivo + convención + helper (`cementerio.sh add`) + migración + update de `desinflar-memorias`/`positivar-doc`.
+- 📝 [pending] **[flowcharts] Flowcharts del cerebro VISIBLES en GitHub + desde el widget** (decidir formato fuente único: dot vs mermaid).
+- 📝 [pending] **[skills-higiene]** (a) regla "no digas 'espera tu decisión' sin ENUNCIARLA inline" → skill `to-do`; (b) prohibir auto-refs por Nº de línea en memorias + `desinflar-memorias` REUBICA los punteros al cortar (en cps los huerfanó; aplica a `[[juez-empoderamiento]]` que tenía `:87`/`:139`); (c) gotchas de `orquestar-fanout` (sembrar worktree desde base VIVA; fan-out exige sesión DENTRO de repo git). · _lección cps-master 2026-08-05._
+- 📝 [pending] **[infra] Nudge de DOGFOOD axon-local al delegar fan-out/auditoría/fix a Claude — hermano de #10/#58, NO es el gate de costo.** Fallo real (2026-09-21): con la regla global YA escrita igual se ruteó un fan-out entero a agentes Claude en vez de `axon run` → fallo de DISPARO, no de conocimiento (la regla es texto pasivo). 2 piezas COMPLEMENTARIAS: (a) **guard `repo`-tier en axon** (carga SOLO en `~/code/axon`, NO toca el `delegacion-gate` compartido; advisory estilo `hud-stale` al delegar a Claude un fan-out/audit/fix: "¿code-grounded? → pre-stágea y usa `axon run`"); (b) **paso en las skills de fan-out** (`construir-missing-manual`/`orquestar-fanout`): al partir, clasificar cada pieza *code-grounded→axon-local* / *research-juicio→Claude*. **DISEÑO ABIERTO:** cómo detecta "code-grounded" sin FP (dispara por el PAR target=Claude + patrón=fan-out y deja a Claude clasificar). **Por qué NO en el gate compartido (unjordi 2026-09-22):** solo unjordi tiene axon/Cachy → el disparo va por CONTEXTO (repo axon), jamás por máquina/usuario.
+- 📝 [pending] **[infra] Mensajes de commit/squash unhelpful.** Revisar por qué los mensajes de commit y —peor— de squash quedan poco informativos; definir/forzar un mínimo de mensaje-resumen curado por slice (¿en `cerrar-slice`/un hook?). · _unjordi 2026-08-05._
+- 📝 [pending] **[continuidad] F3 del plan de continuidad unificada (`scratchpad/PLAN-checkpoint-mudanza-unificados.md`, 2026-09-11) — INVENTARIO ÚNICO de artefactos + `G-CONTINUIDAD`.** Planteado, NO construido. Un CATÁLOGO (dato, no código) de cada artefacto con su LLAVE (`sessionId`/`slug`/`cwd`/`repo`/`repo×stream`) y su disposición OBLIGATORIA — `VIAJA`·`SOBREVIVE-SOLO`·`VOLATIL-LOCAL`·`PERDIDA-DECLARADA`, **sin quinta categoría** — del que DERIVEN: la lista §1.0.2 del skill `reubicar-master` (hoy a mano, no sobrevive una versión del harness que invente clases nuevas — `workflows/` es reciente), el gate de la mudanza (`G-SIDECAR` pasa a UNA FILA del genérico) y la cobertura de `.gitignore`. Invariante: un artefacto que el harness invente y nadie clasifique sale HUÉRFANO y BLOQUEA. Raíz común de 3 agujeros ya pagados: sidecar (#402), hilo (#402 + esta tanda), andamio (nació en #403 y #402 no lo sabía).
+- 📝 [pending] **[continuidad] F4 del mismo plan — UNA pasada y UN hook de `PreCompact`.** Planteado, NO construido. Hoy el bucle de streaming está 3 veces (`scanTranscriptFile`, `rewriteTranscriptStream`, `extraer()`) y un `PreCompact` dispara 4 recorridos del mismo transcript (grep del customTitle + export gzip + `metaBarata` + `extraer`), 2 hooks con locks distintos sobre el mismo archivo. Arreglo: colectores enchufables sobre `session-lib.js` (una pasada, N acumuladores) + orquestador único del evento. Riesgo BAJO no nulo: toca la lib que el camino destructivo de la mudanza usa DESPUÉS del punto de no retorno → entra con preflight de CAPACIDAD apuntando a los símbolos nuevos, o no entra.
+- 📝 [pending] **[continuidad] F5 del mismo plan — el JUICIO externo (`claude -p --resume <sid> --fork-session`).** NO construido y NO autorizado: cuesta dinero, pasa por `delegacion-gate`. Va al final por diseño; con F1 cerrado, el andamio mecánico ya tiene lector (prerrequisito real).
+- 📝 [pending] **[checkpoint] Andamio del checkpoint — 6 hallazgos de QA sobre el render real (2026-09-11).** Medidos corriendo `bin/checkpoint-mecanico.js` sobre el transcript vivo tras #407 (39 986 líneas, 202 MB, 14 compactaciones). Los 3 defectos de #407 quedaron cerrados (ventana viva 707/39 986 líneas, citas verbatim, colector ve escrituras por Bash). Lo que sigue:
+  - **A-1 · ALTO** — `RESUELTO HOY` salió VACÍO habiendo commits: el detector `/git commit[^\n]*?-m\s+(["'])…/` solo ve `-m "…"`; todo commit con `-F -`/heredoc (el que OBLIGA la norma de prosa curada) es invisible (3 commits + 4 merges squash → reportó 0). Ceguera análoga a la que #407 corrigió para escrituras; pega en la sección ANTI-FANTASMA.
+  - **A-2 · ALTO** — 3 de 7 "mensajes del usuario" son plomería del harness (`<local-command-caveat>`, stdout del `/compact` con ANSI, un `<task-notification>` entero). El último induce la atribución falsa que la norma de procedencia impide. Filtrar prefijos (`<local-command-*`, `<task-notification>`, `<command-name>`, `## Context Usage`) + el `/compact` pelón.
+  - **A-3 · MEDIO** — `--self` inusable desde el hilo principal: su candado exige `CLAUDE_CODE_CHILD_SESSION !== '1'`, pero esa var viene en `1` TAMBIÉN en el Bash del hilo principal (CLI 2.1.x) → bloquea el 100% de usos legítimos. Falta otra señal padre/hijo.
+  - **A-4 · MEDIO** — "Comandos más frecuentes" no aporta: 8/10 eran `cd`/`ls`/`grep`; agrupa por 2 primeros tokens → gana navegación. Filtrar navegación/inspección o agrupar por verbo.
+  - **A-5 · BAJO** — las escrituras las dominan los temporales (7/10 `/tmp/suite-*.log`): despriorizar `/tmp`+scratchpad.
+  - **A-6 · BAJO** — rutas guardadas sin expandir (`$RHREC3/.claude/memory/…` literal): descartar/marcar las con `$` sin resolver.
+- 📝 [pending] **[continuidad] Checkpoint AUTOMÁTICO al ~95% — que no dependa de un Claude sin holgura (unjordi, 2026-09-11).** Dolor: *"NECESITO que el hook de aviso-contexto haga solito el checkpoint al 95%, SIN que el claude tenga que hacer nada"* + estilo consistente. **Medido:** `claude -p/--print` existe (un hook SÍ puede invocar un agente); precedente de hook que lanza trabajo DETACHED (`nohup … &`, esquiva timeout/`hook_cancelled`): `exportar-sesion-master.sh`, `barrer-ramas.sh`; `aviso-contexto` hoy reporta cada 50K (`STEP=50000`), inyecta `additionalContext`, NO recomienda curso, reserva 5%, sin umbral 95%. **Opción A (hook lanza agente) falla:** el hook recibe la RUTA del transcript, no el contexto; un `claude -p` a 95% (~1M tokens) tampoco cabe → reconstruiría desde la cola = lo que `/compact` hace y el checkpoint existe para ganarle. **Opción B (skill delega a subagente) falla:** la sustancia sale del prompt del Claude vivo; a 95% redactarlo cuesta casi lo mismo. **Propuesta C a planear — partir por QUIÉN produce cada parte:** MECÁNICO⇒script CERO tokens, disparado por el hook TEMPRANO (¿85%?) y repetido (árbol 🗂️ de 3 ramas de `git log` cross-repo + rutas, inventario de tooling, PRs abiertos, árboles sucios, units, HUD/TaskList, últimos N mensajes VERBATIM, pendientes de `estado-proyecto.md`); JUICIO⇒solo el Claude vivo (hilo, decisión a medio cocinar, procedencia, siguiente paso+porqué, ~30 líneas). **Cabos:** guarda anti-recursión (env centinela: un hook que lanza `claude` dispara hooks); el detached y su log; qué si el auto-compact gana la carrera; y si el andamio va a `hilo-mental-actual.md` o a un `.andamio` que el skill fusiona.
+- 📝 [pending] **[ramas] M-7 del dictamen de barrido de ramas (`scratchpad/AUDITOR-barrido-ramas.md`, 2026-09-11) — caps silenciosos en `_bz_intentar_gh`/`_bz_intentar_glab` (`ramas-zombie.sh`).** `gh … --limit 300` y `glab … --per-page 300`: (1) un repo con >300 PRs/MRs mergeados deja los viejos fuera del cache → "no encuentra" el PR/MR de una rama vieja y la conserva sin decir que TRUNCÓ; (2) el `per_page` de GitLab topa en 100. PLAUSIBLE (no CONFIRMADO — el auditor no pegó a un foro real). Exige rediseño (paginar hasta encontrar la rama, o `gh pr list --head <rama>`/`glab mr list` filtrado POR rama) + verificación contra volumen real. Dejado FUERA de `fix/barrido-ramas-criticos`.
+- 📝 [pending] **[tests] Tests con `ok`/`bad` dentro de un subshell `( … )` no cuentan para el veredicto de la suite.** `test-brain.sh` corre con `set -u` y cuenta PASS/FAIL en variables GLOBALES; los bloques `( . "$HOOKS/ramas-zombie.sh"; … ok …; … bad … )` imprimen `PASS:`/`FAIL:` (stdout compartido) pero el incremento ocurre DENTRO del subshell y se pierde → aserciones decorativas. Confirmado en `b3d` (~1969, dos bloques) y `b3e` (~1984). El comentario de `b3g` (~2043) ya documenta el antídoto ("se sourcea en ESTE scope, no en subshell"). Fix: quitar los paréntesis en b3d/b3e (como b3h/b3j/b3o). Hallazgo colateral, fuera del dictamen de ramas.
+- 📝 [pending] **[limpieza] `limpiar.sh ramas` (`brain/hooks/limpiar-impl-ramas.sh`, ex `limpiar-ramas.sh`, renombrado en la consolidación 2026-09-17 del dispatcher `limpiar.sh`) barre mal las ramas squasheadas (dos fallos vistos en vivo, axon 2026-08-29).** (1) **Base detectada por el cwd de la sesión, no por el repo objetivo:** parado en `plantilladotnet` al barrer `axon` agarró `DevelopUnjordi` como base en vez del `develop` de axon → repo equivocado, no tocó una rama. Misma raíz que el FN del git-branch-guard por `target ≠ CLAUDE_PROJECT_DIR`. (2) **No ve a través del squash+develop-avanzado:** conservó 6 `fix/*` YA integradas y marcó `router` (una mini) como borrable → under-barre lo rancio Y over-barre lo vivo. Toca `limpiar-impl-ramas.sh` (+ disparador `barrer-ramas.sh`). Nace con test (sandbox: squash-merge→detectarse integrada; cwd≠repo-objetivo→base correcta). ⚠️ Se dio por "arreglado" antes y quedó a medias.
+- 📝 [pending] **[dominio] potenciaDatabases — dry-run de consolidación (CONVERGIÓ, decisión de unjordi).** Dry-run no-destructivo sobre COPIA: converge en 1 ronda, un solo archivo cambia (`MEMORY.md`, aditivo), cierra 1 hueco ALTO (que un db-master nuevo encuentre su hilo + caveat de rehidratación). Recomendado aplicar al real (bajo riesgo). **PARQUEADO para unjordi (NO ejecutado):** (a) borrar `db-master.md` de 0 bytes; (b) ¿`rehidratar-hilo` elige hilo por rol / renombrar `hilo-mental-actual.md`→`hilo-re-master.md`? (empata con multi-stream); (c) ~20 `[[wikilinks]]` de concepto: ¿tags o normalizar? NO adelgazar CLAUDE.md (front-load intencional). Es repo de sus 2 masters (re-master/db-master) → decide él. Reporte: `scratchpad/potenciadb-consolidacion/`.
+- 📝 [in_progress] **[dominio] MegaFlux (registros_bats_y_buses) — dry-run de consolidación EN CURSO.** Mismo molde no-destructivo que potenciaDB (agente lanzado 2026-08-06). Objetivo: dejar su cerebro sólido/operable para encargarle la tarea al Claude de ESE repo (unjordi hará un push a PRODUCCIÓN — alcance definido por unjordi/Felipe, no por este master). Además: registros_bats es COMPARTIDO pero le FALTA la marca `.claude/repo-compartido` + sync del brain por el flujo + mini.
+- 📝 [pending] **[install] Ciclo INSTALL/UPDATE — reconciliación FMEA 2026-07-30 (verificado 2026-09-01).** Los hallazgos vivían solo en `docs/auditoria-procesos-fmea-2026-07-30.md` (que MENTÍA marcándolos abiertos). Verificado vs código: one-stop installer ✅ · **H1** (puente HOME↔USERPROFILE en `.ps1`) ✅ · **H2** (resolveClonePath con fallback) ✅ en `main.qml`/Swift. **SIGUE ABIERTO (único install-cycle vivo): H2 en `Updater.cs` (Windows)** — NO tiene el fallback `resolveClonePath` (embedded → `$CLAUDE_BRAIN_DIR` → `~/.cortex` → `~/.claude-brain`) → la divergencia del self-update persiste en Windows; portar `resolveClonePath` a C#. **Por verificar aún:** el field-check (que un repo real cablee el MANIFEST) + el lote A1-A8/B3/C2 de la FMEA.
+- 📝 [pending] **[audit] Tail del audit de SISTEMA proceso 01 (ronda 3, 2026-09-08) — doc/refactor, NO bugs activos.** (a) **`ev_de()` duplicado** en `install-brain.sh` (wiring {global,both}) y `sincronizar-cerebro.sh` (wiring {repo,both}) → agregar un hook `both` exige tocar DOS tablas; `test-brain` caza la divergencia pero está duplicado. Refactor: extraer a lib compartida (`ev-de-comun.sh` sourced por ambos). (b) **contrato de formato de `sincronizar-cerebro.sh` implícito** — `drift-cerebro-comun.sh` parsea su salida por grep/sed; si el formato cambia, el drift-check se rompe en silencio (reporta "clean" con drift). Falta contrato/test. (c) **`barrer-flotilla-cerebro.sh` no aparece en el flowchart 01** — mecanismo crítico invisible; añadir nodo. Detalle en `docs/auditorias-sistema/01-instalacion-actualizacion.md`.
+- 📝 [pending] **[audit] Hallazgos del OPUS GATE del proceso 01 (2026-09-08) — reales, diferidos (refactor/moderados/policy).** El crítico del pkill YA se arregló (`92fb814`); 2 bajos (offline fetch, detalle SIN CABLEAR) en `e703dac`; el medio de mtime MITIGADO con hedge en `fc3d91c`. Quedan: (a) **ALTO nominal = TRADEOFF conocido-aceptado** — race entre auto-apply del hook interactivo (`aviso-drift`) y el sweeper batch: sin lock compartido, solo `index.lock` de git serializa → puede dejar `.claude/` estageado-sin-commitear (baja prob; `barrer-flotilla` L92-96 ya lo documenta como aceptado). **OJO: un lock naíve es NET-NEGATIVO** (lock stale por crash → repo SIN auto-sync = el problema MegaFlux) → exige lock+detección-de-staleness = slice DELIBERADO. (b) **MEDIO mtime MITIGADO (`fc3d91c`)** — el mensaje n_st advierte que un `git pull` re-sella mtimes; fix DE FONDO abierto = clasificar dirección comparando vs blob git / ledger de hash, no mtime. (c) **MEDIO** doble corrida del sync (dry-run + --apply) por SessionStart en repo compartido con drift → reusar la salida del --apply. (d) **BAJO** `checkout -B` descarta commits locales ADELANTE (stash solo salva no-commiteado) + stashes se acumulan. (e) **BAJO** versión `git rev-list --count` relativa a la rama (QA en develop no comparable con main). (f) **BAJO** asimetría brained: sweeper descubre solo por `.brain-version`, el hook acepta también `dod-verificar.sh` → repo pre-sello invisible al barrido. (g) **BAJO/policy** escaneo de secretos del auto-sync fail-OPEN si falta `detectar-secretos.sh` → Opus sugiere fail-CLOSED; DECISIÓN de unjordi (cambia la filosofía fail-open). Detalle: `docs/auditorias-sistema/01-instalacion-actualizacion.md`.
+- 📝 [pending] **[audit] Tail del audit de SISTEMA proceso 02 (ciclo de vida de sesión, 2026-09-08).** El alto (integridad del export) YA se arregló (`332c6ed`). Quedan: (a) **medio** `aviso-contexto` ventana hardcodeada por lista de modelos → un modelo 1M nuevo no listado se reporta 200K (self-correcting arriba de 200K); leer ventana real o warning si desconocido. (b) **bajo** `exportar-sesion` lock orphan (30min de tolerancia; PID lo haría instantáneo). (c) **bajo** `sesion-inicio` orden fijo de archivos de estado. (d) **bajo** `rehidratar-hilo` detección de rama por regex frágil → test del formato de `hilo-mental-actual.md`. (e) **bajo/guard** `dod-verificar` fail-open del juez LLM sin health-check (requiere OK de unjordi). (f) fidelidad `.dot` leyenda 02. NOTA: el ALTO "B2 evasión" del 27B fue FALSO POSITIVO (orden intencional). Detalle: `docs/auditorias-sistema/02-ciclo-de-vida-de-la-sesion.md`.
+- 📝 [pending] **[continuidad] Pendientes derivados del sync bidireccional TaskList ⇄ estado-proyecto.md (2026-09-18, `feat/recordar-cosechar-sync`).** El rediseño de `recordar-cosechar` + lib `sincronizar-tasklist.sh` (espejo robusto a rotación de session_id, anti-clobber, fix del awk-newline de macOS, nudge atado al sync, skill `to-do` invoca la lib) quedó verificado técnico (test-brain 1331 PASS · 0 FAIL), falta QA humano + del orquestador. Derivados:
+  - **MEDIO** — confirmar si un hook Stop hace visible su `systemMessage` (rehidratar-hilo lo usa en SessionStart, ahí sí; en Stop plausible NO verificado). Si no se ve, el nudge es inocuo (exit 0) pero habría que moverlo de canal.
+  - **MEDIO** — investigar el orden lectura-json vs hook en SessionStart: si el harness leyera los task-json DESPUÉS del hook, se podría cablear un auto-seed del HUD al arrancar (durable→json) sin el modelo (`sincronizar-tasklist sembrar --write` en `sesion-inicio`). Hoy indocumentado → NO cableado.
+  - **BAJO** — fallback cross-repo del espejo: si el sid apunta a carpeta vacía, la lib cae a la carpeta de tareas MÁS RECIENTE (ventana 2h) — que podría ser de OTRO repo con sesión concurrente. Acotado por ventana + anti-clobber; aceptado como tradeoff.
+- 📝 [pending] **POST-RELEASE (siguiente release) — consolidar los guards de Bash en un dispatcher `guardian-bash`.** Los 6-7 hooks `PreToolUse|Bash` (git-branch-guard, merge-develop-guard, secret-scan, entorno-maquina-guard, no-bypass-deploy, proteger-arbol) → UN dispatcher que sourcea las libs existentes (`analizar-comando-git`, `detectar-secretos`, `juez-comun`) y corre todos los checks en UN subproceso (7 spawns→1). Behavior-preserving EXACTO, verificado por test-brain (cada guard bloquea/pasa idéntico + agregación de decisiones + orden). **DECIDIDO 2026-09-18 (unjordi+Claude): para el SIGUIENTE release, NO el actual** (no reabrir guards de supervisión en víspera del release+DUPLA). _(Coordinar con "CONSOLIDACIÓN DE GUARDS M1–M11" del Grupo 1.)_
+- 📝 [pending] **POST-RELEASE — sincronizar el roster de skills de los 3 widgets con el MANIFEST.** Los widgets (`macos/PopoverView.swift` · `windows/PopupForm.cs` · `src/plasmoid/main.qml`) muestran como VIVOS skills RETIRADOS en la fase SKILLS (`cosechar-sesion`, `unificar-cerebro`, `claude-proyecto-autocontenido`, `revisar-entregables-agentes`, `consolidar-cerebro`): como BrainItem y en el array de clasificación (25 nombres vs 21 skills vivos). Pre-existente. Sincronizar los 3 (gemelos) con `brain/skills/` vivos. Detectado por DUPLA ronda 2, 2026-09-18.
+- 📝 [pending] **③ cortex no cablea sus hooks tier repo** (sin `.claude/settings.json`/hooks/marca `repo-compartido`) → `dod-verificar`/`sesion-inicio`/`recordar-cosechar` no corren en cortex ni en clones. LOW-impact (solo cortex-master sin mudar + clones públicos que ya tienen los guards global). Fix: marcar `repo-compartido` + cablear vía `sincronizar-cerebro`. **unjordi: dejarlo en paz por ahora.**
 
-- **Estándar: `conocimiento-propio` por sesión master.** Volver ESTÁNDAR que toda sesión master escriba su
-  propio `conocimiento-propio.local.md` (per-repo en su repo-base, gitignored, re-inyectado en cada
-  SessionStart por el hook `aviso-drift-cerebro`). Cada master lo escribe desde SU lado (no copia el del
-  gemelo), a partir del template `EJEMPLO-conocimiento-propio.md`. Ya lo tienen: `claude-brain-master`
-  (Mac, `761c82d9…`) y `claude-brain-cachy-master` (Cachy, `7a6960de…`, 2026-08-03). **Falta:** (a)
-  documentar el paso "siembra tu conocimiento-propio" en el setup/checklist de un master; (b) decidir dónde
-  vive canónicamente el `EJEMPLO` (hoy en el Drive `claude-sessions/`) — ¿al brain, o se queda personal?;
-  (c) ¿lo siembra `install-brain`/`bootstrap` o es paso manual? · _decisión de unjordi 2026-08-03._
+### 📝 2b — TRIAGE pendiente (rescatados del HUD de axon-master 2026-08-30 — clasificar ¿vivo/hecho/stale?)
+> Estaban SOLO en la lista de TODOs (scratch) de axon-master, no en backlog durable. Verbatim para no perderlos.
+- 📝 [pending] Retomar `cerebro-multi-agente-grok` sobre develop (estaba marcado "NO hoy").
+- 📝 [pending] Propagar molde canónico del CLAUDE.md: árbol gigante→MEMORY + repunte del parity-check; **codificarlo como ESTÁNDAR del brain** (tasks #71/#72/#73). _(hermano del EPIC molde de estado-proyecto.)_
+- 📝 [pending] Hook `leer-no-grepear-skills` (grep-guard) con batería de tests.
+- 📝 [pending] `games-master`: QA visual final + prueba en vivo del `@import` (unjordi).
+- 📝 [pending] `cps`: integración coordinada `DevelopUnjordi→develop` (con OK).
+- 📝 [pending] Aplicar molde canónico a `cenam_contnac` + `fluxcore` (fan-out).
+- 📝 [pending] `powerscripts`: quitar guards por-repo (es PERSONAL → hereda del global).
+- 📝 [pending] **REDISEÑO del auto-sync (`aviso-drift`) — el mayor hueco del cerebro** (ver `[[diseno-rediseno-auto-sync-46]]`).
 
-- **Endurecer git-branch-guard contra evasión por subshell/`$()`.** `analizar-comando-git.sh` ancla la rama
-  con `(main|develop)([[:space:]]|$)`; un `)` de subshell o `$(...)` la evade: `(cd /tmp && git push origin
-  develop)` y `x=$(git push origin develop)` PASAN. Confirmado por ejecución en DOS auditorías (cortex
-  A-GBG-01 + la DUPLA de cps). **Backstop:** ramas protegidas server-side. Toca un guard de supervisión →
-  cambio de PRECISIÓN, exige OK EXPLÍCITO de unjordi para ESE control (con su test adversarial). · _DUPLA 2026-08-03._
+## 🪦 Deprecated / Fuera por decisión (NO reabrir)
+> Memoria activa de "NO re-proponer" (no journal). Candidatos a `cementerio.md` central — ver reporte.
+- **i18n / multi-idioma** — retirado 2026-08-07: saldrá solo cuando haga falta.
+- **Sync de sesiones cross-máquina** — superseded por Drive / `CLAUDE_SESSIONS_DRIVE` (es lo mismo).
+- **#279 "fix timeout del juez 25→8s"** — won't-fix: premisa rancia (un clon sin bootstrap no tiene juez de entrada). NO revivir.
+- **Premisa falsa "5 flowcharts canónicos / 9 huérfanos a borrar"** — retractada; #282 los re-canonizó (no los borró).
+- **Prompt-injection en el juez** — NO parchar: el juez corre sobre MI PROPIO transcript; el único vector es auto-explotarme → no es amenaza real. NO re-levantar.
+- **Tuning de precisión de `proteger-arbol`** — RETIRADO 2026-08-07: es un hook ADVISORY (avisa, no bloquea); sus FP residuales son avisos inofensivos.
 
-- **git-branch-guard: falso NEGATIVO angosto del push PELÓN vía target ≠ `CLAUDE_PROJECT_DIR`.** `acg_rama_actual`
-  resuelve la rama del `CLAUDE_PROJECT_DIR`, NO la del repo objetivo → un `git -C <repo-parado-en-develop> push`
-  (o un `cd`) desde una sesión cuyo `CLAUDE_PROJECT_DIR` está en una ramita NO se bloquea, aunque el push real toque
-  develop. CONFIRMADO por ejecución (DUPLA juez-destino, ronda 1+2, A2). El destino EXPLÍCITO a base SÍ bloquea siempre;
-  **backstop:** ramas protegidas server-side. Toca un guard de supervisión → cambio de PRECISIÓN con su test adversarial,
-  exige **OK EXPLÍCITO de unjordi para ESE control**. Es OTRO guard: su propia ramita/slice, NO mezclar con el juez-merge. · _DUPLA juez-destino 2026-08-05._
-
-- **Atar `verificar-firma-canonica.sh` al GATE del auditor (#44).** Construido el DETECTOR determinista
-  `brain/verificar-firma-canonica.sh` (flaggea drift de la firma-árbol en un cerebro INSTANCIADO: secciones
-  ausentes en CLAUDE.md, memorias sin prefijo `dom-/dev-/ux-/qa-`/núcleo, invariante MEMORY↔archivos roto,
-  hooks retirados en la prosa; `--strict` = modo gate) + la skill humano-en-el-loop `canonizar-cerebro`
-  (destila el prototipo de fluxcore). Batería `g5` en `test-brain.sh` (verde). **Falta (#44):** cablear el
-  detector como sub-check del auditor de coherencia y decidir la forma del GATE — ¿lo corre `auditar-coherencia-cerebro`
-  sobre cada cerebro instanciado?, ¿un paso de CI con `--strict` antes de un release?, ¿sobre qué set de repos?
-  · _feat/reconstruir-firma-canonica, sin mergear · 2026-08-08._
-
-- **QA visual de los 3 tiles de `canonizar-cerebro` en los widgets** (macOS PopoverView.swift · Linux main.qml ·
-  Windows PopupForm.cs). Se agregó el tile 📐 + su estado opt-in en las 3 GUIs (5-catálogos en sync, `verificar-arbol-sync.sh`
-  verde), pero NO se compiló ni se vio en pantalla — pendiente el QA visual insustituible. · _feat/reconstruir-firma-canonica · 2026-08-08._
-
-- **Extender el parity-check del árbol a hooks/leyendas.** `docs/flowcharts/verificar-arbol-sync.sh` (FASE 1)
-  solo cubre la familia 💡 Skills; NO los hooks 🔒/🔔 ni las leyendas → un drift de hook (p. ej.
-  `exportar-sesion-master` ausente de CLAUDE.md) pasa CI en verde. Extenderlo a 🔒/🔔 (README↔CLAUDE.md↔MANIFEST)
-  + byte-igualdad de las leyendas `.dot` vs `gen-leyenda-arbol.sh`. · _DUPLA 2026-08-03 (H3, BAJO)._
-
-- **Continuidad MULTI-STREAM del hilo** (`rehidratar-hilo` + `checkpoint`). Que `rehidratar-hilo` inyecte TODOS
-  los `hilo-*.md` (dueño+frescura) y `checkpoint` escriba `hilo-<rol>.md` por auto-identificación, con
-  `hilo-mental-actual.md` como alias legado. Aditivo/retrocompatible → apto para global. Cierra el bug real de
-  dos gemelos pisándose el hilo (2 colisiones en un día). Diseño completo + VERBATIM en
-  [[propuesta-multi-stream-hilos]]. · _rescatada de potenciaDatabases 2026-07-30, verificada vigente 2026-08-05._
-
-- **Lección cps-master: memorias sin auto-refs por Nº DE LÍNEA.** Prohibir referencias tipo `archivo:87` en
-  memorias (se rompen al editar) → usar heading/ancla grepeable; y `desinflar-memorias` debe **REUBICAR** los
-  punteros al cortar (en cps los huerfanó). Aplica a mi propio [[juez-empoderamiento]] (tenía refs `:87`/`:139`). · _retro cps-master 2026-08-05._
-
-- **Lección cps-master: `hilo-mental-actual.md` NO hardcodee la máquina** → `rehidratar-hilo`/`checkpoint`
-  derivan `uname`/`$HOME` en vivo. Empata con la propuesta multi-stream. · _retro cps-master 2026-08-05._
-
-- **`merge-squash-guard`: FP de detección de destino=main en `gh` (releases).** El fail-safe exigió `--squash`
-  en `gh pr merge 267 --merge` (release develop→main del dod) porque NO pudo confirmar que el destino es main
-  → un release a main va SIN squash → bloqueo EN FALSO. Sospecha: la exención consulta el destino vía `glab`
-  y no cubre GitHub/`gh`. Toca un guard de supervisión → cambio de PRECISIÓN con su test adversarial, exige OK
-  EXPLÍCITO de unjordi para ESE control. unjordi: "a la tanda de remakes". · _FP en vivo 2026-08-06 (también en `~/.claude/memory/guards-falsos-positivos.md`)._
-
-- **Mensajes de commit/squash unhelpful.** Revisar por qué los mensajes de commit y —peor— de squash quedan
-  poco informativos; definir/forzar un mínimo de mensaje-resumen curado por slice (¿en `cerrar-slice`/un hook?). · _unjordi 2026-08-05._
-
-- **Guard de TOKENS-antes-de-tareas quedó a medias.** El guard que revisa cuánto presupuesto/tokens hay antes de
-  lanzar tareas (familia `limite-gasto`/`delegacion-gate`) nunca terminó de quedar; retomarlo y cerrarlo. · _unjordi 2026-08-05._
-
-- **potenciaDatabases — dry-run de consolidación (CONVERGIÓ, decisión de unjordi).** Dry-run no-destructivo sobre
-  COPIA: converge en 1 ronda, un solo archivo cambia (`MEMORY.md`, puramente aditivo), cierra 1 hueco ALTO (que un
-  db-master nuevo encuentre su propio hilo + caveat de rehidratación). Recomendado aplicar al real (bajo riesgo).
-  **Decisiones PARQUEADAS para unjordi (NO ejecutadas):** (a) borrar `db-master.md` de 0 bytes; (b) ¿`rehidratar-hilo`
-  elige hilo por rol / renombrar `hilo-mental-actual.md`→`hilo-re-master.md`? (empata con multi-stream); (c) ~20
-  `[[wikilinks]]` de concepto: dejarlos como tags o normalizarlos. NO adelgazar CLAUDE.md (front-load intencional).
-  Es repo de sus 2 masters (re-master/db-master) → decide él. Reporte: `scratchpad/potenciadb-consolidacion/`. · _2026-08-05._
-
-- **MegaFlux (registros_bats_y_buses) — dry-run de consolidación EN CURSO.** Mismo molde no-destructivo que
-  potenciaDB (agente lanzado 2026-08-06). Objetivo: dejar su cerebro sólido/operable para poder **encargarle la
-  tarea al Claude de ESE repo** (unjordi hará mañana un push a PRODUCCIÓN pedido hace 1 semana — el alcance de los
-  cambios lo define unjordi/Felipe, no este master). Además: registros_bats es COMPARTIDO pero le FALTA la marca
-  `.claude/repo-compartido` + sync del brain (ver inventario de cerebros por-repo). · _2026-08-06._
-
-- **Cluster de FP/FN de guards — reconciliado por fan-out axon-local (2026-09-01).** Del fan-out read-only sobre
-  los dictámenes (axon `gitguard-2026-08-26`) + el corpus `docs/guards-falsos-positivos.md`, SIGUEN PENDIENTES
-  (cada uno = cambio de PRECISIÓN con test adversarial, **exige OK EXPLÍCITO de unjordi para ESE control**):
-  - **git-branch-guard / `analizar-comando-git.sh`:** el regex de `acg_push_destino_base` mete `/` en la clase
-    separadora → una ramita cuyo NOMBRE termina en `/develop` o `/main` (`feat/develop`, `hotfix/main`,
-    `release/main`, `--delete feat/develop`) se BLOQUEA en falso. Test: esos casos → ALLOW; `develop`/`main`/
-    `HEAD:develop`/`+develop`/`refs/heads/develop` → siguen DENY; `feat/develop-x`/`developer` → ALLOW.
-  - **secret-scan / `detectar-secretos.sh`:** (S1) `AKIA[0-9A-Z]{16}` no caza las STS `ASIA…` → `(AKIA|ASIA)`;
-    (S2) faltan las service-account de OpenAI `sk-svcacct-…`; (S3/S4) el patrón connstring `scheme://user:pass@`
-    da FP sobre placeholders de README (`postgres://user:password@…`) → añadir a `ds_safe_re`. Cada uno con su test.
-  - **dod-verificar:** reconocer un `Read` de imagen `.png/.jpg` RASTERIZADA (pdftoppm) el MISMO turno como
-    evidencia de QA visual (hoy solo whitelistea browser/screenshot) — ~10 FP en el corpus, mordida dominante en la Mac.
-  - **Ya-en-backlog (arriba):** git-branch-guard subshell `$()` + FN target≠CLAUDE_PROJECT_DIR · merge-squash gh-main · limpiar-ramas squash.
-  - _Los axones `dupla-release`/`flowcharts-sesion`/`procesos-fmea` toparon maxturns (sin reconciliar); re-correr con candado de tope-de-lectura o modelo 120b para cerrar su cobertura._
-
-- **Ciclo INSTALL/UPDATE — reconciliación de la auditoría FMEA 2026-07-30 (verificado 2026-09-01).** Los
-  hallazgos del ciclo install/update NUNCA se habían migrado a este backlog (vivían solo en
-  `docs/auditoria-procesos-fmea-2026-07-30.md` → el doc MENTÍA marcándolos abiertos). Verificado contra el
-  código de hoy: **one-stop installer** ✅ (2026-07-23, `docs/autoupdate.md`) · **H1** (puente HOME↔USERPROFILE
-  en los `.ps1`) ✅ · **H2** (resolveClonePath con fallback) ✅ en `main.qml`/Swift. **SIGUE ABIERTO (único
-  install-cycle vivo):** **H2 en `Updater.cs` (Windows)** — NO tiene el fallback `resolveClonePath` (embedded →
-  `$CLAUDE_BRAIN_DIR` → `~/.cortex` → `~/.claude-brain`) → la divergencia del self-update persiste en Windows;
-  portar `resolveClonePath` a C#. **Por verificar aún** (no revisados esta pasada): el field-check (verificar
-  que un repo real cablee el MANIFEST) + el lote A1-A8/B3/C2 de la FMEA. · _reconciliado por axon-master 2026-09-01._
-
-## ✅ Hecho (anclado a commit+fecha)
-<!-- Enuncia en pasado con su ancla. Ej: "X integrado — <commit>, <fecha>". -->
-- **Juez de merge decide el destino + PISO DETERMINISTA de main** — `6614220` (PR #262), 2026-08-05. El juez
-  (`confirmar-merge-develop.sh`) infiere el destino cuando `acg_destino_de_mr` viene VACÍO en el entorno-hook,
-  con FAIL SEGURO (duda + release → main estricto, NUNCA develop); + un piso determinista (main+ALLOW sin
-  lenguaje de release del USUARIO → DENY) como defensa en profundidad ante lo poco fiable de Haiku en el
-  'mergea' pelón a main. Transporte del juez = curl→api.anthropic.com con token OAuth (NO `claude -p`, ~1.3s).
-  Baterías `piso-main` (determinista) + LIVE 28 (merge) verdes.
-- **Juez de MERGE EMPODERADO — LIBERADO a main e instalado** — release #265 (`ad0ad68`, v0.2.291), 2026-08-06.
-  Desamordazado (`max_tokens` 16→768) + `temperature:0` + CoT/centinela `VEREDICTO: ALLOW|DENY` (parse `tail -1`,
-  truncado→UNAVAILABLE→DENY) + **veto de cita** (ALLOW exige `CITA:` = span VERBATIM de una línea `USUARIO:`,
-  re-verificado determinista con `grep -Fq`) + hint de PRs abiertos (factual, identifica destino, NUNCA
-  autoriza) + piso barato (sin línea USUARIO→DENY sin LLM) + PISO DETERMINISTA de main. **Triple-lever OPT-IN**
-  (`CLAUDE_MERGE_JUEZ_VOTES` default 1=byte-idéntico; ≥2=votos paralelos, agregación unánime-para-ALLOW /
-  cualquier DENY|UNAVAILABLE gana; `CLAUDE_MERGE_JUEZ_TEMP` default 0). Modelo = **Haiku desamordazado**
-  (Sonnet 4.6 no existe; 4.5 lo rate-limitea el canal OAuth). 467/0 determinista + 5/5 adversariales.
-  **Primer merge CLI real que pasó por él: plantilladotnet !114** (re-sync de la copia por-repo, supersedió el
-  !113 stale que traía el juez amordazado). Diseño+corpus durables en [[juez-empoderamiento]].
-- **Juez del DoD EMPODERADO — en develop, release a main PENDIENTE (PR #267 abierto)** — `6f969c0` (#266), 2026-08-06.
-  `dod-verificar.sh` desamordazado (`max_tokens` 32→512, temp 0) + 3 centinelas `CIERRE:/MARCA:/VISUAL: si|no`
-  (cada uno `tail -1`) + veto de cita sobre `MARCA` + **fail-OPEN preservado** (nunca bloquea en falso por un
-  hipo del canal). +batería `djlive`; el caso antes-flaky ahora estable. **El release #267 (develop→main) quedó
-  para clic web de unjordi** (lo frenó un FP del `merge-squash-guard`, ver Pendientes).
-
-## 🧭 Decisiones (con su porqué)
-- **2026-08-03 · Convención de firma en TODOS los cerebros:** `CLAUDE.md` = firma-TOC (árbol de capacidades →
-  skills) que remite al detalle (`MEMORY.md`/`AGENTS.md`). Se audita por el entry-point real pero se
-  consolida MIGRANDO a la convención.
-- **2026-08-03 · `conocimiento-propio` por sesión master** (ver Pendientes) — la identidad de cada master no
-  se copia entre gemelos; cada uno escribe el suyo.
+## 🧠 Decisiones de arquitectura (con su porqué)
+- **2026-08-03 · Convención de firma en TODOS los cerebros:** `CLAUDE.md` = firma-TOC (árbol de capacidades → skills) que remite al detalle (`MEMORY.md`/`AGENTS.md`). Se audita por el entry-point real pero se consolida MIGRANDO a la convención.
+- **2026-08-03 · `conocimiento-propio` por sesión master:** la identidad de cada master NO se copia entre gemelos; cada uno escribe el suyo.
+- **2026-08-09 · Molde canónico de `estado-proyecto.md` (decisiones lockeadas):** espejo del TaskList = el grupo `📘+➖ 1` (no sección aparte); KEY de markers INLINE; `🪦 Deprecated`=UNA sola + `🚫 Intocables` opcional; contrato de línea machine-parseable `- <marker> [<estatus>] `#<id>` — <título>` (la máquina solo reescribe `[estatus]` por `#id`; el humano cura marker/título/contexto).
 
 ## 📮 Buzón de los claudes — quejas y sugerencias (append-only, con `>>`)
-> Cualquier claude (cualquier sesión/máquina): si algo del cerebro te estorbó, te confundió, o se te ocurre
-> una mejora, DÉJALO AQUÍ con tu fecha y quién eres. Es la materia prima para afinar el brain (no lo dejes
-> solo en el chat). Un ítem que madura → se sube a Pendientes.
-- 2026-08-03 · claude-brain-cachy-master · (siembra) el panel de to-dos de una sesión no sobrevive; por eso
-  nace este archivo — para que las quejas/sugerencias tengan casa durable y compartida.
-
-## Rescatado del HUD de axon-master (2026-08-30) — PARA TRIAGE de cortex-master
-> Estaban SOLO en la lista de TODOs (scratch) de la sesión axon-master, no en este backlog durable.
-> Se rescatan verbatim para no perderlos al resetear ese HUD. cortex-master: triar (¿vivo/hecho/stale?).
-- [ ] Retomar `cerebro-multi-agente-grok` sobre develop (estaba marcado "NO hoy").
-- [ ] Estándar `conocimiento-propio` por sesión master (ya hay rastro en este doc — reconciliar).
-- [ ] Propagar molde canónico del CLAUDE.md: árbol gigante→MEMORY + repunte del parity-check.
-- [ ] Codificar el molde canónico del CLAUDE.md como ESTÁNDAR del brain.
-- [ ] Hook `leer-no-grepear-skills` (grep-guard) con batería de tests.
-- [ ] games-master: QA visual final + prueba en vivo del @import (unjordi).
-- [ ] cps: integración coordinada DevelopUnjordi→develop (con OK).
-- [ ] Aplicar molde canónico a cenam_contnac + fluxcore (fan-out).
-- [ ] powerscripts: quitar guards por-repo (es PERSONAL → hereda del global).
-- [ ] fluxcore (registros_bats_y_buses): sincronizar brain por el flujo + mini + marca.
-- [ ] REDISEÑO del auto-sync (aviso-drift) — el mayor hueco del cerebro (ver diseno-rediseno-auto-sync-46).
-
-### Andamio del checkpoint — 6 hallazgos de QA sobre el render real (2026-09-11)
-
-Medidos corriendo `bin/checkpoint-mecanico.js` sobre el transcript VIVO de la sesión que acababa de
-integrar #407 (39 986 líneas, 202 MB, 14 compactaciones). Los tres defectos que motivaron #407 quedaron
-cerrados y verificados: ventana viva (707 de 39 986 líneas), citas verbatim en vez del conteo, y el
-colector ya no es ciego a las escrituras por Bash (68 por Write/Edit vs 354 por heredoc en la ventana
-completa). Lo que sigue apareció AL MEDIR el resultado, y sale del mismo molde: el colector mide la forma
-que espera, no la que se usa.
-
-- **A-1 · ALTO — `RESUELTO HOY` salió VACÍO habiendo commits.** El detector es
-  `/git commit[^\n]*?-m\s+(["'])…/`: solo ve `-m "…"`. Todo commit hecho con `-F -` y heredoc —la forma
-  que OBLIGA la norma de resumen en prosa curada— es invisible. En el tramo medido hubo 3 commits locales
-  y 4 merges squash, y la sección reportó 0. Es exactamente la ceguera que #407 corrigió para las
-  escrituras, sin aplicarla a los commits, y pega en la sección ANTI-FANTASMA: su razón de ser es que una
-  decisión ya tomada no resucite como pendiente tras compactar.
-- **A-2 · ALTO — 3 de 7 "mensajes del usuario" son plomería del harness.** Se colaron el
-  `<local-command-caveat>`, el stdout del `/compact` con códigos ANSI y un `<task-notification>` entero
-  (~8 líneas de las 7 entradas). El último es el grave: una notificación de agente es explícitamente NO
-  input del usuario, y el andamio la presenta bajo el rótulo "VERBATIM, para citar con `[user: …]`" —
-  induce justo la atribución falsa que la norma de procedencia existe para impedir, y ahora con evidencia
-  mecánica que la respalda. Filtrar por prefijos conocidos (`<local-command-*`, `<task-notification>`,
-  `<command-name>`, `## Context Usage`) y por el `/compact` pelón.
-- **A-3 · MEDIO — `--self` es inusable desde el hilo principal.** Su candado anti-subagente exige
-  `CLAUDE_CODE_CHILD_SESSION !== '1'`, pero esa variable viene en `1` TAMBIÉN en el Bash del hilo
-  principal (medido en esta máquina, CLI 2.1.x). El candado es correcto en intención y falla cerrado,
-  pero hoy bloquea el 100% de los usos legítimos. Hace falta otra señal para distinguir padre de hijo.
-- **A-4 · MEDIO — "Comandos más frecuentes" no aporta nada al rehidratar.** 8 de las 10 entradas eran
-  `cd`, `ls` y `grep`. Agrupa por los dos primeros tokens, así que lo que gana es la navegación, no el
-  trabajo. Debería filtrar los comandos de navegación/inspección, o agrupar por verbo significativo.
-- **A-5 · BAJO — las escrituras las dominan los temporales.** 7 de 10 eran `/tmp/suite-*.log` y archivos
-  de paso. Conviene despriorizar `/tmp` y el scratchpad frente a lo que vive en un repo.
-- **A-6 · BAJO — rutas guardadas sin expandir.** Apareció `$RHREC3/.claude/memory/…` literal: al
-  rehidratar no lleva a ningún lado. Descartar (o marcar) las rutas con `$` sin resolver.
-
-Los tres primeros cambian lo que el andamio AFIRMA (omite commits, atribuye al usuario lo que no dijo,
-no corre); los tres últimos son ruido que le baja la densidad.
-
-## Sync bidireccional TaskList ⇄ estado-proyecto.md (2026-09-18, rama feat/recordar-cosechar-sync)
-Rediseño de `recordar-cosechar` + lib `sincronizar-tasklist.sh`: espejo robusto a rotación de session_id,
-anti-clobber, fix del awk-newline de macOS (el bloque nunca se re-escribía), nudge atado al sync, skill
-`to-do` invoca la lib. Verificado técnico: test-brain 1331 PASS · 0 FAIL. Falta QA humano (unjordi) + QA del
-orquestador. Pendientes DERIVADOS (fuera del alcance de este slice, al backlog):
-- **MEDIO — Confirmar si un hook Stop hace visible su `systemMessage`.** rehidratar-hilo lo usa en
-  SessionStart (ahí sí se ve); en Stop es plausible pero NO verificado en vivo. Si no se ve, el nudge es
-  inocuo (exit 0) pero habría que moverlo a otro canal. QA: cerrar un turno con pendientes vivos y observar.
-- **MEDIO — Investigar el orden lectura-json vs hook en SessionStart.** Si el harness leyera los task-json
-  DESPUÉS de correr el hook SessionStart, se podría cablear un auto-seed del HUD al arrancar (durable→json)
-  sin el modelo. Hoy es indocumentado → NO se cableó; el seed va por el skill (modelo aplica con las tools).
-  Si se confirma el orden favorable, evaluar añadir el seed a `sesion-inicio` invocando `sincronizar-tasklist
-  sembrar --write`.
-- **BAJO — Fallback cross-repo del espejo.** Si el sid del payload apunta a carpeta vacía, la lib cae a la
-  carpeta de tareas MÁS RECIENTE (ventana 2h) — que en teoría podría ser de OTRO repo con sesión concurrente.
-  Acotado por la ventana + anti-clobber; sin mapeo repo↔session no hay forma perfecta. Aceptado como tradeoff.
+> Cualquier claude (cualquier sesión/máquina): si algo del cerebro te estorbó, confundió, o se te ocurre una
+> mejora, DÉJALO AQUÍ con fecha y quién eres. Materia prima para afinar el brain (no lo dejes solo en el chat).
+> Un ítem que madura → sube a Grupo 1/2.
+- 2026-08-03 · claude-brain-cachy-master · (siembra) el panel de to-dos de una sesión no sobrevive; por eso nace este archivo — para que las quejas/sugerencias tengan casa durable y compartida.
