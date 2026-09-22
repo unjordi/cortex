@@ -114,6 +114,14 @@ Git Bash y Node. `gh` es opcional (§1.0: sin `gh` la visibilidad queda `unknown
    CABLEADO** (T4: `settings.json` tier-`repo` + `settings.local.json`). `G-PARITY` mide **presencia y
    corrección EN EL DESTINO** (no igualdad con el origen: el cerebro del master a menudo nunca vivió en el
    origen) y bloquea hasta cumplirlo.
+   > **Fundamento empírico (arco RESUME, axon-master 2026-09-21).** El self-resume de axon se probó en
+   > vivo ($0, **31 compactaciones foldeadas**, el hilo reconocido) reconstruyendo una sesión desde SOLO su
+   > transcript + los resúmenes de compactación + el cerebro. Eso midió qué ES lo esencial de "una sesión":
+   > **{transcript · resúmenes de compactación · cerebro del-master (T1–T4)}** BASTA para re-instanciar. De
+   > ahí que ESOS sean los intocables que `G-PARITY` blinda, y que KV-cache/activaciones, el DETALLE crudo
+   > de los sidecars y el `.gz` de Drive sean **reconstruibles/desechables** (poda de unjordi; §1.0.2) — no
+   > por descuido, por medición. Corolario operativo: **lo que el move preserva íntegro es exactamente lo
+   > que un resume necesita para reconstruir la superficie** → esa equivalencia habilita el smoke de S5.5.
 2. **NO-SELF-MOVE-EN-VIVO** — nunca mueve un `.jsonl` reciente ni la sesión propia. `G-SELF-MOVE` y
    `G-LIVENESS` **fallan cerrado**: si no pueden MEDIR quién ejecuta o qué tan fría está la sesión,
    **bloquean** (un gate que no puede medir no debe pasar). `session-move.js` → `main()` hace el
@@ -739,6 +747,40 @@ con `sessionAliases()` = `$NOMBRE_FINAL`.
 - **El `memory` del slug VIEJO se detecta y se avisa** (§1.0.2): no se mueve, y si el master guardó algo
   suyo ahí, es Decisión #7.
 
+### S5.5 · SMOKE de RESUMIBILIDAD read-only con axon — el gate OBJETIVO pre-QA `[per-máquina: requiere axon]`
+
+> **El QA de S6 es un resume NATIVO (`claude --resume`), y un resume nativo MUTA** (escribe eventos,
+> reancla `target` — por eso existe S7). Antes de gastar esa pasada destructiva, hay un check **READ-ONLY**
+> que ninguna versión previa tenía: **axon reconstruye la SUPERFICIE de un transcript sin tocarlo**
+> (`src/session/claude-transcript.ts` → `to-opencode.ts`: `liveWindow` + foldeo de compactaciones). Eso
+> convierte "¿la sesión resume bien desde su nueva casa?" de un juicio subjetivo del QA humano a una
+> **postcondición medible ANTES** de él.
+
+**Qué se corre** (sobre el `.jsonl` YA re-anclado por S4 — es path-addressed por `--from`, usa la ruta
+NUEVA; el mismo cuidado que S6 barre en los consumidores de la ruta vieja):
+```bash
+# Read-only: NO muta el transcript, NO reancla target, NO dispara S7.
+axon export-opencode --from "$NEW_JSONL" --out /tmp/reubicar-smoke-$ID.json   # o: axon resume --from "$NEW_JSONL" (dry)
+```
+Confirma tres cosas objetivas, sin humano y sin mutación:
+1. **Parseabilidad íntegra** — axon reconstruye la superficie de punta a punta ⇒ el transcript llegó
+   completo (no truncado por el move). Complementa el `wc -l` de S3, que es SINTÁCTICO; esto es SEMÁNTICO.
+2. **Compactaciones presentes** — el nº de boundaries `compaction` del destino == el del ORIGEN
+   (mídelo con `axon export-opencode --from "$SRC_JSONL_BACKUP"` sobre el respaldo pre-move de §8). El move
+   copia byte-a-byte, así que un mismatch aquí es CORRUPCIÓN REAL del move, cazada **sin** un resume destructivo.
+3. **El hilo aflora** — el último `user`/el `hilo-mental-actual` reconstruido aparece en la superficie ⇒
+   la sesión es RE-INSTANCIABLE, no solo íntegra en líneas.
+
+**Dónde encaja (y qué NO es).** Es un peldaño BARATO y no-destructivo entre S5 y S6, en el espíritu
+"deployable ≠ deployed": *resumible-objetivamente* precede a *reconocido-por-el-persona*. **NO reemplaza el
+QA humano de S6** (candado: humano = sello LISTO) ni el resume nativo — lo PRECEDE, para fallar rápido si el
+transcript no viajó bien antes de gastar la pasada que obliga a S7.
+
+**Degradación fail-safe (per-máquina).** axon vive solo donde está instalado (hoy: la Cachy). En una máquina
+SIN axon, S5.5 **degrada al check de cardinalidad de S3** (`gunzip -c … | wc -l`) y **NO bloquea** — un gate
+que no puede medir no debe frenar la mudanza, solo deja de sumar su garantía extra. Declara la ausencia, no
+la ocultes.
+
 ### S6 · doc=realidad + commit + QA FUNCIONAL (humano = sello LISTO)
 - **MR de T1 → develop en PREVIEW** (repo compartido): con OK EXPLÍCITO de unjordi y `--squash` (lo exige
   `merge-develop-guard`). **NUNCA `--auto-merge`** — integridad de guardarraíles.
@@ -812,6 +854,7 @@ PRELUDIO (§2: preflight de herramientas/plataforma/Drive/BIN + derivadas)
   → S3 export-first → S4 {move --git-branch + 2c + target/name con LOCK + alias} → S5 {T2 sin pisar + residuo
     quirúrgico + cero symlinks} → _postcondiciones                        [handoff §6.1 · MODO=full]
   → G-PARITY (postcondición de S1–S3/S5)
+  → S5.5 smoke de RESUMIBILIDAD read-only con axon        [per-máquina; degrada a wc -l sin axon · NO destructivo]
   → S6 doc + QA-humano (resume parado en $DST_CWD)
   → S7 re-verificar POST-QA                                              [handoff §6.1 · MODO=s7]
 ```
