@@ -57,7 +57,7 @@ Lo que necesitas saber para trabajar aquí:
 ## 🛡️ Reglas duras
 
 - 🧬 **Dualidad `.claude/` vs `brain/`.** `.claude/` es el cerebro operativo de ESTE repo; `brain/` es el producto que viaja a los clones. Consolidar/positivar/desinflar/reestructurar toca SOLO `.claude/` + la raíz (`CLAUDE.md`, `README.md`, `docs/`). 🛑 Leer `brain/` es lícito; **mutarlo desde una pasada de cerebro NO** — un cambio ahí viaja a todas las máquinas. Detalle → `MEMORY.md`.
-- 🌿 **Flujo de git.** Nunca `git push` a `develop`/`main`; ramita → MR → develop con `--squash`; `main` es **release-only** (promoción deliberada, con OK súper-explícito). Lo hacen cumplir git-branch-guard + merge-squash-guard + confirmar-merge-develop.
+- 🌿 **Flujo de git.** Nunca `git push` a `develop`/`main`; ramita → MR → develop con `--squash`; `main` es **release-only** (promoción deliberada, con OK súper-explícito). Lo hacen cumplir git-branch-guard + merge-develop-guard (que consolidó el squash + la autorización del punto de merge, 2026-09-17).
 - 🔒 **Integridad de los guardarraíles.** No aflojes tus propios candados de supervisión para desatorarte; los cambios permitidos son de **PRECISIÓN**, con OK explícito para ESE control. Detalle → `MEMORY.md`.
 - 🪞 **Doc = realidad.** Cambió algo → su doc en la MISMA tanda. El árbol vive en varios catálogos (README fuente ↔ `MEMORY.md` ↔ 3 brainTiers de los widgets) + `verificar-arbol-sync.sh`; sincronízalos juntos.
 
