@@ -160,8 +160,13 @@ metadata:
 - **2026-08-03 · `conocimiento-propio` por sesión master:** la identidad de cada master NO se copia entre gemelos; cada uno escribe el suyo.
 - **2026-08-09 · Molde canónico de `estado-proyecto.md` (decisiones lockeadas):** espejo del TaskList = el grupo `📘+➖ 1` (no sección aparte); KEY de markers INLINE; `🪦 Deprecated`=UNA sola + `🚫 Intocables` opcional; contrato de línea machine-parseable `- <marker> [<estatus>] `#<id>` — <título>` (la máquina solo reescribe `[estatus]` por `#id`; el humano cura marker/título/contexto).
 
-## 📮 Buzón de los claudes — quejas y sugerencias (append-only, con `>>`)
+## 📮 Buzón de los claudes — quejas y sugerencias
 > Cualquier claude (cualquier sesión/máquina): si algo del cerebro te estorbó, confundió, o se te ocurre una
-> mejora, DÉJALO AQUÍ con fecha y quién eres. Materia prima para afinar el brain (no lo dejes solo en el chat).
-> Un ítem que madura → sube a Grupo 1/2.
+> mejora, déjala en el buzón. Materia prima para afinar el brain (no lo dejes solo en el chat). Un ítem que madura → sube a Grupo 1/2.
+>
+> **MECANISMO ACTUAL:** un archivo por reporte en **`.claude/feedbackUsuarios/`** — nombre `AAAA-MM-DD-<slug>.md`,
+> con Fecha · De dónde salió · A quién le toca · Síntoma/Motivo · Propuesta. El `CLAUDE.md` (auto-cargado cada
+> sesión) instruye revisar ese folder por archivos nuevos en cada session start — ése es el lector del buzón.
+>
+> El append-en-prosa de abajo es el mecanismo **ANTERIOR** (histórico, se conserva por registro):
 - 2026-08-03 · claude-brain-cachy-master · (siembra) el panel de to-dos de una sesión no sobrevive; por eso nace este archivo — para que las quejas/sugerencias tengan casa durable y compartida.

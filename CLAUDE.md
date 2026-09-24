@@ -44,6 +44,7 @@ Lo que necesitas saber para trabajar aquí:
 📁 .claude/skills/ ─ skills para OPERAR este repo · agregar-hook-cerebro · cortex-widget · cambiar-icono · publicar-widget
 📁 .claude/memory/ ─ MEMORY.md (árbol + detalle, @import) + notas de desarrollo · *.local.md personales
    └─ 🛑 cortex NO cablea sus guards por-repo (no hay .claude/hooks/ ni settings.json): corren por la instalación GLOBAL (install-brain.sh) desde brain/hooks/
+📁 .claude/feedbackUsuarios/ ─ buzón de reportes de los claudes (`AAAA-MM-DD-<slug>.md`) — 📬 REVISA si tiene archivos nuevos en cada session start
 📁 brain/ ─ el PRODUCTO que viaja a los clones (hooks · skills · scripts · test-brain.sh) — 🛑 NO mutar desde una pasada de cerebro
 📁 docs/ ─ flowcharts + checks (verificar-arbol-sync.sh · gen-leyenda-arbol.sh) · investigaciones · …
 📁 src/ · macos/ · windows/ ─ los 3 widgets de cuota (los brainTiers espejan el árbol del README)
