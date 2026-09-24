@@ -95,3 +95,9 @@ type: project
   - worktree `guards-fix` (rama `fix/guards-sustrato-unico`) sin mergear a develop — retomar o cerrar.
 - **[rama represada]** `feat/term-broker` — 14 día(s) sin actividad, sin integrar, SIN PR. Decidir: abrir/retomar el MR/PR, mergear o descartar (NO se borra sola).
 - 2026-09-22 · cortex-master(axon) · Triado el backlog-desarrollo.local.md del WIDGET (per-máquina Cachy): 5 ítems vivos fundidos al estado-proyecto.md canónico (carry-forward OAuth · extractor Chats · pestaña Cerebro reconciliar-slugs · bandeja KDE · plasmashell). El resto (Audit P0-P17 + 2 bloques de pain-points forenses jul + HECHO renombrar/mover sesión) ya estaba en develop/normas. Archivo local RETIRADO (contenido vivo preservado en el canónico que viaja por git).
+- **[worktrees pendientes tras barrido]**
+  - worktree `cortex-wt-guardgrant` (rama `fix/merge-guard-durable-grant-loop`) sin mergear a develop — retomar o cerrar.
+  - worktree `cortex-wt-protfuente` (rama `fix/proteger-fuente-blinda-clon-infra`) sin mergear a develop — retomar o cerrar.
+  - worktree `cortex-wt-quota` (rama `fix/quota-state-schema`, YA integrada a develop) retenido por 8 archivo(s) sin commitear/untracked — revisar y limpiar; mientras siga sucio CONGELA esa rama y nadie la barrerá.
+  - worktree `cortex-wt-versionjson` (rama `fix/widget-version-json`) sin mergear a develop — retomar o cerrar.
+- 2026-09-24 · develop · claudio-master · Refurbish del cerebro del cortex-master tras la mudanza: CLAUDE.md deja de citar hooks retirados (#457), MEMORY.md 1:1 (huérfanas reindexadas), identidad claude-brain→cortex; norma dura "no re-medir contexto vivo + comando mínimo" (#458, sembrada global); buzón feedback = .claude/feedbackUsuarios/ con lector vía CLAUDE.md (#459); 2 reportes al buzón (proteger-fuente candado-OS, entorno-maquina-guard mira-working-tree) + FP corpus al día.
