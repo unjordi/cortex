@@ -24,7 +24,7 @@ Aplicar el **molde canónico** (el que pulimos hoy y "se nota la diferencia" en 
 ## ⛔ Repos OUT (duros — NO tocar)
 - **Ya rehechos:** games · cps · claude-brain · powerscripts.
 - **Activos (otro claude trabajando):** `potenciaDatabases` (databases-master) · `pisamrpclaude`.
-- **`plantilladotnet`** — es la plantilla .NET *y* la base donde corro. NO tocar.
+- **`plantilladotnet`** — la plantilla .NET del equipo (repo COMPARTIDO). NO tocar. (Hasta 2026-09-22 fue la base donde corría el `cortex-master`; tras la mudanza a `~/code/cortex` ya no — ahí corre `claudio-master`, la sesión madre.)
 - **`mfx_infraestructuradigital`** — no tiene entry-point; unjordi dijo "tampoco lo toques" (queda para sesión revisada).
 
 ## 🔧 Cómo ejecutar (recetario)
