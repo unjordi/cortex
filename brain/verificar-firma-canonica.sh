@@ -114,8 +114,9 @@ echo "== (C) memorias prefijadas o núcleo =="
 if [ ! -d "$MEMDIR" ]; then
   fail "no existe .claude/memory/ en $TARGET"
 else
-  # Núcleo = memorias sin prefijo permitidas (estado/backlog/bitácora/aprendizajes/cómo-trabajar/hilo/cementerio/MEMORY).
-  NUCLEO_RE='^(estado-proyecto|bitacora|aprendizajes|como-trabajar-.+|backlog-.*|hilo-mental-actual|cementerio|MEMORY)$'
+  # Núcleo = memorias sin prefijo permitidas (estado/backlog/bitácora/aprendizajes/cómo-trabajar/hilo + su andamio/overflow/
+  # autorizaciones-vigentes/cementerio/MEMORY). El andamio lo genera checkpoint-mecanico; el overflow, la regla del skill checkpoint.
+  NUCLEO_RE='^(estado-proyecto|bitacora|aprendizajes|como-trabajar-.+|backlog-.*|hilo-mental-actual(\.andamio|-overflow)?|autorizaciones-vigentes|cementerio|MEMORY)$'
   PREFIX_RE='^(dom|dev|ux|qa)-'
   unpref=0
   while IFS= read -r f; do
