@@ -7513,6 +7513,17 @@ OUT="$(bash "$VFC" "$GB" 2>&1)"; RC=$?
 { [ "$RC" -eq 0 ] && printf '%s' "$OUT" | grep -q 'FIRMA-CANONICA: 0 fail'; } \
   && ok "g5: cerebro canónico → 0 fail · exit 0" || bad "g5: cerebro canónico dio hallazgos (rc=$RC): $(printf '%s' "$OUT" | grep FIRMA-CANONICA)"
 
+# (1b) archivos de NÚCLEO que el propio cerebro genera (andamio/overflow del hilo, grants) → siguen en 0 fail
+NB="$(mktemp -d "${TMPDIR:-/tmp}/brain-g5-nucleo.XXXXXX")"
+mk_good_brain "$NB"
+for n in hilo-mental-actual.andamio hilo-mental-actual-overflow autorizaciones-vigentes; do
+  : > "$NB/.claude/memory/$n.md"; printf -- '- [%s](%s.md) — núcleo.\n' "$n" "$n" >> "$NB/.claude/memory/MEMORY.md"
+done
+OUT="$(bash "$VFC" "$NB" 2>&1)"; RC=$?
+{ [ "$RC" -eq 0 ] && printf '%s' "$OUT" | grep -q 'FIRMA-CANONICA: 0 fail'; } \
+  && ok "g5: andamio/overflow del hilo + autorizaciones-vigentes cuentan como núcleo" \
+  || bad "g5: núcleo generado marcado como sin prefijo (rc=$RC): $(printf '%s' "$OUT" | grep -E 'FAIL|FIRMA-CANONICA')"
+
 # (2) cerebro DRIFTEADO → fail>0, exit 1. Rompemos 4 cosas: falta 🖋️, memoria sin prefijo,
 #     enlace roto, y prosa con un hook retirado.
 BB="$(mktemp -d "${TMPDIR:-/tmp}/brain-g5-bad.XXXXXX")"
