@@ -152,7 +152,7 @@ class CortexIndicator extends PanelMenu.Button {
         const btn = new St.Button({style_class: 'cortex-rail-btn', x_expand: true, can_focus: true});
         if (i === this._tab)
             btn.add_style_pseudo_class('checked');
-        const b = new St.BoxLayout({orientation: H});
+        const b = new St.BoxLayout({orientation: H, x_expand: true, x_align: Clutter.ActorAlign.START});
         b.add_child(new St.Label({text: tab.glyph, style_class: 'cortex-rail-glyph'}));
         b.add_child(new St.Label({text: tab.label, y_align: Clutter.ActorAlign.CENTER}));
         btn.set_child(b);

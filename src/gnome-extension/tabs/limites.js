@@ -14,7 +14,7 @@ function label(text, style = '', expand = false) {
 
 // Barra de progreso: pista + relleno proporcional (ancho fijo, St no tiene layouts relativos).
 export function bar(pct, width) {
-    const track = new St.Widget({style_class: 'cortex-bar-track'});
+    const track = new St.Widget({style_class: 'cortex-bar-track', y_align: Clutter.ActorAlign.CENTER, y_expand: false});
     track.set_style(`width: ${width}px;`);
     const fill = new St.Widget({style_class: 'cortex-bar-fill'});
     const w = Math.round(width * Math.max(0, Math.min(1, pct / 100)));
