@@ -15,6 +15,8 @@
 #   (merge-squash-guard/confirmar-merge-develop) como vivos y ni mencionaba el reemplazo real
 #   (merge-develop-guard) — porque hasta entonces esta Fase 1 SOLO miraba Skills. Antídoto: un checker
 #   que no puede dar rojo ante un drift real no sirve (ver brain/test-brain.sh, batería "f2").
+# GNOME (check 5): la extensión de GNOME NO tiene catálogo propio — lee el brainTiers del main.qml con
+#   src/gnome-extension/lib/catalogo-cerebro.js; se verifica que ese parser siga entendiendo el QML (node).
 # FASE 2 (TODO — necesita build+QA visual de los widgets): paridad de los 3 brainTiers
 #   (src/plasmoid/.../main.qml · macos/.../PopoverView.swift · windows/.../PopupForm.cs).
 #
@@ -157,10 +159,32 @@ else
   fi
 fi
 
+# (5) GNOME: la extensión NO trae catálogo propio — LEE brainTiers del main.qml del plasmoide con
+# src/gnome-extension/lib/catalogo-cerebro.js. Si el QML cambia de forma y el parser deja de entenderlo
+# (o pierde hojas en silencio), la pestaña Cerebro de GNOME se rompe: aquí se pone rojo. Requiere node.
+QML="src/plasmoid/contents/ui/main.qml"
+if command -v node >/dev/null 2>&1; then
+  want="$(awk '/property var brainTiers:/{f=1} f && /^    \]/{exit} f' "$QML" | grep -oE 'name: "[^"]+"' | sed 's/^name: "//; s/"$//' | sort)"
+  got="$(node --input-type=module -e "
+    import fs from 'fs';
+    const C = await import(process.cwd() + '/src/gnome-extension/lib/catalogo-cerebro.js');
+    const cat = C.parseQml(fs.readFileSync('$QML', 'utf8'));
+    for (const t of cat.tiers) for (const it of t.items) console.log(it.name);
+  " 2>&1 | sort)"
+  if [ -z "$want" ] || [ "$got" != "$want" ]; then
+    echo "❌ GNOME: lib/catalogo-cerebro.js no lee bien brainTiers de $QML (¿cambió la forma del QML?):"
+    comm -3 <(printf '%s\n' "$want") <(printf '%s\n' "$got") | head -10 | sed 's/^/     /'
+    fail=1
+  fi
+else
+  echo "ℹ️  sin node: no verifico el parser del catálogo de la extensión GNOME (lib/catalogo-cerebro.js)."
+fi
+
 if [ "$fail" -eq 0 ]; then
   echo "✅ parity-check árbol (fase 1): README ↔ MEMORY.md ↔ brain/skills/ ↔ brain/hooks/MANIFEST en paridad · árbol MEMORY.md cercado y atemporal."
 else
   echo ""
-  echo "⚠️  DRIFT del árbol. Sincroniza las familias 💡 Skills y 🔒/🔔 Hooks en README.md + MEMORY.md con brain/skills/ y brain/hooks/MANIFEST."
+  echo "⚠️  DRIFT del árbol. Sincroniza las familias 💡 Skills y 🔒/🔔 Hooks en README.md + MEMORY.md con brain/skills/ y brain/hooks/MANIFEST"
+  echo "    (o, si el ❌ es de GNOME, ajusta src/gnome-extension/lib/catalogo-cerebro.js a la forma nueva del brainTiers del main.qml)."
 fi
 exit $fail
