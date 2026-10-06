@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Install the Claude Code quota widget for the current user.
 #
-#   ./install.sh              # full install (brain + fetch script + systemd + plasmoid)
+#   ./install.sh              # full install (brain + fetch script + systemd + desktop widget)
+#                             # widget = KDE plasmoid or GNOME Shell extension, auto-detected
+#   ./install.sh --gnome / --kde # force the widget flavour (default: from XDG_CURRENT_DESKTOP)
 #   ./install.sh --reinstall  # uninstall plasmoid first, then reinstall
 #   ./install.sh --no-plasmoid # only the brain + fetch script + systemd timer (no GUI)
 #   ./install.sh --no-gui      # alias of --no-plasmoid (skip the desktop widget)
@@ -28,6 +30,8 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 BIN_SRC="$ROOT/src/bin/cortex-fetch"
 UNIT_SRC="$ROOT/src/systemd"
 PLASMOID_SRC="$ROOT/src/plasmoid"
+GNOME_EXT_SRC="$ROOT/src/gnome-extension"
+GNOME_EXT_UUID="cortex@unjordi.github.io"
 PLASMOID_ID="io.github.unjordi.cortex"
 OLD_PLASMOID_ID="io.github.unjordi.claude-quota-widget"   # legacy: se elimina en el install (borra el previo)
 OLD_PLASMOID_ID_BRAIN="io.github.unjordi.claude-brain"    # era intermedia (rename claude-brain→cortex, #312)
@@ -110,6 +114,7 @@ SKIP_BRAIN=0
 SKIP_CLAUDE_CODE=0
 RELOAD_SHELL=1
 WITH_TERM_BROKER=0
+DESKTOP_KIND=""
 for arg in "$@"; do
   case "$arg" in
     --reinstall)       REINSTALL=1 ;;
@@ -120,10 +125,24 @@ for arg in "$@"; do
     --no-claude-code)  SKIP_CLAUDE_CODE=1 ;;
     --no-reload-shell) RELOAD_SHELL=0 ;;
     --con-term-broker) WITH_TERM_BROKER=1 ;;
+    --gnome)           DESKTOP_KIND=gnome ;;
+    --kde)             DESKTOP_KIND=kde ;;
     -h|--help)         usage; exit 0 ;;
     *) echo "unknown arg: $arg" >&2; echo "try: $0 --help" >&2; exit 2 ;;
   esac
 done
+
+# Sabor del widget: GNOME Shell (extensión) o KDE Plasma (plasmoide). Sin flag: XDG_CURRENT_DESKTOP;
+# si no dice nada (SSH/headless), lo que haya instalado (kpackagetool6 gana: era el único sabor).
+if [[ -z "$DESKTOP_KIND" ]]; then
+  case "${XDG_CURRENT_DESKTOP:-}" in
+    *GNOME*|*gnome*) DESKTOP_KIND=gnome ;;
+    *KDE*|*kde*)     DESKTOP_KIND=kde ;;
+    *) if command -v kpackagetool6 >/dev/null 2>&1; then DESKTOP_KIND=kde
+       elif command -v gnome-shell >/dev/null 2>&1; then DESKTOP_KIND=gnome
+       else DESKTOP_KIND=kde; fi ;;
+  esac
+fi
 
 # La puerta del broker, en el PASO 0 REAL: pegada al parseo, antes de escribir un solo archivo.
 # Con `if`, no con `[[ … ]] && …`: bajo `set -e` un `&&` que resulta falso en el nivel superior
@@ -365,8 +384,11 @@ echo "==> Checking prerequisites"
 need() { command -v "$1" >/dev/null 2>&1 || { echo "missing: $1" >&2; exit 1; }; }
 need systemctl
 need jq
-if [[ "$SKIP_PLASMOID" -eq 0 ]]; then
+if [[ "$SKIP_PLASMOID" -eq 0 && "$DESKTOP_KIND" == kde ]]; then
   need kpackagetool6
+fi
+if [[ "$SKIP_PLASMOID" -eq 0 && "$DESKTOP_KIND" == gnome ]]; then
+  need gsettings
 fi
 
 echo "==> Ensuring ccusage is installed"
@@ -505,7 +527,7 @@ else
   echo "    (no state.json yet — check: journalctl --user -u cortex.service)"
 fi
 
-if [[ "$SKIP_PLASMOID" -eq 0 ]]; then
+if [[ "$SKIP_PLASMOID" -eq 0 && "$DESKTOP_KIND" == kde ]]; then
   # Empaqueta brain/ DENTRO del plasmoid (contents/brain) para que la curita self-healing de la
   # pestaña Cerebro tenga una ruta GARANTIZADA al install-brain.sh (análogo al bundle .app de macOS).
   # Se copia justo antes de empaquetar y se limpia después, para no ensuciar el árbol fuente.
@@ -589,6 +611,46 @@ if [[ "$SKIP_PLASMOID" -eq 0 ]]; then
   fi
 fi
 
+if [[ "$SKIP_PLASMOID" -eq 0 && "$DESKTOP_KIND" == gnome ]]; then
+  # Extensión de GNOME Shell (port del plasmoide). Se arma en un staging y se copia ENTERA al dir de
+  # extensiones del usuario: incluye brain/ (curita) y version.json (updater), igual que el plasmoide,
+  # más los scripts compartidos del plasmoide que reusan las pestañas Cerebro/Broker (no se duplican).
+  GNOME_EXT_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/gnome-shell/extensions/$GNOME_EXT_UUID"
+  _stage="$(mktemp -d)"
+  cp -R "$GNOME_EXT_SRC/." "$_stage/"
+  rm -f "$_stage/dev-anidado.sh"                     # herramienta de desarrollo, no viaja
+  for _s in brain-scan.sh broker-scan.sh broker-knobs.sh broker-knobs.tsv; do
+    [[ -f "$PLASMOID_SRC/contents/$_s" ]] && cp "$PLASMOID_SRC/contents/$_s" "$_stage/"
+  done
+  # La pestaña Cerebro LEE su catálogo (brainTiers) del main.qml del plasmoide: un solo catálogo Linux.
+  cp "$PLASMOID_SRC/contents/ui/main.qml" "$_stage/plasmoid-main.qml"
+  [[ -d "$ROOT/brain" ]] && cp -R "$ROOT/brain" "$_stage/brain"
+  _sha="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  _date="$(git -C "$ROOT" show -s --format=%cI HEAD 2>/dev/null || echo "")"
+  _branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
+  printf '{"sha":"%s","date":"%s","repo":"%s","branch":"%s"}\n' \
+    "$_sha" "$_date" "$ROOT" "$_branch" > "$_stage/version.json"
+  echo "==> Installing GNOME Shell extension ($GNOME_EXT_UUID)"
+  rm -rf "$GNOME_EXT_DIR"
+  mkdir -p "$(dirname "$GNOME_EXT_DIR")"
+  cp -R "$_stage" "$GNOME_EXT_DIR"
+  rm -rf "$_stage"
+  # Se habilita escribiendo enabled-extensions: `gnome-extensions enable` le pregunta al Shell CORRIENDO,
+  # que en Wayland aún no conoce una extensión recién copiada y responde "no existe".
+  _enabled="$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo "@as []")"
+  if [[ "$_enabled" != *"'$GNOME_EXT_UUID'"* ]]; then
+    if [[ "$_enabled" == "@as []" || "$_enabled" == "[]" ]]; then
+      _new="['$GNOME_EXT_UUID']"
+    else
+      _new="${_enabled%]}, '$GNOME_EXT_UUID']"
+    fi
+    gsettings set org.gnome.shell enabled-extensions "$_new" 2>/dev/null \
+      || echo "⚠️  no pude habilitarla; hazlo en la app Extensiones"
+  fi
+  echo "    instalada en $GNOME_EXT_DIR"
+  echo "    GNOME no recarga extensiones en caliente: cierra sesión y vuelve a entrar para verla."
+fi
+
 cat <<EOF
 
 Done.
@@ -597,8 +659,7 @@ The Claude-Code brain is installed globally (hooks + delegation-cost governance 
   ~/.claude). See README.md; re-run any time (idempotent). Skip it with --no-brain.
 
 Next steps:
-  - Right-click your Plasma panel -> Add or Manage Widgets -> search "Cortex Widget"
-  - Drag it onto the panel (or into the system tray slot).
+$( [[ "$DESKTOP_KIND" == gnome ]] && echo "  - GNOME: log out and back in; the indicator appears on the top bar." || printf '%s\n%s' "  - Right-click your Plasma panel -> Add or Manage Widgets -> search \"Cortex Widget\"" "  - Drag it onto the panel (or into the system tray slot).")
   - Hover for the breakdown; tune caps in: $LIMITS_DEFAULT
 
 Debug:
