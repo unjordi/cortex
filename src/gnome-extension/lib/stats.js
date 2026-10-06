@@ -138,7 +138,9 @@ export function heatmapCells(stats) {
     let minT = null, maxT = null;
     for (const dd of stats.days) {
         m[dd.date] = dd.tokens;
-        const t = Date.parse(dd.date);
+        // Medianoche LOCAL: Date.parse('yyyy-MM-dd') es UTC y en husos negativos corría el último
+        // día (hoy) fuera del heatmap. (El QML tiene el mismo bug.)
+        const t = Date.parse(`${dd.date}T00:00:00`);
         if (minT === null || t < minT)
             minT = t;
         if (maxT === null || t > maxT)

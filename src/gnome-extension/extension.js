@@ -52,6 +52,7 @@ class CortexIndicator extends PanelMenu.Button {
         this._tab = 0;
         this._paused = false;
         this._rangeIdx = 3;          // {hoy·7d·30d·∞}: ∞ por default, como el plasmoide
+        this._useGlobal = false;     // (e) toggle 🖥 esta máquina / ☁️ todas (stats-global.json)
         this._tabState = TABS.map(() => ({}));   // estado propio de cada pestaña (sobrevive re-renders)
         this._lastResetRefresh = 0;
 
@@ -179,6 +180,14 @@ class CortexIndicator extends PanelMenu.Button {
             chats: this._chats,
             sessions: this._sessions,
             rangeIdx: this._rangeIdx,
+            // (e) Fuente ACTIVA de los recortes por rango: la vista combinada si se pidió y existe.
+            // Sesiones/chats se quedan SIEMPRE locales (como activeStats del plasmoide).
+            useGlobal: this._useGlobal,
+            activeStats: this._useGlobal && this._statsGlobal ? this._statsGlobal : this._stats,
+            setUseGlobal: b => {
+                this._useGlobal = !!b;
+                this._renderPopup();
+            },
             contentWidth: POPUP_W - RAIL_W - 48,
             extPath: this._ext.path,
             state: this._tabState[i],
