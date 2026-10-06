@@ -9,7 +9,7 @@ rama) junto al binario. Al abrir la pestaña **Cerebro**, el widget consulta `co
 `github.com/unjordi/cortex` (throttle ~15 min, timeout ~6 s, **fail-open**: sin red / sin
 `version.json` / sin clon → no molesta). Si `main` avanzó, dibuja el banner **⬆ Actualizar**.
 
-Al aceptar, un script suelto hace `git fetch` + `git merge --ff-only origin/main` y —**solo si tuvo
+Al aceptar, un script suelto hace `git fetch` + `git checkout -B main origin/main` (fuerza-alinea el clon, como `bootstrap.sh`; un `merge --ff-only` fallaba para siempre con el clon en otra rama) y —**solo si tuvo
 éxito**— re-corre el instalador (`install.sh` / `install.ps1`), que reconstruye y relanza. Como el
 proceso corre desprendido, sobrevive a que el instalador cierre la app.
 

@@ -86,7 +86,9 @@ Cada fila de proyecto con **sesiones de Claude Code** trae un chevron (▸): des
 sesiones recientes (de `sessions.json`, máx 12) y **haz clic en una para "resumirla"** — abre una
 terminal en su `cwd` y corre `claude --resume <id>`. En Linux se intenta la primera terminal
 disponible en cascada: `konsole` (KDE) → `x-terminal-emulator` (default Debian/Ubuntu) →
-`gnome-terminal` → `xterm`. **Clic-secundario sobre una sesión** ofrece el mismo "Renombrar…" /
+`gnome-terminal` → `xterm`; en la extensión de GNOME la cascada empieza por las de GNOME: `ptyxis` →
+`gnome-terminal` → `kgx` → `konsole` → `x-terminal-emulator` → `xterm`. **Clic-secundario sobre una sesión**
+(en GNOME: una tira de botones bajo la fila) ofrece el mismo "Renombrar…" /
 "Restaurar original": escribe `~/.claude/sesiones-alias.json` con llave = `id` de la sesión (estable),
 que `sessions-extract.js` lee para sustituir la etiqueta derivada del transcript.
 

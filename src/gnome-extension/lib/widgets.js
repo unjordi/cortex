@@ -29,7 +29,7 @@ export function hbox(styleClass = '', props = {}) {
     return new St.BoxLayout({orientation: H, style_class: styleClass, ...props});
 }
 
-const PILL_ON = `background-color: ${F.ACCENT}; color: #1e1e1e; font-weight: bold;`;
+const PILL_ON = `background-color: ${F.withAlpha(F.ACCENT, 0.22)}; color: ${F.ACCENT}; font-weight: bold;`;
 
 // Píldoras {hoy · 7d · 30d · ∞} al pie de Resumen/Modelos/Proyectos/Chats. La activa va en acento.
 // machineToggle: agrega a la derecha el par 🖥 esta máquina / ☁️ todas (solo si stats-global.json trae

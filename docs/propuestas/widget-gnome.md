@@ -25,13 +25,21 @@ máquina de Carlos corría una extensión local mínima (solo cuota 5 h/semanal)
 ## Fases (un PR a `develop` por fase)
 | Fase | Contenido | Equivalente QML |
 |---|---|---|
-| F1 | Esqueleto: indicador de panel, popup con riel de pestañas, **Límites**, instalador GNOME — *hecho, verificado en GNOME anidado; falta QA de Carlos* | compactRepresentation, tab 0 |
-| F2 | **Resumen** (tarjetas, gráfica apilada, heatmap, rachas) + **Modelos** + filtro de rango | tabs 1–2 |
-| F3 | **Proyectos** + **Chats**: alias (renombrar), sesiones desplegables, resume en terminal, mover sesión | tabs 3–4 |
+| F1 | Esqueleto: indicador de panel, popup con riel de pestañas, **Límites**, instalador GNOME — *hecho; QA visual de Carlos en GNOME anidado* | compactRepresentation, tab 0 |
+| F2 | **Resumen** (tarjetas, gráfica apilada, heatmap, rachas) + **Modelos** + filtro de rango y toggle 🖥/☁️ — *hecho, verificado en GNOME anidado; falta QA de Carlos* | tabs 1–2 |
+| F3 | **Proyectos** + **Chats**: alias (renombrar), sesiones desplegables, resume en terminal, mover sesión — *hecho, verificado en GNOME anidado (escrituras contra un CLAUDE_CONFIG_DIR temporal); falta QA de Carlos* | tabs 3–4 |
 | F4 | **Cerebro**: escaneo, salud, curita (heal), updater ⬆ — *hecho, verificado en GNOME anidado (heal/update en dry-run); falta QA de Carlos* | tab 5 |
-| F5 | **Broker**: estado, verificar, acciones, knobs desde el `.tsv` | tab 6 |
+| F5 | **Broker**: estado, verificar, acciones, knobs desde el `.tsv` — *hecho, verificado en GNOME anidado (estados reales y de ejemplo; sin arrancar servicios ni escribir knobs); falta QA de Carlos* | tab 6 |
 
-F1 primero (es la base). F2–F5 tocan archivos disjuntos (`tabs/*.js`) ⇒ se pueden hacer en paralelo.
+F1 primero (es la base). F2–F5 tocan archivos disjuntos (`tabs/*.js`) ⇒ se hicieron en paralelo.
+
+### Diferencias conocidas con el plasmoide (decisiones de plataforma)
+- **Sin tooltips** en St dentro del popup: lo que el QML pone en tooltip va como línea tenue o `accessible_name`.
+- **Clic secundario de Proyectos/Chats** = tira de botones bajo la fila (no menú flotante); un `ModalDialog` cierra el popup al abrirse (encima del menú no recibe foco).
+- **Confirmaciones del Broker** (Parar/Reiniciar) dentro del panel, no en un diálogo; knobs en dos renglones por el ancho; un solo campo de texto editable a la vez (St.Entry sin foco loguea Clutter-CRITICAL en cada re-pintado).
+- **Heatmap** con celdas fijas de 14 px y las semanas más recientes si no caben (el QML escala 8–16 px).
+- **Update ⬆**: re-instala con `install.sh --gnome --no-reload-shell` y pide cerrar sesión (GNOME no recarga extensiones en caliente). `CORTEX_DRY_RUN=1` en el entorno del Shell hace que 🩹/⬆ solo registren el comando.
+- **Bug encontrado en el QML** (no corregido aquí): `heatmapCells` de `main.qml` parsea `yyyy-MM-dd` como medianoche UTC ⇒ en husos negativos (México) el día de hoy no aparece. Corregido en `lib/stats.js` de GNOME.
 
 ## Diferencias de plataforma a resolver
 - Gráficas: QML Canvas → `St.DrawingArea` + cairo.

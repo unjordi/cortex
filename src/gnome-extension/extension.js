@@ -20,13 +20,15 @@ import * as Proyectos from './tabs/proyectos.js';
 import * as Chats from './tabs/chats.js';
 import * as Cerebro from './tabs/cerebro.js';
 import * as Broker from './tabs/broker.js';
+import * as CerebroLib from './lib/cerebro.js';
 
 const H = Clutter.Orientation.HORIZONTAL;
 const V = Clutter.Orientation.VERTICAL;
 
 // Mismo orden/rótulos que el riel del plasmoide. Cada módulo exporta build(ctx) → actor; opcionales:
 // onShow(ctx) (al entrar a la pestaña: escaneos caros, como el onCurrentTabChanged del QML) y
-// railBadge(ctx) → string ('⬆', '🩹', '' ) para el pie del riel / el indicador del panel.
+// railButtons(ctx) → [{glyph, tip, onClick}] contextuales para el pie del riel (⬆/🩹 solo si aplican);
+// panelBadge(ctx) → '⬆' | '🩹' | '' para el indicador del panel.
 // `visible(ctx)` oculta la pestaña (Chats solo si hay chats, como el riel del plasmoide).
 const TABS = [
     {label: 'Límites', glyph: '⏱', mod: Limites},
@@ -58,7 +60,13 @@ class CortexIndicator extends PanelMenu.Button {
 
         this._compact = new St.BoxLayout({orientation: V, y_align: Clutter.ActorAlign.CENTER,
             style_class: 'cortex-compact'});
-        this.add_child(this._compact);
+        // Badges ⬆/🩹 A LA DERECHA de las 2 filas (como la bandeja del plasmoide), no como 3.ª fila:
+        // la barra superior no tiene alto para tres.
+        this._badge = new St.Label({style_class: 'cortex-compact-badge', y_align: Clutter.ActorAlign.CENTER});
+        const wrap = new St.BoxLayout({orientation: H});
+        wrap.add_child(this._compact);
+        wrap.add_child(this._badge);
+        this.add_child(wrap);
 
         // Un solo item no-reactivo hospeda todo el popup (riel + contenido).
         const item = new PopupMenu.PopupBaseMenuItem({reactive: false, can_focus: false});
@@ -164,10 +172,8 @@ class CortexIndicator extends PanelMenu.Button {
         // Badges ⬆/🩹 en el panel (solo cuando aplican), que aporta cada pestaña con panelBadge(ctx).
         const badges = TABS.map((t, i) => t.mod.panelBadge ? t.mod.panelBadge(this._ctx(i)) : '')
             .filter(Boolean);
-        if (badges.length) {
-            const b = new St.Label({text: badges.join(' '), style_class: 'cortex-compact-badge'});
-            this._compact.add_child(b);
-        }
+        this._badge.text = badges.join('\n');
+        this._badge.visible = badges.length > 0;
     }
 
     // Contexto que recibe cada pestaña. Datos frescos + estado propio + acciones del núcleo.
@@ -231,6 +237,11 @@ class CortexIndicator extends PanelMenu.Button {
     }
 
     _renderPopup() {
+        // El re-pintado (tick de 10 s, resultados async) reconstruye la vista: conserva el scroll si
+        // seguimos en la misma pestaña, o una pestaña larga (Cerebro, Broker) salta arriba sola.
+        const keepScroll = this._scroll && this._scrollTab === this._tab
+            ? this._scroll.vadjustment.value : 0;
+        this._scroll = null;
         this._root.destroy_all_children();
 
         const rail = new St.BoxLayout({orientation: V, style_class: 'cortex-rail'});
@@ -246,7 +257,14 @@ class CortexIndicator extends PanelMenu.Button {
             for (const b of t.mod.railButtons ? t.mod.railButtons(this._ctx(i)) : [])
                 foot.add_child(this._footButton(b.glyph, b.tip, b.onClick));
         }
-        foot.add_child(this._footButton('↻', 'Refrescar ahora', () => D.forceRefresh()));
+        // ↻ es un clic EXPLÍCITO: además de la cuota, fuerza el chequeo de versión saltando el throttle
+        // de 15 min (paridad con forceRefresh del plasmoide).
+        foot.add_child(this._footButton('↻', 'Refrescar ahora', () => {
+            D.forceRefresh();
+            const cctx = this._ctx(TABS.findIndex(t => t.mod === Cerebro));
+            CerebroLib.initState(cctx.state);
+            CerebroLib.checkUpdate(cctx, true);
+        }));
         foot.add_child(this._footButton(this._paused ? '⏵' : '⏸',
             this._paused ? 'Reanudar la actualización automática' : 'Pausar la actualización automática',
             () => {
@@ -274,6 +292,19 @@ class CortexIndicator extends PanelMenu.Button {
         const scroll = new St.ScrollView({x_expand: true, y_expand: true, style_class: 'cortex-content'});
         scroll.set_child(content);
         this._root.add_child(scroll);
+        this._scroll = scroll;
+        this._scrollTab = this._tab;
+        if (keepScroll > 0) {
+            // El ajuste recorta el valor a [0, upper-page]: hay que esperar a que el layout le dé su
+            // `upper` real (notify::upper) antes de restaurar; en un idle aún vale 0 y se pierde.
+            const adj = scroll.vadjustment;
+            const id = adj.connect('notify::upper', () => {
+                if (adj.upper - adj.page_size <= 0)
+                    return;
+                adj.value = Math.min(keepScroll, adj.upper - adj.page_size);
+                adj.disconnect(id);
+            });
+        }
     }
 
     destroy() {
