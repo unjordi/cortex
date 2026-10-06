@@ -1,0 +1,25 @@
+.cortex-panel-label {
+  font-feature-settings: "tnum";
+  padding-left: 4px;
+}
+.cortex-row {
+  spacing: 12px;
+  min-width: 300px;
+}
+.cortex-row-key { font-weight: bold; }
+.cortex-row-sub { font-size: 0.85em; }
+.cortex-bar-track {
+  height: 6px;
+  border-radius: 3px;
+  background-color: rgba(255, 255, 255, 0.15);
+  margin-top: 4px;
+  margin-bottom: 2px;
+}
+.cortex-bar-fill {
+  height: 6px;
+  border-radius: 3px;
+}
+.cortex-section-head {
+  font-weight: bold;
+  padding-top: 4px;
+}
