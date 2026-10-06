@@ -622,6 +622,8 @@ if [[ "$SKIP_PLASMOID" -eq 0 && "$DESKTOP_KIND" == gnome ]]; then
   for _s in brain-scan.sh broker-scan.sh broker-knobs.sh broker-knobs.tsv; do
     [[ -f "$PLASMOID_SRC/contents/$_s" ]] && cp "$PLASMOID_SRC/contents/$_s" "$_stage/"
   done
+  # La pestaña Cerebro LEE su catálogo (brainTiers) del main.qml del plasmoide: un solo catálogo Linux.
+  cp "$PLASMOID_SRC/contents/ui/main.qml" "$_stage/plasmoid-main.qml"
   [[ -d "$ROOT/brain" ]] && cp -R "$ROOT/brain" "$_stage/brain"
   _sha="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
   _date="$(git -C "$ROOT" show -s --format=%cI HEAD 2>/dev/null || echo "")"

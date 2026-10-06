@@ -28,7 +28,7 @@ máquina de Carlos corría una extensión local mínima (solo cuota 5 h/semanal)
 | F1 | Esqueleto: indicador de panel, popup con riel de pestañas, **Límites**, instalador GNOME — *hecho, verificado en GNOME anidado; falta QA de Carlos* | compactRepresentation, tab 0 |
 | F2 | **Resumen** (tarjetas, gráfica apilada, heatmap, rachas) + **Modelos** + filtro de rango | tabs 1–2 |
 | F3 | **Proyectos** + **Chats**: alias (renombrar), sesiones desplegables, resume en terminal, mover sesión | tabs 3–4 |
-| F4 | **Cerebro**: escaneo, salud, curita (heal), updater ⬆ | tab 5 |
+| F4 | **Cerebro**: escaneo, salud, curita (heal), updater ⬆ — *hecho, verificado en GNOME anidado (heal/update en dry-run); falta QA de Carlos* | tab 5 |
 | F5 | **Broker**: estado, verificar, acciones, knobs desde el `.tsv` | tab 6 |
 
 F1 primero (es la base). F2–F5 tocan archivos disjuntos (`tabs/*.js`) ⇒ se pueden hacer en paralelo.
@@ -44,7 +44,16 @@ En Wayland Claude no puede mirar la pantalla ⇒ cada fase queda **verificada t�
 errores en `journalctl --user`, datos correctos) y el **QA visual lo da Carlos** antes del PR.
 
 ## Catálogo del árbol (doc = realidad)
-La pestaña Cerebro trae su propio `brainTiers` + lógica de estado que casa NOMBRES. Hoy vive en 5 lugares
-(README, MEMORY.md, macOS, Linux-KDE, Windows — ver `.claude/memory/arbol-cerebro-sync.md`); la extensión
-GNOME sería el **6.º**. F4 debe: leerlo de una fuente compartida si es viable, o sumarse a esa memoria +
-a `verificar-arbol-sync.sh` para no driftear.
+La pestaña Cerebro necesita el `brainTiers` + la lógica de estado que casa NOMBRES. Hoy el catálogo vive en 5
+lugares (README, MEMORY.md, macOS, Linux, Windows — ver `.claude/memory/arbol-cerebro-sync.md`).
+**Decisión F4: GNOME no es una 6.ª copia.** `src/gnome-extension/lib/catalogo-cerebro.js` LEE el `brainTiers`
+(y los conjuntos de hooks/normas) del `main.qml` del plasmoide, que `install.sh` copia a la extensión como
+`plasmoid-main.qml`. `verificar-arbol-sync.sh` (check 5) pone rojo el repo si el parser deja de entender el QML.
+
+## F4 — Cerebro: diferencias con el plasmoide
+- **Update ⬆:** re-corre `install.sh --gnome --no-reload-shell` desde el clon (mismo fetch + `checkout -B main
+  origin/main`); GNOME no recarga extensiones en caliente → el mensaje pide cerrar sesión y volver a entrar.
+- **Sin tooltips** en GNOME Shell: lo que el plasmoide pone en tooltip (qué hace el update, el one-liner de
+  bootstrap, qué hace la curita) va como línea tenue dentro del propio recuadro.
+- **QA sin mutar nada:** con `CORTEX_DRY_RUN=1` en el entorno del Shell (p. ej. `CORTEX_DRY_RUN=1
+  src/gnome-extension/dev-anidado.sh 5`), 🩹 y ⬆ solo registran en el journal el comando que correrían.

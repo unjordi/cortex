@@ -21,6 +21,9 @@ proceso corre desprendido, sobrevive a que el instalador cierre la app.
 > (re-cablea el cerebro empaquetado en el app), no como el paso obligado que era antes en el Mac.
 
 - macOS (`Updater.swift`), Linux (`main.qml` → `forceRefresh`), Windows (`Updater.cs`).
+- Linux/GNOME (`src/gnome-extension/lib/cerebro.js`): mismo chequeo y mismo comando, pero re-corre
+  `install.sh --gnome --no-reload-shell`; GNOME no recarga extensiones en caliente, así que la versión
+  nueva carga al cerrar sesión y volver a entrar (el banner lo dice).
 - **Requisito:** el receptor tiene el **clon de git** + el **toolchain de build** (Swift/CLT en
   macOS, nada en Linux porque el plasmoide es QML, **.NET SDK en Windows**).
 
