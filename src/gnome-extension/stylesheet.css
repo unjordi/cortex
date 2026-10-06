@@ -1,25 +1,39 @@
-.cortex-panel-label {
-  font-feature-settings: "tnum";
-  padding-left: 4px;
+/* Cortex — GNOME Shell. Look del plasmoide: acento naranja #e8884a, rojo solo >90 %. */
+
+/* Indicador del panel: 2 filas compactas 5h / 7d */
+.cortex-compact { padding: 0 4px; }
+.cortex-compact-row { spacing: 3px; font-size: 9px; }
+.cortex-compact-key { opacity: 0.7; }
+.cortex-compact-pct { font-weight: bold; min-width: 24px; font-feature-settings: "tnum"; }
+.cortex-compact-reset { opacity: 0.55; }
+.cortex-compact .cortex-bar-track { height: 4px; border-radius: 2px; margin: 0; }
+.cortex-compact .cortex-bar-fill { height: 4px; border-radius: 2px; }
+
+/* Popup */
+.cortex-popup-item { padding: 0; }
+.cortex-rail { spacing: 4px; padding: 6px; }
+.cortex-rail-btn {
+  padding: 6px 8px;
+  border-radius: 8px;
+  text-align: left;
 }
-.cortex-row {
-  spacing: 12px;
-  min-width: 300px;
-}
-.cortex-row-key { font-weight: bold; }
-.cortex-row-sub { font-size: 0.85em; }
+.cortex-rail-btn:hover { background-color: rgba(255, 255, 255, 0.08); }
+.cortex-rail-btn:checked { background-color: rgba(232, 136, 74, 0.25); }
+.cortex-rail-glyph { min-width: 22px; }
+.cortex-foot-btn { padding: 2px 8px; border-radius: 6px; font-size: 1.1em; }
+.cortex-foot-btn:hover { background-color: rgba(255, 255, 255, 0.08); }
+.cortex-divider { width: 1px; background-color: rgba(255, 255, 255, 0.12); }
+.cortex-content { padding: 12px 16px; }
+.cortex-tab { spacing: 16px; }
+.cortex-section { spacing: 6px; }
+
+/* Barras */
 .cortex-bar-track {
-  height: 6px;
-  border-radius: 3px;
-  background-color: rgba(255, 255, 255, 0.15);
-  margin-top: 4px;
-  margin-bottom: 2px;
+  height: 8px;
+  border-radius: 4px;
+  background-color: rgba(255, 255, 255, 0.12);
 }
 .cortex-bar-fill {
-  height: 6px;
-  border-radius: 3px;
-}
-.cortex-section-head {
-  font-weight: bold;
-  padding-top: 4px;
+  height: 8px;
+  border-radius: 4px;
 }

@@ -1,6 +1,5 @@
-// Cortex — indicador de panel para GNOME Shell.
-// Lee el mismo snapshot que publica el daemon de cortex (cortex-fetch, vía cortex.timer)
-// en ~/.cache/cortex/state.json. No consulta la red ni ejecuta ccusage por su cuenta.
+// Cortex — widget de GNOME Shell. Port del plasmoide de KDE (src/plasmoid/), plan en
+// docs/propuestas/widget-gnome.md. Vista pura: lee ~/.cache/cortex/*.json que publica el daemon.
 import GObject from 'gi://GObject';
 import St from 'gi://St';
 import Gio from 'gi://Gio';
@@ -12,301 +11,205 @@ import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
-// Mismos colores que el plasmoid: acento naranja, rojo solo >90% (aviso de throttle).
-const ACCENT = '#e8884a';
-const DANGER = '#dc3545';
-const MUTED = '#777777';
-const BAR_W = 300;
+import * as F from './lib/fmt.js';
+import * as D from './lib/data.js';
+import * as Limites from './tabs/limites.js';
 
-const CACHE_DIR = GLib.build_filenamev([GLib.get_user_cache_dir(), 'cortex']);
-const STATE_FILE = GLib.build_filenamev([CACHE_DIR, 'state.json']);
+const H = Clutter.Orientation.HORIZONTAL;
+const V = Clutter.Orientation.VERTICAL;
 
-function pctColor(p) {
-    if (p === undefined || p === null || p < 0)
-        return MUTED;
-    return p > 90 ? DANGER : ACCENT;
-}
+// Mismo orden/rótulos que el riel del plasmoide. `fase` = pestañas aún no portadas (placeholder).
+const TABS = [
+    {label: 'Límites', glyph: '⏱', mod: Limites},
+    {label: 'Resumen', glyph: '📊', fase: 'F2'},
+    {label: 'Modelos', glyph: '📈', fase: 'F2'},
+    {label: 'Proyectos', glyph: '📁', fase: 'F3'},
+    {label: 'Chats', glyph: '💬', fase: 'F3'},
+    {label: 'Cerebro', glyph: '🧠', fase: 'F4'},
+    {label: 'Broker', glyph: '🔌', fase: 'F5'},
+];
 
-function fmtMoney(v, cur) {
-    if (v === undefined || v === null)
-        return '—';
-    const sym = !cur || cur === 'USD' ? '$' : `${cur} `;
-    return sym + v.toFixed(2);
-}
+const POPUP_W = 560;
+const POPUP_H = 440;
+const RAIL_W = 130;
 
-function fmtTokens(n) {
-    if (!n)
-        return '0';
-    if (n >= 1e9)
-        return `${(n / 1e9).toFixed(2)} G`;
-    if (n >= 1e6)
-        return `${(n / 1e6).toFixed(1)} M`;
-    if (n >= 1e3)
-        return `${(n / 1e3).toFixed(0)} k`;
-    return `${n}`;
-}
-
-// "en 4 h 50 min" / "ya pasó" — el snapshot trae los resets en ISO 8601 UTC.
-function fmtReset(iso) {
-    if (!iso)
-        return '—';
-    const t = Date.parse(iso);
-    if (Number.isNaN(t))
-        return '—';
-    let d = Math.round((t - Date.now()) / 1000);
-    if (d <= 0)
-        return 'ya pasó';
-    const days = Math.floor(d / 86400);
-    d -= days * 86400;
-    const h = Math.floor(d / 3600);
-    const m = Math.floor((d % 3600) / 60);
-    if (days > 0)
-        return `en ${days} d ${h} h`;
-    if (h > 0)
-        return `en ${h} h ${m} min`;
-    return `en ${m} min`;
-}
-
-function fmtAge(iso) {
-    if (!iso)
-        return 'nunca';
-    const t = Date.parse(iso);
-    if (Number.isNaN(t))
-        return '—';
-    const d = Math.max(0, Math.round((Date.now() - t) / 1000));
-    if (d < 90)
-        return `hace ${d} s`;
-    if (d < 5400)
-        return `hace ${Math.round(d / 60)} min`;
-    return `hace ${Math.round(d / 3600)} h`;
+function placeholder(tab) {
+    const box = new St.BoxLayout({orientation: V, style_class: 'cortex-tab', y_expand: true});
+    const t = new St.Label({text: tab.label});
+    t.set_style('font-weight: bold; font-size: larger;');
+    box.add_child(t);
+    const l = new St.Label({text: `Pendiente de portar del plasmoide (fase ${tab.fase}).`});
+    l.set_style('opacity: 0.6;');
+    box.add_child(l);
+    return box;
 }
 
 const CortexIndicator = GObject.registerClass(
 class CortexIndicator extends PanelMenu.Button {
     _init(extension) {
         super._init(0.5, 'Cortex', false);
-        this._extension = extension;
+        this._ext = extension;
         this._snapshot = null;
-        this._error = null;
+        this._snapshotError = '';
+        this._tab = 0;
+        this._paused = false;
+        this._lastResetRefresh = 0;
 
-        const box = new St.BoxLayout({
-            orientation: Clutter.Orientation.HORIZONTAL,
-            style_class: 'panel-status-menu-box',
+        this._compact = new St.BoxLayout({orientation: V, y_align: Clutter.ActorAlign.CENTER,
+            style_class: 'cortex-compact'});
+        this.add_child(this._compact);
+
+        // Un solo item no-reactivo hospeda todo el popup (riel + contenido).
+        const item = new PopupMenu.PopupBaseMenuItem({reactive: false, can_focus: false});
+        item.add_style_class_name('cortex-popup-item');
+        this._root = new St.BoxLayout({orientation: H});
+        this._root.set_style(`width: ${POPUP_W}px; height: ${POPUP_H}px;`);
+        item.add_child(this._root);
+        this.menu.addMenuItem(item);
+        this.menu.connect('open-state-changed', (_m, open) => {
+            if (open)
+                this.refresh();
         });
-        this._icon = new St.Icon({
-            gicon: Gio.icon_new_for_string(
-                GLib.build_filenamev([extension.path, 'icons', 'cortex.svg'])),
-            style_class: 'system-status-icon',
-        });
-        this._label = new St.Label({
-            text: '—',
-            y_align: Clutter.ActorAlign.CENTER,
-            style_class: 'cortex-panel-label',
-        });
-        box.add_child(this._icon);
-        box.add_child(this._label);
-        this.add_child(box);
 
         this._watch();
         this.refresh();
-
-        // Red de seguridad: el timer del daemon corre cada 5 min, pero los "faltan X min"
-        // del menú envejecen solos — un repintado por minuto los mantiene honestos.
-        this._tick = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 60, () => {
+        // Tick de 10 s como el Timer del plasmoide: relee el caché y adelanta el fetch si un reset ya pasó.
+        this._tick = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 10, () => {
             this.refresh();
+            this._maybeRefreshOnReset();
             return GLib.SOURCE_CONTINUE;
         });
     }
 
-    // cortex-fetch escribe con tmp+rename: vigilar el ARCHIVO pierde el watch en cada
-    // relevo de inodo, así que se vigila el DIRECTORIO.
+    // cortex-fetch escribe con tmp+rename → se vigila el DIRECTORIO (vigilar el archivo pierde el inodo).
     _watch() {
         try {
-            this._monitor = Gio.File.new_for_path(CACHE_DIR)
+            this._monitor = Gio.File.new_for_path(D.CACHE_DIR)
                 .monitor_directory(Gio.FileMonitorFlags.NONE, null);
-            this._monitorId = this._monitor.connect('changed', (_m, file) => {
-                if (file && file.get_path() === STATE_FILE) {
-                    if (this._debounce)
-                        GLib.Source.remove(this._debounce);
-                    this._debounce = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
-                        this._debounce = null;
-                        this.refresh();
-                        return GLib.SOURCE_REMOVE;
-                    });
-                }
+            this._monitorId = this._monitor.connect('changed', () => {
+                if (this._debounce)
+                    GLib.Source.remove(this._debounce);
+                this._debounce = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
+                    this._debounce = null;
+                    this.refresh();
+                    return GLib.SOURCE_REMOVE;
+                });
             });
         } catch (e) {
-            logError(e, 'cortex: no se pudo vigilar el cache');
+            logError(e, 'cortex: no se pudo vigilar el caché');
+        }
+    }
+
+    // Anti-"% pegado": reset ya pasado + snapshot >60 s → adelanta el fetch (máx 1/min).
+    _maybeRefreshOnReset() {
+        const s = this._snapshot;
+        if (!s || !s.updated_at)
+            return;
+        const passed = (s.five_hour && F.isPast(s.five_hour.resets_at)) ||
+            (s.weekly && F.isPast(s.weekly.resets_at));
+        const age = (Date.now() - Date.parse(s.updated_at)) / 1000;
+        if (passed && age > 60 && Date.now() - this._lastResetRefresh > 60000) {
+            this._lastResetRefresh = Date.now();
+            D.forceRefresh();
         }
     }
 
     refresh() {
-        this._read();
-        this._renderPanel();
-        this._renderMenu();
+        this._snapshot = D.readJson('state.json');
+        this._snapshotError = this._snapshot ? (this._snapshot.error || '') : 'state.json ilegible';
+        this._renderCompact();
+        if (this.menu.isOpen)
+            this._renderPopup();
     }
 
-    _read() {
+    // Indicador de 2 filas 5h / 7d con mini-barra + % + ⟳reset (como la compactRepresentation).
+    _renderCompact() {
+        this._compact.destroy_all_children();
+        const s = this._snapshot;
+        const rows = [
+            ['5h', s && s.five_hour ? s.five_hour : null],
+            ['7d', s && s.weekly ? s.weekly : null],
+        ];
+        for (const [name, blk] of rows) {
+            const pct = blk && blk.percent !== undefined ? blk.percent : -1;
+            const r = new St.BoxLayout({orientation: H, style_class: 'cortex-compact-row'});
+            const n = new St.Label({text: name, style_class: 'cortex-compact-key'});
+            r.add_child(n);
+            if (pct >= 0)
+                r.add_child(Limites.bar(pct, 28));
+            const p = new St.Label({text: pct >= 0 ? `${Math.round(pct)}%` : (this._snapshotError ? '!' : '…'),
+                style_class: 'cortex-compact-pct'});
+            p.set_style(`color: ${F.pctColor(pct)};`);
+            r.add_child(p);
+            if (blk && blk.resets_at)
+                r.add_child(new St.Label({text: `⟳${F.compactReset(blk.resets_at)}`, style_class: 'cortex-compact-reset'}));
+            this._compact.add_child(r);
+        }
+    }
+
+    _railButton(i) {
+        const tab = TABS[i];
+        const btn = new St.Button({style_class: 'cortex-rail-btn', x_expand: true, can_focus: true});
+        if (i === this._tab)
+            btn.add_style_pseudo_class('checked');
+        const b = new St.BoxLayout({orientation: H});
+        b.add_child(new St.Label({text: tab.glyph, style_class: 'cortex-rail-glyph'}));
+        b.add_child(new St.Label({text: tab.label, y_align: Clutter.ActorAlign.CENTER}));
+        btn.set_child(b);
+        btn.connect('clicked', () => {
+            this._tab = i;
+            this._renderPopup();
+        });
+        return btn;
+    }
+
+    _footButton(glyph, tip, onClick) {
+        const btn = new St.Button({style_class: 'cortex-foot-btn', label: glyph, can_focus: true});
+        btn.accessible_name = tip;
+        btn.connect('clicked', onClick);
+        return btn;
+    }
+
+    _renderPopup() {
+        this._root.destroy_all_children();
+
+        const rail = new St.BoxLayout({orientation: V, style_class: 'cortex-rail'});
+        rail.set_style(`width: ${RAIL_W}px;`);
+        TABS.forEach((_t, i) => rail.add_child(this._railButton(i)));
+        rail.add_child(new St.Widget({y_expand: true}));
+        const foot = new St.BoxLayout({orientation: H, x_align: Clutter.ActorAlign.CENTER});
+        foot.add_child(this._footButton('↻', 'Refrescar ahora', () => D.forceRefresh()));
+        foot.add_child(this._footButton(this._paused ? '⏵' : '⏸',
+            this._paused ? 'Reanudar la actualización automática' : 'Pausar la actualización automática',
+            () => {
+                if (this._paused)
+                    D.resumeCollection();
+                else
+                    D.pauseCollection();
+                this._paused = !this._paused;
+                this._renderPopup();
+            }));
+        rail.add_child(foot);
+        this._root.add_child(rail);
+
+        this._root.add_child(new St.Widget({style_class: 'cortex-divider'}));
+
+        const tab = TABS[this._tab];
+        const ctx = {
+            snapshot: this._snapshot,
+            snapshotError: this._snapshotError,
+            contentWidth: POPUP_W - RAIL_W - 48,
+        };
+        let content;
         try {
-            const [ok, bytes] = Gio.File.new_for_path(STATE_FILE).load_contents(null);
-            if (!ok)
-                throw new Error('load_contents falló');
-            this._snapshot = JSON.parse(new TextDecoder().decode(bytes));
-            this._error = this._snapshot.error || null;
+            content = tab.mod ? tab.mod.build(ctx) : placeholder(tab);
         } catch (e) {
-            this._snapshot = null;
-            this._error = e.message;
+            logError(e, `cortex: falló la pestaña ${tab.label}`);
+            content = new St.Label({text: `Error en ${tab.label}: ${e.message}`});
         }
-    }
-
-    _renderPanel() {
-        const s = this._snapshot;
-        if (!s || s.status !== 'ok') {
-            this._label.text = '—';
-            this._label.set_style(`color: ${MUTED};`);
-            return;
-        }
-        const five = s.five_hour ? s.five_hour.percent : -1;
-        const week = s.weekly ? s.weekly.percent : -1;
-        this._label.text = `${five}% · ${week}%`;
-        // El panel se pinta con el PEOR de los dos: el rojo es un aviso, no un adorno.
-        this._label.set_style(`color: ${pctColor(Math.max(five, week))};`);
-    }
-
-    _row(key, value, color) {
-        const item = new PopupMenu.PopupBaseMenuItem({reactive: false, can_focus: false});
-        const box = new St.BoxLayout({
-            orientation: Clutter.Orientation.HORIZONTAL,
-            style_class: 'cortex-row',
-            x_expand: true,
-        });
-        box.add_child(new St.Label({text: key, x_expand: true}));
-        const v = new St.Label({text: value});
-        if (color)
-            v.set_style(`color: ${color};`);
-        box.add_child(v);
-        item.add_child(box);
-        return item;
-    }
-
-    _quota(title, q) {
-        const item = new PopupMenu.PopupBaseMenuItem({reactive: false, can_focus: false});
-        const col = new St.BoxLayout({
-            orientation: Clutter.Orientation.VERTICAL,
-            x_expand: true,
-        });
-
-        const head = new St.BoxLayout({
-            orientation: Clutter.Orientation.HORIZONTAL,
-            x_expand: true,
-        });
-        head.add_child(new St.Label({
-            text: title,
-            x_expand: true,
-            style_class: 'cortex-row-key',
-        }));
-        const pct = new St.Label({text: `${q.percent}%`});
-        pct.set_style(`color: ${pctColor(q.percent)}; font-weight: bold;`);
-        head.add_child(pct);
-        col.add_child(head);
-
-        const track = new St.Widget({style_class: 'cortex-bar-track', x_expand: true});
-        const fill = new St.Widget({style_class: 'cortex-bar-fill'});
-        const w = Math.max(2, Math.round(BAR_W * Math.min(100, Math.max(0, q.percent)) / 100));
-        fill.set_style(`width: ${w}px; background-color: ${pctColor(q.percent)};`);
-        track.set_style(`min-width: ${BAR_W}px;`);
-        track.add_child(fill);
-        col.add_child(track);
-
-        const foot = new St.BoxLayout({
-            orientation: Clutter.Orientation.HORIZONTAL,
-            x_expand: true,
-        });
-        const spent = `${fmtMoney(q.cost_usd, 'USD')} / ${fmtMoney(q.cost_cap, 'USD')}`;
-        const left = new St.Label({
-            text: `${spent} · ${fmtTokens(q.tokens_used)} tok`,
-            x_expand: true,
-            style_class: 'cortex-row-sub',
-        });
-        left.set_style(`color: ${MUTED};`);
-        const right = new St.Label({
-            text: `resetea ${fmtReset(q.resets_at)}`,
-            style_class: 'cortex-row-sub',
-        });
-        right.set_style(`color: ${MUTED};`);
-        foot.add_child(left);
-        foot.add_child(right);
-        col.add_child(foot);
-
-        item.add_child(col);
-        return item;
-    }
-
-    _renderMenu() {
-        this.menu.removeAll();
-        const s = this._snapshot;
-
-        if (!s) {
-            this.menu.addMenuItem(this._row('Sin snapshot', '', DANGER));
-            this.menu.addMenuItem(this._row(this._error || 'state.json ilegible', '', MUTED));
-        } else {
-            if (s.status !== 'ok' || s.error)
-                this.menu.addMenuItem(this._row('Error', s.error || s.status, DANGER));
-            if (s.account_mismatch)
-                this.menu.addMenuItem(this._row('⚠ Cuenta distinta a la del login', '', DANGER));
-
-            if (s.five_hour)
-                this.menu.addMenuItem(this._quota('Sesión (5 h)', s.five_hour));
-            if (s.weekly)
-                this.menu.addMenuItem(this._quota('Semanal', s.weekly));
-
-            // Límites acotados a un modelo: efímeros y cambiantes, se listan tal como vengan.
-            const scoped = (s.limits || []).filter(l => l.kind === 'weekly_scoped' && l.model);
-            if (scoped.length > 0) {
-                this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-                for (const l of scoped) {
-                    this.menu.addMenuItem(this._row(
-                        `Semanal · ${l.model}`,
-                        `${l.percent}%`,
-                        pctColor(l.percent)));
-                }
-            }
-
-            const extras = [];
-            if (s.spend && s.spend.enabled) {
-                extras.push(['Gasto extra', `${fmtMoney(s.spend.used, s.spend.currency)} / ` +
-                    `${fmtMoney(s.spend.cap, s.spend.currency)}`, pctColor(s.spend.percent)]);
-            }
-            if (s.extra_usage && s.extra_usage.enabled) {
-                extras.push(['Créditos del mes',
-                    `${fmtMoney(s.extra_usage.used_credits, s.extra_usage.currency)} / ` +
-                    `${fmtMoney(s.extra_usage.monthly_limit, s.extra_usage.currency)}`, null]);
-            }
-            if (extras.length > 0) {
-                this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-                for (const [k, v, c] of extras)
-                    this.menu.addMenuItem(this._row(k, v, c));
-            }
-
-            this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-            if (s.account_email)
-                this.menu.addMenuItem(this._row('Cuenta', s.account_email, MUTED));
-            this.menu.addMenuItem(this._row('Snapshot', fmtAge(s.updated_at), MUTED));
-        }
-
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        const act = new PopupMenu.PopupMenuItem('Refrescar ahora');
-        act.connect('activate', () => {
-            try {
-                // Dispara el mismo servicio del timer: una sola ruta de actualización.
-                Gio.Subprocess.new(
-                    ['systemctl', '--user', 'start', 'cortex.service'],
-                    Gio.SubprocessFlags.NONE);
-            } catch (e) {
-                logError(e, 'cortex: no se pudo lanzar cortex.service');
-            }
-        });
-        this.menu.addMenuItem(act);
+        const scroll = new St.ScrollView({x_expand: true, y_expand: true, style_class: 'cortex-content'});
+        scroll.set_child(content);
+        this._root.add_child(scroll);
     }
 
     destroy() {
