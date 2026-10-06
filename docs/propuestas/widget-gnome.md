@@ -25,7 +25,7 @@ máquina de Carlos corría una extensión local mínima (solo cuota 5 h/semanal)
 ## Fases (un PR a `develop` por fase)
 | Fase | Contenido | Equivalente QML |
 |---|---|---|
-| F1 | Esqueleto: indicador de panel, popup con riel de pestañas, **Límites**, instalador GNOME | compactRepresentation, tab 0 |
+| F1 | Esqueleto: indicador de panel, popup con riel de pestañas, **Límites**, instalador GNOME — *hecho, verificado en GNOME anidado; falta QA de Carlos* | compactRepresentation, tab 0 |
 | F2 | **Resumen** (tarjetas, gráfica apilada, heatmap, rachas) + **Modelos** + filtro de rango | tabs 1–2 |
 | F3 | **Proyectos** + **Chats**: alias (renombrar), sesiones desplegables, resume en terminal, mover sesión | tabs 3–4 |
 | F4 | **Cerebro**: escaneo, salud, curita (heal), updater ⬆ | tab 5 |

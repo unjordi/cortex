@@ -58,7 +58,7 @@ repo y corre el instalador maestro (**cerebro + daemon + widget**). Idempotente.
 git clone https://github.com/unjordi/cortex && cd cortex
 ./install.sh                 # todo  ·  --no-gui (sin widget)  ·  --no-brain (sin cerebro)
 ```
-Puerta por OS: **Linux/KDE** → `./install.sh` · **macOS** → [`macos/`](macos/) · **Windows** →
+Puerta por OS: **Linux (KDE o GNOME)** → `./install.sh` · **macOS** → [`macos/`](macos/) · **Windows** →
 [`windows/`](windows/) (`pwsh -File install.ps1`). **Prereq de los guardias: [`jq`](https://jqlang.github.io/jq/)**
 (sin él los hooks **fallan abierto** y no se cablea `settings.json`).
 
@@ -294,7 +294,7 @@ depender de en qué te toque trabajar.
 | OS | GUI | Detalle |
 |---|---|---|
 | 🍎 **macOS** | app de barra de menú (Swift) | [`macos/README.md`](macos/README.md) — agente `launchd` |
-| 🐧 **Linux** | widget KDE Plasma 6 (QML) | [`src/README.md`](src/README.md) — timer `systemd --user`, ajustes y diagnóstico |
+| 🐧 **Linux** | widget KDE Plasma 6 (QML) · extensión GNOME Shell 48–50 (GJS, en port: [`src/gnome-extension/`](src/gnome-extension/)) | [`src/README.md`](src/README.md) — timer `systemd --user`, ajustes y diagnóstico |
 | 🪟 **Windows** | app de bandeja (WinForms, .NET) | [`windows/README.md`](windows/README.md) — `.exe` self-contained, sin bash/jq |
 
 ## Contribuir al cerebro
