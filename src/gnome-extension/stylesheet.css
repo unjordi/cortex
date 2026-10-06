@@ -37,3 +37,20 @@
   height: 8px;
   border-radius: 4px;
 }
+
+/* Compartidos entre pestañas */
+.cortex-compact-badge { font-size: 10px; color: #e8884a; font-weight: bold; }
+.cortex-range { spacing: 6px; }
+.cortex-pill {
+  padding: 2px 10px;
+  border-radius: 10px;
+  background-color: rgba(255, 255, 255, 0.08);
+  font-size: smaller;
+}
+.cortex-pill:hover { background-color: rgba(255, 255, 255, 0.16); }
+.cortex-btn {
+  padding: 3px 10px;
+  border-radius: 6px;
+  background-color: rgba(255, 255, 255, 0.08);
+}
+.cortex-btn:hover { background-color: rgba(255, 255, 255, 0.16); }

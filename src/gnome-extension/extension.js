@@ -14,35 +14,33 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as F from './lib/fmt.js';
 import * as D from './lib/data.js';
 import * as Limites from './tabs/limites.js';
+import * as Resumen from './tabs/resumen.js';
+import * as Modelos from './tabs/modelos.js';
+import * as Proyectos from './tabs/proyectos.js';
+import * as Chats from './tabs/chats.js';
+import * as Cerebro from './tabs/cerebro.js';
+import * as Broker from './tabs/broker.js';
 
 const H = Clutter.Orientation.HORIZONTAL;
 const V = Clutter.Orientation.VERTICAL;
 
-// Mismo orden/rótulos que el riel del plasmoide. `fase` = pestañas aún no portadas (placeholder).
+// Mismo orden/rótulos que el riel del plasmoide. Cada módulo exporta build(ctx) → actor; opcionales:
+// onShow(ctx) (al entrar a la pestaña: escaneos caros, como el onCurrentTabChanged del QML) y
+// railBadge(ctx) → string ('⬆', '🩹', '' ) para el pie del riel / el indicador del panel.
+// `visible(ctx)` oculta la pestaña (Chats solo si hay chats, como el riel del plasmoide).
 const TABS = [
     {label: 'Límites', glyph: '⏱', mod: Limites},
-    {label: 'Resumen', glyph: '📊', fase: 'F2'},
-    {label: 'Modelos', glyph: '📈', fase: 'F2'},
-    {label: 'Proyectos', glyph: '📁', fase: 'F3'},
-    {label: 'Chats', glyph: '💬', fase: 'F3'},
-    {label: 'Cerebro', glyph: '🧠', fase: 'F4'},
-    {label: 'Broker', glyph: '🔌', fase: 'F5'},
+    {label: 'Resumen', glyph: '📊', mod: Resumen},
+    {label: 'Modelos', glyph: '📈', mod: Modelos},
+    {label: 'Proyectos', glyph: '📁', mod: Proyectos},
+    {label: 'Chats', glyph: '💬', mod: Chats, visible: ctx => ctx.chats && ctx.chats.length > 0},
+    {label: 'Cerebro', glyph: '🧠', mod: Cerebro},
+    {label: 'Broker', glyph: '🔌', mod: Broker},
 ];
 
 const POPUP_W = 560;
 const POPUP_H = 440;
 const RAIL_W = 130;
-
-function placeholder(tab) {
-    const box = new St.BoxLayout({orientation: V, style_class: 'cortex-tab', y_expand: true});
-    const t = new St.Label({text: tab.label});
-    t.set_style('font-weight: bold; font-size: larger;');
-    box.add_child(t);
-    const l = new St.Label({text: `Pendiente de portar del plasmoide (fase ${tab.fase}).`});
-    l.set_style('opacity: 0.6;');
-    box.add_child(l);
-    return box;
-}
 
 const CortexIndicator = GObject.registerClass(
 class CortexIndicator extends PanelMenu.Button {
@@ -53,6 +51,8 @@ class CortexIndicator extends PanelMenu.Button {
         this._snapshotError = '';
         this._tab = 0;
         this._paused = false;
+        this._rangeIdx = 3;          // {hoy·7d·30d·∞}: ∞ por default, como el plasmoide
+        this._tabState = TABS.map(() => ({}));   // estado propio de cada pestaña (sobrevive re-renders)
         this._lastResetRefresh = 0;
 
         this._compact = new St.BoxLayout({orientation: V, y_align: Clutter.ActorAlign.CENTER,
@@ -67,8 +67,10 @@ class CortexIndicator extends PanelMenu.Button {
         item.add_child(this._root);
         this.menu.addMenuItem(item);
         this.menu.connect('open-state-changed', (_m, open) => {
-            if (open)
+            if (open) {
                 this.refresh();
+                this._onShow();
+            }
         });
 
         this._watch();
@@ -114,9 +116,22 @@ class CortexIndicator extends PanelMenu.Button {
         }
     }
 
+    _onShow() {
+        const t = TABS[this._tab];
+        try {
+            t.mod.onShow?.(this._ctx(this._tab));
+        } catch (e) {
+            logError(e, `cortex: onShow de ${t.label}`);
+        }
+    }
+
     refresh() {
         this._snapshot = D.readJson('state.json');
         this._snapshotError = this._snapshot ? (this._snapshot.error || '') : 'state.json ilegible';
+        this._stats = D.readJson('stats.json');
+        this._statsGlobal = D.readJson('stats-global.json');   // solo si el sync (e) está activo
+        this._chats = D.readJson('chats.json');
+        this._sessions = D.readJson('sessions.json');
         this._renderCompact();
         if (this.menu.isOpen)
             this._renderPopup();
@@ -145,6 +160,41 @@ class CortexIndicator extends PanelMenu.Button {
                 r.add_child(new St.Label({text: `⟳${F.compactReset(blk.resets_at)}`, style_class: 'cortex-compact-reset'}));
             this._compact.add_child(r);
         }
+        // Badges ⬆/🩹 en el panel (solo cuando aplican), que aporta cada pestaña con panelBadge(ctx).
+        const badges = TABS.map((t, i) => t.mod.panelBadge ? t.mod.panelBadge(this._ctx(i)) : '')
+            .filter(Boolean);
+        if (badges.length) {
+            const b = new St.Label({text: badges.join(' '), style_class: 'cortex-compact-badge'});
+            this._compact.add_child(b);
+        }
+    }
+
+    // Contexto que recibe cada pestaña. Datos frescos + estado propio + acciones del núcleo.
+    _ctx(i) {
+        const ctx = {
+            snapshot: this._snapshot,
+            snapshotError: this._snapshotError,
+            stats: this._stats,
+            statsGlobal: this._statsGlobal,
+            chats: this._chats,
+            sessions: this._sessions,
+            rangeIdx: this._rangeIdx,
+            contentWidth: POPUP_W - RAIL_W - 48,
+            extPath: this._ext.path,
+            state: this._tabState[i],
+            setRange: r => {
+                this._rangeIdx = r;
+                this._renderPopup();
+            },
+            // Re-pinta la pestaña visible (tras un cambio de estado o al llegar un resultado async).
+            rerender: () => {
+                if (this.menu.isOpen)
+                    this._renderPopup();
+            },
+            refresh: () => this.refresh(),
+            closeMenu: () => this.menu.close(),
+        };
+        return ctx;
     }
 
     _railButton(i) {
@@ -158,6 +208,7 @@ class CortexIndicator extends PanelMenu.Button {
         btn.set_child(b);
         btn.connect('clicked', () => {
             this._tab = i;
+            this._onShow();
             this._renderPopup();
         });
         return btn;
@@ -175,9 +226,17 @@ class CortexIndicator extends PanelMenu.Button {
 
         const rail = new St.BoxLayout({orientation: V, style_class: 'cortex-rail'});
         rail.set_style(`width: ${RAIL_W}px;`);
-        TABS.forEach((_t, i) => rail.add_child(this._railButton(i)));
+        TABS.forEach((t, i) => {
+            if (!t.visible || t.visible(this._ctx(i)))
+                rail.add_child(this._railButton(i));
+        });
         rail.add_child(new St.Widget({y_expand: true}));
         const foot = new St.BoxLayout({orientation: H, x_align: Clutter.ActorAlign.CENTER});
+        // Botones CONTEXTUALES primero (⬆ update · 🩹 curita), luego los fijos — como el pie del plasmoide.
+        for (const [i, t] of TABS.entries()) {
+            for (const b of t.mod.railButtons ? t.mod.railButtons(this._ctx(i)) : [])
+                foot.add_child(this._footButton(b.glyph, b.tip, b.onClick));
+        }
         foot.add_child(this._footButton('↻', 'Refrescar ahora', () => D.forceRefresh()));
         foot.add_child(this._footButton(this._paused ? '⏵' : '⏸',
             this._paused ? 'Reanudar la actualización automática' : 'Pausar la actualización automática',
@@ -195,14 +254,10 @@ class CortexIndicator extends PanelMenu.Button {
         this._root.add_child(new St.Widget({style_class: 'cortex-divider'}));
 
         const tab = TABS[this._tab];
-        const ctx = {
-            snapshot: this._snapshot,
-            snapshotError: this._snapshotError,
-            contentWidth: POPUP_W - RAIL_W - 48,
-        };
+        const ctx = this._ctx(this._tab);
         let content;
         try {
-            content = tab.mod ? tab.mod.build(ctx) : placeholder(tab);
+            content = tab.mod.build(ctx);
         } catch (e) {
             logError(e, `cortex: falló la pestaña ${tab.label}`);
             content = new St.Label({text: `Error en ${tab.label}: ${e.message}`});
