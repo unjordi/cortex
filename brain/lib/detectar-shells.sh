@@ -116,7 +116,7 @@ ds_shells_csv() {
 }
 
 # Los BULLETS de aliases-que-muerden: una línea densa por shell instalado + nota de globs de zsh.
-# Reusado por el artefacto LEAN y por el bloque detectado de entorno-esta-maquina.md (sin duplicar OS).
+# Reusado por el artefacto LEAN y por el bloque detectado de ~/.claude/entorno-maquina.md (sin duplicar OS).
 ds_render_posix_bullets() {
   local sh bmap dense n v any=0
   printf 'Muerden (sombrean un binario real → salta con `command <cmd>`):\n'

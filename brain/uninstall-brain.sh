@@ -147,5 +147,22 @@ if [ -f "$CLAUDE_DIR/aliases-activos.md" ]; then
   echo "ok: artefacto GENERADO aliases-activos.md eliminado (se regenera en el próximo install)"
 fi
 
+# ── (e2) Quitar el @import del entorno LEAN (marcador brain:import-entorno). El archivo
+# ~/.claude/entorno-maquina.md es dato CURADO → se conserva. Un @import cableado a mano (sin marcador) no se toca.
+if [ -f "$GCLAUDE" ] && grep -q 'brain:import-entorno' "$GCLAUDE" 2>/dev/null; then
+  tmp="$(mktemp)" || tmp=""
+  if [ -n "$tmp" ] && awk '
+      /brain:import-entorno/ { skip_next=1; next }
+      skip_next==1 && /^@entorno-maquina\.md[[:space:]]*$/ { skip_next=0; next }
+      { skip_next=0; print }
+    ' "$GCLAUDE" > "$tmp"; then
+    mv "$tmp" "$GCLAUDE"
+    echo "ok: @import de entorno-maquina.md removido de $GCLAUDE (el archivo se conserva)"
+  else
+    [ -n "$tmp" ] && rm -f "$tmp"
+    echo "warn: no pude quitar el @import del entorno de $GCLAUDE; hazlo a mano (líneas brain:import-entorno + @entorno-maquina.md)"
+  fi
+fi
+
 echo "listo: cerebro global desinstalado. Se conservaron el dashboard, el registro de"
 echo "       consentimiento de delegación y toda la memoria (datos del usuario, no instalación)."

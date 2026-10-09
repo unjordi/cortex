@@ -12,7 +12,7 @@
 
 ## El entorno de MÁQUINA vive GLOBAL, jamás en un repo (norma dura)
 - El entorno de MÁQUINA (OS, shell, aliases, rutas personales de un `$HOME`, runtime local Docker/BD/certs) es específico de UNA instancia; en un repo viajaría por git y mentiría al clonar en otra compu u otro OS.
-- Vive SOLO en la memoria GLOBAL per-máquina (`~/.claude/projects/-Users-<user>/memory/entorno-esta-maquina.md`), que NO viaja por git; la siembra `install-brain`/`bootstrap-claude` detectando la config real, y Claude la mantiene.
+- Vive SOLO en `~/.claude/entorno-maquina.md` (LEAN, FUENTE ÚNICA, siempre en contexto vía `@import` del CLAUDE.md global), que NO viaja por git; la siembra `install-brain`/`bootstrap-claude` detectando la config real, y Claude la mantiene en formato LEAN. No hay copia detallada en la memoria del slug.
 - Un repo documenta solo cómo correr EL PROYECTO de forma portable o CONDICIONAL ("si Apple Silicon: `platform: linux/amd64`"; "en Windows usa Git Bash") — nunca afirmando lo personal-de-instancia como universal.
 - Nómbralos por lo que son (`correr-en-local.md`, `requisitos.md`); un `entorno-maquina.md` dentro del `.claude/memory/` de un repo es la trampa misma — lo AVISA el guard `entorno-maquina-guard`.
 

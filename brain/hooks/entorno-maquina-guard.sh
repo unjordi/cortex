@@ -2,7 +2,7 @@
 # entorno-maquina-guard.sh — PreToolUse/Bash. MECANISMO de la norma dura "el entorno de MÁQUINA vive
 # GLOBAL, jamás en un repo". AVISA (NO bloquea) cuando un `git commit` está por meter al `.claude/memory/`
 # de un repo algo específico-de-esta-máquina — que viajaría por git y MENTIRÍA al clonar en otra compu/OS.
-# Lo machine-specific vive SOLO en la memoria GLOBAL per-máquina (entorno-esta-maquina.md, que NO viaja
+# Lo machine-specific vive SOLO en ~/.claude/entorno-maquina.md (global per-máquina, que NO viaja
 # por git); un repo documenta el proyecto de forma PORTABLE/CONDICIONAL (nombrado `correr-en-local.md`).
 #
 # Dispara con DOS señales de alta precisión, ambas acotadas a archivos bajo `.claude/memory/`:
@@ -86,7 +86,7 @@ EOF
 
 MSG="AVISO (norma dura 'el entorno de MÁQUINA vive GLOBAL, jamás en un repo'): este git commit mete al .claude/memory/ de ESTE repo contenido que parece específico-de-esta-máquina — en un repo viaja por git y MIENTE al clonar en otra compu/OS."
 [ -n "$bad_name" ] && MSG="$MSG || FILENAME-trampa: $(printf '%s' "$bad_name" | tr '\n' ' ')— la norma prohíbe 'entorno-maquina.md' en un repo; si es cómo correr EL PROYECTO, hazlo PORTABLE/CONDICIONAL y renómbralo a 'correr-en-local.md'."
-[ -n "$content_hits" ] && MSG="$MSG || CONTENIDO machine-specific en:\n$(printf '%b' "$content_hits")   Lo personal-de-instancia (aliases, rutas de tu \$HOME, Rosetta/colima sin condicional) va SOLO en la memoria GLOBAL per-máquina (~/.claude/projects/<slug-del-HOME>/memory/entorno-esta-maquina.md, que NO viaja por git). En el repo deja solo lo portable/condicional ('si estás en Apple Silicon: platform: linux/amd64')."
+[ -n "$content_hits" ] && MSG="$MSG || CONTENIDO machine-specific en:\n$(printf '%b' "$content_hits")   Lo personal-de-instancia (aliases, rutas de tu \$HOME, Rosetta/colima sin condicional) va SOLO en el entorno GLOBAL per-máquina (~/.claude/entorno-maquina.md, que NO viaja por git). En el repo deja solo lo portable/condicional ('si estás en Apple Silicon: platform: linux/amd64')."
 MSG="$MSG || Esto AVISA, no bloquea: si de verdad es portable, ignóralo."
 
 jq -n --arg m "$MSG" '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$m}}'

@@ -1996,7 +1996,7 @@ public sealed class PopupForm : Form
                 "Al abrir/retomar sesión o tras compactar, reinyecta la rama actual, la norma de git y la orden de leer MEMORY/estado. Antídoto a 'se me va la onda al cambiar de sesión o compu'."),
             new("🖥️", "entorno-maquina-guard", "commit de algo machine-specific al .claude/memory/ del repo → aviso",
                 "PreToolUse · Bash",
-                "Mecanismo de la norma 'el entorno de MÁQUINA vive GLOBAL, jamás en un repo': si un `git commit` mete al .claude/memory/ del repo algo específico-de-esta-máquina (un entorno-maquina.md, aliases personales, rutas de tu $HOME, 'Rosetta' sin condicional) avisa —no bloquea—, porque viaja por git y miente al clonar en otra compu/OS. Eso vive SOLO en la memoria GLOBAL per-máquina (entorno-esta-maquina.md); el repo deja lo portable/condicional."),
+                "Mecanismo de la norma 'el entorno de MÁQUINA vive GLOBAL, jamás en un repo': si un `git commit` mete al .claude/memory/ del repo algo específico-de-esta-máquina (un entorno-maquina.md, aliases personales, rutas de tu $HOME, 'Rosetta' sin condicional) avisa —no bloquea—, porque viaja por git y miente al clonar en otra compu/OS. Eso vive SOLO en el entorno GLOBAL per-máquina (~/.claude/entorno-maquina.md); el repo deja lo portable/condicional."),
             new("📝", "delegacion-registrar", "registra el consentimiento (materializa el “pregunta 1×”)",
                 "PostToolUse · Task",
                 "Tras un consentimiento aprobado lo registra para no volver a preguntar (1× por máquina o por workflow, según el nivel de costo). Materializa el 'pregunta una sola vez'."),
