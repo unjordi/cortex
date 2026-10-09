@@ -16,8 +16,8 @@
 #       diagramar, cosechar-sesion, unificar-cerebro, auditar-suficiencia-operativa,
 #       desinflar-memorias) en ~/.claude/skills/. La copia GLOBBEA brain/skills/*/
 #       → basta con crear la carpeta de la skill; esta lista es descriptiva.
-#   (d) DASHBOARD del cerebro + entorno-esta-maquina.md + como-trabajar-con-<usuario>.md sembrados en la
-#       memoria GLOBAL (slug del HOME) si faltan (esqueletos per-máquina que NO viajan por git).
+#   (d) DASHBOARD del cerebro + como-trabajar-con-<usuario>.md sembrados en la memoria GLOBAL (slug del
+#       HOME) si faltan, y el entorno LEAN ~/.claude/entorno-maquina.md (+ su @import) — per-máquina, NO viajan por git.
 #   (e) NORMAS globales inyectadas en ~/.claude/CLAUDE.md (bloque con marcador, solo si faltan).
 #
 # REGLA DE ENV VARS DEL BRAIN (norma dura del instalador): las env vars que configuran el
@@ -49,7 +49,7 @@ SRC_NORMS="$SCRIPT_DIR/norms"
 SRC_LIB="$SCRIPT_DIR/lib"
 
 # Lib de INSTALACIÓN (no es un hook): detección cross-shell de aliases que muerden binarios reales, para
-# el bloque detectado de entorno-esta-maquina.md y el artefacto LEAN ~/.claude/aliases-activos.md (@import).
+# el bloque detectado de ~/.claude/entorno-maquina.md y el artefacto LEAN ~/.claude/aliases-activos.md (@import).
 # Fail-safe: si falta, se degrada (las funciones ds_* no existen → los usos van guardados con command -v).
 # shellcheck source=lib/detectar-shells.sh
 [ -f "$SRC_LIB/detectar-shells.sh" ] && . "$SRC_LIB/detectar-shells.sh"
@@ -430,14 +430,14 @@ else
   echo "ok: dashboard ya existe ($DASH)"
 fi
 
-# ── (d2) Entorno de ESTA máquina en la memoria GLOBAL per-máquina (lo detecta y lo siembra) ──
-# Norma dura "el entorno de MÁQUINA vive GLOBAL, jamás en un repo": OS/shell/aliases/rutas/runtime son
-# de UNA instancia; en un repo mentirían al clonar en otra compu/OS. Por eso viven AQUÍ (memoria global,
-# NO viaja por git). El bootstrap lo SIEMBRA con lo que cada quien tenga configurado; Claude lo MANTIENE
-# después. IDEMPOTENTE y no-destructivo: si el archivo no existe → lo crea (encabezado curado + bloque
-# detectado); si existe CON el bloque marcado <!-- detectado-por-bootstrap --> → refresca SOLO ese bloque;
-# si existe SIN marcadores (curado 100% a mano) → NO lo toca (respeta el trabajo del humano/Claude).
-ENTORNO="$CLAUDE_DIR/projects/$HOME_SLUG/memory/entorno-esta-maquina.md"
+# ── (d2) Entorno de ESTA máquina: ~/.claude/entorno-maquina.md (LEAN, FUENTE ÚNICA, @import) ──
+# Norma dura "el entorno de MÁQUINA vive GLOBAL, jamás en un repo". Vive en ~/.claude/entorno-maquina.md
+# (NO viaja por git), en formato LEAN, siempre en contexto vía @import del CLAUDE.md global. Es la ÚNICA
+# copia: no hay versión detallada en la memoria del slug. IDEMPOTENTE y no-destructivo: si no existe →
+# lo crea (encabezado LEAN + bloque detectado); si existe CON el bloque <!-- detectado-por-bootstrap -->
+# → refresca SOLO ese bloque; si existe SIN marcadores (curado a mano) → NO lo toca.
+ENTORNO="$CLAUDE_DIR/entorno-maquina.md"
+ENTORNO_LEGACY="$CLAUDE_DIR/projects/$HOME_SLUG/memory/entorno-esta-maquina.md"
 
 # --- detección (best-effort; todo fail-safe a "?") ---
 det_os="$(uname -srm 2>/dev/null || echo '?')"
@@ -474,23 +474,19 @@ if [ -n "$blk" ]; then
 fi
 
 if [ -z "$blk" ]; then
-  echo "warn: no pude crear el bloque detectado (mktemp); omito el sembrado de entorno-esta-maquina.md"
+  echo "warn: no pude crear el bloque detectado (mktemp); omito el sembrado de entorno-maquina.md"
 elif [ ! -f "$ENTORNO" ]; then
   mkdir -p "$(dirname "$ENTORNO")"
   {
-    printf -- '---\nname: entorno-esta-maquina\ndescription: Entorno de ESTA máquina (shell/aliases, OS/arch, runtime local). Es PER-MÁQUINA: vive SOLO en la memoria global, NUNCA en un repo (viajaría por git y mentiría en otra compu/OS). Lo siembra el bootstrap del cerebro y Claude lo va actualizando.\nmetadata:\n  node_type: memory\n  type: reference\n---\n\n'
-    printf '# Entorno de ESTA máquina — sembrado por cortex\n\n'
-    printf '> **REGLA DURA — por qué este archivo es GLOBAL y no de repo:** el entorno de MÁQUINA (OS,\n'
-    printf '> shell, aliases, rutas de tu `$HOME`, runtime local: Docker/BD/certs) es de **esta** compu;\n'
-    printf '> en un repo viajaría por git y **mentiría** al clonar en otra máquina/OS. Por eso vive AQUÍ\n'
-    printf '> (memoria global per-máquina, NO viaja por git). El bootstrap lo **sembró** detectando la\n'
-    printf '> config real; **Claude lo MANTIENE** después: agrega tus mañas (BD, certs, despliegue, cachés\n'
-    printf '> del navegador) en la sección de abajo, **FUERA** del bloque `detectado-por-bootstrap` (ese\n'
-    printf '> lo REFRESCA `install-brain` en cada corrida — no lo edites a mano).\n\n'
+    printf '# Entorno de ESTA máquina — LEAN, FUENTE ÚNICA (aliases: ver `aliases-activos.md`)\n'
+    printf '<!-- LEAN — MANTENER ASÍ: un hecho/regla por línea, seco, en presente. NADA de drama, citas,\n'
+    printf '     fechas, nombres, "caso real…", trazabilidad ("antes era…"). Conserva TODO dato técnico\n'
+    printf '     (comando/ruta/flag/valor/gotcha); corta solo prosa y justificación larga. Per-máquina: NO\n'
+    printf '     viaja por git. El bloque detectado-por-bootstrap lo REFRESCA install-brain; edita FUERA de él. -->\n\n'
     cat "$blk"
-    printf '\n## Notas que Claude va agregando\n(Aún vacío. Aquí van las mañas de esta máquina que no detecta el bootstrap: runtime Docker/BD, certs de dev, despliegue local, cachés, etc.)\n'
+    printf '\n'
   } > "$ENTORNO"
-  echo "ok: entorno-esta-maquina.md sembrado en $ENTORNO"
+  echo "ok: entorno-maquina.md sembrado en $ENTORNO"
 elif grep -q 'detectado-por-bootstrap:INICIO' "$ENTORNO"; then
   tmp="$(mktemp)" || tmp=""
   if [ -n "$tmp" ] && awk -v b="$blk" '
@@ -499,14 +495,15 @@ elif grep -q 'detectado-por-bootstrap:INICIO' "$ENTORNO"; then
       skip==0 { print }
     ' "$ENTORNO" > "$tmp" && [ -s "$tmp" ]; then
     mv "$tmp" "$ENTORNO"
-    echo "ok: entorno-esta-maquina.md — bloque detectado REFRESCADO ($ENTORNO)"
+    echo "ok: entorno-maquina.md — bloque detectado REFRESCADO ($ENTORNO)"
   else
     rm -f "$tmp"; echo "warn: no pude refrescar el bloque detectado en $ENTORNO (lo dejo intacto)"
   fi
 else
-  echo "ok: entorno-esta-maquina.md ya existe y está CURADO a mano (sin bloque detectado) — no lo toco ($ENTORNO)"
+  echo "ok: entorno-maquina.md ya existe y está CURADO a mano (sin bloque detectado) — no lo toco ($ENTORNO)"
 fi
 rm -f "$blk" 2>/dev/null || true
+[ -f "$ENTORNO_LEGACY" ] && echo "warn: existe la copia vieja $ENTORNO_LEGACY — la fuente única es $ENTORNO: pasa lo útil y vigente a la LEAN y bórrala"
 
 # ── (d2b) "Cómo trabajar con <usuario>" en la memoria GLOBAL per-máquina si falta ──
 # Manual de TRATO de la PERSONA (cómo le gusta que le comuniquen/decidan/trabajen). Misma norma dura que
@@ -563,7 +560,7 @@ else
 fi
 
 # ── (d3) Artefacto LEAN de aliases + @import en el CLAUDE.md global ──
-# El detalle CURADO/verboso vive en entorno-esta-maquina.md (arriba). Este es la VISTA DERIVADA LEAN,
+# El entorno curado vive en ~/.claude/entorno-maquina.md (arriba). Este es la VISTA DERIVADA LEAN de aliases,
 # answer-first (el ESCAPE primero), pensada para estar SIEMPRE en contexto vía `@import` recursivo del
 # CLAUDE.md — sin costarle líneas al propio CLAUDE.md. Es GENERADO per-máquina → NO viaja por git.
 # En Windows el .ps1 ya escribió el bloque `<!-- shells:powershell -->` ANTES de delegar aquí; esta lib
@@ -595,6 +592,23 @@ if command -v ds_render_posix >/dev/null 2>&1; then
   fi
 else
   echo "warn: lib detectar-shells.sh no disponible; omito el artefacto LEAN de aliases y su @import"
+fi
+
+# @import del entorno LEAN (d2), idempotente con marcador propio. Si el CLAUDE.md ya trae un
+# `@entorno-maquina.md` cableado a mano (sin marcador), se respeta y no se duplica.
+if [ ! -f "$ENTORNO" ]; then
+  echo "warn: no existe $ENTORNO; omito su @import"
+elif [ -f "$GCLAUDE" ] && grep -q 'BEGIN cortex' "$GCLAUDE" 2>/dev/null && ! grep -q 'END cortex' "$GCLAUDE" 2>/dev/null; then
+  echo "warn: $GCLAUDE tiene BEGIN sin END — NO cablo el @import del entorno. Ciérralo y re-corre."
+elif [ -f "$GCLAUDE" ] && grep -qE '^@entorno-maquina\.md[[:space:]]*$' "$GCLAUDE" 2>/dev/null; then
+  echo "ok: @import de entorno-maquina.md ya cableado en $GCLAUDE (idempotente)"
+else
+  {
+    [ -f "$GCLAUDE" ] && printf '\n'
+    printf '<!-- brain:import-entorno — entorno LEAN de ESTA máquina; per-máquina, NO viaja por git -->\n'
+    printf '@entorno-maquina.md\n'
+  } >> "$GCLAUDE"
+  echo "ok: @import de entorno-maquina.md cableado en $GCLAUDE (siempre en contexto)"
 fi
 
 # fetch.prune global: que `git fetch` borre solos los refs remotos ya eliminados (surface de las ramas

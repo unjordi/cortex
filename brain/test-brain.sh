@@ -5931,6 +5931,24 @@ nimp="$(grep -c '^@aliases-activos.md' "$GCLAUDE2" 2>/dev/null || echo 0)"
 [ "$nimp" = "1" ] && ok "CLAUDE.md: @aliases-activos.md cableado 1× (idempotente)" || bad "CLAUDE.md: @import aparece ${nimp}× (esperaba 1)"
 nmrk="$(grep -c 'brain:import-aliases' "$GCLAUDE2" 2>/dev/null || echo 0)"
 [ "$nmrk" = "1" ] && ok "CLAUDE.md: marcador brain:import-aliases 1× (fuera del bloque BEGIN/END)" || bad "CLAUDE.md: marcador import-aliases ${nmrk}× (esperaba 1)"
+# entorno de máquina = ~/.claude/entorno-maquina.md LEAN (fuente única) + @import 1×; NO nace la copia vieja en el slug
+ENT2="$FAKEHOME2/.claude/entorno-maquina.md"
+{ [ -f "$ENT2" ] && grep -q 'LEAN, FUENTE ÚNICA' "$ENT2" && grep -q 'detectado-por-bootstrap:INICIO' "$ENT2"; } \
+  && ok "entorno-maquina.md LEAN sembrado en ~/.claude con su bloque detectado" || bad "falta ~/.claude/entorno-maquina.md LEAN con bloque detectado"
+[ -z "$(find "$FAKEHOME2/.claude/projects" -name 'entorno-esta-maquina.md' 2>/dev/null)" ] \
+  && ok "NO se siembra la copia vieja entorno-esta-maquina.md en la memoria del slug" || bad "se sembró entorno-esta-maquina.md (copia duplicada)"
+nent="$(grep -c '^@entorno-maquina.md' "$GCLAUDE2" 2>/dev/null || echo 0)"
+[ "$nent" = "1" ] && ok "CLAUDE.md: @entorno-maquina.md cableado 1× (idempotente)" || bad "CLAUDE.md: @entorno-maquina.md aparece ${nent}× (esperaba 1)"
+# un @import cableado a mano (sin marcador) se respeta: no se duplica; y un entorno CURADO (sin bloque) no se toca
+FAKEHOME5="$(mktemp -d "${TMPDIR:-/tmp}/brain-inst.XXXXXX")"; mkdir -p "$FAKEHOME5/.claude"
+printf '# mío\n@entorno-maquina.md\n' > "$FAKEHOME5/.claude/CLAUDE.md"
+printf '# Entorno curado\n- dato a mano\n' > "$FAKEHOME5/.claude/entorno-maquina.md"
+HOME="$FAKEHOME5" bash "$INSTALLER" >/dev/null 2>&1
+[ "$(grep -c '^@entorno-maquina.md' "$FAKEHOME5/.claude/CLAUDE.md")" = "1" ] \
+  && ok "@entorno-maquina.md cableado a mano → no se duplica" || bad "@entorno-maquina.md duplicado sobre uno cableado a mano"
+[ "$(cat "$FAKEHOME5/.claude/entorno-maquina.md")" = "$(printf '# Entorno curado\n- dato a mano')" ] \
+  && ok "entorno-maquina.md curado a mano (sin bloque) queda intacto" || bad "install-brain tocó un entorno-maquina.md curado a mano"
+rm -rf "$FAKEHOME5"
 # como-trabajar-con-<usuario>.md sembrado en la memoria GLOBAL per-máquina (esqueleto de TRATO, NO viaja por git)
 CT2="$(find "$FAKEHOME2/.claude/projects" -name 'como-trabajar-con-*.md' -type f 2>/dev/null | head -1)"
 { [ -n "$CT2" ] && grep -q 'Cómo trabajar con' "$CT2"; } \
@@ -6015,6 +6033,8 @@ if [ -f "$SCRIPT_DIR/uninstall-brain.sh" ]; then
   # (e) el @import de aliases + el artefacto GENERADO se limpian (inverso de d3)
   [ -f "$FAKEHOME2/.claude/aliases-activos.md" ] && bad "uninstall: quedó el artefacto aliases-activos.md" || ok "uninstall: artefacto aliases-activos.md eliminado"
   grep -q 'brain:import-aliases' "$GCLAUDE2" 2>/dev/null && bad "uninstall: quedó el @import de aliases en CLAUDE.md" || ok "uninstall: @import de aliases removido de CLAUDE.md"
+  grep -q 'brain:import-entorno' "$GCLAUDE2" 2>/dev/null && bad "uninstall: quedó el @import del entorno en CLAUDE.md" || ok "uninstall: @import del entorno removido de CLAUDE.md"
+  [ -f "$FAKEHOME2/.claude/entorno-maquina.md" ] && ok "uninstall: entorno-maquina.md (dato curado) se conserva" || bad "uninstall: borró entorno-maquina.md"
 fi
 rm -rf "$FAKEHOME2"
 

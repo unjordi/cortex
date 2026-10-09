@@ -51,7 +51,7 @@ CONTRATO DE ESTA NOTA (por qué así):
   medir-no-afirmar-de-memoria, probar-el-flujo-completo, autorización acotada). Esas viven en
   `~/.claude/CLAUDE.md` (bloque cortex) y aplican a CUALQUIER usuario → aquí solo se REFERENCIAN.
 - POR QUÉ ES GLOBAL Y NO DE REPO: es sobre una PERSONA, no un proyecto. En un repo viajaría por git y sería
-  ruido (o mentiría) para otro dev que clone. Misma norma que `entorno-esta-maquina.md` y el dashboard:
+  ruido (o mentiría) para otro dev que clone. Misma norma que `~/.claude/entorno-maquina.md` y el dashboard:
   vive SOLO en la memoria global per-máquina (`~/.claude/projects/‹slug-del-HOME›/memory/`), NO en git.
 - SEMBRADO: lo siembra `install-brain.sh` (copia de este barebones) si falta el archivo per-máquina;
   luego ‹usuario›/Claude lo llenan con lo REAL. Idempotente: si ya existe, no lo toca.

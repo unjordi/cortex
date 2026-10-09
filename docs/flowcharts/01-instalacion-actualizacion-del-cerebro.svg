@@ -378,39 +378,39 @@
 <!-- GINST -->
 <g id="node8" class="node">
 <title>GINST</title>
-<path fill="#2b2b2b" stroke="#7fb069" stroke-width="1.5" d="M4919.25,-1043.5C4919.25,-1043.5 4400.75,-1043.5 4400.75,-1043.5 4394.75,-1043.5 4388.75,-1037.5 4388.75,-1031.5 4388.75,-1031.5 4388.75,-925.25 4388.75,-925.25 4388.75,-919.25 4394.75,-913.25 4400.75,-913.25 4400.75,-913.25 4919.25,-913.25 4919.25,-913.25 4925.25,-913.25 4931.25,-919.25 4931.25,-925.25 4931.25,-925.25 4931.25,-1031.5 4931.25,-1031.5 4931.25,-1037.5 4925.25,-1043.5 4919.25,-1043.5"/>
-<text xml:space="preserve" text-anchor="middle" x="4660" y="-1028.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🟢 &#160;install&#45;brain.sh (instalador INTERNO, invocado por los wrappers de arriba)</text>
-<text xml:space="preserve" text-anchor="middle" x="4660" y="-1012.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">DERIVA de brain/hooks/MANIFEST la lista {global,both} → copia hooks+libs a ~/.claude/hooks,</text>
-<text xml:space="preserve" text-anchor="middle" x="4660" y="-997.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">y de brain/skills/MANIFEST → copia skills a ~/.claude/skills, cablea settings.json (incl. env defaults:</text>
-<text xml:space="preserve" text-anchor="middle" x="4660" y="-982.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">Opus 4.8 + autocompact 70%), siembra dashboard + entorno&#45;esta&#45;maquina + normas,</text>
-<text xml:space="preserve" text-anchor="middle" x="4660" y="-969.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">genera aliases&#45;activos.md (@import en CLAUDE.md), setea git config &#45;&#45;global fetch.prune,</text>
-<text xml:space="preserve" text-anchor="middle" x="4660" y="-956.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">y ESTAMPA ~/.claude/.brain&#45;version (sello de versión — YA EXISTE, lo lee el widget).</text>
-<text xml:space="preserve" text-anchor="middle" x="4660" y="-944.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">lo envuelven wrappers GEMELOS por OS: ./install.sh (Linux/KDE: +daemon systemd+plasmoide)</text>
-<text xml:space="preserve" text-anchor="middle" x="4660" y="-931.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">y macos/install.sh (macOS: +daemon launchd+.app, baja el precompilado o compila fallback).</text>
-<text xml:space="preserve" text-anchor="middle" x="4660" y="-918.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">requiere jq: SIN jq no cablea settings.json y los guards quedan fail&#45;open (no bloquean)</text>
+<path fill="#2b2b2b" stroke="#7fb069" stroke-width="1.5" d="M5020.5,-1043.5C5020.5,-1043.5 4401.5,-1043.5 4401.5,-1043.5 4395.5,-1043.5 4389.5,-1037.5 4389.5,-1031.5 4389.5,-1031.5 4389.5,-925.25 4389.5,-925.25 4389.5,-919.25 4395.5,-913.25 4401.5,-913.25 4401.5,-913.25 5020.5,-913.25 5020.5,-913.25 5026.5,-913.25 5032.5,-919.25 5032.5,-925.25 5032.5,-925.25 5032.5,-1031.5 5032.5,-1031.5 5032.5,-1037.5 5026.5,-1043.5 5020.5,-1043.5"/>
+<text xml:space="preserve" text-anchor="middle" x="4711" y="-1028.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🟢 &#160;install&#45;brain.sh (instalador INTERNO, invocado por los wrappers de arriba)</text>
+<text xml:space="preserve" text-anchor="middle" x="4711" y="-1012.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">DERIVA de brain/hooks/MANIFEST la lista {global,both} → copia hooks+libs a ~/.claude/hooks,</text>
+<text xml:space="preserve" text-anchor="middle" x="4711" y="-997.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">y de brain/skills/MANIFEST → copia skills a ~/.claude/skills, cablea settings.json (incl. env defaults:</text>
+<text xml:space="preserve" text-anchor="middle" x="4711" y="-982.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">Opus 4.8 + autocompact 70%), siembra dashboard + normas + entorno&#45;maquina.md LEAN (@import en CLAUDE.md),</text>
+<text xml:space="preserve" text-anchor="middle" x="4711" y="-969.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">genera aliases&#45;activos.md (@import en CLAUDE.md), setea git config &#45;&#45;global fetch.prune,</text>
+<text xml:space="preserve" text-anchor="middle" x="4711" y="-956.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">y ESTAMPA ~/.claude/.brain&#45;version (sello de versión — YA EXISTE, lo lee el widget).</text>
+<text xml:space="preserve" text-anchor="middle" x="4711" y="-944.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">lo envuelven wrappers GEMELOS por OS: ./install.sh (Linux/KDE: +daemon systemd+plasmoide)</text>
+<text xml:space="preserve" text-anchor="middle" x="4711" y="-931.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">y macos/install.sh (macOS: +daemon launchd+.app, baja el precompilado o compila fallback).</text>
+<text xml:space="preserve" text-anchor="middle" x="4711" y="-918.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">requiere jq: SIN jq no cablea settings.json y los guards quedan fail&#45;open (no bloquean)</text>
 </g>
 <!-- MANIF&#45;&gt;GINST -->
 <g id="edge3" class="edge">
 <title>MANIF&#45;&gt;GINST</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" stroke-dasharray="5,2" d="M4777.26,-1239.77C4765.04,-1198.66 4741.03,-1123.82 4712,-1063.5 4710.53,-1060.45 4708.99,-1057.38 4707.38,-1054.3"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4710.55,-1052.82 4702.71,-1045.69 4704.4,-1056.15 4710.55,-1052.82"/>
-<text xml:space="preserve" text-anchor="middle" x="4799.4" y="-1118.38" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">deriva {global,both}</text>
+<path fill="none" stroke="#d97757" stroke-width="1.4" stroke-dasharray="5,2" d="M4778.12,-1239.78C4766.96,-1196.48 4746.19,-1115.91 4730.7,-1055.81"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4734.09,-1054.94 4728.21,-1046.13 4727.31,-1056.69 4734.09,-1054.94"/>
+<text xml:space="preserve" text-anchor="middle" x="4802.99" y="-1118.38" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">deriva {global,both}</text>
 </g>
 <!-- SYNC -->
 <g id="node18" class="node">
 <title>SYNC</title>
-<path fill="#2b2b2b" stroke="#7fb069" stroke-width="1.5" d="M5192.25,-551.25C5192.25,-551.25 4721.75,-551.25 4721.75,-551.25 4715.75,-551.25 4709.75,-545.25 4709.75,-539.25 4709.75,-539.25 4709.75,-501.25 4709.75,-501.25 4709.75,-495.25 4715.75,-489.25 4721.75,-489.25 4721.75,-489.25 5192.25,-489.25 5192.25,-489.25 5198.25,-489.25 5204.25,-495.25 5204.25,-501.25 5204.25,-501.25 5204.25,-539.25 5204.25,-539.25 5204.25,-545.25 5198.25,-551.25 5192.25,-551.25"/>
-<text xml:space="preserve" text-anchor="middle" x="4957" y="-535.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🟢 &#160;sincronizar&#45;cerebro.sh &#160;(YA EXISTE, resuelve el viejo HUECO)</text>
-<text xml:space="preserve" text-anchor="middle" x="4957" y="-520.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">FUENTE ÚNICA = MANIFEST; despliega por&#45;repo {repo,both}, diff&#45;aware (NO cp &#45;f ciego),</text>
-<text xml:space="preserve" text-anchor="middle" x="4957" y="-507.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">CABLEA settings.json, ESTAMPA .brain&#45;version (solo en sync COMPLETO), PODA hooks</text>
-<text xml:space="preserve" text-anchor="middle" x="4957" y="-494.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">RETIRED. DRY&#45;RUN por default; &#45;&#45;apply escribe; &#45;&#45;only / &#45;&#45;prune&#45;orphans</text>
+<path fill="#2b2b2b" stroke="#7fb069" stroke-width="1.5" d="M5285.25,-551.25C5285.25,-551.25 4814.75,-551.25 4814.75,-551.25 4808.75,-551.25 4802.75,-545.25 4802.75,-539.25 4802.75,-539.25 4802.75,-501.25 4802.75,-501.25 4802.75,-495.25 4808.75,-489.25 4814.75,-489.25 4814.75,-489.25 5285.25,-489.25 5285.25,-489.25 5291.25,-489.25 5297.25,-495.25 5297.25,-501.25 5297.25,-501.25 5297.25,-539.25 5297.25,-539.25 5297.25,-545.25 5291.25,-551.25 5285.25,-551.25"/>
+<text xml:space="preserve" text-anchor="middle" x="5050" y="-535.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🟢 &#160;sincronizar&#45;cerebro.sh &#160;(YA EXISTE, resuelve el viejo HUECO)</text>
+<text xml:space="preserve" text-anchor="middle" x="5050" y="-520.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">FUENTE ÚNICA = MANIFEST; despliega por&#45;repo {repo,both}, diff&#45;aware (NO cp &#45;f ciego),</text>
+<text xml:space="preserve" text-anchor="middle" x="5050" y="-507.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">CABLEA settings.json, ESTAMPA .brain&#45;version (solo en sync COMPLETO), PODA hooks</text>
+<text xml:space="preserve" text-anchor="middle" x="5050" y="-494.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">RETIRED. DRY&#45;RUN por default; &#45;&#45;apply escribe; &#45;&#45;only / &#45;&#45;prune&#45;orphans</text>
 </g>
 <!-- MANIF&#45;&gt;SYNC -->
 <g id="edge4" class="edge">
 <title>MANIF&#45;&gt;SYNC</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" stroke-dasharray="5,2" d="M4818.97,-1239.85C4868.66,-1190.35 4957,-1087.19 4957,-979.38 4957,-979.38 4957,-979.38 4957,-709.75 4957,-659.55 4957,-601.83 4957,-563.62"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4960.5,-564.06 4957,-554.06 4953.5,-564.06 4960.5,-564.06"/>
-<text xml:space="preserve" text-anchor="middle" x="4994.88" y="-850.12" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">deriva {repo,both}</text>
+<path fill="none" stroke="#d97757" stroke-width="1.4" stroke-dasharray="5,2" d="M4847.27,-1239.75C4927.76,-1194.68 5059,-1102.33 5059,-979.38 5059,-979.38 5059,-979.38 5059,-709.75 5059,-659.49 5055.77,-601.78 5053.18,-563.6"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="5056.7,-563.77 5052.51,-554.03 5049.72,-564.25 5056.7,-563.77"/>
+<text xml:space="preserve" text-anchor="middle" x="5096.88" y="-850.12" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">deriva {repo,both}</text>
 </g>
 <!-- GVEZ -->
 <g id="node6" class="node">
@@ -482,92 +482,92 @@
 <!-- GUPD -->
 <g id="node9" class="node">
 <title>GUPD</title>
-<path fill="#2b2b2b" stroke="#7fb069" stroke-width="1.5" d="M4422.62,-1181C4422.62,-1181 3765.38,-1181 3765.38,-1181 3759.38,-1181 3753.38,-1175 3753.38,-1169 3753.38,-1169 3753.38,-1075.5 3753.38,-1075.5 3753.38,-1069.5 3759.38,-1063.5 3765.38,-1063.5 3765.38,-1063.5 4422.62,-1063.5 4422.62,-1063.5 4428.62,-1063.5 4434.62,-1069.5 4434.62,-1075.5 4434.62,-1075.5 4434.62,-1169 4434.62,-1169 4434.62,-1175 4428.62,-1181 4422.62,-1181"/>
-<text xml:space="preserve" text-anchor="middle" x="4094" y="-1165.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🟢 &#160;self&#45;heal LOCAL: re&#45;correr install&#45;brain.sh DIRECTO (`bash ~/.cortex/brain/install&#45;brain.sh`, sin pasar por bootstrap/widget)</text>
-<text xml:space="preserve" text-anchor="middle" x="4094" y="-1149.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">idempotente: refresca hooks, re&#45;cablea, REEMPLAZA el bloque de normas en su lugar,</text>
-<text xml:space="preserve" text-anchor="middle" x="4094" y="-1137.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">re&#45;estampa .brain&#45;version — pero NO hace git fetch/pull (rev&#45;list = lectura, sello de</text>
-<text xml:space="preserve" text-anchor="middle" x="4094" y="-1124.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">versión; `git config &#45;&#45;global fetch.prune true` = write idempotente a ~/.gitconfig):</text>
-<text xml:space="preserve" text-anchor="middle" x="4094" y="-1111.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">re&#45;aplica el clon TAL COMO ESTÁ, NO trae commits nuevos. ⚠️ Dispara 🟠 no&#45;bypass&#45;deploy</text>
-<text xml:space="preserve" text-anchor="middle" x="4094" y="-1095.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">(avisa, no bloquea). Legítimo solo si el clon ya está al día o eres tú quien desarrolla</text>
-<text xml:space="preserve" text-anchor="middle" x="4094" y="-1083.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">en el clon (equivalente al botón «Curar cerebro global» del widget); para traer versión</text>
-<text xml:space="preserve" text-anchor="middle" x="4094" y="-1070.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">NUEVA usa bootstrap.sh (GBOOT) o el ⬆ del widget (WID) — no este atajo</text>
+<path fill="#2b2b2b" stroke="#7fb069" stroke-width="1.5" d="M4431.62,-1181C4431.62,-1181 3774.38,-1181 3774.38,-1181 3768.38,-1181 3762.38,-1175 3762.38,-1169 3762.38,-1169 3762.38,-1075.5 3762.38,-1075.5 3762.38,-1069.5 3768.38,-1063.5 3774.38,-1063.5 3774.38,-1063.5 4431.62,-1063.5 4431.62,-1063.5 4437.62,-1063.5 4443.62,-1069.5 4443.62,-1075.5 4443.62,-1075.5 4443.62,-1169 4443.62,-1169 4443.62,-1175 4437.62,-1181 4431.62,-1181"/>
+<text xml:space="preserve" text-anchor="middle" x="4103" y="-1165.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🟢 &#160;self&#45;heal LOCAL: re&#45;correr install&#45;brain.sh DIRECTO (`bash ~/.cortex/brain/install&#45;brain.sh`, sin pasar por bootstrap/widget)</text>
+<text xml:space="preserve" text-anchor="middle" x="4103" y="-1149.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">idempotente: refresca hooks, re&#45;cablea, REEMPLAZA el bloque de normas en su lugar,</text>
+<text xml:space="preserve" text-anchor="middle" x="4103" y="-1137.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">re&#45;estampa .brain&#45;version — pero NO hace git fetch/pull (rev&#45;list = lectura, sello de</text>
+<text xml:space="preserve" text-anchor="middle" x="4103" y="-1124.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">versión; `git config &#45;&#45;global fetch.prune true` = write idempotente a ~/.gitconfig):</text>
+<text xml:space="preserve" text-anchor="middle" x="4103" y="-1111.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">re&#45;aplica el clon TAL COMO ESTÁ, NO trae commits nuevos. ⚠️ Dispara 🟠 no&#45;bypass&#45;deploy</text>
+<text xml:space="preserve" text-anchor="middle" x="4103" y="-1095.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">(avisa, no bloquea). Legítimo solo si el clon ya está al día o eres tú quien desarrolla</text>
+<text xml:space="preserve" text-anchor="middle" x="4103" y="-1083.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">en el clon (equivalente al botón «Curar cerebro global» del widget); para traer versión</text>
+<text xml:space="preserve" text-anchor="middle" x="4103" y="-1070.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">NUEVA usa bootstrap.sh (GBOOT) o el ⬆ del widget (WID) — no este atajo</text>
 </g>
 <!-- GVEZ&#45;&gt;GUPD -->
 <g id="edge10" class="edge">
 <title>GVEZ&#45;&gt;GUPD</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" d="M3772.29,-1414.65C3741.35,-1399.58 3707.47,-1376.03 3694,-1341.75 3671.12,-1283.53 3654.21,-1249.27 3694,-1201 3697.2,-1197.12 3718.67,-1191.14 3750.14,-1184.17"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="3750.58,-1187.66 3759.61,-1182.12 3749.1,-1180.82 3750.58,-1187.66"/>
+<path fill="none" stroke="#d97757" stroke-width="1.4" d="M3772.29,-1414.65C3741.35,-1399.58 3707.47,-1376.03 3694,-1341.75 3671.12,-1283.53 3654.11,-1249.19 3694,-1201 3697.25,-1197.08 3718.88,-1191.11 3750.66,-1184.2"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="3751.18,-1187.67 3760.23,-1182.16 3749.72,-1180.82 3751.18,-1187.67"/>
 <text xml:space="preserve" text-anchor="middle" x="3818.88" y="-1374.75" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">self&#45;heal local</text>
 <text xml:space="preserve" text-anchor="middle" x="3818.88" y="-1363.5" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">(reparar clon actual, NO trae versión nueva)</text>
 </g>
 <!-- GBOOT&#45;&gt;GINST -->
 <g id="edge9" class="edge">
 <title>GBOOT&#45;&gt;GINST</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" d="M4417.25,-1199.56C4427.56,-1193.84 4437.53,-1187.67 4447,-1181 4499.54,-1144.01 4484.84,-1107.94 4531.25,-1063.5 4535.37,-1059.55 4539.7,-1055.68 4544.18,-1051.89"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4546.37,-1054.62 4551.91,-1045.59 4541.95,-1049.19 4546.37,-1054.62"/>
-<text xml:space="preserve" text-anchor="middle" x="4618.62" y="-1118.38" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">despacha vía install.sh/macos install.sh</text>
+<path fill="none" stroke="#d97757" stroke-width="1.4" d="M4424.05,-1199.52C4435.09,-1193.81 4445.79,-1187.65 4456,-1181 4512.55,-1144.14 4500.01,-1106.26 4552.25,-1063.5 4557.58,-1059.13 4563.18,-1054.89 4568.96,-1050.79"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4570.81,-1053.76 4577.08,-1045.22 4566.85,-1047.99 4570.81,-1053.76"/>
+<text xml:space="preserve" text-anchor="middle" x="4639.62" y="-1118.38" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">despacha vía install.sh/macos install.sh</text>
 </g>
 <!-- GLIVE -->
 <g id="node10" class="node">
 <title>GLIVE</title>
-<path fill="#2b2b2b" stroke="#7fb069" stroke-width="1.5" d="M4534.5,-872.25C4534.5,-872.25 4329.5,-872.25 4329.5,-872.25 4323.5,-872.25 4317.5,-866.25 4317.5,-860.25 4317.5,-860.25 4317.5,-847.75 4317.5,-847.75 4317.5,-841.75 4323.5,-835.75 4329.5,-835.75 4329.5,-835.75 4534.5,-835.75 4534.5,-835.75 4540.5,-835.75 4546.5,-841.75 4546.5,-847.75 4546.5,-847.75 4546.5,-860.25 4546.5,-860.25 4546.5,-866.25 4540.5,-872.25 4534.5,-872.25"/>
-<text xml:space="preserve" text-anchor="middle" x="4432" y="-856.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🟢 &#160;cerebro GLOBAL vivo en la máquina</text>
-<text xml:space="preserve" text-anchor="middle" x="4432" y="-841.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">(aplica a TODOS los repos)</text>
+<path fill="#2b2b2b" stroke="#7fb069" stroke-width="1.5" d="M4595.5,-872.25C4595.5,-872.25 4390.5,-872.25 4390.5,-872.25 4384.5,-872.25 4378.5,-866.25 4378.5,-860.25 4378.5,-860.25 4378.5,-847.75 4378.5,-847.75 4378.5,-841.75 4384.5,-835.75 4390.5,-835.75 4390.5,-835.75 4595.5,-835.75 4595.5,-835.75 4601.5,-835.75 4607.5,-841.75 4607.5,-847.75 4607.5,-847.75 4607.5,-860.25 4607.5,-860.25 4607.5,-866.25 4601.5,-872.25 4595.5,-872.25"/>
+<text xml:space="preserve" text-anchor="middle" x="4493" y="-856.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🟢 &#160;cerebro GLOBAL vivo en la máquina</text>
+<text xml:space="preserve" text-anchor="middle" x="4493" y="-841.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">(aplica a TODOS los repos)</text>
 </g>
 <!-- GINST&#45;&gt;GLIVE -->
 <g id="edge11" class="edge">
 <title>GINST&#45;&gt;GLIVE</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" d="M4539.32,-912.6C4516.57,-900.39 4494.18,-888.37 4475.78,-878.5"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4477.49,-875.44 4467.02,-873.8 4474.18,-881.61 4477.49,-875.44"/>
+<path fill="none" stroke="#d97757" stroke-width="1.4" d="M4595.62,-912.6C4573.96,-900.45 4552.65,-888.48 4535.11,-878.64"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4536.98,-875.67 4526.55,-873.83 4533.55,-881.78 4536.98,-875.67"/>
 </g>
 <!-- GWIRE -->
 <g id="node11" class="node">
 <title>GWIRE</title>
-<path fill="#2b2b2b" stroke="#7fb069" stroke-width="1.5" d="M5447.38,-657.25C5447.38,-657.25 4974.62,-657.25 4974.62,-657.25 4968.62,-657.25 4962.62,-651.25 4962.62,-645.25 4962.62,-645.25 4962.62,-605 4962.62,-605 4962.62,-599 4968.62,-593 4974.62,-593 4974.62,-593 5447.38,-593 5447.38,-593 5453.38,-593 5459.38,-599 5459.38,-605 5459.38,-605 5459.38,-645.25 5459.38,-645.25 5459.38,-651.25 5453.38,-657.25 5447.38,-657.25"/>
-<text xml:space="preserve" text-anchor="middle" x="5211" y="-641.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🟢 &#160;install&#45;brain ahora DERIVA la COPIA *y* el CABLEADO del MANIFEST (ev_de + loop),</text>
-<text xml:space="preserve" text-anchor="middle" x="5211" y="-626.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">no una lista register_hook hardcodeada → agregar un hook global al MANIFEST lo copia</text>
-<text xml:space="preserve" text-anchor="middle" x="5211" y="-611.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">Y lo cablea. test&#45;brain e6b FALLA si el set PreToolUse/Bash diverge del esperado.</text>
-<text xml:space="preserve" text-anchor="middle" x="5211" y="-598.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">RESUELTO (refactor MANIFEST&#45;derivado + e6b, en develop 2026&#45;07&#45;30)</text>
+<path fill="#2b2b2b" stroke="#7fb069" stroke-width="1.5" d="M5549.38,-657.25C5549.38,-657.25 5076.62,-657.25 5076.62,-657.25 5070.62,-657.25 5064.62,-651.25 5064.62,-645.25 5064.62,-645.25 5064.62,-605 5064.62,-605 5064.62,-599 5070.62,-593 5076.62,-593 5076.62,-593 5549.38,-593 5549.38,-593 5555.38,-593 5561.38,-599 5561.38,-605 5561.38,-605 5561.38,-645.25 5561.38,-645.25 5561.38,-651.25 5555.38,-657.25 5549.38,-657.25"/>
+<text xml:space="preserve" text-anchor="middle" x="5313" y="-641.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🟢 &#160;install&#45;brain ahora DERIVA la COPIA *y* el CABLEADO del MANIFEST (ev_de + loop),</text>
+<text xml:space="preserve" text-anchor="middle" x="5313" y="-626.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">no una lista register_hook hardcodeada → agregar un hook global al MANIFEST lo copia</text>
+<text xml:space="preserve" text-anchor="middle" x="5313" y="-611.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">Y lo cablea. test&#45;brain e6b FALLA si el set PreToolUse/Bash diverge del esperado.</text>
+<text xml:space="preserve" text-anchor="middle" x="5313" y="-598.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">RESUELTO (refactor MANIFEST&#45;derivado + e6b, en develop 2026&#45;07&#45;30)</text>
 </g>
 <!-- GINST&#45;&gt;GWIRE -->
 <g id="edge13" class="edge">
 <title>GINST&#45;&gt;GWIRE</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" stroke-dasharray="5,2" d="M4706.49,-912.64C4727.48,-886.5 4753.86,-857.46 4782,-835.75 4883.12,-757.73 5017.92,-697.7 5109.23,-662.25"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="5110.36,-665.57 5118.44,-658.71 5107.85,-659.03 5110.36,-665.57"/>
-<text xml:space="preserve" text-anchor="middle" x="4854" y="-850.12" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">cableado (deriva del MANIFEST)</text>
+<path fill="none" stroke="#d97757" stroke-width="1.4" stroke-dasharray="5,2" d="M4782.23,-912.79C4812.41,-887.12 4848.71,-858.38 4884,-835.75 4995.25,-764.4 5134.32,-700.62 5223.41,-662.65"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="5224.77,-665.88 5232.61,-658.75 5222.04,-659.43 5224.77,-665.88"/>
+<text xml:space="preserve" text-anchor="middle" x="4956" y="-850.12" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">cableado (deriva del MANIFEST)</text>
 </g>
 <!-- GUPD&#45;&gt;GLIVE -->
 <g id="edge12" class="edge">
 <title>GUPD&#45;&gt;GLIVE</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" d="M4329.1,-1062.83C4336.59,-1056.98 4343.6,-1050.55 4350,-1043.5 4389.65,-999.77 4348.67,-965.57 4376,-913.25 4382.15,-901.47 4391.42,-890.43 4400.65,-881.2"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4402.99,-883.81 4407.85,-874.39 4398.18,-878.72 4402.99,-883.81"/>
+<path fill="none" stroke="#d97757" stroke-width="1.4" d="M4329.01,-1062.89C4336.55,-1057.03 4343.59,-1050.59 4350,-1043.5 4389.65,-999.65 4340.99,-960.14 4377,-913.25 4388.65,-898.08 4405.33,-886.56 4422.42,-877.95"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4423.59,-881.27 4431.15,-873.85 4420.61,-874.93 4423.59,-881.27"/>
 </g>
 <!-- CUPD -->
 <g id="node17" class="node">
 <title>CUPD</title>
-<path fill="#2b2622" stroke="#d97757" stroke-width="1.5" d="M4420.1,-742.69C4420.1,-742.69 4188.65,-712.31 4188.65,-712.31 4182.7,-711.53 4182.7,-709.97 4188.65,-709.19 4188.65,-709.19 4420.1,-678.81 4420.1,-678.81 4426.05,-678.03 4437.95,-678.03 4443.9,-678.81 4443.9,-678.81 4675.35,-709.19 4675.35,-709.19 4681.3,-709.97 4681.3,-711.53 4675.35,-712.31 4675.35,-712.31 4443.9,-742.69 4443.9,-742.69 4437.95,-743.47 4426.05,-743.47 4420.1,-742.69"/>
-<text xml:space="preserve" text-anchor="middle" x="4432" y="-712.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">el brain EVOLUCIONÓ: ¿cómo se actualizan</text>
-<text xml:space="preserve" text-anchor="middle" x="4432" y="-699.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">los .claude/ de un repo YA instalado?</text>
+<path fill="#2b2622" stroke="#d97757" stroke-width="1.5" d="M4481.1,-742.69C4481.1,-742.69 4249.65,-712.31 4249.65,-712.31 4243.7,-711.53 4243.7,-709.97 4249.65,-709.19 4249.65,-709.19 4481.1,-678.81 4481.1,-678.81 4487.05,-678.03 4498.95,-678.03 4504.9,-678.81 4504.9,-678.81 4736.35,-709.19 4736.35,-709.19 4742.3,-709.97 4742.3,-711.53 4736.35,-712.31 4736.35,-712.31 4504.9,-742.69 4504.9,-742.69 4498.95,-743.47 4487.05,-743.47 4481.1,-742.69"/>
+<text xml:space="preserve" text-anchor="middle" x="4493" y="-712.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">el brain EVOLUCIONÓ: ¿cómo se actualizan</text>
+<text xml:space="preserve" text-anchor="middle" x="4493" y="-699.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">los .claude/ de un repo YA instalado?</text>
 </g>
 <!-- GLIVE&#45;&gt;CUPD -->
 <g id="edge19" class="edge">
 <title>GLIVE&#45;&gt;CUPD</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" d="M4432,-835.11C4432,-815.48 4432,-783.21 4432,-756.6"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4435.5,-756.95 4432,-746.95 4428.5,-756.95 4435.5,-756.95"/>
-<text xml:space="preserve" text-anchor="middle" x="4466.12" y="-786.12" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">con el tiempo…</text>
+<path fill="none" stroke="#d97757" stroke-width="1.4" d="M4493,-835.11C4493,-815.48 4493,-783.21 4493,-756.6"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4496.5,-756.95 4493,-746.95 4489.5,-756.95 4496.5,-756.95"/>
+<text xml:space="preserve" text-anchor="middle" x="4527.12" y="-786.12" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">con el tiempo…</text>
 </g>
 <!-- NORMA -->
 <g id="node29" class="node">
 <title>NORMA</title>
-<path fill="#232323" stroke="#8a8a8a" stroke-width="1.5" d="M5327.62,-55.5C5327.62,-55.5 5006.38,-55.5 5006.38,-55.5 5000.38,-55.5 4994.38,-49.5 4994.38,-43.5 4994.38,-43.5 4994.38,-28 4994.38,-28 4994.38,-22 5000.38,-16 5006.38,-16 5006.38,-16 5327.62,-16 5327.62,-16 5333.62,-16 5339.62,-22 5339.62,-28 5339.62,-28 5339.62,-43.5 5339.62,-43.5 5339.62,-49.5 5333.62,-55.5 5327.62,-55.5"/>
-<text xml:space="preserve" text-anchor="middle" x="5167" y="-40.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">📜 → 🧩 toda norma nace con su mecanismo</text>
-<text xml:space="preserve" text-anchor="middle" x="5167" y="-24.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">📜 → 🪞 doc = realidad (este mapa se actualiza con el código)</text>
+<path fill="#232323" stroke="#8a8a8a" stroke-width="1.5" d="M5418.62,-55.5C5418.62,-55.5 5097.38,-55.5 5097.38,-55.5 5091.38,-55.5 5085.38,-49.5 5085.38,-43.5 5085.38,-43.5 5085.38,-28 5085.38,-28 5085.38,-22 5091.38,-16 5097.38,-16 5097.38,-16 5418.62,-16 5418.62,-16 5424.62,-16 5430.62,-22 5430.62,-28 5430.62,-28 5430.62,-43.5 5430.62,-43.5 5430.62,-49.5 5424.62,-55.5 5418.62,-55.5"/>
+<text xml:space="preserve" text-anchor="middle" x="5258" y="-40.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">📜 → 🧩 toda norma nace con su mecanismo</text>
+<text xml:space="preserve" text-anchor="middle" x="5258" y="-24.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">📜 → 🪞 doc = realidad (este mapa se actualiza con el código)</text>
 </g>
 <!-- GWIRE&#45;&gt;NORMA -->
 <g id="edge35" class="edge">
 <title>GWIRE&#45;&gt;NORMA</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" stroke-dasharray="5,2" d="M5215.94,-592.37C5221.87,-551.5 5231,-478.27 5231,-415.25 5231,-415.25 5231,-415.25 5231,-121.25 5231,-99.25 5217.05,-79.37 5202.17,-64.43"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="5204.64,-61.95 5194.95,-57.67 5199.86,-67.06 5204.64,-61.95"/>
+<path fill="none" stroke="#d97757" stroke-width="1.4" stroke-dasharray="5,2" d="M5315.47,-592.3C5318.43,-551.37 5323,-478.06 5323,-415.25 5323,-415.25 5323,-415.25 5323,-121.25 5323,-99.13 5308.83,-79.24 5293.72,-64.32"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="5296.1,-61.76 5286.37,-57.57 5291.37,-66.92 5296.1,-61.76"/>
 </g>
 <!-- CLON -->
 <g id="node13" class="node">
@@ -581,9 +581,9 @@
 <!-- RTIPO&#45;&gt;CLON -->
 <g id="edge14" class="edge">
 <title>RTIPO&#45;&gt;CLON</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" d="M3498.64,-1238.12C3494.39,-1195.83 3491.99,-1120.37 3518.75,-1063.5 3526.25,-1047.57 3538.17,-1033.06 3550.82,-1020.75"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="3553.12,-1023.39 3558.09,-1014.03 3548.37,-1018.25 3553.12,-1023.39"/>
-<text xml:space="preserve" text-anchor="middle" x="3531.88" y="-1118.38" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">nuevo</text>
+<path fill="none" stroke="#d97757" stroke-width="1.4" d="M3500.84,-1237.87C3499.36,-1195.65 3501.28,-1120.6 3527.75,-1063.5 3534.98,-1047.91 3546.2,-1033.29 3557.91,-1020.75"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="3560.08,-1023.53 3564.57,-1013.93 3555.08,-1018.64 3560.08,-1023.53"/>
+<text xml:space="preserve" text-anchor="middle" x="3540.88" y="-1118.38" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">nuevo</text>
 </g>
 <!-- APLICA -->
 <g id="node14" class="node">
@@ -596,166 +596,166 @@
 <!-- RTIPO&#45;&gt;APLICA -->
 <g id="edge15" class="edge">
 <title>RTIPO&#45;&gt;APLICA</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" d="M3521.03,-1241.3C3551.65,-1194.76 3618.63,-1104.6 3701.25,-1063.5 3769.66,-1029.47 3796.96,-1057.88 3872,-1043.5 3921.58,-1034 3975.99,-1019.71 4020.36,-1007.03"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4021.33,-1010.39 4029.97,-1004.26 4019.39,-1003.67 4021.33,-1010.39"/>
-<text xml:space="preserve" text-anchor="middle" x="3721.12" y="-1118.38" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">existente</text>
+<path fill="none" stroke="#d97757" stroke-width="1.4" d="M3521.95,-1241.73C3554.36,-1195.38 3625.26,-1104.95 3710.25,-1063.5 3775.36,-1031.75 3800.9,-1057.36 3872,-1043.5 3921.35,-1033.88 3975.53,-1019.65 4019.81,-1007.04"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4020.75,-1010.41 4029.4,-1004.29 4018.82,-1003.68 4020.75,-1010.41"/>
+<text xml:space="preserve" text-anchor="middle" x="3730.12" y="-1118.38" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">existente</text>
 </g>
 <!-- BOOT -->
 <g id="node15" class="node">
 <title>BOOT</title>
-<path fill="#2b2b2b" stroke="#e08e45" stroke-width="1.5" d="M4280.38,-872.25C4280.38,-872.25 3873.62,-872.25 3873.62,-872.25 3867.62,-872.25 3861.62,-866.25 3861.62,-860.25 3861.62,-860.25 3861.62,-847.75 3861.62,-847.75 3861.62,-841.75 3867.62,-835.75 3873.62,-835.75 3873.62,-835.75 4280.38,-835.75 4280.38,-835.75 4286.38,-835.75 4292.38,-841.75 4292.38,-847.75 4292.38,-847.75 4292.38,-860.25 4292.38,-860.25 4292.38,-866.25 4286.38,-872.25 4280.38,-872.25"/>
-<text xml:space="preserve" text-anchor="middle" x="4077" y="-856.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🟠 &#160;bootstrap&#45;claude.sh &#160;(UNA vez tras clonar — script one&#45;shot, NO un hook)</text>
-<text xml:space="preserve" text-anchor="middle" x="4077" y="-841.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">symlinkea la memoria + siembra dashboard + norma doc=realidad + verifica jq</text>
+<path fill="#2b2b2b" stroke="#e08e45" stroke-width="1.5" d="M4314.38,-872.25C4314.38,-872.25 3907.62,-872.25 3907.62,-872.25 3901.62,-872.25 3895.62,-866.25 3895.62,-860.25 3895.62,-860.25 3895.62,-847.75 3895.62,-847.75 3895.62,-841.75 3901.62,-835.75 3907.62,-835.75 3907.62,-835.75 4314.38,-835.75 4314.38,-835.75 4320.38,-835.75 4326.38,-841.75 4326.38,-847.75 4326.38,-847.75 4326.38,-860.25 4326.38,-860.25 4326.38,-866.25 4320.38,-872.25 4314.38,-872.25"/>
+<text xml:space="preserve" text-anchor="middle" x="4111" y="-856.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🟠 &#160;bootstrap&#45;claude.sh &#160;(UNA vez tras clonar — script one&#45;shot, NO un hook)</text>
+<text xml:space="preserve" text-anchor="middle" x="4111" y="-841.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">symlinkea la memoria + siembra dashboard + norma doc=realidad + verifica jq</text>
 </g>
 <!-- CLON&#45;&gt;BOOT -->
 <g id="edge16" class="edge">
 <title>CLON&#45;&gt;BOOT</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" d="M3734.39,-944.02C3817.99,-922.3 3924.47,-894.63 3996.37,-875.95"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="3997.19,-879.35 4005.99,-873.45 3995.43,-872.58 3997.19,-879.35"/>
+<path fill="none" stroke="#d97757" stroke-width="1.4" d="M3743.66,-944.02C3833.66,-922.21 3948.41,-894.4 4025.5,-875.72"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4026.11,-879.17 4035,-873.42 4024.46,-872.37 4026.11,-879.17"/>
 </g>
 <!-- APLICA&#45;&gt;BOOT -->
 <g id="edge17" class="edge">
 <title>APLICA&#45;&gt;BOOT</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" d="M4104.28,-953.2C4098.78,-933.4 4090.98,-905.32 4085.13,-884.26"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4088.56,-883.52 4082.51,-874.82 4081.81,-885.4 4088.56,-883.52"/>
+<path fill="none" stroke="#d97757" stroke-width="1.4" d="M4111,-953.2C4111,-933.59 4111,-905.85 4111,-884.85"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4114.5,-884.9 4111,-874.9 4107.5,-884.9 4114.5,-884.9"/>
 </g>
 <!-- BOOT_INV -->
 <g id="node16" class="node">
 <title>BOOT_INV</title>
-<path fill="#2b2b2b" stroke="#9e9e9e" stroke-width="1.5" stroke-dasharray="5,2" d="M4330.12,-447.5C4330.12,-447.5 3819.88,-447.5 3819.88,-447.5 3813.88,-447.5 3807.88,-441.5 3807.88,-435.5 3807.88,-435.5 3807.88,-393 3807.88,-393 3807.88,-387 3813.88,-381 3819.88,-381 3819.88,-381 4330.12,-381 4330.12,-381 4336.12,-381 4342.12,-387 4342.12,-393 4342.12,-393 4342.12,-435.5 4342.12,-435.5 4342.12,-441.5 4336.12,-447.5 4330.12,-447.5"/>
-<text xml:space="preserve" text-anchor="middle" x="4075" y="-432.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🚧 &#160;DRIFT INVERSO (vigente en repos CONSUMIDORES, fuera de cortex): el</text>
-<text xml:space="preserve" text-anchor="middle" x="4075" y="-416.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">bootstrap&#45;claude.sh de la plantilla hace `cp &#45;f` INCONDICIONAL de solo 3 de los 6 `both`</text>
-<text xml:space="preserve" text-anchor="middle" x="4075" y="-403.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">→ un clon con plantilla VIEJA PISA los globales con versiones stale (corto vs el MANIFEST).</text>
-<text xml:space="preserve" text-anchor="middle" x="4075" y="-388.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">→ que el bootstrap invoque install&#45;brain (que YA deriva del MANIFEST). Pendiente en la plantilla.</text>
+<path fill="#2b2b2b" stroke="#9e9e9e" stroke-width="1.5" stroke-dasharray="5,2" d="M4366.12,-447.5C4366.12,-447.5 3855.88,-447.5 3855.88,-447.5 3849.88,-447.5 3843.88,-441.5 3843.88,-435.5 3843.88,-435.5 3843.88,-393 3843.88,-393 3843.88,-387 3849.88,-381 3855.88,-381 3855.88,-381 4366.12,-381 4366.12,-381 4372.12,-381 4378.12,-387 4378.12,-393 4378.12,-393 4378.12,-435.5 4378.12,-435.5 4378.12,-441.5 4372.12,-447.5 4366.12,-447.5"/>
+<text xml:space="preserve" text-anchor="middle" x="4111" y="-432.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🚧 &#160;DRIFT INVERSO (vigente en repos CONSUMIDORES, fuera de cortex): el</text>
+<text xml:space="preserve" text-anchor="middle" x="4111" y="-416.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">bootstrap&#45;claude.sh de la plantilla hace `cp &#45;f` INCONDICIONAL de solo 3 de los 6 `both`</text>
+<text xml:space="preserve" text-anchor="middle" x="4111" y="-403.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">→ un clon con plantilla VIEJA PISA los globales con versiones stale (corto vs el MANIFEST).</text>
+<text xml:space="preserve" text-anchor="middle" x="4111" y="-388.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">→ que el bootstrap invoque install&#45;brain (que YA deriva del MANIFEST). Pendiente en la plantilla.</text>
 </g>
 <!-- BOOT&#45;&gt;BOOT_INV -->
 <g id="edge18" class="edge">
 <title>BOOT&#45;&gt;BOOT_INV</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" stroke-dasharray="5,2" d="M4076.92,-835.02C4076.63,-771.28 4075.64,-554.81 4075.21,-460.17"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4078.71,-460.28 4075.16,-450.3 4071.71,-460.31 4078.71,-460.28"/>
-<text xml:space="preserve" text-anchor="middle" x="4113.62" y="-706.88" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">defecto conocido</text>
+<path fill="none" stroke="#d97757" stroke-width="1.4" stroke-dasharray="5,2" d="M4111,-835.02C4111,-771.28 4111,-554.81 4111,-460.17"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4114.5,-460.3 4111,-450.3 4107.5,-460.3 4114.5,-460.3"/>
+<text xml:space="preserve" text-anchor="middle" x="4148.12" y="-706.88" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">defecto conocido</text>
 </g>
 <!-- BOOT&#45;&gt;CUPD -->
 <g id="edge20" class="edge">
 <title>BOOT&#45;&gt;CUPD</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" d="M4121.96,-835.11C4181.38,-811.47 4286.83,-769.51 4358.06,-741.17"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4359.22,-744.48 4367.22,-737.53 4356.63,-737.97 4359.22,-744.48"/>
-<text xml:space="preserve" text-anchor="middle" x="4330.86" y="-786.12" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">con el tiempo…</text>
+<path fill="none" stroke="#d97757" stroke-width="1.4" d="M4159.38,-835.11C4223.96,-811.23 4339.08,-768.66 4415.75,-740.32"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4416.62,-743.73 4424.78,-736.97 4414.19,-737.16 4416.62,-743.73"/>
+<text xml:space="preserve" text-anchor="middle" x="4381.57" y="-786.12" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">con el tiempo…</text>
 </g>
 <!-- BOOT_INV&#45;&gt;NORMA -->
 <g id="edge33" class="edge">
 <title>BOOT_INV&#45;&gt;NORMA</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" stroke-dasharray="5,2" d="M4074.28,-380.4C4073.71,-351.23 4073,-307.47 4073,-269.38 4073,-269.38 4073,-269.38 4073,-121.25 4073,-90.34 4107.77,-102.97 4138,-96.5 4293.72,-63.16 4730.32,-47.3 4981.95,-40.73"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4981.77,-44.23 4991.67,-40.47 4981.59,-37.23 4981.77,-44.23"/>
+<path fill="none" stroke="#d97757" stroke-width="1.4" stroke-dasharray="5,2" d="M4111,-380.39C4111,-351.23 4111,-307.47 4111,-269.38 4111,-269.38 4111,-269.38 4111,-121.25 4111,-73.62 4748.34,-50.05 5072.84,-41.13"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="5072.71,-44.64 5082.61,-40.86 5072.52,-37.64 5072.71,-44.64"/>
 </g>
 <!-- CUPD&#45;&gt;SYNC -->
 <g id="edge21" class="edge">
 <title>CUPD&#45;&gt;SYNC</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" d="M4499.83,-685.4C4591.56,-652.46 4755.71,-593.52 4860.34,-555.96"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4861.31,-559.33 4869.54,-552.65 4858.94,-552.74 4861.31,-559.33"/>
-<text xml:space="preserve" text-anchor="middle" x="4782.84" y="-621.25" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">a mano / CI</text>
+<path fill="none" stroke="#d97757" stroke-width="1.4" d="M4563.54,-685.88C4660.76,-652.98 4836.52,-593.5 4948.03,-555.76"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4948.93,-559.15 4957.28,-552.63 4946.69,-552.52 4948.93,-559.15"/>
+<text xml:space="preserve" text-anchor="middle" x="4863.64" y="-621.25" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">a mano / CI</text>
 </g>
 <!-- DRIFT -->
 <g id="node19" class="node">
 <title>DRIFT</title>
-<path fill="#2b2b2b" stroke="#7fb069" stroke-width="1.5" d="M4668.38,-573C4668.38,-573 4195.62,-573 4195.62,-573 4189.62,-573 4183.62,-567 4183.62,-561 4183.62,-561 4183.62,-479.5 4183.62,-479.5 4183.62,-473.5 4189.62,-467.5 4195.62,-467.5 4195.62,-467.5 4668.38,-467.5 4668.38,-467.5 4674.38,-467.5 4680.38,-473.5 4680.38,-479.5 4680.38,-479.5 4680.38,-561 4680.38,-561 4680.38,-567 4674.38,-573 4668.38,-573"/>
-<text xml:space="preserve" text-anchor="middle" x="4432" y="-557.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🔔🧬 &#160;aviso&#45;drift&#45;cerebro.sh &#160;(SessionStart · GLOBAL) — es también pieza de 02</text>
-<text xml:space="preserve" text-anchor="middle" x="4432" y="-541.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">corre sincronizar en DRY&#45;RUN (diff por CONTENIDO); si la copia por&#45;repo quedó atrás →</text>
-<text xml:space="preserve" text-anchor="middle" x="4432" y="-526.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">BIFURCA por la marca .claude/repo&#45;compartido (REDISEÑO #46, ver drift_chequea_repo)</text>
-<text xml:space="preserve" text-anchor="middle" x="4432" y="-514.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">TAMBIÉN en CADA SessionStart (ANTES del throttle per&#45;repo): reinyecta</text>
-<text xml:space="preserve" text-anchor="middle" x="4432" y="-501.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">conocimiento&#45;propio.md (identidad del repo, imborrable) + avisa drift de la copia</text>
-<text xml:space="preserve" text-anchor="middle" x="4432" y="-488.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">GLOBAL de skills (~/.claude/skills vs fuente; warn&#45;only, throttle propio) (ver 02)</text>
-<text xml:space="preserve" text-anchor="middle" x="4432" y="-475.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">📜 → 🌿 Flujo de git (en repo compartido «actualizar» = por ramita→MR)</text>
+<path fill="#2b2b2b" stroke="#7fb069" stroke-width="1.5" d="M4729.38,-573C4729.38,-573 4256.62,-573 4256.62,-573 4250.62,-573 4244.62,-567 4244.62,-561 4244.62,-561 4244.62,-479.5 4244.62,-479.5 4244.62,-473.5 4250.62,-467.5 4256.62,-467.5 4256.62,-467.5 4729.38,-467.5 4729.38,-467.5 4735.38,-467.5 4741.38,-473.5 4741.38,-479.5 4741.38,-479.5 4741.38,-561 4741.38,-561 4741.38,-567 4735.38,-573 4729.38,-573"/>
+<text xml:space="preserve" text-anchor="middle" x="4493" y="-557.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🔔🧬 &#160;aviso&#45;drift&#45;cerebro.sh &#160;(SessionStart · GLOBAL) — es también pieza de 02</text>
+<text xml:space="preserve" text-anchor="middle" x="4493" y="-541.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">corre sincronizar en DRY&#45;RUN (diff por CONTENIDO); si la copia por&#45;repo quedó atrás →</text>
+<text xml:space="preserve" text-anchor="middle" x="4493" y="-526.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">BIFURCA por la marca .claude/repo&#45;compartido (REDISEÑO #46, ver drift_chequea_repo)</text>
+<text xml:space="preserve" text-anchor="middle" x="4493" y="-514.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">TAMBIÉN en CADA SessionStart (ANTES del throttle per&#45;repo): reinyecta</text>
+<text xml:space="preserve" text-anchor="middle" x="4493" y="-501.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">conocimiento&#45;propio.md (identidad del repo, imborrable) + avisa drift de la copia</text>
+<text xml:space="preserve" text-anchor="middle" x="4493" y="-488.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">GLOBAL de skills (~/.claude/skills vs fuente; warn&#45;only, throttle propio) (ver 02)</text>
+<text xml:space="preserve" text-anchor="middle" x="4493" y="-475.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">📜 → 🌿 Flujo de git (en repo compartido «actualizar» = por ramita→MR)</text>
 </g>
 <!-- CUPD&#45;&gt;DRIFT -->
 <g id="edge22" class="edge">
 <title>CUPD&#45;&gt;DRIFT</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" d="M4432,-676.92C4432,-651.77 4432,-616.3 4432,-585.57"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4435.5,-585.74 4432,-575.74 4428.5,-585.74 4435.5,-585.74"/>
-<text xml:space="preserve" text-anchor="middle" x="4465.75" y="-621.25" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">al iniciar sesión</text>
+<path fill="none" stroke="#d97757" stroke-width="1.4" d="M4493,-676.92C4493,-651.77 4493,-616.3 4493,-585.57"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4496.5,-585.74 4493,-575.74 4489.5,-585.74 4496.5,-585.74"/>
+<text xml:space="preserve" text-anchor="middle" x="4526.75" y="-621.25" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">al iniciar sesión</text>
 </g>
 <!-- DRIFT_CIEGO -->
 <g id="node23" class="node">
 <title>DRIFT_CIEGO</title>
-<path fill="#2b2b2b" stroke="#7fb069" stroke-width="1.5" d="M5192.88,-148C5192.88,-148 4759.12,-148 4759.12,-148 4753.12,-148 4747.12,-142 4747.12,-136 4747.12,-136 4747.12,-108.5 4747.12,-108.5 4747.12,-102.5 4753.12,-96.5 4759.12,-96.5 4759.12,-96.5 5192.88,-96.5 5192.88,-96.5 5198.88,-96.5 5204.88,-102.5 5204.88,-108.5 5204.88,-108.5 5204.88,-136 5204.88,-136 5204.88,-142 5198.88,-148 5192.88,-148"/>
-<text xml:space="preserve" text-anchor="middle" x="4976" y="-132.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🟢 &#160;aviso&#45;drift YA VE el drift de CABLEADO: cuenta también el wiring FALTANTE</text>
-<text xml:space="preserve" text-anchor="middle" x="4976" y="-116.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">(«N cableado faltante») → ya no reporta «al día» con hooks presentes&#45;SIN&#45;cablear.</text>
-<text xml:space="preserve" text-anchor="middle" x="4976" y="-101.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">RESUELTO en #209 (en develop, 2026&#45;07&#45;30)</text>
+<path fill="#2b2b2b" stroke="#7fb069" stroke-width="1.5" d="M5284.88,-148C5284.88,-148 4851.12,-148 4851.12,-148 4845.12,-148 4839.12,-142 4839.12,-136 4839.12,-136 4839.12,-108.5 4839.12,-108.5 4839.12,-102.5 4845.12,-96.5 4851.12,-96.5 4851.12,-96.5 5284.88,-96.5 5284.88,-96.5 5290.88,-96.5 5296.88,-102.5 5296.88,-108.5 5296.88,-108.5 5296.88,-136 5296.88,-136 5296.88,-142 5290.88,-148 5284.88,-148"/>
+<text xml:space="preserve" text-anchor="middle" x="5068" y="-132.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🟢 &#160;aviso&#45;drift YA VE el drift de CABLEADO: cuenta también el wiring FALTANTE</text>
+<text xml:space="preserve" text-anchor="middle" x="5068" y="-116.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">(«N cableado faltante») → ya no reporta «al día» con hooks presentes&#45;SIN&#45;cablear.</text>
+<text xml:space="preserve" text-anchor="middle" x="5068" y="-101.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">RESUELTO en #209 (en develop, 2026&#45;07&#45;30)</text>
 </g>
 <!-- SYNC&#45;&gt;DRIFT_CIEGO -->
 <g id="edge23" class="edge">
 <title>SYNC&#45;&gt;DRIFT_CIEGO</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" stroke-dasharray="5,2" d="M4996.33,-488.71C5052.19,-442.56 5152.06,-349.04 5191,-242.75 5199.22,-220.32 5205.21,-208.2 5191,-189 5180.34,-174.6 5149.67,-162.07 5114.72,-151.92"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="5115.85,-148.6 5105.28,-149.28 5113.97,-155.34 5115.85,-148.6"/>
+<path fill="none" stroke="#d97757" stroke-width="1.4" stroke-dasharray="5,2" d="M5078.48,-488.71C5121.05,-440.74 5199.43,-342.84 5229,-242.75 5235.77,-219.84 5242.32,-208.83 5229,-189 5219.12,-174.3 5205.32,-162.89 5189.91,-154.02"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="5191.93,-151.13 5181.45,-149.55 5188.66,-157.32 5191.93,-151.13"/>
 </g>
 <!-- CSHARE -->
 <g id="node20" class="node">
 <title>CSHARE</title>
-<path fill="#2b2622" stroke="#d97757" stroke-width="1.5" d="M4420.28,-358.43C4420.28,-358.43 4291.22,-330.07 4291.22,-330.07 4285.36,-328.79 4285.36,-326.21 4291.22,-324.93 4291.22,-324.93 4420.28,-296.57 4420.28,-296.57 4426.14,-295.29 4437.86,-295.29 4443.72,-296.57 4443.72,-296.57 4572.78,-324.93 4572.78,-324.93 4578.64,-326.21 4578.64,-328.79 4572.78,-330.07 4572.78,-330.07 4443.72,-358.43 4443.72,-358.43 4437.86,-359.71 4426.14,-359.71 4420.28,-358.43"/>
-<text xml:space="preserve" text-anchor="middle" x="4432" y="-328.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">¿.claude/repo&#45;compartido</text>
-<text xml:space="preserve" text-anchor="middle" x="4432" y="-316.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">(la marca)?</text>
+<path fill="#2b2622" stroke="#d97757" stroke-width="1.5" d="M4481.28,-358.43C4481.28,-358.43 4352.22,-330.07 4352.22,-330.07 4346.36,-328.79 4346.36,-326.21 4352.22,-324.93 4352.22,-324.93 4481.28,-296.57 4481.28,-296.57 4487.14,-295.29 4498.86,-295.29 4504.72,-296.57 4504.72,-296.57 4633.78,-324.93 4633.78,-324.93 4639.64,-326.21 4639.64,-328.79 4633.78,-330.07 4633.78,-330.07 4504.72,-358.43 4504.72,-358.43 4498.86,-359.71 4487.14,-359.71 4481.28,-358.43"/>
+<text xml:space="preserve" text-anchor="middle" x="4493" y="-328.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">¿.claude/repo&#45;compartido</text>
+<text xml:space="preserve" text-anchor="middle" x="4493" y="-316.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">(la marca)?</text>
 </g>
 <!-- DRIFT&#45;&gt;CSHARE -->
 <g id="edge24" class="edge">
 <title>DRIFT&#45;&gt;CSHARE</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" d="M4432,-466.87C4432,-437.57 4432,-401.42 4432,-373.42"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4435.5,-373.69 4432,-363.69 4428.5,-373.69 4435.5,-373.69"/>
+<path fill="none" stroke="#d97757" stroke-width="1.4" d="M4493,-466.87C4493,-437.57 4493,-401.42 4493,-373.42"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4496.5,-373.69 4493,-363.69 4489.5,-373.69 4496.5,-373.69"/>
 </g>
 <!-- DRIFT_SHARED -->
 <g id="node21" class="node">
 <title>DRIFT_SHARED</title>
-<path fill="#2b2b2b" stroke="#c0392b" stroke-width="3" d="M4649,-242.75C4649,-242.75 4111,-242.75 4111,-242.75 4105,-242.75 4099,-236.75 4099,-230.75 4099,-230.75 4099,-201 4099,-201 4099,-195 4105,-189 4111,-189 4111,-189 4649,-189 4649,-189 4655,-189 4661,-195 4661,-201 4661,-201 4661,-230.75 4661,-230.75 4661,-236.75 4655,-242.75 4649,-242.75"/>
-<text xml:space="preserve" text-anchor="middle" x="4380" y="-227.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">⚠ ESCRIBE git · 🟢 &#160;COMPARTIDO (con la marca): el brain por&#45;repo es CORREO para clones/colegas</text>
-<text xml:space="preserve" text-anchor="middle" x="4380" y="-211.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">SIN brain global → en mini&#45;develop (Develop*) con .claude/ limpio: apply+commit+push SOLO;</text>
-<text xml:space="preserve" text-anchor="middle" x="4380" y="-196.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">si no aplica limpio, AVISA para propagar por ramita→MR</text>
+<path fill="#2b2b2b" stroke="#c0392b" stroke-width="3" d="M4687,-242.75C4687,-242.75 4149,-242.75 4149,-242.75 4143,-242.75 4137,-236.75 4137,-230.75 4137,-230.75 4137,-201 4137,-201 4137,-195 4143,-189 4149,-189 4149,-189 4687,-189 4687,-189 4693,-189 4699,-195 4699,-201 4699,-201 4699,-230.75 4699,-230.75 4699,-236.75 4693,-242.75 4687,-242.75"/>
+<text xml:space="preserve" text-anchor="middle" x="4418" y="-227.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">⚠ ESCRIBE git · 🟢 &#160;COMPARTIDO (con la marca): el brain por&#45;repo es CORREO para clones/colegas</text>
+<text xml:space="preserve" text-anchor="middle" x="4418" y="-211.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">SIN brain global → en mini&#45;develop (Develop*) con .claude/ limpio: apply+commit+push SOLO;</text>
+<text xml:space="preserve" text-anchor="middle" x="4418" y="-196.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">si no aplica limpio, AVISA para propagar por ramita→MR</text>
 </g>
 <!-- CSHARE&#45;&gt;DRIFT_SHARED -->
 <g id="edge25" class="edge">
 <title>CSHARE&#45;&gt;DRIFT_SHARED</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" d="M4417.79,-296.54C4411.67,-283.64 4404.44,-268.4 4397.95,-254.73"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4401.3,-253.62 4393.85,-246.08 4394.98,-256.62 4401.3,-253.62"/>
-<text xml:space="preserve" text-anchor="middle" x="4439.38" y="-264.5" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">COMPARTIDO</text>
+<path fill="none" stroke="#d97757" stroke-width="1.4" d="M4473.29,-297.7C4464.06,-284.19 4452.94,-267.95 4443.11,-253.57"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4446.27,-252 4437.74,-245.73 4440.5,-255.96 4446.27,-252"/>
+<text xml:space="preserve" text-anchor="middle" x="4488.88" y="-264.5" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">COMPARTIDO</text>
 </g>
 <!-- DRIFT_PERSONAL -->
 <g id="node22" class="node">
 <title>DRIFT_PERSONAL</title>
-<path fill="#2b2b2b" stroke="#7fb069" stroke-width="1.5" d="M5166.12,-241.62C5166.12,-241.62 4697.88,-241.62 4697.88,-241.62 4691.88,-241.62 4685.88,-235.62 4685.88,-229.62 4685.88,-229.62 4685.88,-202.12 4685.88,-202.12 4685.88,-196.12 4691.88,-190.12 4697.88,-190.12 4697.88,-190.12 5166.12,-190.12 5166.12,-190.12 5172.12,-190.12 5178.12,-196.12 5178.12,-202.12 5178.12,-202.12 5178.12,-229.62 5178.12,-229.62 5178.12,-235.62 5172.12,-241.62 5166.12,-241.62"/>
-<text xml:space="preserve" text-anchor="middle" x="4932" y="-226.22" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🟢 &#160;PERSONAL (DEFAULT, sin la marca): guards por&#45;repo NUNCA hacen falta</text>
-<text xml:space="preserve" text-anchor="middle" x="4932" y="-210.47" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">(esta máquina ya los saca del install GLOBAL + dedupe) → NO auto&#45;commit/push;</text>
-<text xml:space="preserve" text-anchor="middle" x="4932" y="-195.47" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">FLAGGEA los guards del brain que SOBRAN para que los quites. Memoria/skills intactos.</text>
+<path fill="#2b2b2b" stroke="#7fb069" stroke-width="1.5" d="M5204.12,-241.62C5204.12,-241.62 4735.88,-241.62 4735.88,-241.62 4729.88,-241.62 4723.88,-235.62 4723.88,-229.62 4723.88,-229.62 4723.88,-202.12 4723.88,-202.12 4723.88,-196.12 4729.88,-190.12 4735.88,-190.12 4735.88,-190.12 5204.12,-190.12 5204.12,-190.12 5210.12,-190.12 5216.12,-196.12 5216.12,-202.12 5216.12,-202.12 5216.12,-229.62 5216.12,-229.62 5216.12,-235.62 5210.12,-241.62 5204.12,-241.62"/>
+<text xml:space="preserve" text-anchor="middle" x="4970" y="-226.22" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🟢 &#160;PERSONAL (DEFAULT, sin la marca): guards por&#45;repo NUNCA hacen falta</text>
+<text xml:space="preserve" text-anchor="middle" x="4970" y="-210.47" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">(esta máquina ya los saca del install GLOBAL + dedupe) → NO auto&#45;commit/push;</text>
+<text xml:space="preserve" text-anchor="middle" x="4970" y="-195.47" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">FLAGGEA los guards del brain que SOBRAN para que los quites. Memoria/skills intactos.</text>
 </g>
 <!-- CSHARE&#45;&gt;DRIFT_PERSONAL -->
 <g id="edge26" class="edge">
 <title>CSHARE&#45;&gt;DRIFT_PERSONAL</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" d="M4507.67,-309.91C4586.29,-292.67 4710.72,-265.39 4804.54,-244.82"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4805.03,-248.3 4814.05,-242.74 4803.53,-241.46 4805.03,-248.3"/>
-<text xml:space="preserve" text-anchor="middle" x="4758.06" y="-264.5" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">PERSONAL (default)</text>
+<path fill="none" stroke="#d97757" stroke-width="1.4" d="M4567.01,-309.49C4641.89,-292.28 4758.95,-265.38 4847.65,-244.99"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4848.39,-248.41 4857.35,-242.76 4846.82,-241.59 4848.39,-248.41"/>
+<text xml:space="preserve" text-anchor="middle" x="4806.18" y="-264.5" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">PERSONAL (default)</text>
 </g>
 <!-- DRIFT_SHARED&#45;&gt;DRIFT_CIEGO -->
 <g id="edge27" class="edge">
 <title>DRIFT_SHARED&#45;&gt;DRIFT_CIEGO</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" d="M4558.01,-187.51C4634.11,-175.81 4722.75,-162.18 4798.76,-150.5"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4798.92,-154.01 4808.27,-149.04 4797.85,-147.1 4798.92,-154.01"/>
+<path fill="none" stroke="#d97757" stroke-width="1.4" d="M4612.14,-187.51C4695.39,-175.77 4792.4,-162.1 4875.47,-150.39"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4875.85,-153.87 4885.26,-149.01 4874.87,-146.94 4875.85,-153.87"/>
 </g>
 <!-- DRIFT_STAGE -->
 <g id="node24" class="node">
 <title>DRIFT_STAGE</title>
-<path fill="#2b2b2b" stroke="#7fb069" stroke-width="1.5" d="M4597.25,-148C4597.25,-148 4162.75,-148 4162.75,-148 4156.75,-148 4150.75,-142 4150.75,-136 4150.75,-136 4150.75,-108.5 4150.75,-108.5 4150.75,-102.5 4156.75,-96.5 4162.75,-96.5 4162.75,-96.5 4597.25,-96.5 4597.25,-96.5 4603.25,-96.5 4609.25,-102.5 4609.25,-108.5 4609.25,-108.5 4609.25,-136 4609.25,-136 4609.25,-142 4603.25,-148 4597.25,-148"/>
-<text xml:space="preserve" text-anchor="middle" x="4380" y="-132.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🟢 &#160;el AUTO&#45;APPLY ahora hace `git add &#45;A .claude/` (hooks + settings.json + podas)</text>
-<text xml:space="preserve" text-anchor="middle" x="4380" y="-116.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">→ el cambio de cableado SÍ se commitea y el árbol queda limpio.</text>
-<text xml:space="preserve" text-anchor="middle" x="4380" y="-101.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">RESUELTO en #209 (en develop, 2026&#45;07&#45;30)</text>
+<path fill="#2b2b2b" stroke="#7fb069" stroke-width="1.5" d="M4635.25,-148C4635.25,-148 4200.75,-148 4200.75,-148 4194.75,-148 4188.75,-142 4188.75,-136 4188.75,-136 4188.75,-108.5 4188.75,-108.5 4188.75,-102.5 4194.75,-96.5 4200.75,-96.5 4200.75,-96.5 4635.25,-96.5 4635.25,-96.5 4641.25,-96.5 4647.25,-102.5 4647.25,-108.5 4647.25,-108.5 4647.25,-136 4647.25,-136 4647.25,-142 4641.25,-148 4635.25,-148"/>
+<text xml:space="preserve" text-anchor="middle" x="4418" y="-132.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🟢 &#160;el AUTO&#45;APPLY ahora hace `git add &#45;A .claude/` (hooks + settings.json + podas)</text>
+<text xml:space="preserve" text-anchor="middle" x="4418" y="-116.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">→ el cambio de cableado SÍ se commitea y el árbol queda limpio.</text>
+<text xml:space="preserve" text-anchor="middle" x="4418" y="-101.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">RESUELTO en #209 (en develop, 2026&#45;07&#45;30)</text>
 </g>
 <!-- DRIFT_SHARED&#45;&gt;DRIFT_STAGE -->
 <g id="edge28" class="edge">
 <title>DRIFT_SHARED&#45;&gt;DRIFT_STAGE</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" d="M4380,-187.88C4380,-179.32 4380,-169.69 4380,-160.53"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4383.5,-160.6 4380,-150.6 4376.5,-160.6 4383.5,-160.6"/>
+<path fill="none" stroke="#d97757" stroke-width="1.4" d="M4418,-187.88C4418,-179.32 4418,-169.69 4418,-160.53"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4421.5,-160.6 4418,-150.6 4414.5,-160.6 4421.5,-160.6"/>
 </g>
 <!-- DRIFT_CIEGO&#45;&gt;NORMA -->
 <g id="edge32" class="edge">
 <title>DRIFT_CIEGO&#45;&gt;NORMA</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" stroke-dasharray="5,2" d="M5033.57,-95.78C5058.52,-84.74 5087.6,-71.88 5112.24,-60.98"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="5113.54,-64.23 5121.27,-56.98 5110.71,-57.82 5113.54,-64.23"/>
+<path fill="none" stroke="#d97757" stroke-width="1.4" stroke-dasharray="5,2" d="M5125.26,-95.78C5150.09,-84.74 5179.02,-71.88 5203.52,-60.98"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="5204.79,-64.25 5212.5,-56.98 5201.95,-57.85 5204.79,-64.25"/>
 </g>
 <!-- WID_ACT -->
 <g id="node26" class="node">
@@ -776,38 +776,38 @@
 <!-- WID_ASSET -->
 <g id="node27" class="node">
 <title>WID_ASSET</title>
-<path fill="#2b2b2b" stroke="#c9a227" stroke-width="1.5" d="M5704.12,-1011.62C5704.12,-1011.62 5115.88,-1011.62 5115.88,-1011.62 5109.88,-1011.62 5103.88,-1005.62 5103.88,-999.62 5103.88,-999.62 5103.88,-957.12 5103.88,-957.12 5103.88,-951.12 5109.88,-945.12 5115.88,-945.12 5115.88,-945.12 5704.12,-945.12 5704.12,-945.12 5710.12,-945.12 5716.12,-951.12 5716.12,-957.12 5716.12,-957.12 5716.12,-999.62 5716.12,-999.62 5716.12,-1005.62 5710.12,-1011.62 5704.12,-1011.62"/>
-<text xml:space="preserve" text-anchor="middle" x="5410" y="-996.23" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🟡 &#160;install.sh baja por DEFAULT el .app/.exe PRECOMPILADO del release rolling &#39;macos&#45;latest&#39;/</text>
-<text xml:space="preserve" text-anchor="middle" x="5410" y="-980.48" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">&#39;windows&#45;latest&#39; (release&#45;macos.yml/release&#45;windows.yml lo republica en CADA push a main, SIN filtro de</text>
-<text xml:space="preserve" text-anchor="middle" x="5410" y="-967.73" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">paths → nunca rancio respecto al sha de main). Guard de staleness (#346): si el build&#45;sha del asset ≠ HEAD</text>
-<text xml:space="preserve" text-anchor="middle" x="5410" y="-952.73" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">del clon y hay Xcode CLT → compila desde fuente en vez de instalar un asset rancio (antídoto al loop &#39;actualiza&#39;)</text>
+<path fill="#2b2b2b" stroke="#c9a227" stroke-width="1.5" d="M5701.12,-1011.62C5701.12,-1011.62 5112.88,-1011.62 5112.88,-1011.62 5106.88,-1011.62 5100.88,-1005.62 5100.88,-999.62 5100.88,-999.62 5100.88,-957.12 5100.88,-957.12 5100.88,-951.12 5106.88,-945.12 5112.88,-945.12 5112.88,-945.12 5701.12,-945.12 5701.12,-945.12 5707.12,-945.12 5713.12,-951.12 5713.12,-957.12 5713.12,-957.12 5713.12,-999.62 5713.12,-999.62 5713.12,-1005.62 5707.12,-1011.62 5701.12,-1011.62"/>
+<text xml:space="preserve" text-anchor="middle" x="5407" y="-996.23" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🟡 &#160;install.sh baja por DEFAULT el .app/.exe PRECOMPILADO del release rolling &#39;macos&#45;latest&#39;/</text>
+<text xml:space="preserve" text-anchor="middle" x="5407" y="-980.48" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">&#39;windows&#45;latest&#39; (release&#45;macos.yml/release&#45;windows.yml lo republica en CADA push a main, SIN filtro de</text>
+<text xml:space="preserve" text-anchor="middle" x="5407" y="-967.73" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">paths → nunca rancio respecto al sha de main). Guard de staleness (#346): si el build&#45;sha del asset ≠ HEAD</text>
+<text xml:space="preserve" text-anchor="middle" x="5407" y="-952.73" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">del clon y hay Xcode CLT → compila desde fuente en vez de instalar un asset rancio (antídoto al loop &#39;actualiza&#39;)</text>
 </g>
 <!-- WID_ACT&#45;&gt;WID_ASSET -->
 <g id="edge30" class="edge">
 <title>WID_ACT&#45;&gt;WID_ASSET</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" d="M5375.65,-1229.3C5383.09,-1175.12 5396.15,-1080.1 5403.85,-1024.14"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="5407.31,-1024.63 5405.21,-1014.24 5400.38,-1023.67 5407.31,-1024.63"/>
-<text xml:space="preserve" text-anchor="middle" x="5416.56" y="-1118.38" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">reinstala</text>
+<path fill="none" stroke="#d97757" stroke-width="1.4" d="M5375.22,-1229.3C5382.11,-1175.12 5394.19,-1080.1 5401.31,-1024.14"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="5404.78,-1024.61 5402.57,-1014.24 5397.83,-1023.72 5404.78,-1024.61"/>
+<text xml:space="preserve" text-anchor="middle" x="5414.44" y="-1118.38" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">reinstala</text>
 </g>
 <!-- WID_ATOM -->
 <g id="node28" class="node">
 <title>WID_ATOM</title>
-<path fill="#2b2b2b" stroke="#7fb069" stroke-width="1.5" d="M5697.38,-815.75C5697.38,-815.75 5164.62,-815.75 5164.62,-815.75 5158.62,-815.75 5152.62,-809.75 5152.62,-803.75 5152.62,-803.75 5152.62,-776.25 5152.62,-776.25 5152.62,-770.25 5158.62,-764.25 5164.62,-764.25 5164.62,-764.25 5697.38,-764.25 5697.38,-764.25 5703.38,-764.25 5709.38,-770.25 5709.38,-776.25 5709.38,-776.25 5709.38,-803.75 5709.38,-803.75 5709.38,-809.75 5703.38,-815.75 5697.38,-815.75"/>
-<text xml:space="preserve" text-anchor="middle" x="5431" y="-800.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🟢 &#160;atomicidad: install&#45;brain instala los hooks con atomic_install (cp a tmp + mv,</text>
-<text xml:space="preserve" text-anchor="middle" x="5431" y="-784.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">rename atómico) → el updater ⬆ ya no deja ventana de lectura a&#45;medio&#45;sobrescribir con sesión VIVA.</text>
-<text xml:space="preserve" text-anchor="middle" x="5431" y="-769.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">RESUELTO (install&#45;brain.sh atomic_install, en develop)</text>
+<path fill="#2b2b2b" stroke="#7fb069" stroke-width="1.5" d="M5695.38,-815.75C5695.38,-815.75 5162.62,-815.75 5162.62,-815.75 5156.62,-815.75 5150.62,-809.75 5150.62,-803.75 5150.62,-803.75 5150.62,-776.25 5150.62,-776.25 5150.62,-770.25 5156.62,-764.25 5162.62,-764.25 5162.62,-764.25 5695.38,-764.25 5695.38,-764.25 5701.38,-764.25 5707.38,-770.25 5707.38,-776.25 5707.38,-776.25 5707.38,-803.75 5707.38,-803.75 5707.38,-809.75 5701.38,-815.75 5695.38,-815.75"/>
+<text xml:space="preserve" text-anchor="middle" x="5429" y="-800.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🟢 &#160;atomicidad: install&#45;brain instala los hooks con atomic_install (cp a tmp + mv,</text>
+<text xml:space="preserve" text-anchor="middle" x="5429" y="-784.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">rename atómico) → el updater ⬆ ya no deja ventana de lectura a&#45;medio&#45;sobrescribir con sesión VIVA.</text>
+<text xml:space="preserve" text-anchor="middle" x="5429" y="-769.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">RESUELTO (install&#45;brain.sh atomic_install, en develop)</text>
 </g>
 <!-- WID_ASSET&#45;&gt;WID_ATOM -->
 <g id="edge31" class="edge">
 <title>WID_ASSET&#45;&gt;WID_ATOM</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" d="M5413.71,-944.48C5417.38,-911.91 5422.99,-862.11 5426.82,-828.13"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="5430.26,-828.82 5427.9,-818.49 5423.3,-828.04 5430.26,-828.82"/>
+<path fill="none" stroke="#d97757" stroke-width="1.4" d="M5410.88,-944.48C5414.73,-911.91 5420.61,-862.11 5424.62,-828.13"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="5428.06,-828.83 5425.75,-818.49 5421.11,-828.01 5428.06,-828.83"/>
 </g>
 <!-- WID_ATOM&#45;&gt;NORMA -->
 <g id="edge34" class="edge">
 <title>WID_ATOM&#45;&gt;NORMA</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" stroke-dasharray="5,2" d="M5439.67,-763.67C5449.74,-731.93 5465,-675.67 5465,-626.12 5465,-626.12 5465,-626.12 5465,-121.25 5465,-91.26 5408.42,-71.36 5344.56,-58.45"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="5345.56,-55.08 5335.07,-56.61 5344.22,-61.95 5345.56,-55.08"/>
+<path fill="none" stroke="#d97757" stroke-width="1.4" stroke-dasharray="5,2" d="M5471.15,-763.53C5511.74,-735.44 5567,-686.17 5567,-626.12 5567,-626.12 5567,-626.12 5567,-121.25 5567,-90.3 5508.58,-70.29 5442.55,-57.55"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="5443.57,-54.18 5433.1,-55.8 5442.3,-61.07 5443.57,-54.18"/>
 </g>
 </g>
 </svg>
