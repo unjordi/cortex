@@ -55,6 +55,33 @@ compact puede perder.
   `PreCompact`) deja el andamio mecánico escrito — ver "Qué NO es" abajo — así que aunque el auto-compact
   te gane la carrera, el 🗂️ árbol/RESUELTO-HOY/citas del usuario no dependen solo de que TÚ alcanzaras a volcar.
 
+## ⚠️ El PISO entre checkpoints: ~2h. Uno de más DEGRADA lo que venía a proteger
+
+**El disparador correcto es un EVENTO, no un hito de trabajo:** viene un compact (manual o anunciado),
+llevas ~2h de corrida, o cambias de tema. Terminar un sub-paso NO es disparador — para eso está la
+bitácora (`>>`, append, no reescribe nada).
+
+**Regla dura con su MECANISMO: al invocar el skill, MIRA el mtime del hilo** (`stat -f %m
+.claude/memory/hilo-mental-actual.md` en BSD/macOS · `stat -c %Y` en GNU; restado de `date +%s`). **Si
+el último volcado fue hace menos de ~30 min, NO reescribas el hilo.** Si hay algo que asentar,
+appendéalo a `bitacora.md` (`>>`). Volver a volcar el hilo tan seguido no lo protege: lo comprime otra
+vez. (El piso cede ante un evento DURO e inaplazable: un compact ya anunciado — ahí sí revuelcas aunque
+hayan pasado <30 min.)
+
+**Por qué (el mecanismo, no la etiqueta):** `hilo-mental-actual.md` se REESCRIBE en cada checkpoint.
+Nueve checkpoints son nueve re-compresiones sucesivas del mismo texto — la fotocopia de la fotocopia.
+Cada pasada conserva lo que la plantilla nombra (plan, resuelto, tooling) y adelgaza lo que no tiene
+casilla propia.
+
+**Y lo primero que se cae NO es lo técnico — es el FLOW.** Lo técnico se re-mide barato (está en los
+commits, en el código, en la BD). El modo de trabajar —el tono, la agency acordada, qué decide quién, la
+procedencia de cada idea— no se re-mide de ningún lado: si se comprime, se pierde. **Antídoto: el flow no
+vive en el hilo.** Vive en `~/.claude/CLAUDE.md`, en `como-trabajar-con-<user>.md` y en el `CLAUDE.md`
+del repo. El hilo los REFERENCIA; jamás los re-resume, porque re-resumir es justo lo que los desgasta.
+
+**Un caso medido:** 9 checkpoints en 5h42m en un mismo día, tres separados por 4 y 6 minutos (una sesión
+que "avanzó mucho en lo técnico pero perdió por completo el flow").
+
 ## Qué hace (el volcado)
 
 > **GARANTÍA DURA (answer-first): un checkpoint NUNCA pierde nada durable al sobrescribir el hilo.**

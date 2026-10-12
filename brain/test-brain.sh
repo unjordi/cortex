@@ -8924,6 +8924,13 @@ else
   bad "cerrar-slice: no encuentro $CS"
 fi
 
+# A6: la regla PISO entre checkpoints DEBE vivir en la FUENTE del skill. Se perdió UNA vez por editarse en la
+# copia instalada y pisarla el sync (inbox 2026-09-24) → guard de PRESENCIA contra que una reorg la retire.
+CKS="$SCRIPT_DIR/skills/checkpoint/SKILL.md"
+{ [ -f "$CKS" ] && grep -qi 'PISO entre checkpoints' "$CKS" && grep -qiE 'menos de ~?30 ?min' "$CKS" && grep -qF 'mtime del hilo' "$CKS"; } \
+  && ok "checkpoint SKILL: trae la regla PISO (<~30min → appendea a bitácora, no reescribe) con su mecanismo (mtime)" \
+  || bad "checkpoint SKILL: FALTA la regla PISO entre checkpoints o su mecanismo (¿se perdió en un sync/reorg?)"
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 PASS=$(grep -c '^OK$'  "$CALLLOG" 2>/dev/null); PASS="${PASS:-0}"
