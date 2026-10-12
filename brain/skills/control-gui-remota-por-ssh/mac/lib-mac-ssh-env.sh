@@ -1,4 +1,5 @@
 # skill control-gui-remota-por-ssh (cortex) -- lib compartida por mac-ssh-*.sh; ver ../SKILL.md
+# shellcheck shell=bash
 #
 # mac_console_user() -- el usuario con sesion de CONSOLA activa (analogo a `quser` en Windows).
 # mac_dispatch() -- corre un comando DENTRO de la sesion grafica de ESE usuario, aunque quien

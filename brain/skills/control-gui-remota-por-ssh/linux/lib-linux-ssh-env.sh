@@ -1,4 +1,5 @@
 # skill control-gui-remota-por-ssh (cortex) -- lib compartida por linux-ssh-*.sh; ver ../SKILL.md
+# shellcheck shell=bash
 #
 # resolve_session_env() -- deriva el entorno de la SESION GRAFICA INTERACTIVA del usuario logueado,
 # para que un comando disparado desde SSH (que cae en un tty SIN DISPLAY/WAYLAND_DISPLAY) pueda
