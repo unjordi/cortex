@@ -100,3 +100,9 @@ CLAUDE.local.md
 # de PreCompact en CADA repo con el cerebro. El andamio en sí lo cubre el patrón de familia hilo-mental-*;
 # éstos NO caen ahí y quedaban como untracked permanente (y el .log puede llevar rutas de la máquina).
 .claude/memory/.checkpoint-mecanico*
+# Estado PROCESO de otros hooks que escriben en .claude/memory/ de CADA repo (ídem: untracked permanente,
+# ensucia 24+ repos). aviso-contexto → debounce por banda/sesión (.contexto-aviso + .contexto-aviso.d/);
+# barrer-ramas → stamp del último barrido (.ramas-huerfanas-estado). (El ignore universal a TODOS los repos
+# aún necesita un sembrador — ver backlog A5; esto cubre cortex ya.)
+.claude/memory/.contexto-aviso*
+.claude/memory/.ramas-huerfanas-estado
