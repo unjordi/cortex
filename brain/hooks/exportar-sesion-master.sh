@@ -63,6 +63,16 @@ mj="$DRIVE/masters.json"
 # ── ¿es master? FAST-PATH: si el sid ya está en masters.json no escaneamos el transcript. ──────────
 title=""
 is_master=0
+# ¿título de master? Acepta "<x>-master" Y el "<x>-master (N)" que el CLI pone al CONTINUAR una sesión como
+# duplicado — sin esto, ese master (p. ej. "cortex-master (2)") dejaba de exportarse EN SILENCIO. Devuelve el
+# NAME BASE canónico (sin el " (N)"), que es el mismo linaje; el archivo de export ya es por-sid, no por-name.
+_master_base() {  # $1=title → echo base si es master; nada si no
+  case "$1" in
+    *-master)         printf '%s' "$1" ;;
+    *-master\ \(*\))  printf '%s' "${1% (*}" ;;   # strip " (N)" → base
+    *) : ;;
+  esac
+}
 if [ -f "$mj" ] && grep -q "\"$sid\"" "$mj" 2>/dev/null; then
   is_master=1
   [ "$have_jq" = 1 ] && title=$(jq -r --arg id "$sid" '.masters[]? | select(.id==$id) | .name // empty' "$mj" 2>/dev/null)
@@ -72,7 +82,7 @@ if [ "$is_master" = 0 ]; then
   case "$event" in
     SessionEnd|PreCompact)
       t=$(grep -ao '"customTitle":"[^"]*"' "$tpath" 2>/dev/null | tail -1 | sed 's/.*:"//; s/"$//')
-      case "$t" in *-master) title="$t"; is_master=1 ;; esac
+      _b=$(_master_base "$t"); [ -n "$_b" ] && { title="$_b"; is_master=1; }
       ;;
     *) exit 0 ;;   # Stop u otro con sid no listado → salimos barato, sin escanear
   esac
@@ -80,7 +90,7 @@ fi
 # título registrado pero sin name (o sin jq): recupéralo con un scan (raro; jq va presente por install-hook)
 if [ "$is_master" = 1 ] && [ -z "$title" ]; then
   t=$(grep -ao '"customTitle":"[^"]*"' "$tpath" 2>/dev/null | tail -1 | sed 's/.*:"//; s/"$//')
-  case "$t" in *-master) title="$t" ;; *) title="$sid" ;; esac
+  _b=$(_master_base "$t"); if [ -n "$_b" ]; then title="$_b"; else title="$sid"; fi
 fi
 [ "$is_master" = 1 ] && [ -n "$title" ] || exit 0
 

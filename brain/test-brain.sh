@@ -7185,6 +7185,19 @@ grep -qF 'CLAUDE_SESSIONS_DRIVE:-$HOME/.claude-sessions' "$HOOKS/exportar-sesion
   && ok "exportar-sesion-master: default ~/.claude-sessions en el código (override por env)" || bad "exportar-sesion-master: sin el default ~/.claude-sessions en el código"
 { grep -qF 'nohup' "$HOOKS/exportar-sesion-master.sh" && grep -qF '.export-$sid.lock' "$HOOKS/exportar-sesion-master.sh"; } \
   && ok "exportar-sesion-master: export DETACHED (nohup) + lock por-sid (no se ahoga en los grandes)" || bad "exportar-sesion-master: el export no es detached/lockeado"
+# (5) A4: reconoce "<x>-master (N)" (el duplicado que pone el CLI al continuar una sesión) como master y da el
+# NAME BASE canónico. Causa del FP: el `case *-master)` solo matcheaba títulos que TERMINAN en -master → un
+# "cortex-master (2)" dejaba de exportarse EN SILENCIO. Prueba la función real extraída (determinista, bash-3.2).
+eval "$(sed -n '/^_master_base()/,/^}/p' "$HOOKS/exportar-sesion-master.sh")"
+{ [ "$(_master_base 'cortex-master (2)')" = "cortex-master" ] && [ "$(_master_base 'axon-master (10)')" = "axon-master" ]; } \
+  && ok "exportar-sesion-master: reconoce '<x>-master (N)' como master → NAME BASE canónico (sin ' (N)')" \
+  || bad "exportar-sesion-master: NO reconoce el '<x>-master (N)' del CLI (sigue perdiéndose el export en silencio)"
+{ [ "$(_master_base 'games-master')" = "games-master" ] && [ -z "$(_master_base 'cortex-developer')" ] && [ -z "$(_master_base 'cortex-master-xyz')" ]; } \
+  && ok "exportar-sesion-master: '<x>-master' pelado OK y NO-master ('developer' / '…-master-xyz') rechazado (ambas direcciones)" \
+  || bad "exportar-sesion-master: _master_base mal clasifica el caso pelado o un no-master"
+{ grep -qF '_master_base "$t"' "$HOOKS/exportar-sesion-master.sh" && ! grep -qE 'case "\$t" in \*-master\)' "$HOOKS/exportar-sesion-master.sh"; } \
+  && ok "exportar-sesion-master: los puntos de reconocimiento cablean _master_base (no quedó el 'case *-master)' pelado viejo)" \
+  || bad "exportar-sesion-master: quedó un 'case \$t in *-master)' pelado sin soporte del sufijo (N)"
 rm -rf "$EXFIX"
 
 # ─────────────────────────────────────────────────────────────────────────────
