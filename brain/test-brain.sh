@@ -4947,8 +4947,11 @@ ac_run() {
   [ -n "$set" ] && printf '%s' "$set" > "$root/.claude/settings.json"
   printf '%s\n' '{"type":"user","message":{"role":"user","content":"hola"}}' "{\"message\":{\"usage\":{\"cache_read_input_tokens\":$ctx}}}" > "$root/t.jsonl"
   local envw=(); [ -n "$win" ] && envw=(AVISO_CONTEXTO_WINDOW_TOKENS="$win")
+  # bash-3.2-safe: "${envw[@]}" sobre un array VACÍO bajo `set -u` lanza "unbound variable" en bash <4.4
+  # (el /bin/bash 3.2 de macOS) → mataba la substitución ANTES de correr el hook en los casos win="" (ventana
+  # derivada del modelo) → ACMSG vacío (los 15 FP de b6). El idiom ${arr[@]+"${arr[@]}"} expande a nada sin error.
   ACMSG="$(printf '%s' "{\"session_id\":\"$sid\",\"transcript_path\":\"$root/t.jsonl\"}" \
-    | env HOME="$ACHOME" CLAUDE_BRAIN_DIR="$BRAINREPO" "${envw[@]}" CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
+    | env HOME="$ACHOME" CLAUDE_BRAIN_DIR="$BRAINREPO" ${envw[@]+"${envw[@]}"} CLAUDE_PROJECT_DIR="$root" bash "$HOOKS/aviso-contexto.sh" \
     | jq -r '.hookSpecificOutput.additionalContext // empty')"
   ACLAST="$root"
 }
@@ -5067,6 +5070,36 @@ printf '%s' "$(acden 850000 'opus')" | grep -q 'tu ventana 1000K' \
   && ok "b6-invariante: ctx 850K > ventana detectada 200K → auto-corrige a 1000K" || bad "b6-invariante: no auto-corrigió"
 printf '%s' "$(acden 170000 'opus')" | grep -q 'tu ventana 200K' \
   && ok "b6-invariante: ctx 170K < 200K → SIN promoción (no sobre-corrige lo genuino)" || bad "b6-invariante: promovió de más"
+
+# ── (b6-transcript) la VENTANA se deriva del MODELO DE RUNTIME del transcript, no solo de settings.json ──
+# Causa del FP 200K REAL (vivido en vivo): el modelo elegido en runtime (p. ej. Opus 5.5) NO queda escrito en
+# settings.json → model="" → default 200K → urgencia falsa en una sesión de 1M con ctx<200K (la auto-corrección
+# física no dispara porque 186K<200K). Fix: leer .message.model del transcript (gana sobre settings.json).
+actx() { # $1=ctx $2=model-en-transcript $3=settings(o '') → deja ACMSG/ACLAST
+  local R; R="$(mktemp -d "${TMPDIR:-/tmp}/brain-actx.XXXXXX")/r"; mkdir -p "$R/.claude/memory"
+  [ -n "$3" ] && printf '%s' "$3" > "$R/.claude/settings.json"
+  printf '%s\n' '{"type":"user","message":{"role":"user"}}' \
+    "{\"type\":\"assistant\",\"isSidechain\":false,\"message\":{\"model\":\"$2\",\"usage\":{\"cache_read_input_tokens\":$1}}}" > "$R/t.jsonl"
+  ACMSG="$(printf '%s' "{\"session_id\":\"stx-$RANDOM\",\"transcript_path\":\"$R/t.jsonl\"}" \
+    | env HOME="$ACHOME" CLAUDE_BRAIN_DIR="$BRAINREPO" CLAUDE_PROJECT_DIR="$R" bash "$HOOKS/aviso-contexto.sh" \
+    | jq -r '.hookSpecificOutput.additionalContext // empty')"
+  ACLAST="$R"
+}
+actx 186000 'claude-opus-5-5' ''
+[ -z "$ACMSG" ] \
+  && ok "b6-transcript: Opus5.5@186K (ventana 1M del transcript, 18%) → SILENCIO (el FP 200K ya no dispara)" \
+  || bad "b6-transcript: emitió urgencia falsa pese a la ventana 1M del transcript; got: $ACMSG"
+rm -rf "$(dirname "$ACLAST")"
+actx 850000 'claude-opus-5-5' ''
+printf '%s' "$ACMSG" | grep -q 'tu ventana 1000K' \
+  && ok "b6-transcript: Opus5.5@850K → ventana 1M DERIVADA DEL TRANSCRIPT (85% emite)" \
+  || bad "b6-transcript: no derivó 1M del modelo del transcript; got: $ACMSG"
+rm -rf "$(dirname "$ACLAST")"
+actx 850000 'claude-opus-5-5' '{"model":"claude-haiku-4-5"}'
+printf '%s' "$ACMSG" | grep -q 'tu ventana 1000K' \
+  && ok "b6-transcript: el modelo de runtime del transcript (opus-5) GANA sobre settings.json (haiku 200K)" \
+  || bad "b6-transcript: settings.json pisó al modelo de runtime del transcript; got: $ACMSG"
+rm -rf "$(dirname "$ACLAST")"
 
 # ── (b6-escape-hatch) AVISO_CONTEXTO_WINDOW_TOKENS fija la ventana, distinto del fallback del invariante ──
 ac_run 425000 500000 ""

@@ -74,6 +74,16 @@ case "$WINDOW" in
       m=$(jq -r '.model // empty' "$s" 2>/dev/null)
       [ -n "$m" ] && model="$m"
     done
+    # MODELO DE RUNTIME del transcript (el que REALMENTE genera) — GANA sobre settings.json. Causa del FP
+    # 200K: el modelo elegido en runtime (p. ej. Opus 5.5) NO queda escrito en settings.json → model="" →
+    # default 200K → urgencia falsa en una sesión de 1M cuando ctx<200K (la auto-corrección física no dispara).
+    # El transcript lo trae en .message.model (último mensaje no-sidechain). fromjson? = robusto a líneas malas.
+    tpm=$(tail -n 400 "$tp" 2>/dev/null | jq -rRn '
+        reduce (inputs | fromjson?) as $o (null;
+            if ($o.isSidechain == true) then .
+            else (($o.message.model // $o.model) // .) end)
+        // empty' 2>/dev/null)
+    [ -n "$tpm" ] && model="$tpm"
     case "$model" in
       *'[1m]'*)                                                      WINDOW=1000000 ;;
       *opus-4-7*|*opus-4-8*|*opus-5*|*sonnet-5*|*fable-5*|*mythos-5*) WINDOW=1000000 ;;
