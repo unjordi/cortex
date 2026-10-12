@@ -8851,6 +8851,33 @@ else
   bad "gui: no encuentro los 3 screenshot.* del kit control-gui-remota-por-ssh (¿se movió/renombró?)"
 fi
 
+# ── cerrar-slice --wait-ci: el veredicto de CI gobierna merge/abort (A2, 2026-10-11) ──
+# Causa del FP viejo: mergeaba ante CUALQUIER exit≠0 del chequeo (confundía sin-CI/pendiente/rojo/no-leído).
+# Ahora normaliza a UN veredicto y actúa. Prueba AMBAS direcciones vía el mock (sin red/forge) + --dry-run
+# (no mergea): VERDE/SINCI → PROCEDE (llega al "correría"); ROJO/INDET/PENDIENTE → ABORTA (exit≠0).
+echo ""
+echo "== cerrar-slice --wait-ci: el estado real del CI gobierna merge/abort (A2) =="
+CS="$SCRIPT_DIR/skills/cerrar-slice/cerrar-slice.sh"
+if [ -f "$CS" ]; then
+  CSBIN="$FAKEHOME/csbin"; mkdir -p "$CSBIN"                       # stub de gh para el `command -v` (el mock corta antes de llamarlo)
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$CSBIN/gh"; chmod +x "$CSBIN/gh"
+  _csmsg='Afina el wait-ci para decidir por el estado real del CI del MR. Rama: fix/x MR: !999'
+  _cs() { CLAUDE_CERRAR_SLICE_CI_MOCK="$1" CERRAR_SLICE_CI_TIMEOUT=0 PATH="$CSBIN:$PATH" \
+            bash "$CS" --id 999 --forge gh --message "$_csmsg" --wait-ci --dry-run 2>/dev/null; }
+  for v in VERDE SINCI; do
+    if _cs "$v" | grep -q 'correría'; then ok "cerrar-slice wait-ci: $v → procede al merge"
+    else bad "cerrar-slice wait-ci: $v debió PROCEDER y no llegó a armar el merge"; fi
+  done
+  for v in ROJO INDET PENDIENTE; do
+    if _cs "$v" >/dev/null 2>&1; then bad "cerrar-slice wait-ci: $v debió ABORTAR (exit≠0) y procedió"
+    else ok "cerrar-slice wait-ci: $v → aborta, no mergea"; fi
+  done
+  if _cs ROJO | grep -q 'correría'; then bad "cerrar-slice wait-ci: ROJO llegó a armar el merge (debió abortar antes)"
+  else ok "cerrar-slice wait-ci: ROJO aborta ANTES de armar el merge"; fi
+else
+  bad "cerrar-slice: no encuentro $CS"
+fi
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 PASS=$(grep -c '^OK$'  "$CALLLOG" 2>/dev/null); PASS="${PASS:-0}"

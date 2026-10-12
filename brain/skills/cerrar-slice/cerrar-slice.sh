@@ -101,16 +101,56 @@ fi
 case "$FORGE" in glab|gh) : ;; *) _err "--forge debe ser glab o gh (dado: '$FORGE')." ;; esac
 command -v "$FORGE" >/dev/null 2>&1 || _err "'$FORGE' no está en el PATH."
 
-# ── espera de CI (opcional, acotada) ──
-if [ "$WAIT_CI" = 1 ]; then
-  echo "cerrar-slice: esperando el pipeline/checks en verde antes de mergear…" >&2
-  if [ "$FORGE" = glab ]; then
-    glab ci status ${BRANCH:+--branch "$BRANCH"} ${REPO:+-R "$REPO"} 2>/dev/null || \
-      echo "cerrar-slice: aviso — no pude leer el estado de CI (sigo; revísalo tú)." >&2
+# ── espera de CI (opcional, acotada) — DECIDE por el ESTADO REAL del CI, no por el exit-code ──
+# Causa del FP viejo: corría el chequeo 1× y ante CUALQUIER exit≠0 decía "sigo; revísalo tú" y mergeaba —
+# confundía 4 casos (sin-CI / pendiente / rojo / no-pude-leer) en "procede". Ahora normaliza a UN veredicto
+# y actúa: SINCI/VERDE → mergea · ROJO → ABORTA · PENDIENTE → espera (acotado) · INDET → ABORTA (no mergea a
+# ciegas bajo --wait-ci; un problema de entorno NO se vuelve silencio). Sin --wait-ci, el comportamiento no cambia.
+_ci_veredicto() {
+  # mock para tests deterministas de la DECISIÓN (ambas direcciones), sin red/forge:
+  if [ -n "${CLAUDE_CERRAR_SLICE_CI_MOCK:-}" ]; then printf '%s\n' "$CLAUDE_CERRAR_SLICE_CI_MOCK"; return 0; fi
+  if [ "$FORGE" = gh ]; then
+    local out
+    out="$(gh pr checks "$ID" ${REPO:+-R "$REPO"} --json bucket 2>/dev/null)"
+    if printf '%s' "$out" | jq -e 'type=="array"' >/dev/null 2>&1; then
+      case "$out" in '[]') echo SINCI; return 0 ;; esac            # arreglo vacío = sin checks configurados
+      if printf '%s' "$out" | jq -e 'any(.[]; .bucket=="fail" or .bucket=="cancel")' >/dev/null 2>&1; then echo ROJO; return 0; fi
+      if printf '%s' "$out" | jq -e 'any(.[]; .bucket=="pending")' >/dev/null 2>&1; then echo PENDIENTE; return 0; fi
+      echo VERDE; return 0                                         # resto = pass/skipping
+    fi
+    # sin JSON parseable: distingue "no hay checks" (sin-CI, se puede mergear) de un error real (INDET)
+    gh pr checks "$ID" ${REPO:+-R "$REPO"} 2>&1 | grep -qi 'no checks' && { echo SINCI; return 0; }
+    echo INDET; return 0
   else
-    gh pr checks "$ID" ${REPO:+-R "$REPO"} 2>/dev/null || \
-      echo "cerrar-slice: aviso — no pude leer los checks (sigo; revísalos tú)." >&2
+    # glab: el estado del pipeline del MR sale de su JSON (.pipeline.status); .pipeline null = sin pipeline.
+    local st
+    st="$(glab mr view "$ID" ${REPO:+-R "$REPO"} -F json 2>/dev/null | jq -r '.pipeline.status // "NONE"' 2>/dev/null)"
+    case "$st" in
+      NONE|'')                                                   echo SINCI ;;
+      success|skipped|manual)                                    echo VERDE ;;
+      failed|canceled)                                           echo ROJO ;;
+      created|pending|running|waiting_for_resource|preparing|scheduled) echo PENDIENTE ;;
+      *)                                                         echo INDET ;;
+    esac
   fi
+}
+if [ "$WAIT_CI" = 1 ]; then
+  echo "cerrar-slice: --wait-ci — comprobando el CI del #$ID antes de mergear…" >&2
+  _ci_max="${CERRAR_SLICE_CI_TIMEOUT:-600}"; _ci_step="${CERRAR_SLICE_CI_POLL:-15}"; _ci_slept=0
+  while :; do
+    _v="$(_ci_veredicto)"
+    case "$_v" in
+      SINCI) echo "cerrar-slice: el MR/repo no tiene pipeline/checks → nada que esperar, procedo." >&2; break ;;
+      VERDE) echo "cerrar-slice: CI en verde → procedo al merge." >&2; break ;;
+      ROJO)  _err "el CI del #$ID está en ROJO (un check falló/se canceló). NO mergeo bajo --wait-ci: arréglalo y reintenta." ;;
+      INDET) _err "no pude determinar el estado del CI del #$ID (API/red/token). NO mergeo a ciegas bajo --wait-ci: revísalo y mergea tú, o reintenta." ;;
+      PENDIENTE)
+        [ "$_ci_slept" -ge "$_ci_max" ] && _err "el CI del #$ID sigue PENDIENTE tras ${_ci_max}s. NO mergeo bajo --wait-ci: espera a que termine y reintenta."
+        echo "cerrar-slice: CI pendiente… reintento en ${_ci_step}s (llevo ${_ci_slept}s/${_ci_max}s)." >&2
+        sleep "$_ci_step"; _ci_slept=$((_ci_slept + _ci_step)) ;;
+      *) _err "veredicto de CI inesperado ('$_v') — no mergeo bajo --wait-ci." ;;
+    esac
+  done
 fi
 
 # ── arma el comando de merge (recetas GEMELAS glab↔gh) y lo corre INMEDIATO, SIN --auto ──
