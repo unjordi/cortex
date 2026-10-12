@@ -4066,6 +4066,45 @@ rm -f "$RHREC3/.claude/memory/estado-proyecto.md"   # repo SIN el sistema de mem
 is_silent "$(rh3 compact)" \
   && ok "rehidratar-hilo Rec3: compact SIN estado-proyecto (repo sin el sistema) → silencio" || bad "rehidratar-hilo Rec3: repo sin sistema debió ser silencio aun en compact"
 rm -rf "$RHREC3"
+
+# ── A7 (inbox 2026-09-22): FARO anti-truncado. El harness trunca la salida de los hooks de arranque a
+#    ~2KB de preview; si el §SIGUIENTE del hilo no cae ahí (p. ej. porque el hilo abre con un árbol largo),
+#    el modelo retoma a ciegas. El hook antepone un FARO (grito «HILO TRUNCADO» + §SIGUIENTE extraído)
+#    cuando el bloque supera el umbral, y el chequeo final de no-vacío es O(n) (la expansión `${ctx//…}`
+#    que vivía ahí era O(n²) y COLGABA el SessionStart con un hilo de ~40KB bajo /bin/bash 3.2).
+RHFARO="$(mktemp -d "${TMPDIR:-/tmp}/brain-rhfaro.XXXXXX")"
+mkdir -p "$RHFARO/.claude/memory"
+# `timeout` opcional: si alguien revierte el fix O(n), el test FALLA (output vacío) en vez de colgar el CI.
+_fto=""; command -v timeout  >/dev/null 2>&1 && _fto="timeout 30"
+command -v gtimeout >/dev/null 2>&1 && _fto="gtimeout 30"
+rhf() { printf '%s' '{"source":"compact","session_id":"sF","transcript_path":"/dev/null"}' \
+  | $_fto env CLAUDE_PROJECT_DIR="$RHFARO" bash "$HOOKS/rehidratar-hilo.sh"; }
+# (1) hilo PEQUEÑO answer-first → SIN faro (cabe entero, no se trunca)
+printf '# Hilo mental actual\n> Última actualización: 2026-10-12 · rama x\n\n## SIGUIENTE PASO\nSeguir con A8.\n' \
+  > "$RHFARO/.claude/memory/hilo-mental-actual.md"
+rhf_small="$(rhf | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null)"
+printf '%s' "$rhf_small" | grep -q 'HILO TRUNCADO' \
+  && bad "rehidratar-hilo faro: hilo chico NO debe llevar faro" \
+  || ok "rehidratar-hilo faro: hilo chico → sin faro (header normal)"
+# (2) hilo GRANDE (§SIGUIENTE arriba + árbol de relleno que lo empujaría del preview) → FARO con §SIGUIENTE
+{ printf '# Hilo mental actual\n> Última actualización: 2026-10-12 · rama x\n\n## SIGUIENTE PASO\nMARCA_SIGUIENTE_FARO — seguir con A8.\n\n## ARBOL\n'
+  i=1; while [ "$i" -le 500 ]; do printf 'MARCA_RELLENO_ARBOL brain/hooks/x-%s.sh relleno para pasar el umbral del harness\n' "$i"; i=$((i+1)); done
+} > "$RHFARO/.claude/memory/hilo-mental-actual.md"
+rhf_big="$(rhf | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null)"
+printf '%s' "$rhf_big" | grep -q 'HILO TRUNCADO' \
+  && ok "rehidratar-hilo faro: hilo grande → antepone el faro 'HILO TRUNCADO'" \
+  || bad "rehidratar-hilo faro: esperaba faro en hilo grande (¿colgó el chequeo O(n²)?)"
+printf '%s' "$rhf_big" | grep -q 'ARGUMENTS' \
+  && ok "rehidratar-hilo faro: el faro advierte que los ARGUMENTS reinyectados son HISTORIA" \
+  || bad "rehidratar-hilo faro: el faro no advierte sobre los ARGUMENTS"
+# PROPÓSITO (no plomería): el §SIGUIENTE extraído aparece ANTES del relleno del árbol — es todo el punto.
+pos_sig="$(printf '%s' "$rhf_big" | grep -n 'MARCA_SIGUIENTE_FARO' | head -n1 | cut -d: -f1)"
+pos_rel="$(printf '%s' "$rhf_big" | grep -n 'MARCA_RELLENO_ARBOL' | head -n1 | cut -d: -f1)"
+{ [ -n "$pos_sig" ] && [ -n "$pos_rel" ] && [ "$pos_sig" -lt "$pos_rel" ]; } \
+  && ok "rehidratar-hilo faro: el §SIGUIENTE lidera, ANTES del árbol (sobrevive el truncado a 2KB)" \
+  || bad "rehidratar-hilo faro: el §SIGUIENTE no quedó antes del árbol (sig=$pos_sig rel=$pos_rel)"
+rm -rf "$RHFARO"
+
 rm -rf "$RHGIT" "$RHROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────

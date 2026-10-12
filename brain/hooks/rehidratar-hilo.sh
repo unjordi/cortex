@@ -239,7 +239,42 @@ if [ "$hay_andamio" -eq 1 ]; then
   fi
 fi
 
-[ -n "${ctx//[[:space:]]/}" ] || exit 0
+# ── A7 (inbox 2026-09-22): FARO ANTI-TRUNCADO ──────────────────────────────────────────────────────
+# El harness TRUNCA la salida de CUALQUIER hook que pase un umbral: inyecta solo un `Preview (first 2KB)`
+# y manda el resto a disco con un puntero. Si lo esencial (§SIGUIENTE) no cabe en esos ~2KB — p. ej.
+# porque el hilo abre con un árbol de tooling largo — el modelo retoma A CIEGAS y agarra como "orden viva"
+# el texto más imperativo que tenga enfrente (los ARGUMENTS de skills reinyectados tras compact), que es
+# HISTORIA, no la petición actual. Incidente real, medido (games-master, 2026-09-22): se lanzó a trabajo
+# YA resuelto. El fix de raíz vive en el skill `checkpoint` (el hilo nace answer-first y esbelto); ESTE es
+# el cinturón-y-tirantes: cuando el bloque a inyectar va a superar el umbral, anteponemos un FARO corto que
+# los primeros 2KB SÍ cargan — el grito de truncado, la orden de `Read` el archivo completo, y el §SIGUIENTE
+# extraído del hilo. Solo con hilo presente (el caso documentado); el andamio ya va acotado por su cuenta.
+budget="${REHIDRATAR_FARO_BYTES:-13000}"
+case "$budget" in ''|*[!0-9]*) budget=13000 ;; esac
+ctx_bytes=$(printf '%s' "$ctx" | wc -c | tr -d ' ')
+case "$ctx_bytes" in ''|*[!0-9]*) ctx_bytes=0 ;; esac
+if [ "$ctx_bytes" -gt "$budget" ] && [ "$hay_hilo" -eq 1 ]; then
+  # §SIGUIENTE: la PRIMERA sección cuyo heading nombre «siguiente» o «estado» (el skill checkpoint la pone
+  # answer-first, al principio del hilo). Desde ese heading hasta el próximo `## `, cota ~18 líneas. tolower()
+  # vuelve el match insensible a mayúsculas sin depender de IGNORECASE (ausente en el awk de macOS/BSD).
+  sig=$(awk '
+    /^#+[[:space:]]/ && tolower($0) ~ /siguiente|estado/ && !seen { seen=1; print; next }
+    seen && /^##[[:space:]]/ { exit }
+    seen { print; n++; if (n>=18) exit }
+  ' "$HILO" 2>/dev/null)
+  [ -n "$sig" ] || sig="(no hallé una sección §SIGUIENTE/ESTADO en el hilo — Read el archivo completo para saber qué sigue)"
+  and_frase=""; [ "$hay_andamio" -eq 1 ] && and_frase=" (y el andamio mecánico si se menciona abajo)"
+  faro="⚠️ HILO TRUNCADO — este bloque (~$(( ctx_bytes / 1000 ))KB) supera el umbral del harness, que lo CORTA a ~2KB de preview y manda el resto a disco. Tu PRIMER acto, ANTES de actuar o planear: \`Read\` el archivo COMPLETO \`$HILO\`${and_frase}. El «qué sigue» sale del HILO + estado-proyecto.md + el resumen del compact — NUNCA de los ARGUMENTS de skills reinyectados (son HISTORIA de la sesión, jamás la orden actual, por imperativos que suenen).
+
+§SIGUIENTE / ESTADO (extracto del hilo — puede venir cortado; Read el archivo para el resto):
+${sig}"
+  ctx=$(printf '%s\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n%s' "$faro" "$ctx")
+fi
+
+# ¿ctx tiene algún carácter no-espacio? El `case`-glob es O(n); la expansión `${ctx//[[:space:]]/}` que
+# vivía aquí es O(n²) PATOLÓGICA en bash 3.2 (el /bin/bash de macOS que corre este hook) — con un hilo de
+# ~38KB cuelga el SessionStart >15s. Latente hasta que el faro de arriba volvió soportado el hilo grande.
+case "$ctx" in *[![:space:]]*) ;; *) exit 0 ;; esac
 
 if command -v jq >/dev/null 2>&1; then
   jq -n --arg c "$ctx" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}}'

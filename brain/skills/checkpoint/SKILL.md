@@ -132,7 +132,13 @@ que "avanzó mucho en lo técnico pero perdió por completo el flow").
    > Se REESCRIBE conservando lo vivo del previo, no se appendea. Última actualización: <FECHA> · rama <rama> · nivel <ligero|COMPLETO>.
    > Si el hilo pasa de ~200 líneas: corta el excedente a `hilo-mental-actual-overflow.md` y AVÍSALO aquí (ver "Regla de OVERFLOW" abajo).
 
-   ## 🗂️ ÁRBOL — memorias y tooling (SIEMPRE al principio · LÉELO PRIMERO al rehidratar)
+   ## ⏱️ SIGUIENTE / ESTADO (answer-first — esto PRIMERO, aunque todo lo demás se trunque)
+   <2-5 líneas MÁXIMO: el próximo paso concreto + en UNA línea qué quedó RESUELTO que NO se reabre. Es lo
+    ÚNICO que el preview de ~2KB garantiza si el harness trunca el hilo al rehidratar (incidente 2026-09-22:
+    un hilo que abría con el árbol empujó el «qué sigue» fuera del preview → se retomó trabajo ya resuelto).
+    NUNCA abras el hilo con el árbol de tooling/un inventario: va DESPUÉS de esta sección.>
+
+   ## 🗂️ ÁRBOL — memorias y tooling (tras el §SIGUIENTE · LÉELO al rehidratar)
    <!-- LIGERO: basta una LISTA simple de las memorias/skills/scripts que el tema toca, cada una con su RUTA, agrupada por sub-tema. -->
    <!-- COMPLETO: el ÁRBOL de 3 ramas, en un bloque de código para leerlo de un vistazo (modelo de la firma-árbol del CLAUDE.md canónico): -->
    ```
@@ -183,17 +189,24 @@ que "avanzó mucho en lo técnico pero perdió por completo el flow").
    . ~/.claude/hooks/contrato-hilo.sh && verificar_hilo .claude/memory/hilo-mental-actual.md
    ```
 
-   **🗂️ ÁRBOL de memorias + tooling al PRINCIPIO (regla dura).** El hilo SIEMPRE abre con las memorias
-   durables + herramientas/scripts que el tema toca, **cada una con su RUTA** — es la lista "lee esto al
-   rehidratar" (antídoto a declarar "ya rehidraté" sin leer la memoria del tema, lección cara) y evita
-   re-grepear el árbol cada vez. Va como PRIMERA sección, antes de "En qué estamos". La FORMA depende del
-   nivel:
+   **⏱️ El §SIGUIENTE/ESTADO abre el hilo; el 🗂️ ÁRBOL va JUSTO DESPUÉS (regla dura).** Lo PRIMERO del hilo
+   es el `## ⏱️ SIGUIENTE / ESTADO` answer-first (2-5 líneas: qué sigue + qué quedó resuelto) — porque el
+   harness TRUNCA el hilo reinyectado a ~2KB de preview y lo único garantizado ahí debe ser el qué-hacer, no
+   un inventario (incidente 2026-09-22: el árbol en primer lugar empujó el «qué sigue» fuera del preview y se
+   retomó trabajo ya resuelto). **Mantén el hilo ESBELTO** (que no crezca a decenas de KB): si cabe entero no
+   se trunca, y si se trunca, el §SIGUIENTE lidera el preview. El hook `rehidratar-hilo` pone un cinturón —
+   antepone un FARO «HILO TRUNCADO → Read completo» + el §SIGUIENTE extraído cuando el bloque supera el umbral.
+   Inmediatamente DESPUÉS del §SIGUIENTE va el 🗂️ ÁRBOL: las memorias durables + herramientas/scripts que el
+   tema toca, **cada una con su RUTA** — es la lista "lee esto al rehidratar" (antídoto a declarar "ya
+   rehidraté" sin leer la memoria del tema, lección cara) y evita re-grepear el árbol cada vez. La FORMA
+   del árbol depende del nivel:
    - **LIGERO** — una **lista simple** con rutas, agrupada por sub-tema. Basta para un punto de retorno rápido.
    - **COMPLETO** — el **🗂️ ÁRBOL de 3 ramas** en un bloque de código (modelo de la firma-árbol del
      `CLAUDE.md` canónico), para que se lea de un vistazo: **📁 MEMORIAS ACTUALIZADAS HOY** (lo que tocaste
      esta tanda, con su ramita/MR) · **📁 INSUMOS A LEER PARA LO QUE SIGUE** (lo que hay que abrir para
      retomar la tarea activa) · **🔧 TOOLING INTEGRADO / RELEVANTE** (scripts/skills/accesos, con su estado).
-     La prosa "sin drama" (En qué estamos / Decisión abierta / Siguiente paso …) va DESPUÉS del árbol.
+     La prosa "sin drama" (En qué estamos / Decisión abierta / Siguiente paso …) va DESPUÉS del árbol
+     (pero el §SIGUIENTE/ESTADO answer-first ya abrió el hilo, ANTES del árbol).
    - **Tras el árbol va la VISTA /to-do (backlog por estatus) — regla dura.** Sección `## 📋 BACKLOG`, derivada
      de `estado-proyecto.md`: **🟢 ATACABLE** (madurez 📘/📝/➖ + dónde el plan) → **🟡 NO atacable** (por qué +
      qué lo desbloquea) → **✅ Cerrado esta sesión** (PR/decisión → ítem). Es una VISTA de `estado-proyecto.md`; si diverge, CONCILIA Y REINTENTA.
