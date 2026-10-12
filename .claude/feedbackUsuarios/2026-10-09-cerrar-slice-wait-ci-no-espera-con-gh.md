@@ -1,0 +1,1 @@
+- 2026-10-09 · cerrar-slice.sh --wait-ci con gh: imprimió los checks en 'pending', dijo 'no pude leer los checks (sigo; revísalos tú)' y mergeó el PR #463 con CI todavía corriendo. Esperado: esperar al verde o abortar, no seguir.
