@@ -123,10 +123,16 @@ _ci_veredicto() {
     echo INDET; return 0
   else
     # glab: el estado del pipeline del MR sale de su JSON (.pipeline.status); .pipeline null = sin pipeline.
-    local st
-    st="$(glab mr view "$ID" ${REPO:+-R "$REPO"} -F json 2>/dev/null | jq -r '.pipeline.status // "NONE"' 2>/dev/null)"
+    # C1 (QA claudio 2026-10-13): si glab FALLA (sin red/token/ID malo) su salida NO es un objeto JSON → el
+    # `jq … // "NONE"` viejo daba "" → SINCI → mergeaba A CIEGAS. Ahora, igual que el carril gh, se valida el
+    # JSON ANTES: sin objeto parseable → INDET (un fallo de ENTORNO no se vuelve "procede"); SINCI SOLO con
+    # JSON válido y `.pipeline == null` (pipeline no configurado).
+    local out st
+    out="$(glab mr view "$ID" ${REPO:+-R "$REPO"} -F json 2>/dev/null)"
+    if ! printf '%s' "$out" | jq -e 'type=="object"' >/dev/null 2>&1; then echo INDET; return 0; fi
+    if printf '%s' "$out" | jq -e '.pipeline == null' >/dev/null 2>&1; then echo SINCI; return 0; fi
+    st="$(printf '%s' "$out" | jq -r '.pipeline.status // ""' 2>/dev/null)"
     case "$st" in
-      NONE|'')                                                   echo SINCI ;;
       success|skipped|manual)                                    echo VERDE ;;
       failed|canceled)                                           echo ROJO ;;
       created|pending|running|waiting_for_resource|preparing|scheduled) echo PENDIENTE ;;
@@ -143,7 +149,7 @@ if [ "$WAIT_CI" = 1 ]; then
       SINCI) echo "cerrar-slice: el MR/repo no tiene pipeline/checks → nada que esperar, procedo." >&2; break ;;
       VERDE) echo "cerrar-slice: CI en verde → procedo al merge." >&2; break ;;
       ROJO)  _err "el CI del #$ID está en ROJO (un check falló/se canceló). NO mergeo bajo --wait-ci: arréglalo y reintenta." ;;
-      INDET) _err "no pude determinar el estado del CI del #$ID (API/red/token). NO mergeo a ciegas bajo --wait-ci: revísalo y mergea tú, o reintenta." ;;
+      INDET) _err "no pude determinar el estado del CI del #$ID (API/red/token). NO mergeo a ciegas bajo --wait-ci: deja que el CI sea legible (red/token) y reintenta." ;;
       PENDIENTE)
         [ "$_ci_slept" -ge "$_ci_max" ] && _err "el CI del #$ID sigue PENDIENTE tras ${_ci_max}s. NO mergeo bajo --wait-ci: espera a que termine y reintenta."
         echo "cerrar-slice: CI pendiente… reintento en ${_ci_step}s (llevo ${_ci_slept}s/${_ci_max}s)." >&2

@@ -63,8 +63,9 @@ ctx=$(tail -n 400 "$tp" 2>/dev/null | jq -rRn '
   ' 2>/dev/null | tr -cd '0-9')
 [ -n "$ctx" ] || exit 0                          # sin usage fresco (post-compact) aún → fail-open
 
-# Ventana del MODELO: override explícito `AVISO_CONTEXTO_WINDOW_TOKENS`, o derivada del modelo (marcador
-# "[1m]" / 1M-nativos / default 200K). Precedencia settings: user < proyecto < local.
+# Ventana del MODELO: SOLO por EVIDENCIA — override explícito `AVISO_CONTEXTO_WINDOW_TOKENS`, marcador
+# "[1m]", o un modelo con ventana real LISTADA. Modelo desconocido → NO hay ventana (silencio), NUNCA un
+# default inventado. Precedencia settings: user < proyecto < local.
 WINDOW="${AVISO_CONTEXTO_WINDOW_TOKENS:-}"
 case "$WINDOW" in
   ''|*[!0-9]*)
@@ -74,24 +75,31 @@ case "$WINDOW" in
       m=$(jq -r '.model // empty' "$s" 2>/dev/null)
       [ -n "$m" ] && model="$m"
     done
-    # MODELO DE RUNTIME del transcript (el que REALMENTE genera) — GANA sobre settings.json. Causa del FP
-    # 200K: el modelo elegido en runtime (p. ej. Opus 5.5) NO queda escrito en settings.json → model="" →
-    # default 200K → urgencia falsa en una sesión de 1M cuando ctx<200K (la auto-corrección física no dispara).
-    # El transcript lo trae en .message.model (último mensaje no-sidechain). fromjson? = robusto a líneas malas.
+    # MODELO DE RUNTIME del transcript (el que REALMENTE genera) — GANA sobre settings.json. El modelo elegido
+    # en runtime (p. ej. Opus 5.5) NO queda escrito en settings.json → sin esto, model="" → desconocido. El
+    # transcript lo trae en .message.model (último mensaje no-sidechain). fromjson? = robusto a líneas malas.
+    # SALTA modelos "<…>" (p. ej. "<synthetic>": límite de sesión / errores de API / interrupciones) para no
+    # tapar el último modelo REAL anterior (un "<synthetic>" propio se leería como desconocido → silencio).
     tpm=$(tail -n 400 "$tp" 2>/dev/null | jq -rRn '
         reduce (inputs | fromjson?) as $o (null;
             if ($o.isSidechain == true) then .
-            else (($o.message.model // $o.model) // .) end)
+            else (($o.message.model // $o.model) as $m
+                  | if ($m != null and ($m | startswith("<") | not)) then $m else . end)
+            end)
         // empty' 2>/dev/null)
     [ -n "$tpm" ] && model="$tpm"
     case "$model" in
       *'[1m]'*)                                                      WINDOW=1000000 ;;
       *opus-4-7*|*opus-4-8*|*opus-5*|*sonnet-5*|*fable-5*|*mythos-5*) WINDOW=1000000 ;;
-      *)                                                             WINDOW=200000  ;;
+      *)                                                             WINDOW="" ;;   # desconocido/vacío/<synthetic> → NO inventar ventana
     esac
     ;;
 esac
-# AUTO-CORRECCIÓN por invariante FÍSICO: si ctx > ventana detectada, promueve a 1M.
+# Sin ventana por EVIDENCIA (ni override, ni marcador [1m], ni modelo listado; modelo desconocido/vacío/
+# <synthetic>): NO inventamos un número — fail-open SILENCIOSO, igual que sin jq/usage. (Jordi 2026-10-13:
+# "si no sabe, que no invente"; se eliminó el viejo default 200K que disparaba urgencia falsa en sesiones 1M.)
+case "$WINDOW" in ''|*[!0-9]*) exit 0 ;; esac
+# AUTO-CORRECCIÓN por invariante FÍSICO: si ctx > ventana detectada (de [1m]/modelo listado), promueve a 1M.
 [ "$ctx" -gt "$WINDOW" ] 2>/dev/null && WINDOW=1000000
 
 # autoCompactWindow: leído de settings.json (user < proyecto < local).

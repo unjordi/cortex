@@ -249,8 +249,10 @@ fi
 # el cinturón-y-tirantes: cuando el bloque a inyectar va a superar el umbral, anteponemos un FARO corto que
 # los primeros 2KB SÍ cargan — el grito de truncado, la orden de `Read` el archivo completo, y el §SIGUIENTE
 # extraído del hilo. Solo con hilo presente (el caso documentado); el andamio ya va acotado por su cuenta.
-budget="${REHIDRATAR_FARO_BYTES:-13000}"
-case "$budget" in ''|*[!0-9]*) budget=13000 ;; esac
+# Default 9000: el harness corta el additionalContext alrededor de ~10K (truncado más chico medido: 10251 B);
+# 13000 dejaba 31/172 bloques truncados ENTRE 10K y 13K sin faro. 9000 queda bajo el corte medido, con margen.
+budget="${REHIDRATAR_FARO_BYTES:-9000}"
+case "$budget" in ''|*[!0-9]*) budget=9000 ;; esac
 ctx_bytes=$(printf '%s' "$ctx" | wc -c | tr -d ' ')
 case "$ctx_bytes" in ''|*[!0-9]*) ctx_bytes=0 ;; esac
 if [ "$ctx_bytes" -gt "$budget" ] && [ "$hay_hilo" -eq 1 ]; then

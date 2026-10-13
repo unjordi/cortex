@@ -48,7 +48,7 @@ _stl_tasksdir() {
   for d in "$base"/*/; do
     d="${d%/}"
     _stl_dir_tiene_json "$d" || continue
-    m=$(stat -f %m "$d" 2>/dev/null || stat -c %Y "$d" 2>/dev/null || echo 0)
+    m=$(stat -c %Y "$d" 2>/dev/null || stat -f %m "$d" 2>/dev/null || echo 0)   # GNU primero; en GNU `stat -f %m` es --file-system (basura con exit 0) → BSD-primero elegía mal la carpeta viva en ubuntu
     case "$m" in ''|*[!0-9]*) m=0 ;; esac
     # Solo dentro de la ventana (si no pudimos leer `now`, no filtramos por tiempo).
     if [ "$now" -gt 0 ] && [ "$STL_VENTANA_FALLBACK" -gt 0 ]; then

@@ -1021,12 +1021,14 @@ SBROOT=$(mktemp -d "${TMPDIR:-/tmp}/statstub.XXXXXX")
 SBBIN="$SBROOT/bin"; mkdir -p "$SBBIN"
 cat > "$SBBIN/stat" <<'STUB'
 #!/usr/bin/env bash
-# Simula GNU stat: -c funciona (traducido al BSD real de /usr/bin); -f (--file-system) da basura con exit 0.
+# Simula GNU stat SIN delegar al stat del host (en ubuntu /usr/bin/stat ES GNU y `-f` daría basura, lo que
+# rompía este stub). Para el archivo recién creado 0600 por el test, `-c` devuelve sus valores reales
+# (uid=quien corre, perm=600, mtime=ahora) de forma portable; `-f` (--file-system) da basura con exit 0.
 case "$1" in
   -c) case "$2" in
-        '%u') /usr/bin/stat -f '%u'  "$3" ;;
-        '%a') /usr/bin/stat -f '%Lp' "$3" ;;
-        '%Y') /usr/bin/stat -f '%m'  "$3" ;;
+        '%u') id -u ;;
+        '%a') echo 600 ;;
+        '%Y') date +%s ;;
         *) exit 1 ;;
       esac; exit $? ;;
   -f) echo 999999999; exit 0 ;;   # GNU `stat -f %u` = bloques libres del FS, NO el uid del archivo
@@ -1128,7 +1130,7 @@ H1EREPO4="$H1EROOT4/repo"; mkdir -p "$H1EREPO4"; git -C "$H1EREPO4" init -q >/de
 git -C "$H1EREPO4" remote add origin git@gitlab.com:org/proyecto.git >/dev/null 2>&1
 ( export TMPDIR="$H1EROOT4"; PATH="$H1EBIN:/usr/bin:/bin"; acg__destino_de_mr_full "glab mr merge 9 --yes" "$H1EREPO4" >/dev/null 2>&1 )
 key9=$(printf '%s' "org/proyecto|glab|9" | sed 's/[^A-Za-z0-9]/_/g')
-_perm9=$(stat -f '%Lp' "$H1EROOT4/acg-mrdest-${key9}" 2>/dev/null || stat -c '%a' "$H1EROOT4/acg-mrdest-${key9}" 2>/dev/null)
+_perm9=$(stat -c '%a' "$H1EROOT4/acg-mrdest-${key9}" 2>/dev/null || stat -f '%Lp' "$H1EROOT4/acg-mrdest-${key9}" 2>/dev/null)   # GNU primero (en ubuntu `stat -f %Lp` da basura)
 out2=$(TMPDIR="$H1EROOT4" PATH="/usr/bin:/bin" acg__destino_de_mr_full "glab mr merge 9 --yes" "$H1EREPO4" 2>/dev/null)   # SIN glab en PATH -> debe ser cache-hit
 { [ "$_perm9" = "600" ] && case "$out2" in *develop*API*) true ;; *) false ;; esac; } \
   && ok "H1exec: round-trip escritura→lectura sigue funcionando (perm=$_perm9, chmod 600 en la escritura evita auto-invalidar el caché)" \
@@ -3417,6 +3419,35 @@ rm -rf "$A4BROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (b3cs-ci) cerrar-slice _ci_veredicto (glab): un FALLO de glab (sin red/token) → INDET, NUNCA SINCI =="
+# C1 (QA claudio 2026-10-13): el `jq … // \"NONE\"` viejo daba \"\" ante glab-falla → case '' → SINCI →
+# mergeaba A CIEGAS bajo --wait-ci. Ahora se valida el JSON ANTES (type==object): sin objeto → INDET (aborta).
+# FALLA contra el código viejo (que proseguía con exit 0). Se ejercita el script REAL con glab stubbeado.
+CSCI_SH="$SCRIPT_DIR/skills/cerrar-slice/cerrar-slice.sh"
+CSCI_MSG="fix(x): prueba del veredicto de CI con glab stub, suficientemente larga para el piso. Rama: fix/x MR: !1"
+CSCI_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-csci.XXXXXX")"; CSCI_BIN="$CSCI_ROOT/bin"; mkdir -p "$CSCI_BIN"
+# (dir malo) glab FALLA → INDET → aborta (exit≠0 + mensaje INDET)
+printf '#!/usr/bin/env bash\nexit 3\n' > "$CSCI_BIN/glab"; chmod +x "$CSCI_BIN/glab"
+csci_out="$(PATH="$CSCI_BIN:/usr/bin:/bin" bash "$CSCI_SH" --id 1 --message "$CSCI_MSG" --forge glab --wait-ci --dry-run 2>&1)"; csci_rc=$?
+{ [ "$csci_rc" -ne 0 ] && printf '%s' "$csci_out" | grep -qi 'no pude determinar el estado del CI'; } \
+  && ok "b3cs-ci: glab FALLA (sin red/token) → INDET y ABORTA (no mergea a ciegas)" \
+  || bad "b3cs-ci: glab falla pero NO abortó con INDET (rc=$csci_rc) — mergearía a ciegas; got: $(printf '%s' "$csci_out" | tail -1)"
+# (control) JSON válido con .pipeline null → SINCI → procede (exit 0)
+printf '#!/usr/bin/env bash\necho '\''{"pipeline":null}'\''\n' > "$CSCI_BIN/glab"; chmod +x "$CSCI_BIN/glab"
+csci_out="$(PATH="$CSCI_BIN:/usr/bin:/bin" bash "$CSCI_SH" --id 1 --message "$CSCI_MSG" --forge glab --wait-ci --dry-run 2>&1)"; csci_rc=$?
+{ [ "$csci_rc" -eq 0 ] && printf '%s' "$csci_out" | grep -qi 'nada que esperar'; } \
+  && ok "b3cs-ci: JSON válido .pipeline null → SINCI y PROCEDE (sin regresión del caso sin-CI)" \
+  || bad "b3cs-ci: un MR sin pipeline (JSON válido) no procedió (rc=$csci_rc); got: $(printf '%s' "$csci_out" | tail -1)"
+# (control) pipeline failed → ROJO → aborta
+printf '#!/usr/bin/env bash\necho '\''{"pipeline":{"status":"failed"}}'\''\n' > "$CSCI_BIN/glab"; chmod +x "$CSCI_BIN/glab"
+csci_out="$(PATH="$CSCI_BIN:/usr/bin:/bin" bash "$CSCI_SH" --id 1 --message "$CSCI_MSG" --forge glab --wait-ci --dry-run 2>&1)"; csci_rc=$?
+{ [ "$csci_rc" -ne 0 ] && printf '%s' "$csci_out" | grep -qi 'ROJO'; } \
+  && ok "b3cs-ci: JSON válido pipeline failed → ROJO y ABORTA" \
+  || bad "b3cs-ci: un pipeline failed no abortó (rc=$csci_rc); got: $(printf '%s' "$csci_out" | tail -1)"
+rm -rf "$CSCI_ROOT"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "== (b3o) bz_resolver_base: M-2 — con VARIAS Develop* locales y HEAD en ninguna, NO se adivina (cae a develop + avisa) =="
 M2ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-m2.XXXXXX")"; M2REPO="$M2ROOT/repo"; mkdir -p "$M2REPO"
 git -C "$M2REPO" init -q >/dev/null 2>&1
@@ -4132,6 +4163,21 @@ pos_rel="$(printf '%s' "$rhf_big" | grep -n 'MARCA_RELLENO_ARBOL' | head -n1 | c
 { [ -n "$pos_sig" ] && [ -n "$pos_rel" ] && [ "$pos_sig" -lt "$pos_rel" ]; } \
   && ok "rehidratar-hilo faro: el §SIGUIENTE lidera, ANTES del árbol (sobrevive el truncado a 2KB)" \
   || bad "rehidratar-hilo faro: el §SIGUIENTE no quedó antes del árbol (sig=$pos_sig rel=$pos_rel)"
+# (2b) C2 (QA claudio 2026-10-13): hilo de ~11K — ENTRE el default nuevo (9000) y el viejo (13000). Con el
+# default nuevo dispara el faro; FALLA contra el viejo (13000 lo dejaba truncado SIN faro, que es el bug: el
+# harness corta ~10K). ~130 líneas de relleno ≈ 11KB. Se asevera, además, que el ctx cae en la banda (9000,13000)
+# para que el test siga discriminando si alguien vuelve a tocar el umbral.
+{ printf '# Hilo mental actual\n> Última actualización: 2026-10-12 · rama x\n\n## SIGUIENTE PASO\nMARCA_11K — seguir con A8.\n\n## ARBOL\n'
+  i=1; while [ "$i" -le 130 ]; do printf 'MARCA_RELLENO_ARBOL brain/hooks/x-%s.sh relleno para pasar el umbral del harness\n' "$i"; i=$((i+1)); done
+} > "$RHFARO/.claude/memory/hilo-mental-actual.md"
+rhf_11k="$(rhf | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null)"
+rhf_11k_bytes=$(printf '%s' "$rhf_11k" | wc -c | tr -d ' ')
+{ [ "$rhf_11k_bytes" -gt 9000 ] && [ "$rhf_11k_bytes" -lt 13000 ]; } \
+  && ok "rehidratar-hilo faro: el hilo de prueba cae en la banda (9000,13000) B — discrimina el umbral ($rhf_11k_bytes B)" \
+  || bad "rehidratar-hilo faro: el hilo de prueba quedó FUERA de (9000,13000) B ($rhf_11k_bytes B) — ajusta el relleno o el test deja de discriminar"
+printf '%s' "$rhf_11k" | grep -q 'HILO TRUNCADO' \
+  && ok "rehidratar-hilo faro: hilo ~11K → faro (default 9000, bajo el corte del harness ~10K)" \
+  || bad "rehidratar-hilo faro: hilo ~11K NO disparó faro → default sigue en 13000, se trunca SIN faro entre 10K y 13K"
 rm -rf "$RHFARO"
 
 rm -rf "$RHGIT" "$RHROOT"
@@ -5087,12 +5133,12 @@ e6="$(ac_esc 820000)"   # vuelve a subir → emite de nuevo
 rm -rf "$(dirname "$ESC_ROOT")"
 
 # ── (c) DENOMINADOR = el punto REAL de compact (mockea autoCompactWindow) ──
-# ctx 180K: 90% de la ventana del MODELO (opus=200K) pero solo 20% de ACW (900K) → SILENCIO. Si midiera
-# contra el modelo dispararía; que CALLE prueba que el denominador es autoCompactWindow (el punto real).
-ac_run 180000 "" '{"model":"opus","autoCompactWindow":900000,"autoCompactEnabled":true}'
+# ctx 180K con modelo 1M CONOCIDO: 18% del modelo y 20% de ACW (900K) → SILENCIO (bajo el umbral). El caso de
+# DISPARO (abajo) es el que prueba que el denominador es autoCompactWindow, no la ventana del modelo.
+ac_run 180000 "" '{"model":"claude-opus-4-8","autoCompactWindow":900000,"autoCompactEnabled":true}'
 [ -z "$ACMSG" ] \
-  && ok "[↯viejo] b6c: ctx 90% del modelo pero 20% de autoCompactWindow → SILENCIO (mide contra el punto real, no el modelo)" \
-  || bad "b6c: disparó midiendo contra la ventana del modelo en vez de autoCompactWindow; got: $ACMSG"
+  && ok "b6c: ctx 20% de autoCompactWindow (modelo 1M conocido) → SILENCIO (bajo el umbral)" \
+  || bad "b6c: disparó por debajo del umbral; got: $ACMSG"
 rm -rf "$(dirname "$ACLAST")"
 # ctx 760K: 84% de autoCompactWindow (900K) en un modelo 1M → cruza ALTO, mide y NOMBRA contra ACW.
 ac_run 760000 "" '{"model":"claude-opus-4-8","autoCompactWindow":900000,"autoCompactEnabled":true}'
@@ -5104,18 +5150,18 @@ printf '%s' "$ACMSG" | grep -q 'ventana del modelo: 1000K' \
 rm -rf "$(dirname "$ACLAST")"
 
 # ── (d) RESPETA autoCompactEnabled=false — no miente sobre el auto-compact ──
-# 170K = 85% de la ventana del modelo (opus=200K). Con el auto-compact APAGADO, ACW no gobierna y el corte
-# NO es automático: el mensaje dice la VERDAD y NUNCA afirma "el auto-compact ... dispara al llenarse la
-# ventana" (la línea FIJA que el hook viejo imprimía SIEMPRE, mintiendo cuando estaba apagado).
-ac_run 170000 "" '{"model":"opus","autoCompactWindow":900000,"autoCompactEnabled":false}'
+# 850K = 85% de la ventana del modelo (claude-opus-4-8 = 1M CONOCIDO). Con el auto-compact APAGADO, ACW no
+# gobierna y el corte NO es automático: el mensaje dice la VERDAD y NUNCA afirma "el auto-compact ... dispara
+# al llenarse la ventana" (la línea FIJA que el hook viejo imprimía SIEMPRE, mintiendo cuando estaba apagado).
+ac_run 850000 "" '{"model":"claude-opus-4-8","autoCompactWindow":900000,"autoCompactEnabled":false}'
 printf '%s' "$ACMSG" | grep -qi 'auto-compact APAGADO' \
   && ok "b6d: autoCompactEnabled=false → dice 'auto-compact APAGADO → el corte lo decides tú'" \
   || bad "b6d: no comunicó que el auto-compact está apagado; got: $ACMSG"
 { ! printf '%s' "$ACMSG" | grep -qi 'dispara al llenarse la ventana'; } \
   && ok "[↯viejo] b6d: NO miente con 'el auto-compact dispara al llenarse la ventana' (la mentira fija del hook viejo)" \
   || bad "b6d: reintrodujo la afirmación falsa del auto-compact automático con el flag apagado; got: $ACMSG"
-printf '%s' "$ACMSG" | grep -q '~85% de tu ventana 200K' \
-  && ok "b6d: ACW no gobierna con el auto-compact apagado → mide contra la ventana del modelo (85% de 200K)" \
+printf '%s' "$ACMSG" | grep -q '~85% de tu ventana 1000K' \
+  && ok "b6d: ACW no gobierna con el auto-compact apagado → mide contra la ventana del modelo (85% de 1000K)" \
   || bad "b6d: usó autoCompactWindow como techo pese al auto-compact apagado; got: $ACMSG"
 rm -rf "$(dirname "$ACLAST")"
 
@@ -5123,26 +5169,36 @@ rm -rf "$(dirname "$ACLAST")"
 acden() { ac_run "$1" "" "{\"model\":\"$2\"}"; printf '%s' "$ACMSG"; }
 printf '%s' "$(acden 850000 'opus[1m]')" | grep -q 'tu ventana 1000K' \
   && ok "b6-ventana: marcador '[1m]' → 1000K" || bad "b6-ventana: [1m] mal derivado"
-printf '%s' "$(acden 170000 'opus')" | grep -q 'tu ventana 200K' \
-  && ok "b6-ventana: modelo sin marcador ni 1M-nativo → 200K (default)" || bad "b6-ventana: default 200K mal derivado"
+b6v_unk="$(acden 170000 'opus')"
+[ -z "$b6v_unk" ] \
+  && ok "b6-ventana: modelo DESCONOCIDO (sin [1m] ni listado) → SIN ventana → SILENCIO (ya no inventa 200K)" \
+  || bad "b6-ventana: un modelo desconocido inventó ventana y emitió; got: $b6v_unk"
 for nativo in claude-opus-4-8 claude-opus-5 claude-opus-4-7 claude-sonnet-5 claude-fable-5 claude-mythos-5; do
   printf '%s' "$(acden 850000 "$nativo")" | grep -q 'tu ventana 1000K' \
     && ok "b6-ventana 1M-nativo: $nativo → 1000K" || bad "b6-ventana 1M-nativo: $nativo NO detectado como 1M"
 done
-printf '%s' "$(acden 170000 'claude-sonnet-4-5')" | grep -q 'tu ventana 200K' \
-  && ok "b6-ventana: sonnet-4-5 (parecido pero NO nativo) → sigue en 200K (el patrón no lo matchea de más)" \
-  || bad "b6-ventana: sonnet-4-5 se promovió a 1M por error"
+b6v_s45="$(acden 170000 'claude-sonnet-4-5')"
+[ -z "$b6v_s45" ] \
+  && ok "b6-ventana: sonnet-4-5 (parecido pero NO listado) → DESCONOCIDO → SILENCIO (ni 1M por error ni 200K inventado)" \
+  || bad "b6-ventana: sonnet-4-5 derivó una ventana que no debía; got: $b6v_s45"
 
-# ── (b6-invariante) el ctx no cabe en una ventana menor que él → promueve a 1M (solo SUBE) ──
-printf '%s' "$(acden 850000 'opus')" | grep -q 'tu ventana 1000K' \
-  && ok "b6-invariante: ctx 850K > ventana detectada 200K → auto-corrige a 1000K" || bad "b6-invariante: no auto-corrigió"
-printf '%s' "$(acden 170000 'opus')" | grep -q 'tu ventana 200K' \
-  && ok "b6-invariante: ctx 170K < 200K → SIN promoción (no sobre-corrige lo genuino)" || bad "b6-invariante: promovió de más"
+# ── (b6-invariante) modelo DESCONOCIDO → NO se inventa ventana, ni con ctx enorme (Jordi 2026-10-13: "si no
+# sabe, que no invente"). El código viejo caía a 200K y, por el invariante físico, promovía a 1M y EMITÍA;
+# ahora calla. Estos asertos FALLAN contra el código viejo. La auto-corrección física sigue viva SOLO cuando
+# la ventana YA se estableció por EVIDENCIA (override/[1m]/modelo listado) — se ejercita en b6-escape-hatch. ──
+b6i_big="$(acden 850000 'opus')"
+[ -z "$b6i_big" ] \
+  && ok "b6-invariante: modelo desconocido + ctx 850K → SILENCIO (no inventa 200K ni promueve a 1M)" \
+  || bad "b6-invariante: inventó ventana para un modelo desconocido y emitió; got: $b6i_big"
+b6i_small="$(acden 170000 'opus')"
+[ -z "$b6i_small" ] \
+  && ok "b6-invariante: modelo desconocido + ctx 170K → SILENCIO (sin ventana inventada)" \
+  || bad "b6-invariante: emitió con modelo desconocido; got: $b6i_small"
 
 # ── (b6-transcript) la VENTANA se deriva del MODELO DE RUNTIME del transcript, no solo de settings.json ──
 # Causa del FP 200K REAL (vivido en vivo): el modelo elegido en runtime (p. ej. Opus 5.5) NO queda escrito en
-# settings.json → model="" → default 200K → urgencia falsa en una sesión de 1M con ctx<200K (la auto-corrección
-# física no dispara porque 186K<200K). Fix: leer .message.model del transcript (gana sobre settings.json).
+# settings.json → sin leer el transcript, model="" → desconocido → hoy SILENCIO (antes: default 200K → urgencia
+# falsa en una sesión de 1M con ctx<200K). Fix: leer .message.model del transcript (gana sobre settings.json).
 actx() { # $1=ctx $2=model-en-transcript $3=settings(o '') → deja ACMSG/ACLAST
   local R; R="$(mktemp -d "${TMPDIR:-/tmp}/brain-actx.XXXXXX")/r"; mkdir -p "$R/.claude/memory"
   [ -n "$3" ] && printf '%s' "$3" > "$R/.claude/settings.json"
@@ -5165,9 +5221,25 @@ printf '%s' "$ACMSG" | grep -q 'tu ventana 1000K' \
 rm -rf "$(dirname "$ACLAST")"
 actx 850000 'claude-opus-5-5' '{"model":"claude-haiku-4-5"}'
 printf '%s' "$ACMSG" | grep -q 'tu ventana 1000K' \
-  && ok "b6-transcript: el modelo de runtime del transcript (opus-5) GANA sobre settings.json (haiku 200K)" \
+  && ok "b6-transcript: el modelo de runtime del transcript (opus-5, listado 1M) GANA sobre settings.json (haiku, no listado)" \
   || bad "b6-transcript: settings.json pisó al modelo de runtime del transcript; got: $ACMSG"
 rm -rf "$(dirname "$ACLAST")"
+
+# (b6-transcript-synthetic) C3/A3 (QA claudio 2026-10-13): un modelo "<synthetic>" (límite de sesión / error
+# de API / interrupción) NO debe TAPAR el último modelo REAL anterior. Transcript: assistant opus-5-5 (1M) y
+# LUEGO assistant <synthetic>; con ctx 850K el reduce salta "<synthetic>" → deriva 1M del opus-5-5 → EMITE 85%.
+SYNR="$(mktemp -d "${TMPDIR:-/tmp}/brain-syn.XXXXXX")/r"; mkdir -p "$SYNR/.claude/memory"
+printf '%s\n' \
+  '{"type":"user","message":{"role":"user"}}' \
+  '{"type":"assistant","isSidechain":false,"message":{"model":"claude-opus-5-5","usage":{"cache_read_input_tokens":850000}}}' \
+  '{"type":"assistant","isSidechain":false,"message":{"model":"<synthetic>","usage":{"cache_read_input_tokens":850000}}}' > "$SYNR/t.jsonl"
+SYNMSG="$(printf '%s' "{\"session_id\":\"syn\",\"transcript_path\":\"$SYNR/t.jsonl\"}" \
+  | env HOME="$ACHOME" CLAUDE_BRAIN_DIR="$BRAINREPO" CLAUDE_PROJECT_DIR="$SYNR" bash "$HOOKS/aviso-contexto.sh" \
+  | jq -r '.hookSpecificOutput.additionalContext // empty')"
+printf '%s' "$SYNMSG" | grep -q 'tu ventana 1000K' \
+  && ok "b6-transcript: '<synthetic>' NO tapa el modelo real anterior (opus-5-5 → 1M, emite 85%)" \
+  || bad "b6-transcript: '<synthetic>' tapó el modelo real → ventana perdida/silencio; got: $SYNMSG"
+rm -rf "$(dirname "$SYNR")"
 
 # ── (b6-escape-hatch) AVISO_CONTEXTO_WINDOW_TOKENS fija la ventana, distinto del fallback del invariante ──
 ac_run 425000 500000 ""
@@ -5176,7 +5248,7 @@ printf '%s' "$ACMSG" | grep -q 'tu ventana 500K' \
 rm -rf "$(dirname "$ACLAST")"
 ac_run 425000 "" '{"model":"opus"}'
 [ -z "$ACMSG" ] \
-  && ok "b6-escape-hatch: SIN forzar (mismo ctx) → invariante 1M (42%) → SILENCIO, distinto del override" || bad "b6-escape-hatch: el fallback no cayó al invariante; got: $ACMSG"
+  && ok "b6-escape-hatch: SIN forzar + modelo desconocido → SIN ventana → SILENCIO (distinto del override, que SÍ fija ventana por evidencia)" || bad "b6-escape-hatch: emitió sin ventana forzada ni modelo conocido; got: $ACMSG"
 rm -rf "$(dirname "$ACLAST")"
 
 # ── (b6-staleness) anclaje al último /compact (FP post-compact) — vía emitir/callar ──
