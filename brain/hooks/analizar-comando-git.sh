@@ -511,13 +511,16 @@ ACG_MR_TIMEOUT="${ACG_MR_TIMEOUT:-6}"
 # acg__cache_confiable (reemplaza acg__cache_creacion_es_mia, mismo criterio + TTL): mismo UID, sin permisos
 # de grupo/otros, Y no más viejo que ACG_CACHE_TTL_DIAS (default: el MISMO `CLAUDE_RESIDUO_DIAS_TMP` que ya
 # declara limpiar.sh residuo para esta familia de archivos, 7 días — aquí se HACE CUMPLIR en LECTURA, no
-# solo en el barrido periódico manual). portable BSD `stat -f` / GNU `stat -c`; sin `stat`/`date`, fail
-# CERRADO (no confiar es lo seguro; la peor consecuencia es un cache-miss que cae al lookup por API).
+# solo en el barrido periódico manual). GNU `stat -c` PRIMERO, BSD `stat -f` de fallback: en GNU, `stat -f`
+# es `--file-system` y `%u` NO es el uid del archivo (da basura del FS con exit 0) → BSD-primero servía un
+# uid falso en ubuntu y el caché NUNCA se confiaba (CI rojo). En BSD, `stat -c` falla limpio (exit≠0) y cae
+# al `-f` nativo. Sin `stat`/`date`, fail CERRADO (no confiar es lo seguro; la peor consecuencia es un
+# cache-miss que cae al lookup por API).
 acg__cache_confiable() {   # $1=path → 0=confiable (uid+perm+TTL) · 1=no
   local f="$1" uid perm mtime now ttl_dias
-  uid=$(stat -f '%u' "$f" 2>/dev/null || stat -c '%u' "$f" 2>/dev/null) || return 1
-  perm=$(stat -f '%Lp' "$f" 2>/dev/null || stat -c '%a' "$f" 2>/dev/null) || return 1
-  mtime=$(stat -f '%m' "$f" 2>/dev/null || stat -c '%Y' "$f" 2>/dev/null) || return 1
+  uid=$(stat -c '%u' "$f" 2>/dev/null || stat -f '%u' "$f" 2>/dev/null) || return 1
+  perm=$(stat -c '%a' "$f" 2>/dev/null || stat -f '%Lp' "$f" 2>/dev/null) || return 1
+  mtime=$(stat -c '%Y' "$f" 2>/dev/null || stat -f '%m' "$f" 2>/dev/null) || return 1
   now=$(date +%s) || return 1
   [ "$uid" = "$(id -u)" ] || return 1
   case "$perm" in *00) : ;; *) return 1 ;; esac

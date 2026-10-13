@@ -1011,6 +1011,35 @@ acg__cache_confiable "$M3T" \
   && bad "MEDIO: un archivo ESCRIBIBLE POR GRUPO (0664) se confió" \
   || ok "MEDIO: archivo 0664 (escribible por grupo) → NO se confía"
 rm -f "$M3T"
+
+# (b1d-stat) acg__cache_confiable: GNU `stat -c` PRIMERO — CI ubuntu rojo (2026-10-13). En GNU, `stat -f`
+# es --file-system y `%u` NO es el uid del archivo (da basura del FS con exit 0) → el orden BSD-primero
+# servía un uid falso en ubuntu y el caché NUNCA se confiaba (CI rojo). Este test SIMULA GNU con un stub de
+# `stat` (-c = valores reales vía el BSD stat de abajo; -f = basura con exit 0) y exige que un archivo
+# legítimo se confíe igual. FALLA contra el orden viejo (leería la basura de `-f %u` primero).
+SBROOT=$(mktemp -d "${TMPDIR:-/tmp}/statstub.XXXXXX")
+SBBIN="$SBROOT/bin"; mkdir -p "$SBBIN"
+cat > "$SBBIN/stat" <<'STUB'
+#!/usr/bin/env bash
+# Simula GNU stat: -c funciona (traducido al BSD real de /usr/bin); -f (--file-system) da basura con exit 0.
+case "$1" in
+  -c) case "$2" in
+        '%u') /usr/bin/stat -f '%u'  "$3" ;;
+        '%a') /usr/bin/stat -f '%Lp' "$3" ;;
+        '%Y') /usr/bin/stat -f '%m'  "$3" ;;
+        *) exit 1 ;;
+      esac; exit $? ;;
+  -f) echo 999999999; exit 0 ;;   # GNU `stat -f %u` = bloques libres del FS, NO el uid del archivo
+  *) exit 1 ;;
+esac
+STUB
+chmod +x "$SBBIN/stat"
+SBF=$(mktemp "${TMPDIR:-/tmp}/sbf.XXXXXX"); chmod 600 "$SBF"
+( PATH="$SBBIN:/usr/bin:/bin"; acg__cache_confiable "$SBF" ) \
+  && ok "b1d-stat: con stat-GNU simulado, un archivo 0600 reciente se confía (GNU \`stat -c\` primero)" \
+  || bad "b1d-stat: orden BSD-primero → en ubuntu lee la basura de \`stat -f %u\` y NUNCA confía el caché (CI rojo)"
+rm -rf "$SBROOT"; rm -f "$SBF"
+
 # End-to-end por acg__destino_de_mr_full: SIN encender el flag, ni siquiera un archivo 0600 PROPIO resuelve
 # por esta vía (H3: el canal completo está apagado, no solo el permiso).
 M3ROOT=$(mktemp -d "${TMPDIR:-/tmp}/m3e2e.XXXXXX")
