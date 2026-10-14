@@ -31,7 +31,7 @@ ds_patrones() {
 # ds_safe_re — regex de placeholders/ejemplos célebres que NO son secretos reales (se excluyen).
 # Incluye referencias a variables de entorno (Password=$VAR / ${VAR} / %VAR%) → NO es un secreto en claro.
 ds_safe_re() {
-  printf '%s' 'AKIAIOSFODNN7EXAMPLE|EXAMPLE_KEY|your[-_]?(api[-_]?)?key|xxxx+|<[A-Za-z_]+>|[Pp]ass(word|wd)[[:space:]]*=[[:space:]]*[$%]|[Pp]ass(word|wd)[[:space:]]*=[[:space:]]*["'"'"']?\{|CHANGE[-_]?ME|placeholder|redacted|\*\*\*+'
+  printf '%s' 'AKIAIOSFODNN7EXAMPLE|EXAMPLE_KEY|your[-_]?(api[-_]?)?key|xxxx+|<[A-Za-z_]+>|[Pp]ass(word|wd)[[:space:]]*=[[:space:]]*[$%]|[Pp]ass(word|wd)[[:space:]]*=[[:space:]]*["'"'"']?\{|CHANGE[-_]?ME|placeholder|redacted|\*\*\*+|PRUEBA|no[-_ ]?real|de[-_ ]?prueba|dummy|fake'
 }
 
 # Memoización (perf): ds_patrones/ds_safe_re son PURAS/ESTÁTICAS (mismo resultado siempre) pero

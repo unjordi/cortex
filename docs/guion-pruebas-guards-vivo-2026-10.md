@@ -201,4 +201,32 @@ hermetizar con mock de `gh api` + fixture determinista de ambas direcciones y ca
 
 ---
 
-<!-- Las secciones de B8, B2, B3/B4 y N1-N7/N2 se agregan aquí conforme cada slice cierra. -->
+## B2 — `secret-scan`, criterio placeholder por VALOR (commit `<pendiente>`)
+
+> La lib `detectar-secretos.sh` suma al `ds_safe_re` los marcadores de ejemplo `PRUEBA|no-real|de-prueba|dummy|fake`.
+> `ds_safe_re` casa el **TOKEN** extraído (no la línea), así que un secreto real sin esos marcadores sigue
+> bloqueando. En la sesión final, Jordi hace commits en un repo de prueba y ve si secret-scan bloquea o deja pasar.
+> (Verificación sin commitear: `bash -c '. brain/hooks/detectar-secretos.sh; ds_buscar "<valor>" && echo BLOQUEA || echo pasa'`.)
+
+| # | Caso | Valor en un archivo staged | Esperado | Por qué |
+|---|------|------|----------|---------|
+| B2-F | FP del corpus | un `Password=` con valor `PRUEBA-no-real` | **PASA** | El valor delata el placeholder (`PRUEBA`/`no-real`); no es un secreto. |
+| B2-F2 | placeholder | un `Password=` con valor `de-prueba-123` / `dummyvalue` / `fake-secret` | **PASA** | Marcadores de ejemplo en el token. |
+| B2-T1 | nada se afloja | un `aws =` con una AWS key real (`AKIA…`, 16 hex) | **BLOQUEA** | AWS key real — sigue cazándose. |
+| B2-T2 | nada se afloja | una `clave =` Anthropic (`sk-ant-api03-…`) | **BLOQUEA** | Anthropic key real. |
+| B2-T3 | nada se afloja | un `Password=` con un valor real SIN marcador | **BLOQUEA** | Contraseña real SIN marcador → no se filtra. |
+
+### Respaldo automatizado
+`brain/test-brain.sh` (bloque `b2-ph`): los placeholders se FILTRAN y los secretos reales (AKIA/sk-ant/pass real)
+BLOQUEAN — ambas direcciones. El caso FP **falla contra el código viejo** (sin los marcadores, `PRUEBA-no-real` sí se bloqueaba).
+
+> **Decisión pendiente para Jordi (fuera de B2):** el criterio por RUTA (`*/tests/*`, `*.example`) NO se metió —
+> saltar `*/tests/*` dejaría pasar un secreto real en un archivo de test (tradeoff de seguridad, no precisión). Si lo
+> quieres, `*.example`/`*.sample`/`*.dist` son seguros (son plantillas por convención); `*/tests/*` es el riesgoso.
+
+---
+
+<!-- Las secciones de B3/B4 y N1-N7/N2 se agregan aquí conforme cada slice cierra. -->
+<!-- B8 cerró como cableado del @ nativo en la ÉPICA (ef754d6), no en esta rama de guards (su test vive en test-brain.sh). -->
+<!-- sync-upstream y B2 arriba. -->
+
