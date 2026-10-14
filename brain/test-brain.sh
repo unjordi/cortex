@@ -7314,7 +7314,7 @@ J_STOP="{\"session_id\":\"deadbeef\",\"transcript_path\":\"$extx\",\"cwd\":\"$EX
 # (1) sin CLAUDE_SESSIONS_DRIVE → usa/crea el default ~/.claude-sessions
 ( unset CLAUDE_SESSIONS_DRIVE; printf '%s' "$J_STOP" | HOME="$EXHOME" bash "$HOOKS/exportar-sesion-master.sh" ) >/dev/null 2>&1
 [ -d "$EXHOME/.claude-sessions" ] && ok "exportar-sesion-master: sin override → crea/usa el default ~/.claude-sessions" || bad "exportar-sesion-master: no usó el default ~/.claude-sessions"
-# (2) sesión NO-master (sid no en masters.json, sin título *-master) en Stop → silencio, sin export
+# (2) sesión NO-master (sin <sid>.meta.json, sin título *-master) en Stop → silencio, sin export
 [ -z "$(ls "$EXHOME/.claude-sessions"/*.jsonl.gz 2>/dev/null)" ] && ok "exportar-sesion-master: sesión no-master → NO exporta (silencio)" || bad "exportar-sesion-master: exportó una sesión no-master"
 # (3) override: CLAUDE_SESSIONS_DRIVE apunta la carpeta a otro lado (la crea)
 EXDRIVE="$EXFIX/nube"
@@ -7338,7 +7338,55 @@ eval "$(sed -n '/^_master_base()/,/^}/p' "$HOOKS/exportar-sesion-master.sh")"
 { grep -qF '_master_base "$t"' "$HOOKS/exportar-sesion-master.sh" && ! grep -qE 'case "\$t" in \*-master\)' "$HOOKS/exportar-sesion-master.sh"; } \
   && ok "exportar-sesion-master: los puntos de reconocimiento cablean _master_base (no quedó el 'case *-master)' pelado viejo)" \
   || bad "exportar-sesion-master: quedó un 'case \$t in *-master)' pelado sin soporte del sufijo (N)"
+# (6) OPCIÓN A: el hook YA NO escribe un masters.json compartido (mataba los conflictos de Drive). El fast-path
+# de Stop ahora detecta "master conocido" por el <sid>.meta.json per-sid, no grepeando masters.json.
+{ ! grep -qF 'm.masters.push' "$HOOKS/exportar-sesion-master.sh" && ! grep -qE 'mjlock|m\.masters=m\.masters' "$HOOKS/exportar-sesion-master.sh"; } \
+  && ok "exportar-sesion-master: Opción A — el register block de masters.json se RETIRÓ (ya no auto-escribe el compartido)" \
+  || bad "exportar-sesion-master: TODAVÍA auto-escribe masters.json (el register block sigue ahí → conflictos de Drive)"
+{ grep -qF '$sid.meta.json' "$HOOKS/exportar-sesion-master.sh" && grep -qE 'is_master=1' "$HOOKS/exportar-sesion-master.sh"; } \
+  && ok "exportar-sesion-master: fast-path por <sid>.meta.json (paridad: señal per-sid sin contención)" \
+  || bad "exportar-sesion-master: el fast-path no usa <sid>.meta.json"
+# (7) behavioral (FALLA contra el código viejo): con un masters.json PREEXISTENTE + el engine presente (stub)
+# + node, el flujo LLEGA al punto donde el viejo REGISTRABA. El viejo le agregaba la entrada {id,name,target};
+# el nuevo (Opción A) lo deja INTACTO. El export detached (nohup) corre aparte y su resultado no importa aquí.
+EXMJ="$EXDRIVE/masters.json"; mkdir -p "$EXDRIVE" "$EXHOME/.local/bin"
+: > "$EXHOME/.local/bin/session-export.js"   # stub: basta que EXISTA para pasar el chequeo del engine
+printf '{"masters":[]}\n' > "$EXMJ"; before="$(cat "$EXMJ")"
+exmtx="$EXFIX/m.jsonl"; printf '{"type":"custom-title","customTitle":"demo-master"}\n{"cwd":"%s/code/x"}\n' "$EXHOME" > "$exmtx"
+JSE="{\"session_id\":\"feedface\",\"transcript_path\":\"$exmtx\",\"cwd\":\"$EXHOME/code/x\",\"hook_event_name\":\"SessionEnd\"}"
+if command -v node >/dev/null 2>&1; then
+  bash -c 'printf "%s" "$1" | HOME="$2" CLAUDE_SESSIONS_DRIVE="$3" bash "$4"' _ "$JSE" "$EXHOME" "$EXDRIVE" "$HOOKS/exportar-sesion-master.sh" >/dev/null 2>&1
+  sleep 0.3   # deja que el nohup detached termine por si tocara algo
+  [ "$(cat "$EXMJ")" = "$before" ] \
+    && ok "exportar-sesion-master: un master en SessionEnd NO toca un masters.json preexistente (Opción A; el viejo lo registraba)" \
+    || bad "exportar-sesion-master: el hook MODIFICÓ masters.json (Opción A exige que NO lo escriba)"
+else
+  ok "exportar-sesion-master: (7) SKIP sin node"
+fi
 rm -rf "$EXFIX"
+
+# ── seed.sh (Opción A): el roster se DERIVA de masters-<host>.json (curado GANA) + <id>.meta.json (respaldo) ──
+echo "== seed.sh: roster sin masters.json compartido — curado por-host gana al meta; meta deriva target =="
+SDFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-seed.XXXXXX")"; SDHOME="$SDFIX/home"; SDDRIVE="$SDFIX/drive"
+mkdir -p "$SDHOME/.local/bin" "$SDHOME/code/cortex" "$SDHOME/code/axon" "$SDDRIVE"
+: > "$SDHOME/.local/bin/session-import.js"   # stub JS vacío (válido): node lo corre sin hacer nada → "siembro" sin importar de verdad
+# id bbb: meta apunta a un WORKTREE (el bug chafa); el curado por-host lo fija al repo canónico code/cortex.
+printf '{"id":"bbb","label":"cortex-master (viejo)","originCwd":"/Users/x/code/cortex/.cortex-wt/A1"}\n' > "$SDDRIVE/bbb.meta.json"
+printf '{"masters":[{"id":"bbb","name":"cortex-master","target":"code/cortex"}]}\n' > "$SDDRIVE/masters-host1.json"
+# id aaa: SOLO meta (derivado); /home/x stripped → code/axon.
+printf '{"id":"aaa","label":"axon-master","originCwd":"/home/x/code/axon"}\n' > "$SDDRIVE/aaa.meta.json"
+: > "$SDDRIVE/bbb.jsonl.gz"; : > "$SDDRIVE/aaa.jsonl.gz"
+out="$(HOME="$SDHOME" CLAUDE_SESSIONS_DRIVE="$SDDRIVE" bash "$HOOKS/../sesiones-master/seed.sh" 2>&1 || true)"
+# bbb debe sembrarse al repo CANÓNICO (code/cortex), no al worktree del meta → curado gana.
+printf '%s' "$out" | grep -q "siembro cortex-master" && printf '%s' "$out" | grep -q "code/cortex" \
+  && ! printf '%s' "$out" | grep -q 'cortex-wt/A1' \
+  && ok "seed.sh: el curado masters-<host>.json GANA al meta (bbb → code/cortex, no al worktree del meta)" \
+  || bad "seed.sh: el roster no priorizó el curado sobre el meta (out: $(printf '%s' "$out" | tr '\n' '|'))"
+# aaa derivado del meta (/home/x stripped → code/axon) y sembrado.
+printf '%s' "$out" | grep -q "siembro axon-master" && printf '%s' "$out" | grep -q "code/axon" \
+  && ok "seed.sh: un id SOLO en metas se DERIVA (aaa → code/axon, prefijo de \$HOME de origen quitado)" \
+  || bad "seed.sh: no derivó el roster del <id>.meta.json (out: $(printf '%s' "$out" | tr '\n' '|'))"
+rm -rf "$SDFIX"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
@@ -7987,7 +8035,7 @@ rm -rf "$RMFIX"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "== (si) session-infra: aristas §9 del skill (tie-break/freshness/target-update/prune-backups) =="
+echo "== (si) session-infra: aristas §9 del skill (tie-break/freshness/masters.json-hand-maintained/prune-backups) =="
 SIFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-sessinfra.XXXXXX")"
 SIHOME="$SIFIX/home"
 SIPROJ="$SIHOME/.claude/projects"
@@ -8061,7 +8109,10 @@ lc2="$(grep -c . "$SIPROJ/$S2SLUG/$SID2.jsonl")"
   && ok "s2 freshness: --force-stale SÍ pisa a propósito (dest=2 líneas, cwd reescrito)" \
   || bad "s2 freshness: --force-stale no pisó (lc2=$lc2)"
 
-# ── s3: exportar-sesion-master AUTO-ACTUALIZA target de un master YA presente (antes solo añadía) ──
+# ── s3: OPCIÓN A — exportar-sesion-master NO toca un masters.json preexistente (hand-maintained) ──
+# Antes el hook AUTO-ACTUALIZABA el target de un master movido; eso generaba drift/conflictos de Drive y
+# Jordi lo mandó a mantenerse A MANO (2026-10-14). Con el engine presente (símlink) el flujo LLEGA al punto
+# donde el viejo registraba; el nuevo debe dejar masters.json INTACTO. FALLA contra el código viejo.
 [ -f "$HOOKS/exportar-sesion-master.sh" ] || bad "s3: falta el hook exportar-sesion-master.sh"
 HDRIVE="$SIFIX/drive-s3"; mkdir -p "$HDRIVE"
 SID3="cc330000-0000-0000-0000-000000000003"
@@ -8069,15 +8120,17 @@ mkdir -p "$SIHOME/.cortex"; ln -s "$BINRM" "$SIHOME/.cortex/bin"   # engine visi
 cat > "$HDRIVE/masters.json" <<EOF
 { "schema": 2, "masters": [ { "id": "$SID3", "name": "s3-master", "target": "code/viejo" } ] }
 EOF
+s3before="$(cat "$HDRIVE/masters.json")"
+# el fast-path de Opción A detecta "master conocido" por el <sid>.meta.json → lo sembramos para que el flujo avance
+printf '{"id":"%s","label":"s3-master","originCwd":"%s/code/viejo"}\n' "$SID3" "$SIHOME" > "$HDRIVE/$SID3.meta.json"
 TPATH="$SIFIX/s3-transcript.jsonl"; printf '{"type":"user"}\n' > "$TPATH"
 NEWCWD="$SIHOME/code/nuevo"; mkdir -p "$NEWCWD"
 printf '{"session_id":"%s","transcript_path":"%s","cwd":"%s","hook_event_name":"SessionEnd"}' "$SID3" "$TPATH" "$NEWCWD" \
   | HOME="$SIHOME" CLAUDE_SESSIONS_DRIVE="$HDRIVE" bash "$HOOKS/exportar-sesion-master.sh" >/dev/null 2>&1
-newtarget="$(jq -r --arg id "$SID3" '.masters[]|select(.id==$id).target' "$HDRIVE/masters.json")"
-newname="$(jq -r --arg id "$SID3" '.masters[]|select(.id==$id).name' "$HDRIVE/masters.json")"
-{ [ "$newtarget" = "code/nuevo" ] && [ "$newname" = "s3-master" ]; } \
-  && ok "s3 target-update: el hook ACTUALIZA el target de un master movido (name intacto)" \
-  || bad "s3 target-update: target no actualizado (target=$newtarget name=$newname)"
+sleep 0.3   # deja terminar el export detached
+[ "$(cat "$HDRIVE/masters.json")" = "$s3before" ] \
+  && ok "s3 (Opción A): el hook NO modifica un masters.json preexistente (hand-maintained; el viejo lo auto-actualizaba)" \
+  || bad "s3 (Opción A): el hook MODIFICÓ masters.json (target=$(jq -r --arg id "$SID3" '.masters[]|select(.id==$id).target' "$HDRIVE/masters.json" 2>/dev/null))"
 
 # ── s4: session-move PODA ~/.claude/session-move-backups (conserva KEEP recientes; .bak no crecen sin fin) ──
 S4OLD="$SIHOME/code/s4old"; S4NEW="$SIHOME/code/s4new"; mkdir -p "$S4OLD" "$S4NEW"
