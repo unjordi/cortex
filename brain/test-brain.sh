@@ -9178,6 +9178,41 @@ fi
 rm -rf "$B1B"
 
 # ─────────────────────────────────────────────────────────────────────────────
+echo "== (b1c-remota) B1c: ramas-zombie — base LOCAL atrasada pero origin/<base> ADELANTADA → no FP =="
+# FP más frecuente del corpus (claudio 2026-10-14): `git pull --ff-only && git branch -D r2` con la base
+# local atrasada. El guard corre ANTES del pull → ve develop local SIN el squash → avisaba en falso. Fix (r):
+# si la rama está integrada en origin/<base> (fetcheada, adelantada), su trabajo ya vive en el remoto → un
+# branch -D local no pierde nada. Fixture: origin/develop (tracking) = squash de feat/r2; develop LOCAL = base.
+B1C="$(mktemp -d)"
+( cd "$B1C" && git init -q && git config user.email t@t && git config user.name t
+  git checkout -q -b develop && echo base>base.txt && git add . && git commit -qm base
+  BASE=$(git rev-parse HEAD)
+  git checkout -q -b feat/r2 && echo r2>r2.txt && git add . && git commit -qm "trabajo r2"
+  git checkout -q develop && echo sq>sq.txt && git add . && git commit -qm "$(printf 'squash de feat/r2\n\nRama: feat/r2')"
+  git update-ref refs/remotes/origin/develop "$(git rev-parse HEAD)"   # origin/develop FRESCO (con el squash)
+  git update-ref refs/heads/develop "$BASE"                            # develop LOCAL atrasado (solo base)
+  git symbolic-ref HEAD refs/heads/develop ) >/dev/null 2>&1
+ZLIB="$SCRIPT_DIR/hooks/ramas-zombie.sh"
+if [ -d "$B1C/.git" ] && [ -f "$ZLIB" ]; then
+  # POSITIVO: origin/develop adelantada → integrada por (r) → zombie (silencio).
+  rz=$(CLAUDE_BZ_PRCACHE="" bash -c '. "$1"; bz_es_zombie "$2" feat/r2 develop && echo "Z:$BZ_RAZON" || echo "VIVO:$BZ_RAZON"' _ "$ZLIB" "$B1C")
+  case "$rz" in
+    Z:r) ok "B1c: develop local atrasada + origin/develop con el squash → integrada por base REMOTA (razón r)" ;;
+    *)   bad "B1c: integración por base remota adelantada NO reconocida (got '$rz') — FP del pull-then-branch-D" ;;
+  esac
+  # NEGATIVO (nada se afloja): origin/develop TAMBIÉN atrasada → se conserva (avisa).
+  ( cd "$B1C" && git update-ref refs/remotes/origin/develop "$(git rev-parse develop)" ) >/dev/null 2>&1
+  rz2=$(CLAUDE_BZ_PRCACHE="" bash -c '. "$1"; bz_es_zombie "$2" feat/r2 develop && echo "Z:$BZ_RAZON" || echo "VIVO:$BZ_RAZON"' _ "$ZLIB" "$B1C")
+  case "$rz2" in
+    VIVO:*) ok "B1c: con origin/develop también atrasada (sin evidencia remota) → se CONSERVA (nada se afloja)" ;;
+    *)      bad "B1c: feat/r2 dada por integrada sin base remota adelantada (got '$rz2') — SE AFLOJÓ" ;;
+  esac
+else
+  bad "B1c: no se pudo montar el fixture o falta $ZLIB"
+fi
+rm -rf "$B1C"
+
+# ─────────────────────────────────────────────────────────────────────────────
 echo ""
 PASS=$(grep -c '^OK$'  "$CALLLOG" 2>/dev/null); PASS="${PASS:-0}"
 FAIL=$(grep -c '^BAD$' "$CALLLOG" 2>/dev/null); FAIL="${FAIL:-0}"

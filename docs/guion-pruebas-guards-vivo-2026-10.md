@@ -114,4 +114,37 @@ también que el commit de squash se fecha con `_bz_squash_ct` (committer-date de
 
 ---
 
+## B1c — `proteger-arbol`/`ramas-zombie`, base REMOTA adelantada (FP más frecuente del corpus)
+
+**Qué cambió.** La FP MÁS frecuente del corpus (hallazgo de claudio 2026-10-14): `git pull --ff-only &&
+git branch -D <rama>` con la **base LOCAL atrasada**. El guard corre ANTES del pull → ve `develop` local
+sin el squash → avisaba en falso. Ahora `bz_es_zombie` re-prueba la MISMA definición de "integrada"
+(directa + transitiva) contra **`origin/<base>`** (señal **r**): si ya hiciste `git fetch` y origin/develop
+trae el squash, el trabajo de la rama **ya vive en el remoto** → un `git branch -D` local no pierde nada.
+SOLO lee refs locales (sin red); si origin/<base> también está atrasada, no matchea → avisa como hoy.
+
+### Setup (origin/develop fresco con el squash, develop LOCAL atrasado)
+```bash
+R="$(mktemp -d)"; cd "$R"
+git init -q && git config user.email t@t && git config user.name t
+git checkout -q -b develop && echo base>base.txt && git add . && git commit -qm base
+BASE=$(git rev-parse HEAD)
+git checkout -q -b feat/r2 && echo r2>r2.txt && git add . && git commit -qm "trabajo r2"
+git checkout -q develop && echo sq>sq.txt && git add . && git commit -qm "$(printf 'squash de feat/r2\n\nRama: feat/r2')"
+git update-ref refs/remotes/origin/develop "$(git rev-parse HEAD)"   # origin/develop FRESCO (ya fetcheado)
+git update-ref refs/heads/develop "$BASE"                            # develop LOCAL atrasado
+git symbolic-ref HEAD refs/heads/develop
+```
+
+| # | Caso | Comando | Esperado | Por qué |
+|---|------|---------|----------|---------|
+| B1c-F | FP del corpus | `pa 'git pull --ff-only && git branch -D feat/r2' "$R"` | **SILENCIO** | `feat/r2` está integrada en `origin/develop` (adelantada) → su trabajo vive en el remoto; el pull adelantará la base local. **Era el falso AVISO.** |
+| B1c-T | nada se afloja | tras `git -C "$R" update-ref refs/remotes/origin/develop "$BASE"` (origin/develop también atrasada) → `pa 'git pull --ff-only && git branch -D feat/r2' "$R"` | **AVISA** (nombra `feat/r2`) | Sin evidencia en la base remota, no hay prueba de que el trabajo esté a salvo → conserva. La señal (r) solo RETIRA falsos avisos cuando el remoto lo respalda. |
+
+### Respaldo automatizado
+`brain/test-brain.sh` §`(b1c-remota)`: positivo (origin/develop adelantada → zombie razón r) + negativo
+(origin/develop atrasada → se conserva). El positivo **falla contra el código viejo** (sin (r) → VIVO → FP).
+
+---
+
 <!-- Las secciones de B5, B8, B2, B3/B4 y N1-N7/N2 se agregan aquí conforme cada slice cierra. -->
