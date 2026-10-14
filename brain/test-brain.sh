@@ -9072,6 +9072,105 @@ CKS="$SCRIPT_DIR/skills/checkpoint/SKILL.md"
   || bad "checkpoint SKILL: FALTA la regla PISO entre checkpoints o su mecanismo (¿se perdió en un sync/reorg?)"
 
 # ─────────────────────────────────────────────────────────────────────────────
+echo "== (dm) despertar-master: resuelve desde TRANSCRIPTS (newest-per-name · viva→no-relanza · cwd real) =="
+# Contrato por EFECTO: la skill NO confía en masters.json; resuelve nombre/cwd/vida del transcript, el MÁS
+# reciente por nombre gana, y una sesión viva NO se relanza. Un impl que (a) tomara el transcript viejo, o
+# (b) relanzara una sesión fresca, FALLA estos asserts. 'screen' se stubea para capturar si hubo lanzamiento.
+DM="$SCRIPT_DIR/skills/despertar-master/despertar-master.sh"
+if [ -f "$DM" ]; then
+  DMROOT="$(mktemp -d)"
+  PROJ="$DMROOT/projects"; mkdir -p "$PROJ/slug-a" "$PROJ/slug-b" "$PROJ/slug-c" "$DMROOT/repoC" "$DMROOT/bin"
+  # foo-master VIEJO (cwd repoA) y su duplicado " (2)" MÁS NUEVO (cwd repoB, fresco=viva) → debe ganar repoB.
+  printf '{"cwd":"%s","customTitle":"foo-master"}\n'     "$DMROOT/repoA" > "$PROJ/slug-a/aaa.jsonl"
+  printf '{"cwd":"%s","customTitle":"foo-master (2)"}\n' "$DMROOT/repoB" > "$PROJ/slug-b/bbb.jsonl"
+  # bar-master VIEJO (idle, cwd repoC existe) → debe intentar relanzar.
+  printf '{"cwd":"%s","customTitle":"bar-master"}\n'     "$DMROOT/repoC" > "$PROJ/slug-c/ccc.jsonl"
+  touch -t 202001010000 "$PROJ/slug-a/aaa.jsonl" "$PROJ/slug-c/ccc.jsonl"   # viejos (portable GNU/BSD)
+  # bbb queda con mtime = ahora (fresco) → newest-per-name + viva.
+  SCREENLOG="$DMROOT/screen.log"; SESSF="$DMROOT/sessions"; : > "$SCREENLOG"; : > "$SESSF"
+  # stub de screen CON ESTADO: `-dmS NAME` registra NAME como sesión viva; `-ls` las lista en el formato
+  # que parsea _screen_nombres (`\t<pid>.<name>\t…`) → permite probar que un 2º lanzamiento ve la 1ª viva.
+  cat > "$DMROOT/bin/screen" <<SH
+#!/usr/bin/env bash
+case "\$1" in
+  -ls) [ -s "$SESSF" ] && while IFS= read -r n; do printf '\t12345.%s\t(Detached)\n' "\$n"; done < "$SESSF"; exit 1 ;;
+  -dmS) echo "SCREEN \$*" >> "$SCREENLOG"; printf '%s\n' "\$2" >> "$SESSF" ;;
+  *) echo "SCREEN \$*" >> "$SCREENLOG" ;;
+esac
+SH
+  chmod +x "$DMROOT/bin/screen"
+  _dm() { PATH="$DMROOT/bin:$PATH" CLAUDE_PROJECTS_DIR="$PROJ" DESPERTAR_VIVA_MIN=15 bash "$DM" "$@" 2>&1; }
+
+  L="$(_dm --lista)"
+  # newest-per-name: UNA fila foo-master, con el cwd del duplicado NUEVO (repoB), NO el viejo (repoA).
+  nfoo=$(printf '%s\n' "$L" | grep -c '^foo-master ')
+  if [ "$nfoo" = 1 ] && printf '%s' "$L" | grep -q "foo-master .*$DMROOT/repoB" \
+     && ! printf '%s' "$L" | grep -q "$DMROOT/repoA"; then
+    ok "despertar-master --lista: newest-per-name gana (foo-master → repoB del dup, no repoA viejo)"
+  else bad "despertar-master --lista: no resolvió al transcript MÁS reciente por nombre (got: $(printf '%s' "$L" | grep foo-master))"; fi
+  # estado: foo-master (fresco) = viva ; bar-master (viejo) = idle.
+  { printf '%s' "$L" | grep -q 'foo-master .*viva' && printf '%s' "$L" | grep -q 'bar-master .*idle'; } \
+    && ok "despertar-master --lista: estado por mtime (fresco=viva, viejo=idle)" \
+    || bad "despertar-master --lista: estado de vida mal derivado del mtime"
+
+  # viva → NO relanza: foo-master fresco reporta VIVA y NO invoca screen.
+  Vfoo="$(_dm foo-master)"
+  if printf '%s' "$Vfoo" | grep -qi 'VIVA' && ! grep -q 'foo-master' "$SCREENLOG"; then
+    ok "despertar-master: sesión VIVA no se relanza (reporta viva, screen NO invocado)"
+  else bad "despertar-master: relanzó (o no detectó) una sesión viva — screen.log: $(cat "$SCREENLOG")"; fi
+
+  # idle → relanza: bar-master viejo invoca screen con su id (ccc) y resume.
+  : > "$SCREENLOG"
+  Bbar="$(_dm bar-master --no-esperar)"
+  if grep -q 'bar-master' "$SCREENLOG" && grep -q 'ccc' "$SCREENLOG"; then
+    ok "despertar-master: sesión IDLE se relanza (screen -dmS bar-master … --resume ccc)"
+  else bad "despertar-master: NO relanzó una sesión idle — screen.log: $(cat "$SCREENLOG")"; fi
+
+  # nombre inexistente → error claro + lista, sin lanzar nada.
+  : > "$SCREENLOG"
+  if _dm no-existe-master | grep -qi 'no encontré' && [ ! -s "$SCREENLOG" ]; then
+    ok "despertar-master: nombre inexistente → error claro, no lanza"
+  else bad "despertar-master: nombre inexistente mal manejado"; fi
+
+  # cwd de un worktree ENLAZADO → se resuelve al toplevel del worktree PRINCIPAL (el worktree puede
+  # borrarse tras el merge → carpeta muerta); un subfolder del repo principal NO se tocaría.
+  GREPO="$DMROOT/grepo"
+  git init -q "$GREPO" 2>/dev/null \
+    && git -C "$GREPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init 2>/dev/null \
+    && git -C "$GREPO" worktree add -q "$DMROOT/gwt" -b wtbr 2>/dev/null
+  if [ -d "$DMROOT/gwt" ]; then
+    mkdir -p "$PROJ/slug-wt"
+    printf '{"cwd":"%s","customTitle":"wt-master"}\n' "$DMROOT/gwt" > "$PROJ/slug-wt/wtt.jsonl"
+    rowwt="$(_dm --lista | grep '^wt-master' || true)"
+    case "$rowwt" in
+      *"$GREPO"*) ok "despertar-master: cwd de worktree enlazado → toplevel del principal (no la carpeta que se borra)" ;;
+      *)          bad "despertar-master: no resolvió el cwd de un worktree enlazado al principal — got: $rowwt" ;;
+    esac
+  else
+    ok "despertar-master: (worktree-resolve) git worktree no disponible en el entorno de test — se omite"
+  fi
+
+  # doble lanzamiento: un master IDLE por mtime pero YA corriendo en screen NO se relanza (evita un 2º
+  # escritor sobre su transcript). Antes el mtime era la ÚNICA señal → relanzaba sobre el mismo id.
+  : > "$SESSF"; : > "$SCREENLOG"
+  _dm bar-master --no-esperar >/dev/null 2>&1          # 1ª: lanza y registra bar-master como screen vivo
+  out2dm="$(_dm bar-master --no-esperar 2>&1)"         # 2ª: screen existe → debe negarse
+  nlanz=$(grep -c 'dmS bar-master' "$SCREENLOG" 2>/dev/null)
+  if printf '%s' "$out2dm" | grep -qi 'VIVA' && [ "${nlanz:-0}" -eq 1 ]; then
+    ok "despertar-master: 2º lanzamiento de un master YA corriendo (screen vivo, idle por mtime) → NO relanza"
+  else bad "despertar-master: doble lanzamiento no evitado — lanzamientos=$nlanz · out2='$out2dm'"; fi
+
+  rm -rf "$DMROOT"
+else
+  bad "despertar-master: no encuentro $DM"
+fi
+
+# el MANIFEST de skills debe declarar despertar-master (si no, install-brain no la instala global).
+grep -qE '^despertar-master[[:space:]]+global' "$SCRIPT_DIR/skills/MANIFEST" \
+  && ok "despertar-master: declarada en skills/MANIFEST (tier global)" \
+  || bad "despertar-master: FALTA su línea en skills/MANIFEST → install-brain no la instalaría"
+
+# ─────────────────────────────────────────────────────────────────────────────
 echo ""
 PASS=$(grep -c '^OK$'  "$CALLLOG" 2>/dev/null); PASS="${PASS:-0}"
 FAIL=$(grep -c '^BAD$' "$CALLLOG" 2>/dev/null); FAIL="${FAIL:-0}"

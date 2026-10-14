@@ -59,6 +59,7 @@ checkpoint                       both
 construir-missing-manual         global
 control-gui-remota-por-ssh       both
 desinflar-memorias               global
+despertar-master                 global
 diagramar                        global
 ingenieria-inversa-gui-db-navegador  global
 investigar-dominio               global
