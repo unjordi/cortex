@@ -271,11 +271,16 @@ bz_pr_estado() {
 # bajo squash multi-commit su '+' no prueba nada.
 BZ_RRAZON=""
 bz_remota_integrada() {
-  local ROOT="$1" br="$2" ref="$3" baseref="$4" cherry
+  local ROOT="$1" br="$2" ref="$3" baseref="$4" cherry _sq_ct _ref_ct
   BZ_RRAZON=""
   git -C "$ROOT" merge-base --is-ancestor "$ref" "$baseref" 2>/dev/null && { BZ_RRAZON=a; return 0; }   # (a)
-  if git -C "$ROOT" log --format='%B' "$baseref" -- 2>/dev/null | grep -qxF "Rama: $br"; then            # (e)
-    BZ_RRAZON=e; return 0
+  # (e) ACOTADA (#486): el pie "Rama: <br>" en BASEREF no prueba que el tip REMOTO actual esté contenido —
+  # una rama remota reusada tras su squash avanzó y (e) la borraría. Solo vale si REF no trae nada más nuevo
+  # que el squash que la nombra (committer-date); si no se puede fechar, conservador: NO (e) → cae a (d),
+  # cuyo containment sí re-chequea el tip remoto. Dirección segura: solo RETIRA falsos "integrada".
+  if _sq_ct=$(_bz_squash_ct "$ROOT" "$br" "$baseref") && [ -n "$_sq_ct" ]; then
+    _ref_ct=$(git -C "$ROOT" log --format='%ct' "$ref" --not "$baseref" 2>/dev/null | sort -nr | head -1)
+    if [ -z "$_ref_ct" ] || [ "$_ref_ct" -le "$_sq_ct" ]; then BZ_RRAZON=e; return 0; fi
   fi
   bz_pr_mergeado "$ROOT" "$br" "$ref" && { BZ_RRAZON=d; return 0; }                                      # (d)
   cherry=$(git -C "$ROOT" cherry "$baseref" "$ref" 2>/dev/null)                                          # (c)
@@ -291,16 +296,40 @@ bz_remota_integrada() {
 # afirmar "vivo" con certeza).
 BZ_RAZON=""
 
+# _bz_squash_ct ROOT BR BASE → imprime el committer-date (epoch) del commit de squash MÁS NUEVO en BASE cuyo
+# mensaje trae la línea EXACTA "Rama: <br>" (el pie de trazabilidad del equipo); vacío + return 1 si no hay.
+# Lo usa (e) para ACOTARSE: una rama REUSADA tras su squash (commits nuevos encima) no debe darse por
+# integrada solo porque el pie "Rama:" siga en la base (#486). `-F --grep` filtra server-side y devuelve los
+# commits de nuevo-a-viejo; el 1er match línea-exacta ES el más nuevo (un "Rama: <br>-otra" por subcadena se
+# descarta con el grep -qxF por-commit y la búsqueda sigue con el siguiente candidato).
+_bz_squash_ct() {
+  local ROOT="$1" br="$2" base="$3" h
+  while IFS= read -r h; do
+    [ -z "$h" ] && continue
+    if git -C "$ROOT" log -1 --format='%B' "$h" 2>/dev/null | grep -qxF "Rama: $br"; then
+      git -C "$ROOT" log -1 --format='%ct' "$h" 2>/dev/null
+      return 0
+    fi
+  done < <(git -C "$ROOT" log --format='%H' -F --grep="Rama: $br" "$base" 2>/dev/null)
+  return 1
+}
+
 # _bz_integrada_directa ROOT BR BASE → 0 si BR está integrada a BASE por una señal POSITIVA DIRECTA
 # (a ancestro · e "Rama:" en el squash · d PR/MR mergeado · c patch-equivalente sin '+'). Sin (b)/upstream
 # ni transitiva. Fija $BZ_RAZON con la letra al acertar (no la toca al fallar). La comparten bz_es_zombie
 # (BR→BASE) y el carril transitivo (t) para el 2º eslabón X→BASE — UNA sola definición de "las señales de
 # siempre", sin divergencia.
 _bz_integrada_directa() {
-  local ROOT="$1" br="$2" base="$3" cherry
+  local ROOT="$1" br="$2" base="$3" cherry _sq_ct _br_ct
   git -C "$ROOT" merge-base --is-ancestor "$br" "$base" 2>/dev/null && { BZ_RAZON=a; return 0; }  # (a)
-  if git -C "$ROOT" log --format='%B' "$base" -- 2>/dev/null | grep -qxF "Rama: $br"; then          # (e)
-    BZ_RAZON=e; return 0                                                                            # (offline)
+  # (e) ACOTADA (#486): el pie "Rama: <br>" está en la base, PERO solo vale si BR no avanzó tras ese squash
+  # — si no, (e) borraría los commits nuevos (reúso de la rama). Compara el committer-date del squash que la
+  # nombra vs el del commit MÁS NUEVO de BR ausente de BASE: si BR trae algo más nuevo → NO (e) (cae a (d),
+  # cuyo containment sí re-chequea el tip, y de ahí a (b)/conservar). Si no se puede fechar el squash →
+  # conservador: NO (e). Dirección SEGURA: (e) solo RETIRA falsos "integrada", nunca agrega.
+  if _sq_ct=$(_bz_squash_ct "$ROOT" "$br" "$base") && [ -n "$_sq_ct" ]; then
+    _br_ct=$(git -C "$ROOT" log --format='%ct' "$br" --not "$base" 2>/dev/null | sort -nr | head -1)
+    if [ -z "$_br_ct" ] || [ "$_br_ct" -le "$_sq_ct" ]; then BZ_RAZON=e; return 0; fi                # (e offline)
   fi
   bz_pr_mergeado "$ROOT" "$br" && { BZ_RAZON=d; return 0; }                                          # (d)
   cherry=$(git -C "$ROOT" cherry "$base" "$br" 2>/dev/null)                                          # (c)

@@ -78,4 +78,40 @@ git checkout -q develop
 
 ---
 
+## B1b — `ramas-zombie.sh`, señal (e) acotada (#486)
+
+**Qué cambió.** La señal **(e)** daba por integrada una rama solo porque el log de la base trae el pie
+`Rama: <br>` del squash — SIN comprobar que el tip ACTUAL esté contenido. Una rama **reusada tras su
+squash** (commits nuevos encima) seguía dando (e) → los barredores y el carril `branch -D` la borraban
+con su trabajo nuevo (**pérdida de datos**). Ahora (e) solo vale si la rama **no trae nada más nuevo** que
+el commit de squash que la nombra (committer-date); si sí, cae a (d) —cuyo containment re-chequea el tip—
+y de ahí a conservar. Mismo acotamiento en `bz_remota_integrada` (ramas remotas). Dirección SEGURA: (e)
+solo **retira** falsos "integrada", nunca agrega → B1b **restaura** un aviso correcto, no afloja ninguno.
+
+### Setup (rama squasheada con pie `Rama:`, luego REUSADA)
+```bash
+R="$(mktemp -d)"; cd "$R"
+git init -q && git config user.email t@t && git config user.name t
+export GIT_COMMITTER_DATE
+GIT_COMMITTER_DATE="2026-01-01T00:00:00" git checkout -q -b develop && echo base>base.txt && git add . && git commit -qm base
+GIT_COMMITTER_DATE="2026-01-01T00:00:00" git checkout -q -b feat/x && echo x>x.txt && git add . && git commit -qm cX
+git checkout -q develop && echo s>s.txt && git add .
+GIT_COMMITTER_DATE="2026-01-02T00:00:00" git commit -qm "$(printf 'squash de feat/x\n\nRama: feat/x')"
+# feat/x REUSADA: un commit NUEVO después del squash (committer-date > el del squash):
+git checkout -q feat/x && echo n>n.txt && git add .
+GIT_COMMITTER_DATE="2026-01-03T00:00:00" git commit -qm cNEW && git checkout -q develop
+```
+
+| # | Caso | Comando | Esperado | Por qué |
+|---|------|---------|----------|---------|
+| B1b-T | rama REUSADA tras squash | `pa 'git branch -D feat/x' "$R"` | **AVISA** (nombra `feat/x`) | `feat/x` tiene `cNEW` posterior al squash → borrarla pierde ese trabajo. El código VIEJO callaba (solo veía el pie `Rama:`) → **este era el data-loss.** |
+| B1b-control | rama SIN reúso | tras `git -C "$R" branch -f feat/x feat/x~1` (quitar cNEW) → `pa 'git branch -D feat/x' "$R"` | **SILENCIO** | Sin trabajo posterior al squash, (e) sigue valiendo → integrada. El acotamiento no sobre-frena el caso normal. |
+
+### Respaldo automatizado
+`brain/test-brain.sh` §`(b1b-reuso)`: positivo (sin reúso → zombie razón e, conservado) + negativo
+(reúso → se conserva). El negativo **falla contra el código viejo** (daba `Z:e` → data-loss). Verificado
+también que el commit de squash se fecha con `_bz_squash_ct` (committer-date del pie `Rama:` más nuevo).
+
+---
+
 <!-- Las secciones de B5, B8, B2, B3/B4 y N1-N7/N2 se agregan aquí conforme cada slice cierra. -->

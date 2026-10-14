@@ -9134,6 +9134,50 @@ fi
 rm -rf "$PAB"
 
 # ─────────────────────────────────────────────────────────────────────────────
+echo "== (b1b-reuso) B1b/#486: ramas-zombie — la señal (e) 'Rama:' NO borra trabajo POSTERIOR al squash =="
+# Fixture con committer-dates EXPLÍCITOS (determinista, sin reloj de pared):
+#   develop(base): base · squash de feat/x (pie 'Rama: feat/x', committer-date T_sq=2026-01-02)
+#   feat/x: base · cX (2026-01-01, el trabajo que se squasheó) [· cNEW (2026-01-03) en el caso negativo]
+# POSITIVO: feat/x NO avanzó tras el squash → (e) vale → zombie razón e (comportamiento de siempre, conservado).
+# NEGATIVO: feat/x REUSADA (cNEW más nuevo que el squash) → (e) se acota → NO zombie (se conserva el trabajo).
+#   El código VIEJO disparaba (e) por el solo pie 'Rama:' y daba feat/x por zombie → los barredores borrarían
+#   cNEW (pérdida de datos). Esta es la dirección que FALLA contra el código viejo.
+B1B="$(mktemp -d)"
+( cd "$B1B" && git init -q && git config user.email t@t && git config user.name t
+  export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
+  GIT_AUTHOR_DATE="2026-01-01T00:00:00" GIT_COMMITTER_DATE="2026-01-01T00:00:00" \
+    git checkout -q -b develop && echo base > base.txt && git add . \
+    && GIT_AUTHOR_DATE="2026-01-01T00:00:00" GIT_COMMITTER_DATE="2026-01-01T00:00:00" git commit -qm base
+  GIT_AUTHOR_DATE="2026-01-01T00:00:00" GIT_COMMITTER_DATE="2026-01-01T00:00:00" \
+    git checkout -q -b feat/x && echo x > x.txt && git add . \
+    && GIT_AUTHOR_DATE="2026-01-01T00:00:00" GIT_COMMITTER_DATE="2026-01-01T00:00:00" git commit -qm cX
+  git checkout -q develop && echo squashed > squashed.txt && git add . \
+    && GIT_AUTHOR_DATE="2026-01-02T00:00:00" GIT_COMMITTER_DATE="2026-01-02T00:00:00" \
+       git commit -qm "$(printf 'squash de feat/x\n\nRama: feat/x')" ) >/dev/null 2>&1
+ZLIB="$SCRIPT_DIR/hooks/ramas-zombie.sh"
+if [ -d "$B1B/.git" ] && [ -f "$ZLIB" ]; then
+  # POSITIVO: sin reúso → zombie por (e).
+  rz=$(CLAUDE_BZ_PRCACHE="" bash -c '. "$1"; bz_es_zombie "$2" feat/x develop && echo "Z:$BZ_RAZON" || echo "VIVO:$BZ_RAZON"' _ "$ZLIB" "$B1B")
+  case "$rz" in
+    Z:e) ok "B1b: feat/x squasheada y SIN trabajo nuevo → zombie por (e) (comportamiento conservado)" ;;
+    *)   bad "B1b: feat/x integrada por (e) NO reconocida (got '$rz')" ;;
+  esac
+  # NEGATIVO: reúso tras el squash (cNEW más nuevo que T_sq) → se conserva.
+  ( cd "$B1B" && git checkout -q feat/x && echo new > new.txt && git add . \
+      && GIT_AUTHOR_DATE="2026-01-03T00:00:00" GIT_COMMITTER_DATE="2026-01-03T00:00:00" git commit -qm cNEW \
+      && git checkout -q develop ) >/dev/null 2>&1
+  rz2=$(CLAUDE_BZ_PRCACHE="" bash -c '. "$1"; bz_es_zombie "$2" feat/x develop && echo "Z:$BZ_RAZON" || echo "VIVO:$BZ_RAZON"' _ "$ZLIB" "$B1B")
+  case "$rz2" in
+    VIVO:*) ok "B1b: feat/x REUSADA tras su squash (commit más nuevo) → se CONSERVA, (e) acotada (nada se borra)" ;;
+    Z:e)    bad "B1b: (e) dio feat/x por zombie pese al trabajo POSTERIOR al squash (got '$rz2') — PÉRDIDA DE DATOS" ;;
+    *)      bad "B1b: feat/x reusada clasificada mal (got '$rz2')" ;;
+  esac
+else
+  bad "B1b: no se pudo montar el fixture o falta $ZLIB"
+fi
+rm -rf "$B1B"
+
+# ─────────────────────────────────────────────────────────────────────────────
 echo ""
 PASS=$(grep -c '^OK$'  "$CALLLOG" 2>/dev/null); PASS="${PASS:-0}"
 FAIL=$(grep -c '^BAD$' "$CALLLOG" 2>/dev/null); FAIL="${FAIL:-0}"
