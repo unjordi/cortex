@@ -344,6 +344,27 @@ _es_release_explicito() {
   acg_lexico_release_para_mr "$(acg_recent_intercalado "$tpath")" "$mrid"
 }
 
+# Excepción ACOTADA al squash: un SYNC de upstream (el PR trae un merge commit cuyo 2º padre aporta commits que
+# develop no tiene = historia AJENA) con --merge y una línea del USUARIO que nombra --merge/sin squash + ese PR.
+# Squashearlo dejaría la historia de upstream fuera de develop (el siguiente sync re-chocaría todo). Falla CERRADO.
+# Test: tests-locales/test-merge-sync-upstream.sh. Autorizado por unjordi 2026-10-03 (nota a cortex en su buzón).
+_es_sync_upstream_autorizado() {   # $1=cmd(RAW)  $2=transcript → 0=exento del squash · 1=no
+  local c mrid repo base n sha
+  c=$(acg_despoja_comillas "$1")
+  printf '%s' "$c" | grep -qE '(^|[[:space:]])--merge([[:space:]]|$)' || return 1
+  mrid=$(acg_mrid "$c"); [ -n "$mrid" ] || return 1
+  repo=$(acg_repo_explicito "$1"); { [ -z "$repo" ] || [ "$repo" = OPACO ]; } && return 1
+  acg_recent_intercalado "$2" | grep '^USUARIO:' | grep -iE -- '(--merge|sin squash)' \
+    | grep -qiE "(#|pr[[:space:]]*|merge[[:space:]]+)${mrid}([^0-9]|$)" || return 1
+  base=$(timeout 15 gh api "repos/$repo/pulls/$mrid" --jq .base.ref 2>/dev/null) || return 1
+  [ "$base" = develop ] || return 1
+  for sha in $(timeout 30 gh api --paginate "repos/$repo/pulls/$mrid/commits" --jq '.[]|select((.parents|length)>=2)|.parents[1].sha' 2>/dev/null); do
+    n=$(timeout 15 gh api "repos/$repo/compare/develop...$sha" --jq .ahead_by 2>/dev/null) || continue
+    [ "${n:-0}" -gt 0 ] && return 0
+  done
+  return 1
+}
+
 # ── PASO 3a — CHECK DETERMINISTA: SQUASH (heredado de merge-squash-guard). Develop-scoped + fail-safe cuando el
 #    destino es irresoluble (exige squash salvo release explícito). Aplica a TODO repo (el viejo squash-guard
 #    NUNCA gateó por la marca de compartido) → corre ANTES del scoping de compartido. VIOLACIÓN → DENY (fail-fast).
@@ -419,10 +440,14 @@ if [ "$_sq_aplica" = 1 ]; then
     fi
     # squash OK → cae al scoping/auth de abajo (NO exit: falta el candado de autorización)
   else
-    # FALTA --squash → DENY (fail-fast). No afloja nada de lo de abajo: sin squash ni siquiera llega al juez.
+    # FALTA --squash → DENY (fail-fast), salvo el sync de upstream autorizado (sigue al juez de abajo igual).
+    if [ "$destino" = develop ] && _es_sync_upstream_autorizado "$cmd" "$tpath"; then
+      _warn_ctx="Sync de upstream: --merge (sin squash) permitido para conservar la historia de upstream en develop."
+    else
     _rehaz=$(_rehaz_sugerido "$cmd")
     _deny_json "FLUJO DE GIT (ley interna): integrar a develop SQUASHEA a UN commit limpio por slice. NO reintentes este merge sin squash. Rehazlo con: $_rehaz  — donde el mensaje es un RESUMEN CURADO en prosa del slice (el cambio neto y su porqué), NO el pegote de commits granulares. NOTA: la obligación de squash es SOLO para develop — a main (release) va SIN squash (conserva historia) y tus ramas personales van a tu gusto. Corre brain/skills/cerrar-slice/cerrar-slice.sh; ver skill cerrar-slice."
     exit 0
+    fi
   fi
 fi
 
