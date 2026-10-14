@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # exportar-sesion-master.sh — hook del brain (mecanismo GENÉRICO, opt-in por convención de nombre).
-# Exporta el transcript comprimido de una sesión cuyo TÍTULO vigente sea `*-master` (o que ya esté
-# listada en masters.json) a la CARPETA DE SESIONES, para poder `claude --resume` la MISMA sesión
+# Exporta el transcript comprimido de una sesión cuyo TÍTULO vigente sea `*-master` (o que ya tenga su
+# `<sid>.meta.json`, señal de que ya se exportó) a la CARPETA DE SESIONES, para poder `claude --resume` la MISMA sesión
 # después (sobrevive el cleanup de 30 días de Claude Code) — y, si esa carpeta vive en una nube, para
 # que la sesión VIAJE entre máquinas. Mitad "auto-export" del sync; la mitad "sembrar" es seed.sh.
 #
@@ -14,7 +14,7 @@
 #                 sesión) para no re-gzipear cientos de MB en balde. Mantiene la master fresca CONTINUA-
 #                 mente aunque la sesión NUNCA "termine" (las de vida larga se resumen por días →
 #                 SessionEnd casi nunca disparaba → el export se congelaba). En Stop, fast-path: solo
-#                 actúa si el sid YA está en masters.json (grep a ~1KB); NO escanea el transcript gigante.
+#                 actúa si el sid YA tiene su `<sid>.meta.json` (ya se exportó); NO escanea el transcript gigante.
 #   - SessionEnd  Estado FINAL en salida limpia (sin debounce). Aquí sí se escanea el título para
 #                 detectar/registrar un master NUEVO.
 #   - PreCompact  Bonus: justo antes de compactar (sin debounce). NO crítico (Stop ya cubre frescura).
@@ -25,7 +25,7 @@
 #
 # CONTRATO: SILENCIOSO y FAIL-OPEN. Si la sesión no es master, falta el motor/node, o el debounce aún no
 # vence → no hace nada y NO bloquea. JAMÁS rompe el turno/cierre (siempre exit 0). Opt-in por convención
-# de nombre (título *-master) y/o por estar ya en masters.json.
+# de nombre (título *-master) y/o por tener ya su `<sid>.meta.json`. NO escribe masters.json (Opción A, 2026-10-14).
 # Overrides: $CLAUDE_SESSIONS_DEBOUNCE_MIN (min, default 20) · $CLAUDE_SESSIONS_DRIVE (carpeta de sesiones).
 set -u
 
@@ -40,7 +40,6 @@ getf() {
 }
 sid=$(getf session_id)
 tpath=$(getf transcript_path)
-cwd=$(getf cwd)
 event=$(getf hook_event_name)
 [ -n "$sid" ] || exit 0
 [ -n "$tpath" ] && [ -f "$tpath" ] || exit 0
@@ -58,9 +57,13 @@ fi
 # de una nube son config de MÁQUINA, no del mecanismo → NO viven aquí.
 DRIVE="${CLAUDE_SESSIONS_DRIVE:-$HOME/.claude-sessions}"
 mkdir -p "$DRIVE" 2>/dev/null || exit 0
-mj="$DRIVE/masters.json"
+meta="$DRIVE/$sid.meta.json"   # fuente per-sid SIN contención (la escribe session-export.js)
 
-# ── ¿es master? FAST-PATH: si el sid ya está en masters.json no escaneamos el transcript. ──────────
+# ── ¿es master? FAST-PATH: si el sid YA tiene su <sid>.meta.json (ya se exportó alguna vez) no escaneamos
+# el transcript. (Opción A, 2026-10-14: el hook YA NO escribe un masters.json compartido —generaba
+# conflictos de Drive y drift entre masters concurrentes—; el meta per-sid es la señal libre de contención.
+# Paridad con el fast-path viejo: antes el 1er registro ocurría en SessionEnd/PreCompact —el register block—;
+# ahora el 1er EXPORT en esos mismos eventos escribe el meta, y los Stops siguientes lo ven.)
 title=""
 is_master=0
 # ¿título de master? Acepta "<x>-master" Y el "<x>-master (N)" que el CLI pone al CONTINUAR una sesión como
@@ -73,21 +76,21 @@ _master_base() {  # $1=title → echo base si es master; nada si no
     *) : ;;
   esac
 }
-if [ -f "$mj" ] && grep -q "\"$sid\"" "$mj" 2>/dev/null; then
+if [ -f "$meta" ]; then
   is_master=1
-  [ "$have_jq" = 1 ] && title=$(jq -r --arg id "$sid" '.masters[]? | select(.id==$id) | .name // empty' "$mj" 2>/dev/null)
+  [ "$have_jq" = 1 ] && title=$(jq -r '.label // empty' "$meta" 2>/dev/null)
 fi
-# sid NO registrado: el escaneo del transcript (caro) SOLO en eventos infrecuentes, jamás en Stop.
+# sid NO exportado aún: el escaneo del transcript (caro) SOLO en eventos infrecuentes, jamás en Stop.
 if [ "$is_master" = 0 ]; then
   case "$event" in
     SessionEnd|PreCompact)
       t=$(grep -ao '"customTitle":"[^"]*"' "$tpath" 2>/dev/null | tail -1 | sed 's/.*:"//; s/"$//')
       _b=$(_master_base "$t"); [ -n "$_b" ] && { title="$_b"; is_master=1; }
       ;;
-    *) exit 0 ;;   # Stop u otro con sid no listado → salimos barato, sin escanear
+    *) exit 0 ;;   # Stop u otro sin meta → salimos barato, sin escanear
   esac
 fi
-# título registrado pero sin name (o sin jq): recupéralo con un scan (raro; jq va presente por install-hook)
+# meta presente pero sin label (o sin jq): recupera el título con un scan (raro; jq va presente por install-hook)
 if [ "$is_master" = 1 ] && [ -z "$title" ]; then
   t=$(grep -ao '"customTitle":"[^"]*"' "$tpath" 2>/dev/null | tail -1 | sed 's/.*:"//; s/"$//')
   _b=$(_master_base "$t"); if [ -n "$_b" ]; then title="$_b"; else title="$sid"; fi
@@ -161,41 +164,12 @@ nohup bash -c '
   rm -f "$lock" 2>/dev/null
 ' _ "$EXP" "$sid" "$title" "$DRIVE" "$lock" >/dev/null 2>&1 &
 
-# ── registrar/ACTUALIZAR en masters.json (target = cwd relativo a $HOME → "code/<repo>") ─────────
-# Corre SIEMPRE (ya no solo cuando falta el sid): si el master YA está pero se MOVIÓ de folder, su
-# `target` viejo haría que `seed.sh` en otra máquina lo sembrara al lugar equivocado. Ahora: si no está
-# → lo agrega; si está con target distinto → lo ACTUALIZA; y si el título cambió (rename real, no el
-# fallback al sid) → actualiza el name. Solo reescribe el archivo si HUBO cambio (masters.json vive en
-# Drive compartido → no generar churn de sync en cada export).
-if [ -f "$mj" ] && [ -n "$cwd" ]; then
-  target="${cwd#"$HOME"/}"
-  # LOCK por-archivo (mkdir atómico) para SERIALIZAR el read-modify-write de masters.json entre masters
-  # CONCURRENTES (cortex-master + cps-master haciendo Stop/SessionEnd casi a la vez sobre el Drive compartido)
-  # → sin lost-update. Best-effort: si no se puede tomar, se SALTA (el próximo export reintenta). Un lock
-  # huérfano de un crash (>5 min) se recicla → no bloquea para siempre. La escritura del JSON es ATÓMICA
-  # (tmp+rename) dentro de node → un masters.json corrupto/parcial nunca pisa el bueno si node muere a media.
-  mjlock="$mj.lock"
-  if ! mkdir "$mjlock" 2>/dev/null; then
-    if [ -n "$(find "$mjlock" -maxdepth 0 -mmin +5 2>/dev/null)" ]; then
-      rm -rf "$mjlock" 2>/dev/null; mkdir "$mjlock" 2>/dev/null || mjlock=""
-    else mjlock=""; fi
-  fi
-  if [ -n "$mjlock" ]; then
-    node -e '
-      const fs=require("fs"),p=process.argv[1],id=process.argv[2],name=process.argv[3],target=process.argv[4];
-      try{const m=JSON.parse(fs.readFileSync(p,"utf8"));m.masters=m.masters||[];
-        const e=m.masters.find(x=>x.id===id); let changed=false;
-        if(!e){ m.masters.push({id,name,target}); changed=true; }
-        else {
-          if(target && e.target!==target){ e.target=target; changed=true; }
-          // name solo si es un título REAL (no el fallback al sid) y de verdad cambió
-          if(name && name!==id && e.name!==name){ e.name=name; changed=true; }
-        }
-        // Escritura ATÓMICA: tmp en el MISMO dir + rename (nunca deja el masters.json a medio escribir).
-        if(changed){ const t=p+".tmp."+process.pid; fs.writeFileSync(t,JSON.stringify(m,null,2)+"\n"); fs.renameSync(t,p); }
-      }catch(e){}
-    ' "$mj" "$sid" "$title" "$target" 2>/dev/null || true
-    rmdir "$mjlock" 2>/dev/null || true
-  fi
-fi
+# ── Opción A (Jordi, 2026-10-14): el hook YA NO escribe un masters.json compartido. ───────────────
+# Antes aquí un read-modify-write registraba/actualizaba {id,name,target} en $DRIVE/masters.json (el
+# archivo COMPARTIDO en Drive). Varios masters concurrentes escribiéndolo generaban conflictos de sync de
+# Drive (masters.json.conflict1-4) y drift (ids viejos, targets que eran worktrees, nombres repetidos).
+# La proveniencia por-sesión vive ahora SOLO en el `<sid>.meta.json` per-sid (id, label, originCwd),
+# conflict-free por construcción (un archivo por sesión, cada máquina el suyo) — lo escribe el export de
+# arriba. El roster de masters lo derivan `seed.sh` (de los metas del Drive) y el `masters-<host>.json`
+# LOCAL que cada master CURA A MANO (ya no automático). Ver brain/sesiones-master/README.md.
 exit 0

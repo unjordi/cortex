@@ -48,15 +48,31 @@ y Drive lo sincroniza. Corre una vez por máquina: `./install-hook.sh`.
 **Gatillos (3, cableados por `install-hook.sh`):**
 - **`Stop`** — *backbone*. Dispara al final de **cada turno**, con **debounce** (a lo mucho 1 export cada
   ~20 min por sesión; override `CLAUDE_SESSIONS_DEBOUNCE_MIN`). Mantiene la master fresca **durante** la
-  sesión, aunque nunca "termine". Fast-path barato: en `Stop` solo actúa si el `sid` ya está en
-  `masters.json` (no escanea el transcript gigante cada turno).
-- **`SessionEnd`** — estado final en salida limpia; aquí sí escanea el título para **detectar/registrar**
-  un master nuevo.
+  sesión, aunque nunca "termine". Fast-path barato: en `Stop` solo actúa si el `sid` ya tiene su
+  `<sid>.meta.json` (ya se exportó alguna vez; no escanea el transcript gigante cada turno).
+- **`SessionEnd`** — estado final en salida limpia; aquí sí escanea el título para **detectar** un master
+  nuevo y exportarlo (su primer export escribe el `<sid>.meta.json`).
 - **`PreCompact`** — bonus, justo antes de compactar (no crítico: `Stop` ya cubre la frescura).
 
 > **Por qué 3 y no solo `SessionEnd` (bug real, 2026-07-26):** las master son de **vida larga** — se
 > resumen por días y nunca cierran limpio → `SessionEnd` casi nunca disparaba → el export se quedó
 > **congelado 2 días** (todo en la Cachy salía viejo). El backbone `Stop`+debounce mata esa causa raíz.
 
-Registrar un master nuevo = renombrar la sesión a `<algo>-master`; en su primer `SessionEnd`/`PreCompact`
-se auto-registra en `masters.json` (o agrégalo a mano para que `seed.sh` sepa a qué carpeta pertenece).
+## El roster de masters (Opción A, 2026-10-14) — NO más `masters.json` compartido
+
+Antes el hook auto-escribía un **`masters.json` compartido** en Drive con `{id,name,target}` de cada master.
+Varios masters concurrentes escribiéndolo generaban **conflictos de sync de Drive** (`masters.json.conflict1-4`)
+y **drift** (ids viejos, targets que eran worktrees, nombres repetidos). Jordi lo mandó a **mantenerse a mano
+y local** ("ese masters.json está bien chafa"; "los masters deberían mantenerlo directamente en vez de que sea
+automático"). Ahora:
+
+- **El hook YA NO escribe `masters.json`.** Solo exporta el `.gz` + su **`<sid>.meta.json`** per-sid
+  (`id`, `label`, `originCwd`), que es **conflict-free** (un archivo por sesión).
+- **El roster lo DERIVA `seed.sh`** de: (1) los **`masters-<host>.json`** que cada máquina **cura a mano** y
+  publica a esta carpeta; (2) el `masters.json` legacy si todavía existe (compat); (3) los `<id>.meta.json`
+  como **respaldo** para ids no curados a mano (`name`=`label`, `target`=`originCwd` sin el prefijo del `$HOME`
+  de origen). La entrada **curada a mano gana** sobre la derivada (fija el `target` canónico, no un worktree).
+
+Registrar un master nuevo = renombrar la sesión a `<algo>-master` (su export escribe el `<sid>.meta.json`
+automáticamente); para fijar un `target` canónico o un nombre distinto, agrégalo a mano a tu
+`masters-<host>.json`.
