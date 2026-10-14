@@ -9124,6 +9124,13 @@ CKS="$SCRIPT_DIR/skills/checkpoint/SKILL.md"
   && ok "checkpoint SKILL: trae la regla PISO (<~30min → appendea a bitácora, no reescribe) con su mecanismo (mtime)" \
   || bad "checkpoint SKILL: FALTA la regla PISO entre checkpoints o su mecanismo (¿se perdió en un sync/reorg?)"
 
+# A7: el borrador de /compact (pedido Jordi 2026-10-14) DEBE vivir en la FUENTE del skill: si el checkpoint
+# precede un /compact que correrá el usuario, el skill termina entregando el comando armado + la regla de
+# procedencia (solo cita literal del usuario entre comillas). Guard de presencia contra pérdida por sync/reorg.
+{ [ -f "$CKS" ] && grep -qiF 'entrega el borrador' "$CKS" && grep -qF '/compact <instrucciones>' "$CKS" && grep -qi 'procedencia (regla dura)' "$CKS"; } \
+  && ok "checkpoint SKILL: trae el paso de cierre que entrega el borrador de /compact (con regla de procedencia)" \
+  || bad "checkpoint SKILL: FALTA el paso del borrador de /compact o su regla de procedencia (pedido Jordi 2026-10-14)"
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo "== (dm) despertar-master: resuelve desde TRANSCRIPTS (newest-per-name · viva→no-relanza · cwd real) =="
 # Contrato por EFECTO: la skill NO confía en masters.json; resuelve nombre/cwd/vida del transcript, el MÁS

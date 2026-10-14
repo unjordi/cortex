@@ -287,6 +287,27 @@ que "avanzó mucho en lo técnico pero perdió por completo el flow").
    checkpoint** (no lo agendes), y regístralo en `## COSECHA DURABLE` con sus rutas. Lo que ya vive en
    disco es lo único que el compact no puede perder.
 
+## Si el checkpoint precede un `/compact`: entrega el borrador listo para pegar
+Cuando el COMPLETO se hace JUSTO ANTES de un `/compact` que correrá el usuario, el ÚLTIMO acto del
+checkpoint es **entregarle el comando armado** en un bloque de código, listo para copiar:
+
+    /compact <instrucciones>
+
+Las instrucciones las DERIVAS del volcado que acabas de escribir (no las inventes). Van, cortas:
+- el **marcador de estado**: hashes, ramas, qué está PROBADO y qué NO;
+- la **cola en orden** (lo que sigue);
+- las **citas textuales del usuario**, sin corregir erratas;
+- la **decisión abierta**.
+
+Son **cortas a propósito**: COMPLEMENTAN el hilo en disco (`hilo-mental-actual.md`), no lo sustituyen —
+el CLI re-lee el `# Compact instructions` del `CLAUDE.md` y el hilo sobrevive aparte; estas instrucciones
+solo SESGAN el resumen hacia lo que no debe perderse (medido: las instrucciones de `/compact` sí cambian
+el formato y el contenido del resumen).
+
+**Procedencia (regla dura):** en las instrucciones, solo va entre comillas el texto LITERAL del usuario;
+lo que tú relayes ahí sobrevive con la procedencia que traiga (no laves una inferencia tuya como cita
+suya). Es la misma regla de PROCEDENCIA del volcado, aplicada al borrador.
+
 ## El estándar: que ESCARBAR sea innecesario
 El hilo se escribe para que la siguiente instancia (tú mismo tras compactar, o un sucesor) NO tenga que
 releer las fuentes para reconstruir el modelo — le basta con LEER el hilo. Si al retomar hace falta
