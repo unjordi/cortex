@@ -43,6 +43,12 @@ del cortex. **Instancias canónicas de referencia:** `cps` y `fluxcore` (su `CLA
   `🎯 Misión/identidad → 🧠 Antes de construir → 📁 Dónde va cada cosa → 🖋️ LA FIRMA (árbol de
   capacidades→artefactos, DENTRO de un bloque cercado ```) → 🛡️ Reglas duras → @import MEMORY.md`.
   ATEMPORAL (gradiente de estabilidad = como `main`): cero fechas, cero "RESUELTO/al día".
+  **Identidad del master:** junto al `@import MEMORY.md`, el molde incluye
+  `@.claude/memory/conocimiento-propio.local.md` — la identidad por-master (gitignored per-máquina),
+  cargada con el `@` NATIVO. Es TOLERANTE a su ausencia (un `@import` a un archivo que no existe no
+  truena ni inventa: en un clon de otro dev simplemente no aporta nada), así que viaja en el CLAUDE.md
+  compartido sin romper a quien no tiene el archivo. Reemplaza la re-inyección que hacía el hook
+  `aviso-drift-cerebro` (su retiro del hook es un paso aparte, cuando el `@` esté propagado).
 - **`MEMORY.md`** = **detalle 1:1** de la FIRMA + índice de memorias **agrupado POR PREFIJO**
   (`dom-` dominio · `dev-` desarrollo/infra · `ux-` diseño · `qa-` calidad · **núcleo** sin prefijo:
   `estado-proyecto` · `bitacora` · `aprendizajes` · `backlog-<tema>` · `hilo-mental-actual` ·

@@ -4257,6 +4257,17 @@ rm -rf "$ADHOME/.claude/memory/.drift-cerebro"
 is_silent "$(ad)" && ok "aviso-drift: sin conocimiento-propio(.local).md y sin drift → silencio (per-repo, no universal)" || bad "aviso-drift: habló sin archivo de identidad ni drift"
 rm -rf "$ADFIX"
 
+# (B8) Identidad por `@` NATIVO: el CLAUDE.md del meta-repo (cortex) importa conocimiento-propio.local.md JUNTO a
+# MEMORY.md, y el molde de canonizar-cerebro lo documenta. Jordi 2026-10-14: "lo quiero en el @ nativo, no en el
+# hook". Medido: un @import a un archivo AUSENTE es tolerante (no truena ni inventa) → el import viaja en el
+# CLAUDE.md compartido sin romper a quien no tiene el .local.md. (El RETIRO de la re-inyección del hook es un paso
+# APARTE, cuando el @ esté propagado.) Guard de presencia contra que una reorg retire el cableado.
+B8_ROOTCLAUDE="$SCRIPT_DIR/../CLAUDE.md"; B8_CANONSK="$SCRIPT_DIR/skills/canonizar-cerebro/SKILL.md"
+{ [ -f "$B8_ROOTCLAUDE" ] && grep -qF '@.claude/memory/conocimiento-propio.local.md' "$B8_ROOTCLAUDE" \
+  && [ -f "$B8_CANONSK" ] && grep -qF '@.claude/memory/conocimiento-propio.local.md' "$B8_CANONSK"; } \
+  && ok "B8: identidad por @ NATIVO cableada (CLAUDE.md del meta-repo + molde canonizar-cerebro importan conocimiento-propio.local.md)" \
+  || bad "B8: FALTA el @import nativo de conocimiento-propio.local.md en el CLAUDE.md del meta-repo o en el molde de canonizar-cerebro"
+
 # ── (b5b2) FIX costura #2: aviso-drift DETECTA el drift de CABLEADO (hooks presentes SIN cablear).
 # Antes era CIEGO al wiring: solo sumaba nuevos+act+ret → un repo con "0 nuevos · 0 a actualizar · N
 # cableado faltante" se veía "al día" (bug LIVE comprobado en la plantilla: 3 hooks sin cablear → 0
