@@ -285,29 +285,61 @@ bz_remota_integrada() {
 
 # bz_es_zombie ROOT BR BASE → 0 si BR ya está integrada a BASE (zombie), 1 si conservar. Deja el MOTIVO en
 # $BZ_RAZON: a=ancestro · e=squash con "Rama:" en el log · d=PR/MR mergeado · c=cherry patch-equivalente ·
-# b=remota borrada sin commits propios · vivo=commits propios confirmados (con o sin remota) ·
-# indeterminado=había '+' en git cherry pero NO se pudo consultar el host para descartar un squash-multi
-# ya mergeado (A-3: la acción es conservar igual, pero el reporte no debe afirmar "vivo" con certeza).
+# t=TRANSITIVA (un salto BR→X→BASE) · b=remota borrada sin commits propios · vivo=commits propios
+# confirmados (con o sin remota) · indeterminado=había '+' en git cherry pero NO se pudo consultar el host
+# para descartar un squash-multi ya mergeado (A-3: la acción es conservar igual, pero el reporte no debe
+# afirmar "vivo" con certeza).
 BZ_RAZON=""
-bz_es_zombie() {
-  local ROOT="$1" br="$2" base="$3" up cherry
-  BZ_RAZON=""
+
+# _bz_integrada_directa ROOT BR BASE → 0 si BR está integrada a BASE por una señal POSITIVA DIRECTA
+# (a ancestro · e "Rama:" en el squash · d PR/MR mergeado · c patch-equivalente sin '+'). Sin (b)/upstream
+# ni transitiva. Fija $BZ_RAZON con la letra al acertar (no la toca al fallar). La comparten bz_es_zombie
+# (BR→BASE) y el carril transitivo (t) para el 2º eslabón X→BASE — UNA sola definición de "las señales de
+# siempre", sin divergencia.
+_bz_integrada_directa() {
+  local ROOT="$1" br="$2" base="$3" cherry
   git -C "$ROOT" merge-base --is-ancestor "$br" "$base" 2>/dev/null && { BZ_RAZON=a; return 0; }  # (a)
-  # (e) señal LOCAL determinista y offline: el mensaje del squash trae "Rama: <br>" (convención de equipo).
-  if git -C "$ROOT" log --format='%B' "$base" -- 2>/dev/null | grep -qxF "Rama: $br"; then
-    BZ_RAZON=e; return 0
+  if git -C "$ROOT" log --format='%B' "$base" -- 2>/dev/null | grep -qxF "Rama: $br"; then          # (e)
+    BZ_RAZON=e; return 0                                                                            # (offline)
   fi
-  bz_pr_mergeado "$ROOT" "$br" && { BZ_RAZON=d; return 0; }   # (d) PR/MR mergeado (host, autoritativo)
-  # (c) squash/cherry a la base: los commits de la rama ya están en base por EQUIVALENCIA de parche
-  # (git cherry los marca '-'; NINGUNO '+').
-  cherry=$(git -C "$ROOT" cherry "$base" "$br" 2>/dev/null)
+  bz_pr_mergeado "$ROOT" "$br" && { BZ_RAZON=d; return 0; }                                          # (d)
+  cherry=$(git -C "$ROOT" cherry "$base" "$br" 2>/dev/null)                                          # (c)
   if [ -n "$cherry" ] && ! printf '%s\n' "$cherry" | grep -q '^+'; then BZ_RAZON=c; return 0; fi
+  return 1
+}
+
+bz_es_zombie() {
+  local ROOT="$1" br="$2" base="$3" up cherry x brrev xrev
+  BZ_RAZON=""
+  _bz_integrada_directa "$ROOT" "$br" "$base" && return 0   # (a)(e)(d)(c) directas BR→BASE
+  # (t) TRANSITIVA ACOTADA — UN SOLO salto BR → X → BASE, con evidencia POSITIVA en cada eslabón. Cierra el
+  # hueco del flujo mini-develop: BR se mergeó a una mini X (BR queda ANCESTRO de X) y X se SQUASHEÓ a BASE
+  # → los commits de BR no quedan ni de ancestro ni patch-equivalentes contra BASE y (a)/(c)/(e) fallan.
+  #   eslabón 1 (BR→X): X CONTIENE a BR por ancestro (`git branch --contains BR`; POSITIVO, squash-safe).
+  #   eslabón 2 (X→BASE): X integrada por las señales DIRECTAS de siempre (_bz_integrada_directa X BASE).
+  # Ambos → BR entró transitivamente (razón t). NADA se afloja: un commit de BR MÁS ALLÁ del merge a X
+  # rompe el ancestro → X no aparece en --contains → se cae al carril (b)/vivo de abajo (FRENA como hoy).
+  # Un solo salto por diseño: el eslabón 2 usa SOLO señales directas, nunca otra transitiva → sin cadenas
+  # ni recursión. X debe contener a BR como ancestro ESTRICTO: se excluye BR, BASE y toda rama que apunte
+  # al MISMO commit que BR — un hermano en el mismo tip NO es un intermediario que integró a BR (su propio
+  # PR/señal no debe volver zombie a BR; eso lo conserva el carril (b)/vivo de abajo — FMEA b3g).
+  brrev=$(git -C "$ROOT" rev-parse --verify -q "$br^{commit}" 2>/dev/null)
+  while IFS= read -r x; do
+    [ -z "$x" ] && continue
+    { [ "$x" = "$br" ] || [ "$x" = "$base" ]; } && continue
+    xrev=$(git -C "$ROOT" rev-parse --verify -q "$x^{commit}" 2>/dev/null)
+    [ -n "$brrev" ] && [ "$xrev" = "$brrev" ] && continue
+    if _bz_integrada_directa "$ROOT" "$x" "$base"; then BZ_RAZON=t; return 0; fi
+  done < <(git -C "$ROOT" branch --contains "$br" --format='%(refname:short)' 2>/dev/null)
   # (b) remota borrada — NUNCA a ciegas. La ausencia de la remota NO prueba que la rama esté integrada
   # (pudo borrarse por rename/limpieza manual, o traer commits VIVOS post-merge sin pushear). Si la rama
   # tiene commits PROPIOS no equivalentes a la base (git cherry marcó algún '+'), se CONSERVA aunque su
   # remota ya no exista: el `branch -D` de los barredores es irreversible y borraría ese trabajo. Antes
   # (b) declaraba zombie sin re-chequear commits únicos → PÉRDIDA DE DATOS (FMEA A5/MEDIO-3). El header
   # promete "conserva ante duda": aquí se hace cumplir — solo una rama SIN trabajo único cae a (b).
+  # (recomputar cherry aquí: (c) vive ahora dentro de _bz_integrada_directa como var LOCAL, así que el
+  #  carril (b)/indeterminado necesita su PROPIA pasada de git cherry sobre BR.)
+  cherry=$(git -C "$ROOT" cherry "$base" "$br" 2>/dev/null)
   if printf '%s\n' "$cherry" | grep -q '^+'; then
     # A-3: '+' pudo ser un squash-multi YA mergeado que (d) habría cazado. Si (d) SÍ se pudo consultar
     # (host reachable, este branch simplemente no apareció como mergeado) → confianza real: vivo. Si NO

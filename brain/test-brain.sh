@@ -9072,6 +9072,68 @@ CKS="$SCRIPT_DIR/skills/checkpoint/SKILL.md"
   || bad "checkpoint SKILL: FALTA la regla PISO entre checkpoints o su mecanismo (¿se perdió en un sync/reorg?)"
 
 # ─────────────────────────────────────────────────────────────────────────────
+echo "== (b1-transit) B1(a): ramas-zombie — vía TRANSITIVA acotada (BR→X→BASE) cierra el hueco mini-develop =="
+# Fixture: develop(base) · epic/mini (X, integrada a develop por 'Rama: epic/mini') · feat/a mergeada a X.
+# feat/a NO está directa en develop (ni ancestro, ni 'Rama:', ni patch-equiv) → el código VIEJO la daba por
+# VIVA (FP: branch -D avisaría). El NUEVO la ve integrada transitivamente (razón t). Dirección contraria:
+# un commit EXTRA en feat/a tras el merge a X rompe el ancestro → sigue conservándose (nada se afloja).
+BZT="$(mktemp -d)"
+# commits REALES (no --allow-empty: un patch vacío confunde a git cherry → (c) falsearía). feat/a y la
+# mini tocan archivos distintos del squash de develop → feat/a NO es patch-equivalente a develop (git
+# cherry marca '+') → cae de las señales directas a la TRANSITIVA, que es lo que se prueba.
+( cd "$BZT" && git init -q && git config user.email t@t && git config user.name t \
+    && git checkout -q -b develop && echo base > base.txt && git add . && git commit -qm base \
+    && git checkout -q -b epic/mini && echo m1 > m1.txt && git add . && git commit -qm c1 \
+    && git checkout -q -b feat/a && echo a2 > a2.txt && git add . && git commit -qm c2 \
+    && git checkout -q epic/mini && git merge -q --no-ff feat/a -m 'merge feat/a a la mini' \
+    && git checkout -q develop && echo squashed > squashed.txt && git add . \
+    && git commit -qm "$(printf 'squash de la mini\n\nRama: epic/mini')" ) >/dev/null 2>&1
+ZLIB="$SCRIPT_DIR/hooks/ramas-zombie.sh"
+if [ -d "$BZT/.git" ] && [ -f "$ZLIB" ]; then
+  # (a) POSITIVO: feat/a entra por transitiva → zombie, razón t.
+  rz=$(CLAUDE_BZ_PRCACHE="" bash -c '. "$1"; bz_es_zombie "$2" feat/a develop && echo "Z:$BZ_RAZON" || echo "VIVO:$BZ_RAZON"' _ "$ZLIB" "$BZT")
+  case "$rz" in
+    Z:t) ok "B1(a): feat/a mergeada a la mini (squasheada a develop) → zombie por TRANSITIVA (razón t)" ;;
+    *)   bad "B1(a): feat/a transitivamente integrada NO reconocida (got '$rz')" ;;
+  esac
+  # dirección contraria: commit EXTRA en feat/a tras el merge → ya NO es ancestro de la mini → conservar.
+  ( cd "$BZT" && git checkout -q feat/a && echo a3 > a3.txt && git add . && git commit -qm c3 ) >/dev/null 2>&1
+  rz2=$(CLAUDE_BZ_PRCACHE="" bash -c '. "$1"; bz_es_zombie "$2" feat/a develop && echo "Z:$BZ_RAZON" || echo "VIVO:$BZ_RAZON"' _ "$ZLIB" "$BZT")
+  case "$rz2" in
+    VIVO:*) ok "B1(a): commit EXTRA tras el merge a la mini → NO ancestro → se CONSERVA (nada se afloja)" ;;
+    *)      bad "B1(a): un commit sin integrar se dio por zombie (got '$rz2') — SE AFLOJÓ" ;;
+  esac
+else
+  bad "B1(a): no se pudo montar el fixture o falta $ZLIB"
+fi
+rm -rf "$BZT"
+
+echo "== (b1-compound) B1(c): proteger-arbol — 'git merge X && git branch -D X' en un comando → X segura =="
+# feat/b tiene un commit sin integrar a develop. 'branch -D feat/b' SOLO → AVISA (control). El compound
+# 'git merge feat/b && git branch -D feat/b' → el merge la integra en el acto → SILENCIO. El código viejo
+# avisaba en AMBOS (no reconocía el merge del mismo comando).
+PAB="$(mktemp -d)"
+( cd "$PAB" && git init -q && git config user.email t@t && git config user.name t \
+    && git checkout -q -b develop && git commit -q --allow-empty -m base \
+    && git checkout -q -b feat/b && git commit -q --allow-empty -m trabajo \
+    && git checkout -q develop ) >/dev/null 2>&1
+PA="$SCRIPT_DIR/hooks/proteger-arbol.sh"
+if [ -d "$PAB/.git" ] && [ -f "$PA" ]; then
+  _pa() { printf '{"tool_input":{"command":%s},"cwd":%s}' "$(printf '%s' "$1" | jq -R .)" "$(printf '%s' "$PAB" | jq -R .)" | bash "$PA" 2>/dev/null; }
+  solo="$(_pa 'git branch -D feat/b')"
+  comp="$(_pa 'git merge feat/b && git branch -D feat/b')"
+  if printf '%s' "$solo" | grep -q 'feat/b'; then
+    ok "B1(c) control: 'branch -D feat/b' sin integrar → AVISA (la rama tiene trabajo propio)"
+  else bad "B1(c) control: 'branch -D feat/b' sin integrar NO avisó (got '$solo')"; fi
+  if [ -z "$(printf '%s' "$comp" | tr -d '[:space:]')" ]; then
+    ok "B1(c): 'git merge feat/b && git branch -D feat/b' → SILENCIO (mergeada en el mismo comando)"
+  else bad "B1(c): el compound merge&&branch-D siguió avisando (got '$comp')"; fi
+else
+  bad "B1(c): no se pudo montar el fixture o falta $PA"
+fi
+rm -rf "$PAB"
+
+# ─────────────────────────────────────────────────────────────────────────────
 echo ""
 PASS=$(grep -c '^OK$'  "$CALLLOG" 2>/dev/null); PASS="${PASS:-0}"
 FAIL=$(grep -c '^BAD$' "$CALLLOG" 2>/dev/null); FAIL="${FAIL:-0}"
