@@ -147,4 +147,30 @@ git symbolic-ref HEAD refs/heads/develop
 
 ---
 
-<!-- Las secciones de B5, B8, B2, B3/B4 y N1-N7/N2 se agregan aquí conforme cada slice cierra. -->
+## B5 — `git-branch-guard`, push a un remote-tracking ref (precisión, Jordi aprobó 2026-10-11)
+
+**Qué cambió.** Un push que ACTUALIZA un **remote-tracking ref** (`refs/remotes/<remote>/<base>`) —típico al
+sincronizar el clon de OTRA máquina, p. ej. `git push backup develop:refs/remotes/origin/develop`— NO toca la
+RAMA base del remoto, pero el `/develop` final del ref lo hacía bloquear en falso. `acg_push_destino_base`
+ahora BORRA los destinos `refs/remotes/.../<base>` antes de buscar la base. Fail-closed: un destino de RAMA
+real sigue bloqueando.
+
+> Este guard es DENY y corre GLOBAL (la copia del repo cede). En la sesión final, con la épica instalada,
+> Jordi **teclea** cada comando en un repo de prueba y ve si git-branch-guard lo deja o lo bloquea. (Para
+> una verificación sin instalar: `bash -c '. brain/hooks/analizar-comando-git.sh; acg_push_toca_base "<cmd>" && echo BLOQUEA || echo pasa'`.)
+
+| # | Caso | Comando | Esperado | Por qué |
+|---|------|---------|----------|---------|
+| B5-F | FP que cerramos | `git push backup develop:refs/remotes/origin/develop` | **PASA** | Actualiza el tracking ref del clon de otra máquina; no toca la rama base del remoto. |
+| B5-F2 | ramita → tracking ref | `git push origin feat/x:refs/remotes/origin/develop` | **PASA** | El dest es un tracking ref, no la rama base. |
+| B5-T1 | nada se afloja | `git push origin develop` | **BLOQUEA** | Push a la RAMA base — sigue prohibido. |
+| B5-T2 | nada se afloja | `git push origin HEAD:refs/heads/develop` | **BLOQUEA** | Destino de rama base explícito. |
+| B5-T3 | nada se afloja | `git push origin :develop` | **BLOQUEA** | Borrar la rama base — sigue prohibido. |
+
+### Respaldo automatizado
+`brain/test-brain.sh` (bloque B5, junto a H2): los 2 FP pasan y los 3 controles de rama-base bloquean. El
+caso FP **falla contra el código viejo** (el regex sin el borrado del tracking ref sí bloqueaba).
+
+---
+
+<!-- Las secciones de B8, B2, B3/B4 y N1-N7/N2 se agregan aquí conforme cada slice cierra. -->

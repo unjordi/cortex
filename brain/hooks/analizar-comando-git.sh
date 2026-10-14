@@ -248,7 +248,15 @@ acg_mrid() {
 #     y `git push origin develop>log` (redirect `>` pegado). Se amplía a `([[:space:]]|$|[)>&|;])` — cierra
 #     ambos. VERIFICADO: casa `develop)`/`develop>` y NO casa `develop-feature`/`feat/develop-x` (cero FP).
 acg_push_destino_base() {
-  printf '%s' "$1" | grep -qE 'git[[:space:]]+push[^;&|]*[[:space:]:/+](main|master|develop)([[:space:]]|$|[)>&|;])'
+  # B5 (precisión git-branch-guard, aprobado por Jordi 2026-10-11): un push que actualiza un REMOTE-TRACKING
+  # ref (`git push backup develop:refs/remotes/origin/develop` — típico al sincronizar el clon de OTRA máquina)
+  # NO toca la RAMA base del remoto; es el ref local de seguimiento. El `/develop` final de
+  # `refs/remotes/origin/develop` disparaba el grep de abajo → falso positivo. Se BORRAN esos tokens antes de
+  # buscar la base; un destino de RAMA real (bare `develop`, `HEAD:develop`, `:refs/heads/develop`, `:develop`
+  # de borrado) se conserva y SÍ bloquea (fail-closed: solo exime el tracking ref, nada más).
+  local seg
+  seg=$(printf '%s' "$1" | sed -E 's#refs/remotes/[^[:space:]:]+##g')
+  printf '%s' "$seg" | grep -qE 'git[[:space:]]+push[^;&|]*[[:space:]:/+](main|master|develop)([[:space:]]|$|[)>&|;])'
 }
 
 # H2 (auditoría de ejecución 2026-09-16, MEDIO, CONFIRMADO): ¿el push nombra un destino OPACO (sustitución

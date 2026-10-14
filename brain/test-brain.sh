@@ -987,6 +987,27 @@ acg_push_toca_base 'git push origin feat/mi-cambio' \
   && bad "H2: REGRESIÓN — un push a una ramita literal normal quedó bloqueado (falso positivo nuevo)" \
   || ok "H2: control — push a ramita literal normal sigue SIN gatear"
 
+# B5 (precisión git-branch-guard, Jordi 2026-10-11): un push que ACTUALIZA un remote-tracking ref
+# (refs/remotes/<remote>/<base>, típico al sincronizar el clon de OTRA máquina) NO toca la RAMA base → no debe
+# bloquear. El `/develop` final de `refs/remotes/origin/develop` lo disparaba en falso. Fail-closed: solo exime
+# ESE tracking ref; un destino de RAMA real sigue bloqueando. El caso FP FALLA contra el código viejo.
+acg_push_toca_base 'git push backup develop:refs/remotes/origin/develop' \
+  && bad "B5: FP — push a un tracking ref refs/remotes/.../develop se bloqueó (sincronizar el clon de otra máquina)" \
+  || ok "B5: push a un remote-tracking ref (refs/remotes/.../develop) NO bloquea (el FP que cerramos)"
+acg_push_toca_base 'git push origin feat/x:refs/remotes/origin/develop' \
+  && bad "B5: FP — push de feat/x a un tracking ref se bloqueó (el dest es un tracking ref, no la rama base)" \
+  || ok "B5: push de una ramita a un tracking ref NO bloquea"
+# nada se afloja: los destinos de RAMA base reales siguen bloqueando (ambas direcciones).
+acg_push_toca_base 'git push origin develop' \
+  && ok "B5 control: push a la RAMA develop (bare) sigue BLOQUEANDO" \
+  || bad "B5: SE AFLOJÓ — un push a develop bare dejó de bloquear"
+acg_push_toca_base 'git push origin HEAD:refs/heads/develop' \
+  && ok "B5 control: push explícito a refs/heads/develop sigue BLOQUEANDO" \
+  || bad "B5: SE AFLOJÓ — un push a refs/heads/develop dejó de bloquear"
+acg_push_toca_base 'git push origin :develop' \
+  && ok "B5 control: borrar la rama base (:develop) sigue BLOQUEANDO" \
+  || bad "B5: SE AFLOJÓ — borrar la rama base dejó de bloquear"
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (b1d-medio) MEDIO/H3-semántico (auditoría FMEA 2026-09-16 §1.5 + auditoría semántica H3): CACHE-DE-CREACION"
