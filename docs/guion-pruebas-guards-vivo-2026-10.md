@@ -173,4 +173,32 @@ caso FP **falla contra el código viejo** (el regex sin el borrado del tracking 
 
 ---
 
+## sync-upstream — `merge-develop-guard`, excepción al squash (PORT `7e3eedd` + revisión `docs/revision-sync-upstream-2026-10.md`)
+
+> Portado tal cual de la cachy (Jordi autorizó 2026-10-03 + en vivo vía claudio). La excepción exime del
+> `--squash` a un merge de MR que es un **sync de upstream** real (PR con merge-commit cuyo 2º padre aporta
+> historia que `develop` no tiene) con `--merge` + frase USUARIO anclada al PR. **No afloja el candado**: el
+> merge sigue pasando por el juez de autorización (PASO 3b); la excepción solo waivea el squash.
+>
+> ⚠️ **Este guard necesita un PR real abierto para el positivo** (el test contra `unjordi/armada-rp6` #40 se
+> **pudrió**: #40 ya se mergeó → `ahead_by=0` → ya no es sync). El positivo-en-vivo exige un PR de sync
+> ABIERTO en un repo de Jordi; la cobertura determinista la dará un mock hermético (pendiente, ver revisión).
+> Los negativos NO necesitan red (cortan antes del `gh api`).
+
+| # | Caso | Comando (con una línea USUARIO `autorizo --merge (sin squash) del PR #N a develop`) | Esperado | Por qué |
+|---|------|------|----------|---------|
+| SU-T1 | sync real + frase | `gh pr merge <N> --merge --repo <slug>` sobre un PR de sync **ABIERTO** (2º padre con `ahead_by>0`) | **PASA el squash** (cae al juez) | Es el caso que la excepción habilita: preservar la historia de upstream. |
+| SU-F1 | sin frase | `gh pr merge <N> --merge --repo <slug>` **sin** línea USUARIO para ese PR | **BLOQUEA (exige squash)** | Falta la autorización textual anclada al PR. |
+| SU-F2 | sin `--merge` | `gh pr merge <N> --repo <slug>` + frase | **BLOQUEA (exige squash)** | Sin `--merge` no es el caso de la excepción. |
+| SU-F3 | PR normal (no sync) | `gh pr merge <N> --merge --repo <slug>` + frase, PR SIN merge-commit ajeno | **BLOQUEA (exige squash)** | `ahead_by=0` → no hay historia de upstream que preservar (anti-disfraz). |
+| SU-F4 | frase de OTRO PR | `gh pr merge <N> --merge` + frase que nombra el PR **M≠N** | **BLOQUEA (exige squash)** | La frase no ancla a ESTE PR. |
+
+### Respaldo automatizado
+Hoy: `brain/hooks/tests-locales/test-merge-sync-upstream.sh` (portado tal cual, 1 positivo + 4 negativos
+contra PRs reales de `unjordi/armada-rp6`). **NO cableado a `test-brain.sh`/CI a propósito** (golpea la red +
+depende del estado del fixture; el positivo ya no pasa porque #40 se mergeó). **Pendiente de la revisión:**
+hermetizar con mock de `gh api` + fixture determinista de ambas direcciones y cablearlo a la suite.
+
+---
+
 <!-- Las secciones de B8, B2, B3/B4 y N1-N7/N2 se agregan aquí conforme cada slice cierra. -->
