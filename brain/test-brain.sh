@@ -742,6 +742,44 @@ rm -rf "$GBX"
   [ -z "$(acg_target_remote 'glab mr merge 5' '')" ]       && ok "target_remote: sin --repo y dir no-git → vacío (fail-safe)" || bad "target_remote: devolvió algo con dir no-git"
 )
 
+# ── (b4-lib) acg_clon_local_de_slug: mapea un --repo <slug> a su CLON LOCAL (B4, FIX DE CLASE 2026-10) ──
+# FP recurrente de merge-develop-guard (corpus 2026-09-21, ~10 rondas): el repo DESTINO de un `… merge --repo
+# <slug>` es el del SLUG, no el del cwd de la sesión → resolver la marca repo-compartido Y el grant por el cwd
+# leía el repo EQUIVOCADO (frenó un merge AUTORIZADO porque el grant vivía en el OTRO repo). El resolver mapea el
+# slug a su clon local (dir-pista o un HERMANO). Ambas direcciones + FAIL-SAFE (slug no-local → vacío → gatea).
+( . "$HOOKS/analizar-comando-git.sh"
+  B4T=$(mktemp -d "${TMPDIR:-/tmp}/brain-b4.XXXXXX")
+  mkdir -p "$B4T/cwdrepo" "$B4T/tgtrepo" "$B4T/nogit"
+  git -C "$B4T/cwdrepo" init -q >/dev/null 2>&1; git -C "$B4T/cwdrepo" remote add origin https://github.com/org/cwdrepo.git
+  git -C "$B4T/tgtrepo" init -q >/dev/null 2>&1; git -C "$B4T/tgtrepo" remote add origin git@gitlab.com:grp/sub/tgtrepo.git
+  [ "$(acg_slug_de_dir "$B4T/cwdrepo")" = org/cwdrepo ]     && ok "b4: acg_slug_de_dir normaliza origin https → org/cwdrepo" || bad "b4: slug_de_dir https mal"
+  [ "$(acg_slug_de_dir "$B4T/tgtrepo")" = grp/sub/tgtrepo ] && ok "b4: acg_slug_de_dir normaliza origin ssh con subgrupo → grp/sub/tgtrepo" || bad "b4: slug_de_dir ssh mal"
+  [ "$(acg_clon_local_de_slug 'grp/sub/tgtrepo' "$B4T/cwdrepo")" = "$(git -C "$B4T/tgtrepo" rev-parse --show-toplevel)" ] \
+    && ok "b4: --repo del HERMANO → su clon local (no el cwd) — cierra el FP recurrente" || bad "b4: no resolvió el --repo hermano a su clon"
+  [ "$(acg_clon_local_de_slug 'org/cwdrepo' "$B4T/cwdrepo")" = "$(git -C "$B4T/cwdrepo" rev-parse --show-toplevel)" ] \
+    && ok "b4: --repo == el propio cwd → se resuelve a sí mismo" || bad "b4: no resolvió el propio slug"
+  [ -z "$(acg_clon_local_de_slug 'org/no-local' "$B4T/cwdrepo")" ] \
+    && ok "b4: slug SIN clon local → vacío (FAIL-SAFE: el caller se queda con cwd y GATEA, como hoy)" || bad "b4: devolvió algo para un slug no-local"
+  [ -z "$(acg_clon_local_de_slug 'OPACO' "$B4T/cwdrepo")" ] && ok "b4: OPACO → vacío (no es un slug usable)" || bad "b4: OPACO devolvió algo"
+  rm -rf "$B4T"
+)
+
+# ── (b4-guard) EFECTO en merge-develop-guard: con --repo <hermano>, TARGET_ROOT sigue al HERMANO, no al cwd ──
+# Ambas direcciones: --repo a un hermano PERSONAL (sin marca) → _salir_ok silencioso (antes de B4 gateaba = FP);
+# --repo al cwd COMPARTIDO (con marca) → gatea (no se afloja lo compartido). Juez mockeado DENY para determinismo.
+B4G=$(mktemp -d "${TMPDIR:-/tmp}/brain-b4g.XXXXXX"); B4GH="$B4G/home"; mkdir -p "$B4GH"
+mkdir -p "$B4G/shr/.claude" "$B4G/per/.claude"
+git -C "$B4G/shr" init -q >/dev/null 2>&1; git -C "$B4G/shr" remote add origin https://github.com/org/shr.git; : > "$B4G/shr/.claude/repo-compartido"
+git -C "$B4G/per" init -q >/dev/null 2>&1; git -C "$B4G/per" remote add origin git@gitlab.com:org/per.git
+b4run() { jq -nc --arg c "$1" --arg d "$B4G/shr" '{tool_input:{command:$c},cwd:$d}' | HOME="$B4GH" CLAUDE_PROJECT_DIR="$B4G/shr" CLAUDE_MERGE_JUEZ_MOCK=DENY bash "$HOOKS/merge-develop-guard.sh" 2>/dev/null; }
+is_silent "$(b4run 'glab mr merge 1 --repo org/per --squash')" \
+  && ok "b4-guard: --repo del hermano PERSONAL → _salir_ok silencioso (TARGET_ROOT siguió al --repo, no al cwd compartido)" \
+  || bad "b4-guard: gateó un merge al hermano personal (TARGET_ROOT se quedó en el cwd compartido = el FP recurrente)"
+printf '%s' "$(b4run 'glab mr merge 1 --repo org/shr --squash')" | grep -q 'permissionDecision' \
+  && ok "b4-guard control: --repo del cwd COMPARTIDO (marca) → gatea (no se afloja lo compartido)" \
+  || bad "b4-guard control: no gateó un merge al repo compartido"
+rm -rf "$B4G"
+
 # ── (b1d-lib) acg_mrid: multi-comando aísla el SEGMENTO del ÚLTIMO merge (fix 2026-08, DETERMINISTA) ──
 # Antes tomaba el 1er entero del BLOB → `gh pr view 272 …; gh pr merge 273 …` devolvía 272 (id EQUIVOCADO,
 # del `view`); el DENY citaba el MR erróneo y detonó el parche "un merge por llamada" que enfureció al usuario.

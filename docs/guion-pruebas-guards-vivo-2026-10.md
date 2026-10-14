@@ -226,7 +226,26 @@ BLOQUEAN — ambas direcciones. El caso FP **falla contra el código viejo** (si
 
 ---
 
-<!-- Las secciones de B3/B4 y N1-N7/N2 se agregan aquí conforme cada slice cierra. -->
+## B4 — `merge-develop-guard`, `TARGET_ROOT` por `--repo` autoritativo (commit `<pendiente>`)
+
+> FIX DE CLASE del FP recurrente (~10 rondas, corpus 2026-09-21): con `glab/gh … merge --repo <slug>` desde
+> OTRO repo, el guard leía la marca `repo-compartido` y el grant del **cwd**, no del `--repo` → frenaba un merge
+> AUTORIZADO porque el grant vivía en el repo del `--repo`. Ahora `acg_clon_local_de_slug` mapea el slug a su clon
+> local y ESE es el `TARGET_ROOT`. FAIL-SAFE: sin clon local → se queda por cwd y gatea (como hoy).
+>
+> **Prueba en vivo (cross-repo):** parado en el repo A, un `glab mr merge <id> --repo <slug-de-B> --squash` con el
+> grant vigente en B (o B personal) ya NO se frena por leer A; un merge a un B COMPARTIDO sin grant SÍ gatea.
+
+### Respaldo automatizado
+- `b4-lib` (unit): `acg_clon_local_de_slug` resuelve el slug de un hermano a su clon, el propio slug a sí mismo, y
+  un slug SIN clon local / `OPACO` → vacío (fail-safe). Ambas direcciones.
+- `b4-guard` (efecto): `--repo` de un hermano PERSONAL → `_salir_ok` silencioso (TARGET_ROOT siguió al `--repo`);
+  `--repo` del cwd COMPARTIDO → gatea (lo compartido sigue protegido).
+Ambos **fallan contra el código viejo** (sin el resolver, el hermano no se encontraba y el guard leía el cwd).
+
+---
+
+<!-- Las secciones de B3 y N1-N7/N2 se agregan aquí conforme cada slice cierra. -->
 <!-- B8 cerró como cableado del @ nativo en la ÉPICA (ef754d6), no en esta rama de guards (su test vive en test-brain.sh). -->
 <!-- sync-upstream y B2 arriba. -->
 

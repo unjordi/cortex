@@ -458,6 +458,14 @@ fi
 TARGET_DIR=$(acg_target_dir "$cmd" "$pcwd")
 TARGET_ROOT=$(git -C "$TARGET_DIR" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$TARGET_DIR")
 _explicit_repo=$(acg_repo_explicito "$cmd")
+# B4 (FIX DE CLASE, corpus 2026-09-21): con `--repo <slug>` LITERAL el repo DESTINO es el del SLUG, no el del
+# cwd — resolver la marca repo-compartido Y el grant por el cwd leía el repo EQUIVOCADO (FP recurrente ~10
+# rondas). Si hay un clon local cuyo origin==slug, ESE es el TARGET_ROOT autoritativo. FAIL-SAFE: sin clon
+# local, TARGET_ROOT se queda por cwd (y abajo, al no casar el slug, GATEA — conservador como hoy).
+if [ -n "$_explicit_repo" ] && [ "$_explicit_repo" != OPACO ]; then
+  _clon_slug=$(acg_clon_local_de_slug "$_explicit_repo" "$TARGET_ROOT")
+  [ -n "$_clon_slug" ] && TARGET_ROOT="$_clon_slug"
+fi
 _es_personal=0
 if [ -n "$_explicit_repo" ] && [ "$_explicit_repo" != "OPACO" ]; then
   _local_slug=$(git -C "$TARGET_ROOT" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|https?://[^/]+/)##; s#\.git$##')

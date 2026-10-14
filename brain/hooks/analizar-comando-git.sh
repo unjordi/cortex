@@ -225,6 +225,32 @@ acg_target_remote() {   # $1=cmd  $2=payload_cwd → imprime "org/repo" | vacío
 # ¿el comando contiene un `git push`?
 acg_es_push() { printf '%s' "$1" | grep -qE 'git[[:space:]]+push([[:space:]]|$)'; }
 
+# acg_slug_de_dir(dir) → slug `org/repo` del remoto `origin` de un dir git (sin esquema ni `.git`), o vacío.
+acg_slug_de_dir() { git -C "$1" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|https?://[^/]+/)##; s#\.git$##'; }
+
+# acg_clon_local_de_slug(slug, dir-pista) → toplevel del CLON LOCAL cuyo origin==slug, o vacío (B4, 2026-10).
+# FIX DE CLASE del FP recurrente de merge-develop-guard (~10 rondas, corpus 2026-09-21): el repo DESTINO de un
+# `glab/gh … merge --repo <slug>` es el del SLUG, no el del cwd de la sesión — resolver la marca repo-compartido
+# y el grant por el cwd lee el repo EQUIVOCADO. Aquí mapeamos el slug a su clon local: (1) el propio dir-pista;
+# (2) sus HERMANOS (los repos suelen vivir juntos: ~/code/*) — búsqueda machine-agnóstica (parte del dir-pista,
+# no de una ruta hardcodeada). FAIL-SAFE: si NO hay clon local con ese origin → vacío, y el caller se queda con
+# su resolución por cwd (que, al no casar el slug, GATEA — el comportamiento conservador de hoy). Solo lee refs
+# locales (sin red); un repo con MUCHOS hermanos paga un `git remote get-url` por hermano (barato, local).
+acg_clon_local_de_slug() {   # $1=slug  $2=dir-pista → toplevel del clon | vacío
+  local slug="$1" pista="${2:-.}" parent d top
+  [ -n "$slug" ] && [ "$slug" != OPACO ] || return 1
+  top=$(git -C "$pista" rev-parse --show-toplevel 2>/dev/null)
+  if [ -n "$top" ] && [ "$(acg_slug_de_dir "$top")" = "$slug" ]; then printf '%s' "$top"; return 0; fi
+  parent=$(dirname "${top:-$pista}")
+  [ -d "$parent" ] || return 1
+  for d in "$parent"/*/; do
+    [ -d "$d" ] || continue
+    git -C "$d" rev-parse --git-dir >/dev/null 2>&1 || continue
+    if [ "$(acg_slug_de_dir "$d")" = "$slug" ]; then git -C "$d" rev-parse --show-toplevel 2>/dev/null; return 0; fi
+  done
+  return 1
+}
+
 # Extrae el MR-id del comando: el 1er entero "suelto" (opcional #) tras `mr merge`/`pr merge`, TOLERANTE a
 # flags intermedios (`glab mr merge --yes 9` → 9). Antes se exigía el id ADYACENTE al subcomando (A-04, FMEA).
 # MULTI-COMANDO (fix 2026-08): primero AÍSLA el SEGMENTO del ÚLTIMO subcomando de merge (parte por ; & |
