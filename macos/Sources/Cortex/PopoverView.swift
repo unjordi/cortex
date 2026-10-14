@@ -1475,6 +1475,9 @@ struct PopoverView: View {
                     BrainItem("🚚", "reubicar-master", "mover un master —cerebro+sesión— a otra casa/subfolder-repo git, sin lobotomía ni tail",
                               "skill · opt-in",
                               "Muda una sesión master COMPLETA de Claude Code a otro repo (caso canónico: los brain-master a cortex) sin dejar nada a medias: transcript re-anclado + cwd reescrito, cerebro del master migrado por su canal correcto, slug global y TODAS las referencias (masters.json target por-id, alias, symlink memory) corregidas de forma ATÓMICA, residuo quirúrgico barrido y doc=realidad. Úsala cuando un --resume cae en un folder muerto, un master quedó a medias (residuo + resume roto), o quieres consolidar los dos brain-master (Mac + Cachy) en cortex sin lobotomizarlos, sin fuga a un repo público ni duplicado divergente. Hermana de claude-proyecto-autocontenido (esa define DÓNDE vive el cerebro; ésta lo MUEVE de casa)."),
+                    BrainItem("⏰", "despertar-master", "revive un master desde la VERDAD (los transcripts), no desde el masters.json chafa",
+                              "skill · opt-in",
+                              "Despierta (o lista) una sesión master de Claude Code resolviéndola desde los transcripts: último customTitle = nombre, último cwd = dónde resumir, mtime = vida; por nombre gana el transcript MÁS reciente (así 'cortex-master (2)' vivo le gana al viejo) y una sesión viva NO se relanza. screen + claude --resume con los gotchas medidos (hardcopy -p 0 -h, desechar CLAUDE* heredado, mtime GNU-primero). Reemplaza mirar masters.json y lanzar a ciegas — el 2026-10-14 por eso se lanzó una segunda sesión sobre un id muerto. /despertar-master <nombre> revive; --lista muestra quién está vivo/idle y desde dónde resume."),
                 ]),
         ]
     }
