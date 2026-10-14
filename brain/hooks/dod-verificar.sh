@@ -226,26 +226,33 @@ turn=$(printf '%s\n' "$window" | awk '
 last=$(printf '%s\n' "$turn" | jq -rs '[.[] | select((.message.role // .type)=="assistant") | (.message.content[]? | select(.type=="text") | .text)] | last // ""' 2>/dev/null)
 [ -z "$last" ] && exit 0
 
-# Texto de los mensajes del USUARIO del turno (para el eje MARCA). ALTO-1: SOLO mensajes role=user, NUNCA
-# la prosa de Claude → el juez no puede auto-atestiguarse una autorización que el usuario no dio. Se
-# excluyen META/inyectados y system-reminders (traen léxico de OK que no es del usuario).
+# Texto de los mensajes del USUARIO del turno (para el eje MARCA). ALTO-1: SOLO el usuario, NUNCA la prosa
+# de Claude → el juez no puede auto-atestiguarse una autorización que el usuario no dio. Se excluyen
+# META/inyectados y system-reminders (traen léxico de OK que no es del usuario). B3 (2026-10): un OK escrito
+# A MEDIA VUELTA se persiste como attachment type=queued_command (origin.kind=="human"), NO como turno
+# role=user → antes dod nunca lo veía en MARCA (mismo hueco que el juez de merge cerró en acg_recent_intercalado).
 usertext=$(printf '%s\n' "$turn" | jq -rs '
-  [ .[] | select((.message.role // .type)=="user")
-        | select((.isMeta // false) != true)
-        # AskUserQuestion: el OK del usuario dado por el WIDGET llega como tool_result (texto vacío → se perdía
-        # → el juez nunca veía la MARCA (1)/(2) dada por clic). La opción ELEGIDA + notas viven en
-        # .toolUseResult.answers/.annotations (input GENUINO del usuario). SOLO ese campo (AskUserQuestion-
-        # específico); el output de OTRAS tools NO tiene .answers → sigue en texto vacío y se filtra.
-        | ( (try ([ .toolUseResult.answers[]
-                    | select(type=="string" and . != "" and . != "(no option selected)" and . != "(notes only)") ]
-                 + [ .toolUseResult.annotations[]?.notes | select(type=="string" and . != "") ]
-                 | join(" · ")) catch "") as $aq
-          | if $aq != "" then $aq
-            else ((.message.content // [.message])
-                  | if type=="array"
-                    then (map(if type=="string" then . elif (.type? == "text") then .text else "" end) | join(" "))
-                    else (. // "") end)
-            end )
+  [ .[]
+        # (B3) OK a media vuelta: attachment queued_command de origin HUMANO → su .attachment.prompt CRUDO.
+        # AUTORIDAD ESTRICTA: origin.kind=="human" exacto; cualquier otro valor/ausente NO se surfacea.
+        | ( if ((.type? // "")=="attachment") and ((.attachment.type? // "")=="queued_command") and ((.attachment.origin.kind? // "")=="human")
+            then (.attachment.prompt? // "")
+            elif ((.message.role // .type)=="user") and ((.isMeta // false) != true)
+            then
+              # AskUserQuestion: el OK del usuario dado por el WIDGET llega como tool_result (texto vacío → se
+              # perdía). La opción ELEGIDA + notas viven en .toolUseResult.answers/.annotations (input GENUINO);
+              # SOLO ese campo (AskUserQuestion-específico); el output de OTRAS tools NO tiene .answers → vacío.
+              ( (try ([ .toolUseResult.answers[]
+                        | select(type=="string" and . != "" and . != "(no option selected)" and . != "(notes only)") ]
+                     + [ .toolUseResult.annotations[]?.notes | select(type=="string" and . != "") ]
+                     | join(" · ")) catch "") as $aq
+                | if $aq != "" then $aq
+                  else ((.message.content // [.message])
+                        | if type=="array"
+                          then (map(if type=="string" then . elif (.type? == "text") then .text else "" end) | join(" "))
+                          else (. // "") end)
+                  end )
+            else "" end )
         | select(. != "")
         | select(test("<system-reminder>") | not) ] | join("  ")' 2>/dev/null)
 

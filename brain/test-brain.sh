@@ -3745,6 +3745,28 @@ CS='CIERRE=si MARCA=no VISUAL=no'    # atajo: claim de cierre, sin marca del usu
 is_block "$(dod 'X' "$EDITR" 'haz el cambio' "$CS")"            && ok "dod flujo: CIERRE=si + código + MARCA=no → bloquea" || bad "dod flujo: no bloqueó un cierre sin marca"
 is_block "$(dod 'X' "$EDITR" 'haz el cambio' 'CIERRE=no MARCA=no VISUAL=no')" && bad "dod flujo: CIERRE=no no debe bloquear" || ok "dod flujo: CIERRE=no → no bloquea (estatus/mecánico/pregunta)"
 is_block "$(dod 'X' "$EDITR" 'sí ciérralo' 'CIERRE=si MARCA=si VISUAL=no')" && bad "dod flujo: MARCA=si no debe bloquear" || ok "dod flujo: MARCA=si (usuario autorizó) → no bloquea"
+
+# ── (b3-qc) B3: dod ve el OK escrito A MEDIA VUELTA (attachment queued_command, origin HUMANO) en MARCA ──
+# Antes el OK mid-turn se persistía como queued_command (NO role=user) → usertext no lo incluía → el VETO DE
+# CITA no hallaba la cita → MARCA=no → bloqueaba un cierre AUTORIZADO (reporte 2026-10-10; mismo hueco que el
+# juez de merge ya había cerrado). Con MOCK_RAW (pasa por el parseo + veto REAL), la cita del OK mid-turn debe
+# VERIFICARSE contra usertext. Autoridad estricta: solo origin.kind=="human". Ambas direcciones.
+DODQC="$FAKEHOME/dod-qc.jsonl"
+mk_dod_qc() { { jq -nc '{type:"user",message:{role:"user",content:[{type:"text",text:"arregla el modulo de memoria"}]}}'
+    printf '%s\n' "$EDITR"
+    [ "$1" = 1 ] && jq -nc '{type:"attachment",attachment:{type:"queued_command",prompt:"si ya quedo, cierralo",commandMode:"prompt",origin:{kind:"human"}},rendered:[{content:"<system-reminder>x</system-reminder>"}]}'
+    jq -nc '{type:"assistant",message:{role:"assistant",content:[{type:"text",text:"el modulo quedo listo, cerrado"}]}}'
+  } > "$DODQC"; }
+DODQC_RAW='CIERRE: si
+MARCA: si
+CITA: si ya quedo, cierralo
+VISUAL: no'
+run_dod_qc() { printf '%s' "{\"stop_hook_active\":false,\"transcript_path\":\"$DODQC\"}" | env -u CLAUDE_CODE_OAUTH_TOKEN CLAUDE_DOD_JUEZ_MOCK_RAW="$DODQC_RAW" bash "$HOOKS/dod-verificar.sh"; }
+mk_dod_qc 1
+is_block "$(run_dod_qc)" && bad "b3-qc: ignoró el OK mid-turn (queued_command human) → bloqueó un cierre AUTORIZADO" || ok "b3-qc: OK a media vuelta (queued_command human) → visto en MARCA via usertext → NO bloquea (B3)"
+mk_dod_qc 0
+is_block "$(run_dod_qc)" && ok "b3-qc control: sin el OK mid-turn → el veto de cita no halla la cita → bloquea (no se afloja el eje)" || bad "b3-qc control: no bloqueó un cierre SIN autorización real"
+rm -f "$DODQC"
 # (5) dod-sin-código: cerrar un ENTREGABLE (doc/reporte) sin tocar código SIGUE exigiendo la marca (1)/(2)
 # — la definición de LISTO es MUTUA e independiente del stack. Antes esto pasaba mudo (exit 0); ahora bloquea.
 o5="$(dod 'El reporte de auditoría quedó listo y entregado.' '' 'haz el análisis' "$CS")"
