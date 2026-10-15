@@ -64,6 +64,18 @@ if [ -f "$_self_md" ]; then
     [ -f "$_f" ] && grep -qE '^@.*conocimiento-propio' "$_f" && { _ya_import=1; break; }
   done
   if [ "$_ya_import" = 0 ]; then
+    # Hueco (medido por claudio en axon): si CLAUDE.local.md NO está gitignoreado, crearlo lo deja untracked
+    # → un `git add -A` lo colaría al commit. Antes de escribir, si git NO lo ignora ya, lo agrega a
+    # .git/info/exclude (per-CLON, local — NO toca el .gitignore versionado del equipo). git-common-dir para
+    # que un worktree escriba en el exclude COMPARTIDO del repo.
+    if ! git -C "$ROOT" check-ignore -q CLAUDE.local.md 2>/dev/null; then
+      _gci=$(git -C "$ROOT" rev-parse --git-common-dir 2>/dev/null)
+      if [ -n "$_gci" ]; then
+        case "$_gci" in /*) ;; *) _gci="$ROOT/$_gci" ;; esac
+        mkdir -p "$_gci/info" 2>/dev/null || true
+        grep -qxF 'CLAUDE.local.md' "$_gci/info/exclude" 2>/dev/null || printf '%s\n' 'CLAUDE.local.md' >> "$_gci/info/exclude" 2>/dev/null || true
+      fi
+    fi
     [ -f "$ROOT/CLAUDE.local.md" ] || printf '%s\n' '# Overrides locales de Claude Code (gitignored, per-máquina).' > "$ROOT/CLAUDE.local.md" 2>/dev/null || true
     printf '%s\n' '@.claude/memory/conocimiento-propio.local.md' >> "$ROOT/CLAUDE.local.md" 2>/dev/null || true
   fi

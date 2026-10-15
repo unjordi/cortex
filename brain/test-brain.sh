@@ -4284,6 +4284,15 @@ b8m_run "$R2"
 R3="$B8M/r3"; mkdir -p "$R3/.claude/memory"
 b8m_run "$R3"
 [ ! -f "$R3/CLAUDE.local.md" ] && ok "b8-mig: repo sin conocimiento-propio → NO crea CLAUDE.local.md" || bad "b8-mig: creó CLAUDE.local.md sin identidad"
+# caso 4 (hueco claudio): repo GIT donde CLAUDE.local.md NO está ignorado → el hook lo agrega a
+# .git/info/exclude ANTES de crearlo, así `git status` NO lo muestra (no se cuela a un commit).
+R4="$B8M/r4"; mkdir -p "$R4/.claude/memory"; git -C "$R4" init -q >/dev/null 2>&1
+printf '# id\n' > "$R4/.claude/memory/conocimiento-propio.local.md"
+git -C "$R4" check-ignore -q CLAUDE.local.md 2>/dev/null && pre_ign=si || pre_ign=no   # control: ANTES NO está ignorado
+b8m_run "$R4"
+{ [ -f "$R4/CLAUDE.local.md" ] && [ "$pre_ign" = no ] && ! git -C "$R4" status --porcelain 2>/dev/null | grep -q 'CLAUDE.local.md'; } \
+  && ok "b8-mig: creó CLAUDE.local.md en repo git sin la regla → lo excluyó (.git/info/exclude), git status NO lo muestra" \
+  || bad "b8-mig: CLAUDE.local.md quedó visible en git status (se colaría a un commit); pre_ign=$pre_ign"
 rm -rf "$B8M"
 
 # ── (b5b2) FIX costura #2: aviso-drift DETECTA el drift de CABLEADO (hooks presentes SIN cablear).
