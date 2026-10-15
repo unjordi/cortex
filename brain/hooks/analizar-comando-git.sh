@@ -933,10 +933,10 @@ acg_recent_intercalado() {  # $1=ruta del transcript .jsonl → imprime la conve
       | ( if (.type == "attachment")
              and ((.attachment.type? // "") == "queued_command")
              and ((.attachment.origin.kind? // "") == "human")
-          then ( (.attachment.prompt? // "") as $p        # FIX (arsenal #215, 2026-10-15): un OK a media vuelta
-                 | if ($p|type) == "array"                # con IMAGEN deja .prompt como ARRAY de bloques, no string →
-                   then ([ $p[] | select((.type?) == "text") | .text ] | join(" "))   # el viejo $qc=array tumbaba el
-                   elif ($p|type) == "string" then $p     # jq entero (test sobre no-string) → ventana vacía → juez ciego.
+          then ( (.attachment.prompt? // "") as $p        # .prompt es un string, o un ARRAY de bloques si el OK
+                 | if ($p|type) == "array"                # trae imagen: de un array se une el texto de los bloques
+                   then ([ $p[] | select((.type?) == "text") | .text ] | join(" "))   # type=="text" (un no-string
+                   elif ($p|type) == "string" then $p     # abortaría el test() de más abajo).
                    else "" end )
           else "" end ) as $qc
       | { role: (if $qc != "" then "user" else (.message.role // .type) end),
@@ -952,7 +952,7 @@ acg_recent_intercalado() {  # $1=ruta del transcript .jsonl → imprime la conve
                           else (. // "") end)
                   end ) end ) }
       | select(.role=="user" or .role=="assistant")       # solo turnos de conversación (no tool-result puro)
-      | select((.text|type) == "string")                  # DEFENSIVO: un text no-string (imagen cruda) se DESCARTA, no aborta el stream
+      | select((.text|type) == "string")                  # descarta un text no-string antes del test() de abajo (un no-string lo abortaría)
       | select(.text != "")
       | select(.text | test("<system-reminder>") | not)   # descarta bloques con marca de inyección (CLAUDE.md/recordatorios)
       | { role, text: (.text | gsub("\\s+";" ")) } ] as $t

@@ -522,10 +522,14 @@ recent=$(_recent_intercalado "$tpath")
 _ventana_sin_usuario=1
 printf '%s' "$recent" | grep -qiE '^[[:space:]]*USUARIO:' && _ventana_sin_usuario=0
 _ventana_truncada=0
+_jq_fallo=0
 if [ "$_ventana_sin_usuario" = 1 ] && [ -n "$tpath" ] && [ -f "$tpath" ]; then
   _tp_lineas=$(wc -l < "$tpath" 2>/dev/null | tr -d '[:space:]')
   case "$_tp_lineas" in ''|*[!0-9]*) _tp_lineas=0 ;; esac
   [ "$_tp_lineas" -gt 6000 ] && _ventana_truncada=1
+  # Si la conversación parseada no trae USUARIO: pero la ventana CRUDA sí trae mensajes de usuario (role/type
+  # user, o un queued_command humano), el parseo del transcript falló — distinto de "no autorizaste".
+  tail -n 6000 "$tpath" 2>/dev/null | grep -qE '"(role|type)"[[:space:]]*:[[:space:]]*"user"|"queued_command"' && _jq_fallo=1
 fi
 
 # Grant DURABLE (turno-nocturno): un OK persistido a disco cubre scope=merge-develop (NUNCA main). Fast-path
@@ -564,6 +568,8 @@ elif [ "$veredicto" = "UNAVAILABLE_EXPIRED" ]; then
   r="FRENO (token OAuth expirado): tu token de Claude fue RECHAZADO (401) incluso tras un reintento — el CLI lo refresca solo en ~un momento. REINTENTA el merge en unos segundos; si persiste, corre 'claude setup-token'. (Fail-safe: no abro el merge sin poder consultar al juez.)"
 elif [ "${veredicto#UNAVAILABLE}" != "$veredicto" ]; then
   r="FRENO (juez no disponible): no pude consultar el juez de autorización de merge (¿sin red, timeout, o respuesta ininteligible?). Fail-safe conservador: reintenta. (Override de modelo/timeout: CLAUDE_MERGE_JUEZ_MODEL / CLAUDE_MERGE_JUEZ_TIMEOUT.)"
+elif [ "$_jq_fallo" = 1 ]; then
+  r="FRENO (no pude LEER la conversación): el parseo del transcript de esta sesión falló, así que no veo tu autorización — NO es que no la hayas dado. Repetir el OK en un mensaje reciente puede ayudar${_mr_cita} (p. ej. 'mergea esto a develop'); o itera con 'git merge' LOCAL en tu mini (no pasa por este candado). Si persiste, el transcript trae un bloque que el parser no maneja — repórtalo."
 elif [ "$_ventana_truncada" = 1 ]; then
   r="FRENO (definición de LISTO): el transcript de esta sesión tiene ${_tp_lineas} líneas y solo puedo leer las últimas ~6000 — si diste tu autorización antes de eso, quedó FUERA de mi ventana. No es que no hayas autorizado: es que no llegué a verlo. Repetir el OK AQUÍ, en un mensaje reciente, destraba esto${_mr_cita} (p. ej. 'mergea esto a develop'); o itera con 'git merge' LOCAL en tu mini (no pasa por este candado)."
 elif [ "$destino" = "main" ] || [ "$destino" = "master" ]; then

@@ -1425,6 +1425,21 @@ out_nosq="$(cm 'glab mr merge 5 --yes' ALLOW)"
 is_deny "$(cm 'glab mr merge 5 --yes && git status' DENY)" \
   && ok "cmd H3: 'glab mr merge 5 && git status' → gateado (token 'status' encadenado NO evade)" \
   || bad "cmd H3: el token 'status' encadenado evadió el gate"
+# ── proposal-2 (arsenal #215): si el PARSEO del transcript falla (un bloque que el jq no maneja) pero la
+#    ventana CRUDA sí trae mensajes de usuario, el mensaje dice "no pude LEER" — NO "repite el OK" (que
+#    culparía al usuario de no autorizar algo que sí dijo). Dos direcciones.
+cm_tx() { jq -nc --arg c "$1" --arg t "$2" '{tool_input:{command:$c},transcript_path:$t}' | PATH="$CMBIN:$PATH" HOME="$CMHOME" CLAUDE_PROJECT_DIR="$CMREPO" CLAUDE_MERGE_JUEZ_MOCK=DENY bash "$HOOKS/merge-develop-guard.sh"; }
+CMBAD="$CMROOT/bad.jsonl"
+printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"mergea el 5 a develop"}]}}' > "$CMBAD"
+printf '%s\n' 'ESTO NO ES JSON — rompe el jq -s del slurp' >> "$CMBAD"
+out_jqf="$(cm_tx "glab mr merge 5 --yes $CMOK" "$CMBAD")"
+{ printf '%s' "$out_jqf" | grep -qi 'no pude LEER' && ! printf '%s' "$out_jqf" | grep -qi 'quedó FUERA de mi ventana'; } \
+  && ok "proposal-2: transcript con parseo roto (pero con mensajes de usuario crudos) → 'no pude LEER', no 'repite el OK'" \
+  || bad "proposal-2: con el parseo roto el mensaje no nombra el fallo de lectura → [$out_jqf]"
+CMGOOD="$CMROOT/good.jsonl"; printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"mergea el 5 a develop"}]}}' > "$CMGOOD"
+! printf '%s' "$(cm_tx "glab mr merge 5 --yes $CMOK" "$CMGOOD")" | grep -qi 'no pude LEER' \
+  && ok "proposal-2 control: transcript LIMPIO (juez DENY) → mensaje normal de develop, NO 'no pude LEER'" \
+  || bad "proposal-2 control: un transcript limpio dio el mensaje de fallo de lectura"
 # H-R9-01: el binario Windows 'glab.exe mr merge' también se reconoce como merge.
 is_deny "$(cm 'glab.exe mr merge 5 --yes' DENY)" \
   && ok "cmd H-R9-01: 'glab.exe mr merge' reconocido como merge (Windows) → gateado" \
