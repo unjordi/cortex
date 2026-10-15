@@ -69,7 +69,7 @@
 ├─ 🎓 investigar-dominio             ponte experto en un dominio (fan-out DOC-FIRST) → memorias durables + skills
 ├─ 📚 construir-missing-manual       fabrica el manual/wiki de referencia exhaustivo que no existe (fan-out que investiga 1× y hornea) → artefacto consultable OFFLINE
 ├─ 🚚 reubicar-master                muda una sesión master COMPLETA a otro repo (brain-master → cortex) sin residuo: transcript+cwd, cerebro, slug y refs atómicas
-├─ ⏰ despertar-master               revive/lista un master desde la VERDAD (los transcripts): newest-per-name, cwd real, no relanza si está viva — no desde el masters.json chafa
+├─ 🛰️ coordinar-claudes            coordina otros masters en nombre del usuario: despierta (desde los transcripts, no masters.json) · encarga la cola · vigila (commit/colgado/muerto) · destraba · verifica con evidencia · releva OKs del usuario
 ├─ 🔍 zoom-screenshot                recorta y amplía regiones de una captura (ffmpeg) para leer texto fino ilegible
 ├─ 🔩 ingenieria-inversa-gui-db-navegador  ingeniería inversa de app legacy GUI+BD: driving la UI vía navegador + diff de la BD antes/después = doc con evidencia real
 ├─ 📕 markdown-a-pdf                 convierte .md a PDF pulido y distribuible vía md-to-pdf (npx, sin instalar) con el gotcha de --css y QA visual real
@@ -173,6 +173,7 @@ Reclutar un agente cuesta según su nivel (**gratis** local · **incluido** dent
 - **`reconstruir-contexto`** — RED DE EMERGENCIA para cuando el par checkpoint/rehidratar-hilo FALLÓ: el checkpoint quedó pobre/ausente y un /compact fundió el detalle real, así que lo que `rehidratar-hilo` reinyecta es inútil. Excava en orden barato→caro (andamio mecánico → backlog durable → transcript `.jsonl` acotado, con fallbacks) y CIERRA re-volcando un hilo bueno con `checkpoint`. Regla dura: EXCAVA, no confabules sobre el resumen fundido.
 
 **Orquestación / delegación**
+- **`coordinar-claudes`** — coordina otras sesiones master desde una sesión coordinadora, hablando con ellas en nombre del usuario sin hacerse pasar por él: **despierta** (`despertar-master.sh`, resuelto desde los transcripts, no desde el `masters.json` que driftea; newest-per-name, no relanza una sesión viva) · **encarga** la cola completa (Remote Control o su screen) · **vigila** (`vigilar-master.sh` con Monitor: commit/turno-terminado/colgado/muerto) · **destraba** (colgado, turno terminado, tras un /compact) · **verifica** por commits y uso real, no por lo que reporta · **releva** los OKs del usuario (coordinar no es aprobar). Absorbió a `despertar-master` como su paso 1.
 - **`turno-nocturno`** — protocolo del turno de noche: eco del contrato, decide-dentro-de-la-cerca, grants durables a disco, checkpoint cada ~2h.
 
 **Memorias / docs**

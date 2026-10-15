@@ -9210,11 +9210,11 @@ CKS="$SCRIPT_DIR/skills/checkpoint/SKILL.md"
   || bad "checkpoint SKILL: FALTA el paso del borrador de /compact o su regla de procedencia (pedido Jordi 2026-10-14)"
 
 # ─────────────────────────────────────────────────────────────────────────────
-echo "== (dm) despertar-master: resuelve desde TRANSCRIPTS (newest-per-name · viva→no-relanza · cwd real) =="
+echo "== (dm) coordinar-claudes/despertar-master.sh: resuelve desde TRANSCRIPTS (newest-per-name · viva→no-relanza · cwd real) =="
 # Contrato por EFECTO: la skill NO confía en masters.json; resuelve nombre/cwd/vida del transcript, el MÁS
 # reciente por nombre gana, y una sesión viva NO se relanza. Un impl que (a) tomara el transcript viejo, o
 # (b) relanzara una sesión fresca, FALLA estos asserts. 'screen' se stubea para capturar si hubo lanzamiento.
-DM="$SCRIPT_DIR/skills/despertar-master/despertar-master.sh"
+DM="$SCRIPT_DIR/skills/coordinar-claudes/despertar-master.sh"
 if [ -f "$DM" ]; then
   DMROOT="$(mktemp -d)"
   PROJ="$DMROOT/projects"; mkdir -p "$PROJ/slug-a" "$PROJ/slug-b" "$PROJ/slug-c" "$DMROOT/repoC" "$DMROOT/bin"
@@ -9303,10 +9303,15 @@ else
   bad "despertar-master: no encuentro $DM"
 fi
 
-# el MANIFEST de skills debe declarar despertar-master (si no, install-brain no la instala global).
-grep -qE '^despertar-master[[:space:]]+global' "$SCRIPT_DIR/skills/MANIFEST" \
-  && ok "despertar-master: declarada en skills/MANIFEST (tier global)" \
-  || bad "despertar-master: FALTA su línea en skills/MANIFEST → install-brain no la instalaría"
+# coordinar-claudes ABSORBIÓ a despertar-master (su script vive ahora en coordinar-claudes/). El MANIFEST
+# debe declarar coordinar-claudes VIVA (tier global) y despertar-master RETIRADO (lápida): si no, el
+# install/sync la omitiría, o dejaría el folder viejo como zombie. Falla entero contra el código pre-port.
+grep -qE '^coordinar-claudes[[:space:]]+global' "$SCRIPT_DIR/skills/MANIFEST" \
+  && ok "coordinar-claudes: declarada en skills/MANIFEST (tier global)" \
+  || bad "coordinar-claudes: FALTA su línea en skills/MANIFEST → install-brain no la instalaría"
+grep -qE '^despertar-master[[:space:]]+retirado' "$SCRIPT_DIR/skills/MANIFEST" \
+  && ok "despertar-master: lápida 'retirado' en skills/MANIFEST (absorbida por coordinar-claudes)" \
+  || bad "despertar-master: debería estar 'retirado' (absorbida) — si sigue viva o falta, el sync no poda su folder zombie"
 
 # ═════════════════════════════════════════════════════════════════════════════════════════════════════
 echo ""

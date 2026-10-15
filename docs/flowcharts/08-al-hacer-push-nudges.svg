@@ -272,10 +272,10 @@
 <text xml:space="preserve" text-anchor="start" x="1907.25" y="-1416.12" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">muda una sesión master COMPLETA a otro repo (brain&#45;master → cortex) sin residuo: transcript+cwd, cerebro, slug y refs atómicas</text>
 <polygon fill="#1b1712" stroke="none" points="16.12,-1382 16.12,-1407.75 1175.12,-1407.75 1175.12,-1382 16.12,-1382"/>
 <polygon fill="none" stroke="#5fa89e" points="16.12,-1382 16.12,-1407.75 1175.12,-1407.75 1175.12,-1382 16.12,-1382"/>
-<text xml:space="preserve" text-anchor="start" x="543.12" y="-1390.75" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">⏰ despertar&#45;master</text>
+<text xml:space="preserve" text-anchor="start" x="540.12" y="-1390.75" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🛰️ coordinar&#45;claudes</text>
 <polygon fill="#1b1712" stroke="none" points="1175.12,-1382 1175.12,-1407.75 3327.88,-1407.75 3327.88,-1382 1175.12,-1382"/>
 <polygon fill="none" stroke="#5fa89e" points="1175.12,-1382 1175.12,-1407.75 3327.88,-1407.75 3327.88,-1382 1175.12,-1382"/>
-<text xml:space="preserve" text-anchor="start" x="1872.75" y="-1391.5" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">revive/lista un master desde la VERDAD (los transcripts): newest&#45;per&#45;name, cwd real, no relanza si está viva — no desde el masters.json chafa</text>
+<text xml:space="preserve" text-anchor="start" x="1710.75" y="-1391.5" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">coordina otros masters en nombre del usuario: despierta (desde los transcripts, no masters.json) · encarga la cola · vigila (commit/colgado/muerto) · destraba · verifica con evidencia · releva OKs del usuario</text>
 <polygon fill="#1b1712" stroke="none" points="16.12,-1356.25 16.12,-1382 1175.12,-1382 1175.12,-1356.25 16.12,-1356.25"/>
 <polygon fill="none" stroke="#5fa89e" points="16.12,-1356.25 16.12,-1382 1175.12,-1382 1175.12,-1356.25 16.12,-1356.25"/>
 <text xml:space="preserve" text-anchor="start" x="542.38" y="-1365" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🔍 zoom&#45;screenshot</text>
