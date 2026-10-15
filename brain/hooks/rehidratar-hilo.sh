@@ -53,6 +53,20 @@
 # en CUALQUIER folder (la mitad "leer"; la mitad "escribir" es el skill checkpoint).
 set -u
 
+# ── Tope de tiempo DURO (fail-open) ───────────────────────────────────────────────────────────────
+# Corre en el SessionStart y JAMÁS debe bloquearlo minutos. Un watchdog mata este hook tras
+# REHIDRATAR_TIMEOUT_S (default 8s, 0 lo desactiva): si una operación se vuelve lenta, el arranque
+# sigue sin esperar. El O(n²) del chequeo de no-vacío (sustitución global en bash 3.2) ya se arregló a
+# O(n); esto BLINDA contra el próximo cuelgue imprevisto. Fail-open: un hook muerto = sin
+# additionalContext ese arranque (el hilo no se reinyecta esa vez), NUNCA una sesión colgada. `$$` dentro
+# del subshell es el PID de ESTE script (no del subshell) → el hook se auto-mata al vencer el tope.
+_tope="${REHIDRATAR_TIMEOUT_S:-8}"; case "$_tope" in ''|*[!0-9]*) _tope=8 ;; esac
+if [ "$_tope" -gt 0 ]; then
+  ( sleep "$_tope"; kill -TERM "$$" 2>/dev/null ) &
+  _wd=$!
+  trap 'kill "$_wd" 2>/dev/null' EXIT
+fi
+
 ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 HILO="$ROOT/.claude/memory/hilo-mental-actual.md"
 ANDAMIO="$ROOT/.claude/memory/hilo-mental-actual.andamio.md"

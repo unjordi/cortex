@@ -4181,6 +4181,31 @@ rm -rf "$RHFARO"
 
 rm -rf "$RHGIT" "$RHROOT"
 
+# ── (rh-watchdog) TOPE DE TIEMPO DURO: el hook NUNCA bloquea el SessionStart minutos, aunque una
+#    operación FUTURA se vuelva lenta. El O(n²) del strip ya se arregló (ver faro arriba); este guard
+#    ESTRUCTURAL mata CUALQUIER cuelgue tras REHIDRATAR_TIMEOUT_S. Se prueba sobre una COPIA del hook con
+#    un `sleep 30` inyectado (simula un op lento imprevisto) + un tope chico: con watchdog muere en ~tope;
+#    SIN watchdog correría el sleep completo. FALLA contra el código pre-watchdog (sin el tope el dur ≥ cota).
+RHWD="$(mktemp -d "${TMPDIR:-/tmp}/brain-rhwd.XXXXXX")"
+mkdir -p "$RHWD/.claude/memory"
+printf '# Hilo\n> Última actualización: 2026-10-12 · rama x\n\n## SIGUIENTE\nseguir\n' \
+  > "$RHWD/.claude/memory/hilo-mental-actual.md"
+# copia del hook con un `sleep 30` inyectado DESPUÉS de armar el watchdog (tras la línea ROOT=), para que
+# el tope ya esté activo cuando llega la operación lenta simulada.
+awk '/^ROOT=/ && !d {print; print "sleep 30  # INYECTADO por el test del watchdog"; d=1; next} {print}' \
+  "$HOOKS/rehidratar-hilo.sh" > "$RHWD/hook.sh"
+# guard externo por si el watchdog estuviera roto/ausente: no colgar el CI más de ~12s
+_wto=""; command -v timeout  >/dev/null 2>&1 && _wto="timeout 12"
+command -v gtimeout >/dev/null 2>&1 && _wto="gtimeout 12"
+_wt0=$(date +%s)
+printf '%s' '{"source":"compact","session_id":"sW","transcript_path":"/dev/null"}' \
+  | $_wto env REHIDRATAR_TIMEOUT_S=2 CLAUDE_PROJECT_DIR="$RHWD" bash "$RHWD/hook.sh" >/dev/null 2>&1
+_wt1=$(date +%s); dur_wd=$((_wt1 - _wt0))
+[ "$dur_wd" -lt 6 ] \
+  && ok "rehidratar-hilo watchdog: op lento inyectado (sleep 30) cortado por el tope (REHIDRATAR_TIMEOUT_S=2) en ${dur_wd}s" \
+  || bad "rehidratar-hilo watchdog: NO acotó el tiempo (${dur_wd}s ≥ 6) — el hook podría colgar el SessionStart"
+rm -rf "$RHWD"
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (b5b) aviso-drift-cerebro: drift por-repo vs fuente única (stub del sync; throttle; fail-open) =="
