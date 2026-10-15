@@ -327,6 +327,11 @@ grep. Si no responde, excava — y el hueco que encontraste es el defecto a corr
 checkpoint, no una falla tuya por haber preguntado.
 
 ## Qué NO es
+- **No es `reconstruir-contexto`.** Este skill ASUME que TÚ tienes el juicio fresco en la cabeza y solo
+  falta volcarlo a disco. Si en cambio el hilo YA se fundió (un checkpoint anterior quedó pobre/ausente,
+  o un `/compact` te ganó la carrera y no reconoces la tarea que `rehidratar-hilo` reinyectó), el punto
+  de entrada es `[[reconstruir-contexto]]` — reconstruye desde las fuentes duras (andamio → backlog →
+  transcript) primero, y AL FINAL corre este mismo skill para dejar el hilo ya reconstruido en disco.
 - **No es `cerrar-slice`.** Checkpoint es SOLO el volcado; no verifica build/tests, no abre MR, no
   cosecha aprendizajes de cierre de slice. Cuando de verdad terminaste un slice, usa `cerrar-slice`
   (que hace este mismo volcado + esas etapas). Checkpoint es el "guarda punto" de en medio — ligero o

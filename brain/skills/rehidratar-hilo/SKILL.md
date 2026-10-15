@@ -28,9 +28,11 @@ y lo TIENE, pero **no lo anuncia ni retoma solo** hasta que un turno se lo pida.
    ```
    - Si imprime el bloque → úsalo (ya trae el encabezado `🧵 HILO MENTAL ACTUAL` o `⚠️ POSIBLEMENTE OBSOLETO`
      según el gate de frescura del `.sh`, y la fecha/rama).
-   - Si NO imprime nada → no hay hilo volcado (o el `.sh` no está). **Fallback degradado** (último recurso,
-     a ojo, NO re-especifiques el gate): lee `.claude/memory/hilo-mental-actual.md`; si no existe/está vacío
-     usa `retomar-trabajo` o pide contexto. No inventes el hilo.
+   - Si NO imprime nada, o imprime un hilo que reconoces como **pobre/inútil** (telegráfico, obsoleto,
+     o no reconoces la tarea que describe) → no lo confirmes ni improvises encima. Ese es el punto de
+     entrada de `[[reconstruir-contexto]]`: la RED DE EMERGENCIA que excava andamio mecánico → backlog
+     durable → transcript `.jsonl` acotado, y al final re-vuelca un hilo bueno con `checkpoint`. No
+     inventes el hilo.
 2. **ANUNCIA en una línea** (esto es lo que el hook pasivo no hace):
    - Fresco → `↩️ Retomé el hilo: <"En qué estamos" en una frase>.`
    - Obsoleto (el `.sh` marcó ⚠️, otra rama/viejo) → `⚠️ Rehidraté un hilo POSIBLEMENTE OBSOLETO (otra rama o
@@ -45,3 +47,6 @@ y lo TIENE, pero **no lo anuncia ni retoma solo** hasta que un turno se lo pida.
 - **El `/compact` en sí es manual** (o auto-compact): ningún skill puede dispararlo ni cruzar la
   compactación. Este skill actúa DESPUÉS, en el contexto nuevo.
 - **Fallback último** (ni skills ni hooks): *"lee `.claude/memory/hilo-mental-actual.md` y continúa desde ahí".*
+- **Si el hilo que este skill reinyecta resulta INÚTIL** (checkpoint anterior pobre/ausente, contexto
+  fundido en pleno flow), este skill NO alcanza — este par ASUME que el checkpoint se hizo bien. El
+  siguiente paso es `[[reconstruir-contexto]]`.
