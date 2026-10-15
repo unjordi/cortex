@@ -9311,6 +9311,33 @@ grep -qE '^despertar-master[[:space:]]+retirado' "$SCRIPT_DIR/skills/MANIFEST" \
   && ok "despertar-master: lápida 'retirado' en skills/MANIFEST (absorbida por coordinar-claudes)" \
   || bad "despertar-master: debería estar 'retirado' (absorbida) — si sigue viva o falta, el sync no poda su folder zombie"
 
+# ── (vm) vigilar-master: el estado del transcript sale SOLO de eventos de CONVERSACIÓN, no de metadatos ──
+# Un `pr-link` (metadato con timestamp que el CLI escribe tras cerrar el turno) NO debe desplazar al
+# turn_duration y disparar un COLGADO falso. fixture1 (turn_duration + pr-link) → quieto/TURNO-TERMINADO;
+# fixture2 (user/tool_result + attachment, sin respuesta) → colgado. FALLA contra la lógica vieja (que
+# tomaba el último evento con timestamp cualquiera → pr-link → colgado falso).
+VMSH="$SCRIPT_DIR/skills/coordinar-claudes/vigilar-master.sh"
+if [ -f "$VMSH" ]; then
+  ( _CMD_VIGILAR_SOURCE_ONLY=1 . "$VMSH"
+    VMD=$(mktemp -d "${TMPDIR:-/tmp}/brain-vm.XXXXXX")
+    printf '%s\n' \
+      '{"type":"system","subtype":"turn_duration","timestamp":"2026-01-01T00:00:00.000Z"}' \
+      '{"type":"pr-link","prNumber":1,"timestamp":"2026-01-01T00:00:05.000Z"}' > "$VMD/t1.jsonl"
+    printf '%s\n' \
+      '{"type":"user","message":{"role":"user"},"timestamp":"2026-01-01T00:00:00.000Z"}' \
+      '{"type":"attachment","timestamp":"2026-01-01T00:00:03.000Z"}' > "$VMD/t2.jsonl"
+    [ "$(vm_estado_de "$VMD/t1.jsonl" | cut -f1)" = quieto ] \
+      && ok "vm: turn_duration + pr-link (metadato) → quieto/TURNO-TERMINADO (el pr-link no cuenta como último evento)" \
+      || bad "vm: un pr-link tras el turn_duration disparó un estado != quieto (el COLGADO falso volvió)"
+    [ "$(vm_estado_de "$VMD/t2.jsonl" | cut -f1)" = colgado ] \
+      && ok "vm: user/tool_result + attachment sin respuesta → colgado/COLGADO (el attachment no cuenta)" \
+      || bad "vm: user/tool_result sin respuesta no dio colgado"
+    rm -rf "$VMD"
+  )
+else
+  bad "vm: no encuentro $VMSH"
+fi
+
 # ═════════════════════════════════════════════════════════════════════════════════════════════════════
 echo ""
 echo "== (b-rc) reconstruir-contexto: red de emergencia cableada y ALCANZABLE =="
