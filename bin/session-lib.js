@@ -3,7 +3,7 @@
  * Fuente ÚNICA (no divergir): la usan session-move.js (mover entre slugs, local→local),
  * session-export.js (embarcar una sesión al repo) y session-import.js (sembrarla en otra máquina).
  *
- * Modelo de almacenamiento (verificado 2026-07-23 leyendo el CLI v2.1.218):
+ * Modelo de almacenamiento (según el CLI):
  *   - Cada sesión es UN archivo `~/.claude/projects/<slug>/<sessionId>.jsonl`.
  *   - El <slug> se DERIVA del cwd absoluto: cada carácter no-alfanumérico -> '-'
  *     (ej. "/Users/u/code/cps" -> "-Users-u-code-cps"). El slug NO vive dentro del jsonl,
@@ -161,7 +161,7 @@ function transformLine(piece, toCwd) {
 
 // ── SIDECAR de sesión (~/.claude/projects/<slug>/<sessionId>/: subagents/, tool-results/, workflows/) ──
 // El harness lo deriva de (slug ACTUAL, sessionId) — NO vive dentro del .jsonl, así que mover solo el
-// transcript lo deja huérfano en el slug viejo (medido: hasta 163 transcripts de subagente, ~109 MB).
+// transcript lo deja huérfano en el slug viejo.
 // Estos tres helpers le dan al SIDECAR la MISMA disciplina que `rewriteTranscriptStream` le da al
 // transcript: copia a un temporal, verifica por CARDINALIDAD (mismo nº de archivos a ambos lados) y
 // SOLO ENTONCES publica+borra — nunca un `mv`/`rename` directo del directorio, que en un filesystem
@@ -518,8 +518,8 @@ function sessionAliases() {
 // `sesiones-alias.json` es un mapa COMPARTIDO por todos los masters de la máquina, y escribirlo es un
 // read-modify-write: la escritura atómica (tmp+rename) evita un archivo a medias, pero NO evita que dos
 // escritores concurrentes se pisen — el que lee primero y escribe después borra la clave del otro, en
-// silencio y sin que nada lo asevere. Con dos masters vivos (medido 2026-09-10: una mudanza y un
-// `databases-master` trabajando a la vez) el riesgo es real y ASIMÉTRICO: quien no está mirando pierde
+// silencio y sin que nada lo asevere. Con dos masters vivos (p. ej. una mudanza y otro master
+// trabajando a la vez) el riesgo es real y ASIMÉTRICO: quien no está mirando pierde
 // su alias sin enterarse.
 // `mkdir` es la primitiva atómica en POSIX y en NTFS — el MISMO idioma que ya usa el ecosistema para
 // `masters.json` (el hook de export y el skill reubicar-master), con reciclado del huérfano a los 5 min

@@ -40,20 +40,14 @@ Linux and macOS run a bash `cortex-fetch` script on a systemd/launchd timer
 that writes a cache file the UI reads. Windows has no bash/jq/curl by default, so
 the always-running tray app **does the fetch itself in C#** every 5 minutes:
 
-```
-┌───────────────────────────────────────────────┐
-│  Cortex.exe (WinForms tray, always on)     │
-│                                                 │
-│  every 5 min ─┬─ 1. OAuth /usage  (HttpClient)  │  → exact 5h / 7d %, resets
-│               ├─ 2. transcripts   (System.Text) │  → tokens/day+model,
-│               │      ~/.claude/projects/*.jsonl │     sessions, msgs, peak hour
-│               └─ 3. ccusage       (if on PATH)  │  → API-equivalent $
-│                        ↓ writes                 │
-│   %LOCALAPPDATA%\cortex\{state,stats}.json │  ← same schema as Linux/mac
-│                        ↓ reads (every 10s tick)  │
-│              tray icon + tooltip + popup         │
-└───────────────────────────────────────────────┘
-```
+**Cortex.exe** (WinForms tray, always on), every 5 min:
+
+1. OAuth `/usage` (HttpClient) -> exact 5h / 7d %, resets.
+2. Transcripts `~/.claude/projects/*.jsonl` (System.Text) -> tokens/day+model, sessions, msgs, peak hour.
+3. ccusage (if on PATH) -> API-equivalent $.
+
+It writes `%LOCALAPPDATA%\cortex\{state,stats}.json` (same schema as Linux/mac), reads them every 10 s tick, and
+renders the tray icon + tooltip + popup.
 
 The cache files use the **same schema** the other platforms write, so a snapshot
 is inspectable and cross-platform-compatible. The 5-minute floor is preserved

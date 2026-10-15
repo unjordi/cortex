@@ -30,13 +30,12 @@ UNIT_SRC="$ROOT/src/systemd"
 PLASMOID_SRC="$ROOT/src/plasmoid"
 PLASMOID_ID="io.github.unjordi.cortex"
 OLD_PLASMOID_ID="io.github.unjordi.claude-quota-widget"   # legacy: se elimina en el install (borra el previo)
-OLD_PLASMOID_ID_BRAIN="io.github.unjordi.claude-brain"    # era intermedia (rename claude-brain→cortex, #312)
+OLD_PLASMOID_ID_BRAIN="io.github.unjordi.claude-brain"    # era intermedia (claude-brain)
 BRAIN_INSTALLER="$ROOT/brain/install-brain.sh"
 
 BIN_DEST="$HOME/.local/bin/cortex-fetch"
 UNIT_DEST="$HOME/.config/systemd/user"
-# Config del widget: con el rebrand COMPLETO (2026-07) pasó a ~/.config/cortex (el código lee
-# de ahí). "Borra el previo por completo": NO se migra la config vieja; se instala limpia (defaults).
+# Config del widget: ~/.config/cortex. NO se migra la config vieja; se instala limpia (defaults).
 LIMITS_DEFAULT="$HOME/.config/cortex/limits.env"
 
 # ── Broker de terminal (OPT-IN, ver docs/term-broker.md) ───────────────────────────────────────
@@ -402,7 +401,7 @@ fi
 echo "==> Ensuring ~/.local/bin on PATH (zsh + bash)"
 ensure_path_local_bin
 
-# ── "Borra el previo por completo" (regla 2026-07-15). Idempotente / fail-safe. ──
+# ── Borra el previo por completo. Idempotente / fail-safe. ──
 # El rebrand claude-quota → cortex NO migra nada: ELIMINA el install viejo y reinstala limpio.
 echo "==> Eliminando cualquier instalación previa 'claude-quota' (install limpio)"
 # 1) Baja y deshabilita las units VIEJAS (evita timer/daemon duplicado).
@@ -546,21 +545,17 @@ if [[ "$SKIP_PLASMOID" -eq 0 ]]; then
   # viva. Guardado: solo si hay sesión gráfica (nada sobre SSH/headless); se salta con
   # --no-reload-shell. Si no aplica, imprime el comando manual. El panel parpadea ~1s.
   #
-  # OJO (bug real, 2026-07-24): `kpackagetool6 -u` sobre un plasmoide CARGADO EN VIVO puede tumbar
-  # plasmashell por su cuenta, ANTES de llegar aquí — así que ya NO condicionamos el relanzamiento a
-  # `pgrep -x plasmashell` (si ya está muerto, esa condición es falsa y el bloque entero se saltaba,
-  # dejando el escritorio muerto con solo un mensaje impreso a un log que nadie lee). El pgrep ahora
-  # solo decide si hace falta un kquitapp6 primero; el relanzamiento + verificación corren SIEMPRE.
+  # `kpackagetool6 -u` sobre un plasmoide CARGADO EN VIVO puede tumbar plasmashell por su cuenta, ANTES de
+  # llegar aquí — por eso el relanzamiento NO se condiciona a `pgrep -x plasmashell`. El pgrep solo decide
+  # si hace falta un kquitapp6 primero; el relanzamiento + verificación corren SIEMPRE.
   if [[ "$RELOAD_SHELL" -eq 1 ]] && [[ -n "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ]]; then
     echo "==> Recargando plasmashell para aplicar los cambios (el panel parpadeará un momento)..."
     if command -v kquitapp6 >/dev/null 2>&1 && pgrep -x plasmashell >/dev/null 2>&1; then
       kquitapp6 plasmashell >/dev/null 2>&1 || true
     fi
     sleep 1
-    # Relanzamiento ROBUSTO. El patrón viejo `( kstart … & ) || ( plasmashell … & )` tenía un bug:
-    # un subshell con `&` SIEMPRE regresa 0 (el backgrounding "triunfa" aunque el comando no exista)
-    # → si kstart faltaba, el fallback jamás corría y plasmashell quedaba MUERTO (bug real en
-    # CachyOS, 2026-07-18: el update cerró Plasma y no lo levantó). Ahora: candidato elegido con
+    # Relanzamiento ROBUSTO. `( kstart … & ) || ( plasmashell … & )` no sirve: un subshell con `&`
+    # SIEMPRE regresa 0, así que si kstart faltara el fallback jamás correría. Candidato elegido con
     # `command -v` explícito, detach real (setsid+nohup, stdin cerrado — sobrevive a `curl|bash`),
     # y VERIFICACIÓN con pgrep + reintento directo + aviso ruidoso si aun así no levantó.
     _kstart=""

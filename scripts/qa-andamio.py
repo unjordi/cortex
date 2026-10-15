@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """Oraculo de QA del andamio mecanico.
 
-Mide contra el transcript REAL y CONGELADO de la sesion del 2026-09-11 (40 082 lineas, 193 MB,
+Mide contra el transcript REAL y CONGELADO de una sesion (40 082 lineas, 193 MB,
 14 compactaciones) — no contra un fixture. Se congelo a proposito: el vivo crece mientras se mide y
 las aserciones no pueden apuntar a un blanco movil.
 
@@ -121,7 +121,7 @@ chk('B-2', 'el top de comandos se renderiza ordenado por frecuencia',
     'frecuencias en orden de render: %s%s' % (
         ns, '' if mono else ' → el de %dx cae en la posicion %d' % (max(ns), ns.index(max(ns))+1)))
 
-print('\n=== QA DEL ANDAMIO · contra el transcript real del 2026-09-11 ===')
+print('\n=== QA DEL ANDAMIO · contra el transcript real congelado ===')
 fails = 0
 for ok, id_, desc, det in res:
     print('  %s %-4s · %s\n            %s' % ('PASS' if ok else 'FAIL', id_, desc, det))

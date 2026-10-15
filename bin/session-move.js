@@ -15,8 +15,7 @@
  *     transcript: se copia a un temporal, se verifica por CARDINALIDAD (mismo nº de archivos a ambos
  *     lados) y solo entonces se publica (rename) y se borra el origen. El harness lo deriva de
  *     (slug ACTUAL, sessionId) — no vive dentro del `.jsonl` — así que dejarlo atrás deja al master
- *     despertando con su fan-out huérfano (medido: hasta 163 transcripts de subagente, ~109 MB, en un
- *     master real). Si no existe, es un no-op VERIFICADO (se reporta `sidecar.moved:false`), no silencio.
+ *     despertando con su fan-out huérfano. Si no existe, es un no-op VERIFICADO (se reporta `sidecar.moved:false`), no silencio.
  *   - El `cwd` interno de cada línea del transcript se REESCRIBE al cwd destino (salvo --keep-cwd), para
  *     que `claude --resume <id>` reanude coherente DENTRO del proyecto destino y no en la ruta vieja.
  *   - El `gitBranch` HISTÓRICO no se toca (falsificaría el registro). Con --git-branch <rama> se
