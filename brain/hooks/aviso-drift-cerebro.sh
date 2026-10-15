@@ -52,30 +52,22 @@ set -u
 ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 cat >/dev/null 2>&1 || true   # drenar stdin (contrato SessionStart)
 
-# ── CONOCIMIENTO PROPIO (per-repo, imborrable) ──────────────────────────────────────────────── ──
-# Si el repo tiene .claude/memory/conocimiento-propio.md, se RE-INYECTA en CADA SessionStart
-# (fresh/resume/compact) — ANTES del throttle y del drift, para que la identidad del proyecto vuelva
-# SIEMPRE (no dependa de que haya drift ni del cache de 6h). Es PER-REPO: cada repo tiene el suyo (o
-# ninguno) → "cada sesión con una personalidad ligeramente distinta"; este hook es GLOBAL y solo lo
-# SURFACE si el archivo existe (no lo propaga ni lo asume universal).
-# Se engancha a este hook porque dispara fiable en resume/compact.
-SELF=""
-# Prefiere la variante PERSONAL/LOCAL (.local.md → gitignored: no viaja al repo público ni al de un
-# colega); cae a la .md por si un repo quiere una identidad COMPARTIDA versionada. Primero que exista gana.
-for _self_file in "$ROOT/.claude/memory/conocimiento-propio.local.md" "$ROOT/.claude/memory/conocimiento-propio.md"; do
-  [ -f "$_self_file" ] && { SELF="$(cat "$_self_file" 2>/dev/null || true)"; break; }
-done
+# ── IDENTIDAD (conocimiento-propio) — YA NO la re-inyecta este hook (B8, decisión unjordi 2026-10-14) ──
+# El `@import` NATIVO de `conocimiento-propio.local.md` en el CLAUDE.md del repo (cableado en ef754d6) la
+# carga en CADA SessionStart (fresh/resume/compact) y tolera su ausencia — reemplaza la re-inyección que
+# este hook hacía, que con el @import presente la DUPLICABA en contexto. Este hook ya solo surface el drift
+# y el auto-sync. (Un repo cuyo CLAUDE.md aún no tenga el @import adopta la línea; no es cosa de este hook.)
 
-# emit_and_exit [contexto-de-drift] — emite additionalContext UNA sola vez, anteponiendo el conocimiento
-# propio (si existe) al contexto de drift/auto-sync (si lo hay). Sin ninguno de los dos → silencio.
+# emit_and_exit [contexto-de-drift] — emite additionalContext UNA sola vez con el contexto de drift/auto-sync
+# (si lo hay) + los avisos per-máquina. Sin ninguno → silencio.
 emit_and_exit() {
   local extra="${1:-}" out="" part sep=""
-  # Une (en orden, saltando vacíos): SELF (identidad) · $extra (drift/auto-sync per-repo) · GLOBAL_SK_WARN
-  # (drift de la copia GLOBAL de skills) · GLOBAL_HOOK_WARN (drift de la copia GLOBAL de hooks/libs) ·
-  # GLOBAL_NORMS_WARN (drift del bloque de normas en ~/.claude/CLAUDE.md) · MIGRACION_WARN (huella local de
-  # clon sin migrar). Los cuatro últimos viajan en TODOS los exit paths (incluso el throttle per-repo
-  # fresco): son concerns per-MÁQUINA con su PROPIO throttle, no dependen del drift del repo actual.
-  for part in "$SELF" "$extra" "${GLOBAL_SK_WARN:-}" "${GLOBAL_HOOK_WARN:-}" "${GLOBAL_NORMS_WARN:-}" "${MIGRACION_WARN:-}"; do
+  # Une (en orden, saltando vacíos): $extra (drift/auto-sync per-repo) · GLOBAL_SK_WARN (drift de la copia
+  # GLOBAL de skills) · GLOBAL_HOOK_WARN (drift de la copia GLOBAL de hooks/libs) · GLOBAL_NORMS_WARN (drift
+  # del bloque de normas en ~/.claude/CLAUDE.md) · MIGRACION_WARN (huella local de clon sin migrar). Los
+  # cuatro últimos viajan en TODOS los exit paths (incluso el throttle per-repo fresco): son concerns
+  # per-MÁQUINA con su PROPIO throttle, no dependen del drift del repo actual.
+  for part in "$extra" "${GLOBAL_SK_WARN:-}" "${GLOBAL_HOOK_WARN:-}" "${GLOBAL_NORMS_WARN:-}" "${MIGRACION_WARN:-}"; do
     [ -z "$part" ] && continue
     if [ -z "$out" ]; then out="$part"; else
       out="$out
@@ -97,9 +89,8 @@ $part"
 
 # Throttle por repo (solo cachea chequeos LIMPIOS). Es un concern INTERACTIVO — el sweeper batch de
 # flotilla NO usa este throttle (corre 1×/día con su propio lock por-repo). Va ANTES de delegar: un
-# chequeo limpio reciente evita re-correr el sync, pero la IDENTIDAD (conocimiento-propio) SIGUE
-# surface-ándose (emit_and_exit "" abajo la incluye si existe) — la identidad es imborrable, no depende
-# del drift ni del cache.
+# chequeo limpio reciente evita re-correr el sync. (La identidad ya NO depende de esto: la carga el
+# @import nativo del CLAUDE.md, no este hook — ver B8 arriba. Un chequeo limpio throttleado => silencio.)
 horas="${AVISO_DRIFT_HORAS:-6}"; case "$horas" in ''|*[!0-9]*) horas=6;; esac
 stampdir="$HOME/.claude/memory/.drift-cerebro"; mkdir -p "$stampdir" 2>/dev/null || true
 slug=$(printf '%s' "$ROOT" | cksum 2>/dev/null | awk '{print $1}')
@@ -195,8 +186,8 @@ fi
 
 # ── Delegación al CUERPO PER-REPO COMPARTIDO (drift-cerebro-comun.sh). Hace TODO el chequeo per-repo
 # (brained? · fuente? · #46 personal/compartido · drift · C2 anti-regresión · auto-apply+commit+push en la
-# mini-develop) y devuelve STATUS + mensaje. El THROTTLE (arriba) y la IDENTIDAD (conocimiento-propio) son
-# responsabilidad de ESTE hook interactivo — el cuerpo compartido no las conoce (el sweeper batch no las usa).
+# mini-develop) y devuelve STATUS + mensaje. El THROTTLE (arriba) es responsabilidad de ESTE hook
+# interactivo — el cuerpo compartido no lo conoce (el sweeper batch no lo usa).
 # Auto-apply REAL (no dry-run): en la mini-develop, si procede, sincroniza solo. Ver la lib para el detalle.
 _res=$(drift_chequea_repo "$ROOT")
 _status=$(printf '%s\n' "$_res" | head -1 | sed -n 's/^STATUS=//p')
@@ -209,7 +200,7 @@ case "$_status" in
   clean|personal-clean) printf '%s' "$now" > "$stamp" 2>/dev/null || true ;;
 esac
 
-# Emite: los estados silenciosos solo surface-an la IDENTIDAD (si existe); los ruidosos, identidad + msg.
+# Emite: los estados silenciosos → silencio (salvo avisos per-máquina de drift global); los ruidosos, el msg.
 case "$_status" in
   not-brained|no-source|unknown|clean|personal-clean) emit_and_exit "" ;;
   *) emit_and_exit "$_msg" ;;

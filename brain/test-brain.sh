@@ -4223,37 +4223,32 @@ printf '# contrato\n' > "$ADROOT/AGENTS.md"
 printf '%s' "$(ad)" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'CONTRA la firma' \
   && ok "aviso-drift (con firma): AGENTS.md presente → dupla CONTRA la firma" || bad "aviso-drift: con AGENTS.md no tomó la rama con-firma"
 
-# (9) CONOCIMIENTO PROPIO (per-repo, imborrable): si el repo trae .claude/memory/conocimiento-propio(.local).md,
-# se RE-INYECTA en CADA SessionStart — incluso SIN drift o con el throttle fresco (no depende del drift).
-# La variante PERSONAL .local.md (gitignored) es la preferida; .md es fallback COMPARTIDO versionado.
+# (9) IDENTIDAD por conocimiento-propio: B8 (decisión unjordi 2026-10-14) RETIRÓ la re-inyección del hook —
+# ahora la identidad la carga el `@import` NATIVO del CLAUDE.md del repo, NO este hook (evita la DUPLICACIÓN
+# en contexto). Estos asertos verifican que el hook YA NO la surface — FALLAN contra el código viejo que la
+# inyectaba. La cobertura del @import (que SÍ la carga) se prueba en §B8 abajo.
 mkdir -p "$ADROOT/.claude/memory"
 printf '# Conocimiento propio\nes tu cerebro, es mi repo, y es nuestro proyecto. La introspección PROPONE; unjordi DECIDE.\n' > "$ADROOT/.claude/memory/conocimiento-propio.local.md"
-# 9a: con drift → identidad + drift viajan JUNTOS en el mismo additionalContext
+# 9a: con drift → el hook surface el DRIFT, pero YA NO la identidad (aunque el archivo exista).
 adout="$(ad)"
-{ printf '%s' "$adout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'es tu cerebro' \
-  && printf '%s' "$adout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'DRIFT DEL CEREBRO'; } \
-  && ok "aviso-drift: conocimiento propio + drift viajan JUNTOS en un solo additionalContext" || bad "aviso-drift: no combinó identidad + drift; got: $adout"
-# 9b: sync LIMPIO + throttle fresco → SIN drift, pero la identidad SIGUE inyectándose (imborrable)
+{ printf '%s' "$adout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'DRIFT DEL CEREBRO' \
+  && ! printf '%s' "$adout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'es tu cerebro'; } \
+  && ok "aviso-drift B8: con drift surface el DRIFT pero YA NO la identidad (la da el @import nativo)" || bad "aviso-drift B8: el hook todavía re-inyecta la identidad con el drift; got: $adout"
+# 9b: sync LIMPIO + throttle fresco, CON el archivo de identidad presente → SILENCIO (ya no inyecta identidad).
 printf '#!/usr/bin/env bash\necho "==> resumen: 0 nuevos · 0 a actualizar · 9 ya al día · 7 hooks cableados (kind=hook)"\n' > "$ADBRAIN/brain/sincronizar-cerebro.sh"
 rm -rf "$ADHOME/.claude/memory/.drift-cerebro"
-adout="$(ad)"   # 1er llamado: limpio → cachea stamp; emite SOLO identidad
-{ printf '%s' "$adout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'es tu cerebro' \
-  && ! printf '%s' "$adout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'DRIFT DEL CEREBRO'; } \
-  && ok "aviso-drift: sin drift → inyecta SOLO el conocimiento propio (no depende del drift)" || bad "aviso-drift: sin drift no surface la identidad sola; got: $adout"
-adout2="$(ad)"  # 2º llamado: throttle fresco → salta el drift-check, pero IGUAL re-inyecta la identidad
-printf '%s' "$adout2" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'es tu cerebro' \
-  && ok "aviso-drift: throttle fresco → aún así re-inyecta el conocimiento propio (cada sesión)" || bad "aviso-drift: el throttle se tragó la identidad; got: $adout2"
-# 9c: fallback a la variante COMPARTIDA .md cuando NO hay .local.md (repo que versiona su identidad)
+adout="$(ad)"
+is_silent "$adout" && ok "aviso-drift B8: sin drift + CON conocimiento-propio.local.md → silencio (el hook ya no re-inyecta)" || bad "aviso-drift B8: habló sin drift (¿sigue inyectando la identidad?); got: $adout"
+# 9c: la variante COMPARTIDA .md tampoco se re-inyecta ya.
 rm -f "$ADROOT/.claude/memory/conocimiento-propio.local.md"
 printf '# Conocimiento propio (compartido)\nidentidad versionada del repo\n' > "$ADROOT/.claude/memory/conocimiento-propio.md"
 rm -rf "$ADHOME/.claude/memory/.drift-cerebro"
-adout="$(ad)"; adout2="$(ad)"   # 2º call = throttle fresco (sin drift), igual debe traer la identidad
-printf '%s' "$adout2" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'identidad versionada' \
-  && ok "aviso-drift: fallback a conocimiento-propio.md (compartido) cuando no hay .local.md" || bad "aviso-drift: no tomó el fallback .md; got: $adout2"
-# 9d: repo SIN ninguno de los dos → NO inventa identidad (per-repo, no universal) → silencio si no hay drift
+adout="$(ad)"
+is_silent "$adout" && ok "aviso-drift B8: la variante .md compartida tampoco se re-inyecta (silencio sin drift)" || bad "aviso-drift B8: inyectó la identidad .md; got: $adout"
+# 9d: repo SIN ninguno de los dos + sin drift → silencio (sin cambio por B8).
 rm -f "$ADROOT/.claude/memory/conocimiento-propio.md"
 rm -rf "$ADHOME/.claude/memory/.drift-cerebro"
-is_silent "$(ad)" && ok "aviso-drift: sin conocimiento-propio(.local).md y sin drift → silencio (per-repo, no universal)" || bad "aviso-drift: habló sin archivo de identidad ni drift"
+is_silent "$(ad)" && ok "aviso-drift: sin conocimiento-propio(.local).md y sin drift → silencio" || bad "aviso-drift: habló sin archivo de identidad ni drift"
 rm -rf "$ADFIX"
 
 # (B8) Identidad por `@` NATIVO: el CLAUDE.md del meta-repo (cortex) importa conocimiento-propio.local.md JUNTO a
