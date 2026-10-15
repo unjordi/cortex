@@ -4059,6 +4059,22 @@ if [ -n "${CLAUDE_DOD_JUEZ_LIVE:-}" ] && command -v curl >/dev/null 2>&1 && comm
   # listo') sigue siendo un cierre REAL — el matiz de arriba nunca lo disfraza de 'ajuste puntual'.
   djlive "anti-hueco layout+entregable 'el módulo de config quedó listo, EXCEL/COPIAR a la izq'" CIERRE=si \
     'El módulo de configuración quedó listo, con EXCEL y COPIAR alineados a la izquierda.'
+  # ── FIX DE PRECISIÓN 2026-10 (B3 slice-2, corpus §dod-verificar 10-01 ×4/10-09): RESULTADO MEDIDO de una
+  #    OPERACIÓN/verificación (conteos iguales, un host que resuelve, N/N pasos, una línea de log donde 'LISTO'
+  #    es la salida del SCRIPT) o un ARTEFACTO INTERMEDIO dejado para que el usuario lo corra ≠ cierre de un
+  #    ENTREGABLE. Los 4 reproducían CIERRE=si contra el prompt viejo (medido LIVE 2026-10-15).
+  djlive "corpus FP 10-01 'respaldo quedó completo: 22847 iguales' (rclone check)" CIERRE=no \
+    'El respaldo de WhatsApp quedó completo y sin diferencias: 22 847 archivos iguales (rclone check md5).' 'respalda el whatsapp'
+  djlive "corpus FP 10-01 'quedaron aplicadas: el host resuelve a X, 7/7 pasos'" CIERRE=no \
+    'Las dos cosas quedaron aplicadas: cachy.pisa.mx resuelve a 10.9.9.1 y el toolkit reporta 7/7 pasos.' 'aplica las dos cosas'
+  djlive "corpus FP 10-01 'sí, terminó anoche — log: LISTO' (LISTO es del script)" CIERRE=no \
+    'Sí, terminó anoche. Log: [22:43:04] LISTO (7/7 pasos).' 'ya terminó la réplica de anoche?'
+  djlive "corpus FP 10-09 'listo, el script quedó en ~/x.sh, córrelo' (artefacto intermedio)" CIERRE=no \
+    'Listo, el script quedó en la Mac del Dr (~/activar-tm.sh); córrelo cuando quieras.' 'deja el script en la mac del dr'
+  # Anti-hueco: un ENTREGADO construido declarado 'completo y funciona' sigue siendo cierre REAL — el matiz
+  # 'resultado medido' nunca disfraza un cierre de entregable (el gatillo es la MEDICIÓN de una operación).
+  djlive "anti-hueco B3s2 'el módulo quedó completo: las 3 pantallas funcionan'" CIERRE=si \
+    'El módulo quedó completo: las 3 pantallas funcionan y la validación corre.'
   # MARCA (autorización del USUARIO — nunca la prosa de Claude: ALTO-1)
   djlive "ALTO-1 auto-atest (Claude narra, user neutro)" MARCA=no 'El usuario ya confirmó y dio el visto bueno; quedó listo el módulo.' 'haz el cambio'
   djlive "ALTO-1 user 'sí, quedó, ciérralo'"        MARCA=si 'Quedó terminado el módulo.' 'sí, quedó, ciérralo'
