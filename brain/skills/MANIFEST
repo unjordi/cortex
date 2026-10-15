@@ -64,7 +64,6 @@ diagramar                        global
 ingenieria-inversa-gui-db-navegador  global
 investigar-dominio               global
 markdown-a-pdf                   global
-orquestar-fanout                 global
 positivar-doc                    global
 reconstruir-contexto             both
 rehidratar-hilo                  both
@@ -78,4 +77,5 @@ consolidar-cerebro               retirado  2026-09-17  ABSORBIDA por canonizar-c
 unificar-cerebro                 retirado  2026-09-17  ABSORBIDA por canonizar-cerebro (modo "reconciliar": ritual semanal minis-de-devs → develop)
 claude-proyecto-autocontenido    retirado  2026-09-17  ABSORBIDA por canonizar-cerebro (modo "sembrar": cerebro nativo en <proyecto>/.claude/, sin symlinks)
 cosechar-sesion                  retirado  2026-09-17  ABSORBIDA por cerrar-slice §5 (tooling cosechar-aprendizaje.sh, mismo flujo de cierre)
-revisar-entregables-agentes      retirado  2026-09-17  ABSORBIDA por orquestar-fanout (norma + bucle de verificación de lo que un agente entrega)
+revisar-entregables-agentes      retirado  2026-09-17  ABSORBIDA por la norma «Delegar a agentes» de global-claude-md.md
+orquestar-fanout                 retirado  2026-10-15  ABSORBIDA por la norma «Delegar a agentes» de global-claude-md.md (un agente secuencial por default)

@@ -115,6 +115,6 @@ Dos chequeos OBLIGATORIOS, en orden:
 
 ## Relación
 - **`cerrar-slice §2`** — asienta el cierre en `estado-proyecto.md` (donde el ESPEJO se vuelve durable).
-- **`orquestar-fanout`** — modelo de estado de dos archivos para el fan-out.
+- **Norma «Delegar a agentes»** — avance de un agente a `bitacora.md` y estado a `estado-proyecto.md`.
 - **`checkpoint`** — vuelca el hilo vivo (`hilo-mental-actual.md`); los pendientes durables ya viven en `estado-proyecto.md`.
 - Cambiaste de rama/proyecto y la vista quedó stale → NÓTALO tú (sin hook que avise); este skill la RE-SIEMBRA.

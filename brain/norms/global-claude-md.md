@@ -163,18 +163,30 @@ git push -u origin feat/<tema>       # push SOLO a la ramita (idéntico en ambos
 - No relates el reporte de un agente/subagente al usuario como verdad, ni construyas encima, sin haber verificado sus afirmaciones concretas contra la realidad tú mismo. Lo verificado se relata como verificado; lo no verificado se etiqueta "según el agente, sin verificar aún".
 - Un reporte de agente es una AFIRMACIÓN, no un hecho: puede confabular, sobre-afirmar ("verificado ✓") o equivocarse en un detalle — y solo revisando ves CÓMO tropezó (la señal de qué refinar en el próximo prompt).
 - El caso REBUILD/REEMPLAZO (un agente reescribe un doc/config "desde cero") falla por OMISIÓN SILENCIOSA, no por afirmar de más: nada que verificar porque no hay "✓" — exige el DIFF DE PRESERVACIÓN (viejo→nuevo) antes de aplicar el reemplazo.
-- Mecanismo/detalle operativo (el bucle de verificación barato-vs-caro, CONFIRMADO/CORREGIDO/REFUTADO, el diff de preservación) vive en `orquestar-fanout`.
+- El cómo (muestras contra el repo, CONFIRMADO/CORREGIDO/REFUTADO, diff de preservación) vive en la norma «Delegar a agentes».
 
-## Orquesta: delega lo paralelizable y quédate disponible (norma de estilo)
-- Cuando el trabajo tiene varias piezas independientes, NO las implementes EN SERIE tú solo: delégalas a agentes en paralelo (worktrees/ramas disjuntas) y quédate en el loop como orquestador (revisando diffs, armando los MR, haciendo QA, disponible al usuario). Con volumen paralelizable, el default es fan-out + supervisión. (Respeta el gate de costo.)
-- Señal de desvío: llevas rato implementando en serie y el usuario tuvo que pedirte que volvieras a delegar. Sin hook que lo cuente: nota TÚ el patrón "llevo N cambios seguidos sin delegar nada" — si lo que queda es paralelizable, para y arma el fan-out.
-- **Aislamiento (regla dura):** todo agente de fan-out que MUTE archivos o COMMITEE corre en un worktree AISLADO (`isolation: "worktree"`), NUNCA en el árbol compartido/principal (ese es del orquestador/humano) — un agente que corre `git reset`/`checkout`/`rebase` ahí puede orfanar los commits del orquestador. Si un ítem no se puede aislar, lo hace el orquestador. Lo respalda `proteger-arbol`.
-- **Reporte sin niñera (skill `orquestar-fanout`):** NO monitorees a los agentes a mano ni actualices el estado al final; el cierre de cada agente es automático — appenda su avance al FINAL de `bitacora.md` (con `>>`, no un Edit) y actualiza el ítem en `estado-proyecto.md` (el backlog vivo = fuente de verdad).
-- Dos archivos, roles claros, cero redundancia: bitácora = *qué pasó* (appendan los agentes); estado-proyecto = *qué sigue* (lo cura el orquestador).
-- El append-al-final con `>>` (no un Edit) deja que varias sesiones/agentes escriban la MISMA bitácora sin pisarse. Aplica igual al dashboard GLOBAL (`dashboard_cerebro.md`): entradas al FINAL con `>>`; solo las secciones CURADAS (Mapa/Cabos) se editan.
-- El mismo dato NO se escribe en 3 lados; el estado "actual" se DERIVA. TodoWrite es SCRATCH de sesión; el backlog DURABLE es `estado-proyecto.md`.
-- Sin hook que lo recuerde: es disciplina tuya al cierre de CADA agente, no una alarma externa. Los worktrees zombies los barre `limpiar.sh worktrees` y las ramas locales ya integradas las barre `limpiar.sh ramas` (esos SÍ tienen mecanismo: el hook `barrer-ramas`).
-- Señal de desvío: el usuario tuvo que pedirte actualizar bitácora/estado, o se acumularon worktrees/ramas zombies.
+## Delegar a agentes: UNO secuencial por default (norma dura)
+- **Cuándo delegar:** trabajo mecánico o voluminoso que no necesita tu criterio en cada paso. El criterio, el diseño, la revisión y la QA se quedan contigo. Lo que resuelve un comando (contar, listar, agrupar) no se delega.
+- **Default: UN agente que trabaja por secciones, en orden.** Cada agente gasta 120–200K tokens en cargarse antes de producir; N agentes en paralelo multiplican ese costo. Un trabajo grande del mismo tipo va a un solo agente, con:
+  - **Secciones explícitas, en orden**, y un commit por sección.
+  - **Checkpoint por sección** en un archivo de avance (`>>`): sección, hash, archivos, resultado de la verificación y lo que quedó pendiente. Si se le llena la ventana, deja anotado hasta dónde llegó y se detiene; otro agente retoma desde ese archivo.
+  - **Contexto cuidado en el prompt:** `grep` y rangos (`sed -n 'A,Bp'`) en lugar de leer archivos enteros, y salidas recortadas.
+  - **Gate verificable por sección** (suite, build, lint), que no puede empeorar respecto a la línea base.
+- **En paralelo, solo si se justifica:** piezas independientes cuya espera en serie cuesta más que el arranque repetido. Antes de lanzarlos, dile al usuario cuántos y su costo aproximado. Respeta el gate de costo de delegación.
+- **Mandato cerrado antes de lanzar:** alcance, archivos permitidos y prohibidos, criterio, gate y formato de respuesta. Corregirle el alcance a media corrida le cuesta contexto.
+- **Aislamiento:** todo agente que mute archivos o commitee trabaja en un worktree propio, nunca en el árbol del usuario ni en el de otro master. Nada de push, rebase, reset ni checkout de otra rama desde el agente. Si un ítem no se puede aislar, lo haces tú.
+- **Porta, no rehagas:** si ya existe la fuente viva (código legado, un borrador), el agente la trae tal cual y las correcciones van en un commit aparte.
+- **No publiques ni despliegues desde el worktree de un agente:** no hereda archivos ignorados por git (`.env`, certificados). Se integra a la rama y se publica desde ahí.
+- **El agente es terminal:** su prompt lo dice. Cuando termina, responde con un resumen corto (rama, hash, cambios, gate antes/después, lo que dejó sin hacer) y no espera nada más.
+- **Verifica antes de creer:**
+  - Su reporte es una afirmación. Revisa muestras contra el repo: el diff, la base del commit y el resultado del gate.
+  - Etiqueta cada afirmación como CONFIRMADA, CORREGIDA o REFUTADA. Lo que no revisaste va marcado "según el agente, sin verificar".
+  - Si reescribe algo desde cero, exige el **diff de preservación** (viejo → nuevo): un rebuild falla por omisión silenciosa.
+- **Mientras corre:**
+  - No leas su transcript, porque te inunda el contexto.
+  - La señal de vida es la última escritura de su transcript o de su worktree, no el reloj de pantalla.
+  - Si se cuelga o se agota, se releva con otro agente que parte de su archivo de avance.
+- **Al cerrar:** el avance va a `bitacora.md` (append con `>>`) y el estado a `estado-proyecto.md`. Los worktrees y ramas sobrantes los barren `limpiar.sh worktrees` y `limpiar.sh ramas`.
 
 ## Tu lista de TODOs es TU HUD — mantenla FRESCA, no la dejes driftear (norma dura)
 - La lista de TODOs de la terminal es TU HUD de working-memory de la tarea de AHORA (tu tablero para no perderte), NO un reporte para el usuario. Ábrela cuando la tarea tenga ≥3 pasos o vayas a trabajar de corrido; manténla como el reflejo vivo de tu plan.

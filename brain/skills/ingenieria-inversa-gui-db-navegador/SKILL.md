@@ -200,7 +200,7 @@ Esto es tan parte del método como el loop de diffing — permite verificar el a
 Una vez el loop esté pulido y probado a fondo en UNA VM/módulo, el mismo método es paralelizable:
 cada VM+sandbox propio corre un agente cubriendo un módulo distinto del mismo sistema legacy (o
 sistemas legacy distintos en paralelo), con un orquestador consolidando checkpoints/hallazgos (ver
-skill `orquestar-fanout` para el modelo de reporte-sin-niñera). **No construir esto hasta que el
+la norma «Delegar a agentes» para el modelo de reporte). **No construir esto hasta que el
 loop de un solo agente esté verdaderamente refinado** — la premisa de "más agentes en paralelo" solo
 paga si cada uno individualmente ya no comete los errores que este skill existe para prevenir.
 

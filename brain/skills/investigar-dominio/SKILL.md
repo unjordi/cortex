@@ -2,7 +2,7 @@
 name: investigar-dominio
 description: >-
   Ponerte al día como EXPERTO en un dominio/ecosistema maduro y dejarlo en memoria
-  durable — no investigar al aire. Delega un fan-out de agentes a barrer la
+  durable — no investigar al aire. Delega a UN agente que barre, pieza por pieza, la
   documentación oficial + issues/foros de cada pieza (método DOC-FIRST), cosecha lo
   aprendido en DOS capas (memorias de investigación indexadas + skills reutilizables,
   con la "capa profunda" separada bajo la de alto nivel), y REVISA las decisiones
@@ -23,8 +23,8 @@ Sirve en **dos direcciones**:
 Funciona por **cuatro ingredientes juntos**, que conviene reproducir siempre:
 
 1. **Enmarcar el rol** — "modo AUDITOR/EXPERTO en X" cambia la profundidad del barrido.
-2. **Autorizar el fan-out** — mandar agentes en paralelo a investigar, no leerlo todo en serie
-   perdiendo el hilo (respeta el gate de costo de delegación).
+2. **Delegar el barrido** — un agente que investiga pieza por pieza, con checkpoint por pieza, en vez
+   de leerlo todo tú perdiendo el hilo. En paralelo solo si se justifica (norma «Delegar a agentes»).
 3. **Doble cosecha durable** — memorias de investigación **+** skills, no un resumen en el chat
    que el próximo `/compact` se lleva.
 4. **Amarrarlo a una meta real** — "revisa mis decisiones / no quiero arrastrar deuda técnica".
@@ -40,8 +40,8 @@ te dice las limitaciones ADMITIDAS y los issues ya tienen tu bug reportado por a
 Barre qué YA existe — skills, memorias, código previo, notas de sesiones pasadas — y construye
 **SOBRE** ello. Media investigación puede estar ya hecha; duplicarla es deuda, no progreso.
 
-### 1. Investigación a fondo (fan-out en paralelo)
-Un agente por pieza del ecosistema (o por eje: doc oficial / issues+foros / código). De cada
+### 1. Investigación a fondo (un agente, pieza por pieza)
+Una sección por pieza del ecosistema (o por eje: doc oficial / issues+foros / código), en orden. De cada
 fuente saca, como mínimo:
 - **Qué añade sobre su base** (el delta real, no el marketing).
 - **Limitaciones que la doc ADMITE** — oro puro, evita callejones.
@@ -82,7 +82,7 @@ CONTEXTO: <1–3 líneas: qué es el proyecto, qué mantengo, estado actual>.
 
 Quiero tres cosas, en orden:
 
-1) INVESTIGACIÓN A FONDO (delega en agentes en paralelo). Barre la documentación
+1) INVESTIGACIÓN A FONDO (delega en UN agente, pieza por pieza). Barre la documentación
    oficial Y los issues/foros de cada pieza del ecosistema: <lista las piezas>.
    Método DOC-FIRST: en proyectos maduros, primero doc + issues, no
    reverse-engineering a ciegas. De cada fuente: qué añade sobre su base, sus
@@ -106,6 +106,6 @@ pregunta antes de cualquier cambio destructivo o de alcance ambiguo.
 
 ## Qué NO es
 - **No es un dump de trivia.** Sin el paso 3 (revisar decisiones) es investigación sin para-qué.
-- **No sustituye el gate de costo de delegación** — el fan-out respeta el consentimiento de costo.
+- **No sustituye el gate de costo de delegación** — la delegación respeta el consentimiento de costo.
 - **No inventa el corte del usuario.** Si presentas hallazgos como opciones y el usuario elige un
   subconjunto, el RESTO va al backlog, no se declara "fuera de alcance" (norma dura del cerebro).

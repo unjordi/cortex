@@ -89,7 +89,7 @@ ciegas.** Para el cerebro son:
 
 ## Las dimensiones (una por auditor, en paralelo)
 El cerebro se barre por dimensiones INDEPENDIENTES; se lanza **un auditor por dimensión** (fan-out, ver
-[[orquestar-fanout]]) para que cada uno sea profundo y no se diluya:
+la norma «Delegar a agentes») para que cada uno sea profundo y no se diluya:
 - **A · Guards / lib de git** — ¿se pueden EVADIR? (push a base, escaneo de secretos, gate de merge,
   confirmación). Es la dimensión más adversarial y **se audita por EJECUCIÓN** (ver abajo).
 - **C · Fidelidad de flowcharts + doc** — ¿los `.dot`/leyendas/citas reflejan el código y el árbol del
@@ -189,7 +189,7 @@ dictamen durable los lista con su razón. Perseguir exóticos indefinidamente es
   (0 CRÍTICO/ALTO/MEDIO, BAJOS triaged). El FMEA [[auditar-proceso-algoritmo]] es el TERCER eje (algoritmo/flujo),
   se suma cuando lo hay.
 - Hermano de [[auditar-proceso-algoritmo]] (la METODOLOGÍA general; este es su modo-cerebro empaquetado),
-  de [[diagramar]] (produce los flowcharts que son los zapatos), de [[orquestar-fanout]] (cómo lanzar el
+  de [[diagramar]] (produce los flowcharts que son los zapatos), de la norma «Delegar a agentes» (cómo lanzar el
   fan-out sin niñera) y de [[cerrar-slice]] (los hallazgos → backlog, el fix → MR con resumen curado).
 
 ## El prompt del auditor 

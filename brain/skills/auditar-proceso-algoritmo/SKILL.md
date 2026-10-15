@@ -96,8 +96,8 @@ Delega con `Task`/subagente. Persona y encargo (adáptalo al target, conserva la
 - **El auditor NO declara LISTO.** Su dictamen es insumo; el cierre sigue exigiendo tu QA o tu
   autorización expresa (definición de LISTO). Un flujo "auditado sin hallazgos graves" es *verificado*,
   no *confirmado*.
-- **Fan-out si el target es grande.** Si son varios flujos/módulos independientes, lanza un auditor por
-  pieza en paralelo (ver [[orquestar-fanout]]) en vez de uno serial gigante.
+- **Target grande: un auditor por secciones.** Si son varios flujos/módulos, el auditor los recorre uno a
+  uno con checkpoint por pieza; en paralelo solo si se justifica (norma «Delegar a agentes»).
 
 ## Lo que un banco VERDE no prueba
 

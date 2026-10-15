@@ -133,7 +133,7 @@ Delega con `Task`/subagente `general-purpose`. Adapta el target, conserva la ESE
   CONSISTENTE (¿se contradice? ¿los guards se evaden? ¿la doc miente vs el código?). **Lentes disjuntas —
   ninguna caza lo de la otra** → córrelas JUNTAS, hasta 0 CRÍTICO/ALTO/MEDIO (los BAJOS se triagean). `auditar-proceso-algoritmo` es un TERCER eje (¿el algoritmo/flujo es correcto?): se SUMA cuando la capacidad
   audita lógica, no solo docs.
-- `orquestar-fanout` — su bucle de verificación es "no creerle a un agente su 'listo'" (esta skill lo aplica al auditor mismo).
+- La norma «Delegar a agentes» (verifica antes de creer) — su bucle de verificación es "no creerle a un agente su 'listo'" (esta skill lo aplica al auditor mismo).
 - `positivar-doc` (skill **global**, no vive en `brain/skills`) — answer-first: un doc suficiente pero enterrado sigue fallando la prueba.
 - `cerrar-slice` (§5, cosecha) / `checkpoint` — de dónde salen las tareas: lo que pasó hoy.
 - Memoria global `feedback_re-auditar-tras-arreglar` — la norma de la 2ª pasada.

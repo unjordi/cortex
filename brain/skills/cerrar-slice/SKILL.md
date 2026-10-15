@@ -39,7 +39,7 @@ queda con el JUICIO (¿está LISTO? ¿el mensaje cuenta el cambio neto?); el scr
 
 ## 2. Actualiza la memoria Y la doc (en la misma tanda — doc = realidad)
 Este paso ES el "volcado" del skill `checkpoint`: **cerrar-slice = ese volcado + verificar + git + cosecha.**
-Modelo de estado (tres archivos, un dato en UN lugar — ver skill `orquestar-fanout`): **`estado-proyecto.md`
+Modelo de estado (tres archivos, un dato en UN lugar — ver la norma «Delegar a agentes»): **`estado-proyecto.md`
 = hub vivo** (dónde estamos + backlog + prioridad); **`bitacora.md` = log append-only** (qué pasó);
 **`hilo-mental-actual.md` = el hilo de trabajo vivo** (de qué va ESTO ahora — lo sobrescribe `checkpoint`, lo
 rehidrata el hook `rehidratar-hilo` al retomar/compactar). Al cerrar, **refresca (o vacía) `hilo-mental-actual.md`**

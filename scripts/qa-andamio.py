@@ -20,7 +20,7 @@ import json, subprocess, sys, os, re
 
 AQUI = os.path.dirname(os.path.abspath(__file__))  # el fixture vive junto a este archivo
 TRANSCRIPT = os.path.join(AQUI, 'transcript-hoy.jsonl')
-JS = sys.argv[1] if len(sys.argv) > 1 else '/Users/unjordi/code/cortex/bin/checkpoint-mecanico.js'
+JS = sys.argv[1] if len(sys.argv) > 1 else os.path.join(AQUI, '..', 'bin', 'checkpoint-mecanico.js')
 if not os.path.exists(TRANSCRIPT):
     print('falta el transcript congelado:', TRANSCRIPT); sys.exit(2)
 

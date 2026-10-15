@@ -196,8 +196,8 @@ dos comportamientos opuestos y ninguno correcto).
 `hilo-mental-actual.md` está en T2 y viaja — sin eso se quedaba por OMISIÓN y, al estar gitignored en los
 dos extremos, **git no lo recupera**. Pero NO es identidad: `conocimiento-propio`/`autorizaciones-vigentes`
 tienen UNA copia buena y que difieran es una anomalía que un humano reconcilia; el hilo, en cambio, es
-**por repo Y por stream de trabajo** — el MISMO master escribe uno distinto en cada repo donde trabaja
-(medido: 70 escrituras al hilo de `cortex` y 61 al de `plantilladotnet`, el mismo master) y el destino
+**por repo Y por stream de trabajo** — el MISMO master escribe uno distinto en cada repo donde trabaja,
+y el destino
 casi siempre llega con uno **propio y vivo**.
 
 Por eso una diferencia en el hilo **no es un conflicto**: S5 lo **CO-UBICA** como
@@ -479,8 +479,8 @@ Un destino cuyo `.gitignore` no cubra el `CLAUDE.local.md` de la raíz dejaría 
 [verificado en `cortex`; **compruébalo en TU destino**]. Se blinda ANTES de tocar T2 — y aplica igual si el
 destino es privado (§1.0: un privado puede volverse público).
 
-**Se verifica ARCHIVO POR ARCHIVO.** `git check-ignore A B C` sale **0 si CUALQUIERA** matchea (medido:
-con solo `CLAUDE.local.md` ignorado, el lote de tres pasa en verde mientras dos siguen expuestos), y
+**Se verifica ARCHIVO POR ARCHIVO.** `git check-ignore A B C` sale **0 si CUALQUIERA** matchea (con
+solo `CLAUDE.local.md` ignorado, el lote de tres pasa en verde mientras dos siguen expuestos), y
 `git ls-files --error-unmatch A B` sale ≠0 si **alguna** ruta no está trackeada — con lo que el `if` de
 "¿ya trackeado?" era **siempre falso** incluso con el secreto ya en el índice. Además, un glob sin comillas
 lo expande **el shell del operador en SU cwd**, no git en el repo destino (y en zsh, sin match, **aborta**

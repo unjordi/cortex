@@ -12,7 +12,7 @@
 #       PostToolUse) + libs `delegacion-comun.sh`, `analizar-comando-git.sh`, `detectar-secretos.sh`
 #       + agentes-costo.json (config). La lista EXACTA se deriva de brain/hooks/MANIFEST.
 #   (b) CABLEADO en ~/.claude/settings.json con "shell":"bash" (idempotente).
-#   (c) SKILLS genéricas (cerrar-slice, orquestar-fanout, checkpoint, rehidratar-hilo, turno-nocturno,
+#   (c) SKILLS genéricas (cerrar-slice, checkpoint, rehidratar-hilo, turno-nocturno,
 #       diagramar, cosechar-sesion, unificar-cerebro, auditar-suficiencia-operativa,
 #       desinflar-memorias) en ~/.claude/skills/. La copia GLOBBEA brain/skills/*/
 #       → basta con crear la carpeta de la skill; esta lista es descriptiva.
@@ -261,7 +261,7 @@ else
   echo "ADVERTENCIA: hooks COPIADOS a $HOOKS_DIR pero NO CABLEADOS en $GSET (falta jq) — los guards NO disparan (fail-open) hasta que instales jq y re-corras. Esto NO es una instalación completa de guards."
 fi
 
-# ── (c) Skills genéricas del cerebro (cerrar-slice, orquestar-fanout, …) — tier {global,both} del
+# ── (c) Skills genéricas del cerebro (cerrar-slice, checkpoint, …) — tier {global,both} del
 # brain/skills/MANIFEST (fuente única de tiers; hoy TODAS son `global`). Copia el ÁRBOL COMPLETO de cada
 # skill (no solo SKILL.md — algunas traen reference/ o bootstrap-claude.sh; el `cp -f SKILL.md` anterior los
 # DEJABA FUERA → aparecían como "falta"/drift eterno en verificar-cerebro y en el nuevo drift de skills).

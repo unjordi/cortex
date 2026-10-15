@@ -320,7 +320,7 @@ destilado de campañas reales.
 - [[diagramar]] — alimenta al FMEA con los flowcharts (leyenda + normas) que necesita como "zapatos".
 - [[positivar-doc]] — answer-first: "ESTO SÍ" antes de "ESTO NO".
 - [[desinflar-memorias]] — colapsar narrativa a lección + mitos descartados al `cementerio.md` (por ID).
-- [[orquestar-fanout]] — fan-out sin niñera (worktrees aislados, 2 archivos de estado) + su bucle de
+- la norma «Delegar a agentes» — fan-out sin niñera (worktrees aislados, 2 archivos de estado) + su bucle de
   verificación (no creerle el "listo" a un agente).
 - [[checkpoint]] — volcar el hilo antes de compactar (crítico en corridas de N rondas).
 - [[cerrar-slice]] — el cierre por ramita → MR → mini-develop con `--squash`.
@@ -353,19 +353,19 @@ coherentes entre sí prometiendo un candado que NO existía — coherencia perfe
 coherencia no ve eso; la suficiencia sí."* Y al revés: un cerebro de recetas buenas que se contradicen
 pasa la prueba de suficiencia archivo por archivo. **Ninguna caza lo de la otra.**
 
-**Contrato de reporte** (de [[orquestar-fanout]]): cada auditor escribe su dictamen a un `.md` durable
+**Contrato de reporte** (de la norma «Delegar a agentes»): cada auditor escribe su dictamen a un `.md` durable
 (`AUDITOR-COH-r<N>.md`, `AUDITOR-SUF-r<N>.md`) y responde SOLO ~3 líneas al orquestador (veredicto +
 conteo, hallazgos en bullets, ruta). Así no infla el contexto del orquestador.
 
 ### FASE 2 — VERIFICAR los hallazgos (no creer el reporte del agente)
-Usa el **bucle de verificación** de [[orquestar-fanout]]: **espera a tener AMBOS dictámenes antes de
+Usa el **bucle de verificación** de la norma «Delegar a agentes»: **espera a tener AMBOS dictámenes antes de
 editar** (no muevas el piso a media auditoría), y **verifica read-only cada hallazgo contra el código/
 realidad** — no lo relates como verdad. El **cross-check entre lentes es donde se cazan los FALSOS
 POSITIVOS**: p. ej. suficiencia marca `detectar-secretos.sh` como "hook huérfano" → coherencia lo REFUTA
 por ejecución (es una LIB `source`-ada, no un hook) = FP anotado, no tocado. Con 4-6 informes, haz el
 cross-check ANTES de sintetizar.
 > **Si un agente REEMPLAZA un doc** (un rebuild de la firma/README/config, no contenido nuevo — típico en
-> el modo canonizar): corre el **DIFF DE PRESERVACIÓN** de [[orquestar-fanout]] — `diff` viejo→nuevo y
+> el modo canonizar): corre el **DIFF DE PRESERVACIÓN** de la norma «Delegar a agentes» — `diff` viejo→nuevo y
 > clasifica lo que SOLTÓ (basura temporal botada bien **vs** conocimiento real que hay que preservar/reubicar).
 > Un rebuild falla por OMISIÓN silenciosa, no por afirmar de más (p. ej. un rebuild que bota una corrección que
 > vivía SOLO en ese archivo).
