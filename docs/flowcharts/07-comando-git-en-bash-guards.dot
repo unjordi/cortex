@@ -122,7 +122,7 @@ digraph flujos {
     ARB_NOTE [color="#e08e45",
               label="🟠 nota SUAVE (no bloquea) — worktree aislado, destructivo hacia OTRO objetivo:\npuede rebobinar N commit(s) de TU rama, pero el árbol COMPARTIDO del orquestador\nNO está en riesgo. Si rebobinas a propósito, adelante."];
     ARB_W [color="#e08e45",
-           label="🟠 AVISA (no bloquea) — árbol PRINCIPAL (compartido): este git destructivo puede\nORFANAR N commits sin pushear. Si eres agente de fan-out: NO operes aquí — trabaja\nen tu worktree aislado (isolation: worktree); si hace falta rebobinar, que lo haga\nel orquestador.\n📜 → 🧱 Aislamiento de fan-out · 💡 → 🐝 orquestar-fanout (ver 12)"];
+           label="🟠 AVISA (no bloquea) — árbol PRINCIPAL (compartido): este git destructivo puede\nORFANAR N commits sin pushear. Si eres un agente delegado: NO operes aquí — trabaja\nen tu worktree aislado (isolation: worktree); si hace falta rebobinar, que lo haga\nel máster.\n📜 → 🧱 Aislamiento (norma «Delegar a agentes: UNO secuencial») · ver 04"];
     ARB_ZOMBIE [color="#e08e45",
                 label="🟠 AVISA (no bloquea) — ACOTADO por rama: 'git branch -D borraría commits PROPIOS\naún NO integrados a <base> en: <rama>'. Sin lógica de worktree aislado/H14-H15\n(esa es exclusiva de la vía reset/checkout/rebase de arriba)"];
 

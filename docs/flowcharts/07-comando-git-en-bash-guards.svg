@@ -619,19 +619,19 @@
 <!-- ARB_W -->
 <g id="node19" class="node">
 <title>ARB_W</title>
-<path fill="#2b2b2b" stroke="#e08e45" stroke-width="1.5" d="M5347.62,-284.75C5347.62,-284.75 4888.38,-284.75 4888.38,-284.75 4882.38,-284.75 4876.38,-278.75 4876.38,-272.75 4876.38,-272.75 4876.38,-219 4876.38,-219 4876.38,-213 4882.38,-207 4888.38,-207 4888.38,-207 5347.62,-207 5347.62,-207 5353.62,-207 5359.62,-213 5359.62,-219 5359.62,-219 5359.62,-272.75 5359.62,-272.75 5359.62,-278.75 5353.62,-284.75 5347.62,-284.75"/>
-<text xml:space="preserve" text-anchor="middle" x="5118" y="-269.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🟠 AVISA (no bloquea) — árbol PRINCIPAL (compartido): este git destructivo puede</text>
-<text xml:space="preserve" text-anchor="middle" x="5118" y="-253.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">ORFANAR N commits sin pushear. Si eres agente de fan&#45;out: NO operes aquí — trabaja</text>
-<text xml:space="preserve" text-anchor="middle" x="5118" y="-240.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">en tu worktree aislado (isolation: worktree); si hace falta rebobinar, que lo haga</text>
-<text xml:space="preserve" text-anchor="middle" x="5118" y="-228.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">el orquestador.</text>
-<text xml:space="preserve" text-anchor="middle" x="5118" y="-215.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">📜 → 🧱 Aislamiento de fan&#45;out · 💡 → 🐝 orquestar&#45;fanout (ver 12)</text>
+<path fill="#2b2b2b" stroke="#e08e45" stroke-width="1.5" d="M5360.38,-284.75C5360.38,-284.75 4887.62,-284.75 4887.62,-284.75 4881.62,-284.75 4875.62,-278.75 4875.62,-272.75 4875.62,-272.75 4875.62,-219 4875.62,-219 4875.62,-213 4881.62,-207 4887.62,-207 4887.62,-207 5360.38,-207 5360.38,-207 5366.38,-207 5372.38,-213 5372.38,-219 5372.38,-219 5372.38,-272.75 5372.38,-272.75 5372.38,-278.75 5366.38,-284.75 5360.38,-284.75"/>
+<text xml:space="preserve" text-anchor="middle" x="5124" y="-269.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🟠 AVISA (no bloquea) — árbol PRINCIPAL (compartido): este git destructivo puede</text>
+<text xml:space="preserve" text-anchor="middle" x="5124" y="-253.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">ORFANAR N commits sin pushear. Si eres un agente delegado: NO operes aquí — trabaja</text>
+<text xml:space="preserve" text-anchor="middle" x="5124" y="-240.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">en tu worktree aislado (isolation: worktree); si hace falta rebobinar, que lo haga</text>
+<text xml:space="preserve" text-anchor="middle" x="5124" y="-228.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">el máster.</text>
+<text xml:space="preserve" text-anchor="middle" x="5124" y="-215.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">📜 → 🧱 Aislamiento (norma «Delegar a agentes: UNO secuencial») · ver 04</text>
 </g>
 <!-- ARB_ISO&#45;&gt;ARB_W -->
 <g id="edge17" class="edge">
 <title>ARB_ISO&#45;&gt;ARB_W</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" d="M5077.9,-514.28C5048.08,-461.76 5010.46,-373.55 5044,-304.75 5045.72,-301.23 5047.76,-297.86 5050.05,-294.65"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="5052.61,-297.05 5056.27,-287.11 5047.21,-292.6 5052.61,-297.05"/>
-<text xml:space="preserve" text-anchor="middle" x="5115.5" y="-463.5" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">no — árbol PRINCIPAL</text>
+<path fill="none" stroke="#d97757" stroke-width="1.4" d="M5077.71,-514.52C5047.42,-461.85 5009.08,-373.12 5044,-304.75 5045.89,-301.05 5048.14,-297.53 5050.66,-294.2"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="5053.12,-296.71 5057.04,-286.87 5047.83,-292.11 5053.12,-296.71"/>
+<text xml:space="preserve" text-anchor="middle" x="5116.87" y="-463.5" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">no — árbol PRINCIPAL</text>
 </g>
 <!-- ARB_SUP -->
 <g id="node17" class="node">
@@ -661,9 +661,9 @@
 <!-- ARB_ISO_TGT&#45;&gt;ARB_NOTE -->
 <g id="edge20" class="edge">
 <title>ARB_ISO_TGT&#45;&gt;ARB_NOTE</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" d="M5466.61,-328.67C5448.82,-293.09 5416.21,-238.22 5372,-207 5353.82,-194.16 5332.93,-184.11 5311.52,-176.24"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="5312.88,-173.01 5302.29,-173.02 5310.58,-179.62 5312.88,-173.01"/>
-<text xml:space="preserve" text-anchor="middle" x="5484.5" y="-242" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">no — a otro objetivo</text>
+<path fill="none" stroke="#d97757" stroke-width="1.4" d="M5469.57,-328.56C5454.84,-292.89 5426.89,-237.95 5385,-207 5367.66,-194.19 5347.76,-184.16 5327.13,-176.31"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="5328.54,-173.09 5317.94,-173 5326.16,-179.68 5328.54,-173.09"/>
+<text xml:space="preserve" text-anchor="middle" x="5491.36" y="-242" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">no — a otro objetivo</text>
 </g>
 <!-- ARB_SUP&#45;&gt;GIT_EXEC -->
 <g id="edge25" class="edge">
@@ -680,8 +680,8 @@
 <!-- ARB_W&#45;&gt;GIT_EXEC -->
 <g id="edge27" class="edge">
 <title>ARB_W&#45;&gt;GIT_EXEC</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" d="M4942.36,-206.3C4928.08,-200.45 4916.87,-194.01 4911,-187 4886.09,-157.26 4886.01,-111.09 4889.94,-78.87"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4893.35,-79.76 4891.3,-69.36 4886.42,-78.77 4893.35,-79.76"/>
+<path fill="none" stroke="#d97757" stroke-width="1.4" d="M4942.4,-206.26C4928.13,-200.46 4916.93,-194.03 4911,-187 4885.98,-157.35 4885.92,-111.17 4889.89,-78.91"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4893.3,-79.79 4891.26,-69.39 4886.37,-78.79 4893.3,-79.79"/>
 </g>
 <!-- ARB_ZOMBIE&#45;&gt;GIT_EXEC -->
 <g id="edge28" class="edge">
