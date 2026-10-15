@@ -64,7 +64,7 @@ if [ -f "$TARGET/brain/hooks/MANIFEST" ] && [ -f "$TARGET/docs/flowcharts/verifi
   exit 0
 fi
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────────────────────────────  ──
 # (A) CLAUDE.md = firma-árbol con TODAS sus secciones + el @import de MEMORY.md
 echo ""
 echo "== (A) CLAUDE.md = firma-árbol =="
@@ -86,7 +86,7 @@ else
   else
     fail "CLAUDE.md sin el @import de .claude/memory/MEMORY.md — MEMORY.md no se auto-cargaría."
   fi
-  # El árbol de la firma DEBE ir cercado con fence de código (si no colapsa a prosa — lección games).
+  # El árbol de la firma DEBE ir cercado con fence de código (si no colapsa a prosa).
   if grep -q '^```' "$CLAUDEMD"; then
     info 'hay bloque cercado (fence ```) — el árbol de la firma no colapsa a prosa'
   else
@@ -94,7 +94,7 @@ else
   fi
 fi
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────────────────────────────  ──
 # (B) MEMORY.md existe y agrupa el índice POR PREFIJO
 echo ""
 echo "== (B) MEMORY.md = índice por prefijo =="
@@ -107,7 +107,7 @@ else
     || warn "MEMORY.md no parece agrupar por prefijo (no menciona dom-/dev-) — ¿índice plano?"
 fi
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────────────────────────────  ──
 # (C) Memorias PREFIJADAS (dom-/dev-/ux-/qa-) o del NÚCLEO
 echo ""
 echo "== (C) memorias prefijadas o núcleo =="
@@ -130,7 +130,7 @@ else
   [ "$unpref" -eq 0 ] && info "todas las memorias están prefijadas o son del núcleo."
 fi
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────────────────────────────  ──
 # (D) Invariante 1:1  ·  cada memoria indexada  +  cada enlace resuelve a archivo real
 echo ""
 echo "== (D) 1:1 MEMORY.md ↔ archivos =="
@@ -174,7 +174,7 @@ else
   info "(D) omitido: falta MEMORY.md o .claude/memory/."
 fi
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────────────────────────────  ──
 # (E) Nombres de hook STALE / RETIRADOS en la prosa (CLAUDE.md + MEMORY.md)
 echo ""
 echo "== (E) sin nombres de hook retirados en la prosa =="
@@ -193,7 +193,7 @@ for doc in "$CLAUDEMD" "$MEMMD"; do
 done
 [ "$stale" -eq 0 ] && info "sin menciones a hooks retirados conocidos."
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────────────────────────────  ──
 echo ""
 verdict="ok"
 [ "$WARN" -gt 0 ] && verdict="drift"

@@ -16,7 +16,7 @@ case "$0" in "$HOME/.claude/hooks/"*) : ;; *) [ -f "$HOME/.claude/hooks/$(basena
 input=$(cat)
 
 _ACGLIB="$(dirname "$0")/analizar-comando-git.sh"
-# H1 (auditoría semántica 2026-09-16, ALTO): extrae el valor LITERAL del campo "command" del JSON (nunca
+# Extrae el valor LITERAL del campo "command" del JSON (nunca
 # el blob crudo completo) -- acota a un rango entre comillas que respeta escapes (\. | [^"\]), el mismo
 # patrón estándar de extracción de cadena JSON. Usado SOLO en el carril sin-jq (con jq, se usa jq de verdad).
 _json_campo_command() {
@@ -27,13 +27,9 @@ _json_campo_cwd() {
 }
 
 if ! command -v jq >/dev/null 2>&1; then
-  # ALTO-2 (auditoría FMEA 2026-09-16 §1.4): sin jq, bloquear TODO push (incluida tu propia ramita/mini-
-  # develop) deja al operador SIN CARRIL.
-  # H1 (auditoría semántica 2026-09-16, CONFIRMADO): la corrección ORIGINAL de ALTO-2 razonaba sobre el
-  # JSON CRUDO completo (sin extraer el comando), así que un campo "description" que solo MENCIONA
-  # "develop" ("Empujar la ramita del MR a develop") bastaba para bloquear un push a una ramita legítima --
-  # exactamente la mordida que ALTO-2 existía para eliminar. Fix de raíz: extraer SOLO el campo "command"
-  # (arriba) y, si se logra, reusar la MISMA función `acg_push_toca_base`/`acg_merge_menciona_base` del
+  # Sin jq, bloquear TODO push (incluida tu propia ramita/mini-develop) dejaría al operador SIN CARRIL, y
+  # razonar sobre el JSON crudo bloquearía por un campo "description" que solo menciona "develop". Se
+  # extrae SOLO el campo "command" (arriba) y, si se logra, reusar la MISMA función `acg_push_toca_base`/`acg_merge_menciona_base` del
   # camino CON jq (ninguna de las dos necesita jq: son texto+git puro) -- PARIDAD exacta con el camino
   # normal, no una heurística propia más laxa o más estricta.
   _cmd_sinjq=$(_json_campo_command "$input")
@@ -44,13 +40,8 @@ if ! command -v jq >/dev/null 2>&1; then
     . "$_ACGLIB"
     if command -v acg_push_toca_base >/dev/null 2>&1; then
       _sinjq_ok=1
-      # ALTO (auditoría de coherencia 2026-09-18, MEDIO en el veredicto): el escape
-      # CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL, que el propio mensaje DENY de abajo promete, solo se leía en
-      # el camino DEGRADADO (_sinjq_ok=0, más abajo) -- este camino PRIMARIO ("sin jq pero el comando SÍ
-      # se pudo extraer", el caso normal desde H1) nunca lo consultaba -> sobre-bloqueo fail-safe (no
-      # brecha: el guard seguía sin dejar pasar nada indebido) para quien exportara la variable creyendo
-      # que destrababa su propio push/mini-develop. Se consulta AQUÍ, antes de evaluar, con la MISMA
-      # semántica que el camino degradado (exit 0 sin más chequeo): el humano manda.
+      # El escape CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL (prometido por el mensaje DENY de abajo) se consulta
+      # AQUÍ, antes de evaluar, con la misma semántica que el camino degradado (exit 0 sin más chequeo).
       if [ "${CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL:-}" = "1" ]; then
         exit 0
       fi
@@ -80,9 +71,10 @@ case "$cmd" in *git*|*glab*|*gh*) : ;; *) exit 0 ;; esac
 # repo de la sesión). Ausente/no confiable → vacío → acg_target_dir cae a CLAUDE_PROJECT_DIR (conducta de hoy).
 pcwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
 
-# CRÍTICO-1 (auditoría FMEA 2026-09-16 §1.1, CONFIRMADO): sourcear un archivo con error de SINTAXIS mata el
+# Sourcear un archivo con error de SINTAXIS mata el
 # proceso ENTERO con exit 1 -- que el harness trata como NO-bloqueante (silencio total: el guard desaparece
-# y el push/merge PASA sin gate). H7 (auditoría semántica 2026-09-16, BAJO): la sonda ORIGINAL sourceaba la
+# y el push/merge PASA sin gate). Sondear con `source` en un subshell no sirve: el código de salida de un `source` es el del ÚLTIMO comando de la lib,
+# no un diagnóstico de sintaxis; la sonda sourceaba la
 # lib en un subshell y trataba CUALQUIER exit≠0 como "lib rota" -- pero el código de salida de un `source`
 # es el del ÚLTIMO comando de la lib, no un diagnóstico de sintaxis: un `false`/grep-sin-match al final de
 # una lib PERFECTAMENTE válida (bash -n la aprueba) bastaba para declarar "error de sintaxis" y tumbar el
@@ -106,11 +98,10 @@ block() {
   exit 0
 }
 
-# M8 (auditoría 2026-09-15 §3.11, norma dura anti-vein-popper): se RETIRÓ "normalmente el humano en la web
-# de GitLab" de ambos mensajes — un guard que frena en CLI se SATISFACE (con OK súper-explícito, lo vigila
-# merge-develop-guard) o se ARREGLA, JAMÁS se rodea mandando a la persona a hacerlo a mano en la web.
+# Los mensajes no mandan a la persona a la web: un guard que frena en CLI se SATISFACE (con OK
+# súper-explícito, lo vigila merge-develop-guard) o se ARREGLA, nunca se rodea.
 #
-# H5 (auditoría de ejecución 2026-09-16 §H5, BAJO-MEDIO): la SIEMBRA de un repo/rama base VACÍA (0 commits)
+# La SIEMBRA de un repo/rama base VACÍA (0 commits)
 # es la ÚNICA excepción que la norma global declara para un push directo a base ("si un repo no tiene
 # develop, créalo") — y hasta aquí este guard no la distinguía de un push normal, SIN escape cuando jq está
 # presente (el único escape existente, CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL, solo se lee en la rama sin-jq).

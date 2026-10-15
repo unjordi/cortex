@@ -8,16 +8,14 @@
 # La maquinaria vive en la LIB `sincronizar-tasklist.sh` (UN dueño; el skill to-do la EJECUTA para el
 # sentido inverso — bloque → HUD). Este hook la SOURCEA y dispara el sentido Stop (json → bloque).
 #
-# Rediseño 2026-09-18 (sync bidireccional): antes el espejo escribía RUIDO — con el session_id ROTADO (que
-# el harness cambia sin aviso al arrancar/compactar) el sid del payload apuntaba a una carpeta vacía y el
-# hook PISABA el bloque con "_(sin pendientes)_ · +0", borrando el último espejo bueno. Arreglos en la lib:
+# Sync bidireccional. Con el session_id ROTADO (el harness lo cambia sin aviso al arrancar/compactar) el sid
+# del payload puede apuntar a una carpeta vacía; la lib lo cubre con:
 # (1) selección de carpeta ROBUSTA a la rotación (payload sid → si vacío, la más reciente en ventana);
-# (2) ANTI-CLOBBER (nunca pisa un bloque no-vacío con uno vacío). Además vuelve el NUDGE como CERRADOR DE
+# (2) ANTI-CLOBBER (nunca pisa un bloque no-vacío con uno vacío). Además el NUDGE cierra el
 # LAZO del HUD: el harness NO refresca el HUD en pantalla desde disco (tiene la lista en memoria) → un hook
 # NO puede sembrar el HUD, SOLO el modelo con las tools de to-do. Así que el nudge AVISA al modelo que
 # actualizó el bloque durable y le sugiere re-sincronizar su task-list. Non-blocking (systemMessage) y solo
-# cuando espejó ≥1 pendiente vivo Y el bloque cambió — no decorativo en cada Stop (esa mitad advisory vaga
-# se retiró; regresa anclada al hecho y con un propósito accionable: cerrar el lazo json→durable→HUD).
+# cuando espejó ≥1 pendiente vivo Y el bloque cambió — no en cada Stop (propósito: cerrar el lazo json→durable→HUD).
 #
 # Fail-open SIEMPRE: no-git / sin jq / cualquier error → silencio, exit 0. NUNCA bloquea.
 # Escape: CLAUDE_SKIP_RECORDAR_COSECHAR=1.
@@ -38,7 +36,7 @@ ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo 
 # Solo aplica a repos con el sistema de memoria (donde vive el backlog).
 [ -d "$ROOT/.claude/memory" ] || exit 0
 
-# ── Cargar la lib (blindado: un error de sintaxis en la lib NO tumba el hook) ────────────────────────────
+# ── Cargar la lib (blindado: un error de sintaxis en la lib NO tumba el hook) ────────────────────── ──
 _STL_LIB="$(dirname "$0")/sincronizar-tasklist.sh"
 if [ -f "$_STL_LIB" ] && bash -n "$_STL_LIB" 2>/dev/null; then
   # shellcheck source=sincronizar-tasklist.sh
@@ -47,11 +45,11 @@ else
   exit 0   # sin la lib no hay maquinaria; fail-open silencioso (nunca bloquea el Stop).
 fi
 
-# ── ESPEJO — json → bloque durable. Devuelve el nº de pendientes espejados. ──────────────────────────────
+# ── ESPEJO — json → bloque durable. Devuelve el nº de pendientes espejados. ──────────────────────── ──
 n_espejados=$(espejar_tasklist "$payload" "$ROOT" 2>/dev/null || echo 0)
 case "$n_espejados" in ''|*[!0-9]*) n_espejados=0 ;; esac
 
-# ── NUDGE útil, ATADO al sync real: solo si de verdad espejó pendientes vivos este Stop ──────────────────
+# ── NUDGE útil, ATADO al sync real: solo si de verdad espejó pendientes vivos este Stop ──────────── ──
 if [ "$n_espejados" -gt 0 ] && command -v jq >/dev/null 2>&1; then
   msg="🔄 Actualicé el bloque durable de estado-proyecto.md con $n_espejados pendiente(s) de tu TaskList. El HUD en pantalla NO se refresca solo desde disco (el harness tiene la lista en memoria) → cuando convenga, RE-SINCRONIZA tu task-list desde la durable (skill \`to-do\` / lib \`sincronizar-tasklist.sh sembrar\`) para que el HUD quede al día. (La curación —decisiones, prioridades, contexto— va AFUERA del bloque espejo.)"
   jq -n --arg m "$msg" '{systemMessage:$m}' 2>/dev/null || true

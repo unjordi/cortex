@@ -4,9 +4,8 @@
 # y CONSERVA las que tienen trabajo sin integrar) y, después, las REMOTAS SIN CONTRAPARTE LOCAL. Antídoto
 # ESTRUCTURAL a la acumulación de ramas squasheadas: el squash rompe la detección de "mergeada" de
 # `git branch -d` (la rama no queda de ancestro) y `fetch --prune` NO borra ramas locales → nadie las
-# barría y se acumulaban (un caso real: 60+ en un repo). Invócalo vía `limpiar.sh ramas` — es
-# implementación interna del dispatcher `limpiar.sh` (antes el ejecutable suelto `limpiar-ramas.sh`,
-# retirado 2026-09-17, ver MANIFEST).
+# barría y se acumulaban. Invócalo vía `limpiar.sh ramas` — es
+# implementación interna del dispatcher `limpiar.sh`.
 #   uso: limpiar.sh ramas [--dry-run] [--no-fetch]   (desde cualquier lugar del repo)
 #
 # C-2 — SEGUNDA PASADA (remotas sin local): una rama viva en `origin` cuya local ya no existe era INVISIBLE
@@ -22,7 +21,7 @@
 # multi-commit no-emparejable ni confirmable por el host). NUNCA toca la rama actual, la base de
 # integración, develop/main, las mini-develop (Develop*) ni keep/*.
 #
-# A-1 (auditoría 2026-09-11, "no silent caps"): el resumen antes solo contaba borradas/conservadas y las
+# el resumen antes solo contaba borradas/conservadas y las
 # protegidas desaparecían sin dejar rastro (`continue` antes de contar) — invitaba a leer N+M como el
 # universo cuando en realidad podía haber más ramas protegidas fuera de la vista. Ahora se examinan TODAS
 # y las omitidas se cuentan y NOMBRAN con su motivo en el resumen final.
@@ -45,7 +44,7 @@ BITA="$ROOT/.claude/memory/bitacora.md"
 [ "$FETCH" = 1 ] && git -C "$ROOT" fetch --all --prune -q 2>/dev/null
 
 base="$(bz_resolver_base "$ROOT")"
-# C-3 (dictamen 2026-09-17): sin una base que EXISTA, toda señal de integración falla muda y las ramas caen
+# sin una base que EXISTA, toda señal de integración falla muda y las ramas caen
 # a la señal (b) — la destructiva. Abortar es la única lectura correcta de "no sé contra qué comparar".
 if ! bz_base_valida "$ROOT" "$base"; then
   echo "limpiar-ramas: base de integración irresoluble ('$base') — NO se barre nada. Crea la base o exporta CLAUDE_INTEGRACION_BASE con una rama que exista, y reintenta." >&2
@@ -75,7 +74,7 @@ _join() { [ -z "$2" ] && printf '%s' "$3" || printf '%s%s%s' "$2" "$1" "$3"; }
 # MR squash-mergeado SIN --delete-branch/--remove-source-branch deja la remota huérfana; las señales
 # a/e/d/c de bz_es_zombie declaran zombie CON la remota todavía presente → aquí se cierra ese hueco.
 #
-# C-1 (auditoría 2026-09-11, PÉRDIDA DE DATOS): antes se decidía con `ls-remote --exit-code` — que solo
+# antes se decidía con `ls-remote --exit-code` — que solo
 # pregunta si la remota EXISTE, no QUÉ TIENE. Si la remota va adelante del tip local (un colega siguió
 # trabajando en esa rama tras el squash, o simplemente estás atrasado), el push --delete borraba SU
 # trabajo. Ahora se exige CONTAINMENT: el SHA remoto debe ser ANCESTRO del tip LOCAL (capturado ANTES del
@@ -105,8 +104,8 @@ barrer_remota() {  # $1 = rama zombie   $2 = nombre del remoto   $3 = SHA del ti
   fi
 }
 
-# ── DETECTOR DE REPRESA: AVISO (NUNCA borra) de ramas que envejecen SIN integrarse ─────────────────
-# A-4 (dictamen higiene de ramas 2026-09-17): recorriendo el ciclo actor por actor, la transición
+# ── DETECTOR DE REPRESA: AVISO (NUNCA borra) de ramas que envejecen SIN integrarse ─────────── ──
+# recorriendo el ciclo actor por actor, la transición
 # "rama pusheada → PR abierto" no la vigila NADIE — la rama se queda en `origin` sin PR y nadie lo nota.
 # Tampoco un "PR cerrado SIN mergear": `bz_pr_mergeado` solo mira `--state merged`, así que un PR CLOSED es
 # indistinguible de "sin PR" y se conserva mudo para siempre. Aquí no falló la escoba: falló el CIERRE, y
@@ -184,8 +183,8 @@ while IFS= read -r br; do
   fi
 done < <(git -C "$ROOT" for-each-ref --format='%(refname:short)' refs/heads 2>/dev/null)
 
-# ── SEGUNDA PASADA: ramas REMOTAS sin contraparte LOCAL ─────────────────────────────────────────────
-# C-2 (dictamen higiene de ramas 2026-09-17, CAUSA RAÍZ #2 del reguero): el bucle de arriba recorre solo
+# ── SEGUNDA PASADA: ramas REMOTAS sin contraparte LOCAL ─────────────────────────────────────── ──
+# el bucle de arriba recorre solo
 # `refs/heads`, así que una rama que vive en `origin` y NO tiene rama local no se examina, no se barre y
 # ni siquiera sale en el resumen como omitida — es invisible incluso para el reporte de "no silent caps".
 # Medido: 12 de las 23 ramas de `origin` eran de esa clase (8 ya integradas + 4 con trabajo represado).

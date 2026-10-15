@@ -3,7 +3,7 @@
 #
 # Corre cada script de checks/*.sh contra ESTE repo (la plantilla, o cualquier
 # proyecto clonado de ella) y agrega el resultado. Cada check es una heurística
-# nacida de un hallazgo REAL de una auditoría — ver README.md de esta carpeta
+# nacida de un hallazgo de auditoría — ver README.md de esta carpeta
 # para el modelo completo (Capa 1 determinista + Capa 2 semántica con LLM).
 #
 # MOTOR GENÉRICO (vive en cortex/brain/scripts/): el runner y lib-formato.sh

@@ -5,7 +5,7 @@
 #   metered         → registra por WORKFLOW (session_id) → silencioso el resto del workflow.
 # Si el usuario NIEGA el ask, el Task no corre → este hook no dispara → no se registra nada.
 # ADEMÁS emite el DIENTE de revisión crítica del entregable: al recibir un agente, su output PROPONE
-# (no es veredicto) — el mecanismo de la norma "dictamen de agente PROPONE, el usuario DECIDE".
+# (no es veredicto) — el mecanismo de la norma "el reporte de un agente PROPONE, el usuario DECIDE".
 set -u
 input=$(cat 2>/dev/null || true)
 command -v jq >/dev/null 2>&1 || exit 0

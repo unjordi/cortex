@@ -12,7 +12,7 @@
 #   esto es la RED MECÁNICA que corre sola, no un reemplazo del checkpoint rico.
 #
 #   Detached (nohup … &) porque un transcript grande puede exceder el timeout del hook (mismo riesgo
-#   medido en exportar-sesion-master.sh). Escritura ATÓMICA (tmp+rename dentro del .js): el andamio nunca
+#   que en exportar-sesion-master.sh). Escritura ATÓMICA (tmp+rename dentro del .js): el andamio nunca
 #   queda a medias si el auto-compact gana la carrera. El lock por-sid y el centinela anti-recursión son
 #   IGUALES a los que usaba checkpoint-mecanico.sh, así los dos invocadores (PreCompact y el umbral de
 #   aviso-contexto) COORDINAN: no se solapan ni corrompen el andamio, y no lo vuelcan dos veces seguidas.

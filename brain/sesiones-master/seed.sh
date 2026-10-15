@@ -27,9 +27,8 @@ set -euo pipefail
 DIR="${CLAUDE_SESSIONS_DRIVE:-$HOME/.claude-sessions}"
 FORCE="${1:-}"
 [ -d "$DIR" ] || { echo "seed.sh: no existe la carpeta de sesiones '$DIR' (setea CLAUDE_SESSIONS_DRIVE, o crea ~/.claude-sessions)"; exit 1; }
-# Opción A (2026-10-14): el roster de masters ya NO vive en UN masters.json compartido (lo generaba conflictos
-# de Drive). Se DERIVA de: (1) los `masters-<host>.json` que cada máquina CURA A MANO y publica al Drive;
-# (2) el `masters.json` legacy, si todavía existe (compat durante la migración); (3) los `<id>.meta.json`
+# El roster de masters no vive en un masters.json compartido (genera conflictos de Drive). Se DERIVA de: (1) los `masters-<host>.json` que cada máquina CURA A MANO y publica al Drive;
+# (2) el `masters.json` legacy, si todavía existe (compat); (3) los `<id>.meta.json`
 # per-sid (proveniencia conflict-free que escribe el export) como RESPALDO para ids no listados a mano.
 if ! ls "$DIR"/masters*.json "$DIR"/*.meta.json >/dev/null 2>&1; then
   echo "seed.sh: no hay masters-*.json/masters.json ni <id>.meta.json en '$DIR' (nada que sembrar)"; exit 0

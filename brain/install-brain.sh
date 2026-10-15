@@ -31,9 +31,8 @@
 #                          bootstrap (para las tunables que el dev elige). Ambos idempotentes.
 #
 # merge-develop-guard (candado del punto de merge a develop/main: squash + autorización con OK explícito;
-# CONSOLIDA a los antiguos merge-squash-guard + confirmar-merge-develop) es GLOBAL/both: antes vivían solo
-# por-repo y faltaban donde el repo no los traía (caso real 2026-07-11) → global para que apliquen en TODA
-# sesión/clon. Las lápidas del MANIFEST de los dos viejos los PODAN de máquinas donde quedaron instalados.
+# es GLOBAL/both para que aplique en TODA sesión/clon, también donde el repo no lo trae). Las lápidas
+# del MANIFEST de merge-squash-guard y confirmar-merge-develop los PODAN de máquinas donde quedaron instalados.
 # NO instala globales los hooks REPO-SCOPED restantes
 # (sesion-inicio, dod-verificar): esos viven en brain/hooks/ como FUENTE para
 # que cada repo los copie a su .claude/ y los cablee (se cargan solo si la sesión INICIA en el repo).
@@ -100,25 +99,24 @@ for h in $GLOBAL_HOOKS; do
     echo "warn: falta el hook fuente $h"
   fi
 done
-# ── (a2) PODA de hooks REPO-TIER filtrados al global ────────────────────────────────────────────────
+# ── (a2) PODA de hooks REPO-TIER filtrados al global ────────────────────────────────────────── ──
 # Un hook tier=repo (dod-verificar, sesion-inicio, …) NUNCA debe vivir en ~/.claude/hooks/: se cablea SOLO
 # per-repo (en <repo>/.claude/settings.json → ${CLAUDE_PROJECT_DIR}/.claude/hooks/), jamás global. Si uno se
 # FILTRÓ al global (era vieja, o un sincronizar-cerebro mal-apuntado a ~), queda de HUÉRFANO INERTE (nadie
 # lo cablea global) y CONFUNDE ("el script está pero no dispara"). install-brain no lo instala, pero antes
 # tampoco lo PODABA → ahora sí. SEGURO/ACOTADO: solo borra los que el MANIFEST declara tier=repo (esos por
-# definición no pueden ser propios del usuario ni {global,both}). Caso real 2026-09-08: dod-verificar.sh
-# huérfano en el global de la Cachy, presente pero sin cablear.
+# definición no pueden ser propios del usuario ni {global,both}).
 if [ -f "$SRC_HOOKS/MANIFEST" ]; then
   REPO_HOOKS="$(awk '$1!~/^#/ && NF>=3 && $2=="repo" && $3=="hook"{print $1".sh"}' "$SRC_HOOKS/MANIFEST")"
   for rh in $REPO_HOOKS; do
     [ -f "$HOOKS_DIR/$rh" ] && rm -f "$HOOKS_DIR/$rh" && echo "poda: retiré el hook repo-tier huérfano '$rh' del global $HOOKS_DIR (se cablea per-repo, nunca global)"
   done
 fi
-# ── (a3) PODA DE RETIRADOS (LÁPIDAS del MANIFEST) ───────────────────────────────────────────────────
+# ── (a3) PODA DE RETIRADOS (LÁPIDAS del MANIFEST) ───────────────────────────────────────────── ──
 # Un tier `retirado` es una LÁPIDA: el brain ya mató este hook (su .sh se borró de brain/hooks/), pero
 # quitar la entrada del MANIFEST NO alcanza para limpiar una máquina que YA lo tenía instalado — el .sh
-# copiado y su cableado en settings.json se quedan ahí, disparando ya invisibles para el MANIFEST (el
-# HUECO que motivó este mecanismo: caso real rama-vieja). Este bloque SÍ poda: por cada retirado, borra
+# copiado y su cableado en settings.json se quedan ahí, disparando ya invisibles para el MANIFEST.
+# Este bloque SÍ poda: por cada retirado, borra
 # su $HOOKS_DIR/<nombre>.sh y de-cablea ÚNICAMENTE su propia entrada de $GSET (nunca toca hooks ajenos).
 # Idempotente (si ya no está ni instalado ni cableado, no reporta nada — no es un error) y lo DICE
 # cuando sí actúa (con el nombre y el motivo del MANIFEST, si lo trae). Fail-safe con $GSET inválido:
@@ -221,7 +219,7 @@ ev_de() {
     # cablear registra cada uno. exportar-sesion-master necesita los 3 (Stop=backbone con debounce,
     # SessionEnd=estado final, PreCompact=bonus) — ver su encabezado.
     exportar-sesion-master) echo "Stop| SessionEnd| PreCompact|" ;;
-    # checkpoint-mecanico (M2/X2, auditoría 2026-09-11): SOLO PreCompact — es el único punto donde ya
+    # checkpoint-mecanico: SOLO PreCompact — es el único punto donde ya
     # sabemos que la ventana se pierde AHORA; no necesita el respaldo continuo de Stop/SessionEnd que sí
     # justifica exportar-sesion-master (ese cubre sesiones de vida larga que nunca "terminan").
     checkpoint-mecanico) echo "PreCompact|" ;;
@@ -301,16 +299,13 @@ if [ -d "$SRC_SKILLS" ]; then
   done
 fi
 
-# ── (c2) PODA DE SKILLS RETIRADAS (LÁPIDAS del SKILLS-MANIFEST) ────────────────────────────────────────
+# ── (c2) PODA DE SKILLS RETIRADAS (LÁPIDAS del SKILLS-MANIFEST) ────────────────────────────────── ──
 # MISMA mecánica de lápida que (a3) para hooks — ver ese bloque para el porqué completo — con la ÚNICA
 # diferencia de que una skill NO tiene cableado en settings.json (es un folder markdown que se LEE, no un
 # script que se EJECUTE): aquí basta borrar la carpeta instalada, sin de-cablear nada. Sin esto, una
 # máquina que ya corrió install-brain ANTES del retiro se queda con la carpeta zombie para siempre — el
 # MANIFEST deja de listarla como global/both, pero nada la borra, y el listado de skills de CUALQUIER
 # sesión en esa máquina sigue ofreciéndola junto a su reemplazo, sin señal de cuál es el dueño vigente
-# (hallazgo ALTO-1 de la auditoría de suficiencia operativa, 2026-09-18: confirmado en vivo con 5 skills
-# fantasma — consolidar-cerebro/unificar-cerebro/claude-proyecto-autocontenido/cosechar-sesion/
-# revisar-entregables-agentes — todavía instaladas en una máquina bootstrapeada antes del overhaul).
 # Idempotente (si la carpeta ya no está, no reporta nada) y lo DICE cuando sí actúa (nombre + motivo).
 if [ -f "$SKILLS_MANIFEST" ]; then
   RETIRED_SK_ENTRIES="$(awk '$1!~/^#/ && NF>=2 && $2=="retirado"{ reason=""; for(i=4;i<=NF;i++) reason=reason (i>4?" ":"") $i; print $1"\t"reason }' "$SKILLS_MANIFEST")"
@@ -331,7 +326,7 @@ EOF
 fi
 
 # ── (c1b) Opción de modelo Opus 4.8 en el picker + autocompact 70% (bloque `env` de settings.json) ──
-# Cosechado del global de Cachy (2026-07-31). Es config de Claude Code PORTABLE (no de máquina), por eso va
+# Es config de Claude Code PORTABLE (no de máquina), por eso va
 # en el brain. Idempotente y NO destructivo: setea CADA clave SOLO si falta → un dev que ya eligió otra cosa
 # (o que no quiere Opus 4.8) la conserva; una máquina fresca la recibe. NO toca `.model` (el default del dev).
 set_env_default() {  # <clave> <valor>
@@ -366,7 +361,7 @@ persist_env_active() {  # <clave>
     mv "$tmp" "$GSET"; echo "ok: env $k persistida en settings.json (.env) = '$v' (valor ACTIVO del entorno)"
   else rm -f "$tmp"; fi
 }
-# El SET COMPLETO de env vars del brain que se CAPTURAN-si-activas (revisado 2026-08-07). Solo van aquí
+# El SET COMPLETO de env vars del brain que se CAPTURAN-si-activas Solo van aquí
 # las tunables DURABLES, GLOBAL-seguras y elegidas por el dev. Deliberadamente EXCLUIDAS:
 #   · rutas que fija el harness/bootstrap (CLAUDE_PROJECT_DIR, CLAUDE_BRAIN_DIR, CLAUDE_DIR, XDG_CACHE_HOME);
 #   · mocks/live de test (CLAUDE_*_JUEZ_MOCK|LIVE|MODEL|TIMEOUT…) — de prueba, jamás persistidas;
@@ -381,11 +376,9 @@ for _bv in CLAUDE_SESSIONS_DRIVE CLAUDE_SESSIONS_DEBOUNCE_MIN; do persist_env_ac
 # qué versión del brain quedó instalada en ESTA máquina. Contrato de DOS LÍNEAS:
 #   línea 1 = versión = "<PREFIJO>.<commit-count>"  (PREFIJO = brain/VERSION, ej. 0.1 · count = git rev-list)
 #   línea 2 = fecha de instalación "YYYY-MM-DD"
-# La versión AUTO-INCREMENTA con cada commit (el count crece). C3 (auditoría 2026-08-29): cuando este
+# La versión AUTO-INCREMENTA con cada commit (el count crece). Si este
 # script corre EMPAQUETADO (p.ej. dentro del .app de un widget, vía el botón "Curar cerebro global"),
-# $SCRIPT_DIR NO es un repo git → `git rev-list` fallaba silenciosamente a COUNT=0 y REGRESABA el sello
-# real a una versión falsa (p.ej. "0.2.0"), haciendo que el widget MINTIERA sobre qué cerebro hay
-# instalado. Fix: si SCRIPT_DIR no es git, intenta resolver el CLON REAL de instalación (misma lógica
+# $SCRIPT_DIR no es un repo git y `git rev-list` daría COUNT=0 (sello falso). Si SCRIPT_DIR no es git, intenta resolver el CLON REAL de instalación (misma lógica
 # resolve_brain_dir() que usan los 3 widgets — $CLAUDE_BRAIN_DIR → ~/.cortex → ~/.claude-brain) y estampa
 # desde AHÍ; si tampoco ese es un repo git, NO TOCA el .brain-version existente (mejor un sello viejo que
 # uno falso). Idempotente: re-correr re-estampa la versión y fecha actuales cuando sí puede resolver el count.

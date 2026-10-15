@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # verificar-cerebro.sh — DOCTOR de instalación por-máquina del cerebro (cortex). Standalone
 # (kind=script): NO se cablea; se corre A MANO. Confirma que ESTA máquina tiene el cerebro instalado
-# y CABLEADO de verdad — antídoto al caso "las instancias de Carlitos/Chunito dejaron de avisar del
+# y CABLEADO de verdad — antídoto al caso "una instancia dejó de avisar del
 # compact/checkpoint": un hook global (aviso-contexto, barrer-ramas, rehidratar-hilo…) SOLO actúa si
 # (1) su .sh está en ~/.claude/hooks, (2) está cableado en ~/.claude/settings.json y (3) jq está en el
 # PATH (sin jq los hooks fallan ABIERTO: no bloquean ni avisan). Este doctor verifica las tres contra
