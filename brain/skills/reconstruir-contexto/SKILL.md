@@ -1,6 +1,6 @@
 ---
 name: reconstruir-contexto
-description: RED DE EMERGENCIA para cuando un checkpoint quedó mal hecho (hilo pobre/incompleto/ausente) y un /compact fundió el detalle real de la sesión — el caso en que [[rehidratar-hilo]] no basta porque el hilo que relee es inútil. Da el orden MECÁNICO de excavación, de lo más barato/fresco a lo más caro: (1) regenerar+leer el ANDAMIO mecánico, (2) las fuentes durables por-repo (estado-proyecto → bitácora → overflow), (3) el transcript .jsonl con grep/tail acotado, (4) re-volcar un hilo-mental BUENO ya reconstruido con [[checkpoint]]. Úsalo cuando retomas y el hilo está pobre/ausente/stale, o simplemente "no sé en qué iba" — antes de improvisar o confabular con seguridad.
+description: RED DE EMERGENCIA para cuando un checkpoint quedó mal hecho (hilo pobre/incompleto/ausente) y un /compact fundió el detalle real de la sesión — el caso en que [[rehidratar-hilo]] no basta porque el hilo que relee es inútil. Da el orden MECÁNICO de excavación, de lo más barato/fresco a lo más caro: (1) regenerar+leer el ANDAMIO mecánico del tramo vivo, (2) las fuentes durables del repo del TEMA (estado-proyecto → bitácora → overflow), (3) el TRAMO PREVIO del transcript (lo que el /compact fundió) vía el andamio con `--ventana previa`, (4) re-volcar un hilo-mental BUENO ya reconstruido con [[checkpoint]]. Úsalo cuando retomas y el hilo está pobre/ausente/stale, o simplemente "no sé en qué iba" — antes de improvisar o confabular con seguridad.
 ---
 
 # Reconstruir contexto — cuando el hilo se fundió y `rehidratar-hilo` no alcanza
@@ -53,7 +53,7 @@ juicio, pero la traza mecánica del tramo vivo sí quedó). Es el mismo paso 0 q
 así que si ya lo corriste no lo repitas — pero si llegaste aquí SIN pasar por ahí, es tu primer movimiento:
 
 ```bash
-node "$(ls ~/.local/bin/checkpoint-mecanico.js ~/.cortex/bin/checkpoint-mecanico.js 2>/dev/null | head -1)" \
+node "$(ls ~/.cortex/bin/checkpoint-mecanico.js ~/.local/bin/checkpoint-mecanico.js 2>/dev/null | head -1)" \
      --self --ensure
 cat .claude/memory/hilo-mental-actual.andamio.md
 ```
@@ -67,10 +67,21 @@ Su ventana es el TRAMO VIVO desde el último `/compact`: describe justo lo que e
 tecleó, ni el trabajo hecho por subagentes (vive en otros `.jsonl`). Si con esto ya reconoces la tarea y
 puedes reconstruir las 4 piezas del hilo (ver más abajo), **para aquí** — no hace falta ir más caro.
 
+⚠️ **Si acabas de compactar, este andamio (`--ventana viva`) casi no trae nada:** el tramo vivo tras un
+`/compact` son los 2 mensajes de "reconstruye tu contexto", y lo que perdiste quedó en el tramo ANTERIOR
+(que aquí solo aparece como conteos en "Tramos anteriores"). Ése es justo tu caso → **salta al paso 3**,
+que extrae ese tramo previo con `--ventana previa`. El paso 2 (durable del repo) va en medio si lo tienes
+a mano, pero el contenido fundido por el compact es el del paso 3.
+
 ## Paso 2 — las fuentes durables del repo, EN ESTE ORDEN
 
+⚠️ **Del repo del TEMA, no del cwd.** Si eres generalista (cwd en un repo, el trabajo en otro) o estás en
+un worktree, el `estado-proyecto.md` del cwd es la fuente EQUIVOCADA. El andamio (paso 1/3) ya te dice el
+repo real en **"cwd(s) del tramo"** y **"Rama(s) del tramo"**; léelo de AHÍ. Y si tu hilo/`CLAUDE.local.md`
+trae un ÁRBOL de memorias o un mapa de "casas" (qué tema vive en qué repo), ésas son las fuentes, no el cwd.
+
 Si el andamio no basta (te falta el "qué sigue" o el "por qué"), sigue con lo durable, del más reciente
-al más histórico:
+al más histórico (sustituye el `.claude/memory/` de abajo por el del repo del tema si no es el cwd):
 
 1. **`.claude/memory/estado-proyecto.md`** (o `estado-y-pendientes.md`) — el backlog VIVO: qué sigue,
    qué está decidido, qué quedó bloqueado y por qué. Es la fuente de verdad cross-sesión; si el hilo y
@@ -90,49 +101,43 @@ Con esto ya deberías tener el QUÉ (la tarea/ítem del backlog) y el DÓNDE QUE
 bitácora). Lo que sigue faltando casi siempre es el JUICIO fino — la decisión a medio cocinar, el porqué
 de un enfoque sobre otro — y eso solo vive en el transcript.
 
-## Paso 3 — excava el transcript `.jsonl` (el más caro; SIEMPRE acotado, NUNCA entero)
+## Paso 3 — el TRAMO PREVIO del transcript (lo que el `/compact` fundió), vía el andamio
 
-El transcript es la fuente ÚLTIMA (todo lo demás se derivó de ahí), pero es grande y su formato es
-**interno y cambia entre versiones** (no lo parsees para producción, solo para lectura puntual). Vive en:
-
-```
-~/.claude/projects/<slug-del-cwd>/<session-id>.jsonl
-```
-
-donde `<slug>` sale del cwd con que ARRANCÓ la sesión, con todo carácter no-alfanumérico convertido a `-`.
-⚠️ En un **worktree** ese cwd de arranque es el checkout PRINCIPAL, no el worktree — así que deriva el slug
-del `git-common-dir`, NO de `pwd` (si no, apuntas a un dir de proyecto que no existe). Encuéntralo y acótalo
-— **grep/tail con límite, jamás `cat`/`Read` completo** (overflow garantizado; son archivos de decenas de MB):
+El caso que te trajo aquí: el andamio del paso 1 (`--ventana viva`) describe solo el tramo VIVO — que
+JUSTO después de compactar son 2 mensajes ("reconstruye tu contexto"). Lo que perdiste vive en el tramo
+ANTERIOR al compact. El MISMO parser lo extrae acotado a ESE tramo con `--ventana previa`, resolviendo el
+transcript por tu **`sid`** (NO por el cwd — en un worktree, o con varios masters / varias sesiones en el
+mismo cwd, el slug del cwd apunta a OTRA sesión y reconstruyes basura con cara de evidencia):
 
 ```bash
-# dir de proyecto de ESTA sesión: se llavea al cwd de ARRANQUE = el checkout PRINCIPAL en un worktree.
-# `printf` evita el \n final que `tr -c` volvería un '-' colgado; cae al .jsonl más reciente si el slug no calza.
-ROOT=$(cd "$(git rev-parse --git-common-dir 2>/dev/null)/.." 2>/dev/null && pwd)
-SLUG=$(printf '%s' "${ROOT:-$PWD}" | tr -c 'a-zA-Z0-9' '-')
-T=$(ls -t ~/.claude/projects/"$SLUG"/*.jsonl 2>/dev/null | head -1)
-[ -z "$T" ] && T=$(ls -t ~/.claude/projects/*/*.jsonl 2>/dev/null | head -1)
-
-# últimos mensajes de USUARIO, verbatim (la señal más directa de "qué pedí"). OJO: corta por LÍNEAS
-# (`tail -n`), NO por bytes — un `tail -c` parte la 1ª línea y jq ABORTA el stream entero. El `.content`
-# de un user es un ARRAY de bloques: desenvuelve el texto y descarta los tool_result (ruido de herramientas).
-tail -n 600 "$T" | jq -rc 'select(.type=="user") | .message.content | if type=="string" then . else (map(select(.type=="text").text)|join(" ")) end | select(.!="")' 2>/dev/null | tail -20
-
-# últimos tool_use (qué estabas HACIENDO — archivos tocados, comandos corridos):
-tail -n 600 "$T" | jq -rc 'select(.type=="assistant") | .message.content[]? | select(.type=="tool_use") | {name, input}' 2>/dev/null | tail -30
-
-# fallback si el jq no calza con esta versión del formato (texto plano; grep SÍ tolera un corte por bytes):
-tail -c 500000 "$T" | grep -o '"text":"[^"]\{0,300\}' | tail -20
+node "$(ls ~/.cortex/bin/checkpoint-mecanico.js ~/.local/bin/checkpoint-mecanico.js 2>/dev/null | head -1)" \
+     --self --ventana previa --out /tmp/andamio-previa.md
+cat /tmp/andamio-previa.md
 ```
 
-Nota el patrón: acotas DOS veces — la ventana de ENTRADA (`tail -n` para jq, que necesita líneas COMPLETAS;
-`tail -c` solo para el grep, que tolera el corte a media línea) y luego `tail -N` sobre el RESULTADO. Si el
-`jq` sale vacío porque el esquema cambió (es interno, puede driftear), cae al `grep` de texto plano: sigue
-siendo mejor que adivinar.
+Esto te da del tramo que el compact fundió: tus últimos mensajes **VERBATIM** (para `[user: "…"]` sin
+fabricar), los archivos tocados, los comandos y commits — con el **ruido del harness YA filtrado**
+(`<task-notification>`, `<system-reminder>`, el resumen sintético del propio `/compact`, saludos) y el
+**transcript resuelto por `sid`** (el `--self` barre todos los slugs por id; no el `ls -t` que elegiría la
+sesión escrita más reciente). Si el andamio previa ya te reubica, **para aquí** y salta al paso 4. (Si
+aún falta el JUICIO fino de una decisión a medio cocinar, sube los mensajes con `--n-msgs 20`.)
 
-**Qué buscar, en orden de utilidad:** (a) el último mensaje tuyo real (no saludo/confirmación corta) —
-casi siempre contiene el objetivo vigente; (b) los últimos 2-3 `tool_use` de Write/Edit — qué archivo
-estabas tocando cuando cortó; (c) si hace falta más contexto, sube la ventana de `tail -n` gradualmente
-(nunca al archivo completo de una sola pasada).
+**Último recurso — a mano, SOLO si el parser NO está** (un clon COMPARTIDO sin el brain global, donde
+`checkpoint-mecanico.js` no se instaló: es tier `global`). Lee el `.jsonl` directo, SIEMPRE acotado
+(**`tail`/`jq`, jamás `cat`/`Read` completo** — son decenas de MB). Resuelve por `sid`, NO por el cwd:
+
+```bash
+# transcript por SID (cross-slug): robusto a worktree y a varias sesiones en el mismo cwd.
+T=$(ls -t ~/.claude/projects/*/"$CLAUDE_CODE_SESSION_ID".jsonl 2>/dev/null | head -1)
+[ -z "$T" ] && { T=$(ls -t ~/.claude/projects/*/*.jsonl 2>/dev/null | head -1); echo "⚠️ sin sid: adivinando el .jsonl más reciente — PUEDE ser otra sesión"; }
+# mensajes de USUARIO verbatim (array de bloques; descarta tool_result; filtra meta/compact/wrappers).
+# `tail -n` (NO -c: un corte a media línea hace que jq ABORTE el stream). Sube el 4000 si no alcanza el tramo.
+tail -n 4000 "$T" | jq -rc 'select(.type=="user" and (.isMeta//false|not) and (.isCompactSummary//false|not)) | .message.content | (if type=="string" then . else (map(select(.type=="text").text)|join(" ")) end) | select(. != "" and (startswith("<")|not) and (startswith("This session is being continued")|not) and (startswith("[Request interrupted")|not))' 2>/dev/null | tail -20
+```
+
+(El parser hace esto MEJOR —esquema conocido, filtro de ruido, resolución por sid, sin cap de bytes—; esta
+mano es solo el fallback de un clon sin brain. El viejo fallback `grep -o '…\{0,300\}'` se quitó: en el
+grep de macOS truena con "maximum repetition exceeds 255".)
 
 ## Paso 4 — RE-VUELCA un hilo-mental BUENO (cierra el lazo, no lo dejes solo reconstruido en tu cabeza)
 

@@ -37,7 +37,8 @@
  * para resetear `ctxTokens`. Ahora esa frontera gobierna a TODOS los colectores.
  * Lo histórico no se tira: se CUENTA aparte y se etiqueta como tal (`tramosPrevios`). Mezclado, miente.
  * `--ventana todo` restaura el barrido acumulado de todo el archivo (útil para auditar una sesión, no
- * para un checkpoint).
+ * para un checkpoint). `--ventana previa` emite el CONTENIDO del tramo de justo ANTES del último /compact
+ * (no conteos): es lo que un `reconstruir-contexto` necesita tras un compact que dejó el tramo vivo vacío.
  *
  * ── LÍMITES DECLARADOS del andamio (lo que este script NO ve) ──────────────────────────────────────
  *   · Las escrituras hechas DENTRO de un comando Bash (heredoc, `>`, `tee`, `python - <<EOF`) no son
@@ -100,7 +101,7 @@
  * Uso:
  *   node checkpoint-mecanico.js <transcript.jsonl> --out <andamio.md> [--repo-root <path>] [--n-msgs 12]
  *   node checkpoint-mecanico.js --self [--ensure] [--out <andamio.md>]     ← lo invoca el SKILL
- *   [--ventana viva|todo] [--json]
+ *   [--ventana viva|previa|todo] [--json]
  * Con --json (o sin --out) imprime el resumen crudo a stdout (para el hook/log).
  *
  * Memoria acotada: streaming por líneas con buffer de 1 MiB; ningún string acumula el archivo completo.
@@ -131,7 +132,7 @@ function parseArgs(argv) {
     else if (a === '--json') o.json = true;
     else if (a === '--repo-root') o.repoRoot = argv[++i];
     else if (a === '--n-msgs') o.nMsgs = parseInt(argv[++i], 10) || DEFAULT_N_MSGS;
-    else if (a === '--ventana') o.ventana = (argv[++i] === 'todo') ? 'todo' : 'viva';
+    else if (a === '--ventana') { const v = argv[++i]; o.ventana = (v === 'todo' || v === 'previa') ? v : 'viva'; }
     else if (a === '--self') o.self = true;
     else if (a === '--ensure') o.ensure = true;
     else rest.push(a);
@@ -493,7 +494,7 @@ function metaBarata(file) {
 //    StringDecoder + partir por '\n' que rewriteTranscriptStream usa para el mismo archivo.
 //    opts.ventana: 'viva' (default, resetea en cada frontera de /compact) | 'todo' (acumula el archivo).
 function extraer(file, nMsgs, opts) {
-  const ventana = (opts && opts.ventana === 'todo') ? 'todo' : 'viva';
+  const ventana = (opts && (opts.ventana === 'todo' || opts.ventana === 'previa')) ? opts.ventana : 'viva';
   const R = {
     ventana,
     lineas: 0, lineasVivas: 0, compactaciones: 0,
@@ -503,6 +504,10 @@ function extraer(file, nMsgs, opts) {
     mensajesUsuario: [], // ring buffer acotado a nMsgs
     // Lo HISTÓRICO (tramos ya compactados) se CUENTA aparte y se etiqueta; nunca se fusiona con lo vivo.
     previos: { tramos: 0, commits: 0, escrituras: 0, mensajes: 0, ramas: new Set(), cwds: new Set() },
+    // `--ventana previa`: SNAPSHOT con CONTENIDO (no solo conteos) del ÚLTIMO tramo cerrado = el que estaba
+    // VIVO justo antes del último /compact. Es lo que un reconstruir-contexto necesita: tras un compact el
+    // tramo vivo tiene 2 mensajes ("reconstruye tu contexto"); lo perdido vive en ESTE tramo previo.
+    tramoPrevio: null,
   };
   const pushMsg = (texto, ts) => {
     R.mensajesUsuario.push({ ts: ts || null, texto });
@@ -516,6 +521,14 @@ function extraer(file, nMsgs, opts) {
     R.previos.mensajes += R.mensajesUsuario.length;
     for (const x of R.ramas) R.previos.ramas.add(x);
     for (const x of R.cwds) R.previos.cwds.add(x);
+    // SNAPSHOT del contenido ANTES de limpiar — se sobreescribe en cada frontera, así que al terminar el
+    // archivo `R.tramoPrevio` es el ÚLTIMO tramo cerrado (el de justo antes del último /compact).
+    R.tramoPrevio = {
+      escrituras: new Map(R.escrituras), bashEscrituras: new Map(R.bashEscrituras),
+      skills: new Map(R.skills), comandos: new Map(R.comandos),
+      commits: R.commits.slice(), mensajesUsuario: R.mensajesUsuario.slice(),
+      ramas: new Set(R.ramas), cwds: new Set(R.cwds), lineasVivas: R.lineasVivas,
+    };
     R.escrituras.clear(); R.bashEscrituras.clear(); R.skills.clear(); R.comandos.clear();
     R.commits.length = 0; R.mensajesUsuario.length = 0;
     R.ramas.clear(); R.cwds.clear();
@@ -536,7 +549,7 @@ function extraer(file, nMsgs, opts) {
     if (o.isCompactSummary === true) {
       R.compactaciones++;
       R.ctxTokens = null;
-      if (ventana === 'viva') cerrarTramo();
+      if (ventana !== 'todo') cerrarTramo();   // 'viva' Y 'previa' cierran tramos; 'todo' acumula
     }
     if (typeof o.cwd === 'string' && o.cwd) R.cwds.add(o.cwd);
     if (typeof o.gitBranch === 'string' && o.gitBranch) R.ramas.add(o.gitBranch);
@@ -547,9 +560,11 @@ function extraer(file, nMsgs, opts) {
       R.ctxTokens = t; // el ÚLTIMO usage gana (orden del archivo = orden temporal)
     }
 
-    // Mensaje de USUARIO textual (verbatim) — filtra ruido/saludos y el resumen SINTÉTICO del propio
-    // /compact (isCompactSummary:true trae type:'user'/role:'user' pero NO lo escribió el usuario).
-    if (o.type === 'user' && o.isCompactSummary !== true && o.message && o.message.role === 'user') {
+    // Mensaje de USUARIO textual (verbatim) — filtra ruido/saludos, el resumen SINTÉTICO del propio
+    // /compact (isCompactSummary) y lo INYECTADO por el sistema (isMeta: additionalContext de SessionStart,
+    // hooks…) — ambos traen type:'user'/role:'user' pero NO los escribió el usuario (reconstruir-contexto
+    // finding 10: usar las marcas REALES del esquema, no solo el filtro de texto).
+    if (o.type === 'user' && o.isCompactSummary !== true && o.isMeta !== true && o.message && o.message.role === 'user') {
       const c = o.message.content;
       let texto = null;
       if (typeof c === 'string') texto = c;
@@ -608,6 +623,21 @@ function extraer(file, nMsgs, opts) {
     if (pending.length) onLine(pending);
   } finally { fs.closeSync(fd); }
 
+  // `--ventana previa`: el render lee R.escrituras/comandos/mensajes… directo → intercambiamos el snapshot
+  // del último tramo cerrado por los colectores vivos, así el render describe el tramo ANTERIOR al compact.
+  if (ventana === 'previa') {
+    if (R.tramoPrevio) {
+      R.escrituras = R.tramoPrevio.escrituras; R.bashEscrituras = R.tramoPrevio.bashEscrituras;
+      R.skills = R.tramoPrevio.skills; R.comandos = R.tramoPrevio.comandos;
+      R.commits = R.tramoPrevio.commits; R.mensajesUsuario = R.tramoPrevio.mensajesUsuario;
+      R.ramas = R.tramoPrevio.ramas; R.cwds = R.tramoPrevio.cwds;
+      R.lineasVivas = R.tramoPrevio.lineasVivas;
+      R.previaDisponible = true;
+    } else {
+      R.previaDisponible = false;   // la sesión no tuvo ningún /compact → no hay tramo previo; el render avisa
+    }
+  }
+
   return { ...R, bytes: st.size };
 }
 
@@ -630,12 +660,20 @@ function renderAndamio(meta, r, ctxRepo, avisoSubagente) {
   // Cabecera AUDITABLE: sin esto, su frescura no se puede juzgar al leerlo (y un insumo de frescura
   // desconocida presentado como vigente es el modo de falla que el gate del hilo existe para evitar).
   lines.push('## Corte (para juzgar su frescura)');
-  lines.push(`- Ventana: **${viva ? 'TRAMO VIVO' : 'TRANSCRIPT COMPLETO'}**`
-    + (viva ? ' — desde la última frontera de `/compact`. Lo anterior se cuenta aparte, no se mezcla.'
-            : ' — acumulado de toda la sesión: el trabajo VIEJO puede ganar los top-N por volumen.'));
+  const etiquetaVentana = r.ventana === 'todo' ? 'TRANSCRIPT COMPLETO'
+    : r.ventana === 'previa' ? 'TRAMO PREVIO (el de justo ANTES del último /compact)'
+    : 'TRAMO VIVO';
+  const descVentana = r.ventana === 'todo' ? ' — acumulado de toda la sesión: el trabajo VIEJO puede ganar los top-N por volumen.'
+    : r.ventana === 'previa' ? ' — lo que estaba vivo justo antes del último /compact: el contexto que la compactación fundió. Para reconstruir tras un compact que dejó el tramo vivo casi vacío.'
+    : ' — desde la última frontera de `/compact`. Lo anterior se cuenta aparte, no se mezcla.';
+  lines.push(`- Ventana: **${etiquetaVentana}**` + descVentana);
+  if (r.ventana === 'previa' && r.previaDisponible === false) {
+    lines.push('- ⚠️ **No hay tramo previo:** la sesión no registró ningún `/compact`, así que lo de abajo'
+      + ' es el tramo vivo completo (equivale a `--ventana viva`). No se perdió nada por compactación.');
+  }
   lines.push(`- Sesión (sid): ${process.env.CLAUDE_CODE_SESSION_ID || '(no disponible)'}`);
   lines.push(`- Transcript: ${r.lineas} líneas totales · ${r.bytes} bytes · ${r.compactaciones} compactaciones detectadas`);
-  if (viva) lines.push(`- Tramo vivo: ${r.lineasVivas} líneas (de las ${r.lineas} del archivo)`);
+  if (viva) lines.push(`- ${r.ventana === 'previa' ? 'Tramo previo' : 'Tramo vivo'}: ${r.lineasVivas} líneas (de las ${r.lineas} del archivo)`);
   lines.push(`- Tokens de contexto del ÚLTIMO usage: ${r.ctxTokens === null ? 'sin dato (nada nuevo tras el último compact)' : r.ctxTokens}`);
   lines.push(`- cwd(s) del tramo: ${[...r.cwds].join(', ') || '(ninguno)'}`);
   lines.push(`- Rama(s) del tramo: ${[...r.ramas].join(', ') || '(ninguna)'}`);
@@ -645,7 +683,7 @@ function renderAndamio(meta, r, ctxRepo, avisoSubagente) {
       + ` (${avisoSubagente}). Sin señal directa para distinguir padre/hijo (ver \`resolverSelf\` en el`
       + ' script), este andamio podría certificar trabajo del padre, no del sub-agente que lo corrió.');
   }
-  if (viva && r.previos.tramos > 0) {
+  if (r.ventana === 'viva' && r.previos.tramos > 0) {
     lines.push(`- **Tramos anteriores (NO listados arriba):** ${r.previos.tramos} tramos · `
       + `${r.previos.commits} commits · ${r.previos.escrituras} escrituras · ${r.previos.mensajes} mensajes · `
       + `${r.previos.ramas.size} ramas · ${r.previos.cwds.size} cwds. Están en el transcript; `
@@ -780,7 +818,7 @@ function main() {
   }
   if (!o.file) {
     morir(2, 'uso: checkpoint-mecanico.js <transcript.jsonl> [--out <andamio.md>] [--repo-root <path>]\n'
-      + '                                 [--n-msgs N] [--ventana viva|todo] [--json]\n'
+      + '                                 [--n-msgs N] [--ventana viva|previa|todo] [--json]\n'
       + '     checkpoint-mecanico.js --self [--ensure] [--out <andamio.md>]');
   }
   if (!fs.existsSync(o.file)) morir(1, `no existe: ${o.file}`);

@@ -5376,6 +5376,41 @@ node -e '
 ' "$CKPT_MEC" "$M2FIX" \
   && ok "m2: los mensajes de usuario salen TEXTUALES, byte a byte, contra el fixture (sin resumen ni recorte)" \
   || bad "m2: los mensajes de usuario NO coinciden byte a byte con el fixture"
+# ── (m2p) `--ventana previa` (reconstruir-contexto B3s2/2026-10): extrae el CONTENIDO del tramo de justo
+#    ANTES del último /compact (boundary 2), NO el tramo vivo. En el fixture: el tramo previo trae
+#    "sigue con el modulo de facturacion" + el commit; el vivo (tras boundary 2) trae "revisa el PR #123".
+#    Falla contra el código viejo: sin 'previa', `extraer` devolvía el tramo vivo (único con/sin flag).
+node -e '
+  const {extraer} = require(process.argv[1]);
+  const prev = extraer(process.argv[2], 12, {ventana:"previa"});
+  const viva = extraer(process.argv[2], 12, {ventana:"viva"});
+  const okPrev = JSON.stringify(prev.mensajesUsuario.map(m=>m.texto)) === JSON.stringify(["sigue con el modulo de facturacion, ya casi"])
+              && JSON.stringify(prev.commits) === JSON.stringify(["feat: facturacion v1"]);
+  const okViva = JSON.stringify(viva.mensajesUsuario.map(m=>m.texto)) === JSON.stringify(["ultimo mensaje verbatim: revisa el PR #123"])
+              && viva.commits.length === 0;
+  if (!okPrev) { console.error("previa NO-MATCH: msgs="+JSON.stringify(prev.mensajesUsuario.map(m=>m.texto))+" commits="+JSON.stringify(prev.commits)); process.exit(1); }
+  if (!okViva) { console.error("viva contaminada: msgs="+JSON.stringify(viva.mensajesUsuario.map(m=>m.texto))+" commits="+JSON.stringify(viva.commits)); process.exit(1); }
+' "$CKPT_MEC" "$M2FIX" \
+  && ok "m2p: --ventana previa extrae el tramo ANTES del último /compact (msg+commit), y --ventana viva sigue trayendo solo el vivo" \
+  || bad "m2p: --ventana previa no aisló el tramo previo (o contaminó el vivo)"
+# ── (m2p) filtro de ruido del harness: un user line que es <task-notification> o isMeta NO se surfacea
+#    como mensaje del usuario (findings 5/10 del reporte: el recipe a mano del skill los colaba; el parser no).
+M2NOISE="$M2DIR/noise.jsonl"
+node -e '
+  const fs=require("fs"); const w=fs.createWriteStream(process.argv[1]); const L=(o)=>w.write(JSON.stringify(o)+"\n");
+  L({type:"user",message:{role:"user",content:"<task-notification>\n<task-id>abc</task-id>\n</task-notification>"}});
+  L({type:"user",isMeta:true,message:{role:"user",content:"meta inyectado del sistema"}});
+  L({type:"user",message:{role:"user",content:"este si es del usuario: arregla el login"}});
+  w.end(()=>{});
+' "$M2NOISE"
+node -e '
+  const {extraer} = require(process.argv[1]);
+  const r = extraer(process.argv[2], 12, {ventana:"todo"});
+  const t = r.mensajesUsuario.map(m=>m.texto);
+  if (JSON.stringify(t) !== JSON.stringify(["este si es del usuario: arregla el login"])) { console.error("coló ruido: "+JSON.stringify(t)); process.exit(1); }
+' "$CKPT_MEC" "$M2NOISE" \
+  && ok "m2p: el parser FILTRA <task-notification> e isMeta de los mensajes de usuario (solo surfacea el genuino)" \
+  || bad "m2p: coló ruido del harness (task-notification/isMeta) como mensaje de usuario"
 rm -rf "$M2DIR"
 
 echo ""
