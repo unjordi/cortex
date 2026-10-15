@@ -58,8 +58,8 @@ cerrar-slice                     both
 checkpoint                       both
 construir-missing-manual         global
 control-gui-remota-por-ssh       both
+coordinar-claudes                global
 desinflar-memorias               global
-despertar-master                 global
 diagramar                        global
 ingenieria-inversa-gui-db-navegador  global
 investigar-dominio               global
@@ -79,3 +79,4 @@ claude-proyecto-autocontenido    retirado  2026-09-17  ABSORBIDA por canonizar-c
 cosechar-sesion                  retirado  2026-09-17  ABSORBIDA por cerrar-slice §5 (tooling cosechar-aprendizaje.sh, mismo flujo de cierre)
 revisar-entregables-agentes      retirado  2026-09-17  ABSORBIDA por la norma «Delegar a agentes» de global-claude-md.md
 orquestar-fanout                 retirado  2026-10-15  ABSORBIDA por la norma «Delegar a agentes» de global-claude-md.md (un agente secuencial por default)
+despertar-master                 retirado  2026-10-15  ABSORBIDA por coordinar-claudes (paso 1 «despertar»; su despertar-master.sh vive ahora en coordinar-claudes/)
