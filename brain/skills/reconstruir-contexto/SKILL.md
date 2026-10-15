@@ -99,32 +99,39 @@ El transcript es la fuente ÚLTIMA (todo lo demás se derivó de ahí), pero es 
 ~/.claude/projects/<slug-del-cwd>/<session-id>.jsonl
 ```
 
-donde `<slug>` es el cwd con todo carácter no-alfanumérico convertido a `-` (p.ej. `/home/unjordi/code/axon`
-→ `-home-unjordi-code-axon`). Encuéntralo y acótalo — **grep/tail con límite, jamás `cat`/`Read` completo**
-(overflow de contexto garantizado; son archivos de decenas de MB):
+donde `<slug>` sale del cwd con que ARRANCÓ la sesión, con todo carácter no-alfanumérico convertido a `-`.
+⚠️ En un **worktree** ese cwd de arranque es el checkout PRINCIPAL, no el worktree — así que deriva el slug
+del `git-common-dir`, NO de `pwd` (si no, apuntas a un dir de proyecto que no existe). Encuéntralo y acótalo
+— **grep/tail con límite, jamás `cat`/`Read` completo** (overflow garantizado; son archivos de decenas de MB):
 
 ```bash
-# el transcript más reciente de ESTE repo:
-T=$(ls -t ~/.claude/projects/"$(pwd | tr -c 'a-zA-Z0-9' '-')"/*.jsonl 2>/dev/null | head -1)
+# dir de proyecto de ESTA sesión: se llavea al cwd de ARRANQUE = el checkout PRINCIPAL en un worktree.
+# `printf` evita el \n final que `tr -c` volvería un '-' colgado; cae al .jsonl más reciente si el slug no calza.
+ROOT=$(cd "$(git rev-parse --git-common-dir 2>/dev/null)/.." 2>/dev/null && pwd)
+SLUG=$(printf '%s' "${ROOT:-$PWD}" | tr -c 'a-zA-Z0-9' '-')
+T=$(ls -t ~/.claude/projects/"$SLUG"/*.jsonl 2>/dev/null | head -1)
+[ -z "$T" ] && T=$(ls -t ~/.claude/projects/*/*.jsonl 2>/dev/null | head -1)
 
-# últimos mensajes de USUARIO, verbatim (la señal más directa de "qué pedí"):
-tail -c 2000000 "$T" | jq -rc 'select(.type=="user") | .message.content' 2>/dev/null | tail -20
+# últimos mensajes de USUARIO, verbatim (la señal más directa de "qué pedí"). OJO: corta por LÍNEAS
+# (`tail -n`), NO por bytes — un `tail -c` parte la 1ª línea y jq ABORTA el stream entero. El `.content`
+# de un user es un ARRAY de bloques: desenvuelve el texto y descarta los tool_result (ruido de herramientas).
+tail -n 600 "$T" | jq -rc 'select(.type=="user") | .message.content | if type=="string" then . else (map(select(.type=="text").text)|join(" ")) end | select(.!="")' 2>/dev/null | tail -20
 
 # últimos tool_use (qué estabas HACIENDO — archivos tocados, comandos corridos):
-tail -c 2000000 "$T" | jq -rc 'select(.type=="assistant") | .message.content[]? | select(.type=="tool_use") | {name, input}' 2>/dev/null | tail -30
+tail -n 600 "$T" | jq -rc 'select(.type=="assistant") | .message.content[]? | select(.type=="tool_use") | {name, input}' 2>/dev/null | tail -30
 
-# último tema/asistente en texto plano (por si el jq de arriba no calza con esta versión del formato):
+# fallback si el jq no calza con esta versión del formato (texto plano; grep SÍ tolera un corte por bytes):
 tail -c 500000 "$T" | grep -o '"text":"[^"]\{0,300\}' | tail -20
 ```
 
-Nota el patrón: `tail -c <bytes>` ANTES del `jq`/`grep` acota cuánto lees del archivo (por bytes, barato)
-y luego `tail -N` acota cuántas líneas de resultado te quedas — dos cortes, no uno. Si el `jq` falla
-porque el esquema cambió (es interno, puede driftear), cae al `grep` de texto plano de la última línea:
-sigue siendo mejor que adivinar.
+Nota el patrón: acotas DOS veces — la ventana de ENTRADA (`tail -n` para jq, que necesita líneas COMPLETAS;
+`tail -c` solo para el grep, que tolera el corte a media línea) y luego `tail -N` sobre el RESULTADO. Si el
+`jq` sale vacío porque el esquema cambió (es interno, puede driftear), cae al `grep` de texto plano: sigue
+siendo mejor que adivinar.
 
 **Qué buscar, en orden de utilidad:** (a) el último mensaje tuyo real (no saludo/confirmación corta) —
 casi siempre contiene el objetivo vigente; (b) los últimos 2-3 `tool_use` de Write/Edit — qué archivo
-estabas tocando cuando cortó; (c) si hace falta más contexto, sube la ventana de `tail -c` gradualmente
+estabas tocando cuando cortó; (c) si hace falta más contexto, sube la ventana de `tail -n` gradualmente
 (nunca al archivo completo de una sola pasada).
 
 ## Paso 4 — RE-VUELCA un hilo-mental BUENO (cierra el lazo, no lo dejes solo reconstruido en tu cabeza)

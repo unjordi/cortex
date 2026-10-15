@@ -6299,6 +6299,8 @@ cerrar-slice|checkpoint
 cerrar-slice|orquestar-fanout
 cerrar-slice|rehidratar-hilo
 checkpoint|rehidratar-hilo
+checkpoint|reconstruir-contexto
+reconstruir-contexto|rehidratar-hilo
 checkpoint|to-do
 aviso-contexto|rehidratar-hilo
 aviso-contexto|checkpoint
@@ -6391,6 +6393,12 @@ sincronizar-tasklist|to-do"
 # sincronizar-tasklist.sh; el hook recordar-cosechar.sh la SOURCEA (lib<->consumidor) y el skill to-do la
 # EJECUTA para el sentido inverso. Hook y skill se mencionan en sus cabeceras (dos disparadores de la MISMA
 # lógica: Stop→durable / /to-do→HUD). No es ciclo — la lógica no rebota, vive en la lib.
+# checkpoint|reconstruir-contexto y reconstruir-contexto|rehidratar-hilo (slice reconstruir-contexto,
+# borrador 2026-09-22): la red de emergencia es HERMANA del par checkpoint/rehidratar-hilo (como
+# checkpoint|rehidratar-hilo arriba) — cada hermana enruta a reconstruir-contexto para el caso en que el
+# checkpoint quedó pobre, y reconstruir-contexto cierra el lazo apuntando de vuelta a ambas (excava →
+# re-vuelca con checkpoint). Es el MISMO handshake "Qué NO es / punto de entrada" de los demás pares de
+# continuidad; el contenido no rebota — cada skill define SU rol y cita al otro como destino.
 ce_els=()
 for d in "$SCRIPT_DIR"/skills/*/; do [ -d "$d" ] && ce_els+=("$(basename "$d")"); done
 for h in "$HOOKS"/*.sh; do [ -e "$h" ] && ce_els+=("$(basename "$h" .sh)"); done
@@ -9240,6 +9248,49 @@ fi
 grep -qE '^despertar-master[[:space:]]+global' "$SCRIPT_DIR/skills/MANIFEST" \
   && ok "despertar-master: declarada en skills/MANIFEST (tier global)" \
   || bad "despertar-master: FALTA su línea en skills/MANIFEST → install-brain no la instalaría"
+
+# ═════════════════════════════════════════════════════════════════════════════════════════════════════
+echo ""
+echo "== (b-rc) reconstruir-contexto: red de emergencia cableada y ALCANZABLE =="
+# La slice entrega una RED DE EMERGENCIA (excavar contexto cuando un checkpoint quedó pobre y /compact
+# fundió el hilo). Su VALOR no es "el archivo existe" sino ser ALCANZABLE y CERRAR EL LAZO: registrada
+# `both` (viaja al clon sin brain global, justo donde más duele un hilo fundido), sus hermanas la apuntan,
+# y ella apunta de vuelta a checkpoint/rehidratar-hilo. Una red registrada pero SIN enlaces, o con un
+# [[link]] COLGADO, se rompe en SILENCIO — nadie la encuentra en la emergencia. Esto lo caza; falla
+# entero contra el código pre-port (4ef2186^: ni skill, ni MANIFEST, ni cross-links).
+RC_SK="$SCRIPT_DIR/skills/reconstruir-contexto/SKILL.md"
+RC_MF="$SCRIPT_DIR/skills/MANIFEST"
+RC_CK="$SCRIPT_DIR/skills/checkpoint/SKILL.md"
+RC_RH="$SCRIPT_DIR/skills/rehidratar-hilo/SKILL.md"
+
+# (1) el skill existe con su frontmatter name
+{ [ -f "$RC_SK" ] && grep -qE '^name:[[:space:]]*reconstruir-contexto[[:space:]]*$' "$RC_SK"; } \
+  && ok "reconstruir-contexto: SKILL.md presente con frontmatter name" \
+  || bad "reconstruir-contexto: falta el SKILL.md o su frontmatter name"
+
+# (2) registrada `both` en el MANIFEST (si no, install-brain no la lleva al clon COMPARTIDO sin brain global)
+grep -qE '^reconstruir-contexto[[:space:]]+both[[:space:]]*$' "$RC_MF" \
+  && ok "reconstruir-contexto: declarada 'both' en skills/MANIFEST (viaja como CORREO)" \
+  || bad "reconstruir-contexto: FALTA su línea 'both' en skills/MANIFEST"
+
+# (3) cross-link BIDIRECCIONAL: las hermanas la apuntan Y ella apunta de vuelta (cierra el lazo de recuperación)
+{ grep -qF '[[reconstruir-contexto]]' "$RC_CK" \
+  && grep -qF '[[reconstruir-contexto]]' "$RC_RH" \
+  && grep -qF '[[checkpoint]]' "$RC_SK" \
+  && grep -qF '[[rehidratar-hilo]]' "$RC_SK"; } \
+  && ok "reconstruir-contexto: cross-link bidireccional (checkpoint↔ · rehidratar-hilo↔)" \
+  || bad "reconstruir-contexto: cross-link roto (una hermana no la apunta, o ella no apunta de vuelta)"
+
+# (4) el skill TRAE wikilinks y ninguno queda COLGADO: cada uno resuelve a un brain/skills/<name> real.
+#     Exigir ≥1 link evita el falso PASS en vacío si el skill está ausente (fallaría el setup en silencio).
+rc_links="$(grep -oE '\[\[[a-z0-9-]+\]\]' "$RC_SK" 2>/dev/null | tr -d '[]' | sort -u)"
+rc_colgados=""
+for _l in $rc_links; do
+  [ -d "$SCRIPT_DIR/skills/$_l" ] || rc_colgados="$rc_colgados $_l"
+done
+{ [ -n "$rc_links" ] && [ -z "$rc_colgados" ]; } \
+  && ok "reconstruir-contexto: todos sus [[links]] resuelven a skills reales (red sin cabos colgados)" \
+  || bad "reconstruir-contexto: [[links]] ausentes o COLGADOS →${rc_colgados:- (ninguno)}"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
