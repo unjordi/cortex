@@ -265,6 +265,55 @@ is_silent "$out" && ok "M4: destino INDETERMINADO + release SOLO en la conversac
 out="$(ms 'glab mr merge --yes')"
 is_deny "$out" && ok "M4 control: destino INDETERMINADO sin release en NINGÚN lado → sigue exigiendo squash" || bad "M4 control: aflojó la exigencia de squash sin señal de release"
 rm -f "$M4TX"
+# ── (b-sync · N7) EXCEPCIÓN sync-upstream al squash — HERMÉTICO, cero red. Un PR que trae un merge commit
+#    cuyo 2º padre aporta historia que develop NO tiene (= sync de upstream REAL) con --merge + una línea del
+#    USUARIO que nombra --merge/sin-squash + ESE PR → EXENTO del squash (squashearlo dejaría la historia de
+#    upstream fuera, el siguiente sync re-chocaría todo). Falla CERRADO. Reemplaza al
+#    tests-locales/test-merge-sync-upstream.sh que pegaba a PRs REALES de armada-rp6 (#40/#39) y SE PUDRIÓ al
+#    mergearse #40 (ahead_by→0). Mock de `gh` por PR-id: #40=sync (2º padre ahead), #39=PR normal (sin 2º padre).
+cat > "$MSBIN/gh" <<'GHMOCK'
+#!/usr/bin/env bash
+# mock gh HERMÉTICO para la excepción sync-upstream. Imprime lo que `gh … --jq/-q` devolvería, por PR-id.
+sub="$1"; shift
+[ "$sub" = pr ] && { case "${1:-}" in view) echo develop;; list) echo '[]';; esac; exit 0; }
+if [ "$sub" = api ]; then
+  p=""; for a in "$@"; do case "$a" in repos/*) p="$a";; esac; done
+  case "$p" in
+    */pulls/40/commits) echo deadbeefdeadbeefdeadbeefdeadbeefdeadbeef ;;  # #40: 1 merge commit (2º padre)
+    */pulls/39/commits) : ;;                                              # #39: sin 2º padre ajeno → vacío
+    */compare/develop...*) echo 5 ;;                                      # ahead_by > 0 (historia AJENA)
+    */pulls/40|*/pulls/39) echo develop ;;                                # base.ref
+  esac
+fi
+exit 0
+GHMOCK
+chmod +x "$MSBIN/gh"
+rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
+SYNCTX=$(mktemp); SYNCTX2=$(mktemp); SYNCTX3=$(mktemp)
+printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"autorizo --merge (sin squash) del PR #40 a develop"}]}}' > "$SYNCTX"
+printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"autorizo --merge (sin squash) del PR #39 a develop"}]}}' > "$SYNCTX2"
+printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"haz el merge del 40 porfa"}]}}' > "$SYNCTX3"
+# La excepción sync waivea SOLO el SQUASH (no la AUTORIZACIÓN, que es un chequeo aparte: por eso se asserta
+# sobre el MENSAJE de squash, no is_deny genérico — el juez, mockeado a DENY para no pegar a la red, puede
+# negar la AUTORIZACIÓN por separado sin que eso signifique que el squash no se eximió).
+is_sqdeny() { printf '%s' "$1" | grep -q 'SQUASHEA a UN commit'; }
+msSync() { PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$MSREPO" CLAUDE_MERGE_JUEZ_MOCK=DENY bash "$HOOKS/merge-develop-guard.sh" <<<"$(jq -nc --arg c "$1" --arg t "$2" '{tool_input:{command:$c},transcript_path:$t}')"; }
+is_sqdeny "$(msSync 'gh pr merge 40 --merge --repo unjordi/armada-rp6' "$SYNCTX")" \
+  && bad "b-sync: un sync-upstream legítimo fue forzado a squash" \
+  || ok "b-sync: #40 sync (2º padre AHEAD) + --merge + frase del USUARIO → EXENTO del squash (sin mensaje de squash)"
+is_sqdeny "$(msSync 'gh pr merge 40 --merge --repo unjordi/armada-rp6' "$SYNCTX3")" \
+  && ok "b-sync: #40 sync + --merge SIN frase del usuario → NO exento (exige squash)" \
+  || bad "b-sync: eximió un sync sin la autorización del usuario"
+is_sqdeny "$(msSync 'gh pr merge 40 --repo unjordi/armada-rp6' "$SYNCTX")" \
+  && ok "b-sync: #40 sync SIN --merge → NO exento (exige squash)" \
+  || bad "b-sync: eximió sin el flag --merge"
+is_sqdeny "$(msSync 'gh pr merge 39 --merge --repo unjordi/armada-rp6' "$SYNCTX2")" \
+  && ok "b-sync: #39 PR normal (sin 2º padre ajeno) + --merge + frase → NO exento (exige squash)" \
+  || bad "b-sync: eximió un PR normal como si fuera sync"
+is_sqdeny "$(msSync 'gh pr merge 40 --merge --repo unjordi/armada-rp6' "$SYNCTX2")" \
+  && ok "b-sync: #40 sync pero la frase nombra OTRO PR (#39) → NO exento (exige squash)" \
+  || bad "b-sync: la frase de otro PR eximió este merge"
+rm -f "$SYNCTX" "$SYNCTX2" "$SYNCTX3" "$MSBIN/gh"
 # H-R9-01 (FMEA r9): el binario Windows `glab.exe`/`gh.exe` rompía el gate `acg_es_merge_mr` → ambos guards
 # de merge quedaban ciegos (hermano de B4 en el eje merge). (\.exe)? en el reconocimiento lo cierra.
 mock_glab develop; out="$(ms 'glab.exe mr merge 48 --auto-merge --yes')"
