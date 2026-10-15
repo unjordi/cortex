@@ -12,8 +12,7 @@
   DPI-aware (SetProcessDPIAware) para que las coords sean fisicas, no escaladas.
 
   La rutina Find() (EnumWindows + GetWindowText, substring case-insensitive) de este script es la
-  MISMA tecnica que reusa win-ssh-screenshot.ps1 para su modo `-Window "titulo"` (agregado
-  2026-09-18) -- repetida ahi dentro de su propio cuerpo despachado, no importada, porque cada
+  MISMA tecnica que reusa win-ssh-screenshot.ps1 para su modo `-Window "titulo"` -- repetida ahi dentro de su propio cuerpo despachado, no importada, porque cada
   gesto de este kit corre como una tarea `/IT` independiente (ver nota en lib-linux-ssh-env.sh sobre
   por que Windows no comparte codigo entre scripts).
 

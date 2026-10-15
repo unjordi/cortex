@@ -1,6 +1,6 @@
 ---
 name: despertar-master
-description: Despierta (o lista) una sesión master de Claude Code resolviéndola desde la FUENTE CONFIABLE —los transcripts—, no desde el masters.json que driftea. Para cada nombre *-master toma el transcript MÁS RECIENTE (último `customTitle` = nombre, último `cwd` = dónde resumir, mtime = vida), así "cortex-master (2)" vivo le gana al "cortex-master" viejo; si ya está viva NO la relanza (evita lanzar una segunda instancia sobre un id muerto, el error del masters.json chafa). Úsalo con `/despertar-master <nombre>` para revivir un master, o `/despertar-master --lista` para ver quién está vivo/idle y desde qué carpeta resume. Reemplaza "mirar masters.json y lanzar a ciegas".
+description: Despierta (o lista) una sesión master de Claude Code resolviéndola desde la FUENTE CONFIABLE —los transcripts—, no desde el masters.json que driftea. Para cada nombre *-master toma el transcript MÁS RECIENTE (último `customTitle` = nombre, último `cwd` = dónde resumir, mtime = vida), así "<x>-master (2)" vivo le gana al "<x>-master" viejo; si ya está viva NO la relanza (evita lanzar una segunda instancia sobre un id muerto). Úsalo con `/despertar-master <nombre>` para revivir un master, o `/despertar-master --lista` para ver quién está vivo/idle y desde qué carpeta resume. Reemplaza "mirar masters.json y lanzar a ciegas".
 ---
 
 # despertar-master — revivir un master desde la verdad, no desde masters.json
@@ -9,7 +9,7 @@ description: Despierta (o lista) una sesión master de Claude Code resolviéndol
 Resuelve y DESPIERTA una sesión "master" de Claude Code (`screen` + `claude --resume`) leyendo la **fuente
 confiable**: los transcripts en `~/.claude/projects/<slug>/<id>.jsonl`. **Nunca** confía en `masters.json`
 para despertar — ese archivo driftea (ids viejos, targets que son worktrees, nombres repetidos) y genera
-conflictos de sync en Drive; el 2026-10-14 por eso se lanzó una segunda sesión de `cortex-master` sobre un
+conflictos de sync en Drive; lanzar desde él puede abrir una segunda sesión sobre un
 id muerto. La verdad vive en el transcript:
 
 - **nombre** = último `"customTitle"` del transcript (el CLI agrega `" (N)"` al duplicar → se le quita).
@@ -27,7 +27,7 @@ id muerto. La verdad vive en el transcript:
     transcript), pero una verdaderamente quieta no se distingue de una muerta sin el id en algún lado.
     Mitigación práctica: lánzala/resúmela SIEMPRE por esta skill (que usa `screen -dmS <nombre>`), así
     queda detectable por su screen.
-- **cuál gana por nombre** = el transcript MÁS RECIENTE (así `cortex-master (2)` vivo le gana al viejo).
+- **cuál gana por nombre** = el transcript MÁS RECIENTE (así `<x>-master (2)` vivo le gana al viejo).
 
 ## Uso
 ```bash
@@ -46,7 +46,7 @@ El script vive JUNTO a este SKILL.md (`despertar-master.sh`). Al invocar `/despe
 y luego espera (hasta `DESPERTAR_ESPERA_S`, def 240s) a que la pantalla pinte `https://claude.ai/code/session_…`
 (la devuelve) o pida **confiar el folder** (lo reporta para que lo aceptes a mano con `screen -r`).
 
-## Gotchas (medidos — no los re-descubras)
+## Gotchas
 - **`screen … -X hardcopy` necesita `-p 0 -h`** para capturar la pantalla de Claude; sin eso sale vacía y
   parece que no cargó.
 - **Desechar TODO `CLAUDE*` heredado antes de lanzar** (`CLAUDECODE`, `CLAUDE_PID`, …): si el hijo los

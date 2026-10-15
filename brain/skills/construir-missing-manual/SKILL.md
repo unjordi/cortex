@@ -73,7 +73,6 @@ fan-out entonces **complementa, NO reconstruye**:
 - **Offline-first (la razón de ser).** El artefacto debe **bastarse solo**. Si para operar hay que abrir la
   web, falló — *hornéalo aquí al terminar*. La web es andamio del build, no muleta de la consulta.
 - **MONSTRUO, no "60 líneas".** Exhaustivo es EL requisito, no un exceso. Denso, completo, por sub-tema.
-  (Origen: unjordi, harto de docs escuálidas — "que sea un monstruo consultable".)
 - **Answer-first (positivar).** Cada nugget abre con lo que SÍ funciona; el gotcha/known-bug va después
   ([[positivar-doc]]).
 - **Índice del orquestador + contenido de los agentes.** Nadie más toca `SKILL.md` durante el fan-out.
@@ -96,10 +95,10 @@ fan-out entonces **complementa, NO reconstruye**:
   scripts/                 # lo ejecutable que acompaña (deploy, verificación)
 ```
 
-## Ejemplos reales (de donde salió este skill)
+## Ejemplos
 - **DFIR forense de disco Windows** (`auditoria-forense-disco-windows`): wiki de método + un doc por paso +
   docs de referencia (prior-art, gaps) — el malware se hizo INLINE por el safeguard.
-- **WireGuard a fondo** (`wireguard-a-fondo`, 2026-08-21): wiki WG + config Mac/Windows + **un doc por ISP
+- **WireGuard a fondo** (`wireguard-a-fondo`): wiki WG + config Mac/Windows + **un doc por ISP
   de México** + despliegue con scripts — 5 agentes, archivos disjuntos, con el hallazgo real keepalive=10
   horneado.
 

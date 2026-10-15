@@ -20,8 +20,7 @@ Sirve en **dos direcciones**:
   [plantilla-prompt](#plantilla-prompt) del final, rellena los `<...>` y pégala.
 
 ## Por qué existe (la anatomía de por qué funcionó)
-Nació de una sesión real (Jordi, 2026-07-25) que salió redonda. Lo que la hizo funcionar NO
-fue una frase mágica — fueron **cuatro ingredientes juntos** que conviene reproducir siempre:
+Funciona por **cuatro ingredientes juntos**, que conviene reproducir siempre:
 
 1. **Enmarcar el rol** — "modo AUDITOR/EXPERTO en X" cambia la profundidad del barrido.
 2. **Autorizar el fan-out** — mandar agentes en paralelo a investigar, no leerlo todo en serie

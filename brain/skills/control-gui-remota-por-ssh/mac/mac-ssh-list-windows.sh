@@ -8,7 +8,7 @@
 # send-click/send-keys) -- es LECTURA de la jerarquia de UI, no input sintetico, pero System Events
 # lo gatea igual.
 #
-# VERIFICADO 2026-09-18 LOCAL: la enumeracion de "application processes" (nombre + pid) funciono
+# VERIFICADO: la enumeracion de "application processes" (nombre + pid) funciono
 # sin error; la enumeracion de ventanas por proceso se probo contra Finder (sin ventanas abiertas en
 # ese momento -> lista vacia, comportamiento correcto, no error).
 #
