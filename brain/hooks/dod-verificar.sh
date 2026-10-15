@@ -8,11 +8,10 @@
 # EXPRESA de cierre; verde técnico ≠ listo): brain/norms/global-claude-md.md § "Definición de LISTO".
 # Este hook es SOLO el enforcement (el candado); no re-narres la norma aquí — referénciala.
 #
-# ── JUEZ-Haiku (LLM) — reemplaza el PILÓN de regex (CLAIM_RE/DOWNGRADE/META_LISTO/WEAK_STATUS/MECH_*/
-# CONF_RE/VISUAL_RE + la lógica G1/H4/P2a/MEDIO-1) que clasificaba ESTATUS-vs-CIERRE a mano. Era
-# whack-a-mole: cada frasing nuevo abría un FP o un FN (el último, 2026-08-02: "verificado técnicamente
-# de punta a punta … tras tu OK" — puro estatus — disparó porque contenía el token "de punta a punta").
-# Ahora Haiku LEE el último mensaje del asistente + los mensajes del USUARIO del turno y clasifica 3 ejes:
+# ── JUEZ-Haiku (LLM) — reemplaza un PILÓN de regex que clasificaba ESTATUS-vs-CIERRE a mano. Ese enfoque
+# era whack-a-mole: cada frasing nuevo abría un FP o un FN (un estatus que contenía el token de un claim
+# disparaba en falso). El LLM LEE el último mensaje del asistente + los mensajes del USUARIO del turno y
+# clasifica 3 ejes:
 #   CIERRE = el asistente DECLARA un ENTREGABLE listo/terminado/funciona (claim de cierre), NO estatus/
 #            espera/paso-mecánico/pregunta/downgrade-a-preview/celebración/"verde técnico".
 #   MARCA  = el USUARIO (en SUS propios mensajes) dio (1) confirmación funcional o (2) autorización expresa
@@ -49,56 +48,45 @@ set -u
 # shellcheck source=juez-comun.sh
 . "${BASH_SOURCE[0]%/*}/juez-comun.sh"
 
-# ── CONTRATO DE COHERENCIA DE TIMEOUTS (fix 2026-09-16, corrige una carrera real medida en telemetría) ──
+# ── CONTRATO DE COHERENCIA DE TIMEOUTS ──────────────────────────────────────────────────────────────
 # dod es un hook Stop: el CLI lo mata a los "timeout" segundos cableados en el settings.json del repo
-# consumidor (hoy 15s en todo repo desplegado, p.ej. plantilladotnet/.claude/settings.json). Hasta este fix,
-# el JUEZ tenía crédito interno de 20s (CLAUDE_DOD_JUEZ_TIMEOUT) — MAYOR que esos 15s del harness: una carrera
-# que el hook SIEMPRE pierde, matado 5s ANTES de que su propio juez agotara su presupuesto. Medido en
-# telemetría real (transcripts jsonl, project plantilladotnet, agosto 2026): 71 disparos de Stop, 67 (94%)
-# murieron en el muro de ~15000-15076ms sin producir veredicto — 15s de espera muerta, 71 veces, para nada
-# (dod es fail-OPEN: el timeout ni siquiera bloqueaba, solo desperdiciaba el turno).
-# Por eso el numero que se BAJA es el del JUEZ, no el del harness: un Stop hook lento es justo lo que se
-# quiere evitar (fluidez > checks-sobre-checks), y como dod es fail-open, un timeout interno más corto solo
-# adelanta el "sin veredicto" que de todos modos iba a pasar — sin gastar los 15s completos en el intento.
-# El nuevo presupuesto (10s, ver el default de CLAUDE_DOD_JUEZ_TIMEOUT en _juez_dod) está respaldado por la
-# MISMA telemetría: cuando el juez SÍ responde, la llamada real mide p50≈4.1s p90≈5.4s p95≈5.9s p99≈8.8s
-# (n=1457 llamadas reales de agosto 2026, project plantilladotnet) — 10s cubre el caso normal con ~1.2s de
-# margen sobre el p99, y solo 16 de 3462 invocaciones históricas (0.46%) tardaron más de eso en resolver.
+# consumidor (hoy 15s en todo repo desplegado). El crédito interno del JUEZ (CLAUDE_DOD_JUEZ_TIMEOUT) DEBE
+# quedar POR DEBAJO de ese timeout del harness, con margen: si fuera mayor, el CLI mataría el hook ANTES de
+# que el juez agote su presupuesto — una carrera que el hook siempre pierde, desperdiciando el turno sin
+# veredicto (dod es fail-OPEN: el timeout ni bloquea). Por eso el número que se acota es el del JUEZ (default
+# 10s, ver _juez_dod), no el del harness: un Stop hook lento es justo lo que se evita, y un crédito interno
+# más corto solo adelanta el "sin veredicto" que de todos modos pasaría.
 # INVARIANTE que hace cumplir test-brain.sh (coherencia, no plomería): CLAUDE_DOD_JUEZ_TIMEOUT (interno) +
-# el overhead del RESTO del hook (tail -n 1500 + los jq/awk que arman el turno + build del prompt + parseo
-# de la respuesta — medido p99≈953ms cuando el juez ni se llega a llamar, caso "screen-out local" sin red)
-# debe quedar POR DEBAJO, con margen, del valor mínimo que el settings.json de un repo consumidor DEBE
-# cablear para este hook en el evento Stop. Ese mínimo asumido vive en la siguiente constante — si cambias
-# el default de CLAUDE_DOD_JUEZ_TIMEOUT, ajusta esta constante (o viceversa) para que seguir cumpliendo la
-# desigualdad sea una decisión consciente, no un drift silencioso.
+# el overhead del RESTO del hook (tail + los jq/awk que arman el turno + build del prompt + parseo de la
+# respuesta) debe quedar POR DEBAJO, con margen, del mínimo que el settings.json de un repo consumidor DEBE
+# cablear para este hook en Stop. Ese mínimo asumido vive en la constante de abajo — si cambias el default de
+# CLAUDE_DOD_JUEZ_TIMEOUT, ajusta la constante (o viceversa) para que cumplir la desigualdad sea una decisión
+# consciente, no un drift silencioso.
 _DOD_HARNESS_TIMEOUT_MINIMO=15   # segundos; el "timeout" que el settings.json del repo DEBE cablear para
-                                 # este hook en Stop (hoy así en todos los repos desplegados — no lo baja
-                                 # este fix: bajar el harness alargaría la espera cuando SÍ hace falta matar
-                                 # el proceso; el margen se gana bajando el crédito del juez, no subiendo esto).
+                                 # este hook en Stop (hoy así en todos los repos desplegados). No se baja el
+                                 # harness: bajarlo alargaría la espera cuando SÍ hace falta matar el proceso;
+                                 # el margen se gana bajando el crédito del juez, no subiendo esto.
 
 # _juez_dod($texto_asistente, $texto_usuario) → "CIERRE=si|no MARCA=si|no VISUAL=si|no" | UNAVAILABLE
 # Definido ARRIBA (source-only) para que el test lo corra IDÉNTICO al hook (cero drift).
 #
-# EMPODERADO 2026-08 (mismo trabajo que _juez_merge, adaptado al dod — que es NAG fail-OPEN, no candado):
-#   · Capa 1 — DESAMORDAZAR: max_tokens 32→512 + temperature:0 (reproducible — MATA el flaky de temp 1.0,
-#     p. ej. "MR abierto y el endpoint quedó terminado" parpadeaba CIERRE si/no). CoT MUY breve que cierra
-#     con TRES líneas-centinela EXACTAS 'CIERRE: si|no', 'MARCA: si|no', 'VISUAL: si|no'. Parseo por el
-#     ÚLTIMO centinela de cada eje (tail -1 — el CoT puede mencionar el eje antes; solo cuenta la conclusión).
-#     Si FALTA cualquiera de los tres → out incompleto → UNAVAILABLE → fail-OPEN (dod NO atrapa el turno).
-#   · Capa 2 — VETO de CITA VERIFICADA para MARCA (anti auto-atestiguamiento ALTO-1, ahora DETERMINISTA):
-#     un MARCA=si exige que el LLM devuelva 'CITA: <verbatim del USUARIO>'; un chequeo determinista
-#     re-verifica que esa cita exista TEXTUAL en el texto del USUARIO ($2, que por diseño es SOLO mensajes
-#     role=user). Sin cita, o cita que no cae en el texto del usuario → override MARCA a 'no'. Vuelve "solo
-#     el USUARIO atestigua" un INVARIANTE determinista, inmune a que el LLM se deje llevar por la prosa de
-#     Claude. Nota: override a 'no' es CONSERVADOR para un nag (a lo sumo un recordatorio de más, nunca deja
-#     pasar un cierre sin marca).
+# El juez (mismo patrón que _juez_merge, adaptado al dod — que es NAG fail-OPEN, no candado):
+#   · Capa 1 — DESAMORDAZAR: max_tokens:512 + temperature:0 (reproducible — mata el flaky de temp alta).
+#     CoT MUY breve que cierra con TRES líneas-centinela EXACTAS 'CIERRE: si|no', 'MARCA: si|no',
+#     'VISUAL: si|no'. Parseo por el ÚLTIMO centinela de cada eje (tail -1 — el CoT puede mencionar el eje
+#     antes; solo cuenta la conclusión). Si FALTA cualquiera de los tres → UNAVAILABLE → fail-OPEN (dod NO
+#     atrapa el turno).
+#   · Capa 2 — VETO de CITA VERIFICADA para MARCA (anti auto-atestiguamiento, DETERMINISTA): un MARCA=si
+#     exige que el LLM devuelva 'CITA: <verbatim del USUARIO>'; un chequeo determinista re-verifica que esa
+#     cita exista TEXTUAL en el texto del USUARIO ($2, que por diseño es SOLO mensajes role=user). Sin cita,
+#     o cita que no cae en el texto del usuario → override MARCA a 'no'. Vuelve "solo el USUARIO atestigua"
+#     un INVARIANTE determinista, inmune a que el LLM se deje llevar por la prosa de Claude. Override a 'no'
+#     es CONSERVADOR para un nag (a lo sumo un recordatorio de más, nunca deja pasar un cierre sin marca).
 # CONSCIENTE DE LATENCIA (crítico): dod corre en CADA Stop. Presupuesto MODERADO (512, CoT corto → la
-# respuesta real ronda ~100-200 tokens, no llena el techo) + CLAUDE_DOD_JUEZ_TIMEOUT sensato (10s — bajado
-# de 20s el 2026-09-16: ese crédito era MAYOR que el "timeout" de 15s que el harness del Stop hook cablea en
-# settings.json, una carrera que el hook siempre perdía; ver el CONTRATO DE COHERENCIA DE TIMEOUTS arriba,
-# junto al `source` de juez-comun.sh, con la telemetría que respalda el nuevo número). Como es fail-OPEN, un
-# timeout simplemente NO bloquea (a diferencia del merge, que fail-safe DENY). Costo típico por turno: 1
-# llamada curl de ~1-6s (p95 real medido); el techo de 10s solo acota casos degenerados, no el caso común.
+# respuesta real ronda ~100-200 tokens, no llena el techo) + CLAUDE_DOD_JUEZ_TIMEOUT sensato (10s; ver el
+# CONTRATO DE COHERENCIA DE TIMEOUTS arriba, que explica por qué queda bajo el timeout del harness). Como es
+# fail-OPEN, un timeout simplemente NO bloquea (a diferencia del merge, que fail-safe DENY). Costo típico por
+# turno: 1 llamada curl de pocos segundos; el techo de 10s solo acota casos degenerados, no el caso común.
 # Mocks deterministas: CLAUDE_DOD_JUEZ_MOCK (veredicto FINAL normalizado 'CIERRE=.. MARCA=.. VISUAL=..' →
 # tests de FLUJO sin red) · CLAUDE_DOD_JUEZ_MOCK_RAW (texto CRUDO de respuesta → ejercita el parseo por
 # centinela + el veto de cita sin red).

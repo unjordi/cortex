@@ -3,7 +3,7 @@
 # ("zombie") de forma robusta al flujo SQUASH, resuelve la base de integración, y decide si una rama es
 # INTOCABLE pase lo que pase. La consumen `limpiar.sh worktrees` (barre worktrees) y `limpiar.sh ramas`
 # (barre ramas locales) → una sola definición de "mergeada" Y de "protegida", sin divergencia (antídoto
-# al drift entre los dos barredores — auditoría 2026-09-11: la protección solo vivía en uno de los dos).
+# al drift entre los dos barredores).
 #
 # "Mergeada" es QUÍNTUPLE porque el flujo SQUASHEA (la rama NO queda de ancestro): (a) ancestro de la base
 # (flujo merge-commit) O (e) el mensaje de squash trae la línea "Rama: <rama>" (convención del equipo,
@@ -12,29 +12,29 @@
 # LOCAL a la mini-develop y los cherry-picks O (b) la rama fue pusheada, su rama remota YA no existe (se
 # borró al mergear con --delete-branch, típico del squash → `: gone`) Y NO trae commits propios sin integrar.
 #
-# EL HUECO QUE CIERRA (e) (auditoría 2026-09-11, A-3): (d) es la ÚNICA señal que caza el squash de VARIOS
-# commits (el caso MÁS común del flujo), y (d) depende de gh/glab — AUSENTES del PATH de launchd (el que
-# hereda el hook cuando Claude corre desde la GUI) → (d) muere en silencio y el squash-multi-commit se
-# CONSERVABA para siempre, sin decir que no pudo verificarse. (e) es determinista y NO depende de ningún
-# binario externo: el equipo pone "Rama: <nombre>" en el mensaje de cada squash (convención existente),
-# así que `git log --format=%B <base> | grep -qxF "Rama: <rama>"` prueba la integración sin red.
+# POR QUÉ existe (e): (d) es la ÚNICA señal que caza el squash de VARIOS commits (el caso MÁS común del
+# flujo), pero (d) depende de gh/glab — AUSENTES del PATH de launchd (el que hereda el hook cuando Claude
+# corre desde la GUI) → (d) muere en silencio y el squash-multi-commit se CONSERVA para siempre sin poder
+# verificarse. (e) es determinista y NO depende de ningún binario externo: el equipo pone "Rama: <nombre>"
+# en el mensaje de cada squash (convención existente), así que
+# `git log --format=%B <base> | grep -qxF "Rama: <rama>"` prueba la integración sin red.
 #
-# EL HUECO QUE CERRÓ (d) en su momento: un squash de VARIOS commits a uno NO empareja patch-id → (c) no lo
-# caza y (b) CONSERVA si git cherry marca algún '+'. (d) pregunta al HOST si el PR/MR de la rama se mergeó
-# — si sí, sus commits están en la base aunque git no los empareje (y solo si el head mergeado CONTIENE el
-# tip local, para no borrar trabajo post-merge). FAIL-OPEN: sin gh/glab, sin red, host no reconocido o
-# error → (d) no aplica y se cae a las señales de git (conservador).
+# POR QUÉ existe (d): un squash de VARIOS commits a uno NO empareja patch-id → (c) no lo caza y (b)
+# CONSERVA si git cherry marca algún '+'. (d) pregunta al HOST si el PR/MR de la rama se mergeó — si sí,
+# sus commits están en la base aunque git no los empareje (y solo si el head mergeado CONTIENE el tip
+# local, para no borrar trabajo post-merge). FAIL-OPEN: sin gh/glab, sin red, host no reconocido o error
+# → (d) no aplica y se cae a las señales de git (conservador).
 #
 # Una rama NUNCA pusheada y sin equivalencia → se CONSERVA. La regla (b) NUNCA borra a ciegas: si la rama
 # tiene commits propios no equivalentes a la base (git cherry marca '+'), se CONSERVA aunque su remota ya
-# no exista — la ausencia de la remota no prueba integración, y el `branch -D` es irreversible (FMEA A5/MEDIO-3).
+# no exista — la ausencia de la remota no prueba integración, y el `branch -D` es irreversible.
 #
-# TRES ESTADOS, no dos (A-3): cuando git cherry marca '+' (contenido no patch-equivalente) y (d) NO pudo
+# TRES ESTADOS, no dos: cuando git cherry marca '+' (contenido no patch-equivalente) y (d) NO pudo
 # consultarse (gh/glab ausentes, host no reconocido, sin red), el veredicto correcto NO es "vivo con
 # certeza": es INDETERMINADO — pudo ser un squash multi-commit YA mergeado que (d) habría cazado. La
 # ACCIÓN es la misma en ambos casos (conservar: `bz_es_zombie` devuelve 1, nunca se borra a ciegas), pero
 # el REPORTE debe distinguirlos (`$BZ_RAZON`) para no afirmar "trabajo sin integrar" cuando lo honesto es
-# "no se pudo comprobar". Mentir aquí fue lo que contaminó la bitácora con pendientes falsos (A-4).
+# "no se pudo comprobar" — mentir aquí contamina la bitácora con pendientes falsos.
 
 # bz_resolver_base ROOT → imprime la base de integración.
 # La base es configurable (CLAUDE_INTEGRACION_BASE): en el flujo mini-develop NO es develop sino TU rama
@@ -44,9 +44,8 @@
 #      sus ramitas se integran a la mini, NO directo a develop — así el barrido las ve integradas).
 #   3) fallback clásico: develop, o la rama por defecto del remoto, o main.
 # Sin `Develop*` local (repo de flujo develop puro, p. ej. un solo-dev sobre develop) → cae a (3), intacto.
-# M-2 (auditoría 2026-09-11): con VARIAS `Develop*` locales y HEAD en ninguna, (2) tomaba la primera por
-# orden alfabético (`head -1`) — base ARBITRARIA (podía ser la mini de un colega). Ahora: si hay >1 y HEAD
-# no está en ninguna, NO SE ADIVINA — cae a (3). El caller que quiera el AVISO llama `bz_aviso_base ROOT`
+# Con VARIAS `Develop*` locales y HEAD en ninguna NO SE ADIVINA (tomar la primera por orden alfabético daría
+# una base ARBITRARIA, p. ej. la mini de un colega) — cae a (3). El caller que quiera el AVISO llama `bz_aviso_base ROOT`
 # (función independiente, NO una variable global): `base="$(bz_resolver_base "$ROOT")"` es una
 # sustitución de comando — bash la corre en un SUBSHELL — así que cualquier variable que la función
 # fijara ahí adentro se perdería al volver; una función separada, invocada con su PROPIA sustitución de
@@ -59,7 +58,7 @@ bz_resolver_base() {
     cur=$(git -C "$ROOT" symbolic-ref --short -q HEAD 2>/dev/null || true)
     case "$cur" in Develop?*) base="$cur" ;; esac
     # (2) preferir una mini-develop LOCAL si la hay — pero solo si hay UNA sola; con varias y HEAD en
-    #     ninguna, adivinar es peor que caer a (3) (M-2).
+    #     ninguna, adivinar es peor que caer a (3).
     if [ -z "$base" ]; then
       n_mini=$(git -C "$ROOT" for-each-ref --format='%(refname:short)' 'refs/heads/Develop*' 2>/dev/null | wc -l | tr -d ' ')
       if [ "${n_mini:-0}" = 1 ]; then
@@ -68,13 +67,12 @@ bz_resolver_base() {
       fi
     fi
     # (3) fallback: develop → rama por defecto del remoto → main.
-    # C-3 (dictamen higiene de ramas 2026-09-17, PÉRDIDA DE DATOS): el `|| echo main` se ligaba al PIPELINE
-    # entero, y el pipeline TERMINA en `sed` — que sale 0 con salida VACÍA cuando `symbolic-ref -q` no
-    # encontró `origin/HEAD`. El `echo main` no corría nunca y la base quedaba en "". Con base vacía TODAS
-    # las señales de integración fallan MUDAS (is-ancestor/log/cherry contra ""), así que cualquier rama con
-    # su remota `gone` caía a la señal (b), se declaraba "integrada" y se iba en un `git branch -D` pese a
-    # traer trabajo que nadie integró nunca. El fallback a `main` es ahora un paso APARTE, que decide
-    # mirando si la cadena quedó vacía — no el código de salida de un pipeline que no lo refleja.
+    # El fallback a `main` es un paso APARTE que decide mirando si la cadena quedó VACÍA, no el código de
+    # salida del pipeline: `sed` sale 0 con salida vacía cuando `symbolic-ref -q` no encontró `origin/HEAD`,
+    # así que un `|| echo main` ligado al pipeline nunca correría y la base quedaría en "". Con base vacía
+    # TODAS las señales de integración fallan MUDAS (is-ancestor/log/cherry contra "") → una rama con su
+    # remota `gone` caería a (b), se declararía "integrada" y se iría en un `git branch -D` con trabajo sin
+    # integrar (PÉRDIDA DE DATOS).
     if [ -z "$base" ]; then
       base=develop
       if ! git -C "$ROOT" rev-parse --verify -q refs/heads/develop >/dev/null 2>&1; then
@@ -87,7 +85,7 @@ bz_resolver_base() {
 }
 
 # bz_base_valida ROOT BASE → 0 si BASE resuelve a un commit REAL en ROOT; 1 si no (vacía o fantasma).
-# C-3, segundo candado (el que de verdad importa): NINGUNA señal de integración es evaluable sin una base
+# Segundo candado (el que de verdad importa): NINGUNA señal de integración es evaluable sin una base
 # que exista — `merge-base --is-ancestor <br> ""`, `log ""`, `git cherry "" <br>` fallan MUDAS y empujan
 # toda rama a la señal (b), que es destructiva. Barrer con base irresoluble no puede ser correcto NUNCA,
 # venga el vacío de donde venga (fallback roto, CLAUDE_INTEGRACION_BASE con un typo, base aún no creada):
@@ -99,7 +97,7 @@ bz_base_valida() {
 }
 
 # bz_aviso_base ROOT → imprime (por stdout) un aviso si hay AMBIGÜEDAD real en la base que
-# `bz_resolver_base` no pudo resolver (M-2: varias `Develop*` locales y HEAD en ninguna) — vacío si no
+# `bz_resolver_base` no pudo resolver (varias `Develop*` locales y HEAD en ninguna) — vacío si no
 # aplica. Recalcula de forma INDEPENDIENTE (no comparte estado con `bz_resolver_base`): así sobrevive a la
 # forma más común de consumir la base (`base="$(bz_resolver_base "$ROOT")"`, que corre en un subshell).
 bz_aviso_base() {
@@ -129,10 +127,10 @@ _bz_run() {  # _bz_run SEGUNDOS cmd... — con timeout si existe (que un host co
   local t="$1"; shift
   if command -v timeout >/dev/null 2>&1; then timeout "$t" "$@"; else "$@"; fi
 }
-# B-2 (dictamen 2026-09-17): el cap era `300` fijo y MUDO — un repo con más PRs que eso dejaba las ramas
-# viejas fuera de la señal (d) sin decirlo (medido: 433 PRs contra un cap de 300). Ahora el tope es
-# configurable y el default cubre con holgura; `gh --limit` pagina internamente, `glab --per-page` topa en
-# 100 por página en la API de GitLab, así que se PAGINA hasta agotar (o hasta el tope).
+# El cap de PRs consultados es configurable (CLAUDE_BZ_PR_LIMIT; default con holgura): un cap fijo y MUDO
+# dejaría las ramas viejas de un repo con muchos PRs fuera de la señal (d) sin decirlo. `gh --limit` pagina
+# internamente; `glab --per-page` topa en 100 por página en la API de GitLab, así que se PAGINA hasta agotar
+# (o hasta el tope).
 _bz_limite() { local l="${CLAUDE_BZ_PR_LIMIT:-1000}"; case "$l" in ''|*[!0-9]*) l=1000 ;; esac; printf '%s' "$l"; }
 _bz_glab_paginar() {  # $1=proj $2=filtro(-M|-A) $3=archivo destino $4=expresión jq
   local proj="$1" filtro="$2" dest="$3" jqf="$4" pag=1 n maxp
@@ -181,9 +179,9 @@ _bz_cargar_prcache() {  # puebla $_BZ_PRCACHE_FILE (líneas 'rama<TAB>sha') para
   # dispararía un hook chpwd del shell que contaminaría el cache; -R es además más robusto).
   proj="$(printf '%s' "$url" | sed -E 's#^[a-z]+://[^/]+/##; s#^[^@]+@[^:]+:##; s#\.git$##')"
   [ -n "$proj" ] || return 0
-  # M-5 (auditoría 2026-09-11): clasificar por el HOST real de la URL, no por una subcadena de la URL
-  # ENTERA — `git@gitlab.com:grupo/github-tools.git` matcheaba *github* por el PATH del proyecto (CLI
-  # equivocado). Con host self-hosted/desconocido: probar lo que haya instalado en vez de rendirse.
+  # Clasificar por el HOST real de la URL, no por una subcadena de la URL ENTERA: un proyecto como
+  # `git@gitlab.com:grupo/github-tools.git` matchearía *github* por el PATH y elegiría el CLI equivocado.
+  # Con host self-hosted/desconocido: probar lo que haya instalado en vez de rendirse.
   host="$(printf '%s' "$url" | sed -E 's#^[a-z]+://##; s#^[^@]+@##; s#[:/].*$##')"
   case "$host" in
     github.com|*.github.com) _bz_intentar_gh "$ROOT" "$proj" ;;
@@ -207,9 +205,9 @@ bz_pr_mergeado() {
 }
 
 # --- Estado del PR/MR de una rama — SOLO para el DETECTOR DE REPRESA, jamás para decidir un borrado ---
-# A-4 (dictamen higiene de ramas 2026-09-17): `bz_pr_mergeado` consulta únicamente `--state merged`, así que
-# un PR CERRADO SIN MERGEAR es indistinguible de "nunca hubo PR" — ambos se conservan mudos para siempre. Y
-# la transición "rama pusheada → PR abierto" no la vigila NADIE: es la clase entera de trabajo represado.
+# `bz_pr_mergeado` consulta únicamente `--state merged`, así que un PR CERRADO SIN MERGEAR es indistinguible
+# de "nunca hubo PR" — ambos se conservan mudos para siempre. Y la transición "rama pusheada → PR abierto"
+# no la vigila NADIE: es la clase entera de trabajo represado.
 # Esta consulta alimenta el REPORTE, nunca una decisión destructiva, así que su fallo no puede hacer daño:
 # sin gh/glab, sin red o con host no reconocido devuelve DESCONOCIDO y el reporte lo dice tal cual.
 # TEST: CLAUDE_BZ_STCACHE=<archivo con líneas 'rama<TAB>ESTADO<TAB>id'> inyecta el mapa sin red.
@@ -263,7 +261,7 @@ bz_pr_estado() {
 # bz_remota_integrada ROOT BR REF BASEREF → 0 si la rama REMOTA REF (que NO tiene contraparte local) ya
 # está integrada a BASEREF. Motivo en $BZ_RRAZON (a|e|d|c|vivo).
 #
-# C-2 (dictamen higiene de ramas 2026-09-17): admite SOLO las señales (a)/(e)/(d)/(c). La señal (b)
+# Admite SOLO las señales (a)/(e)/(d)/(c). La señal (b)
 # —"la remota ya no existe"— NO aplica aquí: su premisa es justamente lo contrario de lo que estamos
 # evaluando (esta rama existe EN el remoto), así que aplicarla inventaría zombies por construcción.
 # Todas las señales admitidas son POSITIVOS squash-safe: prueban que el contenido YA está en la base, no
@@ -274,7 +272,7 @@ bz_remota_integrada() {
   local ROOT="$1" br="$2" ref="$3" baseref="$4" cherry _sq_ct _ref_ct
   BZ_RRAZON=""
   git -C "$ROOT" merge-base --is-ancestor "$ref" "$baseref" 2>/dev/null && { BZ_RRAZON=a; return 0; }   # (a)
-  # (e) ACOTADA (#486): el pie "Rama: <br>" en BASEREF no prueba que el tip REMOTO actual esté contenido —
+  # (e) ACOTADA: el pie "Rama: <br>" en BASEREF no prueba que el tip REMOTO actual esté contenido —
   # una rama remota reusada tras su squash avanzó y (e) la borraría. Solo vale si REF no trae nada más nuevo
   # que el squash que la nombra (committer-date); si no se puede fechar, conservador: NO (e) → cae a (d),
   # cuyo containment sí re-chequea el tip remoto. Dirección segura: solo RETIRA falsos "integrada".
@@ -293,14 +291,14 @@ bz_remota_integrada() {
 # t=TRANSITIVA (un salto BR→X→BASE) · r=integrada en la base REMOTA (origin/<base> adelantada; su trabajo ya
 # vive en el remoto) · b=remota borrada sin commits propios · vivo=commits propios
 # confirmados (con o sin remota) · indeterminado=había '+' en git cherry pero NO se pudo consultar el host
-# para descartar un squash-multi ya mergeado (A-3: la acción es conservar igual, pero el reporte no debe
+# para descartar un squash-multi ya mergeado (la acción es conservar igual, pero el reporte no debe
 # afirmar "vivo" con certeza).
 BZ_RAZON=""
 
 # _bz_squash_ct ROOT BR BASE → imprime el committer-date (epoch) del commit de squash MÁS NUEVO en BASE cuyo
 # mensaje trae la línea EXACTA "Rama: <br>" (el pie de trazabilidad del equipo); vacío + return 1 si no hay.
 # Lo usa (e) para ACOTARSE: una rama REUSADA tras su squash (commits nuevos encima) no debe darse por
-# integrada solo porque el pie "Rama:" siga en la base (#486). `-F --grep` filtra server-side y devuelve los
+# integrada solo porque el pie "Rama:" siga en la base. `-F --grep` filtra server-side y devuelve los
 # commits de nuevo-a-viejo; el 1er match línea-exacta ES el más nuevo (un "Rama: <br>-otra" por subcadena se
 # descarta con el grep -qxF por-commit y la búsqueda sigue con el siguiente candidato).
 _bz_squash_ct() {
@@ -323,7 +321,7 @@ _bz_squash_ct() {
 _bz_integrada_directa() {
   local ROOT="$1" br="$2" base="$3" cherry _sq_ct _br_ct
   git -C "$ROOT" merge-base --is-ancestor "$br" "$base" 2>/dev/null && { BZ_RAZON=a; return 0; }  # (a)
-  # (e) ACOTADA (#486): el pie "Rama: <br>" está en la base, PERO solo vale si BR no avanzó tras ese squash
+  # (e) ACOTADA: el pie "Rama: <br>" está en la base, PERO solo vale si BR no avanzó tras ese squash
   # — si no, (e) borraría los commits nuevos (reúso de la rama). Compara el committer-date del squash que la
   # nombra vs el del commit MÁS NUEVO de BR ausente de BASE: si BR trae algo más nuevo → NO (e) (cae a (d),
   # cuyo containment sí re-chequea el tip, y de ahí a (b)/conservar). Si no se puede fechar el squash →
@@ -365,7 +363,7 @@ _bz_base_remota() {
 # Un solo salto por diseño: el eslabón 2 usa SOLO señales directas, nunca otra transitiva → sin cadenas
 # ni recursión. X debe contener a BR como ancestro ESTRICTO: se excluye BR, BASE y toda rama que apunte
 # al MISMO commit que BR — un hermano en el mismo tip NO es un intermediario que integró a BR (su propio
-# PR/señal no debe volver zombie a BR; eso lo conserva el carril (b)/vivo — FMEA b3g).
+# PR/señal no debe volver zombie a BR; eso lo conserva el carril (b)/vivo).
 _bz_integrada() {
   local ROOT="$1" br="$2" base="$3" x brrev xrev
   _bz_integrada_directa "$ROOT" "$br" "$base" && return 0   # (a)(e)(d)(c) directas BR→BASE
@@ -398,13 +396,13 @@ bz_es_zombie() {
   # (pudo borrarse por rename/limpieza manual, o traer commits VIVOS post-merge sin pushear). Si la rama
   # tiene commits PROPIOS no equivalentes a la base (git cherry marcó algún '+'), se CONSERVA aunque su
   # remota ya no exista: el `branch -D` de los barredores es irreversible y borraría ese trabajo. Antes
-  # (b) declaraba zombie sin re-chequear commits únicos → PÉRDIDA DE DATOS (FMEA A5/MEDIO-3). El header
+  # (b) declaraba zombie sin re-chequear commits únicos → PÉRDIDA DE DATOS. El header
   # promete "conserva ante duda": aquí se hace cumplir — solo una rama SIN trabajo único cae a (b).
   # (recomputar cherry aquí: (c) vive ahora dentro de _bz_integrada_directa como var LOCAL, así que el
   #  carril (b)/indeterminado necesita su PROPIA pasada de git cherry sobre BR.)
   cherry=$(git -C "$ROOT" cherry "$base" "$br" 2>/dev/null)
   if printf '%s\n' "$cherry" | grep -q '^+'; then
-    # A-3: '+' pudo ser un squash-multi YA mergeado que (d) habría cazado. Si (d) SÍ se pudo consultar
+    # '+' pudo ser un squash-multi YA mergeado que (d) habría cazado. Si (d) SÍ se pudo consultar
     # (host reachable, este branch simplemente no apareció como mergeado) → confianza real: vivo. Si NO
     # HAY host que consultar (nunca hubo remoto de red, p. ej. un fixture con origin local) → también vivo
     # con certeza (no es indeterminado; no es "no se pudo", es "no corresponde"). Solo cuando HABÍA un host
@@ -425,9 +423,9 @@ bz_es_zombie() {
 # a propósito keep/*, o checked-out en CUALQUIER worktree — WT_RAMAS son sus nombres, uno por línea).
 # 1 si no. Deja la RAZÓN en $BZ_PROT_RAZON: base_actual | convencion | worktree.
 #
-# C-2 (auditoría 2026-09-11): antes esta protección SOLO vivía en limpiar.sh ramas; limpiar.sh worktrees
-# no tenía equivalente y borró el worktree de una mini-develop con trabajo sin commitear y marcó `keep/*`
-# como zombie. Ahora es UNA sola definición que consumen los DOS barredores — igual que bz_es_zombie.
+# UNA sola definición que consumen los DOS barredores (limpiar.sh ramas y limpiar.sh worktrees), igual que
+# bz_es_zombie: sin ella, un barredor sin esta protección borraría el worktree de una mini-develop con
+# trabajo sin commitear o marcaría `keep/*` como zombie.
 BZ_PROT_RAZON=""
 bz_protegida() {
   local br="$1" base="$2" actual="${3:-}" wt_ramas="${4:-}"
