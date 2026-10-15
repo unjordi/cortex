@@ -4262,6 +4262,30 @@ B8_ROOTCLAUDE="$SCRIPT_DIR/../CLAUDE.md"; B8_CANONSK="$SCRIPT_DIR/skills/canoniz
   && ok "B8: identidad por @ NATIVO cableada (CLAUDE.md del meta-repo + molde canonizar-cerebro importan conocimiento-propio.local.md)" \
   || bad "B8: FALTA el @import nativo de conocimiento-propio.local.md en el CLAUDE.md del meta-repo o en el molde de canonizar-cerebro"
 
+# ── (b8-mig) MIGRACIÓN B8: aviso-drift cablea el @import donde FALTA (medido: plantilladotnet/axon tenían
+# conocimiento-propio pero NINGÚN @import → sin esto arrancarían SIN identidad tras B8). Idempotente, a
+# CLAUDE.local.md (gitignored → en un repo COMPARTIDO no mete un @import per-usuario al CLAUDE.md del equipo).
+B8M="$(mktemp -d "${TMPDIR:-/tmp}/brain-b8m.XXXXXX")"; mkdir -p "$B8M/home" "$B8M/clon/brain"
+b8m_run() { printf '%s' '{"source":"startup"}' | HOME="$B8M/home" CLAUDE_BRAIN_DIR="$B8M/clon" CLAUDE_PROJECT_DIR="$1" bash "$HOOKS/aviso-drift-cerebro.sh" >/dev/null 2>&1; }
+# caso 1: identidad SIN @import → lo cablea UNA vez a CLAUDE.local.md
+R1="$B8M/r1"; mkdir -p "$R1/.claude/memory"; printf '# id\ncontenido\n' > "$R1/.claude/memory/conocimiento-propio.local.md"
+b8m_run "$R1"
+{ [ -f "$R1/CLAUDE.local.md" ] && grep -qF '@.claude/memory/conocimiento-propio.local.md' "$R1/CLAUDE.local.md"; } \
+  && ok "b8-mig: repo con identidad y SIN @import → cablea el @import a CLAUDE.local.md" || bad "b8-mig: NO cableó el @import de identidad"
+b8m_run "$R1"   # 2ª sesión: idempotente, sin duplicar
+[ "$(grep -cF '@.claude/memory/conocimiento-propio.local.md' "$R1/CLAUDE.local.md" 2>/dev/null)" = 1 ] \
+  && ok "b8-mig: idempotente — una 2ª sesión NO duplica el @import" || bad "b8-mig: duplicó el @import (no idempotente)"
+# caso 2: identidad CON @import ya presente en CLAUDE.md → NO toca (no crea CLAUDE.local.md)
+R2="$B8M/r2"; mkdir -p "$R2/.claude/memory"; printf '# id\n' > "$R2/.claude/memory/conocimiento-propio.local.md"
+printf '@.claude/memory/conocimiento-propio.local.md\n' > "$R2/CLAUDE.md"
+b8m_run "$R2"
+[ ! -f "$R2/CLAUDE.local.md" ] && ok "b8-mig: @import ya presente en CLAUDE.md → NO cablea de más" || bad "b8-mig: cableó teniendo ya el @import"
+# caso 3: SIN conocimiento-propio → NO crea nada
+R3="$B8M/r3"; mkdir -p "$R3/.claude/memory"
+b8m_run "$R3"
+[ ! -f "$R3/CLAUDE.local.md" ] && ok "b8-mig: repo sin conocimiento-propio → NO crea CLAUDE.local.md" || bad "b8-mig: creó CLAUDE.local.md sin identidad"
+rm -rf "$B8M"
+
 # ── (b5b2) FIX costura #2: aviso-drift DETECTA el drift de CABLEADO (hooks presentes SIN cablear).
 # Antes era CIEGO al wiring: solo sumaba nuevos+act+ret → un repo con "0 nuevos · 0 a actualizar · N
 # cableado faltante" se veía "al día" (bug LIVE comprobado en la plantilla: 3 hooks sin cablear → 0

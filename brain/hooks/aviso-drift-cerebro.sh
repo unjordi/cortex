@@ -52,6 +52,23 @@ set -u
 ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 cat >/dev/null 2>&1 || true   # drenar stdin (contrato SessionStart)
 
+# ── B8 MIGRACIÓN: cablea el @import de identidad (reemplazo de la re-inyección retirada en B8) ─────────
+# Medido en plantilladotnet (claudio-master) y axon (axon-master): tenían conocimiento-propio PERO NINGÚN
+# @import → sin esto, tras B8 arrancarían SIN identidad. Idempotente, al CLAUDE.local.md (gitignored → en un
+# repo COMPARTIDO NO mete un @import per-usuario al CLAUDE.md del equipo). Solo actúa si HAY identidad y NO
+# hay ya un @import de ella en ningún CLAUDE*.md. (El @import toma efecto la PRÓXIMA sesión del repo.)
+_self_md="$ROOT/.claude/memory/conocimiento-propio.local.md"
+if [ -f "$_self_md" ]; then
+  _ya_import=0
+  for _f in "$ROOT/CLAUDE.md" "$ROOT/CLAUDE.local.md" "$ROOT/.claude/CLAUDE.md"; do
+    [ -f "$_f" ] && grep -qE '^@.*conocimiento-propio' "$_f" && { _ya_import=1; break; }
+  done
+  if [ "$_ya_import" = 0 ]; then
+    [ -f "$ROOT/CLAUDE.local.md" ] || printf '%s\n' '# Overrides locales de Claude Code (gitignored, per-máquina).' > "$ROOT/CLAUDE.local.md" 2>/dev/null || true
+    printf '%s\n' '@.claude/memory/conocimiento-propio.local.md' >> "$ROOT/CLAUDE.local.md" 2>/dev/null || true
+  fi
+fi
+
 # ── IDENTIDAD (conocimiento-propio) — YA NO la re-inyecta este hook (B8, decisión unjordi 2026-10-14) ──
 # El `@import` NATIVO de `conocimiento-propio.local.md` en el CLAUDE.md del repo (cableado en ef754d6) la
 # carga en CADA SessionStart (fresh/resume/compact) y tolera su ausencia — reemplaza la re-inyección que
