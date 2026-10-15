@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # aviso-contexto.sh — PostToolUse hook (tier GLOBAL). El HUB que PROTEGE el hilo al acercarse el compact.
 #
-# PRINCIPIO RECTOR (unjordi, REVISIÓN 2026-09-17): el hook HACE trabajo real, no reporta cada 5%. La
-# auditoría lo dictó: los hooks que solo AVISAN se ignoran; el único con tracción es el que EJECUTA. Este
-# hook deja de gotear cada escalón y de deferir la decisión ("tú decides"). Ahora:
+# PRINCIPIO RECTOR: el hook HACE trabajo real, no reporta cada 5%. Los hooks que solo AVISAN se ignoran.
+# Este hook no gotea cada escalón y de deferir la decisión ("tú decides"). Ahora:
 #   1. GUARDA SILENCIO total por debajo del umbral ALTO — nada de reporte por-5%.
 #   2. Al CRUZAR el umbral ALTO (cerca del punto REAL de compact) EJECUTA solito el checkpoint MECÁNICO
 #      (vuelca el andamio del hilo/estado/git a disco, CERO tokens de modelo) y emite UNA línea en tono de
@@ -96,8 +95,7 @@ case "$WINDOW" in
     ;;
 esac
 # Sin ventana por EVIDENCIA (ni override, ni marcador [1m], ni modelo listado; modelo desconocido/vacío/
-# <synthetic>): NO inventamos un número — fail-open SILENCIOSO, igual que sin jq/usage. (Jordi 2026-10-13:
-# "si no sabe, que no invente"; se eliminó el viejo default 200K que disparaba urgencia falsa en sesiones 1M.)
+# <synthetic>): NO inventamos un número — fail-open SILENCIOSO, igual que sin jq/usage (no hay default de ventana).
 case "$WINDOW" in ''|*[!0-9]*) exit 0 ;; esac
 # AUTO-CORRECCIÓN por invariante FÍSICO: si ctx > ventana detectada (de [1m]/modelo listado), promueve a 1M.
 [ "$ctx" -gt "$WINDOW" ] 2>/dev/null && WINDOW=1000000
@@ -133,7 +131,7 @@ if [ -z "$forced" ] && [ "$ac_enabled" = "true" ] && [ -n "$acw_num" ]; then
   GOV="$acw_num"; govsrc="acw"
 fi
 
-# ── BANDA por umbral ALTO/CRÍTICO relativo a GOV (el punto REAL de compact) ─────────────────────────
+# ── BANDA por umbral ALTO/CRÍTICO relativo a GOV (el punto REAL de compact) ─────────────────── ──
 # NO se gotea por-5%: silencio bajo ALTO; UN disparo al cruzar ALTO; UNA escalada al cruzar CRÍTICO. Los
 # umbrales se expresan como % de GOV (el punto real), no del 1M pelón, y son ajustables por env para tests.
 HIGH_PCT="${AVISO_CONTEXTO_HIGH_PCT:-80}"
@@ -157,7 +155,7 @@ printf '%s\n' "$band" > "$AVISO_F" 2>/dev/null || true
 # → SILENCIO TOTAL (exit 0 sin additionalContext).
 { [ "$band" -ge 1 ] && [ "$band" -gt "$last_band" ]; } || exit 0
 
-# ── HACE: dispara el checkpoint MECÁNICO (red de seguridad automática, CERO tokens de modelo) ─────────
+# ── HACE: dispara el checkpoint MECÁNICO (red de seguridad automática, CERO tokens de modelo) ─── ──
 _selfdir="$(dirname "$0")"
 if [ -f "$_selfdir/checkpoint-mecanico-comun.sh" ]; then
   # shellcheck source=checkpoint-mecanico-comun.sh
@@ -166,7 +164,7 @@ if [ -f "$_selfdir/checkpoint-mecanico-comun.sh" ]; then
   disparar_checkpoint_mecanico "$sid_raw" "$tp" "$ROOT" "$MEM" "$_selfdir" || true
 fi
 
-# ── Mensaje: UNA línea, tono de ORDEN. El HUB manda: checkpoint mecánico HECHO + qué hacer ahora ──────
+# ── Mensaje: UNA línea, tono de ORDEN. El HUB manda: checkpoint mecánico HECHO + qué hacer ahora  ──
 ctxk=$(( ctx / 1000 ))
 govk=$(( GOV / 1000 ))
 wink=$(( WINDOW / 1000 ))

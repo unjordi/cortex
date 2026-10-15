@@ -3612,9 +3612,8 @@ printf '%s' "$m3out" | grep -q 'DETACHED.*wt-det' && ok "b3r: M-3 — el worktre
 rm -rf "$M3ROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# (b3f) delegacion-reporte y (b3i) recordar-orquestar: RETIRADOS overhaul hooks 2026-09-18 (puramente
-# advisory, medido: ignorados). Su regla subió a norma en brain/norms/global-claude-md.md § "Orquesta:
-# delega lo paralelizable" — ver MANIFEST (tier retirado) para el rastro de cero-pérdida.
+# (b3f) delegacion-reporte y (b3i) recordar-orquestar: retirados; su regla vive en la norma «Delegar a
+# agentes» de brain/norms/global-claude-md.md (ver MANIFEST, tier retirado).
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
@@ -6331,7 +6330,6 @@ delegacion-comun|delegacion-gate
 delegacion-comun|delegacion-registrar
 delegacion-gate|limite-gasto
 cerrar-slice|checkpoint
-cerrar-slice|orquestar-fanout
 cerrar-slice|rehidratar-hilo
 checkpoint|rehidratar-hilo
 checkpoint|reconstruir-contexto
@@ -8203,12 +8201,10 @@ cnt="$(find "$BKDIR" -name '*.jsonl.bak' | wc -l | tr -d ' ')"
 # ── s5: MECANISMO anti-§9 — cerrar-slice exige barrer lo DELEGADO en un artefacto al backlog (con severidad) ──
 # grep -F por tokens en UNA sola línea (grep es por-línea: una frase que envuelve NO se caza).
 CS="$SCRIPT_DIR/skills/cerrar-slice/SKILL.md"
-CSO="$SCRIPT_DIR/skills/orquestar-fanout/SKILL.md"
 { [ -f "$CS" ] && grep -qF 'DELEGADO a un artefacto' "$CS" && grep -qF 'log disfrazado de backlog' "$CS" \
-    && grep -qF 'con severidad y origen ANTES de cerrar' "$CS" \
-    && [ -f "$CSO" ] && grep -qF 'lo DELEGADO a un artefacto tampoco es el backlog' "$CSO"; } \
-  && ok "s5 mecanismo: cerrar-slice ancla el barrido de lo delegado al backlog (+ corolario en orquestar-fanout)" \
-  || bad "s5 mecanismo: falta el paso anti-§9 en cerrar-slice/orquestar-fanout (el hueco del §9 quedaría abierto)"
+    && grep -qF 'con severidad y origen ANTES de cerrar' "$CS"; } \
+  && ok "s5 mecanismo: cerrar-slice ancla el barrido de lo delegado al backlog" \
+  || bad "s5 mecanismo: falta el paso anti-§9 en cerrar-slice"
 
 # ── s6: H5 — cwdLines es el invariante que DISCRIMINA una corrupción de CONTENIDO que la cardinalidad
 #         (nº de renglones) sola no ve. rewriteTranscriptStream cuenta, DEL ORIGEN, los renglones con un

@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # 04-grid-homologado.sh
 #
-# Hallazgo que lo originó: auditoría de MegaFlux (2026-07-15) — `FlotaEnOperacionPage.razor`
-# ligaba `<MudTable Items="Filtradas">` a una PROPIEDAD calculada (`Filtradas => _todos.Where(...)`),
+# Riesgo: una página que liga `<MudTable Items="Filtradas">` a una PROPIEDAD calculada (`Filtradas => _todos.Where(...)`),
 # no a un campo materializado. MudTable evalúa `Items` una vez POR FILA — así, el filtrado
 # LINQ se recalculaba en cada fila renderizada (antipatrón O(n²) que AGENTS.md §13.11 pide
 # evitar explícitamente). En el mismo commit, otra página (`CentrosTrabajoPage.razor`) sí
@@ -16,12 +15,8 @@
 # (`.Where(`, `.OrderBy(`, `.Select(`, `.Filtrar(`, etc.) — eso sí se recalcula en cada
 # acceso, es decir, por fila.
 #
-# Nota de diseño (2026-07-15, tras correr esto contra MegaFlux): la primera versión de este
-# check exigía encontrar la declaración en una sola línea y, si no la hallaba, lo marcaba
-# como "no se pudo verificar" — eso generó 9 falsos "inciertos" contra código sano (campos
-# planos `private List<T> _x = [];`, que NUNCA tienen un `=>` porque son datos, no getters) y
-# además se comió el propio bug real (`Filtradas =>` con el `.Where(...)` en la línea
-# SIGUIENTE, no en la misma). Ahora: sin declaración `=>` en el archivo = campo plano = OK
+# Nota de diseño: la declaración puede ocupar varias líneas (el `.Where(...)` puede ir en la línea
+# siguiente) y los campos planos `private List<T> _x = [];` nunca tienen `=>`. Sin declaración `=>` en el archivo = campo plano = OK
 # (nada que reportar); con declaración `=>`, se acumula el cuerpo hasta el primer `;` sin
 # importar cuántas líneas ocupe.
 set -uo pipefail

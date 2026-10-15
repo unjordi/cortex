@@ -5,17 +5,16 @@ description: Manda un fan-out de auditores expertos READ-ONLY a barrer la COHERE
 
 # Auditar la coherencia del cerebro (fan-out read-only, iterativo)
 
-Cuando unjordi lo pide ("audita la coherencia del cerebro", "corre los auditores de coherencia",
+Cuando el usuario lo pide ("audita la coherencia del cerebro", "corre los auditores de coherencia",
 "barre el brain a ver qué se rompe"), este skill **lanza uno o varios agentes-auditores READ-ONLY**
 que revisan el cerebro como SISTEMA —¿los guards se pueden evadir? ¿los flowcharts mienten respecto al
 código? ¿alguna norma contradice a otra? ¿hay doc desincronizada?— y devuelven **hallazgos priorizados**.
-No es un comando que Claude ejecute por su cuenta: es la **capacidad invocable** que unjordi pide correr.
+No es un comando que Claude ejecute por su cuenta: es la **capacidad invocable** que el usuario pide correr.
 
-> **Por qué existe.** Nació de una re-auditoría post-integración del cerebro (jul 2026) que se convirtió
-> en un LOOP de 9 rondas: cada ronda destapaba una evasión más fina de los git-guards (opciones globales
-> de git → valores entrecomillados → comilla en medio → backslash → `git.exe`…) y de la fidelidad de los
-> flowcharts, y cada fix nacía con su test hasta que el auditor CONVERGIÓ (443 PASS). Ese loop se
-> improvisó a mano; aquí queda **destilado y repetible**. Es la aplicación concreta al cerebro del
+> **Qué es.** Un LOOP de rondas: cada ronda destapa una evasión más fina de los git-guards (opciones
+> globales de git → valores entrecomillados → comilla en medio → backslash → `git.exe`…) y de la
+> fidelidad de los flowcharts, y cada fix nace con su test hasta que el auditor CONVERGE. Aquí queda
+> **destilado y repetible**. Es la aplicación concreta al cerebro del
 > **modo (B) "un SISTEMA / el propio cerebro"** de [[auditar-proceso-algoritmo]] (que aporta la
 > METODOLOGÍA: persona experta, individual→colectivo, leyenda+normas obligatorias). Este skill aporta la
 > ORQUESTACIÓN: qué dimensiones, cómo alimentarlas, la verificación por EJECUCIÓN, el loop y el cierre.
@@ -30,10 +29,10 @@ uno por release, ver «Cuándo usarlo»), igual que el resto del cerebro. Por es
 toma a ciegas; dos candados lo sujetan:
 - **Los hallazgos son PLAUSIBLES, no verdad.** En la dimensión A se verifican **por EJECUCIÓN** en
   sandbox; en B/C, contra el código/doc real. Nada se cree por su palabra (de ahí CONFIRMADO vs PLAUSIBLE).
-- **unjordi tiene la última palabra — no por infalible, sino porque el REPO es suyo.** También se
+- **El usuario tiene la última palabra — no por infalible, sino porque el REPO es suyo.** También se
   equivoca y también necesita ayuda; es una relación de ida y vuelta, no un oráculo que dictamina desde
   arriba. "Auditado sin hallazgos graves" es *verificado técnicamente*, jamás LISTO: cerrar exige su
-  QA/OK (definición de LISTO). La introspección PROPONE; unjordi DECIDE.
+  QA/OK (definición de LISTO). La introspección PROPONE; el usuario DECIDE.
 
 Dicho corto: **es tu cerebro, es mi repo, y es nuestro proyecto.** Las tres a la vez — contenido,
 propiedad y trabajo — de otro modo la introspección se vuelve o un oráculo suelto o un dueño ausente.
@@ -43,7 +42,7 @@ propiedad y trabajo — de otro modo la introspección se vuelve o un oráculo s
   se coló una evasión ni un drift de doc antes de un release a `main`.
 - Cuando toques un **guard de supervisión** (git-branch-guard, secret-scan, merge-develop-guard,
   la lib `analizar-comando-git.sh`): un cambio de precisión puede reabrir un hueco
-  más fino (lección de las 9 rondas — el value-model de git reabrió 5 veces seguidas).
+  más fino (el value-model de git puede reabrirse varias veces seguidas).
 - Cuando cambien **flowcharts, README-árbol o normas**: verificar que la doc sigue reflejando la realidad
   (doc=realidad) y que las leyendas generadas cuadran con el árbol vivo. **Regenerar la leyenda no es
   actualizar el diagrama** — son dos capas distintas del MISMO archivo, y suele haber parity-check solo
@@ -51,7 +50,7 @@ propiedad y trabajo — de otro modo la introspección se vuelve o un oráculo s
   regenerado su leyenda; al medirlo, los charts estaban desfasados en tres puntos y en direcciones
   opuestas — la leyenda estaba al día, el CONTENIDO no.
 - Como **gate de coherencia recurrente antes de CADA release `develop→main`** — barrido de rutina, no
-  evento excepcional; nunca como sustituto del QA/OK de unjordi.
+  evento excepcional; nunca como sustituto del QA/OK del usuario.
 
 ## Los "zapatos" (inputs OBLIGATORIOS — sin esto el auditor camina descalzo)
 Regla dura heredada de [[auditar-proceso-algoritmo]]: **a cada auditor se le dan los zapatos o audita a
@@ -71,8 +70,7 @@ ciegas.** Para el cerebro son:
    (o un flowchart de guards), dale al auditor los FP RELEVANTES a ese guard. Uso doble: (a) el chart/afirmación
    debe reflejar la conducta **TUNEADA** del guard (no la pre-tuning), y (b) un patrón de FP recurrente suele
    ser un **edge REAL** que el diagrama debería depictar o anotar. Blinda contra que el auditor marque como
-   "bug del chart" algo que es solo cómo se comporta el guard de verdad. (Decisión unjordi 2026-09-08:
-   "aliméntaselos también a los auditores cuando corras el loop sobre ESE flowchart".)
+   "bug del chart" algo que es solo cómo se comporta el guard de verdad. Aliméntaselos también a los auditores cuando corras el loop sobre ESE flowchart.
 7. **La rama/commit de REFERENCIA correcta** — si el target es algo ya INSTALADO (una máquina, un clon),
    la referencia es la rama desde la que se instaló, y eso se **determina, no se asume**. Caso real
    (sep-2026): un auditor reportó "la máquina corre un cerebro DRIFTADO: 7 hooks difieren y 3 de tier
@@ -86,13 +84,12 @@ ciegas.** Para el cerebro son:
 > audita contra la **FIRMA** = `CLAUDE.md` (thin, TOC) → el **detalle operativo** → la memoria/skill →
 > **realidad (código)**. **Para AUDITAR, lee el entry-point operativo REAL, sea cual sea su nombre** (hoy varía:
 > `AGENTS.md` en games-master, `MEMORY.md`-índice en cps). La **CONVENCIÓN destino es `CLAUDE.md`+`MEMORY.md`**
-> (`canonizar-cerebro` (modo consolidar) migra hacia ella); `AGENTS.md` queda para **arquitectura real** (en cps, 3194 líneas:
-> capas/dominio, medido vs el `.cs`). La coherencia verifica que **ninguno mienta respecto al código real** y que
+> (`canonizar-cerebro` (modo consolidar) migra hacia ella); `AGENTS.md` queda para **arquitectura real** (p. ej. capas/dominio, verificado vs el `.cs`). La coherencia verifica que **ninguno mienta respecto al código real** y que
 > no se confunda el ROL de cada doc (auditar lee la realidad; consolidar la lleva a la convención).
 
 ## Las dimensiones (una por auditor, en paralelo)
 El cerebro se barre por dimensiones INDEPENDIENTES; se lanza **un auditor por dimensión** (fan-out, ver
-[[orquestar-fanout]]) para que cada uno sea profundo y no se diluya:
+la norma «Delegar a agentes») para que cada uno sea profundo y no se diluya:
 - **A · Guards / lib de git** — ¿se pueden EVADIR? (push a base, escaneo de secretos, gate de merge,
   confirmación). Es la dimensión más adversarial y **se audita por EJECUCIÓN** (ver abajo).
 - **C · Fidelidad de flowcharts + doc** — ¿los `.dot`/leyendas/citas reflejan el código y el árbol del
@@ -102,7 +99,7 @@ El cerebro se barre por dimensiones INDEPENDIENTES; se lanza **un auditor por di
 Ajusta el set a lo que cambió: si solo tocaste guards, corre A (y una pasada de C si tocaste su doc).
 
 ## Regla de oro de la dimensión A: se audita por EJECUCIÓN, no por lectura
-La lección más cara de las 9 rondas: **un guard de regex se rompe por cómo el SHELL tokeniza, no por
+Regla central: **un guard de regex se rompe por cómo el SHELL tokeniza, no por
 cómo se LEE.** El auditor de guards NO debe conformarse con leer el `.sh` — debe **montar un repo git de
 sandbox efímero** (mktemp), pararse en una rama no-base y en una base, y **correr el guard con entradas
 JSON reales** (`{"tool_name":"Bash","tool_input":{"command":"..."}}`), pensando como adversario:
@@ -131,9 +128,9 @@ Cada auditor hace las **dos pasadas**: primero cada pieza SOLA (¿dónde truena 
 JUNTAS (¿una pieza correcta contradice a otra, o deja un hueco en la costura?). El dictamen separa los
 hallazgos individuales de los **colectivos/de costura** — son de naturaleza distinta.
 
-## El LOOP fix→re-auditar→hasta CONVERGER (el corazón, y solo con OK de unjordi)
-Auditar ENCUENTRA; arreglar es **decisión de unjordi** (no-transitiva: el dictamen no autoriza tocar
-nada). Cuando unjordi pide "dale vueltas hasta que salga limpio", el ciclo es:
+## El LOOP fix→re-auditar→hasta CONVERGER (el corazón, y solo con OK del usuario)
+Auditar ENCUENTRA; arreglar es **decisión del usuario** (no-transitiva: el dictamen no autoriza tocar
+nada). Cuando el usuario pide "dale vueltas hasta que salga limpio", el ciclo es:
 1. **Fan-out** de auditores → dictámenes a disco → **sintetiza** (dedup + severidad).
 2. Presenta los hallazgos; con OK, **arregla en una ramita** (`fix/...` o `feat/...`), y **cada hallazgo
    nace con su TEST** (verificado por ejecución contra el guard real). Corre la suite.
@@ -153,7 +150,7 @@ nada). Cuando unjordi pide "dale vueltas hasta que salga limpio", el ciclo es:
    limpios y fundados valieron tanto como los que traían críticos**, porque ambos permitieron decidir.
 5. **Señala el patrón** si varias rondas destapan la MISMA clase (fue whack-a-mole de regex-vs-shell):
    generaliza el fix a la CLASE, no persigas instancias, y si solo quedan exóticos, **pausa y lleva a
-   unjordi la decisión de convergencia** en vez de loopear indefinidamente.
+   el usuario la decisión de convergencia** en vez de loopear indefinidamente.
 
 ## Read-only, aislamiento y reporte (reglas duras)
 - **Read-only de verdad.** El auditor LEE el árbol bajo revisión y EJECUTA en sandbox mktemp; **NUNCA**
@@ -180,9 +177,9 @@ dictamen durable los lista con su razón. Perseguir exóticos indefinidamente es
   vivo (`estado-proyecto.md` / la nota del tema) con severidad y origen — aunque solo se atienda un
   subconjunto (ver [[cerrar-slice]]). El chat no es la fuente de verdad.
 - **El auditor NO declara LISTO.** Su dictamen es insumo; el cierre exige el QA o la autorización expresa
-  de unjordi (definición de LISTO). "Auditado sin hallazgos graves" es *verificado técnicamente*, no *listo*.
+  del usuario (definición de LISTO). "Auditado sin hallazgos graves" es *verificado técnicamente*, no *listo*.
 - **Integridad de los guardarraíles.** Si el fix toca un guard de supervisión de Claude, el cambio es de
-  PRECISIÓN/endurecimiento y exige **OK explícito de unjordi para ESE control** — nunca "para que deje
+  PRECISIÓN/endurecimiento y exige **OK explícito del usuario para ESE control** — nunca "para que deje
   de molestar".
 
 ## Familia
@@ -192,10 +189,10 @@ dictamen durable los lista con su razón. Perseguir exóticos indefinidamente es
   (0 CRÍTICO/ALTO/MEDIO, BAJOS triaged). El FMEA [[auditar-proceso-algoritmo]] es el TERCER eje (algoritmo/flujo),
   se suma cuando lo hay.
 - Hermano de [[auditar-proceso-algoritmo]] (la METODOLOGÍA general; este es su modo-cerebro empaquetado),
-  de [[diagramar]] (produce los flowcharts que son los zapatos), de [[orquestar-fanout]] (cómo lanzar el
+  de [[diagramar]] (produce los flowcharts que son los zapatos), de la norma «Delegar a agentes» (cómo lanzar el
   fan-out sin niñera) y de [[cerrar-slice]] (los hallazgos → backlog, el fix → MR con resumen curado).
 
-## El prompt del auditor (battle-tested — destilado de las 9 rondas)
+## El prompt del auditor 
 Delega con `Task`/subagente `general-purpose`, uno por dimensión. Adapta el target, conserva la ESENCIA:
 
 > Eres un AUDITOR FMEA READ-ONLY de `<dimensión: los git-guards / la fidelidad de los flowcharts / el

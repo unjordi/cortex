@@ -13,7 +13,7 @@
 # invoca (Terminal/sshd), concedido UNA vez via System Settings -> Privacidad y seguridad ->
 # Accesibilidad -- igual precondicion que el screenshot necesita para Grabacion de pantalla.
 #
-# VERIFICADO 2026-09-18 LOCAL en esta Mac (macOS 26.6.2): `brew install cliclick` + `cliclick
+# VERIFICADO (macOS 26.6.2): `brew install cliclick` + `cliclick
 # m:X,Y` + `cliclick c:.` corrieron sin error (exit 0) con el permiso de Accesibilidad ya concedido.
 # El verbo AppleScript de System Events para clicks por coordenada (fuera del alcance de este kit)
 # fallo con error -25200 en esta misma maquina/version -- otro motivo para no depender de el.

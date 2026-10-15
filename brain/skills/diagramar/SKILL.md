@@ -87,10 +87,8 @@ está en Mermaid) con el Flujo 1 (editar en yEd) sin volver a dibujar nada.
 
 - **Un diagrama entregable NUNCA queda solo como artefacto local gitignorado ni como widget
   efímero del chat.** Un mockup/diagrama que solo vive en el preview del chat no sobrevive ni al
-  scroll (caso real, jul 2026: un mockup aprobado se borró de AMBOS lados y costó días
-  re-sincronizarse). Si se mostró, **se guarda a archivo versionado en el MISMO turno** (norma
-  "mockups a archivo versionado"). Los flowcharts del cerebro vivieron meses gitignorados → en
-  GitHub no se veía NADA; `docs/mapa-cerebro.md` es el antídoto.
+  scroll. Si se mostró, **se guarda a archivo versionado en el MISMO turno** (norma
+  "mockups a archivo versionado"). Los flowcharts del cerebro versionados viven en `docs/mapa-cerebro.md`.
 - **Doc = realidad:** el diagrama describe algo — cuando ESO cambie (un hook, un flujo, una
   ruta), el diagrama se actualiza **en la MISMA tanda** que el cambio, no "después". Un diagrama
   que miente es peor que no tener diagrama. Si el diagrama tiene fuente Y espejo (`.dot` +

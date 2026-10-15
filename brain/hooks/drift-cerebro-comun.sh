@@ -45,9 +45,9 @@
 # Por qué: antes de esto, todo el tooling bash (este archivo, verificar-cerebro.sh,
 # proteger-fuente-cerebro.sh, exportar-sesion-master.sh, sesiones-master/install-hook.sh) resolvía con
 # `${CLAUDE_BRAIN_DIR:-$HOME/.cortex}` a secas — SIN el fallback a `~/.claude-brain`. En una máquina cuyo
-# clon quedó bajo el nombre VIEJO (rename #312 sin migrar), `~/.cortex` no existe → autosync/verificación/
+# clon quedó bajo el nombre VIEJO (renombre sin migrar), `~/.cortex` no existe → autosync/verificación/
 # protección de fuente quedaban CIEGOS (fail-open silencioso), asimetría con los widgets que sí migraron
-# (auditoría 2026-08-29, §4 C2 / hallazgo AUTOSYNC). Única implementación — todo lo demás la llama, no la
+# Única implementación — todo lo demás la llama, no la
 # reimplementa. Imprime la ruta por stdout, sin trailing slash.
 resolve_brain_dir() {
   if [ -n "${CLAUDE_BRAIN_DIR:-}" ] && [ -d "${CLAUDE_BRAIN_DIR:-}" ]; then
@@ -75,7 +75,7 @@ drift_chequea_repo() {
   SYNC="$BRAIN_DIR/brain/sincronizar-cerebro.sh"
   if [ ! -f "$SYNC" ]; then printf 'STATUS=%s\n' "no-source"; return 0; fi
 
-  # ── #46: DISCRIMINAR repo COMPARTIDO vs PERSONAL por la marca .claude/repo-compartido ────────────────
+  # ── #46: DISCRIMINAR repo COMPARTIDO vs PERSONAL por la marca .claude/repo-compartido ────────── ──
   # (semántica idéntica a la que vivía en el hook; ver diseño [[diseno-rediseno-auto-sync-46]])
   if [ ! -f "$ROOT/.claude/repo-compartido" ]; then
     # ── PERSONAL: guards por-repo NUNCA → NO commit/push; si SOBRAN, FLAG a quitar. La memoria/skills del
@@ -138,7 +138,7 @@ Cómo: borra esos .sh de .claude/hooks/ + sus entradas en .claude/settings.json.
 🔎 DUPLA: el cerebro del repo se movió → corre la dupla de auditores (suficiencia + coherencia) para verificar que no rompió nada. (Este repo NO tiene instanciado el esquema firma(\`CLAUDE.md\`)+detalle(\`AGENTS.md\`); la dupla funciona igual — considera instanciarlo para auditar «contra la firma».)"
   fi
 
-  # C2 (FMEA) — GUARD ANTI-REGRESIÓN del auto-sync: si la FUENTE está DETRÁS de su origin/main, aplicarla
+  # GUARD ANTI-REGRESIÓN del auto-sync: si la FUENTE está DETRÁS de su origin/main, aplicarla
   # REGRESARÍA el cerebro y el push lo propagaría → NO auto-aplicar. Guard POSITIVO (tightening puro):
   # fuente_stale=1 SOLO cuando CONFIRMO behind>0; si no hay cómo medir, conserva el comportamiento previo.
   local fuente_stale=0 behind
@@ -148,7 +148,7 @@ Cómo: borra esos .sh de .claude/hooks/ + sus entradas en .claude/settings.json.
 
   local cur
   cur=$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
-  # sA3 (FMEA) — mini-develop = `Develop<Usuario>` en PascalCase: Develop + una MAYÚSCULA (clase POSIX
+  # mini-develop = `Develop<Usuario>` en PascalCase: Develop + una MAYÚSCULA (clase POSIX
   # [[:upper:]], no rango [A-Z] que en locales UTF-8 puede casar minúsculas).
   case "$cur" in
     Develop[[:upper:]]*)
@@ -161,9 +161,8 @@ $detalle"
         fi
         if bash "$SYNC" "$ROOT" --apply >/dev/null 2>&1 \
            && git -C "$ROOT" add -A .claude/ >/dev/null 2>&1; then
-          # V1 (auditoría 2026-08-06): este auto-commit BYPASSEABA secret-scan — ocurre DENTRO de este
-          # subproceso, NO vía una tool Bash, así que el guard PreToolUse/Bash secret-scan NO lo intercepta.
-          # Un `.claude/` drifteado con un secreto se auto-pusheaba a la mini saltándose el guard defensivo.
+          # Este auto-commit ocurre DENTRO de este subproceso, no vía una tool Bash, así que el guard
+          # PreToolUse/Bash secret-scan no lo intercepta: se escanea aquí.
           # Escaneo lo AGREGADO (git diff --cached de .claude/, líneas '+') con la MISMA lib que usa
           # secret-scan (detectar-secretos.sh → ds_buscar). Si hay match → ABORTA el auto-sync (des-estagea,
           # NO commitea/pushea) y avisa. Fail-OPEN si falta la lib (no rompe el arranque de sesión).
@@ -328,13 +327,8 @@ EOF
 
 # ── drift_norms_global — drift del bloque de NORMAS instalado en ~/.claude/CLAUDE.md (marcadores
 #    `<!-- BEGIN cortex … -->` … `<!-- END cortex -->`) vs la fuente única (brain/norms/global-claude-md.md).
-#    Antídoto al hallazgo ALTO-2 de la auditoría de suficiencia operativa (2026-09-18): a diferencia de
-#    hooks/skills (arriba, con su propio drift_*_global), install-brain.sh §(e) SÍ refresca este bloque en
-#    cada re-corrida (reemplaza el contenido completo en su lugar) — el mecanismo de PROPAGACIÓN funciona —
-#    pero NADA avisaba que hacía falta re-correrlo: confirmado en vivo, el propio `~/.claude/CLAUDE.md` de
-#    la máquina de unjordi seguía citando el hook YA retirado `recordar-dashboard` como "un hook te lo
-#    recuerda" pese a que `brain/norms/global-claude-md.md` ya traía el texto correcto, retirado desde
-#    2026-09-18 — el reemplazo funcional (norma en vez de hook) solo sirve si el TEXTO de la norma llega.
+#    install-brain.sh §(e) refresca este bloque en cada re-corrida (reemplaza el contenido completo en su
+#    lugar); esta función avisa cuando hace falta re-correrlo.
 #    Comparación EXACTA (no heurística): install-brain inserta el archivo fuente COMPLETO y VERBATIM entre
 #    sus propios marcadores BEGIN/END (que el propio archivo fuente ya trae) — así que "instalado == fuente"
 #    se reduce a extraer el bloque instalado (desde la línea BEGIN hasta la línea END, ambas inclusive) y

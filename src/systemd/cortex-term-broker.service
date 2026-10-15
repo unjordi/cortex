@@ -41,8 +41,8 @@ RuntimeDirectory=axon
 RuntimeDirectoryMode=0700
 # …y PRESERVE=yes porque el default (`no`) BORRA el directorio al parar el servicio. El contenedor
 # lo tiene bind-mounteado: si desaparece y se recrea, el mount del contenedor queda atado a un inodo
-# muerto y la terminal se cae en el siguiente `restart` — el mismo modo de falla que ya se midió el
-# 2026-09-07 al montar el ARCHIVO en vez del directorio.
+# muerto y la terminal se cae en el siguiente `restart` (igual que si se monta el ARCHIVO en vez del
+# directorio).
 RuntimeDirectoryPreserve=yes
 
 ExecStart=%h/.local/bin/cortex-term-broker
@@ -55,7 +55,7 @@ RestartSec=3
 OOMPolicy=continue
 
 # Contabilidad SÍ, tope NO — y es una decisión, no un olvido: la RAM del cgroup es la de las
-# SESIONES REALES del usuario (medido en la unidad de hoy: 3.4 GB en uso, pico de 56 GB). Un
+# SESIONES REALES del usuario (puede llegar a decenas de GB). Un
 # MemoryMax aquí mataría el trabajo del usuario, no un leak del broker. Se mide para poder verlo
 # (`systemctl --user show cortex-term-broker -p MemoryCurrent -p MemoryPeak`), no para acotarlo.
 #

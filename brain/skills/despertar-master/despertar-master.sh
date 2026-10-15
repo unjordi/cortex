@@ -2,10 +2,10 @@
 # despertar-master.sh — resuelve y DESPIERTA una sesión master de Claude Code desde la FUENTE
 # CONFIABLE (los transcripts locales), NO desde masters.json (que driftea y genera conflictos de sync).
 #
-# Fuente de verdad (medida 2026-10-14): cada transcript ~/.claude/projects/<slug>/<id>.jsonl trae el
+# Fuente de verdad cada transcript ~/.claude/projects/<slug>/<id>.jsonl trae el
 # NOMBRE en su último `"customTitle"` (el CLI le agrega " (N)" al duplicar un nombre), el folder de
 # resume en su último `"cwd"`, y la vida en el mtime del archivo. Por NOMBRE gana el transcript MÁS
-# RECIENTE — así "cortex-master (2)" (vivo) le gana a "cortex-master" (viejo), sin preguntarle a nadie.
+# RECIENTE — así "<x>-master (2)" (vivo) le gana a "<x>-master" (viejo), sin preguntarle a nadie.
 #
 # Modos:
 #   despertar-master.sh                 lista los masters (igual que --lista)
@@ -26,7 +26,7 @@ PROJECTS="${CLAUDE_PROJECTS_DIR:-$HOME/.claude/projects}"
 # ── helpers de lectura del transcript ────────────────────────────────────────────────────────────
 # mtime epoch PORTABLE: GNU `stat -c %Y` PRIMERO (falla LIMPIO en BSD, sin ensuciar stdout), luego BSD
 # `stat -f %m`. Al revés MUERDE: en GNU `-f` es --file-system y `%m` vuelca basura con exit 0 → rompe
-# la aritmética bajo set -u. (Misma lección del afinado núcleo 2026-10.)
+# la aritmética bajo set -u.
 _mtime() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo 0; }
 _edad_min() {
   local m now; m="$(_mtime "$1")"; case "$m" in ''|*[!0-9]*) m=0 ;; esac
@@ -57,8 +57,8 @@ _resolver_cwd() {
 # ── vida por SEÑAL DIRECTA, no solo mtime ─────────────────────────────────────────────────────────
 # El mtime del transcript es un PROXY: un master puede estar VIVO pero idle > VIVA_MIN. La señal
 # AUTORITATIVA es que corra su `screen` (así lo lanza esta skill) o un proceso `claude --resume <id>`.
-# Sin esto, relanzar un master idle crea un 2º escritor sobre su transcript (medido: arsenal-master
-# 826 MB, 29 min idle → doble lanzamiento sobre el mismo id). Residual conocido: una sesión hospedada
+# Sin esto, relanzar un master idle crea un 2º escritor sobre su transcript (doble lanzamiento
+# sobre el mismo id). Residual conocido: una sesión hospedada
 # por `claude daemon`, idle y sin screen, NO trae el id en su cmdline → no se detecta por proceso; el
 # mtime la cubre mientras se use (escribe su transcript) y el screen cubre las lanzadas por aquí.
 # Fail-open: sin screen/pgrep estas señales no aplican y manda el mtime.
@@ -112,7 +112,7 @@ listar() {
   [ "$n" -gt 0 ] || echo "(sin sesiones *-master en $PROJECTS)"
 }
 
-# captura la pantalla de un screen (NECESITA -p 0 -h; sin eso sale vacía — gotcha medido).
+# captura la pantalla de un screen (NECESITA -p 0 -h; sin eso sale vacía ).
 _pantalla() {
   local f out; f="$(mktemp 2>/dev/null)" || return 1
   screen -S "$1" -p 0 -X hardcopy -h "$f" 2>/dev/null || true

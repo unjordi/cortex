@@ -102,8 +102,8 @@ El cerebro se ordena por *dureza*: arriba lo que te **bloquea** sin negociar; ab
    ├─ 🧭 sesion-inicio            reinyecta rama + norma + memoria al abrir
    └─ 🌾 recordar-cosechar        espejo automático del TaskList vivo → bloque fenced en estado-proyecto.md (determinista, sin LLM)
       (💤 precompact-volcar-estado se RETIRÓ: PreCompact no puede inyectar; lo cubren 💾 checkpoint + 🧵 rehidratar-hilo + 📈 aviso-contexto.
-       overhaul hooks 2026-09-18: recordar-dashboard/delegacion-reporte/recordar-orquestar/recordar-unificar-cerebro/hud-stale se RETIRARON
-       —puramente advisory, medido: ignorados— y su regla subió a norma en brain/norms/global-claude-md.md; MANIFEST los lista `retirado`.)
+       recordar-dashboard/delegacion-reporte/recordar-orquestar/recordar-unificar-cerebro/hud-stale están retirados: su regla
+       vive en brain/norms/global-claude-md.md; MANIFEST los lista `retirado`.)
 
 📜 Normas — reglas que Claude se autoimpone (CLAUDE.md)
 ├─ 🎯 Definition of Done       verde técnico ≠ Done/Listo/Ya Quedó; exige QA o un OK explícito
@@ -117,7 +117,6 @@ El cerebro se ordena por *dureza*: arriba lo que te **bloquea** sin negociar; ab
 ├─ 🗂️ to-do                    carga la interfaz de tareas del harness desde el backlog durable (estado-proyecto.md)
 ├─ 💧 rehidratar-hilo          relee el HILO a mano (gemelo del hook; respaldo si un update del CLI rompe el auto-rehidratado)
 ├─ 🛟 reconstruir-contexto     RED DE EMERGENCIA cuando el checkpoint quedó pobre y /compact fundió el hilo: excava andamio→backlog→transcript y cierra re-volcando con checkpoint
-├─ 🐝 orquestar-fanout         fan-out sin niñera: asigna del backlog, auto-reporta y limpia al cerrar
 ├─ 🗺️ diagramar                diagramas por destino: .dot→dot2yed→yEd (editar a mano) · Mermaid en .md versionado (verse en GitHub)
 ├─ 🔬 auditar-proceso-algoritmo  auditor experto read-only (proceso industrial + algoritmo) → hallazgos priorizados; se alimenta de los flowcharts de diagramar
 ├─ 🩺 auditar-coherencia-cerebro fan-out read-only sobre el PROPIO cerebro (guards+flowcharts+doc): evasiones/huecos/drift, verificado por ejecución → loop hasta converger; modo-cerebro de auditar-proceso-algoritmo
@@ -191,7 +190,7 @@ mismo árbol.
 Es **doc de record** (norma *doc = realidad*): si cambia un hook/norma/skill —alta, baja o cambio de
 lógica— se actualiza `mapa-cerebro.md` **en la misma tanda**, igual que este árbol y el conteo de
 checks de `test-brain.sh`. Para el mapa *editable a mano* (yEd) el flujo va por el skill `diagramar`;
-el viejo `docs/mapa-flujos.dot` (maestro único en Graphviz) se **retiró el 2026-07-29**.
+`docs/mapa-flujos.dot` (maestro único en Graphviz) está retirado.
 
 ## Lo que lo hace vivo — se refleja, se cura, se actualiza
 

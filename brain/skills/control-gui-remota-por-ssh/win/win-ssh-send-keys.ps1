@@ -5,7 +5,7 @@
   Complemento de entrada (junto con win-ssh-send-click.ps1). La sesion SSH corre en otra logon-session
   que la consola -> se despacha el tecleo a la SESION INTERACTIVA con `schtasks /IT`, via WScript.Shell
   SendKeys. Opcionalmente enfoca una ventana por titulo (AppActivate) antes de teclear.
-  VERIFICADO 2026-08-27 (estacion de prueba real): una tecla enviada disparo el OSD del sistema "Bloq numerico".
+  VERIFICADO (estacion de prueba real): una tecla enviada disparo el OSD del sistema "Bloq numerico".
 
   SINTAXIS DE -Keys (WScript.Shell SendKeys):
     texto normal se teclea literal;  {ENTER} {TAB} {ESC} {BACKSPACE} {DEL} {F5} {UP}{DOWN}{LEFT}{RIGHT}

@@ -37,21 +37,17 @@
 # Líneas '#' y en blanco se ignoran. Skill en brain/skills/ SIN línea aquí → se trata como `global` + AVISO.
 # Al agregar/mover una skill: EDITA AQUÍ y las rutas lo heredan.
 #
-# ── DECISIÓN DE TIER (unjordi, 2026-08-07) ───────────────────────────────────────────────────────────────
-# Marcadas `both` las 4 skills que un colega en un repo COMPARTIDO usaría — cerrar-slice, checkpoint,
+# ── TIER ───────────────────────────────────────────────────────────────
+# Marcadas `both` las skills que un colega en un repo COMPARTIDO usaría — cerrar-slice, checkpoint,
 # rehidratar-hilo (la receta del MR + la continuidad del hilo, compañeras de los guards que ya viajan `both`)
 # y to-do (carga el backlog durable de ESE repo, que en un compartido es estado del EQUIPO). Así el colega
 # que clona un repo COMPARTIDO recibe los guards Y las skills que los acompañan como CORREO. Aparecen en su
 # .claude/skills en la próxima auto-sync. El resto sigue `global` (seed CONSERVADOR — no empuja las demás
 # por-repo). A diferencia de los hooks `both`, una skill NO necesita cláusula de dedupe: es markdown que LEE
-# el modelo, no un script que se EJECUTE → no hay doble disparo. El PLUMBING de `both` está construido y
-# probado; basta cambiar el tier aquí.
-# 2026-09-18: sumada `control-gui-remota-por-ssh` como `both` (capacidad genérica usable por cualquier
-# sesión/máquina del equipo, promovida desde potenciaDatabases — no es específica de un repo).
-# 2026-09-22: sumada `reconstruir-contexto` como `both` — es hermana directa de `checkpoint`/
-# `rehidratar-hilo`/`to-do` (ya `both`): un colega en un repo COMPARTIDO sin brain global sufre el MISMO
-# checkpoint-mal-hecho + compact-que-funde-el-hilo, y necesita el mismo procedimiento de emergencia. Viaja
-# junto a sus hermanas por la misma razón que ellas viajan (CORREO al clon sin brain global).
+# el modelo, no un script que se EJECUTE → no hay doble disparo.
+# `control-gui-remota-por-ssh` es `both`: capacidad genérica usable por cualquier sesión/máquina del equipo.
+# `reconstruir-contexto` es `both`: hermana de `checkpoint`/`rehidratar-hilo`/`to-do`; un colega en un repo
+# COMPARTIDO sin brain global necesita el mismo procedimiento de emergencia (CORREO al clon).
 
 auditar-coherencia-cerebro       global
 auditar-proceso-algoritmo        global
@@ -68,7 +64,6 @@ diagramar                        global
 ingenieria-inversa-gui-db-navegador  global
 investigar-dominio               global
 markdown-a-pdf                   global
-orquestar-fanout                 global
 positivar-doc                    global
 reconstruir-contexto             both
 rehidratar-hilo                  both
@@ -82,4 +77,5 @@ consolidar-cerebro               retirado  2026-09-17  ABSORBIDA por canonizar-c
 unificar-cerebro                 retirado  2026-09-17  ABSORBIDA por canonizar-cerebro (modo "reconciliar": ritual semanal minis-de-devs → develop)
 claude-proyecto-autocontenido    retirado  2026-09-17  ABSORBIDA por canonizar-cerebro (modo "sembrar": cerebro nativo en <proyecto>/.claude/, sin symlinks)
 cosechar-sesion                  retirado  2026-09-17  ABSORBIDA por cerrar-slice §5 (tooling cosechar-aprendizaje.sh, mismo flujo de cierre)
-revisar-entregables-agentes      retirado  2026-09-17  ABSORBIDA por orquestar-fanout (norma + bucle de verificación de lo que un agente entrega)
+revisar-entregables-agentes      retirado  2026-09-17  ABSORBIDA por la norma «Delegar a agentes» de global-claude-md.md
+orquestar-fanout                 retirado  2026-10-15  ABSORBIDA por la norma «Delegar a agentes» de global-claude-md.md (un agente secuencial por default)

@@ -58,7 +58,6 @@
 ├─ 🗂️ to-do                    carga la interfaz de tareas del harness desde el backlog durable (estado-proyecto.md)
 ├─ 💧 rehidratar-hilo          relee el HILO a mano (gemelo del hook; respaldo si un update del CLI rompe el auto-rehidratado)
 ├─ 🛟 reconstruir-contexto     RED DE EMERGENCIA cuando el checkpoint quedó pobre y /compact fundió el hilo: excava andamio→backlog→transcript y cierra re-volcando con checkpoint
-├─ 🐝 orquestar-fanout         fan-out sin niñera: asigna del backlog, auto-reporta y limpia al cerrar
 ├─ 🗺️ diagramar                diagramas por destino: .dot→dot2yed→yEd (editar a mano) · Mermaid en .md versionado (verse en GitHub)
 ├─ 🔬 auditar-proceso-algoritmo  auditor experto read-only (proceso industrial + algoritmo) → hallazgos priorizados; se alimenta de los flowcharts de diagramar
 ├─ 🩺 auditar-coherencia-cerebro fan-out read-only sobre el PROPIO cerebro (guards+flowcharts+doc): evasiones/huecos/drift, verificado por ejecución → loop hasta converger
@@ -174,7 +173,6 @@ Reclutar un agente cuesta según su nivel (**gratis** local · **incluido** dent
 - **`reconstruir-contexto`** — RED DE EMERGENCIA para cuando el par checkpoint/rehidratar-hilo FALLÓ: el checkpoint quedó pobre/ausente y un /compact fundió el detalle real, así que lo que `rehidratar-hilo` reinyecta es inútil. Excava en orden barato→caro (andamio mecánico → backlog durable → transcript `.jsonl` acotado, con fallbacks) y CIERRA re-volcando un hilo bueno con `checkpoint`. Regla dura: EXCAVA, no confabules sobre el resumen fundido.
 
 **Orquestación / delegación**
-- **`orquestar-fanout`** — fan-out sin niñera: worktrees aislados, 2 archivos de estado (bitácora `>>` + estado-proyecto), auto-reporte y limpieza al cerrar. Incluye el bucle de verificación (no creerle a un agente su "listo", el diff de preservación en rebuilds) que antes vivía en el skill `revisar-entregables-agentes`.
 - **`turno-nocturno`** — protocolo del turno de noche: eco del contrato, decide-dentro-de-la-cerca, grants durables a disco, checkpoint cada ~2h.
 
 **Memorias / docs**

@@ -10,7 +10,7 @@ Encapsula la **"definición de terminado" con evidencia** y el **flujo de git**.
 develop/main), **merge-develop-guard** (candado ÚNICO del punto de merge: exige `--squash` + un mensaje con
 sustancia y tu OK expreso antes de integrar — consolida los antiguos `merge-squash-guard` +
 `confirmar-merge-develop`). El dashboard + doc=realidad (Paso 2 de aquí) NO tiene hook que lo recuerde
-(`recordar-dashboard` se retiró, overhaul hooks 2026-09-18, puramente advisory) — es self-check tuyo antes
+— es self-check tuyo antes
 de pushear. Sigue el orden — no te saltes pasos. Versión **genérica** (agnóstica de stack): sirve para
 cualquier proyecto que use este cerebro.
 
@@ -31,8 +31,7 @@ queda con el JUICIO (¿está LISTO? ¿el mensaje cuenta el cambio neto?); el scr
   dinámico mal armado → 0 filas; todos pasaron build+tests y reventaron en vivo, incluso llegaron a producción).
 - **Cambio DESTRUCTIVO = pausa + OK.** Si el diff ELIMINA funcionalidad/entidades/tablas o mucho código,
   es destructivo y **NO transitivo** aunque un doc lo respalde: preséntalo al usuario como PÉRDIDA explícita
-  ("esto borra X que costó Y") y pide su OK ANTES de ejecutarlo/cerrarlo. (En un caso real se aplanó un esquema de
-  permisos jerárquico de meses amparado en `AGENTS.md`, sin avisar que era una pérdida.)
+  ("esto borra X que costó Y") y pide su OK ANTES de ejecutarlo/cerrarlo.
 - **QA de NO-REGRESIÓN visual.** Tras tocar un layout/estilo COMPARTIDO, re-verifica los 2-3 ajustes
   previos del mismo componente: un fix de layout puede romper otro que ya estaba bien.
 - Recuerda: **verde técnico ≠ LISTO.** Es *verificado técnicamente*: peldaño necesario, insuficiente
@@ -40,7 +39,7 @@ queda con el JUICIO (¿está LISTO? ¿el mensaje cuenta el cambio neto?); el scr
 
 ## 2. Actualiza la memoria Y la doc (en la misma tanda — doc = realidad)
 Este paso ES el "volcado" del skill `checkpoint`: **cerrar-slice = ese volcado + verificar + git + cosecha.**
-Modelo de estado (tres archivos, un dato en UN lugar — ver skill `orquestar-fanout`): **`estado-proyecto.md`
+Modelo de estado (tres archivos, un dato en UN lugar — ver la norma «Delegar a agentes»): **`estado-proyecto.md`
 = hub vivo** (dónde estamos + backlog + prioridad); **`bitacora.md` = log append-only** (qué pasó);
 **`hilo-mental-actual.md` = el hilo de trabajo vivo** (de qué va ESTO ahora — lo sobrescribe `checkpoint`, lo
 rehidrata el hook `rehidratar-hilo` al retomar/compactar). Al cerrar, **refresca (o vacía) `hilo-mental-actual.md`**
@@ -48,7 +47,7 @@ para que no quede apuntando a un tema ya terminado.
 - `.claude/memory/estado-proyecto.md`: mueve el ítem a **HECHO** (commit+fecha al mergear); registra
   **DECISIONES**; lo descartado a propósito va en **FUERA POR DECISIÓN** (no en pendiente). **Estado
   BIDIRECCIONAL:** ni dejes "pendiente" algo que YA está hecho, ni marques "hecho" algo sin verificar —
-  la doc miente en ambos sentidos y cuesta auditorías (en un caso real el usuario forzó 3 por esto).
+  la doc miente en ambos sentidos y cuesta auditorías.
 - **Backlog COMPLETO, no solo lo elegido:** si este slice viene de una lista de hallazgos/opciones que
   TÚ generaste (una auditoría, una revisión, un diagnóstico) y el usuario solo actuó sobre un
   subconjunto, **los ítems restantes se escriben AHORA a PENDIENTE** con su severidad y origen — nunca
@@ -62,8 +61,7 @@ para que no quede apuntando a un tema ya terminado.
   destructivo diferido NO es un "pendiente menor"). La pregunta de 2º orden: *¿lo que empujé fuera del
   muro tiene casa, dueño y severidad, o se evapora?* — un artefacto tidy con su sección numeradita SE
   SIENTE como cierre y no lo es. Un hook no puede juzgar si tu lista de delegados quedó completa → paso
-  EXPLÍCITO de esta skill. Origen: `reubicar-master §9`, 2026-08-08 — delegó 4 aristas del sync de
-  sesiones al texto del skill, una DESTRUCTIVA, hasta que se cacharon a mano.
+  EXPLÍCITO de esta skill.
 - **Appendea UNA línea al FINAL** de `.claude/memory/bitacora.md` (`- fecha · rama · quién · qué`)
   con `>>` (`printf '%s\n' '- …' >> bitacora.md`), **no** con un Edit que reescriba: el append-al-final
   es lo que deja que varias sesiones/agentes escriban la misma bitácora sin pisarse (dos `>>` no chocan;
@@ -74,8 +72,7 @@ para que no quede apuntando a un tema ya terminado.
   cerebro + el conteo de checks de `test-brain.sh`), `docs/`, comentarios. **Rastrea las copias** (un
   `grep` del nombre/valor viejo): una doc desincronizada YA es una doc que miente. **RELEE el
   ENCABEZADO/resumen de apertura del doc, no solo la línea que tocaste** — el "arriba" es lo primero que
-  se lee; un encabezado stale ("Dos hitos cerrados") mientras el cuerpo ya avanzó es la trampa más común
-  (pasó en un caso real varias veces). Y si dos números/valores describen lo mismo (una badge y la prosa), que
+  se lee; un encabezado stale ("Dos hitos cerrados") mientras el cuerpo ya avanzó es la trampa más común. Y si dos números/valores describen lo mismo (una badge y la prosa), que
   coincidan — desincronizados YA mienten.
 - **Dashboard GLOBAL** (`dashboard_cerebro.md`, memoria de ESTA máquina): **appendea** una línea al FINAL
   de su Bitácora con `>>` (no con un Edit) — así no chocas con las otras sesiones de Claude que tocan ese
@@ -166,7 +163,7 @@ es la lista de commits que el squash debía RESUMIR, no un resumen.
 > es `--auto-merge`, no `--auto`. (`merge-develop-guard` ya IGNORA una MENCIÓN citada de `glab mr merge`
 > —dentro de un `printf`/`echo`/heredoc/`--body`— así que loguear el comando ya no dispara el candado.)
 >
-> Gotchas de commit (destilados de un caso real): el mensaje largo va por **heredoc** (`git commit -F -`) o un
+> Gotchas de commit (gotchas): el mensaje largo va por **heredoc** (`git commit -F -`) o un
 > archivo ÚNICO en `/tmp` — **NUNCA dentro del repo** (se cuela al árbol) ni reutilizando uno viejo
 > (commit con mensaje equivocado → `--amend`). Y **no encadenes `git commit`/`push` dentro de loops de
 > espera en background** (`pgrep`/`pkill`): se truncan y dejan el commit a medias — separa "esperar a que
@@ -175,8 +172,7 @@ es la lista de commits que el squash debía RESUMIR, no un resumen.
 ## 5. Cosecha de aprendizaje Y de herramientas (¿es genérico? ¿sobrevive al reinicio?)
 Antes de dar por cerrado el slice, pregúntate: **¿dejó una lección reutilizable** (un gotcha, una
 convención, un patrón, o hasta una skill nueva)? No lo dejes en "ya me acordaré" — cosecharlo es parte
-del cierre, no un extra. (Esto absorbe lo que antes era el skill separado `cosechar-sesion`, retirado
-2026-09-17 — este §5 YA ES la cosecha; su maquinaria de append vive en el script `cosechar-aprendizaje.sh`,
+del cierre, no un extra. (Este §5 ES la cosecha; su maquinaria de append vive en el script `cosechar-aprendizaje.sh`,
 junto a este SKILL.md.)
 
 ### 5a. Relee la sesión y separa el GRANO de la PAJA
@@ -243,8 +239,7 @@ vive en el **scratchpad de la sesión / `/tmp` / un worktree** — y eso **muere
 cerrar el worktree**. Si es semilla reusable (no scratch de exploración de un solo uso), **cópialo al
 repo** en esta misma tanda (p. ej. `scripts/<tema>/`) y **commitéalo**. Y si un doc o el backlog ya
 **referencia una ruta** de esas herramientas (`scripts/etl-ots/`…), **que esa ruta exista** — una
-referencia a un archivo que no está es otra doc que miente. (Regla destilada de un catch real (2026-07):
-la maquinaria ETL vivía solo en el scratchpad y la sesión nueva no la encontraba.)
+referencia a un archivo que no está es otra doc que miente.
 
 Un hook puede *recordar* este paso, pero no *juzgar* si cosechaste bien (lección vs herramienta,
 reusable vs scratch) — por eso vive aquí.

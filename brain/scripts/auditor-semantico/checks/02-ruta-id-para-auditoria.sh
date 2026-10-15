@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
 # 02-ruta-id-para-auditoria.sh
 #
-# Hallazgo que lo originó: auditoría de MegaFlux (2026-07-15) — `SucesosController` usaba
-# `{sucesoId:guid}` e `InspeccionesController` usaba `{inspeccionId:guid}` en sus rutas
-# mutantes. `FiltroRegistroActividad.OnActionExecutionAsync` (Plantilla.webapi/Filters/)
+# Riesgo: un controller con rutas mutantes de placeholder distinto de `id` (p. ej. `{sucesoId:guid}`). `FiltroRegistroActividad.OnActionExecutionAsync` (Plantilla.webapi/Filters/)
 # solo sabe leer el id auditado de `ActionArguments["id"]` (o de `IContextoUsoRequest.EntidadId`
 # si el controller lo fija a mano). Resultado real: TODA mutación de esos dos agregados quedó
 # auditada con EntidadId = null — exactamente el caso que el negocio pedía cubrir ("que quede

@@ -104,12 +104,9 @@ del cortex. **Instancias canónicas de referencia:** `cps` y `fluxcore` (su `CLA
 ---
 
 ## MODO SEMBRAR — el cerebro nace NATIVO, sin symlinks
-> ⚠️ **CERO SYMLINKS (decisión dura de unjordi, 2026-09-08: "NO quiero symlinks en ningún lado" — "son un
-> pinche bug que no logro que dejen de propagar").** Este modo reemplaza al viejo skill
-> `claude-proyecto-autocontenido`, que PRESCRIBÍA un symlink `~/.claude/projects/<slug>/memory` →
-> `<repo>/.claude/memory`. Ese diseño quedó RETIRADO: los symlinks cuelgan al mover/borrar/renombrar el
-> repo (rompían `/to-do` y cuanto leyera `.claude/memory`) y proliferaron (15 basura medidos en una sola
-> máquina). **No lo repitas.** El criterio vigente es el de abajo.
+> ⚠️ **CERO SYMLINKS.** Nada de symlink `~/.claude/projects/<slug>/memory` → `<repo>/.claude/memory`:
+> los symlinks cuelgan al mover/borrar/renombrar el repo (rompen `/to-do` y cuanto lea
+> `.claude/memory`) y proliferan. El criterio es el de abajo.
 
 **El criterio (en una frase).** El cerebro de Claude Code de cada proyecto vive **NATIVO** en la carpeta
 del proyecto (`<proyecto>/.claude/{memory,skills,settings.json}`), leído directamente desde el `cwd` —
@@ -180,8 +177,8 @@ fusionar hacia el repo, NUNCA enlazar**:
    ESTE repo → de-proyecto; si solo describe el gusto/entorno de una persona → transversal. Ante duda
    real, pregúntale al dueño en vez de adivinar.
 3. **Fusiona hacia el repo con RECONCILIACIÓN, no solo dedup.** Si dos `MEMORY.md` listan cosas distintas,
-   únelos; si dos memorias AFIRMAN cosas DISTINTAS del mismo objeto (visto en vivo: un `MEMORY.md` decía
-   repo `unjordi/scripts`, otro `unjordi/PowerScripts`), no arrastres ambas — resuelve el conflicto con el
+   únelos; si dos memorias AFIRMAN cosas DISTINTAS del mismo objeto (p. ej. un `MEMORY.md` dice
+   repo `<usuario>/scripts`, otro `<usuario>/PowerScripts`), no arrastres ambas — resuelve el conflicto con el
    dueño. Deduplica con `diff -q`; lo que sobre va a una `.trash/`, nunca `rm` a ciegas.
 4. **No hace falta symlink ni bootstrap.** Una vez movidos los archivos reales al repo, el cerebro YA se
    lee nativo desde el `cwd`. El `~/.claude/projects/<slug>/` de esa máquina se queda con sus transcripts
@@ -213,7 +210,7 @@ fusionar hacia el repo, NUNCA enlazar**:
   solo la migración a la firma canónica. Puede invocarse SOLO (drift puramente estructural) o como el
   cierre de aquel.
 - Tras cambiar los guards/hooks del cerebro globalmente: la prosa del `CLAUDE.md` de los instanciados
-  queda stale (nombra un hook retirado) → canonizar la mata por construcción.
+  queda stale (nombra un hook que ya no existe) → canonizar la mata por construcción.
 
 ### Procedimiento (destilado del prototipo fluxcore)
 
@@ -301,8 +298,7 @@ Tiene su batería en `brain/test-brain.sh` (bloque `g5`: cerebro bueno/malo/no-i
 ## MODO CONSOLIDAR — dejar el cerebro SÓLIDO y COMPACTO (campaña amplia)
 Este modo NO reinventa nada: **encadena skills atómicas que ya existen** en una campaña con orden,
 cerca y criterio de cierre. Es el "cómo llevamos un cerebro de abrumador a cómodo consigo mismo" —
-destilado de dos casos vivos (games-master, que quedó notoriamente compacto con +6 memorias nuevas y
-aún así más chico que su gemelo; y cps, un repo .NET grande que convergió en 5 rondas de auditoría).
+destilado de campañas reales.
 
 > **El DOLOR que lo originó (el north-star).** *"ya me cansé de pasar 5 horas configurando en loop cada
 > vez que quiero jugar media hora"* + *"si yo me abrumo… no me imagino tú que lees todos esos archivos
@@ -324,7 +320,7 @@ aún así más chico que su gemelo; y cps, un repo .NET grande que convergió en
 - [[diagramar]] — alimenta al FMEA con los flowcharts (leyenda + normas) que necesita como "zapatos".
 - [[positivar-doc]] — answer-first: "ESTO SÍ" antes de "ESTO NO".
 - [[desinflar-memorias]] — colapsar narrativa a lección + mitos descartados al `cementerio.md` (por ID).
-- [[orquestar-fanout]] — fan-out sin niñera (worktrees aislados, 2 archivos de estado) + su bucle de
+- la norma «Delegar a agentes» — fan-out sin niñera (worktrees aislados, 2 archivos de estado) + su bucle de
   verificación (no creerle el "listo" a un agente).
 - [[checkpoint]] — volcar el hilo antes de compactar (crítico en corridas de N rondas).
 - [[cerrar-slice]] — el cierre por ramita → MR → mini-develop con `--squash`.
@@ -357,21 +353,21 @@ coherentes entre sí prometiendo un candado que NO existía — coherencia perfe
 coherencia no ve eso; la suficiencia sí."* Y al revés: un cerebro de recetas buenas que se contradicen
 pasa la prueba de suficiencia archivo por archivo. **Ninguna caza lo de la otra.**
 
-**Contrato de reporte** (de [[orquestar-fanout]]): cada auditor escribe su dictamen a un `.md` durable
+**Contrato de reporte** (de la norma «Delegar a agentes»): cada auditor escribe su dictamen a un `.md` durable
 (`AUDITOR-COH-r<N>.md`, `AUDITOR-SUF-r<N>.md`) y responde SOLO ~3 líneas al orquestador (veredicto +
 conteo, hallazgos en bullets, ruta). Así no infla el contexto del orquestador.
 
 ### FASE 2 — VERIFICAR los hallazgos (no creer el reporte del agente)
-Usa el **bucle de verificación** de [[orquestar-fanout]]: **espera a tener AMBOS dictámenes antes de
+Usa el **bucle de verificación** de la norma «Delegar a agentes»: **espera a tener AMBOS dictámenes antes de
 editar** (no muevas el piso a media auditoría), y **verifica read-only cada hallazgo contra el código/
 realidad** — no lo relates como verdad. El **cross-check entre lentes es donde se cazan los FALSOS
-POSITIVOS**: en cps, suficiencia marcó `detectar-secretos.sh` como "hook huérfano" → coherencia lo REFUTÓ
+POSITIVOS**: p. ej. suficiencia marca `detectar-secretos.sh` como "hook huérfano" → coherencia lo REFUTA
 por ejecución (es una LIB `source`-ada, no un hook) = FP anotado, no tocado. Con 4-6 informes, haz el
 cross-check ANTES de sintetizar.
 > **Si un agente REEMPLAZA un doc** (un rebuild de la firma/README/config, no contenido nuevo — típico en
-> el modo canonizar): corre el **DIFF DE PRESERVACIÓN** de [[orquestar-fanout]] — `diff` viejo→nuevo y
+> el modo canonizar): corre el **DIFF DE PRESERVACIÓN** de la norma «Delegar a agentes» — `diff` viejo→nuevo y
 > clasifica lo que SOLTÓ (basura temporal botada bien **vs** conocimiento real que hay que preservar/reubicar).
-> Un rebuild falla por OMISIÓN silenciosa, no por afirmar de más (caso real: un rebuild botó una corrección que
+> Un rebuild falla por OMISIÓN silenciosa, no por afirmar de más (p. ej. un rebuild que bota una corrección que
 > vivía SOLO en ese archivo).
 
 ### FASE 3 — CONSOLIDAR / ORGANIZAR (positivar → desinflar → dedup)
@@ -389,13 +385,13 @@ el diff. El grueso del "quedar compacto":
    líneas EN SU LUGAR**; los mitos desmentidos se mudan al **`cementerio.md`** del cerebro (una lápida =
    una línea con su ID `🪦#<id>`, vía `cementerio.sh add`), dejando en la memoria solo la ref `(🪦#<id>)`
    donde haga falta. NO se corta: advertencias destructivas, comandos, decisiones con su porqué,
-   datos irrepetibles. Recortes reales: cps `estado-proyecto` 896→460 (−49%), **0 lecciones perdidas**.
+   datos irrepetibles.
 3. **Un CANÓNICO + PUNTEROS** por dato/tema repetido: una memoria "manda", las hermanas se deducen a un
    puntero. Un dato NO vive en 3 lados; el estado "actual" se DERIVA.
 4. **Índice answer-first y SIN DRIFT:** un solo **entry-point operativo** (el doc que traiga reglas +
    router de skills — es `AGENTS.md` en games-master, el `MEMORY.md`-índice en cps; ver Fase 6), answer-first,
    con "LEE ESTO ANTES DE HACER NADA" arriba y los punteros al detalle. El router refleja las skills REALES
-   (N=N). En cps el índice MENTÍA (clúster ETL invisible desde la puerta) → reconstruido 35/35.
+   (N=N).
 5. **Matar el mito en TODAS sus copias:** tras corregir el canónico, `grep` del término viejo por TODO
    el cerebro vivo (incluido `MEMORY.md`) — una sola copia desincronizada ya es doc que miente.
 6. **Reubicar lo genérico/ajeno FUERA del cerebro del proyecto** (lo transversal → global; lo de
@@ -411,7 +407,6 @@ prompt, cambias el examen (guarda el prompt literal en un `.md`). **No autodecla
   agotado (real): *"ya es nitpicking, se ve que el auditor se aburrió"*.
 - El loop no es ceremonia: en un caso el re-auditor cazó un bug que el **propio orquestador** introdujo
   (un gate colocado DESPUÉS de mutar el estado).
-- Trayectoria real cps SUF: 1C/2A → 1C/3A → 0C/2A → 0C/1M → 0C/0A (5 rondas); coherencia convergió antes.
 
 ### FASE 5 (opcional) — EL TERCER EJE: FMEA, cuando hay LÓGICA de riesgo
 La dupla es **doc-orientada** ("¿se puede operar?" / "¿se contradice/miente?"); **ninguna pregunta
@@ -495,8 +490,7 @@ qué, sin aplanar la voz, y sin tocar los guardrails delicados.
 
 ### Disparadores
 - Manual: invoca este modo (el run semanal designado, o cuando el usuario lo pide).
-- DISCIPLINA tuya, sin hook que lo recuerde (`recordar-unificar-cerebro` se retiró, overhaul hooks
-  2026-09-18, puramente advisory): cuando el delta de `.claude/` de tu rama vs `origin/develop` acumule
+- DISCIPLINA tuya, sin hook que lo recuerde: cuando el delta de `.claude/` de tu rama vs `origin/develop` acumule
   ≥5 archivos o >7 días sin unificar, córrelo.
 - Encadenado desde `cerrar-slice` cuando la cosecha de un slice cae en `.claude/`.
 
@@ -566,7 +560,7 @@ promueve:
   Preferencias), **con procedencia** (cita literal entre comillas vs `[INFER]`) y **REFERENCIANDO** las
   normas universales del brain — sin copiarlas. Distínguelo del TRATO **SOBRE OTRO dev** (`sobre:
   <handle>`): ése se queda en el inbox del equipo (así viaja a su máquina). Molde canónico:
-  `como-trabajar-con-unjordi.md`.
+  `como-trabajar-con-<usuario>.md`.
 - → **archivo propio** si creció a un tema autocontenido (`modulo-x.md`).
 Al graduar, deja en el inbox una marca de que se movió (o retíralo si ya vive íntegro en su hogar) —
 pero eso es EDICIÓN curada y deliberada, distinta del append ciego que hace `cerrar-slice` §5.

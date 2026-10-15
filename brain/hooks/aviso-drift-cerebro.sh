@@ -5,43 +5,38 @@
 # sincronizar-cerebro.sh en DRY-RUN (diff-aware por CONTENIDO — comparar versiones NO sirve: VERSION
 # no se bumpea por cambio) y, si la copia quedó ATRÁS, INYECTA un aviso ruidoso vía additionalContext.
 #
-# REDISEÑO #46 (unjordi + gemelo cachy, 2026-08-05) — BIFURCA por la marca `.claude/repo-compartido`:
+# BIFURCA por la marca `.claude/repo-compartido`:
 # - COMPARTIDO (tiene la marca): el brain por-repo es un CORREO que viaja por git a quien NO tiene brain
 #   global (colegas/clones) → hay que mantenerlo fresco. Comportamiento de siempre: detecta drift, auto-
 #   apply+commit+push en tu mini-develop con .claude/ limpio, o AVISA para propagar por el flujo.
 # - PERSONAL (sin la marca, el DEFAULT): guards por-repo NUNCA (tu máquina los saca del install GLOBAL +
 #   dedupe; una copia por-repo solo drifta/estorba). NO auto-commit/push; si el repo tiene guards del brain
 #   que SOBRAN, los FLAGGEA para quitar (opción B; no los borra solos). La memoria/skills son suyos, no se tocan.
-# Norma que nace con esto: "repo personal = memoria/skills, NUNCA guards por-repo" (en global-claude-md.md).
-# Diseño completo: memoria [[diseno-rediseno-auto-sync-46]].
+# Norma: "repo personal = memoria/skills, NUNCA guards por-repo" (en global-claude-md.md).
 #
-# Diseño de unjordi (2026-07-18): "es tan sencillo como poner un hook en el global para que en el
-# inicio de sesión revise que el local y global sean el mismo y actualice el local si no" — con dos
-# matices acordados en la misma conversación: (a) el comparador es el DIFF real, no la versión; (b) en
-# repos COMPARTIDOS "actualizar el local" = commit por ramita→MR, así que este hook NO escribe NADA al
+# Hook global de inicio de sesión que revisa que el local y el global sean el mismo y actualiza el local si no.
+# (a) el comparador es el DIFF real, no la versión; (b) en repos COMPARTIDOS "actualizar el local" = commit por ramita→MR, así que este hook NO escribe NADA al
 # árbol (un write silencioso ensuciaría el working tree y se mezclaría a commits de feature): DETECTA
-# y AVISA para que Claude proponga la propagación por el flujo. Evidencia de necesidad: MegaFlux
-# acumuló 9 archivos de drift porque nadie corría el sync (detectado 2026-07-18).
+# y AVISA para que Claude proponga la propagación por el flujo.
 #
 # Throttle: si el último chequeo de ESTE repo salió LIMPIO, no se re-chequea por AVISO_DRIFT_HORAS
 # (default 6; stamp en ~/.claude/memory/.drift-cerebro/). Un chequeo CON drift no se cachea → avisa en
 # cada inicio de sesión hasta que se propague (esa insistencia es el punto).
 # Fail-open SIEMPRE: sin clon canónico / repo no-brained / cualquier error del sync → silencio.
 #
-# RECORDATORIO DE LA DUPLA (2026-07-31): cuando el cerebro de este repo CAMBIA (auto-sync) o está por
+# RECORDATORIO DE LA DUPLA: cuando el cerebro de este repo CAMBIA (auto-sync) o está por
 # hacerlo (drift), es el momento de "¿la realidad sigue cumpliendo la firma?" → el aviso añade un nudge a
 # correr la DUPLA de auditores (suficiencia + coherencia, van juntas). Se cuelga de ESTE hook (que ya corre
 # SessionStart + ya llama a sincronizar + ya sabe cuándo el cerebro se movió) en vez de un hook nuevo.
 # BIFURCA por el esquema firma+detalle: si el repo tiene AGENTS.md instanciado → "audita CONTRA la firma";
 # si NO → la dupla igual funciona (suficiencia deriva su lista; coherencia caza contradicciones) y se sugiere
-# instanciar el esquema. NUNCA lo asume — la mayoría de los repos aún no tienen firma=TOC (hoy solo games-master).
+# instanciar el esquema. NUNCA lo asume: no todo repo tiene firma=TOC.
 #
-# CUÁNDO CORRE (verificado 2026-07-31 vs doc oficial de hooks + evidencia real — NO re-investigar):
+# CUÁNDO CORRE:
 # SessionStart dispara con source ∈ {startup, resume, clear, compact, fork} — NO solo en arranque
 # fresco. En particular `claude --resume`/`--continue` → source="resume", y cada `/compact` (auto o
 # manual) → source="compact", LO DISPARAN. Este hook se cablea SIN matcher → corre en TODOS esos
-# source (la doc no lo jura literal para el matcher omitido, pero el commit real que este hook genera
-# — "chore(cerebro): auto-sync de la copia por-repo (aviso-drift, …)" — lo DEMUESTRA empíricamente).
+# source.
 # Importa porque el flujo real es casi todo --resume + sesiones largas que compactan: la auto-sync se
 # re-chequea en cada resume Y en cada compactación, sin depender de abrir claudes frescos.
 # Doc: code.claude.com/docs/en/hooks (tabla SessionStart + "Hooks can be re-run on resume with
@@ -57,14 +52,13 @@ set -u
 ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 cat >/dev/null 2>&1 || true   # drenar stdin (contrato SessionStart)
 
-# ── CONOCIMIENTO PROPIO (per-repo, imborrable) ──────────────────────────────────────────────────────
+# ── CONOCIMIENTO PROPIO (per-repo, imborrable) ──────────────────────────────────────────────── ──
 # Si el repo tiene .claude/memory/conocimiento-propio.md, se RE-INYECTA en CADA SessionStart
 # (fresh/resume/compact) — ANTES del throttle y del drift, para que la identidad del proyecto vuelva
 # SIEMPRE (no dependa de que haya drift ni del cache de 6h). Es PER-REPO: cada repo tiene el suyo (o
 # ninguno) → "cada sesión con una personalidad ligeramente distinta"; este hook es GLOBAL y solo lo
-# SURFACE si el archivo existe (no lo propaga ni lo asume universal). Diseño de unjordi (2026-07-31):
-# "asienta ese conocimiento propio amarrado al mismo hook" — el que ya dispara fiable en resume/compact,
-# para que "el conocimiento más básico que tienes sobre ti mismo no se te pueda borrar".
+# SURFACE si el archivo existe (no lo propaga ni lo asume universal).
+# Se engancha a este hook porque dispara fiable en resume/compact.
 SELF=""
 # Prefiere la variante PERSONAL/LOCAL (.local.md → gitignored: no viaja al repo público ni al de un
 # colega); cae a la .md por si un repo quiere una identidad COMPARTIDA versionada. Primero que exista gana.
@@ -152,10 +146,8 @@ if [ "$hk_skip" = 0 ]; then
 fi
 
 # ── DRIFT DE NORMAS GLOBAL (per-máquina) — con su PROPIO throttle (independiente de skills/hooks). Warn-only.
-# Antídoto al ALTO-2 de la auditoría de suficiencia operativa (2026-09-18): install-brain §(e) SÍ refresca
-# el bloque de normas en ~/.claude/CLAUDE.md en cada re-corrida, pero nada avisaba que hacía falta
-# re-correrlo — confirmado en vivo, la norma seguía citando `recordar-dashboard` (ya retirado) pese a que
-# la fuente ya traía el texto correcto. Solo re-chequea cada AVISO_DRIFT_HORAS; un resultado CON drift NO
+# install-brain §(e) refresca el bloque de normas en ~/.claude/CLAUDE.md en cada re-corrida; este aviso
+# indica cuándo hace falta re-correrlo. Solo re-chequea cada AVISO_DRIFT_HORAS; un resultado CON drift NO
 # se cachea (insiste hasta que re-corras install-brain).
 GLOBAL_NORMS_WARN=""
 nm_stamp="$stampdir/.normas-global"
@@ -172,12 +164,12 @@ if [ "$nm_skip" = 0 ]; then
   fi
 fi
 
-# ── HUELLA LOCAL DE MÁQUINA SIN MIGRAR (rename #312 claude-brain→cortex) — SOLO test -d LOCAL, JAMÁS red
+# ── HUELLA LOCAL DE MÁQUINA SIN MIGRAR (renombre claude-brain→cortex) — SOLO test -d LOCAL, JAMÁS red
 # (nunca `git fetch`/llamada de red: esto es un nudge advisory, no un chequeo de versión). Si el clon de
 # instalación sigue bajo el nombre VIEJO (~/.claude-brain con su .git) y el nuevo (~/.cortex) NO existe,
-# esta máquina es la población en limbo del rename (auditoría 2026-08-29, C1/AUTOSYNC): el resolver bash
-# YA tiene el fallback (resolve_brain_dir, C2) así que autosync/verificación/protección de fuente siguen
-# vivos aquí, pero el WIDGET viejo puede seguir atascado sin self-update (build vieja sin #322) → sugiere
+# esta máquina no migró el renombre: el resolver bash
+# tiene el fallback (resolve_brain_dir) así que autosync/verificación/protección de fuente siguen
+# vivos aquí, pero el WIDGET viejo puede seguir atascado sin self-update (build vieja) → sugiere
 # re-instalar con el one-liner del bootstrap para cerrar el loop de una vez. Throttle propio ~1×/día
 # (independiente de AVISO_DRIFT_HORAS: esto no cambia con el drift del repo). Fail-open, nunca bloquea.
 MIGRACION_WARN=""

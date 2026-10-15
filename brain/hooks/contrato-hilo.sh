@@ -4,11 +4,8 @@
 #
 # POR QUÉ EXISTE: el footer `> Última actualización: <fecha> · rama <rama> · nivel <x>` es un contrato
 # REAL — `rehidratar-hilo.sh` decide con él si el hilo está vigente o si lo degrada a "⚠️ POSIBLEMENTE
-# OBSOLETO" —, la skill `checkpoint` lo PRESCRIBE en su plantilla… y nadie lo VERIFICABA. Medido el
-# 2026-09-11 sobre los 9 `hilo-mental-actual.md` reales de ~/code: **2 de 9 (22%) no traen el footer**
-# ⇒ el gate de rama no puede dispararse, cae al proxy de 12h y un hilo VIGENTE se presenta como obsoleto.
-# Es el MISMO modo de falla (A8) que el gate documenta haber cerrado por el otro flanco (el regex goloso):
-# se cerró la puerta del regex y quedó abierta la del footer ausente.
+# OBSOLETO", y la skill `checkpoint` lo prescribe en su plantilla. Sin footer el gate de rama no puede
+# dispararse, cae al proxy de 12h y un hilo vigente se presenta como obsoleto; esta lib lo verifica.
 #
 # La lib es la mitad "una sola definición": el lector la SOURCEA (en vez de re-escribir el regex) y el
 # escritor la puede correr como verificación de su propio volcado. Que el regex viva en un solo lado es

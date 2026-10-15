@@ -61,7 +61,7 @@ bail_open() {  # $1 = motivo. En strict → deny; si no → deja pasar (exit 0).
 
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
 [ -z "$cmd" ] && exit 0
-# M2 (auditoría 2026-09-15, CRÍTICO §3.1): cwd del payload = working dir REAL del comando (puede diferir
+# cwd del payload = working dir REAL del comando (puede diferir
 # de CLAUDE_PROJECT_DIR, fijo al arranque de la sesión). Sin esto, un `git -C <otro-repo> commit`, un
 # `cd <otro-repo> && git commit`, o simplemente un comando corrido desde OTRO cwd (el patrón NORMAL de un
 # worktree aislado de fan-out) escaneaba el repo EQUIVOCADO — un secreto en el repo que el comando REALMENTE
@@ -77,15 +77,10 @@ case "$cmd" in *git*) : ;; *) exit 0 ;; esac
 # lib compartida si está junto al hook, si no un sed equivalente. Así un token DENTRO de una comilla —el
 # `--no-verify` citado en el MENSAJE del commit (A7), o un `git commit`/`git add`/`git push` mencionado en
 # el texto— no altera la decisión del guard. bash-3.2-safe.
-# CRÍTICO-1 (auditoría FMEA 2026-09-16 §1.1, CONFIRMADO): sourcear un archivo con error de SINTAXIS mata el
-# proceso ENTERO con exit 1 -- que el harness trata como NO-bloqueante. secret-scan es "el ÚNICO control
-# anti-credenciales del sistema, sin backstop server-side" (comentario original arriba): un typo de sintaxis
-# en la lib compartida apagaba ESTA red de seguridad en silencio total, exactamente igual que los otros 4
-# guards. H7 (auditoría semántica 2026-09-16, BAJO): la sonda ORIGINAL sourceaba en un SUBSHELL y trataba
-# CUALQUIER exit≠0 como "lib rota" -- pero ese código es el del ÚLTIMO comando de la lib, no un diagnóstico
-# de sintaxis. `bash -n` ES el veredicto de sintaxis (solo parsea, nunca ejecuta): si pasa, el `source` real
-# ya no puede tronar por sintaxis; si no, el guard DEGRADA a su propio fallback sed (el `command -v
-# acg_despoja_comillas` de abajo ya sabía hacerlo -- el bug era que nunca llegaba a preguntarlo).
+# Sourcear un archivo con error de SINTAXIS mata el proceso ENTERO con exit 1, que el harness trata como
+# NO-bloqueante: un typo en la lib compartida apagaría el guard en silencio. `bash -n` es el veredicto de
+# sintaxis (solo parsea, nunca ejecuta): si pasa, el `source` real no puede tronar por sintaxis; si no, el
+# guard DEGRADA a su propio fallback sed (ver `command -v acg_despoja_comillas` abajo).
 # Snippet IDÉNTICO en los 5 guards; a propósito FUERA de la lib.
 _ACGLIB="$(dirname "$0")/analizar-comando-git.sh"
 if [ -f "$_ACGLIB" ] && bash -n "$_ACGLIB" >/dev/null 2>&1; then
@@ -94,9 +89,9 @@ if [ -f "$_ACGLIB" ] && bash -n "$_ACGLIB" >/dev/null 2>&1; then
 else
   [ -f "$_ACGLIB" ] && printf '%s: analizar-comando-git.sh existe pero no cargó (error de sintaxis) -- usando el fallback sed propio (menos preciso). `bash -n "%s"` localiza el error.\n' "$(basename "$0")" "$_ACGLIB" >&2
 fi
-# A-03/A-R4-02 (FMEA): colapsa el prefijo de opciones globales de git (`-c k=v`, `-C dir`, `--no-pager`,
+# Colapsa el prefijo de opciones globales de git (`-c k=v`, `-C dir`, `--no-pager`,
 # `--work-tree`, …) para que `git <globales> commit` NO evada la adyacencia git+commit/push del gate (ese
-# prefijo cegaba el escaneo). A-R5-02 (FMEA r5): se NORMALIZA SOBRE EL RAW (comillas intactas) ANTES de
+# prefijo cegaba el escaneo). Se NORMALIZA SOBRE EL RAW (comillas intactas) ANTES de
 # despojar — si se despoja primero, un value-eater con valor entrecomillado (`git -C "/ruta" commit`) queda
 # vacío y el normalizador se come el subcomando `commit` → escaneo CIEGO. El normalizador es quote-aware
 # (consume el valor entrecomillado con espacios como una unidad). Orden correcto: normaliza(raw) → despoja.
@@ -112,7 +107,7 @@ else
 fi
 
 # ¿Es un commit o un push? Si no, no es asunto de este guard (NO es "no poder escanear" → nunca strict-bloquea).
-# LÍMITE CONOCIDO (A-07, FMEA): casa el subcomando LITERAL commit/push; un ALIAS de git del usuario (`git ci`,
+# LÍMITE CONOCIDO: casa el subcomando LITERAL commit/push; un ALIAS de git del usuario (`git ci`,
 # `git psh`) NO matchea → el guard queda inerte en ese caso. Cubrirlo genéricamente exigiría resolver los alias
 # (`git config --get alias.*`) por-máquina; se documenta como límite aceptado (depende de config personal, no universal).
 printf '%s' "$cmd_uq" | grep -qE 'git[[:space:]]+(commit|push)' || exit 0
@@ -155,7 +150,7 @@ addfiles=""
 if [ "$has_commit" = 1 ] && printf '%s' "$cmd_uq" | grep -qE 'git[[:space:]]+add([[:space:]]|$)'; then
   # TODOS los segmentos `git add` del comando, NO solo el 1º: `git add safe && git add secret && git commit`
   # (un solo comando) estagearía AMBOS, pero el `head -1` anterior solo escaneaba `safe` → el secreto de
-  # `secret` entraba (hueco real del audit-07, OK de unjordi). Iteramos cada `git add` y sumamos su dry-run.
+  # `secret` entraba (un `git add` posterior no escaneado). Iteramos cada `git add` y sumamos su dry-run.
   while IFS= read -r _addseg; do
     [ -n "$_addseg" ] || continue
     _aargs=$(printf '%s' "$_addseg" | sed -E 's/^git[[:space:]]+add[[:space:]]*//')
@@ -203,13 +198,7 @@ if [ "$mode" = "push" ]; then
   fi
 fi
 
-# DEFECTO medido (auditoría overhead 2026-09-16, §defecto #4): el escaneo primario ANTES corría un
-# `git diff -- "$f"` POR ARCHIVO en un bucle — lineal en archivos tocados; medido en producción: 600 s
-# de TIMEOUT con un commit de 105 archivos (`git add -A` + commit masivo). Y un guard DEFENSIVO que se
-# pasa de tiempo DEJA DE PROTEGER: se apaga exactamente en el commit más grande, que es justo donde más
-# fácil se cuela un secreto sin que nadie lo note al revisar.
-#
-# Fix: UN solo `git diff` cubre TODO el rango (commit: `--cached`; push: `BASE..HEAD`) sin pathspec por
+# Rendimiento: un guard DEFENSIVO que se pasa de tiempo deja de proteger, así que UN solo `git diff` cubre TODO el rango (commit: `--cached`; push: `BASE..HEAD`) sin pathspec por
 # archivo — el costo deja de escalar con el número de archivos, solo con el TAMAÑO total del diff (eso
 # es inevitable: hay que leer los bytes al menos una vez). Los addfiles (A1: `git add`/`-a` encadenado)
 # se suman con invocaciones ÚNICAS también: un solo `git diff HEAD -- <todos los tracked>` + un solo
