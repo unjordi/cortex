@@ -1618,6 +1618,20 @@ JFX
     && ! printf '%s' "$OUT" | grep -q 'el 79'; } \
     && ok "extracción mid-turn: queued_command NO-humano / sin origin / de otro tipo de attachment → NO se surfacea (autoridad intacta)" \
     || bad "extracción mid-turn: se surfaceó como USUARIO un attachment que no es prompt humano → [$OUT]"
+  # ── REGRESIÓN (arsenal #215, 2026-10-15): un OK a media vuelta CON IMAGEN deja `.attachment.prompt` como
+  # ARRAY de bloques (texto+imagen), no string. El viejo $qc=array hacía `test()` sobre un no-string → el jq
+  # abortaba el STREAM ENTERO → ventana VACÍA → el juez quedaba CIEGO y DENEGABA TODO merge (una sola imagen
+  # en las últimas 6000 líneas bastaba). Fix: del array se extrae y une el texto. Debe fallar contra el viejo.
+  cat > "$FX" <<'JFX'
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"revisa el PR 215"}]}}
+{"type":"attachment","attachment":{"type":"queued_command","prompt":[{"type":"text","text":"ten esta captura del CI"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"AAAA"}}],"commandMode":"prompt","origin":{"kind":"human"}}}
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"mergea el 215 a develop"}]}}
+JFX
+  OUT=$(_recent_intercalado "$FX")
+  { printf '%s' "$OUT" | grep -q 'USUARIO: mergea el 215 a develop' \
+    && printf '%s' "$OUT" | grep -q 'USUARIO: ten esta captura del CI'; } \
+    && ok "extracción mid-turn: un queued_command humano CON IMAGEN (.prompt ARRAY) NO ciega la ventana — el OK del usuario sigue visible" \
+    || bad "extracción mid-turn: una imagen a media vuelta vació la ventana (jq abortó) → el juez quedaría ciego → [$OUT]"
   rm -f "$FX"
 )
 
