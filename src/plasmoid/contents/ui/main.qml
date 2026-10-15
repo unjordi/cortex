@@ -129,6 +129,23 @@ PlasmoidItem {
         onNewData: function(source, data) { disconnectSource(source); reload() }
     }
 
+    // Lee la cuenta Claude ACTIVA (jq sobre ~/.claude.json) y, si difiere de la del snapshot, fuerza un
+    // refetch. Fail-safe: stdout vacío (sin archivo / sin jq / sin cuenta) → NO dispara. Espeja
+    // activeAccountUuid()+refresh() de AppDelegate.swift. Lo conecta el Timer cada 30s.
+    P5Support.DataSource {
+        id: accountCheckSource
+        engine: "executable"
+        connectedSources: []
+        onNewData: function(source, data) {
+            disconnectSource(source)
+            if (data["exit code"] !== 0) return
+            var active = ("" + (data.stdout || "")).trim()
+            if (active === "") return   // sin señal fiable → no disparar de más
+            var snap = (root.snapshot && root.snapshot.account_uuid) ? root.snapshot.account_uuid : ""
+            if (active !== snap) root.forceRefresh()
+        }
+    }
+
     // Runner del botón ⏻ "Apagar" (powerOff). Fuente aparte de refreshRunner porque NO queremos
     // el reload() de este último tras detener (parar no cambia la caché). Solo desconecta al terminar.
     P5Support.DataSource {
@@ -575,6 +592,8 @@ PlasmoidItem {
 
     // epoch ms del último forceRefresh disparado por un reset ya pasado (guard anti-bucle).
     property double lastResetRefresh: 0
+    // epoch ms del último chequeo de cambio de cuenta (cada 30s, no en cada tick de 10s).
+    property double lastAccountCheck: 0
 
     Timer {
         interval: 10000
@@ -593,6 +612,14 @@ PlasmoidItem {
             if (root.anyResetPassed && age > 60 && (Date.now() - root.lastResetRefresh) > 60000) {
                 root.lastResetRefresh = Date.now()
                 root.forceRefresh()
+            }
+            // Cambio de CUENTA: lee la cuenta activa (~/.claude.json) cada 30s (unjordi: "no hace falta
+            // que sea tan ansioso") y, si difiere de la del snapshot, fuerza un refetch — sin esto el
+            // widget mostraba la cuota de la cuenta anterior hasta 5.5 min. Espeja el chequeo de cuenta
+            // de refresh() en AppDelegate.swift. accountCheckSource compara y dispara en onNewData.
+            if ((Date.now() - root.lastAccountCheck) > 30000) {
+                root.lastAccountCheck = Date.now()
+                accountCheckSource.connectSource("bash -lc " + root.shq("jq -r '.oauthAccount.accountUuid // empty' \"${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json\" 2>/dev/null"))
             }
         }
     }
@@ -1110,7 +1137,7 @@ PlasmoidItem {
                   detail: "Ver y operar el escritorio de una máquina remota por SSH puro (sin VNC/RDP): screenshot, clicks, teclado, inspección de ventanas/controles, portapapeles, lanzar/cerrar apps y procesos. Resuelve los dos problemas duros: el aislamiento de logon-session (se despacha cada gesto a la sesión interactiva con una tarea programada) y el DPI-awareness (sin fijarlo, el screenshot sale truncado y los clicks se desvían). Windows: 15 scripts. Linux (KDE/Wayland): 13 scripts. macOS: 13 scripts. Multi-monitor y captura por-ventana en los tres." },
                 { emoji: "🚚", name: "reubicar-master", desc: "mover un master —cerebro+sesión— a otra casa/subfolder-repo git, sin lobotomía ni tail",
                   event: "skill · opt-in",
-                  detail: "Muda una sesión master COMPLETA de Claude Code a otro repo (caso canónico: los brain-master a cortex) sin dejar nada a medias: transcript re-anclado + cwd reescrito, cerebro del master migrado por su canal correcto, slug global y TODAS las referencias (masters.json target por-id, alias, symlink memory) corregidas de forma ATÓMICA, residuo quirúrgico barrido y doc=realidad. Úsala cuando un --resume cae en un folder muerto, un master quedó a medias (residuo + resume roto), o quieres consolidar los dos brain-master (Mac + Cachy) en cortex sin lobotomizarlos, sin fuga a un repo público ni duplicado divergente. Hermana de claude-proyecto-autocontenido (esa define DÓNDE vive el cerebro; ésta lo MUEVE de casa)." }
+                  detail: "Muda una sesión master COMPLETA de Claude Code a otro repo (caso canónico: los brain-master a cortex) sin dejar nada a medias: transcript re-anclado + cwd reescrito, cerebro del master migrado por su canal correcto, slug global y TODAS las referencias (masters.json target por-id, alias, symlink memory) corregidas de forma ATÓMICA, residuo quirúrgico barrido y doc=realidad. Úsala cuando un --resume cae en un folder muerto, un master quedó a medias (residuo + resume roto), o quieres consolidar los dos brain-master (Mac + Cachy) en cortex sin lobotomizarlos, sin fuga a un repo público ni duplicado divergente. Hermana de claude-proyecto-autocontenido (esa define DÓNDE vive el cerebro; ésta lo MUEVE de casa)." },
                 { emoji: "🛰️", name: "coordinar-claudes", desc: "coordina otros masters: despertar · encargar · vigilar · verificar · relevar OKs",
                   event: "skill · opt-in",
                   detail: "Coordina otras sesiones master de Claude Code desde una sesión coordinadora, hablándoles en nombre del usuario sin hacerse pasar por él. Ciclo: DESPIERTA (despertar-master.sh las resuelve desde los transcripts —último customTitle = nombre, último cwd = dónde resumir, mtime = vida; gana el más reciente por nombre y una sesión viva NO se relanza— NO desde el masters.json que driftea) · ENCARGA la cola completa por Remote Control o su screen · VIGILA con vigilar-master.sh + Monitor (COMMIT / TURNO-TERMINADO / COLGADO / MUERTO) · DESTRABA (colgado, turno terminado con cola, tras un /compact) · VERIFICA por commits y uso real, no por lo que reporta · RELEVA los OKs del usuario (coordinar no es aprobar). Absorbió a despertar-master como su paso 1. NO crea masters, no los muda de repo (eso es reubicar-master) ni siembra sesiones entre máquinas." }

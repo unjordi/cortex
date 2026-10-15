@@ -6796,6 +6796,24 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+echo "== (e3d) PARIDAD de los 3 gemelos: el widget REFETCHEA al CAMBIAR de cuenta =="
+# Un cambio de cuenta de Claude no es "stale" ni "reset pasado" → el tick NO lo detectaba y el widget
+# mostraba la cuota de la cuenta ANTERIOR hasta 5.5 min (reporte unjordi 2026-10-15). El fix: cada ~30s
+# leer la cuenta ACTIVA (~/.claude.json .oauthAccount.accountUuid) y, si difiere del snapshot, refetch.
+# Gemelo estructural (Swift/QML/C#): los 3 DEBEN traerlo o uno driftea. Falla contra el código pre-fix
+# (ninguno lo tenía). El PROOF conductual (refresca al cambiar de cuenta) es QA EN VIVO por plataforma;
+# aquí solo se verifica la PARIDAD de los gemelos (como el resto del drift-widget).
+WROOT="$SCRIPT_DIR/.."
+wc_cuenta() {  # label  file  marca_lectura  marca_cadencia
+  if [ -f "$2" ] && grep -q "$3" "$2" && grep -q "$4" "$2"; then
+    ok "widget-cuenta[$1]: lee la cuenta activa + cadencia de chequeo (refetch al cambiar de cuenta)"
+  else bad "widget-cuenta[$1]: FALTA el refetch-al-cambiar-de-cuenta (lectura accountUuid + cadencia 30s) en $(basename "$2")"; fi
+}
+wc_cuenta mac "$WROOT/macos/Sources/Cortex/AppDelegate.swift" "activeAccountUuid"  "accountCheckInterval"
+wc_cuenta qml "$WROOT/src/plasmoid/contents/ui/main.qml"       "accountCheckSource" "lastAccountCheck"
+wc_cuenta win "$WROOT/windows/src/Cortex/Program.cs"           "ActiveAccountUuid"  "_lastAccountCheck"
+
+# ─────────────────────────────────────────────────────────────────────────────
 echo "== (e5) sincronizar: los hooks RETIRADOS (lista RETIRED) se podan SOLOS; los huérfanos propios se conservan =="
 # precompact-volcar-estado quedó cableado en repos y ROMPE el CLI. Antes solo --prune-orphans lo quitaba
 # (y borraba TODO huérfano, incluso hooks propios). Ahora: lista brain/hooks/RETIRED → un huérfano

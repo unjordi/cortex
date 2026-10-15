@@ -91,6 +91,8 @@ internal static class Program
         private readonly PopupForm _popup;
         private IntPtr _iconHandle = IntPtr.Zero;
         private bool _fetching;
+        // Último chequeo de cambio de cuenta (cada 30s, no en cada tick de 10s).
+        private DateTime _lastAccountCheck = DateTime.MinValue;
 
         public TrayContext()
         {
@@ -120,6 +122,16 @@ internal static class Program
             _svc.Reload();
             RedrawIcon();
             if (ShouldRefetch) RunFetch(force: true);
+            // Cambio de CUENTA: cada 30s compara la cuenta activa (~/.claude.json) con la del snapshot; si
+            // difiere → refetch (el guard `_fetching` de RunFetch evita solapes). Un cambio de cuenta no es
+            // "stale" ni "reset pasado" → sin esto el widget mostraba la cuota de la cuenta anterior hasta
+            // 5.5 min. unjordi: "no hace falta que sea tan ansioso" → 30s. Espeja refresh() de AppDelegate.swift.
+            if ((DateTime.UtcNow - _lastAccountCheck).TotalSeconds >= 30)
+            {
+                _lastAccountCheck = DateTime.UtcNow;
+                var active = _svc.ActiveAccountUuid();
+                if (!string.IsNullOrEmpty(active) && active != _svc.Snapshot?.AccountUuid) RunFetch(force: true);
+            }
         }
 
         // Refresca si el caché superó el piso de 5.5 min, O si una ventana YA pasó su reset (el %
