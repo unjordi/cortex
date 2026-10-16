@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # checkpoint-mecanico.sh — hook de PreCompact (tier GLOBAL). Dispara el andamio MECÁNICO del checkpoint
-# en el momento exacto del compact (M2/X2, auditoría "mudanza de master · checkpoint/compactación",
-# 2026-09-11).
+# en el momento exacto del compact.
 #
-# EL HALLAZGO (X2): PreCompact YA es un hook VIVO y cableado (lo prueba `exportar-sesion-master.sh`, que
+# PreCompact YA es un hook VIVO y cableado (lo prueba `exportar-sesion-master.sh`, que
 # corre en el MISMO evento con el MISMO transcript_path) — y hoy en ese evento el cerebro guarda los
 # BYTES del transcript (gzip) y tira el SIGNIFICADO. Este hook saca, ADEMÁS, el andamio del checkpoint:
 # el 🗂️ árbol de archivos tocados, los mensajes de `git commit`, las citas textuales del usuario y las
@@ -14,9 +13,9 @@
 # el auto-compact corte — dispara el MISMO volcado. Ambos comparten el lanzador (checkpoint-mecanico-comun.sh)
 # y el mismo lock por-sid → coordinan sin solaparse ni corromper el andamio.
 #
-# LO QUE ESTE HOOK *NO* HACE (decisión explícita, no olvido): NO invoca `claude -p --resume` ni ningún
-# otro modelo. Eso es la vía-1 del dictamen (viable pero cuesta dinero y pasa por `delegacion-gate`) —
-# fuera de alcance. Este hook solo corre el extractor MECÁNICO (vía-3): el juicio (en qué estamos,
+# LO QUE ESTE HOOK *NO* HACE (decisión de diseño): NO invoca `claude -p --resume` ni ningún
+# otro modelo. Eso cuesta dinero y pasa por `delegacion-gate` —
+# fuera de alcance. Este hook solo corre el extractor MECÁNICO: el juicio (en qué estamos,
 # decisión abierta, siguiente paso) lo sigue poniendo el modelo vivo, ahora con el andamio ya escrito.
 #
 # CONTRATO: SILENCIOSO y FAIL-OPEN (el lanzador nunca bloquea el compact ni el turno). Detached

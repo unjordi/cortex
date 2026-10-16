@@ -57,7 +57,7 @@
 ├─ 💾 checkpoint               vuelca el HILO a memoria para compactar sin perderlo (proactivo)
 ├─ 🗂️ to-do                    carga la interfaz de tareas del harness desde el backlog durable (estado-proyecto.md)
 ├─ 💧 rehidratar-hilo          relee el HILO a mano (gemelo del hook; respaldo si un update del CLI rompe el auto-rehidratado)
-├─ 🐝 orquestar-fanout         fan-out sin niñera: asigna del backlog, auto-reporta y limpia al cerrar
+├─ 🛟 reconstruir-contexto     RED DE EMERGENCIA cuando el checkpoint quedó pobre y /compact fundió el hilo: excava andamio→backlog→transcript y cierra re-volcando con checkpoint
 ├─ 🗺️ diagramar                diagramas por destino: .dot→dot2yed→yEd (editar a mano) · Mermaid en .md versionado (verse en GitHub)
 ├─ 🔬 auditar-proceso-algoritmo  auditor experto read-only (proceso industrial + algoritmo) → hallazgos priorizados; se alimenta de los flowcharts de diagramar
 ├─ 🩺 auditar-coherencia-cerebro fan-out read-only sobre el PROPIO cerebro (guards+flowcharts+doc): evasiones/huecos/drift, verificado por ejecución → loop hasta converger
@@ -69,6 +69,7 @@
 ├─ 🎓 investigar-dominio             ponte experto en un dominio (fan-out DOC-FIRST) → memorias durables + skills
 ├─ 📚 construir-missing-manual       fabrica el manual/wiki de referencia exhaustivo que no existe (fan-out que investiga 1× y hornea) → artefacto consultable OFFLINE
 ├─ 🚚 reubicar-master                muda una sesión master COMPLETA a otro repo (brain-master → cortex) sin residuo: transcript+cwd, cerebro, slug y refs atómicas
+├─ 🛰️ coordinar-claudes            coordina otros masters en nombre del usuario: despierta (desde los transcripts, no masters.json) · encarga la cola · vigila (commit/colgado/muerto) · destraba · verifica con evidencia · releva OKs del usuario
 ├─ 🔍 zoom-screenshot                recorta y amplía regiones de una captura (ffmpeg) para leer texto fino ilegible
 ├─ 🔩 ingenieria-inversa-gui-db-navegador  ingeniería inversa de app legacy GUI+BD: driving la UI vía navegador + diff de la BD antes/después = doc con evidencia real
 ├─ 📕 markdown-a-pdf                 convierte .md a PDF pulido y distribuible vía md-to-pdf (npx, sin instalar) con el gotcha de --css y QA visual real
@@ -169,9 +170,10 @@ Reclutar un agente cuesta según su nivel (**gratis** local · **incluido** dent
 **Continuidad del hilo / compactar**
 - **`checkpoint`** — vuelca el estado efímero (el HILO) a memoria durable para compactar/cerrar sin perderlo. DOS niveles (ligero / COMPLETO).
 - **`rehidratar-hilo`** — retoma el HILO tras un /compact o corte: anuncia de qué íbamos y continúa desde el "siguiente paso" (gemelo del hook homónimo).
+- **`reconstruir-contexto`** — RED DE EMERGENCIA para cuando el par checkpoint/rehidratar-hilo FALLÓ: el checkpoint quedó pobre/ausente y un /compact fundió el detalle real, así que lo que `rehidratar-hilo` reinyecta es inútil. Excava en orden barato→caro (andamio mecánico → backlog durable → transcript `.jsonl` acotado, con fallbacks) y CIERRA re-volcando un hilo bueno con `checkpoint`. Regla dura: EXCAVA, no confabules sobre el resumen fundido.
 
 **Orquestación / delegación**
-- **`orquestar-fanout`** — fan-out sin niñera: worktrees aislados, 2 archivos de estado (bitácora `>>` + estado-proyecto), auto-reporte y limpieza al cerrar. Incluye el bucle de verificación (no creerle a un agente su "listo", el diff de preservación en rebuilds) que antes vivía en el skill `revisar-entregables-agentes`.
+- **`coordinar-claudes`** — coordina otras sesiones master desde una sesión coordinadora, hablando con ellas en nombre del usuario sin hacerse pasar por él: **despierta** (`despertar-master.sh`, resuelto desde los transcripts, no desde el `masters.json` que driftea; newest-per-name, no relanza una sesión viva) · **encarga** la cola completa (Remote Control o su screen) · **vigila** (`vigilar-master.sh` con Monitor: commit/turno-terminado/colgado/muerto) · **destraba** (colgado, turno terminado, tras un /compact) · **verifica** por commits y uso real, no por lo que reporta · **releva** los OKs del usuario (coordinar no es aprobar). Absorbió a `despertar-master` como su paso 1.
 - **`turno-nocturno`** — protocolo del turno de noche: eco del contrato, decide-dentro-de-la-cerca, grants durables a disco, checkpoint cada ~2h.
 
 **Memorias / docs**

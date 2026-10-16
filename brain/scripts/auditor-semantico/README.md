@@ -5,8 +5,7 @@ componentes — nunca que el mecanismo HAGA LO QUE QUEREMOS QUE HAGA. Un test pu
 verde con un endpoint sin permiso, un campo de catálogo editable por API, o una auditoría que
 guarda `EntidadId = null`, porque ninguna de esas cosas rompe la sintaxis ni el contrato del
 método — rompen la INTENCIÓN de negocio. Este auditor existe para atrapar esa clase de bug,
-antes de que un humano tenga que encontrarlo a mano (como pasó con la auditoría que originó
-este sistema, 2026-07-15).
+antes de que un humano tenga que encontrarlo a mano.
 
 ## Motor genérico vs. checks de ejemplo (LÉEME primero)
 
@@ -29,7 +28,7 @@ y viaja a cada repo:
 ### Capa 1 — determinista (`checks/*.sh`)
 
 Chequeos de bash/grep, sin LLM, gratis, rápidos, invocables por cualquier humano y por CI. Cada
-uno nace de un hallazgo REAL de una auditoría (positivo o negativo) que resultó ser
+uno nace de un hallazgo de una auditoría (positivo o negativo) que resultó ser
 **mecánicamente detectable**: un patrón de código que se puede reconocer con una heurística de
 texto, sin necesidad de entender la intención de negocio.
 

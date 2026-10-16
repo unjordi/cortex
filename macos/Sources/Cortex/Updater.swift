@@ -35,7 +35,7 @@ final class Updater: ObservableObject {
 
     /// Ruta del clon que SÍ encontramos en disco (para mostrarla en el mensaje "a mano"), aunque no
     /// sirva para auto-actualizar (p.ej. le falta macos/install.sh). Preferimos el nombre VIEJO
-    /// (~/.claude-brain) porque es la señal de que el usuario cayó en el rename #312 sin migrar; si no
+    /// (~/.claude-brain) porque es la señal de que el usuario no migró el renombre; si no
     /// existe, mostramos ~/.cortex. "" si no hay ningún clon visible.
     @Published var discoveredClonePath = ""
 

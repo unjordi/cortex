@@ -10,7 +10,7 @@
   click a la SESION INTERACTIVA con una tarea `schtasks /IT`. Ademas el click DEBE ser DPI-aware:
   con escala 125/150% (comun en laptops), SetCursorPos sin SetProcessDPIAware() DESVIA el click
   (multiplica la coord por el factor de escala). Las coordenadas son de PANTALLA FISICA -> las mismas
-  que ves en un screenshot tomado DPI-aware (win-gui-ssh.ps1 -Action shot). VERIFICADO 2026-08-27:
+  que ves en un screenshot tomado DPI-aware (win-gui-ssh.ps1 -Action shot). VERIFICADO:
   cerro un dialogo real en una estacion de prueba real clickeando su boton "No".
 
   USO (por SSH; correr COMO admin de la maquina, con un usuario en consola):

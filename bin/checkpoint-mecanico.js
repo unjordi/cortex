@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 /*
- * checkpoint-mecanico.js — el 80% de un checkpoint COMPLETO, a CERO tokens de modelo (M2, auditoría
- * "mudanza de master · checkpoint/compactación", 2026-09-11).
+ * checkpoint-mecanico.js — el 80% de un checkpoint COMPLETO, a CERO tokens de modelo.
  *
  * Por qué existe: el checkpoint hoy lo produce el actor con MENOS presupuesto (el modelo vivo, justo
  * cuando el contexto está por llenarse). Pero la MITAD del checkpoint —el 🗂️ ÁRBOL, el RESUELTO HOY, las
@@ -10,7 +9,7 @@
  * el archivo completo — el mismo principio que `rewriteTranscriptStream`/`scanTranscriptFile` de
  * session-lib.js, que reutiliza para la pasada barata de metadatos). Deja al modelo SOLO el juicio: en
  * qué estamos ahora, la decisión a medio cocinar, el siguiente paso y su porqué — que es lo barato de
- * ESCRIBIR (medido: 1.1K-2.8K tokens) y lo caro de DELEGAR.
+ * ESCRIBIR y lo caro de DELEGAR.
  *
  * Corte por PRODUCTOR (lo que este script SÍ puede sacar del transcript sin criterio):
  *   - archivos escritos (Write/Edit/NotebookEdit), con conteo
@@ -27,17 +26,16 @@
  *   - los últimos N mensajes de usuario, VERBATIM (filtra saludos/ruido de tool-result)
  *
  * ── LA VENTANA: por default, el TRAMO VIVO (desde el último /compact) ──────────────────────────────
- * MEDIDO el 2026-09-11 sobre dos masters reales (192 MB/39 183 líneas/13 compactaciones y 201 MB/39 221/
- * 13): con la ventana puesta en el transcript ENTERO, los top-N por frecuencia los gana el trabajo VIEJO
- * Y TERMINADO por volumen acumulado de semanas — `reporte_ejecutivo_v2.tex` (34×), `Site.Master` (28×),
- * `dark-theme.css` (25×) encabezando un andamio de una jornada que no tocó ninguno de los tres; los 10
- * `git commit` listados, todos del día ANTERIOR; y la lista de ramas con 4 `worktree-agent-*` muertas.
- * Un andamio de checkpoint describe **lo que está por perderse**, y eso es la ventana VIVA: el tramo
- * desde la última frontera de compactación — la MISMA frontera que el script ya detecta y que ya usaba
- * para resetear `ctxTokens`. Ahora esa frontera gobierna a TODOS los colectores.
+ * Con la ventana puesta en el transcript ENTERO, los top-N por frecuencia los gana el trabajo VIEJO Y
+ * TERMINADO por volumen acumulado de semanas (archivos muy tocados hace días encabezando un andamio de
+ * una jornada que no tocó ninguno; commits del día anterior; ramas de worktrees ya muertos). Un andamio
+ * de checkpoint describe **lo que está por perderse**, y eso es la ventana VIVA: el tramo desde la última
+ * frontera de compactación — la MISMA frontera que el script ya detecta y que ya usaba para resetear
+ * `ctxTokens`. Ahora esa frontera gobierna a TODOS los colectores.
  * Lo histórico no se tira: se CUENTA aparte y se etiqueta como tal (`tramosPrevios`). Mezclado, miente.
  * `--ventana todo` restaura el barrido acumulado de todo el archivo (útil para auditar una sesión, no
- * para un checkpoint).
+ * para un checkpoint). `--ventana previa` emite el CONTENIDO del tramo de justo ANTES del último /compact
+ * (no conteos): es lo que un `reconstruir-contexto` necesita tras un compact que dejó el tramo vivo vacío.
  *
  * ── LÍMITES DECLARADOS del andamio (lo que este script NO ve) ──────────────────────────────────────
  *   · Las escrituras hechas DENTRO de un comando Bash (heredoc, `>`, `tee`, `python - <<EOF`) no son
@@ -60,7 +58,7 @@
  *     filesystem (sidecar de sub-agente más fresco que el transcript resuelto) y AVISA sin bloquear.
  *   · El "top de comandos" EXCLUYE de verdad la navegación/exploración (`cd`, `ls`, `grep`…) y las
  *     asignaciones de variable sin comando encadenado (`WT=/tmp/x`, sin nada después) — no se limita a
- *     despriorizarlas ni a reordenarlas en un segundo grupo. MEDIDO 2026-09-11: reordenar en dos grupos
+ *     despriorizarlas ni a reordenarlas en un segundo grupo: reordenar en dos grupos
  *     (señal primero, ruido después, cada uno ordenado) hacía que el propio `.md` presentara un top-10
  *     PLANO donde un comando de 37× aparecía por debajo de entradas de 1× — nada declaraba que había dos
  *     grupos, y esa lista "ordenada a medias" es indistinguible de una que miente. El filtrado real
@@ -71,9 +69,9 @@
  *   · C-1 · agrupar por los 2 primeros tokens DESDE EL INICIO del comando dejaba honesto-pero-vacío el top:
  *     casi todo comando real en modo auto llega prefijado por `cd <repo> && …`, así que el primer token
  *     era casi siempre `cd` — y `esNavegacion` lo descartaba ENTERO, escondiendo la herramienta real que
- *     sigue (`git commit`, `gh pr merge`, `bash brain/test-brain.sh`…). MEDIDO 2026-09-11 sobre el tramo
- *     real: 87 de 101 comandos arrancan con `cd … &&`/`cd …;`; el top sobrevivía con solo 4 entradas
- *     (dos invocaciones de intérprete, `mkdir -p`, `df -h`) — honesto (no miente el orden), pero no decía
+ *     sigue (`git commit`, `gh pr merge`, `bash brain/test-brain.sh`…). La mayoría de los comandos en modo
+ *     auto arrancan con `cd … &&`/`cd …;`; sin despojar ese prefijo el top sobrevive con pocas entradas
+ *     (invocaciones de intérprete, `mkdir -p`, `df -h`) — honesto (no miente el orden), pero no dice
  *     QUÉ se hizo. Se despoja el segmento de navegación INICIAL (solo `cd`: su argumento es casi siempre
  *     una ruta simple, sin operadores de shell embebidos) cuando trae algo encadenado después
  *     (`saltarCdEncadenado`), y también los envoltorios `sudo`, `timeout N` (con sus propias flags),
@@ -100,7 +98,7 @@
  * Uso:
  *   node checkpoint-mecanico.js <transcript.jsonl> --out <andamio.md> [--repo-root <path>] [--n-msgs 12]
  *   node checkpoint-mecanico.js --self [--ensure] [--out <andamio.md>]     ← lo invoca el SKILL
- *   [--ventana viva|todo] [--json]
+ *   [--ventana viva|previa|todo] [--json]
  * Con --json (o sin --out) imprime el resumen crudo a stdout (para el hook/log).
  *
  * Memoria acotada: streaming por líneas con buffer de 1 MiB; ningún string acumula el archivo completo.
@@ -131,7 +129,7 @@ function parseArgs(argv) {
     else if (a === '--json') o.json = true;
     else if (a === '--repo-root') o.repoRoot = argv[++i];
     else if (a === '--n-msgs') o.nMsgs = parseInt(argv[++i], 10) || DEFAULT_N_MSGS;
-    else if (a === '--ventana') o.ventana = (argv[++i] === 'todo') ? 'todo' : 'viva';
+    else if (a === '--ventana') { const v = argv[++i]; o.ventana = (v === 'todo' || v === 'previa') ? v : 'viva'; }
     else if (a === '--self') o.self = true;
     else if (a === '--ensure') o.ensure = true;
     else rest.push(a);
@@ -143,9 +141,9 @@ function parseArgs(argv) {
 // Un mensaje de usuario NO aporta señal si es un saludo pelón, un marcador de sistema
 // (<command-message>, tool-result, [Request interrupted]) o un bloque de puro tool_result.
 const GREETING = /^(?:h+o+l+a+|h+e+y+|o+l+a+|buen(?:os|as)(?: d[ií]as| tardes| noches)?|qu[eé] onda|saludos|hi+|hello+|holi+)[\s!¡.,:;]*$/i;
-// Plomería del HARNESS, no del usuario — aunque el transcript la marque type:'user'/role:'user'. MEDIDO
-// 2026-09-11 sobre un render real: 3 de 9 "mensajes del usuario" eran esto (el `<task-notification>`
-// completo, 8 líneas). El rótulo de la sección invita a citar "VERBATIM, para citar con `[user: …]`" —
+// Plomería del HARNESS, no del usuario — aunque el transcript la marque type:'user'/role:'user' (un
+// `<task-notification>` o el stdout de un comando no son mensajes del usuario). El rótulo de la sección
+// invita a citar "VERBATIM, para citar con `[user: …]`" —
 // atribuirle esto al usuario es la falsa atribución que la norma de procedencia existe para impedir.
 // Cubre: el caveat/stdout de un comando local (con frecuencia trae códigos ANSI), la notificación de un
 // agente en background, el eco de un slash-command, un `<system-reminder>` inyectado, el resumen de
@@ -179,8 +177,8 @@ function topPriorizado(map, n, esRuido) {
   const ruido = entries.filter(([k]) => esRuido(k)).sort((a, b) => b[1] - a[1]);
   return [...señal, ...ruido].slice(0, n).map(([k, v]) => ({ item: k, n: v }));
 }
-// MEDIDO 2026-09-11: 7 de 10 comandos del top eran navegación/inspección (`cd`×3, `grep -n`…) — se
-// agrupa por los dos primeros tokens, así que gana quien más se repite, no quien dice QUÉ se hizo.
+// El top se agrupa por los dos primeros tokens, así que sin este filtro lo gana la navegación/inspección
+// (`cd`, `grep -n`…) —quien más se repite, no quien dice QUÉ se hizo.
 const NAV_PREFIJOS = new Set(['cd', 'ls', 'pwd', 'cat', 'head', 'tail', 'wc', 'echo', 'which', 'find', 'grep']);
 function esNavegacion(cmdKey) {
   const primerToken = String(cmdKey).trim().split(/\s+/)[0] || '';
@@ -197,8 +195,8 @@ function topComandos(map, n) { return topPriorizado(map, n, esNavegacion); }
 // ── B-2 (efecto lateral): una asignación de variable al frente (`WT=/private/tmp/…; cd $WT`,
 // `CI=1 npm test`, `export FOO=bar && cmd`) hacía que `esNavegacion` mirara el TOKEN EQUIVOCADO — el
 // nombre/valor de la variable, no el comando real que sigue — y ese comando quedaba clasificado como
-// "señal" aunque no diga qué se hizo (MEDIDO 2026-09-11: `WT=/private/tmp/…; cd` 16×, `SP=…` 1×,
-// `DASH=…` 3× colándose en el top como si fueran trabajo real). Se despoja la asignación ANTES de
+// "señal" aunque no diga qué se hizo (una `WT=…; cd` o `SP=…` colándose en el top como si fuera trabajo
+// real). Se despoja la asignación ANTES de
 // clasificar, así el comando se juzga por lo que HACE, no por el valor —siempre distinto o no— de la
 // variable que lo precede. Si tras despojar no queda nada (la línea ES solo la asignación, sin comando
 // encadenado), tampoco dice qué se hizo: se descarta igual.
@@ -220,7 +218,7 @@ function despojarAsignaciones(cmdRaw) {
 // ── B-2 (el hallazgo principal): `topPriorizado` reordena en DOS grupos (señal primero, ruido después)
 // pero cada grupo se sigue sorteando por frecuencia — el render presentaba eso como un "top 10" plano,
 // sin declarar que hay dos grupos, y un lector ve un 37× por debajo de entradas de 1× y deja de confiar
-// en el orden de TODA la lista (MEDIDO 2026-09-11: `[16,3,3,1,1,1,1,37,22,7]`, el 37× en la posición 8).
+// en el orden de TODA la lista (un 37× puede caer en la posición 8, bajo entradas de 1×).
 // Se optó por filtrar de verdad en la FUENTE (opción "b" del hallazgo) en vez de declarar los grupos en
 // el render (opción "a"): el consumidor que de verdad le exige orden monótono a este dato es el propio
 // oráculo de QA, que lee el JSON `topComandos` — un array plano, no dos sublistas —, así que la
@@ -232,8 +230,8 @@ function despojarAsignaciones(cmdRaw) {
 // ── C-1 · envoltorios que anteceden al comando real sin decir QUÉ se hizo: `sudo`, `timeout N` (con o
 // sin sus propias flags, p. ej. `timeout -k 5 900 cmd`), `command`, `env`, `nohup`. Se despojan con el
 // mismo espíritu que `despojarAsignaciones` — quitar lo que antecede, no lo que importa — antes de tomar
-// la clave. MEDIDO 2026-09-11: `timeout 900 bash brain/test-brain.sh …` (5 corridas de la suite en el
-// tramo real) quedaba con el número de segundos como si fuera el comando, en vez de `bash …`.
+// la clave. Sin esto, `timeout 900 bash brain/test-brain.sh …` quedaría con el número de segundos como si
+// fuera el comando, en vez de `bash …`.
 const RE_WRAPPER_TIMEOUT = /^timeout\s+(?:-\S+(?:\s+\S+)?\s+)*\d+[smhd]?\s+/;
 const RE_WRAPPER_SIMPLE = /^(?:sudo|command|env|nohup)\s+/;
 function despojarEnvoltorios(s) {
@@ -300,16 +298,15 @@ function claveComandoSeñal(cmdRaw) {
   if (!clave || esNavegacion(clave)) return null;
   return clave;
 }
-// MEDIDO 2026-09-11: 6 de 10 escrituras-por-bash eran temporales (`/tmp/suite-*.log`…) desplazando a las
-// del repo (bitácora, docs). El destino real (Write/Edit exacto) NO se toca — solo esta heurística.
+// Las escrituras-por-bash temporales (`/tmp/suite-*.log`…) no deben desplazar a las del repo (bitácora,
+// docs). El destino real (Write/Edit exacto) NO se toca — solo esta heurística.
 function esTemporal(ruta) {
   const r = String(ruta);
   return r.startsWith('/tmp/') || r === '/tmp' || r.startsWith('/private/tmp/') || r === '/private/tmp';
 }
-// NO usa `topPriorizado` a secas (efecto colateral de B-1, medido al arreglarlo): concatenar señal+ruido
-// sin tope, cuando la señal real es escasa, deja que /tmp rellene TODO el resto del cupo — en el tramo
-// real medido, solo 3 destinos distintos son del repo contra 13 de /tmp, así que un simple concat+slice
-// mete 7 de 10 en temporales (viola el "sin desplazar al repo" que este colector promete). Se topa el
+// NO usa `topPriorizado` a secas: concatenar señal+ruido sin tope, cuando la señal real es escasa, deja
+// que /tmp rellene TODO el resto del cupo — un simple concat+slice puede meter casi todo en temporales
+// (viola el "sin desplazar al repo" que este colector promete). Se topa el
 // número de temporales admitidos a, como máximo, tantos como señal real haya — así el resultado nunca
 // puede tener MÁS temporales que señal, sin ocultar /tmp del todo cuando sí hay hueco.
 function topBashEscrituras(map, n) {
@@ -330,9 +327,9 @@ function topBashEscrituras(map, n) {
 const RE_REDIR = /(?:^|[^0-9>&=|<-])>>?\s*(?:&\s*)?("[^"]*"|'[^']*'|[^\s;|&()<>]+)/g;
 const RE_TEE = /\btee\b\s+(?:-a\s+)?("[^"]*"|'[^']*'|[^\s;|&()<>]+)/g;
 // ── B-1 · el mismo tipo de falla que `empiezaComandoReal` ataja para los commits: el patrón (aquí, un
-// `>` de redirección) casa dentro de una cadena CITADA, no en un comando real. MEDIDO 2026-09-11:
+// `>` de redirección) casa dentro de una cadena CITADA, no en un comando real. Ejemplo:
 // `<command-name>/to-do</command-name>` — una cita textual del harness embebida en un heredoc-fixture de
-// python, NO un comando — hizo match porque el `>` de CIERRE de la etiqueta queda pegado a `/to-do` sin
+// python, NO un comando — hace match porque el `>` de CIERRE de la etiqueta queda pegado a `/to-do` sin
 // espacio de por medio; `destinosDeEscrituraBash` la leyó como una redirección real a `/to-do`.
 // `empiezaComandoReal` NO sirve tal cual aquí: ese detector exige que el token arranque tras un
 // SEPARADOR de shell (`;&|`\n(` o inicio de cadena) — válido para "¿empieza un comando nuevo?", pero un
@@ -375,19 +372,17 @@ function destinosDeEscrituraBash(cmd) {
       if (/^\.[A-Za-z0-9]{1,3}$/.test(d)) continue;                  // una EXTENSIÓN pelona (`.sh`), no una ruta
       if (!(d.indexOf('/') >= 0 || /\.[A-Za-z0-9]{1,8}$/.test(d))) continue;  // no parece archivo
       // Variable de shell SIN EXPANDIR (`$RHREC3/…`, `${VAR}/…`): pasa el filtro de "parece ruta" (tiene
-      // `/` o extensión) pero la ruta real es DESCONOCIDA — al rehidratar no lleva a ningún lado. MEDIDO
-      // 2026-09-11: en un master real, la escritura venía DENTRO de un heredoc de python que armaba un
-      // comando bash con `$VAR` embebido (no un `> $VAR` suelto, que ya filtraba la falta de `/`).
-      // Se descarta en vez de inventar el valor de la variable.
+      // `/` o extensión) pero la ruta real es DESCONOCIDA — al rehidratar no lleva a ningún lado (p. ej.
+      // un `$VAR` embebido en un heredoc que arma otro comando bash). Se descarta en vez de inventar el
+      // valor de la variable.
       if (d.indexOf('$') >= 0) continue;
       out.push(d);
     }
   };
   // Se recorre LÍNEA A LÍNEA y se SALTA toda línea que EMPIEZA con `>`. Un comando trae con frecuencia
   // un heredoc, y dentro del heredoc va markdown: una CITA de markdown (`> texto`) es indistinguible de
-  // una redirección para un regex. MEDIDO 2026-09-11 sobre un master real: sin este filtro, los falsos
-  // positivos `/AUDITOR-` (4×) y `/` (4×) entraban al top — y venían justo de bloques de cita dentro de
-  // heredocs. Una redirección REAL casi nunca abre línea, así que el filtro cuesta falsos negativos
+  // una redirección para un regex. Sin este filtro, falsos positivos como `/AUDITOR-` o `/` entran al top
+  // desde bloques de cita dentro de heredocs. Una redirección REAL casi nunca abre línea, así que el filtro cuesta falsos negativos
   // raros y paga falsos positivos frecuentes. (El resto del heredoc sí se mira: un `> archivo` a media
   // línea de prosa es improbable, y perder las redirecciones reales del comando sería peor.)
   for (const linea of String(cmd).split('\n')) {
@@ -399,10 +394,10 @@ function destinosDeEscrituraBash(cmd) {
 }
 
 // ── RESUELTO HOY: el mensaje de un commit o de una integración por squash, en las formas que este
-// equipo de verdad usa (MEDIDO 2026-09-11 sobre un tramo real: los 5 commits del tramo fueron TODOS
-// `-F -` con heredoc — la norma exige prosa curada multilínea, y `-m "…"` no alcanza para eso — más 4
-// integraciones `gh pr merge --squash --subject …`). Un detector que solo ve `-m "…"` deja ambas formas
-// INVISIBLES: "resuelto hoy" salía vacío en una sesión que cerró 3 commits y 4 merges.
+// equipo de verdad usa: `-F -` con heredoc (la norma exige prosa curada multilínea, y `-m "…"` no alcanza
+// para eso) y las integraciones `gh pr merge --squash --subject …`. Un detector que solo ve `-m "…"` deja
+// ambas formas INVISIBLES: "resuelto hoy" saldría vacío en una sesión que cerró commits por heredoc y
+// merges por squash.
 //   - `-m "…"` / `-m '…'`                      → primera línea, verbatim.
 //   - `-F -` + heredoc (`<<MSG` … `MSG`)        → primera línea NO VACÍA del CUERPO del heredoc, verbatim.
 //   - `-F <archivo>`                            → el archivo NO se lee (no se inventa el mensaje): se
@@ -419,10 +414,9 @@ const RE_GLAB_SQUASH_MSG = /glab\s+mr\s+merge\b[\s\S]*?--squash-message\s+(["'])
 // citado (docs, un mensaje de commit que EXPLICA el propio detector, una fixture embebida en un
 // heredoc)? Un `git commit`/`gh pr merge` real siempre sigue a un separador de shell — inicio de string,
 // `;`, `&`, `|`, backtick, salto de línea o `(` de subshell — nunca aparece a media cadena/backtick de
-// texto. MEDIDO 2026-09-11: sin este filtro, la propia prosa de un commit que describía el bug del
-// detector viejo (cita literal `` `-m "…"` `` como ejemplo) se leía como un commit real con mensaje "…",
-// y el código de una fixture vieja embebido en un heredoc (`L.append(bash("git commit …"` ) se leía
-// como una invocación real.
+// texto. Sin este filtro, la propia prosa de un commit que describe el bug del detector (una cita literal
+// `` `-m "…"` `` como ejemplo) se leería como un commit real con mensaje "…", y el código de una fixture
+// embebido en un heredoc (`L.append(bash("git commit …"`) se leería como una invocación real.
 function empiezaComandoReal(s, idx) {
   let j = idx - 1;
   while (j >= 0 && (s[j] === ' ' || s[j] === '\t')) j--;
@@ -493,7 +487,7 @@ function metaBarata(file) {
 //    StringDecoder + partir por '\n' que rewriteTranscriptStream usa para el mismo archivo.
 //    opts.ventana: 'viva' (default, resetea en cada frontera de /compact) | 'todo' (acumula el archivo).
 function extraer(file, nMsgs, opts) {
-  const ventana = (opts && opts.ventana === 'todo') ? 'todo' : 'viva';
+  const ventana = (opts && (opts.ventana === 'todo' || opts.ventana === 'previa')) ? opts.ventana : 'viva';
   const R = {
     ventana,
     lineas: 0, lineasVivas: 0, compactaciones: 0,
@@ -503,6 +497,10 @@ function extraer(file, nMsgs, opts) {
     mensajesUsuario: [], // ring buffer acotado a nMsgs
     // Lo HISTÓRICO (tramos ya compactados) se CUENTA aparte y se etiqueta; nunca se fusiona con lo vivo.
     previos: { tramos: 0, commits: 0, escrituras: 0, mensajes: 0, ramas: new Set(), cwds: new Set() },
+    // `--ventana previa`: SNAPSHOT con CONTENIDO (no solo conteos) del ÚLTIMO tramo cerrado = el que estaba
+    // VIVO justo antes del último /compact. Es lo que un reconstruir-contexto necesita: tras un compact el
+    // tramo vivo tiene 2 mensajes ("reconstruye tu contexto"); lo perdido vive en ESTE tramo previo.
+    tramoPrevio: null,
   };
   const pushMsg = (texto, ts) => {
     R.mensajesUsuario.push({ ts: ts || null, texto });
@@ -516,6 +514,14 @@ function extraer(file, nMsgs, opts) {
     R.previos.mensajes += R.mensajesUsuario.length;
     for (const x of R.ramas) R.previos.ramas.add(x);
     for (const x of R.cwds) R.previos.cwds.add(x);
+    // SNAPSHOT del contenido ANTES de limpiar — se sobreescribe en cada frontera, así que al terminar el
+    // archivo `R.tramoPrevio` es el ÚLTIMO tramo cerrado (el de justo antes del último /compact).
+    R.tramoPrevio = {
+      escrituras: new Map(R.escrituras), bashEscrituras: new Map(R.bashEscrituras),
+      skills: new Map(R.skills), comandos: new Map(R.comandos),
+      commits: R.commits.slice(), mensajesUsuario: R.mensajesUsuario.slice(),
+      ramas: new Set(R.ramas), cwds: new Set(R.cwds), lineasVivas: R.lineasVivas,
+    };
     R.escrituras.clear(); R.bashEscrituras.clear(); R.skills.clear(); R.comandos.clear();
     R.commits.length = 0; R.mensajesUsuario.length = 0;
     R.ramas.clear(); R.cwds.clear();
@@ -536,7 +542,7 @@ function extraer(file, nMsgs, opts) {
     if (o.isCompactSummary === true) {
       R.compactaciones++;
       R.ctxTokens = null;
-      if (ventana === 'viva') cerrarTramo();
+      if (ventana !== 'todo') cerrarTramo();   // 'viva' Y 'previa' cierran tramos; 'todo' acumula
     }
     if (typeof o.cwd === 'string' && o.cwd) R.cwds.add(o.cwd);
     if (typeof o.gitBranch === 'string' && o.gitBranch) R.ramas.add(o.gitBranch);
@@ -547,9 +553,11 @@ function extraer(file, nMsgs, opts) {
       R.ctxTokens = t; // el ÚLTIMO usage gana (orden del archivo = orden temporal)
     }
 
-    // Mensaje de USUARIO textual (verbatim) — filtra ruido/saludos y el resumen SINTÉTICO del propio
-    // /compact (isCompactSummary:true trae type:'user'/role:'user' pero NO lo escribió el usuario).
-    if (o.type === 'user' && o.isCompactSummary !== true && o.message && o.message.role === 'user') {
+    // Mensaje de USUARIO textual (verbatim) — filtra ruido/saludos, el resumen SINTÉTICO del propio
+    // /compact (isCompactSummary) y lo INYECTADO por el sistema (isMeta: additionalContext de SessionStart,
+    // hooks…) — ambos traen type:'user'/role:'user' pero NO los escribió el usuario (reconstruir-contexto
+    // finding 10: usar las marcas REALES del esquema, no solo el filtro de texto).
+    if (o.type === 'user' && o.isCompactSummary !== true && o.isMeta !== true && o.message && o.message.role === 'user') {
       const c = o.message.content;
       let texto = null;
       if (typeof c === 'string') texto = c;
@@ -579,8 +587,7 @@ function extraer(file, nMsgs, opts) {
           // DEDUPE por texto exacto: un reintento (push --force-with-lease tras un fallo, un `gh pr
           // merge` corrido 2-3 veces hasta que el guard/CI lo dejó pasar) es el MISMO mensaje repetido —
           // sin esto, "últimos N" se llena de copias idénticas y desplaza a otras decisiones reales del
-          // mismo tramo (MEDIDO 2026-09-11: un solo comando repetido 3 veces bastaba para acaparar la
-          // mitad del top-10).
+          // mismo tramo (un solo comando repetido varias veces acapararía media lista).
           for (const msg of extraerCommits(cmd)) if (!R.commits.includes(msg)) R.commits.push(msg);
           for (const d of destinosDeEscrituraBash(cmd)) add(R.bashEscrituras, d);
         }
@@ -608,6 +615,21 @@ function extraer(file, nMsgs, opts) {
     if (pending.length) onLine(pending);
   } finally { fs.closeSync(fd); }
 
+  // `--ventana previa`: el render lee R.escrituras/comandos/mensajes… directo → intercambiamos el snapshot
+  // del último tramo cerrado por los colectores vivos, así el render describe el tramo ANTERIOR al compact.
+  if (ventana === 'previa') {
+    if (R.tramoPrevio) {
+      R.escrituras = R.tramoPrevio.escrituras; R.bashEscrituras = R.tramoPrevio.bashEscrituras;
+      R.skills = R.tramoPrevio.skills; R.comandos = R.tramoPrevio.comandos;
+      R.commits = R.tramoPrevio.commits; R.mensajesUsuario = R.tramoPrevio.mensajesUsuario;
+      R.ramas = R.tramoPrevio.ramas; R.cwds = R.tramoPrevio.cwds;
+      R.lineasVivas = R.tramoPrevio.lineasVivas;
+      R.previaDisponible = true;
+    } else {
+      R.previaDisponible = false;   // la sesión no tuvo ningún /compact → no hay tramo previo; el render avisa
+    }
+  }
+
   return { ...R, bytes: st.size };
 }
 
@@ -630,12 +652,20 @@ function renderAndamio(meta, r, ctxRepo, avisoSubagente) {
   // Cabecera AUDITABLE: sin esto, su frescura no se puede juzgar al leerlo (y un insumo de frescura
   // desconocida presentado como vigente es el modo de falla que el gate del hilo existe para evitar).
   lines.push('## Corte (para juzgar su frescura)');
-  lines.push(`- Ventana: **${viva ? 'TRAMO VIVO' : 'TRANSCRIPT COMPLETO'}**`
-    + (viva ? ' — desde la última frontera de `/compact`. Lo anterior se cuenta aparte, no se mezcla.'
-            : ' — acumulado de toda la sesión: el trabajo VIEJO puede ganar los top-N por volumen.'));
+  const etiquetaVentana = r.ventana === 'todo' ? 'TRANSCRIPT COMPLETO'
+    : r.ventana === 'previa' ? 'TRAMO PREVIO (el de justo ANTES del último /compact)'
+    : 'TRAMO VIVO';
+  const descVentana = r.ventana === 'todo' ? ' — acumulado de toda la sesión: el trabajo VIEJO puede ganar los top-N por volumen.'
+    : r.ventana === 'previa' ? ' — lo que estaba vivo justo antes del último /compact: el contexto que la compactación fundió. Para reconstruir tras un compact que dejó el tramo vivo casi vacío.'
+    : ' — desde la última frontera de `/compact`. Lo anterior se cuenta aparte, no se mezcla.';
+  lines.push(`- Ventana: **${etiquetaVentana}**` + descVentana);
+  if (r.ventana === 'previa' && r.previaDisponible === false) {
+    lines.push('- ⚠️ **No hay tramo previo:** la sesión no registró ningún `/compact`, así que lo de abajo'
+      + ' es el tramo vivo completo (equivale a `--ventana viva`). No se perdió nada por compactación.');
+  }
   lines.push(`- Sesión (sid): ${process.env.CLAUDE_CODE_SESSION_ID || '(no disponible)'}`);
   lines.push(`- Transcript: ${r.lineas} líneas totales · ${r.bytes} bytes · ${r.compactaciones} compactaciones detectadas`);
-  if (viva) lines.push(`- Tramo vivo: ${r.lineasVivas} líneas (de las ${r.lineas} del archivo)`);
+  if (viva) lines.push(`- ${r.ventana === 'previa' ? 'Tramo previo' : 'Tramo vivo'}: ${r.lineasVivas} líneas (de las ${r.lineas} del archivo)`);
   lines.push(`- Tokens de contexto del ÚLTIMO usage: ${r.ctxTokens === null ? 'sin dato (nada nuevo tras el último compact)' : r.ctxTokens}`);
   lines.push(`- cwd(s) del tramo: ${[...r.cwds].join(', ') || '(ninguno)'}`);
   lines.push(`- Rama(s) del tramo: ${[...r.ramas].join(', ') || '(ninguna)'}`);
@@ -645,7 +675,7 @@ function renderAndamio(meta, r, ctxRepo, avisoSubagente) {
       + ` (${avisoSubagente}). Sin señal directa para distinguir padre/hijo (ver \`resolverSelf\` en el`
       + ' script), este andamio podría certificar trabajo del padre, no del sub-agente que lo corrió.');
   }
-  if (viva && r.previos.tramos > 0) {
+  if (r.ventana === 'viva' && r.previos.tramos > 0) {
     lines.push(`- **Tramos anteriores (NO listados arriba):** ${r.previos.tramos} tramos · `
       + `${r.previos.commits} commits · ${r.previos.escrituras} escrituras · ${r.previos.mensajes} mensajes · `
       + `${r.previos.ramas.size} ramas · ${r.previos.cwds.size} cwds. Están en el transcript; `
@@ -654,8 +684,8 @@ function renderAndamio(meta, r, ctxRepo, avisoSubagente) {
   lines.push('');
   // ── C-2 · el encabezado "top N de M" promete N entradas — pero un CAP posterior (temporales de
   // topBashEscrituras, o simplemente menos de TOP_N distintas) puede recortar la lista DESPUÉS de que el
-  // encabezado ya se calculó con TOP_N fijo. MEDIDO 2026-09-11: "top 10 de 16" renderizando 6 — el lector
-  // no puede saber si faltan 4 porque se filtraron o porque nunca existieron. El encabezado usa el largo
+  // encabezado ya se calculó con TOP_N fijo. Un "top 10 de 16" renderizando 6 deja al lector sin saber si
+  // faltan 4 porque se filtraron o porque nunca existieron. El encabezado usa el largo
   // REAL de lo que se va a renderizar (nunca TOP_N a secas), así nunca promete más de lo que muestra.
   lines.push(`## 🗂️ Archivos tocados con Write/Edit (exacto) — top ${escrituras.length} de ${r.escrituras.size}`);
   for (const e of escrituras) lines.push(`- ${e.item} (${e.n}×)`);
@@ -699,9 +729,9 @@ function morir(codigo, msg) { process.stderr.write(msg + '\n'); process.exit(cod
 //
 //    La intención original era FALLAR CERRADO dentro de un subagente (un subagente regenerando el
 //    andamio del padre certificaría trabajo que no verificó — eso sigue siendo el riesgo real, y sigue
-//    sin querer que pase). El candado usaba `CLAUDE_CODE_CHILD_SESSION === '1'` como señal. MEDIDO
-//    2026-09-11: esa variable vale `1` TAMBIÉN en el Bash del HILO PRINCIPAL (CLI 2.1.x, macOS) — no es
-//    "estoy en un subagente", así que el candado bloqueaba el 100% de los usos legítimos. Se buscó en
+//    sin querer que pase). Un candado sobre `CLAUDE_CODE_CHILD_SESSION === '1'` NO sirve: esa variable
+//    vale `1` TAMBIÉN en el Bash del HILO PRINCIPAL (CLI 2.1.x, macOS) — no es "estoy en un subagente", así
+//    que bloquearía el 100% de los usos legítimos. Se buscó en
 //    `docs/referencia-cli-claude-code.md` y en el manual de axon una variable de entorno que sí distinga
 //    padre de hijo: NO HAY NINGUNA documentada (§6 de la referencia lista las que existen; ninguna es
 //    "soy hijo"). Ante la ausencia de una señal directa, el candado se REEMPLAZA por una VERIFICACIÓN
@@ -780,7 +810,7 @@ function main() {
   }
   if (!o.file) {
     morir(2, 'uso: checkpoint-mecanico.js <transcript.jsonl> [--out <andamio.md>] [--repo-root <path>]\n'
-      + '                                 [--n-msgs N] [--ventana viva|todo] [--json]\n'
+      + '                                 [--n-msgs N] [--ventana viva|previa|todo] [--json]\n'
       + '     checkpoint-mecanico.js --self [--ensure] [--out <andamio.md>]');
   }
   if (!fs.existsSync(o.file)) morir(1, `no existe: ${o.file}`);

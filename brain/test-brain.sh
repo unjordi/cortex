@@ -20,14 +20,10 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOKS="$SCRIPT_DIR/hooks"
 INSTALLER="$SCRIPT_DIR/install-brain.sh"
 
-# CONTADOR inmune a subshells (auditoría 2026-09-15, Hallazgo #0, CRÍTICO): docenas de bloques de este
-# archivo corren sus aserciones dentro de `( … )` (subshell) — un `ok`/`bad` ahí SÍ imprime su línea, pero
-# el incremento de una variable de shell (`PASS=$((PASS+1))`) ocurre en el PROCESO HIJO y muere con él: el
-# padre nunca se entera. MEDIDO por canario: `PASS=0; ok(){ PASS=$((PASS+1));}; ( ok;ok;ok ); echo $PASS`
-# imprime 0. El resultado que este script IMPRIMÍA subestimaba sistemáticamente cuántos checks pasaban —
-# y, peor, un `bad` dentro de un subshell nunca subía $FAIL: el script podía cerrar en "0 FAIL" (exit 0)
-# con FALLAS reales impresas en pantalla que nadie contaba. Fix: el conteo real vive en un ARCHIVO (un
-# `>>` sobrevive cualquier fork()), no en una variable — inmune a CUALQUIER profundidad de subshell.
+# CONTADOR inmune a subshells: muchos bloques corren sus aserciones dentro de `( … )`, donde un
+# `PASS=$((PASS+1))` ocurre en el proceso hijo y muere con él (el padre nunca lo ve); un `bad` dentro de
+# un subshell tampoco subiría $FAIL. Por eso el conteo real vive en un ARCHIVO (un `>>` sobrevive
+# cualquier fork()), no en una variable — inmune a cualquier profundidad de subshell.
 CALLLOG="$(mktemp "${TMPDIR:-/tmp}/brain-test-calllog.XXXXXX")"
 ok()   { printf '  PASS: %s\n' "$1"; printf 'OK\n'  >> "$CALLLOG"; }
 bad()  { printf '  FAIL: %s\n' "$1"; printf 'BAD\n' >> "$CALLLOG"; }
@@ -88,15 +84,13 @@ run_registrar() {
 is_ask()    { printf '%s' "$1" | jq -e '.hookSpecificOutput.permissionDecision == "ask"' >/dev/null 2>&1; }
 is_silent() { [ -z "$(printf '%s' "$1" | tr -d '[:space:]')" ]; }
 
-# BAJO (auditoría FMEA 2026-09-16 §1.6, INVESTIGADO): el arnés construía sus PATHs restringidos ("sin jq")
-# con `_p="$(command -v "$_t")"; ln -s "$_p" ...` — bajo el Bash tool de Claude Code, `grep` (y a veces otros
-# coreutils) puede estar cableado como FUNCIÓN de shell exportada (envoltorio propio del harness, documentado
-# en la memoria de máquina), y `command -v` en ESE caso devuelve el NOMBRE ("grep"), no una ruta. Reproducido
-# EN VIVO: eso crea un symlink "grep -> grep" que se APUNTA A SÍ MISMO — el binario "desaparece" del PATH
-# restringido y cualquier prueba que dependa de él falla, de forma no determinista según qué shell haya
-# iniciado ESA corrida del arnés (exactamente el patrón 1205→1206 de una corrida a otra). `_mkbin_real`
-# resuelve SIEMPRE contra las rutas CANÓNICAS del sistema (nunca `command -v`, inmune a funciones de shell
-# exportadas) — determinista sin importar qué envoltorio tenga el shell que lanza el arnés.
+# El arnés construye sus PATHs restringidos ("sin jq") con symlinks a los binarios reales. Bajo el Bash
+# tool de Claude Code, `grep` (y a veces otros coreutils) puede estar cableado como FUNCIÓN de shell
+# exportada (envoltorio del harness), y ahí `command -v` devuelve el NOMBRE ("grep"), no una ruta: un
+# `ln -s "$(command -v grep)"` crearía un symlink "grep -> grep" que se apunta a sí mismo y el binario
+# "desaparece" del PATH restringido, de forma no determinista según el shell que lance la corrida. Por eso
+# `_mkbin_real` resuelve SIEMPRE contra las rutas CANÓNICAS del sistema (nunca `command -v`, inmune a
+# funciones de shell exportadas).
 _mkbin_real() {   # _mkbin_real <dir-destino> <tool...>
   local dir="$1" t d; shift
   mkdir -p "$dir"
@@ -215,12 +209,12 @@ write_state 19   # restablece el state.json de ventana para lo que siga
 echo ""
 echo "== (b1c) merge-squash-guard: EXIGE squash si destino=develop O indeterminado (G4 + B3) =="
 # Modelo canónico (decisión del usuario): squash cuando el destino es develop CONFIRMADO; main (release)
-# y ramas personales/ramitas → libres. B3 (FMEA 2026-07-30): destino IRRESOLUBLE (timeout/red) → fail-safe
-# EXIGE squash (antes lo dejaba pasar mientras confirmar-merge-develop sí lo trataba como develop → "merge
-# a develop confirmado SIN squash"), salvo señal explícita de release-a-main en el comando.
+# y ramas personales/ramitas → libres. B3: destino IRRESOLUBLE (timeout/red) → fail-safe EXIGE squash
+# (si lo dejara pasar mientras confirmar-merge-develop lo trata como develop, sería "merge a develop
+# confirmado SIN squash"), salvo señal explícita de release-a-main en el comando.
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null   # caché de destino limpia (la lib cachea por MR-id)
 MSBIN="$FAKEHOME/msbin"; mkdir -p "$MSBIN"
-# CONSOLIDACIÓN 2026-09-17: merge-develop-guard es UN solo guard (squash + autorización). Los checks de
+# merge-develop-guard es UN solo guard (squash + autorización). Los checks de
 # SQUASH corren para TODO repo, pero el JUEZ y el bloqueo de --auto SOLO gatean repos COMPARTIDOS. Para
 # AISLAR los checks de squash (que estas pruebas ejercitan) el CLAUDE_PROJECT_DIR es un repo PERSONAL (git
 # init SIN la marca .claude/repo-compartido) → el guard confirma "personal" y SALE tras el squash, sin correr
@@ -241,7 +235,7 @@ is_silent "$out" && ok "squash-guard G4: destino=rama personal → NO fuerza squ
 mock_glab main; out="$(ms 'glab mr merge 44 --yes')"
 is_silent "$out" && ok "squash-guard G4: destino=main (release) → NO fuerza squash"       || bad "squash-guard G4: forzó squash a un release; got: $out"
 # B3: destino IRRESOLUBLE (sin id → no se puede consultar; equivale a un timeout de red) SIN --squash
-# → fail-safe EXIGE squash (deny). Antes esto pasaba en silencio (el hueco B3).
+# → fail-safe EXIGE squash (deny).
 out="$(ms 'glab mr merge --auto-merge --yes')"   # sin ID → destino indeterminado
 is_deny "$out" && ok "squash-guard B3: destino INDETERMINADO sin --squash → deny (fail-safe exige squash)" || bad "squash-guard B3: no forzó squash con destino indeterminado; got: $out"
 # B3: mismo destino irresoluble PERO ya trae --squash → pasa (nada que exigir).
@@ -251,11 +245,9 @@ is_silent "$out" && ok "squash-guard B3: destino INDETERMINADO CON --squash → 
 # el histórico de un release cuya red no se pudo consultar). Sin id → destino queda vacío igual.
 out="$(ms 'glab mr merge --yes # release a main')"
 is_silent "$out" && ok "squash-guard B3: indeterminado + señal 'release a main' → NO fuerza squash" || bad "squash-guard B3: forzó squash pese a la señal explícita de release; got: $out"
-# M4 (auditoría 2026-09-15 §3.4, costura): destino IRRESOLUBLE + el COMANDO no menciona release/main, pero
-# la CONVERSACIÓN reciente SÍ trae lenguaje de release → antes este guard era CIEGO a la charla (solo leía
-# el texto del comando) y forzaba squash sobre un release que confirmar-merge-develop YA reconocía como
-# legítimo por conversación — "MISMO comando, MISMA incógnita, CONCLUSIONES OPUESTAS". Ahora ambos guards
-# leen la MISMA señal (acg_lexico_release sobre acg_recent_intercalado).
+# M4: destino IRRESOLUBLE + el COMANDO no menciona release/main, pero la CONVERSACIÓN reciente SÍ trae
+# lenguaje de release → NO fuerza squash. Ambos guards leen la MISMA señal (acg_lexico_release sobre
+# acg_recent_intercalado), igual que confirmar-merge-develop reconoce el release por conversación.
 M4TX=$(mktemp)
 printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"libera esto a main, es el release"}]}}' > "$M4TX"
 msT() { PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$MSREPO" bash "$HOOKS/merge-develop-guard.sh" <<<"$(jq -nc --arg c "$1" --arg t "$M4TX" '{tool_input:{command:$c},transcript_path:$t}')"; }
@@ -265,17 +257,16 @@ is_silent "$out" && ok "M4: destino INDETERMINADO + release SOLO en la conversac
 out="$(ms 'glab mr merge --yes')"
 is_deny "$out" && ok "M4 control: destino INDETERMINADO sin release en NINGÚN lado → sigue exigiendo squash" || bad "M4 control: aflojó la exigencia de squash sin señal de release"
 rm -f "$M4TX"
-# H-R9-01 (FMEA r9): el binario Windows `glab.exe`/`gh.exe` rompía el gate `acg_es_merge_mr` → ambos guards
-# de merge quedaban ciegos (hermano de B4 en el eje merge). (\.exe)? en el reconocimiento lo cierra.
+# H-R9-01: el binario Windows `glab.exe`/`gh.exe` NO debe romper el gate `acg_es_merge_mr` (si no, ambos
+# guards de merge quedan ciegos; hermano de B4 en el eje merge). El `(\.exe)?` en el reconocimiento lo cierra.
 mock_glab develop; out="$(ms 'glab.exe mr merge 48 --auto-merge --yes')"
 is_deny "$out" && ok "squash-guard H-R9-01: 'glab.exe mr merge' sin --squash → deny (binario Windows)" || bad "squash-guard H-R9-01: 'glab.exe' evadió el guard de squash; got: $out"
 mock_glab develop; out="$(ms 'glab.exe mr merge 49 --squash --remove-source-branch --auto-merge --yes')"
 is_silent "$out" && ok "squash-guard H-R9-01: 'glab.exe mr merge --squash' → pasa (sin falso positivo)" || bad "squash-guard H-R9-01: bloqueó un glab.exe que ya trae squash; got: $out"
-# Cobertura NUEVA (auditoría externa del arnés, 2026-09-15): git-branch-guard y entorno-maquina-guard ya
-# tenían el caso eval/bash-c (M1); merge-squash-guard NO lo tenía pese a compartir la MISMA lib despoja-
-# comillas. Cierra el hueco de cobertura — M1 ya lo arregla de fondo (acg_es_merge_mr reinyecta el span de
-# un ejecutor), este test solo lo BLINDA hacia adelante. `ms()` interpola el comando SIN escapar comillas
-# (rompería el JSON con un `eval "…"` embebido) → estos dos casos arman el payload con jq -nc.
+# merge-squash-guard comparte con git-branch-guard/entorno-maquina-guard la MISMA lib despoja-comillas, así
+# que el caso eval/bash-c (M1) también lo cubre: acg_es_merge_mr reinyecta el span de un ejecutor. Estos dos
+# casos lo BLINDAN hacia adelante. `ms()` interpola el comando SIN escapar comillas (rompería el JSON con un
+# `eval "…"` embebido) → arman el payload con jq -nc.
 msj_raw() { jq -nc --arg c "$1" '{tool_input:{command:$c}}' | PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$MSREPO" bash "$HOOKS/merge-develop-guard.sh"; }
 mock_glab develop
 out="$(msj_raw 'eval "glab mr merge 91 --yes"')"
@@ -283,10 +274,9 @@ is_deny "$out" && ok "squash-guard M1-cobertura: 'eval \"glab mr merge…\"' NO 
 out="$(msj_raw 'bash -c "glab mr merge 92 --yes"')"
 is_deny "$out" && ok "squash-guard M1-cobertura: 'bash -c \"glab mr merge…\"' NO evade — sigue exigiendo squash" || bad "squash-guard M1-cobertura: bash -c evadió el guard de squash; got: $out"
 
-# H6 (auditoría semántica 2026-09-16, MEDIO, CONFIRMADO): SQUASH_RE corría sobre $cmd RAW, sin pasar por
-# acg_despoja_comillas -- una mención ENTRECOMILLADA de "--squash" (en --description/--subject) bastaba para
-# que el guard creyera que YA había squash. Medido: `--description "rehazlo con --squash y listo"` colaba un
-# merge a develop SIN squash de verdad.
+# H6: SQUASH_RE debe pasar por acg_despoja_comillas, no correr sobre $cmd RAW — una mención ENTRECOMILLADA
+# de "--squash" (en --description/--subject) haría creer al guard que YA hay squash y colaría un merge a
+# develop SIN squash de verdad.
 mock_glab develop
 out="$(msj_raw 'glab mr merge 93 --yes --description "rehazlo con --squash y listo"')"
 is_deny "$out" && ok "H6: mención ENTRECOMILLADA de '--squash' (en --description) → SIGUE exigiendo squash (antes: creía que ya lo tenía)" \
@@ -298,10 +288,9 @@ out="$(msj_raw 'glab mr merge 95 --squash --remove-source-branch --squash-messag
 is_silent "$out" && ok "H6: --squash REAL (fuera de comillas) sigue reconociéndose — sin regresión del caso legítimo" \
   || bad "H6: REGRESIÓN — el --squash real dejó de reconocerse tras exigir despoja_comillas; got: $out"
 
-# H4 (auditoría de ejecución 2026-09-16, MEDIO, CONFIRMADO): el fail-safe de destino IRRESOLUBLE usaba
-# acg_lexico_release SOBRE TODA la ventana, sin anclarla al MR de ESTE comando -- un "libera a main el PR
-# 390" (OTRO MR) le prestaba su señal al merge del PR 391, desactivando --squash de un merge a develop
-# genuino. Ancla la señal al mrid de ESTE comando (acg_lexico_release_para_mr).
+# H4: el fail-safe de destino IRRESOLUBLE ancla acg_lexico_release al mrid de ESTE comando
+# (acg_lexico_release_para_mr). Sin anclar, un "libera a main el PR 390" (OTRO MR) le prestaría su señal al
+# merge del PR 391, desactivando --squash de un merge a develop genuino.
 H4TX=$(mktemp)
 printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"libera a main el PR 390"}]}}' > "$H4TX"
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
@@ -349,8 +338,8 @@ is_silent "$(msj 'glab mr merge 53 --squash --remove-source-branch --squash-mess
   && ok "msg LITERAL: resumen con sustancia + traza (≥12 palabras) → pasa (sin FP)" || bad "msg LITERAL: bloqueó un resumen legítimo con traza"
 is_silent "$(msj 'glab mr merge 54 --squash --remove-source-branch --squash-message "$(cat resumen.md)"')" \
   && ok "msg UNVERIFICABLE: '\$(cat resumen.md)' (la forma que el propio hook sugiere) → pasa" || bad "msg UNVERIFICABLE: bloqueó la forma sugerida por el hook"
-# ── MULTILÍNEA INLINE (fix #42/#46): un --squash-message con SALTOS DE LÍNEA reales y SUSTANCIA ya NO se
-#    trunca al 1er token ni exige la forma $(cat archivo). El sed line-based veía solo la 1ª línea → FP. ──
+# ── MULTILÍNEA INLINE: un --squash-message con SALTOS DE LÍNEA reales y SUSTANCIA NO se trunca al 1er
+#    token ni exige la forma $(cat archivo) — se evalúa el mensaje completo, no solo la 1ª línea. ──
 MLMSG=$'corrige el calculo de IVA en las facturas: el total ahora suma el impuesto\npor linea y redondea al centavo mas cercano segun la NOM vigente.\n\nRama: fix/iva, MR: !58'
 is_silent "$(msj "glab mr merge 58 --squash --remove-source-branch --squash-message \"$MLMSG\"")" \
   && ok "msg LITERAL multilínea (#42/#46): resumen inline con saltos de línea + sustancia + traza → pasa (sin FP)" || bad "msg LITERAL multilínea: bloqueó un resumen inline multilínea legítimo"
@@ -368,7 +357,7 @@ is_silent "$(msj 'gh pr merge 56 --squash --delete-branch --subject "agrega vali
   && ok "msg LITERAL gh: --subject con sustancia + traza → pasa (sin FP)" || bad "msg LITERAL gh: bloqueó un subject legítimo con traza"
 is_silent "$(msj 'gh pr merge 57 --squash --delete-branch --fill')" \
   && ok "msg UNVERIFICABLE gh: --fill (subject derivado de commits) → pasa" || bad "msg UNVERIFICABLE gh: bloqueó un --fill"
-# M8 (auditoría 2026-09-15 §3.9): con gh, --subject fija el TÍTULO; la convención pone el RESUMEN CURADO en
+# M8: con gh, --subject fija el TÍTULO; la convención pone el RESUMEN CURADO en
 # --body. Un --subject CORTO (sin traza, <12 palabras) con un --body separado (aunque OPACO, la forma que
 # el propio hook sugiere) NO debe forzar la vara de profundidad/trazabilidad sobre el título.
 is_silent "$(msj 'gh pr merge 90 --squash --delete-branch --subject "fix: IVA" --body "$(cat resumen.md)"')" \
@@ -428,11 +417,11 @@ delout="$(msj 'gh pr merge 72')"   # sin --squash → deny; el rehaz sugerido de
 # ── (b1c4) FIX-4 / A-2: al integrar a develop, el guard EXIGE borrar la rama de origen ──────────────
 echo ""
 echo "== (b1c4) merge-squash-guard: A-2 — un merge a develop sin --delete-branch/--remove-source-branch → deny =="
-# Dictamen higiene de ramas 2026-09-17, A-2: nadie hacía cumplir el borrado de la rama de origen.
-# `--delete-branch` solo aparecía dentro de `_rehaz_sugerido()`, que se emite ÚNICAMENTE en el deny por
-# falta de squash → un merge CORRECTO con squash pasaba sin que nadie mencionara la rama. Y las dos
-# recetas del recetario divergían justo en ese flag (glab traía --remove-source-branch, gh no). Esa
-# asimetría ES la población de remotas huérfanas: PRs mergeados con su rama viva en origin.
+# A-2: al integrar a develop el guard EXIGE borrar la rama de origen. Si `--delete-branch` solo viviera en
+# `_rehaz_sugerido()` (emitido únicamente en el deny por falta de squash), un merge CORRECTO con squash
+# pasaría sin mencionar la rama — y las dos recetas divergen en ese flag (glab `--remove-source-branch`,
+# gh `--delete-branch`). Esa asimetría es la que puebla las remotas huérfanas: PRs mergeados con su rama
+# viva en origin.
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
 # el destino de un comando `gh` lo resuelve el mock de GH (el de glab no lo toca): mockear el correcto
 # es lo que hace que estos asertos midan el ALCANCE real (develop / main / rama personal) y no otra cosa.
@@ -464,8 +453,8 @@ echo ""
 echo "== (b1c5) merge-squash-guard: A-3 — el resumen que vive en un ARCHIVO LEGIBLE también debe traer la traza =="
 # El comando que el propio guard SUGIERE es `--body "$(cat resumen.md)"`, y esa forma caía a UNVERIFICABLE
 # → exit 0, cero validación: la forma recomendada por el guard era exactamente la que escapaba a su propio
-# chequeo. Medido: solo el 38% de las ramas integradas llevaba la línea `Rama:`. Sin esa señal LOCAL y
-# offline, detectar la integración depende de gh/glab — ausentes del PATH de launchd.
+# chequeo. La línea `Rama:` es la señal LOCAL y offline de la integración; sin ella, detectarla depende de
+# gh/glab — ausentes del PATH de launchd.
 A3DIR="$FAKEHOME/a3"; mkdir -p "$A3DIR"
 printf 'corrige el calculo del impuesto al valor agregado en todas las facturas emitidas en el periodo fiscal vigente\n' > "$A3DIR/sin-rama.md"
 printf 'corrige el calculo del impuesto al valor agregado en las facturas del periodo fiscal vigente\n\nRama: fix/iva-facturas\nPR: #71\n' > "$A3DIR/con-rama.md"
@@ -520,9 +509,9 @@ is_silent "$out" && ok "FIX-7 control: a main (release) no se exige traza" || ba
   acg_msg_falta_traza "corrige el IVA (MR !53)"                                                 && bad "acg_msg_falta_traza: FP, sí traía id de MR" || ok "acg_msg_falta_traza: id de MR (!53) → trae traza"
   acg_msg_falta_traza "corrige el checkout #12"                                                 && bad "acg_msg_falta_traza: FP, sí traía id de PR" || ok "acg_msg_falta_traza: id de PR (#12) → trae traza"
   acg_msg_falta_traza "arregla el prefix del logger"                                            && ok "acg_msg_falta_traza: 'prefix' NO es 'fix/' (no traza) → falta" || bad "acg_msg_falta_traza: FP tomó 'prefix' como rama fix/"
-  # H8 (auditoría semántica 2026-09-16, BAJO, CONFIRMADO): el set de prefijos era angosto (solo
-  # feat/fix/chore/hotfix/docs) — "Rama: refactor/…"/"test/…"/"perf/…"/"ci/…" SÍ traen la rama pero el
-  # mensaje decía "falta trazabilidad". Ampliado a los prefijos de conventional-commit de uso real.
+  # H8: el set de prefijos de rama abarca los de conventional-commit de uso real — "Rama: refactor/…"/
+  # "test/…"/"perf/…"/"ci/…"/"audit/…" SÍ cuentan como traza (un set angosto solo feat/fix/chore/hotfix/docs
+  # marcaría falsamente "falta trazabilidad" en esos).
   acg_msg_falta_traza "reordena el módulo. Rama: refactor/sustrato-guards"                        && bad "H8: 'refactor/…' se marcó como SIN traza (FN)" || ok "H8: 'refactor/…' → SÍ trae traza"
   acg_msg_falta_traza "cobertura nueva. Rama: test/cobertura-eval-bashc"                          && bad "H8: 'test/…' se marcó como SIN traza (FN)" || ok "H8: 'test/…' → SÍ trae traza"
   acg_msg_falta_traza "acelera la consulta. Rama: perf/indices-estructura"                        && bad "H8: 'perf/…' se marcó como SIN traza (FN)" || ok "H8: 'perf/…' → SÍ trae traza"
@@ -554,8 +543,8 @@ gb() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | CLAUDE
 git -C "$GBREPO" checkout -q develop >/dev/null 2>&1
 out_gbpush="$(gb 'git push')"
 printf '%s' "$out_gbpush"        | grep -q '"deny"' && ok "gbg H1: 'git push' pelón en develop → deny"          || bad "gbg H1: push pelón en develop NO bloqueó"
-# M8 (auditoría 2026-09-15 §3.11, norma dura anti-vein-popper): el mensaje de bloqueo YA NO ofrece "hazlo en
-# la web de GitLab" como escape — se satisface (OK súper-explícito por CLI) o se arregla, nunca se rodea.
+# M8 (norma dura anti-vein-popper): el mensaje de bloqueo NO ofrece "hazlo en la web de GitLab" como escape
+# — se satisface (OK súper-explícito por CLI) o se arregla, nunca se rodea.
 printf '%s' "$out_gbpush" | grep -qi 'web de GitLab' \
   && bad "M8: git-branch-guard sigue ofreciendo 'la web de GitLab' como escape (norma anti-vein-popper)" \
   || ok "M8: git-branch-guard NO ofrece la web como escape del bloqueo"
@@ -565,16 +554,16 @@ git -C "$GBREPO" checkout -q -b feat/x >/dev/null 2>&1
 is_silent "$(gb 'git push')"              && ok "gbg H1: 'git push' pelón en ramita → silencio (sin falso positivo)" || bad "gbg H1: push pelón en ramita bloqueó"
 is_silent "$(gb 'git push -u origin feat/x')" && ok "gbg: push explícito de la ramita → silencio"                    || bad "gbg: push de ramita bloqueó"
 printf '%s' "$(gb 'git push origin develop')" | grep -q '"deny"' && ok "gbg: 'git push origin develop' explícito → deny (preservado)" || bad "gbg: push explícito a develop NO bloqueó"
-# A2 (FMEA 2026-07-30): el FORCE-REFSPEC `+develop` (el `+` fuerza el push) se colaba porque el set de
-# separadores no incluía '+'. El push FORZADO a base es el más peligroso → debe BLOQUEAR.
+# A2: el FORCE-REFSPEC `+develop` (el `+` fuerza el push) NO debe colarse — el set de separadores incluye
+# '+'. El push FORZADO a base es el más peligroso → debe BLOQUEAR.
 printf '%s' "$(gb 'git push -f origin +develop')" | grep -q '"deny"' && ok "gbg A2: 'git push -f origin +develop' (force-refspec) → deny" || bad "gbg A2: el force-refspec +develop se coló (bypass A2)"
 printf '%s' "$(gb 'git push origin +develop')"    | grep -q '"deny"' && ok "gbg A2: 'git push origin +develop' (force-refspec, sin -f) → deny" || bad "gbg A2: +develop sin -f se coló"
 printf '%s' "$(gb 'git push origin +main')"       | grep -q '"deny"' && ok "gbg A2: 'git push origin +main' (force-refspec) → deny" || bad "gbg A2: +main se coló"
 is_silent "$(gb 'git push origin feat/x')"        && ok "gbg A2: 'git push origin feat/x' explícito → silencio (sin falso positivo del '+')" || bad "gbg A2: falso positivo al agregar '+' al set (bloqueó una ramita)"
 is_silent "$(gb 'git commit -m "doc: no hacer git push a develop"')" && ok "gbg H13: 'git push a develop' entrecomillado → silencio" || bad "gbg H13: mención entrecomillada disparó"
 is_silent "$(gb 'gh pr merge 5 -R org/develop --squash')" && ok "gbg H11: '-R org/develop' (nombre de repo) → silencio" || bad "gbg H11: -R org/develop disparó falso positivo"
-# ── wave4 (FMEA post-integración 2026-07-30): evasiones de git-branch-guard CERRADAS. Parado en feat/x
-# (rama NO-base): estas formas empujaban a base SIN que el fallback por rama actual disparara. ──
+# ── wave4 — evasiones de git-branch-guard. Parado en feat/x (rama NO-base): estas formas empujan a base
+# sin que el fallback por rama actual dispare, así que cada una debe DENY por sí misma. ──
 printf '%s' "$(gb 'git push origin "develop"')" | grep -q '"deny"' && ok "gbg A-01: destino ENTRECOMILLADO develop → deny" || bad "gbg A-01: destino entrecomillado se coló (bypass comillas)"
 printf '%s' "$(gb "git push origin 'main'")"    | grep -q '"deny"' && ok "gbg A-01: destino entrecomillado main (comilla simple) → deny" || bad "gbg A-01: comilla simple se coló"
 printf '%s' "$(gb 'git push --all origin')"     | grep -q '"deny"' && ok "gbg A-02: 'git push --all' → deny (empuja todas las refs, incl base)" || bad "gbg A-02: --all se coló"
@@ -582,51 +571,50 @@ printf '%s' "$(gb 'git push --mirror origin')"  | grep -q '"deny"' && ok "gbg A-
 printf '%s' "$(gb 'git -c http.sslVerify=false push origin develop')" | grep -q '"deny"' && ok "gbg A-03: prefijo 'git -c … push develop' → deny" || bad "gbg A-03: el prefijo 'git -c' rompió la adyacencia (bypass)"
 printf '%s' "$(gb 'git -C /tmp push origin main')" | grep -q '"deny"' && ok "gbg A-03: prefijo 'git -C dir push main' → deny" || bad "gbg A-03: 'git -C' se coló"
 is_silent "$(gb 'git push origin "feat/x"')"    && ok "gbg A-01: ramita entrecomillada → silencio (sin falso positivo)" || bad "gbg A-01: bloqueó una ramita entrecomillada"
-# N-01 (FMEA ronda 2): refspec ENTRECOMILLADO con la base a la DERECHA del ':' (residuo del raw-check de A-01).
+# N-01: refspec ENTRECOMILLADO con la base a la DERECHA del ':' (residuo del raw-check de A-01).
 printf '%s' "$(gb 'git push origin "HEAD:develop"')"     | grep -q '"deny"' && ok "gbg N-01: 'git push origin \"HEAD:develop\"' → deny" || bad "gbg N-01: refspec entrecomillado HEAD:develop se coló"
 printf '%s' "$(gb 'git push origin "mybranch:main"')"    | grep -q '"deny"' && ok "gbg N-01: 'git push origin \"mybranch:main\"' → deny" || bad "gbg N-01: refspec entrecomillado rama:main se coló"
 is_silent "$(gb 'git push origin "HEAD:feat/x"')"        && ok "gbg N-01: refspec entrecomillado a ramita → silencio (sin falso positivo)" || bad "gbg N-01: bloqueó un refspec a ramita"
-# A-R3-01 (FMEA ronda 3): un push a base ENCADENADO como 2º (o Nº) subcomando. El reescrito de N-01 usaba
-# `head -1` → solo miraba el PRIMER `git push …` → un `git push feat/x ; git push develop` se colaba por el 2º.
-# acg_push_toca_base ahora recorre CADA subcomando (awk gsub [;&|]→\n): cualquiera que toque base BLOQUEA.
+# A-R3-01: un push a base ENCADENADO como 2º (o Nº) subcomando NO debe colarse (`git push feat/x ; git push
+# develop`). acg_push_toca_base recorre CADA subcomando (awk gsub [;&|]→\n): cualquiera que toque base BLOQUEA.
 printf '%s' "$(gb 'git push origin feat/x ; git push origin develop')" | grep -q '"deny"' && ok "gbg A-R3-01: push a base ENCADENADO (2º subcomando ';') → deny" || bad "gbg A-R3-01: el push a develop encadenado se coló (head -1)"
 printf '%s' "$(gb 'git push origin feat/x && git push origin main')"   | grep -q '"deny"' && ok "gbg A-R3-01: push a base encadenado ('&&', a main) → deny" || bad "gbg A-R3-01: el push a main encadenado se coló"
 # Y el contraveneno: un push REAL a ramita seguido de un commit cuyo MENSAJE menciona "git push a develop"
 # NO dispara — ese subcomando es el commit, su despoja borra el mensaje → es_push=no → se salta (H13 por-subcomando).
 is_silent "$(gb 'git push origin feat/x && git commit -m "doc: recordar no hacer git push a develop"')" && ok "gbg A-R3-01: push a ramita + commit con 'git push a develop' en el mensaje → silencio (H13)" || bad "gbg A-R3-01: la mención en el mensaje del commit encadenado disparó (falso positivo)"
-# A-R4-01 (FMEA ronda 4): git acepta MUCHAS opciones globales entre `git` y su subcomando (no solo -c/-C).
-# Cada una rompía la adyacencia git+push → evadía TODO el guard. acg_normaliza_git_prefijo ahora colapsa la
-# CLASE (value-eaters por espacio/= + cualquier flag dash-led). Parado en feat/x → estas empujan a base → deny.
+# A-R4-01: git acepta MUCHAS opciones globales entre `git` y su subcomando (no solo -c/-C); cada una podría
+# romper la adyacencia git+push y evadir el guard. acg_normaliza_git_prefijo colapsa la CLASE (value-eaters
+# por espacio/= + cualquier flag dash-led). Parado en feat/x → estas empujan a base → deny.
 printf '%s' "$(gb 'git --no-pager push origin develop')"     | grep -q '"deny"' && ok "gbg A-R4-01: 'git --no-pager push develop' → deny" || bad "gbg A-R4-01: '--no-pager' rompió la adyacencia (bypass)"
 printf '%s' "$(gb 'git -P push origin develop')"             | grep -q '"deny"' && ok "gbg A-R4-01: 'git -P push develop' → deny" || bad "gbg A-R4-01: '-P' se coló"
 printf '%s' "$(gb 'git --work-tree=/tmp push origin main')"  | grep -q '"deny"' && ok "gbg A-R4-01: 'git --work-tree=/tmp push main' (=-form) → deny" || bad "gbg A-R4-01: '--work-tree=' se coló"
 printf '%s' "$(gb 'git --git-dir /tmp/foo push origin develop')" | grep -q '"deny"' && ok "gbg A-R4-01: 'git --git-dir /tmp/foo push develop' (value por espacio) → deny" || bad "gbg A-R4-01: '--git-dir <dir>' se coló"
 printf '%s' "$(gb 'git --literal-pathspecs push origin main')" | grep -q '"deny"' && ok "gbg A-R4-01: 'git --literal-pathspecs push main' → deny" || bad "gbg A-R4-01: '--literal-pathspecs' se coló"
 is_silent "$(gb 'git --no-pager push origin feat/x')"        && ok "gbg A-R4-01: '--no-pager push feat/x' (ramita) → silencio (sin falso positivo)" || bad "gbg A-R4-01: bloqueó una ramita con prefijo global"
-# A-R5-01 (FMEA ronda 5): el VALOR de un value-eater puede ir ENTRECOMILLADO con ESPACIOS (rutas de Google
-# Drive: "/Users/…/Mi unidad/repo"). El [^space]+ se cortaba en el 1er espacio → evasión total. Quote-aware.
+# A-R5-01: el VALOR de un value-eater puede ir ENTRECOMILLADO con ESPACIOS (rutas tipo Google Drive,
+# "/ruta/Mi unidad/repo"). El matcher es quote-aware: un `[^space]+` se cortaría en el 1er espacio y evadiría.
 printf '%s' "$(gb 'git -C "/Users/unjordi/Mi unidad/repo" push origin develop')" | grep -q '"deny"' && ok "gbg A-R5-01: '-C \"…/Mi unidad/…\" push develop' (valor entrecomillado con espacio) → deny" || bad "gbg A-R5-01: el valor entrecomillado con espacio rompió la adyacencia (bypass)"
 printf '%s' "$(gb "git -C '/single quote path/x' push origin main")" | grep -q '"deny"' && ok "gbg A-R5-01: '-C \x27/single quote path/x\x27 push main' (comilla simple con espacio) → deny" || bad "gbg A-R5-01: comilla simple con espacio se coló"
 printf '%s' "$(gb 'git --git-dir="/a b/.git" push origin develop')" | grep -q '"deny"' && ok "gbg A-R5-01: '--git-dir=\"/a b/.git\" push develop' (=-form entrecomillado) → deny" || bad "gbg A-R5-01: --git-dir= entrecomillado se coló"
 printf '%s' "$(gb 'git -c a=b -C "/x y" --no-pager push origin develop')" | grep -q '"deny"' && ok "gbg A-R5-01: prefijos STACKED con valor entrecomillado → deny" || bad "gbg A-R5-01: stacking con valor entrecomillado se coló"
 is_silent "$(gb 'git -C "/Users/unjordi/Mi unidad/repo" push origin feat/x')" && ok "gbg A-R5-01: '-C \"…espacio…\" push feat/x' (ramita) → silencio (sin falso positivo)" || bad "gbg A-R5-01: bloqueó una ramita con -C entrecomillado"
-# A-R6-01 (FMEA ronda 6): la comilla puede ir EN MEDIO del valor (`git -c user.name="a b" push …` —
-# shell-válido, cotidiano). r5 cubrió la comilla al INICIO; el valor MIXTO key="val con espacio" volvía a
-# cortar en el espacio interno → evasión total. El valor se modela como SECUENCIA (char-no-comilla | run "…").
+# A-R6-01: la comilla puede ir EN MEDIO del valor (`git -c user.name="a b" push …`, shell-válido). r5 cubre
+# la comilla al INICIO; un valor MIXTO key="val con espacio" se cortaría en el espacio interno, así que el
+# valor se modela como SECUENCIA (char-no-comilla | run "…").
 printf '%s' "$(gb 'git -c user.name="a b" push origin develop')" | grep -q '"deny"' && ok "gbg A-R6-01: '-c user.name=\"a b\" push develop' (comilla EN MEDIO) → deny" || bad "gbg A-R6-01: comilla en medio del valor rompió la adyacencia (bypass)"
 printf '%s' "$(gb "git -c user.name='a b' push origin main")" | grep -q '"deny"' && ok "gbg A-R6-01: '-c user.name=\x27a b\x27 push main' (comilla simple en medio) → deny" || bad "gbg A-R6-01: comilla simple en medio se coló"
 printf '%s' "$(gb 'git -c core.editor="vim -c foo" push origin develop')" | grep -q '"deny"' && ok "gbg A-R6-01: '-c core.editor=\"vim -c foo\" push develop' (valor con espacio y -c adentro) → deny" || bad "gbg A-R6-01: valor con -c interno se coló"
 is_silent "$(gb 'git -c user.name="a b" push origin feat/x')" && ok "gbg A-R6-01: '-c user.name=\"a b\" push feat/x' (ramita) → silencio (sin falso positivo)" || bad "gbg A-R6-01: bloqueó una ramita con -c key entrecomillado"
 is_silent "$(gb 'git commit -m "un mensaje con -C /x y push origin develop adentro"')" && ok "gbg A-R6-01: commit con 'push origin develop' DENTRO del mensaje → silencio (H13, el -c/-C va tras el subcomando)" || bad "gbg A-R6-01: falso positivo, la mención en el mensaje disparó"
-# A-R7-01 (FMEA ronda 7): el espacio del valor puede ir ESCAPADO CON BACKSLASH (`git -c a=b\ c push …` — el
-# shell lo tokeniza como `-c "a=b c"`). El `\` se trataba como char normal y la secuencia se cortaba en el
-# espacio real → misma evasión que r5/r6 por otra vía. Se añade `\\.` (backslash+char) a la secuencia de valor.
+# A-R7-01: el espacio del valor puede ir ESCAPADO CON BACKSLASH (`git -c a=b\ c push …`, que el shell
+# tokeniza como `-c "a=b c"`); misma evasión que r5/r6 por otra vía. La secuencia de valor incluye `\\.`
+# (backslash+char) para no cortarse en el espacio escapado.
 printf '%s' "$(gb 'git -c a=b\ c push origin develop')" | grep -q '"deny"' && ok "gbg A-R7-01: '-c a=b\\ c push develop' (espacio escapado con backslash) → deny" || bad "gbg A-R7-01: el espacio escapado con backslash rompió la adyacencia (bypass)"
 printf '%s' "$(gb 'git -C /a\ b push origin main')" | grep -q '"deny"' && ok "gbg A-R7-01: '-C /a\\ b push main' (espacio escapado, value-eater por espacio) → deny" || bad "gbg A-R7-01: '-C /a\\ b' se coló"
 printf '%s' "$(gb 'git --work-tree=/a\ b push origin develop')" | grep -q '"deny"' && ok "gbg A-R7-01: '--work-tree=/a\\ b push develop' (=-form escapado) → deny" || bad "gbg A-R7-01: '--work-tree=/a\\ b' se coló"
 is_silent "$(gb 'git -c a=b\ c push origin feat/x')" && ok "gbg A-R7-01: '-c a=b\\ c push feat/x' (ramita) → silencio (sin falso positivo)" || bad "gbg A-R7-01: bloqueó una ramita con backslash-escape"
-# B4 (FMEA ronda 8): en Windows el binario es `git.exe`; rompía el `git`+espacio que exigen los detectores
-# → evasión total en un OS soportado (Git Bash). Se colapsa `git.exe`→`git` en posición de ejecutable.
+# B4: en Windows el binario es `git.exe`, que rompería el `git`+espacio que exigen los detectores (evasión
+# en un OS soportado, Git Bash). Se colapsa `git.exe`→`git` en posición de ejecutable.
 printf '%s' "$(gb 'git.exe push origin develop')" | grep -q '"deny"' && ok "gbg B4: 'git.exe push develop' (binario Windows) → deny" || bad "gbg B4: 'git.exe' rompió la adyacencia (bypass en Windows/Git Bash)"
 printf '%s' "$(gb 'git.exe -c a=b push origin main')" | grep -q '"deny"' && ok "gbg B4: 'git.exe -c a=b push main' (con prefijo global) → deny" || bad "gbg B4: 'git.exe' + prefijo se coló"
 printf '%s' "$(gb 'ls && git.exe push origin develop')" | grep -q '"deny"' && ok "gbg B4: 'ls && git.exe push develop' (encadenado) → deny" || bad "gbg B4: 'git.exe' encadenado se coló"
@@ -646,8 +634,8 @@ rm -rf "$GBROOT2"
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (b1d-cwd) git-branch-guard TARGET-AWARE cross-repo (F0/F1) + frontera G3/G4 + G6 =="
-# Raíz común de los FN/FP cross-repo (auditoría 2026-08-06): los guards keyeaban la rama/marca desde
-# CLAUDE_PROJECT_DIR (repo de la SESIÓN), no del repo que el comando TOCA (-C / cd / cwd del payload). Aquí:
+# Raíz común de los FN/FP cross-repo: los guards deben keyear la rama/marca del repo que el comando TOCA
+# (-C / cd / cwd del payload), no de CLAUDE_PROJECT_DIR (repo de la SESIÓN). Aquí:
 # SESS = repo de la sesión (en feat/x) · BASE = OTRO repo en develop · FEAT2 = OTRO repo en una ramita.
 GBX="$(mktemp -d "${TMPDIR:-/tmp}/brain-gbx.XXXXXX")"; SESS="$GBX/sess"; BASE="$GBX/base"; FEAT2="$GBX/feat2"; GBXHOME="$GBX/home"
 mkdir -p "$SESS" "$BASE" "$FEAT2" "$GBXHOME"
@@ -686,8 +674,8 @@ is_silent "$(gbx 'git push')" && ok "gbg retro-compat: pelón sin .cwd en la ses
 # por CLI ya no se bloquea en falso; solo un destino EXPLÍCITO por flag (--base/-B/--target) cuenta.
 is_silent "$(gbx 'gh pr merge develop --merge')" && ok "gbg G6: 'gh pr merge develop --merge' (posicional=origen) → silencio (no es destino)" || bad "gbg G6: FP — el posicional 'develop' se trató como destino"
 printf '%s' "$(gbx 'gh pr merge 5 --base develop')" | grep -q '"deny"' && ok "gbg G6: 'gh pr merge 5 --base develop' (destino EXPLÍCITO por flag) → deny" || bad "gbg G6: el destino explícito por --base no bloqueó"
-# G7 (FP corpus L109, 2026-09-03 ×2): un compuesto que CAMBIA de rama antes del push pelón se resolvía
-# contra el HEAD ANTERIOR (develop) → FP. Ahora se resuelve contra la rama que el checkout/switch deja activa.
+# G7: un compuesto que CAMBIA de rama antes del push pelón se resuelve contra la rama que el checkout/switch
+# deja activa, no contra el HEAD ANTERIOR (develop) — si no, daría un FP.
 git -C "$BASE" branch fix/z >/dev/null 2>&1   # rama LOCAL existente en el repo-en-develop
 gbxB() { jq -nc --arg c "$1" --arg w "$2" '{tool_name:"Bash",tool_input:{command:$c},cwd:$w}' | CLAUDE_PROJECT_DIR="$SESS" HOME="$GBXHOME" bash "$HOOKS/git-branch-guard.sh"; }
 is_silent "$(gbxB 'git checkout fix/z && git push' "$BASE")"      && ok "gbg G7: 'git checkout fix/z && git push' (rama existente) → silencio (resuelve contra fix/z, no develop)" || bad "gbg G7: FP — checkout+push pelón se resolvió contra el HEAD anterior (develop)"
@@ -714,7 +702,7 @@ rm -rf "$GBX"
   [ "$(acg_target_dir 'git -C "/a b/repo" push' '')" = '/a b/repo' ] && ok "target_dir: -C con ruta ENTRECOMILLADA con espacio (quote-aware)" || bad "target_dir: -C entrecomillado con espacio se cortó"
 )
 
-# ── (b1d-lib) acg_expande_home: el `~`/`$HOME` INICIAL se resuelve (REGRESIÓN del FP 2026-09-08) ──
+# ── (b1d-lib) acg_expande_home: el `~`/`$HOME` INICIAL se resuelve ──
 # El shell expande `cd ~/code/axon` ANTES de que el binario lo vea, pero el guard lee el TEXTO del comando,
 # donde el `~` sigue literal → `git -C '~/code/axon'` FALLA ⇒ target irresoluble ⇒ (a) slug vacío y la
 # consulta de la base corriendo contra el repo del cwd del hook ("no pude CONFIRMAR el destino del MR 87")
@@ -742,9 +730,9 @@ rm -rf "$GBX"
   [ -z "$(acg_target_remote 'glab mr merge 5' '')" ]       && ok "target_remote: sin --repo y dir no-git → vacío (fail-safe)" || bad "target_remote: devolvió algo con dir no-git"
 )
 
-# ── (b1d-lib) acg_mrid: multi-comando aísla el SEGMENTO del ÚLTIMO merge (fix 2026-08, DETERMINISTA) ──
-# Antes tomaba el 1er entero del BLOB → `gh pr view 272 …; gh pr merge 273 …` devolvía 272 (id EQUIVOCADO,
-# del `view`); el DENY citaba el MR erróneo y detonó el parche "un merge por llamada" que enfureció al usuario.
+# ── (b1d-lib) acg_mrid: multi-comando aísla el SEGMENTO del ÚLTIMO merge (DETERMINISTA) ──
+# De `gh pr view 272 …; gh pr merge 273 …` debe salir 273 (el id del MERGE), no 272 (el del `view`): tomar
+# el 1er entero del BLOB citaría el MR equivocado en el DENY.
 ( . "$HOOKS/analizar-comando-git.sh"
   [ "$(acg_mrid 'gh pr view 272 --repo o/r; gh pr merge 273 --yes')" = 273 ] \
     && ok "acg_mrid: 'gh pr view 272 …; gh pr merge 273 …' → 273 (id del MERGE, no del view; era el bug)" || bad "acg_mrid: multi-comando devolvió el id equivocado (no 273)"
@@ -756,11 +744,11 @@ rm -rf "$GBX"
     && ok "acg_mrid: comando simple 'glab mr merge 42 --squash' → 42 (sin regresión)" || bad "acg_mrid: el comando simple se rompió"
 )
 
-# ── (b1d-lib) acg_destino_de_mr consulta la base EN EL DIR OBJETIVO (REGRESIÓN del FP 2026-09-08 MR 87) ──
+# ── (b1d-lib) acg_destino_de_mr consulta la base EN EL DIR OBJETIVO ──
 # gh/glab resuelven el repo del CWD cuando no reciben -R, y el hook corre en SU cwd (el de la sesión), que
-# puede ser OTRO repo — hasta de otro foro (GitLab vs GitHub). Antes la consulta salía del cwd del hook →
-# fallaba y el guard reportaba "no pude CONFIRMAR el destino" con la base perfectamente obtenible desde el
-# dir del comando. Stub de `gh` en el PATH que responde SEGÚN el $PWD → determinista y sin red.
+# puede ser OTRO repo — hasta de otro foro (GitLab vs GitHub). Por eso la consulta debe correr EN el dir del
+# comando (si saliera del cwd del hook, fallaría y el guard reportaría "no pude CONFIRMAR el destino" con la
+# base perfectamente obtenible). Stub de `gh` en el PATH que responde SEGÚN el $PWD → determinista y sin red.
 ( . "$HOOKS/analizar-comando-git.sh"
   T=$(mktemp -d "${TMPDIR:-/tmp}/acg-dir.XXXXXX")
   mkdir -p "$T/bin" "$T/repo-objetivo" "$T/repo-otro"
@@ -792,11 +780,11 @@ rm -rf "$GBX"
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (b1d-m1) M1 (auditoría 2026-09-15): segmentación ejecutor-aware — eval/bash -c/heredoc =="
-# CRÍTICO §2.2/§3.2: acg_despoja_comillas trataba TODO span entrecomillado como dato inerte → un
-# `eval "git push origin develop"` / `bash -c "…"` era invisible para los 5 git-guards. Y el filtro de
-# heredoc (antes solo en proteger-arbol) descartaba TODO cuerpo sin mirar el consumidor → FP con `cat >>
-# doc.md <<EOF` pero FN simétrico con `bash <<EOF … EOF`. Un solo criterio (acg_segmentos_ejecutables) para
-# los dos, cerrado UNA vez en la lib → hereda git-branch-guard (vía acg_push_toca_base) sin tocar su código.
+# Si acg_despoja_comillas tratara TODO span entrecomillado como dato inerte, un `eval "git push origin
+# develop"` / `bash -c "…"` sería invisible para los 5 git-guards. Y un filtro de heredoc que descarte TODO
+# cuerpo sin mirar el consumidor da FP con `cat >> doc.md <<EOF` pero FN simétrico con `bash <<EOF … EOF`.
+# Un solo criterio (acg_segmentos_ejecutables) cubre ambos, cerrado UNA vez en la lib → lo hereda
+# git-branch-guard (vía acg_push_toca_base) sin tocar su código.
 is_deny "$(gb 'eval "git push origin develop"')" \
   && ok "M1: 'eval \"git push origin develop\"' NO evade — deny" || bad "M1: FN — eval evadió git-branch-guard"
 is_deny "$(gb 'bash -c "git push origin develop"')" \
@@ -815,7 +803,7 @@ is_silent "$(gb 'git commit -m "recuerda: nunca bash -c \"git push origin develo
   && ok "M1: H13 intacto — 'bash -c \"…\"' dentro de un MENSAJE de commit sigue sin disparar" \
   || bad "M1: el endurecimiento de eval/-c rompió H13 (un dato citado ahora dispara)"
 
-# proteger-arbol: MISMOS dos casos, la dirección que el filtro viejo tenía OPUESTA (§3.8).
+# proteger-arbol: MISMOS dos casos, con la dirección del filtro OPUESTA.
 PAM1BARE="$(mktemp -d "${TMPDIR:-/tmp}/brain-pam1.XXXXXX")/remote.git"
 PAM1="$(mktemp -d "${TMPDIR:-/tmp}/brain-pam1.XXXXXX")/wt"
 git init --bare -q "$PAM1BARE" >/dev/null 2>&1
@@ -836,10 +824,10 @@ rm -rf "$PAM1"
 
 echo ""
 echo "== (b1d-m2) M2 (auditoría 2026-09-15, CRÍTICO §3.1/§2.4): secret-scan y proteger-arbol dejan de ser ciegos cross-repo =="
-# Antes secret-scan escaneaba SIEMPRE CLAUDE_PROJECT_DIR (el repo de la SESIÓN) y proteger-arbol NI
-# sourceaba la lib: un `git -C <otro-repo>` / `cd <otro-repo> && …` / un cwd distinto (el patrón NORMAL de
-# un worktree aislado de fan-out) quedaba invisible — un secreto pasaba SIN escanear, un reset destructivo
-# no avisaba. Ambos ahora resuelven el target por acg_target_dir (misma lib que git-branch-guard).
+# Si secret-scan escaneara SIEMPRE CLAUDE_PROJECT_DIR (el repo de la SESIÓN) y proteger-arbol NI sourceara
+# la lib, un `git -C <otro-repo>` / `cd <otro-repo> && …` / un cwd distinto (el patrón NORMAL de un worktree
+# aislado de fan-out) quedaría invisible — un secreto pasaría SIN escanear, un reset destructivo no avisaría.
+# Ambos resuelven el target por acg_target_dir (misma lib que git-branch-guard).
 M2A="$(mktemp -d "${TMPDIR:-/tmp}/brain-m2a.XXXXXX")"; M2B="$(mktemp -d "${TMPDIR:-/tmp}/brain-m2b.XXXXXX")"
 git -C "$M2A" init -q >/dev/null 2>&1; git -C "$M2A" config user.email t@t >/dev/null 2>&1; git -C "$M2A" config user.name t >/dev/null 2>&1
 git -C "$M2A" commit -q --allow-empty -m base >/dev/null 2>&1
@@ -854,11 +842,10 @@ printf '%s' "$o" | grep -q '"deny"' && ok "M2: secret-scan — 'git -C <otro-rep
 o="$(m2scan "cd $M2B && git commit -m x")"
 printf '%s' "$o" | grep -q '"deny"' && ok "M2: secret-scan — 'cd <otro-repo> && git commit' con secreto en el OTRO → deny" \
   || bad "M2: secret-scan CIEGO — 'cd <otro> &&' con secreto no escaneó; got: $o"
-# Cobertura NUEVA (auditoría externa del arnés, 2026-09-15): m2scan (arriba) nunca varía CLAUDE_PROJECT_DIR
-# — solo prueba `.cwd`. Falta el caso GEMELO que proteger-arbol SÍ tiene un poco más abajo: CLAUDE_PROJECT_DIR
-# apuntando EXPLÍCITAMENTE a un repo A (limpio) mientras el comando toca REALMENTE el repo B (con el secreto)
-# vía `-C`. Si el guard leyera CLAUDE_PROJECT_DIR en vez de resolver el target real, este caso escanearía A
-# (limpio) y dejaría pasar el secreto de B.
+# m2scan (arriba) nunca varía CLAUDE_PROJECT_DIR — solo prueba `.cwd`. Este es el caso GEMELO que proteger-arbol
+# SÍ tiene un poco más abajo: CLAUDE_PROJECT_DIR apuntando EXPLÍCITAMENTE a un repo A (limpio) mientras el
+# comando toca REALMENTE el repo B (con el secreto) vía `-C`. Si el guard leyera CLAUDE_PROJECT_DIR en vez de
+# resolver el target real, escanearía A (limpio) y dejaría pasar el secreto de B.
 o="$(printf '%s' "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git -C $M2B commit -m x\"},\"cwd\":\"$M2A\"}" \
      | HOME="$M2A" CLAUDE_PROJECT_DIR="$M2A" bash "$HOOKS/secret-scan.sh")"
 printf '%s' "$o" | grep -q '"deny"' && ok "M2-cobertura: secret-scan — CLAUDE_PROJECT_DIR=A explícito + '-C B' con secreto en B → deny (no escaneó A por error)" \
@@ -873,11 +860,11 @@ rm -rf "$M2A" "$M2B"
 echo ""
 echo "== (b1d-critico1) CRÍTICO-1 (auditoría FMEA 2026-09-16 §1.1, CONFIRMADO): un error de SINTAXIS en la"
 echo "   lib compartida NO tumba los guards en silencio — fallan RUIDOSO/CERRADO en vez de desaparecer =="
-# Reproduce EXACTO el método de la auditoría: copia los guards + la lib a un sandbox, inyecta un error de
-# sintaxis REAL (paréntesis sin cerrar en acg_despoja_comillas — el bug más mundano), y alimenta cada guard
-# con un comando que DEBE bloquear. ANTES del fix: los 5 morían con stdout VACÍO y exit=1 (que el harness
-# trata como NO-bloqueante → el sistema quedaba sin NINGÚN candado, en silencio). AHORA: cada uno responde
-# (deny ruidoso, o degrada a su propio fallback) en vez de esfumarse.
+# Copia los guards + la lib a un sandbox, inyecta un error de sintaxis REAL (paréntesis sin cerrar en
+# acg_despoja_comillas — el bug más mundano) y alimenta cada guard con un comando que DEBE bloquear. Con la
+# lib rota, un guard que muriera con stdout VACÍO y exit=1 (que el harness trata como NO-bloqueante) dejaría
+# el sistema sin NINGÚN candado, en silencio. El contrato: cada uno responde (deny ruidoso, o degrada a su
+# propio fallback) en vez de esfumarse.
 C1SB="$(mktemp -d "${TMPDIR:-/tmp}/brain-crit1.XXXXXX")"; mkdir -p "$C1SB/hooks" "$C1SB/home"
 for f in analizar-comando-git.sh git-branch-guard.sh merge-develop-guard.sh \
          secret-scan.sh proteger-arbol.sh detectar-secretos.sh juez-comun.sh ramas-zombie.sh; do
@@ -916,11 +903,10 @@ printf '%s' "$out" | grep -qi 'ORFANAR' \
 is_deny "$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"git push origin develop"}}' | HOME="$C1SB/home-ctrl" bash "$HOOKS/git-branch-guard.sh")" \
   && ok "CRÍTICO-1 (control, lib sana): git-branch-guard sigue bloqueando un push a develop normalmente" \
   || bad "CRÍTICO-1 (control): REGRESIÓN — con la lib intacta, git-branch-guard dejó de bloquear"
-# H7 (auditoría semántica 2026-09-16, BAJO, CONFIRMADO): la sonda ORIGINAL (subshell + exit code) confundía
-# "error de sintaxis" con "la lib terminó en un comando que devuelve ≠0" — un `false` al final de una lib
-# PERFECTAMENTE válida (bash -n la aprueba) bastaba para declarar "lib rota" y tumbar el guard a deny-total.
-# `bash -n` (el fix) es inmune: solo PARSEA, nunca ejecuta, así que el código de salida del ÚLTIMO comando de
-# la lib no lo afecta.
+# H7: la sonda de "lib rota" usa `bash -n` (solo PARSEA, nunca ejecuta), no un subshell + exit code que
+# confundiría "error de sintaxis" con "la lib terminó en un comando ≠0" — un `false` al final de una lib
+# PERFECTAMENTE válida bastaría para declararla "rota" y tumbar el guard a deny-total. Con `bash -n` el
+# código de salida del ÚLTIMO comando de la lib no lo afecta.
 C1SB2=$(mktemp -d "${TMPDIR:-/tmp}/brain-crit1-h7.XXXXXX"); mkdir -p "$C1SB2/hooks"
 cp "$HOOKS/analizar-comando-git.sh" "$C1SB2/hooks/"; cp "$HOOKS/git-branch-guard.sh" "$C1SB2/hooks/"
 printf '\nfalse\n' >> "$C1SB2/hooks/analizar-comando-git.sh"
@@ -936,15 +922,11 @@ rm -rf "$C1SB"
 
 echo ""
 echo "== (b1d-m9) M9 (auditoría 2026-09-15 §2.5): --repo \"\$VAR\" es OPACO, no OTRO repo =="
-# Bug DOBLE con el mismo origen: el value-eater '[^[:space:]]+' se cortaba en el primer espacio y no
-# capturaba el token entrecomillado como UNIDAD. (1) acg_target_remote devolvía el slug CON comillas
-# ('"$R"') → la consulta de red fallaba garantizado. (2) el caller que despojaba comillas ANTES de grep
-# (confirmar-merge-develop) veía el valor BORRADO y el grep siguiente capturaba el FLAG SIGUIENTE
-# (--squash) como si fuera el slug del repo — creía que el repo se llamaba "--squash".
-# El bug de conteo dentro de subshells que este comentario documentaba (un `( … ok … )` no sumaba a
-# PASS/FAIL del padre) quedó CERRADO: `ok`/`bad` cuentan por un archivo (CALLLOG, arriba), inmune a
-# cualquier profundidad de subshell — auditoría 2026-09-15, Hallazgo #0. Este bloque sigue sin usar
-# subshell (sourcea la lib inline) por costumbre, no por necesidad.
+# Un value-eater '[^[:space:]]+' se cortaría en el primer espacio sin capturar el token entrecomillado como
+# UNIDAD, con bug DOBLE: (1) acg_target_remote devolvería el slug CON comillas ('"$R"') y la consulta de red
+# fallaría; (2) un caller que despoje comillas ANTES de grep (confirmar-merge-develop) vería el valor BORRADO
+# y el grep siguiente capturaría el FLAG SIGUIENTE (--squash) como slug del repo. Este bloque sourcea la lib
+# inline (sin subshell).
 . "$HOOKS/analizar-comando-git.sh"
 [ "$(acg_repo_explicito 'gh pr merge 12 --repo org/proyecto --squash')" = "org/proyecto" ] \
   && ok "M9: --repo con slug LITERAL → se lee tal cual" || bad "M9: no leyó el slug literal"
@@ -964,10 +946,10 @@ rm -rf "$M9R"
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (b1d-h2exec) H2 (auditoría de ejecución 2026-09-16, MEDIO, CONFIRMADO): destino de PUSH opaco (\$VAR) GATEA, simétrico a M9 =="
-# acg_push_destino_base es una regex sobre literales, SIN detección de opacidad -- a diferencia de
-# acg_repo_explicito (M9, arriba), que SÍ marca OPACO ante \$/backtick y falla cerrado. Medido: `git push
-# origin "\$RAMA"` quedaba CIEGO (ni acg_push_destino_base ni acg_push_sin_refspec lo cubrían, porque SÍ hay
-# un refspec, solo que es opaco).
+# acg_push_destino_base es una regex sobre literales, SIN detección de opacidad — a diferencia de
+# acg_repo_explicito (M9, arriba), que marca OPACO ante \$/backtick y falla cerrado. Por eso `git push
+# origin "\$RAMA"` quedaría CIEGO (ni acg_push_destino_base ni acg_push_sin_refspec lo cubren: SÍ hay un
+# refspec, solo que es opaco) → lo gatea acg_push_destino_opaco.
 acg_push_destino_opaco 'git push origin "$RAMA"' \
   && ok "H2: acg_push_destino_opaco detecta '\$RAMA' (sustitución de shell) → OPACO" \
   || bad "H2: no detectó la opacidad de \"\$RAMA\""
@@ -991,11 +973,11 @@ acg_push_toca_base 'git push origin feat/mi-cambio' \
 echo ""
 echo "== (b1d-medio) MEDIO/H3-semántico (auditoría FMEA 2026-09-16 §1.5 + auditoría semántica H3): CACHE-DE-CREACION"
 echo "   solo se confía si es MÍA, Y el canal ENTERO está apagado por default (sin escritor legítimo) =="
-# acg__cache_creacion_es_mia se GENERALIZÓ a acg__cache_confiable (uid+perm+TTL, reusada por los 3 cachés de
-# la lib — ver bloque H1exec abajo). Además, H3 (auditoría semántica 2026-09-16): "hoy no hay escritor
-# legítimo" vale para CUALQUIER uid, incluido el propio (un agente del propio usuario, a punto de correr el
-# merge, puede escribir un 0600 propio) — el chequeo de permisos protege del VECINO, no del actor que este
-# guard vigila. El canal CACHE-DE-CREACION queda apagado por default (ACG_CACHE_CREACION=1 para encenderlo).
+# acg__cache_confiable (uid+perm+TTL) es la generalización de acg__cache_creacion_es_mia, reusada por los 3
+# cachés de la lib (ver bloque H1exec abajo). H3: "no hay escritor legítimo" vale para CUALQUIER uid, incluido
+# el propio (un agente del propio usuario, a punto de correr el merge, puede escribir un 0600 propio) — el
+# chequeo de permisos protege del VECINO, no del actor que este guard vigila. El canal CACHE-DE-CREACION queda
+# apagado por default (ACG_CACHE_CREACION=1 para encenderlo).
 M3T=$(mktemp "${TMPDIR:-/tmp}/m3cc.XXXXXX")
 printf 'develop\n' > "$M3T"
 chmod 600 "$M3T"
@@ -1012,9 +994,9 @@ acg__cache_confiable "$M3T" \
   || ok "MEDIO: archivo 0664 (escribible por grupo) → NO se confía"
 rm -f "$M3T"
 
-# (b1d-stat) acg__cache_confiable: GNU `stat -c` PRIMERO — CI ubuntu rojo (2026-10-13). En GNU, `stat -f`
-# es --file-system y `%u` NO es el uid del archivo (da basura del FS con exit 0) → el orden BSD-primero
-# servía un uid falso en ubuntu y el caché NUNCA se confiaba (CI rojo). Este test SIMULA GNU con un stub de
+# (b1d-stat) acg__cache_confiable: GNU `stat -c` PRIMERO. En GNU, `stat -f` es --file-system y `%u` NO es el
+# uid del archivo (da basura del FS con exit 0) → un orden BSD-primero serviría un uid falso en ubuntu y el
+# caché NUNCA se confiaría. Este test SIMULA GNU con un stub de
 # `stat` (-c = valores reales vía el BSD stat de abajo; -f = basura con exit 0) y exige que un archivo
 # legítimo se confíe igual. FALLA contra el orden viejo (leería la basura de `-f %u` primero).
 SBROOT=$(mktemp -d "${TMPDIR:-/tmp}/statstub.XXXXXX")
@@ -1075,9 +1057,9 @@ rm -rf "$M3ROOT" "$M3ROOT2"
 echo ""
 echo "== (b1d-h1exec) H1 (auditoría de ejecución 2026-09-16, ALTO, CONFIRMADO): el caché REGULAR de destino"
 echo "   (acg-mrdest-*) ya NO se sirve sin validar dueño/permisos/EDAD =="
-# Bypass TOTAL medido: un archivo plantado con destino 'DevelopUnjordi' y perm 0666 se servía como si fuera
-# la respuesta de la API de hace un segundo -- y encima con confianza 'API' (la máxima). El fix MEDIO
-# original solo endureció al hermano -creacion-*; ESTE es el que de verdad gatea confirmar-merge-develop Y
+# Bypass TOTAL: un archivo plantado con destino 'DevelopUnjordi' y perm 0666 se serviría como si fuera la
+# respuesta de la API de hace un segundo — y con confianza 'API' (la máxima). Endurecer solo el hermano
+# -creacion-* no basta; el caché -mrdest-* es el que de verdad gatea confirmar-merge-develop Y
 # merge-squash-guard (comparten la misma caché de destino).
 H1EROOT=$(mktemp -d "${TMPDIR:-/tmp}/h1e.XXXXXX")
 ( export TMPDIR="$H1EROOT"
@@ -1140,18 +1122,17 @@ rm -rf "$H1EROOT" "$H1EROOT2" "$H1EROOT3" "$H1EROOT4"
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (b1d-m7) M7 (auditoría 2026-09-15 §2.3): entorno degradado (sin jq) homologado — fail-CLOSED =="
-# Antes: git-branch-guard hacía 'command -v jq || exit 0' (fail-OPEN silencioso — un PATH sin jq apagaba
-# 'nunca push a develop/main') y merge-squash-guard, sin chequeo explícito, degradaba igual (cmd vacío por
-# el jq ausente → exit 0). confirmar-merge-develop YA tenía el endurecimiento A3 (2026-08-06): esta es la
+# Un `command -v jq || exit 0` en git-branch-guard sería fail-OPEN silencioso (un PATH sin jq apagaría
+# 'nunca push a develop/main') y merge-squash-guard, sin chequeo explícito, degradaría igual (cmd vacío por
+# el jq ausente → exit 0). confirmar-merge-develop YA tenía el endurecimiento A3: esta es la
 # MISMA política, homologada a los otros dos. secret-scan/proteger-arbol CONSERVAN su fail-open declarado
 # (son red de seguridad/advisory, no el candado de "nunca push a base"); secret-scan ya avisa RUIDOSO.
 NOJQ7="$FAKEHOME/nojq7"
 _mkbin_real "$NOJQ7" bash grep sed cat basename dirname head tail printf awk tr git
-# H1 (auditoría semántica 2026-09-16): git-branch-guard SIN jq ahora reusa acg_push_toca_base de verdad (con
-# `git` real en PATH, no solo texto) para lograr PARIDAD con el camino con-jq — así que un push PELÓN (sin
-# rama nombrada) necesita un repo git REAL y determinista para probar el fail-safe (rama actual = base ⇒
-# bloquea) sin depender de en qué rama esté PARADO el propio arnés al correr. GBNOJQ_BASEREPO queda checked
-# out en 'develop' a propósito.
+# H1: git-branch-guard SIN jq reusa acg_push_toca_base de verdad (con `git` real en PATH, no solo texto)
+# para PARIDAD con el camino con-jq — así que un push PELÓN (sin rama nombrada) necesita un repo git REAL y
+# determinista para probar el fail-safe (rama actual = base ⇒ bloquea) sin depender de en qué rama esté
+# PARADO el propio arnés al correr. GBNOJQ_BASEREPO queda checked out en 'develop' a propósito.
 GBNOJQ_BASEREPO="$FAKEHOME/nojq7-baserepo"; mkdir -p "$GBNOJQ_BASEREPO"
 git -C "$GBNOJQ_BASEREPO" init -q >/dev/null 2>&1
 git -C "$GBNOJQ_BASEREPO" config user.email t@t >/dev/null 2>&1; git -C "$GBNOJQ_BASEREPO" config user.name t >/dev/null 2>&1
@@ -1177,10 +1158,10 @@ is_silent "$(ms_nojq 'ls -la')" \
 echo ""
 echo "== (b1d-alto2) ALTO-2 (auditoría FMEA 2026-09-16 §1.4, CONFIRMADO): SIN jq, git-branch-guard ya NO"
 echo "   bloquea push a tu PROPIA ramita/mini-develop (el camino MÁS transitado) — sigue bloqueando bare/base/mr =="
-# Medido por la propia auditoría: ANTES de este fix, SIN jq, `git push -u origin feat/mi-cambio` (push a tu
-# PROPIA ramita, el caso más común de TODOS) quedaba DENY -- sin ningún carril. La corrección es de
-# PRECISIÓN (un push que nombra EXPLÍCITAMENTE ≥2 tokens tras 'push', ninguno develop/main/master/HEAD, es
-# por definición una rama NO-base) -- nunca relajación: bare push y mr/pr merge siguen SIEMPRE bloqueados.
+# Un `git push -u origin feat/mi-cambio` (push a tu PROPIA ramita, el caso más común de TODOS) SIN jq NO
+# debe quedar DENY sin carril. El criterio es de PRECISIÓN (un push que nombra EXPLÍCITAMENTE ≥2 tokens tras
+# 'push', ninguno develop/main/master/HEAD, es por definición una rama NO-base) — nunca relajación: bare
+# push y mr/pr merge siguen SIEMPRE bloqueados.
 is_silent "$(gb_nojq 'git push -u origin feat/mi-cambio')" \
   && ok "ALTO-2: SIN jq, push a TU ramita (feat/mi-cambio) → silencio (antes: DENY sin carril)" \
   || bad "ALTO-2: SIN jq, push a la propia ramita sigue bloqueado (regresión NO resuelta)"
@@ -1193,12 +1174,11 @@ is_deny "$(gb_nojq 'git push')" \
 is_deny "$(gb_nojq 'git push origin develop')" \
   && ok "ALTO-2: SIN jq, push EXPLÍCITO a develop → SIGUE bloqueado" \
   || bad "ALTO-2: SIN jq, push explícito a develop dejó de bloquearse — AFLOJAMIENTO"
-# H1 (auditoría semántica 2026-09-16): el rediseño reusa acg_merge_menciona_base para PARIDAD exacta con
-# el camino CON jq -- y ESE nunca bloqueaba un `mr merge 5` genérico (sin --target-branch explícito): no es
-# el trabajo de ESTE guard (que solo vigila "nombra la base DIRECTO"), es el de confirmar-merge-develop
-# (autorización) y merge-squash-guard (squash) -- AMBOS siguen bloqueando CUALQUIER merge sin jq, sin cambio
-# (ver sus propios tests de M7 abajo). Antes de H1, la heurística propia de ALTO-2 bloqueaba de más aquí por
-# accidente (no por diseño) -- eso SÍ se corrigió, a favor de la paridad real.
+# H1: SIN jq reusa acg_merge_menciona_base para PARIDAD exacta con el camino CON jq — y ESE nunca bloquea un
+# `mr merge 5` genérico (sin --target-branch explícito): no es el trabajo de ESTE guard (que solo vigila
+# "nombra la base DIRECTO"), es el de confirmar-merge-develop (autorización) y merge-squash-guard (squash),
+# que siguen bloqueando CUALQUIER merge sin jq (ver sus tests de M7 abajo). Una heurística propia que
+# bloqueara ese `mr merge` genérico lo haría por accidente, no por diseño.
 is_silent "$(gb_nojq 'glab mr merge 5 --yes')" \
   && ok "ALTO-2/H1: SIN jq, mr merge SIN destino explícito → silencio en ESTE guard (paridad con el camino CON jq; confirmar-merge-develop/merge-squash-guard lo bloquean igual, sin cambio)" \
   || bad "ALTO-2/H1: un mr merge genérico quedó bloqueado por git-branch-guard — rompe la paridad con el camino con-jq"
@@ -1226,9 +1206,9 @@ is_silent "$(jq -nc --arg c 'glab mr merge 5 --yes' '{tool_input:{command:$c}}' 
 echo ""
 echo "== (b1d-h1) H1 (auditoría semántica 2026-09-16, ALTO, CONFIRMADO): SIN jq, git-branch-guard razona"
 echo "   sobre el COMANDO real, NUNCA sobre 'description' u otros campos del JSON crudo =="
-# Medido por la auditoría: el fixture ORIGINAL de b1d-alto2 (arriba) construye el payload SIN 'description' —
-# el campo que cambia la respuesta es justo el que el fixture omitía. gb_nojq_full monta el payload REAL
-# (command + description), la premisa hostil exacta del hallazgo.
+# El fixture de b1d-alto2 (arriba) construye el payload SIN 'description', justo el campo que cambia la
+# respuesta. gb_nojq_full monta el payload REAL (command + description) para probar la premisa hostil: que
+# el guard razone sobre el COMANDO, no sobre 'description'.
 gb_nojq_full() { jq -nc --arg c "$1" --arg d "$2" '{tool_input:{command:$c,description:$d}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" CLAUDE_PROJECT_DIR="$GBNOJQ_BASEREPO" bash "$HOOKS/git-branch-guard.sh"; }
 is_silent "$(gb_nojq_full 'git push -u origin feat/mi-cambio' 'Empujar la ramita del MR a develop')" \
   && ok "H1: SIN jq, ramita legítima + description que MENCIONA 'develop' → silencio (antes: DENY por leer el JSON crudo)" \
@@ -1292,7 +1272,7 @@ cm() {
     | PATH="$CMBIN:$PATH" HOME="$CMHOME" CLAUDE_PROJECT_DIR="$CMREPO" CLAUDE_MERGE_JUEZ_MOCK="$m" bash "$HOOKS/merge-develop-guard.sh"
 }
 mock_cm_glab develop
-# CONSOLIDACIÓN 2026-09-17: merge-develop-guard corre el check de SQUASH ANTES del juez. Para ejercitar el
+# merge-develop-guard corre el check de SQUASH ANTES del juez. Para ejercitar el
 # JUEZ (autorización) sobre un merge a develop, el comando debe PASAR primero el squash (traer --squash +
 # --remove-source-branch + un --squash-message con sustancia y rastro) — si no, el guard frena en el squash y
 # nunca llega al juez. CMOK = ese sufijo bien formado; los casos de AUTORIZACIÓN lo añaden. (Los casos que solo
@@ -1430,8 +1410,8 @@ mock_cm_glab develop
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
 
 # ── (b1e-2) EXTRACCIÓN de contexto intercalado (_recent_intercalado) — DETERMINISTA, sin LLM ──
-# El jq de interleave es el código NUEVO riesgoso del fix "el juez lee MIS turnos" (2026-08-02): si se rompe,
-# el juez ve contexto vacío → regresan los falsos negativos anafóricos. Se testea con fixtures de transcript.
+# El jq de interleave es el código riesgoso del "el juez lee MIS turnos": si se rompe, el juez ve contexto
+# vacío → regresan los falsos negativos anafóricos. Se testea con fixtures de transcript.
 (
   _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/merge-develop-guard.sh"
   FX=$(mktemp)
@@ -1480,10 +1460,10 @@ JFX
   printf '%s' "$OUT" | grep -q 'USUARIO: mergea el 240 a develop' \
     && ok "extracción #6: nota del widget (sin opción elegida) surfaceada como USUARIO" \
     || bad "extracción #6: la nota del widget no se surfaceó → [$OUT]"
-  # ── REGRESIÓN del FP 2026-09-08 (clase "PR19"): el OK que el usuario manda MID-TURN no queda como turno
-  # {"type":"user"} — el CLI lo ABSORBE en el turno en curso (queue-operation reason=absorbed_mid_turn) y lo
-  # persiste como {"type":"attachment","attachment":{"type":"queued_command","prompt":…,"origin":{"kind":"human"}}}.
-  # Antes esa autorización NO entraba a la ventana del juez → frenaba con el OK en la mano (3 veces seguidas).
+  # ── clase "PR19": el OK que el usuario manda MID-TURN no queda como turno {"type":"user"} — el CLI lo
+  # ABSORBE en el turno en curso (queue-operation reason=absorbed_mid_turn) y lo persiste como
+  # {"type":"attachment","attachment":{"type":"queued_command","prompt":…,"origin":{"kind":"human"}}}. Esa
+  # autorización DEBE entrar a la ventana del juez (si no, frena con el OK en la mano).
   cat > "$FX" <<'JFX'
 {"type":"user","message":{"role":"user","content":[{"type":"text","text":"lanza el auditor"}]}}
 {"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"dejo el PR 19 abierto"}]}}
@@ -1531,7 +1511,7 @@ JFX
   [ "$(pmain main 'ASISTENTE: release a main
 USUARIO: ok gracias')" = DENY ] \
     && ok "piso-main: 'release' en línea del ASISTENTE NO cuenta (autoridad=USUARIO) → DENY" || bad "piso-main: aceptó lenguaje de release del ASISTENTE (auto-autorización)"
-  # SOBRE-MATCH del léxico (auditoría 2026-08): 'liber'/'a main' NO deben casar dentro de otras palabras.
+  # SOBRE-MATCH del léxico: 'liber'/'a main' NO deben casar dentro de otras palabras.
   [ "$(pmain main 'USUARIO: fue una decisión deliberada, mergea el 999')" = DENY ] \
     && ok "piso-main: 'deliberada' NO cuenta como 'libera' → DENY" || bad "piso-main: 'deliberada' sobre-matcheó como lenguaje de release"
   [ "$(pmain main 'USUARIO: dale libertad al equipo y mergea el 999')" = DENY ] \
@@ -1540,14 +1520,14 @@ USUARIO: ok gracias')" = DENY ] \
     && ok "piso-main: 'a maintenance' NO cuenta como 'a main' → DENY" || bad "piso-main: 'a maintenance' sobre-matcheó como 'a main'"
   [ "$(pmain main 'USUARIO: liberar a main el 999')" = ALLOW ] \
     && ok "piso-main: 'liberar a main' (verbo real) → ALLOW" || bad "piso-main: el anclaje rompió un 'liberar' legítimo"
-  # Residual del anclaje de UN solo lado (auditoría 2026-08, ronda 2): frontera en AMBOS lados.
+  # Anclaje en AMBOS lados (no solo uno): frontera a ambos extremos del léxico.
   [ "$(pmain main 'USUARIO: promueve el domain, mergea el 999')" = DENY ] \
     && ok "piso-main: 'domain' NO cuenta como 'main' (frontera previa) → DENY" || bad "piso-main: 'domain' sobre-matcheó como 'main'"
   [ "$(pmain main 'USUARIO: esto es puro liberalismo, mergea el 999')" = DENY ] \
     && ok "piso-main: 'liberalismo' NO cuenta como 'libera' (frontera final) → DENY" || bad "piso-main: 'liberalismo' sobre-matcheó como 'libera'"
   [ "$(pmain main 'USUARIO: el 999 ya quedó liberado a main')" = ALLOW ] \
     && ok "piso-main: 'liberado a main' (participio real de liberar) → ALLOW" || bad "piso-main: el anclaje rompió un 'liberado' legítimo"
-  # FN de la rama promov con .* desacoplado (auditoría 2026-08, ronda 3): 'promueve' + 'main' suelto de otra frase.
+  # La rama 'promov … main' con .* desacoplado: 'promueve' + 'main' suelto de otra frase NO es promoción real.
   [ "$(pmain main 'USUARIO: promueve el domain; la rama main está limpia, mergea el 999')" = DENY ] \
     && ok "piso-main: 'promueve…'+'main' suelto (sin promoción real) → DENY" || bad "piso-main: puenteó promov con un main de otra frase (falso negativo)"
   [ "$(pmain main 'USUARIO: promover el 999 a main')" = ALLOW ] \
@@ -1559,23 +1539,21 @@ USUARIO: ok gracias')" = DENY ] \
     && ok "piso-main: destino master + 'libera a master' → ALLOW" || bad "piso-main: bloqueó un release LEGÍTIMO a master"
   [ "$(pmain master 'USUARIO: haz el release a master')" = ALLOW ] \
     && ok "piso-main: destino master + 'release a master' → ALLOW" || bad "piso-main: bloqueó 'release a master'"
-  # M5 (auditoría 2026-09-15 §3.5, 🔴 APRIETA): destino VACÍO/DESCONOCIDO (consulta caída por PATH/red/
-  # timeout) TAMBIÉN pasa por el piso — antes el comentario decía "el vacío lo cubre el fail-seguro del
-  # LLM", pero el LLM es justo el componente que el propio código admite que falla en el 'mergea' pelón a
-  # main. Con destino desconocido, el gate MÁS ESTRICTO (main) debe ganar.
+  # M5: destino VACÍO/DESCONOCIDO (consulta caída por PATH/red/timeout) TAMBIÉN pasa por el piso. No basta
+  # con "el vacío lo cubre el fail-seguro del LLM": el LLM es justo el componente que falla en el 'mergea'
+  # pelón a main. Con destino desconocido, el gate MÁS ESTRICTO (main) debe ganar.
   [ "$(pmain '' 'USUARIO: mergealo ya')" = DENY ] \
     && ok "M5: destino DESCONOCIDO + ALLOW + 'mergealo ya' (sin release) → piso override a DENY" \
     || bad "M5: el piso NO frenó un release-potencial con destino desconocido y sin lenguaje de release"
   [ "$(pmain '' 'USUARIO: libera el 999 a main, es el release')" = ALLOW ] \
     && ok "M5: destino DESCONOCIDO + ALLOW + lenguaje de release EXPLÍCITO → pasa (el piso no aplasta un release legítimo)" \
     || bad "M5: el piso bloqueó un release legítimo con destino desconocido pese al lenguaje de release"
-  # M5-bis (auditoría FMEA 2026-09-16 §1.2, ALTO, PRECISIÓN — no relaja el piso): M5 (arriba) bloqueaba
-  # TAMBIÉN el caso MÁS común (merge a develop) bajo el fallo de entorno MÁS frecuente (timeout de red al
-  # resolver el destino), CONFIRMADO por A/B contra develop con una conversación 100% inequívoca sobre
-  # develop y CERO ambigua sobre main. El juez ahora declara qué destino INFIRIÓ cuando la consulta vino
-  # vacía (DESTINO_INFERIDO, CLAUDE_MERGE_JUEZ_MOCK_DESTINO en test) — el piso solo se salta si esa
-  # inferencia fue EXPLÍCITAMENTE 'develop'; cualquier otra cosa (main, ambiguo, o SIN declarar) deja el
-  # piso EXACTO como antes (cero cambio para el caso que sí debe bloquear).
+  # M5-bis (PRECISIÓN — no relaja el piso): sin este cuidado, M5 bloquearía TAMBIÉN el caso MÁS común (merge
+  # a develop) bajo el fallo de entorno MÁS frecuente (timeout de red al resolver el destino), aun con una
+  # conversación 100% inequívoca sobre develop y CERO ambigua sobre main. El juez declara qué destino INFIRIÓ
+  # cuando la consulta vino vacía (DESTINO_INFERIDO, CLAUDE_MERGE_JUEZ_MOCK_DESTINO en test) — el piso solo se
+  # salta si esa inferencia fue EXPLÍCITAMENTE 'develop'; cualquier otra cosa (main, ambiguo, o SIN declarar)
+  # deja el piso EXACTO (cero cambio para el caso que sí debe bloquear).
   pdest() { CLAUDE_MERGE_JUEZ_MOCK=ALLOW CLAUDE_MERGE_JUEZ_MOCK_DESTINO="$1" _juez_merge '' 999 "$2"; }
   [ "$(pdest develop 'USUARIO: mergea esto a develop')" = ALLOW ] \
     && ok "M5-bis: destino vacío + juez INFIERE 'develop' explícito + ALLOW → el piso YA NO lo aplasta (antes: DENY, FP)" \
@@ -1588,7 +1566,7 @@ USUARIO: ok gracias')" = DENY ] \
     || bad "M5-bis: REGRESIÓN — sin declarar inferencia, el piso dejó de aplicar (default dejó de ser conservador)"
 )
 
-# ── VETO DE CITA VERIFICADA + PARSEO POR CENTINELA (capa 1+2, DETERMINISTA sin red) · juez EMPODERADO 2026-08 ──
+# ── VETO DE CITA VERIFICADA + PARSEO POR CENTINELA (capa 1+2, DETERMINISTA sin red) ──
 # CLAUDE_MERGE_JUEZ_MOCK_RAW inyecta el TEXTO CRUDO de respuesta del LLM → ejercita el parseo del centinela
 # 'VEREDICTO:' (tail -1) y el veto determinista de cita (la CITA de un ALLOW debe existir VERBATIM en una
 # línea USUARIO: real, si no → override DENY). Es la pieza de seguridad que vuelve "solo USUARIO autoriza"
@@ -1630,9 +1608,9 @@ VEREDICTO: ALLOW' main 999 'USUARIO: libera el 999 a main, es el release')" = AL
   [ "$(raw 'CITA: mergea el 999
 VEREDICTO: ALLOW' main 999 'USUARIO: mergea el 999')" = DENY ] \
     && ok "juez-cita+piso-main: cita real pero SIN release → piso-main override DENY" || bad "juez-cita+piso-main: dejó pasar un main sin release"
-  # ── VETO ROBUSTO (fix veto-cita 2026-08): tolera normalización BENIGNA del LLM (typo/acento/caso), sigue
-  # matando alucinación/inyección. El bug reproducido: el usuario escribió "pendietes" (typo); el LLM
-  # "corrige" a "pendientes" al copiar la CITA → el viejo grep -Fq byte-exacto → falso DENY (#272/#273).
+  # ── VETO ROBUSTO: tolera normalización BENIGNA del LLM (typo/acento/caso) sin dejar de matar
+  # alucinación/inyección. Caso: el usuario escribe "pendietes" (typo) y el LLM "corrige" a "pendientes" al
+  # copiar la CITA → un grep -Fq byte-exacto daría un falso DENY.
   CONVT='USUARIO: haz el merge a develop de las 3 branches que siguen pendietes por favor
 ASISTENTE: corriendo la suite antes de integrar'
   [ "$(raw 'Paso 1: destino develop. Paso 2: instrucción clara del USUARIO.
@@ -1745,9 +1723,9 @@ git -C "$JCREPO" init -q >/dev/null 2>&1; git -C "$JCREPO" remote add origin git
 printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"mergea el 5 a develop"}]}}' > "$JCFIX/tx.jsonl"
 out_nt="$(jq -nc --arg c 'glab mr merge 5 --squash' --arg t "$JCFIX/tx.jsonl" '{tool_input:{command:$c},transcript_path:$t}' \
   | env -u CLAUDE_CODE_OAUTH_TOKEN PATH="$JCFIX/stubs:$PATH" HOME="$JCFIX/home" CLAUDE_CONFIG_DIR="$JCFIX/empty" CLAUDE_PROJECT_DIR="$JCREPO" bash "$HOOKS/merge-develop-guard.sh")"
-# M8 (auditoría 2026-09-15 §3.11, norma dura anti-vein-popper): YA NO redirige a la web de GitLab (retirado
-# — un guard que frena en CLI se SATISFACE o se ARREGLA, nunca se rodea mandando a la persona a la web);
-# el carril CONFORME que sí ofrece es 'claude setup-token' / CLAUDE_CODE_OAUTH_TOKEN.
+# M8 (norma dura anti-vein-popper): NO redirige a la web de GitLab — un guard que frena en CLI se SATISFACE
+# o se ARREGLA, nunca se rodea mandando a la persona a la web; el carril CONFORME que ofrece es
+# 'claude setup-token' / CLAUDE_CODE_OAUTH_TOKEN.
 { is_deny "$out_nt" && ! printf '%s' "$out_nt" | grep -qi 'web de GitLab' && printf '%s' "$out_nt" | grep -qi 'setup-token'; } \
   && ok "juez-comun (c): merge SIN token → DENY con el carril CONFORME (setup-token), SIN redirigir a la web" \
   || bad "juez-comun (c): el mensaje sin token no dio el carril conforme o siguió mencionando la web; got: $out_nt"
@@ -1846,7 +1824,7 @@ if [ "$( ( export PATH="$JCFIX/local_down:$PATH"; export CLAUDE_JUEZ_LOCAL_MODEL
 else bad "juez-comun (local f): dod con backend local caído NO colapsó a UNAVAILABLE"; fi
 rm -rf "$JCFIX" 2>/dev/null || true
 
-# ── LEVER opt-in de VOTO MÚLTIPLE (self-consistency), DETERMINISTA sin red · juez EMPODERADO 2026-08 ──
+# ── LEVER opt-in de VOTO MÚLTIPLE (self-consistency), DETERMINISTA sin red ──
 # Dos piezas: (1) el AGREGADOR puro _juez_agrega_votos (UNÁNIME-PARA-ALLOW / cualquier DENY o UNAVAILABLE gana)
 # — es la LÓGICA del lever, testeable sin paralelismo ni red; (2) el WIRING de _juez_merge (VOTES=1 = una sola
 # llamada idéntica a hoy; VOTES≥2 = N votos EN PARALELO agregados). El MOCK hace cada voto determinista → el
@@ -1935,9 +1913,9 @@ is_deny "$(xcm 'glab mr merge 6 -R org/personal --yes' "$XSHARED")" \
   && ok "cmd-cross C2: sesión COMPARTIDA + '--repo org/personal' → GATEA (fricción segura: slug no resoluble a ruta local)" \
   || bad "cmd-cross C2: dejó pasar un --repo cross-repo sin gate"
 # PERSONAL normal (retro-compat, sin fricción): sesión PERSONAL, sin --repo, repo git válido sin marca → exit 0.
-# CONSOLIDACIÓN 2026-09-17: el mock de glab resuelve develop → el check de SQUASH exige --remove-source-branch
-# antes de llegar al scoping de personal/compartido; XSQOK lo satisface con un mensaje UNVERIFICABLE (fail-open,
-# la forma que el propio hook sugiere) para que este caso ejercite el SCOPING, no el squash (cubierto en b1c).
+# El mock de glab resuelve develop → el check de SQUASH exige --remove-source-branch antes de llegar al
+# scoping de personal/compartido; XSQOK lo satisface con un mensaje UNVERIFICABLE (fail-open, la forma que
+# el propio hook sugiere) para que este caso ejercite el SCOPING, no el squash (cubierto en b1c).
 XSQOK='--squash --remove-source-branch --squash-message "$(cat resumen.md)"'
 is_silent "$(xcm "glab mr merge 5 $XSQOK --yes" "$XPERSONAL")" \
   && ok "cmd-cross: sesión PERSONAL sin --repo (repo válido, sin marca) → silencio (PERSONAL confirmado, cero fricción)" \
@@ -2010,7 +1988,7 @@ ASISTENTE: Suite verde. Procedo con el merge del #237."
   jlive "FN condicional YA cumplida" develop 240 ALLOW \
 "USUARIO: cuando pasen los tests mergea el 240 a develop
 ASISTENTE: Suite verde (487 PASS). La condición se cumplió, procedo con el #240."
-  # FN 2026-08-04: el OK se dio ANTES de crear el MR → imposible citar el número que aún no existía.
+  # FN: el OK se dio ANTES de crear el MR → imposible citar el número que aún no existía.
   jlive "FN OK antes de crear el MR (sin número)" develop 250 ALLOW \
 "USUARIO: hazle el MR a develop, y de una vez revisa lo del folder y la nube
 ASISTENTE: ¡Va! Creo y mergeo el MR a develop. Created PR #250
@@ -2099,9 +2077,9 @@ else
   ok "cmd LIVE: batería juez-Haiku real SALTADA (corre con CLAUDE_MERGE_JUEZ_LIVE=1 + curl/jq disponibles)"
 fi
 
-# M8 (auditoría 2026-09-15 §3.10/§4.2, sobre M3): destino DESCONOCIDO por fallo de ENTORNO (ni gh ni glab
-# alcanzables) → el mensaje dice la CAUSA REAL + "repetir la autorización NO va a destrabar esto", en vez
-# de pedirle al usuario que "lo diga más claro" (inútil: el problema no es de lenguaje, es de PATH).
+# M8 (sobre M3): destino DESCONOCIDO por fallo de ENTORNO (ni gh ni glab alcanzables) → el mensaje dice la
+# CAUSA REAL + "repetir la autorización NO va a destrabar esto", en vez de pedirle al usuario que "lo diga
+# más claro" (inútil: el problema no es de lenguaje, es de PATH).
 M8ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-m8.XXXXXX")"; M8REPO="$M8ROOT/repo"; M8HOME="$M8ROOT/home"
 mkdir -p "$M8REPO/.claude" "$M8HOME"
 : > "$M8REPO/.claude/repo-compartido"
@@ -2111,9 +2089,9 @@ M8TX="$M8ROOT/tx.jsonl"; printf '%s\n' '{"type":"user","message":{"role":"user",
 M8NOCLI="$M8ROOT/noclibin"
 _mkbin_real "$M8NOCLI" bash grep sed cat basename dirname head tail printf awk jq date mktemp tr wc sort cut git
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
-# CONSOLIDACIÓN 2026-09-17: sin gh/glab en el PATH el destino queda SIN-RESOLVER (nunca "develop"), así que
-# el check de squash no exige calidad (remove-source-branch/mensaje) -- basta el flag --squash para pasarlo
-# y llegar al mensaje de ENTORNO que este caso ejercita.
+# Sin gh/glab en el PATH el destino queda SIN-RESOLVER (nunca "develop"), así que el check de squash no
+# exige calidad (remove-source-branch/mensaje) — basta el flag --squash para pasarlo y llegar al mensaje de
+# ENTORNO que este caso ejercita.
 out_m8="$(jq -nc --arg c 'glab mr merge 42 --squash --yes' --arg t "$M8TX" '{tool_input:{command:$c},transcript_path:$t}' \
   | PATH="$M8NOCLI" HOME="$M8HOME" CLAUDE_PROJECT_DIR="$M8REPO" ACG_PATH_AUGMENT=0 CLAUDE_MERGE_JUEZ_MOCK=DENY bash "$HOOKS/merge-develop-guard.sh")"
 { is_deny "$out_m8" && printf '%s' "$out_m8" | grep -qi 'ni gh ni glab' && printf '%s' "$out_m8" | grep -qi 'Repetir la autorizaci'; } \
@@ -2126,14 +2104,14 @@ rm -rf "$M8ROOT"
 
 # ── (b1f) confirmar: AUTORIZACIÓN DURABLE en disco (sobrevive compactaciones) + vocabulario "empuja/mete" ──
 # El grant lo escribe el skill turno-nocturno con la CITA textual del usuario y vence_epoch; SOLO
-# cubre scope=merge-develop. Caso real 2026-07-12: un OK blanket murió al compactarse el contexto.
+# cubre scope=merge-develop. Resuelve el caso de un OK blanket que muere al compactarse el contexto.
 echo ""
 echo "== (b1f) confirmar-merge-develop: autorización durable (vence_epoch) + vocabulario empuja/mete =="
 AUTHF="$CMREPO/.claude/memory/autorizaciones-vigentes.local.md"
 mkdir -p "$CMREPO/.claude/memory"
 mock_cm_glab develop
-# CONSOLIDACIÓN 2026-09-17 (mismo motivo que CMOK arriba en (b1e)): destino=develop confirmado hace que el
-# check de SQUASH exija --remove-source-branch antes de llegar al grant/juez. SQOK = --squash bien formado
+# (mismo motivo que CMOK arriba en (b1e)): destino=develop confirmado hace que el check de SQUASH exija
+# --remove-source-branch antes de llegar al grant/juez. SQOK = --squash bien formado
 # (mensaje UNVERIFICABLE vía "$(cat resumen.md)", la forma que el propio hook sugiere → fail-open, sin exigir
 # prosa) para que estas pruebas ejerciten el GRANT, no el squash (ya cubierto en (b1c)).
 SQOK='--squash --remove-source-branch --squash-message "$(cat resumen.md)"'
@@ -2164,16 +2142,14 @@ mock_cm_glab develop
 is_deny "$(cm 'glab mr merge 65 --squash --yes' DENY)" \
   && ok "cmd b1f: sin archivo de grants → deny normal (sin cambios de baseline)" \
   || bad "cmd b1f: sin archivo el guard dejó de frenar"
-# (6) CRÍTICO-3 (auditoría FMEA 2026-09-16 §1.3, CONFIRMADO por A/B contra develop): M6 (auditoría
-#     2026-09-15 §3.6) había AMPLIADO el fast-path del grant a destino DESCONOCIDO con la cerca "sin léxico
-#     de release en la ventana" — pero esa cerca confunde "el usuario no habló de release EN LA CHARLA" con
-#     "el MR no apunta a main" (un HECHO del propio MR, ajeno a la conversación). Con un grant vigente +
-#     destino irresoluble (timeout/red) + charla vaga SIN palabra "release", el fast-path dejaba pasar el
-#     merge EN SILENCIO sin llamar NUNCA a `_juez_merge` — si el MR de verdad apuntaba a main, colaba un
-#     release sin ningún gate. FIX: el grant SOLO se consulta con destino CONFIRMADO 'develop'; con destino
-#     desconocido SIEMPRE cae al juez (que con M5-bis, si la conversación es inequívoca sobre develop, igual
-#     ALLOWea sin exigir léxico de release — el grant deja de ser NECESARIO ahí) — y si el juez tampoco es
-#     alcanzable (mismo fallo de red), DENY: el comportamiento PRE-M6 que la auditoría confirmó correcto.
+# (6) CRÍTICO-3: una cerca que ampliara el fast-path del grant a destino DESCONOCIDO con "sin léxico de
+#     release en la ventana" confunde "el usuario no habló de release EN LA CHARLA" con "el MR no apunta a
+#     main" (un HECHO del propio MR, ajeno a la conversación). Con un grant vigente + destino irresoluble
+#     (timeout/red) + charla vaga SIN palabra "release", ese fast-path dejaría pasar el merge EN SILENCIO sin
+#     llamar NUNCA a `_juez_merge` — y si el MR apuntara a main, colaría un release sin gate. Por eso el grant
+#     SOLO se consulta con destino CONFIRMADO 'develop'; con destino desconocido SIEMPRE cae al juez (que con
+#     M5-bis, si la conversación es inequívoca sobre develop, igual ALLOWea sin exigir léxico de release — el
+#     grant deja de ser NECESARIO ahí); y si el juez tampoco es alcanzable (mismo fallo de red), DENY.
 printf -- '- scope=merge-develop vence_epoch=%s vence="+1h" cita="ok, sigue" registrada=hoy\n' "$(( $(date +%s) + 3600 ))" > "$AUTHF"
 is_deny "$(cm 'glab mr merge --yes' DENY 'ok, sigue')" \
   && ok "CRÍTICO-3 (post-fix): grant vigente + destino DESCONOCIDO + juez DENY → deny (el grant YA NO salta el juez con destino sin confirmar)" \
@@ -2194,10 +2170,10 @@ is_silent "$(cm "glab mr merge 66 $SQOK --yes" DENY)" \
   || bad "CRÍTICO-3: REGRESIÓN — el fast-path seguro (destino=develop confirmado) se rompió al cerrar el hueco"
 rm -f "$AUTHF" 2>/dev/null
 
-# H3 (auditoría de ejecución 2026-09-16, MEDIO, CONFIRMADO): acg_recent_intercalado lee `tail -n 6000` del
-# transcript -- si la autorización real queda FUERA de esa ventana (turno-nocturno, horas de trabajo
-# autónomo), el mensaje CULPABA AL USUARIO ("no encontré tu confirmación EXPRESA") en vez de nombrar la
-# causa real (la ventana no alcanzó). Repro EXACTO: 1 línea de autorización + 6200 turnos de asistente.
+# H3: acg_recent_intercalado lee `tail -n 6000` del transcript — si la autorización real queda FUERA de esa
+# ventana (turno-nocturno, horas de trabajo autónomo), el mensaje debe nombrar la causa real (la ventana no
+# alcanzó), no CULPAR AL USUARIO ("no encontré tu confirmación EXPRESA"). Repro: 1 línea de autorización +
+# 6200 turnos de asistente.
 H3TX="$CMROOT/h3tx.jsonl"
 {
   printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"mergea el MR 5 a develop cuando termines"}]}}'
@@ -2249,9 +2225,9 @@ o="$(scan 'git commit -m x')"
 # (4) un no-git → silencio
 o="$(scan 'ls -la')"
 [ -z "$o" ] && ok "secret-scan ignora comandos no-git" || bad "secret-scan reaccionó a no-git; got: $o"
-# Cobertura NUEVA (auditoría externa del arnés, 2026-09-15): git-branch-guard/entorno-maquina-guard/
-# merge-squash-guard ya tenían el caso eval/bash-c (M1); secret-scan NO lo tenía pese a compartir la MISMA
-# lib despoja-comillas. `scan()` interpola SIN escapar comillas (rompería el JSON) → jq -nc aquí.
+# secret-scan comparte con git-branch-guard/entorno-maquina-guard/merge-squash-guard la MISMA lib
+# despoja-comillas, así que el caso eval/bash-c (M1) también lo cubre. `scan()` interpola SIN escapar
+# comillas (rompería el JSON) → jq -nc aquí.
 printf 'aws_key = AKIA1234567890ABCDEF\n' > "$SCANREPO/config.txt"
 git -C "$SCANREPO" add config.txt >/dev/null 2>&1
 scan_raw() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | HOME="$SCANREPO" CLAUDE_PROJECT_DIR="$SCANREPO" bash "$HOOKS/secret-scan.sh"; }
@@ -2263,8 +2239,8 @@ git -C "$SCANREPO" reset -q >/dev/null 2>&1; rm -f "$SCANREPO/config.txt"
 # ── §D: patrones NUEVOS (JWT, connection string, Password=) vía la lib detectar-secretos ──
 reset_scan() { git -C "$SCANREPO" reset -q >/dev/null 2>&1; rm -f "$SCANREPO"/*.txt 2>/dev/null; }
 # (A1 multi-add) `git add safe && git add secret && git commit` en UN comando: los adds NO corrieron en
-# PreToolUse → el escaneo debe pedir el dry-run de TODOS los `git add`, no solo el 1º. Antes (head -1) el 2º
-# add se colaba y su secreto entraba. Cerrado 2026-09-08 (OK de unjordi).
+# PreToolUse → el escaneo debe pedir el dry-run de TODOS los `git add`, no solo el 1º (un `head -1` dejaría
+# colar el 2º add y su secreto).
 reset_scan; printf 'limpio, sin secretos\n' > "$SCANREPO/safe.txt"; printf 'aws = AKIA1234567890ABCDEF\n' > "$SCANREPO/secreto.txt"
 o="$(scan 'git add safe.txt && git add secreto.txt && git commit -m x')"
 printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan A1: multi-add encadenado escanea TODOS los git add (secreto en el 2º → deny)" || bad "secret-scan A1: el 2º git add encadenado se coló (solo escaneó el 1º); got: $o"
@@ -2331,7 +2307,7 @@ o="$(scan5 'git push -u origin feat/limpia')"
 [ -z "$o" ] && ok "secret-scan G5: 1er push de rama nueva LIMPIA → silencio (sin falso positivo)" || bad "secret-scan G5: falso positivo en rama nueva limpia; got: $o"
 rm -rf "$G5ROOT"
 
-# ── FMEA 2026-07-30 · A1 (idiom `git add && git commit`) + A7 (`--no-verify` en el MENSAJE) ──
+# ── A1 (idiom `git add && git commit`) + A7 (`--no-verify` en el MENSAJE) ──
 echo ""
 echo "== (b2c) secret-scan FMEA A1/A7: idiom 'git add && git commit' y --no-verify citado en el mensaje =="
 FMEAREPO="$(mktemp -d "${TMPDIR:-/tmp}/brain-fmea.XXXXXX")"
@@ -2385,42 +2361,41 @@ printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan A7: --no-verify en el MEN
 # A7 (2) --no-verify REAL (bandera) sigue siendo escape legítimo → PASA (silencio)
 o="$(scanf 'git commit --no-verify -m x')"
 [ -z "$o" ] && ok "secret-scan A7: --no-verify como bandera real sigue saltando (escape legítimo)" || bad "secret-scan A7: --no-verify real dejó de saltar; got: $o"
-# A-03 (FMEA post-integración): el prefijo `git -c k=v … commit` ya NO ciega el escaneo (antes rompía la
-# adyacencia git+commit del gate). Secreto en un tracked modificado que -a estagearía → BLOQUEA.
+# A-03: el prefijo `git -c k=v … commit` NO debe cegar el escaneo (rompería la adyacencia git+commit del
+# gate). Secreto en un tracked modificado que -a estagearía → BLOQUEA.
 fmeareset; printf 'v\n' > "$FMEAREPO/gc.txt"; git -C "$FMEAREPO" add gc.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm gc >/dev/null 2>&1
 printf 'v\naws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/gc.txt"
 o="$(scanf 'git -c user.email=x commit -am x')"
 printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan A-03: 'git -c … commit -am' escanea (prefijo ya no ciega) → bloquea" || bad "secret-scan A-03: el prefijo 'git -c' cegó el escaneo; got: $o"
-# A-R4-02 (FMEA r4): las OTRAS opciones globales de git (≠ -c/-C) también rompían la adyacencia git+commit
-# del gate → el escaneo NO corría. El fix generalizado de acg_normaliza_git_prefijo (compartido) las cierra.
+# A-R4-02: las OTRAS opciones globales de git (≠ -c/-C) también romperían la adyacencia git+commit del gate
+# y el escaneo NO correría. acg_normaliza_git_prefijo (compartido) las cierra.
 fmeareset; printf 'v\n' > "$FMEAREPO/g2.txt"; git -C "$FMEAREPO" add g2.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm g2 >/dev/null 2>&1
 printf 'v\naws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/g2.txt"
 printf '%s' "$(scanf 'git --no-pager commit -am x')" | grep -q '"deny"' && ok "secret-scan A-R4-02: 'git --no-pager commit -am' escanea → bloquea" || bad "secret-scan A-R4-02: '--no-pager' cegó el escaneo; got: $(scanf 'git --no-pager commit -am x')"
 printf '%s' "$(scanf 'git -P commit -am x')"         | grep -q '"deny"' && ok "secret-scan A-R4-02: 'git -P commit -am' escanea → bloquea" || bad "secret-scan A-R4-02: '-P' cegó el escaneo"
 printf '%s' "$(scanf 'git --work-tree=. commit -am x')" | grep -q '"deny"' && ok "secret-scan A-R4-02: 'git --work-tree=. commit -am' escanea → bloquea" || bad "secret-scan A-R4-02: '--work-tree=' cegó el escaneo"
-# A-R5-02 (FMEA r5): con el despoje ANTES de normalizar, un value-eater con valor ENTRECOMILLADO
-# (`git -C "/ruta" commit`) quedaba vacío y el normalizador se comía `commit` → escaneo CIEGO (¡sin
-# necesitar espacio!). Fix: normalizar el RAW (quote-aware) ANTES de despojar. Secreto en tracked que -a estagea.
-# M2 (auditoría 2026-09-15): desde que secret-scan HONRA -C para resolver el dir objetivo (antes siempre
-# escaneaba CLAUDE_PROJECT_DIR, ciego al propio -C), el valor de -C debe ser un repo REAL (si no, el guard
-# ahora fail-abre correctamente sobre un dir irresoluble) — se usa FMEAREPO (con un subdir CON espacio para
-# seguir cubriendo el caso "valor entrecomillado con espacio"), no una ruta inventada.
+# A-R5-02: con el despoje ANTES de normalizar, un value-eater con valor ENTRECOMILLADO (`git -C "/ruta"
+# commit`) quedaría vacío y el normalizador se comería `commit` → escaneo CIEGO (sin necesitar espacio). Por
+# eso se normaliza el RAW (quote-aware) ANTES de despojar. Secreto en tracked que -a estagea.
+# M2: como secret-scan HONRA -C para resolver el dir objetivo (no escanea ciegamente CLAUDE_PROJECT_DIR), el
+# valor de -C debe ser un repo REAL (sobre un dir irresoluble el guard fail-abre) — se usa FMEAREPO (con un
+# subdir CON espacio para cubrir el caso "valor entrecomillado con espacio"), no una ruta inventada.
 fmeareset; printf 'v\n' > "$FMEAREPO/g3.txt"; git -C "$FMEAREPO" add g3.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm g3 >/dev/null 2>&1
 printf 'v\naws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/g3.txt"
 mkdir -p "$FMEAREPO/a b"
 printf '%s' "$(scanf "git -C \"$FMEAREPO\" commit -am x")"  | grep -q '"deny"' && ok "secret-scan A-R5-02: 'git -C \"\$repo\" commit -am' (valor entrecomillado sin espacio) escanea → bloquea" || bad "secret-scan A-R5-02: valor entrecomillado cegó el escaneo (despoje antes de normalizar)"
 printf '%s' "$(scanf "git -C \"$FMEAREPO/a b\" commit -am x")" | grep -q '"deny"' && ok "secret-scan A-R5-02: 'git -C \"\$repo/a b\"' (valor entrecomillado CON espacio, subdir real) escanea → bloquea" || bad "secret-scan A-R5-02: valor entrecomillado con espacio cegó el escaneo"
 printf '%s' "$(scanf "git --work-tree=\"$FMEAREPO/a b\" commit -am x")" | grep -q '"deny"' && ok "secret-scan A-R5-02: 'git --work-tree=\"\$repo/a b\"' (=-form entrecomillado, con espacio) escanea → bloquea" || bad "secret-scan A-R5-02: --work-tree= entrecomillado cegó el escaneo"
-# A-R6-01 (FMEA r6): comilla EN MEDIO del valor de un global (`git -c user.name="a b" commit`) → mismo
-# mecanismo de evasión, mismo fix (valor como secuencia). Secreto en tracked que -a estagea.
+# A-R6-01: comilla EN MEDIO del valor de un global (`git -c user.name="a b" commit`) → mismo mecanismo de
+# evasión, mismo tratamiento (valor como secuencia). Secreto en tracked que -a estagea.
 fmeareset; printf 'v\n' > "$FMEAREPO/g4.txt"; git -C "$FMEAREPO" add g4.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm g4 >/dev/null 2>&1
 printf 'v\naws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/g4.txt"
 printf '%s' "$(scanf 'git -c user.name="a b" commit -am x')" | grep -q '"deny"' && ok "secret-scan A-R6-01: 'git -c user.name=\"a b\" commit -am' (comilla en medio) escanea → bloquea" || bad "secret-scan A-R6-01: comilla en medio del valor cegó el escaneo"
-# A-R7-01 (FMEA r7): espacio escapado con backslash en el valor global → mismo mecanismo, mismo fix.
+# A-R7-01: espacio escapado con backslash en el valor global → mismo mecanismo, mismo tratamiento.
 fmeareset; printf 'v\n' > "$FMEAREPO/g5.txt"; git -C "$FMEAREPO" add g5.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm g5 >/dev/null 2>&1
 printf 'v\naws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/g5.txt"
 printf '%s' "$(scanf 'git -c a=b\ c commit -am x')" | grep -q '"deny"' && ok "secret-scan A-R7-01: 'git -c a=b\\ c commit -am' (espacio escapado) escanea → bloquea" || bad "secret-scan A-R7-01: el espacio escapado con backslash cegó el escaneo"
-# B4 (FMEA r8): el binario Windows `git.exe commit` rompía el gate git+commit del escaneo → mismo fix (colapso git.exe→git).
+# B4: el binario Windows `git.exe commit` rompería el gate git+commit del escaneo → mismo tratamiento (colapso git.exe→git).
 fmeareset; printf 'v\n' > "$FMEAREPO/g6.txt"; git -C "$FMEAREPO" add g6.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm g6 >/dev/null 2>&1
 printf 'v\naws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/g6.txt"
 printf '%s' "$(scanf 'git.exe commit -am x')" | grep -q '"deny"' && ok "secret-scan B4: 'git.exe commit -am' (binario Windows) escanea → bloquea" || bad "secret-scan B4: 'git.exe' cegó el escaneo"
@@ -2429,21 +2404,18 @@ rm -rf "$FMEAREPO"
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (b2d) secret-scan DEFECTO #4 (auditoría overhead 2026-09-16): deja de escalar con el Nº de archivos =="
-# Antes: el escaneo primario corría un `git diff -- "$f"` POR ARCHIVO en un bucle -- lineal en archivos
-# tocados; medido en producción: 600s de TIMEOUT con un commit de 105 archivos (`git add -A` + commit
-# masivo). Un guard DEFENSIVO que se pasa de tiempo DEJA DE PROTEGER: se apaga exactamente en el commit
-# más grande, justo donde más fácil se cuela un secreto sin que nadie lo note al revisar.
+# Un escaneo primario que corra un `git diff -- "$f"` POR ARCHIVO en un bucle es lineal en archivos
+# tocados, y un guard DEFENSIVO que se pasa de tiempo DEJA DE PROTEGER: se apagaría justo en el commit más
+# grande, donde más fácil se cuela un secreto sin que nadie lo note al revisar.
 #
-# Oráculo (bastante más grande que el caso real de 105, para ver margen): un commit de N archivos con un
-# secreto ESCONDIDO en el archivo Nº 100 -- ni el primero ni el último -- debe (a) seguir bloqueando
-# (la dirección que de verdad importa) Y (b) terminar en un tiempo ACOTADO que NO escale con N. Y el
-# MISMO tamaño, pero limpio, debe pasar en silencio (sin ruido) igual de rápido -- ese es el caso que
-# ANTES se comía el timeout (no el que bloquea: el commit grande y LIMPIO).
+# Oráculo: un commit de N archivos (N grande, para ver margen) con un secreto ESCONDIDO en el archivo Nº 100
+# — ni el primero ni el último — debe (a) seguir bloqueando (la dirección que de verdad importa) Y (b)
+# terminar en un tiempo ACOTADO que NO escale con N. Y el MISMO tamaño, pero limpio, debe pasar en silencio
+# igual de rápido — ese es el caso que el bucle-por-archivo se comía en timeout (no el que bloquea: el
+# commit grande y LIMPIO).
 #
-# Contra el código de HOY (bucle por archivo) el assert de tiempo FALLA: medido en esta máquina, N=400
-# tarda ~6s (escala ~12ms/archivo, lineal) vs <1s tras el fix (una sola invocación de `git diff` para
-# TODO el rango, sin importar N). El umbral de 3s dobla el margen sobre el fix y se queda muy por debajo
-# de lo que tarda el código viejo con este mismo N.
+# El fix usa una sola invocación de `git diff` para TODO el rango, sin importar N. El umbral de tiempo del
+# assert deja margen cómodo sobre el fix y queda muy por debajo de lo que tarda el bucle-por-archivo.
 DEFECTO4ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-defecto4.XXXXXX")"; DEFECTO4REPO="$DEFECTO4ROOT/repo"; mkdir -p "$DEFECTO4REPO"
 git -C "$DEFECTO4REPO" init -q >/dev/null 2>&1
 git -C "$DEFECTO4REPO" config user.email t@t >/dev/null 2>&1
@@ -2521,9 +2493,8 @@ printf 'alias ls=eza\n' > "$EMREPO/notas.md"
 git -C "$EMREPO" add notas.md >/dev/null 2>&1
 o="$(emg 'git commit -m x')"
 [ -z "$o" ] && ok "entorno-maquina-guard: archivo fuera de .claude/memory/ → silencio (fuera de alcance)" || bad "entorno-maquina-guard: reaccionó fuera de .claude/memory/; got: $o"
-# M1 (auditoría 2026-09-15 §2.1): el despoje-a-mano se unificó con la lib compartida — un `bash -c "git
-# commit -m x"` ya no evade este aviso (antes lo evadía: el sed a mano trataba TODO lo entrecomillado como
-# dato).
+# M1: el despoje-a-mano se unificó con la lib compartida — un `bash -c "git commit -m x"` NO debe evadir
+# este aviso (un sed a mano que trate TODO lo entrecomillado como dato sí lo evadiría).
 emreset
 printf 'alias ls=eza\n' > "$EMREPO/.claude/memory/correr-en-local.md"
 git -C "$EMREPO" add .claude/memory/correr-en-local.md >/dev/null 2>&1
@@ -2795,8 +2766,8 @@ lrout="$(cd "$LRREPO" && CLAUDE_INTEGRACION_BASE=miDevelop bash "$HOOKS/limpiar.
 printf '%s' "$lrout" | grep -q 'borraría: feat/hecha'      && ok "b3c: rama squash-integrada → se barrería"                  || bad "b3c: no marcó feat/hecha para borrar; got: $lrout"
 printf '%s' "$lrout" | grep -q 'CONSERVADA.*feat/viva'     && ok "b3c: rama con trabajo sin integrar → conservada"            || bad "b3c: no conservó feat/viva; got: $lrout"
 printf '%s\n' "$lrout" | grep -v '^limpiar-ramas:' | grep -q 'miDevelop' && bad "b3c: tocó la base/rama actual miDevelop; got: $lrout" || ok "b3c: la base/rama actual (miDevelop) NO se lista para borrar ni conservar"
-# A-1 (auditoría 2026-09-11): keep/respaldo y feat/en-wt NUNCA deben tratarse como candidatas a
-# borrar/conservar — pero SÍ deben nombrarse en el resumen de omitidas (transparencia, "no silent caps").
+# A-1: keep/respaldo y feat/en-wt NUNCA deben tratarse como candidatas a borrar/conservar — pero SÍ deben
+# nombrarse en el resumen de omitidas (transparencia, "no silent caps").
 printf '%s' "$lrout" | grep -qE '(borrar[ií]a|borrada|CONSERVADA[^$]*):? keep/respaldo' && bad "b3c: keep/respaldo tratada como candidata a borrar/conservar (protegida)" || ok "b3c: keep/* protegida (no se trata como candidata)"
 printf '%s' "$lrout" | grep -q 'protegida(s) por convención:.*keep/respaldo' && ok "b3c: keep/* aparece NOMBRADA en el resumen de omitidas (A-1, no silent caps)" || bad "b3c: keep/respaldo no aparece en el resumen de omitidas; got: $lrout"
 printf '%s' "$lrout" | grep -qE '(borrar[ií]a|borrada|CONSERVADA[^$]*):? feat/en-wt' && bad "b3c: feat/en-wt está checked-out en un worktree → NO debe tratarse como candidata (branch -D la rehúsa); got: $lrout" || ok "b3c: rama checked-out en un worktree → protegida (no se trata como candidata)"
@@ -2843,11 +2814,10 @@ rm -rf "$LR2ROOT"
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (b3c4) FIX-2 / C-2: limpiar-ramas EXAMINA las ramas REMOTAS sin contraparte local (antes: invisibles) =="
-# Dictamen higiene de ramas 2026-09-17, C-2: el bucle recorría SOLO `refs/heads`, así que una rama viva en
-# `origin` sin rama local no se examinaba, no se barría y ni siquiera salía en el resumen como omitida.
-# `barrer_remota()` solo alcanza una remota si su LOCAL fue declarada zombie primero — sin local, no hay
-# entrada al código. Medido en el repo real: 12 de las 23 ramas de origin eran exactamente de esa clase
-# (8 residuo ya integrado + 4 con trabajo represado), el 100% de las invisibles.
+# C-2: si el bucle recorriera SOLO `refs/heads`, una rama viva en `origin` sin rama local no se examinaría,
+# no se barrería y ni saldría en el resumen como omitida (`barrer_remota()` solo alcanza una remota si su
+# LOCAL fue declarada zombie primero — sin local, no hay entrada al código). Por eso limpiar-ramas EXAMINA
+# también las remotas sin contraparte local.
 C2RAMA_BASE=develop
 C2ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-c2r.XXXXXX")"; C2BARE="$C2ROOT/remote.git"; C2REPO="$C2ROOT/repo"
 git init -q --bare "$C2BARE" >/dev/null 2>&1
@@ -3004,7 +2974,7 @@ rm -rf "$LR3ROOT"
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (b3c5) FIX-5 / A-4: DETECTOR DE REPRESA — la rama que envejece sin integrarse se reporta CON el estado de su PR =="
-# Dictamen higiene de ramas 2026-09-17, A-4: recorriendo el ciclo actor por actor, dos transiciones no las
+# A-4: recorriendo el ciclo actor por actor, dos transiciones no las
 # vigila NADIE — "rama pusheada → PR abierto" (la rama se queda en origin sin PR y nadie lo nota) y
 # "PR cerrado SIN mergear" (bz_pr_mergeado solo mira --state merged, así que un PR CLOSED es
 # indistinguible de "sin PR" y se conserva mudo para siempre). Aquí no falló la escoba: falló el CIERRE, y
@@ -3066,9 +3036,9 @@ rm -rf "$A4ROOT2"
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (b3d) bz_resolver_base: AUTO-detecta la mini-develop (Develop<Usuario>) sin CLAUDE_INTEGRACION_BASE =="
-# Bug real (2026-07-28): en un repo con flujo mini-develop (rama personal DevelopUnjordi sacada de develop),
-# el resolver caía a `develop` porque existía local → las ramitas integradas a la MINI se veían "no
-# integradas" y nunca se barrían. La base correcta del dev es su Develop<Usuario>.
+# En un repo con flujo mini-develop (rama personal DevelopUnjordi sacada de develop), un resolver que cayera
+# a `develop` por existir local vería las ramitas integradas a la MINI como "no integradas" y nunca las
+# barrería. La base correcta del dev es su Develop<Usuario>.
 RBROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-rb.XXXXXX")"; RBREPO="$RBROOT/repo"; mkdir -p "$RBREPO"
 git -C "$RBREPO" init -q >/dev/null 2>&1
 git -C "$RBREPO" config user.email t@t >/dev/null 2>&1; git -C "$RBREPO" config user.name tester >/dev/null 2>&1
@@ -3190,9 +3160,9 @@ rm -rf "$DZROOT"
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (b3h) bz_es_zombie: señal (e) 'Rama: <rama>' en el squash — determinista, LOCAL, SIN red ni gh/glab (A-3) =="
-# Hallazgo de mayor valor de la auditoría 2026-09-11: (d) es la ÚNICA señal que cazaba el squash
-# multi-commit y depende de gh/glab (ausentes del PATH de launchd). La convención de equipo pone
-# "Rama: <nombre>" en el mensaje de cada squash → (e) prueba la integración sin ningún binario externo.
+# (d) es la ÚNICA señal que caza el squash multi-commit y depende de gh/glab (ausentes del PATH de launchd).
+# La convención de equipo pone "Rama: <nombre>" en el mensaje de cada squash → (e) prueba la integración sin
+# ningún binario externo.
 EEROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-ee.XXXXXX")"; EEREPO="$EEROOT/repo"; mkdir -p "$EEREPO"
 git -C "$EEREPO" init -q >/dev/null 2>&1
 git -C "$EEREPO" symbolic-ref HEAD refs/heads/develop >/dev/null 2>&1
@@ -3320,12 +3290,10 @@ rm -rf "$C3ROOT"
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (b3l2) FIX-6 / A-1: un worktree ZOMBIE SUCIO deja PENDIENTE en la bitácora (antes: congelaba la rama en silencio) =="
-# Dictamen higiene de ramas 2026-09-17, A-1: conservar el árbol sucio es CORRECTO (C-3), pero solo la rama
-# `DEJADO (vivo)` alimentaba $pend — el sucio no anotaba nada. Cadena completa: worktree retenido → la rama
-# sale como "retenida por worktree" en limpiar-ramas → nunca se barre, y SIN registro en ningún lado. Sin
-# envejecimiento ni escalación: un solo archivo untracked la congela indefinidamente. Medido en el repo
-# real: 2 de los 8 worktrees que retenían ramas ya integradas estaban sucios — esas dos se congelarían
-# aunque la causa raíz del barrido se arreglara.
+# A-1: conservar el árbol sucio es CORRECTO (C-3), pero si solo la rama `DEJADO (vivo)` alimentara $pend, el
+# sucio no anotaría nada. Cadena: worktree retenido → la rama sale como "retenida por worktree" en
+# limpiar-ramas → nunca se barre, y SIN registro en ningún lado; sin envejecimiento ni escalación, un solo
+# archivo untracked la congelaría indefinidamente aunque la causa raíz del barrido se arreglara.
 A1ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-a1s.XXXXXX")"; A1REPO="$A1ROOT/repo"; mkdir -p "$A1REPO/.claude/memory"
 git -C "$A1REPO" init -q >/dev/null 2>&1
 git -C "$A1REPO" symbolic-ref HEAD refs/heads/develop >/dev/null 2>&1
@@ -3420,9 +3388,9 @@ rm -rf "$A4BROOT"
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (b3cs-ci) cerrar-slice _ci_veredicto (glab): un FALLO de glab (sin red/token) → INDET, NUNCA SINCI =="
-# C1 (QA claudio 2026-10-13): el `jq … // \"NONE\"` viejo daba \"\" ante glab-falla → case '' → SINCI →
-# mergeaba A CIEGAS bajo --wait-ci. Ahora se valida el JSON ANTES (type==object): sin objeto → INDET (aborta).
-# FALLA contra el código viejo (que proseguía con exit 0). Se ejercita el script REAL con glab stubbeado.
+# C1: un `jq … // \"NONE\"` que diera \"\" ante glab-falla caería a case '' → SINCI → mergearía A CIEGAS
+# bajo --wait-ci. Por eso se valida el JSON ANTES (type==object): sin objeto → INDET (aborta). FALLA contra
+# un código que prosiguiera con exit 0. Se ejercita el script REAL con glab stubbeado.
 CSCI_SH="$SCRIPT_DIR/skills/cerrar-slice/cerrar-slice.sh"
 CSCI_MSG="fix(x): prueba del veredicto de CI con glab stub, suficientemente larga para el piso. Rama: fix/x MR: !1"
 CSCI_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-csci.XXXXXX")"; CSCI_BIN="$CSCI_ROOT/bin"; mkdir -p "$CSCI_BIN"
@@ -3467,7 +3435,7 @@ rm -rf "$M2ROOT"
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (b3o2) FIX-3 / C-3: base IRRESOLUBLE — bz_resolver_base nunca devuelve cadena VACÍA, y sin base los barredores ABORTAN (PÉRDIDA DE DATOS) =="
-# Dictamen higiene de ramas 2026-09-17, C-3: en el fallback (3) el `|| echo main` se ligaba al PIPELINE, y
+# C-3: en el fallback (3) el `|| echo main` se ligaba al PIPELINE, y
 # el pipeline termina en `sed`, que sale 0 con salida VACÍA cuando `symbolic-ref -q` no encontró origin/HEAD
 # → el `echo main` NUNCA corría → base="". Con base vacía TODAS las señales de integración fallan MUDAS
 # (is-ancestor contra "", log de "", git cherry de "") y cualquier rama con la remota `gone` cae a la señal
@@ -3612,9 +3580,8 @@ printf '%s' "$m3out" | grep -q 'DETACHED.*wt-det' && ok "b3r: M-3 — el worktre
 rm -rf "$M3ROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# (b3f) delegacion-reporte y (b3i) recordar-orquestar: RETIRADOS overhaul hooks 2026-09-18 (puramente
-# advisory, medido: ignorados). Su regla subió a norma en brain/norms/global-claude-md.md § "Orquesta:
-# delega lo paralelizable" — ver MANIFEST (tier retirado) para el rastro de cero-pérdida.
+# (b3f) delegacion-reporte y (b3i) recordar-orquestar: retirados; su regla vive en la norma «Delegar a
+# agentes» de brain/norms/global-claude-md.md (ver MANIFEST, tier retirado).
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
@@ -3779,7 +3746,7 @@ is_block "$(CLAUDE_DOD_JUEZ_MOCK_RAW="$RAW_AQ" dod_run)" \
   || bad "dod #6: se surfaceó output de una tool NO-AskUserQuestion (superficie de inyección ensanchada)"
 rm -f "$DODAQ"
 
-# ── PARSEO por CENTINELA + VETO de CITA (DETERMINISTA, sin LLM) · EMPODERADO 2026-08 ──
+# ── PARSEO por CENTINELA + VETO de CITA (DETERMINISTA, sin LLM) ──
 # El desamordazar cambió el parseo: de una sola línea 'CIERRE=..' a un CoT que termina en 3 centinelas
 # 'CIERRE:/MARCA:/VISUAL: si|no' (parseados por tail -1) + un veto de cita para MARCA. Es el código NUEVO
 # riesgoso: se ejercita con CLAUDE_DOD_JUEZ_MOCK_RAW (respuesta cruda mockeada) SIN tocar la red.
@@ -3823,10 +3790,10 @@ MARCA: no' 'X' 'y')" = UNAVAILABLE ] \
     && ok "dod parseo: falta el centinela VISUAL → UNAVAILABLE → fail-OPEN" || bad "dod parseo: no cayó a UNAVAILABLE con un eje ausente"
   [ "$(praw 'basura sin centinelas' 'X' 'y')" = UNAVAILABLE ] \
     && ok "dod parseo: respuesta sin ningún centinela → UNAVAILABLE (fail-OPEN)" || bad "dod parseo: no cayó a UNAVAILABLE ante respuesta ininteligible"
-  # ── VETO ROBUSTO espejo del merge (fix veto-cita 2026-08): mismo helper _juez_cita_casa → tolera typo/
-  # acento/caso, sigue exigiendo apoyo en palabras REALES del usuario. Casos ASCII-puros → deterministas
-  # en toda plataforma (macOS sin iconv//TRANSLIT limpio y Linux dan el MISMO resultado). (a) typo corregido
-  # por el LLM al copiar la CITA ('cerrarlo' vs 'cerralo' del usuario) → MARCA=si (byte-exacto daba 'no' falso).
+  # ── VETO ROBUSTO espejo del merge: mismo helper _juez_cita_casa → tolera typo/acento/caso, sigue
+  # exigiendo apoyo en palabras REALES del usuario. Casos ASCII-puros → deterministas en toda plataforma
+  # (macOS sin iconv//TRANSLIT limpio y Linux dan el MISMO resultado). (a) typo corregido por el LLM al
+  # copiar la CITA ('cerrarlo' vs 'cerralo' del usuario) → MARCA=si (byte-exacto daría 'no' falso).
   VA='Razono: afirma cierre; el usuario confirmó.
 CITA: ya lo probe y funciona bien, cerrarlo pues
 CIERRE: si
@@ -3906,10 +3873,9 @@ if [ -n "${CLAUDE_DOD_JUEZ_LIVE:-}" ] && command -v curl >/dev/null 2>&1 && comm
   djlive "downgrade 'terminado, pero en preview'"   CIERRE=no 'El módulo quedó terminado, pero lo dejo en preview, a tu revisión.'
   djlive "MEDIO-1 '¿cuál es tu definición de listo?'" CIERRE=no '¿Cuál es tu definición de listo?'
   djlive "estatus 'voy avanzando, te aviso'"        CIERRE=no 'Voy avanzando; te aviso cuando termine.'
-  # ── FIX DE PRECISIÓN (corpus guards-falsos-positivos §dod-verificar): NEGACIÓN EXPLÍCITA / marcador de
-  #    estatus DOMINA sobre la celebración y el verde técnico. Los 3 FPs de la misma clase (la negación de
-  #    cierre presente, pero un token de claim/celebración hacía ganar CIERRE=si). Case 2026-08-02 ya está
-  #    arriba ('FP-hoy verif. técnicamente…tras tu OK', L~2018); aquí van los dos restantes.
+  # ── NEGACIÓN EXPLÍCITA / marcador de estatus DOMINA sobre la celebración y el verde técnico: en los FPs de
+  #    esta clase la negación de cierre está presente pero un token de claim/celebración hacía ganar CIERRE=si.
+  #    El caso 'FP-hoy verif. técnicamente…tras tu OK' ya está arriba; aquí van los dos restantes.
   djlive "corpus FP 2026-07-29 'verif técnicamente / esperando OK / propuesta sin ejecutar'" CIERRE=no \
     'Está verificado técnicamente, pero es una propuesta SIN ejecutar: esperando tu OK. ¿Le doy?'
   djlive "corpus FP 2026-08-25 celebración + 'Nada declarado LISTO / verif técnicamente, pendiente tu QA'" CIERRE=no \
@@ -3918,12 +3884,12 @@ if [ -n "${CLAUDE_DOD_JUEZ_LIVE:-}" ] && command -v curl >/dev/null 2>&1 && comm
   # los CIERRE=si de arriba, aquí explícito por el invariante que el auditor va a atacar).
   djlive "anti-hueco cierre REAL sin negación 'el widget quedó listo, funciona'" CIERRE=si \
     'El widget quedó listo y funciona de punta a punta.'
-  # ── FIX DE PRECISIÓN 2026-08-30 (corpus §dod-verificar L52/L53/L54): clase MINI-DEVELOP. Un token de cierre
-  #    ('completo', 'cerrado esta sesión', '✅') CALIFICADO por un marcador de PENDIENTE-INTEGRAR del modelo
-  #    mini-develop ('pendiente tu pull/integración', 'en la mini', 'en el roadmap', 'pusheado a mi rama') es
-  #    ESTATUS (trabajo en la rama personal del dev, aún NO integrado a develop ni entregado) → CIERRE=no.
-  #    El juez ya entendía 'verificado técnicamente/en preview/con tu OK'; NO conocía el léxico mini-develop
-  #    (por eso S1-S4 abajo, sin 'verificado técnicamente', disparaban CIERRE=si antes del fix).
+  # ── clase MINI-DEVELOP. Un token de cierre ('completo', 'cerrado esta sesión', '✅') CALIFICADO por un
+  #    marcador de PENDIENTE-INTEGRAR del modelo mini-develop ('pendiente tu pull/integración', 'en la mini',
+  #    'en el roadmap', 'pusheado a mi rama') es ESTATUS (trabajo en la rama personal del dev, aún NO integrado
+  #    a develop ni entregado) → CIERRE=no. El juez ya entiende 'verificado técnicamente/en preview/con tu OK';
+  #    el léxico mini-develop hay que enseñárselo (S1-S4 abajo, sin 'verificado técnicamente', dispararían
+  #    CIERRE=si sin él).
   djlive "mini FP-52 '✅ #3/#4 en la mini roadmap, pusheado, pendiente tu pull'" CIERRE=no \
     'Listo, ✅ #3 y #4 en la mini roadmap, pusheado a mi rama, corriendo — pendiente tu pull.' 'trabaja en el loop'
   djlive "mini FP-53 '6 cores listos, verif técnicamente, en la mini, pendiente pull/integración'" CIERRE=no \
@@ -3943,8 +3909,8 @@ if [ -n "${CLAUDE_DOD_JUEZ_LIVE:-}" ] && command -v curl >/dev/null 2>&1 && comm
     '#4 completo. Cerrado esta sesión.'
   djlive "anti-hueco mini 'integré a develop y funciona' → cierre REAL" CIERRE=si \
     'Ya lo integré a develop y quedó funcionando. #4 completo.'
-  # ── FIX DE PRECISIÓN 2026-09 (corpus §dod-verificar 08-31 ×2): AJUSTE PUNTUAL de UN elemento de UI
-  #    (posición/layout de botones concretos) en medio de iteración activa de CSS ≠ cierre del entregable.
+  # ── AJUSTE PUNTUAL de UN elemento de UI (posición/layout de botones concretos) en medio de iteración
+  #    activa de CSS ≠ cierre del entregable.
   djlive "corpus FP 08-31 'ya quedó todo en una fila: EXCEL, COPIAR...'" CIERRE=no \
     'Ya quedó todo en una sola fila: EXCEL, COPIAR, PEGAR y BUSCAR, alineados a la izquierda.'
   djlive "corpus FP 08-31(2) 'ahí quedó: EXCEL/COPIAR a la izquierda...'" CIERRE=no \
@@ -3963,8 +3929,8 @@ if [ -n "${CLAUDE_DOD_JUEZ_LIVE:-}" ] && command -v curl >/dev/null 2>&1 && comm
   djlive "B2 'en Chrome se ve como el mockup'"      VISUAL=si 'En Chrome se ve como el mockup.'
   djlive "G2b 'quedó igual al mockup' (prosa)"      VISUAL=si 'Quedó igual al mockup. No corrí screenshot, pero confío en que se ve bien.'
   djlive "VISUAL=no 'el módulo quedó listo'"        VISUAL=no 'El módulo de auth quedó listo.'
-  # ── FIX DE PRECISIÓN 2026-09 (corpus §dod-verificar 08-28): REPORTE DE SUBAGENTE atribuido explícitamente
-  #    ≠ observación visual PROPIA — el asistente está relatando lo que OTRO agente reportó, no mirando.
+  # ── REPORTE DE SUBAGENTE atribuido explícitamente ≠ observación visual PROPIA — el asistente está
+  #    relatando lo que OTRO agente reportó, no mirando.
   djlive "corpus FP 08-28 'el agente C reportó que salen correctos'" VISUAL=no \
     'El agente C reportó que los proyectos clonados salen correctos y se ven bien en Overleaf.'
   djlive "corpus FP 08-28(variante) 'según el reporte del agente, el render quedó igual'" VISUAL=no \
@@ -4005,19 +3971,15 @@ rm -f "$DODTX"
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (b4z) dod-verificar: COHERENCIA de timeouts — el crédito del juez cabe bajo el harness (fix carrera 2026-09-16) =="
-# Bug real medido en telemetría (transcripts jsonl, agosto 2026, project plantilladotnet): el harness del
-# Stop hook mata el proceso a los "timeout" segundos cableados en el settings.json del repo consumidor
-# (15s, verificado en despliegues reales), mientras CLAUDE_DOD_JUEZ_TIMEOUT (el crédito que el hook le da a
-# SU PROPIO curl) era 20s — MAYOR que el harness: una carrera que el hook SIEMPRE perdía, matado 5s ANTES
-# de que el juez agotara su propio presupuesto. 71 de 71 disparos de Stop en agosto murieron en ese muro
-# (~15000-15076ms), 15s de espera muerta y SIN veredicto cada vez — pese a que dod es fail-OPEN (el timeout
-# ni siquiera bloqueaba: solo desperdiciaba el turno).
-# Este test mide la INTENCIÓN (el presupuesto exterior CUBRE al interior, con margen para el resto del
-# hook), no la plomería ("el número es 10"): extrae AMBOS valores del propio archivo fuente (única fuente,
-# ver el CONTRATO DE COHERENCIA DE TIMEOUTS junto al `source` de juez-comun.sh en dod-verificar.sh) y
-# afirma la desigualdad — si alguien sube el crédito del juez sin subir el mínimo asumido del harness (o
-# baja el mínimo del harness sin bajar el crédito del juez), el test se cae, sin importar los números
-# concretos que use cada lado.
+# El harness del Stop hook mata el proceso a los "timeout" segundos cableados en el settings.json del repo
+# consumidor; si CLAUDE_DOD_JUEZ_TIMEOUT (el crédito que el hook le da a SU PROPIO curl) fuera MAYOR que ese
+# tope, el hook perdería SIEMPRE la carrera: lo matarían ANTES de que el juez agote su presupuesto, gastando
+# el turno sin veredicto (dod es fail-OPEN, así que ni siquiera bloquea: solo desperdicia el turno).
+# Este test mide la INTENCIÓN (el presupuesto exterior CUBRE al interior, con margen para el resto del hook),
+# no la plomería ("el número es 10"): extrae AMBOS valores del propio archivo fuente (ver el CONTRATO DE
+# COHERENCIA DE TIMEOUTS junto al `source` de juez-comun.sh en dod-verificar.sh) y afirma la desigualdad — si
+# alguien sube el crédito del juez sin subir el mínimo asumido del harness (o baja el mínimo del harness sin
+# bajar el crédito del juez), el test se cae, sin importar los números concretos de cada lado.
 DODSH="$HOOKS/dod-verificar.sh"
 dodj_interno=$(grep -oE 'CLAUDE_DOD_JUEZ_TIMEOUT:-[0-9]+' "$DODSH" | grep -oE '[0-9]+$')
 dodj_harness=$(grep -oE '_DOD_HARNESS_TIMEOUT_MINIMO=[0-9]+' "$DODSH" | grep -oE '[0-9]+$')
@@ -4025,10 +3987,9 @@ dodj_harness=$(grep -oE '_DOD_HARNESS_TIMEOUT_MINIMO=[0-9]+' "$DODSH" | grep -oE
   && ok "dod: el contrato de timeouts está declarado y es grepeable (interno=${dodj_interno}s, harness-mínimo=${dodj_harness}s)" \
   || bad "dod: no pude extraer el crédito interno del juez (CLAUDE_DOD_JUEZ_TIMEOUT:-N, leí '${dodj_interno:-<vacío>}') y/o el mínimo del harness (_DOD_HARNESS_TIMEOUT_MINIMO=N, leí '${dodj_harness:-<vacío>}') del propio dod-verificar.sh — sin un contrato declarado y grepeable, los dos números pueden driftear en silencio (la carrera original)"
 
-# Margen exigido sobre el overhead REAL del resto del hook (tail -n 1500 del transcript + los jq/awk que
-# arman el turno + build del prompt + parseo de la respuesta), medido en telemetría real SIN llamada de red
-# (caso "screen-out local", agosto-septiembre 2026, plantilladotnet): p99 ≈ 953ms. 3s de margen es holgado
-# a propósito (fail-open: de sobra, nunca de menos).
+# Margen exigido sobre el overhead del resto del hook (tail del transcript + los jq/awk que arman el turno +
+# build del prompt + parseo de la respuesta), que sin llamada de red es de orden de milisegundos. 3s de
+# margen es holgado a propósito (fail-open: de sobra, nunca de menos).
 DODJ_MARGEN_MINIMO=3
 if [ -n "$dodj_interno" ] && [ -n "$dodj_harness" ]; then
   [ "$((dodj_interno + DODJ_MARGEN_MINIMO))" -le "$dodj_harness" ] \
@@ -4041,7 +4002,7 @@ fi
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (b5) compactación: precompact RETIRADO + rehidratar-hilo (inyecta + gate de staleness) =="
-# precompact-volcar-estado se RETIRÓ (2026-07): PreCompact no puede inyectar contexto ni pedir acción
+# precompact-volcar-estado se RETIRÓ: PreCompact no puede inyectar contexto ni pedir acción
 # (no hay turno antes de compactar) → era peso muerto. El "no perder el hilo" lo hacen checkpoint
 # (escribe) + rehidratar-hilo (relee) + aviso-contexto (watermark). Verificamos que ya NO exista.
 [ ! -f "$HOOKS/precompact-volcar-estado.sh" ] && ok "precompact-volcar-estado retirado (ya no existe)" || bad "precompact aún existe (debía retirarse)"
@@ -4096,7 +4057,7 @@ printf '%s' "$rhsame_ctx" | grep -q 'POSIBLEMENTE OBSOLETO' \
 printf '%s' "$rhsame_ctx" | grep -q 'HILO MENTAL ACTUAL' \
   && ok "rehidratar-hilo A8: encabezado normal (rehidrata el hilo vigente pese a la edad)" || bad "rehidratar-hilo A8: no reinyectó con encabezado normal; got: $rhsame_ctx"
 rm -rf "$RHSAME"
-# Rec3 (auditoría continuidad 2026-09-09): sin hilo NO es siempre silencio. Post-compact en un repo con
+# Rec3: sin hilo NO es siempre silencio. Post-compact en un repo con
 # el sistema de memoria (estado-proyecto.md) y sin hilo fresco → aviso VISIBLE (systemMessage) que apunta
 # al transcript sobreviviente. El modo de falla es que la pérdida de detalle es INVISIBLE → el checkpoint
 # se ignora. Solo dispara en source=compact Y con estado-proyecto.md (gate-de-sistema); startup o repo sin
@@ -4112,7 +4073,7 @@ printf '%s' "$rh3c" | jq -r '.systemMessage' 2>/dev/null | grep -q 'checkpoint' 
   && ok "rehidratar-hilo Rec3: el aviso recuerda correr checkpoint" || bad "rehidratar-hilo Rec3: el aviso no menciona checkpoint"
 is_silent "$(rh3 startup)" \
   && ok "rehidratar-hilo Rec3: startup (no compact) + sin hilo → silencio (arranque limpio, sin ruido)" || bad "rehidratar-hilo Rec3: startup sin hilo debió ser silencio"
-# CONTRA LA FALLA (2026-09-11, al integrar #389 con #407): el aviso se emite solo si faltan LOS DOS
+# CONTRA LA FALLA: el aviso se emite solo si faltan LOS DOS
 # artefactos. Con andamio presente la máquina YA cubrió la pérdida con evidencia, y avisar ahí sería
 # alarmar por algo que no se perdió — justo el ruido que erosiona a un aviso hasta que se ignora.
 printf '%s\n' '# Andamio mecánico' '- rama X · 3 commits' \
@@ -4127,7 +4088,7 @@ is_silent "$(rh3 compact)" \
   && ok "rehidratar-hilo Rec3: compact SIN estado-proyecto (repo sin el sistema) → silencio" || bad "rehidratar-hilo Rec3: repo sin sistema debió ser silencio aun en compact"
 rm -rf "$RHREC3"
 
-# ── A7 (inbox 2026-09-22): FARO anti-truncado. El harness trunca la salida de los hooks de arranque a
+# ── A7: FARO anti-truncado. El harness trunca la salida de los hooks de arranque a
 #    ~2KB de preview; si el §SIGUIENTE del hilo no cae ahí (p. ej. porque el hilo abre con un árbol largo),
 #    el modelo retoma a ciegas. El hook antepone un FARO (grito «HILO TRUNCADO» + §SIGUIENTE extraído)
 #    cuando el bloque supera el umbral, y el chequeo final de no-vacío es O(n) (la expansión `${ctx//…}`
@@ -4163,10 +4124,10 @@ pos_rel="$(printf '%s' "$rhf_big" | grep -n 'MARCA_RELLENO_ARBOL' | head -n1 | c
 { [ -n "$pos_sig" ] && [ -n "$pos_rel" ] && [ "$pos_sig" -lt "$pos_rel" ]; } \
   && ok "rehidratar-hilo faro: el §SIGUIENTE lidera, ANTES del árbol (sobrevive el truncado a 2KB)" \
   || bad "rehidratar-hilo faro: el §SIGUIENTE no quedó antes del árbol (sig=$pos_sig rel=$pos_rel)"
-# (2b) C2 (QA claudio 2026-10-13): hilo de ~11K — ENTRE el default nuevo (9000) y el viejo (13000). Con el
-# default nuevo dispara el faro; FALLA contra el viejo (13000 lo dejaba truncado SIN faro, que es el bug: el
-# harness corta ~10K). ~130 líneas de relleno ≈ 11KB. Se asevera, además, que el ctx cae en la banda (9000,13000)
-# para que el test siga discriminando si alguien vuelve a tocar el umbral.
+# (2b) C2: hilo de ~11K — ENTRE el default (9000) y un umbral viejo más alto (13000). Con el default dispara
+# el faro; un umbral de 13000 lo dejaría truncado SIN faro (el bug: el harness corta ~10K). ~130 líneas de
+# relleno ≈ 11KB. Se asevera, además, que el ctx cae en la banda (9000,13000) para que el test siga
+# discriminando si alguien vuelve a tocar el umbral.
 { printf '# Hilo mental actual\n> Última actualización: 2026-10-12 · rama x\n\n## SIGUIENTE PASO\nMARCA_11K — seguir con A8.\n\n## ARBOL\n'
   i=1; while [ "$i" -le 130 ]; do printf 'MARCA_RELLENO_ARBOL brain/hooks/x-%s.sh relleno para pasar el umbral del harness\n' "$i"; i=$((i+1)); done
 } > "$RHFARO/.claude/memory/hilo-mental-actual.md"
@@ -4181,6 +4142,31 @@ printf '%s' "$rhf_11k" | grep -q 'HILO TRUNCADO' \
 rm -rf "$RHFARO"
 
 rm -rf "$RHGIT" "$RHROOT"
+
+# ── (rh-watchdog) TOPE DE TIEMPO DURO: el hook NUNCA bloquea el SessionStart minutos, aunque una
+#    operación FUTURA se vuelva lenta. El O(n²) del strip ya se arregló (ver faro arriba); este guard
+#    ESTRUCTURAL mata CUALQUIER cuelgue tras REHIDRATAR_TIMEOUT_S. Se prueba sobre una COPIA del hook con
+#    un `sleep 30` inyectado (simula un op lento imprevisto) + un tope chico: con watchdog muere en ~tope;
+#    SIN watchdog correría el sleep completo. FALLA contra el código pre-watchdog (sin el tope el dur ≥ cota).
+RHWD="$(mktemp -d "${TMPDIR:-/tmp}/brain-rhwd.XXXXXX")"
+mkdir -p "$RHWD/.claude/memory"
+printf '# Hilo\n> Última actualización: 2026-10-12 · rama x\n\n## SIGUIENTE\nseguir\n' \
+  > "$RHWD/.claude/memory/hilo-mental-actual.md"
+# copia del hook con un `sleep 30` inyectado DESPUÉS de armar el watchdog (tras la línea ROOT=), para que
+# el tope ya esté activo cuando llega la operación lenta simulada.
+awk '/^ROOT=/ && !d {print; print "sleep 30  # INYECTADO por el test del watchdog"; d=1; next} {print}' \
+  "$HOOKS/rehidratar-hilo.sh" > "$RHWD/hook.sh"
+# guard externo por si el watchdog estuviera roto/ausente: no colgar el CI más de ~12s
+_wto=""; command -v timeout  >/dev/null 2>&1 && _wto="timeout 12"
+command -v gtimeout >/dev/null 2>&1 && _wto="gtimeout 12"
+_wt0=$(date +%s)
+printf '%s' '{"source":"compact","session_id":"sW","transcript_path":"/dev/null"}' \
+  | $_wto env REHIDRATAR_TIMEOUT_S=2 CLAUDE_PROJECT_DIR="$RHWD" bash "$RHWD/hook.sh" >/dev/null 2>&1
+_wt1=$(date +%s); dur_wd=$((_wt1 - _wt0))
+[ "$dur_wd" -lt 6 ] \
+  && ok "rehidratar-hilo watchdog: op lento inyectado (sleep 30) cortado por el tope (REHIDRATAR_TIMEOUT_S=2) en ${dur_wd}s" \
+  || bad "rehidratar-hilo watchdog: NO acotó el tiempo (${dur_wd}s ≥ 6) — el hook podría colgar el SessionStart"
+rm -rf "$RHWD"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
@@ -4224,38 +4210,77 @@ printf '# contrato\n' > "$ADROOT/AGENTS.md"
 printf '%s' "$(ad)" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'CONTRA la firma' \
   && ok "aviso-drift (con firma): AGENTS.md presente → dupla CONTRA la firma" || bad "aviso-drift: con AGENTS.md no tomó la rama con-firma"
 
-# (9) CONOCIMIENTO PROPIO (per-repo, imborrable): si el repo trae .claude/memory/conocimiento-propio(.local).md,
-# se RE-INYECTA en CADA SessionStart — incluso SIN drift o con el throttle fresco (no depende del drift).
-# La variante PERSONAL .local.md (gitignored) es la preferida; .md es fallback COMPARTIDO versionado.
+# (9) IDENTIDAD por conocimiento-propio: B8 RETIRÓ la re-inyección del hook — la identidad la carga el
+# `@import` NATIVO del CLAUDE.md del repo, NO este hook (evita la DUPLICACIÓN en contexto). Estos asertos
+# verifican que el hook YA NO la surface — FALLAN contra un código que la inyecte. La cobertura del @import
+# (que SÍ la carga) se prueba en §B8 abajo.
 mkdir -p "$ADROOT/.claude/memory"
 printf '# Conocimiento propio\nes tu cerebro, es mi repo, y es nuestro proyecto. La introspección PROPONE; unjordi DECIDE.\n' > "$ADROOT/.claude/memory/conocimiento-propio.local.md"
-# 9a: con drift → identidad + drift viajan JUNTOS en el mismo additionalContext
+# 9a: con drift → el hook surface el DRIFT, pero YA NO la identidad (aunque el archivo exista).
 adout="$(ad)"
-{ printf '%s' "$adout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'es tu cerebro' \
-  && printf '%s' "$adout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'DRIFT DEL CEREBRO'; } \
-  && ok "aviso-drift: conocimiento propio + drift viajan JUNTOS en un solo additionalContext" || bad "aviso-drift: no combinó identidad + drift; got: $adout"
-# 9b: sync LIMPIO + throttle fresco → SIN drift, pero la identidad SIGUE inyectándose (imborrable)
+{ printf '%s' "$adout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'DRIFT DEL CEREBRO' \
+  && ! printf '%s' "$adout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'es tu cerebro'; } \
+  && ok "aviso-drift B8: con drift surface el DRIFT pero YA NO la identidad (la da el @import nativo)" || bad "aviso-drift B8: el hook todavía re-inyecta la identidad con el drift; got: $adout"
+# 9b: sync LIMPIO + throttle fresco, CON el archivo de identidad presente → SILENCIO (ya no inyecta identidad).
 printf '#!/usr/bin/env bash\necho "==> resumen: 0 nuevos · 0 a actualizar · 9 ya al día · 7 hooks cableados (kind=hook)"\n' > "$ADBRAIN/brain/sincronizar-cerebro.sh"
 rm -rf "$ADHOME/.claude/memory/.drift-cerebro"
-adout="$(ad)"   # 1er llamado: limpio → cachea stamp; emite SOLO identidad
-{ printf '%s' "$adout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'es tu cerebro' \
-  && ! printf '%s' "$adout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'DRIFT DEL CEREBRO'; } \
-  && ok "aviso-drift: sin drift → inyecta SOLO el conocimiento propio (no depende del drift)" || bad "aviso-drift: sin drift no surface la identidad sola; got: $adout"
-adout2="$(ad)"  # 2º llamado: throttle fresco → salta el drift-check, pero IGUAL re-inyecta la identidad
-printf '%s' "$adout2" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'es tu cerebro' \
-  && ok "aviso-drift: throttle fresco → aún así re-inyecta el conocimiento propio (cada sesión)" || bad "aviso-drift: el throttle se tragó la identidad; got: $adout2"
-# 9c: fallback a la variante COMPARTIDA .md cuando NO hay .local.md (repo que versiona su identidad)
+adout="$(ad)"
+is_silent "$adout" && ok "aviso-drift B8: sin drift + CON conocimiento-propio.local.md → silencio (el hook ya no re-inyecta)" || bad "aviso-drift B8: habló sin drift (¿sigue inyectando la identidad?); got: $adout"
+# 9c: la variante COMPARTIDA .md tampoco se re-inyecta ya.
 rm -f "$ADROOT/.claude/memory/conocimiento-propio.local.md"
 printf '# Conocimiento propio (compartido)\nidentidad versionada del repo\n' > "$ADROOT/.claude/memory/conocimiento-propio.md"
 rm -rf "$ADHOME/.claude/memory/.drift-cerebro"
-adout="$(ad)"; adout2="$(ad)"   # 2º call = throttle fresco (sin drift), igual debe traer la identidad
-printf '%s' "$adout2" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'identidad versionada' \
-  && ok "aviso-drift: fallback a conocimiento-propio.md (compartido) cuando no hay .local.md" || bad "aviso-drift: no tomó el fallback .md; got: $adout2"
-# 9d: repo SIN ninguno de los dos → NO inventa identidad (per-repo, no universal) → silencio si no hay drift
+adout="$(ad)"
+is_silent "$adout" && ok "aviso-drift B8: la variante .md compartida tampoco se re-inyecta (silencio sin drift)" || bad "aviso-drift B8: inyectó la identidad .md; got: $adout"
+# 9d: repo SIN ninguno de los dos + sin drift → silencio (sin cambio por B8).
 rm -f "$ADROOT/.claude/memory/conocimiento-propio.md"
 rm -rf "$ADHOME/.claude/memory/.drift-cerebro"
-is_silent "$(ad)" && ok "aviso-drift: sin conocimiento-propio(.local).md y sin drift → silencio (per-repo, no universal)" || bad "aviso-drift: habló sin archivo de identidad ni drift"
+is_silent "$(ad)" && ok "aviso-drift: sin conocimiento-propio(.local).md y sin drift → silencio" || bad "aviso-drift: habló sin archivo de identidad ni drift"
 rm -rf "$ADFIX"
+
+# (B8) Identidad por `@` NATIVO: el CLAUDE.md del meta-repo (cortex) importa conocimiento-propio.local.md JUNTO
+# a MEMORY.md, y el molde de canonizar-cerebro lo documenta. Un `@import` a un archivo AUSENTE es tolerante (no
+# truena ni inventa) → el import viaja en el CLAUDE.md compartido sin romper a quien no tiene el .local.md. (El
+# RETIRO de la re-inyección del hook es un paso APARTE, cuando el @ esté propagado.) Guard de presencia contra
+# que una reorg retire el cableado.
+B8_ROOTCLAUDE="$SCRIPT_DIR/../CLAUDE.md"; B8_CANONSK="$SCRIPT_DIR/skills/canonizar-cerebro/SKILL.md"
+{ [ -f "$B8_ROOTCLAUDE" ] && grep -qF '@.claude/memory/conocimiento-propio.local.md' "$B8_ROOTCLAUDE" \
+  && [ -f "$B8_CANONSK" ] && grep -qF '@.claude/memory/conocimiento-propio.local.md' "$B8_CANONSK"; } \
+  && ok "B8: identidad por @ NATIVO cableada (CLAUDE.md del meta-repo + molde canonizar-cerebro importan conocimiento-propio.local.md)" \
+  || bad "B8: FALTA el @import nativo de conocimiento-propio.local.md en el CLAUDE.md del meta-repo o en el molde de canonizar-cerebro"
+
+# ── (b8-mig) MIGRACIÓN B8: aviso-drift cablea el @import donde FALTA — un repo con conocimiento-propio pero
+# SIN @import arrancaría SIN identidad. Idempotente, a CLAUDE.local.md (gitignored → en un repo COMPARTIDO no
+# mete un @import per-usuario al CLAUDE.md del equipo).
+B8M="$(mktemp -d "${TMPDIR:-/tmp}/brain-b8m.XXXXXX")"; mkdir -p "$B8M/home" "$B8M/clon/brain"
+b8m_run() { printf '%s' '{"source":"startup"}' | HOME="$B8M/home" CLAUDE_BRAIN_DIR="$B8M/clon" CLAUDE_PROJECT_DIR="$1" bash "$HOOKS/aviso-drift-cerebro.sh" >/dev/null 2>&1; }
+# caso 1: identidad SIN @import → lo cablea UNA vez a CLAUDE.local.md
+R1="$B8M/r1"; mkdir -p "$R1/.claude/memory"; printf '# id\ncontenido\n' > "$R1/.claude/memory/conocimiento-propio.local.md"
+b8m_run "$R1"
+{ [ -f "$R1/CLAUDE.local.md" ] && grep -qF '@.claude/memory/conocimiento-propio.local.md' "$R1/CLAUDE.local.md"; } \
+  && ok "b8-mig: repo con identidad y SIN @import → cablea el @import a CLAUDE.local.md" || bad "b8-mig: NO cableó el @import de identidad"
+b8m_run "$R1"   # 2ª sesión: idempotente, sin duplicar
+[ "$(grep -cF '@.claude/memory/conocimiento-propio.local.md' "$R1/CLAUDE.local.md" 2>/dev/null)" = 1 ] \
+  && ok "b8-mig: idempotente — una 2ª sesión NO duplica el @import" || bad "b8-mig: duplicó el @import (no idempotente)"
+# caso 2: identidad CON @import ya presente en CLAUDE.md → NO toca (no crea CLAUDE.local.md)
+R2="$B8M/r2"; mkdir -p "$R2/.claude/memory"; printf '# id\n' > "$R2/.claude/memory/conocimiento-propio.local.md"
+printf '@.claude/memory/conocimiento-propio.local.md\n' > "$R2/CLAUDE.md"
+b8m_run "$R2"
+[ ! -f "$R2/CLAUDE.local.md" ] && ok "b8-mig: @import ya presente en CLAUDE.md → NO cablea de más" || bad "b8-mig: cableó teniendo ya el @import"
+# caso 3: SIN conocimiento-propio → NO crea nada
+R3="$B8M/r3"; mkdir -p "$R3/.claude/memory"
+b8m_run "$R3"
+[ ! -f "$R3/CLAUDE.local.md" ] && ok "b8-mig: repo sin conocimiento-propio → NO crea CLAUDE.local.md" || bad "b8-mig: creó CLAUDE.local.md sin identidad"
+# caso 4 (hueco claudio): repo GIT donde CLAUDE.local.md NO está ignorado → el hook lo agrega a
+# .git/info/exclude ANTES de crearlo, así `git status` NO lo muestra (no se cuela a un commit).
+R4="$B8M/r4"; mkdir -p "$R4/.claude/memory"; git -C "$R4" init -q >/dev/null 2>&1
+printf '# id\n' > "$R4/.claude/memory/conocimiento-propio.local.md"
+git -C "$R4" check-ignore -q CLAUDE.local.md 2>/dev/null && pre_ign=si || pre_ign=no   # control: ANTES NO está ignorado
+b8m_run "$R4"
+{ [ -f "$R4/CLAUDE.local.md" ] && [ "$pre_ign" = no ] && ! git -C "$R4" status --porcelain 2>/dev/null | grep -q 'CLAUDE.local.md'; } \
+  && ok "b8-mig: creó CLAUDE.local.md en repo git sin la regla → lo excluyó (.git/info/exclude), git status NO lo muestra" \
+  || bad "b8-mig: CLAUDE.local.md quedó visible en git status (se colaría a un commit); pre_ign=$pre_ign"
+rm -rf "$B8M"
 
 # ── (b5b2) FIX costura #2: aviso-drift DETECTA el drift de CABLEADO (hooks presentes SIN cablear).
 # Antes era CIEGO al wiring: solo sumaba nuevos+act+ret → un repo con "0 nuevos · 0 a actualizar · N
@@ -4513,11 +4538,9 @@ is_silent "$(hkg)" && ok "drift-hooks-global: sin HOOKS-MANIFEST → fail-open (
 rm -rf "$HKGFIX"
 
 # ── (b5d3c) drift_norms_global: gemelo de drift_hooks_global/drift_skills_global pero para el bloque de
-# NORMAS de ~/.claude/CLAUDE.md vs brain/norms/global-claude-md.md. Antídoto al hallazgo ALTO-2 de la
-# auditoría de suficiencia operativa (2026-09-18): install-brain §(e) SÍ refresca el bloque en cada
-# re-corrida, pero nada avisaba que hacía falta re-correrlo — confirmado en vivo (el CLAUDE.md real de
-# unjordi seguía citando `recordar-dashboard`, ya retirado, como "un hook te lo recuerda"). Antes de esta
-# ola, drift_norms_global NI EXISTÍA → cero tests.
+# NORMAS de ~/.claude/CLAUDE.md vs brain/norms/global-claude-md.md. install-brain §(e) SÍ refresca el bloque
+# en cada re-corrida, pero nada avisaba que hacía falta re-correrlo — un CLAUDE.md real podía seguir citando
+# `recordar-dashboard`, ya retirado, como "un hook te lo recuerda". drift_norms_global es ese aviso.
 NMGFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-nmg.XXXXXX")"
 NMGHOME="$NMGFIX/home"; NMGBR="$NMGFIX/brain"
 mkdir -p "$NMGHOME/.claude" "$NMGBR/brain/norms"
@@ -4547,8 +4570,8 @@ rm -f "$NMGBR/brain/norms/global-claude-md.md"
 is_silent "$(nmg)" && ok "drift-norms-global: sin fuente → fail-open (silencio)" || bad "drift-norms-global: habló sin fuente"
 rm -rf "$NMGFIX"
 
-# ── (b5c-V1) FIX V1 (auditoría 2026-08-06): el auto-commit del cerebro por-repo BYPASSEABA secret-scan
-# (ocurre DENTRO del subproceso del hook, NO vía una tool Bash → el guard PreToolUse/Bash no lo veía). Ahora
+# ── (b5c-V1) FIX V1: el auto-commit del cerebro por-repo BYPASSEARÍA secret-scan (ocurre DENTRO del
+# subproceso del hook, NO vía una tool Bash → el guard PreToolUse/Bash no lo ve). Por eso
 # drift-cerebro-comun.sh escanea lo AGREGADO al .claude/ (git diff --cached) con detectar-secretos ANTES de
 # commitear; si hay secreto → ABORTA (des-estagea, no commitea/pushea) y avisa. Mismo arnés que b5c.
 V1FIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-v1.XXXXXX")"
@@ -4797,12 +4820,12 @@ is_silent "$(brm 'ls -la')" && ok "barrer-ramas(B): Bash no-merge → silencio" 
 # (7) debounce: 2º merge inmediato → silencio (el barrido recién lanzado ya cubre este)
 is_silent "$(brm 'glab mr merge 7 --squash')" && ok "barrer-ramas(B): debounce — 2º merge inmediato → silencio" || bad "barrer-ramas(B): no respetó el debounce del merge"
 
-# ── (8) FIX-1 / C-1 (dictamen higiene de ramas 2026-09-17) · CAUSA RAÍZ del reguero ──────────────────
-# La vía (B) resolvía ROOT de CLAUDE_PROJECT_DIR — el repo de la SESIÓN — cuando el merge puede ocurrir
-# en OTRO repo. Medido en vivo: `cortex` no tenía NI UN stamp en ~/.claude/memory/.barrer-ramas/ (nunca
-# fue barrido, ni una vez) mientras un merge suyo sellaba el stamp de `plantilladotnet`. El hook decía
-# "barriendo…" y barría — el repo equivocado. La pieza correcta (acg_target_dir) ya la usan los otros
-# git-guards. Oráculo del EFECTO (no solo del stamp): el stub registra EN QUÉ directorio lo lanzaron.
+# ── (8) FIX-1 / C-1 · CAUSA RAÍZ del reguero ──────────────────
+# Si la vía (B) resolviera ROOT de CLAUDE_PROJECT_DIR — el repo de la SESIÓN — cuando el merge puede ocurrir
+# en OTRO repo, el hook diría "barriendo…" y barrería el repo EQUIVOCADO (un repo nunca sellaría su stamp en
+# ~/.claude/memory/.barrer-ramas/ mientras un merge suyo sella el de otro). La pieza correcta (acg_target_dir)
+# ya la usan los otros git-guards. Oráculo del EFECTO (no solo del stamp): el stub registra EN QUÉ directorio
+# lo lanzaron.
 BRA="$BRFIX/repoA"; BRB="$BRFIX/repoB"
 mkdir -p "$BRA" "$BRB"
 for _r in "$BRA" "$BRB"; do
@@ -4906,10 +4929,10 @@ veredicto="$(cat "$ORDERLOG" 2>/dev/null)"
   || bad "A-5: no corrieron secuenciales (limpiar-ramas no esperó a limpiar-worktrees); got: '$veredicto'"
 rm -rf "$A5FIX"
 
-# (b5g) recordar-cosechar NUDGE: el nudge INCONDICIONAL viejo se retiró (overhaul hooks 2026-09-18,
-# puramente advisory, medido: ignorado; su regla subió a norma en global-claude-md.md § "Ninguna DECISIÓN
-# se queda solo en el chat"). El rediseño 2026-09-18 (sync bidireccional) lo RESTAURÓ ATADO al sync real:
-# solo avisa cuando el espejo mueve ≥1 pendiente vivo — no en cada Stop. Se prueba en (b5g2) caso nudge.
+# (b5g) recordar-cosechar NUDGE: el nudge INCONDICIONAL viejo se retiró (puramente advisory, se ignoraba;
+# su regla subió a norma en global-claude-md.md § "Ninguna DECISIÓN se queda solo en el chat"). El rediseño
+# (sync bidireccional) lo RESTAURÓ ATADO al sync real: solo avisa cuando el espejo mueve ≥1 pendiente vivo —
+# no en cada Stop. Se prueba en (b5g2) caso nudge.
 
 # ── (b5g2) recordar-cosechar + sincronizar-tasklist: sync bidireccional TaskList ⇄ estado-proyecto.md ──
 # Prueba el EFECTO REAL (no el andamio): el bloque durable refleja los pendientes del TaskList, sobrevive
@@ -5014,8 +5037,8 @@ sib=$(HOME="$EMHOME3" CLAUDE_PROJECT_DIR="$EMREPO3" bash "$HOOKS/sincronizar-tas
 
 rm -rf "$EMFIX"
 
-# (b5h) recordar-unificar-cerebro: RETIRADO overhaul hooks 2026-09-18 (puramente advisory, medido:
-# ignorado). Su regla subió a norma en brain/norms/global-claude-md.md § "Modelo MINI-DEVELOP".
+# (b5h) recordar-unificar-cerebro: RETIRADO (puramente advisory, se ignoraba). Su regla subió a norma en
+# brain/norms/global-claude-md.md § "Modelo MINI-DEVELOP".
 
 # ── (b5f) verificar-cerebro: DOCTOR de instalación por-máquina (sano→exit 0, roto→exit 1) ──
 echo ""
@@ -5046,12 +5069,12 @@ rm -rf "$VCFIX"
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (b6) aviso-contexto: HUB que HACE — umbral ALTO/CRÍTICO, dispara el checkpoint mecánico, no gotea (rediseño 2026-09-17) =="
-# Contrato NUEVO (2026-09-17, revisión de unjordi): el hook DEJA de reportar cada 5% y de deferir ("tú
-# decides"). SILENCIO total bajo el umbral ALTO (80% del punto REAL de compact = GOV); al CRUZARLO EJECUTA
-# el checkpoint MECÁNICO (vuelca el andamio a disco, cero tokens de modelo) y emite UNA orden; UNA escalada
-# más al CRÍTICO (92%). El denominador es el punto real (autoCompactWindow si el auto-compact está ACTIVO;
-# si no, la ventana del modelo) y NO miente cuando autoCompactEnabled=false. Cada aserción marcada [↯viejo]
-# FALLA contra el hook viejo (que goteaba por escalón de 5% y nunca disparaba un checkpoint) y pasa con el nuevo.
+# Contrato: el hook DEJA de reportar cada 5% y de deferir ("tú decides"). SILENCIO total bajo el umbral
+# ALTO (80% del punto REAL de compact = GOV); al CRUZARLO EJECUTA el checkpoint MECÁNICO (vuelca el andamio
+# a disco, cero tokens de modelo) y emite UNA orden; UNA escalada más al CRÍTICO (92%). El denominador es el
+# punto real (autoCompactWindow si el auto-compact está ACTIVO; si no, la ventana del modelo) y NO miente
+# cuando autoCompactEnabled=false. Cada aserción marcada [↯viejo] FALLA contra un hook que gotee por escalón
+# de 5% y nunca dispare un checkpoint, y pasa con este contrato.
 ACHOME="$(mktemp -d "${TMPDIR:-/tmp}/brain-achome.XXXXXX")"   # HOME aislado: la capa user real no contamina
 BRAINREPO="$SCRIPT_DIR/.."                                     # trae bin/checkpoint-mecanico.js → el disparo es REAL
 # ac_run <ctx> <window|''> <settingsjson|''> [sid] → deja el mensaje en $ACMSG y el root usado en $ACLAST
@@ -5182,10 +5205,10 @@ b6v_s45="$(acden 170000 'claude-sonnet-4-5')"
   && ok "b6-ventana: sonnet-4-5 (parecido pero NO listado) → DESCONOCIDO → SILENCIO (ni 1M por error ni 200K inventado)" \
   || bad "b6-ventana: sonnet-4-5 derivó una ventana que no debía; got: $b6v_s45"
 
-# ── (b6-invariante) modelo DESCONOCIDO → NO se inventa ventana, ni con ctx enorme (Jordi 2026-10-13: "si no
-# sabe, que no invente"). El código viejo caía a 200K y, por el invariante físico, promovía a 1M y EMITÍA;
-# ahora calla. Estos asertos FALLAN contra el código viejo. La auto-corrección física sigue viva SOLO cuando
-# la ventana YA se estableció por EVIDENCIA (override/[1m]/modelo listado) — se ejercita en b6-escape-hatch. ──
+# ── (b6-invariante) modelo DESCONOCIDO → NO se inventa ventana, ni con ctx enorme ("si no sabe, que no
+# invente"). Un código que cayera a 200K y, por el invariante físico, promoviera a 1M, EMITIRÍA; aquí calla.
+# Estos asertos FALLAN contra ese código. La auto-corrección física sigue viva SOLO cuando la ventana YA se
+# estableció por EVIDENCIA (override/[1m]/modelo listado) — se ejercita en b6-escape-hatch. ──
 b6i_big="$(acden 850000 'opus')"
 [ -z "$b6i_big" ] \
   && ok "b6-invariante: modelo desconocido + ctx 850K → SILENCIO (no inventa 200K ni promueve a 1M)" \
@@ -5225,7 +5248,7 @@ printf '%s' "$ACMSG" | grep -q 'tu ventana 1000K' \
   || bad "b6-transcript: settings.json pisó al modelo de runtime del transcript; got: $ACMSG"
 rm -rf "$(dirname "$ACLAST")"
 
-# (b6-transcript-synthetic) C3/A3 (QA claudio 2026-10-13): un modelo "<synthetic>" (límite de sesión / error
+# (b6-transcript-synthetic) C3/A3: un modelo "<synthetic>" (límite de sesión / error
 # de API / interrupción) NO debe TAPAR el último modelo REAL anterior. Transcript: assistant opus-5-5 (1M) y
 # LUEGO assistant <synthetic>; con ctx 850K el reduce salta "<synthetic>" → deriva 1M del opus-5-5 → EMITE 85%.
 SYNR="$(mktemp -d "${TMPDIR:-/tmp}/brain-syn.XXXXXX")/r"; mkdir -p "$SYNR/.claude/memory"
@@ -5365,6 +5388,41 @@ node -e '
 ' "$CKPT_MEC" "$M2FIX" \
   && ok "m2: los mensajes de usuario salen TEXTUALES, byte a byte, contra el fixture (sin resumen ni recorte)" \
   || bad "m2: los mensajes de usuario NO coinciden byte a byte con el fixture"
+# ── (m2p) `--ventana previa` (reconstruir-contexto B3s2/2026-10): extrae el CONTENIDO del tramo de justo
+#    ANTES del último /compact (boundary 2), NO el tramo vivo. En el fixture: el tramo previo trae
+#    "sigue con el modulo de facturacion" + el commit; el vivo (tras boundary 2) trae "revisa el PR #123".
+#    Falla contra el código viejo: sin 'previa', `extraer` devolvía el tramo vivo (único con/sin flag).
+node -e '
+  const {extraer} = require(process.argv[1]);
+  const prev = extraer(process.argv[2], 12, {ventana:"previa"});
+  const viva = extraer(process.argv[2], 12, {ventana:"viva"});
+  const okPrev = JSON.stringify(prev.mensajesUsuario.map(m=>m.texto)) === JSON.stringify(["sigue con el modulo de facturacion, ya casi"])
+              && JSON.stringify(prev.commits) === JSON.stringify(["feat: facturacion v1"]);
+  const okViva = JSON.stringify(viva.mensajesUsuario.map(m=>m.texto)) === JSON.stringify(["ultimo mensaje verbatim: revisa el PR #123"])
+              && viva.commits.length === 0;
+  if (!okPrev) { console.error("previa NO-MATCH: msgs="+JSON.stringify(prev.mensajesUsuario.map(m=>m.texto))+" commits="+JSON.stringify(prev.commits)); process.exit(1); }
+  if (!okViva) { console.error("viva contaminada: msgs="+JSON.stringify(viva.mensajesUsuario.map(m=>m.texto))+" commits="+JSON.stringify(viva.commits)); process.exit(1); }
+' "$CKPT_MEC" "$M2FIX" \
+  && ok "m2p: --ventana previa extrae el tramo ANTES del último /compact (msg+commit), y --ventana viva sigue trayendo solo el vivo" \
+  || bad "m2p: --ventana previa no aisló el tramo previo (o contaminó el vivo)"
+# ── (m2p) filtro de ruido del harness: un user line que es <task-notification> o isMeta NO se surfacea
+#    como mensaje del usuario (findings 5/10 del reporte: el recipe a mano del skill los colaba; el parser no).
+M2NOISE="$M2DIR/noise.jsonl"
+node -e '
+  const fs=require("fs"); const w=fs.createWriteStream(process.argv[1]); const L=(o)=>w.write(JSON.stringify(o)+"\n");
+  L({type:"user",message:{role:"user",content:"<task-notification>\n<task-id>abc</task-id>\n</task-notification>"}});
+  L({type:"user",isMeta:true,message:{role:"user",content:"meta inyectado del sistema"}});
+  L({type:"user",message:{role:"user",content:"este si es del usuario: arregla el login"}});
+  w.end(()=>{});
+' "$M2NOISE"
+node -e '
+  const {extraer} = require(process.argv[1]);
+  const r = extraer(process.argv[2], 12, {ventana:"todo"});
+  const t = r.mensajesUsuario.map(m=>m.texto);
+  if (JSON.stringify(t) !== JSON.stringify(["este si es del usuario: arregla el login"])) { console.error("coló ruido: "+JSON.stringify(t)); process.exit(1); }
+' "$CKPT_MEC" "$M2NOISE" \
+  && ok "m2p: el parser FILTRA <task-notification> e isMeta de los mensajes de usuario (solo surfacea el genuino)" \
+  || bad "m2p: coló ruido del harness (task-notification/isMeta) como mensaje de usuario"
 rm -rf "$M2DIR"
 
 echo ""
@@ -5403,10 +5461,10 @@ node -e '
   || bad "m2c CONTRA LA FALLA (A-1b): no detecta la integración por squash del foro"
 
 # A-1 regresión: la prosa que MENCIONA un patrón de commit (documentación, o código de una fixture vieja
-# citado dentro de un heredoc que solo ESCRIBE un archivo) no debe leerse como un commit real — MEDIDO
-# 2026-09-11: la prosa de un commit real que explicaba el bug del detector viejo ("solo ve `-m \"…\"`")
-# se leía a sí misma como un commit con mensaje "…", y un heredoc que escribía una fixture vieja a disco
-# aportaba un commit fantasma con el CÓDIGO PYTHON como mensaje.
+# citado dentro de un heredoc que solo ESCRIBE un archivo) no debe leerse como un commit real. Un detector
+# ingenuo lee la prosa de un commit que explica el bug ("solo ve `-m \"…\"`") como un commit con mensaje
+# "…", y un heredoc que escribe una fixture vieja a disco aporta un commit fantasma con el CÓDIGO PYTHON
+# como mensaje.
 node -e '
   const {extraerCommits} = require(process.argv[1]);
   const prosa = "cat >> notas.md <<'"'"'MD'"'"'\nEl detector viejo `-m \"…\"` fallaba. Explicación: solo ve `-m \"…\"`.\nMD";
@@ -5580,9 +5638,9 @@ rm -rf "$M2EDIR"
 echo ""
 echo "== (m2f) checkpoint-mecanico.js: C-1/C-2, QA sobre el render REAL del 2026-09-11 (loop 3) =="
 # C-1: un `cd <repo> &&`/`cd <repo>;` inicial no es EL comando — es el mismo tipo de envoltorio que una
-# asignación de variable — pero la clave vieja (2 primeros tokens DESDE EL INICIO) siempre veía `cd`
-# primero y descartaba la línea ENTERA. MEDIDO 2026-09-11: 87 de 101 comandos del tramo real arrancaban
-# así; el top sobrevivía con 4 entradas que no decían nada (`python3 -`, `printf`, `mkdir -p`, `df -h`).
+# asignación de variable — pero una clave ingenua (2 primeros tokens DESDE EL INICIO) siempre vería `cd`
+# primero y descartaría la línea ENTERA. La mayoría de los comandos de un tramo real arrancan así, y el top
+# sobreviviría con entradas que no dicen nada (`python3 -`, `printf`, `mkdir -p`, `df -h`).
 node -e '
   const {claveComandoSeñal} = require(process.argv[1]);
   const r1 = claveComandoSeñal("cd /Users/unjordi/code/cortex && git commit -q -F - <<MSG");
@@ -5651,10 +5709,10 @@ node -e '
   || bad "m2f CONTRA LA FALLA (C-1 end-to-end): el top de comandos sigue sin decir qué se hizo sobre un tramo fiel al real"
 rm -rf "$M2FDIR"
 
-# C-2: el encabezado "top N de M" no puede prometer más entradas de las que renderiza. Repro FIEL a las
-# proporciones MEDIDAS 2026-09-11 (3 escrituras REALES contra 13 temporales, 16 destinos distintos en
-# total): `topBashEscrituras(m, 10)` topa las temporales a como máximo tantas como señal real haya (3), así
-# que renderiza 6 —no 10— aunque haya 16 destinos distintos ("top 10 de 16" renderizando 6).
+# C-2: el encabezado "top N de M" no puede prometer más entradas de las que renderiza. El fixture reproduce
+# proporciones realistas (3 escrituras REALES contra 13 temporales, 16 destinos distintos en total):
+# `topBashEscrituras(m, 10)` topa las temporales a como máximo tantas como señal real haya (3), así que
+# renderiza 6 —no 10— aunque haya 16 destinos distintos ("top 10 de 16" renderizando 6).
 node -e '
   const { topBashEscrituras } = require(process.argv[1]);
   const m = new Map();
@@ -5697,7 +5755,7 @@ node -e '
 
 echo ""
 echo "== (m2b) checkpoint-mecanico.sh: hook de PreCompact — detached, lock por-sid, escritura atómica =="
-# La mecánica (nohup/lock/anti-recursión) se FACTORIZÓ a la lib checkpoint-mecanico-comun.sh (2026-09-17)
+# La mecánica (nohup/lock/anti-recursión) se FACTORIZÓ a la lib checkpoint-mecanico-comun.sh
 # para que aviso-contexto.sh la comparta SIN drift → los greps miran la LIB; el hook solo debe sourcearla.
 grep -qF 'nohup' "$SCRIPT_DIR/hooks/checkpoint-mecanico-comun.sh" \
   && ok "m2b: el lanzador corre DETACHED (nohup) — no bloquea el evento con un transcript grande" \
@@ -5732,11 +5790,10 @@ rm -rf "$(dirname "$M2BDIR")"
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (f1) CONTINUIDAD · el LAZO del andamio: contrato-hilo + rehidratar lo LEE + --ensure/--self =="
-# F1 del plan "checkpoint y mudanza unificados" (2026-09-11). El hallazgo que cierra este bloque: el
-# andamio mecánico externalizó la PRODUCCIÓN (hook de PreCompact) y dejó el CONSUMO dentro del modelo —
-# `rehidratar-hilo.sh` abría UN archivo y no era el andamio (medido: 0 menciones). En el único escenario
-# que lo motiva (el auto-compact GANA la carrera), el hilo reinyectado era el VIEJO y el andamio —que
-# describe justo el tramo perdido— se quedaba sin lector. Aquí se prueba el lazo COMPLETO.
+# F1: el andamio mecánico externalizó la PRODUCCIÓN (hook de PreCompact) y dejó el CONSUMO dentro del modelo
+# — si `rehidratar-hilo.sh` abriera UN archivo que no es el andamio, en el único escenario que lo motiva (el
+# auto-compact GANA la carrera) el hilo reinyectado sería el VIEJO y el andamio —que describe justo el tramo
+# perdido— se quedaría sin lector. Aquí se prueba el lazo COMPLETO.
 
 F1LIB="$HOOKS/contrato-hilo.sh"
 [ -f "$F1LIB" ] \
@@ -5755,9 +5812,9 @@ printf '%s\n' '# Hilo mental actual' '> Última actualización: 2026-09-11 · ra
 printf '%s\n' '# Hilo mental actual' '> Última actualización: hoy · rama X · nivel ligero.' > "$F1D/sin-fecha.md"
 printf '%s\n' '# Hilo mental actual' '> Última actualización: 2026-09-11 · rama feat/diagrama-x · nivel ligero.' > "$F1D/rama-golosa.md"
 
-# (f1a) CONTRA LA FALLA — el estado REAL medido el 2026-09-11 sobre los 9 hilos de ~/code: 2 de 9 (22%)
-# no traen el footer `· rama`, así que su hilo VIGENTE se degrada a "⚠️ POSIBLEMENTE OBSOLETO" en cada
-# rehidratado. Nadie lo verificaba: la skill lo PRESCRIBÍA y el hook lo CONSUMÍA, sin gate en medio.
+# (f1a) CONTRA LA FALLA — un hilo sin el footer `· rama` degrada su hilo VIGENTE a "⚠️ POSIBLEMENTE
+# OBSOLETO" en cada rehidratado. Nadie lo verificaba: la skill lo PRESCRIBÍA y el hook lo CONSUMÍA, sin gate
+# en medio.
 ( . "$F1LIB"; verificar_hilo "$F1D/sin-rama.md" ) >/dev/null 2>&1 \
   && bad "f1a CONTRA LA FALLA: un hilo SIN '· rama <x>' PASÓ el contrato (rehidratar lo enterraría como obsoleto)" \
   || ok "f1a CONTRA LA FALLA: un hilo SIN footer '· rama <x>' FALLA el contrato (es el estado real de 2 de 9 hilos de ~/code)"
@@ -5874,9 +5931,9 @@ touch -t 202601010000 "$F1S/.claude/memory/hilo-mental-actual.andamio.md"
 printf '%s' "$(f1self 2>&1)" | jq -e '.ensure == "regenerado"' >/dev/null 2>&1 \
   && ok "f1f: con el andamio ATRÁS del transcript, --ensure lo regenera" \
   || bad "f1f: --ensure no regeneró un andamio stale"
-# A-3 (2026-09-11): el candado usaba CLAUDE_CODE_CHILD_SESSION==='1' para fallar cerrado "dentro de un
-# subagente". MEDIDO: esa variable vale '1' TAMBIÉN en el Bash del hilo PRINCIPAL (CLI 2.1.x, macOS) —
-# no distingue nada, y bloqueaba el 100% de los usos legítimos. Ahora NO bloquea por esa señal.
+# A-3: un candado que usara CLAUDE_CODE_CHILD_SESSION==='1' para fallar cerrado "dentro de un subagente"
+# bloquearía el 100% de los usos legítimos: esa variable vale '1' TAMBIÉN en el Bash del hilo PRINCIPAL, así
+# que no distingue nada. Por eso NO se bloquea por esa señal.
 touch -t 202601010000 "$F1S/.claude/memory/hilo-mental-actual.andamio.md"
 F1SOUT3="$(f1self 1 2>&1)"; F1SRC3=$?
 [ "$F1SRC3" -eq 0 ] && printf '%s' "$F1SOUT3" | jq -e '.ensure == "regenerado"' >/dev/null 2>&1 \
@@ -5901,10 +5958,9 @@ rm -rf "$F1SIDECAR"
   || ok "f1f: --self sin session-id en el entorno falla cerrado, no adivina"
 
 # ── (f1g) la VENTANA del andamio: el TRAMO VIVO, no el acumulado de semanas ──────────────────────────
-# MEDIDO sobre dos masters reales (192/201 MB, 13 compactaciones): con la ventana en el archivo entero,
-# los top-N los ganaba el trabajo VIEJO Y TERMINADO por volumen (`reporte_ejecutivo_v2.tex` 34×, los 10
-# commits del día anterior, 4 ramas `worktree-agent-*` muertas). Un andamio de checkpoint describe lo
-# que está POR PERDERSE = el tramo desde la última frontera de /compact.
+# Con la ventana en el archivo entero, los top-N los ganaría el trabajo VIEJO Y TERMINADO por volumen (un
+# .tex citado decenas de veces, los commits de días anteriores, ramas `worktree-agent-*` muertas). Un
+# andamio de checkpoint describe lo que está POR PERDERSE = el tramo desde la última frontera de /compact.
 F1V="$F1D/ventana.jsonl"
 node -e '
   const fs=require("fs"); const w=fs.createWriteStream(process.argv[1]);
@@ -5937,8 +5993,8 @@ grep -q 'TRAMO VIVO' "$F1D/and.md" 2>/dev/null && grep -q 'Sesión (sid)' "$F1D/
   || bad "f1g: el andamio no declara su corte"
 
 # ── (f1h) el colector de escrituras VÍA BASH (heurística declarada) ──────────────────────────────────
-# MEDIDO 2026-09-11 en el tramo vivo de un master real: 0 escrituras por Write/Edit y 45 por Bash. En
-# modo auto casi todo se escribe con heredocs/redirecciones: sin este colector, el 🗂️ árbol sale VACÍO.
+# En una corrida autónoma casi todo se escribe con heredocs/redirecciones (Bash), no con Write/Edit: sin
+# este colector, el 🗂️ árbol sale VACÍO.
 F1B="$(node -e '
   const {destinosDeEscrituraBash:d} = require(process.argv[1]);
   const r = {
@@ -5972,8 +6028,8 @@ if git -C "$SCRIPT_DIR/.." rev-parse --git-dir >/dev/null 2>&1; then
 fi
 rm -rf "$F1D"
 
-# (b6c) hud-stale: RETIRADO overhaul hooks 2026-09-18 (puramente advisory, medido: ignorado). Su regla
-# ya vivía en brain/norms/global-claude-md.md § "Tu lista de TODOs es TU HUD" — solo se retiró el hook.
+# (b6c) hud-stale: RETIRADO (puramente advisory, se ignoraba). Su regla ya vivía en
+# brain/norms/global-claude-md.md § "Tu lista de TODOs es TU HUD" — solo se retiró el hook.
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
@@ -5988,7 +6044,7 @@ o="$(printf '%s' "$DDCMD" | HOME="$DDYES" bash "$HOOKS/git-branch-guard.sh")"
 is_silent "$o" && ok "dedupe: CON copia global → la copia repo CEDE (silencio; la global maneja)" || bad "dedupe: repo debía ceder con global; got: $o"
 rm -rf "$DDNO" "$DDYES"
 
-# (b8) recordar-dashboard: RETIRADO overhaul hooks 2026-09-18 (puramente advisory, medido: ignorado).
+# (b8) recordar-dashboard: RETIRADO (puramente advisory, se ignoraba).
 # doc=realidad + dashboard ya son norma dura en brain/norms/global-claude-md.md (sin mecanismo por-push).
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -6169,7 +6225,7 @@ $(diff <(printf '%s\n' "$_want") <(printf '%s\n' "$_got") | grep -E '^[<>]')"
 fi
 
 # (c3) PODA (a2): un hook repo-tier filtrado al global se RETIRA; un {global,both} y un hook PROPIO del
-# usuario SOBREVIVEN. Antídoto EXACTO al dod-verificar huérfano-inerte hallado en la Cachy (2026-09-08).
+# usuario SOBREVIVEN (el caso del dod-verificar huérfano-inerte en el global).
 : > "$FAKEHOME2/.claude/hooks/dod-verificar.sh"     # repo-tier filtrado al global (huérfano inerte)
 : > "$FAKEHOME2/.claude/hooks/mi-hook-local.sh"     # hook PROPIO del usuario (NO del brain, NO en el MANIFEST)
 HOME="$FAKEHOME2" bash "$INSTALLER" >/dev/null 2>&1
@@ -6196,8 +6252,8 @@ rm -rf "$FAKEHOME3" "$FAKEHOME4" 2>/dev/null
 if [ -f "$SCRIPT_DIR/uninstall-brain.sh" ]; then
   HOME="$FAKEHOME2" bash "$SCRIPT_DIR/uninstall-brain.sh" >/dev/null 2>&1
   # SET COMPLETO {global,both} kind=hook derivado del MANIFEST (NO un subconjunto hardcodeado): así el test
-  # SÍ caza un BRAIN_PAT drifteado (el bug real 2026-09-08: uninstall omitía 5 → 5 cableados ZOMBIE). Antes
-  # este check solo miraba 5 hooks, todos dentro del BRAIN_PAT viejo → nunca detectaba el faltante.
+  # SÍ caza un BRAIN_PAT drifteado que haría que uninstall omitiera hooks y dejara cableados ZOMBIE. Un check
+  # que solo mirara los hooks dentro del BRAIN_PAT viejo nunca detectaría el faltante.
   _unpat="$(awk '$1!~/^#/ && NF>=3 && ($2=="global"||$2=="both") && $3=="hook"{print $1}' "$SCRIPT_DIR/hooks/MANIFEST" | sed 's/$/\\.sh/' | paste -sd'|' -)"
   left="$(jq --arg pat "$_unpat" '[.hooks[]?[]? | select(([.hooks[]?.command]|join(" "))|test($pat))] | length' "$GSET2" 2>/dev/null)"
   [ "${left:-x}" = "0" ] && ok "uninstall: 0 cableados del cerebro en settings.json (set COMPLETO {global,both} kind=hook — cazaría un BRAIN_PAT drifteado)" || bad "uninstall: quedan ${left:-?} cableados ZOMBIE (BRAIN_PAT no cubre todo el set del MANIFEST)"
@@ -6285,9 +6341,10 @@ delegacion-comun|delegacion-gate
 delegacion-comun|delegacion-registrar
 delegacion-gate|limite-gasto
 cerrar-slice|checkpoint
-cerrar-slice|orquestar-fanout
 cerrar-slice|rehidratar-hilo
 checkpoint|rehidratar-hilo
+checkpoint|reconstruir-contexto
+reconstruir-contexto|rehidratar-hilo
 checkpoint|to-do
 aviso-contexto|rehidratar-hilo
 aviso-contexto|checkpoint
@@ -6321,7 +6378,7 @@ sincronizar-tasklist|to-do"
 # auditar-coherencia-cerebro|auditar-proceso-algoritmo: FAMILIA declarada, no ciclo — proceso-algoritmo
 # es la METODOLOGÍA y apunta a secciones CONCRETAS de coherencia-cerebro (que es su modo-cerebro
 # empaquetado) donde vive el detalle; el contenido está en los dos lados, así que el lector no da vueltas.
-# FUSIÓN 2026-09-17 (fase skills): consolidar-cerebro, unificar-cerebro, cosechar-sesion,
+# Fusión de skills: consolidar-cerebro, unificar-cerebro, cosechar-sesion,
 # claude-proyecto-autocontenido y revisar-entregables-agentes se retiraron como skills separados — su
 # contenido se absorbió en canonizar-cerebro (modos consolidar/reconciliar/sembrar) y cerrar-slice §5
 # (cosecha) / orquestar-fanout (bucle de verificación). Nuevos pares FAMILIA, no ciclo:
@@ -6333,7 +6390,7 @@ sincronizar-tasklist|to-do"
 # reubicar-master lo MUEVE de casa y cita a canonizar-cerebro como su hermana (antes citaba a
 # claude-proyecto-autocontenido, ya fusionado) — mismo handshake de subordinación que
 # canonizar-cerebro|auditar-suficiencia-operativa (definición vive en un lado, el otro solo apunta).
-# overhaul hooks 2026-09-18: recordar-unificar-cerebro (SessionStart, puramente advisory) se RETIRÓ —
+# recordar-unificar-cerebro (SessionStart, puramente advisory) se RETIRÓ —
 # su regla subió a norma en global-claude-md.md § "Modelo MINI-DEVELOP"; canonizar-cerebro (modo
 # reconciliar) ya no tiene un disparador hook, queda a disciplina (ver MANIFEST tier retirado).
 # auditar-coherencia-cerebro|canonizar-cerebro y auditar-suficiencia-operativa|canonizar-cerebro: MISMO
@@ -6344,42 +6401,48 @@ sincronizar-tasklist|to-do"
 # Los 3 pares de arriba (OLA1): exportar-sesion-master, proteger-fuente-cerebro y verificar-cerebro
 # ahora SOURCEAN drift-cerebro-comun.sh para reusar su resolve_brain_dir() — es lib<->consumidor
 # (igual que delegacion-comun|delegacion-gate arriba), no una dependencia circular real.
-# checkpoint|checkpoint-mecanico (M2, auditoría 2026-09-11): el SKILL.md documenta que debe LEER/FUSIONAR
+# checkpoint|checkpoint-mecanico: el SKILL.md documenta que debe LEER/FUSIONAR
 # el andamio que escribe el hook checkpoint-mecanico.sh, y el hook menciona la skill "checkpoint" en su
 # propio encabezado (contexto de por qué existe) — es la misma relación consumidor<->productor documentada
 # de un par de arriba, no un ciclo.
-# CONSOLIDACIÓN 2026-09-17: merge-squash-guard + confirmar-merge-develop se fusionaron en
+# merge-squash-guard + confirmar-merge-develop se fusionaron en
 # merge-develop-guard — sus pares con analizar-comando-git (lib<->consumidor), git-branch-guard (hooks
 # hermanos, ambos sobre acg), juez-comun (lib<->consumidor) y cerrar-slice (skill<->guard, como los demás
 # pares de cerrar-slice de arriba) son la MISMA relación benigna de siempre, solo con el nombre nuevo.
-# checkpoint|contrato-hilo (F1, 2026-09-11): la lib es el CONTRATO del footer del hilo — la skill la
+# checkpoint|contrato-hilo: la lib es el CONTRATO del footer del hilo — la skill la
 # corre al volcar (fail-loud) y la lib documenta a su consumidor. Es lib<->consumidor, como los 3
 # pares de drift-cerebro-comun de arriba; el contenido no rebota entre los dos.
-# analizar-comando-git|proteger-arbol (M1/M2, auditoría 2026-09-15): proteger-arbol AHORA sourcea la lib
-# (antes vivía fuera del candado común, ciego a -C/git.exe/cross-repo) — es lib<->consumidor, como
+# analizar-comando-git|proteger-arbol: proteger-arbol sourcea la lib (si viviera fuera del candado común,
+# quedaría ciego a -C/git.exe/cross-repo) — es lib<->consumidor, como
 # delegacion-comun|delegacion-gate. La lib solo MENCIONA a proteger-arbol en un comentario (por qué el
 # heredoc-aware reemplaza su viejo filtro propio); no hay un source de vuelta ni contenido que rebote.
-# analizar-comando-git|limpiar-residuo (auditoría de ejecución 2026-09-16, H1): acg__cache_confiable usa
+# analizar-comando-git|limpiar-residuo: acg__cache_confiable usa
 # CLAUDE_RESIDUO_DIAS_TMP como fallback de TTL para que ambos compartan la MISMA política declarada (7 días)
 # sobre la MISMA familia de archivos (acg-mrdest-*) — limpiar-residuo YA mencionaba a analizar-comando-git
 # (los barre); ahora la lib menciona a limpiar-residuo EN UN COMENTARIO para explicar de dónde sale el
 # default. Ninguno sourcea al otro ni hay contenido que rebote — es acuerdo de POLÍTICA, no dependencia.
 # aviso-contexto|checkpoint-mecanico-comun, aviso-contexto|checkpoint-mecanico y
-# checkpoint-mecanico|checkpoint-mecanico-comun (rediseño aviso-contexto 2026-09-17): el lanzador del
+# checkpoint-mecanico|checkpoint-mecanico-comun: el lanzador del
 # andamio se FACTORIZÓ a la lib checkpoint-mecanico-comun.sh; aviso-contexto.sh (umbral) y
 # checkpoint-mecanico.sh (PreCompact) la SOURCEAN (lib<->consumidor) y son hooks HERMANOS que se mencionan
 # en sus encabezados (contexto de por qué existen). No es ciclo — la mecánica vive UNA vez, en la lib.
-# limpiar|limpiar-impl-{ramas,worktrees,residuo,flotilla} (consolidación 2026-09-17, fase skills): los 4
+# limpiar|limpiar-impl-{ramas,worktrees,residuo,flotilla}: los 4
 # ejecutables sueltos limpiar-ramas.sh/limpiar-worktrees.sh/limpiar-residuo.sh/barrer-flotilla-cerebro.sh
 # se renombraron (git mv, misma lógica) a limpiar-impl-*.sh y quedaron RETIRADOS como nombres públicos
 # (ver MANIFEST); el dispatcher limpiar.sh es el único punto de entrada. Es dispatcher<->implementación
 # (el dispatcher exec-ea cada impl por nombre; cada impl documenta en su cabecera que se invoca vía
 # `limpiar.sh <subcomando>`, no un ciclo de contenido — la lógica de cada barrido vive UNA vez, en su impl.
-# recordar-cosechar|sincronizar-tasklist, recordar-cosechar|to-do, sincronizar-tasklist|to-do (rediseño
-# sync bidireccional del TaskList 2026-09-18): la maquinaria del espejo/sembrado vive UNA vez en la lib
+# recordar-cosechar|sincronizar-tasklist, recordar-cosechar|to-do, sincronizar-tasklist|to-do: la
+# maquinaria del espejo/sembrado vive UNA vez en la lib
 # sincronizar-tasklist.sh; el hook recordar-cosechar.sh la SOURCEA (lib<->consumidor) y el skill to-do la
 # EJECUTA para el sentido inverso. Hook y skill se mencionan en sus cabeceras (dos disparadores de la MISMA
 # lógica: Stop→durable / /to-do→HUD). No es ciclo — la lógica no rebota, vive en la lib.
+# checkpoint|reconstruir-contexto y reconstruir-contexto|rehidratar-hilo: la red de emergencia es HERMANA
+# del par checkpoint/rehidratar-hilo (como
+# checkpoint|rehidratar-hilo arriba) — cada hermana enruta a reconstruir-contexto para el caso en que el
+# checkpoint quedó pobre, y reconstruir-contexto cierra el lazo apuntando de vuelta a ambas (excava →
+# re-vuelca con checkpoint). Es el MISMO handshake "Qué NO es / punto de entrada" de los demás pares de
+# continuidad; el contenido no rebota — cada skill define SU rol y cita al otro como destino.
 ce_els=()
 for d in "$SCRIPT_DIR"/skills/*/; do [ -d "$d" ] && ce_els+=("$(basename "$d")"); done
 for h in "$HOOKS"/*.sh; do [ -e "$h" ] && ce_els+=("$(basename "$h" .sh)"); done
@@ -6613,11 +6676,11 @@ fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo "== (e3b) drift-check STATUS: el clasificador de estado de cada widget resuelve las SKILLS por la FUENTE VIVA (fallthrough a st.skills, SIN lista enumerada) — un retirado no puede colarse ni un vivo salir mal =="
-# ANTES este check exigía que cada skill estuviera DENTRO de un switch enumerado de StatusOf (o su punto de
-# estado salía rojo en silencio). El fix de RAÍZ (2026-09-18) ELIMINÓ ese switch: cualquier nombre que no
+# Un check que exigiera que cada skill estuviera DENTRO de un switch enumerado de StatusOf (o su punto de
+# estado saldría rojo en silencio) es frágil. El diseño de RAÍZ elimina ese switch: cualquier nombre que no
 # sea hook conocido ni norma se resuelve por su PRESENCIA en los skills instalados (st.skills = los VIVOS
 # del MANIFEST tras la poda de install-brain). Con eso NINGUNA skill puede quedar mal clasificada por
-# construcción, y un skill RETIRADO no está en st.skills → jamás "installed". El invariante NUEVO
+# construcción, y un skill RETIRADO no está en st.skills → jamás "installed". El invariante
 # (anti-regresión) es doble, sobre la REGIÓN del clasificador (anclas robustas del propio código):
 #   (1) el clasificador termina en el FALLTHROUGH a la fuente viva (st.skills / Skills.Contains), y
 #   (2) NO enumera nombres de skill (si alguien re-teclea una lista, re-nace el drift que este fix mató).
@@ -6652,8 +6715,8 @@ else bad "drift-status[qml]: no encuentro main.qml"; fi
 # ─────────────────────────────────────────────────────────────────────────────
 echo "== (e3c) PARIDAD ROSTER↔MANIFEST: el roster (tiles + known-sets) de CADA widget contra los VIVOS/RETIRADOS"
 echo "         del MANIFEST — FALLA si un widget puede MOSTRAR/contar un RETIRADO (fantasma) o le falta un VIVO =="
-# Antídoto de RAÍZ al bug user-facing (2026-09-18): el widget hardcodeaba su roster y sacaba skills
-# RETIRADOS como rojo "incompleto (N)". e3/e3b ya exigen que cada VIVO tenga tile y se clasifique por la
+# Un widget que hardcodeara su roster sacaría skills RETIRADOS como rojo "incompleto (N)" (bug user-facing).
+# e3/e3b ya exigen que cada VIVO tenga tile y se clasifique por la
 # fuente viva; ESTE cierra la dirección inversa que faltaba: NINGÚN nombre RETIRADO del MANIFEST puede
 # aparecer en el roster del widget (ni como tile ni en el clasificador) → estructuralmente no puede salir
 # como fantasma. Un retirado se detecta por su nombre ENTRECOMILLADO exacto ("$r") → NO matchea una mención
@@ -6691,6 +6754,24 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+echo "== (e3d) PARIDAD de los 3 gemelos: el widget REFETCHEA al CAMBIAR de cuenta =="
+# Un cambio de cuenta de Claude no es "stale" ni "reset pasado", así que el tick no lo detecta por sí solo y
+# el widget mostraría la cuota de la cuenta ANTERIOR por minutos. Por eso cada ~30s se lee la cuenta ACTIVA
+# (~/.claude.json .oauthAccount.accountUuid) y, si difiere del snapshot, refetch. Gemelo estructural
+# (Swift/QML/C#): los 3 DEBEN traerlo o uno driftea. Falla contra un código sin esto
+# (ninguno lo tenía). El PROOF conductual (refresca al cambiar de cuenta) es QA EN VIVO por plataforma;
+# aquí solo se verifica la PARIDAD de los gemelos (como el resto del drift-widget).
+WROOT="$SCRIPT_DIR/.."
+wc_cuenta() {  # label  file  marca_lectura  marca_cadencia
+  if [ -f "$2" ] && grep -q "$3" "$2" && grep -q "$4" "$2"; then
+    ok "widget-cuenta[$1]: lee la cuenta activa + cadencia de chequeo (refetch al cambiar de cuenta)"
+  else bad "widget-cuenta[$1]: FALTA el refetch-al-cambiar-de-cuenta (lectura accountUuid + cadencia 30s) en $(basename "$2")"; fi
+}
+wc_cuenta mac "$WROOT/macos/Sources/Cortex/AppDelegate.swift" "activeAccountUuid"  "accountCheckInterval"
+wc_cuenta qml "$WROOT/src/plasmoid/contents/ui/main.qml"       "accountCheckSource" "lastAccountCheck"
+wc_cuenta win "$WROOT/windows/src/Cortex/Program.cs"           "ActiveAccountUuid"  "_lastAccountCheck"
+
+# ─────────────────────────────────────────────────────────────────────────────
 echo "== (e5) sincronizar: los hooks RETIRADOS (lista RETIRED) se podan SOLOS; los huérfanos propios se conservan =="
 # precompact-volcar-estado quedó cableado en repos y ROMPE el CLI. Antes solo --prune-orphans lo quitaba
 # (y borraba TODO huérfano, incluso hooks propios). Ahora: lista brain/hooks/RETIRED → un huérfano
@@ -6723,9 +6804,9 @@ rm -rf "$E5T"
 # ─────────────────────────────────────────────────────────────────────────────
 echo "== (e5b) sincronizar: 'huérfano' == 'no debe estar instalado aquí' — un tier retirado del MANIFEST"
 echo "         se poda IGUAL que el legado RETIRED, SIN --prune-orphans; lo vivo {repo,both} y lo propio se conservan =="
-# Antes de esta ola, 'huérfano' significaba SOLO 'ausente del MANIFEST' → una entrada tier=retirado (que
-# SÍ está listada, solo que muerta) NO caía ahí y sobrevivía. rama-vieja es la LÁPIDA real (MANIFEST,
-# 2026-09-15): simula una máquina/repo VIEJO que la tenía instalada de antes de que se retirara.
+# Si 'huérfano' significara SOLO 'ausente del MANIFEST', una entrada tier=retirado (que SÍ está listada,
+# solo que muerta) NO caería ahí y sobreviviría. rama-vieja es la LÁPIDA real del MANIFEST: simula una
+# máquina/repo VIEJO que la tenía instalada de antes de que se retirara.
 E5B="$(mktemp -d "${TMPDIR:-/tmp}/brain-e5b.XXXXXX")"; mkdir -p "$E5B/.claude/hooks"
 printf 'exit 0\n' > "$E5B/.claude/hooks/rama-vieja.sh"                 # LÁPIDA del MANIFEST (tier retirado)
 printf 'exit 0\n' > "$E5B/.claude/hooks/mi-hook-propio-e5b.sh"          # huérfano DESCONOCIDO (propio del repo)
@@ -6790,7 +6871,7 @@ echo ""
 echo "== (e7b) install-brain: PODA DE RETIRADOS (lápidas del MANIFEST) — borra .sh + de-cablea SOLO esa"
 echo "        entrada, lo dice por nombre, es idempotente y NUNCA toca un hook ajeno del usuario =="
 # Simula una máquina VIEJA que instaló rama-vieja ANTES de que se retirara (tier `retirado` en el
-# MANIFEST, 2026-09-15): el .sh sigue copiado y cableado — el HUECO real que motivó este mecanismo.
+# MANIFEST): el .sh sigue copiado y cableado — el HUECO real que motivó este mecanismo.
 E8H="$(mktemp -d "${TMPDIR:-/tmp}/brain-e8.XXXXXX")"; mkdir -p "$E8H/.claude/hooks"
 printf 'exit 0\n' > "$E8H/.claude/hooks/rama-vieja.sh"
 printf 'exit 0\n' > "$E8H/.claude/hooks/mi-hook-usuario-e8.sh"      # hook PROPIO del usuario, ajeno al brain
@@ -6832,11 +6913,10 @@ rm -rf "$E8H"
 echo ""
 echo "== (e7c) install-brain: PODA DE SKILLS RETIRADAS (lápidas del SKILLS-MANIFEST) — MISMA mecánica que"
 echo "        los hooks (e7b), sin cableado (folder markdown); nunca toca una skill PROPIA del usuario =="
-# Hallazgo ALTO-1 de la auditoría de suficiencia operativa (2026-09-18): el retiro de hooks tenía
-# RETIRED+lápida+auto-poda; las skills NO — confirmado EN VIVO en la máquina de unjordi con 5 skills
+# El retiro de hooks tiene RETIRED+lápida+auto-poda; las skills necesitan lo mismo — si no, quedan skills
 # fantasma (consolidar-cerebro, unificar-cerebro, claude-proyecto-autocontenido, cosechar-sesion,
-# revisar-entregables-agentes) todavía instaladas en ~/.claude/skills pese a estar retiradas en el
-# repo fuente. Simula esa misma máquina VIEJA: la carpeta sigue instalada de antes del retiro.
+# revisar-entregables-agentes) todavía instaladas en ~/.claude/skills pese a estar retiradas en el repo
+# fuente. Simula esa máquina VIEJA: la carpeta sigue instalada de antes del retiro.
 E9H="$(mktemp -d "${TMPDIR:-/tmp}/brain-e9.XXXXXX")"; mkdir -p "$E9H/.claude/skills/consolidar-cerebro" "$E9H/.claude/skills/mi-skill-usuario-e9"
 printf 'v-vieja\n' > "$E9H/.claude/skills/consolidar-cerebro/SKILL.md"          # LÁPIDA del SKILLS-MANIFEST
 printf 'propia del usuario, ajena al brain\n' > "$E9H/.claude/skills/mi-skill-usuario-e9/SKILL.md"
@@ -6880,7 +6960,7 @@ if [ -f "$BPS" ]; then
 else
   bad "e4: no encuentro bootstrap.ps1"
 fi
-# e4b (C1, FMEA post-integración 2026-07-30): la instalación MANUAL de Windows (install-brain.ps1 sin pasar
+# e4b: la instalación MANUAL de Windows (install-brain.ps1 sin pasar
 # por bootstrap.ps1) también debe exportar CLAUDE_BRAIN_DIR, o el auto-sync cae MUDO por ese camino.
 IBPS="$SCRIPT_DIR/install-brain.ps1"
 if [ -f "$IBPS" ]; then
@@ -6945,9 +7025,9 @@ done < <(cd "$PR" && git ls-files '*.sh' '*.ps1' '*.swift' '*.cs' '*.qml' | grep
 
 echo ""
 echo "== (e6.4) los 3 updaters resuelven la ruta del clon con FALLBACK + marca (paridad resolveClonePath, H2) =="
-# H2 portado a QML (2026-07-30): antes el plasmoid confiaba CIEGO en version.json.repo (un path horneado
-# en otra máquina / repo movido habilitaba un auto-update que hacía cd a una ruta muerta). Ahora los 3
-# updaters prueban candidatos [embebido → $CLAUDE_BRAIN_DIR → clon canónico] y toman el 1º con su marca.
+# H2: un plasmoid que confiara CIEGO en version.json.repo (un path horneado en otra máquina / repo movido)
+# habilitaría un auto-update que hace cd a una ruta muerta. Por eso los 3 updaters prueban candidatos
+# [embebido → $CLAUDE_BRAIN_DIR → clon canónico] y toman el 1º con su marca.
 Q4="$PR/src/plasmoid/contents/ui/main.qml"
 S4="$PR/macos/Sources/Cortex/Updater.swift"
 C4="$PR/windows/src/Cortex/Updater.cs"
@@ -7044,9 +7124,9 @@ fi
 # ─────────────────────────────────────────────────────────────────────────────
 echo "== (e6b) install-brain: EXACTAMENTE 6 hooks en PreToolUse/Bash + aviso-contexto en PostToolUse (sin matcher) =="
 # El fan-out de guards sobre Bash es un set CERRADO de 6 (rama-vieja se RETIRÓ — tier `retirado` en el
-# MANIFEST; CONSOLIDACIÓN 2026-09-17: merge-squash-guard + confirmar-merge-develop se fusionaron en
-# merge-develop-guard; overhaul hooks 2026-09-18: recordar-dashboard se retiró, puramente advisory —
-# restando 1 más al conteo); aviso-contexto va en PostToolUse sin matcher (casa toda tool). El cableado
+# MANIFEST; merge-squash-guard + confirmar-merge-develop se fusionaron en merge-develop-guard;
+# recordar-dashboard se retiró, puramente advisory — restando 1 más al conteo); aviso-contexto va en
+# PostToolUse sin matcher (casa toda tool). El cableado
 # se DERIVA del MANIFEST vía ev_de() en install-brain.sh → verificamos ese mapeo (no líneas register_hook
 # literales: el instalador las colapsó a un loop). Si alguien agrega/quita un guard de Bash del mapeo,
 # este test lo caza.
@@ -7077,9 +7157,9 @@ else
   done
   [ "$miss_rm" = 0 ] && ok "e6c: todo kind=hook del MANIFEST está documentado en el README"
 fi
-# e6c2 (B1, FMEA post-integración 2026-07-30): el árbol del README RAÍZ es la FUENTE que gen-leyenda-arbol
-# parsea para la leyenda de los flowcharts, y NADIE lo vigilaba contra el MANIFEST → drifteó (faltaban 4
-# hooks → leyenda incompleta). Formato de árbol = nombre pelón (sin `.sh`), dentro del bloque 🔒 Hooks Forzosos.
+# e6c2: el árbol del README RAÍZ es la FUENTE que gen-leyenda-arbol parsea para la leyenda de los
+# flowcharts; sin vigilarlo contra el MANIFEST driftearía (hooks faltantes → leyenda incompleta). Formato
+# de árbol = nombre pelón (sin `.sh`), dentro del bloque 🔒 Hooks Forzosos.
 RMROOT="$SCRIPT_DIR/../README.md"
 if [ -f "$RMROOT" ] && [ -f "$MF" ]; then
   arbol_root=$(awk '/^🔒[[:space:]]+Hooks[[:space:]]+Forzosos/{c=1} c&&/^```/{exit} c' "$RMROOT")
@@ -7091,9 +7171,8 @@ if [ -f "$RMROOT" ] && [ -f "$MF" ]; then
 else
   bad "e6c2: falta el README RAÍZ ($RMROOT) o el MANIFEST"
 fi
-# e6c3 (C5, FMEA post-integración 2026-07-30): el generador de la leyenda NO tenía test → un cambio de
-# formato del árbol del README lo rompía en SILENCIO (leyenda vacía). Corre el generador y afirma 4 familias
-# + suficientes filas de pieza (no-vacío).
+# e6c3: sin test para el generador de la leyenda, un cambio de formato del árbol del README lo rompería en
+# SILENCIO (leyenda vacía). Corre el generador y afirma 4 familias + suficientes filas de pieza (no-vacío).
 GEN="$SCRIPT_DIR/../docs/flowcharts/gen-leyenda-arbol.sh"
 if [ -f "$GEN" ]; then
   genout=$(bash "$GEN" 2>/dev/null)
@@ -7117,12 +7196,11 @@ if [ -f "$GEN" ]; then
   fi
 fi
 
-# e6c5: el .svg es lo que la gente MIRA, y es una copia derivada más — con su propio drift. Al corregir
-# los .dot (2026-09-16) los 14 .svg commiteados se quedaron mostrando un hook ya retirado: el diagrama
-# decía una cosa y su fuente otra. NO se compara byte a byte contra un `dot` recién corrido (dos versiones
-# de graphviz serializan distinto y eso daría rojo espurio en CI): se comprueba lo que importa del
-# resultado — que el dibujo NOMBRE las piezas vivas y NINGUNA retirada. El `&#45;` es cómo graphviz
-# escapa el guion en el SVG.
+# e6c5: el .svg es lo que la gente MIRA, y es una copia derivada más — con su propio drift. Al corregir los
+# .dot, los .svg commiteados pueden quedarse mostrando un hook ya retirado: el diagrama diría una cosa y su
+# fuente otra. NO se compara byte a byte contra un `dot` recién corrido (dos versiones de graphviz
+# serializan distinto y eso daría rojo espurio en CI): se comprueba lo que importa del resultado — que el
+# dibujo NOMBRE las piezas vivas y NINGUNA retirada. El `&#45;` es cómo graphviz escapa el guion en el SVG.
 FCDIR="$SCRIPT_DIR/../docs/flowcharts"
 if [ -f "$GEN" ] && [ -d "$FCDIR" ] && [ -f "$MF" ]; then
   # nombres que la leyenda canónica declara (1ª columna de cada fila de la tabla)
@@ -7277,10 +7355,10 @@ grep -q 'sigue incompleto' "$WPF" 2>/dev/null && ok "e9: Windows — heal honest
 
 # ─────────────────────────────────────────────────────────────────────────────
 # e10: install.ps1 (Windows) detecta la CLI ESPECIFICAMENTE, no la app de escritorio.
-# Bug real (Windows "Asistente Dir"): 'claude' resolvia a AppData\Local\AnthropicClaude\claude.exe
-# (la app de escritorio, que NO escribe ~/.claude/.credentials.json) -> el instalador la confundia con
-# la CLI y se saltaba exponer .local\bin -> OAuth sin credenciales. El fix: helper que EXCLUYE la app,
-# prepend del dir de la CLI al PATH (gana a la app), y auth status contra el binario de la CLI.
+# Un `claude` que resolviera a AppData\Local\AnthropicClaude\claude.exe (la app de escritorio, que NO
+# escribe ~/.claude/.credentials.json) haría que el instalador la confundiera con la CLI y se saltara
+# exponer .local\bin -> OAuth sin credenciales. Por eso un helper EXCLUYE la app, hace prepend del dir de la
+# CLI al PATH (gana a la app), y corre auth status contra el binario de la CLI.
 WPS1="$SCRIPT_DIR/../windows/install.ps1"
 grep -q 'AnthropicClaude' "$WPS1" 2>/dev/null \
   && ok "e10: install.ps1 — excluye la app de escritorio al detectar la CLI (AnthropicClaude)" \
@@ -7314,7 +7392,7 @@ J_STOP="{\"session_id\":\"deadbeef\",\"transcript_path\":\"$extx\",\"cwd\":\"$EX
 # (1) sin CLAUDE_SESSIONS_DRIVE → usa/crea el default ~/.claude-sessions
 ( unset CLAUDE_SESSIONS_DRIVE; printf '%s' "$J_STOP" | HOME="$EXHOME" bash "$HOOKS/exportar-sesion-master.sh" ) >/dev/null 2>&1
 [ -d "$EXHOME/.claude-sessions" ] && ok "exportar-sesion-master: sin override → crea/usa el default ~/.claude-sessions" || bad "exportar-sesion-master: no usó el default ~/.claude-sessions"
-# (2) sesión NO-master (sid no en masters.json, sin título *-master) en Stop → silencio, sin export
+# (2) sesión NO-master (sin <sid>.meta.json, sin título *-master) en Stop → silencio, sin export
 [ -z "$(ls "$EXHOME/.claude-sessions"/*.jsonl.gz 2>/dev/null)" ] && ok "exportar-sesion-master: sesión no-master → NO exporta (silencio)" || bad "exportar-sesion-master: exportó una sesión no-master"
 # (3) override: CLAUDE_SESSIONS_DRIVE apunta la carpeta a otro lado (la crea)
 EXDRIVE="$EXFIX/nube"
@@ -7338,7 +7416,55 @@ eval "$(sed -n '/^_master_base()/,/^}/p' "$HOOKS/exportar-sesion-master.sh")"
 { grep -qF '_master_base "$t"' "$HOOKS/exportar-sesion-master.sh" && ! grep -qE 'case "\$t" in \*-master\)' "$HOOKS/exportar-sesion-master.sh"; } \
   && ok "exportar-sesion-master: los puntos de reconocimiento cablean _master_base (no quedó el 'case *-master)' pelado viejo)" \
   || bad "exportar-sesion-master: quedó un 'case \$t in *-master)' pelado sin soporte del sufijo (N)"
+# (6) OPCIÓN A: el hook YA NO escribe un masters.json compartido (mataba los conflictos de Drive). El fast-path
+# de Stop ahora detecta "master conocido" por el <sid>.meta.json per-sid, no grepeando masters.json.
+{ ! grep -qF 'm.masters.push' "$HOOKS/exportar-sesion-master.sh" && ! grep -qE 'mjlock|m\.masters=m\.masters' "$HOOKS/exportar-sesion-master.sh"; } \
+  && ok "exportar-sesion-master: Opción A — el register block de masters.json se RETIRÓ (ya no auto-escribe el compartido)" \
+  || bad "exportar-sesion-master: TODAVÍA auto-escribe masters.json (el register block sigue ahí → conflictos de Drive)"
+{ grep -qF '$sid.meta.json' "$HOOKS/exportar-sesion-master.sh" && grep -qE 'is_master=1' "$HOOKS/exportar-sesion-master.sh"; } \
+  && ok "exportar-sesion-master: fast-path por <sid>.meta.json (paridad: señal per-sid sin contención)" \
+  || bad "exportar-sesion-master: el fast-path no usa <sid>.meta.json"
+# (7) behavioral (FALLA contra el código viejo): con un masters.json PREEXISTENTE + el engine presente (stub)
+# + node, el flujo LLEGA al punto donde el viejo REGISTRABA. El viejo le agregaba la entrada {id,name,target};
+# el nuevo (Opción A) lo deja INTACTO. El export detached (nohup) corre aparte y su resultado no importa aquí.
+EXMJ="$EXDRIVE/masters.json"; mkdir -p "$EXDRIVE" "$EXHOME/.local/bin"
+: > "$EXHOME/.local/bin/session-export.js"   # stub: basta que EXISTA para pasar el chequeo del engine
+printf '{"masters":[]}\n' > "$EXMJ"; before="$(cat "$EXMJ")"
+exmtx="$EXFIX/m.jsonl"; printf '{"type":"custom-title","customTitle":"demo-master"}\n{"cwd":"%s/code/x"}\n' "$EXHOME" > "$exmtx"
+JSE="{\"session_id\":\"feedface\",\"transcript_path\":\"$exmtx\",\"cwd\":\"$EXHOME/code/x\",\"hook_event_name\":\"SessionEnd\"}"
+if command -v node >/dev/null 2>&1; then
+  bash -c 'printf "%s" "$1" | HOME="$2" CLAUDE_SESSIONS_DRIVE="$3" bash "$4"' _ "$JSE" "$EXHOME" "$EXDRIVE" "$HOOKS/exportar-sesion-master.sh" >/dev/null 2>&1
+  sleep 0.3   # deja que el nohup detached termine por si tocara algo
+  [ "$(cat "$EXMJ")" = "$before" ] \
+    && ok "exportar-sesion-master: un master en SessionEnd NO toca un masters.json preexistente (Opción A; el viejo lo registraba)" \
+    || bad "exportar-sesion-master: el hook MODIFICÓ masters.json (Opción A exige que NO lo escriba)"
+else
+  ok "exportar-sesion-master: (7) SKIP sin node"
+fi
 rm -rf "$EXFIX"
+
+# ── seed.sh (Opción A): el roster se DERIVA de masters-<host>.json (curado GANA) + <id>.meta.json (respaldo) ──
+echo "== seed.sh: roster sin masters.json compartido — curado por-host gana al meta; meta deriva target =="
+SDFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-seed.XXXXXX")"; SDHOME="$SDFIX/home"; SDDRIVE="$SDFIX/drive"
+mkdir -p "$SDHOME/.local/bin" "$SDHOME/code/cortex" "$SDHOME/code/axon" "$SDDRIVE"
+: > "$SDHOME/.local/bin/session-import.js"   # stub JS vacío (válido): node lo corre sin hacer nada → "siembro" sin importar de verdad
+# id bbb: meta apunta a un WORKTREE (el bug chafa); el curado por-host lo fija al repo canónico code/cortex.
+printf '{"id":"bbb","label":"cortex-master (viejo)","originCwd":"/Users/x/code/cortex/.cortex-wt/A1"}\n' > "$SDDRIVE/bbb.meta.json"
+printf '{"masters":[{"id":"bbb","name":"cortex-master","target":"code/cortex"}]}\n' > "$SDDRIVE/masters-host1.json"
+# id aaa: SOLO meta (derivado); /home/x stripped → code/axon.
+printf '{"id":"aaa","label":"axon-master","originCwd":"/home/x/code/axon"}\n' > "$SDDRIVE/aaa.meta.json"
+: > "$SDDRIVE/bbb.jsonl.gz"; : > "$SDDRIVE/aaa.jsonl.gz"
+out="$(HOME="$SDHOME" CLAUDE_SESSIONS_DRIVE="$SDDRIVE" bash "$HOOKS/../sesiones-master/seed.sh" 2>&1 || true)"
+# bbb debe sembrarse al repo CANÓNICO (code/cortex), no al worktree del meta → curado gana.
+printf '%s' "$out" | grep -q "siembro cortex-master" && printf '%s' "$out" | grep -q "code/cortex" \
+  && ! printf '%s' "$out" | grep -q 'cortex-wt/A1' \
+  && ok "seed.sh: el curado masters-<host>.json GANA al meta (bbb → code/cortex, no al worktree del meta)" \
+  || bad "seed.sh: el roster no priorizó el curado sobre el meta (out: $(printf '%s' "$out" | tr '\n' '|'))"
+# aaa derivado del meta (/home/x stripped → code/axon) y sembrado.
+printf '%s' "$out" | grep -q "siembro axon-master" && printf '%s' "$out" | grep -q "code/axon" \
+  && ok "seed.sh: un id SOLO en metas se DERIVA (aaa → code/axon, prefijo de \$HOME de origen quitado)" \
+  || bad "seed.sh: no derivó el roster del <id>.meta.json (out: $(printf '%s' "$out" | tr '\n' '|'))"
+rm -rf "$SDFIX"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
@@ -7356,8 +7482,8 @@ echo "        Fase 1 SOLO comparaba Skills y daba ✅ FALSO ante un drift de hoo
 # Fixture: repo git fake con su propio README/MEMORY.md/skills/hooks-MANIFEST — construido copiando el
 # ESTADO REAL ya corregido de este mismo repo (para no repetir a mano el árbol completo) y luego
 # DRIFTEANDO deliberadamente UN SOLO nombre de hook en la copia de MEMORY.md, dejando README intacto —
-# exactamente el patrón del bug real (un guard renombrado en un catálogo y no en el otro). Un checker
-# que no puede dar rojo ante esto no sirve (la propia auditoría de suficiencia lo encontró en ✅ falso).
+# exactamente el patrón del bug (un guard renombrado en un catálogo y no en el otro). Un checker
+# que no puede dar rojo ante esto no sirve.
 ASFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-asfix.XXXXXX")"
 mkdir -p "$ASFIX/.claude/memory" "$ASFIX/brain/hooks" "$ASFIX/docs/flowcharts"
 git -C "$ASFIX" init -q >/dev/null 2>&1
@@ -7498,9 +7624,9 @@ printf '%s' "$(nbd_ctx 'bash brain/install-brain.sh')" | grep -qi 'widget' \
   && ok "g1: un script no-instalador NO dispara" || bad "g1: disparó sobre un script cualquiera (FP)"
 [ -z "$(nbd_ctx 'cat install.sh')" ] \
   && ok "g1: 'cat install.sh' (leer, no ejecutar) NO dispara" || bad "g1: disparó al leer el archivo (FP)"
-# corpus de FP reales (docs/guards-falsos-positivos.md 2026-08-08/2026-08-29): el nombre del instalador
-# como ARGUMENTO de git/grep/ls con una SUBCARPETA de por medio ("brain/install-brain.sh") NO es
-# ejecución — antes un "/" suelto pegado al basename bastaba como prefijo y disparaba en falso.
+# Casos del corpus de FP (docs/guards-falsos-positivos.md): el nombre del instalador como ARGUMENTO de
+# git/grep/ls con una SUBCARPETA de por medio ("brain/install-brain.sh") NO es ejecución — un "/" suelto
+# pegado al basename no debe contar como prefijo y disparar en falso.
 [ -z "$(nbd_ctx 'git add brain/install-brain.sh brain/test-brain.sh && git commit -m "fix install-brain"')" ] \
   && ok "g1: 'git add <path>/install-brain.sh' (commit del instalador, no ejecución) NO dispara" || bad "g1: disparó sobre git add de install-brain.sh con subcarpeta (FP)"
 [ -z "$(nbd_ctx 'git log --since=2026-08-01 -- brain/install-brain.sh')" ] \
@@ -7563,7 +7689,7 @@ G2B="$(mktemp -d "${TMPDIR:-/tmp}/brain-g2b.XXXXXX")"; mkdir -p "$G2B/.claude/ho
 # tier both: hook + su lib (candidatos a retirar)
 printf 'exit 0\n' > "$G2B/.claude/hooks/git-branch-guard.sh"
 printf ': lib\n' > "$G2B/.claude/hooks/analizar-comando-git.sh"
-# tier repo: SIN equivalente global — debe SOBREVIVIR (el FP ya documentado, 2026-09-08, trataba esto como sobrante)
+# tier repo: SIN equivalente global — debe SOBREVIVIR (un FP lo trataba como sobrante)
 printf 'exit 0\n' > "$G2B/.claude/hooks/dod-verificar.sh"
 # hook PROPIO del repo (no del brain) — debe SOBREVIVIR siempre
 printf 'exit 0\n' > "$G2B/.claude/hooks/mi-hook-propio.sh"
@@ -7956,8 +8082,8 @@ grep -qiE 'LISTO = QA|QA del humano|QA FUNCIONAL' "$SKILL" && grep -qiE 'preview
   || bad "g12 LISTO: el SKILL declara cierre sin QA del humano o permite auto-merge"
 
 # ── g13: SIDECAR (H1) — subagents/tool-results/workflows viajan CON el .jsonl, en un sandbox aislado
-#         del session-move.js real (no solo dentro del e2e completo, más abajo). Medido en un master
-#         real: hasta 163 transcripts de subagente (~109 MB), citados 76 veces desde su propio transcript.
+#         del session-move.js real (no solo dentro del e2e completo, más abajo). Un master real puede
+#         acumular cientos de transcripts de subagente (cientos de MB), citados muchas veces desde su propio transcript.
 SCID="ee550000-0000-0000-0000-000000000013"
 printf '{"type":"user","cwd":"%s"}\n' "$SRCREPO" > "$PROJ/$OLD_SLUG/$SCID.jsonl"
 mkdir -p "$PROJ/$OLD_SLUG/$SCID/subagents" "$PROJ/$OLD_SLUG/$SCID/tool-results" "$PROJ/$OLD_SLUG/$SCID/workflows"
@@ -7987,7 +8113,7 @@ rm -rf "$RMFIX"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "== (si) session-infra: aristas §9 del skill (tie-break/freshness/target-update/prune-backups) =="
+echo "== (si) session-infra: aristas §9 del skill (tie-break/freshness/masters.json-hand-maintained/prune-backups) =="
 SIFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-sessinfra.XXXXXX")"
 SIHOME="$SIFIX/home"
 SIPROJ="$SIHOME/.claude/projects"
@@ -8061,7 +8187,10 @@ lc2="$(grep -c . "$SIPROJ/$S2SLUG/$SID2.jsonl")"
   && ok "s2 freshness: --force-stale SÍ pisa a propósito (dest=2 líneas, cwd reescrito)" \
   || bad "s2 freshness: --force-stale no pisó (lc2=$lc2)"
 
-# ── s3: exportar-sesion-master AUTO-ACTUALIZA target de un master YA presente (antes solo añadía) ──
+# ── s3: OPCIÓN A — exportar-sesion-master NO toca un masters.json preexistente (hand-maintained) ──
+# Antes el hook AUTO-ACTUALIZABA el target de un master movido; eso generaba drift/conflictos de Drive y
+# masters.json se mantiene A MANO. Con el engine presente (símlink) el flujo LLEGA al punto donde el viejo
+# registraba; el nuevo debe dejar masters.json INTACTO. FALLA contra un código que lo reescriba.
 [ -f "$HOOKS/exportar-sesion-master.sh" ] || bad "s3: falta el hook exportar-sesion-master.sh"
 HDRIVE="$SIFIX/drive-s3"; mkdir -p "$HDRIVE"
 SID3="cc330000-0000-0000-0000-000000000003"
@@ -8069,15 +8198,17 @@ mkdir -p "$SIHOME/.cortex"; ln -s "$BINRM" "$SIHOME/.cortex/bin"   # engine visi
 cat > "$HDRIVE/masters.json" <<EOF
 { "schema": 2, "masters": [ { "id": "$SID3", "name": "s3-master", "target": "code/viejo" } ] }
 EOF
+s3before="$(cat "$HDRIVE/masters.json")"
+# el fast-path de Opción A detecta "master conocido" por el <sid>.meta.json → lo sembramos para que el flujo avance
+printf '{"id":"%s","label":"s3-master","originCwd":"%s/code/viejo"}\n' "$SID3" "$SIHOME" > "$HDRIVE/$SID3.meta.json"
 TPATH="$SIFIX/s3-transcript.jsonl"; printf '{"type":"user"}\n' > "$TPATH"
 NEWCWD="$SIHOME/code/nuevo"; mkdir -p "$NEWCWD"
 printf '{"session_id":"%s","transcript_path":"%s","cwd":"%s","hook_event_name":"SessionEnd"}' "$SID3" "$TPATH" "$NEWCWD" \
   | HOME="$SIHOME" CLAUDE_SESSIONS_DRIVE="$HDRIVE" bash "$HOOKS/exportar-sesion-master.sh" >/dev/null 2>&1
-newtarget="$(jq -r --arg id "$SID3" '.masters[]|select(.id==$id).target' "$HDRIVE/masters.json")"
-newname="$(jq -r --arg id "$SID3" '.masters[]|select(.id==$id).name' "$HDRIVE/masters.json")"
-{ [ "$newtarget" = "code/nuevo" ] && [ "$newname" = "s3-master" ]; } \
-  && ok "s3 target-update: el hook ACTUALIZA el target de un master movido (name intacto)" \
-  || bad "s3 target-update: target no actualizado (target=$newtarget name=$newname)"
+sleep 0.3   # deja terminar el export detached
+[ "$(cat "$HDRIVE/masters.json")" = "$s3before" ] \
+  && ok "s3 (Opción A): el hook NO modifica un masters.json preexistente (hand-maintained; el viejo lo auto-actualizaba)" \
+  || bad "s3 (Opción A): el hook MODIFICÓ masters.json (target=$(jq -r --arg id "$SID3" '.masters[]|select(.id==$id).target' "$HDRIVE/masters.json" 2>/dev/null))"
 
 # ── s4: session-move PODA ~/.claude/session-move-backups (conserva KEEP recientes; .bak no crecen sin fin) ──
 S4OLD="$SIHOME/code/s4old"; S4NEW="$SIHOME/code/s4new"; mkdir -p "$S4OLD" "$S4NEW"
@@ -8096,12 +8227,10 @@ cnt="$(find "$BKDIR" -name '*.jsonl.bak' | wc -l | tr -d ' ')"
 # ── s5: MECANISMO anti-§9 — cerrar-slice exige barrer lo DELEGADO en un artefacto al backlog (con severidad) ──
 # grep -F por tokens en UNA sola línea (grep es por-línea: una frase que envuelve NO se caza).
 CS="$SCRIPT_DIR/skills/cerrar-slice/SKILL.md"
-CSO="$SCRIPT_DIR/skills/orquestar-fanout/SKILL.md"
 { [ -f "$CS" ] && grep -qF 'DELEGADO a un artefacto' "$CS" && grep -qF 'log disfrazado de backlog' "$CS" \
-    && grep -qF 'con severidad y origen ANTES de cerrar' "$CS" \
-    && [ -f "$CSO" ] && grep -qF 'lo DELEGADO a un artefacto tampoco es el backlog' "$CSO"; } \
-  && ok "s5 mecanismo: cerrar-slice ancla el barrido de lo delegado al backlog (+ corolario en orquestar-fanout)" \
-  || bad "s5 mecanismo: falta el paso anti-§9 en cerrar-slice/orquestar-fanout (el hueco del §9 quedaría abierto)"
+    && grep -qF 'con severidad y origen ANTES de cerrar' "$CS"; } \
+  && ok "s5 mecanismo: cerrar-slice ancla el barrido de lo delegado al backlog" \
+  || bad "s5 mecanismo: falta el paso anti-§9 en cerrar-slice"
 
 # ── s6: H5 — cwdLines es el invariante que DISCRIMINA una corrupción de CONTENIDO que la cardinalidad
 #         (nº de renglones) sola no ve. rewriteTranscriptStream cuenta, DEL ORIGEN, los renglones con un
@@ -8229,8 +8358,8 @@ HOME="$SMHOME" node -e 'require(process.argv[1]).writeAlias("zzz","nuevo")' "$SM
 
 # ── sm6 · LOCK del mapa de alias. `sesiones-alias.json` lo comparten TODOS los masters de la máquina y
 #         escribirlo es read-modify-write: la escritura atómica evita un archivo a medias, no que dos
-#         escritores se borren las claves — en silencio y sin que nada lo asevere. Medido 2026-09-10:
-#         con una mudanza y un `databases-master` vivos, el riesgo es real y ASIMÉTRICO (pierde quien no
+#         escritores se borren las claves — en silencio y sin que nada lo asevere. Con una mudanza y un
+#         `databases-master` vivos a la vez, el riesgo es real y ASIMÉTRICO (pierde quien no
 #         está mirando). Se prueba CONTRA LA FALLA: con el lock tomado, escribir debe NEGARSE.
 SM6="$SMFIX/alias-lock/.claude"
 mkdir -p "$SM6"
@@ -8455,9 +8584,9 @@ NORMAS="$SCRIPT_DIR/norms/global-claude-md.md"
     && grep -qiE 'b[oó]rralo|queda vac' "$DES"; } \
   && ok "#83 desinflar-memorias: migra los feedback-* de TRATO al archivo GLOBAL y borra el vacío" \
   || bad "#83 desinflar-memorias: falta la migración de TRATO per-repo → archivo GLOBAL"
-# El NUDGE INCONDICIONAL de recordar-cosechar se retiró (overhaul hooks 2026-09-18) — su regla de ruteo del
-# TRATO subió a la norma "Ninguna DECISIÓN se queda solo en el chat" (queda ahí). (El nudge volvió en el
-# rediseño 2026-09-18 pero ATADO al sync real, no como el recordatorio de cosecha/TRATO que aquí se prueba.)
+# El NUDGE INCONDICIONAL de recordar-cosechar se retiró — su regla de ruteo del TRATO subió a la norma
+# "Ninguna DECISIÓN se queda solo en el chat" (queda ahí). (El nudge volvió en el rediseño pero ATADO al
+# sync real, no como el recordatorio de cosecha/TRATO que aquí se prueba.)
 { [ -f "$NORMAS" ] && grep -qiE 'como-trabajar-con-<user>' "$NORMAS"; } \
   && ok "#83 norma global: recuerda que el TRATO va al archivo GLOBAL (recordar-cosechar retirado, regla subió aquí)" \
   || bad "#83 norma global: falta el ruteo del TRATO al archivo GLOBAL tras retirar recordar-cosechar"
@@ -8475,9 +8604,9 @@ CSL="$SCRIPT_DIR/skills/cerrar-slice/SKILL.md"
 
 # ═════════════════════════════════════════════════════════════════════════════
 # (e2e) reubicar-master DE PUNTA A PUNTA en un $HOME falso: generar → verificar → dry → full → s7.
-# Es la prueba que NO existía: hasta el 2026-09-10 los pasos destructivos de este skill nunca se habían
-# EJECUTADO, solo grepeado. Un candado de presencia-de-texto certificó un handoff que no arrancaba;
-# esto lo corre de verdad contra un ecosistema simulado (transcript, masters.json, alias, repos git).
+# Es la prueba que faltaba: los pasos destructivos de este skill solo se habían grepeado, nunca EJECUTADO.
+# Un candado de presencia-de-texto certificó un handoff que no arrancaba; esto lo corre de verdad contra un
+# ecosistema simulado (transcript, masters.json, alias, repos git).
 # Todo vive bajo un mktemp que se borra al salir: no toca el ~/.claude real (y se ASERTA que no lo tocó).
 echo ""
 echo "== (e2e) reubicar-master: la mudanza COMPLETA sobre un \$HOME falso =="
@@ -8578,8 +8707,8 @@ E2EH="$E2EDRIVE/handoff-$E2EID.sh"
 E2EPRE="$E2EHOME/.claude/reubicar-preludio.sh"
 [ -f "$E2EH" ] && [ -x "$E2EH" ] \
   && ok "(e2e) el handoff quedó escrito y ejecutable" || bad "(e2e) no hay handoff ejecutable en $E2EH"
-# LA REGRESIÓN del 2026-09-10: el preludio EMBEBIDO. Sin él el handoff muere en 'DST_CWD: unbound
-# variable' — y aquel día pasó el candado de marcadores y se certificó como «handoff OK».
+# LA REGRESIÓN: el preludio EMBEBIDO. Sin él el handoff muere en 'DST_CWD: unbound
+# variable' — y aun así pasaría el candado de marcadores y se certificaría como «handoff OK».
 if [ -f "$E2EH" ] && [ -f "$E2EPRE" ] && node -e '
   const fs=require("fs"), nl=s=>s.replace(/\r/g,"");
   process.exit(nl(fs.readFileSync(process.argv[1],"utf8")).indexOf(nl(fs.readFileSync(process.argv[2],"utf8")))>=0?0:1);
@@ -8602,7 +8731,7 @@ if [ -f "$E2EH" ]; then
   fi
 fi
 # ── PREFLIGHT DE CAPACIDAD: un cortex INSTALADO más viejo que el skill se detecta ANTES, no a media
-#    mudanza. Medido el 2026-09-10: ~/.local/bin llevaba 3 días atrás y no tenía ni `--git-branch` ni
+#    mudanza. Un bin instalado puede ir atrás y no traer ni `--git-branch` ni
 #    `rewriteTranscriptStream`, las dos cosas que S4 invoca DESPUÉS del punto de no retorno.
 E2EBINVIEJO="$E2EFIX/bin-viejo"
 mkdir -p "$E2EBINVIEJO"
@@ -8616,7 +8745,7 @@ else
   grep -q 'MÁS VIEJA que este skill' "$E2ECAP"     && ok "(e2e) el preflight de CAPACIDAD aborta si el bin instalado no trae lo que el guion invoca"     || bad "(e2e) abortó, pero no por el preflight de capacidad: $(tail -2 "$E2ECAP" | tr '\n' ' ')"
 fi
 # ── `clasificar`: la EVIDENCIA de la Decisión #2. Reemplazó a un `grep -rilEv` de palabras de stack que
-#    devolvía 44 de 43 memorias (medido 2026-09-10) — un descubrimiento que no descarta nada no descubre
+#    devolvía 44 de 43 memorias — un descubrimiento que no descarta nada no descubre
 #    nada, y empujó a inventar el corte. Se prueba que las CUATRO señales aparecen y que NO hay veredicto.
 E2ECLAS="$E2EFIX/clasificar.log"
 mkdir -p "$E2ESRC/.claude/memory" "$E2EDST/.claude/memory"
@@ -8959,7 +9088,7 @@ echo "== (b1d-h5doc) H5 (auditoría de ejecución 2026-09-16, MEDIO, CONFIRMADO)
 echo "   NO prescribe el escape a la WEB que M8 retiró de los mensajes reales =="
 # juez-comun.sh:24 es la cabecera que el propio archivo declara "definición ÚNICA" del contrato de
 # fail-safe -- pero seguía documentando "NOTOKEN → DENY + redirección al carril de la WEB de GitLab" pese a
-# que M8 (auditoría 2026-09-15 §3.11) retiró esa redirección de los 4 mensajes reales por la norma anti-
+# que M8 retiró esa redirección de los 4 mensajes reales por la norma anti-
 # vein-popper. Quien implemente el PRÓXIMO juez leyendo el contrato la reintroduciría.
 # NOTA de test: se filtran las líneas de COMENTARIO (^\s*#) al buscar la frase retirada -- los propios
 # comentarios de ESTE fix (incluido el de arriba) la CITAN históricamente para explicar qué se quitó, lo cual
@@ -8980,8 +9109,8 @@ done
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (gui) control-gui-remota-por-ssh: -Window en screenshot, PARIDAD de los 3 OS =="
-# El fix multi-monitor (2026-09-18) dejó el DEFAULT = todas las pantallas; pero "SOLO una ventana
-# por título" quedó dispareja entre OS hasta este mismo slice. Verifica que los 3 screenshot.*
+# El fix multi-monitor dejó el DEFAULT = todas las pantallas; pero "SOLO una ventana por título" estaba
+# dispareja entre OS. Verifica que los 3 screenshot.*
 # exponen `-Window` con la MISMA semántica (substring de título) y el MISMO patrón de fallback
 # (captura completa + aviso) cuando la ventana no se encuentra -- gemelos estructurales, no solo
 # "el flag existe".
@@ -9037,7 +9166,7 @@ else
   bad "gui: no encuentro los 3 screenshot.* del kit control-gui-remota-por-ssh (¿se movió/renombró?)"
 fi
 
-# ── cerrar-slice --wait-ci: el veredicto de CI gobierna merge/abort (A2, 2026-10-11) ──
+# ── cerrar-slice --wait-ci: el veredicto de CI gobierna merge/abort (A2) ──
 # Causa del FP viejo: mergeaba ante CUALQUIER exit≠0 del chequeo (confundía sin-CI/pendiente/rojo/no-leído).
 # Ahora normaliza a UN veredicto y actúa. Prueba AMBAS direcciones vía el mock (sin red/forge) + --dry-run
 # (no mergea): VERDE/SINCI → PROCEDE (llega al "correría"); ROJO/INDET/PENDIENTE → ABORTA (exit≠0).
@@ -9064,12 +9193,193 @@ else
   bad "cerrar-slice: no encuentro $CS"
 fi
 
-# A6: la regla PISO entre checkpoints DEBE vivir en la FUENTE del skill. Se perdió UNA vez por editarse en la
-# copia instalada y pisarla el sync (inbox 2026-09-24) → guard de PRESENCIA contra que una reorg la retire.
+# A6: la regla PISO entre checkpoints DEBE vivir en la FUENTE del skill. Si se editara en la copia instalada,
+# el sync la pisaría → guard de PRESENCIA contra que una reorg la retire.
 CKS="$SCRIPT_DIR/skills/checkpoint/SKILL.md"
 { [ -f "$CKS" ] && grep -qi 'PISO entre checkpoints' "$CKS" && grep -qiE 'menos de ~?30 ?min' "$CKS" && grep -qF 'mtime del hilo' "$CKS"; } \
   && ok "checkpoint SKILL: trae la regla PISO (<~30min → appendea a bitácora, no reescribe) con su mecanismo (mtime)" \
   || bad "checkpoint SKILL: FALTA la regla PISO entre checkpoints o su mecanismo (¿se perdió en un sync/reorg?)"
+
+# A7: el borrador de /compact DEBE vivir en la FUENTE del skill: si el checkpoint
+# precede un /compact que correrá el usuario, el skill termina entregando el comando armado + la regla de
+# procedencia (solo cita literal del usuario entre comillas). Guard de presencia contra pérdida por sync/reorg.
+{ [ -f "$CKS" ] && grep -qiF 'entrega el borrador' "$CKS" && grep -qF '/compact <instrucciones>' "$CKS" && grep -qi 'procedencia (regla dura)' "$CKS"; } \
+  && ok "checkpoint SKILL: trae el paso de cierre que entrega el borrador de /compact (con regla de procedencia)" \
+  || bad "checkpoint SKILL: FALTA el paso del borrador de /compact o su regla de procedencia (pedido Jordi 2026-10-14)"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo "== (dm) coordinar-claudes/despertar-master.sh: resuelve desde TRANSCRIPTS (newest-per-name · viva→no-relanza · cwd real) =="
+# Contrato por EFECTO: la skill NO confía en masters.json; resuelve nombre/cwd/vida del transcript, el MÁS
+# reciente por nombre gana, y una sesión viva NO se relanza. Un impl que (a) tomara el transcript viejo, o
+# (b) relanzara una sesión fresca, FALLA estos asserts. 'screen' se stubea para capturar si hubo lanzamiento.
+DM="$SCRIPT_DIR/skills/coordinar-claudes/despertar-master.sh"
+if [ -f "$DM" ]; then
+  DMROOT="$(mktemp -d)"
+  PROJ="$DMROOT/projects"; mkdir -p "$PROJ/slug-a" "$PROJ/slug-b" "$PROJ/slug-c" "$DMROOT/repoC" "$DMROOT/bin"
+  # foo-master VIEJO (cwd repoA) y su duplicado " (2)" MÁS NUEVO (cwd repoB, fresco=viva) → debe ganar repoB.
+  printf '{"cwd":"%s","customTitle":"foo-master"}\n'     "$DMROOT/repoA" > "$PROJ/slug-a/aaa.jsonl"
+  printf '{"cwd":"%s","customTitle":"foo-master (2)"}\n' "$DMROOT/repoB" > "$PROJ/slug-b/bbb.jsonl"
+  # bar-master VIEJO (idle, cwd repoC existe) → debe intentar relanzar.
+  printf '{"cwd":"%s","customTitle":"bar-master"}\n'     "$DMROOT/repoC" > "$PROJ/slug-c/ccc.jsonl"
+  touch -t 202001010000 "$PROJ/slug-a/aaa.jsonl" "$PROJ/slug-c/ccc.jsonl"   # viejos (portable GNU/BSD)
+  # bbb queda con mtime = ahora (fresco) → newest-per-name + viva.
+  SCREENLOG="$DMROOT/screen.log"; SESSF="$DMROOT/sessions"; : > "$SCREENLOG"; : > "$SESSF"
+  # stub de screen CON ESTADO: `-dmS NAME` registra NAME como sesión viva; `-ls` las lista en el formato
+  # que parsea _screen_nombres (`\t<pid>.<name>\t…`) → permite probar que un 2º lanzamiento ve la 1ª viva.
+  cat > "$DMROOT/bin/screen" <<SH
+#!/usr/bin/env bash
+case "\$1" in
+  -ls) [ -s "$SESSF" ] && while IFS= read -r n; do printf '\t12345.%s\t(Detached)\n' "\$n"; done < "$SESSF"; exit 1 ;;
+  -dmS) echo "SCREEN \$*" >> "$SCREENLOG"; printf '%s\n' "\$2" >> "$SESSF" ;;
+  *) echo "SCREEN \$*" >> "$SCREENLOG" ;;
+esac
+SH
+  chmod +x "$DMROOT/bin/screen"
+  _dm() { PATH="$DMROOT/bin:$PATH" CLAUDE_PROJECTS_DIR="$PROJ" DESPERTAR_VIVA_MIN=15 bash "$DM" "$@" 2>&1; }
+
+  L="$(_dm --lista)"
+  # newest-per-name: UNA fila foo-master, con el cwd del duplicado NUEVO (repoB), NO el viejo (repoA).
+  nfoo=$(printf '%s\n' "$L" | grep -c '^foo-master ')
+  if [ "$nfoo" = 1 ] && printf '%s' "$L" | grep -q "foo-master .*$DMROOT/repoB" \
+     && ! printf '%s' "$L" | grep -q "$DMROOT/repoA"; then
+    ok "despertar-master --lista: newest-per-name gana (foo-master → repoB del dup, no repoA viejo)"
+  else bad "despertar-master --lista: no resolvió al transcript MÁS reciente por nombre (got: $(printf '%s' "$L" | grep foo-master))"; fi
+  # estado: foo-master (fresco) = viva ; bar-master (viejo) = idle.
+  { printf '%s' "$L" | grep -q 'foo-master .*viva' && printf '%s' "$L" | grep -q 'bar-master .*idle'; } \
+    && ok "despertar-master --lista: estado por mtime (fresco=viva, viejo=idle)" \
+    || bad "despertar-master --lista: estado de vida mal derivado del mtime"
+
+  # viva → NO relanza: foo-master fresco reporta VIVA y NO invoca screen.
+  Vfoo="$(_dm foo-master)"
+  if printf '%s' "$Vfoo" | grep -qi 'VIVA' && ! grep -q 'foo-master' "$SCREENLOG"; then
+    ok "despertar-master: sesión VIVA no se relanza (reporta viva, screen NO invocado)"
+  else bad "despertar-master: relanzó (o no detectó) una sesión viva — screen.log: $(cat "$SCREENLOG")"; fi
+
+  # idle → relanza: bar-master viejo invoca screen con su id (ccc) y resume.
+  : > "$SCREENLOG"
+  Bbar="$(_dm bar-master --no-esperar)"
+  if grep -q 'bar-master' "$SCREENLOG" && grep -q 'ccc' "$SCREENLOG"; then
+    ok "despertar-master: sesión IDLE se relanza (screen -dmS bar-master … --resume ccc)"
+  else bad "despertar-master: NO relanzó una sesión idle — screen.log: $(cat "$SCREENLOG")"; fi
+
+  # nombre inexistente → error claro + lista, sin lanzar nada.
+  : > "$SCREENLOG"
+  if _dm no-existe-master | grep -qi 'no encontré' && [ ! -s "$SCREENLOG" ]; then
+    ok "despertar-master: nombre inexistente → error claro, no lanza"
+  else bad "despertar-master: nombre inexistente mal manejado"; fi
+
+  # cwd de un worktree ENLAZADO → se resuelve al toplevel del worktree PRINCIPAL (el worktree puede
+  # borrarse tras el merge → carpeta muerta); un subfolder del repo principal NO se tocaría.
+  GREPO="$DMROOT/grepo"
+  git init -q "$GREPO" 2>/dev/null \
+    && git -C "$GREPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init 2>/dev/null \
+    && git -C "$GREPO" worktree add -q "$DMROOT/gwt" -b wtbr 2>/dev/null
+  if [ -d "$DMROOT/gwt" ]; then
+    mkdir -p "$PROJ/slug-wt"
+    printf '{"cwd":"%s","customTitle":"wt-master"}\n' "$DMROOT/gwt" > "$PROJ/slug-wt/wtt.jsonl"
+    rowwt="$(_dm --lista | grep '^wt-master' || true)"
+    case "$rowwt" in
+      *"$GREPO"*) ok "despertar-master: cwd de worktree enlazado → toplevel del principal (no la carpeta que se borra)" ;;
+      *)          bad "despertar-master: no resolvió el cwd de un worktree enlazado al principal — got: $rowwt" ;;
+    esac
+  else
+    ok "despertar-master: (worktree-resolve) git worktree no disponible en el entorno de test — se omite"
+  fi
+
+  # doble lanzamiento: un master IDLE por mtime pero YA corriendo en screen NO se relanza (evita un 2º
+  # escritor sobre su transcript). Antes el mtime era la ÚNICA señal → relanzaba sobre el mismo id.
+  : > "$SESSF"; : > "$SCREENLOG"
+  _dm bar-master --no-esperar >/dev/null 2>&1          # 1ª: lanza y registra bar-master como screen vivo
+  out2dm="$(_dm bar-master --no-esperar 2>&1)"         # 2ª: screen existe → debe negarse
+  nlanz=$(grep -c 'dmS bar-master' "$SCREENLOG" 2>/dev/null)
+  if printf '%s' "$out2dm" | grep -qi 'VIVA' && [ "${nlanz:-0}" -eq 1 ]; then
+    ok "despertar-master: 2º lanzamiento de un master YA corriendo (screen vivo, idle por mtime) → NO relanza"
+  else bad "despertar-master: doble lanzamiento no evitado — lanzamientos=$nlanz · out2='$out2dm'"; fi
+
+  rm -rf "$DMROOT"
+else
+  bad "despertar-master: no encuentro $DM"
+fi
+
+# coordinar-claudes ABSORBIÓ a despertar-master (su script vive ahora en coordinar-claudes/). El MANIFEST
+# debe declarar coordinar-claudes VIVA (tier global) y despertar-master RETIRADO (lápida): si no, el
+# install/sync la omitiría, o dejaría el folder viejo como zombie. Falla entero contra el código pre-port.
+grep -qE '^coordinar-claudes[[:space:]]+global' "$SCRIPT_DIR/skills/MANIFEST" \
+  && ok "coordinar-claudes: declarada en skills/MANIFEST (tier global)" \
+  || bad "coordinar-claudes: FALTA su línea en skills/MANIFEST → install-brain no la instalaría"
+grep -qE '^despertar-master[[:space:]]+retirado' "$SCRIPT_DIR/skills/MANIFEST" \
+  && ok "despertar-master: lápida 'retirado' en skills/MANIFEST (absorbida por coordinar-claudes)" \
+  || bad "despertar-master: debería estar 'retirado' (absorbida) — si sigue viva o falta, el sync no poda su folder zombie"
+
+# ── (vm) vigilar-master: el estado del transcript sale SOLO de eventos de CONVERSACIÓN, no de metadatos ──
+# Un `pr-link` (metadato con timestamp que el CLI escribe tras cerrar el turno) NO debe desplazar al
+# turn_duration y disparar un COLGADO falso. fixture1 (turn_duration + pr-link) → quieto/TURNO-TERMINADO;
+# fixture2 (user/tool_result + attachment, sin respuesta) → colgado. FALLA contra la lógica vieja (que
+# tomaba el último evento con timestamp cualquiera → pr-link → colgado falso).
+VMSH="$SCRIPT_DIR/skills/coordinar-claudes/vigilar-master.sh"
+if [ -f "$VMSH" ]; then
+  ( _CMD_VIGILAR_SOURCE_ONLY=1 . "$VMSH"
+    VMD=$(mktemp -d "${TMPDIR:-/tmp}/brain-vm.XXXXXX")
+    printf '%s\n' \
+      '{"type":"system","subtype":"turn_duration","timestamp":"2026-01-01T00:00:00.000Z"}' \
+      '{"type":"pr-link","prNumber":1,"timestamp":"2026-01-01T00:00:05.000Z"}' > "$VMD/t1.jsonl"
+    printf '%s\n' \
+      '{"type":"user","message":{"role":"user"},"timestamp":"2026-01-01T00:00:00.000Z"}' \
+      '{"type":"attachment","timestamp":"2026-01-01T00:00:03.000Z"}' > "$VMD/t2.jsonl"
+    [ "$(vm_estado_de "$VMD/t1.jsonl" | cut -f1)" = quieto ] \
+      && ok "vm: turn_duration + pr-link (metadato) → quieto/TURNO-TERMINADO (el pr-link no cuenta como último evento)" \
+      || bad "vm: un pr-link tras el turn_duration disparó un estado != quieto (el COLGADO falso volvió)"
+    [ "$(vm_estado_de "$VMD/t2.jsonl" | cut -f1)" = colgado ] \
+      && ok "vm: user/tool_result + attachment sin respuesta → colgado/COLGADO (el attachment no cuenta)" \
+      || bad "vm: user/tool_result sin respuesta no dio colgado"
+    rm -rf "$VMD"
+  )
+else
+  bad "vm: no encuentro $VMSH"
+fi
+
+# ═════════════════════════════════════════════════════════════════════════════════════════════════════
+echo ""
+echo "== (b-rc) reconstruir-contexto: red de emergencia cableada y ALCANZABLE =="
+# La slice entrega una RED DE EMERGENCIA (excavar contexto cuando un checkpoint quedó pobre y /compact
+# fundió el hilo). Su VALOR no es "el archivo existe" sino ser ALCANZABLE y CERRAR EL LAZO: registrada
+# `both` (viaja al clon sin brain global, justo donde más duele un hilo fundido), sus hermanas la apuntan,
+# y ella apunta de vuelta a checkpoint/rehidratar-hilo. Una red registrada pero SIN enlaces, o con un
+# [[link]] COLGADO, se rompe en SILENCIO — nadie la encuentra en la emergencia. Esto lo caza; falla
+# entero contra el código pre-port (4ef2186^: ni skill, ni MANIFEST, ni cross-links).
+RC_SK="$SCRIPT_DIR/skills/reconstruir-contexto/SKILL.md"
+RC_MF="$SCRIPT_DIR/skills/MANIFEST"
+RC_CK="$SCRIPT_DIR/skills/checkpoint/SKILL.md"
+RC_RH="$SCRIPT_DIR/skills/rehidratar-hilo/SKILL.md"
+
+# (1) el skill existe con su frontmatter name
+{ [ -f "$RC_SK" ] && grep -qE '^name:[[:space:]]*reconstruir-contexto[[:space:]]*$' "$RC_SK"; } \
+  && ok "reconstruir-contexto: SKILL.md presente con frontmatter name" \
+  || bad "reconstruir-contexto: falta el SKILL.md o su frontmatter name"
+
+# (2) registrada `both` en el MANIFEST (si no, install-brain no la lleva al clon COMPARTIDO sin brain global)
+grep -qE '^reconstruir-contexto[[:space:]]+both[[:space:]]*$' "$RC_MF" \
+  && ok "reconstruir-contexto: declarada 'both' en skills/MANIFEST (viaja como CORREO)" \
+  || bad "reconstruir-contexto: FALTA su línea 'both' en skills/MANIFEST"
+
+# (3) cross-link BIDIRECCIONAL: las hermanas la apuntan Y ella apunta de vuelta (cierra el lazo de recuperación)
+{ grep -qF '[[reconstruir-contexto]]' "$RC_CK" \
+  && grep -qF '[[reconstruir-contexto]]' "$RC_RH" \
+  && grep -qF '[[checkpoint]]' "$RC_SK" \
+  && grep -qF '[[rehidratar-hilo]]' "$RC_SK"; } \
+  && ok "reconstruir-contexto: cross-link bidireccional (checkpoint↔ · rehidratar-hilo↔)" \
+  || bad "reconstruir-contexto: cross-link roto (una hermana no la apunta, o ella no apunta de vuelta)"
+
+# (4) el skill TRAE wikilinks y ninguno queda COLGADO: cada uno resuelve a un brain/skills/<name> real.
+#     Exigir ≥1 link evita el falso PASS en vacío si el skill está ausente (fallaría el setup en silencio).
+rc_links="$(grep -oE '\[\[[a-z0-9-]+\]\]' "$RC_SK" 2>/dev/null | tr -d '[]' | sort -u)"
+rc_colgados=""
+for _l in $rc_links; do
+  [ -d "$SCRIPT_DIR/skills/$_l" ] || rc_colgados="$rc_colgados $_l"
+done
+{ [ -n "$rc_links" ] && [ -z "$rc_colgados" ]; } \
+  && ok "reconstruir-contexto: todos sus [[links]] resuelven a skills reales (red sin cabos colgados)" \
+  || bad "reconstruir-contexto: [[links]] ausentes o COLGADOS →${rc_colgados:- (ninguno)}"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""

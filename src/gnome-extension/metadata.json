@@ -1,0 +1,8 @@
+{
+  "uuid": "cortex@unjordi.github.io",
+  "name": "Cortex",
+  "description": "Uso de la sesión (5 h) y el límite semanal de Claude Code, leídos del snapshot que publica el daemon de cortex.",
+  "shell-version": ["48", "49", "50"],
+  "version": 1,
+  "url": "https://github.com/unjordi/cortex"
+}

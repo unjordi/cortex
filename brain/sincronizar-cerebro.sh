@@ -32,8 +32,7 @@
 #   DESTRUCTIVO → solo con --apply borra; en dry-run los lista como "RETIRARÍA". Los huérfanos por
 #   RETIRO (tier `retirado` del MANIFEST, o legado en brain/hooks/RETIRED) se retiran SIEMPRE en
 #   cualquier --apply — no necesitan este flag, porque el cerebro ya los declaró muertos (ver arriba).
-#   Antídoto a un hook retirado que quedó cableado y rompe (caso real: el viejo precompact-volcar-estado
-#   intentaba inyectar y el CLI lo rechazaba).
+#   Evita que un hook retirado que quedó cableado siga rompiendo.
 #
 # --disable <a,b,c>: DES-CABLEA (quita del settings.json) + BORRA el/los hook(s) NOMBRADO(s) del repo
 #   destino, sin sincronizar nada más. Es la vía ÚNICA y consolidada para retirar un hook obsoleto de
@@ -52,9 +51,7 @@
 #   GLOBAL+dedupe de esta máquina (razón de ser de la norma). Un hook `repo` (dod-verificar,
 #   sesion-inicio, recordar-cosechar) NO tiene equivalente global — vive
 #   SOLO por-repo por diseño — y sigue haciendo falta en CUALQUIER repo, personal o compartido; tratarlo
-#   como "sobrante" es el FP ya documentado en docs/guards-falsos-positivos.md (2026-09-08: el chequeo
-#   de "sobran" de drift-cerebro-comun.sh no mira el tier y llegó a marcar como sobrante un hook `repo`
-#   que sí hacía falta, rompiendo el candado DoD real de un repo). Este flag no repite ese error.
+#   como "sobrante" sería un falso positivo. Este flag solo toca tier `both`.
 #   REHÚSA en un repo COMPARTIDO (marca .claude/repo-compartido presente): ahí los guards por-repo SÍ
 #   deben viajar como correo, así que limpiarlos sería el daño que la norma previene. Fail-closed ante
 #   la duda: solo actúa sobre archivos que constan en el MANIFEST con tier `both`.
@@ -230,7 +227,7 @@ if [ "$LIMPIAR_PERSONAL" = 1 ]; then
 
   n_ret=0
   # Candidatos = SOLO tier `both` del MANIFEST (hook/lib/script) — no `repo` (sin equivalente global,
-  # ver cabecera y docs/guards-falsos-positivos.md 2026-09-08), no `global` (nunca los deja aquí este sync).
+  # ver cabecera), no `global` (nunca los deja aquí este sync).
   BOTH_ENTRIES="$(awk '$1!~/^#/ && NF>=3 && $2=="both"{print $1"|"$3}' "$MANIFEST")"
   if [ -d "$DST_HOOKS" ]; then
     while IFS='|' read -r name kind; do
@@ -415,7 +412,7 @@ fi
 echo ""
 echo "==> resumen: $n_new nuevos · $n_upd a actualizar · $n_ok ya al día · $n_retired retirado(s) del cerebro · $n_wire hooks cableados (kind=hook) · $n_missing_wire cableado faltante"
 
-# ══════════════════════════════════════════════════════════════════════════════════════════════════════
+# ----
 # SKILLS por-repo (tier {both,repo} del SKILLS-MANIFEST). Misma disciplina que los hooks: fuente
 # brain/skills → <repo>/.claude/skills, ÁRBOL COMPLETO de cada skill (no solo SKILL.md — algunas traen
 # reference/ o bootstrap-claude.sh), diff-aware, atómico, idempotente, respeta --apply/--only/--prune-orphans.
@@ -517,6 +514,6 @@ EOF
 
   echo "==> resumen skills: $sk_new nuevas · $sk_upd a actualizar · $sk_ok ya al día · $sk_orph huérfana(s) · $sk_retirada retirada(s) del cerebro"
 fi
-# ══════════════════════════════════════════════════════════════════════════════════════════════════════
+# ----
 
 [ "$APPLY" = 1 ] || echo "    (DRY-RUN — nada escrito. Re-corre con --apply para aplicar.)"

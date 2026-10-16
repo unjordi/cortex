@@ -5,13 +5,13 @@
 # (canal FIABLE de SessionStart — a diferencia de PreCompact, que NO tiene canal para inyectar).
 # Silencioso si el archivo no existe (no estorba en repos que no usan el sistema).
 #
-# CONFIRMADO con la doc oficial (2026-07-14, CLI 2.1.209): SessionStart + matcher `compact` +
+# Patrón documentado: SessionStart + matcher `compact` +
 # additionalContext ES el patrón DOCUMENTADO para re-inyectar contexto tras compactar — NO un
 # workaround. El additionalContext es PASIVO (el modelo lo LEE y lo tiene, no lo anuncia solo) — y
 # eso está BIEN, porque el objetivo real es la CONTINUIDAD, no el anuncio. Cómo encaja:
 #   1. El skill `checkpoint` vuelca el HILO a disco (hilo-mental-actual.md) ANTES de compactar.
 #   2. La sección `# Compact instructions` del CLAUDE.md hace que el RESUMEN de la compactación
-#      conserve ese hilo (probado en vivo 2026-07-14: hilo+decisiones+feeling sobrevivieron).
+#      conserve ese hilo.
 #   3. Post-compact el HARNESS ordena "pick up THE LAST TASK as if the break never happened" en
 #      SILENCIO (prohíbe expresamente acknowledge/recap). Lejos de ser un muro, es el vehículo:
 #      NOSOTROS definimos cuál es "the last task" (= el hilo), así que el resume silencioso ES la
@@ -25,7 +25,7 @@
 # (de qué íbamos AHORA, la decisión a medio cocinar, el siguiente paso) no vivía en ningún lado
 # durable. Este hook lo trae de vuelta. Lo ESCRIBE el skill `checkpoint` (y `cerrar-slice §2`).
 #
-# ── EL ANDAMIO MECÁNICO (2026-09-11): este hook es la MITAD LECTORA de DOS productores ────────────
+# ── EL ANDAMIO MECÁNICO: este hook es la MITAD LECTORA de DOS productores ────── ──
 # Desde que existe `checkpoint-mecanico` (hook de PreCompact + `bin/checkpoint-mecanico.js`), el hilo
 # ya no es el único artefacto que cruza la frontera del compact. El andamio
 # (`hilo-mental-actual.andamio.md`) lo escribe una MÁQUINA, sin turno del modelo, justo cuando la
@@ -39,15 +39,12 @@
 # (juicio vs traza) y van con encabezados distintos, SIEMPRE. Mezclarlos sería peor que no inyectarlo:
 # haría pasar una lista mecánica por el razonamiento del modelo.
 #
-# GATE DE FRESCURA (2026-07): antes reinyectaba el hilo SIEMPRE como "🧵 HILO MENTAL ACTUAL", sin
-# validar si estaba viejo o era de OTRA rama → podía presentar contexto ENGAÑOSO como si fuera el
-# vigente. Ahora, si el hilo fue volcado en una rama DISTINTA de la actual, degrada el encabezado a
+# GATE DE FRESCURA: si el hilo fue volcado en una rama DISTINTA de la actual, degrada el encabezado a
 # "⚠️ HILO POSIBLEMENTE OBSOLETO". La antigüedad (mtime > HILO_STALE_HORAS, default 12h) es solo un
 # PROXY de respaldo: se aplica ÚNICAMENTE cuando NO se pudo confirmar que el hilo es de la rama actual.
 # Si la rama del hilo COINCIDE con la actual, la vigencia la manda la rama, NO el reloj — una sesión
-# larga (>12h) en la misma rama sigue trabajando el MISMO hilo, y marcarlo "obsoleto" por edad enterraba
-# el propio hilo vigente (FMEA A8). Sin git / sin línea de rama en el hilo → cae al proxy de edad.
-# AÑADIDO 2026-09-11: el encabezado reporta SIEMPRE la EDAD del volcado, coincida la rama o no. En una
+# larga (>12h) en la misma rama sigue trabajando el MISMO hilo. Sin git / sin línea de rama en el hilo → cae al proxy de edad.
+# El encabezado reporta SIEMPRE la EDAD del volcado, coincida la rama o no. En una
 # rama PERMANENTE (`develop`, `Develop<Usuario>`, `main`) la rama no discrimina —nunca cambia—, así que
 # el gate da FRESCO por construcción y un hilo de días se presenta como vigente. La edad es un DATO, no
 # un veredicto: no afloja el gate (sigue mandando la rama), le añade lo que al lector le falta para juzgar.
@@ -55,6 +52,20 @@
 # NO bloquea. Fail-open. Genérico y stack-agnóstico → se instala GLOBAL (install-brain.sh) y corre
 # en CUALQUIER folder (la mitad "leer"; la mitad "escribir" es el skill checkpoint).
 set -u
+
+# ── Tope de tiempo DURO (fail-open) ───────────────────────────────────────────────────────────────
+# Corre en el SessionStart y JAMÁS debe bloquearlo minutos. Un watchdog mata este hook tras
+# REHIDRATAR_TIMEOUT_S (default 8s, 0 lo desactiva): si una operación se vuelve lenta, el arranque
+# sigue sin esperar. El O(n²) del chequeo de no-vacío (sustitución global en bash 3.2) ya se arregló a
+# O(n); esto BLINDA contra el próximo cuelgue imprevisto. Fail-open: un hook muerto = sin
+# additionalContext ese arranque (el hilo no se reinyecta esa vez), NUNCA una sesión colgada. `$$` dentro
+# del subshell es el PID de ESTE script (no del subshell) → el hook se auto-mata al vencer el tope.
+_tope="${REHIDRATAR_TIMEOUT_S:-8}"; case "$_tope" in ''|*[!0-9]*) _tope=8 ;; esac
+if [ "$_tope" -gt 0 ]; then
+  ( sleep "$_tope"; kill -TERM "$$" 2>/dev/null ) &
+  _wd=$!
+  trap 'kill "$_wd" 2>/dev/null' EXIT
+fi
 
 ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 HILO="$ROOT/.claude/memory/hilo-mental-actual.md"
@@ -126,7 +137,7 @@ ctx=""
 if [ "$hay_hilo" -eq 1 ]; then
   body=$(cat "$HILO" 2>/dev/null)
 
-  # ── Gate de FRESCURA: ¿el hilo es viejo o de otra rama? ─────────────────────────────────────────
+  # ── Gate de FRESCURA: ¿el hilo es viejo o de otra rama? ─────────────────────────────────── ──
   # Fail-open: ante cualquier duda (sin git, sin stat, sin línea de rama) NO marcamos obsoleto.
   stale=0
 
@@ -134,7 +145,7 @@ if [ "$hay_hilo" -eq 1 ]; then
   #     · rama <rama>") vs la rama actual. Otra rama → contexto de otra tarea → OBSOLETO. Misma rama →
   #     hilo vivo de ESTA línea de trabajo (aunque el archivo tenga horas). La extracción vive en
   #     `contrato-hilo.sh` (una sola definición, compartida con quien ESCRIBE el hilo) y está ANCLADA al
-  #     separador `·`: cierra el `.*[Rr]ama` goloso (FMEA A8: `feat/diagrama-x` → `-x`) y la prosa con
+  #     separador `·`: cierra el `.*[Rr]ama` goloso (`feat/diagrama-x` → `-x`) y la prosa con
   #     "de rama X" (la prosa no lleva `· rama`).
   cur_branch=$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
   hilo_branch=$(hilo_rama "$HILO")
@@ -150,7 +161,7 @@ if [ "$hay_hilo" -eq 1 ]; then
   # (2) ANTIGÜEDAD — solo un PROXY de respaldo (mtime vs HILO_STALE_HORAS, default 12h), y SOLO cuando NO
   #     se confirmó que el hilo es de la rama actual. Si la rama COINCIDE, la vigencia la manda la rama y
   #     NO el reloj: una sesión larga (>12h) en la MISMA rama sigue en el MISMO hilo → marcarlo obsoleto
-  #     por edad enterraba el propio hilo vigente (FMEA A8). Con rama indeterminada (sin git / sin línea de
+  #     por edad sería incorrecto. Con rama indeterminada (sin git / sin línea de
   #     rama) sí cae al proxy de edad — es el único indicio disponible.
   if [ "$rama_coincide" -eq 0 ]; then
     horas="${HILO_STALE_HORAS:-12}"
@@ -239,18 +250,16 @@ if [ "$hay_andamio" -eq 1 ]; then
   fi
 fi
 
-# ── A7 (inbox 2026-09-22): FARO ANTI-TRUNCADO ──────────────────────────────────────────────────────
+# ── FARO ANTI-TRUNCADO ──────────────────────────────────────────────── ──
 # El harness TRUNCA la salida de CUALQUIER hook que pase un umbral: inyecta solo un `Preview (first 2KB)`
 # y manda el resto a disco con un puntero. Si lo esencial (§SIGUIENTE) no cabe en esos ~2KB — p. ej.
-# porque el hilo abre con un árbol de tooling largo — el modelo retoma A CIEGAS y agarra como "orden viva"
+# porque el hilo abre con un árbol de tooling largo — el modelo retoma A CIEGAS y puede tomar como "orden viva"
 # el texto más imperativo que tenga enfrente (los ARGUMENTS de skills reinyectados tras compact), que es
-# HISTORIA, no la petición actual. Incidente real, medido (games-master, 2026-09-22): se lanzó a trabajo
-# YA resuelto. El fix de raíz vive en el skill `checkpoint` (el hilo nace answer-first y esbelto); ESTE es
-# el cinturón-y-tirantes: cuando el bloque a inyectar va a superar el umbral, anteponemos un FARO corto que
+# historia. El skill `checkpoint` escribe el hilo answer-first y esbelto; ESTE es
+# el respaldo: cuando el bloque a inyectar va a superar el umbral, anteponemos un FARO corto que
 # los primeros 2KB SÍ cargan — el grito de truncado, la orden de `Read` el archivo completo, y el §SIGUIENTE
 # extraído del hilo. Solo con hilo presente (el caso documentado); el andamio ya va acotado por su cuenta.
-# Default 9000: el harness corta el additionalContext alrededor de ~10K (truncado más chico medido: 10251 B);
-# 13000 dejaba 31/172 bloques truncados ENTRE 10K y 13K sin faro. 9000 queda bajo el corte medido, con margen.
+# Default 9000: el harness corta el additionalContext alrededor de ~10K; 9000 queda bajo el corte, con margen.
 budget="${REHIDRATAR_FARO_BYTES:-9000}"
 case "$budget" in ''|*[!0-9]*) budget=9000 ;; esac
 ctx_bytes=$(printf '%s' "$ctx" | wc -c | tr -d ' ')

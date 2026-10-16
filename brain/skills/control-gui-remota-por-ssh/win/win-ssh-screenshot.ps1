@@ -8,10 +8,9 @@
   Ademas DEBE ser DPI-aware: con escala 125/150% (laptops), sin SetProcessDPIAware() la captura sale
   TRUNCADA a la esquina superior-izquierda (reporta 1280x720 de un 1920x1080 real). Con el fix se
   captura TODO el VirtualScreen (multi-monitor incluido). Las coordenadas de este screenshot son las
-  MISMAS que esperan win-ssh-send-click.ps1 / win-ssh-send-keys.ps1. VERIFICADO 2026-08-27 (estacion de prueba real).
+  MISMAS que esperan win-ssh-send-click.ps1 / win-ssh-send-keys.ps1. VERIFICADO (estacion de prueba real).
 
-  `-Window "titulo"` (agregado 2026-09-18, PARIDAD con el `-Window` de linux-ssh-screenshot.sh /
-  mac-ssh-screenshot.sh -- misma semantica: substring del titulo, mismo fallback si no se halla):
+  `-Window "titulo"`:
   REUSA la MISMA tecnica que win-ssh-get-window-coordinates.ps1 (EnumWindows + GetWindowText para
   hallar el HWND cuyo titulo CONTIENE el texto, case-insensitive) -- no se reimplementa la busqueda,
   solo se repite la MISMA rutina Find() dentro del cuerpo despachado (cada gesto de este kit se
@@ -24,10 +23,10 @@
   falla (ventana minimizada o sin superficie que copiar), cae al MISMO VirtualScreen completo del
   modo default -- igual patron de fallback que Linux/Mac.
 
-  SIN CONFIRMAR EN HARDWARE: el ultimo test real de HW de este kit fue 2026-08-27 (screenshot
-  default / VirtualScreen). El modo `-Window` es NUEVO (2026-09-18) y solo paso el parse-check de
+  SIN CONFIRMAR EN HARDWARE: el ultimo test real de HW de este kit fue (screenshot
+  default / VirtualScreen). El modo `-Window` es NUEVO y solo paso el parse-check de
   sintaxis (`pwsh -NoProfile`) en una Mac -- NO se corrio contra una estacion Windows real. Antes de
-  darlo por bueno, verificalo contra HW real y actualiza esta nota con fecha+resultado.
+  darlo por bueno, verificalo contra HW real y actualiza esta nota con el resultado.
 
   USO (por SSH; correr COMO admin, con un usuario en consola):
     powershell -NoProfile -ExecutionPolicy Bypass -File win-ssh-screenshot.ps1                 # -> guarda PNG, imprime ruta+tamano

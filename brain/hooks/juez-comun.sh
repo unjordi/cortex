@@ -8,7 +8,7 @@
 # bash-3.2-safe. NUNCA loguea el valor del token (solo lo usa en el header Authorization).
 # shellcheck shell=bash
 #
-# ── CONTRATO DE FAIL-SAFE (definición ÚNICA — la lib NO decide el fail-safe, solo lo REPORTA) ──────────
+# ── CONTRATO DE FAIL-SAFE (definición ÚNICA — la lib NO decide el fail-safe, solo lo REPORTA) ──── ──
 # La lib PRODUCE texto + un ESTADO; JAMÁS inventa un veredicto. Cada juez aplica SU política ante fallo.
 #   · `_juez_token` / `_juez_llamar_api` devuelven VACÍO ante: sin token en ningún canal · sin curl/jq ·
 #     sin red · timeout · HTTP != 200 (incluido 401/403 tras agotar el reintento) · respuesta sin cuerpo.
@@ -21,18 +21,15 @@
 #   · POLÍTICA por juez (vive en CADA juez, no aquí — codificar el fail-safe en la lib acoplaría seguridad
 #     a mecánica). RESUMEN del contrato, para que quede en UN solo lugar:
 #       merge (merge-develop-guard) = fail-CLOSED: vacío/UNAVAILABLE_* → DENY. El estado solo cambia el
-#              MENSAJE: NOTOKEN → DENY + corre `claude setup-token` / exporta CLAUDE_CODE_OAUTH_TOKEN (H5,
-#              auditoría de ejecución 2026-09-16: M8, auditoría 2026-09-15 §3.11, retiró la redirección a la
-#              WEB de GitLab de los 4 mensajes del guard por la norma anti-vein-popper — "un guard que frena
-#              en CLI se SATISFACE o se ARREGLA, jamás se rodea mandando a la persona a la web"; esta cabecera,
-#              la definición ÚNICA del contrato, seguía prescribiendo el patrón que la norma prohíbe);
+#              MENSAJE: NOTOKEN → DENY + corre `claude setup-token` / exporta CLAUDE_CODE_OAUTH_TOKEN 
+#              (los mensajes nunca redirigen a la web: un guard que frena en CLI se SATISFACE o se ARREGLA);
 #              EXPIRED → DENY + "reintenta, el CLI refresca el token solo"; NET → DENY genérico. SIEMPRE DENY.
 #       dod (dod-verificar)             = fail-OPEN: vacío/UNAVAILABLE_* → exit 0 (es un NAG de disciplina,
 #              no un candado de seguridad; bloquear cada Stop sin juez atraparía al usuario en un loop).
 # NINGÚN cambio de esta lib afloja un fail-safe: el reintento en 401 solo REDUCE los falsos DENY por token
 # STALE (el CLI refresca el keychain en el ínterin) — el veredicto ante un fallo GENUINO no cambia.
 #
-# ── BACKEND LOCAL OPT-IN (Ollama) — default INTACTO en Haiku/Anthropic ─────────────────────────────────
+# ── BACKEND LOCAL OPT-IN (Ollama) — default INTACTO en Haiku/Anthropic ─────────────────────────── ──
 # Si `CLAUDE_JUEZ_LOCAL_MODEL` trae el nombre de un modelo Ollama, `_juez_llamar_api` usa un backend LOCAL
 # GRATIS (POST a $OLLAMA/api/chat) en vez de Anthropic; sin la env, el comportamiento es BYTE-IDÉNTICO al de
 # hoy (Haiku). El local NO usa token (Ollama corre sin auth). Config: `CLAUDE_JUEZ_LOCAL_MODEL` (activa),
@@ -166,7 +163,7 @@ _juez_curl_local() {
 _juez_llamar_api() {
   local modelo="$1" maxtok="$2" timeout="$3" temp="$4" prompt="$5" tok body resp http body_txt txt est rc
   est=UNAVAILABLE_NET; txt=""; rc=1
-  # ── BACKEND LOCAL opt-in (Ollama) ────────────────────────────────────────────────────────────────────
+  # ── BACKEND LOCAL opt-in (Ollama) ────────────────────────────────────────────────────────────── ──
   # Activado SOLO si CLAUDE_JUEZ_LOCAL_MODEL trae el nombre de un modelo Ollama (p.ej. qwen3:30b-...). SIN esa
   # env este bloque NO se toca y el comportamiento es BYTE-IDÉNTICO al camino Anthropic/Haiku de abajo (cero
   # regresión: default INTACTO). Mismo contrato de retorno (línea 1 = ESTADO, resto = texto) + MISMO fail-safe:
@@ -208,7 +205,7 @@ _juez_llamar_api() {
     printf '%s\n%s' "$est" "$txt"
     return "$rc"
   fi
-  # ── BACKEND DEFAULT (Anthropic/Haiku vía OAuth) — INTACTO ────────────────────────────────────────────
+  # ── BACKEND DEFAULT (Anthropic/Haiku vía OAuth) — INTACTO ────────────────────────────────────── ──
   if ! _juez_deps_ok; then
     est=UNAVAILABLE_NET
   elif ! tok="$(_juez_token)" || [ -z "$tok" ]; then

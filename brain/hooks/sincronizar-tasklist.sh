@@ -8,7 +8,7 @@
 #                                          re-parsear a mano; el modelo aplica el set al HUD vivo con las
 #                                          tools TaskCreate/TaskUpdate (única vía que refresca el HUD).
 #
-# CRUX (medido 2026-09-18, ver DISEÑO): el harness LEE los task-json al SessionStart, los tiene EN MEMORIA
+# CRUX: el harness LEE los task-json al SessionStart, los tiene EN MEMORIA
 # y solo los ESCRIBE al salir — NO re-renderiza en vivo si un proceso externo escribe los json. Y el
 # session_id ROTA sin aviso (arranque nuevo, auto-compact) → el sid del payload NO siempre casa con la
 # carpeta que respalda el HUD en pantalla. Por eso:
@@ -29,7 +29,7 @@ STL_ESTADO_REL=".claude/memory/estado-proyecto.md"
 STL_VENTANA_FALLBACK="${CLAUDE_TASKLIST_FALLBACK_SECS:-7200}"   # 2h: no adopta una carpeta stale de otra sesión
 _STL_TAB=$(printf '\t')
 
-# ── _stl_dir_tiene_json <dir> → 0 si hay ≥1 *.json legible ──────────────────────────────────────────────
+# ── _stl_dir_tiene_json <dir> → 0 si hay ≥1 *.json legible ──────────────────────────────────────── ──
 _stl_dir_tiene_json() {
   local d="$1" f
   [ -n "$d" ] && [ -d "$d" ] || return 1
@@ -37,7 +37,7 @@ _stl_dir_tiene_json() {
   return 1
 }
 
-# ── _stl_tasksdir <sid> → imprime la carpeta de tareas CORRECTA (o nada) ─────────────────────────────────
+# ── _stl_tasksdir <sid> → imprime la carpeta de tareas CORRECTA (o nada) ─────────────────────────── ──
 # Robusto a la rotación de session_id: 1) el sid del payload si tiene json; 2) si no, la carpeta no-vacía
 # MÁS RECIENTE bajo ~/.claude/tasks modificada dentro de la ventana (evita adoptar una huérfana vieja).
 _stl_tasksdir() {
@@ -60,7 +60,7 @@ _stl_tasksdir() {
   return 0
 }
 
-# ── _stl_rows <tasksdir> → TSV (status \t id \t subject) de in_progress+pending, ordenado ────────────────
+# ── _stl_rows <tasksdir> → TSV (status \t id \t subject) de in_progress+pending, ordenado ────────── ──
 _stl_rows() {
   local d="$1" f
   [ -n "$d" ] && [ -d "$d" ] || return 0
@@ -71,7 +71,7 @@ _stl_rows() {
   done | sort -t"$_STL_TAB" -k1,1 -k2,2n
 }
 
-# ── _stl_ndone <tasksdir> → cuántos json con status completed ────────────────────────────────────────────
+# ── _stl_ndone <tasksdir> → cuántos json con status completed ────────────────────────────────────── ──
 _stl_ndone() {
   local d="$1" n=0 f
   [ -n "$d" ] && [ -d "$d" ] || { printf 0; return 0; }
@@ -82,7 +82,7 @@ _stl_ndone() {
   printf '%s' "$n"
 }
 
-# ── _stl_render_body <rows-tsv> <ndone> → cuerpo markdown del bloque ─────────────────────────────────────
+# ── _stl_render_body <rows-tsv> <ndone> → cuerpo markdown del bloque ─────────────────────────────── ──
 _stl_render_body() {
   local rows="$1" ndone="$2" body st id subj icon
   body="## 🔄 Pendientes — espejo automático del TaskList (NO editar a mano)
@@ -109,7 +109,7 @@ _(+$ndone completadas · generado automáticamente)_"
   printf '%s' "$body"
 }
 
-# ── _stl_bloque_no_vacio <archivo> → 0 si ya hay un bloque espejo con al menos un pendiente listado ──────
+# ── _stl_bloque_no_vacio <archivo> → 0 si ya hay un bloque espejo con al menos un pendiente listado  ──
 _stl_bloque_no_vacio() {
   local archivo="$1"
   [ -f "$archivo" ] || return 1
@@ -120,10 +120,10 @@ _stl_bloque_no_vacio() {
   ' "$archivo" 2>/dev/null
 }
 
-# ═══════════════════════════════════════════════════════════════════════════════════════════════════════
+# ----
 # ESPEJAR — json → bloque durable. Corre en el Stop. Imprime a stdout el nº de pendientes espejados
 # (0 si no escribió o escribió vacío). SIEMPRE devuelve 0.
-# ═══════════════════════════════════════════════════════════════════════════════════════════════════════
+# ----
 espejar_tasklist() {
   local payload="${1:-}" root="${2:-}"
   command -v jq >/dev/null 2>&1 || { printf 0; return 0; }
@@ -167,12 +167,12 @@ espejar_tasklist() {
   return 0
 }
 
-# ═══════════════════════════════════════════════════════════════════════════════════════════════════════
+# ----
 # SEMBRAR — bloque durable → set de tareas. El skill to-do lo usa para NO re-parsear a mano. Imprime a
 # stdout una línea por tarea viva: `status|id|subject`. Con --write, además ESCRIBE los json a la carpeta
 # de tareas (best-effort: se recogen al PRÓXIMO SessionStart, NO en vivo — el modelo refresca el HUD actual
 # con las tools). SIEMPRE devuelve 0.
-# ═══════════════════════════════════════════════════════════════════════════════════════════════════════
+# ----
 sembrar_tasklist() {
   local root="${1:-}" write="" a
   shift || true
@@ -205,7 +205,7 @@ EOF_SEED
   return 0
 }
 
-# ── Modo CLI (cuando se EJECUTA, no se `source`ea) ───────────────────────────────────────────────────────
+# ── Modo CLI (cuando se EJECUTA, no se `source`ea) ───────────────────────────────────────────────── ──
 # Detecta ejecución directa: $0 == este archivo (no un source). Sub-comandos: espejar | sembrar.
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
   _stl_cmd="${1:-}"; shift || true

@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # limpiar-impl-flotilla.sh — SWEEPER de la FLOTILLA de cerebros (invócalo vía `limpiar.sh flotilla`,
-# NUNCA directo — es implementación interna del dispatcher `limpiar.sh`; antes vivía como el ejecutable
-# suelto `barrer-flotilla-cerebro.sh`, retirado 2026-09-17, ver MANIFEST). Tier global, kind script; NO se
+# NUNCA directo — es implementación interna del dispatcher `limpiar.sh`). Tier global, kind script; NO se
 # cablea a ningún evento. Corre STANDALONE, en batch (cron/LaunchAgent 1×/día), sobre TODOS los repos
 # brained de ~/code — no solo el de arranque de una sesión.
 #
@@ -29,7 +28,7 @@
 #     --report <p>    : archivo de reporte (default $STATEDIR/flotilla-ultimo-reporte.md).
 #     --quiet         : no imprime el reporte a stdout (útil bajo LaunchAgent con StandardOutPath).
 #     --no-residuo    : salta el barrido de residuo de housekeeping (ver abajo); solo drift de flotilla.
-# Programación (NO se instala vivo aquí — es config de máquina, la decide unjordi):
+# Programación (NO se instala vivo aquí — es config de máquina):
 #   macOS  : LaunchAgent de ejemplo en macos/launchd/com.local.drift-flotilla.plist (ver ese archivo).
 #   general: la skill `schedule` (routines cron del CLI) o `loop`.
 #
@@ -51,9 +50,8 @@ ROOTS_FILE=""
 STATEDIR="${CLAUDE_DRIFT_STATEDIR:-$HOME/.claude/memory/.drift-cerebro}"
 REPORT=""
 # El slug del proyecto en ~/.claude/projects/ es $HOME con las "/" → "-" (Claude Code lo forma así):
-# /Users/unjordi → -Users-unjordi (macOS) · /home/unjordi → -home-unjordi (Linux). Hardcodear "-Users-"
-# rompía en Linux (la Cachy): el path no existía → `[ -f "$DASHBOARD" ]` fallaba → la bitácora del sweeper
-# NUNCA se escribía (en silencio, por el `|| true`). Derivarlo de $HOME lo hace portable Mac/Linux.
+# /Users/<usuario> → -Users-<usuario> (macOS) · /home/<usuario> → -home-<usuario> (Linux). Se deriva de
+# $HOME para ser portable Mac/Linux.
 _projslug="$(printf '%s' "$HOME" | sed 's#/#-#g')"
 DASHBOARD="${CLAUDE_DASHBOARD:-$HOME/.claude/projects/${_projslug}/memory/dashboard_cerebro.md}"
 
@@ -78,7 +76,7 @@ done
 mkdir -p "$STATEDIR" 2>/dev/null || true
 [ -n "$REPORT" ] || REPORT="$STATEDIR/flotilla-ultimo-reporte.md"
 
-# ── Descubrimiento de la flotilla ────────────────────────────────────────────────────────────────────
+# ── Descubrimiento de la flotilla ────────────────────────────────────────────────────────────── ──
 # Autodescubrimiento por el SELLO que planta el sync (.claude/hooks/.brain-version) → robusto a repos
 # NUEVOS sin tocar config. El sello vive en <repo>/.claude/hooks/.brain-version = profundidad 4 bajo
 # CODE_DIR (por eso -maxdepth 5: cubre el layout plano <code>/<repo>/… y uno agrupado <code>/<grupo>/<repo>/…;
@@ -96,7 +94,7 @@ descubrir_flotilla() {
     | sort -u
 }
 
-# ── Barrido ────────────────────────────────────────────────────────────────────────────────────────
+# ── Barrido ────────────────────────────────────────────────────────────────────────────────── ──
 ts="$(date '+%Y-%m-%d %H:%M:%S')"
 n_total=0; n_synced=0; n_wouldsync=0; n_drift=0; n_flag=0; n_clean=0; n_locked=0; n_skip=0; n_syncfail=0
 BODY_SYNCED=""; BODY_ATT=""; BODY_LOCKED=""
@@ -159,7 +157,7 @@ done <<EOF
 $(descubrir_flotilla)
 EOF
 
-# ── Residuo de housekeeping (best-effort; NUNCA aborta el reporte de drift si falla) ───────────────────
+# ── Residuo de housekeeping (best-effort; NUNCA aborta el reporte de drift si falla) ───────────── ──
 residuo_linea=""
 if [ "$NO_RESIDUO" != 1 ]; then
   LIMRES="$SELFDIR/limpiar-impl-residuo.sh"
@@ -170,7 +168,7 @@ if [ "$NO_RESIDUO" != 1 ]; then
   fi
 fi
 
-# ── Reporte ──────────────────────────────────────────────────────────────────────────────────────────
+# ── Reporte ──────────────────────────────────────────────────────────────────────────────────── ──
 modo="APLICA"; [ "$DRY_RUN" = 1 ] && modo="DRY-RUN (no escribió nada)"
 resumen_linea="barrer-flotilla-cerebro [$modo] $ts — $n_total repo(s): $n_synced sync · $n_syncfail push-fallido · $n_wouldsync would-sync · $n_drift drift · $n_flag personal-flag · $n_clean al día · $n_locked lock · $n_skip n/a"
 

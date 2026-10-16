@@ -16,13 +16,11 @@
 # toca el transcript, ni masters.json, ni el repo destino. Los pasos destructivos viven EN el handoff,
 # que corre otra sesión con la objetivo cerrada (invariante «nadie se auto-mueve», §6 del SKILL).
 #
-# POR QUÉ ES UN SCRIPT Y NO UN BLOQUE DE MARKDOWN (2026-09-10, hallazgo de la primera mudanza real):
-# cuando el generador vivía como bloque en el SKILL.md, el operador tenía que extraerlo, poblar los
-# parámetros y SOURCEAR el preludio en la MISMA shell, en ese orden — dependencias invisibles que el
-# generador no verificaba. Un `source` dentro de un pipe (que no persiste) produjo un handoff con el
-# preludio SIN embeber: 473 líneas, `bash -n` impecable, certificado como «handoff OK», y muerto en
-# `DST_CWD: unbound variable` al primer arranque. En un proceso el orden no se puede equivocar, y el
-# candado nuevo (`_verificar_handoff`) exige el preludio EMBEBIDO byte a byte.
+# POR QUÉ ES UN SCRIPT Y NO UN BLOQUE DE MARKDOWN: un bloque obliga al operador a poblar los parámetros y
+# SOURCEAR el preludio en la MISMA shell, en ese orden. Un `source` dentro de un pipe (que no persiste)
+# produce un handoff con el preludio SIN embeber: `bash -n` impecable y muerto en
+# `DST_CWD: unbound variable`. En un proceso el orden no se puede equivocar, y el
+# candado (`_verificar_handoff`) exige el preludio EMBEBIDO byte a byte.
 set -euo pipefail
 umask 077
 
@@ -163,7 +161,7 @@ _verificar_handoff(){
     ' "$H" "$P" || _fallo_candado \
       "el PRELUDIO no está embebido TEXTUALMENTE en el handoff" \
       "preludio: $P" \
-      "Es el fallo del 2026-09-10: el 'cat' de concatenación recibió una ruta vacía y el handoff salió" \
+      "Causa típica: el 'cat' de concatenación recibió una ruta vacía y el handoff salió" \
       "sin helpers ni derivadas — sintaxis perfecta y muerto en 'DST_CWD: unbound variable'."
     # y la lista de símbolos se verifica contra el preludio REAL: si un símbolo de la lista ya no existe
     # en el preludio, la lista driftó y hay que arreglarla — no seguir creyéndole.
@@ -183,7 +181,7 @@ _verificar_handoff(){
   [ -z "$faltan" ] || _fallo_candado \
     "el handoff no define lo que el PRELUDIO aporta ⇒ moriría en la primera variable" \
     "símbolos ausentes:$faltan" \
-    "Causa típica: el preludio no se embebió (ver el hallazgo del 2026-09-10 en la cabecera del script)."
+    "Causa típica: el preludio no se embebió (ver la cabecera del script)."
 
   # ── (2) parámetros horneados + marcadores de paso en línea EJECUTABLE ───────────────────────────
   faltan=""
@@ -195,7 +193,7 @@ _verificar_handoff(){
 
   # Las líneas no comentadas se materializan UNA vez a un archivo y se grepean ahí: `grep -v … | grep -q`
   # cierra el pipe al primer match, el `grep -v` de arriba muere con SIGPIPE y bajo `pipefail` el candado
-  # fallaría EN FALSO sobre un handoff correcto (medido).
+  # fallaría EN FALSO sobre un handoff correcto.
   nocom="$(mktemp)"
   grep -vE '^[[:space:]]*#' "$H" > "$nocom" || true
   faltan=""
@@ -237,7 +235,7 @@ _verificar_handoff(){
 # nunca vivió en el origen— un `diff` contra un archivo ausente falla siempre y el gate bloquearía un
 # destino COMPLETO.
 #
-# Dos correcciones que salieron de CORRERLO de verdad el 2026-09-10, y que la versión en markdown traía:
+# Dos puntos que solo se ven al CORRERLO:
 #
 #  (a) T4 NO puede exigir `.claude/settings.json` en TODO destino. La norma dura del cerebro dice
 #      «repo PERSONAL: memoria/skills SÍ, guards por-repo NUNCA» (sus guards salen del install GLOBAL +
@@ -376,12 +374,8 @@ fi
 # ══════════════════════════════════════════════════════════════════════════════════════════════════
 # SUBCOMANDO `clasificar` — la EVIDENCIA para la Decisión #2, no un veredicto
 # ══════════════════════════════════════════════════════════════════════════════════════════════════
-# Reemplaza al "comando de descubrimiento" que §7 #2 traía antes: un `grep -rilEv` de seis palabras de
-# stack (`plantilladotnet|.NET|blazor|dapper|EF Core|webapi|migracion-ef`) sobre las memorias del origen.
-# MEDIDO el 2026-09-10 en la mudanza real: devolvió **44 de 43** archivos — incluido el propio MEMORY.md —
-# porque "no menciona blazor" no es una señal de PROPIEDAD: casi ninguna memoria menciona el stack, ni las
-# de otro proyecto ni las de trato personal. Un descubrimiento que no descarta nada no descubre nada, y
-# empujaba al operador a inventar el corte de memoria (que es exactamente lo que pasó).
+# Un `grep -v` por palabras del stack sobre las memorias del origen NO sirve como descubrimiento:
+# "no menciona blazor" no es una señal de PROPIEDAD, y empuja al operador a inventar el corte de memoria.
 #
 # Las señales que SÍ hablan de propiedad, y que este subcomando pone en una tabla:
 #   · el `description:` que la memoria trae de sí misma (dice de QUÉ es, en sus palabras);
@@ -482,7 +476,7 @@ fi
 # ══════════════════════════════════════════════════════════════════════════════════════════════════
 # Ninguno tiene un default engañoso. `DRIVE` no tiene fallback: un default que apunta a la ruta de OTRA
 # máquina no ayuda, miente — y CLAUDE_SESSIONS_DRIVE vive en el bloque `env` de ~/.claude/settings.json,
-# así que en el shell plano que este skill prescribe está VACÍA (medido).
+# así que en el shell plano que este skill prescribe está VACÍA.
 ID="${ID:-}"
 DST_REPO="${DST_REPO:-}"
 MASTER_NAME="${MASTER_NAME:-}"
@@ -646,9 +640,8 @@ done
 
 # ── PREFLIGHT de CAPACIDAD de la maquinaria (se mide lo que el guion INVOCA, no su versión) ─────────
 # El BIN resuelto puede ser un cortex INSTALADO más viejo que este skill, y el skill lo descubriría a
-# media mutación. MEDIDO el 2026-09-10 sobre la mudanza real: `~/.local/bin` llevaba 3 días atrás y NO
-# tenía NI `--git-branch` NI `rewriteTranscriptStream` — las dos cosas que S4 invoca DESPUÉS del punto de
-# no retorno. El handoff habría movido 152 MB de transcript y reventado al re-anclar.
+# media mutación. Un `~/.local/bin` viejo puede no tener
+# `--git-branch` ni `rewriteTranscriptStream` — lo que S4 invoca DESPUÉS del punto de no retorno.
 # Se mide CAPACIDAD (que no caduca) y no fechas ni SHAs: un SHA distinto puede ser inofensivo, y uno
 # idéntico puede seguir sin la función. El sello LIB_SHA del handoff es complementario — avisa de un
 # CAMBIO entre generar y correr; esto exige la capacidad, y falla CERRADO.
@@ -813,8 +806,7 @@ fi
 #     sin la lib ⇒ sin lock; por eso `_postcondiciones` asevera además que ningún alias AJENO se perdió —
 #     el lock ata a quien pasa por la lib, la aserción caza a quien no.
 #   · REUBICAR_QUIESCE_ESTRICTO=1 restaura el todo-o-nada (cero sesiones vivas en la máquina).
-# Medido el 2026-09-10: con un `databases-master` trabajando en otro repo, el gate viejo bloqueaba una
-# mudanza que no tenía forma de tocarlo, y el humano tenía que interrumpir su trabajo por un proxy.
+# El gate mide por artefacto: otro master trabajando en otro repo no bloquea la mudanza.
 echo "── G-QUIESCE ──"
 QUIESCE_MIN="${REUBICAR_QUIESCE_MIN:-5}"
 _ref="$(mktemp)"
@@ -953,10 +945,8 @@ _postcondiciones(){
 # ── RE-ANCLAJE de REPARACIÓN · UNA sola definición, la usan S4 (si el move no dejó el par bueno) y S7
 #    (si el resume lo contaminó). Va por `rewriteTranscriptStream` de la MISMA lib que usa el move:
 #    STREAMING con memoria ACOTADA por la ventana de retención, no `readFileSync` del archivo completo.
-#    Medido: el pico lo fija `holdBytes`, NO el tamaño del archivo (mismo pico sobre 107 MB y 428 MB;
-#    con 32 MiB de ventana ≈ 320 MB de pico). Leer el transcript completo a un string costaba 1.73 GiB
-#    sobre un archivo de 429 MB — y este paso corre DESPUÉS del punto de no retorno, que es justo donde
-#    una excepción por memoria es catastrófica.
+#    El pico lo fija `holdBytes`, NO el tamaño del archivo. Este paso corre DESPUÉS del punto de no
+#    retorno, donde una excepción por memoria es catastrófica.
 #    Escribe a un temporal del MISMO dir y publica con rename; preserva el modo y la última línea cortada.
 #    `gitBranchRewritten` vuelve en 0 si el último evento con `cwd` quedó FUERA de la ventana ⇒ se
 #    propaga como fallo (exit 3) para que NO se declare reparado lo que no se reparó.
@@ -1074,7 +1064,7 @@ else
   [ -f "$DRIVE/.export-$ID.lock" ] && _abort "BLOQUEO G-LIVENESS: auto-export detached en vuelo (el hook exporta en background)" || true
   echo "  ok: $TGT_FILE frío hace ${_age}m"
   # SIN techo de tamaño: todo el camino que toca el transcript va en STREAMING con memoria ACOTADA
-  # (medido: el pico lo fija la ventana de retención, no el archivo — ver §9). Lo único que ESCALA con
+  # (el pico lo fija la ventana de retención, no el archivo — ver §9). Lo único que ESCALA con
   # el tamaño es el DISCO: el move escribe la copia completa del destino ANTES de borrar el origen.
   _sz="$(_size "$TGT_FILE")"
   echo "  transcript: $_sz bytes ⇒ necesitas ~$(( _sz / 1024 / 1024 * 4 )) MB libres en el filesystem de"
@@ -1157,7 +1147,7 @@ fi
 echo "  cwd de primer nivel: $uniq_n valor/es · último par: $(_ultimo_par "$NEW_JSONL")"
 
 # S4-2c · el modo del transcript. El move CONSERVA el modo del ORIGEN, y el origen puede venir fuera de
-# convención (verificado 2026-09-08: 1 de 131 en 644 donde el resto del slug está en 600) ⇒ se normaliza
+# convención ⇒ se normaliza
 # aquí. En Windows/NTFS es no-op y la postcondición se declara informativa en vez de fingirse.
 echo "  S4-2c · chmod 600"
 chmod 600 "$NEW_JSONL" 2>/dev/null || true
@@ -1218,8 +1208,7 @@ if [ -f "$TGZ" ]; then
   # ── El HILO no es identidad: su llave es (repo × stream), no (master) ──────────────────────────
   # `conocimiento-propio` y `autorizaciones-vigentes` son del MASTER: hay UNA copia buena y que difiera
   # es una anomalía que un humano debe reconciliar. El `hilo-mental-actual.md` NO: cada repo tiene el
-  # suyo, el master escribe uno DISTINTO en cada repo donde trabaja (medido: 70 escrituras al de cortex
-  # y 61 al de plantilladotnet, el MISMO master) y el destino casi siempre llega con uno propio y vivo.
+  # suyo, el master escribe uno DISTINTO en cada repo donde trabaja y el destino casi siempre llega con uno propio y vivo.
   # Tratarlo como identidad convertía la mudanza en un merge manual de un archivo VOLÁTIL en el 100% de
   # los casos normales — un gate que dispara siempre no es un gate, es un peaje. Se CO-UBICA: el destino
   # conserva el suyo, el del master aterriza al lado con el nombre del master, y el PRIMER checkpoint
@@ -1278,8 +1267,7 @@ for _f in "$T2_ROOT" $(for m in ${T2_LOCAL[@]+"${T2_LOCAL[@]}"}; do printf '.cla
 done
 # barrido QUIRÚRGICO del slug COMPARTIDO: SOLO el <id>.jsonl. NUNCA el 'memory' del slug.
 [ -f "$PROJ/$OLD_SLUG/$ID.jsonl" ] && rm -f "$PROJ/$OLD_SLUG/$ID.jsonl" || true
-# ⛔ NO se crea symlink 'memory' en el slug NUEVO — decisión de unjordi (2026-09-08, textual):
-#   "QUIERO QUE ESTO QUEDE SIN SIMLINKS. PUNTO" · "son un pinche bug que no logro que dejen de propagar"
+# ⛔ NO se crea symlink 'memory' en el slug NUEVO.
 # Si el bootstrap ya lo sembró, se RETIRA (solo el enlace: sin -r y sin slash final).
 [ -L "$PROJ/$NEW_SLUG/memory" ] && { rm "$PROJ/$NEW_SLUG/memory"; echo "    retirado el symlink 'memory' del slug nuevo"; } || true
 if [ -e "$PROJ/$OLD_SLUG/memory" ]; then

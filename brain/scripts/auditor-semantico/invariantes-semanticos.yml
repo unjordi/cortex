@@ -35,7 +35,7 @@ invariantes:
       crear/actualizar, ¿se valida su existencia ANTES de persistir, con un error de negocio
       limpio (404/422) — o un Id inexistente revienta como DbUpdateException genérica (500)?
     origen: >
-      Auditoría de un proyecto derivado, 2026-07-15 — un servicio no validaba las FK recibidas
+      Un servicio no validaba las FK recibidas
       antes de guardar; otro servicio, en el mismo commit, sí lo hacía. Inconsistencia dentro
       del mismo PR — justo lo que un test de camino feliz no atrapa.
     estado: seed
@@ -47,7 +47,7 @@ invariantes:
       evento de dominio), ¿el valor SIEMPRE se deriva del usuario autenticado (claims del
       JWT), nunca de un Id/nombre que el cliente pueda mandar en el body de la petición?
     origen: >
-      Auditoría de un proyecto derivado, 2026-07-15 — las firmas se verificaron correctas (usan
+      Las firmas se verificaron correctas (usan
       el usuario actual, rechazan explícitamente un usuario de sesión ajeno). Se deja como
       pregunta a repetir en cada módulo nuevo con firmas/aprobaciones, porque es fácil regresarla
       al copiar-pegar un formulario.
@@ -61,7 +61,7 @@ invariantes:
       para agrupar (año/periodo del folio) es el MISMO que el usado para contar — no uno para
       calcular el folio y otro distinto para el conteo?
     origen: >
-      Auditoría de un proyecto derivado, 2026-07-15 — un servicio calculaba el folio sin lock
+      Un servicio calculaba el folio sin lock
       (mitigado por índice único en BD, pero la petición concurrente perdedora recibe un 500
       genérico) y usaba un campo de fecha para el folio mientras el conteo agrupaba por OTRO — un
       registro retroactivo a caballo de fin de año puede desalinearse.
@@ -74,7 +74,7 @@ invariantes:
       Finalizado, ¿existe un test EXPLÍCITO de que el estado terminal rechace mutaciones
       (agregar/quitar hijos, editar) — no solo que el camino feliz de cerrar funcione?
     origen: >
-      Auditoría de un proyecto derivado, 2026-07-15 — el método que cerraba un agregado no tenía
+      El método que cerraba un agregado no tenía
       ningún test; nada cubría que el estado Cerrado rechazara agregar/quitar hijos.
     estado: seed
 
@@ -85,7 +85,7 @@ invariantes:
       (no editable por el usuario), ¿el SERVIDOR (dominio o validator) impone la misma regla,
       o basta un POST/PUT directo con el permiso correcto para grabar un valor arbitrario?
     origen: >
-      Auditoría de un proyecto derivado, 2026-07-15 — un campo con códigos fijos de un catálogo
+      Un campo con códigos fijos de un catálogo
       se podía grabar con cualquier valor vía API pese a que la UI lo mostraba solo-lectura; ni
       el dominio ni los validators lo cruzaban contra el catálogo.
     estado: seed

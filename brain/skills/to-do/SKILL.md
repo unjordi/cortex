@@ -67,15 +67,13 @@ bash "${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/sincronizar-tasklist.sh" sembrar   
 Eso te da, DETERMINISTA, el set de tareas vivas serializado en el bloque espejo (que viaja por git y
 sobrevive la rotación de session_id). Ese set lo **aplicas al HUD vivo con las tools** (`TaskCreate`/
 `TaskUpdate`) — es la ÚNICA vía que refresca el HUD en pantalla: el harness tiene la lista EN MEMORIA y NO
-re-renderiza si un proceso externo escribe los json (crux medido 2026-09-18). La lib hace la continuidad
+re-renderiza si un proceso externo escribe los json. La lib hace la continuidad
 mecánica; TÚ curas encima los ítems NUEVOS del backlog freeform (los grupos 🟢/🟡 que aún no están en el
 bloque). Una lógica, varios disparadores: el Stop la corre en sentido HUD→durable; tú la corres aquí en
 sentido durable→HUD.
 
-**El purismo "no persistas la vista derivada" EVOLUCIONÓ** (contexto nuevo, decisión de unjordi 2026-09-18):
-antes el modo de falla era actualizar SOLO el HUD y olvidar las memorias durables → la regla prohibía un
-archivo paralelo. Ese modo se INVIRTIÓ: hoy el modelo actualiza SOLO `estado-proyecto.md` y OLVIDA el HUD.
-Por eso ahora SÍ se serializa la vista al **bloque `<!-- espejo-tasklist -->` DENTRO de `estado-proyecto.md`**
+**La vista derivada SÍ se persiste:** el modo de falla es actualizar SOLO `estado-proyecto.md` y olvidar
+el HUD. Por eso se serializa la vista al **bloque `<!-- espejo-tasklist -->` DENTRO de `estado-proyecto.md`**
 (no un archivo aparte) — es la única forma de que el HUD sobreviva la rotación de session_id y viaje por
 git. Sigue habiendo UNA fuente de verdad (el .md); el bloque es su sección-máquina, mantenida sola.
 
@@ -83,7 +81,7 @@ git. Sigue habiendo UNA fuente de verdad (el .md); el bloque es su sección-máq
 - **La task-list / `TodoWrite` del harness = SCRATCH de sesión.** Efímera (se pierde al cerrar/compactar). Es una **VISTA**.
 - **El backlog DURABLE = `.claude/memory/estado-proyecto.md`.** La **FUENTE DE VERDAD** ("aquí empiezas siempre").
 - La interfaz **espeja** el backlog durable, no lo reemplaza. Al **cerrar** una tarea, el cambio se **ASIENTA en `estado-proyecto.md`** (lo hace `cerrar-slice §2`), no solo en la task-list. **Si divergen, manda `estado-proyecto.md`.**
-- **La VISTA es de ESTA rama/repo → RE-SIÉMBRALA al rotar el working tree.** Al cambiar de **rama git** o de **proyecto/cwd**, la task-list del harness NO se resetea sola: sigue mostrando pendientes de la tarea anterior (drift). Cuando cambies de contexto, RE-EVALÚALA — si ya no aplica, límpiala y re-puéblala del `estado-proyecto.md` de ESA rama. Sin hook que te lo recuerde (`hud-stale` se retiró, overhaul hooks 2026-09-18, puramente advisory): nótalo TÚ tras rotar de rama/cwd; este skill es la mitad que la RE-SIEMBRA.
+- **La VISTA es de ESTA rama/repo → RE-SIÉMBRALA al rotar el working tree.** Al cambiar de **rama git** o de **proyecto/cwd**, la task-list del harness NO se resetea sola: sigue mostrando pendientes de la tarea anterior (drift). Cuando cambies de contexto, RE-EVALÚALA — si ya no aplica, límpiala y re-puéblala del `estado-proyecto.md` de ESA rama. Sin hook que te lo recuerde: nótalo TÚ tras rotar de rama/cwd; este skill es la mitad que la RE-SIEMBRA.
 
 ## Regla 2 — Redacción DURABLE (anti-stale)
 Un ítem se redacta para que **NO envejezca mal**:
@@ -92,7 +90,7 @@ Un ítem se redacta para que **NO envejezca mal**:
 - **Fechas ABSOLUTAS** (`2026-08-06`), **jamás relativas** ("hoy / ahora / anoche / esta semana") — se quedan stale en 3 patadas.
 - **Cero estado transitorio en el título** ("(nadie lo necesita hoy)"). Si importa, va como **nota DATADA** o como **prioridad**, no cocido en el nombre.
 
-**Antes → después** (caso real):
+**Antes → después:**
 ❌ `[PARQUEADO] Re-scopear casalianza a 7 guards (nadie lo necesita hoy)`
 ✅ título `Re-scopear casalianza a 7 guards` · estatus `parked` · nota `parqueado 2026-08-06, sin consumidor urgente`
 
@@ -117,6 +115,6 @@ Dos chequeos OBLIGATORIOS, en orden:
 
 ## Relación
 - **`cerrar-slice §2`** — asienta el cierre en `estado-proyecto.md` (donde el ESPEJO se vuelve durable).
-- **`orquestar-fanout`** — modelo de estado de dos archivos para el fan-out.
+- **Norma «Delegar a agentes»** — avance de un agente a `bitacora.md` y estado a `estado-proyecto.md`.
 - **`checkpoint`** — vuelca el hilo vivo (`hilo-mental-actual.md`); los pendientes durables ya viven en `estado-proyecto.md`.
-- Cambiaste de rama/proyecto y la vista quedó stale → NÓTALO tú (sin hook que avise: `hud-stale` se retiró, overhaul hooks 2026-09-18); este skill la RE-SIEMBRA.
+- Cambiaste de rama/proyecto y la vista quedó stale → NÓTALO tú (sin hook que avise); este skill la RE-SIEMBRA.

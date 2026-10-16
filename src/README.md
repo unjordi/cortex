@@ -39,6 +39,15 @@ por SSH/headless). Luego en Plasma: clic derecho en el panel → **Agregar o adm
 instalador corre `npm i -g ccusage`; si ya lo tienes en `PATH` se usa directo; con `--no-ccusage` cae
 a `npx -y ccusage@latest` en cada corrida, ~7 s más lento).
 
+## GNOME Shell (extensión, en port)
+
+En GNOME el instalador pone una **extensión de GNOME Shell** (`src/gnome-extension/`, uuid
+`cortex@unjordi.github.io`, GNOME 48–50) en vez del plasmoide; lo decide por `XDG_CURRENT_DESKTOP`
+(forzable con `--gnome` / `--kde`). Lee los mismos `~/.cache/cortex/*.json` que el plasmoide. GNOME no
+recarga extensiones en caliente: tras instalar, **cierra sesión y vuelve a entrar**. Para iterar sin
+tocar tu panel: `src/gnome-extension/dev-anidado.sh [pestaña]` (GNOME anidado aislado; requiere
+`mutter-devkit`). Avance del port por pestaña: [`docs/propuestas/widget-gnome.md`](../docs/propuestas/widget-gnome.md).
+
 ## Arquitectura (Linux)
 
 El daemon es un `systemd --user` timer que **impone un piso de refresco de 5 min** (`OnUnitActiveSec=5min`,
@@ -77,7 +86,9 @@ Cada fila de proyecto con **sesiones de Claude Code** trae un chevron (▸): des
 sesiones recientes (de `sessions.json`, máx 12) y **haz clic en una para "resumirla"** — abre una
 terminal en su `cwd` y corre `claude --resume <id>`. En Linux se intenta la primera terminal
 disponible en cascada: `konsole` (KDE) → `x-terminal-emulator` (default Debian/Ubuntu) →
-`gnome-terminal` → `xterm`. **Clic-secundario sobre una sesión** ofrece el mismo "Renombrar…" /
+`gnome-terminal` → `xterm`; en la extensión de GNOME la cascada empieza por las de GNOME: `ptyxis` →
+`gnome-terminal` → `kgx` → `konsole` → `x-terminal-emulator` → `xterm`. **Clic-secundario sobre una sesión**
+(en GNOME: una tira de botones bajo la fila) ofrece el mismo "Renombrar…" /
 "Restaurar original": escribe `~/.claude/sesiones-alias.json` con llave = `id` de la sesión (estable),
 que `sessions-extract.js` lee para sustituir la etiqueta derivada del transcript.
 

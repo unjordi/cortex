@@ -9,7 +9,7 @@
 # SSH SI corre fuera del "bootstrap context" de Aqua/WindowServer del usuario en la consola salvo
 # que se despache explicito a esa sesion -- el mecanismo previsto es `launchctl asuser <uid> ...`.
 #
-# ESTADO DE VERIFICACION (2026-09-18, ver ../SKILL.md): CONFIRMADO en LOCAL -- corriendo DENTRO de
+# ESTADO DE VERIFICACION: CONFIRMADO en LOCAL -- corriendo DENTRO de
 # la propia sesion de consola (mismo usuario, sin SSH de por medio), `screencapture`/`cliclick`/
 # `osascript` funcionan directo, SIN necesitar `launchctl asuser` (el proceso ya hereda el
 # bootstrap-context correcto porque nace dentro de esa sesion). NO SE PUDO confirmar el caso
@@ -34,7 +34,7 @@ mac_console_user() {
 # mac-ssh-screenshot.sh, paridad con el VirtualScreen completo de win-ssh-screenshot.ps1).
 # Via `system_profiler SPDisplaysDataType` -- NO depende del permiso TCC de Accesibilidad/Grabacion
 # de pantalla (a diferencia de contar "desktops" por System Events), asi que funciona aunque esos
-# permisos aun no esten concedidos. VERIFICADO 2026-09-18 en esta Mac: 3 pantallas reales (Retina
+# permisos aun no esten concedidos. VERIFICADO: 3 pantallas reales (Retina
 # integrada + 2 externas), ~0.3s de latencia -- rapido, no hace falta cachear.
 mac_display_count() {
     local n

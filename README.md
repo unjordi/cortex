@@ -58,7 +58,7 @@ repo y corre el instalador maestro (**cerebro + daemon + widget**). Idempotente.
 git clone https://github.com/unjordi/cortex && cd cortex
 ./install.sh                 # todo  ·  --no-gui (sin widget)  ·  --no-brain (sin cerebro)
 ```
-Puerta por OS: **Linux/KDE** → `./install.sh` · **macOS** → [`macos/`](macos/) · **Windows** →
+Puerta por OS: **Linux (KDE o GNOME)** → `./install.sh` · **macOS** → [`macos/`](macos/) · **Windows** →
 [`windows/`](windows/) (`pwsh -File install.ps1`). **Prereq de los guardias: [`jq`](https://jqlang.github.io/jq/)**
 (sin él los hooks **fallan abierto** y no se cablea `settings.json`).
 
@@ -102,8 +102,8 @@ El cerebro se ordena por *dureza*: arriba lo que te **bloquea** sin negociar; ab
    ├─ 🧭 sesion-inicio            reinyecta rama + norma + memoria al abrir
    └─ 🌾 recordar-cosechar        espejo automático del TaskList vivo → bloque fenced en estado-proyecto.md (determinista, sin LLM)
       (💤 precompact-volcar-estado se RETIRÓ: PreCompact no puede inyectar; lo cubren 💾 checkpoint + 🧵 rehidratar-hilo + 📈 aviso-contexto.
-       overhaul hooks 2026-09-18: recordar-dashboard/delegacion-reporte/recordar-orquestar/recordar-unificar-cerebro/hud-stale se RETIRARON
-       —puramente advisory, medido: ignorados— y su regla subió a norma en brain/norms/global-claude-md.md; MANIFEST los lista `retirado`.)
+       recordar-dashboard/delegacion-reporte/recordar-orquestar/recordar-unificar-cerebro/hud-stale están retirados: su regla
+       vive en brain/norms/global-claude-md.md; MANIFEST los lista `retirado`.)
 
 📜 Normas — reglas que Claude se autoimpone (CLAUDE.md)
 ├─ 🎯 Definition of Done       verde técnico ≠ Done/Listo/Ya Quedó; exige QA o un OK explícito
@@ -116,7 +116,7 @@ El cerebro se ordena por *dureza*: arriba lo que te **bloquea** sin negociar; ab
 ├─ 💾 checkpoint               vuelca el HILO a memoria para compactar sin perderlo (proactivo)
 ├─ 🗂️ to-do                    carga la interfaz de tareas del harness desde el backlog durable (estado-proyecto.md)
 ├─ 💧 rehidratar-hilo          relee el HILO a mano (gemelo del hook; respaldo si un update del CLI rompe el auto-rehidratado)
-├─ 🐝 orquestar-fanout         fan-out sin niñera: asigna del backlog, auto-reporta y limpia al cerrar
+├─ 🛟 reconstruir-contexto     RED DE EMERGENCIA cuando el checkpoint quedó pobre y /compact fundió el hilo: excava andamio→backlog→transcript y cierra re-volcando con checkpoint
 ├─ 🗺️ diagramar                diagramas por destino: .dot→dot2yed→yEd (editar a mano) · Mermaid en .md versionado (verse en GitHub)
 ├─ 🔬 auditar-proceso-algoritmo  auditor experto read-only (proceso industrial + algoritmo) → hallazgos priorizados; se alimenta de los flowcharts de diagramar
 ├─ 🩺 auditar-coherencia-cerebro fan-out read-only sobre el PROPIO cerebro (guards+flowcharts+doc): evasiones/huecos/drift, verificado por ejecución → loop hasta converger; modo-cerebro de auditar-proceso-algoritmo
@@ -128,6 +128,7 @@ El cerebro se ordena por *dureza*: arriba lo que te **bloquea** sin negociar; ab
 ├─ 🎓 investigar-dominio             ponte experto en un dominio (fan-out DOC-FIRST) → memorias durables + skills
 ├─ 📚 construir-missing-manual       fabrica el manual/wiki de referencia exhaustivo que no existe (fan-out que investiga 1× y hornea) → artefacto consultable OFFLINE
 ├─ 🚚 reubicar-master                muda una sesión master COMPLETA a otro repo (brain-master → cortex) sin residuo: transcript+cwd, cerebro, slug y refs atómicas
+├─ 🛰️ coordinar-claudes            coordina otros masters en nombre del usuario: despierta (desde los transcripts, no masters.json) · encarga la cola · vigila (commit/colgado/muerto) · destraba · verifica con evidencia · releva OKs del usuario
 ├─ 🔍 zoom-screenshot                recorta y amplía regiones de una captura (ffmpeg) para leer texto fino ilegible
 ├─ 🔩 ingenieria-inversa-gui-db-navegador  ingeniería inversa de app legacy GUI+BD: driving la UI vía navegador + diff de la BD antes/después = doc con evidencia real
 ├─ 📕 markdown-a-pdf                 convierte .md a PDF pulido y distribuible vía md-to-pdf (npx, sin instalar) con el gotcha de --css y QA visual real
@@ -189,7 +190,7 @@ mismo árbol.
 Es **doc de record** (norma *doc = realidad*): si cambia un hook/norma/skill —alta, baja o cambio de
 lógica— se actualiza `mapa-cerebro.md` **en la misma tanda**, igual que este árbol y el conteo de
 checks de `test-brain.sh`. Para el mapa *editable a mano* (yEd) el flujo va por el skill `diagramar`;
-el viejo `docs/mapa-flujos.dot` (maestro único en Graphviz) se **retiró el 2026-07-29**.
+`docs/mapa-flujos.dot` (maestro único en Graphviz) está retirado.
 
 ## Lo que lo hace vivo — se refleja, se cura, se actualiza
 
@@ -294,7 +295,7 @@ depender de en qué te toque trabajar.
 | OS | GUI | Detalle |
 |---|---|---|
 | 🍎 **macOS** | app de barra de menú (Swift) | [`macos/README.md`](macos/README.md) — agente `launchd` |
-| 🐧 **Linux** | widget KDE Plasma 6 (QML) | [`src/README.md`](src/README.md) — timer `systemd --user`, ajustes y diagnóstico |
+| 🐧 **Linux** | widget KDE Plasma 6 (QML) · extensión GNOME Shell 48–50 (GJS, en port: [`src/gnome-extension/`](src/gnome-extension/)) | [`src/README.md`](src/README.md) — timer `systemd --user`, ajustes y diagnóstico |
 | 🪟 **Windows** | app de bandeja (WinForms, .NET) | [`windows/README.md`](windows/README.md) — `.exe` self-contained, sin bash/jq |
 
 ## Contribuir al cerebro

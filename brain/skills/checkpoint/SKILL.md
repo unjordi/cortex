@@ -79,9 +79,6 @@ procedencia de cada idea— no se re-mide de ningún lado: si se comprime, se pi
 vive en el hilo.** Vive en `~/.claude/CLAUDE.md`, en `como-trabajar-con-<user>.md` y en el `CLAUDE.md`
 del repo. El hilo los REFERENCIA; jamás los re-resume, porque re-resumir es justo lo que los desgasta.
 
-**Un caso medido:** 9 checkpoints en 5h42m en un mismo día, tres separados por 4 y 6 minutos (una sesión
-que "avanzó mucho en lo técnico pero perdió por completo el flow").
-
 ## Qué hace (el volcado)
 
 > **GARANTÍA DURA (answer-first): un checkpoint NUNCA pierde nada durable al sobrescribir el hilo.**
@@ -99,8 +96,8 @@ que "avanzó mucho en lo técnico pero perdió por completo el flow").
    cat .claude/memory/hilo-mental-actual.andamio.md
    ```
    **Corre este paso SIEMPRE, no solo cuando ya hubo un `PreCompact`:** el hook `checkpoint-mecanico`
-   solo dispara en `PreCompact`, y la mayoría de los checkpoints NO vienen de una compactación (medido:
-   ~5 volcados por cada compact). Sin este paso, un `/checkpoint` a mano encuentra el andamio viejo o
+   solo dispara en `PreCompact`, y la mayoría de los checkpoints NO vienen de una compactación. Sin este
+   paso, un `/checkpoint` a mano encuentra el andamio viejo o
    ausente, sin poder distinguir cuál. Con `--ensure`, el andamio SIEMPRE está al día cuando lo lees,
    venga o no de un compact. (Dentro de un SUBAGENTE `--self` se niega a correr y lo dice: el
    `CLAUDE_CODE_SESSION_ID` que ve un subagente es el del PADRE, y regeneraría el andamio de OTRA sesión.)
@@ -134,8 +131,8 @@ que "avanzó mucho en lo técnico pero perdió por completo el flow").
 
    ## ⏱️ SIGUIENTE / ESTADO (answer-first — esto PRIMERO, aunque todo lo demás se trunque)
    <2-5 líneas MÁXIMO: el próximo paso concreto + en UNA línea qué quedó RESUELTO que NO se reabre. Es lo
-    ÚNICO que el preview de ~2KB garantiza si el harness trunca el hilo al rehidratar (incidente 2026-09-22:
-    un hilo que abría con el árbol empujó el «qué sigue» fuera del preview → se retomó trabajo ya resuelto).
+    ÚNICO que el preview de ~2KB garantiza si el harness trunca el hilo al rehidratar (si el hilo abre con
+    el árbol, el «qué sigue» puede quedar fuera del preview y se retoma trabajo ya resuelto).
     NUNCA abras el hilo con el árbol de tooling/un inventario: va DESPUÉS de esta sección.>
 
    ## 🗂️ ÁRBOL — memorias y tooling (tras el §SIGUIENTE · LÉELO al rehidratar)
@@ -182,9 +179,9 @@ que "avanzó mucho en lo técnico pero perdió por completo el flow").
 
    **VERIFICA el contrato al terminar de escribir (paso mecánico, 1 comando).** El footer
    `> Última actualización: <AAAA-MM-DD> · rama <rama> · nivel <x>` no es decoración: `rehidratar-hilo`
-   decide con él si tu hilo se reinyecta como VIGENTE o degradado a "⚠️ POSIBLEMENTE OBSOLETO". Medido el
-   2026-09-11 sobre los 9 hilos reales de `~/code`: **2 de 9 no lo traían** ⇒ su hilo VIGENTE se presenta
-   como obsoleto en cada rehidratado. Córrelo y arregla lo que marque:
+   decide con él si tu hilo se reinyecta como VIGENTE o degradado a "⚠️ POSIBLEMENTE OBSOLETO": un footer
+   ausente o mal escrito presenta un hilo VIGENTE como obsoleto en cada rehidratado. Córrelo y arregla lo
+   que marque:
    ```bash
    . ~/.claude/hooks/contrato-hilo.sh && verificar_hilo .claude/memory/hilo-mental-actual.md
    ```
@@ -192,13 +189,13 @@ que "avanzó mucho en lo técnico pero perdió por completo el flow").
    **⏱️ El §SIGUIENTE/ESTADO abre el hilo; el 🗂️ ÁRBOL va JUSTO DESPUÉS (regla dura).** Lo PRIMERO del hilo
    es el `## ⏱️ SIGUIENTE / ESTADO` answer-first (2-5 líneas: qué sigue + qué quedó resuelto) — porque el
    harness TRUNCA el hilo reinyectado a ~2KB de preview y lo único garantizado ahí debe ser el qué-hacer, no
-   un inventario (incidente 2026-09-22: el árbol en primer lugar empujó el «qué sigue» fuera del preview y se
-   retomó trabajo ya resuelto). **Mantén el hilo ESBELTO** (que no crezca a decenas de KB): si cabe entero no
+   un inventario (si el árbol va primero, el «qué sigue» puede quedar fuera del preview y se retoma trabajo
+   ya resuelto). **Mantén el hilo ESBELTO** (que no crezca a decenas de KB): si cabe entero no
    se trunca, y si se trunca, el §SIGUIENTE lidera el preview. El hook `rehidratar-hilo` pone un cinturón —
    antepone un FARO «HILO TRUNCADO → Read completo» + el §SIGUIENTE extraído cuando el bloque supera el umbral.
    Inmediatamente DESPUÉS del §SIGUIENTE va el 🗂️ ÁRBOL: las memorias durables + herramientas/scripts que el
    tema toca, **cada una con su RUTA** — es la lista "lee esto al rehidratar" (antídoto a declarar "ya
-   rehidraté" sin leer la memoria del tema, lección cara) y evita re-grepear el árbol cada vez. La FORMA
+   rehidraté" sin leer la memoria del tema) y evita re-grepear el árbol cada vez. La FORMA
    del árbol depende del nivel:
    - **LIGERO** — una **lista simple** con rutas, agrupada por sub-tema. Basta para un punto de retorno rápido.
    - **COMPLETO** — el **🗂️ ÁRBOL de 3 ramas** en un bloque de código (modelo de la firma-árbol del
@@ -287,6 +284,27 @@ que "avanzó mucho en lo técnico pero perdió por completo el flow").
    checkpoint** (no lo agendes), y regístralo en `## COSECHA DURABLE` con sus rutas. Lo que ya vive en
    disco es lo único que el compact no puede perder.
 
+## Si el checkpoint precede un `/compact`: entrega el borrador listo para pegar
+Cuando el COMPLETO se hace JUSTO ANTES de un `/compact` que correrá el usuario, el ÚLTIMO acto del
+checkpoint es **entregarle el comando armado** en un bloque de código, listo para copiar:
+
+    /compact <instrucciones>
+
+Las instrucciones las DERIVAS del volcado que acabas de escribir (no las inventes). Van, cortas:
+- el **marcador de estado**: hashes, ramas, qué está PROBADO y qué NO;
+- la **cola en orden** (lo que sigue);
+- las **citas textuales del usuario**, sin corregir erratas;
+- la **decisión abierta**.
+
+Son **cortas a propósito**: COMPLEMENTAN el hilo en disco (`hilo-mental-actual.md`), no lo sustituyen —
+el CLI re-lee el `# Compact instructions` del `CLAUDE.md` y el hilo sobrevive aparte; estas instrucciones
+solo SESGAN el resumen hacia lo que no debe perderse (las instrucciones de `/compact` sí cambian el
+formato y el contenido del resumen).
+
+**Procedencia (regla dura):** en las instrucciones, solo va entre comillas el texto LITERAL del usuario;
+lo que tú relayes ahí sobrevive con la procedencia que traiga (no laves una inferencia tuya como cita
+suya). Es la misma regla de PROCEDENCIA del volcado, aplicada al borrador.
+
 ## El estándar: que ESCARBAR sea innecesario
 El hilo se escribe para que la siguiente instancia (tú mismo tras compactar, o un sucesor) NO tenga que
 releer las fuentes para reconstruir el modelo — le basta con LEER el hilo. Si al retomar hace falta
@@ -306,13 +324,18 @@ grep. Si no responde, excava — y el hueco que encontraste es el defecto a corr
 checkpoint, no una falla tuya por haber preguntado.
 
 ## Qué NO es
+- **No es `reconstruir-contexto`.** Este skill ASUME que TÚ tienes el juicio fresco en la cabeza y solo
+  falta volcarlo a disco. Si en cambio el hilo YA se fundió (un checkpoint anterior quedó pobre/ausente,
+  o un `/compact` te ganó la carrera y no reconoces la tarea que `rehidratar-hilo` reinyectó), el punto
+  de entrada es `[[reconstruir-contexto]]` — reconstruye desde las fuentes duras (andamio → backlog →
+  transcript) primero, y AL FINAL corre este mismo skill para dejar el hilo ya reconstruido en disco.
 - **No es `cerrar-slice`.** Checkpoint es SOLO el volcado; no verifica build/tests, no abre MR, no
   cosecha aprendizajes de cierre de slice. Cuando de verdad terminaste un slice, usa `cerrar-slice`
   (que hace este mismo volcado + esas etapas). Checkpoint es el "guarda punto" de en medio — ligero o
   completo, sigue siendo un punto de retorno, no un cierre.
 - **No sustituye la disciplina del JUICIO.** `PreCompact` no puede inyectar contexto ni darte un turno
   — por eso ningún hook puede escribir el "en qué estamos / decisión abierta / siguiente paso" por ti;
-  eso sigue siendo tuyo, vía esta skill. Lo que SÍ hace un hook (C1/M2, auditoría 2026-09-11): en ese
+  eso sigue siendo tuyo, vía esta skill. Lo que SÍ hace un hook: en ese
   MISMO evento, `checkpoint-mecanico.sh` YA corre (detached, cero tokens de modelo) y deja escrito
   `.claude/memory/hilo-mental-actual.andamio.md` — el 🗂️ árbol de archivos tocados, los mensajes de
   `git commit`, las citas textuales del usuario y las métricas de sesión, sacados del transcript sin

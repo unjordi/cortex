@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
-# limpiar.sh — DISPATCHER único de los barridos de higiene del cerebro. Consolida (2026-09-17) los
-# ejecutables sueltos que antes se invocaban cada uno por su propio nombre — limpiar-ramas.sh,
-# limpiar-worktrees.sh, limpiar-residuo.sh, barrer-flotilla-cerebro.sh (retirados, ver MANIFEST) — en
-# UN entrypoint: `limpiar.sh <subcomando> [args…]`. La LÓGICA de cada barrido no cambió una sola línea
-# (renombrados con `git mv`, historia intacta); solo el punto de entrada es nuevo.
+# limpiar.sh — DISPATCHER único de los barridos de higiene del cerebro. Un solo
+# entrypoint para los barridos: `limpiar.sh <subcomando> [args…]` (ramas, worktrees, residuo, flotilla).
 #
 #   USO   limpiar.sh ramas      [--dry-run] [--no-fetch] …   (antes limpiar-ramas.sh)
 #         limpiar.sh worktrees  [--dry-run] …                (antes limpiar-worktrees.sh)
