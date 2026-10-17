@@ -38,7 +38,7 @@ const TABS = [
     {label: 'Proyectos', glyph: '📁', mod: Proyectos},
     {label: 'Chats', glyph: '💬', mod: Chats, visible: ctx => ctx.chats && ctx.chats.length > 0},
     {label: 'Cerebro', glyph: '🧠', mod: Cerebro},
-    {label: 'Herramientas', glyph: '🧰', mod: Herramientas},
+    {label: 'Recursos', glyph: '🧰', mod: Herramientas},
     {label: 'Broker', glyph: '🔌', mod: Broker},
 ];
 

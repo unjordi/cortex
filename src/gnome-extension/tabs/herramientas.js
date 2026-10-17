@@ -83,7 +83,7 @@ function section(ctx, emoji, title, subtitle, color, items, keyPrefix) {
 export function build(ctx) {
     const box = W.vbox('cortex-tab', {x_expand: true});
     box.set_style(`width: ${ctx.contentWidth}px; spacing: 12px;`);
-    box.add_child(W.heading('Herramientas disponibles'));
+    box.add_child(W.heading('Recursos disponibles'));
 
     const inv = ctx.inventario;
     if (!inv) {
