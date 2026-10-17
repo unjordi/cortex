@@ -19,6 +19,7 @@ import * as Modelos from './tabs/modelos.js';
 import * as Proyectos from './tabs/proyectos.js';
 import * as Chats from './tabs/chats.js';
 import * as Cerebro from './tabs/cerebro.js';
+import * as Herramientas from './tabs/herramientas.js';
 import * as Broker from './tabs/broker.js';
 import * as CerebroLib from './lib/cerebro.js';
 
@@ -37,6 +38,7 @@ const TABS = [
     {label: 'Proyectos', glyph: '📁', mod: Proyectos},
     {label: 'Chats', glyph: '💬', mod: Chats, visible: ctx => ctx.chats && ctx.chats.length > 0},
     {label: 'Cerebro', glyph: '🧠', mod: Cerebro},
+    {label: 'Herramientas', glyph: '🧰', mod: Herramientas},
     {label: 'Broker', glyph: '🔌', mod: Broker},
 ];
 
@@ -141,6 +143,7 @@ class CortexIndicator extends PanelMenu.Button {
         this._statsGlobal = D.readJson('stats-global.json');   // solo si el sync (e) está activo
         this._chats = D.readJson('chats.json');
         this._sessions = D.readJson('sessions.json');
+        this._inventario = D.readJson('inventario.json');
         this._renderCompact();
         if (this.menu.isOpen)
             this._renderPopup();
@@ -185,6 +188,7 @@ class CortexIndicator extends PanelMenu.Button {
             statsGlobal: this._statsGlobal,
             chats: this._chats,
             sessions: this._sessions,
+            inventario: this._inventario,
             rangeIdx: this._rangeIdx,
             // (e) Fuente ACTIVA de los recortes por rango: la vista combinada si se pidió y existe.
             // Sesiones/chats se quedan SIEMPRE locales (como activeStats del plasmoide).

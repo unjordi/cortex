@@ -519,6 +519,62 @@ if command -v node >/dev/null 2>&1 && [[ -f "$SESSIONS_EXTRACT" ]]; then
   fi
 fi
 
+# --- Inventario de agentes + skills DISPONIBLES -> inventario.json -----------------------------
+# "¿Cuántos agentes y skills tengo para usar?" Escanea el disco (~/.claude): skills = subcarpetas de
+# skills/ con un SKILL.md (name/description del frontmatter); agentes propios = agents/*.md (0 hoy). Los
+# agentes BUILT-IN del runtime no viven en disco -> lista de referencia a mano. Fail-open: sin nada, [].
+# Lee el frontmatter YAML (name:/description:) de un archivo -> "name<TAB>desc" (una línea, fallback basename).
+inv_front() {   # $1 = archivo, $2 = fallback de nombre
+  awk -v fb="$2" '
+    NR==1 && $0=="---" {fm=1; next}
+    fm && $0=="---" {exit}
+    fm && /^name:[[:space:]]/        {sub(/^name:[[:space:]]*/,"");        n=$0}
+    fm && /^description:[[:space:]]/ {sub(/^description:[[:space:]]*/,""); de=$0}
+    END {if(n=="")n=fb; gsub(/\t/," ",n); gsub(/\t/," ",de); print n "\t" de}
+  ' "$1"
+}
+SKILLS_TSV=""
+if [[ -d "$CLAUDE_DIR/skills" ]]; then
+  for d in "$CLAUDE_DIR"/skills/*/; do
+    [[ -f "$d/SKILL.md" ]] && SKILLS_TSV+="$(inv_front "$d/SKILL.md" "$(basename "$d")")"$'\n'
+  done
+fi
+AGENTS_TSV=""
+if [[ -d "$CLAUDE_DIR/agents" ]]; then
+  for f in "$CLAUDE_DIR"/agents/*.md; do
+    [[ -f "$f" ]] && AGENTS_TSV+="$(inv_front "$f" "$(basename "$f" .md)")"$'\n'
+  done
+fi
+# Agentes built-in del runtime (no hay archivo que escanear). Se mantiene aquí: cambia solo cuando
+# Claude Code agrega/quita tipos. Descripciones en español, de 1 línea.
+INV_BUILTIN_JSON='[
+  {"name":"claude","desc":"Comodín: cualquier tarea que no encaje en un agente más específico."},
+  {"name":"Explore","desc":"Búsqueda read-only de amplio barrido; devuelve la conclusión, no vuelca archivos."},
+  {"name":"general-purpose","desc":"Investigación y tareas multi-paso: busca y ejecuta cuando no sabes dónde está algo."},
+  {"name":"Plan","desc":"Arquitecto: diseña un plan de implementación paso a paso (read-only)."},
+  {"name":"claude-code-guide","desc":"Resuelve dudas sobre Claude Code, el Agent SDK y la API de Claude."},
+  {"name":"statusline-setup","desc":"Configura tu status line de Claude Code."},
+  {"name":"fork","desc":"Clona tu contexto actual para seguir una rama de trabajo en paralelo."}
+]'
+jq -e . <<<"$INV_BUILTIN_JSON" >/dev/null 2>&1 || INV_BUILTIN_JSON='[]'
+tsv_to_json() {   # stdin TSV "name<TAB>desc" -> array [{name,desc}] ordenada por nombre, sin vacíos
+  jq -R -s 'split("\n")|map(select(length>0)|split("\t"))|map({name:.[0],desc:(.[1]//"")})|sort_by(.name|ascii_downcase)'
+}
+INV_SKILLS_JSON="$(printf '%s' "$SKILLS_TSV" | tsv_to_json)"
+INV_AGENTS_CUSTOM_JSON="$(printf '%s' "$AGENTS_TSV" | tsv_to_json)"
+jq -e . <<<"$INV_SKILLS_JSON"        >/dev/null 2>&1 || INV_SKILLS_JSON='[]'
+jq -e . <<<"$INV_AGENTS_CUSTOM_JSON" >/dev/null 2>&1 || INV_AGENTS_CUSTOM_JSON='[]'
+INV_TMP="$CACHE_DIR/inventario.json.tmp"
+if jq -n --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      --argjson builtin "$INV_BUILTIN_JSON" --argjson custom "$INV_AGENTS_CUSTOM_JSON" \
+      --argjson skills "$INV_SKILLS_JSON" \
+      '{updated_at:$ts, agents:{builtin:$builtin, custom:$custom}, skills:$skills}' \
+      > "$INV_TMP" 2>/dev/null; then
+  mv "$INV_TMP" "$CACHE_DIR/inventario.json"
+else
+  rm -f "$INV_TMP"
+fi
+
 # --- (e) Sync entre máquinas vía carpeta de nube -----------------------------------------------
 # OPT-IN: se activa solo si SYNC_DIR (en limits.env) o CLAUDE_BRAIN_SYNC_DIR está puesto — así ninguna
 # máquina sube nada sin que lo actives. Valor "auto" autodetecta Google Drive. Cada máquina escribe su
