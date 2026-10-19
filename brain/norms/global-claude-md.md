@@ -131,6 +131,17 @@ git push -u origin feat/<tema>       # push SOLO a la ramita (idéntico en ambos
 - Repos SIN los hooks del template (p. ej. uno personal): Claude cae en el clasificador auto-mode genérico → más fricción en git. Al tocar uno así: siémbrale `develop` + los hooks del template, o documenta qué acciones esperar bloqueadas.
 - **Bajo SQUASH, `git cherry`/`git branch -d`/`git branch --merged` MIENTEN en su NEGATIVO:** el squash colapsa los N commits de la ramita en un commit nuevo → la rama no queda de ancestro y sus commits no tienen equivalente por hash, así que dan un falso "no integrada" sobre trabajo que SÍ entró. `git cherry` vale SOLO en su POSITIVO (ningún `+` ⇒ los parches ya están en la base, residuo squash-safe); su negativo no prueba nada. Para "¿ya entró esta rama?" hay dos métodos válidos: `limpiar.sh ramas` (señales POSITIVAS squash-safe — ancestro · la línea `Rama: <rama>` del squash · el PR/MR mergeado · equivalencia de parche sin `+`) o el ESTADO del PR/MR en el foro (`gh pr view --json state` / `glab mr view`: `MERGED` es la verdad).
 
+- **CI solo en develop/main + un gate antes del merge (todos los repos):** el pipeline NO corre por push a ramitas ni por eventos de MR/PR. Corre en develop, main, tags y UNA vez como gate manual antes de mergear a develop. En GitLab, todo `.gitlab-ci.yml` lleva este `workflow:` idéntico (más `- if: $CI_PIPELINE_SOURCE == "schedule"` solo si el repo tiene un programado activo):
+  ```yaml
+  workflow:
+    rules:
+      - if: $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api"
+      - if: $CI_COMMIT_BRANCH == "develop"
+      - if: $CI_COMMIT_BRANCH == "main"
+      - if: $CI_COMMIT_TAG
+  ```
+  Los jobs de CD (subir imagen, desplegar) llevan su propia regla de solo develop/main; los de CI no llevan reglas. En GitHub: `on: push: branches: [develop, main]` + `workflow_dispatch`. Secuencia de cierre: push normal (nunca `-o ci.skip`: deja el MR pegado a un pipeline skipped) → gate (`glab ci run -b <rama>` / `gh workflow run`) → merge.
+
 ## Detección de secretos: gitleaks en CI + local antes de cada push (norma dura)
 - **Todo repo que operemos lleva `gitleaks`**, en dos puntos: (1) en su **CI** — GitLab: el template `Secret-Detection` (`include: template: Jobs/Secret-Detection.gitlab-ci.yml`); GitHub: `gitleaks/gitleaks-action` — y (2) **local ANTES de cada push** (lo corre `cerrar-slice.sh`: `gitleaks git --log-opts=<base>..HEAD`, o equivalente sobre el rango que sube; si encuentra algo, PARA y no pushea).
 - **Las excepciones son EXPLÍCITAS y por-huella, nunca por palabras:** van en `.gitleaksignore` (fingerprint exacto) o `.gitleaks.toml` (`allowlist` con regex/paths acotados) DEL REPO, versionadas y revisables. ❌ marcar "seguro" por una subcadena tipo `PRUEBA`/`dummy` (así se coló un secreto real en el hook casero que gitleaks reemplaza — H6 2026-10-19).

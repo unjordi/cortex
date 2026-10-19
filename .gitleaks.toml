@@ -1,19 +1,21 @@
-# Config de gitleaks para cortex (reemplaza al hook secret-scan, retirado 2026-10-19).
-# Extiende las reglas default de gitleaks + un allowlist EXPLÍCITO por RUTA (no por palabra) de los archivos
-# que contienen patrones de secreto de PRUEBA/EJEMPLO a propósito — no son credenciales reales:
-#   · el corpus de falsos positivos de los guards,
-#   · el banco de pruebas de los guards (fixtures con vectores AKIA.../Password=... de ejemplo),
-#   · los reportes de auditoría históricos que citan patrones.
-# Cualquier OTRO archivo del repo SÍ se escanea. Un secreto real va fuera del repo (env/gestor), nunca aquí.
+# Reglas de gitleaks del repo: las de serie + contraseñas en cadenas de conexión.
+# (Mismo .gitleaks.toml que llevan los repos del equipo — gitleaks de serie NO detecta Password=/Pwd= de
+# cadenas de conexión ni usuario:pass@ en URIs; estas 2 reglas lo cubren, probadas en las dos direcciones.)
+# Las excepciones son por HUELLA en .gitleaksignore (NUNCA allowlist por ruta: un secreto real nuevo en un
+# archivo de prueba DEBE seguir detectándose).
 [extend]
 useDefault = true
 
-[allowlist]
-description = "Rutas con patrones de secreto de prueba/ejemplo (no reales)"
-paths = [
-  '''docs/guards-falsos-positivos\.md''',
-  '''brain/tests/corpus-fp/.*''',
-  '''docs/auditoria.*\.md''',
-  '''docs/auditorias-sistema/.*\.md''',
-  '''\.claude/memory/auditoria.*\.md''',
-]
+[[rules]]
+id = "cadena-conexion-password"
+description = "Password/Pwd en una cadena de conexión (.NET, ODBC)"
+regex = '''(?i)\b(?:password|pwd)\s*=\s*([^;"'\s$%{][^;"'\s]{5,})'''
+secretGroup = 1
+entropy = 2.5
+
+[[rules]]
+id = "uri-con-credenciales"
+description = "Usuario y contraseña embebidos en una URI"
+regex = '''[a-z][a-z0-9+.-]*://[^:@/\s]+:([^@/\s]{6,})@'''
+secretGroup = 1
+entropy = 2.5

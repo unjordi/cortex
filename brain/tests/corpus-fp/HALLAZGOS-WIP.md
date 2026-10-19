@@ -34,11 +34,14 @@ Encargo (unjordi vía claudio, 2026-10-19): (1) convertir el corpus COMPLETO de 
 - ✅ **L145** (`acg_es_push`): `git push` exige POSICIÓN DE COMANDO (inicio, o tras ejecutor `( $( { x= eval sudo env (ba)?sh -c …`); un `git push` como ARG de `pgrep`/`grep`/`echo` ya NO cuenta. Preserva M1/G3 (eval/bash -c/subshell SÍ frenan) — verificado.
 - ✅ **H2** (`acg_clon_local_de_slug`): busca hermanos junto al repo PRINCIPAL (`git-common-dir`), no al worktree.
 - ✅ **H3** (`acg_slug_de_dir`): normaliza `ssh://[user@]host[:puerto]/`.
-- ✅ **H6** (`detectar-secretos.sh` `ds_safe_re`): marcadores-palabra (PRUEBA/no-real/de-prueba/dummy/fake/placeholder/redacted/CHANGE-ME) solo filtran si son el VALOR COMPLETO (anclado), no subcadena → `Password=Prueba2024!`/`DummyPass99` vuelven a BLOQUEAR (cierra el fail-open de credenciales, vivo en Mac+cachy). `test-brain.sh` b2-ph reescrito a esta semántica (ambas direcciones).
+- ✅ **H6** (`detectar-secretos.sh` `ds_safe_re`): marcadores-palabra (PRUEBA/no-real/de-prueba/dummy/fake/placeholder/redacted/CHANGE-ME) solo filtran si son el VALOR COMPLETO (anclado), no subcadena → una contraseña real que CONTIENE "Prueba"/"Dummy" como subcadena vuelve a BLOQUEAR (cierra el fail-open de credenciales, vivo en Mac+cachy). `test-brain.sh` b2-ph reescrito a esta semántica (ambas direcciones). [SUPERSEDIDO: secret-scan se retira por gitleaks.]
 
 ## FP VIVOS pendientes de fix (P1)
 - **H7** (proteger-arbol, revisión-4): regla (c) `merge X && branch -D X` ignora el separador → con `;`/`||` calla aunque el merge choque y `-D` borre commits sin integrar (pérdida de datos). Fix: aplicar (c) SOLO con `&&` (sin `;`/`||`/`&`). Test con las 3 filas de la tabla.
 - Nuevos FP-vivos del agente a decidir/arreglar: proteger-arbol L11, no-bypass-deploy L66/L105, merge-develop-guard L51/L167, dod-verificar L71, aviso-drift L127/L171, barrer-ramas L164.
+- **H8** (dod-verificar, revisión-5): el OK a media vuelta CON imagen (`.attachment.prompt` como ARRAY) aborta el jq → vacía el texto de usuario del turno. El fix ya vive en `acg_recent_intercalado` (merge-guard); PORTARLO al lector de dod (`_juez_dod`/el extractor de usertext B3).
+- **H9** (dod-verificar, revisión-5, BAJO): "cerré una etapa" sin ENTREGABLE se lee como cierre → FP. Ajustar el criterio del prompt (cerrar un paso/etapa ≠ declarar un entregable LISTO).
+- **H1 VERIFICADO arreglado** (claudio, 8 casos cd, 2 direcciones) en 00df422.
 
 ## Hallazgos de la revisión directa de claudio (van con P1)
 ### git-branch-guard + analizar-comando-git (sección 1)
