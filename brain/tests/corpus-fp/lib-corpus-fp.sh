@@ -36,6 +36,8 @@ cfp_run_guard() {
   rm -rf "$fh"
   if [ "${CFP_MODE:-deny}" = aviso ]; then
     if printf '%s' "$out" | grep -q 'additionalContext'; then printf 'DENY'; else printf 'PASS'; fi
+  elif [ "${CFP_MODE:-deny}" = block ]; then   # hooks Stop: bloquean con {decision:"block"}
+    if printf '%s' "$out" | grep -q '"decision"[[:space:]]*:[[:space:]]*"block"'; then printf 'DENY'; else printf 'PASS'; fi
   elif printf '%s' "$out" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then printf 'DENY'; else printf 'PASS'; fi
 }
 
