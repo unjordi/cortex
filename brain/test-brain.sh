@@ -2446,9 +2446,10 @@ rm -rf "$G5ROOT"
 
 # ── (b2-ph) B2 (tanda afinado 2026-10): criterio PLACEHOLDER por VALOR en ds_safe_re ──────────────────
 # Corpus (2026-09-10 scripts/tests/…PRUEBA-no-real · 2026-10-13 el mismo citado en un doc de auditoría):
-# el valor mismo delata que NO es un secreto real (PRUEBA/no-real/de-prueba/dummy/fake). Se filtran SIN
-# aflojar los reales: AKIA/sk-ant/una contraseña real sin marcador SIGUEN bloqueando (safe_re casa el TOKEN
-# extraído, no la línea, así que un secreto real que no contiene el marcador no se ve afectado). Ambas
+# un placeholder se filtra SOLO si su VALOR COMPLETO está compuesto de marcadores (PRUEBA/no-real/de-prueba/
+# dummy/fake/placeholder/redacted/CHANGE-ME) — whole-value, no subcadena (hueco H6 revisión-3 2026-10-19: como
+# SUBCADENA, "Prueba2024!"/"DummyPass99" se colaban LIMPIOS = fail-open de credenciales). Se filtran SIN aflojar
+# los reales: AKIA/sk-ant/una contraseña real — con o SIN marcador adentro — SIGUEN bloqueando. Ambas
 # direcciones. (El criterio por RUTA */tests/* queda FUERA: dejaría pasar un secreto real en un test — es un
 # tradeoff de seguridad que decide Jordi, no un afinamiento de precisión.)
 echo ""
@@ -2458,16 +2459,20 @@ echo "== (b2-ph) secret-scan B2: placeholders por valor (PRUEBA/no-real/dummy/fa
 # de ESTE test (el valor se ve entero solo en ejecución, que es cuando ds_buscar lo evalúa). NO es --no-verify.
 b2ph_res=$(SR="$SCRIPT_DIR/hooks/detectar-secretos.sh" bash -c '
   . "$SR"; f=0; P="Pass""word="
-  for fp in "${P}PRUEBA-no-real" "${P}de-prueba-123" "${P}dummyvalue1" "${P}fake-secret-99"; do
+  # FILTRADOS: el VALOR COMPLETO es marcador de placeholder (whole-value — H6 2026-10-19).
+  for fp in "${P}PRUEBA-no-real" "${P}dummy" "${P}fake" "${P}de-prueba" "${P}placeholder" "${P}redacted" "${P}CHANGE-ME"; do
     ds_buscar "$fp" >/dev/null && { echo "FP-NO-FILTRADO:$fp" >&2; f=1; }
   done
-  for r in "AKIA""1234567890ABCDEF" "sk-ant-""api03-AbCdEf1234567890xyzQrs" "${P}Xk9mQ2zR7vBnReal"; do
+  # BLOQUEADOS: reales que CONTIENEN un marcador como SUBCADENA de un valor real (hueco H6: antes se colaban
+  # por el match de subcadena case-insensitive), más los reales sin marcador.
+  for r in "AKIA""1234567890ABCDEF" "sk-ant-""api03-AbCdEf1234567890xyzQrs" "${P}Xk9mQ2zR7vBnReal" \
+           "${P}Prueba2024!" "${P}DummyPass99" "${P}fake-secret-99" "${P}de-prueba-123" "${P}dummyvalue1" "${P}PruebasMegaflux#77"; do
     ds_buscar "$r" >/dev/null || { echo "REAL-NO-BLOQUEADO:$r" >&2; f=1; }
   done
   echo "$f"' 2>/dev/null)
 [ "$b2ph_res" = 0 ] \
-  && ok "b2-ph: placeholders (PRUEBA/no-real/de-prueba/dummy/fake) FILTRADOS y secretos reales (AKIA/sk-ant/pass real) BLOQUEADOS" \
-  || bad "b2-ph: el criterio placeholder falló (un FP no se filtró o un secreto real dejó de bloquear); res=$b2ph_res"
+  && ok "b2-ph/H6: placeholders WHOLE-VALUE (PRUEBA-no-real/dummy/fake/placeholder/redacted) FILTRADOS; reales con marcador como SUBCADENA (Prueba2024!/DummyPass99/fake-secret-99) y sin marcador (AKIA/sk-ant) BLOQUEADOS" \
+  || bad "b2-ph/H6: el criterio placeholder falló (un placeholder whole-value no se filtró, o un real con/sin marcador se coló); res=$b2ph_res"
 
 # ── FMEA 2026-07-30 · A1 (idiom `git add && git commit`) + A7 (`--no-verify` en el MENSAJE) ──
 echo ""

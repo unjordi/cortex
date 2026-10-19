@@ -8,13 +8,20 @@ Encargo (unjordi vía claudio, 2026-10-19): (1) convertir el corpus COMPLETO de 
 
 ## Estado del banco
 - ✅ Infra: `brain/tests/corpus-fp/lib-corpus-fp.sh` (fakehome, run_guard, caso, reporte).
-- ✅ git-branch-guard: `correr-git-branch-guard.sh` — **20 PASA · 3 FRENAN (FP vivos) · 4/4 controles+ OK**.
-- ⏳ Faltan: proteger-arbol(32), dod-verificar(27), merge-develop-guard(familia: confirmar-merge-develop 25 + merge-squash-guard 16 + merge-develop-guard 3 = 44), no-bypass-deploy(9), secret-scan(4), entorno-maquina-guard(3), + varios de 1-2 (aviso-drift, limpiar-worktrees, isolation, barrer-ramas, aviso-contexto, auditor-coherencia, regla-sudo, aislamiento-worktree). Retirados (confirmar-merge-develop, merge-squash-guard) corren contra merge-develop-guard. Los pesados (dod, familia merge) necesitan fixtures de TRANSCRIPT + mock del juez.
+- ✅ git-branch-guard: `correr-git-branch-guard.sh` — tras los fixes H1+L145: **23 PASA · 0 vivos · 4/4 controles+**.
+- ✅ Resto de guards: construidos por el agente af2737b0 en worktree `worktree-agent-af2737b0f23af361c` (PENDIENTE verificar por muestra + merge): proteger-arbol 36/1·5+, no-bypass-deploy 8/2·4+ (L101 no-repro), entorno-maquina-guard 3/0·3+, secret-scan 3/0·4+ (⚠️ sus controles+ NO cubrían reales-con-subcadena = el hueco H6; AMPLIAR), merge-develop-guard(familia 43) 29/2·8+ (12 no-repro=criterio juez), dod-verificar 15/1·4+ (11 no-repro=criterio juez), misc 2/3·4+.
+- Retirados (confirmar-merge-develop, merge-squash-guard) corren contra merge-develop-guard. Pesados (dod, familia merge) con fixtures de TRANSCRIPT + mock del juez (miden la capa determinista, no el LLM).
 
-## FP VIVOS medidos (git-branch-guard)
-- L181 `for … do cd <wt> && push` — H1 (keyword `do ` antes del `cd`).
-- `(cd <wt> && push)` subshell — clase H1 (prefijo `(`/`{`). ⚠️ la tabla de revisión-1 lo marca "pasa"; medido directo = FRENA. El fix H1 debe cubrir `do|then|else|elif|{|!|(`.
-- L145 `pgrep -af 'git push|git fetch'` — FP de MENCIÓN citada (no hay push real), distinto de H1.
+## FIXES P1 APLICADOS (lib + detectar-secretos, esta tanda)
+- ✅ **H1** (`acg_push_toca_base` L375): `cd` tras keyword/agrupación (`do|then|else|elif|!|{|(`) se arrastra → `for…do cd && push` y `(cd && push)` ya PASAN.
+- ✅ **L145** (`acg_es_push`): `git push` exige POSICIÓN DE COMANDO (inicio, o tras ejecutor `( $( { x= eval sudo env (ba)?sh -c …`); un `git push` como ARG de `pgrep`/`grep`/`echo` ya NO cuenta. Preserva M1/G3 (eval/bash -c/subshell SÍ frenan) — verificado.
+- ✅ **H2** (`acg_clon_local_de_slug`): busca hermanos junto al repo PRINCIPAL (`git-common-dir`), no al worktree.
+- ✅ **H3** (`acg_slug_de_dir`): normaliza `ssh://[user@]host[:puerto]/`.
+- ✅ **H6** (`detectar-secretos.sh` `ds_safe_re`): marcadores-palabra (PRUEBA/no-real/de-prueba/dummy/fake/placeholder/redacted/CHANGE-ME) solo filtran si son el VALOR COMPLETO (anclado), no subcadena → `Password=Prueba2024!`/`DummyPass99` vuelven a BLOQUEAR (cierra el fail-open de credenciales, vivo en Mac+cachy). `test-brain.sh` b2-ph reescrito a esta semántica (ambas direcciones).
+
+## FP VIVOS pendientes de fix (P1)
+- **H7** (proteger-arbol, revisión-4): regla (c) `merge X && branch -D X` ignora el separador → con `;`/`||` calla aunque el merge choque y `-D` borre commits sin integrar (pérdida de datos). Fix: aplicar (c) SOLO con `&&` (sin `;`/`||`/`&`). Test con las 3 filas de la tabla.
+- Nuevos FP-vivos del agente a decidir/arreglar: proteger-arbol L11, no-bypass-deploy L66/L105, merge-develop-guard L51/L167, dod-verificar L71, aviso-drift L127/L171, barrer-ramas L164.
 
 ## Hallazgos de la revisión directa de claudio (van con P1)
 ### git-branch-guard + analizar-comando-git (sección 1)

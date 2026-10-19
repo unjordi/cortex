@@ -31,7 +31,13 @@ ds_patrones() {
 # ds_safe_re — regex de placeholders/ejemplos célebres que NO son secretos reales (se excluyen).
 # Incluye referencias a variables de entorno (Password=$VAR / ${VAR} / %VAR%) → NO es un secreto en claro.
 ds_safe_re() {
-  printf '%s' 'AKIAIOSFODNN7EXAMPLE|EXAMPLE_KEY|your[-_]?(api[-_]?)?key|xxxx+|<[A-Za-z_]+>|[Pp]ass(word|wd)[[:space:]]*=[[:space:]]*[$%]|[Pp]ass(word|wd)[[:space:]]*=[[:space:]]*["'"'"']?\{|CHANGE[-_]?ME|placeholder|redacted|\*\*\*+|PRUEBA|no[-_ ]?real|de[-_ ]?prueba|dummy|fake'
+  # Los marcadores-PALABRA (PRUEBA/no-real/de-prueba/dummy/fake/placeholder/redacted/CHANGE-ME) solo hacen
+  # SEGURO un token cuando el VALOR COMPLETO está compuesto de ellos — anclados de un borde (inicio, `=`,
+  # `:`, comilla, espacio) hasta el final ($). Como SUBCADENA (bug H6, revisión-3 2026-10-19) un secreto
+  # real que contenga la palabra ("Password=Prueba2024!", "DummyPass99", "PruebasMegaflux#77") se colaba
+  # LIMPIO = fail-open de credenciales. Los célebres ESTRUCTURALES (AKIA…EXAMPLE, your-key, <VAR>,
+  # Password=$VAR, ***) siguen como subcadena: son inconfundibles.
+  printf '%s' 'AKIAIOSFODNN7EXAMPLE|EXAMPLE_KEY|your[-_]?(api[-_]?)?key|xxxx+|<[A-Za-z_]+>|[Pp]ass(word|wd)[[:space:]]*=[[:space:]]*[$%]|[Pp]ass(word|wd)[[:space:]]*=[[:space:]]*["'"'"']?\{|\*\*\*+|(^|[=:[:space:]"'"'"'])((PRUEBA|no[-_ ]?real|de[-_ ]?prueba|dummy|fake|placeholder|redacted|CHANGE[-_]?ME)[-_ .]?)+["'"'"']?$'
 }
 
 # Memoización (perf): ds_patrones/ds_safe_re son PURAS/ESTÁTICAS (mismo resultado siempre) pero

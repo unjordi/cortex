@@ -223,10 +223,17 @@ acg_target_remote() {   # $1=cmd  $2=payload_cwd → imprime "org/repo" | vacío
 }
 
 # ¿el comando contiene un `git push`?
-acg_es_push() { printf '%s' "$1" | grep -qE 'git[[:space:]]+push([[:space:]]|$)'; }
+# `git push` debe estar en POSICIÓN DE COMANDO: al inicio del segmento, o tras un prefijo que lo EJECUTA —
+# agrupación/subst `( $( { ` `` ` `` `, asignación `x=`, o wrappers `eval|sudo|env …|time|nice|nohup|command|
+# builtin|xargs|(ba)?sh -c`. NO como ARGUMENTO de un comando que NO lo ejecuta (`pgrep -af 'git push…'`,
+# `grep 'git push origin develop'`, `echo`): esas palabras no son consumibles por el prefijo → no casa.
+# Antes casaba en cualquier posición → FP de mención (corpus L145); anclar sin los ejecutores daba FN (eval/
+# bash -c/subshell evadían, tests M1/G3). El segmento llega normalizado (acg_normaliza_git_prefijo colapsa
+# `git -c/-C`). SEGURIDAD: un FN aquí = un push-a-base que se cuela, así que el prefijo cubre los ejecutores.
+acg_es_push() { printf '%s' "$1" | grep -qE '^[[:space:]]*([(){}$`[:space:]]|[A-Za-z_][A-Za-z0-9_]*=|(eval|sudo|time|nice|nohup|command|builtin|xargs)[[:space:]]+|(ba)?sh[[:space:]]+-c[[:space:]]+|env[[:space:]]+([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*)*git[[:space:]]+push([[:space:]]|$)'; }
 
 # acg_slug_de_dir(dir) → slug `org/repo` del remoto `origin` de un dir git (sin esquema ni `.git`), o vacío.
-acg_slug_de_dir() { git -C "$1" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|https?://[^/]+/)##; s#\.git$##'; }
+acg_slug_de_dir() { git -C "$1" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|ssh://[^/]+/|https?://[^/]+/)##; s#\.git$##'; }
 
 # acg_clon_local_de_slug(slug, dir-pista) → toplevel del CLON LOCAL cuyo origin==slug, o vacío.
 # El repo DESTINO de un `glab/gh … merge --repo <slug>` es el del SLUG, no el del cwd de la sesión —
@@ -241,7 +248,15 @@ acg_clon_local_de_slug() {   # $1=slug  $2=dir-pista → toplevel del clon | vac
   [ -n "$slug" ] && [ "$slug" != OPACO ] || return 1
   top=$(git -C "$pista" rev-parse --show-toplevel 2>/dev/null)
   if [ -n "$top" ] && [ "$(acg_slug_de_dir "$top")" = "$slug" ]; then printf '%s' "$top"; return 0; fi
-  parent=$(dirname "${top:-$pista}")
+  # H2 (revisión-1 2026-10-19): desde un WORKTREE, --show-toplevel es el worktree (vive en <repo>/.claude/
+  # worktrees/…), así que sus hermanos son otros worktrees, no los repos de ~/code/*. Los hermanos del repo
+  # viven junto al PRINCIPAL = dirname(git-common-dir) (git-common-dir = <principal>/.git). En un repo normal
+  # git-common-dir es `.git` relativo → main_top = top (comportamiento idéntico de antes).
+  local gcd main_top
+  gcd=$(git -C "$pista" rev-parse --git-common-dir 2>/dev/null)
+  case "$gcd" in /*) : ;; *) gcd="${top:-$pista}/$gcd" ;; esac
+  main_top=$(cd "$(dirname "$gcd")" 2>/dev/null && pwd)
+  parent=$(dirname "${main_top:-${top:-$pista}}")
   [ -d "$parent" ] || return 1
   for d in "$parent"/*/; do
     [ -d "$d" ] || continue
@@ -372,7 +387,10 @@ acg_push_toca_base() {   # $1=cmd  $2=payload_cwd(opcional)
     sub=$(acg_normaliza_git_prefijo "$orig")   # A-03: colapsa `git -c/-C …` para no romper la adyacencia git+push
     subu=$(acg_sin_flag_repo "$(acg_despoja_comillas "$sub")")
     # rastrea un `cd/pushd <dir>` para los segmentos POSTERIORES de la cadena (aplica al push que le sigue)
-    if printf '%s' "$subu" | grep -qE '^[[:space:]]*(cd|pushd)[[:space:]]'; then cd_prefix="$orig"; fi
+    # El cd puede ir tras un keyword de shell (`do|then|else|elif|!`) o agrupación (`{`/`(`) en el mismo
+  # segmento — `for … do cd X && push`, `(cd X && push)` — no solo al inicio pelón; si no se reconoce, el
+  # push pelón siguiente se resuelve contra el cwd de la sesión (FP revisión-1 H1 2026-10-19).
+  if printf '%s' "$subu" | grep -qE '^[[:space:]]*((do|then|else|elif|!)[[:space:]]+|[({][[:space:]]*)*(cd|pushd)[[:space:]]'; then cd_prefix="$orig"; fi
     # rastrea un `git checkout/switch <rama>` PREVIO: un pelón posterior empuja a ESA rama, no a la de HEAD
     # antes del comando (FP corpus L109). Se guarda el spec; se resuelve contra el repo objetivo en el pelón.
     _cob=$(acg_checkout_rama "$subu"); [ -n "$_cob" ] && co_spec="$_cob"
