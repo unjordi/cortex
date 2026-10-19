@@ -48,6 +48,26 @@ USO
 
 _err() { printf 'cerrar-slice: %s\n' "$1" >&2; exit 1; }
 
+# Gate de gitleaks ANTES de integrar: escanea los commits del slice (origin/<base>..HEAD) y PARA si halla un
+# secreto (reemplaza al hook secret-scan, retirado 2026-10-19). Las excepciones son por HUELLA y explícitas —
+# `.gitleaksignore`/`.gitleaks.toml` del repo, que gitleaks lee solo—, NUNCA por palabra. Sin gitleaks
+# instalado: avisa fuerte y NO bloquea (el CI de gitleaks es el backstop server-side).
+_gitleaks_gate() {
+  local base rng out
+  if ! command -v gitleaks >/dev/null 2>&1; then
+    printf 'cerrar-slice: ⚠️ gitleaks NO instalado — sin gate local de secretos (el CI lo corre server-side). Instálalo: brew install gitleaks · apt install gitleaks.\n' >&2
+    return 0
+  fi
+  base="$(git rev-parse --verify -q origin/develop || git rev-parse --verify -q develop)" \
+    || { printf 'cerrar-slice: no ubico origin/develop para el rango de gitleaks — omito el gate local (el CI lo cubre).\n' >&2; return 0; }
+  rng="${base}..HEAD"
+  if ! out="$(gitleaks git . --log-opts="$rng" --redact --no-banner 2>&1)"; then
+    printf '%s\n' "$out" | tail -20 >&2
+    _err "gitleaks detectó un posible SECRETO en los commits del slice ($rng). NO integro. Saca el secreto (rótalo si ya se commiteó) o, si es un FALSO POSITIVO, agrégalo por HUELLA a .gitleaksignore/.gitleaks.toml y reintenta — nunca lo marques por palabra."
+  fi
+  printf 'cerrar-slice: gitleaks limpio en %s.\n' "$rng" >&2
+}
+
 # ── parseo de args ──
 ID=""; MSG=""; MSG_FILE=""; FORGE=""; REPO=""; BRANCH=""; WAIT_CI=0; DRY=0
 while [ $# -gt 0 ]; do
@@ -140,6 +160,8 @@ _ci_veredicto() {
     esac
   fi
 }
+_gitleaks_gate   # secretos ANTES de integrar (para si halla; .gitleaksignore/.gitleaks.toml = excepción por huella)
+
 if [ "$WAIT_CI" = 1 ]; then
   echo "cerrar-slice: --wait-ci — comprobando el CI del #$ID antes de mergear…" >&2
   _ci_max="${CERRAR_SLICE_CI_TIMEOUT:-600}"; _ci_step="${CERRAR_SLICE_CI_POLL:-15}"; _ci_slept=0

@@ -1,0 +1,19 @@
+# Config de gitleaks para cortex (reemplaza al hook secret-scan, retirado 2026-10-19).
+# Extiende las reglas default de gitleaks + un allowlist EXPLÍCITO por RUTA (no por palabra) de los archivos
+# que contienen patrones de secreto de PRUEBA/EJEMPLO a propósito — no son credenciales reales:
+#   · el corpus de falsos positivos de los guards,
+#   · el banco de pruebas de los guards (fixtures con vectores AKIA.../Password=... de ejemplo),
+#   · los reportes de auditoría históricos que citan patrones.
+# Cualquier OTRO archivo del repo SÍ se escanea. Un secreto real va fuera del repo (env/gestor), nunca aquí.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Rutas con patrones de secreto de prueba/ejemplo (no reales)"
+paths = [
+  '''docs/guards-falsos-positivos\.md''',
+  '''brain/tests/corpus-fp/.*''',
+  '''docs/auditoria.*\.md''',
+  '''docs/auditorias-sistema/.*\.md''',
+  '''\.claude/memory/auditoria.*\.md''',
+]
