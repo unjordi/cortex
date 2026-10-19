@@ -412,6 +412,11 @@ public sealed class QuotaService
         return string.IsNullOrEmpty(envTok) ? null : envTok;
     }
 
+    /// UUID de la cuenta Claude ACTIVA, de ~/.claude.json (.oauthAccount.accountUuid). null si no se
+    /// puede leer → el llamador NO fuerza fetch (fail-safe: sin señal fiable, no disparar de más).
+    /// Reusa el mismo lector que el guard de cuenta (ReadAccount).
+    public string? ActiveAccountUuid() => ReadAccount().uuid;
+
     /// Active account (uuid + email) from Claude Code's own config — not in the
     /// OAuth token, so read separately and best-effort. Shown in the footer and
     /// used by the account-mismatch guard.

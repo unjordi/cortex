@@ -14,7 +14,7 @@
 # que concederlo UNA vez via System Settings -> Privacidad y seguridad -> Grabacion de pantalla,
 # igual que la excepcion de Red Local de macOS 26 ya documentada en la memoria de maquina.
 #
-# GOTCHA REAL -Window (hallado por QA en vivo 2026-09-18, corregido el mismo dia): la primera
+# GOTCHA -Window: la primera
 # implementacion de -Window usaba `id of window` via System Events + `screencapture -l <windowid>`
 # -- en esta macOS (26.6.2) System Events NO expone la propiedad "id" para una ventana de
 # accesibilidad generica (confirmado: "get properties of window 1" no trae "id" en la lista, y
@@ -22,11 +22,11 @@
 # de Quartz, se usan POSITION+SIZE (que SI son accesibles -- mismo par de propiedades que ya usa
 # mac-ssh-get-window-coordinates.sh) y se captura con `screencapture -R<x,y,w,h>` (recorte por
 # region, no por windowid) -- funciona igual con coordenadas NEGATIVAS (ventana en un monitor a la
-# izquierda del principal). VERIFICADO 2026-09-18: -Window contra una ventana real de Alacritty en
+# izquierda del principal). VERIFICADO: -Window contra una ventana real de Alacritty en
 # el monitor externo izquierdo (posicion -3440,283, tamano 1135x825) dio un PNG de EXACTAMENTE
 # 1135x825 -- ver PNG de QA para el resultado de esta pasada.
 #
-# GOTCHA REAL MULTI-MONITOR (hallado por QA en vivo 2026-09-18, corregido el mismo dia): a
+# GOTCHA MULTI-MONITOR: a
 # diferencia de win-ssh-screenshot.ps1 (que captura el VirtualScreen COMPLETO -- todos los
 # monitores en una sola imagen), `screencapture -x archivo.png` SIN flags captura SOLO la pantalla
 # PRINCIPAL -- una ventana en un monitor externo NO sale. VERIFICADO en esta Mac (3 pantallas: Retina
@@ -38,7 +38,7 @@
 # DEFAULT este script ahora captura **TODAS** las pantallas, una imagen POR pantalla (no una imagen
 # gigante cosida) -- "por default veo TODO" se cumple, solo que como N archivos en vez de 1.
 #
-# VERIFICADO 2026-09-18 LOCAL en esta Mac (macOS 26.6.2, 3 pantallas reales conectadas):
+# VERIFICADO (macOS 26.6.2, 3 pantallas reales conectadas):
 #   -D 1 -> PNG 2992x1934 (Retina integrada, la principal)
 #   -D 2 -> PNG 3440x1440 (externa 1)
 #   -D 3 -> PNG 3440x1440 (externa 2)

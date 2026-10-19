@@ -123,8 +123,8 @@ _ci_veredicto() {
     echo INDET; return 0
   else
     # glab: el estado del pipeline del MR sale de su JSON (.pipeline.status); .pipeline null = sin pipeline.
-    # C1 (QA claudio 2026-10-13): si glab FALLA (sin red/token/ID malo) su salida NO es un objeto JSON → el
-    # `jq … // "NONE"` viejo daba "" → SINCI → mergeaba A CIEGAS. Ahora, igual que el carril gh, se valida el
+    # Si glab FALLA (sin red/token/ID malo) su salida NO es un objeto JSON → un
+    # `jq … // "NONE"` daría "" → SINCI → mergearía A CIEGAS. Igual que el carril gh, se valida el
     # JSON ANTES: sin objeto parseable → INDET (un fallo de ENTORNO no se vuelve "procede"); SINCI SOLO con
     # JSON válido y `.pipeline == null` (pipeline no configurado).
     local out st

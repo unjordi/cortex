@@ -1,9 +1,9 @@
-// 04 — Delegación / orquestar-fanout (cortex)  ·  FUENTE editable (Graphviz .dot)
-// Render:  dot -Tsvg 04-delegacion-orquestar-fanout.dot -o 04-delegacion-orquestar-fanout.svg
-// Construido 2026-08-01 desde el CÓDIGO REAL: hooks limite-gasto, delegacion-gate, delegacion-registrar
-// + lib delegacion-comun.sh (clasificar_delegacion) + agentes-costo.json; scripts
-// limpiar.sh worktrees / limpiar.sh ramas; skill orquestar-fanout (contrato de reporte + aislamiento).
-// Overhaul hooks 2026-09-18: delegacion-reporte se RETIRÓ (puramente advisory, medido: ignorado) — el
+// 04 — Delegar a agentes: UNO secuencial por default (cortex)  ·  FUENTE editable (Graphviz .dot)
+// Render:  dot -Tsvg 04-delegacion-orquestar-fanout.dot -o 04-delegacion-orquestar-fanout.svg  (o gen-charts.sh)
+// Fuente real: hooks limite-gasto + delegacion-gate + delegacion-registrar · lib delegacion-comun.sh
+// (clasificar_delegacion) + agentes-costo.json · scripts limpiar.sh worktrees/ramas · norma
+// «Delegar a agentes: UNO secuencial por default» de global-claude-md.md (absorbió a orquestar-fanout).
+// El cierre del agente (integrar + bitácora + estado + limpieza) es DISCIPLINA del máster, sin hook.
 // cierre del agente (bitácora + estado + limpieza) queda a DISCIPLINA del orquestador, sin nudge.
 digraph flujos {
   graph [bgcolor="#1b1712", rankdir=TB, fontname="Helvetica", splines=true,
@@ -50,7 +50,7 @@ digraph flujos {
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">💾 checkpoint</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">vuelca el HILO a memoria para compactar sin perderlo (proactivo)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🗂️ to-do</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">carga la interfaz de tareas del harness desde el backlog durable (estado-proyecto.md)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">💧 rehidratar-hilo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">relee el HILO a mano (gemelo del hook; respaldo si un update del CLI rompe el auto-rehidratado)</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🐝 orquestar-fanout</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">fan-out sin niñera: asigna del backlog, auto-reporta y limpia al cerrar</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🛟 reconstruir-contexto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">RED DE EMERGENCIA cuando el checkpoint quedó pobre y /compact fundió el hilo: excava andamio→backlog→transcript y cierra re-volcando con checkpoint</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🗺️ diagramar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">diagramas por destino: .dot→dot2yed→yEd (editar a mano) · Mermaid en .md versionado (verse en GitHub)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔬 auditar-proceso-algoritmo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">auditor experto read-only (proceso industrial + algoritmo) → hallazgos priorizados; se alimenta de los flowcharts de diagramar</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🩺 auditar-coherencia-cerebro fan-out read-only sobre el PROPIO cerebro (guards+flowcharts+doc): evasiones/huecos/drift, verificado por ejecución → loop hasta converger; modo-cerebro de auditar-proceso-algoritmo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0"> </font></td></tr>
@@ -62,6 +62,7 @@ digraph flujos {
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎓 investigar-dominio</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">ponte experto en un dominio (fan-out DOC-FIRST) → memorias durables + skills</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📚 construir-missing-manual</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">fabrica el manual/wiki de referencia exhaustivo que no existe (fan-out que investiga 1× y hornea) → artefacto consultable OFFLINE</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🚚 reubicar-master</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">muda una sesión master COMPLETA a otro repo (brain-master → cortex) sin residuo: transcript+cwd, cerebro, slug y refs atómicas</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🛰️ coordinar-claudes</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">coordina otros masters en nombre del usuario: despierta (desde los transcripts, no masters.json) · encarga la cola · vigila (commit/colgado/muerto) · destraba · verifica con evidencia · releva OKs del usuario</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔍 zoom-screenshot</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">recorta y amplía regiones de una captura (ffmpeg) para leer texto fino ilegible</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔩 ingenieria-inversa-gui-db-navegador</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">ingeniería inversa de app legacy GUI+BD: driving la UI vía navegador + diff de la BD antes/después = doc con evidencia real</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📕 markdown-a-pdf</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">convierte .md a PDF pulido y distribuible vía md-to-pdf (npx, sin instalar) con el gotcha de --css y QA visual real</font></td></tr>
@@ -84,90 +85,104 @@ digraph flujos {
 
   // ───────────────────────────────────── EL FLUJO ─────────────────────────────────────
   subgraph cluster_f0 {
-    label="04 · Delegación / orquestar-fanout   (gate de costo → agente en worktree AISLADO → auto-reporte → el orquestador integra a la mini)";
+    label="04 · Delegar a agentes: UNO secuencial por default   (gate de costo → UN agente por SECCIONES en worktree AISLADO → el máster verifica e integra)";
     fontname="Times"; fontsize=14; fontcolor="#5fa89e";
     color="#5fa89e"; penwidth=1.6; style="rounded"; bgcolor="#1b1712";
 
-    // ── Arranque: orquestador con backlog paralelizable ──
+    // ── Arranque: el máster decide QUÉ delegar y si va en paralelo ──
     BL    [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
-           label="orquestador: backlog con piezas INDEPENDIENTES\n(estado-proyecto.md = fuente de verdad · «aquí empiezas siempre»)\n📜 → default = fan-out + supervisión, NO grind serial"];
+           label="máster con trabajo MECÁNICO o VOLUMINOSO\n(el criterio, el diseño, la revisión y la QA se quedan con el máster)\n📜 → lo que resuelve un comando (contar/listar/agrupar) NO se delega"];
+    PAR   [shape=diamond, fillcolor="#2b2622", color="#d97757",
+           label="¿va en PARALELO?\nDEFAULT = NO → UN agente SECUENCIAL.\nParalelo SOLO si piezas INDEPENDIENTES cuya espera en serie\ncuesta más que el arranque repetido (120–200K tokens por agente)"];
+    PARSI [color="#e08e45",
+           label="🟠 antes de lanzar: DILE al usuario cuántos y el costo aproximado\n(cada agente vale lo mismo que uno solo) · respeta el gate de costo"];
     PREREQ [shape=diamond, fillcolor="#2b2622", color="#d97757",
-            label="¿la sesión vive DENTRO de un repo git?\n(worktrees aislados EXIGEN cwd = repo)"];
+            label="¿la sesión vive DENTRO de un repo git?\n(el worktree aislado EXIGE cwd = repo)"];
     NOGIT [fillcolor="#f5f5f5", color="#9e9e9e", fontcolor="#333", style="dashed,filled",
            label="🚧 sin repo: `isolation: worktree` truena\n(«not in a git repository»). Inicia la sesión EN el repo"];
+    MAND  [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
+           label="MANDATO CERRADO antes de lanzar (corregirlo a media corrida le cuesta contexto):\nalcance · archivos PERMITIDOS y PROHIBIDOS · criterio · gate · formato de respuesta\n📜 → porta, NO rehagas: si hay fuente viva, la trae tal cual; las correcciones van aparte"];
     SPAWN [color="#7fb069",
-           label="🟢 spawnea N Task con `isolation: worktree`\n(el árbol PRINCIPAL es SOLO del orquestador/humano)"];
+           label="🟢 spawnea el Task (UN agente; o N si el paralelo se justificó)\ncon `isolation: worktree` — el árbol de trabajo del usuario es SOLO suyo"];
 
-    // ── PreToolUse/Task: los 2 hooks de costo — PARALELOS (mismo spawn), resueltos por precedencia deny>ask>allow ──
+    // ── PreToolUse/Task: los 2 hooks de costo — PARALELOS (mismo spawn), precedencia deny>ask>allow ──
     LIM   [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="🔒🛑 limite-gasto  (PreToolUse/Task)\n¿ventana 5h AGOTADA (≥99%) Y overage SIN holgura?\n(lee state.json del daemon de cuota; rancio >30min → fail-open;\nsin jq / sin snapshot → fail-open, no frena)"];
+           label="🔒🛑 limite-gasto  (PreToolUse/Task)\n¿ventana 5h AGOTADA (≥99%) Y overage SIN holgura?\n(lee state.json del daemon de cuota; rancio >30min / sin jq / sin snapshot → fail-open)"];
     LIM_D [fillcolor="#3a2020", color="#c0392b", penwidth=2.5,
            label="🔴 DENY (freno duro): sin capacidad en NINGÚN lado —\nel agente moriría a medias. NO reintentes en automático.\nEspera el reset · mete saldo · hazlo TÚ sin delegar"];
-
     CLASI [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="🔒💸 delegacion-gate  (PreToolUse/Task, EN PARALELO con limite-gasto)\nclasificar_delegacion (lib comun = fuente única con el registrar):\nsubagent_type/model → agentes-costo.json → NIVEL de costo"];
+           label="🔒💸 delegacion-gate  (PreToolUse/Task, EN PARALELO con limite-gasto)\nclasificar_delegacion (lib común = fuente única con el registrar):\nsubagent_type/model → agentes-costo.json → NIVEL de costo"];
     NIVEL [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="¿NIVEL?\nlocal → gratis · Claude CON snapshot fresco (<30min) y <90% ventana → incluido\nClaude SIN snapshot fresco (rancio >30min o ausente) → metered\n(conservador, aunque la ventana tenga holgura)\nClaude en overage / API de pago / desconocido → metered"];
+           label="¿NIVEL?\nlocal → gratis · Claude CON snapshot fresco (<30min) y <90% ventana → incluido\nsin snapshot fresco / overage / API de pago / desconocido → metered (conservador)"];
     YACON [shape=diamond, fillcolor="#2b2622", color="#d97757",
            label="¿ya consentido?\ngratis/incluido: 1× por COMPU (delegacion-consentimiento.json)\nmetered: 1× por WORKFLOW (session_id)"];
     ASK   [color="#e08e45",
-           label="🟠 ASK — pide tu OK (muestra el estado real de tu ventana 5h).\ncoalescer G3/H6: el 1er Task del lote toma un lock (mkdir ~10s);\nlos HERMANOS simultáneos pasan en silencio (solo gratis/incluido)"];
+           label="🟠 ASK — pide tu OK (muestra el estado real de tu ventana 5h).\ncoalescer G3/H6: en un lote el 1er Task toma un lock (mkdir ~10s);\nlos HERMANOS simultáneos pasan en silencio (solo gratis/incluido)"];
     PASA  [color="#7fb069",
            label="🟢 pasa sin preguntar\n(consentimiento ya vigente para este nivel)"];
     NIEGA [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
-           label="el usuario NIEGA → el Task NO corre\n(delegacion-registrar no dispara → no se registra consentimiento)\nel ítem queda para rehacer o para no delegarlo"];
-
-    // ── Confluencia: precedencia deny > ask > allow (limite-gasto y delegacion-gate corren en\n    //    paralelo sobre el MISMO Task; el CLI combina sus 2 decisiones antes de dejarlo correr) ──
+           label="el usuario NIEGA → el Task NO corre\n(delegacion-registrar no dispara) → el ítem se rehace o no se delega"];
     PREC  [shape=diamond, fillcolor="#2b2622", color="#d97757",
            label="el CLI combina limite-gasto + delegacion-gate\nprecedencia: deny > ask > allow"];
 
-    // ── El agente corre AISLADO ──
+    // ── El agente corre AISLADO, por SECCIONES EN ORDEN ──
     AISLA [color="#c0392b", penwidth=3,
-           label="⚠ ESCRIBE git · el AGENTE corre en su WORKTREE AISLADO\n(git reset/checkout/rebase ahí NO puede orfanar los commits del orquestador)\nGOTCHA: el worktree nace en origin/HEAD (≈main) → el agente hace\n`git reset --hard <rama-objetivo>` al arrancar (dispara proteger-arbol = falso positivo H14)"];
-    TRABAJO [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
-             label="el agente hace SU ítem autocontenido y DEVUELVE el contrato:\n{qué hizo · línea-de-bitácora curada · pendiente-para-otro · worktree limpio|dejado-con-nota}"];
+           label="⚠ ESCRIBE git · el AGENTE trabaja en su WORKTREE AISLADO, por SECCIONES EN ORDEN\n(git reset/checkout/rebase ahí NO orfana los commits del máster)\n• commit por sección   • gate verificable por sección (suite/build/lint, no empeora la base)\n• checkpoint por sección a un archivo de avance (`>>`): sección·hash·archivos·gate·pendiente\n• contexto cuidado: grep y rangos (sed -n), salidas recortadas"];
+    LLENA [shape=diamond, fillcolor="#2b2622", color="#d97757",
+           label="¿se llenó la ventana / se colgó?"];
+    RELEVA [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
+            label="deja anotado hasta dónde llegó y se DETIENE;\notro agente RETOMA desde el archivo de avance"];
+    TERM  [color="#7fb069",
+           label="🟢 el agente es TERMINAL: responde un resumen corto\n(rama · hash · cambios · gate antes/después · lo que dejó sin hacer)\ny no espera nada más"];
 
-    // ── PostToolUse/Task: el hook de cierre de consentimiento ──
+    // ── PostToolUse/Task: cierre de consentimiento ──
     REG   [color="#e08e45",
            label="🔔📝 delegacion-registrar  (PostToolUse/Task)\nsolo corre si el Task CORRIÓ (usuario aprobó) → PERSISTE el consentimiento\n(gratis/incluido: por compu · metered: por workflow) + libera el lock G3"];
 
-    // ── El orquestador cierra el loop ──
+    // ── El máster cierra el loop: verifica antes de creer, integra, limpia ──
     VERIF [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="🔬 el orquestador VERIFICA el linaje del commit (NO cree la prosa del reporte, C7):\n`git merge-base --is-ancestor <commit>^ <rama-objetivo>` ¿nació sobre la base correcta?"];
+           label="🔬 el máster VERIFICA antes de creer (NO cree la prosa del reporte):\nmuestras contra el repo — diff · base del commit · resultado del gate.\nCONFIRMADA / CORREGIDA / REFUTADA; si REESCRIBIÓ algo desde cero → diff de preservación\n(un rebuild falla por omisión silenciosa). `git merge-base --is-ancestor <commit>^ <base>`"];
     DESCARTA [fillcolor="#f5f5f5", color="#c0392b", fontcolor="#333", style="dashed,filled", penwidth=3,
-              label="🚧⚠ ESCRIBE git · base equivocada (padre = main) → NO integres.\nDescarta la rama (git branch -D / worktree remove) y rehaz el ítem sobre la base correcta"];
+              label="🚧⚠ ESCRIBE git · base equivocada / sin preservar → NO integres.\nDescarta la rama (git branch -D / worktree remove) y rehaz sobre la base correcta"];
     INTEGRA [color="#c0392b", penwidth=3,
-             label="⚠ ESCRIBE git · integra a la MINI (DevelopUnjordi/…) por CHERRY-PICK del delta\n(no `merge`, que arrastraría el árbol viejo). NUNCA saca la mini en un worktree propio:\nla POSEE el folder visible del dev → aísla en FEATURE, integra HACIA la mini"];
+             label="⚠ ESCRIBE git · integra a la MINI (DevelopUnjordi/…) por CHERRY-PICK del delta\n(no `merge`, que arrastra el árbol viejo). NUNCA saca la mini en un worktree propio:\nla POSEE el folder visible del dev → se aísla en FEATURE, se integra HACIA la mini.\nNO se publica desde el worktree del agente (no hereda .env/certs ignorados por git)"];
     ESTADO [color="#e08e45",
-            label="🟠 auto-reporte SIN redundancia (2 archivos):\n① APPENDA `>>` una línea a bitacora.md (qué pasó · parallel-safe)\n② CURA el ítem en estado-proyecto.md (qué sigue · backlog vivo)\nTodoWrite = scratch de sesión, NO el backlog durable"];
+            label="🟠 cierre SIN redundancia (2 archivos):\n① APPENDA `>>` una línea a bitacora.md (qué pasó · parallel-safe)\n② CURA el ítem en estado-proyecto.md (qué sigue · backlog vivo)\nTodoWrite = scratch de sesión, NO el backlog durable"];
     LIMPIA [color="#c0392b", penwidth=3,
-            label="⚠ ESCRIBE git · el orquestador limpia (DISCIPLINA, sin hook que lo recuerde):\nlimpiar.sh worktrees (borra los de ramas mergeadas, deja los vivos con su pendiente)\nlimpiar.sh ramas (barre ramas locales ya integradas por `git branch -d/-D`)\nbarrer-ramas (SessionStart/merge-MR) NO cubre este cierre por cherry-pick"];
+            label="⚠ ESCRIBE git · el máster limpia (DISCIPLINA, sin hook que lo recuerde):\nlimpiar.sh worktrees (borra los de ramas mergeadas, deja los vivos con su pendiente)\nlimpiar.sh ramas (barre ramas locales ya integradas)"];
     FIN   [color="#7fb069", penwidth=2,
-           label="🟢 slice del agente CERRADO\n(estado al día · worktree limpio · sin niñería)"];
+           label="🟢 ítem del agente CERRADO\n(integrado · estado al día · worktree limpio · sin niñería)"];
 
     // Aristas
-    BL -> PREREQ;
+    BL -> PAR;
+    PAR -> PARSI  [label="paralelo justificado"];
+    PAR -> PREREQ [label="default: UNO secuencial"];
+    PARSI -> PREREQ;
     PREREQ -> NOGIT [label="no"];
-    PREREQ -> SPAWN [label="sí"];
+    PREREQ -> MAND  [label="sí"];
+    MAND -> SPAWN;
     SPAWN -> LIM   [label="mismo spawn de Task (PARALELO)"];
     SPAWN -> CLASI [label="mismo spawn de Task (PARALELO)"];
     LIM -> LIM_D [label="AND: ambos agotados"];
-    LIM -> PREC [style=dashed, label="no (hay capacidad en algún lado)\nfail-open → no frena"];
+    LIM -> PREC  [style=dashed, label="hay capacidad en algún lado\nfail-open → no frena"];
     CLASI -> NIVEL;
-    CLASI -> ASK [label="sin jq → fail-safe:\nno puede clasificar el costo, pide OK"];
+    CLASI -> ASK [label="sin jq → fail-safe: pide OK"];
     NIVEL -> YACON;
     YACON -> PASA [label="sí"];
     YACON -> ASK  [label="no"];
     ASK -> PREC   [label="usuario aprueba"];
     ASK -> NIEGA  [label="usuario niega"];
     PASA -> PREC  [style=dashed, label="allow (gate)"];
-    LIM_D -> PREC [label="DENY: vence a cualquier ASK/allow\nsimultáneo (precedencia)"];
+    LIM_D -> PREC [label="DENY vence a ASK/allow\n(precedencia)"];
     PREC -> AISLA [label="ningún DENY → procede"];
-    AISLA -> TRABAJO;
-    TRABAJO -> REG;
-    REG -> VERIF; TRABAJO -> VERIF [style=dashed, label="orquestador cierra\npor DISCIPLINA (sin hook\nque lo recuerde, ver 12)"];
-    VERIF -> DESCARTA [label="padre = base\nequivocada"];
-    VERIF -> INTEGRA  [label="linaje OK"];
+    AISLA -> LLENA;
+    LLENA -> RELEVA [label="sí"];
+    LLENA -> TERM   [label="no: sección(es) hechas"];
+    RELEVA -> BL [style=dashed, label="otro agente retoma"];
+    TERM -> REG;
+    REG -> VERIF;
+    VERIF -> DESCARTA [label="base mala /\nsin preservar"];
+    VERIF -> INTEGRA  [label="CONFIRMADA"];
     DESCARTA -> BL [label="rehaz el ítem"];
     INTEGRA -> ESTADO;
     ESTADO -> LIMPIA;

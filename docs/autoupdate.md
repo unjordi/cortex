@@ -9,7 +9,7 @@ rama) junto al binario. Al abrir la pestaña **Cerebro**, el widget consulta `co
 `github.com/unjordi/cortex` (throttle ~15 min, timeout ~6 s, **fail-open**: sin red / sin
 `version.json` / sin clon → no molesta). Si `main` avanzó, dibuja el banner **⬆ Actualizar**.
 
-Al aceptar, un script suelto hace `git fetch` + `git merge --ff-only origin/main` y —**solo si tuvo
+Al aceptar, un script suelto hace `git fetch` + `git checkout -B main origin/main` (fuerza-alinea el clon, como `bootstrap.sh`; un `merge --ff-only` fallaba para siempre con el clon en otra rama) y —**solo si tuvo
 éxito**— re-corre el instalador (`install.sh` / `install.ps1`), que reconstruye y relanza. Como el
 proceso corre desprendido, sobrevive a que el instalador cierre la app.
 
@@ -21,6 +21,9 @@ proceso corre desprendido, sobrevive a que el instalador cierre la app.
 > (re-cablea el cerebro empaquetado en el app), no como el paso obligado que era antes en el Mac.
 
 - macOS (`Updater.swift`), Linux (`main.qml` → `forceRefresh`), Windows (`Updater.cs`).
+- Linux/GNOME (`src/gnome-extension/lib/cerebro.js`): mismo chequeo y mismo comando, pero re-corre
+  `install.sh --gnome --no-reload-shell`; GNOME no recarga extensiones en caliente, así que la versión
+  nueva carga al cerrar sesión y volver a entrar (el banner lo dice).
 - **Requisito:** el receptor tiene el **clon de git** + el **toolchain de build** (Swift/CLT en
   macOS, nada en Linux porque el plasmoide es QML, **.NET SDK en Windows**).
 

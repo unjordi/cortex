@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # sembrar-mini-develop.sh — siembra TU rama personal de integración ("mini-develop", convención
 # Develop<Usuario>) en el repo actual y, si el remoto es GitLab, la PROTEGE server-side (push/merge =
-# Developer, allow_force_push=true; al quedar protegida no es borrable por accidente — una mini-develop
-# borrada ya costó trabajo real, 2026-07). Es el MECANISMO de la norma "Modelo MINI-DEVELOP" (toda
+# Developer, allow_force_push=true; al quedar protegida no es borrable por accidente). Es el MECANISMO de la norma "Modelo MINI-DEVELOP" (toda
 # norma nace con su mecanismo). SELF-SERVICE e idempotente: cada dev la corre UNA vez por repo; nadie
 # siembra la mini de otro.
 #

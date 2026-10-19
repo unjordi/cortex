@@ -64,6 +64,10 @@ Lo que necesitas saber para trabajar aquí:
 
 ---
 
-**⚙️ Auto-carga (`@import` de Claude Code):** el core estable del cerebro, siempre en contexto.
+**⚙️ Auto-carga (`@import` de Claude Code):** el core estable del cerebro, siempre en contexto. La
+**identidad** por-master (`conocimiento-propio.local.md`, gitignored per-máquina) se carga con el `@`
+NATIVO — tolerante a su ausencia (medido 2026-10-14: un `@import` a un archivo ausente no truena ni
+inventa contenido). Reemplaza la vieja re-inyección del hook `aviso-drift-cerebro`.
 
 @.claude/memory/MEMORY.md
+@.claude/memory/conocimiento-propio.local.md

@@ -15,9 +15,8 @@
 # un `ls-remote` POR rama candidata (red) y colgaría el arranque de sesión / el turno. Es SEGURO por
 # construcción (solo borra zombies; CONSERVA ante cualquier duda) → no pide confirmación por corrida.
 #
-# Por qué EXISTE (unjordi, 2026-07-21): `limpiar.sh` es kind=script en el MANIFEST → se INSTALA pero
-# nadie lo DISPARA; las ramas squasheadas se acumulaban (un repo llegó a 60+). "Norma sin mecanismo = buen
-# deseo": este hook es el mecanismo. La vía (B) se añadió (2026-08-07, #53) porque la (A) solo barría al
+# Por qué EXISTE: `limpiar.sh` es kind=script en el MANIFEST → se INSTALA pero nadie lo DISPARA; este
+# hook es el mecanismo. La vía (B) existe porque la (A) solo barre al
 # ABRIR sesión y con throttle de 24h → tras mergear seguías viendo la rama muerta hasta la siguiente
 # sesión; ahora se barre en el instante del merge, que es cuando el zombie aparece.
 #
@@ -34,7 +33,7 @@
 # actual/base/develop/main/Develop*/keep/* (justo las que aviso-drift commitea). Fail-open ambos → una
 # colisión degrada sin corromper.
 #
-# ORDEN A-5 (auditoría 2026-09-11): las dos herramientas antes se lanzaban EN PARALELO (`&` cada una) —
+# las dos herramientas antes se lanzaban EN PARALELO (`&` cada una) —
 # `limpiar.sh ramas` fotografía qué ramas siguen checked-out en un worktree AL ARRANCAR; si `limpiar.sh worktrees`
 # libera un worktree zombie DESPUÉS de esa foto, la rama que retenía queda protegida un ciclo entero (con
 # BARRER_RAMAS_HORAS=24, hasta 2 días para que una rama muera). El ciclo rama↔worktree solo converge en
@@ -68,7 +67,7 @@ fi
 
 # ── Comunes a ambas vías: repo git con remoto y el barredor instalado a un lado (kind=script → misma carpeta).
 #
-# C-1 (dictamen higiene de ramas 2026-09-17) — CAUSA RAÍZ del reguero de 23 ramas: ROOT salía SIEMPRE de
+# CAUSA RAÍZ del reguero de 23 ramas: ROOT salía SIEMPRE de
 # CLAUDE_PROJECT_DIR (el repo de la SESIÓN), pero un merge se corre a menudo sobre OTRO repo
 # (`cd ~/code/cortex && gh pr merge …` desde una sesión abierta en otro proyecto). Medido en vivo: `cortex`
 # no tenía NI UN stamp en ~/.claude/memory/.barrer-ramas/ —nunca fue barrido, ni una vez— mientras el
@@ -87,9 +86,8 @@ git -C "$ROOT" remote | grep -q . 2>/dev/null || exit 0   # sin remoto no hay ra
 LIMPIAR="$(dirname "$0")/limpiar.sh"
 [ -f "$LIMPIAR" ] || exit 0
 # 1b — al punto del merge nace TANTO un ramo local zombie COMO (tras un fan-out) un worktree zombie. Ambos
-# barridos comparten la MISMA lib de "zombie" (ramas-zombie.sh) → misma decisión, sin divergencia, y desde
-# 2026-09-17 el MISMO dispatcher `limpiar.sh` (subcomandos `ramas`/`worktrees`, antes dos ejecutables
-# sueltos). LIMPIAR_WT queda como su propio nombre por claridad de lectura, aunque hoy apunte al mismo
+# barridos comparten la MISMA lib de "zombie" (ramas-zombie.sh) → misma decisión, sin divergencia, y el MISMO
+# dispatcher `limpiar.sh` (subcomandos `ramas`/`worktrees`). LIMPIAR_WT queda como su propio nombre por claridad de lectura, aunque hoy apunte al mismo
 # archivo que LIMPIAR — un clon SIN el dispatcher (brain viejo) deja `[ -f "$LIMPIAR_WT" ]` en falso y cae
 # al fallback de solo-ramas.
 LIMPIAR_WT="$(dirname "$0")/limpiar.sh"
@@ -99,7 +97,7 @@ slug=$(printf '%s' "$ROOT" | cksum 2>/dev/null | awk '{print $1}'); slug="${slug
 now=$(date +%s)
 log="$stampdir/${slug}.log"
 logwt="$stampdir/${slug}.worktrees.log"
-# M-1 (dictamen 2026-09-17): devuelve 0 SOLO si el barrido de verdad se LANZÓ. El throttle marca entonces
+# devuelve 0 SOLO si el barrido de verdad se LANZÓ. El throttle marca entonces
 # el ÉXITO del lanzamiento, no el INTENTO — antes el stamp se sellaba ANTES de `lanzar()` y, si el spawn
 # fallaba, el reloj de 24 h ya estaba quemado y nadie lo notaba (el repo se quedaba sin barrer un día).
 lanzar() {

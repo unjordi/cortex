@@ -35,8 +35,7 @@ shopt -s nocasematch 2>/dev/null
 case "$cmd" in *install*|*deploy*|*publish*|*make*|*just*) : ;; *) exit 0 ;; esac
 shopt -u nocasematch 2>/dev/null
 
-# Quita literales entrecomillados → una MENCIÓN del instalador (grep/echo/doc) no dispara. M1 (auditoría
-# 2026-09-15 §2.1): unifica con la lib compartida (ejecutor/heredoc-aware: un `bash -c "install.sh"` o un
+# Quita literales entrecomillados → una MENCIÓN del instalador (grep/echo/doc) no dispara. Unifica con la lib compartida (ejecutor/heredoc-aware: un `bash -c "install.sh"` o un
 # heredoc que alimenta un intérprete con el instalador adentro ya no evade este aviso).
 # shellcheck source=analizar-comando-git.sh
 _ACGLIB="$(dirname "$0")/analizar-comando-git.sh"

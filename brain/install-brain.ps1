@@ -11,7 +11,7 @@ $ErrorActionPreference = 'Continue'
 # OJO: `Get-Command bash` en una maquina con WSL devuelve C:\Windows\System32\bash.exe (el lanzador
 # de WSL), que NO entiende rutas Windows (C:/... no existe en WSL, seria /mnt/c/...) ni trae las
 # herramientas del cerebro (jq, etc.) -> el instalador fallaba con "No such file or directory" y
-# "jq no disponible" (bug real Windows+WSL, 2026-07-20). Por eso buscamos PRIMERO el bash.exe de Git
+# "jq no disponible". Por eso buscamos PRIMERO el bash.exe de Git
 # for Windows en sus ubicaciones conocidas, y solo caemos al 'bash' del PATH si NO es el de System32.
 $bash = $null
 foreach ($p in @("$env:ProgramFiles\Git\bin\bash.exe","${env:ProgramFiles(x86)}\Git\bin\bash.exe","$env:LOCALAPPDATA\Programs\Git\bin\bash.exe")) {
@@ -59,7 +59,7 @@ if (($userPath -split ';') -notcontains $gitBin) {
 # "Git Bash no disponible" y corre los hooks con WSL/PowerShell -> los .sh (rutas Windows, jq) fallan
 # y los guardrails NO aplican. La env var oficial CLAUDE_CODE_GIT_BASH_PATH apunta a Claude Code al
 # bash.exe de Git Bash explicitamente, sin depender del orden del PATH (persistente, por usuario).
-# (Fuente: docs de Claude Code, troubleshoot-install.) Bug real diagnosticado 2026-07-20 (Windows+WSL).
+# (Fuente: docs de Claude Code, troubleshoot-install.)
 if ([Environment]::GetEnvironmentVariable('CLAUDE_CODE_GIT_BASH_PATH','User') -ne $bashExe) {
   [Environment]::SetEnvironmentVariable('CLAUDE_CODE_GIT_BASH_PATH', $bashExe, 'User')
   $env:CLAUDE_CODE_GIT_BASH_PATH = $bashExe
@@ -71,7 +71,7 @@ if ([Environment]::GetEnvironmentVariable('CLAUDE_CODE_GIT_BASH_PATH','User') -n
 # rara) sigue con CRLF. Aqui quitamos los CR (byte 0x0D) de TODO .sh del repo antes de correr bash,
 # byte a byte para no meter BOM ni tocar la codificacion. Idempotente (si ya esta en LF, no hace nada).
 $RepoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
-# C1 (FMEA post-integracion 2026-07-30): en una instalacion MANUAL de Windows (pwsh -File brain\install-brain.ps1
+# En una instalacion MANUAL de Windows (pwsh -File brain\install-brain.ps1
 # tras un clon a mano, SIN pasar por bootstrap.ps1) CLAUDE_BRAIN_DIR quedaba sin definir -> los hooks bash caian
 # a ~/.cortex (inexistente en Windows; aqui el clon vive en %LOCALAPPDATA%\cortex-repo) y el auto-sync
 # del cerebro fallaba MUDO. Si no esta definida, la exportamos desde el RepoRoot en FORWARD-SLASH (bash se
@@ -239,7 +239,7 @@ if (-not (Test-Path $Installer)) {
 Write-Host "==> cortex: delegando en bash $Installer"
 # Pasar la ruta a bash con '/' (NO '\'): bash lee cada '\U','\A','\L'... de una ruta Windows como
 # secuencia de escape y se COME los backslashes -> "No such file or directory" y el instalador real
-# nunca corre (bug real en Windows, 2026-07-20). Una ruta con forward-slashes (C:/Users/.../
+# nunca corre. Una ruta con forward-slashes (C:/Users/.../
 # install-brain.sh) la entiende Git Bash sin ambiguedad.
 & $bashExe ($Installer -replace '\\','/')
 $rc = $LASTEXITCODE

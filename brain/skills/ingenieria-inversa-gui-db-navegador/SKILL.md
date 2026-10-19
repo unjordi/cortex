@@ -5,12 +5,8 @@ description: Método REUSABLE (independiente de app/dominio) para hacer ingenier
 
 # Ingeniería inversa GUI+BD vía navegador — método destilado
 
-> Nace del turno nocturno 2026-07-21/23 sobre ASPEL SAE9 (repo `potenciaDatabases`): en una sola
-> corrida se documentaron empíricamente 16 procesos de negocio (matriz completa compras+ventas,
-> Directa+Enlazada), con evidencia real de BD antes/después para cada uno, cero suposiciones. El
-> resultado fue calificado por unjordi como "salió perfecto" — este skill destila QUÉ hizo que
-> funcionara, para no reinventarlo cada vez que haya que atacar un sistema legacy nuevo (SAE9 hoy;
-> mañana podría ser COI, NOI, Banco, o algo totalmente distinto).
+> Método para documentar empíricamente procesos de negocio de un sistema legacy (p. ej. ASPEL SAE9,
+> COI, NOI, Banco) con evidencia real de BD antes/después para cada uno, sin suposiciones.
 
 ## Cuándo usar esto
 Cuando la pregunta es **"¿qué hace esta app por dentro cuando el usuario hace clic en X?"** y no
@@ -49,7 +45,7 @@ Si falta una pieza, el método completo no funciona — no arranques sin confirm
      sea "solo una copia". Regístralo en la autorización durable si el usuario amplía el permiso
      en vivo (ver `turno-nocturno` §4 para el mecanismo).
 4. **La GUI ya CONFIGURADA y apuntando a la BD que vas a diffear, con un login/smoke-test real
-   confirmado** (sin errores en el ribbon/pantalla principal). **Gotcha real (2026-07-23):** una
+   confirmado** (sin errores en el ribbon/pantalla principal). **Gotcha:** una
    investigación de "por qué el saldo que muestra la interfaz no cuadra con mi vista SQL" es
    IMPOSIBLE de resolver con SQL solo — necesitas la GUI apuntando a la MISMA base para ver la
    pantalla real y compararla contra la query. Si la pregunta menciona "la interfaz muestra X",
@@ -87,10 +83,9 @@ Por cada proceso/pantalla/acción que quieras documentar:
 > que satisface esto es un **diff de estado COMPLETO** — el equivalente de escritura de la paridad
 > `EXCEPT` de las lecturas.
 
-**Por qué el snapshot de "tablas candidatas" NO alcanza (lección real, 2026-07):** la RE original de
-`proceso-orden-enlazada.md` (convertir requisición→orden) snapshoteó solo candidatas
-(`TBLCONTROL01` + las tablas destino `COMPO01`/`PAR_COMPO01`/`DOCTOSIGC01`). Capturó bien el enlace
-bidireccional y el avance del contador global — **pero NO capturó si `PAR_COMPQ01.PXR` (la partida de
+**Por qué el snapshot de "tablas candidatas" NO alcanza ):** un caso típico (convertir requisición→orden) snapshoteando solo candidatas
+(`TBLCONTROL01` + las tablas destino `COMPO01`/`PAR_COMPO01`/`DOCTOSIGC01`). Captura bien el enlace
+bidireccional y el avance del contador global — **pero NO captura si `PAR_COMPQ01.PXR` (la partida de
 la requisición ORIGEN) cambia**, porque `PAR_COMPQ01` no estaba en la lista de candidatas. Justo ese
 dato (¿el "documento anterior" se recalcula?) es el que un SP necesita para ser indistinguible. Con un
 fingerprint de TODA la BD, la tabla origen habría saltado en el diff aunque nadie la anticipara. Moraleja:
@@ -118,7 +113,7 @@ por CADA tabla de usuario). Para otro motor, el equivalente: rowcount + un check
 - **Triggers del entorno disparan en AMBOS lados.** Si la BD tiene triggers (stock o custom del equipo)
   que se disparan al insertar/actualizar, disparan igual con la GUI y con tu SP → NO son una brecha de
   distinguibilidad, siempre que existan en los DOS entornos que comparas. Inspecciona `sys.triggers`
-  ANTES (caso real SAE9: 3 triggers custom `trazabilidad*AOrden` en `COMPO01`/`PAR_COMPO01` que
+  ANTES (p. ej. SAE9: 3 triggers custom `trazabilidad*AOrden` en `COMPO01`/`PAR_COMPO01` que
   auto-rellenan `COMPO_CLIB01.CAMPLIB4/5/9` desde `DOCTOSIGC01` — el SP los obtiene "gratis"). Pero si
   vas a instalar el SP en un entorno que NO tiene esos triggers, ESA sí es una diferencia real.
 - **Aísla el caso.** Un solo alta mínima (1 partida, 1 producto) hace el diff legible; múltiples cambios
@@ -133,12 +128,10 @@ por CADA tabla de usuario). Para otro motor, el equivalente: rowcount + un check
 ## Convención de nombres — consistencia desde el primer archivo
 Define UN patrón antes de escribir el primer archivo del módulo (ej. `proceso-{documento}-
 {directa|enlazada}.md`, o el que aplique al dominio) y síguelo estrictamente — **nunca combines
-dos casos de uso en un solo archivo cuando el resto del módulo los separa** (pasó real: dos
-archivos de esta noche juntaban Directa+Enlazada mientras el resto de la matriz los separaba;
-unjordi lo cachó a simple vista al pedir la lista — un vistazo externo a los nombres de archivo es
-un buen check de cierre de módulo). Si un documento es la variante ENLAZADA de otro, el nombre
+dos casos de uso en un solo archivo cuando el resto del módulo los separa** (p. ej. Directa+Enlazada en un archivo mientras el resto de la matriz los separa; un vistazo
+externo a los nombres de archivo es un buen check de cierre de módulo). Si un documento es la variante ENLAZADA de otro, el nombre
 debe decirlo explícitamente (`-enlazada`/`-enlazado`), no describir el mecanismo con otras palabras
-(ej. `conversion-x-a-y.md` en vez de `x-enlazada.md` — mismo bug real, ya corregido).
+(ej. `conversion-x-a-y.md` en vez de `x-enlazada.md`).
 
 ## Mantén vivo el diagrama del modelo relacional (artefacto ACUMULATIVO, no un doc aparte)
 Cada `proceso-*.md` documenta UN caso de uso puntual; pero como el sistema no tiene FKs reales, las
@@ -182,8 +175,7 @@ descubre, para no perder tiempo re-descubriéndolo en el siguiente documento) es
   la ventana/documento a medio capturar sigue viva antes de asumir que hay que empezar de cero.
 
 ## Disciplina de seguimiento — la parte que hace el método MONITOREABLE
-Esto es tan parte del método como el loop de diffing — es lo que le permitió a unjordi verificar
-avance a las 2am sin tener que leer el chat completo:
+Esto es tan parte del método como el loop de diffing — permite verificar el avance sin leer el chat completo:
 - **`TaskCreate` por cada proceso/documento a probar, ANTES de empezar** — desglose concreto y
   verificable (uno por caso de uso, no un ítem gigante "documentar módulo X"). Actualiza estado en
   tiempo real (`in_progress`/`completed`) conforme avanzas — esa lista ES la ventana de monitoreo.
@@ -208,7 +200,7 @@ avance a las 2am sin tener que leer el chat completo:
 Una vez el loop esté pulido y probado a fondo en UNA VM/módulo, el mismo método es paralelizable:
 cada VM+sandbox propio corre un agente cubriendo un módulo distinto del mismo sistema legacy (o
 sistemas legacy distintos en paralelo), con un orquestador consolidando checkpoints/hallazgos (ver
-skill `orquestar-fanout` para el modelo de reporte-sin-niñera). **No construir esto hasta que el
+la norma «Delegar a agentes» para el modelo de reporte). **No construir esto hasta que el
 loop de un solo agente esté verdaderamente refinado** — la premisa de "más agentes en paralelo" solo
 paga si cada uno individualmente ya no comete los errores que este skill existe para prevenir.
 

@@ -20,6 +20,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var fetchScript = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".local/bin/cortex-fetch").path
 
+    // Comparar la cuenta ACTIVA (~/.claude.json) contra la del snapshot cada 30s (no en cada tick de
+    // 10s — unjordi: "no hace falta que sea tan ansioso"): un cambio de cuenta no es ni "stale" ni
+    // "reset pasado", así que sin esto el widget mostraba la cuota de la cuenta anterior hasta 5.5 min.
+    private let accountCheckInterval: Double = 30
+    private var lastAccountCheck = Date.distantPast
+    private lazy var claudeConfigPath: String = {
+        let env = ProcessInfo.processInfo.environment
+        if let dir = env["CLAUDE_CONFIG_DIR"], !dir.isEmpty { return dir + "/.claude.json" }
+        return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude.json").path
+    }()
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
@@ -67,11 +78,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Refresca si el caché superó el piso de 5.5 min, O si una ventana YA pasó su reset (el %
         // cacheado quedó viejo) y el caché tiene >60s — así el 100% no se queda pegado tras el reset.
         if let age = model.ageSeconds, age > staleThreshold || (model.anyResetPassed && age > 60) { runFetch() }
+        // Cambio de CUENTA: cada 30s compara la cuenta activa (~/.claude.json) con la del snapshot; si
+        // difiere → refetch al instante (runFetch está guardado por `fetching`, un doble disparo es no-op).
+        if Date().timeIntervalSince(lastAccountCheck) >= accountCheckInterval {
+            lastAccountCheck = Date()
+            if let active = activeAccountUuid(), active != model.snapshot?.account_uuid { runFetch() }
+        }
         Task { @MainActor in await Updater.shared.checkIfStale() }
     }
 
     /// Force a real fetch regardless of cache age (from the popover button).
     private func forceFetch() { runFetch() }
+
+    /// UUID de la cuenta Claude ACTIVA, de ~/.claude.json (.oauthAccount.accountUuid). nil si no se
+    /// puede leer → en ese caso NO se fuerza fetch (fail-safe: sin señal fiable, no disparar de más).
+    private func activeAccountUuid() -> String? {
+        guard let data = FileManager.default.contents(atPath: claudeConfigPath),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let oauth = obj["oauthAccount"] as? [String: Any],
+              let uuid = oauth["accountUuid"] as? String, !uuid.isEmpty else { return nil }
+        return uuid
+    }
 
     /// Run the fetch script off the main thread; reload the UI when it finishes.
     /// Guarded so only one fetch is ever in flight.

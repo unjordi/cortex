@@ -5,10 +5,10 @@
 # ==================================================================================================
 # Preferido: wl-copy/wl-paste (wl-clipboard, protocolo Wayland nativo) si hay WAYLAND_DISPLAY.
 # Fallback: xclip/xsel (X11/XWayland) si no hay Wayland. NO dispara el permiso EIS de KWin (el
-# portapapeles es un protocolo aparte, no input sintetico) -- VERIFICADO 2026-09-18 en cachy:
+# portapapeles es un protocolo aparte, no input sintetico) -- VERIFICADO:
 # `wl-copy`/`wl-paste` funcionaron sin ningun prompt.
 #
-# GOTCHA REAL (verificado 2026-09-18): `wl-copy` por diseno SE QUEDA CORRIENDO en segundo plano
+# GOTCHA REAL (verificado): `wl-copy` por diseno SE QUEDA CORRIENDO en segundo plano
 # para poder SERVIR la seleccion mientras nadie la sobreescribe -- si lo corres en primer plano
 # dentro de un comando SSH, la sesion SSH se queda COLGADA esperando a que ese proceso termine
 # (nunca termina solo). Este script lo lanza con `setsid ... &` + `disown` para evitar el cuelgue.

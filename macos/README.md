@@ -54,22 +54,11 @@ tab rail on the left:
 
 ## How it works
 
-Three pieces, intentionally separated — the same shape as the Linux port:
+Two pieces, intentionally separated — the same shape as the Linux port:
 
-```
-┌────────────────────────────────┐
-│ 1. cortex-fetch          │ bash + jq + curl (OAuth) + ccusage
-│    runs every 5 min via        │     ↓ writes
-│    a launchd LaunchAgent        │ ~/Library/Caches/cortex/state.json
-│                                  │ ~/Library/Caches/cortex/stats.json
-└────────────────────────────────┘            ↑ reads
-                                              │ (every 10s)
-┌────────────────────────────────┐            │
-│ 2. Cortex Widget.app     │────────────┘
-│    NSStatusItem 2-row indicator│
-│    + 3-tab SwiftUI popover     │
-└────────────────────────────────┘
-```
+1. **cortex-fetch** (bash + jq + curl OAuth + ccusage): runs every 5 min via a launchd LaunchAgent and writes
+   `~/Library/Caches/cortex/state.json` and `~/Library/Caches/cortex/stats.json`.
+2. **Cortex Widget.app** (NSStatusItem 2-row indicator + 3-tab SwiftUI popover): reads both files every 10 s.
 
 The **launchd agent enforces the 5-minute refresh floor** (`StartInterval=300`)
 — Anthropic's API issues abuse warnings if you poll the underlying data too

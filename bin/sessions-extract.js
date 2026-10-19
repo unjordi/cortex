@@ -33,7 +33,7 @@ function sessionAliases() {
 
 // Un mensaje de usuario NO aporta contexto para nombrar la sesión si es solo un saludo, un
 // marcador del sistema (<command-message>…, tool-result) o un aviso tipo "[Request interrupted]".
-// El estilo real de unjordi abre con "holaaaaaa" / "hola! …" + un ritual de "carga memorias,
+// Un estilo de apertura típico es "holaaaaaa" / "hola! …" + un ritual de "carga memorias,
 // despierta" antes de la petición de verdad → si tomáramos solo el 1er mensaje, el summary (y la
 // sugerencia de nombre) saldría inútil ("charla inicial sin rumbo"). Por eso se SALTAN estos.
 const GREETING = /^(?:h+o+l+a+|h+e+y+|o+l+a+|buen(?:os|as)(?: d[ií]as| tardes| noches)?|qu[eé] onda|saludos|hi+|hello+|holi+)[\s!¡.,:;]*$/i;

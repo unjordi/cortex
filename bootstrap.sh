@@ -21,10 +21,8 @@ say() { printf '\033[1;38;5;208m🧠 cortex\033[0m » %s\n' "$1"; }
 
 # Migración del clon de eras viejas → $DIR (~/.cortex; respeta CLAUDE_BRAIN_DIR). El clon se necesita
 # para que "Actualizar widget" funcione (guarda su ruta en version.json): no se borra, se REUBICA. La
-# era intermedia 'claude-brain' vivía en ~/.claude-brain (oculto) o ~/claude-brain (visible, pre-
-# ocultamiento 2026-07-15). Si existe y $DIR aún no, muévelo y reapunta el remote a cortex; si $DIR ya
-# existe, borra el huérfano. Idempotente/fail-safe. (El #312 renombró el OLD_DIR mecánicamente a
-# ~/cortex —un dir visible que NUNCA existió—; ese puntero muerto se quitó, las rutas reales van abajo.)
+# era intermedia 'claude-brain' vivía en ~/.claude-brain (oculto) o ~/claude-brain (visible). Si existe y $DIR aún no, muévelo y reapunta el remote a cortex; si $DIR ya
+# existe, borra el huérfano. Idempotente/fail-safe.
 for _brain_old in "$HOME/.claude-brain" "$HOME/claude-brain"; do
   [[ -d "$_brain_old/.git" ]] || continue
   # NUNCA operes sobre el destino ACTIVO: si $DIR (CLAUDE_BRAIN_DIR) ES esta ruta vieja, sáltala — si no,

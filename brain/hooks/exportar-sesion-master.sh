@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # exportar-sesion-master.sh — hook del brain (mecanismo GENÉRICO, opt-in por convención de nombre).
-# Exporta el transcript comprimido de una sesión cuyo TÍTULO vigente sea `*-master` (o que ya esté
-# listada en masters.json) a la CARPETA DE SESIONES, para poder `claude --resume` la MISMA sesión
+# Exporta el transcript comprimido de una sesión cuyo TÍTULO vigente sea `*-master` (o que ya tenga su
+# `<sid>.meta.json`, señal de que ya se exportó) a la CARPETA DE SESIONES, para poder `claude --resume` la MISMA sesión
 # después (sobrevive el cleanup de 30 días de Claude Code) — y, si esa carpeta vive en una nube, para
 # que la sesión VIAJE entre máquinas. Mitad "auto-export" del sync; la mitad "sembrar" es seed.sh.
 #
@@ -14,18 +14,18 @@
 #                 sesión) para no re-gzipear cientos de MB en balde. Mantiene la master fresca CONTINUA-
 #                 mente aunque la sesión NUNCA "termine" (las de vida larga se resumen por días →
 #                 SessionEnd casi nunca disparaba → el export se congelaba). En Stop, fast-path: solo
-#                 actúa si el sid YA está en masters.json (grep a ~1KB); NO escanea el transcript gigante.
+#                 actúa si el sid YA tiene su `<sid>.meta.json` (ya se exportó); NO escanea el transcript gigante.
 #   - SessionEnd  Estado FINAL en salida limpia (sin debounce). Aquí sí se escanea el título para
 #                 detectar/registrar un master NUEVO.
 #   - PreCompact  Bonus: justo antes de compactar (sin debounce). NO crítico (Stop ya cubre frescura).
 #
 # El export corre DETACHED (nohup … &) con lock por-sid: un transcript grande excede el timeout del hook
-# ("Hook cancelled", caso real cps-master 456 MB) → el hook retorna al instante y el gzip+copy termina en
+# ("Hook cancelled") → el hook retorna al instante y el gzip+copy termina en
 # segundo plano. El MOTOR (session-export.js) es genérico y lo aporta cortex.
 #
 # CONTRATO: SILENCIOSO y FAIL-OPEN. Si la sesión no es master, falta el motor/node, o el debounce aún no
 # vence → no hace nada y NO bloquea. JAMÁS rompe el turno/cierre (siempre exit 0). Opt-in por convención
-# de nombre (título *-master) y/o por estar ya en masters.json.
+# de nombre (título *-master) y/o por tener ya su `<sid>.meta.json`. NO escribe masters.json.
 # Overrides: $CLAUDE_SESSIONS_DEBOUNCE_MIN (min, default 20) · $CLAUDE_SESSIONS_DRIVE (carpeta de sesiones).
 set -u
 
@@ -40,7 +40,6 @@ getf() {
 }
 sid=$(getf session_id)
 tpath=$(getf transcript_path)
-cwd=$(getf cwd)
 event=$(getf hook_event_name)
 [ -n "$sid" ] || exit 0
 [ -n "$tpath" ] && [ -f "$tpath" ] || exit 0
@@ -50,7 +49,7 @@ if [ "$event" = "Stop" ]; then
   [ "$(getf stop_hook_active)" = "true" ] && exit 0
 fi
 
-# ── carpeta de respaldo de sesiones ──────────────────────────────────────────────────────────────
+# ── carpeta de respaldo de sesiones ──────────────────────────────────────────────────────── ──
 # DEFAULT: ~/.claude-sessions (oculta en el home, SIEMPRE local → el respaldo sobrevive el cleanup de
 # 30 días de Claude Code sin depender de ninguna nube). OVERRIDE: exporta CLAUDE_SESSIONS_DRIVE para
 # apuntarla a una carpeta SINCRONIZADA (Google Drive / iCloud / …) y que las sesiones VIAJEN entre
@@ -58,13 +57,15 @@ fi
 # de una nube son config de MÁQUINA, no del mecanismo → NO viven aquí.
 DRIVE="${CLAUDE_SESSIONS_DRIVE:-$HOME/.claude-sessions}"
 mkdir -p "$DRIVE" 2>/dev/null || exit 0
-mj="$DRIVE/masters.json"
+meta="$DRIVE/$sid.meta.json"   # fuente per-sid SIN contención (la escribe session-export.js)
 
-# ── ¿es master? FAST-PATH: si el sid ya está en masters.json no escaneamos el transcript. ──────────
+# ── ¿es master? FAST-PATH: si el sid YA tiene su <sid>.meta.json (ya se exportó alguna vez) no escaneamos
+# el transcript. (El meta per-sid es la señal libre de contención; el 1er EXPORT en SessionEnd/PreCompact
+# lo escribe y los Stops siguientes lo ven.)
 title=""
 is_master=0
 # ¿título de master? Acepta "<x>-master" Y el "<x>-master (N)" que el CLI pone al CONTINUAR una sesión como
-# duplicado — sin esto, ese master (p. ej. "cortex-master (2)") dejaba de exportarse EN SILENCIO. Devuelve el
+# duplicado — sin esto, ese master (p. ej. "<x>-master (2)") dejaba de exportarse EN SILENCIO. Devuelve el
 # NAME BASE canónico (sin el " (N)"), que es el mismo linaje; el archivo de export ya es por-sid, no por-name.
 _master_base() {  # $1=title → echo base si es master; nada si no
   case "$1" in
@@ -73,28 +74,28 @@ _master_base() {  # $1=title → echo base si es master; nada si no
     *) : ;;
   esac
 }
-if [ -f "$mj" ] && grep -q "\"$sid\"" "$mj" 2>/dev/null; then
+if [ -f "$meta" ]; then
   is_master=1
-  [ "$have_jq" = 1 ] && title=$(jq -r --arg id "$sid" '.masters[]? | select(.id==$id) | .name // empty' "$mj" 2>/dev/null)
+  [ "$have_jq" = 1 ] && title=$(jq -r '.label // empty' "$meta" 2>/dev/null)
 fi
-# sid NO registrado: el escaneo del transcript (caro) SOLO en eventos infrecuentes, jamás en Stop.
+# sid NO exportado aún: el escaneo del transcript (caro) SOLO en eventos infrecuentes, jamás en Stop.
 if [ "$is_master" = 0 ]; then
   case "$event" in
     SessionEnd|PreCompact)
       t=$(grep -ao '"customTitle":"[^"]*"' "$tpath" 2>/dev/null | tail -1 | sed 's/.*:"//; s/"$//')
       _b=$(_master_base "$t"); [ -n "$_b" ] && { title="$_b"; is_master=1; }
       ;;
-    *) exit 0 ;;   # Stop u otro con sid no listado → salimos barato, sin escanear
+    *) exit 0 ;;   # Stop u otro sin meta → salimos barato, sin escanear
   esac
 fi
-# título registrado pero sin name (o sin jq): recupéralo con un scan (raro; jq va presente por install-hook)
+# meta presente pero sin label (o sin jq): recupera el título con un scan (raro; jq va presente por install-hook)
 if [ "$is_master" = 1 ] && [ -z "$title" ]; then
   t=$(grep -ao '"customTitle":"[^"]*"' "$tpath" 2>/dev/null | tail -1 | sed 's/.*:"//; s/"$//')
   _b=$(_master_base "$t"); if [ -n "$_b" ]; then title="$_b"; else title="$sid"; fi
 fi
 [ "$is_master" = 1 ] && [ -n "$title" ] || exit 0
 
-# ── DEBOUNCE (solo Stop): si el export en Drive es más nuevo que N min, no re-exportar. ──────────
+# ── DEBOUNCE (solo Stop): si el export en Drive es más nuevo que N min, no re-exportar. ──── ──
 if [ "$event" = "Stop" ]; then
   prev="$DRIVE/$sid.jsonl.gz"
   if [ -f "$prev" ]; then
@@ -110,7 +111,7 @@ if [ "$event" = "Stop" ]; then
   fi
 fi
 
-# ── localizar el motor (genérico, lo aporta cortex) ────────────────────────────────────────
+# ── localizar el motor (genérico, lo aporta cortex) ────────────────────────────────── ──
 # resolve_brain_dir() vive en drift-cerebro-comun.sh (misma carpeta, fuente y una vez instalado) — mismo
 # orden/fallback que los widgets (#322): $CLAUDE_BRAIN_DIR → ~/.cortex → ~/.claude-brain (nombre viejo).
 # Si la lib no está (caso raro), cae al default histórico sin el fallback (fail-open, nunca bloquea).
@@ -129,7 +130,7 @@ done
 [ -n "$EXP" ] || exit 0
 command -v node >/dev/null 2>&1 || exit 0
 
-# ── EXPORTAR en SEGUNDO PLANO (detached) ─────────────────────────────────────────────────────────
+# ── EXPORTAR en SEGUNDO PLANO (detached) ─────────────────────────────────────────────────── ──
 # Un transcript grande (cientos de MB) tarda en gzipearse y EXCEDE el timeout del hook → "Hook
 # cancelled" (caso REAL: cps-master, 456 MB, el auto-export se quedó congelado). Solución: lanzar el
 # export con nohup … & → el hook RETORNA al instante y el gzip+copy termina en segundo plano, sin que
@@ -161,41 +162,10 @@ nohup bash -c '
   rm -f "$lock" 2>/dev/null
 ' _ "$EXP" "$sid" "$title" "$DRIVE" "$lock" >/dev/null 2>&1 &
 
-# ── registrar/ACTUALIZAR en masters.json (target = cwd relativo a $HOME → "code/<repo>") ─────────
-# Corre SIEMPRE (ya no solo cuando falta el sid): si el master YA está pero se MOVIÓ de folder, su
-# `target` viejo haría que `seed.sh` en otra máquina lo sembrara al lugar equivocado. Ahora: si no está
-# → lo agrega; si está con target distinto → lo ACTUALIZA; y si el título cambió (rename real, no el
-# fallback al sid) → actualiza el name. Solo reescribe el archivo si HUBO cambio (masters.json vive en
-# Drive compartido → no generar churn de sync en cada export).
-if [ -f "$mj" ] && [ -n "$cwd" ]; then
-  target="${cwd#"$HOME"/}"
-  # LOCK por-archivo (mkdir atómico) para SERIALIZAR el read-modify-write de masters.json entre masters
-  # CONCURRENTES (cortex-master + cps-master haciendo Stop/SessionEnd casi a la vez sobre el Drive compartido)
-  # → sin lost-update. Best-effort: si no se puede tomar, se SALTA (el próximo export reintenta). Un lock
-  # huérfano de un crash (>5 min) se recicla → no bloquea para siempre. La escritura del JSON es ATÓMICA
-  # (tmp+rename) dentro de node → un masters.json corrupto/parcial nunca pisa el bueno si node muere a media.
-  mjlock="$mj.lock"
-  if ! mkdir "$mjlock" 2>/dev/null; then
-    if [ -n "$(find "$mjlock" -maxdepth 0 -mmin +5 2>/dev/null)" ]; then
-      rm -rf "$mjlock" 2>/dev/null; mkdir "$mjlock" 2>/dev/null || mjlock=""
-    else mjlock=""; fi
-  fi
-  if [ -n "$mjlock" ]; then
-    node -e '
-      const fs=require("fs"),p=process.argv[1],id=process.argv[2],name=process.argv[3],target=process.argv[4];
-      try{const m=JSON.parse(fs.readFileSync(p,"utf8"));m.masters=m.masters||[];
-        const e=m.masters.find(x=>x.id===id); let changed=false;
-        if(!e){ m.masters.push({id,name,target}); changed=true; }
-        else {
-          if(target && e.target!==target){ e.target=target; changed=true; }
-          // name solo si es un título REAL (no el fallback al sid) y de verdad cambió
-          if(name && name!==id && e.name!==name){ e.name=name; changed=true; }
-        }
-        // Escritura ATÓMICA: tmp en el MISMO dir + rename (nunca deja el masters.json a medio escribir).
-        if(changed){ const t=p+".tmp."+process.pid; fs.writeFileSync(t,JSON.stringify(m,null,2)+"\n"); fs.renameSync(t,p); }
-      }catch(e){}
-    ' "$mj" "$sid" "$title" "$target" 2>/dev/null || true
-    rmdir "$mjlock" 2>/dev/null || true
-  fi
-fi
+# ── Sin masters.json compartido ──
+# Varios masters concurrentes escribiendo un archivo compartido en Drive generan conflictos de sync y
+# drift. La proveniencia por-sesión vive SOLO en el `<sid>.meta.json` per-sid (id, label, originCwd),
+# conflict-free por construcción (un archivo por sesión, cada máquina el suyo) — lo escribe el export de
+# arriba. El roster de masters lo derivan `seed.sh` (de los metas del Drive) y el `masters-<host>.json`
+# LOCAL que cada master CURA A MANO. Ver brain/sesiones-master/README.md.
 exit 0

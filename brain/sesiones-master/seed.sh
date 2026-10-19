@@ -10,7 +10,7 @@
 # (Antes seed.sh vivía DENTRO de la carpeta de Drive y se autolocalizaba con $(dirname $0); al mudarse
 #  al brain eso ya no aplica → la carpeta se resuelve por env, no por la ubicación del script.)
 #
-# ROBUSTO POR MÁQUINA: el `target` de masters.json puede NO calzar 1:1 con esta compu —
+# ROBUSTO POR MÁQUINA: el `target` del roster puede NO calzar 1:1 con esta compu —
 #   (a) diferencias de MAYÚSCULAS (macOS es case-insensitive, Linux NO: `code/PowerScripts` vs
 #       `code/powerscripts`) → el repo destino se resuelve case-insensitive contra lo que EXISTE aquí,
 #       y se siembra a la RUTA REAL (para que el cwd reescrito y el slug casen con el repo de verdad);
@@ -27,7 +27,12 @@ set -euo pipefail
 DIR="${CLAUDE_SESSIONS_DRIVE:-$HOME/.claude-sessions}"
 FORCE="${1:-}"
 [ -d "$DIR" ] || { echo "seed.sh: no existe la carpeta de sesiones '$DIR' (setea CLAUDE_SESSIONS_DRIVE, o crea ~/.claude-sessions)"; exit 1; }
-[ -f "$DIR/masters.json" ] || { echo "seed.sh: no hay masters.json en '$DIR' (nada que sembrar)"; exit 0; }
+# El roster de masters no vive en un masters.json compartido (genera conflictos de Drive). Se DERIVA de: (1) los `masters-<host>.json` que cada máquina CURA A MANO y publica al Drive;
+# (2) el `masters.json` legacy, si todavía existe (compat); (3) los `<id>.meta.json`
+# per-sid (proveniencia conflict-free que escribe el export) como RESPALDO para ids no listados a mano.
+if ! ls "$DIR"/masters*.json "$DIR"/*.meta.json >/dev/null 2>&1; then
+  echo "seed.sh: no hay masters-*.json/masters.json ni <id>.meta.json en '$DIR' (nada que sembrar)"; exit 0
+fi
 
 IMP=""
 for c in "$HOME/.local/bin/session-import.js" "$HOME/.cortex/bin/session-import.js"; do
@@ -54,8 +59,37 @@ resolve_target() {
   return 1
 }
 
-node -e 'const fs=require("fs");const m=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));for(const e of m.masters)console.log([e.id,e.target,e.name].join("\t"));' "$DIR/masters.json" \
+# Construye el ROSTER (líneas id<TAB>target<TAB>name) uniendo las tres fuentes. Prioridad: la entrada
+# CURADA A MANO (masters-<host>.json, y el masters.json legacy) GANA sobre la derivada del meta — el
+# humano fija el `target` canónico (el repo, no un worktree) y el `name`. Un id solo en los metas se
+# deriva: name = meta.label; target = originCwd con el prefijo del $HOME de ORIGEN (/Users/<u>/ o
+# /home/<u>/) quitado → "code/<repo>". (resolve_target abajo lo resuelve case-insensitive a la ruta real;
+# si el repo no está en esta máquina, se SALTA.)
+node -e '
+  const fs=require("fs"),path=require("path"),dir=process.argv[1];
+  const roster=new Map();   // id -> {id,target,name}  (curado gana: no se pisa si ya está)
+  const files=fs.readdirSync(dir);
+  // (1)+(2) curado: masters-<host>.json y masters.json legacy
+  for(const f of files.filter(f=>/^masters(-.+)?\.json$/.test(f)).sort()){
+    try{const m=JSON.parse(fs.readFileSync(path.join(dir,f),"utf8"));
+      for(const e of (m.masters||[])) if(e&&e.id&&!roster.has(e.id)) roster.set(e.id,{id:e.id,target:e.target||"",name:e.name||e.id});
+    }catch(_){}
+  }
+  // (3) respaldo: <id>.meta.json para ids no curados
+  for(const f of files.filter(f=>/\.meta\.json$/.test(f))){
+    try{const meta=JSON.parse(fs.readFileSync(path.join(dir,f),"utf8"));
+      if(!meta||!meta.id||roster.has(meta.id)) continue;
+      const target=(meta.originCwd||"").replace(/^\/(Users|home)\/[^/]+\//,"");
+      roster.set(meta.id,{id:meta.id,target,name:meta.label||meta.id});
+    }catch(_){}
+  }
+  for(const e of roster.values()) console.log([e.id,e.target,e.name].join("\t"));
+' "$DIR" \
 | while IFS=$'\t' read -r id target name; do
+    if [ -z "$target" ]; then
+      echo "· omito   ${name:-$id}: sin target (cúralo en masters-<host>.json o falta originCwd en su meta)"
+      continue
+    fi
     if [ ! -f "$DIR/$id.jsonl.gz" ]; then
       echo "· omito   $name: sin .gz local (¿Drive terminó de bajar? ¿unidad montada?)"
       continue

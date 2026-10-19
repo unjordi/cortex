@@ -155,14 +155,14 @@ flowchart TB
     style LR fill:#374151,color:#fff
 ```
 
-El estilo de orquestación (fan-out + supervisión, 2 archivos de estado sin redundancia) lo guía
-el skill `orquestar-fanout`; la lib `delegacion-comun.sh` comparte la lógica de gate/registro.
-El gate de costo es el **freno** (evita runaways); el **empuje** hacia delegar y el **reporte sin
-niñera** al cerrar un agente (appendear bitácora `>>` + actualizar `estado-proyecto.md` + limpiar
-worktree) ya NO son hooks (`recordar-orquestar`/`delegacion-reporte` se retiraron —puramente
-advisory, medido: ignorados—): viven como **norma que Claude se autoimpone** ("Orquesta: delega lo
-paralelizable y quédate disponible" en `brain/norms/global-claude-md.md`), reforzada por el skill
-`orquestar-fanout`.
+El estilo de delegación (UN agente SECUENCIAL por default, paralelo solo si se justifica con el costo
+dicho antes; 2 archivos de estado sin redundancia) lo fija la norma **«Delegar a agentes: UNO
+secuencial por default»** de `brain/norms/global-claude-md.md` (absorbió al retirado skill
+`orquestar-fanout`); la lib `delegacion-comun.sh` comparte la lógica de gate/registro. El gate de
+costo es el **freno** (evita runaways); el **empuje** hacia delegar y el **cierre sin niñera** de un
+agente (appendear bitácora `>>` + actualizar `estado-proyecto.md` + limpiar worktree) son DISCIPLINA
+del máster, no hooks (`recordar-orquestar`/`delegacion-reporte` se retiraron; su regla vive en esa
+norma).
 
 ---
 

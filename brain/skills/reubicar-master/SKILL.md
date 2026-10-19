@@ -11,7 +11,7 @@ description: >-
   porque el QA es un resume y un resume MUTA). El destino es un PARÁMETRO (`$DST_REPO`), no una
   constante: sirve igual para `cortex`, `axon` o el repo que sea, y el corte de qué viaja versionado se
   calibra según la VISIBILIDAD REAL del destino, verificada en runtime. Úsala cuando: un `--resume` cae
-  en un folder muerto; un master quedó "a medias" (residuo + resume roto, anti-ejemplo helios-selene); o
+  en un folder muerto; un master quedó "a medias" (residuo + resume roto); o
   un master debe mudarse al repo que de verdad es su casa, sin lobotomizarlo, sin fuga ni duplicado
   divergente. La maquinaria determinista vive en el script `reubicar-master.sh` que viene JUNTO a este
   skill (genera el handoff, lo verifica por contenido y da los tres comandos para correrlo); este
@@ -57,10 +57,9 @@ comodidad:
   es sintácticamente perfecto. **No es una prueba de corrección:** eso lo hacen `_postcondiciones`
   (aserciones, en ejecución) y `REUBICAR_MODO=dry`.
 
-> **Por qué dejó de ser markdown (2026-09-10, primera mudanza real).** El generador era un bloque que el
-> operador tenía que extraer, poblar y correr DESPUÉS de sourcear el preludio en la MISMA shell —
-> dependencias invisibles que el propio generador no verificaba. Un `source` dentro de un pipe (que no
-> persiste) produjo un handoff sin preludio: 473 líneas, `bash -n` impecable, certificado «handoff OK» y
+> **Por qué es un script y no markdown.** Un bloque que el operador extrae, puebla y corre DESPUÉS de
+> sourcear el preludio en la MISMA shell tiene dependencias invisibles. Un `source` dentro de un pipe (que no
+> persiste) produce un handoff sin preludio: `bash -n` impecable, certificado «handoff OK» y
 > muerto en `DST_CWD: unbound variable`. **Un artefacto que certifica lo que no verificó** — el mismo modo
 > de falla que este skill existe para evitar, esta vez en su propio andamio. En un proceso el orden no se
 > puede equivocar, y la capa 1 del candado lo exige por CONTENIDO.
@@ -81,7 +80,7 @@ comodidad:
 
 **Shell: bash.** Todos los bloques asumen `bash` (el repo lo declara en su `README.md`: *"todo corre bajo
 bash: macOS, Linux, Windows/Git Bash"*). El `set -euo pipefail` de este skill **no tiene la misma
-semántica en zsh** (medido: el mismo bloque que aborta en bash 5.3 sigue de largo en zsh). Corre los
+semántica en zsh** (el mismo bloque que aborta en bash 5.3 sigue de largo en zsh). Corre los
 bloques como `bash -s <<'BLOQUE' … BLOQUE` o desde un `.sh`, **nunca pegados en una terminal zsh**.
 
 **Herramientas obligatorias:** `bash`, `jq`, `node`, `git`, `tar`, `find`, `sort`, `grep`, `gzip`. El
@@ -92,12 +91,11 @@ Git Bash y Node. `gh` es opcional (§1.0: sin `gh` la visibilidad queda `unknown
 ## Cuándo usarla · Cuándo NO
 **SÍ:**
 - Mudar un master al repo que de verdad es su casa (la que declara su `CLAUDE.local.md`), en vez del repo
-  donde el cwd lo ancló por accidente histórico. Casos reales: los brain-master anclados en
-  `plantilladotnet` — `cortex-master` (Mac) mudándose a `cortex`, `axon-master` (Cachy) a `axon`.
+  donde el cwd lo ancló por accidente histórico. Ejemplo: un master anclado en
+  `plantilladotnet` que se muda a su repo propio.
 - Un `claude --resume <id>` que reanuda en un folder que ya no es la casa del master ("folder muerto").
-- Un master que quedó a medias tras un intento previo (residuo en el slug viejo + resume roto = el
-  anti-ejemplo **helios-selene**).
-- Un master que además cambió de IDENTIDAD/nombre (p. ej. `claude-brain-cachy-master` → `axon-master`):
+- Un master que quedó a medias tras un intento previo (residuo en el slug viejo + resume roto).
+- Un master que además cambió de IDENTIDAD/nombre (p. ej. `<x>-a-master` → `<x>-master`):
   el renombre de `masters.json` + alias va en el mismo bloque que el move (S4).
 
 **NO es:**
@@ -114,13 +112,11 @@ Git Bash y Node. `gh` es opcional (§1.0: sin `gh` la visibilidad queda `unknown
    CABLEADO** (T4: `settings.json` tier-`repo` + `settings.local.json`). `G-PARITY` mide **presencia y
    corrección EN EL DESTINO** (no igualdad con el origen: el cerebro del master a menudo nunca vivió en el
    origen) y bloquea hasta cumplirlo.
-   > **Fundamento empírico (arco RESUME, axon-master 2026-09-21).** El self-resume de axon se probó en
-   > vivo ($0, **31 compactaciones foldeadas**, el hilo reconocido) reconstruyendo una sesión desde SOLO su
-   > transcript + los resúmenes de compactación + el cerebro. Eso midió qué ES lo esencial de "una sesión":
+   > **Fundamento.** Reconstruir una sesión desde SOLO su transcript + los resúmenes de compactación + el
+   > cerebro demuestra qué ES lo esencial de "una sesión":
    > **{transcript · resúmenes de compactación · cerebro del-master (T1–T4)}** BASTA para re-instanciar. De
    > ahí que ESOS sean los intocables que `G-PARITY` blinda, y que KV-cache/activaciones, el DETALLE crudo
-   > de los sidecars y el `.gz` de Drive sean **reconstruibles/desechables** (poda de unjordi; §1.0.2) — no
-   > por descuido, por medición. Corolario operativo: **lo que el move preserva íntegro es exactamente lo
+   > de los sidecars y el `.gz` de Drive sean **reconstruibles/desechables** (§1.0.2). Corolario operativo: **lo que el move preserva íntegro es exactamente lo
    > que un resume necesita para reconstruir la superficie** → esa equivalencia habilita el smoke de S5.5.
 2. **NO-SELF-MOVE-EN-VIVO** — nunca mueve un `.jsonl` reciente ni la sesión propia. `G-SELF-MOVE` y
    `G-LIVENESS` **fallan cerrado**: si no pueden MEDIR quién ejecuta o qué tan fría está la sesión,
@@ -130,7 +126,7 @@ Git Bash y Node. `gh` es opcional (§1.0: sin `gh` la visibilidad queda `unknown
    ecosistema**, alias, slug) en un bloque ininterrumpido, respaldado y re-entrante (**todo-o-nada por
    RECUPERACIÓN, NO atómico de FS** — ver §9), con **punto de no retorno explícito** y un **archivo de
    estado** (`$DRIVE/reubicar-<ID>.state`) para que una corrida cortada se reanude por estado y no por
-   adivinanza. Barre residuo quirúrgico y deja doc=realidad. El tail es lo que a helios-selene le faltó.
+   adivinanza. Barre residuo quirúrgico y deja doc=realidad.
 4. **NO-FUGA / NO-DUPLICADO** — nada del template .NET entra **versionado** a un repo público; lo sensible
    viaja por canal gitignored per-máquina, verificado **archivo por archivo** (`check-ignore -q` uno a uno:
    `git check-ignore A B C` sale 0 si **cualquiera** matchea, así que en lote **no certifica nada**);
@@ -152,10 +148,9 @@ el cerebro. Se clasifica por **PROPIEDAD** y cada tier viaja por su canal:
 | **T3 — PRODUCTO de la plantilla .NET** | los 18 skills .NET + memorias de plantilla/proyecto (`_PROTOCOLO.md`, `flujo-de-trabajo.md`, `decisiones-infra.md`, `release-develop-main.md`, `modulo-notificaciones.md`, `lecciones-migracion-cps.md`, `estado-proyecto.md`, `bitacora.md`, …) | **SE QUEDA en el origen** | **NO** |
 | **T4 — CABLEADO de la sesión** | `.claude/settings.json` del destino (los hooks tier-`repo` **solo se cargan si la sesión INICIA en ese repo**) + `.claude/settings.local.json` per-máquina (de donde sale el `outputStyle`) | **el del DESTINO manda**; nada se copia del origen — se **VERIFICA** que el destino tenga los suyos | **SÍ (verificado, no copiado)** |
 
-> **Por qué existe T4 (y no es un detalle):** ya está medido que una sesión no es su transcript. Son (a)
-> transcript, (b) memorias del repo, (c) cableado de hooks, (d) config de sesión y (e) estado externo. Una
-> mudanza anterior movió (a) y (b) y dejó (c) y (d): **el master corrió sin sus propios candados y sin su
-> estilo de salida**. Medir "cerebro completo" solo con memorias y skills es medir dos quintos.
+> **Por qué existe T4:** una sesión no es solo su transcript. Son (a) transcript, (b) memorias del repo,
+> (c) cableado de hooks, (d) config de sesión y (e) estado externo. Mover solo (a) y (b) deja al master
+> sin sus propios candados y sin su estilo de salida. Medir "cerebro completo" solo con memorias y skills es medir dos quintos.
 
 ### 1.0 · El corte NO depende del destino, pero SU RAZÓN SÍ — verifica la visibilidad, no la asumas
 **El resultado es el mismo con cualquier destino: T1∪T2 viajan, T3 se queda, T4 se verifica.** Lo que
@@ -168,8 +163,8 @@ echo "destino privado: $DST_PRIVADO"   # unknown ⇒ trátalo como PÚBLICO (con
 ```
 | Destino | Riesgo de commitear T3 | Riesgo de commitear T2 |
 |---|---|---|
-| **PÚBLICO** (p. ej. `cortex` [verificado 2026-09-08: `isPrivate=false`]) | **FUGA** del template del equipo **+ duplicado divergente** | **FUGA de identidad y autorizaciones** |
-| **PRIVADO** (p. ej. `axon` [verificado 2026-09-08: `isPrivate=true`]) | **duplicado divergente** — el riesgo de fuga baja, el de drift NO: T3 es producto VIVO de otro repo, y una copia se desincroniza igual | sigue **gitignored**: un repo privado puede volverse público, y las autorizaciones no pertenecen a git en ningún caso |
+| **PÚBLICO** (p. ej. `cortex`) | **FUGA** del template del equipo **+ duplicado divergente** | **FUGA de identidad y autorizaciones** |
+| **PRIVADO** (p. ej. `axon`) | **duplicado divergente** — el riesgo de fuga baja, el de drift NO: T3 es producto VIVO de otro repo, y una copia se desincroniza igual | sigue **gitignored**: un repo privado puede volverse público, y las autorizaciones no pertenecen a git en ningún caso |
 
 **La trampa a evitar:** concluir "el destino es privado ⇒ me puedo llevar T3". **NO.** El motivo dominante
 para dejar T3 nunca fue solo la fuga: es que T3 es el PRODUCTO VIVO de otro repo y una copia **driftea**.
@@ -189,7 +184,7 @@ postcondición y sáltate S1:
 ```bash
 [ -f "$DST/memory/MEMORY.md" ] && echo "destino con índice: S1 puede ser no-op (verifica con G-PARITY)"
 ```
-Precedente real: `axon` se canonizó el 2026-09-08 ANTES de la mudanza. **Corolario duro:** por eso
+Un destino ya canonizado ANTES de la mudanza no tiene T3 en el origen. **Corolario duro:** por eso
 `G-PARITY` **no** puede medir `SRC == DST` — para esta clase el archivo simplemente no existe en el origen
 y un `diff -q` fallaría siempre, bloqueando en falso justo cuando el destino está COMPLETO (y empujando al
 operador a declarar el gate "trivialmente satisfecho", que es la ausencia del candado). Mide **presencia y
@@ -201,8 +196,8 @@ dos comportamientos opuestos y ninguno correcto).
 `hilo-mental-actual.md` está en T2 y viaja — sin eso se quedaba por OMISIÓN y, al estar gitignored en los
 dos extremos, **git no lo recupera**. Pero NO es identidad: `conocimiento-propio`/`autorizaciones-vigentes`
 tienen UNA copia buena y que difieran es una anomalía que un humano reconcilia; el hilo, en cambio, es
-**por repo Y por stream de trabajo** — el MISMO master escribe uno distinto en cada repo donde trabaja
-(medido: 70 escrituras al hilo de `cortex` y 61 al de `plantilladotnet`, el mismo master) y el destino
+**por repo Y por stream de trabajo** — el MISMO master escribe uno distinto en cada repo donde trabaja,
+y el destino
 casi siempre llega con uno **propio y vivo**.
 
 Por eso una diferencia en el hilo **no es un conflicto**: S5 lo **CO-UBICA** como
@@ -223,8 +218,8 @@ Cero pérdida, cero pisada, cero abort.
 > **El SIDECAR de la sesión SÍ viaja (H1, fijo):** `~/.claude/projects/<slug>/<sessionId>/`
 > (`subagents/*.jsonl` de cada sub-agente lanzado por Task, `tool-results/`, `workflows/`) es del harness
 > **por (slug, sessionId)**, no vive dentro del `.jsonl`, y para un master cuyo oficio ES el fan-out es la
-> diferencia entre la MISMA persona y un homónimo con amnesia parcial (medido: hasta 163 transcripts de
-> subagente, ~109 MB, citados 76 veces desde el transcript del master). `session-move.js` lo mueve con la
+> diferencia entre la MISMA persona y un homónimo con amnesia parcial (pueden ser cientos de transcripts de
+> subagente, citados desde el transcript del master). `session-move.js` lo mueve con la
 > MISMA disciplina que el `.jsonl` (copia a temporal, verifica por cardinalidad de archivos, publica,
 > borra el origen) y `_postcondiciones` (`G-SIDECAR`) asevera que no quedó huérfano. **No confundir con
 > el bullet siguiente** — el sidecar es de la SESIÓN; `memory/` de ahí abajo es del SLUG.
@@ -255,19 +250,19 @@ Presentes-pero-no-commiteados → cero lobotomía + cero fuga. **Default: NO** (
 > `MASTER_NAME`, `MASTER_NAME_NUEVO`, `MEMORIAS_T1`, `DST_PROTEGIDO` y **`DRIVE`** son PARÁMETROS que se
 > pueblan en runtime (Decisiones #0–#2 de §7). `DRIVE` **no tiene fallback**: un default que apunta a la
 > ruta de OTRA máquina no ayuda, miente — y `CLAUDE_SESSIONS_DRIVE` vive en el bloque `env` de
-> `~/.claude/settings.json`, así que **en el shell plano que este skill prescribe está VACÍA** (medido).
+> `~/.claude/settings.json`, así que **en el shell plano que este skill prescribe está VACÍA**.
 > `BIN` tampoco es fijo: se RESUELVE como lo hace `seed.sh` (`$HOME/.local/bin`, `$HOME/.cortex/bin`),
 > porque "cortex produce los scripts" no significa "cortex está clonado en `~/code/cortex`".
 
 ### 2.1 · Los parámetros son FLAGS del script (§7: se preguntan al humano en RUNTIME)
 
 ```bash
-# el ejemplo real: el master de cortex, 2026-09-10
+# ejemplo
 reubicar-master.sh \
-  --id 761c82d9-40fd-4fe2-9703-e3504b6f028f \
+  --id <session-id> \
   --dst-repo "$HOME/code/cortex" \
-  --master-name claude-brain-master \
-  --nombre-nuevo cortex-master \
+  --master-name <nombre-actual> \
+  --nombre-nuevo <nombre-nuevo> \
   --dst-protegido brain \
   --dry
 ```
@@ -309,24 +304,20 @@ si no (`session-move.js --git-branch`, `session-export.js --name`, y de `session
 `slugFromCwd`/`sessionAliases`/`writeAlias`/`rewriteTranscriptStream`). Mide **CAPACIDAD, no versión**: un
 SHA distinto puede ser inofensivo y uno idéntico puede seguir sin la función; una fecha no dice nada.
 
-**Medido el 2026-09-10, en la mudanza real:** el `bin/` INSTALADO (`~/.local/bin`, 3 días atrás; y
-`~/.cortex/bin`, 9 días) **no tenía ni `--git-branch` ni `rewriteTranscriptStream`** — las dos cosas que
-S4 invoca **DESPUÉS del punto de no retorno**. Solo el clon del repo las traía. Sin este gate, el handoff
-habría movido 152 MB de transcript y reventado al re-anclar, en el único tramo donde una excepción es
-catastrófica. Cuatro rondas de auditoría LEYENDO el skill no podían verlo: el hueco no vive en el texto,
-vive en la diferencia entre el `bin/` del repo y el `bin/` instalado.
+**Por qué:** el `bin/` INSTALADO (`~/.local/bin`, `~/.cortex/bin`) puede no traer `--git-branch` ni
+`rewriteTranscriptStream` — lo que S4 invoca **DESPUÉS del punto de no retorno**; solo el clon del repo las
+trae. Sin este gate, el handoff movería el transcript y reventaría al re-anclar, en el único tramo donde una
+excepción es catastrófica. El hueco no vive en el texto del skill, vive en la diferencia entre el `bin/` del
+repo y el `bin/` instalado.
 
 El sello `LIB_SHA_HORNEADO` del handoff es **complementario, no sustituto**: avisa (no bloquea) de un
 CAMBIO de la lib entre generar y correr; este preflight **exige la capacidad y falla CERRADO**. Si salta:
 actualiza cortex con **SU herramienta de release** (el updater del widget — nunca corriendo el instalador a
 mano) o apunta `CORTEX_BIN` al `bin/` del clon que sí las trae.
 
-> **Ya no hay «córrelo todo en la MISMA shell».** Cuando el preludio era un bloque de markdown que el
-> operador tenía que sourcear a mano antes de otro bloque, ese orden invisible era el punto débil: un
-> `source` dentro de un pipe (que no persiste, porque el pipe es un subshell) produjo un handoff **sin
-> preludio** — 473 líneas, `bash -n` impecable, certificado «handoff OK» y muerto en `DST_CWD: unbound
-> variable` al primer arranque (2026-09-10, primera mudanza real). En un proceso el orden no se puede
-> equivocar. Los abortos del preludio son abortos DEL SCRIPT (fail-closed), no de tu terminal.
+> **No hay «córrelo todo en la MISMA shell».** El preludio es parte del script: un `source` dentro de un
+> pipe (que no persiste, porque el pipe es un subshell) produciría un handoff **sin preludio**. En un
+> proceso el orden no se puede equivocar. Los abortos del preludio son abortos DEL SCRIPT (fail-closed), no de tu terminal.
 
 ---
 
@@ -368,8 +359,7 @@ fi
 ```
 
 ### G-ID · resolver el `<id>` vigente (masters.json tiene DUPLICADOS por nombre)
-[verificado] dos `claude-brain-cachy-master` (`7a6960de`, `9cbc2856`) y dos `claude-brain-master`
-(`761c82d9`, `1dd207df`), todos con target `code/plantilladotnet`. `session-lib.js` → `findSession()`
+`masters.json` puede traer dos ids con el mismo nombre de master. `session-lib.js` → `findSession()`
 desempata por CONTENIDO en su `matches.sort()` — **timestamp más reciente de la cola → bytes → mtime → slug** (el `mtime` es el TERCER criterio, no el primero; ver la nota de §9.1 de por qué no se vuelve a él)
 → con id duplicado elige el más nuevo, que con duplicados suele ser el vivo. Aun así el gate NO desaparece:
 es una **CONFIRMACIÓN** — el humano confirma que el `<id>` es el que quiere mover, lo CITA textual y puebla `ID=`.
@@ -394,9 +384,8 @@ done
 jq -e --arg id "$ID" '.masters[]|select(.id==$id)' "$MJ" >/dev/null \
   || echo "AVISO: el id vivo NO está en masters.json ⇒ S4 hará UPSERT (lo AÑADE), no update"
 ```
-**Caso real (2026-09-08, Cachy):** `masters.json` traía `claude-brain-cachy-master` con dos ids —
-`7a6960de` (ya **sin `.jsonl`**: el fork original) y `9cbc2856` (frío del día anterior) — mientras la sesión
-**viva** era `4e7b786c`, **ausente del registro**. Elegir por `masters.json` habría movido una sesión muerta.
+**Ejemplo:** `masters.json` puede traer un nombre con dos ids (uno ya **sin `.jsonl`**, otro frío) mientras la
+sesión **viva** está **ausente del registro**. Elegir por `masters.json` movería una sesión muerta.
 
 ### G-LIVENESS · la sesión objetivo está CERRADA — mide EL ARCHIVO QUE SE VA A MOVER
 `fuser`/`lsof` sobre el `.jsonl` es **falso-negativo**: Claude Code appendea-y-cierra el fd, no lo sostiene
@@ -405,7 +394,7 @@ prueba de CERRADA = **mtime frío del archivo objetivo + sin lock de export + ci
 
 **El gate mide el MISMO archivo que va a mover el mutador, no el del slug viejo.** `session-move.js` usa
 `findSession()`, que barre **todos** los slugs y elige por CONTENIDO (ts→bytes→mtime); un gate que mire `$JSONL` a pelo puede
-certificar frío sobre una copia MUERTA mientras el mutador se lleva la VIVA de otro slug (medido). Y si el
+certificar frío sobre una copia MUERTA mientras el mutador se lleva la VIVA de otro slug. Y si el
 id existe en **más de un slug**, el gate **bloquea**: no hay tie-break aceptable para un `unlink`.
 ```bash
 COPIAS="$(find "$PROJ" -maxdepth 2 -name "$ID.jsonl" 2>/dev/null | sort)"
@@ -434,11 +423,11 @@ pelo: `ssh <host> 'stat -c %Y <jsonl> 2>/dev/null || stat -f %m <jsonl>'`.
 > `G-SELF-MOVE`). Por eso el move de cada master lo dispara **el OTRO** — ver la danza §6.
 
 ### G-QUIESCE · quiescencia DONDE IMPORTA — por ARTEFACTO, ANTES **y DESPUÉS** del move
-> **[verificado 2026-09-08, mudanza de axon-master]** `G-LIVENESS` solo prueba que la sesión OBJETIVO está
+> `G-LIVENESS` solo prueba que la sesión OBJETIVO está
 > fría. **No basta:** cualquier sesión viva puede deshacer la mudanza *después* de que las postcondiciones
-> de S4/S5 pasaron. Lo que pasó: el move quedó impecable y medido; luego un resume escribió un transcript
-> NUEVO en el slug viejo, **reescribió el `target` de `masters.json` de vuelta al viejo**, y al morir
-> volcó 5 líneas con el `cwd` viejo dentro del transcript ya migrado.
+> de S4/S5 pasaron. Escenario: el move queda impecable; luego un resume escribe un transcript
+> NUEVO en el slug viejo, **reescribe el `target` de `masters.json` de vuelta al viejo**, y al morir
+> vuelca líneas con el `cwd` viejo dentro del transcript ya migrado.
 >
 > **Y el `target` no "se revirtió" por accidente: lo REESCRIBIÓ EL HOOK, por diseño.**
 > `exportar-sesion-master.sh` (bloque *"registrar/ACTUALIZAR en masters.json"*) corre **SIEMPRE** y hace
@@ -474,11 +463,10 @@ S3 y otra vez en S7):
 > porque el lock protege al código que pasa por la lib y la aserción caza a lo que no (la lib vieja de otro
 > proceso, o el widget escribiendo desde QML).
 >
-> **Por qué se afinó (2026-09-10, medido).** El gate viejo bloqueaba por *cualquier* transcript caliente
-> en la máquina. Con un `databases-master` trabajando en otro repo —que no tiene forma de tocar esta
-> mudanza— el humano tenía que interrumpir su trabajo para satisfacer un **proxy**. Afinarlo fue decisión
-> explícita de unjordi, y el arreglo de fondo (el lock del mapa de alias) entró en la misma tanda: primero
-> se cerró el riesgo compartido, después se relajó el gate.
+> **Por qué se afinó.** El gate viejo bloqueaba por *cualquier* transcript caliente
+> en la máquina. Con otro master trabajando en otro repo —que no tiene forma de tocar esta
+> mudanza— el humano tendría que interrumpirlo para satisfacer un **proxy**; por eso el gate mide por
+> artefacto, y el riesgo compartido (el mapa de alias) lo cubre su lock.
 
 + **CITA HUMANA obligatoria:** *"no hay ninguna sesión de Claude trabajando en `<origen>` ni en
 `<destino>`"* — las de otros repos pueden seguir abiertas. El humano ES el gate; el barrido de artefactos
@@ -491,8 +479,8 @@ Un destino cuyo `.gitignore` no cubra el `CLAUDE.local.md` de la raíz dejaría 
 [verificado en `cortex`; **compruébalo en TU destino**]. Se blinda ANTES de tocar T2 — y aplica igual si el
 destino es privado (§1.0: un privado puede volverse público).
 
-**Se verifica ARCHIVO POR ARCHIVO.** `git check-ignore A B C` sale **0 si CUALQUIERA** matchea (medido:
-con solo `CLAUDE.local.md` ignorado, el lote de tres pasa en verde mientras dos siguen expuestos), y
+**Se verifica ARCHIVO POR ARCHIVO.** `git check-ignore A B C` sale **0 si CUALQUIERA** matchea (con
+solo `CLAUDE.local.md` ignorado, el lote de tres pasa en verde mientras dos siguen expuestos), y
 `git ls-files --error-unmatch A B` sale ≠0 si **alguna** ruta no está trackeada — con lo que el `if` de
 "¿ya trackeado?" era **siempre falso** incluso con el secreto ya en el índice. Además, un glob sin comillas
 lo expande **el shell del operador en SU cwd**, no git en el repo destino (y en zsh, sin match, **aborta**
@@ -532,7 +520,7 @@ humana**, jamás se pisa) · `pend` (falta en el destino pero **viaja en el bund
 un fallo aún) · `FALTA` (ausente y sin bundle que lo excuse) · `ambos` (no está en ninguno ⇒ ¿bien
 clasificada?, Decisión #2).
 
-**Tres cosas que solo aparecieron al EJECUTARLO (2026-09-10) y que la versión en markdown tenía mal:**
+**Tres cosas que solo se ven al EJECUTAR:**
 
 1. **T4 no puede exigir `.claude/settings.json` en TODO destino.** La norma dura del cerebro dice *«repo
    PERSONAL: memoria/skills SÍ, guards por-repo NUNCA»* — sus candados salen del install GLOBAL + la
@@ -571,7 +559,7 @@ reanudación no adivina: el handoff deja `$DRIVE/reubicar-<ID>.state` con el pas
 > cortada después del QA no tenía estado que detectar — el parche había añadido el paso pero no el estado.
 
 ### S0 · Reconstituir el cerebro canónico del origen (Gate R — que el ORIGEN tampoco quede a medias)
-La consolidación rig-master (2026-08-02) se llevó memorias del proyecto al slug global de MÁQUINA. Regresan
+La consolidación rig-master se llevó memorias del proyecto al slug global de MÁQUINA. Regresan
 las que sean del **proyecto/plantilla** (NO lo de máquina: kde/nvidia/kernel/openrgb se quedan global).
 Descubrimiento (no bulk — el humano clasifica, anti-confabulación):
 ```bash
@@ -583,7 +571,7 @@ for m in ${MEMORIAS_REGRESAN[@]+"${MEMORIAS_REGRESAN[@]}"}; do
 done
 # re-indexar $SRC/memory/MEMORY.md; diff -q antes de descartar copias del global (a .trash/, NUNCA rm a ciegas)
 ```
-**Honestidad:** hoy NO hay lista confirmada de "memorias del origen dejadas en el global"; el grep es el
+**Nota:** no hay lista fija de "memorias del origen dejadas en el global"; el grep es el
 MÉTODO, la clasificación la hace el humano. **Postcondición S0:** `MEMORY.md`↔archivos cuadra; escaneo de
 secretos limpio.
 
@@ -680,12 +668,11 @@ postcondiciones propias). Sub-pasos y su razón:
    **no** conserva el cwd original, así que cualquier reconstrucción de procedencia debe leerlo del
    `.meta.json` del Drive, no del `.jsonl`.
 4. **Nada de este bloque lee el transcript completo a un string.** Es una regla, no una casualidad: el
-   move va en streaming y `_reancla` acota su memoria a una ventana de retención de 32 MiB (medido: el
-   pico lo fija la ventana, **no** el tamaño del archivo). El patrón que se prohíbe —`readFileSync` del
-   `.jsonl` **después** del punto de no retorno— costaba **1.73 GiB de pico sobre un archivo de 429 MB**
-   (medido), justo donde una excepción por memoria es catastrófica.
+   move va en streaming y `_reancla` acota su memoria a una ventana de retención de 32 MiB (el
+   pico lo fija la ventana, **no** el tamaño del archivo). Se prohíbe `readFileSync` del
+   `.jsonl` **después** del punto de no retorno: justo ahí una excepción por memoria es catastrófica.
 5. **2c · `chmod 600`.** El move conserva el modo del **ORIGEN**, y el origen puede venir fuera de
-   convención (verificado 2026-09-08: 1 de 131 en 644 donde el resto del slug está en 600) ⇒ se normaliza
+   convención (p. ej. un transcript en 644 donde el resto del slug está en 600) ⇒ se normaliza
    aquí. En **Windows/NTFS es no-op** y se declara como tal en vez de fingir la postcondición.
 6. **3 · `masters.json` UPSERT (no UPDATE) tomando el LOCK del ecosistema.** Tres arreglos en un paso:
    - **UPSERT:** con un id ausente del registro —el caso REAL de `G-ID`— un `|=` UPDATE devuelve el JSON
@@ -699,21 +686,18 @@ postcondiciones propias). Sub-pasos y su razón:
 7. **4 · alias** con `writeAlias` **y su verificador**. `writeAlias` ya escribe tmp+rename y, si el
    `sesiones-alias.json` existente es ilegible, lo **respalda y avisa** en vez de degradarlo a `{}` (que
    habría reemplazado el mapa entero por una sola entrada). El verificador se queda: relee con
-   `sessionAliases()` y **asere**. El escritor CONCURRENTE **ya está cubierto** (2026-09-10):
+   `sessionAliases()` y **asere**. El escritor CONCURRENTE **ya está cubierto**:
    `writeAlias` toma un **lock `mkdir`** —el mismo idioma que el de `masters.json`— y si no lo consigue
    **NO escribe** (devuelve `false` y lo dice), porque pisar borraría la clave del otro master. Y como el
    lock solo ata al código nuevo, `_postcondiciones` asevera además que **ningún alias ajeno se perdió**.
-8. **5 · residuo del RENOMBRE, el real.** El alias **no es un symlink** (es un mapa JSON por id en
-   `~/.claude/sesiones-alias.json`, y `writeAlias` sobrescribe la misma clave), así que el `find … -type l`
-   de la versión anterior era un paso fantasma que siempre imprimía nada. Los residuos que SÍ existen:
-   **otras entradas de `masters.json` con el nombre viejo** (el caso real contó *"dos `claude-brain-master`,
-   dos `claude-brain-cachy-master`, tres `games-master`, dos `rig-master`"*), el `meta.label` del Drive (lo
+8. **5 · residuo del RENOMBRE.** El alias **no es un symlink** (es un mapa JSON por id en
+   `~/.claude/sesiones-alias.json`, y `writeAlias` sobrescribe la misma clave), así que un `find … -type l`
+   no encontraría nada. Los residuos que SÍ existen:
+   **otras entradas de `masters.json` con el nombre viejo** (p. ej. varios con el mismo nombre), el `meta.label` del Drive (lo
    regenera S3 con `$NOMBRE_FINAL`) y el `customTitle` del transcript.
 
 > **El RENOMBRE es parte del mismo bloque, no un paso aparte.** Un master cuyo `target` se movió pero cuyo
-> `name` sigue siendo el viejo es la misma clase de tail que `helios-selene`. Caso real:
-> `claude-brain-cachy-master` → `axon-master`, decidido el 2026-08-22, con `masters.json` todavía diciendo
-> el nombre viejo semanas después porque el renombre no tenía dueño.
+> `name` sigue siendo el viejo deja un tail sin cerrar (`masters.json` seguiría diciendo el nombre viejo).
 
 **Postcondiciones S4 (todas ASERCIONES — el guion NO imprime el ✅ si alguna falla):**
 `find "$PROJ" -name "$ID.jsonl"` = **exactamente 1**; **líneas del destino ≥ líneas del origen**; `_cwds`
@@ -722,25 +706,21 @@ en Windows); `masters.json` releído: `target` = `$TARGET` **y** `name` = `$NOMB
 con `sessionAliases()` = `$NOMBRE_FINAL`.
 
 ### S5 · Depositar T2 SIN PISAR + barrido QUIRÚRGICO + CERO symlinks
-**Bash: el handoff (§6.1) — lo genera `reubicar-master.sh`.** Qué cambia respecto a la versión que clobbeaba:
+**Bash: el handoff (§6.1) — lo genera `reubicar-master.sh`.** Qué hace:
 - **T2 no se pisa.** El bundle se extrae a un `mktemp -d`, se **diffea** contra el destino y **ante
   cualquier diferencia se PARA pidiendo reconciliación humana** — la misma regla que S1 ya tenía para T1.
   Por qué es la pérdida más cara del flujo (identidad + autorizaciones, gitignored ⇒ git no las recupera)
-  está en §9, fila *"T2 del destino CLOBBEADO"*. Dato vigente: hay dos copias divergentes vivas del
-  archivo de autorizaciones (4 líneas / 7 líneas, distintas fechas).
+  está en §9, fila *"T2 del destino CLOBBEADO"*.
 - **Respaldo antes de escribir** en `$HOME/.claude/reubicar-backups/<ID>.<ts>.t2/`.
 - **Idempotencia real:** el bundle consumido se renombra a `.tgz.aplicado`. Antes, re-correr el guion —lo
   que su propia cabecera *"idempotente y re-entrante"* invita a hacer— **revertía en silencio** la edición
   de identidad que S5/S6 exigen ("corro desde `<destino>` (mi nueva base)").
 - **Chequeo de fuga con `--ignored`**, exigiendo `!!` por archivo (ver G-GITIGNORE).
 - **`memory` del slug COMPARTIDO: intacto.** Se barre SOLO `<id>.jsonl`.
-- **CERO symlinks nuevos.** Decisión de unjordi (2026-09-08, textual): *"QUIERO QUE ESTO QUEDE SIN
-  SIMLINKS. PUNTO"* · *"son un pinche bug que no logro que dejen de propagar"*. El cerebro del repo se lee
+- **CERO symlinks nuevos.** El cerebro del repo se lee
   NATIVO porque el destino es el cwd; el `memory` de un slug es el canal per-máquina y va como
-  **DIRECTORIO REAL** o no existe. Medido en Cachy: de 20 slugs con `memory`, los 5 que unjordi considera
-  bien hechos tienen dir real y los 15 con symlink los sembró el bootstrap del (ya retirado) skill
-  `claude-proyecto-autocontenido`, que lo PRESCRIBÍA — su criterio vive hoy en `canonizar-cerebro` (modo
-  sembrar), SIN symlinks. Si el bootstrap viejo ya lo creó, se **retira** (borrando solo el enlace, sin `-r` y sin slash
+  **DIRECTORIO REAL** o no existe. El criterio vive en `canonizar-cerebro` (modo
+  sembrar), SIN symlinks. Si ya existe un symlink, se **retira** (borrando solo el enlace, sin `-r` y sin slash
   final). El verificador corre **sin `-L`**: con `-L`, `find` sigue el enlace y lo clasifica por su destino
   ⇒ **solo ve los ROTOS** (verificado con fixture: un symlink sano NO aparece) — justo el que no ve los que
   violan la decisión. Y **falla**, no solo imprime.
@@ -776,19 +756,19 @@ Confirma tres cosas objetivas, sin humano y sin mutación:
 QA humano de S6** (candado: humano = sello LISTO) ni el resume nativo — lo PRECEDE, para fallar rápido si el
 transcript no viajó bien antes de gastar la pasada que obliga a S7.
 
-**Degradación fail-safe (per-máquina).** axon vive solo donde está instalado (hoy: la Cachy). En una máquina
+**Degradación fail-safe (per-máquina).** axon vive solo donde está instalado . En una máquina
 SIN axon, S5.5 **degrada al check de cardinalidad de S3** (`gunzip -c … | wc -l`) y **NO bloquea** — un gate
 que no puede medir no debe frenar la mudanza, solo deja de sumar su garantía extra. Declara la ausencia, no
 la ocultes.
 
 ### S6 · doc=realidad + commit + QA FUNCIONAL (humano = sello LISTO)
-- **MR de T1 → develop en PREVIEW** (repo compartido): con OK EXPLÍCITO de unjordi y `--squash` (lo exige
+- **MR de T1 → develop en PREVIEW** (repo compartido): con OK EXPLÍCITO del usuario y `--squash` (lo exige
   `merge-develop-guard`). **NUNCA `--auto-merge`** — integridad de guardarraíles.
   Sin OK, queda en la mini-develop (Decisión #5). Solo lo versionable (T1 + gitignore); jamás
   `.jsonl`/`*.local.md`/`$DST_PROTEGIDO`.
 - Actualizar: **dashboard global** (Mapa: el master ahora vive en `$TARGET` + bitácora fechada con `>>`),
   `estado-proyecto.md`, y el `CLAUDE.local.md`/README del origen si mencionaba al master como residente.
-  **Registrar la RUEDA** (el TAIL que a helios-selene le faltó).
+  **Registrar la RUEDA**.
 - **Barrer los CONSUMIDORES de la ruta vieja.** Al mover el transcript cambia su RUTA, y hay mecanismos
   *path-addressed* (p. ej. `axon resume --from <transcript.jsonl>`): cualquier `--from`, alias, script o
   doc con la ruta literal del slug viejo muere con la mudanza. Prefiere siempre la forma id→ruta.
@@ -813,7 +793,7 @@ la ocultes.
 > **El skill terminaba en S6, y el daño ocurre en S6.** El QA es un resume, y un resume MUTA: escribe
 > eventos, deriva un slug del cwd del proceso y —vía el hook, **por diseño**— reescribe el `target` de
 > `masters.json` desde el cwd vivo. Declarar LISTO con las postcondiciones de S4/S5 es declarar sobre un
-> estado que el propio QA ya cambió. [verificado 2026-09-08]
+> estado que el propio QA ya cambió.
 
 **Cómo se corre:** `REUBICAR_MODO=s7 bash "$DRIVE/handoff-$ID.sh"` — **desde un shell plano**, con el
 resume de QA ya cerrado. Re-evalúa `G-QUIESCE` y luego la MISMA función `_postcondiciones` de S4/S5 (una
@@ -901,8 +881,7 @@ resuelve solo: `$CORTEX_BIN`, `~/.local/bin`, `~/.cortex/bin`, `~/code/cortex/bi
 
 > **Los gemelos NO tienen por qué ir al MISMO destino.** La danza no consolida: solo resuelve el
 > huevo-y-gallina de que nadie puede auto-moverse. Cada master declara SU `DST_REPO` (Decisión #0) y puede
-> además renombrarse (#0b). Estado real al 2026-09-08: el gemelo Mac ya opera como **`cortex-master`** con
-> casa en `cortex`; el de Cachy va a **`axon`** y se renombra a **`axon-master`**. Destinos distintos, misma
+> además renombrarse (#0b). Cada gemelo puede tener un destino y un nombre distintos con la misma
 > coreografía.
 
 **Coreografía (genérica — A y B son los dos masters; cada uno con su propio `DST_REPO`):**
@@ -953,7 +932,7 @@ de que exista un handoff utilizable**. Tres capas, cada una con su alcance decla
    mano, y presencia de sus SÍMBOLOS —helpers y derivadas, en frontera de palabra— siempre. La capa
    textual cierra la CLASE: lo que el preludio gane mañana viaja solo, sin que nadie actualice una lista.
    La lista de símbolos se verifica **contra el preludio real**: si driftó, el candado lo dice en vez de
-   creerse. Es **la capa que faltaba** el 2026-09-10 y la que habría atajado el handoff muerto.
+   creerse.
 2. **Los pasos obligatorios, en línea EJECUTABLE** (14 marcadores + `PUNTO DE NO RETORNO`). Detecta que
    una edición futura del generador borre un paso o lo degrade a comentario — `bash -n` no lo caza: un
    guion al que le falta un paso es sintácticamente perfecto. Mencionar el marcador en un comentario NO
@@ -1031,16 +1010,10 @@ resuelve explícitamente **quién borra el `.jsonl` de la máquina de ORIGEN** �
    reubicar-master.sh clasificar --src-repo "$SRC_REPO" --dst-repo "$DST_REPO"
    ```
    **No propone el corte a propósito:** una columna "veredicto" invita a aceptarla sin leer, y el corte es
-   TUYO. Lo que sí hace es cerrar el modo de falla real — Claude inventando la frontera y siguiendo como
-   si el humano la hubiera dado.
-   > **Lo que había aquí antes y por qué se fue (medido 2026-09-10, mudanza real).** Un
-   > `grep -rilEv 'plantilladotnet|.NET|blazor|dapper|EF Core|webapi|migracion-ef'` sobre las memorias del
-   > origen, rotulado "comando de descubrimiento". Devolvió **44 de 43** archivos —incluido el propio
-   > `MEMORY.md`— porque *"no menciona blazor"* no es una señal de PROPIEDAD: casi ninguna memoria menciona
-   > el stack, ni las de otro proyecto ni las de trato personal. **Un descubrimiento que no descarta nada no
-   > descubre nada**, y en la corrida real empujó a inventar el corte de memoria. Era maquinaria viviendo en
-   > markdown y ningún test la tocaba: exactamente la clase que la regla de
-   > [[auditar-coherencia-cerebro]] («maquinaria en markdown = hallazgo de arquitectura») manda reportar.
+   TUYO; así se evita que Claude invente la frontera y siga como si el humano la hubiera dado.
+   > Un `grep -v` por palabras del stack sobre las memorias NO sirve como descubrimiento: *"no menciona
+   > blazor"* no es una señal de PROPIEDAD. La maquinaria vive en el script, no en markdown (regla de
+   > [[auditar-coherencia-cerebro]]: «maquinaria en markdown = hallazgo de arquitectura»).
 3. **Escape-hatch T3** (§1.1): ¿el master conserva acceso vivo a los skills .NET vía overlay gitignored?
    Default NO.
 4. **Set de reconstitución (S0)** — qué memorias del slug global "sí iban" al origen.
@@ -1100,8 +1073,8 @@ git), y las ediciones de identidad de S6 (están en el `.t2` de respaldo).
 ## 9 · Modos de fallo → mitigación (tabla de defensa)
 | Fallo | Causa | Mitigación |
 |---|---|---|
-| **La maquinaria instalada es más vieja que el skill** | el `bin/` que resuelve el preludio puede ser un cortex INSTALADO que no trae lo que el guion invoca. **Medido 2026-09-10:** `~/.local/bin` sin `--git-branch` ni `rewriteTranscriptStream`, ambas usadas DESPUÉS del punto de no retorno | **PREFLIGHT DE CAPACIDAD** en el preludio (§2.2): mide lo que el guion INVOCA —no fechas ni SHAs— y **aborta antes de mutar**. El sello `LIB_SHA` solo AVISA de un cambio; esto EXIGE la capacidad |
-| **El generador certifica un handoff que no arranca** | el preludio no quedó embebido (un `source` en un pipe no persiste) y el candado solo medía presencia de FRASES ⇒ «handoff OK» sobre 473 líneas muertas en `DST_CWD: unbound variable` (2026-09-10) | la maquinaria es **un script** (el orden no se puede equivocar) y el candado exige el preludio **byte a byte** + sus símbolos; el bloque `(e2e)` de `test-brain.sh` corre la mudanza COMPLETA y **rechaza** el handoff sin preludio aunque su `bash -n` esté limpio |
+| **La maquinaria instalada es más vieja que el skill** | el `bin/` que resuelve el preludio puede ser un cortex INSTALADO que no trae lo que el guion invoca. Ej.: `~/.local/bin` sin `--git-branch` ni `rewriteTranscriptStream`, ambas usadas DESPUÉS del punto de no retorno | **PREFLIGHT DE CAPACIDAD** en el preludio (§2.2): mide lo que el guion INVOCA —no fechas ni SHAs— y **aborta antes de mutar**. El sello `LIB_SHA` solo AVISA de un cambio; esto EXIGE la capacidad |
+| **El generador certifica un handoff que no arranca** | el preludio no quedó embebido (un `source` en un pipe no persiste) y el candado solo medía presencia de FRASES ⇒ «handoff OK» y muerto en `DST_CWD: unbound variable` | la maquinaria es **un script** (el orden no se puede equivocar) y el candado exige el preludio **byte a byte** + sus símbolos; el bloque `(e2e)` de `test-brain.sh` corre la mudanza COMPLETA y **rechaza** el handoff sin preludio aunque su `bash -n` esté limpio |
 | Lobotomía del master | mover cwd sin llevar T1∪T2 | `G-PARITY` mide **presencia y corrección EN EL DESTINO** (no `SRC==DST`, que falla en falso cuando el cerebro nunca vivió en el origen) |
 | Lobotomía del CABLEADO | mover (a) transcript y (b) memorias y dejar (c) hooks y (d) config: el master corre sin sus candados y sin su `outputStyle` | **T4** en los tiers + `G-PARITY` verifica `settings.json`/`settings.local.json` del destino + ítem (e) del QA de S6 |
 | Lobotomía parcial en Mac | `*.local.md` no viaja por git | bundle T2 por Drive; depósito gitignored en cada máquina |
@@ -1111,7 +1084,7 @@ git), y las ediciones de identidad de S6 (están en el `.t2` de respaldo).
 | Transcript vivo partido | `unlink` de sesión viva (`session-move.js` → `main()`, el `unlinkSync` FINAL) | `G-LIVENESS`: mtime del archivo **que se va a mover** + fail-closed si no puede medir + cita humana como gate real |
 | **Se mueve la copia VIVA aunque el gate midió una FRÍA** | el gate miraba `$JSONL` (slug viejo) y el mutador usa `findSession()`, que barre TODOS los slugs y elige por CONTENIDO (ts→bytes→mtime) | `G-LIVENESS` resuelve el archivo real y **BLOQUEA si el id vive en >1 slug** (no hay tie-break aceptable para un `unlink`) |
 | **Self-move con el gate en verde** | el gate comparaba contra `CLAUDE_SESSION_ID`, **que no existe** ⇒ `"<id>" = ""` siempre falso ⇒ pasaba SIEMPRE | `G-SELF-MOVE` usa `CLAUDE_CODE_SESSION_ID` (con fallback) y **falla CERRADO** si corre dentro de Claude sin poder leer su id |
-| Reencarnar helios-selene | fix de target no atómico con el move | move + UPSERT **con el lock de `$MJ.lock`** + `writeAlias` en el MISMO bloque (S4), con aserción de lectura-tras-escritura |
+| Target no atómico con el move | fix de target no atómico con el move | move + UPSERT **con el lock de `$MJ.lock`** + `writeAlias` en el MISMO bloque (S4), con aserción de lectura-tras-escritura |
 | **"✅ Move hecho" con `masters.json` intacto** | `jq` en forma UPDATE (con id ausente devuelve el JSON intacto y **sale 0**) + `jq … > tmp && mv` (el `&&` **exime al `jq` de errexit**) + postcondiciones que **imprimían** en vez de aserir | UPSERT + `if ! jq …` + **todas** las postcondiciones son aserciones + el `✅` dice "pasos destructivos verificados", no LISTO |
 | **Tail dentro del bloque "sin ventana"** | un paso posterior al move que lee y parsea el transcript puede reventar (última línea TRUNCADA, memoria) y abortar **entre** el move y `masters.json` | el re-anclaje del último evento ocurre **DENTRO del move** (`--git-branch`, misma pasada en streaming, antes del `unlink`); la reparación (`_reancla`) también va en streaming y, si falla, **avisa y sigue** hasta dejar registro y alias coherentes — nunca aborta entre el move y `masters.json` |
 | **Aborto post-move por un `cwd` ANIDADO** | la postcondición era un `grep` textual y veía el `cwd` de un sub-objeto (`toolUseResult`) como un segundo valor | se mide con `jq -rR 'fromjson? \| .cwd'` (**primer nivel**, tolera la línea cortada) — la misma vista que tiene el harness |
@@ -1143,7 +1116,7 @@ git), y las ediciones de identidad de S6 (están en el `.t2` de respaldo).
 | **El cuerpo y el handoff derivan por separado** | eran dos superficies mantenidas a mano; los parches entraban en una y media | los pasos destructivos viven **SOLO** en §6.1, el preludio es **UN archivo** que los dos consumen, y el gate de marcadores lo vigila |
 | Cross-máquina: "sembré" sin sembrar | `session-import.js` lee `<repo>/.claude/sessions/` por default y el `.gz` está en el Drive ⇒ `{"ok":true,"imported":[]}` con exit 0 | §6.3: `--sessions-dir "$DRIVE" --only "$ID" --force` + aserción `.imported \| length >= 1` |
 | Renombre que revive con el nombre viejo | el hook re-deriva la identidad del `customTitle`; `session-import.js` restaura el alias desde `meta.label` | S3 exporta con `$NOMBRE_FINAL`; el preludio exige el sufijo `-master`; S4 paso 5 lista las otras entradas con el nombre viejo y recuerda renombrar el `customTitle` |
-| Alias perdidos en silencio | (a) degradar un `sesiones-alias.json` ilegible a `{}` al ESCRIBIR: la siguiente escritura deja **una sola** entrada y borra las demás. (b) dos `writeAlias` CONCURRENTES: el mapa lo comparten todos los masters de la máquina y escribirlo es read-modify-write ⇒ last-writer-wins, **en silencio y asimétrico** (pierde quien no está mirando) | (a) `writeAlias` escribe **tmp+rename** y un JSON ilegible lo **respalda y avisa** en vez de degradarlo. (b) **CERRADO 2026-09-10:** `writeAlias` toma un **lock `mkdir`** (huérfano reciclado a los 5 min) y si no lo consigue **no escribe**; el preflight de capacidad EXIGE `aliasLockPath` en la lib; y `_postcondiciones` asevera que **ningún alias ajeno se perdió** — porque el lock ata al código nuevo, no al viejo que corra en otro proceso |
+| Alias perdidos en silencio | (a) degradar un `sesiones-alias.json` ilegible a `{}` al ESCRIBIR: la siguiente escritura deja **una sola** entrada y borra las demás. (b) dos `writeAlias` CONCURRENTES: el mapa lo comparten todos los masters de la máquina y escribirlo es read-modify-write ⇒ last-writer-wins, **en silencio y asimétrico** (pierde quien no está mirando) | (a) `writeAlias` escribe **tmp+rename** y un JSON ilegible lo **respalda y avisa** en vez de degradarlo. (b) **Cerrado:** `writeAlias` toma un **lock `mkdir`** (huérfano reciclado a los 5 min) y si no lo consigue **no escribe**; el preflight de capacidad EXIGE `aliasLockPath` en la lib; y `_postcondiciones` asevera que **ningún alias ajeno se perdió** — porque el lock ata al código nuevo, no al viejo que corra en otro proceso |
 | Nombre de archivo con espacio parte el flujo | listas por word-splitting (`for m in $MEMORIAS_T1`) | **arrays** (`${ARR[@]+"${ARR[@]}"}`) y `while IFS= read -r` para las listas de archivos |
 | Glob expandido en el cwd EQUIVOCADO | `.claude/memory/*.local.md` lo expande el shell del operador, no git en el destino (y en zsh sin match **aborta**) | rutas construidas desde el array y pasadas a git con `--` una por una |
 | El árbol de trabajo del humano movido de rama | S1 hacía `git checkout develop` en el destino y ramificaba de `develop` | S1 exige árbol limpio y **ramifica de la rama VIVA del destino** |
@@ -1198,7 +1171,7 @@ produjo un gate que bloqueaba una mudanza posible (el techo de 512 MiB, retirado
 **ABIERTOS de verdad (4):**
 - **El WIDGET escribe `sesiones-alias.json` sin el lock.** `src/plasmoid/contents/ui/main.qml`
   (`writeAliasMap`) escribe el mapa por shell, sin pasar por `session-lib.js` ⇒ se salta el lock que
-  `writeAlias` ya toma (2026-09-10). Mismo caso con `proyectos-alias.json`. Riesgo REAL pero angosto: solo
+  `writeAlias` ya toma. Mismo caso con `proyectos-alias.json`. Riesgo REAL pero angosto: solo
   al renombrar una sesión en el widget (acción humana deliberada) y `_postcondiciones` lo caza ruidoso.
   Arreglo de raíz: que el widget tome el mismo lock `mkdir` en el shell que ya usa, o que delegue la
   escritura a la lib. **Ojo:** este es el escritor que impide afirmar "todo el mapa va bajo lock".
@@ -1218,9 +1191,8 @@ produjo un gate que bloqueaba una mudanza posible (el techo de 512 MiB, retirado
   verifica el nº de renglones contra el origen, `fsync`, `chmod` al modo del ORIGEN y `renameSync`; el
   origen se borra al final. Un corte deja solo el `.part`.
 - **STREAMING sin techo de tamaño:** `rewriteTranscriptStream`/`scanTranscriptFile` no sostienen el
-  archivo completo, y `move`/`export`/`import` van todos por ahí. Medido: el pico lo fija la ventana de
-  retención, **no** el tamaño (mismo pico sobre 107 MB y 428 MB). Por eso el gate de 512 MiB del skill
-  **se retiró**: bloqueaba mudanzas que la maquinaria sí hace.
+  archivo completo, y `move`/`export`/`import` van todos por ahí. El pico lo fija la ventana de
+  retención, **no** el tamaño; no hay gate de tamaño.
 - **`--git-branch` en el move:** fija el `gitBranch` del último evento con `cwd` en la MISMA pasada, antes
   del `unlink`. Es lo que permitió **borrar** el paso post-move que releía el transcript completo.
 - **Slug desde la ruta NORMALIZADA:** `normalizeCwd()` resuelve absoluta/física/sin barra final (y en

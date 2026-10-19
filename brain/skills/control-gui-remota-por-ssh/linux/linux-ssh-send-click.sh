@@ -6,7 +6,7 @@
 # Via xdotool (protocolo XTest sobre XWayland/X11) -- por eso SOLO alcanza ventanas X11/XWayland
 # (apps nativas Wayland no reciben el evento; ver limite documentado en ../SKILL.md).
 #
-# GOTCHA REAL, CRITICO (verificado 2026-09-18 en cachy, KDE Plasma 6.7): KWin pide una
+# GOTCHA REAL, CRITICO (verificado, KDE Plasma 6.7): KWin pide una
 # CONFIRMACION GRAFICA de un humano ("Control remoto: xdotool esta solicitando controlar
 # dispositivos de entrada" -> Permitir/Denegar) la PRIMERA vez que xdotool intenta mover el mouse o
 # mandar una tecla en la sesion -- es el analogo Linux/Wayland al permiso TCC de Accesibilidad de

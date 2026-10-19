@@ -27,8 +27,7 @@ cmd=$(jq -r '.tool_input.command // ""' 2>/dev/null)
 # PRE-FILTRO barato (superset conservador, mismo espíritu que proteger-arbol.sh): este hook solo
 # vigila `git commit` → sin 'git' en el comando crudo, early-exit ANTES de sourcear la lib.
 case "$cmd" in *git*) : ;; *) exit 0 ;; esac
-# M1 (auditoría 2026-09-15 §2.1): el despoje era una copia a mano (sed sin heredoc/ejecutor-aware) — se
-# unifica con la lib compartida (acg_despoja_comillas/acg_es_commit), la MISMA que usan los otros guards.
+# El despoje usa la lib compartida (acg_despoja_comillas/acg_es_commit), la MISMA que usan los otros guards.
 # shellcheck source=analizar-comando-git.sh
 _ACGLIB="$(dirname "$0")/analizar-comando-git.sh"
 [ -f "$_ACGLIB" ] && . "$_ACGLIB"
