@@ -112,6 +112,22 @@ cfp_caso "$GUARD" 123 "{ …; } > rep con command grep/jq (reconstruido)" '{ com
 cfp_caso "$GUARD" 123 "bash -c '. lib.sh; …' con la palabra git (reconstruido)" "bash -c '. lib.sh; echo git status'" "$REPO" pass
 cfp_caso "$GUARD" 123 "xargs -a (reconstruido)"                   'xargs -a lista.txt -n1 echo' "$REPO" pass
 
+# ── cluster G: variantes con nombre proteger-arbol/worktree-isolation|isolation-guard|aislamiento (mensaje del
+#    HARNESS "demasiado complejo / worktree"); aquí solo se comprueba que ESTE hook calla (comandos reconstruidos) ──
+cfp_caso "$GUARD" 10  "docker exec sqlcmd con \$(grep …) del .env (reconstruido)" 'docker exec sae9-sandbox-sqlserver /opt/mssql-tools18/bin/sqlcmd -U sa -P "$(grep SA_PASSWORD .env | cut -d= -f2)" -C -Q "SELECT 1"' "$REPO" pass
+cfp_caso "$GUARD" 12  "for V … sqlcmd > /tmp/def_\$V.sql (reconstruido)" 'for V in a b; do sqlcmd -d "$V" -Q "SELECT 1" > /tmp/def_$V.sql; done' "$REPO" pass
+cfp_caso "$GUARD" 13  "set -a; source .env; which sqlcmd (reconstruido)" 'set -a; source .env; set +a; PW=$SA_PASSWORD; which sqlcmd' "$REPO" pass
+cfp_caso "$GUARD" 48  "extracción de heredocs a /tmp + bash -n (reconstruido)" 'for tag in WD_EOF X_EOF; do awk "/$tag/" f.sh > /tmp/body_$tag.sh; bash -n /tmp/body_$tag.sh; done' "$REPO" pass
+cfp_caso "$GUARD" 49  "paste <(grep …) <(grep …) (reconstruido)"  'paste <(grep -n func a.sh) <(grep -n func a.ps1)' "$REPO" pass
+cfp_caso "$GUARD" 126 "for sobre repos incl. mfx_infraestructuradigital + heredoc con 'commit' (reconstruido)" 'for r in axon mfx_infraestructuradigital; do ls ~/code/$r; done; cat > n.md <<EOF
+hacer commit luego
+EOF' "$REPO" pass
+cfp_caso "$GUARD" 150 "python3 heredoc con 'digits' (git dentro de un identificador)" 'python3 - <<EOF
+out = {"dom_rect_digits_over200": 1}
+print(out)
+EOF' "$REPO" pass
+cfp_caso "$GUARD" 151 "google-chrome-stable contra URL local con query" 'google-chrome-stable --headless "$URL?nofix=1" http://127.0.0.1:8791/verify.html?nofix=1' "$REPO" pass
+
 # ── CONTROLES POSITIVOS (DEBEN avisar) ──
 cfp_caso "$GUARD" - "ctrl+ reset --hard HEAD~1 con commits sin pushear (árbol principal)" "git reset --hard HEAD~1" "$REPO" block
 cfp_caso "$GUARD" - "ctrl+ branch -D de rama con trabajo propio sin integrar" "git branch -D pa/viva" "$REPO" block
