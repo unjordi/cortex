@@ -28,10 +28,14 @@ cfp_fakehome() { local h; h=$(mktemp -d "${TMPDIR:-/tmp}/cfp-home.XXXXXX"); prin
 cfp_run_guard() {
   local guard="$1" cmd="$2" cwd="${3:-}" fh out
   fh=$(cfp_fakehome)
+  # CFP_ENV = asignaciones extra "K=V K2=V2" (sin espacios en los valores); CFP_MODE=aviso → "dispara" = stdout
+  # con additionalContext (guards de AVISO); default = deny.
   out=$(jq -nc --arg c "$cmd" --arg d "$cwd" '{tool_input:{command:$c},cwd:$d}' \
-        | HOME="$fh" CLAUDE_PROJECT_DIR="$cwd" bash "$guard" 2>/dev/null)
+        | env HOME="$fh" CLAUDE_PROJECT_DIR="$cwd" ${CFP_ENV:-} bash "$guard" 2>/dev/null)
   rm -rf "$fh"
-  if printf '%s' "$out" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then printf 'DENY'; else printf 'PASS'; fi
+  if [ "${CFP_MODE:-deny}" = aviso ]; then
+    if printf '%s' "$out" | grep -q 'additionalContext'; then printf 'DENY'; else printf 'PASS'; fi
+  elif printf '%s' "$out" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then printf 'DENY'; else printf 'PASS'; fi
 }
 
 # cfp_caso <guard.sh> <linea-corpus> <"nota corta"> <cmd> <cwd> <esperado:pass|block>
