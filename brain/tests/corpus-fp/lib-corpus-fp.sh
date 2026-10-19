@@ -30,7 +30,8 @@ cfp_run_guard() {
   fh=$(cfp_fakehome)
   # CFP_ENV = asignaciones extra "K=V K2=V2" (sin espacios en los valores); CFP_MODE=aviso → "dispara" = stdout
   # con additionalContext (guards de AVISO); default = deny.
-  out=$(jq -nc --arg c "$cmd" --arg d "$cwd" '{tool_input:{command:$c},cwd:$d}' \
+  # CFP_TX = ruta de un transcript .jsonl → viaja como transcript_path (guards que leen la conversación).
+  out=$(jq -nc --arg c "$cmd" --arg d "$cwd" --arg t "${CFP_TX:-}" '{tool_input:{command:$c},cwd:$d} + (if $t != "" then {transcript_path:$t} else {} end)' \
         | env HOME="$fh" CLAUDE_PROJECT_DIR="$cwd" ${CFP_ENV:-} bash "$guard" 2>/dev/null)
   rm -rf "$fh"
   if [ "${CFP_MODE:-deny}" = aviso ]; then
