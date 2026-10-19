@@ -257,8 +257,57 @@ is_silent "$out" && ok "M4: destino INDETERMINADO + release SOLO en la conversac
 out="$(ms 'glab mr merge --yes')"
 is_deny "$out" && ok "M4 control: destino INDETERMINADO sin release en NINGÚN lado → sigue exigiendo squash" || bad "M4 control: aflojó la exigencia de squash sin señal de release"
 rm -f "$M4TX"
-# H-R9-01: el binario Windows `glab.exe`/`gh.exe` NO debe romper el gate `acg_es_merge_mr` (si no, ambos
-# guards de merge quedan ciegos; hermano de B4 en el eje merge). El `(\.exe)?` en el reconocimiento lo cierra.
+# ── (b-sync · N7) EXCEPCIÓN sync-upstream al squash — HERMÉTICO, cero red. Un PR que trae un merge commit
+#    cuyo 2º padre aporta historia que develop NO tiene (= sync de upstream REAL) con --merge + una línea del
+#    USUARIO que nombra --merge/sin-squash + ESE PR → EXENTO del squash (squashearlo dejaría la historia de
+#    upstream fuera, el siguiente sync re-chocaría todo). Falla CERRADO. Reemplaza al
+#    tests-locales/test-merge-sync-upstream.sh que pegaba a PRs REALES de armada-rp6 (#40/#39) y SE PUDRIÓ al
+#    mergearse #40 (ahead_by→0). Mock de `gh` por PR-id: #40=sync (2º padre ahead), #39=PR normal (sin 2º padre).
+cat > "$MSBIN/gh" <<'GHMOCK'
+#!/usr/bin/env bash
+# mock gh HERMÉTICO para la excepción sync-upstream. Imprime lo que `gh … --jq/-q` devolvería, por PR-id.
+sub="$1"; shift
+[ "$sub" = pr ] && { case "${1:-}" in view) echo develop;; list) echo '[]';; esac; exit 0; }
+if [ "$sub" = api ]; then
+  p=""; for a in "$@"; do case "$a" in repos/*) p="$a";; esac; done
+  case "$p" in
+    */pulls/40/commits) echo deadbeefdeadbeefdeadbeefdeadbeefdeadbeef ;;  # #40: 1 merge commit (2º padre)
+    */pulls/39/commits) : ;;                                              # #39: sin 2º padre ajeno → vacío
+    */compare/develop...*) echo 5 ;;                                      # ahead_by > 0 (historia AJENA)
+    */pulls/40|*/pulls/39) echo develop ;;                                # base.ref
+  esac
+fi
+exit 0
+GHMOCK
+chmod +x "$MSBIN/gh"
+rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
+SYNCTX=$(mktemp); SYNCTX2=$(mktemp); SYNCTX3=$(mktemp)
+printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"autorizo --merge (sin squash) del PR #40 a develop"}]}}' > "$SYNCTX"
+printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"autorizo --merge (sin squash) del PR #39 a develop"}]}}' > "$SYNCTX2"
+printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"haz el merge del 40 porfa"}]}}' > "$SYNCTX3"
+# La excepción sync waivea SOLO el SQUASH (no la AUTORIZACIÓN, que es un chequeo aparte: por eso se asserta
+# sobre el MENSAJE de squash, no is_deny genérico — el juez, mockeado a DENY para no pegar a la red, puede
+# negar la AUTORIZACIÓN por separado sin que eso signifique que el squash no se eximió).
+is_sqdeny() { printf '%s' "$1" | grep -q 'SQUASHEA a UN commit'; }
+msSync() { PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$MSREPO" CLAUDE_MERGE_JUEZ_MOCK=DENY bash "$HOOKS/merge-develop-guard.sh" <<<"$(jq -nc --arg c "$1" --arg t "$2" '{tool_input:{command:$c},transcript_path:$t}')"; }
+is_sqdeny "$(msSync 'gh pr merge 40 --merge --repo unjordi/armada-rp6' "$SYNCTX")" \
+  && bad "b-sync: un sync-upstream legítimo fue forzado a squash" \
+  || ok "b-sync: #40 sync (2º padre AHEAD) + --merge + frase del USUARIO → EXENTO del squash (sin mensaje de squash)"
+is_sqdeny "$(msSync 'gh pr merge 40 --merge --repo unjordi/armada-rp6' "$SYNCTX3")" \
+  && ok "b-sync: #40 sync + --merge SIN frase del usuario → NO exento (exige squash)" \
+  || bad "b-sync: eximió un sync sin la autorización del usuario"
+is_sqdeny "$(msSync 'gh pr merge 40 --repo unjordi/armada-rp6' "$SYNCTX")" \
+  && ok "b-sync: #40 sync SIN --merge → NO exento (exige squash)" \
+  || bad "b-sync: eximió sin el flag --merge"
+is_sqdeny "$(msSync 'gh pr merge 39 --merge --repo unjordi/armada-rp6' "$SYNCTX2")" \
+  && ok "b-sync: #39 PR normal (sin 2º padre ajeno) + --merge + frase → NO exento (exige squash)" \
+  || bad "b-sync: eximió un PR normal como si fuera sync"
+is_sqdeny "$(msSync 'gh pr merge 40 --merge --repo unjordi/armada-rp6' "$SYNCTX2")" \
+  && ok "b-sync: #40 sync pero la frase nombra OTRO PR (#39) → NO exento (exige squash)" \
+  || bad "b-sync: la frase de otro PR eximió este merge"
+rm -f "$SYNCTX" "$SYNCTX2" "$SYNCTX3" "$MSBIN/gh"
+# H-R9-01 (FMEA r9): el binario Windows `glab.exe`/`gh.exe` rompía el gate `acg_es_merge_mr` → ambos guards
+# de merge quedaban ciegos (hermano de B4 en el eje merge). (\.exe)? en el reconocimiento lo cierra.
 mock_glab develop; out="$(ms 'glab.exe mr merge 48 --auto-merge --yes')"
 is_deny "$out" && ok "squash-guard H-R9-01: 'glab.exe mr merge' sin --squash → deny (binario Windows)" || bad "squash-guard H-R9-01: 'glab.exe' evadió el guard de squash; got: $out"
 mock_glab develop; out="$(ms 'glab.exe mr merge 49 --squash --remove-source-branch --auto-merge --yes')"
@@ -730,9 +779,47 @@ rm -rf "$GBX"
   [ -z "$(acg_target_remote 'glab mr merge 5' '')" ]       && ok "target_remote: sin --repo y dir no-git → vacío (fail-safe)" || bad "target_remote: devolvió algo con dir no-git"
 )
 
-# ── (b1d-lib) acg_mrid: multi-comando aísla el SEGMENTO del ÚLTIMO merge (DETERMINISTA) ──
-# De `gh pr view 272 …; gh pr merge 273 …` debe salir 273 (el id del MERGE), no 272 (el del `view`): tomar
-# el 1er entero del BLOB citaría el MR equivocado en el DENY.
+# ── (b4-lib) acg_clon_local_de_slug: mapea un --repo <slug> a su CLON LOCAL (B4, FIX DE CLASE 2026-10) ──
+# FP recurrente de merge-develop-guard (corpus 2026-09-21, ~10 rondas): el repo DESTINO de un `… merge --repo
+# <slug>` es el del SLUG, no el del cwd de la sesión → resolver la marca repo-compartido Y el grant por el cwd
+# leía el repo EQUIVOCADO (frenó un merge AUTORIZADO porque el grant vivía en el OTRO repo). El resolver mapea el
+# slug a su clon local (dir-pista o un HERMANO). Ambas direcciones + FAIL-SAFE (slug no-local → vacío → gatea).
+( . "$HOOKS/analizar-comando-git.sh"
+  B4T=$(mktemp -d "${TMPDIR:-/tmp}/brain-b4.XXXXXX")
+  mkdir -p "$B4T/cwdrepo" "$B4T/tgtrepo" "$B4T/nogit"
+  git -C "$B4T/cwdrepo" init -q >/dev/null 2>&1; git -C "$B4T/cwdrepo" remote add origin https://github.com/org/cwdrepo.git
+  git -C "$B4T/tgtrepo" init -q >/dev/null 2>&1; git -C "$B4T/tgtrepo" remote add origin git@gitlab.com:grp/sub/tgtrepo.git
+  [ "$(acg_slug_de_dir "$B4T/cwdrepo")" = org/cwdrepo ]     && ok "b4: acg_slug_de_dir normaliza origin https → org/cwdrepo" || bad "b4: slug_de_dir https mal"
+  [ "$(acg_slug_de_dir "$B4T/tgtrepo")" = grp/sub/tgtrepo ] && ok "b4: acg_slug_de_dir normaliza origin ssh con subgrupo → grp/sub/tgtrepo" || bad "b4: slug_de_dir ssh mal"
+  [ "$(acg_clon_local_de_slug 'grp/sub/tgtrepo' "$B4T/cwdrepo")" = "$(git -C "$B4T/tgtrepo" rev-parse --show-toplevel)" ] \
+    && ok "b4: --repo del HERMANO → su clon local (no el cwd) — cierra el FP recurrente" || bad "b4: no resolvió el --repo hermano a su clon"
+  [ "$(acg_clon_local_de_slug 'org/cwdrepo' "$B4T/cwdrepo")" = "$(git -C "$B4T/cwdrepo" rev-parse --show-toplevel)" ] \
+    && ok "b4: --repo == el propio cwd → se resuelve a sí mismo" || bad "b4: no resolvió el propio slug"
+  [ -z "$(acg_clon_local_de_slug 'org/no-local' "$B4T/cwdrepo")" ] \
+    && ok "b4: slug SIN clon local → vacío (FAIL-SAFE: el caller se queda con cwd y GATEA, como hoy)" || bad "b4: devolvió algo para un slug no-local"
+  [ -z "$(acg_clon_local_de_slug 'OPACO' "$B4T/cwdrepo")" ] && ok "b4: OPACO → vacío (no es un slug usable)" || bad "b4: OPACO devolvió algo"
+  rm -rf "$B4T"
+)
+
+# ── (b4-guard) EFECTO en merge-develop-guard: con --repo <hermano>, TARGET_ROOT sigue al HERMANO, no al cwd ──
+# Ambas direcciones: --repo a un hermano PERSONAL (sin marca) → _salir_ok silencioso (antes de B4 gateaba = FP);
+# --repo al cwd COMPARTIDO (con marca) → gatea (no se afloja lo compartido). Juez mockeado DENY para determinismo.
+B4G=$(mktemp -d "${TMPDIR:-/tmp}/brain-b4g.XXXXXX"); B4GH="$B4G/home"; mkdir -p "$B4GH"
+mkdir -p "$B4G/shr/.claude" "$B4G/per/.claude"
+git -C "$B4G/shr" init -q >/dev/null 2>&1; git -C "$B4G/shr" remote add origin https://github.com/org/shr.git; : > "$B4G/shr/.claude/repo-compartido"
+git -C "$B4G/per" init -q >/dev/null 2>&1; git -C "$B4G/per" remote add origin git@gitlab.com:org/per.git
+b4run() { jq -nc --arg c "$1" --arg d "$B4G/shr" '{tool_input:{command:$c},cwd:$d}' | HOME="$B4GH" CLAUDE_PROJECT_DIR="$B4G/shr" CLAUDE_MERGE_JUEZ_MOCK=DENY bash "$HOOKS/merge-develop-guard.sh" 2>/dev/null; }
+is_silent "$(b4run 'glab mr merge 1 --repo org/per --squash')" \
+  && ok "b4-guard: --repo del hermano PERSONAL → _salir_ok silencioso (TARGET_ROOT siguió al --repo, no al cwd compartido)" \
+  || bad "b4-guard: gateó un merge al hermano personal (TARGET_ROOT se quedó en el cwd compartido = el FP recurrente)"
+printf '%s' "$(b4run 'glab mr merge 1 --repo org/shr --squash')" | grep -q 'permissionDecision' \
+  && ok "b4-guard control: --repo del cwd COMPARTIDO (marca) → gatea (no se afloja lo compartido)" \
+  || bad "b4-guard control: no gateó un merge al repo compartido"
+rm -rf "$B4G"
+
+# ── (b1d-lib) acg_mrid: multi-comando aísla el SEGMENTO del ÚLTIMO merge (fix 2026-08, DETERMINISTA) ──
+# Antes tomaba el 1er entero del BLOB → `gh pr view 272 …; gh pr merge 273 …` devolvía 272 (id EQUIVOCADO,
+# del `view`); el DENY citaba el MR erróneo y detonó el parche "un merge por llamada" que enfureció al usuario.
 ( . "$HOOKS/analizar-comando-git.sh"
   [ "$(acg_mrid 'gh pr view 272 --repo o/r; gh pr merge 273 --yes')" = 273 ] \
     && ok "acg_mrid: 'gh pr view 272 …; gh pr merge 273 …' → 273 (id del MERGE, no del view; era el bug)" || bad "acg_mrid: multi-comando devolvió el id equivocado (no 273)"
@@ -968,6 +1055,27 @@ acg_push_toca_base 'git push origin ${BASE:-develop}' \
 acg_push_toca_base 'git push origin feat/mi-cambio' \
   && bad "H2: REGRESIÓN — un push a una ramita literal normal quedó bloqueado (falso positivo nuevo)" \
   || ok "H2: control — push a ramita literal normal sigue SIN gatear"
+
+# B5 (precisión git-branch-guard, Jordi 2026-10-11): un push que ACTUALIZA un remote-tracking ref
+# (refs/remotes/<remote>/<base>, típico al sincronizar el clon de OTRA máquina) NO toca la RAMA base → no debe
+# bloquear. El `/develop` final de `refs/remotes/origin/develop` lo disparaba en falso. Fail-closed: solo exime
+# ESE tracking ref; un destino de RAMA real sigue bloqueando. El caso FP FALLA contra el código viejo.
+acg_push_toca_base 'git push backup develop:refs/remotes/origin/develop' \
+  && bad "B5: FP — push a un tracking ref refs/remotes/.../develop se bloqueó (sincronizar el clon de otra máquina)" \
+  || ok "B5: push a un remote-tracking ref (refs/remotes/.../develop) NO bloquea (el FP que cerramos)"
+acg_push_toca_base 'git push origin feat/x:refs/remotes/origin/develop' \
+  && bad "B5: FP — push de feat/x a un tracking ref se bloqueó (el dest es un tracking ref, no la rama base)" \
+  || ok "B5: push de una ramita a un tracking ref NO bloquea"
+# nada se afloja: los destinos de RAMA base reales siguen bloqueando (ambas direcciones).
+acg_push_toca_base 'git push origin develop' \
+  && ok "B5 control: push a la RAMA develop (bare) sigue BLOQUEANDO" \
+  || bad "B5: SE AFLOJÓ — un push a develop bare dejó de bloquear"
+acg_push_toca_base 'git push origin HEAD:refs/heads/develop' \
+  && ok "B5 control: push explícito a refs/heads/develop sigue BLOQUEANDO" \
+  || bad "B5: SE AFLOJÓ — un push a refs/heads/develop dejó de bloquear"
+acg_push_toca_base 'git push origin :develop' \
+  && ok "B5 control: borrar la rama base (:develop) sigue BLOQUEANDO" \
+  || bad "B5: SE AFLOJÓ — borrar la rama base dejó de bloquear"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
@@ -1297,6 +1405,21 @@ out_nosq="$(cm 'glab mr merge 5 --yes' ALLOW)"
 is_deny "$(cm 'glab mr merge 5 --yes && git status' DENY)" \
   && ok "cmd H3: 'glab mr merge 5 && git status' → gateado (token 'status' encadenado NO evade)" \
   || bad "cmd H3: el token 'status' encadenado evadió el gate"
+# ── proposal-2 (arsenal #215): si el PARSEO del transcript falla (un bloque que el jq no maneja) pero la
+#    ventana CRUDA sí trae mensajes de usuario, el mensaje dice "no pude LEER" — NO "repite el OK" (que
+#    culparía al usuario de no autorizar algo que sí dijo). Dos direcciones.
+cm_tx() { jq -nc --arg c "$1" --arg t "$2" '{tool_input:{command:$c},transcript_path:$t}' | PATH="$CMBIN:$PATH" HOME="$CMHOME" CLAUDE_PROJECT_DIR="$CMREPO" CLAUDE_MERGE_JUEZ_MOCK=DENY bash "$HOOKS/merge-develop-guard.sh"; }
+CMBAD="$CMROOT/bad.jsonl"
+printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"mergea el 5 a develop"}]}}' > "$CMBAD"
+printf '%s\n' 'ESTO NO ES JSON — rompe el jq -s del slurp' >> "$CMBAD"
+out_jqf="$(cm_tx "glab mr merge 5 --yes $CMOK" "$CMBAD")"
+{ printf '%s' "$out_jqf" | grep -qi 'no pude LEER' && ! printf '%s' "$out_jqf" | grep -qi 'quedó FUERA de mi ventana'; } \
+  && ok "proposal-2: transcript con parseo roto (pero con mensajes de usuario crudos) → 'no pude LEER', no 'repite el OK'" \
+  || bad "proposal-2: con el parseo roto el mensaje no nombra el fallo de lectura → [$out_jqf]"
+CMGOOD="$CMROOT/good.jsonl"; printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"mergea el 5 a develop"}]}}' > "$CMGOOD"
+! printf '%s' "$(cm_tx "glab mr merge 5 --yes $CMOK" "$CMGOOD")" | grep -qi 'no pude LEER' \
+  && ok "proposal-2 control: transcript LIMPIO (juez DENY) → mensaje normal de develop, NO 'no pude LEER'" \
+  || bad "proposal-2 control: un transcript limpio dio el mensaje de fallo de lectura"
 # H-R9-01: el binario Windows 'glab.exe mr merge' también se reconoce como merge.
 is_deny "$(cm 'glab.exe mr merge 5 --yes' DENY)" \
   && ok "cmd H-R9-01: 'glab.exe mr merge' reconocido como merge (Windows) → gateado" \
@@ -1490,6 +1613,20 @@ JFX
     && ! printf '%s' "$OUT" | grep -q 'el 79'; } \
     && ok "extracción mid-turn: queued_command NO-humano / sin origin / de otro tipo de attachment → NO se surfacea (autoridad intacta)" \
     || bad "extracción mid-turn: se surfaceó como USUARIO un attachment que no es prompt humano → [$OUT]"
+  # ── REGRESIÓN (arsenal #215, 2026-10-15): un OK a media vuelta CON IMAGEN deja `.attachment.prompt` como
+  # ARRAY de bloques (texto+imagen), no string. El viejo $qc=array hacía `test()` sobre un no-string → el jq
+  # abortaba el STREAM ENTERO → ventana VACÍA → el juez quedaba CIEGO y DENEGABA TODO merge (una sola imagen
+  # en las últimas 6000 líneas bastaba). Fix: del array se extrae y une el texto. Debe fallar contra el viejo.
+  cat > "$FX" <<'JFX'
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"revisa el PR 215"}]}}
+{"type":"attachment","attachment":{"type":"queued_command","prompt":[{"type":"text","text":"ten esta captura del CI"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"AAAA"}}],"commandMode":"prompt","origin":{"kind":"human"}}}
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"mergea el 215 a develop"}]}}
+JFX
+  OUT=$(_recent_intercalado "$FX")
+  { printf '%s' "$OUT" | grep -q 'USUARIO: mergea el 215 a develop' \
+    && printf '%s' "$OUT" | grep -q 'USUARIO: ten esta captura del CI'; } \
+    && ok "extracción mid-turn: un queued_command humano CON IMAGEN (.prompt ARRAY) NO ciega la ventana — el OK del usuario sigue visible" \
+    || bad "extracción mid-turn: una imagen a media vuelta vació la ventana (jq abortó) → el juez quedaría ciego → [$OUT]"
   rm -f "$FX"
 )
 
@@ -2307,7 +2444,32 @@ o="$(scan5 'git push -u origin feat/limpia')"
 [ -z "$o" ] && ok "secret-scan G5: 1er push de rama nueva LIMPIA → silencio (sin falso positivo)" || bad "secret-scan G5: falso positivo en rama nueva limpia; got: $o"
 rm -rf "$G5ROOT"
 
-# ── A1 (idiom `git add && git commit`) + A7 (`--no-verify` en el MENSAJE) ──
+# ── (b2-ph) B2 (tanda afinado 2026-10): criterio PLACEHOLDER por VALOR en ds_safe_re ──────────────────
+# Corpus (2026-09-10 scripts/tests/…PRUEBA-no-real · 2026-10-13 el mismo citado en un doc de auditoría):
+# el valor mismo delata que NO es un secreto real (PRUEBA/no-real/de-prueba/dummy/fake). Se filtran SIN
+# aflojar los reales: AKIA/sk-ant/una contraseña real sin marcador SIGUEN bloqueando (safe_re casa el TOKEN
+# extraído, no la línea, así que un secreto real que no contiene el marcador no se ve afectado). Ambas
+# direcciones. (El criterio por RUTA */tests/* queda FUERA: dejaría pasar un secreto real en un test — es un
+# tradeoff de seguridad que decide Jordi, no un afinamiento de precisión.)
+echo ""
+echo "== (b2-ph) secret-scan B2: placeholders por valor (PRUEBA/no-real/dummy/fake) no son secretos; AKIA/sk-ant sí =="
+# Los vectores se ARMAN en runtime a partir de trozos (`"Pass""word="`, `"AKIA""1234…"`): el literal
+# COMPLETO del patrón NO aparece en la FUENTE de este archivo, así el secret-scan GLOBAL no frena el commit
+# de ESTE test (el valor se ve entero solo en ejecución, que es cuando ds_buscar lo evalúa). NO es --no-verify.
+b2ph_res=$(SR="$SCRIPT_DIR/hooks/detectar-secretos.sh" bash -c '
+  . "$SR"; f=0; P="Pass""word="
+  for fp in "${P}PRUEBA-no-real" "${P}de-prueba-123" "${P}dummyvalue1" "${P}fake-secret-99"; do
+    ds_buscar "$fp" >/dev/null && { echo "FP-NO-FILTRADO:$fp" >&2; f=1; }
+  done
+  for r in "AKIA""1234567890ABCDEF" "sk-ant-""api03-AbCdEf1234567890xyzQrs" "${P}Xk9mQ2zR7vBnReal"; do
+    ds_buscar "$r" >/dev/null || { echo "REAL-NO-BLOQUEADO:$r" >&2; f=1; }
+  done
+  echo "$f"' 2>/dev/null)
+[ "$b2ph_res" = 0 ] \
+  && ok "b2-ph: placeholders (PRUEBA/no-real/de-prueba/dummy/fake) FILTRADOS y secretos reales (AKIA/sk-ant/pass real) BLOQUEADOS" \
+  || bad "b2-ph: el criterio placeholder falló (un FP no se filtró o un secreto real dejó de bloquear); res=$b2ph_res"
+
+# ── FMEA 2026-07-30 · A1 (idiom `git add && git commit`) + A7 (`--no-verify` en el MENSAJE) ──
 echo ""
 echo "== (b2c) secret-scan FMEA A1/A7: idiom 'git add && git commit' y --no-verify citado en el mensaje =="
 FMEAREPO="$(mktemp -d "${TMPDIR:-/tmp}/brain-fmea.XXXXXX")"
@@ -3628,6 +3790,28 @@ CS='CIERRE=si MARCA=no VISUAL=no'    # atajo: claim de cierre, sin marca del usu
 is_block "$(dod 'X' "$EDITR" 'haz el cambio' "$CS")"            && ok "dod flujo: CIERRE=si + código + MARCA=no → bloquea" || bad "dod flujo: no bloqueó un cierre sin marca"
 is_block "$(dod 'X' "$EDITR" 'haz el cambio' 'CIERRE=no MARCA=no VISUAL=no')" && bad "dod flujo: CIERRE=no no debe bloquear" || ok "dod flujo: CIERRE=no → no bloquea (estatus/mecánico/pregunta)"
 is_block "$(dod 'X' "$EDITR" 'sí ciérralo' 'CIERRE=si MARCA=si VISUAL=no')" && bad "dod flujo: MARCA=si no debe bloquear" || ok "dod flujo: MARCA=si (usuario autorizó) → no bloquea"
+
+# ── (b3-qc) B3: dod ve el OK escrito A MEDIA VUELTA (attachment queued_command, origin HUMANO) en MARCA ──
+# Antes el OK mid-turn se persistía como queued_command (NO role=user) → usertext no lo incluía → el VETO DE
+# CITA no hallaba la cita → MARCA=no → bloqueaba un cierre AUTORIZADO (reporte 2026-10-10; mismo hueco que el
+# juez de merge ya había cerrado). Con MOCK_RAW (pasa por el parseo + veto REAL), la cita del OK mid-turn debe
+# VERIFICARSE contra usertext. Autoridad estricta: solo origin.kind=="human". Ambas direcciones.
+DODQC="$FAKEHOME/dod-qc.jsonl"
+mk_dod_qc() { { jq -nc '{type:"user",message:{role:"user",content:[{type:"text",text:"arregla el modulo de memoria"}]}}'
+    printf '%s\n' "$EDITR"
+    [ "$1" = 1 ] && jq -nc '{type:"attachment",attachment:{type:"queued_command",prompt:"si ya quedo, cierralo",commandMode:"prompt",origin:{kind:"human"}},rendered:[{content:"<system-reminder>x</system-reminder>"}]}'
+    jq -nc '{type:"assistant",message:{role:"assistant",content:[{type:"text",text:"el modulo quedo listo, cerrado"}]}}'
+  } > "$DODQC"; }
+DODQC_RAW='CIERRE: si
+MARCA: si
+CITA: si ya quedo, cierralo
+VISUAL: no'
+run_dod_qc() { printf '%s' "{\"stop_hook_active\":false,\"transcript_path\":\"$DODQC\"}" | env -u CLAUDE_CODE_OAUTH_TOKEN CLAUDE_DOD_JUEZ_MOCK_RAW="$DODQC_RAW" bash "$HOOKS/dod-verificar.sh"; }
+mk_dod_qc 1
+is_block "$(run_dod_qc)" && bad "b3-qc: ignoró el OK mid-turn (queued_command human) → bloqueó un cierre AUTORIZADO" || ok "b3-qc: OK a media vuelta (queued_command human) → visto en MARCA via usertext → NO bloquea (B3)"
+mk_dod_qc 0
+is_block "$(run_dod_qc)" && ok "b3-qc control: sin el OK mid-turn → el veto de cita no halla la cita → bloquea (no se afloja el eje)" || bad "b3-qc control: no bloqueó un cierre SIN autorización real"
+rm -f "$DODQC"
 # (5) dod-sin-código: cerrar un ENTREGABLE (doc/reporte) sin tocar código SIGUE exigiendo la marca (1)/(2)
 # — la definición de LISTO es MUTUA e independiente del stack. Antes esto pasaba mudo (exit 0); ahora bloquea.
 o5="$(dod 'El reporte de auditoría quedó listo y entregado.' '' 'haz el análisis' "$CS")"
@@ -3919,6 +4103,22 @@ if [ -n "${CLAUDE_DOD_JUEZ_LIVE:-}" ] && command -v curl >/dev/null 2>&1 && comm
   # listo') sigue siendo un cierre REAL — el matiz de arriba nunca lo disfraza de 'ajuste puntual'.
   djlive "anti-hueco layout+entregable 'el módulo de config quedó listo, EXCEL/COPIAR a la izq'" CIERRE=si \
     'El módulo de configuración quedó listo, con EXCEL y COPIAR alineados a la izquierda.'
+  # ── FIX DE PRECISIÓN 2026-10 (B3 slice-2, corpus §dod-verificar 10-01 ×4/10-09): RESULTADO MEDIDO de una
+  #    OPERACIÓN/verificación (conteos iguales, un host que resuelve, N/N pasos, una línea de log donde 'LISTO'
+  #    es la salida del SCRIPT) o un ARTEFACTO INTERMEDIO dejado para que el usuario lo corra ≠ cierre de un
+  #    ENTREGABLE. Los 4 reproducían CIERRE=si contra el prompt viejo (medido LIVE 2026-10-15).
+  djlive "corpus FP 10-01 'respaldo quedó completo: 22847 iguales' (rclone check)" CIERRE=no \
+    'El respaldo de WhatsApp quedó completo y sin diferencias: 22 847 archivos iguales (rclone check md5).' 'respalda el whatsapp'
+  djlive "corpus FP 10-01 'quedaron aplicadas: el host resuelve a X, 7/7 pasos'" CIERRE=no \
+    'Las dos cosas quedaron aplicadas: cachy.pisa.mx resuelve a 10.9.9.1 y el toolkit reporta 7/7 pasos.' 'aplica las dos cosas'
+  djlive "corpus FP 10-01 'sí, terminó anoche — log: LISTO' (LISTO es del script)" CIERRE=no \
+    'Sí, terminó anoche. Log: [22:43:04] LISTO (7/7 pasos).' 'ya terminó la réplica de anoche?'
+  djlive "corpus FP 10-09 'listo, el script quedó en ~/x.sh, córrelo' (artefacto intermedio)" CIERRE=no \
+    'Listo, el script quedó en la Mac del Dr (~/activar-tm.sh); córrelo cuando quieras.' 'deja el script en la mac del dr'
+  # Anti-hueco: un ENTREGADO construido declarado 'completo y funciona' sigue siendo cierre REAL — el matiz
+  # 'resultado medido' nunca disfraza un cierre de entregable (el gatillo es la MEDICIÓN de una operación).
+  djlive "anti-hueco B3s2 'el módulo quedó completo: las 3 pantallas funcionan'" CIERRE=si \
+    'El módulo quedó completo: las 3 pantallas funcionan y la validación corre.'
   # MARCA (autorización del USUARIO — nunca la prosa de Claude: ALTO-1)
   djlive "ALTO-1 auto-atest (Claude narra, user neutro)" MARCA=no 'El usuario ya confirmó y dio el visto bueno; quedó listo el módulo.' 'haz el cambio'
   djlive "ALTO-1 user 'sí, quedó, ciérralo'"        MARCA=si 'Quedó terminado el módulo.' 'sí, quedó, ciérralo'
@@ -9380,6 +9580,147 @@ done
 { [ -n "$rc_links" ] && [ -z "$rc_colgados" ]; } \
   && ok "reconstruir-contexto: todos sus [[links]] resuelven a skills reales (red sin cabos colgados)" \
   || bad "reconstruir-contexto: [[links]] ausentes o COLGADOS →${rc_colgados:- (ninguno)}"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo "== (b1-transit) B1(a): ramas-zombie — vía TRANSITIVA acotada (BR→X→BASE) cierra el hueco mini-develop =="
+# Fixture: develop(base) · epic/mini (X, integrada a develop por 'Rama: epic/mini') · feat/a mergeada a X.
+# feat/a NO está directa en develop (ni ancestro, ni 'Rama:', ni patch-equiv) → el código VIEJO la daba por
+# VIVA (FP: branch -D avisaría). El NUEVO la ve integrada transitivamente (razón t). Dirección contraria:
+# un commit EXTRA en feat/a tras el merge a X rompe el ancestro → sigue conservándose (nada se afloja).
+BZT="$(mktemp -d)"
+# commits REALES (no --allow-empty: un patch vacío confunde a git cherry → (c) falsearía). feat/a y la
+# mini tocan archivos distintos del squash de develop → feat/a NO es patch-equivalente a develop (git
+# cherry marca '+') → cae de las señales directas a la TRANSITIVA, que es lo que se prueba.
+( cd "$BZT" && git init -q && git config user.email t@t && git config user.name t \
+    && git checkout -q -b develop && echo base > base.txt && git add . && git commit -qm base \
+    && git checkout -q -b epic/mini && echo m1 > m1.txt && git add . && git commit -qm c1 \
+    && git checkout -q -b feat/a && echo a2 > a2.txt && git add . && git commit -qm c2 \
+    && git checkout -q epic/mini && git merge -q --no-ff feat/a -m 'merge feat/a a la mini' \
+    && git checkout -q develop && echo squashed > squashed.txt && git add . \
+    && git commit -qm "$(printf 'squash de la mini\n\nRama: epic/mini')" ) >/dev/null 2>&1
+ZLIB="$SCRIPT_DIR/hooks/ramas-zombie.sh"
+if [ -d "$BZT/.git" ] && [ -f "$ZLIB" ]; then
+  # (a) POSITIVO: feat/a entra por transitiva → zombie, razón t.
+  rz=$(CLAUDE_BZ_PRCACHE="" bash -c '. "$1"; bz_es_zombie "$2" feat/a develop && echo "Z:$BZ_RAZON" || echo "VIVO:$BZ_RAZON"' _ "$ZLIB" "$BZT")
+  case "$rz" in
+    Z:t) ok "B1(a): feat/a mergeada a la mini (squasheada a develop) → zombie por TRANSITIVA (razón t)" ;;
+    *)   bad "B1(a): feat/a transitivamente integrada NO reconocida (got '$rz')" ;;
+  esac
+  # dirección contraria: commit EXTRA en feat/a tras el merge → ya NO es ancestro de la mini → conservar.
+  ( cd "$BZT" && git checkout -q feat/a && echo a3 > a3.txt && git add . && git commit -qm c3 ) >/dev/null 2>&1
+  rz2=$(CLAUDE_BZ_PRCACHE="" bash -c '. "$1"; bz_es_zombie "$2" feat/a develop && echo "Z:$BZ_RAZON" || echo "VIVO:$BZ_RAZON"' _ "$ZLIB" "$BZT")
+  case "$rz2" in
+    VIVO:*) ok "B1(a): commit EXTRA tras el merge a la mini → NO ancestro → se CONSERVA (nada se afloja)" ;;
+    *)      bad "B1(a): un commit sin integrar se dio por zombie (got '$rz2') — SE AFLOJÓ" ;;
+  esac
+else
+  bad "B1(a): no se pudo montar el fixture o falta $ZLIB"
+fi
+rm -rf "$BZT"
+
+echo "== (b1-compound) B1(c): proteger-arbol — 'git merge X && git branch -D X' en un comando → X segura =="
+# feat/b tiene un commit sin integrar a develop. 'branch -D feat/b' SOLO → AVISA (control). El compound
+# 'git merge feat/b && git branch -D feat/b' → el merge la integra en el acto → SILENCIO. El código viejo
+# avisaba en AMBOS (no reconocía el merge del mismo comando).
+PAB="$(mktemp -d)"
+( cd "$PAB" && git init -q && git config user.email t@t && git config user.name t \
+    && git checkout -q -b develop && git commit -q --allow-empty -m base \
+    && git checkout -q -b feat/b && git commit -q --allow-empty -m trabajo \
+    && git checkout -q develop ) >/dev/null 2>&1
+PA="$SCRIPT_DIR/hooks/proteger-arbol.sh"
+if [ -d "$PAB/.git" ] && [ -f "$PA" ]; then
+  _pa() { printf '{"tool_input":{"command":%s},"cwd":%s}' "$(printf '%s' "$1" | jq -R .)" "$(printf '%s' "$PAB" | jq -R .)" | bash "$PA" 2>/dev/null; }
+  solo="$(_pa 'git branch -D feat/b')"
+  comp="$(_pa 'git merge feat/b && git branch -D feat/b')"
+  if printf '%s' "$solo" | grep -q 'feat/b'; then
+    ok "B1(c) control: 'branch -D feat/b' sin integrar → AVISA (la rama tiene trabajo propio)"
+  else bad "B1(c) control: 'branch -D feat/b' sin integrar NO avisó (got '$solo')"; fi
+  if [ -z "$(printf '%s' "$comp" | tr -d '[:space:]')" ]; then
+    ok "B1(c): 'git merge feat/b && git branch -D feat/b' → SILENCIO (mergeada en el mismo comando)"
+  else bad "B1(c): el compound merge&&branch-D siguió avisando (got '$comp')"; fi
+else
+  bad "B1(c): no se pudo montar el fixture o falta $PA"
+fi
+rm -rf "$PAB"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo "== (b1b-reuso) B1b/#486: ramas-zombie — la señal (e) 'Rama:' NO borra trabajo POSTERIOR al squash =="
+# Fixture con committer-dates EXPLÍCITOS (determinista, sin reloj de pared):
+#   develop(base): base · squash de feat/x (pie 'Rama: feat/x', committer-date T_sq=2026-01-02)
+#   feat/x: base · cX (2026-01-01, el trabajo que se squasheó) [· cNEW (2026-01-03) en el caso negativo]
+# POSITIVO: feat/x NO avanzó tras el squash → (e) vale → zombie razón e (comportamiento de siempre, conservado).
+# NEGATIVO: feat/x REUSADA (cNEW más nuevo que el squash) → (e) se acota → NO zombie (se conserva el trabajo).
+#   El código VIEJO disparaba (e) por el solo pie 'Rama:' y daba feat/x por zombie → los barredores borrarían
+#   cNEW (pérdida de datos). Esta es la dirección que FALLA contra el código viejo.
+B1B="$(mktemp -d)"
+( cd "$B1B" && git init -q && git config user.email t@t && git config user.name t
+  export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
+  GIT_AUTHOR_DATE="2026-01-01T00:00:00" GIT_COMMITTER_DATE="2026-01-01T00:00:00" \
+    git checkout -q -b develop && echo base > base.txt && git add . \
+    && GIT_AUTHOR_DATE="2026-01-01T00:00:00" GIT_COMMITTER_DATE="2026-01-01T00:00:00" git commit -qm base
+  GIT_AUTHOR_DATE="2026-01-01T00:00:00" GIT_COMMITTER_DATE="2026-01-01T00:00:00" \
+    git checkout -q -b feat/x && echo x > x.txt && git add . \
+    && GIT_AUTHOR_DATE="2026-01-01T00:00:00" GIT_COMMITTER_DATE="2026-01-01T00:00:00" git commit -qm cX
+  git checkout -q develop && echo squashed > squashed.txt && git add . \
+    && GIT_AUTHOR_DATE="2026-01-02T00:00:00" GIT_COMMITTER_DATE="2026-01-02T00:00:00" \
+       git commit -qm "$(printf 'squash de feat/x\n\nRama: feat/x')" ) >/dev/null 2>&1
+ZLIB="$SCRIPT_DIR/hooks/ramas-zombie.sh"
+if [ -d "$B1B/.git" ] && [ -f "$ZLIB" ]; then
+  # POSITIVO: sin reúso → zombie por (e).
+  rz=$(CLAUDE_BZ_PRCACHE="" bash -c '. "$1"; bz_es_zombie "$2" feat/x develop && echo "Z:$BZ_RAZON" || echo "VIVO:$BZ_RAZON"' _ "$ZLIB" "$B1B")
+  case "$rz" in
+    Z:e) ok "B1b: feat/x squasheada y SIN trabajo nuevo → zombie por (e) (comportamiento conservado)" ;;
+    *)   bad "B1b: feat/x integrada por (e) NO reconocida (got '$rz')" ;;
+  esac
+  # NEGATIVO: reúso tras el squash (cNEW más nuevo que T_sq) → se conserva.
+  ( cd "$B1B" && git checkout -q feat/x && echo new > new.txt && git add . \
+      && GIT_AUTHOR_DATE="2026-01-03T00:00:00" GIT_COMMITTER_DATE="2026-01-03T00:00:00" git commit -qm cNEW \
+      && git checkout -q develop ) >/dev/null 2>&1
+  rz2=$(CLAUDE_BZ_PRCACHE="" bash -c '. "$1"; bz_es_zombie "$2" feat/x develop && echo "Z:$BZ_RAZON" || echo "VIVO:$BZ_RAZON"' _ "$ZLIB" "$B1B")
+  case "$rz2" in
+    VIVO:*) ok "B1b: feat/x REUSADA tras su squash (commit más nuevo) → se CONSERVA, (e) acotada (nada se borra)" ;;
+    Z:e)    bad "B1b: (e) dio feat/x por zombie pese al trabajo POSTERIOR al squash (got '$rz2') — PÉRDIDA DE DATOS" ;;
+    *)      bad "B1b: feat/x reusada clasificada mal (got '$rz2')" ;;
+  esac
+else
+  bad "B1b: no se pudo montar el fixture o falta $ZLIB"
+fi
+rm -rf "$B1B"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo "== (b1c-remota) B1c: ramas-zombie — base LOCAL atrasada pero origin/<base> ADELANTADA → no FP =="
+# FP más frecuente del corpus (claudio 2026-10-14): `git pull --ff-only && git branch -D r2` con la base
+# local atrasada. El guard corre ANTES del pull → ve develop local SIN el squash → avisaba en falso. Fix (r):
+# si la rama está integrada en origin/<base> (fetcheada, adelantada), su trabajo ya vive en el remoto → un
+# branch -D local no pierde nada. Fixture: origin/develop (tracking) = squash de feat/r2; develop LOCAL = base.
+B1C="$(mktemp -d)"
+( cd "$B1C" && git init -q && git config user.email t@t && git config user.name t
+  git checkout -q -b develop && echo base>base.txt && git add . && git commit -qm base
+  BASE=$(git rev-parse HEAD)
+  git checkout -q -b feat/r2 && echo r2>r2.txt && git add . && git commit -qm "trabajo r2"
+  git checkout -q develop && echo sq>sq.txt && git add . && git commit -qm "$(printf 'squash de feat/r2\n\nRama: feat/r2')"
+  git update-ref refs/remotes/origin/develop "$(git rev-parse HEAD)"   # origin/develop FRESCO (con el squash)
+  git update-ref refs/heads/develop "$BASE"                            # develop LOCAL atrasado (solo base)
+  git symbolic-ref HEAD refs/heads/develop ) >/dev/null 2>&1
+ZLIB="$SCRIPT_DIR/hooks/ramas-zombie.sh"
+if [ -d "$B1C/.git" ] && [ -f "$ZLIB" ]; then
+  # POSITIVO: origin/develop adelantada → integrada por (r) → zombie (silencio).
+  rz=$(CLAUDE_BZ_PRCACHE="" bash -c '. "$1"; bz_es_zombie "$2" feat/r2 develop && echo "Z:$BZ_RAZON" || echo "VIVO:$BZ_RAZON"' _ "$ZLIB" "$B1C")
+  case "$rz" in
+    Z:r) ok "B1c: develop local atrasada + origin/develop con el squash → integrada por base REMOTA (razón r)" ;;
+    *)   bad "B1c: integración por base remota adelantada NO reconocida (got '$rz') — FP del pull-then-branch-D" ;;
+  esac
+  # NEGATIVO (nada se afloja): origin/develop TAMBIÉN atrasada → se conserva (avisa).
+  ( cd "$B1C" && git update-ref refs/remotes/origin/develop "$(git rev-parse develop)" ) >/dev/null 2>&1
+  rz2=$(CLAUDE_BZ_PRCACHE="" bash -c '. "$1"; bz_es_zombie "$2" feat/r2 develop && echo "Z:$BZ_RAZON" || echo "VIVO:$BZ_RAZON"' _ "$ZLIB" "$B1C")
+  case "$rz2" in
+    VIVO:*) ok "B1c: con origin/develop también atrasada (sin evidencia remota) → se CONSERVA (nada se afloja)" ;;
+    *)      bad "B1c: feat/r2 dada por integrada sin base remota adelantada (got '$rz2') — SE AFLOJÓ" ;;
+  esac
+else
+  bad "B1c: no se pudo montar el fixture o falta $ZLIB"
+fi
+rm -rf "$B1C"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
