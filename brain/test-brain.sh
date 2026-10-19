@@ -910,33 +910,15 @@ printf '%s' "$o" | grep -q 'ORFANAR' && ok "M1: proteger-arbol — heredoc a 'ba
 rm -rf "$PAM1"
 
 echo ""
-echo "== (b1d-m2) M2 (auditoría 2026-09-15, CRÍTICO §3.1/§2.4): secret-scan y proteger-arbol dejan de ser ciegos cross-repo =="
-# Si secret-scan escaneara SIEMPRE CLAUDE_PROJECT_DIR (el repo de la SESIÓN) y proteger-arbol NI sourceara
-# la lib, un `git -C <otro-repo>` / `cd <otro-repo> && …` / un cwd distinto (el patrón NORMAL de un worktree
-# aislado de fan-out) quedaría invisible — un secreto pasaría SIN escanear, un reset destructivo no avisaría.
-# Ambos resuelven el target por acg_target_dir (misma lib que git-branch-guard).
+echo "== (b1d-m2) M2 (auditoría 2026-09-15, CRÍTICO §3.1/§2.4): proteger-arbol deja de ser ciego cross-repo =="
+# proteger-arbol resuelve el target por acg_target_dir (misma lib que git-branch-guard): un `git -C <otro-repo>`
+# o un cwd distinto (patrón normal de un worktree aislado) no debe evaluar el árbol equivocado.
 M2A="$(mktemp -d "${TMPDIR:-/tmp}/brain-m2a.XXXXXX")"; M2B="$(mktemp -d "${TMPDIR:-/tmp}/brain-m2b.XXXXXX")"
 git -C "$M2A" init -q >/dev/null 2>&1; git -C "$M2A" config user.email t@t >/dev/null 2>&1; git -C "$M2A" config user.name t >/dev/null 2>&1
 git -C "$M2A" commit -q --allow-empty -m base >/dev/null 2>&1
 git -C "$M2B" init -q >/dev/null 2>&1; git -C "$M2B" config user.email t@t >/dev/null 2>&1; git -C "$M2B" config user.name t >/dev/null 2>&1
 git -C "$M2B" commit -q --allow-empty -m base >/dev/null 2>&1
-printf 'aws_key = AKIA1234567890ABCDEF\n' > "$M2B/config.txt"; git -C "$M2B" add config.txt >/dev/null 2>&1
-m2scan() { printf '%s' "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"$1\"},\"cwd\":\"$M2A\"}" \
-           | HOME="$M2A" bash "$HOOKS/secret-scan.sh"; }
-o="$(m2scan "git -C $M2B commit -m x")"
-printf '%s' "$o" | grep -q '"deny"' && ok "M2: secret-scan — 'git -C <otro-repo> commit' con secreto en el OTRO → deny (cross-repo, antes ciego)" \
-  || bad "M2: secret-scan CIEGO — 'git -C <otro>' con secreto no escaneó; got: $o"
-o="$(m2scan "cd $M2B && git commit -m x")"
-printf '%s' "$o" | grep -q '"deny"' && ok "M2: secret-scan — 'cd <otro-repo> && git commit' con secreto en el OTRO → deny" \
-  || bad "M2: secret-scan CIEGO — 'cd <otro> &&' con secreto no escaneó; got: $o"
-# m2scan (arriba) nunca varía CLAUDE_PROJECT_DIR — solo prueba `.cwd`. Este es el caso GEMELO que proteger-arbol
-# SÍ tiene un poco más abajo: CLAUDE_PROJECT_DIR apuntando EXPLÍCITAMENTE a un repo A (limpio) mientras el
-# comando toca REALMENTE el repo B (con el secreto) vía `-C`. Si el guard leyera CLAUDE_PROJECT_DIR en vez de
-# resolver el target real, escanearía A (limpio) y dejaría pasar el secreto de B.
-o="$(printf '%s' "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git -C $M2B commit -m x\"},\"cwd\":\"$M2A\"}" \
-     | HOME="$M2A" CLAUDE_PROJECT_DIR="$M2A" bash "$HOOKS/secret-scan.sh")"
-printf '%s' "$o" | grep -q '"deny"' && ok "M2-cobertura: secret-scan — CLAUDE_PROJECT_DIR=A explícito + '-C B' con secreto en B → deny (no escaneó A por error)" \
-  || bad "M2-cobertura: secret-scan escaneó CLAUDE_PROJECT_DIR en vez del repo que el -C REALMENTE toca; got: $o"
+# CLAUDE_PROJECT_DIR apunta a un repo A mientras el comando toca el repo B vía `-C`: el guard debe evaluar B.
 git -C "$M2A" commit -q --allow-empty -m sinpush >/dev/null 2>&1   # commit sin pushear en A → riesgo real si el reset fuera EN A
 o=$(printf '%s' "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git -C $M2B reset --hard HEAD~1\"},\"cwd\":\"$M2A\"}" | CLAUDE_PROJECT_DIR="$M2A" bash "$HOOKS/proteger-arbol.sh")
 [ -z "$o" ] && ok "M2: proteger-arbol — 'git -C <otro-repo> reset --hard' sin riesgo EN ESE repo → silencio (ya no evalúa el árbol equivocado)" \
@@ -954,7 +936,7 @@ echo "   lib compartida NO tumba los guards en silencio — fallan RUIDOSO/CERRA
 # propio fallback) en vez de esfumarse.
 C1SB="$(mktemp -d "${TMPDIR:-/tmp}/brain-crit1.XXXXXX")"; mkdir -p "$C1SB/hooks" "$C1SB/home"
 for f in analizar-comando-git.sh git-branch-guard.sh merge-develop-guard.sh \
-         secret-scan.sh proteger-arbol.sh detectar-secretos.sh juez-comun.sh ramas-zombie.sh; do
+         proteger-arbol.sh juez-comun.sh ramas-zombie.sh; do
   cp "$HOOKS/$f" "$C1SB/hooks/$f" 2>/dev/null
 done
 # Inyecta un paréntesis SIN CERRAR en acg_despoja_comillas (bash -3.2-safe, una sola línea real de la lib).
@@ -969,12 +951,6 @@ is_deny "$(c1out git-branch-guard.sh 'git push origin develop')" \
 is_deny "$(c1out merge-develop-guard.sh 'glab mr merge 5 --yes')" \
   && ok "CRÍTICO-1: lib ROTA + merge-develop-guard + merge sin squash/OK → DENY ruidoso (candado consolidado)" \
   || bad "CRÍTICO-1: REGRESIÓN — merge-develop-guard con lib rota dejó pasar un merge en silencio"
-C1SCAN="$C1SB/scanrepo"; mkdir -p "$C1SCAN"; git -C "$C1SCAN" init -q >/dev/null 2>&1
-git -C "$C1SCAN" config user.email t@t >/dev/null 2>&1; git -C "$C1SCAN" config user.name t >/dev/null 2>&1
-printf 'aws_key = AKIA1234567890ABCDEF\n' > "$C1SCAN/config.txt"; git -C "$C1SCAN" add config.txt >/dev/null 2>&1
-is_deny "$(c1out secret-scan.sh 'git commit -m wip' "$C1SCAN")" \
-  && ok "CRÍTICO-1: lib ROTA + secret-scan + secreto en staging → DEGRADA a su fallback sed y SIGUE atrapando el secreto (antes: exit=1 silencioso, sin backstop — el ÚNICO control anti-credenciales del sistema)" \
-  || bad "CRÍTICO-1: REGRESIÓN — secret-scan con lib rota dejó pasar un secreto (backstop de emergencia falló)"
 C1TREE="$C1SB/treerepo"; mkdir -p "$C1TREE"; git -C "$C1TREE" init -q >/dev/null 2>&1
 git -C "$C1TREE" config user.email t@t >/dev/null 2>&1; git -C "$C1TREE" config user.name t >/dev/null 2>&1
 echo base > "$C1TREE/a.txt"; git -C "$C1TREE" add a.txt >/dev/null 2>&1; git -C "$C1TREE" commit -qm base >/dev/null 2>&1
@@ -1233,8 +1209,8 @@ echo "== (b1d-m7) M7 (auditoría 2026-09-15 §2.3): entorno degradado (sin jq) h
 # Un `command -v jq || exit 0` en git-branch-guard sería fail-OPEN silencioso (un PATH sin jq apagaría
 # 'nunca push a develop/main') y merge-squash-guard, sin chequeo explícito, degradaría igual (cmd vacío por
 # el jq ausente → exit 0). confirmar-merge-develop YA tenía el endurecimiento A3: esta es la
-# MISMA política, homologada a los otros dos. secret-scan/proteger-arbol CONSERVAN su fail-open declarado
-# (son red de seguridad/advisory, no el candado de "nunca push a base"); secret-scan ya avisa RUIDOSO.
+# MISMA política, homologada a los otros dos. proteger-arbol CONSERVA su fail-open declarado
+# (es advisory, no el candado de "nunca push a base").
 NOJQ7="$FAKEHOME/nojq7"
 _mkbin_real "$NOJQ7" bash grep sed cat basename dirname head tail printf awk tr git
 # H1: git-branch-guard SIN jq reusa acg_push_toca_base de verdad (con `git` real en PATH, no solo texto)
@@ -2334,285 +2310,6 @@ out_h3b=$(jq -nc --arg c "glab mr merge 5 $SQOK --yes" --arg t "$H3TX2" '{tool_i
   || bad "H3 control: REGRESIÓN — un transcript corto normal disparó el mensaje de ventana truncada, o se bloqueó; got: $out_h3b"
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
 rm -rf "$CMROOT"
-
-# ─────────────────────────────────────────────────────────────────────────────
-echo ""
-echo "== (b2) secret-scan: bloquea un secreto staged, deja pasar lo limpio, respeta --no-verify =="
-SCANREPO="$(mktemp -d "${TMPDIR:-/tmp}/brain-scan.XXXXXX")"
-git -C "$SCANREPO" init -q >/dev/null 2>&1
-git -C "$SCANREPO" config user.email t@t >/dev/null 2>&1
-git -C "$SCANREPO" config user.name  tester >/dev/null 2>&1
-# HOME sin copia global de secret-scan → la dedupe doble-cableado no cede (corre la copia bajo prueba).
-scan() { printf '%s' "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"$1\"}}" \
-         | HOME="$SCANREPO" CLAUDE_PROJECT_DIR="$SCANREPO" bash "$HOOKS/secret-scan.sh"; }
-# (1) llave AWS falsa staged → deny
-printf 'aws_key = AKIA1234567890ABCDEF\n' > "$SCANREPO/config.txt"
-git -C "$SCANREPO" add config.txt >/dev/null 2>&1
-o="$(scan 'git commit -m x')"
-printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan bloquea una llave AWS staged" || bad "secret-scan no bloqueó; got: $o"
-# (2) --no-verify → pasa (escape deliberado)
-o="$(scan 'git commit --no-verify -m x')"
-[ -z "$o" ] && ok "secret-scan respeta --no-verify (escape)" || bad "secret-scan ignoró --no-verify; got: $o"
-# (3) contenido limpio → silencio
-git -C "$SCANREPO" reset -q >/dev/null 2>&1; rm -f "$SCANREPO/config.txt"
-printf 'hola mundo, sin secretos\n' > "$SCANREPO/readme.txt"
-git -C "$SCANREPO" add readme.txt >/dev/null 2>&1
-o="$(scan 'git commit -m x')"
-[ -z "$o" ] && ok "secret-scan deja pasar contenido limpio" || bad "secret-scan bloqueó limpio; got: $o"
-# (4) un no-git → silencio
-o="$(scan 'ls -la')"
-[ -z "$o" ] && ok "secret-scan ignora comandos no-git" || bad "secret-scan reaccionó a no-git; got: $o"
-# secret-scan comparte con git-branch-guard/entorno-maquina-guard/merge-squash-guard la MISMA lib
-# despoja-comillas, así que el caso eval/bash-c (M1) también lo cubre. `scan()` interpola SIN escapar
-# comillas (rompería el JSON) → jq -nc aquí.
-printf 'aws_key = AKIA1234567890ABCDEF\n' > "$SCANREPO/config.txt"
-git -C "$SCANREPO" add config.txt >/dev/null 2>&1
-scan_raw() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | HOME="$SCANREPO" CLAUDE_PROJECT_DIR="$SCANREPO" bash "$HOOKS/secret-scan.sh"; }
-o="$(scan_raw 'eval "git commit -m x"')"
-printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan M1-cobertura: 'eval \"git commit…\"' NO evade — sigue escaneando" || bad "secret-scan M1-cobertura: eval evadió el escaneo de secretos; got: $o"
-o="$(scan_raw 'bash -c "git commit -m x"')"
-printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan M1-cobertura: 'bash -c \"git commit…\"' NO evade — sigue escaneando" || bad "secret-scan M1-cobertura: bash -c evadió el escaneo de secretos; got: $o"
-git -C "$SCANREPO" reset -q >/dev/null 2>&1; rm -f "$SCANREPO/config.txt"
-# ── §D: patrones NUEVOS (JWT, connection string, Password=) vía la lib detectar-secretos ──
-reset_scan() { git -C "$SCANREPO" reset -q >/dev/null 2>&1; rm -f "$SCANREPO"/*.txt 2>/dev/null; }
-# (A1 multi-add) `git add safe && git add secret && git commit` en UN comando: los adds NO corrieron en
-# PreToolUse → el escaneo debe pedir el dry-run de TODOS los `git add`, no solo el 1º (un `head -1` dejaría
-# colar el 2º add y su secreto).
-reset_scan; printf 'limpio, sin secretos\n' > "$SCANREPO/safe.txt"; printf 'aws = AKIA1234567890ABCDEF\n' > "$SCANREPO/secreto.txt"
-o="$(scan 'git add safe.txt && git add secreto.txt && git commit -m x')"
-printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan A1: multi-add encadenado escanea TODOS los git add (secreto en el 2º → deny)" || bad "secret-scan A1: el 2º git add encadenado se coló (solo escaneó el 1º); got: $o"
-reset_scan; printf 'a\n' > "$SCANREPO/a.txt"; printf 'b\n' > "$SCANREPO/b.txt"
-o="$(scan 'git add a.txt && git add b.txt && git commit -m x')"
-[ -z "$o" ] && ok "secret-scan A1: multi-add encadenado TODO limpio → silencio (sin FP)" || bad "secret-scan A1: FP en multi-add limpio; got: $o"
-# (6) JWT
-reset_scan; printf 'jwt: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c\n' > "$SCANREPO/j.txt"
-git -C "$SCANREPO" add j.txt >/dev/null 2>&1; o="$(scan 'git commit -m x')"
-printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan §D: JWT (eyJ.eyJ.firma) → deny" || bad "secret-scan §D: no bloqueó un JWT; got: $o"
-# (7) connection string con creds embebidas (user:pass@host)
-reset_scan; printf 'db = postgres://admin:s3cr3tp4ss@db.internal:5432/prod\n' > "$SCANREPO/c.txt"
-git -C "$SCANREPO" add c.txt >/dev/null 2>&1; o="$(scan 'git commit -m x')"
-printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan §D: connstring user:pass@host → deny" || bad "secret-scan §D: no bloqueó creds en URL; got: $o"
-# (8) Password= estilo .NET con valor REAL → deny; con \$VAR de entorno → silencio (no es secreto en claro)
-reset_scan; printf 'conn = "Server=db;User Id=sa;Password=Sup3rSecret!;"\n' > "$SCANREPO/p.txt"
-git -C "$SCANREPO" add p.txt >/dev/null 2>&1; o="$(scan 'git commit -m x')"
-printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan §D: Password=<valor real> → deny" || bad "secret-scan §D: no bloqueó Password= real; got: $o"
-reset_scan; printf 'conn = "Server=db;Password=${DB_PASS};"\n' > "$SCANREPO/e.txt"
-git -C "$SCANREPO" add e.txt >/dev/null 2>&1; o="$(scan 'git commit -m x')"
-[ -z "$o" ] && ok 'secret-scan §D: Password=${VAR} (ref de entorno) → silencio (sin falso positivo)' || bad "secret-scan §D: falso positivo con Password=\${VAR}; got: $o"
-rm -rf "$SCANREPO"
-# (9) §D fail-open vs fail-closed: en un NO-repo, default → fail-OPEN (silencio); STRICT=1 → fail-CLOSED (deny)
-NONGIT="$(mktemp -d "${TMPDIR:-/tmp}/brain-nogit.XXXXXX")"
-o="$(printf '%s' '{"tool_input":{"command":"git commit -m x"}}' | HOME="$NONGIT" CLAUDE_PROJECT_DIR="$NONGIT" bash "$HOOKS/secret-scan.sh")"
-[ -z "$o" ] && ok "secret-scan §D: no-repo + default → fail-OPEN (silencio)" || bad "secret-scan §D: default no fue fail-open en no-repo; got: $o"
-o="$(printf '%s' '{"tool_input":{"command":"git commit -m x"}}' | HOME="$NONGIT" CLAUDE_PROJECT_DIR="$NONGIT" CLAUDE_SECRET_SCAN_STRICT=1 bash "$HOOKS/secret-scan.sh")"
-printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan §D: no-repo + STRICT=1 → fail-CLOSED (deny)" || bad "secret-scan §D: STRICT no bloqueó en no-repo; got: $o"
-rm -rf "$NONGIT"
-
-# (2) sin jq: un guard DEFENSIVO NO calla. Antes: `exit 0` mudo (red apagada en silencio + STRICT ignorado).
-# Ahora: STRICT sin jq → fail-CLOSED por exit 2 (bloqueo que no necesita jq); default → aviso ruidoso + pasa;
-# no-git → silencio; escapes (SKIP/--no-verify) respetados. Simula "sin jq" con un PATH mínimo (cat+basename).
-NOJQ="$(mktemp -d "${TMPDIR:-/tmp}/brain-nojq.XXXXXX")"; NOJQBIN="$NOJQ/bin"; NOJQHOME="$NOJQ/home"; mkdir -p "$NOJQHOME"
-_mkbin_real "$NOJQBIN" cat basename bash
-BASH_ABS="$NOJQBIN/bash"
-printf '%s' '{"tool_input":{"command":"git commit -m x"}}' | PATH="$NOJQBIN" HOME="$NOJQHOME" CLAUDE_SECRET_SCAN_STRICT=1 "$BASH_ABS" "$HOOKS/secret-scan.sh" >/dev/null 2>&1
-[ "$?" -eq 2 ] && ok "secret-scan (2): sin jq + STRICT=1 → fail-CLOSED (exit 2)" || bad "secret-scan (2): sin jq + STRICT no bloqueó (exit != 2)"
-err="$(printf '%s' '{"tool_input":{"command":"git commit -m x"}}' | PATH="$NOJQBIN" HOME="$NOJQHOME" "$BASH_ABS" "$HOOKS/secret-scan.sh" 2>&1 >/dev/null)"; rc=$?
-{ [ "$rc" -eq 0 ] && printf '%s' "$err" | grep -qi 'no se escane\|red de seguridad'; } && ok "secret-scan (2): sin jq + default → pasa (exit 0) con aviso ruidoso por stderr" || bad "secret-scan (2): sin jq default no avisó/no pasó; rc=$rc err=$err"
-err="$(printf '%s' '{"tool_input":{"command":"ls -la"}}' | PATH="$NOJQBIN" HOME="$NOJQHOME" "$BASH_ABS" "$HOOKS/secret-scan.sh" 2>&1)"; rc=$?
-{ [ "$rc" -eq 0 ] && [ -z "$err" ]; } && ok "secret-scan (2): sin jq + no-git → silencio (sin ruido en cada Bash)" || bad "secret-scan (2): sin jq no-git hizo ruido; rc=$rc err=$err"
-err="$(printf '%s' '{"tool_input":{"command":"git commit -m x"}}' | PATH="$NOJQBIN" HOME="$NOJQHOME" CLAUDE_SECRET_SCAN_STRICT=1 CLAUDE_SKIP_SECRET_SCAN=1 "$BASH_ABS" "$HOOKS/secret-scan.sh" 2>&1)"; rc=$?
-{ [ "$rc" -eq 0 ] && [ -z "$err" ]; } && ok "secret-scan (2): sin jq + SKIP=1 → escape silencioso (aun con STRICT)" || bad "secret-scan (2): sin jq SKIP no respetado; rc=$rc err=$err"
-rm -rf "$NOJQ"
-
-# (5) G5: PRIMER push de una rama NUEVA sin upstream → antes fail-open (no escaneaba); ahora escanea lo
-# que la rama AGREGA vs el merge-base con develop/main.
-G5ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-g5.XXXXXX")"; G5REPO="$G5ROOT/repo"; mkdir -p "$G5REPO"
-git -C "$G5REPO" init -q >/dev/null 2>&1
-git -C "$G5REPO" symbolic-ref HEAD refs/heads/main >/dev/null 2>&1
-git -C "$G5REPO" config user.email t@t >/dev/null 2>&1
-git -C "$G5REPO" config user.name  tester >/dev/null 2>&1
-printf 'base limpia\n' > "$G5REPO/base.txt"; git -C "$G5REPO" add base.txt >/dev/null 2>&1; git -C "$G5REPO" commit -qm base >/dev/null 2>&1
-git -C "$G5REPO" branch develop >/dev/null 2>&1
-scan5() { printf '%s' "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"$1\"}}" | HOME="$G5REPO" CLAUDE_PROJECT_DIR="$G5REPO" bash "$HOOKS/secret-scan.sh"; }
-git -C "$G5REPO" checkout -q -b feat/nueva >/dev/null 2>&1
-printf 'key = AKIA1234567890ABCDEF\n' > "$G5REPO/secreto.txt"; git -C "$G5REPO" add secreto.txt >/dev/null 2>&1; git -C "$G5REPO" commit -qm add >/dev/null 2>&1
-o="$(scan5 'git push -u origin feat/nueva')"
-printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan G5: 1er push de rama nueva (sin upstream) escanea vs merge-base → bloquea" || bad "secret-scan G5: NO bloqueó el secreto en el 1er push de rama nueva; got: $o"
-git -C "$G5REPO" checkout -q main >/dev/null 2>&1; git -C "$G5REPO" checkout -q -b feat/limpia >/dev/null 2>&1
-printf 'sin secretos\n' > "$G5REPO/nota.txt"; git -C "$G5REPO" add nota.txt >/dev/null 2>&1; git -C "$G5REPO" commit -qm nota >/dev/null 2>&1
-o="$(scan5 'git push -u origin feat/limpia')"
-[ -z "$o" ] && ok "secret-scan G5: 1er push de rama nueva LIMPIA → silencio (sin falso positivo)" || bad "secret-scan G5: falso positivo en rama nueva limpia; got: $o"
-rm -rf "$G5ROOT"
-
-# ── (b2-ph) B2 (tanda afinado 2026-10): criterio PLACEHOLDER por VALOR en ds_safe_re ──────────────────
-# Corpus (2026-09-10 scripts/tests/…PRUEBA-no-real · 2026-10-13 el mismo citado en un doc de auditoría):
-# un placeholder se filtra SOLO si su VALOR COMPLETO está compuesto de marcadores (PRUEBA/no-real/de-prueba/
-# dummy/fake/placeholder/redacted/CHANGE-ME) — whole-value, no subcadena (hueco H6 revisión-3 2026-10-19: como
-# SUBCADENA, "Prueba2024!"/"DummyPass99" se colaban LIMPIOS = fail-open de credenciales). Se filtran SIN aflojar
-# los reales: AKIA/sk-ant/una contraseña real — con o SIN marcador adentro — SIGUEN bloqueando. Ambas
-# direcciones. (El criterio por RUTA */tests/* queda FUERA: dejaría pasar un secreto real en un test — es un
-# tradeoff de seguridad que decide Jordi, no un afinamiento de precisión.)
-echo ""
-echo "== (b2-ph) secret-scan B2: placeholders por valor (PRUEBA/no-real/dummy/fake) no son secretos; AKIA/sk-ant sí =="
-# Los vectores se ARMAN en runtime a partir de trozos (`"Pass""word="`, `"AKIA""1234…"`): el literal
-# COMPLETO del patrón NO aparece en la FUENTE de este archivo, así el secret-scan GLOBAL no frena el commit
-# de ESTE test (el valor se ve entero solo en ejecución, que es cuando ds_buscar lo evalúa). NO es --no-verify.
-b2ph_res=$(SR="$SCRIPT_DIR/hooks/detectar-secretos.sh" bash -c '
-  . "$SR"; f=0; P="Pass""word="
-  # FILTRADOS: el VALOR COMPLETO es marcador de placeholder (whole-value — H6 2026-10-19).
-  for fp in "${P}PRUEBA-no-real" "${P}dummy" "${P}fake" "${P}de-prueba" "${P}placeholder" "${P}redacted" "${P}CHANGE-ME"; do
-    ds_buscar "$fp" >/dev/null && { echo "FP-NO-FILTRADO:$fp" >&2; f=1; }
-  done
-  # BLOQUEADOS: reales que CONTIENEN un marcador como SUBCADENA de un valor real (hueco H6: antes se colaban
-  # por el match de subcadena case-insensitive), más los reales sin marcador.
-  for r in "AKIA""1234567890ABCDEF" "sk-ant-""api03-AbCdEf1234567890xyzQrs" "${P}Xk9mQ2zR7vBnReal" \
-           "${P}Prueba2024!" "${P}DummyPass99" "${P}fake-secret-99" "${P}de-prueba-123" "${P}dummyvalue1" "${P}PruebasMegaflux#77"; do
-    ds_buscar "$r" >/dev/null || { echo "REAL-NO-BLOQUEADO:$r" >&2; f=1; }
-  done
-  echo "$f"' 2>/dev/null)
-[ "$b2ph_res" = 0 ] \
-  && ok "b2-ph/H6: placeholders WHOLE-VALUE (PRUEBA-no-real/dummy/fake/placeholder/redacted) FILTRADOS; reales con marcador como SUBCADENA (Prueba2024!/DummyPass99/fake-secret-99) y sin marcador (AKIA/sk-ant) BLOQUEADOS" \
-  || bad "b2-ph/H6: el criterio placeholder falló (un placeholder whole-value no se filtró, o un real con/sin marcador se coló); res=$b2ph_res"
-
-# ── FMEA 2026-07-30 · A1 (idiom `git add && git commit`) + A7 (`--no-verify` en el MENSAJE) ──
-echo ""
-echo "== (b2c) secret-scan FMEA A1/A7: idiom 'git add && git commit' y --no-verify citado en el mensaje =="
-FMEAREPO="$(mktemp -d "${TMPDIR:-/tmp}/brain-fmea.XXXXXX")"
-git -C "$FMEAREPO" init -q >/dev/null 2>&1
-git -C "$FMEAREPO" symbolic-ref HEAD refs/heads/main >/dev/null 2>&1
-git -C "$FMEAREPO" config user.email t@t >/dev/null 2>&1
-git -C "$FMEAREPO" config user.name  tester >/dev/null 2>&1
-printf 'base limpia\n' > "$FMEAREPO/base.txt"; git -C "$FMEAREPO" add base.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm base >/dev/null 2>&1
-# HOME sin copia global → la dedupe no cede; el input se arma con jq → escapa las comillas del mensaje.
-scanf() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' \
-          | HOME="$FMEAREPO" CLAUDE_PROJECT_DIR="$FMEAREPO" bash "$HOOKS/secret-scan.sh"; }
-fmeareset() { git -C "$FMEAREPO" reset -q >/dev/null 2>&1; rm -f "$FMEAREPO"/*.txt 2>/dev/null; }
-# A1 (1) `git add secreto && git commit` con un AKIA en un archivo NUEVO aún NO staged → BLOQUEA
-fmeareset; printf 'aws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/secreto.txt"
-o="$(scanf 'git add secreto.txt && git commit -m x')"
-printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan A1: 'git add secreto && git commit' escanea lo que el add estagearía → bloquea" || bad "secret-scan A1: NO bloqueó el idiom add&&commit; got: $o"
-# A1 (2) bypass TOTAL `git add -A && git commit && git push` con sk-ant en archivo por-venir → BLOQUEA
-fmeareset; printf 'tok = sk-ant-abcdefghijklmnopqrstuvwxyz0123\n' > "$FMEAREPO/tok.txt"
-o="$(scanf 'git add -A && git commit -m x && git push')"
-printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan A1: 'git add -A && git commit && git push' (bypass total) → bloquea" || bad "secret-scan A1: bypass total add&&commit&&push NO bloqueado; got: $o"
-# A1 (3) archivo LIMPIO por el mismo idiom → PASA (sin falso positivo)
-fmeareset; printf 'contenido sin secretos\n' > "$FMEAREPO/limpio.txt"
-o="$(scanf 'git add limpio.txt && git commit -m x')"
-[ -z "$o" ] && ok "secret-scan A1: 'git add limpio && git commit' → PASA (sin falso positivo)" || bad "secret-scan A1: falso positivo en archivo limpio; got: $o"
-# A1 (4) secreto PREEXISTENTE en línea NO tocada de un archivo tracked; se cambia OTRA línea → PASA
-#        (tracked: solo se escanea lo AGREGADO vs HEAD, no se re-escanea lo ya versionado).
-fmeareset; printf 'aws = AKIA1234567890ABCDEF\nlinea normal\n' > "$FMEAREPO/pre.txt"
-git -C "$FMEAREPO" add pre.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm pre >/dev/null 2>&1
-printf 'aws = AKIA1234567890ABCDEF\nlinea CAMBIADA\n' > "$FMEAREPO/pre.txt"
-o="$(scanf 'git add pre.txt && git commit -m x')"
-[ -z "$o" ] && ok "secret-scan A1: secreto preexistente en línea no tocada (tracked) → PASA" || bad "secret-scan A1: falso positivo re-escaneando lo ya versionado; got: $o"
-# A1 (5) commit normal con staging PREVIO (sin git add en el comando) → sigue bloqueando (no-regresión)
-fmeareset; printf 'aws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/s2.txt"; git -C "$FMEAREPO" add s2.txt >/dev/null 2>&1
-o="$(scanf 'git commit -m x')"
-printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan A1: commit normal (staging previo) sigue escaneando --cached → bloquea" || bad "secret-scan A1: regresión, commit normal ya no bloquea; got: $o"
-# A1 (6) `git commit -am x` con secreto en un archivo TRACKED modificado AÚN NO staged: -a lo auto-estagea
-#        al vuelo → el escaneo debe verlo (antes --cached vacío → CIEGO) → BLOQUEA
-fmeareset; printf 'linea limpia\n' > "$FMEAREPO/t.txt"; git -C "$FMEAREPO" add t.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm t >/dev/null 2>&1
-printf 'linea limpia\naws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/t.txt"
-o="$(scanf 'git commit -am x')"
-printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan A1: 'git commit -am' escanea los tracked que -a auto-estagea → bloquea" || bad "secret-scan A1: 'commit -am' CIEGO al tracked modificado; got: $o"
-# A1 (7) `git commit -a -m x` con cambio en tracked LIMPIO → PASA (sin falso positivo)
-fmeareset; printf 'v1\n' > "$FMEAREPO/u.txt"; git -C "$FMEAREPO" add u.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm u >/dev/null 2>&1
-printf 'v1\nv2 sin secretos\n' > "$FMEAREPO/u.txt"
-o="$(scanf 'git commit -a -m x')"
-[ -z "$o" ] && ok "secret-scan A1: 'git commit -a' con cambio limpio → PASA (sin falso positivo)" || bad "secret-scan A1: falso positivo en 'commit -a' limpio; got: $o"
-# A7 (1) --no-verify DENTRO del mensaje del commit (secreto staged) → NO salta → BLOQUEA
-fmeareset; printf 'aws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/s3.txt"; git -C "$FMEAREPO" add s3.txt >/dev/null 2>&1
-o="$(scanf 'git commit -m "documenta el flag --no-verify"')"
-printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan A7: --no-verify en el MENSAJE no salta el escaneo → bloquea" || bad "secret-scan A7: --no-verify citado saltó el escaneo; got: $o"
-# A7 (2) --no-verify REAL (bandera) sigue siendo escape legítimo → PASA (silencio)
-o="$(scanf 'git commit --no-verify -m x')"
-[ -z "$o" ] && ok "secret-scan A7: --no-verify como bandera real sigue saltando (escape legítimo)" || bad "secret-scan A7: --no-verify real dejó de saltar; got: $o"
-# A-03: el prefijo `git -c k=v … commit` NO debe cegar el escaneo (rompería la adyacencia git+commit del
-# gate). Secreto en un tracked modificado que -a estagearía → BLOQUEA.
-fmeareset; printf 'v\n' > "$FMEAREPO/gc.txt"; git -C "$FMEAREPO" add gc.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm gc >/dev/null 2>&1
-printf 'v\naws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/gc.txt"
-o="$(scanf 'git -c user.email=x commit -am x')"
-printf '%s' "$o" | grep -q '"deny"' && ok "secret-scan A-03: 'git -c … commit -am' escanea (prefijo ya no ciega) → bloquea" || bad "secret-scan A-03: el prefijo 'git -c' cegó el escaneo; got: $o"
-# A-R4-02: las OTRAS opciones globales de git (≠ -c/-C) también romperían la adyacencia git+commit del gate
-# y el escaneo NO correría. acg_normaliza_git_prefijo (compartido) las cierra.
-fmeareset; printf 'v\n' > "$FMEAREPO/g2.txt"; git -C "$FMEAREPO" add g2.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm g2 >/dev/null 2>&1
-printf 'v\naws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/g2.txt"
-printf '%s' "$(scanf 'git --no-pager commit -am x')" | grep -q '"deny"' && ok "secret-scan A-R4-02: 'git --no-pager commit -am' escanea → bloquea" || bad "secret-scan A-R4-02: '--no-pager' cegó el escaneo; got: $(scanf 'git --no-pager commit -am x')"
-printf '%s' "$(scanf 'git -P commit -am x')"         | grep -q '"deny"' && ok "secret-scan A-R4-02: 'git -P commit -am' escanea → bloquea" || bad "secret-scan A-R4-02: '-P' cegó el escaneo"
-printf '%s' "$(scanf 'git --work-tree=. commit -am x')" | grep -q '"deny"' && ok "secret-scan A-R4-02: 'git --work-tree=. commit -am' escanea → bloquea" || bad "secret-scan A-R4-02: '--work-tree=' cegó el escaneo"
-# A-R5-02: con el despoje ANTES de normalizar, un value-eater con valor ENTRECOMILLADO (`git -C "/ruta"
-# commit`) quedaría vacío y el normalizador se comería `commit` → escaneo CIEGO (sin necesitar espacio). Por
-# eso se normaliza el RAW (quote-aware) ANTES de despojar. Secreto en tracked que -a estagea.
-# M2: como secret-scan HONRA -C para resolver el dir objetivo (no escanea ciegamente CLAUDE_PROJECT_DIR), el
-# valor de -C debe ser un repo REAL (sobre un dir irresoluble el guard fail-abre) — se usa FMEAREPO (con un
-# subdir CON espacio para cubrir el caso "valor entrecomillado con espacio"), no una ruta inventada.
-fmeareset; printf 'v\n' > "$FMEAREPO/g3.txt"; git -C "$FMEAREPO" add g3.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm g3 >/dev/null 2>&1
-printf 'v\naws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/g3.txt"
-mkdir -p "$FMEAREPO/a b"
-printf '%s' "$(scanf "git -C \"$FMEAREPO\" commit -am x")"  | grep -q '"deny"' && ok "secret-scan A-R5-02: 'git -C \"\$repo\" commit -am' (valor entrecomillado sin espacio) escanea → bloquea" || bad "secret-scan A-R5-02: valor entrecomillado cegó el escaneo (despoje antes de normalizar)"
-printf '%s' "$(scanf "git -C \"$FMEAREPO/a b\" commit -am x")" | grep -q '"deny"' && ok "secret-scan A-R5-02: 'git -C \"\$repo/a b\"' (valor entrecomillado CON espacio, subdir real) escanea → bloquea" || bad "secret-scan A-R5-02: valor entrecomillado con espacio cegó el escaneo"
-printf '%s' "$(scanf "git --work-tree=\"$FMEAREPO/a b\" commit -am x")" | grep -q '"deny"' && ok "secret-scan A-R5-02: 'git --work-tree=\"\$repo/a b\"' (=-form entrecomillado, con espacio) escanea → bloquea" || bad "secret-scan A-R5-02: --work-tree= entrecomillado cegó el escaneo"
-# A-R6-01: comilla EN MEDIO del valor de un global (`git -c user.name="a b" commit`) → mismo mecanismo de
-# evasión, mismo tratamiento (valor como secuencia). Secreto en tracked que -a estagea.
-fmeareset; printf 'v\n' > "$FMEAREPO/g4.txt"; git -C "$FMEAREPO" add g4.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm g4 >/dev/null 2>&1
-printf 'v\naws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/g4.txt"
-printf '%s' "$(scanf 'git -c user.name="a b" commit -am x')" | grep -q '"deny"' && ok "secret-scan A-R6-01: 'git -c user.name=\"a b\" commit -am' (comilla en medio) escanea → bloquea" || bad "secret-scan A-R6-01: comilla en medio del valor cegó el escaneo"
-# A-R7-01: espacio escapado con backslash en el valor global → mismo mecanismo, mismo tratamiento.
-fmeareset; printf 'v\n' > "$FMEAREPO/g5.txt"; git -C "$FMEAREPO" add g5.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm g5 >/dev/null 2>&1
-printf 'v\naws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/g5.txt"
-printf '%s' "$(scanf 'git -c a=b\ c commit -am x')" | grep -q '"deny"' && ok "secret-scan A-R7-01: 'git -c a=b\\ c commit -am' (espacio escapado) escanea → bloquea" || bad "secret-scan A-R7-01: el espacio escapado con backslash cegó el escaneo"
-# B4: el binario Windows `git.exe commit` rompería el gate git+commit del escaneo → mismo tratamiento (colapso git.exe→git).
-fmeareset; printf 'v\n' > "$FMEAREPO/g6.txt"; git -C "$FMEAREPO" add g6.txt >/dev/null 2>&1; git -C "$FMEAREPO" commit -qm g6 >/dev/null 2>&1
-printf 'v\naws = AKIA1234567890ABCDEF\n' > "$FMEAREPO/g6.txt"
-printf '%s' "$(scanf 'git.exe commit -am x')" | grep -q '"deny"' && ok "secret-scan B4: 'git.exe commit -am' (binario Windows) escanea → bloquea" || bad "secret-scan B4: 'git.exe' cegó el escaneo"
-rm -rf "$FMEAREPO"
-
-# ─────────────────────────────────────────────────────────────────────────────
-echo ""
-echo "== (b2d) secret-scan DEFECTO #4 (auditoría overhead 2026-09-16): deja de escalar con el Nº de archivos =="
-# Un escaneo primario que corra un `git diff -- "$f"` POR ARCHIVO en un bucle es lineal en archivos
-# tocados, y un guard DEFENSIVO que se pasa de tiempo DEJA DE PROTEGER: se apagaría justo en el commit más
-# grande, donde más fácil se cuela un secreto sin que nadie lo note al revisar.
-#
-# Oráculo: un commit de N archivos (N grande, para ver margen) con un secreto ESCONDIDO en el archivo Nº 100
-# — ni el primero ni el último — debe (a) seguir bloqueando (la dirección que de verdad importa) Y (b)
-# terminar en un tiempo ACOTADO que NO escale con N. Y el MISMO tamaño, pero limpio, debe pasar en silencio
-# igual de rápido — ese es el caso que el bucle-por-archivo se comía en timeout (no el que bloquea: el
-# commit grande y LIMPIO).
-#
-# El fix usa una sola invocación de `git diff` para TODO el rango, sin importar N. El umbral de tiempo del
-# assert deja margen cómodo sobre el fix y queda muy por debajo de lo que tarda el bucle-por-archivo.
-DEFECTO4ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-defecto4.XXXXXX")"; DEFECTO4REPO="$DEFECTO4ROOT/repo"; mkdir -p "$DEFECTO4REPO"
-git -C "$DEFECTO4REPO" init -q >/dev/null 2>&1
-git -C "$DEFECTO4REPO" config user.email t@t >/dev/null 2>&1
-git -C "$DEFECTO4REPO" config user.name  tester >/dev/null 2>&1
-N4=400
-for i in $(seq 1 "$N4"); do printf '#!/usr/bin/env bash\necho linea de relleno\n' > "$DEFECTO4REPO/f_$i.sh"; done
-git -C "$DEFECTO4REPO" add -A >/dev/null 2>&1
-git -C "$DEFECTO4REPO" commit -qm base >/dev/null 2>&1
-for i in $(seq 1 "$N4"); do printf '#!/usr/bin/env bash\necho linea de relleno\n# header agregado\n' > "$DEFECTO4REPO/f_$i.sh"; done
-printf '#!/usr/bin/env bash\necho linea de relleno\n# header agregado\naws_key = AKIA1234567890ABCDEF\n' > "$DEFECTO4REPO/f_100.sh"
-git -C "$DEFECTO4REPO" add -A >/dev/null 2>&1
-SECONDS=0
-out_defecto4=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"git commit -qm x"}}' \
-  | HOME="$DEFECTO4REPO" CLAUDE_PROJECT_DIR="$DEFECTO4REPO" bash "$HOOKS/secret-scan.sh")
-dur_defecto4=$SECONDS
-{ printf '%s' "$out_defecto4" | grep -q '"deny"' && [ "$dur_defecto4" -le 3 ]; } \
-  && ok "secret-scan DEFECTO #4: secreto ESCONDIDO en el archivo #100 de $N4 → sigue bloqueando Y en ${dur_defecto4}s (acotado, no escala con N)" \
-  || bad "secret-scan DEFECTO #4: no bloqueó a tiempo (out contiene deny: $(printf '%s' "$out_defecto4" | grep -c '"deny"'), dur=${dur_defecto4}s) -- ¿volvió el bucle por archivo?"
-# Mismo tamaño, TODO limpio: silencio y en el mismo tiempo acotado (el caso REAL que timeouteaba).
-git -C "$DEFECTO4REPO" reset -q >/dev/null 2>&1
-for i in $(seq 1 "$N4"); do printf '#!/usr/bin/env bash\necho linea de relleno\n# header limpio sin nada especial\n' > "$DEFECTO4REPO/f_$i.sh"; done
-git -C "$DEFECTO4REPO" add -A >/dev/null 2>&1
-SECONDS=0
-out_defecto4_clean=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"git commit -qm x"}}' \
-  | HOME="$DEFECTO4REPO" CLAUDE_PROJECT_DIR="$DEFECTO4REPO" bash "$HOOKS/secret-scan.sh")
-dur_defecto4_clean=$SECONDS
-{ [ -z "$out_defecto4_clean" ] && [ "$dur_defecto4_clean" -le 3 ]; } \
-  && ok "secret-scan DEFECTO #4: commit GRANDE y LIMPIO ($N4 archivos) → silencio Y en ${dur_defecto4_clean}s (antes se comía el timeout aquí)" \
-  || bad "secret-scan DEFECTO #4: commit grande limpio hizo ruido o tardó de más (out='$out_defecto4_clean' dur=${dur_defecto4_clean}s)"
-rm -rf "$DEFECTO4ROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
@@ -4390,7 +4087,7 @@ is_silent "$(ad)" && ok "aviso-drift: sin clon canónico → silencio (fail-open
 printf '#!/usr/bin/env bash\necho "==> resumen: 0 nuevos · 0 a actualizar · 9 ya al día · 7 hooks cableados (kind=hook)"\n' > "$ADBRAIN/brain/sincronizar-cerebro.sh"
 is_silent "$(ad)" && ok "aviso-drift: sin drift → silencio" || bad "aviso-drift: habló sin drift"
 # (4) throttle: ahora el stub reporta DRIFT, pero el stamp fresco (chequeo limpio reciente) lo salta
-printf '#!/usr/bin/env bash\necho "  NUEVO      secret-scan.sh (hook)"\necho "  ACTUALIZA  dod-verificar.sh (hook)  [10 líneas ±]"\necho "==> resumen: 1 nuevos · 1 a actualizar · 7 ya al día · 7 hooks cableados (kind=hook)"\n' > "$ADBRAIN/brain/sincronizar-cerebro.sh"
+printf '#!/usr/bin/env bash\necho "  NUEVO      no-bypass-deploy.sh (hook)"\necho "  ACTUALIZA  dod-verificar.sh (hook)  [10 líneas ±]"\necho "==> resumen: 1 nuevos · 1 a actualizar · 7 ya al día · 7 hooks cableados (kind=hook)"\n' > "$ADBRAIN/brain/sincronizar-cerebro.sh"
 is_silent "$(ad)" && ok "aviso-drift: throttle — chequeo limpio reciente → no re-chequea" || bad "aviso-drift: el throttle no respetó el stamp fresco"
 # (5) sin stamp → DETECTA el drift e inyecta additionalContext de SessionStart con el detalle
 rm -rf "$ADHOME/.claude/memory/.drift-cerebro"
@@ -4399,7 +4096,7 @@ printf '%s' "$adout" | jq -e '.hookSpecificOutput.hookEventName == "SessionStart
   && ok "aviso-drift: emite hookSpecificOutput SessionStart válido" || bad "aviso-drift: JSON inválido; got: $adout"
 printf '%s' "$adout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'DRIFT DEL CEREBRO' \
   && ok "aviso-drift: el aviso nombra el DRIFT" || bad "aviso-drift: no encontré el aviso de drift"
-printf '%s' "$adout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'secret-scan' \
+printf '%s' "$adout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'no-bypass-deploy' \
   && ok "aviso-drift: el aviso trae el DETALLE (archivos atrás)" || bad "aviso-drift: el aviso no detalla los archivos"
 # (6) el drift NO se cachea → la siguiente sesión vuelve a avisar (insistente hasta sanar)
 printf '%s' "$(ad)" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'DRIFT DEL CEREBRO' \
@@ -4774,50 +4471,6 @@ grep -q 'Mi sección personal' "$NMGHOME/.claude/CLAUDE.md" && ok "drift-norms-g
 rm -f "$NMGBR/brain/norms/global-claude-md.md"
 is_silent "$(nmg)" && ok "drift-norms-global: sin fuente → fail-open (silencio)" || bad "drift-norms-global: habló sin fuente"
 rm -rf "$NMGFIX"
-
-# ── (b5c-V1) FIX V1: el auto-commit del cerebro por-repo BYPASSEARÍA secret-scan (ocurre DENTRO del
-# subproceso del hook, NO vía una tool Bash → el guard PreToolUse/Bash no lo ve). Por eso
-# drift-cerebro-comun.sh escanea lo AGREGADO al .claude/ (git diff --cached) con detectar-secretos ANTES de
-# commitear; si hay secreto → ABORTA (des-estagea, no commitea/pushea) y avisa. Mismo arnés que b5c.
-V1FIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-v1.XXXXXX")"
-V1REPO="$V1FIX/repo"; V1HOME="$V1FIX/home"; V1BRAIN="$V1FIX/clon"
-mkdir -p "$V1REPO/.claude/hooks" "$V1HOME" "$V1BRAIN/brain"
-git -C "$V1REPO" init -q >/dev/null 2>&1
-git -C "$V1REPO" config user.email t@t >/dev/null 2>&1; git -C "$V1REPO" config user.name Tester >/dev/null 2>&1
-: > "$V1REPO/.claude/hooks/.brain-version"; : > "$V1REPO/.claude/repo-compartido"
-git -C "$V1REPO" add -A >/dev/null 2>&1; git -C "$V1REPO" commit -qm base >/dev/null 2>&1
-git -C "$V1REPO" checkout -q -b DevelopTester >/dev/null 2>&1
-# stub del sync: --apply ESCRIBE un hook con un SECRETO (AKIA…, NO el placeholder EXAMPLE) en el .claude/
-cat > "$V1BRAIN/brain/sincronizar-cerebro.sh" <<'STUB'
-#!/usr/bin/env bash
-repo="$1"
-[ "${2:-}" = "--apply" ] && printf 'TOKEN=AKIAZ7QWERTYUIOP1234\n' > "$repo/.claude/hooks/leak.sh"
-echo "  NUEVO      leak.sh (hook)"
-echo "==> resumen: 1 nuevos · 0 a actualizar · 8 ya al día · 7 hooks cableados (kind=hook)"
-STUB
-v1() { printf '%s' '{"source":"startup"}' | HOME="$V1HOME" CLAUDE_BRAIN_DIR="$V1BRAIN" CLAUDE_PROJECT_DIR="$V1REPO" bash "$HOOKS/aviso-drift-cerebro.sh"; }
-n0=$(git -C "$V1REPO" rev-list --count HEAD)
-v1out="$(v1)"
-printf '%s' "$v1out" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -qi 'ABORTADO' \
-  && ok "V1: auto-sync con un SECRETO en .claude/ → ABORTADO (secret-scan aplicado al auto-commit del propio hook)" \
-  || bad "V1: NO abortó el auto-sync ante un secreto en .claude/; got: $v1out"
-{ [ "$(git -C "$V1REPO" rev-list --count HEAD)" = "$n0" ] && ! git -C "$V1REPO" log -1 --format=%s 2>/dev/null | grep -q auto-sync; } \
-  && ok "V1: el auto-commit NO ocurrió (0 commits nuevos → el secreto no se commiteó ni pusheó)" \
-  || bad "V1: ¡commiteó/avanzó HEAD pese al secreto!"
-# (contra-prueba) el MISMO arnés SIN secreto (contenido benigno) → SÍ auto-sincroniza (no rompimos la ruta feliz)
-cat > "$V1BRAIN/brain/sincronizar-cerebro.sh" <<'STUB'
-#!/usr/bin/env bash
-repo="$1"
-[ "${2:-}" = "--apply" ] && printf 'echo benigno\n' > "$repo/.claude/hooks/limpio.sh"
-echo "  NUEVO      limpio.sh (hook)"
-echo "==> resumen: 1 nuevos · 0 a actualizar · 8 ya al día · 7 hooks cableados (kind=hook)"
-STUB
-git -C "$V1REPO" checkout -q -- .claude/ >/dev/null 2>&1; git -C "$V1REPO" clean -fdq .claude/ >/dev/null 2>&1
-rm -rf "$V1HOME/.claude/memory/.drift-cerebro" 2>/dev/null   # limpia el throttle stamp para re-chequear
-printf '%s' "$(v1)" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -qiE 'auto-sincroniz' \
-  && ok "V1: contra-prueba — .claude/ SIN secreto → auto-sincroniza normal (el scan no rompió la ruta feliz)" \
-  || bad "V1: la contra-prueba sin secreto NO auto-sincronizó (el scan bloqueó de más)"
-rm -rf "$V1FIX"
 
 # ── (b5c2) FIX costura #1: el auto-apply STAGEA settings.json (no solo .claude/hooks). Antes
 # `git add .claude/hooks` dejaba el cambio de CABLEADO (settings.json) sin commitear → el wiring nunca
@@ -6399,7 +6052,6 @@ CT2="$(find "$FAKEHOME2/.claude/projects" -name 'como-trabajar-con-*.md' -type f
 [ -f "$FAKEHOME2/.claude/hooks/aviso-contexto.sh" ]      && ok "hook aviso-contexto instalado"  || bad "falta hook aviso-contexto"
 [ -f "$FAKEHOME2/.claude/hooks/delegacion-comun.sh" ]    && ok "lib delegacion-comun.sh instalada" || bad "falta lib delegacion-comun.sh"
 [ -f "$FAKEHOME2/.claude/hooks/analizar-comando-git.sh" ] && ok "lib analizar-comando-git.sh instalada" || bad "falta lib analizar-comando-git.sh"
-[ -f "$FAKEHOME2/.claude/hooks/detectar-secretos.sh" ] && ok "lib detectar-secretos.sh instalada" || bad "falta lib detectar-secretos.sh"
 [ -f "$FAKEHOME2/.claude/hooks/juez-comun.sh" ] && ok "lib juez-comun.sh instalada (global, derivada del MANIFEST both/lib)" || bad "falta lib juez-comun.sh"
 # sello de VERSIÓN del brain instalado en ~/.claude/.brain-version (lo lee el tab Cerebro del widget)
 # Contrato de 2 líneas: L1 = "<PREFIJO>.<count>" (PREFIJO = brain/VERSION seguido de '.' y dígitos);
@@ -6537,7 +6189,6 @@ echo "== (e) sin referencias circulares NUEVAS entre elementos del cerebro =="
 CE_ALLOW="analizar-comando-git|git-branch-guard
 analizar-comando-git|merge-develop-guard
 git-branch-guard|merge-develop-guard
-detectar-secretos|secret-scan
 juez-comun|merge-develop-guard
 dod-verificar|juez-comun
 cerrar-slice|dod-verificar
@@ -7335,11 +6986,11 @@ echo "== (e6b) install-brain: EXACTAMENTE 6 hooks en PreToolUse/Bash + aviso-con
 # se DERIVA del MANIFEST vía ev_de() en install-brain.sh → verificamos ese mapeo (no líneas register_hook
 # literales: el instalador las colapsó a un loop). Si alguien agrega/quita un guard de Bash del mapeo,
 # este test lo caza.
-want_bash="git-branch-guard merge-develop-guard secret-scan entorno-maquina-guard no-bypass-deploy proteger-arbol"
+want_bash="git-branch-guard merge-develop-guard entorno-maquina-guard no-bypass-deploy proteger-arbol"
 want_bash_sorted="$(printf '%s\n' $want_bash | sort | tr '\n' ' ' | sed 's/ *$//')"
 got_bash="$(grep -E '\) *echo *"PreToolUse\|Bash"' "$INSTALLER" | sed -E 's/\).*//' | tr '|' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -vE '^$' | sort | tr '\n' ' ' | sed 's/ *$//')"
 if [ "$got_bash" = "$want_bash_sorted" ]; then
-  ok "e6b: ev_de() mapea EXACTAMENTE los 6 guards de PreToolUse/Bash"
+  ok "e6b: ev_de() mapea EXACTAMENTE los 5 guards de PreToolUse/Bash"
 else
   bad "e6b: el set PreToolUse/Bash de ev_de() cambió · got:[$got_bash] want:[$want_bash_sorted]"
 fi
@@ -9305,7 +8956,7 @@ echo "   NO prescribe el escape a la WEB que M8 retiró de los mensajes reales =
 grep -qi 'setup-token' "$HOOKS/juez-comun.sh" \
   && ok "H5: el contrato SÍ documenta el remedio real (claude setup-token / CLAUDE_CODE_OAUTH_TOKEN)" \
   || bad "H5: el contrato no documenta ningún remedio real para NOTOKEN"
-for _g in git-branch-guard.sh merge-develop-guard.sh secret-scan.sh proteger-arbol.sh; do
+for _g in git-branch-guard.sh merge-develop-guard.sh proteger-arbol.sh; do
   grep -v '^[[:space:]]*#' "$HOOKS/$_g" | grep -qi 'web de gitlab\|en la web' \
     && bad "H5 control: $_g todavía menciona la web como escape en CÓDIGO VIVO (norma anti-vein-popper violada)" \
     || ok "H5 control: $_g no ofrece la web como escape en código vivo (ya lo verificaba M8, sigue intacto)"

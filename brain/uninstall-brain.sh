@@ -48,7 +48,7 @@ else
   GLOBAL_HOOKS="git-branch-guard.sh merge-develop-guard.sh merge-squash-guard.sh confirmar-merge-develop.sh recordar-dashboard.sh \
                 secret-scan.sh rama-vieja.sh proteger-arbol.sh limite-gasto.sh rehidratar-hilo.sh aviso-contexto.sh \
                 delegacion-gate.sh delegacion-registrar.sh delegacion-reporte.sh delegacion-comun.sh \
-                analizar-comando-git.sh limpiar-worktrees.sh"
+                analizar-comando-git.sh detectar-secretos.sh limpiar-worktrees.sh"
 fi
 for h in $GLOBAL_HOOKS; do
   rm -f "$HOOKS_DIR/$h"

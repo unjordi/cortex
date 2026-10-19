@@ -1,8 +1,8 @@
 // 07 — Comando git en Bash: los guards que lo inspeccionan (cortex)  ·  FUENTE editable (.dot)
 // Render:  dot -Tsvg 07-comando-git-en-bash-guards.dot -o 07-comando-git-en-bash-guards.svg
 // ZOOM del fan-out de 6 hooks (raíz común en 03 · CONVENCIONES §6) sobre los dos que NO son de merge:
-// 🔒 secret-scan (bloquea) y 🔔 proteger-arbol (avisa). Reconstruido 2026-08-07 desde el CÓDIGO real
-// (brain/hooks/secret-scan.sh + lib detectar-secretos.sh; proteger-arbol.sh).
+// 🔔 proteger-arbol (avisa). Reconstruido 2026-08-07 desde el CÓDIGO real (proteger-arbol.sh);
+// secret-scan se retiró 2026-10-19 (lo reemplaza gitleaks).
 // Re-canoniza el huérfano 04-comando-git-en-bash-guards-que-lo-inspec.svg (viejo «③», sin .dot ni leyenda).
 digraph flujos {
   graph [bgcolor="#1b1712", rankdir=TB, fontname="Helvetica", splines=true,
@@ -20,7 +20,6 @@ digraph flujos {
         <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>🔒 Hooks Forzosos</b></font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🚧 git-branch-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">push/merge a develop·main → denegado</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔗 merge-develop-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">MR a develop sin --squash o sin tu OK → denegado; a main exige OK súper-explícito</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🕵️ secret-scan</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">commit/push con un secreto → denegado</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">💸 delegacion-gate</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">delegar al llegar al 90% de tu ventana 5h → pide tu OK</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🛑 limite-gasto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">sin ventana 5h Y sin overage (ambos agotados) → freno duro</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">✅ dod-verificar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cierre sin evidencia/OK → denegado; claim visual a ciegas (sin ver la pantalla) también</font></td></tr>
@@ -83,29 +82,12 @@ digraph flujos {
 
   // ───────────────────────────────────── EL FLUJO ─────────────────────────────────────
   subgraph cluster_f0 {
-    label="07 · Comando git en Bash: guards que lo inspeccionan   (ZOOM del fan-out de 6 de 03 · 🔒 secret-scan bloquea · 🔔 proteger-arbol avisa)";
+    label="07 · Comando git en Bash: guards que lo inspeccionan   (ZOOM del fan-out de 5 de 03 · 🔔 proteger-arbol avisa)";
     fontname="Times"; fontsize=14; fontcolor="#5fa89e";
     color="#5fa89e"; penwidth=1.6; style="rounded"; bgcolor="#1b1712";
 
     CMD [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
-         label="comando Bash con git (PreToolUse/Bash)\nlos 6 hooks lo reciben EN PARALELO, sin despachador (ver 03 —5 inspeccionan git, no-bypass-deploy no-opea—).\nZOOM aquí en 2: secret-scan (defensivo) y proteger-arbol (integridad del árbol)"];
-
-    // ── secret-scan ──
-    SEC [shape=diamond, fillcolor="#2b2622", color="#d97757",
-         label="🔒🕵️ secret-scan\n¿es `git commit` / `git push`?"];
-    SEC_ESC [shape=diamond, fillcolor="#2b2622", color="#d97757",
-             label="¿escape deliberado?\n--no-verify · CLAUDE_SKIP_SECRET_SCAN=1"];
-    SEC_RANGE [shape=diamond, fillcolor="#2b2622", color="#d97757",
-               label="¿repo git y rango determinable?\ncommit: staging (+ `add --dry-run`/`-a`) · push: @{u}..HEAD\nsin upstream (1er push de rama nueva) → cae al merge-base con develop/main"];
-    SEC_PAT [shape=diamond, fillcolor="#2b2622", color="#d97757",
-             label="¿alguna línea AGREGADA matchea un patrón de SECRETO de alta precisión\n(AKIA · PEM PRIVATE KEY · sk-ant · sk-proj/sk- · gh[posru]_/github_pat · glpat · xox · AIza ·\n§D: JWT eyJ…eyJ…firma · connstring user:pass@host · Password=/Pwd= .NET 6+ chars)\ny NO es placeholder (EXAMPLE/CHANGEME/<...>/your-key…)?"];
-    SEC_OK [color="#7fb069", label="🟢 pasa (sin secretos, o no incumbe, o escape del humano)"];
-    SEC_FAILOPEN [color="#c9a227",
-                  label="🟡 pasa (FAIL-OPEN: sin git ni rango determinable no bloquea;\nSTRICT=1 lo vuelve fail-CLOSED.\nEXCEPCIÓN previa: sin `jq` pasa SIEMPRE en silencio —\nningún STRICT lo convierte, el deny mismo se emite vía jq)"];
-    SEC_D [color="#c0392b", penwidth=2,
-           label="🔴 DENY — un secreto va a ENTRAR al repo (redacta el match).\nSácalo a env/gestor de secretos/*.local; si YA estaba commiteado, ROTA la credencial.\nFalso positivo → --no-verify o CLAUDE_SKIP_SECRET_SCAN=1"];
-    SEC_D_STRICT [color="#c0392b", penwidth=2,
-                  label="🔴 DENY (STRICT) — no se pudo escanear (sin git en PATH / no es repo / sin upstream\nni base develop·main para acotar el rango) y CLAUDE_SECRET_SCAN_STRICT=1 exige\npoder verificar antes de dejar entrar código. Resuelve la causa, o --no-verify /\nCLAUDE_SKIP_SECRET_SCAN=1 para esta acción"];
+         label="comando Bash con git (PreToolUse/Bash)\nlos 5 hooks lo reciben EN PARALELO, sin despachador (ver 03 —4 inspeccionan git, no-bypass-deploy no-opea—).\nZOOM aquí: proteger-arbol (integridad del árbol)"];
 
     // ── proteger-arbol ──
     ARB [shape=diamond, fillcolor="#2b2622", color="#d97757",
@@ -128,18 +110,7 @@ digraph flujos {
 
     // Nodo de convergencia: la mutación REAL de git (⚠) solo ocurre si NADA la vetó.
     GIT_EXEC [penwidth=3, color="#c62828", fillcolor="#232323",
-              label="⚠ EJECUTA — el comando MUTA git (commit/push/reset/checkout/rebase/branch -D)\nsolo si TODOS los 9 guards en paralelo dejan pasar (aquí: secret-scan Y proteger-arbol OK\no en aviso no-bloqueante; los otros 7 guards → ver 03)"];
-
-    // Aristas — secret-scan
-    CMD -> SEC;
-    SEC -> SEC_OK [label="no es commit/push"];
-    SEC -> SEC_ESC [label="sí (commit/push)"];
-    SEC_ESC -> SEC_OK [label="sí (el humano manda)"];
-    SEC_ESC -> SEC_RANGE [label="no"];
-    SEC_RANGE -> SEC_FAILOPEN [label="no"];
-    SEC_RANGE -> SEC_PAT [label="sí"];
-    SEC_PAT -> SEC_OK [label="no"];
-    SEC_PAT -> SEC_D [label="sí — secreto"];
+              label="⚠ EJECUTA — el comando MUTA git (commit/push/reset/checkout/rebase/branch -D)\nsolo si TODOS los guards en paralelo dejan pasar (aquí: proteger-arbol OK\no en aviso no-bloqueante; los otros guards → ver 03)"];
 
     // Aristas — proteger-arbol
     CMD -> ARB;
@@ -153,10 +124,7 @@ digraph flujos {
     ARB_ISO_TGT -> ARB_SUP [label="sí — su rama/upstream/base develop·main (o sin objetivo)"];
     ARB_ISO_TGT -> ARB_NOTE [label="no — a otro objetivo"];
 
-    // Convergencia hacia la ejecución real (proteger-arbol NUNCA bloquea; solo secret-scan puede DENY)
-    SEC_OK -> GIT_EXEC;
-    SEC_FAILOPEN -> GIT_EXEC [label="STRICT=0 (default)"];
-    SEC_FAILOPEN -> SEC_D_STRICT [label="STRICT=1 → fail-CLOSED (deny)", color="#c0392b"];
+    // Convergencia hacia la ejecución real (proteger-arbol NUNCA bloquea)
     ARB_OK -> GIT_EXEC;
     ARB_SUP -> GIT_EXEC;
     ARB_NOTE -> GIT_EXEC;

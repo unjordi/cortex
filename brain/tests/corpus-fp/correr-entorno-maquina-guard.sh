@@ -37,7 +37,7 @@ g reset -q .claude/memory/estado-proyecto.md
 printf '# e\n' > "$R/.claude/memory/entorno-maquina.md"; g add .claude/memory/entorno-maquina.md
 cfp_caso "$GUARD" - "ctrl+ filename-trampa entorno-maquina.md staged" 'git commit -m x' "$R" block
 g reset -q .claude/memory/entorno-maquina.md; rm -f "$R/.claude/memory/entorno-maquina.md"
-printf 'ruta /Users/ana/code/x\n' > "$R/.claude/memory/nota.md"; g add .claude/memory/nota.md
+printf 'ruta /Users/%s/code/x\n' ana > "$R/.claude/memory/nota.md"; g add .claude/memory/nota.md
 cfp_caso "$GUARD" - "ctrl+ ruta absoluta de \$HOME staged" 'git commit -m x' "$R" block
 g reset -q .claude/memory/nota.md; rm -f "$R/.claude/memory/nota.md"
 

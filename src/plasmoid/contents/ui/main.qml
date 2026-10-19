@@ -997,9 +997,6 @@ PlasmoidItem {
                 { emoji: "🔗", name: "merge-develop-guard",    desc: "MR a develop sin --squash o sin tu OK → denegado; a main exige OK súper-explícito",
                   event: "PreToolUse · Bash",
                   detail: "Candado ÚNICO del punto de merge. Un `gh pr merge`/`glab mr merge` a develop sin --squash se deniega, para que la ramita colapse a un commit curado; además busca tu OK explícito en el chat reciente antes de integrar. A main exige lenguaje de release ('hasta main', 'libera') y va SIN squash (conserva historia). Un 'sigue/avanza' NO cuenta como autorización." },
-                { emoji: "🕵️", name: "secret-scan",            desc: "commit/push con un secreto → denegado",
-                  event: "PreToolUse · Bash",
-                  detail: "Escanea lo que ENTRA al repo (staged en commit, saliente en push) buscando llaves/tokens/claves privadas de formato inconfundible (AWS, PEM, Anthropic, OpenAI, GitHub, GitLab, Slack, Google). Si aparece uno → bloquea: una credencial pusheada queda comprometida aunque la borres. Escape: --no-verify." },
                 { emoji: "✅", name: "dod-verificar",          desc: "Def. of Done (ver Norma 🎯 DoD) sin build+tests+memoria → denegado",
                   event: "Stop",
                   detail: "Al cerrar el turno, si dijiste 'listo/en producción' tras tocar código fuente, exige evidencia de build+tests verdes y memoria al día, o bloquea el cierre." },
@@ -1158,7 +1155,7 @@ PlasmoidItem {
 
     // Catálogo conocido (mismos conjuntos que BrainState.knownGlobalHooks / knownRepoHooks del Swift).
     // DEBE coincidir con brain/hooks/MANIFEST; lo verifica el drift-check del widget (test-brain.sh).
-    readonly property var brainGlobalHooks: ["git-branch-guard","merge-develop-guard","secret-scan","proteger-arbol","proteger-fuente-cerebro","limite-gasto","delegacion-gate","delegacion-registrar","rehidratar-hilo","aviso-contexto","aviso-drift-cerebro","exportar-sesion-master","checkpoint-mecanico","barrer-ramas","entorno-maquina-guard","no-bypass-deploy"]
+    readonly property var brainGlobalHooks: ["git-branch-guard","merge-develop-guard","proteger-arbol","proteger-fuente-cerebro","limite-gasto","delegacion-gate","delegacion-registrar","rehidratar-hilo","aviso-contexto","aviso-drift-cerebro","exportar-sesion-master","checkpoint-mecanico","barrer-ramas","entorno-maquina-guard","no-bypass-deploy"]
     readonly property var brainRepoHooks:   ["sesion-inicio","dod-verificar","recordar-cosechar"]
     // Los 4 rótulos de NORMA (pseudo-piezas, gobernados por hasNorms). NO viven en el MANIFEST ni se
     // retiran como skills/hooks → enumerarlos es legítimo (no es la lista drift-prone).
