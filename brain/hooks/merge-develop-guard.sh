@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # merge-develop-guard.sh — PreToolUse/Bash: CANDADO ÚNICO del punto de merge de un MR/PR a develop/main.
-# CONSOLIDA (2026-09-17) los guards antes separados `merge-squash-guard` (exigía --squash + calidad del
+# CONSOLIDA los guards antes separados `merge-squash-guard` (exigía --squash + calidad del
 # mensaje) y `confirmar-merge-develop` (exigía autorización EXPRESA — la definición de LISTO). Un solo
 # proceso, una sola resolución del destino (1 llamada de red, no 2), la UNIÓN de todos sus checks — ninguno
 # se suelta. ESCALERA fail-fast barato→caro:
@@ -22,7 +22,7 @@
 # `integracion/*`, `feat/*`…) con merge CONTINUO y sin drama — el juez NO las intercepta; el SQUASH sí aplica
 # cuando integras a `develop`. `git merge` LOCAL a cualquier rama nunca se intercepta. Fail-safe sin jq/lib.
 #
-# COBERTURA (decisión unjordi 2026-09-17): canónica — reconoce el subcomando REAL `glab mr merge|accept` /
+# COBERTURA canónica: reconoce el subcomando REAL `glab mr merge|accept` /
 # `gh pr merge`. NO se agrega pattern-matching de `gh api`/`glab api` (mergear vía API cruda): es un residual
 # ACEPTADO con backstop server-side (ramas protegidas develop/main en el forge) — la línea de defensa dura de
 # ese hueco es el servidor, no un guard que adivine por-forge. git-branch-guard NO entra aquí (otra acción: el
@@ -36,15 +36,13 @@ set -u
 # shellcheck source=juez-comun.sh
 . "${BASH_SOURCE[0]%/*}/juez-comun.sh"
 
-# M4 (auditoría 2026-09-15 §2.3/§3.4): _recent_intercalado/_lexico_release_en_ventana ahora son WRAPPERS
-# retro-compat de acg_recent_intercalado/acg_lexico_release (movidas a la lib compartida — ver el
-# comentario largo ahí: "una sola fuente para la misma pregunta", consultable también por merge-squash-guard
-# para cerrar la contradicción §3.4 sin aflojar el fail-safe de ninguno de los dos guards). La lib se
-# sourcea ARRIBA SOLO en modo TEST (_CMD_JUEZ_SOURCE_ONLY=1, el script hace `return 0` antes de llegar a su
-# sourceo normal de abajo) — en OPERACIÓN NORMAL la lib se sigue sourceando en su posición de SIEMPRE
-# (después del gate "sin jq" A3, más abajo): sourcearla ANTES de ese gate dispararía acg__augmenta_path
-# (rescate de PATH) y "encontraría" un jq real del sistema, anulando el fail-safe A3 para el caso
-# genuinamente sin jq (regresión medida: rompía el test 'juez-comun (d)').
+# _recent_intercalado/_lexico_release_en_ventana son WRAPPERS retro-compat de acg_recent_intercalado/
+# acg_lexico_release (movidas a la lib compartida — "una sola fuente para la misma pregunta", consultable
+# también por el chequeo de squash). La lib se sourcea ARRIBA SOLO en modo TEST (_CMD_JUEZ_SOURCE_ONLY=1,
+# el script hace `return 0` antes de su sourceo normal de abajo) — en OPERACIÓN NORMAL la lib se sigue
+# sourceando en su posición de SIEMPRE (después del gate "sin jq" de abajo): sourcearla ANTES de ese gate
+# dispararía acg__augmenta_path (rescate de PATH) y "encontraría" un jq real del sistema, anulando el
+# fail-safe para el caso genuinamente sin jq.
 if [ "${_CMD_JUEZ_SOURCE_ONLY:-}" = "1" ]; then
   # shellcheck source=analizar-comando-git.sh
   . "${BASH_SOURCE[0]%/*}/analizar-comando-git.sh"
@@ -55,8 +53,8 @@ _lexico_release_en_ventana() { acg_lexico_release "$@"; }
 # ── JUEZ DE AUTORIZACIÓN (LLM) — definido ARRIBA para que los tests lo SOURCEEN idéntico (cero drift con
 # el hook). Punto de entrada = _juez_merge($destino,$mrid,$mensajes,$hint) → ALLOW|DENY|UNAVAILABLE; un voto
 # individual lo produce _juez_merge_uno (mismo contrato). Reemplaza el pilón de regex frágiles: es comprensión
-# de lectura (Haiku DESAMORDAZADO), robusta al phrasing. EMPODERADO 2026-08:
-#   · Capa 1 — DESAMORDAZAR: max_tokens 16→768 + temperature:0 (gate reproducible) + CoT breve que cierra
+# de lectura (Haiku DESAMORDAZADO), robusta al phrasing:
+#   · Capa 1 — DESAMORDAZAR: max_tokens:768 + temperature:0 (gate reproducible) + CoT breve que cierra
 #     con un CENTINELA exacto 'VEREDICTO: ALLOW|DENY'. Parseo por el ÚLTIMO 'VEREDICTO:' (tail -1); sin
 #     centinela (truncado/ininteligible) → out vacío → UNAVAILABLE → fail-safe DENY.
 #   · Capa 2 — VETO de CITA VERIFICADA (seguridad, para develop Y main): para ALLOW el LLM devuelve una
@@ -177,42 +175,27 @@ VEREDICTO: DENY"
   # un candado angosto para el gate de MÁXIMA consecuencia. AUTORIDAD: solo líneas 'USUARIO:' (nunca ASISTENTE
   # → anti auto-autorización). master = alias de main en muchos repos (legacy incluidos) → misma base de
   # RELEASE, mismo piso estricto.
-  # M5 (auditoría 2026-09-15 §3.5, 🔴 APRIETA): destino VACÍO ("$1" = "") TAMBIÉN pasa por el piso. Antes el
-  # comentario decía "el vacío lo cubre el fail-seguro del LLM" — pero el LLM ES probabilístico, y el piso
-  # existe PRECISAMENTE porque el LLM falla en el 'mergea' pelón a main (línea de arriba, regresión LIVE). Un
-  # destino DESCONOCIDO (consulta caída por PATH/red/timeout — el corpus documenta que es "TODO release a
-  # main por CLI desde una sesión lanzada por GUI, siempre", no un borde) dejaba el gate de MÁXIMA consecuencia
-  # en manos EXCLUSIVAS del componente que el propio código ya admite que falla ahí. Con destino desconocido,
-  # el más ESTRICTO de los dos gates posibles (develop vs main) debe ganar — la MISMA regla que ya rige el
-  # prompt del juez ("ante duda del destino, el más ESTRICTO gana"), ahora aplicada también al piso.
-  #
-  # M5-bis (auditoría FMEA 2026-09-16, ALTO §1.2, PRECISIÓN — no relaja el piso): medido por ejecución, M5
-  # bloqueaba TAMBIÉN el caso MÁS común y de MENOR consecuencia (integrar a develop) bajo un fallo de
-  # entorno frecuente (timeout de red al resolver el destino), aunque la conversación fuera 100% inequívoca
-  # sobre develop y CERO ambigua sobre main.
-  #
-  # H2 (auditoría semántica 2026-09-16, ALTO, CONFIRMADO): el fix M5-bis ORIGINAL apagaba el piso con una
-  # línea `DESTINO_INFERIDO: develop` que escribía el propio LLM, SIN re-verificación — y ese es justo el
-  # componente que el comentario de arriba ya declara poco fiable ahí (Haiku ALLOWea el 'mergea el X' pelón
-  # a main). Medido LIVE (3/3, Haiku real): con una conversación MUDA sobre destino ("perfecto, mergealo",
-  # sin mencionar main NI develop), el juez infería 'develop' igual — "ausencia de señal" leída como
-  # "evidencia de develop", lo CONTRARIO de "ante duda, el más estricto gana".
-  # Fix de raíz (misma doctrina que el VETO DE CITA VERIFICADA — re-verificar en bash lo que el LLM afirma,
-  # nunca confiar en su palabra): el piso ahora se salta con destino vacío SOLO con AMBAS condiciones,
-  # verificadas en bash, nunca en el CoT: (a) evidencia POSITIVA — una línea USUARIO nombra 'develop'
-  # explícitamente (acg_lexico_develop_explicito); NO basta el silencio, "no dijo nada de main" no es
-  # "dijo develop" — y (b) ausencia total de señal de main/release/promover en TODA la ventana, cualquier rol
-  # (acg_lexico_main_amplio). Una ventana MUDA falla (a) → el piso se queda, exactamente lo que H2 pedía.
-  # "mergea esto a develop" cumple (a) y (b) → salta el piso, preservando el fix de ALTO-1/M5. Cualquier
-  # mención de main/release en cualquier turno sigue aplicando el piso — cero cambio para ese caso.
+  # PISO DETERMINISTA de main (defensa en profundidad, aparte del LLM). Cubre destino main/master Y destino
+  # VACÍO (no el 'develop' explícito): el LLM es probabilístico y el piso existe PRECISAMENTE porque el LLM
+  # ALLOWea el 'mergea' pelón a main. Un destino DESCONOCIDO (consulta caída por PATH/red/timeout — típico de
+  # un merge por CLI desde una sesión lanzada por GUI) dejaría el gate de MÁXIMA consecuencia solo en manos
+  # del componente que falla ahí → con destino desconocido gana el MÁS ESTRICTO de los dos gates (develop vs
+  # main), la misma regla que ya rige el prompt del juez. NO bloquea el caso común (integrar a develop)
+  # cuando la conversación es inequívoca sobre develop: el piso se salta con destino vacío SOLO con AMBAS
+  # condiciones verificadas en BASH, nunca en el CoT del LLM (misma doctrina que el VETO DE CITA: re-verificar
+  # lo que el LLM afirma, no confiar en su palabra): (a) evidencia POSITIVA — una línea USUARIO nombra
+  # 'develop' explícito (acg_lexico_develop_explicito); el silencio NO cuenta, "no dijo main" no es "dijo
+  # develop" — Y (b) ausencia total de señal de main/release/promover en TODA la ventana, cualquier rol
+  # (acg_lexico_main_amplio). Una ventana MUDA falla (a) y el piso se queda; "mergea esto a develop" cumple
+  # (a) y (b) y salta el piso. Cualquier mención de main/release en cualquier turno mantiene el piso.
   if { [ "$1" = "main" ] || [ "$1" = "master" ] \
        || { [ -z "$1" ] && ! { acg_lexico_develop_explicito "$3" && ! acg_lexico_main_amplio "$3"; }; }; } \
      && [ "$out" = "ALLOW" ]; then
     # tokens ANCLADOS a límite de palabra ([^[:alpha:]], portable BSD+GNU): 'liber' NO casa en
     # "deliberada"/"libertad" (liber[aeo] + frontera previa), 'a main' NO casa en "a maintenance"
-    # (frontera posterior tras main). Endurecimiento — cierra el falso NEGATIVO del piso (auditoría 2026-08).
-    # "promover a main" YA lo cubre '(a|hacia) main'; una rama 'promov.* .*main' aparte metía un .*
-    # desacoplado que puenteaba un 'promueve' cualquiera con un 'main' suelto de otra frase (falso negativo) → se quitó.
+    # (frontera posterior tras main) — cierra el falso NEGATIVO del piso. "promover a main" lo cubre
+    # '(a|hacia) main'; no se usa un 'promov.* .*main' con `.*` desacoplado porque puentearía un 'promueve'
+    # cualquiera con un 'main' suelto de otra frase (falso negativo).
     _lexico_release_en_ventana "$3" || out=DENY
   fi
   [ -n "$out" ] && printf '%s' "$out" || printf 'UNAVAILABLE'
@@ -344,6 +327,27 @@ _es_release_explicito() {
   acg_lexico_release_para_mr "$(acg_recent_intercalado "$tpath")" "$mrid"
 }
 
+# Excepción ACOTADA al squash: un SYNC de upstream (el PR trae un merge commit cuyo 2º padre aporta commits que
+# develop no tiene = historia AJENA) con --merge y una línea del USUARIO que nombra --merge/sin squash + ese PR.
+# Squashearlo dejaría la historia de upstream fuera de develop (el siguiente sync re-chocaría todo). Falla CERRADO.
+# Test HERMÉTICO (cero red, mock gh por PR-id): test-brain.sh §b-sync.
+_es_sync_upstream_autorizado() {   # $1=cmd(RAW)  $2=transcript → 0=exento del squash · 1=no
+  local c mrid repo base n sha
+  c=$(acg_despoja_comillas "$1")
+  printf '%s' "$c" | grep -qE '(^|[[:space:]])--merge([[:space:]]|$)' || return 1
+  mrid=$(acg_mrid "$c"); [ -n "$mrid" ] || return 1
+  repo=$(acg_repo_explicito "$1"); { [ -z "$repo" ] || [ "$repo" = OPACO ]; } && return 1
+  acg_recent_intercalado "$2" | grep '^USUARIO:' | grep -iE -- '(--merge|sin squash)' \
+    | grep -qiE "(#|pr[[:space:]]*|merge[[:space:]]+)${mrid}([^0-9]|$)" || return 1
+  base=$(timeout 15 gh api "repos/$repo/pulls/$mrid" --jq .base.ref 2>/dev/null) || return 1
+  [ "$base" = develop ] || return 1
+  for sha in $(timeout 30 gh api --paginate "repos/$repo/pulls/$mrid/commits" --jq '.[]|select((.parents|length)>=2)|.parents[1].sha' 2>/dev/null); do
+    n=$(timeout 15 gh api "repos/$repo/compare/develop...$sha" --jq .ahead_by 2>/dev/null) || continue
+    [ "${n:-0}" -gt 0 ] && return 0
+  done
+  return 1
+}
+
 # ── PASO 3a — CHECK DETERMINISTA: SQUASH (heredado de merge-squash-guard). Develop-scoped + fail-safe cuando el
 #    destino es irresoluble (exige squash salvo release explícito). Aplica a TODO repo (el viejo squash-guard
 #    NUNCA gateó por la marca de compartido) → corre ANTES del scoping de compartido. VIOLACIÓN → DENY (fail-fast).
@@ -353,13 +357,13 @@ if [ "$destino" = develop ]; then _sq_aplica=1
 elif [ -z "$destino" ]; then _es_release_explicito "$cmd" || _sq_aplica=1
 fi
 if [ "$_sq_aplica" = 1 ]; then
-  _cmd_sqflag=$(acg_despoja_comillas "$cmd")   # H6: sobre el cmd DESPOJADO — una mención citada de "--squash" no cuenta como el flag
+  _cmd_sqflag=$(acg_despoja_comillas "$cmd")   # sobre el cmd DESPOJADO — una mención citada de "--squash" no cuenta como el flag
   if printf '%s' "$_cmd_sqflag" | grep -qE "$SQUASH_RE"; then
     # TIENE --squash. Las varas de CALIDAD (borrar rama, sustancia, traza) son develop-scoped: solo si el
     # destino RESOLVIÓ a develop. Un irresoluble-con-squash pasa la calidad (fail-open del concern más suave).
     if [ "$destino" = develop ]; then
       _rehaz=$(_rehaz_sugerido "$cmd")
-      # A-2: EXIGE borrar la rama de origen (--remove-source-branch glab / --delete-branch gh). Sobre cmd DESPOJADO (H6).
+      # EXIGE borrar la rama de origen (--remove-source-branch glab / --delete-branch gh). Sobre cmd DESPOJADO.
       _cmd_del=$(acg_despoja_comillas "$cmd")
       if printf '%s' "$_cmd_del" | grep -qE 'gh(\.exe)?[[:space:]]+pr'; then
         _flag_del='(--delete-branch([[:space:]]|=|$)|(^|[[:space:]])-d([[:space:]]|$))'; _flag_nom='--delete-branch'
@@ -370,7 +374,7 @@ if [ "$_sq_aplica" = 1 ]; then
         _deny_json "FLUJO DE GIT (ley interna): al integrar a develop, la rama de origen se BORRA en el mismo acto — falta $_flag_nom. Sin él la rama queda colgando en el remoto y nadie la vuelve a mirar: de ahí sale la acumulación de ramas viejas en origin. Rehaz el merge con: $_rehaz  — (a main/release y a tus ramas personales no se te exige nada de esto). Receta completa: brain/skills/cerrar-slice/cerrar-slice.sh."
         exit 0
       fi
-      # A-3: si el resumen vive en un archivo LEGIBLE (--body-file / $(cat …)), exige la traza rama→commit igual que inline.
+      # Si el resumen vive en un archivo LEGIBLE (--body-file / $(cat …)), exige la traza rama→commit igual que inline.
       _cuerpo=$(acg_cuerpo_resoluble "$cmd" "$pcwd")
       if [ -n "$_cuerpo" ] && acg_msg_falta_traza "$_cuerpo"; then
         _deny_json "FLUJO DE GIT (ley interna): al resumen del squash le falta TRAZABILIDAD rama→commit: incluye \"Rama: <feat/…>\" y \"MR/PR: !<id>\" (o #<id>). El squash borra el merge-commit de la plataforma que traía el #id → sin esto, 'git log develop' no dice de qué ramita salió el commit. (El resumen se leyó del archivo que cita el comando.)"
@@ -419,10 +423,14 @@ if [ "$_sq_aplica" = 1 ]; then
     fi
     # squash OK → cae al scoping/auth de abajo (NO exit: falta el candado de autorización)
   else
-    # FALTA --squash → DENY (fail-fast). No afloja nada de lo de abajo: sin squash ni siquiera llega al juez.
+    # FALTA --squash → DENY (fail-fast), salvo el sync de upstream autorizado (sigue al juez de abajo igual).
+    if [ "$destino" = develop ] && _es_sync_upstream_autorizado "$cmd" "$tpath"; then
+      _warn_ctx="Sync de upstream: --merge (sin squash) permitido para conservar la historia de upstream en develop."
+    else
     _rehaz=$(_rehaz_sugerido "$cmd")
     _deny_json "FLUJO DE GIT (ley interna): integrar a develop SQUASHEA a UN commit limpio por slice. NO reintentes este merge sin squash. Rehazlo con: $_rehaz  — donde el mensaje es un RESUMEN CURADO en prosa del slice (el cambio neto y su porqué), NO el pegote de commits granulares. NOTA: la obligación de squash es SOLO para develop — a main (release) va SIN squash (conserva historia) y tus ramas personales van a tu gusto. Corre brain/skills/cerrar-slice/cerrar-slice.sh; ver skill cerrar-slice."
     exit 0
+    fi
   fi
 fi
 
@@ -433,6 +441,14 @@ fi
 TARGET_DIR=$(acg_target_dir "$cmd" "$pcwd")
 TARGET_ROOT=$(git -C "$TARGET_DIR" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$TARGET_DIR")
 _explicit_repo=$(acg_repo_explicito "$cmd")
+# Con `--repo <slug>` LITERAL el repo DESTINO es el del SLUG, no el del cwd — resolver la marca
+# repo-compartido Y el grant por el cwd leería el repo EQUIVOCADO. Si hay un clon local cuyo origin==slug,
+# ESE es el TARGET_ROOT autoritativo. FAIL-SAFE: sin clon local, TARGET_ROOT se queda por cwd (y abajo, al
+# no casar el slug, GATEA — conservador).
+if [ -n "$_explicit_repo" ] && [ "$_explicit_repo" != OPACO ]; then
+  _clon_slug=$(acg_clon_local_de_slug "$_explicit_repo" "$TARGET_ROOT")
+  [ -n "$_clon_slug" ] && TARGET_ROOT="$_clon_slug"
+fi
 _es_personal=0
 if [ -n "$_explicit_repo" ] && [ "$_explicit_repo" != "OPACO" ]; then
   _local_slug=$(git -C "$TARGET_ROOT" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|https?://[^/]+/)##; s#\.git$##')
@@ -483,20 +499,24 @@ fi
 # los preceden (para resolver un OK anafórico). REGLA DURA (en el prompt): solo USUARIO autoriza.
 recent=$(_recent_intercalado "$tpath")
 
-# H3 (auditoría de ejecución 2026-09-16): si la autorización real quedó FUERA de la ventana (tail -n 6000 en una
+# Si la autorización real quedó FUERA de la ventana (tail -n 6000 en una
 # corrida larga), el piso barato diría "no hay confirmación" y el mensaje CULPARÍA al usuario. Se detecta aquí y
 # se nombra la causa real (la ventana no alcanzó), sin exigir repetir lo ya dicho.
 _ventana_sin_usuario=1
 printf '%s' "$recent" | grep -qiE '^[[:space:]]*USUARIO:' && _ventana_sin_usuario=0
 _ventana_truncada=0
+_jq_fallo=0
 if [ "$_ventana_sin_usuario" = 1 ] && [ -n "$tpath" ] && [ -f "$tpath" ]; then
   _tp_lineas=$(wc -l < "$tpath" 2>/dev/null | tr -d '[:space:]')
   case "$_tp_lineas" in ''|*[!0-9]*) _tp_lineas=0 ;; esac
   [ "$_tp_lineas" -gt 6000 ] && _ventana_truncada=1
+  # Si la conversación parseada no trae USUARIO: pero la ventana CRUDA sí trae mensajes de usuario (role/type
+  # user, o un queued_command humano), el parseo del transcript falló — distinto de "no autorizaste".
+  tail -n 6000 "$tpath" 2>/dev/null | grep -qE '"(role|type)"[[:space:]]*:[[:space:]]*"user"|"queued_command"' && _jq_fallo=1
 fi
 
 # Grant DURABLE (turno-nocturno): un OK persistido a disco cubre scope=merge-develop (NUNCA main). Fast-path
-# antes del LLM. SOLO se honra con destino CONFIRMADO 'develop' (CRÍTICO FMEA §1.3: con destino desconocido
+# antes del LLM. SOLO se honra con destino CONFIRMADO 'develop' (con destino desconocido
 # SIEMPRE cae al juez, cuyo fail-safe es DENY — nunca cuela un release por un grant de develop).
 if [ "$destino" = "develop" ]; then
   AUTH_FILE="$TARGET_ROOT/.claude/memory/autorizaciones-vigentes.local.md"
@@ -521,16 +541,18 @@ $_warn_ctx"
   exit 0
 fi
 
-# M8: cita del MR-id UNA vez, sin "MR ()" cuando viene vacío (un merge del branch actual sin id es legítimo).
+# cita del MR-id UNA vez, sin "MR ()" cuando viene vacío (un merge del branch actual sin id es legítimo).
 if [ -n "$cur_mrid" ]; then _mr_cita=" (MR $cur_mrid)"; else _mr_cita=""; fi
 
-# DENY o UNAVAILABLE_* → freno. Anti-vein-popper (M8): JAMÁS "mergéalo en la web"; se SATISFACE o se ARREGLA por CLI.
+# DENY o UNAVAILABLE_* → freno. Anti-vein-popper: JAMÁS "mergéalo en la web"; se SATISFACE o se ARREGLA por CLI.
 if [ "$veredicto" = "UNAVAILABLE_NOTOKEN" ]; then
   r="FRENO (sin token OAuth para el juez de merge): esta máquina no tiene un token OAuth de Claude alcanzable (¿api-key, CI, o sesión sin login de suscripción?), así que el juez de autorización por CLI NO puede correr aquí. NO abro el merge (fail-safe). Corre 'claude setup-token' (token de larga vida) / exporta CLAUDE_CODE_OAUTH_TOKEN y reintenta."
 elif [ "$veredicto" = "UNAVAILABLE_EXPIRED" ]; then
   r="FRENO (token OAuth expirado): tu token de Claude fue RECHAZADO (401) incluso tras un reintento — el CLI lo refresca solo en ~un momento. REINTENTA el merge en unos segundos; si persiste, corre 'claude setup-token'. (Fail-safe: no abro el merge sin poder consultar al juez.)"
 elif [ "${veredicto#UNAVAILABLE}" != "$veredicto" ]; then
   r="FRENO (juez no disponible): no pude consultar el juez de autorización de merge (¿sin red, timeout, o respuesta ininteligible?). Fail-safe conservador: reintenta. (Override de modelo/timeout: CLAUDE_MERGE_JUEZ_MODEL / CLAUDE_MERGE_JUEZ_TIMEOUT.)"
+elif [ "$_jq_fallo" = 1 ]; then
+  r="FRENO (no pude LEER la conversación): el parseo del transcript de esta sesión falló, así que no veo tu autorización — NO es que no la hayas dado. Repetir el OK en un mensaje reciente puede ayudar${_mr_cita} (p. ej. 'mergea esto a develop'); o itera con 'git merge' LOCAL en tu mini (no pasa por este candado). Si persiste, el transcript trae un bloque que el parser no maneja — repórtalo."
 elif [ "$_ventana_truncada" = 1 ]; then
   r="FRENO (definición de LISTO): el transcript de esta sesión tiene ${_tp_lineas} líneas y solo puedo leer las últimas ~6000 — si diste tu autorización antes de eso, quedó FUERA de mi ventana. No es que no hayas autorizado: es que no llegué a verlo. Repetir el OK AQUÍ, en un mensaje reciente, destraba esto${_mr_cita} (p. ej. 'mergea esto a develop'); o itera con 'git merge' LOCAL en tu mini (no pasa por este candado)."
 elif [ "$destino" = "main" ] || [ "$destino" = "master" ]; then
@@ -542,8 +564,8 @@ elif [ "$destino" = "develop" ]; then
 Recuerda: verde técnico != LISTO; 'sigue/avanza' NO autoriza el merge a develop."
 else
   # destino DESCONOCIDO: si la causa es de ENTORNO o de FORMA del comando, repetir la autorización NO la arregla.
-  # acg_destino_conf (M3) declara el MOTIVO real; REPO-VARIABLE ($R/backtick en --repo) trae su propio mensaje
-  # accionable ("usa el slug LITERAL") — el bug que se filaba como error-de-usuario y nunca se arregló (corpus 8b3c52e).
+  # acg_destino_conf declara el MOTIVO real; REPO-VARIABLE ($R/backtick en --repo) trae su propio mensaje
+  # accionable ("usa el slug LITERAL").
   _conf=$(acg_destino_conf "$cmd" "$pcwd")
   _motivo="${_conf#DESCONOCIDO:}"
   if [ "$_motivo" = "REPO-VARIABLE" ]; then

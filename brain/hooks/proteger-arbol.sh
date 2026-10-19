@@ -1,19 +1,15 @@
 #!/usr/bin/env bash
 # proteger-arbol.sh — PreToolUse/Bash: AVISA (NO bloquea) antes de un git DESTRUCTIVO que podría
-# ORFANAR commits sin pushear en el árbol de trabajo actual. Antídoto al un caso REAL (2026-07):
-# un agente de fan-out se metió al árbol de trabajo COMPARTIDO y reseteó HEAD, dejando huérfano un
-# commit del orquestador (la fuente quedó a medias y el build compiló eso; se recuperó por cherry-pick).
-# Solo avisa cuando REALMENTE hay commits en riesgo (bajo ruido). Fail-open. Ignora comandos
-# entrecomillados (dato de un grep / mensaje de commit / doc).
+# ORFANAR commits sin pushear en el árbol de trabajo actual (un reset/rebase/checkout -f en el árbol
+# COMPARTIDO puede dejar huérfano un commit del orquestador). Solo avisa cuando REALMENTE hay commits
+# en riesgo (bajo ruido). Fail-open. Ignora comandos entrecomillados (dato de un grep / mensaje / doc).
 command -v jq >/dev/null 2>&1 || exit 0
 input=$(cat 2>/dev/null || true)
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
 [ -z "$cmd" ] && exit 0
-# cwd del payload = working dir REAL del comando (M2, auditoría 2026-09-15 §2.4/§3.1): antes este hook NI
-# SOURCEABA la lib compartida y resolvía todo contra CLAUDE_PROJECT_DIR (el repo de la SESIÓN) → un
-# `git -C <otro>`/`cd <otro> && git reset --hard` quedaba CIEGO, y `git.exe`/`git -c k=v` evadían la
-# detección (huecos que la lib ya había cerrado para los otros guards, pero este vivía fuera del candado
-# común). Se resuelve por la MISMA lib (acg_target_dir/acg_normaliza_git_prefijo/acg_despoja_comillas).
+# cwd del payload = working dir REAL del comando: se resuelve el target por la MISMA lib compartida
+# (acg_target_dir/acg_normaliza_git_prefijo/acg_despoja_comillas), no contra CLAUDE_PROJECT_DIR — así un
+# `git -C <otro>`/`cd <otro> && git reset --hard` y `git.exe`/`git -c k=v` no quedan ciegos.
 pcwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
 # PRE-FILTRO barato (en-proceso): todo lo que este hook vigila (git reset/checkout/rebase/branch -D)
 # contiene 'git' → sin 'git' en el comando, no hay nada que vigilar → early-exit ANTES de sourcear la lib
@@ -21,14 +17,11 @@ pcwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
 # salta un caso real.
 case "$cmd" in *git*) : ;; *) exit 0 ;; esac
 
-# CRÍTICO-1 (auditoría FMEA 2026-09-16 §1.1, CONFIRMADO): sourcear un archivo con error de SINTAXIS mata el
-# proceso ENTERO con exit 1 -- este hook YA es advisory/fail-open por diseño, pero antes ni siquiera llegaba
-# a su propio fallback heredoc-ciego (abajo): el `.` normal mataba el proceso ANTES de que el `command -v
-# acg_despoja_comillas` de abajo pudiera preguntar. H7 (auditoría semántica 2026-09-16, BAJO): la sonda
-# ORIGINAL sourceaba en un SUBSHELL y trataba CUALQUIER exit≠0 como "lib rota" -- pero ese código es el del
-# ÚLTIMO comando de la lib, no un diagnóstico de sintaxis. `bash -n` ES el veredicto de sintaxis (solo
-# parsea, nunca ejecuta): si pasa, el hook sourcea de verdad; si no, DEGRADA a su fallback propio en vez de
-# desaparecer sin avisar. Snippet IDÉNTICO en los 5 guards; a propósito FUERA de la lib.
+# Sourcear un archivo con error de SINTAXIS mata el proceso ENTERO con exit 1 (y el harness lo trata como
+# no-bloqueante) → este hook ni llegaría a su propio fallback heredoc-ciego. `bash -n` es el veredicto de
+# sintaxis (solo parsea, no ejecuta; inmune a que la lib termine en un comando ≠0): si pasa, sourcea de
+# verdad; si no, DEGRADA a su fallback propio en vez de desaparecer sin avisar. Snippet IDÉNTICO en los 5
+# guards, a propósito FUERA de la lib.
 _ACGLIB="$(dirname "$0")/analizar-comando-git.sh"
 if [ -f "$_ACGLIB" ] && bash -n "$_ACGLIB" >/dev/null 2>&1; then
   # shellcheck source=analizar-comando-git.sh
@@ -37,14 +30,11 @@ else
   [ -f "$_ACGLIB" ] && printf '%s: analizar-comando-git.sh existe pero no cargó (error de sintaxis) -- usando el fallback heredoc-ciego propio. `bash -n "%s"` localiza el error.\n' "$(basename "$0")" "$_ACGLIB" >&2
 fi
 
-# M1 (auditoría 2026-09-15 §3.8): el filtro de heredoc PROPIO de este hook (descartaba TODO cuerpo de
-# heredoc sin mirar el consumidor) cerró el FP de `cat >> doc.md <<EOF` pero abrió el FN simétrico —
-# `bash <<EOF … EOF` con un `git reset --hard` REAL adentro quedaba invisible. Ahora usa la MISMA
-# segmentación ejecutor-aware de la lib (acg_segmentos_ejecutables/acg_despoja_comillas): conserva el
-# cuerpo SOLO si el `<<` alimenta un intérprete (bash/sh/zsh/…), lo descarta si alimenta un escritor
-# (cat/tee/…) — resuelve las DOS direcciones con el mismo criterio, sin tener que elegir un lado. Si la
-# lib no está disponible (clon roto), cae al filtro heredoc-ciego de siempre (fail-safe: nunca pierde el
-# caso real por sobre-quitar; a lo más re-abre el FN viejo, nunca uno nuevo).
+# El cuerpo de un heredoc se conserva SOLO si el `<<` alimenta un intérprete (bash/sh/zsh/…) —ahí un
+# `git reset --hard` REAL vive adentro— y se descarta si alimenta un escritor (cat/tee/…, dato/doc). Usa
+# la MISMA segmentación ejecutor-aware de la lib (acg_segmentos_ejecutables/acg_despoja_comillas), que
+# resuelve las dos direcciones con un solo criterio. Sin lib (clon roto) cae al filtro heredoc-ciego de
+# siempre (fail-safe: a lo más re-abre el FN viejo, nunca pierde un caso por sobre-quitar).
 if command -v acg_despoja_comillas >/dev/null 2>&1; then
   # ORDEN: normaliza el RAW (comillas intactas, para no cegar un `-C "/ruta"`) → LUEGO despoja/heredoc.
   unquoted=$(acg_despoja_comillas "$(acg_normaliza_git_prefijo "$cmd")")
@@ -96,11 +86,22 @@ if printf '%s' "$unquoted" | grep -qE 'git[[:space:]]+branch[[:space:]]+-[dD]' \
       | grep -oE 'git[[:space:]]+branch[[:space:]]+-[dD][A-Za-z]*[[:space:]]+[^|;&]+' \
       | sed -E 's/.*branch[[:space:]]+-[dD][A-Za-z]*[[:space:]]+//' \
       | tr ' ' '\n' | grep -vE '^-')
+    # (c) compound `git merge <X> [&& …] git branch -D <X>`: una rama que ESTE MISMO comando acaba de
+    # mergear (a la rama actual) queda integrada en el acto → borrarla es seguro. Recoge los targets de
+    # cada `git merge` del comando (sin sus flags) y los trata como integrados, sin preguntarle a git
+    # (el merge aún no corrió — es PreToolUse). Cualquier otra rama sigue decidiéndose con bz_es_zombie.
+    merged=$(printf '%s' "$unquoted" \
+      | grep -oE 'git[[:space:]]+merge([[:space:]]+(--[A-Za-z][A-Za-z-]*|-[A-Za-z]))*[[:space:]]+[^|;&]+' \
+      | sed -E 's/.*merge([[:space:]]+(--[A-Za-z][A-Za-z-]*|-[A-Za-z]))*[[:space:]]+//' \
+      | tr ' ' '\n' | grep -vE '^-')
     riesgo=""
     while IFS= read -r tok; do
       [ -z "$tok" ] && continue
       while IFS= read -r br; do
         [ -z "$br" ] && continue
+        if printf '%s\n' "$merged" | grep -qxF "$br"; then
+          continue   # (c) mergeada en este mismo comando → segura
+        fi
         bz_es_zombie "$root" "$br" "$base" || riesgo="$riesgo $br"
       done < <(git -C "$root" branch --list --format='%(refname:short)' "$tok" 2>/dev/null)
     done <<EOF
