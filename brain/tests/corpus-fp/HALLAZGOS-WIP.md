@@ -1,5 +1,22 @@
 # Banco del corpus de FPs + revisión directa — WIP (rama fix/corpus-fp-bench, desde 52d2d8c)
 
+## ⚡ MANDATOS VIVOS (2026-10-19, unjordi vía claudio)
+- **GITLEAKS (nuevo, supersede secret-scan):** desechar secret-scan+detectar-secretos del cerebro (OK explícito de unjordi para quitar el control) → gitleaks. (1) retirar de hooks/MANIFEST/instalador(desinstala de máquinas que lo tienen)/settings/README+árbol×5/tests/bench; (2) norma CLAUDE.md global: gitleaks en CI + local pre-push; (3) `cerrar-slice.sh` corre `gitleaks git --log-opts=<base>..HEAD` pre-push, para si halla, excepciones solo en `.gitleaksignore`/`.gitleaks.toml`; (4) workflow gitleaks en CI de cortex (regla solo-gate: `on: push:[develop,main]+workflow_dispatch`). Tests 2 direcciones. **H6 queda moot** (el hook se borra); **mata el bootstrap-FP**. secret-scan SALE de la cuenta corpus (histórico, no se borra).
+- **CORPUS CERO-FP:** cada vivo arreglado en su guard con test (falla vs 52d2d8c); los no-repro se reproducen con fixtures transcript+mock (o se demuestra corriendo que ya no aplican); H1–H7 cuentan; ningún caso se borra; tabla final por guard (total/arreglados/con-test).
+
+## TABLA DE VIVOS ACTUAL (contra código parchado, tras merge del agente 63a7a78)
+| guard | vivos | no-repro | hallazgos |
+|---|---|---|---|
+| git-branch-guard | 0 ✓ | – | H1/L145/H2/H3 ✓ (commit 00df422) |
+| entorno-maquina-guard | 0 ✓ | – | – |
+| secret-scan | (se RETIRA por gitleaks) | – | H6 ✓ pero moot |
+| proteger-arbol | 1 (L11 reset--hard alinea con squash) | – | H7 (regla c ignora separador) |
+| no-bypass-deploy | 2 (L66 ls, L105 git diff de install.sh) | L101 | – |
+| merge-develop-guard | 2 (L51 release entrecomillado, L167 compound -C \$M) | 12 | H4/H5 |
+| dod-verificar | 1 (L71 QA visual turno anterior) | 11 | – |
+| misc | 3 (aviso-drift L127/L171 tier-repo, limpiar-ramas L164 mini-tema) | – | – |
+
+
 Encargo (unjordi vía claudio, 2026-10-19): (1) convertir el corpus COMPLETO de FPs (`docs/guards-falsos-positivos.md`, 164 casos) en un banco REPRODUCIBLE por caso (comando + contexto rama/cwd/cd + decisión esperada) que corra cada guard contra TODOS sus casos y quede de gate en `test-brain.sh`; FP que sigan frenando se REPORTAN, no se borran; un caso nuevo suma su fixture en la misma tanda. (2) Reportar conteo pasa/frena por guard ANTES de arreglar. (3) Luego P1 = fixes de git-branch-guard con test que falle contra 52d2d8c.
 
 ## Trampas del harness (medidas por claudio; obligatorias o sale verde falso)
