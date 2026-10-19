@@ -53,7 +53,7 @@ struct BrainState {
     /// (test-brain.sh, chequeo e-widget). Al agregar/mover un hook en el MANIFEST, refleja aquí.
     static let knownGlobalHooks: Set<String> = [
         "git-branch-guard", "merge-develop-guard",
-        "secret-scan", "proteger-arbol",
+        "proteger-arbol",
         "proteger-fuente-cerebro",
         "limite-gasto", "delegacion-gate", "delegacion-registrar",
         "rehidratar-hilo", "aviso-contexto", "aviso-drift-cerebro", "exportar-sesion-master", "checkpoint-mecanico", "barrer-ramas",

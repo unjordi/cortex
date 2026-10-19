@@ -117,7 +117,7 @@ echo ""
 # Evento+matcher para cablear los kind=hook de tier {repo,both}. (Los global-only los cablea el bootstrap.)
 ev_de() {
   case "$1" in
-    git-branch-guard|merge-develop-guard|secret-scan|entorno-maquina-guard|no-bypass-deploy) echo "PreToolUse|Bash" ;;
+    git-branch-guard|merge-develop-guard|entorno-maquina-guard|no-bypass-deploy) echo "PreToolUse|Bash" ;;
     dod-verificar)  echo "Stop|" ;;
     sesion-inicio)  echo "SessionStart|" ;;
     recordar-cosechar) echo "Stop|" ;;

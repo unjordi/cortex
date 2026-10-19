@@ -80,7 +80,6 @@ El cerebro se ordena por *dureza*: arriba lo que te **bloquea** sin negociar; ab
 🔒 Hooks Forzosos — hooks que bloquean (deny) · no negociables
 ├─ 🚧 git-branch-guard         push/merge a develop·main → denegado
 ├─ 🔗 merge-develop-guard      MR a develop sin --squash o sin tu OK → denegado; a main exige OK súper-explícito
-├─ 🕵️  secret-scan             commit/push con un secreto → denegado
 ├─ 💸 delegacion-gate          delegar al llegar al 90% de tu ventana 5h → pide tu OK
 ├─ 🛑 limite-gasto             sin ventana 5h Y sin overage (ambos agotados) → freno duro
 └─ 📁 por-repo · viajan en el .claude de cada repo

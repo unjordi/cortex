@@ -28,7 +28,7 @@ echo "== misc · banco del corpus (FP esperan SILENCIO / no-borrar; controles+ e
 
 # ───────────────────────── aviso-drift-cerebro (L127, L171) ─────────────────────────
 # Repo PERSONAL con dod-verificar/juez-comun/recordar-cosechar/sesion-inicio por-repo: los de tier `repo`
-# (MANIFEST) NO sobran. Un hook de tier `both` (secret-scan) sí → control positivo.
+# (MANIFEST) NO sobran. Un hook de tier `both` (entorno-maquina-guard) sí → control positivo.
 mkpersonal() {  # mkpersonal <dir> <hooks…>
   local d="$1"; shift; mkdir -p "$d/.claude/hooks"; git init -q -b develop "$d"
   local h; for h in "$@"; do cp "$HOOKS/$h" "$d/.claude/hooks/$h"; done
@@ -47,10 +47,10 @@ for L in 127 171; do
   if [ -z "$bad" ]; then manual "$L" "aviso-drift NO marca como SOBRANTES los guards tier repo (dod-verificar, sesion-inicio, recordar-cosechar) ni juez-comun" PASA
   else manual "$L" "aviso-drift marca como SOBRANTES guards tier repo del MANIFEST (+ juez-comun, la lib que dod carga):${bad}" FRENA; fi
 done
-P2="$ROOT/p2"; mkpersonal "$P2" secret-scan.sh
+P2="$ROOT/p2"; mkpersonal "$P2" entorno-maquina-guard.sh
 out2=$(drift "$P2")
-if printf '%s' "$out2" | grep -o 'SOBRAN:[^\\]*' | head -1 | grep -q 'secret-scan.sh'; then manual_ctrl "ctrl+ aviso-drift SÍ marca un hook tier both (secret-scan.sh) sobrante en repo personal" OK
-else manual_ctrl "ctrl+ aviso-drift SÍ marca un hook tier both (secret-scan.sh) sobrante en repo personal" MAL; fi
+if printf '%s' "$out2" | grep -o 'SOBRAN:[^\\]*' | head -1 | grep -q 'entorno-maquina-guard.sh'; then manual_ctrl "ctrl+ aviso-drift SÍ marca un hook tier both (entorno-maquina-guard.sh) sobrante en repo personal" OK
+else manual_ctrl "ctrl+ aviso-drift SÍ marca un hook tier both (entorno-maquina-guard.sh) sobrante en repo personal" MAL; fi
 
 # ───────────────────────── aviso-contexto (L85) ─────────────────────────
 # Tras un /compact recién hecho (boundary isCompactSummary, sin usage posterior) NO debe reportar el ctx viejo.

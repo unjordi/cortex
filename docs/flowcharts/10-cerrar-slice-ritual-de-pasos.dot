@@ -19,7 +19,6 @@ digraph flujos {
         <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>🔒 Hooks Forzosos</b></font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🚧 git-branch-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">push/merge a develop·main → denegado</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔗 merge-develop-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">MR a develop sin --squash o sin tu OK → denegado; a main exige OK súper-explícito</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🕵️ secret-scan</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">commit/push con un secreto → denegado</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">💸 delegacion-gate</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">delegar al llegar al 90% de tu ventana 5h → pide tu OK</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🛑 limite-gasto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">sin ventana 5h Y sin overage (ambos agotados) → freno duro</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">✅ dod-verificar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cierre sin evidencia/OK → denegado; claim visual a ciegas (sin ver la pantalla) también</font></td></tr>
@@ -117,7 +116,7 @@ digraph flujos {
     P3_NO [color="#c62828", penwidth=3,
            label="⚠ ESCRIBE git · 🔁 aún NO cierra: sigue iterando en la ramita\ncommit/push libres, sin MR — vuelve a 1 · Verifica cuando quede listo"];
     P4 [color="#c62828", penwidth=3,
-        label="⚠ ESCRIBE git · 4 · 🔗 Flujo de git (tras el OK)\nramita → push → abre MR/PR a develop\nLo hacen cumplir git-branch-guard + secret-scan (commit/push; escape --no-verify / CLAUDE_SKIP_SECRET_SCAN=1 — ver 07)"];
+        label="⚠ ESCRIBE git · 4 · 🔗 Flujo de git (tras el OK)\nramita → push → abre MR/PR a develop\nLo hace cumplir git-branch-guard (push a base — ver 06)"];
     PIPE [shape=diamond, fillcolor="#2b2622", color="#d97757",
           label="¿pipeline VERDE?"];
     P4_FIX [color="#c62828", penwidth=3,
