@@ -22,11 +22,14 @@ DESPERTAR → ENCARGAR → VIGILAR ⇄ DESTRABAR → VERIFICAR → OK del usuari
 S=~/.claude/skills/coordinar-claudes
 $S/despertar-master.sh --lista      # MASTER · EDAD · ESTADO (viva/idle) · CWD de resume
 $S/despertar-master.sh <nombre>     # lo despierta; si ya está vivo, no lo relanza
+$S/despertar-master.sh <nombre> --mensaje <archivo>   # lo despierta y el archivo es su PRIMER mensaje
+$S/despertar-master.sh --cerrar <nombre>              # cierra su proceso claude y su screen; verifica
 ```
 - **Resuelve desde el transcript** `~/.claude/projects/<slug>/<id>.jsonl`, no desde `masters.json`.
   - **Nombre:** el último `customTitle`, sin el sufijo ` (N)`.
   - **cwd:** el último `cwd`. Si es un worktree enlazado, usa el toplevel del principal.
-  - **Vida:** mtime menor a `DESPERTAR_VIVA_MIN` (15 min por default), un `screen` con su nombre o un proceso `claude --resume <id>`. Con cualquiera de las tres señales, no se relanza.
+  - **Vida:** mtime menor a `DESPERTAR_VIVA_MIN` (15 min por default), un `screen` con su nombre, o un proceso `claude` retomado por su id o por su título (`--resume <id>`, `--resume=<id>`, `--resume [--flags] <título>`). Con cualquiera de las señales, no se relanza. Con `--mensaje` no cuenta la edad del transcript: solo proceso o screen.
+  - **Procesos:** solo cuenta un proceso cuyo ejecutable (argv[0]) es `claude`, leído con `ps`. Así nunca se cuenta a sí mismo ni a un bash/grep que lleve el patrón en su línea de comando. Nada de `pgrep -f`/`pkill -f` para esto: se matchean solos, y en macOS `pgrep -f` no ve los argumentos de algunos procesos.
   - **Gana el transcript más reciente** cuando hay varios con el mismo nombre.
 - **Lanza** `screen -dmS <nombre> bash -lc '<desecha CLAUDE*>; cd <cwd> && exec claude --resume <id> --remote-control <nombre>'` y espera hasta `DESPERTAR_ESPERA_S` (240 s) a que aparezca la URL de sesión o el aviso de confiar en la carpeta.
 - **Gotchas:**
@@ -35,9 +38,7 @@ $S/despertar-master.sh <nombre>     # lo despierta; si ya está vivo, no lo rela
   - **Carpeta nueva:** antes de aceptar la confianza, revisa su `.claude/settings*.json`. Acepta con `stuff $'\033[B'` + `stuff $'\r'`.
   - **Un transcript grande tarda minutos en cargar.** Si llega con la ventana casi llena: checkpoint y `/compact` antes de trabajar.
   - **Portabilidad del script:** mtime con `stat -c %Y` antes que `stat -f %m`, y sin `pipefail` en `ls -t … | head`.
-  - **Puntos ciegos:**
-    - Una sesión sin screen propio y sin `--resume <id>` en su cmdline, que lleva más de 15 min quieta, sale como `idle`. Lánzalas siempre con este script.
-    - Los masters en `screen` mueren si la máquina duerme o reinicia.
+  - **Punto ciego:** los masters en `screen` mueren si la máquina duerme o reinicia.
 
 ## 2. Encargar
 - **Canal principal: Remote Control.** `ListAgents` lista las sesiones y `SendMessage` les habla (`notify_when_idle: true` si es local). No hay acuse de lectura, así que el texto completo va también al buzón `<repo>/.claude/feedbackUsuarios/<fecha>-<tema>.md`.
@@ -47,6 +48,8 @@ $S/despertar-master.sh <nombre>     # lo despierta; si ya está vivo, no lo rela
   grep -c '<frase única del mensaje>' <transcript>     # confirma que llegó
   ```
   Los comandos de barra (`/compact`, `/remote-control`) solo se envían así, y solo con el master ocioso.
+- **Confirma SIEMPRE la llegada** con el `grep -c` en su transcript. Sin eso, el mensaje no llegó.
+- **Si ninguno de los dos canales entrega** (visto el 2026-10-19: la TUI dejó de aceptar `stuff`/`paste` de screen y el texto no aparecía ni en pantalla ni en el transcript): `despertar-master.sh --cerrar <nombre>` y luego `despertar-master.sh <nombre> --mensaje <archivo>`. El mensaje entra como prompt inicial del resume, sin teclear en la TUI. Solo con el master ocioso: cerrarlo corta lo que esté haciendo.
 - **Encarga la cola completa,** no solo lo nuevo.
 - **Entre comillas va solo texto literal del usuario.** Lo tuyo va sin comillas.
 - **Trabaja desde la fuente original** (la nota, el commit), no desde el relevo de otro master.
@@ -79,6 +82,7 @@ $S/vigilar-master.sh <etiqueta> - <repo> -     # solo commits (repos comunes)
 | Tras un `/compact` | **Mira su pantalla, no esperes al vigilante** (`screen -S <nombre> -p 0 -X hardcopy -h /tmp/x`). Si se queda en "Running SessionStart hooks" más de 1–2 min, busca el hook colgado (`pgrep -P <pid-claude>` y sus hijos) y mátalo: el SessionStart es fail-open. Luego dile que siga |
 | Contexto muy lleno (cuelgues repetidos, o el master lo pide) | **Lo decides tú, como coordinador, sin preguntarle al usuario**: con todo commiteado, primero su `/checkpoint` COMPLETO y luego `/compact <instrucciones>` por su screen (que conserve el hilo y una sección con hashes vigentes, cola y plan). Al terminar el compact, ve a decirle que siga |
 | Remote Control caído | `/remote-control` por su screen |
+| No le entra nada (ni SendMessage ni screen; `grep -c` en 0) | Con el master ocioso: `--cerrar <nombre>` y `<nombre> --mensaje <archivo>` con la cola completa; confirma con `grep -c` |
 
 ## 5. Verificar
 - **El avance se mide por commits en su repo**, no por lo que reporta.

@@ -12,6 +12,9 @@
 #   despertar-master.sh --lista|-l      tabla: nombre · id · edad · estado (viva/idle) · cwd
 #   despertar-master.sh <nombre>        despierta ese master (o avisa que ya está vivo y NO lo relanza)
 #   despertar-master.sh <nombre> --no-esperar   lanza y regresa sin esperar a que cargue
+#   despertar-master.sh <nombre> --mensaje <archivo>   lo despierta y le entrega <archivo> como su primer
+#                                       mensaje (prompt inicial del resume; no depende de teclear en la TUI)
+#   despertar-master.sh --cerrar <nombre>   cierra la sesión (proceso claude + screen) y verifica que cerró
 #   despertar-master.sh --help|-h       esta ayuda
 #
 # Overrides: $DESPERTAR_VIVA_MIN (min para considerar viva una sesión, def 15) ·
@@ -63,10 +66,24 @@ _resolver_cwd() {
 # mtime la cubre mientras se use (escribe su transcript) y el screen cubre las lanzadas por aquí.
 # Fail-open: sin screen/pgrep estas señales no aplican y manda el mtime.
 _screen_nombres() { screen -ls 2>/dev/null | sed -n 's/^[[:space:]]*[0-9][0-9]*\.\([^[:space:]]*\).*/\1/p'; }
+# _pids_master NOMBRE ID → PIDs de procesos `claude` retomados por id o por título.
+# Solo cuenta un proceso cuyo EJECUTABLE (argv[0]) es `claude`: así nunca se cuenta a sí mismo ni a un
+# bash/grep/script que lleve el patrón en su línea de comando. Usa ps: pgrep -f no ve los argumentos de
+# algunos procesos en macOS.
+_pids_master() {
+  local name="$1" id="$2"
+  ps -axo pid=,command= 2>/dev/null | awk -v id="${id:-@@}" -v name="$name" '
+    { exe=$2; sub(/.*\//, "", exe); if (exe != "claude") next
+      for (k=3; k<=NF; k++) if ($k ~ /^--resume/) {
+        v=$k; sub(/^--resume=?/, "", v)
+        if (v == "") for (m=k+1; m<=NF; m++) if ($m !~ /^--/) { v=$m; break }
+        if (v == id || v == name) { print $1; next }
+      } }'
+}
 _vivo_por_senal() {   # NAME ID → 0 si hay un screen con ese nombre o un proceso claude --resume <id>
   local name="$1" id="$2"
   _screen_nombres | grep -qxF "$name" && return 0
-  [ -n "$id" ] && pgrep -f "claude.*--resume.*$id" >/dev/null 2>&1 && return 0
+  [ -n "$(_pids_master "$name" "$id")" ] && return 0   # por id o por título
   return 1
 }
 _viva() {   # EDAD NAME ID → 0 si viva por mtime reciente O por señal directa (screen/proceso)
@@ -138,7 +155,7 @@ _esperar_carga() {
 }
 
 despertar() {
-  local nombre="$1" esperar="${2:-si}" row edad t id cwd inner
+  local nombre="$1" esperar="${2:-si}" msgf="${3:-}" row edad t id cwd inner
   row="$(_tabla | awk -F'\t' -v n="$nombre" '$2==n {print; exit}')"
   if [ -z "$row" ]; then
     echo "[despertar-master] no encontré un master llamado '$nombre'." >&2
@@ -166,6 +183,10 @@ EOF
   # y NO guarda transcript. El claude hijo re-lee su settings.json, así que desechar los CLAUDE* es seguro.
   inner="for v in \$(compgen -e 2>/dev/null | grep '^CLAUDE' 2>/dev/null); do unset \"\$v\"; done; "
   inner="$inner cd $(printf '%q' "$cwd") && exec claude --resume $(printf '%q' "$id") --remote-control $(printf '%q' "$t")"
+  if [ -n "$msgf" ]; then
+    [ -f "$msgf" ] || { echo "[despertar-master] no existe el archivo del mensaje: $msgf" >&2; return 1; }
+    inner="$inner $(printf '%q' "$(cat "$msgf")")"
+  fi
   echo "[despertar-master] lanzando '$t'  (id=$id)  en  $cwd …"
   screen -dmS "$t" bash -lc "$inner"
 
@@ -184,14 +205,35 @@ EOF
 }
 
 # ── dispatch ─────────────────────────────────────────────────────────────────────────────────────
+# cerrar NOMBRE → cierra el proceso `claude` de ese master (por id o por título) y su screen; verifica.
+cerrar() {
+  local nombre="$1" row id pids i
+  row="$(_tabla | awk -F'\t' -v n="$nombre" '$2==n {print; exit}')"
+  [ -n "$row" ] || { echo "[despertar-master] no encontré un master llamado '$nombre'." >&2; return 1; }
+  id="$(printf '%s' "$row" | cut -f3)"
+  pids="$(_pids_master "$nombre" "$id")"
+  [ -n "$pids" ] && kill -TERM $pids 2>/dev/null
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    [ -n "$(_pids_master "$nombre" "$id")" ] || break; sleep 1
+  done
+  screen -S "$nombre" -X quit >/dev/null 2>&1 || true
+  if [ -n "$(_pids_master "$nombre" "$id")" ] || _screen_nombres | grep -qxF "$nombre"; then
+    echo "[despertar-master] '$nombre' NO cerró (proceso o screen vivos)." >&2; return 1
+  fi
+  echo "[despertar-master] '$nombre' cerrado (sin proceso ni screen)."
+}
+
 case "${1:-}" in
   ""|--lista|-l)     listar ;;
+  --cerrar)          [ -n "${2:-}" ] || { echo "[despertar-master] uso: --cerrar <nombre>" >&2; exit 2; }; cerrar "$2" ;;
   --help|-h)         uso ;;
   --*)               echo "[despertar-master] opción desconocida: $1" >&2; uso >&2; exit 2 ;;
   *)
     case "${2:-}" in
       --no-esperar) despertar "$1" no ;;
       "")           despertar "$1" si ;;
+      --mensaje)    [ -n "${3:-}" ] || { echo "[despertar-master] uso: <nombre> --mensaje <archivo>" >&2; exit 2; }
+                    VIVA_MIN=0; despertar "$1" si "$3" ;;   # edad 0: decide solo por proceso/screen
       *)            echo "[despertar-master] argumento extra desconocido: $2" >&2; exit 2 ;;
     esac
     ;;
