@@ -9452,17 +9452,24 @@ rm -rf "$B1C"
 # dedupe (la copia del repo cede a la global) y estar mapeados en ev_de (o quedarían sin cablear global).
 echo ""
 TIERSHOME="$(mktemp -d)"; mkdir -p "$TIERSHOME/.claude/hooks"
-# (A) sesion-inicio: con la copia GLOBAL presente, la copia del REPO CEDE (salida vacía por la dedupe).
-# cd a un cwd VÁLIDO (como el bloque H18): una corrida larga puede dejar el cwd de test-brain borrado por
-# un mktemp previo → el `bash` del hook abortaría con getcwd antes de la dedupe (FP ajeno a este fix).
+git -C "$TIERSHOME" init -q >/dev/null 2>&1   # repo git: sesion-inicio (both) solo inyecta DENTRO de un repo
+# (A) sesion-inicio: con la copia GLOBAL presente, la copia del REPO CEDE (salida vacía por la dedupe, que
+# corre ANTES del gate git). cd a un cwd VÁLIDO (como el bloque H18): una corrida larga puede dejar el cwd
+# de test-brain borrado por un mktemp previo → el `bash` del hook abortaría con getcwd antes de la dedupe.
 cp "$HOOKS/sesion-inicio.sh" "$TIERSHOME/.claude/hooks/sesion-inicio.sh"
 si_cede="$( cd "$TIERSHOME" && printf '%s' '{"source":"startup"}' | HOME="$TIERSHOME" CLAUDE_PROJECT_DIR="$TIERSHOME" bash "$HOOKS/sesion-inicio.sh" 2>&1)"
 [ -z "$si_cede" ] && ok "tiers: sesion-inicio (both) — copia REPO CEDE si la global existe (dedupe)" || bad "tiers: sesion-inicio copia REPO no cedió con global presente: ${si_cede:0:60}"
-# (B) sin copia global → la copia CORRE (inyecta contexto, salida no vacía).
+# (B) sin copia global, DENTRO de un repo git → la copia CORRE (inyecta contexto, salida no vacía).
 rm -f "$TIERSHOME/.claude/hooks/sesion-inicio.sh"
 si_run="$( cd "$TIERSHOME" && printf '%s' '{"source":"startup"}' | HOME="$TIERSHOME" CLAUDE_PROJECT_DIR="$TIERSHOME" bash "$HOOKS/sesion-inicio.sh" 2>&1)"
-[ -n "$si_run" ] && ok "tiers: sesion-inicio — sin global, la copia CORRE (inyecta contexto)" || bad "tiers: sesion-inicio no corrió sin copia global"
+[ -n "$si_run" ] && ok "tiers: sesion-inicio — sin global, DENTRO de un repo git CORRE (inyecta contexto)" || bad "tiers: sesion-inicio no corrió dentro de un repo git sin copia global"
 rm -rf "$TIERSHOME"
+# (B2) FUERA de un repo git (carpeta cualquiera: ~, Downloads, Juegos…) → CALLA (rc 0, sin inyección del
+# bloque del repo). Revisión de claudio sobre 673ac46: como tier both corre en TODA sesión, no solo en un repo.
+TIERSNOGIT="$(mktemp -d)"
+si_nogit="$( cd "$TIERSNOGIT" && printf '%s' '{"source":"startup"}' | HOME="$TIERSNOGIT" CLAUDE_PROJECT_DIR="$TIERSNOGIT" bash "$HOOKS/sesion-inicio.sh" 2>&1)"
+[ -z "$si_nogit" ] && ok "tiers: sesion-inicio (both) FUERA de un repo git → CALLA (no inyecta el bloque del repo)" || bad "tiers: sesion-inicio inyectó en una carpeta no-repo: ${si_nogit:0:60}"
+rm -rf "$TIERSNOGIT"
 # (C) recordar-cosechar trae la MISMA cláusula de dedupe verbatim (clause byte-idéntico → su comportamiento = el probado en A/B).
 grep -qF 'case "$0" in "$HOME/.claude/hooks/"*) : ;; *) [ -f "$HOME/.claude/hooks/$(basename "$0")" ] && exit 0 ;; esac' "$HOOKS/recordar-cosechar.sh" \
   && ok "tiers: recordar-cosechar (both) trae la cláusula de dedupe (verbatim)" || bad "tiers: recordar-cosechar NO trae la cláusula de dedupe (un both sin dedupe dispara doble)"

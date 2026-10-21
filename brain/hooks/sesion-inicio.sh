@@ -5,7 +5,8 @@
 # la orden de leer la memoria antes de tocar código o declarar nada terminado.
 # Antídoto a "se me va la onda al cambiar de sesión/compu o cuando el sprint es largo".
 # Tier BOTH: viaja por-repo (<repo>/.claude/hooks, cableado en su settings.json) Y se instala global por
-# el bootstrap (dedupe: la copia del repo cede a la global). Así rehidrata en TODA sesión, no solo en un repo brained.
+# el bootstrap (dedupe: la copia del repo cede a la global). Rehidrata en TODA sesión que arranque DENTRO
+# de un repo git (brained o no); fuera de un repo git calla (gate abajo) — no es un "cerebro del repo" que aplique.
 # Genérico: sirve para cualquier stack (semilla plantillaRepoVacio). El aviso de MIGRACIÓN/paridad
 # NO vive aquí (es dominio del proyecto consumidor —p. ej. un repo .NET—, no del cerebro portable):
 # va en el sesion-inicio del propio repo consumidor, no en esta versión genérica.
@@ -16,6 +17,10 @@ set -u
 case "$0" in "$HOME/.claude/hooks/"*) : ;; *) [ -f "$HOME/.claude/hooks/$(basename "$0")" ] && exit 0 ;; esac
 
 ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+# Tier both ⇒ corre en TODA sesión, también en ~/Downloads y otras carpetas que NO son repo. El "cerebro
+# del repo" (rama, norma de git, ritual de memoria) solo aplica DENTRO de un repo git → fuera, calla
+# (rc 0, sin inyección). Antes, como tier repo, solo se cargaba en un repo; el gate repone esa condición.
+git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 MEM="$ROOT/.claude/memory"
 branch=$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "?")
 
