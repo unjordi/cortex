@@ -1419,6 +1419,16 @@ is_deny "$(cm "glab mr merge 5 --yes $CMOK" DENY)" \
 is_deny "$(cm "glab mr merge 5 --yes $CMOK" UNAVAILABLE)" \
   && ok "cmd flujo: squash OK + juez UNAVAILABLE (sin LLM/red/timeout) → freno (fail-safe conservador, NUNCA fail-open)" \
   || bad "cmd flujo: FAIL-OPEN — sin juez disponible dejó pasar el merge"
+# A1 (2026-10-21, decisión de unjordi "fuera la prohibición de --auto"): un merge a develop CON --auto-merge +
+# squash bien formado + juez ALLOW → PASA. Antes el PASO 3c (determinista) lo denegaba por el --auto AUNQUE el
+# juez autorizara; ahora el auto-merge lo gobierna el juez como cualquier merge, sin check aparte. Falla vs el viejo.
+out_auto="$(cm "glab mr merge 5 --yes --auto-merge $CMOK" ALLOW)"
+! is_deny "$out_auto" \
+  && ok "A1: merge a develop CON --auto-merge + juez ALLOW → PASA (el DENY determinista por --auto se retiró; lo decide el juez)" \
+  || bad "A1: un --auto-merge a develop con OK del juez fue frenado (¿el PASO 3c de --auto no se retiró?)"
+is_deny "$(cm "glab mr merge 5 --yes --auto-merge $CMOK" DENY)" \
+  && ok "A1 control: --auto-merge a develop + juez DENY → frenado por el JUEZ (no por un check determinista de --auto)" \
+  || bad "A1 control: el merge con --auto-merge pasó pese al juez DENY"
 # CONSOLIDACIÓN: el MISMO merge SIN --squash → frena en el check de squash ANTES del juez (fail-fast).
 out_nosq="$(cm 'glab mr merge 5 --yes' ALLOW)"
 { is_deny "$out_nosq" && printf '%s' "$out_nosq" | grep -qi 'squash'; } \

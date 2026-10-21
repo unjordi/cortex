@@ -10,8 +10,8 @@
 #        · SQUASH — a develop (o destino irresoluble sin señal de release) EXIGE --squash + --remove-source-
 #          branch/--delete-branch + un mensaje con sustancia y trazabilidad. Aplica a TODO repo (como el viejo
 #          merge-squash-guard: no gateaba por la marca de compartido). Antídoto al histórico ruidoso.
-#        · --auto/--auto-merge A develop/main → DENY: integrar al develop COMPARTIDO / promover a main es
-#          DELIBERADO, jamás en auto-piloto. En tu mini/rama personal el auto-merge SÍ es libre.
+#        (El DENY determinista por --auto/--auto-merge se RETIRÓ 2026-10-21 por decisión de unjordi: el
+#         auto-merge a develop/main lo gobierna el juez como cualquier merge, sin check aparte.)
 #   4. JUEZ de AUTORIZACIÓN (LLM, target-aware) — al FINAL (lo caro): SOLO en repos COMPARTIDOS (marca
 #      `.claude/repo-compartido`) y solo para develop/main. BLOQUEA salvo (a) autorización EXPRESA del usuario
 #      para ESTE merge en el contexto reciente (la juzga un LLM con veto de cita verificada), o (b) una
@@ -535,19 +535,9 @@ if [ -z "$destino" ] && [ -n "$prlist" ]; then
 fi
 hint=$(acg_hint_candidatos "$prlist" "$destino" "$cur_mrid")
 
-# ── PASO 3c — CHECK DETERMINISTA: --auto/--auto-merge A develop/main → DENY. Aquí ya sabemos: repo
-#    COMPARTIDO/incierto + destino ∈ {develop,main,master}. Integrar al develop COMPARTIDO / promover a main es
-#    DELIBERADO, jamás en auto-piloto (en tu mini/rama personal el auto-merge SÍ es libre — ya salió arriba).
-#    Sobre cmd DESPOJADO (una mención citada de --auto no cuenta). glab: --auto-merge · gh: --auto.
-_cmd_auto=$(acg_despoja_comillas "$cmd")
-if printf '%s' "$_cmd_auto" | grep -qE '(^|[[:space:]])(--auto-merge|--auto)([[:space:]]|=|$)'; then
-  if [ "$destino" = main ] || [ "$destino" = master ]; then
-    _deny_json "FLUJO DE GIT (ley interna): un RELEASE a $destino JAMÁS va en --auto/--auto-merge — es una decisión deliberada. Quita el flag de auto y hazlo con OK de release EXPLÍCITO (lo exige el juez). Los releases van SIN squash (conservan historia)."
-  else
-    _deny_json "FLUJO DE GIT (ley interna): integrar a develop es DELIBERADO — NO con --auto/--auto-merge (eso es el día a día de tu mini/rama personal, no del develop COMPARTIDO). Quita el flag de auto e intégralo con squash + OK explícito. Corre brain/skills/cerrar-slice/cerrar-slice.sh (arma el merge sin --auto por ti)."
-  fi
-  exit 0
-fi
+# (El antiguo PASO 3c —DENY por --auto/--auto-merge a develop/main— se RETIRÓ el 2026-10-21 por decisión de
+#  unjordi: la prohibición de --auto sale del candado. El auto-merge a develop/main lo gobierna el juez de
+#  autorización de abajo como cualquier merge; no hay un check determinista aparte.)
 
 # Contexto reciente para el juez: últimos ~10 mensajes de USUARIO intercalados con los turnos del ASISTENTE que
 # los preceden (para resolver un OK anafórico). REGLA DURA (en el prompt): solo USUARIO autoriza.
