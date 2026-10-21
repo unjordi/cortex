@@ -4236,6 +4236,18 @@ mkdir -p "$PADROOT/.claude/hooks" "$PADHOME" "$PADBRAIN/brain/hooks"
 # SIN marca repo-compartido → PERSONAL. Fuente del brain con un guard (para el match de "sobran").
 printf '#!/usr/bin/env bash\necho "==> resumen: 0 nuevos · 0 a actualizar"\n' > "$PADBRAIN/brain/sincronizar-cerebro.sh"
 : > "$PADBRAIN/brain/hooks/git-branch-guard.sh"
+# MANIFEST + fuentes para la resolución de tier del aviso (N4): solo tier `both` sobra; una lib `both`
+# que una hook tier=repo PRESENTE sourcea NO sobra (juez-comun ← dod-verificar).
+cat > "$PADBRAIN/brain/hooks/MANIFEST" <<'MF'
+git-branch-guard    both  hook
+dod-verificar       repo  hook
+juez-comun          both  lib
+sesion-inicio       both  hook
+recordar-cosechar   both  hook
+MF
+: > "$PADBRAIN/brain/hooks/dod-verificar.sh"
+: > "$PADBRAIN/brain/hooks/juez-comun.sh"
+: > "$PADBRAIN/brain/hooks/sesion-inicio.sh"
 pad() { printf '%s' '{"source":"startup"}' | HOME="$PADHOME" CLAUDE_BRAIN_DIR="$PADBRAIN" CLAUDE_PROJECT_DIR="$PADROOT" bash "$HOOKS/aviso-drift-cerebro.sh"; }
 # CASO 5: personal CON un guard del brain presente → FLAG "SOBRAN, quítalos" y NADA de auto-sync
 : > "$PADROOT/.claude/hooks/git-branch-guard.sh"
@@ -4249,7 +4261,42 @@ rm -f "$PADROOT/.claude/hooks/git-branch-guard.sh"
 rm -rf "$PADHOME/.claude/memory/.drift-cerebro"
 : > "$PADROOT/.claude/hooks/gate-propio.sh"     # hook PROPIO (no está en la fuente) → no se flaggea
 is_silent "$(pad)" && ok "aviso-drift #46: personal SIN guards del brain (solo hook propio) → silencio" || bad "aviso-drift #46: habló en un personal sano; got: $(pad)"
+# CASO N4: personal con dod-verificar(repo) + juez-comun(both lib, usada por dod) + sesion-inicio(both) +
+# git-branch-guard(both) → el aviso lista SOLO los both-sin-dependencia; NUNCA dod-verificar(repo) ni
+# juez-comun(both pero la sourcea dod-verificar presente — quitarla lo rompería).
+rm -f "$PADROOT/.claude/hooks/"*.sh
+rm -rf "$PADHOME/.claude/memory/.drift-cerebro"
+: > "$PADROOT/.claude/hooks/git-branch-guard.sh"
+: > "$PADROOT/.claude/hooks/sesion-inicio.sh"
+: > "$PADROOT/.claude/hooks/juez-comun.sh"
+printf '#!/usr/bin/env bash\n. "${BASH_SOURCE[0]%%/*}/juez-comun.sh"\n' > "$PADROOT/.claude/hooks/dod-verificar.sh"
+n4="$(pad | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null)"
+if printf '%s' "$n4" | grep -q 'SOBRAN'; then
+  { printf '%s' "$n4" | grep -q 'git-branch-guard' && printf '%s' "$n4" | grep -q 'sesion-inicio'; } \
+    && ok "N4: aviso lista los both-sin-dependencia (git-branch-guard, sesion-inicio)" || bad "N4: no listó los both esperados; got: $n4"
+  printf '%s' "$n4" | grep -q 'dod-verificar' \
+    && bad "N4: aviso marcó dod-verificar (tier repo) como sobrante — quitarlo dejaría al repo sin DoD" || ok "N4: aviso NO marca dod-verificar (tier repo legítimo)"
+  printf '%s' "$n4" | grep -q 'juez-comun' \
+    && bad "N4: aviso marcó juez-comun (lib both que dod-verificar sourcea) — quitarla rompería dod" || ok "N4: aviso NO marca juez-comun (lib both necesaria por dod-verificar presente)"
+else
+  bad "N4: el aviso no flaggeó (esperaba SOBRAN con los both); got: $n4"
+fi
 rm -rf "$PADFIX"
+
+# ── --limpiar-personal (N4): CONSERVA una lib `both` que una repo-hook presente sourcea (juez-comun ← dod),
+# RETIRARÍA un both sin dependencia (git-branch-guard). Usa el MANIFEST REAL del repo. Dry-run (no muta).
+LPFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-lp.XXXXXX")"; mkdir -p "$LPFIX/.claude/hooks"
+printf '#!/usr/bin/env bash\n. "${BASH_SOURCE[0]%%/*}/juez-comun.sh"\n' > "$LPFIX/.claude/hooks/dod-verificar.sh"
+: > "$LPFIX/.claude/hooks/juez-comun.sh"
+: > "$LPFIX/.claude/hooks/git-branch-guard.sh"
+lpout="$(bash "$SCRIPT_DIR/sincronizar-cerebro.sh" "$LPFIX" --limpiar-personal 2>&1)"
+printf '%s' "$lpout" | grep -qE 'CONSERVO +juez-comun' \
+  && ok "--limpiar-personal N4: CONSERVA juez-comun (lib both usada por dod-verificar presente)" \
+  || bad "--limpiar-personal N4: no conservó juez-comun; got: $(printf '%s' "$lpout" | grep -iE 'juez|conservo|retiraría')"
+printf '%s' "$lpout" | grep -qE 'RETIRARÍA +git-branch-guard' \
+  && ok "--limpiar-personal N4: RETIRARÍA git-branch-guard (both sin dependencia)" \
+  || bad "--limpiar-personal N4: no retiraría git-branch-guard; got: $lpout"
+rm -rf "$LPFIX"
 
 # ── (b5c) aviso-drift v2: AUTO-APPLY en la mini-develop (Develop<Usuario>) · aviso en ramita ──
 AD2FIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-ad2.XXXXXX")"
@@ -7406,6 +7453,7 @@ echo "  NUEVO      hook-nuevo.sh (hook)"
 echo "==> resumen: 1 nuevos · 0 a actualizar · 8 ya al día · 0 retirado(s) del cerebro · 8 hooks cableados (kind=hook) · 0 cableado faltante"
 STUB
 : > "$FLBRAIN/brain/hooks/git-branch-guard.sh"   # guard del brain → base del match "sobran" en personales
+printf 'git-branch-guard    both  hook\n' > "$FLBRAIN/brain/hooks/MANIFEST"   # N4: el flag "sobran" ahora filtra por tier `both` del MANIFEST
 
 # repo PERSONAL (sin marca) con un guard del brain presente + sello → personal-flag
 mkdir -p "$FLCODE/repoPersonal/.claude/hooks"

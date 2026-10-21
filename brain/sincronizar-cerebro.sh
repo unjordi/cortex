@@ -55,6 +55,8 @@
 #   REHÚSA en un repo COMPARTIDO (marca .claude/repo-compartido presente): ahí los guards por-repo SÍ
 #   deben viajar como correo, así que limpiarlos sería el daño que la norma previene. Fail-closed ante
 #   la duda: solo actúa sobre archivos que constan en el MANIFEST con tier `both`.
+#   EXCEPCIÓN N4: una LIB `both` que una hook tier=repo PRESENTE sourcea (p. ej. juez-comun ← dod-verificar,
+#   que la sourcea de su propio dir sin fallback global) se CONSERVA — quitarla rompería esa repo-hook.
 #   DRY-RUN por default (lista "RETIRARÍA"); --apply de-cablea + borra. Idempotente. Respeta --only.
 #   --incluir-skills (opcional, junto con --limpiar-personal): además retira las SKILLS del brain que
 #   este mismo sync desplegó por-repo — pero SOLO las que constan en el LEDGER
@@ -215,6 +217,21 @@ fi
 # el porqué del alcance = tier `both` ÚNICAMENTE). REHÚSA de plano si el repo está marcado COMPARTIDO
 # (fail-closed: ante la marca, ni siquiera se calcula qué retiraría). DRY-RUN por default; --apply
 # de-cablea + borra. Respeta --only (para un retiro puntual). Termina el script (no sincroniza nada más).
+# N4: ¿una LIB `both` la sourcea alguna hook tier=repo PRESENTE en el repo? Si sí, NO se retira —
+# quitarla rompería esa repo-hook (juez-comun ← dod-verificar, que la sourcea de su propio dir SIN
+# fallback global). Mantiene --limpiar-personal consistente con el aviso de aviso-drift-cerebro.
+_lib_necesaria_por_repo() {
+  local _lib="$1.sh" _c _cb _ctier
+  for _c in "$DST_HOOKS/"*.sh; do
+    [ -e "$_c" ] || continue
+    _cb=$(basename "$_c")
+    _ctier=$(awk -v n="${_cb%.sh}" '$1==n && $1!~/^#/{print $2; exit}' "$MANIFEST" 2>/dev/null)
+    [ "$_ctier" = repo ] || continue
+    grep -q "$_lib" "$_c" 2>/dev/null && return 0
+  done
+  return 1
+}
+
 if [ "$LIMPIAR_PERSONAL" = 1 ]; then
   echo "  (--limpiar-personal: NO sincronizo; retiro del repo PERSONAL lo que el cerebro instaló — tier 'both' únicamente)"
   if [ -f "$DEST/.claude/repo-compartido" ]; then
@@ -235,6 +252,11 @@ if [ "$LIMPIAR_PERSONAL" = 1 ]; then
       only_ok "$name" || continue
       dst="$DST_HOOKS/$name.sh"
       [ -f "$dst" ] || continue
+      # N4: una lib `both` que una repo-hook presente sourcea NO se retira (la rompería) — ver helper arriba.
+      if [ "$kind" = "lib" ] && _lib_necesaria_por_repo "$name"; then
+        echo "  CONSERVO   $name.sh (lib tier both) — la usa una hook tier=repo presente; quitarla la rompería"
+        continue
+      fi
       wired=0
       [ "$kind" = "hook" ] && wired_in "$DST_SET" "$name" && wired=1
       if [ "$APPLY" = 1 ]; then

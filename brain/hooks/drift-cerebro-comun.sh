@@ -81,12 +81,34 @@ drift_chequea_repo() {
     # ── PERSONAL: guards por-repo NUNCA → NO commit/push; si SOBRAN, FLAG a quitar. La memoria/skills del
     # repo son SUYOS (no del brain) → no son "drift". "Sobran" = .sh en .claude/hooks que TAMBIÉN existen
     # en la fuente del brain (BRAIN_DIR/brain/hooks); los hooks PROPIOS del repo NO se flaggean.
-    local sobran="" _h _b
+    local sobran="" _h _b _man _tier _kind _c _cb _ctier _needed
+    _man="$BRAIN_DIR/brain/hooks/MANIFEST"
     if [ -d "$ROOT/.claude/hooks" ] && [ -d "$BRAIN_DIR/brain/hooks" ]; then
       for _h in "$ROOT/.claude/hooks/"*.sh; do
         [ -e "$_h" ] || continue
         _b=$(basename "$_h")
-        [ -f "$BRAIN_DIR/brain/hooks/$_b" ] && sobran="$sobran $_b"
+        [ -f "$BRAIN_DIR/brain/hooks/$_b" ] || continue
+        # N4: SOLO tier `both` sobra en un repo personal — es el único redundante con el install GLOBAL
+        # (lo que --limpiar-personal retira). Un tier `repo` (dod-verificar) vive legítimamente por-repo:
+        # no hay copia global que lo cubra, quitarlo dejaría el repo SIN ese candado. Sin MANIFEST o tier
+        # desconocido → conservador: NO flaggea (no mandes a borrar algo que no sabes reponer).
+        _tier=$(awk -v n="${_b%.sh}" '$1==n && $1!~/^#/{print $2; exit}' "$_man" 2>/dev/null)
+        [ "$_tier" = both ] || continue
+        # Y una LIB `both` que una hook tier=repo PRESENTE sourcea NO sobra: quitarla rompería esa repo-hook
+        # (juez-comun ← dod-verificar, que la sourcea de su propio dir SIN fallback global — N4).
+        _kind=$(awk -v n="${_b%.sh}" '$1==n && $1!~/^#/{print $3; exit}' "$_man" 2>/dev/null)
+        if [ "$_kind" = lib ]; then
+          _needed=no
+          for _c in "$ROOT/.claude/hooks/"*.sh; do
+            [ -e "$_c" ] || continue
+            _cb=$(basename "$_c")
+            _ctier=$(awk -v n="${_cb%.sh}" '$1==n && $1!~/^#/{print $2; exit}' "$_man" 2>/dev/null)
+            [ "$_ctier" = repo ] || continue
+            grep -q "$_b" "$_c" 2>/dev/null && { _needed=yes; break; }
+          done
+          [ "$_needed" = yes ] && continue
+        fi
+        sobran="$sobran $_b"
       done
     fi
     if [ -n "$sobran" ]; then
