@@ -23,7 +23,10 @@ function reloginRun(s) {
     if (a && /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(a)) inner += ` --email ${a}`;
     inner += '; echo; read -p "cerrar con Enter..."';
     const shq = x => "'" + String(x).replace(/'/g, "'\\''") + "'";
-    const wrapper = `for tb in "kgx -e" "gnome-terminal --" "konsole -e" "xterm -e"; do bin=\${tb%% *}; command -v "$bin" >/dev/null 2>&1 && exec $tb bash -lc ${shq(inner)}; done`;
+    // Prueba los terminales comunes; si NINGUNO existe, no dejes el botón mudo: avisa por notify-send
+    // con el comando a correr a mano (el for exec-ea y reemplaza el shell en el 1er terminal hallado;
+    // si ninguno, el for termina y cae al notify).
+    const wrapper = `for tb in "kgx -e" "gnome-terminal --" "konsole -e" "xterm -e"; do bin=\${tb%% *}; command -v "$bin" >/dev/null 2>&1 && exec $tb bash -lc ${shq(inner)}; done; notify-send -a Cortex "Re-login de Claude" "No encontré un terminal. Abre uno y corre: claude auth login --claudeai" 2>/dev/null || true`;
     D.spawn(['bash', '-lc', wrapper]);
 }
 
@@ -128,8 +131,9 @@ export function build(ctx) {
     } else {
         const account = s.account_email ? s.account_email
             : (s.basis === 'oauth' ? 'datos reales' : 'estimado local');
+        const staleMark = s.stale === true ? ' · ⏳ sin refrescar' : '';
         foot = `${mismatch ? '⚠ ' : ''}${account}${mismatch ? ' no es la cuenta fijada' : ''}` +
-            ` · ⟳ 5 min + al reset 5h · act. ${F.relativeTime(s.updated_at)}`;
+            ` · ⟳ 5 min + al reset 5h · act. ${F.relativeTime(s.updated_at)}${staleMark}`;
     }
     box.add_child(label(foot, mismatch
         ? `font-size: smaller; font-weight: bold; color: ${F.DANGER};`

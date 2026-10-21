@@ -450,10 +450,13 @@ final class QuotaModel: ObservableObject {
         guard let snap = snapshot else { return "cargando…" }
         if let err = snap.error { return "error: \(err)" }
         let account = snap.account_email ?? (snap.basis == "oauth" ? "datos reales" : "estimado local")
+        // Marcador de "lectura preservada" (el fetch no pudo refrescar): distingue un dato reciente de
+        // uno viejo que la edad sola no separa. Sirve al contrato "muestre la última con su staleness".
+        let staleMark = isSnapshotStale ? " · ⏳ sin refrescar" : ""
         if snap.account_mismatch == true {
-            return "⚠ \(account) no es la cuenta fijada · ⟳ 5 min + al reset 5h · act. hace: \(RelativeTime.compactReset(snap.updated_at))"
+            return "⚠ \(account) no es la cuenta fijada · ⟳ 5 min + al reset 5h · act. hace: \(RelativeTime.compactReset(snap.updated_at))\(staleMark)"
         }
-        return "\(account) · ⟳ 5 min + al reset 5h · últ. act. hace: \(RelativeTime.compactReset(snap.updated_at))"
+        return "\(account) · ⟳ 5 min + al reset 5h · últ. act. hace: \(RelativeTime.compactReset(snap.updated_at))\(staleMark)"
     }
 
     // MARK: - estado de autenticación (login) ------------------------------------------------
@@ -462,8 +465,6 @@ final class QuotaModel: ObservableObject {
     var authState: String { snapshot?.auth?.state ?? "ok" }
     /// La lectura mostrada es PRESERVADA (el fetch no pudo refrescar) o es "no hay dato".
     var isSnapshotStale: Bool { snapshot?.stale == true }
-    /// ¿Hay números de cuota usables? (false en "no hay dato": basis null / sin bucket de 5h).
-    var hasQuotaData: Bool { snapshot?.basis != nil && snapshot?.five_hour != nil }
     /// Cuenta a reloguear (prefill de --email): la del bloque auth, o la del snapshot.
     var reloginAccount: String? {
         let a = snapshot?.auth?.account_email ?? snapshot?.account_email
