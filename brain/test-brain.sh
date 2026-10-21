@@ -205,6 +205,27 @@ write_state_lg 100 100 true;  is_deny   "$(run_limite "$TP")" && ok "lg: ventana
 write_state_lg 100 0   false; is_deny   "$(run_limite "$TP")" && ok "lg: ventana agotada + overage deshabilitado → FRENA"               || bad "lg: NO frenó sin overage y sin ventana"
 write_state 19   # restablece el state.json de ventana para lo que siga
 
+# --- Frescura por updated_at (NO mtime): el daemon reescribe el archivo cada run aunque PRESERVE una
+# lectura vieja (stale), así que el mtime quedaría fresco y ocultaría datos rancios. Regresión real del
+# fix 2026-10-21 (preservar la última lectura oauth). ------------------------------------------------
+LG_OLD="$(date -u -v-40M +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '40 min ago' +%Y-%m-%dT%H:%M:%SZ)"
+LG_NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+LG_RECENT="$(date -u -v-2M +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '2 min ago' +%Y-%m-%dT%H:%M:%SZ)"
+write_state_raw() { mkdir -p "$FAKEHOME/.cache/cortex"; printf '%s' "$1" > "$FAKEHOME/.cache/cortex/state.json"; }
+# preservado VIEJO (mtime fresco, updated_at 40min, agotado total) → NO frena (updated_at manda sobre mtime)
+write_state_raw "{\"updated_at\":\"$LG_OLD\",\"stale\":true,\"five_hour\":{\"percent\":100},\"extra_usage\":{\"enabled\":false}}"
+is_silent "$(run_limite "$TP")" && ok "lg: preservado VIEJO (updated_at 40min, mtime fresco) → NO frena (fix mtime→updated_at)" || bad "lg: frenó con lectura preservada vieja (mtime engañó)"
+# preservado RECIENTE (updated_at 2min, agotado total) → SÍ frena (una lectura real reciente aún vale; no sobre-fail-open por el flag stale)
+write_state_raw "{\"updated_at\":\"$LG_RECENT\",\"stale\":true,\"five_hour\":{\"percent\":100},\"extra_usage\":{\"enabled\":false}}"
+is_deny "$(run_limite "$TP")" && ok "lg: preservado RECIENTE (updated_at 2min, agotado) → FRENA (no sobre-fail-open por stale)" || bad "lg: NO frenó con lectura reciente agotada"
+# no-data (five_hour null) → NO frena (no se puede medir)
+write_state_raw "{\"updated_at\":\"$LG_NOW\",\"stale\":true,\"basis\":null,\"status\":\"error\",\"five_hour\":null,\"weekly\":null}"
+is_silent "$(run_limite "$TP")" && ok "lg: no-data (five_hour null) → NO frena" || bad "lg: frenó con no-data"
+# linea_cuota marca el motivo de auth cuando la lectura es preservada
+LC_OUT="$( export XDG_CACHE_HOME="$FAKEHOME/.cache" HOME="$FAKEHOME"; write_state_raw "{\"updated_at\":\"$LG_OLD\",\"stale\":true,\"auth\":{\"state\":\"expired\"},\"five_hour\":{\"percent\":55}}"; . "$HOOKS/delegacion-comun.sh"; linea_cuota )"
+printf '%s' "$LC_OUT" | grep -q 'login expirado' && ok "linea_cuota: lectura preservada con auth=expired → marca 'login expirado'" || bad "linea_cuota: no marcó el login expirado (got: $LC_OUT)"
+write_state 19   # restablece de nuevo
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (b1c) merge-squash-guard: EXIGE squash si destino=develop O indeterminado (G4 + B3) =="

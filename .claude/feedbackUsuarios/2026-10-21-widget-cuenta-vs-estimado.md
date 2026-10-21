@@ -35,8 +35,12 @@ credenciales `.claudeAiOauth.refreshTokenExpiresAt` (epoch ms, ~30 días) vs `ex
 - ⏳ **Lectores (pendientes, campos aditivos backward-compatible):** QuotaModel.swift (macOS), `src/plasmoid` (KDE),
   `src/gnome-extension` (GNOME), `windows/src/Cortex` (Windows) — leer `auth.state`/`stale`/`fetched_at`, mostrar
   antigüedad + aviso + botón re-login.
-- ⏳ **Hooks consumidores (pendientes):** `aviso-contexto`/`delegacion-gate`/`limite-gasto` — leer `stale`/`updated_at`
-  (NO mtime del archivo) y tratar `basis:null`/stale como no-fresco.
+- ✅ **Hooks consumidores de `state.json` (hechos):** `limite-gasto` y `delegacion-gate` (vía `linea_cuota` de
+  `delegacion-comun.sh`) ahora miden frescura por `updated_at` (NO mtime, que mi cambio dejó siempre fresco → era
+  una REGRESIÓN que yo introduje) y marcan el motivo de auth (login expirado / sin cuenta). no-data (five_hour null)
+  = fail-open. Verificado (limite-gasto 5/5 + linea_cuota 5 casos; tests en `test-brain.sh`).
+  `aviso-contexto` NO consume `state.json` hoy (lee el usage del transcript); su disparo por cuota es el paso 3
+  aparte (`diseno-aviso-contexto-cuota.md`), que leerá `stale`/`basis` ahí.
 
 ## QA
 Gate = QA visual EN VIVO con unjordi (el daemon está verificado técnicamente; la UI no se declara LISTA sin su QA).

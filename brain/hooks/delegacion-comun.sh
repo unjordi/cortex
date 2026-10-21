@@ -96,10 +96,25 @@ linea_cuota() {
     [ -f "$c" ] && { snap="$c"; break; }
   done
   [ -n "$snap" ] || return 0
-  # Frescura del snapshot: si el daemon de cuota lleva >5 min sin escribir, el % puede estar RANCIO →
-  # márcalo, para no mostrar datos viejos como "estado real" (el ask del gate se apoya en esta línea).
-  local stale=""
-  [ -n "$(find "$snap" -mmin +5 2>/dev/null)" ] && stale=" ⚠️posible dato rancio"
+  # Frescura por updated_at (NO mtime: el daemon reescribe cada run aunque PRESERVE una lectura vieja,
+  # así que el mtime quedaría siempre fresco). Marca rancio si stale:true (con el motivo de auth si lo
+  # hay), si updated_at tiene >5 min, o —schema viejo sin updated_at— si el mtime tiene >5 min.
+  local stale="" _is_stale _upd _us _auth
+  _is_stale=$(jq -r '.stale // false' "$snap" 2>/dev/null)
+  _upd=$(jq -r '.updated_at // empty' "$snap" 2>/dev/null)
+  if [ "$_is_stale" = "true" ]; then
+    _auth=$(jq -r '.auth.state // empty' "$snap" 2>/dev/null)
+    case "$_auth" in
+      expired)        stale=" ⚠️login expirado (dato previo)" ;;
+      no_credentials) stale=" ⚠️sin cuenta en el CLI (dato previo)" ;;
+      *)              stale=" ⚠️dato previo (sin refrescar)" ;;
+    esac
+  elif [ -n "$_upd" ]; then
+    _us=$(date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$_upd" +%s 2>/dev/null || date -u -d "$_upd" +%s 2>/dev/null || echo 0)
+    { [ "$_us" -gt 0 ] 2>/dev/null && [ $(( $(date +%s) - _us )) -le 300 ]; } || stale=" ⚠️posible dato rancio"
+  else
+    [ -n "$(find "$snap" -mmin +5 2>/dev/null)" ] && stale=" ⚠️posible dato rancio"
+  fi
   local pct cost cap tok
   pct=$(jq -r '.five_hour.percent // empty'      "$snap" 2>/dev/null)
   cost=$(jq -r '.five_hour.cost_usd // empty'    "$snap" 2>/dev/null)
