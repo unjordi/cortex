@@ -3538,6 +3538,31 @@ is_silent "$(gbg 'git push -u origin feat/x')"                            && ok 
 is_silent "$(gbg 'git commit -m "doc: no hagas git push a develop"')"     && ok "gbg: 'push…develop' en mensaje de commit (dato) → pasa"       || bad "gbg: bloqueó una mención entrecomillada en commit (regresión del fix de comillas)"
 is_silent "$(gbg 'grep -rn "git push origin develop" .claude/')"          && ok "gbg: 'push…develop' en arg de grep (dato) → pasa"             || bad "gbg: bloqueó una frase entrecomillada en grep (regresión del fix de comillas)"
 
+# ── (b3c-absor) merge-develop-guard ABSORBE el chequeo de push/merge-directo de git-branch-guard ────────
+# OK de unjordi (buzón 2026-10-21-ok-retirar-git-branch-guard.md): "UN candado" = merge-develop-guard cubre
+# AHORA el push directo a develop/main, para NO depender de ramas protegidas server-side (no todo repo las
+# tiene — p. ej. PowerScripts, privado en GitHub sin Pro: un `git push origin develop` quedaría SIN freno).
+# Cada aserto es PARIDAD con lo que git-branch-guard frenaba (medido 0 diffs, con y sin jq). HOME aislado +
+# cwd=repo-en-develop para el caso PELÓN (H1). Debe FALLAR contra un merge-develop-guard SIN la absorción.
+ABSREPO="$(mktemp -d "${TMPDIR:-/tmp}/brain-abs.XXXXXX")/repo"; mkdir -p "$ABSREPO"
+git -C "$ABSREPO" init -q >/dev/null 2>&1; git -C "$ABSREPO" symbolic-ref HEAD refs/heads/develop >/dev/null 2>&1
+git -C "$ABSREPO" config user.email t@t >/dev/null 2>&1; git -C "$ABSREPO" config user.name t >/dev/null 2>&1
+printf 'b\n' > "$ABSREPO/a"; git -C "$ABSREPO" add a >/dev/null 2>&1; git -C "$ABSREPO" commit -qm base >/dev/null 2>&1; git -C "$ABSREPO" branch feat/x >/dev/null 2>&1
+mdg() { printf '{"tool_input":{"command":%s},"cwd":%s}' "$(printf '%s' "$1" | jq -Rs .)" "$(printf '%s' "$ABSREPO" | jq -Rs .)" | HOME="$FAKEHOME/_nohooks" bash "$HOOKS/merge-develop-guard.sh"; }
+# DEBE FRENAR (lo que git-branch-guard frenaba — cobertura que NO se pierde al consolidar)
+is_deny "$(mdg 'git push origin develop')" && ok "b3c-absor: push directo a develop → deny (absorbido de git-branch-guard)" || bad "b3c-absor: NO frenó el push a develop (COBERTURA PERDIDA al consolidar)"
+is_deny "$(mdg 'git push origin main')"    && ok "b3c-absor: push directo a main → deny"                                     || bad "b3c-absor: NO frenó el push a main"
+is_deny "$(mdg 'git push')"                && ok "b3c-absor: push PELÓN parado en develop → deny (H1)"                        || bad "b3c-absor: NO frenó el push pelón estando en develop"
+is_deny "$(mdg 'git push origin "$RAMA"')" && ok "b3c-absor: destino OPACO (\$VAR) → deny (H2)"                               || bad "b3c-absor: NO frenó el destino opaco"
+# DEBE PASAR (lo que git-branch-guard NO frenaba — sin introducir falsos positivos)
+is_silent "$(mdg 'git push -u origin feat/x')"                           && ok "b3c-absor: push a ramita → pasa"               || bad "b3c-absor: bloqueó un push a ramita (FP)"
+is_silent "$(mdg 'git push backup develop:refs/remotes/origin/develop')" && ok "b3c-absor: push a un remote-tracking ref (B5) → pasa" || bad "b3c-absor: bloqueó un push a refs/remotes (FP B5)"
+is_silent "$(mdg 'git commit -m "doc: no hagas git push a develop"')"    && ok "b3c-absor: mención entrecomillada (H13) → pasa" || bad "b3c-absor: bloqueó una mención entrecomillada (FP H13)"
+# SIN jq: la absorción conserva PRECISIÓN (push a develop deny, ramita pasa — vía la extracción por sed, no un grep crudo)
+is_deny   "$(ms_nojq 'git push origin develop')"   && ok "b3c-absor sin-jq: push a develop → deny (extracción por sed)"            || bad "b3c-absor sin-jq: NO frenó el push a develop sin jq (cobertura perdida)"
+is_silent "$(ms_nojq 'git push -u origin feat/x')" && ok "b3c-absor sin-jq: push a ramita → pasa (precisión, no sobre-frena)"      || bad "b3c-absor sin-jq: bloqueó un push a ramita sin jq (FP)"
+rm -rf "$(dirname "$ABSREPO")"
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (b4) dod-verificar: JUEZ-Haiku clasifica CIERRE/MARCA/VISUAL; el flujo/estructura es determinista =="

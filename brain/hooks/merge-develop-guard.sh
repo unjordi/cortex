@@ -269,15 +269,40 @@ input=$(cat 2>/dev/null || true)
 #    (se exporta en el ENTORNO de la sesión, no como prefijo del comando — proceso aparte, no auto-servible).
 if ! command -v jq >/dev/null 2>&1; then
   [ "${CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL:-}" = "1" ] && exit 0
-  if printf '%s' "$input" | grep -qE '(mr[[:space:]]+(merge|accept)|pr[[:space:]]+merge)'; then
-    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"FRENO (sin jq): sin jq no puedo verificar ni el --squash ni la autorización de este merge, y un merge a develop/main NO pasa sin gate (fail-safe, no afloja nada). Si esto es TU PROPIA rama personal/mini-develop y estás seguro de que no toca develop/main, exporta CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 en el ENTORNO de la sesión (no como prefijo del comando) y reintenta — o instala jq (macOS: brew install jq · Debian/Ubuntu: apt install jq · Windows: winget install jqlang.jq)."}}'
+  # ABSORCIÓN sin-jq (de git-branch-guard): extrae el campo "command"/"cwd" del JSON por sed (sin jq) y, con
+  # el comando REAL, reusa acg_push_toca_base/acg_merge_menciona_base (texto+git, NO necesitan jq) → PARIDAD
+  # con el camino CON jq para el push y el merge-local (no sobre-frena tu ramita/mini como lo haría un grep
+  # crudo de 'git push'). El merge de MR sin jq NO es resoluble (su destino sale de la API) → si PARECE merge
+  # de MR, DENY (fail-safe). _dsj = deny sin-jq (JSON literal; sin jq no se puede construir con jq).
+  _dsj() { printf '%s\n' "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"$1\"}}"; exit 0; }
+  _cmd_sinjq=$(printf '%s' "$input" | sed -nE 's/.*"command"[[:space:]]*:[[:space:]]*"((\\.|[^"\\])*)".*/\1/p' | head -1)
+  _cwd_sinjq=$(printf '%s' "$input" | sed -nE 's/.*"cwd"[[:space:]]*:[[:space:]]*"((\\.|[^"\\])*)".*/\1/p' | head -1)
+  _ACGLIB="$(dirname "$0")/analizar-comando-git.sh"
+  if [ -n "$_cmd_sinjq" ] && [ -f "$_ACGLIB" ] && bash -n "$_ACGLIB" >/dev/null 2>&1; then
+    # shellcheck source=analizar-comando-git.sh
+    . "$_ACGLIB"
+    if command -v acg_push_toca_base >/dev/null 2>&1; then
+      [ "${CLAUDE_GIT_GUARD_SEED:-}" != "1" ] && acg_push_toca_base "$_cmd_sinjq" "$_cwd_sinjq" \
+        && _dsj "FRENO (sin jq): el comando real (no el JSON crudo) hace push directo a develop/main — NUNCA se hace push directo a la base (fail-safe). Haz el flujo ramita→MR→develop. Si es la SIEMBRA de un repo/rama vacía, exporta CLAUDE_GIT_GUARD_SEED=1 en el ENTORNO de la sesión; si es tu propia ramita/mini y estás seguro, CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 — o instala jq."
+      acg_merge_menciona_base "$_cmd_sinjq" \
+        && _dsj "FRENO (sin jq): el comando real nombra un merge directo a develop/main — el trabajo se integra por el flujo ramita→MR→develop. Si es tu propia ramita/mini, exporta CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 en el ENTORNO de la sesión — o instala jq."
+      printf '%s' "$_cmd_sinjq" | grep -qE '(mr[[:space:]]+(merge|accept)|pr[[:space:]]+merge)' \
+        && _dsj "FRENO (sin jq): sin jq no puedo verificar ni el --squash ni la autorización de este merge de MR, y un merge a develop/main NO pasa sin gate (fail-safe). Si es tu propia rama personal/mini, exporta CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 en el ENTORNO de la sesión — o instala jq (macOS: brew install jq · Debian/Ubuntu: apt install jq · Windows: winget install jqlang.jq)."
+      exit 0
+    fi
   fi
+  # Fallback conservador (no se pudo extraer el comando o la lib no cargó): raw-grep del input — un push o un
+  # merge de MR → DENY (fail-safe, JAMÁS dispara MENOS que el camino preciso de arriba).
+  printf '%s' "$input" | grep -qE 'git[[:space:]]+push|(mr[[:space:]]+(merge|accept)|pr[[:space:]]+merge)' \
+    && _dsj "FRENO (sin jq): no pude extraer el comando del JSON del hook, y NUNCA se hace push/merge directo a develop/main sin poder verificarlo (fail-safe). Si es tu propia ramita/mini, exporta CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 en el ENTORNO de la sesión — o instala jq."
   exit 0
 fi
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
 [ -z "$cmd" ] && exit 0
-# PRE-FILTRO barato (superset conservador): lo que este guard vigila requiere 'glab'/'gh' en el comando crudo.
-case "$cmd" in *glab*|*gh*) : ;; *) exit 0 ;; esac
+# PRE-FILTRO barato (superset conservador): lo que este guard vigila requiere 'git'/'glab'/'gh' en el comando
+# crudo. 'git' se sumó al ABSORBER el chequeo de push de git-branch-guard (un `git push` no trae glab/gh y
+# antes salía aquí antes de llegar al chequeo). Jamás salta un caso real (a lo más sigue de más).
+case "$cmd" in *git*|*glab*|*gh*) : ;; *) exit 0 ;; esac
 pcwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
 tpath=$(printf '%s' "$input" | jq -r '.transcript_path // empty' 2>/dev/null)
 
@@ -303,6 +328,24 @@ _salir_ok() {
   if [ -n "${_warn_ctx:-}" ]; then jq -n --arg c "$_warn_ctx" '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$c}}'; fi
   exit 0
 }
+
+# ── PASO 0 — ABSORCIÓN de git-branch-guard: PUSH directo a base + merge LOCAL que NOMBRA la base ─────────
+# "Un solo candado": merge-develop-guard cubre AHORA lo que git-branch-guard frenaba, para NO depender de
+# ramas protegidas server-side — no todo repo las tiene (p. ej. PowerScripts, privado en GitHub sin Pro: un
+# `git push origin develop` quedaría SIN freno). Va ANTES del gate de merge-de-MR (un push NO es un
+# merge-de-MR). La LÓGICA vive en la lib (la MISMA que usaba git-branch-guard → sin divergencia): acg_push_toca_base
+# cubre el push explícito a develop/main, el push PELÓN/HEAD/--force parado EN develop/main (H1) y el destino
+# OPACO (H2); ignora menciones entrecomilladas (H13), valores de --repo (H11) y los refs refs/remotes/<r>/base
+# (B5). acg_merge_menciona_base cubre el `git checkout develop && git merge rama`. El seed-escape (sembrar un
+# repo/rama vacía, la única excepción de la norma) se consulta en el ENTORNO de la sesión, acotado al push.
+if [ "${CLAUDE_GIT_GUARD_SEED:-}" != "1" ] && acg_push_toca_base "$cmd" "$pcwd"; then
+  _deny_json "NORMA DE GIT (ley interna): no se hace push a main/develop (incluye el push PELÓN estando parado EN develop/main). NO reintentes esto. Haz el cambio por el flujo: ramita (feat/fix/chore/docs) desde develop → commit → push de la ramita → MR/PR → merge a develop. A main solo llega un release deliberado, con OK súper-explícito por CLI. Si esto es la SIEMBRA inicial de un repo/rama vacía (0 commits — la única excepción de la norma), exporta CLAUDE_GIT_GUARD_SEED=1 en el ENTORNO de la sesión (no como prefijo del comando) y reintenta."
+  exit 0
+fi
+if acg_merge_menciona_base "$cmd"; then
+  _deny_json "NORMA DE GIT (ley interna): este comando nombra un merge directo a develop/main. NO lo hagas así. El trabajo se integra por el flujo: ramita → MR → develop (con OK expreso, lo vigila este mismo candado en el punto del MR). A main = release deliberado, con OK súper-explícito por CLI. NO reintentes el merge que nombra la base."
+  exit 0
+fi
 
 # ── PASO 1 — ¿es una integración REAL de MR/PR server-side? `git merge` local / inspección / ayuda → libre.
 acg_es_merge_mr "$cmd" || exit 0
