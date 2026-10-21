@@ -59,6 +59,22 @@ bz_aviso="$(bz_aviso_base "$ROOT")"
 [ -n "$bz_aviso" ] && echo "  (aviso: $bz_aviso — Base: $base)"   # M-2
 es_zombie() { bz_es_zombie "$ROOT" "$1" "$base"; }  # $1 = rama
 
+# PROTECCIÓN ANTI-AGENTE-VIVO (GRAVE 2026-10-20, axon-master): un worktree de un agente que ARRANCA sale de
+# la base SIN commits propios todavía → por equivalencia de parche es INDISTINGUIBLE de "ya integrado" → el
+# barrido lo declaraba zombie y, con el árbol LIMPIO (agente entre ediciones), git lo BORRABA con el agente
+# dentro (25 turnos perdidos, EXIT_ENOENT). Fix MÍNIMO y sin aflojar nada: una rama SIN commits propios vs la
+# base (recién creada) + árbol LIMPIO es casi siempre un agente arrancando — o un worktree vacío inofensivo —
+# y NO hay nada integrado que limpiar (0 commits). Se RETIENE antes del veredicto de zombie (que no cambia).
+# El árbol SUCIO NO entra aquí: lo protege el camino SUCIO (git rehúsa el remove + anota el pendiente, C-3).
+# Los zombies REALES (con commits propios, patch-integrados) se barren igual que antes. NO se usa actividad
+# por mtime: retrasaría el barrido de un worktree recién mergeado y es un cambio de contrato fuera de alcance.
+_worktree_recien_nacido() {  # $1=wt $2=rama → 0 si PROTEGER (rama sin commits propios + árbol limpio)
+  local wt="$1" br="$2" n
+  n=$(git -C "$ROOT" rev-list --count "$base..$br" 2>/dev/null)
+  case "$n" in ''|*[!0-9]*|0) [ "$n" = 0 ] || return 1 ;; *) return 1 ;; esac   # irresoluble o con commits → no
+  [ -z "$(git -C "$wt" status --porcelain 2>/dev/null)" ]   # solo si el árbol está LIMPIO (el sucio → camino SUCIO)
+}
+
 # _intentar_borrar WT — C-3: SIN --force primero (git rehúsa solo si hay cambios sin commitear/untracked).
 # Si rehúsa, NO se fuerza por defecto: se reporta sucio y se conserva. Con --purgar-sucios, se fuerza (opt-in
 # explícito) y se avisa igual. Devuelve 0 si quedó borrado, 1 si se conservó (sucio o error).
@@ -83,7 +99,7 @@ _intentar_borrar() {
   return 1
 }
 
-borrados=0; dejados=0; protegidas=0; sucios=0; indeterminados=0; detached=0; pend=""; wt=""
+borrados=0; dejados=0; protegidas=0; sucios=0; indeterminados=0; detached=0; activos=0; pend=""; wt=""
 while IFS= read -r line; do
   case "$line" in
     "worktree "*) wt="${line#worktree }" ;;
@@ -93,6 +109,14 @@ while IFS= read -r line; do
       if bz_protegida "$br" "$base"; then
         protegidas=$((protegidas+1))
         echo "  PROTEGIDA (no se toca — $BZ_PROT_RAZON): $wt ($br)"
+        continue
+      fi
+      # GRAVE 2026-10-20: un worktree de rama RECIÉN NACIDA (0 commits propios) con árbol LIMPIO no se barre
+      # aunque parezca integrada por equivalencia de parche — sería borrarle el árbol a un agente que apenas
+      # arrancó. Va ANTES del veredicto de zombie, que no cambia (el árbol sucio cae al camino SUCIO).
+      if _worktree_recien_nacido "$wt" "$br"; then
+        activos=$((activos+1))
+        echo "  ACTIVO (no se toca — rama sin commits propios + árbol limpio: agente recién arrancado): $wt ($br)"
         continue
       fi
       if es_zombie "$br"; then
@@ -155,4 +179,4 @@ EOF_PEND
     fi
   fi
 fi
-echo "limpiar-worktrees: $borrados zombie(s), $dejados vivo(s) conservado(s), $protegidas protegido(s), $sucios sucio(s) conservado(s), $indeterminados indeterminado(s), $detached detached(s)."
+echo "limpiar-worktrees: $borrados zombie(s), $dejados vivo(s) conservado(s), $activos activo(s)/recién-nacido(s) conservado(s), $protegidas protegido(s), $sucios sucio(s) conservado(s), $indeterminados indeterminado(s), $detached detached(s)."

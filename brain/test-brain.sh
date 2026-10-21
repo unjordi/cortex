@@ -2624,6 +2624,47 @@ printf '%s' "$out" | grep -q 'zombie.*feat/hecha' && ok "G7: ramita squash-merge
 printf '%s' "$out" | grep -q 'DEJADO.*feat/viva'  && ok "G7: ramita viva no integrada → conservada"                                     || bad "G7: no conservó la ramita viva; got: $out"
 rm -rf "$G7ROOT"
 
+# ── (b3-grave) PROTECCIÓN ANTI-AGENTE-VIVO: no borrar el worktree de un agente que arranca ──────────
+# GRAVE 2026-10-20 (axon-master): una rama RECIÉN creada de la base (0 commits) es indistinguible de "ya
+# integrada" por equivalencia de parche → el barrido la declaraba zombie y, con el árbol LIMPIO (agente entre
+# ediciones), git BORRABA su worktree con el agente dentro (25 turnos perdidos). Fix MÍNIMO: una rama SIN
+# commits propios + árbol LIMPIO se RETIENE antes del veredicto de zombie; el árbol SUCIO cae al camino SUCIO
+# (ya protegido); los zombies REALES (con commits) se barren igual. Cada aserto FALLA contra el código pre-fix.
+GVROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-gv.XXXXXX")"; GVREPO="$GVROOT/repo"; mkdir -p "$GVREPO"
+git -C "$GVREPO" init -q >/dev/null 2>&1
+git -C "$GVREPO" symbolic-ref HEAD refs/heads/miDevelop >/dev/null 2>&1
+git -C "$GVREPO" config user.email t@t >/dev/null 2>&1; git -C "$GVREPO" config user.name tester >/dev/null 2>&1
+printf 'base\n' > "$GVREPO/base.txt"; git -C "$GVREPO" add base.txt >/dev/null 2>&1; git -C "$GVREPO" commit -qm base >/dev/null 2>&1
+# (A) rama RECIÉN creada de la base, 0 commits, worktree LIMPIO (= el caso exacto del GRAVE: agente entre
+#     ediciones, git podía borrarlo) → protegida por «sin commits propios + limpio».
+git -C "$GVREPO" branch feat/recien miDevelop >/dev/null 2>&1
+git -C "$GVREPO" worktree add -q "$GVROOT/wt-recien" feat/recien >/dev/null 2>&1
+# (B) rama 0 commits pero árbol SUCIO → NO entra por «recién nacida» (clean-gate): cae al camino SUCIO
+#     existente, que también conserva pero reporta SUCIO (preserva C-3). Distingue limpio de sucio.
+git -C "$GVREPO" branch feat/sucia miDevelop >/dev/null 2>&1
+git -C "$GVREPO" worktree add -q "$GVROOT/wt-sucia" feat/sucia >/dev/null 2>&1
+printf 'editado sin commitear\n' >> "$GVROOT/wt-sucia/base.txt"
+# (C) rama squash-mergeada (zombie real, CON commits) + árbol limpio → sigue siendo zombie (barrido NO aflojado).
+git -C "$GVREPO" checkout -q -b feat/zombie miDevelop >/dev/null 2>&1
+printf 'z\n' > "$GVREPO/z.txt"; git -C "$GVREPO" add z.txt >/dev/null 2>&1; git -C "$GVREPO" commit -qm zombie >/dev/null 2>&1
+git -C "$GVREPO" checkout -q miDevelop >/dev/null 2>&1
+git -C "$GVREPO" merge --squash feat/zombie >/dev/null 2>&1; git -C "$GVREPO" commit -qm "squash feat/zombie" >/dev/null 2>&1
+git -C "$GVREPO" worktree add -q "$GVROOT/wt-zombie" feat/zombie >/dev/null 2>&1
+gvout="$(cd "$GVREPO" && CLAUDE_INTEGRACION_BASE=miDevelop bash "$HOOKS/limpiar.sh" worktrees --dry-run 2>&1)"
+printf '%s' "$gvout" | grep -qE 'ACTIVO.*feat/recien' \
+  && ok "b3-grave A: rama recién creada (0 commits) + limpia → ACTIVO, NO zombie (el fix del GRAVE; el viejo la borraba)" \
+  || bad "b3-grave A: la rama sin commits propios no se protegió; got: $gvout"
+printf '%s' "$gvout" | grep -qE '(\[dry\] zombie|borrado).*feat/recien' \
+  && bad "b3-grave A: la rama recién creada se trató como zombie (regresión del GRAVE)" \
+  || ok "b3-grave A: la rama recién creada NO aparece como zombie"
+printf '%s' "$gvout" | grep -qE 'ACTIVO.*feat/sucia' \
+  && bad "b3-grave B: una rama 0-commits SUCIA no debe tomar el carril ACTIVO (debe ir a SUCIO)" \
+  || ok "b3-grave B: rama 0-commits SUCIA NO toma ACTIVO (clean-gate) — la maneja el camino SUCIO"
+printf '%s' "$gvout" | grep -qE 'zombie.*feat/zombie' \
+  && ok "b3-grave C: zombie real (con commits propios, limpio) → SIGUE siendo zombie (barrido NO aflojado)" \
+  || bad "b3-grave C: dejó de barrer un zombie real; got: $gvout"
+rm -rf "$GVROOT"
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo "== (b3c) limpiar-ramas: barre ramas LOCALES integradas (squash) y CONSERVA trabajo vivo + protegidas =="
 # El squash rompe `git branch -d` (la rama no queda de ancestro) y `fetch --prune` no toca ramas locales
@@ -3207,12 +3248,17 @@ for i in 1 2 3; do ( cd "$A1REPO" && bash "$HOOKS/limpiar.sh" worktrees >/dev/nu
 a1n=$(grep -c 'wt-sucio' "$A1REPO/.claude/memory/bitacora.md" 2>/dev/null || echo 0)
 [ "$a1n" = 1 ] && ok "FIX-6: 4 corridas → EXACTAMENTE 1 pendiente (idempotente, como el de los vivos)" \
   || bad "FIX-6: el pendiente del sucio se re-appendeó ($a1n veces)"
-# CONTROL de la otra dirección: un worktree zombie LIMPIO se borra y NO deja pendiente (si el fix
-# anotara siempre, este aserto lo delataría).
-git -C "$A1REPO" branch feat/limpia develop >/dev/null 2>&1
+# CONTROL de la otra dirección: un worktree zombie REAL (rama CON commits, squash-mergeada) y LIMPIO se
+# borra y NO deja pendiente (si el fix anotara siempre, este aserto lo delataría). OJO: la rama lleva un
+# commit a propósito — una rama de 0 commits + limpia es el caso del GRAVE (agente recién arrancado) y la
+# protege `_worktree_recien_nacido`, NO se barre; aquí probamos el zombie DE VERDAD.
+git -C "$A1REPO" checkout -q -b feat/limpia develop >/dev/null 2>&1
+printf 'L\n' > "$A1REPO/l.txt"; git -C "$A1REPO" add l.txt >/dev/null 2>&1; git -C "$A1REPO" commit -qm limpia >/dev/null 2>&1
+git -C "$A1REPO" checkout -q develop >/dev/null 2>&1
+git -C "$A1REPO" merge --squash feat/limpia >/dev/null 2>&1; git -C "$A1REPO" commit -qm "squash feat/limpia" >/dev/null 2>&1
 git -C "$A1REPO" worktree add -q "$A1ROOT/wt-limpio" feat/limpia >/dev/null 2>&1
 ( cd "$A1REPO" && bash "$HOOKS/limpiar.sh" worktrees >/dev/null 2>&1 )
-[ ! -d "$A1ROOT/wt-limpio" ] && ok "FIX-6 control: el worktree zombie LIMPIO se sigue borrando" || bad "FIX-6 control: dejó de borrar worktrees zombie limpios"
+[ ! -d "$A1ROOT/wt-limpio" ] && ok "FIX-6 control: el worktree zombie REAL (con commits) LIMPIO se sigue borrando" || bad "FIX-6 control: dejó de borrar worktrees zombie limpios"
 grep -q 'wt-limpio' "$A1REPO/.claude/memory/bitacora.md" 2>/dev/null \
   && bad "FIX-6 control: anotó pendiente de un worktree que SÍ se borró (ruido)" \
   || ok "FIX-6 control: el worktree borrado NO deja pendiente (solo el que de verdad quedó retenido)"
