@@ -1013,6 +1013,20 @@ is_silent "$out_h7" \
   && ok "H7: lib con 'false' final (sintaxis VÁLIDA) + push a la propia ramita → silencio (antes: la sonda vieja la declaraba 'rota' y bloqueaba TODO)" \
   || bad "H7: REGRESIÓN — una lib sintácticamente válida con un 'false' al final se tumbó a deny-total; got: $out_h7"
 rm -rf "$C1SB2"
+# H7b (BAJO heredado, hallazgo de claudio verificado 2026-10-21): una lib que PARSEA (bash -n OK) pero está
+# TRUNCADA/VACÍA (sin las funciones acg_*) pasaba el gate de sintaxis y luego `acg_push_toca_base` daba
+# "command not found" (exit 127 → condición falsa) → el push a base PASABA en silencio. Fix: exigir `type
+# acg_push_toca_base`/`acg_merge_menciona_base` tras el source; si faltan, tratar como lib rota (fail-safe).
+C1SB3=$(mktemp -d "${TMPDIR:-/tmp}/brain-crit1-h7b.XXXXXX"); mkdir -p "$C1SB3/hooks" "$C1SB3/home"
+printf '#!/usr/bin/env bash\n# lib TRUNCADA: parsea pero NO define acg_push_toca_base/acg_merge_menciona_base\nset -u\n' > "$C1SB3/hooks/analizar-comando-git.sh"
+bash -n "$C1SB3/hooks/analizar-comando-git.sh" >/dev/null 2>&1 \
+  && ok "H7b (setup): lib truncada PARSEA (bash -n la aprueba) pero sin las funciones acg_* — arranca la prueba" \
+  || bad "H7b (setup): la lib truncada no parsea — el test no prueba lo que debe"
+cp "$HOOKS/merge-develop-guard.sh" "$C1SB3/hooks/"
+is_deny "$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"git push origin develop"}}' | HOME="$C1SB3/home" bash "$C1SB3/hooks/merge-develop-guard.sh")" \
+  && ok "H7b: lib PARSEA pero INCOMPLETA (sin acg_*) + push a develop → DENY (fail-safe; antes PASABA en silencio)" \
+  || bad "H7b: REGRESIÓN — una lib que parsea pero no define acg_push_toca_base dejó pasar un push a develop (hueco heredado del viejo git-branch-guard)"
+rm -rf "$C1SB3"
 rm -rf "$C1SB"
 
 echo ""

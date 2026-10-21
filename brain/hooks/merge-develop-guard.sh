@@ -309,17 +309,24 @@ tpath=$(printf '%s' "$input" | jq -r '.transcript_path // empty' 2>/dev/null)
 
 # source-lib con bash -n guard (fail-safe si la lib está rota) — snippet IDÉNTICO en los git-guards, a
 # propósito FUERA de la lib (si la lib está rota, sourcear otro archivo para blindarse de ella no sirve).
+# bash -n solo prueba SINTAXIS: una lib que PARSEA pero está truncada/vacía (sin las funciones acg_*) pasaría
+# el gate y luego `acg_push_toca_base` daría "command not found" (exit 127 → la condición es falsa) → push a
+# base PASARÍA en silencio (hueco BAJO heredado, confirmado por reproducción 2026-10-21). Por eso, tras el
+# source, se EXIGE que las dos funciones que usa el PASO 0 estén DEFINIDAS; si no, se trata como lib rota.
 _ACGLIB="$(dirname "$0")/analizar-comando-git.sh"
+_acglib_ok=0
 if [ -f "$_ACGLIB" ] && bash -n "$_ACGLIB" >/dev/null 2>&1; then
   # shellcheck source=analizar-comando-git.sh
   . "$_ACGLIB"
-else
-  printf '%s: analizar-comando-git.sh no cargó (ausente o con error de sintaxis) -- este guard queda SIN su lógica de detección; `bash -n "%s"` localiza el error.\n' "$(basename "$0")" "$_ACGLIB" >&2
+  type acg_push_toca_base >/dev/null 2>&1 && type acg_merge_menciona_base >/dev/null 2>&1 && _acglib_ok=1
+fi
+if [ "$_acglib_ok" != 1 ]; then
+  printf '%s: analizar-comando-git.sh no cargó o está INCOMPLETA (ausente, error de sintaxis, o parsea pero sin las funciones acg_*) -- este guard queda SIN su lógica de detección; `bash -n "%s"` localiza un error de sintaxis.\n' "$(basename "$0")" "$_ACGLIB" >&2
   # Cubre AMBOS chequeos sin la lib: el PASO 0 (push directo a base, absorbido del antiguo git-branch-guard
   # — su fallback de lib-rota también frenaba todo `push`) y el gate de merge-de-MR. Fail-safe conservador:
   # sin la lib no se puede distinguir una ramita de la base, así que un `push`/`merge` cualquiera DENY.
   if printf '%s' "$cmd" | grep -qE 'push|merge|accept'; then
-    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"FRENO (lib rota): analizar-comando-git.sh no cargó (error de sintaxis) y sin ella no puedo verificar si esto hace push/merge directo a develop/main ni validar el squash/autorización de un merge -- fail-safe, no afloja nada. Repara la lib (bash -n analizar-comando-git.sh la localiza) y reintenta; NUNCA hagas push/merge directo a develop/main mientras tanto."}}'
+    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"FRENO (lib rota o incompleta): analizar-comando-git.sh no cargó o no define las funciones acg_*, y sin ella no puedo verificar si esto hace push/merge directo a develop/main ni validar el squash/autorización de un merge -- fail-safe, no afloja nada. Repara la lib (bash -n analizar-comando-git.sh localiza un error de sintaxis) y reintenta; NUNCA hagas push/merge directo a develop/main mientras tanto."}}'
   fi
   exit 0
 fi
