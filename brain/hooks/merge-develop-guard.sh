@@ -466,7 +466,11 @@ if [ -n "$_explicit_repo" ] && [ "$_explicit_repo" != OPACO ]; then
   [ -n "$_clon_slug" ] && TARGET_ROOT="$_clon_slug"
 fi
 _es_personal=0
-if [ -n "$_explicit_repo" ] && [ "$_explicit_repo" != "OPACO" ]; then
+if [ "$_explicit_repo" = "OPACO" ] || acg_dir_opaco "$cmd"; then
+  : # --repo $VAR, o un `cd $X &&`/`pushd` a un dir OPACO: el repo AFECTADO es INCIERTO (el guard lee el
+    # string CRUDO y no puede resolverlo) → NO se puede confirmar que es el repo PERSONAL del cwd ⇒ GATEA al
+    # juez (fail-safe: quitar el freno-por-TEXTO del $VAR NO puede volverse "pasa" — cae al gate de autorización).
+elif [ -n "$_explicit_repo" ]; then
   _local_slug=$(git -C "$TARGET_ROOT" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|https?://[^/]+/)##; s#\.git$##')
   if [ "$_explicit_repo" != "$_local_slug" ]; then
     : # --repo a OTRO repo LITERAL (o no resoluble local) → INCIERTO ⇒ GATEA

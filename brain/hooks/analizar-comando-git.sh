@@ -172,11 +172,21 @@ acg_target_dir() {   # $1=cmd  $2=payload_cwd → imprime el dir objetivo
   # (1) -C <dir> del git (quote-aware; el `.*` codicioso toma el ÚLTIMO -C, normalmente el único)
   d=$(printf '%s' "$cmd" | sed -nE "s/.*(^|[^[:alnum:]])-C[[:space:]=]+(\"[^\"]*\"|'[^']*'|([^[:space:]\"']|\\\\.)+).*/\2/p" | head -1)
   d=$(printf '%s' "$d" | sed -E "s/^[\"']//; s/[\"']\$//")
-  if [ -n "$d" ]; then acg_expande_home "$d"; return 0; fi
+  d=$(acg_expande_home "$d")   # ~ y $HOME/${HOME} se expanden ANTES de juzgar opacidad
+  # Un -C/cd con valor OPACO (una sustitución de shell $VAR/$(..)/`..` que NO era $HOME/~) no es un dir
+  # resoluble en PreToolUse: se IGNORA y se cae a la siguiente precedencia (el cwd real), en vez de devolver un
+  # dir inexistente que daría DIR-IRRESOLUBLE y frenaría en falso. FP real (corpus 2026-10-08, axon #442): un
+  # `-C $M` de un comando LATERAL del compound —`gh pr merge … --repo org/x … ; git -C $M pull`— contaminaba el
+  # dir del merge, aunque el merge trae --repo LITERAL. (El SCOPING no se afloja: un comando SIN --repo literal
+  # cuyo cwd es opaco por un `cd $X &&` lo detecta acg_dir_opaco y GATEA — ver merge-develop-guard PASO 3b.)
+  case "$d" in *'$'*|*'`'*) d="" ;; esac
+  if [ -n "$d" ]; then printf '%s' "$d"; return 0; fi
   # (2) cd/pushd <dir> en el segmento (quote-aware; el valor NO cruza ;&|)
   d=$(printf '%s' "$cmd" | sed -nE "s/.*(^|[^[:alnum:]])(cd|pushd)[[:space:]]+(\"[^\"]*\"|'[^']*'|([^[:space:]\"';&|]|\\\\.)+).*/\3/p" | head -1)
   d=$(printf '%s' "$d" | sed -E "s/^[\"']//; s/[\"']\$//")
-  if [ -n "$d" ]; then acg_expande_home "$d"; return 0; fi
+  d=$(acg_expande_home "$d")
+  case "$d" in *'$'*|*'`'*) d="" ;; esac
+  if [ -n "$d" ]; then printf '%s' "$d"; return 0; fi
   # (3) payload cwd  (4) CLAUDE_PROJECT_DIR  (5) '.'
   if [ -n "$pcwd" ]; then printf '%s' "$pcwd"; return 0; fi
   printf '%s' "${CLAUDE_PROJECT_DIR:-.}"
@@ -213,12 +223,30 @@ acg_repo_explicito() {   # $1=cmd(RAW, comillas intactas) → slug LITERAL | "OP
 # emitir un mensaje ACCIONABLE ("usa el slug LITERAL") en vez del genérico. Reusa acg_repo_explicito (==OPACO).
 acg_repo_opaco() { [ "$(acg_repo_explicito "$1")" = "OPACO" ]; }   # $1=cmd(RAW) → 0=--repo trae $VAR/backtick · 1=no
 
+# ¿el comando cambia el cwd a un valor OPACO (`cd $X && …` / `pushd \`…\``) ANTES de correr el merge-de-MR?
+# gh/glab merge corren en el cwd → un `cd` opaco mueve el merge a un repo que el guard NO puede identificar
+# (lee el string CRUDO). SIN un --repo LITERAL que fije el repo afectado, no se puede confirmar que el merge
+# cae en el repo PERSONAL del cwd de la sesión → el SCOPING debe GATEAR al juez (como el --repo opaco), nunca
+# asumir personal. Mira SOLO cd/pushd (no `-C`): `-C` es per-comando de git y NO cambia el cwd de un gh/glab
+# subsiguiente, así que un `-C $M` de un `git pull` LATERAL no debe gatear un merge con --repo literal (FP axon #442).
+acg_dir_opaco() {   # $1=cmd(RAW) → 0=hay un cd/pushd a $VAR/backtick · 1=no
+  local v
+  v=$(printf '%s' "$1" | sed -nE "s/.*(^|[^[:alnum:]])(cd|pushd)[[:space:]]+(\"[^\"]*\"|'[^']*'|([^[:space:]\"';&|]|\\\\.)+).*/\3/p" | head -1)
+  case "$v" in *'$'*|*'`'*) return 0 ;; esac
+  return 1
+}
+
 acg_target_remote() {   # $1=cmd  $2=payload_cwd → imprime "org/repo" | vacío
   local cmd="$1" pcwd="${2:-}" repo dir
   repo=$(acg_repo_explicito "$cmd")
-  # OPACO (--repo "$VAR": no sabemos a qué repo apunta) → NO es un slug usable; cae al remoto del dir
-  # objetivo, igual que si no hubiera --repo (M9: opaco ≠ ajeno).
   if [ -n "$repo" ] && [ "$repo" != "OPACO" ]; then printf '%s' "$repo"; return 0; fi
+  # --repo OPACO ($VAR): el guard lee el string CRUDO y NO sabe a qué repo apunta. NO caer al remoto del cwd —
+  # el merge afecta lo que $VAR nombra, NO el cwd, así que resolver el MR por el remoto del cwd sería el REPO
+  # EQUIVOCADO (podría colar un merge del repo del cwd como destino). Devuelve VACÍO → el destino sale
+  # DESCONOCIDO:REPO-VARIABLE → el juez decide (fail-safe), nunca se resuelve por el cwd. (Endurece M9 "opaco ≈
+  # cwd" → "opaco = irresoluble ⇒ al juez", por la decisión de unjordi #3/#4: el repo se resuelve por git, y un
+  # $VAR sin expandir no es resoluble.)
+  if [ "$repo" = "OPACO" ]; then printf ''; return 0; fi
   dir=$(acg_target_dir "$cmd" "$pcwd")
   git -C "$dir" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|https?://[^/]+/)##; s#\.git$##'
 }

@@ -829,7 +829,7 @@ rm -rf "$M2A" "$M2B"
 echo ""
 echo "== (b1d-critico1) CRÍTICO-1 (auditoría FMEA 2026-09-16 §1.1, CONFIRMADO): un error de SINTAXIS en la"
 echo "   lib compartida NO tumba los guards en silencio — fallan RUIDOSO/CERRADO en vez de desaparecer =="
-# Copia los guards + la lib a un sandbox, inyecta un error de sintaxis REAL (paréntesis sin cerrar en
+# Copia los guards + la lib a un sandbox, inyecta un error de sintaxis REAL (un `then` reservado huérfano en
 # acg_despoja_comillas — el bug más mundano) y alimenta cada guard con un comando que DEBE bloquear. Con la
 # lib rota, un guard que muriera con stdout VACÍO y exit=1 (que el harness trata como NO-bloqueante) dejaría
 # el sistema sin NINGÚN candado, en silencio. El contrato: cada uno responde (deny ruidoso, o degrada a su
@@ -839,8 +839,11 @@ for f in analizar-comando-git.sh merge-develop-guard.sh \
          proteger-arbol.sh juez-comun.sh ramas-zombie.sh; do
   cp "$HOOKS/$f" "$C1SB/hooks/$f" 2>/dev/null
 done
-# Inyecta un paréntesis SIN CERRAR en acg_despoja_comillas (bash -3.2-safe, una sola línea real de la lib).
-perl -0pi -e "s/acg_despoja_comillas\(\) \{ printf '%s' \"\\\$\(acg_segmentos_ejecutables \"\\\$1\"\)\"/acg_despoja_comillas() { printf '%s' \"\\\$(acg_segmentos_ejecutables \"\\\$1\"/" "$C1SB/hooks/analizar-comando-git.sh"
+# Inyecta un TOKEN RESERVADO huérfano (`then` sin `if`) tras la apertura de acg_despoja_comillas: bash -n lo
+# rechaza INEQUÍVOCAMENTE ("unexpected token `then'"). (Antes quitaba el `)` de un `$(…)`, cuyo efecto de
+# sintaxis depende del BALANCE global de paréntesis del archivo → se re-equilibraba si otra función agregaba un
+# `case … )` y el setup dejaba de romper la lib — frágil ante cualquier edición de la lib, p. ej. acg_dir_opaco.)
+perl -0pi -e "s/acg_despoja_comillas\(\) \{ printf/acg_despoja_comillas() { then printf/" "$C1SB/hooks/analizar-comando-git.sh"
 bash -n "$C1SB/hooks/analizar-comando-git.sh" >/dev/null 2>&1 \
   && bad "CRÍTICO-1 (setup): la inyección de sintaxis no rompió la lib — el test no prueba nada" \
   || ok "CRÍTICO-1 (setup): lib con error de sintaxis REAL confirmada (bash -n falla) — arranca la prueba"
@@ -915,10 +918,26 @@ echo "== (b1d-m9) M9 (auditoría 2026-09-15 §2.5): --repo \"\$VAR\" es OPACO, n
 M9R=$(mktemp -d "${TMPDIR:-/tmp}/m9r.XXXXXX")
 git -C "$M9R" init -q >/dev/null 2>&1
 git -C "$M9R" remote add origin git@gitlab.com:org/proyecto.git >/dev/null 2>&1
-[ "$(acg_target_remote 'gh pr merge 12 --repo "$R" --squash' "$M9R")" = "org/proyecto" ] \
-  && ok "M9: acg_target_remote con --repo OPACO cae al remoto del dir objetivo (no al literal '\"\$R\"' ni a '--squash')" \
-  || bad "M9: acg_target_remote no cayó al remoto real con --repo opaco"
+[ -z "$(acg_target_remote 'gh pr merge 12 --repo "$R" --squash' "$M9R")" ] \
+  && ok "M9/B2b (endurecido #3/#4): acg_target_remote con --repo OPACO → VACÍO, NO el remoto del cwd — el merge afecta lo que \$R nombra, no el dir; resolver por el cwd sería el repo EQUIVOCADO → destino DESCONOCIDO:REPO-VARIABLE → juez (fail-safe)" \
+  || bad "M9/B2b: acg_target_remote resolvió un --repo opaco por el remoto del cwd (repo equivocado — debe ser VACÍO para caer al juez)"
 rm -rf "$M9R"
+
+# ── (b-decis34) B (decisiones #3/#4 de unjordi: el repo/destino va POR GIT en el dir real, NO por análisis de
+#    TEXTO). acg_dir_opaco (cd/pushd a $VAR → gatea) + acg_target_dir ignora un -C/cd opaco (cae a pcwd). La lib
+#    ya está sourced inline desde el bloque M9 de arriba.
+echo ""
+echo "== (b-decis34) decisiones #3/#4: resolución por git — acg_dir_opaco + acg_target_dir ignora -C/cd opaco =="
+acg_dir_opaco 'cd "$D" && glab mr merge 5'                    && ok "B/acg_dir_opaco: 'cd \$D' (sustitución de shell) → opaco (gatea)" || bad "B/acg_dir_opaco: no detectó un cd a \$VAR"
+acg_dir_opaco 'pushd "$P" ; glab mr merge 5'                  && ok "B/acg_dir_opaco: 'pushd \$P' → opaco (gatea)" || bad "B/acg_dir_opaco: no detectó un pushd a \$VAR"
+acg_dir_opaco 'cd /ruta/literal && glab mr merge 5'          && bad "B/acg_dir_opaco: FP — un cd a ruta LITERAL marcado opaco" || ok "B/acg_dir_opaco: 'cd /ruta/literal' → NO opaco (literal se resuelve)"
+acg_dir_opaco 'glab mr merge 5 --repo org/x ; git -C $M pull' && bad "B/acg_dir_opaco: FP — un '-C \$M' (no cd/pushd) re-rompería el FP L167" || ok "B/acg_dir_opaco: '-C \$M' (no cd/pushd) → NO opaco (el -C lateral no gatea; lo ignora acg_target_dir)"
+[ "$(acg_target_dir 'glab mr merge 5 --repo org/x ; git -C $M pull' '/tmp/cwdreal')" = "/tmp/cwdreal" ] \
+  && ok "B/acg_target_dir: un '-C \$M' opaco LATERAL se IGNORA → cae al pcwd real (FP axon #442)" || bad "B/acg_target_dir: el '-C \$M' opaco contaminó el dir del merge (debió caer a pcwd)"
+[ "$(acg_target_dir 'git -C /ruta/literal status' '')" = "/ruta/literal" ] \
+  && ok "B/acg_target_dir: un -C con ruta LITERAL se respeta (no se ignora)" || bad "B/acg_target_dir: perdió un -C literal"
+[ "$(acg_target_dir 'git -C "$HOME/sub" status' '')" = "$HOME/sub" ] \
+  && ok "B/acg_target_dir: '-C \$HOME/sub' se EXPANDE (no se trata como opaco)" || bad "B/acg_target_dir: rompió un -C \$HOME/… (regresión del fix de opacidad)"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
@@ -1974,6 +1993,24 @@ o_ccg="$(xcm "glab mr merge 8 $XSQOK --yes" "$XPERSONAL" "$XSHARED")"
 { ! is_deny "$o_ccg" && printf '%s' "$o_ccg" | grep -q 'recordatorio, no freno'; } \
   && ok "cmd-cross: grant durable en el repo DESTINO (AUTH_FILE del TARGET_ROOT) + .cwd → fast-path pasa (+ recordatorio A2)" \
   || bad "cmd-cross: no leyó el grant durable del repo destino (AUTH_FILE no salió de TARGET_ROOT); got: $o_ccg"
+# B2 (endurecimiento #3/#4): un --repo/dir OPACO ($VAR) es IRRESOLUBLE → NO confirma "personal" por el cwd →
+# GATEA al juez (fail-safe: quitar el freno-por-TEXTO del $VAR no puede volverse "pasa"). El --repo opaco FALLA
+# vs 41ae2b3 (donde caía a _es_personal del cwd → _salir_ok → pasaba sin juez — HUECO de seguridad).
+rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
+is_deny "$(xcm 'glab mr merge 10 --repo "$R" --squash --remove-source-branch --squash-message "x" --yes' "$XPERSONAL")" \
+  && ok "cmd-cross B2: --repo \"\$R\" OPACO desde sesión PERSONAL → GATEA (no se confirma personal por el cwd)" \
+  || bad "cmd-cross B2: un --repo opaco pasó por _es_personal del cwd (HUECO de seguridad)"
+rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
+is_deny "$(xcm 'cd "$D" && glab mr merge 11 --squash --remove-source-branch --squash-message "x" --yes' "$XPERSONAL")" \
+  && ok "cmd-cross B2 (seguridad): 'cd \$D && …' (dir opaco) desde sesión PERSONAL → GATEA (acg_dir_opaco rescata el hueco que abriría B1 al caer el cd opaco a pcwd válido)" \
+  || bad "cmd-cross B2: un cd opaco pasó por _es_personal del cwd"
+# B1 (FP L167, axon #442): un '-C $M' de un comando LATERAL no contamina el dir del merge con --repo LITERAL →
+# el merge resuelve por su --repo (clon local) y, si personal, pasa. FALLA vs 41ae2b3 (el -C $M lo frenaba).
+rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
+o_l167="$(xcm 'glab mr merge 442 --repo org/personal --squash --remove-source-branch --squash-message "corrige el calculo del IVA en las facturas del periodo" ; git -C $M pull' "$XPERSONAL")"
+{ ! is_deny "$o_l167" && printf '%s' "$o_l167" | grep -q 'recordatorio, no freno'; } \
+  && ok "cmd-cross B1 (FP L167): un '-C \$M' LATERAL no frena el merge con --repo org/personal LITERAL → clon local personal → pasa (+recordatorio)" \
+  || bad "cmd-cross B1: el -C \$M lateral frenó un merge con --repo literal (FP axon #442); got: $o_l167"
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
 rm -rf "$XROOT"
 
