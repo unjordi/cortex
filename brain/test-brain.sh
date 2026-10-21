@@ -5343,6 +5343,67 @@ f3c="$(acf3 820000 sesB)"   # B mismo repo/banda → emite (el stamp de A NO la 
 rm -rf "$(dirname "$F3ROOT")"
 rm -rf "$ACHOME"
 
+# ── (b6-cuota) aviso-contexto dispara TAMBIÉN por la cuota (5h/semanal) — diseño 2026-10-19 ──────────
+# El hook pone la cuota enfrente del modelo DURANTE el trabajo. Dispara por contexto O por cuota; el mensaje
+# trae AMBAS líneas. Debounce por umbral y por VENTANA (re-arma al cambiar resets_at). Snapshot rancio/ausente
+# → fuerza cortex-fetch DESPRENDIDO (throttle 5min; espera ~5s el mtime) o calla la cuota. Cada aserto FALLA
+# contra el hook pre-cuota (que NUNCA emitía una línea de cuota). HOME/XDG_CACHE aislados: ni ve el snapshot
+# real ni dispara el cortex-fetch real (el fetch se inyecta por AVISO_CUOTA_FETCH_CMD; sin él, no busca en PATH).
+QHOME="$(mktemp -d "${TMPDIR:-/tmp}/brain-qhome.XXXXXX")"
+QROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-qr.XXXXXX")/r"; mkdir -p "$QROOT/.claude/memory"
+QCACHE="$QHOME/.cache/cortex"; mkdir -p "$QCACHE"
+printf '%s\n' '{"type":"user","message":{"role":"user"}}' '{"message":{"usage":{"cache_read_input_tokens":100000}}}' > "$QROOT/t.jsonl"   # ctx 10% de 1M → el contexto NO dispara (aísla la cuota)
+QNOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+QOLD="$(date -u -v-40M +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '40 min ago' +%Y-%m-%dT%H:%M:%SZ)"
+mksnap() { printf '{"updated_at":"%s","stale":false,"five_hour":{"percent":%s,"resets_at":"%s","is_active":true},"weekly":{"percent":%s,"resets_at":"2026-10-28T14:00:00Z"}}\n' "$1" "$2" "$3" "$4" > "$QCACHE/state.json"; }
+qrun() { local sid="$1" fetch="${2:-}"
+  printf '%s' "{\"session_id\":\"$sid\",\"transcript_path\":\"$QROOT/t.jsonl\"}" \
+    | env HOME="$QHOME" XDG_CACHE_HOME="$QHOME/.cache" AVISO_CONTEXTO_WINDOW_TOKENS=1000000 AVISO_CUOTA_FETCH_CMD="$fetch" CLAUDE_PROJECT_DIR="$QROOT" bash "$HOOKS/aviso-contexto.sh" \
+    | jq -r '.hookSpecificOutput.additionalContext // empty'
+}
+# (1) ctx bajo + 5h=85 fresco → dispara por cuota, con la línea de cuota Y la de contexto (AMBAS)
+mksnap "$QNOW" 85 "2026-10-21T20:00:00Z" 9
+q1="$(qrun sA)"
+printf '%s' "$q1" | grep -q 'Ventana 5h: 85%' \
+  && ok "b6-cuota: ctx bajo + 5h 85% → dispara con la línea de cuota (el hook pre-cuota NUNCA la emitía)" \
+  || bad "b6-cuota: no emitió la línea de cuota; got: $q1"
+printf '%s' "$q1" | grep -q 'Contexto ~10%' \
+  && ok "b6-cuota: el mensaje trae AMBAS líneas (contexto breve + cuota)" \
+  || bad "b6-cuota: falta la línea de contexto; got: $q1"
+# (2) mismo estado, misma sesión/resets → debounce (no re-emite)
+is_silent "$(qrun sA)" \
+  && ok "b6-cuota: mismo umbral + misma ventana → silencio (debounce por umbral)" \
+  || bad "b6-cuota: re-emitió sin cruzar banda nueva"
+# (3) resets_at cambia (ventana nueva) → re-arma, vuelve a disparar aunque el % siga igual
+mksnap "$QNOW" 85 "2026-10-21T21:00:00Z" 9
+printf '%s' "$(qrun sA)" | grep -q 'Ventana 5h: 85%' \
+  && ok "b6-cuota: cambia resets_at (ventana nueva) → RE-ARMA y vuelve a disparar" \
+  || bad "b6-cuota: no re-armó al cambiar resets_at"
+# (4) semanal cruza 80 con 5h baja → dispara por la ventana semanal
+mksnap "$QNOW" 30 "2026-10-21T21:00:00Z" 82
+printf '%s' "$(qrun sWk)" | grep -q 'Semanal: 82%' \
+  && ok "b6-cuota: semanal cruza 80% (5h baja) → dispara por la ventana semanal" \
+  || bad "b6-cuota: no disparó por la semanal"
+# (5) snapshot RANCIO + cortex-fetch (mock) que reescribe FRESCO 88% → usa el dato NUEVO
+mksnap "$QOLD" 50 "2026-10-21T21:00:00Z" 9
+QFETCH="$QHOME/fetch-mock.sh"
+cat > "$QFETCH" <<'MOCK'
+#!/usr/bin/env bash
+sleep 0.3
+printf '{"updated_at":"%s","stale":false,"five_hour":{"percent":88,"resets_at":"2026-10-21T21:00:00Z","is_active":true},"weekly":{"percent":9,"resets_at":"2026-10-28T14:00:00Z"}}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${XDG_CACHE_HOME}/cortex/state.json"
+MOCK
+chmod +x "$QFETCH"
+touch -t 202610210000 "$QCACHE/state.json"   # mtime genuinamente viejo → el cambio del fetch SÍ se detecta por mtime
+printf '%s' "$(qrun sF "$QFETCH")" | grep -q 'Ventana 5h: 88%' \
+  && ok "b6-cuota: snapshot rancio + cortex-fetch fuerza refresco → usa el dato NUEVO (88%), no el rancio (50%)" \
+  || bad "b6-cuota: no usó el snapshot refrescado por el fetch forzado"
+# (6) snapshot RANCIO + SIN cortex-fetch (máquina sin widget) → calla la cuota; ctx bajo → silencio total, sin colgar
+mksnap "$QOLD" 88 "2026-10-21T23:00:00Z" 9
+is_silent "$(qrun sN)" \
+  && ok "b6-cuota: snapshot rancio + sin cortex-fetch → calla la cuota (sin widget), no cuelga ni inventa" \
+  || bad "b6-cuota: habló con snapshot rancio y sin fetch disponible"
+rm -rf "$QHOME" "$(dirname "$QROOT")"
+
 echo ""
 echo "== (m1) doc=realidad: ningún doc niega el hook de PreCompact que install-brain.sh SÍ cablea (C1, auditoría 2026-09-11) =="
 # Antes del fix: brain/skills/checkpoint/SKILL.md y docs/flowcharts/05*.dot/.svg afirmaban "sin hook de
