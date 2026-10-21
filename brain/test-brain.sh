@@ -4091,6 +4091,78 @@ _wt1=$(date +%s); dur_wd=$((_wt1 - _wt0))
   || bad "rehidratar-hilo watchdog: NO acotó el tiempo (${dur_wd}s ≥ 6) — el hook podría colgar el SessionStart"
 rm -rf "$RHWD"
 
+# ── (rh-reconstruir) ORDEN de reconstruir-contexto en compact/resume + H11 (watchdog no retiene el stdio)
+#    Diseño 2026-10-19 (diseno-reconstruir-contexto-post-compact.md): tras compact|resume el hook antepone,
+#    como PRIMERA línea y DENTRO del preview de ~2 KB (por ENCIMA del faro), la orden de correr el skill
+#    reconstruir-contexto; startup/clear quedan byte a byte como antes. H11 (revisión-7): el watchdog ya no
+#    hereda el stdio → el EOF del stdout llega en <1s, no a los 8s del tope. Ambos deben FALLAR vs 52d2d8c.
+RHRC="$(mktemp -d "${TMPDIR:-/tmp}/brain-rhrc.XXXXXX")"
+mkdir -p "$RHRC/.claude/memory"
+rhrc() { printf '%s' "{\"source\":\"$1\",\"session_id\":\"sRC\"}" | CLAUDE_PROJECT_DIR="$RHRC" bash "$HOOKS/rehidratar-hilo.sh" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null; }
+# hilo GRANDE (dispara también el faro) → la orden debe LIDERAR, arriba del faro Y del árbol de relleno
+{ printf '# Hilo mental actual\n> Última actualización: 2026-10-21 · rama x\n\n## SIGUIENTE PASO\nMARCA_SIG — seguir.\n\n## ARBOL\n'
+  i=1; while [ "$i" -le 500 ]; do printf 'MARCA_RELLENO brain/hooks/x-%s.sh relleno para pasar el umbral\n' "$i"; i=$((i+1)); done
+} > "$RHRC/.claude/memory/hilo-mental-actual.md"
+for src in compact resume; do
+  out="$(rhrc "$src")"
+  first="$(printf '%s' "$out" | head -n1)"
+  printf '%s' "$first" | grep -q "PRIMER ACTO (tras $src" \
+    && ok "rehidratar-hilo reconstruir: $src → la 1ª línea es la orden de reconstruir-contexto" \
+    || bad "rehidratar-hilo reconstruir: $src → la 1ª línea NO es la orden; got: $first"
+  # PROPÓSITO (no plomería): la orden cae DENTRO de los primeros 2 KB (sobrevive el corte del preview)
+  printf '%s' "$out" | head -c 2048 | grep -q 'reconstruir-contexto' \
+    && ok "rehidratar-hilo reconstruir: $src → la orden cae en los primeros 2 KB" \
+    || bad "rehidratar-hilo reconstruir: $src → la orden quedó FUERA de los primeros 2 KB"
+  # … y por ENCIMA del faro anti-truncado (que también dispara con este hilo grande)
+  pos_ord="$(printf '%s' "$out" | grep -n 'PRIMER ACTO' | head -n1 | cut -d: -f1)"
+  pos_faro="$(printf '%s' "$out" | grep -n 'HILO TRUNCADO' | head -n1 | cut -d: -f1)"
+  { [ -n "$pos_ord" ] && [ -n "$pos_faro" ] && [ "$pos_ord" -lt "$pos_faro" ]; } \
+    && ok "rehidratar-hilo reconstruir: $src → la orden va ARRIBA del faro (ord=$pos_ord faro=$pos_faro)" \
+    || bad "rehidratar-hilo reconstruir: $src → la orden no lidera sobre el faro (ord=$pos_ord faro=$pos_faro)"
+done
+# startup NO lleva la orden (salida intacta) — el 🧵 header normal lidera
+printf '%s' "$(rhrc startup)" | grep -q 'PRIMER ACTO' \
+  && bad "rehidratar-hilo reconstruir: startup NO debe llevar la orden (debe quedar igual que antes)" \
+  || ok "rehidratar-hilo reconstruir: startup → sin orden (salida intacta)"
+# GATE DE SISTEMA en el caso sin-hilo-ni-andamio: la orden es "donde más falta hace" (checkpoint falló)
+# pero SOLO en un repo que USA el sistema (estado-proyecto.md). En un repo pelón → silencio (no molestar).
+rm -f "$RHRC/.claude/memory/hilo-mental-actual.md"
+rhrc_bare() { printf '%s' "{\"source\":\"$1\",\"session_id\":\"sRC\"}" | CLAUDE_PROJECT_DIR="$RHRC" bash "$HOOKS/rehidratar-hilo.sh"; }
+# (a) repo PELÓN (sin estado-proyecto.md) + resume sin artefactos → SILENCIO (no se nagea un repo ajeno)
+is_silent "$(rhrc_bare resume)" \
+  && ok "rehidratar-hilo reconstruir: resume sin artefactos en repo SIN sistema → silencio (no molesta)" \
+  || bad "rehidratar-hilo reconstruir: repo pelón recibió la orden en un --resume (ruido)"
+# (b) repo que USA el sistema (estado-proyecto.md) + resume sin hilo/andamio → emite la orden SOLA
+: > "$RHRC/.claude/memory/estado-proyecto.md"
+narm="$(rhrc_bare resume)"
+printf '%s' "$narm" | jq -r '.systemMessage' 2>/dev/null | grep -q 'reconstruir-contexto' \
+  && ok "rehidratar-hilo reconstruir: resume SIN hilo ni andamio + sistema → emite la orden sola (systemMessage)" \
+  || bad "rehidratar-hilo reconstruir: resume sin artefactos (con sistema) no emitió la orden; got: $narm"
+# (c) startup + sistema + sin hilo → SILENCIO (un arranque limpio no pide reconstruir nada; _orden vacío)
+is_silent "$(rhrc_bare startup)" \
+  && ok "rehidratar-hilo reconstruir: startup sin artefactos → silencio (sin orden)" \
+  || bad "rehidratar-hilo reconstruir: startup sin artefactos debió ser silencio"
+rm -f "$RHRC/.claude/memory/estado-proyecto.md"
+# H11: el watchdog ya no retiene el stdout hasta el tope. Con un hilo real presente, el EOF del stdout debe
+# llegar en <1s (viejo: ~8s = REHIDRATAR_TIMEOUT_S por defecto, porque el `sleep` heredaba el pipe de stdout).
+printf '# Hilo\n> Última actualización: 2026-10-21 · rama x\n\n## SIGUIENTE\nseguir\n' > "$RHRC/.claude/memory/hilo-mental-actual.md"
+if command -v python3 >/dev/null 2>&1; then
+  eof_s="$(python3 - "$HOOKS/rehidratar-hilo.sh" "$RHRC" <<'PY'
+import subprocess,time,json,os,sys
+h,proj=sys.argv[1],sys.argv[2]
+t=time.time(); p=subprocess.Popen(["bash",h],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,env=dict(os.environ,CLAUDE_PROJECT_DIR=proj))
+p.stdin.write(json.dumps({"session_id":"x","hook_event_name":"SessionStart","source":"compact"}).encode()); p.stdin.close()
+p.wait(); p.stdout.read(); p.stderr.read(); print(f"{time.time()-t:.2f}")
+PY
+)"
+  awk -v e="$eof_s" 'BEGIN{exit !(e+0<1.0)}' \
+    && ok "rehidratar-hilo H11: el EOF del stdout llega en ${eof_s}s (<1s — el watchdog no hereda el stdio)" \
+    || bad "rehidratar-hilo H11: el EOF tardó ${eof_s}s (≥1s — el watchdog retiene el pipe hasta el tope)"
+else
+  echo "  SKIP: rehidratar-hilo H11 (sin python3 para medir el EOF sub-segundo)"
+fi
+rm -rf "$RHRC"
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (b5b) aviso-drift-cerebro: drift por-repo vs fuente única (stub del sync; throttle; fail-open) =="
