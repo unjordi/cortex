@@ -35,6 +35,11 @@ WEEKLY_CAP_USD="${WEEKLY_CAP_USD:-9000}"
 WARN_PCT="${WARN_PCT:-60}"
 CRIT_PCT="${CRIT_PCT:-85}"
 
+# Ventana (horas) para avisar "el login ya va a expirar" ANTES de que se rompa.
+# Se mide sobre el REFRESH token (vida larga ~30 días), no el access token
+# (vida ~8h, que Claude Code auto-refresca solo → no es señal de logout).
+AUTH_EXPIRING_HORAS="${CORTEX_AUTH_EXPIRING_HORAS:-72}"
+
 CACHE_DIR="$HOME/Library/Caches/cortex"
 # Config de Claude Code: honra CLAUDE_CONFIG_DIR (si está, el .claude vive ahí), si no ~/.claude.
 CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
@@ -58,34 +63,25 @@ if [[ -r "$STATE_FILE" ]] && [[ "$(jq -r '.basis // empty' "$STATE_FILE" 2>/dev/
   PREV_FIVE_RESET="$(jq -r '.five_hour.resets_at // empty' "$STATE_FILE" 2>/dev/null || true)"
 fi
 
-write_error() {
-  local msg="$1"
-  jq -n --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg err "$msg" '{
-    updated_at: $ts,
-    status: "error",
-    error: $err,
-    five_hour: null,
-    weekly: null
-  }' > "$TMP_FILE"
-  mv "$TMP_FILE" "$STATE_FILE"
-}
-
 # --- Primary: the OAuth usage endpoint /usage itself reads -------------------
 
-# Claude Code's OAuth token: el LOGIN ACTIVO primero (llavero de macOS, luego el archivo de
-# credenciales); CLAUDE_CODE_OAUTH_TOKEN solo como FALLBACK headless.
+# Credenciales del LOGIN ACTIVO leídas UNA vez (llavero de macOS, luego el archivo): de aquí salen
+# tanto el access token como el refreshTokenExpiresAt (señal de "el login va a expirar"). El token
+# rota en cada `claude login`/`logout`, por eso preferimos el login activo sobre el env headless.
+CREDS_JSON=""
+CREDS_JSON="$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null || true)"
+if [[ -z "$CREDS_JSON" && -r "$CLAUDE_DIR/.credentials.json" ]]; then
+  CREDS_JSON="$(<"$CLAUDE_DIR/.credentials.json")"
+fi
+# Seam de prueba (test-only; default intacto si no está seteado): overridea las credenciales
+# para ejercitar los estados de auth sin tocar el llavero. Seteado-pero-vacío = sin credenciales.
+[[ -n "${CORTEX_FETCH_CREDS_JSON+x}" ]] && CREDS_JSON="$CORTEX_FETCH_CREDS_JSON"
+
+# Claude Code's OAuth token: del login activo (CREDS_JSON); CLAUDE_CODE_OAUTH_TOKEN solo FALLBACK headless.
 oauth_token() {
-  # Preferimos el LOGIN ACTIVO para que el widget refleje la cuenta con la que estás logueado AHORA:
-  # el token del llavero (o del .credentials.json) rota en cada `claude login`/`logout`. Llavero
-  # primero, luego el archivo.
-  local creds=""
-  creds="$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null || true)"
-  if [[ -z "$creds" && -r "$CLAUDE_DIR/.credentials.json" ]]; then
-    creds="$(<"$CLAUDE_DIR/.credentials.json")"
-  fi
-  if [[ -n "$creds" ]]; then
+  if [[ -n "$CREDS_JSON" ]]; then
     local tok
-    tok="$(jq -er '.claudeAiOauth.accessToken // empty' <<<"$creds" 2>/dev/null || true)"
+    tok="$(jq -er '.claudeAiOauth.accessToken // empty' <<<"$CREDS_JSON" 2>/dev/null || true)"
     [[ -n "$tok" ]] && { printf '%s' "$tok"; return 0; }
   fi
   # FALLBACK headless: CLAUDE_CODE_OAUTH_TOKEN (token de larga vida de `claude setup-token`) SOLO si no
@@ -94,6 +90,9 @@ oauth_token() {
   [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]] && { printf '%s' "$CLAUDE_CODE_OAUTH_TOKEN"; return 0; }
   return 1
 }
+
+# Epoch-ms de expiración del REFRESH token (vida larga). Vacío si no hay credenciales legibles.
+REFRESH_EXP_MS="$(jq -r '.claudeAiOauth.refreshTokenExpiresAt // empty' <<<"$CREDS_JSON" 2>/dev/null || true)"
 
 # The account email (display only), from Claude Code's own local config —
 # not part of the OAuth token, so read separately and best-effort.
@@ -116,16 +115,53 @@ if [[ -n "$ACCOUNT_PIN" && "$ACCOUNT_PIN" != "$ACCOUNT_UUID" && "$ACCOUNT_PIN" !
   ACCOUNT_MISMATCH=true
 fi
 
+TOKEN="$(oauth_token 2>/dev/null || true)"
 USAGE_JSON=""
-if TOKEN="$(oauth_token 2>/dev/null)" && [[ -n "$TOKEN" ]]; then
-  USAGE_JSON="$(curl -fsS -m 15 "https://api.anthropic.com/api/oauth/usage" \
+HTTP_CODE=""
+if [[ -n "${CORTEX_FETCH_HTTP+x}" && -n "$TOKEN" ]]; then
+  # Seam de prueba (test-only): simula la respuesta del endpoint sin red. HTTP_CODE forzado;
+  # cuerpo desde CORTEX_FETCH_USAGE_FIXTURE. Gated por TOKEN como el fetch real (sin token no hay
+  # consulta). No cambia nada si no está seteado.
+  HTTP_CODE="$CORTEX_FETCH_HTTP"
+  BODY="${CORTEX_FETCH_USAGE_FIXTURE:-}"
+  if [[ "$HTTP_CODE" == "200" ]] && jq -e '.five_hour.utilization != null' <<<"$BODY" >/dev/null 2>&1; then
+    USAGE_JSON="$BODY"
+  fi
+elif [[ -n "$TOKEN" ]]; then
+  # -w anexa el código HTTP en su propia línea tras el cuerpo: así distinguimos un 401/403
+  # (token rechazado → login expirado) de un fallo de RED (código vacío → transitorio).
+  RESP="$(curl -sS -m 15 -w $'\n%{http_code}' "https://api.anthropic.com/api/oauth/usage" \
     -H "Authorization: Bearer $TOKEN" \
     -H "anthropic-beta: oauth-2025-04-20" 2>/dev/null || true)"
-  # Sanity check: must be JSON carrying the 5-hour utilization.
-  if ! jq -e '.five_hour.utilization != null' <<<"$USAGE_JSON" >/dev/null 2>&1; then
-    USAGE_JSON=""
+  HTTP_CODE="${RESP##*$'\n'}"
+  BODY="${RESP%$'\n'*}"
+  # Sanity check: 200 + JSON con la utilización de 5h. Cualquier otra cosa NO es una lectura real.
+  if [[ "$HTTP_CODE" == "200" ]] && jq -e '.five_hour.utilization != null' <<<"$BODY" >/dev/null 2>&1; then
+    USAGE_JSON="$BODY"
   fi
 fi
+
+# --- Estado de AUTENTICACIÓN (viaja en state.json para widget + hooks) --------
+# Señales REALES, no el access token de vida corta: sin token → no_credentials;
+# 401/403 → expired (rechazado); refresh token vencido → expired; refresh token
+# dentro de la ventana → expiring; si no, ok. Un fallo de RED (código vacío) NO
+# grita "expired": conserva ok/expiring según el refresh token.
+NOW_MS=$(( $(date +%s) * 1000 ))
+EXPIRING_MS=$(( AUTH_EXPIRING_HORAS * 3600 * 1000 ))
+if [[ -z "$TOKEN" ]]; then
+  AUTH_STATE="no_credentials"
+elif [[ "$HTTP_CODE" == "401" || "$HTTP_CODE" == "403" ]]; then
+  AUTH_STATE="expired"
+elif [[ -n "$REFRESH_EXP_MS" ]] && (( REFRESH_EXP_MS <= NOW_MS )); then
+  AUTH_STATE="expired"
+elif [[ -n "$REFRESH_EXP_MS" ]] && (( REFRESH_EXP_MS <= NOW_MS + EXPIRING_MS )); then
+  AUTH_STATE="expiring"
+else
+  AUTH_STATE="ok"
+fi
+# ISO de expiración del refresh token (para el aviso "expira el <fecha>"). BSD date -r <epoch-s>.
+AUTH_EXPIRES_AT=""
+[[ -n "$REFRESH_EXP_MS" ]] && AUTH_EXPIRES_AT="$(date -u -r $(( REFRESH_EXP_MS / 1000 )) +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)"
 
 # --- Secondary: ccusage (cost enrichment, and fallback percentages) ----------
 
@@ -140,6 +176,8 @@ resolve_ccusage() {
 }
 
 CCUSAGE="$(resolve_ccusage || true)"
+# Seam de prueba (test-only): salta ccusage para pruebas herméticas/rápidas. Default intacto.
+[[ -n "${CORTEX_FETCH_NO_CCUSAGE:-}" ]] && CCUSAGE=""
 
 # Live pricing first: the bundled --offline table lags new models, whose
 # tokens are then costed at $0 — silently deflating both the $ enrichment
@@ -163,11 +201,6 @@ if [[ -n "$CCUSAGE" ]]; then
   jq -e . <<<"$WEEKLY_JSON" >/dev/null 2>&1 || WEEKLY_JSON=""
 fi
 
-if [[ -z "$USAGE_JSON" && -z "$BLOCKS_JSON" && -z "$WEEKLY_JSON" ]]; then
-  write_error "no data: OAuth usage endpoint unreachable and ccusage returned nothing"
-  exit 0
-fi
-
 NOW_ISO="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 # ccusage groups weeks Monday-start; compute this week's Monday so we pick the
 # CURRENT week bucket (the array is oldest-first, so [0] is last week).
@@ -183,6 +216,11 @@ NEXT_MONDAY="$(date -u -v+"${DAYS_AHEAD}"d -v0H -v0M -v0S +%Y-%m-%dT%H:%M:%SZ)"
 [[ -n "$PREV_WEEK_RESET" && "$PREV_WEEK_RESET" > "$NOW_ISO" ]] || PREV_WEEK_RESET=""
 [[ -n "$PREV_FIVE_RESET" && "$PREV_FIVE_RESET" > "$NOW_ISO" ]] || PREV_FIVE_RESET=""
 
+# --- DECISIÓN DE ESCRITURA (contrato Jordi 2026-10-21) ------------------------
+# oauth FRESCO → snapshot oauth (abajo). oauth FALLA + hay lectura oauth previa →
+# PRESERVAR la previa marcada stale (el estimado por costo NUNCA pisa una lectura
+# real). oauth FALLA + sin previa → "no hay dato" con el estado de auth (NO inventa).
+if [[ -n "$USAGE_JSON" ]]; then
 jq -n \
   --argjson usage "${USAGE_JSON:-null}" \
   --argjson blocks "${BLOCKS_JSON:-null}" \
@@ -194,6 +232,8 @@ jq -n \
   --arg prev_five_reset "$PREV_FIVE_RESET" \
   --arg email "$ACCOUNT_EMAIL" \
   --arg account_uuid "$ACCOUNT_UUID" \
+  --arg auth_state "$AUTH_STATE" \
+  --arg auth_expires "$AUTH_EXPIRES_AT" \
   --argjson account_mismatch "$ACCOUNT_MISMATCH" \
   --argjson five_cap "$FIVE_HOUR_CAP_USD" \
   --argjson week_cap "$WEEKLY_CAP_USD" \
@@ -226,8 +266,16 @@ jq -n \
      else $next_monday end) as $week_reset
   | {
       updated_at: $ts,
+      fetched_at: $ts,
+      stale: false,
       status: $status,
       basis: (if $usage != null then "oauth" else "cost" end),
+      auth: {
+        state: $auth_state,
+        expires_at: (if $auth_expires != "" then $auth_expires else null end),
+        account_email: (if $email != "" then $email else null end),
+        account_uuid: (if $account_uuid != "" then $account_uuid else null end)
+      },
       account_email: (if $email != "" then $email else null end),
       account_uuid: (if $account_uuid != "" then $account_uuid else null end),
       account_mismatch: $account_mismatch,
@@ -278,8 +326,58 @@ jq -n \
       } else null end)
     }
 ' > "$TMP_FILE"
-
 mv "$TMP_FILE" "$STATE_FILE"
+
+else
+  # --- oauth NO disponible: preservar la última lectura real, o "no hay dato" ---
+  case "$AUTH_STATE" in
+    no_credentials) REASON="no hay cuenta logueada en el CLI de Claude" ;;
+    expired)        REASON="el login de Claude expiró — re-loguéate" ;;
+    *)              REASON="no se pudo contactar el endpoint OAuth (red); mostrando la última lectura real" ;;
+  esac
+  if [[ -r "$STATE_FILE" ]] && [[ "$(jq -r '.basis // empty' "$STATE_FILE" 2>/dev/null || true)" == "oauth" ]]; then
+    # PRESERVAR: conserva números+cuenta+updated_at de la lectura real; solo la marca stale,
+    # refresca el estado de auth (ACTUAL aunque los números sean viejos), sella fetched_at=ahora
+    # y anota el error. El estimado por costo NO entra. La edad la calcula el lector sobre updated_at.
+    jq --arg now "$NOW_ISO" --arg reason "$REASON" \
+       --arg auth_state "$AUTH_STATE" --arg auth_expires "$AUTH_EXPIRES_AT" \
+       --arg email "$ACCOUNT_EMAIL" --arg account_uuid "$ACCOUNT_UUID" '
+       .stale = true
+       | .fetched_at = $now
+       | .error = $reason
+       | .auth = {
+           state: $auth_state,
+           expires_at: (if $auth_expires != "" then $auth_expires else null end),
+           account_email: (if $email != "" then $email else .account_email end),
+           account_uuid: (if $account_uuid != "" then $account_uuid else null end)
+         }
+       ' "$STATE_FILE" > "$TMP_FILE"
+    mv "$TMP_FILE" "$STATE_FILE"
+  else
+    # SIN lectura previa real → "no hay dato" HONESTO con el estado de auth (el widget muestra el
+    # aviso + botón de re-login). NO se inventa un estimado por costo.
+    jq -n --arg now "$NOW_ISO" --arg reason "$REASON" \
+       --arg auth_state "$AUTH_STATE" --arg auth_expires "$AUTH_EXPIRES_AT" \
+       --arg email "$ACCOUNT_EMAIL" --arg account_uuid "$ACCOUNT_UUID" '{
+         updated_at: $now,
+         fetched_at: $now,
+         stale: true,
+         status: "error",
+         basis: null,
+         error: $reason,
+         auth: {
+           state: $auth_state,
+           expires_at: (if $auth_expires != "" then $auth_expires else null end),
+           account_email: (if $email != "" then $email else null end),
+           account_uuid: (if $account_uuid != "" then $account_uuid else null end)
+         },
+         account_email: null,
+         five_hour: null,
+         weekly: null
+       }' > "$TMP_FILE"
+    mv "$TMP_FILE" "$STATE_FILE"
+  fi
+fi
 
 # --- Stats para las pestañas Resumen / Modelos (ccusage local) ---------------
 # Datos LOCALES de Claude Code de esta máquina (no la cuenta global de claude.ai).

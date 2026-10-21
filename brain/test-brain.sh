@@ -9379,6 +9379,38 @@ fi
 rm -rf "$B1C"
 
 # ─────────────────────────────────────────────────────────────────────────────
+# cortex-fetch: estados de auth + preservación de la última lectura real (contrato 2026-10-21).
+# La matriz detallada (7 casos / 26 asserts) vive en macos/pruebas/ para re-correrla directo; aquí
+# la invocamos como un gate. Solo macOS (cortex-fetch usa BSD `date`); en Linux su gemelo se prueba aparte.
+echo ""
+if [ "$(uname)" = "Darwin" ]; then
+  CF_TEST="$SCRIPT_DIR/../macos/pruebas/cortex-fetch-auth.test.sh"
+  if [ -x "$CF_TEST" ]; then
+    CF_OUT="$(bash "$CF_TEST" 2>&1)"
+    if [ $? -eq 0 ]; then
+      ok "cortex-fetch macOS: auth 4-estados + preserva lectura real ($(printf '%s' "$CF_OUT" | grep -o 'PASS=[0-9]*'))"
+    else
+      bad "cortex-fetch macOS FALLÓ: $(printf '%s' "$CF_OUT" | grep -E '✗|FAIL=' | tr '\n' ' ')"
+    fi
+  else
+    bad "cortex-fetch macOS: no encuentro $CF_TEST"
+  fi
+fi
+if [ "$(uname)" = "Linux" ]; then
+  CFL_TEST="$SCRIPT_DIR/../src/pruebas/cortex-fetch-auth.test.sh"
+  if [ -x "$CFL_TEST" ]; then
+    CFL_OUT="$(bash "$CFL_TEST" 2>&1)"
+    if [ $? -eq 0 ]; then
+      ok "cortex-fetch Linux: auth 4-estados + preserva lectura real ($(printf '%s' "$CFL_OUT" | grep -o 'PASS=[0-9]*'))"
+    else
+      bad "cortex-fetch Linux FALLÓ: $(printf '%s' "$CFL_OUT" | grep -E '✗|FAIL=' | tr '\n' ' ')"
+    fi
+  else
+    bad "cortex-fetch Linux: no encuentro $CFL_TEST"
+  fi
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 echo ""
 PASS=$(grep -c '^OK$'  "$CALLLOG" 2>/dev/null); PASS="${PASS:-0}"
 FAIL=$(grep -c '^BAD$' "$CALLLOG" 2>/dev/null); FAIL="${FAIL:-0}"

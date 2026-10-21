@@ -260,10 +260,14 @@ El **timer impone el piso de 5 min** a nivel del OS (la API de Anthropic avisa s
 que es la única fuente de cadencia. El widget es una vista pura de `state.json`/`stats.json` (re-leída
 cada 10 s), salvo la pestaña Cerebro, que lee `~/.claude` directo para reflejar el cerebro.
 
-**Los porcentajes** salen del endpoint OAuth `/usage` (idénticos a `/usage`, `basis:"oauth"`); sin red
-o sin credenciales, caen a una estimación calibrada desde los transcripts locales vía
-[ccusage](https://github.com/ryoppippi/ccusage) (`basis:"cost"`). Los montos en dólares son costo
-**API-equivalente** (lo que pagarías por token), no tu factura — una señal de "cuánto me ahorra el plan".
+**Los porcentajes** salen del endpoint OAuth `/usage` (idénticos a `/usage`, `basis:"oauth"`). Si el
+fetch OAuth falla (red caída, login expirado, sin cuenta en el CLI), el estimado por costo **NUNCA**
+pisa una lectura real: el widget muestra la **última lectura oauth** marcada `stale:true` con su cuenta
+y antigüedad; si no hay lectura previa, dice "no hay dato" (no inventa). El estado de autenticación
+viaja en `state.json` (`auth.state` = `ok`/`expiring`/`expired`/`no_credentials`) para que el widget
+avise con botón de re-login en vez de dejar de funcionar en silencio. Los montos en dólares (vía
+[ccusage](https://github.com/ryoppippi/ccusage), solo en modo oauth) son costo **API-equivalente** (lo
+que pagarías por token), no tu factura — una señal de "cuánto me ahorra el plan".
 
 ## Opcional: el broker de terminal (apagado por defecto)
 
