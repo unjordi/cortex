@@ -413,8 +413,8 @@ fi
 if [ "$_sq_aplica" = 1 ]; then
   _cmd_sqflag=$(acg_despoja_comillas "$cmd")   # sobre el cmd DESPOJADO — una mención citada de "--squash" no cuenta como el flag
   if printf '%s' "$_cmd_sqflag" | grep -qE "$SQUASH_RE"; then
-    # TIENE --squash. Las varas de CALIDAD (borrar rama, sustancia, traza) son develop-scoped: solo si el
-    # destino RESOLVIÓ a develop. Un irresoluble-con-squash pasa la calidad (fail-open del concern más suave).
+    # TIENE --squash. El freno de BORRAR la rama de origen es develop-scoped (solo si el destino RESOLVIÓ a
+    # develop); el RECORDATORIO del contenido del mensaje también. Un irresoluble-con-squash pasa sin recordatorio.
     if [ "$destino" = develop ]; then
       _rehaz=$(_rehaz_sugerido "$cmd")
       # EXIGE borrar la rama de origen (--remove-source-branch glab / --delete-branch gh). Sobre cmd DESPOJADO.
@@ -428,52 +428,14 @@ if [ "$_sq_aplica" = 1 ]; then
         _deny_json "FLUJO DE GIT (ley interna): al integrar a develop, la rama de origen se BORRA en el mismo acto — falta $_flag_nom. Sin él la rama queda colgando en el remoto y nadie la vuelve a mirar: de ahí sale la acumulación de ramas viejas en origin. Rehaz el merge con: $_rehaz  — (a main/release y a tus ramas personales no se te exige nada de esto). Receta completa: brain/skills/cerrar-slice/cerrar-slice.sh."
         exit 0
       fi
-      # Si el resumen vive en un archivo LEGIBLE (--body-file / $(cat …)), exige la traza rama→commit igual que inline.
-      _cuerpo=$(acg_cuerpo_resoluble "$cmd" "$pcwd")
-      if [ -n "$_cuerpo" ] && acg_msg_falta_traza "$_cuerpo"; then
-        _deny_json "FLUJO DE GIT (ley interna): al resumen del squash le falta TRAZABILIDAD rama→commit: incluye \"Rama: <feat/…>\" y \"MR/PR: !<id>\" (o #<id>). El squash borra el merge-commit de la plataforma que traía el #id → sin esto, 'git log develop' no dice de qué ramita salió el commit. (El resumen se leyó del archivo que cita el comando.)"
-        exit 0
-      fi
-      # ¿de dónde sale el subject? LITERAL (verifica directo) · AUTO (título del MR/PR vía API) · UNVERIFICABLE (pasa).
-      _clase=$(acg_msg_clasificar "$cmd")
-      case "$_clase" in
-        UNVERIFICABLE) _msg="" ;;
-        LITERAL)       _msg=$(acg_msg_valor "$cmd") ;;
-        *)             _msg=$(acg_mensaje_de_mr "$cmd" "$pcwd") ;;   # AUTO: título del MR por API (vacío → fail-open)
-      esac
-      # LITERAL corre SIEMPRE (aunque el valor tipeado sea vacío -- eso es precisamente lo que
-      # acg_msg_es_pobre(a) debe cazar). AUTO/UNVERIFICABLE con _msg vacío es fail-open (API no resolvió el
-      # título, o el valor no es verificable aquí) -- ahí sí se salta, como siempre.
-      if [ "$_clase" = LITERAL ] || { [ "$_clase" != UNVERIFICABLE ] && [ -n "$_msg" ]; }; then
-        _mdeny=""
-        if acg_msg_es_pobre "$_msg"; then
-          _mdeny="el squash a develop debe llevar un RESUMEN CURADO en prosa (el cambio neto y su porqué), NO el título default de la plataforma (\"Merge pull request #N\"), ni un mensaje vacío o de una sola palabra (\"wip\"/\"fix\"/\"update\")."
-        fi
-        if [ -z "$_mdeny" ] && acg_msg_editorializa "$_msg"; then
-          _mdeny="el mensaje EDITORIALIZA el PROCESO (\"se decidió\" / \"tras analizar\" / \"el asistente\" / \"se identificó que\" / \"en esta sesión\" / \"se procedió a\"). El resumen debe describir QUÉ HACE EL CÓDIGO ahora, no CÓMO se llegó a él."
-        fi
-        _gh_tiene_body=0
-        if printf '%s' "$cmd" | grep -qE 'gh(\.exe)?[[:space:]]+pr' \
-           && printf '%s' "$cmd" | grep -qE '(^|[[:space:]])(--body|-F|--body-file)([[:space:]]+|=)[^[:space:]]'; then
-          _gh_tiene_body=1
-        fi
-        if [ -z "$_mdeny" ] && [ "$_clase" = LITERAL ] && [ "$_gh_tiene_body" = 0 ]; then
-          if acg_msg_es_superficial "$_msg"; then
-            _mdeny="el resumen del slice es DEMASIADO CORTO (< 12 palabras) para describir el cambio neto y su porqué. Escríbelo como prosa que diga qué hace el código ahora y por qué."
-          elif acg_msg_falta_traza "$_msg"; then
-            _mdeny="al resumen le falta TRAZABILIDAD rama→commit: incluye \"Rama: <feat/…>\" y \"MR/PR: !<id>\" (o #<id>). El squash borra el merge-commit de la plataforma que traía el #id → sin esto, 'git log develop' no dice de qué ramita salió el commit."
-          fi
-        fi
-        if [ -n "$_mdeny" ]; then
-          _rehaz=$(_rehaz_sugerido "$cmd")
-          _deny_json "FLUJO DE GIT (ley interna): $_mdeny  Rehaz el merge con un mensaje con sustancia: $_rehaz  — el mensaje es el resumen del slice, no el pegote de commits. Corre brain/skills/cerrar-slice/cerrar-slice.sh (arma el merge curado por ti); ver skill cerrar-slice."
-          exit 0
-        fi
-        # WARN no-bloqueante (narra-acciones ≥2 "se <verbo>"): se DIFIERE a la salida final (ver _salir_ok / ALLOW).
-        if acg_msg_narra_acciones "$_msg"; then
-          _warn_ctx="FLUJO DE GIT: el resumen del squash PARECE una LISTA DE ACCIONES (\"se cambió…, se actualizó…, se corrigió…\") en vez del CAMBIO NETO y su porqué. Considera reescribirlo describiendo QUÉ HACE EL CÓDIGO ahora. Ver skill cerrar-slice."
-        fi
-      fi
+      # El CONTENIDO del squash-message ya NO se valida de forma determinista (decisión de unjordi 2026-10-21:
+      # "no confío nada en lo determinista. Lo deprecamos por inútil"). Las varas de ESTILO del mensaje (título
+      # default, vacío/placeholder, superficial, editorializa, falta-traza, narra-acciones) se RETIRARON del
+      # freno: ahora el guard emite un RECORDATORIO no-bloqueante (additionalContext, diferido a la salida final).
+      # El squash obligatorio y el --delete-branch de arriba SIGUEN siendo freno; la CALIDAD del resumen la juzga
+      # la persona, no un regex. Sale en TODO merge-con-squash a develop (también personal/mini, grant durable y
+      # ALLOW del juez): el recordatorio fluye por _warn_ctx hasta _salir_ok / la salida ALLOW.
+      _warn_ctx="FLUJO DE GIT (recordatorio, no freno): el squash-message a develop es el RESUMEN del slice — redáctalo a mano con el CAMBIO NETO y su PORQUÉ, más la trazabilidad \"Rama: <feat/…>\" y \"MR/PR: !<id>\" (o #<id>). Corre brain/skills/cerrar-slice/cerrar-slice.sh (arma el merge curado por ti). Ver skill cerrar-slice."
     fi
     # squash OK → cae al scoping/auth de abajo (NO exit: falta el candado de autorización)
   else

@@ -250,7 +250,7 @@ ms() { PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$MSREPO" bash "$
 mock_glab develop; out="$(ms 'glab mr merge 42 --auto-merge --yes')"
 is_deny "$out"   && ok "squash-guard G4: destino=develop confirmado, sin --squash → deny" || bad "squash-guard G4: no denegó merge a develop sin squash; got: $out"
 mock_glab develop; out="$(ms 'glab mr merge 42 --squash --remove-source-branch --auto-merge --yes')"
-is_silent "$out" && ok "squash-guard G4: develop CON --squash → pasa"                     || bad "squash-guard G4: bloqueó un merge que ya trae squash; got: $out"
+{ ! is_deny "$out" && printf '%s' "$out" | grep -q 'recordatorio, no freno'; } && ok "squash-guard G4: develop CON --squash → pasa + RECORDATORIO A2 (ya no frena por el mensaje)"                     || bad "squash-guard G4: bloqueó un merge que ya trae squash; got: $out"
 mock_glab DevelopAna; out="$(ms 'glab mr merge 43 --auto-merge --yes')"
 is_silent "$out" && ok "squash-guard G4: destino=rama personal → NO fuerza squash (día a día libre)" || bad "squash-guard G4: forzó squash a rama personal; got: $out"
 mock_glab main; out="$(ms 'glab mr merge 44 --yes')"
@@ -332,7 +332,7 @@ rm -f "$SYNCTX" "$SYNCTX2" "$SYNCTX3" "$MSBIN/gh"
 mock_glab develop; out="$(ms 'glab.exe mr merge 48 --auto-merge --yes')"
 is_deny "$out" && ok "squash-guard H-R9-01: 'glab.exe mr merge' sin --squash → deny (binario Windows)" || bad "squash-guard H-R9-01: 'glab.exe' evadió el guard de squash; got: $out"
 mock_glab develop; out="$(ms 'glab.exe mr merge 49 --squash --remove-source-branch --auto-merge --yes')"
-is_silent "$out" && ok "squash-guard H-R9-01: 'glab.exe mr merge --squash' → pasa (sin falso positivo)" || bad "squash-guard H-R9-01: bloqueó un glab.exe que ya trae squash; got: $out"
+{ ! is_deny "$out" && printf '%s' "$out" | grep -q 'recordatorio, no freno'; } && ok "squash-guard H-R9-01: 'glab.exe mr merge --squash' → pasa + RECORDATORIO A2 (sin falso positivo)" || bad "squash-guard H-R9-01: bloqueó un glab.exe que ya trae squash; got: $out"
 # merge-squash-guard comparte con git-branch-guard/entorno-maquina-guard la MISMA lib despoja-comillas, así
 # que el caso eval/bash-c (M1) también lo cubre: acg_es_merge_mr reinyecta el span de un ejecutor. Estos dos
 # casos lo BLINDAN hacia adelante. `ms()` interpola el comando SIN escapar comillas (rompería el JSON con un
@@ -355,7 +355,7 @@ out="$(msj_raw 'gh pr merge 94 --subject "arregla el -s de tar"')"
 is_deny "$out" && ok "H6: mención ENTRECOMILLADA de ' -s ' suelto (en --subject) → SIGUE exigiendo squash" \
   || bad "H6: REGRESIÓN — un ' -s ' citado coló un merge sin squash; got: $out"
 out="$(msj_raw 'glab mr merge 95 --squash --remove-source-branch --squash-message "resumen real del cambio y su porqué, con Rama: feat/x MR: !95"')"
-is_silent "$out" && ok "H6: --squash REAL (fuera de comillas) sigue reconociéndose — sin regresión del caso legítimo" \
+{ ! is_deny "$out" && printf '%s' "$out" | grep -q 'recordatorio, no freno'; } && ok "H6: --squash REAL (fuera de comillas) sigue reconociéndose → pasa + RECORDATORIO A2 (sin regresión del caso legítimo)" \
   || bad "H6: REGRESIÓN — el --squash real dejó de reconocerse tras exigir despoja_comillas; got: $out"
 
 # H4: el fail-safe de destino IRRESOLUBLE ancla acg_lexico_release al mrid de ESTE comando
@@ -381,222 +381,90 @@ rm -rf "$MSBIN"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "== (b1c2) merge-squash-guard: CALIDAD del mensaje del squash (develop-scoped, fail-open) =="
-# NUEVO: además de EXIGIR --squash, cuando el destino es develop se valida que el MENSAJE del squash tenga
-# SUSTANCIA — bloquea el título default "Merge pull request #N", el vacío y el placeholder de una palabra.
-# Fuente del mensaje: LITERAL (flag en el cmd) · AUTO (título del MR/PR vía API) · UNVERIFICABLE (PASA).
-# NO afloja nada: la exigencia de squash y la excepción de RELEASE quedan intactas (probadas en b1c).
+echo "== (b1c2) merge-develop-guard: el contenido del squash-message es RECORDATORIO, no freno (A2, decisión unjordi 2026-10-21) =="
+# A2: el CONTENIDO del squash-message ya NO se valida de forma determinista ("no confío nada en lo determinista.
+# Lo deprecamos por inútil"). Al mergear a develop con --squash (+ borrar la rama), el guard NO frena por el
+# mensaje: emite un RECORDATORIO no-bloqueante (additionalContext con "Rama:/MR:"). El squash obligatorio y el
+# --delete-branch SIGUEN siendo freno (b1c/b1c4); la frontera develop-scoped también (main/personal libres).
+# Estos asertos FALLAN contra el código viejo: denegaba el título default/vacío/pobre/sin-traza, o quedaba en
+# SILENCIO ante un buen mensaje — ahora, en develop, SIEMPRE hay recordatorio (personal/grant/ALLOW incluidos).
 MSBIN="$FAKEHOME/msbin"; mkdir -p "$MSBIN"
-# mock glab que devuelve target_branch Y title en el MISMO JSON (destino + mensaje salen de la misma llamada)
 mock_glab_full() { printf '#!/usr/bin/env bash\necho '\''{"target_branch":"%s","title":"%s"}'\''\n' "$1" "$2" > "$MSBIN/glab"; chmod +x "$MSBIN/glab"; }
-# mock gh que responde a `-q .baseRefName` (destino) y `-q .title` (mensaje) según el arg jq-path recibido
 mock_gh_full() { { printf '#!/usr/bin/env bash\n'; printf 'for a in "$@"; do case "$a" in .baseRefName) echo "%s"; exit 0;; .title) echo "%s"; exit 0;; esac; done\necho ""\n' "$1" "$2"; } > "$MSBIN/gh"; chmod +x "$MSBIN/gh"; }
-# runner: payload por jq --arg (soporta comillas/#/$ en el mensaje) + LIMPIA la caché por MR-id en cada caso
 msj() { rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* "${TMPDIR:-/tmp}"/acg-mrmsg-* 2>/dev/null
         jq -nc --arg c "$1" '{tool_input:{command:$c}}' \
           | PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$MSREPO" bash "$HOOKS/merge-develop-guard.sh"; }
-
-# ── LITERAL (mensaje explícito en el comando; destino develop del mock) ──
+# a2chk <cmd> <etiqueta>: el merge a develop NO frena por el mensaje Y emite el RECORDATORIO con "Rama:".
+a2chk() {
+  local out; out="$(msj "$1")"
+  { ! is_deny "$out" \
+      && printf '%s' "$out" | jq -e '.hookSpecificOutput.additionalContext' >/dev/null 2>&1 \
+      && printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext' | grep -q 'Rama:'; } \
+    && ok "A2: $2 -> NO frena + RECORDATORIO (Rama:/MR:)" \
+    || bad "A2: $2 -> frenó por el mensaje o sin recordatorio; got: $out"
+}
+# ── LITERAL glab: todo lo que ANTES denegaba por el mensaje ahora pasa + recordatorio ──
 mock_glab develop
-is_deny   "$(msj 'glab mr merge 50 --squash --remove-source-branch --squash-message "Merge pull request #5 from foo/bar"')" \
-  && ok "msg LITERAL: título default 'Merge pull request #N' → deny" || bad "msg LITERAL: no bloqueó el título default"
-is_deny   "$(msj 'glab mr merge 51 --squash --remove-source-branch --squash-message "wip"')" \
-  && ok "msg LITERAL: placeholder de una palabra 'wip' → deny" || bad "msg LITERAL: no bloqueó 'wip'"
-is_deny   "$(msj 'glab mr merge 52 --squash --remove-source-branch --squash-message ""')" \
-  && ok "msg LITERAL: mensaje vacío → deny" || bad "msg LITERAL: no bloqueó el mensaje vacío"
-is_silent "$(msj 'glab mr merge 53 --squash --remove-source-branch --squash-message "corrige el calculo de IVA en las facturas: el total ahora suma el impuesto por linea. Rama: fix/iva, MR: !53"')" \
-  && ok "msg LITERAL: resumen con sustancia + traza (≥12 palabras) → pasa (sin FP)" || bad "msg LITERAL: bloqueó un resumen legítimo con traza"
-is_silent "$(msj 'glab mr merge 54 --squash --remove-source-branch --squash-message "$(cat resumen.md)"')" \
-  && ok "msg UNVERIFICABLE: '\$(cat resumen.md)' (la forma que el propio hook sugiere) → pasa" || bad "msg UNVERIFICABLE: bloqueó la forma sugerida por el hook"
-# ── MULTILÍNEA INLINE: un --squash-message con SALTOS DE LÍNEA reales y SUSTANCIA NO se trunca al 1er
-#    token ni exige la forma $(cat archivo) — se evalúa el mensaje completo, no solo la 1ª línea. ──
-MLMSG=$'corrige el calculo de IVA en las facturas: el total ahora suma el impuesto\npor linea y redondea al centavo mas cercano segun la NOM vigente.\n\nRama: fix/iva, MR: !58'
-is_silent "$(msj "glab mr merge 58 --squash --remove-source-branch --squash-message \"$MLMSG\"")" \
-  && ok "msg LITERAL multilínea (#42/#46): resumen inline con saltos de línea + sustancia + traza → pasa (sin FP)" || bad "msg LITERAL multilínea: bloqueó un resumen inline multilínea legítimo"
-# (real-sigue) el slurp multilínea NO deja pasar basura: un mensaje multilínea SUPERFICIAL (subject default de
-# plataforma en la 1ª línea) SIGUE bloqueando — el fix restaura el valor completo, no afloja el piso.
-MLBAD=$'Merge pull request #5 from foo/bar\n\ndetalles irrelevantes del merge'
-is_deny "$(msj "glab mr merge 59 --squash --remove-source-branch --squash-message \"$MLBAD\"")" \
-  && ok "msg LITERAL multilínea: subject default 'Merge pull request #N' (aunque multilínea) → deny (piso intacto)" || bad "msg LITERAL multilínea: dejó pasar un subject default multilínea"
-
-# ── LITERAL gh (--subject/-t) + --fill unverificable ──
-mock_gh_full develop ""
-is_deny   "$(msj 'gh pr merge 55 --squash --delete-branch --subject "Merge pull request #5"')" \
-  && ok "msg LITERAL gh: --subject default → deny" || bad "msg LITERAL gh: no bloqueó el subject default"
-is_silent "$(msj 'gh pr merge 56 --squash --delete-branch --subject "agrega validacion de stock disponible antes de confirmar el pedido para evitar sobreventa. Rama: feat/stock, PR: #56"')" \
-  && ok "msg LITERAL gh: --subject con sustancia + traza → pasa (sin FP)" || bad "msg LITERAL gh: bloqueó un subject legítimo con traza"
-is_silent "$(msj 'gh pr merge 57 --squash --delete-branch --fill')" \
-  && ok "msg UNVERIFICABLE gh: --fill (subject derivado de commits) → pasa" || bad "msg UNVERIFICABLE gh: bloqueó un --fill"
-# M8: con gh, --subject fija el TÍTULO; la convención pone el RESUMEN CURADO en
-# --body. Un --subject CORTO (sin traza, <12 palabras) con un --body separado (aunque OPACO, la forma que
-# el propio hook sugiere) NO debe forzar la vara de profundidad/trazabilidad sobre el título.
-is_silent "$(msj 'gh pr merge 90 --squash --delete-branch --subject "fix: IVA" --body "$(cat resumen.md)"')" \
-  && ok "M8: gh --subject CORTO + --body separado (opaco) → pasa (la vara se mueve al body, no al título)" \
-  || bad "M8: exigió profundidad/traza en un título gh que tiene --body separado"
-# Control: el MISMO --subject corto SIN --body → sigue exigiendo profundidad/traza (M8 no aflojó el default).
-is_deny "$(msj 'gh pr merge 91 --squash --delete-branch --subject "fix: IVA"')" \
-  && ok "M8 control: gh --subject CORTO SIN --body → sigue exigiendo profundidad (no aflojó)" \
-  || bad "M8 control: aflojó la vara de profundidad para un --subject corto sin --body"
-
-# ── AUTO (sin flag de mensaje → el squash toma el TÍTULO del MR/PR, resuelto vía API) ──
+a2chk 'glab mr merge 50 --squash --remove-source-branch --squash-message "Merge pull request #5 from foo/bar"' "título default 'Merge pull request #N' (antes deny)"
+a2chk 'glab mr merge 51 --squash --remove-source-branch --squash-message "wip"' "placeholder 'wip' (antes deny)"
+a2chk 'glab mr merge 52 --squash --remove-source-branch --squash-message ""' "mensaje vacío (antes deny)"
+a2chk 'glab mr merge 66 --squash --remove-source-branch --squash-message "corrige el IVA en facturas"' "resumen corto <12 palabras (antes deny superficial)"
+a2chk 'glab mr merge 67 --squash --remove-source-branch --squash-message "corrige el calculo del impuesto al valor agregado en todas las facturas emitidas durante el periodo fiscal vigente"' "resumen largo SIN traza (antes deny)"
+a2chk 'glab mr merge 69 --squash --remove-source-branch --squash-message "tras analizar el middleware se decidio reemplazar la validacion. Rama: fix/x, MR: !9"' "editorializa el proceso (antes deny)"
+# mensaje BUENO (sustancia + traza): ANTES is_silent -> ahora también recordatorio (el contenido ya no se distingue)
+a2chk 'glab mr merge 53 --squash --remove-source-branch --squash-message "corrige el calculo de IVA en las facturas: el total ahora suma el impuesto por linea. Rama: fix/iva, MR: !53"' "resumen con sustancia + traza (antes is_silent)"
+# UNVERIFICABLE $(cat …): también recordatorio (uniforme; ya no hay clasificación)
+a2chk 'glab mr merge 54 --squash --remove-source-branch --squash-message "$(cat resumen.md)"' "valor \$(cat resumen.md) (antes is_silent UNVERIFICABLE)"
+# AUTO (sin flag de mensaje -> el guard ya NO consulta el título del MR para validarlo): recordatorio
 mock_glab_full develop "Merge pull request #7 from x/y"
-is_deny   "$(msj 'glab mr merge 60 --squash --remove-source-branch --auto-merge --yes')" \
-  && ok "msg AUTO: título del MR es el default 'Merge pull request #N' → deny (vía API)" || bad "msg AUTO: no bloqueó el título default del MR"
-mock_glab_full develop "actualiza dependencias y corrige el pipeline de CI"
-is_silent "$(msj 'glab mr merge 61 --squash --remove-source-branch --yes')" \
-  && ok "msg AUTO: título del MR con sustancia → pasa (sin FP)" || bad "msg AUTO: bloqueó un título de MR legítimo"
-mock_glab_full develop "wip"
-is_deny   "$(msj 'glab mr merge 62 --squash --remove-source-branch --yes')" \
-  && ok "msg AUTO: título del MR es placeholder 'wip' → deny" || bad "msg AUTO: no bloqueó el título placeholder"
-mock_glab develop   # sin title en el JSON → API devuelve vacío → FAIL-OPEN
-is_silent "$(msj 'glab mr merge 63 --squash --remove-source-branch --yes')" \
-  && ok "msg AUTO: título irresoluble (API vacía) → pasa (FAIL-OPEN, no fuerza)" || bad "msg AUTO: bloqueó con título irresoluble (rompe fail-open)"
-
-# ── FRONTERA: la validación de mensaje es develop-scoped → main/personal quedan LIBRES aunque el msg sea pobre ──
+a2chk 'glab mr merge 60 --squash --remove-source-branch --yes' "AUTO título default del MR (antes deny vía API)"
+# ── LITERAL gh: subject default / corto -> recordatorio (ya no deny) ──
+mock_gh_full develop ""
+a2chk 'gh pr merge 55 --squash --delete-branch --subject "Merge pull request #5"' "gh subject default (antes deny)"
+a2chk 'gh pr merge 91 --squash --delete-branch --subject "fix: IVA"' "gh subject corto sin body (antes deny)"
+# ── El recordatorio es develop-scoped: a main (release) y a rama personal NO se emite ──
 mock_glab_full main "wip"
 is_silent "$(msj 'glab mr merge 64 --squash --remove-source-branch --yes')" \
-  && ok "msg scope: destino=main (release) + msg pobre → pasa (fuera de alcance)" || bad "msg scope: bloqueó por mensaje a un release a main"
+  && ok "A2 scope: destino=main (release) -> merge pasa SIN recordatorio de mensaje (fuera de alcance)" || bad "A2 scope: main emitió algo por el mensaje; got: $(msj 'glab mr merge 64 --squash --remove-source-branch --yes')"
 mock_glab_full DevelopAna "wip"
 is_silent "$(msj 'glab mr merge 65 --squash --remove-source-branch --yes')" \
-  && ok "msg scope: destino=rama personal + msg pobre → pasa (fuera de alcance)" || bad "msg scope: bloqueó por mensaje a una rama personal"
-
-# ── (3a) PROFUNDIDAD + (2a) TRAZABILIDAD + (3b) EDITORIALIZACIÓN — SOLO el LITERAL, destino develop ──
-mock_glab develop
-# 3a: LITERAL < 12 palabras → deny (demasiado corto para un resumen del cambio neto)
-is_deny   "$(msj 'glab mr merge 66 --squash --remove-source-branch --squash-message "corrige el IVA en facturas"')" \
-  && ok "msg 3a: LITERAL corto (<12 palabras) → deny (superficial)" || bad "msg 3a: no bloqueó un resumen literal demasiado corto"
-# 2a: LITERAL ≥12 palabras PERO sin rama/MR-id → deny (trazabilidad rama→commit perdida)
-is_deny   "$(msj 'glab mr merge 67 --squash --remove-source-branch --squash-message "corrige el calculo del impuesto al valor agregado en todas las facturas emitidas durante el periodo fiscal vigente"')" \
-  && ok "msg 2a: LITERAL largo SIN rama/MR-id → deny (falta trazabilidad)" || bad "msg 2a: no bloqueó un resumen sin trazabilidad"
-# 2a: el MISMO mensaje pero CON una línea de traza → pasa (sin FP)
-is_silent "$(msj 'glab mr merge 68 --squash --remove-source-branch --squash-message "corrige el calculo del impuesto al valor agregado en todas las facturas emitidas. Rama: fix/iva, MR: !67"')" \
-  && ok "msg 2a: LITERAL largo + traza (Rama:/MR:) → pasa (sin FP)" || bad "msg 2a: bloqueó un resumen con traza"
-# 3b-DENY: editorialización inequívoca de proceso, aun con traza y largo → deny
-is_deny   "$(msj 'glab mr merge 69 --squash --remove-source-branch --squash-message "tras analizar el middleware se decidio reemplazar la validacion de tokens por completo. Rama: fix/x, MR: !9"')" \
-  && ok "msg 3b: editorializa el proceso ('tras analizar'/'se decidió') → deny" || bad "msg 3b: no bloqueó la editorialización de proceso"
-# 3b-WARN: lista de acciones (≥2 'se <verbo>') pero sin marcador-duro, con traza y largo → NO deny, additionalContext
-warnout="$(msj 'glab mr merge 71 --squash --remove-source-branch --squash-message "se cambio la logica de tokens y se actualizo el middleware para validar el claim exp del servidor. Rama: feat/auth, MR: !12"')"
-{ ! is_deny "$warnout" && printf '%s' "$warnout" | jq -e '.hookSpecificOutput.additionalContext' >/dev/null 2>&1; } \
-  && ok "msg 3b: lista de acciones (≥2 'se <verbo>') → ADVIERTE (additionalContext), NO deny" || bad "msg 3b: no advirtió (o bloqueó) la lista de acciones; got: $warnout"
-# 1c: la sugerencia de rehacer para gh incluye --delete-branch (limpia la remota huérfana)
+  && ok "A2 scope: destino=rama personal -> merge pasa SIN recordatorio de mensaje" || bad "A2 scope: rama personal emitió algo por el mensaje"
+# 1c: el deny por FALTA de squash (que QUEDA) sigue sugiriendo --delete-branch en el rehaz
 mock_gh_full develop ""
-delout="$(msj 'gh pr merge 72')"   # sin --squash → deny; el rehaz sugerido debe traer --delete-branch
+delout="$(msj 'gh pr merge 72')"
 { is_deny "$delout" && printf '%s' "$delout" | jq -r '.hookSpecificOutput.permissionDecisionReason' | grep -q -- '--delete-branch'; } \
-  && ok "msg 1c: deny gh sin squash → la sugerencia incluye --delete-branch" || bad "msg 1c: la sugerencia gh no trae --delete-branch; got: $delout"
+  && ok "b1c2 1c: deny gh sin squash -> la sugerencia incluye --delete-branch" || bad "b1c2 1c: la sugerencia gh no trae --delete-branch; got: $delout"
+mock_glab develop   # restaura el mock develop para b1c4
 
-# ── (b1c4) FIX-4 / A-2: al integrar a develop, el guard EXIGE borrar la rama de origen ──────────────
+# ── (b1c4) merge-develop-guard: A-2 — un merge a develop sin --delete/--remove-source-branch -> deny (SIGUE freno) ──
 echo ""
-echo "== (b1c4) merge-squash-guard: A-2 — un merge a develop sin --delete-branch/--remove-source-branch → deny =="
-# A-2: al integrar a develop el guard EXIGE borrar la rama de origen. Si `--delete-branch` solo viviera en
-# `_rehaz_sugerido()` (emitido únicamente en el deny por falta de squash), un merge CORRECTO con squash
-# pasaría sin mencionar la rama — y las dos recetas divergen en ese flag (glab `--remove-source-branch`,
-# gh `--delete-branch`). Esa asimetría es la que puebla las remotas huérfanas: PRs mergeados con su rama
-# viva en origin.
+echo "== (b1c4) merge-develop-guard: el --delete-branch SIGUE siendo freno (decisión unjordi: 'sin esto me dejan UN MONTÓN DE RAMAS') =="
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
-# el destino de un comando `gh` lo resuelve el mock de GH (el de glab no lo toca): mockear el correcto
-# es lo que hace que estos asertos midan el ALCANCE real (develop / main / rama personal) y no otra cosa.
 mock_gh_full develop ""; out="$(msj 'gh pr merge 90 --squash --subject "corrige el calculo del IVA" --body "Rama: fix/iva"')"
 { is_deny "$out" && printf '%s' "$out" | grep -q -- '--delete-branch'; } \
-  && ok "FIX-4: gh + squash a develop SIN --delete-branch → deny que NOMBRA el flag" \
+  && ok "FIX-4: gh + squash a develop SIN --delete-branch -> deny que NOMBRA el flag" \
   || bad "FIX-4: pasó un merge a develop que deja la rama colgando en origin; got: $out"
-mock_gh_full develop ""; out="$(msj 'gh pr merge 91 --squash --delete-branch --subject "corrige el calculo del IVA" --body "Rama: fix/iva"')"
-is_silent "$out" && ok "FIX-4: el MISMO comando CON --delete-branch → pasa (la exigencia es solo el flag)" \
+mock_gh_full develop ""; out="$(msj 'gh pr merge 97 --squash --delete-branch --subject "corrige el calculo del IVA" --body "Rama: fix/iva"')"
+{ ! is_deny "$out" && printf '%s' "$out" | jq -e '.hookSpecificOutput.additionalContext' >/dev/null 2>&1; } \
+  && ok "FIX-4: el MISMO comando CON --delete-branch -> pasa (+ recordatorio A2)" \
   || bad "FIX-4: bloqueó un merge que ya borra la rama; got: $out"
 mock_glab develop; out="$(msj 'glab mr merge 92 --squash --squash-message "corrige el calculo del IVA en facturas. Rama: fix/iva"')"
 { is_deny "$out" && printf '%s' "$out" | grep -q -- '--remove-source-branch'; } \
   && ok "FIX-4: glab pide su flag equivalente (--remove-source-branch), no el de gh" \
   || bad "FIX-4: con glab no exigió --remove-source-branch; got: $out"
 mock_glab develop; out="$(msj 'glab mr merge 93 --squash --remove-source-branch --squash-message "corrige el calculo del impuesto al valor agregado en las facturas del periodo. Rama: fix/iva"')"
-is_silent "$out" && ok "FIX-4: glab CON --remove-source-branch → pasa" || bad "FIX-4: bloqueó un glab correcto; got: $out"
-# CONTROL — la exigencia es develop-scoped, igual que la del squash: release y ramas personales libres.
+{ ! is_deny "$out" && printf '%s' "$out" | jq -e '.hookSpecificOutput.additionalContext' >/dev/null 2>&1; } \
+  && ok "FIX-4: glab CON --remove-source-branch -> pasa (+ recordatorio A2)" || bad "FIX-4: bloqueó un glab correcto; got: $out"
+# CONTROL — develop-scoped: release y ramas personales libres (sin freno y SIN recordatorio).
 mock_gh_full main ""; out="$(msj 'gh pr merge 94 --squash --subject "release" --body "x"')"
-is_silent "$out" && ok "FIX-4 control: a main (release) NO se exige --delete-branch" || bad "FIX-4 control: exigió el flag en un release; got: $out"
+is_silent "$out" && ok "FIX-4 control: a main (release) NO se exige --delete-branch ni recordatorio" || bad "FIX-4 control: emitió algo en un release; got: $out"
 mock_gh_full DevelopAna ""; out="$(msj 'gh pr merge 95 --squash --subject "wip" --body "x"')"
-is_silent "$out" && ok "FIX-4 control: a una rama personal NO se exige nada (día a día libre)" || bad "FIX-4 control: exigió el flag a una rama personal; got: $out"
+is_silent "$out" && ok "FIX-4 control: a una rama personal NO se exige nada (día a día libre)" || bad "FIX-4 control: emitió algo a una rama personal; got: $out"
 # H6: una MENCIÓN entrecomillada del flag no cuenta como el flag (mismo criterio que el de --squash)
 mock_gh_full develop ""; out="$(msj 'gh pr merge 96 --squash --subject "corrige el IVA" --body "acuerdate de --delete-branch la proxima vez"')"
 is_deny "$out" && ok "FIX-4: una mención ENTRECOMILLADA de --delete-branch no cuenta como el flag (H6)" \
   || bad "FIX-4: se dejó engañar por la mención del flag dentro de una cadena; got: $out"
 
-# ── (b1c5) FIX-7 / A-3: la trazabilidad `Rama:` deja de depender de la FORMA del comando ────────────
-echo ""
-echo "== (b1c5) merge-squash-guard: A-3 — el resumen que vive en un ARCHIVO LEGIBLE también debe traer la traza =="
-# El comando que el propio guard SUGIERE es `--body "$(cat resumen.md)"`, y esa forma caía a UNVERIFICABLE
-# → exit 0, cero validación: la forma recomendada por el guard era exactamente la que escapaba a su propio
-# chequeo. La línea `Rama:` es la señal LOCAL y offline de la integración; sin ella, detectarla depende de
-# gh/glab — ausentes del PATH de launchd.
-A3DIR="$FAKEHOME/a3"; mkdir -p "$A3DIR"
-printf 'corrige el calculo del impuesto al valor agregado en todas las facturas emitidas en el periodo fiscal vigente\n' > "$A3DIR/sin-rama.md"
-printf 'corrige el calculo del impuesto al valor agregado en las facturas del periodo fiscal vigente\n\nRama: fix/iva-facturas\nPR: #71\n' > "$A3DIR/con-rama.md"
-mock_gh_full develop ""
-out="$(msj "gh pr merge 97 --squash --delete-branch --subject \"corrige el IVA\" --body \"\$(cat $A3DIR/sin-rama.md)\"")"
-{ is_deny "$out" && printf '%s' "$out" | grep -qi 'trazabilidad'; } \
-  && ok "FIX-7: --body \"\$(cat resumen.md)\" SIN la línea Rama: → deny por trazabilidad (antes: UNVERIFICABLE, pasaba)" \
-  || bad "FIX-7: la forma que el propio guard recomienda sigue escapando a su chequeo; got: $out"
-out="$(msj "gh pr merge 98 --squash --delete-branch --subject \"corrige el IVA\" --body \"\$(cat $A3DIR/con-rama.md)\"")"
-is_silent "$out" && ok "FIX-7: el MISMO comando con un resumen que SÍ trae la traza → pasa (sin FP)" \
-  || bad "FIX-7: bloqueó un resumen que sí traía Rama:/PR:; got: $out"
-out="$(msj "gh pr merge 99 --squash --delete-branch --body-file $A3DIR/sin-rama.md")"
-{ is_deny "$out" && printf '%s' "$out" | grep -qi 'trazabilidad'; } \
-  && ok "FIX-7: --body-file <ruta> también se lee y se le exige la traza" \
-  || bad "FIX-7: --body-file siguió pasando sin validar; got: $out"
-out="$(msj "gh pr merge 100 --squash --delete-branch --body-file $A3DIR/con-rama.md")"
-is_silent "$out" && ok "FIX-7: --body-file con traza → pasa" || bad "FIX-7: FP sobre un body-file correcto; got: $out"
-# FAIL-OPEN preservado: lo que NO se puede leer, no se juzga (una sustitución arbitraria, un archivo ausente)
-out="$(msj 'gh pr merge 101 --squash --delete-branch --subject "corrige el IVA" --body "$(genera-resumen --mr 101)"')"
-is_silent "$out" && ok "FIX-7: una sustitución ARBITRARIA sigue pasando (fail-open intacto)" \
-  || bad "FIX-7: bloqueó por un cuerpo que no podía leer — perdió el fail-open; got: $out"
-out="$(msj "gh pr merge 102 --squash --delete-branch --subject \"corrige el IVA\" --body \"\$(cat $A3DIR/no-existe.md)\"")"
-is_silent "$out" && ok "FIX-7: un archivo INEXISTENTE no se juzga (fail-open, no inventa)" \
-  || bad "FIX-7: bloqueó citando un archivo que no pudo leer; got: $out"
-# CONTROL de alcance: fuera de develop no se exige nada
-mock_gh_full main ""
-out="$(msj "gh pr merge 103 --squash --body-file $A3DIR/sin-rama.md")"
-is_silent "$out" && ok "FIX-7 control: a main (release) no se exige traza" || bad "FIX-7 control: exigió traza en un release; got: $out"
-
-# ── funciones PURAS de la lib (deterministas, sin red) ──
-( . "$HOOKS/analizar-comando-git.sh"
-  acg_msg_es_pobre ""                                  && ok "acg_msg_es_pobre: vacío → pobre"                    || bad "acg_msg_es_pobre: no marcó vacío"
-  acg_msg_es_pobre "   "                               && ok "acg_msg_es_pobre: solo-espacios → pobre"            || bad "acg_msg_es_pobre: no marcó solo-espacios"
-  acg_msg_es_pobre "Merge pull request #5 from a/b"    && ok "acg_msg_es_pobre: 'Merge pull request #N' → pobre"  || bad "acg_msg_es_pobre: no marcó el default de plataforma"
-  acg_msg_es_pobre "Merge branch 'develop'"            && ok "acg_msg_es_pobre: 'Merge branch …' → pobre"         || bad "acg_msg_es_pobre: no marcó 'Merge branch'"
-  acg_msg_es_pobre "Merge #7"                          && ok "acg_msg_es_pobre: 'Merge #N' → pobre"               || bad "acg_msg_es_pobre: no marcó 'Merge #N'"
-  acg_msg_es_pobre "wip"                               && ok "acg_msg_es_pobre: 'wip' (1 palabra corta) → pobre"  || bad "acg_msg_es_pobre: no marcó 'wip'"
-  acg_msg_es_pobre "update"                            && ok "acg_msg_es_pobre: 'update' (1 palabra corta) → pobre" || bad "acg_msg_es_pobre: no marcó 'update'"
-  acg_msg_es_pobre "corrige el calculo de IVA"         && bad "acg_msg_es_pobre: marcó un resumen legítimo (FP)"  || ok "acg_msg_es_pobre: resumen multi-palabra → ok"
-  acg_msg_es_pobre "Merge duplicate-detection feature" && bad "acg_msg_es_pobre: FP en 'Merge <algo real>'"       || ok "acg_msg_es_pobre: 'Merge <palabra real> …' (no default) → ok"
-  [ "$(acg_msg_clasificar 'glab mr merge 5 --squash --squash-message "x y"')" = LITERAL ]       && ok "acg_msg_clasificar: --squash-message literal → LITERAL" || bad "acg_msg_clasificar: no clasificó LITERAL"
-  [ "$(acg_msg_clasificar 'glab mr merge 5 --squash --squash-message "$(cat r.md)"')" = UNVERIFICABLE ] && ok "acg_msg_clasificar: valor \$(…) → UNVERIFICABLE" || bad "acg_msg_clasificar: no clasificó UNVERIFICABLE"
-  [ "$(acg_msg_clasificar 'glab mr merge 5 --squash')" = AUTO ]                                 && ok "acg_msg_clasificar: sin flag → AUTO" || bad "acg_msg_clasificar: no clasificó AUTO"
-  [ "$(acg_msg_clasificar 'gh pr merge 5 --squash --fill')" = UNVERIFICABLE ]                    && ok "acg_msg_clasificar: gh --fill → UNVERIFICABLE" || bad "acg_msg_clasificar: no clasificó --fill"
-  [ "$(acg_msg_valor 'gh pr merge 5 --squash --subject "hola mundo"')" = "hola mundo" ]         && ok "acg_msg_valor: extrae --subject entrecomillado con espacio" || bad "acg_msg_valor: no extrajo el valor de --subject"
-  # (3a) acg_msg_es_superficial: <12 palabras = superficial
-  acg_msg_es_superficial "corrige el IVA en facturas"                                          && ok "acg_msg_es_superficial: <12 palabras → superficial" || bad "acg_msg_es_superficial: no marcó un mensaje corto"
-  acg_msg_es_superficial "corrige el calculo del impuesto al valor agregado en todas las facturas emitidas hoy" && bad "acg_msg_es_superficial: FP en un mensaje de 13 palabras" || ok "acg_msg_es_superficial: ≥12 palabras → ok"
-  # (2a) acg_msg_falta_traza: sin rama/MR-id = falta
-  acg_msg_falta_traza "corrige el calculo del IVA en las facturas"                              && ok "acg_msg_falta_traza: sin rama/MR-id → falta" || bad "acg_msg_falta_traza: no marcó ausencia de traza"
-  acg_msg_falta_traza "corrige el IVA. Rama: fix/iva-facturas"                                  && bad "acg_msg_falta_traza: FP, sí traía patrón de rama" || ok "acg_msg_falta_traza: patrón de rama (fix/…) → trae traza"
-  acg_msg_falta_traza "corrige el IVA (MR !53)"                                                 && bad "acg_msg_falta_traza: FP, sí traía id de MR" || ok "acg_msg_falta_traza: id de MR (!53) → trae traza"
-  acg_msg_falta_traza "corrige el checkout #12"                                                 && bad "acg_msg_falta_traza: FP, sí traía id de PR" || ok "acg_msg_falta_traza: id de PR (#12) → trae traza"
-  acg_msg_falta_traza "arregla el prefix del logger"                                            && ok "acg_msg_falta_traza: 'prefix' NO es 'fix/' (no traza) → falta" || bad "acg_msg_falta_traza: FP tomó 'prefix' como rama fix/"
-  # H8: el set de prefijos de rama abarca los de conventional-commit de uso real — "Rama: refactor/…"/
-  # "test/…"/"perf/…"/"ci/…"/"audit/…" SÍ cuentan como traza (un set angosto solo feat/fix/chore/hotfix/docs
-  # marcaría falsamente "falta trazabilidad" en esos).
-  acg_msg_falta_traza "reordena el módulo. Rama: refactor/sustrato-guards"                        && bad "H8: 'refactor/…' se marcó como SIN traza (FN)" || ok "H8: 'refactor/…' → SÍ trae traza"
-  acg_msg_falta_traza "cobertura nueva. Rama: test/cobertura-eval-bashc"                          && bad "H8: 'test/…' se marcó como SIN traza (FN)" || ok "H8: 'test/…' → SÍ trae traza"
-  acg_msg_falta_traza "acelera la consulta. Rama: perf/indices-estructura"                        && bad "H8: 'perf/…' se marcó como SIN traza (FN)" || ok "H8: 'perf/…' → SÍ trae traza"
-  acg_msg_falta_traza "arregla el pipeline. Rama: ci/fix-cache-key"                               && bad "H8: 'ci/…' se marcó como SIN traza (FN)" || ok "H8: 'ci/…' → SÍ trae traza"
-  acg_msg_falta_traza "revisión de intención. Rama: audit/guards-fmea"                            && bad "H8: 'audit/…' se marcó como SIN traza (FN)" || ok "H8: 'audit/…' → SÍ trae traza"
-  acg_msg_falta_traza "un cambio cualquiera sin ninguna traza"                                    && ok "H8 control: sin rama NI id → SIGUE marcando falta de traza (no se aflojó de más)" || bad "H8 control: REGRESIÓN — un mensaje genuinamente sin traza dejó de marcarse"
-  # (3b-DENY) acg_msg_editorializa: marcadores inequívocos de proceso
-  acg_msg_editorializa "tras analizar el codigo se decidio reemplazar la logica"                && ok "acg_msg_editorializa: 'tras analizar'/'se decidió' → editorializa" || bad "acg_msg_editorializa: no marcó la editorialización"
-  acg_msg_editorializa "se identifico que el middleware no validaba el claim"                   && ok "acg_msg_editorializa: 'se identificó que' → editorializa" || bad "acg_msg_editorializa: no marcó 'se identificó'"
-  acg_msg_editorializa "el middleware ahora valida el claim exp contra el reloj del servidor"   && bad "acg_msg_editorializa: FP en un resumen que habla del código" || ok "acg_msg_editorializa: resumen del código (sin proceso) → limpio"
-  # (3b-WARN) acg_msg_narra_acciones: ≥2 'se <verbo>' = lista de acciones
-  acg_msg_narra_acciones "se cambio la logica y se actualizo el middleware"                     && ok "acg_msg_narra_acciones: ≥2 'se <verbo>' → lista de acciones" || bad "acg_msg_narra_acciones: no detectó la lista de acciones"
-  acg_msg_narra_acciones "se corrigio un bug en la expiracion del token"                        && bad "acg_msg_narra_acciones: FP con UNA sola cláusula 'se <verbo>'" || ok "acg_msg_narra_acciones: 1 sola cláusula → no es lista (no advierte)"
-  acg_msg_narra_acciones "el middleware ahora valida el claim exp contra el reloj"              && bad "acg_msg_narra_acciones: FP en prosa de resultado" || ok "acg_msg_narra_acciones: prosa de resultado (sin 'se <verbo>') → no advierte"
-)
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* "${TMPDIR:-/tmp}"/acg-mrmsg-* 2>/dev/null
 rm -rf "$MSBIN"
 
@@ -2087,9 +1955,10 @@ is_deny "$(xcm 'glab mr merge 6 -R org/personal --yes' "$XSHARED")" \
 # scoping de personal/compartido; XSQOK lo satisface con un mensaje UNVERIFICABLE (fail-open, la forma que
 # el propio hook sugiere) para que este caso ejercite el SCOPING, no el squash (cubierto en b1c).
 XSQOK='--squash --remove-source-branch --squash-message "$(cat resumen.md)"'
-is_silent "$(xcm "glab mr merge 5 $XSQOK --yes" "$XPERSONAL")" \
-  && ok "cmd-cross: sesión PERSONAL sin --repo (repo válido, sin marca) → silencio (PERSONAL confirmado, cero fricción)" \
-  || bad "cmd-cross: gateó un merge en un repo personal (regresión de fricción)"
+o_cc="$(xcm "glab mr merge 5 $XSQOK --yes" "$XPERSONAL")"
+{ ! is_deny "$o_cc" && printf '%s' "$o_cc" | grep -q 'recordatorio, no freno'; } \
+  && ok "cmd-cross: sesión PERSONAL sin --repo (repo válido, sin marca) → pasa SIN fricción de AUTH (+ recordatorio A2)" \
+  || bad "cmd-cross: gateó un merge en un repo personal (regresión de fricción); got: $o_cc"
 # COMPARTIDO propio (no-regresión): sesión COMPARTIDA, sin --repo, con marca → GATEA como hoy.
 is_deny "$(xcm 'glab mr merge 5 --yes' "$XSHARED")" \
   && ok "cmd-cross: sesión COMPARTIDA sin --repo (con marca) → GATEA (no-regresión)" \
@@ -2101,9 +1970,10 @@ is_deny "$(xcm 'glab mr merge 7 --yes' "$XPERSONAL" "$XSHARED")" \
 # AUTH_FILE se resuelve del TARGET_ROOT: grant durable vive en SHARED; sesión PERSONAL + .cwd=SHARED → fast-path exit 0.
 mkdir -p "$XSHARED/.claude/memory"
 printf 'scope=merge-develop vence_epoch=%s cita="ok blanket"\n' "$(( $(date +%s) + 3600 ))" > "$XSHARED/.claude/memory/autorizaciones-vigentes.local.md"
-is_silent "$(xcm "glab mr merge 8 $XSQOK --yes" "$XPERSONAL" "$XSHARED")" \
-  && ok "cmd-cross: grant durable en el repo DESTINO (AUTH_FILE del TARGET_ROOT) + .cwd → fast-path exit 0" \
-  || bad "cmd-cross: no leyó el grant durable del repo destino (AUTH_FILE no salió de TARGET_ROOT)"
+o_ccg="$(xcm "glab mr merge 8 $XSQOK --yes" "$XPERSONAL" "$XSHARED")"
+{ ! is_deny "$o_ccg" && printf '%s' "$o_ccg" | grep -q 'recordatorio, no freno'; } \
+  && ok "cmd-cross: grant durable en el repo DESTINO (AUTH_FILE del TARGET_ROOT) + .cwd → fast-path pasa (+ recordatorio A2)" \
+  || bad "cmd-cross: no leyó el grant durable del repo destino (AUTH_FILE no salió de TARGET_ROOT); got: $o_ccg"
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
 rm -rf "$XROOT"
 
@@ -2287,9 +2157,10 @@ mock_cm_glab develop
 SQOK='--squash --remove-source-branch --squash-message "$(cat resumen.md)"'
 # (1) grant VIGENTE → permite el merge a develop aunque el transcript no traiga OK.
 printf -- '- scope=merge-develop vence_epoch=%s vence="mañana 10am" cita="autorizo todos los merges a develop hasta mañana 10am" registrada=2026-07-18\n' "$(( $(date +%s) + 3600 ))" > "$AUTHF"
-is_silent "$(cm "glab mr merge 61 $SQOK --yes" DENY)" \
-  && ok "cmd b1f: grant durable VIGENTE → merge a develop pasa (sobrevive compactación)" \
-  || bad "cmd b1f: grant durable vigente NO destrabó el merge a develop"
+o_b1f="$(cm "glab mr merge 61 $SQOK --yes" DENY)"
+{ ! is_deny "$o_b1f" && printf '%s' "$o_b1f" | grep -q 'recordatorio, no freno'; } \
+  && ok "cmd b1f: grant durable VIGENTE → merge a develop pasa (+ recordatorio A2; sobrevive compactación)" \
+  || bad "cmd b1f: grant durable vigente NO destrabó el merge a develop; got: $o_b1f"
 # (2) grant VENCIDO → freno normal.
 printf -- '- scope=merge-develop vence_epoch=%s vence="ayer" cita="autorizo hasta ayer" registrada=2026-07-17\n' "$(( $(date +%s) - 60 ))" > "$AUTHF"
 is_deny "$(cm 'glab mr merge 62 --squash --yes' DENY)" \
@@ -2335,9 +2206,10 @@ is_deny "$(cm 'glab mr merge --yes' DENY 'libera esto a main, es el release')" \
 # (8) regresión del camino SEGURO de M6 (el que SÍ debía quedarse): destino CONFIRMADO develop + grant
 #     vigente → sigue pasando SIN llamar al juez (mock=DENY prueba que el fast-path lo evita).
 mock_cm_glab develop
-is_silent "$(cm "glab mr merge 66 $SQOK --yes" DENY)" \
-  && ok "CRÍTICO-3: regresión — grant vigente + destino CONFIRMADO develop → SIGUE pasando por el fast-path (no se tocó la parte segura de M6)" \
-  || bad "CRÍTICO-3: REGRESIÓN — el fast-path seguro (destino=develop confirmado) se rompió al cerrar el hueco"
+o_c3="$(cm "glab mr merge 66 $SQOK --yes" DENY)"
+{ ! is_deny "$o_c3" && printf '%s' "$o_c3" | grep -q 'recordatorio, no freno'; } \
+  && ok "CRÍTICO-3: grant vigente + destino CONFIRMADO develop → SIGUE pasando por el fast-path (+ recordatorio A2; no se tocó la parte segura de M6)" \
+  || bad "CRÍTICO-3: REGRESIÓN — el fast-path seguro (destino=develop confirmado) se rompió al cerrar el hueco; got: $o_c3"
 rm -f "$AUTHF" 2>/dev/null
 
 # H3: acg_recent_intercalado lee `tail -n 6000` del transcript — si la autorización real queda FUERA de esa
