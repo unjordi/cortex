@@ -9400,6 +9400,56 @@ fi
 rm -rf "$B1C"
 
 # ─────────────────────────────────────────────────────────────────────────────
+# H18: el gate gitleaks de cerrar-slice escanea la RAMA DEL MR (lo que se integra), no el HEAD del cwd.
+# FP real (2026-10-20): parado en develop/la mini con un MR cuya rama trae un secreto → "limpio" en falso.
+echo ""
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "  SKIP H18: gitleaks no instalado (el gate se prueba donde gitleaks exista)"
+else
+  H18LAB="$(mktemp -d)"
+  ( set -e; cd "$H18LAB"
+    git init -q --bare origin.git
+    git clone -q origin.git work; cd work
+    git config user.email t@t; git config user.name t
+    git commit -q --allow-empty -m seed; git branch -M develop; git push -q origin develop
+    git checkout -q -b feat/leak
+    # token github-pat construido en RUNTIME (urandom) → sin literal en este archivo commiteado
+    S="ghp_$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 36)"
+    printf 'token = "%s"\n' "$S" > cfg.txt
+    git add cfg.txt; git commit -q -m cfg; git push -q origin feat/leak
+    git checkout -q develop ) >/dev/null 2>&1
+  H18WORK="$H18LAB/work"
+  H18FN="$(sed -n '/^_gitleaks_gate() {/,/^}/p' "$SCRIPT_DIR/skills/cerrar-slice/cerrar-slice.sh")"
+  # corre el gate extraído en el repo-lab con los globals dados; _err → GATE_ERR + exit 7
+  h18run() { ( cd "$H18WORK"; REPO="$2" BRANCH="$1" FORGE="glab" ID="1" bash -c '_err(){ printf "GATE_ERR\n" >&2; exit 7; }
+'"$H18FN"'
+_gitleaks_gate' 2>&1; printf 'RC=%s\n' "$?" ); }
+  # A: parado en develop + --branch feat/leak (con secreto) → ATRAPA (no "limpio")
+  o="$(h18run feat/leak '')"
+  { printf '%s' "$o" | grep -q GATE_ERR && ! printf '%s' "$o" | grep -q 'limpio'; } \
+    && ok "H18: en develop + --branch con secreto → ATRAPA la rama (no 'limpio' en falso)" \
+    || bad "H18: NO atrapó el secreto de la rama estando en develop (FP): $o"
+  # B: parado en develop, sin --branch, forge no resuelve → NO declara "limpio" (frena)
+  o="$(h18run '' '')"
+  { printf '%s' "$o" | grep -q GATE_ERR && ! printf '%s' "$o" | grep -q 'limpio'; } \
+    && ok "H18: en develop sin rama resoluble → NO declara 'limpio' a ciegas (frena)" \
+    || bad "H18: declaró limpio sin poder verificar la rama del MR: $o"
+  # C: parado EN la ramita, sin --branch → fallback a HEAD atrapa el secreto
+  ( cd "$H18WORK" && git checkout -q feat/leak )
+  o="$(h18run '' '')"
+  printf '%s' "$o" | grep -q GATE_ERR \
+    && ok "H18: parado EN la ramita (sin --branch) → fallback HEAD atrapa el secreto" \
+    || bad "H18: fallback HEAD no atrapó el secreto estando en la ramita: $o"
+  ( cd "$H18WORK" && git checkout -q develop )
+  # D: --repo a OTRO repo (no el cwd) → avisa y NO declara "limpio"
+  o="$(h18run feat/leak otro/repo-inexistente)"
+  { printf '%s' "$o" | grep -qi 'no es el repo del directorio actual' && ! printf '%s' "$o" | grep -q 'limpio'; } \
+    && ok "H18: --repo a otro repo → avisa y NO declara 'limpio' (el cwd es otro repo)" \
+    || bad "H18: cross-repo no manejado (dijo limpio o no avisó): $o"
+  rm -rf "$H18LAB"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 # cortex-fetch: estados de auth + preservación de la última lectura real (contrato 2026-10-21).
 # La matriz detallada (7 casos / 26 asserts) vive en macos/pruebas/ para re-correrla directo; aquí
 # la invocamos como un gate. Solo macOS (cortex-fetch usa BSD `date`); en Linux su gemelo se prueba aparte.

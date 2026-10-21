@@ -105,7 +105,7 @@ block() {
 # es la ÚNICA excepción que la norma global declara para un push directo a base ("si un repo no tiene
 # develop, créalo") — y hasta aquí este guard no la distinguía de un push normal, SIN escape cuando jq está
 # presente (el único escape existente, CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL, solo se lee en la rama sin-jq).
-# Escape EXPLÍCITO y auditado (mismo espíritu que CLAUDE_SKIP_SECRET_SCAN), acotado a ESTE chequeo (nunca a
+# Escape EXPLÍCITO y auditado (mismo espíritu que CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL), acotado a ESTE chequeo (nunca a
 # `acg_merge_menciona_base`, que no tiene nada que ver con sembrar): el operador CONFIRMA que este push es
 # la siembra inicial, no una integración saltándose el flujo. Se exporta en el ENTORNO de la sesión (perfil
 # de shell / bloque "env" de ~/.claude/settings.json) — un prefijo inline en el propio comando de Bash NO

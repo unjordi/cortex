@@ -53,14 +53,51 @@ _err() { printf 'cerrar-slice: %s\n' "$1" >&2; exit 1; }
 # `.gitleaksignore`/`.gitleaks.toml` del repo, que gitleaks lee solo—, NUNCA por palabra. Sin gitleaks
 # instalado: avisa fuerte y NO bloquea (el CI de gitleaks es el backstop server-side).
 _gitleaks_gate() {
-  local base rng out
+  local base rng out head cur url
   if ! command -v gitleaks >/dev/null 2>&1; then
     printf 'cerrar-slice: ⚠️ gitleaks NO instalado — sin gate local de secretos (el CI lo corre server-side). Instálalo: brew install gitleaks · apt install gitleaks.\n' >&2
     return 0
   fi
   base="$(git rev-parse --verify -q origin/develop || git rev-parse --verify -q develop)" \
     || { printf 'cerrar-slice: no ubico origin/develop para el rango de gitleaks — omito el gate local (el CI lo cubre).\n' >&2; return 0; }
-  rng="${base}..HEAD"
+
+  # H18: --repo a OTRO repo → el scan de `.` (cwd) sería el repo EQUIVOCADO. No podemos verificar
+  # localmente → avisa y NO declara "limpio" (el CI de gitleaks es el backstop server-side).
+  if [ -n "$REPO" ]; then
+    url="$(git remote get-url origin 2>/dev/null || true)"
+    case "${url%.git}" in
+      *"$REPO"*) : ;;
+      *) printf 'cerrar-slice: ⚠️ --repo %s NO es el repo del directorio actual → el gate local de gitleaks escanearía otro repo; NO verifico aquí (el CI lo cubre). Para el gate local, córrelo desde el clon de %s.\n' "$REPO" "$REPO" >&2; return 0 ;;
+    esac
+  fi
+
+  # H18 (FP 2026-10-20): escanea la RAMA DEL MR (lo que de verdad se integra), no el HEAD del cwd — que
+  # puede ser develop/la mini/otra rama si cerrar-slice se corre SIN estar parado en la ramita → "limpio"
+  # en falso. Resuelve la rama por --branch o por el forge; fetch + escanea origin/<base>..origin/<rama>.
+  head="$BRANCH"
+  if [ -z "$head" ]; then
+    if [ "$FORGE" = gh ]; then
+      head="$(gh pr view "$ID" ${REPO:+-R "$REPO"} --json headRefName -q .headRefName 2>/dev/null || true)"
+    else
+      head="$(glab mr view "$ID" ${REPO:+-R "$REPO"} -F json 2>/dev/null | jq -r '.source_branch // empty' 2>/dev/null || true)"
+    fi
+  fi
+  if [ -n "$head" ]; then
+    git fetch -q origin "$head" 2>/dev/null || true
+    if   git rev-parse --verify -q "origin/$head" >/dev/null 2>&1; then rng="${base}..origin/$head"
+    elif git rev-parse --verify -q "$head"        >/dev/null 2>&1; then rng="${base}..$head"
+    else head=""   # la rama no está ni local ni en origin → cae al fallback de abajo
+    fi
+  fi
+  if [ -z "$head" ]; then
+    cur="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo HEAD)"
+    case "$cur" in
+      develop|main|HEAD)
+        _err "no pude resolver la rama del MR #$ID (sin --branch y sin poder leerla de $FORGE) y estás parado en '$cur', NO en la ramita → no puedo escanear los commits que se integrarán y NO declaro 'limpio' a ciegas. Párate en la ramita del MR, pásame --branch <feat/…>, o confía en el CI de gitleaks (backstop server-side)." ;;
+      *) rng="${base}..HEAD" ;;   # parado EN una ramita → su HEAD sí es lo que se integra
+    esac
+  fi
+
   if ! out="$(gitleaks git . --log-opts="$rng" --redact --no-banner 2>&1)"; then
     printf '%s\n' "$out" | tail -20 >&2
     _err "gitleaks detectó un posible SECRETO en los commits del slice ($rng). NO integro. Saca el secreto (rótalo si ya se commiteó) o, si es un FALSO POSITIVO, agrégalo por HUELLA a .gitleaksignore/.gitleaks.toml y reintenta — nunca lo marques por palabra."

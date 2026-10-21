@@ -361,8 +361,8 @@ conteo, hallazgos en bullets, ruta). Así no infla el contexto del orquestador.
 Usa el **bucle de verificación** de la norma «Delegar a agentes»: **espera a tener AMBOS dictámenes antes de
 editar** (no muevas el piso a media auditoría), y **verifica read-only cada hallazgo contra el código/
 realidad** — no lo relates como verdad. El **cross-check entre lentes es donde se cazan los FALSOS
-POSITIVOS**: p. ej. suficiencia marca `detectar-secretos.sh` como "hook huérfano" → coherencia lo REFUTA
-por ejecución (es una LIB `source`-ada, no un hook) = FP anotado, no tocado. Con 4-6 informes, haz el
+POSITIVOS**: p. ej. suficiencia marca `analizar-comando-git.sh` como "hook huérfano" → coherencia lo REFUTA
+por ejecución (es una LIB `source`-ada por los git-guards, no un hook) = FP anotado, no tocado. Con 4-6 informes, haz el
 cross-check ANTES de sintetizar.
 > **Si un agente REEMPLAZA un doc** (un rebuild de la firma/README/config, no contenido nuevo — típico en
 > el modo canonizar): corre el **DIFF DE PRESERVACIÓN** de la norma «Delegar a agentes» — `diff` viejo→nuevo y
