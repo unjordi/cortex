@@ -602,22 +602,22 @@ rm -rf "$MSBIN"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "== (b1d) git-branch-guard: push PELÓN / comillas / nombre-de-repo (H1/H11/H13) =="
+echo "== (b1d) merge-develop-guard · PASO 0 (push, absorbió git-branch-guard): push PELÓN / comillas / nombre-de-repo (H1/H11/H13) =="
 GBROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-gb.XXXXXX")"; GBREPO="$GBROOT/repo"; GBHOME="$GBROOT/home"; mkdir -p "$GBREPO" "$GBHOME"
 git -C "$GBREPO" init -q >/dev/null 2>&1
 git -C "$GBREPO" config user.email t@t >/dev/null 2>&1; git -C "$GBREPO" config user.name tester >/dev/null 2>&1
 printf 'base\n' > "$GBREPO/a.txt"; git -C "$GBREPO" add a.txt >/dev/null 2>&1; git -C "$GBREPO" commit -qm base >/dev/null 2>&1
 git -C "$GBREPO" branch -M develop >/dev/null 2>&1
 # HOME sin copia global → corre la copia del repo (no cede por dedupe)
-gb() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | CLAUDE_PROJECT_DIR="$GBREPO" HOME="$GBHOME" bash "$HOOKS/git-branch-guard.sh"; }
+gb() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | CLAUDE_PROJECT_DIR="$GBREPO" HOME="$GBHOME" bash "$HOOKS/merge-develop-guard.sh"; }
 git -C "$GBREPO" checkout -q develop >/dev/null 2>&1
 out_gbpush="$(gb 'git push')"
 printf '%s' "$out_gbpush"        | grep -q '"deny"' && ok "gbg H1: 'git push' pelón en develop → deny"          || bad "gbg H1: push pelón en develop NO bloqueó"
 # M8 (norma dura anti-vein-popper): el mensaje de bloqueo NO ofrece "hazlo en la web de GitLab" como escape
 # — se satisface (OK súper-explícito por CLI) o se arregla, nunca se rodea.
 printf '%s' "$out_gbpush" | grep -qi 'web de GitLab' \
-  && bad "M8: git-branch-guard sigue ofreciendo 'la web de GitLab' como escape (norma anti-vein-popper)" \
-  || ok "M8: git-branch-guard NO ofrece la web como escape del bloqueo"
+  && bad "M8: merge-develop-guard (PASO 0) sigue ofreciendo 'la web de GitLab' como escape (norma anti-vein-popper)" \
+  || ok "M8: merge-develop-guard (PASO 0) NO ofrece la web como escape del bloqueo"
 printf '%s' "$(gb 'git push --force')"| grep -q '"deny"' && ok "gbg H1: 'git push --force' pelón en develop → deny"  || bad "gbg H1: push --force pelón NO bloqueó"
 printf '%s' "$(gb 'git push origin HEAD')" | grep -q '"deny"' && ok "gbg H1: 'git push origin HEAD' en develop → deny" || bad "gbg H1: push HEAD en develop NO bloqueó"
 git -C "$GBREPO" checkout -q -b feat/x >/dev/null 2>&1
@@ -631,7 +631,13 @@ printf '%s' "$(gb 'git push origin +develop')"    | grep -q '"deny"' && ok "gbg 
 printf '%s' "$(gb 'git push origin +main')"       | grep -q '"deny"' && ok "gbg A2: 'git push origin +main' (force-refspec) → deny" || bad "gbg A2: +main se coló"
 is_silent "$(gb 'git push origin feat/x')"        && ok "gbg A2: 'git push origin feat/x' explícito → silencio (sin falso positivo del '+')" || bad "gbg A2: falso positivo al agregar '+' al set (bloqueó una ramita)"
 is_silent "$(gb 'git commit -m "doc: no hacer git push a develop"')" && ok "gbg H13: 'git push a develop' entrecomillado → silencio" || bad "gbg H13: mención entrecomillada disparó"
-is_silent "$(gb 'gh pr merge 5 -R org/develop --squash')" && ok "gbg H11: '-R org/develop' (nombre de repo) → silencio" || bad "gbg H11: -R org/develop disparó falso positivo"
+# H11 a nivel LIB: el PASO 0 de merge-develop-guard usa acg_merge_menciona_base, que debe IGNORAR el valor de
+# -R (nombre de repo que CONTIENE 'develop') — si no, el PASO 0 frenaría en falso un merge-de-MR legítimo.
+# (El veredicto del hook completo sobre este comando lo decide el GATE de merge-de-MR —squash/juez—, otra capa.)
+( . "$HOOKS/analizar-comando-git.sh"
+  acg_merge_menciona_base 'gh pr merge 5 -R org/develop --squash' \
+    && bad "H11 (lib): acg_merge_menciona_base disparó sobre '-R org/develop' (FP del PASO 0)" \
+    || ok "H11 (lib): acg_merge_menciona_base ignora '-R org/develop' (nombre de repo ≠ destino) — PASO 0 no frena en falso" )
 # ── wave4 — evasiones de git-branch-guard. Parado en feat/x (rama NO-base): estas formas empujan a base
 # sin que el fallback por rama actual dispare, así que cada una debe DENY por sí misma. ──
 printf '%s' "$(gb 'git push origin "develop"')" | grep -q '"deny"' && ok "gbg A-01: destino ENTRECOMILLADO develop → deny" || bad "gbg A-01: destino entrecomillado se coló (bypass comillas)"
@@ -696,14 +702,14 @@ rm -rf "$GBROOT"
 GBROOT2="$(mktemp -d "${TMPDIR:-/tmp}/brain-gb2.XXXXXX")"; GBREPO2="$GBROOT2/repo"; GBHOME2="$GBROOT2/home"; mkdir -p "$GBREPO2" "$GBHOME2"
 git -C "$GBREPO2" init -q >/dev/null 2>&1; git -C "$GBREPO2" config user.email t@t; git -C "$GBREPO2" config user.name t
 git -C "$GBREPO2" commit -q --allow-empty -m init >/dev/null 2>&1; git -C "$GBREPO2" checkout -q -b develop >/dev/null 2>&1
-gb2() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | CLAUDE_PROJECT_DIR="$GBREPO2" HOME="$GBHOME2" bash "$HOOKS/git-branch-guard.sh"; }
+gb2() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | CLAUDE_PROJECT_DIR="$GBREPO2" HOME="$GBHOME2" bash "$HOOKS/merge-develop-guard.sh"; }
 printf '%s' "$(gb2 'git --no-pager push')" | grep -q '"deny"' && ok "gbg A-R4-01: 'git --no-pager push' PELÓN parado EN develop → deny" || bad "gbg A-R4-01: el pelón con --no-pager en develop se coló"
 printf '%s' "$(gb2 'git.exe push')" | grep -q '"deny"' && ok "gbg B4: 'git.exe push' PELÓN parado EN develop → deny" || bad "gbg B4: el pelón 'git.exe push' en develop se coló"
 rm -rf "$GBROOT2"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "== (b1d-cwd) git-branch-guard TARGET-AWARE cross-repo (F0/F1) + frontera G3/G4 + G6 =="
+echo "== (b1d-cwd) merge-develop-guard · PASO 0 TARGET-AWARE cross-repo (F0/F1) + frontera G3/G4 + G6 =="
 # Raíz común de los FN/FP cross-repo: los guards deben keyear la rama/marca del repo que el comando TOCA
 # (-C / cd / cwd del payload), no de CLAUDE_PROJECT_DIR (repo de la SESIÓN). Aquí:
 # SESS = repo de la sesión (en feat/x) · BASE = OTRO repo en develop · FEAT2 = OTRO repo en una ramita.
@@ -720,7 +726,7 @@ git -C "$FEAT2" checkout -q -b feat/y >/dev/null 2>&1    # otro repo, también e
 gbx() {
   if [ -n "${2:-}" ]; then jq -nc --arg c "$1" --arg w "$2" '{tool_name:"Bash",tool_input:{command:$c},cwd:$w}'
   else                     jq -nc --arg c "$1"                '{tool_name:"Bash",tool_input:{command:$c}}'; fi \
-    | CLAUDE_PROJECT_DIR="$SESS" HOME="$GBXHOME" bash "$HOOKS/git-branch-guard.sh"
+    | CLAUDE_PROJECT_DIR="$SESS" HOME="$GBXHOME" bash "$HOOKS/merge-develop-guard.sh"
 }
 # Frontera G3/G4: metacarácter de shell PEGADO a la base evadía (`([[:space:]]|$)` demasiado estricto).
 printf '%s' "$(gbx '(git push origin develop)')"    | grep -q '"deny"' && ok "gbg G3: '(git push origin develop)' (subshell, ')' pegado) → deny" || bad "gbg G3: el paréntesis pegado se coló"
@@ -742,12 +748,17 @@ printf '%s' "$(gbx "git -C $GBX/nope push")" | grep -q '"deny"' && ok "gbg fail-
 is_silent "$(gbx 'git push')" && ok "gbg retro-compat: pelón sin .cwd en la sesión (feat/x) → silencio (cae a CLAUDE_PROJECT_DIR)" || bad "gbg retro-compat: pelón sin .cwd bloqueó en una ramita"
 # G6 (FP): el POSICIONAL de 'gh pr merge <arg>' es el #/rama de ORIGEN, NO destino → un release develop→main
 # por CLI ya no se bloquea en falso; solo un destino EXPLÍCITO por flag (--base/-B/--target) cuenta.
-is_silent "$(gbx 'gh pr merge develop --merge')" && ok "gbg G6: 'gh pr merge develop --merge' (posicional=origen) → silencio (no es destino)" || bad "gbg G6: FP — el posicional 'develop' se trató como destino"
+# G6 a nivel LIB: el 1er POSICIONAL de 'gh pr merge <arg>' es el #/rama de ORIGEN, NO el destino → el PASO 0
+# (acg_merge_menciona_base) NO debe tratarlo como la base. (Un destino EXPLÍCITO por flag --base sí cuenta, ↓.)
+( . "$HOOKS/analizar-comando-git.sh"
+  acg_merge_menciona_base 'gh pr merge develop --merge' \
+    && bad "G6 (lib): acg_merge_menciona_base trató el posicional 'develop' como destino (FP del PASO 0)" \
+    || ok "G6 (lib): el posicional de 'gh pr merge <arg>' es ORIGEN, no destino — acg_merge_menciona_base no dispara" )
 printf '%s' "$(gbx 'gh pr merge 5 --base develop')" | grep -q '"deny"' && ok "gbg G6: 'gh pr merge 5 --base develop' (destino EXPLÍCITO por flag) → deny" || bad "gbg G6: el destino explícito por --base no bloqueó"
 # G7: un compuesto que CAMBIA de rama antes del push pelón se resuelve contra la rama que el checkout/switch
 # deja activa, no contra el HEAD ANTERIOR (develop) — si no, daría un FP.
 git -C "$BASE" branch fix/z >/dev/null 2>&1   # rama LOCAL existente en el repo-en-develop
-gbxB() { jq -nc --arg c "$1" --arg w "$2" '{tool_name:"Bash",tool_input:{command:$c},cwd:$w}' | CLAUDE_PROJECT_DIR="$SESS" HOME="$GBXHOME" bash "$HOOKS/git-branch-guard.sh"; }
+gbxB() { jq -nc --arg c "$1" --arg w "$2" '{tool_name:"Bash",tool_input:{command:$c},cwd:$w}' | CLAUDE_PROJECT_DIR="$SESS" HOME="$GBXHOME" bash "$HOOKS/merge-develop-guard.sh"; }
 is_silent "$(gbxB 'git checkout fix/z && git push' "$BASE")"      && ok "gbg G7: 'git checkout fix/z && git push' (rama existente) → silencio (resuelve contra fix/z, no develop)" || bad "gbg G7: FP — checkout+push pelón se resolvió contra el HEAD anterior (develop)"
 is_silent "$(gbxB 'git checkout -b feat/nueva && git push' "$BASE")" && ok "gbg G7: 'git checkout -b feat/nueva && git push' (rama NUEVA) → silencio" || bad "gbg G7: FP — checkout -b nueva+push bloqueó"
 is_silent "$(gbxB 'git switch -c otra && git push' "$BASE")"      && ok "gbg G7: 'git switch -c otra && git push' → silencio" || bad "gbg G7: FP — switch -c+push bloqueó"
@@ -894,9 +905,9 @@ echo "== (b1d-m1) M1 (auditoría 2026-09-15): segmentación ejecutor-aware — e
 # Un solo criterio (acg_segmentos_ejecutables) cubre ambos, cerrado UNA vez en la lib → lo hereda
 # git-branch-guard (vía acg_push_toca_base) sin tocar su código.
 is_deny "$(gb 'eval "git push origin develop"')" \
-  && ok "M1: 'eval \"git push origin develop\"' NO evade — deny" || bad "M1: FN — eval evadió git-branch-guard"
+  && ok "M1: 'eval \"git push origin develop\"' NO evade — deny" || bad "M1: FN — eval evadió el PASO 0 (merge-develop-guard)"
 is_deny "$(gb 'bash -c "git push origin develop"')" \
-  && ok "M1: 'bash -c \"git push origin develop\"' NO evade — deny" || bad "M1: FN — bash -c evadió git-branch-guard"
+  && ok "M1: 'bash -c \"git push origin develop\"' NO evade — deny" || bad "M1: FN — bash -c evadió el PASO 0 (merge-develop-guard)"
 is_deny "$(gb "sh -c 'git push origin develop'")" \
   && ok "M1: \"sh -c 'git push origin develop'\" (comilla simple) NO evade — deny" || bad "M1: FN — sh -c con comilla simple evadió"
 is_silent "$(gb "$(printf 'cat > d.md <<EOF\ngit push origin develop\nEOF')")" \
@@ -956,7 +967,7 @@ echo "   lib compartida NO tumba los guards en silencio — fallan RUIDOSO/CERRA
 # el sistema sin NINGÚN candado, en silencio. El contrato: cada uno responde (deny ruidoso, o degrada a su
 # propio fallback) en vez de esfumarse.
 C1SB="$(mktemp -d "${TMPDIR:-/tmp}/brain-crit1.XXXXXX")"; mkdir -p "$C1SB/hooks" "$C1SB/home"
-for f in analizar-comando-git.sh git-branch-guard.sh merge-develop-guard.sh \
+for f in analizar-comando-git.sh merge-develop-guard.sh \
          proteger-arbol.sh juez-comun.sh ramas-zombie.sh; do
   cp "$HOOKS/$f" "$C1SB/hooks/$f" 2>/dev/null
 done
@@ -966,9 +977,9 @@ bash -n "$C1SB/hooks/analizar-comando-git.sh" >/dev/null 2>&1 \
   && bad "CRÍTICO-1 (setup): la inyección de sintaxis no rompió la lib — el test no prueba nada" \
   || ok "CRÍTICO-1 (setup): lib con error de sintaxis REAL confirmada (bash -n falla) — arranca la prueba"
 c1out() { printf '%s' "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"$2\"}}" | HOME="$C1SB/home" CLAUDE_PROJECT_DIR="${3:-$C1SB/home}" bash "$C1SB/hooks/$1" 2>/dev/null; }
-is_deny "$(c1out git-branch-guard.sh 'git push origin develop')" \
-  && ok "CRÍTICO-1: lib ROTA + git-branch-guard + push a develop → DENY ruidoso (antes: exit=1 silencioso, el push PASABA)" \
-  || bad "CRÍTICO-1: REGRESIÓN — git-branch-guard con lib rota dejó pasar un push a develop en silencio"
+is_deny "$(c1out merge-develop-guard.sh 'git push origin develop')" \
+  && ok "CRÍTICO-1: lib ROTA + merge-develop-guard (PASO 0) + push a develop → DENY ruidoso (absorbió git-branch-guard; el fallback de lib-rota cubre push, no solo merge)" \
+  || bad "CRÍTICO-1: REGRESIÓN — merge-develop-guard con lib rota dejó pasar un push directo a develop en silencio (HUECO de la consolidación)"
 is_deny "$(c1out merge-develop-guard.sh 'glab mr merge 5 --yes')" \
   && ok "CRÍTICO-1: lib ROTA + merge-develop-guard + merge sin squash/OK → DENY ruidoso (candado consolidado)" \
   || bad "CRÍTICO-1: REGRESIÓN — merge-develop-guard con lib rota dejó pasar un merge en silencio"
@@ -984,20 +995,20 @@ printf '%s' "$out" | grep -qi 'ORFANAR' \
   || bad "CRÍTICO-1: REGRESIÓN — proteger-arbol con lib rota dejó de avisar sobre un reset destructivo real"
 # Control: con la lib SANA (los hooks ORIGINALES, sin tocar) el comportamiento normal sigue intacto — el
 # fix no introduce fricción cuando la lib está bien.
-is_deny "$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"git push origin develop"}}' | HOME="$C1SB/home-ctrl" bash "$HOOKS/git-branch-guard.sh")" \
-  && ok "CRÍTICO-1 (control, lib sana): git-branch-guard sigue bloqueando un push a develop normalmente" \
-  || bad "CRÍTICO-1 (control): REGRESIÓN — con la lib intacta, git-branch-guard dejó de bloquear"
+is_deny "$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"git push origin develop"}}' | HOME="$C1SB/home-ctrl" bash "$HOOKS/merge-develop-guard.sh")" \
+  && ok "CRÍTICO-1 (control, lib sana): merge-develop-guard (PASO 0) sigue bloqueando un push a develop normalmente" \
+  || bad "CRÍTICO-1 (control): REGRESIÓN — con la lib intacta, merge-develop-guard dejó de bloquear el push a develop"
 # H7: la sonda de "lib rota" usa `bash -n` (solo PARSEA, nunca ejecuta), no un subshell + exit code que
 # confundiría "error de sintaxis" con "la lib terminó en un comando ≠0" — un `false` al final de una lib
 # PERFECTAMENTE válida bastaría para declararla "rota" y tumbar el guard a deny-total. Con `bash -n` el
 # código de salida del ÚLTIMO comando de la lib no lo afecta.
 C1SB2=$(mktemp -d "${TMPDIR:-/tmp}/brain-crit1-h7.XXXXXX"); mkdir -p "$C1SB2/hooks"
-cp "$HOOKS/analizar-comando-git.sh" "$C1SB2/hooks/"; cp "$HOOKS/git-branch-guard.sh" "$C1SB2/hooks/"
+cp "$HOOKS/analizar-comando-git.sh" "$C1SB2/hooks/"; cp "$HOOKS/merge-develop-guard.sh" "$C1SB2/hooks/"
 printf '\nfalse\n' >> "$C1SB2/hooks/analizar-comando-git.sh"
 bash -n "$C1SB2/hooks/analizar-comando-git.sh" >/dev/null 2>&1 \
   && ok "H7 (setup): lib con 'false' final SIGUE siendo sintácticamente válida (bash -n la aprueba) — arranca la prueba" \
   || bad "H7 (setup): la inyección de 'false' rompió la sintaxis — el test no prueba lo que debe"
-out_h7=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"git push -u origin feat/mi-cambio"}}' | HOME="$C1SB2/home" bash "$C1SB2/hooks/git-branch-guard.sh" 2>/dev/null)
+out_h7=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"git push -u origin feat/mi-cambio"}}' | HOME="$C1SB2/home" bash "$C1SB2/hooks/merge-develop-guard.sh" 2>/dev/null)
 is_silent "$out_h7" \
   && ok "H7: lib con 'false' final (sintaxis VÁLIDA) + push a la propia ramita → silencio (antes: la sonda vieja la declaraba 'rota' y bloqueaba TODO)" \
   || bad "H7: REGRESIÓN — una lib sintácticamente válida con un 'false' al final se tumbó a deny-total; got: $out_h7"
@@ -1243,15 +1254,15 @@ git -C "$GBNOJQ_BASEREPO" init -q >/dev/null 2>&1
 git -C "$GBNOJQ_BASEREPO" config user.email t@t >/dev/null 2>&1; git -C "$GBNOJQ_BASEREPO" config user.name t >/dev/null 2>&1
 git -C "$GBNOJQ_BASEREPO" commit -q --allow-empty -m base >/dev/null 2>&1
 git -C "$GBNOJQ_BASEREPO" checkout -q -b develop >/dev/null 2>&1
-gb_nojq() { jq -nc --arg c "$1" '{tool_input:{command:$c}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" CLAUDE_PROJECT_DIR="$GBNOJQ_BASEREPO" bash "$HOOKS/git-branch-guard.sh"; }
+gb_nojq() { jq -nc --arg c "$1" '{tool_input:{command:$c}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" CLAUDE_PROJECT_DIR="$GBNOJQ_BASEREPO" bash "$HOOKS/merge-develop-guard.sh"; }
 ms_nojq() { jq -nc --arg c "$1" '{tool_input:{command:$c}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" bash "$HOOKS/merge-develop-guard.sh"; }
 mkdir -p "$FAKEHOME/nojq7home"
 is_deny "$(gb_nojq 'git push origin develop')" \
-  && ok "M7: git-branch-guard SIN jq + push a develop → DENY (antes: fail-open silencioso)" \
-  || bad "M7: git-branch-guard SIN jq dejó pasar un push a develop"
+  && ok "M7: merge-develop-guard (PASO 0) SIN jq + push a develop → DENY (antes: fail-open silencioso)" \
+  || bad "M7: merge-develop-guard (PASO 0) SIN jq dejó pasar un push a develop"
 is_silent "$(gb_nojq 'ls -la')" \
-  && ok "M7: git-branch-guard SIN jq + comando no-git → silencio (no sobre-bloquea)" \
-  || bad "M7: git-branch-guard SIN jq bloqueó un comando que no le toca"
+  && ok "M7: merge-develop-guard (PASO 0) SIN jq + comando no-git → silencio (no sobre-bloquea)" \
+  || bad "M7: merge-develop-guard (PASO 0) SIN jq bloqueó un comando que no le toca"
 is_deny "$(ms_nojq 'glab mr merge 5 --yes')" \
   && ok "M7: merge-squash-guard SIN jq + merge sin --squash → DENY (antes: fail-open silencioso)" \
   || bad "M7: merge-squash-guard SIN jq dejó pasar un merge sin squash"
@@ -1261,7 +1272,7 @@ is_silent "$(ms_nojq 'ls -la')" \
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "== (b1d-alto2) ALTO-2 (auditoría FMEA 2026-09-16 §1.4, CONFIRMADO): SIN jq, git-branch-guard ya NO"
+echo "== (b1d-alto2) ALTO-2 (auditoría FMEA 2026-09-16 §1.4, CONFIRMADO): SIN jq, el PASO 0 de merge-develop-guard ya NO"
 echo "   bloquea push a tu PROPIA ramita/mini-develop (el camino MÁS transitado) — sigue bloqueando bare/base/mr =="
 # Un `git push -u origin feat/mi-cambio` (push a tu PROPIA ramita, el caso más común de TODOS) SIN jq NO
 # debe quedar DENY sin carril. El criterio es de PRECISIÓN (un push que nombra EXPLÍCITAMENTE ≥2 tokens tras
@@ -1279,18 +1290,19 @@ is_deny "$(gb_nojq 'git push')" \
 is_deny "$(gb_nojq 'git push origin develop')" \
   && ok "ALTO-2: SIN jq, push EXPLÍCITO a develop → SIGUE bloqueado" \
   || bad "ALTO-2: SIN jq, push explícito a develop dejó de bloquearse — AFLOJAMIENTO"
-# H1: SIN jq reusa acg_merge_menciona_base para PARIDAD exacta con el camino CON jq — y ESE nunca bloquea un
-# `mr merge 5` genérico (sin --target-branch explícito): no es el trabajo de ESTE guard (que solo vigila
-# "nombra la base DIRECTO"), es el de confirmar-merge-develop (autorización) y merge-squash-guard (squash),
-# que siguen bloqueando CUALQUIER merge sin jq (ver sus tests de M7 abajo). Una heurística propia que
-# bloqueara ese `mr merge` genérico lo haría por accidente, no por diseño.
-is_silent "$(gb_nojq 'glab mr merge 5 --yes')" \
-  && ok "ALTO-2/H1: SIN jq, mr merge SIN destino explícito → silencio en ESTE guard (paridad con el camino CON jq; confirmar-merge-develop/merge-squash-guard lo bloquean igual, sin cambio)" \
-  || bad "ALTO-2/H1: un mr merge genérico quedó bloqueado por git-branch-guard — rompe la paridad con el camino con-jq"
+# H1: el PASO 0 (acg_merge_menciona_base, que el carril sin-jq de merge-develop-guard también reusa) NO dispara
+# sobre un `mr merge 5` genérico (sin --target-branch explícito): no "nombra la base DIRECTO". El VEREDICTO del
+# HOOK sobre ese comando lo da ahora el GATE de merge-de-MR consolidado (squash + autorización) — que SIN jq
+# hace fail-safe DENY (su destino sale de la API, no del texto; antes era trabajo de merge-squash-guard/
+# confirmar-merge-develop, hoy del mismo merge-develop-guard). Por eso se prueba a nivel LIB: aísla el PASO 0.
+( . "$HOOKS/analizar-comando-git.sh"
+  acg_merge_menciona_base 'glab mr merge 5 --yes' \
+    && bad "ALTO-2/H1 (lib): acg_merge_menciona_base disparó sobre un mr merge GENÉRICO (FP del PASO 0)" \
+    || ok "ALTO-2/H1 (lib): el PASO 0 no frena un mr merge genérico sin destino explícito (eso lo decide el gate consolidado de merge-de-MR)" )
 is_deny "$(gb_nojq 'glab mr merge 5 --target-branch develop --yes')" \
   && ok "ALTO-2/H1: SIN jq, mr merge que SÍ nombra develop como destino explícito → SIGUE bloqueado (esto sí es el trabajo de este guard)" \
   || bad "ALTO-2/H1: REGRESIÓN — un merge con destino explícito a develop dejó de bloquearse"
-is_silent "$(jq -nc --arg c 'git push' '{tool_input:{command:$c}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 bash "$HOOKS/git-branch-guard.sh")" \
+is_silent "$(jq -nc --arg c 'git push' '{tool_input:{command:$c}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 bash "$HOOKS/merge-develop-guard.sh")" \
   && ok "ALTO-2: SIN jq + CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 (escape EXPLÍCITO y auditado) → deja pasar, el humano manda" \
   || bad "ALTO-2: el escape explícito CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL no funcionó"
 is_deny "$(ms_nojq 'glab mr merge 5 --yes')" \
@@ -1309,12 +1321,12 @@ is_silent "$(jq -nc --arg c 'glab mr merge 5 --yes' '{tool_input:{command:$c}}' 
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "== (b1d-h1) H1 (auditoría semántica 2026-09-16, ALTO, CONFIRMADO): SIN jq, git-branch-guard razona"
+echo "== (b1d-h1) H1 (auditoría semántica 2026-09-16, ALTO, CONFIRMADO): SIN jq, el PASO 0 de merge-develop-guard razona"
 echo "   sobre el COMANDO real, NUNCA sobre 'description' u otros campos del JSON crudo =="
 # El fixture de b1d-alto2 (arriba) construye el payload SIN 'description', justo el campo que cambia la
 # respuesta. gb_nojq_full monta el payload REAL (command + description) para probar la premisa hostil: que
 # el guard razone sobre el COMANDO, no sobre 'description'.
-gb_nojq_full() { jq -nc --arg c "$1" --arg d "$2" '{tool_input:{command:$c,description:$d}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" CLAUDE_PROJECT_DIR="$GBNOJQ_BASEREPO" bash "$HOOKS/git-branch-guard.sh"; }
+gb_nojq_full() { jq -nc --arg c "$1" --arg d "$2" '{tool_input:{command:$c,description:$d}}' | PATH="$NOJQ7" HOME="$FAKEHOME/nojq7home" CLAUDE_PROJECT_DIR="$GBNOJQ_BASEREPO" bash "$HOOKS/merge-develop-guard.sh"; }
 is_silent "$(gb_nojq_full 'git push -u origin feat/mi-cambio' 'Empujar la ramita del MR a develop')" \
   && ok "H1: SIN jq, ramita legítima + description que MENCIONA 'develop' → silencio (antes: DENY por leer el JSON crudo)" \
   || bad "H1: REGRESIÓN — la description volvió a filtrarse al detector y bloqueó una ramita legítima"
@@ -1339,8 +1351,8 @@ echo "   base VACÍA tiene un carril explícito (CLAUDE_GIT_GUARD_SEED=1), inclu
 # norma global declara para un push directo a base — y el único escape que YA existía
 # (CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL) solo se leía en la rama SIN jq. Con jq presente (el caso normal) el
 # operador quedaba sin carril.
-gb_seed() { jq -nc --arg c "$1" '{tool_input:{command:$c}}' | HOME="$FAKEHOME/seedhome" CLAUDE_GIT_GUARD_SEED=1 bash "$HOOKS/git-branch-guard.sh"; }
-gb_noseed() { jq -nc --arg c "$1" '{tool_input:{command:$c}}' | HOME="$FAKEHOME/seedhome" bash "$HOOKS/git-branch-guard.sh"; }
+gb_seed() { jq -nc --arg c "$1" '{tool_input:{command:$c}}' | HOME="$FAKEHOME/seedhome" CLAUDE_GIT_GUARD_SEED=1 bash "$HOOKS/merge-develop-guard.sh"; }
+gb_noseed() { jq -nc --arg c "$1" '{tool_input:{command:$c}}' | HOME="$FAKEHOME/seedhome" bash "$HOOKS/merge-develop-guard.sh"; }
 mkdir -p "$FAKEHOME/seedhome"
 is_deny "$(gb_noseed 'git push -u origin main')" \
   && ok "H5: CON jq, siembra de repo vacío (push a main) SIN el escape → sigue bloqueado (comportamiento previo intacto)" \
@@ -2496,8 +2508,8 @@ echo "== (b3a2) proteger-fuente-cerebro: AVISA al editar la copia INSTALADA que 
 PFFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-pf.XXXXXX")"
 PFH="$PFFIX/home"; PFB="$PFFIX/clon"
 mkdir -p "$PFH/.claude/hooks" "$PFH/.claude/skills/cerrar-slice" "$PFB/brain/hooks" "$PFB/brain/skills/cerrar-slice"
-printf 'installed\n' > "$PFH/.claude/hooks/git-branch-guard.sh"          # hook con fuente
-printf 'source\n'    > "$PFB/brain/hooks/git-branch-guard.sh"
+printf 'installed\n' > "$PFH/.claude/hooks/no-bypass-deploy.sh"          # hook con fuente
+printf 'source\n'    > "$PFB/brain/hooks/no-bypass-deploy.sh"
 printf 'installed\n' > "$PFH/.claude/skills/cerrar-slice/SKILL.md"       # skill con fuente
 printf 'source\n'    > "$PFB/brain/skills/cerrar-slice/SKILL.md"
 printf 'local\n'     > "$PFH/.claude/hooks/mi-hook-local.sh"             # hook LOCAL (sin fuente)
@@ -2505,7 +2517,7 @@ pf() { printf '%s' "{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$1\"
        | HOME="$PFH" CLAUDE_BRAIN_DIR="$PFB" bash "$HOOKS/proteger-fuente-cerebro.sh"; }
 has_ctx() { printf '%s' "$1" | jq -e '.hookSpecificOutput.additionalContext | test("proteger-fuente-cerebro")' >/dev/null 2>&1; }
 # (1) editar hook INSTALADO que tiene fuente → AVISA
-o="$(pf "$PFH/.claude/hooks/git-branch-guard.sh")"
+o="$(pf "$PFH/.claude/hooks/no-bypass-deploy.sh")"
 has_ctx "$o" && ok "proteger-fuente: editar hook instalado CON fuente → AVISA" || bad "proteger-fuente: no avisó del hook instalado; got: $o"
 # (2) editar skill INSTALADA que tiene fuente → AVISA (y nombra la ruta de la fuente)
 o="$(pf "$PFH/.claude/skills/cerrar-slice/SKILL.md")"
@@ -2518,12 +2530,12 @@ o="$(pf "$PFH/.claude/hooks/mi-hook-local.sh")"
 o="$(pf "$PFFIX/random.txt")"
 [ -z "$o" ] && ok "proteger-fuente: archivo fuera de skills|hooks → silencio (fuera de alcance)" || bad "proteger-fuente: reaccionó fuera de alcance; got: $o"
 # (5) escape CLAUDE_SKIP_PROTEGER_FUENTE=1 → silencio aunque haya fuente
-o="$(printf '%s' "{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$PFH/.claude/hooks/git-branch-guard.sh\"}}" \
+o="$(printf '%s' "{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$PFH/.claude/hooks/no-bypass-deploy.sh\"}}" \
      | HOME="$PFH" CLAUDE_BRAIN_DIR="$PFB" CLAUDE_SKIP_PROTEGER_FUENTE=1 bash "$HOOKS/proteger-fuente-cerebro.sh")"
 [ -z "$o" ] && ok "proteger-fuente: escape CLAUDE_SKIP_PROTEGER_FUENTE=1 → silencio" || bad "proteger-fuente: el escape no calló; got: $o"
 # (6) fail-open SIN jq (PATH sin jq; bash por ruta absoluta para no depender del PATH) → silencio
 BASHBIN="$(command -v bash)"
-o="$(printf '%s' "{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$PFH/.claude/hooks/git-branch-guard.sh\"}}" \
+o="$(printf '%s' "{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$PFH/.claude/hooks/no-bypass-deploy.sh\"}}" \
      | PATH="/nonexistent-dir" HOME="$PFH" CLAUDE_BRAIN_DIR="$PFB" "$BASHBIN" "$HOOKS/proteger-fuente-cerebro.sh")"
 [ -z "$o" ] && ok "proteger-fuente: fail-open sin jq → silencio (no bloquea)" || bad "proteger-fuente: no falló abierto sin jq; got: $o"
 # OS-parity/estático: el hook usa \$HOME y \${CLAUDE_BRAIN_DIR}, no rutas hardcodeadas de un \$HOME
@@ -3527,12 +3539,12 @@ rm -rf "$M3ROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "== (b3c) git-branch-guard: bloquea push/merge REAL a main/develop, NO una MENCIÓN entrecomillada =="
+echo "== (b3c) merge-develop-guard · PASO 0: bloquea push/merge REAL a main/develop, NO una MENCIÓN entrecomillada =="
 # HOME AISLADO SIN copia global del hook: si no, la cláusula de dedupe doble-cableado (la copia del
 # repo CEDE cuando existe ~/.claude/hooks/…) haría que el guard salga en silencio en una máquina con el
 # cerebro instalado globalmente → falso FAIL. (Igual que el gb() de b1d, que usa $GBHOME.)
 mkdir -p "$FAKEHOME/_nohooks/.claude"
-gbg() { printf '{"tool_input":{"command":%s}}' "$(printf '%s' "$1" | jq -Rs .)" | HOME="$FAKEHOME/_nohooks" bash "$HOOKS/git-branch-guard.sh"; }
+gbg() { printf '{"tool_input":{"command":%s}}' "$(printf '%s' "$1" | jq -Rs .)" | HOME="$FAKEHOME/_nohooks" bash "$HOOKS/merge-develop-guard.sh"; }
 is_deny   "$(gbg 'git push origin develop')"                              && ok "gbg: push real a develop → deny (dientes intactos)"           || bad "gbg: NO bloqueó un push real a develop"
 is_silent "$(gbg 'git push -u origin feat/x')"                            && ok "gbg: push a una ramita → pasa"                                || bad "gbg: bloqueó un push a ramita"
 is_silent "$(gbg 'git commit -m "doc: no hagas git push a develop"')"     && ok "gbg: 'push…develop' en mensaje de commit (dato) → pasa"       || bad "gbg: bloqueó una mención entrecomillada en commit (regresión del fix de comillas)"
@@ -4389,16 +4401,16 @@ mkdir -p "$PADROOT/.claude/hooks" "$PADHOME/.claude/hooks" "$PADBRAIN/brain/hook
 : > "$PADROOT/.claude/hooks/.brain-version"    # brained (para pasar el precheck y llegar a la bifurcación)
 # SIN marca repo-compartido → PERSONAL. Fuente del brain con un guard (para el match de "sobran").
 printf '#!/usr/bin/env bash\necho "==> resumen: 0 nuevos · 0 a actualizar"\n' > "$PADBRAIN/brain/sincronizar-cerebro.sh"
-: > "$PADBRAIN/brain/hooks/git-branch-guard.sh"
+: > "$PADBRAIN/brain/hooks/no-bypass-deploy.sh"
 # Copias GLOBALES instaladas (en $PADHOME/.claude/hooks): un `both` SOLO sobra si su global existe (el
 # dedupe hace que la del repo ceda a ella); sin global, la del repo es la única → no se flaggea.
-: > "$PADHOME/.claude/hooks/git-branch-guard.sh"
+: > "$PADHOME/.claude/hooks/no-bypass-deploy.sh"
 : > "$PADHOME/.claude/hooks/sesion-inicio.sh"
 : > "$PADHOME/.claude/hooks/juez-comun.sh"   # global de juez instalado → en N4 se conserva por la vía DEP (dod la sourcea), no por global-absent
 # MANIFEST + fuentes para la resolución de tier del aviso (N4): solo tier `both` sobra; una lib `both`
 # que una hook tier=repo PRESENTE sourcea NO sobra (juez-comun ← dod-verificar).
 cat > "$PADBRAIN/brain/hooks/MANIFEST" <<'MF'
-git-branch-guard    both  hook
+no-bypass-deploy    both  hook
 dod-verificar       repo  hook
 juez-comun          both  lib
 sesion-inicio       both  hook
@@ -4415,30 +4427,30 @@ padreset() { rm -rf "$PADHOME/.claude/memory/.drift-cerebro"; mkdir -p "$PADHOME
   for s in .hooks-global .skills-global .normas-global; do date +%s > "$PADHOME/.claude/memory/.drift-cerebro/$s"; done; }
 padreset
 # CASO 5: personal CON un guard del brain presente → FLAG "SOBRAN, quítalos" y NADA de auto-sync
-: > "$PADROOT/.claude/hooks/git-branch-guard.sh"
+: > "$PADROOT/.claude/hooks/no-bypass-deploy.sh"
 padout="$(pad)"
 printf '%s' "$padout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'SOBRAN' \
   && ok "aviso-drift #46: personal CON guard del brain → FLAG 'sobran, quítalos'" || bad "aviso-drift #46: no flaggeó el guard sobrante en personal; got: $padout"
 printf '%s' "$padout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'AUTO-SINCRONIZADO\|DRIFT DEL CEREBRO' \
   && bad "aviso-drift #46: personal NO debe auto-sincronizar ni tratar guards como 'drift'" || ok "aviso-drift #46: personal no auto-sincroniza (sin commit/push, sin lógica de correo)"
 # CASO 6: personal SIN guards del brain (solo un hook PROPIO del repo) → SILENCIO
-rm -f "$PADROOT/.claude/hooks/git-branch-guard.sh"
+rm -f "$PADROOT/.claude/hooks/no-bypass-deploy.sh"
 padreset
 : > "$PADROOT/.claude/hooks/gate-propio.sh"     # hook PROPIO (no está en la fuente) → no se flaggea
 is_silent "$(pad)" && ok "aviso-drift #46: personal SIN guards del brain (solo hook propio) → silencio" || bad "aviso-drift #46: habló en un personal sano; got: $(pad)"
 # CASO N4: personal con dod-verificar(repo) + juez-comun(both lib, usada por dod) + sesion-inicio(both) +
-# git-branch-guard(both) → el aviso lista SOLO los both-sin-dependencia; NUNCA dod-verificar(repo) ni
+# no-bypass-deploy(both) → el aviso lista SOLO los both-sin-dependencia; NUNCA dod-verificar(repo) ni
 # juez-comun(both pero la sourcea dod-verificar presente — quitarla lo rompería).
 rm -f "$PADROOT/.claude/hooks/"*.sh
 padreset
-: > "$PADROOT/.claude/hooks/git-branch-guard.sh"
+: > "$PADROOT/.claude/hooks/no-bypass-deploy.sh"
 : > "$PADROOT/.claude/hooks/sesion-inicio.sh"
 : > "$PADROOT/.claude/hooks/juez-comun.sh"
 printf '#!/usr/bin/env bash\n. "${BASH_SOURCE[0]%%/*}/juez-comun.sh"\n' > "$PADROOT/.claude/hooks/dod-verificar.sh"
 n4="$(pad | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null)"
 if printf '%s' "$n4" | grep -q 'SOBRAN'; then
-  { printf '%s' "$n4" | grep -q 'git-branch-guard' && printf '%s' "$n4" | grep -q 'sesion-inicio'; } \
-    && ok "N4: aviso lista los both-sin-dependencia (git-branch-guard, sesion-inicio)" || bad "N4: no listó los both esperados; got: $n4"
+  { printf '%s' "$n4" | grep -q 'no-bypass-deploy' && printf '%s' "$n4" | grep -q 'sesion-inicio'; } \
+    && ok "N4: aviso lista los both-sin-dependencia (no-bypass-deploy, sesion-inicio)" || bad "N4: no listó los both esperados; got: $n4"
   printf '%s' "$n4" | grep -q 'dod-verificar' \
     && bad "N4: aviso marcó dod-verificar (tier repo) como sobrante — quitarlo dejaría al repo sin DoD" || ok "N4: aviso NO marca dod-verificar (tier repo legítimo)"
   printf '%s' "$n4" | grep -q 'juez-comun' \
@@ -4448,36 +4460,36 @@ else
 fi
 # Dirección inversa (claudio 2026-10-21 sobre 9336cc1): un `both` presente per-repo cuya copia GLOBAL NO
 # está instalada NO se flaggea (es la única que corre aquí → quitarla la mataría). Quito la global de
-# sesion-inicio (dejo la de git-branch-guard) → el aviso lista git-branch-guard pero NO sesion-inicio.
+# sesion-inicio (dejo la de no-bypass-deploy) → el aviso lista no-bypass-deploy pero NO sesion-inicio.
 rm -f "$PADHOME/.claude/hooks/sesion-inicio.sh"
 padreset
 n4b="$(pad | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null)"
-{ printf '%s' "$n4b" | grep -q 'git-branch-guard' && ! printf '%s' "$n4b" | grep -q 'sesion-inicio'; } \
-  && ok "N4b: aviso NO marca un both sin copia GLOBAL instalada (sesion-inicio); sí el que sí la tiene (git-branch-guard)" \
+{ printf '%s' "$n4b" | grep -q 'no-bypass-deploy' && ! printf '%s' "$n4b" | grep -q 'sesion-inicio'; } \
+  && ok "N4b: aviso NO marca un both sin copia GLOBAL instalada (sesion-inicio); sí el que sí la tiene (no-bypass-deploy)" \
   || bad "N4b: marcó un both sin global, o perdió el que sí tiene global; got: $n4b"
 rm -rf "$PADFIX"
 
 # ── --limpiar-personal (N4): CONSERVA una lib `both` que una repo-hook presente sourcea (juez-comun ← dod)
-# y un `both` sin copia GLOBAL instalada; RETIRARÍA un both con global y sin dependencia (git-branch-guard).
+# y un `both` sin copia GLOBAL instalada; RETIRARÍA un both con global y sin dependencia (no-bypass-deploy).
 # Usa el MANIFEST REAL del repo. HOME falso controlado (el global-exists mira $HOME/.claude/hooks). Dry-run.
 LPFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-lp.XXXXXX")"; mkdir -p "$LPFIX/.claude/hooks" "$LPFIX/home/.claude/hooks"
 printf '#!/usr/bin/env bash\n. "${BASH_SOURCE[0]%%/*}/juez-comun.sh"\n' > "$LPFIX/.claude/hooks/dod-verificar.sh"
 : > "$LPFIX/.claude/hooks/juez-comun.sh"
-: > "$LPFIX/.claude/hooks/git-branch-guard.sh"
-: > "$LPFIX/home/.claude/hooks/git-branch-guard.sh"   # global de g-b-g instalado → RETIRARÍA
+: > "$LPFIX/.claude/hooks/no-bypass-deploy.sh"
+: > "$LPFIX/home/.claude/hooks/no-bypass-deploy.sh"   # global de no-bypass-deploy instalado → RETIRARÍA
 : > "$LPFIX/home/.claude/hooks/juez-comun.sh"          # global de juez instalado → cae al check de dependencia
 lpout="$(HOME="$LPFIX/home" bash "$SCRIPT_DIR/sincronizar-cerebro.sh" "$LPFIX" --limpiar-personal 2>&1)"
 printf '%s' "$lpout" | grep -qE 'CONSERVO +juez-comun' \
   && ok "--limpiar-personal N4: CONSERVA juez-comun (lib both usada por dod-verificar presente)" \
   || bad "--limpiar-personal N4: no conservó juez-comun; got: $(printf '%s' "$lpout" | grep -iE 'juez|conservo|retiraría')"
-printf '%s' "$lpout" | grep -qE 'RETIRARÍA +git-branch-guard' \
-  && ok "--limpiar-personal N4: RETIRARÍA git-branch-guard (both con global, sin dependencia)" \
-  || bad "--limpiar-personal N4: no retiraría git-branch-guard; got: $lpout"
-# dirección inversa: sin la copia GLOBAL de git-branch-guard → se CONSERVA (es la única que corre aquí)
-rm -f "$LPFIX/home/.claude/hooks/git-branch-guard.sh"
+printf '%s' "$lpout" | grep -qE 'RETIRARÍA +no-bypass-deploy' \
+  && ok "--limpiar-personal N4: RETIRARÍA no-bypass-deploy (both con global, sin dependencia)" \
+  || bad "--limpiar-personal N4: no retiraría no-bypass-deploy; got: $lpout"
+# dirección inversa: sin la copia GLOBAL de no-bypass-deploy → se CONSERVA (es la única que corre aquí)
+rm -f "$LPFIX/home/.claude/hooks/no-bypass-deploy.sh"
 lpout2="$(HOME="$LPFIX/home" bash "$SCRIPT_DIR/sincronizar-cerebro.sh" "$LPFIX" --limpiar-personal 2>&1)"
-printf '%s' "$lpout2" | grep -qE 'CONSERVO +git-branch-guard' \
-  && ok "--limpiar-personal N4b: CONSERVA git-branch-guard cuando su copia GLOBAL no está instalada" \
+printf '%s' "$lpout2" | grep -qE 'CONSERVO +no-bypass-deploy' \
+  && ok "--limpiar-personal N4b: CONSERVA no-bypass-deploy cuando su copia GLOBAL no está instalada" \
   || bad "--limpiar-personal N4b: retiró un both sin global instalado (lo mataría); got: $(printf '%s' "$lpout2" | grep -iE 'git-branch|conservo|retiraría')"
 rm -rf "$LPFIX"
 
@@ -4664,15 +4676,15 @@ HKGFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-hkg.XXXXXX")"
 HKGHOME="$HKGFIX/home"; HKGBR="$HKGFIX/brain"
 mkdir -p "$HKGHOME/.claude/hooks" "$HKGBR/brain/hooks"
 # MANIFEST de hooks (3 cols): un {both,hook} + una {both,lib} + un {repo,hook} (este NO debe vigilarse global)
-printf '%s\n' 'git-branch-guard both hook' 'analizar-comando-git both lib' 'dod-verificar repo hook' > "$HKGBR/brain/hooks/MANIFEST"
+printf '%s\n' 'no-bypass-deploy both hook' 'analizar-comando-git both lib' 'dod-verificar repo hook' > "$HKGBR/brain/hooks/MANIFEST"
 hkg() { ( HOME="$HKGHOME" CLAUDE_BRAIN_DIR="$HKGBR"; . "$HOOKS/drift-cerebro-comun.sh"; drift_hooks_global ); }
 # (1) copia instalada EDITADA EN VIVO (más nueva y distinta) → warn "EDITADOS EN VIVO"
-printf 'FUENTE\n' > "$HKGBR/brain/hooks/git-branch-guard.sh"; touch -t 202401010000 "$HKGBR/brain/hooks/git-branch-guard.sh"
-printf 'EDIT MANO\n' > "$HKGHOME/.claude/hooks/git-branch-guard.sh"; touch -t 202601010000 "$HKGHOME/.claude/hooks/git-branch-guard.sh"
+printf 'FUENTE\n' > "$HKGBR/brain/hooks/no-bypass-deploy.sh"; touch -t 202401010000 "$HKGBR/brain/hooks/no-bypass-deploy.sh"
+printf 'EDIT MANO\n' > "$HKGHOME/.claude/hooks/no-bypass-deploy.sh"; touch -t 202601010000 "$HKGHOME/.claude/hooks/no-bypass-deploy.sh"
 printf '%s' "$(hkg)" | grep -q 'EDITADOS EN VIVO' \
   && ok "drift-hooks-global: copia instalada editada en vivo → warn 'EDITADOS EN VIVO' (portar a la fuente)" || bad "drift-hooks-global: no detectó el edit-en-vivo"
 # (2) LIMPIA (idénticas) → silencio
-cp "$HKGBR/brain/hooks/git-branch-guard.sh" "$HKGHOME/.claude/hooks/git-branch-guard.sh"; touch -r "$HKGBR/brain/hooks/git-branch-guard.sh" "$HKGHOME/.claude/hooks/git-branch-guard.sh"
+cp "$HKGBR/brain/hooks/no-bypass-deploy.sh" "$HKGHOME/.claude/hooks/no-bypass-deploy.sh"; touch -r "$HKGBR/brain/hooks/no-bypass-deploy.sh" "$HKGHOME/.claude/hooks/no-bypass-deploy.sh"
 is_silent "$(hkg)" && ok "drift-hooks-global: copia global == fuente → silencio (sin FP)" || bad "drift-hooks-global: warned con copia limpia"
 # (3) también vigila una LIB {both,lib} copiada al global, NO solo kind=hook (la lógica git compartida driftada
 #     es justo el drift silencioso a cazar): edítala en vivo → warn
@@ -6206,11 +6218,11 @@ echo ""
 echo "== (b7) dedupe doble-cableado: la copia REPO cede si existe la GLOBAL; corre si no =="
 DDNO="$(mktemp -d "${TMPDIR:-/tmp}/brain-ddno.XXXXXX")"
 DDYES="$(mktemp -d "${TMPDIR:-/tmp}/brain-ddyes.XXXXXX")"; mkdir -p "$DDYES/.claude/hooks"
-cp "$HOOKS/git-branch-guard.sh" "$DDYES/.claude/hooks/git-branch-guard.sh"
+cp "$HOOKS/merge-develop-guard.sh" "$DDYES/.claude/hooks/merge-develop-guard.sh"
 DDCMD='{"tool_name":"Bash","tool_input":{"command":"git push origin develop"}}'
-o="$(printf '%s' "$DDCMD" | HOME="$DDNO" bash "$HOOKS/git-branch-guard.sh")"
+o="$(printf '%s' "$DDCMD" | HOME="$DDNO" bash "$HOOKS/merge-develop-guard.sh")"
 printf '%s' "$o" | grep -q '"deny"' && ok "dedupe: SIN copia global → la copia repo CORRE (bloquea push a develop)" || bad "dedupe: repo debía bloquear sin global; got: $o"
-o="$(printf '%s' "$DDCMD" | HOME="$DDYES" bash "$HOOKS/git-branch-guard.sh")"
+o="$(printf '%s' "$DDCMD" | HOME="$DDYES" bash "$HOOKS/merge-develop-guard.sh")"
 is_silent "$o" && ok "dedupe: CON copia global → la copia repo CEDE (silencio; la global maneja)" || bad "dedupe: repo debía ceder con global; got: $o"
 rm -rf "$DDNO" "$DDYES"
 
@@ -6313,7 +6325,7 @@ HOME="$FAKEHOME2" bash "$INSTALLER" >/dev/null 2>&1
 GSET2="$FAKEHOME2/.claude/settings.json"
 GCLAUDE2="$FAKEHOME2/.claude/CLAUDE.md"
 
-for pat in git-branch-guard merge-develop-guard proteger-arbol rehidratar-hilo aviso-contexto delegacion-gate delegacion-registrar; do
+for pat in merge-develop-guard proteger-arbol rehidratar-hilo aviso-contexto delegacion-gate delegacion-registrar; do
   n="$(jq --arg p "$pat" '[.hooks[]?[]? | select(([.hooks[]?.command]|join(" "))|test($p))] | length' "$GSET2" 2>/dev/null)"
   if [ "$n" = "1" ]; then ok "settings.json: $pat cableado 1× (idempotente)"; else bad "settings.json: $pat aparece ${n:-?}× (esperaba 1)"; fi
 done
@@ -6399,7 +6411,7 @@ fi
 : > "$FAKEHOME2/.claude/hooks/mi-hook-local.sh"     # hook PROPIO del usuario (NO del brain, NO en el MANIFEST)
 HOME="$FAKEHOME2" bash "$INSTALLER" >/dev/null 2>&1
 [ ! -f "$FAKEHOME2/.claude/hooks/dod-verificar.sh" ] && ok "poda (a2): retiró el hook repo-tier huérfano dod-verificar.sh del global" || bad "poda (a2): dejó dod-verificar.sh (repo-tier) en el global"
-[ -f "$FAKEHOME2/.claude/hooks/git-branch-guard.sh" ] && ok "poda (a2): conservó el hook {both} git-branch-guard.sh" || bad "poda (a2): borró un hook {global,both}"
+[ -f "$FAKEHOME2/.claude/hooks/merge-develop-guard.sh" ] && ok "poda (a2): conservó el hook {both} merge-develop-guard.sh" || bad "poda (a2): borró un hook {global,both}"
 [ -f "$FAKEHOME2/.claude/hooks/mi-hook-local.sh" ] && ok "poda (a2): conservó el hook PROPIO del usuario (no lo toca)" || bad "poda (a2): borró un hook propio del usuario"
 
 # C2: persist_env_active captura el VALOR ACTIVO de una env del brain en settings.json .env (no un
@@ -6427,7 +6439,7 @@ if [ -f "$SCRIPT_DIR/uninstall-brain.sh" ]; then
   left="$(jq --arg pat "$_unpat" '[.hooks[]?[]? | select(([.hooks[]?.command]|join(" "))|test($pat))] | length' "$GSET2" 2>/dev/null)"
   [ "${left:-x}" = "0" ] && ok "uninstall: 0 cableados del cerebro en settings.json (set COMPLETO {global,both} kind=hook — cazaría un BRAIN_PAT drifteado)" || bad "uninstall: quedan ${left:-?} cableados ZOMBIE (BRAIN_PAT no cubre todo el set del MANIFEST)"
   grep -q 'BEGIN cortex' "$GCLAUDE2" && bad "uninstall: quedó el bloque de normas" || ok "uninstall: bloque de normas removido"
-  [ -f "$FAKEHOME2/.claude/hooks/git-branch-guard.sh" ] && bad "uninstall: quedó git-branch-guard.sh" || ok "uninstall: hooks globales removidos"
+  [ -f "$FAKEHOME2/.claude/hooks/merge-develop-guard.sh" ] && bad "uninstall: quedó merge-develop-guard.sh" || ok "uninstall: hooks globales removidos"
   # (e) el @import de aliases + el artefacto GENERADO se limpian (inverso de d3)
   [ -f "$FAKEHOME2/.claude/aliases-activos.md" ] && bad "uninstall: quedó el artefacto aliases-activos.md" || ok "uninstall: artefacto aliases-activos.md eliminado"
   grep -q 'brain:import-aliases' "$GCLAUDE2" 2>/dev/null && bad "uninstall: quedó el @import de aliases en CLAUDE.md" || ok "uninstall: @import de aliases removido de CLAUDE.md"
@@ -6498,9 +6510,7 @@ echo "== (e) sin referencias circulares NUEVAS entre elementos del cerebro =="
 # Allowlist de pares bidireccionales BENIGNOS conocidos (skill<->hook enforcement / lib<->consumidor /
 # hooks-hermanos). Un par NUEVO fuera de aqui = posible referencia circular -> revisalo (peor que una
 # contradiccion). El test COMPUTA los pares en cada corrida, no depende de contarlos a mano.
-CE_ALLOW="analizar-comando-git|git-branch-guard
-analizar-comando-git|merge-develop-guard
-git-branch-guard|merge-develop-guard
+CE_ALLOW="analizar-comando-git|merge-develop-guard
 juez-comun|merge-develop-guard
 dod-verificar|juez-comun
 cerrar-slice|dod-verificar
@@ -6990,8 +7000,8 @@ grep -q 'rama-vieja' "$E5B/.claude/settings.json" 2>/dev/null \
   && ok "e5b: el huérfano DESCONOCIDO (propio) se CONSERVÓ — la redefinición de huérfano no se comió lo ajeno" \
   || bad "e5b: ¡se borró un huérfano propio sin --prune-orphans (falso positivo de la redefinición)!"
 # dirección inversa: un hook VIVO {repo,both} recién desplegado por ESTE MISMO --apply sigue en pie
-[ -f "$E5B/.claude/hooks/git-branch-guard.sh" ] \
-  && ok "e5b: un hook VIVO (tier both, p. ej. git-branch-guard) SIGUE instalado — la redefinición no podó de más" \
+[ -f "$E5B/.claude/hooks/merge-develop-guard.sh" ] \
+  && ok "e5b: un hook VIVO (tier both, p. ej. merge-develop-guard) SIGUE instalado — la redefinición no podó de más" \
   || bad "e5b: ¡un hook vivo {repo,both} desapareció junto con el retirado!"
 rm -rf "$E5B"
 
@@ -7021,7 +7031,7 @@ if [ -f "$E7H/.claude/settings.json" ]; then
   else bad "e7: el set cableado DIFIERE del MANIFEST · sobran/faltan: $(comm -3 <(printf '%s\n' "$wired") <(printf '%s\n' "$want") | tr '\t' '~' | tr '\n' ' ')"; fi
   # el EVENTO de cada uno es el correcto (los 4 grupos: Bash, Task, SessionStart sin-matcher, PostToolUse sin-matcher)
   ev_of() { jq -r --arg n "$1" '.hooks | to_entries[] | .key as $k | .value[] | select((([.hooks[]?.command]|join(" "))) | test("/"+$n+"\\.sh")) | ($k + "|" + (.matcher // ""))' "$E7H/.claude/settings.json"; }
-  [ "$(ev_of git-branch-guard)"   = "PreToolUse|Bash" ]  && ok "e7: git-branch-guard → PreToolUse/Bash"        || bad "e7: git-branch-guard evento incorrecto: $(ev_of git-branch-guard)"
+  [ "$(ev_of merge-develop-guard)" = "PreToolUse|Bash" ]  && ok "e7: merge-develop-guard → PreToolUse/Bash"        || bad "e7: merge-develop-guard evento incorrecto: $(ev_of merge-develop-guard)"
   [ "$(ev_of delegacion-registrar)" = "PostToolUse|Task|Agent" ] && ok "e7: delegacion-registrar → PostToolUse/(Task|Agent)" || bad "e7: delegacion-registrar evento incorrecto: $(ev_of delegacion-registrar)"
   # barrer-ramas es DOBLE evento (SessionStart oportunista + PostToolUse/Bash al punto de merge) → ev_of
   # devuelve DOS líneas; exigimos AMBAS presentes (orden-agnóstico), no igualdad exacta contra una sola.
@@ -7063,8 +7073,8 @@ printf '%s' "$e8out1" | grep -qE "poda:.*'rama-vieja'.*retirado.*avisar del sín
 grep -q 'mi-hook-usuario-e8' "$E8H/.claude/settings.json" 2>/dev/null \
   && ok "e7b: el cableado del hook propio del usuario SIGUE intacto en settings.json" \
   || bad "e7b: ¡install-brain de-cableó un hook ajeno del usuario!"
-[ -f "$E8H/.claude/hooks/git-branch-guard.sh" ] \
-  && ok "e7b: un hook VIVO ({global,both}, p. ej. git-branch-guard) SÍ se instaló normalmente" \
+[ -f "$E8H/.claude/hooks/merge-develop-guard.sh" ] \
+  && ok "e7b: un hook VIVO ({global,both}, p. ej. merge-develop-guard) SÍ se instaló normalmente" \
   || bad "e7b: install-brain no instaló los hooks vivos junto con la poda de retirados"
 # Idempotencia: 2ª corrida sin nada que podar → sin el mensaje de poda, sin error, hook propio intacto.
 e8out2="$(HOME="$E8H" bash "$INSTALLER" 2>&1)"; e8rc2=$?
@@ -7290,19 +7300,19 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-echo "== (e6b) install-brain: EXACTAMENTE 6 hooks en PreToolUse/Bash + aviso-contexto en PostToolUse (sin matcher) =="
-# El fan-out de guards sobre Bash es un set CERRADO de 6 (rama-vieja se RETIRÓ — tier `retirado` en el
-# MANIFEST; merge-squash-guard + confirmar-merge-develop se fusionaron en merge-develop-guard;
-# recordar-dashboard se retiró, puramente advisory — restando 1 más al conteo); aviso-contexto va en
-# PostToolUse sin matcher (casa toda tool). El cableado
+echo "== (e6b) install-brain: EXACTAMENTE 4 hooks en PreToolUse/Bash + aviso-contexto en PostToolUse (sin matcher) =="
+# El fan-out de guards sobre Bash es un set CERRADO de 4 (rama-vieja se RETIRÓ — tier `retirado` en el
+# MANIFEST; merge-squash-guard + confirmar-merge-develop se fusionaron en merge-develop-guard, y
+# git-branch-guard se consolidó en él como su PASO 0 el 2026-10-21; recordar-dashboard se retiró, puramente
+# advisory); aviso-contexto va en PostToolUse sin matcher (casa toda tool). El cableado
 # se DERIVA del MANIFEST vía ev_de() en install-brain.sh → verificamos ese mapeo (no líneas register_hook
 # literales: el instalador las colapsó a un loop). Si alguien agrega/quita un guard de Bash del mapeo,
 # este test lo caza.
-want_bash="git-branch-guard merge-develop-guard entorno-maquina-guard no-bypass-deploy proteger-arbol"
+want_bash="merge-develop-guard entorno-maquina-guard no-bypass-deploy proteger-arbol"
 want_bash_sorted="$(printf '%s\n' $want_bash | sort | tr '\n' ' ' | sed 's/ *$//')"
 got_bash="$(grep -E '\) *echo *"PreToolUse\|Bash"' "$INSTALLER" | sed -E 's/\).*//' | tr '|' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -vE '^$' | sort | tr '\n' ' ' | sed 's/ *$//')"
 if [ "$got_bash" = "$want_bash_sorted" ]; then
-  ok "e6b: ev_de() mapea EXACTAMENTE los 5 guards de PreToolUse/Bash"
+  ok "e6b: ev_de() mapea EXACTAMENTE los 4 guards de PreToolUse/Bash"
 else
   bad "e6b: el set PreToolUse/Bash de ev_de() cambió · got:[$got_bash] want:[$want_bash_sorted]"
 fi
@@ -7668,7 +7678,7 @@ else
 fi
 # (2) DRIFT deliberado: renombra un hook SOLO en la copia de MEMORY.md (línea EXACTA del árbol, no toca
 #     las docenas de menciones del mismo nombre en el Detalle 1:1 más abajo en el archivo).
-sed -i.bak 's/^├─ 🚧 git-branch-guard /├─ 🚧 git-branch-guard-fantasma /' "$ASFIX/.claude/memory/MEMORY.md"
+sed -i.bak 's/^├─ 🔗 merge-develop-guard /├─ 🔗 merge-develop-guard-fantasma /' "$ASFIX/.claude/memory/MEMORY.md"
 f2out="$(bash "$ASFIX/docs/flowcharts/verificar-arbol-sync.sh" 2>&1)"; f2rc=$?
 [ "$f2rc" -ne 0 ] \
   && ok "f2: drift de UN hook en MEMORY.md (README intacto) → checker CAZA el drift (exit≠0)" \
@@ -7688,7 +7698,7 @@ echo "== (F4) sweeper de flotilla: descubrimiento + decisión per-repo (dry-run)
 FLFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-f4.XXXXXX")"
 FLCODE="$FLFIX/code"; FLHOME="$FLFIX/home"; FLBRAIN="$FLFIX/clon"; FLSTATE="$FLFIX/state"; FLREP="$FLFIX/rep.md"
 mkdir -p "$FLCODE" "$FLHOME/.claude/hooks" "$FLBRAIN/brain/hooks" "$FLSTATE"
-: > "$FLHOME/.claude/hooks/git-branch-guard.sh"   # copia GLOBAL instalada → el both del repo personal SÍ sobra
+: > "$FLHOME/.claude/hooks/no-bypass-deploy.sh"   # copia GLOBAL instalada → el both del repo personal SÍ sobra
 # stub del sync en el brain FALSO: dry-run reporta drift; con --apply escribe el hook nuevo en el destino
 cat > "$FLBRAIN/brain/sincronizar-cerebro.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -7697,13 +7707,13 @@ repo="$1"
 echo "  NUEVO      hook-nuevo.sh (hook)"
 echo "==> resumen: 1 nuevos · 0 a actualizar · 8 ya al día · 0 retirado(s) del cerebro · 8 hooks cableados (kind=hook) · 0 cableado faltante"
 STUB
-: > "$FLBRAIN/brain/hooks/git-branch-guard.sh"   # guard del brain → base del match "sobran" en personales
-printf 'git-branch-guard    both  hook\n' > "$FLBRAIN/brain/hooks/MANIFEST"   # N4: el flag "sobran" ahora filtra por tier `both` del MANIFEST
+: > "$FLBRAIN/brain/hooks/no-bypass-deploy.sh"   # guard del brain → base del match "sobran" en personales
+printf 'no-bypass-deploy    both  hook\n' > "$FLBRAIN/brain/hooks/MANIFEST"   # N4: el flag "sobran" ahora filtra por tier `both` del MANIFEST
 
 # repo PERSONAL (sin marca) con un guard del brain presente + sello → personal-flag
 mkdir -p "$FLCODE/repoPersonal/.claude/hooks"
 : > "$FLCODE/repoPersonal/.claude/hooks/.brain-version"
-: > "$FLCODE/repoPersonal/.claude/hooks/git-branch-guard.sh"
+: > "$FLCODE/repoPersonal/.claude/hooks/no-bypass-deploy.sh"
 # repo COMPARTIDO en su mini-develop, .claude/ limpio (committeado), sello + marca → would-sync/synced
 FLSH="$FLCODE/repoSharedMini"
 mkdir -p "$FLSH/.claude/hooks"
@@ -7857,7 +7867,7 @@ echo "== (g2b) sincronizar-cerebro --limpiar-personal: retira SOLO tier 'both' d
 SYNCLP="$SCRIPT_DIR/sincronizar-cerebro.sh"
 G2B="$(mktemp -d "${TMPDIR:-/tmp}/brain-g2b.XXXXXX")"; mkdir -p "$G2B/.claude/hooks" "$G2B/.claude/memory"
 # tier both: hook + su lib (candidatos a retirar)
-printf 'exit 0\n' > "$G2B/.claude/hooks/git-branch-guard.sh"
+printf 'exit 0\n' > "$G2B/.claude/hooks/no-bypass-deploy.sh"
 printf ': lib\n' > "$G2B/.claude/hooks/analizar-comando-git.sh"
 # tier repo: SIN equivalente global — debe SOBREVIVIR (un FP lo trataba como sobrante)
 printf 'exit 0\n' > "$G2B/.claude/hooks/dod-verificar.sh"
@@ -7865,7 +7875,7 @@ printf 'exit 0\n' > "$G2B/.claude/hooks/dod-verificar.sh"
 printf 'exit 0\n' > "$G2B/.claude/hooks/mi-hook-propio.sh"
 cat > "$G2B/.claude/settings.json" <<'JSON'
 {"hooks":{"PreToolUse":[
-  {"matcher":"Bash","hooks":[{"type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/git-branch-guard.sh\"","shell":"bash"}]}
+  {"matcher":"Bash","hooks":[{"type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/no-bypass-deploy.sh\"","shell":"bash"}]}
 ],"Stop":[
   {"hooks":[{"type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/dod-verificar.sh\"","shell":"bash"}]}
 ]}}
@@ -7875,22 +7885,22 @@ echo "conocimiento del dominio, jamás se toca" > "$G2B/.claude/memory/MEMORY.md
 
 # (1) DRY-RUN: reporta, no escribe nada
 g2bout="$(bash "$SYNCLP" "$G2B" --limpiar-personal 2>/dev/null)"
-printf '%s' "$g2bout" | grep -q 'RETIRARÍA  git-branch-guard.sh' \
-  && ok "g2b: dry-run REPORTA el hook tier both como candidato" || bad "g2b: dry-run no reportó git-branch-guard.sh; got: $g2bout"
+printf '%s' "$g2bout" | grep -q 'RETIRARÍA  no-bypass-deploy.sh' \
+  && ok "g2b: dry-run REPORTA el hook tier both como candidato" || bad "g2b: dry-run no reportó no-bypass-deploy.sh; got: $g2bout"
 printf '%s' "$g2bout" | grep -q 'dod-verificar' \
   && bad "g2b: dry-run mencionó dod-verificar (tier repo) — NO debía tocarlo/mencionarlo como sobrante" \
   || ok "g2b: dry-run NO trata el hook tier 'repo' (dod-verificar) como sobrante"
-[ -f "$G2B/.claude/hooks/git-branch-guard.sh" ] \
+[ -f "$G2B/.claude/hooks/no-bypass-deploy.sh" ] \
   && ok "g2b: dry-run NO borró nada" || bad "g2b: ¡el dry-run ya borró un archivo!"
 
 # (2) --apply: retira SOLO tier both + su cableado + el sello; conserva tier repo + hook propio + memoria
 bash "$SYNCLP" "$G2B" --limpiar-personal --apply >/dev/null 2>&1
-[ ! -f "$G2B/.claude/hooks/git-branch-guard.sh" ] && [ ! -f "$G2B/.claude/hooks/analizar-comando-git.sh" ] \
+[ ! -f "$G2B/.claude/hooks/no-bypass-deploy.sh" ] && [ ! -f "$G2B/.claude/hooks/analizar-comando-git.sh" ] \
   && ok "g2b: --apply BORRÓ el hook+lib de tier both" || bad "g2b: el hook/lib tier both sobrevivió al --apply"
 [ ! -f "$G2B/.claude/hooks/.brain-version" ] \
   && ok "g2b: --apply retiró el sello .brain-version" || bad "g2b: el sello .brain-version sobrevivió"
-grep -q git-branch-guard "$G2B/.claude/settings.json" \
-  && bad "g2b: git-branch-guard sigue CABLEADO tras --apply" || ok "g2b: --apply DE-CABLEÓ git-branch-guard del settings.json"
+grep -q no-bypass-deploy "$G2B/.claude/settings.json" \
+  && bad "g2b: no-bypass-deploy sigue CABLEADO tras --apply" || ok "g2b: --apply DE-CABLEÓ no-bypass-deploy del settings.json"
 [ -f "$G2B/.claude/hooks/dod-verificar.sh" ] && grep -q dod-verificar "$G2B/.claude/settings.json" \
   && ok "g2b: el hook tier 'repo' (dod-verificar) SOBREVIVIÓ intacto y sigue cableado (sin equivalente global)" \
   || bad "g2b: ¡se tocó un hook tier 'repo' que no tenía por qué retirarse!"
@@ -7911,12 +7921,12 @@ rm -rf "$G2B"
 echo "== (g2b) --limpiar-personal REHÚSA en un repo marcado .claude/repo-compartido =="
 G2BS="$(mktemp -d "${TMPDIR:-/tmp}/brain-g2bs.XXXXXX")"; mkdir -p "$G2BS/.claude/hooks"
 : > "$G2BS/.claude/repo-compartido"
-printf 'exit 0\n' > "$G2BS/.claude/hooks/git-branch-guard.sh"
+printf 'exit 0\n' > "$G2BS/.claude/hooks/no-bypass-deploy.sh"
 g2bs_rc=0
 bash "$SYNCLP" "$G2BS" --limpiar-personal >/dev/null 2>&1 || g2bs_rc=$?
 [ "$g2bs_rc" -ne 0 ] \
   && ok "g2b: repo COMPARTIDO → --limpiar-personal sale con error (exit≠0), no en silencio" || bad "g2b: debía fallar (exit≠0) en un repo compartido"
-[ -f "$G2BS/.claude/hooks/git-branch-guard.sh" ] \
+[ -f "$G2BS/.claude/hooks/no-bypass-deploy.sh" ] \
   && ok "g2b: repo COMPARTIDO → el hook SOBREVIVIÓ (rehúso, no borro)" || bad "g2b: ¡borró un hook en un repo compartido!"
 rm -rf "$G2BS"
 
@@ -9270,7 +9280,7 @@ echo "   NO prescribe el escape a la WEB que M8 retiró de los mensajes reales =
 grep -qi 'setup-token' "$HOOKS/juez-comun.sh" \
   && ok "H5: el contrato SÍ documenta el remedio real (claude setup-token / CLAUDE_CODE_OAUTH_TOKEN)" \
   || bad "H5: el contrato no documenta ningún remedio real para NOTOKEN"
-for _g in git-branch-guard.sh merge-develop-guard.sh proteger-arbol.sh; do
+for _g in merge-develop-guard.sh proteger-arbol.sh; do
   grep -v '^[[:space:]]*#' "$HOOKS/$_g" | grep -qi 'web de gitlab\|en la web' \
     && bad "H5 control: $_g todavía menciona la web como escape en CÓDIGO VIVO (norma anti-vein-popper violada)" \
     || ok "H5 control: $_g no ofrece la web como escape en código vivo (ya lo verificaba M8, sigue intacto)"

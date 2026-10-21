@@ -50,7 +50,6 @@
 # install-brain despliega las {global,both} globalmente y sincronizar-cerebro las {both} por-repo; el drift
 # de skills (per-repo y global) lo cubre aviso-drift-cerebro/drift-cerebro-comun. Este MANIFEST es SOLO hooks/libs.
 
-git-branch-guard         both    hook
 merge-develop-guard      both    hook
 entorno-maquina-guard    both    hook
 no-bypass-deploy         both    hook
@@ -101,3 +100,4 @@ recordar-dashboard       retirado  hook  2026-09-18 puramente advisory; doc=real
 hud-stale                retirado  hook  2026-09-18 puramente advisory; su regla ya vive en la norma "Tu lista de TODOs es TU HUD" de global-claude-md.md
 secret-scan              retirado  hook  2026-10-19  reemplazado por gitleaks; unjordi autorizo retirar el control
 detectar-secretos        retirado  lib   2026-10-19  lib de secret-scan, retirada junto con el
+git-branch-guard         retirado  hook  2026-10-21  CONSOLIDADO en merge-develop-guard (chequeo de push a base + merge-local que nombra la base; misma lib analizar-comando-git, paridad 0-diffs medida)

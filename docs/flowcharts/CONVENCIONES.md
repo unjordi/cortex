@@ -47,13 +47,13 @@ Sólida = flujo/secuencia · Punteada (`style=dashed`) + etiqueta = referencia c
 Título del chart empieza con su nº de archivo (`06 · Declarar LISTO al fin de turno`); cross-refs citan por
 nº de archivo ("ver **05**"), NUNCA circulado ①②③ (iba desfasado −1 sin índice).
 
-## 6. Fan-out compartido de un comando git en Bash = 5 hooks PreToolUse/Bash (raíz común de 03 y sus zooms 06/07/08)
-Un comando `Bash` con git dispara **5 hooks PreToolUse/Bash** EN PARALELO (sin despachador, precedencia
-`deny>ask>allow`) + hooks PostToolUse. Los 5 pre (confirmado en la función `ev_de` de `install-brain.sh`,
-que mapea todos ellos a `PreToolUse|Bash`): 🚧 git-branch-guard · ✋ merge-develop-guard
-· 🖥️ entorno-maquina-guard · 🌳 proteger-arbol · 🚧 no-bypass-deploy *(2 pueden DENY: git-branch-guard ·
-merge-develop-guard; los otros 3 AVISAN)*. De esos 5, **4 INSPECCIONAN git**; el 5º —**no-bypass-deploy**— corre en el mismo fan-out pero
-**NO-OPEA sobre un comando git** (solo actúa ante un instalador/deploy corrido a mano). (🔗 merge-squash-guard y ✋ confirmar-merge-develop
+## 6. Fan-out compartido de un comando git en Bash = 4 hooks PreToolUse/Bash (raíz común de 03 y sus zooms 06/07/08)
+Un comando `Bash` con git dispara **4 hooks PreToolUse/Bash** EN PARALELO (sin despachador, precedencia
+`deny>ask>allow`) + hooks PostToolUse. Los 4 pre (confirmado en la función `ev_de` de `install-brain.sh`,
+que mapea todos ellos a `PreToolUse|Bash`): ✋ merge-develop-guard
+· 🖥️ entorno-maquina-guard · 🌳 proteger-arbol · 🚧 no-bypass-deploy *(1 puede DENY: merge-develop-guard
+—su PASO 0 frena el push/merge directo a base, + su gate de merge-de-MR—; los otros 3 AVISAN)*. De esos 4, **3 INSPECCIONAN git**; el 4º —**no-bypass-deploy**— corre en el mismo fan-out pero
+**NO-OPEA sobre un comando git** (solo actúa ante un instalador/deploy corrido a mano). (🚧 git-branch-guard se CONSOLIDÓ en ✋ merge-develop-guard —como su PASO 0— el 2026-10-21; 🔗 merge-squash-guard y ✋ confirmar-merge-develop
 se CONSOLIDARON en ✋ merge-develop-guard el 2026-09-17; 📊 recordar-dashboard y 🕰️ rama-vieja se RETIRARON
 — tier `retirado` en el MANIFEST — y salieron de este fan-out.) En PostToolUse sobre ese Bash
 corren 📈 aviso-contexto (toda tool) + 🧹 barrer-ramas (Bash) — ninguno bloquea (🎼 recordar-orquestar y 🔀 hud-stale se RETIRARON overhaul 2026-09-18); los

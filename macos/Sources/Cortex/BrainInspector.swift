@@ -52,7 +52,7 @@ struct BrainState {
     /// DEBE coincidir con brain/hooks/MANIFEST {global,both}; lo verifica el drift-check del widget
     /// (test-brain.sh, chequeo e-widget). Al agregar/mover un hook en el MANIFEST, refleja aquí.
     static let knownGlobalHooks: Set<String> = [
-        "git-branch-guard", "merge-develop-guard",
+        "merge-develop-guard",
         "proteger-arbol",
         "proteger-fuente-cerebro",
         "limite-gasto", "delegacion-gate", "delegacion-registrar",

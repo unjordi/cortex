@@ -1,8 +1,8 @@
 // 03 — Enforcement de los git-guards sobre UN comando git (cortex)  ·  FUENTE editable (Graphviz .dot)
 // Render:  dot -Tsvg 03-enforcement-git-guards.dot -o 03-enforcement-git-guards.svg
-// Construido 2026-08-01 desde el CÓDIGO REAL de brain/hooks/ (git-branch-guard, merge-develop-guard
-// —consolida, 2026-09-17, a los antiguos merge-squash-guard + confirmar-merge-develop— +
-// la lib analizar-comando-git.sh;
+// Construido 2026-08-01, actualizado 2026-10-21 desde el CÓDIGO REAL de brain/hooks/ (merge-develop-guard
+// —consolida, 2026-09-17, a merge-squash-guard + confirmar-merge-develop, y 2026-10-21 absorbió el chequeo
+// de push directo del antiguo git-branch-guard como su PASO 0— + la lib analizar-comando-git.sh;
 // entorno-maquina-guard, no-bypass-deploy, proteger-arbol; aviso-contexto). Zoom del fan-out de CONVENCIONES §6.
 // Overhaul hooks 2026-09-18: recordar-dashboard se RETIRÓ (puramente advisory, medido: ignorado) — su
 // regla subió a norma en brain/norms/global-claude-md.md; el fan-out de PreToolUse/Bash baja de 7 a 6.
@@ -21,8 +21,7 @@ digraph flujos {
     LEY_ARBOL [shape=none, margin=0, label=<
       <table border="0" cellborder="1" cellspacing="0" cellpadding="4" color="#5fa89e" bgcolor="#1b1712">
         <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>🔒 Hooks Forzosos</b></font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🚧 git-branch-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">push/merge a develop·main → denegado</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔗 merge-develop-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">MR a develop sin --squash o sin tu OK → denegado; a main exige OK súper-explícito</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔗 merge-develop-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">push directo a develop·main, o MR sin --squash/sin tu OK → denegado; a main exige OK súper-explícito</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">💸 delegacion-gate</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">delegar al llegar al 90% de tu ventana 5h → pide tu OK</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🛑 limite-gasto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">sin ventana 5h Y sin overage (ambos agotados) → freno duro</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">✅ dod-verificar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cierre sin evidencia/OK → denegado; claim visual a ciegas (sin ver la pantalla) también</font></td></tr>
@@ -96,14 +95,14 @@ digraph flujos {
 
     // ── Preludio de CADA hook (①② — casi universal, NO 100%; ③④ son de la LIB, solo hooks que sourcean acg) ──
     COMUN [color="#c9a227",
-           label="🟡  preludio de CADA hook (antes de decidir):\n① dedupe doble-cableado: si soy la copia del REPO y existe la GLOBAL → cedo (exit 0)\n   presente en GBG/MDG/ENTM; AUSENTE en proteger-arbol\n   (arrancan directo en `command -v jq`) → un clon SIN bootstrap: la del repo sí corre\n② fail-open GENERAL: sin jq → exit 0 (no bloquea; red de seguridad, no cárcel)\n   ⚠ M7 (auditoría 2026-09-15, HOMOLOGADO — antes solo la fase de autorización lo tenía,\n   hoy consolidada en merge-develop-guard):\n   los DOS guards de flujo se ENDURECEN igual, nunca se aflojan:\n   · git-branch-guard: sin jq, extrae el campo «command» del JSON crudo (nunca\n     razona sobre «description» ni el blob entero, H1 auditoría FMEA 2026-09-16)\n     y reusa acg_push_toca_base/acg_merge_menciona_base de verdad — PARIDAD con el\n     camino con-jq: push a tu ramita/mini-develop pasa, push/merge que toca base\n     🔴 DENY; escape auditado CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 (env de sesión)\n   · merge-develop-guard (fase squash Y fase autorización, MISMO proceso): sin jq\n     + el crudo parece merge de MR/PR (mr merge|accept, pr merge) → 🔴 DENY igual\n     (aquí no hay precisión de texto posible — el destino sale SIEMPRE de la API;\n     anti-evasión «sin token=DENY, sin jq=ALLOW», A3)\n   ⚠ CRÍTICO-1 (auditoría FMEA 2026-09-16): un error de SINTAXIS en la lib mataba\n     los guards en SILENCIO (exit 1 = no-bloqueante) — bash -n la prueba ANTES\n     de sourcear; si truena, cada guard falla RUIDOSO/CERRADO en vez de esfumarse"];
+           label="🟡  preludio de CADA hook (antes de decidir):\n① dedupe doble-cableado: si soy la copia del REPO y existe la GLOBAL → cedo (exit 0)\n   presente en MDG/ENTM; AUSENTE en proteger-arbol\n   (arrancan directo en `command -v jq`) → un clon SIN bootstrap: la del repo sí corre\n② fail-open GENERAL: sin jq → exit 0 (no bloquea; red de seguridad, no cárcel)\n   ⚠ M7 (auditoría 2026-09-15, HOMOLOGADO — antes solo la fase de autorización lo tenía,\n   hoy consolidada en merge-develop-guard):\n   los DOS chequeos del guard de flujo se ENDURECEN igual, nunca se aflojan:\n   · PASO 0 (push directo a base, consolidado el 2026-10-21): sin jq, extrae el campo «command»\n     del JSON crudo por sed (nunca razona sobre «description» ni el blob entero, H1 auditoría FMEA\n     2026-09-16) y reusa acg_push_toca_base/acg_merge_menciona_base de verdad — PARIDAD con el\n     camino con-jq: push a tu ramita/mini-develop pasa, push/merge que toca base\n     🔴 DENY; escape auditado CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL=1 (env de sesión)\n   · gate de merge-de-MR (fase squash Y fase autorización, MISMO proceso): sin jq\n     + el crudo parece merge de MR/PR (mr merge|accept, pr merge) → 🔴 DENY igual\n     (aquí no hay precisión de texto posible — el destino sale SIEMPRE de la API;\n     anti-evasión «sin token=DENY, sin jq=ALLOW», A3)\n   ⚠ CRÍTICO-1 (auditoría FMEA 2026-09-16): un error de SINTAXIS en la lib mataba\n     los guards en SILENCIO (exit 1 = no-bloqueante) — bash -n la prueba ANTES\n     de sourcear; si truena, cada guard falla RUIDOSO/CERRADO en vez de esfumarse"];
 
     LIB   [color="#c9a227",
-           label="🟡 sub-preludio de la LIB analizar-comando-git.sh — la sourcean los 5 del fan-out\n(GBG · MDG · ARBOL · ENTM · no-bypass-deploy) — M1/M2,\nauditoría 2026-09-15: ya NO quedan despojos inline propios:\n③ augmenta PATH (gh/glab de /opt/homebrew·/usr/local·~/.local/bin, al FINAL) → destino/MR\n   RESOLUBLES por API; sin esto el PATH mínimo de launchd los ocultaba y el fail-safe\n   frenaba merges/releases YA autorizados (root cause #78; ACG_PATH_AUGMENT=0 lo apaga)\n④ despoja comillas + normaliza prefijo `git -c/-C/--work-tree…` + `git.exe`\n   (fuente ÚNICA de los 5 → no divergen; `git -c k=v push` y `git --no-pager\n   branch -D` YA NO evaden — proteger-arbol dejó su despojo inline propio y\n   sourcea esta MISMA lib, verificado por ejecución)"];
+           label="🟡 sub-preludio de la LIB analizar-comando-git.sh — la sourcean los 4 del fan-out\n(MDG —con su PASO 0— · ARBOL · ENTM · no-bypass-deploy) — M1/M2,\nauditoría 2026-09-15: ya NO quedan despojos inline propios:\n③ augmenta PATH (gh/glab de /opt/homebrew·/usr/local·~/.local/bin, al FINAL) → destino/MR\n   RESOLUBLES por API; sin esto el PATH mínimo de launchd los ocultaba y el fail-safe\n   frenaba merges/releases YA autorizados (root cause #78; ACG_PATH_AUGMENT=0 lo apaga)\n④ despoja comillas + normaliza prefijo `git -c/-C/--work-tree…` + `git.exe`\n   (fuente ÚNICA de los 5 → no divergen; `git -c k=v push` y `git --no-pager\n   branch -D` YA NO evaden — proteger-arbol dejó su despojo inline propio y\n   sourcea esta MISMA lib, verificado por ejecución)"];
 
-    // ── LOS 2 QUE PUEDEN DENEGAR (🔒 forzosos) ──
+    // ── EL GUARD QUE PUEDE DENEGAR: merge-develop-guard (🔒 forzoso) — PASO 0 push + fases de merge-de-MR ──
     GBG   [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="🔒🚧 git-branch-guard\n¿push/merge TOCA base (develop/main)?\n· push explícito · push PELÓN/HEAD/--force parado EN base\n· +develop (force-refspec) · merge que NOMBRA la base"];
+           label="🔒🔗 merge-develop-guard — PASO 0\n¿push/merge DIRECTO TOCA base (develop/main)?\n· push explícito · push PELÓN/HEAD/--force parado EN base\n· +develop (force-refspec) · merge que NOMBRA la base\n(PASO 0 consolidado el 2026-10-21; va ANTES del gate de merge-de-MR)"];
     GBG_D [fillcolor="#3a2020", color="#c0392b", penwidth=2.5,
            label="🔴 DENY — «no se hace push a develop/main».\nRedirige: ramita feat/… → commit → push ramita → MR → develop.\nNO reintentes. (guard OK = sistema funcionando)"];
 
@@ -136,7 +135,7 @@ digraph flujos {
 
     // ── Confluencia: precedencia deny > ask > allow ──
     PREC  [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="el CLI combina las 4 decisiones\nprecedencia: deny > ask > allow"];
+           label="el CLI combina las 3 decisiones\n(merge-develop-guard · entorno-maquina-guard · proteger-arbol)\nprecedencia: deny > ask > allow"];
     BLOCK [fillcolor="#3a2020", color="#c0392b", penwidth=3,
            label="🔴 comando BLOQUEADO\n(al menos un guard denegó — el modelo lee el motivo y NO reintenta)"];
     RUN   [color="#7fb069", penwidth=3,
@@ -149,7 +148,7 @@ digraph flujos {
     // Aristas del fan-out
     CMD -> FANOUT;
     FANOUT -> COMUN [label="cada hook primero corre\nsu preludio ①②"];
-    COMUN -> LIB [label="GBG/MDG\nademás corren ③④\n(sourcean la lib)"];
+    COMUN -> LIB [label="merge-develop-guard\n(PASO 0 + merge) además corre ③④\n(sourcea la lib)"];
     LIB -> GBG; LIB -> MSG;
     COMUN -> ENTM; COMUN -> ARBOL;
 

@@ -135,7 +135,7 @@ if ($jqExe) {
 & $bashExe -c "command -v jq >/dev/null 2>&1"
 if ($LASTEXITCODE -ne 0) {
   Write-Host "ADVERTENCIA: 'jq' no esta disponible en bash. Los hooks lo REQUIEREN (sin jq el"
-  Write-Host "  git-branch-guard falla abierto y el instalador no cablea el settings.json)."
+  Write-Host "  merge-develop-guard falla abierto y el instalador no cablea el settings.json)."
   Write-Host "  Instalalo: winget install jqlang.jq  (o choco/scoop install jq)"
 }
 

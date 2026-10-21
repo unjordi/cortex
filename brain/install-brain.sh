@@ -5,7 +5,7 @@
 #
 # Instala GLOBAL (en ~/.claude, aplica a TODOS los repos de esta máquina):
 #   (a) HOOKS de tier {global, both} en ~/.claude/hooks/ — la LISTA se DERIVA de brain/hooks/MANIFEST
-#       (fuente única; ya no se cura a mano en paralelo con la copia por-repo). Incluye git-branch-guard,
+#       (fuente única; ya no se cura a mano en paralelo con la copia por-repo). Incluye
 #       merge-develop-guard,
 #       proteger-arbol (PreToolUse/Bash), delegacion-gate + limite-gasto (PreToolUse/Task),
 #       delegacion-registrar (PostToolUse/Task), rehidratar-hilo + aviso-contexto (SessionStart/
@@ -62,7 +62,7 @@ GCLAUDE="$CLAUDE_DIR/CLAUDE.md"
 echo "==> cortex: instalando cerebro global en $CLAUDE_DIR"
 mkdir -p "$HOOKS_DIR" "$SKILLS_DIR"
 
-# Dependencia de los hooks: jq. Sin jq, el git-branch-guard y el gate de delegación fallan ABIERTO.
+# Dependencia de los hooks: jq. Sin jq, el merge-develop-guard y el gate de delegación fallan ABIERTO.
 if ! command -v jq >/dev/null 2>&1; then
   echo "ADVERTENCIA: 'jq' no está en el PATH. Los hooks del cerebro lo REQUIEREN (sin jq los guards"
   echo "  fallan abierto y no bloquean, y no puedo cablear el settings.json). Instálalo y re-corre:"
@@ -206,7 +206,7 @@ register_hook() {
 # de abajo AVISA y el drift-check de test-brain (e2) FALLA (no se cablea en silencio).
 ev_de() {
   case "$1" in
-    git-branch-guard|merge-develop-guard|entorno-maquina-guard|no-bypass-deploy|proteger-arbol) echo "PreToolUse|Bash" ;;
+    merge-develop-guard|entorno-maquina-guard|no-bypass-deploy|proteger-arbol) echo "PreToolUse|Bash" ;;
     proteger-fuente-cerebro) echo "PreToolUse|Edit|Write|MultiEdit" ;;
     limite-gasto|delegacion-gate) echo "PreToolUse|Task|Agent" ;;   # Task|Agent: el tool se renombró Agent (antes Task); casar AMBOS o el gate nunca dispara
     delegacion-registrar) echo "PostToolUse|Task|Agent" ;;

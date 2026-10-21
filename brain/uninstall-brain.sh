@@ -4,9 +4,9 @@
 # (si algo ya no está, lo salta sin quejarse).
 #
 # Quita GLOBAL (de ~/.claude):
-#   (a) los HOOKS de tier global que copió el instalador → git-branch-guard, merge-develop-guard
-#       (consolida los antiguos merge-squash-guard + confirmar-merge-develop, ahora lápidas),
-#       secret-scan, proteger-arbol,
+#   (a) los HOOKS de tier global que copió el instalador → merge-develop-guard
+#       (consolida los antiguos merge-squash-guard + confirmar-merge-develop + git-branch-guard, ahora lápidas),
+#       proteger-arbol,
 #       limite-gasto, rehidratar-hilo, delegacion-gate/registrar, libs (delegacion-comun,
 #       analizar-comando-git, detectar-secretos), limpiar-worktrees (script) + ~/.claude/agentes-costo.json.
 #       La lista EXACTA se deriva de brain/hooks/MANIFEST (misma fuente que install-brain), e INCLUYE

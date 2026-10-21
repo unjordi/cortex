@@ -1,6 +1,7 @@
 # analizar-comando-git.sh — LIB compartida (NO es un hook; se hace `source`). Razona sobre un comando
-# git/glab/gh para los git-guards (git-branch-guard · merge-develop-guard) →
-# UNA sola lógica, dejan de divergir (antídoto al drift). bash-3.2-safe. El consumidor verifica
+# git/glab/gh para el git-guard merge-develop-guard (que absorbió el chequeo de push/merge-directo
+# del antiguo git-branch-guard, 2026-10-21) → UNA sola lógica, deja de divergir (antídoto al drift).
+# bash-3.2-safe. El consumidor verifica
 # jq/git si los necesita. Vive junto a los hooks (como delegacion-comun.sh) → viaja en el mismo copy.
 # shellcheck shell=bash
 
@@ -431,8 +432,8 @@ EOF
 # `cat > d.md <<EOF`) se evaluaría COMO SI fuera su propio subcomando, sin que el consumidor (`cat` vs
 # `bash`) fuera visible ya — el contexto de "a quién alimenta" se pierde en cuanto se parte por línea.
 
-# ¿el comando mergea un MR/PR nombrando develop·main como destino? (para el bloqueo de release-a-main
-# de git-branch-guard: mismo comportamiento de antes, pero sobre cmd sin comillas ni --repo → H11/H13).
+# ¿el comando mergea un MR/PR nombrando develop·main como destino? (para el PASO 0 de merge-develop-guard
+# —absorbido del antiguo git-branch-guard—: sobre cmd sin comillas ni --repo → H11/H13).
 acg_merge_menciona_base() {
   local u; u=$(acg_sin_flag_repo "$(acg_despoja_comillas "$1")")
   # El 1er POSICIONAL de `gh pr merge <arg>` / `glab mr merge <arg>` es el #/rama

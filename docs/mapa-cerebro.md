@@ -40,20 +40,15 @@ flowchart LR
     MINI -->|"MR deliberado<br/>OK EXPLÍCITO del usuario<br/>con --squash, sin --auto-merge"| DEVELOP
     DEVELOP -->|"MR de RELEASE<br/>OK SÚPER-explícito<br/>SIN squash (conserva historia)"| MAIN
 
-    GBG["🚧 git-branch-guard<br/>push/merge directo a develop·main<br/>→ DENEGADO, redirige a ramita"]
-    MDG["🔗 merge-develop-guard<br/>MR a develop sin --squash o sin OK expreso → DENEGADO<br/>target-aware: develop pide OK normal,<br/>main exige marca de RELEASE + SIN squash<br/>(consolida los antiguos merge-squash-guard + confirmar-merge-develop)"]
+    MDG["🔗 merge-develop-guard<br/>PASO 0: push/merge DIRECTO a develop·main → DENEGADO, redirige a ramita<br/>(absorbió git-branch-guard el 2026-10-21)<br/>+ MR a develop sin --squash o sin OK expreso → DENEGADO<br/>target-aware: develop pide OK normal,<br/>main exige marca de RELEASE + SIN squash<br/>(consolida los antiguos merge-squash-guard + confirmar-merge-develop)"]
     EMG["🖥️ entorno-maquina-guard<br/>commit de algo machine-specific<br/>al .claude/memory/ del repo → AVISA"]
     LIB["📚 lib analizar-comando-git.sh<br/>(lógica compartida: qué comando toca una base)"]
 
-    GBG -.->|vigila| DEVELOP
-    GBG -.->|vigila| MAIN
     MDG -.->|vigila el MR + candado del cruce| DEVELOP
     MDG -.->|candado súper-explícito, sin squash| MAIN
     EMG -.->|escanea lo que ENTRA al commit| RAMITA
-    LIB -.-> GBG
     LIB -.-> MDG
 
-    style GBG fill:#7f1d1d,color:#fff
     style MDG fill:#7f1d1d,color:#fff
     style EMG fill:#78350f,color:#fff
     style LIB fill:#374151,color:#fff
@@ -178,7 +173,7 @@ flowchart LR
     MANIFEST["📜 brain/hooks/MANIFEST<br/>fuente ÚNICA: tier + kind por pieza"]
 
     subgraph tiers["Tiers declarados"]
-        BOTH["tier <b>both</b> — global + por-repo<br/>(con cláusula de dedupe:<br/>la copia del repo cede a la global)<br/><br/>hooks: git-branch-guard ·<br/>merge-develop-guard ·<br/>entorno-maquina-guard · no-bypass-deploy<br/>libs: analizar-comando-git ·<br/>juez-comun"]
+        BOTH["tier <b>both</b> — global + por-repo<br/>(con cláusula de dedupe:<br/>la copia del repo cede a la global)<br/><br/>hooks: merge-develop-guard ·<br/>entorno-maquina-guard · no-bypass-deploy<br/>libs: analizar-comando-git ·<br/>juez-comun"]
         GLOBAL["tier <b>global</b> — solo ~/.claude<br/><br/>hooks: proteger-arbol · proteger-fuente-cerebro ·<br/>limite-gasto · rehidratar-hilo ·<br/>aviso-contexto · aviso-drift-cerebro ·<br/>exportar-sesion-master · checkpoint-mecanico ·<br/>barrer-ramas · delegacion-gate · delegacion-registrar<br/>libs: delegacion-comun · ramas-zombie · drift-cerebro-comun ·<br/>contrato-hilo · checkpoint-mecanico-comun<br/>scripts: limpiar (worktrees/ramas/residuo/flotilla) ·<br/>verificar-cerebro · cementerio"]
         REPO["tier <b>repo</b> — solo &lt;repo&gt;/.claude<br/>(se cargan si la sesión INICIA ahí)<br/><br/>hooks: dod-verificar · sesion-inicio · recordar-cosechar"]
         RETIRADO["🪦 tier <b>retirado</b> — LÁPIDA, no despliega nada<br/>(fecha + motivo en columnas 4+)<br/><br/>hooks: rama-vieja · merge-squash-guard ·<br/>confirmar-merge-develop · delegacion-reporte ·<br/>recordar-orquestar · recordar-unificar-cerebro ·<br/>recordar-dashboard · hud-stale<br/>scripts: limpiar-ramas · limpiar-worktrees ·<br/>limpiar-residuo · barrer-flotilla-cerebro<br/>(consolidados en limpiar.sh, ver MANIFEST)"]

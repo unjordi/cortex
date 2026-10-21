@@ -40,7 +40,7 @@ propiedad y trabajo — de otro modo la introspección se vuelve o un oráculo s
 ## Cuándo usarlo
 - Tras **integrar cambios a `develop`** (varios PRs, un refactor de wiring, hooks nuevos): barrer que no
   se coló una evasión ni un drift de doc antes de un release a `main`.
-- Cuando toques un **guard de supervisión** (git-branch-guard, dod-verificar, merge-develop-guard,
+- Cuando toques un **guard de supervisión** (dod-verificar, merge-develop-guard,
   la lib `analizar-comando-git.sh`): un cambio de precisión puede reabrir un hueco
   más fino (el value-model de git puede reabrirse varias veces seguidas).
 - Cuando cambien **flowcharts, README-árbol o normas**: verificar que la doc sigue reflejando la realidad

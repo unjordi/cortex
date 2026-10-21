@@ -25,8 +25,9 @@
 # COBERTURA canónica: reconoce el subcomando REAL `glab mr merge|accept` /
 # `gh pr merge`. NO se agrega pattern-matching de `gh api`/`glab api` (mergear vía API cruda): es un residual
 # ACEPTADO con backstop server-side (ramas protegidas develop/main en el forge) — la línea de defensa dura de
-# ese hueco es el servidor, no un guard que adivine por-forge. git-branch-guard NO entra aquí (otra acción: el
-# push directo a base) — sigue vivo aparte, sobre la MISMA lib analizar-comando-git.sh.
+# ese hueco es el servidor, no un guard que adivine por-forge. El push directo a base y el merge LOCAL que
+# nombra la base los cubre el PASO 0 de ESTE guard (absorbido del antiguo git-branch-guard el 2026-10-21,
+# sobre la MISMA lib analizar-comando-git.sh), no un hook aparte.
 set -u
 
 # Lib COMÚN de los jueces (retrieval de token PORTABLE login-activo-first + curl 401-aware + parseo + estados
@@ -314,8 +315,11 @@ if [ -f "$_ACGLIB" ] && bash -n "$_ACGLIB" >/dev/null 2>&1; then
   . "$_ACGLIB"
 else
   printf '%s: analizar-comando-git.sh no cargó (ausente o con error de sintaxis) -- este guard queda SIN su lógica de detección; `bash -n "%s"` localiza el error.\n' "$(basename "$0")" "$_ACGLIB" >&2
-  if printf '%s' "$cmd" | grep -qE 'merge|accept'; then
-    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"FRENO (lib rota): analizar-comando-git.sh no cargó (error de sintaxis) y sin ella no puedo verificar ni el squash ni la autorización de este merge -- fail-safe, no afloja nada. Repara la lib (bash -n analizar-comando-git.sh la localiza) y reintenta; un merge a develop/main NO pasa sin gate."}}'
+  # Cubre AMBOS chequeos sin la lib: el PASO 0 (push directo a base, absorbido del antiguo git-branch-guard
+  # — su fallback de lib-rota también frenaba todo `push`) y el gate de merge-de-MR. Fail-safe conservador:
+  # sin la lib no se puede distinguir una ramita de la base, así que un `push`/`merge` cualquiera DENY.
+  if printf '%s' "$cmd" | grep -qE 'push|merge|accept'; then
+    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"FRENO (lib rota): analizar-comando-git.sh no cargó (error de sintaxis) y sin ella no puedo verificar si esto hace push/merge directo a develop/main ni validar el squash/autorización de un merge -- fail-safe, no afloja nada. Repara la lib (bash -n analizar-comando-git.sh la localiza) y reintenta; NUNCA hagas push/merge directo a develop/main mientras tanto."}}'
   fi
   exit 0
 fi
