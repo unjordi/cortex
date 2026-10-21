@@ -37,8 +37,14 @@ credenciales `.claudeAiOauth.refreshTokenExpiresAt` (epoch ms, ~30 días) vs `ex
   de Límites con aviso por estado + botón "Re-loguear en Claude" → Terminal con `claude auth login --claudeai [--email …]`,
   mismo patrón que `resume`). El footer ya muestra cuenta+edad del MISMO snapshot (vía `updated_at`, ahora real en una
   lectura preservada). `swift build` verde. **Gate = QA visual en vivo con unjordi** (menu-bar; no se declara LISTO sin eso).
-- ⏳ **UIs pendientes (campos aditivos backward-compatible):** `src/plasmoid` (KDE, QA en cachy),
-  `src/gnome-extension` (GNOME), `windows/src/Cortex` (Windows) — mismo mandato: antigüedad por `updated_at` + aviso + botón re-login.
+- ✅ **UI KDE (qmllint 0 errores, pendiente QA):** `src/plasmoid/contents/ui/main.qml` — `authNotice()`/`reloginRun()`
+  (konsole + `claude auth login`), banner al tope de Límites. Verificado `qmllint` en cachy (0 errores de sintaxis).
+- ✅ **UI GNOME (node --check OK, pendiente QA):** `src/gnome-extension/tabs/limites.js` — `authNotice()`/`reloginRun()`
+  (detecta kgx/gnome-terminal/konsole/xterm), banner. Verificado `node --check` (gjs no está en cachy).
+- ⏳ **UI Windows (QUEUE — no verificable aquí):** `windows/src/Cortex/` (Models.cs: agregar `stale`/`fetched_at`/`auth`;
+  PopupForm.cs: banner+botón; re-login vía `Process.Start` con `claude auth login`). WinForms NO compila en Mac/Linux →
+  requiere `dotnet build` en la VM Windows + QA. Mismo mandato que las otras 3.
+- Las 3 UIs hechas: **gate = QA visual en vivo** (macOS menu-bar / KDE cachy / GNOME). No LISTO sin eso.
 - ✅ **Hooks consumidores de `state.json` (hechos):** `limite-gasto` y `delegacion-gate` (vía `linea_cuota` de
   `delegacion-comun.sh`) ahora miden frescura por `updated_at` (NO mtime, que mi cambio dejó siempre fresco → era
   una REGRESIÓN que yo introduje) y marcan el motivo de auth (login expirado / sin cuenta). no-data (five_hour null)

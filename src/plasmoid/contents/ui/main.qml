@@ -155,6 +155,15 @@ PlasmoidItem {
         onNewData: function(source, data) { disconnectSource(source) }
     }
 
+    // Runner del botón "Re-loguear en Claude": abre konsole con el flujo oficial de login (abre el
+    // navegador). Fire-and-forget como powerRunner. Mismo mandato que relogin() de PopoverView.swift.
+    P5Support.DataSource {
+        id: reloginRunner
+        engine: "executable"
+        connectedSources: []
+        onNewData: function(source, data) { disconnectSource(source) }
+    }
+
     // Escritura de los mapas de alias (proyectos-alias.json / sesiones-alias.json). Reusa el engine
     // "executable" (igual que catSource lee con `cat`). Al TERMINAR la escritura dispara el refresh
     // — así el refetch relee el archivo YA escrito (evita la carrera write-vs-refetch). El refresh es
@@ -1868,6 +1877,37 @@ PlasmoidItem {
                 // separación entre bloques > espaciado interno (jerarquía del Mac: entre-secciones 14, interno 6)
                 spacing: Kirigami.Units.gridUnit
                 Kirigami.Heading { level: 3; text: "Límites de uso"; Layout.fillWidth: true }
+
+                // Banner de aviso de autenticación + botón de re-login (espeja authBanner de PopoverView.swift).
+                Rectangle {
+                    id: authBanner
+                    Layout.fillWidth: true
+                    readonly property var notice: root.authNotice()
+                    readonly property bool hard: notice ? notice.hard : false
+                    visible: notice !== null
+                    radius: 8
+                    color: hard ? Qt.rgba(0.86, 0.20, 0.26, 0.14) : Qt.rgba(0.91, 0.53, 0.29, 0.14)
+                    implicitHeight: authBannerCol.implicitHeight + 2 * Kirigami.Units.smallSpacing
+                    ColumnLayout {
+                        id: authBannerCol
+                        x: Kirigami.Units.smallSpacing; y: Kirigami.Units.smallSpacing
+                        width: parent.width - 2 * Kirigami.Units.smallSpacing
+                        spacing: Kirigami.Units.smallSpacing
+                        PC3.Label {
+                            Layout.fillWidth: true
+                            text: authBanner.notice ? authBanner.notice.message : ""
+                            wrapMode: Text.WordWrap
+                            font.pointSize: Kirigami.Theme.smallFont.pointSize
+                            color: authBanner.hard ? "#dc3545" : Kirigami.Theme.textColor
+                        }
+                        PC3.Button {
+                            visible: authBanner.notice ? authBanner.notice.offer : false
+                            text: "Re-loguear en Claude"
+                            icon.name: "system-reboot"
+                            onClicked: root.reloginRun()
+                        }
+                    }
+                }
                 UsageSection { Layout.fillWidth: true; title: "Sesión (5 h)"; block: root.snapshot ? root.snapshot.five_hour : null }
                 UsageSection { Layout.fillWidth: true; title: "Semanal (7 d)"; block: root.snapshot ? root.snapshot.weekly : null }
 
@@ -3466,6 +3506,25 @@ PlasmoidItem {
         else if (abs < 86400) { val = Math.round(abs/3600); unit = "h" }
         else                  { val = Math.round(abs/86400);unit = "d" }
         return diff < 0 ? ("hace " + val + unit) : ("en " + val + unit)
+    }
+    // Aviso de autenticación para la UI (login por-expirar/expirado/sin-cuenta), o null si está OK.
+    // Espeja authNotice de QuotaModel.swift. hard = problema duro (rojo); offer = mostrar botón.
+    function authNotice() {
+        var st = (snapshot && snapshot.auth && snapshot.auth.state) ? snapshot.auth.state : "ok"
+        if (st === "no_credentials") return { message: "No hay cuenta en el CLI de Claude — el widget no puede leer tu cuota.", offer: true, hard: true }
+        if (st === "expired")        return { message: "El login de Claude expiró — re-loguéate para seguir viendo tu cuota.", offer: true, hard: true }
+        if (st === "expiring")       return { message: "Tu login de Claude expira " + relativeTime(snapshot && snapshot.auth ? snapshot.auth.expires_at : null) + " — re-loguéate pronto.", offer: true, hard: false }
+        return null
+    }
+    // Abre konsole con el flujo oficial de re-login (abre el navegador). Email validado + entrecomillado.
+    function reloginRun() {
+        var acct = (snapshot && snapshot.auth && snapshot.auth.account_email)
+            ? snapshot.auth.account_email
+            : (snapshot ? (snapshot.account_email || "") : "")
+        var inner = "claude auth login --claudeai"
+        if (acct && /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(acct))
+            inner += " --email '" + acct + "'"
+        reloginRunner.connectSource("konsole -e bash -lc \"" + inner + "; echo; read -p 'Enter para cerrar...'\"")
     }
     function compactReset(iso) {
         if (!iso) return ""

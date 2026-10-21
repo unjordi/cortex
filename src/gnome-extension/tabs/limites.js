@@ -3,6 +3,29 @@ import St from 'gi://St';
 import Clutter from 'gi://Clutter';
 
 import * as F from '../lib/fmt.js';
+import * as D from '../lib/data.js';
+
+// Aviso de autenticación (login por-expirar/expirado/sin-cuenta), o null si está OK. Espeja
+// authNotice de QuotaModel.swift / main.qml. hard = problema duro (rojo); offer = mostrar botón.
+function authNotice(s) {
+    const st = (s && s.auth && s.auth.state) ? s.auth.state : 'ok';
+    if (st === 'no_credentials') return {message: 'No hay cuenta en el CLI de Claude — el widget no puede leer tu cuota.', offer: true, hard: true};
+    if (st === 'expired')        return {message: 'El login de Claude expiró — re-loguéate para seguir viendo tu cuota.', offer: true, hard: true};
+    if (st === 'expiring')       return {message: `Tu login de Claude expira ${F.relativeTime(s && s.auth ? s.auth.expires_at : null)} — re-loguéate pronto.`, offer: true, hard: false};
+    return null;
+}
+
+// Abre un terminal con el flujo oficial de re-login (abre el navegador). Prueba los terminales
+// comunes en orden (kgx/gnome-terminal/konsole/xterm). Email validado (charset seguro) → sin quoting.
+function reloginRun(s) {
+    const a = (s && s.auth && s.auth.account_email) ? s.auth.account_email : (s ? (s.account_email || '') : '');
+    let inner = 'claude auth login --claudeai';
+    if (a && /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(a)) inner += ` --email ${a}`;
+    inner += '; echo; read -p "cerrar con Enter..."';
+    const shq = x => "'" + String(x).replace(/'/g, "'\\''") + "'";
+    const wrapper = `for tb in "kgx -e" "gnome-terminal --" "konsole -e" "xterm -e"; do bin=\${tb%% *}; command -v "$bin" >/dev/null 2>&1 && exec $tb bash -lc ${shq(inner)}; done`;
+    D.spawn(['bash', '-lc', wrapper]);
+}
 
 function label(text, style = '', expand = false) {
     const l = new St.Label({text, x_expand: expand, y_align: Clutter.ActorAlign.CENTER});
@@ -67,6 +90,21 @@ export function build(ctx) {
     const W = ctx.contentWidth;
     const box = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, style_class: 'cortex-tab', y_expand: true});
     box.add_child(label('Límites de uso', 'font-weight: bold; font-size: larger;'));
+
+    // Banner de aviso de autenticación + botón de re-login (espeja authBanner de PopoverView.swift).
+    const notice = authNotice(s);
+    if (notice) {
+        const color = notice.hard ? F.DANGER : '#e8884a';
+        const banner = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, style_class: 'cortex-section'});
+        banner.set_style(`background-color: ${notice.hard ? 'rgba(220,53,69,0.14)' : 'rgba(232,136,74,0.14)'}; border-radius: 8px; padding: 8px;`);
+        banner.add_child(label(notice.message, `color: ${color};`, true));
+        if (notice.offer) {
+            const btn = new St.Button({label: 'Re-loguear en Claude', style_class: 'button', x_align: Clutter.ActorAlign.START});
+            btn.connect('clicked', () => reloginRun(s));
+            banner.add_child(btn);
+        }
+        box.add_child(banner);
+    }
 
     box.add_child(usage('Sesión (5 h)', s ? s.five_hour : null, W));
     box.add_child(usage('Semanal (7 d)', s ? s.weekly : null, W));
