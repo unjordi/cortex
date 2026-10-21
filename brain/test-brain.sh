@@ -4231,11 +4231,16 @@ rm -rf "$ADWFIX"
 # PROPIOS del repo no cuentan. La memoria/skills no se tocan.
 PADFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-pad.XXXXXX")"
 PADROOT="$PADFIX/repo"; PADHOME="$PADFIX/home"; PADBRAIN="$PADFIX/clon"
-mkdir -p "$PADROOT/.claude/hooks" "$PADHOME" "$PADBRAIN/brain/hooks"
+mkdir -p "$PADROOT/.claude/hooks" "$PADHOME/.claude/hooks" "$PADBRAIN/brain/hooks"
 : > "$PADROOT/.claude/hooks/.brain-version"    # brained (para pasar el precheck y llegar a la bifurcación)
 # SIN marca repo-compartido → PERSONAL. Fuente del brain con un guard (para el match de "sobran").
 printf '#!/usr/bin/env bash\necho "==> resumen: 0 nuevos · 0 a actualizar"\n' > "$PADBRAIN/brain/sincronizar-cerebro.sh"
 : > "$PADBRAIN/brain/hooks/git-branch-guard.sh"
+# Copias GLOBALES instaladas (en $PADHOME/.claude/hooks): un `both` SOLO sobra si su global existe (el
+# dedupe hace que la del repo ceda a ella); sin global, la del repo es la única → no se flaggea.
+: > "$PADHOME/.claude/hooks/git-branch-guard.sh"
+: > "$PADHOME/.claude/hooks/sesion-inicio.sh"
+: > "$PADHOME/.claude/hooks/juez-comun.sh"   # global de juez instalado → en N4 se conserva por la vía DEP (dod la sourcea), no por global-absent
 # MANIFEST + fuentes para la resolución de tier del aviso (N4): solo tier `both` sobra; una lib `both`
 # que una hook tier=repo PRESENTE sourcea NO sobra (juez-comun ← dod-verificar).
 cat > "$PADBRAIN/brain/hooks/MANIFEST" <<'MF'
@@ -4249,6 +4254,12 @@ MF
 : > "$PADBRAIN/brain/hooks/juez-comun.sh"
 : > "$PADBRAIN/brain/hooks/sesion-inicio.sh"
 pad() { printf '%s' '{"source":"startup"}' | HOME="$PADHOME" CLAUDE_BRAIN_DIR="$PADBRAIN" CLAUDE_PROJECT_DIR="$PADROOT" bash "$HOOKS/aviso-drift-cerebro.sh"; }
+# Resetea el throttle PER-REPO pero DEJA FRESCOS los stamps de drift-GLOBAL (hooks/skills/normas): al tener
+# copias globales parciales en $PADHOME, el check de drift-global-de-hooks dispararía (2 de N both) y
+# ensuciaría el CASO que mide SOLO el sobran. El sobran/personal-flag NO se throttlea → sigue corriendo.
+padreset() { rm -rf "$PADHOME/.claude/memory/.drift-cerebro"; mkdir -p "$PADHOME/.claude/memory/.drift-cerebro"
+  for s in .hooks-global .skills-global .normas-global; do date +%s > "$PADHOME/.claude/memory/.drift-cerebro/$s"; done; }
+padreset
 # CASO 5: personal CON un guard del brain presente → FLAG "SOBRAN, quítalos" y NADA de auto-sync
 : > "$PADROOT/.claude/hooks/git-branch-guard.sh"
 padout="$(pad)"
@@ -4258,14 +4269,14 @@ printf '%s' "$padout" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/nul
   && bad "aviso-drift #46: personal NO debe auto-sincronizar ni tratar guards como 'drift'" || ok "aviso-drift #46: personal no auto-sincroniza (sin commit/push, sin lógica de correo)"
 # CASO 6: personal SIN guards del brain (solo un hook PROPIO del repo) → SILENCIO
 rm -f "$PADROOT/.claude/hooks/git-branch-guard.sh"
-rm -rf "$PADHOME/.claude/memory/.drift-cerebro"
+padreset
 : > "$PADROOT/.claude/hooks/gate-propio.sh"     # hook PROPIO (no está en la fuente) → no se flaggea
 is_silent "$(pad)" && ok "aviso-drift #46: personal SIN guards del brain (solo hook propio) → silencio" || bad "aviso-drift #46: habló en un personal sano; got: $(pad)"
 # CASO N4: personal con dod-verificar(repo) + juez-comun(both lib, usada por dod) + sesion-inicio(both) +
 # git-branch-guard(both) → el aviso lista SOLO los both-sin-dependencia; NUNCA dod-verificar(repo) ni
 # juez-comun(both pero la sourcea dod-verificar presente — quitarla lo rompería).
 rm -f "$PADROOT/.claude/hooks/"*.sh
-rm -rf "$PADHOME/.claude/memory/.drift-cerebro"
+padreset
 : > "$PADROOT/.claude/hooks/git-branch-guard.sh"
 : > "$PADROOT/.claude/hooks/sesion-inicio.sh"
 : > "$PADROOT/.claude/hooks/juez-comun.sh"
@@ -4281,21 +4292,39 @@ if printf '%s' "$n4" | grep -q 'SOBRAN'; then
 else
   bad "N4: el aviso no flaggeó (esperaba SOBRAN con los both); got: $n4"
 fi
+# Dirección inversa (claudio 2026-10-21 sobre 9336cc1): un `both` presente per-repo cuya copia GLOBAL NO
+# está instalada NO se flaggea (es la única que corre aquí → quitarla la mataría). Quito la global de
+# sesion-inicio (dejo la de git-branch-guard) → el aviso lista git-branch-guard pero NO sesion-inicio.
+rm -f "$PADHOME/.claude/hooks/sesion-inicio.sh"
+padreset
+n4b="$(pad | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null)"
+{ printf '%s' "$n4b" | grep -q 'git-branch-guard' && ! printf '%s' "$n4b" | grep -q 'sesion-inicio'; } \
+  && ok "N4b: aviso NO marca un both sin copia GLOBAL instalada (sesion-inicio); sí el que sí la tiene (git-branch-guard)" \
+  || bad "N4b: marcó un both sin global, o perdió el que sí tiene global; got: $n4b"
 rm -rf "$PADFIX"
 
-# ── --limpiar-personal (N4): CONSERVA una lib `both` que una repo-hook presente sourcea (juez-comun ← dod),
-# RETIRARÍA un both sin dependencia (git-branch-guard). Usa el MANIFEST REAL del repo. Dry-run (no muta).
-LPFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-lp.XXXXXX")"; mkdir -p "$LPFIX/.claude/hooks"
+# ── --limpiar-personal (N4): CONSERVA una lib `both` que una repo-hook presente sourcea (juez-comun ← dod)
+# y un `both` sin copia GLOBAL instalada; RETIRARÍA un both con global y sin dependencia (git-branch-guard).
+# Usa el MANIFEST REAL del repo. HOME falso controlado (el global-exists mira $HOME/.claude/hooks). Dry-run.
+LPFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-lp.XXXXXX")"; mkdir -p "$LPFIX/.claude/hooks" "$LPFIX/home/.claude/hooks"
 printf '#!/usr/bin/env bash\n. "${BASH_SOURCE[0]%%/*}/juez-comun.sh"\n' > "$LPFIX/.claude/hooks/dod-verificar.sh"
 : > "$LPFIX/.claude/hooks/juez-comun.sh"
 : > "$LPFIX/.claude/hooks/git-branch-guard.sh"
-lpout="$(bash "$SCRIPT_DIR/sincronizar-cerebro.sh" "$LPFIX" --limpiar-personal 2>&1)"
+: > "$LPFIX/home/.claude/hooks/git-branch-guard.sh"   # global de g-b-g instalado → RETIRARÍA
+: > "$LPFIX/home/.claude/hooks/juez-comun.sh"          # global de juez instalado → cae al check de dependencia
+lpout="$(HOME="$LPFIX/home" bash "$SCRIPT_DIR/sincronizar-cerebro.sh" "$LPFIX" --limpiar-personal 2>&1)"
 printf '%s' "$lpout" | grep -qE 'CONSERVO +juez-comun' \
   && ok "--limpiar-personal N4: CONSERVA juez-comun (lib both usada por dod-verificar presente)" \
   || bad "--limpiar-personal N4: no conservó juez-comun; got: $(printf '%s' "$lpout" | grep -iE 'juez|conservo|retiraría')"
 printf '%s' "$lpout" | grep -qE 'RETIRARÍA +git-branch-guard' \
-  && ok "--limpiar-personal N4: RETIRARÍA git-branch-guard (both sin dependencia)" \
+  && ok "--limpiar-personal N4: RETIRARÍA git-branch-guard (both con global, sin dependencia)" \
   || bad "--limpiar-personal N4: no retiraría git-branch-guard; got: $lpout"
+# dirección inversa: sin la copia GLOBAL de git-branch-guard → se CONSERVA (es la única que corre aquí)
+rm -f "$LPFIX/home/.claude/hooks/git-branch-guard.sh"
+lpout2="$(HOME="$LPFIX/home" bash "$SCRIPT_DIR/sincronizar-cerebro.sh" "$LPFIX" --limpiar-personal 2>&1)"
+printf '%s' "$lpout2" | grep -qE 'CONSERVO +git-branch-guard' \
+  && ok "--limpiar-personal N4b: CONSERVA git-branch-guard cuando su copia GLOBAL no está instalada" \
+  || bad "--limpiar-personal N4b: retiró un both sin global instalado (lo mataría); got: $(printf '%s' "$lpout2" | grep -iE 'git-branch|conservo|retiraría')"
 rm -rf "$LPFIX"
 
 # ── (b5c) aviso-drift v2: AUTO-APPLY en la mini-develop (Develop<Usuario>) · aviso en ramita ──
@@ -7443,7 +7472,8 @@ echo ""
 echo "== (F4) sweeper de flotilla: descubrimiento + decisión per-repo (dry-run) + lock + teeth (apply) =="
 FLFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-f4.XXXXXX")"
 FLCODE="$FLFIX/code"; FLHOME="$FLFIX/home"; FLBRAIN="$FLFIX/clon"; FLSTATE="$FLFIX/state"; FLREP="$FLFIX/rep.md"
-mkdir -p "$FLCODE" "$FLHOME" "$FLBRAIN/brain/hooks" "$FLSTATE"
+mkdir -p "$FLCODE" "$FLHOME/.claude/hooks" "$FLBRAIN/brain/hooks" "$FLSTATE"
+: > "$FLHOME/.claude/hooks/git-branch-guard.sh"   # copia GLOBAL instalada → el both del repo personal SÍ sobra
 # stub del sync en el brain FALSO: dry-run reporta drift; con --apply escribe el hook nuevo en el destino
 cat > "$FLBRAIN/brain/sincronizar-cerebro.sh" <<'STUB'
 #!/usr/bin/env bash

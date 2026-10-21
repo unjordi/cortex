@@ -252,6 +252,13 @@ if [ "$LIMPIAR_PERSONAL" = 1 ]; then
       only_ok "$name" || continue
       dst="$DST_HOOKS/$name.sh"
       [ -f "$dst" ] || continue
+      # Un `both` SOLO sobra si su copia GLOBAL está instalada (el dedupe hace que la del repo ceda a ella).
+      # Sin global, la copia del repo es la ÚNICA que corre aquí → CONSERVARLA (quitarla la mataría). Igual
+      # que el aviso de aviso-drift-cerebro. (claudio 2026-10-21 sobre 9336cc1.)
+      if [ ! -f "$HOME/.claude/hooks/$name.sh" ]; then
+        echo "  CONSERVO   $name.sh ($kind, tier both) — su copia GLOBAL no está instalada; es la única que corre aquí"
+        continue
+      fi
       # N4: una lib `both` que una repo-hook presente sourcea NO se retira (la rompería) — ver helper arriba.
       if [ "$kind" = "lib" ] && _lib_necesaria_por_repo "$name"; then
         echo "  CONSERVO   $name.sh (lib tier both) — la usa una hook tier=repo presente; quitarla la rompería"

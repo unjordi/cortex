@@ -94,6 +94,10 @@ drift_chequea_repo() {
         # desconocido → conservador: NO flaggea (no mandes a borrar algo que no sabes reponer).
         _tier=$(awk -v n="${_b%.sh}" '$1==n && $1!~/^#/{print $2; exit}' "$_man" 2>/dev/null)
         [ "$_tier" = both ] || continue
+        # El per-repo de un `both` SOLO sobra si su copia GLOBAL está instalada: el dedupe hace que la del
+        # repo ceda a la global, así que sin global la copia del repo es la ÚNICA que corre → CONSERVARLA
+        # (mandarla a borrar la mataría). (claudio 2026-10-21 sobre 9336cc1.)
+        [ -f "$HOME/.claude/hooks/$_b" ] || continue
         # Y una LIB `both` que una hook tier=repo PRESENTE sourcea NO sobra: quitarla rompería esa repo-hook
         # (juez-comun ← dod-verificar, que la sourcea de su propio dir SIN fallback global — N4).
         _kind=$(awk -v n="${_b%.sh}" '$1==n && $1!~/^#/{print $3; exit}' "$_man" 2>/dev/null)
