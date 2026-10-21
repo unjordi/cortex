@@ -424,7 +424,7 @@ else
 fi
 
 # ── (d2) Entorno de ESTA máquina: ~/.claude/entorno-maquina.md (LEAN, FUENTE ÚNICA, @import) ──
-# Norma dura "el entorno de MÁQUINA vive GLOBAL, jamás en un repo". Vive en ~/.claude/entorno-maquina.md
+# Norma dura "el entorno de MÁQUINA vive GLOBAL, jamás en el repo de un proyecto ni en tu slug". Vive en ~/.claude/entorno-maquina.md
 # (NO viaja por git), en formato LEAN, siempre en contexto vía @import del CLAUDE.md global. Es la ÚNICA
 # copia: no hay versión detallada en la memoria del slug. IDEMPOTENTE y no-destructivo: si no existe →
 # lo crea (encabezado LEAN + bloque detectado); si existe CON el bloque <!-- detectado-por-bootstrap -->

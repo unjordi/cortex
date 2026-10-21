@@ -10,7 +10,7 @@
 - Antes de cerrar un cambio, pregúntate *¿esto vive en MÁS de un lugar?* (doc duplicada, README y su UI, varias plataformas, un ejemplo, un diagrama, un valor repetido) y rastrea las otras copias (p. ej. un `grep` del valor viejo). Una sola copia desincronizada YA es una doc que miente.
 - **Antes de un `git push`, revisa dos cosas TÚ MISMO** (no hay recordatorio automático por-push): (1) el Dashboard del cerebro (`dashboard_cerebro.md`, memoria GLOBAL de esta máquina) — appendea a su Bitácora con `>>`; (2) si los commits a pushear tocan un hook/skill/feature/estructura SIN tocar su doc (README, árbol del cerebro, memoria), actualízala en la MISMA tanda.
 
-## El entorno de MÁQUINA vive GLOBAL, jamás en un repo (norma dura)
+## El entorno de MÁQUINA vive GLOBAL, jamás en el repo de un proyecto ni en tu slug (norma dura)
 - El entorno de MÁQUINA (OS, shell, aliases, rutas personales de un `$HOME`, runtime local Docker/BD/certs) es específico de UNA instancia; en un repo viajaría por git y mentiría al clonar en otra compu u otro OS.
 - Vive SOLO en `~/.claude/entorno-maquina.md` (LEAN, FUENTE ÚNICA, siempre en contexto vía `@import` del CLAUDE.md global), que NO viaja por git; la siembra `install-brain`/`bootstrap-claude` detectando la config real, y Claude la mantiene en formato LEAN. No hay copia detallada en la memoria del slug.
 - Un repo documenta solo cómo correr EL PROYECTO de forma portable o CONDICIONAL ("si Apple Silicon: `platform: linux/amd64`"; "en Windows usa Git Bash") — nunca afirmando lo personal-de-instancia como universal.

@@ -110,7 +110,7 @@ digraph flujos {
     DECISION [color="#9e9e9e", style="dashed,filled", fillcolor="#232323",
               label="📜 🗣️ Decisiones / hallazgos NO viven solo en el chat\nse persisten a estado-proyecto.md/memoria en el MISMO turno\n(lo que TÚ hallas → backlog; lo que se DECIDE junto con el usuario → memoria)\n— SIN nudge: la mitad NUDGE de 🌾 recordar-cosechar se retiró (overhaul hooks 2026-09-18);\nsolo queda su ESPEJO mecánico del TaskList (leyenda; sin chart propio aún)"];
     MAQUINA [color="#e08e45",
-             label="📜 🖥️ El entorno de MÁQUINA vive GLOBAL, jamás en un repo\nOS/shell/aliases/rutas de $HOME/runtime local NUNCA en el repo\n(mentiría al clonar en otro OS) — vive en la memoria global per-máquina\n— avisado en 03 (🔔🖥️ entorno-maquina-guard)"];
+             label="📜 🖥️ El entorno de MÁQUINA vive GLOBAL, jamás en el repo de un proyecto ni en tu slug\nOS/shell/aliases/rutas de $HOME/runtime local NUNCA en el repo\n(mentiría al clonar en otro OS) — vive en la memoria global per-máquina\n— avisado en 03 (🔔🖥️ entorno-maquina-guard)"];
     HERRAMIENTA [color="#e08e45",
                  label="📜 🚧 Actualiza por la HERRAMIENTA REAL, nunca el instalador a mano\nun install.sh/deploy.sh corrido crudo se salta backup+atómico+sello+verificación\n(excepción: --dry-run/--help/-n, o correr dentro de CI)\n— no-opea sobre git; parte del fan-out de 6 en 03 · 06 · 07 (sin detalle propio)"];
     HUD [color="#9e9e9e", style="dashed,filled", fillcolor="#232323",

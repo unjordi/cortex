@@ -492,8 +492,8 @@
 <!-- MAQUINA -->
 <g id="node14" class="node">
 <title>MAQUINA</title>
-<path fill="#2b2622" stroke="#e08e45" stroke-width="1.5" d="M3805,-180C3805,-180 3429,-180 3429,-180 3423,-180 3417,-174 3417,-168 3417,-168 3417,-127 3417,-127 3417,-121 3423,-115 3429,-115 3429,-115 3805,-115 3805,-115 3811,-115 3817,-121 3817,-127 3817,-127 3817,-168 3817,-168 3817,-174 3811,-180 3805,-180"/>
-<text xml:space="preserve" text-anchor="middle" x="3617" y="-164.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">📜 🖥️ El entorno de MÁQUINA vive GLOBAL, jamás en un repo</text>
+<path fill="#2b2622" stroke="#e08e45" stroke-width="1.5" d="M3852.62,-180C3852.62,-180 3381.38,-180 3381.38,-180 3375.38,-180 3369.38,-174 3369.38,-168 3369.38,-168 3369.38,-127 3369.38,-127 3369.38,-121 3375.38,-115 3381.38,-115 3381.38,-115 3852.62,-115 3852.62,-115 3858.62,-115 3864.62,-121 3864.62,-127 3864.62,-127 3864.62,-168 3864.62,-168 3864.62,-174 3858.62,-180 3852.62,-180"/>
+<text xml:space="preserve" text-anchor="middle" x="3617" y="-164.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">📜 🖥️ El entorno de MÁQUINA vive GLOBAL, jamás en el repo de un proyecto ni en tu slug</text>
 <text xml:space="preserve" text-anchor="middle" x="3617" y="-148.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">OS/shell/aliases/rutas de $HOME/runtime local NUNCA en el repo</text>
 <text xml:space="preserve" text-anchor="middle" x="3617" y="-136.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">(mentiría al clonar en otro OS) — vive en la memoria global per&#45;máquina</text>
 <text xml:space="preserve" text-anchor="middle" x="3617" y="-123.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">— avisado en 03 (🔔🖥️ entorno&#45;maquina&#45;guard)</text>
