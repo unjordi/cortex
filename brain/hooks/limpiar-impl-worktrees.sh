@@ -68,10 +68,18 @@ es_zombie() { bz_es_zombie "$ROOT" "$1" "$base"; }  # $1 = rama
 # El árbol SUCIO NO entra aquí: lo protege el camino SUCIO (git rehúsa el remove + anota el pendiente, C-3).
 # Los zombies REALES (con commits propios, patch-integrados) se barren igual que antes. NO se usa actividad
 # por mtime: retrasaría el barrido de un worktree recién mergeado y es un cambio de contrato fuera de alcance.
-_worktree_recien_nacido() {  # $1=wt $2=rama → 0 si PROTEGER (rama sin commits propios + árbol limpio)
-  local wt="$1" br="$2" n
+_worktree_recien_nacido() {  # $1=wt $2=rama → 0 si PROTEGER (rama recién nacida de verdad + árbol limpio)
+  local wt="$1" br="$2" n rl
   n=$(git -C "$ROOT" rev-list --count "$base..$br" 2>/dev/null)
-  case "$n" in ''|*[!0-9]*|0) [ "$n" = 0 ] || return 1 ;; *) return 1 ;; esac   # irresoluble o con commits → no
+  case "$n" in ''|*[!0-9]*|0) [ "$n" = 0 ] || return 1 ;; *) return 1 ;; esac   # irresoluble o con commits propios → no
+  # REFLOG (claudio, regresión de 633a732): una rama integrada por FAST-FORWARD o MERGE-COMMIT también queda
+  # 0-ahead + limpia — MISMA huella por rev-list que un recién nacido — pero sus commits SÍ se hicieron en la
+  # rama, así que su reflog tiene entradas de TRABAJO ("commit:"/"merge:"/…) que un recién nacido (solo
+  # "branch: Created from …") NO tiene. El flujo mini-develop (ramita → mini con `git merge` LOCAL) cae justo
+  # aquí. Reflog VACÍO = logging off = NO es el caso del agente vivo (su repo lleva reflog) → no se protege.
+  rl=$(git -C "$ROOT" reflog show --format='%gs' "$br" 2>/dev/null)
+  [ -n "$rl" ] || return 1
+  printf '%s\n' "$rl" | grep -qE '^(commit|merge|rebase|cherry-pick|pull|am|revert)\b' && return 1   # hubo trabajo en la rama → integrada, no recién nacida
   [ -z "$(git -C "$wt" status --porcelain 2>/dev/null)" ]   # solo si el árbol está LIMPIO (el sucio → camino SUCIO)
 }
 
