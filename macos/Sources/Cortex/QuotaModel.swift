@@ -42,9 +42,12 @@ struct ExtraUsage: Codable {
 
 /// The full state.json snapshot.
 struct Snapshot: Codable {
-    let updated_at: String?
+    let updated_at: String?       // tiempo de la lectura REAL (en una preservada, el del dato viejo)
+    let fetched_at: String?       // cuándo corrió ESTE fetch (= updated_at salvo en una lectura preservada)
+    let stale: Bool?              // true = lectura preservada (el fetch no pudo refrescar) o "no hay dato"
     let status: String?
-    let basis: String?          // "oauth" (datos reales) | "cost" (estimado local)
+    let basis: String?            // "oauth" (datos reales) | null (no hay dato); "cost" retirado
+    let auth: Auth?               // estado de autenticación (login) — para avisos + re-login
     let account_email: String?
     let account_uuid: String?
     let account_mismatch: Bool?   // cuenta fijada ≠ cuenta activa (guardia de identidad)
@@ -54,6 +57,14 @@ struct Snapshot: Codable {
     let limits: [LimitEntry]?     // solo en oauth; la GUI filtra los weekly_scoped
     let spend: Spend?             // solo en oauth: dinero real de bolsillo
     let extra_usage: ExtraUsage?  // solo en oauth: overage
+}
+
+/// Estado de autenticación del CLI de Claude, derivado por cortex-fetch (señales reales).
+struct Auth: Codable {
+    let state: String?            // "ok" | "expiring" | "expired" | "no_credentials"
+    let expires_at: String?       // ISO de expiración del refresh token (para "expira el …")
+    let account_email: String?    // cuenta a reloguear (prefill de --email)
+    let account_uuid: String?
 }
 
 // MARK: - stats.json (uso local vía ccusage)
@@ -443,6 +454,33 @@ final class QuotaModel: ObservableObject {
             return "⚠ \(account) no es la cuenta fijada · ⟳ 5 min + al reset 5h · act. hace: \(RelativeTime.compactReset(snap.updated_at))"
         }
         return "\(account) · ⟳ 5 min + al reset 5h · últ. act. hace: \(RelativeTime.compactReset(snap.updated_at))"
+    }
+
+    // MARK: - estado de autenticación (login) ------------------------------------------------
+
+    /// Estado del login según cortex-fetch: "ok" | "expiring" | "expired" | "no_credentials".
+    var authState: String { snapshot?.auth?.state ?? "ok" }
+    /// La lectura mostrada es PRESERVADA (el fetch no pudo refrescar) o es "no hay dato".
+    var isSnapshotStale: Bool { snapshot?.stale == true }
+    /// ¿Hay números de cuota usables? (false en "no hay dato": basis null / sin bucket de 5h).
+    var hasQuotaData: Bool { snapshot?.basis != nil && snapshot?.five_hour != nil }
+    /// Cuenta a reloguear (prefill de --email): la del bloque auth, o la del snapshot.
+    var reloginAccount: String? {
+        let a = snapshot?.auth?.account_email ?? snapshot?.account_email
+        return (a?.isEmpty == false) ? a : nil
+    }
+    /// Aviso de autenticación para la UI, o nil si el login está OK. `offerRelogin` ⇒ mostrar el botón.
+    var authNotice: (message: String, offerRelogin: Bool)? {
+        switch authState {
+        case "no_credentials":
+            return ("No hay cuenta en el CLI de Claude — el widget no puede leer tu cuota.", true)
+        case "expired":
+            return ("El login de Claude expiró — re-loguéate para seguir viendo tu cuota.", true)
+        case "expiring":
+            return ("Tu login de Claude expira \(RelativeTime.relative(snapshot?.auth?.expires_at)) — re-loguéate pronto.", true)
+        default:
+            return nil
+        }
     }
 
     // MARK: - stats-derived helpers

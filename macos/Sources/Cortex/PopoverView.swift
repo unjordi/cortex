@@ -330,6 +330,7 @@ struct PopoverView: View {
     private var limitsTab: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Límites de uso").font(.headline)
+            authBanner
             usageSection("Sesión (5 h)", model.snapshot?.five_hour)
             usageSection("Semanal (7 d)", model.snapshot?.weekly)
 
@@ -667,6 +668,51 @@ struct PopoverView: View {
                 }
             }
         }
+    }
+
+    /// Banner de aviso de autenticación (login por-expirar / expirado / sin cuenta) con botón de re-login.
+    /// Nil-silencioso: no aparece si el login está OK (authNotice == nil).
+    @ViewBuilder private var authBanner: some View {
+        if let notice = model.authNotice {
+            let isHard = model.authState == "expired" || model.authState == "no_credentials"
+            let tint = Color(hex: isHard ? "#dc3545" : "#e8884a")
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: isHard ? "exclamationmark.triangle.fill" : "clock.badge.exclamationmark")
+                        .foregroundStyle(tint)
+                    Text(notice.message)
+                        .font(.caption)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if notice.offerRelogin {
+                    Button(action: { relogin(model.reloginAccount) }) {
+                        Text("Re-loguear en Claude").font(.caption).fontWeight(.medium)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(tint)
+                    .controlSize(.small)
+                }
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(tint.opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
+    /// Abre Terminal.app y corre el flujo oficial de re-login (abre el navegador): `claude auth login
+    /// --claudeai [--email <cuenta>]`. Mismo patrón que `resume` (Terminal vía osascript, reusa shQuote/appleEscape).
+    private func relogin(_ account: String?) {
+        var cmd = "claude auth login --claudeai"
+        if let a = account, isPlausibleEmail(a) { cmd += " --email \(shQuote(a))" }
+        let osa = "tell application \"Terminal\"\nactivate\ndo script \"\(appleEscape(cmd))\"\nend tell"
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        proc.arguments = ["-e", osa]
+        try? proc.run()
+    }
+    private func isPlausibleEmail(_ s: String) -> Bool {
+        s.range(of: "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$", options: .regularExpression) != nil
     }
 
     /// Abre Terminal.app y resume la sesión: `cd <cwd> && claude --resume <id>`.

@@ -32,9 +32,13 @@ credenciales `.claudeAiOauth.refreshTokenExpiresAt` (epoch ms, ~30 días) vs `ex
   Verificado determinísticamente (matriz 7 casos / 26 asserts) EN VIVO: macOS local + Linux en cachy (GNU date). 26/26.
   Tests: `{macos,src}/pruebas/cortex-fetch-auth.test.sh`, cableados en `test-brain.sh` por plataforma. Suite 1397·0.
   Seams test-only: `CORTEX_FETCH_CREDS_JSON`/`CORTEX_FETCH_HTTP`/`CORTEX_FETCH_USAGE_FIXTURE`/`CORTEX_FETCH_NO_CCUSAGE`.
-- ⏳ **Lectores (pendientes, campos aditivos backward-compatible):** QuotaModel.swift (macOS), `src/plasmoid` (KDE),
-  `src/gnome-extension` (GNOME), `windows/src/Cortex` (Windows) — leer `auth.state`/`stale`/`fetched_at`, mostrar
-  antigüedad + aviso + botón re-login.
+- ✅ **UI macOS (compila, pendiente QA visual):** `QuotaModel.swift` (campos `stale`/`fetched_at`/`auth` + helpers
+  `authState`/`isSnapshotStale`/`hasQuotaData`/`authNotice`/`reloginAccount`) + `PopoverView.swift` (`authBanner` al tope
+  de Límites con aviso por estado + botón "Re-loguear en Claude" → Terminal con `claude auth login --claudeai [--email …]`,
+  mismo patrón que `resume`). El footer ya muestra cuenta+edad del MISMO snapshot (vía `updated_at`, ahora real en una
+  lectura preservada). `swift build` verde. **Gate = QA visual en vivo con unjordi** (menu-bar; no se declara LISTO sin eso).
+- ⏳ **UIs pendientes (campos aditivos backward-compatible):** `src/plasmoid` (KDE, QA en cachy),
+  `src/gnome-extension` (GNOME), `windows/src/Cortex` (Windows) — mismo mandato: antigüedad por `updated_at` + aviso + botón re-login.
 - ✅ **Hooks consumidores de `state.json` (hechos):** `limite-gasto` y `delegacion-gate` (vía `linea_cuota` de
   `delegacion-comun.sh`) ahora miden frescura por `updated_at` (NO mtime, que mi cambio dejó siempre fresco → era
   una REGRESIÓN que yo introduje) y marcan el motivo de auth (login expirado / sin cuenta). no-data (five_hour null)
