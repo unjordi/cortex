@@ -82,9 +82,9 @@ contrato-hilo            global  lib
 checkpoint-mecanico-comun global lib
 
 dod-verificar            repo    hook
-sesion-inicio            repo    hook
-recordar-cosechar        repo    hook
-sincronizar-tasklist     repo    lib
+sesion-inicio            both    hook
+recordar-cosechar        both    hook
+sincronizar-tasklist     both    lib
 
 # ── LÁPIDAS (tier retirado) — ver header ──
 rama-vieja               retirado  hook  2026-09-15  avisar del síntoma no es el trabajo; el flujo lo gobiernan los git-guards

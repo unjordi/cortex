@@ -131,13 +131,13 @@
 <text xml:space="preserve" text-anchor="start" x="554.38" y="-2486" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🧭 sesion&#45;inicio</text>
 <polygon fill="#1b1712" stroke="none" points="1175.12,-2477.25 1175.12,-2503 3327.88,-2503 3327.88,-2477.25 1175.12,-2477.25"/>
 <polygon fill="none" stroke="#5fa89e" points="1175.12,-2477.25 1175.12,-2503 3327.88,-2503 3327.88,-2477.25 1175.12,-2477.25"/>
-<text xml:space="preserve" text-anchor="start" x="2139.38" y="-2486.75" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">reinyecta rama + norma + memoria al abrir</text>
+<text xml:space="preserve" text-anchor="start" x="2117.25" y="-2486.75" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">reinyecta rama + norma + memoria al abrir (BOTH)</text>
 <polygon fill="#1b1712" stroke="none" points="16.12,-2451.5 16.12,-2477.25 1175.12,-2477.25 1175.12,-2451.5 16.12,-2451.5"/>
 <polygon fill="none" stroke="#5fa89e" points="16.12,-2451.5 16.12,-2477.25 1175.12,-2477.25 1175.12,-2451.5 16.12,-2451.5"/>
 <text xml:space="preserve" text-anchor="start" x="539.75" y="-2460.25" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🌾 recordar&#45;cosechar</text>
 <polygon fill="#1b1712" stroke="none" points="1175.12,-2451.5 1175.12,-2477.25 3327.88,-2477.25 3327.88,-2451.5 1175.12,-2451.5"/>
 <polygon fill="none" stroke="#5fa89e" points="1175.12,-2451.5 1175.12,-2477.25 3327.88,-2477.25 3327.88,-2451.5 1175.12,-2451.5"/>
-<text xml:space="preserve" text-anchor="start" x="1986.38" y="-2459.88" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">espejo automático del TaskList vivo → bloque fenced en estado&#45;proyecto.md (determinista, sin LLM)</text>
+<text xml:space="preserve" text-anchor="start" x="1964.25" y="-2459.88" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">espejo automático del TaskList vivo → bloque fenced en estado&#45;proyecto.md (determinista, sin LLM) (BOTH)</text>
 <polygon fill="#2b2622" stroke="none" points="16.12,-2425.75 16.12,-2451.5 3327.88,-2451.5 3327.88,-2425.75 16.12,-2425.75"/>
 <polygon fill="none" stroke="#5fa89e" points="16.12,-2425.75 16.12,-2451.5 3327.88,-2451.5 3327.88,-2425.75 16.12,-2425.75"/>
 <text xml:space="preserve" text-anchor="start" x="1642" y="-2436.1" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="12.00" fill="#d97757">📜 Normas</text>

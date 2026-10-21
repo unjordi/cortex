@@ -97,9 +97,8 @@ El cerebro se ordena por *dureza*: arriba lo que te **bloquea** sin negociar; ab
 ├─ 🧵 rehidratar-hilo          reinyecta hilo-mental-actual.md + el andamio (si es más fresco) al abrir/retomar/compactar (GLOBAL) — gate de frescura + edad
 ├─ 📈 aviso-contexto           al umbral ALTO del punto REAL de compact (80%/92% de autoCompactWindow o la ventana efectiva; % honesto, respeta autoCompactEnabled): VUELCA el checkpoint mecánico solito y ORDENA /checkpoint+/compact. No gotea (silencio bajo el umbral, 1 disparo + 1 escalada) (GLOBAL)
 ├─ 🧬 aviso-drift-cerebro      repo brained atrás de la fuente única (hooks/libs Y skills) → en tu mini-develop se AUTO-SINCRONIZA (apply+commit+push); en otra rama, avisa. ADEMÁS detecta el drift de la copia GLOBAL de skills (~/.claude/skills vs la fuente; warn-only, throttle propio). Al moverse el cerebro, NUDGE a correr la DUPLA (suficiencia+coherencia; contra la firma si hay AGENTS.md, si no sugiere instanciarla) (GLOBAL)
-└─ 📁 por-repo · viajan en el .claude de cada repo
-   ├─ 🧭 sesion-inicio            reinyecta rama + norma + memoria al abrir
-   └─ 🌾 recordar-cosechar        espejo automático del TaskList vivo → bloque fenced en estado-proyecto.md (determinista, sin LLM)
+├─ 🧭 sesion-inicio            reinyecta rama + norma + memoria al abrir (BOTH)
+└─ 🌾 recordar-cosechar        espejo automático del TaskList vivo → bloque fenced en estado-proyecto.md (determinista, sin LLM) (BOTH)
       (💤 precompact-volcar-estado se RETIRÓ: PreCompact no puede inyectar; lo cubren 💾 checkpoint + 🧵 rehidratar-hilo + 📈 aviso-contexto.
        recordar-dashboard/delegacion-reporte/recordar-orquestar/recordar-unificar-cerebro/hud-stale están retirados: su regla
        vive en brain/norms/global-claude-md.md; MANIFEST los lista `retirado`.)

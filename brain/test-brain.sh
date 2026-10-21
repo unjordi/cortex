@@ -9400,6 +9400,31 @@ fi
 rm -rf "$B1C"
 
 # ─────────────────────────────────────────────────────────────────────────────
+# TIERS 2026-10-21: sesion-inicio y recordar-cosechar pasan a tier `both` → deben traer la cláusula de
+# dedupe (la copia del repo cede a la global) y estar mapeados en ev_de (o quedarían sin cablear global).
+echo ""
+TIERSHOME="$(mktemp -d)"; mkdir -p "$TIERSHOME/.claude/hooks"
+# (A) sesion-inicio: con la copia GLOBAL presente, la copia del REPO CEDE (salida vacía por la dedupe).
+# cd a un cwd VÁLIDO (como el bloque H18): una corrida larga puede dejar el cwd de test-brain borrado por
+# un mktemp previo → el `bash` del hook abortaría con getcwd antes de la dedupe (FP ajeno a este fix).
+cp "$HOOKS/sesion-inicio.sh" "$TIERSHOME/.claude/hooks/sesion-inicio.sh"
+si_cede="$( cd "$TIERSHOME" && printf '%s' '{"source":"startup"}' | HOME="$TIERSHOME" CLAUDE_PROJECT_DIR="$TIERSHOME" bash "$HOOKS/sesion-inicio.sh" 2>&1)"
+[ -z "$si_cede" ] && ok "tiers: sesion-inicio (both) — copia REPO CEDE si la global existe (dedupe)" || bad "tiers: sesion-inicio copia REPO no cedió con global presente: ${si_cede:0:60}"
+# (B) sin copia global → la copia CORRE (inyecta contexto, salida no vacía).
+rm -f "$TIERSHOME/.claude/hooks/sesion-inicio.sh"
+si_run="$( cd "$TIERSHOME" && printf '%s' '{"source":"startup"}' | HOME="$TIERSHOME" CLAUDE_PROJECT_DIR="$TIERSHOME" bash "$HOOKS/sesion-inicio.sh" 2>&1)"
+[ -n "$si_run" ] && ok "tiers: sesion-inicio — sin global, la copia CORRE (inyecta contexto)" || bad "tiers: sesion-inicio no corrió sin copia global"
+rm -rf "$TIERSHOME"
+# (C) recordar-cosechar trae la MISMA cláusula de dedupe verbatim (clause byte-idéntico → su comportamiento = el probado en A/B).
+grep -qF 'case "$0" in "$HOME/.claude/hooks/"*) : ;; *) [ -f "$HOME/.claude/hooks/$(basename "$0")" ] && exit 0 ;; esac' "$HOOKS/recordar-cosechar.sh" \
+  && ok "tiers: recordar-cosechar (both) trae la cláusula de dedupe (verbatim)" || bad "tiers: recordar-cosechar NO trae la cláusula de dedupe (un both sin dedupe dispara doble)"
+# (D) ev_de de install-brain mapea ambos (si no, se instalan global pero NO se cablean).
+TIERS_EVDE="$(sed -n '/^ev_de() {/,/^}/p' "$SCRIPT_DIR/../brain/install-brain.sh")"
+ev_probe() { bash -c "$TIERS_EVDE"$'\n'"ev_de \"$1\""; }
+[ -n "$(ev_probe sesion-inicio)" ] && ok "tiers: ev_de mapea sesion-inicio (SessionStart) → se cablea global" || bad "tiers: ev_de NO mapea sesion-inicio (quedaría sin cablear)"
+[ -n "$(ev_probe recordar-cosechar)" ] && ok "tiers: ev_de mapea recordar-cosechar (Stop) → se cablea global" || bad "tiers: ev_de NO mapea recordar-cosechar (quedaría sin cablear)"
+
+# ─────────────────────────────────────────────────────────────────────────────
 # H18: el gate gitleaks de cerrar-slice escanea la RAMA DEL MR (lo que se integra), no el HEAD del cwd.
 # FP real (2026-10-20): parado en develop/la mini con un MR cuya rama trae un secreto → "limpio" en falso.
 echo ""

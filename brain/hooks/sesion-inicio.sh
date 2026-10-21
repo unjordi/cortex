@@ -4,11 +4,16 @@
 # (source=compact). NO bloquea: inyecta additionalContext con la rama, la norma de git y
 # la orden de leer la memoria antes de tocar código o declarar nada terminado.
 # Antídoto a "se me va la onda al cambiar de sesión/compu o cuando el sprint es largo".
-# Vive en <repo>/.claude/hooks (viaja por git) y se cablea en <repo>/.claude/settings.json.
+# Tier BOTH: viaja por-repo (<repo>/.claude/hooks, cableado en su settings.json) Y se instala global por
+# el bootstrap (dedupe: la copia del repo cede a la global). Así rehidrata en TODA sesión, no solo en un repo brained.
 # Genérico: sirve para cualquier stack (semilla plantillaRepoVacio). El aviso de MIGRACIÓN/paridad
 # NO vive aquí (es dominio del proyecto consumidor —p. ej. un repo .NET—, no del cerebro portable):
 # va en el sesion-inicio del propio repo consumidor, no en esta versión genérica.
 set -u
+
+# dedupe (tier both): si soy la copia del REPO y la copia GLOBAL existe, cedo — evita doble inyección
+# cuando el repo está brained Y hay bootstrap global. En un clon SIN bootstrap, la copia del repo corre.
+case "$0" in "$HOME/.claude/hooks/"*) : ;; *) [ -f "$HOME/.claude/hooks/$(basename "$0")" ] && exit 0 ;; esac
 
 ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 MEM="$ROOT/.claude/memory"

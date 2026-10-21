@@ -210,7 +210,8 @@ ev_de() {
     proteger-fuente-cerebro) echo "PreToolUse|Edit|Write|MultiEdit" ;;
     limite-gasto|delegacion-gate) echo "PreToolUse|Task|Agent" ;;   # Task|Agent: el tool se renombró Agent (antes Task); casar AMBOS o el gate nunca dispara
     delegacion-registrar) echo "PostToolUse|Task|Agent" ;;
-    rehidratar-hilo|aviso-drift-cerebro) echo "SessionStart|" ;;
+    rehidratar-hilo|aviso-drift-cerebro|sesion-inicio) echo "SessionStart|" ;;
+    recordar-cosechar) echo "Stop|" ;;       # tier both (2026-10-21): estado-proyecto.md "en todos lados" → global por bootstrap. Fail-open/no-op sin los archivos del proyecto.
     aviso-contexto) echo "PostToolUse|" ;;   # casa TODA tool (sin matcher): mide el ctx para el volcado del checkpoint mecánico
     # barrer-ramas: DOBLE trigger del barrido — SessionStart (oportunista, throttled) + PostToolUse/Bash
     # (al punto de merge, detecta glab/gh merge vía acg_es_merge_mr). Multi-evento como exportar-sesion-master.
