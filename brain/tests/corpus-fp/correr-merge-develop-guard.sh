@@ -141,11 +141,16 @@ EOF
 mc 124 "gh pr merge 89: subject curado + --body \$(cat resumen.md) con Rama:/MR: en el archivo" 'gh pr merge 89 --squash --delete-branch --subject "fix(axon): titulo curado de una linea" --body "$(cat resumen.md)"' "$PERS" pass
 mc 137 "gh pr merge 389: --subject corto con (#389) + --body de 100+ palabras" 'gh pr merge 389 --squash --delete-branch --subject '"'"'fix(rehidratar-hilo): avisar VISIBLE cuando compactaste SIN hilo fresco (#389)'"'"' --body '"'"'Resumen curado del cambio neto y su porque. El hook rehidratar-hilo avisa visible cuando se compacta sin un hilo fresco disponible, para que el usuario sepa que perdio el contexto previo y pueda reconstruirlo con el andamio mecanico del tramo vivo antes de seguir trabajando en la sesion actual con la rama correcta y el estado durable al dia sin sorpresas ni confabulaciones posteriores al compact.'"'"'' "$PERS" pass
 mc 144 "gh pr merge 40: --body \$(cat resumen.md) con la traza dentro, sin --subject (título del MR por API)" 'gh pr merge 40 --squash --delete-branch --body "$(cat resumen.md)"' "$PERS" pass
+# A2 (2026-10-21): el CONTENIDO del squash-message ya NO frena — es un RECORDATORIO. Un mensaje 'pobre' con squash+delete-branch a develop PASA (antes era control+ de block; retirado el chequeo determinista de calidad del mensaje).
+mc - "mensaje de squash 'pobre' ('wip') con --squash --delete-branch a develop → PASA (A2: contenido = recordatorio no-bloqueante)" 'gh pr merge 5 --squash --delete-branch --subject wip' "$PERS" pass
 
 # ── C: destino / PATH mínimo de launchd / marca del repo DESTINO / mini-develop ──
 mc 30  "release gh pr merge --merge con PATH mínimo (gh solo en ACG_EXTRA_BIN; destino main)" 'gh pr merge 267 --merge' "$PERS" pass "PATH=/usr/bin:/bin ACG_PATH_AUGMENT=1 ACG_EXTRA_BIN=$MOCKBIN CFP_BASE=main"
 mc 135 "release develop→main con merge-commit y PATH mínimo de launchd" 'gh pr merge 389 --merge' "$PERS" pass "PATH=/usr/bin:/bin ACG_PATH_AUGMENT=1 ACG_EXTRA_BIN=$MOCKBIN CFP_BASE=main"
-CFP_BASE="" mc 51 "(aprox.) release --repo … --merge con 'release/main' SOLO entrecomillado y destino no resoluble" 'gh pr merge 319 --repo unjordi/cortex --merge --subject "release develop a main" --body "release a main"' "$SHARED" pass
+# L51 — NO vía mc (mc fuerza CFP_BASE=${CFP_BASE:-develop}, que convierte "" en develop y pierde el intent "destino irresoluble"). Se llama cfp_caso directo con CFP_ENV SIN CFP_BASE → el mock de gh pr view baseRefName sale 1 = destino IRRESOLUBLE, el caso real (gh pr view falla in-hook).
+mktx l51.jsonl "libera a main el PR 319, es el release"
+CFP_TX="$TXD/l51.jsonl" CFP_ENV="PATH=$MOCKBIN:/usr/bin:/bin ACG_PATH_AUGMENT=0 TMPDIR=$ROOT CLAUDE_MERGE_JUEZ_MOCK=ALLOW" \
+  cfp_caso "$GUARD" 51 "release --merge a main, destino IRRESOLUBLE: el USUARIO autoriza el release en la conversación (vía-transcript acg_lexico_release_para_mr) → NO exige squash; la consolidación resolvió el FP sin leer el --subject/--body (texto de Claude, no autoriza)" 'gh pr merge 319 --repo unjordi/cortex --merge --subject "release develop a main" --body "release a main"' "$SHARED" pass
 mc 31  "gh pr merge 135 a repo PERSONAL con CLAUDE_PROJECT_DIR=repo COMPARTIDO" 'gh pr merge 135 --squash --delete-branch --subject "fix(ps): resumen curado del cambio neto y su porque en prosa suficiente (#135)"' "$PERS" pass "CLAUDE_PROJECT_DIR=$SHARED"
 CFP_BASE=DevelopUnjordi mc 104 "glab mr merge 57 hacia la mini DevelopUnjordi (no es develop)" 'glab mr merge 57 --squash --yes' "$SHARED" pass
 for L in 86 88 89; do
@@ -163,10 +168,11 @@ CFP_TX="$TXD/ask.jsonl" mc 34 "OK dado por AskUserQuestion (#280/#281 mergea a d
 # ── CONTROLES POSITIVOS (DEBEN frenar) ──
 mc - "ctrl+ merge a develop SIN --squash" 'gh pr merge 5 --delete-branch' "$PERS" block
 mc - "ctrl+ squash sin --delete-branch (rama colgando)" 'gh pr merge 5 --squash --subject "fix(guards): resumen curado del cambio neto y su porque en prosa suficiente (#5)"' "$PERS" block
-mc - "ctrl+ mensaje de squash POBRE ('wip')" 'gh pr merge 5 --squash --delete-branch --subject wip' "$PERS" block
 mc - "ctrl+ repo COMPARTIDO, squash OK, SIN autorización del usuario (piso barato)" "$GH_OK" "$SHARED" block
 mc - "ctrl+ --auto a develop en repo compartido" "$GH_OK --auto" "$SHARED" block
 mc - "ctrl+ release a main: juez ALLOW mockeado pero SIN lenguaje de release del usuario (piso de main)" 'gh pr merge 5 --merge' "$SHARED" block "CFP_BASE=main CLAUDE_MERGE_JUEZ_MOCK=ALLOW"
+CFP_ENV="PATH=$MOCKBIN:/usr/bin:/bin ACG_PATH_AUGMENT=0 TMPDIR=$ROOT" \
+  cfp_caso "$GUARD" - "ctrl+ gemelo de L51 SIN autorización del usuario: destino IRRESOLUBLE + 'release/main' SOLO en --subject/--body entrecomillados → exige squash (fail-safe, el texto de Claude NO afloja)" 'gh pr merge 319 --repo unjordi/cortex --merge --subject "release develop a main" --body "release a main"' "$SHARED" block
 
 mc - "ctrl+ gemelo de L160 SIN grant (--repo shared, compartido) → el grant era lo que destrababa" 'gh pr merge 21 --repo unjordi/shared --squash --delete-branch --subject "feat(rp6): resumen curado del cambio neto y su porque en prosa suficiente (#21)"' "$SESS" block
 mc - "ctrl+ gemelo de L31 con cwd = repo COMPARTIDO → gatea" 'gh pr merge 135 --squash --delete-branch --subject "fix(ps): resumen curado del cambio neto y su porque en prosa suficiente (#135)"' "$SHARED" block
