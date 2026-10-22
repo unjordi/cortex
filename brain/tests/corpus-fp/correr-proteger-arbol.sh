@@ -57,13 +57,24 @@ git -C "$ROOT/wt-iso" branch --set-upstream-to=origin/DevelopUnjordi >/dev/null 
 printf 'iso\n' > "$ROOT/wt-iso/iso.txt"; git -C "$ROOT/wt-iso" add . >/dev/null 2>&1; git -C "$ROOT/wt-iso" commit -q -m iso >/dev/null 2>&1
 WTISO="$ROOT/wt-iso"
 
-# L11: develop LOCAL (espejo viejo con commits pre-squash) vs origin/develop que ya trae el contenido por squash
+# L11 LOSSLESS: develop LOCAL DETRÁS de origin/develop (origin avanzó por squash; el espejo viejo se pone al
+# día). reset --hard origin/develop es un fast-forward → nada que orfanar (origin/develop..develop == 0) → silencio.
 REPO2="$ROOT/repo2"
 git clone -q "$BARE" "$REPO2" >/dev/null 2>&1
 g2() { git -C "$REPO2" "$@" >/dev/null 2>&1; }
 g2 config user.email t@t; g2 config user.name t; g2 checkout -q develop
-for i in 1 2; do printf 'esp%s\n' "$i" > "$REPO2/esp$i.txt"; g2 add .; g2 commit -q -m "pre-squash $i"; done
+for i in 1 2; do printf 'sq%s\n' "$i" > "$REPO2/sq$i.txt"; g2 add .; g2 commit -q -m "squash en origin $i"; done
+g2 push -q origin develop                    # origin/develop avanza
+g2 reset -q --hard HEAD~2                     # local develop vuelve a base → DETRÁS de origin por 2
 git -C "$REPO2" branch --set-upstream-to=origin/develop develop >/dev/null 2>&1
+# control+ L11 (data-loss, hueco MEDIO claudio): develop local ADELANTE con un commit LOCAL sin pushear → reset
+# --hard origin/develop lo ORFANARÍA → AVISA (el guard NO puede distinguir un bubble squash de trabajo real).
+REPO2AH="$ROOT/repo2ah"
+git clone -q "$BARE" "$REPO2AH" >/dev/null 2>&1
+g2a() { git -C "$REPO2AH" "$@" >/dev/null 2>&1; }
+g2a config user.email t@t; g2a config user.name t; g2a checkout -q develop
+printf 'local\n' > "$REPO2AH/local.txt"; g2a add .; g2a commit -q -m "commit LOCAL sin pushear en develop"
+git -C "$REPO2AH" branch --set-upstream-to=origin/develop develop >/dev/null 2>&1
 # control+ L11 (branch-scoping): un FEATURE con reset --hard origin/develop SÍ perdería su trabajo → AVISA.
 REPO3="$ROOT/repo3"
 git clone -q "$BARE" "$REPO3" >/dev/null 2>&1
@@ -102,7 +113,7 @@ cfp_caso "$GUARD" 165 "branch -D hija integrada por merge a intermedia squashead
 cfp_caso "$GUARD" 168 "branch -D 2 hijas integradas por merge a intermedia squasheada" "git branch -D fix/hija-a fix/hija-b" "$REPO" pass
 
 # ── cluster D: limpieza post-squash con reset --hard origin/develop en árbol principal (L11) ──
-cfp_caso "$GUARD" 11 "reset --hard origin/develop alineando develop local con contenido ya squasheado" "git worktree remove x ; git reset --hard origin/develop" "$REPO2" pass
+cfp_caso "$GUARD" 11 "SYNC lossless: develop local DETRÁS de origin, reset --hard origin/develop (ff, nada que orfanar) → silencio" "git worktree remove x ; git reset --hard origin/develop" "$REPO2" pass
 
 # ── cluster E: aislado + rebase (L118) ──
 cfp_caso "$GUARD" 118 "rebase de rama propia dentro de worktree aislado" "git rebase origin/DevelopUnjordi" "$WTISO" pass
@@ -136,8 +147,9 @@ cfp_caso "$GUARD" 151 "google-chrome-stable contra URL local con query" 'google-
 
 # ── CONTROLES POSITIVOS (DEBEN avisar) ──
 cfp_caso "$GUARD" - "ctrl+ reset --hard HEAD~1 con commits sin pushear (árbol principal)" "git reset --hard HEAD~1" "$REPO" block
+cfp_caso "$GUARD" - "ctrl+ L11 data-loss: EN develop ADELANTE con un commit LOCAL, reset --hard origin/develop → AVISA (lo orfanaría; hueco MEDIO cerrado)" "git reset --hard origin/develop" "$REPO2AH" block
 cfp_caso "$GUARD" - "ctrl+ L11 branch-scoping: FEATURE con reset --hard origin/develop → AVISA (no es develop|main, perdería trabajo)" "git reset --hard origin/develop" "$REPO3" block
-cfp_caso "$GUARD" - "ctrl+ L11 target-scoping: EN develop con reset --hard HEAD~1 (no origin/<base>) → AVISA (solo el sync a origin/<base> se suprime)" "git reset --hard HEAD~1" "$REPO2" block
+cfp_caso "$GUARD" - "ctrl+ L11 target-scoping: EN develop con reset --hard HEAD~1 (no origin/<base>) → AVISA (solo el sync a origin/<base> se suprime)" "git reset --hard HEAD~1" "$REPO2AH" block
 cfp_caso "$GUARD" - "ctrl+ branch -D de rama con trabajo propio sin integrar" "git branch -D pa/viva" "$REPO" block
 cfp_caso "$GUARD" - "ctrl+ cd <principal> && reset --hard desde otro cwd" "cd $REPO && git reset --hard HEAD~1" "$WTISO" block
 cfp_caso "$GUARD" - "ctrl+ heredoc a bash con reset REAL adentro" "bash <<EOF

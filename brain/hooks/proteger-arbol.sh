@@ -161,16 +161,19 @@ if [ "$gd" != "$gcd" ]; then
 fi
 
 # L11: SYNC de la BASE local a su remoto (árbol principal). Estar parado EN develop|main y hacer
-# `git reset --hard origin/<esa misma base>` es ALINEAR el espejo local con origin — el contenido YA vive
-# en origin; los commits "orfanados" son bubbles de merge PRE-squash o divergencia rancia del espejo (SHAs
-# distintos, mismo contenido), no trabajo único. La norma de git PROHÍBE trabajo propio en develop/main
-# local (todo entra por ramita→MR), así que no hay nada que perder. ACOTADO al máximo: SOLO cuando cur ES
-# la base y el target es su PROPIO origin/<base>. Un feature con `reset --hard origin/develop` SÍ perdería
-# trabajo → NO se suprime (cur no es develop|main). Un `reset --hard HEAD~3` en develop tampoco (tgt no es
-# origin/<cur>) → sigue avisando.
+# `git reset --hard origin/<esa misma base>` ALINEA el espejo local con origin. SOLO se suprime cuando es
+# LOSSLESS: el espejo local NO está ADELANTE de origin (`origin/<base>..<base>` == 0 → ff/no-op, nada único
+# que orfanar). PÉRDIDA DE DATOS (hueco MEDIO, claudio 2026-10-21): con un commit LOCAL por delante de origin,
+# ese reset lo ORFANA y el guard NO puede distinguir un bubble squash de trabajo real → AVISA como siempre.
+# ACOTADO: SOLO cuando cur ES la base, el target es su PROPIO origin/<base>, Y no hay nada adelante. Un feature
+# con `reset --hard origin/develop` (cur≠develop|main) o un `reset --hard HEAD~3` en develop (tgt≠origin/<cur>)
+# siguen avisando.
 case "$cur" in
   develop|main)
-    if [ "$tgt" = "origin/$cur" ] || [ "$tgt" = "refs/remotes/origin/$cur" ]; then exit 0; fi ;;
+    if { [ "$tgt" = "origin/$cur" ] || [ "$tgt" = "refs/remotes/origin/$cur" ]; } \
+       && [ "$(git -C "$root" rev-list --count "origin/$cur..$cur" 2>/dev/null || echo 1)" = 0 ]; then
+      exit 0
+    fi ;;
 esac
 
 # Árbol PRINCIPAL (compartido): aquí SÍ está el peligro real → aviso completo.
