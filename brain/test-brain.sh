@@ -9585,6 +9585,16 @@ if [ -d "$PAB/.git" ] && [ -f "$PA" ]; then
   if [ -z "$(printf '%s' "$comp" | tr -d '[:space:]')" ]; then
     ok "B1(c): 'git merge feat/b && git branch -D feat/b' → SILENCIO (mergeada en el mismo comando)"
   else bad "B1(c): el compound merge&&branch-D siguió avisando (got '$comp')"; fi
+  # H7 (revisión-4, PÉRDIDA DE DATOS): con un separador que NO garantiza el ÉXITO del merge, el -D correría
+  # aunque el merge CHOCARA → la regla (c) NO debe eximir. El código VIEJO callaba en los 3 separadores.
+  compsemi="$(_pa 'git merge feat/b ; git branch -D feat/b')"
+  if printf '%s' "$compsemi" | grep -q 'feat/b'; then
+    ok "H7 (pérdida de datos): 'git merge feat/b ; git branch -D feat/b' (punto-y-coma) → AVISA (el ; corre el -D aunque el merge choque)"
+  else bad "H7: el compound con punto-y-coma quedó SILENCIOSO (borraría la rama sin integrar)"; fi
+  compor="$(_pa 'git merge feat/b || git branch -D feat/b')"
+  if printf '%s' "$compor" | grep -q 'feat/b'; then
+    ok "H7 (pérdida de datos): 'git merge feat/b || git branch -D feat/b' (barra-doble) → AVISA (el || corre el -D JUSTO si el merge falló)"
+  else bad "H7: el compound con || quedó SILENCIOSO (pérdida de datos)"; fi
 else
   bad "B1(c): no se pudo montar el fixture o falta $PA"
 fi

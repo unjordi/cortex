@@ -86,13 +86,15 @@ if printf '%s' "$unquoted" | grep -qE 'git[[:space:]]+branch[[:space:]]+-[dD]' \
       | grep -oE 'git[[:space:]]+branch[[:space:]]+-[dD][A-Za-z]*[[:space:]]+[^|;&]+' \
       | sed -E 's/.*branch[[:space:]]+-[dD][A-Za-z]*[[:space:]]+//' \
       | tr ' ' '\n' | grep -vE '^-')
-    # (c) compound `git merge <X> [&& …] git branch -D <X>`: una rama que ESTE MISMO comando acaba de
-    # mergear (a la rama actual) queda integrada en el acto → borrarla es seguro. Recoge los targets de
-    # cada `git merge` del comando (sin sus flags) y los trata como integrados, sin preguntarle a git
-    # (el merge aún no corrió — es PreToolUse). Cualquier otra rama sigue decidiéndose con bz_es_zombie.
+    # (c) compound `git merge <X> && … && git branch -D <X>`: una rama que ESTE MISMO comando acaba de
+    # mergear (a la rama actual) queda integrada en el acto → borrarla es seguro. SOLO cuenta si el merge va
+    # encadenado por `&&` (que exige el ÉXITO del merge antes del -D). Con `;`/`||`/`&`/`|` el `-D` correría
+    # AUNQUE el merge CHOCARA (el `;`/`&` corren igual; el `||` corre JUSTO si falló) → borraría la rama sin
+    # integrar = PÉRDIDA DE DATOS (H7, revisión-4). Por eso el target de merge se captura SOLO si lo sigue un
+    # `&&`. (El merge aún no corrió —es PreToolUse—, pero el `&&` SÍ garantiza la condición en tiempo de shell.)
     merged=$(printf '%s' "$unquoted" \
-      | grep -oE 'git[[:space:]]+merge([[:space:]]+(--[A-Za-z][A-Za-z-]*|-[A-Za-z]))*[[:space:]]+[^|;&]+' \
-      | sed -E 's/.*merge([[:space:]]+(--[A-Za-z][A-Za-z-]*|-[A-Za-z]))*[[:space:]]+//' \
+      | grep -oE 'git[[:space:]]+merge([[:space:]]+(--[A-Za-z][A-Za-z-]*|-[A-Za-z]))*[[:space:]]+[^|;&]+&&' \
+      | sed -E 's/.*merge([[:space:]]+(--[A-Za-z][A-Za-z-]*|-[A-Za-z]))*[[:space:]]+//; s/[[:space:]]*&&$//' \
       | tr ' ' '\n' | grep -vE '^-')
     riesgo=""
     while IFS= read -r tok; do
