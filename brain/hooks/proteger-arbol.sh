@@ -137,15 +137,17 @@ fi
 gd=$(git -C "$root" rev-parse --git-dir 2>/dev/null)
 gcd=$(git -C "$root" rev-parse --git-common-dir 2>/dev/null)
 
+# cur = rama actual; tgt = objetivo del reset/checkout destructivo (vacío = a HEAD, inocuo). Compartidos
+# por ambos caminos (worktree aislado y árbol principal).
+cur=$(git -C "$root" symbolic-ref --short -q HEAD 2>/dev/null)
+tgt=$(printf '%s' "$unquoted" | grep -oE 'git[[:space:]]+(reset[[:space:]]+--(hard|merge|keep)|checkout[[:space:]]+(-f|--force))[[:space:]]+[^[:space:]|;&]+' | awk '{print $NF}' | head -1)
+
 # H14: en un worktree AISLADO el DESASTRE que este hook vigila —orfanar los commits del ORQUESTADOR en
 # el árbol COMPARTIDO— es IMPOSIBLE: el aislado solo tiene SU propia rama. Y el workaround del bug de
 # harness H15 (el worktree nace en `origin/HEAD` viejo y el agente hace `git reset --hard <su rama
 # objetivo>` al arrancar) dispara un aviso SIEMPRE falso: los "orfanados" son el base RANCIO, no trabajo.
 # Feedback real (2026-07): 4 agentes de un fan-out lo dispararon, todos legítimos → desincentiva delegar.
 if [ "$gd" != "$gcd" ]; then
-  cur=$(git -C "$root" symbolic-ref --short -q HEAD 2>/dev/null)
-  # objetivo del reset/checkout destructivo (vacío = a HEAD, inocuo)
-  tgt=$(printf '%s' "$unquoted" | grep -oE 'git[[:space:]]+(reset[[:space:]]+--(hard|merge|keep)|checkout[[:space:]]+(-f|--force))[[:space:]]+[^[:space:]|;&]+' | awk '{print $NF}' | head -1)
   # aislado Y (sin objetivo | apunta a su propia rama / su upstream | a una base develop|main) → workaround
   # H15 / rebobinado a la propia rama → aviso falso → SUPRIME.
   if [ -z "$tgt" ] || [ "$tgt" = "$cur" ] || [ "$tgt" = "origin/$cur" ] \
@@ -157,6 +159,19 @@ if [ "$gd" != "$gcd" ]; then
   jq -n --arg m "$msg" '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$m}}'
   exit 0
 fi
+
+# L11: SYNC de la BASE local a su remoto (árbol principal). Estar parado EN develop|main y hacer
+# `git reset --hard origin/<esa misma base>` es ALINEAR el espejo local con origin — el contenido YA vive
+# en origin; los commits "orfanados" son bubbles de merge PRE-squash o divergencia rancia del espejo (SHAs
+# distintos, mismo contenido), no trabajo único. La norma de git PROHÍBE trabajo propio en develop/main
+# local (todo entra por ramita→MR), así que no hay nada que perder. ACOTADO al máximo: SOLO cuando cur ES
+# la base y el target es su PROPIO origin/<base>. Un feature con `reset --hard origin/develop` SÍ perdería
+# trabajo → NO se suprime (cur no es develop|main). Un `reset --hard HEAD~3` en develop tampoco (tgt no es
+# origin/<cur>) → sigue avisando.
+case "$cur" in
+  develop|main)
+    if [ "$tgt" = "origin/$cur" ] || [ "$tgt" = "refs/remotes/origin/$cur" ]; then exit 0; fi ;;
+esac
 
 # Árbol PRINCIPAL (compartido): aquí SÍ está el peligro real → aviso completo.
 msg="AVISO (proteger-arbol): este git destructivo puede ORFANAR $n commit(s) sin pushear en el árbol PRINCIPAL (compartido). Si eres un AGENTE de fan-out: NO operes el árbol COMPARTIDO — trabaja en tu worktree aislado (isolation: worktree); si necesitas rebobinar, que lo haga el orquestador. Si es intencional (rebobinar a propósito) y ya lo pensaste, ignora este aviso. Lección real (2026-07): un agente reseteó HEAD en el árbol principal y orfanó un commit del orquestador."

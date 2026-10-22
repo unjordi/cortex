@@ -64,6 +64,12 @@ g2() { git -C "$REPO2" "$@" >/dev/null 2>&1; }
 g2 config user.email t@t; g2 config user.name t; g2 checkout -q develop
 for i in 1 2; do printf 'esp%s\n' "$i" > "$REPO2/esp$i.txt"; g2 add .; g2 commit -q -m "pre-squash $i"; done
 git -C "$REPO2" branch --set-upstream-to=origin/develop develop >/dev/null 2>&1
+# control+ L11 (branch-scoping): un FEATURE con reset --hard origin/develop SÍ perdería su trabajo → AVISA.
+REPO3="$ROOT/repo3"
+git clone -q "$BARE" "$REPO3" >/dev/null 2>&1
+g3() { git -C "$REPO3" "$@" >/dev/null 2>&1; }
+g3 config user.email t@t; g3 config user.name t; g3 checkout -q -b feat/l11-ctrl origin/develop
+printf 'w\n' > "$REPO3/w.txt"; g3 add .; g3 commit -q -m "trabajo propio del feature"
 
 echo "== proteger-arbol · banco del corpus (FP esperan SILENCIO; controles+ esperan AVISO) =="
 
@@ -130,6 +136,8 @@ cfp_caso "$GUARD" 151 "google-chrome-stable contra URL local con query" 'google-
 
 # ── CONTROLES POSITIVOS (DEBEN avisar) ──
 cfp_caso "$GUARD" - "ctrl+ reset --hard HEAD~1 con commits sin pushear (árbol principal)" "git reset --hard HEAD~1" "$REPO" block
+cfp_caso "$GUARD" - "ctrl+ L11 branch-scoping: FEATURE con reset --hard origin/develop → AVISA (no es develop|main, perdería trabajo)" "git reset --hard origin/develop" "$REPO3" block
+cfp_caso "$GUARD" - "ctrl+ L11 target-scoping: EN develop con reset --hard HEAD~1 (no origin/<base>) → AVISA (solo el sync a origin/<base> se suprime)" "git reset --hard HEAD~1" "$REPO2" block
 cfp_caso "$GUARD" - "ctrl+ branch -D de rama con trabajo propio sin integrar" "git branch -D pa/viva" "$REPO" block
 cfp_caso "$GUARD" - "ctrl+ cd <principal> && reset --hard desde otro cwd" "cd $REPO && git reset --hard HEAD~1" "$WTISO" block
 cfp_caso "$GUARD" - "ctrl+ heredoc a bash con reset REAL adentro" "bash <<EOF
