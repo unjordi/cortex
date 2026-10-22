@@ -164,6 +164,18 @@ PlasmoidItem {
         onNewData: function(source, data) { disconnectSource(source) }
     }
 
+    // Publica el masters.json LOCAL + los respaldos de sesiones al folder de sync configurado, invocando el
+    // script COMPARTIDO brain/sesiones-master/publicar-roster.sh del clon (una sola implementación; los 3
+    // widgets la llaman — Opción A, 2026-10-14). Lo dispara checkUpdateRemote() (el ciclo de chequeo de
+    // versión, como pidió Jordi). Fire-and-forget, FAIL-OPEN. Resuelve el clon en-shell (sin depender de
+    // updRepoPath, que exige linux/install.sh; aquí basta el script).
+    P5Support.DataSource {
+        id: publishRosterRunner
+        engine: "executable"
+        connectedSources: []
+        onNewData: function(source, data) { disconnectSource(source) }
+    }
+
     // Escritura de los mapas de alias (proyectos-alias.json / sesiones-alias.json). Reusa el engine
     // "executable" (igual que catSource lee con `cat`). Al TERMINAR la escritura dispara el refresh
     // — así el refetch relee el archivo YA escrito (evita la carrera write-vs-refetch). El refresh es
@@ -1391,6 +1403,9 @@ PlasmoidItem {
     }
     function checkUpdateRemote() {
         if (root.updLocalShort === "?") return   // sin version.json (build viejo) → no molesta
+        // Opción A: en el MISMO ciclo de chequeo de versión, publica el roster + respaldos al folder de sync
+        // (Jordi 2026-10-14). Resuelve el clon en-shell y corre el script compartido; fail-open si no hay clon.
+        publishRosterRunner.connectSource("for d in \"$CLAUDE_BRAIN_DIR\" \"$HOME/.cortex\" \"$HOME/.claude-brain\"; do [ -n \"$d\" ] && [ -f \"$d/brain/sesiones-master/publicar-roster.sh\" ] && { bash \"$d/brain/sesiones-master/publicar-roster.sh\"; break; }; done")
         var url = "https://api.github.com/repos/" + root.updSlug + "/commits/main"
         updateCheckSource.connectSource("curl -fsSL -H 'User-Agent: cortex' '" + url + "'")
     }

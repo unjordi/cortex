@@ -7467,15 +7467,25 @@ echo "== exportar-sesion-master: respaldo de sesiones *-master (carpeta default/
 EXFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-ex.XXXXXX")"; EXHOME="$EXFIX/home"; mkdir -p "$EXHOME"
 extx="$EXFIX/t.jsonl"; printf '{"type":"user"}\n' > "$extx"   # transcript falso, SIN título *-master
 J_STOP="{\"session_id\":\"deadbeef\",\"transcript_path\":\"$extx\",\"cwd\":\"$EXHOME\",\"hook_event_name\":\"Stop\"}"
-# (1) sin CLAUDE_SESSIONS_DRIVE → usa/crea el default ~/.claude-sessions
-( unset CLAUDE_SESSIONS_DRIVE; printf '%s' "$J_STOP" | HOME="$EXHOME" bash "$HOOKS/exportar-sesion-master.sh" ) >/dev/null 2>&1
-[ -d "$EXHOME/.claude-sessions" ] && ok "exportar-sesion-master: sin override → crea/usa el default ~/.claude-sessions" || bad "exportar-sesion-master: no usó el default ~/.claude-sessions"
+# (1) sin override → usa/crea el default LOCAL ~/.claude-sessions (Opción A: el exportador escribe LOCAL)
+( unset CLAUDE_SESSIONS_LOCAL CLAUDE_SESSIONS_DRIVE; printf '%s' "$J_STOP" | HOME="$EXHOME" bash "$HOOKS/exportar-sesion-master.sh" ) >/dev/null 2>&1
+[ -d "$EXHOME/.claude-sessions" ] && ok "exportar-sesion-master: sin override → crea/usa el default LOCAL ~/.claude-sessions" || bad "exportar-sesion-master: no usó el default ~/.claude-sessions"
 # (2) sesión NO-master (sin <sid>.meta.json, sin título *-master) en Stop → silencio, sin export
 [ -z "$(ls "$EXHOME/.claude-sessions"/*.jsonl.gz 2>/dev/null)" ] && ok "exportar-sesion-master: sesión no-master → NO exporta (silencio)" || bad "exportar-sesion-master: exportó una sesión no-master"
-# (3) override: CLAUDE_SESSIONS_DRIVE apunta la carpeta a otro lado (la crea)
+# (3) override LOCAL: CLAUDE_SESSIONS_LOCAL apunta la carpeta a otro lado (la crea). Opción A: el exportador
+# YA NO lee CLAUDE_SESSIONS_DRIVE (esa var es ahora el folder del widget/seed, no del exportador).
 EXDRIVE="$EXFIX/nube"
-bash -c 'printf "%s" "$1" | HOME="$2" CLAUDE_SESSIONS_DRIVE="$3" bash "$4"' _ "$J_STOP" "$EXHOME" "$EXDRIVE" "$HOOKS/exportar-sesion-master.sh" >/dev/null 2>&1
-[ -d "$EXDRIVE" ] && ok "exportar-sesion-master: CLAUDE_SESSIONS_DRIVE override → usa esa carpeta" || bad "exportar-sesion-master: ignoró el override CLAUDE_SESSIONS_DRIVE"
+bash -c 'printf "%s" "$1" | HOME="$2" CLAUDE_SESSIONS_LOCAL="$3" bash "$4"' _ "$J_STOP" "$EXHOME" "$EXDRIVE" "$HOOKS/exportar-sesion-master.sh" >/dev/null 2>&1
+[ -d "$EXDRIVE" ] && ok "exportar-sesion-master: override CLAUDE_SESSIONS_LOCAL → usa esa carpeta local" || bad "exportar-sesion-master: ignoró el override CLAUDE_SESSIONS_LOCAL"
+# (3b) Opción A: el exportador NO escribe al Drive aunque CLAUDE_SESSIONS_DRIVE apunte a otro lado (lo ignora).
+EXNODRIVE="$EXFIX/nube-drive"
+bash -c 'printf "%s" "$1" | HOME="$2" CLAUDE_SESSIONS_DRIVE="$3" bash "$4"' _ "$J_STOP" "$EXHOME" "$EXNODRIVE" "$HOOKS/exportar-sesion-master.sh" >/dev/null 2>&1
+[ ! -d "$EXNODRIVE" ] && ok "exportar-sesion-master: Opción A — IGNORA CLAUDE_SESSIONS_DRIVE (ya no escribe al Drive; eso lo hace el widget)" || bad "exportar-sesion-master: TODAVÍA escribe al Drive por CLAUDE_SESSIONS_DRIVE (Opción A lo prohíbe)"
+# (4) estructural: default LOCAL en el código + export DETACHED (nohup) con lock por-sid (C: no 'Hook cancelled')
+grep -qF 'CLAUDE_SESSIONS_LOCAL:-$HOME/.claude-sessions' "$HOOKS/exportar-sesion-master.sh" \
+  && ok "exportar-sesion-master: default LOCAL ~/.claude-sessions en el código (override por CLAUDE_SESSIONS_LOCAL)" || bad "exportar-sesion-master: sin el default LOCAL ~/.claude-sessions en el código"
+{ grep -qF 'nohup' "$HOOKS/exportar-sesion-master.sh" && grep -qF '.export-$sid.lock' "$HOOKS/exportar-sesion-master.sh"; } \
+  && ok "exportar-sesion-master: export DETACHED (nohup) + lock por-sid (no se ahoga en los grandes)" || bad "exportar-sesion-master: el export no es detached/lockeado"
 # (5) A4: reconoce "<x>-master (N)" (el duplicado que pone el CLI al continuar una sesión) como master y da el
 # NAME BASE canónico. Causa del FP: el `case *-master)` solo matcheaba títulos que TERMINAN en -master → un
 # "cortex-master (2)" dejaba de exportarse EN SILENCIO. Prueba la función real extraída (determinista, bash-3.2).
@@ -7486,6 +7496,17 @@ eval "$(sed -n '/^_master_base()/,/^}/p' "$HOOKS/exportar-sesion-master.sh")"
 { [ "$(_master_base 'games-master')" = "games-master" ] && [ -z "$(_master_base 'cortex-developer')" ] && [ -z "$(_master_base 'cortex-master-xyz')" ]; } \
   && ok "exportar-sesion-master: '<x>-master' pelado OK y NO-master ('developer' / '…-master-xyz') rechazado (ambas direcciones)" \
   || bad "exportar-sesion-master: _master_base mal clasifica el caso pelado o un no-master"
+{ grep -qF '_master_base "$t"' "$HOOKS/exportar-sesion-master.sh" && ! grep -qE 'case "\$t" in \*-master\)' "$HOOKS/exportar-sesion-master.sh"; } \
+  && ok "exportar-sesion-master: los puntos de reconocimiento cablean _master_base (no quedó el 'case *-master)' pelado viejo)" \
+  || bad "exportar-sesion-master: quedó un 'case \$t in *-master)' pelado sin soporte del sufijo (N)"
+# (6) OPCIÓN A: el hook YA NO escribe un masters.json compartido (mataba los conflictos de Drive). El fast-path
+# de Stop ahora detecta "master conocido" por el <sid>.meta.json per-sid, no grepeando masters.json.
+{ ! grep -qF 'm.masters.push' "$HOOKS/exportar-sesion-master.sh" && ! grep -qE 'mjlock|m\.masters=m\.masters' "$HOOKS/exportar-sesion-master.sh"; } \
+  && ok "exportar-sesion-master: Opción A — el register block de masters.json se RETIRÓ (ya no auto-escribe el compartido)" \
+  || bad "exportar-sesion-master: TODAVÍA auto-escribe masters.json (el register block sigue ahí → conflictos de Drive)"
+{ grep -qF '$sid.meta.json' "$HOOKS/exportar-sesion-master.sh" && grep -qE 'is_master=1' "$HOOKS/exportar-sesion-master.sh"; } \
+  && ok "exportar-sesion-master: fast-path por <sid>.meta.json (paridad: señal per-sid sin contención)" \
+  || bad "exportar-sesion-master: el fast-path no usa <sid>.meta.json"
 # (7) behavioral (FALLA contra el código viejo): con un masters.json PREEXISTENTE + el engine presente (stub)
 # + node, el flujo LLEGA al punto donde el viejo REGISTRABA. El viejo le agregaba la entrada {id,name,target};
 # el nuevo (Opción A) lo deja INTACTO. El export detached (nohup) corre aparte y su resultado no importa aquí.
@@ -7495,7 +7516,7 @@ printf '{"masters":[]}\n' > "$EXMJ"; before="$(cat "$EXMJ")"
 exmtx="$EXFIX/m.jsonl"; printf '{"type":"custom-title","customTitle":"demo-master"}\n{"cwd":"%s/code/x"}\n' "$EXHOME" > "$exmtx"
 JSE="{\"session_id\":\"feedface\",\"transcript_path\":\"$exmtx\",\"cwd\":\"$EXHOME/code/x\",\"hook_event_name\":\"SessionEnd\"}"
 if command -v node >/dev/null 2>&1; then
-  bash -c 'printf "%s" "$1" | HOME="$2" CLAUDE_SESSIONS_DRIVE="$3" bash "$4"' _ "$JSE" "$EXHOME" "$EXDRIVE" "$HOOKS/exportar-sesion-master.sh" >/dev/null 2>&1
+  bash -c 'printf "%s" "$1" | HOME="$2" CLAUDE_SESSIONS_LOCAL="$3" bash "$4"' _ "$JSE" "$EXHOME" "$EXDRIVE" "$HOOKS/exportar-sesion-master.sh" >/dev/null 2>&1
   sleep 0.3   # deja que el nohup detached termine por si tocara algo
   [ "$(cat "$EXMJ")" = "$before" ] \
     && ok "exportar-sesion-master: un master en SessionEnd NO toca un masters.json preexistente (Opción A; el viejo lo registraba)" \
@@ -7515,7 +7536,10 @@ printf '{"id":"bbb","label":"cortex-master (viejo)","originCwd":"/Users/x/code/c
 printf '{"masters":[{"id":"bbb","name":"cortex-master","target":"code/cortex"}]}\n' > "$SDDRIVE/masters-host1.json"
 # id aaa: SOLO meta (derivado); /home/x stripped → code/axon.
 printf '{"id":"aaa","label":"axon-master","originCwd":"/home/x/code/axon"}\n' > "$SDDRIVE/aaa.meta.json"
-: > "$SDDRIVE/bbb.jsonl.gz"; : > "$SDDRIVE/aaa.jsonl.gz"
+# id ccc: SOLO en el masters.json LEGACY (con su .gz presente). Mina #2 (claudio): como ya hay un
+# masters-<host>.json, el legacy PIERDE del todo → ccc NO debe sembrarse (ids viejos no reviven sesiones muertas).
+printf '{"masters":[{"id":"ccc","name":"games-master","target":"code/cortex"}]}\n' > "$SDDRIVE/masters.json"
+: > "$SDDRIVE/bbb.jsonl.gz"; : > "$SDDRIVE/aaa.jsonl.gz"; : > "$SDDRIVE/ccc.jsonl.gz"
 out="$(HOME="$SDHOME" CLAUDE_SESSIONS_DRIVE="$SDDRIVE" bash "$HOOKS/../sesiones-master/seed.sh" 2>&1 || true)"
 # bbb debe sembrarse al repo CANÓNICO (code/cortex), no al worktree del meta → curado gana.
 printf '%s' "$out" | grep -q "siembro cortex-master" && printf '%s' "$out" | grep -q "code/cortex" \
@@ -7526,7 +7550,58 @@ printf '%s' "$out" | grep -q "siembro cortex-master" && printf '%s' "$out" | gre
 printf '%s' "$out" | grep -q "siembro axon-master" && printf '%s' "$out" | grep -q "code/axon" \
   && ok "seed.sh: un id SOLO en metas se DERIVA (aaa → code/axon, prefijo de \$HOME de origen quitado)" \
   || bad "seed.sh: no derivó el roster del <id>.meta.json (out: $(printf '%s' "$out" | tr '\n' '|'))"
+# mina #2: con un masters-<host>.json presente, el masters.json LEGACY se IGNORA → ccc (solo legacy) NO se siembra.
+printf '%s' "$out" | grep -q "games-master" \
+  && bad "seed.sh: el legacy masters.json se leyó pese a haber masters-<host>.json (ccc revivió — ids viejos siembran sesiones muertas)" \
+  || ok "seed.sh: con masters-<host>.json presente, el legacy masters.json PIERDE (ccc NO se siembra)"
 rm -rf "$SDFIX"
+
+# ── publicar-roster.sh (Opción A, slice 2): publica el masters.json LOCAL + respaldos al folder configurado ──
+echo "== publicar-roster.sh: el masters.json local → masters-<host>.json + .gz/.meta al folder de sync =="
+PR="$HOOKS/../sesiones-master/publicar-roster.sh"
+if [ -f "$PR" ]; then
+  PRFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-pubr.XXXXXX")"; PH="$PRFIX/home"; PD="$PRFIX/drive"; PL="$PRFIX/local"
+  mkdir -p "$PH/.claude" "$PD" "$PL"
+  printf '{"masters":[{"id":"x","name":"demo-master","target":"code/demo"}]}\n' > "$PH/.claude/masters.json"
+  printf 'GZ' > "$PL/x.jsonl.gz"; printf '{"id":"x"}\n' > "$PL/x.meta.json"
+  printf 'GZY' > "$PL/y.jsonl.gz"; printf '{"id":"y"}\n' > "$PL/y.meta.json"   # 'y' NO está en masters.json
+  HOME="$PH" CLAUDE_SESSIONS_DRIVE="$PD" CLAUDE_SESSIONS_LOCAL="$PL" bash "$PR" >/dev/null 2>&1
+  # el masters.json local debe aparecer como masters-<host>.json (UN solo archivo que casa el patrón del union de seed)
+  pub="$(ls "$PD"/masters-*.json 2>/dev/null | head -1)"
+  { [ -n "$pub" ] && grep -q 'demo-master' "$pub"; } \
+    && ok "publicar-roster: el masters.json local se publica como masters-<host>.json (lo que seed une por-host)" \
+    || bad "publicar-roster: no publicó masters-<host>.json con el contenido local (pub='$pub')"
+  { [ -f "$PD/x.jsonl.gz" ] && [ -f "$PD/x.meta.json" ]; } \
+    && ok "publicar-roster: publica los respaldos de la sesión LISTADA (.gz + .meta) al folder" \
+    || bad "publicar-roster: no publicó los respaldos de la sesión listada"
+  # FILTRO ("los respaldos de sesiones ahí mencionados" — Jordi): la sesión 'y' NO está en masters.json → su respaldo NO viaja al folder.
+  { [ ! -f "$PD/y.jsonl.gz" ] && [ ! -f "$PD/y.meta.json" ]; } \
+    && ok "publicar-roster: una sesión NO listada en masters.json NO se publica (filtro por el roster)" \
+    || bad "publicar-roster: publicó una sesión NO listada (el filtro por masters.json no funcionó)"
+  # frescura: origen MÁS NUEVO re-copia. Envejezco el destino a una fecha fija ANTES de escribir el origen
+  # nuevo (si no, la resolución sub-segundo de mtime hace `-nt` flaky: la copia y el printf caen en el mismo s).
+  touch -t 202601010000 "$PD/x.jsonl.gz"
+  printf 'NEW' > "$PL/x.jsonl.gz"
+  HOME="$PH" CLAUDE_SESSIONS_DRIVE="$PD" CLAUDE_SESSIONS_LOCAL="$PL" bash "$PR" >/dev/null 2>&1
+  [ "$(cat "$PD/x.jsonl.gz" 2>/dev/null)" = "NEW" ] \
+    && ok "publicar-roster: re-copia un respaldo cuando el origen es MÁS NUEVO (frescura)" \
+    || bad "publicar-roster: no actualizó el respaldo más nuevo"
+  # FALLBACK (migración suave, claudio): SIN masters.json local (aún no curado) → NO apaga en silencio; deriva
+  # de los metas locales y sube TODO lo exportado (incluida 'y'). Así el resume cross-máquina sigue vivo hasta
+  # que /despertar-master --curar siembre el roster.
+  rm -f "$PH/.claude/masters.json" "$PD/y.jsonl.gz" "$PD/y.meta.json"
+  HOME="$PH" CLAUDE_SESSIONS_DRIVE="$PD" CLAUDE_SESSIONS_LOCAL="$PL" bash "$PR" >/dev/null 2>&1
+  { [ -f "$PD/y.jsonl.gz" ] && [ -f "$PD/y.meta.json" ]; } \
+    && ok "publicar-roster: SIN masters.json local → FALLBACK a los metas locales (no apaga el sync en silencio)" \
+    || bad "publicar-roster: sin masters.json local no hizo fallback (el resume cross-máquina se apagaría)"
+  # sin folder configurado (ni env ni ~/.claude/sessions-drive) → NO-OP silencioso, exit 0
+  HOME="$PH" bash "$PR" >/dev/null 2>&1 \
+    && ok "publicar-roster: sin folder de sync configurado → no-op silencioso (fail-open)" \
+    || bad "publicar-roster: sin folder configurado NO salió limpio (exit≠0)"
+  rm -rf "$PRFIX"
+else
+  bad "publicar-roster: falta el script $PR"
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
@@ -8211,8 +8286,8 @@ lc2="$(grep -c . "$SIPROJ/$S2SLUG/$SID2.jsonl")"
 
 # ── s3: OPCIÓN A — exportar-sesion-master NO toca un masters.json preexistente (hand-maintained) ──
 # Antes el hook AUTO-ACTUALIZABA el target de un master movido; eso generaba drift/conflictos de Drive y
-# masters.json se mantiene A MANO. Con el engine presente (símlink) el flujo LLEGA al punto donde el viejo
-# registraba; el nuevo debe dejar masters.json INTACTO. FALLA contra un código que lo reescriba.
+# Jordi lo mandó a mantenerse A MANO (2026-10-14). Con el engine presente (símlink) el flujo LLEGA al punto
+# donde el viejo registraba; el nuevo debe dejar masters.json INTACTO. FALLA contra el código viejo.
 [ -f "$HOOKS/exportar-sesion-master.sh" ] || bad "s3: falta el hook exportar-sesion-master.sh"
 HDRIVE="$SIFIX/drive-s3"; mkdir -p "$HDRIVE"
 SID3="cc330000-0000-0000-0000-000000000003"
@@ -8226,7 +8301,7 @@ printf '{"id":"%s","label":"s3-master","originCwd":"%s/code/viejo"}\n' "$SID3" "
 TPATH="$SIFIX/s3-transcript.jsonl"; printf '{"type":"user"}\n' > "$TPATH"
 NEWCWD="$SIHOME/code/nuevo"; mkdir -p "$NEWCWD"
 printf '{"session_id":"%s","transcript_path":"%s","cwd":"%s","hook_event_name":"SessionEnd"}' "$SID3" "$TPATH" "$NEWCWD" \
-  | HOME="$SIHOME" CLAUDE_SESSIONS_DRIVE="$HDRIVE" bash "$HOOKS/exportar-sesion-master.sh" >/dev/null 2>&1
+  | HOME="$SIHOME" CLAUDE_SESSIONS_LOCAL="$HDRIVE" bash "$HOOKS/exportar-sesion-master.sh" >/dev/null 2>&1
 sleep 0.3   # deja terminar el export detached
 [ "$(cat "$HDRIVE/masters.json")" = "$s3before" ] \
   && ok "s3 (Opción A): el hook NO modifica un masters.json preexistente (hand-maintained; el viejo lo auto-actualizaba)" \

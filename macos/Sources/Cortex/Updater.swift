@@ -102,11 +102,38 @@ final class Updater: ObservableObject {
         return ""
     }
 
+    /// Publica el `~/.claude/masters.json` LOCAL + los respaldos de sesiones al folder de sync configurado,
+    /// invocando el script COMPARTIDO `brain/sesiones-master/publicar-roster.sh` del clon (una sola
+    /// implementación; los 3 widgets la llaman — Opción A, 2026-10-14). Se dispara en el ciclo de chequeo de
+    /// versión ("que en los ciclos de actualización del widget … copie el masters.json Y los respaldos … al
+    /// folder configurado" — Jordi). Fire-and-forget detached, FAIL-OPEN: sin clon/script → no hace nada.
+    /// Resuelve su propio clon (NO reusa `resolveClonePath`, que exige `macos/install.sh`): aquí basta el
+    /// script.
+    static func publishRoster(clone: String) {
+        let fm = FileManager.default
+        let rel = "/brain/sesiones-master/publicar-roster.sh"
+        var dir = clone
+        if dir.isEmpty || !fm.fileExists(atPath: dir + rel) {
+            let home = fm.homeDirectoryForCurrentUser.path
+            let cands = [ProcessInfo.processInfo.environment["CLAUDE_BRAIN_DIR"] ?? "",
+                         home + "/.cortex", home + "/.claude-brain"]
+            dir = cands.first { !$0.isEmpty && fm.fileExists(atPath: $0 + rel) } ?? ""
+        }
+        guard !dir.isEmpty else { return }
+        let script = dir + rel
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/bash")
+        // single-quote la ruta (los clones no traen comillas); nohup → sobrevive a que la vista termine.
+        p.arguments = ["-lc", "nohup bash '\(script)' >/dev/null 2>&1 &"]
+        try? p.run()
+    }
+
     /// Chequea GitHub como mucho 1×/15 min (evita el rate-limit anónimo). Fire-and-forget desde la vista.
     func checkIfStale() async {
         loadLocal()
         if let lc = lastCheck, Date().timeIntervalSince(lc) < 900 { return }   // < 15 min → no re-consulta
         lastCheck = Date()
+        Self.publishRoster(clone: repoPath)   // en el MISMO ciclo de chequeo de versión (Opción A / Jordi)
         await check()
     }
 
