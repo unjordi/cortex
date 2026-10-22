@@ -3990,9 +3990,28 @@ echo "== (b5) compactación: precompact RETIRADO + rehidratar-hilo (inyecta + ga
 RHROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-rh.XXXXXX")"
 mkdir -p "$RHROOT/.claude/memory"
 rh() { printf '%s' '{"source":"resume"}' | CLAUDE_PROJECT_DIR="$RHROOT" bash "$HOOKS/rehidratar-hilo.sh"; }
-is_silent "$(rh)" && ok "rehidratar-hilo: sin hilo-mental-actual.md → silencio" || bad "rehidratar-hilo: esperaba silencio sin hilo"
+# (2026-10-22, decisión unjordi) rehidratar YA NO exige estado-proyecto.md: la señal de "usa el sistema"
+# es `.claude/`. Carpeta con `.claude/` y SIN hilo → en resume emite la orden reconstruir-contexto Y SIEMBRA
+# estado-proyecto.md (no existía). FALLA contra el código viejo (gateaba por estado-proyecto.md → callaba y
+# no creaba nada).
+rh_nohilo="$(rh)"
+printf '%s' "$rh_nohilo" | grep -q 'reconstruir-contexto' \
+  && ok "rehidratar-hilo (2026-10-22): .claude/ + sin hilo + resume → emite la orden reconstruir-contexto (systemMessage; ya no exige estado-proyecto.md)" \
+  || bad "rehidratar-hilo (2026-10-22): no emitió la orden en una carpeta con .claude/ sin hilo; got: $rh_nohilo"
+[ -f "$RHROOT/.claude/memory/estado-proyecto.md" ] \
+  && ok "rehidratar-hilo (2026-10-22): SEMBRÓ estado-proyecto.md porque la carpeta tiene .claude/ y faltaba" \
+  || bad "rehidratar-hilo (2026-10-22): no creó estado-proyecto.md pese a tener .claude/"
+# control de la DECISIÓN (1): una carpeta AJENA (sin `.claude/`) → silencio y NO se siembra nada
+RHAJENA="$(mktemp -d "${TMPDIR:-/tmp}/brain-rha.XXXXXX")"
+rhajena="$(printf '%s' '{"source":"compact","transcript_path":"/tmp/t.jsonl"}' | CLAUDE_PROJECT_DIR="$RHAJENA" bash "$HOOKS/rehidratar-hilo.sh")"
+is_silent "$rhajena" && ok "rehidratar-hilo (2026-10-22): carpeta SIN .claude/ (ajena) → silencio aun en compact" || bad "rehidratar-hilo: una carpeta ajena no calló; got: $rhajena"
+[ ! -f "$RHAJENA/.claude/memory/estado-proyecto.md" ] && ok "rehidratar-hilo (2026-10-22): NO siembra estado-proyecto.md en una carpeta sin .claude/ (decisión 1)" || bad "rehidratar-hilo: sembró estado-proyecto en una carpeta ajena"
+rm -rf "$RHAJENA"
+# hilo VACÍO (archivo existe pero sin contenido) = tratado como sin-hilo: NO reinyecta un hilo vacío como contenido
 : > "$RHROOT/.claude/memory/hilo-mental-actual.md"
-is_silent "$(rh)" && ok "rehidratar-hilo: hilo vacío → silencio" || bad "rehidratar-hilo: esperaba silencio con hilo vacío"
+printf '%s' "$(rh)" | jq -r '.hookSpecificOutput.additionalContext // empty' 2>/dev/null | grep -q 'HILO MENTAL ACTUAL' \
+  && bad "rehidratar-hilo: un hilo VACÍO no debe reinyectarse como contenido" \
+  || ok "rehidratar-hilo: hilo vacío = sin-hilo → NO reinyecta el encabezado del hilo (solo la orden/silencio)"
 printf '# Hilo mental actual\n## En qué estamos AHORA\nMARCA_HILO_XYZ\n' > "$RHROOT/.claude/memory/hilo-mental-actual.md"
 rhout="$(rh)"
 printf '%s' "$rhout" | jq -e '.hookSpecificOutput.hookEventName == "SessionStart"' >/dev/null 2>&1 \
@@ -4036,14 +4055,14 @@ printf '%s' "$rhsame_ctx" | grep -q 'POSIBLEMENTE OBSOLETO' \
 printf '%s' "$rhsame_ctx" | grep -q 'HILO MENTAL ACTUAL' \
   && ok "rehidratar-hilo A8: encabezado normal (rehidrata el hilo vigente pese a la edad)" || bad "rehidratar-hilo A8: no reinyectó con encabezado normal; got: $rhsame_ctx"
 rm -rf "$RHSAME"
-# Rec3: sin hilo NO es siempre silencio. Post-compact en un repo con
-# el sistema de memoria (estado-proyecto.md) y sin hilo fresco → aviso VISIBLE (systemMessage) que apunta
-# al transcript sobreviviente. El modo de falla es que la pérdida de detalle es INVISIBLE → el checkpoint
-# se ignora. Solo dispara en source=compact Y con estado-proyecto.md (gate-de-sistema); startup o repo sin
-# el sistema → silencio (un arranque limpio no tiene hilo, avisar sería ruido).
+# Rec3: sin hilo NO es siempre silencio. Post-compact en una carpeta con
+# el sistema de memoria (señal `.claude/` desde 2026-10-22) y sin hilo fresco → aviso VISIBLE (systemMessage)
+# que apunta al transcript sobreviviente. El modo de falla es que la pérdida de detalle es INVISIBLE → el
+# checkpoint se ignora. Solo dispara en source=compact Y con `.claude/` (gate-de-sistema); startup o carpeta
+# sin `.claude/` → silencio (un arranque limpio no tiene hilo, avisar sería ruido).
 RHREC3="$(mktemp -d "${TMPDIR:-/tmp}/brain-rh3.XXXXXX")"
 mkdir -p "$RHREC3/.claude/memory"
-: > "$RHREC3/.claude/memory/estado-proyecto.md"   # repo que SÍ usa el sistema, pero SIN hilo fresco
+: > "$RHREC3/.claude/memory/estado-proyecto.md"   # carpeta que SÍ usa el sistema (.claude/), pero SIN hilo fresco
 rh3() { printf '%s' "{\"source\":\"$1\",\"transcript_path\":\"/tmp/t.jsonl\"}" | CLAUDE_PROJECT_DIR="$RHREC3" bash "$HOOKS/rehidratar-hilo.sh"; }
 rh3c="$(rh3 compact)"
 printf '%s' "$rh3c" | jq -e '.systemMessage' >/dev/null 2>&1 \
@@ -4062,9 +4081,17 @@ printf '%s' "$(rh3 compact)" | jq -e '.systemMessage' >/dev/null 2>&1 \
   || ok "rehidratar-hilo: sin hilo pero CON andamio → no avisa de pérdida (la máquina ya dejó la traza)"
 rm -f "$RHREC3/.claude/memory/hilo-mental-actual.andamio.md"
 
-rm -f "$RHREC3/.claude/memory/estado-proyecto.md"   # repo SIN el sistema de memoria
-is_silent "$(rh3 compact)" \
-  && ok "rehidratar-hilo Rec3: compact SIN estado-proyecto (repo sin el sistema) → silencio" || bad "rehidratar-hilo Rec3: repo sin sistema debió ser silencio aun en compact"
+# (2026-10-22) borrar estado-proyecto.md pero CONSERVAR .claude/: la señal del sistema es `.claude/`, así
+# que el hook SIGUE avisando en compact y RE-SIEMBRA estado-proyecto.md. FALLA contra el código viejo
+# (gateaba por estado-proyecto.md → callaba y no re-creaba).
+rm -f "$RHREC3/.claude/memory/estado-proyecto.md"   # se borra, pero .claude/ sigue presente
+rh3nc="$(rh3 compact)"
+printf '%s' "$rh3nc" | jq -e '.systemMessage' >/dev/null 2>&1 \
+  && ok "rehidratar-hilo Rec3 (2026-10-22): sin estado-proyecto pero CON .claude/ → compact SIGUE avisando (la señal es .claude/, no estado-proyecto.md)" \
+  || bad "rehidratar-hilo Rec3 (2026-10-22): debió avisar con .claude/ presente; got: $rh3nc"
+[ -f "$RHREC3/.claude/memory/estado-proyecto.md" ] \
+  && ok "rehidratar-hilo Rec3 (2026-10-22): RE-sembró estado-proyecto.md tras borrarlo (la carpeta tiene .claude/)" \
+  || bad "rehidratar-hilo Rec3 (2026-10-22): no re-creó estado-proyecto.md"
 rm -rf "$RHREC3"
 
 # ── A7: FARO anti-truncado. El harness trunca la salida de los hooks de arranque a
@@ -4181,15 +4208,18 @@ printf '%s' "$(rhrc startup)" | grep -q 'PRIMER ACTO' \
   && bad "rehidratar-hilo reconstruir: startup NO debe llevar la orden (debe quedar igual que antes)" \
   || ok "rehidratar-hilo reconstruir: startup → sin orden (salida intacta)"
 # GATE DE SISTEMA en el caso sin-hilo-ni-andamio: la orden es "donde más falta hace" (checkpoint falló)
-# pero SOLO en un repo que USA el sistema (estado-proyecto.md). En un repo pelón → silencio (no molestar).
+# pero SOLO en una carpeta que USA el sistema (señal `.claude/`, 2026-10-22). Carpeta AJENA (sin `.claude/`)
+# → silencio (no molestar); carpeta con `.claude/` pero sin estado-proyecto.md → ya NO calla (lo siembra).
 rm -f "$RHRC/.claude/memory/hilo-mental-actual.md"
 rhrc_bare() { printf '%s' "{\"source\":\"$1\",\"session_id\":\"sRC\"}" | CLAUDE_PROJECT_DIR="$RHRC" bash "$HOOKS/rehidratar-hilo.sh"; }
-# (a) repo PELÓN (sin estado-proyecto.md) + resume sin artefactos → SILENCIO (no se nagea un repo ajeno)
-is_silent "$(rhrc_bare resume)" \
-  && ok "rehidratar-hilo reconstruir: resume sin artefactos en repo SIN sistema → silencio (no molesta)" \
-  || bad "rehidratar-hilo reconstruir: repo pelón recibió la orden en un --resume (ruido)"
-# (b) repo que USA el sistema (estado-proyecto.md) + resume sin hilo/andamio → emite la orden SOLA
-: > "$RHRC/.claude/memory/estado-proyecto.md"
+# (a) carpeta AJENA (SIN .claude/) + resume sin artefactos → SILENCIO (no se nagea una carpeta ajena)
+RHBARE="$(mktemp -d "${TMPDIR:-/tmp}/brain-rhbare.XXXXXX")"
+is_silent "$(printf '%s' '{"source":"resume","session_id":"sRC"}' | CLAUDE_PROJECT_DIR="$RHBARE" bash "$HOOKS/rehidratar-hilo.sh")" \
+  && ok "rehidratar-hilo reconstruir: resume sin artefactos en carpeta SIN .claude/ → silencio (no molesta)" \
+  || bad "rehidratar-hilo reconstruir: una carpeta ajena recibió la orden en un --resume (ruido)"
+rm -rf "$RHBARE"
+# (b) carpeta CON .claude/ pero SIN estado-proyecto.md + resume sin hilo/andamio → emite la orden SOLA (2026-10-22)
+rm -f "$RHRC/.claude/memory/estado-proyecto.md"
 narm="$(rhrc_bare resume)"
 printf '%s' "$narm" | jq -r '.systemMessage' 2>/dev/null | grep -q 'reconstruir-contexto' \
   && ok "rehidratar-hilo reconstruir: resume SIN hilo ni andamio + sistema → emite la orden sola (systemMessage)" \

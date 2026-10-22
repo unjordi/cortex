@@ -77,6 +77,25 @@ ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}
 HILO="$ROOT/.claude/memory/hilo-mental-actual.md"
 ANDAMIO="$ROOT/.claude/memory/hilo-mental-actual.andamio.md"
 
+# usa_sistema: la carpeta usa el sistema de memoria del cerebro si tiene `.claude/` (señal ÚNICA desde
+# 2026-10-22 — antes era la presencia de estado-proyecto.md; se quitó esa condición). Con `.claude/`
+# presente y SIN estado-proyecto.md, lo SIEMBRA en el acto [user 2026-10-22: "quita la condición. mejor
+# que considere el caso en que no exista o incluso lo cree"]. La SIEMBRA se gatea por `.claude/` [user
+# 2026-10-22: "estado-proyecto.md fuera de un repo se crea SOLO si la carpeta ya tiene .claude/"]: nunca
+# en una carpeta ajena. Idempotente y fail-open (una siembra fallida jamás rompe el arranque de sesión).
+usa_sistema=0
+if [ -d "$ROOT/.claude" ]; then
+  usa_sistema=1
+  if [ ! -f "$ROOT/.claude/memory/estado-proyecto.md" ]; then
+    mkdir -p "$ROOT/.claude/memory" 2>/dev/null \
+      && printf '%s\n' \
+           '# Estado del proyecto' '' \
+           '> Backlog durable del proyecto (sembrado por rehidratar-hilo al no existir). Qué sigue, qué se decidió.' \
+           '> El bloque espejo-tasklist lo mantiene recordar-cosechar; el skill /to-do re-siembra el HUD desde aquí.' '' \
+           '## 🧭 BACKLOG' > "$ROOT/.claude/memory/estado-proyecto.md" 2>/dev/null || true
+  fi
+fi
+
 # El CONTRATO del footer (`· rama <x>`) vive en UNA sola definición, compartida con el skill
 # `checkpoint` (que la corre al volcar) y con test-brain. Si la lib no está —un install viejo, o el
 # hook copiado suelto—, se usa la misma extracción inline: fail-open, nunca romper el arranque de sesión.
@@ -139,12 +158,10 @@ _no_vacio "$ANDAMIO" && hay_andamio=1
 # additionalContext pasivo) y apunta al transcript, que sí sobrevivió. Se emite solo cuando faltan LOS
 # DOS: con andamio presente no hace falta avisar de una pérdida que la máquina ya cubrió con evidencia.
 if [ "$hay_hilo" -eq 0 ] && [ "$hay_andamio" -eq 0 ]; then
-  # GATE DE SISTEMA: en un repo que NO usa el sistema de memoria (sin estado-proyecto.md), este hook
-  # CALLA — no estorba en repos ajenos (decisión de unjordi, test Rec3 "repo sin sistema → silencio").
-  # Sin hilo NI andamio, la señal de que el repo usa el sistema es estado-proyecto.md. La orden de
-  # reconstruir-contexto es "para cuando más falta hace" (checkpoint falló) pero SOLO donde hay sistema:
-  # emitirla en cada --resume de cualquier repo pelón sería ruido, justo lo que el gate evita.
-  usa_sistema=0; [ -f "$ROOT/.claude/memory/estado-proyecto.md" ] && usa_sistema=1
+  # GATE DE SISTEMA (usa_sistema ya calculado arriba por la presencia de `.claude/`): en una carpeta que
+  # NO usa el sistema de memoria (sin `.claude/`), este hook CALLA — no estorba en carpetas ajenas. La
+  # orden de reconstruir-contexto es "para cuando más falta hace" (checkpoint falló) pero SOLO donde hay
+  # sistema: emitirla en cada --resume de cualquier carpeta pelona sería ruido, justo lo que el gate evita.
   aviso=""
   if [ "$source" = "compact" ] && [ "$usa_sistema" -eq 1 ]; then
     tp=$(printf '%s' "$input" | { jq -r '.transcript_path // empty' 2>/dev/null || echo ""; })
