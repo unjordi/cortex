@@ -147,14 +147,50 @@ _fg="$FORGE"
 if [ -z "$_fg" ]; then
   if command -v glab >/dev/null 2>&1; then _fg=glab; elif command -v gh >/dev/null 2>&1; then _fg=gh; fi
 fi
-# (a) línea Rama: — si falta, se ARMA con la rama resuelta (--branch > source/head branch del forge > rama git actual).
-if ! printf '%s' "$MSG" | grep -qiE '(^|[[:space:]])rama[[:space:]]*:[[:space:]]*[^[:space:]]'; then
-  _rama="$BRANCH"
-  if [ -z "$_rama" ] && [ "$_fg" = glab ]; then _rama="$(glab mr view "$ID" ${REPO:+-R "$REPO"} -F json 2>/dev/null | jq -r '.source_branch // empty' 2>/dev/null || true)"; fi
-  if [ -z "$_rama" ] && [ "$_fg" = gh ];   then _rama="$(gh pr view "$ID" ${REPO:+-R "$REPO"} --json headRefName -q .headRefName 2>/dev/null || true)"; fi
-  [ -z "$_rama" ] && _rama="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
-  if [ -n "$_rama" ]; then MSG="$(printf '%s\nRama: %s' "$MSG" "$_rama")"; _warn "agregué la traza «Rama: ${_rama}» (faltaba en el resumen); revísala."
-  else _warn "al resumen le falta «Rama: <feat/…>» y no pude resolver la rama — agrégala a mano (sin ella, 'git log develop' no dice de qué ramita salió el commit)."; fi
+# (a) líneas Rama: — una por CADA rama integrada en este merge: la FUENTE y toda SUB-RAMA CONTENIDA en ella
+#     (tip ancestro de la fuente y NO de la base develop). ramas-zombie ya LEE múltiples `Rama:`; el ESCRITOR
+#     era el eslabón roto (cerrar-slice solo nombraba la contenedora → las sub-ramas que entraron DENTRO de
+#     una épica/integración quedaban "vivas" para siempre; medido 2026-10-22, 19 ramas). Se agrega SOLO la que
+#     FALTE en el mensaje (no duplica las que el redactor ya puso). La señal por contenido de ramas-zombie es
+#     la red para lo YA mergeado sin estas líneas.
+_rama="$BRANCH"
+if [ -z "$_rama" ] && [ "$_fg" = glab ]; then _rama="$(glab mr view "$ID" ${REPO:+-R "$REPO"} -F json 2>/dev/null | jq -r '.source_branch // empty' 2>/dev/null || true)"; fi
+if [ -z "$_rama" ] && [ "$_fg" = gh ];   then _rama="$(gh pr view "$ID" ${REPO:+-R "$REPO"} --json headRefName -q .headRefName 2>/dev/null || true)"; fi
+[ -z "$_rama" ] && _rama="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+_fuente=""
+[ -n "$_rama" ] && [ "$_rama" != HEAD ] && _fuente="$(git rev-parse --verify -q "refs/heads/$_rama" 2>/dev/null || git rev-parse --verify -q "refs/remotes/origin/$_rama" 2>/dev/null || true)"
+if [ -n "$_fuente" ]; then
+  # fuente RESUELTA localmente → el conjunto CONTENIDO se puede computar: la fuente + cada rama cuyo tip es
+  # ancestro de la fuente y NO de la base (= entró DENTRO de la fuente, no estaba ya en develop).
+  _base="$(git rev-parse --verify -q origin/develop 2>/dev/null || git rev-parse --verify -q develop 2>/dev/null || true)"
+  _contenidas="$_rama"
+  if [ -n "$_base" ]; then
+    while IFS=' ' read -r _bn _bt; do
+      [ -n "$_bn" ] && [ -n "$_bt" ] || continue
+      _nn="${_bn#origin/}"
+      case "$_nn" in develop|main|HEAD|"$_rama") continue ;; esac
+      case " $_contenidas " in *" $_nn "*) continue ;; esac
+      git merge-base --is-ancestor "$_bt" "$_fuente" 2>/dev/null || continue   # tip contenido en la fuente
+      git merge-base --is-ancestor "$_bt" "$_base"   2>/dev/null && continue   # … pero YA en develop → no es de este merge
+      _contenidas="$_contenidas $_nn"
+    done <<EOF
+$(git for-each-ref --format='%(refname:short) %(objectname)' refs/heads refs/remotes/origin 2>/dev/null)
+EOF
+  fi
+  _ya="$(printf '%s\n' "$MSG" | sed -nE 's/^[[:space:]]*[Rr]ama[[:space:]]*:[[:space:]]*([^[:space:]]+).*/\1/p' | tr '\n' ' ')"
+  _added=""
+  for _c in $_contenidas; do
+    case " $_ya " in *" $_c "*) continue ;; esac
+    MSG="$(printf '%s\nRama: %s' "$MSG" "$_c")"; _added="$_added $_c"
+  done
+  [ -n "$_added" ] && _warn "agregué traza «Rama:» para:${_added} (la fuente y sus sub-ramas contenidas); revísalas."
+else
+  # fuente NO resuelta localmente (solo del forge, o desconocida) → no se puede computar containment:
+  # comportamiento clásico (nombrar la fuente, o avisar) SOLO si el mensaje no trae ya una línea Rama:.
+  if ! printf '%s' "$MSG" | grep -qiE '(^|[[:space:]])rama[[:space:]]*:[[:space:]]*[^[:space:]]'; then
+    if [ -n "$_rama" ] && [ "$_rama" != HEAD ]; then MSG="$(printf '%s\nRama: %s' "$MSG" "$_rama")"; _warn "agregué la traza «Rama: ${_rama}» (faltaba en el resumen); revísala."
+    else _warn "al resumen le falta «Rama: <feat/…>» y no pude resolver la rama — agrégala a mano (sin ella, 'git log develop' no dice de qué ramita salió el commit)."; fi
+  fi
 fi
 # (b) ref MR/PR — si falta, se ARMA con el --id (entero literal ya validado).
 if ! printf '%s' "$MSG" | grep -qiE '((mr|pr)[[:space:]]*:[[:space:]]*[!#]?[0-9]+|[!#][0-9]+)'; then

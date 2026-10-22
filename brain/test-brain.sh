@@ -3281,6 +3281,23 @@ out_csm2="$(PATH="$CSMSG_BIN:$PATH" bash "$CSMSG_SH" --id 8 --message "corrige e
 { printf '%s' "$out_csm2" | grep -q 'dry-run' && [ "$(printf '%s' "$out_csm2" | grep -c 'Rama:')" -le 1 ]; } \
   && ok "cerrar-slice: mensaje con traza propia → se respeta (no re-arma ni duplica Rama:)" \
   || bad "cerrar-slice: duplicó o perdió la traza propia; got: $out_csm2"
+# (2026-10-22) ESCRITOR multi-rama: una rama CONTENEDORA (épica/integración) debe llevar un `Rama:` por CADA
+# sub-rama contenida (tip ancestro de la fuente y NO de develop), no solo la contenedora — si no, las
+# sub-ramas que entraron DENTRO quedan "vivas" para el barrido. FALLA contra el código viejo (solo la contenedora).
+CSEP="$(mktemp -d "${TMPDIR:-/tmp}/csep.XXXXXX")"
+( cd "$CSEP" && git init -q && git config user.email t@t && git config user.name t \
+  && git checkout -q -b develop && echo base > base.txt && git add base.txt && git commit -qm base \
+  && git checkout -q -b feat/a && echo a > a.txt && git add a.txt && git commit -qm a \
+  && git checkout -q develop && git checkout -q -b feat/b && echo b > b.txt && git add b.txt && git commit -qm b \
+  && git checkout -q develop && git checkout -q -b epic/afinado \
+  && git merge -q --no-ff feat/a -m "merge a" && git merge -q --no-ff feat/b -m "merge b" ) >/dev/null 2>&1
+CSEPB="$(mktemp -d)"; printf '#!/usr/bin/env bash\nexit 0\n' > "$CSEPB/gitleaks"; chmod +x "$CSEPB/gitleaks"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$CSEPB/glab"; chmod +x "$CSEPB/glab"
+csep_out="$(cd "$CSEP" && PATH="$CSEPB:$PATH" bash "$CSMSG_SH" --id 9 --message "integro la épica de afinado" --branch epic/afinado --forge glab --dry-run 2>/dev/null)"
+{ printf '%s' "$csep_out" | grep -qF 'Rama: epic/afinado' && printf '%s' "$csep_out" | grep -qF 'Rama: feat/a' && printf '%s' "$csep_out" | grep -qF 'Rama: feat/b'; } \
+  && ok "b3cs-msg (2026-10-22): una contenedora lleva un «Rama:» por CADA sub-rama contenida (épica → las 3, no solo la contenedora)" \
+  || bad "b3cs-msg (2026-10-22): no nombró todas las sub-ramas contenidas; got: $(printf '%s' "$csep_out" | tr '\n' '|')"
+rm -rf "$CSEP" "$CSEPB"
 rm -rf "$CSMSG_BIN"
 
 # ─────────────────────────────────────────────────────────────────────────────
