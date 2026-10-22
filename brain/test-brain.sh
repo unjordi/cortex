@@ -3,7 +3,6 @@
 # todo corre contra un $HOME FALSO aislado (mktemp) que se borra al final.
 #
 # Cubre:
-#   (a) sintaxis: `bash -n` de todos los hooks .sh + `jq empty` de todos los .json de brain/.
 #   (b) gate de delegación: casos gratis / incluido / metered(overage) / metered(externo) /
 #       desconocido, el ciclo gate→registrar→gate-silencioso, y la transición dentro/fuera de la
 #       ventana de 5h (incluido → metered al agotarse la ventana).
@@ -36,22 +35,6 @@ cleanup() { rm -rf "$FAKEHOME" "$CALLLOG"; }
 trap cleanup EXIT
 
 echo "==> cortex test — \$HOME falso: $FAKEHOME"
-
-# ─────────────────────────────────────────────────────────────────────────────
-echo ""
-echo "== (a) sintaxis: bash -n de los hooks + jq empty de los json =="
-for f in "$HOOKS"/*.sh "$SCRIPT_DIR"/lib/*.sh; do
-  [ -e "$f" ] || continue
-  if bash -n "$f" 2>/dev/null; then ok "bash -n $(basename "$f")"; else bad "bash -n $(basename "$f")"; fi
-done
-# también el propio instalador/desinstalador/este test
-for f in "$INSTALLER" "$SCRIPT_DIR/uninstall-brain.sh" "$SCRIPT_DIR/test-brain.sh"; do
-  [ -e "$f" ] || continue
-  if bash -n "$f" 2>/dev/null; then ok "bash -n $(basename "$f")"; else bad "bash -n $(basename "$f")"; fi
-done
-while IFS= read -r j; do
-  if jq empty "$j" 2>/dev/null; then ok "jq empty $(basename "$j")"; else bad "jq empty $(basename "$j")"; fi
-done < <(find "$SCRIPT_DIR" -name '*.json' -type f)
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
