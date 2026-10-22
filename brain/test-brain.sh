@@ -3244,6 +3244,38 @@ rm -rf "$A1ROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (b3a3) A.3: el RESUMEN del --dry-run CUADRA con el del modo real (un zombie SUCIO cuenta 'sucio', no 'zombie') =="
+# A.3: el dry-run contaba un zombie de árbol SUCIO como 'borrados' (= zombie), pero el modo real git rehúsa
+# borrarlo → lo cuenta como 'sucio conservado'. El resumen del dry MENTÍA respecto al real. El fix: el dry-run
+# cuenta IGUAL que el real (chequea si el árbol está sucio). Fixture fresco y aislado; corro dry PRIMERO (no
+# muta) y real DESPUÉS (conserva el sucio), y comparo la línea de resumen COMPLETA.
+A3ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-a3.XXXXXX")"; A3REPO="$A3ROOT/repo"; mkdir -p "$A3REPO/.claude/memory"
+git -C "$A3REPO" init -q >/dev/null 2>&1
+git -C "$A3REPO" symbolic-ref HEAD refs/heads/develop >/dev/null 2>&1
+git -C "$A3REPO" config user.email t@t >/dev/null 2>&1; git -C "$A3REPO" config user.name tester >/dev/null 2>&1
+printf 'base\n' > "$A3REPO/a.txt"; git -C "$A3REPO" add a.txt >/dev/null 2>&1; git -C "$A3REPO" commit -qm base >/dev/null 2>&1
+git -C "$A3REPO" branch feat/integrada develop >/dev/null 2>&1       # ancestro → zombie por (a)
+git -C "$A3REPO" worktree add -q "$A3ROOT/wt-sucio" feat/integrada >/dev/null 2>&1
+printf 'a medias\n' > "$A3ROOT/wt-sucio/borrador.md"                 # untracked → zombie SUCIO
+: > "$A3REPO/.claude/memory/bitacora.md"
+a3dry="$(cd "$A3REPO" && bash "$HOOKS/limpiar.sh" worktrees --dry-run 2>&1)"
+a3real="$(cd "$A3REPO" && bash "$HOOKS/limpiar.sh" worktrees 2>&1)"
+_sumdry="$(printf '%s\n'  "$a3dry"  | grep '^limpiar-worktrees:' | sed 's/^limpiar-worktrees: *//')"
+_sumreal="$(printf '%s\n' "$a3real" | grep '^limpiar-worktrees:' | sed 's/^limpiar-worktrees: *//')"
+[ -n "$_sumreal" ] && [ "$_sumdry" = "$_sumreal" ] \
+  && ok "A.3: el resumen del --dry-run == el del real ($_sumreal)" \
+  || bad "A.3: el resumen del dry-run NO cuadra con el real — dry:[$_sumdry] real:[$_sumreal]"
+# teeth: el dry-run NO cuenta el sucio como zombie (el bug viejo daba '1 zombie(s)' en el dry y '0' en el real)
+printf '%s\n' "$a3dry" | grep -qE 'limpiar-worktrees: 0 zombie\(s\)' \
+  && ok "A.3(teeth): el dry-run reporta 0 zombie(s) (el sucio NO se cuenta como zombie)" \
+  || bad "A.3(teeth): el dry-run contó el zombie SUCIO como 'zombie' (el bug); got: $_sumdry"
+printf '%s\n' "$a3dry" | grep -qE '1 sucio\(s\) conservado' \
+  && ok "A.3(teeth): el dry-run reporta 1 sucio(s) conservado(s) (lo que el real también dice)" \
+  || bad "A.3(teeth): el dry-run no contó el árbol sucio como 'sucio'; got: $_sumdry"
+rm -rf "$A3ROOT"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "== (b3m) limpiar-worktrees: A-2 — una opción DESCONOCIDA (typo) aborta con rc=2, nunca corre en modo destructivo =="
 A2ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-a2.XXXXXX")"; A2REPO="$A2ROOT/repo"; mkdir -p "$A2REPO"
 git -C "$A2REPO" init -q >/dev/null 2>&1

@@ -129,11 +129,12 @@ while IFS= read -r line; do
       fi
       if es_zombie "$br"; then
         if [ "$DRY" = 1 ]; then
-          # dry-run: previsualiza si el árbol está sucio (C-3) en vez de prometer un borrado que git rehusaría.
+          # dry-run: cuenta IGUAL que el modo real para que el RESUMEN cuadre. Un zombie con árbol SUCIO git
+          # rehusaría borrarlo (el real lo cuenta como 'sucio conservado', no 'zombie'); antes el dry-run lo
+          # sumaba a 'borrados' y el resumen mentía ("N zombie(s)" donde el real decía "N sucio(s)").
           n=$(git -C "$wt" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
-          if [ "${n:-0}" != 0 ]; then echo "  [dry] SUCIO (no se tocaría): $wt ($br) — $n archivo(s) sin commitear/untracked"
-          else echo "  [dry] zombie: $wt ($br)"; fi
-          borrados=$((borrados+1))
+          if [ "${n:-0}" != 0 ]; then echo "  [dry] SUCIO (no se tocaría): $wt ($br) — $n archivo(s) sin commitear/untracked"; sucios=$((sucios+1))
+          else echo "  [dry] zombie: $wt ($br)"; borrados=$((borrados+1)); fi
         else
           if _intentar_borrar "$wt"; then borrados=$((borrados+1)); echo "  borrado zombie: $wt ($br)"
           else
