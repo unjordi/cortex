@@ -16,7 +16,10 @@
 #   hilo_rama <archivo>          → imprime la rama del footer ("" si no hay)
 #   hilo_fecha <archivo>         → imprime la 1a fecha ISO del archivo ("" si no hay)
 #   hilo_edad_legible <segundos> → "2d 5h" / "3h 20m" / "45m"
-#   verificar_hilo <archivo>     → exit 0 si cumple el contrato; 1 e imprime los motivos si no
+#   verificar_hilo <archivo> [fresco] → exit 0 si cumple el contrato; 1 e imprime los motivos. Con un 2º
+#                                  arg NO-vacío ("fresco") ADEMÁS exige que el archivo se haya ESCRITO en
+#                                  ESTE volcado (mtime < CONTRATO_HILO_FRESCO_MIN, def 10 min): el camino del
+#                                  ESCRITOR/checkpoint, para cazar un Write que falló y dejó el hilo VIEJO.
 #
 # CONTRATO DE USO: fail-open en el LECTOR (un hilo sin footer se lee igual, solo pierde el gate de rama),
 # fail-LOUD en el ESCRITOR (el checkpoint SÍ debe enterarse de que su volcado nace inauditable).
@@ -53,6 +56,7 @@ hilo_edad_legible() {
 # NO juzga el CONTENIDO del hilo (eso es criterio del modelo): solo que sea AUDITABLE por su lector.
 verificar_hilo() {
   _f="${1:-}"
+  _fresco="${2:-}"   # no-vacío (p. ej. "fresco") → ADEMÁS exige que el archivo se haya ESCRITO en ESTE volcado
   _fallos=0
   if [ ! -f "$_f" ]; then
     printf 'CONTRATO-HILO: no existe el archivo: %s\n' "$_f" >&2
@@ -67,6 +71,24 @@ verificar_hilo() {
   if [ -z "$(hilo_fecha "$_f")" ]; then
     printf 'CONTRATO-HILO: %s SIN fecha ABSOLUTA (AAAA-MM-DD) ⇒ al releerlo no se puede juzgar su antigüedad.\n' "$_f" >&2
     _fallos=$((_fallos+1))
+  fi
+  # FRESCURA (solo si el caller lo pide — el camino del ESCRITOR/checkpoint): el footer con rama + fecha del
+  # MISMO día PASA aunque el Write del checkpoint haya FALLADO y en disco quede el hilo de hace horas (caso real
+  # cps-master 2026-10-21: Write "Error writing file", el hilo quedó de las 13:42, verificar_hilo dio rc=0 y la
+  # sesión anotó un "checkpoint COMPLETO" que no existió). El escritor debe enterarse (fail-LOUD): si el archivo
+  # NO se escribió recién, su volcado no ocurrió. El LECTOR (rehidratar-hilo) NO pasa el flag — ahí el hilo es
+  # legítimamente viejo (de otra sesión). stat GNU `-c` primero, BSD `-f` de fallback (mismo patrón que la lib git).
+  if [ -n "$_fresco" ]; then
+    _mt=$(stat -c %Y "$_f" 2>/dev/null || stat -f %m "$_f" 2>/dev/null)
+    _now=$(date +%s 2>/dev/null)
+    _max="${CONTRATO_HILO_FRESCO_MIN:-10}"
+    case "$_max" in ''|*[!0-9]*) _max=10 ;; esac
+    if [ -n "$_mt" ] && [ -n "$_now" ] && [ "$(( (_now - _mt) / 60 ))" -ge "$_max" ]; then
+      printf 'CONTRATO-HILO: %s NO se escribió en ESTE volcado — su mtime es de hace %s (≥ %s min).\n' "$_f" "$(hilo_edad_legible $((_now - _mt)))" "$_max" >&2
+      printf '  ⇒ el Write del checkpoint pudo FALLAR y quedó el hilo VIEJO. NO declares el checkpoint hecho:\n' >&2
+      printf '  re-escribe el hilo (Write) y reintenta la verificación.\n' >&2
+      _fallos=$((_fallos+1))
+    fi
   fi
   [ "$_fallos" -eq 0 ]
 }

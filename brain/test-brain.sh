@@ -5959,6 +5959,20 @@ printf '%s\n' '# Hilo mental actual' '> Última actualización: 2026-09-11 · ra
 ( . "$F1LIB"; verificar_hilo "$F1D/sin-fecha.md" ) >/dev/null 2>&1 \
   && bad "f1a: un hilo con fecha RELATIVA ('hoy') pasó el contrato" \
   || ok "f1a: un hilo sin fecha ABSOLUTA falla el contrato (una fecha relativa miente sobre su antigüedad)"
+# (f1-fresco) FRESCURA (2º arg "fresco", camino del ESCRITOR/checkpoint): caza un Write del hilo que FALLÓ y
+# dejó el hilo de hace horas (caso real cps-master 2026-10-21: verificar_hilo dio rc=0 sobre el hilo de 13:42 y
+# la sesión anotó un checkpoint que no existió). El footer (rama+fecha) PASA; lo que delata el Write-fallido es
+# el MTIME. El LECTOR (rehidratar) NO pasa el flag → sigue leyendo hilos legítimamente viejos.
+( . "$F1LIB"; verificar_hilo "$F1D/con-rama.md" fresco ) >/dev/null 2>&1 \
+  && ok "f1-fresco: hilo RECIÉN escrito (mtime fresco) + 'fresco' → pasa" \
+  || bad "f1-fresco: un hilo recién escrito falló la frescura (falso positivo)"
+cp "$F1D/con-rama.md" "$F1D/viejo.md"; touch -t 202601010000 "$F1D/viejo.md"   # mtime 2026-01-01 → stale
+( . "$F1LIB"; verificar_hilo "$F1D/viejo.md" fresco ) >/dev/null 2>&1 \
+  && bad "f1-fresco CONTRA LA FALLA: un hilo VIEJO (Write falló, mtime stale) PASÓ con 'fresco' (anotaría un checkpoint que no existió)" \
+  || ok "f1-fresco CONTRA LA FALLA: un hilo VIEJO (mtime stale) FALLA con 'fresco' (el escritor se entera de que su Write no ocurrió)"
+( . "$F1LIB"; verificar_hilo "$F1D/viejo.md" ) >/dev/null 2>&1 \
+  && ok "f1-fresco: el MISMO hilo viejo SIN el flag → pasa (el LECTOR/rehidratar no se afecta; lee hilos viejos de otras sesiones)" \
+  || bad "f1-fresco: la frescura se aplicó sin el flag (rompería el rehidratado de un hilo legítimamente viejo)"
 [ "$( . "$F1LIB"; hilo_rama "$F1D/rama-golosa.md" )" = "feat/diagrama-x" ] \
   && ok "f1a regresión A8: la rama sale ANCLADA al '·' (una rama que CONTIENE 'rama' no parte la extracción)" \
   || bad "f1a regresión A8: hilo_rama devolvió '$( . "$F1LIB"; hilo_rama "$F1D/rama-golosa.md" )' en vez de feat/diagrama-x"
