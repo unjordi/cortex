@@ -65,7 +65,7 @@ $S/despertar-master.sh --cerrar <nombre>              # cierra su proceso claude
 ```bash
 $S/vigilar-master.sh <nombre> <transcript.jsonl> <repo[:repo2]> <pid-de-claude>   # COMMIT / TURNO-TERMINADO / COLGADO / MUERTO
 ```
-  - **Monitor:** uno por master, `timeout_ms` ≤ 1 800 000, re-armado al expirar. **pid:** el del proceso `claude` (`pgrep -fl 'claude.*<sid>'`), no el del screen. **repo:** la ruta real del clon (el slug del transcript no siempre coincide, `_` vs `-`) — y OJO: un master que trabaja en un **worktree** commitea AHÍ, no en el toplevel (causa (a) del descarte del vigilante).
+  - **Monitor:** uno por master, `timeout_ms` ≤ 1 800 000, re-armado al expirar. **pid:** el del proceso `claude`, filtrado por EJECUTABLE (igual que la regla de §1 y que `_pids_master`): `ps -axo pid=,command= | awk '$2 ~ /(^|\/)claude$/ && /<sid>/ {print $1}'` — NUNCA `pgrep -f 'claude.*<sid>'` (se matchea a sí mismo y a un bash/grep con el patrón). No el del screen. **repo:** la ruta real del clon (el slug del transcript no siempre coincide, `_` vs `-`) — y OJO: un master que trabaja en un **worktree** commitea AHÍ, no en el toplevel (causa (a) del descarte del vigilante).
 
 ## 4. Destrabar
 | Señal | Acción |
