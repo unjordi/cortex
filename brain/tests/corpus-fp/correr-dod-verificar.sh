@@ -29,6 +29,7 @@ EOS
 printf 'CIERRE=no MARCA=no VISUAL=si' > "$ROOT/m-visual"
 printf 'CIERRE=si MARCA=no VISUAL=no' > "$ROOT/m-cierre"
 printf 'CIERRE=si MARCA=si VISUAL=no' > "$ROOT/m-cierre-marca"
+printf 'CIERRE=no MARCA=no VISUAL=no' > "$ROOT/m-recita"   # el juez AFINADO (L71) para una RE-CITA de QA previo
 
 # ── constructores de transcript (una línea JSON por evento, como el transcript real) ──
 j() { jq -nc "$@"; }
@@ -69,9 +70,13 @@ tx_userimg i87 "lo veo en tu screenshot: Cerebro global completo y activo"
 tx_userimg i111 "el mío (image 18) es un cascarón; el real (image 19) se ve distinto"
 for L in 44 62 70 72 87 111; do run "$L" "imagen adjuntada por el usuario + aserción visual (juez: VISUAL=si)" "i$L" m-visual pass; done
 
-# ── L71: resumen que cita un QA visual hecho en el turno INMEDIATO ANTERIOR (Read de PNG allí, no en este turno) ──
+# ── L71: resumen que RE-CITA un QA visual hecho en el turno ANTERIOR. El fix es LLM-side: el juez AFINADO
+# clasifica la re-cita de un QA PREVIO como VISUAL=no (no una aserción fresca a ciegas) → la capa estructural
+# (que bloquea VISUAL=si sin browser-en-el-turno) NO dispara → PASA. La capa estructural era CORRECTA; el bug
+# era la clasificación del juez. Aquí se mockea el veredicto AFINADO (m-recita, VISUAL=no) para medir el
+# end-to-end; la CLASIFICACIÓN real (VISUAL=no para la re-cita) la valida la batería LIVE `djlive "L71"`. ──
 { u_txt "revisa el PDF"; a_tool Read /tmp/p2.png; u_res; a_txt "QA visual: se ve bien"; u_txt "¿cómo vamos?"; a_txt "Resumen: el QA visual de las páginas 2-3 ya está hecho (se ven bien)"; } > "$TX/p71"
-run 71 "resumen cita QA visual ya hecho un turno atrás (Read en el turno anterior)" p71 m-visual pass
+run 71 "re-cita de un QA previo → juez afinado VISUAL=no → estructural no bloquea (clasificación real: LIVE djlive L71)" p71 m-recita pass
 
 # ── CONTROLES POSITIVOS (DEBEN frenar) ──
 { u_txt "revisa la pantalla"; a_txt "Quedó igual que el mockup, se ve bien"; } > "$TX/c-ciego"

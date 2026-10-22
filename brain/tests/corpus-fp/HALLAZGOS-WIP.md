@@ -5,17 +5,26 @@
 - **CORPUS CERO-FP:** cada vivo arreglado en su guard con test (falla vs 52d2d8c); los no-repro se reproducen con fixtures transcript+mock (o se demuestra corriendo que ya no aplican); H1–H7 cuentan; ningún caso se borra; tabla final por guard (total/arreglados/con-test).
 - **SIMPLIFICAR merge-develop-guard (nuevo):** que haga SOLO (a) squash obligatorio a develop (chequeo DETERMINISTA del flag; releases a main sin squash) + (b) OK del usuario BIEN HECHO — un OK explícito de LISTA ("mergea a develop !15, !1…") pasa SIEMPRE (fix H4), SIN depender de un voto de Haiku ni de que Claude lo cite en el comando; destino resuelto con git/CLI en el dir REAL (fix L167/H2). FUERA: prohibición de `--auto`, regex de estilo del mensaje (traza/Rama:/MR:), frenos por `--repo $VAR`/`cd &&`. El mensaje de squash lo redacta quien mergea; NO hay revisión automática — merge-develop-guard muestra un RECORDATORIO (no freno, regla dura) al mergear a develop: redactar el mensaje a mano con el cambio neto + su porqué + las líneas `Rama:`/`MR:`. La misma frase va a la norma de git y a cerrar-slice. Cada cambio con test; banco merge-develop-guard verde. CONSOLIDA los FP de merge-develop-guard (L51/L167/H4/H5) + Fase 2 ítem (merge-guard parsea `--repo $VAR`/`cd &&`).
 
-## TABLA DE VIVOS ACTUAL (contra código parchado, tras merge del agente 63a7a78)
-| guard | vivos | no-repro | hallazgos |
-|---|---|---|---|
-| git-branch-guard | 0 ✓ | – | H1/L145/H2/H3 ✓ (commit 00df422) |
-| entorno-maquina-guard | 0 ✓ | – | – |
-| secret-scan | (se RETIRA por gitleaks) | – | H6 ✓ pero moot |
-| proteger-arbol | 1 (L11 reset--hard alinea con squash) | – | H7 (regla c ignora separador) |
-| no-bypass-deploy | 2 (L66 ls, L105 git diff de install.sh) | L101 | – |
-| merge-develop-guard | 2 (L51 release entrecomillado, L167 compound -C \$M) | 12 | H4/H5 |
-| dod-verificar | 1 (L71 QA visual turno anterior) | 11 | – |
-| misc | 3 (aviso-drift L127/L171 tier-repo, limpiar-ramas L164 mini-tema) | – | – |
+## TABLA FINAL POR GUARD (tras la tanda de vivos 2026-10-21, fix/corpus-fp-bench — todo LOCAL)
+> Cada fix nace con su test que FALLA vs 52d2d8c (o se DEMUESTRA corriendo que el guard ya era correcto y el
+> FIXTURE estaba mal). "con-test" = banco del corpus verde + (si tocó código) suite 1420·0.
+| guard | vivos previos | arreglados / con-test | pendientes | commit(s) |
+|---|---|---|---|---|
+| git-branch-guard | 0 ✓ | – | – | 00df422 (H1/L145/H2/H3, previo) |
+| entorno-maquina-guard | 0 ✓ | – | – | – |
+| secret-scan | (se RETIRA por gitleaks) | – | migración gitleaks (slice aparte) | – |
+| proteger-arbol | L11 + H7 | 2/2 ✓ (37 FP · 8/8 ctrl+) | – | H7 2b2cf40 · L11 b38d319 + hueco-datos df81f7e |
+| no-bypass-deploy | L66 L105 + subshell | 3/3 ✓ (10 FP · 6/6 ctrl+) | – | d4b24c3 (L66/L105) · 0f54707 (subshell) |
+| merge-develop-guard | L51 L167 + H4 H5 | L51 ✓ (fixture; guard ya correcto) · L167 ✓ (en B) · H4 H5 ✓ (prompt/awk, valida LIVE) | – | L51 bcd7b36 · H4/H5 [juez] |
+| dod-verificar | L71 H8 H9 | H8 ✓ (b3-qc H8 dientes) · L71 H9 ✓ (prompt juez, valida LIVE) | – | H8 e0f81ac · L71/H9 [juez] |
+| misc | aviso-drift L127/L171 · barrer-ramas L164 | 2/2 ✓ (5 FP · 5/5 ctrl+) | – | aviso-drift 083695f (fixture) · L164 05a8483 |
+
+**GRUPO JUEZ/LLM RESUELTO (decisión de claudio 2026-10-21, "no confío nada en lo determinista"):** H4 (prompt del juez
+de merge: una lista de ids en forma `!15`/`#15`/`MR 15` autoriza cada id; pre-filtro determinista de HALLAZGOS:6/53
+DESCARTADO) · H5 (sync multilínea: awk reconstruye el bloque de mensaje USUARIO, no afloja entre mensajes) · L71 (juez
+de dod: re-citar un QA previo → VISUAL=no) · H9 (juez de dod: cerrar una etapa/paso ≠ entregable LISTO → CIERRE=no).
+Cada uno con caso en la batería LIVE (`jlive`/`djlive`), marcado "valida LIVE" — la clasificación real del LLM se mide
+en la prueba-viva con unjordi (gate del bloque). CORPUS CERO-FP: todos los runners del corpus verdes.
 
 
 Encargo (unjordi vía claudio, 2026-10-19): (1) convertir el corpus COMPLETO de FPs (`docs/guards-falsos-positivos.md`, 164 casos) en un banco REPRODUCIBLE por caso (comando + contexto rama/cwd/cd + decisión esperada) que corra cada guard contra TODOS sus casos y quede de gate en `test-brain.sh`; FP que sigan frenando se REPORTAN, no se borran; un caso nuevo suma su fixture en la misma tanda. (2) Reportar conteo pasa/frena por guard ANTES de arreglar. (3) Luego P1 = fixes de git-branch-guard con test que falle contra 52d2d8c.
