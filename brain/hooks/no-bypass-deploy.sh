@@ -75,9 +75,13 @@ _pfx="(^|[;&|\`][[:space:]]*|${_bnd}(bash|sh|zsh|eval)[[:space:]]+|${_bnd}pwsh[[
 # posición de ejecución). Exigir que la ruta entera nazca justo tras el prefijo cierra ese hueco sin
 # tocar la detección real (bash/./ /abs siguen exigiendo el prefijo correcto antes del primer tramo).
 _path='(\./|/)?([A-Za-z0-9_.-]+/)*'
-brain_re="${_pfx}${_path}(install-brain|uninstall-brain)\\.(sh|ps1)([[:space:]]|$|[;&|])"
-gen_re="${_pfx}${_path}(install|deploy|publish)\\.(sh|ps1)([[:space:]]|$|[;&|])"
-mk_re='(^|[;&|`][[:space:]]*)(make|just)[[:space:]]+(install|deploy|publish)([[:space:]]|$|[;&|])'
+# TERMINADOR del basename: espacio, fin, separador/operador o CIERRE de subshell/cmd-subst. Incluye ')' y '`'
+# porque `(bash ./install.sh)` / `$(bash ./install.sh)` cierran el token con ')' pegado al '.sh' (sin esto
+# el subshell SIN espacio antes del ')' CALLABA — BAJO heredado; `( bash … )` con espacios ya avisaba).
+_end='([[:space:]]|$|[;&|`)])'
+brain_re="${_pfx}${_path}(install-brain|uninstall-brain)\\.(sh|ps1)${_end}"
+gen_re="${_pfx}${_path}(install|deploy|publish)\\.(sh|ps1)${_end}"
+mk_re="(^|[;&|\`][[:space:]]*)(make|just)[[:space:]]+(install|deploy|publish)${_end}"
 
 low=$(printf '%s' "$unquoted" | tr 'A-Z' 'a-z')
 

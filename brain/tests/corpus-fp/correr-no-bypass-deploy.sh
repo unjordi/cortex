@@ -34,6 +34,8 @@ cfp_caso "$GUARD" - "ctrl+ make deploy"                          'make deploy' "
 cfp_caso "$GUARD" - "ctrl+ heredoc a bash con ./install.sh real" 'bash <<EOF
 ./install.sh
 EOF' "$D" block
+cfp_caso "$GUARD" - "ctrl+ subshell (bash ./install.sh) SIN espacio antes del ')' → AVISA (BAJO heredado del terminador)" '(bash ./install.sh)' "$D" block
+cfp_caso "$GUARD" - "ctrl+ cmd-subst \$(bash ./deploy.sh) → AVISA" 'echo $(bash ./deploy.sh)' "$D" block
 
 cfp_reporte no-bypass-deploy
 rm -rf "$D"
