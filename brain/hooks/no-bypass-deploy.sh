@@ -60,7 +60,13 @@ printf '%s' "$unquoted" | grep -qE '(^|[[:space:]])(--dry-run|--help|-h|-n)([[:s
 # `eval "…"` / `bash|sh|zsh -c "…"` sin comillas — el texto que llega aquí para un `bash -c
 # "./install-brain.sh"` es literalmente "bash -c ./install-brain.sh"; sin esta alternativa el propio
 # _pfx no reconocía "-c" como prefijo de EJECUCIÓN y el aviso se perdía tras la reinyección.
-_pfx='(^|[;&|`][[:space:]]*|bash[[:space:]]+|sh[[:space:]]+|zsh[[:space:]]+|pwsh[[:space:]]+-file[[:space:]]+|-c[[:space:]]+|eval[[:space:]]+)'
+# BOUNDARY (_bnd): un runner (bash/sh/zsh/pwsh/eval/-c) solo cuenta como EJECUCIÓN si es un TOKEN ENTERO,
+# no el SUFIJO de un nombre de archivo. 'bootstrap.sh macos/install.sh' traía un 'sh ' (la cola de
+# bootstrap.sh) que el prefijo viejo leía como el intérprete `sh` → FP sobre `ls`/`git diff` que solo
+# NOMBRAN los scripts (corpus L66/L105). _bnd exige que antes del runner NO haya un char de nombre
+# ([:alnum:]._): así '.sh' (precedido por '.') ya no dispara, pero '^bash', ' bash', '(bash', '/bin/bash' sí.
+_bnd='(^|[^[:alnum:]._])'
+_pfx="(^|[;&|\`][[:space:]]*|${_bnd}(bash|sh|zsh|eval)[[:space:]]+|${_bnd}pwsh[[:space:]]+-file[[:space:]]+|${_bnd}-c[[:space:]]+)"
 # RUTA opcional entre el prefijo y el basename: solo cuenta si la ruta COMPLETA arranca justo tras el
 # prefijo de arriba (ejecución real: ./foo.sh, /abs/path/foo.sh, bash brain/foo.sh) — antes bastaba un
 # "/" SUELTO pegado al basename como prefijo, y eso disparaba sobre cualquier MENCIÓN con subcarpeta
