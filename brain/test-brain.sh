@@ -3030,6 +3030,37 @@ bz_es_zombie "$DZREPO" feat/multi develop \
 unset CLAUDE_BZ_PRCACHE
 rm -rf "$DZROOT"
 
+# (b3g-p) señal (p) PRESENCIA POR CONTENIDO — SOLO en modo=barrido (2026-10-22). Una sub-rama que entró DENTRO
+# de una CONTENEDORA (épica/integración) cuyo squash combinó VARIAS ramas y nombra SOLO la contenedora, y cuya
+# contenedora ya fue BORRADA, falla (a)/(e)/(d)/(c)/(t) pero su contenido está 100% en develop → con modo=barrido
+# (p) la caza (merge-tree da el árbol de develop). FALLA vs el viejo (la conservaba; medido 2026-10-22, 19 ramas).
+PCROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-pc.XXXXXX")"; PCR="$PCROOT/repo"; mkdir -p "$PCR"
+( cd "$PCR" && git init -q && git config user.email t@t && git config user.name t \
+  && git checkout -q -b develop && echo base > base.txt && git add base.txt && git commit -qm base \
+  && git checkout -q -b feat/pa && echo a1 > a.txt && git add a.txt && git commit -qm a1 && echo a2 >> a.txt && git commit -qam a2 \
+  && git checkout -q develop && git checkout -q -b feat/pb && echo b1 > b.txt && git add b.txt && git commit -qm b1 \
+  && git checkout -q develop && git checkout -q -b epic/px && git merge -q --no-ff feat/pa -m "m a" && git merge -q --no-ff feat/pb -m "m b" \
+  && git checkout -q develop && git merge -q --squash epic/px && git commit -qm "integro la épica px
+Rama: epic/px" \
+  && git branch -D epic/px feat/pb ) >/dev/null 2>&1
+BZ_RAZON=""
+{ bz_es_zombie "$PCR" feat/pa develop barrido && [ "$BZ_RAZON" = p ]; } \
+  && ok "b3g(p): modo=barrido — sub-rama mergeada DENTRO de una contenedora BORRADA (a/e/d/c/t fallan) → ZOMBIE por (p) presencia-por-contenido" \
+  || bad "b3g(p): no podó feat/pa por (p) en modo=barrido (razón='$BZ_RAZON')"
+# SIN modo=barrido (default, p.ej. proteger-arbol): (p) NO aplica → se conserva (la señal es OPT-IN por el llamador)
+BZ_RAZON=""
+bz_es_zombie "$PCR" feat/pa develop \
+  && bad "b3g(p): SIN modo=barrido declaró zombie por (p) — la señal NO debe estar activa por default (razón='$BZ_RAZON')" \
+  || ok "b3g(p): SIN modo=barrido → (p) off → feat/pa se CONSERVA (proteger-arbol y un llamador nuevo no la heredan)"
+# CONTROL: una rama con trabajo REAL no-en-develop → merge-tree da OTRO árbol → NO se marca ni en barrido
+git -C "$PCR" checkout -q develop >/dev/null 2>&1; git -C "$PCR" checkout -q -b feat/pviva >/dev/null 2>&1
+printf 'nuevo-real\n' > "$PCR/viva.txt"; git -C "$PCR" add viva.txt >/dev/null 2>&1; git -C "$PCR" commit -qm viva >/dev/null 2>&1
+BZ_RAZON=""
+bz_es_zombie "$PCR" feat/pviva develop barrido \
+  && bad "b3g(p): marcó zombie una rama con trabajo real no-en-develop (merge-tree debía DIFERIR del árbol de base)" \
+  || ok "b3g(p) CONTROL: rama con trabajo real no-en-develop → conserva aun en modo=barrido"
+rm -rf "$PCROOT"
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (b3h) bz_es_zombie: señal (e) 'Rama: <rama>' en el squash — determinista, LOCAL, SIN red ni gh/glab (A-3) =="
@@ -3064,7 +3095,7 @@ rm -rf "$EEROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "== (b3i) limpiar-ramas: A-3 — sin gh/glab en el PATH y sin la línea 'Rama:', el squash multi-commit reporta INDETERMINADA, nunca 'trabajo sin integrar' a secas =="
+echo "== (b3i) limpiar-ramas: sin gh/glab y sin 'Rama:', el squash multi-commit se resuelve por la señal (p) CONTENIDO (modo=barrido) → INTEGRADA offline; nunca 'trabajo sin integrar' a secas =="
 DIROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-di.XXXXXX")"; DIREPO="$DIROOT/repo"; mkdir -p "$DIREPO"
 git -C "$DIREPO" init -q >/dev/null 2>&1
 git -C "$DIREPO" symbolic-ref HEAD refs/heads/develop >/dev/null 2>&1
@@ -3078,8 +3109,8 @@ git -C "$DIREPO" checkout -q develop >/dev/null 2>&1
 git -C "$DIREPO" merge --squash feat/multi >/dev/null 2>&1; git -C "$DIREPO" commit -qm "squash sin convencion" >/dev/null 2>&1
 DICACHE="$DIROOT/prcache"; printf 'feat/multi\t%s\n' "$DI_OID" > "$DICACHE"
 diout="$(cd "$DIREPO" && PATH=/usr/bin:/bin bash "$HOOKS/limpiar.sh" ramas --dry-run --no-fetch 2>&1)"
-printf '%s' "$diout" | grep -q 'INDETERMINADA' && ok "b3i: PATH de launchd (sin gh/glab) → reporta INDETERMINADA" || bad "b3i: no reportó INDETERMINADA; got: $diout"
-printf '%s' "$diout" | grep -q 'CONSERVADA (trabajo sin integrar): feat/multi' && bad "b3i: afirmó 'trabajo sin integrar' cuando NO SE PUDO comprobar (mentira de A-3)" || ok "b3i: NO afirma 'trabajo sin integrar' a secas (ya no miente)"
+printf '%s' "$diout" | grep -q 'borraría: feat/multi' && ok "b3i (2026-10-22): sin gh/glab pero con la señal (p) por CONTENIDO (modo=barrido) → feat/multi INTEGRADA y se poda (el contenido lo prueba offline; ya no queda INDETERMINADA)" || bad "b3i: (p) no reportó integrada sin gh/glab; got: $diout"
+printf '%s' "$diout" | grep -q 'CONSERVADA (trabajo sin integrar): feat/multi' && bad "b3i: afirmó 'trabajo sin integrar' cuando su contenido SÍ está en develop (mentira)" || ok "b3i: NO afirma 'trabajo sin integrar' a secas (su contenido está integrado)"
 diout2="$(cd "$DIREPO" && PATH=/usr/bin:/bin CLAUDE_BZ_PRCACHE="$DICACHE" bash "$HOOKS/limpiar.sh" ramas --dry-run --no-fetch 2>&1)"
 printf '%s' "$diout2" | grep -q 'borraría: feat/multi' && ok "b3i: con el PR-cache inyectado (equivalente a tener gh/glab) → integrada, se poda" || bad "b3i: con PR-cache inyectado no podó feat/multi; got: $diout2"
 rm -rf "$DIROOT"
@@ -6528,6 +6559,7 @@ drift-cerebro-comun|verificar-cerebro
 checkpoint|checkpoint-mecanico
 checkpoint|contrato-hilo
 analizar-comando-git|proteger-arbol
+proteger-arbol|ramas-zombie
 aviso-contexto|checkpoint-mecanico-comun
 aviso-contexto|checkpoint-mecanico
 checkpoint-mecanico|checkpoint-mecanico-comun
@@ -6579,6 +6611,9 @@ sincronizar-tasklist|to-do"
 # quedaría ciego a -C/git.exe/cross-repo) — es lib<->consumidor, como
 # delegacion-comun|delegacion-gate. La lib solo MENCIONA a proteger-arbol en un comentario (por qué el
 # heredoc-aware reemplaza su viejo filtro propio); no hay un source de vuelta ni contenido que rebote.
+# proteger-arbol|ramas-zombie: proteger-arbol USA bz_es_zombie (su carril B1 decide el riesgo de un `branch
+# -D` por rama) — consumidor→lib; ramas-zombie solo MENCIONA a proteger-arbol en un comentario (por qué la
+# señal (p) NO corre ahí: proteger-arbol pregunta por commits orfanados, no por contenido). Sin source de vuelta.
 # analizar-comando-git|limpiar-residuo: acg__cache_confiable usa
 # CLAUDE_RESIDUO_DIAS_TMP como fallback de TTL para que ambos compartan la MISMA política declarada (7 días)
 # sobre la MISMA familia de archivos (acg-mrdest-*) — limpiar-residuo YA mencionaba a analizar-comando-git
@@ -9324,6 +9359,14 @@ if [ -d "$PAB/.git" ] && [ -f "$PA" ]; then
   if printf '%s' "$solo" | grep -q 'feat/b'; then
     ok "B1(c) control: 'branch -D feat/b' sin integrar → AVISA (la rama tiene trabajo propio)"
   else bad "B1(c) control: 'branch -D feat/b' sin integrar NO avisó (got '$solo')"; fi
+  # (2026-10-22) PIN del SCOPE de la señal (p): feat/b es un commit VACÍO → su árbol es IDÉNTICO al de develop,
+  # así que en el BARRIDO (p) lo declararía integrado. PERO proteger-arbol pregunta "¿orfanaría un COMMIT sin
+  # pushear?" y un commit vacío SÍ se orfana → NO recibe modo=barrido y SIGUE avisando. Guarda contra que (p)
+  # se cuele en proteger-arbol.
+  _bt_dev="$(git -C "$PAB" rev-parse develop^{tree} 2>/dev/null)"; _mt_fb="$(git -C "$PAB" merge-tree --write-tree develop feat/b 2>/dev/null | head -1)"
+  { [ -n "$_bt_dev" ] && [ "$_bt_dev" = "$_mt_fb" ] && printf '%s' "$solo" | grep -q 'feat/b'; } \
+    && ok "B1(c) scope-(p): feat/b tiene árbol IDÉNTICO a develop (p lo cazaría en el barrido) PERO proteger-arbol SIGUE avisando (no usa modo=barrido; un commit vacío se orfana igual)" \
+    || bad "B1(c) scope-(p): el árbol no era idéntico o proteger-arbol dejó de avisar (¿se coló (p) en proteger-arbol?)"
   if [ -z "$(printf '%s' "$comp" | tr -d '[:space:]')" ]; then
     ok "B1(c): 'git merge feat/b && git branch -D feat/b' → SILENCIO (mergeada en el mismo comando)"
   else bad "B1(c): el compound merge&&branch-D siguió avisando (got '$comp')"; fi

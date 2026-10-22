@@ -57,7 +57,7 @@ if ! bz_base_valida "$ROOT" "$base"; then
 fi
 bz_aviso="$(bz_aviso_base "$ROOT")"
 [ -n "$bz_aviso" ] && echo "  (aviso: $bz_aviso — Base: $base)"   # M-2
-es_zombie() { bz_es_zombie "$ROOT" "$1" "$base"; }  # $1 = rama
+es_zombie() { bz_es_zombie "$ROOT" "$1" "$base" barrido; }  # $1 = rama · modo=barrido → activa la señal (p) presencia-por-contenido
 
 # PROTECCIÓN ANTI-AGENTE-VIVO (GRAVE 2026-10-20, axon-master): un worktree de un agente que ARRANCA sale de
 # la base SIN commits propios todavía → por equivalencia de parche es INDISTINGUIBLE de "ya integrado" → el

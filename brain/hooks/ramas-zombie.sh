@@ -286,10 +286,12 @@ bz_remota_integrada() {
   BZ_RRAZON=vivo; return 1
 }
 
-# bz_es_zombie ROOT BR BASE → 0 si BR ya está integrada a BASE (zombie), 1 si conservar. Deja el MOTIVO en
+# bz_es_zombie ROOT BR BASE [MODO] → 0 si BR ya está integrada a BASE (zombie), 1 si conservar. MODO="barrido"
+# (lo pasan limpiar-ramas/worktrees; proteger-arbol NO) activa la señal (p). Deja el MOTIVO en
 # $BZ_RAZON: a=ancestro · e=squash con "Rama:" en el log · d=PR/MR mergeado · c=cherry patch-equivalente ·
-# t=TRANSITIVA (un salto BR→X→BASE) · r=integrada en la base REMOTA (origin/<base> adelantada; su trabajo ya
-# vive en el remoto) · b=remota borrada sin commits propios · vivo=commits propios
+# p=PRESENCIA por contenido (merge-tree da el árbol de base; SOLO en modo=barrido; red para lo mergeado
+# DENTRO de una contenedora sin traza propia) · t=TRANSITIVA (un salto BR→X→BASE) · r=integrada en la base
+# REMOTA (origin/<base> adelantada; su trabajo ya vive en el remoto) · b=remota borrada sin commits propios · vivo=commits propios
 # confirmados (con o sin remota) · indeterminado=había '+' en git cherry pero NO se pudo consultar el host
 # para descartar un squash-multi ya mergeado (la acción es conservar igual, pero el reporte no debe
 # afirmar "vivo" con certeza).
@@ -313,13 +315,33 @@ _bz_squash_ct() {
   return 1
 }
 
-# _bz_integrada_directa ROOT BR BASE → 0 si BR está integrada a BASE por una señal POSITIVA DIRECTA
-# (a ancestro · e "Rama:" en el squash · d PR/MR mergeado · c patch-equivalente sin '+'). Sin (b)/upstream
-# ni transitiva. Fija $BZ_RAZON con la letra al acertar (no la toca al fallar). La comparten bz_es_zombie
-# (BR→BASE) y el carril transitivo (t) para el 2º eslabón X→BASE — UNA sola definición de "las señales de
-# siempre", sin divergencia.
+# (p) PRESENCIA POR CONTENIDO — SEÑAL DEL BARRIDO (modo=barrido), NUNCA de proteger-arbol. Red para lo YA
+# mergeado SIN traza propia: una rama que entró DENTRO de una contenedora (épica/integración) cuyo squash
+# nombra SOLO la contenedora no es ancestro, no tiene su `Rama:`, no tiene PR propio y `git cherry` no la
+# empareja → (a)/(e)/(d)/(c) fallan aunque su CONTENIDO esté 100% en la base (medido 2026-10-22, 19 ramas).
+# Señal: fusionar BASE con BR da el MISMO ÁRBOL que BASE ⇒ BR no aporta NADA de contenido que no esté ya en
+# BASE. Usa `git merge-tree --write-tree` (git ≥2.38; su 1ª línea en un merge LIMPIO es el OID del árbol); si
+# la subcomando no existe o el merge CONFLICTÚA (exit≠0) → NO aplica (conservador). Compara ÁRBOLES → squash-
+# safe. SOLO en el BARRIDO (limpiar-ramas/worktrees, que pregunta "¿el trabajo está integrado, seguro borrar?"):
+# proteger-arbol pregunta OTRA cosa ("¿orfanaría un COMMIT sin pushear?", p.ej. un commit VACÍO con árbol
+# idéntico SÍ se orfana) → NO recibe modo=barrido y (p) queda APAGADA ahí. Un llamador nuevo sin el modo
+# tampoco la hereda (fail-safe).
+_bz_presencia_contenido() {
+  local ROOT="$1" br="$2" base="$3" base_tree mt_tree
+  base_tree=$(git -C "$ROOT" rev-parse --verify -q "$base^{tree}" 2>/dev/null) || return 1
+  mt_tree=$(git -C "$ROOT" merge-tree --write-tree "$base" "$br" 2>/dev/null) || return 1   # exit≠0 (conflicto/git viejo) → NO aplica
+  mt_tree=$(printf '%s\n' "$mt_tree" | head -1)
+  [ -n "$mt_tree" ] && [ "$mt_tree" = "$base_tree" ]
+}
+
+# _bz_integrada_directa ROOT BR BASE [MODO] → 0 si BR está integrada a BASE por una señal POSITIVA DIRECTA
+# (a ancestro · e "Rama:" en el squash · d PR/MR mergeado · c patch-equivalente sin '+' · p presencia por
+# contenido SOLO si MODO=barrido). Sin (b)/upstream ni transitiva. Fija $BZ_RAZON con la letra al acertar (no
+# la toca al fallar). La comparten bz_es_zombie (BR→BASE) y el carril transitivo (t) para el 2º eslabón X→BASE
+# — UNA sola definición de "las señales de siempre", sin divergencia. MODO lo FIJA el llamador (el barrido pasa
+# "barrido"; proteger-arbol no pasa nada → (p) off).
 _bz_integrada_directa() {
-  local ROOT="$1" br="$2" base="$3" cherry _sq_ct _br_ct
+  local ROOT="$1" br="$2" base="$3" modo="${4:-}" cherry _sq_ct _br_ct
   git -C "$ROOT" merge-base --is-ancestor "$br" "$base" 2>/dev/null && { BZ_RAZON=a; return 0; }  # (a)
   # (e) ACOTADA: el pie "Rama: <br>" está en la base, PERO solo vale si BR no avanzó tras ese squash
   # — si no, (e) borraría los commits nuevos (reúso de la rama). Compara el committer-date del squash que la
@@ -333,6 +355,7 @@ _bz_integrada_directa() {
   bz_pr_mergeado "$ROOT" "$br" && { BZ_RAZON=d; return 0; }                                          # (d)
   cherry=$(git -C "$ROOT" cherry "$base" "$br" 2>/dev/null)                                          # (c)
   if [ -n "$cherry" ] && ! printf '%s\n' "$cherry" | grep -q '^+'; then BZ_RAZON=c; return 0; fi
+  [ "$modo" = barrido ] && _bz_presencia_contenido "$ROOT" "$br" "$base" && { BZ_RAZON=p; return 0; } # (p) solo en el barrido
   return 1
 }
 
@@ -365,23 +388,23 @@ _bz_base_remota() {
 # al MISMO commit que BR — un hermano en el mismo tip NO es un intermediario que integró a BR (su propio
 # PR/señal no debe volver zombie a BR; eso lo conserva el carril (b)/vivo).
 _bz_integrada() {
-  local ROOT="$1" br="$2" base="$3" x brrev xrev
-  _bz_integrada_directa "$ROOT" "$br" "$base" && return 0   # (a)(e)(d)(c) directas BR→BASE
+  local ROOT="$1" br="$2" base="$3" modo="${4:-}" x brrev xrev
+  _bz_integrada_directa "$ROOT" "$br" "$base" "$modo" && return 0   # (a)(e)(d)(c)(p si barrido) directas BR→BASE
   brrev=$(git -C "$ROOT" rev-parse --verify -q "$br^{commit}" 2>/dev/null)
   while IFS= read -r x; do
     [ -z "$x" ] && continue
     { [ "$x" = "$br" ] || [ "$x" = "$base" ]; } && continue
     xrev=$(git -C "$ROOT" rev-parse --verify -q "$x^{commit}" 2>/dev/null)
     [ -n "$brrev" ] && [ "$xrev" = "$brrev" ] && continue
-    if _bz_integrada_directa "$ROOT" "$x" "$base"; then BZ_RAZON=t; return 0; fi
+    if _bz_integrada_directa "$ROOT" "$x" "$base" "$modo"; then BZ_RAZON=t; return 0; fi
   done < <(git -C "$ROOT" branch --contains "$br" --format='%(refname:short)' 2>/dev/null)
   return 1
 }
 
 bz_es_zombie() {
-  local ROOT="$1" br="$2" base="$3" up cherry baserem
+  local ROOT="$1" br="$2" base="$3" modo="${4:-}" up cherry baserem
   BZ_RAZON=""
-  _bz_integrada "$ROOT" "$br" "$base" && return 0   # (a)(e)(d)(c) directas o (t) transitiva contra base LOCAL
+  _bz_integrada "$ROOT" "$br" "$base" "$modo" && return 0   # (a)(e)(d)(c)(p si barrido) o (t) transitiva contra base LOCAL
   # (r) BASE REMOTA ADELANTADA — la <base> LOCAL puede estar atrasada respecto al remoto: hiciste `git fetch`
   # (origin/<base> ya trae el squash) pero NO `git pull` a tu <base> local. El patrón `git pull --ff-only &&
   # git branch -D <rama>` lo dispara porque el guard corre ANTES de que el pull adelante la base local. Si BR
@@ -389,7 +412,7 @@ bz_es_zombie() {
   # nada. SOLO lee refs locales (sin red); si origin/<base> no existe o también está atrasado, no matchea →
   # cae al tail (FRENA como hoy). NADA se afloja: es señal POSITIVA (el trabajo está, verificado, en la base
   # remota). Misma definición de "integrada" (directa+transitiva) que contra la base local.
-  if baserem=$(_bz_base_remota "$ROOT" "$base") && [ -n "$baserem" ] && _bz_integrada "$ROOT" "$br" "$baserem"; then
+  if baserem=$(_bz_base_remota "$ROOT" "$base") && [ -n "$baserem" ] && _bz_integrada "$ROOT" "$br" "$baserem" "$modo"; then
     BZ_RAZON=r; return 0
   fi
   # (b) remota borrada — NUNCA a ciegas. La ausencia de la remota NO prueba que la rama esté integrada

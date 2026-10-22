@@ -161,7 +161,7 @@ while IFS= read -r br; do
     esac
     continue
   fi
-  if bz_es_zombie "$ROOT" "$br" "$base"; then
+  if bz_es_zombie "$ROOT" "$br" "$base" barrido; then   # modo=barrido → activa la señal (p) presencia-por-contenido
     remoto_pre="$(rama_remoto "$br")"
     local_sha="$(git -C "$ROOT" rev-parse "$br" 2>/dev/null || true)"
     if [ "$DRY" = 1 ]; then
