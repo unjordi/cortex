@@ -127,6 +127,26 @@ else manual 164 "limpiar-ramas BORRÓ la remota 'epic-benchmarks-fixes' (mini de
 if git -C "$BR" ls-remote --heads origin viva-remota 2>/dev/null | grep -q viva-remota; then manual_ctrl "ctrl+ limpiar-ramas CONSERVA una remota con trabajo sin integrar" OK
 else manual_ctrl "ctrl+ limpiar-ramas CONSERVA una remota con trabajo sin integrar" MAL; fi
 
+# ───────────────────────── barrer-ramas vía (B) · repo del merge por --repo (L187) ─────────────────────────
+# Un `gh pr merge --repo <slug>` corrido desde OTRO repo barre el repo del SLUG (su clon local), NO el cwd
+# (corpus L187: barrió plantilladotnet en vez de PowerScripts). El aviso del hook nombra "EN <ROOT>".
+L187C="$ROOT/code187"; mkdir -p "$L187C"
+mk187() { local d="$L187C/$1"; git init -q -b develop "$d"; git -C "$d" config user.email t@t; git -C "$d" config user.name t; git -C "$d" remote add origin "git@github.com:$2.git"; printf x > "$d/f"; git -C "$d" add -A >/dev/null 2>&1; git -C "$d" commit -q -m base >/dev/null 2>&1; }
+mk187 plantilladotnet unjordi/plantilladotnet
+mk187 PowerScripts    unjordi/PowerScripts
+bramas_en() {  # $1=cmd $2=cwd → el ROOT que nombra el aviso ("EN <root>"), o vacío si hace skip
+  local fh out; fh=$(cfp_fakehome)
+  out=$(jq -nc --arg c "$1" --arg cwd "$2" '{tool_name:"Bash",tool_input:{command:$c},cwd:$cwd}' | env HOME="$fh" bash "$HOOKS/barrer-ramas.sh" 2>/dev/null | grep -o 'EN [^ ]*' | head -1 | sed 's/^EN //')
+  rm -rf "$fh"; printf '%s' "$out"
+}
+en=$(bramas_en 'gh pr merge 238 --repo unjordi/PowerScripts --squash --delete-branch' "$L187C/plantilladotnet")
+case "$en" in */PowerScripts) manual 187 "barrer-ramas resuelve el repo del merge por --repo <slug> (barre PowerScripts, NO el cwd plantilladotnet)" PASA ;;
+  *) manual 187 "barrer-ramas barrió '$en' (debía ser el clon de --repo unjordi/PowerScripts, no el cwd)" FRENA ;; esac
+en2=$(bramas_en 'gh pr merge 5 --squash --delete-branch' "$L187C/plantilladotnet")
+case "$en2" in */plantilladotnet) manual_ctrl "ctrl+ barrer-ramas SIN --repo barre el cwd (plantilladotnet)" OK ;; *) manual_ctrl "ctrl+ barrer-ramas SIN --repo barre el cwd — barrió '$en2'" MAL ;; esac
+en3=$(bramas_en 'gh pr merge 9 --repo $R --squash' "$L187C/plantilladotnet")
+case "$en3" in '') manual_ctrl "ctrl+ barrer-ramas con --repo \$VAR opaco → NO barre a ciegas (skip, es un DELETE)" OK ;; *) manual_ctrl "ctrl+ barrer-ramas con --repo \$VAR opaco barrió '$en3' (debía skip)" MAL ;; esac
+
 cfp_reporte misc
 rm -rf "$ROOT"
 [ "$CFP_CTRL_BAD" -eq 0 ] || exit 2

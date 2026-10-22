@@ -147,6 +147,7 @@ cfp_caso "$GUARD" 151 "google-chrome-stable contra URL local con query" 'google-
 
 # ── CONTROLES POSITIVOS (DEBEN avisar) ──
 cfp_caso "$GUARD" - "ctrl+ reset --hard HEAD~1 con commits sin pushear (árbol principal)" "git reset --hard HEAD~1" "$REPO" block
+cfp_caso "$GUARD" - "ctrl+ L186 by-design: 'gh pr merge … ; … ; git branch -D <rama>' — el \`;\` NO garantiza el merge y gh-pr-merge NO es el patrón \`git merge X &&\` (H7) → una rama NO integrada AVISA (correcto en PreToolUse, antes de que corra el merge del compound)" "gh pr merge 237 --squash --delete-branch ; git worktree remove x ; git branch -D pa/viva" "$REPO" block
 cfp_caso "$GUARD" - "ctrl+ L11 data-loss: EN develop ADELANTE con un commit LOCAL, reset --hard origin/develop → AVISA (lo orfanaría; hueco MEDIO cerrado)" "git reset --hard origin/develop" "$REPO2AH" block
 cfp_caso "$GUARD" - "ctrl+ L11 branch-scoping: FEATURE con reset --hard origin/develop → AVISA (no es develop|main, perdería trabajo)" "git reset --hard origin/develop" "$REPO3" block
 cfp_caso "$GUARD" - "ctrl+ L11 target-scoping: EN develop con reset --hard HEAD~1 (no origin/<base>) → AVISA (solo el sync a origin/<base> se suprime)" "git reset --hard HEAD~1" "$REPO2AH" block

@@ -159,6 +159,7 @@ done
 mc 160 "gh pr merge 21 --repo unjordi/armada-rp6 --squash con grant durable en armada-rp6" 'gh pr merge 21 --repo unjordi/armada-rp6 --squash --delete-branch --subject "feat(rp6): resumen curado del cambio neto y su porque en prosa suficiente (#21)"' "$SESS" pass
 mc 161 "glab mr merge 73 --repo <slug anidado> con grant en mfx (TARGET_ROOT desde el --repo, no del cwd)" 'glab mr merge 73 --repo mx_pind_devops/mx_megaflux_devops/mfx_infraestructuradigital --squash --remove-source-branch --squash-message "fix(mfx): resumen curado del cambio neto y su porque en prosa suficiente Rama: fix/y MR: !73"' "$SESS" pass
 mc 167 "compound: gh pr merge --repo axon --squash ; M=<dir>; git -C \$M pull (grant en axon)" "gh pr merge 442 --repo unjordi/axon --squash --delete-branch --subject \"fix(axon): resumen curado del cambio neto y su porque en prosa suficiente (#442)\" ; M=$AXON; git -C \$M pull" "$SESS" pass
+mc 188 "compound 'cd <literal> && … && gh pr merge --repo <slug>' con grant en el slug (B: el --repo LITERAL resuelve el clon del slug, NO el cwd del cd) — corpus: el grant de PowerScripts no se veía por el cd compuesto" "cd $PERS && echo prep && gh pr merge 44 --repo unjordi/axon --squash --delete-branch --subject \"fix(axon): resumen curado del cambio neto y su porque en prosa suficiente (#44)\"" "$SESS" pass
 
 # ── D: evidencia de autorización que debe llegar al juez (juez MOCKEADO: mide la plomería de la evidencia) ──
 printf 'CITA: mergea #280/#281 a develop\nVEREDICTO: ALLOW\n' > "$ROOT/raw-ask.txt"

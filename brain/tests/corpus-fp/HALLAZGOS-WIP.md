@@ -26,6 +26,21 @@ de dod: re-citar un QA previo → VISUAL=no) · H9 (juez de dod: cerrar una etap
 Cada uno con caso en la batería LIVE (`jlive`/`djlive`), marcado "valida LIVE" — la clasificación real del LLM se mide
 en la prueba-viva con unjordi (gate del bloque). CORPUS CERO-FP: todos los runners del corpus verdes.
 
+## ENTRADAS NUEVAS L186-190 (claudio, 2026-10-21, en el checkout PRINCIPAL del corpus doc) — triage
+Las 5 entradas viven en `docs/guards-falsos-positivos.md` develop-side (claudio); mi rama solo suma los BANCOS:
+- **L186 proteger-arbol** — `gh pr merge 237 … ; … ; git branch -D feat/kitty-mac`: POR DISEÑO. El aviso se calcula
+  en PreToolUse ANTES de que corra el merge del mismo compound, y el `;` NO garantiza la integración (gh-pr-merge
+  tampoco es el patrón `git merge X &&` de H7) → avisar sobre una rama aún-no-integrada es correcto. **Control+** en
+  `correr-proteger-arbol.sh`.
+- **L187 barrer-ramas** — `gh pr merge 238 --repo unjordi/PowerScripts` desde cwd plantilladotnet barría el CWD:
+  BUG REAL arreglado — el repo del merge se resuelve por el `--repo <slug>` (su clon local), igual que mdg B; con
+  destino incierto (--repo $VAR / cd $VAR / --repo literal sin clon) NO barre a ciegas (skip, es un DELETE). Test
+  `L187` + 2 controles en `correr-misc.sh`. Dientes vs 52d2d8c (usaba solo `acg_target_dir`).
+- **L188 merge-develop-guard** — `cd ~/code/PowerScripts && … && gh pr merge … --repo unjordi/PowerScripts`: lo CUBRE
+  B (el `--repo` LITERAL resuelve el clon del slug, no el cwd del cd) → el grant del slug se ve. Caso `L188` en el banco.
+- **L189 git-branch-guard** — retirado (2976bbc): POR DISEÑO, no aplica. **L190 clasificador-auto-mode** — es del
+  clasificador de Claude Code, NO un guard del cerebro: fuera de alcance.
+
 
 Encargo (unjordi vía claudio, 2026-10-19): (1) convertir el corpus COMPLETO de FPs (`docs/guards-falsos-positivos.md`, 164 casos) en un banco REPRODUCIBLE por caso (comando + contexto rama/cwd/cd + decisión esperada) que corra cada guard contra TODOS sus casos y quede de gate en `test-brain.sh`; FP que sigan frenando se REPORTAN, no se borran; un caso nuevo suma su fixture en la misma tanda. (2) Reportar conteo pasa/frena por guard ANTES de arreglar. (3) Luego P1 = fixes de git-branch-guard con test que falle contra 52d2d8c.
 

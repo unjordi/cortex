@@ -79,6 +79,19 @@ ROOT=""
 if [ "$es_merge" = 1 ]; then
   ROOT="$(acg_target_dir "$cmd" "$pcwd" 2>/dev/null || true)"
   case "$ROOT" in ''|'.') ROOT="" ;; esac   # sin señal útil → cae al default de abajo
+  # L187: el repo OBJETIVO de un merge con `--repo <slug>` LITERAL es el del SLUG, NO el cwd — igual que
+  # merge-develop-guard B. acg_target_dir solo mira -C/cd/cwd → sin -C/cd, un `gh pr merge --repo org/X`
+  # desde OTRO repo resolvía el cwd y este hook (que BORRA ramas) barría el repo EQUIVOCADO (corpus L187:
+  # `gh pr merge --repo unjordi/PowerScripts` desde plantilladotnet barría plantilladotnet). Resolver por el
+  # SLUG; FAIL-SAFE para un DELETE: destino INCIERTO (--repo $VAR, cd $VAR, o --repo literal sin clon local)
+  # → NO barrer a ciegas (skip) en vez de barrer el cwd.
+  _rep=$(acg_repo_explicito "$cmd" 2>/dev/null || true)
+  if [ "$_rep" = OPACO ] || acg_dir_opaco "$cmd" 2>/dev/null; then
+    exit 0
+  elif [ -n "$_rep" ]; then
+    _clon=$(acg_clon_local_de_slug "$_rep" "$ROOT" 2>/dev/null || true)
+    if [ -n "$_clon" ]; then ROOT="$_clon"; else exit 0; fi
+  fi
 fi
 [ -n "$ROOT" ] || ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo "")}"
 { [ -n "$ROOT" ] && git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; } || exit 0
