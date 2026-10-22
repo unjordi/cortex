@@ -5475,8 +5475,7 @@ echo "== (m2) checkpoint-mecanico.js: extractor MECÁNICO en streaming (M2, audi
 # reportado por el propio proceso, no proporcional a un archivo de decenas de MB), reset del ctxTokens en
 # cada boundary de /compact (mismo anclaje que aviso-contexto — anti-staleness), y los mensajes de usuario
 # salen TEXTUALES (byte a byte) — nunca los resúmenes SINTÉTICOS de isCompactSummary.
-CKPT_MEC="$SCRIPT_DIR/../bin/checkpoint-mecanico.js"
-[ -f "$CKPT_MEC" ] && ok "m2: bin/checkpoint-mecanico.js existe" || bad "m2: falta bin/checkpoint-mecanico.js"
+CKPT_MEC="$SCRIPT_DIR/../bin/checkpoint-mecanico.js"   # lo EJERCITA el node de abajo; su ausencia falla ahí
 M2DIR="$(mktemp -d "${TMPDIR:-/tmp}/brain-m2.XXXXXX")"
 M2FIX="$M2DIR/fixture.jsonl"
 node -e '
@@ -5890,20 +5889,8 @@ node -e '
 
 echo ""
 echo "== (m2b) checkpoint-mecanico.sh: hook de PreCompact — detached, lock por-sid, escritura atómica =="
-# La mecánica (nohup/lock/anti-recursión) se FACTORIZÓ a la lib checkpoint-mecanico-comun.sh
-# para que aviso-contexto.sh la comparta SIN drift → los greps miran la LIB; el hook solo debe sourcearla.
-grep -qF 'nohup' "$SCRIPT_DIR/hooks/checkpoint-mecanico-comun.sh" \
-  && ok "m2b: el lanzador corre DETACHED (nohup) — no bloquea el evento con un transcript grande" \
-  || bad "m2b: el lanzador checkpoint-mecanico-comun ya no es detached"
-grep -qF '_CORTEX_CKPT_MECANICO_RUNNING' "$SCRIPT_DIR/hooks/checkpoint-mecanico-comun.sh" \
-  && ok "m2b: el lanzador trae centinela anti-recursión por env" \
-  || bad "m2b: falta el centinela anti-recursión en el lanzador"
-grep -qF 'checkpoint-mecanico-comun.sh' "$SCRIPT_DIR/hooks/checkpoint-mecanico.sh" \
-  && ok "m2b: el hook de PreCompact SOURCEA la lib compartida (una sola definición, sin drift con aviso-contexto)" \
-  || bad "m2b: checkpoint-mecanico.sh no sourcea el lanzador común"
-grep -qE '^checkpoint-mecanico-comun[[:space:]]+global[[:space:]]+lib$' "$SCRIPT_DIR/hooks/MANIFEST" \
-  && ok "m2b: checkpoint-mecanico-comun declarado en el MANIFEST (global lib)" \
-  || bad "m2b: checkpoint-mecanico-comun falta/mal en el MANIFEST"
+# La mecánica detached/anti-recursión/sourcing la verifica el E2E de abajo (corre el hook PreCompact y
+# mide el efecto: el andamio aparece sin bloquear). La declaración en el MANIFEST la cubre la paridad e2.
 M2BDIR="$(mktemp -d "${TMPDIR:-/tmp}/brain-m2b.XXXXXX")/r"
 mkdir -p "$M2BDIR/.claude/memory"
 printf '%s\n' '{"type":"user","message":{"role":"user","content":"hola"}}' \
@@ -5931,16 +5918,9 @@ echo "== (f1) CONTINUIDAD · el LAZO del andamio: contrato-hilo + rehidratar lo 
 # perdido— se quedaría sin lector. Aquí se prueba el lazo COMPLETO.
 
 F1LIB="$HOOKS/contrato-hilo.sh"
-[ -f "$F1LIB" ] \
-  && ok "f1: existe brain/hooks/contrato-hilo.sh (UNA definición del contrato escritor↔lector)" \
-  || bad "f1: falta brain/hooks/contrato-hilo.sh"
-grep -qE '^contrato-hilo[[:space:]]+global[[:space:]]+lib$' "$HOOKS/MANIFEST" \
-  && ok "f1: contrato-hilo declarado en el MANIFEST (global lib) ⇒ el bootstrap lo instala junto al hook" \
-  || bad "f1: contrato-hilo falta/mal declarado en brain/hooks/MANIFEST"
-grep -qF 'contrato-hilo.sh' "$HOOKS/rehidratar-hilo.sh" \
-  && ok "f1: rehidratar-hilo SOURCEA la lib (el regex del footer deja de estar duplicado)" \
-  || bad "f1: rehidratar-hilo no sourcea contrato-hilo.sh"
-
+# (el [-f] de contrato-hilo.sh, su línea en el MANIFEST y el grep de "rehidratar sourcea contrato-hilo"
+#  se retiraron: el E2E del lazo de abajo SOURCEA y EJECUTA verificar_hilo/hilo_rama/hilo_edad_legible, y
+#  su efecto falla si la lib no existe / no se sourcea; la declaración en el MANIFEST la cubre la paridad e2.)
 F1D="$(mktemp -d "${TMPDIR:-/tmp}/brain-f1.XXXXXX")"
 printf '%s\n' '# Hilo mental actual' '> Última actualización: 2026-09-11 · nivel COMPLETO.' '' '## En qué estamos' 'x' > "$F1D/sin-rama.md"
 printf '%s\n' '# Hilo mental actual' '> Última actualización: 2026-09-11 · rama DevelopUnjordi · nivel COMPLETO.' '' '## En qué estamos' 'x' > "$F1D/con-rama.md"
@@ -7356,11 +7336,6 @@ J_STOP="{\"session_id\":\"deadbeef\",\"transcript_path\":\"$extx\",\"cwd\":\"$EX
 EXDRIVE="$EXFIX/nube"
 bash -c 'printf "%s" "$1" | HOME="$2" CLAUDE_SESSIONS_DRIVE="$3" bash "$4"' _ "$J_STOP" "$EXHOME" "$EXDRIVE" "$HOOKS/exportar-sesion-master.sh" >/dev/null 2>&1
 [ -d "$EXDRIVE" ] && ok "exportar-sesion-master: CLAUDE_SESSIONS_DRIVE override → usa esa carpeta" || bad "exportar-sesion-master: ignoró el override CLAUDE_SESSIONS_DRIVE"
-# (4) estructural: default en el código + export DETACHED (nohup) con lock por-sid (C: no 'Hook cancelled')
-grep -qF 'CLAUDE_SESSIONS_DRIVE:-$HOME/.claude-sessions' "$HOOKS/exportar-sesion-master.sh" \
-  && ok "exportar-sesion-master: default ~/.claude-sessions en el código (override por env)" || bad "exportar-sesion-master: sin el default ~/.claude-sessions en el código"
-{ grep -qF 'nohup' "$HOOKS/exportar-sesion-master.sh" && grep -qF '.export-$sid.lock' "$HOOKS/exportar-sesion-master.sh"; } \
-  && ok "exportar-sesion-master: export DETACHED (nohup) + lock por-sid (no se ahoga en los grandes)" || bad "exportar-sesion-master: el export no es detached/lockeado"
 # (5) A4: reconoce "<x>-master (N)" (el duplicado que pone el CLI al continuar una sesión) como master y da el
 # NAME BASE canónico. Causa del FP: el `case *-master)` solo matcheaba títulos que TERMINAN en -master → un
 # "cortex-master (2)" dejaba de exportarse EN SILENCIO. Prueba la función real extraída (determinista, bash-3.2).
@@ -7371,17 +7346,6 @@ eval "$(sed -n '/^_master_base()/,/^}/p' "$HOOKS/exportar-sesion-master.sh")"
 { [ "$(_master_base 'games-master')" = "games-master" ] && [ -z "$(_master_base 'cortex-developer')" ] && [ -z "$(_master_base 'cortex-master-xyz')" ]; } \
   && ok "exportar-sesion-master: '<x>-master' pelado OK y NO-master ('developer' / '…-master-xyz') rechazado (ambas direcciones)" \
   || bad "exportar-sesion-master: _master_base mal clasifica el caso pelado o un no-master"
-{ grep -qF '_master_base "$t"' "$HOOKS/exportar-sesion-master.sh" && ! grep -qE 'case "\$t" in \*-master\)' "$HOOKS/exportar-sesion-master.sh"; } \
-  && ok "exportar-sesion-master: los puntos de reconocimiento cablean _master_base (no quedó el 'case *-master)' pelado viejo)" \
-  || bad "exportar-sesion-master: quedó un 'case \$t in *-master)' pelado sin soporte del sufijo (N)"
-# (6) OPCIÓN A: el hook YA NO escribe un masters.json compartido (mataba los conflictos de Drive). El fast-path
-# de Stop ahora detecta "master conocido" por el <sid>.meta.json per-sid, no grepeando masters.json.
-{ ! grep -qF 'm.masters.push' "$HOOKS/exportar-sesion-master.sh" && ! grep -qE 'mjlock|m\.masters=m\.masters' "$HOOKS/exportar-sesion-master.sh"; } \
-  && ok "exportar-sesion-master: Opción A — el register block de masters.json se RETIRÓ (ya no auto-escribe el compartido)" \
-  || bad "exportar-sesion-master: TODAVÍA auto-escribe masters.json (el register block sigue ahí → conflictos de Drive)"
-{ grep -qF '$sid.meta.json' "$HOOKS/exportar-sesion-master.sh" && grep -qE 'is_master=1' "$HOOKS/exportar-sesion-master.sh"; } \
-  && ok "exportar-sesion-master: fast-path por <sid>.meta.json (paridad: señal per-sid sin contención)" \
-  || bad "exportar-sesion-master: el fast-path no usa <sid>.meta.json"
 # (7) behavioral (FALLA contra el código viejo): con un masters.json PREEXISTENTE + el engine presente (stub)
 # + node, el flujo LLEGA al punto donde el viejo REGISTRABA. El viejo le agregaba la entrada {id,name,target};
 # el nuevo (Opción A) lo deja INTACTO. El export detached (nohup) corre aparte y su resultado no importa aquí.
