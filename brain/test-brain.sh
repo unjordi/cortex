@@ -9478,6 +9478,49 @@ SH
     ok "despertar-master: 2º lanzamiento de un master YA corriendo (screen vivo, idle por mtime) → NO relanza"
   else bad "despertar-master: doble lanzamiento no evitado — lanzamientos=$nlanz · out2='$out2dm'"; fi
 
+  # H15 (vida por ejecutable, db0a17d): _pids_master cuenta SOLO procesos cuyo argv[0] es `claude`, retomados
+  # por id o por título (--resume <id> / --resume=<id> / --resume [--flags] <título>) — NO un bash/grep/node que
+  # lleve el patrón en su cmdline (el FP que mata pgrep -f). Mock de `ps`; se sourcea solo la función.
+  cat > "$DMROOT/bin/ps" <<'PSEOF'
+#!/bin/sh
+cat <<'ROWS'
+ 1001 /opt/homebrew/bin/claude --resume abc123 --remote-control cortex-master
+ 1002 claude --resume --chrome cortex-master
+ 1003 bash -lc claude --resume abc123 --remote-control cortex-master
+ 1004 grep claude --resume abc123
+ 1005 /usr/bin/node /path/cli.js --resume abc123
+ 1006 /opt/homebrew/bin/claude --resume=xyz789
+ROWS
+PSEOF
+  chmod +x "$DMROOT/bin/ps"
+  pmres="$( sed -n '/^_pids_master() {/,/^}/p' "$DM" > "$DMROOT/pm.sh"; . "$DMROOT/pm.sh"; export PATH="$DMROOT/bin:$PATH"
+    printf 'byidtitle=%s|resumeeq=%s|none=%s' \
+      "$(_pids_master cortex-master abc123 | sort | tr '\n' ' ')" \
+      "$(_pids_master otro xyz789 | tr -d '[:space:]')" \
+      "$(_pids_master nadie noexiste | tr -d '[:space:]')" )"
+  case "$pmres" in
+    "byidtitle=1001 1002 |resumeeq=1006|none=") ok "despertar-master H15: _pids_master — por id (1001) + título bare (1002) + forma --resume= (1006); NO bash/grep/node; sin match → vacío" ;;
+    *) bad "despertar-master H15: _pids_master mal filtrado — [$pmres]" ;;
+  esac
+  rm -f "$DMROOT/bin/ps"
+
+  # --mensaje (db0a17d): el contenido del archivo entra como PROMPT inicial del resume (arg final de
+  # `claude --resume … <msg>`). bar-master idle, sin screen/proceso → relanza CON el mensaje.
+  : > "$SESSF"; : > "$SCREENLOG"
+  printf 'sigue-con-la-cola XYZ123unico\n' > "$DMROOT/msg.txt"
+  _dm bar-master --mensaje "$DMROOT/msg.txt" >/dev/null 2>&1
+  if grep -q 'dmS bar-master' "$SCREENLOG" && grep -q 'XYZ123unico' "$SCREENLOG"; then
+    ok "despertar-master --mensaje: el contenido del archivo entra como prompt inicial del resume"
+  else bad "despertar-master --mensaje: no entregó el mensaje en el lanzamiento — screen.log: $(cat "$SCREENLOG")"; fi
+  : > "$SESSF"; : > "$SCREENLOG"   # el relanzamiento anterior dejó a bar-master "vivo"; limpiar para que el chequeo de archivo (tras el de vida) se alcance
+  _dm bar-master --mensaje /no/existe 2>&1 | grep -qi 'no existe el archivo' && ok "despertar-master --mensaje: archivo inexistente → error claro, no lanza" || bad "despertar-master --mensaje: archivo inexistente mal manejado"
+
+  # --cerrar (db0a17d): sin proceso (ps real, ningún claude --resume ccc) ni screen → verifica y reporta cerrado.
+  : > "$SESSF"; : > "$SCREENLOG"
+  cout="$(_dm --cerrar bar-master 2>&1)"
+  printf '%s' "$cout" | grep -qi 'cerrado' && ok "despertar-master --cerrar: sin proceso ni screen → verifica que no quedó ninguno y reporta cerrado" || bad "despertar-master --cerrar: no reportó cerrado — out: $cout"
+  _dm --cerrar no-existe-master 2>&1 | grep -qi 'no encontré' && ok "despertar-master --cerrar: nombre inexistente → error claro" || bad "despertar-master --cerrar: nombre inexistente mal manejado"
+
   rm -rf "$DMROOT"
 else
   bad "despertar-master: no encuentro $DM"

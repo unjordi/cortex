@@ -1,6 +1,6 @@
 ---
 name: coordinar-claudes
-description: Coordinar otras sesiones de Claude (masters) desde una sesión coordinadora — despertar (desde el transcript, no desde masters.json), encargar (Remote Control o screen, la cola completa), vigilar (vigilar-master.sh con Monitor: commit, turno terminado, colgado, muerto), destrabar, verificar lo entregado y relevar OKs del usuario. Úsalo al despertar, encargar o supervisar a cualquier *-master.
+description: Coordinar otras sesiones de Claude (masters) desde una sesión coordinadora — despertar (desde el transcript, no desde masters.json), encargar (Remote Control o screen, la cola completa), vigilar (las señales son lo que el master reporta por mensaje y su pantalla mirada en el momento; vigilar-master.sh con Monitor solo como fallback para un master que NO puede mandar mensajes), destrabar, verificar lo entregado y relevar OKs del usuario. Úsalo al despertar, encargar o supervisar a cualquier *-master.
 ---
 
 # coordinar-claudes
@@ -55,22 +55,17 @@ $S/despertar-master.sh --cerrar <nombre>              # cierra su proceso claude
 - **Trabaja desde la fuente original** (la nota, el commit), no desde el relevo de otro master.
 - **Barre también sus buzones en las otras máquinas:** lo que está sin commitear no viaja por git.
 
-## 3. Vigilar — `vigilar-master.sh` con Monitor
+## 3. Vigilar — el MENSAJE del master y su PANTALLA, no un vigilante
+> Decisión de unjordi 2026-10-21 [user: "no tardan nada en compactar. no dejes vigilantes para eso!"; "qué carajos mide el vigilante? no tiene sentido."]. Medido: el vigilante (a) NO veía commits hechos en un **worktree** (miraba el toplevel equivocado), (b) avisaba commits ya revisados minutos después, y (c) duplicaba lo que el master ya manda por `SendMessage`.
+
+- **Las señales son DOS: lo que el master REPORTA por mensaje** (`SendMessage` / su buzón `feedbackUsuarios`) **y su PANTALLA mirada EN EL MOMENTO** (`screen -S <nombre> -p 0 -X hardcopy -h /tmp/x`). NO armes un Monitor ni un loop de espera para commits o fin de turno — un master que coordina sabe reportar; si no reporta, miras su pantalla.
+- **Tras mandarle `/compact`:** un timer SIMPLE (~2 min, `sleep 120` con `run_in_background`) te despierta a MIRAR su pantalla y decirle que siga. No un vigilante (compactar no tarda nada) [user: "pon un vil timer que te despierte en 2 minutos o algo así cuando lo mandes a compactar!"].
+- **Sus diálogos de permiso los apruebas TÚ por su screen** (entrar a su worktree, operar en su repo/rama, lo que el harness pregunte de más) — no le preguntas al usuario si les das permiso de trabajar.
+- **`vigilar-master.sh` + Monitor queda SOLO como fallback para un master que NO puede mandar mensajes** (sin Remote Control ni screen accesible):
 ```bash
-$S/vigilar-master.sh <nombre> <transcript.jsonl> <repo[:repo2]> <pid-de-claude>
-# Avisa en cada cambio de estado:
-#   COMMIT <repo> <hash> <msg>
-#   TURNO-TERMINADO  quieto ≥ QUIETO_MIN (4 min)
-#   COLGADO          sin eventos a media vuelta ≥ COLGADO_MIN (12 min)
-#   MUERTO           el pid ya no existe
-$S/vigilar-master.sh <etiqueta> - <repo> -     # solo commits (repos comunes)
+$S/vigilar-master.sh <nombre> <transcript.jsonl> <repo[:repo2]> <pid-de-claude>   # COMMIT / TURNO-TERMINADO / COLGADO / MUERTO
 ```
-- **Monitor:** uno por master, `timeout_ms` de 1 800 000 como máximo, y se vuelve a armar cada vez que expira.
-- **pid:** el del proceso `claude` (`pgrep -fl 'claude.*<sid>'`), no el del screen.
-- **repo:** la ruta real del clon. El slug del transcript no siempre coincide (`_` contra `-`).
-- **Repos de un solo master:** van en su vigilante, separados por `:`. Para encontrarlos: `tail -n 3000 <transcript> | grep -o '/code/[A-Za-z_.-]*' | sort | uniq -c`.
-- **Repos comunes** (PowerScripts, donde cualquier master deja tooling durable): llevan un vigilante propio, solo de commits. Para atribuir un commit, busca su hash o su rama en los transcripts.
-- **Si el usuario está coordinando ese master,** filtra a `COLGADO|MUERTO`.
+  - **Monitor:** uno por master, `timeout_ms` ≤ 1 800 000, re-armado al expirar. **pid:** el del proceso `claude` (`pgrep -fl 'claude.*<sid>'`), no el del screen. **repo:** la ruta real del clon (el slug del transcript no siempre coincide, `_` vs `-`) — y OJO: un master que trabaja en un **worktree** commitea AHÍ, no en el toplevel (causa (a) del descarte del vigilante).
 
 ## 4. Destrabar
 | Señal | Acción |
@@ -79,7 +74,7 @@ $S/vigilar-master.sh <etiqueta> - <repo> -     # solo commits (repos comunes)
 | TURNO-TERMINADO con cola pendiente | "sigue con <X>" (un "sigo con X" seguido de fin de turno no es trabajo) |
 | Tras un `/compact` | Espera a que termine y escríbele "sigue con <X>"; un mensaje dejado antes del compact no lo retoma |
 | MUERTO | `despertar-master.sh <nombre>` y encárgale de nuevo la cola completa |
-| Tras un `/compact` | **Mira su pantalla, no esperes al vigilante** (`screen -S <nombre> -p 0 -X hardcopy -h /tmp/x`). Si se queda en "Running SessionStart hooks" más de 1–2 min, busca el hook colgado (`pgrep -P <pid-claude>` y sus hijos) y mátalo: el SessionStart es fail-open. Luego dile que siga |
+| Tras un `/compact` | **Pon un timer SIMPLE (~2 min, `sleep 120` con `run_in_background`) y mira su pantalla, no armes un vigilante** (`screen -S <nombre> -p 0 -X hardcopy -h /tmp/x`). Si se queda en "Running SessionStart hooks" más de 1–2 min, busca el hook colgado (`pgrep -P <pid-claude>` y sus hijos) y mátalo: el SessionStart es fail-open. Luego dile que siga |
 | Contexto muy lleno (cuelgues repetidos, o el master lo pide) | **Lo decides tú, como coordinador, sin preguntarle al usuario**: con todo commiteado, primero su `/checkpoint` COMPLETO y luego `/compact <instrucciones>` por su screen (que conserve el hilo y una sección con hashes vigentes, cola y plan). Al terminar el compact, ve a decirle que siga |
 | Remote Control caído | `/remote-control` por su screen |
 | No le entra nada (ni SendMessage ni screen; `grep -c` en 0) | Con el master ocioso: `--cerrar <nombre>` y `<nombre> --mensaje <archivo>` con la cola completa; confirma con `grep -c` |
