@@ -113,11 +113,11 @@ digraph flujos {
     MSQ   [shape=diamond, fillcolor="#2b2622", color="#d97757",
            label="¿el comando YA trae --squash/-s ?"];
     MSGCAL [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="destino = develop → PISO de SUSTANCIA del mensaje:\n¿pobre (título default/vacío/placeholder de 1 palabra)?\n¿EDITORIALIZA el proceso («se decidió»/«tras analizar»)?\n¿—solo mensaje LITERAL— superficial (<12 palabras)\no le falta traza rama/MR (Rama:/MR:)?"];
+           label="destino = develop Y CON --squash → ¿trae --delete-branch\n(gh) / --remove-source-branch (glab)?\n(el CONTENIDO del squash-message ya NO se valida —\ndecisión unjordi 2026-10-21: es RECORDATORIO, no freno)"];
     MSG_D2 [fillcolor="#3a2020", color="#c0392b", penwidth=2.5,
-           label="🔴 DENY (piso anti-basura, AUN CON --squash):\nel mensaje del squash no tiene sustancia — pobre, editorializa\nel proceso, o (mensaje LITERAL) superficial/sin traza.\nRehaz con --squash-message «resumen curado + Rama:/MR:»"];
+           label="🔴 DENY (falta borrar la rama de origen, AUN CON --squash):\nal integrar a develop la rama se BORRA en el mismo acto.\nRehaz con --delete-branch (gh) / --remove-source-branch (glab)\n(si no, las ramas viejas se acumulan en origin)"];
     MSGWARN [color="#e08e45",
-           label="🟠 WARN (no bloquea) — el mensaje PARECE lista de\nacciones (≥2 «se <verbo>»): additionalContext, sugiere\nreescribir el QUÉ HACE el código, y PASA"];
+           label="🟠 RECORDATORIO (no bloquea, additionalContext) — el squash-message\nes el RESUMEN del slice: redáctalo a mano con el cambio neto + su\nporqué + la traza «Rama: <feat/…>» y «MR/PR: !<id>», y PASA.\nSale en TODO merge-con-squash a develop (personal/grant/ALLOW)"];
 
     CMDG  [shape=diamond, fillcolor="#2b2622", color="#d97757",
            label="🔒✋ merge-develop-guard — fase 2 (autorización)\nMISMO proceso que la fase 1, continúa tras pasar el squash\n¿el repo tiene marca .claude/repo-compartido? (repos personales → pasa libre)\n→ DESTINO: main = RELEASE · develop = normal\n(ramas personales Develop*/epic/integracion → pasan libres)"];
@@ -156,8 +156,8 @@ digraph flujos {
     MSG -> MSQ [label="es merge MR real"];
     MSQ -> MSG_D [label="NO trae --squash,\ndestino develop\n(o irresoluble\nsin release)"];
     MSQ -> MSGCAL [label="SÍ trae --squash,\ndestino develop"];
-    MSGCAL -> MSG_D2 [label="mensaje SIN\nsustancia"];
-    MSGCAL -> MSGWARN [label="mensaje OK pero\nnarra acciones"];
+    MSGCAL -> MSG_D2 [label="sin --delete-branch /\n--remove-source-branch"];
+    MSGCAL -> MSGWARN [label="con --delete-branch\n→ recordatorio del mensaje"];
     CMDG -> CMD_OK [label="merge a\ndevelop/main"];
     CMD_OK -> CMDG_D [label="no hay OK"];
 
@@ -168,7 +168,6 @@ digraph flujos {
     // el MISMO proceso — antes (guards separados) esto salía del fan-out; hoy sigue dentro del mismo hook.
     MSQ -> CMDG  [label="NO trae --squash,\ndestino main/personal/\nrelease explícito"];
     MSQ -> CMDG  [label="SÍ trae --squash,\ndestino main/personal/\nirresoluble\n(sin validar mensaje)"];
-    MSGCAL -> CMDG [label="mensaje con sustancia"];
     MSGWARN -> CMDG;
     CMDG -> PREC [label="repo personal /\nrama personal (Develop*/epic/…)"];
     CMD_OK -> PREC [label="OK citado /\ngrant durable"];

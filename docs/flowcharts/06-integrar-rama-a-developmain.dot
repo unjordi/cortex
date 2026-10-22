@@ -104,9 +104,9 @@ digraph flujos {
 
     // ── merge-develop-guard, fase 1, 2ª compuerta: CALIDAD del mensaje (CON --squash, destino develop) ──
     MSGQ [shape=diamond, fillcolor="#2b2622", color="#d97757",
-          label="🔒🔗 merge-develop-guard — fase 1, calidad del squash-message\n(destino=develop Y CON --squash: --squash está garantizado, pero el MENSAJE puede ser basura)\n¿mensaje POBRE (título default «Merge pull request #N», vacío, placeholder 1-palabra)\no EDITORIALIZA el proceso («se decidió», «tras analizar»)\no (solo si es LITERAL, tipeado inline, Y gh SIN --body separado) <12 palabras o sin traza «Rama:/MR:»?\nUNVERIFICABLE ($()/--fill/--body-file) o API no resolvió el título AUTO → PASA (fail-open)\n(M8, auditoría 2026-09-15: con gh, un --subject corto CON --body separado —aunque opaco— NO\nfuerza profundidad/traza sobre el título: la convención pone el resumen curado en --body)"];
+          label="🔒🔗 merge-develop-guard — fase 1, 2ª compuerta (destino=develop Y CON --squash)\n¿trae --delete-branch (gh) / --remove-source-branch (glab)?\n(el CONTENIDO del squash-message ya NO se valida — decisión unjordi 2026-10-21:\nes RECORDATORIO no-bloqueante, no freno; la calidad la juzga quien mergea)"];
     MSGQ_D [color="#c0392b", penwidth=2,
-            label="🔴 DENY — trae --squash pero el MENSAJE es pobre/editorializa/superficial/sin traza:\nno basta el flag, el squash-message es el resumen del slice.\nRehaz con --squash-message «resumen curado en prosa + Rama:/MR: <id>».\n(WARN no-bloqueante aparte, si sustancioso pero narra lista de acciones «se cambió…, se corrigió…»: sugiere reescribir, PASA igual.)"];
+            label="🔴 DENY — trae --squash pero NO borra la rama de origen:\nal integrar a develop la rama se BORRA en el mismo acto (si no, se acumulan en origin).\nRehaz con --delete-branch (gh) / --remove-source-branch (glab).\n(El CON --delete-branch pasa + un RECORDATORIO no-bloqueante del squash-message:\nredáctalo a mano con el cambio neto + porqué + «Rama:/MR:».)"];
 
     // ── merge-develop-guard, fase 2 (autorización, juez-LLM) — MISMO proceso, continúa tras la fase 1 ──
     CMD_G [shape=diamond, fillcolor="#2b2622", color="#d97757",
@@ -128,8 +128,8 @@ digraph flujos {
     GBG -> MSG   [label="no toca base\n(es un MR de ramita)"];
     MSG -> MSG_D [label="destino develop\nSIN --squash\n(o irresoluble, salvo release explícito)"];
     MSG -> MSGQ  [label="destino develop\nCON --squash"];
-    MSGQ -> MSGQ_D [label="mensaje pobre /\neditorializa / superficial /\nsin traza"];
-    MSGQ -> CMD_G  [label="mensaje sustancioso /\nUNVERIFICABLE / API no resolvió"];
+    MSGQ -> MSGQ_D [label="sin --delete-branch /\n--remove-source-branch"];
+    MSGQ -> CMD_G  [label="con --delete-branch\n→ + recordatorio del mensaje"];
     MSG -> CMD_G [label="destino main / personal\n(SÍ es merge MR real)"];
     MSG -> PASA  [label="no es merge real\n(push de ramita, `mr view`, etc.)"];
     CMD_G -> CMD_OK [label="repo compartido\n+ es merge MR"];

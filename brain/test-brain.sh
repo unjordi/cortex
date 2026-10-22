@@ -3274,6 +3274,26 @@ rm -rf "$A4BROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (b3cs-msg) cerrar-slice: el mensaje es AYUDA (advierte + ARMA la traza), ya NO aborta (A2, unjordi 2026-10-21) =="
+# El guard pasó de FRENO a RECORDATORIO para el squash-message; cerrar-slice (herramienta opt-in) se alinea:
+# ya no aborta por el mensaje (traza/sustancia) — ADVIERTE y, si falta la traza, la ARMA (rama del forge/--branch,
+# id del --id). Falla vs 52d2d8c (donde _err "falta la línea de traza Rama:" abortaba un mensaje sin traza).
+CSMSG_SH="$SCRIPT_DIR/skills/cerrar-slice/cerrar-slice.sh"
+CSMSG_BIN=$(mktemp -d "${TMPDIR:-/tmp}/csmsg.XXXXXX")
+printf '#!/usr/bin/env bash\necho %s\n' "'{\"source_branch\":\"feat/iva\"}'" > "$CSMSG_BIN/glab"; chmod +x "$CSMSG_BIN/glab"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$CSMSG_BIN/gitleaks"; chmod +x "$CSMSG_BIN/gitleaks"   # escaneo de secretos → limpio (determinista)
+out_csm="$(PATH="$CSMSG_BIN:$PATH" bash "$CSMSG_SH" --id 7 --message "corrige el IVA" --forge glab --dry-run 2>/dev/null)"
+{ printf '%s' "$out_csm" | grep -q 'dry-run' && printf '%s' "$out_csm" | grep -q 'Rama: feat/iva' && printf '%s' "$out_csm" | grep -q 'MR: !7'; } \
+  && ok "cerrar-slice: mensaje corto SIN traza → NO aborta; ARMA «Rama: feat/iva» (del forge) + «MR: !7» (del --id) y planea el merge" \
+  || bad "cerrar-slice: abortó por el mensaje o no armó la traza; got: $out_csm"
+out_csm2="$(PATH="$CSMSG_BIN:$PATH" bash "$CSMSG_SH" --id 8 --message "corrige el calculo del IVA en las facturas del periodo fiscal vigente. Rama: fix/x, MR: !8" --forge glab --dry-run 2>/dev/null)"
+{ printf '%s' "$out_csm2" | grep -q 'dry-run' && [ "$(printf '%s' "$out_csm2" | grep -c 'Rama:')" -le 1 ]; } \
+  && ok "cerrar-slice: mensaje con traza propia → se respeta (no re-arma ni duplica Rama:)" \
+  || bad "cerrar-slice: duplicó o perdió la traza propia; got: $out_csm2"
+rm -rf "$CSMSG_BIN"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "== (b3cs-ci) cerrar-slice _ci_veredicto (glab): un FALLO de glab (sin red/token) → INDET, NUNCA SINCI =="
 # C1: un `jq … // \"NONE\"` que diera \"\" ante glab-falla caería a case '' → SINCI → mergearía A CIEGAS
 # bajo --wait-ci. Por eso se valida el JSON ANTES (type==object): sin objeto → INDET (aborta). FALLA contra

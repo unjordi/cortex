@@ -137,16 +137,33 @@ if [ -n "$MSG_FILE" ]; then
 fi
 [ -n "$MSG" ] || _err "falta el resumen del squash: pásalo con --message \"…\" o --message-file <f>."
 
-# ── validación del mensaje (los mismos pisos del guard: rastro + sustancia) ──
-# traza rama→commit: una línea Rama: <…> Y una MR:/PR:/!id/#id. El squash BORRA el merge-commit con el #id →
-# sin este rastro, `git log develop` no dice de qué ramita salió el commit.
-printf '%s' "$MSG" | grep -qiE '(^|[[:space:]])rama[[:space:]]*:[[:space:]]*[^[:space:]]' \
-  || _err "al resumen le falta la línea de traza \"Rama: <feat/…>\". (El squash borra el merge-commit con el #id → el rastro debe vivir en el mensaje.)"
-printf '%s' "$MSG" | grep -qiE '((mr|pr)[[:space:]]*:[[:space:]]*[!#]?[0-9]+|[!#][0-9]+)' \
-  || _err "al resumen le falta la referencia al MR/PR (\"MR: !<id>\" o \"PR: #<id>\")."
-# sustancia mínima: ≥12 palabras (un resumen de una línea no cuenta el cambio neto y su porqué).
+# ── traza + sustancia del mensaje: AYUDA, no revisión (decisión unjordi 2026-10-21: el mensaje lo redacta
+#    quien mergea; el candado merge-develop-guard solo RECUERDA, no frena por la calidad). cerrar-slice ARMA la
+#    traza rama→commit si el redactor la omitió y ADVIERTE la sustancia, pero NUNCA aborta por el mensaje. El
+#    squash borra el merge-commit con el #id → el rastro «Rama:/MR:» debe vivir en el mensaje para que
+#    `git log develop` diga de qué ramita salió el commit; por eso lo agregamos nosotros si falta.
+_warn() { printf 'cerrar-slice: %s\n' "⚠️  $1" >&2; }
+_fg="$FORGE"
+if [ -z "$_fg" ]; then
+  if command -v glab >/dev/null 2>&1; then _fg=glab; elif command -v gh >/dev/null 2>&1; then _fg=gh; fi
+fi
+# (a) línea Rama: — si falta, se ARMA con la rama resuelta (--branch > source/head branch del forge > rama git actual).
+if ! printf '%s' "$MSG" | grep -qiE '(^|[[:space:]])rama[[:space:]]*:[[:space:]]*[^[:space:]]'; then
+  _rama="$BRANCH"
+  if [ -z "$_rama" ] && [ "$_fg" = glab ]; then _rama="$(glab mr view "$ID" ${REPO:+-R "$REPO"} -F json 2>/dev/null | jq -r '.source_branch // empty' 2>/dev/null || true)"; fi
+  if [ -z "$_rama" ] && [ "$_fg" = gh ];   then _rama="$(gh pr view "$ID" ${REPO:+-R "$REPO"} --json headRefName -q .headRefName 2>/dev/null || true)"; fi
+  [ -z "$_rama" ] && _rama="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  if [ -n "$_rama" ]; then MSG="$(printf '%s\nRama: %s' "$MSG" "$_rama")"; _warn "agregué la traza «Rama: ${_rama}» (faltaba en el resumen); revísala."
+  else _warn "al resumen le falta «Rama: <feat/…>» y no pude resolver la rama — agrégala a mano (sin ella, 'git log develop' no dice de qué ramita salió el commit)."; fi
+fi
+# (b) ref MR/PR — si falta, se ARMA con el --id (entero literal ya validado).
+if ! printf '%s' "$MSG" | grep -qiE '((mr|pr)[[:space:]]*:[[:space:]]*[!#]?[0-9]+|[!#][0-9]+)'; then
+  if [ "$_fg" = gh ]; then MSG="$(printf '%s\nPR: #%s' "$MSG" "$ID")"; _warn "agregué la referencia «PR: #${ID}» (faltaba)."
+  else MSG="$(printf '%s\nMR: !%s' "$MSG" "$ID")"; _warn "agregué la referencia «MR: !${ID}» (faltaba)."; fi
+fi
+# (c) sustancia: ADVIERTE si <12 palabras (NO aborta — tú decides si el resumen cuenta el cambio neto y su porqué).
 _nwords=$(printf '%s' "$MSG" | tr -s '[:space:]' '\n' | grep -c '[^[:space:]]' || true)
-[ "${_nwords:-0}" -ge 12 ] || _err "el resumen es DEMASIADO CORTO ($_nwords palabras): escríbelo en prosa (el cambio neto y su porqué), ≥12 palabras."
+[ "${_nwords:-0}" -ge 12 ] || _warn "el resumen es CORTO ($_nwords palabras): idealmente cuenta el cambio neto y su porqué en prosa. No bloqueo."
 
 # ── forge: autodetecta si no se dio ──
 if [ -z "$FORGE" ]; then
