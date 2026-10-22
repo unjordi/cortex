@@ -34,23 +34,35 @@ mkpersonal() {  # mkpersonal <dir> <hooks…>
   local h; for h in "$@"; do cp "$HOOKS/$h" "$d/.claude/hooks/$h"; done
   : > "$d/.claude/hooks/.brain-version"
 }
-drift() {  # drift <repo> → stdout del hook
-  local fh; fh=$(cfp_fakehome)
-  env HOME="$fh" CLAUDE_PROJECT_DIR="$1" CLAUDE_BRAIN_DIR="$BRAINROOT" AVISO_DRIFT_HORAS=0 bash "$HOOKS/aviso-drift-cerebro.sh" </dev/null 2>/dev/null
-  rm -rf "$fh"
+# aviso-drift marca sobrante SOLO un guard tier `both` CUYA copia GLOBAL está instalada (el dedupe hace ceder
+# la copia por-repo). Por eso el fake HOME lleva las GLOBALES instaladas — sin ellas el flag NUNCA dispara y
+# el test quedaba VACUO (el control+ no distinguía "no marca tier-repo" de "no marca nada"). GFH bajo ROOT se
+# limpia con él. ACTUALIZADO 2026-10-21: sesion-inicio/recordar-cosechar pasaron de tier `repo` a `both` (ver
+# MANIFEST) → ahora marcarlos es CORRECTO; el FP vivo (L127/L171) es NO marcar el tier `repo` (dod-verificar)
+# ni la lib `both` que una hook-repo PRESENTE sourcea (juez-comun ← dod-verificar).
+GFH="$ROOT/gfh"; mkdir -p "$GFH/.claude/hooks"
+for h in entorno-maquina-guard.sh dod-verificar.sh juez-comun.sh recordar-cosechar.sh sesion-inicio.sh; do cp "$HOOKS/$h" "$GFH/.claude/hooks/$h"; done
+drift() {  # drift <repo> → stdout del hook (HOME con las GLOBALES instaladas)
+  env HOME="$GFH" CLAUDE_PROJECT_DIR="$1" CLAUDE_BRAIN_DIR="$BRAINROOT" AVISO_DRIFT_HORAS=0 bash "$HOOKS/aviso-drift-cerebro.sh" </dev/null 2>/dev/null
 }
 P1="$ROOT/p1"; mkpersonal "$P1" dod-verificar.sh juez-comun.sh recordar-cosechar.sh sesion-inicio.sh
 out=$(drift "$P1")
 flag=$(printf '%s' "$out" | grep -o 'SOBRAN:[^\\]*' | head -1)
-bad=""; for h in dod-verificar.sh sesion-inicio.sh recordar-cosechar.sh juez-comun.sh; do printf '%s' "$flag" | grep -q "$h" && bad="$bad $h"; done
+# FP L127/L171: el tier `repo` (dod-verificar) y la lib `both` que ESA hook-repo sourcea (juez-comun) NO se marcan.
+bad=""; for h in dod-verificar.sh juez-comun.sh; do printf '%s' "$flag" | grep -q "$h" && bad="$bad $h"; done
 for L in 127 171; do
-  if [ -z "$bad" ]; then manual "$L" "aviso-drift NO marca como SOBRANTES los guards tier repo (dod-verificar, sesion-inicio, recordar-cosechar) ni juez-comun" PASA
-  else manual "$L" "aviso-drift marca como SOBRANTES guards tier repo del MANIFEST (+ juez-comun, la lib que dod carga):${bad}" FRENA; fi
+  if [ -z "$bad" ]; then manual "$L" "aviso-drift NO marca sobrante el guard tier repo (dod-verificar) ni la lib both que éste sourcea (juez-comun)" PASA
+  else manual "$L" "aviso-drift marca sobrante un tier repo / su lib:${bad}" FRENA; fi
 done
+# control+ A: un tier `both` (entorno-maquina-guard) con su global instalado SÍ se marca sobrante en personal.
 P2="$ROOT/p2"; mkpersonal "$P2" entorno-maquina-guard.sh
 out2=$(drift "$P2")
 if printf '%s' "$out2" | grep -o 'SOBRAN:[^\\]*' | head -1 | grep -q 'entorno-maquina-guard.sh'; then manual_ctrl "ctrl+ aviso-drift SÍ marca un hook tier both (entorno-maquina-guard.sh) sobrante en repo personal" OK
 else manual_ctrl "ctrl+ aviso-drift SÍ marca un hook tier both (entorno-maquina-guard.sh) sobrante en repo personal" MAL; fi
+# control+ B: sesion-inicio/recordar-cosechar (tier repo→both desde 2026-10-21) SÍ se marcan en P1 — prueba que
+# el flag discrimina POR TIER (si solo callara, L127/L171 sería vacuo; esto le da dientes al "no marca dod").
+if printf '%s' "$flag" | grep -q 'sesion-inicio.sh' && printf '%s' "$flag" | grep -q 'recordar-cosechar.sh'; then manual_ctrl "ctrl+ aviso-drift SÍ marca sesion-inicio/recordar-cosechar (tier both desde 2026-10-21) sobrantes" OK
+else manual_ctrl "ctrl+ aviso-drift SÍ marca sesion-inicio/recordar-cosechar (tier both) sobrantes" MAL; fi
 
 # ───────────────────────── aviso-contexto (L85) ─────────────────────────
 # Tras un /compact recién hecho (boundary isCompactSummary, sin usage posterior) NO debe reportar el ctx viejo.
