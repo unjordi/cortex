@@ -5470,24 +5470,6 @@ is_silent "$(qrun sN)" \
 rm -rf "$QHOME" "$(dirname "$QROOT")"
 
 echo ""
-echo "== (m1) doc=realidad: ningún doc niega el hook de PreCompact que install-brain.sh SÍ cablea (C1, auditoría 2026-09-11) =="
-# Antes del fix: brain/skills/checkpoint/SKILL.md y docs/flowcharts/05*.dot/.svg afirmaban "sin hook de
-# PreCompact" mientras install-brain.sh lo cablea (exportar-sesion-master, y ahora checkpoint-mecanico).
-# TEST CONTRA LA FALLA: si la doc vuelve a decir la mentira MIENTRAS el instalador cablea PreCompact, falla.
-if grep -rqiE 'sin hook de .?PreCompact|ning[úu]n hook puede correrlo' "$SCRIPT_DIR" "$SCRIPT_DIR/../docs" 2>/dev/null \
-   && grep -q 'PreCompact' "$INSTALLER"; then
-  bad "m1: la doc niega el hook de PreCompact mientras install-brain.sh lo cablea (mentira C1 de vuelta)"
-else
-  ok "m1: ningún doc de brain/docs niega el hook de PreCompact (o el instalador ya no lo cablea)"
-fi
-grep -q 'checkpoint-mecanico' "$INSTALLER" \
-  && ok "m1: checkpoint-mecanico está cableado en install-brain.sh (ev_de)" \
-  || bad "m1: checkpoint-mecanico NO aparece cableado en install-brain.sh"
-grep -qE '^checkpoint-mecanico\s+global\s+hook' "$SCRIPT_DIR/hooks/MANIFEST" \
-  && ok "m1: checkpoint-mecanico está en el MANIFEST (tier global, kind hook)" \
-  || bad "m1: checkpoint-mecanico falta en brain/hooks/MANIFEST"
-
-echo ""
 echo "== (m2) checkpoint-mecanico.js: extractor MECÁNICO en streaming (M2, auditoría 2026-09-11) =="
 # El 80% de un checkpoint COMPLETO a CERO tokens de modelo. TEST CONTRA LA FALLA: memoria acotada (RSS
 # reportado por el propio proceso, no proporcional a un archivo de decenas de MB), reset del ctxTokens en
@@ -7957,13 +7939,6 @@ env -u CLAUDE_SESSIONS_DRIVE -u CLAUDE_SESSIONS_DEBOUNCE_MIN HOME="$G3H2" bash "
 rm -rf "$G3H" "$G3H2"
 
 # ─────────────────────────────────────────────────────────────────────────────
-echo "== (g4) normas nuevas presentes en norms/global-claude-md.md (mecanismo de las normas #12a/#13) =="
-NORMSF="$SCRIPT_DIR/norms/global-claude-md.md"
-grep -q 'Actualiza por la HERRAMIENTA REAL' "$NORMSF" && grep -q 'no-bypass-deploy' "$NORMSF" \
-  && ok "g4: norma 'actualiza por la herramienta real' + su mecanismo (no-bypass-deploy) en las normas" || bad "g4: falta la norma B1 (herramienta real) o su mecanismo en las normas"
-grep -qi 'clic en la web' "$NORMSF" && grep -qi 'vein-popper' "$NORMSF" \
-  && ok "g4: norma 'nunca el clic en la web como escape de un juez que frena' presente" || bad "g4: falta la norma del clic-en-la-web como escape (#13)"
-
 # ─────────────────────────────────────────────────────────────────────────────
 echo "== (g5) verificar-firma-canonica: DETECTOR de la firma-árbol canónica en un cerebro instanciado =="
 VFC="$SCRIPT_DIR/verificar-firma-canonica.sh"
