@@ -8573,12 +8573,15 @@ printf '{"type":"user","timestamp":"2026-09-09T14:05:00.000Z","cwd":"/y"}\n' > "
   && ok "r2-1 findSession: elige la copia VIVA aunque la muerta traiga un timestamp anidado de 2099" \
   || bad "r2-1 findSession: eligió la copia MUERTA (un timestamp ajeno le ganó a la actividad real)"
 
-# ── r2-2: Windows. La traducción de la rama win32 cubre /c/, /cygdrive/c/ Y /mnt/c/ (WSL-interop): sin
-#          ella, path.win32.resolve("/mnt/c/x") da "\mnt\c\x" ⇒ "C:\mnt\c\x", un slug fantasma. En una
-#          máquina POSIX la rama win32 no se puede EJECUTAR, así que se verifica su regex.
-grep -q 'cygdrive\\/|mnt\\/' "$R2LIB" \
-  && ok "r2-2 win: normalizeCwd traduce /c/, /cygdrive/c/ y /mnt/c/ a la forma nativa" \
-  || bad "r2-2 win: la traducción win32 no cubre las tres formas (¿falta /mnt/ de WSL?)"
+# ── r2-2: Windows. La traducción win32 (/c/, /cygdrive/c/, /mnt/c/ → C:\..) es PURA (win32DriveTranslate,
+#          sin fs ni platform) → se EJERCITA con entrada real→salida esperada en el host POSIX, cubriendo
+#          las tres formas Y que una ruta POSIX legítima se deja intacta (2ª dirección). Un regex que
+#          pierda /mnt/ (el fix WSL) o /cygdrive/ rompe su fila; antes solo se grepeaba el texto del regex.
+R2W2() { node -e 'process.stdout.write(require(process.argv[1]).win32DriveTranslate(process.argv[2]))' "$R2LIB" "$1"; }
+[ "$(R2W2 '/c/Users/x')" = 'C:\Users\x' ]   && ok "r2-2 win: /c/Users/x → C:\\Users\\x"            || bad "r2-2 win: /c/ no traduce a la forma nativa"
+[ "$(R2W2 '/cygdrive/c/x')" = 'C:\x' ]      && ok "r2-2 win: /cygdrive/c/x → C:\\x"                || bad "r2-2 win: /cygdrive/ no traduce"
+[ "$(R2W2 '/mnt/c/x')" = 'C:\x' ]           && ok "r2-2 win: /mnt/c/x → C:\\x (interop WSL)"       || bad "r2-2 win: /mnt/ (WSL) no traduce — el fix se perdió"
+[ "$(R2W2 '/home/u/p')" = '/home/u/p' ]     && ok "r2-2 win: una ruta POSIX legítima queda intacta" || bad "r2-2 win: mangeó una ruta POSIX que no debía tocar"
 # y el preludio del skill NO resuelve la ruta física con node: node.exe nativo recibiría /c/... con la
 # conversión de MSYS apagada y la resolvería contra la unidad actual ⇒ ENOENT en la PRIMERA derivada,
 # antes de llegar a la traducción cygpath -w que sí está bien construida.

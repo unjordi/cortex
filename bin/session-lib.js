@@ -58,12 +58,19 @@ function slugFromCwd(cwd) { return cwd.replace(/[^a-zA-Z0-9]/g, '-'); }
 // intacta: la traducción vive SOLO en la rama win32.
 // Lanza Error si la ruta es vacía o intraducible; si simplemente NO EXISTE la devuelve resuelta
 // lexicográficamente, y que exista o no lo juzga el llamador con `cwdExists`.
+// Traduce las formas Git Bash/MSYS/Cygwin/WSL (`/c/..`, `/cygdrive/c/..`, `/mnt/c/..`) a la forma
+// nativa `C:\..`. Pura (sin fs ni platform), para poder ejercitarla con entrada real→salida esperada
+// en CUALQUIER host. Una ruta que no matchea se devuelve intacta.
+function win32DriveTranslate(s) {
+  const m = /^\/(?:cygdrive\/|mnt\/)?([A-Za-z])(\/.*)?$/.exec(s);
+  return m ? m[1].toUpperCase() + ':' + ((m[2] || '/').replace(/\//g, '\\')) : s;
+}
+
 function normalizeCwd(p) {
   if (typeof p !== 'string' || !p.trim()) throw new Error('ruta de proyecto vacía');
   let s = p.trim();
   if (process.platform === 'win32') {
-    const m = /^\/(?:cygdrive\/|mnt\/)?([A-Za-z])(\/.*)?$/.exec(s);
-    if (m) s = m[1].toUpperCase() + ':' + ((m[2] || '/').replace(/\//g, '\\'));
+    s = win32DriveTranslate(s);
   } else if (/^[A-Za-z]:[\\/]/.test(s) || s.startsWith('\\\\')) {
     throw new Error('la ruta "' + p + '" es de estilo Windows y esta máquina es ' + process.platform
       + ': no puedo resolverla ni derivar el slug que usaría el harness. Pásame la ruta LOCAL del'
@@ -607,7 +614,7 @@ function _writeAliasSinLock(id, label, f) {
 module.exports = {
   MAX_TEXT_BYTES,
   claudeBase, projectsDir,
-  slugFromCwd, normalizeCwd, cwdExists, slugForRepo,
+  slugFromCwd, normalizeCwd, cwdExists, slugForRepo, win32DriveTranslate,
   findSession, rewriteCwd, transformLine, topLevelString,
   readTranscriptText, scanTranscriptFile, rewriteTranscriptStream,
   listFilesRecursive, copyDirRecursive, removeDirRecursive,
