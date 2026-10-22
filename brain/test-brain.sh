@@ -3581,6 +3581,17 @@ mk_dod_qc 1
 is_block "$(run_dod_qc)" && bad "b3-qc: ignoró el OK mid-turn (queued_command human) → bloqueó un cierre AUTORIZADO" || ok "b3-qc: OK a media vuelta (queued_command human) → visto en MARCA via usertext → NO bloquea (B3)"
 mk_dod_qc 0
 is_block "$(run_dod_qc)" && ok "b3-qc control: sin el OK mid-turn → el veto de cita no halla la cita → bloquea (no se afloja el eje)" || bad "b3-qc control: no bloqueó un cierre SIN autorización real"
+# H8 (revisión-5): un OK a media vuelta CON IMAGEN deja .attachment.prompt como ARRAY; sin desarmarlo el
+# test("<system-reminder>") del extractor abortaba el jq → usertext VACÍO → el veto de cita no hallaba la cita
+# → MARCA=no → bloqueaba un cierre AUTORIZADO (mismo hueco que acg_recent_intercalado ya cubría para el juez
+# de merge, regresión arsenal #215). Variante con imagen; la CITA del OK debe seguir verificándose.
+mk_dod_qc_img() { { jq -nc '{type:"user",message:{role:"user",content:[{type:"text",text:"arregla el modulo de memoria"}]}}'
+    printf '%s\n' "$EDITR"
+    jq -nc '{type:"attachment",attachment:{type:"queued_command",prompt:[{type:"text",text:"si ya quedo, cierralo"},{type:"image",source:{type:"base64",media_type:"image/png",data:"AAAA"}}],commandMode:"prompt",origin:{kind:"human"}}}'
+    jq -nc '{type:"assistant",message:{role:"assistant",content:[{type:"text",text:"el modulo quedo listo, cerrado"}]}}'
+  } > "$DODQC"; }
+mk_dod_qc_img
+is_block "$(run_dod_qc)" && bad "b3-qc H8: un OK mid-turn CON IMAGEN (.prompt ARRAY) abortó el extractor → usertext vacío → bloqueó un cierre AUTORIZADO" || ok "b3-qc H8: OK a media vuelta CON IMAGEN (.prompt ARRAY) → el texto del OK sigue visible en MARCA → NO bloquea (H8)"
 rm -f "$DODQC"
 # (5) dod-sin-código: cerrar un ENTREGABLE (doc/reporte) sin tocar código SIGUE exigiendo la marca (1)/(2)
 # — la definición de LISTO es MUTUA e independiente del stack. Antes esto pasaba mudo (exit 0); ahora bloquea.

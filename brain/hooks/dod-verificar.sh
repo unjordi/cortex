@@ -225,7 +225,12 @@ usertext=$(printf '%s\n' "$turn" | jq -rs '
         # (B3) OK a media vuelta: attachment queued_command de origin HUMANO → su .attachment.prompt CRUDO.
         # AUTORIDAD ESTRICTA: origin.kind=="human" exacto; cualquier otro valor/ausente NO se surfacea.
         | ( if ((.type? // "")=="attachment") and ((.attachment.type? // "")=="queued_command") and ((.attachment.origin.kind? // "")=="human")
-            then (.attachment.prompt? // "")
+            # H8: .prompt es un string, o un ARRAY de bloques si el OK a media vuelta trae IMAGEN. Sin desarmar
+            # el array, el test("<system-reminder>") de abajo recibía un array → ABORTABA el jq → usertext VACÍO
+            # (dod no veía el OK → FP). Mismo tratamiento que acg_recent_intercalado (una sola doctrina).
+            then ( (.attachment.prompt? // "") as $p
+                   | if ($p|type)=="array" then ([ $p[] | select((.type?)=="text") | .text ] | join(" "))
+                     elif ($p|type)=="string" then $p else "" end )
             elif ((.message.role // .type)=="user") and ((.isMeta // false) != true)
             then
               # AskUserQuestion: el OK del usuario dado por el WIDGET llega como tool_result (texto vacío → se
@@ -242,6 +247,7 @@ usertext=$(printf '%s\n' "$turn" | jq -rs '
                           else (. // "") end)
                   end )
             else "" end )
+        | select(type=="string")                 # defensa: un no-string (array residual) abortaría el test() de abajo
         | select(. != "")
         | select(test("<system-reminder>") | not) ] | join("  ")' 2>/dev/null)
 
