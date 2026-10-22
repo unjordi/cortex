@@ -7124,9 +7124,9 @@ if [ "$got_bash" = "$want_bash_sorted" ]; then
 else
   bad "e6b: el set PreToolUse/Bash de ev_de() cambió · got:[$got_bash] want:[$want_bash_sorted]"
 fi
-grep -qE 'aviso-contexto[^)]*\) *echo *"PostToolUse\|"' "$INSTALLER" \
-  && ok "e6b: aviso-contexto mapeado a PostToolUse (sin matcher, NO en Bash)" \
-  || bad "e6b: aviso-contexto NO está en PostToolUse"
+# (el grep del instalador 'aviso-contexto…) echo "PostToolUse…' se retiró: e7 ~L6972 YA corre install-brain
+#  en un HOME falso y asevera sobre el settings.json RESULTANTE que ev_of aviso-contexto == "PostToolUse|"
+#  —entrada real (el instalador corre) → efecto medido (el cableado), no el texto del instalador.)
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo "== (e6c) doc=realidad: cada kind=hook del MANIFEST aparece en el árbol del README (sA2/B1) =="
