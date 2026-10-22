@@ -419,8 +419,10 @@ bz_es_zombie() {
 }
 
 # bz_protegida BR BASE [ACTUAL] [WT_RAMAS] → 0 si BR NUNCA debe tocarse destructivamente, pase lo que
-# pase (la base de integración, la rama actual, develop/main, cualquier mini-develop Develop* o guardada
-# a propósito keep/*, o checked-out en CUALQUIER worktree — WT_RAMAS son sus nombres, uno por línea).
+# pase (la base de integración, la rama actual, develop/main, cualquier mini-develop Develop*, una mini de
+# TEMA (epic/* epic-* integracion/* integracion-* — "valen como minis de tema con las mismas libertades",
+# norma de git) o guardada a propósito keep/*, o checked-out en CUALQUIER worktree — WT_RAMAS son sus
+# nombres, uno por línea).
 # 1 si no. Deja la RAZÓN en $BZ_PROT_RAZON: base_actual | convencion | worktree.
 #
 # UNA sola definición que consumen los DOS barredores (limpiar.sh ramas y limpiar.sh worktrees), igual que
@@ -434,7 +436,7 @@ bz_protegida() {
     BZ_PROT_RAZON=base_actual; return 0
   fi
   case "$br" in
-    develop|main|Develop*|keep/*) BZ_PROT_RAZON=convencion; return 0 ;;
+    develop|main|Develop*|keep/*|epic/*|epic-*|integracion/*|integracion-*) BZ_PROT_RAZON=convencion; return 0 ;;
   esac
   if [ -n "$wt_ramas" ] && printf '%s\n' "$wt_ramas" | grep -qxF "$br"; then
     BZ_PROT_RAZON=worktree; return 0
