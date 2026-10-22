@@ -7097,34 +7097,6 @@ rm -rf "$E9H"
 PR="$SCRIPT_DIR/.."
 
 echo ""
-echo "== (e6.1) install-brain.ps1 sigue siendo LANZADOR DELGADO (delega en bash install-brain.sh) =="
-IBPS="$SCRIPT_DIR/install-brain.ps1"
-if [ -f "$IBPS" ]; then
-  { grep -qF 'install-brain.sh' "$IBPS" && grep -qF '$bashExe' "$IBPS"; } \
-    && ok "e6.1: install-brain.ps1 delega en bash …/install-brain.sh" \
-    || bad "e6.1: install-brain.ps1 NO delega en bash install-brain.sh (¿dejó de ser lanzador delgado?)"
-  # NO reimplementa el cableado (no toca ~/.claude/hooks ni estampa .brain-version — eso es del .sh)
-  grep -qE '\.brain-version|\.claude[/\\]hooks|/hooks/[A-Za-z]' "$IBPS" \
-    && bad "e6.1: install-brain.ps1 parece CABLEAR por su cuenta (menciona hooks/.brain-version)" \
-    || ok "e6.1: install-brain.ps1 NO cabla por su cuenta (sin lógica de hooks/.brain-version)"
-else bad "e6.1: no encuentro install-brain.ps1"; fi
-
-echo ""
-echo "== (e6.2) bootstrap.ps1 alinea a main con 'checkout -B main origin/main' (== bootstrap.sh), no 'pull --ff-only' =="
-BPS2="$PR/bootstrap.ps1"; BSH2="$PR/bootstrap.sh"
-if [ -f "$BPS2" ] && [ -f "$BSH2" ]; then
-  grep -qF 'checkout -B main origin/main' "$BPS2" \
-    && ok "e6.2: bootstrap.ps1 usa 'checkout -B main origin/main'" \
-    || bad "e6.2: bootstrap.ps1 NO usa 'checkout -B main origin/main' (regresión de robustez H3)"
-  grep -qF 'pull --ff-only' "$BPS2" \
-    && bad "e6.2: bootstrap.ps1 aún tiene 'pull --ff-only' (rompe si el clon quedó en rama borrada)" \
-    || ok "e6.2: bootstrap.ps1 ya NO usa 'pull --ff-only'"
-  grep -qF 'checkout -B main origin/main' "$BSH2" \
-    && ok "e6.2: bootstrap.sh usa 'checkout -B main origin/main' (patrón de referencia)" \
-    || bad "e6.2: bootstrap.sh NO usa 'checkout -B main origin/main' (¿cambió la referencia?)"
-else bad "e6.2: no encuentro bootstrap.ps1 / bootstrap.sh"; fi
-
-echo ""
 echo "== (e6.3) ningún .sh/.ps1/.swift/.cs/.qml de envío hardcodea un \$HOME absoluto (/Users/·/home/·C:\\Users) =="
 # Excepciones legítimas: entorno-maquina-guard.sh (su razón de ser ES detectar esas rutas) y
 # test-brain.sh (este harness trae fixtures deliberados con /Users/fulano). Se ignoran comentarios de
@@ -8423,15 +8395,8 @@ R2W2() { node -e 'process.stdout.write(require(process.argv[1]).win32DriveTransl
 [ "$(R2W2 '/cygdrive/c/x')" = 'C:\x' ]      && ok "r2-2 win: /cygdrive/c/x → C:\\x"                || bad "r2-2 win: /cygdrive/ no traduce"
 [ "$(R2W2 '/mnt/c/x')" = 'C:\x' ]           && ok "r2-2 win: /mnt/c/x → C:\\x (interop WSL)"       || bad "r2-2 win: /mnt/ (WSL) no traduce — el fix se perdió"
 [ "$(R2W2 '/home/u/p')" = '/home/u/p' ]     && ok "r2-2 win: una ruta POSIX legítima queda intacta" || bad "r2-2 win: mangeó una ruta POSIX que no debía tocar"
-# y el preludio del skill NO resuelve la ruta física con node: node.exe nativo recibiría /c/... con la
-# conversión de MSYS apagada y la resolvería contra la unidad actual ⇒ ENOENT en la PRIMERA derivada,
-# antes de llegar a la traducción cygpath -w que sí está bien construida.
-{ grep -q 'pwd -P' "$R2SH" && ! grep -q '_real(){  node -e' "$R2SH"; } \
-  && ok "r2-2 win: _real() resuelve con cd+pwd -P (bash), no con node realpathSync sobre una ruta POSIX" \
-  || bad "r2-2 win: _real() volvió a resolver con node (rompe en Git Bash antes de traducir con cygpath)"
-{ grep -qF 'OLD_SLUG="$(_slug "$SRC_CWD")"' "$R2SH" && grep -qF 'NEW_SLUG="$(_slug "$DST_CWD")"' "$R2SH"; } \
-  && ok "r2-2 win: los slugs de origen y destino salen de la forma NATIVA (_cwdform), no de la POSIX" \
-  || bad "r2-2 win: algún slug se deriva de la ruta POSIX (en Windows apuntaría a un slug inexistente)"
+# (los impl-greps Windows-Git-Bash de _real()/_slug() —cd+pwd -P vs node, forma nativa vs POSIX— se
+#  RETIRARON: su fallo solo se manifiesta en Git Bash/Windows, no ejecutable en el host CI → Checklist QA.)
 
 # ── r2-3: PARIDAD del handoff (el pendiente que §10 pedía). Se extrae el generador REAL de §6.1 y la
 #          lista de marcadores del PROPIO candado, y se exige cada marcador en una línea EJECUTABLE:
@@ -9092,63 +9057,9 @@ done
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "== (gui) control-gui-remota-por-ssh: -Window en screenshot, PARIDAD de los 3 OS =="
-# El fix multi-monitor dejó el DEFAULT = todas las pantallas; pero "SOLO una ventana por título" estaba
-# dispareja entre OS. Verifica que los 3 screenshot.*
-# exponen `-Window` con la MISMA semántica (substring de título) y el MISMO patrón de fallback
-# (captura completa + aviso) cuando la ventana no se encuentra -- gemelos estructurales, no solo
-# "el flag existe".
-GUISKILL="$SCRIPT_DIR/skills/control-gui-remota-por-ssh"
-MACSHOT="$GUISKILL/mac/mac-ssh-screenshot.sh"
-LINSHOT="$GUISKILL/linux/linux-ssh-screenshot.sh"
-WINSHOT="$GUISKILL/win/win-ssh-screenshot.ps1"
-LINCOORD="$GUISKILL/linux/linux-ssh-get-window-coordinates.sh"
-WINCOORD="$GUISKILL/win/win-ssh-get-window-coordinates.ps1"
-
-if [ -f "$MACSHOT" ] && [ -f "$LINSHOT" ] && [ -f "$WINSHOT" ]; then
-  # sintaxis (estos scripts viven en brain/skills/, fuera del loop (a) que solo cubre hooks/lib)
-  bash -n "$MACSHOT" 2>/dev/null && ok "gui: bash -n mac-ssh-screenshot.sh" || bad "gui: bash -n mac-ssh-screenshot.sh"
-  bash -n "$LINSHOT" 2>/dev/null && ok "gui: bash -n linux-ssh-screenshot.sh" || bad "gui: bash -n linux-ssh-screenshot.sh"
-  [ -f "$LINCOORD" ] && { bash -n "$LINCOORD" 2>/dev/null && ok "gui: bash -n linux-ssh-get-window-coordinates.sh" || bad "gui: bash -n linux-ssh-get-window-coordinates.sh"; }
-
-  if command -v pwsh >/dev/null 2>&1; then
-    if pwsh -NoProfile -Command "\$e=\$null; [System.Management.Automation.Language.Parser]::ParseFile('$WINSHOT', [ref]\$null, [ref]\$e) | Out-Null; exit (\$e.Count -gt 0)" >/dev/null 2>&1; then
-      ok "gui: pwsh parse-check win-ssh-screenshot.ps1"
-    else
-      bad "gui: pwsh parse-check win-ssh-screenshot.ps1 (sintaxis rota)"
-    fi
-    if [ -f "$WINCOORD" ]; then
-      if pwsh -NoProfile -Command "\$e=\$null; [System.Management.Automation.Language.Parser]::ParseFile('$WINCOORD', [ref]\$null, [ref]\$e) | Out-Null; exit (\$e.Count -gt 0)" >/dev/null 2>&1; then
-        ok "gui: pwsh parse-check win-ssh-get-window-coordinates.ps1"
-      else
-        bad "gui: pwsh parse-check win-ssh-get-window-coordinates.ps1 (sintaxis rota)"
-      fi
-    fi
-  else
-    echo "  (pwsh no disponible -> salto el parse-check de los .ps1 de este kit)"
-  fi
-
-  # paridad: los 3 exponen -Window con la misma bandera literal
-  grep -q -- '-Window' "$MACSHOT" && ok "gui: mac-ssh-screenshot.sh expone -Window" || bad "gui: mac-ssh-screenshot.sh NO expone -Window"
-  grep -q -- '-Window' "$LINSHOT" && ok "gui: linux-ssh-screenshot.sh expone -Window" || bad "gui: linux-ssh-screenshot.sh NO expone -Window"
-  grep -q -- '\$Window' "$WINSHOT" && ok "gui: win-ssh-screenshot.ps1 expone -Window" || bad "gui: win-ssh-screenshot.ps1 NO expone -Window"
-
-  # paridad de FALLBACK: los 3 caen a captura completa (no truenan) cuando el título no se encuentra,
-  # y lo avisan -- mismo patrón, no el mismo texto literal (cada OS llama distinto a "todo").
-  grep -qi "no encontre ventana" "$MACSHOT" && ok "gui: mac avisa+cae a completa si no halla el título" || bad "gui: mac no documenta el fallback de -Window sin match"
-  grep -qi "no encontre ventana" "$LINSHOT" && ok "gui: linux avisa+cae a completa si no halla el título" || bad "gui: linux no documenta el fallback de -Window sin match"
-  grep -qi "NOTFOUND" "$WINSHOT" && grep -qi "VirtualScreen completo" "$WINSHOT" && ok "gui: windows avisa+cae a VirtualScreen si no halla el título" || bad "gui: windows no documenta el fallback de -Window sin match"
-
-  # reuso, no reimplementación: linux/win referencian su propio get-window-coordinates como origen
-  # de la técnica de resolución título->geometría/handle (no duplican la enumeración de ventanas).
-  grep -qi "get-window-coordinates" "$LINSHOT" && ok "gui: linux-ssh-screenshot.sh documenta que REUSA get-window-coordinates (no duplica xdotool)" || bad "gui: linux-ssh-screenshot.sh no referencia get-window-coordinates -- ¿duplicó la búsqueda?"
-  grep -qi "get-window-coordinates" "$WINSHOT" && ok "gui: win-ssh-screenshot.ps1 documenta la técnica compartida con get-window-coordinates" || bad "gui: win-ssh-screenshot.ps1 no referencia get-window-coordinates"
-
-  # ASCII: los .ps1 de este kit ya los cubre el guard genérico de la sección (d) más arriba (todo
-  # $REPO_ROOT/**/*.ps1) -- no se repite aquí para no duplicar el mismo chequeo dos veces.
-else
-  bad "gui: no encuentro los 3 screenshot.* del kit control-gui-remota-por-ssh (¿se movió/renombró?)"
-fi
+# (gui) control-gui-remota-por-ssh: paridad -Window + fallback + reuso de get-window-coordinates en los
+# 3 OS — RETIRADO de la suite (symbol/prose-greps + syntax-checks de scripts que manejan una GUI REMOTA,
+# no ejecutables en el host CI) → al Checklist QA Windows/plataforma (estado-proyecto.md).
 
 # ── cerrar-slice --wait-ci: el veredicto de CI gobierna merge/abort (A2) ──
 # Causa del FP viejo: mergeaba ante CUALQUIER exit≠0 del chequeo (confundía sin-CI/pendiente/rojo/no-leído).
