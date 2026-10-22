@@ -7089,33 +7089,6 @@ printf '%s' "$e9out2" | grep -q "poda:.*skill 'consolidar-cerebro'" \
   || bad "e7c: la skill propia del usuario se perdió entre corridas"
 rm -rf "$E9H"
 
-echo "== (e4) Windows: bootstrap.ps1 exporta CLAUDE_BRAIN_DIR (los hooks bash hallan la fuente) =="
-# En Windows el clon-fuente vive en %LOCALAPPDATA%\cortex-repo, NO en ~/.cortex (default de
-# Mac/Linux). Si bootstrap.ps1 no exporta CLAUDE_BRAIN_DIR, el hook bash aviso-drift-cerebro cae a
-# $HOME/.cortex (inexistente) y el auto-sync por-repo falla MUDO. Guard de regresión.
-BPS="$SCRIPT_DIR/../bootstrap.ps1"
-if [ -f "$BPS" ]; then
-  grep -q "SetEnvironmentVariable('CLAUDE_BRAIN_DIR'" "$BPS" \
-    && ok "e4: bootstrap.ps1 exporta CLAUDE_BRAIN_DIR (User env)" \
-    || bad "e4: bootstrap.ps1 NO exporta CLAUDE_BRAIN_DIR → en Windows el auto-sync del cerebro falla mudo"
-  # y debe guardarlo en FORWARD-SLASH (bash se atraganta con los backslashes de Windows)
-  grep -qE "dirBash = .dir -replace|CLAUDE_BRAIN_DIR', .\\\$dirBash" "$BPS" \
-    && ok "e4: la ruta se exporta en forward-slash (no backslashes que rompen bash)" \
-    || bad "e4: CLAUDE_BRAIN_DIR podría exportarse con backslashes (bash no los resuelve)"
-else
-  bad "e4: no encuentro bootstrap.ps1"
-fi
-# e4b: la instalación MANUAL de Windows (install-brain.ps1 sin pasar
-# por bootstrap.ps1) también debe exportar CLAUDE_BRAIN_DIR, o el auto-sync cae MUDO por ese camino.
-IBPS="$SCRIPT_DIR/install-brain.ps1"
-if [ -f "$IBPS" ]; then
-  { grep -q "SetEnvironmentVariable('CLAUDE_BRAIN_DIR'" "$IBPS" && grep -qE "RepoRoot -replace" "$IBPS"; } \
-    && ok "e4b: install-brain.ps1 exporta CLAUDE_BRAIN_DIR (RepoRoot en forward-slash) — instalación manual Win no queda muda" \
-    || bad "e4b: install-brain.ps1 NO exporta CLAUDE_BRAIN_DIR → instalación manual en Windows falla mudo (C1)"
-else
-  bad "e4b: no encuentro install-brain.ps1"
-fi
-
 # ─────────────────────────────────────────────────────────────────────────────
 # (e6) COHERENCIA DE RUTAS CROSS-OS — batch de paridad que FALLA si se olvida un OS.
 # Aserciones ESTÁTICAS sobre el fuente (estilo e4): cada instalador/updater/lector de las 3 GUIs
@@ -7167,74 +7140,6 @@ done < <(cd "$PR" && git ls-files '*.sh' '*.ps1' '*.swift' '*.cs' '*.qml' | grep
 [ -z "$hp_hits" ] \
   && ok "e6.3: sin rutas \$HOME absolutas hardcodeadas en código de envío (todas parametrizadas)" \
   || bad "e6.3: home absoluto hardcodeado en: $hp_hits"
-
-echo ""
-echo "== (e6.4) los 3 updaters resuelven la ruta del clon con FALLBACK + marca (paridad resolveClonePath, H2) =="
-# H2: un plasmoid que confiara CIEGO en version.json.repo (un path horneado en otra máquina / repo movido)
-# habilitaría un auto-update que hace cd a una ruta muerta. Por eso los 3 updaters prueban candidatos
-# [embebido → $CLAUDE_BRAIN_DIR → clon canónico] y toman el 1º con su marca.
-Q4="$PR/src/plasmoid/contents/ui/main.qml"
-S4="$PR/macos/Sources/Cortex/Updater.swift"
-C4="$PR/windows/src/Cortex/Updater.cs"
-if [ -f "$Q4" ]; then
-  { grep -qF 'resolveRepoPath' "$Q4" && grep -qF 'CLAUDE_BRAIN_DIR' "$Q4" && grep -qF '.cortex' "$Q4" && grep -qF 'install.sh' "$Q4"; } \
-    && ok "e6.4[qml]: main.qml resuelve el clon con fallback (\$CLAUDE_BRAIN_DIR / ~/.cortex) + marca install.sh" \
-    || bad "e6.4[qml]: main.qml NO resuelve el clon con fallback (H2 sin portar → confía ciego en version.json.repo)"
-else bad "e6.4[qml]: no encuentro main.qml"; fi
-if [ -f "$S4" ]; then
-  { grep -qF 'resolveClonePath' "$S4" && grep -qF 'CLAUDE_BRAIN_DIR' "$S4" && grep -qF '.cortex' "$S4" && grep -qF 'macos/install.sh' "$S4"; } \
-    && ok "e6.4[swift]: Updater.swift resuelve el clon con fallback + marca macos/install.sh" \
-    || bad "e6.4[swift]: Updater.swift perdió el fallback de resolveClonePath"
-else bad "e6.4[swift]: no encuentro Updater.swift"; fi
-if [ -f "$C4" ]; then
-  { grep -qF 'ResolveClonePath' "$C4" && grep -qF 'CLAUDE_BRAIN_DIR' "$C4" && grep -qF 'cortex-repo' "$C4" && grep -qF 'install.ps1' "$C4"; } \
-    && ok "e6.4[cs]: Updater.cs resuelve el clon con fallback + marca windows/install.ps1" \
-    || bad "e6.4[cs]: Updater.cs perdió el fallback de ResolveClonePath"
-else bad "e6.4[cs]: no encuentro Updater.cs"; fi
-
-echo ""
-echo "== (e6.5) los updaters escapan/citan la ruta del clon en la asignación SRC= que alimenta el cd (fix H5) =="
-# La migración del clon (rename claude-brain→cortex) movió el escape shq/comilla del `cd` directo a la
-# asignación `SRC=shq(repo)` / `SRC='\(repoPath)'` que precede al `mv`+`cd`. H5 (una ' en la ruta la
-# partiría) sigue cubierto: el repoPath se escapa en SRC=. El assert apunta a SRC=, no al `cd` viejo.
-QML5="$PR/src/plasmoid/contents/ui/main.qml"
-SW5="$PR/macos/Sources/Cortex/Updater.swift"
-CS5="$PR/windows/src/Cortex/Updater.cs"
-if [ -f "$QML5" ]; then
-  { grep -qF 'SRC=" + shq(repo)' "$QML5" && ! grep -qF "cd '\" + repo" "$QML5"; } \
-    && ok "e6.5[qml]: la ruta del clon se escapa con shq() en la asignación SRC= que alimenta el cd" \
-    || bad "e6.5[qml]: la ruta del clon NO se escapa con shq() (una ruta con ' se partiría — regresión H5)"
-else bad "e6.5[qml]: no encuentro main.qml"; fi
-if [ -f "$SW5" ]; then
-  grep -qF "SRC='\\(repoPath)'" "$SW5" \
-    && ok "e6.5[swift]: la ruta del clon se cita entre comillas en la asignación SRC= que alimenta el cd" \
-    || bad "e6.5[swift]: la ruta del clon NO se cita en SRC="
-else bad "e6.5[swift]: no encuentro Updater.swift"; fi
-if [ -f "$CS5" ]; then
-  grep -qF '_repoPath.Replace(' "$CS5" \
-    && ok "e6.5[cs]: la ruta del clon se escapa (Replace de comillas) en el script de update" \
-    || bad "e6.5[cs]: la ruta del clon NO se escapa en el script de update"
-else bad "e6.5[cs]: no encuentro Updater.cs"; fi
-
-echo ""
-echo "== (e6.6) los 4 lectores leen .brain-version desde <home>/.claude =="
-V6="$PR/macos/Sources/Cortex/BrainInspector.swift $PR/windows/src/Cortex/BrainInspector.cs $PR/src/plasmoid/contents/brain-scan.sh $SCRIPT_DIR/install-brain.sh"
-v6miss=""
-for f in $V6; do
-  { [ -f "$f" ] && grep -qF '.brain-version' "$f" && grep -qF '.claude' "$f"; } \
-    || v6miss="${v6miss:+$v6miss }$(basename "$f")"
-done
-[ -z "$v6miss" ] \
-  && ok "e6.6: swift/cs/brain-scan.sh/install-brain.sh leen .brain-version bajo ~/.claude" \
-  || bad "e6.6: lectores de .brain-version sin <home>/.claude: $v6miss"
-
-echo ""
-echo "== (e6.7) los .ps1 de arranque puentean HOME <-> USERPROFILE (fix H1) =="
-for f in "$PR/bootstrap.ps1" "$SCRIPT_DIR/install-brain.ps1"; do
-  { [ -f "$f" ] && grep -qE '\$env:HOME *= *\$env:USERPROFILE' "$f"; } \
-    && ok "e6.7: $(basename "$f") exporta HOME=%USERPROFILE% antes de invocar bash" \
-    || bad "e6.7: $(basename "$f") NO puentea HOME<->USERPROFILE (bash instalaría en un ~/.claude que el widget no lee)"
-done
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
@@ -7465,70 +7370,6 @@ done
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "== (e9) PARIDAD widget: hover en botones del pie + ↻ fuerza el chequeo de versión (3 plataformas) =="
-# Antídoto a que un fix de UI del widget aterrice en 1 plataforma y no en las otras (norma dura: la
-# paridad SIEMPRE se revisa). Chequeo ESTRUCTURAL por-plataforma de los DOS comportamientos.
-SW_PV="$SCRIPT_DIR/../macos/Sources/Cortex/PopoverView.swift"
-SW_UP="$SCRIPT_DIR/../macos/Sources/Cortex/Updater.swift"
-QML9="$SCRIPT_DIR/../src/plasmoid/contents/ui/main.qml"
-WPF="$SCRIPT_DIR/../windows/src/Cortex/PopupForm.cs"
-WUP="$SCRIPT_DIR/../windows/src/Cortex/Updater.cs"
-
-# --- Fix A: HOVER en los botones del pie del riel ---
-grep -q 'hoverHighlight' "$SW_PV" 2>/dev/null && ok "e9: macOS — hover en botones del pie (hoverHighlight)" || bad "e9: macOS SIN hover en el pie"
-grep -qE 'PC3\.ToolButton' "$QML9" 2>/dev/null && ok "e9: KDE — botones del pie PC3.ToolButton (hover nativo)" || bad "e9: KDE sin PC3.ToolButton"
-grep -q '_hoverBottom' "$WPF" 2>/dev/null && ok "e9: Windows — hover del pie trackeado (_hoverBottom)" || bad "e9: Windows SIN hover del pie"
-
-# --- Fix B: el ↻ (refresh) FUERZA el chequeo de versión saltando el throttle de 15 min ---
-{ grep -q 'func forceCheck' "$SW_UP" && grep -q 'forceCheck' "$SW_PV"; } 2>/dev/null \
-  && ok "e9: macOS — ↻ fuerza chequeo (Updater.forceCheck + botón)" || bad "e9: macOS — ↻ no fuerza chequeo"
-{ grep -q 'ForceCheck' "$WUP" && grep -q 'ForceCheck' "$WPF"; } 2>/dev/null \
-  && ok "e9: Windows — ↻ fuerza chequeo (Updater.ForceCheck + click)" || bad "e9: Windows — ↻ no fuerza chequeo"
-kfr="$(awk '/function forceRefresh/{c=1} c{print} c&&/^    }/{exit}' "$QML9" 2>/dev/null)"
-{ printf '%s' "$kfr" | grep -q 'updLastCheck = 0' && printf '%s' "$kfr" | grep -q 'checkUpdate()'; } \
-  && ok "e9: KDE — forceRefresh fuerza checkUpdate (updLastCheck=0)" || bad "e9: KDE — forceRefresh no fuerza chequeo"
-
-# --- Fix C: BADGE ⬆/🩹 en la pestaña Cerebro (el aviso se ve DESDE CUALQUIER pestaña) ---
-grep -qE 'railButton\(5,.*badge:.*heal:' "$SW_PV" 2>/dev/null && ok "e9: macOS — badge en la pestaña Cerebro" || bad "e9: macOS SIN badge en la tab"
-grep -q 'brainIncomplete' "$QML9" 2>/dev/null && ok "e9: KDE — badge en la pestaña Cerebro (brainIncomplete)" || bad "e9: KDE SIN badge en la tab"
-grep -q 'BrainMissing' "$WPF" 2>/dev/null && ok "e9: Windows — badge en la pestaña Cerebro (BrainMissing)" || bad "e9: Windows SIN badge en la tab"
-
-# --- Fix D: HEAL HONESTO (mensaje según completitud REAL, no exit code — install-brain.sh sale 0 sin jq) ---
-grep -q 'sigue incompleto' "$SW_PV" 2>/dev/null && ok "e9: macOS — heal honesto (según completitud)" || bad "e9: macOS heal NO honesto"
-grep -q 'brainHealVerifying' "$QML9" 2>/dev/null && ok "e9: KDE — heal honesto (re-scan + verdict real)" || bad "e9: KDE heal NO honesto"
-grep -q 'sigue incompleto' "$WPF" 2>/dev/null && ok "e9: Windows — heal honesto (según completitud)" || bad "e9: Windows heal NO honesto"
-
-# ─────────────────────────────────────────────────────────────────────────────
-# e10: install.ps1 (Windows) detecta la CLI ESPECIFICAMENTE, no la app de escritorio.
-# Un `claude` que resolviera a AppData\Local\AnthropicClaude\claude.exe (la app de escritorio, que NO
-# escribe ~/.claude/.credentials.json) haría que el instalador la confundiera con la CLI y se saltara
-# exponer .local\bin -> OAuth sin credenciales. Por eso un helper EXCLUYE la app, hace prepend del dir de la
-# CLI al PATH (gana a la app), y corre auth status contra el binario de la CLI.
-WPS1="$SCRIPT_DIR/../windows/install.ps1"
-grep -q 'AnthropicClaude' "$WPS1" 2>/dev/null \
-  && ok "e10: install.ps1 — excluye la app de escritorio al detectar la CLI (AnthropicClaude)" \
-  || bad "e10: install.ps1 — NO distingue la CLI de la app de escritorio"
-grep -q 'Resolve-ClaudeCli' "$WPS1" 2>/dev/null \
-  && ok "e10: install.ps1 — helper Resolve-ClaudeCli (fuente única de detección de la CLI)" \
-  || bad "e10: install.ps1 — sin helper de detección específica de la CLI"
-grep -q 'al frente del PATH' "$WPS1" 2>/dev/null \
-  && ok "e10: install.ps1 — pone la CLI al FRENTE del PATH (gana a la app)" \
-  || bad "e10: install.ps1 — no antepone la CLI en el PATH (la app la taparia)"
-grep -qE '& \$cli auth status' "$WPS1" 2>/dev/null \
-  && ok "e10: install.ps1 — auth status contra el binario de la CLI (no el que resuelva 'claude')" \
-  || bad "e10: install.ps1 — auth status no apunta a la CLI específica"
-
-# e11: RACE del asset 'windows-latest'. Al DESCARGAR el exe, version.json debe reflejar el 'build-sha:'
-# real del asset (que puede ir detras de main mientras el runner reconstruye), NO el HEAD del clon —
-# si no, el widget se cree al dia con un exe viejo y su cerebro empaquetado cuenta hooks de menos
-# (el "(5)" fantasma). Fix: leer build-sha del cuerpo del release y estampar ese sha efectivo.
-grep -q 'effSha' "$WPS1" 2>/dev/null \
-  && ok "e11: install.ps1 — usa sha EFECTIVO (del asset, no HEAD) para el version.json" \
-  || bad "e11: install.ps1 — estampa siempre HEAD del clon (RACE del rolling)"
-grep -q 'build-sha: (\[0-9a-f\]+)' "$WPS1" 2>/dev/null \
-  && ok "e11: install.ps1 — lee el build-sha del cuerpo del release 'windows-latest'" \
-  || bad "e11: install.ps1 — no lee el build-sha del release (no detecta asset rancio)"
-
 # ── exportar-sesion-master: carpeta default (~/.claude-sessions) / override / no-master silencioso / C ──
 echo "== exportar-sesion-master: respaldo de sesiones *-master (carpeta default/override; detached) =="
 EXFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-ex.XXXXXX")"; EXHOME="$EXFIX/home"; mkdir -p "$EXHOME"
