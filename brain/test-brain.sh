@@ -6540,6 +6540,38 @@ rm -rf "$FAKEHOME2"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (ccd) install-brain honra CLAUDE_CONFIG_DIR (el override de Claude Code para ~/.claude) =="
+# Antes install-brain hardcodeaba ~/.claude e IGNORABA CLAUDE_CONFIG_DIR → con el override puesto, el cerebro
+# se instalaba en el lugar EQUIVOCADO (~/.claude) y Claude Code, que lee de CLAUDE_CONFIG_DIR, no lo veía.
+CCDHOME="$(mktemp -d "${TMPDIR:-/tmp}/brain-ccd.XXXXXX")"; CCDCFG="$CCDHOME/cfg-alt"
+HOME="$CCDHOME" CLAUDE_CONFIG_DIR="$CCDCFG" bash "$INSTALLER" >/dev/null 2>&1
+# los hooks/skills/settings van al CLAUDE_CONFIG_DIR, NO a ~/.claude
+[ -f "$CCDCFG/hooks/merge-develop-guard.sh" ] \
+  && ok "ccd: los hooks se instalan en \$CLAUDE_CONFIG_DIR/hooks (no en ~/.claude)" \
+  || bad "ccd: los hooks NO llegaron a \$CLAUDE_CONFIG_DIR/hooks (install-brain ignoró el override)"
+[ -f "$CCDCFG/settings.json" ] \
+  && ok "ccd: settings.json se escribe en \$CLAUDE_CONFIG_DIR" \
+  || bad "ccd: no hay settings.json en \$CLAUDE_CONFIG_DIR"
+[ -f "$CCDCFG/skills/cerrar-slice/SKILL.md" ] \
+  && ok "ccd: las skills se instalan en \$CLAUDE_CONFIG_DIR/skills" \
+  || bad "ccd: las skills NO llegaron a \$CLAUDE_CONFIG_DIR/skills"
+# NADA se filtró a ~/.claude (la ruta vieja hardcodeada)
+[ ! -d "$CCDHOME/.claude" ] \
+  && ok "ccd: con CLAUDE_CONFIG_DIR puesto, NADA se escribe en ~/.claude (no se filtra a la ruta vieja)" \
+  || bad "ccd: install-brain TODAVÍA tocó ~/.claude pese al override"
+# el comando del hook en settings.json apunta a \$CLAUDE_CONFIG_DIR/hooks (no al ~/.claude literal)
+if command -v jq >/dev/null 2>&1; then
+  cmd="$(jq -r '[.hooks[]?[]?.hooks[]?.command] | map(select(test("merge-develop-guard"))) | first // ""' "$CCDCFG/settings.json" 2>/dev/null)"
+  printf '%s' "$cmd" | grep -q 'CLAUDE_CONFIG_DIR/hooks' \
+    && ok "ccd: el comando del hook en settings.json referencia \$CLAUDE_CONFIG_DIR/hooks" \
+    || bad "ccd: el comando del hook NO referencia \$CLAUDE_CONFIG_DIR/hooks (apunta a la ruta vieja; cmd='$cmd')"
+else
+  echo "  SKIP ccd: sin jq para inspeccionar el comando del hook"
+fi
+rm -rf "$CCDHOME"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "== (c2) refresh de normas: un bloque VIEJO se REEMPLAZA en su lugar =="
 FAKEHOME3="$(mktemp -d "${TMPDIR:-/tmp}/brain-refresh.XXXXXX")"
 mkdir -p "$FAKEHOME3/.claude"

@@ -53,11 +53,15 @@ SRC_LIB="$SCRIPT_DIR/lib"
 # shellcheck source=lib/detectar-shells.sh
 [ -f "$SRC_LIB/detectar-shells.sh" ] && . "$SRC_LIB/detectar-shells.sh"
 
-CLAUDE_DIR="$HOME/.claude"
+# Honra CLAUDE_CONFIG_DIR (el override de Claude Code para ~/.claude): si está, el cerebro se instala ahí.
+CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 HOOKS_DIR="$CLAUDE_DIR/hooks"
 SKILLS_DIR="$CLAUDE_DIR/skills"
 GSET="$CLAUDE_DIR/settings.json"
 GCLAUDE="$CLAUDE_DIR/CLAUDE.md"
+# Base (con expansión DIFERIDA a runtime) del comando de hook que se escribe en settings.json: con
+# CLAUDE_CONFIG_DIR puesto, los hooks viven en $CLAUDE_CONFIG_DIR/hooks y el comando debe apuntar ahí.
+if [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then HOOK_CMD_BASE='$CLAUDE_CONFIG_DIR/hooks'; else HOOK_CMD_BASE='$HOME/.claude/hooks'; fi
 
 echo "==> cortex: instalando cerebro global en $CLAUDE_DIR"
 mkdir -p "$HOOKS_DIR" "$SKILLS_DIR"
@@ -245,7 +249,7 @@ for h in $WIRE_HOOKS; do
   # evm puede traer VARIOS pares "Event|Matcher" (space-separated) → cablear cada uno (multi-evento).
   # register_hook dedupe POR-evento con el patrón $h, así que re-correr no duplica.
   for pair in $evm; do
-    register_hook "${pair%%|*}" "${pair#*|}" "bash \"\$HOME/.claude/hooks/$h.sh\"" "$h"
+    register_hook "${pair%%|*}" "${pair#*|}" "bash \"$HOOK_CMD_BASE/$h.sh\"" "$h"
   done
   wired_names="$wired_names $h"
 done

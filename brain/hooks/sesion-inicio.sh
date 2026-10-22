@@ -38,7 +38,7 @@ lines+=("")
 lines+=("RITUAL ANTI-PÉRDIDA-DE-HILO:")
 lines+=("1) Lee .claude/memory/MEMORY.md (índice) y las memorias del proyecto que liste (dónde quedó el avance: hecho/pendiente/fuera-por-decisión).")
 lines+=("2) Si el repo tiene AGENTS.md (contrato de arquitectura), léelo antes de crear o modificar código.")
-lines+=("3) NO declares nada 'listo/en producción' sin la verificación técnica que aplique (build/tests/lint) citada + la memoria actualizada + confirmación del usuario — el hook Stop (dod-verificar) lo revisa y bloquea el cierre si falta.")
+lines+=("3) NO declares nada 'listo/en producción' sin la verificación técnica que aplique (build/tests/lint) + la memoria actualizada + confirmación del usuario. El hook Stop (dod-verificar) BLOQUEA un cierre declarado SIN esa confirmación/autorización del usuario; el build/tests/lint y la memoria los RECUERDA (no son lo que dispara el bloqueo).")
 
 # Resumen del estado (si el proyecto ya tiene un archivo de estado; tolera varios nombres de convención)
 for f in estado-proyecto estado-y-pendientes estado; do
