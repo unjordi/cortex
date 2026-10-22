@@ -555,8 +555,9 @@ public sealed class PopupForm : Form
     {
         if (bucket == null) return "";
         string s = ResetLine(bucket.ResetsAt);
-        if (bucket.CostUsd is double c)
-            s += $" · ≈ ${c.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} (API equiv local)";
+        double? c = bucket.EquivSessionCostUsd ?? bucket.EquivWeeklyCostUsd;
+        if (c is double cd)
+            s += $" · ≈ ${cd.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} (API equiv local)";
         return s;
     }
 

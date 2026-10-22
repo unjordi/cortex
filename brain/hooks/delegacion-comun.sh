@@ -115,28 +115,26 @@ linea_cuota() {
   else
     [ -n "$(find "$snap" -mmin +5 2>/dev/null)" ] && stale=" ⚠️posible dato rancio"
   fi
-  local pct cost cap tok
+  local pct cost tok
   pct=$(jq -r '.five_hour.percent // empty'      "$snap" 2>/dev/null)
-  cost=$(jq -r '.five_hour.cost_usd // empty'    "$snap" 2>/dev/null)
-  cap=$(jq -r '.five_hour.cost_cap // empty'     "$snap" 2>/dev/null)
-  tok=$(jq -r '.five_hour.tokens_used // empty'  "$snap" 2>/dev/null)
+  cost=$(jq -r '.five_hour.equiv_session_cost_usd // empty'    "$snap" 2>/dev/null)
+  tok=$(jq -r '.five_hour.session_tokens_used // empty'  "$snap" 2>/dev/null)
   [ -n "$pct" ] || return 0
   local msg=" Ventana 5h: ${pct}%${stale}"
-  if [ -n "$cost" ] && [ -n "$cap" ]; then
-    msg="$msg (\$${cost} de \$${cap}"
+  if [ -n "$cost" ]; then
+    msg="$msg (\$${cost}"
     [ -n "$tok" ] && msg="$msg; $(fmt_tokens "$tok") tokens"
     msg="$msg)"
   elif [ -n "$tok" ]; then
     msg="$msg ($(fmt_tokens "$tok") tokens)"
   fi
-  # Ventana SEMANAL (opcional): solo si el snapshot la trae. Formato compacto "($cost/$cap)".
-  local wpct wcost wcap
+  # Ventana SEMANAL (opcional): solo si el snapshot la trae. Formato compacto "($cost)".
+  local wpct wcost
   wpct=$(jq -r '.weekly.percent // empty'   "$snap" 2>/dev/null)
-  wcost=$(jq -r '.weekly.cost_usd // empty' "$snap" 2>/dev/null)
-  wcap=$(jq -r '.weekly.cost_cap // empty'  "$snap" 2>/dev/null)
+  wcost=$(jq -r '.weekly.equiv_weekly_cost_usd // empty' "$snap" 2>/dev/null)
   if [ -n "$wpct" ]; then
     msg="$msg · Semanal: ${wpct}%"
-    [ -n "$wcost" ] && [ -n "$wcap" ] && msg="$msg (\$${wcost}/\$${wcap})"
+    [ -n "$wcost" ] && msg="$msg (\$${wcost})"
   fi
   printf '%s.' "$msg"
 }

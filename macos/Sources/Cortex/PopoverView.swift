@@ -347,7 +347,7 @@ struct PopoverView: View {
 
             // Gasto REAL de bolsillo — distinto del "Costo API-equiv" (Resumen).
             if let spend = model.snapshot?.spend, spend.enabled == true {
-                spendSection(spend, model.snapshot?.extra_usage)
+                spendSection(spend)
             }
 
             Spacer(minLength: 0)
@@ -377,9 +377,9 @@ struct PopoverView: View {
         }
     }
 
-    /// Sección de GASTO REAL: dinero de bolsillo (spend) + overage (extra_usage).
+    /// Sección de GASTO REAL: dinero de bolsillo (spend).
     @ViewBuilder
-    private func spendSection(_ spend: Spend, _ extra: ExtraUsage?) -> some View {
+    private func spendSection(_ spend: Spend) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text("Gasto real").fontWeight(.bold)
@@ -390,14 +390,14 @@ struct PopoverView: View {
                     .foregroundStyle(pctColor(spend.percent))
             }
             ProgressBar(pct: spend.percent)
-            Text(spendCaption(spend, extra))
+            Text(spendCaption(spend))
                 .font(.caption)
                 .foregroundStyle(label.opacity(0.65))
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    private func spendCaption(_ spend: Spend, _ extra: ExtraUsage?) -> String {
+    private func spendCaption(_ spend: Spend) -> String {
         // Monto usado / tope (redundante con el headline a propósito).
         var s = "\(Fmt.money(spend.used, spend.currency)) / \(Fmt.money(spend.cap, spend.currency))"
         if let cur = spend.currency { s += " \(cur)" }
@@ -439,7 +439,7 @@ struct PopoverView: View {
     private func caption(_ bucket: Bucket?) -> String {
         guard let bucket else { return "" }
         var s = resetLine(bucket.resets_at)
-        if let cost = bucket.cost_usd {
+        if let cost = bucket.equiv_session_cost_usd ?? bucket.equiv_weekly_cost_usd {
             s += String(format: " · ≈ $%.2f (API equiv local)", cost)
         }
         return s

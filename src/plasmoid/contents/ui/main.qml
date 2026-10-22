@@ -661,11 +661,11 @@ PlasmoidItem {
     // Límites semanales acotados a UN modelo (weekly_scoped con scope.model).
     // Efímeros y cambiantes → se renderizan dinámicamente, sin hardcodear modelos.
     readonly property var scopedLimits: {
-        if (!snapshot || !snapshot.limits) return []
+        if (!snapshot || !snapshot.weekly || !snapshot.weekly.by_model) return []
         var out = []
-        for (var i = 0; i < snapshot.limits.length; i++) {
-            var l = snapshot.limits[i]
-            if (l.kind === "weekly_scoped" && l.model) out.push(l)
+        for (var i = 0; i < snapshot.weekly.by_model.length; i++) {
+            var l = snapshot.weekly.by_model[i]
+            if (l.model) out.push(l)
         }
         return out
     }
@@ -1927,7 +1927,6 @@ PlasmoidItem {
                 SpendSection {
                     Layout.fillWidth: true
                     spend: root.snapshot ? root.snapshot.spend : null
-                    extra: root.snapshot ? root.snapshot.extra_usage : null
                 }
 
                 Item { Layout.fillHeight: true }
@@ -3393,14 +3392,17 @@ PlasmoidItem {
                 let past = root.isPast(block.resets_at)
                 let s = past ? ("Se restableció " + root.relativeTime(block.resets_at) + " · actualizando…")
                              : ("Se restablece " + root.resetDetail(block.resets_at))
-                if (block.cost_usd !== null && block.cost_usd !== undefined)
-                    s += " · ≈ $" + block.cost_usd.toFixed(2) + " (API equiv local)"
+                var c = block.equiv_session_cost_usd !== undefined && block.equiv_session_cost_usd !== null
+                      ? block.equiv_session_cost_usd
+                      : (block.equiv_weekly_cost_usd !== undefined && block.equiv_weekly_cost_usd !== null ? block.equiv_weekly_cost_usd : null)
+                if (c !== null && c !== undefined)
+                    s += " · ≈ $" + c.toFixed(2) + " (API equiv local)"
                 return s
             }
         }
     }
 
-    // sección de GASTO REAL: dinero de tu bolsillo (spend) + overage (extra_usage).
+    // sección de GASTO REAL: dinero de tu bolsillo (spend).
     // Distinto del "Costo API-equiv" del Resumen, que es el equivalente incluido.
     component SpendSection: ColumnLayout {
         property var spend: null

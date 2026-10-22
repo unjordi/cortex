@@ -50,8 +50,8 @@ cp "$HOOKS/agentes-costo.json" "$CDIR/agentes-costo.json"
 write_state() {
   cat > "$CACHE/state.json" <<EOF
 {
-  "five_hour": { "percent": $1, "cost_usd": 2.48, "cost_cap": 45, "tokens_used": 3700000 },
-  "weekly":    { "percent": 57, "cost_usd": 401,  "cost_cap": 4800 }
+   "five_hour": { "percent": $1, "equiv_session_cost_usd": 2.48, "session_tokens_used": 3700000, "severity": "ok" },
+   "weekly":     { "percent": 57, "equiv_weekly_cost_usd": 401, "weekly_tokens_used": 8000000, "severity": "warn", "week_start": "2026-06-10T00:00:00Z", "resets_at": "2026-06-17T00:00:00Z", "by_model": [ { "model": "sonnet", "percent": 40, "resets_at": "2026-06-17T00:00:00Z", "severity": "ok" } ] }
 }
 EOF
 }
@@ -9645,3 +9645,24 @@ PASS=$(grep -c '^OK$'  "$CALLLOG" 2>/dev/null); PASS="${PASS:-0}"
 FAIL=$(grep -c '^BAD$' "$CALLLOG" 2>/dev/null); FAIL="${FAIL:-0}"
 echo "==> resultado: $PASS PASS · $FAIL FAIL"
 [ "$FAIL" -eq 0 ]
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (b1c) weekly.week_start = weekly.resets_at - 7d =="
+# Verifica que el shape nuevo tiene week_start y que es exactamente 7 días antes de resets_at
+if [ -f "$CACHE/state.json" ]; then
+  ws=$(jq -r '.weekly.week_start // empty' "$CACHE/state.json")
+  ra=$(jq -r '.weekly.resets_at // empty' "$CACHE/state.json")
+  if [ -n "$ws" ] && [ -n "$ra" ]; then
+    ws_epoch=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$ws" +%s 2>/dev/null || date -d "$ws" +%s 2>/dev/null)
+    ra_epoch=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$ra" +%s 2>/dev/null || date -d "$ra" +%s 2>/dev/null)
+    diff_days=$(( (ra_epoch - ws_epoch) / 86400 ))
+    if [ "$diff_days" -eq 7 ]; then
+      ok "weekly.week_start = resets_at - 7d ($ws → $ra)"
+    else
+      bad "weekly.week_start ≠ resets_at - 7d (diff=${diff_days}d, esperado 7d)"
+    fi
+  else
+    bad "weekly.week_start o resets_at ausente en state.json"
+  fi
+fi

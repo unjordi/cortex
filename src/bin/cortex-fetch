@@ -187,10 +187,6 @@ if [[ -n "$CCUSAGE" ]]; then
 fi
 
 NOW_ISO="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-# ccusage groups weeks Monday-start; compute this week's Monday so we pick the
-# CURRENT week bucket (the array is oldest-first, so [0] is last week).
-DOW="$(date -u +%u)"  # 1=Mon..7=Sun
-CURRENT_MONDAY="$(date -u -d "$((DOW - 1)) days ago" +%Y-%m-%d)"
 # Fallback weekly reset when the OAuth endpoint (which knows the real rolling
 # reset) is unavailable.
 NEXT_MONDAY="$(date -u -d "next Monday 00:00:00" +%Y-%m-%dT%H:%M:%SZ)"
@@ -199,6 +195,22 @@ NEXT_MONDAY="$(date -u -d "next Monday 00:00:00" +%Y-%m-%dT%H:%M:%SZ)"
 # timestamps sort lexically, so a plain string compare works here).
 [[ -n "$PREV_WEEK_RESET" && "$PREV_WEEK_RESET" > "$NOW_ISO" ]] || PREV_WEEK_RESET=""
 [[ -n "$PREV_FIVE_RESET" && "$PREV_FIVE_RESET" > "$NOW_ISO" ]] || PREV_FIVE_RESET=""
+
+# --- Ventana semanal REAL (rolling 7d) ----------------------------------------
+# El reset semanal de OAuth es un rolling 7d (no cae en lunes). La ventana real
+# es [REAL_WEEK_START, ahora] donde REAL_WEEK_START = week_reset - 7d. En modo
+# oauth usamos el resets_at real; en fallback usamos el próximo lunes menos 7d.
+# ccusage se consulta por ese rango con `daily --since` y se SUMA totalCost y
+# totalTokens de los días (NO el bucket semanal-lunes, que daba cost/tokens
+# idénticos a la sesión).
+WEEK_RESET_FALLBACK="$NEXT_MONDAY"
+REAL_WEEK_START="$(date -u -d "$WEEK_RESET_FALLBACK - 7 days" +%Y-%m-%d)"
+WEEKLY_DAILY_JSON=""
+if [[ -n "$CCUSAGE" ]]; then
+  SINCE="$(date -u -d "$REAL_WEEK_START" +%Y%m%d)"
+  WEEKLY_DAILY_JSON="$(ccusage_json daily --json --since "$SINCE")"
+  jq -e . <<<"$WEEKLY_DAILY_JSON" >/dev/null 2>&1 || WEEKLY_DAILY_JSON=""
+fi
 
 # --- DECISIÓN DE ESCRITURA (contrato Jordi 2026-10-21) ------------------------
 # oauth FRESCO → snapshot oauth (abajo). oauth FALLA + hay lectura oauth previa →
@@ -209,8 +221,9 @@ jq -n \
   --argjson usage "${USAGE_JSON:-null}" \
   --argjson blocks "${BLOCKS_JSON:-null}" \
   --argjson weekly "${WEEKLY_JSON:-null}" \
+  --argjson weekly_daily "${WEEKLY_DAILY_JSON:-null}" \
   --arg ts "$NOW_ISO" \
-  --arg cur_week "$CURRENT_MONDAY" \
+  --arg real_week_start "$REAL_WEEK_START" \
   --arg next_monday "$NEXT_MONDAY" \
   --arg prev_week_reset "$PREV_WEEK_RESET" \
   --arg prev_five_reset "$PREV_FIVE_RESET" \
@@ -226,29 +239,29 @@ jq -n \
   def pct(used; cap): if cap > 0 then (used * 100 / cap) else 0 end;
   def round1(x): (x * 10 | floor) / 10;
   def round2(x): (x * 100 | floor) / 100;
-  # "2026-06-10T00:00:00.070837+00:00" -> "2026-06-10T00:00:00Z"
+    # "2026-06-10T00:00:00.070837+00:00" -> "2026-06-10T00:00:00Z"
   def isoz: sub("\\.[0-9]+"; "") | sub("\\+00:00$"; "Z");
 
-  ($blocks.blocks[0] // null) as $blk
-  | ([$weekly.weekly[]? | select((.week // .period) == $cur_week)] | first) as $wk
-  | (if $blocks != null then round2(if $blk then ($blk.costUSD // 0) else 0 end) else null end) as $five_cost
-  | (if $weekly != null then round2(if $wk then ($wk.totalCost // 0) else 0 end) else null end) as $week_cost
-  | (if $usage != null then ($usage.five_hour.utilization // 0)
-     else pct($five_cost // 0; $five_cap) end) as $five_pct
-  | (if $usage != null then ($usage.seven_day.utilization // 0)
-     else pct($week_cost // 0; $week_cap) end) as $week_pct
-  | ([$five_pct, $week_pct] | max) as $max_pct
-  | (if $max_pct >= $crit then "crit"
+    ($blocks.blocks[0] // null) as $blk
+    | (if $usage != null then ($usage.five_hour.utilization // 0)
+     else pct((if $blk then ($blk.costUSD // 0) else 0 end); $five_cap) end) as $five_pct
+    | (if $usage != null then ($usage.seven_day.utilization // 0)
+     else pct((if $weekly_daily != null then (($weekly_daily.daily // []) | map(.totalCost // 0) | add // 0) else 0 end); $week_cap) end) as $week_pct
+    | ([$five_pct, $week_pct] | max) as $max_pct
+    | (if $max_pct >= $crit then "crit"
      elif $max_pct >= $warn then "warn"
      else "ok" end) as $status
-  | (if ($usage != null and $usage.five_hour.resets_at != null) then ($usage.five_hour.resets_at | isoz)
+    | (if ($usage != null and $usage.five_hour.resets_at != null) then ($usage.five_hour.resets_at | isoz)
      elif $blk != null then $blk.endTime
      elif $prev_five_reset != "" then $prev_five_reset
      else null end) as $five_reset
-  | (if ($usage != null and $usage.seven_day.resets_at != null) then ($usage.seven_day.resets_at | isoz)
+    | (if ($usage != null and $usage.seven_day.resets_at != null) then ($usage.seven_day.resets_at | isoz)
      elif $prev_week_reset != "" then $prev_week_reset
      else $next_monday end) as $week_reset
-  | {
+    | (if $usage != null then ($usage.limits // []) | map(select(.kind == "session")) | first else null end) as $session_limit
+    | (if $usage != null then ($usage.limits // []) | map(select(.kind == "weekly_all")) | first else null end) as $weekly_all_limit
+    | (if $usage != null then ($usage.limits // []) | map(select(.kind == "weekly_scoped")) else [] end) as $weekly_scoped
+    | {
       updated_at: $ts,
       fetched_at: $ts,
       stale: false,
@@ -266,49 +279,35 @@ jq -n \
       error: null,
       five_hour: (if ($usage != null or $blocks != null) then {
         percent: round1($five_pct),
-        cost_usd: $five_cost,
-        cost_cap: $five_cap,
-        tokens_used: (if $blk != null then ($blk.totalTokens // 0) else null end),
+        equiv_session_cost_usd: (if $blocks != null then round2(if $blk then ($blk.costUSD // 0) else 0 end) else null end),
+        session_tokens_used: (if $blk != null then ($blk.totalTokens // 0) else null end),
         resets_at: $five_reset,
         is_active: (if $blk != null then ($blk.isActive // false) else true end),
-        models: (if $blk != null then ($blk.models // []) else [] end)
-      } else null end),
-      weekly: (if ($usage != null or $weekly != null) then {
+        models: (if $blk != null then ($blk.models // []) else [] end),
+        severity: ($session_limit.severity // null)
+        } else null end),
+      weekly: (if ($usage != null or $weekly != null or $weekly_daily != null) then {
         percent: round1($week_pct),
-        cost_usd: $week_cost,
-        cost_cap: $week_cap,
-        tokens_used: (if $wk != null then ($wk.totalTokens // 0) else null end),
+        equiv_weekly_cost_usd: (if $weekly_daily != null then round2(($weekly_daily.daily // []) | map(.totalCost // 0) | add // 0) else null end),
+        weekly_tokens_used: (if $weekly_daily != null then (($weekly_daily.daily // []) | map(.totalTokens // 0) | add // 0) else null end),
         resets_at: $week_reset,
-        week_start: (if $wk != null then ($wk.week // $wk.period) else null end)
-      } else null end),
-      # --- Solo en modo oauth: la API expone más de lo que la GUI mostraba -----
-      # limites por-modelo acotados en el tiempo (weekly_scoped con scope.model),
-      # gasto REAL (dinero de bolsillo) y overage. En fallback ccusage no existen.
-      limits: (if $usage != null then
-        [ ($usage.limits // [])[] | {
-            kind: .kind,
+        week_start: ($real_week_start + "T00:00:00Z"),
+        severity: ($weekly_all_limit.severity // null),
+        by_model: ($weekly_scoped | map({
             model: (.scope.model.display_name // null),
             percent: .percent,
             resets_at: (if .resets_at != null then (.resets_at | isoz) else null end),
-            severity: .severity,
-            is_active: .is_active
-          } ]
-        else null end),
+            severity: .severity
+             }))
+        } else null end),
       spend: (if ($usage != null and $usage.spend != null) then {
         used: (if $usage.spend.used != null then ($usage.spend.used.amount_minor / pow(10; $usage.spend.used.exponent)) else null end),
-        cap:  (if $usage.spend.limit != null then ($usage.spend.limit.amount_minor / pow(10; $usage.spend.limit.exponent)) else null end),
+        cap:    (if $usage.spend.limit != null then ($usage.spend.limit.amount_minor / pow(10; $usage.spend.limit.exponent)) else null end),
         currency: ($usage.spend.used.currency // $usage.spend.limit.currency // null),
         percent: ($usage.spend.percent // null),
         enabled: ($usage.spend.enabled // false)
-      } else null end),
-      extra_usage: (if ($usage != null and $usage.extra_usage != null) then {
-        used_credits:  ($usage.extra_usage.used_credits // null),
-        monthly_limit: ($usage.extra_usage.monthly_limit // null),
-        currency:      ($usage.extra_usage.currency // null),
-        utilization:   ($usage.extra_usage.utilization // null),
-        enabled:       ($usage.extra_usage.is_enabled // false)
-      } else null end)
-    }
+        } else null end)
+      }
 ' > "$TMP_FILE"
 mv "$TMP_FILE" "$STATE_FILE"
 
