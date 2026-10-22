@@ -8116,10 +8116,38 @@ check_cwdlines="$(node -e 'console.log(require(process.argv[1]).scanTranscriptFi
 { [ "$check_lines" -eq 3 ] && [ "$check_cwdlines" -eq 1 ]; } \
   && ok "s6 cwdLines CONTRA LA FALLA: la corrupción preserva 'lines' (3=3, invisible por cardinalidad) pero cambia 'cwdLines' (2→1, detectada)" \
   || bad "s6 cwdLines: no se reprodujo el escenario (lines=$check_lines cwdLines=$check_cwdlines)"
-# y que session-move.js REALMENTE use este invariante (no solo 'lines') antes de publicar
-grep -qF 'check.cwdLines !== r.cwdLines' "$BINRM/session-move.js" \
-  && ok "s6 cwdLines: session-move.js aborta si cwdLines no cuadra, no solo si 'lines' no cuadra (H5 fijo)" \
-  || bad "s6 cwdLines: session-move.js no verifica cwdLines (regresión de H5)"
+# CONVERSIÓN a comportamiento (FAULT-INJECTION): el guard de cwdLines evita PUBLICAR un transcript
+# corrompido (pérdida de datos) y solo dispara ante una REGRESIÓN de transformLine (output corrupto, no
+# un input corrupto). Se INYECTA el bug: una copia de session-lib.js donde transformLine BORRA el `cwd` en
+# vez de reescribirlo → el destino escrito pierde renglones-con-cwd que el origen sí tenía (sin cambiar el
+# nº de líneas) → el move DEBE abortar y no tocar nada. Control con la lib SANA: el mismo move sí publica.
+S6M="$SIFIX/fault"; mkdir -p "$S6M/bin"
+cp "$BINRM/session-move.js" "$S6M/bin/session-move.js"
+sed 's/o\.cwd = toCwd;/delete o.cwd;/' "$LIB" > "$S6M/bin/session-lib.js"   # lib ROTA: transformLine borra el cwd
+S6H="$S6M/home"; mkdir -p "$S6H/code/src" "$S6H/code/dst" "$S6H/.claude/projects"
+S6SR="$(cd "$S6H/code/src" && pwd -P)"; S6DR="$(cd "$S6H/code/dst" && pwd -P)"
+S6OS="$(printf '%s' "$S6SR" | sed 's/[^a-zA-Z0-9]/-/g')"; S6NS="$(printf '%s' "$S6DR" | sed 's/[^a-zA-Z0-9]/-/g')"
+mkdir -p "$S6H/.claude/projects/$S6OS" "$S6H/.claude/projects/$S6NS"
+S6ID="fa010000-0000-0000-0000-000000000006"; S6SRCJ="$S6H/.claude/projects/$S6OS/$S6ID.jsonl"
+printf '{"type":"user","cwd":"%s"}\n{"type":"assistant","cwd":"%s"}\n{"type":"user","x":1}\n' "$S6SR" "$S6SR" > "$S6SRCJ"
+S6SUM0="$(cksum < "$S6SRCJ")"
+# (1) FALLA: con la lib ROTA el move ABORTA citando el nº de cwd y NO toca nada
+s6out="$(HOME="$S6H" node "$S6M/bin/session-move.js" "$S6ID" --to-cwd "$S6DR" 2>&1)"; s6rc=$?
+{ [ "$s6rc" -ne 0 ] && printf '%s' "$s6out" | grep -qi 'cwd.*no cuadra'; } \
+  && ok "s6 cwdLines GUARD: transformLine roto (cwd borrado) → el move ABORTA citando el nº de renglones con cwd" \
+  || bad "s6 cwdLines GUARD: NO abortó ante la corrupción de contenido (rc=$s6rc · out=${s6out:0:80})"
+[ "$(cksum < "$S6SRCJ")" = "$S6SUM0" ] \
+  && ok "s6 cwdLines GUARD: el transcript ORIGEN quedó byte-idéntico tras el abort (cero pérdida de datos)" \
+  || bad "s6 cwdLines GUARD: el origen cambió tras el abort (PÉRDIDA DE DATOS)"
+{ [ -z "$(ls "$S6H/.claude/projects/$S6NS"/*.part* 2>/dev/null)" ] && [ ! -f "$S6H/.claude/projects/$S6NS/$S6ID.jsonl" ]; } \
+  && ok "s6 cwdLines GUARD: no quedó un .part a medias ni un destino publicado" \
+  || bad "s6 cwdLines GUARD: quedó residuo .part o un destino publicado tras el abort"
+# (2) CONTROL: con la lib SANA el MISMO move sí publica (el guard no es un falso-freno)
+cp "$LIB" "$S6M/bin/session-lib.js"
+HOME="$S6H" node "$S6M/bin/session-move.js" "$S6ID" --to-cwd "$S6DR" >/dev/null 2>&1
+{ [ -f "$S6H/.claude/projects/$S6NS/$S6ID.jsonl" ] && [ ! -f "$S6SRCJ" ]; } \
+  && ok "s6 cwdLines CONTROL: con la lib SANA el move publica el destino y retira el origen (no es falso-freno)" \
+  || bad "s6 cwdLines CONTROL: la lib sana no completó el move"
 
 rm -rf "$SIFIX"
 
