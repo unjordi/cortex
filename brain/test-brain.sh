@@ -7802,7 +7802,6 @@ echo "== (rm) reubicar-master: move COMPLETO de un brain-master (no-lobotomía/n
 
 SKILL="$SCRIPT_DIR/skills/reubicar-master/SKILL.md"
 BINRM="$SCRIPT_DIR/../bin"                              # session-move/import/export.js + session-lib.js
-[ -f "$SKILL" ] || bad "reubicar-master: falta el SKILL.md"
 [ -f "$BINRM/session-lib.js" ] || bad "reubicar-master: falta session-lib.js (motor)"
 
 # $HOME falso + repos origen/destino simulados
@@ -7847,14 +7846,11 @@ EOF
 RUNMOVE() { HOME="$RMHOME" node "$BINRM/session-move.js" "$@"; }
 NEWJSONL="$PROJ/$NEW_SLUG/$ID.jsonl"
 
-# ── g1: NO-SELF-MOVE / LIVENESS por mtime (motor unlinkea sin preguntar → la skill debe gatear ANTES) ──
-# El SKILL debe usar mtime que BLOQUEA + self-check, NO fuser/lsof como prueba de cerrada:
-grep -qiE 'mtime' "$SKILL" && ! grep -qiE 'fuser.*(prueba|cerrada|liveness)' "$SKILL" \
-  && grep -qiE 'self.?check|sesión propia|CLAUDE_SESSION_ID' "$SKILL" \
-  && ok "g1 liveness: SKILL gatea por mtime + self-check (fuser/lsof NO como prueba de cerrada)" \
-  || bad "g1 liveness: el SKILL no bloquea por mtime/self-check o usa fuser/lsof como prueba de cerrada"
-# (el grep de 'fs.unlinkSync' se retiró: que el motor REMUEVE el origen lo mide el behavioral g3 no-tail
-#  ~L7872 — tras el move, [ ! -f <jsonl viejo> ] → el efecto, no el símbolo.)
+# (los greps de PROSA del SKILL.md de reubicar-master se retiraron de esta sección: una skill no se
+#  EJECUTA para medir un efecto —su "cumplimiento" es lo que Claude hace al leerla, no unit-testeable— y
+#  grepear que el SKILL "dice mtime/MISMO bloque/G-GITIGNORE/diff -q/sin SSH/…" es frase fija en prosa,
+#  la misma clase g4/m1 que ya se quitó. Lo que SÍ se queda es el E2E del MOTOR —RUNMOVE/writeAlias/diff -q
+#  reales— que mide el efecto. Ruling de claudio.)
 
 # ── g2: RE-ANCLAJE — cwd reescrito a destino + jsonl en slug nuevo (comportamiento real del motor) ──
 RUNMOVE "$ID" --to-cwd "$DSTREPO" >/dev/null 2>&1
@@ -7881,10 +7877,6 @@ jq --arg id "$ID" --arg t "code/cortex" '(.masters[]|select(.id==$id)).target=$t
 [ "$(jq -r --arg id "$ID" '.masters[]|select(.id==$id).target' "$DRIVE/masters.json")" = "code/cortex" ] \
   && ok "g4 atomicidad: masters.json target por-id → code/cortex (no reencarna al slug viejo)" \
   || bad "g4 atomicidad: el target por-id no quedó corregido"
-# y que el SKILL lo exija en el MISMO bloque que el move (no en un paso suelto):
-grep -qiE 'MISMO bloque|uninterrumpido|at[oó]mic' "$SKILL" \
-  && ok "g4 atomicidad: el SKILL exige move+target-fix en el MISMO bloque (sin ventana para seed/sync)" \
-  || bad "g4 atomicidad: el SKILL no ata move y target-fix atómicamente"
 
 # ── g5: ALIAS real vía la lib (writeAlias, no edición a mano) ──
 HOME="$RMHOME" node -e 'require(process.argv[1]).writeAlias(process.argv[2],process.argv[3])' \
@@ -7899,13 +7891,6 @@ done
 grep -qxF 'CLAUDE.local.md' "$DSTREPO/.gitignore" \
   && ok "g6 no-fuga: CLAUDE.local.md quedó en el .gitignore del destino ANTES de depositar" \
   || bad "g6 no-fuga: CLAUDE.local.md NO está ignorado (riesgo de fuga en repo público)"
-# el SKILL debe ordenar el blindaje ANTES del depósito, y que T3/.NET NO se versione:
-grep -qiE 'blindar.*gitignore|G-GITIGNORE' "$SKILL" && grep -qiE 'ANTES de depositar|antes de tocar' "$SKILL" \
-  && ok "g6 no-fuga: el SKILL blinda el gitignore ANTES de depositar lo sensible" \
-  || bad "g6 no-fuga: el SKILL no ordena blindaje→depósito"
-grep -qiE 'T3|se QUEDA en plantilladotnet|no viaja' "$SKILL" \
-  && ok "g6 no-fuga: el SKILL deja los skills .NET (T3) en plantilladotnet (no al repo público)" \
-  || bad "g6 no-fuga: el SKILL no separa T3"
 
 # ── g7: NO-LOBOTOMÍA — G-PARITY por CONTENIDO (diff -q) sobre T1∪T2; NO por conteo de skills ──
 cp -f "$SRCREPO/.claude/memory/handoff-peer-claudes-conciso.md" "$DSTREPO/.claude/memory/"
@@ -7917,19 +7902,6 @@ for m in handoff-peer-claudes-conciso.md conocimiento-propio.local.md; do
 done
 diff -q "$SRCREPO/CLAUDE.local.md" "$DSTREPO/CLAUDE.local.md" >/dev/null 2>&1 || parity=1
 [ "$parity" -eq 0 ] && ok "g7 no-lobotomía: G-PARITY (diff -q) T1∪T2 idéntico en destino" || bad "g7 no-lobotomía: paridad rota"
-# (negativo anclado a la MEDICIÓN-por-conteo, no al mero token "18 vs 4": el SKILL correcto
-#  MENCIONA "18 vs 4 skills" justo para RECHAZARlo — mismo anti-patrón que el fix g1 de fuser)
-grep -qiE 'diff -q|por CONTENIDO' "$SKILL" && ! grep -qiE 'paridad por conteo|conteo de skills|por (el )?n[uú]mero de skills' "$SKILL" \
-  && ok "g7 no-lobotomía: el SKILL mide paridad por CONTENIDO, no por conteo de skills" \
-  || bad "g7 no-lobotomía: el SKILL mide paridad por conteo (mezcla plantilla con master)"
-
-# ── g8: DANZA sin SSH + handoff a disco + cita del requisito del humano ──
-grep -qiE 'sin SSH|fallback' "$SKILL" && grep -qiE 'handoff-\$ID\.sh|handoff.*a DISCO|escribe.*a disco' "$SKILL" \
-  && ok "g8 danza: el SKILL cubre fallback sin SSH y escribe el handoff a disco (sobrevive compactación)" \
-  || bad "g8 danza: falta el fallback sin SSH o el handoff a disco"
-grep -qiE 'nadie se auto-mueve|el OTRO master|mueve al OTRO|gemelo me mueve' "$SKILL" \
-  && ok "g8 danza: el SKILL consagra 'cada máquina mueve al OTRO con el target cerrado'" \
-  || bad "g8 danza: no queda la invariante de la danza cruzada"
 
 # ── g9: COLISIÓN — el motor ABORTA si el destino ya tiene el id (no pisa) ──
 printf '{"type":"user","cwd":"%s"}\n' "$DSTREPO" > "$PROJ/$NEW_SLUG/collide.jsonl"
@@ -7965,16 +7937,6 @@ else
   bad "g11 export-first: session-export.js no produjo el .gz"
 fi
 rm -rf "$tmpe"
-
-# ── g12: DECISIONES del humano en RUNTIME (id vigente, T1, escape-hatch, reconstitución, PR) + LISTO=QA ──
-dec=0
-for k in 'id.*vigente' 'Frontera T1|frontera memoria' 'scape.?hatch|overlay' 'reconstituci' 'PR.*develop|mini-develop'; do
-  grep -qiE "$k" "$SKILL" || dec=1
-done
-[ "$dec" -eq 0 ] && ok "g12 decisiones: el SKILL enumera las 5 decisiones del humano en runtime" || bad "g12 decisiones: falta alguna decisión del humano"
-grep -qiE 'LISTO = QA|QA del humano|QA FUNCIONAL' "$SKILL" && grep -qiE 'preview|sin.*auto-merge|no.*auto-merge' "$SKILL" \
-  && ok "g12 LISTO: el SKILL cierra con QA funcional del humano + MR en preview (sin auto-merge)" \
-  || bad "g12 LISTO: el SKILL declara cierre sin QA del humano o permite auto-merge"
 
 # ── g13: SIDECAR (H1) — subagents/tool-results/workflows viajan CON el .jsonl, en un sandbox aislado
 #         del session-move.js real (no solo dentro del e2e completo, más abajo). Un master real puede
@@ -8290,11 +8252,9 @@ echo "== (r2) skill↔bin: timestamp de PRIMER NIVEL, y que el SKILL no describa
 R2LIB="$BINRM/session-lib.js"
 R2SK="$SCRIPT_DIR/skills/reubicar-master/SKILL.md"      # PROSA (lo que el skill AFIRMA)
 R2SH="$SCRIPT_DIR/skills/reubicar-master/reubicar-master.sh"   # CÓDIGO (la maquinaria de verdad)
-[ -x "$R2SH" ] && ok "(rm) el skill trae su ejecutable y es ejecutable: reubicar-master.sh" \
-                || bad "(rm) falta reubicar-master.sh ejecutable (la maquinaria volvió a ser markdown)"
-grep -qE '^\s*```bash' "$R2SK" && ! awk '/^```bash/{f=1} f&&/PRELUDIO_EOF|HANDOFF_EOF/{print;exit}' "$R2SK" | grep -q . \
-  && ok "(rm) el SKILL.md ya no lleva el preludio ni el generador embebidos (una sola fuente = el script)" \
-  || bad "(rm) el SKILL.md volvió a traer el preludio/generador en markdown: dos fuentes que van a driftar"
+# ([-x] de reubicar-master.sh y el grep de "el SKILL.md ya no embebe el preludio/generador" se retiraron:
+#  existencia + prosa-de-skill con markers hardcodeados —clase g4/m1—; lo que mide el EFECTO es r2-1
+#  abajo, que EJECUTA topLevelString/findSession del motor.)
 R2FIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-r2.XXXXXX")"
 R2HOME="$R2FIX/home"
 R2PROJ="$R2HOME/.claude/projects"
@@ -8359,28 +8319,10 @@ done <<< "$R2MARC"
   && ok "r2-3 paridad handoff: los $r2mn marcadores del candado están en líneas ejecutables del generador" \
   || bad "r2-3 paridad handoff: $r2mf de $r2mn marcadores faltan (o no se pudo leer la lista del candado)"
 
-# ── r2-4: ANCLA skill↔bin. Aquí se rompió la vuelta 1: dos fixes correctos en aislamiento y la prosa
-#          del skill quedó describiendo el bin/ de ANTES. Estos asserts atan lo que el skill AFIRMA a
-#          lo que bin/ HACE, así que cambiar uno sin el otro FALLA.
-if grep -qF 'renameSync(partFile, toFile)' "$BINRM/session-move.js"; then
-  grep -qE 'session-move\.js[^.]{0,80}(writeFileSync|escribe con el umask)' "$R2SK" \
-    && bad "r2-4 ancla: session-move.js publica con rename y conserva el modo, pero el SKILL sigue diciendo writeFileSync/umask" \
-    || ok "r2-4 ancla: el SKILL no describe a session-move.js con el writeFileSync/umask que ya no tiene"
-fi
-if grep -q 'rewriteTranscriptStream' "$BINRM/session-lib.js"; then
-  grep -qE '536870888|(session-move|session-export)\.js[^.]{0,60}carga(n)? el archivo COMPLETO' "$R2SK" \
-    && bad "r2-4 ancla: la lib va en streaming, pero el SKILL sigue con el techo de 512 MiB / 'carga el archivo COMPLETO'" \
-    || ok "r2-4 ancla: el SKILL no impone un techo de tamaño que la maquinaria en streaming ya no tiene"
-fi
-{ grep -qF -- '--git-branch <rama>' "$BINRM/session-move.js" && grep -qF -- '--git-branch "$RAMA_DST"' "$R2NOCOM"; } \
-  && ok "r2-4 ancla: el skill INVOCA el --git-branch que session-move.js ofrece (re-anclaje en la misma pasada)" \
-  || bad "r2-4 ancla: session-move.js ofrece --git-branch y el handoff no lo usa (volvería el paso post-move que relee el transcript)"
-grep -v createHash "$R2NOCOM" | grep -q 'readFileSync' \
-  && bad "r2-4 ancla: el handoff volvió a leer un archivo completo a un string DESPUÉS del punto de no retorno" \
-  || ok "r2-4 ancla: cero readFileSync del transcript en los pasos destructivos del handoff"
-grep -qE 'writeAlias.{0,40}(es fail-open|no atómico)' "$R2SK" \
-  && bad "r2-4 ancla: writeAlias ya es atómico y respalda el JSON ilegible; el SKILL sigue llamándolo fail-open" \
-  || ok "r2-4 ancla: el SKILL describe writeAlias como es hoy (atómico, respalda en vez de degradar a {})"
+# (r2-4 ANCLA skill↔bin se retiró: comparaba la PROSA del SKILL.md contra palabras HARDCODEADAS en el test
+#  —writeFileSync/umask/512MiB/--git-branch/readFileSync/fail-open— no DERIVADAS del código, así que
+#  reescribir la prosa con otras palabras lo rompía sin que nada estuviera mal. Clase g4/m1. Ruling de
+#  claudio. r2-3 de arriba SE QUEDA porque DERIVA los marcadores del propio _MARCADORES del script.)
 
 # ── r3-1: ANCLA POR SÍMBOLO (no por frase) — el tie-break de findSession ya driftó DOS veces (vuelta 2
 #          y vuelta 3) porque cada anchor anterior ataba UNA frase concreta a mano. Este extrae el orden
