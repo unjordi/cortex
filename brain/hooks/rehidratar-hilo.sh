@@ -77,14 +77,32 @@ ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}
 HILO="$ROOT/.claude/memory/hilo-mental-actual.md"
 ANDAMIO="$ROOT/.claude/memory/hilo-mental-actual.andamio.md"
 
-# usa_sistema: la carpeta usa el sistema de memoria del cerebro si tiene `.claude/` (señal ÚNICA desde
-# 2026-10-22 — antes era la presencia de estado-proyecto.md; se quitó esa condición). Con `.claude/`
-# presente y SIN estado-proyecto.md, lo SIEMBRA en el acto [user 2026-10-22: "quita la condición. mejor
-# que considere el caso en que no exista o incluso lo cree"]. La SIEMBRA se gatea por `.claude/` [user
-# 2026-10-22: "estado-proyecto.md fuera de un repo se crea SOLO si la carpeta ya tiene .claude/"]: nunca
-# en una carpeta ajena. Idempotente y fail-open (una siembra fallida jamás rompe el arranque de sesión).
+# usa_sistema: la carpeta usa el sistema de memoria del cerebro si su `.claude/` trae algo MÁS que
+# `settings.local.json` [user 2026-10-22: "la decisión va justamente por la línea de solo crear estado
+# proyecto si ES un proyecto con algo más que un json"] — Claude Code crea un `.claude/settings.local.json`
+# en CUALQUIER carpeta donde se acepta un permiso, así que su sola presencia NO marca un proyecto. Con un
+# `.claude/` de proyecto y SIN estado-proyecto.md, lo SIEMBRA en el acto [user 2026-10-22: "quita la
+# condición. mejor que considere el caso en que no exista o incluso lo cree"] — decisión de unjordi sobre
+# la propuesta de claudio.
+# EXCEPCIÓN: el `.claude/` de CONFIG de Claude Code NO es un proyecto. Si ROOT es el $HOME, o su `.claude/`
+# ES el config dir (${CLAUDE_CONFIG_DIR:-$HOME/.claude}), NO se usa el sistema ni se siembra ahí (si no,
+# una sesión abierta en ~ sembraría estado-proyecto.md dentro de la config de Claude Code).
+# Idempotente y fail-open (una siembra fallida jamás rompe el arranque de sesión).
+_claude_es_proyecto() {
+  # ¿El `.claude/` trae algo además de settings.local.json? (un .claude/ con SOLO ese json lo creó Claude
+  # Code al aceptar un permiso — no es un proyecto con sistema de memoria del cerebro). Cuenta hidden también.
+  local d="$1" e
+  for e in "$d"/* "$d"/.[!.]*; do
+    [ -e "$e" ] || continue
+    [ "$(basename "$e")" = "settings.local.json" ] && continue
+    return 0
+  done
+  return 1
+}
 usa_sistema=0
-if [ -d "$ROOT/.claude" ]; then
+_cfgdir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+if [ -d "$ROOT/.claude" ] && [ "$ROOT" != "$HOME" ] && [ "$ROOT/.claude" != "$_cfgdir" ] \
+   && _claude_es_proyecto "$ROOT/.claude"; then
   usa_sistema=1
   if [ ! -f "$ROOT/.claude/memory/estado-proyecto.md" ]; then
     mkdir -p "$ROOT/.claude/memory" 2>/dev/null \

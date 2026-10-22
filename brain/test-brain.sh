@@ -4129,6 +4129,36 @@ rhajena="$(printf '%s' '{"source":"compact","transcript_path":"/tmp/t.jsonl"}' |
 is_silent "$rhajena" && ok "rehidratar-hilo (2026-10-22): carpeta SIN .claude/ (ajena) → silencio aun en compact" || bad "rehidratar-hilo: una carpeta ajena no calló; got: $rhajena"
 [ ! -f "$RHAJENA/.claude/memory/estado-proyecto.md" ] && ok "rehidratar-hilo (2026-10-22): NO siembra estado-proyecto.md en una carpeta sin .claude/ (decisión 1)" || bad "rehidratar-hilo: sembró estado-proyecto en una carpeta ajena"
 rm -rf "$RHAJENA"
+# control del BUG (claudio 2026-10-22): el `.claude/` de CONFIG de Claude Code NO es un proyecto. Con
+# ROOT==$HOME (sesión abierta en el home) y $HOME/.claude existente, el hook NO debe sembrar estado-proyecto.md
+# ahí (contaminaría la config). Falla contra el código previo (9c1b1a8, sin la exclusión).
+RHCFG="$(mktemp -d "${TMPDIR:-/tmp}/brain-rhcfg.XXXXXX")"; mkdir -p "$RHCFG/.claude/memory"
+printf '%s' '{"source":"resume"}' | HOME="$RHCFG" CLAUDE_PROJECT_DIR="$RHCFG" bash "$HOOKS/rehidratar-hilo.sh" >/dev/null 2>&1
+[ ! -f "$RHCFG/.claude/memory/estado-proyecto.md" ] \
+  && ok "rehidratar-hilo: ROOT==\$HOME (config de Claude Code, no proyecto) → NO siembra estado-proyecto.md" \
+  || bad "rehidratar-hilo: sembró estado-proyecto.md en ~/.claude (config dir) — BUG claudio 2026-10-22"
+# y el caso CLAUDE_CONFIG_DIR: ROOT/.claude ES el config dir → tampoco siembra
+RHCFG2="$(mktemp -d "${TMPDIR:-/tmp}/brain-rhcfg2.XXXXXX")"; mkdir -p "$RHCFG2/proj/.claude/memory"
+printf '%s' '{"source":"resume"}' | CLAUDE_CONFIG_DIR="$RHCFG2/proj/.claude" CLAUDE_PROJECT_DIR="$RHCFG2/proj" bash "$HOOKS/rehidratar-hilo.sh" >/dev/null 2>&1
+[ ! -f "$RHCFG2/proj/.claude/memory/estado-proyecto.md" ] \
+  && ok "rehidratar-hilo: ROOT/.claude == \$CLAUDE_CONFIG_DIR → NO siembra (no es un proyecto)" \
+  || bad "rehidratar-hilo: sembró en un ROOT/.claude que es el CLAUDE_CONFIG_DIR"
+rm -rf "$RHCFG" "$RHCFG2"
+# DECISIÓN unjordi 2026-10-22 (punto 3): un `.claude/` con SOLO settings.local.json NO es un proyecto
+# (Claude Code lo crea al aceptar un permiso en cualquier carpeta) → NO usa el sistema ni siembra.
+RHSL="$(mktemp -d "${TMPDIR:-/tmp}/brain-rhsl.XXXXXX")"; mkdir -p "$RHSL/.claude"
+printf '{}\n' > "$RHSL/.claude/settings.local.json"
+printf '%s' '{"source":"resume"}' | CLAUDE_PROJECT_DIR="$RHSL" bash "$HOOKS/rehidratar-hilo.sh" >/dev/null 2>&1
+[ ! -f "$RHSL/.claude/memory/estado-proyecto.md" ] \
+  && ok "rehidratar-hilo: .claude/ con SOLO settings.local.json → NO es proyecto, NO siembra (decisión unjordi p3)" \
+  || bad "rehidratar-hilo: sembró en un .claude/ que solo tiene settings.local.json"
+# la otra dirección: un `.claude/` con algo MÁS (CLAUDE.md) SÍ es proyecto → siembra
+printf '# proyecto\n' > "$RHSL/.claude/CLAUDE.md"
+printf '%s' '{"source":"resume"}' | CLAUDE_PROJECT_DIR="$RHSL" bash "$HOOKS/rehidratar-hilo.sh" >/dev/null 2>&1
+[ -f "$RHSL/.claude/memory/estado-proyecto.md" ] \
+  && ok "rehidratar-hilo: .claude/ con CLAUDE.md (algo más que el json) → ES proyecto → siembra" \
+  || bad "rehidratar-hilo: no sembró en un .claude/ con contenido de proyecto"
+rm -rf "$RHSL"
 # hilo VACÍO (archivo existe pero sin contenido) = tratado como sin-hilo: NO reinyecta un hilo vacío como contenido
 : > "$RHROOT/.claude/memory/hilo-mental-actual.md"
 printf '%s' "$(rh)" | jq -r '.hookSpecificOutput.additionalContext // empty' 2>/dev/null | grep -q 'HILO MENTAL ACTUAL' \
