@@ -319,19 +319,33 @@ _bz_squash_ct() {
 # mergeado SIN traza propia: una rama que entró DENTRO de una contenedora (épica/integración) cuyo squash
 # nombra SOLO la contenedora no es ancestro, no tiene su `Rama:`, no tiene PR propio y `git cherry` no la
 # empareja → (a)/(e)/(d)/(c) fallan aunque su CONTENIDO esté 100% en la base (medido 2026-10-22, 19 ramas).
-# Señal: fusionar BASE con BR da el MISMO ÁRBOL que BASE ⇒ BR no aporta NADA de contenido que no esté ya en
-# BASE. Usa `git merge-tree --write-tree` (git ≥2.38; su 1ª línea en un merge LIMPIO es el OID del árbol); si
-# la subcomando no existe o el merge CONFLICTÚA (exit≠0) → NO aplica (conservador). Compara ÁRBOLES → squash-
+# Señal: existe un commit C en la historia first-parent de BASE donde fusionar C con BR da el MISMO ÁRBOL que C
+# ⇒ EN ESE MOMENTO BR no aportaba NADA que no estuviera ya en C (entró íntegra ahí). Probar SOLO contra la PUNTA
+# de BASE falla cuando BASE evolucionó y TOCÓ los mismos archivos tras integrar BR (merge-tree conflictúa → exit≠0):
+# ahí BR SÍ entró, pero la punta ya no lo refleja (medido 2026-10-22: contra la punta solo cazaba 2 de 19). Por eso
+# se recorre la historia first-parent desde la PUNTA hacia atrás, acotado a los $CLAUDE_BZ_PRESENCIA_MAX (def 200)
+# commits más recientes, cortando en el merge-base (antes de él BR no pudo entrar). Las ramas SUPERADAS por
+# reimplementación quedan conservadas: su árbol nunca fue un no-op contra NINGÚN commit histórico. Usa
+# `git merge-tree --write-tree` (git ≥2.38; su 1ª línea en un merge LIMPIO es el OID del árbol); subcomando ausente
+# o merge que CONFLICTÚA en ese commit → ese commit NO cuenta (se sigue con el siguiente). Compara ÁRBOLES → squash-
 # safe. SOLO en el BARRIDO (limpiar-ramas/worktrees, que pregunta "¿el trabajo está integrado, seguro borrar?"):
 # proteger-arbol pregunta OTRA cosa ("¿orfanaría un COMMIT sin pushear?", p.ej. un commit VACÍO con árbol
 # idéntico SÍ se orfana) → NO recibe modo=barrido y (p) queda APAGADA ahí. Un llamador nuevo sin el modo
 # tampoco la hereda (fail-safe).
 _bz_presencia_contenido() {
-  local ROOT="$1" br="$2" base="$3" base_tree mt_tree
-  base_tree=$(git -C "$ROOT" rev-parse --verify -q "$base^{tree}" 2>/dev/null) || return 1
-  mt_tree=$(git -C "$ROOT" merge-tree --write-tree "$base" "$br" 2>/dev/null) || return 1   # exit≠0 (conflicto/git viejo) → NO aplica
-  mt_tree=$(printf '%s\n' "$mt_tree" | head -1)
-  [ -n "$mt_tree" ] && [ "$mt_tree" = "$base_tree" ]
+  local ROOT="$1" br="$2" base="$3" c c_tree mt_tree n=0 mb max="${CLAUDE_BZ_PRESENCIA_MAX:-200}"
+  mb=$(git -C "$ROOT" merge-base "$base" "$br" 2>/dev/null)
+  while IFS= read -r c; do
+    [ -z "$c" ] && continue
+    [ -n "$mb" ] && [ "$c" = "$mb" ] && break        # antes del merge-base BR no pudo entrar
+    c_tree=$(git -C "$ROOT" rev-parse --verify -q "$c^{tree}" 2>/dev/null) || { n=$((n+1)); [ "$n" -ge "$max" ] && break; continue; }
+    if mt_tree=$(git -C "$ROOT" merge-tree --write-tree "$c" "$br" 2>/dev/null); then   # exit≠0 (conflicto/git viejo) → ese commit NO cuenta
+      mt_tree=$(printf '%s\n' "$mt_tree" | head -1)
+      [ -n "$mt_tree" ] && [ "$mt_tree" = "$c_tree" ] && return 0
+    fi
+    n=$((n+1)); [ "$n" -ge "$max" ] && break
+  done < <(git -C "$ROOT" rev-list --first-parent --max-count="$max" "$base" 2>/dev/null)
+  return 1
 }
 
 # _bz_integrada_directa ROOT BR BASE [MODO] → 0 si BR está integrada a BASE por una señal POSITIVA DIRECTA

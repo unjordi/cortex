@@ -3061,6 +3061,36 @@ bz_es_zombie "$PCR" feat/pviva develop barrido \
   || ok "b3g(p) CONTROL: rama con trabajo real no-en-develop → conserva aun en modo=barrido"
 rm -rf "$PCROOT"
 
+# (b3g-p2) señal (p) con SCAN DE HISTORIA (2026-10-22, claudio): probar (p) SOLO contra la PUNTA de develop falla
+# cuando develop EVOLUCIONÓ y TOCÓ el mismo archivo tras integrar la rama (merge-tree conflictúa en la punta). La
+# rama SÍ entró —íntegra— en un commit histórico. (p) recorre la historia first-parent y la caza ahí. FALLA vs
+# bfca1cd (que solo miraba la punta → conservaba). Control: una rama con un cambio que develop NUNCA tuvo → conserva.
+P2ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-pc2.XXXXXX")"; P2R="$P2ROOT/repo"; mkdir -p "$P2R"
+( cd "$P2R" && git init -q && git config user.email t@t && git config user.name t \
+  && git checkout -q -b develop && echo base > base.txt && git add base.txt && git commit -qm base \
+  && git checkout -q -b feat/hx && echo x1 > f.txt && git add f.txt && git commit -qm x1 \
+  && git checkout -q develop && git checkout -q -b feat/hy && echo solo-y > g.txt && git add g.txt && git commit -qm y1 \
+  && git checkout -q develop && git checkout -q -b epic/hx && git merge -q --no-ff feat/hx -m "m hx" && echo otra > otra.txt && git add otra.txt && git commit -qm otra \
+  && git checkout -q develop && git merge -q --squash epic/hx && git commit -qm "integro epic hx
+Rama: epic/hx" \
+  && printf 'x1\nMODIFICADO-despues\n' > f.txt && git add f.txt && git commit -qm "develop re-toca f.txt" \
+  && git branch -D epic/hx ) >/dev/null 2>&1
+# teeth: contra la PUNTA de develop, merge-tree de feat/hx ya NO es no-op (develop re-tocó f.txt) → la (p) vieja conservaba
+P2_BT=$(git -C "$P2R" rev-parse 'develop^{tree}' 2>/dev/null)
+P2_MT=$(git -C "$P2R" merge-tree --write-tree develop feat/hx 2>/dev/null | head -1)
+[ -n "$P2_MT" ] && [ "$P2_MT" != "$P2_BT" ] \
+  && ok "b3g-p2(teeth): contra la PUNTA feat/hx ya NO es no-op (develop re-tocó f.txt) — la (p) vieja la conservaba" \
+  || bad "b3g-p2(teeth): test mal armado, la punta sigue siendo no-op"
+BZ_RAZON=""
+{ bz_es_zombie "$P2R" feat/hx develop barrido && [ "$BZ_RAZON" = p ]; } \
+  && ok "b3g-p2: (p) con scan de historia caza feat/hx (entró íntegra en la épica) pese a que develop re-tocó el archivo → ZOMBIE por (p)" \
+  || bad "b3g-p2: (p) no cazó feat/hx vía scan de historia (razón='$BZ_RAZON')"
+BZ_RAZON=""
+bz_es_zombie "$P2R" feat/hy develop barrido \
+  && bad "b3g-p2: marcó zombie feat/hy — su cambio (g.txt) NUNCA estuvo en develop (razón='$BZ_RAZON')" \
+  || ok "b3g-p2 CONTROL: rama con cambio que develop nunca tuvo → conserva aun con scan de historia"
+rm -rf "$P2ROOT"
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (b3h) bz_es_zombie: señal (e) 'Rama: <rama>' en el squash — determinista, LOCAL, SIN red ni gh/glab (A-3) =="
