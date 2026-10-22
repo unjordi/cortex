@@ -9650,7 +9650,20 @@ echo "== (vj) install.sh SIEMPRE deja contents/version.json en el paquete YA ins
 # tras "empaquetar" (es temporal, no se versiona) -- si kpackagetool6 no lo copió al DESTINO, no
 # queda en ningún lado. Este probe stubea kpackagetool6 como ese NO-OP (registra la llamada, no toca
 # el destino) y comprueba que el instalador, aun así, garantiza version.json en el paquete instalado.
-if command -v jq >/dev/null 2>&1; then
+# install.sh usa `install -D` (GNU); el BSD install de macOS no lo soporta y el instalador tronaría antes
+# del paso de version.json. Resuelve un dir con un `install` que acepte -D para el PATH del probe: ninguno
+# si el del sistema ya sirve (Linux/CI), o un shim a `ginstall` (homebrew-coreutils). Sin ninguno → SKIP
+# (el gate real corre en CI/Linux, donde /usr/bin/install es GNU); nunca un FAIL por falta de herramienta.
+VJ_GNU_DIR="__none__"; _vjp="$(mktemp -d "${TMPDIR:-/tmp}/brain-vjp.XXXXXX")"
+if install -D -m 0644 /dev/null "$_vjp/sys/x" 2>/dev/null; then VJ_GNU_DIR=""
+elif command -v ginstall >/dev/null 2>&1; then
+  mkdir -p "$_vjp/bin"; ln -sf "$(command -v ginstall)" "$_vjp/bin/install"; VJ_GNU_DIR="$_vjp/bin"
+fi
+if ! command -v jq >/dev/null 2>&1; then
+  bad "vj: no hay jq -- no puedo verificar version.json embebido"; rm -rf "$_vjp"
+elif [ "$VJ_GNU_DIR" = "__none__" ]; then
+  echo "  SKIP vj: sin 'install -D' (GNU coreutils); el gate real corre en CI/Linux"; rm -rf "$_vjp"
+else
   VJROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-vj.XXXXXX")"
   VJHOME="$VJROOT/home"; VJSTUBS="$VJROOT/stubs"; mkdir -p "$VJHOME" "$VJSTUBS"
   VJPLASMOID_ID="$(grep -m1 '^PLASMOID_ID=' "$ROOT/install.sh" | sed -E 's/^PLASMOID_ID="([^"]+)".*/\1/')"
@@ -9679,7 +9692,7 @@ EOF
   done
   chmod +x "$VJSTUBS"/*
 
-  ( export HOME="$VJHOME"; export PATH="$VJSTUBS:/usr/bin:/bin"
+  ( export HOME="$VJHOME"; export PATH="$VJSTUBS${VJ_GNU_DIR:+:$VJ_GNU_DIR}:/usr/bin:/bin"
     cd "$ROOT" && bash ./install.sh --no-brain --no-claude-code --no-reload-shell ) \
     > "$VJROOT/out.txt" 2>&1
   VJ_RC=$?
@@ -9693,9 +9706,7 @@ EOF
   else
     bad "vj: version.json SIGUE ausente del paquete instalado tras -u -- repro del bug real (sin auto-update)"
   fi
-  rm -rf "$VJROOT"
-else
-  bad "vj: no hay jq -- no puedo verificar version.json embebido"
+  rm -rf "$VJROOT" "$_vjp"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
