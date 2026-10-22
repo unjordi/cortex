@@ -7853,10 +7853,8 @@ grep -qiE 'mtime' "$SKILL" && ! grep -qiE 'fuser.*(prueba|cerrada|liveness)' "$S
   && grep -qiE 'self.?check|sesión propia|CLAUDE_SESSION_ID' "$SKILL" \
   && ok "g1 liveness: SKILL gatea por mtime + self-check (fuser/lsof NO como prueba de cerrada)" \
   || bad "g1 liveness: el SKILL no bloquea por mtime/self-check o usa fuser/lsof como prueba de cerrada"
-# y comprobación viva del riesgo: el motor SÍ unlinkea el origen (por eso el gate va ANTES del motor)
-grep -qF 'fs.unlinkSync(found.file)' "$BINRM/session-move.js" \
-  && ok "g1 liveness: confirmado que session-move.js unlinkea sin preguntar (justifica el gate previo)" \
-  || bad "g1 liveness: session-move.js cambió; re-evaluar el gate"
+# (el grep de 'fs.unlinkSync' se retiró: que el motor REMUEVE el origen lo mide el behavioral g3 no-tail
+#  ~L7872 — tras el move, [ ! -f <jsonl viejo> ] → el efecto, no el símbolo.)
 
 # ── g2: RE-ANCLAJE — cwd reescrito a destino + jsonl en slug nuevo (comportamiento real del motor) ──
 RUNMOVE "$ID" --to-cwd "$DSTREPO" >/dev/null 2>&1
@@ -8001,10 +7999,8 @@ out13="$(RUNMOVE "$SCID2" --to-cwd "$DSTREPO" 2>&1)"
 printf '%s' "$out13" | grep -q '"sidecar":{"moved":false' \
   && ok "g13 sidecar: sin sidecar de origen, el move reporta 'moved:false' (no-op VERIFICADO, no silencio)" \
   || bad "g13 sidecar: no reportó el no-op del sidecar: $out13"
-# H1 (honestidad): el comentario que afirmaba 'no hay más artefactos que mover' era medible y falso
-grep -qF 'no hay más artefactos que mover' "$BINRM/session-move.js" \
-  && bad "g13 sidecar: session-move.js sigue afirmando que no hay más artefactos que mover (falso, medido)" \
-  || ok "g13 sidecar: el comentario falso de session-move.js (H1) se corrigió"
+# (el grep del comentario 'no hay más artefactos que mover' se retiró: la HONESTIDAD del no-op ya la mide
+#  el behavioral de arriba —el move REPORTA "sidecar moved:false", no silencio— que es el efecto observable.)
 
 rm -rf "$RMFIX"
 
@@ -8211,9 +8207,8 @@ smmode="$(node -e 'console.log((require("fs").statSync(process.argv[1]).mode & 0
 [ -z "$(ls "$SMPROJ/$smt" | grep '\.part\.' || true)" ] \
   && ok "sm2 atomicidad: no queda ningún .part (se publica con rename)" \
   || bad "sm2 atomicidad: quedó un temporal .part en el destino"
-grep -qF 'renameSync(partFile, toFile)' "$BINRM/session-move.js" \
-  && ok "sm2 atomicidad: el destino se publica con rename de un temporal del MISMO dir" \
-  || bad "sm2 atomicidad: session-move dejó de escribir a temporal+rename (regresión de C-4)"
+# (el grep de 'renameSync(partFile, toFile)' se retiró: la atomicidad ya la mide el behavioral de arriba
+#  —tras publicar NO queda ningún .part en el destino— que es el efecto observable del temporal+rename.)
 
 # ── sm3: destino INEXISTENTE — el slug saldría de una ruta que el harness nunca tendrá como cwd, así
 #         que se ABORTA sin tocar el origen (con --allow-missing-cwd se permite a propósito).
