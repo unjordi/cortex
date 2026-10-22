@@ -1,0 +1,6 @@
+ATENDIDO 2026-10-21 (cortex-master, rescate del develop local). Los FP de dod-verificar (resultados
+medidos leídos como CIERRE; "el contenedor ve"/"ls muestra" leído como VISUAL) los resuelve el
+JUEZ-Haiku empoderado: EJE 1 trata "RESULTADO MEDIDO DE UNA OPERACIÓN / ARTEFACTO INTERMEDIO" como
+estatus (no cierre); EJE 3 VISUAL solo dispara sobre apariencia de UI renderizada, no sobre el sujeto
+de un comando. Banco del corpus dod 16/0·4/4; la batería LIVE valida la clasificación real. Parte de
+la tanda de vivos del corpus 2026-10-21 (fix/corpus-fp-bench).
