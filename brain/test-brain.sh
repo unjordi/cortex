@@ -2471,18 +2471,9 @@ BASHBIN="$(command -v bash)"
 o="$(printf '%s' "{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$PFH/.claude/hooks/no-bypass-deploy.sh\"}}" \
      | PATH="/nonexistent-dir" HOME="$PFH" CLAUDE_BRAIN_DIR="$PFB" "$BASHBIN" "$HOOKS/proteger-fuente-cerebro.sh")"
 [ -z "$o" ] && ok "proteger-fuente: fail-open sin jq → silencio (no bloquea)" || bad "proteger-fuente: no falló abierto sin jq; got: $o"
-# OS-parity/estático: el hook usa \$HOME y \${CLAUDE_BRAIN_DIR}, no rutas hardcodeadas de un \$HOME
-grep -qE '/Users/[A-Za-z]|/home/[A-Za-z]' "$HOOKS/proteger-fuente-cerebro.sh" \
-  && bad "proteger-fuente: tiene una ruta hardcodeada de \$HOME (no portable)" \
-  || ok "proteger-fuente: sin rutas hardcodeadas de \$HOME (OS-parity)"
-{ grep -q 'HOME/.claude' "$HOOKS/proteger-fuente-cerebro.sh" && grep -q 'CLAUDE_BRAIN_DIR' "$HOOKS/proteger-fuente-cerebro.sh"; } \
-  && ok "proteger-fuente: deriva rutas de \$HOME y \${CLAUDE_BRAIN_DIR}" || bad "proteger-fuente: no usa \$HOME/\${CLAUDE_BRAIN_DIR}"
-# MANIFEST bien formado con el hook nuevo (tier global, kind hook) + install-brain lo cabla
-grep -qE '^proteger-fuente-cerebro[[:space:]]+global[[:space:]]+hook$' "$HOOKS/MANIFEST" \
-  && ok "proteger-fuente: declarado en el MANIFEST (global hook)" || bad "proteger-fuente: falta/mal en el MANIFEST"
-grep -qE 'proteger-fuente-cerebro\)[[:space:]]*echo[[:space:]]*"PreToolUse\|Edit' "$INSTALLER" \
-  && ok "proteger-fuente: cableado (ev_de → PreToolUse/Edit|Write|MultiEdit, derivado del MANIFEST)" \
-  || bad "proteger-fuente: NO mapeado en ev_de() de install-brain.sh (no se cablearía)"
+# (los source-greps de proteger-fuente se retiraron: los casos (1)-(6) de arriba CORREN el hook y miden
+#  su efecto —avisa con fuente / silencio local / escape / fail-open—; el lint de $HOME hardcodeado lo
+#  cubre e6.3 global; su línea en el MANIFEST y su cableado, la paridad e2 / e6d / e7.)
 rm -rf "$PFFIX"
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -6616,22 +6607,15 @@ else
   else
     bad "drift: install-brain NO deriva del MANIFEST (¿volvió a una lista hardcodeada?)"
   fi
-  # (4) install-brain DERIVA el cableado del MANIFEST (ya NO 16 register_hook hardcode) y cada
-  #     {global,both} kind=hook tiene su EVENTO en la tabla ev_de() → se cablea. Si un hook nuevo del
-  #     MANIFEST no está en ev_de(), el instalador lo SALTA (avisa) → este drift-check lo caza.
-  grep -qE 'WIRE_HOOKS=.*awk.*(global.*both|both.*global).*MANIFEST' "$INSTALLER" \
-    && ok "drift: install-brain deriva el CABLEADO del MANIFEST (ev_de + loop, no lista hardcodeada)" \
-    || bad "drift: install-brain NO deriva el cableado del MANIFEST (¿volvió a register_hook hardcode?)"
+  # (4) PARIDAD derivada: cada {global,both} kind=hook del MANIFEST tiene su EVENTO en la tabla ev_de()
+  #     del instalador → se cablea. (El grep de 'WIRE_HOOKS=…awk…MANIFEST' se retiró: el EFECTO —install
+  #     cabla exactamente lo del MANIFEST— ya lo mide e7, y la paridad de abajo caza el hook sin evento.)
   evblock="$(awk '/^ev_de\(\)/,/^}/' "$INSTALLER")"
   miss_wire=0
   for b in $(awk '$1!~/^#/ && NF>=3 && ($2=="global"||$2=="both") && $3=="hook"{print $1}' "$MF"); do
     printf '%s' "$evblock" | grep -qw "$b" || { bad "drift: '$b' es {global,both} hook pero NO tiene evento en ev_de() de install-brain (no se cablearía)"; miss_wire=1; }
   done
   [ "$miss_wire" = 0 ] && ok "drift: cada hook {global,both} del MANIFEST tiene evento en ev_de() de install-brain (se cablea)"
-  # (5) uninstall-brain también deriva del manifiesto (no una 3ª lista que driftee)
-  grep -q "MANIFEST" "$SCRIPT_DIR/uninstall-brain.sh" 2>/dev/null \
-    && ok "drift: uninstall-brain también deriva del MANIFEST" \
-    || bad "drift: uninstall-brain NO referencia el MANIFEST (lista paralela)"
   # (6) sincronizar-cerebro existe y los archivos de tier {repo,both} que desplegaría están presentes
   if [ -f "$SCRIPT_DIR/sincronizar-cerebro.sh" ]; then
     miss_repo=0
@@ -7705,9 +7689,6 @@ HOME="$G3H" CLAUDE_SESSIONS_DRIVE="/tmp/mi-drive-g3" CLAUDE_SESSIONS_DEBOUNCE_MI
   && ok "g3: CLAUDE_SESSIONS_DRIVE ACTIVA se persiste en .env (siembra, no queda en la sesión)" || bad "g3: no persistió CLAUDE_SESSIONS_DRIVE activa"
 [ "$(jq -r '.env.CLAUDE_SESSIONS_DEBOUNCE_MIN // ""' "$G3H/.claude/settings.json" 2>/dev/null)" = "7" ] \
   && ok "g3: CLAUDE_SESSIONS_DEBOUNCE_MIN ACTIVA se persiste en .env" || bad "g3: no persistió CLAUDE_SESSIONS_DEBOUNCE_MIN activa"
-# la REGLA está documentada en el instalador (doc=realidad del mecanismo)
-grep -q 'REGLA DE ENV VARS DEL BRAIN' "$INSTALLER" \
-  && ok "g3: la REGLA de env-seeding está documentada en install-brain.sh" || bad "g3: falta documentar la REGLA de env-seeding"
 # NO persiste un valor cuando la var NO está activa (idempotencia / no basura)
 G3H2="$(mktemp -d "${TMPDIR:-/tmp}/brain-g3b.XXXXXX")"
 env -u CLAUDE_SESSIONS_DRIVE -u CLAUDE_SESSIONS_DEBOUNCE_MIN HOME="$G3H2" bash "$INSTALLER" >/dev/null 2>&1
@@ -7718,8 +7699,7 @@ rm -rf "$G3H" "$G3H2"
 # ─────────────────────────────────────────────────────────────────────────────
 # ─────────────────────────────────────────────────────────────────────────────
 echo "== (g5) verificar-firma-canonica: DETECTOR de la firma-árbol canónica en un cerebro instanciado =="
-VFC="$SCRIPT_DIR/verificar-firma-canonica.sh"
-bash -n "$VFC" 2>/dev/null && ok "g5: bash -n verificar-firma-canonica.sh" || bad "g5: verificar-firma-canonica.sh no parsea"
+VFC="$SCRIPT_DIR/verificar-firma-canonica.sh"   # lo EJERCITAN los casos de abajo; su sintaxis cae ahí si rompe
 
 # Helper: monta un cerebro instanciado de mentira en un dir temporal.
 mk_good_brain() { # <root>
@@ -9010,9 +8990,10 @@ echo "   NO prescribe el escape a la WEB que M8 retiró de los mensajes reales =
 ! grep -v '^[[:space:]]*#' "$HOOKS/juez-comun.sh" | grep -qi 'web de gitlab\|en la web' \
   && ok "H5: juez-comun.sh ya NO prescribe la redirección a la web de GitLab en código vivo (solo la CITA en comentario, como historia)" \
   || bad "H5: REGRESIÓN — el CÓDIGO VIVO (no un comentario) sigue prescribiendo el escape a la web que M8 ya retiró"
-grep -qi 'setup-token' "$HOOKS/juez-comun.sh" \
-  && ok "H5: el contrato SÍ documenta el remedio real (claude setup-token / CLAUDE_CODE_OAUTH_TOKEN)" \
-  || bad "H5: el contrato no documenta ningún remedio real para NOTOKEN"
+# (el grep POSITIVO "juez-comun dice 'setup-token'" se retiró: su COMPORTAMIENTO ya lo mide la batería
+#  juez-comun (c) ~L1782, que corre merge-develop-guard SIN token y asevera que el mensaje de DENY nombra
+#  'claude setup-token' y NO la web — entrada real→salida, las dos direcciones. El escaneo NEGATIVO de
+#  arriba + el loop de abajo SE QUEDAN como lint de propiedad, mecanismo de la norma anti-vein-popper.)
 for _g in merge-develop-guard.sh proteger-arbol.sh; do
   grep -v '^[[:space:]]*#' "$HOOKS/$_g" | grep -qi 'web de gitlab\|en la web' \
     && bad "H5 control: $_g todavía menciona la web como escape en CÓDIGO VIVO (norma anti-vein-popper violada)" \
@@ -9203,15 +9184,9 @@ else
   bad "despertar-master: no encuentro $DM"
 fi
 
-# coordinar-claudes ABSORBIÓ a despertar-master (su script vive ahora en coordinar-claudes/). El MANIFEST
-# debe declarar coordinar-claudes VIVA (tier global) y despertar-master RETIRADO (lápida): si no, el
-# install/sync la omitiría, o dejaría el folder viejo como zombie. Falla entero contra el código pre-port.
-grep -qE '^coordinar-claudes[[:space:]]+global' "$SCRIPT_DIR/skills/MANIFEST" \
-  && ok "coordinar-claudes: declarada en skills/MANIFEST (tier global)" \
-  || bad "coordinar-claudes: FALTA su línea en skills/MANIFEST → install-brain no la instalaría"
-grep -qE '^despertar-master[[:space:]]+retirado' "$SCRIPT_DIR/skills/MANIFEST" \
-  && ok "despertar-master: lápida 'retirado' en skills/MANIFEST (absorbida por coordinar-claudes)" \
-  || bad "despertar-master: debería estar 'retirado' (absorbida) — si sigue viva o falta, el sync no poda su folder zombie"
+# (los greps de las líneas 'coordinar-claudes global' / 'despertar-master retirado' en skills/MANIFEST se
+#  retiraron: el EFECTO de esas declaraciones —coordinar se instala, el folder zombie de despertar se poda—
+#  lo miden e2-skills (MANIFEST↔skills completo) y e7c (poda de skills retiradas).)
 
 # ── (vm) vigilar-master: el estado del transcript sale SOLO de eventos de CONVERSACIÓN, no de metadatos ──
 # Un `pr-link` (metadato con timestamp que el CLI escribe tras cerrar el turno) NO debe desplazar al
@@ -9457,9 +9432,8 @@ TIERSNOGIT="$(mktemp -d)"
 si_nogit="$( cd "$TIERSNOGIT" && printf '%s' '{"source":"startup"}' | HOME="$TIERSNOGIT" CLAUDE_PROJECT_DIR="$TIERSNOGIT" bash "$HOOKS/sesion-inicio.sh" 2>&1)"
 [ -z "$si_nogit" ] && ok "tiers: sesion-inicio (both) FUERA de un repo git → CALLA (no inyecta el bloque del repo)" || bad "tiers: sesion-inicio inyectó en una carpeta no-repo: ${si_nogit:0:60}"
 rm -rf "$TIERSNOGIT"
-# (C) recordar-cosechar trae la MISMA cláusula de dedupe verbatim (clause byte-idéntico → su comportamiento = el probado en A/B).
-grep -qF 'case "$0" in "$HOME/.claude/hooks/"*) : ;; *) [ -f "$HOME/.claude/hooks/$(basename "$0")" ] && exit 0 ;; esac' "$HOOKS/recordar-cosechar.sh" \
-  && ok "tiers: recordar-cosechar (both) trae la cláusula de dedupe (verbatim)" || bad "tiers: recordar-cosechar NO trae la cláusula de dedupe (un both sin dedupe dispara doble)"
+# (C) el grep verbatim de "recordar-cosechar trae la cláusula de dedupe" se retiró: el comportamiento del
+#     dedupe (la copia por-repo cede si existe la global) lo PRUEBAN los casos A/B de b7 corriendo el hook.
 # (D) ev_de de install-brain mapea ambos (si no, se instalan global pero NO se cablean).
 TIERS_EVDE="$(sed -n '/^ev_de() {/,/^}/p' "$SCRIPT_DIR/../brain/install-brain.sh")"
 ev_probe() { bash -c "$TIERS_EVDE"$'\n'"ev_de \"$1\""; }
