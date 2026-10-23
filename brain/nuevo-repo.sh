@@ -4,8 +4,8 @@
 # (instala tus convenciones + impone la norma). Mismo comando para humanos y para Claude.
 #
 # NO usa "fork" (deja relación con el upstream) ni "Create from template" (Premium en Free).
-# Usa: crear proyecto vacío (glab/API) + `git push --mirror` del canónico = proyecto propio,
-# con main+develop, sin relación de fork. Funciona en GitLab Free.
+# Usa: crear proyecto vacío (glab/API) + push de SOLO main+develop (+tags) del canónico = proyecto
+# propio, sin relación de fork. (NO `--mirror`, que subiría TODAS las ramas del template.) Funciona en Free.
 #
 # Uso:
 #   ./nuevo-repo.sh <grupo/nombre> [--from dotnet|vacio|<grupo/repo>] [--dir <ruta-local>]
@@ -49,11 +49,23 @@ glab api --method POST projects -f "name=$NAME" -f "namespace_id=$GID" -f "visib
     -f "initialize_with_readme=false" >/dev/null
 echo "ok: proyecto creado ($DEST, grupo id $GID)"
 
-# 2) sembrar con mirror del canónico -> proyecto INDEPENDIENTE (sin relación de fork), trae main+develop
+# 2) sembrar el proyecto INDEPENDIENTE (sin relación de fork) con SOLO main+develop (+ tags). NO `--mirror`,
+#    que subiría TODAS las ramas del template (feat/*, WIP, ramas viejas) al repo nuevo (MEDIO auditoría
+#    2026-10-22). Un repo nuevo nace limpio con las dos ramas base.
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 git clone --bare -q "$SRC_URL" "$TMP/seed.git"
-git -C "$TMP/seed.git" push -q --mirror "$DEST_URL"
-echo "ok: sembrado desde $SRC (main+develop + tags)"
+SEED_REFS=""
+for _b in main develop; do
+    if git -C "$TMP/seed.git" show-ref --verify --quiet "refs/heads/$_b"; then
+        SEED_REFS="$SEED_REFS refs/heads/$_b:refs/heads/$_b"
+    fi
+done
+[ -n "$SEED_REFS" ] || { echo "el template '$SRC' no tiene ni main ni develop para sembrar" >&2; exit 1; }
+# `git push <url> <refspec>...` — el URL va PRIMERO, luego los refspecs.
+# shellcheck disable=SC2086
+git -C "$TMP/seed.git" push -q "$DEST_URL" $SEED_REFS
+git -C "$TMP/seed.git" push -q --tags "$DEST_URL"
+echo "ok: sembrado desde $SRC (solo main+develop + tags)"
 
 # 3) proteger ramas (failsafe universal, no depende del CI del template)
 if [ -x "$HERE/proteger-ramas.sh" ]; then

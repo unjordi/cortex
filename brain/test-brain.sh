@@ -7027,6 +7027,37 @@ fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (nr-seed) nuevo-repo: siembra SOLO main+develop (+tags), NO todas las ramas del template =="
+# MEDIO auditoría 2026-10-22: `git push --mirror` subía TODAS las ramas del template (feat/*, WIP viejas) al
+# repo NUEVO. Ahora empuja SOLO refs/heads/main + refs/heads/develop (+ tags). Se extrae el bloque de seed REAL
+# del script y se corre con repos bare de juguete (sin glab/red). FALLA contra el --mirror viejo (subía feat/x).
+NRSH="$SCRIPT_DIR/nuevo-repo.sh"
+if [ -f "$NRSH" ]; then
+  NRW="$(mktemp -d "${TMPDIR:-/tmp}/nrseed.XXXXXX")"
+  git init -q --bare "$NRW/src.git" >/dev/null 2>&1
+  ( git init -q "$NRW/work"; cd "$NRW/work"; git config user.email t@t; git config user.name t
+    git checkout -q -b main; echo a > a; git add a; git commit -qm a; git tag v1.0
+    git checkout -q -b develop; echo b > b; git add b; git commit -qm b
+    git checkout -q -b feat/x; echo c > c; git add c; git commit -qm c
+    git remote add origin "$NRW/src.git"; git push -q origin --all; git push -q origin --tags ) >/dev/null 2>&1
+  git init -q --bare "$NRW/dest.git" >/dev/null 2>&1
+  NRBLOCK="$(sed -n '/^SEED_REFS=""/,/git -C "\$TMP\/seed.git" push -q --tags/p' "$NRSH")"
+  ( TMP="$NRW"; SRC=plantilla; DEST_URL="$NRW/dest.git"
+    git clone --bare -q "$NRW/src.git" "$NRW/seed.git"
+    eval "$NRBLOCK" ) >/dev/null 2>&1
+  _nrok=1
+  git -C "$NRW/dest.git" show-ref --verify --quiet refs/heads/main    || _nrok=0
+  git -C "$NRW/dest.git" show-ref --verify --quiet refs/heads/develop || _nrok=0
+  git -C "$NRW/dest.git" show-ref --verify --quiet refs/tags/v1.0     || _nrok=0
+  git -C "$NRW/dest.git" show-ref --verify --quiet refs/heads/feat/x  && _nrok=0   # feat/x NO debe estar
+  [ "$_nrok" = 1 ] \
+    && ok "nr-seed: el repo nuevo nace con main+develop+tags y SIN feat/x (ya no --mirror de todas las ramas)" \
+    || bad "nr-seed: faltó main/develop/tag o se coló feat/x: [$(git -C "$NRW/dest.git" show-ref 2>/dev/null | sed 's|.* ||' | tr '\n' ' ')]"
+  rm -rf "$NRW"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "== (ccd) install-brain honra CLAUDE_CONFIG_DIR (el override de Claude Code para ~/.claude) =="
 # Antes install-brain hardcodeaba ~/.claude e IGNORABA CLAUDE_CONFIG_DIR → con el override puesto, el cerebro
 # se instalaba en el lugar EQUIVOCADO (~/.claude) y Claude Code, que lee de CLAUDE_CONFIG_DIR, no lo veía.
