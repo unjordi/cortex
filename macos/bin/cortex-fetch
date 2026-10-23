@@ -211,6 +211,18 @@ CURRENT_MONDAY="$(date -u -v-$((DOW - 1))d +%Y-%m-%d)"
 DAYS_AHEAD=$(( 8 - DOW ))
 NEXT_MONDAY="$(date -u -v+"${DAYS_AHEAD}"d -v0H -v0M -v0S +%Y-%m-%dT%H:%M:%SZ)"
 
+# A6 (auditoría 2026-10-22): esquema CANÓNICO (igual que src/bin/cortex-fetch Linux). La ventana semanal REAL
+# es rolling-7d = [lunes-de-esta-semana(=CURRENT_MONDAY), ahora]: se consulta ccusage `daily --since` y se SUMAN
+# los días. El bucket semanal-lunes (WEEKLY_JSON) daba cost/tokens idénticos a la sesión. Además QuotaModel.swift
+# + delegacion-comun.sh leen equiv_session_cost_usd/session_tokens_used/equiv_weekly_cost_usd/weekly_tokens_used/
+# week_start — NO cost_usd/tokens_used (que emitía antes) → el widget de Mac quedaba sin costo/tokens/semana.
+REAL_WEEK_START="$CURRENT_MONDAY"
+WEEKLY_DAILY_JSON=""
+if [[ -n "$CCUSAGE" ]]; then
+  WEEKLY_DAILY_JSON="$(ccusage_json daily --json --since "$(date -u -v-$(( DOW - 1 ))d +%Y%m%d)")"
+  jq -e . <<<"$WEEKLY_DAILY_JSON" >/dev/null 2>&1 || WEEKLY_DAILY_JSON=""
+fi
+
 # Discard carried-forward resets once they've actually passed (ISO-8601 "Z"
 # timestamps sort lexically, so a plain string compare works here).
 [[ -n "$PREV_WEEK_RESET" && "$PREV_WEEK_RESET" > "$NOW_ISO" ]] || PREV_WEEK_RESET=""
@@ -225,6 +237,8 @@ jq -n \
   --argjson usage "${USAGE_JSON:-null}" \
   --argjson blocks "${BLOCKS_JSON:-null}" \
   --argjson weekly "${WEEKLY_JSON:-null}" \
+  --argjson weekly_daily "${WEEKLY_DAILY_JSON:-null}" \
+  --arg real_week_start "$REAL_WEEK_START" \
   --arg ts "$NOW_ISO" \
   --arg cur_week "$CURRENT_MONDAY" \
   --arg next_monday "$NEXT_MONDAY" \
@@ -248,7 +262,7 @@ jq -n \
   ($blocks.blocks[0] // null) as $blk
   | ([$weekly.weekly[]? | select((.week // .period) == $cur_week)] | first) as $wk
   | (if $blocks != null then round2(if $blk then ($blk.costUSD // 0) else 0 end) else null end) as $five_cost
-  | (if $weekly != null then round2(if $wk then ($wk.totalCost // 0) else 0 end) else null end) as $week_cost
+  | (if $weekly_daily != null then round2(($weekly_daily.daily // []) | map(.totalCost // 0) | add // 0) else null end) as $week_cost
   | (if $usage != null then ($usage.five_hour.utilization // 0)
      else pct($five_cost // 0; $five_cap) end) as $five_pct
   | (if $usage != null then ($usage.seven_day.utilization // 0)
@@ -282,20 +296,20 @@ jq -n \
       error: null,
       five_hour: (if ($usage != null or $blocks != null) then {
         percent: round1($five_pct),
-        cost_usd: $five_cost,
+        equiv_session_cost_usd: $five_cost,
         cost_cap: $five_cap,
-        tokens_used: (if $blk != null then ($blk.totalTokens // 0) else null end),
+        session_tokens_used: (if $blk != null then ($blk.totalTokens // 0) else null end),
         resets_at: $five_reset,
         is_active: (if $blk != null then ($blk.isActive // false) else true end),
         models: (if $blk != null then ($blk.models // []) else [] end)
       } else null end),
-      weekly: (if ($usage != null or $weekly != null) then {
+      weekly: (if ($usage != null or $weekly != null or $weekly_daily != null) then {
         percent: round1($week_pct),
-        cost_usd: $week_cost,
+        equiv_weekly_cost_usd: $week_cost,
         cost_cap: $week_cap,
-        tokens_used: (if $wk != null then ($wk.totalTokens // 0) else null end),
+        weekly_tokens_used: (if $weekly_daily != null then (($weekly_daily.daily // []) | map(.totalTokens // 0) | add // 0) else null end),
         resets_at: $week_reset,
-        week_start: (if $wk != null then ($wk.week // $wk.period) else null end)
+        week_start: ($real_week_start + "T00:00:00Z")
       } else null end),
       # --- Solo en modo oauth: la API expone más de lo que la GUI mostraba -----
       # limites por-modelo acotados en el tiempo (weekly_scoped con scope.model),

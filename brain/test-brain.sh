@@ -7333,6 +7333,31 @@ if [ -f "$QML" ]; then
 else bad "drift-status[qml]: no encuentro main.qml"; fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+echo "== (a6-fetch) A6: PARIDAD de esquema state.json Linux↔macOS — los campos que QuotaModel.swift+delegacion-comun LEEN =="
+# A6 (auditoría 2026-10-22): macos/bin/cortex-fetch emitía cost_usd/tokens_used, pero QuotaModel.swift y
+# delegacion-comun.sh leen equiv_session_cost_usd/session_tokens_used/equiv_weekly_cost_usd/weekly_tokens_used/
+# week_start → el widget de Mac quedaba sin costo/tokens/semana. Ahora emite el esquema CANÓNICO (igual que
+# src/bin/cortex-fetch, rolling-7d). FALLA contra 6ce9913 (que no tenía equiv_* en el fetch de macOS).
+A6LF="$ROOT/src/bin/cortex-fetch"; A6MF="$ROOT/macos/bin/cortex-fetch"; A6SW="$ROOT/macos/Sources/Cortex/QuotaModel.swift"
+if [ -f "$A6LF" ] && [ -f "$A6MF" ]; then
+  _a6miss=0
+  for _k in equiv_session_cost_usd session_tokens_used equiv_weekly_cost_usd weekly_tokens_used week_start; do
+    grep -q "$_k" "$A6MF" || { bad "a6-fetch: macos/bin/cortex-fetch NO emite el campo canónico '$_k' (QuotaModel lo lee)"; _a6miss=1; }
+    grep -q "$_k" "$A6LF" || { bad "a6-fetch: src/bin/cortex-fetch (Linux) NO emite '$_k' (paridad rota)"; _a6miss=1; }
+  done
+  [ "$_a6miss" = 0 ] && ok "a6-fetch: ambos fetches (Linux + macOS) emiten los 5 campos canónicos del state.json"
+  # el macOS ya NO debe emitir los nombres VIEJOS en el bloque de buckets (cost_usd:/tokens_used: como clave).
+  { ! grep -qE '^\s*cost_usd:' "$A6MF" && ! grep -qE '^\s*tokens_used:' "$A6MF"; } \
+    && ok "a6-fetch: macos/bin/cortex-fetch ya NO emite las claves viejas cost_usd:/tokens_used: (renombradas a canónicas)" \
+    || bad "a6-fetch: macos/bin/cortex-fetch sigue emitiendo cost_usd:/tokens_used: (nadie las lee — esquema drifteado)"
+  # y QuotaModel.swift decodifica esos mismos campos (contrato del widget).
+  if [ -f "$A6SW" ]; then
+    _a6sw=0; for _k in equiv_session_cost_usd session_tokens_used equiv_weekly_cost_usd weekly_tokens_used week_start; do grep -q "$_k" "$A6SW" || _a6sw=1; done
+    [ "$_a6sw" = 0 ] && ok "a6-fetch: QuotaModel.swift decodifica los 5 campos que ahora SÍ emite el fetch de macOS" || bad "a6-fetch: QuotaModel.swift y el fetch de macOS no casan (un campo falta de un lado)"
+  fi
+else bad "a6-fetch: falta src/bin/cortex-fetch o macos/bin/cortex-fetch"; fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 echo "== (e3c) PARIDAD ROSTER↔MANIFEST: el roster (tiles + known-sets) de CADA widget contra los VIVOS/RETIRADOS"
 echo "         del MANIFEST — FALLA si un widget puede MOSTRAR/contar un RETIRADO (fantasma) o le falta un VIVO =="
 # Un widget que hardcodeara su roster sacaría skills RETIRADOS como rojo "incompleto (N)" (bug user-facing).
