@@ -81,7 +81,10 @@ _settings_check() {
     names=$(grep -vE '^[[:space:]]*#' "$manifest" 2>/dev/null | awk '{print $1}' | grep -E '^[A-Za-z0-9_-]+$')
     while IFS= read -r nm; do
       [ -n "$nm" ] || continue
-      if printf '%s' "$old" | grep -qF "$nm.sh" && ! printf '%s' "$new" | grep -qF "$nm.sh"; then
+      # BAJO (auditoría 2026-10-23, claudio): `grep -qF "$nm.sh"` casaba por SUBCADENA → renombrar el command a
+      # `<nm>.sh.off` (desactivar un hook) seguía "conteniendo" `<nm>.sh` → NO avisaba. Se compara como PALABRA:
+      # `<nm>.sh` seguido de un char que NO sea `.`/alfanumérico (p. ej. la comilla del JSON) o fin de línea.
+      if printf '%s' "$old" | grep -qE "${nm}\.sh([^.A-Za-z0-9]|$)" && ! printf '%s' "$new" | grep -qE "${nm}\.sh([^.A-Za-z0-9]|$)"; then
         hit="${hit:+$hit; }quita/cambia el cableado del hook del cerebro '$nm' (el command apuntaba a $nm.sh)"
         break
       fi

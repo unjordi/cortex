@@ -99,13 +99,18 @@ _stl_ndone() {
 #    de ids casi siempre da verdadero (no distingue una carpeta ajena de la propia rotada). La señal CORRECTA es
 #    el TRANSCRIPT: existe `<projects>/<slug del CLAUDE_PROJECT_DIR>/<sid>.jsonl` SÓLO si esa sesión corrió en
 #    ESTE repo (la carpeta ajena de otro master/otro repo tiene su transcript bajo OTRO slug). El slug = la ruta
-#    del proyecto con `/` y `.` → `-` (misma convención de Claude Code). bash-3.2-safe.
+#    del proyecto con TODO carácter NO alfanumérico → `-` (misma convención de Claude Code). bash-3.2-safe.
+#    R5-5 (auditoría 2026-10-23, claudio): antes mapeaba SOLO `/` y `.` → un path con `_`/espacio (p. ej.
+#    pisa_InfraestructuraDigital → el slug real es ...-pisa-InfraestructuraDigital, con `_`→`-`) NO casaba su
+#    transcript → la carpeta del repo se tomaba por AJENA (medido). Ahora `[^A-Za-z0-9]`→`-` + se quita la barra
+#    final del path (un trailing `/` daría un `-` sobrante que Claude Code no pone).
 _stl_carpeta_es_de_este_repo() {
   local sid="$1" proj slug base
   [ -n "$sid" ] || return 1
   proj="${CLAUDE_PROJECT_DIR:-}"; [ -n "$proj" ] || return 1
+  proj="${proj%/}"                              # sin barra final (si no, un `-` sobrante)
   base="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects"
-  slug=$(printf '%s' "$proj" | sed 's#[/.]#-#g')
+  slug=$(printf '%s' "$proj" | sed 's#[^A-Za-z0-9]#-#g')
   [ -f "$base/$slug/$sid.jsonl" ]
 }
 

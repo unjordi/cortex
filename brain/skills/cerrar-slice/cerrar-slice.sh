@@ -196,7 +196,9 @@ EOF
   # `b`, ni un `Rama:` mid-line se reconocían → se RE-agregaban (traza duplicada). Ahora: quita TODO hasta el
   # `Rama:` (donde esté), parte por coma y espacio, deja los tokens. (Prosa tras un «Rama:» que no sea una rama
   # cae en _ya pero es inofensivo: a lo más NO re-agrega una rama homónima, caso irreal.)
-  _ya="$(printf '%s\n' "$MSG" | sed -nE 's/.*[Rr]ama[[:space:]]*:[[:space:]]*//p' | tr ',' ' ' | tr -s '[:space:]' '\n' | grep -v '^$' | tr '\n' ' ')"
+  # R5-7 (auditoría 2026-10-23, claudio): `[Rr]ama` con FRONTERA de palabra ((^|[^A-Za-z]) antes) — el regex
+  # voraz casaba la "rama" DENTRO de "progRAMA:"/"diagRAMA:"/"panoRAMA:" y tomaba su cola por nombres de rama.
+  _ya="$(printf '%s\n' "$MSG" | sed -nE 's/.*(^|[^A-Za-z])[Rr]ama[[:space:]]*:[[:space:]]*//p' | tr ',' ' ' | tr -s '[:space:]' '\n' | grep -v '^$' | tr '\n' ' ')"
   _added=""
   for _c in $_contenidas; do
     case " $_ya " in *" $_c "*) continue ;; esac

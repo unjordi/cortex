@@ -109,9 +109,13 @@ _juez_url_host() {
 # _juez_host_es_local $host → 0 si es un host LOCAL de desarrollo (loopback / *.localhost / *.test). bash-3.2.
 _juez_host_es_local() {
   case "$1" in
-    localhost|127.*|::1|0:0:0:0:0:0:0:1|*.localhost|*.test) return 0 ;;
-    *) return 1 ;;
+    localhost|::1|0:0:0:0:0:0:0:1|*.localhost|*.test) return 0 ;;
   esac
+  # loopback IPv4 127.0.0.0/8 — SOLO IPv4 NUMÉRICA de 4 octetos (R5+, auditoría 2026-10-23, claudio): un glob
+  # `127.*` aceptaba `127.0.0.1.nip.io` (y cualquier `127.x.<dominio>`), un NOMBRE DNS que resuelve a un host
+  # REMOTO → CLAUDE_JUEZ_LOCAL_URL podía apuntar fuera sin ALLOW_REMOTE. El `$` ancla el fin tras el 4º octeto.
+  printf '%s' "$1" | grep -qE '^127(\.[0-9]{1,3}){3}$' && return 0
+  return 1
 }
 
 # ── VETO DE CITA robusto (comparte la MISMA implementación entre merge-develop-guard y dod-verificar →

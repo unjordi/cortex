@@ -2213,6 +2213,21 @@ if [ "$( ( export PATH="$JCFIX/local_ok:$PATH"; export CLAUDE_JUEZ_LOCAL_MODEL="
      _juez_llamar_api m 100 5 0 prompt 2>/dev/null | head -1 ) )" = OK ]; then
   ok "juez-comun (local i): URL local default (localhost) → el guard de producción NO estorba (cero regresión)"
 else bad "juez-comun (local i): el guard de producción rompió el backend local legítimo (localhost)"; fi
+# (j) MEDIO (auditoría 2026-10-23, claudio): `_juez_host_es_local` con glob `127.*` aceptaba `127.0.0.1.nip.io`
+# (un NOMBRE DNS que resuelve a un host REMOTO) → CLAUDE_JUEZ_LOCAL_URL podía apuntar fuera sin ALLOW_REMOTE.
+# Ahora el loopback 127/8 exige IPv4 NUMÉRICA de 4 octetos. Unit directo sobre la función. Falla vs el viejo.
+jcj_fail=0
+( . "$HOOKS/juez-comun.sh"
+  _juez_host_es_local '127.0.0.1.nip.io' && exit 1   # DNS que empieza con 127. → debe ser REMOTO
+  _juez_host_es_local '127.evil.com'     && exit 1
+  _juez_host_es_local '127.0.0.1'        || exit 1    # IPv4 loopback real → LOCAL
+  _juez_host_es_local '127.1.2.3'        || exit 1
+  _juez_host_es_local 'localhost'        || exit 1
+  _juez_host_es_local '10.0.0.1'         && exit 1    # IP NO loopback → REMOTO
+  exit 0 ) || jcj_fail=1
+[ "$jcj_fail" = 0 ] \
+  && ok "juez-comun (local j): 127/8 solo IPv4 numérica de 4 octetos — 127.0.0.1.nip.io/127.evil.com → REMOTO (falla vs el glob 127.* viejo)" \
+  || bad "juez-comun (local j): el loopback 127/8 aceptó un host DNS o rechazó una IP loopback real"
 rm -rf "$JCFIX" 2>/dev/null || true
 
 # ── (MEDIO #12a, auditoría 2026-10-23) VETO DE CITA: FRONTERA DE PALABRA + SUSTANCIA MÍNIMA en el path (a) ──
@@ -3049,6 +3064,13 @@ o="$(pfset '{"command":"bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/merge-develop-g
 printf '%s' "$o" | grep -q 'merge-develop-guard' \
   && ok "proteger-fuente settings: quitar el cableado de un hook del cerebro → AVISA (tu propio candado)" \
   || bad "proteger-fuente settings: no avisó al decablear un hook del cerebro; got: $o"
+# (8-off) BAJO (auditoría 2026-10-23, claudio): RENOMBRAR el command a `<hook>.sh.off` (desactivar el hook)
+# evadía — `grep -qF "<hook>.sh"` casaba la SUBCADENA dentro de `.sh.off`. Ahora se compara como PALABRA.
+# FALLA vs el viejo (no avisaba al desactivar por .sh.off).
+o="$(pfset '{"command":"bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/merge-develop-guard.sh\""}' '{"command":"bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/merge-develop-guard.sh.off\""}')"
+printf '%s' "$o" | grep -q 'merge-develop-guard' \
+  && ok "proteger-fuente settings: renombrar el command a <hook>.sh.off (desactivar) → AVISA (frontera de palabra)" \
+  || bad "proteger-fuente settings: no avisó al desactivar un hook vía .sh.off (subcadena evadió); got: $o"
 o="$(pfset '"env": {' '"env": { "CLAUDE_SKIP_SECRET_SCAN": "1",')"
 printf '%s' "$o" | grep -q 'ESCAPE de guard' \
   && ok "proteger-fuente settings: agregar un escape de guard (CLAUDE_SKIP_*) en env → AVISA" \
@@ -4223,6 +4245,13 @@ csdup_out="$(cd "$CSEP" && PATH="$CSEPB:$PATH" bash "$CSMSG_SH" --id 9 --message
 { [ "$(printf '%s' "$csdup_out" | grep -oF 'feat/a' | grep -c .)" = 1 ] && [ "$(printf '%s' "$csdup_out" | grep -oF 'feat/b' | grep -c .)" = 1 ]; } \
   && ok "cerrar-slice #4-BAJO: línea «Rama: feat/a, feat/b» (multi-rama) ya presente → NO se duplica (cada rama una vez)" \
   || bad "cerrar-slice #4-BAJO: duplicó una rama de una línea «Rama: a, b»; got: $(printf '%s' "$csdup_out" | grep -i rama: | tr '\n' '|')"
+# R5-7 (auditoría 2026-10-23, claudio): el regex de _ya `.*[Rr]ama:` casaba la "rama" DENTRO de «programa:»
+# → tomaba su cola como ramas YA presentes y NO re-agregaba la traza real. Mensaje con «programa: feat/a» (sin
+# un «Rama:» de verdad): el viejo creía feat/a ya presente y la OMITÍA; el nuevo (frontera de palabra) la AGREGA.
+csprog_out="$(cd "$CSEP" && PATH="$CSEPB:$PATH" bash "$CSMSG_SH" --id 9 --message "integro la épica; ver el programa: feat/a" --branch epic/afinado --forge glab --dry-run 2>/dev/null)"
+printf '%s' "$csprog_out" | grep -qF 'Rama: feat/a' \
+  && ok "cerrar-slice R5-7: «programa: feat/a» NO se lee como «Rama:» → la traza real «Rama: feat/a» SÍ se agrega (frontera de palabra; falla vs el regex voraz viejo)" \
+  || bad "cerrar-slice R5-7: «programa:» se tomó por «Rama:» y suprimió la traza de feat/a; got: $(printf '%s' "$csprog_out" | grep -i rama: | tr '\n' '|')"
 rm -rf "$CSEP" "$CSEPB"
 rm -rf "$CSMSG_BIN"
 # (b3cs-forge, E3 2026-10-13 / claudio): cerrar-slice decide el forge por el HOST del origin, NO por "cuál CLI
@@ -6383,12 +6412,33 @@ printf '%s\n' '<!-- espejo-tasklist:start -->' '- 🔸 **[pending]** #12 · Pend
 printf '{"id":"12","subject":"Pend A","status":"completed"}' > "$EMHOME9/.claude/tasks/$S9/12.json"
 touch "$EMHOME9/.claude/tasks/$S9"
 # R4 #3-fix2: sembrar solo escribe en una carpeta de ESTE repo (transcript bajo el slug del proyecto). Lo creamos.
-_em_slug() { printf '%s' "$1" | sed 's#[/.]#-#g'; }
+# R5-5: el slug mapea TODO no-alfanumérico → `-` (misma convención de Claude Code), sin la barra final.
+_em_slug() { printf '%s' "${1%/}" | sed 's#[^A-Za-z0-9]#-#g'; }
 mkdir -p "$EMHOME9/.claude/projects/$(_em_slug "$EMREPO9")"; : > "$EMHOME9/.claude/projects/$(_em_slug "$EMREPO9")/$S9.jsonl"
 HOME="$EMHOME9" CLAUDE_PROJECT_DIR="$EMREPO9" bash "$HOOKS/sincronizar-tasklist.sh" sembrar --write >/dev/null 2>&1
 [ "$(jq -r '.status // empty' "$EMHOME9/.claude/tasks/$S9/12.json" 2>/dev/null)" = "completed" ] \
   && ok "sembrar --write: respeta una tarea ya completed (no la resucita a pending)" \
   || bad "sembrar --write: RESUCITÓ una tarea completada (la pisó como pending)"
+
+# ── R5-5 (auditoría 2026-10-23, claudio): el slug de _stl_carpeta_es_de_este_repo mapeaba SOLO `/` y `.` → un
+#    path con `_`/espacio (p. ej. pisa_InfraestructuraDigital → el slug real lleva `_`→`-`) NO casaba su
+#    transcript → la carpeta del repo se tomaba por AJENA. Ahora `[^A-Za-z0-9]`→`-` + sin barra final. Unit
+#    directo sobre la función (BASH_SOURCE guard la deja sourcear). Falla vs el `[/.]` viejo. ──
+STLFIX="$(mktemp -d "${TMPDIR:-/tmp}/stl-slug.XXXXXX")"
+STLPROJ='/Users/x/code/pisa_Infra Digital/'   # path con `_`, espacio Y barra final (los 3 casos del viejo)
+STLSLUG_NEW='-Users-x-code-pisa-Infra-Digital'   # lo que Claude Code produce de ese path
+mkdir -p "$STLFIX/.claude/projects/$STLSLUG_NEW"; : > "$STLFIX/.claude/projects/$STLSLUG_NEW/SIDX.jsonl"
+if ( unset CLAUDE_CONFIG_DIR; export HOME="$STLFIX" CLAUDE_PROJECT_DIR="$STLPROJ"
+     . "$HOOKS/sincronizar-tasklist.sh"; _stl_carpeta_es_de_este_repo SIDX ); then
+  ok "sincronizar-tasklist R5-5: slug mapea TODO no-alfanum (\`_\`/espacio/barra-final → \`-\`) → casa el transcript real (falla vs el [/.] viejo)"
+else
+  bad "sincronizar-tasklist R5-5: el slug no casó un path con \`_\`/espacio (mapeo [^A-Za-z0-9] roto)"
+fi
+# control: con el slug VIEJO ([/.]) el transcript estaría en OTRA ruta (con `_`), que NO existe → prueba que de verdad cambió
+[ ! -e "$STLFIX/.claude/projects/-Users-x-code-pisa_Infra Digital" ] \
+  && ok "sincronizar-tasklist R5-5 control: el transcript NO vive bajo el slug viejo (con \`_\`)" \
+  || bad "sincronizar-tasklist R5-5 control: el slug viejo coincidió (el fixture no prueba el cambio)"
+rm -rf "$STLFIX"
 
 # ── Caso 10 (M3+R4#3-fix2, auditoría 2026-10-23): la carpeta resuelta por FALLBACK solo PISA si es de ESTE
 #    repo (su transcript vive bajo el slug del CLAUDE_PROJECT_DIR). Una carpeta AJENA (otro master/repo) NO pisa
@@ -7763,6 +7813,28 @@ A3G
   ! grep -q 'PROTEGER_RAMAS_GLAB' "$SCRIPT_DIR/proteger-ramas.sh" \
     && ok "a3-pr: proteger-ramas.sh NO lee ninguna env de mock en producción (glab solo por PATH)" \
     || bad "a3-pr: proteger-ramas.sh aún lee PROTEGER_RAMAS_GLAB (perilla de mock en producción)"
+  # BAJO (auditoría 2026-10-23, claudio): si una rama YA está protegida con NUESTRA config exacta (push=0,
+  # merge=40, force=false), se DEJA INTACTA — sin DELETE+POST → sin la ventana de desprotección. El mock
+  # devuelve la config correcta en el GET y hace FALLAR DELETE y POST (exit 1): si el script los llamara, el
+  # POST fallido daría rc≠0 → rc=0 PRUEBA que NI DELETE NI POST se corrieron. Falla vs el viejo (que siempre
+  # DELETE+POST → aquí habría llamado el POST que falla → rc≠0).
+  cat > "$A3MB/glab" <<'A3G'
+#!/usr/bin/env bash
+case "$*" in
+  *projects/g%2Fr*) echo '{"id":42}'; exit 0;;
+  *DELETE*protected_branches*) exit 1;;
+  *POST*protected_branches*) exit 1;;
+  *protected_branches/main|*protected_branches/develop) echo '{"name":"b","push_access_levels":[{"access_level":0}],"merge_access_levels":[{"access_level":40}],"allow_force_push":false}'; exit 0;;
+  *branches/develop*) exit 0;;
+  *projects/42*) echo '{"default_branch":"main"}'; exit 0;;
+  *) exit 0;;
+esac
+A3G
+  chmod +x "$A3MB/glab"
+  a3rc3=0; a3out3="$(PATH="$A3MB:$PATH" bash "$SCRIPT_DIR/proteger-ramas.sh" g/r 2>&1)" || a3rc3=$?
+  { [ "$a3rc3" = 0 ] && printf '%s' "$a3out3" | grep -q 'sin re-aplicar' && printf '%s' "$a3out3" | grep -q 'norma de ramas aplicada'; } \
+    && ok "a3-pr: rama YA protegida con la config correcta → NO re-aplica (sin ventana DELETE→POST; rc0 prueba que el POST/DELETE no se llamaron)" \
+    || bad "a3-pr: una rama ya correcta re-aplicó (DELETE/POST se llamaron) o no dijo 'sin re-aplicar'; rc=$a3rc3 out=$(printf '%s' "$a3out3" | tr '\n' '|')"
   rm -rf "$A3MB"
 fi
 

@@ -8,6 +8,13 @@
 # HUMANO decidiera poner el grant. La defensa correcta es el CHOKEPOINT de escritura: solo el HUMANO
 # escribe este archivo.
 #
+# MODELO DE AMENAZA (decisión de unjordi 2026-10-23, vía claudio): este guard protege contra un ERROR del
+# agente, NO contra evasión DELIBERADA. CUBRE: los vectores de escritura directos + la indirección por
+# variable/split/glob/comillas/bracket cuyo DESTINO sea el archivo de grants. NO cubre (BAJO aceptado, no se
+# persigue): ofuscación a propósito que no deja ni el nombre ni un glob en el texto —`base64 … | sh`,
+# `$(printf … | rev)`, armar el nombre en runtime, o un script aparte— porque la revisión HUMANA del PR y el
+# juez de merge son el backstop, y cerrarlo exigiría EJECUTAR el comando (inviable en PreToolUse).
+#
 # CÓMO lo logra (el invariante): una escritura del AGENTE a este archivo SIEMPRE pasa por una tool
 # (Bash/Edit/Write/MultiEdit) → PreToolUse la ve → la DENIEGA. La escritura del HUMANO con el prefijo `!`
 # (`! echo '- scope=merge-develop …' >> …/autorizaciones-vigentes.local.md`) la corre el CLI directamente,
