@@ -5074,8 +5074,15 @@ printf '%s' "$(ad2)" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null
   && ok "aviso-drift v2: en ramita → AVISA (no auto-aplica)" || bad "aviso-drift v2: en ramita no avisó"
 { [ "$(git -C "$AD2REPO" rev-list --count HEAD)" = "$n0" ] && [ ! -f "$AD2REPO/.claude/hooks/hook-nuevo.sh" ]; } \
   && ok "aviso-drift v2: en ramita NO tocó el árbol ni commiteó" || bad "aviso-drift v2: ¡escribió/commiteó en una ramita de feature!"
-# (2) en la MINI-DEVELOP con .claude/ limpio: auto-aplica + commit (push sin remoto → tolerado)
+# (2) en la MINI-DEVELOP con .claude/ limpio: auto-aplica + commit. Para ejercitar el reporte HONESTO de
+# PUSH FALLÓ con la lógica nueva (que EXIGE upstream presente y sin WIP ANTES de pushear — MEDIO auditoría
+# 2026-10-22), damos un remoto real, pusheamos la mini (upstream en sync, sin WIP) y luego lo ROMPEMOS →
+# el push del auto-sync falla honesto (antes bastaba NO tener remoto, que ahora rutea a synced-local-wip).
 git -C "$AD2REPO" checkout -q -b DevelopTester >/dev/null 2>&1
+AD2REMOTE="$AD2FIX/remote.git"; git init --bare -q "$AD2REMOTE"
+git -C "$AD2REPO" remote add origin "$AD2REMOTE" >/dev/null 2>&1
+git -C "$AD2REPO" push -q -u origin DevelopTester >/dev/null 2>&1
+command rm -rf "$AD2REMOTE"   # el ref origin/DevelopTester persiste → el push del auto-sync fallará (honesto)
 ad2out="$(ad2)"
 printf '%s' "$ad2out" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -qiE 'auto-sincroniz' \
   && ok "aviso-drift v2: en mini-develop limpia → AUTO-SINCRONIZA y lo anuncia" || bad "aviso-drift v2: no auto-sincronizó en la mini; got: $ad2out"
@@ -5096,6 +5103,64 @@ printf 'sucio\n' >> "$AD2REPO/.claude/hooks/.brain-version"
 printf '%s' "$(ad2)" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'DRIFT DEL CEREBRO' \
   && ok "aviso-drift v2: mini con .claude/ sucio → solo avisa (no mezcla cambios)" || bad "aviso-drift v2: auto-aplicó sobre un .claude/ sucio"
 rm -rf "$AD2FIX"
+
+# ── (b5c2) aviso-drift auto-sync: NO publica WIP sin pushear ni secretos sin gitleaks (MEDIO auditoría 2026-10-22) ──
+echo "== (b5c2) aviso-drift auto-push: no arrastra WIP sin pushear, exige upstream, gate de gitleaks =="
+# stub FIJO: --apply escribe en hook-nuevo.sh el contenido de $AD_PAYLOAD (def 'x'); así el test controla
+# si el commit de auto-sync es limpio o trae un secreto, sin re-escribir el stub.
+_ad_stub() { cat > "$AR_BRAIN/brain/sincronizar-cerebro.sh" <<'STUB'
+#!/usr/bin/env bash
+repo="$1"
+[ "${2:-}" = "--apply" ] && printf '%s' "${AD_PAYLOAD:-x}" > "$repo/.claude/hooks/hook-nuevo.sh"
+echo "  NUEVO      hook-nuevo.sh (hook)"
+echo "==> resumen: 1 nuevos · 0 a actualizar · 8 ya al día · 7 hooks cableados (kind=hook)"
+STUB
+}
+_ad_setup() {  # $1=fixdir $2=push(1/0) → setea AR_REPO AR_HOME AR_BRAIN AR_REMOTE
+  AR_REPO="$1/repo"; AR_HOME="$1/home"; AR_BRAIN="$1/clon"; AR_REMOTE="$1/remote.git"
+  mkdir -p "$AR_REPO/.claude/hooks" "$AR_HOME" "$AR_BRAIN/brain"
+  git -C "$AR_REPO" init -q >/dev/null 2>&1
+  git -C "$AR_REPO" config user.email t@t >/dev/null 2>&1; git -C "$AR_REPO" config user.name Tester >/dev/null 2>&1
+  : > "$AR_REPO/.claude/hooks/.brain-version"; : > "$AR_REPO/.claude/repo-compartido"
+  git -C "$AR_REPO" add -A >/dev/null 2>&1; git -C "$AR_REPO" commit -qm base >/dev/null 2>&1
+  _ad_stub
+  git -C "$AR_REPO" checkout -q -b DevelopTester >/dev/null 2>&1
+  git init --bare -q "$AR_REMOTE"
+  git -C "$AR_REPO" remote add origin "$AR_REMOTE" >/dev/null 2>&1
+  [ "$2" = 1 ] && git -C "$AR_REPO" push -q -u origin DevelopTester >/dev/null 2>&1
+  return 0
+}
+_ad_run() { printf '{"source":"startup"}' | AD_PAYLOAD="${1:-x}" HOME="$AR_HOME" CLAUDE_BRAIN_DIR="$AR_BRAIN" CLAUDE_PROJECT_DIR="$AR_REPO" bash "$HOOKS/aviso-drift-cerebro.sh" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null; }
+_ad_tip() { git --git-dir="$1" rev-parse DevelopTester 2>/dev/null || echo NONE; }
+
+# (a) WIP local sin pushear → auto-commit LOCAL, NO push (no publica el trabajo del usuario sin su OK).
+ADWIP="$(mktemp -d "${TMPDIR:-/tmp}/brain-adwip.XXXXXX")"; _ad_setup "$ADWIP" 1
+printf 'wip\n' > "$AR_REPO/wip.txt"; git -C "$AR_REPO" add wip.txt >/dev/null 2>&1; git -C "$AR_REPO" commit -qm "WIP usuario" >/dev/null 2>&1
+adw0=$(_ad_tip "$AR_REMOTE"); adwout=$(_ad_run); adw1=$(_ad_tip "$AR_REMOTE")
+[ "$adw0" = "$adw1" ] && ok "b5c2: con WIP local sin pushear → NO auto-pushea (no publica el WIP del usuario)" || bad "b5c2: el auto-push ARRASTRÓ el WIP del usuario al remoto"
+printf '%s' "$adwout" | grep -q 'sin pushear' && ok "b5c2: avisa que no pusheó por WIP sin pushear" || bad "b5c2: no avisó del WIP sin pushear"
+git -C "$AR_REPO" log -1 --format=%s | grep -q 'auto-sync' && ok "b5c2: el commit de auto-sync se hizo LOCAL (solo no se pusheó)" || bad "b5c2: no hizo el commit local de brain con WIP presente"
+rm -rf "$ADWIP"
+
+# (b) mini SIN upstream en origin → no auto-crea/pushea la rama entera.
+ADNOUP="$(mktemp -d "${TMPDIR:-/tmp}/brain-adnoup.XXXXXX")"; _ad_setup "$ADNOUP" 0
+adn0=$(_ad_tip "$AR_REMOTE"); adnout=$(_ad_run); adn1=$(_ad_tip "$AR_REMOTE")
+[ "$adn0" = "$adn1" ] && ok "b5c2: mini SIN upstream → NO auto-crea la rama remota (no publica la rama entera)" || bad "b5c2: auto-creó/pusheó una rama sin upstream"
+printf '%s' "$adnout" | grep -q 'no está en origin' && ok "b5c2: avisa que la mini no está en origin" || bad "b5c2: no avisó sin-upstream"
+rm -rf "$ADNOUP"
+
+# (c) gate de gitleaks: un secreto en el commit de auto-sync FRENA el push. Solo con gitleaks instalado
+# (sin él, el gate avisa-no-bloquea → se pushea, como cerrar-slice; el CI es el backstop server-side).
+if command -v gitleaks >/dev/null 2>&1; then
+  ADSEC="$(mktemp -d "${TMPDIR:-/tmp}/brain-adsec.XXXXXX")"; _ad_setup "$ADSEC" 1
+  _sec=$(printf -- '-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEAfakekeymaterial0123456789ABCDEFabcdefGHIJ\n-----END RSA PRIVATE KEY-----')
+  ads0=$(_ad_tip "$AR_REMOTE"); adsout=$(_ad_run "$_sec"); ads1=$(_ad_tip "$AR_REMOTE")
+  [ "$ads0" = "$ads1" ] && ok "b5c2: gitleaks detecta un secreto en el commit de auto-sync → NO lo pushea" || bad "b5c2: el auto-push PUBLICÓ un commit con secreto (gate de gitleaks roto)"
+  printf '%s' "$adsout" | grep -q 'SECRETO' && ok "b5c2: avisa que gitleaks halló un posible secreto" || bad "b5c2: no avisó del secreto hallado por gitleaks"
+  rm -rf "$ADSEC"
+else
+  ok "b5c2: gitleaks no instalado → gate de secreto OMITIDO (el CI de gitleaks lo cubre server-side)"
+fi
 
 # ═════════════════════════════════════════════════════════════════════════════════════════════════════
 echo ""

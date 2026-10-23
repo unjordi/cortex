@@ -187,9 +187,42 @@ $detalle"
         fi
         if bash "$SYNC" "$ROOT" --apply >/dev/null 2>&1 \
            && git -C "$ROOT" add -A .claude/ >/dev/null 2>&1; then
+          # ¿La mini tiene upstream en origin y está SIN WIP sin pushear? Un `git push origin $cur`
+          # arrastra TODO lo que la rama tiene de más que origin → publicaría trabajo LOCAL del usuario
+          # (WIP incompleto, posibles secretos) sin su consentimiento y sin pasar por gitleaks (MEDIO
+          # auditoría 2026-10-22). Se MIDE ANTES de nuestro commit; sin upstream (mini no pusheada) tampoco
+          # auto-publicamos la rama entera.
+          local up="origin/$cur" pushok=1 pushreason=""
+          if ! git -C "$ROOT" rev-parse --verify --quiet "$up" >/dev/null 2>&1; then
+            pushok=0; pushreason="tu mini aún no está en origin ($up no existe) — no publico la rama entera sin tu OK"
+          else
+            local _wip
+            _wip=$(git -C "$ROOT" rev-list --count "$up..$cur" 2>/dev/null || echo 0)
+            case "$_wip" in ''|*[!0-9]*) _wip=0 ;; esac
+            [ "$_wip" -gt 0 ] && { pushok=0; pushreason="tu rama tiene $_wip commit(s) LOCAL(es) sin pushear — no publico tu WIP sin tu OK"; }
+          fi
           if git -C "$ROOT" commit -q -o -m "chore(cerebro): auto-sync de la copia por-repo (aviso-drift, $total archivo(s) al día)" -- .claude/ >/dev/null 2>&1; then
             local sha
             sha=$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo "?")
+            # (A) Hay WIP sin pushear / sin upstream → commit LOCAL, NO push. NO es "fingir sync": STATUS ≠
+            # synced → la próxima sesión re-detecta el drift (no se cachea limpio) → el colega no queda stale
+            # en silencio. Se irá con la integración DELIBERADA del usuario (cerrar-slice corre gitleaks).
+            if [ "$pushok" = 0 ]; then
+              printf 'STATUS=%s\n' "synced-local-wip"
+              printf '%s\n' "🧬⚠️ CEREBRO auto-sincronizado LOCALMENTE (commit $sha en $cur, $total archivo(s)) pero NO lo pusheé: $pushreason. Intégralo tú con \`cerrar-slice\` (corre el gate de gitleaks antes de subir). Qué cambió:
+$detalle$dupla_nota"
+              return 0
+            fi
+            # (B) gitleaks ANTES de pushear (norma: gitleaks local antes de CADA push), sobre EXACTAMENTE lo
+            # que subiría ($up..HEAD = nuestro commit, porque no hay WIP). Sin gitleaks instalado: avisa y NO
+            # bloquea (el CI es el backstop server-side), igual que cerrar-slice.
+            if command -v gitleaks >/dev/null 2>&1 \
+               && ! gitleaks git "$ROOT" --log-opts="$up..HEAD" --redact --no-banner >/dev/null 2>&1; then
+              printf 'STATUS=%s\n' "synced-local-secret"
+              printf '%s\n' "🧬🔑 CEREBRO auto-sincronizado LOCALMENTE (commit $sha en $cur) pero NO lo pusheé: gitleaks detectó un posible SECRETO en el commit de auto-sync. Revísalo (\`gitleaks git $ROOT --log-opts=$up..HEAD --redact\`), saca/rota el secreto o agrégalo por HUELLA a .gitleaksignore, y re-pushea. Qué cambió:
+$detalle$dupla_nota"
+              return 0
+            fi
             # El push puede fallar (red/auth/rate-limit) DESPUÉS del commit local. NO lo tragues con `|| true`
             # + STATUS=synced: eso reporta éxito falso, y como el commit local YA pone la copia al día vs la
             # fuente, la próxima sesión ve 0 drift → clean → NUNCA reintenta el push → el colega/clon queda
