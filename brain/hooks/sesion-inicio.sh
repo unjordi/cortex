@@ -14,7 +14,7 @@ set -u
 
 # dedupe (tier both): si soy la copia del REPO y la copia GLOBAL existe, cedo — evita doble inyección
 # cuando el repo está brained Y hay bootstrap global. En un clon SIN bootstrap, la copia del repo corre.
-case "$0" in "$HOME/.claude/hooks/"*) : ;; *) [ -f "$HOME/.claude/hooks/$(basename "$0")" ] && exit 0 ;; esac
+_cfgh="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks"; case "$0" in "$_cfgh/"*) : ;; *) [ -f "$_cfgh/$(basename "$0")" ] && exit 0 ;; esac
 
 ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 # Tier both ⇒ corre en TODA sesión, también en ~/Downloads y otras carpetas que NO son repo. El "cerebro

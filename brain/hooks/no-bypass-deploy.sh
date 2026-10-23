@@ -12,7 +12,7 @@
 #
 # dedupe doble-cableado (tier both): si soy la copia del REPO y la copia GLOBAL existe, cedo (evita el
 # aviso DUPLICADO). No-debilitante: sigue avisando 1×.
-case "$0" in "$HOME/.claude/hooks/"*) : ;; *) [ -f "$HOME/.claude/hooks/$(basename "$0")" ] && exit 0 ;; esac
+_cfgh="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks"; case "$0" in "$_cfgh/"*) : ;; *) [ -f "$_cfgh/$(basename "$0")" ] && exit 0 ;; esac
 
 command -v jq >/dev/null 2>&1 || exit 0
 

@@ -21,8 +21,8 @@ okln()  { [ "$QUIET" = 1 ] || printf '  \xe2\x9c\x93 %s\n' "$1"; }
 badln() { fail=1; printf '  \xe2\x9c\x97 %s\n' "$1"; }   # las FALLAS siempre se imprimen (aun en --quiet)
 warnln(){ [ "$QUIET" = 1 ] || printf '  \xe2\x9a\xa0 %s\n' "$1"; }  # avisos (drift): NO tumban el exit (diagnóstico)
 
-HOOKS_DIR="$HOME/.claude/hooks"
-GSET="$HOME/.claude/settings.json"
+HOOKS_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks"
+GSET="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"
 SELFDIR="$(cd "$(dirname "$0")" && pwd)"
 # resolve_brain_dir() vive en drift-cerebro-comun.sh (misma carpeta, fuente y una vez instalado) — mismo
 # orden/fallback que los widgets (#322): $CLAUDE_BRAIN_DIR → ~/.cortex → ~/.claude-brain. Si la lib no
@@ -83,7 +83,7 @@ fi
 # LOUD en tiempo real es el guard proteger-fuente-cerebro; esto es el resumen a-demanda.
 BRAIN_HOOKS="$BRAIN_DIR/brain/hooks"
 BRAIN_SKILLS="$BRAIN_DIR/brain/skills"
-SKILLS_DIR="$HOME/.claude/skills"
+SKILLS_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills"
 drift_scan() {  # $1=label  $2=dir-INSTALADA  $3=dir-FUENTE
   local label="$1" idir="$2" sdir="$3" inst rel src n=0
   [ -d "$idir" ] || return 0

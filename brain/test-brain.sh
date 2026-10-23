@@ -6598,6 +6598,25 @@ if command -v jq >/dev/null 2>&1; then
 else
   echo "  SKIP ccd: sin jq para inspeccionar el comando del hook"
 fi
+# RUNTIME (claudio): con CLAUDE_CONFIG_DIR, la copia POR-REPO de un hook `both` debe CEDER a la global
+# instalada en $CLAUDE_CONFIG_DIR/hooks (si la dedupe mira la ruta vieja, DISPARA DOS VECES). La global ya
+# se instaló arriba en $CCDCFG. Monto un repo con la copia por-repo byte-idéntica y confirmo que CALLA.
+CCDREPO="$CCDHOME/unrepo"; mkdir -p "$CCDREPO/.claude/hooks"
+( cd "$CCDREPO" && git init -q && git config user.email t@t && git config user.name t \
+  && echo x > a && git add a && git commit -qm base ) >/dev/null 2>&1
+cp "$CCDCFG/hooks/sesion-inicio.sh" "$CCDREPO/.claude/hooks/sesion-inicio.sh"
+ccd_ded="$(printf '%s' '{"source":"startup"}' | HOME="$CCDHOME" CLAUDE_CONFIG_DIR="$CCDCFG" CLAUDE_PROJECT_DIR="$CCDREPO" bash "$CCDREPO/.claude/hooks/sesion-inicio.sh" 2>/dev/null)"
+[ -z "$ccd_ded" ] \
+  && ok "ccd: la copia POR-REPO de un hook both CEDE a la global en \$CLAUDE_CONFIG_DIR/hooks (un solo disparo)" \
+  || bad "ccd: la copia por-repo NO cedió con CLAUDE_CONFIG_DIR → DOBLE disparo (la dedupe miraba la ruta vieja)"
+# agentes-costo.json: install lo escribe en $CLAUDE_CONFIG_DIR; delegacion-comun debe LEERLO del mismo dir.
+[ -f "$CCDCFG/agentes-costo.json" ] \
+  && ok "ccd: install escribe agentes-costo.json en \$CLAUDE_CONFIG_DIR" \
+  || bad "ccd: agentes-costo.json NO quedó en \$CLAUDE_CONFIG_DIR"
+ccd_regf="$(CLAUDE_CONFIG_DIR="$CCDCFG" bash -c '. "'"$HOOKS"'/delegacion-comun.sh" 2>/dev/null; printf "%s" "${REG_FILE:-}"')"
+[ "$ccd_regf" = "$CCDCFG/agentes-costo.json" ] \
+  && ok "ccd: delegacion-comun LEE agentes-costo.json del mismo \$CLAUDE_CONFIG_DIR donde install lo escribió" \
+  || bad "ccd: delegacion-comun resuelve REG_FILE a la ruta vieja (got '$ccd_regf', esperado '\$CCDCFG/agentes-costo.json')"
 rm -rf "$CCDHOME"
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -7845,9 +7864,9 @@ printf '%s' "$(nbd_ctx 'bash brain/install-brain.sh')" | grep -qi 'widget' \
   && ok "g1: './scripts/deploy.sh' (ejecución real relativa con subcarpeta) SIGUE avisando" || bad "g1: dejó de avisar sobre ./scripts/deploy.sh"
 [ -n "$(nbd_ctx '/usr/local/bin/install.sh')" ] \
   && ok "g1: ruta ABSOLUTA ejecutada directo SIGUE avisando" || bad "g1: dejó de avisar sobre ruta absoluta ejecutada"
-# tier both → trae la cláusula de dedupe (la copia por-repo cede a la global)
-grep -q 'case "\$0" in "\$HOME/.claude/hooks/"' "$NBD" \
-  && ok "g1: no-bypass-deploy trae la cláusula de dedupe (tier both)" || bad "g1: falta la cláusula de dedupe en un hook tier both"
+# tier both → trae la cláusula de dedupe (la copia por-repo cede a la global) que HONRA CLAUDE_CONFIG_DIR
+{ grep -qF '_cfgh="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks"' "$NBD" && grep -qF 'case "$0" in "$_cfgh/"' "$NBD"; } \
+  && ok "g1: no-bypass-deploy trae la cláusula de dedupe que honra CLAUDE_CONFIG_DIR (tier both)" || bad "g1: falta/mal la cláusula de dedupe en un hook tier both"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo "== (g2) sincronizar-cerebro --disable <hook>: de-cablea + borra el hook nombrado (vía consolidada de retiro) =="
@@ -9871,13 +9890,6 @@ fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-PASS=$(grep -c '^OK$'  "$CALLLOG" 2>/dev/null); PASS="${PASS:-0}"
-FAIL=$(grep -c '^BAD$' "$CALLLOG" 2>/dev/null); FAIL="${FAIL:-0}"
-echo "==> resultado: $PASS PASS · $FAIL FAIL"
-[ "$FAIL" -eq 0 ]
-
-# ─────────────────────────────────────────────────────────────────────────────
-echo ""
 echo "== (b1c) weekly.week_start = weekly.resets_at - 7d =="
 # Verifica que el shape nuevo tiene week_start y que es exactamente 7 días antes de resets_at
 if [ -f "$CACHE/state.json" ]; then
@@ -9895,4 +9907,29 @@ if [ -f "$CACHE/state.json" ]; then
   else
     bad "weekly.week_start o resets_at ausente en state.json"
   fi
+else
+  echo "  SKIP (b1c): no hay $CACHE/state.json para verificar weekly.week_start"
 fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (lint) ninguna prueba vive DESPUÉS de la línea del resultado =="
+# Una prueba (ok/bad) tras `echo ==> resultado` CORRE pero NO cuenta en el resumen → un fallo ahí daría
+# 0 FAIL en falso (caso real: la b1c de week_start quedó tras el resumen al integrar la cuota, 020e3ae).
+_self="$SCRIPT_DIR/test-brain.sh"
+_rline=$(grep -n 'echo "==> resultado:' "$_self" 2>/dev/null | tail -1 | cut -d: -f1)
+if [ -n "$_rline" ]; then
+  _tras=$(awk -v n="$_rline" 'NR>n && /^[[:space:]]*(ok|bad) "/ {c++} END{print c+0}' "$_self")
+  [ "${_tras:-0}" = 0 ] \
+    && ok "lint: no hay pruebas (ok/bad) después de la línea del resultado (todas cuentan en el resumen)" \
+    || bad "lint: $_tras prueba(s) ok/bad DESPUÉS del resumen → corren pero no cuentan; muévelas antes de 'echo ==> resultado'"
+else
+  bad "lint: no encontré la línea del resultado en $_self (no pude verificar la ubicación de las pruebas)"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+PASS=$(grep -c '^OK$'  "$CALLLOG" 2>/dev/null); PASS="${PASS:-0}"
+FAIL=$(grep -c '^BAD$' "$CALLLOG" 2>/dev/null); FAIL="${FAIL:-0}"
+echo "==> resultado: $PASS PASS · $FAIL FAIL"
+[ "$FAIL" -eq 0 ]

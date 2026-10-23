@@ -41,7 +41,7 @@ _stl_dir_tiene_json() {
 # Robusto a la rotación de session_id: 1) el sid del payload si tiene json; 2) si no, la carpeta no-vacía
 # MÁS RECIENTE bajo ~/.claude/tasks modificada dentro de la ventana (evita adoptar una huérfana vieja).
 _stl_tasksdir() {
-  local sid="${1:-}" base="$HOME/.claude/tasks" d best="" bestm=0 m now
+  local sid="${1:-}" base="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/tasks" d best="" bestm=0 m now
   if [ -n "$sid" ] && _stl_dir_tiene_json "$base/$sid"; then printf '%s' "$base/$sid"; return 0; fi
   [ -d "$base" ] || return 0
   now=$(date +%s 2>/dev/null || echo 0); case "$now" in ''|*[!0-9]*) now=0 ;; esac

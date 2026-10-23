@@ -9,7 +9,7 @@
 set -u
 input=$(cat 2>/dev/null || true)
 command -v jq >/dev/null 2>&1 || exit 0
-CONS="$HOME/.claude/delegacion-consentimiento.json"
+CONS="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/delegacion-consentimiento.json"
 
 # shellcheck source=delegacion-comun.sh
 . "$(dirname "$0")/delegacion-comun.sh"

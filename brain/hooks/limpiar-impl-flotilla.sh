@@ -47,13 +47,13 @@ SELFDIR="$(cd "$(dirname "$0")" && pwd)"
 DRY_RUN=0; QUIET=0; NO_RESIDUO=0
 CODE_DIR="${CLAUDE_CODE_DIR:-$HOME/code}"
 ROOTS_FILE=""
-STATEDIR="${CLAUDE_DRIFT_STATEDIR:-$HOME/.claude/memory/.drift-cerebro}"
+STATEDIR="${CLAUDE_DRIFT_STATEDIR:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/memory/.drift-cerebro}"
 REPORT=""
 # El slug del proyecto en ~/.claude/projects/ es $HOME con las "/" → "-" (Claude Code lo forma así):
 # /Users/<usuario> → -Users-<usuario> (macOS) · /home/<usuario> → -home-<usuario> (Linux). Se deriva de
 # $HOME para ser portable Mac/Linux.
 _projslug="$(printf '%s' "$HOME" | sed 's#/#-#g')"
-DASHBOARD="${CLAUDE_DASHBOARD:-$HOME/.claude/projects/${_projslug}/memory/dashboard_cerebro.md}"
+DASHBOARD="${CLAUDE_DASHBOARD:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/${_projslug}/memory/dashboard_cerebro.md}"
 
 while [ $# -gt 0 ]; do
   case "$1" in

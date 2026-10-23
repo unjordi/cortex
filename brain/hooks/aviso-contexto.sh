@@ -69,7 +69,7 @@ WINDOW="${AVISO_CONTEXTO_WINDOW_TOKENS:-}"
 case "$WINDOW" in
   ''|*[!0-9]*)
     model=""
-    for s in "$HOME/.claude/settings.json" "$ROOT/.claude/settings.json" "$ROOT/.claude/settings.local.json"; do
+    for s in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" "$ROOT/.claude/settings.json" "$ROOT/.claude/settings.local.json"; do
       [ -f "$s" ] || continue
       m=$(jq -r '.model // empty' "$s" 2>/dev/null)
       [ -n "$m" ] && model="$m"
@@ -102,7 +102,7 @@ case "$WINDOW" in ''|*[!0-9]*) exit 0 ;; esac
 
 # autoCompactWindow: leído de settings.json (user < proyecto < local).
 ACW="no seteado"
-for s in "$HOME/.claude/settings.json" "$ROOT/.claude/settings.json" "$ROOT/.claude/settings.local.json"; do
+for s in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" "$ROOT/.claude/settings.json" "$ROOT/.claude/settings.local.json"; do
   [ -f "$s" ] || continue
   acw=$(jq -r '.autoCompactWindow // empty' "$s" 2>/dev/null)
   [ -n "$acw" ] && ACW="$acw"
@@ -111,7 +111,7 @@ done
 # autoCompactEnabled: default true; solo `false` explícito (o el env DISABLE_AUTO_COMPACT) desactiva el
 # auto-compact. Precedencia user < proyecto < local; null/ausente NO override.
 ac_enabled=true
-for s in "$HOME/.claude/settings.json" "$ROOT/.claude/settings.json" "$ROOT/.claude/settings.local.json"; do
+for s in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" "$ROOT/.claude/settings.json" "$ROOT/.claude/settings.local.json"; do
   [ -f "$s" ] || continue
   e=$(jq -r 'if .autoCompactEnabled == null then empty else (.autoCompactEnabled|tostring) end' "$s" 2>/dev/null)
   [ -n "$e" ] && ac_enabled="$e"

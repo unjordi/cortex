@@ -8,7 +8,7 @@
 # Requiere jq (el que la use debe verificarlo antes).
 # shellcheck shell=bash
 
-REG_FILE="$HOME/.claude/agentes-costo.json"
+REG_FILE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/agentes-costo.json"
 
 # clasificar_delegacion "<payload-json>" → setea: DG_ES_TASK DG_SID DG_TARGET DG_CLASE DG_FIRMA
 #                                                  DG_UMBRAL DG_PCT DG_NIVEL DG_KEY
@@ -63,7 +63,7 @@ clasificar_delegacion() {
 # ya no es un lote vivo. Así un ask NEGADO deja de colar un reintento en silencio (cierra H6). ──
 deleg_lock_path() {  # $1=sid $2=key → ruta del lock
   local h; h=$(printf '%s|%s' "$1" "$2" | tr -cs 'A-Za-z0-9' '_')
-  printf '%s' "$HOME/.claude/.delegacion-ask.$h.lock"
+  printf '%s' "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.delegacion-ask.$h.lock"
 }
 deleg_lock_age_s() {  # $1=lockpath → edad en segundos (vacío/return 1 si no existe o sin stat/date)
   local m now

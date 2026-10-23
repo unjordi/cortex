@@ -19,7 +19,7 @@ set -u
 
 # dedupe: si soy la copia del REPO y la copia GLOBAL existe, cedo (evita doble aviso). En un clon SIN
 # bootstrap la del repo sí corre. NO-debilitante: sigue avisando 1×.
-case "$0" in "$HOME/.claude/hooks/"*) : ;; *) [ -f "$HOME/.claude/hooks/$(basename "$0")" ] && exit 0 ;; esac
+_cfgh="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks"; case "$0" in "$_cfgh/"*) : ;; *) [ -f "$_cfgh/$(basename "$0")" ] && exit 0 ;; esac
 
 command -v jq >/dev/null 2>&1 || exit 0
 cmd=$(jq -r '.tool_input.command // ""' 2>/dev/null)

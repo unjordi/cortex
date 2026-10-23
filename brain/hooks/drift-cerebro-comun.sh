@@ -97,7 +97,7 @@ drift_chequea_repo() {
         # El per-repo de un `both` SOLO sobra si su copia GLOBAL está instalada: el dedupe hace que la del
         # repo ceda a la global, así que sin global la copia del repo es la ÚNICA que corre → CONSERVARLA
         # (mandarla a borrar la mataría). (claudio 2026-10-21 sobre 9336cc1.)
-        [ -f "$HOME/.claude/hooks/$_b" ] || continue
+        [ -f "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks/$_b" ] || continue
         # Y una LIB `both` que una hook tier=repo PRESENTE sourcea NO sobra: quitarla rompería esa repo-hook
         # (juez-comun ← dod-verificar, que la sourcea de su propio dir SIN fallback global — N4).
         _kind=$(awk -v n="${_b%.sh}" '$1==n && $1!~/^#/{print $3; exit}' "$_man" 2>/dev/null)
@@ -235,7 +235,7 @@ drift_skills_global() {
   local BRAIN_DIR SRC_SKILLS INST_SKILLS MAN
   BRAIN_DIR="$(resolve_brain_dir)"
   SRC_SKILLS="$BRAIN_DIR/brain/skills"
-  INST_SKILLS="$HOME/.claude/skills"
+  INST_SKILLS="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills"
   MAN="$SRC_SKILLS/MANIFEST"
   [ -d "$SRC_SKILLS" ] || return 0          # sin fuente → fail-open
   [ -d "$INST_SKILLS" ] || return 0         # sin copia instalada → nada que comparar
@@ -294,7 +294,7 @@ drift_hooks_global() {
   local BRAIN_DIR SRC_HOOKS INST_HOOKS MAN
   BRAIN_DIR="$(resolve_brain_dir)"
   SRC_HOOKS="$BRAIN_DIR/brain/hooks"
-  INST_HOOKS="$HOME/.claude/hooks"
+  INST_HOOKS="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks"
   MAN="$SRC_HOOKS/MANIFEST"
   [ -d "$SRC_HOOKS" ] || return 0          # sin fuente → fail-open
   [ -d "$INST_HOOKS" ] || return 0         # sin copia instalada → nada que comparar
@@ -349,7 +349,7 @@ drift_norms_global() {
   local BRAIN_DIR SRC_NORMS INST
   BRAIN_DIR="$(resolve_brain_dir)"
   SRC_NORMS="$BRAIN_DIR/brain/norms/global-claude-md.md"
-  INST="$HOME/.claude/CLAUDE.md"
+  INST="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/CLAUDE.md"
   [ -f "$SRC_NORMS" ] || return 0    # sin fuente → fail-open
   [ -f "$INST" ] || return 0         # CLAUDE.md global ni existe → nada que comparar (bootstrap aún no corrió)
 

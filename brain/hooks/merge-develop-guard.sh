@@ -260,7 +260,7 @@ _juez_merge() {   # $1=destino  $2=mrid  $3=mensajes  $4=hint(opcional) → impr
 # dedupe doble-cableado: si soy la copia del REPO y la copia GLOBAL existe, cedo (la global maneja
 # esta invocación) → evita disparo doble (y doble llamada de red) en máquina con el cerebro global;
 # en un clon SIN bootstrap la del repo sí corre. NO-debilitante: sigue exigiendo squash + OK igual.
-case "$0" in "$HOME/.claude/hooks/"*) : ;; *) [ -f "$HOME/.claude/hooks/$(basename "$0")" ] && exit 0 ;; esac
+_cfgh="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks"; case "$0" in "$_cfgh/"*) : ;; *) [ -f "$_cfgh/$(basename "$0")" ] && exit 0 ;; esac
 input=$(cat 2>/dev/null || true)
 
 # ── SIN jq (fail-SAFE, UNIÓN de los dos guards consolidados): sin jq no puedo parsear el comando ni resolver

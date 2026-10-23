@@ -105,7 +105,7 @@ LIMPIAR="$(dirname "$0")/limpiar.sh"
 # al fallback de solo-ramas.
 LIMPIAR_WT="$(dirname "$0")/limpiar.sh"
 
-stampdir="$HOME/.claude/memory/.barrer-ramas"; mkdir -p "$stampdir" 2>/dev/null || true
+stampdir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/memory/.barrer-ramas"; mkdir -p "$stampdir" 2>/dev/null || true
 slug=$(printf '%s' "$ROOT" | cksum 2>/dev/null | awk '{print $1}'); slug="${slug:-0}"
 now=$(date +%s)
 log="$stampdir/${slug}.log"

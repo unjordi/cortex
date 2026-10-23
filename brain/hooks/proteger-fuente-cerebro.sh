@@ -33,9 +33,10 @@ fp=$(jq -r '.tool_input.file_path // empty' 2>/dev/null)
 # ¿Qué copia REGENERABLE se edita? (A) instalada global → deriva el relativo para nombrar su fuente;
 # (B) clon infra oculto → avisa directo (no hay "fuente correspondiente" que ofrecer: la fuente es el
 # clon de DESARROLLO, que este guard no localiza de forma fiable).
+_cfg="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"   # honra el override de Claude Code para ~/.claude
 case "$fp" in
-  "$HOME/.claude/skills/"*) relsub="skills/${fp#"$HOME/.claude/skills/"}" ;;
-  "$HOME/.claude/hooks/"*)  relsub="hooks/${fp#"$HOME/.claude/hooks/"}" ;;
+  "$_cfg/skills/"*) relsub="skills/${fp#"$_cfg/skills/"}" ;;
+  "$_cfg/hooks/"*)  relsub="hooks/${fp#"$_cfg/hooks/"}" ;;
   "$HOME/.cortex/brain/"*|"$HOME/.claude-brain/brain/"*)
     MSG="AVISO (proteger-fuente-cerebro): estás editando el CLON INFRA del cerebro ($fp). Ese clon (~/.cortex) es REGENERABLE: el updater del widget lo FUERZA-ALINEA a origin/main (git checkout -B main origin/main) y tu edición en sitio se PIERDE sin rastro. NO es una fuente editable — es un DESPLIEGUE que TODAS las máquinas tienen. Edita la FUENTE en tu clon de DESARROLLO de cortex (p.ej. ~/code/cortex), en una ramita, y propaga por git (ramita→MR→develop). Si esta máquina no tiene clon de desarrollo, no lo edites a mano: contribúyelo por git. (AVISA, no bloquea; CLAUDE_SKIP_PROTEGER_FUENTE=1 para silenciar.)"
     jq -n --arg m "$MSG" '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$m}}'
