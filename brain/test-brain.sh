@@ -8114,6 +8114,22 @@ if [ -f "$A6LF" ] && [ -f "$A6MF" ]; then
     || bad "a6-regla: src/bin/cortex-fetch week_start=$_a6wl, esperaba $_a6exp (bucket-lunes en vez de rolling)"
   [ "$_a6wm" = "$_a6exp" ] && ok "a6-regla: macos/bin/cortex-fetch week_start==resets_at−7d con datos oauth ($_a6wm)" \
     || bad "a6-regla: macos/bin/cortex-fetch week_start=$_a6wm, esperaba $_a6exp (bucket-lunes en vez de rolling)"
+  # (#4-robustez R4 2026-10-23): un resets_at con offset ≠ +00:00 (p.ej. -05:00) NO pasa por isoz→Z, y
+  # `fromdateiso8601` (que exige Z) ABORTABA TODO el jq → el snapshot entero se perdía. Fix: `try … catch null`
+  # en week_start → degrada ESE campo a null y emite el resto. FALLA contra el código viejo (abortaba → vacío).
+  _A6_USAGE_OFF='{"five_hour":{"utilization":10,"resets_at":"2026-10-23T00:00:00Z"},"seven_day":{"utilization":40,"resets_at":"2026-10-28T14:00:00-05:00"},"limits":[]}'
+  _a6off() { _po="$(_a6prog "$1")"; [ -z "$_po" ] && { echo SIN; return; }
+    jq -n --argjson usage "$_A6_USAGE_OFF" --argjson blocks "$_A6_BLK" --argjson weekly null --argjson weekly_daily "$_A6_WD" \
+      --arg ts "2026-10-23T12:00:00Z" --arg next_monday "2026-10-26T00:00:00Z" --arg cur_week "2026-10-19" --arg real_week_start "2026-10-19" \
+      --arg prev_week_reset "" --arg prev_five_reset "" --arg email "" --arg account_uuid "" --arg auth_state ok --arg auth_expires "" \
+      --argjson account_mismatch false --argjson five_cap 50 --argjson week_cap 200 --argjson warn 80 --argjson crit 95 "$_po" 2>/dev/null \
+      | jq -r '(.updated_at // "ABORT") + "|" + (.weekly.week_start|tostring)' 2>/dev/null; }
+  for _fo in "$A6LF" "$A6MF"; do
+    _a6o="$(_a6off "$_fo")"
+    { [ -n "$_a6o" ] && printf '%s' "$_a6o" | grep -qvi 'ABORT' && printf '%s' "$_a6o" | grep -q '|null$'; } \
+      && ok "#4-robustez $(printf '%s' "$_fo" | sed 's|.*/\([^/]*/[^/]*\)$|\1|'): resets_at con offset ≠ Z NO aborta el snapshot (week_start→null, el resto se emite)" \
+      || bad "#4-robustez $_fo: un resets_at con offset ≠ Z abortó el jq (snapshot vacío) o no degradó week_start a null (got '$_a6o')"
+  done
 
   # (a6-overage) PARIDAD extra_usage + limits Linux↔macOS (MEDIO auditoría 2026-10-22): el fetch de Linux no
   # emitía extra_usage → limite-gasto leía overage DESHABILITADO (over_on=false) y DENEGABA con la ventana de

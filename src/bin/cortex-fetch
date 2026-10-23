@@ -301,7 +301,7 @@ jq -n \
         equiv_weekly_cost_usd: (if $weekly_daily != null then round2(($weekly_daily.daily // []) | map(.totalCost // 0) | add // 0) else null end),
         weekly_tokens_used: (if $weekly_daily != null then (($weekly_daily.daily // []) | map(.totalTokens // 0) | add // 0) else null end),
         resets_at: $week_reset,
-        week_start: ($week_reset | fromdateiso8601 - 604800 | todateiso8601),
+        week_start: (try ($week_reset | fromdateiso8601 - 604800 | todateiso8601) catch null),
         severity: ($weekly_all_limit.severity // null),
         by_model: ($weekly_scoped | map({
             model: (.scope.model.display_name // null),
