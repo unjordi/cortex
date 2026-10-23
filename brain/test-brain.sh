@@ -6116,42 +6116,46 @@ EMFILE_C9="$EMREPO9/.claude/memory/estado-proyecto.md"
 printf '%s\n' '<!-- espejo-tasklist:start -->' '- 🔸 **[pending]** #12 · Pend A' '<!-- espejo-tasklist:end -->' >> "$EMFILE_C9"
 printf '{"id":"12","subject":"Pend A","status":"completed"}' > "$EMHOME9/.claude/tasks/$S9/12.json"
 touch "$EMHOME9/.claude/tasks/$S9"
+# R4 #3-fix2: sembrar solo escribe en una carpeta de ESTE repo (transcript bajo el slug del proyecto). Lo creamos.
+_em_slug() { printf '%s' "$1" | sed 's#[/.]#-#g'; }
+mkdir -p "$EMHOME9/.claude/projects/$(_em_slug "$EMREPO9")"; : > "$EMHOME9/.claude/projects/$(_em_slug "$EMREPO9")/$S9.jsonl"
 HOME="$EMHOME9" CLAUDE_PROJECT_DIR="$EMREPO9" bash "$HOOKS/sincronizar-tasklist.sh" sembrar --write >/dev/null 2>&1
 [ "$(jq -r '.status // empty' "$EMHOME9/.claude/tasks/$S9/12.json" 2>/dev/null)" = "completed" ] \
   && ok "sembrar --write: respeta una tarea ya completed (no la resucita a pending)" \
   || bad "sembrar --write: RESUCITÓ una tarea completada (la pisó como pending)"
 
-# ── Caso 10 (M3, auditoría R3 2026-10-23): EXACTAMENTE 1 carpeta AJENA no-vacía con un in_progress (n>0) por
-#    FALLBACK NO debe pisar el bloque propio no-vacío. El anti-clobber viejo solo cubría n==0 → una tarea ajena
-#    reemplazaba la propia. FALLA contra 7fab8aa. ──
+# ── Caso 10 (M3+R4#3-fix2, auditoría 2026-10-23): la carpeta resuelta por FALLBACK solo PISA si es de ESTE
+#    repo (su transcript vive bajo el slug del CLAUDE_PROJECT_DIR). Una carpeta AJENA (otro master/repo) NO pisa
+#    el bloque propio — AUNQUE sus ids SOLAPEN (los ids empiezan en #1 en toda sesión → por eso el chequeo por
+#    ids que probé primero no distinguía nada). FALLA contra fdb3091 (n==0-only) Y contra a399cfe (ids-solapan). ──
 EMHOME10="$EMFIX/c10home"; EMREPO10="$EMFIX/c10repo"; S10="GHOST10"
 mkdir -p "$EMHOME10/.claude/tasks/$S10"; _em_mkrepo "$EMREPO10"
 EMFILE_C10="$EMREPO10/.claude/memory/estado-proyecto.md"
-printf '{"id":"99","subject":"Mia","status":"pending"}' > "$EMHOME10/.claude/tasks/$S10/99.json"
-printf '{"session_id":"%s"}' "$S10" | HOME="$EMHOME10" CLAUDE_PROJECT_DIR="$EMREPO10" bash "$HOOKS/recordar-cosechar.sh" >/dev/null 2>&1  # espeja #99 al bloque (direct)
-rm -f "$EMHOME10/.claude/tasks/$S10"/*.json   # mi carpeta queda vacía/rotada → el sid ya NO resuelve direct
-mkdir -p "$EMHOME10/.claude/tasks/AJENA"; printf '{"id":"5","subject":"Tarea AJENA en curso","status":"in_progress"}' > "$EMHOME10/.claude/tasks/AJENA/5.json"; touch "$EMHOME10/.claude/tasks/AJENA"
-printf '{"session_id":"%s"}' "$S10" | HOME="$EMHOME10" CLAUDE_PROJECT_DIR="$EMREPO10" bash "$HOOKS/recordar-cosechar.sh" >/dev/null 2>&1
-grep -q '#5' "$EMFILE_C10" && bad "espejo M3: fallback a carpeta AJENA con in_progress (n>0) pisó el bloque propio con la tarea ajena #5 (hueco R3)" \
-  || ok "espejo M3: fallback a carpeta AJENA con in_progress (n>0) NO pisa el bloque propio no-vacío (anti-clobber extendido a n>0)"
-grep -q '#99' "$EMFILE_C10" && ok "espejo M3: la #99 propia se PRESERVA ante el fallback con tarea ajena" \
-  || bad "espejo M3: perdió la #99 propia (el fallback con n>0 pisó el bloque)"
+# bloque propio: #1 "tarea PROPIA" (escrito directo, como t5.sh)
+printf '%s\n' '# estado' '<!-- espejo-tasklist:start -->' '- 🔸 **[pending]** #1 · tarea PROPIA de este repo' '<!-- espejo-tasklist:end -->' > "$EMFILE_C10"
+# carpeta AJENA (otro master) con el MISMO id #1 (in_progress) y SIN transcript bajo el slug de ESTE repo
+mkdir -p "$EMHOME10/.claude/tasks/OTRA-SESION"; printf '{"id":"1","subject":"TAREA AJENA de otro master","status":"in_progress"}' > "$EMHOME10/.claude/tasks/OTRA-SESION/1.json"; touch "$EMHOME10/.claude/tasks/OTRA-SESION"
+printf '{"session_id":"MI-SESION-SIN-TAREAS"}' | HOME="$EMHOME10" CLAUDE_PROJECT_DIR="$EMREPO10" bash "$HOOKS/recordar-cosechar.sh" >/dev/null 2>&1
+grep -q 'TAREA AJENA' "$EMFILE_C10" && bad "espejo R4#3: carpeta AJENA (sin transcript de este repo) con id #1 SOLAPADO pisó el bloque propio (el chequeo por ids no distinguía)" \
+  || ok "espejo R4#3: carpeta AJENA (sin transcript de este repo) aunque sus ids SOLAPEN → NO pisa el bloque propio (señal = transcript, no ids)"
+grep -q 'tarea PROPIA' "$EMFILE_C10" && ok "espejo R4#3: la tarea PROPIA se PRESERVA ante el fallback ajeno con ids solapados" \
+  || bad "espejo R4#3: perdió la tarea propia (el fallback ajeno pisó el bloque)"
 
 # ── Caso 11 (R4 #3, auditoría 2026-10-23): rotación LEGÍTIMA de session_id — mi carpeta rotó a un sid nuevo
-#    (se resuelve por FALLBACK, no direct), pero sus ids SOLAPAN el bloque → SÍ se actualiza el espejo. El M3
-#    (solo-direct) lo preservaba siempre → el espejo nunca se actualizaba al rotar. FALLA contra el M3 de fdb3091. ──
-EMHOME11="$EMFIX/c11home"; EMREPO11="$EMFIX/c11repo"; S11="GHOST11"
+#    cuyo transcript SÍ vive bajo el slug de ESTE repo → SÍ se actualiza el espejo, aunque los ids NO solapen
+#    (#9 bloque vs #1 carpeta, como t5.sh). FALLA contra fdb3091 (solo-direct: nunca actualizaba) Y contra
+#    a399cfe (ids-solapan: no actualizaba porque #9≠#1). ──
+EMHOME11="$EMFIX/c11home"; EMREPO11="$EMFIX/c11repo"; S11="ROTADA"
 mkdir -p "$EMHOME11/.claude/tasks/$S11"; _em_mkrepo "$EMREPO11"
 EMFILE_C11="$EMREPO11/.claude/memory/estado-proyecto.md"
-printf '{"id":"99","subject":"Mia","status":"pending"}' > "$EMHOME11/.claude/tasks/$S11/99.json"
-printf '{"session_id":"%s"}' "$S11" | HOME="$EMHOME11" CLAUDE_PROJECT_DIR="$EMREPO11" bash "$HOOKS/recordar-cosechar.sh" >/dev/null 2>&1  # espeja #99 al bloque
-rm -f "$EMHOME11/.claude/tasks/$S11"/*.json   # el sid ROTA → esa carpeta queda vacía
-mkdir -p "$EMHOME11/.claude/tasks/ROT"        # ÚNICA carpeta no-vacía = la rotada (fallback), con el MISMO #99 + un #100 nuevo
-printf '{"id":"99","subject":"Mia","status":"in_progress"}' > "$EMHOME11/.claude/tasks/ROT/99.json"
-printf '{"id":"100","subject":"Nueva tras rotar","status":"pending"}' > "$EMHOME11/.claude/tasks/ROT/100.json"; touch "$EMHOME11/.claude/tasks/ROT"
-printf '{"session_id":"%s"}' "$S11" | HOME="$EMHOME11" CLAUDE_PROJECT_DIR="$EMREPO11" bash "$HOOKS/recordar-cosechar.sh" >/dev/null 2>&1
-grep -q '#100' "$EMFILE_C11" && ok "espejo R4#3: carpeta ROTADA (fallback) con id que SOLAPA el bloque → ACTUALIZA el espejo (#100 nuevo aparece)" \
-  || bad "espejo R4#3: la rotación legítima NO actualizó el espejo (el M3 solo-direct lo dejaba stale para siempre)"
+# bloque STALE con #9; la carpeta ROTADA (sid=ROTADA) trae #1 nuevo, y SU transcript vive bajo el slug de este repo
+printf '%s\n' '# estado' '<!-- espejo-tasklist:start -->' '- 🔸 **[pending]** #9 · vieja' '<!-- espejo-tasklist:end -->' > "$EMFILE_C11"
+printf '{"id":"1","subject":"nueva tarea propia tras rotar","status":"in_progress"}' > "$EMHOME11/.claude/tasks/$S11/1.json"; touch "$EMHOME11/.claude/tasks/$S11"
+mkdir -p "$EMHOME11/.claude/projects/$(_em_slug "$EMREPO11")"; : > "$EMHOME11/.claude/projects/$(_em_slug "$EMREPO11")/$S11.jsonl"
+printf '{"session_id":"OTRO-SID-ROTADO"}' | HOME="$EMHOME11" CLAUDE_PROJECT_DIR="$EMREPO11" bash "$HOOKS/recordar-cosechar.sh" >/dev/null 2>&1
+grep -q '#1' "$EMFILE_C11" && ! grep -q '#9' "$EMFILE_C11" \
+  && ok "espejo R4#3: carpeta ROTADA con transcript de ESTE repo (ids NO solapan) → ACTUALIZA el espejo (#1 reemplaza #9)" \
+  || bad "espejo R4#3: la rotación legítima (transcript presente, ids ≠) NO actualizó el espejo"
 
 rm -rf "$EMFIX"
 

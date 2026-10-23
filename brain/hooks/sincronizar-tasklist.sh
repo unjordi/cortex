@@ -94,21 +94,19 @@ _stl_ndone() {
   printf '%s' "$n"
 }
 
-# ── _stl_ids_solapan <estado-archivo> <rows-tsv> → 0 si algún id de las filas resueltas ya aparece en el
-#    bloque espejo de <estado>. Señal de que la carpeta resuelta por FALLBACK es ESTA sesión con el sid ROTADO
-#    (no una ajena): el bloque se espejó de aquí antes de rotar. bash-3.2-safe. ─────────────────────────── ──
-_stl_ids_solapan() {
-  local blk id
-  [ -n "$2" ] || return 1
-  blk=$(awk -v ini="$STL_ESPEJO_INI" -v fin="$STL_ESPEJO_FIN" '$0==ini{f=1;next} $0==fin{f=0} f' "$1" 2>/dev/null | grep -oE '#[0-9]+' | tr -d '#')
-  [ -n "$blk" ] || return 1
-  while IFS="$_STL_TAB" read -r _ id _; do
-    [ -n "$id" ] || continue
-    printf '%s\n' "$blk" | grep -qxF "$id" && return 0
-  done <<EOF
-$2
-EOF
-  return 1
+# ── _stl_carpeta_es_de_este_repo <sid> → 0 si la carpeta de tareas <sid> pertenece a ESTE repo/sesión.
+#    R4 #3-fix2 (auditoría 2026-10-23): los ids de tarea empiezan en #1 en TODA sesión → un chequeo por SOLAPE
+#    de ids casi siempre da verdadero (no distingue una carpeta ajena de la propia rotada). La señal CORRECTA es
+#    el TRANSCRIPT: existe `<projects>/<slug del CLAUDE_PROJECT_DIR>/<sid>.jsonl` SÓLO si esa sesión corrió en
+#    ESTE repo (la carpeta ajena de otro master/otro repo tiene su transcript bajo OTRO slug). El slug = la ruta
+#    del proyecto con `/` y `.` → `-` (misma convención de Claude Code). bash-3.2-safe.
+_stl_carpeta_es_de_este_repo() {
+  local sid="$1" proj slug base
+  [ -n "$sid" ] || return 1
+  proj="${CLAUDE_PROJECT_DIR:-}"; [ -n "$proj" ] || return 1
+  base="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects"
+  slug=$(printf '%s' "$proj" | sed 's#[/.]#-#g')
+  [ -f "$base/$slug/$sid.jsonl" ]
 }
 
 # ── _stl_render_body <rows-tsv> <ndone> → cuerpo markdown del bloque ─────────────────────────────── ──
@@ -187,7 +185,7 @@ espejar_tasklist() {
   # de rotar). Sin solape (carpeta AJENA) o resolución `none` → se preserva (el anti-clobber de M3 se mantiene).
   if _stl_bloque_no_vacio "$estado"; then
     if [ "$_STL_RESOLV" != "direct" ]; then
-      _stl_ids_solapan "$estado" "$rows" || { printf 0; return 0; }
+      _stl_carpeta_es_de_este_repo "${_STL_DIR##*/}" || { printf 0; return 0; }
     fi
     { [ "$n" -eq 0 ] && [ "${ndone:-0}" -eq 0 ]; } && { printf 0; return 0; }
   fi
@@ -255,21 +253,12 @@ sembrar_tasklist() {
     _stl_tasksdir ""   # carpeta INEQUÍVOCA (para next-start); con ≥2 activas no adivina → no escribe en ajena
     tasksdir="$_STL_DIR"
     if [ -n "$tasksdir" ] && [ -d "$tasksdir" ]; then
-      # M3 (auditoría R3 2026-10-23): `_stl_tasksdir ""` (sin sid) solo resuelve por FALLBACK (ownership
-      # incierta). Si la carpeta ya tiene tareas VIVAS (pending/in_progress) cuyo id NO está en NUESTRO bloque
-      # durable, es de OTRA sesión → NO la contaminamos escribiendo nuestras tareas (gemelo del anti-clobber de
-      # espejar, en la dirección inversa durable→json). Una carpeta vacía o solo-completadas (sesión propia
-      # rotada) no conflictúa → se siembra normal.
-      if [ "$_STL_RESOLV" != direct ]; then
-        local _blockids _fid _ff
-        _blockids=$(printf '%s\n' "$out" | cut -d'|' -f2)
-        for _ff in "$tasksdir"/*.json; do
-          [ -f "$_ff" ] || continue
-          [ "$(jq -r '.status // empty' "$_ff" 2>/dev/null)" = completed ] && continue
-          _fid=$(jq -r '.id // empty' "$_ff" 2>/dev/null); [ -n "$_fid" ] || continue
-          printf '%s\n' "$_blockids" | grep -qxF "$_fid" || return 0   # tarea viva AJENA → no sembramos aquí
-        done
-      fi
+      # M3/R4 #3-fix2 (auditoría 2026-10-23): `_stl_tasksdir ""` (sin sid) solo resuelve por FALLBACK (ownership
+      # incierta). Solo sembramos en esa carpeta si pertenece a ESTE repo (su transcript vive bajo el slug del
+      # CLAUDE_PROJECT_DIR) — una carpeta de OTRO master/otro repo NO se contamina con nuestras tareas (gemelo
+      # del anti-clobber de espejar, en la dirección inversa durable→json). El chequeo por ids NO sirve (los ids
+      # empiezan en #1 en toda sesión → casi siempre solapan).
+      _stl_carpeta_es_de_este_repo "${tasksdir##*/}" || return 0
       while IFS='|' read -r st id subj; do
         [ -n "$id" ] || continue
         # NO RESUCITAR una tarea YA completada (MEDIO auditoría 2026-10-22): el bloque solo lista
