@@ -8620,6 +8620,36 @@ fl --roots-file "$FLFIX/roots.txt" >/dev/null 2>&1
 flempty="$(HOME="$FLHOME" CLAUDE_BRAIN_DIR="$FLBRAIN" CLAUDE_DRIFT_STATEDIR="$FLSTATE" bash "$HOOKS/limpiar.sh" flotilla --dry-run --code-dir "$FLFIX/nope" --no-dashboard --report "$FLREP" 2>/dev/null)"
 printf '%s' "$flempty" | grep -qE '0 repo\(s\)' \
   && ok "F4 fail-open: code-dir inexistente → 0 repos, no revienta" || bad "F4 fail-open: no manejó un code-dir inexistente; got: $flempty"
+
+# (7) synced-local-wip se REPORTA como atención, NO n/a (efecto del MEDIO #3: mini SIN upstream → el
+# auto-sync commitea LOCAL pero no pushea; el sweeper debe listarlo, no tragarlo como n/a).
+git -C "$FLSH" reset --hard HEAD~1 >/dev/null 2>&1   # deshace el auto-sync de la parte (4) → FLSH drifteado+limpio
+command rm -f "$FLSH/.claude/hooks/hook-nuevo.sh" 2>/dev/null
+FLREP7="$FLFIX/rep7.md"
+HOME="$FLHOME" CLAUDE_BRAIN_DIR="$FLBRAIN" CLAUDE_DRIFT_STATEDIR="$FLSTATE" bash "$HOOKS/limpiar.sh" flotilla --roots-file "$FLFIX/roots.txt" --no-dashboard --report "$FLREP7" >/dev/null 2>&1
+grep -q 'local-sin-push' "$FLREP7" \
+  && ok "F4: synced-local-wip (mini sin upstream, MEDIO #3) se REPORTA como atención, no n/a" \
+  || bad "F4: el sweeper tragó synced-local-wip como n/a; got: $(grep 'repo(s)' "$FLREP7" 2>/dev/null)"
+
+# (8) DRY-RUN es READ-ONLY (MEDIO auditoría 2026-10-22): NO escribe el reporte-archivo DEFAULT ni toca el
+# dashboard (la bitácora global es un LOG de acciones REALES — una entrada en dry-run MENTIRÍA). Preview → stdout.
+FLDEF="$FLSTATE/flotilla-ultimo-reporte.md"; command rm -f "$FLDEF" 2>/dev/null
+FLDASH="$FLFIX/dash.md"; printf '# Dash\n## Bitacora\n' > "$FLDASH"; fldash0="$(cksum "$FLDASH" | awk '{print $1}')"
+fldr="$(HOME="$FLHOME" CLAUDE_BRAIN_DIR="$FLBRAIN" CLAUDE_DRIFT_STATEDIR="$FLSTATE" CLAUDE_DASHBOARD="$FLDASH" bash "$HOOKS/limpiar.sh" flotilla --dry-run --code-dir "$FLCODE" 2>&1)"
+[ ! -f "$FLDEF" ] && ok "F4 dry-run read-only: NO escribe el reporte-archivo default" || bad "F4 dry-run: escribió el reporte-archivo default (no es read-only)"
+[ "$(cksum "$FLDASH" | awk '{print $1}')" = "$fldash0" ] && ok "F4 dry-run read-only: NO appendea al dashboard" || bad "F4 dry-run: appendeó al dashboard en dry-run (bitácora de acciones reales)"
+printf '%s' "$fldr" | grep -q 'repo(s)' && ok "F4 dry-run read-only: el preview SÍ va a stdout" || bad "F4 dry-run: no imprimió el preview a stdout"
+
+# (9) LOCK HUÉRFANO (apply): un lock más viejo que el umbral NO bloquea el repo para siempre → se recupera.
+git -C "$FLSH" reset --hard HEAD~1 >/dev/null 2>&1   # deshace el auto-sync de (7) → FLSH drifteado+limpio, sin hook-nuevo.sh
+FLWTSLUG="$(printf '%s' "$FLSH" | cksum 2>/dev/null | awk '{print $1}')"
+mkdir -p "$FLSTATE/${FLWTSLUG}.lock"
+touch -t "$(date -v-60M +%Y%m%d%H%M 2>/dev/null || date -d '-60 min' +%Y%m%d%H%M)" "$FLSTATE/${FLWTSLUG}.lock" 2>/dev/null
+HOME="$FLHOME" CLAUDE_BRAIN_DIR="$FLBRAIN" CLAUDE_DRIFT_STATEDIR="$FLSTATE" bash "$HOOKS/limpiar.sh" flotilla --roots-file "$FLFIX/roots.txt" --no-dashboard --report "$FLFIX/rep9.md" >/dev/null 2>&1
+[ -f "$FLSH/.claude/hooks/hook-nuevo.sh" ] \
+  && ok "F4 lock huérfano: un lock stale (>umbral) se RECUPERA → el repo se procesa (no bloqueado para siempre)" \
+  || bad "F4 lock huérfano: el lock stale bloqueó el repo (no se recuperó)"
+rmdir "$FLSTATE/${FLWTSLUG}.lock" 2>/dev/null || true
 rm -rf "$FLFIX"
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -10121,12 +10151,13 @@ H2REP="$H2HOME/report.md"
 mkdir -p "$H2HOME/.claude/reubicar-backups"
 : > "$H2HOME/.claude/reubicar-backups/old.1.pre-reubicar.jsonl"
 touch -t "$(date -v-120d +%Y%m%d%H%M 2>/dev/null || date -d '-120 days' +%Y%m%d%H%M)" "$H2HOME/.claude/reubicar-backups/old.1.pre-reubicar.jsonl"
-h2out="$(HOME="$H2HOME" bash "$HOOKS/limpiar.sh" flotilla --dry-run --code-dir "$H2CODE" --no-dashboard --report "$H2REP" --quiet 2>&1)"
-grep -q 'Residuo de housekeeping' "$H2REP" && ok "h2: el reporte de flotilla incluye la sección de residuo" || bad "h2: falta la sección de residuo en el reporte; got: $(cat "$H2REP")"
+# dry-run es READ-ONLY (no escribe el reporte-archivo) → el preview va a STDOUT; se lee de ahí.
+h2out="$(HOME="$H2HOME" bash "$HOOKS/limpiar.sh" flotilla --dry-run --code-dir "$H2CODE" --no-dashboard 2>&1)"
+printf '%s' "$h2out" | grep -q 'Residuo de housekeeping' && ok "h2: el reporte de flotilla (dry-run, a stdout) incluye la sección de residuo" || bad "h2: falta la sección de residuo en el reporte; got: $h2out"
 [ -f "$H2HOME/.claude/reubicar-backups/old.1.pre-reubicar.jsonl" ] \
   && ok "h2: --dry-run de flotilla NO borra el residuo (solo lo reporta)" || bad "h2: ¡flotilla en dry-run borró el residuo!"
-HOME="$H2HOME" bash "$HOOKS/limpiar.sh" flotilla --dry-run --code-dir "$H2CODE" --no-dashboard --report "$H2REP" --quiet --no-residuo >/dev/null 2>&1
-grep -q 'Residuo de housekeeping' "$H2REP" && bad "h2: --no-residuo debía SALTAR la sección de residuo" || ok "h2: --no-residuo salta el barrido de residuo"
+h2out2="$(HOME="$H2HOME" bash "$HOOKS/limpiar.sh" flotilla --dry-run --code-dir "$H2CODE" --no-dashboard --no-residuo 2>&1)"
+printf '%s' "$h2out2" | grep -q 'Residuo de housekeeping' && bad "h2: --no-residuo debía SALTAR la sección de residuo" || ok "h2: --no-residuo salta el barrido de residuo"
 rm -rf "$H2CODE" "$H2HOME"
 
 # ─────────────────────────────────────────────────────────────────────────────

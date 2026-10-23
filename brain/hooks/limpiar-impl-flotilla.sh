@@ -73,7 +73,8 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-mkdir -p "$STATEDIR" 2>/dev/null || true
+# STATEDIR solo se crea en APPLY (dry-run es READ-ONLY: no toca disco — MEDIO auditoría 2026-10-22).
+[ "$DRY_RUN" = 1 ] || mkdir -p "$STATEDIR" 2>/dev/null || true
 [ -n "$REPORT" ] || REPORT="$STATEDIR/flotilla-ultimo-reporte.md"
 
 # ── Descubrimiento de la flotilla ────────────────────────────────────────────────────────────── ──
@@ -96,7 +97,7 @@ descubrir_flotilla() {
 
 # ── Barrido ────────────────────────────────────────────────────────────────────────────────── ──
 ts="$(date '+%Y-%m-%d %H:%M:%S')"
-n_total=0; n_synced=0; n_wouldsync=0; n_drift=0; n_flag=0; n_clean=0; n_locked=0; n_skip=0; n_syncfail=0
+n_total=0; n_synced=0; n_wouldsync=0; n_drift=0; n_flag=0; n_clean=0; n_locked=0; n_skip=0; n_syncfail=0; n_synclocal=0
 BODY_SYNCED=""; BODY_ATT=""; BODY_LOCKED=""
 
 # lock por-repo (mkdir es atómico) en STATEDIR con sufijo .lock — no colisiona con los stamps del throttle
@@ -110,14 +111,35 @@ while IFS= read -r repo; do
   n_total=$((n_total+1))
   slug=$(printf '%s' "$repo" | cksum 2>/dev/null | awk '{print $1}')
   lock="$STATEDIR/${slug:-0}.lock"
-  if ! mkdir "$lock" 2>/dev/null; then
+  _locked_skip=0
+  if [ "$DRY_RUN" = 1 ]; then
+    # DRY-RUN = READ-ONLY: NO crea el lock; solo OBSERVA si uno está ocupado (para no previsualizar un
+    # repo que una corrida APPLY está mutando) → lo reporta como saltado, sin tocarlo.
+    [ -d "$lock" ] && _locked_skip=1
+    lock=""   # no se adquirió → no hacer rmdir después
+  elif ! mkdir "$lock" 2>/dev/null; then
+    # ¿lock HUÉRFANO? una corrida previa murió entre el mkdir y el rmdir → ESE repo quedaría saltado PARA
+    # SIEMPRE (MEDIO auditoría 2026-10-22). Un chequeo per-repo dura segundos → un lock más viejo que
+    # FLOTILLA_LOCK_STALE_S (def 1800s/30min) es huérfano → recupéralo (rmdir+mkdir). Si no es stale o no
+    # se pudo recuperar (otra corrida ganó la carrera) → se salta, como antes.
+    _lockm=$(stat -c %Y "$lock" 2>/dev/null || stat -f %m "$lock" 2>/dev/null || echo 0)
+    _now=$(date +%s 2>/dev/null || echo 0)
+    case "$_lockm" in ''|*[!0-9]*) _lockm=0 ;; esac
+    if [ "$_now" -gt 0 ] && [ "$_lockm" -gt 0 ] && [ $(( _now - _lockm )) -gt "${FLOTILLA_LOCK_STALE_S:-1800}" ] \
+       && rmdir "$lock" 2>/dev/null && mkdir "$lock" 2>/dev/null; then
+      :   # lock huérfano recuperado → procesa este repo (y rmdir al final)
+    else
+      _locked_skip=1; lock=""
+    fi
+  fi
+  if [ "$_locked_skip" = 1 ]; then
     n_locked=$((n_locked+1))
     BODY_LOCKED="$BODY_LOCKED
   - $repo (lock ocupado — sesión interactiva u otra corrida del sweeper; se reintenta a la próxima)"
     continue
   fi
   res=$(drift_chequea_repo "$repo" "$DRY_RUN")
-  rmdir "$lock" 2>/dev/null || true
+  [ -n "$lock" ] && rmdir "$lock" 2>/dev/null || true
   status=$(printf '%s\n' "$res" | head -1 | sed -n 's/^STATUS=//p')
   msg=$(printf '%s\n' "$res" | sed '1d')
   case "$status" in
@@ -130,6 +152,16 @@ while IFS= read -r repo; do
       n_syncfail=$((n_syncfail+1))
       BODY_ATT="$BODY_ATT
   - 🧬⚠️ $repo — apply+commit LOCAL OK pero el PUSH FALLÓ (red/auth) → el commit está en su mini-develop local, NO en el remoto. Re-pushea a mano cuando haya red, o el develop compartido queda stale."
+      ;;
+    synced-local-wip)
+      n_synclocal=$((n_synclocal+1))
+      BODY_ATT="$BODY_ATT
+  - 🧬⚠️ $repo — brain aplicado+commiteado LOCAL pero NO pusheado (WIP sin pushear o mini sin upstream en origin). El commit está en su mini local; intégralo por el flujo (cerrar-slice corre gitleaks antes de subir)."
+      ;;
+    synced-local-secret)
+      n_synclocal=$((n_synclocal+1))
+      BODY_ATT="$BODY_ATT
+  - 🧬🔑 $repo — brain aplicado+commiteado LOCAL pero NO pusheado: gitleaks halló un posible SECRETO en el commit de auto-sync. Revísalo y sácalo/rótalo (o excepción por huella) antes de propagar."
       ;;
     would-sync)
       n_wouldsync=$((n_wouldsync+1))
@@ -170,9 +202,9 @@ fi
 
 # ── Reporte ──────────────────────────────────────────────────────────────────────────────────── ──
 modo="APLICA"; [ "$DRY_RUN" = 1 ] && modo="DRY-RUN (no escribió nada)"
-resumen_linea="barrer-flotilla-cerebro [$modo] $ts — $n_total repo(s): $n_synced sync · $n_syncfail push-fallido · $n_wouldsync would-sync · $n_drift drift · $n_flag personal-flag · $n_clean al día · $n_locked lock · $n_skip n/a"
+resumen_linea="barrer-flotilla-cerebro [$modo] $ts — $n_total repo(s): $n_synced sync · $n_syncfail push-fallido · $n_synclocal local-sin-push · $n_wouldsync would-sync · $n_drift drift · $n_flag personal-flag · $n_clean al día · $n_locked lock · $n_skip n/a"
 
-{
+report_content=$( {
   echo "# Reporte del sweeper de flotilla — $ts"
   echo ""
   echo "Modo: **$modo** · raíz de descubrimiento: \`$CODE_DIR\`"
@@ -183,17 +215,28 @@ resumen_linea="barrer-flotilla-cerebro [$modo] $ts — $n_total repo(s): $n_sync
   if [ -n "$BODY_LOCKED" ]; then echo ""; echo "## Saltados por lock$BODY_LOCKED"; fi
   [ "$n_total" -eq 0 ] && { echo ""; echo "_(no se descubrió ningún repo brained bajo \`$CODE_DIR\`)_"; }
   if [ -n "$residuo_linea" ]; then echo ""; echo "## Residuo de housekeeping"; echo "$residuo_linea"; fi
-} > "$REPORT" 2>/dev/null || true
+} )
+
+# DRY-RUN = READ-ONLY (MEDIO auditoría 2026-10-22): NO escribe el archivo de reporte NI toca el dashboard
+# (la bitácora global es un LOG de acciones REALES — una entrada en dry-run MENTIRÍA; y sobrescribir
+# `flotilla-ultimo-reporte.md` con un preview lo haría pasar por la última corrida real). El preview va
+# SOLO a stdout. Así el `modo` "DRY-RUN (no escribió nada)" por fin dice la verdad.
+if [ "$DRY_RUN" = 1 ]; then
+  [ "$QUIET" != 1 ] && printf '%s\n' "$report_content"
+  exit 0
+fi
+
+printf '%s\n' "$report_content" > "$REPORT" 2>/dev/null || true
 
 # Append de UNA línea (append-only con `>>`, la norma para docs que varias sesiones tocan a la vez → no
 # choca) a la Bitácora del dashboard GLOBAL, SOLO si hubo algo accionable (sync/would/drift/flag) para no
 # ensuciar la bitácora con corridas 100% limpias. El detalle completo vive en $REPORT.
-if [ -n "$DASHBOARD" ] && [ -f "$DASHBOARD" ] && [ $(( n_synced + n_syncfail + n_wouldsync + n_drift + n_flag )) -gt 0 ]; then
+if [ -n "$DASHBOARD" ] && [ -f "$DASHBOARD" ] && [ $(( n_synced + n_syncfail + n_synclocal + n_wouldsync + n_drift + n_flag )) -gt 0 ]; then
   printf '\n- **[%s] barrer-flotilla-cerebro:** %s (detalle: `%s`)\n' \
     "$(date '+%Y-%m-%d')" "${resumen_linea#barrer-flotilla-cerebro }" "$REPORT" >> "$DASHBOARD" 2>/dev/null || true
 fi
 
 if [ "$QUIET" != 1 ]; then
-  cat "$REPORT" 2>/dev/null || true
+  cat "$REPORT" 2>/dev/null || printf '%s\n' "$report_content"
 fi
 exit 0
