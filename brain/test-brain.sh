@@ -1871,6 +1871,26 @@ grep -qF 'MR!15' "$BTCAP" \
   && ok "bt-prompt: el prompt del juez conserva el ejemplo literal 'MR!15' (backticks escapados → la regla de notación llega completa al juez)" \
   || bad "bt-prompt: 'MR!15' se perdió del prompt (backticks ejecutados → la regla de notación llegó vacía)"
 rm -f "$BTCAP" "$BTERR"
+# (bt-hang) SEVERIDAD del MEDIO: el par `PR` SOLO (sin arg) ejecutaba /usr/bin/pr (macOS: FS insensible a
+# mayúsculas) que se queda LEYENDO stdin → con el stdin del hook abierto, el guard COLGABA hasta el timeout
+# del harness (medido por claudio: test-brain colgado 1h35m, proceso `PR`). El check de stderr de arriba NO lo
+# caza (pr EXISTE → no da "command not found"; `PR 15` sí por "cannot open 15", pero el bare `PR` solo cuelga).
+# Con los backticks escapados, construir el prompt NO ejecuta nada → termina aunque el stdin esté abierto.
+# Prueba: corre _juez_merge con el stdin HELD OPEN (`< <(sleep …)`) en 2º plano y exige que TERMINE pronto.
+# FALLA vs el código sin escapar (pr lee el stdin abierto y el proceso nunca termina → lo matamos y es bad).
+( _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/merge-develop-guard.sh"
+  _juez_llamar_api() { printf 'OK\nVEREDICTO: DENY'; }
+  _juez_merge develop 15 "USUARIO: mergea a develop" "" >/dev/null 2>&1 ) < <(sleep 6) &
+_bthp=$!
+_bti=0
+while kill -0 "$_bthp" 2>/dev/null && [ "$_bti" -lt 5 ]; do sleep 1; _bti=$((_bti+1)); done
+if kill -0 "$_bthp" 2>/dev/null; then
+  kill "$_bthp" 2>/dev/null; wait "$_bthp" 2>/dev/null
+  bad "bt-hang: el prompt del juez NO terminó en ~5s con el stdin abierto — un backtick (p. ej. \`PR\`→/usr/bin/pr sin args) ejecuta un comando que LEE stdin y cuelga el guard"
+else
+  wait "$_bthp" 2>/dev/null
+  ok "bt-hang: el prompt del juez termina con el stdin abierto (ningún backtick ejecuta un comando que lea stdin → no cuelga)"
+fi
 
 # ── (b1g) juez-comun.sh: retrieval PORTABLE + curl 401-aware + política sin-token/jq (stubs, SIN red) ──
 # Los mocks de los jueces (CLAUDE_*_JUEZ_MOCK[_RAW]) CORTO-CIRCUITAN el retrieval+curl → el bug del token
