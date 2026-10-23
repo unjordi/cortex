@@ -556,6 +556,14 @@ _grant_cita_verificada() {   # $1 = línea de grant → 0 si su cita aparece en 
   command -v jq >/dev/null 2>&1 || return 1          # sin jq no se puede filtrar "humano" con rigor → no honra
   cita=$(printf '%s' "$grant" | sed -n 's/.*cita="\([^"]*\)".*/\1/p')
   [ -n "$cita" ] || return 1
+  # C1 (auditoría R3 2026-10-23): un `contains($cita)` SIN piso de sustancia dejaba que una cita TRIVIAL
+  # (`cita="a"`) casara CUALQUIER mensaje humano → el grant se auto-honraba. La cita de un grant real es la
+  # autorización VERBATIM del usuario (larga y sobre merge/integración), así que se exige: (a) largo mínimo
+  # serio (≥ CLAUDE_GRANT_CITA_MIN_CHARS, def 20) y (b) léxico de autorización de merge — una frase humana
+  # larga pero inocua ("revisa el README por favor…") que el agente copiara NO alcanza para honrar el grant.
+  local _gmin; _gmin="${CLAUDE_GRANT_CITA_MIN_CHARS:-20}"; case "$_gmin" in ''|*[!0-9]*) _gmin=20 ;; esac
+  [ "${#cita}" -ge "$_gmin" ] || return 1
+  printf '%s' "$cita" | grep -qiE 'merge|mergea|integr|autoriz|develop|libera|promov' || return 1
   _cfgp="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects"; _homep="$HOME/.claude/projects"
   for d in "$_cfgp" "$_homep"; do
     [ -d "$d" ] || continue
@@ -573,6 +581,7 @@ _grant_cita_verificada() {   # $1 = línea de grant → 0 si su cita aparece en 
           ( ((.type? // "") == "user") or ((.message.role? // "") == "user") )
           and ((.isMeta // false) != true)
           and ((.isCompactSummary // false) != true)
+          and ((.isSidechain // false) != true)   # C1 R3: un turno de SUBAGENTE (sidechain) lo escribe el AGENTE, no el humano → jamás autoriza
           and (
             ( if ((.type? // "") == "attachment")
                    and ((.attachment.type? // "") == "queued_command")
@@ -591,7 +600,7 @@ _grant_cita_verificada() {   # $1 = línea de grant → 0 si su cita aparece en 
           )
         )' "$f" 2>/dev/null | grep -q true && return 0
     done <<EOF
-$(grep -rlF -- "$cita" "$d" --include='*.jsonl' 2>/dev/null)
+$(grep -rlF -- "$cita" "$d" --include='*.jsonl' 2>/dev/null | grep -v '/subagents/')
 EOF
     [ "$_cfgp" = "$_homep" ] && break   # dedupe cuando CLAUDE_CONFIG_DIR == ~/.claude
   done

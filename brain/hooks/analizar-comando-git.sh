@@ -180,6 +180,11 @@ acg_target_dir() {   # $1=cmd  $2=payload_cwd → imprime el dir objetivo
   # dir del merge, aunque el merge trae --repo LITERAL. (El SCOPING no se afloja: un comando SIN --repo literal
   # cuyo cwd es opaco por un `cd $X &&` lo detecta acg_dir_opaco y GATEA — ver merge-develop-guard PASO 3b.)
   case "$d" in *'$'*|*'`'*) d="" ;; esac
+  # `-C .` / `-C ./` = "el directorio ACTUAL" (equivale a sin -C) → NO es un dir distinto: se cae a la
+  # precedencia del cwd real (cd previo > payload_cwd > PROJECT_DIR), que es lo que el shell usaría. Sin esto,
+  # un `git -C . branch -D` resolvía el dir a `.` LITERAL (el cwd del PROCESO del hook, no el del comando) y la
+  # detección del repo objetivo fallaba → evasión (M5 R3 2026-10-23). Un `-C ./subdir` SÍ es un dir distinto y se conserva.
+  case "$d" in .|./) d="" ;; esac
   if [ -n "$d" ]; then printf '%s' "$d"; return 0; fi
   # (2) cd/pushd <dir> en el segmento (quote-aware; el valor NO cruza ;&|)
   d=$(printf '%s' "$cmd" | sed -nE "s/.*(^|[^[:alnum:]])(cd|pushd)[[:space:]]+(\"[^\"]*\"|'[^']*'|([^[:space:]\"';&|]|\\\\.)+).*/\3/p" | head -1)
@@ -266,7 +271,43 @@ acg_target_remote() {   # $1=cmd  $2=payload_cwd → imprime "org/repo" | vacío
 # primer fix, gbg G3). El espacio final es `[[:space:]]*` (opcional) para que el caso subst case igual. El valor
 # entrecomillado con espacios (`FOO="a b"`) ya lo neutraliza acg_despoja_comillas aguas arriba (el único caller,
 # acg_push_toca_base, despoja ANTES) → aquí basta el no-quote.
-acg_es_push() { printf '%s' "$1" | grep -qE '^[[:space:]]*([(){}$`[:space:]]|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]$`()]*[[:space:]]*|(eval|sudo|time|nice|nohup|command|builtin|xargs)[[:space:]]+|(ba)?sh[[:space:]]+-c[[:space:]]+|env[[:space:]]+([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*)*git[[:space:]]+push([[:space:]]|$)'; }
+# C2 (auditoría R3 2026-10-23): el regex de arriba era una LISTA CERRADA de envoltorios → `\git push`,
+# `/usr/bin/git push`, `timeout 30 git push`, `stdbuf/ionice/setsid/caffeinate/arch … git push` (wrappers NO
+# listados) y `FOO=a\ b git push` EVADÍAN el PASO 0 (un push a base que se cuela = FN, el peor error). Fix de
+# FONDO (no otra lista): recorre los tokens del segmento buscando `git` en POSICIÓN DE COMANDO. El basename
+# de-backslasheado de cada token revela `git` tras `\`, una ruta absoluta (`/usr/bin/git`) o un wrapper
+# arbitrario. Un token que precede a `git` y NO es una asignación/flag/`git` se trata como WRAPPER (lo salta y
+# sigue buscando) SALVO que sea un CONSUMIDOR DE DATOS conocido (echo/grep/printf/cat/awk/sed…): ahí `git push`
+# es un ARGUMENTO (dato), no un comando → no cuenta. Si el PRIMER `git` trae otro subcomando (`git commit -m …
+# git push`), el resto son SUS args → se corta ahí (no se re-detecta el `git push` entrecomillado, preserva H13
+# y la mención del corpus L145). El segmento llega despojado de comillas + normalizado (`git -C` colapsado) por
+# el caller. Fail-SAFE: ante un wrapper desconocido se SIGUE buscando git (sesga a DETECTAR, nunca a dejar pasar).
+acg_es_push() {
+  local seg base tok i n
+  local -a T
+  seg=$(printf '%s' "$1" | tr '(){}`' '     ')   # neutraliza agrupación/subshell → `git` tras `( { $(` queda token propio
+  IFS=' ' read -ra T <<< "$seg"
+  n=${#T[@]}; i=0
+  while [ "$i" -lt "$n" ]; do
+    tok="${T[$i]}"
+    case "$tok" in
+      ''|[A-Za-z_][A-Za-z0-9_]*=*) i=$((i+1)); continue ;;   # vacío o asignación VAR=val → prefijo, salta
+    esac
+    base="${tok##*/}"; base="${base#\\}"                      # basename sin `\` de escape ni ruta (→ `\git`,`/usr/bin/git`)
+    case "$base" in
+      git)
+        i=$((i+1))                                            # el siguiente token NO-flag debe ser `push`
+        while [ "$i" -lt "$n" ]; do case "${T[$i]}" in -*) i=$((i+1)) ;; *) break ;; esac; done
+        { [ "$i" -lt "$n" ] && [ "${T[$i]}" = push ]; } && return 0
+        return 1                                              # `git <otro-subcomando>` → el resto son SUS args, no otro comando
+        ;;
+      echo|printf|print|grep|egrep|fgrep|rg|ag|pgrep|pkill|cat|tac|nl|awk|sed|tee|less|more|head|tail|xxd|od|hexdump|strings|test|'['|:|true|false|yes)
+        return 1 ;;                                           # consumidor de DATOS → `git push` es argumento, no comando
+      *) i=$((i+1)) ;;                                        # wrapper arbitrario (o su arg posicional/flag) → sigue buscando git
+    esac
+  done
+  return 1
+}
 
 # acg_slug_de_dir(dir) → slug `org/repo` del remoto `origin` de un dir git (sin esquema ni `.git`), o vacío.
 acg_slug_de_dir() { git -C "$1" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|ssh://[^/]+/|https?://[^/]+/)##; s#\.git$##'; }

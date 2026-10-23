@@ -53,12 +53,15 @@ else
   unquoted=$(printf '%s' "$noheredoc" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g")
 fi
 # ¿git DESTRUCTIVO que mueve HEAD / descarta commits?
-# `_bdel_re` reconoce un `git branch` de BORRADO en TODAS sus formas: short cluster con d/D en cualquier
-# posición (`-D`·`-d`·`-df`·`-fd`·`-Df`·`-Dq`…) o el largo `--delete` (con/ sin `--force`). ANCLADO a que el
-# flag vaya JUSTO tras `branch ` (no un `-d` incrustado en otro flag largo tipo `--edit-description`) → lo que
-# admite el pre-filtro es EXACTAMENTE lo que el bloque de branch-delete abajo maneja-y-sale, sin caer al path
-# de orfandad (que avisaría en falso por los commits sin pushear de HEAD, ajenos a la rama borrada).
-_bdel_re='branch[[:space:]]+(-[A-Za-z]*[dD]|--delete)'
+# `_bdel_re` reconoce un `git branch` de BORRADO en TODAS sus formas, con los flags en CUALQUIER ORDEN: un
+# short cluster con d/D en cualquier posición (`-D`·`-d`·`-df`·`-fd`·`-Df`·`-Dq`…) o el largo `--delete`, y
+# precedido de CUALQUIER otro flag (`--force --delete`, `--force -d` — M5 R3 2026-10-23: el ancla «flag justo
+# tras branch» perdía estas formas). El `(--?…[[:space:]]+)*` admite flags previos pero el grupo final EXIGE un
+# flag de BORRADO, así que un `git branch` sin borrado (`--list`, `--edit-description`, `-m`, `--set-upstream-to`)
+# NO casa → el pre-filtro admite EXACTAMENTE lo que el bloque de branch-delete abajo maneja-y-sale, sin caer al
+# path de orfandad (que avisaría en falso por los commits sin pushear de HEAD, ajenos a la rama borrada). El
+# `git -C <dir>` ya lo colapsa acg_normaliza_git_prefijo aguas arriba (línea 40).
+_bdel_re='branch[[:space:]]+((--?[A-Za-z][A-Za-z-]*[[:space:]]+)*)(-[A-Za-z]*[dD]|--delete)'
 printf '%s' "$unquoted" | grep -qE "git[[:space:]]+(reset[[:space:]]+(--hard|--merge|--keep)|checkout[[:space:]]+(-f|--force)|rebase([[:space:]]|\$)|$_bdel_re)" || exit 0
 
 # M2: DIR objetivo por la lib (-C > cd/pushd > cwd del payload > CLAUDE_PROJECT_DIR > '.'); antes las DOS
