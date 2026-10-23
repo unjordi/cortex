@@ -11,13 +11,13 @@
 # ── CONTRATO DE FAIL-SAFE (definición ÚNICA — la lib NO decide el fail-safe, solo lo REPORTA) ──── ──
 # La lib PRODUCE texto + un ESTADO; JAMÁS inventa un veredicto. Cada juez aplica SU política ante fallo.
 #   · `_juez_token` / `_juez_llamar_api` devuelven VACÍO ante: sin token en ningún canal · sin curl/jq ·
-#     sin red · timeout · HTTP != 200 (incluido 401/403 tras agotar el reintento) · respuesta sin cuerpo.
+#     sin red · timeout · HTTP != 200 (incluido 401/403 tras agotar TODOS los canales de token) · respuesta sin cuerpo.
 #   · La RAZÓN del vacío se comunica en la global `_JUEZ_ESTADO`, con estos valores (3 de indisponibilidad
 #     + el OK). Es el insumo para que CADA juez elija su MENSAJE (no su fail-safe, que es fijo por juez):
 #       OK                   → hubo respuesta 200 con cuerpo (el texto va en stdout).
 #       UNAVAILABLE_NOTOKEN  → NO hay token OAuth en NINGÚN canal (colega/CI/api-key/sin login de suscripción).
 #       UNAVAILABLE_NET      → deps ausentes · red/timeout/DNS · HTTP != 200 no-auth · cuerpo vacío.
-#       EXPIRED              → 401/403 en el 1er intento Y TAMBIÉN tras el reintento (token vencido/revocado).
+#       EXPIRED              → 401/403 en TODOS los canales de token probados (vencido/revocado en todos).
 #   · POLÍTICA por juez (vive en CADA juez, no aquí — codificar el fail-safe en la lib acoplaría seguridad
 #     a mecánica). RESUMEN del contrato, para que quede en UN solo lugar:
 #       merge (merge-develop-guard) = fail-CLOSED: vacío/UNAVAILABLE_* → DENY. El estado solo cambia el
@@ -69,6 +69,22 @@ _juez_token() {
   t="$(_juez_token_de_archivo)"  && [ -n "$t" ] && { printf '%s' "$t"; return 0; }
   t="$(_juez_token_de_env)"      && [ -n "$t" ] && { printf '%s' "$t"; return 0; }
   return 1
+}
+
+# _juez_tokens_ordenados → imprime los tokens DISTINTOS no vacíos, uno por línea, en el MISMO orden
+# login-activo-first (llavero → archivo → env). Lo usa _juez_llamar_api para que un 401/403 de un canal
+# (credencial VENCIDA) pruebe el SIGUIENTE en vez de re-resolver el mismo (MEDIO auditoría 2026-10-22): una
+# credencial vieja en el llavero ya NO tapa un `$CLAUDE_CODE_OAUTH_TOKEN` válido. El invariante "el llavero gana"
+# se preserva: sigue siendo el PRIMERO que se prueba; el env solo entra si el llavero/archivo son RECHAZADOS.
+_juez_tokens_ordenados() {
+  local t seen="" src
+  for src in _juez_token_de_llavero _juez_token_de_archivo _juez_token_de_env; do
+    t="$($src 2>/dev/null)" || t=""
+    [ -z "$t" ] && continue
+    case "$seen" in *"$(printf '\001')$t$(printf '\001')"*) continue ;; esac   # dedup (SOH como separador, imposible en un token)
+    seen="$seen$(printf '\001')$t$(printf '\001')"
+    printf '%s\n' "$t"
+  done
 }
 
 # _juez_deps_ok → curl + jq disponibles. return 0/1.
@@ -162,9 +178,11 @@ _juez_curl_local() {
 #   → TAMBIÉN setea la global `_JUEZ_ESTADO` (conveniencia para una llamada DIRECTA/test; NO sobrevive un
 #     `$(...)`). Por eso el ESTADO viaja en stdout: un caller que hace `resp=$(_juez_llamar_api …)` (subshell)
 #     recupera el estado de la línea 1 — el global se perdería en ese subshell. Retorno: 0 en OK, !=0 en fallo.
-# CAPTURA el http_code y REINTENTA 1× ante 401/403 re-resolviendo el token del canal VIVO (el CLI refresca el
-# keychain en el ínterin) — casi gratis (~5ms: el 401 falla rápido) y NO cambia el veredicto, solo reduce el
-# falso DENY por token stale. Un solo re-try (sin bucle).
+# CAPTURA el http_code y ante 401/403 BARRE al SIGUIENTE canal de token (llavero→archivo→env), en vez de
+# re-resolver el mismo (MEDIO auditoría 2026-10-22: una credencial VENCIDA en un canal ya NO tapa un token
+# válido en otro — p. ej. $CLAUDE_CODE_OAUTH_TOKEN). El llavero sigue siendo el PRIMERO (invariante intacto);
+# el env solo entra si el llavero/archivo son RECHAZADOS. Casi gratis (~5ms: el 401 falla rápido); NO cambia el
+# veredicto, solo reduce el falso DENY por token vencido. EXPIRED solo si TODOS los canales con token dan 401/403.
 _juez_llamar_api() {
   local modelo="$1" maxtok="$2" timeout="$3" temp="$4" prompt="$5" tok body resp http body_txt txt est rc
   est=UNAVAILABLE_NET; txt=""; rc=1
@@ -210,11 +228,9 @@ _juez_llamar_api() {
     printf '%s\n%s' "$est" "$txt"
     return "$rc"
   fi
-  # ── BACKEND DEFAULT (Anthropic/Haiku vía OAuth) — INTACTO ────────────────────────────────────── ──
+  # ── BACKEND DEFAULT (Anthropic/Haiku vía OAuth) ──────────────────────────────────────────────── ──
   if ! _juez_deps_ok; then
     est=UNAVAILABLE_NET
-  elif ! tok="$(_juez_token)" || [ -z "$tok" ]; then
-    est=UNAVAILABLE_NOTOKEN
   else
     case "$temp"    in ''|*[!0-9.]*) temp=0 ;; esac
     case "$maxtok"  in ''|*[!0-9]*)  maxtok=512 ;; esac
@@ -224,24 +240,29 @@ _juez_llamar_api() {
     if [ -z "$body" ]; then
       est=UNAVAILABLE_NET
     else
-      resp="$(_juez_curl_crudo "$tok" "$body" "$timeout")"
-      http="$(printf '%s' "$resp" | tail -n1)"; body_txt="$(printf '%s' "$resp" | sed '$d')"
-      if [ "$http" = 200 ]; then
-        txt=$(printf '%s' "$body_txt" | jq -r '.content[0].text // empty' 2>/dev/null); est=OK; rc=0
-      elif [ "$http" = 401 ] || [ "$http" = 403 ]; then
-        # 401/403 = token RECHAZADO (probable expiración): re-resolver del canal VIVO y reintentar 1×.
-        tok="$(_juez_token)" || tok=""
-        if [ -n "$tok" ]; then
-          resp="$(_juez_curl_crudo "$tok" "$body" "$timeout")"
-          http="$(printf '%s' "$resp" | tail -n1)"; body_txt="$(printf '%s' "$resp" | sed '$d')"
-        fi
+      # Itera los canales de token DISTINTOS en orden login-activo-first (llavero→archivo→env). Un 401/403 de
+      # un canal (credencial VENCIDA) → prueba el SIGUIENTE, en vez de re-resolver el MISMO (MEDIO auditoría
+      # 2026-10-22: una credencial vieja en el llavero ya NO tapa un $CLAUDE_CODE_OAUTH_TOKEN válido). El
+      # invariante "el llavero gana" se preserva (es el PRIMERO). Un error de RED corta el barrido (no es de
+      # auth). Sin ningún token → NOTOKEN; TODOS los canales rechazados → EXPIRED.
+      local _toks _authfail=0
+      _toks="$(_juez_tokens_ordenados)"
+      est=UNAVAILABLE_NOTOKEN
+      while IFS= read -r tok; do
+        [ -z "$tok" ] && continue
+        resp="$(_juez_curl_crudo "$tok" "$body" "$timeout")"
+        http="$(printf '%s' "$resp" | tail -n1)"; body_txt="$(printf '%s' "$resp" | sed '$d')"
         if [ "$http" = 200 ]; then
-          txt=$(printf '%s' "$body_txt" | jq -r '.content[0].text // empty' 2>/dev/null); est=OK; rc=0
-        elif [ "$http" = 401 ] || [ "$http" = 403 ]; then est=EXPIRED        # sigue rechazado → vencido de verdad
-        else est=UNAVAILABLE_NET; fi                                          # otro código tras el retry → red
-      else
-        est=UNAVAILABLE_NET   # curl falló (http vacío/000) o HTTP != 200 no-auth → red/servidor/timeout
-      fi
+          txt=$(printf '%s' "$body_txt" | jq -r '.content[0].text // empty' 2>/dev/null); est=OK; rc=0; break
+        elif [ "$http" = 401 ] || [ "$http" = 403 ]; then
+          _authfail=1   # canal rechazado → prueba el SIGUIENTE canal
+        else
+          est=UNAVAILABLE_NET; break   # error de red/servidor/timeout → no es de auth, corta el barrido
+        fi
+      done <<JUEZTOKS
+$_toks
+JUEZTOKS
+      [ "$est" = UNAVAILABLE_NOTOKEN ] && [ "$_authfail" = 1 ] && est=EXPIRED   # hubo token(s), todos 401/403
     fi
   fi
   _JUEZ_ESTADO="$est"

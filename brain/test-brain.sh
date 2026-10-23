@@ -1850,37 +1850,71 @@ CARGV
     || bad "juez-comun (seguridad): el token aparece en el argv de curl (visible en ps) o no llegó por config"
 )
 
-# fake curl 401-aware: 1er llamado → HTTP 401, 2º → HTTP 200 con el cuerpo de $JC_CURL_BODY200. Counter en archivo.
+# fake curl TOKEN-AWARE: lee la config de `-K -` (STDIN, trae `header = "Authorization: Bearer <tok>"`) → HTTP
+# 200 con $JC_CURL_BODY200 si el token es $JC_VALID_TOK, 401 en cualquier otro. Cuenta las llamadas en $JC_CURL_CTR
+# (si está). Así se ejercita el BARRIDO DE CANALES del fix #2 (MEDIO auditoría 2026-10-22): un canal 401 → el
+# siguiente; una credencial VENCIDA en el llavero ya NO tapa un $CLAUDE_CODE_OAUTH_TOKEN válido.
 mkdir -p "$JCFIX/curl401"
 cat > "$JCFIX/curl401/curl" <<'CURLSTUB'
 #!/usr/bin/env bash
-ctr="${JC_CURL_CTR:?}"; n=$(cat "$ctr" 2>/dev/null || echo 0); n=$((n+1)); printf '%s' "$n" > "$ctr"
-if [ "$n" = 1 ]; then printf '%s\n401' '{"type":"error","error":{"type":"authentication_error"}}'
-else printf '%s\n200' "$JC_CURL_BODY200"; fi
+cfg="$(cat)"   # config de -K - por stdin → contiene el header Authorization con el token
+[ -n "${JC_CURL_CTR:-}" ] && { n=$(cat "$JC_CURL_CTR" 2>/dev/null || echo 0); printf '%s' "$((n+1))" > "$JC_CURL_CTR"; }
+case "$cfg" in
+  *"$JC_VALID_TOK"*) printf '%s\n200' "$JC_CURL_BODY200" ;;
+  *)                 printf '%s\n401' '{"type":"error","error":{"type":"authentication_error"}}' ;;
+esac
 CURLSTUB
 chmod +x "$JCFIX/curl401/curl"
+# stub de `security` que devuelve un token de llavero VENCIDO (para el caso expired-masks-valid)
+mkdir -p "$JCFIX/secexp"; printf '#!/usr/bin/env bash\nprintf %%s '\''{"claudeAiOauth":{"accessToken":"EXPIRED_KC_TOK"}}'\''\n' > "$JCFIX/secexp/security"; chmod +x "$JCFIX/secexp/security"
 
-# (a) _juez_llamar_api: 401 → reintenta 1× (re-lee el token del canal vivo) → 200 → OK + texto (retry casi gratis)
+# (a · #2) BARRIDO DE CANALES: el llavero da un token VENCIDO (401) → _juez_llamar_api prueba el SIGUIENTE canal
+# (env), que es VÁLIDO → 200 → OK. Antes re-resolvía el MISMO canal (llavero) → quedaba EXPIRED para siempre.
 (
-  export PATH="$JCFIX/curl401:$JCFIX/nosec:$PATH"; export CLAUDE_CODE_OAUTH_TOKEN="ENV_TOK"; unset CLAUDE_CONFIG_DIR
-  export JC_CURL_CTR="$JCFIX/ctr_a"; : > "$JC_CURL_CTR"; export JC_CURL_BODY200='{"content":[{"text":"VEREDICTO: ALLOW"}]}'
+  export PATH="$JCFIX/curl401:$JCFIX/secexp:$PATH"; export CLAUDE_CODE_OAUTH_TOKEN="VALID_ENV_TOK"; unset CLAUDE_CONFIG_DIR
+  export JC_VALID_TOK="VALID_ENV_TOK"; export JC_CURL_CTR="$JCFIX/ctr_a"; : > "$JC_CURL_CTR"
+  export JC_CURL_BODY200='{"content":[{"text":"VEREDICTO: ALLOW"}]}'
   . "$HOOKS/juez-comun.sh"
-  _juez_llamar_api modelo 100 5 0 'prompt' > "$JCFIX/out_a" 2>/dev/null   # directo (no $()) para ver _JUEZ_ESTADO
+  _juez_llamar_api modelo 100 5 0 'prompt' > "$JCFIX/out_a" 2>/dev/null
   est="$_JUEZ_ESTADO"; out="$(cat "$JCFIX/out_a")"; n="$(cat "$JC_CURL_CTR")"
   { [ "$est" = OK ] && printf '%s' "$out" | grep -q 'VEREDICTO: ALLOW' && [ "$n" = 2 ]; } \
-    && ok "juez-comun (a): 401 en el 1er curl → reintenta 1× → 200 → estado OK + texto (retry casi gratis)" \
-    || bad "juez-comun (a): no reintentó bien tras el 401 (estado='$est' n_curls='$n')"
+    && ok "juez-comun (a·#2): llavero VENCIDO (401) → prueba el SIGUIENTE canal (env válido) → 200 → OK (el env válido GANA al vencido)" \
+    || bad "juez-comun (a·#2): no barrió al canal válido tras el 401 del llavero (estado='$est' n_curls='$n')"
 )
-# (a) end-to-end merge: 401→retry→200 con CITA+VEREDICTO reales → ALLOW (un token STALE ya NO es un DENY duro)
+# (a2 · #2 invariante) llavero VÁLIDO + env viejo → usa el LLAVERO (1 sola llamada; el env ni se toca). El
+# invariante "login-activo-first / el llavero gana" (test de arriba) se preserva — el env solo entra si el 1º es rechazado.
 (
-  export PATH="$JCFIX/curl401:$JCFIX/nosec:$PATH"; export CLAUDE_CODE_OAUTH_TOKEN="ENV_TOK"; unset CLAUDE_CONFIG_DIR
-  export JC_CURL_CTR="$JCFIX/ctr_m"; : > "$JC_CURL_CTR"
+  export PATH="$JCFIX/curl401:$JCFIX/withsec:$PATH"; export CLAUDE_CODE_OAUTH_TOKEN="OLD_ENV_TOK"; unset CLAUDE_CONFIG_DIR
+  export JC_VALID_TOK="KEYCHAIN_TOK"; export JC_CURL_CTR="$JCFIX/ctr_a2"; : > "$JC_CURL_CTR"
+  export JC_CURL_BODY200='{"content":[{"text":"VEREDICTO: ALLOW"}]}'
+  . "$HOOKS/juez-comun.sh"
+  _juez_llamar_api modelo 100 5 0 'prompt' > "$JCFIX/out_a2" 2>/dev/null
+  est="$_JUEZ_ESTADO"; n="$(cat "$JC_CURL_CTR")"
+  { [ "$est" = OK ] && [ "$n" = 1 ]; } \
+    && ok "juez-comun (a2·#2 invariante): llavero VÁLIDO gana → 1 sola llamada, el env viejo ni se prueba" \
+    || bad "juez-comun (a2·#2): el llavero válido no ganó en la 1ª llamada (estado='$est' n_curls='$n')"
+)
+# (a3 · #2) TODOS los canales con token pero TODOS 401 → EXPIRED (no NOTOKEN; hubo credenciales, todas vencidas).
+(
+  export PATH="$JCFIX/curl401:$JCFIX/secexp:$PATH"; export CLAUDE_CODE_OAUTH_TOKEN="OTRO_VENCIDO"; unset CLAUDE_CONFIG_DIR
+  export JC_VALID_TOK="NINGUNO_CASA"; : > "$JCFIX/ctr_a3"; export JC_CURL_CTR="$JCFIX/ctr_a3"
+  export JC_CURL_BODY200='{"content":[{"text":"x"}]}'
+  . "$HOOKS/juez-comun.sh"
+  _juez_llamar_api modelo 100 5 0 'prompt' >/dev/null 2>&1; est="$_JUEZ_ESTADO"; n="$(cat "$JC_CURL_CTR")"
+  { [ "$est" = EXPIRED ] && [ "$n" = 2 ]; } \
+    && ok "juez-comun (a3·#2): llavero+env ambos 401 → EXPIRED tras probar los 2 canales (no NOTOKEN)" \
+    || bad "juez-comun (a3·#2): no dio EXPIRED tras agotar los canales (estado='$est' n_curls='$n')"
+)
+# (a · #2 end-to-end merge): llavero vencido → env válido → el merge juez responde ALLOW con cita real.
+(
+  export PATH="$JCFIX/curl401:$JCFIX/secexp:$PATH"; export CLAUDE_CODE_OAUTH_TOKEN="VALID_ENV_TOK"; unset CLAUDE_CONFIG_DIR
+  export JC_VALID_TOK="VALID_ENV_TOK"; unset JC_CURL_CTR
   export JC_CURL_BODY200='{"content":[{"text":"CITA: mergea el 240 a develop\nVEREDICTO: ALLOW"}]}'
-  _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/merge-develop-guard.sh"; unset CLAUDE_MERGE_JUEZ_MOCK CLAUDE_MERGE_JUEZ_MOCK_RAW
+  _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/merge-develop-guard.sh"
   got="$(_juez_merge develop 240 'USUARIO: mergea el 240 a develop')"
   [ "$got" = ALLOW ] \
-    && ok "juez-comun (a): merge 401→retry→200 con cita real → ALLOW end-to-end (token stale ya no tapia el merge)" \
-    || bad "juez-comun (a): el merge no recuperó tras el 401 (got='$got')"
+    && ok "juez-comun (a·#2): merge con llavero vencido → barrido al env válido → ALLOW end-to-end (un canal vencido ya no tapia el merge)" \
+    || bad "juez-comun (a·#2): el merge no recuperó barriendo al canal válido (got='$got')"
 )
 
 # (c) política SIN token: merge → UNAVAILABLE_NOTOKEN (no genérico), y a nivel hook → DENY + carril CONFORME (setup-token)
