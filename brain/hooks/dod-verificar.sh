@@ -33,9 +33,9 @@
 # FAIL-SAFE (a diferencia de merge-develop-guard, que fail-safe DENY): dod es un NAG de disciplina, no
 # un límite de seguridad. Si el juez no está (sin token OAuth, sin curl/jq, sin red, timeout, o respuesta ininteligible) →
 # FAIL-OPEN (deja cerrar el turno). Bloquear CADA Stop cuando Haiku esté caído atraparía al usuario en un
-# loop sin poder terminar. Mockeable con CLAUDE_DOD_JUEZ_MOCK (veredicto final, tests de flujo) y
-# CLAUDE_DOD_JUEZ_MOCK_RAW (respuesta cruda → tests deterministas del parseo por centinela + veto de cita);
-# el JUICIO real se prueba LIVE con la batería de FP/FN históricos en test-brain.sh. Modelo/timeout por env.
+# loop sin poder terminar. SIN perilla de mock en producción (MEDIO auditoría 2026-10-22): los tests inyectan
+# la respuesta del juez por un curl FALSO por PATH (que pasa por el parseo+veto+piso REALES) o redefiniendo
+# _juez_llamar_api in-proc; el JUICIO real se prueba LIVE con la batería de FP/FN en test-brain.sh. Modelo/timeout por env.
 #
 # "Este turno" = desde el último mensaje real del usuario. stop_hook_active evita loops. Requiere jq.
 set -u
@@ -87,9 +87,9 @@ _DOD_HARNESS_TIMEOUT_MINIMO=15   # segundos; el "timeout" que el settings.json d
 # CONTRATO DE COHERENCIA DE TIMEOUTS arriba, que explica por qué queda bajo el timeout del harness). Como es
 # fail-OPEN, un timeout simplemente NO bloquea (a diferencia del merge, que fail-safe DENY). Costo típico por
 # turno: 1 llamada curl de pocos segundos; el techo de 10s solo acota casos degenerados, no el caso común.
-# Mocks deterministas: CLAUDE_DOD_JUEZ_MOCK (veredicto FINAL normalizado 'CIERRE=.. MARCA=.. VISUAL=..' →
-# tests de FLUJO sin red) · CLAUDE_DOD_JUEZ_MOCK_RAW (texto CRUDO de respuesta → ejercita el parseo por
-# centinela + el veto de cita sin red).
+# Tests deterministas SIN perilla de mock en producción (MEDIO auditoría 2026-10-22): se inyecta la respuesta
+# del juez por un curl FALSO por PATH o redefiniendo _juez_llamar_api in-proc — así el parseo por centinela +
+# el veto de cita + el piso siguen siendo los REALES (un stub del veredicto final los saltaría).
 # _juez_dod_posible_claim($texto_asistente) → return 0 si el mensaje contiene ALGÚN léxico que PUDIERA
 # ser un claim de CIERRE o una aserción VISUAL; return 1 si NO hay NINGUNO. SCREEN NEGATIVO barato: un
 # claim de cierre o una observación visual EXIGEN vocabulario de cierre/apariencia — sin NADA de ese léxico,
@@ -107,16 +107,11 @@ _juez_dod_posible_claim() {
 
 _juez_dod() {
   local prompt out c m v txt cita _resp
-  if [ -n "${CLAUDE_DOD_JUEZ_MOCK:-}" ]; then
-    printf '%s' "$CLAUDE_DOD_JUEZ_MOCK"; return 0   # veredicto FINAL normalizado → flujo determinista (sin red)
-  fi
-  if [ -n "${CLAUDE_DOD_JUEZ_MOCK_RAW:-}" ]; then
-    txt="$CLAUDE_DOD_JUEZ_MOCK_RAW"                 # respuesta CRUDA mockeada → ejercita parseo + veto de cita
-  else
+  # SIN perilla de mock en producción (MEDIO auditoría 2026-10-22): el veredicto sale SOLO del juez REAL. Los
+  # tests inyectan la respuesta por un curl FALSO por PATH (que pasa por el parseo+veto+piso REALES) o, in-proc,
+  # redefiniendo _juez_llamar_api — NUNCA por una env que un agente pudiera setear para cambiar el veredicto.
   # PISO barato (estructural, ANTES de gastar la red): sin NINGÚN léxico de cierre/apariencia en el mensaje
   # del asistente ($1), los tres ejes son 'no' con certeza → resolvemos el Stop OBVIO sin la llamada al LLM.
-  # (Los mocks NO llegan aquí — ya salieron arriba —, así que los tests de FLUJO con asistente 'X' + mock no
-  # se ven afectados; y la batería LIVE usa frases con léxico → pasan el piso y llegan al juez real.)
   if ! _juez_dod_posible_claim "$1"; then printf 'CIERRE=no MARCA=no VISUAL=no'; return 0; fi
   # Token + curl + reintento-401 + deps: TODO vive en la lib juez-comun.sh (_juez_llamar_api), homologada
   # con el getter del widget (login-activo-first, honra CLAUDE_CONFIG_DIR). MISMO canal que el widget
@@ -166,7 +161,6 @@ VISUAL: <si|no>"
   _resp=$(_juez_llamar_api "${CLAUDE_DOD_JUEZ_MODEL:-claude-haiku-4-5-20251001}" 512 "${CLAUDE_DOD_JUEZ_TIMEOUT:-10}" 0 "$prompt")
   txt=$(printf '%s\n' "$_resp" | sed '1d')   # línea 1 = estado (dod es fail-OPEN → no lo distingue); resto = texto
   [ -z "$txt" ] && { printf 'UNAVAILABLE'; return 0; }
-  fi
   # DEBUG opt-in (CLAUDE_DOD_JUEZ_DEBUG=1): vuelca el CoT crudo a stderr → diagnóstico de FP/FN y tuning del
   # corpus (norma "bitácora de falsos positivos"). Off por default; no toca el veredicto.
   [ -n "${CLAUDE_DOD_JUEZ_DEBUG:-}" ] && printf '=== JUEZ-DOD CoT ===\n%s\n=== fin ===\n' "$txt" >&2
