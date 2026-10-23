@@ -683,7 +683,7 @@ HOME_CWD="$(_cwdform "$(_real "$HOME")")"
 _slug(){ node -e 'process.stdout.write(require(process.argv[1]).slugFromCwd(process.argv[2]))' "$BIN/session-lib.js" "$1"; }
 OLD_SLUG="$(_slug "$SRC_CWD")"          # ojo: suele ser COMPARTIDO por cientos de sesiones
 NEW_SLUG="$(_slug "$DST_CWD")"
-PROJ="$HOME/.claude/projects"
+PROJ="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects"   # honra CLAUDE_CONFIG_DIR (MEDIO 2026-10-22); antes fijaba $HOME
 JSONL="$PROJ/$OLD_SLUG/$ID.jsonl"
 NEW_JSONL="$PROJ/$NEW_SLUG/$ID.jsonl"
 GLOBAL_MEM="$PROJ/$(_slug "$HOME_CWD")/memory"   # cerebro de MÁQUINA

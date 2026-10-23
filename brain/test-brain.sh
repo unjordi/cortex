@@ -8440,6 +8440,22 @@ if [ -f "$DM" ] && command -v node >/dev/null 2>&1; then
   node -e 'const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).masters; process.exit(m.some(x=>x.id==="stale-cortex-id")?1:0)' "$CRC/masters.json" 2>/dev/null \
     && ok "--curar: el id rancio 'stale-cortex-id' ya NO está en el roster" \
     || bad "--curar: el id rancio sobrevivió al curado"
+  # LOCK (MEDIO auditoría 2026-10-22): --curar toma masters.json.lock (compartido con reubicar-master, que
+  # reescribe el MISMO roster). Con un lock FRESCO ocupado → REHÚSA y NO reescribe (no pisa una mudanza
+  # concurrente); con DESPERTAR_LOCK_SLEEP=0 no espera los ~20s. Falla vs el viejo (que no tomaba lock).
+  mkdir -p "$CRC/masters.json.lock"   # lock FRESCO, "otro proceso" lo tiene
+  cp "$CRC/masters.json" "$CRC/masters.json.before"
+  clk="$(HOME="$CRH" CLAUDE_CONFIG_DIR="$CRC" CLAUDE_PROJECTS_DIR="$CRP" DESPERTAR_VIVA_MIN=0 DESPERTAR_LOCK_SLEEP=0 bash "$DM" --curar 2>&1)"
+  { printf '%s' "$clk" | grep -qi 'no pude tomar' && diff -q "$CRC/masters.json" "$CRC/masters.json.before" >/dev/null 2>&1; } \
+    && ok "--curar LOCK: con el lock ocupado REHÚSA y NO reescribe el roster (no pisa una mudanza concurrente)" \
+    || bad "--curar LOCK: escribió el roster pese al lock ocupado (sin lock); got: $clk"
+  # lock HUÉRFANO (>5min) → se recupera y curar escribe (no bloqueado para siempre), y libera el lock al final.
+  touch -t 202001010000 "$CRC/masters.json.lock"
+  HOME="$CRH" CLAUDE_CONFIG_DIR="$CRC" CLAUDE_PROJECTS_DIR="$CRP" DESPERTAR_VIVA_MIN=0 DESPERTAR_LOCK_SLEEP=0 bash "$DM" --curar >/dev/null 2>&1
+  { [ ! -d "$CRC/masters.json.lock" ] && node -e 'const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).masters; process.exit(m.some(x=>x.name==="cortex-master")?0:1)' "$CRC/masters.json" 2>/dev/null; } \
+    && ok "--curar LOCK: un lock HUÉRFANO (>5min) se recupera → curar escribe y libera el lock al final" \
+    || bad "--curar LOCK: no recuperó el lock huérfano o no lo liberó"
+  rm -f "$CRC/masters.json.before"
   rm -rf "$CURR"
 else
   echo "  SKIP --curar: falta despertar-master.sh o node"
@@ -10349,6 +10365,25 @@ SH
   if grep -q 'bar-master' "$SCREENLOG" && grep -q 'ccc' "$SCREENLOG"; then
     ok "despertar-master: sesión IDLE se relanza (screen -dmS bar-master … --resume ccc)"
   else bad "despertar-master: NO relanzó una sesión idle — screen.log: $(cat "$SCREENLOG")"; fi
+
+  # --mensaje: el prompt inicial va DESPUÉS de '--' (fin de opciones) → un mensaje que EMPIEZA con '-'
+  # (lista markdown "- x", "--- Reporte ---") no se parsea como flag de claude (MEDIO auditoría 2026-10-22).
+  : > "$SCREENLOG"; : > "$SESSF"   # bar-master vuelve a idle (sin señal de screen) para que relance
+  printf -- '--- Reporte ---\nhola' > "$DMROOT/msg.txt"
+  PATH="$DMROOT/bin:$PATH" CLAUDE_PROJECTS_DIR="$PROJ" DESPERTAR_VIVA_MIN=15 DESPERTAR_ESPERA_S=0 \
+    bash "$DM" bar-master --mensaje "$DMROOT/msg.txt" >/dev/null 2>&1
+  { grep -q 'bar-master' "$SCREENLOG" && grep -q ' -- ' "$SCREENLOG"; } \
+    && ok "despertar-master --mensaje: el prompt va tras '--' (un mensaje con '-' no se parsea como flag)" \
+    || bad "despertar-master --mensaje: falta el '--' antes del prompt — screen.log: $(cat "$SCREENLOG")"
+
+  # PROJECTS default honra CLAUDE_CONFIG_DIR (MEDIO 2026-10-22): SIN CLAUDE_PROJECTS_DIR y con HOME vacío,
+  # encuentra los transcripts bajo $CLAUDE_CONFIG_DIR/projects (antes fijaba $HOME/.claude/projects).
+  DMCFG="$DMROOT/cfg"; DMEMPTY="$DMROOT/emptyhome"; mkdir -p "$DMCFG/projects/slug-z" "$DMEMPTY/.claude/projects"
+  printf '{"cwd":"%s","customTitle":"cfg-master"}\n' "$DMROOT/repoC" > "$DMCFG/projects/slug-z/zzz.jsonl"
+  Lcfg="$(PATH="$DMROOT/bin:$PATH" HOME="$DMEMPTY" CLAUDE_CONFIG_DIR="$DMCFG" bash "$DM" --lista 2>&1)"
+  printf '%s' "$Lcfg" | grep -q 'cfg-master' \
+    && ok "despertar-master: PROJECTS default honra CLAUDE_CONFIG_DIR (transcripts bajo \$CLAUDE_CONFIG_DIR/projects)" \
+    || bad "despertar-master: el default ignora CLAUDE_CONFIG_DIR (mira \$HOME/.claude/projects fijo); got: $Lcfg"
 
   # nombre inexistente → error claro + lista, sin lanzar nada.
   : > "$SCREENLOG"

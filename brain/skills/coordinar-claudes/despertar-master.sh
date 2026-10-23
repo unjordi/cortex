@@ -21,12 +21,14 @@
 #
 # Overrides: $DESPERTAR_VIVA_MIN (min para considerar viva una sesión, def 15) ·
 #            $DESPERTAR_ESPERA_S (seg a esperar la carga tras lanzar, def 240) ·
-#            $CLAUDE_PROJECTS_DIR (carpeta de transcripts, def ~/.claude/projects).
+#            $CLAUDE_PROJECTS_DIR (carpeta de transcripts, def ${CLAUDE_CONFIG_DIR:-~/.claude}/projects).
 set -u
 
 VIVA_MIN="${DESPERTAR_VIVA_MIN:-15}"
 ESPERA_S="${DESPERTAR_ESPERA_S:-240}"
-PROJECTS="${CLAUDE_PROJECTS_DIR:-$HOME/.claude/projects}"
+# Default honra CLAUDE_CONFIG_DIR (Claude Code reubica TODO su estado ahí, incluidos projects/) — antes
+# fijaba $HOME/.claude/projects y no veía los transcripts con un CLAUDE_CONFIG_DIR custom (MEDIO 2026-10-22).
+PROJECTS="${CLAUDE_PROJECTS_DIR:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects}"
 
 # ── helpers de lectura del transcript ────────────────────────────────────────────────────────────
 # mtime epoch PORTABLE: GNU `stat -c %Y` PRIMERO (falla LIMPIO en BSD, sin ensuciar stdout), luego BSD
@@ -187,7 +189,9 @@ EOF
   inner="$inner cd $(printf '%q' "$cwd") && exec claude --resume $(printf '%q' "$id") --remote-control $(printf '%q' "$t")"
   if [ -n "$msgf" ]; then
     [ -f "$msgf" ] || { echo "[despertar-master] no existe el archivo del mensaje: $msgf" >&2; return 1; }
-    inner="$inner $(printf '%q' "$(cat "$msgf")")"
+    # `--` ANTES del prompt: fin de opciones. Sin él, un mensaje que EMPIEZA con '-' (una lista markdown
+    # "- item", un "--- Reporte ---") lo parsea claude como FLAG y se pierde/truena (MEDIO 2026-10-22).
+    inner="$inner -- $(printf '%q' "$(cat "$msgf")")"
   fi
   echo "[despertar-master] lanzando '$t'  (id=$id)  en  $cwd …"
   screen -dmS "$t" bash -lc "$inner"
@@ -233,6 +237,17 @@ curar() {
   local roster="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/masters.json" live
   command -v node >/dev/null 2>&1 || { echo "[despertar-master] --curar necesita node" >&2; return 1; }
   mkdir -p "$(dirname "$roster")" 2>/dev/null || true
+  # LOCK compartido con reubicar-master (MEDIO auditoría 2026-10-22): reubicar reescribe este MISMO
+  # masters.json tomando "$MJ.lock" (mkdir atómico, timeout ~20s, reclamo de huérfano >5min). Sin tomarlo
+  # aquí, un --curar concurrente con una mudanza se PISAN: la escritura atómica (tmp+rename) evita CORRUPCIÓN
+  # pero no la PÉRDIDA de la actualización del otro (last-rename-wins). Mismo mecanismo y umbral que reubicar.
+  local _lock="$roster.lock" _got=0 _i
+  for _i in 1 2 3 4 5 6 7 8 9 10; do
+    if mkdir "$_lock" 2>/dev/null; then _got=1; break; fi
+    if [ -n "$(find "$_lock" -maxdepth 0 -mmin +5 2>/dev/null)" ]; then rm -rf "$_lock" 2>/dev/null || true; continue; fi
+    sleep "${DESPERTAR_LOCK_SLEEP:-2}"
+  done
+  [ "$_got" -eq 1 ] || { echo "[despertar-master] --curar: no pude tomar $_lock en ~20s (otro proceso escribe el roster: ¿una mudanza en curso?)" >&2; return 1; }
   live="$(_tabla | while IFS=$'\t' read -r edad t id cwd _; do
             [ -n "$t" ] && [ -n "$id" ] || continue
             printf '%s\t%s\t%s\n' "$id" "$t" "${cwd#"$HOME/"}"
@@ -260,6 +275,9 @@ curar() {
     fs.renameSync(tmp, roster);
     process.stderr.write("[despertar-master] roster curado: "+roster+" ("+m.size+" master(s); "+live.length+" vivo(s))\n");
   ' "$roster"
+  local _rc=$?
+  rmdir "$_lock" 2>/dev/null || true
+  return $_rc
 }
 
 case "${1:-}" in
