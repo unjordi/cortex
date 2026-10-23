@@ -14,7 +14,9 @@
 #       máquinas viejas, sin depender de que antes haya corrido un install-brain que las podara.
 #   (b) DES-CABLEA de ~/.claude/settings.json SOLO las entradas que apuntan a esos hooks (deja
 #       intactas las demás — usa jq); poda los arrays de evento que queden vacíos.
-#   (c) las SKILLS genéricas (cerrar-slice, orquestar-fanout, checkpoint, rehidratar-hilo, turno-nocturno, diagramar, cosechar-sesion, unificar-cerebro) de ~/.claude/skills/.
+#   (c) las SKILLS del cerebro de ~/.claude/skills/ — DERIVADAS del glob brain/skills/* (el MISMO set que
+#       install-brain instala; A2 2026-10-22 mató la lista hardcodeada de 8 que dejaba ~17 instaladas). Una
+#       skill PROPIA del usuario (sin contraparte en brain/skills) NO se toca.
 #   (d) el BLOQUE de normas de ~/.claude/CLAUDE.md (entre los marcadores BEGIN/END cortex).
 #
 # NO borra (son DATOS del usuario, no instalación):

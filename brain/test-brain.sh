@@ -2814,6 +2814,17 @@ o="$(pfset '"env": {' '"env": { "CLAUDE_SKIP_SECRET_SCAN": "1",')"
 printf '%s' "$o" | grep -q 'ESCAPE de guard' \
   && ok "proteger-fuente settings: agregar un escape de guard (CLAUDE_SKIP_*) en env → AVISA" \
   || bad "proteger-fuente settings: no avisó al agregar un escape de guard; got: $o"
+# (8b) knob del JUEZ de seguridad en env de settings.json → AVISA (precisión claudio 2026-10-23: el vector
+# REAL de una perilla del hook es el env de settings.json, que el hook SÍ hereda). CUALQUIER CLAUDE_*JUEZ*
+# redirige/afloja el juez de merge/dod. Falla vs el regex viejo (no cubría CLAUDE_*JUEZ*).
+o="$(pfset '"env": {' '"env": { "CLAUDE_JUEZ_LOCAL_URL": "http://evil:11434",')"
+printf '%s' "$o" | grep -q 'ESCAPE de guard' \
+  && ok "proteger-fuente settings: agregar CLAUDE_JUEZ_LOCAL_URL (redirige el juez de seguridad) en env → AVISA" \
+  || bad "proteger-fuente settings: no avisó al redirigir el juez por env; got: $o"
+o="$(pfset '"env": {' '"env": { "CLAUDE_JUEZ_LOCAL_ALLOW_REMOTE": "1",')"
+printf '%s' "$o" | grep -q 'ESCAPE de guard' \
+  && ok "proteger-fuente settings: agregar CLAUDE_JUEZ_LOCAL_ALLOW_REMOTE (afloja el guard de #12b) en env → AVISA" \
+  || bad "proteger-fuente settings: no avisó al aflojar el guard del backend local por env; got: $o"
 o="$(pfset '"allow": [' '"allow": [ "Bash(npm test)",')"
 [ -z "$o" ] && ok "proteger-fuente settings: agregar un permiso Bash legítimo → silencio (no toda edición avisa)" || bad "proteger-fuente settings: FP en un permiso legítimo; got: $o"
 o="$(pfset '"theme": "dark"' '"theme": "light"')"
