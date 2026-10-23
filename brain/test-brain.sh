@@ -6806,7 +6806,9 @@ echo ""
 echo "== (a3-pr) proteger-ramas: A3 — un POST de protección fallido → rc≠0 y NO miente 'aplicada' =="
 # ANTES (set +e) el script hacía DELETE+POST a ciegas; si el POST fallaba, la rama quedaba DESPROTEGIDA y el
 # script igual decía "norma de ramas aplicada" + exit 0. Fix A3: verifica el POST, exit≠0 y mensaje honesto.
-# FALLA contra 6ce9913. Override hermético PROTEGER_RAMAS_GLAB (mock de glab; el script resetea PATH).
+# FALLA contra 6ce9913. Hermético por PATH: un glab FALSO se prependea a PATH (el script ya no lee ninguna
+# env de mock — honra el PATH, con sus dirs estándar appendeados como fallback). Mismo criterio que el resto
+# de guards: en producción NO existe perilla que cambie el veredicto (MEDIO mock-env, auditoría 2026-10-22).
 if [ -f "$SCRIPT_DIR/proteger-ramas.sh" ]; then
   A3MB="$(mktemp -d "${TMPDIR:-/tmp}/a3pr.XXXXXX")"
   cat > "$A3MB/glab" <<'A3G'
@@ -6822,7 +6824,7 @@ case "$*" in
 esac
 A3G
   chmod +x "$A3MB/glab"
-  a3rc=0; a3out="$(PROTEGER_RAMAS_GLAB="$A3MB/glab" bash "$SCRIPT_DIR/proteger-ramas.sh" g/r 2>&1)" || a3rc=$?
+  a3rc=0; a3out="$(PATH="$A3MB:$PATH" bash "$SCRIPT_DIR/proteger-ramas.sh" g/r 2>&1)" || a3rc=$?
   { [ "$a3rc" -ne 0 ] && ! printf '%s' "$a3out" | grep -q 'norma de ramas aplicada'; } \
     && ok "a3-pr: POST de protección FALLÓ → rc≠0 y NO dice 'aplicada' (antes: exit 0 + 'aplicada' con la rama DESPROTEGIDA)" \
     || bad "a3-pr: un POST fallido salió rc=$a3rc o afirmó 'aplicada' (A3 roto)"
@@ -6836,9 +6838,15 @@ case "$*" in
 esac
 A3G
   chmod +x "$A3MB/glab"
-  a3rc2=0; a3out2="$(PROTEGER_RAMAS_GLAB="$A3MB/glab" bash "$SCRIPT_DIR/proteger-ramas.sh" g/r 2>&1)" || a3rc2=$?
+  a3rc2=0; a3out2="$(PATH="$A3MB:$PATH" bash "$SCRIPT_DIR/proteger-ramas.sh" g/r 2>&1)" || a3rc2=$?
   { [ "$a3rc2" = 0 ] && printf '%s' "$a3out2" | grep -q 'norma de ramas aplicada'; } \
     && ok "a3-pr control: POST OK → rc 0 + 'aplicada'" || bad "a3-pr control: POST OK no dio rc0+aplicada (rc=$a3rc2)"
+  # MEDIO mock-env (auditoría 2026-10-22): producción NO lee ninguna env de mock — glab se resuelve SOLO por
+  # PATH. Falla contra el código con la perilla (PROTEGER_RAMAS_GLAB, introducida en 90f85bf): un agente que la
+  # seteara en el env de sesión podía sustituir el binario glab del script de producción.
+  ! grep -q 'PROTEGER_RAMAS_GLAB' "$SCRIPT_DIR/proteger-ramas.sh" \
+    && ok "a3-pr: proteger-ramas.sh NO lee ninguna env de mock en producción (glab solo por PATH)" \
+    || bad "a3-pr: proteger-ramas.sh aún lee PROTEGER_RAMAS_GLAB (perilla de mock en producción)"
   rm -rf "$A3MB"
 fi
 
