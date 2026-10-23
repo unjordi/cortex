@@ -39,16 +39,28 @@ clasificar_delegacion() {
   case "$DG_CLASE" in
     local) DG_NIVEL="gratis" ;;
     claude)
-      # snapshot de cuota FRESCO (< 30 min); dentro de ventana (pct < umbral) → incluido; si no → metered
-      local snap="" c
+      # snapshot de cuota FRESCO (< 30 min); dentro de ventana (pct < umbral) → incluido; si no → metered.
+      # Frescura por updated_at / stale, NO por mtime (MEDIO auditoría 2026-10-22): el daemon REESCRIBE
+      # state.json cada run aunque PRESERVE una lectura vieja marcada stale (oauth caído), así que el mtime
+      # quedaría SIEMPRE fresco → el gate usaría un pct rancio. Mismo criterio que linea_cuota (updated_at+stale).
+      local snap="" c _upd _us _fresco=0
       for c in "${XDG_CACHE_HOME:-$HOME/.cache}/cortex/state.json" "$HOME/Library/Caches/cortex/state.json"; do
         [ -f "$c" ] && { snap="$c"; break; }
       done
-      if [ -n "$snap" ] && [ -z "$(find "$snap" -mmin +30 2>/dev/null)" ]; then
+      if [ -n "$snap" ] && [ "$(jq -r '.stale // false' "$snap" 2>/dev/null)" != "true" ]; then
+        _upd=$(jq -r '.updated_at // empty' "$snap" 2>/dev/null)
+        if [ -n "$_upd" ]; then
+          _us=$(date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$_upd" +%s 2>/dev/null || date -u -d "$_upd" +%s 2>/dev/null || echo 0)
+          { [ "$_us" -gt 0 ] 2>/dev/null && [ $(( $(date +%s) - _us )) -le 1800 ]; } && _fresco=1
+        else
+          [ -z "$(find "$snap" -mmin +30 2>/dev/null)" ] && _fresco=1   # schema viejo sin updated_at → cae al mtime
+        fi
+      fi
+      if [ "$_fresco" = 1 ]; then
         DG_PCT=$(jq -r '.five_hour.percent // 100' "$snap" 2>/dev/null)
         if [ "${DG_PCT%.*}" -lt "${DG_UMBRAL%.*}" ] 2>/dev/null; then DG_NIVEL="incluido"; else DG_NIVEL="metered"; fi
       else
-        DG_NIVEL="metered"   # sin snapshot o rancio → conservador
+        DG_NIVEL="metered"   # sin snapshot / rancio / stale → conservador
       fi
       ;;
     externo) DG_NIVEL="metered" ;;

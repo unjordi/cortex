@@ -211,6 +211,24 @@ is_silent "$(run_limite "$TP")" && ok "lg: no-data (five_hour null) → NO frena
 # linea_cuota marca el motivo de auth cuando la lectura es preservada
 LC_OUT="$( export XDG_CACHE_HOME="$FAKEHOME/.cache" HOME="$FAKEHOME"; write_state_raw "{\"updated_at\":\"$LG_OLD\",\"stale\":true,\"auth\":{\"state\":\"expired\"},\"five_hour\":{\"percent\":55}}"; . "$HOOKS/delegacion-comun.sh"; linea_cuota )"
 printf '%s' "$LC_OUT" | grep -q 'login expirado' && ok "linea_cuota: lectura preservada con auth=expired → marca 'login expirado'" || bad "linea_cuota: no marcó el login expirado (got: $LC_OUT)"
+# (dg-frescura) MEDIO auditoría 2026-10-22: el GATE de delegación medía frescura por MTIME → un snapshot que el
+# daemon reescribe cada run PRESERVANDO una lectura vieja (updated_at viejo / stale:true) quedaba "fresco" por
+# mtime → el gate clasificaba con un pct RANCIO como 'incluido'. Ahora por updated_at/stale (igual que linea_cuota).
+# FALLA contra el código viejo (daba 'incluido' con un snapshot rancio de mtime fresco).
+(
+  export HOME="$FAKEHOME" XDG_CACHE_HOME="$FAKEHOME/.cache"
+  . "$HOOKS/delegacion-comun.sh"
+  _DGP="$(payload S1 '' sonnet)"
+  write_state_raw "{\"updated_at\":\"$LG_OLD\",\"five_hour\":{\"percent\":19}}"        # updated_at 40min, mtime recién escrito
+  clasificar_delegacion "$_DGP"
+  [ "$DG_NIVEL" = metered ] && ok "dg-frescura: updated_at VIEJO (mtime fresco) + pct 19 → metered (rancio), NO incluido" || bad "dg-frescura: snapshot rancio dio DG_NIVEL='$DG_NIVEL' (esperaba metered)"
+  write_state_raw "{\"updated_at\":\"$LG_NOW\",\"stale\":true,\"five_hour\":{\"percent\":19}}"
+  clasificar_delegacion "$_DGP"
+  [ "$DG_NIVEL" = metered ] && ok "dg-frescura: stale:true (aunque updated_at fresco) → metered (conservador)" || bad "dg-frescura: stale:true dio '$DG_NIVEL'"
+  write_state_raw "{\"updated_at\":\"$LG_NOW\",\"five_hour\":{\"percent\":19}}"
+  clasificar_delegacion "$_DGP"
+  [ "$DG_NIVEL" = incluido ] && ok "dg-frescura control: updated_at FRESCO + pct 19 < umbral → incluido" || bad "dg-frescura control: fresco dio '$DG_NIVEL' (esperaba incluido)"
+)
 write_state 19   # restablece de nuevo
 
 # ─────────────────────────────────────────────────────────────────────────────
