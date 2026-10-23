@@ -468,6 +468,11 @@ acg_push_toca_base() {   # $1=cmd  $2=payload_cwd(opcional)
   # PREVIO de la cadena) → la rama se evalúa contra el repo que el push REALMENTE toca, no el de la sesión.
   while IFS= read -r orig; do
     [ -n "$orig" ] || continue
+    # un segmento que (tras espacios) EMPIEZA con `#` es un COMENTARIO de shell → NO se ejecuta; saltarlo
+    # cierra el FP de `# git push origin develop` (una línea comentada). El split por newline acota el
+    # comentario a SU línea: un push real en otra línea es OTRO segmento y sí se evalúa. NO abre evasión — un
+    # segmento que empieza con `#` tampoco correría en el shell real (y el push de un push real nunca empieza con `#`).
+    printf '%s' "$orig" | grep -qE '^[[:space:]]*#' && continue
     sub=$(acg_normaliza_git_prefijo "$orig")   # A-03: colapsa `git -c/-C …` para no romper la adyacencia git+push
     subu=$(acg_sin_flag_repo "$(acg_despoja_comillas "$sub")")
     # rastrea un `cd/pushd <dir>` para los segmentos POSTERIORES de la cadena (aplica al push que le sigue)

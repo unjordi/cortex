@@ -601,6 +601,15 @@ printf '%s' "$(gb 'git push origin feat/x && git push origin main')"   | grep -q
 # Y el contraveneno: un push REAL a ramita seguido de un commit cuyo MENSAJE menciona "git push a develop"
 # NO dispara — ese subcomando es el commit, su despoja borra el mensaje → es_push=no → se salta (H13 por-subcomando).
 is_silent "$(gb 'git push origin feat/x && git commit -m "doc: recordar no hacer git push a develop"')" && ok "gbg A-R3-01: push a ramita + commit con 'git push a develop' en el mensaje → silencio (H13)" || bad "gbg A-R3-01: la mención en el mensaje del commit encadenado disparó (falso positivo)"
+# #4-BAJO (R4 2026-10-23): un segmento que EMPIEZA con `#` es un COMENTARIO de shell → no se ejecuta; acg lo
+# salta. Antes `# git push origin develop` (línea comentada) daba DENY FALSO. FALLAN vs el código sin el skip.
+is_silent "$(gb '# git push origin develop')" && ok "gbg #4-BAJO: '# git push origin develop' (comentario puro) → silencio (no es un push real)" || bad "gbg #4-BAJO: un comentario con 'git push … develop' dio DENY falso"
+is_silent "$(gb '  #   git push origin develop')" && ok "gbg #4-BAJO: comentario indentado con push → silencio" || bad "gbg #4-BAJO: un comentario indentado disparó"
+# contraveneno (no abrir evasión): un comentario en una línea + un push REAL a base en OTRA línea → el push
+# real se evalúa igual (el split por newline acota el comentario a su línea).
+printf '%s' "$(gb "$(printf '# ojo no hacer:\n# git push origin develop\ngit push origin develop')")" | grep -q '"deny"' \
+  && ok "gbg #4-BAJO: comentarios + push REAL a develop en otra línea → deny (el comentario NO esconde el push real)" \
+  || bad "gbg #4-BAJO: EVASIÓN — un comentario escondió el push real de la línea siguiente"
 # A-R4-01: git acepta MUCHAS opciones globales entre `git` y su subcomando (no solo -c/-C); cada una podría
 # romper la adyacencia git+push y evadir el guard. acg_normaliza_git_prefijo colapsa la CLASE (value-eaters
 # por espacio/= + cualquier flag dash-led). Parado en feat/x → estas empujan a base → deny.
