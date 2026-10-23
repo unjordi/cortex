@@ -319,22 +319,19 @@ if [[ -n "$DAILY_JSON" ]]; then
 
   # --- Fase 3: uso por proyecto (carpeta ~/.claude/projects/<slug>) -----------
   # ccusage no separa por proyecto (ni `daily` ni `session` traen la ruta) ->
-  # se agrega a mano desde los mismos jsonl crudos de fase 2, por directorio.
-  # El slug de Claude Code (path con "/" -> "-") se NORMALIZA a un nombre de
-  # proyecto canónico: un subdir/worktree BAJO un repo conocido se fusiona con
-  # su raíz (longest-prefix contra las rutas reales de ~/.claude.json .projects),
-  # los worktrees efímeros (/private/tmp, /tmp) caen a un bucket "(worktrees)",
-  # y lo que no casa usa el último segmento del slug (no el path completo feo).
-  # Un alias opcional (~/.claude/proyectos-alias.json) renombra el canónico.
-  #  $PROJECT_REPOS_JSON: [{slug,name}] de cada repo real conocido.
-  PROJECT_REPOS_JSON="[]"
-  if [[ -r "$CLAUDE_JSON" ]]; then
-    PROJECT_REPOS_JSON="$(jq -c '
-      [(.projects // {}) | keys[] | {slug: gsub("/"; "-"), name: (split("/") | last)}]
-    ' "$CLAUDE_JSON" 2>/dev/null || echo '[]')"
-    jq -e . <<<"$PROJECT_REPOS_JSON" >/dev/null 2>&1 || PROJECT_REPOS_JSON="[]"
-  fi
-  # Alias opcional: mapa {"<nombre-canónico>":"<alias>"}; tolera que no exista.
+  # se agrega a mano desde los mismos jsonl crudos de fase 2. El nombre del
+  # proyecto se toma del "cwd" REAL que cada turno registra en su jsonl (la misma
+  # fuente que sessions-extract.js -> stats y la lista de sesiones coinciden):
+  #   · basename del cwd, tras colapsar cualquier subdir/worktree bajo ".claude/"
+  #     a la raíz del repo (p. ej. .../repo/.claude/worktrees/x -> "repo");
+  #   · un cwd efímero en /tmp o /private/tmp -> bucket "(worktrees)";
+  #   · si un turno no trajo cwd -> último segmento del slug (fallback).
+  # (ANTES: se agrupaba por el SLUG del directorio mapeado contra ~/.claude.json
+  #  .projects; fallaba porque el slug normaliza "_"/"." a "-" -> no casaba su
+  #  propio repo, y la entrada $HOME (slug "-home-<user>") era prefijo de TODO ->
+  #  colapsaba todos los proyectos en uno. El cwd real no sufre ninguna de las dos.)
+  # Un alias opcional (~/.claude/proyectos-alias.json) renombra el nombre final.
+  # Alias opcional: mapa {"<nombre>":"<alias>"}; tolera que no exista.
   PROJECT_ALIAS_JSON="{}"
   if [[ -r "$CLAUDE_DIR/proyectos-alias.json" ]]; then
     PROJECT_ALIAS_JSON="$(jq -c '.' "$CLAUDE_DIR/proyectos-alias.json" 2>/dev/null || echo '{}')"
@@ -366,11 +363,18 @@ if [[ -n "$DAILY_JSON" ]]; then
           }
           return sprintf("%04d-%02d-%02d", ny, nm, nd)
         }
+        # Cada carpeta ~/.claude/projects/<slug> ES UN proyecto (el cwd de ARRANQUE
+        # de sus sesiones) -> se agrega por DÍA dentro de la carpeta (no por cwd de
+        # cada turno, que puede ser un subdir o un worktree). El NOMBRE bonito del
+        # proyecto = basename del cwd más RAÍZ (menor profundidad) visto en la
+        # carpeta, tras colapsar lo que esté bajo ".claude/" y normalizar los
+        # backslashes de rutas Windows heredadas; si nunca hubo cwd, el slug.
+        BEGIN { ns = split(slug, sp, "-"); slugLast = (ns > 0 ? sp[ns] : slug); bestDepth = 1000000; bestName = ""; soloTmp = 0 }
         {
-          # Claude Code logs one jsonl line per CONTENT BLOCK of an assistant
-          # turn (thinking/tool_use/text), each repeating the SAME message.id
-          # and the SAME cumulative usage — dedupe by id or a multi-block reply
-          # triples its token count.
+          # Claude Code logs one jsonl line per CONTENT BLOCK de un turno del
+          # asistente (thinking/tool_use/text), cada uno repitiendo el MISMO
+          # message.id y el MISMO usage acumulado — sin dedupe, una respuesta
+          # multi-bloque triplica el conteo de tokens.
           if (match($0, /"id":"msg_[A-Za-z0-9]+"/)) { id = substr($0, RSTART, RLENGTH) } else next
           if (id in seen) next
           seen[id] = 1
@@ -382,36 +386,36 @@ if [[ -n "$DAILY_JSON" ]]; then
           if (lh < 0)       date = shiftDay(y, mo, da, -1)
           else if (lh >= 24) date = shiftDay(y, mo, da, 1)
           else               date = sprintf("%04d-%02d-%02d", y, mo, da)
+          if (match($0, /"cwd":"[^"]*"/)) {
+            cwd = substr($0, RSTART + 7, RLENGTH - 8)
+            if (cwd ~ /^\/(private\/)?tmp\//) soloTmp = 1
+            else {
+              gsub(/\\\\/, "/", cwd)                 # rutas Windows heredadas: "\\" -> "/"
+              n = split("/.claude/ /.git-worktrees/ /.worktrees/ /.cortex-wt/", wd, " "); for (k = 1; k <= n; k++) { ix = index(cwd, wd[k]); if (ix > 0) cwd = substr(cwd, 1, ix - 1) }
+              sub(/[\/]+$/, "", cwd)
+              nd = split(cwd, pp, "/"); b = (nd > 0 ? pp[nd] : "")
+              if (b != "" && nd < bestDepth) { bestDepth = nd; bestName = b }
+            }
+          }
           inv = 0; outv = 0
           if (match($0, /"input_tokens":[0-9]+/))  { s = substr($0, RSTART, RLENGTH); sub(/^"input_tokens":/, "", s);  inv  = s + 0 }
           if (match($0, /"output_tokens":[0-9]+/)) { s = substr($0, RSTART, RLENGTH); sub(/^"output_tokens":/, "", s); outv = s + 0 }
           I[date] += inv; O[date] += outv
         }
-        END { for (dt in I) printf "%s\t%s\t%d\t%d\n", slug, dt, I[dt], O[dt] + 0 }
+        END { name = (bestName != "" ? bestName : (soloTmp ? "(worktrees)" : slugLast)); for (dt in I) printf "%s\t%s\t%d\t%d\n", name, dt, I[dt], O[dt] + 0 }
       ')"$'\n'
     done
   fi
   PROJECT_STATS_JSON='{"projects":[],"by_day":{}}'
   if [[ -n "${PROJECT_DAY_TSV// /}" ]]; then
     PROJECT_STATS_JSON="$(printf '%s' "$PROJECT_DAY_TSV" | jq -R -s \
-        --argjson repos "$PROJECT_REPOS_JSON" --argjson aliases "$PROJECT_ALIAS_JSON" '
-      # Nombre canónico de un slug de proyecto:
-      #  1) (o extiende) un repo conocido -> nombre del repo raíz (longest-prefix
-      #     con frontera de segmento: slug == repo.slug o empieza con repo.slug+"-");
-      #  2) worktree efímero (-private-tmp-*, -tmp-*) -> bucket "(worktrees)";
-      #  3) si no casa -> último segmento del slug (no el path completo).
-      # Luego aplica el alias opcional sobre ese nombre canónico.
-      def canon($slug):
-        ( [ $repos[] | select(.slug as $rs | ($slug == $rs or ($slug | startswith($rs + "-")))) ]
-            | max_by(.slug | length) ) as $repo
-        | (if $repo != null then $repo.name
-           elif ($slug | test("^-(private-)?tmp-")) then "(worktrees)"
-           else ($slug | split("-") | last)
-           end) as $base
-        | ($aliases[$base] // $base);
+        --argjson aliases "$PROJECT_ALIAS_JSON" '
+      # La 1ª columna del TSV YA es el nombre del proyecto (basename del cwd real,
+      # calculado en el awk de arriba); aquí solo se aplica el alias opcional y se
+      # agrega por proyecto y por día.
       (split("\n") | map(select(length > 0) | split("\t"))
-        | map({slug: .[0], date: .[1], in_tok: (.[2]|tonumber), out_tok: (.[3]|tonumber)})
-        | map(. + {name: canon(.slug)})
+        | map({name: ($aliases[.[0]] // .[0]), date: .[1],
+               in_tok: (.[2]|tonumber), out_tok: (.[3]|tonumber)})
       ) as $rows
       | ($rows | group_by(.name)
           | map({project: .[0].name, in_tok: (map(.in_tok) | add), out_tok: (map(.out_tok) | add)})
