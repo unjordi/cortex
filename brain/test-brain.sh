@@ -2048,7 +2048,67 @@ if [ "$( ( export PATH="$JCFIX/local_down:$PATH"; export CLAUDE_JUEZ_LOCAL_MODEL
      _juez_dod 'Listo, el módulo quedó terminado y funciona.' 'haz el cambio' ) )" = UNAVAILABLE ]; then
   ok "juez-comun (local f): dod con Ollama CAÍDO → UNAVAILABLE → fail-OPEN (nag, no candado)"
 else bad "juez-comun (local f): dod con backend local caído NO colapsó a UNAVAILABLE"; fi
+# ── (MEDIO #12b, auditoría 2026-10-23) GUARDA DE PRODUCCIÓN del backend local: una URL REMOTA (host NO local)
+# SIN opt-in deliberado NO se contacta → UNAVAILABLE_NET, aunque el (falso) Ollama remoto respondería ALLOW.
+# Cierra el bypass de apuntar el juez de SEGURIDAD a un endpoint arbitrario. El curl STUB es local_ok (200 +
+# ALLOW): si el guard NO existiera, lo contactaría y daría OK (es lo que hace el código VIEJO).
+# (g) URL remota sin opt-in → refuse (UNAVAILABLE_NET), NO contacta el endpoint no-confiable.
+if [ "$( ( export PATH="$JCFIX/local_ok:$PATH"; export CLAUDE_JUEZ_LOCAL_MODEL="qwen3-test" CLAUDE_JUEZ_LOCAL_URL="http://evil.example.com:11434"
+     unset CLAUDE_CODE_OAUTH_TOKEN CLAUDE_CONFIG_DIR CLAUDE_JUEZ_LOCAL_ALLOW_REMOTE
+     . "$HOOKS/juez-comun.sh"
+     _juez_llamar_api m 100 5 0 prompt 2>/dev/null | head -1 ) )" = UNAVAILABLE_NET ]; then
+  ok "juez-comun (local g): URL local REMOTA sin opt-in → UNAVAILABLE_NET (no contacta el Ollama arbitrario; cierra el bypass)"
+else bad "juez-comun (local g): un endpoint local REMOTO fue contactado sin opt-in (bypass del juez de seguridad)"; fi
+# (h) opt-in remoto EXPLÍCITO (CLAUDE_JUEZ_LOCAL_ALLOW_REMOTE=1) → sí contacta el Ollama de la malla → OK.
+if [ "$( ( export PATH="$JCFIX/local_ok:$PATH"; export CLAUDE_JUEZ_LOCAL_MODEL="qwen3-test" CLAUDE_JUEZ_LOCAL_URL="http://gpu.cachy:11434" CLAUDE_JUEZ_LOCAL_ALLOW_REMOTE=1
+     unset CLAUDE_CODE_OAUTH_TOKEN CLAUDE_CONFIG_DIR
+     . "$HOOKS/juez-comun.sh"
+     _juez_llamar_api m 100 5 0 prompt 2>/dev/null | head -1 ) )" = OK ]; then
+  ok "juez-comun (local h): URL remota + CLAUDE_JUEZ_LOCAL_ALLOW_REMOTE=1 → sí contacta (opt-in deliberado permite el Ollama de la malla)"
+else bad "juez-comun (local h): el opt-in remoto explícito NO habilitó el backend remoto"; fi
+# (i) regresión: URL LOCAL por default (localhost) → el guard NO estorba → OK (el camino de siempre intacto).
+if [ "$( ( export PATH="$JCFIX/local_ok:$PATH"; export CLAUDE_JUEZ_LOCAL_MODEL="qwen3-test"
+     unset CLAUDE_CODE_OAUTH_TOKEN CLAUDE_CONFIG_DIR CLAUDE_JUEZ_LOCAL_URL CLAUDE_JUEZ_LOCAL_ALLOW_REMOTE
+     . "$HOOKS/juez-comun.sh"
+     _juez_llamar_api m 100 5 0 prompt 2>/dev/null | head -1 ) )" = OK ]; then
+  ok "juez-comun (local i): URL local default (localhost) → el guard de producción NO estorba (cero regresión)"
+else bad "juez-comun (local i): el guard de producción rompió el backend local legítimo (localhost)"; fi
 rm -rf "$JCFIX" 2>/dev/null || true
+
+# ── (MEDIO #12a, auditoría 2026-10-23) VETO DE CITA: FRONTERA DE PALABRA + SUSTANCIA MÍNIMA en el path (a) ──
+# El path (a) era `*"$cita_norm"*` SIN frontera ni piso de longitud → una cita TRIVIAL ('si'/'ok'/'ierral')
+# casaba por substring DENTRO de una palabra ('siguiente') o como palabra común ubicua, dando por "verificada"
+# una autorización que el LLM pudo FABRICAR (veto vaciado de su valor anti-inyección). Unit directo de
+# _juez_cita_casa. El caller GARANTIZA que $2 es SOLO texto de rol USUARIO (aquí se simula con una línea).
+vcasa() { ( . "$HOOKS/juez-comun.sh"; _juez_cita_casa "$1" "$2" ); }
+# BUG a1: cita 'sí' (1 token, 2 chars) DENTRO de 'siguiente' → NO casa (viejo: CASA por substring)
+vcasa "sí" "USUARIO: arregla el siguiente modulo" \
+  && bad "veto a1: una cita trivial 'sí' casó dentro de 'siguiente' (frontera de palabra ausente)" \
+  || ok "veto a1: cita 'sí' NO casa dentro de 'siguiente' (frontera de palabra)"
+# BUG a2: cita 'si' como palabra común ubicua → NO casa (1 token, 2 chars < piso de 6)
+vcasa "si" "USUARIO: si quieres lo hago casi igual" \
+  && bad "veto a2: una cita común corta 'si' se dio por autorización real (piso de longitud ausente)" \
+  || ok "veto a2: cita 'si' (2 chars) < piso → NO es evidencia de autorización real"
+# BUG a3: fragmento gibberish mid-word 'ierral' ⊂ 'cierralo' → NO casa (frontera de palabra)
+vcasa "ierral" "USUARIO: cierralo pues" \
+  && bad "veto a3: un fragmento 'ierral' casó dentro de 'cierralo' (frontera de palabra ausente)" \
+  || ok "veto a3: fragmento mid-word 'ierral' NO casa dentro de 'cierralo'"
+# REGRESIÓN a4: cita legítima de 2 tokens 'si cierralo' (11 chars) → SÍ casa (no se sobre-endureció)
+vcasa "si cierralo" "USUARIO: pues si cierralo ya" \
+  && ok "veto a4: cita legítima de 2 tokens 'si cierralo' (≥6 chars, frontera) → SÍ casa" \
+  || bad "veto a4: el piso tumbó una cita legítima de 2 tokens"
+# REGRESIÓN a5: cita larga de merge → SÍ casa (el caso canónico intacto)
+vcasa "mergea el 240 a develop" "USUARIO: ok mergea el 240 a develop porfa" \
+  && ok "veto a5: cita larga 'mergea el 240 a develop' → SÍ casa" \
+  || bad "veto a5: rompió una cita de autorización larga y legítima"
+# REGRESIÓN a6: el path (b) (containment ≥4 tokens, ≥85%) sigue vivo — typo corregido por el LLM
+vcasa "ya lo probe y funciona bien cerrarlo pues" "USUARIO: ya lo probe y funciona bien cerralo pues" \
+  && ok "veto a6: path (b) containment (typo 'cerrarlo'/'cerralo', 7/8 tokens ≥85%) → SÍ casa (no se tocó)" \
+  || bad "veto a6: el path (b) de containment se rompió"
+# CONFIGURABLE: CLAUDE_JUEZ_CITA_MIN_CHARS baja el piso (todo valor elegible es configurable)
+( export CLAUDE_JUEZ_CITA_MIN_CHARS=2; . "$HOOKS/juez-comun.sh"; _juez_cita_casa "ok" "USUARIO: ok dale mergea" ) \
+  && ok "veto a7: CLAUDE_JUEZ_CITA_MIN_CHARS=2 → 'ok' (frontera) casa (piso configurable)" \
+  || bad "veto a7: el piso no es configurable por CLAUDE_JUEZ_CITA_MIN_CHARS"
 
 # ── LEVER opt-in de VOTO MÚLTIPLE (self-consistency), DETERMINISTA sin red ──
 # Dos piezas: (1) el AGREGADOR puro _juez_agrega_votos (UNÁNIME-PARA-ALLOW / cualquier DENY o UNAVAILABLE gana)

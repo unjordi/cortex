@@ -34,7 +34,10 @@
 # GRATIS (POST a $OLLAMA/api/chat) en vez de Anthropic; sin la env, el comportamiento es BYTE-IDÉNTICO al de
 # hoy (Haiku). El local NO usa token (Ollama corre sin auth). Config: `CLAUDE_JUEZ_LOCAL_MODEL` (activa),
 # `CLAUDE_JUEZ_LOCAL_URL` | `AXON_OLLAMA_URL` (base, default http://localhost:11434), `CLAUDE_JUEZ_LOCAL_TIMEOUT`
-# (seg, default 60). El fail-safe es EL MISMO: éxito → OK + content de Ollama; deps ausentes / Ollama caído /
+# (seg, default 60). GUARDA DE PRODUCCIÓN (auditoría 2026-10-23): el host del URL debe ser LOCAL
+# (localhost/127.*/::1/*.localhost/*.test); un host REMOTO SIN `CLAUDE_JUEZ_LOCAL_ALLOW_REMOTE=1` NO se contacta
+# → UNAVAILABLE_NET (jamás un OK de un endpoint arbitrario que pudiera colar un ALLOW al juez de seguridad; el
+# opt-in habilita un Ollama de la malla deliberado). El fail-safe es EL MISMO: éxito → OK + content de Ollama; deps ausentes / Ollama caído /
 # timeout / HTTP != 200 / content vacío → UNAVAILABLE_NET (txt vacío, rc != 0) → merge fail-SAFE DENY, dod
 # fail-OPEN. Un juez de seguridad con backend local caído SIGUE bloqueando — jamás inventa un OK ante fallo.
 
@@ -94,6 +97,23 @@ _juez_deps_ok() { command -v curl >/dev/null 2>&1 && command -v jq >/dev/null 2>
 # duplicado en ambos jueces; el caller normaliza (ALLOW/DENY vs si/no) sobre esta salida cruda.
 _juez_centinela() { printf '%s' "$1" | grep -oiE "$2" 2>/dev/null | tail -1; }
 
+# _juez_url_host $url → extrae el HOST (sin esquema, sin :puerto, sin /path). Maneja IPv6 `[::1]`. bash-3.2.
+_juez_url_host() {
+  local u="${1#*://}"; u="${u%%/*}"
+  case "$u" in
+    \[*) u="${u#\[}"; u="${u%%\]*}" ;;   # [ipv6]:port → ipv6
+    *)   u="${u%%:*}" ;;                  # host:port → host
+  esac
+  printf '%s' "$u"
+}
+# _juez_host_es_local $host → 0 si es un host LOCAL de desarrollo (loopback / *.localhost / *.test). bash-3.2.
+_juez_host_es_local() {
+  case "$1" in
+    localhost|127.*|::1|0:0:0:0:0:0:0:1|*.localhost|*.test) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # ── VETO DE CITA robusto (comparte la MISMA implementación entre merge-develop-guard y dod-verificar →
 # cero drift; antes cada juez copiaba un `grep -Fq` byte-exacto que INVERTÍA el veredicto ante un typo que el
 # LLM "corregía" al copiar la CITA — bug reproducido en vivo, #272-ALLOW/#273-DENY sobre la misma ventana).
@@ -117,13 +137,18 @@ _juez_cita_norm() {
 # _juez_cita_casa $cita $lineas-candidatas → return 0 si CASA, 1 si NO. El CALLER GARANTIZA que
 # $lineas-candidatas es SOLO texto de rol USUARIO (jamás ASISTENTE) → el invariante "solo el USUARIO
 # autoriza" se conserva DETERMINISTA. Normaliza IGUAL ambos lados y CASA si, para ALGUNA línea candidata,
-# o bien (a) la cita normalizada es SUBSTRING de esa línea (misma semántica que el viejo grep -Fq, pero
-# tolerante a caso/acento/puntuación), o bien (b) CONTAINMENT DE TOKENS: la cita tiene ≥4 tokens y ≥85%
-# de ellos aparecen (como token completo) en ESA UNA línea. El mínimo de 4 tokens + el 85% evitan que una
-# cita corta (2-3 palabras sueltas) o inventada casen por azar → sigue exigiendo solapamiento SUSTANCIAL
-# con una línea de USUARIO real. Solo tolera normalización BENIGNA (typo/acento/caso/puntuación).
+# o bien (a) la cita normalizada aparece como SPAN con FRONTERA DE PALABRA en esa línea (misma semántica que
+# el viejo grep -Fq, pero tolerante a caso/acento/puntuación) Y con SUSTANCIA mínima (≥ CITA_MIN_CHARS chars,
+# default 6), o bien (b) CONTAINMENT DE TOKENS: la cita tiene ≥4 tokens y ≥85% de ellos aparecen (como token
+# completo) en ESA UNA línea. Los dos pisos — frontera de palabra + mínimo de caracteres en (a), 4 tokens +
+# 85% en (b) — evitan que una cita TRIVIAL case por azar: sin ellos una cita de 1-2 chars ('si'/'ok'/'no')
+# era SUBSTRING de casi cualquier texto (casa DENTRO de 'siguiente'/'casi' y como palabra común ubicua) →
+# daba por "verificada" una autorización que el LLM pudo FABRICAR, vaciando el veto de su valor anti-inyección.
+# Con los pisos la cita exige solapamiento SUSTANCIAL con una línea de USUARIO real. Solo tolera normalización
+# BENIGNA (typo/acento/caso/puntuación). CITA_MIN_CHARS es configurable (CLAUDE_JUEZ_CITA_MIN_CHARS).
 _juez_cita_casa() {
-  local cita_norm line line_norm tok ncita nhit
+  local cita_norm line line_norm tok ncita nhit _cmin
+  _cmin="${CLAUDE_JUEZ_CITA_MIN_CHARS:-6}"; case "$_cmin" in ''|*[!0-9]*) _cmin=6 ;; esac
   cita_norm=$(_juez_cita_norm "$1")
   [ -n "$cita_norm" ] || return 1
   # `while read` en el SHELL ACTUAL (heredoc, NO pipe) → un `return` sale de la función; heredoc con
@@ -132,8 +157,12 @@ _juez_cita_casa() {
     [ -n "$line" ] || continue
     line_norm=$(_juez_cita_norm "$line")
     [ -n "$line_norm" ] || continue
-    # (a) substring literal (post-normalización) — equivalente robusto del grep -Fq de antes
-    case "$line_norm" in *"$cita_norm"*) return 0 ;; esac
+    # (a) substring con FRONTERA DE PALABRA (línea padded con espacios) + SUSTANCIA mínima — equivalente
+    # robusto del grep -Fq de antes, pero una cita demasiado corta ('si') NO casa dentro de una palabra
+    # ('siguiente') ni cuela como palabra común ubicua: no es evidencia de una autorización REAL.
+    if [ "${#cita_norm}" -ge "$_cmin" ]; then
+      case " $line_norm " in *" $cita_norm "*) return 0 ;; esac
+    fi
     # (b) containment de tokens (≥4 tokens, ≥85% presentes en ESTA línea)
     ncita=0; nhit=0
     for tok in $cita_norm; do
@@ -197,6 +226,16 @@ _juez_llamar_api() {
     local lurl ltimeout
     lurl="${CLAUDE_JUEZ_LOCAL_URL:-${AXON_OLLAMA_URL:-http://localhost:11434}}"; lurl="${lurl%/}"
     ltimeout="${CLAUDE_JUEZ_LOCAL_TIMEOUT:-60}"
+    # GUARDA DE PRODUCCIÓN (auditoría 2026-10-23): el backend local es un opt-in de DEV (Ollama en localhost,
+    # p.ej. el dogfood de axon). Un endpoint REMOTO NO decide un juez de SEGURIDAD (merge) salvo opt-in
+    # DELIBERADO — un agente/env que apunte CLAUDE_JUEZ_LOCAL_URL a un Ollama ARBITRARIO que siempre responda
+    # ALLOW sería un BYPASS del candado (defensa en profundidad: el veto de cita sigue corriendo, pero un
+    # endpoint no-confiable ni siquiera se contacta). El host debe ser local (localhost/127.*/::1/*.localhost/
+    # *.test); un host remoto SIN CLAUDE_JUEZ_LOCAL_ALLOW_REMOTE=1 → UNAVAILABLE_NET (merge fail-SAFE DENY, dod
+    # fail-OPEN) — JAMÁS un OK de una fuente no verificada. El opt-in remoto habilita un Ollama de la malla.
+    if [ "${CLAUDE_JUEZ_LOCAL_ALLOW_REMOTE:-}" != 1 ] && ! _juez_host_es_local "$(_juez_url_host "$lurl")"; then
+      _JUEZ_ESTADO=UNAVAILABLE_NET; printf '%s\n%s' UNAVAILABLE_NET ""; return 1
+    fi
     if ! _juez_deps_ok; then
       est=UNAVAILABLE_NET
     else
