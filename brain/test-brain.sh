@@ -2725,6 +2725,26 @@ printf 'viva\n' >> "$PAREPO/a.txt"; git -C "$PAREPO" add a.txt >/dev/null 2>&1; 
 git -C "$PAREPO" checkout -q "$DEFB2" >/dev/null 2>&1
 o="$(paz 'git branch -D pa/viva')"
 printf '%s' "$o" | grep -q 'NO integrados' && ok "proteger-arbol: branch -D de rama con trabajo PROPIO no integrado → AVISA (acotado)" || bad "proteger-arbol NO avisó al borrar rama con trabajo vivo; got: $o"
+# --- #13 (auditoría 2026-10-23): el force-delete se reconoce en TODAS sus formas, no solo `-D` -----------
+# El viejo pre-filtro/gate solo veía `-D` (mayúscula) → `-df`/`-fd`/`--delete --force`/`-d --force`/`--delete`
+# borraban SIN aviso aunque la rama tuviera trabajo propio. Ahora `_bdel_re` (short cluster con d/D en
+# cualquier posición | `--delete`) los cubre. Cada forma sobre pa/viva (trabajo no integrado) → AVISA; FALLA
+# vs el viejo (silencio). pa/viva sigue existiendo (el hook es PreToolUse, no ejecuta el borrado).
+for _f13 in '-df' '-fd' '-Df' '--delete --force' '-d --force' '--delete'; do
+  o="$(paz "git branch $_f13 pa/viva")"
+  printf '%s' "$o" | grep -q 'NO integrados' \
+    && ok "proteger-arbol #13: 'git branch $_f13 <rama viva>' → AVISA (force-delete reconocido; el viejo callaba)" \
+    || bad "proteger-arbol #13: 'git branch $_f13' no detectó el borrado de una rama con trabajo vivo; got: $o"
+done
+# REGRESIÓN A: force-delete de una rama ZOMBIE (ancestro) en una forma nueva → SIGUE silencio (el análisis de
+# riesgo corre igual; no es un aviso ciego por la sola forma).
+o="$(paz 'git branch -df pa/ancestro')"
+[ -z "$o" ] && ok "proteger-arbol #13: force-delete '-df' de rama ZOMBIE → silencio (el análisis de riesgo corre en las formas nuevas)" || bad "proteger-arbol #13: '-df' de una zombie avisó en falso; got: $o"
+# REGRESIÓN B (precisión del pre-filtro anclado): `git branch --edit-description` NO es un borrado — el `-d`
+# incrustado en `--edit-description` NO debe colar el comando al path de orfandad (que avisaría por los commits
+# sin pushear de HEAD, ajenos). Debe quedar SILENCIO.
+o="$(paz 'git branch --edit-description pa/viva')"
+[ -z "$o" ] && ok "proteger-arbol #13: 'git branch --edit-description' (no-borrado, '-d' incrustado) → silencio (pre-filtro anclado, no cae al path de orfandad)" || bad "proteger-arbol #13: '--edit-description' cayó al path de orfandad (FP del pre-filtro); got: $o"
 
 # --- PRECISIÓN heredoc: NO matchear un git destructivo escrito como PROSA dentro de un `<<EOF … EOF` ----
 # El cuerpo de un heredoc es STDIN (dato que se appendea a un .md, un mensaje), NUNCA shell ejecutable →

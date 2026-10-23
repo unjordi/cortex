@@ -53,7 +53,13 @@ else
   unquoted=$(printf '%s' "$noheredoc" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g")
 fi
 # ¿git DESTRUCTIVO que mueve HEAD / descarta commits?
-printf '%s' "$unquoted" | grep -qE 'git[[:space:]]+(reset[[:space:]]+(--hard|--merge|--keep)|checkout[[:space:]]+(-f|--force)|rebase([[:space:]]|$)|branch[[:space:]]+-D)' || exit 0
+# `_bdel_re` reconoce un `git branch` de BORRADO en TODAS sus formas: short cluster con d/D en cualquier
+# posición (`-D`·`-d`·`-df`·`-fd`·`-Df`·`-Dq`…) o el largo `--delete` (con/ sin `--force`). ANCLADO a que el
+# flag vaya JUSTO tras `branch ` (no un `-d` incrustado en otro flag largo tipo `--edit-description`) → lo que
+# admite el pre-filtro es EXACTAMENTE lo que el bloque de branch-delete abajo maneja-y-sale, sin caer al path
+# de orfandad (que avisaría en falso por los commits sin pushear de HEAD, ajenos a la rama borrada).
+_bdel_re='branch[[:space:]]+(-[A-Za-z]*[dD]|--delete)'
+printf '%s' "$unquoted" | grep -qE "git[[:space:]]+(reset[[:space:]]+(--hard|--merge|--keep)|checkout[[:space:]]+(-f|--force)|rebase([[:space:]]|\$)|$_bdel_re)" || exit 0
 
 # M2: DIR objetivo por la lib (-C > cd/pushd > cwd del payload > CLAUDE_PROJECT_DIR > '.'); antes las DOS
 # resoluciones de abajo iban siempre contra CLAUDE_PROJECT_DIR (el repo de la SESIÓN), ciego a un
@@ -71,8 +77,9 @@ fi
 # SQUASH/cherry-pick estando en una mini-develop con trabajo local. Aquí decidimos el riesgo REAL con
 # ramas-zombie.sh (misma "mergeada" TRIPLE que los barredores limpiar.sh ramas/worktrees: ancestro de la base
 # | equivalencia de parche squash/cherry | remota-gone sin commits únicos) → sin divergencia. Solo aplica
-# si el comando es SOLO branch -d/-D (sin reset/checkout/rebase, que sí mueven HEAD → peligro real abajo).
-if printf '%s' "$unquoted" | grep -qE 'git[[:space:]]+branch[[:space:]]+-[dD]' \
+# si el comando es SOLO branch -d/-D/-df/--delete… (sin reset/checkout/rebase, que sí mueven HEAD → peligro
+# real abajo). El gate usa el MISMO `_bdel_re` que el pre-filtro → toda forma de borrado entra y se maneja aquí.
+if printf '%s' "$unquoted" | grep -qE "git[[:space:]]+$_bdel_re" \
    && ! printf '%s' "$unquoted" | grep -qE 'git[[:space:]]+(reset[[:space:]]+--(hard|merge|keep)|checkout[[:space:]]+(-f|--force)|rebase([[:space:]]|$))'; then
   root=$(git -C "$TDIR" rev-parse --show-toplevel 2>/dev/null || true)
   zlib="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/ramas-zombie.sh"
@@ -80,11 +87,13 @@ if printf '%s' "$unquoted" | grep -qE 'git[[:space:]]+branch[[:space:]]+-[dD]' \
     # shellcheck source=/dev/null
     . "$zlib"
     base=$(bz_resolver_base "$root")
-    # tokens tras el -d/-D (hasta pipe/;/&); quita flags sueltos (-r/-f/-q…). Cada token puede ser un
+    # Los nombres de rama = todos los tokens tras `git branch` (hasta pipe/;/&) que NO son flags. Quitar TODO
+    # token que empieza con `-` deja los nombres sin importar la FORMA del borrado: `-D`/`-df`/`-fd`/`--delete`/
+    # `--delete --force`/`-d --force` (los flags `--force`/`-f` sueltos también caen). Cada token puede ser un
     # nombre exacto o un glob → se expande contra las ramas LOCALES reales con `git branch --list`.
     toks=$(printf '%s' "$unquoted" \
-      | grep -oE 'git[[:space:]]+branch[[:space:]]+-[dD][A-Za-z]*[[:space:]]+[^|;&]+' \
-      | sed -E 's/.*branch[[:space:]]+-[dD][A-Za-z]*[[:space:]]+//' \
+      | grep -oE 'git[[:space:]]+branch[[:space:]]+[^|;&]+' \
+      | sed -E 's/^git[[:space:]]+branch[[:space:]]+//' \
       | tr ' ' '\n' | grep -vE '^-')
     # (c) compound `git merge <X> && … && git branch -D <X>`: una rama que ESTE MISMO comando acaba de
     # mergear (a la rama actual) queda integrada en el acto → borrarla es seguro. SOLO cuenta si el merge va
@@ -112,7 +121,7 @@ EOF
     # Si ninguna rama nombrada tiene trabajo PROPIO fuera de la base (todas zombies, o el glob no matcheó
     # nada) → borrado seguro → SILENCIO (mata el FP dominante). Si alguna SÍ → aviso ACOTADO a esa rama.
     if [ -n "$riesgo" ]; then
-      msg="AVISO (proteger-arbol): git branch -D borraría commits PROPIOS aún NO integrados a '$base' en:$riesgo (no están por ancestro ni por squash/cherry). Si es intencional, adelante; si no, intégralo/pushéalo antes de borrar."
+      msg="AVISO (proteger-arbol): este borrado de rama (git branch -d/-D/--delete) eliminaría commits PROPIOS aún NO integrados a '$base' en:$riesgo (no están por ancestro ni por squash/cherry). Si es intencional, adelante; si no, intégralo/pushéalo antes de borrar."
       jq -n --arg m "$msg" '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$m}}'
     fi
     exit 0
