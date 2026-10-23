@@ -7318,6 +7318,36 @@ else
   echo "  (perl no disponible -> salto el guard ASCII de .ps1)"
 fi
 
+# ── (d2) install-brain.ps1 Write-PSBlock: el patrón -like del EDITION/BITE va en comillas DOBLES (TAB real).
+# MEDIO auditoría 2026-10-22: en comillas SIMPLES `t es un backtick+t LITERAL (PS no expande escapes) →
+# nunca casaba el TAB que emite el probe (comillas dobles) → $edition/$bite quedaban vacíos.
+PS1IB="$REPO_ROOT/brain/install-brain.ps1"
+if [ -f "$PS1IB" ]; then
+  # estructural (siempre): el patrón EDITION en comillas DOBLES presente, y la forma buggy en comillas simples AUSENTE.
+  { grep -qF '$line -like "EDITION`t*"' "$PS1IB" && ! grep -qF "-like 'EDITION\`t*'" "$PS1IB"; } \
+    && ok "d2: el -like del EDITION usa comillas DOBLES (TAB real), no simples (backtick-t literal)" \
+    || bad "d2: el patrón -like del EDITION sigue en comillas simples (nunca casa el TAB) o falta el doble"
+  # EFECTO (pwsh-gated, SKIP sin pwsh): extrae las LÍNEAS REALES del matching y las ejecuta sobre un fixture
+  # con TAB real → debe extraer edition y bite. Falla contra el viejo (comillas simples → vacío).
+  if command -v pwsh >/dev/null 2>&1; then
+    PSMATCH="$(awk '/\$line = \(\[string\]\$l\)/{p=1} p{print} /elseif \(\$line -like "BITE/{if(p)exit}' "$PS1IB")"
+    TPS="$(mktemp).ps1"
+    { echo '$edition = ""; $bite = ""'
+      echo 'foreach ($l in @(("EDITION" + [char]9 + "Desktop 5.1.1"), ("BITE" + [char]9 + "curl->IWR"))) {'
+      printf '%s\n' "$PSMATCH"
+      echo '}'
+      echo 'Write-Output ($edition + "|" + $bite)'
+    } > "$TPS"
+    psres="$(pwsh -NoProfile -File "$TPS" 2>/dev/null | tr -d '\r')"
+    rm -f "$TPS"
+    [ "$psres" = "Desktop 5.1.1|curl->IWR" ] \
+      && ok "d2 EFECTO: las líneas reales del matching extraen edition+bite de un probe con TAB (pwsh)" \
+      || bad "d2 EFECTO: el matching real no extrajo edition/bite (got '$psres')"
+  else
+    echo "  (pwsh no disponible -> SKIP el EFECTO de d2; el CI/QA de Windows lo cubre)"
+  fi
+fi
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (e) sin referencias circulares NUEVAS entre elementos del cerebro =="
