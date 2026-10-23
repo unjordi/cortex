@@ -73,12 +73,16 @@ acg_segmentos_ejecutables() {   # $1=cmd → texto con heredocs resueltos + comi
   # zsh/dash/ksh, con ruta o env delante) con `-c` en CUALQUIER bundle de flags que termine en c (`-lc`,`-ec`,
   # `-l -c`…). R4 #1 (auditoría 2026-10-23): antes solo casaba el token EXACTO `-c` → `bash -lc 'git push …'`,
   # `sh -lc …`, `bash -ec …`, `env bash -lc …` EVADÍAN. Anclar a un SHELL (no un `grep -c` cualquiera) evita el
-  # FP de un `-c` de conteo. (Residual conocido: `ssh host 'git push'` corre en el host REMOTO, no es un push a
-  # la base LOCAL → fuera de alcance aquí.)
+  # FP de un `-c` de conteo. R5-3 (auditoría 2026-10-23, claudio): el flag-skip `([[:space:]]+-[A-Za-z]+)*` solo
+  # casaba bundles de flags CORTOS → `bash --noprofile -c`, `--norc`, `-o pipefail -c`, `-O extglob -c`, `-c --`
+  # EVADÍAN. Ahora el flag-skip reconoce: value-eaters cortos `-o/-O VALUE`, value-eaters largos
+  # `--rcfile/--init-file VALUE`, flags largos `--xxx`, bundles cortos `-xxx`, y un `--` opcional TRAS el `-c`
+  # (grupo 8) antes del código (grupo 9). (Residual conocido: `ssh host 'git push'` corre en el host REMOTO,
+  # fuera de alcance; un flag largo value-eater distinto de --rcfile/--init-file dejaría su valor sin consumir.)
   t=$(printf '%s' "$t" | sed -E 's/(^|[[:space:]])eval[[:space:]]+"([^"]*)"/\1eval \2/g')
   t=$(printf '%s' "$t" | sed -E "s/(^|[[:space:]])eval[[:space:]]+'([^']*)'/\1eval \2/g")
-  t=$(printf '%s' "$t" | sed -E 's/((^|[[:space:]])([^[:space:]]*\/)?(bash|sh|zsh|dash|ksh)(\.exe)?([[:space:]]+-[A-Za-z]+)*[[:space:]]+-[A-Za-z]*c)[[:space:]]+"([^"]*)"/\1 \7/g')
-  t=$(printf '%s' "$t" | sed -E "s/((^|[[:space:]])([^[:space:]]*\/)?(bash|sh|zsh|dash|ksh)(\.exe)?([[:space:]]+-[A-Za-z]+)*[[:space:]]+-[A-Za-z]*c)[[:space:]]+'([^']*)'/\1 \7/g")
+  t=$(printf '%s' "$t" | sed -E 's/((^|[[:space:]])([^[:space:]]*\/)?(bash|sh|zsh|dash|ksh)(\.exe)?([[:space:]]+(-[oO][[:space:]]+[^[:space:]]+|--rcfile[[:space:]]+[^[:space:]]+|--init-file[[:space:]]+[^[:space:]]+|--[A-Za-z][A-Za-z0-9-]*|-[A-Za-z]+))*[[:space:]]+-[A-Za-z]*c)([[:space:]]+--)?[[:space:]]+"([^"]*)"/\1 \9/g')
+  t=$(printf '%s' "$t" | sed -E "s/((^|[[:space:]])([^[:space:]]*\/)?(bash|sh|zsh|dash|ksh)(\.exe)?([[:space:]]+(-[oO][[:space:]]+[^[:space:]]+|--rcfile[[:space:]]+[^[:space:]]+|--init-file[[:space:]]+[^[:space:]]+|--[A-Za-z][A-Za-z0-9-]*|-[A-Za-z]+))*[[:space:]]+-[A-Za-z]*c)([[:space:]]+--)?[[:space:]]+'([^']*)'/\1 \9/g")
   printf '%s\n' "$t"
 }
 
@@ -86,6 +90,27 @@ acg_segmentos_ejecutables() {   # $1=cmd → texto con heredocs resueltos + comi
 # commit / dato de un grep / doc NO dispara los guards (Fix #2 · H13), PERO ya no a ciegas: primero pasa
 # por acg_segmentos_ejecutables (arriba), que resuelve heredocs y reinyecta lo que un ejecutor SÍ corre.
 acg_despoja_comillas() { printf '%s' "$(acg_segmentos_ejecutables "$1")" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g"; }
+
+# Parte un comando en SUBCOMANDOS por ; && || & | — QUOTE-AWARE (R5-4, auditoría 2026-10-23, claudio): un
+# ;/&/| DENTRO de comillas ' o " NO parte. Antes un `awk '{gsub(/[;&|]/,"\n")}'` partía a ciegas →
+# `git push -o 'a;b' origin develop`, `--push-option='a|b'`, `git -c 'http.extraHeader=a;b' push …`,
+# `git -C 'dir;x' push …` quedaban cortados y el destino `develop` caía en un segmento que ya no era un
+# `git push` → EVADÍAN. Las comillas de un EJECUTOR (eval/-c) ya fueron reinyectadas por
+# acg_segmentos_ejecutables (sus separadores SÍ parten = subcomandos reales); las de DATO (-m '…') protegen
+# su separador. Sobre un texto YA despojado (sin comillas) es idéntico al gsub viejo. Portable BSD+GNU.
+acg_partir_subcomandos() {   # $1=texto → un subcomando por línea
+  printf '%s' "$1" | awk '{
+    out=""; q=""; n=length($0);
+    for(i=1;i<=n;i++){ c=substr($0,i,1);
+      if(q==""){
+        if(c=="\047"){q="s"; out=out c}
+        else if(c=="\""){q="d"; out=out c}
+        else if(c==";"||c=="&"||c=="|"){out=out "\n"}
+        else out=out c
+      } else if(q=="s"){ out=out c; if(c=="\047") q="" }
+      else { out=out c; if(c=="\"") q="" } }
+    print out }'
+}
 
 # ¿el comando contiene un `git commit`? (mismo ancla que acg_es_push — evita el drift de "grep sin
 # frontera" que ya divergió en 2 de los hooks que hacían su propia copia a mano).
@@ -358,7 +383,7 @@ acg_clon_local_de_slug() {   # $1=slug  $2=dir-pista → toplevel del clon | vac
 # 272 (el id EQUIVOCADO, del `view`), no 273 (el `merge` real) → el DENY citaba el MR erróneo.
 acg_mrid() {
   local seg
-  seg=$(printf '%s' "$1" | awk '{gsub(/[;&|]/,"\n")}1' \
+  seg=$(acg_partir_subcomandos "$1" \
     | grep -E '(mr[[:space:]]+(merge|accept)|pr[[:space:]]+merge)' | tail -1)
   [ -n "$seg" ] || seg="$1"
   printf '%s' "$seg" | sed -E 's/.*(mr[[:space:]]+(merge|accept)|pr[[:space:]]+merge)[[:space:]]+//' | tr ' ' '\n' | grep -m1 -E '^#?[0-9]+$' | tr -d '#'
@@ -380,7 +405,11 @@ acg_push_destino_base() {
   # buscar la base; un destino de RAMA real (bare `develop`, `HEAD:develop`, `:refs/heads/develop`, `:develop`
   # de borrado) se conserva y SÍ bloquea (fail-closed: solo exime el tracking ref, nada más).
   local seg
-  seg=$(printf '%s' "$1" | sed -E 's#refs/remotes/[^[:space:]:]+##g')
+  # R5-4 (auditoría 2026-10-23): quita el VALOR de `-o`/`--push-option` ANTES de buscar la base. Sin esto, un
+  # `git push -o 'a;b' origin develop` (o `--push-option='a|b'`) deja —tras el `tr -d` de comillas de subq— un
+  # `;`/`|` del valor que TRUNCA el `[^;&|]*` de abajo antes de llegar a `develop` → EVADÍA. (Mismo strip que
+  # acg_push_sin_refspec:440; un `develop` que sea VALOR de -o no es el destino y se quita con razón.)
+  seg=$(printf '%s' "$1" | sed -E 's/(-o|--push-option)[[:space:]=]+[^[:space:]]+//g; s#refs/remotes/[^[:space:]:]+##g')
   printf '%s' "$seg" | grep -qE 'git[[:space:]]+push[^;&|]*[[:space:]:/+](main|master|develop)([[:space:]]|$|[)>&|;])'
 }
 
@@ -510,7 +539,7 @@ acg_push_toca_base() {   # $1=cmd  $2=payload_cwd(opcional)
       esac
     fi
   done <<EOF
-$(acg_segmentos_ejecutables "$1" | awk '{gsub(/[;&|]/,"\n")}1')
+$(acg_partir_subcomandos "$(acg_segmentos_ejecutables "$1")")
 EOF
   return 1
 }
@@ -562,7 +591,7 @@ acg_es_merge_mr() {
     printf '%s' "$head" | grep -qE '(^|[[:space:]])(--help|-h|--dry-run)([[:space:]]|$)' && continue
     return 0
   done <<EOF
-$(printf '%s' "$u" | awk '{gsub(/[;&|]/,"\n")}1')
+$(acg_partir_subcomandos "$u")
 EOF
   return 1
 }
@@ -585,7 +614,7 @@ acg_invoca_cerrar_slice() {
     printf '%s' "$head" | grep -qE '(^|[[:space:]])--id([[:space:]]|=)' || continue
     return 0
   done <<EOF
-$(printf '%s' "$u" | awk '{gsub(/[;&|]/,"\n")}1')
+$(acg_partir_subcomandos "$u")
 EOF
   return 1
 }

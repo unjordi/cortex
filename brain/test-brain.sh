@@ -880,6 +880,27 @@ is_silent "$(gb 'git commit -m "recuerda: nunca bash -c \"git push origin develo
   && ok "M1: H13 intacto — 'bash -c \"…\"' dentro de un MENSAJE de commit sigue sin disparar" \
   || bad "M1: el endurecimiento de eval/-c rompió H13 (un dato citado ahora dispara)"
 
+# R5-3 (auditoría 2026-10-23, claudio): el flag-skip de la reinyección shell -c solo casaba bundles CORTOS
+# (`-lc`) → flags LARGOS, value-eaters y `-c --` evadían el PASO 0. FALLAN vs f440234 (no reinyectaban → el
+# push a develop quedaba invisible dentro del -c).
+for _r53 in \
+  'bash --noprofile -c "git push origin develop"' \
+  'bash --norc -c "git push origin develop"' \
+  'bash -o pipefail -c "git push origin develop"' \
+  'bash -O extglob -c "git push origin develop"' \
+  'bash -c -- "git push origin develop"' \
+  "bash --rcfile /tmp/x -c 'git push origin develop'" \
+  "/bin/bash -ec 'git push origin develop'" \
+  ; do
+  is_deny "$(gb "$_r53")" \
+    && ok "M1/R5-3: '${_r53:0:38}…' reinyecta el -c → deny" \
+    || bad "M1/R5-3: FN — la reinyección no cubrió el flag largo/value-eater/-- → push a develop evadió: $_r53"
+done
+# control R5-3: un push a RAMITA dentro de un -c con flags largos NO debe disparar (no es base)
+is_silent "$(gb 'bash --noprofile -c "git push origin feat/x"')" \
+  && ok "M1/R5-3 control: 'bash --noprofile -c \"git push origin feat/x\"' (ramita) → silencio" \
+  || bad "M1/R5-3 control: FP — un push a ramita vía -c con flag largo disparó"
+
 # proteger-arbol: MISMOS dos casos, con la dirección del filtro OPUESTA.
 PAM1BARE="$(mktemp -d "${TMPDIR:-/tmp}/brain-pam1.XXXXXX")/remote.git"
 PAM1="$(mktemp -d "${TMPDIR:-/tmp}/brain-pam1.XXXXXX")/wt"
@@ -1075,6 +1096,29 @@ acg_push_toca_base 'git push origin HEAD:refs/heads/develop' \
 acg_push_toca_base 'git push origin :develop' \
   && ok "B5 control: borrar la rama base (:develop) sigue BLOQUEANDO" \
   || bad "B5: SE AFLOJÓ — borrar la rama base dejó de bloquear"
+
+# ── R5-4 (auditoría 2026-10-23, claudio): el split por [;&|] partía DENTRO de comillas → un ;/| en el valor
+# de -o/--push-option o de un `git -c/-C` cortaba el comando y develop caía en un segmento no-push. Ahora el
+# split es quote-aware (acg_partir_subcomandos) y acg_push_destino_base quita el valor de -o/--push-option.
+# FALLAN vs f440234 (todos EVADÍAN). ──
+for _r54 in \
+  "git push -o 'a;b' origin develop" \
+  "git push --push-option='a|b' origin develop" \
+  "git -c 'http.extraHeader=a;b' push origin develop" \
+  "git -C 'dir;x' push origin develop" \
+  ; do
+  acg_push_toca_base "$_r54" \
+    && ok "R5-4: '$_r54' → GATEA (el ;/| en comillas ya no corta el comando)" \
+    || bad "R5-4: FN — un ;/| DENTRO de comillas partió el comando y el push a develop evadió: $_r54"
+done
+# controles R5-4: el ; FUERA de comillas SÍ parte (un 2º push a develop en otro subcomando gatea), y un
+# push a ramita con -o quoted NO dispara (no es base).
+acg_push_toca_base "git push origin feat/x ; git push -o 'c;d' origin develop" \
+  && ok "R5-4 control: ; real parte → el 2º subcomando (push a develop) gatea" \
+  || bad "R5-4 control: un ; REAL dejó de partir (regresión del quote-aware)"
+acg_push_toca_base "git push -o 'a;b' origin feat/x" \
+  && bad "R5-4 control: FP — push a RAMITA con -o quoted se tomó por base" \
+  || ok "R5-4 control: 'git push -o \"a;b\" origin feat/x' (ramita) → NO gatea"
 
 # ── C2 (auditoría R3 2026-10-23): acg_es_push ya NO es una lista cerrada de wrappers — detecta `git` en
 # POSICIÓN DE COMANDO por su basename de-backslasheado. Estas EVASIONES (push a develop vía wrapper/abs-path/
