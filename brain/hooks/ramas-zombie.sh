@@ -132,29 +132,41 @@ _bz_run() {  # _bz_run SEGUNDOS cmd... — con timeout si existe (que un host co
 # internamente; `glab --per-page` topa en 100 por página en la API de GitLab, así que se PAGINA hasta agotar
 # (o hasta el tope).
 _bz_limite() { local l="${CLAUDE_BZ_PR_LIMIT:-1000}"; case "$l" in ''|*[!0-9]*) l=1000 ;; esac; printf '%s' "$l"; }
-_bz_glab_paginar() {  # $1=proj $2=filtro(-M|-A) $3=archivo destino $4=expresión jq
-  local proj="$1" filtro="$2" dest="$3" jqf="$4" pag=1 n maxp
+_bz_glab_paginar() {  # $1=proj $2=filtro(-M|-A) $3=archivo destino $4=expresión jq → return 0 si la 1ª consulta a glab tuvo ÉXITO
+  local proj="$1" filtro="$2" dest="$3" jqf="$4" pag=1 n maxp grc tmp firstok=1
   maxp=$(( $(_bz_limite) / 100 )); [ "$maxp" -ge 1 ] || maxp=1
+  tmp="$(mktemp 2>/dev/null)" || return 1
   while [ "$pag" -le "$maxp" ]; do
-    n=$(_bz_run 15 glab mr list -R "$proj" "$filtro" --per-page 100 --page "$pag" -F json \
-          --jq "$jqf" 2>/dev/null | tee -a "$dest" | wc -l | tr -d ' ')
+    # se separa glab (con su exit code) del tee|wc para capturar el rc de GLAB (no el de wc en un pipe).
+    _bz_run 15 glab mr list -R "$proj" "$filtro" --per-page 100 --page "$pag" -F json \
+          --jq "$jqf" >"$tmp" 2>/dev/null; grc=$?
+    [ "$pag" = 1 ] && [ "$grc" != 0 ] && { firstok=0; break; }   # la 1ª consulta FALLÓ (sin red/auth/timeout)
+    cat "$tmp" >>"$dest"
+    n=$(wc -l <"$tmp" | tr -d ' ')
     [ "${n:-0}" -lt 100 ] && break
     pag=$((pag+1))
   done
+  rm -f "$tmp"
+  [ "$firstok" = 1 ]
 }
 _bz_intentar_gh() {  # $1=ROOT $2=proj — apéndice al cache si gh está disponible
   local ROOT="$1" proj="$2"
   command -v gh >/dev/null 2>&1 || return 0
-  _BZ_D_INTENTADO=1
-  _bz_run 15 gh -R "$proj" pr list --state merged --limit "$(_bz_limite)" \
-    --json headRefName,headRefOid --jq '.[] | "\(.headRefName)\t\(.headRefOid)"' \
-    >>"$_BZ_PRCACHE_FILE" 2>/dev/null
+  # _BZ_D_INTENTADO=1 SOLO si la consulta tuvo ÉXITO (exit 0): si gh FALLA (sin red/auth/timeout) NO obtuvimos
+  # la lista de PRs mergeados → NO sabemos si la rama entró → debe quedar INDETERMINADO, no "vivo" (MEDIO
+  # auditoría 2026-10-22: antes se marcaba intentado ANTES de correr gh → un fallo de red daba un falso "vivo").
+  if _bz_run 15 gh -R "$proj" pr list --state merged --limit "$(_bz_limite)" \
+       --json headRefName,headRefOid --jq '.[] | "\(.headRefName)\t\(.headRefOid)"' \
+       >>"$_BZ_PRCACHE_FILE" 2>/dev/null; then
+    _BZ_D_INTENTADO=1
+  fi
 }
 _bz_intentar_glab() {  # $1=ROOT $2=proj — apéndice al cache si glab está disponible
   local ROOT="$1" proj="$2"
   command -v glab >/dev/null 2>&1 || return 0
-  _BZ_D_INTENTADO=1
-  _bz_glab_paginar "$proj" -M "$_BZ_PRCACHE_FILE" '.[] | "\(.source_branch)\t\(.sha)"'
+  # _BZ_D_INTENTADO=1 SOLO si la 1ª consulta a glab tuvo ÉXITO (ver nota en _bz_intentar_gh): un fallo de red
+  # ya NO da un falso "vivo" — queda indeterminado (MEDIO auditoría 2026-10-22).
+  _bz_glab_paginar "$proj" -M "$_BZ_PRCACHE_FILE" '.[] | "\(.source_branch)\t\(.sha)"' && _BZ_D_INTENTADO=1
 }
 _bz_cargar_prcache() {  # puebla $_BZ_PRCACHE_FILE (líneas 'rama<TAB>sha') para ROOT, una sola vez
   local ROOT="$1" url proj host

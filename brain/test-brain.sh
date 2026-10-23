@@ -3255,6 +3255,33 @@ bz_es_zombie "$DZREPO" feat/multi develop \
 unset CLAUDE_BZ_PRCACHE
 rm -rf "$DZROOT"
 
+# (b3g-ind) señal (d): gh/glab FALLA (sin red/auth) → INDETERMINADO, NO un falso "vivo" =======================
+# MEDIO auditoría 2026-10-22: `_BZ_D_INTENTADO=1` se marcaba ANTES de correr gh/glab → un fallo de red daba un
+# falso "vivo" (como si hubiéramos CONFIRMADO que la rama no entró). Ahora intentado=1 SOLO si la consulta tuvo
+# ÉXITO (exit 0); un fallo deja el 3er estado INDETERMINADO. FALLA contra el código viejo (daba BZ_RAZON=vivo).
+BIROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-bi.XXXXXX")"; BIREPO="$BIROOT/repo"; BIBIN="$BIROOT/bin"; mkdir -p "$BIBIN"
+git init -q "$BIREPO" >/dev/null 2>&1
+git -C "$BIREPO" config user.email t@t >/dev/null 2>&1; git -C "$BIREPO" config user.name t >/dev/null 2>&1
+git -C "$BIREPO" checkout -q -b develop >/dev/null 2>&1; printf 'b\n' > "$BIREPO/b"; git -C "$BIREPO" add b >/dev/null 2>&1; git -C "$BIREPO" commit -qm b >/dev/null 2>&1
+git -C "$BIREPO" checkout -q -b feat/sinpr develop >/dev/null 2>&1; printf 'x\n' > "$BIREPO/x"; git -C "$BIREPO" add x >/dev/null 2>&1; git -C "$BIREPO" commit -qm x >/dev/null 2>&1
+git -C "$BIREPO" checkout -q develop >/dev/null 2>&1
+git -C "$BIREPO" remote add origin 'git@gitlab.com:org/repo.git' >/dev/null 2>&1   # remoto de RED → (d) APLICA en teoría
+( . "$HOOKS/ramas-zombie.sh"
+  _bz_ireset() { _BZ_PRCACHE_ROOT=""; _BZ_PRCACHE_FILE=""; _BZ_D_INTENTADO=0; _BZ_D_APLICABLE=0; }
+  unset CLAUDE_BZ_PRCACHE
+  printf '#!/usr/bin/env bash\nexit 1\n' > "$BIBIN/glab"; chmod +x "$BIBIN/glab"   # glab FALLA (sin red/auth)
+  _bz_ireset; PATH="$BIBIN:/usr/bin:/bin" bz_es_zombie "$BIREPO" feat/sinpr develop
+  [ "$BZ_RAZON" = indeterminado ] \
+    && ok "b3g-ind: glab FALLA (sin red) + remoto de red → BZ_RAZON=indeterminado (no un falso 'vivo')" \
+    || bad "b3g-ind: glab-falla dio BZ_RAZON='$BZ_RAZON' (esperaba indeterminado)"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$BIBIN/glab"; chmod +x "$BIBIN/glab"   # glab OK, 0 MRs mergeados
+  _bz_ireset; PATH="$BIBIN:/usr/bin:/bin" bz_es_zombie "$BIREPO" feat/sinpr develop
+  [ "$BZ_RAZON" = vivo ] \
+    && ok "b3g-ind control: glab OK (0 MRs) → SÍ consultamos → BZ_RAZON=vivo (no indeterminado)" \
+    || bad "b3g-ind control: glab OK dio BZ_RAZON='$BZ_RAZON' (esperaba vivo)"
+)
+rm -rf "$BIROOT"
+
 # (b3g-p) señal (p) PRESENCIA POR CONTENIDO — SOLO en modo=barrido (2026-10-22). Una sub-rama que entró DENTRO
 # de una CONTENEDORA (épica/integración) cuyo squash combinó VARIAS ramas y nombra SOLO la contenedora, y cuya
 # contenedora ya fue BORRADA, falla (a)/(e)/(d)/(c)/(t) pero su contenido está 100% en develop → con modo=barrido
