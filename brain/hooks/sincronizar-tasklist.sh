@@ -94,6 +94,23 @@ _stl_ndone() {
   printf '%s' "$n"
 }
 
+# ── _stl_ids_solapan <estado-archivo> <rows-tsv> → 0 si algún id de las filas resueltas ya aparece en el
+#    bloque espejo de <estado>. Señal de que la carpeta resuelta por FALLBACK es ESTA sesión con el sid ROTADO
+#    (no una ajena): el bloque se espejó de aquí antes de rotar. bash-3.2-safe. ─────────────────────────── ──
+_stl_ids_solapan() {
+  local blk id
+  [ -n "$2" ] || return 1
+  blk=$(awk -v ini="$STL_ESPEJO_INI" -v fin="$STL_ESPEJO_FIN" '$0==ini{f=1;next} $0==fin{f=0} f' "$1" 2>/dev/null | grep -oE '#[0-9]+' | tr -d '#')
+  [ -n "$blk" ] || return 1
+  while IFS="$_STL_TAB" read -r _ id _; do
+    [ -n "$id" ] || continue
+    printf '%s\n' "$blk" | grep -qxF "$id" && return 0
+  done <<EOF
+$2
+EOF
+  return 1
+}
+
 # ── _stl_render_body <rows-tsv> <ndone> → cuerpo markdown del bloque ─────────────────────────────── ──
 _stl_render_body() {
   local rows="$1" ndone="$2" body st id subj icon
@@ -163,8 +180,15 @@ espejar_tasklist() {
   # cubría n==0, así que una carpeta AJENA con un in_progress (n>0, resuelta por fallback) reemplazaba el bloque
   # propio no-vacío por una TAREA AJENA. EXCEPCIÓN del camino `direct` sin filas: solo pasa a "sin pendientes" si
   # DE VERDAD terminó (ndone>0 → tasklist completado); si no (carpeta vacía/rotada), preserva (bug "+0 · sin pendientes").
+  # R4 #3 (auditoría 2026-10-23): el M3 anterior preservaba el bloque ante CUALQUIER fallback → el caso LEGÍTIMO
+  # de rotación de session_id (mi carpeta rotó a un sid nuevo → se resuelve por fallback, no direct) NUNCA
+  # actualizaba el espejo. Rescate: en fallback SÍ se pisa si la carpeta es la MISMA sesión rotada — señal
+  # DETERMINISTA: algún id de la carpeta resuelta ya está en el bloque (el bloque se espejó de ESTA sesión antes
+  # de rotar). Sin solape (carpeta AJENA) o resolución `none` → se preserva (el anti-clobber de M3 se mantiene).
   if _stl_bloque_no_vacio "$estado"; then
-    [ "$_STL_RESOLV" = "direct" ] || { printf 0; return 0; }
+    if [ "$_STL_RESOLV" != "direct" ]; then
+      _stl_ids_solapan "$estado" "$rows" || { printf 0; return 0; }
+    fi
     { [ "$n" -eq 0 ] && [ "${ndone:-0}" -eq 0 ]; } && { printf 0; return 0; }
   fi
   local body; body=$(_stl_render_body "$rows" "$ndone")

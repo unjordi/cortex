@@ -1093,6 +1093,26 @@ acg_es_push 'git push origin feat/x' || bad "C2 control: 'git push origin feat/x
 acg_es_push 'git push origin develop' || bad "C2 control: el caso base 'git push origin develop' dejó de reconocerse como push"
 ok "C2 control: los push legítimos ('feat/x', 'develop') siguen reconociéndose como push"
 
+# ── R4 #1 (auditoría 2026-10-23): un SHELL con `-c` en CUALQUIER bundle de flags (`-lc`/`-ec`/`-l -c`) reinyecta
+# su contenido entrecomillado → un `bash -lc 'git push origin develop'` YA NO evade el PASO 0. FALLAN vs el viejo
+# (que solo reinyectaba el token EXACTO `-c`). End-to-end por acg_push_toca_base (destino develop/main = base). ──
+for _r41 in \
+  "bash -lc 'git push origin develop'" \
+  "bash -lc \"git push origin develop\"" \
+  "sh -lc 'git push origin main'" \
+  "bash -l -c 'git push origin develop'" \
+  "bash -ec 'git push origin develop'" \
+  "zsh -lc 'git push origin develop'" \
+  "env bash -lc 'git push origin develop'"; do
+  acg_push_toca_base "$_r41" \
+    && ok "R4 #1: evasión shell-bundle '$_r41' → GATEA el push a base (reinyección de -lc/-ec)" \
+    || bad "R4 #1: '$_r41' evadió el PASO 0 (el shell -c con bundle de flags no reinyectó)"
+done
+# control R4 #1: un `grep -c '…git push…'` (conteo, no shell) NO se reinyecta → no es push
+acg_es_push "$(. "$HOOKS/analizar-comando-git.sh"; acg_despoja_comillas "grep -c 'git push origin develop' f")" \
+  && bad "R4 #1 control: 'grep -c \"git push…\"' se reinyectó como push (FP: -c de conteo tratado como shell)" \
+  || ok "R4 #1 control: 'grep -c \"git push…\"' (conteo, no shell) → NO se reinyecta (sin FP)"
+
 # C1 (auditoría 2026-10-22, CRÍTICO): un prefijo de asignación de entorno `VAR=valor git push origin develop`
 # evadía el PASO 0 — acg_es_push consumía solo hasta el `=`, el VALOR sin comillas (`1`/`ssh`) rompía la
 # adyacencia con `git` → acg_push_toca_base daba FALSE → el push a base PASABA. Fix: la asignación consume su
@@ -6116,6 +6136,22 @@ grep -q '#5' "$EMFILE_C10" && bad "espejo M3: fallback a carpeta AJENA con in_pr
   || ok "espejo M3: fallback a carpeta AJENA con in_progress (n>0) NO pisa el bloque propio no-vacío (anti-clobber extendido a n>0)"
 grep -q '#99' "$EMFILE_C10" && ok "espejo M3: la #99 propia se PRESERVA ante el fallback con tarea ajena" \
   || bad "espejo M3: perdió la #99 propia (el fallback con n>0 pisó el bloque)"
+
+# ── Caso 11 (R4 #3, auditoría 2026-10-23): rotación LEGÍTIMA de session_id — mi carpeta rotó a un sid nuevo
+#    (se resuelve por FALLBACK, no direct), pero sus ids SOLAPAN el bloque → SÍ se actualiza el espejo. El M3
+#    (solo-direct) lo preservaba siempre → el espejo nunca se actualizaba al rotar. FALLA contra el M3 de fdb3091. ──
+EMHOME11="$EMFIX/c11home"; EMREPO11="$EMFIX/c11repo"; S11="GHOST11"
+mkdir -p "$EMHOME11/.claude/tasks/$S11"; _em_mkrepo "$EMREPO11"
+EMFILE_C11="$EMREPO11/.claude/memory/estado-proyecto.md"
+printf '{"id":"99","subject":"Mia","status":"pending"}' > "$EMHOME11/.claude/tasks/$S11/99.json"
+printf '{"session_id":"%s"}' "$S11" | HOME="$EMHOME11" CLAUDE_PROJECT_DIR="$EMREPO11" bash "$HOOKS/recordar-cosechar.sh" >/dev/null 2>&1  # espeja #99 al bloque
+rm -f "$EMHOME11/.claude/tasks/$S11"/*.json   # el sid ROTA → esa carpeta queda vacía
+mkdir -p "$EMHOME11/.claude/tasks/ROT"        # ÚNICA carpeta no-vacía = la rotada (fallback), con el MISMO #99 + un #100 nuevo
+printf '{"id":"99","subject":"Mia","status":"in_progress"}' > "$EMHOME11/.claude/tasks/ROT/99.json"
+printf '{"id":"100","subject":"Nueva tras rotar","status":"pending"}' > "$EMHOME11/.claude/tasks/ROT/100.json"; touch "$EMHOME11/.claude/tasks/ROT"
+printf '{"session_id":"%s"}' "$S11" | HOME="$EMHOME11" CLAUDE_PROJECT_DIR="$EMREPO11" bash "$HOOKS/recordar-cosechar.sh" >/dev/null 2>&1
+grep -q '#100' "$EMFILE_C11" && ok "espejo R4#3: carpeta ROTADA (fallback) con id que SOLAPA el bloque → ACTUALIZA el espejo (#100 nuevo aparece)" \
+  || bad "espejo R4#3: la rotación legítima NO actualizó el espejo (el M3 solo-direct lo dejaba stale para siempre)"
 
 rm -rf "$EMFIX"
 

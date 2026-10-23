@@ -68,10 +68,17 @@ acg_segmentos_ejecutables() {   # $1=cmd → texto con heredocs resueltos + comi
       }
       print
     }')
-  # Spans entrecomillados precedidos de un EJECUTOR (eval "…" · bash/sh/zsh/dash/ksh -c "…") → REINYECTA
-  # el contenido SIN comillas (es código). El resto de comillas (dato) las quita acg_despoja_comillas.
-  t=$(printf '%s' "$t" | sed -E 's/(^|[[:space:]])(eval|-c)[[:space:]]+"([^"]*)"/\1\2 \3/g')
-  t=$(printf '%s' "$t" | sed -E "s/(^|[[:space:]])(eval|-c)[[:space:]]+'([^']*)'/\1\2 \3/g")
+  # Spans entrecomillados precedidos de un EJECUTOR → REINYECTA el contenido SIN comillas (es código). El resto
+  # de comillas (dato) las quita acg_despoja_comillas. DOS ejecutores: (1) `eval "…"`; (2) un SHELL (bash/sh/
+  # zsh/dash/ksh, con ruta o env delante) con `-c` en CUALQUIER bundle de flags que termine en c (`-lc`,`-ec`,
+  # `-l -c`…). R4 #1 (auditoría 2026-10-23): antes solo casaba el token EXACTO `-c` → `bash -lc 'git push …'`,
+  # `sh -lc …`, `bash -ec …`, `env bash -lc …` EVADÍAN. Anclar a un SHELL (no un `grep -c` cualquiera) evita el
+  # FP de un `-c` de conteo. (Residual conocido: `ssh host 'git push'` corre en el host REMOTO, no es un push a
+  # la base LOCAL → fuera de alcance aquí.)
+  t=$(printf '%s' "$t" | sed -E 's/(^|[[:space:]])eval[[:space:]]+"([^"]*)"/\1eval \2/g')
+  t=$(printf '%s' "$t" | sed -E "s/(^|[[:space:]])eval[[:space:]]+'([^']*)'/\1eval \2/g")
+  t=$(printf '%s' "$t" | sed -E 's/((^|[[:space:]])([^[:space:]]*\/)?(bash|sh|zsh|dash|ksh)(\.exe)?([[:space:]]+-[A-Za-z]+)*[[:space:]]+-[A-Za-z]*c)[[:space:]]+"([^"]*)"/\1 \7/g')
+  t=$(printf '%s' "$t" | sed -E "s/((^|[[:space:]])([^[:space:]]*\/)?(bash|sh|zsh|dash|ksh)(\.exe)?([[:space:]]+-[A-Za-z]+)*[[:space:]]+-[A-Za-z]*c)[[:space:]]+'([^']*)'/\1 \7/g")
   printf '%s\n' "$t"
 }
 
