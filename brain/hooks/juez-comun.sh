@@ -134,11 +134,16 @@ __JUEZ_CITA_LINEAS__
 # _juez_curl_crudo $token $body $timeout → stdout: <cuerpo-de-la-respuesta>\n<http_code>. El `-w` de curl
 # ANEXA el código HTTP en su propia línea final → el caller separa cuerpo (sed '$d') de código (tail -n1),
 # distinguiendo un 401 (token rechazado) de una caída de red (código 000 / vacío). NUNCA loguea el token.
+# SEGURIDAD (MEDIO auditoría 2026-10-22): el token NO va en el argv de curl (sería visible en `ps` para
+# cualquier proceso del sistema) — se pasa como CONFIG de curl por STDIN (`-K -`), que trae el header
+# Authorization. El body (no secreto) sigue en el argv por -d.
 _juez_curl_crudo() {
   curl -sS -m "$3" -w '\n%{http_code}' https://api.anthropic.com/v1/messages \
-    -H "Authorization: Bearer $1" -H "anthropic-beta: oauth-2025-04-20" \
+    -H "anthropic-beta: oauth-2025-04-20" \
     -H "anthropic-version: 2023-06-01" -H "content-type: application/json" \
-    -d "$2" 2>/dev/null
+    -d "$2" -K - 2>/dev/null <<CURLCFG
+header = "Authorization: Bearer $1"
+CURLCFG
 }
 
 # _juez_curl_local $url-base $body $timeout → stdout: <cuerpo-de-la-respuesta>\n<http_code>. Gemelo LOCAL de

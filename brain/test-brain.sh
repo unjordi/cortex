@@ -1787,6 +1787,27 @@ cp "$JCFIX/stubs/glab" "$JCFIX/stubs/gh"
     || bad "juez-comun (b): no reportó ausencia de token (got='$got' rc=$rc)"
 )
 
+# (seguridad) el token OAuth NO viaja en el argv de curl (lo vería cualquier proceso en `ps`) — va por config
+# en STDIN (`-K -`). FALLA contra el código con `-H "Authorization: Bearer $1"` en el argv (MEDIO auditoría
+# 2026-10-22). Un curl FALSO graba su argv y su stdin → el token debe estar SOLO en el stdin.
+(
+  mkdir -p "$JCFIX/curlargv"
+  cat > "$JCFIX/curlargv/curl" <<'CARGV'
+#!/usr/bin/env bash
+printf '%s\n' "$@" > "$JC_ARGV_FILE"
+cat > "$JC_STDIN_FILE"
+printf '{"content":[{"text":"x"}]}\n200\n'
+CARGV
+  chmod +x "$JCFIX/curlargv/curl"
+  export PATH="$JCFIX/curlargv:$PATH"
+  export JC_ARGV_FILE="$JCFIX/argv.cap"; export JC_STDIN_FILE="$JCFIX/stdin.cap"
+  . "$HOOKS/juez-comun.sh"
+  _juez_curl_crudo 'SECRET_TOK_42' '{"model":"x"}' 5 >/dev/null 2>&1
+  { ! grep -q 'SECRET_TOK_42' "$JC_ARGV_FILE" && grep -q 'SECRET_TOK_42' "$JC_STDIN_FILE"; } \
+    && ok "juez-comun (seguridad): el token OAuth NO va en el argv de curl (va por -K - en stdin; invisible en ps)" \
+    || bad "juez-comun (seguridad): el token aparece en el argv de curl (visible en ps) o no llegó por config"
+)
+
 # fake curl 401-aware: 1er llamado → HTTP 401, 2º → HTTP 200 con el cuerpo de $JC_CURL_BODY200. Counter en archivo.
 mkdir -p "$JCFIX/curl401"
 cat > "$JCFIX/curl401/curl" <<'CURLSTUB'
