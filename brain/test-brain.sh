@@ -8287,6 +8287,30 @@ if [ -f "$A6LF" ] && [ -f "$A6MF" ]; then
       && ok "#4-robustez $(printf '%s' "$_fo" | sed 's|.*/\([^/]*/[^/]*\)$|\1|'): resets_at con offset ≠ Z NO aborta el snapshot (week_start→null, el resto se emite)" \
       || bad "#4-robustez $_fo: un resets_at con offset ≠ Z abortó el jq (snapshot vacío) o no degradó week_start a null (got '$_a6o')"
   done
+  # (#4-robustez-2 R4 2026-10-23): más campos del endpoint que ABORTABAN todo el jq → snapshot perdido.
+  # Runner genérico: corre el jq REAL del fetch con un $usage dado y aplica un filtro de salida.
+  _a6run() { local p; p="$(_a6prog "$1")"; [ -z "$p" ] && { echo SIN; return; }
+    jq -n --argjson usage "$2" --argjson blocks "$_A6_BLK" --argjson weekly null --argjson weekly_daily "$_A6_WD" \
+      --arg ts "2026-10-23T12:00:00Z" --arg next_monday "2026-10-26T00:00:00Z" --arg cur_week "2026-10-19" --arg real_week_start "2026-10-19" \
+      --arg prev_week_reset "" --arg prev_five_reset "" --arg email "" --arg account_uuid "" --arg auth_state ok --arg auth_expires "" \
+      --argjson account_mismatch false --argjson five_cap 50 --argjson week_cap 200 --argjson warn 80 --argjson crit 95 "$p" 2>/dev/null \
+      | jq -r "$3" 2>/dev/null; }
+  # (a) spend con exponent NULL: `pow(10; null)` ABORTA el jq entero. Fix: try…catch null → spend.used=null,
+  #     el resto se emite. FALLA vs el viejo (abortaba → vacío → ABORT).
+  _USP='{"five_hour":{"utilization":10,"resets_at":"2026-10-23T00:00:00Z"},"seven_day":{"utilization":40,"resets_at":"2026-10-28T14:00:00Z"},"spend":{"used":{"amount_minor":1234,"exponent":null,"currency":"USD"},"enabled":true},"limits":[]}'
+  # (b) utilization como STRING "50": `"50"*10` (en round1) ABORTA. Fix: numor → 50 numérico.
+  _UUT='{"five_hour":{"utilization":"50","resets_at":"2026-10-23T00:00:00Z"},"seven_day":{"utilization":40,"resets_at":"2026-10-28T14:00:00Z"},"limits":[]}'
+  for _fr in "$A6LF" "$A6MF"; do
+    _frl="$(printf '%s' "$_fr" | sed 's|.*/\([^/]*/[^/]*\)$|\1|')"
+    _rsp="$(_a6run "$_fr" "$_USP" '(.updated_at // "ABORT") + "|" + (.spend.used|tostring)')"
+    { printf '%s' "$_rsp" | grep -qvi 'ABORT' && printf '%s' "$_rsp" | grep -q '|null$'; } \
+      && ok "#4-robustez-2 $_frl (spend): exponent=null NO aborta el snapshot (spend.used→null, el resto se emite)" \
+      || bad "#4-robustez-2 $_frl (spend): pow(10;null) abortó el jq o no degradó spend.used a null (got '$_rsp')"
+    _rut="$(_a6run "$_fr" "$_UUT" '(.updated_at // "ABORT") + "|" + (.five_hour.percent|tostring)')"
+    { printf '%s' "$_rut" | grep -qvi 'ABORT' && printf '%s' "$_rut" | grep -q '|50$'; } \
+      && ok "#4-robustez-2 $_frl (utilization string): \"50\" NO aborta (numor→50 → five_hour.percent=50)" \
+      || bad "#4-robustez-2 $_frl (utilization string): un utilization string abortó el jq o no se coaccionó (got '$_rut')"
+  done
 
   # (a6-overage) PARIDAD extra_usage + limits Linux↔macOS (MEDIO auditoría 2026-10-22): el fetch de Linux no
   # emitía extra_usage → limite-gasto leía overage DESHABILITADO (over_on=false) y DENEGABA con la ventana de

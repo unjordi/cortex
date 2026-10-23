@@ -267,6 +267,9 @@ jq -n \
   def pct(used; cap): if cap > 0 then (used * 100 / cap) else 0 end;
   def round1(x): (x * 10 | floor) / 10;
   def round2(x): (x * 100 | floor) / 100;
+  # Coacción robusta a número: null/no-numérico → el default d; una cadena "50" → 50 (algunos campos del
+  # endpoint llegan como string). Evita que un utilization string se propague como texto a los cálculos.
+  def numor(d): if . == null then d elif type == "number" then . elif type == "string" then (try tonumber catch d) else d end;
   # "2026-06-10T00:00:00.070837+00:00" -> "2026-06-10T00:00:00Z"
   def isoz: sub("\\.[0-9]+"; "") | sub("\\+00:00$"; "Z");
 
@@ -274,9 +277,9 @@ jq -n \
   | ([$weekly.weekly[]? | select((.week // .period) == $cur_week)] | first) as $wk
   | (if $blocks != null then round2(if $blk then ($blk.costUSD // 0) else 0 end) else null end) as $five_cost
   | (if $weekly_daily != null then round2(($weekly_daily.daily // []) | map(.totalCost // 0) | add // 0) else null end) as $week_cost
-  | (if $usage != null then ($usage.five_hour.utilization // 0)
+  | (if $usage != null then ($usage.five_hour.utilization | numor(0))
      else pct($five_cost // 0; $five_cap) end) as $five_pct
-  | (if $usage != null then ($usage.seven_day.utilization // 0)
+  | (if $usage != null then ($usage.seven_day.utilization | numor(0))
      else pct($week_cost // 0; $week_cap) end) as $week_pct
   | ([$five_pct, $week_pct] | max) as $max_pct
   | (if $max_pct >= $crit then "crit"
@@ -336,8 +339,8 @@ jq -n \
           } ]
         else null end),
       spend: (if ($usage != null and $usage.spend != null) then {
-        used: (if $usage.spend.used != null then ($usage.spend.used.amount_minor / pow(10; $usage.spend.used.exponent)) else null end),
-        cap:  (if $usage.spend.limit != null then ($usage.spend.limit.amount_minor / pow(10; $usage.spend.limit.exponent)) else null end),
+        used: (if $usage.spend.used != null then (try ($usage.spend.used.amount_minor / pow(10; $usage.spend.used.exponent)) catch null) else null end),
+        cap:  (if $usage.spend.limit != null then (try ($usage.spend.limit.amount_minor / pow(10; $usage.spend.limit.exponent)) catch null) else null end),
         currency: ($usage.spend.used.currency // $usage.spend.limit.currency // null),
         percent: ($usage.spend.percent // null),
         enabled: ($usage.spend.enabled // false)
