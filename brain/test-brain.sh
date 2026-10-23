@@ -2790,6 +2790,38 @@ rm -rf "$DVFIX"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (vfc-E) verificar-firma-canonica (E): la denylist de hooks retirados DERIVA del MANIFEST+RETIRED, no fija =="
+# MEDIO auditoría 2026-10-22: RETIRED_HOOKS estaba HARDCODEADO a 'precompact-volcar-estado' → driftaba del
+# MANIFEST (que marca `retirado` a git-branch-guard, secret-scan, …). Ahora se deriva; y avisa SOLO si el
+# nombre aparece SIN marca de retiro (una nota de retiro legítima no es stale).
+VFC="$SCRIPT_DIR/verificar-firma-canonica.sh"
+if [ -f "$VFC" ]; then
+  _vfc_mk() { mkdir -p "$1/.claude/memory"; printf '# firma\n' > "$1/CLAUDE.md"; printf '%s\n' "$2" > "$1/.claude/memory/MEMORY.md"; }
+  _vfc_E() { bash "$VFC" "$1" 2>&1 | grep -iE 'hook RETIRADO'; }
+  # (1) un hook retirado SOLO conocido por el MANIFEST (git-branch-guard), mencionado como VIVO → AVISA.
+  VFC1="$(mktemp -d)"; _vfc_mk "$VFC1" '- git-branch-guard: push directo a develop -> denegado (guard vivo)'
+  _vfc_E "$VFC1" | grep -q 'git-branch-guard' \
+    && ok "vfc-E: un retirado del MANIFEST (git-branch-guard) nombrado como VIVO → WARN (denylist derivada, no fija)" \
+    || bad "vfc-E: no detectó git-branch-guard (la denylist sigue fija en precompact-volcar-estado)"
+  rm -rf "$VFC1"
+  # (2) el MISMO hook en una NOTA DE RETIRO (con marca) → silencio (no FP sobre historia legítima).
+  VFC2="$(mktemp -d)"; _vfc_mk "$VFC2" 'git-branch-guard se RETIRO el 2026-10-21 (lapida en el MANIFEST); su logica vive en PASO 0.'
+  _vfc_E "$VFC2" | grep -q 'git-branch-guard' \
+    && bad "vfc-E: FP — avisó sobre una NOTA DE RETIRO legítima de git-branch-guard" \
+    || ok "vfc-E: una nota de retiro (con marca 'RETIRO/lapida/…') NO dispara (per-línea, sin FP)"
+  rm -rf "$VFC2"
+  # (3) precompact-volcar-estado (en el seed/RETIRED) como vivo → sigue avisando (no se perdió el caso base).
+  VFC3="$(mktemp -d)"; _vfc_mk "$VFC3" '- precompact-volcar-estado: vuelca el estado al compactar'
+  _vfc_E "$VFC3" | grep -q 'precompact-volcar-estado' \
+    && ok "vfc-E: precompact-volcar-estado (base) como vivo → sigue avisando" \
+    || bad "vfc-E: perdió el caso base precompact-volcar-estado"
+  rm -rf "$VFC3"
+else
+  echo "  (falta verificar-firma-canonica.sh → SKIP vfc-E)"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "== (b3h) cementerio.sh: add acuña ID determinista + dedup · verify caza ref huérfana =="
 CEMFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-cem.XXXXXX")"
 CEMMEM="$CEMFIX/.claude/memory"; mkdir -p "$CEMMEM"

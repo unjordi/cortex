@@ -179,20 +179,30 @@ fi
 # (E) Nombres de hook STALE / RETIRADOS en la prosa (CLAUDE.md + MEMORY.md)
 echo ""
 echo "== (E) sin nombres de hook retirados en la prosa =="
-# Denylist PRECISA de hooks que el cerebro RETIRÓ: si aparecen en la prosa, la doc miente.
-# (Baja tasa de FP a propósito: NO adivinamos "todo lo que parezca hook", solo lo confirmado-retirado.)
-RETIRED_HOOKS="precompact-volcar-estado"
+# Denylist de hooks RETIRADOS: se DERIVA del clon (fuente única), no hardcodeada (MEDIO auditoría
+# 2026-10-22: la lista fija 'precompact-volcar-estado' driftaba del MANIFEST, que marca `retirado` a 15
+# hooks —git-branch-guard, secret-scan, merge-squash-guard…—). Union de las DOS listas canónicas del clon
+# donde vive este script: la 2ª columna `retirado` del MANIFEST + el archivo RETIRED. Fallback al seed.
+_MANIFEST="$(dirname "$0")/hooks/MANIFEST"; _RETFILE="$(dirname "$0")/hooks/RETIRED"
+RETIRED_HOOKS=""
+[ -f "$_MANIFEST" ] && RETIRED_HOOKS="$RETIRED_HOOKS $(awk '$1!~/^#/ && $2=="retirado"{print $1}' "$_MANIFEST" 2>/dev/null)"
+[ -f "$_RETFILE" ]  && RETIRED_HOOKS="$RETIRED_HOOKS $(grep -vE '^[[:space:]]*(#|$)' "$_RETFILE" 2>/dev/null)"
+RETIRED_HOOKS=$(printf '%s\n' $RETIRED_HOOKS | grep -E '^[A-Za-z0-9_-]+$' | sort -u | tr '\n' ' ')
+[ -n "$RETIRED_HOOKS" ] || RETIRED_HOOKS="precompact-volcar-estado"
+# Warn SOLO en una línea que menciona el hook SIN marca de retiro (lo trata como si siguiera VIVO). Una
+# nota de retiro legítima ("X se RETIRÓ / absorbió / consolidó / reemplazó / 🪦 / lápida") NO es stale.
+_RET_MARK='retir|jubil|absorb|consolid|reemplaz|deprecat|🪦|l[áa]pida'
 stale=0
 for doc in "$CLAUDEMD" "$MEMMD"; do
   [ -f "$doc" ] || continue
   for h in $RETIRED_HOOKS; do
-    if grep -qF "$h" "$doc"; then
-      warn "hook RETIRADO nombrado en $(basename "$doc"): '$h' — la prosa quedó stale (ya no existe ese guard)."
+    if grep -F "$h" "$doc" 2>/dev/null | grep -viqE "$_RET_MARK"; then
+      warn "hook RETIRADO '$h' nombrado SIN marca de retiro en $(basename "$doc") — la prosa lo trata como si siguiera vivo (stale)."
       stale=$((stale+1))
     fi
   done
 done
-[ "$stale" -eq 0 ] && info "sin menciones a hooks retirados conocidos."
+[ "$stale" -eq 0 ] && info "sin menciones VIVAS a hooks retirados (denylist derivada del MANIFEST + RETIRED del clon)."
 
 # ───────────────────────────────────────────────────────────────────────  ──
 echo ""
