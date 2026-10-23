@@ -60,9 +60,43 @@ _tiene_escritura_a_archivo() {
   printf '%s' "$c" | grep -qE '(^|[^[:alnum:]_/])curl[[:space:]][^|&;]*(-o|--output)([[:space:]]|=)' && return 0
   printf '%s' "$c" | grep -qE '(^|[^[:alnum:]_/])wget[[:space:]][^|&;]*(-O|--output-document)([[:space:]]|=)' && return 0
   printf '%s' "$c" | grep -qE '(^|[^[:alnum:]_/])git[[:space:]][^|&;]*(checkout|restore)[[:space:]][^|&;]*--([[:space:]]|$)' && return 0
-  r=$(printf '%s' "$c" | sed -E 's/2>>?[[:space:]]*[^|&;[:space:]]*//g; s/[0-9]*>&[0-9-]*//g; s/&>>?[[:space:]]*[^|&;[:space:]]*//g; s#>>?[[:space:]]*/dev/null##g')
+  # R5-2: quita también las FLECHAS `->`/`=>` para no confundirlas con una redirección `>` (un mensaje
+  # `git commit -m 'agente -> deny'` no es una escritura).
+  r=$(printf '%s' "$c" | sed -E 's/2>>?[[:space:]]*[^|&;[:space:]]*//g; s/[0-9]*>&[0-9-]*//g; s/&>>?[[:space:]]*[^|&;[:space:]]*//g; s#>>?[[:space:]]*/dev/null##g; s/[-=]>//g')
   printf '%s' "$r" | grep -qE '>' && return 0
   return 1
+}
+
+# R5-2 (auditoría 2026-10-23): extrae los DESTINOS de escritura del comando (token tras >/>> —no 2>/>&/&>/
+# /dev/null ni la flecha ->/=>—, args de tee, el ÚLTIMO arg de cp/mv/ln/install/rsync, dd of=, curl -o,
+# wget -O, sponge) y resuelve UN nivel de $VAR/${VAR} por las asignaciones VAR=valor del propio comando.
+# Captura `$(...)`/`${...}` como unidad (no se corta en espacios). Lo usa la regla (B) para exigir que el
+# nombre del grant esté en el DESTINO, no en cualquier parte: así el nombre en TEXTO (-m/--body), en una
+# LECTURA (`cat grant | … > otro`) o en un heredoc NO dispara (FPs de R5-2), mientras la indirección por
+# variable/split/glob EN EL DESTINO (R5-1b/indirección) sí.
+_destinos_escritura() {
+  local c="$1" red dst d vn vv
+  red=$(printf '%s' "$c" | sed -E 's/2>>?[[:space:]]*[^|&;[:space:]]*//g; s/[0-9]*>&[0-9-]*//g; s/&>>?[[:space:]]*[^|&;[:space:]]*//g; s#>>?[[:space:]]*/dev/null##g; s/[-=]>//g')
+  dst=$(
+    printf '%s\n' "$red" | grep -oE '>>?[[:space:]]*(\$\([^)]*\)|[^[:space:]<>|&;]+)' | sed -E 's/^[[:space:]]*>>?[[:space:]]*//'
+    printf '%s\n' "$c"   | grep -oE '(^|[^[:alnum:]_/])tee([[:space:]]+-[A-Za-z]+)*[[:space:]]+[^|&;]+' | sed -E 's/.*tee([[:space:]]+-[A-Za-z]+)*[[:space:]]+//'
+    printf '%s\n' "$c"   | grep -oE '(^|[^[:alnum:]_/])(cp|mv|ln|install|rsync)[[:space:]][^|&;]+' | awk '{print $NF}'
+    printf '%s\n' "$c"   | grep -oE 'of=[^[:space:]|&;]+' | sed 's/^of=//'
+    printf '%s\n' "$c"   | grep -oE '(-o|--output)[[:space:]]+[^[:space:]|&;]+' | sed -E 's/^(-o|--output)[[:space:]]+//'
+    printf '%s\n' "$c"   | grep -oE '(-O|--output-document)[[:space:]]*=?[[:space:]]*[^[:space:]|&;]+' | sed -E 's/^(-O|--output-document)[[:space:]]*=?[[:space:]]*//'
+    printf '%s\n' "$c"   | grep -oE '(^|[^[:alnum:]_/])sponge[[:space:]]+[^[:space:]|&;]+' | sed -E 's/.*sponge[[:space:]]+//'
+  )
+  printf '%s\n' "$dst" | while IFS= read -r d; do
+    [ -n "$d" ] || continue
+    case "$d" in
+      *'$'[A-Za-z_]*|*'${'*)
+        vn=$(printf '%s' "$d" | sed -E 's/.*\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?.*/\1/')
+        vv=$(printf '%s' "$c" | grep -oE "(^|[^[:alnum:]_])$vn=[^[:space:];|&<>]+" | head -1 | sed -E "s/.*$vn=//")
+        if [ -n "$vv" ]; then printf '%s\n' "$d" | sed -E "s/\\\$\\{?$vn\\}?/$(printf '%s' "$vv" | sed 's/[&/\]/\\&/g')/g"
+        else printf '%s\n' "$d"; fi ;;
+      *) printf '%s\n' "$d" ;;
+    esac
+  done
 }
 
 # R5-1b (auditoría 2026-10-23): una escritura cuyo DESTINO es un GLOB bajo .../memory/ que PODRÍA expandir al
@@ -131,11 +165,11 @@ printf '%s' "$norm" | grep -qE '>>?[[:space:]]*[^[:space:]<>|&;]*'"$_AUTH_GLOB" 
 # 2) tee (escribe cada archivo-argumento; -a = append).
 printf '%s' "$norm" | grep -qE '(^|[^[:alnum:]_/])tee([[:space:]]+-[A-Za-z]+)*[[:space:]]+[^|&;]*'"$_AUTH_GLOB" \
   && _deny "tee hacia el archivo"
-# 3) sed -i / in-place, y cp/mv/ln/install/rsync/dd of= con el archivo como argumento (destino).
+# 3) sed -i / in-place y dd of= con el archivo como destino. (cp/mv/ln/install/rsync NO van aquí: su nombre
+#    puede ser la FUENTE —p. ej. `mv docs/autorizaciones-vigentes-notas.md archivo/`, R5-2 FP— así que su
+#    DESTINO lo valida la sección (B) destino-based, que toma el ÚLTIMO arg.)
 printf '%s' "$norm" | grep -qE '(^|[^[:alnum:]_/])sed[[:space:]]+[^|&;]*-i[^|&;]*'"$_AUTH_GLOB" \
   && _deny "sed -i sobre el archivo"
-printf '%s' "$norm" | grep -qE '(^|[^[:alnum:]_/])(cp|mv|ln|install|rsync)([[:space:]]+-[A-Za-z]+)*[[:space:]]+[^|&;]*'"$_AUTH_GLOB" \
-  && _deny "cp/mv/ln/install/rsync con el archivo como destino"
 printf '%s' "$norm" | grep -qE '(^|[^[:alnum:]_/])dd([[:space:]]+[^|&;]*)?[[:space:]]of='"[^[:space:]|&;]*$_AUTH_GLOB" \
   && _deny "dd of= hacia el archivo"
 # 4) Intérprete que abre el archivo en modo ESCRITURA (python/perl/ruby/node/php) — heurística: el
@@ -159,23 +193,24 @@ printf '%s' "$norm" | grep -qE '(^|[^[:alnum:]_/])(sed|ed|ex)[[:space:]][^|&;]*[
 printf '%s' "$norm" | grep -qE '(^|[^[:alnum:]_/])git[[:space:]][^|&;]*(checkout|restore)[[:space:]][^|&;]*--[[:space:]]+[^|&;]*'"$_AUTH_GLOB" \
   && _deny "git checkout/restore -- hacia el archivo (sobrescribe el working file)"
 
-# ── (B) INDIRECCIÓN (MEDIO 2026-10-23, verificado contra el hook): una variable/glob/split oculta el destino
-# y los vectores directos de (A) NO lo ven — p. ej. `F=…/autorizaciones-vigentes.local.md; echo x >> $F`,
-# `echo x >> .claude/memory/autoriz*`, `n=autorizaciones; echo x >> .claude/memory/$n-vigentes.local.md`. Con
-# el piso de la cita ya retirado (una palabra de cualquier mensaje humano basta), esta cadena re-habilita la
-# AUTO-AUTORIZACIÓN → se cierra con una regla CONSERVADORA: si hay un OPERADOR DE ESCRITURA A ARCHIVO Y el
-# comando (a) reconstruye las DOS mitades del nombre (`autoriz…` + `…vigentes`) o (b) usa un GLOB pegado a una
-# mitad (podría expandir al archivo real) → DENY. LEER sin operador de escritura sigue pasando; una escritura
-# con `autoriz` pero SIN `vigentes` ni glob (p. ej. `echo autorizado > status.txt`) NO dispara (anti-FP).
-# RESIDUAL BAJO (NO cubierto aquí a propósito, por la norma de precisión): ofuscación pura que no deja ninguna
-# mitad en el texto — `base64 … | sh`, `$(printf … | rev)`, o escribir un script aparte y ejecutarlo después.
-# Esos los cubren la revisión HUMANA del PR (nadie mergea solo) y el juez de merge; cerrarlos aquí exigiría
-# ejecutar/evaluar el comando (inviable en un hook de PreToolUse).
+# ── (B) INDIRECCIÓN (MEDIO 2026-10-23): una variable/glob/split oculta el DESTINO y los vectores literales de
+# (A) NO lo ven — `F=…/autorizaciones-vigentes.local.md; echo x >> $F`, `echo x >> .claude/memory/autoriz*`,
+# `n=autorizaciones; echo x >> .claude/memory/$n-vigentes.local.md`, `echo x >> $(ls autoriz*)`. Con el piso de
+# la cita ya retirado (una palabra de cualquier mensaje humano basta), esta cadena re-habilita la AUTO-
+# AUTORIZACIÓN. REFINADO en R5-2 (auditoría 2026-10-23): la regla opera sobre los DESTINOS de escritura
+# (`_destinos_escritura`, con $VAR resuelto) y NO sobre "el nombre en cualquier parte" — antes el nombre en
+# TEXTO (`git commit -m 'autoriz => vigentes'`), en una LECTURA (`cat grant | head > otro`) o en un heredoc
+# daba un FALSO POSITIVO. Si algún DESTINO (a) reconstruye las DOS mitades (`autoriz…`+`…vigentes`) o (b) usa
+# un GLOB pegado a una mitad → DENY. Más `_glob_memory_casa` para el glob SELECTIVO bajo memory/ (R5-1b).
+# RESIDUAL BAJO (por la norma de precisión): un `$VAR` sin asignación visible en el MISMO comando (seteado en
+# un turno previo), o una ofuscación que no deja ninguna mitad ni glob (base64/rev/script aparte). Los cubren
+# la revisión HUMANA del PR y el juez de merge; cerrarlos aquí exigiría ejecutar el comando.
 if _tiene_escritura_a_archivo "$norm"; then
-  { printf '%s' "$norm" | grep -qiE 'autoriz' && printf '%s' "$norm" | grep -qiE 'vigentes'; } \
-    && _deny "escritura con el nombre reconstruido por indirección ('autoriz…' + '…vigentes' en variable/split)"
-  # Glob pegado a una mitad del nombre — reconoce *, ? y `[` (clase/bracket-glob, R5-1d) como metacarácter.
-  printf '%s' "$norm" | grep -qiE '(autoriz|vigentes)[^[:space:]<>|&;]*[][*?]|[][*?][^[:space:]<>|&;]*(autoriz|vigentes)' \
+  _DST="$(_destinos_escritura "$norm")"
+  { printf '%s' "$_DST" | grep -qiE 'autoriz' && printf '%s' "$_DST" | grep -qiE 'vigentes'; } \
+    && _deny "escritura cuyo DESTINO reconstruye el nombre del archivo ('autoriz…' + '…vigentes' por variable/split)"
+  # Glob pegado a una mitad del nombre EN EL DESTINO — reconoce *, ? y `[` (bracket-glob, R5-1d).
+  printf '%s' "$_DST" | grep -qiE '(autoriz|vigentes)[^[:space:]<>|&;]*[][*?]|[][*?][^[:space:]<>|&;]*(autoriz|vigentes)' \
     && _deny "escritura hacia un glob que puede expandir al archivo de grants (autoriz* / *vigentes / [a]utoriz…)"
   # Glob bajo …/memory/ SELECTIVO para el grant aunque no deletree ninguna mitad (R5-1b: `*.local.md`).
   _glob_memory_casa "$norm" \

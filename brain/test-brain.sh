@@ -3142,6 +3142,23 @@ pa_is_deny "$(pa_bash 'echo x >> .claude/memory/bitacora.md; ls .claude/memory/*
 pa_is_deny "$(pa_bash 'for f in .claude/memory/*.md; do wc -l $f; done')"                 && { bad "proteger-autorizaciones R5-1 FP: lectura por glob (wc) se denegó"; pa_r5cfail=1; }
 pa_is_deny "$(pa_file Edit "/x/.claude/memory/conocimiento-propio.local.md")"             && { bad "proteger-autorizaciones R5-1 FP: Edit a OTRO .local.md se denegó"; pa_r5cfail=1; }
 [ "$pa_r5cfail" = 0 ] && ok "proteger-autorizaciones R5-1: anti-FP (glob amplio *.md + write ajeno · lectura por glob · otro .local.md) → PASA"
+# (10) R5-2 (auditoría 2026-10-23, claudio reprodujo): la regla de indirección (B) disparaba cuando el nombre
+#      aparecía en CUALQUIER PARTE (texto de -m/--body, una LECTURA cat grant|…>otro, un heredoc) y ->/=> se
+#      contaba como redirección. Ahora opera sobre los DESTINOS de escritura (`_destinos_escritura`, con $VAR
+#      resuelto) → el nombre fuera del destino NO dispara. FALLAN vs f440234/09a114e (todos DENEGABAN en falso).
+pa_r5b=0
+pa_is_deny "$(pa_bash "git commit -m 'grant vigentes: agente autoriz => deny'")" && { bad "proteger-autorizaciones R5-2 FP: git commit -m con => y ambas mitades en TEXTO se denegó"; pa_r5b=1; }
+pa_is_deny "$(pa_bash "cat $AF | head > /tmp/out.txt")"                           && { bad "proteger-autorizaciones R5-2 FP: LECTURA (cat grant | head > otro) se denegó"; pa_r5b=1; }
+pa_is_deny "$(pa_bash "grep -r autorizaciones-vigentes brain/ > /tmp/g.txt")"      && { bad "proteger-autorizaciones R5-2 FP: grep del nombre con salida a OTRO archivo se denegó"; pa_r5b=1; }
+pa_is_deny "$(pa_bash 'mv docs/autorizaciones-vigentes-notas.md docs/archivo/')"   && { bad "proteger-autorizaciones R5-2 FP: mv de un archivo AJENO (nombre en la FUENTE, no el destino) se denegó"; pa_r5b=1; }
+pa_is_deny "$(pa_bash 'x=$(cat .claude/memory/autorizaciones-vigentes.local.md); echo "$x" > /tmp/n.txt')" && { bad "proteger-autorizaciones R5-2 FP: lectura por \$() con write a OTRO archivo se denegó"; pa_r5b=1; }
+[ "$pa_r5b" = 0 ] && ok "proteger-autorizaciones R5-2: el nombre en TEXTO/-m/lectura/heredoc (no en el destino) ya NO da FP (destino-based, falla vs f440234)"
+# (10b) regresión: la indirección por DESTINO (variable/split/glob/\$(ls)) SIGUE DENY tras el refactor destino-based.
+pa_r5c=0
+pa_is_deny "$(pa_bash "F=$AF; echo x >> \$F")"                                    || { bad "proteger-autorizaciones R5-2 reg: F=; >>\$F dejó de denegar"; pa_r5c=1; }
+pa_is_deny "$(pa_bash 'echo x >> $(ls .claude/memory/autoriz*)')"                 || { bad "proteger-autorizaciones R5-2 reg: >> \$(ls autoriz*) dejó de denegar"; pa_r5c=1; }
+pa_is_deny "$(pa_bash "cp /tmp/x $AF")"                                           || { bad "proteger-autorizaciones R5-2 reg: cp con el grant de DESTINO dejó de denegar"; pa_r5c=1; }
+[ "$pa_r5c" = 0 ] && ok "proteger-autorizaciones R5-2: la indirección por DESTINO (variable/\$(ls)/cp-destino) sigue DENY"
 
 echo "== (b3a3) verificar-cerebro: drift-check instalada-vs-fuente (idéntica→0; difiere→la lista; local→ignora) =="
 DVFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-dv.XXXXXX")"
