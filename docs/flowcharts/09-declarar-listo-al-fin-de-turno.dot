@@ -121,9 +121,9 @@ digraph flujos {
     CLOSE [color="#7fb069", penwidth=2,
            label="🟢 cierra — hay (1) confirmación del usuario o (2) su OK expreso.\nbuild/tests + memoria se RECUERDAN como peldaño, NO como candado (varían por stack).\n📜 → 🎯 Definición de LISTO"];
     BLOCK [color="#c0392b", penwidth=2,
-           label="🔴 BLOCK — verde técnico ≠ LISTO. Sin (1) ni (2) no se declara LISTO;\n«sigue/avanza» NO cuenta. Da el estatus honesto y espera el OK/QA del usuario.\nB4: si es MIGRACIÓN, la prueba acordada es AUDITORÍA DE PARIDAD, no build+tests"];
-    NOCODE [color="#7fb069",
-            label="🟢 cierra — un «listo» de solo docs/config no exige verificación técnica"];
+           label="🔴 BLOCK — verde técnico ≠ LISTO. Sin (1) ni (2) no se declara LISTO;\n«sigue/avanza» NO cuenta. Da el estatus honesto y espera el OK/QA del usuario.\nCON código: candado duro (build/tests + marca). SOLO docs: B5 — un entregable\n(doc/reporte/análisis) cerrado sin la marca del usuario tampoco pasa (antes lo dejaba colar).\nB4: si es MIGRACIÓN, la prueba acordada es AUDITORÍA DE PARIDAD, no build+tests"];
+    NOCODE [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
+            label="📝 nota — «tocó código» NO decide si se bloquea, solo QUÉ EVIDENCIA se cita:\nCON código → verificación técnica (build/tests) + marca · SIN código (doc/reporte/análisis) → build/tests\nNO aplican, pero el candado (1)/(2) SÍ. La MARCA es lo que decide en AMBAS ramas (la definición de\nLISTO es MUTUA e independiente del stack). Un Task que delega la edición cuenta como POSIBLE código (ALTO-2)."];
 
     // Aristas
     STOP -> PISO;
@@ -136,9 +136,9 @@ digraph flujos {
     VIS -> CIERREQ [label="no"];
     CIERREQ -> NODISPARA [label="no"];
     CIERREQ -> CODEQ [label="sí (afirma cierre)"];
-    CODEQ -> NOCODE [label="no (solo docs)"];
-    CODEQ -> MARCAQ [label="sí (tocó código)"];
+    CODEQ -> MARCAQ [label="tocó código  O  solo docs\n(la MARCA decide igual)"];
+    CODEQ -> NOCODE [style=dashed, arrowhead=none, label="la distinción código/docs\nsolo cambia la EVIDENCIA citada"];
     MARCAQ -> CLOSE [label="sí (cita verificada)"];
-    MARCAQ -> BLOCK [label="no"];
+    MARCAQ -> BLOCK [label="no (con código: candado duro;\nsolo docs: B5 entregable sin confirmar)"];
   }
 }

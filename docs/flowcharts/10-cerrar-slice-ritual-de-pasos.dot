@@ -122,7 +122,7 @@ digraph flujos {
     P4_FIX [color="#c62828", penwidth=3,
             label="⚠ ESCRIBE git · arregla y re-push a la ramita"];
     P4_MERGE [color="#c62828", penwidth=3,
-              label="⚠ ESCRIBE git · merge --squash (resumen curado en prosa, no el pegote de commits)\nSIN --auto-merge/--auto (NO lo dejes en MWPS/armado: rompe la fase de autorización)\nLo hace cumplir merge-develop-guard (fase squash + fase autorización, ver 06)"];
+              label="⚠ ESCRIBE git · merge --squash + --delete-branch/--remove-source-branch · SIN --auto/--auto-merge (no MWPS)\ncerrar-slice.sh lo ARMA con valores LITERALES: forge por el HOST de origin (github.com→gh · *gitlab*→glab;\nhost desconocido/sin origin → error, NO adivina por la CLI instalada) · ABORTA si la base del MR/PR no es develop\n(main/master = RELEASE SIN squash, OTRO acto · base irresoluble → aborta, no mergea a ciegas) (C2).\nEl squash-message ya NO se valida determinista (retirado 2026-10-21): cerrar-slice AGREGA la traza «Rama:/MR:» si\nfalta (acepta multi-rama en una línea, sin duplicar) y ADVIERTE la sustancia, pero NUNCA aborta por el mensaje.\nLo hace cumplir merge-develop-guard — C2: reconoce `bash cerrar-slice.sh` (corre el merge POR DENTRO) como\nmerge a develop → cae directo al juez de AUTORIZACIÓN (garantiza --squash/--delete-branch, sin deny-en-falso). Ver 06."];
     P5 [shape=diamond, fillcolor="#2b2622", color="#d97757",
         label="5 · 🌱 Cosecha\n¿la lección / herramienta es GENÉRICA (no atada a este proyecto)?"];
     P5_G [color="#7fb069",

@@ -123,6 +123,10 @@ digraph flujos {
     PASA [color="#7fb069", penwidth=2,
           label="🟢 PASA — estos 3 guards NO gobiernan este comando\n(no es un merge/push a base: p. ej. `git push origin feat/x`,\n`glab mr view`, `mr diff`) — el comando corre tal cual, SIN squash ni release"];
 
+    // ── Cierre del ciclo: tras el merge+delete-branch, la rama LOCAL queda zombie → barrer-ramas la poda (det. en 02) ──
+    BARR [color="#7fb069",
+          label="🟢 tras el MERGE con --delete-branch, la rama LOCAL queda ZOMBIE → 🧹 barrer-ramas la poda\n(SessionStart / al punto del merge, detached — detalle en 02). La lib ramas-zombie.sh la reconoce\nSQUASH-SAFE: modo BARRIDO activa la señal (p) presencia-por-CONTENIDO (merge-tree) + el pie\n«Rama: <br>» del squash en el log de la base — que ACEPTA MULTI-rama («Rama: feat/a, feat/b» de\nun slice/épica, que cerrar-slice redacta sin duplicar). Sin pie ni contenido → otras señales o CONSERVA"];
+
     // Aristas — flujo SÓLIDO (secuencia intra-chart); dashed queda RESERVADO a cross-ref a otro chart (§4)
     CMD -> GBG;
     GBG -> GBG_D [label="toca base directo"];
@@ -137,5 +141,6 @@ digraph flujos {
     CMD_G -> OK     [label="repo personal /\nrama personal"];
     CMD_OK -> CMD_D [label="sin OK expreso /\njuez UNAVAILABLE /\nsin jq (parece merge) /\nmain sin release"];
     CMD_OK -> OK    [label="OK citado /\ngrant durable vigente"];
+    OK -> BARR [label="develop: --delete-branch →\nla rama local queda zombie"];
   }
 }

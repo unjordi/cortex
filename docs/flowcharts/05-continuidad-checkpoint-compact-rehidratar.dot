@@ -115,7 +115,7 @@ digraph flujos {
     REHID [shape=diamond, fillcolor="#2b2622", color="#d97757",
            label="🔔🧵 rehidratar-hilo  (SessionStart · GLOBAL) — LECTOR de DOS artefactos (F1, 2026-09-11)\n(1) hilo-mental-actual.md → GATE DE FRESCURA: ¿la rama del hilo = la actual? (+ la EDAD, siempre, como DATO)\n(2) hilo-mental-actual.andamio.md → si es MÁS FRESCO que el hilo, se inyecta TAMBIÉN, etiquetado aparte\n🟡 canal FIABLE depende de jq: sin jq, emite printf crudo (SessionStart NO lo consume como contexto)"];
     NOHILO [style="rounded,filled", fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
-            label="silencioso: NI hilo NI andamio (o ambos vacíos) → exit 0\n(caso normal en repos que no usan el sistema)"];
+            label="NI hilo NI andamio (o ambos vacíos) — bifurca por el GATE usa_sistema:\n¿el `.claude/` del repo trae algo MÁS que settings.local.json? (el que crea Claude Code solo NO cuenta)\nY NO es el config dir ${CLAUDE_CONFIG_DIR:-~/.claude} ni ROOT=$HOME (si no, ~ sembraría en la config):\n  USA el sistema → SIEMBRA estado-proyecto.md (stub `## 🧭 BACKLOG`) si falta, y en source=compact|resume\n  antepone la ORDEN de correr el skill reconstruir-contexto (+ aviso «compactaste SIN hilo» en compact)\n  NO usa el sistema (folder PLAIN / la config) → silencioso: exit 0 (idempotente, fail-open)"];
     ANDIN [color="#7fb069",
            label="🟢 «🤖 ANDAMIO MECÁNICO — NO es el hilo y NO es juicio»  (se inyecta ADEMÁS del hilo)\nel andamio es MÁS FRESCO que el hilo ⇒ describe el tramo que el hilo NO alcanzó a cubrir\n(el caso que lo motiva: el auto-compact GANÓ la carrera y no hubo checkpoint)\nva ACOTADO (ANDAMIO_MAX_LINEAS=140) y con etiqueta propia: EVIDENCIA, nunca razonamiento\n⚠️ si su sid ≠ el de esta sesión → se marca «DE OTRA SESIÓN» (tras una mudanza, el andamio\ndel repo destino es del stream que ya vivía ahí, no del master que acaba de llegar)\nsi el hilo es MÁS fresco: solo se MENCIONA (ya se fusionó al volcar; no se paga ventana dos veces)"];
     FRESCO [color="#7fb069",
@@ -154,7 +154,7 @@ digraph flujos {
     SS -> SINI;
     SS -> REHID [label="misma SessionStart"];
     SINI -> RESUME;
-    REHID -> NOHILO [label="ni hilo ni andamio\n(exit 0, silencioso)"];
+    REHID -> NOHILO [label="ni hilo ni andamio\n(bifurca por usa_sistema)"];
     REHID -> ANDIN  [label="hay andamio y es\nMÁS FRESCO que el hilo\n(o no hay hilo)", color="#7fb069", fontcolor="#7fb069"];
     REHID -> FRESCO [label="rama coincide  ·  o\nindeterminada y mtime<12h"];
     REHID -> STALE  [label="rama distinta, o\nindeterminada y mtime≥12h"];

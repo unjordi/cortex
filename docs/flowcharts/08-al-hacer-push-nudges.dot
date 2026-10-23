@@ -138,7 +138,7 @@ digraph flujos {
     POST [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
           label="PostToolUse sobre ese mismo Bash (push) — corre EN PARALELO"];
     CTX [color="#e08e45",
-         label="🔔📈 aviso-contexto\n🟠 reporta el watermark de contexto CRUDO (tokens · ventana · %)\nsolo al CRUZAR un escalón de +50K tokens (debounce, STEP=50000)\nsilencioso si no cruza escalón, repo sin .claude/memory, o sin jq/transcript"];
+         label="🔔📈 aviso-contexto (ver 02/05 para el flujo completo)\n🟠 mide TOKENS REALES del último `usage` vs GOV (=autoCompactWindow si auto-compact ON, si no la ventana del modelo)\nBANDAS como % de GOV: ALTO 80% · CRÍTICO 92% — debounce por BANDA (1 disparo + 1 escalada), se re-arma al bajar el ctx\nal cruzar: VUELCA el andamio MECÁNICO (0 tokens) y ORDENA /checkpoint + /compact · 2ª causa = CUOTA (5h 80/95, semanal 80)\nmodelo desconocido / sin ventana por evidencia / sin jq/transcript → CALLA (exit 0)"];
     POST_OTROS [style="rounded,filled", fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
                 label="+ 🔔🧹 barrer-ramas (Bash)\nno bloquea — detalle completo en 03"];
 
