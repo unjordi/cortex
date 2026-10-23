@@ -555,8 +555,9 @@ public sealed class PopupForm : Form
     {
         if (bucket == null) return "";
         string s = ResetLine(bucket.ResetsAt);
-        if (bucket.CostUsd is double c)
-            s += $" · ≈ ${c.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} (API equiv local)";
+        double? c = bucket.EquivSessionCostUsd ?? bucket.EquivWeeklyCostUsd;
+        if (c is double cd)
+            s += $" · ≈ ${cd.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} (API equiv local)";
         return s;
     }
 
@@ -1970,15 +1971,12 @@ public sealed class PopupForm : Form
     [
         new("🔒", "Hooks Forzosos", Fmt.Hex("#cf5a49"), "hooks que bloquean (deny) — no negociables",
         [
-            new("🚧", "git-branch-guard", "push/merge a develop·main → denegado, te redirige a ramita→MR",
+            new("🔗", "merge-develop-guard", "push directo a develop·main, o MR sin --squash/sin tu OK → denegado; a main exige OK súper-explícito",
                 "PreToolUse · Bash",
-                "Escanea cada comando: si ve un `git push` o un merge que apunte a develop/main, lo deniega y te recuerda el flujo ramita→MR. Sin jq falla ABIERTO (no bloquea)."),
-            new("🔗", "merge-develop-guard", "MR a develop sin --squash o sin tu OK → denegado; a main exige OK súper-explícito",
-                "PreToolUse · Bash",
-                "Candado ÚNICO del punto de merge. Un `gh pr merge`/`glab mr merge` a develop sin --squash se deniega, para que la ramita colapse a un commit curado; además busca tu OK explícito en el chat reciente antes de integrar. A main exige lenguaje de release ('hasta main', 'libera') y va SIN squash (conserva historia). Un 'sigue/avanza' NO cuenta como autorización."),
-            new("🕵️", "secret-scan", "commit/push con un secreto → denegado",
-                "PreToolUse · Bash",
-                "Escanea lo que ENTRA al repo (staged en commit, saliente en push) buscando llaves/tokens/claves privadas de formato inconfundible (AWS, PEM, Anthropic, OpenAI, GitHub, GitLab, Slack, Google). Si aparece uno → bloquea: una credencial pusheada queda comprometida aunque la borres. Escape: --no-verify."),
+                "Candado ÚNICO de git. Como PASO 0 deniega el `git push`/merge directo a develop/main y te redirige a ramita→MR (absorbió a git-branch-guard, 2026-10-21). Un `gh pr merge`/`glab mr merge` a develop sin --squash se deniega, para que la ramita colapse a un commit curado; además busca tu OK explícito en el chat reciente antes de integrar. A main exige lenguaje de release ('hasta main', 'libera') y va SIN squash (conserva historia). Un 'sigue/avanza' NO cuenta como autorización."),
+            new("🔏", "proteger-autorizaciones", "escritura del AGENTE al archivo de grants autorizaciones-vigentes* → denegada",
+                "PreToolUse · Bash/Edit",
+                "Cierra la auto-autorización del merge a develop: ese archivo es la vía por la que merge-develop-guard honra un merge SIN el juez (un grant con tu cita). Si el agente lo escribe, elige la subcadena-cita que quiera y se auto-autoriza. Por eso SOLO el humano lo escribe, con el prefijo `!` (que el CLI corre directo, sin pasar por el hook); una escritura del agente (>, >>, tee, sed -i, cp, Edit/Write…) se deniega. LEER el archivo sí pasa."),
             new("✅", "dod-verificar", "Def. of Done (ver Norma 🎯 DoD) sin build+tests+memoria → denegado",
                 "Stop",
                 "Al cerrar el turno, si dijiste 'listo/en producción' tras tocar código fuente, exige evidencia de build+tests verdes y memoria al día, o bloquea el cierre."),

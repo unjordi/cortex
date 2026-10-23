@@ -1,0 +1,1 @@
+ATENDIDO 2026-10-22 (triage): los 5 FPs se arreglaron en la rama (cola vivos-corpus, commits ANTERIORES): no-bypass L66/L105 FP del sh-anchor (d4b24c3) · proteger-arbol L11 orphan-por-contenido (b38d319) · aviso-drift tier-sobran L127/L171 (083695f) · barrer-ramas tema-minis L164 (05a8483). RESIDUAL BAJO: H17 (no-bypass no reconoce ~/ ni $HOME/, falso NEGATIVO) → backlog E4.

@@ -155,6 +155,27 @@ PlasmoidItem {
         onNewData: function(source, data) { disconnectSource(source) }
     }
 
+    // Runner del botón "Re-loguear en Claude": abre konsole con el flujo oficial de login (abre el
+    // navegador). Fire-and-forget como powerRunner. Mismo mandato que relogin() de PopoverView.swift.
+    P5Support.DataSource {
+        id: reloginRunner
+        engine: "executable"
+        connectedSources: []
+        onNewData: function(source, data) { disconnectSource(source) }
+    }
+
+    // Publica el masters.json LOCAL + los respaldos de sesiones al folder de sync configurado, invocando el
+    // script COMPARTIDO brain/sesiones-master/publicar-roster.sh del clon (una sola implementación; los 3
+    // widgets la llaman — Opción A, 2026-10-14). Lo dispara checkUpdateRemote() (el ciclo de chequeo de
+    // versión, como pidió Jordi). Fire-and-forget, FAIL-OPEN. Resuelve el clon en-shell (sin depender de
+    // updRepoPath, que exige linux/install.sh; aquí basta el script).
+    P5Support.DataSource {
+        id: publishRosterRunner
+        engine: "executable"
+        connectedSources: []
+        onNewData: function(source, data) { disconnectSource(source) }
+    }
+
     // Escritura de los mapas de alias (proyectos-alias.json / sesiones-alias.json). Reusa el engine
     // "executable" (igual que catSource lee con `cat`). Al TERMINAR la escritura dispara el refresh
     // — así el refetch relee el archivo YA escrito (evita la carrera write-vs-refetch). El refresh es
@@ -652,11 +673,11 @@ PlasmoidItem {
     // Límites semanales acotados a UN modelo (weekly_scoped con scope.model).
     // Efímeros y cambiantes → se renderizan dinámicamente, sin hardcodear modelos.
     readonly property var scopedLimits: {
-        if (!snapshot || !snapshot.limits) return []
+        if (!snapshot || !snapshot.weekly || !snapshot.weekly.by_model) return []
         var out = []
-        for (var i = 0; i < snapshot.limits.length; i++) {
-            var l = snapshot.limits[i]
-            if (l.kind === "weekly_scoped" && l.model) out.push(l)
+        for (var i = 0; i < snapshot.weekly.by_model.length; i++) {
+            var l = snapshot.weekly.by_model[i]
+            if (l.model) out.push(l)
         }
         return out
     }
@@ -991,15 +1012,12 @@ PlasmoidItem {
             emoji: "🔒", title: "Hooks Forzosos", color: "#cf5a49",
             subtitle: "hooks que bloquean (deny) — no negociables",
             items: [
-                { emoji: "🚧", name: "git-branch-guard",       desc: "push/merge a develop·main → denegado, te redirige a ramita→MR",
+                { emoji: "🔗", name: "merge-develop-guard",    desc: "push directo a develop·main, o MR sin --squash/sin tu OK → denegado; a main exige OK súper-explícito",
                   event: "PreToolUse · Bash",
-                  detail: "Escanea cada comando: si ve un `git push` o un merge que apunte a develop/main, lo deniega y te recuerda el flujo ramita→MR. Sin jq falla ABIERTO (no bloquea)." },
-                { emoji: "🔗", name: "merge-develop-guard",    desc: "MR a develop sin --squash o sin tu OK → denegado; a main exige OK súper-explícito",
-                  event: "PreToolUse · Bash",
-                  detail: "Candado ÚNICO del punto de merge. Un `gh pr merge`/`glab mr merge` a develop sin --squash se deniega, para que la ramita colapse a un commit curado; además busca tu OK explícito en el chat reciente antes de integrar. A main exige lenguaje de release ('hasta main', 'libera') y va SIN squash (conserva historia). Un 'sigue/avanza' NO cuenta como autorización." },
-                { emoji: "🕵️", name: "secret-scan",            desc: "commit/push con un secreto → denegado",
-                  event: "PreToolUse · Bash",
-                  detail: "Escanea lo que ENTRA al repo (staged en commit, saliente en push) buscando llaves/tokens/claves privadas de formato inconfundible (AWS, PEM, Anthropic, OpenAI, GitHub, GitLab, Slack, Google). Si aparece uno → bloquea: una credencial pusheada queda comprometida aunque la borres. Escape: --no-verify." },
+                  detail: "Candado ÚNICO de git. Como PASO 0 deniega el `git push`/merge directo a develop/main y te redirige a ramita→MR (absorbió a git-branch-guard, 2026-10-21). Un `gh pr merge`/`glab mr merge` a develop sin --squash se deniega, para que la ramita colapse a un commit curado; además busca tu OK explícito en el chat reciente antes de integrar. A main exige lenguaje de release ('hasta main', 'libera') y va SIN squash (conserva historia). Un 'sigue/avanza' NO cuenta como autorización." },
+                { emoji: "🔏", name: "proteger-autorizaciones", desc: "escritura del AGENTE al archivo de grants autorizaciones-vigentes* → denegada",
+                  event: "PreToolUse · Bash/Edit",
+                  detail: "Cierra la auto-autorización del merge a develop: ese archivo es la vía por la que merge-develop-guard honra un merge SIN el juez (un grant con tu cita). Si el agente lo escribe, elige la subcadena-cita que quiera y se auto-autoriza. Por eso SOLO el humano lo escribe, con el prefijo `!` (que el CLI corre directo, sin pasar por el hook); una escritura del agente (>, >>, tee, sed -i, cp, Edit/Write…) se deniega. LEER el archivo sí pasa." },
                 { emoji: "✅", name: "dod-verificar",          desc: "Def. of Done (ver Norma 🎯 DoD) sin build+tests+memoria → denegado",
                   event: "Stop",
                   detail: "Al cerrar el turno, si dijiste 'listo/en producción' tras tocar código fuente, exige evidencia de build+tests verdes y memoria al día, o bloquea el cierre." },
@@ -1185,8 +1203,8 @@ PlasmoidItem {
 
     // Catálogo conocido (mismos conjuntos que BrainState.knownGlobalHooks / knownRepoHooks del Swift).
     // DEBE coincidir con brain/hooks/MANIFEST; lo verifica el drift-check del widget (test-brain.sh).
-    readonly property var brainGlobalHooks: ["git-branch-guard","merge-develop-guard","secret-scan","proteger-arbol","proteger-fuente-cerebro","limite-gasto","delegacion-gate","delegacion-registrar","rehidratar-hilo","aviso-contexto","aviso-drift-cerebro","exportar-sesion-master","checkpoint-mecanico","barrer-ramas","entorno-maquina-guard","no-bypass-deploy"]
-    readonly property var brainRepoHooks:   ["sesion-inicio","dod-verificar","recordar-cosechar"]
+    readonly property var brainGlobalHooks: ["merge-develop-guard","proteger-autorizaciones","proteger-arbol","proteger-fuente-cerebro","limite-gasto","delegacion-gate","delegacion-registrar","rehidratar-hilo","aviso-contexto","aviso-drift-cerebro","exportar-sesion-master","checkpoint-mecanico","barrer-ramas","entorno-maquina-guard","no-bypass-deploy","sesion-inicio","recordar-cosechar"]
+    readonly property var brainRepoHooks:   ["dod-verificar"]
     // Los 4 rótulos de NORMA (pseudo-piezas, gobernados por hasNorms). NO viven en el MANIFEST ni se
     // retiran como skills/hooks → enumerarlos es legítimo (no es la lista drift-prone).
     readonly property var brainNormNames:   ["Definition of Done","Doc <= realidad","Flujo de git","Costo de delegación"]
@@ -1418,6 +1436,9 @@ PlasmoidItem {
     }
     function checkUpdateRemote() {
         if (root.updLocalShort === "?") return   // sin version.json (build viejo) → no molesta
+        // Opción A: en el MISMO ciclo de chequeo de versión, publica el roster + respaldos al folder de sync
+        // (Jordi 2026-10-14). Resuelve el clon en-shell y corre el script compartido; fail-open si no hay clon.
+        publishRosterRunner.connectSource("for d in \"$CLAUDE_BRAIN_DIR\" \"$HOME/.cortex\" \"$HOME/.claude-brain\"; do [ -n \"$d\" ] && [ -f \"$d/brain/sesiones-master/publicar-roster.sh\" ] && { bash \"$d/brain/sesiones-master/publicar-roster.sh\"; break; }; done")
         var url = "https://api.github.com/repos/" + root.updSlug + "/commits/main"
         updateCheckSource.connectSource("curl -fsSL -H 'User-Agent: cortex' '" + url + "'")
     }
@@ -1443,10 +1464,16 @@ PlasmoidItem {
         // `checkout -B main origin/main` (mismo patrón que bootstrap.sh) FUERZA-ALINEA el clon a
         // origin/main en vez de `merge --ff-only`, que fallaba PARA SIEMPRE si el clon quedaba en una
         // rama leftover o con commits locales — este clon es infraestructura, no un checkout de dev.
+        // STASH ANTES DEL checkout -B (paridad con Updater.swift/bootstrap.sh, que YA lo hacen — este
+        // QML se había quedado atrás): sin esto, un ~/.cortex con edits en sitio (p. ej. un SKILL.md
+        // tocado a mano) aborta el checkout y el botón ⬆ queda "sin completar" para siempre, sin
+        // diagnóstico. El stash PRESERVA esos edits (no los descarta como haría un checkout -f).
         var inner = "SRC=" + shq(repo) + "; DST=\\$HOME/.cortex; "
                   + "[ \\$SRC != \\$DST ] && [ -d \\$SRC ] && [ ! -e \\$DST ] && mv \\$SRC \\$DST; "
                   + "DIR=\\$DST; [ -d \\$DIR/.git ] || DIR=\\$SRC; "
-                  + "cd \\$DIR && git fetch origin --quiet && git checkout -B main origin/main && bash \\$DIR/install.sh"
+                  + "cd \\$DIR && git fetch origin --quiet "
+                  + "&& { git stash push -u -m pre-widget-update >/dev/null 2>&1 || true; } "
+                  + "&& git checkout -B main origin/main && bash \\$DIR/install.sh"
         var cmd = "nohup bash -lc \"" + inner + "\" >/tmp/cortex-update.log 2>&1"
         updateRunSource.connectSource(cmd)
     }
@@ -1907,6 +1934,37 @@ PlasmoidItem {
                 // separación entre bloques > espaciado interno (jerarquía del Mac: entre-secciones 14, interno 6)
                 spacing: Kirigami.Units.gridUnit
                 Kirigami.Heading { level: 3; text: "Límites de uso"; Layout.fillWidth: true }
+
+                // Banner de aviso de autenticación + botón de re-login (espeja authBanner de PopoverView.swift).
+                Rectangle {
+                    id: authBanner
+                    Layout.fillWidth: true
+                    readonly property var notice: root.authNotice()
+                    readonly property bool hard: notice ? notice.hard : false
+                    visible: notice !== null
+                    radius: 8
+                    color: hard ? Qt.rgba(0.86, 0.20, 0.26, 0.14) : Qt.rgba(0.91, 0.53, 0.29, 0.14)
+                    implicitHeight: authBannerCol.implicitHeight + 2 * Kirigami.Units.smallSpacing
+                    ColumnLayout {
+                        id: authBannerCol
+                        x: Kirigami.Units.smallSpacing; y: Kirigami.Units.smallSpacing
+                        width: parent.width - 2 * Kirigami.Units.smallSpacing
+                        spacing: Kirigami.Units.smallSpacing
+                        PC3.Label {
+                            Layout.fillWidth: true
+                            text: authBanner.notice ? authBanner.notice.message : ""
+                            wrapMode: Text.WordWrap
+                            font.pointSize: Kirigami.Theme.smallFont.pointSize
+                            color: authBanner.hard ? "#dc3545" : Kirigami.Theme.textColor
+                        }
+                        PC3.Button {
+                            visible: authBanner.notice ? authBanner.notice.offer : false
+                            text: "Re-loguear en Claude"
+                            icon.name: "system-reboot"
+                            onClicked: root.reloginRun()
+                        }
+                    }
+                }
                 UsageSection { Layout.fillWidth: true; title: "Sesión (5 h)"; block: root.snapshot ? root.snapshot.five_hour : null }
                 UsageSection { Layout.fillWidth: true; title: "Semanal (7 d)"; block: root.snapshot ? root.snapshot.weekly : null }
 
@@ -1929,7 +1987,6 @@ PlasmoidItem {
                 SpendSection {
                     Layout.fillWidth: true
                     spend: root.snapshot ? root.snapshot.spend : null
-                    extra: root.snapshot ? root.snapshot.extra_usage : null
                 }
 
                 Item { Layout.fillHeight: true }
@@ -1945,9 +2002,10 @@ PlasmoidItem {
                         const account = root.snapshot.account_email
                             ? root.snapshot.account_email
                             : (root.snapshot.basis === "oauth" ? "datos reales" : "estimado local")
+                        const staleMark = root.snapshot.stale === true ? " · ⏳ sin refrescar" : ""
                         if (root.snapshot.account_mismatch === true)
-                            return "⚠ " + account + " no es la cuenta fijada · ⟳ 5 min + al reset 5h · act. " + root.relativeTime(root.snapshot.updated_at)
-                        return account + " · ⟳ 5 min + al reset 5h · act. " + root.relativeTime(root.snapshot.updated_at)
+                            return "⚠ " + account + " no es la cuenta fijada · ⟳ 5 min + al reset 5h · act. " + root.relativeTime(root.snapshot.updated_at) + staleMark
+                        return account + " · ⟳ 5 min + al reset 5h · act. " + root.relativeTime(root.snapshot.updated_at) + staleMark
                     }
                 }
             }
@@ -3394,14 +3452,17 @@ PlasmoidItem {
                 let past = root.isPast(block.resets_at)
                 let s = past ? ("Se restableció " + root.relativeTime(block.resets_at) + " · actualizando…")
                              : ("Se restablece " + root.resetDetail(block.resets_at))
-                if (block.cost_usd !== null && block.cost_usd !== undefined)
-                    s += " · ≈ $" + block.cost_usd.toFixed(2) + " (API equiv local)"
+                var c = block.equiv_session_cost_usd !== undefined && block.equiv_session_cost_usd !== null
+                      ? block.equiv_session_cost_usd
+                      : (block.equiv_weekly_cost_usd !== undefined && block.equiv_weekly_cost_usd !== null ? block.equiv_weekly_cost_usd : null)
+                if (c !== null && c !== undefined)
+                    s += " · ≈ $" + c.toFixed(2) + " (API equiv local)"
                 return s
             }
         }
     }
 
-    // sección de GASTO REAL: dinero de tu bolsillo (spend) + overage (extra_usage).
+    // sección de GASTO REAL: dinero de tu bolsillo (spend).
     // Distinto del "Costo API-equiv" del Resumen, que es el equivalente incluido.
     component SpendSection: ColumnLayout {
         property var spend: null
@@ -3505,6 +3566,25 @@ PlasmoidItem {
         else if (abs < 86400) { val = Math.round(abs/3600); unit = "h" }
         else                  { val = Math.round(abs/86400);unit = "d" }
         return diff < 0 ? ("hace " + val + unit) : ("en " + val + unit)
+    }
+    // Aviso de autenticación para la UI (login por-expirar/expirado/sin-cuenta), o null si está OK.
+    // Espeja authNotice de QuotaModel.swift. hard = problema duro (rojo); offer = mostrar botón.
+    function authNotice() {
+        var st = (snapshot && snapshot.auth && snapshot.auth.state) ? snapshot.auth.state : "ok"
+        if (st === "no_credentials") return { message: "No hay cuenta en el CLI de Claude — el widget no puede leer tu cuota.", offer: true, hard: true }
+        if (st === "expired")        return { message: "El login de Claude expiró — re-loguéate para seguir viendo tu cuota.", offer: true, hard: true }
+        if (st === "expiring")       return { message: "Tu login de Claude expira " + relativeTime(snapshot && snapshot.auth ? snapshot.auth.expires_at : null) + " — re-loguéate pronto.", offer: true, hard: false }
+        return null
+    }
+    // Abre konsole con el flujo oficial de re-login (abre el navegador). Email validado + entrecomillado.
+    function reloginRun() {
+        var acct = (snapshot && snapshot.auth && snapshot.auth.account_email)
+            ? snapshot.auth.account_email
+            : (snapshot ? (snapshot.account_email || "") : "")
+        var inner = "claude auth login --claudeai"
+        if (acct && /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(acct))
+            inner += " --email '" + acct + "'"
+        reloginRunner.connectSource("konsole -e bash -lc \"" + inner + "; echo; read -p 'Enter para cerrar...'\"")
     }
     function compactReset(iso) {
         if (!iso) return ""

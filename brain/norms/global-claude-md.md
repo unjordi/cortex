@@ -10,7 +10,7 @@
 - Antes de cerrar un cambio, pregúntate *¿esto vive en MÁS de un lugar?* (doc duplicada, README y su UI, varias plataformas, un ejemplo, un diagrama, un valor repetido) y rastrea las otras copias (p. ej. un `grep` del valor viejo). Una sola copia desincronizada YA es una doc que miente.
 - **Antes de un `git push`, revisa dos cosas TÚ MISMO** (no hay recordatorio automático por-push): (1) el Dashboard del cerebro (`dashboard_cerebro.md`, memoria GLOBAL de esta máquina) — appendea a su Bitácora con `>>`; (2) si los commits a pushear tocan un hook/skill/feature/estructura SIN tocar su doc (README, árbol del cerebro, memoria), actualízala en la MISMA tanda.
 
-## El entorno de MÁQUINA vive GLOBAL, jamás en un repo (norma dura)
+## El entorno de MÁQUINA vive GLOBAL, jamás en el repo de un proyecto ni en tu slug (norma dura)
 - El entorno de MÁQUINA (OS, shell, aliases, rutas personales de un `$HOME`, runtime local Docker/BD/certs) es específico de UNA instancia; en un repo viajaría por git y mentiría al clonar en otra compu u otro OS.
 - Vive SOLO en `~/.claude/entorno-maquina.md` (LEAN, FUENTE ÚNICA, siempre en contexto vía `@import` del CLAUDE.md global), que NO viaja por git; la siembra `install-brain`/`bootstrap-claude` detectando la config real, y Claude la mantiene en formato LEAN. No hay copia detallada en la memoria del slug.
 - Un repo documenta solo cómo correr EL PROYECTO de forma portable o CONDICIONAL ("si Apple Silicon: `platform: linux/amd64`"; "en Windows usa Git Bash") — nunca afirmando lo personal-de-instancia como universal.
@@ -36,7 +36,7 @@
 - Lo hace cumplir el hook `dod-verificar` (Stop): distingue lenguaje de ESTATUS/espera (no dispara) de lenguaje de CIERRE (exige la marca citada de (1) o (2)), bloquea un claim VISUAL sin tool de navegador en el turno, y recuerda la auditoría de paridad en migraciones.
 
 ## Integridad de los guardarraíles (norma dura)
-- Claude NO modifica ni afloja sus PROPIOS candados de supervisión (`dod-verificar`, `merge-develop-guard`, `git-branch-guard`, `proteger-arbol`…) para desatorarse o por conveniencia.
+- Claude NO modifica ni afloja sus PROPIOS candados de supervisión (`dod-verificar`, `merge-develop-guard`, `proteger-arbol`…) para desatorarse o por conveniencia.
 - Cambiar un control de supervisión exige consentimiento EXPLÍCITO del usuario para cambiar ESE control — distinto del consentimiento a la ACCIÓN que el control vigila.
 - Los cambios permitidos son solo de PRECISIÓN/CORRECCIÓN (menos falsos positivos, arreglar un target mal detectado), nunca "para que deje de bloquearme". El clasificador auto-mode es el backstop externo.
 
@@ -46,7 +46,7 @@
 - Aplica igual a una autorización *blanket* con vigencia explícita ("autorizo todos los merges a develop hasta mañana 10am"): mientras esté vigente, se re-cita sin escrúpulo.
 
 ### NUNCA ofrezcas "el clic en la web" como escape de un juez que frena en CLI (norma dura)
-- Cuando un guard/juez frena una acción por CLI (`merge-develop-guard`, `git-branch-guard`…), la respuesta correcta es UNA de dos: **(1) ARREGLAR** lo que el juez señala (dar el resumen de squash, citar el OK real y vigente, corregir el target mal detectado), o **(2) PEDIR** el OK claro que exige.
+- Cuando un guard/juez frena una acción por CLI (`merge-develop-guard`…), la respuesta correcta es UNA de dos: **(1) ARREGLAR** lo que el juez señala (citar el OK real y vigente, usar el slug literal, corregir el target mal detectado), o **(2) PEDIR** el OK claro que exige.
 - JAMÁS la salida es "mergéalo tú en la web de GitLab/GitHub": es un **vein-popper** — enruta a la persona ALREDEDOR del control y vacía de sentido al juez. Aplica a CUALQUIER juez que frene en CLI.
 - La única mención legítima de la web es DESCRIPTIVA de un flujo que el usuario YA eligió (p. ej. el release `develop→main` que por convención hace el humano en la web) — nunca como salida para desatorar a Claude.
 
@@ -108,7 +108,7 @@
 - **TODOS los push van a ramitas** (`feat/…`, `fix/…`, `chore/…`, `docs/…`), sacadas de `develop`.
 - La ramita se integra a `develop` por el MERGE de un MR/PR server-side; nunca tocas `develop`/`main` con push local. A `main` se llega igual: MR/PR desde `develop`.
 - El tamaño del equipo SOLO decide si hay revisión, NO si hay push: **1–3 devs** → MR/PR con AUTO-MERGE al instante; **≥4 devs** → el MR/PR se revisa antes de mergear.
-- Al integrar a `develop` se SQUASHEA (un commit limpio y curado por slice) — lo exige `merge-develop-guard`. Los releases `develop→main` van SIN squash (conservan historia).
+- Al integrar a `develop` se SQUASHEA — `merge-develop-guard` exige el `--squash` (chequeo DETERMINISTA del flag) y que la rama de origen se borre (`--delete-branch`/`--remove-source-branch`), pero la CALIDAD del mensaje NO se valida: el guard muestra un **RECORDATORIO** (no freno) de redactar el squash-message A MANO con el **cambio neto + su porqué + las líneas `Rama: <feat/…>` y `MR/PR: !<id>`** (la trazabilidad rama→commit — el squash borra el merge-commit que traía el #id). Los releases `develop→main` van SIN squash (conservan historia).
 - **`main` es RELEASE-ONLY:** promover `develop→main` es un release DELIBERADO que el usuario pide explícitamente, jamás automático ni por un chore/docs/memoria. Si no dijo "release"/"a main", te quedas en `develop`. El release a main por CLI exige autorización SUPER explícita (`merge-develop-guard`); un `mergea` genérico no lo autoriza.
 
 ```bash
@@ -123,13 +123,29 @@ git push -u origin feat/<tema>       # push SOLO a la ramita (idéntico en ambos
 | abrir PR/MR | `gh pr create --base develop --fill` | `glab mr create --target-branch develop --fill` |
 | mergear a develop (INMEDIATO + squash) | `gh pr merge --squash` | `glab mr merge --squash` |
 
-- **A `develop`/`main` NUNCA `--auto`/`--auto-merge`:** encolan el merge (Merge-When-Pipeline-Succeeds) para dispararse solos SIN testigo y rompen la garantía de `merge-develop-guard` (que exige tu OK en el INSTANTE del merge, y protege los releases cableados por CI/CD). El merge a develop es DELIBERADO e INMEDIATO: espera pipeline verde y mergea YA. `--auto-merge` solo es cómodo en tu mini-develop (ramita → mini, que no pasa por candado).
-- **MANUAL DE USO del candado — invoca merges con valores LITERALES:** `merge-develop-guard` lee el STRING CRUDO en PreToolUse; un `--repo "$R"` (variable de shell sin expandir) o un `cd &&` compound le impiden resolver el destino y frena. Pásale el SLUG LITERAL (`--repo org/grupo/repo`), sin `$VAR` ni `cd &&`. Mejor aún: usa `cerrar-slice.sh` (arma el comando correcto con valores literales).
+- **A `develop`/`main` el merge es DELIBERADO e INMEDIATO** (espera pipeline verde y mergea YA, con tu OK en el instante): el `--auto`/`--auto-merge` encola el merge (Merge-When-Pipeline-Succeeds) para dispararse solo más tarde, lo que diluye ese "en el instante". `merge-develop-guard` YA NO lo prohíbe de forma determinista (freno retirado 2026-10-21): el auto-merge a develop/main lo gobierna el **juez de autorización** como cualquier merge (tu OK → pasa; sin OK → frena). `--auto-merge` es cómodo en tu mini-develop (ramita → mini, que no pasa por candado).
+- **MANUAL DE USO del candado — prefiere valores LITERALES:** `merge-develop-guard` resuelve el repo/destino POR GIT en el dir real (y preguntándole a gh/glab con los mismos args); un `--repo "$R"` (variable sin expandir) o un `cd $X &&`/`-C $VAR` a un dir OPACO no se resuelven desde el string CRUDO, así que el guard los trata como destino INCIERTO y **cae al juez** (ya NO es un freno determinista aparte — retirado 2026-10-21). Pásale igual el SLUG LITERAL (`--repo org/grupo/repo`) para que resuelva sin pasar por el juez (un `-C $M` LITERAL o de un comando lateral ya no estorba). Mejor aún: usa `cerrar-slice.sh` (arma el comando con valores literales).
 - Diffs de flag: `--base` ↔ `--target-branch`, PR ↔ MR; el `git push` es idéntico. La receta canónica completa (esperar el pipeline verde, el `--squash-message` curado con trazabilidad rama→commit, el borrado de rama y el porqué del SIN `--auto`) vive en `cerrar-slice §4` y su script `cerrar-slice.sh` — no la dupliques.
-- Enforced por: ramas protegidas server-side + `git-branch-guard` y `merge-develop-guard` (candado ÚNICO del punto de merge: squash + autorización — consolida los antiguos `merge-squash-guard` + `confirmar-merge-develop`).
+- Enforced por: ramas protegidas server-side + `merge-develop-guard` (candado ÚNICO de git: su PASO 0 frena el push/merge DIRECTO a develop·main —absorbió `git-branch-guard` el 2026-10-21—, y el punto de merge hace cumplir squash + autorización — consolida los antiguos `merge-squash-guard` + `confirmar-merge-develop`).
 - El gate NO es "no puedes": con tu OK EXPLÍCITO, `merge-develop-guard` deja que Claude mergee `develop` por CLI (con `--squash`), SIN clics en la web.
 - Repos SIN los hooks del template (p. ej. uno personal): Claude cae en el clasificador auto-mode genérico → más fricción en git. Al tocar uno así: siémbrale `develop` + los hooks del template, o documenta qué acciones esperar bloqueadas.
 - **Bajo SQUASH, `git cherry`/`git branch -d`/`git branch --merged` MIENTEN en su NEGATIVO:** el squash colapsa los N commits de la ramita en un commit nuevo → la rama no queda de ancestro y sus commits no tienen equivalente por hash, así que dan un falso "no integrada" sobre trabajo que SÍ entró. `git cherry` vale SOLO en su POSITIVO (ningún `+` ⇒ los parches ya están en la base, residuo squash-safe); su negativo no prueba nada. Para "¿ya entró esta rama?" hay dos métodos válidos: `limpiar.sh ramas` (señales POSITIVAS squash-safe — ancestro · la línea `Rama: <rama>` del squash · el PR/MR mergeado · equivalencia de parche sin `+`) o el ESTADO del PR/MR en el foro (`gh pr view --json state` / `glab mr view`: `MERGED` es la verdad).
+
+- **CI solo en develop/main + un gate antes del merge (todos los repos):** el pipeline NO corre por push a ramitas ni por eventos de MR/PR. Corre en develop, main, tags y UNA vez como gate manual antes de mergear a develop. En GitLab, todo `.gitlab-ci.yml` lleva este `workflow:` idéntico (más `- if: $CI_PIPELINE_SOURCE == "schedule"` solo si el repo tiene un programado activo):
+  ```yaml
+  workflow:
+    rules:
+      - if: $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api"
+      - if: $CI_COMMIT_BRANCH == "develop"
+      - if: $CI_COMMIT_BRANCH == "main"
+      - if: $CI_COMMIT_TAG
+  ```
+  Los jobs de CD (subir imagen, desplegar) llevan su propia regla de solo develop/main; los de CI no llevan reglas. En GitHub: `on: push: branches: [develop, main]` + `workflow_dispatch`. Secuencia de cierre: push normal (nunca `-o ci.skip`: deja el MR pegado a un pipeline skipped) → gate (`glab ci run -b <rama>` / `gh workflow run`) → merge.
+
+## Detección de secretos: gitleaks en CI + local antes de cada push (norma dura)
+- **Todo repo que operemos lleva `gitleaks`**, en dos puntos: (1) en su **CI** — GitLab: el template `Secret-Detection` (`include: template: Jobs/Secret-Detection.gitlab-ci.yml`); GitHub: `gitleaks/gitleaks-action` — y (2) **local ANTES de cada push** (lo corre `cerrar-slice.sh`: `gitleaks git --log-opts=<base>..HEAD`, o equivalente sobre el rango que sube; si encuentra algo, PARA y no pushea).
+- **Las excepciones son EXPLÍCITAS y por-huella, nunca por palabras:** van en `.gitleaksignore` (fingerprint exacto) o `.gitleaks.toml` (`allowlist` con regex/paths acotados) DEL REPO, versionadas y revisables. ❌ marcar "seguro" por una subcadena tipo `PRUEBA`/`dummy` (así se coló un secreto real en el hook casero que gitleaks reemplaza — H6 2026-10-19).
+- **Reemplaza al hook casero `secret-scan`/`detectar-secretos`** (retirado del cerebro el 2026-10-19, con OK explícito de unjordi): un escáner mantenido por la comunidad, con reglas amplias y server-side, en vez de una lib de patrones propia. El cerebro ya NO instala ese hook; el instalador lo DESINSTALA de las máquinas que lo tenían.
 
 ## Modelo MINI-DEVELOP (iterar sin fricción — INSTITUCIONAL en repos compartidos)
 - El día a día vive en tu rama personal de integración ("mini-develop"), convención `Develop<Usuario>` (p. ej. `DevelopAna`), sacada de `develop`. Ahí iteras horas/días sin permiso: ramitas → tu mini con `git merge` LOCAL o MR con auto-merge (ninguno pasa por candado).
@@ -145,7 +161,7 @@ git push -u origin feat/<tema>       # push SOLO a la ramita (idéntico en ambos
 - **Repo PERSONAL** (vive solo en tus máquinas, que ya tienen brain global): memoria/skills SÍ, guards por-repo NUNCA (el global+dedupe ya los cubre; una copia por-repo solo puede DRIFTAR). Si un personal tiene guards del brain, SOBRAN → quítalos (`.claude/hooks/*.sh` del brain + sus entradas en `settings.json`).
 - **Repo COMPARTIDO** (viaja a máquinas/personas sin brain): guards por-repo SÍ, en git. Se declara EXPLÍCITAMENTE con la marca `.claude/repo-compartido`. Default = personal (sin marca): conservador.
 - Mecanismo: `aviso-drift-cerebro` (SessionStart) bifurca por la marca — en COMPARTIDO mantiene el correo fresco (auto-sync en tu mini / avisa); en PERSONAL no auto-commitea y flaggea los guards que sobran (no los borra solo).
-- La limpieza la hace `sincronizar-cerebro.sh --limpiar-personal [--apply]`: REHÚSA si el repo está marcado `.claude/repo-compartido`, y retira SOLO los archivos de tier `both` + su cableado + el sello `.brain-version` — nunca los de tier `repo` (`dod-verificar`, `sesion-inicio`…) ni la memoria/skills. `--incluir-skills` suma el retiro de skills, solo las que constan en el ledger `.claude/skills/.brain-skills` (opt-in, fail-closed).
+- La limpieza la hace `sincronizar-cerebro.sh --limpiar-personal [--apply]`: REHÚSA si el repo está marcado `.claude/repo-compartido`, y retira SOLO los archivos de tier `both` + su cableado + el sello `.brain-version` — nunca los de tier `repo` (`dod-verificar`…) ni la memoria/skills. **Excepción N4 (2026-10-21):** una lib `both` que una hook tier=repo PRESENTE sourcea (p. ej. `juez-comun` ← `dod-verificar`, que la sourcea de su propio dir sin fallback global) se CONSERVA — quitarla rompería esa repo-hook; el aviso de `aviso-drift-cerebro` aplica la misma regla (no la lista como sobrante). `--incluir-skills` suma el retiro de skills, solo las que constan en el ledger `.claude/skills/.brain-skills` (opt-in, fail-closed).
 
 ### Tiers de hooks/skills: cómo decidir (regla crisp)
 - Al AGREGAR un hook/skill, su TIER (en `brain/hooks/MANIFEST` / `brain/skills/MANIFEST`) se decide con el mismo patrón repo-compartido.

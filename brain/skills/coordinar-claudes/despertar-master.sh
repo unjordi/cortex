@@ -12,16 +12,23 @@
 #   despertar-master.sh --lista|-l      tabla: nombre · id · edad · estado (viva/idle) · cwd
 #   despertar-master.sh <nombre>        despierta ese master (o avisa que ya está vivo y NO lo relanza)
 #   despertar-master.sh <nombre> --no-esperar   lanza y regresa sin esperar a que cargue
+#   despertar-master.sh <nombre> --mensaje <archivo>   lo despierta y le entrega <archivo> como su primer
+#                                       mensaje (prompt inicial del resume; no depende de teclear en la TUI)
+#   despertar-master.sh --cerrar <nombre>   cierra la sesión (proceso claude + screen) y verifica que cerró
+#   despertar-master.sh --curar         (re)genera el roster LOCAL ~/.claude/masters.json desde los
+#                                       transcripts vivos de *-master (curado de ids idle se conserva)
 #   despertar-master.sh --help|-h       esta ayuda
 #
 # Overrides: $DESPERTAR_VIVA_MIN (min para considerar viva una sesión, def 15) ·
 #            $DESPERTAR_ESPERA_S (seg a esperar la carga tras lanzar, def 240) ·
-#            $CLAUDE_PROJECTS_DIR (carpeta de transcripts, def ~/.claude/projects).
+#            $CLAUDE_PROJECTS_DIR (carpeta de transcripts, def ${CLAUDE_CONFIG_DIR:-~/.claude}/projects).
 set -u
 
 VIVA_MIN="${DESPERTAR_VIVA_MIN:-15}"
 ESPERA_S="${DESPERTAR_ESPERA_S:-240}"
-PROJECTS="${CLAUDE_PROJECTS_DIR:-$HOME/.claude/projects}"
+# Default honra CLAUDE_CONFIG_DIR (Claude Code reubica TODO su estado ahí, incluidos projects/) — antes
+# fijaba $HOME/.claude/projects y no veía los transcripts con un CLAUDE_CONFIG_DIR custom (MEDIO 2026-10-22).
+PROJECTS="${CLAUDE_PROJECTS_DIR:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects}"
 
 # ── helpers de lectura del transcript ────────────────────────────────────────────────────────────
 # mtime epoch PORTABLE: GNU `stat -c %Y` PRIMERO (falla LIMPIO en BSD, sin ensuciar stdout), luego BSD
@@ -63,10 +70,24 @@ _resolver_cwd() {
 # mtime la cubre mientras se use (escribe su transcript) y el screen cubre las lanzadas por aquí.
 # Fail-open: sin screen/pgrep estas señales no aplican y manda el mtime.
 _screen_nombres() { screen -ls 2>/dev/null | sed -n 's/^[[:space:]]*[0-9][0-9]*\.\([^[:space:]]*\).*/\1/p'; }
+# _pids_master NOMBRE ID → PIDs de procesos `claude` retomados por id o por título.
+# Solo cuenta un proceso cuyo EJECUTABLE (argv[0]) es `claude`: así nunca se cuenta a sí mismo ni a un
+# bash/grep/script que lleve el patrón en su línea de comando. Usa ps: pgrep -f no ve los argumentos de
+# algunos procesos en macOS.
+_pids_master() {
+  local name="$1" id="$2"
+  ps -axo pid=,command= 2>/dev/null | awk -v id="${id:-@@}" -v name="$name" '
+    { exe=$2; sub(/.*\//, "", exe); if (exe != "claude") next
+      for (k=3; k<=NF; k++) if ($k ~ /^--resume/) {
+        v=$k; sub(/^--resume=?/, "", v)
+        if (v == "") for (m=k+1; m<=NF; m++) if ($m !~ /^--/) { v=$m; break }
+        if (v == id || v == name) { print $1; next }
+      } }'
+}
 _vivo_por_senal() {   # NAME ID → 0 si hay un screen con ese nombre o un proceso claude --resume <id>
   local name="$1" id="$2"
   _screen_nombres | grep -qxF "$name" && return 0
-  [ -n "$id" ] && pgrep -f "claude.*--resume.*$id" >/dev/null 2>&1 && return 0
+  [ -n "$(_pids_master "$name" "$id")" ] && return 0   # por id o por título
   return 1
 }
 _viva() {   # EDAD NAME ID → 0 si viva por mtime reciente O por señal directa (screen/proceso)
@@ -138,7 +159,7 @@ _esperar_carga() {
 }
 
 despertar() {
-  local nombre="$1" esperar="${2:-si}" row edad t id cwd inner
+  local nombre="$1" esperar="${2:-si}" msgf="${3:-}" row edad t id cwd inner
   row="$(_tabla | awk -F'\t' -v n="$nombre" '$2==n {print; exit}')"
   if [ -z "$row" ]; then
     echo "[despertar-master] no encontré un master llamado '$nombre'." >&2
@@ -166,6 +187,12 @@ EOF
   # y NO guarda transcript. El claude hijo re-lee su settings.json, así que desechar los CLAUDE* es seguro.
   inner="for v in \$(compgen -e 2>/dev/null | grep '^CLAUDE' 2>/dev/null); do unset \"\$v\"; done; "
   inner="$inner cd $(printf '%q' "$cwd") && exec claude --resume $(printf '%q' "$id") --remote-control $(printf '%q' "$t")"
+  if [ -n "$msgf" ]; then
+    [ -f "$msgf" ] || { echo "[despertar-master] no existe el archivo del mensaje: $msgf" >&2; return 1; }
+    # `--` ANTES del prompt: fin de opciones. Sin él, un mensaje que EMPIEZA con '-' (una lista markdown
+    # "- item", un "--- Reporte ---") lo parsea claude como FLAG y se pierde/truena (MEDIO 2026-10-22).
+    inner="$inner -- $(printf '%q' "$(cat "$msgf")")"
+  fi
   echo "[despertar-master] lanzando '$t'  (id=$id)  en  $cwd …"
   screen -dmS "$t" bash -lc "$inner"
 
@@ -184,14 +211,87 @@ EOF
 }
 
 # ── dispatch ─────────────────────────────────────────────────────────────────────────────────────
+# cerrar NOMBRE → cierra el proceso `claude` de ese master (por id o por título) y su screen; verifica.
+cerrar() {
+  local nombre="$1" row id pids i
+  row="$(_tabla | awk -F'\t' -v n="$nombre" '$2==n {print; exit}')"
+  [ -n "$row" ] || { echo "[despertar-master] no encontré un master llamado '$nombre'." >&2; return 1; }
+  id="$(printf '%s' "$row" | cut -f3)"
+  pids="$(_pids_master "$nombre" "$id")"
+  [ -n "$pids" ] && kill -TERM $pids 2>/dev/null
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    [ -n "$(_pids_master "$nombre" "$id")" ] || break; sleep 1
+  done
+  screen -S "$nombre" -X quit >/dev/null 2>&1 || true
+  if [ -n "$(_pids_master "$nombre" "$id")" ] || _screen_nombres | grep -qxF "$nombre"; then
+    echo "[despertar-master] '$nombre' NO cerró (proceso o screen vivos)." >&2; return 1
+  fi
+  echo "[despertar-master] '$nombre' cerrado (sin proceso ni screen)."
+}
+
+# --curar → (re)genera el ROSTER LOCAL (~/.claude/masters.json, honra CLAUDE_CONFIG_DIR) desde los
+# transcripts VIVOS de *-master: un master vivo ACTUALIZA su entrada {id,name,target} (target = cwd RESUELTO
+# —worktree→repo principal— con el prefijo $HOME quitado); las entradas curadas de ids NO vistos ahora se
+# CONSERVAN (no se borra un master idle). publicar-roster lo publica como masters-<host>.json y seed lo une.
+curar() {
+  local roster="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/masters.json" live
+  command -v node >/dev/null 2>&1 || { echo "[despertar-master] --curar necesita node" >&2; return 1; }
+  mkdir -p "$(dirname "$roster")" 2>/dev/null || true
+  # LOCK compartido con reubicar-master (MEDIO auditoría 2026-10-22): reubicar reescribe este MISMO
+  # masters.json tomando "$MJ.lock" (mkdir atómico, timeout ~20s, reclamo de huérfano >5min). Sin tomarlo
+  # aquí, un --curar concurrente con una mudanza se PISAN: la escritura atómica (tmp+rename) evita CORRUPCIÓN
+  # pero no la PÉRDIDA de la actualización del otro (last-rename-wins). Mismo mecanismo y umbral que reubicar.
+  local _lock="$roster.lock" _got=0 _i
+  for _i in 1 2 3 4 5 6 7 8 9 10; do
+    if mkdir "$_lock" 2>/dev/null; then _got=1; break; fi
+    if [ -n "$(find "$_lock" -maxdepth 0 -mmin +5 2>/dev/null)" ]; then rm -rf "$_lock" 2>/dev/null || true; continue; fi
+    sleep "${DESPERTAR_LOCK_SLEEP:-2}"
+  done
+  [ "$_got" -eq 1 ] || { echo "[despertar-master] --curar: no pude tomar $_lock en ~20s (otro proceso escribe el roster: ¿una mudanza en curso?)" >&2; return 1; }
+  live="$(_tabla | while IFS=$'\t' read -r edad t id cwd _; do
+            [ -n "$t" ] && [ -n "$id" ] || continue
+            printf '%s\t%s\t%s\n' "$id" "$t" "${cwd#"$HOME/"}"
+          done)"
+  printf '%s' "$live" | node -e '
+    const fs=require("fs"), roster=process.argv[1];
+    const live=fs.readFileSync(0,"utf8").split("\n").filter(Boolean)
+      .map(ln=>{const [id,name,target]=ln.split("\t");return{id,name:name||id,target:target||""};})
+      .filter(e=>e.id);
+    const liveNames=new Set(live.map(e=>e.name));
+    const m=new Map();
+    try{ const j=JSON.parse(fs.readFileSync(roster,"utf8"));
+      for(const e of (j.masters||[])){
+        if(!e||!e.id) continue;
+        // El vivo GANA por NOMBRE: una entrada vieja cuyo nombre está vivo con OTRA sesión (id cambió) se
+        // DESCARTA — si no, el roster acumula ids rancios por nombre (el N8 que esta opción cierra). Una
+        // curada a mano cuyo nombre NO está vivo se CONSERVA (master idle).
+        if(liveNames.has(e.name)) continue;
+        m.set(e.id,{id:e.id,name:e.name||e.id,target:e.target||""});
+      }
+    }catch(_){}
+    for(const e of live) m.set(e.id, e);
+    const tmp=roster+".curar.tmp."+process.pid;   // escritura ATÓMICA: tmp en el mismo dir + rename
+    fs.writeFileSync(tmp, JSON.stringify({masters:[...m.values()]},null,2)+"\n");
+    fs.renameSync(tmp, roster);
+    process.stderr.write("[despertar-master] roster curado: "+roster+" ("+m.size+" master(s); "+live.length+" vivo(s))\n");
+  ' "$roster"
+  local _rc=$?
+  rmdir "$_lock" 2>/dev/null || true
+  return $_rc
+}
+
 case "${1:-}" in
   ""|--lista|-l)     listar ;;
+  --curar)           curar ;;
+  --cerrar)          [ -n "${2:-}" ] || { echo "[despertar-master] uso: --cerrar <nombre>" >&2; exit 2; }; cerrar "$2" ;;
   --help|-h)         uso ;;
   --*)               echo "[despertar-master] opción desconocida: $1" >&2; uso >&2; exit 2 ;;
   *)
     case "${2:-}" in
       --no-esperar) despertar "$1" no ;;
       "")           despertar "$1" si ;;
+      --mensaje)    [ -n "${3:-}" ] || { echo "[despertar-master] uso: <nombre> --mensaje <archivo>" >&2; exit 2; }
+                    VIVA_MIN=0; despertar "$1" si "$3" ;;   # edad 0: decide solo por proceso/screen
       *)            echo "[despertar-master] argumento extra desconocido: $2" >&2; exit 2 ;;
     esac
     ;;

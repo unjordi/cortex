@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# recordar-cosechar.sh — Stop hook (tier REPO). ESPEJO automático, silencioso e idempotente del TaskList
+# recordar-cosechar.sh — Stop hook (tier BOTH). ESPEJO automático, silencioso e idempotente del TaskList
 # vivo → el bloque `<!-- espejo-tasklist -->` DENTRO de .claude/memory/estado-proyecto.md, para que el
 # backlog durable (que viaja por git y ven los otros claudios/colegas) refleje la vista de tareas sin
 # fricción del modelo. Determinista, SIN LLM. Solo toca ESE bloque; jamás la prosa curada. Solo si
@@ -20,6 +20,10 @@
 # Fail-open SIEMPRE: no-git / sin jq / cualquier error → silencio, exit 0. NUNCA bloquea.
 # Escape: CLAUDE_SKIP_RECORDAR_COSECHAR=1.
 set -u
+
+# dedupe (tier both): si soy la copia del REPO y la copia GLOBAL existe, cedo — evita doble disparo
+# cuando el repo está brained Y hay bootstrap global. En un clon SIN bootstrap, la copia del repo corre.
+_cfgh="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks"; case "$0" in "$_cfgh/"*) : ;; *) [ -f "$_cfgh/$(basename "$0")" ] && exit 0 ;; esac
 
 payload=$(cat 2>/dev/null || true)   # capturar stdin (contrato Stop trae session_id/transcript_path/stop_hook_active)
 

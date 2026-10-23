@@ -1,0 +1,4 @@
+ATENDIDO 2026-10-22 (cortex-master): el diseño se RESOLVIÓ por decisión de unjordi (nota 2026-10-22-estado-proyecto-y-rehidratar) e implementación en fix/corpus-fp-bench.
+- DÓNDE: el .claude/ del proyecto (Opción A con gate de proyecto: más que settings.local.json; nunca ~/.claude de config).
+- CREAR-vs-AVISAR: CREAR, vía rehidratar-hilo (af5a4f8), que es el ÚNICO auto-creador; recordar-cosechar queda NO-crea.
+La pregunta abierta (A/B/C) quedó contestada por unjordi: A-con-gate-de-proyecto.

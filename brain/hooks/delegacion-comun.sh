@@ -8,7 +8,7 @@
 # Requiere jq (el que la use debe verificarlo antes).
 # shellcheck shell=bash
 
-REG_FILE="$HOME/.claude/agentes-costo.json"
+REG_FILE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/agentes-costo.json"
 
 # clasificar_delegacion "<payload-json>" → setea: DG_ES_TASK DG_SID DG_TARGET DG_CLASE DG_FIRMA
 #                                                  DG_UMBRAL DG_PCT DG_NIVEL DG_KEY
@@ -39,16 +39,28 @@ clasificar_delegacion() {
   case "$DG_CLASE" in
     local) DG_NIVEL="gratis" ;;
     claude)
-      # snapshot de cuota FRESCO (< 30 min); dentro de ventana (pct < umbral) → incluido; si no → metered
-      local snap="" c
+      # snapshot de cuota FRESCO (< 30 min); dentro de ventana (pct < umbral) → incluido; si no → metered.
+      # Frescura por updated_at / stale, NO por mtime (MEDIO auditoría 2026-10-22): el daemon REESCRIBE
+      # state.json cada run aunque PRESERVE una lectura vieja marcada stale (oauth caído), así que el mtime
+      # quedaría SIEMPRE fresco → el gate usaría un pct rancio. Mismo criterio que linea_cuota (updated_at+stale).
+      local snap="" c _upd _us _fresco=0
       for c in "${XDG_CACHE_HOME:-$HOME/.cache}/cortex/state.json" "$HOME/Library/Caches/cortex/state.json"; do
         [ -f "$c" ] && { snap="$c"; break; }
       done
-      if [ -n "$snap" ] && [ -z "$(find "$snap" -mmin +30 2>/dev/null)" ]; then
+      if [ -n "$snap" ] && [ "$(jq -r '.stale // false' "$snap" 2>/dev/null)" != "true" ]; then
+        _upd=$(jq -r '.updated_at // empty' "$snap" 2>/dev/null)
+        if [ -n "$_upd" ]; then
+          _us=$(date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$_upd" +%s 2>/dev/null || date -u -d "$_upd" +%s 2>/dev/null || echo 0)
+          { [ "$_us" -gt 0 ] 2>/dev/null && [ $(( $(date +%s) - _us )) -le 1800 ]; } && _fresco=1
+        else
+          [ -z "$(find "$snap" -mmin +30 2>/dev/null)" ] && _fresco=1   # schema viejo sin updated_at → cae al mtime
+        fi
+      fi
+      if [ "$_fresco" = 1 ]; then
         DG_PCT=$(jq -r '.five_hour.percent // 100' "$snap" 2>/dev/null)
         if [ "${DG_PCT%.*}" -lt "${DG_UMBRAL%.*}" ] 2>/dev/null; then DG_NIVEL="incluido"; else DG_NIVEL="metered"; fi
       else
-        DG_NIVEL="metered"   # sin snapshot o rancio → conservador
+        DG_NIVEL="metered"   # sin snapshot / rancio / stale → conservador
       fi
       ;;
     externo) DG_NIVEL="metered" ;;
@@ -63,7 +75,7 @@ clasificar_delegacion() {
 # ya no es un lote vivo. Así un ask NEGADO deja de colar un reintento en silencio (cierra H6). ──
 deleg_lock_path() {  # $1=sid $2=key → ruta del lock
   local h; h=$(printf '%s|%s' "$1" "$2" | tr -cs 'A-Za-z0-9' '_')
-  printf '%s' "$HOME/.claude/.delegacion-ask.$h.lock"
+  printf '%s' "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.delegacion-ask.$h.lock"
 }
 deleg_lock_age_s() {  # $1=lockpath → edad en segundos (vacío/return 1 si no existe o sin stat/date)
   local m now
@@ -96,32 +108,45 @@ linea_cuota() {
     [ -f "$c" ] && { snap="$c"; break; }
   done
   [ -n "$snap" ] || return 0
-  # Frescura del snapshot: si el daemon de cuota lleva >5 min sin escribir, el % puede estar RANCIO →
-  # márcalo, para no mostrar datos viejos como "estado real" (el ask del gate se apoya en esta línea).
-  local stale=""
-  [ -n "$(find "$snap" -mmin +5 2>/dev/null)" ] && stale=" ⚠️posible dato rancio"
-  local pct cost cap tok
+  # Frescura por updated_at (NO mtime: el daemon reescribe cada run aunque PRESERVE una lectura vieja,
+  # así que el mtime quedaría siempre fresco). Marca rancio si stale:true (con el motivo de auth si lo
+  # hay), si updated_at tiene >5 min, o —schema viejo sin updated_at— si el mtime tiene >5 min.
+  local stale="" _is_stale _upd _us _auth
+  _is_stale=$(jq -r '.stale // false' "$snap" 2>/dev/null)
+  _upd=$(jq -r '.updated_at // empty' "$snap" 2>/dev/null)
+  if [ "$_is_stale" = "true" ]; then
+    _auth=$(jq -r '.auth.state // empty' "$snap" 2>/dev/null)
+    case "$_auth" in
+      expired)        stale=" ⚠️login expirado (dato previo)" ;;
+      no_credentials) stale=" ⚠️sin cuenta en el CLI (dato previo)" ;;
+      *)              stale=" ⚠️dato previo (sin refrescar)" ;;
+    esac
+  elif [ -n "$_upd" ]; then
+    _us=$(date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$_upd" +%s 2>/dev/null || date -u -d "$_upd" +%s 2>/dev/null || echo 0)
+    { [ "$_us" -gt 0 ] 2>/dev/null && [ $(( $(date +%s) - _us )) -le 300 ]; } || stale=" ⚠️posible dato rancio"
+  else
+    [ -n "$(find "$snap" -mmin +5 2>/dev/null)" ] && stale=" ⚠️posible dato rancio"
+  fi
+  local pct cost tok
   pct=$(jq -r '.five_hour.percent // empty'      "$snap" 2>/dev/null)
-  cost=$(jq -r '.five_hour.cost_usd // empty'    "$snap" 2>/dev/null)
-  cap=$(jq -r '.five_hour.cost_cap // empty'     "$snap" 2>/dev/null)
-  tok=$(jq -r '.five_hour.tokens_used // empty'  "$snap" 2>/dev/null)
+  cost=$(jq -r '.five_hour.equiv_session_cost_usd // empty'    "$snap" 2>/dev/null)
+  tok=$(jq -r '.five_hour.session_tokens_used // empty'  "$snap" 2>/dev/null)
   [ -n "$pct" ] || return 0
   local msg=" Ventana 5h: ${pct}%${stale}"
-  if [ -n "$cost" ] && [ -n "$cap" ]; then
-    msg="$msg (\$${cost} de \$${cap}"
+  if [ -n "$cost" ]; then
+    msg="$msg (\$${cost}"
     [ -n "$tok" ] && msg="$msg; $(fmt_tokens "$tok") tokens"
     msg="$msg)"
   elif [ -n "$tok" ]; then
     msg="$msg ($(fmt_tokens "$tok") tokens)"
   fi
-  # Ventana SEMANAL (opcional): solo si el snapshot la trae. Formato compacto "($cost/$cap)".
-  local wpct wcost wcap
+  # Ventana SEMANAL (opcional): solo si el snapshot la trae. Formato compacto "($cost)".
+  local wpct wcost
   wpct=$(jq -r '.weekly.percent // empty'   "$snap" 2>/dev/null)
-  wcost=$(jq -r '.weekly.cost_usd // empty' "$snap" 2>/dev/null)
-  wcap=$(jq -r '.weekly.cost_cap // empty'  "$snap" 2>/dev/null)
+  wcost=$(jq -r '.weekly.equiv_weekly_cost_usd // empty' "$snap" 2>/dev/null)
   if [ -n "$wpct" ]; then
     msg="$msg · Semanal: ${wpct}%"
-    [ -n "$wcost" ] && [ -n "$wcap" ] && msg="$msg (\$${wcost}/\$${wcap})"
+    [ -n "$wcost" ] && msg="$msg (\$${wcost})"
   fi
   printf '%s.' "$msg"
 }

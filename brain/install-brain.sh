@@ -5,11 +5,11 @@
 #
 # Instala GLOBAL (en ~/.claude, aplica a TODOS los repos de esta máquina):
 #   (a) HOOKS de tier {global, both} en ~/.claude/hooks/ — la LISTA se DERIVA de brain/hooks/MANIFEST
-#       (fuente única; ya no se cura a mano en paralelo con la copia por-repo). Incluye git-branch-guard,
-#       merge-develop-guard, secret-scan,
+#       (fuente única; ya no se cura a mano en paralelo con la copia por-repo). Incluye
+#       merge-develop-guard,
 #       proteger-arbol (PreToolUse/Bash), delegacion-gate + limite-gasto (PreToolUse/Task),
 #       delegacion-registrar (PostToolUse/Task), rehidratar-hilo + aviso-contexto (SessionStart/
-#       PostToolUse) + libs `delegacion-comun.sh`, `analizar-comando-git.sh`, `detectar-secretos.sh`
+#       PostToolUse) + libs `delegacion-comun.sh`, `analizar-comando-git.sh`
 #       + agentes-costo.json (config). La lista EXACTA se deriva de brain/hooks/MANIFEST.
 #   (b) CABLEADO en ~/.claude/settings.json con "shell":"bash" (idempotente).
 #   (c) SKILLS genéricas (cerrar-slice, checkpoint, rehidratar-hilo, turno-nocturno,
@@ -53,16 +53,20 @@ SRC_LIB="$SCRIPT_DIR/lib"
 # shellcheck source=lib/detectar-shells.sh
 [ -f "$SRC_LIB/detectar-shells.sh" ] && . "$SRC_LIB/detectar-shells.sh"
 
-CLAUDE_DIR="$HOME/.claude"
+# Honra CLAUDE_CONFIG_DIR (el override de Claude Code para ~/.claude): si está, el cerebro se instala ahí.
+CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 HOOKS_DIR="$CLAUDE_DIR/hooks"
 SKILLS_DIR="$CLAUDE_DIR/skills"
 GSET="$CLAUDE_DIR/settings.json"
 GCLAUDE="$CLAUDE_DIR/CLAUDE.md"
+# Base (con expansión DIFERIDA a runtime) del comando de hook que se escribe en settings.json: con
+# CLAUDE_CONFIG_DIR puesto, los hooks viven en $CLAUDE_CONFIG_DIR/hooks y el comando debe apuntar ahí.
+if [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then HOOK_CMD_BASE='$CLAUDE_CONFIG_DIR/hooks'; else HOOK_CMD_BASE='$HOME/.claude/hooks'; fi
 
 echo "==> cortex: instalando cerebro global en $CLAUDE_DIR"
 mkdir -p "$HOOKS_DIR" "$SKILLS_DIR"
 
-# Dependencia de los hooks: jq. Sin jq, el git-branch-guard y el gate de delegación fallan ABIERTO.
+# Dependencia de los hooks: jq. Sin jq, el merge-develop-guard y el gate de delegación fallan ABIERTO.
 if ! command -v jq >/dev/null 2>&1; then
   echo "ADVERTENCIA: 'jq' no está en el PATH. Los hooks del cerebro lo REQUIEREN (sin jq los guards"
   echo "  fallan abierto y no bloquean, y no puedo cablear el settings.json). Instálalo y re-corre:"
@@ -206,11 +210,16 @@ register_hook() {
 # de abajo AVISA y el drift-check de test-brain (e2) FALLA (no se cablea en silencio).
 ev_de() {
   case "$1" in
-    git-branch-guard|merge-develop-guard|secret-scan|entorno-maquina-guard|no-bypass-deploy|proteger-arbol) echo "PreToolUse|Bash" ;;
+    merge-develop-guard|entorno-maquina-guard|no-bypass-deploy|proteger-arbol) echo "PreToolUse|Bash" ;;
     proteger-fuente-cerebro) echo "PreToolUse|Edit|Write|MultiEdit" ;;
+    # proteger-autorizaciones vigila la ESCRITURA del archivo de grants en AMBAS vías (Bash y los tools de
+    # edición) → UN matcher combinado. NO es del fan-out git/deploy de Bash (e6b/charts cuentan `"PreToolUse|Bash"`
+    # exacto, que este matcher no es) → no altera ese conteo; es un guard de ARCHIVO como proteger-fuente-cerebro.
+    proteger-autorizaciones) echo "PreToolUse|Bash|Edit|Write|MultiEdit" ;;
     limite-gasto|delegacion-gate) echo "PreToolUse|Task|Agent" ;;   # Task|Agent: el tool se renombró Agent (antes Task); casar AMBOS o el gate nunca dispara
     delegacion-registrar) echo "PostToolUse|Task|Agent" ;;
-    rehidratar-hilo|aviso-drift-cerebro) echo "SessionStart|" ;;
+    rehidratar-hilo|aviso-drift-cerebro|sesion-inicio) echo "SessionStart|" ;;
+    recordar-cosechar) echo "Stop|" ;;       # tier both (2026-10-21): estado-proyecto.md "en todos lados" → global por bootstrap. Fail-open/no-op sin los archivos del proyecto.
     aviso-contexto) echo "PostToolUse|" ;;   # casa TODA tool (sin matcher): mide el ctx para el volcado del checkpoint mecánico
     # barrer-ramas: DOBLE trigger del barrido — SessionStart (oportunista, throttled) + PostToolUse/Bash
     # (al punto de merge, detecta glab/gh merge vía acg_es_merge_mr). Multi-evento como exportar-sesion-master.
@@ -244,7 +253,7 @@ for h in $WIRE_HOOKS; do
   # evm puede traer VARIOS pares "Event|Matcher" (space-separated) → cablear cada uno (multi-evento).
   # register_hook dedupe POR-evento con el patrón $h, así que re-correr no duplica.
   for pair in $evm; do
-    register_hook "${pair%%|*}" "${pair#*|}" "bash \"\$HOME/.claude/hooks/$h.sh\"" "$h"
+    register_hook "${pair%%|*}" "${pair#*|}" "bash \"$HOOK_CMD_BASE/$h.sh\"" "$h"
   done
   wired_names="$wired_names $h"
 done
@@ -424,7 +433,7 @@ else
 fi
 
 # ── (d2) Entorno de ESTA máquina: ~/.claude/entorno-maquina.md (LEAN, FUENTE ÚNICA, @import) ──
-# Norma dura "el entorno de MÁQUINA vive GLOBAL, jamás en un repo". Vive en ~/.claude/entorno-maquina.md
+# Norma dura "el entorno de MÁQUINA vive GLOBAL, jamás en el repo de un proyecto ni en tu slug". Vive en ~/.claude/entorno-maquina.md
 # (NO viaja por git), en formato LEAN, siempre en contexto vía @import del CLAUDE.md global. Es la ÚNICA
 # copia: no hay versión detallada en la memoria del slug. IDEMPOTENTE y no-destructivo: si no existe →
 # lo crea (encabezado LEAN + bloque detectado); si existe CON el bloque <!-- detectado-por-bootstrap -->

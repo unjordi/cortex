@@ -36,19 +36,21 @@ public sealed class BrainState
     /// (test-brain.sh, chequeo e-widget). Al agregar/mover un hook en el MANIFEST, refleja aquí.
     public static readonly HashSet<string> KnownGlobalHooks = new()
     {
-        "git-branch-guard", "merge-develop-guard",
-        "secret-scan", "proteger-arbol",
+        "merge-develop-guard",
+        "proteger-autorizaciones",
+        "proteger-arbol",
         "proteger-fuente-cerebro",
         "limite-gasto", "delegacion-gate", "delegacion-registrar",
         "rehidratar-hilo", "aviso-contexto", "aviso-drift-cerebro", "exportar-sesion-master", "checkpoint-mecanico", "barrer-ramas",
         "entorno-maquina-guard", "no-bypass-deploy",
+        "sesion-inicio", "recordar-cosechar",   // tier both desde 2026-10-21 (global por bootstrap + por-repo con dedupe)
     };
 
     /// Hooks de tier repo (kind=hook): viajan por-repo, se cargan si la sesión INICIA en el repo.
     /// DEBE coincidir con brain/hooks/MANIFEST {repo} (lo verifica test-brain.sh).
     public static readonly HashSet<string> KnownRepoHooks = new()
     {
-        "sesion-inicio", "dod-verificar", "recordar-cosechar",
+        "dod-verificar",
     };
 
     /// Los 4 rótulos de NORMA (pseudo-piezas de la pestaña, gobernadas por HasNorms). NO viven en el

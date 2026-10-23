@@ -1,0 +1,21 @@
+# Reglas de gitleaks del repo: las de serie + contraseñas en cadenas de conexión.
+# (Mismo .gitleaks.toml que llevan los repos del equipo — gitleaks de serie NO detecta Password=/Pwd= de
+# cadenas de conexión ni usuario:pass@ en URIs; estas 2 reglas lo cubren, probadas en las dos direcciones.)
+# Las excepciones son por HUELLA en .gitleaksignore (NUNCA allowlist por ruta: un secreto real nuevo en un
+# archivo de prueba DEBE seguir detectándose).
+[extend]
+useDefault = true
+
+[[rules]]
+id = "cadena-conexion-password"
+description = "Password/Pwd en una cadena de conexión (.NET, ODBC)"
+regex = '''(?i)\b(?:password|pwd)\s*=\s*([^;"'\s$%{][^;"'\s]{5,})'''
+secretGroup = 1
+entropy = 2.5
+
+[[rules]]
+id = "uri-con-credenciales"
+description = "Usuario y contraseña embebidos en una URI"
+regex = '''[a-z][a-z0-9+.-]*://[^:@/\s]+:([^@/\s]{6,})@'''
+secretGroup = 1
+entropy = 2.5

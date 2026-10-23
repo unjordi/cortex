@@ -11,13 +11,13 @@
 # ── CONTRATO DE FAIL-SAFE (definición ÚNICA — la lib NO decide el fail-safe, solo lo REPORTA) ──── ──
 # La lib PRODUCE texto + un ESTADO; JAMÁS inventa un veredicto. Cada juez aplica SU política ante fallo.
 #   · `_juez_token` / `_juez_llamar_api` devuelven VACÍO ante: sin token en ningún canal · sin curl/jq ·
-#     sin red · timeout · HTTP != 200 (incluido 401/403 tras agotar el reintento) · respuesta sin cuerpo.
+#     sin red · timeout · HTTP != 200 (incluido 401/403 tras agotar TODOS los canales de token) · respuesta sin cuerpo.
 #   · La RAZÓN del vacío se comunica en la global `_JUEZ_ESTADO`, con estos valores (3 de indisponibilidad
 #     + el OK). Es el insumo para que CADA juez elija su MENSAJE (no su fail-safe, que es fijo por juez):
 #       OK                   → hubo respuesta 200 con cuerpo (el texto va en stdout).
 #       UNAVAILABLE_NOTOKEN  → NO hay token OAuth en NINGÚN canal (colega/CI/api-key/sin login de suscripción).
 #       UNAVAILABLE_NET      → deps ausentes · red/timeout/DNS · HTTP != 200 no-auth · cuerpo vacío.
-#       EXPIRED              → 401/403 en el 1er intento Y TAMBIÉN tras el reintento (token vencido/revocado).
+#       EXPIRED              → 401/403 en TODOS los canales de token probados (vencido/revocado en todos).
 #   · POLÍTICA por juez (vive en CADA juez, no aquí — codificar el fail-safe en la lib acoplaría seguridad
 #     a mecánica). RESUMEN del contrato, para que quede en UN solo lugar:
 #       merge (merge-develop-guard) = fail-CLOSED: vacío/UNAVAILABLE_* → DENY. El estado solo cambia el
@@ -34,7 +34,10 @@
 # GRATIS (POST a $OLLAMA/api/chat) en vez de Anthropic; sin la env, el comportamiento es BYTE-IDÉNTICO al de
 # hoy (Haiku). El local NO usa token (Ollama corre sin auth). Config: `CLAUDE_JUEZ_LOCAL_MODEL` (activa),
 # `CLAUDE_JUEZ_LOCAL_URL` | `AXON_OLLAMA_URL` (base, default http://localhost:11434), `CLAUDE_JUEZ_LOCAL_TIMEOUT`
-# (seg, default 60). El fail-safe es EL MISMO: éxito → OK + content de Ollama; deps ausentes / Ollama caído /
+# (seg, default 60). GUARDA DE PRODUCCIÓN (auditoría 2026-10-23): el host del URL debe ser LOCAL
+# (localhost/127.*/::1/*.localhost/*.test); un host REMOTO SIN `CLAUDE_JUEZ_LOCAL_ALLOW_REMOTE=1` NO se contacta
+# → UNAVAILABLE_NET (jamás un OK de un endpoint arbitrario que pudiera colar un ALLOW al juez de seguridad; el
+# opt-in habilita un Ollama de la malla deliberado). El fail-safe es EL MISMO: éxito → OK + content de Ollama; deps ausentes / Ollama caído /
 # timeout / HTTP != 200 / content vacío → UNAVAILABLE_NET (txt vacío, rc != 0) → merge fail-SAFE DENY, dod
 # fail-OPEN. Un juez de seguridad con backend local caído SIGUE bloqueando — jamás inventa un OK ante fallo.
 
@@ -71,12 +74,49 @@ _juez_token() {
   return 1
 }
 
+# _juez_tokens_ordenados → imprime los tokens DISTINTOS no vacíos, uno por línea, en el MISMO orden
+# login-activo-first (llavero → archivo → env). Lo usa _juez_llamar_api para que un 401/403 de un canal
+# (credencial VENCIDA) pruebe el SIGUIENTE en vez de re-resolver el mismo (MEDIO auditoría 2026-10-22): una
+# credencial vieja en el llavero ya NO tapa un `$CLAUDE_CODE_OAUTH_TOKEN` válido. El invariante "el llavero gana"
+# se preserva: sigue siendo el PRIMERO que se prueba; el env solo entra si el llavero/archivo son RECHAZADOS.
+_juez_tokens_ordenados() {
+  local t seen="" src
+  for src in _juez_token_de_llavero _juez_token_de_archivo _juez_token_de_env; do
+    t="$($src 2>/dev/null)" || t=""
+    [ -z "$t" ] && continue
+    case "$seen" in *"$(printf '\001')$t$(printf '\001')"*) continue ;; esac   # dedup (SOH como separador, imposible en un token)
+    seen="$seen$(printf '\001')$t$(printf '\001')"
+    printf '%s\n' "$t"
+  done
+}
+
 # _juez_deps_ok → curl + jq disponibles. return 0/1.
 _juez_deps_ok() { command -v curl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; }
 
 # _juez_centinela $texto $regex-ERE → el ÚLTIMO match del centinela (tail -1). Reusa el parseo que estaba
 # duplicado en ambos jueces; el caller normaliza (ALLOW/DENY vs si/no) sobre esta salida cruda.
 _juez_centinela() { printf '%s' "$1" | grep -oiE "$2" 2>/dev/null | tail -1; }
+
+# _juez_url_host $url → extrae el HOST (sin esquema, sin :puerto, sin /path). Maneja IPv6 `[::1]`. bash-3.2.
+_juez_url_host() {
+  local u="${1#*://}"; u="${u%%/*}"
+  case "$u" in
+    \[*) u="${u#\[}"; u="${u%%\]*}" ;;   # [ipv6]:port → ipv6
+    *)   u="${u%%:*}" ;;                  # host:port → host
+  esac
+  printf '%s' "$u"
+}
+# _juez_host_es_local $host → 0 si es un host LOCAL de desarrollo (loopback / *.localhost / *.test). bash-3.2.
+_juez_host_es_local() {
+  case "$1" in
+    localhost|::1|0:0:0:0:0:0:0:1|*.localhost|*.test) return 0 ;;
+  esac
+  # loopback IPv4 127.0.0.0/8 — SOLO IPv4 NUMÉRICA de 4 octetos (R5+, auditoría 2026-10-23, claudio): un glob
+  # `127.*` aceptaba `127.0.0.1.nip.io` (y cualquier `127.x.<dominio>`), un NOMBRE DNS que resuelve a un host
+  # REMOTO → CLAUDE_JUEZ_LOCAL_URL podía apuntar fuera sin ALLOW_REMOTE. El `$` ancla el fin tras el 4º octeto.
+  printf '%s' "$1" | grep -qE '^127(\.[0-9]{1,3}){3}$' && return 0
+  return 1
+}
 
 # ── VETO DE CITA robusto (comparte la MISMA implementación entre merge-develop-guard y dod-verificar →
 # cero drift; antes cada juez copiaba un `grep -Fq` byte-exacto que INVERTÍA el veredicto ante un typo que el
@@ -101,13 +141,18 @@ _juez_cita_norm() {
 # _juez_cita_casa $cita $lineas-candidatas → return 0 si CASA, 1 si NO. El CALLER GARANTIZA que
 # $lineas-candidatas es SOLO texto de rol USUARIO (jamás ASISTENTE) → el invariante "solo el USUARIO
 # autoriza" se conserva DETERMINISTA. Normaliza IGUAL ambos lados y CASA si, para ALGUNA línea candidata,
-# o bien (a) la cita normalizada es SUBSTRING de esa línea (misma semántica que el viejo grep -Fq, pero
-# tolerante a caso/acento/puntuación), o bien (b) CONTAINMENT DE TOKENS: la cita tiene ≥4 tokens y ≥85%
-# de ellos aparecen (como token completo) en ESA UNA línea. El mínimo de 4 tokens + el 85% evitan que una
-# cita corta (2-3 palabras sueltas) o inventada casen por azar → sigue exigiendo solapamiento SUSTANCIAL
-# con una línea de USUARIO real. Solo tolera normalización BENIGNA (typo/acento/caso/puntuación).
+# o bien (a) la cita normalizada aparece como SPAN con FRONTERA DE PALABRA en esa línea (misma semántica que
+# el viejo grep -Fq, pero tolerante a caso/acento/puntuación) Y con SUSTANCIA mínima (≥ CITA_MIN_CHARS chars,
+# default 6), o bien (b) CONTAINMENT DE TOKENS: la cita tiene ≥4 tokens y ≥85% de ellos aparecen (como token
+# completo) en ESA UNA línea. Los dos pisos — frontera de palabra + mínimo de caracteres en (a), 4 tokens +
+# 85% en (b) — evitan que una cita TRIVIAL case por azar: sin ellos una cita de 1-2 chars ('si'/'ok'/'no')
+# era SUBSTRING de casi cualquier texto (casa DENTRO de 'siguiente'/'casi' y como palabra común ubicua) →
+# daba por "verificada" una autorización que el LLM pudo FABRICAR, vaciando el veto de su valor anti-inyección.
+# Con los pisos la cita exige solapamiento SUSTANCIAL con una línea de USUARIO real. Solo tolera normalización
+# BENIGNA (typo/acento/caso/puntuación). CITA_MIN_CHARS es configurable (CLAUDE_JUEZ_CITA_MIN_CHARS).
 _juez_cita_casa() {
-  local cita_norm line line_norm tok ncita nhit
+  local cita_norm line line_norm tok ncita nhit _cmin
+  _cmin="${CLAUDE_JUEZ_CITA_MIN_CHARS:-6}"; case "$_cmin" in ''|*[!0-9]*) _cmin=6 ;; esac
   cita_norm=$(_juez_cita_norm "$1")
   [ -n "$cita_norm" ] || return 1
   # `while read` en el SHELL ACTUAL (heredoc, NO pipe) → un `return` sale de la función; heredoc con
@@ -116,8 +161,12 @@ _juez_cita_casa() {
     [ -n "$line" ] || continue
     line_norm=$(_juez_cita_norm "$line")
     [ -n "$line_norm" ] || continue
-    # (a) substring literal (post-normalización) — equivalente robusto del grep -Fq de antes
-    case "$line_norm" in *"$cita_norm"*) return 0 ;; esac
+    # (a) substring con FRONTERA DE PALABRA (línea padded con espacios) + SUSTANCIA mínima — equivalente
+    # robusto del grep -Fq de antes, pero una cita demasiado corta ('si') NO casa dentro de una palabra
+    # ('siguiente') ni cuela como palabra común ubicua: no es evidencia de una autorización REAL.
+    if [ "${#cita_norm}" -ge "$_cmin" ]; then
+      case " $line_norm " in *" $cita_norm "*) return 0 ;; esac
+    fi
     # (b) containment de tokens (≥4 tokens, ≥85% presentes en ESTA línea)
     ncita=0; nhit=0
     for tok in $cita_norm; do
@@ -134,11 +183,16 @@ __JUEZ_CITA_LINEAS__
 # _juez_curl_crudo $token $body $timeout → stdout: <cuerpo-de-la-respuesta>\n<http_code>. El `-w` de curl
 # ANEXA el código HTTP en su propia línea final → el caller separa cuerpo (sed '$d') de código (tail -n1),
 # distinguiendo un 401 (token rechazado) de una caída de red (código 000 / vacío). NUNCA loguea el token.
+# SEGURIDAD (MEDIO auditoría 2026-10-22): el token NO va en el argv de curl (sería visible en `ps` para
+# cualquier proceso del sistema) — se pasa como CONFIG de curl por STDIN (`-K -`), que trae el header
+# Authorization. El body (no secreto) sigue en el argv por -d.
 _juez_curl_crudo() {
   curl -sS -m "$3" -w '\n%{http_code}' https://api.anthropic.com/v1/messages \
-    -H "Authorization: Bearer $1" -H "anthropic-beta: oauth-2025-04-20" \
+    -H "anthropic-beta: oauth-2025-04-20" \
     -H "anthropic-version: 2023-06-01" -H "content-type: application/json" \
-    -d "$2" 2>/dev/null
+    -d "$2" -K - 2>/dev/null <<CURLCFG
+header = "Authorization: Bearer $1"
+CURLCFG
 }
 
 # _juez_curl_local $url-base $body $timeout → stdout: <cuerpo-de-la-respuesta>\n<http_code>. Gemelo LOCAL de
@@ -157,9 +211,11 @@ _juez_curl_local() {
 #   → TAMBIÉN setea la global `_JUEZ_ESTADO` (conveniencia para una llamada DIRECTA/test; NO sobrevive un
 #     `$(...)`). Por eso el ESTADO viaja en stdout: un caller que hace `resp=$(_juez_llamar_api …)` (subshell)
 #     recupera el estado de la línea 1 — el global se perdería en ese subshell. Retorno: 0 en OK, !=0 en fallo.
-# CAPTURA el http_code y REINTENTA 1× ante 401/403 re-resolviendo el token del canal VIVO (el CLI refresca el
-# keychain en el ínterin) — casi gratis (~5ms: el 401 falla rápido) y NO cambia el veredicto, solo reduce el
-# falso DENY por token stale. Un solo re-try (sin bucle).
+# CAPTURA el http_code y ante 401/403 BARRE al SIGUIENTE canal de token (llavero→archivo→env), en vez de
+# re-resolver el mismo (MEDIO auditoría 2026-10-22: una credencial VENCIDA en un canal ya NO tapa un token
+# válido en otro — p. ej. $CLAUDE_CODE_OAUTH_TOKEN). El llavero sigue siendo el PRIMERO (invariante intacto);
+# el env solo entra si el llavero/archivo son RECHAZADOS. Casi gratis (~5ms: el 401 falla rápido); NO cambia el
+# veredicto, solo reduce el falso DENY por token vencido. EXPIRED solo si TODOS los canales con token dan 401/403.
 _juez_llamar_api() {
   local modelo="$1" maxtok="$2" timeout="$3" temp="$4" prompt="$5" tok body resp http body_txt txt est rc
   est=UNAVAILABLE_NET; txt=""; rc=1
@@ -174,6 +230,16 @@ _juez_llamar_api() {
     local lurl ltimeout
     lurl="${CLAUDE_JUEZ_LOCAL_URL:-${AXON_OLLAMA_URL:-http://localhost:11434}}"; lurl="${lurl%/}"
     ltimeout="${CLAUDE_JUEZ_LOCAL_TIMEOUT:-60}"
+    # GUARDA DE PRODUCCIÓN (auditoría 2026-10-23): el backend local es un opt-in de DEV (Ollama en localhost,
+    # p.ej. el dogfood de axon). Un endpoint REMOTO NO decide un juez de SEGURIDAD (merge) salvo opt-in
+    # DELIBERADO — un agente/env que apunte CLAUDE_JUEZ_LOCAL_URL a un Ollama ARBITRARIO que siempre responda
+    # ALLOW sería un BYPASS del candado (defensa en profundidad: el veto de cita sigue corriendo, pero un
+    # endpoint no-confiable ni siquiera se contacta). El host debe ser local (localhost/127.*/::1/*.localhost/
+    # *.test); un host remoto SIN CLAUDE_JUEZ_LOCAL_ALLOW_REMOTE=1 → UNAVAILABLE_NET (merge fail-SAFE DENY, dod
+    # fail-OPEN) — JAMÁS un OK de una fuente no verificada. El opt-in remoto habilita un Ollama de la malla.
+    if [ "${CLAUDE_JUEZ_LOCAL_ALLOW_REMOTE:-}" != 1 ] && ! _juez_host_es_local "$(_juez_url_host "$lurl")"; then
+      _JUEZ_ESTADO=UNAVAILABLE_NET; printf '%s\n%s' UNAVAILABLE_NET ""; return 1
+    fi
     if ! _juez_deps_ok; then
       est=UNAVAILABLE_NET
     else
@@ -205,11 +271,9 @@ _juez_llamar_api() {
     printf '%s\n%s' "$est" "$txt"
     return "$rc"
   fi
-  # ── BACKEND DEFAULT (Anthropic/Haiku vía OAuth) — INTACTO ────────────────────────────────────── ──
+  # ── BACKEND DEFAULT (Anthropic/Haiku vía OAuth) ──────────────────────────────────────────────── ──
   if ! _juez_deps_ok; then
     est=UNAVAILABLE_NET
-  elif ! tok="$(_juez_token)" || [ -z "$tok" ]; then
-    est=UNAVAILABLE_NOTOKEN
   else
     case "$temp"    in ''|*[!0-9.]*) temp=0 ;; esac
     case "$maxtok"  in ''|*[!0-9]*)  maxtok=512 ;; esac
@@ -219,24 +283,29 @@ _juez_llamar_api() {
     if [ -z "$body" ]; then
       est=UNAVAILABLE_NET
     else
-      resp="$(_juez_curl_crudo "$tok" "$body" "$timeout")"
-      http="$(printf '%s' "$resp" | tail -n1)"; body_txt="$(printf '%s' "$resp" | sed '$d')"
-      if [ "$http" = 200 ]; then
-        txt=$(printf '%s' "$body_txt" | jq -r '.content[0].text // empty' 2>/dev/null); est=OK; rc=0
-      elif [ "$http" = 401 ] || [ "$http" = 403 ]; then
-        # 401/403 = token RECHAZADO (probable expiración): re-resolver del canal VIVO y reintentar 1×.
-        tok="$(_juez_token)" || tok=""
-        if [ -n "$tok" ]; then
-          resp="$(_juez_curl_crudo "$tok" "$body" "$timeout")"
-          http="$(printf '%s' "$resp" | tail -n1)"; body_txt="$(printf '%s' "$resp" | sed '$d')"
-        fi
+      # Itera los canales de token DISTINTOS en orden login-activo-first (llavero→archivo→env). Un 401/403 de
+      # un canal (credencial VENCIDA) → prueba el SIGUIENTE, en vez de re-resolver el MISMO (MEDIO auditoría
+      # 2026-10-22: una credencial vieja en el llavero ya NO tapa un $CLAUDE_CODE_OAUTH_TOKEN válido). El
+      # invariante "el llavero gana" se preserva (es el PRIMERO). Un error de RED corta el barrido (no es de
+      # auth). Sin ningún token → NOTOKEN; TODOS los canales rechazados → EXPIRED.
+      local _toks _authfail=0
+      _toks="$(_juez_tokens_ordenados)"
+      est=UNAVAILABLE_NOTOKEN
+      while IFS= read -r tok; do
+        [ -z "$tok" ] && continue
+        resp="$(_juez_curl_crudo "$tok" "$body" "$timeout")"
+        http="$(printf '%s' "$resp" | tail -n1)"; body_txt="$(printf '%s' "$resp" | sed '$d')"
         if [ "$http" = 200 ]; then
-          txt=$(printf '%s' "$body_txt" | jq -r '.content[0].text // empty' 2>/dev/null); est=OK; rc=0
-        elif [ "$http" = 401 ] || [ "$http" = 403 ]; then est=EXPIRED        # sigue rechazado → vencido de verdad
-        else est=UNAVAILABLE_NET; fi                                          # otro código tras el retry → red
-      else
-        est=UNAVAILABLE_NET   # curl falló (http vacío/000) o HTTP != 200 no-auth → red/servidor/timeout
-      fi
+          txt=$(printf '%s' "$body_txt" | jq -r '.content[0].text // empty' 2>/dev/null); est=OK; rc=0; break
+        elif [ "$http" = 401 ] || [ "$http" = 403 ]; then
+          _authfail=1   # canal rechazado → prueba el SIGUIENTE canal
+        else
+          est=UNAVAILABLE_NET; break   # error de red/servidor/timeout → no es de auth, corta el barrido
+        fi
+      done <<JUEZTOKS
+$_toks
+JUEZTOKS
+      [ "$est" = UNAVAILABLE_NOTOKEN ] && [ "$_authfail" = 1 ] && est=EXPIRED   # hubo token(s), todos 401/403
     fi
   fi
   _JUEZ_ESTADO="$est"

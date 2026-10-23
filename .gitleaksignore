@@ -1,0 +1,9 @@
+# Excepciones de gitleaks por HUELLA (fingerprint = commit:archivo:regla:línea). NUNCA por palabra ni por ruta.
+# Cada línea ignora UNA coincidencia concreta de un valor de PRUEBA/EJEMPLO; un secreto real NUEVO en el mismo
+# archivo seguiría detectándose. Formato: <commit>:<archivo>:<regla>:<línea>.
+#
+# Artefactos de PRUEBA del slice fix/corpus-fp-bench (valores de ejemplo, no reales): el ejemplo del fix H6 en
+# el hook que se RETIRA (detectar-secretos.sh, borrado en HEAD) y la cita en el ledger (reescrita en HEAD).
+# Son del historial del slice; post-squash a develop desaparecen.
+00df42228060ea6ac290aa37c770ab5892fc3905:brain/hooks/detectar-secretos.sh:cadena-conexion-password:37
+00df42228060ea6ac290aa37c770ab5892fc3905:brain/tests/corpus-fp/HALLAZGOS-WIP.md:cadena-conexion-password:20

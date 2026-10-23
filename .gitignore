@@ -78,6 +78,8 @@ docs/flowcharts/*
 !docs/flowcharts/CONVENCIONES.md
 # El parity-check del árbol (README ↔ MEMORY.md ↔ brain/skills/) es MECANISMO durable — lo corre test-brain.sh/CI, debe viajar.
 !docs/flowcharts/verificar-arbol-sync.sh
+# Parity-check de los FLOWCHARTS vs el código (CONVENCIONES §9 ↔ .dot · retirados-como-vivos · conteo del fan-out).
+!docs/flowcharts/verificar-charts-sync.sh
 # El generador de charts (regenera TODOS los .svg desde sus .dot) es la RUTINA durable de doc=realidad de los flowcharts.
 !docs/flowcharts/gen-charts.sh
 

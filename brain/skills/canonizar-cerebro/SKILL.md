@@ -237,7 +237,7 @@ procedencias, valores irrepetibles), y `git rm` la fuente. Registra en el commit
 
 #### 4 · Reescribe `CLAUDE.md` a la firma-árbol
 Sigue la secuencia obligatoria. El **árbol va DENTRO de un bloque cercado** ``` (si no, colapsa a prosa
-en todo render). En el árbol, **nombra los guards BREVE** (`git-branch-guard, merge-develop-guard, …`) —
+en todo render). En el árbol, **nombra los guards BREVE** (`merge-develop-guard, proteger-arbol, …`) —
 esto **mata la prosa de guards stale por construcción**. ATEMPORAL: sin fechas ni estado. La arquitectura
 NO va aquí: apunta a `AGENTS.md` si existe.
 
@@ -361,8 +361,8 @@ conteo, hallazgos en bullets, ruta). Así no infla el contexto del orquestador.
 Usa el **bucle de verificación** de la norma «Delegar a agentes»: **espera a tener AMBOS dictámenes antes de
 editar** (no muevas el piso a media auditoría), y **verifica read-only cada hallazgo contra el código/
 realidad** — no lo relates como verdad. El **cross-check entre lentes es donde se cazan los FALSOS
-POSITIVOS**: p. ej. suficiencia marca `detectar-secretos.sh` como "hook huérfano" → coherencia lo REFUTA
-por ejecución (es una LIB `source`-ada, no un hook) = FP anotado, no tocado. Con 4-6 informes, haz el
+POSITIVOS**: p. ej. suficiencia marca `analizar-comando-git.sh` como "hook huérfano" → coherencia lo REFUTA
+por ejecución (es una LIB `source`-ada por los git-guards, no un hook) = FP anotado, no tocado. Con 4-6 informes, haz el
 cross-check ANTES de sintetizar.
 > **Si un agente REEMPLAZA un doc** (un rebuild de la firma/README/config, no contenido nuevo — típico en
 > el modo canonizar): corre el **DIFF DE PRESERVACIÓN** de la norma «Delegar a agentes» — `diff` viejo→nuevo y
@@ -448,10 +448,10 @@ mutua de LISTO). Los parqueados quedan visibles en el **dictamen durable** (repo
 hallazgo se queda solo en el chat**, aunque solo se atienda un subconjunto.
 
 ### GOTCHAS del modo consolidar (destilados de las corridas reales)
-- **git-branch-guard, FP sobre texto de commit:** dispara sobre `git push origin develop` **dentro de un
-  mensaje de commit multilínea** (no un push real). Workaround: escribe el mensaje con Write y commitea
-  con `git commit -F <archivo>`. (La lib `analizar-comando-git.sh` ignora menciones entrecomilladas, pero
-  un heredoc multilínea la evade.)
+- **merge-develop-guard (PASO 0), FP sobre texto de commit:** dispara sobre `git push origin develop` **dentro
+  de un mensaje de commit multilínea** (no un push real). Workaround: escribe el mensaje con Write y commitea
+  con `git commit -F <archivo>`. (La lib `analizar-comando-git.sh` —que usa el PASO 0 que absorbió al antiguo
+  git-branch-guard— ignora menciones entrecomilladas, pero un heredoc multilínea la evade.)
 - **Verifica el hallazgo con OJOS, no con el primer grep:** un `grep -E` con `\|` (en vez de `|` real)
   devolvió falsos "FALTA"; un "DESCARTADO" en la línea siguiente hizo declarar un mito "presente". El FP
   del propio detector a veces **destapa un hueco REAL de doc** — aprovéchalo, no lo descartes ciego.

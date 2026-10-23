@@ -46,7 +46,12 @@ jobs:
           while IFS= read -r f; do
             printf 'shellcheck %s\n' "$f"
             shellcheck --severity=error "$f" || fail=1
-          done < <({ find brain -name '*.sh' -type f; find . -maxdepth 1 -name '*.sh' -type f; } | sort)
+          # brain/test-brain.sh EXCLUIDO: shellcheck sobre sus ~11.8k líneas usa ~17 GB de RAM y el runner
+          # ubuntu-24.04 (16 GB) hace OOM → "The operation was canceled" (NO es un error de lint; el archivo
+          # pasa limpio con RAM suficiente). Igual se EJECUTA como suite en el paso siguiente (es código de
+          # prueba, no se cablea a ningún evento). TODO (hito repo-público): partir test-brain.sh en módulos y
+          # volver a lintearlo. Mantener esta MISMA exclusión en el loop local de shellcheck.
+          done < <({ find brain -name '*.sh' -type f -not -path 'brain/test-brain.sh'; find . -maxdepth 1 -name '*.sh' -type f; } | sort)
           exit "$fail"
 
       # Suite versionada del cerebro: gate de delegación, idempotencia, refresh de normas y el guard

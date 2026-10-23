@@ -5,7 +5,7 @@ description: >
   el .sh, su cableado idempotente en install/uninstall, su prueba en test-brain, y su
   entrada en el catálogo de la pestaña "Cerebro" de las 3 GUIs (macOS/Linux/Windows).
   Úsalo cuando quieras sumar una regla nueva (bloqueante o de aviso) al cerebro; destila
-  el proceso real con que se agregaron secret-scan, no-bypass-deploy y limite-gasto.
+  el proceso real con que se agregaron entorno-maquina-guard, no-bypass-deploy y limite-gasto.
 ---
 
 # agregar-hook-cerebro — sumar un guardrail nuevo al cerebro (end-to-end)
@@ -16,7 +16,7 @@ y (4) aparece en el **catálogo de la pestaña Cerebro de las 3 GUIs** (si no, e
 lo cuenta ni lo pinta). Sáltate cualquiera y queda a medias.
 
 ## 1. Escribe el hook — `brain/hooks/<nombre>.sh`
-Estilo de la casa (mira `git-branch-guard.sh` / `secret-scan.sh` como plantilla):
+Estilo de la casa (mira `no-bypass-deploy.sh` / `entorno-maquina-guard.sh` como plantilla):
 - `input=$(cat)`; `command -v jq >/dev/null || exit 0` (**fail-open sin jq**, nunca frena a ciegas).
 - `cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty')` y **actúa SOLO** sobre lo tuyo
   (p. ej. `grep -qE 'git ...'` o `tool_name=="Task"`); cualquier otra cosa → `exit 0` al instante.

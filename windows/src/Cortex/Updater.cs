@@ -160,12 +160,50 @@ internal sealed class Updater
         if (LocalShort == "?") return;   // sin version.json (build viejo) → no molesta
         if (_lastCheck is DateTime lc && (DateTime.UtcNow - lc).TotalSeconds < 900) return;
         _lastCheck = DateTime.UtcNow;
+        PublishRoster(_repoPath);   // en el MISMO ciclo de chequeo de versión (Opción A / Jordi)
         _ = Task.Run(async () =>
         {
             bool before = UpdateAvailable;
             await CheckAsync();
             if (UpdateAvailable != before) { try { onResult(); } catch { } }
         });
+    }
+
+    /// Publica el `~/.claude/masters.json` LOCAL + los respaldos de sesiones al folder de sync configurado,
+    /// invocando el script COMPARTIDO `brain/sesiones-master/publicar-roster.sh` del clon (una sola
+    /// implementación; los 3 widgets la llaman — Opción A, 2026-10-14). En el ciclo de chequeo de versión.
+    /// Fire-and-forget, FAIL-OPEN (sin clon/script/bash → no hace nada). Resuelve su propio clon (NO reusa
+    /// ResolveClonePath, que exige windows\install.ps1): aquí basta el script. Requiere bash en el PATH
+    /// (Git Bash, como el resto del brain en Windows); si no está, el try/catch lo traga.
+    private static void PublishRoster(string clone)
+    {
+        try
+        {
+            string rel = Path.Combine("brain", "sesiones-master", "publicar-roster.sh");
+            string dir = clone;
+            if (dir.Length == 0 || !File.Exists(Path.Combine(dir, rel)))
+            {
+                string env = Environment.GetEnvironmentVariable("CLAUDE_BRAIN_DIR") ?? "";
+                string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                dir = "";
+                foreach (var c in new[] { env,
+                             local.Length > 0 ? Path.Combine(local, "cortex-repo") : "",
+                             local.Length > 0 ? Path.Combine(local, "claude-brain-repo") : "" })
+                    if (c.Length > 0 && File.Exists(Path.Combine(c, rel))) { dir = c; break; }
+            }
+            if (dir.Length == 0) return;
+            // bash espera forward-slash; se lo damos relativo al clon (bash resuelve el resto).
+            string script = (dir + "/" + rel).Replace('\\', '/');
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "bash",
+                Arguments = $"\"{script}\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            System.Diagnostics.Process.Start(psi);   // fire-and-forget; no esperamos
+        }
+        catch { /* fail-open: sin bash / sin clon → silencio */ }
     }
 
     /// Fuerza el chequeo de versión SALTANDO el throttle de 15 min. Lo dispara el botón ↻ (refrescar

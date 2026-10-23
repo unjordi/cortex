@@ -12,7 +12,8 @@
 # y solo los ESCRIBE al salir — NO re-renderiza en vivo si un proceso externo escribe los json. Y el
 # session_id ROTA sin aviso (arranque nuevo, auto-compact) → el sid del payload NO siempre casa con la
 # carpeta que respalda el HUD en pantalla. Por eso:
-#   1) La selección de carpeta es ROBUSTA a la rotación (payload sid → si vacío/ausente, la más reciente).
+#   1) La selección de carpeta es ROBUSTA a la rotación (payload sid → si vacío/ausente, la ÚNICA carpeta
+#      no-vacía en la ventana; con ≥2 sesiones activas NO adivina, para no adoptar la de otro repo).
 #   2) NUNCA se pisa un bloque no-vacío con uno vacío (anti-clobber): era el bug "+0 · sin pendientes".
 #   3) El refresco del HUD en pantalla NO lo hace un hook (imposible sin re-render); lo hace el skill.
 #
@@ -37,12 +38,22 @@ _stl_dir_tiene_json() {
   return 1
 }
 
-# ── _stl_tasksdir <sid> → imprime la carpeta de tareas CORRECTA (o nada) ─────────────────────────── ──
-# Robusto a la rotación de session_id: 1) el sid del payload si tiene json; 2) si no, la carpeta no-vacía
-# MÁS RECIENTE bajo ~/.claude/tasks modificada dentro de la ventana (evita adoptar una huérfana vieja).
+# ── _stl_tasksdir <sid> → setea _STL_DIR (carpeta correcta, o vacía) y _STL_RESOLV (confianza) ─────── ──
+# Devuelve por GLOBALES (NO por stdout): un `tasksdir=$(_stl_tasksdir …)` corría la función en un SUBSHELL
+# y el _STL_RESOLV que seteaba NO subía al padre → la excepción "todo completado" quedaba muerta. Los
+# callers la invocan PLANO y leen $_STL_DIR/$_STL_RESOLV.
+# Robusto a la rotación de session_id, pero SIN adoptar la carpeta de otra sesión/repo (MEDIO auditoría
+# 2026-10-22): las tasks NO llevan repo, así que "la más reciente GLOBAL" podía ser de OTRO master activo.
+#   1) sid del payload con json → carpeta DIRECTA (_STL_RESOLV=direct, máxima confianza: ES esta sesión).
+#   2) si no, FALLBACK por rotación: adopta una carpeta viva SOLO si es INEQUÍVOCA — EXACTAMENTE UNA
+#      carpeta no-vacía dentro de la ventana (_STL_RESOLV=fallback). Con 0 o ≥2 (varias sesiones a la vez)
+#      NO adivina (_STL_RESOLV=none) → el anti-clobber preserva el bloque en vez de pisarlo con tareas ajenas.
+_STL_DIR=""
+_STL_RESOLV=none
 _stl_tasksdir() {
-  local sid="${1:-}" base="$HOME/.claude/tasks" d best="" bestm=0 m now
-  if [ -n "$sid" ] && _stl_dir_tiene_json "$base/$sid"; then printf '%s' "$base/$sid"; return 0; fi
+  local sid="${1:-}" base="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/tasks" d best="" cnt=0 m now
+  _STL_DIR=""; _STL_RESOLV=none
+  if [ -n "$sid" ] && _stl_dir_tiene_json "$base/$sid"; then _STL_DIR="$base/$sid"; _STL_RESOLV=direct; return 0; fi
   [ -d "$base" ] || return 0
   now=$(date +%s 2>/dev/null || echo 0); case "$now" in ''|*[!0-9]*) now=0 ;; esac
   for d in "$base"/*/; do
@@ -54,9 +65,10 @@ _stl_tasksdir() {
     if [ "$now" -gt 0 ] && [ "$STL_VENTANA_FALLBACK" -gt 0 ]; then
       [ $(( now - m )) -le "$STL_VENTANA_FALLBACK" ] || continue
     fi
-    [ "$m" -gt "$bestm" ] && { bestm=$m; best="$d"; }
+    cnt=$((cnt+1)); best="$d"
   done
-  [ -n "$best" ] && printf '%s' "$best"
+  # INEQUÍVOCA = exactamente 1 candidata. Con ≥2 no se puede saber cuál es la nuestra → no adivinar.
+  if [ "$cnt" -eq 1 ]; then _STL_DIR="$best"; _STL_RESOLV=fallback; fi
   return 0
 }
 
@@ -80,6 +92,26 @@ _stl_ndone() {
     [ "$(jq -r '.status // empty' "$f" 2>/dev/null)" = "completed" ] && n=$((n+1))
   done
   printf '%s' "$n"
+}
+
+# ── _stl_carpeta_es_de_este_repo <sid> → 0 si la carpeta de tareas <sid> pertenece a ESTE repo/sesión.
+#    R4 #3-fix2 (auditoría 2026-10-23): los ids de tarea empiezan en #1 en TODA sesión → un chequeo por SOLAPE
+#    de ids casi siempre da verdadero (no distingue una carpeta ajena de la propia rotada). La señal CORRECTA es
+#    el TRANSCRIPT: existe `<projects>/<slug del CLAUDE_PROJECT_DIR>/<sid>.jsonl` SÓLO si esa sesión corrió en
+#    ESTE repo (la carpeta ajena de otro master/otro repo tiene su transcript bajo OTRO slug). El slug = la ruta
+#    del proyecto con TODO carácter NO alfanumérico → `-` (misma convención de Claude Code). bash-3.2-safe.
+#    R5-5 (auditoría 2026-10-23, claudio): antes mapeaba SOLO `/` y `.` → un path con `_`/espacio (p. ej.
+#    pisa_InfraestructuraDigital → el slug real es ...-pisa-InfraestructuraDigital, con `_`→`-`) NO casaba su
+#    transcript → la carpeta del repo se tomaba por AJENA (medido). Ahora `[^A-Za-z0-9]`→`-` + se quita la barra
+#    final del path (un trailing `/` daría un `-` sobrante que Claude Code no pone).
+_stl_carpeta_es_de_este_repo() {
+  local sid="$1" proj slug base
+  [ -n "$sid" ] || return 1
+  proj="${CLAUDE_PROJECT_DIR:-}"; [ -n "$proj" ] || return 1
+  proj="${proj%/}"                              # sin barra final (si no, un `-` sobrante)
+  base="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects"
+  slug=$(printf '%s' "$proj" | sed 's#[^A-Za-z0-9]#-#g')
+  [ -f "$base/$slug/$sid.jsonl" ]
 }
 
 # ── _stl_render_body <rows-tsv> <ndone> → cuerpo markdown del bloque ─────────────────────────────── ──
@@ -133,17 +165,35 @@ espejar_tasklist() {
 
   local sid tasksdir rows ndone n
   sid=$(printf '%s' "$payload" | jq -r '.session_id // empty' 2>/dev/null)
-  tasksdir=$(_stl_tasksdir "$sid")
+  _stl_tasksdir "$sid"; tasksdir="$_STL_DIR"
   rows=$(_stl_rows "$tasksdir")
   n=$(printf '%s' "$rows" | grep -c . 2>/dev/null || echo 0)
   case "$n" in ''|*[!0-9]*) n=0 ;; esac
 
-  # ANTI-CLOBBER: si no resolvimos pendientes con confianza (0 filas) y YA hay un bloque no-vacío, NO lo
-  # pisamos con uno vacío — era el bug "+0 · sin pendientes" cuando el sid del payload apunta a una carpeta
-  # vacía/rotada. Preservamos el último espejo bueno (a lo más queda 1 turno stale, mejor que borrado).
-  if [ "$n" -eq 0 ] && _stl_bloque_no_vacio "$estado"; then printf 0; return 0; fi
-
+  # ANTI-CLOBBER + "TODO COMPLETADO": con 0 filas (ningún pendiente/en-curso) y un bloque YA no-vacío, lo
+  # DEFAULT es PRESERVAR — no pisar con vacío un bloque bueno cuando la carpeta vino vacía/rotada/ambigua
+  # (bug "+0 · sin pendientes"). EXCEPCIÓN (MEDIO auditoría 2026-10-22): si resolvimos la carpeta de ESTA
+  # sesión DIRECTO (payload sid) y tiene tareas pero TODAS completadas (ndone>0), SÍ actualizamos a "sin
+  # pendientes · +N completadas" — antes un tasklist terminado dejaba pendientes FANTASMA en el bloque para
+  # siempre. Solo el camino `direct` lo permite: un fallback/none pudo resolver una carpeta ajena.
   ndone=$(_stl_ndone "$tasksdir")
+  # ANTI-CLOBBER: si el bloque YA tiene contenido, SOLO una resolución DIRECTA de ESTA sesión (sid del payload)
+  # puede pisarlo. Una resolución por FALLBACK (ownership INCIERTA — pudo adoptar la carpeta de OTRO master) NO
+  # pisa un bloque bueno, ni con vacío ni con tareas. M3 (auditoría R3 2026-10-23): antes el anti-clobber solo
+  # cubría n==0, así que una carpeta AJENA con un in_progress (n>0, resuelta por fallback) reemplazaba el bloque
+  # propio no-vacío por una TAREA AJENA. EXCEPCIÓN del camino `direct` sin filas: solo pasa a "sin pendientes" si
+  # DE VERDAD terminó (ndone>0 → tasklist completado); si no (carpeta vacía/rotada), preserva (bug "+0 · sin pendientes").
+  # R4 #3 (auditoría 2026-10-23): el M3 anterior preservaba el bloque ante CUALQUIER fallback → el caso LEGÍTIMO
+  # de rotación de session_id (mi carpeta rotó a un sid nuevo → se resuelve por fallback, no direct) NUNCA
+  # actualizaba el espejo. Rescate: en fallback SÍ se pisa si la carpeta es la MISMA sesión rotada — señal
+  # DETERMINISTA: algún id de la carpeta resuelta ya está en el bloque (el bloque se espejó de ESTA sesión antes
+  # de rotar). Sin solape (carpeta AJENA) o resolución `none` → se preserva (el anti-clobber de M3 se mantiene).
+  if _stl_bloque_no_vacio "$estado"; then
+    if [ "$_STL_RESOLV" != "direct" ]; then
+      _stl_carpeta_es_de_este_repo "${_STL_DIR##*/}" || { printf 0; return 0; }
+    fi
+    { [ "$n" -eq 0 ] && [ "${ndone:-0}" -eq 0 ]; } && { printf 0; return 0; }
+  fi
   local body; body=$(_stl_render_body "$rows" "$ndone")
 
   local tmp; tmp=$(mktemp 2>/dev/null) || { printf 0; return 0; }
@@ -151,16 +201,32 @@ espejar_tasklist() {
   # línea en un valor `-v` ("awk: newline in string") → salía non-zero y el bloque existente NUNCA se
   # actualizaba en re-espejo (bug latente heredado). Localizamos los marcadores por nº de línea y
   # reensamblamos con head/tail — portable en Mac/Linux/Git-Bash.
-  local ini_ln fin_ln
-  ini_ln=$(grep -nF "$STL_ESPEJO_INI" "$estado" 2>/dev/null | head -1 | cut -d: -f1)
-  fin_ln=$(grep -nF "$STL_ESPEJO_FIN" "$estado" 2>/dev/null | head -1 | cut -d: -f1)
-  if [ -n "$ini_ln" ] && [ -n "$fin_ln" ] && [ "$fin_ln" -gt "$ini_ln" ] 2>/dev/null; then
-    # [pre + marcador INI] + [body nuevo] + [marcador FIN + post]
-    { head -n "$ini_ln" "$estado"; printf '%s\n' "$body"; tail -n +"$fin_ln" "$estado"; } > "$tmp" 2>/dev/null \
-      || { rm -f "$tmp"; printf 0; return 0; }
-  else
+  # D1 (auditoría 2026-10-22): los marcadores se localizan por LÍNEA EXACTA (`grep -nxF`), igual que sembrar/
+  # _stl_bloque_no_vacio (awk `$0==ini`). Con `grep -nF` (SUBSTRING) una línea de PROSA que cita la marca
+  # `<!-- espejo-tasklist:start -->` antes del bloque movía ini_ln a la prosa y head/tail BORRABA todo lo curado
+  # entre ella y el `:end` (PÉRDIDA DE DATOS). FAIL-SAFE: solo se reemplaza con EXACTAMENTE 1 INI y 1 FIN (y
+  # INI<FIN); sin bloque (0/0) → se anexa fresco; cualquier otra combinación (duplicado/marcador huérfano) → NO
+  # se toca el archivo (conservar lo curado).
+  local ini_ln fin_ln n_ini n_fin
+  n_ini=$(grep -cxF "$STL_ESPEJO_INI" "$estado" 2>/dev/null); n_ini=${n_ini:-0}
+  n_fin=$(grep -cxF "$STL_ESPEJO_FIN" "$estado" 2>/dev/null); n_fin=${n_fin:-0}
+  if [ "$n_ini" = 1 ] && [ "$n_fin" = 1 ]; then
+    ini_ln=$(grep -nxF "$STL_ESPEJO_INI" "$estado" 2>/dev/null | head -1 | cut -d: -f1)
+    fin_ln=$(grep -nxF "$STL_ESPEJO_FIN" "$estado" 2>/dev/null | head -1 | cut -d: -f1)
+    if [ -n "$ini_ln" ] && [ -n "$fin_ln" ] && [ "$fin_ln" -gt "$ini_ln" ] 2>/dev/null; then
+      # [pre + marcador INI] + [body nuevo] + [marcador FIN + post]
+      { head -n "$ini_ln" "$estado"; printf '%s\n' "$body"; tail -n +"$fin_ln" "$estado"; } > "$tmp" 2>/dev/null \
+        || { rm -f "$tmp"; printf 0; return 0; }
+    else
+      # FIN antes que INI (bloque roto) → fail-safe: no tocar
+      rm -f "$tmp"; printf 0; return 0
+    fi
+  elif [ "$n_ini" = 0 ] && [ "$n_fin" = 0 ]; then
     { cat "$estado"; printf '\n%s\n%s\n%s\n' "$STL_ESPEJO_INI" "$body" "$STL_ESPEJO_FIN"; } > "$tmp" 2>/dev/null \
       || { rm -f "$tmp"; printf 0; return 0; }
+  else
+    # bloque DUPLICADO o marcador huérfano → fail-safe: NO tocar (no borrar lo curado)
+    rm -f "$tmp"; printf 0; return 0
   fi
   if cmp -s "$tmp" "$estado" 2>/dev/null; then rm -f "$tmp"; else mv -f "$tmp" "$estado" 2>/dev/null || rm -f "$tmp"; fi
   printf '%s' "$n"
@@ -188,12 +254,24 @@ sembrar_tasklist() {
   [ -n "$out" ] && printf '%s\n' "$out"
 
   if [ -n "$write" ] && command -v jq >/dev/null 2>&1 && [ -n "$out" ]; then
-    local sid tasksdir st id subj
-    sid=$(_stl_tasksdir "")   # carpeta más reciente; para next-start
-    tasksdir="${sid:-}"
+    local tasksdir st id subj
+    _stl_tasksdir ""   # carpeta INEQUÍVOCA (para next-start); con ≥2 activas no adivina → no escribe en ajena
+    tasksdir="$_STL_DIR"
     if [ -n "$tasksdir" ] && [ -d "$tasksdir" ]; then
+      # M3/R4 #3-fix2 (auditoría 2026-10-23): `_stl_tasksdir ""` (sin sid) solo resuelve por FALLBACK (ownership
+      # incierta). Solo sembramos en esa carpeta si pertenece a ESTE repo (su transcript vive bajo el slug del
+      # CLAUDE_PROJECT_DIR) — una carpeta de OTRO master/otro repo NO se contamina con nuestras tareas (gemelo
+      # del anti-clobber de espejar, en la dirección inversa durable→json). El chequeo por ids NO sirve (los ids
+      # empiezan en #1 en toda sesión → casi siempre solapan).
+      _stl_carpeta_es_de_este_repo "${tasksdir##*/}" || return 0
       while IFS='|' read -r st id subj; do
         [ -n "$id" ] || continue
+        # NO RESUCITAR una tarea YA completada (MEDIO auditoría 2026-10-22): el bloque solo lista
+        # pending/in_progress, pero puede venir STALE (una sesión previa la completó sin re-espejar). Si el
+        # json destino ya la marca completed, se respeta — re-sembrarla como pending la revive falsamente.
+        if [ -f "$tasksdir/$id.json" ] && [ "$(jq -r '.status // empty' "$tasksdir/$id.json" 2>/dev/null)" = "completed" ]; then
+          continue
+        fi
         jq -n --arg id "$id" --arg s "$subj" --arg st "$st" \
           '{id:$id, subject:$s, description:"", activeForm:$s, status:$st, blocks:[], blockedBy:[]}' \
           > "$tasksdir/$id.json" 2>/dev/null || true

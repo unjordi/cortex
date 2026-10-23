@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # entorno-maquina-guard.sh — PreToolUse/Bash. MECANISMO de la norma dura "el entorno de MÁQUINA vive
-# GLOBAL, jamás en un repo". AVISA (NO bloquea) cuando un `git commit` está por meter al `.claude/memory/`
+# GLOBAL, jamás en el repo de un proyecto ni en tu slug". AVISA (NO bloquea) cuando un `git commit` está por meter al `.claude/memory/`
 # de un repo algo específico-de-esta-máquina — que viajaría por git y MENTIRÍA al clonar en otra compu/OS.
 # Lo machine-specific vive SOLO en ~/.claude/entorno-maquina.md (global per-máquina, que NO viaja
 # por git); un repo documenta el proyecto de forma PORTABLE/CONDICIONAL (nombrado `correr-en-local.md`).
@@ -19,7 +19,7 @@ set -u
 
 # dedupe: si soy la copia del REPO y la copia GLOBAL existe, cedo (evita doble aviso). En un clon SIN
 # bootstrap la del repo sí corre. NO-debilitante: sigue avisando 1×.
-case "$0" in "$HOME/.claude/hooks/"*) : ;; *) [ -f "$HOME/.claude/hooks/$(basename "$0")" ] && exit 0 ;; esac
+_cfgh="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks"; case "$0" in "$_cfgh/"*) : ;; *) [ -f "$_cfgh/$(basename "$0")" ] && exit 0 ;; esac
 
 command -v jq >/dev/null 2>&1 || exit 0
 cmd=$(jq -r '.tool_input.command // ""' 2>/dev/null)
@@ -32,7 +32,10 @@ case "$cmd" in *git*) : ;; *) exit 0 ;; esac
 _ACGLIB="$(dirname "$0")/analizar-comando-git.sh"
 [ -f "$_ACGLIB" ] && . "$_ACGLIB"
 if command -v acg_despoja_comillas >/dev/null 2>&1; then
-  unquoted=$(acg_despoja_comillas "$cmd")
+  # Normaliza el prefijo git (colapsa `git -C <dir>`/`-c k=v`) ANTES de acg_es_commit: sin esto un
+  # `git -C <otro-repo> commit` NO se reconocía como commit (el -C rompe la adyacencia git+commit) y el
+  # guard salía mudo (MEDIO auditoría 2026-10-22). El dir real lo resuelve acg_target_dir sobre el cmd CRUDO.
+  unquoted=$(acg_normaliza_git_prefijo "$(acg_despoja_comillas "$cmd")")
   acg_es_commit "$unquoted" || exit 0
 else
   unquoted=$(printf '%s' "$cmd" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g")
@@ -40,7 +43,14 @@ else
 fi
 
 command -v git >/dev/null 2>&1 || exit 0
-dir="${CLAUDE_PROJECT_DIR:-.}"
+# El dir objetivo honra un `git -C <path>` / `cd <path> &&` del comando (MEDIO auditoría 2026-10-22): sin
+# esto el guard analizaba el repo del cwd/CLAUDE_PROJECT_DIR aunque el commit fuera a OTRO repo → leía los
+# staged del repo EQUIVOCADO. Reusa acg_target_dir (misma resolución -C>cd>cwd que merge-develop-guard).
+if command -v acg_target_dir >/dev/null 2>&1; then
+  dir=$(acg_target_dir "$cmd" "${CLAUDE_PROJECT_DIR:-}")
+else
+  dir="${CLAUDE_PROJECT_DIR:-.}"
+fi
 git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 
 # Candidatos: archivos .md bajo .claude/memory/ que ENTRAN en este commit (staged). Si el commit trae
@@ -72,10 +82,12 @@ while IFS= read -r f; do
   hit=""
   printf '%s\n' "$added" | grep -qE '(^|[^[:alnum:]])alias[[:space:]]+[A-Za-z0-9_-]+=|→[[:space:]]*`?(eza|trash|bat|nvim|colima)' && hit="alias/tool personal"
   printf '%s\n' "$added" | grep -qE '/Users/[A-Za-z0-9._-]+/|/home/[A-Za-z0-9._-]+/|[A-Za-z]:[\\]Users[\\]' && hit="${hit:+$hit, }ruta absoluta de un \$HOME"
-  # "Rosetta" sin una palabra condicional en la MISMA línea
-  if printf '%s\n' "$added" | grep -iE 'rosetta' | grep -viqE 'si |if |cuando|apple silicon|arm64|opt-in|condicional|solo si|only if' >/dev/null 2>&1; then
-    printf '%s\n' "$added" | grep -iE 'rosetta' | grep -iqE 'si |if |cuando|apple silicon|arm64|opt-in|condicional|solo si|only if' || hit="${hit:+$hit, }Rosetta sin condicional"
-  fi
+  # "Rosetta" en una línea SIN una palabra condicional. Per-LÍNEA: basta UNA línea Rosetta incondicional
+  # para avisar. Antes el chequeo era COLECTIVO — una línea Rosetta CON condicional (el inner grep -qi de
+  # abajo) SILENCIABA a las otras SIN condicional (MEDIO auditoría 2026-10-22). El `grep rosetta | grep -v
+  # <cond>` ya deja SOLO las líneas incondicionales; si queda alguna (-q → exit 0), avisa.
+  printf '%s\n' "$added" | grep -iE 'rosetta' | grep -viqE 'si |if |cuando|apple silicon|arm64|opt-in|condicional|solo si|only if' \
+    && hit="${hit:+$hit, }Rosetta sin condicional"
   [ -n "$hit" ] && content_hits="${content_hits}    · ${f##*/}: $hit\n"
 done <<EOF
 $mem_files
@@ -83,7 +95,7 @@ EOF
 
 [ -z "$bad_name" ] && [ -z "$content_hits" ] && exit 0
 
-MSG="AVISO (norma dura 'el entorno de MÁQUINA vive GLOBAL, jamás en un repo'): este git commit mete al .claude/memory/ de ESTE repo contenido que parece específico-de-esta-máquina — en un repo viaja por git y MIENTE al clonar en otra compu/OS."
+MSG="AVISO (norma dura 'el entorno de MÁQUINA vive GLOBAL, jamás en el repo de un proyecto ni en tu slug'): este git commit mete al .claude/memory/ de ESTE repo contenido que parece específico-de-esta-máquina — en un repo viaja por git y MIENTE al clonar en otra compu/OS."
 [ -n "$bad_name" ] && MSG="$MSG || FILENAME-trampa: $(printf '%s' "$bad_name" | tr '\n' ' ')— la norma prohíbe 'entorno-maquina.md' en un repo; si es cómo correr EL PROYECTO, hazlo PORTABLE/CONDICIONAL y renómbralo a 'correr-en-local.md'."
 [ -n "$content_hits" ] && MSG="$MSG || CONTENIDO machine-specific en:\n$(printf '%b' "$content_hits")   Lo personal-de-instancia (aliases, rutas de tu \$HOME, Rosetta/colima sin condicional) va SOLO en el entorno GLOBAL per-máquina (~/.claude/entorno-maquina.md, que NO viaja por git). En el repo deja solo lo portable/condicional ('si estás en Apple Silicon: platform: linux/amd64')."
 MSG="$MSG || Esto AVISA, no bloquea: si de verdad es portable, ignóralo."

@@ -21,7 +21,7 @@ Sincroniza el cerebro (hooks de tier `both`) desde `brain/hooks/` hacia el `.cla
 ```bash
 bash brain/sincronizar-cerebro.sh ~/code/mi-repo                 # DRY-RUN
 bash brain/sincronizar-cerebro.sh ~/code/mi-repo --apply         # aplica
-bash brain/sincronizar-cerebro.sh ~/code/mi-repo --disable git-branch-guard --apply
+bash brain/sincronizar-cerebro.sh ~/code/mi-repo --disable no-bypass-deploy --apply
 bash brain/sincronizar-cerebro.sh ~/code/personal --limpiar-personal --incluir-skills --apply
 ```
 

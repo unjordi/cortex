@@ -121,7 +121,7 @@ $part"
 # chequeo limpio reciente evita re-correr el sync. (La identidad ya NO depende de esto: la carga el
 # @import nativo del CLAUDE.md, no este hook — ver B8 arriba. Un chequeo limpio throttleado => silencio.)
 horas="${AVISO_DRIFT_HORAS:-6}"; case "$horas" in ''|*[!0-9]*) horas=6;; esac
-stampdir="$HOME/.claude/memory/.drift-cerebro"; mkdir -p "$stampdir" 2>/dev/null || true
+stampdir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/memory/.drift-cerebro"; mkdir -p "$stampdir" 2>/dev/null || true
 slug=$(printf '%s' "$ROOT" | cksum 2>/dev/null | awk '{print $1}')
 stamp="$stampdir/${slug:-0}"
 now=$(date +%s)
