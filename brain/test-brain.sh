@@ -5429,6 +5429,29 @@ printf '{"session_id":"%s"}' "$S4" | HOME="$EMHOME4" CLAUDE_PROJECT_DIR="$EMREPO
 grep -q '#9' "$EMFILE_C4" && ok "espejo: anti-clobber — no pisa el último bloque bueno con uno vacío" \
   || bad "espejo: pisó un bloque no-vacío con uno vacío (anti-clobber roto)"
 
+# ── Caso 6 (D1, auditoría 2026-10-22): una línea de PROSA que CITA la marca ANTES del bloque NO borra lo curado. ──
+# Con `grep -nF` (SUBSTRING) ini_ln apuntaba a la prosa y head/tail borraba todo entre ella y el :end real.
+# Fix: `grep -nxF` (línea EXACTA) + exigir EXACTAMENTE 1 par. FALLA contra el código viejo (borraba decision ALFA/BETA).
+EMHOME6="$EMFIX/c6home"; EMREPO6="$EMFIX/c6repo"; S6="SESION6"
+mkdir -p "$EMHOME6/.claude/tasks/$S6"; _em_mkrepo "$EMREPO6"
+EMFILE_C6="$EMREPO6/.claude/memory/estado-proyecto.md"
+printf '# Estado\nDocumentando la marca `<!-- espejo-tasklist:start -->` en prosa.\n- decision ALFA\n- decision BETA\n<!-- espejo-tasklist:start -->\n- vieja\n<!-- espejo-tasklist:end -->\n' > "$EMFILE_C6"
+printf '{"id":"9","subject":"Nueva","status":"pending"}' > "$EMHOME6/.claude/tasks/$S6/9.json"
+printf '{"session_id":"%s"}' "$S6" | HOME="$EMHOME6" CLAUDE_PROJECT_DIR="$EMREPO6" bash "$HOOKS/recordar-cosechar.sh" >/dev/null 2>&1
+{ grep -q 'decision ALFA' "$EMFILE_C6" && grep -q 'decision BETA' "$EMFILE_C6"; } \
+  && ok "espejo D1: la marca citada en PROSA NO borra las decisiones curadas (grep -nxF línea exacta)" \
+  || bad "espejo D1: PÉRDIDA DE DATOS — la marca en prosa movió ini_ln y borró lo curado"
+[ "$(grep -cxF '<!-- espejo-tasklist:start -->' "$EMFILE_C6")" = 1 ] \
+  && ok "espejo D1: sigue habiendo UN solo marcador :start exacto (no duplica)" \
+  || bad "espejo D1: duplicó o perdió el marcador :start"
+# fail-safe: bloque DUPLICADO (2 :start exactos) → NO se toca el archivo
+printf '# Estado\n- decision GAMMA\n<!-- espejo-tasklist:start -->\n- a\n<!-- espejo-tasklist:end -->\n<!-- espejo-tasklist:start -->\n- b\n<!-- espejo-tasklist:end -->\n' > "$EMFILE_C6"
+before6=$(cat "$EMFILE_C6")
+printf '{"session_id":"%s"}' "$S6" | HOME="$EMHOME6" CLAUDE_PROJECT_DIR="$EMREPO6" bash "$HOOKS/recordar-cosechar.sh" >/dev/null 2>&1
+[ "$(cat "$EMFILE_C6")" = "$before6" ] \
+  && ok "espejo D1 fail-safe: bloque DUPLICADO (≠1 par) → NO se toca el archivo (conserva lo curado)" \
+  || bad "espejo D1 fail-safe: tocó un archivo con marcadores duplicados (riesgo de pérdida)"
+
 # ── Caso 5 (INVERSO / sembrar): el CLI 'sembrar' deriva el set de tareas del bloque durable. ──
 sib=$(HOME="$EMHOME3" CLAUDE_PROJECT_DIR="$EMREPO3" bash "$HOOKS/sincronizar-tasklist.sh" sembrar 2>/dev/null)
 { printf '%s\n' "$sib" | grep -q '^pending|20|Nueva$'; } \

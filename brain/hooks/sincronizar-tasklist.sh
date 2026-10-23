@@ -151,16 +151,32 @@ espejar_tasklist() {
   # línea en un valor `-v` ("awk: newline in string") → salía non-zero y el bloque existente NUNCA se
   # actualizaba en re-espejo (bug latente heredado). Localizamos los marcadores por nº de línea y
   # reensamblamos con head/tail — portable en Mac/Linux/Git-Bash.
-  local ini_ln fin_ln
-  ini_ln=$(grep -nF "$STL_ESPEJO_INI" "$estado" 2>/dev/null | head -1 | cut -d: -f1)
-  fin_ln=$(grep -nF "$STL_ESPEJO_FIN" "$estado" 2>/dev/null | head -1 | cut -d: -f1)
-  if [ -n "$ini_ln" ] && [ -n "$fin_ln" ] && [ "$fin_ln" -gt "$ini_ln" ] 2>/dev/null; then
-    # [pre + marcador INI] + [body nuevo] + [marcador FIN + post]
-    { head -n "$ini_ln" "$estado"; printf '%s\n' "$body"; tail -n +"$fin_ln" "$estado"; } > "$tmp" 2>/dev/null \
-      || { rm -f "$tmp"; printf 0; return 0; }
-  else
+  # D1 (auditoría 2026-10-22): los marcadores se localizan por LÍNEA EXACTA (`grep -nxF`), igual que sembrar/
+  # _stl_bloque_no_vacio (awk `$0==ini`). Con `grep -nF` (SUBSTRING) una línea de PROSA que cita la marca
+  # `<!-- espejo-tasklist:start -->` antes del bloque movía ini_ln a la prosa y head/tail BORRABA todo lo curado
+  # entre ella y el `:end` (PÉRDIDA DE DATOS). FAIL-SAFE: solo se reemplaza con EXACTAMENTE 1 INI y 1 FIN (y
+  # INI<FIN); sin bloque (0/0) → se anexa fresco; cualquier otra combinación (duplicado/marcador huérfano) → NO
+  # se toca el archivo (conservar lo curado).
+  local ini_ln fin_ln n_ini n_fin
+  n_ini=$(grep -cxF "$STL_ESPEJO_INI" "$estado" 2>/dev/null); n_ini=${n_ini:-0}
+  n_fin=$(grep -cxF "$STL_ESPEJO_FIN" "$estado" 2>/dev/null); n_fin=${n_fin:-0}
+  if [ "$n_ini" = 1 ] && [ "$n_fin" = 1 ]; then
+    ini_ln=$(grep -nxF "$STL_ESPEJO_INI" "$estado" 2>/dev/null | head -1 | cut -d: -f1)
+    fin_ln=$(grep -nxF "$STL_ESPEJO_FIN" "$estado" 2>/dev/null | head -1 | cut -d: -f1)
+    if [ -n "$ini_ln" ] && [ -n "$fin_ln" ] && [ "$fin_ln" -gt "$ini_ln" ] 2>/dev/null; then
+      # [pre + marcador INI] + [body nuevo] + [marcador FIN + post]
+      { head -n "$ini_ln" "$estado"; printf '%s\n' "$body"; tail -n +"$fin_ln" "$estado"; } > "$tmp" 2>/dev/null \
+        || { rm -f "$tmp"; printf 0; return 0; }
+    else
+      # FIN antes que INI (bloque roto) → fail-safe: no tocar
+      rm -f "$tmp"; printf 0; return 0
+    fi
+  elif [ "$n_ini" = 0 ] && [ "$n_fin" = 0 ]; then
     { cat "$estado"; printf '\n%s\n%s\n%s\n' "$STL_ESPEJO_INI" "$body" "$STL_ESPEJO_FIN"; } > "$tmp" 2>/dev/null \
       || { rm -f "$tmp"; printf 0; return 0; }
+  else
+    # bloque DUPLICADO o marcador huérfano → fail-safe: NO tocar (no borrar lo curado)
+    rm -f "$tmp"; printf 0; return 0
   fi
   if cmp -s "$tmp" "$estado" 2>/dev/null; then rm -f "$tmp"; else mv -f "$tmp" "$estado" 2>/dev/null || rm -f "$tmp"; fi
   printf '%s' "$n"
