@@ -199,12 +199,18 @@ NEXT_MONDAY="$(date -u -d "next Monday 00:00:00" +%Y-%m-%dT%H:%M:%SZ)"
 # --- Ventana semanal REAL (rolling 7d) ----------------------------------------
 # El reset semanal de OAuth es un rolling 7d (no cae en lunes). La ventana real
 # es [REAL_WEEK_START, ahora] donde REAL_WEEK_START = week_reset - 7d. En modo
-# oauth usamos el resets_at real; en fallback usamos el próximo lunes menos 7d.
-# ccusage se consulta por ese rango con `daily --since` y se SUMA totalCost y
-# totalTokens de los días (NO el bucket semanal-lunes, que daba cost/tokens
-# idénticos a la sesión).
-WEEK_RESET_FALLBACK="$NEXT_MONDAY"
-REAL_WEEK_START="$(date -u -d "$WEEK_RESET_FALLBACK - 7 days" +%Y-%m-%d)"
+# oauth usamos el resets_at REAL (rolling, no el lunes); en fallback, el próximo
+# lunes menos 7d. ccusage se consulta por ese rango con `daily --since` y se SUMA
+# totalCost y totalTokens de los días (NO el bucket semanal-lunes, que daba
+# cost/tokens idénticos a la sesión e inflaba la ventana ~2.5d — bug auditoría
+# 2026-10-22). day-granular aquí (ccusage `daily --since` es por día); el
+# week_start de precisión completa lo deriva jq de $week_reset - 7d.
+WEEK_RESET_EFF="$NEXT_MONDAY"
+if [[ -n "$USAGE_JSON" ]]; then
+  _ow="$(jq -r '.seven_day.resets_at // empty' <<<"$USAGE_JSON" 2>/dev/null || true)"
+  [[ -n "$_ow" ]] && WEEK_RESET_EFF="$_ow"
+fi
+REAL_WEEK_START="$(date -u -d "${WEEK_RESET_EFF:0:10} - 7 days" +%Y-%m-%d)"
 WEEKLY_DAILY_JSON=""
 if [[ -n "$CCUSAGE" ]]; then
   SINCE="$(date -u -d "$REAL_WEEK_START" +%Y%m%d)"
@@ -223,7 +229,6 @@ jq -n \
   --argjson weekly "${WEEKLY_JSON:-null}" \
   --argjson weekly_daily "${WEEKLY_DAILY_JSON:-null}" \
   --arg ts "$NOW_ISO" \
-  --arg real_week_start "$REAL_WEEK_START" \
   --arg next_monday "$NEXT_MONDAY" \
   --arg prev_week_reset "$PREV_WEEK_RESET" \
   --arg prev_five_reset "$PREV_FIVE_RESET" \
@@ -291,7 +296,7 @@ jq -n \
         equiv_weekly_cost_usd: (if $weekly_daily != null then round2(($weekly_daily.daily // []) | map(.totalCost // 0) | add // 0) else null end),
         weekly_tokens_used: (if $weekly_daily != null then (($weekly_daily.daily // []) | map(.totalTokens // 0) | add // 0) else null end),
         resets_at: $week_reset,
-        week_start: ($real_week_start + "T00:00:00Z"),
+        week_start: ($week_reset | fromdateiso8601 - 604800 | todateiso8601),
         severity: ($weekly_all_limit.severity // null),
         by_model: ($weekly_scoped | map({
             model: (.scope.model.display_name // null),

@@ -7355,6 +7355,30 @@ if [ -f "$A6LF" ] && [ -f "$A6MF" ]; then
     _a6sw=0; for _k in equiv_session_cost_usd session_tokens_used equiv_weekly_cost_usd weekly_tokens_used week_start; do grep -q "$_k" "$A6SW" || _a6sw=1; done
     [ "$_a6sw" = 0 ] && ok "a6-fetch: QuotaModel.swift decodifica los 5 campos que ahora SÍ emite el fetch de macOS" || bad "a6-fetch: QuotaModel.swift y el fetch de macOS no casan (un campo falta de un lado)"
   fi
+  # (a6-regla) week_start DEBE ser la ventana rolling REAL = resets_at − 7d, NO un bucket-lunes.
+  # Bug auditoría 2026-10-22 (claudio): ambos fetches derivaban week_start de un lunes (CURRENT_MONDAY en Mac,
+  # NEXT_MONDAY−7d en Linux) → con datos oauth la ventana quedaba corrida ~2.5d y costo/tokens semanales INFLADOS.
+  # Este test corre el PROGRAMA jq REAL de cada fetch con usage.seven_day.resets_at mock y exige el EFECTO:
+  # week_start == resets_at−7d. FALLA contra 6ce9913 (Linux daba el lunes 2026-10-19; macOS ni emitía week_start → null).
+  _a6prog() { awk '/--argjson crit / { grab=1; next } grab && /> "\$TMP_FILE"/ { exit } grab { print }' "$1"; }
+  _A6_USAGE='{"five_hour":{"utilization":10,"resets_at":"2026-10-23T00:00:00Z"},"seven_day":{"utilization":40,"resets_at":"2026-10-28T14:00:00Z"},"limits":[]}'
+  _A6_BLK='{"blocks":[{"costUSD":5,"totalTokens":1000,"isActive":true,"models":["opus"],"endTime":"2026-10-23T00:00:00Z"}]}'
+  _A6_WD='{"daily":[{"totalCost":10,"totalTokens":2000}]}'
+  _a6_ws() { # $1=fetch file → week_start que calcula su jq REAL con el mock oauth (o SIN-PROGRAMA / vacío)
+    _p6="$(_a6prog "$1")"; [ -z "$_p6" ] && { echo "SIN-PROGRAMA"; return; }
+    jq -n --argjson usage "$_A6_USAGE" --argjson blocks "$_A6_BLK" --argjson weekly null \
+      --argjson weekly_daily "$_A6_WD" --arg ts "2026-10-23T12:00:00Z" --arg next_monday "2026-10-26T00:00:00Z" \
+      --arg cur_week "2026-10-19" --arg real_week_start "2026-10-19" --arg prev_week_reset "" --arg prev_five_reset "" \
+      --arg email "" --arg account_uuid "" --arg auth_state ok --arg auth_expires "" --argjson account_mismatch false \
+      --argjson five_cap 50 --argjson week_cap 200 --argjson warn 80 --argjson crit 95 "$_p6" 2>/dev/null \
+      | jq -r '.weekly.week_start' 2>/dev/null
+  }
+  _a6exp="2026-10-21T14:00:00Z"   # resets_at (2026-10-28T14:00:00Z) − 7d
+  _a6wl="$(_a6_ws "$A6LF")"; _a6wm="$(_a6_ws "$A6MF")"
+  [ "$_a6wl" = "$_a6exp" ] && ok "a6-regla: src/bin/cortex-fetch week_start==resets_at−7d con datos oauth ($_a6wl)" \
+    || bad "a6-regla: src/bin/cortex-fetch week_start=$_a6wl, esperaba $_a6exp (bucket-lunes en vez de rolling)"
+  [ "$_a6wm" = "$_a6exp" ] && ok "a6-regla: macos/bin/cortex-fetch week_start==resets_at−7d con datos oauth ($_a6wm)" \
+    || bad "a6-regla: macos/bin/cortex-fetch week_start=$_a6wm, esperaba $_a6exp (bucket-lunes en vez de rolling)"
 else bad "a6-fetch: falta src/bin/cortex-fetch o macos/bin/cortex-fetch"; fi
 
 # ─────────────────────────────────────────────────────────────────────────────
