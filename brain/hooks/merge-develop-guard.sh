@@ -359,11 +359,19 @@ if acg_merge_menciona_base "$cmd"; then
 fi
 
 # ── PASO 1 — ¿es una integración REAL de MR/PR server-side? `git merge` local / inspección / ayuda → libre.
-acg_es_merge_mr "$cmd" || exit 0
+#    C2 (auditoría 2026-10-22): cerrar-slice.sh corre el `glab/gh … merge` POR DENTRO → el guard solo vería
+#    `bash cerrar-slice.sh …` y el juez NO correría. Una invocación real de cerrar-slice (con --id, sin
+#    --help/--dry-run) se trata como un merge a develop (cerrar-slice SOLO integra ahí) → cae al mismo flujo
+#    de auth: en repo compartido GATEA (OK del usuario); en personal, develop es libre (skip de abajo).
+_es_cerrar_slice=0
+acg_invoca_cerrar_slice "$cmd" && _es_cerrar_slice=1
+[ "$_es_cerrar_slice" = 1 ] || acg_es_merge_mr "$cmd" || exit 0
 
 # ── PASO 2 — DESTINO: UNA sola resolución, compartida por TODOS los checks (caché por MR-id + timeout interno
 #    → 1 llamada de red, no 2 como cuando eran dos hooks). Vacío = irresoluble (el fail-policy lo aplica cada check).
 destino=$(acg_destino_de_mr "$cmd" "$pcwd")
+# cerrar-slice SOLO integra a develop (su propio check de base rehúsa otra cosa) → destino fijo develop para el juez.
+[ "$_es_cerrar_slice" = 1 ] && destino=develop
 
 # Comando-ejemplo tool-aware para rehacer con squash + mensaje curado (gh vs glab). Fuente ÚNICA de los deny de squash.
 _rehaz_sugerido() {
@@ -415,7 +423,8 @@ _es_sync_upstream_autorizado() {   # $1=cmd(RAW)  $2=transcript → 0=exento del
 #    NUNCA gateó por la marca de compartido) → corre ANTES del scoping de compartido. VIOLACIÓN → DENY (fail-fast).
 SQUASH_RE='(--squash([[:space:]]|=|$)|(^|[[:space:]])-s([[:space:]]|$))'
 _sq_aplica=0
-if [ "$destino" = develop ]; then _sq_aplica=1
+if [ "$_es_cerrar_slice" = 1 ]; then :   # C2: cerrar-slice GARANTIZA --squash y --delete-branch por dentro → el check determinista sobre `bash cerrar-slice.sh` (sin esos flags en el comando) lo denegaría EN FALSO. Cae directo al juez de auth.
+elif [ "$destino" = develop ]; then _sq_aplica=1
 elif [ -z "$destino" ]; then _es_release_explicito "$cmd" || _sq_aplica=1
 fi
 if [ "$_sq_aplica" = 1 ]; then
@@ -490,8 +499,13 @@ elif [ -f "$TARGET_ROOT/.claude/repo-compartido" ]; then
 elif git -C "$TARGET_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
   _es_personal=1   # repo git VÁLIDO sin marca → PERSONAL confirmado → sin fricción de auth
 fi
-# Repo PERSONAL/mini confirmado → auth y bloqueo de --auto NO aplican (ahí el auto-merge de tu día a día es libre).
-[ "$_es_personal" = 1 ] && _salir_ok
+# Repo PERSONAL/mini confirmado → el merge del día a día a DEVELOP es libre (sin auth). PERO main/master es
+# RELEASE-ONLY en TODOS los repos (norma dura): un release por CLI exige OK súper-explícito AUNQUE el repo sea
+# personal (en los personales SOLO develop va sin preguntar). Un destino aún SIN resolver (vacío) tampoco se
+# salta aquí: podría ser main → cae a la resolución (CAPA 3) y al juez/piso-de-main (C4, auditoría 2026-10-22,
+# fail-safe: "personal + no sé el destino" NO puede colar un release). El destino de RAMA personal lo deja
+# pasar el bloque de abajo (repo-agnóstico). main confirmado → NO se salta → piso de main.
+[ "$_es_personal" = 1 ] && [ "$destino" = develop ] && _salir_ok
 
 # Ramas personales de DESTINO (DevelopAna, epic/*, integracion/*, feat/*…): el juez NO gatea; solo develop/main/master.
 # destino vacío/desconocido NO pasa libre aquí (requiere -n): cae al juez con su fail SEGURO.
@@ -505,6 +519,9 @@ if [ -z "$destino" ] && [ -n "$prlist" ]; then
   if [ -n "$d" ]; then
     destino="$d"
     if [ "$destino" != develop ] && [ "$destino" != main ] && [ "$destino" != master ]; then _salir_ok; fi
+    # repo personal + el destino se resuelve AQUÍ a develop → libre (el skip de arriba no lo vio por destino
+    # vacío en L366; main/master resuelto aquí NO se salta → piso de main). C4.
+    [ "$_es_personal" = 1 ] && [ "$destino" = develop ] && _salir_ok
   fi
 fi
 hint=$(acg_hint_candidatos "$prlist" "$destino" "$cur_mrid")

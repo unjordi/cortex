@@ -231,6 +231,13 @@ MSBIN="$FAKEHOME/msbin"; mkdir -p "$MSBIN"
 MSREPO="$FAKEHOME/msrepo"; mkdir -p "$MSREPO"; git -C "$MSREPO" init -q >/dev/null 2>&1
 mock_glab() { printf '#!/usr/bin/env bash\necho '\''{"target_branch":"%s"}'\''\n' "$1" > "$MSBIN/glab"; chmod +x "$MSBIN/glab"; }
 ms() { PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$MSREPO" bash "$HOOKS/merge-develop-guard.sh" <<<"{\"tool_input\":{\"command\":\"$1\"}}"; }
+# C4 (auditoría 2026-10-22): un merge a MAIN (o con destino VACÍO/desconocido) en repo PERSONAL ya NO se
+# salta la autorización (main es release-only en TODOS los repos; en los personales SOLO develop va sin
+# preguntar). Antes el repo personal SALÍA antes del juez → estas pruebas de SQUASH aislaban el check así.
+# msAuth = ms + juez ALLOW + un transcript con lenguaje de release del USUARIO → pasa el PISO de main y
+# aísla el check de SQUASH del gate de autorización (lo que estas pruebas ejercitan).
+MSREL="$FAKEHOME/msrel.jsonl"; printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"libera esto a main, es el release"}]}}' > "$MSREL"
+msAuth() { PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$MSREPO" CLAUDE_MERGE_JUEZ_MOCK=ALLOW bash "$HOOKS/merge-develop-guard.sh" <<<"$(jq -nc --arg c "$1" --arg t "$MSREL" '{tool_input:{command:$c},transcript_path:$t}')"; }
 # NOTA: la lib cachea el destino por MR-id (compartido squash↔confirmar), así que cada caso usa un
 # MR-id DISTINTO — si no, la caché del 1er caso (develop) contaminaría a los siguientes. En producción
 # cada MR tiene su id; aquí es un artefacto de reusar mocks con el mismo número.
@@ -240,27 +247,40 @@ mock_glab develop; out="$(ms 'glab mr merge 42 --squash --remove-source-branch -
 { ! is_deny "$out" && printf '%s' "$out" | grep -q 'recordatorio, no freno'; } && ok "squash-guard G4: develop CON --squash → pasa + RECORDATORIO A2 (ya no frena por el mensaje)"                     || bad "squash-guard G4: bloqueó un merge que ya trae squash; got: $out"
 mock_glab DevelopAna; out="$(ms 'glab mr merge 43 --auto-merge --yes')"
 is_silent "$out" && ok "squash-guard G4: destino=rama personal → NO fuerza squash (día a día libre)" || bad "squash-guard G4: forzó squash a rama personal; got: $out"
+# C4 (auditoría 2026-10-22, CRÍTICO): destino=main en repo PERSONAL ya NO se salta la autorización —
+# sin lenguaje de release del USUARIO el piso de main GATEA (release-only en TODOS los repos). FALLA contra
+# 6ce9913 (que salía _salir_ok por "personal" antes de mirar el destino → is_silent).
 mock_glab main; out="$(ms 'glab mr merge 44 --yes')"
-is_silent "$out" && ok "squash-guard G4: destino=main (release) → NO fuerza squash"       || bad "squash-guard G4: forzó squash a un release; got: $out"
+{ is_deny "$out" && printf '%s' "$out" | grep -qi 'RELEASE a main'; } \
+  && ok "C4: repo personal + destino=main SIN OK de release → GATEA (FRENO RELEASE a main, release-only en todo repo)" \
+  || bad "C4: personal+main no fue gateado por el piso de release; got: $out"
+# Y con autorización (juez ALLOW + lenguaje de release del USUARIO) → el check de SQUASH sigue SIN forzar
+# squash a un release (intención original de esta prueba, ahora aislada del gate de auth).
+mock_glab main; out="$(msAuth 'glab mr merge 44 --yes')"
+! is_deny "$out" && ok "squash-guard G4: destino=main (release, autorizado) → NO fuerza squash" || bad "squash-guard G4: forzó squash a un release autorizado; got: $out"
 # B3: destino IRRESOLUBLE (sin id → no se puede consultar; equivale a un timeout de red) SIN --squash
 # → fail-safe EXIGE squash (deny).
 out="$(ms 'glab mr merge --auto-merge --yes')"   # sin ID → destino indeterminado
 is_deny "$out" && ok "squash-guard B3: destino INDETERMINADO sin --squash → deny (fail-safe exige squash)" || bad "squash-guard B3: no forzó squash con destino indeterminado; got: $out"
-# B3: mismo destino irresoluble PERO ya trae --squash → pasa (nada que exigir).
-out="$(ms 'glab mr merge --squash --remove-source-branch --auto-merge --yes')"
-is_silent "$out" && ok "squash-guard B3: destino INDETERMINADO CON --squash → pasa" || bad "squash-guard B3: bloqueó un merge indeterminado que ya trae squash; got: $out"
+# B3: mismo destino irresoluble PERO ya trae --squash → pasa (nada que exigir). Con destino VACÍO el gate
+# de auth (C4) aplica → se autoriza (msAuth) para aislar el check de SQUASH; `! is_deny` = squash no forzado.
+out="$(msAuth 'glab mr merge --squash --remove-source-branch --auto-merge --yes')"
+! is_deny "$out" && ok "squash-guard B3: destino INDETERMINADO CON --squash (autorizado) → no fuerza squash" || bad "squash-guard B3: bloqueó un merge indeterminado que ya trae squash; got: $out"
 # B3: destino irresoluble PERO el comando SEÑALA release-a-main explícito → NO fuerza squash (no aplasta
-# el histórico de un release cuya red no se pudo consultar). Sin id → destino queda vacío igual.
-out="$(ms 'glab mr merge --yes # release a main')"
-is_silent "$out" && ok "squash-guard B3: indeterminado + señal 'release a main' → NO fuerza squash" || bad "squash-guard B3: forzó squash pese a la señal explícita de release; got: $out"
+# el histórico de un release cuya red no se pudo consultar). Sin id → destino queda vacío igual (auth por msAuth).
+out="$(msAuth 'glab mr merge --yes # release a main')"
+! is_deny "$out" && ok "squash-guard B3: indeterminado + señal 'release a main' (autorizado) → no fuerza squash" || bad "squash-guard B3: forzó squash pese a la señal explícita de release; got: $out"
 # M4: destino IRRESOLUBLE + el COMANDO no menciona release/main, pero la CONVERSACIÓN reciente SÍ trae
 # lenguaje de release → NO fuerza squash. Ambos guards leen la MISMA señal (acg_lexico_release sobre
 # acg_recent_intercalado), igual que confirmar-merge-develop reconoce el release por conversación.
 M4TX=$(mktemp)
 printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"libera esto a main, es el release"}]}}' > "$M4TX"
-msT() { PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$MSREPO" bash "$HOOKS/merge-develop-guard.sh" <<<"$(jq -nc --arg c "$1" --arg t "$M4TX" '{tool_input:{command:$c},transcript_path:$t}')"; }
+# msT lleva JUEZ_MOCK=ALLOW: tras C4 un destino INDETERMINADO en repo personal gatea la autorización (podría ser
+# main) → se autoriza para AISLAR que el check de SQUASH no fuerza squash (si lo forzara, el deny saldría ANTES
+# del juez). M4TX trae lenguaje de release del USUARIO → el piso de main respeta el ALLOW.
+msT() { PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$MSREPO" CLAUDE_MERGE_JUEZ_MOCK=ALLOW bash "$HOOKS/merge-develop-guard.sh" <<<"$(jq -nc --arg c "$1" --arg t "$M4TX" '{tool_input:{command:$c},transcript_path:$t}')"; }
 out="$(msT 'glab mr merge --yes')"   # sin ID → destino indeterminado; SIN release en el TEXTO del comando
-is_silent "$out" && ok "M4: destino INDETERMINADO + release SOLO en la conversación → NO fuerza squash (antes ciego a la charla)" || bad "M4: forzó squash pese al release en la conversación; got: $out"
+! is_deny "$out" && ok "M4: destino INDETERMINADO + release SOLO en la conversación (autorizado) → NO fuerza squash (antes ciego a la charla)" || bad "M4: forzó squash pese al release en la conversación; got: $out"
 # Control: MISMO comando, SIN transcript de release → sigue exigiendo squash (M4 no aflojó el default).
 out="$(ms 'glab mr merge --yes')"
 is_deny "$out" && ok "M4 control: destino INDETERMINADO sin release en NINGÚN lado → sigue exigiendo squash" || bad "M4 control: aflojó la exigencia de squash sin señal de release"
@@ -367,12 +387,14 @@ rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
 # PATH SIN glab/MSBIN a propósito: fuerza destino genuinamente INDETERMINADO (DESCONOCIDO:SIN-RED) aunque el
 # comando SÍ traiga un id numérico (390/391) -- necesitamos que acg_mrid resuelva el id (para probar el
 # ANCLAJE) pero que acg_destino_de_mr NO lo resuelva (para caer al fail-safe donde vive _es_release_explicito).
-msT4() { PATH="/usr/bin:/bin" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$MSREPO" bash "$HOOKS/merge-develop-guard.sh" <<<"$(jq -nc --arg c "$1" --arg t "$H4TX" '{tool_input:{command:$c},transcript_path:$t}')"; }
+# JUEZ_MOCK=ALLOW: tras C4 un destino INDETERMINADO en repo personal gatea el juez; se autoriza para aislar el
+# check de SQUASH. El caso 391 sigue denegando por SQUASH (el deny sale ANTES del juez, así que ALLOW no lo tapa).
+msT4() { PATH="/usr/bin:/bin" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$MSREPO" CLAUDE_MERGE_JUEZ_MOCK=ALLOW bash "$HOOKS/merge-develop-guard.sh" <<<"$(jq -nc --arg c "$1" --arg t "$H4TX" '{tool_input:{command:$c},transcript_path:$t}')"; }
 out="$(msT4 'glab mr merge 391 --yes')"   # sin mock de destino → indeterminado; release es de OTRO id (390)
 is_deny "$out" && ok "H4: release-de-OTRO-PR (390) en la ventana → el merge del 391 SIGUE exigiendo squash (antes: se colaba)" \
   || bad "H4: REGRESIÓN — el lenguaje de release de otro PR desactivó --squash de este merge; got: $out"
 out="$(msT4 'glab mr merge 390 --yes')"   # mismo id que el mencionado en la ventana → sí aplica
-is_silent "$out" && ok "H4: release del MISMO PR (390) mencionado en la ventana → sigue exentando --squash (sin regresión)" \
+! is_deny "$out" && ok "H4: release del MISMO PR (390) mencionado en la ventana (autorizado) → sigue exentando --squash (sin regresión)" \
   || bad "H4: REGRESIÓN — anclar al mrid rompió el caso legítimo (release del mismo MR); got: $out"
 rm -f "$H4TX"
 
@@ -394,6 +416,12 @@ mock_gh_full() { { printf '#!/usr/bin/env bash\n'; printf 'for a in "$@"; do cas
 msj() { rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* "${TMPDIR:-/tmp}"/acg-mrmsg-* 2>/dev/null
         jq -nc --arg c "$1" '{tool_input:{command:$c}}' \
           | PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$MSREPO" bash "$HOOKS/merge-develop-guard.sh"; }
+# msjAuth = msj + juez ALLOW + transcript con lenguaje de release: tras C4 un merge a MAIN en repo personal
+# ya gatea la autorización, así que para probar que el recordatorio de squash-message es develop-scoped (NO se
+# emite para main) hay que AUTORIZAR main primero y verificar que no aparece el recordatorio ("RESUMEN del slice").
+msjAuth() { rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* "${TMPDIR:-/tmp}"/acg-mrmsg-* 2>/dev/null
+        jq -nc --arg c "$1" --arg t "$MSREL" '{tool_input:{command:$c},transcript_path:$t}' \
+          | PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$MSREPO" CLAUDE_MERGE_JUEZ_MOCK=ALLOW bash "$HOOKS/merge-develop-guard.sh"; }
 # a2chk <cmd> <etiqueta>: el merge a develop NO frena por el mensaje Y emite el RECORDATORIO con "Rama:".
 a2chk() {
   local out; out="$(msj "$1")"
@@ -424,8 +452,9 @@ a2chk 'gh pr merge 55 --squash --delete-branch --subject "Merge pull request #5"
 a2chk 'gh pr merge 91 --squash --delete-branch --subject "fix: IVA"' "gh subject corto sin body (antes deny)"
 # ── El recordatorio es develop-scoped: a main (release) y a rama personal NO se emite ──
 mock_glab_full main "wip"
-is_silent "$(msj 'glab mr merge 64 --squash --remove-source-branch --yes')" \
-  && ok "A2 scope: destino=main (release) -> merge pasa SIN recordatorio de mensaje (fuera de alcance)" || bad "A2 scope: main emitió algo por el mensaje; got: $(msj 'glab mr merge 64 --squash --remove-source-branch --yes')"
+a2main="$(msjAuth 'glab mr merge 64 --squash --remove-source-branch --yes')"
+{ ! is_deny "$a2main" && ! printf '%s' "$a2main" | grep -q 'RESUMEN del slice'; } \
+  && ok "A2 scope: destino=main (release, autorizado por C4) -> SIN recordatorio de squash-message (develop-scoped)" || bad "A2 scope: main emitió el recordatorio de squash-message o fue denegado; got: $a2main"
 mock_glab_full DevelopAna "wip"
 is_silent "$(msj 'glab mr merge 65 --squash --remove-source-branch --yes')" \
   && ok "A2 scope: destino=rama personal -> merge pasa SIN recordatorio de mensaje" || bad "A2 scope: rama personal emitió algo por el mensaje"
@@ -455,9 +484,10 @@ mock_glab develop; out="$(msj 'glab mr merge 92 --squash --squash-message "corri
 mock_glab develop; out="$(msj 'glab mr merge 93 --squash --remove-source-branch --squash-message "corrige el calculo del impuesto al valor agregado en las facturas del periodo. Rama: fix/iva"')"
 { ! is_deny "$out" && printf '%s' "$out" | jq -e '.hookSpecificOutput.additionalContext' >/dev/null 2>&1; } \
   && ok "FIX-4: glab CON --remove-source-branch -> pasa (+ recordatorio A2)" || bad "FIX-4: bloqueó un glab correcto; got: $out"
-# CONTROL — develop-scoped: release y ramas personales libres (sin freno y SIN recordatorio).
-mock_gh_full main ""; out="$(msj 'gh pr merge 94 --squash --subject "release" --body "x"')"
-is_silent "$out" && ok "FIX-4 control: a main (release) NO se exige --delete-branch ni recordatorio" || bad "FIX-4 control: emitió algo en un release; got: $out"
+# CONTROL — develop-scoped: --delete-branch y el recordatorio NO aplican a main (release). Tras C4 main gatea
+# la autorización en repo personal → se autoriza (msjAuth) para aislar que NO se exige --delete-branch ni recordatorio.
+mock_gh_full main ""; out="$(msjAuth 'gh pr merge 94 --squash --subject "release" --body "x"')"
+{ ! is_deny "$out" && ! printf '%s' "$out" | grep -q 'RESUMEN del slice'; } && ok "FIX-4 control: a main (release, autorizado por C4) NO se exige --delete-branch ni recordatorio de squash-message" || bad "FIX-4 control: main denegado o emitió el recordatorio de squash-message; got: $out"
 mock_gh_full DevelopAna ""; out="$(msj 'gh pr merge 95 --squash --subject "wip" --body "x"')"
 is_silent "$out" && ok "FIX-4 control: a una rama personal NO se exige nada (día a día libre)" || bad "FIX-4 control: emitió algo a una rama personal; got: $out"
 # H6: una MENCIÓN entrecomillada del flag no cuenta como el flag (mismo criterio que el de --squash)
@@ -708,11 +738,17 @@ B4G=$(mktemp -d "${TMPDIR:-/tmp}/brain-b4g.XXXXXX"); B4GH="$B4G/home"; mkdir -p 
 mkdir -p "$B4G/shr/.claude" "$B4G/per/.claude"
 git -C "$B4G/shr" init -q >/dev/null 2>&1; git -C "$B4G/shr" remote add origin https://github.com/org/shr.git; : > "$B4G/shr/.claude/repo-compartido"
 git -C "$B4G/per" init -q >/dev/null 2>&1; git -C "$B4G/per" remote add origin git@gitlab.com:org/per.git
-b4run() { jq -nc --arg c "$1" --arg d "$B4G/shr" '{tool_input:{command:$c},cwd:$d}' | HOME="$B4GH" CLAUDE_PROJECT_DIR="$B4G/shr" CLAUDE_MERGE_JUEZ_MOCK=DENY bash "$HOOKS/merge-develop-guard.sh" 2>/dev/null; }
-is_silent "$(b4run 'glab mr merge 1 --repo org/per --squash')" \
-  && ok "b4-guard: --repo del hermano PERSONAL → _salir_ok silencioso (TARGET_ROOT siguió al --repo, no al cwd compartido)" \
+# mock glab → destino develop: tras C4 un destino INDETERMINADO gatea aun en repo personal; con destino=develop
+# resuelto, el hermano PERSONAL cae en el skip personal+develop (lo que este test quiere probar: TARGET_ROOT
+# sigue al --repo). El control COMPARTIDO con el mismo develop sigue gateando (juez DENY).
+B4GBIN="$B4G/bin"; mkdir -p "$B4GBIN"; printf '#!/usr/bin/env bash\necho '\''{"target_branch":"develop"}'\''\n' > "$B4GBIN/glab"; chmod +x "$B4GBIN/glab"
+b4run() { jq -nc --arg c "$1" --arg d "$B4G/shr" '{tool_input:{command:$c},cwd:$d}' | PATH="$B4GBIN:$PATH" HOME="$B4GH" CLAUDE_PROJECT_DIR="$B4G/shr" CLAUDE_MERGE_JUEZ_MOCK=DENY bash "$HOOKS/merge-develop-guard.sh" 2>/dev/null; }
+# hermano PERSONAL + develop → NO gatea (allowed). Con destino=develop resuelto (C4 ya no salta por "personal"
+# a ciegas) el merge-con-squash emite el RECORDATORIO A2 (develop-scoped, additionalContext) y pasa → ! is_deny.
+! is_deny "$(b4run 'glab mr merge 1 --repo org/per --squash --remove-source-branch')" \
+  && ok "b4-guard: --repo del hermano PERSONAL → NO gatea (TARGET_ROOT siguió al --repo, no al cwd compartido)" \
   || bad "b4-guard: gateó un merge al hermano personal (TARGET_ROOT se quedó en el cwd compartido = el FP recurrente)"
-printf '%s' "$(b4run 'glab mr merge 1 --repo org/shr --squash')" | grep -q 'permissionDecision' \
+printf '%s' "$(b4run 'glab mr merge 1 --repo org/shr --squash --remove-source-branch')" | grep -q 'permissionDecision' \
   && ok "b4-guard control: --repo del cwd COMPARTIDO (marca) → gatea (no se afloja lo compartido)" \
   || bad "b4-guard control: no gateó un merge al repo compartido"
 rm -rf "$B4G"
@@ -2840,7 +2876,7 @@ printf '%s' "$lr3dry" | grep -q 'worktree-agent-recent.*REPRESADA\|REPRESADA.*wo
 [ "$(cat "$LR3REPO/.claude/memory/bitacora.md")" = "$(printf '# bitacora')" ] \
   && ok "b3c3: dry-run NO escribe nada a la bitácora" || bad "b3c3: dry-run mutó la bitácora"
 
-cd "$LR3REPO" && CLAUDE_INTEGRACION_BASE=develop bash "$HOOKS/limpiar.sh" ramas --no-fetch >/dev/null 2>&1
+( cd "$LR3REPO" && CLAUDE_INTEGRACION_BASE=develop bash "$HOOKS/limpiar.sh" ramas --no-fetch >/dev/null 2>&1 )
 git -C "$LR3REPO" rev-parse --verify -q refs/heads/worktree-agent-oldstale >/dev/null 2>&1 \
   && ok "b3c3: la rama represada NUNCA se borra (solo se reporta)" || bad "b3c3: ¡BORRÓ la rama represada! (pérdida de datos)"
 grep -q 'worktree-agent-oldstale' "$LR3REPO/.claude/memory/bitacora.md" \
@@ -2867,7 +2903,7 @@ printf '%s' "$lr3filt" | grep -q 'REPRESADA.*worktree-agent-oldstale' \
   || bad "FIX-5: con el filtro puesto dejó de reportar hasta lo que matchea; got: $lr3filt"
 cp "$LR3ROOT/estado.bak" "$LR3REPO/.claude/memory/.ramas-huerfanas-estado" 2>/dev/null
 n_lineas_antes="$(grep -c 'worktree-agent-oldstale' "$LR3REPO/.claude/memory/bitacora.md")"
-cd "$LR3REPO" && CLAUDE_INTEGRACION_BASE=develop bash "$HOOKS/limpiar.sh" ramas --no-fetch >/dev/null 2>&1
+( cd "$LR3REPO" && CLAUDE_INTEGRACION_BASE=develop bash "$HOOKS/limpiar.sh" ramas --no-fetch >/dev/null 2>&1 )
 n_lineas_despues="$(grep -c 'worktree-agent-oldstale' "$LR3REPO/.claude/memory/bitacora.md")"
 [ "$n_lineas_antes" = "$n_lineas_despues" ] \
   && ok "b3c3: dedupe — una 2ª corrida NO repite el aviso de la misma punta" || bad "b3c3: repitió el aviso (spam de bitácora); antes=$n_lineas_antes después=$n_lineas_despues"
@@ -3157,6 +3193,32 @@ bz_es_zombie "$EEREPO" feat/otra-sin-convencion develop \
   || ok "b3h: SAFETY — rama sin 'Rama: <ella>' en el log NO se poda por (e)"
 rm -rf "$EEROOT"
 
+# (b3h-c3, C3 auditoría 2026-10-22) señal (e): un commit LOCAL hecho ANTES del squash (committer-date ≤ squash)
+# pero NUNCA incluido en él (unpushed) NO puede darse por integrado — el committer-date NO prueba contención.
+# (e) ahora exige CONTENIDO en la base además del date-check → ese commit único se CONSERVA. FALLA contra 6ce9913
+# (que daba por integrada la rama y la borraba con el commit local — PÉRDIDA DE DATOS).
+C3ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-c3.XXXXXX")"; C3REPO="$C3ROOT/repo"; C3BARE="$C3ROOT/remote.git"
+git init -q --bare "$C3BARE" >/dev/null 2>&1; git init -q "$C3REPO" >/dev/null 2>&1
+git -C "$C3REPO" config user.email t@t >/dev/null 2>&1; git -C "$C3REPO" config user.name t >/dev/null 2>&1
+git -C "$C3REPO" checkout -q -b develop; printf 'base\n' > "$C3REPO/base.txt"; git -C "$C3REPO" add base.txt; git -C "$C3REPO" commit -qm base
+git -C "$C3REPO" remote add origin "$C3BARE"; git -C "$C3REPO" push -q origin develop
+git -C "$C3REPO" checkout -q -b feat/c3
+printf 'c1\n' > "$C3REPO/f1.txt"; git -C "$C3REPO" add f1.txt; GIT_COMMITTER_DATE="2026-10-01T10:00:00" git -C "$C3REPO" commit -qm c1 --date="2026-10-01T10:00:00"
+git -C "$C3REPO" push -q -u origin feat/c3
+# commit LOCAL no pusheado, committer-date 10:03 — ANTERIOR al squash 10:05 (el caso que el date-check dejaba pasar)
+printf 'c2 unico\n' > "$C3REPO/f2.txt"; git -C "$C3REPO" add f2.txt; GIT_COMMITTER_DATE="2026-10-01T10:03:00" git -C "$C3REPO" commit -qm c2-local --date="2026-10-01T10:03:00"
+git -C "$C3REPO" checkout -q develop
+printf 'c1\n' > "$C3REPO/f1.txt"; git -C "$C3REPO" add f1.txt; GIT_COMMITTER_DATE="2026-10-01T10:05:00" git -C "$C3REPO" commit -qm "$(printf 'squash del slice\n\nRama: feat/c3\n')"
+git -C "$C3REPO" push -q origin develop; git -C "$C3REPO" push -q origin --delete feat/c3 >/dev/null 2>&1
+. "$HOOKS/ramas-zombie.sh"
+bz_es_zombie "$C3REPO" feat/c3 develop barrido \
+  && bad "b3h-c3: PÉRDIDA DE DATOS — (e) dio por integrada una rama con un commit LOCAL único anterior al squash (solo el date-check, sin contención)" \
+  || ok "b3h-c3 (C3): commit local único anterior al squash (unpushed) → CONSERVA (date-check ≤ squash pero contenido NO en base)"
+[ "$BZ_RAZON" != e ] \
+  && ok "b3h-c3 (C3): BZ_RAZON NO es 'e' para la rama con trabajo local no integrado" \
+  || bad "b3h-c3: (e) disparó pese al commit local no contenido en la base"
+rm -rf "$C3ROOT"
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (b3i) limpiar-ramas: sin gh/glab y sin 'Rama:', el squash multi-commit se resuelve por la señal (p) CONTENIDO (modo=barrido) → INTEGRADA offline; nunca 'trabajo sin integrar' a secas =="
@@ -3400,11 +3462,11 @@ CSMSG_SH="$SCRIPT_DIR/skills/cerrar-slice/cerrar-slice.sh"
 CSMSG_BIN=$(mktemp -d "${TMPDIR:-/tmp}/csmsg.XXXXXX")
 printf '#!/usr/bin/env bash\necho %s\n' "'{\"source_branch\":\"feat/iva\"}'" > "$CSMSG_BIN/glab"; chmod +x "$CSMSG_BIN/glab"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$CSMSG_BIN/gitleaks"; chmod +x "$CSMSG_BIN/gitleaks"   # escaneo de secretos → limpio (determinista)
-out_csm="$(PATH="$CSMSG_BIN:$PATH" bash "$CSMSG_SH" --id 7 --message "corrige el IVA" --forge glab --dry-run 2>/dev/null)"
+out_csm="$(PATH="$CSMSG_BIN:$PATH" CLAUDE_CERRAR_SLICE_BASE_MOCK=develop bash "$CSMSG_SH" --id 7 --message "corrige el IVA" --forge glab --dry-run 2>/dev/null)"
 { printf '%s' "$out_csm" | grep -q 'dry-run' && printf '%s' "$out_csm" | grep -q 'Rama: feat/iva' && printf '%s' "$out_csm" | grep -q 'MR: !7'; } \
   && ok "cerrar-slice: mensaje corto SIN traza → NO aborta; ARMA «Rama: feat/iva» (del forge) + «MR: !7» (del --id) y planea el merge" \
   || bad "cerrar-slice: abortó por el mensaje o no armó la traza; got: $out_csm"
-out_csm2="$(PATH="$CSMSG_BIN:$PATH" bash "$CSMSG_SH" --id 8 --message "corrige el calculo del IVA en las facturas del periodo fiscal vigente. Rama: fix/x, MR: !8" --forge glab --dry-run 2>/dev/null)"
+out_csm2="$(PATH="$CSMSG_BIN:$PATH" CLAUDE_CERRAR_SLICE_BASE_MOCK=develop bash "$CSMSG_SH" --id 8 --message "corrige el calculo del IVA en las facturas del periodo fiscal vigente. Rama: fix/x, MR: !8" --forge glab --dry-run 2>/dev/null)"
 { printf '%s' "$out_csm2" | grep -q 'dry-run' && [ "$(printf '%s' "$out_csm2" | grep -c 'Rama:')" -le 1 ]; } \
   && ok "cerrar-slice: mensaje con traza propia → se respeta (no re-arma ni duplica Rama:)" \
   || bad "cerrar-slice: duplicó o perdió la traza propia; got: $out_csm2"
@@ -3420,7 +3482,7 @@ CSEP="$(mktemp -d "${TMPDIR:-/tmp}/csep.XXXXXX")"
   && git merge -q --no-ff feat/a -m "merge a" && git merge -q --no-ff feat/b -m "merge b" ) >/dev/null 2>&1
 CSEPB="$(mktemp -d)"; printf '#!/usr/bin/env bash\nexit 0\n' > "$CSEPB/gitleaks"; chmod +x "$CSEPB/gitleaks"
 printf '#!/usr/bin/env bash\nexit 1\n' > "$CSEPB/glab"; chmod +x "$CSEPB/glab"
-csep_out="$(cd "$CSEP" && PATH="$CSEPB:$PATH" bash "$CSMSG_SH" --id 9 --message "integro la épica de afinado" --branch epic/afinado --forge glab --dry-run 2>/dev/null)"
+csep_out="$(cd "$CSEP" && PATH="$CSEPB:$PATH" CLAUDE_CERRAR_SLICE_BASE_MOCK=develop bash "$CSMSG_SH" --id 9 --message "integro la épica de afinado" --branch epic/afinado --forge glab --dry-run 2>/dev/null)"
 { printf '%s' "$csep_out" | grep -qF 'Rama: epic/afinado' && printf '%s' "$csep_out" | grep -qF 'Rama: feat/a' && printf '%s' "$csep_out" | grep -qF 'Rama: feat/b'; } \
   && ok "b3cs-msg (2026-10-22): una contenedora lleva un «Rama:» por CADA sub-rama contenida (épica → las 3, no solo la contenedora)" \
   || bad "b3cs-msg (2026-10-22): no nombró todas las sub-ramas contenidas; got: $(printf '%s' "$csep_out" | tr '\n' '|')"
@@ -3442,6 +3504,44 @@ _forge_de() { local R o; R="$(mktemp -d "${TMPDIR:-/tmp}/csf.XXXXXX")"; git -C "
   && ok "cerrar-slice forge (E3): host desconocido → vacío (el llamador da error claro; NO adivina por la CLI)" \
   || bad "cerrar-slice forge (E3): adivinó un forge para un host desconocido"
 
+# (b3cs-base, C2 auditoría 2026-10-22) cerrar-slice SOLO integra a develop: resuelve la base del MR/PR y ABORTA
+# si no es develop (un release develop→main es OTRO acto, SIN squash) o si no puede verificarla. FALLA contra
+# 6ce9913 (que no consultaba la base → mergeaba a main aplastando la historia + borrando la rama).
+CSB_BIN=$(mktemp -d "${TMPDIR:-/tmp}/csb.XXXXXX"); printf '#!/usr/bin/env bash\nexit 0\n' > "$CSB_BIN/gitleaks"; chmod +x "$CSB_BIN/gitleaks"
+# stub gh que SIEMPRE devuelve vacío: así `gh pr view` no cae al gh REAL del PATH (sobre el repo cortex del cwd)
+# y el caso "base irresoluble" (sin mock) resuelve base vacía → el script ABORTA ("no pude verificar la base").
+printf '#!/usr/bin/env bash\nexit 0\n' > "$CSB_BIN/gh"; chmod +x "$CSB_BIN/gh"
+CSB_MSG="corrige el calculo del IVA en las facturas sumando el impuesto por linea. Rama: feat/x MR: !5"
+csb() { PATH="$CSB_BIN:$PATH" CLAUDE_CERRAR_SLICE_BASE_MOCK="$1" bash "$CSMSG_SH" --id 5 --message "$CSB_MSG" --forge gh --dry-run 2>&1; }
+o="$(csb main)";    rc=$?; { [ "$rc" -ne 0 ] && printf '%s' "$o" | grep -qi 'RELEASE'; }        && ok "C2: cerrar-slice + base=main → ABORTA (release, no mergea con squash)" || bad "C2: cerrar-slice no abortó ante base=main; rc=$rc got: $o"
+o="$(csb master)";  rc=$?; [ "$rc" -ne 0 ]                                                       && ok "C2: cerrar-slice + base=master → ABORTA (alias de release)" || bad "C2: cerrar-slice no abortó ante base=master; got: $o"
+o="$(csb '')";      rc=$?; { [ "$rc" -ne 0 ] && printf '%s' "$o" | grep -qi 'verificar la base'; } && ok "C2: cerrar-slice + base IRRESOLUBLE → ABORTA (no mergea a ciegas)" || bad "C2: cerrar-slice no abortó ante base irresoluble; got: $o"
+o="$(csb develop)"; rc=$?; { [ "$rc" -eq 0 ] && printf '%s' "$o" | grep -q 'dry-run'; }           && ok "C2 control: cerrar-slice + base=develop → PROCEDE (el único destino que integra)" || bad "C2 control: cerrar-slice abortó un merge legítimo a develop; got: $o"
+rm -rf "$CSB_BIN"
+
+# (b3cs-guard, C2 parte 1 auditoría 2026-10-22) el guard RECONOCE una invocación de cerrar-slice.sh como un
+# merge a develop (cerrar-slice corre el `glab/gh merge` POR DENTRO → el guard solo vería `bash cerrar-slice.sh`
+# y el juez NUNCA correría). En repo COMPARTIDO gatea el juez; en PERSONAL develop es libre; --dry-run/mención
+# no cuentan; y NO deniega en falso por "falta --squash" (cerrar-slice lo agrega por dentro). FALLA vs 6ce9913
+# (acg_es_merge_mr no reconocía cerrar-slice → el guard salía exit 0 sin juez).
+CSG=$(mktemp -d "${TMPDIR:-/tmp}/csg.XXXXXX"); mkdir -p "$CSG/shr/.claude" "$CSG/per" "$CSG/home"
+git -C "$CSG/shr" init -q; : > "$CSG/shr/.claude/repo-compartido"; git -C "$CSG/per" init -q
+CSG_TX="$CSG/ok.jsonl"; printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"sí, cierra el slice e intégralo a develop, el PR 5"}]}}' > "$CSG_TX"
+csg() { local m="${3:-}"; jq -nc --arg c "$1" --arg t "${4:-}" '{tool_input:{command:$c}} + (if $t!="" then {transcript_path:$t} else {} end)' \
+          | env HOME="$CSG/home" CLAUDE_PROJECT_DIR="$2" ${m:+CLAUDE_MERGE_JUEZ_MOCK="$m"} bash "$HOOKS/merge-develop-guard.sh" 2>&1; }
+CSG_CMD='bash brain/skills/cerrar-slice/cerrar-slice.sh --id 5 --message "corrige IVA. Rama: feat/x MR: !5" --forge glab'
+o="$(csg "$CSG_CMD" "$CSG/shr")"; { is_deny "$o" && ! printf '%s' "$o" | grep -qi 'falta.*squash'; } \
+  && ok "C2: cerrar-slice en repo COMPARTIDO sin OK → DENY (juez), NO por falta de squash" || bad "C2: cerrar-slice en compartido no fue gateado por el juez (o denegó por squash); got: $o"
+o="$(csg "$CSG_CMD" "$CSG/shr" ALLOW "$CSG_TX")"; ! is_deny "$o" \
+  && ok "C2: cerrar-slice en COMPARTIDO + OK de develop (juez ALLOW) → pasa" || bad "C2: el juez frenó un cerrar-slice autorizado; got: $o"
+o="$(csg "$CSG_CMD" "$CSG/per")"; ! is_deny "$o" \
+  && ok "C2: cerrar-slice en repo PERSONAL → libre (develop sin fricción)" || bad "C2: cerrar-slice en personal fue gateado; got: $o"
+o="$(csg 'bash brain/skills/cerrar-slice/cerrar-slice.sh --id 5 --dry-run' "$CSG/shr")"; ! is_deny "$o" \
+  && ok "C2 control: cerrar-slice --dry-run (no muta) → libre" || bad "C2 control: --dry-run fue gateado; got: $o"
+o="$(csg "echo 'corre bash cerrar-slice.sh --id 5'" "$CSG/shr")"; ! is_deny "$o" \
+  && ok "C2 control: mención citada de cerrar-slice (echo) NO es merge → libre" || bad "C2 control: una mención citada disparó el guard; got: $o"
+rm -rf "$CSG"
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (b3cs-ci) cerrar-slice _ci_veredicto (glab): un FALLO de glab (sin red/token) → INDET, NUNCA SINCI =="
@@ -3453,19 +3553,19 @@ CSCI_MSG="fix(x): prueba del veredicto de CI con glab stub, suficientemente larg
 CSCI_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-csci.XXXXXX")"; CSCI_BIN="$CSCI_ROOT/bin"; mkdir -p "$CSCI_BIN"
 # (dir malo) glab FALLA → INDET → aborta (exit≠0 + mensaje INDET)
 printf '#!/usr/bin/env bash\nexit 3\n' > "$CSCI_BIN/glab"; chmod +x "$CSCI_BIN/glab"
-csci_out="$(PATH="$CSCI_BIN:/usr/bin:/bin" bash "$CSCI_SH" --id 1 --message "$CSCI_MSG" --forge glab --wait-ci --dry-run 2>&1)"; csci_rc=$?
+csci_out="$(PATH="$CSCI_BIN:/usr/bin:/bin" CLAUDE_CERRAR_SLICE_BASE_MOCK=develop bash "$CSCI_SH" --id 1 --message "$CSCI_MSG" --forge glab --wait-ci --dry-run 2>&1)"; csci_rc=$?
 { [ "$csci_rc" -ne 0 ] && printf '%s' "$csci_out" | grep -qi 'no pude determinar el estado del CI'; } \
   && ok "b3cs-ci: glab FALLA (sin red/token) → INDET y ABORTA (no mergea a ciegas)" \
   || bad "b3cs-ci: glab falla pero NO abortó con INDET (rc=$csci_rc) — mergearía a ciegas; got: $(printf '%s' "$csci_out" | tail -1)"
 # (control) JSON válido con .pipeline null → SINCI → procede (exit 0)
 printf '#!/usr/bin/env bash\necho '\''{"pipeline":null}'\''\n' > "$CSCI_BIN/glab"; chmod +x "$CSCI_BIN/glab"
-csci_out="$(PATH="$CSCI_BIN:/usr/bin:/bin" bash "$CSCI_SH" --id 1 --message "$CSCI_MSG" --forge glab --wait-ci --dry-run 2>&1)"; csci_rc=$?
+csci_out="$(PATH="$CSCI_BIN:/usr/bin:/bin" CLAUDE_CERRAR_SLICE_BASE_MOCK=develop bash "$CSCI_SH" --id 1 --message "$CSCI_MSG" --forge glab --wait-ci --dry-run 2>&1)"; csci_rc=$?
 { [ "$csci_rc" -eq 0 ] && printf '%s' "$csci_out" | grep -qi 'nada que esperar'; } \
   && ok "b3cs-ci: JSON válido .pipeline null → SINCI y PROCEDE (sin regresión del caso sin-CI)" \
   || bad "b3cs-ci: un MR sin pipeline (JSON válido) no procedió (rc=$csci_rc); got: $(printf '%s' "$csci_out" | tail -1)"
 # (control) pipeline failed → ROJO → aborta
 printf '#!/usr/bin/env bash\necho '\''{"pipeline":{"status":"failed"}}'\''\n' > "$CSCI_BIN/glab"; chmod +x "$CSCI_BIN/glab"
-csci_out="$(PATH="$CSCI_BIN:/usr/bin:/bin" bash "$CSCI_SH" --id 1 --message "$CSCI_MSG" --forge glab --wait-ci --dry-run 2>&1)"; csci_rc=$?
+csci_out="$(PATH="$CSCI_BIN:/usr/bin:/bin" CLAUDE_CERRAR_SLICE_BASE_MOCK=develop bash "$CSCI_SH" --id 1 --message "$CSCI_MSG" --forge glab --wait-ci --dry-run 2>&1)"; csci_rc=$?
 { [ "$csci_rc" -ne 0 ] && printf '%s' "$csci_out" | grep -qi 'ROJO'; } \
   && ok "b3cs-ci: JSON válido pipeline failed → ROJO y ABORTA" \
   || bad "b3cs-ci: un pipeline failed no abortó (rc=$csci_rc); got: $(printf '%s' "$csci_out" | tail -1)"
@@ -9451,8 +9551,9 @@ CS="$SCRIPT_DIR/skills/cerrar-slice/cerrar-slice.sh"
 if [ -f "$CS" ]; then
   CSBIN="$FAKEHOME/csbin"; mkdir -p "$CSBIN"                       # stub de gh para el `command -v` (el mock corta antes de llamarlo)
   printf '#!/usr/bin/env bash\nexit 0\n' > "$CSBIN/gh"; chmod +x "$CSBIN/gh"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$CSBIN/gitleaks"; chmod +x "$CSBIN/gitleaks"   # gitleaks limpio (determinista; si no, escanea los commits REALES del repo del cwd y aborta)
   _csmsg='Afina el wait-ci para decidir por el estado real del CI del MR. Rama: fix/x MR: !999'
-  _cs() { CLAUDE_CERRAR_SLICE_CI_MOCK="$1" CERRAR_SLICE_CI_TIMEOUT=0 PATH="$CSBIN:$PATH" \
+  _cs() { CLAUDE_CERRAR_SLICE_CI_MOCK="$1" CERRAR_SLICE_CI_TIMEOUT=0 CLAUDE_CERRAR_SLICE_BASE_MOCK=develop PATH="$CSBIN:$PATH" \
             bash "$CS" --id 999 --forge gh --message "$_csmsg" --wait-ci --dry-run 2>/dev/null; }
   for v in VERDE SINCI; do
     if _cs "$v" | grep -q 'correría'; then ok "cerrar-slice wait-ci: $v → procede al merge"
@@ -9708,7 +9809,7 @@ BZT="$(mktemp -d)"
     && git checkout -q -b epic/mini && echo m1 > m1.txt && git add . && git commit -qm c1 \
     && git checkout -q -b feat/a && echo a2 > a2.txt && git add . && git commit -qm c2 \
     && git checkout -q epic/mini && git merge -q --no-ff feat/a -m 'merge feat/a a la mini' \
-    && git checkout -q develop && echo squashed > squashed.txt && git add . \
+    && git checkout -q develop && git merge --squash epic/mini \
     && git commit -qm "$(printf 'squash de la mini\n\nRama: epic/mini')" ) >/dev/null 2>&1
 ZLIB="$SCRIPT_DIR/hooks/ramas-zombie.sh"
 if [ -d "$BZT/.git" ] && [ -f "$ZLIB" ]; then
@@ -9791,7 +9892,7 @@ B1B="$(mktemp -d)"
   GIT_AUTHOR_DATE="2026-01-01T00:00:00" GIT_COMMITTER_DATE="2026-01-01T00:00:00" \
     git checkout -q -b feat/x && echo x > x.txt && git add . \
     && GIT_AUTHOR_DATE="2026-01-01T00:00:00" GIT_COMMITTER_DATE="2026-01-01T00:00:00" git commit -qm cX
-  git checkout -q develop && echo squashed > squashed.txt && git add . \
+  git checkout -q develop && git merge --squash feat/x \
     && GIT_AUTHOR_DATE="2026-01-02T00:00:00" GIT_COMMITTER_DATE="2026-01-02T00:00:00" \
        git commit -qm "$(printf 'squash de feat/x\n\nRama: feat/x')" ) >/dev/null 2>&1
 ZLIB="$SCRIPT_DIR/hooks/ramas-zombie.sh"
@@ -9828,7 +9929,7 @@ B1C="$(mktemp -d)"
   git checkout -q -b develop && echo base>base.txt && git add . && git commit -qm base
   BASE=$(git rev-parse HEAD)
   git checkout -q -b feat/r2 && echo r2>r2.txt && git add . && git commit -qm "trabajo r2"
-  git checkout -q develop && echo sq>sq.txt && git add . && git commit -qm "$(printf 'squash de feat/r2\n\nRama: feat/r2')"
+  git checkout -q develop && git merge --squash feat/r2 && git commit -qm "$(printf 'squash de feat/r2\n\nRama: feat/r2')"
   git update-ref refs/remotes/origin/develop "$(git rev-parse HEAD)"   # origin/develop FRESCO (con el squash)
   git update-ref refs/heads/develop "$BASE"                            # develop LOCAL atrasado (solo base)
   git symbolic-ref HEAD refs/heads/develop ) >/dev/null 2>&1

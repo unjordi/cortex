@@ -222,6 +222,28 @@ fi
 case "$FORGE" in glab|gh) : ;; *) _err "--forge debe ser glab o gh (dado: '$FORGE')." ;; esac
 command -v "$FORGE" >/dev/null 2>&1 || _err "'$FORGE' no está en el PATH."
 
+# ── base del MR/PR: cerrar-slice SOLO integra a DEVELOP (con squash). Un release develop→main es OTRO acto,
+#    deliberado y SIN squash. El forge mergea al destino que el MR DECLARA (este script no lo fija), así que un
+#    MR que apunta a main con `--squash --remove-source-branch` HARÍA el release aplastando la historia y
+#    borrando la rama. Se resuelve el destino y se ABORTA si no es develop (C2, auditoría 2026-10-22). Base
+#    IRRESOLUBLE (red/token/ID) → ABORTA (no mergeo a ciegas a un destino que no puedo verificar), igual que el
+#    gate de CI (INDET → aborta). Mock para tests deterministas: CLAUDE_CERRAR_SLICE_BASE_MOCK.
+_pr_base_branch() {
+  if [ -n "${CLAUDE_CERRAR_SLICE_BASE_MOCK:-}" ]; then printf '%s\n' "$CLAUDE_CERRAR_SLICE_BASE_MOCK"; return 0; fi
+  if [ "$FORGE" = gh ]; then
+    gh pr view "$ID" ${REPO:+-R "$REPO"} --json baseRefName -q .baseRefName 2>/dev/null
+  else
+    glab mr view "$ID" ${REPO:+-R "$REPO"} -F json 2>/dev/null | jq -r '.target_branch // empty' 2>/dev/null
+  fi
+}
+_base_dst="$(_pr_base_branch | sed -n '1p' | tr -d '[:space:]')"
+case "$_base_dst" in
+  develop) : ;;   # el ÚNICO destino que cerrar-slice integra
+  '')          _err "no pude verificar la base del #$ID (API/red/token/ID). NO mergeo a ciegas: cerrar-slice SOLO integra a develop; deja el forge legible (--repo/--forge, red/token) y reintenta." ;;
+  main|master) _err "el #$ID apunta a '$_base_dst' — eso es un RELEASE (develop→main), OTRO acto deliberado y SIN squash. cerrar-slice SOLO integra a develop; usa el flujo de release, no este script." ;;
+  *)           _err "el #$ID apunta a '$_base_dst', no a develop. cerrar-slice SOLO integra a develop." ;;
+esac
+
 # ── espera de CI (opcional, acotada) — DECIDE por el ESTADO REAL del CI, no por el exit-code ──
 # Causa del FP viejo: corría el chequeo 1× y ante CUALQUIER exit≠0 decía "sigo; revísalo tú" y mergeaba —
 # confundía 4 casos (sin-CI / pendiente / rojo / no-pude-leer) en "procede". Ahora normaliza a UN veredicto

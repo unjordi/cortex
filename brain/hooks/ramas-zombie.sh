@@ -272,13 +272,15 @@ bz_remota_integrada() {
   local ROOT="$1" br="$2" ref="$3" baseref="$4" cherry _sq_ct _ref_ct
   BZ_RRAZON=""
   git -C "$ROOT" merge-base --is-ancestor "$ref" "$baseref" 2>/dev/null && { BZ_RRAZON=a; return 0; }   # (a)
-  # (e) ACOTADA: el pie "Rama: <br>" en BASEREF no prueba que el tip REMOTO actual esté contenido —
-  # una rama remota reusada tras su squash avanzó y (e) la borraría. Solo vale si REF no trae nada más nuevo
-  # que el squash que la nombra (committer-date); si no se puede fechar, conservador: NO (e) → cae a (d),
-  # cuyo containment sí re-chequea el tip remoto. Dirección segura: solo RETIRA falsos "integrada".
+  # (e) ACOTADA por CONTENIDO: el pie "Rama: <br>" en BASEREF no prueba que el tip REMOTO actual esté contenido
+  # — una rama remota reusada tras su squash avanzó, o un commit nunca incluido en el squash sigue vivo, y (e)
+  # los borraría. Exige AMBAS: (1) REF no trae nada más nuevo que el squash (committer-date, caza el reúso) Y
+  # (2) el CONTENIDO de REF ya vive en la historia de BASEREF (_bz_presencia_contenido, merge-tree squash-safe;
+  # el committer-date por sí solo NO prueba contención, C3 auditoría 2026-10-22). Falla cualquiera → NO (e) →
+  # cae a (d), cuyo containment re-chequea el tip remoto. Dirección segura: solo RETIRA falsos "integrada".
   if _sq_ct=$(_bz_squash_ct "$ROOT" "$br" "$baseref") && [ -n "$_sq_ct" ]; then
     _ref_ct=$(git -C "$ROOT" log --format='%ct' "$ref" --not "$baseref" 2>/dev/null | sort -nr | head -1)
-    if [ -z "$_ref_ct" ] || [ "$_ref_ct" -le "$_sq_ct" ]; then BZ_RRAZON=e; return 0; fi
+    if { [ -z "$_ref_ct" ] || [ "$_ref_ct" -le "$_sq_ct" ]; } && _bz_presencia_contenido "$ROOT" "$ref" "$baseref"; then BZ_RRAZON=e; return 0; fi
   fi
   bz_pr_mergeado "$ROOT" "$br" "$ref" && { BZ_RRAZON=d; return 0; }                                      # (d)
   cherry=$(git -C "$ROOT" cherry "$baseref" "$ref" 2>/dev/null)                                          # (c)
@@ -357,14 +359,16 @@ _bz_presencia_contenido() {
 _bz_integrada_directa() {
   local ROOT="$1" br="$2" base="$3" modo="${4:-}" cherry _sq_ct _br_ct
   git -C "$ROOT" merge-base --is-ancestor "$br" "$base" 2>/dev/null && { BZ_RAZON=a; return 0; }  # (a)
-  # (e) ACOTADA: el pie "Rama: <br>" está en la base, PERO solo vale si BR no avanzó tras ese squash
-  # — si no, (e) borraría los commits nuevos (reúso de la rama). Compara el committer-date del squash que la
-  # nombra vs el del commit MÁS NUEVO de BR ausente de BASE: si BR trae algo más nuevo → NO (e) (cae a (d),
-  # cuyo containment sí re-chequea el tip, y de ahí a (b)/conservar). Si no se puede fechar el squash →
-  # conservador: NO (e). Dirección SEGURA: (e) solo RETIRA falsos "integrada", nunca agrega.
+  # (e) ACOTADA: el pie "Rama: <br>" está en la base, PERO solo vale si BR no avanzó tras ese squash Y su
+  # CONTENIDO ya está en BASE. El committer-date NO prueba contención: un commit LOCAL hecho ANTES del squash
+  # (ct ≤ squash) pero NUNCA incluido en él (unpushed) la pasaba y (e) BORRABA trabajo único (C3, auditoría
+  # 2026-10-22). Por eso (e) exige AMBAS: (1) BR no trae nada más nuevo que el squash (committer-date, caza el
+  # REÚSO) Y (2) el CONTENIDO de BR ya vive en la historia de BASE (_bz_presencia_contenido, merge-tree
+  # squash-safe/offline, caza el commit LOCAL no integrado). Cualquiera que falle → NO (e) (cae a (d)/(c)/(p)/
+  # conservar). Dirección SEGURA: (e) solo RETIRA falsos "integrada", nunca agrega.
   if _sq_ct=$(_bz_squash_ct "$ROOT" "$br" "$base") && [ -n "$_sq_ct" ]; then
     _br_ct=$(git -C "$ROOT" log --format='%ct' "$br" --not "$base" 2>/dev/null | sort -nr | head -1)
-    if [ -z "$_br_ct" ] || [ "$_br_ct" -le "$_sq_ct" ]; then BZ_RAZON=e; return 0; fi                # (e offline)
+    if { [ -z "$_br_ct" ] || [ "$_br_ct" -le "$_sq_ct" ]; } && _bz_presencia_contenido "$ROOT" "$br" "$base"; then BZ_RAZON=e; return 0; fi  # (e offline, contención real)
   fi
   bz_pr_mergeado "$ROOT" "$br" && { BZ_RAZON=d; return 0; }                                          # (d)
   cherry=$(git -C "$ROOT" cherry "$base" "$br" 2>/dev/null)                                          # (c)
