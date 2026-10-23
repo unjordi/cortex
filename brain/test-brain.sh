@@ -1851,6 +1851,27 @@ VEREDICTO: ALLOW' develop 5 "$CONVE")" = DENY ] \
     && ok "juez-veto-robusto (e): CITA de 2 tokens sueltos ('mergea develop', no contiguos) → DENY (mínimo 4 tokens veta el containment)" || bad "juez-veto-robusto (e): una cita de 2 tokens casó por azar"
 )
 
+# ── (bt-prompt) MEDIO 2026-10-23 (regresión de 214c1e1, flaggeado por claudio): dentro del prompt="…" del
+# juez (comillas DOBLES — interpola $hint/$2/$3) la regla de notación traía `15`/`#15`/`!15`/`MR 15`/`PR 15`/
+# `MR!15` + `!`/`#`/`MR`/`PR` SIN escapar → bash los ejecutaba como SUSTITUCIÓN DE COMANDO en CADA llamada al
+# juez (macOS: `PR 15`→/usr/bin/pr "cannot open 15"; el resto "command not found") Y el prompt PERDÍA esos
+# ejemplos (la regla "!15=#15=MR 15" quedaba vacía → riesgo de DENY falso con ids en otra notación). Fix:
+# escapar los backticks (\`). Los dos asertos FALLAN vs el código sin escapar (stderr sucio + 'MR!15' ausente).
+echo "== (bt-prompt) merge-develop-guard: el prompt del juez conserva los ejemplos de notación, NO los ejecuta =="
+BTCAP="$(mktemp)"; BTERR="$(mktemp)"
+( _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/merge-develop-guard.sh"
+  _juez_llamar_api() { printf '%s' "$5" > "$BTCAP"; printf 'OK\nVEREDICTO: DENY'; }
+  _juez_merge "develop" "15" "USUARIO: mergea a develop" "" >/dev/null ) 2> "$BTERR"
+if grep -qiE "command not found|cannot open" "$BTERR"; then
+  bad "bt-prompt: los backticks del prompt se EJECUTAN (stderr trae 'command not found' — backticks sin escapar)"
+else
+  ok "bt-prompt: stderr limpio al construir el prompt (los backticks de ejemplo NO se ejecutan)"
+fi
+grep -qF 'MR!15' "$BTCAP" \
+  && ok "bt-prompt: el prompt del juez conserva el ejemplo literal 'MR!15' (backticks escapados → la regla de notación llega completa al juez)" \
+  || bad "bt-prompt: 'MR!15' se perdió del prompt (backticks ejecutados → la regla de notación llegó vacía)"
+rm -f "$BTCAP" "$BTERR"
+
 # ── (b1g) juez-comun.sh: retrieval PORTABLE + curl 401-aware + política sin-token/jq (stubs, SIN red) ──
 # Los mocks de los jueces (CLAUDE_*_JUEZ_MOCK[_RAW]) CORTO-CIRCUITAN el retrieval+curl → el bug del token
 # (401/expiración, CLAUDE_CONFIG_DIR ignorado, sin-token) pasó INVISIBLE. Estos ejercitan la LIB REAL con
