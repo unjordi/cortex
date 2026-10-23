@@ -3462,11 +3462,21 @@ CSMSG_SH="$SCRIPT_DIR/skills/cerrar-slice/cerrar-slice.sh"
 CSMSG_BIN=$(mktemp -d "${TMPDIR:-/tmp}/csmsg.XXXXXX")
 printf '#!/usr/bin/env bash\necho %s\n' "'{\"source_branch\":\"feat/iva\"}'" > "$CSMSG_BIN/glab"; chmod +x "$CSMSG_BIN/glab"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$CSMSG_BIN/gitleaks"; chmod +x "$CSMSG_BIN/gitleaks"   # escaneo de secretos → limpio (determinista)
-out_csm="$(PATH="$CSMSG_BIN:$PATH" CLAUDE_CERRAR_SLICE_BASE_MOCK=develop bash "$CSMSG_SH" --id 7 --message "corrige el IVA" --forge glab --dry-run 2>/dev/null)"
+# HERMETICIDAD (MEDIO claudio 2026-10-22): las pruebas de cerrar-slice corren en un TOY REPO en feat/x, NO en
+# el repo donde corre la suite. El gitleaks gate, al no resolver el head como ref, cae a la rama ACTUAL; con
+# feat/x (no develop/main/HEAD) escanea ${base}..HEAD y el stub la da limpia. En un checkout DETACHED (CI) la
+# rama actual es 'HEAD' → cerrar-slice ABORTABA ("estás parado en 'HEAD'") y la suite pasaba solo en un worktree.
+CSTOY="$(mktemp -d "${TMPDIR:-/tmp}/cstoy.XXXXXX")"
+( git init -q --bare "$CSTOY/o.git"; git init -q "$CSTOY/r"; cd "$CSTOY/r"
+  git config user.email t@t; git config user.name t
+  git checkout -q -b develop; printf 'base\n' > base.txt; git add base.txt; git commit -qm base
+  git remote add origin "$CSTOY/o.git"; git push -q origin develop
+  git checkout -q -b feat/x; printf 'x\n' > x.txt; git add x.txt; git commit -qm x ) >/dev/null 2>&1
+out_csm="$(cd "$CSTOY/r" && PATH="$CSMSG_BIN:$PATH" CLAUDE_CERRAR_SLICE_BASE_MOCK=develop bash "$CSMSG_SH" --id 7 --message "corrige el IVA" --forge glab --dry-run 2>/dev/null)"
 { printf '%s' "$out_csm" | grep -q 'dry-run' && printf '%s' "$out_csm" | grep -q 'Rama: feat/iva' && printf '%s' "$out_csm" | grep -q 'MR: !7'; } \
   && ok "cerrar-slice: mensaje corto SIN traza → NO aborta; ARMA «Rama: feat/iva» (del forge) + «MR: !7» (del --id) y planea el merge" \
   || bad "cerrar-slice: abortó por el mensaje o no armó la traza; got: $out_csm"
-out_csm2="$(PATH="$CSMSG_BIN:$PATH" CLAUDE_CERRAR_SLICE_BASE_MOCK=develop bash "$CSMSG_SH" --id 8 --message "corrige el calculo del IVA en las facturas del periodo fiscal vigente. Rama: fix/x, MR: !8" --forge glab --dry-run 2>/dev/null)"
+out_csm2="$(cd "$CSTOY/r" && PATH="$CSMSG_BIN:$PATH" CLAUDE_CERRAR_SLICE_BASE_MOCK=develop bash "$CSMSG_SH" --id 8 --message "corrige el calculo del IVA en las facturas del periodo fiscal vigente. Rama: fix/x, MR: !8" --forge glab --dry-run 2>/dev/null)"
 { printf '%s' "$out_csm2" | grep -q 'dry-run' && [ "$(printf '%s' "$out_csm2" | grep -c 'Rama:')" -le 1 ]; } \
   && ok "cerrar-slice: mensaje con traza propia → se respeta (no re-arma ni duplica Rama:)" \
   || bad "cerrar-slice: duplicó o perdió la traza propia; got: $out_csm2"
@@ -3512,7 +3522,7 @@ CSB_BIN=$(mktemp -d "${TMPDIR:-/tmp}/csb.XXXXXX"); printf '#!/usr/bin/env bash\n
 # y el caso "base irresoluble" (sin mock) resuelve base vacía → el script ABORTA ("no pude verificar la base").
 printf '#!/usr/bin/env bash\nexit 0\n' > "$CSB_BIN/gh"; chmod +x "$CSB_BIN/gh"
 CSB_MSG="corrige el calculo del IVA en las facturas sumando el impuesto por linea. Rama: feat/x MR: !5"
-csb() { PATH="$CSB_BIN:$PATH" CLAUDE_CERRAR_SLICE_BASE_MOCK="$1" bash "$CSMSG_SH" --id 5 --message "$CSB_MSG" --forge gh --dry-run 2>&1; }
+csb() { ( cd "$CSTOY/r" && PATH="$CSB_BIN:$PATH" CLAUDE_CERRAR_SLICE_BASE_MOCK="$1" bash "$CSMSG_SH" --id 5 --message "$CSB_MSG" --forge gh --dry-run 2>&1 ); }
 o="$(csb main)";    rc=$?; { [ "$rc" -ne 0 ] && printf '%s' "$o" | grep -qi 'RELEASE'; }        && ok "C2: cerrar-slice + base=main → ABORTA (release, no mergea con squash)" || bad "C2: cerrar-slice no abortó ante base=main; rc=$rc got: $o"
 o="$(csb master)";  rc=$?; [ "$rc" -ne 0 ]                                                       && ok "C2: cerrar-slice + base=master → ABORTA (alias de release)" || bad "C2: cerrar-slice no abortó ante base=master; got: $o"
 o="$(csb '')";      rc=$?; { [ "$rc" -ne 0 ] && printf '%s' "$o" | grep -qi 'verificar la base'; } && ok "C2: cerrar-slice + base IRRESOLUBLE → ABORTA (no mergea a ciegas)" || bad "C2: cerrar-slice no abortó ante base irresoluble; got: $o"
@@ -3540,7 +3550,7 @@ o="$(csg 'bash brain/skills/cerrar-slice/cerrar-slice.sh --id 5 --dry-run' "$CSG
   && ok "C2 control: cerrar-slice --dry-run (no muta) → libre" || bad "C2 control: --dry-run fue gateado; got: $o"
 o="$(csg "echo 'corre bash cerrar-slice.sh --id 5'" "$CSG/shr")"; ! is_deny "$o" \
   && ok "C2 control: mención citada de cerrar-slice (echo) NO es merge → libre" || bad "C2 control: una mención citada disparó el guard; got: $o"
-rm -rf "$CSG"
+rm -rf "$CSG" "$CSTOY"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
@@ -6711,6 +6721,18 @@ rm -rf "$FAKEHOME3" "$FAKEHOME4" 2>/dev/null
 
 # Bonus: el desinstalador deja settings.json sin las entradas del cerebro y sin el bloque de normas
 if [ -f "$SCRIPT_DIR/uninstall-brain.sh" ]; then
+  # A2 (auditoría 2026-10-22): parseo de args. --help/--dry-run/opción-desconocida NO deben desinstalar.
+  # FALLAN contra 6ce9913 (sin parseo: --help ejecutaba la desinstalación REAL). Corren ANTES del uninstall real.
+  _u_help_rc=0; HOME="$FAKEHOME2" bash "$SCRIPT_DIR/uninstall-brain.sh" --help >/dev/null 2>&1 || _u_help_rc=$?
+  { [ "$_u_help_rc" = 0 ] && [ -f "$FAKEHOME2/.claude/hooks/merge-develop-guard.sh" ]; } \
+    && ok "A2: uninstall-brain --help → ayuda (rc 0) y NO desinstala (antes --help ejecutaba la real)" \
+    || bad "A2: uninstall-brain --help desinstaló o falló (rc=$_u_help_rc)"
+  _u_bad_rc=0; HOME="$FAKEHOME2" bash "$SCRIPT_DIR/uninstall-brain.sh" --foo >/dev/null 2>&1 || _u_bad_rc=$?
+  { [ "$_u_bad_rc" = 2 ] && [ -f "$FAKEHOME2/.claude/hooks/merge-develop-guard.sh" ]; } \
+    && ok "A2: opción desconocida → rc=2 y NO desinstala" || bad "A2: opción desconocida no dio rc=2 o mutó (rc=$_u_bad_rc)"
+  HOME="$FAKEHOME2" bash "$SCRIPT_DIR/uninstall-brain.sh" --dry-run >/dev/null 2>&1
+  { [ -f "$FAKEHOME2/.claude/hooks/merge-develop-guard.sh" ] && [ -d "$FAKEHOME2/.claude/skills/cerrar-slice" ]; } \
+    && ok "A2: --dry-run es MODO plan → NO muta (hook + skill del brain siguen)" || bad "A2: --dry-run mutó el cerebro instalado"
   HOME="$FAKEHOME2" bash "$SCRIPT_DIR/uninstall-brain.sh" >/dev/null 2>&1
   # SET COMPLETO {global,both} kind=hook derivado del MANIFEST (NO un subconjunto hardcodeado): así el test
   # SÍ caza un BRAIN_PAT drifteado que haría que uninstall omitiera hooks y dejara cableados ZOMBIE. Un check
@@ -6725,8 +6747,55 @@ if [ -f "$SCRIPT_DIR/uninstall-brain.sh" ]; then
   grep -q 'brain:import-aliases' "$GCLAUDE2" 2>/dev/null && bad "uninstall: quedó el @import de aliases en CLAUDE.md" || ok "uninstall: @import de aliases removido de CLAUDE.md"
   grep -q 'brain:import-entorno' "$GCLAUDE2" 2>/dev/null && bad "uninstall: quedó el @import del entorno en CLAUDE.md" || ok "uninstall: @import del entorno removido de CLAUDE.md"
   [ -f "$FAKEHOME2/.claude/entorno-maquina.md" ] && ok "uninstall: entorno-maquina.md (dato curado) se conserva" || bad "uninstall: borró entorno-maquina.md"
+  # A2 MEDIO: TODAS las skills del brain se quitan (derivadas del glob brain/skills/*), no solo 8 hardcodeadas.
+  _sk_left=0
+  for _skd in "$SCRIPT_DIR/skills"/*/; do [ -d "$_skd" ] || continue; [ -d "$FAKEHOME2/.claude/skills/$(basename "$_skd")" ] && _sk_left=$((_sk_left+1)); done
+  [ "$_sk_left" = 0 ] \
+    && ok "A2: uninstall quita TODAS las skills del brain (del glob, no 8 hardcodeadas → antes dejaba ~17)" \
+    || bad "A2: quedaron $_sk_left skills del brain tras el uninstall (lista hardcodeada drifteada)"
 fi
 rm -rf "$FAKEHOME2"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (a3-pr) proteger-ramas: A3 — un POST de protección fallido → rc≠0 y NO miente 'aplicada' =="
+# ANTES (set +e) el script hacía DELETE+POST a ciegas; si el POST fallaba, la rama quedaba DESPROTEGIDA y el
+# script igual decía "norma de ramas aplicada" + exit 0. Fix A3: verifica el POST, exit≠0 y mensaje honesto.
+# FALLA contra 6ce9913. Override hermético PROTEGER_RAMAS_GLAB (mock de glab; el script resetea PATH).
+if [ -f "$SCRIPT_DIR/proteger-ramas.sh" ]; then
+  A3MB="$(mktemp -d "${TMPDIR:-/tmp}/a3pr.XXXXXX")"
+  cat > "$A3MB/glab" <<'A3G'
+#!/usr/bin/env bash
+case "$*" in
+  *projects/g%2Fr*) echo '{"id":42}'; exit 0;;
+  *protected_branches/main|*protected_branches/develop) exit 1;;
+  *DELETE*protected_branches*) exit 0;;
+  *POST*protected_branches*) exit 1;;
+  *branches/develop*) exit 0;;
+  *projects/42*) echo '{"default_branch":"main"}'; exit 0;;
+  *) exit 0;;
+esac
+A3G
+  chmod +x "$A3MB/glab"
+  a3rc=0; a3out="$(PROTEGER_RAMAS_GLAB="$A3MB/glab" bash "$SCRIPT_DIR/proteger-ramas.sh" g/r 2>&1)" || a3rc=$?
+  { [ "$a3rc" -ne 0 ] && ! printf '%s' "$a3out" | grep -q 'norma de ramas aplicada'; } \
+    && ok "a3-pr: POST de protección FALLÓ → rc≠0 y NO dice 'aplicada' (antes: exit 0 + 'aplicada' con la rama DESPROTEGIDA)" \
+    || bad "a3-pr: un POST fallido salió rc=$a3rc o afirmó 'aplicada' (A3 roto)"
+  cat > "$A3MB/glab" <<'A3G'
+#!/usr/bin/env bash
+case "$*" in
+  *projects/g%2Fr*) echo '{"id":42}'; exit 0;;
+  *protected_branches/main|*protected_branches/develop) exit 1;;
+  *projects/42*) echo '{"default_branch":"main"}'; exit 0;;
+  *) exit 0;;
+esac
+A3G
+  chmod +x "$A3MB/glab"
+  a3rc2=0; a3out2="$(PROTEGER_RAMAS_GLAB="$A3MB/glab" bash "$SCRIPT_DIR/proteger-ramas.sh" g/r 2>&1)" || a3rc2=$?
+  { [ "$a3rc2" = 0 ] && printf '%s' "$a3out2" | grep -q 'norma de ramas aplicada'; } \
+    && ok "a3-pr control: POST OK → rc 0 + 'aplicada'" || bad "a3-pr control: POST OK no dio rc0+aplicada (rc=$a3rc2)"
+  rm -rf "$A3MB"
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
@@ -7850,6 +7919,15 @@ if [ -f "$PR" ]; then
   HOME="$PH" bash "$PR" >/dev/null 2>&1 \
     && ok "publicar-roster: sin folder de sync configurado → no-op silencioso (fail-open)" \
     || bad "publicar-roster: sin folder configurado NO salió limpio (exit≠0)"
+  # A4 (auditoría 2026-10-22): con CLAUDE_CONFIG_DIR el roster se lee de ALLÍ, no de $HOME/.claude. FALLA contra
+  # 6ce9913 (ruta fija → no veía el roster curado → el FALLBACK subía TODO). HOME sin masters.json; roster en CFG.
+  PH2="$PRFIX/home2"; PCFG="$PRFIX/cfg"; PD2="$PRFIX/drive2"; mkdir -p "$PH2/.claude" "$PCFG" "$PD2"
+  printf '{"masters":[{"id":"z","name":"cfg-master","target":"code/z"}]}\n' > "$PCFG/masters.json"
+  HOME="$PH2" CLAUDE_CONFIG_DIR="$PCFG" CLAUDE_SESSIONS_DRIVE="$PD2" CLAUDE_SESSIONS_LOCAL="$PL" bash "$PR" >/dev/null 2>&1
+  pub2="$(ls "$PD2"/masters-*.json 2>/dev/null | head -1)"
+  { [ -n "$pub2" ] && grep -q 'cfg-master' "$pub2"; } \
+    && ok "A4 publicar-roster: con CLAUDE_CONFIG_DIR lee el roster de ahí (no de \$HOME/.claude) y publica masters-<host>.json" \
+    || bad "A4 publicar-roster: ignoró CLAUDE_CONFIG_DIR (no publicó el roster curado de CFG; pub2='$pub2')"
   rm -rf "$PRFIX"
 else
   bad "publicar-roster: falta el script $PR"
@@ -9576,8 +9654,16 @@ if [ -f "$CS" ]; then
   printf '#!/usr/bin/env bash\nexit 0\n' > "$CSBIN/gh"; chmod +x "$CSBIN/gh"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$CSBIN/gitleaks"; chmod +x "$CSBIN/gitleaks"   # gitleaks limpio (determinista; si no, escanea los commits REALES del repo del cwd y aborta)
   _csmsg='Afina el wait-ci para decidir por el estado real del CI del MR. Rama: fix/x MR: !999'
-  _cs() { CLAUDE_CERRAR_SLICE_CI_MOCK="$1" CERRAR_SLICE_CI_TIMEOUT=0 CLAUDE_CERRAR_SLICE_BASE_MOCK=develop PATH="$CSBIN:$PATH" \
-            bash "$CS" --id 999 --forge gh --message "$_csmsg" --wait-ci --dry-run 2>/dev/null; }
+  # HERMETICIDAD (claudio 2026-10-22): corre en un TOY REPO en feat/x, no en el repo de la suite (en CI es un
+  # checkout DETACHED → la rama actual es 'HEAD' y el gitleaks gate aborta). feat/x (no base) → ${base}..HEAD.
+  CSWTOY="$(mktemp -d "${TMPDIR:-/tmp}/cswtoy.XXXXXX")"
+  ( git init -q --bare "$CSWTOY/o.git"; git init -q "$CSWTOY/r"; cd "$CSWTOY/r"
+    git config user.email t@t; git config user.name t
+    git checkout -q -b develop; printf 'b\n' > b.txt; git add b.txt; git commit -qm b
+    git remote add origin "$CSWTOY/o.git"; git push -q origin develop
+    git checkout -q -b feat/x; printf 'x\n' > x.txt; git add x.txt; git commit -qm x ) >/dev/null 2>&1
+  _cs() { ( cd "$CSWTOY/r" && CLAUDE_CERRAR_SLICE_CI_MOCK="$1" CERRAR_SLICE_CI_TIMEOUT=0 CLAUDE_CERRAR_SLICE_BASE_MOCK=develop PATH="$CSBIN:$PATH" \
+            bash "$CS" --id 999 --forge gh --message "$_csmsg" --wait-ci --dry-run 2>/dev/null ); }
   for v in VERDE SINCI; do
     if _cs "$v" | grep -q 'correría'; then ok "cerrar-slice wait-ci: $v → procede al merge"
     else bad "cerrar-slice wait-ci: $v debió PROCEDER y no llegó a armar el merge"; fi
@@ -9588,6 +9674,7 @@ if [ -f "$CS" ]; then
   done
   if _cs ROJO | grep -q 'correría'; then bad "cerrar-slice wait-ci: ROJO llegó a armar el merge (debió abortar antes)"
   else ok "cerrar-slice wait-ci: ROJO aborta ANTES de armar el merge"; fi
+  rm -rf "$CSWTOY"
 else
   bad "cerrar-slice: no encuentro $CS"
 fi

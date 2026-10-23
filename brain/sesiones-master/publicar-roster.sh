@@ -21,10 +21,16 @@
 # cientos de MB en balde). Override del origen de sesiones: $CLAUDE_SESSIONS_LOCAL (default ~/.claude-sessions).
 set -u
 
+# A4 (auditoría 2026-10-22): config (roster/sessions-drive) por CLAUDE_CONFIG_DIR, igual que despertar-master/
+# reubicar-master. Con el override puesto, el `$HOME/.claude` fijo NO veía el roster curado y caía al fallback
+# "publicar TODAS las sesiones exportadas" → subía a la nube transcripts que el roster NO listaba. (El ORIGEN de
+# sesiones `$CLAUDE_SESSIONS_LOCAL`/`~/.claude-sessions` es otra cosa —datos, no config— y NO cambia.)
+CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+
 # ── folder destino (el "configurado") ──────────────────────────────────────────────────────────────
 DEST="${CLAUDE_SESSIONS_DRIVE:-}"
-if [ -z "$DEST" ] && [ -f "$HOME/.claude/sessions-drive" ]; then
-  DEST="$(head -n1 "$HOME/.claude/sessions-drive" 2>/dev/null | tr -d '\r')"
+if [ -z "$DEST" ] && [ -f "$CFG/sessions-drive" ]; then
+  DEST="$(head -n1 "$CFG/sessions-drive" 2>/dev/null | tr -d '\r')"
 fi
 [ -n "$DEST" ] && [ -d "$DEST" ] || exit 0   # sin folder configurado / inexistente → nada que publicar
 
@@ -34,7 +40,7 @@ HOST="$(printf '%s' "$HOST" | tr -c 'A-Za-z0-9._-' '_')"
 [ -n "$HOST" ] || HOST=host
 
 # ── 1) el masters.json LOCAL hand-curado → masters-<host>.json en el folder (copia ATÓMICA) ─────────
-LOCAL="$HOME/.claude/masters.json"
+LOCAL="$CFG/masters.json"
 if [ -f "$LOCAL" ]; then
   tmp="$DEST/.masters-$HOST.json.tmp.$$"
   if cp -f "$LOCAL" "$tmp" 2>/dev/null; then

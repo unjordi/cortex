@@ -28,13 +28,40 @@ set -u
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 MANIFEST="$SCRIPT_DIR/hooks/MANIFEST"
-CLAUDE_DIR="$HOME/.claude"
+
+# A2 (auditoría 2026-10-22): parseo de argumentos. ANTES NO se parseaban → `uninstall-brain.sh --help`
+# (y por tanto `--dry-run`/`-n`) EJECUTABA la desinstalación REAL. Ahora --help/--dry-run son flags reales y
+# una opción desconocida sale con rc=2. --dry-run es un MODO (mismas decisiones; solo NO muta, anuncia "(plan)").
+DRY=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h|--help)
+      cat <<'USAGE'
+uninstall-brain.sh — desinstala el cerebro GLOBAL de cortex (inverso EXACTO de install-brain.sh).
+  --dry-run, -n   MODO plan: enumera lo que QUITARÍA, sin tocar nada.
+  -h, --help      esta ayuda.
+Honra CLAUDE_CONFIG_DIR (default ~/.claude). NO borra datos del usuario (dashboard, memorias, consentimiento).
+USAGE
+      exit 0 ;;
+    --dry-run|-n) DRY=1; shift ;;
+    --) shift; break ;;
+    -*) echo "uninstall-brain: opción desconocida: $1 (usa --help)" >&2; exit 2 ;;
+    *)  echo "uninstall-brain: argumento inesperado: $1 (usa --help)" >&2; exit 2 ;;
+  esac
+done
+
+CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 HOOKS_DIR="$CLAUDE_DIR/hooks"
 SKILLS_DIR="$CLAUDE_DIR/skills"
 GSET="$CLAUDE_DIR/settings.json"
 GCLAUDE="$CLAUDE_DIR/CLAUDE.md"
 
-echo "==> cortex: desinstalando cerebro global de $CLAUDE_DIR"
+# _run: en DRY anuncia "(plan)" y NO muta; si no, ejecuta el comando. Las lecturas (awk/jq a un tmp) corren
+# igual en ambos modos; solo el punto de MUTACIÓN (mv/rm final) pasa por aquí.
+_run() { if [ "$DRY" = 1 ]; then echo "  (plan) $*"; else "$@"; fi; }
+
+[ "$DRY" = 1 ] && _dmark="(dry-run) " || _dmark=""
+echo "==> cortex: ${_dmark}desinstalando cerebro global de $CLAUDE_DIR"
 
 # ── (a) Borrar los hooks de tier global + la lib compartida + la config de costo ──
 # Derivado del MANIFEST (fuente única, igual que install-brain) → no es una 3ª lista que driftee.
@@ -51,10 +78,10 @@ else
                 analizar-comando-git.sh detectar-secretos.sh limpiar-worktrees.sh"
 fi
 for h in $GLOBAL_HOOKS; do
-  rm -f "$HOOKS_DIR/$h"
+  [ -e "$HOOKS_DIR/$h" ] && _run rm -f "$HOOKS_DIR/$h"
 done
-rm -f "$CLAUDE_DIR/agentes-costo.json"
-echo "ok: hooks globales + lib + config de costo eliminados de $HOOKS_DIR"
+[ -e "$CLAUDE_DIR/agentes-costo.json" ] && _run rm -f "$CLAUDE_DIR/agentes-costo.json"
+echo "ok: hooks globales + lib + config de costo ${_dmark}eliminados de $HOOKS_DIR"
 
 # ── (b) Des-cablear del settings.json SOLO las entradas de esos hooks (idempotente, jq) ──
 # BRAIN_PAT = regex de basenames a des-cablear, DERIVADO del MANIFEST ({global,both} kind=hook = EXACTAMENTE
@@ -81,8 +108,9 @@ if command -v jq >/dev/null 2>&1; then
           | (if (.hooks | length) == 0 then del(.hooks) else . end)
         else . end
       ' "$GSET" > "$tmp" 2>/dev/null && [ -s "$tmp" ]; then
-      mv "$tmp" "$GSET"
-      echo "ok: entradas de los hooks del cerebro removidas de $GSET (las demás quedan intactas)"
+      if [ "$DRY" = 1 ]; then rm -f "$tmp"; echo "  (plan) des-cablearía las entradas de los hooks del cerebro de $GSET"; else
+        mv "$tmp" "$GSET"
+        echo "ok: entradas de los hooks del cerebro removidas de $GSET (las demás quedan intactas)"; fi
     else
       [ -n "$tmp" ] && rm -f "$tmp"
       echo "warn: no pude editar $GSET con jq (¿JSON inválido?); revísalo a mano"
@@ -96,13 +124,22 @@ else
   echo "  cableado, instala jq y re-corre, o quita a mano las entradas que citen: $BRAIN_PAT"
 fi
 
-# ── (c) Quitar las skills genéricas del cerebro (cerrar-slice, orquestar-fanout, checkpoint) ──
-for sk in cerrar-slice orquestar-fanout checkpoint rehidratar-hilo turno-nocturno diagramar cosechar-sesion unificar-cerebro; do
-  if [ -d "$SKILLS_DIR/$sk" ]; then
-    rm -rf "$SKILLS_DIR/$sk"
-    echo "ok: skill $sk eliminada de $SKILLS_DIR"
-  fi
-done
+# ── (c) Quitar las skills del cerebro — DERIVADAS de brain/skills/* (el MISMO set que install-brain instala),
+#    no una lista hardcodeada que driftee. A2 (auditoría 2026-10-22): la lista vieja de 8 dejaba ~17 skills
+#    instaladas tras un uninstall que igual decía "cerebro global desinstalado". Solo quita las que vienen del
+#    brain (las que EXISTEN en brain/skills) → una skill propia del usuario en ~/.claude/skills NO se toca.
+if [ -d "$SCRIPT_DIR/skills" ]; then
+  for skdir in "$SCRIPT_DIR/skills"/*/; do
+    [ -d "$skdir" ] || continue
+    sk="$(basename "$skdir")"
+    if [ -d "$SKILLS_DIR/$sk" ]; then
+      _run rm -rf "$SKILLS_DIR/$sk"
+      echo "ok: skill $sk ${_dmark}eliminada de $SKILLS_DIR"
+    fi
+  done
+else
+  echo "warn: falta $SCRIPT_DIR/skills; no pude derivar las skills a quitar"
+fi
 
 # ── (d) Quitar el bloque de normas de ~/.claude/CLAUDE.md (entre los marcadores) ──
 if [ -f "$GCLAUDE" ] && grep -q 'BEGIN cortex' "$GCLAUDE"; then
@@ -114,8 +151,9 @@ if [ -f "$GCLAUDE" ] && grep -q 'BEGIN cortex' "$GCLAUDE"; then
       /END cortex/   { skip=0 }
     ' "$GCLAUDE" > "$tmp"; then
     # Poda una posible línea en blanco al inicio que el bloque dejaba de separador.
-    mv "$tmp" "$GCLAUDE"
-    echo "ok: bloque de normas del cerebro removido de $GCLAUDE"
+    if [ "$DRY" = 1 ]; then rm -f "$tmp"; echo "  (plan) quitaría el bloque de normas del cerebro de $GCLAUDE"; else
+      mv "$tmp" "$GCLAUDE"
+      echo "ok: bloque de normas del cerebro removido de $GCLAUDE"; fi
   else
     [ -n "$tmp" ] && rm -f "$tmp"
     echo "warn: no pude editar $GCLAUDE; quita a mano el bloque BEGIN/END cortex"
@@ -135,16 +173,17 @@ if [ -f "$GCLAUDE" ] && grep -q 'brain:import-aliases' "$GCLAUDE" 2>/dev/null; t
       skip_next==1 && /^@aliases-activos\.md[[:space:]]*$/ { skip_next=0; next }   # y el @import que le sigue
       { skip_next=0; print }
     ' "$GCLAUDE" > "$tmp"; then
-    mv "$tmp" "$GCLAUDE"
-    echo "ok: @import de aliases-activos.md removido de $GCLAUDE"
+    if [ "$DRY" = 1 ]; then rm -f "$tmp"; echo "  (plan) quitaría el @import de aliases-activos.md de $GCLAUDE"; else
+      mv "$tmp" "$GCLAUDE"
+      echo "ok: @import de aliases-activos.md removido de $GCLAUDE"; fi
   else
     [ -n "$tmp" ] && rm -f "$tmp"
     echo "warn: no pude quitar el @import de $GCLAUDE; hazlo a mano (líneas brain:import-aliases + @aliases-activos.md)"
   fi
 fi
 if [ -f "$CLAUDE_DIR/aliases-activos.md" ]; then
-  rm -f "$CLAUDE_DIR/aliases-activos.md"
-  echo "ok: artefacto GENERADO aliases-activos.md eliminado (se regenera en el próximo install)"
+  _run rm -f "$CLAUDE_DIR/aliases-activos.md"
+  echo "ok: artefacto GENERADO aliases-activos.md ${_dmark}eliminado (se regenera en el próximo install)"
 fi
 
 # ── (e2) Quitar el @import del entorno LEAN (marcador brain:import-entorno). El archivo
