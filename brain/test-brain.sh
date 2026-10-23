@@ -7779,6 +7779,33 @@ else
   echo "  SKIP #2: falta reubicar-master.sh"
 fi
 
+# ── (b-recipe) las recetas de skills resuelven el binario SIN `ls` (claudio 2026-10-22) ──
+echo "== (b-recipe) recetas de skills: resolver el binario SIN \`ls\` (un ls aliaseado a eza rompe node) =="
+# Causa medida en cachy: el Bash tool corre zsh con `ls`=eza (color); `node \"\$(ls … | head -1)\"` recibe una
+# línea con escapes ANSI en vez de la ruta → MODULE_NOT_FOUND → el andamio del /checkpoint truena. El fix:
+# for + [ -f ] (y `command ls -t` para "el más reciente"). Prueba el EFECTO bajo zsh+eza + guarda la regresión.
+if command -v zsh >/dev/null 2>&1 && command -v eza >/dev/null 2>&1; then
+  RZ="$(mktemp -d "${TMPDIR:-/tmp}/brain-recipe.XXXXXX")"; touch "$RZ/binA.js"
+  printf 'alias ls="eza -al --color=always"\n' > "$RZ/.zshrc"
+  rec_vieja="$(ZDOTDIR="$RZ" zsh -ic "ls \"$RZ/binA.js\" \"$RZ/binB.js\" 2>/dev/null | head -1" 2>/dev/null)"
+  [ "$rec_vieja" != "$RZ/binA.js" ] \
+    && ok "b-recipe: la receta VIEJA \`ls|head\` NO resuelve la ruta bajo un ls aliaseado a eza (reproduce el bug de cachy)" \
+    || bad "b-recipe: la receta vieja resolvió la ruta — no reproduce el bug (got '$rec_vieja')"
+  rec_nueva="$(ZDOTDIR="$RZ" zsh -ic "for _ck in \"$RZ/binA.js\" \"$RZ/binB.js\"; do [ -f \"\$_ck\" ] && { printf %s \"\$_ck\"; break; }; done" 2>/dev/null)"
+  [ "$rec_nueva" = "$RZ/binA.js" ] \
+    && ok "b-recipe: la receta NUEVA \`for + [ -f ]\` resuelve la ruta real bajo el mismo ls aliaseado (fix)" \
+    || bad "b-recipe: la receta nueva no resolvió la ruta (got '$rec_nueva')"
+  rm -rf "$RZ"
+else
+  echo "  SKIP b-recipe: falta zsh o eza (el bug es específico de un ls aliaseado a eza)"
+fi
+# REGRESIÓN (falla contra la receta vieja): ningún SKILL.md de continuidad usa `node "$(ls …)"` ni `$(ls ` sin `command`
+if grep -rlF '$(ls ' "$HOOKS/../skills/checkpoint/SKILL.md" "$HOOKS/../skills/reconstruir-contexto/SKILL.md" >/dev/null 2>&1; then
+  bad "b-recipe: quedó un \$(ls …) sin 'command' en checkpoint/reconstruir-contexto SKILL.md (rompe bajo un ls aliaseado)"
+else
+  ok "b-recipe: checkpoint/reconstruir-contexto SKILL.md ya NO resuelven rutas con \$(ls …) (robusto a un ls aliaseado)"
+fi
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (f) parity del árbol: README ↔ MEMORY.md ↔ brain/skills/ =="
