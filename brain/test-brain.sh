@@ -2885,6 +2885,17 @@ o="$(paz 'git branch -df pa/ancestro')"
 # sin pushear de HEAD, ajenos). Debe quedar SILENCIO.
 o="$(paz 'git branch --edit-description pa/viva')"
 [ -z "$o" ] && ok "proteger-arbol #13: 'git branch --edit-description' (no-borrado, '-d' incrustado) → silencio (pre-filtro anclado, no cae al path de orfandad)" || bad "proteger-arbol #13: '--edit-description' cayó al path de orfandad (FP del pre-filtro); got: $o"
+# --- #4-BAJO (R4 2026-10-23): un nombre de rama ENTRECOMILLADO (`'pa/viva'`) o un glob entrecomillado
+# (`'pa/vi*'`) se PERDÍA al despojar comillas (span vaciado) → el aviso CALLABA aunque la rama tuviera
+# trabajo. Ahora los NOMBRES salen de los segmentos ejecutables con las comillas quitadas como CARACTERES.
+# Los dos AVISA FALLAN vs el código que extraía del despojado (silencio).
+o="$(paz "git branch -D 'pa/viva'")"
+printf '%s' "$o" | grep -q 'NO integrados' && ok "proteger-arbol #4-BAJO: borrado de rama ENTRECOMILLADA ('pa/viva', con trabajo) → AVISA (el viejo callaba por el despoja)" || bad "proteger-arbol #4-BAJO: un nombre de rama entrecomillado silenció el aviso; got: $o"
+o="$(paz "git branch -D 'pa/vi*'")"
+printf '%s' "$o" | grep -q 'NO integrados' && ok "proteger-arbol #4-BAJO: GLOB entrecomillado ('pa/vi*' expande a pa/viva) → AVISA" || bad "proteger-arbol #4-BAJO: un glob entrecomillado silenció el aviso; got: $o"
+# regresión: una rama ZOMBIE entrecomillada SIGUE en silencio (el riesgo se evalúa sobre el nombre extraído).
+o="$(paz "git branch -D 'pa/squash'")"
+[ -z "$o" ] && ok "proteger-arbol #4-BAJO: rama ZOMBIE entrecomillada ('pa/squash') → silencio (riesgo evaluado sobre el nombre real)" || bad "proteger-arbol #4-BAJO: una zombie entrecomillada avisó en falso; got: $o"
 # --- M5 (auditoría R3 2026-10-23): flag-order (force ANTES del flag de borrado) + `git -C .` + wrappers/abs-path.
 # Los dos primeros FALLAN contra 7fab8aa (el ancla «flag justo tras branch» perdía `--force --delete`; `-C .`
 # resolvía el dir al cwd del PROCESO del hook en vez del cwd del comando).

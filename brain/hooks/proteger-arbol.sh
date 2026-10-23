@@ -94,7 +94,19 @@ if printf '%s' "$unquoted" | grep -qE "git[[:space:]]+$_bdel_re" \
     # token que empieza con `-` deja los nombres sin importar la FORMA del borrado: `-D`/`-df`/`-fd`/`--delete`/
     # `--delete --force`/`-d --force` (los flags `--force`/`-f` sueltos también caen). Cada token puede ser un
     # nombre exacto o un glob → se expande contra las ramas LOCALES reales con `git branch --list`.
-    toks=$(printf '%s' "$unquoted" \
+    # Los nombres de rama pueden ir ENTRECOMILLADOS (`git branch -D 'feat/x'`, un glob `'oth*'`): el despoja de
+    # comillas que alimenta $unquoted VACÍA el span → el nombre se perdía y el aviso CALLABA (FP del corpus,
+    # R4 2026-10-23). Para los NOMBRES usamos los segmentos EJECUTABLES con las comillas quitadas como
+    # CARACTERES (no como spans) → el nombre sobrevive. El gate de arriba ya confirmó un `git branch -<del>`
+    # REAL en $unquoted, así que esto corre solo sobre un borrado real (un `echo "git branch -D x"` SOLO no
+    # llega aquí). Residual ACOTADO: un `echo "git branch -D fake" && git branch -D real` sumaría 'fake', pero
+    # solo AVISA si 'fake' fuera una rama real con trabajo sin integrar (raro; y esto AVISA, no bloquea).
+    if command -v acg_segmentos_ejecutables >/dev/null 2>&1 && command -v acg_normaliza_git_prefijo >/dev/null 2>&1; then
+      names_src=$(acg_segmentos_ejecutables "$(acg_normaliza_git_prefijo "$cmd")" | tr -d "'\"")
+    else
+      names_src=$(printf '%s' "$cmd" | tr -d "'\"")
+    fi
+    toks=$(printf '%s' "$names_src" \
       | grep -oE 'git[[:space:]]+branch[[:space:]]+[^|;&]+' \
       | sed -E 's/^git[[:space:]]+branch[[:space:]]+//' \
       | tr ' ' '\n' | grep -vE '^-')
@@ -104,7 +116,7 @@ if printf '%s' "$unquoted" | grep -qE "git[[:space:]]+$_bdel_re" \
     # AUNQUE el merge CHOCARA (el `;`/`&` corren igual; el `||` corre JUSTO si falló) → borraría la rama sin
     # integrar = PÉRDIDA DE DATOS (H7, revisión-4). Por eso el target de merge se captura SOLO si lo sigue un
     # `&&`. (El merge aún no corrió —es PreToolUse—, pero el `&&` SÍ garantiza la condición en tiempo de shell.)
-    merged=$(printf '%s' "$unquoted" \
+    merged=$(printf '%s' "$names_src" \
       | grep -oE 'git[[:space:]]+merge([[:space:]]+(--[A-Za-z][A-Za-z-]*|-[A-Za-z]))*[[:space:]]+[^|;&]+&&' \
       | sed -E 's/.*merge([[:space:]]+(--[A-Za-z][A-Za-z-]*|-[A-Za-z]))*[[:space:]]+//; s/[[:space:]]*&&$//' \
       | tr ' ' '\n' | grep -vE '^-')
