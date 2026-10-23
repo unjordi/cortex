@@ -43,7 +43,9 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 echo "==> nuevo repo : $DEST   (desde: $SRC)"
 
 # 1) crear el proyecto vacío en el grupo destino
-GID="$(glab api "groups/$(printf '%s' "$GROUP" | sed 's#/#%2F#g')" | sed -n 's/.*"id":\([0-9]*\).*/\1/p' | head -1)"
+# El `.id` DEL GRUPO (top-level): un `sed -n 's/.*"id":…/p'` era VORAZ y, con la respuesta que trae
+# `projects[]` anidado, devolvía el id del ÚLTIMO proyecto, no el del grupo (MEDIO auditoría R4 2026-10-23).
+GID="$(glab api "groups/$(printf '%s' "$GROUP" | sed 's#/#%2F#g')" | jq -r '.id // empty' 2>/dev/null)"
 [ -n "$GID" ] || { echo "no pude resolver el grupo '$GROUP'" >&2; exit 1; }
 glab api --method POST projects -f "name=$NAME" -f "namespace_id=$GID" -f "visibility=private" \
     -f "initialize_with_readme=false" >/dev/null

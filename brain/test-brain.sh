@@ -7530,6 +7530,22 @@ if [ -f "$NRSH" ]; then
     || bad "nr-seed: faltó main/develop/tag o se coló feat/x: [$(git -C "$NRW/dest.git" show-ref 2>/dev/null | sed 's|.* ||' | tr '\n' ' ')]"
   rm -rf "$NRW"
 fi
+# ── #5 (auditoría R4 2026-10-23): el id del GRUPO se extrae con `jq .id` (top-level); el `sed -n 's/.*"id":…/p'`
+# viejo era VORAZ y, con la respuesta de groups/ que trae `projects[]` anidado, devolvía el id del ÚLTIMO proyecto
+# (42 → daba 902). Mock de glab + la LÍNEA REAL del script (`^GID=`). FALLA contra el sed. ──
+if [ -f "$NRSH" ] && command -v jq >/dev/null 2>&1; then
+  NR5="$(mktemp -d "${TMPDIR:-/tmp}/nr5.XXXXXX")"; mkdir -p "$NR5/bin"
+  cat > "$NR5/bin/glab" <<'GLABMOCK'
+#!/usr/bin/env bash
+echo '{"id":42,"name":"g","projects":[{"id":901},{"id":902}]}'
+GLABMOCK
+  chmod +x "$NR5/bin/glab"
+  _gid5="$( PATH="$NR5/bin:$PATH"; GROUP=mygroup; eval "$(grep -E '^GID=' "$NRSH")"; printf '%s' "$GID" )"
+  [ "$_gid5" = 42 ] \
+    && ok "#5 nuevo-repo: el id del grupo = jq .id top-level (42), NO el id del último proyecto anidado (902 con el sed voraz)" \
+    || bad "#5 nuevo-repo: la extracción del GID dio '$_gid5' (se esperaba 42; el sed voraz daba 902)"
+  rm -rf "$NR5"
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
