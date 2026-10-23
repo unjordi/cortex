@@ -53,6 +53,7 @@
 merge-develop-guard      both    hook
 entorno-maquina-guard    both    hook
 no-bypass-deploy         both    hook
+proteger-autorizaciones  both    hook
 analizar-comando-git     both    lib
 juez-comun               both    lib
 

@@ -556,14 +556,26 @@ _grant_cita_verificada() {   # $1 = línea de grant → 0 si su cita aparece en 
   command -v jq >/dev/null 2>&1 || return 1          # sin jq no se puede filtrar "humano" con rigor → no honra
   cita=$(printf '%s' "$grant" | sed -n 's/.*cita="\([^"]*\)".*/\1/p')
   [ -n "$cita" ] || return 1
-  # C1 (auditoría R3 2026-10-23): un `contains($cita)` SIN piso de sustancia dejaba que una cita TRIVIAL
-  # (`cita="a"`) casara CUALQUIER mensaje humano → el grant se auto-honraba. La cita de un grant real es la
-  # autorización VERBATIM del usuario (larga y sobre merge/integración), así que se exige: (a) largo mínimo
-  # serio (≥ CLAUDE_GRANT_CITA_MIN_CHARS, def 20) y (b) léxico de autorización de merge — una frase humana
-  # larga pero inocua ("revisa el README por favor…") que el agente copiara NO alcanza para honrar el grant.
-  local _gmin; _gmin="${CLAUDE_GRANT_CITA_MIN_CHARS:-20}"; case "$_gmin" in ''|*[!0-9]*) _gmin=20 ;; esac
-  [ "${#cita}" -ge "$_gmin" ] || return 1
-  printf '%s' "$cita" | grep -qiE 'merge|mergea|integr|autoriz|develop|libera|promov' || return 1
+  # El piso de longitud (≥20) + el léxico de merge (C1/1f0608e) se RETIRARON (2026-10-23, FN flaggeado por
+  # unjordi): defendían contra el AGENTE escribiendo su propio grant con una cita trivial, pero ese vector lo
+  # cierra ahora `proteger-autorizaciones` (solo el HUMANO escribe autorizaciones-vigentes*). Con el agente
+  # fuera, el piso solo producía FALSOS NEGATIVOS: una autorización humana CORTA y real ('mergea a develop'=16,
+  # 'haz el merge a main'=19) quedaba por debajo de 20 y NO se honraba. Defensa que QUEDA: la cita aparece en
+  # un mensaje HUMANO (no sidechain/tool_result/cross-session/isMeta, abajo) + la VENTANA DE TIMESTAMP.
+  # VENTANA (defensa en profundidad, FAIL-OPEN — la seguridad PRIMARIA es proteger-autorizaciones): el mensaje
+  # citado no debe ser más viejo que 24h antes de que se ESCRIBIÓ el grant (registrada=) ni posterior a su
+  # vencimiento. registrada ausente o fecha ilegible → NO se rechaza (rechazar por un timestamp ilegible
+  # reintroduciría FNs, y el agente igual no puede depositar el grant → el fail-open no abre ningún hueco).
+  local _reg _rege _vence _tslo _tshi
+  _vence=$(printf '%s' "$grant" | sed -n 's/.*vence_epoch=\([0-9]*\).*/\1/p')
+  case "$_vence" in ''|*[!0-9]*) _tshi=-1 ;; *) _tshi="$_vence" ;; esac
+  _reg=$(printf '%s' "$grant" | sed -n 's/.*registrada=\([^ ]*\).*/\1/p')
+  _rege=""
+  if [ -n "$_reg" ]; then
+    _rege=$(date -u -d "$_reg" +%s 2>/dev/null \
+            || date -u -j -f '%Y-%m-%dT%H:%M:%S' "$(printf '%s' "$_reg" | sed -E 's/\.[0-9]+//; s/[Zz]$//; s/[+-][0-9][0-9]:[0-9][0-9]$//')" +%s 2>/dev/null)
+  fi
+  case "$_rege" in ''|*[!0-9]*) _tslo=-1 ;; *) _tslo=$(( _rege - 86400 )) ;; esac
   _cfgp="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects"; _homep="$HOME/.claude/projects"
   for d in "$_cfgp" "$_homep"; do
     [ -d "$d" ] || continue
@@ -576,7 +588,7 @@ _grant_cita_verificada() {   # $1 = línea de grant → 0 si su cita aparece en 
     # system-reminder/"This session is being continued"), y que contenga la cita.
     while IFS= read -r f; do
       [ -n "$f" ] || continue
-      jq -rs --arg cita "$cita" '
+      jq -rs --arg cita "$cita" --argjson tslo "$_tslo" --argjson tshi "$_tshi" '
         any(.[];
           ( ((.type? // "") == "user") or ((.message.role? // "") == "user") )
           and ((.isMeta // false) != true)
@@ -598,6 +610,16 @@ _grant_cita_verificada() {   # $1 = línea de grant → 0 si su cita aparece en 
             and ($t | test("^\\s*This session is being continued") | not)
             and ($t | contains($cita))
           )
+          # VENTANA DE TIMESTAMP (fail-open): el mensaje citado no más viejo que 24h antes de registrada
+          # ($tslo) ni posterior a vence_epoch ($tshi). Sin registrada ($tslo<0) o timestamp ilegible ($mt
+          # null) → NO rechaza (el agente no puede escribir el grant, así que el fail-open no abre hueco).
+          and ( $tslo < 0
+                or ( (.timestamp? // "") as $tsraw
+                     | if ($tsraw|type)=="string" and ($tsraw != "")
+                       then ( ($tsraw | sub("\\.[0-9]+";"") | sub("([+-][0-9][0-9]:[0-9][0-9])$";"Z")
+                               | try fromdateiso8601 catch null) ) as $mt
+                             | ($mt == null) or ($mt >= $tslo and ($tshi < 0 or $mt < $tshi))
+                       else true end ) )
         )' "$f" 2>/dev/null | grep -q true && return 0
     done <<EOF
 $(grep -rlF -- "$cita" "$d" --include='*.jsonl' 2>/dev/null | grep -v '/subagents/')

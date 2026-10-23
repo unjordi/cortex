@@ -120,6 +120,7 @@ echo ""
 ev_de() {
   case "$1" in
     merge-develop-guard|entorno-maquina-guard|no-bypass-deploy) echo "PreToolUse|Bash" ;;
+    proteger-autorizaciones) echo "PreToolUse|Bash|Edit|Write|MultiEdit" ;;   # both: matcher combinado (vigila la escritura del grant por Bash y por los tools de edición)
     dod-verificar)  echo "Stop|" ;;
     sesion-inicio)  echo "SessionStart|" ;;
     recordar-cosechar) echo "Stop|" ;;

@@ -2580,15 +2580,41 @@ printf '%s\n' "$(jq -nc --arg t "sí, $A1CITA" '{type:"user",message:{role:"user
 # (5) grant en PROSA (línea no anclada) aunque la cita exista → NO se honra.
 printf 'nota: ejemplo de un scope=merge-develop vence_epoch=%s cita="%s"\n' "$A1V" "$A1CITA" > "$A1AUTH"
 is_deny "$(a1run)" && ok "b1f-a1: línea de PROSA con 'scope=merge-develop' (no anclada) → NO se honra" || bad "b1f-a1: una mención en prosa se tomó por grant"
+# (6) FN flaggeado por unjordi (2026-10-23): una autorización humana CORTA y real debe honrarse. El piso
+#     ≥20 + léxico (C1/1f0608e) se RETIRÓ (ya no hace falta: proteger-autorizaciones cierra el vector de
+#     auto-escritura). "mergea a develop" = 16 chars → con el piso viejo DABA DENY; ahora honra. registrada=x
+#     (no parsea) → la ventana de timestamp no aplica, aísla el test al piso. FALLA vs 1f0608e (rechazaba <20).
+printf '%s\n' "$(jq -nc '{type:"user",message:{role:"user",content:[{type:"text",text:"va, mergea a develop"}]}}')" > "$A1TX"
+printf -- '- scope=merge-develop vence_epoch=%s cita="mergea a develop" registrada=x\n' "$A1V" > "$A1AUTH"
+! is_deny "$(a1run)" && ok "b1f-a1 (FN unjordi): cita CORTA real 'mergea a develop' (16 chars) en msg humano → HONRA (piso ≥20 retirado)" || bad "b1f-a1: una autorización humana corta real NO se honró (el piso ≥20 sigue produciendo FN)"
+printf '%s\n' "$(jq -nc '{type:"user",message:{role:"user",content:[{type:"text",text:"ok, haz el merge a main del PR"}]}}')" > "$A1TX"
+printf -- '- scope=merge-develop vence_epoch=%s cita="haz el merge a main" registrada=x\n' "$A1V" > "$A1AUTH"
+! is_deny "$(a1run)" && ok "b1f-a1 (FN unjordi): cita CORTA 'haz el merge a main' (19 chars) en msg humano → HONRA (scope=merge-develop; main NO usa grant durable)" || bad "b1f-a1: cita corta de 19 chars NO se honró"
+# (7) VENTANA DE TIMESTAMP (c): el mensaje citado NO debe ser más viejo que 24h antes de `registrada`. Con
+#     registrada=AHORA y la cita SOLO en un mensaje de hace 2 días → la ventana lo rechaza → NO honra. FALLA
+#     vs el código sin ventana (que honraba por el solo hecho de estar en un mensaje humano, sin importar la edad).
+A1_NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+A1_OLDTS=$(date -u -d "@$(( $(date +%s) - 172800 ))" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$(( $(date +%s) - 172800 ))" +%Y-%m-%dT%H:%M:%SZ)
+printf '%s\n' "$(jq -nc --arg ts "$A1_OLDTS" '{type:"user",timestamp:$ts,message:{role:"user",content:[{type:"text",text:"ok, intégralo a develop"}]}}')" > "$A1TX"
+printf -- '- scope=merge-develop vence_epoch=%s cita="intégralo a develop" registrada=%s\n' "$A1V" "$A1_NOW" > "$A1AUTH"
+is_deny "$(a1run)" && ok "b1f-a1 (ventana c): cita solo en un mensaje de hace 2 días + registrada=AHORA → la ventana lo rechaza (>24h antes del grant) → NO honra" || bad "b1f-a1: la ventana de timestamp no rechazó una cita de un mensaje demasiado viejo"
+# (8) FAIL-OPEN de la ventana: MISMO mensaje viejo pero el grant SIN registrada → la ventana no aplica → honra.
+#     (la seguridad primaria es proteger-autorizaciones; rechazar por falta de registrada reintroduciría FNs.)
+printf -- '- scope=merge-develop vence_epoch=%s cita="intégralo a develop"\n' "$A1V" > "$A1AUTH"
+! is_deny "$(a1run)" && ok "b1f-a1 (ventana c, fail-open): mismo mensaje viejo pero grant SIN registrada → ventana no aplica → honra" || bad "b1f-a1: la ventana rechazó un grant sin registrada (debe ser fail-open)"
 # (6) scope=merge-develop-nunca (prefijo) → NO se honra.
 printf -- '- scope=merge-develop-nunca vence_epoch=%s cita="%s"\n' "$A1V" "$A1CITA" > "$A1AUTH"
 is_deny "$(a1run)" && ok "b1f-a1: 'scope=merge-develop-nunca' (prefijo) → NO se honra" || bad "b1f-a1: el prefijo -nunca se tomó por scope=merge-develop"
-# ── C1 (auditoría R3 2026-10-23): dos huecos del grant cerrados — FALLAN contra 7fab8aa ──
-# (7) cita TRIVIAL ('a'): el viejo `contains($cita)` la casaba en CUALQUIER mensaje humano → grant auto-honrado.
-#     Ahora exige largo mínimo (≥20) + léxico de merge → una cita de 1 letra NO alcanza → deny.
-printf '%s\n' "$(jq -nc '{type:"user",message:{role:"user",content:[{type:"text",text:"hola, revisa el README por favor y gracias"}]}}')" > "$A1TX"
-printf -- '- scope=merge-develop vence_epoch=%s cita="a" registrada=x\n' "$A1V" > "$A1AUTH"
-is_deny "$(a1run)" && ok "b1f-a1 C1: cita TRIVIAL 'a' (sub-largo-mínimo) → NO se honra (viejo: casaba cualquier mensaje)" || bad "b1f-a1 C1: una cita de 1 letra honró el grant (hueco R3 abierto)"
+# ── C1 (R3) → REEMPLAZADO (2026-10-23): el piso ≥20 + léxico de merge de _grant_cita_verificada se RETIRÓ
+#    (producía FNs con autorizaciones humanas CORTAS y reales — flaggeado por unjordi; 'mergea a develop'=16).
+#    El vector que ese piso defendía (agente auto-escribiendo su grant) lo cierra ahora proteger-autorizaciones.
+#    La recency la aporta la VENTANA DE TIMESTAMP (probada arriba: msg viejo → rechazo; sin registrada →
+#    fail-open). (8)/(9) de abajo (filtro de subagente + control humano) SIGUEN vigentes sin cambio.
+# (7) cita CORTA real en un mensaje humano RECIENTE (dentro de la ventana) → HONRA (la que el piso ≥20 rechazaba). FALLA vs 1f0608e.
+A1_FRESH=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+printf '%s\n' "$(jq -nc --arg ts "$A1_FRESH" '{type:"user",timestamp:$ts,message:{role:"user",content:[{type:"text",text:"va, mergea a develop"}]}}')" > "$A1TX"
+printf -- '- scope=merge-develop vence_epoch=%s cita="mergea a develop" registrada=%s\n' "$A1V" "$A1_FRESH" > "$A1AUTH"
+! is_deny "$(a1run)" && ok "b1f-a1: cita CORTA real 'mergea a develop' (16) en msg humano reciente + registrada → HONRA (piso ≥20 retirado, dentro de la ventana)" || bad "b1f-a1: una autorización humana corta real NO se honró (¿el piso ≥20 sigue?)"
 # (8) cita en un transcript de SUBAGENTE (isSidechain + dir subagents/, lo escribe el AGENTE, no el humano):
 #     el viejo `grep -rlF` lo hallaba y el jq lo contaba como 'user' → auto-autorización vía subagente. Ahora
 #     se excluye isSidechain Y el dir subagents/. La cita SÍ es larga + con léxico (para aislar: lo único que
@@ -2946,6 +2972,76 @@ rm -rf "$PFFIX"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (proteger-autorizaciones) BLOQUEA la escritura del AGENTE al archivo de grants (auto-autorización A1) =="
+# Hueco A1 (auditoría 2026-10-22, CRÍTICO #2): el grant durable de merge-develop-guard lo podría ESCRIBIR el
+# propio agente → auto-autorización. El chokepoint es la ESCRITURA: toda escritura del agente pasa por una
+# tool (Bash/Edit/Write/MultiEdit) → se deniega; la del humano con `!` no pasa por PreToolUse. LEER pasa.
+PAHOOK="$HOOKS/proteger-autorizaciones.sh"
+# HOME AISLADO (#80): proteger-autorizaciones es tier `both`; su cláusula de dedupe hace `exit 0` si en
+# $HOME/.claude/hooks/ (o $CLAUDE_CONFIG_DIR/hooks) ya hay copia GLOBAL (la instala install-brain). Con un
+# $HOME temporal VACÍO + CLAUDE_CONFIG_DIR desarmado, el test no depende de si esta máquina tiene el brain
+# global instalado (antes: falso-VERDE sin global, falso-ROJO tras instalarlo porque la copia del repo cede).
+PAH="$(mktemp -d "${TMPDIR:-/tmp}/brain-pa.XXXXXX")"
+pa_bash() { printf '{"tool_name":"Bash","tool_input":{"command":%s}}' "$(printf '%s' "$1" | jq -Rs .)" | env -u CLAUDE_CONFIG_DIR HOME="$PAH" bash "$PAHOOK"; }
+pa_file() { printf '{"tool_name":"%s","tool_input":{"file_path":"%s"}}' "$1" "$2" | env -u CLAUDE_CONFIG_DIR HOME="$PAH" bash "$PAHOOK"; }
+pa_is_deny() { printf '%s' "$1" | jq -e '.hookSpecificOutput.permissionDecision=="deny"' >/dev/null 2>&1; }
+AF='.claude/memory/autorizaciones-vigentes.local.md'
+# (1) DENY cada vector de escritura (Bash), con ruta RELATIVA, ABSOLUTA y ~. FALLA vs el código viejo
+#     (el hook no existía → no denegaba). Cubre >, >>, tee, sed -i, cp, mv, ln, install, dd, intérprete.
+pa_fail=0
+for c in \
+  "echo '- scope=merge-develop cita=\"mergea a develop\"' >> $AF" \
+  "echo x > /repo/$AF" \
+  "echo x >> ~/proj/$AF" \
+  "tee -a $AF" \
+  "tee /abs/$AF" \
+  "sed -i 's/a/b/' $AF" \
+  "cp /tmp/grant.md $AF" \
+  "mv /tmp/g ~/$AF" \
+  "ln -sf /tmp/x $AF" \
+  "install -m 644 /tmp/x /abs/$AF" \
+  "dd of=$AF" \
+  "python3 -c 'open(\"autorizaciones-vigentes.local.md\",\"a\").write(\"x\")'" \
+  ; do
+  pa_is_deny "$(pa_bash "$c")" || { bad "proteger-autorizaciones: NO denegó la escritura: ${c:0:50}"; pa_fail=1; }
+done
+# heredoc `cat >> f <<EOF` (redirección) → deny
+pa_is_deny "$(pa_bash "cat >> $AF <<EOF
+- scope=merge-develop
+EOF")" || { bad "proteger-autorizaciones: NO denegó el heredoc cat >> al archivo"; pa_fail=1; }
+[ "$pa_fail" = 0 ] && ok "proteger-autorizaciones: DENY en todos los vectores de escritura (>, >>, heredoc, tee, sed -i, cp, mv, ln, install, dd, intérprete · ruta rel/abs/~)"
+# (2) LEER el archivo PASA (el agente debe poder consultar el grant vigente).
+pa_rfail=0
+for c in \
+  "cat $AF" \
+  "grep scope=merge-develop $AF" \
+  "jq -r . $AF" \
+  "awk '/vence_epoch/' $AF" \
+  "head -5 $AF" \
+  "tail -1 $AF" \
+  "less $AF" \
+  ; do
+  pa_is_deny "$(pa_bash "$c")" && { bad "proteger-autorizaciones: FP — denegó una LECTURA: ${c:0:50}"; pa_rfail=1; }
+done
+# (3) escritura a OTRO archivo (que ni menciona el nombre) PASA
+pa_is_deny "$(pa_bash "echo hola > /tmp/otro.md")" && { bad "proteger-autorizaciones: FP — denegó una escritura ajena"; pa_rfail=1; }
+[ "$pa_rfail" = 0 ] && ok "proteger-autorizaciones: PASS en lecturas (cat/grep/awk/head/tail/less) y escrituras ajenas"
+# (4) Write/Edit/MultiEdit por file_path → DENY el archivo, PASS otro
+pa_wfail=0
+pa_is_deny "$(pa_file Write "/x/$AF")"     || { bad "proteger-autorizaciones: NO denegó un Write al archivo"; pa_wfail=1; }
+pa_is_deny "$(pa_file Edit "/x/$AF")"      || { bad "proteger-autorizaciones: NO denegó un Edit al archivo"; pa_wfail=1; }
+pa_is_deny "$(pa_file MultiEdit "/x/$AF")" || { bad "proteger-autorizaciones: NO denegó un MultiEdit al archivo"; pa_wfail=1; }
+pa_is_deny "$(pa_file Edit "/x/.claude/memory/estado-proyecto.md")" && { bad "proteger-autorizaciones: FP — denegó un Edit a OTRO archivo"; pa_wfail=1; }
+[ "$pa_wfail" = 0 ] && ok "proteger-autorizaciones: DENY Write/Edit/MultiEdit al archivo de grants · PASS a otro archivo"
+# (5) una variante del nombre (autorizaciones-vigentes-2.md) también se protege (glob por prefijo)
+pa_is_deny "$(pa_bash "echo x > /r/.claude/memory/autorizaciones-vigentes-2.md")" \
+  && ok "proteger-autorizaciones: el glob por prefijo cubre variantes (autorizaciones-vigentes-2.md)" \
+  || bad "proteger-autorizaciones: no cubrió la variante autorizaciones-vigentes-2.md"
+# (6) FAIL-OPEN sin jq (PATH sin jq; bash por ruta absoluta) → NO deniega (no frena a ciegas)
+BASHBIN2="$(command -v bash)"
+o="$(printf '{"tool_name":"Bash","tool_input":{"command":"echo x >> %s"}}' "$AF" | env -u CLAUDE_CONFIG_DIR PATH="/nonexistent-dir" HOME="$PAH" "$BASHBIN2" "$PAHOOK")"
+[ -z "$o" ] && ok "proteger-autorizaciones: fail-open sin jq → silencio (no frena a ciegas)" || bad "proteger-autorizaciones: no falló abierto sin jq; got: $o"
+
 echo "== (b3a3) verificar-cerebro: drift-check instalada-vs-fuente (idéntica→0; difiere→la lista; local→ignora) =="
 DVFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-dv.XXXXXX")"
 DVH="$DVFIX/home"; DVB="$DVFIX/clon"
@@ -7733,7 +7829,9 @@ limpiar|limpiar-impl-residuo
 limpiar|limpiar-impl-flotilla
 recordar-cosechar|sincronizar-tasklist
 recordar-cosechar|to-do
-sincronizar-tasklist|to-do"
+sincronizar-tasklist|to-do
+merge-develop-guard|turno-nocturno
+merge-develop-guard|proteger-autorizaciones"
 # auditar-coherencia-cerebro|auditar-proceso-algoritmo: FAMILIA declarada, no ciclo — proceso-algoritmo
 # es la METODOLOGÍA y apunta a secciones CONCRETAS de coherencia-cerebro (que es su modo-cerebro
 # empaquetado) donde vive el detalle; el contenido está en los dos lados, así que el lector no da vueltas.

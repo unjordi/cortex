@@ -212,6 +212,10 @@ ev_de() {
   case "$1" in
     merge-develop-guard|entorno-maquina-guard|no-bypass-deploy|proteger-arbol) echo "PreToolUse|Bash" ;;
     proteger-fuente-cerebro) echo "PreToolUse|Edit|Write|MultiEdit" ;;
+    # proteger-autorizaciones vigila la ESCRITURA del archivo de grants en AMBAS vías (Bash y los tools de
+    # edición) → UN matcher combinado. NO es del fan-out git/deploy de Bash (e6b/charts cuentan `"PreToolUse|Bash"`
+    # exacto, que este matcher no es) → no altera ese conteo; es un guard de ARCHIVO como proteger-fuente-cerebro.
+    proteger-autorizaciones) echo "PreToolUse|Bash|Edit|Write|MultiEdit" ;;
     limite-gasto|delegacion-gate) echo "PreToolUse|Task|Agent" ;;   # Task|Agent: el tool se renombró Agent (antes Task); casar AMBOS o el gate nunca dispara
     delegacion-registrar) echo "PostToolUse|Task|Agent" ;;
     rehidratar-hilo|aviso-drift-cerebro|sesion-inicio) echo "SessionStart|" ;;
