@@ -71,8 +71,9 @@ _lexico_release_en_ventana() { acg_lexico_release "$@"; }
 #     hoy, una sola llamada byte-idéntica) y CLAUDE_MERGE_JUEZ_TEMP (default 0). VOTES≥2 → N votos EN PARALELO,
 #     agregados UNÁNIME-PARA-ALLOW (cualquier DENY/UNAVAILABLE gana). Ver _juez_merge / _juez_agrega_votos abajo.
 # Fail-safe conservador: sin token OAuth/curl-jq/red/timeout/respuesta ininteligible → UNAVAILABLE→DENY,
-# NUNCA fail-open. Mocks deterministas: CLAUDE_MERGE_JUEZ_MOCK (veredicto FINAL de la capa-LLM, entra al
-# piso de main) · CLAUDE_MERGE_JUEZ_MOCK_RAW (texto CRUDO de respuesta → prueba parseo+cita sin red).
+# NUNCA fail-open. SIN perilla de mock en producción (MEDIO auditoría 2026-10-22): los tests inyectan la
+# respuesta del juez por un curl FALSO por PATH o redefiniendo _juez_llamar_api in-proc — así el parseo por
+# centinela + el VETO de cita + el PISO de main siguen siendo los REALES (un stub del veredicto final los saltaría).
 _juez_merge_uno() {   # $1=destino  $2=mrid  $3=mensajes  $4=hint(opcional) → imprime ALLOW | DENY | UNAVAILABLE_* — UN voto
   local prompt out txt hint cita temp _resp _estado _cand
   hint="${4:-}"
@@ -80,14 +81,11 @@ _juez_merge_uno() {   # $1=destino  $2=mrid  $3=mensajes  $4=hint(opcional) → 
   # Solo el dispatcher de voto múltiple (_juez_merge, VOTES≥2) la sube vía _JUEZ_TEMP; una llamada suelta la deja en 0.
   temp="${_JUEZ_TEMP:-0}"
   case "$temp" in ''|*[!0-9.]*) temp=0 ;; esac
-  if [ -n "${CLAUDE_MERGE_JUEZ_MOCK:-}" ]; then
-    out="$CLAUDE_MERGE_JUEZ_MOCK"   # veredicto FINAL de la capa-LLM: entra IGUAL al PISO de main → testeable DETERMINISTA (sin red)
-  else
-  if [ -n "${CLAUDE_MERGE_JUEZ_MOCK_RAW:-}" ]; then
-    txt="$CLAUDE_MERGE_JUEZ_MOCK_RAW"   # respuesta CRUDA mockeada → ejercita el parseo por centinela + el veto de cita
-  else
+  # SIN perilla de mock en producción (MEDIO auditoría 2026-10-22): el veredicto sale SOLO del juez REAL. Los
+  # tests inyectan la respuesta por un curl FALSO por PATH (que pasa por el parseo+veto+piso REALES) o
+  # redefiniendo _juez_llamar_api in-proc — NUNCA por una env que un agente pudiera setear para forzar un ALLOW.
   # PISO barato (capa 4): sin ninguna línea USUARIO: en la ventana no hay autorización POSIBLE → DENY sin
-  # gastar la llamada de red. (El mock no pasa por aquí: es para las pruebas de flujo/piso deterministas.)
+  # gastar la llamada de red.
   printf '%s\n' "$3" | grep -qiE '^[[:space:]]*USUARIO:' || { printf 'DENY'; return 0; }
   # Token + curl + reintento-401 + deps: TODO vive en la lib juez-comun.sh (_juez_llamar_api), homologada
   # con el getter del widget (login-activo-first, honra CLAUDE_CONFIG_DIR). El MISMO canal que el widget
@@ -142,7 +140,6 @@ VEREDICTO: DENY"
       *)                   printf 'UNAVAILABLE_NET';     return 0 ;;
     esac
   fi
-  fi
   # DEBUG opt-in (CLAUDE_MERGE_JUEZ_DEBUG=1): vuelca el CoT crudo a stderr → diagnóstico de FN y tuning
   # del corpus (norma "bitácora de falsos positivos"). Off por default; no toca el veredicto.
   [ -n "${CLAUDE_MERGE_JUEZ_DEBUG:-}" ] && printf '=== JUEZ CoT (destino=%s mrid=%s) ===\n%s\n=== fin ===\n' "$1" "$2" "$txt" >&2
@@ -167,7 +164,6 @@ VEREDICTO: DENY"
       _cand=$(printf '%s\n' "$3" | grep -iE '^[[:space:]]*USUARIO:' | sed -E 's/^[[:space:]]*USUARIO:[[:space:]]*//I')
       _juez_cita_casa "$cita" "$_cand" || out=DENY
     fi
-  fi
   fi
   # PISO DETERMINISTA del gate de MAIN (defensa en profundidad): un release a main JAMÁS pasa sin lenguaje
   # de release EXPLÍCITO del USUARIO, INDEPENDIENTE del LLM. Haiku es poco fiable en el 'mergea el X' PELÓN

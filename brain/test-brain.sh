@@ -230,6 +230,23 @@ MSBIN="$FAKEHOME/msbin"; mkdir -p "$MSBIN"
 # igual que con el viejo merge-squash-guard. El juez se ejercita en (b1e) con un repo COMPARTIDO (CMREPO).
 MSREPO="$FAKEHOME/msrepo"; mkdir -p "$MSREPO"; git -C "$MSREPO" init -q >/dev/null 2>&1
 mock_glab() { printf '#!/usr/bin/env bash\necho '\''{"target_branch":"%s"}'\''\n' "$1" > "$MSBIN/glab"; chmod +x "$MSBIN/glab"; }
+# _merge_curl: el juez de merge ya NO lee ninguna perilla de mock (MEDIO mock-env 2026-10-22). Un curl FALSO
+# por PATH devuelve un envelope que PARSEA al veredicto deseado → pasa por el parseo por centinela + el VETO de
+# cita + el PISO de main REALES (un ALLOW exige una CITA que case con una línea USUARIO: del transcript — ESO era
+# parte del hueco: MOCK=ALLOW lo saltaba). Deja también un `security` que falla (sin llavero → token por el env
+# dummy, hermético cross-OS) para que _juez_token no toque el llavero real de la Mac.
+_merge_curl() { # $1=bindir  $2=ALLOW|DENY|UNAVAIL  $3=cita (solo ALLOW; textual en una línea USUARIO: del transcript)
+  local txt body
+  printf '#!/usr/bin/env bash\nexit 1\n' > "$1/security"; chmod +x "$1/security"
+  if [ "$2" = UNAVAIL ]; then   # curl devuelve HTTP 500 sin cuerpo → _juez_llamar_api → UNAVAILABLE_NET → DENY
+    { printf '#!/usr/bin/env bash\n'; printf 'printf '"'"'\\n500\\n'"'"'\n'; } > "$1/curl"; chmod +x "$1/curl"; return 0
+  fi
+  if [ "$2" = ALLOW ]; then txt="CITA: $3
+VEREDICTO: ALLOW"; else txt="VEREDICTO: DENY"; fi
+  body="$(jq -nc --arg t "$txt" '{content:[{text:$t}]}')"
+  { printf '#!/usr/bin/env bash\ncat <<'"'"'MGB'"'"'\n'; printf '%s\n200\n' "$body"; printf 'MGB\n'; } > "$1/curl"
+  chmod +x "$1/curl"
+}
 ms() { PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$MSREPO" bash "$HOOKS/merge-develop-guard.sh" <<<"{\"tool_input\":{\"command\":\"$1\"}}"; }
 # C4 (auditoría 2026-10-22): un merge a MAIN (o con destino VACÍO/desconocido) en repo PERSONAL ya NO se
 # salta la autorización (main es release-only en TODOS los repos; en los personales SOLO develop va sin
@@ -237,7 +254,14 @@ ms() { PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$MSREPO" bash "$
 # msAuth = ms + juez ALLOW + un transcript con lenguaje de release del USUARIO → pasa el PISO de main y
 # aísla el check de SQUASH del gate de autorización (lo que estas pruebas ejercitan).
 MSREL="$FAKEHOME/msrel.jsonl"; printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"libera esto a main, es el release"}]}}' > "$MSREL"
-msAuth() { PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$MSREPO" CLAUDE_MERGE_JUEZ_MOCK=ALLOW bash "$HOOKS/merge-develop-guard.sh" <<<"$(jq -nc --arg c "$1" --arg t "$MSREL" '{tool_input:{command:$c},transcript_path:$t}')"; }
+msAuth() { _merge_curl "$MSBIN" ALLOW 'libera esto a main, es el release'; PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$MSREPO" CLAUDE_CODE_OAUTH_TOKEN=dummy bash "$HOOKS/merge-develop-guard.sh" <<<"$(jq -nc --arg c "$1" --arg t "$MSREL" '{tool_input:{command:$c},transcript_path:$t}')"; }
+# MEDIO mock-env (auditoría 2026-10-22): merge-develop-guard.sh NO lee ninguna perilla de mock en producción —
+# el veredicto sale SOLO del juez real. Falla contra el código con CLAUDE_MERGE_JUEZ_MOCK/_RAW (un agente podía
+# setearlos en el env de sesión para forzar un ALLOW y colar un merge a develop sin autorización — el MOCK=ALLOW
+# saltaba el VETO de cita, que es parte del hueco).
+{ ! grep -q 'CLAUDE_MERGE_JUEZ_MOCK' "$HOOKS/merge-develop-guard.sh"; } \
+  && ok "merge mock-env: merge-develop-guard.sh NO lee ninguna perilla de mock en producción (veredicto solo del juez real)" \
+  || bad "merge mock-env: merge-develop-guard.sh aún lee CLAUDE_MERGE_JUEZ_MOCK/_RAW en producción"
 # NOTA: la lib cachea el destino por MR-id (compartido squash↔confirmar), así que cada caso usa un
 # MR-id DISTINTO — si no, la caché del 1er caso (develop) contaminaría a los siguientes. En producción
 # cada MR tiene su id; aquí es un artefacto de reusar mocks con el mismo número.
@@ -278,7 +302,7 @@ printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text"
 # msT lleva JUEZ_MOCK=ALLOW: tras C4 un destino INDETERMINADO en repo personal gatea la autorización (podría ser
 # main) → se autoriza para AISLAR que el check de SQUASH no fuerza squash (si lo forzara, el deny saldría ANTES
 # del juez). M4TX trae lenguaje de release del USUARIO → el piso de main respeta el ALLOW.
-msT() { PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$MSREPO" CLAUDE_MERGE_JUEZ_MOCK=ALLOW bash "$HOOKS/merge-develop-guard.sh" <<<"$(jq -nc --arg c "$1" --arg t "$M4TX" '{tool_input:{command:$c},transcript_path:$t}')"; }
+msT() { _merge_curl "$MSBIN" ALLOW 'libera esto a main, es el release'; PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$MSREPO" CLAUDE_CODE_OAUTH_TOKEN=dummy bash "$HOOKS/merge-develop-guard.sh" <<<"$(jq -nc --arg c "$1" --arg t "$M4TX" '{tool_input:{command:$c},transcript_path:$t}')"; }
 out="$(msT 'glab mr merge --yes')"   # sin ID → destino indeterminado; SIN release en el TEXTO del comando
 ! is_deny "$out" && ok "M4: destino INDETERMINADO + release SOLO en la conversación (autorizado) → NO fuerza squash (antes ciego a la charla)" || bad "M4: forzó squash pese al release en la conversación; got: $out"
 # Control: MISMO comando, SIN transcript de release → sigue exigiendo squash (M4 no aflojó el default).
@@ -317,7 +341,7 @@ printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text"
 # sobre el MENSAJE de squash, no is_deny genérico — el juez, mockeado a DENY para no pegar a la red, puede
 # negar la AUTORIZACIÓN por separado sin que eso signifique que el squash no se eximió).
 is_sqdeny() { printf '%s' "$1" | grep -q 'SQUASHEA a UN commit'; }
-msSync() { PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$MSREPO" CLAUDE_MERGE_JUEZ_MOCK=DENY bash "$HOOKS/merge-develop-guard.sh" <<<"$(jq -nc --arg c "$1" --arg t "$2" '{tool_input:{command:$c},transcript_path:$t}')"; }
+msSync() { _merge_curl "$MSBIN" DENY; PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$MSREPO" CLAUDE_CODE_OAUTH_TOKEN=dummy bash "$HOOKS/merge-develop-guard.sh" <<<"$(jq -nc --arg c "$1" --arg t "$2" '{tool_input:{command:$c},transcript_path:$t}')"; }
 is_sqdeny "$(msSync 'gh pr merge 40 --merge --repo unjordi/armada-rp6' "$SYNCTX")" \
   && bad "b-sync: un sync-upstream legítimo fue forzado a squash" \
   || ok "b-sync: #40 sync (2º padre AHEAD) + --merge + frase del USUARIO → EXENTO del squash (sin mensaje de squash)"
@@ -389,14 +413,16 @@ rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
 # ANCLAJE) pero que acg_destino_de_mr NO lo resuelva (para caer al fail-safe donde vive _es_release_explicito).
 # JUEZ_MOCK=ALLOW: tras C4 un destino INDETERMINADO en repo personal gatea el juez; se autoriza para aislar el
 # check de SQUASH. El caso 391 sigue denegando por SQUASH (el deny sale ANTES del juez, así que ALLOW no lo tapa).
-msT4() { PATH="/usr/bin:/bin" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$MSREPO" CLAUDE_MERGE_JUEZ_MOCK=ALLOW bash "$HOOKS/merge-develop-guard.sh" <<<"$(jq -nc --arg c "$1" --arg t "$H4TX" '{tool_input:{command:$c},transcript_path:$t}')"; }
+# bindir dedicado con SOLO curl+security (sin glab → destino sigue indeterminado a propósito; ver nota arriba).
+MS4BIN=$(mktemp -d "${TMPDIR:-/tmp}/ms4.XXXXXX")
+msT4() { _merge_curl "$MS4BIN" ALLOW 'libera a main el PR 390'; PATH="$MS4BIN:/usr/bin:/bin" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$MSREPO" CLAUDE_CODE_OAUTH_TOKEN=dummy bash "$HOOKS/merge-develop-guard.sh" <<<"$(jq -nc --arg c "$1" --arg t "$H4TX" '{tool_input:{command:$c},transcript_path:$t}')"; }
 out="$(msT4 'glab mr merge 391 --yes')"   # sin mock de destino → indeterminado; release es de OTRO id (390)
 is_deny "$out" && ok "H4: release-de-OTRO-PR (390) en la ventana → el merge del 391 SIGUE exigiendo squash (antes: se colaba)" \
   || bad "H4: REGRESIÓN — el lenguaje de release de otro PR desactivó --squash de este merge; got: $out"
 out="$(msT4 'glab mr merge 390 --yes')"   # mismo id que el mencionado en la ventana → sí aplica
 ! is_deny "$out" && ok "H4: release del MISMO PR (390) mencionado en la ventana (autorizado) → sigue exentando --squash (sin regresión)" \
   || bad "H4: REGRESIÓN — anclar al mrid rompió el caso legítimo (release del mismo MR); got: $out"
-rm -f "$H4TX"
+rm -f "$H4TX"; rm -rf "$MS4BIN"
 
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
 rm -rf "$MSBIN"
@@ -420,8 +446,9 @@ msj() { rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* "${TMPDIR:-/tmp}"/acg-mrmsg-* 2>/de
 # ya gatea la autorización, así que para probar que el recordatorio de squash-message es develop-scoped (NO se
 # emite para main) hay que AUTORIZAR main primero y verificar que no aparece el recordatorio ("RESUMEN del slice").
 msjAuth() { rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* "${TMPDIR:-/tmp}"/acg-mrmsg-* 2>/dev/null
+        _merge_curl "$MSBIN" ALLOW 'libera esto a main, es el release'
         jq -nc --arg c "$1" --arg t "$MSREL" '{tool_input:{command:$c},transcript_path:$t}' \
-          | PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$MSREPO" CLAUDE_MERGE_JUEZ_MOCK=ALLOW bash "$HOOKS/merge-develop-guard.sh"; }
+          | PATH="$MSBIN:$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$MSREPO" CLAUDE_CODE_OAUTH_TOKEN=dummy bash "$HOOKS/merge-develop-guard.sh"; }
 # a2chk <cmd> <etiqueta>: el merge a develop NO frena por el mensaje Y emite el RECORDATORIO con "Rama:".
 a2chk() {
   local out; out="$(msj "$1")"
@@ -742,7 +769,7 @@ git -C "$B4G/per" init -q >/dev/null 2>&1; git -C "$B4G/per" remote add origin g
 # resuelto, el hermano PERSONAL cae en el skip personal+develop (lo que este test quiere probar: TARGET_ROOT
 # sigue al --repo). El control COMPARTIDO con el mismo develop sigue gateando (juez DENY).
 B4GBIN="$B4G/bin"; mkdir -p "$B4GBIN"; printf '#!/usr/bin/env bash\necho '\''{"target_branch":"develop"}'\''\n' > "$B4GBIN/glab"; chmod +x "$B4GBIN/glab"
-b4run() { jq -nc --arg c "$1" --arg d "$B4G/shr" '{tool_input:{command:$c},cwd:$d}' | PATH="$B4GBIN:$PATH" HOME="$B4GH" CLAUDE_PROJECT_DIR="$B4G/shr" CLAUDE_MERGE_JUEZ_MOCK=DENY bash "$HOOKS/merge-develop-guard.sh" 2>/dev/null; }
+b4run() { _merge_curl "$B4GBIN" DENY; jq -nc --arg c "$1" --arg d "$B4G/shr" '{tool_input:{command:$c},cwd:$d}' | PATH="$B4GBIN:$PATH" HOME="$B4GH" CLAUDE_PROJECT_DIR="$B4G/shr" CLAUDE_CODE_OAUTH_TOKEN=dummy bash "$HOOKS/merge-develop-guard.sh" 2>/dev/null; }
 # hermano PERSONAL + develop → NO gatea (allowed). Con destino=develop resuelto (C4 ya no salta por "personal"
 # a ciegas) el merge-con-squash emite el RECORDATORIO A2 (develop-scoped, additionalContext) y pasa → ! is_deny.
 ! is_deny "$(b4run 'glab mr merge 1 --repo org/per --squash --remove-source-branch')" \
@@ -1339,9 +1366,16 @@ mock_cm_glab() { printf '#!/usr/bin/env bash\necho '\''{"target_branch":"%s"}'\'
 cm() {
   local mock="${2:-DENY}" msg="${3:-haz el cambio}"
   printf '%s\n' "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"$msg\"}]}}" > "$CMTX"
-  local m="$mock"; [ "$mock" = LIVE ] && m=""
+  # veredicto por curl FALSO (sin perilla de mock). LIVE = juez real (no se stubbea el curl). ALLOW → cita=$msg
+  # (la línea USUARIO: del transcript) para que el veto la verifique. UNAVAILABLE → curl 500 → fail-safe DENY.
+  case "$mock" in
+    LIVE) : ;;
+    ALLOW) _merge_curl "$CMBIN" ALLOW "$msg" ;;
+    UNAVAILABLE) _merge_curl "$CMBIN" UNAVAIL ;;
+    *) _merge_curl "$CMBIN" DENY ;;
+  esac
   jq -nc --arg c "$1" --arg t "$CMTX" '{tool_input:{command:$c},transcript_path:$t}' \
-    | PATH="$CMBIN:$PATH" HOME="$CMHOME" CLAUDE_PROJECT_DIR="$CMREPO" CLAUDE_MERGE_JUEZ_MOCK="$m" bash "$HOOKS/merge-develop-guard.sh"
+    | PATH="$CMBIN:$PATH" HOME="$CMHOME" CLAUDE_PROJECT_DIR="$CMREPO" CLAUDE_CODE_OAUTH_TOKEN=dummy bash "$HOOKS/merge-develop-guard.sh"
 }
 mock_cm_glab develop
 # merge-develop-guard corre el check de SQUASH ANTES del juez. Para ejercitar el
@@ -1382,7 +1416,7 @@ is_deny "$(cm 'glab mr merge 5 --yes && git status' DENY)" \
 # ── proposal-2 (arsenal #215): si el PARSEO del transcript falla (un bloque que el jq no maneja) pero la
 #    ventana CRUDA sí trae mensajes de usuario, el mensaje dice "no pude LEER" — NO "repite el OK" (que
 #    culparía al usuario de no autorizar algo que sí dijo). Dos direcciones.
-cm_tx() { jq -nc --arg c "$1" --arg t "$2" '{tool_input:{command:$c},transcript_path:$t}' | PATH="$CMBIN:$PATH" HOME="$CMHOME" CLAUDE_PROJECT_DIR="$CMREPO" CLAUDE_MERGE_JUEZ_MOCK=DENY bash "$HOOKS/merge-develop-guard.sh"; }
+cm_tx() { _merge_curl "$CMBIN" DENY; jq -nc --arg c "$1" --arg t "$2" '{tool_input:{command:$c},transcript_path:$t}' | PATH="$CMBIN:$PATH" HOME="$CMHOME" CLAUDE_PROJECT_DIR="$CMREPO" CLAUDE_CODE_OAUTH_TOKEN=dummy bash "$HOOKS/merge-develop-guard.sh"; }
 CMBAD="$CMROOT/bad.jsonl"
 printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"mergea el 5 a develop"}]}}' > "$CMBAD"
 printf '%s\n' 'ESTO NO ES JSON — rompe el jq -s del slurp' >> "$CMBAD"
@@ -1608,7 +1642,11 @@ JFX
 # El piso vive DENTRO de _juez_merge y aplica AUNQUE el veredicto venga de MOCK → testeable determinista.
 # Verifica: un release a main con LLM=ALLOW pero SIN lenguaje de release del USUARIO → el piso override a DENY.
 ( _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/merge-develop-guard.sh"
-  pmain() { CLAUDE_MERGE_JUEZ_MOCK=ALLOW _juez_merge "$1" 999 "$2"; }
+  # SIN perilla de mock (MEDIO mock-env 2026-10-22): override in-proc de la llamada API → devuelve ALLOW con
+  # CITA = la 1ª línea USUARIO: del prompt (el veto la verifica contra la conversación: pasa), de modo que el
+  # PISO de main aplica sobre ese ALLOW — igual que el viejo MOCK=ALLOW, pero por el camino REAL (parse+veto).
+  _juez_llamar_api() { local c; c=$(printf '%s\n' "$5" | grep -iE '^[[:space:]]*USUARIO:' | head -1 | sed -E 's/^[[:space:]]*USUARIO:[[:space:]]*//I'); printf 'OK\nCITA: %s\nVEREDICTO: ALLOW' "$c"; }
+  pmain() { _juez_merge "$1" 999 "$2"; }
   [ "$(pmain main 'USUARIO: mergea el 999')" = DENY ] \
     && ok "piso-main: 'mergea' pelón a main + LLM=ALLOW → piso override a DENY" || bad "piso-main: NO frenó un release a main SIN lenguaje de release (LLM=ALLOW)"
   [ "$(pmain main 'USUARIO: mergea el 999 a develop')" = DENY ] \
@@ -1665,7 +1703,9 @@ USUARIO: ok gracias')" = DENY ] \
   # cuando la consulta vino vacía (DESTINO_INFERIDO, CLAUDE_MERGE_JUEZ_MOCK_DESTINO en test) — el piso solo se
   # salta si esa inferencia fue EXPLÍCITAMENTE 'develop'; cualquier otra cosa (main, ambiguo, o SIN declarar)
   # deja el piso EXACTO (cero cambio para el caso que sí debe bloquear).
-  pdest() { CLAUDE_MERGE_JUEZ_MOCK=ALLOW CLAUDE_MERGE_JUEZ_MOCK_DESTINO="$1" _juez_merge '' 999 "$2"; }
+  # MOCK_DESTINO está MUERTO en producción (el fix H2 volvió el skip del piso determinista sobre la conversación,
+  # no una línea DESTINO_INFERIDO del LLM) → $1 es vestigial; el veredicto depende de $2 (la conversación) + destino ''.
+  pdest() { _juez_merge '' 999 "$2"; }
   [ "$(pdest develop 'USUARIO: mergea esto a develop')" = ALLOW ] \
     && ok "M5-bis: destino vacío + juez INFIERE 'develop' explícito + ALLOW → el piso YA NO lo aplasta (antes: DENY, FP)" \
     || bad "M5-bis: el piso siguió aplastando un develop inequívoco pese a DESTINO_INFERIDO=develop"
@@ -1685,7 +1725,9 @@ USUARIO: ok gracias')" = DENY ] \
 ( _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/merge-develop-guard.sh"
   CONVU='USUARIO: mergea el 240 a develop
 ASISTENTE: corriendo la suite antes de integrar'
-  raw() { CLAUDE_MERGE_JUEZ_MOCK_RAW="$1" _juez_merge "$2" "$3" "$4"; }
+  # SIN perilla de mock (MEDIO mock-env 2026-10-22): override in-proc de la llamada API → devuelve la respuesta
+  # CRUDA ($1) → el parseo por centinela + el VETO de cita + el PISO de main siguen siendo los REALES.
+  raw() { _MERGE_RAW="$1"; _juez_llamar_api() { printf 'OK\n%s' "$_MERGE_RAW"; }; _juez_merge "$2" "$3" "$4"; }
   [ "$(raw 'Paso 1: destino develop. Paso 2: el USUARIO da instrucción clara.
 CITA: mergea el 240 a develop
 VEREDICTO: ALLOW' develop 240 "$CONVU")" = ALLOW ] \
@@ -1963,6 +2005,10 @@ rm -rf "$JCFIX" 2>/dev/null || true
 # camino paralelo real se ejercita end-to-end (mktemp + subshells + wait + agregación + piso de main por-voto).
 ( _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/merge-develop-guard.sh"
   ag() { printf '%s\n' "$1" | _juez_agrega_votos; }
+  # SIN perilla de mock (MEDIO mock-env 2026-10-22): override in-proc del API, parametrizado por _MERGE_V
+  # (ALLOW→cita de la 1ª línea USUARIO: del prompt, pasa el veto; DENY→veredicto DENY). Subshells de voto lo heredan.
+  _MERGE_V=ALLOW
+  _juez_llamar_api() { if [ "$_MERGE_V" = DENY ]; then printf 'OK\nVEREDICTO: DENY'; else local c; c=$(printf '%s\n' "$5" | grep -iE '^[[:space:]]*USUARIO:' | head -1 | sed -E 's/^[[:space:]]*USUARIO:[[:space:]]*//I'); printf 'OK\nCITA: %s\nVEREDICTO: ALLOW' "$c"; fi; }
   # (1) AGREGACIÓN — los 5 escenarios pedidos por el diseño del lever:
   [ "$(ag 'ALLOW
 ALLOW
@@ -1982,21 +2028,21 @@ UNAVAILABLE')" = DENY ] && ok "voto-agrega: 2×ALLOW + 1×UNAVAILABLE → DENY (
   [ "$(ag '')" = DENY ] && ok "voto-agrega: CERO votos (todos los subshells fallaron) → DENY (fail-safe)" || bad "voto-agrega: sin votos no cayó a DENY"
   # (2) WIRING de _juez_merge — VOTES=1 (default) == comportamiento de HOY (una sola llamada):
   CONV='USUARIO: mergea el 5 a develop'
-  [ "$(CLAUDE_MERGE_JUEZ_MOCK=ALLOW _juez_merge develop 5 "$CONV")" = ALLOW ] \
+  [ "$(_MERGE_V=ALLOW _juez_merge develop 5 "$CONV")" = ALLOW ] \
     && ok "voto-wiring: VOTES ausente (default 1) + MOCK=ALLOW → ALLOW (idéntico a hoy)" || bad "voto-wiring: el default cambió el comportamiento de una llamada"
-  [ "$(CLAUDE_MERGE_JUEZ_VOTES=1 CLAUDE_MERGE_JUEZ_MOCK=DENY _juez_merge develop 5 "$CONV")" = DENY ] \
+  [ "$(CLAUDE_MERGE_JUEZ_VOTES=1 _MERGE_V=DENY _juez_merge develop 5 "$CONV")" = DENY ] \
     && ok "voto-wiring: VOTES=1 explícito + MOCK=DENY → DENY (una sola llamada)" || bad "voto-wiring: VOTES=1 no se comportó como una sola llamada"
-  [ "$(CLAUDE_MERGE_JUEZ_VOTES=0 CLAUDE_MERGE_JUEZ_MOCK=ALLOW _juez_merge develop 5 "$CONV")" = ALLOW ] \
+  [ "$(CLAUDE_MERGE_JUEZ_VOTES=0 _MERGE_V=ALLOW _juez_merge develop 5 "$CONV")" = ALLOW ] \
     && ok "voto-wiring: VOTES=0/basura → se satura a 1 (una llamada, no rompe)" || bad "voto-wiring: VOTES<2 no cayó al camino de una llamada"
   # VOTES≥2 → camino PARALELO real (subshells + wait + agregación). Con MOCK cada voto es determinista:
-  [ "$(CLAUDE_MERGE_JUEZ_VOTES=3 CLAUDE_MERGE_JUEZ_MOCK=ALLOW _juez_merge develop 5 "$CONV")" = ALLOW ] \
+  [ "$(CLAUDE_MERGE_JUEZ_VOTES=3 _MERGE_V=ALLOW _juez_merge develop 5 "$CONV")" = ALLOW ] \
     && ok "voto-wiring: VOTES=3 + todos ALLOW → ALLOW (camino paralelo end-to-end)" || bad "voto-wiring: 3 votos ALLOW no agregaron a ALLOW"
-  [ "$(CLAUDE_MERGE_JUEZ_VOTES=3 CLAUDE_MERGE_JUEZ_MOCK=DENY _juez_merge develop 5 "$CONV")" = DENY ] \
+  [ "$(CLAUDE_MERGE_JUEZ_VOTES=3 _MERGE_V=DENY _juez_merge develop 5 "$CONV")" = DENY ] \
     && ok "voto-wiring: VOTES=3 + todos DENY → DENY" || bad "voto-wiring: 3 votos DENY no agregaron a DENY"
   # PISO de main POR-VOTO se preserva bajo voto múltiple (los mensajes son iguales → determinista entre votos):
-  [ "$(CLAUDE_MERGE_JUEZ_VOTES=3 CLAUDE_MERGE_JUEZ_MOCK=ALLOW _juez_merge main 999 'USUARIO: mergea el 999')" = DENY ] \
+  [ "$(CLAUDE_MERGE_JUEZ_VOTES=3 _MERGE_V=ALLOW _juez_merge main 999 'USUARIO: mergea el 999')" = DENY ] \
     && ok "voto-wiring: VOTES=3 a main + ALLOW pero SIN release → piso override POR-VOTO → DENY final" || bad "voto-wiring: el piso de main no aplicó bajo voto múltiple"
-  [ "$(CLAUDE_MERGE_JUEZ_VOTES=3 CLAUDE_MERGE_JUEZ_MOCK=ALLOW _juez_merge main 999 'USUARIO: libera el 999 a main, es el release')" = ALLOW ] \
+  [ "$(CLAUDE_MERGE_JUEZ_VOTES=3 _MERGE_V=ALLOW _juez_merge main 999 'USUARIO: libera el 999 a main, es el release')" = ALLOW ] \
     && ok "voto-wiring: VOTES=3 a main + release explícito → todos ALLOW → ALLOW final" || bad "voto-wiring: bloqueó un release legítimo bajo voto múltiple"
 )
 
@@ -2028,9 +2074,10 @@ printf '#!/usr/bin/env bash\necho '\''{"target_branch":"develop"}'\''\n' > "$XBI
 printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"haz el cambio"}]}}' > "$XTX"
 # xcm <cmd> <CLAUDE_PROJECT_DIR> [cwd] → hook con juez MOCK=DENY (si llega al juez = gate = deny; si exit 0 = silencio).
 xcm() {
+  _merge_curl "$XBIN" DENY
   if [ -n "${3:-}" ]; then jq -nc --arg c "$1" --arg t "$XTX" --arg w "$3" '{tool_input:{command:$c},transcript_path:$t,cwd:$w}'
   else                     jq -nc --arg c "$1" --arg t "$XTX"                '{tool_input:{command:$c},transcript_path:$t}'; fi \
-    | PATH="$XBIN:$PATH" HOME="$XHOME" CLAUDE_PROJECT_DIR="$2" CLAUDE_MERGE_JUEZ_MOCK=DENY bash "$HOOKS/merge-develop-guard.sh"
+    | PATH="$XBIN:$PATH" HOME="$XHOME" CLAUDE_PROJECT_DIR="$2" CLAUDE_CODE_OAUTH_TOKEN=dummy bash "$HOOKS/merge-develop-guard.sh"
 }
 # C1 (FN de ALTA consecuencia): sesión en repo PERSONAL (sin marca) mergea a un develop COMPARTIDO vía --repo →
 # antes: marca leída de CLAUDE_PROJECT_DIR (personal) → exit 0 → integración SIN OK. Ahora: --repo != dir local
@@ -2251,8 +2298,12 @@ rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
 # Sin gh/glab en el PATH el destino queda SIN-RESOLVER (nunca "develop"), así que el check de squash no
 # exige calidad (remove-source-branch/mensaje) — basta el flag --squash para pasarlo y llegar al mensaje de
 # ENTORNO que este caso ejercita.
+# SIN perilla de mock (MEDIO mock-env 2026-10-22): un curl FALSO DENY (+ token dummy; sin gh/glab, el destino
+# SIGUE DESCONOCIDO) → el juez devuelve DENY por el camino REAL → el hook emite el mensaje de ENTORNO (destino
+# DESCONOCIDO: ni gh ni glab). _merge_curl escribe curl+security en M8NOCLI (que no trae curl por _mkbin_real).
+_merge_curl "$M8NOCLI" DENY
 out_m8="$(jq -nc --arg c 'glab mr merge 42 --squash --yes' --arg t "$M8TX" '{tool_input:{command:$c},transcript_path:$t}' \
-  | PATH="$M8NOCLI" HOME="$M8HOME" CLAUDE_PROJECT_DIR="$M8REPO" ACG_PATH_AUGMENT=0 CLAUDE_MERGE_JUEZ_MOCK=DENY bash "$HOOKS/merge-develop-guard.sh")"
+  | PATH="$M8NOCLI" HOME="$M8HOME" CLAUDE_PROJECT_DIR="$M8REPO" ACG_PATH_AUGMENT=0 CLAUDE_CODE_OAUTH_TOKEN=dummy bash "$HOOKS/merge-develop-guard.sh")"
 { is_deny "$out_m8" && printf '%s' "$out_m8" | grep -qi 'ni gh ni glab' && printf '%s' "$out_m8" | grep -qi 'Repetir la autorizaci'; } \
   && ok "M8: destino DESCONOCIDO por SIN-RED → mensaje da la causa REAL (ni gh ni glab) + 'repetir NO destraba'" \
   || bad "M8: el mensaje de entorno no citó la causa real o pidió repetir la autorización; got: $out_m8"
@@ -2346,6 +2397,9 @@ A1R="$(mktemp -d "${TMPDIR:-/tmp}/b1fa1.XXXXXX")"; A1H="$A1R/home"; A1S="$A1R/sh
 mkdir -p "$A1H/.claude/projects/s" "$A1S/.claude/memory" "$A1B"
 git -C "$A1S" init -q >/dev/null 2>&1; : > "$A1S/.claude/repo-compartido"
 printf '#!/usr/bin/env bash\necho '\''{"target_branch":"develop"}'\''\n' > "$A1B/glab"; chmod +x "$A1B/glab"
+# security-stub (sin llavero real de la Mac): los casos donde el grant NO se honra caen al juez → sin token →
+# NOTOKEN → DENY, hermético y determinista cross-OS (MEDIO mock-env 2026-10-22; antes podía pegar a la red en Mac).
+printf '#!/usr/bin/env bash\nexit 1\n' > "$A1B/security"; chmod +x "$A1B/security"
 A1AUTH="$A1S/.claude/memory/autorizaciones-vigentes.local.md"; A1TX="$A1H/.claude/projects/s/t.jsonl"
 A1V=$(( $(date +%s) + 3600 ))
 a1run() { rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
@@ -2382,17 +2436,18 @@ H3TX="$CMROOT/h3tx.jsonl"
   printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"mergea el MR 5 a develop cuando termines"}]}}'
   i=1; while [ "$i" -le 6200 ]; do printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"trabajando"}]}}'; i=$((i+1)); done
 } > "$H3TX"
-mock_cm_glab develop
+mock_cm_glab develop; _merge_curl "$CMBIN" DENY
 out_h3=$(jq -nc --arg c "glab mr merge 5 $SQOK --yes" --arg t "$H3TX" '{tool_input:{command:$c},transcript_path:$t}' \
-  | PATH="$CMBIN:$PATH" HOME="$CMHOME" CLAUDE_PROJECT_DIR="$CMREPO" CLAUDE_MERGE_JUEZ_MOCK=DENY bash "$HOOKS/merge-develop-guard.sh")
+  | PATH="$CMBIN:$PATH" HOME="$CMHOME" CLAUDE_PROJECT_DIR="$CMREPO" CLAUDE_CODE_OAUTH_TOKEN=dummy bash "$HOOKS/merge-develop-guard.sh")
 { is_deny "$out_h3" && printf '%s' "$out_h3" | grep -qi 'FUERA de mi ventana' && ! printf '%s' "$out_h3" | grep -qi 'no encontré tu confirmación'; } \
   && ok "H3: transcript de 6201 líneas con el OK en la línea 1 → el mensaje nombra la CAUSA (ventana truncada), no culpa al usuario" \
   || bad "H3: REGRESIÓN — el mensaje sigue culpando al usuario pese a que la autorización quedó fuera de la ventana; got: $out_h3"
 # Control: mismo transcript pero CORTO (la autorización SÍ cae dentro de la ventana) → sigue pasando normal.
 H3TX2="$CMROOT/h3tx2.jsonl"
 printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"mergea el MR 5 a develop"}]}}' > "$H3TX2"
+_merge_curl "$CMBIN" ALLOW 'mergea el MR 5 a develop'
 out_h3b=$(jq -nc --arg c "glab mr merge 5 $SQOK --yes" --arg t "$H3TX2" '{tool_input:{command:$c},transcript_path:$t}' \
-  | PATH="$CMBIN:$PATH" HOME="$CMHOME" CLAUDE_PROJECT_DIR="$CMREPO" CLAUDE_MERGE_JUEZ_MOCK=ALLOW bash "$HOOKS/merge-develop-guard.sh")
+  | PATH="$CMBIN:$PATH" HOME="$CMHOME" CLAUDE_PROJECT_DIR="$CMREPO" CLAUDE_CODE_OAUTH_TOKEN=dummy bash "$HOOKS/merge-develop-guard.sh")
 # ALLOW legítimo trae su nota de higiene (additionalContext, no vacío) -- lo que NO debe pasar es un deny
 # citando "ventana truncada" sobre un transcript corto normal.
 { ! is_deny "$out_h3b" && ! printf '%s' "$out_h3b" | grep -qi 'FUERA de mi ventana'; } \
@@ -3617,8 +3672,14 @@ rm -rf "$CSB_BIN"
 CSG=$(mktemp -d "${TMPDIR:-/tmp}/csg.XXXXXX"); mkdir -p "$CSG/shr/.claude" "$CSG/per" "$CSG/home"
 git -C "$CSG/shr" init -q; : > "$CSG/shr/.claude/repo-compartido"; git -C "$CSG/per" init -q
 CSG_TX="$CSG/ok.jsonl"; printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"sí, cierra el slice e intégralo a develop, el PR 5"}]}}' > "$CSG_TX"
-csg() { local m="${3:-}"; jq -nc --arg c "$1" --arg t "${4:-}" '{tool_input:{command:$c}} + (if $t!="" then {transcript_path:$t} else {} end)' \
-          | env HOME="$CSG/home" CLAUDE_PROJECT_DIR="$2" ${m:+CLAUDE_MERGE_JUEZ_MOCK="$m"} bash "$HOOKS/merge-develop-guard.sh" 2>&1; }
+# SIN perilla de mock (MEDIO mock-env 2026-10-22): bindir con security-stub (sin llavero real de la Mac).
+# $3=ALLOW → curl FALSO ALLOW + token dummy (cita = la línea del CSG_TX). Sin $3 → sin token → el juez cae a
+# NOTOKEN → DENY (es el gate "sin OK del usuario"); los casos personal/--dry-run/mención no llegan al juez.
+CSGBIN="$CSG/bin"; mkdir -p "$CSGBIN"; printf '#!/usr/bin/env bash\nexit 1\n' > "$CSGBIN/security"; chmod +x "$CSGBIN/security"
+csg() { local tok=""
+        if [ "${3:-}" = ALLOW ]; then _merge_curl "$CSGBIN" ALLOW 'sí, cierra el slice e intégralo a develop, el PR 5'; tok="CLAUDE_CODE_OAUTH_TOKEN=dummy"; fi
+        jq -nc --arg c "$1" --arg t "${4:-}" '{tool_input:{command:$c}} + (if $t!="" then {transcript_path:$t} else {} end)' \
+          | env PATH="$CSGBIN:$PATH" HOME="$CSG/home" CLAUDE_PROJECT_DIR="$2" $tok bash "$HOOKS/merge-develop-guard.sh" 2>&1; }
 CSG_CMD='bash brain/skills/cerrar-slice/cerrar-slice.sh --id 5 --message "corrige IVA. Rama: feat/x MR: !5" --forge glab'
 o="$(csg "$CSG_CMD" "$CSG/shr")"; { is_deny "$o" && ! printf '%s' "$o" | grep -qi 'falta.*squash'; } \
   && ok "C2: cerrar-slice en repo COMPARTIDO sin OK → DENY (juez), NO por falta de squash" || bad "C2: cerrar-slice en compartido no fue gateado por el juez (o denegó por squash); got: $o"

@@ -168,8 +168,11 @@ doble-cableado; (c) idempotencia de
 `uninstall-brain.sh`.
 
 Los **jueces-Haiku** (`merge-develop-guard`, `dod-verificar`) se prueban en **dos capas**: (1)
-**DETERMINISTA**, corre SIEMPRE — el veredicto se mockea con `CLAUDE_MERGE_JUEZ_MOCK`/`CLAUDE_DOD_JUEZ_MOCK`
-(el MOCK cae al **PISO DETERMINISTA de main**, batería `piso-main`, que verifica el override sin red); (2)
+**DETERMINISTA**, corre SIEMPRE — SIN perilla de mock en producción (MEDIO auditoría 2026-10-22: una env de
+mock que forzara el veredicto sería un bypass; un agente podía setearla en la sesión). Los tests inyectan la
+respuesta del juez por un **`curl` FALSO por PATH** (+ `CLAUDE_CODE_OAUTH_TOKEN` dummy) o redefiniendo
+`_juez_llamar_api` in-proc, de modo que el **parseo por centinela + el VETO de cita + el PISO de main** siguen
+siendo los REALES (un stub del veredicto final los saltaría). batería `piso-main` verifica el override sin red; (2)
 **LIVE opt-in** contra el Haiku real —el JUICIO de qué frase autoriza—, que **requiere `curl` + `jq` + el token
 OAuth de suscripción** (`$CLAUDE_CODE_OAUTH_TOKEN` → `~/.claude/.credentials.json` → keychain macOS):
 ```sh
