@@ -8584,6 +8584,13 @@ printf '%s' "$(nbd_ctx 'bash brain/install-brain.sh')" | grep -qi 'widget' \
   && ok "g1: '. install.sh' (dot-source) → AVISA" || bad "g1: no avisó sobre . install.sh (FN de prefijo)"
 [ -n "$(nbd_ctx 'bash -x install.sh')" ] \
   && ok "g1: 'bash -x install.sh' (flag del runner) → AVISA" || bad "g1: no avisó sobre bash -x install.sh (FN de prefijo)"
+# H17 (BAJO auditoría 2026-10-22): el _path no aceptaba ~/ ni $HOME/ → `bash ~/.cortex/brain/install-brain.sh` callaba.
+[ -n "$(nbd_ctx 'bash ~/.cortex/brain/install-brain.sh')" ] \
+  && ok "g1: 'bash ~/.cortex/brain/install-brain.sh' (ruta ~/) → AVISA" || bad "g1: no avisó sobre ruta ~/ ejecutada (H17)"
+[ -n "$(nbd_ctx 'bash $HOME/.cortex/brain/install-brain.sh')" ] \
+  && ok "g1: 'bash \$HOME/.cortex/brain/install-brain.sh' → AVISA" || bad "g1: no avisó sobre ruta \$HOME/ ejecutada (H17)"
+[ -z "$(nbd_ctx 'git add ~/proj/install.sh')" ] \
+  && ok "g1: 'git add ~/…/install.sh' (argumento, no ejecución) NO dispara" || bad "g1: disparó sobre ~/ como argumento de git add (FP)"
 # helm/kubectl (MEDIO auditoría 2026-10-22): la norma los nombra como deploy-a-mano; el hook no los veía
 # (el pre-filtro ni dejaba pasar `helm upgrade`/`kubectl apply`). Solo las formas MUTANTES dirigidas por manifiesto.
 [ -n "$(nbd_ctx 'helm upgrade myrel ./chart')" ] \

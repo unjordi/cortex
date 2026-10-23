@@ -87,7 +87,10 @@ _pfx="(^|[;&|\`][[:space:]]*|${_envwrap}|${_bnd}(bash|sh|zsh)([[:space:]]+-[A-Za
 # "git show HEAD~1:brain/x.sh" → ahí el "/" queda pegado al basename pero el TOKEN no arranca en
 # posición de ejecución). Exigir que la ruta entera nazca justo tras el prefijo cierra ese hueco sin
 # tocar la detección real (bash/./ /abs siguen exigiendo el prefijo correcto antes del primer tramo).
-_path='(\./|/)?([A-Za-z0-9_.-]+/)*'
+# Arranque de ruta: ./, / absoluto, o un HOME expandible (~/ · $HOME/ · ${HOME}/) — sin esto
+# `bash ~/.cortex/brain/install-brain.sh` CALLABA (FN heredado, H17). Se evalúa sobre `low` (minúsculas),
+# por eso 'home'. El '~'/'$HOME' solo cuenta tras un prefijo de EJECUCIÓN (bash/sudo/…), no como argumento.
+_path='(~/|\$\{?home\}?/|\./|/)?([A-Za-z0-9_.-]+/)*'
 # TERMINADOR del basename: espacio, fin, separador/operador o CIERRE de subshell/cmd-subst. Incluye ')' y '`'
 # porque `(bash ./install.sh)` / `$(bash ./install.sh)` cierran el token con ')' pegado al '.sh' (sin esto
 # el subshell SIN espacio antes del ')' CALLABA — BAJO heredado; `( bash … )` con espacios ya avisaba).
