@@ -8148,6 +8148,15 @@ if [ -f "$A6LF" ] && [ -f "$A6MF" ]; then
   { printf '%s' "$_a6rws" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' && [ "$_a6rws" = "2026-10-21" ]; } \
     && ok "a6-shell: REAL_WEEK_START=resets_at−7d en día YYYY-MM-DD ($_a6rws, $(uname -s)) → el SINCE de ccusage recibe un día válido" \
     || bad "a6-shell: REAL_WEEK_START='$_a6rws' (esperaba 2026-10-21 YYYY-MM-DD) — date mal formado → ccusage daily --since basura → costo semanal 0"
+  # (#6 auditoría R4 2026-10-23): el seam de prueba CORTEX_FETCH_CREDS_JSON DEBE evaluarse ANTES de
+  # `security find-generic-password` → con el seam seteado el llavero real NO se toca (antes se aplicaba DESPUÉS,
+  # así que aun en prueba se leía el llavero de la Mac). Chequeo ESTRUCTURAL de ORDEN de líneas (seguro, sin
+  # ejecutar el fetch — que haría red/ccusage). FALLA contra el código viejo (seam-después-de-security).
+  _cf6seam="$(grep -n 'CORTEX_FETCH_CREDS_JSON' "$A6MF" | head -1 | cut -d: -f1)"
+  _cf6sec="$(grep -n 'security find-generic-password' "$A6MF" | head -1 | cut -d: -f1)"
+  { [ -n "$_cf6seam" ] && [ -n "$_cf6sec" ] && [ "$_cf6seam" -lt "$_cf6sec" ]; } \
+    && ok "#6 cortex-fetch (macOS): el seam CORTEX_FETCH_CREDS_JSON se evalúa ANTES de security (con el seam no se toca el llavero real)" \
+    || bad "#6 cortex-fetch (macOS): el seam se evalúa DESPUÉS de security (línea ${_cf6seam:-?} vs ${_cf6sec:-?}) → lee el llavero aun en prueba"
 else bad "a6-fetch: falta src/bin/cortex-fetch o macos/bin/cortex-fetch"; fi
 
 # ─────────────────────────────────────────────────────────────────────────────

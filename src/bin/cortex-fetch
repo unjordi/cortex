@@ -60,10 +60,15 @@ fi
 # aquí salen el access token y el refreshTokenExpiresAt (señal de "el login va a expirar"). Rota en cada
 # `claude login`/`logout`, por eso preferimos el login activo sobre el env headless.
 CREDS_JSON=""
-[[ -r "$CLAUDE_DIR/.credentials.json" ]] && CREDS_JSON="$(<"$CLAUDE_DIR/.credentials.json")"
-# Seam de prueba (test-only; default intacto si no está seteado): overridea las credenciales para
-# ejercitar los estados de auth sin tocar el filesystem. Seteado-pero-vacío = sin credenciales.
-[[ -n "${CORTEX_FETCH_CREDS_JSON+x}" ]] && CREDS_JSON="$CORTEX_FETCH_CREDS_JSON"
+# Seam de prueba (test-only; default intacto si no está seteado): overridea las credenciales para ejercitar
+# los estados de auth sin tocar el filesystem. Seteado-pero-vacío = sin credenciales. #6 (auditoría R4
+# 2026-10-23): el seam se aplica ANTES de leer el archivo (gemelo del fix de macOS; aquí no hay llavero, pero
+# se mantiene la simetría: con el seam seteado NO se toca `.credentials.json`).
+if [[ -n "${CORTEX_FETCH_CREDS_JSON+x}" ]]; then
+  CREDS_JSON="$CORTEX_FETCH_CREDS_JSON"
+elif [[ -r "$CLAUDE_DIR/.credentials.json" ]]; then
+  CREDS_JSON="$(<"$CLAUDE_DIR/.credentials.json")"
+fi
 
 # Claude Code's OAuth token: del login activo (CREDS_JSON); CLAUDE_CODE_OAUTH_TOKEN solo FALLBACK headless.
 oauth_token() {
