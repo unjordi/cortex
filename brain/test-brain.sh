@@ -5735,6 +5735,51 @@ sib=$(HOME="$EMHOME3" CLAUDE_PROJECT_DIR="$EMREPO3" bash "$HOOKS/sincronizar-tas
 { printf '%s\n' "$sib" | grep -q '|5|'; } && bad "sembrar: incluyó la tarea completada #5 (no debía)" \
   || ok "sembrar: excluyó del set la tarea completada"
 
+# ── Caso 7 (MEDIO auditoría 2026-10-22): carpeta DIRECTA (payload sid) con TODAS las tareas completadas →
+#    el bloque se ACTUALIZA a "sin pendientes" (antes el anti-clobber dejaba pendientes FANTASMA para siempre). ──
+EMHOME7="$EMFIX/c7home"; EMREPO7="$EMFIX/c7repo"; S7="SESION7"
+mkdir -p "$EMHOME7/.claude/tasks/$S7"; _em_mkrepo "$EMREPO7"
+EMFILE_C7="$EMREPO7/.claude/memory/estado-proyecto.md"
+em7() { printf '{"session_id":"%s"}' "$S7" | HOME="$EMHOME7" CLAUDE_PROJECT_DIR="$EMREPO7" bash "$HOOKS/recordar-cosechar.sh" 2>/dev/null; }
+printf '{"id":"12","subject":"Pend A","status":"pending"}' > "$EMHOME7/.claude/tasks/$S7/12.json"
+em7 >/dev/null   # bloque con #12
+printf '{"id":"12","subject":"Pend A","status":"completed"}' > "$EMHOME7/.claude/tasks/$S7/12.json"
+em7 >/dev/null   # ahora TODO completado
+grep -q '#12' "$EMFILE_C7" && bad "espejo: carpeta directa todo-completado AÚN muestra #12 (pendiente fantasma)" \
+  || ok "espejo: carpeta directa todo-completado → #12 desaparece del bloque"
+grep -q 'sin pendientes' "$EMFILE_C7" && ok "espejo: todo-completado → bloque dice 'sin pendientes'" \
+  || bad "espejo: todo-completado NO reflejó 'sin pendientes' (anti-clobber dejó stale)"
+
+# ── Caso 8 (MEDIO auditoría 2026-10-22): payload-sid VACÍO + ≥2 carpetas no-vacías recientes (AMBIGUO, p.ej.
+#    otro repo/master activo) → NO adopta ninguna (las tasks no llevan repo) → no contamina con tareas ajenas. ──
+EMHOME8="$EMFIX/c8home"; EMREPO8="$EMFIX/c8repo"; S8="GHOST8"
+mkdir -p "$EMHOME8/.claude/tasks/$S8" "$EMHOME8/.claude/tasks/AJENA1" "$EMHOME8/.claude/tasks/AJENA2"; _em_mkrepo "$EMREPO8"
+EMFILE_C8="$EMREPO8/.claude/memory/estado-proyecto.md"
+printf '{"id":"99","subject":"Mia","status":"pending"}' > "$EMHOME8/.claude/tasks/$S8/99.json"
+printf '{"session_id":"%s"}' "$S8" | HOME="$EMHOME8" CLAUDE_PROJECT_DIR="$EMREPO8" bash "$HOOKS/recordar-cosechar.sh" >/dev/null 2>&1
+rm -f "$EMHOME8/.claude/tasks/$S8"/*.json   # mi carpeta queda vacía/rotada
+printf '{"id":"7","subject":"Ajena A","status":"pending"}' > "$EMHOME8/.claude/tasks/AJENA1/7.json"
+printf '{"id":"8","subject":"Ajena B","status":"pending"}' > "$EMHOME8/.claude/tasks/AJENA2/8.json"
+touch "$EMHOME8/.claude/tasks/AJENA1" "$EMHOME8/.claude/tasks/AJENA2"
+printf '{"session_id":"%s"}' "$S8" | HOME="$EMHOME8" CLAUDE_PROJECT_DIR="$EMREPO8" bash "$HOOKS/recordar-cosechar.sh" >/dev/null 2>&1
+grep -qE '#7|#8' "$EMFILE_C8" && bad "espejo: fallback AMBIGUO adoptó tareas ajenas (#7/#8) → contaminó el repo" \
+  || ok "espejo: fallback AMBIGUO (≥2 carpetas) NO adopta → sin contaminar con tareas ajenas"
+grep -q '#99' "$EMFILE_C8" && ok "espejo: anti-clobber preserva la #99 propia ante fallback ambiguo" \
+  || bad "espejo: perdió la #99 propia (fallback ambiguo pisó el bloque)"
+
+# ── Caso 9 (MEDIO auditoría 2026-10-22): sembrar --write NO resucita una tarea ya completada en la carpeta
+#    (el bloque puede venir STALE listándola como pending; el json completed manda). ──
+EMHOME9="$EMFIX/c9home"; EMREPO9="$EMFIX/c9repo"; S9="SEED9"
+mkdir -p "$EMHOME9/.claude/tasks/$S9"; _em_mkrepo "$EMREPO9"
+EMFILE_C9="$EMREPO9/.claude/memory/estado-proyecto.md"
+printf '%s\n' '<!-- espejo-tasklist:start -->' '- 🔸 **[pending]** #12 · Pend A' '<!-- espejo-tasklist:end -->' >> "$EMFILE_C9"
+printf '{"id":"12","subject":"Pend A","status":"completed"}' > "$EMHOME9/.claude/tasks/$S9/12.json"
+touch "$EMHOME9/.claude/tasks/$S9"
+HOME="$EMHOME9" CLAUDE_PROJECT_DIR="$EMREPO9" bash "$HOOKS/sincronizar-tasklist.sh" sembrar --write >/dev/null 2>&1
+[ "$(jq -r '.status // empty' "$EMHOME9/.claude/tasks/$S9/12.json" 2>/dev/null)" = "completed" ] \
+  && ok "sembrar --write: respeta una tarea ya completed (no la resucita a pending)" \
+  || bad "sembrar --write: RESUCITÓ una tarea completada (la pisó como pending)"
+
 rm -rf "$EMFIX"
 
 # (b5h) recordar-unificar-cerebro: RETIRADO (puramente advisory, se ignoraba). Su regla subió a norma en

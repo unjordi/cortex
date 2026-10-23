@@ -12,7 +12,8 @@
 # y solo los ESCRIBE al salir — NO re-renderiza en vivo si un proceso externo escribe los json. Y el
 # session_id ROTA sin aviso (arranque nuevo, auto-compact) → el sid del payload NO siempre casa con la
 # carpeta que respalda el HUD en pantalla. Por eso:
-#   1) La selección de carpeta es ROBUSTA a la rotación (payload sid → si vacío/ausente, la más reciente).
+#   1) La selección de carpeta es ROBUSTA a la rotación (payload sid → si vacío/ausente, la ÚNICA carpeta
+#      no-vacía en la ventana; con ≥2 sesiones activas NO adivina, para no adoptar la de otro repo).
 #   2) NUNCA se pisa un bloque no-vacío con uno vacío (anti-clobber): era el bug "+0 · sin pendientes".
 #   3) El refresco del HUD en pantalla NO lo hace un hook (imposible sin re-render); lo hace el skill.
 #
@@ -37,12 +38,22 @@ _stl_dir_tiene_json() {
   return 1
 }
 
-# ── _stl_tasksdir <sid> → imprime la carpeta de tareas CORRECTA (o nada) ─────────────────────────── ──
-# Robusto a la rotación de session_id: 1) el sid del payload si tiene json; 2) si no, la carpeta no-vacía
-# MÁS RECIENTE bajo ~/.claude/tasks modificada dentro de la ventana (evita adoptar una huérfana vieja).
+# ── _stl_tasksdir <sid> → setea _STL_DIR (carpeta correcta, o vacía) y _STL_RESOLV (confianza) ─────── ──
+# Devuelve por GLOBALES (NO por stdout): un `tasksdir=$(_stl_tasksdir …)` corría la función en un SUBSHELL
+# y el _STL_RESOLV que seteaba NO subía al padre → la excepción "todo completado" quedaba muerta. Los
+# callers la invocan PLANO y leen $_STL_DIR/$_STL_RESOLV.
+# Robusto a la rotación de session_id, pero SIN adoptar la carpeta de otra sesión/repo (MEDIO auditoría
+# 2026-10-22): las tasks NO llevan repo, así que "la más reciente GLOBAL" podía ser de OTRO master activo.
+#   1) sid del payload con json → carpeta DIRECTA (_STL_RESOLV=direct, máxima confianza: ES esta sesión).
+#   2) si no, FALLBACK por rotación: adopta una carpeta viva SOLO si es INEQUÍVOCA — EXACTAMENTE UNA
+#      carpeta no-vacía dentro de la ventana (_STL_RESOLV=fallback). Con 0 o ≥2 (varias sesiones a la vez)
+#      NO adivina (_STL_RESOLV=none) → el anti-clobber preserva el bloque en vez de pisarlo con tareas ajenas.
+_STL_DIR=""
+_STL_RESOLV=none
 _stl_tasksdir() {
-  local sid="${1:-}" base="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/tasks" d best="" bestm=0 m now
-  if [ -n "$sid" ] && _stl_dir_tiene_json "$base/$sid"; then printf '%s' "$base/$sid"; return 0; fi
+  local sid="${1:-}" base="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/tasks" d best="" cnt=0 m now
+  _STL_DIR=""; _STL_RESOLV=none
+  if [ -n "$sid" ] && _stl_dir_tiene_json "$base/$sid"; then _STL_DIR="$base/$sid"; _STL_RESOLV=direct; return 0; fi
   [ -d "$base" ] || return 0
   now=$(date +%s 2>/dev/null || echo 0); case "$now" in ''|*[!0-9]*) now=0 ;; esac
   for d in "$base"/*/; do
@@ -54,9 +65,10 @@ _stl_tasksdir() {
     if [ "$now" -gt 0 ] && [ "$STL_VENTANA_FALLBACK" -gt 0 ]; then
       [ $(( now - m )) -le "$STL_VENTANA_FALLBACK" ] || continue
     fi
-    [ "$m" -gt "$bestm" ] && { bestm=$m; best="$d"; }
+    cnt=$((cnt+1)); best="$d"
   done
-  [ -n "$best" ] && printf '%s' "$best"
+  # INEQUÍVOCA = exactamente 1 candidata. Con ≥2 no se puede saber cuál es la nuestra → no adivinar.
+  if [ "$cnt" -eq 1 ]; then _STL_DIR="$best"; _STL_RESOLV=fallback; fi
   return 0
 }
 
@@ -133,17 +145,21 @@ espejar_tasklist() {
 
   local sid tasksdir rows ndone n
   sid=$(printf '%s' "$payload" | jq -r '.session_id // empty' 2>/dev/null)
-  tasksdir=$(_stl_tasksdir "$sid")
+  _stl_tasksdir "$sid"; tasksdir="$_STL_DIR"
   rows=$(_stl_rows "$tasksdir")
   n=$(printf '%s' "$rows" | grep -c . 2>/dev/null || echo 0)
   case "$n" in ''|*[!0-9]*) n=0 ;; esac
 
-  # ANTI-CLOBBER: si no resolvimos pendientes con confianza (0 filas) y YA hay un bloque no-vacío, NO lo
-  # pisamos con uno vacío — era el bug "+0 · sin pendientes" cuando el sid del payload apunta a una carpeta
-  # vacía/rotada. Preservamos el último espejo bueno (a lo más queda 1 turno stale, mejor que borrado).
-  if [ "$n" -eq 0 ] && _stl_bloque_no_vacio "$estado"; then printf 0; return 0; fi
-
+  # ANTI-CLOBBER + "TODO COMPLETADO": con 0 filas (ningún pendiente/en-curso) y un bloque YA no-vacío, lo
+  # DEFAULT es PRESERVAR — no pisar con vacío un bloque bueno cuando la carpeta vino vacía/rotada/ambigua
+  # (bug "+0 · sin pendientes"). EXCEPCIÓN (MEDIO auditoría 2026-10-22): si resolvimos la carpeta de ESTA
+  # sesión DIRECTO (payload sid) y tiene tareas pero TODAS completadas (ndone>0), SÍ actualizamos a "sin
+  # pendientes · +N completadas" — antes un tasklist terminado dejaba pendientes FANTASMA en el bloque para
+  # siempre. Solo el camino `direct` lo permite: un fallback/none pudo resolver una carpeta ajena.
   ndone=$(_stl_ndone "$tasksdir")
+  if [ "$n" -eq 0 ] && _stl_bloque_no_vacio "$estado"; then
+    { [ "$_STL_RESOLV" = "direct" ] && [ "${ndone:-0}" -gt 0 ]; } || { printf 0; return 0; }
+  fi
   local body; body=$(_stl_render_body "$rows" "$ndone")
 
   local tmp; tmp=$(mktemp 2>/dev/null) || { printf 0; return 0; }
@@ -204,12 +220,18 @@ sembrar_tasklist() {
   [ -n "$out" ] && printf '%s\n' "$out"
 
   if [ -n "$write" ] && command -v jq >/dev/null 2>&1 && [ -n "$out" ]; then
-    local sid tasksdir st id subj
-    sid=$(_stl_tasksdir "")   # carpeta más reciente; para next-start
-    tasksdir="${sid:-}"
+    local tasksdir st id subj
+    _stl_tasksdir ""   # carpeta INEQUÍVOCA (para next-start); con ≥2 activas no adivina → no escribe en ajena
+    tasksdir="$_STL_DIR"
     if [ -n "$tasksdir" ] && [ -d "$tasksdir" ]; then
       while IFS='|' read -r st id subj; do
         [ -n "$id" ] || continue
+        # NO RESUCITAR una tarea YA completada (MEDIO auditoría 2026-10-22): el bloque solo lista
+        # pending/in_progress, pero puede venir STALE (una sesión previa la completó sin re-espejar). Si el
+        # json destino ya la marca completed, se respeta — re-sembrarla como pending la revive falsamente.
+        if [ -f "$tasksdir/$id.json" ] && [ "$(jq -r '.status // empty' "$tasksdir/$id.json" 2>/dev/null)" = "completed" ]; then
+          continue
+        fi
         jq -n --arg id "$id" --arg s "$subj" --arg st "$st" \
           '{id:$id, subject:$s, description:"", activeForm:$s, status:$st, blocks:[], blockedBy:[]}' \
           > "$tasksdir/$id.json" 2>/dev/null || true
