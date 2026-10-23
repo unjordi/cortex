@@ -82,6 +82,7 @@ export function parseQml(text) {
         globalHooks: list('brainGlobalHooks'),
         repoHooks: list('brainRepoHooks'),
         normNames: list('brainNormNames'),
+        agentNames: list('brainAgentNames'),
     };
     // Forma mínima: si el QML cambia de forma, mejor un error claro que una pestaña a medias.
     if (!Array.isArray(tiers) || tiers.length === 0)
@@ -112,6 +113,8 @@ export function status(cat, st, name) {
     }
     if (inArr(cat.repoHooks, name))
         return 'repoScoped';
+    if (inArr(cat.agentNames, name))
+        return 'builtin';
     if (inArr(cat.normNames, name))
         return st.hasNorms ? 'installed' : 'absent';
     // Cualquier otro nombre es una SKILL: su estado sale de la fuente viva (st.skills), sin lista tecleada.
@@ -123,6 +126,8 @@ export function isLive(cat, st, name) {
     if (!st)
         return true;
     if (inArr(cat.globalHooks, name) || inArr(cat.repoHooks, name) || inArr(cat.normNames, name))
+        return true;
+    if (inArr(cat.agentNames, name))
         return true;
     return inArr(st.skills, name);
 }
@@ -137,7 +142,7 @@ export function health(cat, st) {
             if (!isLive(cat, st, it.name))
                 continue;
             const s = status(cat, st, it.name);
-            if (s === 'repoScoped')
+            if (s === 'repoScoped' || s === 'builtin')   // builtin (agentes): siempre on → no son "salud"
                 continue;
             total++;
             if (s === 'installed')
@@ -160,6 +165,8 @@ export function dot(s) {
         return '✓';
     if (s === 'repoScoped')
         return '◈';
+    if (s === 'builtin')
+        return '●';
     if (s === '')
         return '';
     return '！';
@@ -170,6 +177,8 @@ export function dotColor(s) {
         return '#3aa76d';
     if (s === 'repoScoped')
         return 'rgba(74, 144, 217, 0.6)';
+    if (s === 'builtin')
+        return '#9d7bd8';
     return '#dc3545';
 }
 
@@ -180,5 +189,7 @@ export function statusLabel(s) {
         return 'el script existe pero NO está cableado en settings.json';
     if (s === 'repoScoped')
         return 'viaja por repo: se copia al .claude/ de cada proyecto';
+    if (s === 'builtin')
+        return 'integrado en Claude Code — siempre disponible';
     return 'no instalado en tu ~/.claude';
 }
