@@ -7778,6 +7778,28 @@ if [ -f "$A6LF" ] && [ -f "$A6MF" ]; then
     || bad "a6-regla: src/bin/cortex-fetch week_start=$_a6wl, esperaba $_a6exp (bucket-lunes en vez de rolling)"
   [ "$_a6wm" = "$_a6exp" ] && ok "a6-regla: macos/bin/cortex-fetch week_start==resets_at−7d con datos oauth ($_a6wm)" \
     || bad "a6-regla: macos/bin/cortex-fetch week_start=$_a6wm, esperaba $_a6exp (bucket-lunes en vez de rolling)"
+
+  # (a6-overage) PARIDAD extra_usage + limits Linux↔macOS (MEDIO auditoría 2026-10-22): el fetch de Linux no
+  # emitía extra_usage → limite-gasto leía overage DESHABILITADO (over_on=false) y DENEGABA con la ventana de
+  # 5h agotada aunque hubiera overage disponible. Y sin `limits` el esquema divergía del gemelo macOS.
+  _a6pm=0
+  for _k in 'extra_usage:' 'limits:'; do
+    grep -qF "$_k" "$A6MF" || { bad "a6-overage: macos/bin/cortex-fetch NO emite '$_k'"; _a6pm=1; }
+    grep -qF "$_k" "$A6LF" || { bad "a6-overage: src/bin/cortex-fetch (Linux) NO emite '$_k' (paridad rota → limite-gasto false-deny con overage)"; _a6pm=1; }
+  done
+  [ "$_a6pm" = 0 ] && ok "a6-overage: ambos fetches emiten extra_usage + limits (paridad; limite-gasto ve el overage en Linux)"
+  # EFECTO: el jq REAL del fetch de Linux, con un $usage que trae overage, emite extra_usage.enabled/utilization.
+  _A6_USAGE_OV='{"five_hour":{"utilization":100,"resets_at":"2026-10-23T00:00:00Z"},"seven_day":{"utilization":40,"resets_at":"2026-10-28T14:00:00Z"},"limits":[],"extra_usage":{"utilization":30,"is_enabled":true,"used_credits":5,"monthly_limit":100,"currency":"USD"}}'
+  _p6l="$(_a6prog "$A6LF")"
+  _a6ov="$(jq -n --argjson usage "$_A6_USAGE_OV" --argjson blocks "$_A6_BLK" --argjson weekly null \
+      --argjson weekly_daily "$_A6_WD" --arg ts "2026-10-23T12:00:00Z" --arg next_monday "2026-10-26T00:00:00Z" \
+      --arg cur_week "2026-10-19" --arg real_week_start "2026-10-19" --arg prev_week_reset "" --arg prev_five_reset "" \
+      --arg email "" --arg account_uuid "" --arg auth_state ok --arg auth_expires "" --argjson account_mismatch false \
+      --argjson five_cap 50 --argjson week_cap 200 --argjson warn 80 --argjson crit 95 "$_p6l" 2>/dev/null \
+      | jq -r '[(.extra_usage.enabled|tostring), (.extra_usage.utilization|tostring)] | join(",")' 2>/dev/null)"
+  [ "$_a6ov" = "true,30" ] \
+    && ok "a6-overage EFECTO: el jq de src/bin/cortex-fetch emite extra_usage.enabled=true/util=30 con overage en \$usage (antes ausente → limite-gasto false-deny)" \
+    || bad "a6-overage EFECTO: el fetch de Linux no emitió extra_usage correctamente (got '$_a6ov')"
   # (a6-shell) el cálculo de SHELL REAL_WEEK_START (que alimenta el `ccusage daily --since`) DEBE dar un día
   # YYYY-MM-DD = resets_at−7d, en la plataforma REAL — el a6-regla de arriba solo ejercita el jq, no este tramo
   # de shell. Falla contra edf7633 en macOS: las opciones `-v` de BSD date iban DESPUÉS de la fecha → `date`

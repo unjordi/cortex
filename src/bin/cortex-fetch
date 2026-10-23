@@ -311,7 +311,28 @@ jq -n \
         currency: ($usage.spend.used.currency // $usage.spend.limit.currency // null),
         percent: ($usage.spend.percent // null),
         enabled: ($usage.spend.enabled // false)
-        } else null end)
+        } else null end),
+      # PARIDAD con macOS (MEDIO auditoría 2026-10-22): sin `extra_usage`, limite-gasto en Linux leía
+      # overage deshabilitado (over_on=false) y DENEGABA con la ventana de 5h agotada aunque hubiera
+      # overage disponible. Y sin `limits` el esquema divergía del gemelo macOS. Ambos bloques salen del
+      # MISMO $usage del endpoint OAuth → se emiten idénticos (gemelos estructurales).
+      limits: (if $usage != null then
+        [ ($usage.limits // [])[] | {
+            kind: .kind,
+            model: (.scope.model.display_name // null),
+            percent: .percent,
+            resets_at: (if .resets_at != null then (.resets_at | isoz) else null end),
+            severity: .severity,
+            is_active: .is_active
+          } ]
+        else null end),
+      extra_usage: (if ($usage != null and $usage.extra_usage != null) then {
+        used_credits:  ($usage.extra_usage.used_credits // null),
+        monthly_limit: ($usage.extra_usage.monthly_limit // null),
+        currency:      ($usage.extra_usage.currency // null),
+        utilization:   ($usage.extra_usage.utilization // null),
+        enabled:       ($usage.extra_usage.is_enabled // false)
+      } else null end)
       }
 ' > "$TMP_FILE"
 mv "$TMP_FILE" "$STATE_FILE"
