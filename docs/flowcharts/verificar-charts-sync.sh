@@ -9,6 +9,11 @@
 # archivo; (2) 03/07/08/13 decían "fan-out de 6/5 hooks" cuando el fan-out real (ev_de de install-brain.sh) es
 # de 4; (3) un hook RETIRADO nombrado como VIVO en un nodo (hoy limpio — todas las menciones son históricas).
 #
+# ⚠️ ALCANCE (no leer como garantía de que los charts dicen la verdad): este check verifica REFERENCIAS
+# ESTRUCTURALES (qué chart existe, qué hook se nombra, qué número de fan-out se cita) — NO el COMPORTAMIENTO ni
+# el FLUJO que cada chart describe. Un chart puede pasar los 3 checks y aun así tener un nodo que miente sobre
+# la lógica real de un guard (eso lo caza una lectura humana / la dupla de auditores, no este script).
+#
 # Uso:  bash docs/flowcharts/verificar-charts-sync.sh     (exit 0 = paridad; exit 1 = drift; exit 2 = error)
 set -u
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
