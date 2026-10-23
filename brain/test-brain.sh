@@ -9676,9 +9676,15 @@ cat > "$G2B/.claude/settings.json" <<'JSON'
 JSON
 : > "$G2B/.claude/hooks/.brain-version"
 echo "conocimiento del dominio, jamás se toca" > "$G2B/.claude/memory/MEMORY.md"
+# HERMETICIDAD (R5-6/CI del PR #470, claudio): --limpiar-personal SOLO retira un `both` si su copia GLOBAL
+# está instalada (sincronizar-cerebro.sh:259 chequea `$HOME/.claude/hooks/<n>.sh`). Sin un HOME falso, el test
+# heredaba el ~/.claude REAL (en la Mac el global está instalado → RETIRA; en el runner limpio NO → CONSERVA
+# → 3 FAIL). Se monta un HOME con las copias GLOBALES de los `both` candidatos (no-bypass-deploy + su lib).
+G2BCFG="$(mktemp -d "${TMPDIR:-/tmp}/brain-g2bcfg.XXXXXX")"; mkdir -p "$G2BCFG/.claude/hooks"
+: > "$G2BCFG/.claude/hooks/no-bypass-deploy.sh"; : > "$G2BCFG/.claude/hooks/analizar-comando-git.sh"
 
 # (1) DRY-RUN: reporta, no escribe nada
-g2bout="$(bash "$SYNCLP" "$G2B" --limpiar-personal 2>/dev/null)"
+g2bout="$(HOME="$G2BCFG" bash "$SYNCLP" "$G2B" --limpiar-personal 2>/dev/null)"
 printf '%s' "$g2bout" | grep -q 'RETIRARÍA  no-bypass-deploy.sh' \
   && ok "g2b: dry-run REPORTA el hook tier both como candidato" || bad "g2b: dry-run no reportó no-bypass-deploy.sh; got: $g2bout"
 printf '%s' "$g2bout" | grep -q 'dod-verificar' \
@@ -9688,7 +9694,7 @@ printf '%s' "$g2bout" | grep -q 'dod-verificar' \
   && ok "g2b: dry-run NO borró nada" || bad "g2b: ¡el dry-run ya borró un archivo!"
 
 # (2) --apply: retira SOLO tier both + su cableado + el sello; conserva tier repo + hook propio + memoria
-bash "$SYNCLP" "$G2B" --limpiar-personal --apply >/dev/null 2>&1
+HOME="$G2BCFG" bash "$SYNCLP" "$G2B" --limpiar-personal --apply >/dev/null 2>&1
 [ ! -f "$G2B/.claude/hooks/no-bypass-deploy.sh" ] && [ ! -f "$G2B/.claude/hooks/analizar-comando-git.sh" ] \
   && ok "g2b: --apply BORRÓ el hook+lib de tier both" || bad "g2b: el hook/lib tier both sobrevivió al --apply"
 [ ! -f "$G2B/.claude/hooks/.brain-version" ] \
@@ -9704,13 +9710,30 @@ grep -q no-bypass-deploy "$G2B/.claude/settings.json" \
   && ok "g2b: la MEMORIA del repo quedó intacta" || bad "g2b: ¡la memoria del repo se tocó!"
 
 # (3) idempotente: segunda pasada → YA LIMPIO, sin fallar
-bash "$SYNCLP" "$G2B" --limpiar-personal --apply 2>/dev/null | grep -q 'YA LIMPIO' \
+HOME="$G2BCFG" bash "$SYNCLP" "$G2B" --limpiar-personal --apply 2>/dev/null | grep -q 'YA LIMPIO' \
   && ok "g2b: --limpiar-personal es idempotente (2ª pasada → YA LIMPIO)" || bad "g2b: la 2ª pasada no reportó YA LIMPIO"
 
 # (4) settings.json sigue siendo JSON válido tras el de-cableado
 jq empty "$G2B/.claude/settings.json" 2>/dev/null \
   && ok "g2b: settings.json sigue siendo JSON válido tras limpiar" || bad "g2b: settings.json quedó inválido"
-rm -rf "$G2B"
+rm -rf "$G2B" "$G2BCFG"
+
+# (5) CASO INVERSO (hermeticidad, R5-6/CI del PR #470): un `both` SIN copia GLOBAL instalada es la ÚNICA que
+# corre aquí → se CONSERVA (es justo el comportamiento de c707b29; en el runner limpio es el caso por default).
+G2BNG="$(mktemp -d "${TMPDIR:-/tmp}/brain-g2bng.XXXXXX")"; mkdir -p "$G2BNG/.claude/hooks"
+printf 'exit 0\n' > "$G2BNG/.claude/hooks/no-bypass-deploy.sh"
+G2BNGH="$(mktemp -d "${TMPDIR:-/tmp}/brain-g2bngh.XXXXXX")"; mkdir -p "$G2BNGH/.claude/hooks"   # HOME SIN la copia global
+g2bng="$(HOME="$G2BNGH" bash "$SYNCLP" "$G2BNG" --limpiar-personal 2>/dev/null)"
+printf '%s' "$g2bng" | grep -q 'CONSERVO   no-bypass-deploy.sh' \
+  && ok "g2b (inverso): un both SIN copia global instalada → CONSERVA (es la única que corre aquí)" \
+  || bad "g2b (inverso): un both sin global NO se conservó; got: $(printf '%s' "$g2bng" | grep -iE 'conservo|retiraría|no-bypass')"
+printf '%s' "$g2bng" | grep -q 'RETIRARÍA  no-bypass-deploy.sh' \
+  && bad "g2b (inverso): un both sin copia global se reportó para RETIRAR (lo mataría)" \
+  || ok "g2b (inverso): un both sin global NO se reporta para retirar"
+HOME="$G2BNGH" bash "$SYNCLP" "$G2BNG" --limpiar-personal --apply >/dev/null 2>&1
+[ -f "$G2BNG/.claude/hooks/no-bypass-deploy.sh" ] \
+  && ok "g2b (inverso): --apply NO borró el both sin global (lo conservó)" || bad "g2b (inverso): ¡--apply borró un both sin copia global!"
+rm -rf "$G2BNG" "$G2BNGH"
 
 echo "== (g2b) --limpiar-personal REHÚSA en un repo marcado .claude/repo-compartido =="
 G2BS="$(mktemp -d "${TMPDIR:-/tmp}/brain-g2bs.XXXXXX")"; mkdir -p "$G2BS/.claude/hooks"
