@@ -40,6 +40,20 @@ _deny() {   # $1 = detalle de por qué/ cómo
   exit 0
 }
 
+# ¿El comando trae un operador de ESCRITURA A ARCHIVO? (para la regla de indirección — el destino puede ir
+# oculto en una variable/glob). Reconoce tee/cp/mv/ln/install/rsync/dd/truncate, `sed -i`, un intérprete con
+# -c/-e, y una redirección `>`/`>>` A ARCHIVO — excluyendo las que NO escriben un archivo del repo: `2>…`
+# (stderr), `>&N` (dup de fd), `&>…`, y `>/dev/null`. Así una LECTURA con `2>/dev/null` no cuenta como escritura.
+_tiene_escritura_a_archivo() {
+  local c="$1" r
+  printf '%s' "$c" | grep -qE '(^|[^[:alnum:]_/])(tee|cp|mv|ln|install|rsync|dd|truncate)([[:space:]]|$)' && return 0
+  printf '%s' "$c" | grep -qE '(^|[^[:alnum:]_/])sed[[:space:]]+[^|&;]*-i' && return 0
+  printf '%s' "$c" | grep -qE '(^|[^[:alnum:]_/])(python[0-9.]*|perl|ruby|node|php)[[:space:]][^|&;]*-[ce]' && return 0
+  r=$(printf '%s' "$c" | sed -E 's/2>>?[[:space:]]*[^|&;[:space:]]*//g; s/[0-9]*>&[0-9-]*//g; s/&>>?[[:space:]]*[^|&;[:space:]]*//g; s#>>?[[:space:]]*/dev/null##g')
+  printf '%s' "$r" | grep -qE '>' && return 0
+  return 1
+}
+
 tool=$(printf '%s' "$input" | jq -r '.tool_name // empty' 2>/dev/null)
 
 case "$tool" in
@@ -58,15 +72,19 @@ case "$tool" in
     ;;
 esac
 
-# --- Camino Bash: ¿el comando ESCRIBE a autorizaciones-vigentes*? ---
-# Pre-filtro barato: sin el token del nombre no puede tocarlo → early-exit antes de gastar regex.
-printf '%s' "$cmd" | grep -qF "$_AUTH_GLOB" || exit 0
+# --- Camino Bash: ¿el comando ESCRIBE a autorizaciones-vigentes* (directo o por INDIRECCIÓN)? ---
+# Pre-filtro barato: el nombre se parte en dos mitades distintivas, `autoriz…` y `…vigentes`. Una
+# indirección (variable/glob/split) puede ocultar una mitad, pero rara vez las dos → si NINGUNA aparece en el
+# texto, el comando no puede nombrar el archivo → early-exit. (Residual BAJO: ofuscación que no deja NINGUNA
+# mitad — base64/rev/un script aparte — ver nota en la sección (B).)
+printf '%s' "$cmd" | grep -qiE 'autoriz|vigentes' || exit 0
 
 # Normaliza quitando SOLO los caracteres de comilla (mantiene el texto): así `>> "autoriz…"` (destino
 # entrecomillado) se detecta igual, sin re-parsear el shell. Conservador para un DENY de seguridad: a lo
 # más un `echo '>> autorizaciones-vigentes'` (texto literal, caso irreal) daría un FP seguro.
 norm=$(printf '%s' "$cmd" | tr -d "\"'")
 
+# ── (A) VECTORES DIRECTOS: el nombre LITERAL es el destino de una escritura. Mensaje preciso por vector. ──
 # 1) Redirección (> o >>, incluye el heredoc `cat > f <<EOF`) cuyo destino contiene el nombre.
 printf '%s' "$norm" | grep -qE '>>?[[:space:]]*[^[:space:]<>|&;]*'"$_AUTH_GLOB" \
   && _deny "redirección > / >> hacia el archivo"
@@ -85,6 +103,25 @@ printf '%s' "$norm" | grep -qE '(^|[^[:alnum:]_/])dd([[:space:]]+[^|&;]*)?[[:spa
 if printf '%s' "$norm" | grep -qE '(^|[^[:alnum:]_/])(python[0-9.]*|perl|ruby|node|php)([[:space:]]|$)'; then
   printf '%s' "$norm" | grep -qE "open\([^)]*$_AUTH_GLOB[^)]*,[^)]*[wa]|$_AUTH_GLOB[^)]*,[^)]*[\"]?[wa]|[wa][\"]?[^)]*$_AUTH_GLOB|\.write|>>[[:space:]]*[^[:space:]]*$_AUTH_GLOB" \
     && _deny "un intérprete abriendo el archivo en modo escritura"
+fi
+
+# ── (B) INDIRECCIÓN (MEDIO 2026-10-23, verificado contra el hook): una variable/glob/split oculta el destino
+# y los vectores directos de (A) NO lo ven — p. ej. `F=…/autorizaciones-vigentes.local.md; echo x >> $F`,
+# `echo x >> .claude/memory/autoriz*`, `n=autorizaciones; echo x >> .claude/memory/$n-vigentes.local.md`. Con
+# el piso de la cita ya retirado (una palabra de cualquier mensaje humano basta), esta cadena re-habilita la
+# AUTO-AUTORIZACIÓN → se cierra con una regla CONSERVADORA: si hay un OPERADOR DE ESCRITURA A ARCHIVO Y el
+# comando (a) reconstruye las DOS mitades del nombre (`autoriz…` + `…vigentes`) o (b) usa un GLOB pegado a una
+# mitad (podría expandir al archivo real) → DENY. LEER sin operador de escritura sigue pasando; una escritura
+# con `autoriz` pero SIN `vigentes` ni glob (p. ej. `echo autorizado > status.txt`) NO dispara (anti-FP).
+# RESIDUAL BAJO (NO cubierto aquí a propósito, por la norma de precisión): ofuscación pura que no deja ninguna
+# mitad en el texto — `base64 … | sh`, `$(printf … | rev)`, o escribir un script aparte y ejecutarlo después.
+# Esos los cubren la revisión HUMANA del PR (nadie mergea solo) y el juez de merge; cerrarlos aquí exigiría
+# ejecutar/evaluar el comando (inviable en un hook de PreToolUse).
+if _tiene_escritura_a_archivo "$norm"; then
+  { printf '%s' "$norm" | grep -qiE 'autoriz' && printf '%s' "$norm" | grep -qiE 'vigentes'; } \
+    && _deny "escritura con el nombre reconstruido por indirección ('autoriz…' + '…vigentes' en variable/split)"
+  printf '%s' "$norm" | grep -qiE '(autoriz|vigentes)[^[:space:]<>|&;]*[*?]|[*?][^[:space:]<>|&;]*(autoriz|vigentes)' \
+    && _deny "escritura hacia un glob que puede expandir al archivo de grants (autoriz* / *vigentes)"
 fi
 
 exit 0

@@ -3062,6 +3062,24 @@ pa_is_deny "$(pa_bash "echo x > /r/.claude/memory/autorizaciones-vigentes-2.md")
 BASHBIN2="$(command -v bash)"
 o="$(printf '{"tool_name":"Bash","tool_input":{"command":"echo x >> %s"}}' "$AF" | env -u CLAUDE_CONFIG_DIR PATH="/nonexistent-dir" HOME="$PAH" "$BASHBIN2" "$PAHOOK")"
 [ -z "$o" ] && ok "proteger-autorizaciones: fail-open sin jq → silencio (no frena a ciegas)" || bad "proteger-autorizaciones: no falló abierto sin jq; got: $o"
+# (7) INDIRECCIÓN (MEDIO 2026-10-23, verificado por claudio): una variable/glob/split oculta el destino → los
+#     vectores DIRECTOS no lo ven. La regla conservadora (escritura-a-archivo + ambas mitades del nombre, o un
+#     glob sobre una mitad) los cierra. FALLAN vs f3378c1 (que dejaba PASAR las 4 formas).
+pa_ifail=0
+pa_is_deny "$(pa_bash "F=$AF; echo x >> \$F")"                              || { bad "proteger-autorizaciones: indirección por VARIABLE (F=path; >> \$F) evadió"; pa_ifail=1; }
+pa_is_deny "$(pa_bash "echo x >> .claude/memory/autoriz*")"                 || { bad "proteger-autorizaciones: indirección por GLOB (autoriz*) evadió"; pa_ifail=1; }
+pa_is_deny "$(pa_bash "n=autorizaciones; echo x >> .claude/memory/\$n-vigentes.local.md")" || { bad "proteger-autorizaciones: indirección por SPLIT (\$n-vigentes) evadió"; pa_ifail=1; }
+pa_is_deny "$(pa_bash "echo x >> \$(ls .claude/memory/autoriz*)")"          || { bad "proteger-autorizaciones: indirección por \$(ls autoriz*) evadió"; pa_ifail=1; }
+pa_is_deny "$(pa_bash "tee .claude/memory/autoriz*.local.md")"             || { bad "proteger-autorizaciones: tee a un glob autoriz* evadió"; pa_ifail=1; }
+[ "$pa_ifail" = 0 ] && ok "proteger-autorizaciones: INDIRECCIÓN (variable/glob/split/\$(ls)/tee-glob) → DENY (cierra la re-habilitación de auto-autorización)"
+# (8) controles anti-FP de la regla de indirección: una LECTURA (aunque mencione ambas mitades, con 2>/dev/null
+#     o pipe) PASA; una escritura con 'autoriz' pero SIN 'vigentes' ni glob PASA (no es el archivo de grants).
+pa_cfail=0
+pa_is_deny "$(pa_bash "grep -r 'autorizaciones vigentes' brain/ 2>/dev/null")" && { bad "proteger-autorizaciones: FP — grep de ambas mitades con 2>/dev/null (lectura) se denegó"; pa_cfail=1; }
+pa_is_deny "$(pa_bash "cat $AF > /dev/null 2>&1")"                            && { bad "proteger-autorizaciones: FP — cat … >/dev/null (lectura) se denegó"; pa_cfail=1; }
+pa_is_deny "$(pa_bash "echo autorizado > /tmp/status.txt")"                   && { bad "proteger-autorizaciones: FP — 'autoriz' sin 'vigentes' ni glob + write a otro archivo se denegó"; pa_cfail=1; }
+pa_is_deny "$(pa_bash "grep autoriz log.txt > /tmp/out.txt")"                 && { bad "proteger-autorizaciones: FP — grep 'autoriz' con salida a otro archivo se denegó"; pa_cfail=1; }
+[ "$pa_cfail" = 0 ] && ok "proteger-autorizaciones: anti-FP de indirección (lectura con 2>/dev/null/pipe · 'autoriz' sin 'vigentes'/glob + write ajeno) → PASA"
 
 echo "== (b3a3) verificar-cerebro: drift-check instalada-vs-fuente (idéntica→0; difiere→la lista; local→ignora) =="
 DVFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-dv.XXXXXX")"
