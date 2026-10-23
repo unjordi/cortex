@@ -8570,6 +8570,42 @@ printf '%s' "$(nbd_ctx 'bash brain/install-brain.sh')" | grep -qi 'widget' \
   && ok "g1: './scripts/deploy.sh' (ejecución real relativa con subcarpeta) SIGUE avisando" || bad "g1: dejó de avisar sobre ./scripts/deploy.sh"
 [ -n "$(nbd_ctx '/usr/local/bin/install.sh')" ] \
   && ok "g1: ruta ABSOLUTA ejecutada directo SIGUE avisando" || bad "g1: dejó de avisar sobre ruta absoluta ejecutada"
+# PREFIJOS DE EJECUCIÓN (MEDIO auditoría 2026-10-22): el `_pfx` viejo solo veía inicio/separador/bash|sh|zsh|
+# eval/-c → un instalador tras sudo/nohup/env-assignment/source/'.'/bash-con-flags pasaba MUDO (FN de bypass).
+[ -n "$(nbd_ctx 'sudo ./install.sh')" ] \
+  && ok "g1: 'sudo ./install.sh' (wrapper sudo) → AVISA" || bad "g1: no avisó sobre sudo ./install.sh (FN de prefijo)"
+[ -n "$(nbd_ctx 'FOO=bar ./install.sh')" ] \
+  && ok "g1: 'FOO=bar ./install.sh' (env-assignment) → AVISA" || bad "g1: no avisó sobre VAR=val ./install.sh (FN de prefijo)"
+[ -n "$(nbd_ctx 'nohup ./install.sh')" ] \
+  && ok "g1: 'nohup ./install.sh' → AVISA" || bad "g1: no avisó sobre nohup ./install.sh (FN de prefijo)"
+[ -n "$(nbd_ctx 'source install.sh')" ] \
+  && ok "g1: 'source install.sh' (ejecuta en el shell actual) → AVISA" || bad "g1: no avisó sobre source install.sh (FN de prefijo)"
+[ -n "$(nbd_ctx '. install.sh')" ] \
+  && ok "g1: '. install.sh' (dot-source) → AVISA" || bad "g1: no avisó sobre . install.sh (FN de prefijo)"
+[ -n "$(nbd_ctx 'bash -x install.sh')" ] \
+  && ok "g1: 'bash -x install.sh' (flag del runner) → AVISA" || bad "g1: no avisó sobre bash -x install.sh (FN de prefijo)"
+# helm/kubectl (MEDIO auditoría 2026-10-22): la norma los nombra como deploy-a-mano; el hook no los veía
+# (el pre-filtro ni dejaba pasar `helm upgrade`/`kubectl apply`). Solo las formas MUTANTES dirigidas por manifiesto.
+[ -n "$(nbd_ctx 'helm upgrade myrel ./chart')" ] \
+  && ok "g1: 'helm upgrade' → AVISA (deploy a mano)" || bad "g1: no avisó sobre helm upgrade"
+[ -n "$(nbd_ctx 'helm install myrel ./chart')" ] \
+  && ok "g1: 'helm install' → AVISA" || bad "g1: no avisó sobre helm install"
+[ -n "$(nbd_ctx 'kubectl apply -f manifest.yaml')" ] \
+  && ok "g1: 'kubectl apply -f <manifiesto>' → AVISA" || bad "g1: no avisó sobre kubectl apply -f"
+[ -n "$(nbd_ctx 'sudo kubectl apply -f manifest.yaml')" ] \
+  && ok "g1: 'sudo kubectl apply -f' (con wrapper) → AVISA" || bad "g1: no avisó sobre sudo kubectl apply -f"
+# precisión helm/kubectl: lecturas y dry-run NO disparan; -n (namespace) NO se confunde con dry-run
+[ -z "$(nbd_ctx 'kubectl get pods')" ] \
+  && ok "g1: 'kubectl get pods' (lectura) NO dispara" || bad "g1: disparó sobre kubectl get (FP)"
+[ -z "$(nbd_ctx 'helm list')" ] \
+  && ok "g1: 'helm list' (lectura) NO dispara" || bad "g1: disparó sobre helm list (FP)"
+[ -z "$(nbd_ctx 'kubectl apply -f manifest.yaml --dry-run=client')" ] \
+  && ok "g1: 'kubectl apply -f … --dry-run=client' NO dispara (no muta)" || bad "g1: disparó en kubectl --dry-run=client (FP)"
+[ -n "$(nbd_ctx 'kubectl apply -f manifest.yaml -n prod')" ] \
+  && ok "g1: 'kubectl apply -f … -n prod' SÍ avisa (-n es namespace, no dry-run)" || bad "g1: calló por -n namespace (FN: -n tomado como dry-run)"
+# -h ambiguo (MEDIO auditoría 2026-10-22): un deploy real con `-h <host>` ya NO se silencia como si fuera --help.
+[ -n "$(nbd_ctx './deploy.sh -h prod-host')" ] \
+  && ok "g1: './deploy.sh -h prod-host' SÍ avisa (-h es --host, no --help)" || bad "g1: calló por -h (FN: -h tomado como --help)"
 # tier both → trae la cláusula de dedupe (la copia por-repo cede a la global) que HONRA CLAUDE_CONFIG_DIR
 { grep -qF '_cfgh="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks"' "$NBD" && grep -qF 'case "$0" in "$_cfgh/"' "$NBD"; } \
   && ok "g1: no-bypass-deploy trae la cláusula de dedupe que honra CLAUDE_CONFIG_DIR (tier both)" || bad "g1: falta/mal la cláusula de dedupe en un hook tier both"
