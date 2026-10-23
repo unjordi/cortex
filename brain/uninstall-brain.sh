@@ -197,8 +197,15 @@ if [ -f "$GCLAUDE" ] && grep -q 'brain:import-entorno' "$GCLAUDE" 2>/dev/null; t
       skip_next==1 && /^@entorno-maquina\.md[[:space:]]*$/ { skip_next=0; next }
       { skip_next=0; print }
     ' "$GCLAUDE" > "$tmp"; then
-    mv "$tmp" "$GCLAUDE"
-    echo "ok: @import de entorno-maquina.md removido de $GCLAUDE (el archivo se conserva)"
+    # M4 (auditoría R3 2026-10-23): este bloque NO pasaba por `_run` → en --dry-run MUTABA CLAUDE.md igual (el
+    # awk escribe a un $tmp —inocuo—, pero el `mv` pisaba el real). Ahora el `mv` respeta DRY: en plan solo anuncia.
+    if [ "$DRY" = 1 ]; then
+      rm -f "$tmp"
+      echo "  (plan) removería el @import de entorno-maquina.md de $GCLAUDE (el archivo se conserva)"
+    else
+      mv "$tmp" "$GCLAUDE"
+      echo "ok: @import de entorno-maquina.md removido de $GCLAUDE (el archivo se conserva)"
+    fi
   else
     [ -n "$tmp" ] && rm -f "$tmp"
     echo "warn: no pude quitar el @import del entorno de $GCLAUDE; hazlo a mano (líneas brain:import-entorno + @entorno-maquina.md)"

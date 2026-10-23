@@ -2913,6 +2913,11 @@ o="$(pfset '"env": {' '"env": { "CLAUDE_JUEZ_LOCAL_ALLOW_REMOTE": "1",')"
 printf '%s' "$o" | grep -q 'ESCAPE de guard' \
   && ok "proteger-fuente settings: agregar CLAUDE_JUEZ_LOCAL_ALLOW_REMOTE (afloja el guard de #12b) en env → AVISA" \
   || bad "proteger-fuente settings: no avisó al aflojar el guard del backend local por env; got: $o"
+# BAJO R3: perillas de la lib de git-guards en env de settings.json (ACG_PATH_AUGMENT/ACG_EXTRA_BIN/AXON_OLLAMA_URL)
+o="$(pfset '"env": {' '"env": { "ACG_PATH_AUGMENT": "0",')"
+printf '%s' "$o" | grep -q 'ESCAPE de guard' \
+  && ok "proteger-fuente settings: agregar ACG_PATH_AUGMENT (perilla de la lib de git-guards) en env → AVISA" \
+  || bad "proteger-fuente settings: no avisó al agregar una perilla ACG_* por env; got: $o"
 o="$(pfset '"allow": [' '"allow": [ "Bash(npm test)",')"
 [ -z "$o" ] && ok "proteger-fuente settings: agregar un permiso Bash legítimo → silencio (no toda edición avisa)" || bad "proteger-fuente settings: FP en un permiso legítimo; got: $o"
 o="$(pfset '"theme": "dark"' '"theme": "light"')"
@@ -4257,6 +4262,25 @@ DODTX="$FAKEHOME/dod-transcript.jsonl"
 # PISO barato (léxico de cierre) → el helper se lo garantiza con un sufijo innocuo; un all-no cae por el piso.
 # Un MARCA=si siembra la CITA del texto del usuario (el veto la re-verifica). token dummy = _juez_token OK.
 DODBIN="$FAKEHOME/dodbin"; mkdir -p "$DODBIN"
+# M6 (auditoría R3 2026-10-23): un `security`-stub en el PATH de dod shadow-ea el LLAVERO REAL de la Mac — antes
+# faltaba (a diferencia de A1/CSG) y las pruebas dod pegaban ~34 veces a `security find-generic-password` real.
+# El stub registra su invocación en un marcador para PROBAR (abajo) que ninguna prueba dod toca el llavero del sistema.
+DODSEC_HIT="$FAKEHOME/.dod-security-hit"
+printf '#!/usr/bin/env bash\ntouch %q\nexit 1\n' "$DODSEC_HIT" > "$DODBIN/security"; chmod +x "$DODBIN/security"
+# M6 aserción: una invocación dod que dispara el juez DEBE resolver el token por el STUB (el llavero se ENUMERA
+# antes que el env token) → el marcador se toca. Si faltara el stub (o DODBIN no estuviera en PATH), se tocaría
+# el `security` del sistema y el marcador NO existiría → esta prueba falla. FALLA contra 7fab8aa (DODBIN sin stub).
+printf '#!/usr/bin/env bash\ncat <<EOF\n{"content":[{"text":"CIERRE: si\\nMARCA: no\\nVISUAL: no"}]}\n200\nEOF\n' > "$DODBIN/curl"; chmod +x "$DODBIN/curl"
+_M6TX="$FAKEHOME/m6-tx.jsonl"
+{ printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"haz el cambio"}]}}'
+  printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","input":{"file_path":"src/Foo.cs"}}]}}'
+  printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"el modulo quedo listo y terminado"}]}}'; } > "$_M6TX"
+rm -f "$DODSEC_HIT"
+printf '%s' "{\"stop_hook_active\":false,\"transcript_path\":\"$_M6TX\"}" | PATH="$DODBIN:$PATH" CLAUDE_CODE_OAUTH_TOKEN=dummy bash "$HOOKS/dod-verificar.sh" >/dev/null 2>&1
+[ -f "$DODSEC_HIT" ] \
+  && ok "M6: las pruebas dod resuelven el token por el security-STUB (no el llavero real de la Mac)" \
+  || bad "M6: dod NO pasó por el security-stub → una prueba dod podría tocar el llavero real (DODBIN sin stub o fuera del PATH)"
+rm -f "$_M6TX"
 _dod_curl_raw() { # $1 = texto CRUDO que el juez recibiría (post-envelope) → curl FALSO devuelve {content:[{text}]}\n200
   local body; body="$(jq -nc --arg t "$1" '{content:[{text:$t}]}')"
   { printf '#!/usr/bin/env bash\ncat <<'"'"'DODB'"'"'\n'; printf '%s\n200\n' "$body"; printf 'DODB\n'; } > "$DODBIN/curl"
@@ -6077,6 +6101,22 @@ HOME="$EMHOME9" CLAUDE_PROJECT_DIR="$EMREPO9" bash "$HOOKS/sincronizar-tasklist.
   && ok "sembrar --write: respeta una tarea ya completed (no la resucita a pending)" \
   || bad "sembrar --write: RESUCITÓ una tarea completada (la pisó como pending)"
 
+# ── Caso 10 (M3, auditoría R3 2026-10-23): EXACTAMENTE 1 carpeta AJENA no-vacía con un in_progress (n>0) por
+#    FALLBACK NO debe pisar el bloque propio no-vacío. El anti-clobber viejo solo cubría n==0 → una tarea ajena
+#    reemplazaba la propia. FALLA contra 7fab8aa. ──
+EMHOME10="$EMFIX/c10home"; EMREPO10="$EMFIX/c10repo"; S10="GHOST10"
+mkdir -p "$EMHOME10/.claude/tasks/$S10"; _em_mkrepo "$EMREPO10"
+EMFILE_C10="$EMREPO10/.claude/memory/estado-proyecto.md"
+printf '{"id":"99","subject":"Mia","status":"pending"}' > "$EMHOME10/.claude/tasks/$S10/99.json"
+printf '{"session_id":"%s"}' "$S10" | HOME="$EMHOME10" CLAUDE_PROJECT_DIR="$EMREPO10" bash "$HOOKS/recordar-cosechar.sh" >/dev/null 2>&1  # espeja #99 al bloque (direct)
+rm -f "$EMHOME10/.claude/tasks/$S10"/*.json   # mi carpeta queda vacía/rotada → el sid ya NO resuelve direct
+mkdir -p "$EMHOME10/.claude/tasks/AJENA"; printf '{"id":"5","subject":"Tarea AJENA en curso","status":"in_progress"}' > "$EMHOME10/.claude/tasks/AJENA/5.json"; touch "$EMHOME10/.claude/tasks/AJENA"
+printf '{"session_id":"%s"}' "$S10" | HOME="$EMHOME10" CLAUDE_PROJECT_DIR="$EMREPO10" bash "$HOOKS/recordar-cosechar.sh" >/dev/null 2>&1
+grep -q '#5' "$EMFILE_C10" && bad "espejo M3: fallback a carpeta AJENA con in_progress (n>0) pisó el bloque propio con la tarea ajena #5 (hueco R3)" \
+  || ok "espejo M3: fallback a carpeta AJENA con in_progress (n>0) NO pisa el bloque propio no-vacío (anti-clobber extendido a n>0)"
+grep -q '#99' "$EMFILE_C10" && ok "espejo M3: la #99 propia se PRESERVA ante el fallback con tarea ajena" \
+  || bad "espejo M3: perdió la #99 propia (el fallback con n>0 pisó el bloque)"
+
 rm -rf "$EMFIX"
 
 # (b5h) recordar-unificar-cerebro: RETIRADO (puramente advisory, se ignoraba). Su regla subió a norma en
@@ -7337,7 +7377,15 @@ if [ -f "$SCRIPT_DIR/uninstall-brain.sh" ]; then
   _u_bad_rc=0; HOME="$FAKEHOME2" bash "$SCRIPT_DIR/uninstall-brain.sh" --foo >/dev/null 2>&1 || _u_bad_rc=$?
   { [ "$_u_bad_rc" = 2 ] && [ -f "$FAKEHOME2/.claude/hooks/merge-develop-guard.sh" ]; } \
     && ok "A2: opción desconocida → rc=2 y NO desinstala" || bad "A2: opción desconocida no dio rc=2 o mutó (rc=$_u_bad_rc)"
+  # M4 (auditoría R3 2026-10-23): el bloque (e2) @import de entorno-maquina mutaba CLAUDE.md INCLUSO en --dry-run
+  # (hacía `mv` directo, sin pasar por `_run`). Hash de CLAUDE.md ANTES/DESPUÉS del dry-run: deben ser IGUALES.
+  # FALLA contra 7fab8aa (donde el dry-run removía el @import). Se corre ANTES del uninstall REAL.
+  _m4_h1="$(shasum "$GCLAUDE2" 2>/dev/null | awk '{print $1}')"
   HOME="$FAKEHOME2" bash "$SCRIPT_DIR/uninstall-brain.sh" --dry-run >/dev/null 2>&1
+  _m4_h2="$(shasum "$GCLAUDE2" 2>/dev/null | awk '{print $1}')"
+  { [ -n "$_m4_h1" ] && [ "$_m4_h1" = "$_m4_h2" ]; } \
+    && ok "A2/M4: --dry-run NO muta CLAUDE.md (el bloque @import de entorno respeta DRY — hash intacto)" \
+    || bad "A2/M4: --dry-run MUTÓ CLAUDE.md (el bloque (e2) @import no respetó DRY; $_m4_h1 → $_m4_h2)"
   { [ -f "$FAKEHOME2/.claude/hooks/merge-develop-guard.sh" ] && [ -d "$FAKEHOME2/.claude/skills/cerrar-slice" ]; } \
     && ok "A2: --dry-run es MODO plan → NO muta (hook + skill del brain siguen)" || bad "A2: --dry-run mutó el cerebro instalado"
   HOME="$FAKEHOME2" bash "$SCRIPT_DIR/uninstall-brain.sh" >/dev/null 2>&1

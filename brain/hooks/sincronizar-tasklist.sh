@@ -157,8 +157,15 @@ espejar_tasklist() {
   # pendientes · +N completadas" — antes un tasklist terminado dejaba pendientes FANTASMA en el bloque para
   # siempre. Solo el camino `direct` lo permite: un fallback/none pudo resolver una carpeta ajena.
   ndone=$(_stl_ndone "$tasksdir")
-  if [ "$n" -eq 0 ] && _stl_bloque_no_vacio "$estado"; then
-    { [ "$_STL_RESOLV" = "direct" ] && [ "${ndone:-0}" -gt 0 ]; } || { printf 0; return 0; }
+  # ANTI-CLOBBER: si el bloque YA tiene contenido, SOLO una resolución DIRECTA de ESTA sesión (sid del payload)
+  # puede pisarlo. Una resolución por FALLBACK (ownership INCIERTA — pudo adoptar la carpeta de OTRO master) NO
+  # pisa un bloque bueno, ni con vacío ni con tareas. M3 (auditoría R3 2026-10-23): antes el anti-clobber solo
+  # cubría n==0, así que una carpeta AJENA con un in_progress (n>0, resuelta por fallback) reemplazaba el bloque
+  # propio no-vacío por una TAREA AJENA. EXCEPCIÓN del camino `direct` sin filas: solo pasa a "sin pendientes" si
+  # DE VERDAD terminó (ndone>0 → tasklist completado); si no (carpeta vacía/rotada), preserva (bug "+0 · sin pendientes").
+  if _stl_bloque_no_vacio "$estado"; then
+    [ "$_STL_RESOLV" = "direct" ] || { printf 0; return 0; }
+    { [ "$n" -eq 0 ] && [ "${ndone:-0}" -eq 0 ]; } && { printf 0; return 0; }
   fi
   local body; body=$(_stl_render_body "$rows" "$ndone")
 
@@ -224,6 +231,21 @@ sembrar_tasklist() {
     _stl_tasksdir ""   # carpeta INEQUÍVOCA (para next-start); con ≥2 activas no adivina → no escribe en ajena
     tasksdir="$_STL_DIR"
     if [ -n "$tasksdir" ] && [ -d "$tasksdir" ]; then
+      # M3 (auditoría R3 2026-10-23): `_stl_tasksdir ""` (sin sid) solo resuelve por FALLBACK (ownership
+      # incierta). Si la carpeta ya tiene tareas VIVAS (pending/in_progress) cuyo id NO está en NUESTRO bloque
+      # durable, es de OTRA sesión → NO la contaminamos escribiendo nuestras tareas (gemelo del anti-clobber de
+      # espejar, en la dirección inversa durable→json). Una carpeta vacía o solo-completadas (sesión propia
+      # rotada) no conflictúa → se siembra normal.
+      if [ "$_STL_RESOLV" != direct ]; then
+        local _blockids _fid _ff
+        _blockids=$(printf '%s\n' "$out" | cut -d'|' -f2)
+        for _ff in "$tasksdir"/*.json; do
+          [ -f "$_ff" ] || continue
+          [ "$(jq -r '.status // empty' "$_ff" 2>/dev/null)" = completed ] && continue
+          _fid=$(jq -r '.id // empty' "$_ff" 2>/dev/null); [ -n "$_fid" ] || continue
+          printf '%s\n' "$_blockids" | grep -qxF "$_fid" || return 0   # tarea viva AJENA → no sembramos aquí
+        done
+      fi
       while IFS='|' read -r st id subj; do
         [ -n "$id" ] || continue
         # NO RESUCITAR una tarea YA completada (MEDIO auditoría 2026-10-22): el bloque solo lista

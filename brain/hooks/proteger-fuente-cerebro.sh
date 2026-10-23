@@ -54,7 +54,10 @@ _settings_check() {
   # Escapes/perillas de guard que, puestos en el env de settings.json, el hook SÍ hereda (a diferencia de un
   # `FOO=1 git …` inline, que solo afecta a ESE comando). Incluye CUALQUIER CLAUDE_*JUEZ* (redirige/afloja el
   # juez de SEGURIDAD de merge/dod: backend local, URL remota, modelo, piso de cita, timeouts, votos).
-  local esc_re='CLAUDE_GIT_GUARD_SEED|CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL|CLAUDE_SKIP_[A-Z_]+|CLAUDE_[A-Z_]*JUEZ[A-Z_]*'
+  # ACG_* / AXON_OLLAMA_URL (BAJO R3 2026-10-23): perillas de la lib de git-guards / del backend del juez que,
+  # en el env de settings.json, cambian el comportamiento de los candados (ACG_PATH_AUGMENT=0 apaga el PATH-augment,
+  # ACG_EXTRA_BIN inyecta bins, AXON_OLLAMA_URL redirige el Ollama del juez) → defensa en profundidad, igual que CLAUDE_*JUEZ*.
+  local esc_re='CLAUDE_GIT_GUARD_SEED|CLAUDE_GIT_GUARD_SIN_JQ_PERSONAL|CLAUDE_SKIP_[A-Z_]+|CLAUDE_[A-Z_]*JUEZ[A-Z_]*|ACG_EXTRA_BIN|ACG_PATH_AUGMENT|AXON_OLLAMA_URL'
   tool=$(printf '%s' "$inp" | jq -r '.tool_name // empty' 2>/dev/null)
   case "$tool" in
     MultiEdit)
