@@ -8776,6 +8776,43 @@ printf '%s' "$f2out" | grep -qi 'hooks' \
   || bad "f2: el checker falló pero sin mencionar Hooks — ¿sigue siendo el chequeo de Skills el que reventó por otra razón?"
 rm -rf "$ASFIX"
 
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (f3) verificar-charts-sync (auditoría 2026-10-23): parity de los FLOWCHARTS vs el código =="
+# (1) baseline — los charts REALES (ya corregidos esta tanda) en paridad → ✅ (control: no hay falso rojo).
+if bash "$SCRIPT_DIR/../docs/flowcharts/verificar-charts-sync.sh" >/dev/null 2>&1; then
+  ok "f3: baseline (docs/flowcharts/*.dot + CONVENCIONES reales) → checker en ✅ (sin falso rojo)"
+else
+  bad "f3: baseline de flowcharts dio ❌ — revisa docs/flowcharts antes de confiar en el resto"
+fi
+# (2) fixture con los 3 tipos de drift que el checker DEBE cazar + el NO-FP de una mención histórica.
+CSX="$(mktemp -d "${TMPDIR:-/tmp}/brain-csx.XXXXXX")"
+mkdir -p "$CSX/docs/flowcharts" "$CSX/brain/hooks"
+cp "$SCRIPT_DIR/../docs/flowcharts/verificar-charts-sync.sh" "$CSX/docs/flowcharts/"
+printf 'ev_de() {\n  case "$1" in\n    merge-develop-guard|entorno-maquina-guard|no-bypass-deploy|proteger-arbol) echo "PreToolUse|Bash" ;;\n  esac\n}\n' > "$CSX/brain/install-brain.sh"
+printf 'git-branch-guard retirado hook\nmerge-develop-guard both hook\n' > "$CSX/brain/hooks/MANIFEST"; : > "$CSX/brain/hooks/RETIRED"
+csx() { bash "$CSX/docs/flowcharts/verificar-charts-sync.sh" 2>&1; }
+# baseline LIMPIO del fixture: tabla con 2 charts que existen, conteo 4, sin retirados vivos → ✅
+printf '| N\xc2\xba | T |\n| 03 | git-guards (fan-out de 4) |\n| 07 | zoom |\n' > "$CSX/docs/flowcharts/CONVENCIONES.md"
+printf 'digraph{ label="03 fan-out de 4"; }\n' > "$CSX/docs/flowcharts/03-x.dot"
+printf 'digraph{ label="07 raíz de 4"; }\n' > "$CSX/docs/flowcharts/07-y.dot"
+csx >/dev/null 2>&1 && ok "f3-fix: fixture LIMPIO (charts existen, conteo 4, sin retirados vivos) → ✅" || bad "f3-fix: el fixture limpio dio ❌ (el derivador de ev_de o los paths fallan)"
+# DRIFT A: chart FANTASMA (tabla lista 12, no hay 12-*.dot)
+printf '| 12 | orquestar |\n' >> "$CSX/docs/flowcharts/CONVENCIONES.md"
+csx | grep -q 'chart fantasma' && ok "f3-fix A: chart listado en CONVENCIONES sin su .dot → CAZA (chart fantasma)" || bad "f3-fix A: no cazó un chart fantasma"
+sed -i.bak '/| 12 |/d' "$CSX/docs/flowcharts/CONVENCIONES.md"
+# DRIFT B: conteo stale 'fan-out de 6' (≠ ev_de=4)
+printf 'digraph{ label="08 fan-out de 6"; }\n' > "$CSX/docs/flowcharts/08-z.dot"; printf '| 08 | x |\n' >> "$CSX/docs/flowcharts/CONVENCIONES.md"
+csx | grep -q 'conteo del fan-out' && ok "f3-fix B: 'fan-out de 6' con ev_de=4 → CAZA el conteo stale" || bad "f3-fix B: no cazó el conteo stale del fan-out"
+rm -f "$CSX/docs/flowcharts/08-z.dot"; sed -i.bak '/| 08 |/d' "$CSX/docs/flowcharts/CONVENCIONES.md"
+# DRIFT C: hook RETIRADO como VIVO (nodo, sin marca de retiro)
+printf 'digraph{ N [label="git-branch-guard frena el push directo"]; }\n' > "$CSX/docs/flowcharts/03-x.dot"
+csx | grep -q 'RETIRADO' && ok "f3-fix C: hook retirado nombrado como VIVO en un nodo → CAZA" || bad "f3-fix C: no cazó un hook retirado como vivo"
+# NO-FP: el MISMO retirado en un comentario // de historia → silencio
+printf 'digraph{ // git-branch-guard se CONSOLID\xc3\x93 en merge-develop-guard\n N [label="merge-develop-guard"]; }\n' > "$CSX/docs/flowcharts/03-x.dot"
+csx | grep -q 'RETIRADO' && bad "f3-fix: FP — avisó por una mención histórica en un comentario" || ok "f3-fix: mención histórica (comentario //) del retirado → silencio (no-FP, patrón #11)"
+rm -rf "$CSX"
+
 # ═════════════════════════════════════════════════════════════════════════════
 ### F4 SWEEPER
 # Sección DEMARCADA (para reconciliar con otros agentes sin choque): sweeper de flotilla

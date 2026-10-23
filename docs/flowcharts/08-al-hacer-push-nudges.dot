@@ -1,6 +1,6 @@
 // 08 — Al hacer push: qué corre y qué quedó como DISCIPLINA (cortex)  ·  FUENTE editable (.dot)
 // Render:  dot -Tsvg 08-al-hacer-push-nudges.dot -o 08-al-hacer-push-nudges.svg
-// ZOOM del fan-out de 6 hooks (raíz común en 03 · CONVENCIONES §6) sobre el nudge (🔔, no bloquea)
+// ZOOM del fan-out de 4 hooks (raíz común en 03 · CONVENCIONES §6) sobre el nudge (🔔, no bloquea)
 // de un `git push`, más los PostToolUse del MISMO comando (CONVENCIONES §6): 📈 aviso-contexto
 // foregrounded aquí, con cross-ref por Nº de archivo a **03** para el detalle de 🧹 barrer-ramas. ESTE
 // nudge no bloquea, pero el MISMO push pasa además por los guards DENY-capaces del fan-out de 03

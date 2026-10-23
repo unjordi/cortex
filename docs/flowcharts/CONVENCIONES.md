@@ -58,7 +58,7 @@ se CONSOLIDARON en ✋ merge-develop-guard el 2026-09-17; 📊 recordar-dashboar
 — tier `retirado` en el MANIFEST — y salieron de este fan-out.) En PostToolUse sobre ese Bash
 corren 📈 aviso-contexto (toda tool) + 🧹 barrer-ramas (Bash) — ninguno bloquea (🎼 recordar-orquestar y 🔀 hud-stale se RETIRARON overhaul 2026-09-18); los
 charts hacen foco en 📈 aviso-contexto (el watermark). El chart **03** es la VISTA de conjunto; sus **ZOOMS**
-—**06** (ruta de merge), **07** (proteger-arbol), **08** (nudges del push)— abren con esta MISMA raíz de 5
+—**06** (ruta de merge), **07** (proteger-arbol), **08** (nudges del push)— abren con esta MISMA raíz de 4
 y hacen zoom sobre su subconjunto de git-guards. Prohibido "cascada secuencial" o "los 2 hooks".
 
 ## 7. Leyenda a incrustar en cada `.dot` = el ÁRBOL COMPLETO del README (generado, NO tecleado)
@@ -91,6 +91,8 @@ Cada flowchart incrusta DOS cosas dentro de un `subgraph cluster_leyenda`:
 Cada flowchart = `.dot` (fuente) + `.svg` (vista) en `docs/flowcharts/`; `.png`/`.graphml` regenerables → gitignored.
 Render de UNO: `dot -Tsvg archivo.dot -o archivo.svg`. Regenerar TODOS (rutina, checa graphviz): `bash docs/flowcharts/gen-charts.sh` (además avisa si algún chart quedó ignorado). ⚠️ **Trampa del catch-all**: `docs/flowcharts/*` está gitignored por default → un chart NUEVO se pierde en `git add` salvo que le agregues su línea `!` en `.gitignore`. Cambió el código que un chart describe → se actualiza el `.dot` **y su `.svg`** en la misma tanda (doc=realidad).
 
+**Mecanismo anti-drift (doc=realidad verificable):** `bash docs/flowcharts/verificar-charts-sync.sh` (exit 0 = paridad; corre en `test-brain.sh` batería f3) verifica los charts contra el CÓDIGO: (1) esta tabla §9 ↔ los `.dot` reales (un chart listado sin archivo, o un `.dot` sin fila, da rojo — así se cazó el chart 12 fantasma); (2) ningún hook `retirado` del MANIFEST aparece como VIVO en un nodo (una mención en comentario `//` o con marca de retiro es historia legítima); (3) el conteo del fan-out PreToolUse/Bash citado en los charts (`fan-out de N` / `raíz de N`) == el real derivado de `ev_de` en `install-brain.sh`. Complementa a `gen-leyenda-arbol.sh --check` (drift de la LEYENDA incrustada) y `verificar-arbol-sync.sh` (catálogo del árbol).
+
 ## 9. La serie completa (01–14) y el mapeo del rescate 2026-08-07
 La serie **01–05** es la columna de VISTA de conjunto (rehecha 2026-08-01, fiel al código). Los **06–14** se
 **re-canonizaron el 2026-08-07** desde los SVG huérfanos que habían quedado *gitignored SIN `.dot` ni leyenda*
@@ -102,7 +104,7 @@ y se re-numeró para eliminar las colisiones (había dos 03, dos 04, dos 05) y e
 |---|---|---|---|
 | 01 | Instalación / actualización del cerebro | vista | (ya tracked) |
 | 02 | Ciclo de vida de la sesión | vista | (ya tracked; era «①») |
-| 03 | Enforcement de los git-guards (fan-out de 6) | VISTA de conjunto | (ya tracked) |
+| 03 | Enforcement de los git-guards (fan-out de 4, §6) | VISTA de conjunto | (ya tracked) |
 | 04 | Delegación / orquestar fan-out | VISTA de conjunto | (ya tracked) |
 | 05 | Continuidad: checkpoint→compact→rehidratar | vista | (ya tracked) |
 | 06 | Integrar una rama a develop/main | zoom de 03 (merge) | `03-integrar-rama-a-developmain` · ② |
@@ -111,7 +113,7 @@ y se re-numeró para eliminar las colisiones (había dos 03, dos 04, dos 05) y e
 | 09 | Declarar «LISTO» al fin de turno (dod-verificar) | detalle | `06-declarar-listo-al-fin-de-turno` · ⑤ |
 | 10 | Cerrar un slice: ritual de pasos | detalle | `07-cerrar-un-slice-ritual-de-pasos` · ⑥ |
 | 11 | Delegar un Task/agente | zoom de 04 | `08-delegar-un-taskagente` · ⑦ |
-| 12 | Orquestar un fan-out sin niñera | zoom de 04 | `09-orquestar-un-fan-out-sin-ninera` · ⑧ |
+| 12 | Orquestar un fan-out sin niñera | — NO MATERIALIZADO (su contenido vive en 04 + la skill `coordinar-claudes`; el nº 12 queda reservado, sin `.dot`) | `09-orquestar-un-fan-out-sin-ninera` · ⑧ |
 | 13 | Normas: el cimiento | cimiento | `10-normas-el-cimiento` · 📜 |
 | 14 | Referencia: libs compartidas + skills de stack | referencia | `11-referencia-libskill-de-stack` · 🔩 |
 

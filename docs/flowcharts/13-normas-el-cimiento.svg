@@ -66,7 +66,7 @@
 <text xml:space="preserve" text-anchor="start" x="540.5" y="-2451.5" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🚧 no&#45;bypass&#45;deploy</text>
 <polygon fill="#1b1712" stroke="none" points="1175.12,-2442.75 1175.12,-2468.5 3327.88,-2468.5 3327.88,-2442.75 1175.12,-2442.75"/>
 <polygon fill="none" stroke="#5fa89e" points="1175.12,-2442.75 1175.12,-2468.5 3327.88,-2468.5 3327.88,-2442.75 1175.12,-2442.75"/>
-<text xml:space="preserve" text-anchor="start" x="1868.62" y="-2451.12" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">correr el instalador/deploy a mano (install&#45;brain.sh/deploy.sh) en vez de la herramienta oficial (el widget) → avisa (fail&#45;safe: no &#45;&#45;dry&#45;run/&#45;&#45;help/CI)</text>
+<text xml:space="preserve" text-anchor="start" x="1717.12" y="-2451.12" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">correr el instalador/deploy a mano (install&#45;brain.sh/deploy.sh, helm/kubectl apply &#45;f, aun tras sudo/nohup/VAR=/source) en vez de la herramienta oficial (el widget) → avisa (fail&#45;safe: no &#45;&#45;dry&#45;run/&#45;&#45;help/CI)</text>
 <polygon fill="#1b1712" stroke="none" points="16.12,-2417 16.12,-2442.75 1175.12,-2442.75 1175.12,-2417 16.12,-2417"/>
 <polygon fill="none" stroke="#5fa89e" points="16.12,-2417 16.12,-2442.75 1175.12,-2442.75 1175.12,-2417 16.12,-2417"/>
 <text xml:space="preserve" text-anchor="start" x="550.62" y="-2425.75" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🌳 proteger&#45;arbol</text>
@@ -78,7 +78,7 @@
 <text xml:space="preserve" text-anchor="start" x="525.5" y="-2400" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🛡️ proteger&#45;fuente&#45;cerebro</text>
 <polygon fill="#1b1712" stroke="none" points="1175.12,-2391.25 1175.12,-2417 3327.88,-2417 3327.88,-2391.25 1175.12,-2391.25"/>
 <polygon fill="none" stroke="#5fa89e" points="1175.12,-2391.25 1175.12,-2417 3327.88,-2417 3327.88,-2391.25 1175.12,-2391.25"/>
-<text xml:space="preserve" text-anchor="start" x="1925.62" y="-2399.62" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">editar la copia INSTALADA de un hook/skill que tiene fuente en el clon → avisa (se perdería en el próximo sync) (GLOBAL)</text>
+<text xml:space="preserve" text-anchor="start" x="1611" y="-2399.62" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">editar la copia INSTALADA de un hook/skill que tiene fuente en el clon → avisa (se perdería en el próximo sync); + un Edit a settings.json que decablea un hook del cerebro o agrega un escape de guard → avisa (tu propio candado) (GLOBAL)</text>
 <polygon fill="#1b1712" stroke="none" points="16.12,-2365.5 16.12,-2391.25 1175.12,-2391.25 1175.12,-2365.5 16.12,-2365.5"/>
 <polygon fill="none" stroke="#5fa89e" points="16.12,-2365.5 16.12,-2391.25 1175.12,-2391.25 1175.12,-2365.5 16.12,-2365.5"/>
 <text xml:space="preserve" text-anchor="start" x="554" y="-2374.25" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🧹 barrer&#45;ramas</text>
@@ -509,7 +509,7 @@
 <text xml:space="preserve" text-anchor="middle" x="3617" y="-263.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">📜 🚧 Actualiza por la HERRAMIENTA REAL, nunca el instalador a mano</text>
 <text xml:space="preserve" text-anchor="middle" x="3617" y="-247.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">un install.sh/deploy.sh corrido crudo se salta backup+atómico+sello+verificación</text>
 <text xml:space="preserve" text-anchor="middle" x="3617" y="-235.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">(excepción: &#45;&#45;dry&#45;run/&#45;&#45;help/&#45;n, o correr dentro de CI)</text>
-<text xml:space="preserve" text-anchor="middle" x="3617" y="-222.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">— no&#45;opea sobre git; parte del fan&#45;out de 6 en 03 · 06 · 07 (sin detalle propio)</text>
+<text xml:space="preserve" text-anchor="middle" x="3617" y="-222.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">— no&#45;opea sobre git; parte del fan&#45;out de 4 en 03 · 06 · 07 (sin detalle propio)</text>
 </g>
 <!-- HERRAMIENTA&#45;&gt;MAQUINA -->
 <!-- CORREO&#45;&gt;HERRAMIENTA -->

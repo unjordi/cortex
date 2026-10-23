@@ -17,7 +17,7 @@
 <g id="clust2" class="cluster">
 <title>cluster_f0</title>
 <path fill="#1b1712" stroke="#5fa89e" stroke-width="1.6" d="M3356,-8C3356,-8 4712,-8 4712,-8 4718,-8 4724,-14 4724,-20 4724,-20 4724,-1723.75 4724,-1723.75 4724,-1729.75 4718,-1735.75 4712,-1735.75 4712,-1735.75 3356,-1735.75 3356,-1735.75 3350,-1735.75 3344,-1729.75 3344,-1723.75 3344,-1723.75 3344,-20 3344,-20 3344,-14 3350,-8 3356,-8"/>
-<text xml:space="preserve" text-anchor="middle" x="4034" y="-1718.45" font-family="Times" font-size="14.00" fill="#5fa89e">07 · Comando git en Bash: guards que lo inspeccionan &#160;&#160;(ZOOM del fan&#45;out de 5 de 03 · 🔔 proteger&#45;arbol avisa)</text>
+<text xml:space="preserve" text-anchor="middle" x="4034" y="-1718.45" font-family="Times" font-size="14.00" fill="#5fa89e">07 · Comando git en Bash: guards que lo inspeccionan &#160;&#160;(ZOOM del fan&#45;out de 4 de 03 · 🔔 proteger&#45;arbol avisa)</text>
 </g>
 <!-- LEY_ARBOL -->
 <g id="node1" class="node">
@@ -65,7 +65,7 @@
 <text xml:space="preserve" text-anchor="start" x="540.5" y="-2085.75" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🚧 no&#45;bypass&#45;deploy</text>
 <polygon fill="#1b1712" stroke="none" points="1175.12,-2077 1175.12,-2102.75 3327.88,-2102.75 3327.88,-2077 1175.12,-2077"/>
 <polygon fill="none" stroke="#5fa89e" points="1175.12,-2077 1175.12,-2102.75 3327.88,-2102.75 3327.88,-2077 1175.12,-2077"/>
-<text xml:space="preserve" text-anchor="start" x="1868.62" y="-2085.38" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">correr el instalador/deploy a mano (install&#45;brain.sh/deploy.sh) en vez de la herramienta oficial (el widget) → avisa (fail&#45;safe: no &#45;&#45;dry&#45;run/&#45;&#45;help/CI)</text>
+<text xml:space="preserve" text-anchor="start" x="1717.12" y="-2085.38" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">correr el instalador/deploy a mano (install&#45;brain.sh/deploy.sh, helm/kubectl apply &#45;f, aun tras sudo/nohup/VAR=/source) en vez de la herramienta oficial (el widget) → avisa (fail&#45;safe: no &#45;&#45;dry&#45;run/&#45;&#45;help/CI)</text>
 <polygon fill="#1b1712" stroke="none" points="16.12,-2051.25 16.12,-2077 1175.12,-2077 1175.12,-2051.25 16.12,-2051.25"/>
 <polygon fill="none" stroke="#5fa89e" points="16.12,-2051.25 16.12,-2077 1175.12,-2077 1175.12,-2051.25 16.12,-2051.25"/>
 <text xml:space="preserve" text-anchor="start" x="550.62" y="-2060" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🌳 proteger&#45;arbol</text>
@@ -77,7 +77,7 @@
 <text xml:space="preserve" text-anchor="start" x="525.5" y="-2034.25" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🛡️ proteger&#45;fuente&#45;cerebro</text>
 <polygon fill="#1b1712" stroke="none" points="1175.12,-2025.5 1175.12,-2051.25 3327.88,-2051.25 3327.88,-2025.5 1175.12,-2025.5"/>
 <polygon fill="none" stroke="#5fa89e" points="1175.12,-2025.5 1175.12,-2051.25 3327.88,-2051.25 3327.88,-2025.5 1175.12,-2025.5"/>
-<text xml:space="preserve" text-anchor="start" x="1925.62" y="-2033.88" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">editar la copia INSTALADA de un hook/skill que tiene fuente en el clon → avisa (se perdería en el próximo sync) (GLOBAL)</text>
+<text xml:space="preserve" text-anchor="start" x="1611" y="-2033.88" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">editar la copia INSTALADA de un hook/skill que tiene fuente en el clon → avisa (se perdería en el próximo sync); + un Edit a settings.json que decablea un hook del cerebro o agrega un escape de guard → avisa (tu propio candado) (GLOBAL)</text>
 <polygon fill="#1b1712" stroke="none" points="16.12,-1999.75 16.12,-2025.5 1175.12,-2025.5 1175.12,-1999.75 16.12,-1999.75"/>
 <polygon fill="none" stroke="#5fa89e" points="16.12,-1999.75 16.12,-2025.5 1175.12,-2025.5 1175.12,-1999.75 16.12,-1999.75"/>
 <text xml:space="preserve" text-anchor="start" x="554" y="-2008.5" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🧹 barrer&#45;ramas</text>
@@ -346,7 +346,7 @@
 <title>CMD</title>
 <path fill="#232323" stroke="#8a8a8a" stroke-width="1.5" d="M4460.88,-1701C4460.88,-1701 3853.12,-1701 3853.12,-1701 3847.12,-1701 3841.12,-1695 3841.12,-1689 3841.12,-1689 3841.12,-1666.75 3841.12,-1666.75 3841.12,-1660.75 3847.12,-1654.75 3853.12,-1654.75 3853.12,-1654.75 4460.88,-1654.75 4460.88,-1654.75 4466.88,-1654.75 4472.88,-1660.75 4472.88,-1666.75 4472.88,-1666.75 4472.88,-1689 4472.88,-1689 4472.88,-1695 4466.88,-1701 4460.88,-1701"/>
 <text xml:space="preserve" text-anchor="middle" x="4157" y="-1685.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">comando Bash con git (PreToolUse/Bash)</text>
-<text xml:space="preserve" text-anchor="middle" x="4157" y="-1672.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">los 5 hooks lo reciben EN PARALELO, sin despachador (ver 03 —4 inspeccionan git, no&#45;bypass&#45;deploy no&#45;opea—).</text>
+<text xml:space="preserve" text-anchor="middle" x="4157" y="-1672.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">los 4 hooks lo reciben EN PARALELO, sin despachador (ver 03 —3 inspeccionan git, no&#45;bypass&#45;deploy no&#45;opea—).</text>
 <text xml:space="preserve" text-anchor="middle" x="4157" y="-1660.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">ZOOM aquí: proteger&#45;arbol (integridad del árbol)</text>
 </g>
 <!-- ARB -->
