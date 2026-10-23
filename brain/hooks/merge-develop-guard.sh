@@ -550,6 +550,58 @@ if [ "$_ventana_sin_usuario" = 1 ] && [ -n "$tpath" ] && [ -f "$tpath" ]; then
   tail -n 6000 "$tpath" 2>/dev/null | grep -qE '"(role|type)"[[:space:]]*:[[:space:]]*"user"|"queued_command"' && _jq_fallo=1
 fi
 
+# A1 (auditoría 2026-10-22): el grant durable lo podría ESCRIBIR el propio agente (ningún guard frena la
+# escritura de autorizaciones-vigentes.local.md) → auto-autorización. Por eso un grant SOLO cuenta si su
+# `cita="…"` aparece LITERAL en un mensaje de USUARIO de algún transcript (~/.claude/projects o el de
+# CLAUDE_CONFIG_DIR). Sin cita verificable → el grant NO se honra → cae al juez (misma doctrina que el veto de
+# cita del juez: re-verificar en bash lo que una capa menos confiable afirma).
+_grant_cita_verificada() {   # $1 = línea de grant → 0 si su cita aparece en un mensaje de usuario HUMANO
+  local grant="$1" cita d f _cfgp _homep
+  command -v jq >/dev/null 2>&1 || return 1          # sin jq no se puede filtrar "humano" con rigor → no honra
+  cita=$(printf '%s' "$grant" | sed -n 's/.*cita="\([^"]*\)".*/\1/p')
+  [ -n "$cita" ] || return 1
+  _cfgp="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects"; _homep="$HOME/.claude/projects"
+  for d in "$_cfgp" "$_homep"; do
+    [ -d "$d" ] || continue
+    # Solo jq-parsea los .jsonl que CONTIENEN la cita (grep pre-filtra, barato). AUTORIDAD HUMANA ESTRICTA
+    # (misma doctrina que acg_recent_intercalado del juez): un `"type":"user"` NO basta — también lo son los
+    # tool_result, los <cross-session-message> de otra sesión, los <task-notification>, los isMeta y el
+    # isCompactSummary → otra sesión fabricaría el grant por SendMessage. Solo cuenta un mensaje de usuario
+    # con texto HUMANO: type/role user, SIN isMeta/isCompactSummary, texto de bloques `text` (NO tool_result),
+    # que NO empiece con los wrappers inyectados (cross-session/task-notification/command-message/
+    # system-reminder/"This session is being continued"), y que contenga la cita.
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      jq -rs --arg cita "$cita" '
+        any(.[];
+          ( ((.type? // "") == "user") or ((.message.role? // "") == "user") )
+          and ((.isMeta // false) != true)
+          and ((.isCompactSummary // false) != true)
+          and (
+            ( if ((.type? // "") == "attachment")
+                   and ((.attachment.type? // "") == "queued_command")
+                   and ((.attachment.origin.kind? // "") == "human")
+                then ((.attachment.prompt? // "")
+                      | if type=="array" then ([ .[]|select(.type?=="text")|.text ]|join(" "))
+                        elif type=="string" then . else "" end)
+                else ((.message.content // .message // "")
+                      | if type=="array" then (map(if type=="string" then . elif (.type?=="text") then .text else "" end)|join(" "))
+                        elif type=="string" then . else "" end)
+              end ) as $t
+            | ($t|type)=="string" and ($t != "")
+            and ($t | test("^\\s*<(cross-session-message|task-notification|command-message|system-reminder)") | not)
+            and ($t | test("^\\s*This session is being continued") | not)
+            and ($t | contains($cita))
+          )
+        )' "$f" 2>/dev/null | grep -q true && return 0
+    done <<EOF
+$(grep -rlF -- "$cita" "$d" --include='*.jsonl' 2>/dev/null)
+EOF
+    [ "$_cfgp" = "$_homep" ] && break   # dedupe cuando CLAUDE_CONFIG_DIR == ~/.claude
+  done
+  return 1
+}
+
 # Grant DURABLE (turno-nocturno): un OK persistido a disco cubre scope=merge-develop (NUNCA main). Fast-path
 # antes del LLM. SOLO se honra con destino CONFIRMADO 'develop' (con destino desconocido
 # SIEMPRE cae al juez, cuyo fail-safe es DENY — nunca cuela un release por un grant de develop).
@@ -557,10 +609,13 @@ if [ "$destino" = "develop" ]; then
   AUTH_FILE="$TARGET_ROOT/.claude/memory/autorizaciones-vigentes.local.md"
   if [ -f "$AUTH_FILE" ]; then
     now_epoch=$(date +%s)
-    grant=$(awk -v now="$now_epoch" '/scope=merge-develop/ && match($0, /vence_epoch=[0-9]+/) {
+    # Anclado al INICIO de una LÍNEA DE GRANT (`scope=merge-develop ` al inicio, con `- ` opcional) + espacio
+    # tras `merge-develop`: una mención en prosa/comentario o un prefijo `scope=merge-develop-nunca` NO cuenta
+    # (antes `/scope=merge-develop/` casaba en cualquier posición de cualquier línea).
+    grant=$(awk -v now="$now_epoch" '/^([[:space:]]*-[[:space:]]+)?scope=merge-develop[[:space:]]/ && match($0, /vence_epoch=[0-9]+/) {
         if (substr($0, RSTART+12, RLENGTH-12) + 0 > now) { print; exit }
       }' "$AUTH_FILE" 2>/dev/null)
-    [ -n "$grant" ] && _salir_ok
+    [ -n "$grant" ] && _grant_cita_verificada "$grant" && _salir_ok
   fi
 fi
 
