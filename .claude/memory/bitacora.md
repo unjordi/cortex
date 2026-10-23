@@ -152,3 +152,9 @@ type: project
 - C4: merge-develop-guard salía _salir_ok por "personal" antes del destino → merge a MAIN sin OK. Fix: skip personal solo con destino=develop (main/empty→juez/piso). Ripple en ms→msAuth, A2-scope, b4-guard, M4, H4. DECISIÓN de unjordi pendiente (norma main release-only en todo repo).
 - Suite estabilizándose a 0 FAIL tras ~14 ripple-fixes de tests (getcwd por cd del shell principal en LR3 → subshell; stubs gh/gitleaks en tests de cerrar-slice; fixtures squash real).
 - PENDIENTE: D1 (sincronizar-tasklist marcador substring→nxF), A1-A4+A6, MEDIOs claros, charts. Backlog en estado-proyecto (G).
+
+## 2026-10-22 · auditoría tanda 2 (ventana reseteada) — D1+A2+A3+A4+hermeticidad+A1
+- D1 (286a540): sincronizar-tasklist marcador substring→grep -nxF + fail-safe (≠1 par → no toca). Test espejo Caso 6.
+- A2+A3+A4+hermeticidad (90f85bf): uninstall-brain parseo args+dry-run MODO+skills del glob+CONFIG_DIR · proteger-ramas POST-directo+verifica+exit≠0 (override PROTEGER_RAMAS_GLAB) · publicar-roster CONFIG_DIR · cerrar-slice tests en toy-repo feat/x (hermético vs checkout DETACHED de CI, hallazgo de claudio). Suite 1387·0.
+- A1 (en worktree, suite corriendo): grant autoescribible → anclar awk + _grant_cita_verificada (cita en mensaje HUMANO de transcript, filtro autoridad-humana jq; cerró el vector SendMessage/tool_result de claudio). Ripple: transcripts sembrados en b1f/cmd-cross/CRÍTICO-3.
+- PENDIENTE: A6 (macos cortex-fetch esquema equiv_*), MEDIOs claros, charts. Backlog en estado-proyecto (G).
