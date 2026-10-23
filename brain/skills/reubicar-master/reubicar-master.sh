@@ -1089,6 +1089,37 @@ else
   echo "  (ya movido: el export de esta corrida no aplica; el .gz previo sigue siendo la capa 3)"
 fi
 
+# ── PREFLIGHT T2 (MEDIO auditoría 2026-10-22) ────────────────────────────────────────────────────
+# El conflicto T2 que ABORTA se detectaba SOLO en S5, DESPUÉS del PUNTO DE NO RETORNO de S4 → un
+# conflicto dejaba la mudanza A MEDIAS (refs/transcript/masters.json/alias ya movidos, identidad NO
+# depositada). Se adelanta el MISMO chequeo (READ-ONLY) a AQUÍ, antes de cruzar S4: si un archivo T2
+# NO-hilo difiere en el destino, aborta mientras TODO sigue reversible. El depósito real sigue en S5
+# (que conserva su propio chequeo como defensa en profundidad). Los hilos NO cuentan (se co-ubican en S5).
+# >>> PREFLIGHT-T2-BLOCK (extraíble para test) >>>
+if [ "$YA_MOVIDO" -eq 0 ] && [ -f "$DRIVE/$ID.brain-local.tgz" ]; then
+  echo "── preflight T2 (conflicto ANTES del punto de no retorno) ──"
+  _pt2="$(mktemp -d)"; tar -C "$_pt2" -xzf "$DRIVE/$ID.brain-local.tgz"
+  find "$_pt2" -type f -print > "$_pt2.lista"
+  _pdst_de(){ if [ "$1" = "$T2_ROOT" ]; then printf '%s' "$DST_POSIX/$T2_ROOT"; else printf '%s' "$DST/memory/$1"; fi; }
+  _p_es_hilo(){ case "${1##*/}" in hilo-mental-*) return 0 ;; *) return 1 ;; esac; }
+  _pconf=0
+  while IFS= read -r _pp; do
+    _pf="${_pp#$_pt2/}"; _pd="$(_pdst_de "$_pf")"
+    if [ -e "$_pd" ] && ! diff -q "$_pp" "$_pd" >/dev/null 2>&1 && ! _p_es_hilo "$_pf"; then
+      echo "    CONFLICTO T2 (preflight): '$_pf' existe DISTINTO en el destino"
+      echo "      destino: $_pd"; echo "      bundle : $_pp"
+      _pconf=1
+    fi
+  done < "$_pt2.lista"
+  rm -rf "$_pt2" "$_pt2.lista"
+  if [ "$_pconf" -eq 1 ]; then
+    _abort "ABORTO preflight-T2: un archivo T2 (identidad/autorizaciones) difiere en el destino y es gitignored (git NO lo recupera)." \
+           "  Reconcilia a mano (diff + merge en el destino) y re-corre. Nada se ha mutado aún (estás ANTES del PUNTO DE NO RETORNO de S4)."
+  fi
+  echo "  ok: sin conflictos T2 no-hilo (los hilos se co-ubican en S5) ⇒ seguro cruzar S4"
+fi
+# <<< PREFLIGHT-T2-BLOCK <<<
+
 # ── S4 · bloque ININTERRUMPIDO. Todo lo verificable se hizo ARRIBA; de aquí en adelante el diseño
 #    es "no abortar donde continuar es inofensivo, y abortar solo donde es obligatorio", dejando
 #    siempre el paso alcanzado en $ST para que la reanudación sea por ESTADO y no por adivinanza. ─

@@ -9559,6 +9559,39 @@ done <<< "$R2MARC"
   && ok "r2-3 paridad handoff: los $r2mn marcadores del candado están en líneas ejecutables del generador" \
   || bad "r2-3 paridad handoff: $r2mf de $r2mn marcadores faltan (o no se pudo leer la lista del candado)"
 
+# ── r2-preflight (MEDIO auditoría 2026-10-22): el conflicto T2 que ABORTA se detectaba SOLO en S5, DESPUÉS
+#    del PUNTO DE NO RETORNO de S4 → la mudanza quedaba A MEDIAS. Se adelantó un preflight READ-ONLY.
+# (a) ORDEN: el chequeo de conflicto T2 aparece ANTES del punto de no retorno en el propio código.
+r2pf=$(grep -n 'PREFLIGHT-T2-BLOCK (extra' "$R2SH" | head -1 | cut -d: -f1)
+r2pnr=$(grep -n 'PUNTO DE NO RETORNO: session-move' "$R2SH" | head -1 | cut -d: -f1)
+{ [ -n "$r2pf" ] && [ -n "$r2pnr" ] && [ "$r2pf" -lt "$r2pnr" ] 2>/dev/null; } \
+  && ok "r2-preflight ORDEN: el conflicto T2 se chequea ANTES del PUNTO DE NO RETORNO de S4" \
+  || bad "r2-preflight ORDEN: el conflicto T2 no precede al punto de no retorno (preflight=$r2pf · pnr=$r2pnr)"
+# (b) EFECTO: se EXTRAE el bloque y se EJECUTA sobre fixtures. Un T2 NO-hilo distinto en el destino →
+#     ABORTA; un hilo distinto, un T2 idéntico o un T2 ausente → NO aborta. Falla vs el viejo (no hay bloque).
+R2PFBLK="$(sed -n '/>>> PREFLIGHT-T2-BLOCK/,/<<< PREFLIGHT-T2-BLOCK/p' "$R2SH")"
+_r2pf_run() {  # $1=bundle-file $2=bundle-content $3=dest-content("" = no crear) → ABORT|NO-ABORT
+  local F; F="$(mktemp -d)"; local DRV="$F/drive" DS="$F/dst" _id="s1" _tr="CLAUDE.local.md" STG="$F/stg"
+  mkdir -p "$DRV" "$DS/memory" "$STG"
+  printf '%s' "$2" > "$STG/$1"; tar -C "$STG" -czf "$DRV/$_id.brain-local.tgz" "$1" 2>/dev/null
+  if [ -n "$3" ]; then if [ "$1" = "$_tr" ]; then printf '%s' "$3" > "$DS/$1"; else printf '%s' "$3" > "$DS/memory/$1"; fi; fi
+  ( _abort(){ exit 42; }; YA_MOVIDO=0; DRIVE="$DRV"; ID="$_id"; T2_ROOT="$_tr"; DST_POSIX="$DS"; DST="$DS"; eval "$R2PFBLK"; echo NO-ABORT ) >/dev/null 2>&1
+  local rc=$?; rm -rf "$F"; [ "$rc" = 42 ] && echo ABORT || echo NO-ABORT
+}
+if [ -n "$R2PFBLK" ]; then
+  [ "$(_r2pf_run 'conocimiento-propio.local.md' A B)" = ABORT ] \
+    && ok "r2-preflight EFECTO: un T2 NO-hilo distinto en el destino → ABORTA (antes de cruzar S4)" \
+    || bad "r2-preflight EFECTO: no abortó ante un conflicto T2 no-hilo"
+  [ "$(_r2pf_run 'conocimiento-propio.local.md' A A)" = NO-ABORT ] \
+    && ok "r2-preflight EFECTO: T2 idéntico → NO aborta" || bad "r2-preflight EFECTO: abortó con T2 idéntico (FP)"
+  [ "$(_r2pf_run 'conocimiento-propio.local.md' A '')" = NO-ABORT ] \
+    && ok "r2-preflight EFECTO: T2 ausente en el destino → NO aborta (se deposita fresco en S5)" || bad "r2-preflight EFECTO: abortó con T2 ausente (FP)"
+  [ "$(_r2pf_run 'hilo-mental-actual.md' A B)" = NO-ABORT ] \
+    && ok "r2-preflight EFECTO: un HILO distinto NO es conflicto (se co-ubica en S5)" || bad "r2-preflight EFECTO: trató el hilo como conflicto"
+else
+  bad "r2-preflight EFECTO: no se extrajo el bloque PREFLIGHT-T2-BLOCK (¿marcadores borrados?)"
+fi
+
 # (r2-4 ANCLA skill↔bin se retiró: comparaba la PROSA del SKILL.md contra palabras HARDCODEADAS en el test
 #  —writeFileSync/umask/512MiB/--git-branch/readFileSync/fail-open— no DERIVADAS del código, así que
 #  reescribir la prosa con otras palabras lo rompía sin que nada estuviera mal. Clase g4/m1. Ruling de
