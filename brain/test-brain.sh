@@ -2738,6 +2738,26 @@ o="$(printf '%s' "{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$PFH/c
 # (los source-greps estáticos de proteger-fuente se retiraron: los casos (1)-(7c) CORREN el hook y miden
 #  su efecto —avisa con fuente / clon infra / silencio local-desarrollo / escape / fail-open—; el lint de
 #  $HOME hardcodeado lo cubre e6.3 global; su línea en el MANIFEST y su cableado, la paridad e2 / e6d / e7.)
+# (8) settings.json — AVISO DIRIGIDO (MEDIO auditoría 2026-10-22): editar TU PROPIO candado. Solo avisa si
+# el Edit (a) quita/cambia el cableado de un hook del MANIFEST, o (b) agrega un escape de guard; NO en toda
+# edición (permisos/env/tema legítimos → silencio). Falla vs el viejo (que no tenía el caso settings.json).
+printf 'merge-develop-guard both hook\nno-bypass-deploy both hook\n' > "$PFB/brain/hooks/MANIFEST"
+pfset() {  # $1=old_string $2=new_string → additionalContext de un Edit a ~/.claude/settings.json
+  jq -nc --arg f "$PFH/.claude/settings.json" --arg o "$1" --arg n "$2" '{tool_name:"Edit",tool_input:{file_path:$f,old_string:$o,new_string:$n}}' \
+    | HOME="$PFH" CLAUDE_BRAIN_DIR="$PFB" bash "$HOOKS/proteger-fuente-cerebro.sh" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null
+}
+o="$(pfset '{"command":"bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/merge-develop-guard.sh\""}' '')"
+printf '%s' "$o" | grep -q 'merge-develop-guard' \
+  && ok "proteger-fuente settings: quitar el cableado de un hook del cerebro → AVISA (tu propio candado)" \
+  || bad "proteger-fuente settings: no avisó al decablear un hook del cerebro; got: $o"
+o="$(pfset '"env": {' '"env": { "CLAUDE_SKIP_SECRET_SCAN": "1",')"
+printf '%s' "$o" | grep -q 'ESCAPE de guard' \
+  && ok "proteger-fuente settings: agregar un escape de guard (CLAUDE_SKIP_*) en env → AVISA" \
+  || bad "proteger-fuente settings: no avisó al agregar un escape de guard; got: $o"
+o="$(pfset '"allow": [' '"allow": [ "Bash(npm test)",')"
+[ -z "$o" ] && ok "proteger-fuente settings: agregar un permiso Bash legítimo → silencio (no toda edición avisa)" || bad "proteger-fuente settings: FP en un permiso legítimo; got: $o"
+o="$(pfset '"theme": "dark"' '"theme": "light"')"
+[ -z "$o" ] && ok "proteger-fuente settings: cambiar una opción benigna (tema) → silencio" || bad "proteger-fuente settings: FP al cambiar el tema; got: $o"
 rm -rf "$PFFIX"
 
 # ─────────────────────────────────────────────────────────────────────────────
