@@ -15,6 +15,8 @@
 #   despertar-master.sh <nombre> --mensaje <archivo>   lo despierta y le entrega <archivo> como su primer
 #                                       mensaje (prompt inicial del resume; no depende de teclear en la TUI)
 #   despertar-master.sh --cerrar <nombre>   cierra la sesión (proceso claude + screen) y verifica que cerró
+#   despertar-master.sh --curar         (re)genera el roster LOCAL ~/.claude/masters.json desde los
+#                                       transcripts vivos de *-master (curado de ids idle se conserva)
 #   despertar-master.sh --help|-h       esta ayuda
 #
 # Overrides: $DESPERTAR_VIVA_MIN (min para considerar viva una sesión, def 15) ·
@@ -223,8 +225,35 @@ cerrar() {
   echo "[despertar-master] '$nombre' cerrado (sin proceso ni screen)."
 }
 
+# --curar → (re)genera el ROSTER LOCAL (~/.claude/masters.json, honra CLAUDE_CONFIG_DIR) desde los
+# transcripts VIVOS de *-master: un master vivo ACTUALIZA su entrada {id,name,target} (target = cwd RESUELTO
+# —worktree→repo principal— con el prefijo $HOME quitado); las entradas curadas de ids NO vistos ahora se
+# CONSERVAN (no se borra un master idle). publicar-roster lo publica como masters-<host>.json y seed lo une.
+curar() {
+  local roster="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/masters.json" live
+  command -v node >/dev/null 2>&1 || { echo "[despertar-master] --curar necesita node" >&2; return 1; }
+  mkdir -p "$(dirname "$roster")" 2>/dev/null || true
+  live="$(_tabla | while IFS=$'\t' read -r edad t id cwd _; do
+            [ -n "$t" ] && [ -n "$id" ] || continue
+            printf '%s\t%s\t%s\n' "$id" "$t" "${cwd#"$HOME/"}"
+          done)"
+  printf '%s' "$live" | node -e '
+    const fs=require("fs"), roster=process.argv[1];
+    const m=new Map();
+    try{ const j=JSON.parse(fs.readFileSync(roster,"utf8")); for(const e of (j.masters||[])) if(e&&e.id) m.set(e.id,{id:e.id,name:e.name||e.id,target:e.target||""}); }catch(_){}
+    let upd=0;
+    for(const ln of fs.readFileSync(0,"utf8").split("\n").filter(Boolean)){
+      const [id,name,target]=ln.split("\t"); if(!id) continue;
+      m.set(id,{id,name:name||id,target:target||""}); upd++;
+    }
+    fs.writeFileSync(roster, JSON.stringify({masters:[...m.values()]},null,2)+"\n");
+    process.stderr.write("[despertar-master] roster curado: "+roster+" ("+m.size+" master(s); "+upd+" vivo(s) refrescado(s))\n");
+  ' "$roster"
+}
+
 case "${1:-}" in
   ""|--lista|-l)     listar ;;
+  --curar)           curar ;;
   --cerrar)          [ -n "${2:-}" ] || { echo "[despertar-master] uso: --cerrar <nombre>" >&2; exit 2; }; cerrar "$2" ;;
   --help|-h)         uso ;;
   --*)               echo "[despertar-master] opción desconocida: $1" >&2; uso >&2; exit 2 ;;

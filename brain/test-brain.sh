@@ -7699,6 +7699,34 @@ else
   bad "publicar-roster: falta el script $PR"
 fi
 
+# ── despertar-master --curar (Opción A, #1 claudio): el CURADOR del roster LOCAL, que faltaba ──
+echo "== despertar-master --curar: (re)genera ~/.claude/masters.json desde los transcripts vivos de *-master =="
+DM="$HOOKS/../skills/coordinar-claudes/despertar-master.sh"
+if [ -f "$DM" ] && command -v node >/dev/null 2>&1; then
+  CURR="$(mktemp -d "${TMPDIR:-/tmp}/brain-curar.XXXXXX")"; CRH="$CURR/home"; CRP="$CURR/proj"; CRC="$CURR/cfg"
+  mkdir -p "$CRH/code/cortex" "$CRP/slug1" "$CRC"
+  printf '{"type":"user"}\n{"customTitle":"cortex-master"}\n{"cwd":"%s/code/cortex"}\n' "$CRH" > "$CRP/slug1/a6d50000-0000-0000-0000-000000000001.jsonl"
+  # roster PREEXISTENTE con un id idle curado (no vivo) → debe CONSERVARSE
+  printf '{"masters":[{"id":"old-idle-id","name":"axon-master","target":"code/axon"}]}\n' > "$CRC/masters.json"
+  HOME="$CRH" CLAUDE_CONFIG_DIR="$CRC" CLAUDE_PROJECTS_DIR="$CRP" DESPERTAR_VIVA_MIN=0 bash "$DM" --curar >/dev/null 2>&1
+  # el master VIVO quedó en el roster LOCAL con su target derivado (cwd sin el prefijo $HOME)
+  cr_live="$(node -e 'const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).masters; const e=m.find(x=>x.name==="cortex-master"); process.stdout.write(e?e.target:"")' "$CRC/masters.json" 2>/dev/null)"
+  [ "$cr_live" = "code/cortex" ] \
+    && ok "--curar: el master VIVO se escribe al roster LOCAL con su target derivado (cwd sin el prefijo \$HOME)" \
+    || bad "--curar: no escribió el master vivo con el target correcto (got '$cr_live', esperado 'code/cortex')"
+  # el honrado de CLAUDE_CONFIG_DIR: el roster se escribió ahí, NO en ~/.claude
+  { [ -f "$CRC/masters.json" ] && [ ! -f "$CRH/.claude/masters.json" ]; } \
+    && ok "--curar: escribe el roster en \$CLAUDE_CONFIG_DIR/masters.json (no en ~/.claude)" \
+    || bad "--curar: no honró CLAUDE_CONFIG_DIR al escribir el roster"
+  # el id idle PREEXISTENTE (no vivo) se CONSERVA (no se borra un master idle del roster curado)
+  node -e 'const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).masters; process.exit(m.some(x=>x.id==="old-idle-id")?0:1)' "$CRC/masters.json" 2>/dev/null \
+    && ok "--curar: una entrada curada de un id NO vivo se CONSERVA (no se borra un master idle)" \
+    || bad "--curar: borró una entrada curada que no estaba viva"
+  rm -rf "$CURR"
+else
+  echo "  SKIP --curar: falta despertar-master.sh o node"
+fi
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (f) parity del árbol: README ↔ MEMORY.md ↔ brain/skills/ =="
