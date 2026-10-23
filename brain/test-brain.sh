@@ -7706,8 +7706,9 @@ if [ -f "$DM" ] && command -v node >/dev/null 2>&1; then
   CURR="$(mktemp -d "${TMPDIR:-/tmp}/brain-curar.XXXXXX")"; CRH="$CURR/home"; CRP="$CURR/proj"; CRC="$CURR/cfg"
   mkdir -p "$CRH/code/cortex" "$CRP/slug1" "$CRC"
   printf '{"type":"user"}\n{"customTitle":"cortex-master"}\n{"cwd":"%s/code/cortex"}\n' "$CRH" > "$CRP/slug1/a6d50000-0000-0000-0000-000000000001.jsonl"
-  # roster PREEXISTENTE con un id idle curado (no vivo) → debe CONSERVARSE
-  printf '{"masters":[{"id":"old-idle-id","name":"axon-master","target":"code/axon"}]}\n' > "$CRC/masters.json"
+  # roster PREEXISTENTE: (a) id idle curado NO vivo → CONSERVAR; (b) una entrada VIEJA del MISMO nombre que
+  # el vivo (cortex-master cambió de sesión: id distinto) → DESCARTAR por nombre (el vivo gana; cierra N8).
+  printf '{"masters":[{"id":"old-idle-id","name":"axon-master","target":"code/axon"},{"id":"stale-cortex-id","name":"cortex-master","target":"code/old"}]}\n' > "$CRC/masters.json"
   HOME="$CRH" CLAUDE_CONFIG_DIR="$CRC" CLAUDE_PROJECTS_DIR="$CRP" DESPERTAR_VIVA_MIN=0 bash "$DM" --curar >/dev/null 2>&1
   # el master VIVO quedó en el roster LOCAL con su target derivado (cwd sin el prefijo $HOME)
   cr_live="$(node -e 'const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).masters; const e=m.find(x=>x.name==="cortex-master"); process.stdout.write(e?e.target:"")' "$CRC/masters.json" 2>/dev/null)"
@@ -7722,9 +7723,45 @@ if [ -f "$DM" ] && command -v node >/dev/null 2>&1; then
   node -e 'const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).masters; process.exit(m.some(x=>x.id==="old-idle-id")?0:1)' "$CRC/masters.json" 2>/dev/null \
     && ok "--curar: una entrada curada de un id NO vivo se CONSERVA (no se borra un master idle)" \
     || bad "--curar: borró una entrada curada que no estaba viva"
+  # NAME-DEDUP (claudio): el vivo GANA por NOMBRE → la entrada VIEJA 'stale-cortex-id' del mismo nombre
+  # (cortex-master cambió de sesión) se DESCARTA; queda SOLO el id vivo. Falla contra 039facf (merge por id).
+  node -e 'const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).masters; const c=m.filter(x=>x.name==="cortex-master"); process.exit((c.length===1 && c[0].id==="a6d50000-0000-0000-0000-000000000001")?0:1)' "$CRC/masters.json" 2>/dev/null \
+    && ok "--curar: el vivo GANA por nombre — una entrada vieja del mismo nombre (otra sesión) se DESCARTA (no acumula ids rancios; cierra N8)" \
+    || bad "--curar: quedó más de una entrada 'cortex-master' o el id rancio sobrevivió (merge por id revive el N8)"
+  node -e 'const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).masters; process.exit(m.some(x=>x.id==="stale-cortex-id")?1:0)' "$CRC/masters.json" 2>/dev/null \
+    && ok "--curar: el id rancio 'stale-cortex-id' ya NO está en el roster" \
+    || bad "--curar: el id rancio sobrevivió al curado"
   rm -rf "$CURR"
 else
   echo "  SKIP --curar: falta despertar-master.sh o node"
+fi
+
+# ── reubicar-master → roster LOCAL (Opción A, #2 claudio): ya NO upserta el masters.json COMPARTIDO del Drive ──
+echo "== reubicar-master: el roster que crea/upserta es el LOCAL (~/.claude/masters.json), no el del Drive =="
+RMS="$HOOKS/../skills/reubicar-master/reubicar-master.sh"
+if [ -f "$RMS" ]; then
+  # extrae y corre SOLO la resolución de MJ del script REAL (MJ= … mkdir … [ -f ]||crear) — como el suite
+  # hace con _master_base. Prueba el EFECTO (dónde crea el roster), no una frase. Falla contra el código viejo
+  # (donde MJ="$DRIVE/masters.json" → crearía/leería el del Drive).
+  RM2="$(mktemp -d "${TMPDIR:-/tmp}/brain-rm2.XXXXXX")"; RMCFG="$RM2/cfg"; RMH="$RM2/fakehome"; RMDRIVE="$RM2/drive"
+  mkdir -p "$RMDRIVE"
+  RM_MJ="$(sed -n '/^MJ="${CLAUDE_CONFIG_DIR/,/^\[ -f "\$MJ"/p' "$RMS")"
+  mjo="$(CLAUDE_CONFIG_DIR="$RMCFG" HOME="$RMH" DRIVE="$RMDRIVE" bash -c "$RM_MJ"'; printf "%s" "$MJ"' 2>/dev/null)"
+  { [ "$mjo" = "$RMCFG/masters.json" ] && [ -f "$RMCFG/masters.json" ]; } \
+    && ok "reubicar-master (#2): el roster se crea/upserta en el LOCAL \$CLAUDE_CONFIG_DIR/masters.json (no en el Drive)" \
+    || bad "reubicar-master (#2): MJ no resolvió al roster local (got '$mjo')"
+  # el masters.json del Drive NO se crea/toca (es legacy read-only bajo Opción A)
+  [ ! -f "$RMDRIVE/masters.json" ] \
+    && ok "reubicar-master (#2): el masters.json COMPARTIDO del Drive queda intacto (no se escribe)" \
+    || bad "reubicar-master (#2): tocó el masters.json del Drive (Opción A lo prohíbe)"
+  # fallback sin CLAUDE_CONFIG_DIR → ~/.claude, nunca el Drive
+  mjh="$(HOME="$RM2/fh2" DRIVE="$RMDRIVE" bash -c 'unset CLAUDE_CONFIG_DIR; '"$RM_MJ"'; printf "%s" "$MJ"' 2>/dev/null)"
+  [ "$mjh" = "$RM2/fh2/.claude/masters.json" ] \
+    && ok "reubicar-master (#2): sin CLAUDE_CONFIG_DIR → ~/.claude/masters.json (nunca el Drive)" \
+    || bad "reubicar-master (#2): el fallback no es ~/.claude/masters.json (got '$mjh')"
+  rm -rf "$RM2"
+else
+  echo "  SKIP #2: falta reubicar-master.sh"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -8851,6 +8888,9 @@ for _r in "$E2ESRC" "$E2EDST"; do
   git -C "$_r" symbolic-ref HEAD refs/heads/DevelopUnjordi
   git -C "$_r" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
 done
+# Opción A (#2): reubicar UPSERTa el roster LOCAL ~/.claude/masters.json, no el del Drive. Siembro AMBOS con
+# el nombre viejo: el LOCAL es el que reubicar debe ACTUALIZAR; el del Drive es legacy y debe quedar INTACTO.
+printf '{"masters":[{"id":"%s","name":"viejo-master","target":"code/origen"}]}\n' "$E2EID" > "$E2EHOME/.claude/masters.json"
 printf '{"masters":[{"id":"%s","name":"viejo-master","target":"code/origen"}]}\n' "$E2EID" > "$E2EDRIVE/masters.json"
 # el slug sale de la ruta FÍSICA (pwd -P), la misma que deriva el script: con $TMPDIR bajo un symlink
 # (macOS /var→/private/var) la ruta cruda daría otro slug.
@@ -9184,9 +9224,13 @@ E2ECO="$E2EDST/.claude/memory/hilo-mental-actual.nuevo-master.md"
     && ok "(e2e) F2: el default T2 del subcomando 'paridad' incluye el hilo (era una SEGUNDA lista que driftó de la del generador)" \
     || bad "(e2e) F2: 'paridad' sigue con su propia lista T2 sin el hilo"
 
-  [ "$(jq -r --arg id "$E2EID" '.masters[]|select(.id==$id)|.name' "$E2EDRIVE/masters.json")" = nuevo-master ] \
-    && ok "(e2e) masters.json quedó con el nombre NUEVO (UPSERT por id, con lock)" \
-    || bad "(e2e) masters.json no refleja el renombre"
+  [ "$(jq -r --arg id "$E2EID" '.masters[]|select(.id==$id)|.name' "$E2EHOME/.claude/masters.json")" = nuevo-master ] \
+    && ok "(e2e) el roster LOCAL ~/.claude/masters.json quedó con el nombre NUEVO (UPSERT por id, con lock — Opción A)" \
+    || bad "(e2e) el roster local no refleja el renombre"
+  # Opción A (#2): el masters.json COMPARTIDO del Drive es legacy read-only → reubicar lo deja INTACTO (viejo-master)
+  [ "$(jq -r --arg id "$E2EID" '.masters[]|select(.id==$id)|.name' "$E2EDRIVE/masters.json")" = viejo-master ] \
+    && ok "(e2e) el masters.json del Drive quedó INTACTO (legacy read-only; reubicar ya no lo escribe)" \
+    || bad "(e2e) reubicar TOCÓ el masters.json del Drive (Opción A lo prohíbe)"
   [ "$(HOME="$E2EHOME" CLAUDE_CONFIG_DIR="$E2EHOME/.claude" node -e 'const a=require(process.argv[1]).sessionAliases();process.stdout.write(a[process.argv[2]]||"")' "$E2EBIN/session-lib.js" "$E2EID")" = nuevo-master ] \
     && ok "(e2e) el alias de la sesión quedó en el nombre NUEVO" || bad "(e2e) el alias no se actualizó"
   # ── re-entrancia: el guion se re-corre sin romper (detecta el estado, no adivina) ──

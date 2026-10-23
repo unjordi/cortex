@@ -619,15 +619,15 @@ esac
   "  (el hook de auto-export usa OTRO fallback — \$HOME/.claude-sessions — así que si no la exportas," \
   "   el operador y el mecanismo pueden apuntar a Drives DISTINTOS sin que nada lo note)"
 [ -d "$DRIVE" ] || _abort "PREFLIGHT: el Drive no está montado/sincronizado: $DRIVE"
-MJ="$DRIVE/masters.json"
-[ -f "$MJ" ] || _abort "PREFLIGHT: no hay masters.json en $DRIVE (¿Drive a medio sincronizar?)"
-jq -e . "$MJ" >/dev/null 2>&1 || _abort "PREFLIGHT: $MJ no es JSON válido (¿copia-en-conflicto a medias?)"
-for _cc in "$DRIVE"/masters*.json; do
-  [ -e "$_cc" ] || continue
-  [ "$_cc" = "$MJ" ] && continue
-  _abort "PREFLIGHT: copia-en-conflicto de Drive presente: $_cc" \
-         "  masters.json es UN archivo compartido ⇒ reconcilia a mano ANTES de correr (Decisión #6)"
-done
+# Opción A (2026-10-14): el ROSTER vive LOCAL (~/.claude/masters.json, honra CLAUDE_CONFIG_DIR), NO en el
+# Drive compartido — nadie escribe el compartido (eliminaba los conflictos de sync y el drift entre masters).
+# reubicar hace su UPSERT en el roster LOCAL; el $DRIVE sigue siendo para los RESPALDOS de la sesión
+# (.jsonl.gz / .meta.json). Si el roster local no existe aún (máquina nueva), se crea vacío. El masters.json
+# COMPARTIDO del Drive, si existe, es legacy de SOLO LECTURA — este script ya no lo toca.
+MJ="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/masters.json"
+mkdir -p "$(dirname "$MJ")" 2>/dev/null || true
+[ -f "$MJ" ] || printf '{"masters":[]}\n' > "$MJ"
+jq -e . "$MJ" >/dev/null 2>&1 || _abort "PREFLIGHT: el roster local $MJ no es JSON válido (arréglalo o bórralo para re-crearlo)"
 
 # ── PREFLIGHT de BIN (resuelto como seed.sh, no asumido en ~/code/cortex) ───────────────
 BIN=""
@@ -798,8 +798,9 @@ fi
 #     barrido del origen, el `.jsonl` del destino y el depósito T2 en el repo destino se pisan con lo que
 #     esa sesión escriba — y el daemon transitorio CUENTA, porque arrastra el PWD de quien lo lanzó y
 #     puede sembrar un transcript justo en el slug nuevo.
-#   · AVISA (no bloquea) por las de OTROS slugs. Los dos artefactos COMPARTIDOS que quedan —`masters.json`
-#     y el mapa de alias— se escriben BAJO LOCK (`mkdir`, con reciclado del huérfano) por todo lo que pasa
+#   · AVISA (no bloquea) por las de OTROS slugs. Los dos artefactos de registro —el roster LOCAL
+#     `~/.claude/masters.json` (Opción A: ya no el compartido del Drive) y el mapa de alias— pueden tener
+#     varios escritores locales concurrentes, así que se escriben BAJO LOCK (`mkdir`, con reciclado del huérfano) por todo lo que pasa
 #     por la lib, y todo lo demás que el guion toca está scopeado a $ID. **La relajación es sólida SOLO
 #     por ese lock**, y por eso el preflight de capacidad EXIGE `aliasLockPath`: una lib vieja sin lock no
 #     llega hasta aquí. Excepción conocida (§10 del skill): el widget de Plasma escribe el mapa desde QML
@@ -1098,9 +1099,9 @@ if [ "$YA_MOVIDO" -eq 0 ]; then
   # SOLO poda *.jsonl.bak (conserva 10), así que esta copia no se recicla nunca.
   BK="$HOME/.claude/reubicar-backups/$ID.$(date +%s).pre-reubicar.jsonl"
   cp -f "$TGT_FILE" "$BK"
-  cp -f "$MJ" "$DRIVE/masters.json.pre-reubicar-$ID.bak"
+  cp -f "$MJ" "$MJ.pre-reubicar-$ID.bak"   # respaldo del roster LOCAL, junto a él (Opción A: ya no al Drive)
   LIN_ANTES="$(wc -l < "$TGT_FILE" | tr -d ' ')"
-  echo "  respaldos: $BK  ·  $DRIVE/masters.json.pre-reubicar-$ID.bak  ·  $LIN_ANTES líneas de origen"
+  echo "  respaldos: $BK  ·  $MJ.pre-reubicar-$ID.bak  ·  $LIN_ANTES líneas de origen"
   echo "S4:pre-move" > "$ST"
   echo "  ⚠ PUNTO DE NO RETORNO: session-move.js copia al slug nuevo y hace unlink del origen."
   # `--git-branch` normaliza el gitBranch del ÚLTIMO evento con cwd en la MISMA pasada en streaming del
@@ -1174,7 +1175,7 @@ if ! jq --arg id "$ID" --arg t "$TARGET" --arg n "$NOMBRE_FINAL" '
   rm -f "$_tmpm"; rmdir "$_mjlock" 2>/dev/null || true
   echo "S4:jq-masters-FALLO" > "$ST"
   _abort "ABORTO: el fix de masters.json FALLÓ (jq). El transcript YA está movido." \
-         "  Respaldo del registro: $DRIVE/masters.json.pre-reubicar-$ID.bak" \
+         "  Respaldo del registro: $MJ.pre-reubicar-$ID.bak" \
          "  Re-corre este script (detecta el estado y continúa)."
 fi
 mv -f "$_tmpm" "$MJ"

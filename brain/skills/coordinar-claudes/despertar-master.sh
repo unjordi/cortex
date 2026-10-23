@@ -239,15 +239,26 @@ curar() {
           done)"
   printf '%s' "$live" | node -e '
     const fs=require("fs"), roster=process.argv[1];
+    const live=fs.readFileSync(0,"utf8").split("\n").filter(Boolean)
+      .map(ln=>{const [id,name,target]=ln.split("\t");return{id,name:name||id,target:target||""};})
+      .filter(e=>e.id);
+    const liveNames=new Set(live.map(e=>e.name));
     const m=new Map();
-    try{ const j=JSON.parse(fs.readFileSync(roster,"utf8")); for(const e of (j.masters||[])) if(e&&e.id) m.set(e.id,{id:e.id,name:e.name||e.id,target:e.target||""}); }catch(_){}
-    let upd=0;
-    for(const ln of fs.readFileSync(0,"utf8").split("\n").filter(Boolean)){
-      const [id,name,target]=ln.split("\t"); if(!id) continue;
-      m.set(id,{id,name:name||id,target:target||""}); upd++;
-    }
-    fs.writeFileSync(roster, JSON.stringify({masters:[...m.values()]},null,2)+"\n");
-    process.stderr.write("[despertar-master] roster curado: "+roster+" ("+m.size+" master(s); "+upd+" vivo(s) refrescado(s))\n");
+    try{ const j=JSON.parse(fs.readFileSync(roster,"utf8"));
+      for(const e of (j.masters||[])){
+        if(!e||!e.id) continue;
+        // El vivo GANA por NOMBRE: una entrada vieja cuyo nombre está vivo con OTRA sesión (id cambió) se
+        // DESCARTA — si no, el roster acumula ids rancios por nombre (el N8 que esta opción cierra). Una
+        // curada a mano cuyo nombre NO está vivo se CONSERVA (master idle).
+        if(liveNames.has(e.name)) continue;
+        m.set(e.id,{id:e.id,name:e.name||e.id,target:e.target||""});
+      }
+    }catch(_){}
+    for(const e of live) m.set(e.id, e);
+    const tmp=roster+".curar.tmp."+process.pid;   // escritura ATÓMICA: tmp en el mismo dir + rename
+    fs.writeFileSync(tmp, JSON.stringify({masters:[...m.values()]},null,2)+"\n");
+    fs.renameSync(tmp, roster);
+    process.stderr.write("[despertar-master] roster curado: "+roster+" ("+m.size+" master(s); "+live.length+" vivo(s))\n");
   ' "$roster"
 }
 
