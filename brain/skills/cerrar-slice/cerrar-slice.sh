@@ -190,7 +190,13 @@ if [ -n "$_fuente" ]; then
 $(git for-each-ref --format='%(refname:short) %(objectname)' refs/heads refs/remotes/origin 2>/dev/null)
 EOF
   fi
-  _ya="$(printf '%s\n' "$MSG" | sed -nE 's/^[[:space:]]*[Rr]ama[[:space:]]*:[[:space:]]*([^[:space:]]+).*/\1/p' | tr '\n' ' ')"
+  # TODOS los nombres ya presentes: una línea `Rama:` puede traer VARIAS ramas (coma/espacio: `Rama: a, b`) y
+  # el marcador puede ir MID-LINE (la convención del SKILL lo permite: «…replay de 30 s. Rama: fix/x · MR: !1»).
+  # Antes se tomaba solo el 1er token CON su coma (`a,`), anclado a inicio de línea → ni `a` (quedaba `a,`) ni
+  # `b`, ni un `Rama:` mid-line se reconocían → se RE-agregaban (traza duplicada). Ahora: quita TODO hasta el
+  # `Rama:` (donde esté), parte por coma y espacio, deja los tokens. (Prosa tras un «Rama:» que no sea una rama
+  # cae en _ya pero es inofensivo: a lo más NO re-agrega una rama homónima, caso irreal.)
+  _ya="$(printf '%s\n' "$MSG" | sed -nE 's/.*[Rr]ama[[:space:]]*:[[:space:]]*//p' | tr ',' ' ' | tr -s '[:space:]' '\n' | grep -v '^$' | tr '\n' ' ')"
   _added=""
   for _c in $_contenidas; do
     case " $_ya " in *" $_c "*) continue ;; esac

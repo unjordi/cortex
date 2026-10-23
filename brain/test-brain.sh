@@ -4132,6 +4132,14 @@ csep_out="$(cd "$CSEP" && PATH="$CSEPB:$PATH" bash "$CSMSG_SH" --id 9 --message 
 { printf '%s' "$csep_out" | grep -qF 'Rama: epic/afinado' && printf '%s' "$csep_out" | grep -qF 'Rama: feat/a' && printf '%s' "$csep_out" | grep -qF 'Rama: feat/b'; } \
   && ok "b3cs-msg (2026-10-22): una contenedora lleva un «Rama:» por CADA sub-rama contenida (épica → las 3, no solo la contenedora)" \
   || bad "b3cs-msg (2026-10-22): no nombró todas las sub-ramas contenidas; got: $(printf '%s' "$csep_out" | tr '\n' '|')"
+# #4-BAJO (R4 2026-10-23): una línea `Rama: a, b` (VARIAS ramas en una línea) YA presente NO debe duplicarse.
+# El viejo _ya tomaba solo el 1er token CON su coma (`feat/a,`) → ni feat/a (quedaba `feat/a,`) ni feat/b se
+# reconocían → ambas se RE-agregaban (traza duplicada). Ahora _ya parte por coma+espacio → las reconoce. FALLA
+# vs el viejo (feat/a y feat/b aparecerían 2 veces).
+csdup_out="$(cd "$CSEP" && PATH="$CSEPB:$PATH" bash "$CSMSG_SH" --id 9 --message "integro la épica de afinado con su traza. Rama: feat/a, feat/b" --branch epic/afinado --forge glab --dry-run 2>/dev/null)"
+{ [ "$(printf '%s' "$csdup_out" | grep -oF 'feat/a' | grep -c .)" = 1 ] && [ "$(printf '%s' "$csdup_out" | grep -oF 'feat/b' | grep -c .)" = 1 ]; } \
+  && ok "cerrar-slice #4-BAJO: línea «Rama: feat/a, feat/b» (multi-rama) ya presente → NO se duplica (cada rama una vez)" \
+  || bad "cerrar-slice #4-BAJO: duplicó una rama de una línea «Rama: a, b»; got: $(printf '%s' "$csdup_out" | grep -i rama: | tr '\n' '|')"
 rm -rf "$CSEP" "$CSEPB"
 rm -rf "$CSMSG_BIN"
 # (b3cs-forge, E3 2026-10-13 / claudio): cerrar-slice decide el forge por el HOST del origin, NO por "cuál CLI
