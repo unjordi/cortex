@@ -1119,6 +1119,24 @@ acg_push_toca_base "git push origin feat/x ; git push -o 'c;d' origin develop" \
 acg_push_toca_base "git push -o 'a;b' origin feat/x" \
   && bad "R5-4 control: FP — push a RAMITA con -o quoted se tomó por base" \
   || ok "R5-4 control: 'git push -o \"a;b\" origin feat/x' (ramita) → NO gatea"
+# ── R6 (auditoría 2026-10-23, claudio — REGRESIÓN de R5-4): acg_partir_subcomandos no trataba el BACKSLASH →
+# un `\"`/`\'` escapado abría una comilla FALSA y se tragaba el `&& git push` que seguía. FALLA vs ae38530
+# (evadía); contra f440234 SÍ detectaba (el gsub ciego partía por el `&`). Fuera de comilla simple, un
+# `\<char>` consume ambos literalmente. ──
+for _r6 in \
+  'bash -c "cd \"/a b\" && git push origin develop"' \
+  'git commit -m "say \"hi" && git push origin develop' \
+  "echo don\\'t && git push origin develop" \
+  ; do
+  acg_push_toca_base "$_r6" \
+    && ok "R6: '${_r6:0:40}…' → GATEA (backslash-escape ya no abre comilla falsa)" \
+    || bad "R6: FN — un \\\"/\\' escapado tragó el && push a develop (regresión de R5-4): $_r6"
+done
+# control R6: un backslash DENTRO de comilla simple es LITERAL en shell → no se trata como escape (el ; de
+# `'a;b'` sigue protegido) y un push a ramita no dispara.
+acg_push_toca_base "echo 'a\\b' && git push origin feat/x" \
+  && bad "R6 control: FP — push a ramita tras un echo con backslash en comilla simple" \
+  || ok "R6 control: backslash en comilla simple es literal → push a ramita NO gatea"
 
 # ── C2 (auditoría R3 2026-10-23): acg_es_push ya NO es una lista cerrada de wrappers — detecta `git` en
 # POSICIÓN DE COMANDO por su basename de-backslasheado. Estas EVASIONES (push a develop vía wrapper/abs-path/
@@ -3225,6 +3243,16 @@ pa_is_deny "$(pa_bash "F=$AF; echo x >> \$F")"                                  
 pa_is_deny "$(pa_bash 'echo x >> $(ls .claude/memory/autoriz*)')"                 || { bad "proteger-autorizaciones R5-2 reg: >> \$(ls autoriz*) dejó de denegar"; pa_r5c=1; }
 pa_is_deny "$(pa_bash "cp /tmp/x $AF")"                                           || { bad "proteger-autorizaciones R5-2 reg: cp con el grant de DESTINO dejó de denegar"; pa_r5c=1; }
 [ "$pa_r5c" = 0 ] && ok "proteger-autorizaciones R5-2: la indirección por DESTINO (variable/\$(ls)/cp-destino) sigue DENY"
+# (11) R6 BAJO 5 (auditoría 2026-10-23, claudio): _glob_memory_casa miraba TODO el comando → un glob bajo
+# memory que es la FUENTE de una LECTURA (`cat …/*.local.md > /tmp/todo`) o de un `cp …/*.local.md /tmp/bk/`
+# se denegaba EN FALSO. Ahora solo dispara si el glob es el DESTINO directo o alimenta una variable de
+# escritura. FALLA vs ae38530 (que denegaba). El for-loop (destino=$f) y el glob-destino-directo SIGUEN DENY.
+pa_r6=0
+pa_is_deny "$(pa_bash 'cat .claude/memory/*.local.md > /tmp/todo.txt')"      && { bad "proteger-autorizaciones R6-5: FP — cat de un glob (FUENTE) con salida a otro archivo se denegó"; pa_r6=1; }
+pa_is_deny "$(pa_bash 'cp .claude/memory/*.local.md /tmp/bk/')"              && { bad "proteger-autorizaciones R6-5: FP — cp DESDE un glob (FUENTE) a otro dir se denegó"; pa_r6=1; }
+pa_is_deny "$(pa_bash 'for f in .claude/memory/*.local.md; do echo x >> $f; done')" || { bad "proteger-autorizaciones R6-5: el for-loop (glob alimenta el destino \$f) dejó de denegar"; pa_r6=1; }
+pa_is_deny "$(pa_bash 'echo x >> .claude/memory/aut*.local.md')"            || { bad "proteger-autorizaciones R6-5: el glob SELECTIVO como DESTINO directo dejó de denegar"; pa_r6=1; }
+[ "$pa_r6" = 0 ] && ok "proteger-autorizaciones R6-5: glob bajo memory como FUENTE (cat/cp) → PASA; como DESTINO directo o alimentando \$var → DENY (falla vs ae38530)"
 
 echo "== (b3a3) verificar-cerebro: drift-check instalada-vs-fuente (idéntica→0; difiere→la lista; local→ignora) =="
 DVFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-dv.XXXXXX")"
@@ -11160,7 +11188,10 @@ case "\$1" in
 esac
 SH
   chmod +x "$DMROOT/bin/screen"
-  _dm() { PATH="$DMROOT/bin:$PATH" CLAUDE_PROJECTS_DIR="$PROJ" DESPERTAR_VIVA_MIN=15 bash "$DM" "$@" 2>&1; }
+  # DESPERTAR_ESPERA_S=0 (R6, auditoría 2026-10-23, claudio): sin él, un `_dm … --mensaje` (que NO pasa
+  # --no-esperar) espera el default de ~240s a que la sesión relanzada "viva" → la suite tardaba de más. El
+  # relanzamiento (lo que el test comprueba) ocurre igual; solo se omite la espera de aliveness.
+  _dm() { PATH="$DMROOT/bin:$PATH" CLAUDE_PROJECTS_DIR="$PROJ" DESPERTAR_VIVA_MIN=15 DESPERTAR_ESPERA_S=0 bash "$DM" "$@" 2>&1; }
 
   L="$(_dm --lista)"
   # newest-per-name: UNA fila foo-master, con el cwd del duplicado NUEVO (repoB), NO el viejo (repoA).

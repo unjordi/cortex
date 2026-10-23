@@ -98,10 +98,16 @@ acg_despoja_comillas() { printf '%s' "$(acg_segmentos_ejecutables "$1")" | sed "
 # `git push` → EVADÍAN. Las comillas de un EJECUTOR (eval/-c) ya fueron reinyectadas por
 # acg_segmentos_ejecutables (sus separadores SÍ parten = subcomandos reales); las de DATO (-m '…') protegen
 # su separador. Sobre un texto YA despojado (sin comillas) es idéntico al gsub viejo. Portable BSD+GNU.
+# R6 (auditoría 2026-10-23, claudio — REGRESIÓN de R5-4): un backslash-escape `\"`/`\'` abría una comilla
+# FALSA y se tragaba el `&& git push` que seguía (`bash -c "cd \"/a b\" && git push origin develop"`,
+# `git commit -m "say \"hi" && git push origin develop`). FUERA de comilla SIMPLE (donde el shell trata el
+# `\` como literal, no como escape) un `\<char>` consume AMBOS literalmente → el `"`/`'` escapado NO alterna
+# el estado de comilla. Así el `&&` tras un `\"` vuelve a partir.
 acg_partir_subcomandos() {   # $1=texto → un subcomando por línea
   printf '%s' "$1" | awk '{
     out=""; q=""; n=length($0);
     for(i=1;i<=n;i++){ c=substr($0,i,1);
+      if(c=="\\" && q!="s"){ out=out c substr($0,i+1,1); i++; continue }
       if(q==""){
         if(c=="\047"){q="s"; out=out c}
         else if(c=="\""){q="d"; out=out c}

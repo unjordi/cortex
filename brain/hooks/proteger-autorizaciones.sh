@@ -219,9 +219,18 @@ if _tiene_escritura_a_archivo "$norm"; then
   # Glob pegado a una mitad del nombre EN EL DESTINO — reconoce *, ? y `[` (bracket-glob, R5-1d).
   printf '%s' "$_DST" | grep -qiE '(autoriz|vigentes)[^[:space:]<>|&;]*[][*?]|[][*?][^[:space:]<>|&;]*(autoriz|vigentes)' \
     && _deny "escritura hacia un glob que puede expandir al archivo de grants (autoriz* / *vigentes / [a]utoriz…)"
-  # Glob bajo …/memory/ SELECTIVO para el grant aunque no deletree ninguna mitad (R5-1b: `*.local.md`).
-  _glob_memory_casa "$norm" \
-    && _deny "escritura cuyo destino es un glob SELECTIVO bajo .claude/memory/ que casa el archivo de grants (p. ej. *.local.md)"
+  # Glob bajo …/memory/ SELECTIVO para el grant aunque no deletree ninguna mitad (R5-1b: `*.local.md`):
+  #   (i) el glob ES un DESTINO de escritura directo (`>> …/aut*.local.md`), o
+  #   (ii) ALIMENTA una VARIABLE de escritura — el destino quedó como `$VAR` sin resolver (for-loop
+  #        `for f in …/*.local.md; do >> $f`).
+  # Si el memory-glob es la FUENTE y el destino es un LITERAL ajeno (R6 BAJO 5: `cat …/*.local.md > /tmp/todo`,
+  # `cp …/*.local.md /tmp/bk/`) NO es ninguno de los dos → NO dispara (el glob es lectura, no escritura).
+  _glob_memory_casa "$_DST" \
+    && _deny "escritura cuyo DESTINO es un glob SELECTIVO bajo .claude/memory/ que casa el archivo de grants (p. ej. *.local.md)"
+  if printf '%s' "$_DST" | grep -q '[$]'; then
+    _glob_memory_casa "$norm" \
+      && _deny "escritura cuyo destino (variable) lo alimenta un glob SELECTIVO bajo .claude/memory/ que casa el archivo de grants (for f in *.local.md; … >> \$f)"
+  fi
 fi
 
 exit 0
