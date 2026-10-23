@@ -7379,6 +7379,18 @@ if [ -f "$A6LF" ] && [ -f "$A6MF" ]; then
     || bad "a6-regla: src/bin/cortex-fetch week_start=$_a6wl, esperaba $_a6exp (bucket-lunes en vez de rolling)"
   [ "$_a6wm" = "$_a6exp" ] && ok "a6-regla: macos/bin/cortex-fetch week_start==resets_at−7d con datos oauth ($_a6wm)" \
     || bad "a6-regla: macos/bin/cortex-fetch week_start=$_a6wm, esperaba $_a6exp (bucket-lunes en vez de rolling)"
+  # (a6-shell) el cálculo de SHELL REAL_WEEK_START (que alimenta el `ccusage daily --since`) DEBE dar un día
+  # YYYY-MM-DD = resets_at−7d, en la plataforma REAL — el a6-regla de arriba solo ejercita el jq, no este tramo
+  # de shell. Falla contra edf7633 en macOS: las opciones `-v` de BSD date iban DESPUÉS de la fecha → `date`
+  # las ignora y escupe la fecha de HOY en formato largo → `ccusage daily --since` recibe basura → 0 días →
+  # equiv_weekly_cost_usd=0 (hallazgo de claudio con datos reales en la Mac). Corre la línea del fetch de ESTA
+  # plataforma con su `date` nativo (BSD en macOS, GNU en Linux).
+  case "$(uname -s)" in Darwin) _a6ff="$A6MF" ;; *) _a6ff="$A6LF" ;; esac
+  _a6line="$(grep -m1 '^REAL_WEEK_START=' "$_a6ff")"
+  _a6rws="$(WEEK_RESET_EFF="2026-10-28T14:00:00Z" NEXT_MONDAY="2026-10-26T00:00:00Z" bash -c "$_a6line"'; printf %s "$REAL_WEEK_START"' 2>/dev/null)"
+  { printf '%s' "$_a6rws" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' && [ "$_a6rws" = "2026-10-21" ]; } \
+    && ok "a6-shell: REAL_WEEK_START=resets_at−7d en día YYYY-MM-DD ($_a6rws, $(uname -s)) → el SINCE de ccusage recibe un día válido" \
+    || bad "a6-shell: REAL_WEEK_START='$_a6rws' (esperaba 2026-10-21 YYYY-MM-DD) — date mal formado → ccusage daily --since basura → costo semanal 0"
 else bad "a6-fetch: falta src/bin/cortex-fetch o macos/bin/cortex-fetch"; fi
 
 # ─────────────────────────────────────────────────────────────────────────────

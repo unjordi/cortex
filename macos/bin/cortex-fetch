@@ -223,7 +223,7 @@ if [[ -n "$USAGE_JSON" ]]; then
   _ow="$(jq -r '.seven_day.resets_at // empty' <<<"$USAGE_JSON" 2>/dev/null || true)"
   [[ -n "$_ow" ]] && WEEK_RESET_EFF="$_ow"
 fi
-REAL_WEEK_START="$(date -u -j -f "%Y-%m-%d" "${WEEK_RESET_EFF:0:10}" -v-7d +%Y-%m-%d)"
+REAL_WEEK_START="$(date -u -j -v-7d -f "%Y-%m-%d" "${WEEK_RESET_EFF:0:10}" +%Y-%m-%d)"
 WEEKLY_DAILY_JSON=""
 if [[ -n "$CCUSAGE" ]]; then
   WEEKLY_DAILY_JSON="$(ccusage_json daily --json --since "${REAL_WEEK_START//-/}")"
