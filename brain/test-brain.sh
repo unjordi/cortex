@@ -9088,6 +9088,13 @@ printf '%s' "$(nbd_ctx 'bash brain/install-brain.sh')" | grep -qi 'widget' \
   && ok "g1: 'git diff -- <path>/deploy.sh' (genérico, no solo brain) NO dispara" || bad "g1: disparó sobre git diff -- con subcarpeta genérica (FP)"
 [ -z "$(nbd_ctx 'ls -1 install.sh bootstrap.sh uninstall.sh')" ] \
   && ok "g1: 'ls -1 install.sh ...' (listado, no ejecución) NO dispara" || bad "g1: disparó sobre ls -1 (FP)"
+# FP R3 2026-10-23 (registrado en guards-falsos-positivos.md): el instalador NOMBRADO en el VALOR de --body o
+# en el CUERPO de un heredoc de `git commit -F` NO es ejecución → silencio. El shipping ya lo maneja (vía el
+# acg_despoja_comillas heredoc-aware); el FP que se vio vino de la copia GLOBAL STALE (pre-#1). Estos casos lo blindan.
+[ -z "$(nbd_ctx 'gh pr create --body "corre install-brain.sh para desplegar" --fill')" ] \
+  && ok "g1: install-brain.sh en el VALOR de --body (gh pr create) NO dispara (mención, no ejecución)" || bad "g1: disparó sobre --body con install-brain.sh (FP)"
+[ -z "$(nbd_ctx "$(printf 'git commit -F /dev/stdin <<MSG\nfix(brain): menciona install-brain y deploy.sh\nbash brain/install-brain.sh adentro del mensaje\nMSG')")" ] \
+  && ok "g1: install-brain.sh en el CUERPO de un heredoc de 'git commit -F' NO dispara (dato, no ejecución)" || bad "g1: disparó sobre el cuerpo del heredoc de un git commit (FP — el que se vio desde la global stale)"
 # los mismos POSITIVOS reales con subcarpeta SIGUEN avisando (el fix no debe abrir hueco a la ejecución real)
 [ -n "$(nbd_ctx 'bash brain/install-brain.sh')" ] \
   && ok "g1: 'bash brain/install-brain.sh' (ejecución real con subcarpeta) SIGUE avisando" || bad "g1: dejó de avisar sobre ejecución real con subcarpeta"
