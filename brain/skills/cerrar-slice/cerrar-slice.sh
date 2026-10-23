@@ -31,7 +31,8 @@ cerrar-slice.sh — arma el merge de un slice a develop (squash, INMEDIATO, sin 
   --id <id>            id del MR (glab) / PR (gh) a integrar. REQUERIDO.
   --message-file <f>   archivo con el resumen curado del squash (recomendado: --message "$(cat f)" queda inline).
   --message "<txt>"    resumen curado inline (alternativa a --message-file).
-  --forge glab|gh      forge a usar. Default: autodetecta (glab/gh en PATH + remoto origin); si ambos, glab.
+  --forge glab|gh      forge a usar. Default: autodetecta por el HOST del remoto origin (github.com→gh,
+                       *gitlab*→glab); host desconocido o sin origin → error (no adivina por la CLI instalada).
   --repo <slug>        org/grupo/repo LITERAL (no una $VAR). Se pasa a glab -R / gh -R.
   --branch <feat/…>    nombre de la ramita (informativo; para el rastro si el mensaje no lo trae — NO lo inventa).
   --wait-ci            espera a que el pipeline/checks del MR estén en verde ANTES de mergear (acotado).
@@ -143,10 +144,22 @@ fi
 #    squash borra el merge-commit con el #id → el rastro «Rama:/MR:» debe vivir en el mensaje para que
 #    `git log develop` diga de qué ramita salió el commit; por eso lo agregamos nosotros si falta.
 _warn() { printf 'cerrar-slice: %s\n' "⚠️  $1" >&2; }
+# Decide el forge por el HOST del remoto origin, NO por "cuál CLI está instalada": en una Mac con glab
+# instalado, un repo de GitHub (como cortex) NO debe usar glab. github.com→gh · *gitlab*→glab · host
+# desconocido / sin origin → VACÍO (el llamador da un error claro; NO se adivina).
+_forge_por_origin() {
+  local url host
+  url="$(git remote get-url origin 2>/dev/null || true)"
+  [ -n "$url" ] || { printf ''; return 0; }
+  host="$(printf '%s' "$url" | sed -E 's#^[a-zA-Z][a-zA-Z0-9+.-]*://##; s#^[^@/]*@##; s#[:/].*$##')"
+  case "$host" in
+    github.com|*.github.com) printf 'gh' ;;
+    *gitlab*)                printf 'glab' ;;
+    *)                       printf '' ;;
+  esac
+}
 _fg="$FORGE"
-if [ -z "$_fg" ]; then
-  if command -v glab >/dev/null 2>&1; then _fg=glab; elif command -v gh >/dev/null 2>&1; then _fg=gh; fi
-fi
+[ -z "$_fg" ] && _fg="$(_forge_por_origin)"
 # (a) líneas Rama: — una por CADA rama integrada en este merge: la FUENTE y toda SUB-RAMA CONTENIDA en ella
 #     (tip ancestro de la fuente y NO de la base develop). ramas-zombie ya LEE múltiples `Rama:`; el ESCRITOR
 #     era el eslabón roto (cerrar-slice solo nombraba la contenedora → las sub-ramas que entraron DENTRO de
@@ -201,12 +214,10 @@ fi
 _nwords=$(printf '%s' "$MSG" | tr -s '[:space:]' '\n' | grep -c '[^[:space:]]' || true)
 [ "${_nwords:-0}" -ge 12 ] || _warn "el resumen es CORTO ($_nwords palabras): idealmente cuenta el cambio neto y su porqué en prosa. No bloqueo."
 
-# ── forge: autodetecta si no se dio ──
+# ── forge: autodetecta por el HOST del origin si no se dio (no por "cuál CLI está instalada") ──
 if [ -z "$FORGE" ]; then
-  if command -v glab >/dev/null 2>&1; then FORGE=glab
-  elif command -v gh >/dev/null 2>&1; then FORGE=gh
-  else _err "no encuentro glab ni gh en el PATH; instala uno o pásalo con --forge."
-  fi
+  FORGE="$(_forge_por_origin)"
+  [ -n "$FORGE" ] || _err "no pude decidir el forge por el host del remoto origin ($(git remote get-url origin 2>/dev/null || echo 'sin origin')): no es github.com ni *gitlab*. Pásalo con --forge glab|gh."
 fi
 case "$FORGE" in glab|gh) : ;; *) _err "--forge debe ser glab o gh (dado: '$FORGE')." ;; esac
 command -v "$FORGE" >/dev/null 2>&1 || _err "'$FORGE' no está en el PATH."

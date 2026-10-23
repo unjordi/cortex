@@ -3408,6 +3408,21 @@ csep_out="$(cd "$CSEP" && PATH="$CSEPB:$PATH" bash "$CSMSG_SH" --id 9 --message 
   || bad "b3cs-msg (2026-10-22): no nombró todas las sub-ramas contenidas; got: $(printf '%s' "$csep_out" | tr '\n' '|')"
 rm -rf "$CSEP" "$CSEPB"
 rm -rf "$CSMSG_BIN"
+# (b3cs-forge, E3 2026-10-13 / claudio): cerrar-slice decide el forge por el HOST del origin, NO por "cuál CLI
+# está instalada". En esta Mac glab ESTÁ instalado → el código viejo (command -v glab primero) usaría glab
+# para un repo de GitHub. Prueba el EFECTO extrayendo _forge_por_origin del script real. Falla contra b2abe80
+# (la función no existía → el `= gh` da vacío).
+CSFN="$(sed -n '/^_forge_por_origin() {/,/^}/p' "$CSMSG_SH")"
+_forge_de() { local R o; R="$(mktemp -d "${TMPDIR:-/tmp}/csf.XXXXXX")"; git -C "$R" init -q 2>/dev/null; [ -n "$1" ] && git -C "$R" remote add origin "$1" 2>/dev/null; o="$(cd "$R" && bash -c "$CSFN"'; _forge_por_origin' 2>/dev/null)"; rm -rf "$R"; printf '%s' "$o"; }
+[ "$(_forge_de 'https://github.com/unjordi/cortex.git')" = gh ] \
+  && ok "cerrar-slice forge (E3): origin github.com → gh (aunque glab esté instalado — decide por el HOST, no por la CLI)" \
+  || bad "cerrar-slice forge (E3): un origin de GitHub no resolvió a gh"
+[ "$(_forge_de 'git@gitlab.pisa.mx:mx/foo.git')" = glab ] \
+  && ok "cerrar-slice forge (E3): origin gitlab (self-hosted) → glab" \
+  || bad "cerrar-slice forge (E3): un origin de GitLab no resolvió a glab"
+[ -z "$(_forge_de 'https://bitbucket.org/x/y.git')" ] \
+  && ok "cerrar-slice forge (E3): host desconocido → vacío (el llamador da error claro; NO adivina por la CLI)" \
+  || bad "cerrar-slice forge (E3): adivinó un forge para un host desconocido"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
