@@ -2563,6 +2563,27 @@ o="$(emg "bash -c 'git commit -m x'")"
 printf '%s' "$o" | grep -q 'CONTENIDO machine-specific' \
   && ok "M1: entorno-maquina-guard — 'bash -c \"git commit …\"' ya no evade (unificado con la lib)" \
   || bad "M1: entorno-maquina-guard — 'bash -c' evadió el aviso; got: $o"
+# (7) ROSETTA per-LÍNEA (MEDIO auditoría 2026-10-22): una línea Rosetta CON condicional NO silencia a otra
+# SIN condicional. Antes el chequeo era COLECTIVO → la condicional callaba todas. Falla vs el viejo.
+emreset
+printf 'Si estas en Apple Silicon: Rosetta aplica (condicional).\nSQL corre via Rosetta por defecto.\n' > "$EMREPO/.claude/memory/correr-en-local.md"
+git -C "$EMREPO" add .claude/memory/correr-en-local.md >/dev/null 2>&1
+o="$(emg 'git commit -m x')"
+printf '%s' "$o" | grep -q 'Rosetta sin condicional' \
+  && ok "entorno-maquina-guard: una línea Rosetta condicional NO silencia a otra incondicional (per-línea)" \
+  || bad "entorno-maquina-guard: la condicional silenció a la línea Rosetta incondicional; got: $o"
+# (8) 'git -C <otro-repo> commit': honra el -C (analiza el repo del commit, no el cwd/CLAUDE_PROJECT_DIR).
+# Antes (a) el -C rompía la detección de commit (git+commit no adyacentes) y (b) analizaba el cwd. Falla vs el viejo.
+emreset
+EMREPO2="$(mktemp -d "${TMPDIR:-/tmp}/brain-em2.XXXXXX")"
+git -C "$EMREPO2" init -q >/dev/null 2>&1; git -C "$EMREPO2" config user.email t@t >/dev/null 2>&1; git -C "$EMREPO2" config user.name t >/dev/null 2>&1
+mkdir -p "$EMREPO2/.claude/memory"; printf 'x\n' > "$EMREPO2/.claude/memory/entorno-maquina.md"
+git -C "$EMREPO2" add .claude/memory/entorno-maquina.md >/dev/null 2>&1
+o="$(emg "git -C $EMREPO2 commit -m x")"   # CLAUDE_PROJECT_DIR=EMREPO (limpio); el commit va a EMREPO2 vía -C
+printf '%s' "$o" | grep -q 'FILENAME-trampa' \
+  && ok "entorno-maquina-guard: 'git -C <repo> commit' honra el -C (analiza el repo del commit, no el cwd)" \
+  || bad "entorno-maquina-guard: ignoró el -C (analizó el cwd en vez del repo del commit); got: $o"
+rm -rf "$EMREPO2"
 rm -rf "$EMREPO"
 
 # ─────────────────────────────────────────────────────────────────────────────
