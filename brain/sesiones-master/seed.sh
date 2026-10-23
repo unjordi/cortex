@@ -89,15 +89,24 @@ node -e '
       roster.set(meta.id,{id:meta.id,target,name:meta.label||meta.id});
     }catch(_){}
   }
-  for(const e of roster.values()) console.log([e.id,e.target,e.name].join("\t"));
+  for(const e of roster.values()){
+    const hasMeta = fs.existsSync(path.join(dir, e.id+".meta.json")) ? "1" : "0";
+    console.log([e.id,e.target,e.name,hasMeta].join("\t"));
+  }
 ' "$DIR" \
-| while IFS=$'\t' read -r id target name; do
+| while IFS=$'\t' read -r id target name hasmeta; do
     if [ -z "$target" ]; then
       echo "· omito   ${name:-$id}: sin target (cúralo en masters-<host>.json o falta originCwd en su meta)"
       continue
     fi
     if [ ! -f "$DIR/$id.jsonl.gz" ]; then
-      echo "· omito   $name: sin .gz local (¿Drive terminó de bajar? ¿unidad montada?)"
+      # Un id del roster curado SIN .meta.json NI .gz no existe por ningún lado: es un FANTASMA (fixture
+      # viejo o entrada tecleada mal) → avisa fuerte en vez de sembrar/omitir en silencio (claudio).
+      if [ "${hasmeta:-1}" = 0 ]; then
+        echo "⚠ fantasma $name ($id): en un masters-<host>.json pero SIN .meta.json NI .gz en '$DIR' — id inexistente (¿fixture o entrada vieja?); quítalo del roster curado"
+      else
+        echo "· omito   $name: sin .gz local (¿Drive terminó de bajar? ¿unidad montada?)"
+      fi
       continue
     fi
     if repo="$(resolve_target "$target")"; then

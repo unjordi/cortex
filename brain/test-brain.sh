@@ -15,6 +15,10 @@
 # pruebas (lo arma partido) para no disparar el guard global merge-squash-guard sobre sí mismo.
 set -u
 
+# HERMÉTICO: ninguna prueba debe alcanzar la carpeta REAL de sesiones (un publicar-roster/seed que herede
+# CLAUDE_SESSIONS_DRIVE/_LOCAL del entorno filtraría fixtures a ~/claude-sessions — pasó el 2026-10-14).
+unset CLAUDE_SESSIONS_DRIVE CLAUDE_SESSIONS_LOCAL 2>/dev/null || true
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOKS="$SCRIPT_DIR/hooks"
 INSTALLER="$SCRIPT_DIR/install-brain.sh"
@@ -7635,6 +7639,17 @@ printf '%s' "$out" | grep -q "siembro axon-master" && printf '%s' "$out" | grep 
 printf '%s' "$out" | grep -q "games-master" \
   && bad "seed.sh: el legacy masters.json se leyó pese a haber masters-<host>.json (ccc revivió — ids viejos siembran sesiones muertas)" \
   || ok "seed.sh: con masters-<host>.json presente, el legacy masters.json PIERDE (ccc NO se siembra)"
+# #3b (claudio): un id del roster CURADO sin .meta.json NI .gz es un FANTASMA (fixture viejo/entrada mala) →
+# avisa fuerte en vez de omitir en silencio. ddd solo vive en un masters-<host>.json, sin respaldo alguno.
+printf '{"masters":[{"id":"ddd","name":"viejo-master","target":"code/cortex"}]}\n' > "$SDDRIVE/masters-host2.json"
+out2="$(HOME="$SDHOME" CLAUDE_SESSIONS_DRIVE="$SDDRIVE" bash "$HOOKS/../sesiones-master/seed.sh" 2>&1 || true)"
+{ printf '%s' "$out2" | grep -q 'fantasma' && printf '%s' "$out2" | grep -q 'ddd'; } \
+  && ok "seed.sh (#3b): un id curado SIN .meta.json ni .gz → AVISA 'fantasma' (no omite en silencio)" \
+  || bad "seed.sh (#3b): no avisó del id fantasma ddd (out: $(printf '%s' "$out2" | tr '\n' '|'))"
+# control: bbb SÍ tiene respaldo (.gz + .meta) → NO debe marcarse fantasma
+printf '%s' "$out2" | grep -q 'fantasma cortex-master' \
+  && bad "seed.sh (#3b): marcó fantasma a bbb que SÍ tiene respaldo (.gz/.meta)" \
+  || ok "seed.sh (#3b) control: un id con respaldo (.gz/.meta) NO se marca fantasma"
 rm -rf "$SDFIX"
 
 # ── publicar-roster.sh (Opción A, slice 2): publica el masters.json LOCAL + respaldos al folder configurado ──
