@@ -182,7 +182,7 @@ printf '%s' "$norm" | grep -qE '(^|[^[:alnum:]_/])dd([[:space:]]+[^|&;]*)?[[:spa
 # 4) Intérprete que abre el archivo en modo ESCRITURA (python/perl/ruby/node/php) — heurística: el
 #    intérprete + el nombre + una señal de escritura (modo w/a, open(...,'w'), .write, >>).
 if printf '%s' "$norm" | grep -qE '(^|[^[:alnum:]_/])(python[0-9.]*|perl|ruby|node|php)([[:space:]]|$)'; then
-  printf '%s' "$norm" | grep -qE "open\([^)]*$_AUTH_GLOB[^)]*,[^)]*[wa]|$_AUTH_GLOB[^)]*,[^)]*[\"]?[wa]|[wa][\"]?[^)]*$_AUTH_GLOB|\.write|>>[[:space:]]*[^[:space:]]*$_AUTH_GLOB" \
+  printf '%s' "$norm" | grep -qE "open\([^)]*${_AUTH_GLOB}[^)]*,[^)]*[wa]|${_AUTH_GLOB}[^)]*,[^)]*[\"]?[wa]|[wa][\"]?[^)]*${_AUTH_GLOB}|\.write|>>[[:space:]]*[^[:space:]]*${_AUTH_GLOB}" \
     && _deny "un intérprete abriendo el archivo en modo escritura"
 fi
 # 5) curl -o/--output y wget -O/--output-document que DESCARGAN al archivo (R5-1c, auditoría 2026-10-23).
