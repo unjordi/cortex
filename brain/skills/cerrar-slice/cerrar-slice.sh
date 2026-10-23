@@ -227,9 +227,9 @@ command -v "$FORGE" >/dev/null 2>&1 || _err "'$FORGE' no está en el PATH."
 #    MR que apunta a main con `--squash --remove-source-branch` HARÍA el release aplastando la historia y
 #    borrando la rama. Se resuelve el destino y se ABORTA si no es develop (C2, auditoría 2026-10-22). Base
 #    IRRESOLUBLE (red/token/ID) → ABORTA (no mergeo a ciegas a un destino que no puedo verificar), igual que el
-#    gate de CI (INDET → aborta). Mock para tests deterministas: CLAUDE_CERRAR_SLICE_BASE_MOCK.
+#    gate de CI (INDET → aborta). SIN perilla de mock en producción (MEDIO auditoría 2026-10-22): la base sale
+#    SOLO del forge; los tests inyectan un gh/glab FALSO por PATH (que responde el baseRefName/target_branch).
 _pr_base_branch() {
-  if [ -n "${CLAUDE_CERRAR_SLICE_BASE_MOCK:-}" ]; then printf '%s\n' "$CLAUDE_CERRAR_SLICE_BASE_MOCK"; return 0; fi
   if [ "$FORGE" = gh ]; then
     gh pr view "$ID" ${REPO:+-R "$REPO"} --json baseRefName -q .baseRefName 2>/dev/null
   else
@@ -250,8 +250,8 @@ esac
 # y actúa: SINCI/VERDE → mergea · ROJO → ABORTA · PENDIENTE → espera (acotado) · INDET → ABORTA (no mergea a
 # ciegas bajo --wait-ci; un problema de entorno NO se vuelve silencio). Sin --wait-ci, el comportamiento no cambia.
 _ci_veredicto() {
-  # mock para tests deterministas de la DECISIÓN (ambas direcciones), sin red/forge:
-  if [ -n "${CLAUDE_CERRAR_SLICE_CI_MOCK:-}" ]; then printf '%s\n' "$CLAUDE_CERRAR_SLICE_CI_MOCK"; return 0; fi
+  # SIN perilla de mock en producción (MEDIO auditoría 2026-10-22): el veredicto sale SOLO del estado REAL del
+  # forge; los tests ejercitan esta función con un gh/glab FALSO por PATH (unit-test por extracción, o stub en PATH).
   if [ "$FORGE" = gh ]; then
     local out
     out="$(gh pr checks "$ID" ${REPO:+-R "$REPO"} --json bucket 2>/dev/null)"

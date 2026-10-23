@@ -3505,7 +3505,9 @@ echo "== (b3cs-msg) cerrar-slice: el mensaje es AYUDA (advierte + ARMA la traza)
 # id del --id). Falla vs 52d2d8c (donde _err "falta la línea de traza Rama:" abortaba un mensaje sin traza).
 CSMSG_SH="$SCRIPT_DIR/skills/cerrar-slice/cerrar-slice.sh"
 CSMSG_BIN=$(mktemp -d "${TMPDIR:-/tmp}/csmsg.XXXXXX")
-printf '#!/usr/bin/env bash\necho %s\n' "'{\"source_branch\":\"feat/iva\"}'" > "$CSMSG_BIN/glab"; chmod +x "$CSMSG_BIN/glab"
+# glab FALSO por PATH: responde source_branch (para armar «Rama:») y target_branch=develop (para la base-check,
+# que ya NO se mockea por env — MEDIO mock-env 2026-10-22). Mismo JSON sirve a _rama_del_mr y a _pr_base_branch.
+printf '#!/usr/bin/env bash\necho %s\n' "'{\"source_branch\":\"feat/iva\",\"target_branch\":\"develop\"}'" > "$CSMSG_BIN/glab"; chmod +x "$CSMSG_BIN/glab"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$CSMSG_BIN/gitleaks"; chmod +x "$CSMSG_BIN/gitleaks"   # escaneo de secretos → limpio (determinista)
 # HERMETICIDAD (MEDIO claudio 2026-10-22): las pruebas de cerrar-slice corren en un TOY REPO en feat/x, NO en
 # el repo donde corre la suite. El gitleaks gate, al no resolver el head como ref, cae a la rama ACTUAL; con
@@ -3517,11 +3519,11 @@ CSTOY="$(mktemp -d "${TMPDIR:-/tmp}/cstoy.XXXXXX")"
   git checkout -q -b develop; printf 'base\n' > base.txt; git add base.txt; git commit -qm base
   git remote add origin "$CSTOY/o.git"; git push -q origin develop
   git checkout -q -b feat/x; printf 'x\n' > x.txt; git add x.txt; git commit -qm x ) >/dev/null 2>&1
-out_csm="$(cd "$CSTOY/r" && PATH="$CSMSG_BIN:$PATH" CLAUDE_CERRAR_SLICE_BASE_MOCK=develop bash "$CSMSG_SH" --id 7 --message "corrige el IVA" --forge glab --dry-run 2>/dev/null)"
+out_csm="$(cd "$CSTOY/r" && PATH="$CSMSG_BIN:$PATH" bash "$CSMSG_SH" --id 7 --message "corrige el IVA" --forge glab --dry-run 2>/dev/null)"
 { printf '%s' "$out_csm" | grep -q 'dry-run' && printf '%s' "$out_csm" | grep -q 'Rama: feat/iva' && printf '%s' "$out_csm" | grep -q 'MR: !7'; } \
   && ok "cerrar-slice: mensaje corto SIN traza → NO aborta; ARMA «Rama: feat/iva» (del forge) + «MR: !7» (del --id) y planea el merge" \
   || bad "cerrar-slice: abortó por el mensaje o no armó la traza; got: $out_csm"
-out_csm2="$(cd "$CSTOY/r" && PATH="$CSMSG_BIN:$PATH" CLAUDE_CERRAR_SLICE_BASE_MOCK=develop bash "$CSMSG_SH" --id 8 --message "corrige el calculo del IVA en las facturas del periodo fiscal vigente. Rama: fix/x, MR: !8" --forge glab --dry-run 2>/dev/null)"
+out_csm2="$(cd "$CSTOY/r" && PATH="$CSMSG_BIN:$PATH" bash "$CSMSG_SH" --id 8 --message "corrige el calculo del IVA en las facturas del periodo fiscal vigente. Rama: fix/x, MR: !8" --forge glab --dry-run 2>/dev/null)"
 { printf '%s' "$out_csm2" | grep -q 'dry-run' && [ "$(printf '%s' "$out_csm2" | grep -c 'Rama:')" -le 1 ]; } \
   && ok "cerrar-slice: mensaje con traza propia → se respeta (no re-arma ni duplica Rama:)" \
   || bad "cerrar-slice: duplicó o perdió la traza propia; got: $out_csm2"
@@ -3536,8 +3538,10 @@ CSEP="$(mktemp -d "${TMPDIR:-/tmp}/csep.XXXXXX")"
   && git checkout -q develop && git checkout -q -b epic/afinado \
   && git merge -q --no-ff feat/a -m "merge a" && git merge -q --no-ff feat/b -m "merge b" ) >/dev/null 2>&1
 CSEPB="$(mktemp -d)"; printf '#!/usr/bin/env bash\nexit 0\n' > "$CSEPB/gitleaks"; chmod +x "$CSEPB/gitleaks"
-printf '#!/usr/bin/env bash\nexit 1\n' > "$CSEPB/glab"; chmod +x "$CSEPB/glab"
-csep_out="$(cd "$CSEP" && PATH="$CSEPB:$PATH" CLAUDE_CERRAR_SLICE_BASE_MOCK=develop bash "$CSMSG_SH" --id 9 --message "integro la épica de afinado" --branch epic/afinado --forge glab --dry-run 2>/dev/null)"
+# glab FALSO: solo target_branch=develop (SIN source_branch → _rama_del_mr cae al --branch epic/afinado). La
+# base-check ya no se mockea por env (MEDIO mock-env 2026-10-22); antes este stub era `exit 1` + BASE_MOCK.
+printf '#!/usr/bin/env bash\necho %s\n' "'{\"target_branch\":\"develop\"}'" > "$CSEPB/glab"; chmod +x "$CSEPB/glab"
+csep_out="$(cd "$CSEP" && PATH="$CSEPB:$PATH" bash "$CSMSG_SH" --id 9 --message "integro la épica de afinado" --branch epic/afinado --forge glab --dry-run 2>/dev/null)"
 { printf '%s' "$csep_out" | grep -qF 'Rama: epic/afinado' && printf '%s' "$csep_out" | grep -qF 'Rama: feat/a' && printf '%s' "$csep_out" | grep -qF 'Rama: feat/b'; } \
   && ok "b3cs-msg (2026-10-22): una contenedora lleva un «Rama:» por CADA sub-rama contenida (épica → las 3, no solo la contenedora)" \
   || bad "b3cs-msg (2026-10-22): no nombró todas las sub-ramas contenidas; got: $(printf '%s' "$csep_out" | tr '\n' '|')"
@@ -3563,16 +3567,26 @@ _forge_de() { local R o; R="$(mktemp -d "${TMPDIR:-/tmp}/csf.XXXXXX")"; git -C "
 # si no es develop (un release develop→main es OTRO acto, SIN squash) o si no puede verificarla. FALLA contra
 # 6ce9913 (que no consultaba la base → mergeaba a main aplastando la historia + borrando la rama).
 CSB_BIN=$(mktemp -d "${TMPDIR:-/tmp}/csb.XXXXXX"); printf '#!/usr/bin/env bash\nexit 0\n' > "$CSB_BIN/gitleaks"; chmod +x "$CSB_BIN/gitleaks"
-# stub gh que SIEMPRE devuelve vacío: así `gh pr view` no cae al gh REAL del PATH (sobre el repo cortex del cwd)
-# y el caso "base irresoluble" (sin mock) resuelve base vacía → el script ABORTA ("no pude verificar la base").
-printf '#!/usr/bin/env bash\nexit 0\n' > "$CSB_BIN/gh"; chmod +x "$CSB_BIN/gh"
 CSB_MSG="corrige el calculo del IVA en las facturas sumando el impuesto por linea. Rama: feat/x MR: !5"
-csb() { ( cd "$CSTOY/r" && PATH="$CSB_BIN:$PATH" CLAUDE_CERRAR_SLICE_BASE_MOCK="$1" bash "$CSMSG_SH" --id 5 --message "$CSB_MSG" --forge gh --dry-run 2>&1 ); }
+# La base ya NO se mockea por env (MEDIO mock-env 2026-10-22): un gh FALSO por PATH devuelve el baseRefName
+# deseado ($1); vacío = base irresoluble (gh sin salida) → el script ABORTA ("no pude verificar la base").
+csb() {
+  if [ -n "$1" ]; then printf '#!/usr/bin/env bash\necho %s\n' "$1" > "$CSB_BIN/gh"
+  else printf '#!/usr/bin/env bash\nexit 0\n' > "$CSB_BIN/gh"; fi
+  chmod +x "$CSB_BIN/gh"
+  ( cd "$CSTOY/r" && PATH="$CSB_BIN:$PATH" bash "$CSMSG_SH" --id 5 --message "$CSB_MSG" --forge gh --dry-run 2>&1 )
+}
 o="$(csb main)";    rc=$?; { [ "$rc" -ne 0 ] && printf '%s' "$o" | grep -qi 'RELEASE'; }        && ok "C2: cerrar-slice + base=main → ABORTA (release, no mergea con squash)" || bad "C2: cerrar-slice no abortó ante base=main; rc=$rc got: $o"
 o="$(csb master)";  rc=$?; [ "$rc" -ne 0 ]                                                       && ok "C2: cerrar-slice + base=master → ABORTA (alias de release)" || bad "C2: cerrar-slice no abortó ante base=master; got: $o"
 o="$(csb '')";      rc=$?; { [ "$rc" -ne 0 ] && printf '%s' "$o" | grep -qi 'verificar la base'; } && ok "C2: cerrar-slice + base IRRESOLUBLE → ABORTA (no mergea a ciegas)" || bad "C2: cerrar-slice no abortó ante base irresoluble; got: $o"
 o="$(csb develop)"; rc=$?; { [ "$rc" -eq 0 ] && printf '%s' "$o" | grep -q 'dry-run'; }           && ok "C2 control: cerrar-slice + base=develop → PROCEDE (el único destino que integra)" || bad "C2 control: cerrar-slice abortó un merge legítimo a develop; got: $o"
 rm -rf "$CSB_BIN"
+# MEDIO mock-env (auditoría 2026-10-22): producción NO lee ninguna perilla de mock — base y CI salen SOLO del
+# forge. Falla contra el código con las perillas (CLAUDE_CERRAR_SLICE_BASE_MOCK / _CI_MOCK): un agente que las
+# seteara en el env de sesión podía forzar base=develop o un veredicto de CI VERDE y mergear a ciegas.
+{ ! grep -q 'CLAUDE_CERRAR_SLICE_BASE_MOCK\|CLAUDE_CERRAR_SLICE_CI_MOCK' "$CSMSG_SH"; } \
+  && ok "b3cs: cerrar-slice.sh NO lee ninguna env de mock en producción (base/CI solo del forge)" \
+  || bad "b3cs: cerrar-slice.sh aún lee una perilla de mock (BASE_MOCK/CI_MOCK) en producción"
 
 # (b3cs-guard, C2 parte 1 auditoría 2026-10-22) el guard RECONOCE una invocación de cerrar-slice.sh como un
 # merge a develop (cerrar-slice corre el `glab/gh merge` POR DENTRO → el guard solo vería `bash cerrar-slice.sh`
@@ -3599,32 +3613,34 @@ rm -rf "$CSG" "$CSTOY"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "== (b3cs-ci) cerrar-slice _ci_veredicto (glab): un FALLO de glab (sin red/token) → INDET, NUNCA SINCI =="
-# C1: un `jq … // \"NONE\"` que diera \"\" ante glab-falla caería a case '' → SINCI → mergearía A CIEGAS
-# bajo --wait-ci. Por eso se valida el JSON ANTES (type==object): sin objeto → INDET (aborta). FALLA contra
-# un código que prosiguiera con exit 0. Se ejercita el script REAL con glab stubbeado.
+echo "== (b3cs-ci) cerrar-slice _ci_veredicto (glab): el veredicto sale del estado REAL del CI, sin perilla de mock =="
+# C1: un `jq … // "NONE"` que diera "" ante glab-falla caería a SINCI → mergearía A CIEGAS bajo --wait-ci. Por
+# eso se valida el JSON ANTES (type==object): sin objeto → INDET. Ya NO se mockea el veredicto por env (MEDIO
+# mock-env 2026-10-22, se quitó CLAUDE_CERRAR_SLICE_CI_MOCK): se EXTRAE la función _ci_veredicto REAL y se
+# ejercita con un glab FALSO por PATH (parsing REAL, ambas direcciones). FALLA contra un código que diera SINCI
+# ante glab-falla, y contra el código con la perilla de mock (que cortocircuitaba el parseo).
 CSCI_SH="$SCRIPT_DIR/skills/cerrar-slice/cerrar-slice.sh"
-CSCI_MSG="fix(x): prueba del veredicto de CI con glab stub, suficientemente larga para el piso. Rama: fix/x MR: !1"
-CSCI_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-csci.XXXXXX")"; CSCI_BIN="$CSCI_ROOT/bin"; mkdir -p "$CSCI_BIN"
-# (dir malo) glab FALLA → INDET → aborta (exit≠0 + mensaje INDET)
-printf '#!/usr/bin/env bash\nexit 3\n' > "$CSCI_BIN/glab"; chmod +x "$CSCI_BIN/glab"
-csci_out="$(PATH="$CSCI_BIN:/usr/bin:/bin" CLAUDE_CERRAR_SLICE_BASE_MOCK=develop bash "$CSCI_SH" --id 1 --message "$CSCI_MSG" --forge glab --wait-ci --dry-run 2>&1)"; csci_rc=$?
-{ [ "$csci_rc" -ne 0 ] && printf '%s' "$csci_out" | grep -qi 'no pude determinar el estado del CI'; } \
-  && ok "b3cs-ci: glab FALLA (sin red/token) → INDET y ABORTA (no mergea a ciegas)" \
-  || bad "b3cs-ci: glab falla pero NO abortó con INDET (rc=$csci_rc) — mergearía a ciegas; got: $(printf '%s' "$csci_out" | tail -1)"
-# (control) JSON válido con .pipeline null → SINCI → procede (exit 0)
-printf '#!/usr/bin/env bash\necho '\''{"pipeline":null}'\''\n' > "$CSCI_BIN/glab"; chmod +x "$CSCI_BIN/glab"
-csci_out="$(PATH="$CSCI_BIN:/usr/bin:/bin" CLAUDE_CERRAR_SLICE_BASE_MOCK=develop bash "$CSCI_SH" --id 1 --message "$CSCI_MSG" --forge glab --wait-ci --dry-run 2>&1)"; csci_rc=$?
-{ [ "$csci_rc" -eq 0 ] && printf '%s' "$csci_out" | grep -qi 'nada que esperar'; } \
-  && ok "b3cs-ci: JSON válido .pipeline null → SINCI y PROCEDE (sin regresión del caso sin-CI)" \
-  || bad "b3cs-ci: un MR sin pipeline (JSON válido) no procedió (rc=$csci_rc); got: $(printf '%s' "$csci_out" | tail -1)"
-# (control) pipeline failed → ROJO → aborta
-printf '#!/usr/bin/env bash\necho '\''{"pipeline":{"status":"failed"}}'\''\n' > "$CSCI_BIN/glab"; chmod +x "$CSCI_BIN/glab"
-csci_out="$(PATH="$CSCI_BIN:/usr/bin:/bin" CLAUDE_CERRAR_SLICE_BASE_MOCK=develop bash "$CSCI_SH" --id 1 --message "$CSCI_MSG" --forge glab --wait-ci --dry-run 2>&1)"; csci_rc=$?
-{ [ "$csci_rc" -ne 0 ] && printf '%s' "$csci_out" | grep -qi 'ROJO'; } \
-  && ok "b3cs-ci: JSON válido pipeline failed → ROJO y ABORTA" \
-  || bad "b3cs-ci: un pipeline failed no abortó (rc=$csci_rc); got: $(printf '%s' "$csci_out" | tail -1)"
-rm -rf "$CSCI_ROOT"
+CSCIFN="$(sed -n '/^_ci_veredicto() {/,/^}/p' "$CSCI_SH")"
+_ciV() { # $1 = JSON que el glab FALSO devuelve, o 'FAIL' = glab sale ≠0 (sin red/token)
+  local BIN; BIN="$(mktemp -d "${TMPDIR:-/tmp}/csci.XXXXXX")"
+  if [ "$1" = FAIL ]; then printf '#!/usr/bin/env bash\nexit 3\n' > "$BIN/glab"
+  else printf '#!/usr/bin/env bash\necho %s\n' "'$1'" > "$BIN/glab"; fi
+  chmod +x "$BIN/glab"
+  PATH="$BIN:$PATH" FORGE=glab ID=1 bash -c "$CSCIFN"$'\n_ci_veredicto' 2>/dev/null
+  rm -rf "$BIN"
+}
+[ "$(_ciV FAIL)" = INDET ] \
+  && ok "b3cs-ci: glab FALLA (sin red/token) → INDET (NUNCA SINCI; no mergea a ciegas)" || bad "b3cs-ci: glab-falla no dio INDET (got '$(_ciV FAIL)')"
+[ "$(_ciV 'no soy json')" = INDET ] \
+  && ok "b3cs-ci: salida NO-objeto de glab → INDET" || bad "b3cs-ci: salida no-objeto no dio INDET"
+[ "$(_ciV '{"pipeline":null}')" = SINCI ] \
+  && ok "b3cs-ci: JSON válido .pipeline null → SINCI (sin regresión del caso sin-CI)" || bad "b3cs-ci: .pipeline null no dio SINCI"
+[ "$(_ciV '{"pipeline":{"status":"success"}}')" = VERDE ] \
+  && ok "b3cs-ci: pipeline success → VERDE (ambas direcciones)" || bad "b3cs-ci: pipeline success no dio VERDE"
+[ "$(_ciV '{"pipeline":{"status":"failed"}}')" = ROJO ] \
+  && ok "b3cs-ci: pipeline failed → ROJO" || bad "b3cs-ci: pipeline failed no dio ROJO"
+[ "$(_ciV '{"pipeline":{"status":"running"}}')" = PENDIENTE ] \
+  && ok "b3cs-ci: pipeline running → PENDIENTE" || bad "b3cs-ci: pipeline running no dio PENDIENTE"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
@@ -9764,9 +9780,29 @@ echo ""
 echo "== cerrar-slice --wait-ci: el estado real del CI gobierna merge/abort (A2) =="
 CS="$SCRIPT_DIR/skills/cerrar-slice/cerrar-slice.sh"
 if [ -f "$CS" ]; then
-  CSBIN="$FAKEHOME/csbin"; mkdir -p "$CSBIN"                       # stub de gh para el `command -v` (el mock corta antes de llamarlo)
-  printf '#!/usr/bin/env bash\nexit 0\n' > "$CSBIN/gh"; chmod +x "$CSBIN/gh"
+  CSBIN="$FAKEHOME/csbin"; mkdir -p "$CSBIN"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$CSBIN/gitleaks"; chmod +x "$CSBIN/gitleaks"   # gitleaks limpio (determinista; si no, escanea los commits REALES del repo del cwd y aborta)
+  # El veredicto de CI ya NO se mockea por env (MEDIO mock-env 2026-10-22, se quitó CLAUDE_CERRAR_SLICE_CI_MOCK):
+  # un gh FALSO por PATH responde el baseRefName=develop (base-check) Y los `pr checks` según el estado deseado,
+  # que _cs escribe en un archivo que SOLO el gh FALSO lee (producción no lee ninguna env de mock).
+  cat > "$CSBIN/gh" <<'GHCI'
+#!/usr/bin/env bash
+case "$*" in
+  *baseRefName*) echo develop; exit 0 ;;                         # base-check → develop
+  *checks*--json*)                                              # veredicto de CI por estado
+    case "$(cat "$CSCI_STATE" 2>/dev/null)" in
+      VERDE)     echo '[{"bucket":"pass"}]' ;;
+      SINCI)     echo '[]' ;;
+      ROJO)      echo '[{"bucket":"fail"}]' ;;
+      PENDIENTE) echo '[{"bucket":"pending"}]' ;;
+      *)         echo boom >&2; exit 2 ;;                        # INDET: salida NO-JSON
+    esac; exit 0 ;;
+  *checks*) echo 'fallo de red al consultar el CI' >&2; exit 2 ;; # fallback no-json SIN la frase "no checks" → INDET
+  *) exit 0 ;;
+esac
+GHCI
+  chmod +x "$CSBIN/gh"
+  CSST="$FAKEHOME/csci-state"
   _csmsg='Afina el wait-ci para decidir por el estado real del CI del MR. Rama: fix/x MR: !999'
   # HERMETICIDAD (claudio 2026-10-22): corre en un TOY REPO en feat/x, no en el repo de la suite (en CI es un
   # checkout DETACHED → la rama actual es 'HEAD' y el gitleaks gate aborta). feat/x (no base) → ${base}..HEAD.
@@ -9776,7 +9812,7 @@ if [ -f "$CS" ]; then
     git checkout -q -b develop; printf 'b\n' > b.txt; git add b.txt; git commit -qm b
     git remote add origin "$CSWTOY/o.git"; git push -q origin develop
     git checkout -q -b feat/x; printf 'x\n' > x.txt; git add x.txt; git commit -qm x ) >/dev/null 2>&1
-  _cs() { ( cd "$CSWTOY/r" && CLAUDE_CERRAR_SLICE_CI_MOCK="$1" CERRAR_SLICE_CI_TIMEOUT=0 CLAUDE_CERRAR_SLICE_BASE_MOCK=develop PATH="$CSBIN:$PATH" \
+  _cs() { printf '%s' "$1" > "$CSST"; ( cd "$CSWTOY/r" && CSCI_STATE="$CSST" CERRAR_SLICE_CI_TIMEOUT=0 PATH="$CSBIN:$PATH" \
             bash "$CS" --id 999 --forge gh --message "$_csmsg" --wait-ci --dry-run 2>/dev/null ); }
   for v in VERDE SINCI; do
     if _cs "$v" | grep -q 'correría'; then ok "cerrar-slice wait-ci: $v → procede al merge"
