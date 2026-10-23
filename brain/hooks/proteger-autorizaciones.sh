@@ -40,17 +40,49 @@ _deny() {   # $1 = detalle de por qué/ cómo
   exit 0
 }
 
+# DEFANG (R5-1a, auditoría 2026-10-23): quita comillas (" ') y backslashes de escape para que el nombre
+# LITERAL se reconstruya ANTES del pre-filtro y de la detección. Sin esto, el pre-filtro corría sobre el
+# comando CRUDO y una comilla intra-palabra (`au''torizaciones-vi''gentes`) o un escape (`au\toriz`) rompían
+# ambas mitades del nombre → el hook early-exiteaba y la escritura PASABA. NO expande globs reales (*/?/[…]):
+# esos los trata la regla de indirección (B), que ahora reconoce `[` como metacarácter además de */?.
+_defang() { printf '%s' "$1" | tr -d '\042\047\134'; }
+
 # ¿El comando trae un operador de ESCRITURA A ARCHIVO? (para la regla de indirección — el destino puede ir
 # oculto en una variable/glob). Reconoce tee/cp/mv/ln/install/rsync/dd/truncate, `sed -i`, un intérprete con
-# -c/-e, y una redirección `>`/`>>` A ARCHIVO — excluyendo las que NO escriben un archivo del repo: `2>…`
-# (stderr), `>&N` (dup de fd), `&>…`, y `>/dev/null`. Así una LECTURA con `2>/dev/null` no cuenta como escritura.
+# -c/-e, curl/wget que DESCARGAN a archivo, sponge, git checkout/restore -- (sobrescribe el working file),
+# y una redirección `>`/`>>` A ARCHIVO — excluyendo las que NO escriben un archivo del repo: `2>…` (stderr),
+# `>&N` (dup de fd), `&>…`, y `>/dev/null`. Así una LECTURA con `2>/dev/null` no cuenta como escritura.
 _tiene_escritura_a_archivo() {
   local c="$1" r
-  printf '%s' "$c" | grep -qE '(^|[^[:alnum:]_/])(tee|cp|mv|ln|install|rsync|dd|truncate)([[:space:]]|$)' && return 0
+  printf '%s' "$c" | grep -qE '(^|[^[:alnum:]_/])(tee|cp|mv|ln|install|rsync|dd|truncate|sponge)([[:space:]]|$)' && return 0
   printf '%s' "$c" | grep -qE '(^|[^[:alnum:]_/])sed[[:space:]]+[^|&;]*-i' && return 0
   printf '%s' "$c" | grep -qE '(^|[^[:alnum:]_/])(python[0-9.]*|perl|ruby|node|php)[[:space:]][^|&;]*-[ce]' && return 0
+  printf '%s' "$c" | grep -qE '(^|[^[:alnum:]_/])curl[[:space:]][^|&;]*(-o|--output)([[:space:]]|=)' && return 0
+  printf '%s' "$c" | grep -qE '(^|[^[:alnum:]_/])wget[[:space:]][^|&;]*(-O|--output-document)([[:space:]]|=)' && return 0
+  printf '%s' "$c" | grep -qE '(^|[^[:alnum:]_/])git[[:space:]][^|&;]*(checkout|restore)[[:space:]][^|&;]*--([[:space:]]|$)' && return 0
   r=$(printf '%s' "$c" | sed -E 's/2>>?[[:space:]]*[^|&;[:space:]]*//g; s/[0-9]*>&[0-9-]*//g; s/&>>?[[:space:]]*[^|&;[:space:]]*//g; s#>>?[[:space:]]*/dev/null##g')
   printf '%s' "$r" | grep -qE '>' && return 0
+  return 1
+}
+
+# R5-1b (auditoría 2026-10-23): una escritura cuyo DESTINO es un GLOB bajo .../memory/ que PODRÍA expandir al
+# archivo de grants — p. ej. `for f in .claude/memory/*.local.md; do … >> $f; done` (el glob alimenta la
+# variable de escritura; ni (A) ni las dos-mitades de (B) lo ven). Extrae los tokens `…/memory/<glob>` con
+# metacarácter y prueba con `case` si el glob casa el nombre canónico — PERO solo DENY si el glob es SELECTIVO
+# para el grant: casa `autorizaciones-vigentes.local.md` y NO casa un archivo de memoria benigno común
+# (bitacora.md / estado-proyecto.md). Así `.claude/memory/*.local.md` (casa el grant, no los benignos) → DENY,
+# pero un `ls .claude/memory/*.md` junto a una escritura ajena (`*.md` casa TODO) → PASA (no es selectivo).
+_glob_memory_casa() {
+  local c="$1" tok base
+  for tok in $(printf '%s' "$c" | grep -oE '[^[:space:]<>|&;)]*memory/[^[:space:]<>|&;)]*[][*?][^[:space:]<>|&;)]*' 2>/dev/null); do
+    base="${tok##*/}"
+    case "autorizaciones-vigentes.local.md" in
+      $base)
+        case "bitacora.md" in $base) continue ;; esac
+        case "estado-proyecto.md" in $base) continue ;; esac
+        return 0 ;;
+    esac
+  done
   return 1
 }
 
@@ -73,16 +105,24 @@ case "$tool" in
 esac
 
 # --- Camino Bash: ¿el comando ESCRIBE a autorizaciones-vigentes* (directo o por INDIRECCIÓN)? ---
-# Pre-filtro barato: el nombre se parte en dos mitades distintivas, `autoriz…` y `…vigentes`. Una
-# indirección (variable/glob/split) puede ocultar una mitad, pero rara vez las dos → si NINGUNA aparece en el
-# texto, el comando no puede nombrar el archivo → early-exit. (Residual BAJO: ofuscación que no deja NINGUNA
-# mitad — base64/rev/un script aparte — ver nota en la sección (B).)
-printf '%s' "$cmd" | grep -qiE 'autoriz|vigentes' || exit 0
+# DEFANG primero (R5-1a): el pre-filtro y la detección corren sobre el comando SIN comillas/escapes, para que
+# `au''toriz…`/`au\toriz…` no rompan las mitades del nombre. (Antes el pre-filtro corría sobre el CRUDO → una
+# comilla intra-palabra lo evadía y el hook early-exiteaba.)
+scan=$(_defang "$cmd")
 
-# Normaliza quitando SOLO los caracteres de comilla (mantiene el texto): así `>> "autoriz…"` (destino
-# entrecomillado) se detecta igual, sin re-parsear el shell. Conservador para un DENY de seguridad: a lo
-# más un `echo '>> autorizaciones-vigentes'` (texto literal, caso irreal) daría un FP seguro.
-norm=$(printf '%s' "$cmd" | tr -d "\"'")
+# Pre-filtro barato: el nombre se parte en dos mitades distintivas, `autoriz…` y `…vigentes`. Una indirección
+# (variable/glob/split) puede ocultar una mitad, pero rara vez las dos. Si NINGUNA mitad aparece en el texto
+# DEFANGED Y tampoco hay un GLOB bajo …/memory/ (que podría expandir al grant sin deletrear ninguna mitad,
+# R5-1b) → el comando no puede nombrar el archivo → early-exit. (Residual BAJO: ofuscación que no deja NINGUNA
+# mitad NI glob — base64/rev/un script aparte — ver nota en la sección (B).)
+if ! printf '%s' "$scan" | grep -qiE 'autoriz|vigentes'; then
+  printf '%s' "$scan" | grep -qE 'memory/[^[:space:]<>|&;]*[][*?]' || exit 0
+fi
+
+# `scan` es el comando defanged; la detección de abajo opera sobre él (así `>> "autoriz…"` entrecomillado se
+# detecta igual). Conservador para un DENY de seguridad: a lo más un `echo '>> autorizaciones-vigentes'`
+# (texto literal, caso irreal) daría un FP seguro.
+norm="$scan"
 
 # ── (A) VECTORES DIRECTOS: el nombre LITERAL es el destino de una escritura. Mensaje preciso por vector. ──
 # 1) Redirección (> o >>, incluye el heredoc `cat > f <<EOF`) cuyo destino contiene el nombre.
@@ -104,6 +144,20 @@ if printf '%s' "$norm" | grep -qE '(^|[^[:alnum:]_/])(python[0-9.]*|perl|ruby|no
   printf '%s' "$norm" | grep -qE "open\([^)]*$_AUTH_GLOB[^)]*,[^)]*[wa]|$_AUTH_GLOB[^)]*,[^)]*[\"]?[wa]|[wa][\"]?[^)]*$_AUTH_GLOB|\.write|>>[[:space:]]*[^[:space:]]*$_AUTH_GLOB" \
     && _deny "un intérprete abriendo el archivo en modo escritura"
 fi
+# 5) curl -o/--output y wget -O/--output-document que DESCARGAN al archivo (R5-1c, auditoría 2026-10-23).
+printf '%s' "$norm" | grep -qE '(^|[^[:alnum:]_/])curl[[:space:]][^|&;]*(-o|--output)[[:space:]]+[^|&;]*'"$_AUTH_GLOB" \
+  && _deny "curl -o/--output hacia el archivo"
+printf '%s' "$norm" | grep -qE '(^|[^[:alnum:]_/])wget[[:space:]][^|&;]*(-O|--output-document)[[:space:]]*=?[[:space:]]*[^|&;]*'"$_AUTH_GLOB" \
+  && _deny "wget -O/--output-document hacia el archivo"
+# 6) sponge (moreutils) absorbe stdin y ESCRIBE su argumento (R5-1g).
+printf '%s' "$norm" | grep -qE '(^|[^[:alnum:]_/])sponge[[:space:]]+[^|&;]*'"$_AUTH_GLOB" \
+  && _deny "sponge hacia el archivo"
+# 7) sed/ed/ex con el comando de ESCRITURA `w <archivo>` (sed 'w f' escribe el patrón a f) (R5-1e).
+printf '%s' "$norm" | grep -qE '(^|[^[:alnum:]_/])(sed|ed|ex)[[:space:]][^|&;]*[[:space:]]w[[:space:]]+[^|&;]*'"$_AUTH_GLOB" \
+  && _deny "sed/ed/ex con el comando de escritura w hacia el archivo"
+# 8) git checkout/restore … -- <archivo> SOBRESCRIBE el working file desde otra ref/stash (R5-1f).
+printf '%s' "$norm" | grep -qE '(^|[^[:alnum:]_/])git[[:space:]][^|&;]*(checkout|restore)[[:space:]][^|&;]*--[[:space:]]+[^|&;]*'"$_AUTH_GLOB" \
+  && _deny "git checkout/restore -- hacia el archivo (sobrescribe el working file)"
 
 # ── (B) INDIRECCIÓN (MEDIO 2026-10-23, verificado contra el hook): una variable/glob/split oculta el destino
 # y los vectores directos de (A) NO lo ven — p. ej. `F=…/autorizaciones-vigentes.local.md; echo x >> $F`,
@@ -120,8 +174,12 @@ fi
 if _tiene_escritura_a_archivo "$norm"; then
   { printf '%s' "$norm" | grep -qiE 'autoriz' && printf '%s' "$norm" | grep -qiE 'vigentes'; } \
     && _deny "escritura con el nombre reconstruido por indirección ('autoriz…' + '…vigentes' en variable/split)"
-  printf '%s' "$norm" | grep -qiE '(autoriz|vigentes)[^[:space:]<>|&;]*[*?]|[*?][^[:space:]<>|&;]*(autoriz|vigentes)' \
-    && _deny "escritura hacia un glob que puede expandir al archivo de grants (autoriz* / *vigentes)"
+  # Glob pegado a una mitad del nombre — reconoce *, ? y `[` (clase/bracket-glob, R5-1d) como metacarácter.
+  printf '%s' "$norm" | grep -qiE '(autoriz|vigentes)[^[:space:]<>|&;]*[][*?]|[][*?][^[:space:]<>|&;]*(autoriz|vigentes)' \
+    && _deny "escritura hacia un glob que puede expandir al archivo de grants (autoriz* / *vigentes / [a]utoriz…)"
+  # Glob bajo …/memory/ SELECTIVO para el grant aunque no deletree ninguna mitad (R5-1b: `*.local.md`).
+  _glob_memory_casa "$norm" \
+    && _deny "escritura cuyo destino es un glob SELECTIVO bajo .claude/memory/ que casa el archivo de grants (p. ej. *.local.md)"
 fi
 
 exit 0

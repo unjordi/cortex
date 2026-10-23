@@ -3120,6 +3120,28 @@ pa_is_deny "$(pa_bash "cat $AF > /dev/null 2>&1")"                            &&
 pa_is_deny "$(pa_bash "echo autorizado > /tmp/status.txt")"                   && { bad "proteger-autorizaciones: FP — 'autoriz' sin 'vigentes' ni glob + write a otro archivo se denegó"; pa_cfail=1; }
 pa_is_deny "$(pa_bash "grep autoriz log.txt > /tmp/out.txt")"                 && { bad "proteger-autorizaciones: FP — grep 'autoriz' con salida a otro archivo se denegó"; pa_cfail=1; }
 [ "$pa_cfail" = 0 ] && ok "proteger-autorizaciones: anti-FP de indirección (lectura con 2>/dev/null/pipe · 'autoriz' sin 'vigentes'/glob + write ajeno) → PASA"
+# (9) R5-1 (auditoría 2026-10-23, claudio reprodujo): el pre-filtro greppeaba el comando CRUDO (con comillas)
+#     ANTES del tr -d → una comilla/escape intra-palabra rompía ambas mitades y el hook early-exiteaba; además
+#     faltaban operadores (curl -o/wget -O/sponge/sed w/git checkout --) y un glob SELECTIVO bajo memory/ que
+#     no deletrea ninguna mitad (`*.local.md`) y el bracket-glob `[a]`. FALLAN vs f440234 (todos PASABAN).
+pa_r5fail=0
+pa_is_deny "$(pa_bash "echo x >> .claude/memory/au''torizaciones-vi''gentes.local.md")" || { bad "proteger-autorizaciones R5-1a: comilla intra-palabra evadió el pre-filtro"; pa_r5fail=1; }
+pa_is_deny "$(pa_bash 'echo x >> .claude/memory/au\torizaciones-vigentes.local.md')"    || { bad "proteger-autorizaciones R5-1a2: backslash-escape intra-palabra evadió"; pa_r5fail=1; }
+pa_is_deny "$(pa_bash 'for f in .claude/memory/*.local.md; do echo x >> $f; done')"      || { bad "proteger-autorizaciones R5-1b: glob SELECTIVO *.local.md (var de escritura) evadió"; pa_r5fail=1; }
+pa_is_deny "$(pa_bash "curl -s http://x -o $AF")"                                        || { bad "proteger-autorizaciones R5-1c: curl -o evadió"; pa_r5fail=1; }
+pa_is_deny "$(pa_bash "wget http://x -O $AF")"                                           || { bad "proteger-autorizaciones R5-1c2: wget -O evadió"; pa_r5fail=1; }
+pa_is_deny "$(pa_bash "echo x >> .claude/memory/[a]utorizaciones-vigentes.local.md")"    || { bad "proteger-autorizaciones R5-1d: bracket-glob [a] evadió"; pa_r5fail=1; }
+pa_is_deny "$(pa_bash "sed -n 'w $AF' x")"                                               || { bad "proteger-autorizaciones R5-1e: sed comando w evadió"; pa_r5fail=1; }
+pa_is_deny "$(pa_bash "git checkout stash@{0} -- $AF")"                                  || { bad "proteger-autorizaciones R5-1f: git checkout -- <archivo> evadió"; pa_r5fail=1; }
+pa_is_deny "$(pa_bash "echo x | sponge $AF")"                                            || { bad "proteger-autorizaciones R5-1g: sponge evadió"; pa_r5fail=1; }
+[ "$pa_r5fail" = 0 ] && ok "proteger-autorizaciones R5-1: DENY tras defang-antes-del-pre-filtro + operadores (curl/wget/sponge/sed-w/git-checkout) + glob selectivo/[a] (fallan vs f440234)"
+# (9b) anti-FP de R5-1: un glob AMPLIO bajo memory junto a una escritura ajena (`*.md` casa TODO, no es
+#     selectivo), y una lectura por glob, siguen PASANDO.
+pa_r5cfail=0
+pa_is_deny "$(pa_bash 'echo x >> .claude/memory/bitacora.md; ls .claude/memory/*.md')"   && { bad "proteger-autorizaciones R5-1 FP: write ajeno + glob AMPLIO *.md (no selectivo) se denegó"; pa_r5cfail=1; }
+pa_is_deny "$(pa_bash 'for f in .claude/memory/*.md; do wc -l $f; done')"                 && { bad "proteger-autorizaciones R5-1 FP: lectura por glob (wc) se denegó"; pa_r5cfail=1; }
+pa_is_deny "$(pa_file Edit "/x/.claude/memory/conocimiento-propio.local.md")"             && { bad "proteger-autorizaciones R5-1 FP: Edit a OTRO .local.md se denegó"; pa_r5cfail=1; }
+[ "$pa_r5cfail" = 0 ] && ok "proteger-autorizaciones R5-1: anti-FP (glob amplio *.md + write ajeno · lectura por glob · otro .local.md) → PASA"
 
 echo "== (b3a3) verificar-cerebro: drift-check instalada-vs-fuente (idéntica→0; difiere→la lista; local→ignora) =="
 DVFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-dv.XXXXXX")"
