@@ -1,0 +1,1 @@
+ATENDIDO 2026-10-22 (triage): los 3 guards (no-bypass/entorno-maquina/delegacion-registrar) verificados en ambas direcciones (OK). RESIDUAL BAJO: H17 (no-bypass no reconoce ~/ ni $HOME/, falso NEGATIVO) → backlog E4.

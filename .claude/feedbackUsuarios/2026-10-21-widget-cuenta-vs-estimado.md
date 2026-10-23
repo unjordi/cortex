@@ -1,56 +1,25 @@
-# Widget de cuota: el estimado por costo contradecía la última lectura real (+ estados de auth)
+# Widget de cuota: etiqueta de una cuenta con números estimados de otra fuente (claudio-master, 2026-10-21)
 
-**Fecha:** 2026-10-21 · **Reporta:** unjordi (relayado por claudio-master-3000) · **Rama:** fix/corpus-fp-bench
+Medido en la Mac:
+- 15:04Z state.json: `basis: "cost"` (fallback ccusage), 5 h 0 %, semanal 5 %, reset semanal 2026-10-26 (domingo).
+- Captura de unjordi del popover a esa hora: pie "jordi.serra@pind.mx", Sesión 0.0 % "≈ $0.00 (API equiv local)", Semanal 5.0 % "Se restablece dom@6:00 · ≈ $244.27". La cuenta jordi.serra en claude.ai a esa hora: sesión 8 %, semanal 77 % (reset vie 5:00).
+- 15:11Z state.json: `basis: "oauth"`, `account_email: informatica@pind.mx`, `account_mismatch: false`, 5 h 1 %, semanal 0 %, reset 2026-10-28 (la cuenta de informática se reinició esa mañana). Claude Code en la Mac corre con informatica@pind.mx.
 
-## Contrato (citas textuales de Jordi)
-- "el dato estimado no tiene sentido si tenías una lectura previa que contradice lo que estás 'estimando'… para eso mejor que muestre la última con su staleness"
-- "que avise cuando ya va a expirar el token oauth Y detecte cuando expiró o simplemente no hay cuenta loggeada en claude-cli, porque luego tengo compañeros que sólo usan claude en la app y el widget sólo deja de funcionar silenciosamente"
-- "los avisos deberían tener un botón para hacer el re-login"
+Hallazgo: con el fallback por costo, el popover muestra una cuenta (jordi.serra) con números que no son de ninguna cuenta real y no marca de forma visible que es un ESTIMADO; quien lo lee cree que jordi está al 5 % cuando está al 77 %. Además, a qué se debe la etiqueta jordi.serra si la sesión de Claude Code es de informatica está por averiguar (¿etiqueta de un snapshot previo? ¿otra fuente?).
+Debería: (1) con basis=cost, el popover lo dice claro (p. ej. "ESTIMADO — sin dato de Anthropic") y no presenta la cifra como la de la cuenta; (2) la etiqueta de cuenta sale del mismo snapshot que los números. Y averiguar por qué cayó al fallback a las 15:04 (¿refetch por cambio de cuenta?).
+Relacionado: el diseño aviso-contexto+cuota (diseno-aviso-contexto-cuota.md) debe ignorar o marcar como estimado un snapshot con basis=cost.
 
-## Diagnóstico (medido)
-Cuando el fetch OAuth fallaba pero ccusage tenía datos, `cortex-fetch` escribía `basis:"cost"` (estimación)
-PISANDO la última lectura real `basis:"oauth"`, y la etiqueta de cuenta salía de la sesión viva
-(`~/.claude.json`), que puede haber driftado → mostraba jordi.serra con números estimados mientras la
-sesión era informatica@pind.mx. Schema real de auth medido: `claude auth status --json` (`.loggedIn`/`.email`);
-credenciales `.claudeAiOauth.refreshTokenExpiresAt` (epoch ms, ~30 días) vs `expiresAt` del access token
-(~8h, se auto-refresca → no sirve como señal de logout).
+## DECISIÓN de unjordi (2026-10-21)
+[user: "el dato estimado no tiene sentido si tenías una lectura previa que contradice lo que estás 'estimando'. Si la última lectura decía '70% semanal con reset el viernes', no puedo aceptar que nuestro widget 'estime' 5%... para eso mejor que muestre la última con su staleness"]
+Contexto que dio: ya había cambiado la sesión de Claude Code a la cuenta de informática.
+Contrato: si el fetch por OAuth falla, el widget (y todo consumidor de state.json: aviso-contexto+cuota, delegacion-gate, limite-gasto) usa la ÚLTIMA lectura real (basis=oauth), con SU cuenta y SU antigüedad visible ("hace N min"), en vez de un estimado por costo que la contradiga. El estimado por costo nunca pisa una lectura real.
 
-## Decisión (DURADERA)
-1. **El estimado por costo NUNCA pisa una lectura oauth real.** `basis:"cost"` se RETIRA como snapshot standalone.
-2. OAuth falla + hay lectura oauth previa → se PRESERVA íntegra (números+cuenta+`updated_at`), marcada
-   `stale:true` + `fetched_at:ahora` + `error`. La etiqueta de cuenta sale del MISMO snapshot (la preservada).
-3. OAuth falla + sin previa → `basis:null`, `status:"error"`, datos null → "no hay dato" (NO inventa estimado).
-   ↳ Cambio de comportamiento autorizado por el contrato textual ("SIN lectura previa → dice 'no hay dato', NO inventa").
-4. **Estados de auth en `state.json`** (`auth.state`): `ok`/`expiring`/`expired`/`no_credentials`, con `auth.expires_at`
-   (refresh token). `expiring` = refresh token dentro de `CORTEX_AUTH_EXPIRING_HORAS` (default 72h). `expired` = 401/403
-   o refresh vencido. `no_credentials` = sin token.
-5. Cada aviso (expiring/expired/no_credentials) → botón de re-login → `claude auth login --claudeai [--email <cuenta del snapshot>]`
-   (abre navegador; verificado 2.1.304).
-
-## Estado de implementación
-- ✅ **Daemon (ambos):** `macos/bin/cortex-fetch` + `src/bin/cortex-fetch` — writer con preservación + estados de auth.
-  Verificado determinísticamente (matriz 7 casos / 26 asserts) EN VIVO: macOS local + Linux en cachy (GNU date). 26/26.
-  Tests: `{macos,src}/pruebas/cortex-fetch-auth.test.sh`, cableados en `test-brain.sh` por plataforma. Suite 1397·0.
-  Seams test-only: `CORTEX_FETCH_CREDS_JSON`/`CORTEX_FETCH_HTTP`/`CORTEX_FETCH_USAGE_FIXTURE`/`CORTEX_FETCH_NO_CCUSAGE`.
-- ✅ **UI macOS (compila, pendiente QA visual):** `QuotaModel.swift` (campos `stale`/`fetched_at`/`auth` + helpers
-  `authState`/`isSnapshotStale`/`hasQuotaData`/`authNotice`/`reloginAccount`) + `PopoverView.swift` (`authBanner` al tope
-  de Límites con aviso por estado + botón "Re-loguear en Claude" → Terminal con `claude auth login --claudeai [--email …]`,
-  mismo patrón que `resume`). El footer ya muestra cuenta+edad del MISMO snapshot (vía `updated_at`, ahora real en una
-  lectura preservada). `swift build` verde. **Gate = QA visual en vivo con unjordi** (menu-bar; no se declara LISTO sin eso).
-- ✅ **UI KDE (qmllint 0 errores, pendiente QA):** `src/plasmoid/contents/ui/main.qml` — `authNotice()`/`reloginRun()`
-  (konsole + `claude auth login`), banner al tope de Límites. Verificado `qmllint` en cachy (0 errores de sintaxis).
-- ✅ **UI GNOME (node --check OK, pendiente QA):** `src/gnome-extension/tabs/limites.js` — `authNotice()`/`reloginRun()`
-  (detecta kgx/gnome-terminal/konsole/xterm), banner. Verificado `node --check` (gjs no está en cachy).
-- ⏳ **UI Windows (QUEUE — no verificable aquí):** `windows/src/Cortex/` (Models.cs: agregar `stale`/`fetched_at`/`auth`;
-  PopupForm.cs: banner+botón; re-login vía `Process.Start` con `claude auth login`). WinForms NO compila en Mac/Linux →
-  requiere `dotnet build` en la VM Windows + QA. Mismo mandato que las otras 3.
-- Las 3 UIs hechas: **gate = QA visual en vivo** (macOS menu-bar / KDE cachy / GNOME). No LISTO sin eso.
-- ✅ **Hooks consumidores de `state.json` (hechos):** `limite-gasto` y `delegacion-gate` (vía `linea_cuota` de
-  `delegacion-comun.sh`) ahora miden frescura por `updated_at` (NO mtime, que mi cambio dejó siempre fresco → era
-  una REGRESIÓN que yo introduje) y marcan el motivo de auth (login expirado / sin cuenta). no-data (five_hour null)
-  = fail-open. Verificado (limite-gasto 5/5 + linea_cuota 5 casos; tests en `test-brain.sh`).
-  `aviso-contexto` NO consume `state.json` hoy (lee el usage del transcript); su disparo por cuota es el paso 3
-  aparte (`diseno-aviso-contexto-cuota.md`), que leerá `stale`/`basis` ahí.
-
-## QA
-Gate = QA visual EN VIVO con unjordi (el daemon está verificado técnicamente; la UI no se declara LISTA sin su QA).
+## AGREGADO de unjordi (2026-10-21): token OAuth y "sin cuenta"
+[user: "que avise cuando ya va a expirar el token oauth Y detecte cuando expiró o simplemente no hay cuenta loggeada en claude-cli, porque luego tengo compañeros que sólo usan claude en la app y el widget sólo deja de funcionar silenciosamente"]
+Contrato:
+- Token por expirar (antes de que expire): aviso visible en el widget.
+- Token expirado: el widget lo dice claro (no cae callado a un estimado ni deja el último número como si fuera actual; muestra la última lectura con su antigüedad + "token expirado — inicia sesión en Claude Code").
+- Sin cuenta loggeada en el CLI (compañeros que solo usan la app de Claude): el widget lo dice claro ("no hay sesión de Claude Code en esta máquina"), en vez de dejar de funcionar en silencio.
+- Los tres estados viajan en state.json (p. ej. `status`/`error` explícitos) para que los hooks consumidores también los vean.
+Tests: un caso por estado (token vigente, por expirar, expirado, sin credenciales), en las dos direcciones.
+- [user: "y los avisos deberían tener un botón para hacer el re-login"] Cada aviso (por expirar, expirado, sin cuenta) trae un botón de re-login que invoca la vía OFICIAL de la CLI (verificado en Claude Code 2.1.304): `claude auth login --claudeai [--email <cuenta del último snapshot>]` (abre el login en el navegador). Para detectar el estado, `claude auth status --json`. Gemelos en macOS/KDE/GNOME/Windows.
