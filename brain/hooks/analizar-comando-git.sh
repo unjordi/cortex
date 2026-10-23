@@ -259,7 +259,11 @@ acg_target_remote() {   # $1=cmd  $2=payload_cwd → imprime "org/repo" | vacío
 # Antes casaba en cualquier posición → FP de mención (corpus L145); anclar sin los ejecutores daba FN (eval/
 # bash -c/subshell evadían, tests M1/G3). El segmento llega normalizado (acg_normaliza_git_prefijo colapsa
 # `git -c/-C`). SEGURIDAD: un FN aquí = un push-a-base que se cuela, así que el prefijo cubre los ejecutores.
-acg_es_push() { printf '%s' "$1" | grep -qE '^[[:space:]]*([(){}$`[:space:]]|[A-Za-z_][A-Za-z0-9_]*=|(eval|sudo|time|nice|nohup|command|builtin|xargs)[[:space:]]+|(ba)?sh[[:space:]]+-c[[:space:]]+|env[[:space:]]+([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*)*git[[:space:]]+push([[:space:]]|$)'; }
+# La asignación `VAR=valor` DEBE consumir su valor (`=[^space]*[space]+`, igual que el tramo `env`): sin eso,
+# `FOO=1 git push`/`GIT_SSH_COMMAND=ssh git push` rompían la adyacencia `VAR=…git` y evadían el PASO 0
+# (CRÍTICO C1, auditoría 2026-10-22). El valor entrecomillado con espacios (`FOO="a b"`) ya lo neutraliza
+# acg_despoja_comillas aguas arriba (el único caller, acg_push_toca_base, despoja ANTES) → aquí basta el no-quote.
+acg_es_push() { printf '%s' "$1" | grep -qE '^[[:space:]]*([(){}$`[:space:]]|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+|(eval|sudo|time|nice|nohup|command|builtin|xargs)[[:space:]]+|(ba)?sh[[:space:]]+-c[[:space:]]+|env[[:space:]]+([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*)*git[[:space:]]+push([[:space:]]|$)'; }
 
 # acg_slug_de_dir(dir) → slug `org/repo` del remoto `origin` de un dir git (sin esquema ni `.git`), o vacío.
 acg_slug_de_dir() { git -C "$1" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|ssh://[^/]+/|https?://[^/]+/)##; s#\.git$##'; }

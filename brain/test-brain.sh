@@ -986,6 +986,24 @@ acg_push_toca_base 'git push origin :develop' \
   && ok "B5 control: borrar la rama base (:develop) sigue BLOQUEANDO" \
   || bad "B5: SE AFLOJÓ — borrar la rama base dejó de bloquear"
 
+# C1 (auditoría 2026-10-22, CRÍTICO): un prefijo de asignación de entorno `VAR=valor git push origin develop`
+# evadía el PASO 0 — acg_es_push consumía solo hasta el `=`, el VALOR sin comillas (`1`/`ssh`) rompía la
+# adyacencia con `git` → acg_push_toca_base daba FALSE → el push a base PASABA. Fix: la asignación consume su
+# valor (`=[^space]*[space]+`, como el tramo `env`). Estos FALLAN contra el código viejo.
+acg_push_toca_base 'FOO=1 git push origin develop' \
+  && ok "C1: 'FOO=1 git push origin develop' (asignación con valor) ahora GATEA el PASO 0" \
+  || bad "C1: FN — un push a base con prefijo 'VAR=valor' evadió el PASO 0 (asignación no consumía el valor)"
+acg_push_toca_base 'GIT_SSH_COMMAND=ssh git push origin develop' \
+  && ok "C1: 'GIT_SSH_COMMAND=ssh git push origin develop' ahora GATEA el PASO 0" \
+  || bad "C1: FN — 'GIT_SSH_COMMAND=ssh git push origin develop' evadió el PASO 0"
+acg_push_toca_base 'GIT_DIR=x FOO=2 git push origin main' \
+  && ok "C1: varias asignaciones encadenadas + push a main → GATEA el PASO 0" \
+  || bad "C1: FN — varias asignaciones encadenadas evadieron el PASO 0"
+# nada se afloja: una MENCIÓN con prefijo de asignación (argumento, no push ejecutado) NO es FP.
+acg_push_toca_base "FOO=1 grep 'git push origin develop' x" \
+  && bad "C1: FP — una mención entrecomillada tras un prefijo de asignación se tomó por push" \
+  || ok "C1 control: mención entrecomillada tras asignación NO es push (sin FP nuevo)"
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (b1d-medio) MEDIO/H3-semántico (auditoría FMEA 2026-09-16 §1.5 + auditoría semántica H3): CACHE-DE-CREACION"
