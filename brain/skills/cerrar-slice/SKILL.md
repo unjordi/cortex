@@ -6,10 +6,10 @@ description: Ejecuta el ritual de CIERRE de un slice — verifica (build/tests/l
 # Cerrar un slice (definición de terminado + flujo)
 
 Encapsula la **"definición de terminado" con evidencia** y el **flujo de git**. Lo refuerzan los hooks
-**Stop** (`dod-verificar`, bloquea "listo" sin evidencia), **git-branch-guard** (bloquea push a
-develop/main), **merge-develop-guard** (candado ÚNICO del punto de merge: exige `--squash` + un mensaje con
-sustancia y tu OK expreso antes de integrar — consolida los antiguos `merge-squash-guard` +
-`confirmar-merge-develop`). El dashboard + doc=realidad (Paso 2 de aquí) NO tiene hook que lo recuerde
+**Stop** (`dod-verificar`, bloquea "listo" sin evidencia) y **merge-develop-guard** (candado ÚNICO de git:
+su PASO 0 bloquea el push/merge directo a develop/main —absorbió `git-branch-guard` el 2026-10-21—, y en el
+punto de merge exige `--squash` + un mensaje con sustancia y tu OK expreso antes de integrar — consolida los
+antiguos `merge-squash-guard` + `confirmar-merge-develop`). El dashboard + doc=realidad (Paso 2 de aquí) NO tiene hook que lo recuerde
 — es self-check tuyo antes
 de pushear. Sigue el orden — no te saltes pasos. Versión **genérica** (agnóstica de stack): sirve para
 cualquier proyecto que use este cerebro.

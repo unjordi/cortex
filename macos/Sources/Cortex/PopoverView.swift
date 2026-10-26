@@ -330,6 +330,7 @@ struct PopoverView: View {
     private var limitsTab: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Límites de uso").font(.headline)
+            authBanner
             usageSection("Sesión (5 h)", model.snapshot?.five_hour)
             usageSection("Semanal (7 d)", model.snapshot?.weekly)
 
@@ -346,7 +347,7 @@ struct PopoverView: View {
 
             // Gasto REAL de bolsillo — distinto del "Costo API-equiv" (Resumen).
             if let spend = model.snapshot?.spend, spend.enabled == true {
-                spendSection(spend, model.snapshot?.extra_usage)
+                spendSection(spend)
             }
 
             Spacer(minLength: 0)
@@ -376,9 +377,9 @@ struct PopoverView: View {
         }
     }
 
-    /// Sección de GASTO REAL: dinero de bolsillo (spend) + overage (extra_usage).
+    /// Sección de GASTO REAL: dinero de bolsillo (spend).
     @ViewBuilder
-    private func spendSection(_ spend: Spend, _ extra: ExtraUsage?) -> some View {
+    private func spendSection(_ spend: Spend) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text("Gasto real").fontWeight(.bold)
@@ -389,14 +390,14 @@ struct PopoverView: View {
                     .foregroundStyle(pctColor(spend.percent))
             }
             ProgressBar(pct: spend.percent)
-            Text(spendCaption(spend, extra))
+            Text(spendCaption(spend))
                 .font(.caption)
                 .foregroundStyle(label.opacity(0.65))
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    private func spendCaption(_ spend: Spend, _ extra: ExtraUsage?) -> String {
+    private func spendCaption(_ spend: Spend) -> String {
         // Monto usado / tope (redundante con el headline a propósito).
         var s = "\(Fmt.money(spend.used, spend.currency)) / \(Fmt.money(spend.cap, spend.currency))"
         if let cur = spend.currency { s += " \(cur)" }
@@ -438,7 +439,7 @@ struct PopoverView: View {
     private func caption(_ bucket: Bucket?) -> String {
         guard let bucket else { return "" }
         var s = resetLine(bucket.resets_at)
-        if let cost = bucket.cost_usd {
+        if let cost = bucket.equiv_session_cost_usd ?? bucket.equiv_weekly_cost_usd {
             s += String(format: " · ≈ $%.2f (API equiv local)", cost)
         }
         return s
@@ -667,6 +668,51 @@ struct PopoverView: View {
                 }
             }
         }
+    }
+
+    /// Banner de aviso de autenticación (login por-expirar / expirado / sin cuenta) con botón de re-login.
+    /// Nil-silencioso: no aparece si el login está OK (authNotice == nil).
+    @ViewBuilder private var authBanner: some View {
+        if let notice = model.authNotice {
+            let isHard = model.authState == "expired" || model.authState == "no_credentials"
+            let tint = Color(hex: isHard ? "#dc3545" : "#e8884a")
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: isHard ? "exclamationmark.triangle.fill" : "clock.badge.exclamationmark")
+                        .foregroundStyle(tint)
+                    Text(notice.message)
+                        .font(.caption)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if notice.offerRelogin {
+                    Button(action: { relogin(model.reloginAccount) }) {
+                        Text("Re-loguear en Claude").font(.caption).fontWeight(.medium)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(tint)
+                    .controlSize(.small)
+                }
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(tint.opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
+    /// Abre Terminal.app y corre el flujo oficial de re-login (abre el navegador): `claude auth login
+    /// --claudeai [--email <cuenta>]`. Mismo patrón que `resume` (Terminal vía osascript, reusa shQuote/appleEscape).
+    private func relogin(_ account: String?) {
+        var cmd = "claude auth login --claudeai"
+        if let a = account, isPlausibleEmail(a) { cmd += " --email \(shQuote(a))" }
+        let osa = "tell application \"Terminal\"\nactivate\ndo script \"\(appleEscape(cmd))\"\nend tell"
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        proc.arguments = ["-e", osa]
+        try? proc.run()
+    }
+    private func isPlausibleEmail(_ s: String) -> Bool {
+        s.range(of: "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$", options: .regularExpression) != nil
     }
 
     /// Abre Terminal.app y resume la sesión: `cd <cwd> && claude --resume <id>`.
@@ -1331,15 +1377,12 @@ struct PopoverView: View {
                 emoji: "🔒", title: "Hooks Forzosos", color: Color(hex: "#cf5a49"),
                 subtitle: "hooks que bloquean (deny) — no negociables",
                 items: [
-                    BrainItem("🚧", "git-branch-guard", "push/merge a develop·main → denegado, te redirige a ramita→MR",
+                    BrainItem("🔗", "merge-develop-guard", "push directo a develop·main, o MR sin --squash/sin tu OK → denegado; a main exige OK súper-explícito",
                               "PreToolUse · Bash",
-                              "Escanea cada comando: si ve un `git push` o un merge que apunte a develop/main, lo deniega y te recuerda el flujo ramita→MR. Sin jq falla ABIERTO (no bloquea)."),
-                    BrainItem("🔗", "merge-develop-guard", "MR a develop sin --squash o sin tu OK → denegado; a main exige OK súper-explícito",
-                              "PreToolUse · Bash",
-                              "Candado ÚNICO del punto de merge. Un `gh pr merge`/`glab mr merge` a develop sin --squash se deniega, para que la ramita colapse a un commit curado; además busca tu OK explícito en el chat reciente antes de integrar. A main exige lenguaje de release ('hasta main', 'libera') y va SIN squash (conserva historia). Un 'sigue/avanza' NO cuenta como autorización."),
-                    BrainItem("🕵️", "secret-scan", "commit/push con un secreto → denegado",
-                              "PreToolUse · Bash",
-                              "Escanea lo que ENTRA al repo (staged en commit, saliente en push) buscando llaves/tokens/claves privadas de formato inconfundible (AWS, PEM, Anthropic, OpenAI, GitHub, GitLab, Slack, Google). Si aparece uno → bloquea: una credencial pusheada queda comprometida aunque la borres. Escape: --no-verify."),
+                              "Candado ÚNICO de git. Como PASO 0 deniega el `git push`/merge directo a develop/main y te redirige a ramita→MR (absorbió a git-branch-guard, 2026-10-21). Un `gh pr merge`/`glab mr merge` a develop sin --squash se deniega, para que la ramita colapse a un commit curado; además busca tu OK explícito en el chat reciente antes de integrar. A main exige lenguaje de release ('hasta main', 'libera') y va SIN squash (conserva historia). Un 'sigue/avanza' NO cuenta como autorización."),
+                    BrainItem("🔏", "proteger-autorizaciones", "escritura del AGENTE al archivo de grants autorizaciones-vigentes* → denegada",
+                              "PreToolUse · Bash/Edit",
+                              "Cierra la auto-autorización del merge a develop: ese archivo es la vía por la que merge-develop-guard honra un merge SIN el juez (un grant con tu cita). Si el agente lo escribe, elige la subcadena-cita que quiera y se auto-autoriza. Por eso SOLO el humano lo escribe, con el prefijo `!` (que el CLI corre directo, sin pasar por el hook); una escritura del agente (>, >>, tee, sed -i, cp, Edit/Write…) se deniega. LEER el archivo sí pasa."),
                     BrainItem("✅", "dod-verificar", "Def. of Done (ver Norma 🎯 DoD) sin build+tests+memoria → denegado",
                               "Stop",
                               "Al cerrar el turno, si dijiste 'listo/en producción' tras tocar código fuente, exige evidencia de build+tests verdes y memoria al día, o bloquea el cierre."),

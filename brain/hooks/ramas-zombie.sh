@@ -132,29 +132,41 @@ _bz_run() {  # _bz_run SEGUNDOS cmd... — con timeout si existe (que un host co
 # internamente; `glab --per-page` topa en 100 por página en la API de GitLab, así que se PAGINA hasta agotar
 # (o hasta el tope).
 _bz_limite() { local l="${CLAUDE_BZ_PR_LIMIT:-1000}"; case "$l" in ''|*[!0-9]*) l=1000 ;; esac; printf '%s' "$l"; }
-_bz_glab_paginar() {  # $1=proj $2=filtro(-M|-A) $3=archivo destino $4=expresión jq
-  local proj="$1" filtro="$2" dest="$3" jqf="$4" pag=1 n maxp
+_bz_glab_paginar() {  # $1=proj $2=filtro(-M|-A) $3=archivo destino $4=expresión jq → return 0 si la 1ª consulta a glab tuvo ÉXITO
+  local proj="$1" filtro="$2" dest="$3" jqf="$4" pag=1 n maxp grc tmp firstok=1
   maxp=$(( $(_bz_limite) / 100 )); [ "$maxp" -ge 1 ] || maxp=1
+  tmp="$(mktemp 2>/dev/null)" || return 1
   while [ "$pag" -le "$maxp" ]; do
-    n=$(_bz_run 15 glab mr list -R "$proj" "$filtro" --per-page 100 --page "$pag" -F json \
-          --jq "$jqf" 2>/dev/null | tee -a "$dest" | wc -l | tr -d ' ')
+    # se separa glab (con su exit code) del tee|wc para capturar el rc de GLAB (no el de wc en un pipe).
+    _bz_run 15 glab mr list -R "$proj" "$filtro" --per-page 100 --page "$pag" -F json \
+          --jq "$jqf" >"$tmp" 2>/dev/null; grc=$?
+    [ "$pag" = 1 ] && [ "$grc" != 0 ] && { firstok=0; break; }   # la 1ª consulta FALLÓ (sin red/auth/timeout)
+    cat "$tmp" >>"$dest"
+    n=$(wc -l <"$tmp" | tr -d ' ')
     [ "${n:-0}" -lt 100 ] && break
     pag=$((pag+1))
   done
+  rm -f "$tmp"
+  [ "$firstok" = 1 ]
 }
 _bz_intentar_gh() {  # $1=ROOT $2=proj — apéndice al cache si gh está disponible
   local ROOT="$1" proj="$2"
   command -v gh >/dev/null 2>&1 || return 0
-  _BZ_D_INTENTADO=1
-  _bz_run 15 gh -R "$proj" pr list --state merged --limit "$(_bz_limite)" \
-    --json headRefName,headRefOid --jq '.[] | "\(.headRefName)\t\(.headRefOid)"' \
-    >>"$_BZ_PRCACHE_FILE" 2>/dev/null
+  # _BZ_D_INTENTADO=1 SOLO si la consulta tuvo ÉXITO (exit 0): si gh FALLA (sin red/auth/timeout) NO obtuvimos
+  # la lista de PRs mergeados → NO sabemos si la rama entró → debe quedar INDETERMINADO, no "vivo" (MEDIO
+  # auditoría 2026-10-22: antes se marcaba intentado ANTES de correr gh → un fallo de red daba un falso "vivo").
+  if _bz_run 15 gh -R "$proj" pr list --state merged --limit "$(_bz_limite)" \
+       --json headRefName,headRefOid --jq '.[] | "\(.headRefName)\t\(.headRefOid)"' \
+       >>"$_BZ_PRCACHE_FILE" 2>/dev/null; then
+    _BZ_D_INTENTADO=1
+  fi
 }
 _bz_intentar_glab() {  # $1=ROOT $2=proj — apéndice al cache si glab está disponible
   local ROOT="$1" proj="$2"
   command -v glab >/dev/null 2>&1 || return 0
-  _BZ_D_INTENTADO=1
-  _bz_glab_paginar "$proj" -M "$_BZ_PRCACHE_FILE" '.[] | "\(.source_branch)\t\(.sha)"'
+  # _BZ_D_INTENTADO=1 SOLO si la 1ª consulta a glab tuvo ÉXITO (ver nota en _bz_intentar_gh): un fallo de red
+  # ya NO da un falso "vivo" — queda indeterminado (MEDIO auditoría 2026-10-22).
+  _bz_glab_paginar "$proj" -M "$_BZ_PRCACHE_FILE" '.[] | "\(.source_branch)\t\(.sha)"' && _BZ_D_INTENTADO=1
 }
 _bz_cargar_prcache() {  # puebla $_BZ_PRCACHE_FILE (líneas 'rama<TAB>sha') para ROOT, una sola vez
   local ROOT="$1" url proj host
@@ -272,13 +284,15 @@ bz_remota_integrada() {
   local ROOT="$1" br="$2" ref="$3" baseref="$4" cherry _sq_ct _ref_ct
   BZ_RRAZON=""
   git -C "$ROOT" merge-base --is-ancestor "$ref" "$baseref" 2>/dev/null && { BZ_RRAZON=a; return 0; }   # (a)
-  # (e) ACOTADA: el pie "Rama: <br>" en BASEREF no prueba que el tip REMOTO actual esté contenido —
-  # una rama remota reusada tras su squash avanzó y (e) la borraría. Solo vale si REF no trae nada más nuevo
-  # que el squash que la nombra (committer-date); si no se puede fechar, conservador: NO (e) → cae a (d),
-  # cuyo containment sí re-chequea el tip remoto. Dirección segura: solo RETIRA falsos "integrada".
+  # (e) ACOTADA por CONTENIDO: el pie "Rama: <br>" en BASEREF no prueba que el tip REMOTO actual esté contenido
+  # — una rama remota reusada tras su squash avanzó, o un commit nunca incluido en el squash sigue vivo, y (e)
+  # los borraría. Exige AMBAS: (1) REF no trae nada más nuevo que el squash (committer-date, caza el reúso) Y
+  # (2) el CONTENIDO de REF ya vive en la historia de BASEREF (_bz_presencia_contenido, merge-tree squash-safe;
+  # el committer-date por sí solo NO prueba contención, C3 auditoría 2026-10-22). Falla cualquiera → NO (e) →
+  # cae a (d), cuyo containment re-chequea el tip remoto. Dirección segura: solo RETIRA falsos "integrada".
   if _sq_ct=$(_bz_squash_ct "$ROOT" "$br" "$baseref") && [ -n "$_sq_ct" ]; then
     _ref_ct=$(git -C "$ROOT" log --format='%ct' "$ref" --not "$baseref" 2>/dev/null | sort -nr | head -1)
-    if [ -z "$_ref_ct" ] || [ "$_ref_ct" -le "$_sq_ct" ]; then BZ_RRAZON=e; return 0; fi
+    if { [ -z "$_ref_ct" ] || [ "$_ref_ct" -le "$_sq_ct" ]; } && _bz_presencia_contenido "$ROOT" "$ref" "$baseref"; then BZ_RRAZON=e; return 0; fi
   fi
   bz_pr_mergeado "$ROOT" "$br" "$ref" && { BZ_RRAZON=d; return 0; }                                      # (d)
   cherry=$(git -C "$ROOT" cherry "$baseref" "$ref" 2>/dev/null)                                          # (c)
@@ -286,10 +300,12 @@ bz_remota_integrada() {
   BZ_RRAZON=vivo; return 1
 }
 
-# bz_es_zombie ROOT BR BASE → 0 si BR ya está integrada a BASE (zombie), 1 si conservar. Deja el MOTIVO en
+# bz_es_zombie ROOT BR BASE [MODO] → 0 si BR ya está integrada a BASE (zombie), 1 si conservar. MODO="barrido"
+# (lo pasan limpiar-ramas/worktrees; proteger-arbol NO) activa la señal (p). Deja el MOTIVO en
 # $BZ_RAZON: a=ancestro · e=squash con "Rama:" en el log · d=PR/MR mergeado · c=cherry patch-equivalente ·
-# t=TRANSITIVA (un salto BR→X→BASE) · r=integrada en la base REMOTA (origin/<base> adelantada; su trabajo ya
-# vive en el remoto) · b=remota borrada sin commits propios · vivo=commits propios
+# p=PRESENCIA por contenido (merge-tree da el árbol de base; SOLO en modo=barrido; red para lo mergeado
+# DENTRO de una contenedora sin traza propia) · t=TRANSITIVA (un salto BR→X→BASE) · r=integrada en la base
+# REMOTA (origin/<base> adelantada; su trabajo ya vive en el remoto) · b=remota borrada sin commits propios · vivo=commits propios
 # confirmados (con o sin remota) · indeterminado=había '+' en git cherry pero NO se pudo consultar el host
 # para descartar un squash-multi ya mergeado (la acción es conservar igual, pero el reporte no debe
 # afirmar "vivo" con certeza).
@@ -313,26 +329,63 @@ _bz_squash_ct() {
   return 1
 }
 
-# _bz_integrada_directa ROOT BR BASE → 0 si BR está integrada a BASE por una señal POSITIVA DIRECTA
-# (a ancestro · e "Rama:" en el squash · d PR/MR mergeado · c patch-equivalente sin '+'). Sin (b)/upstream
-# ni transitiva. Fija $BZ_RAZON con la letra al acertar (no la toca al fallar). La comparten bz_es_zombie
-# (BR→BASE) y el carril transitivo (t) para el 2º eslabón X→BASE — UNA sola definición de "las señales de
-# siempre", sin divergencia.
+# (p) PRESENCIA POR CONTENIDO — SEÑAL DEL BARRIDO (modo=barrido), NUNCA de proteger-arbol. Red para lo YA
+# mergeado SIN traza propia: una rama que entró DENTRO de una contenedora (épica/integración) cuyo squash
+# nombra SOLO la contenedora no es ancestro, no tiene su `Rama:`, no tiene PR propio y `git cherry` no la
+# empareja → (a)/(e)/(d)/(c) fallan aunque su CONTENIDO esté 100% en la base (medido 2026-10-22, 19 ramas).
+# Señal: existe un commit C en la historia first-parent de BASE donde fusionar C con BR da el MISMO ÁRBOL que C
+# ⇒ EN ESE MOMENTO BR no aportaba NADA que no estuviera ya en C (entró íntegra ahí). Probar SOLO contra la PUNTA
+# de BASE falla cuando BASE evolucionó y TOCÓ los mismos archivos tras integrar BR (merge-tree conflictúa → exit≠0):
+# ahí BR SÍ entró, pero la punta ya no lo refleja (medido 2026-10-22: contra la punta solo cazaba 2 de 19). Por eso
+# se recorre la historia first-parent desde la PUNTA hacia atrás, acotado a los $CLAUDE_BZ_PRESENCIA_MAX (def 200)
+# commits más recientes, cortando en el merge-base (antes de él BR no pudo entrar). Las ramas SUPERADAS por
+# reimplementación quedan conservadas: su árbol nunca fue un no-op contra NINGÚN commit histórico. Usa
+# `git merge-tree --write-tree` (git ≥2.38; su 1ª línea en un merge LIMPIO es el OID del árbol); subcomando ausente
+# o merge que CONFLICTÚA en ese commit → ese commit NO cuenta (se sigue con el siguiente). Compara ÁRBOLES → squash-
+# safe. SOLO en el BARRIDO (limpiar-ramas/worktrees, que pregunta "¿el trabajo está integrado, seguro borrar?"):
+# proteger-arbol pregunta OTRA cosa ("¿orfanaría un COMMIT sin pushear?", p.ej. un commit VACÍO con árbol
+# idéntico SÍ se orfana) → NO recibe modo=barrido y (p) queda APAGADA ahí. Un llamador nuevo sin el modo
+# tampoco la hereda (fail-safe).
+_bz_presencia_contenido() {
+  local ROOT="$1" br="$2" base="$3" c c_tree mt_tree n=0 mb max="${CLAUDE_BZ_PRESENCIA_MAX:-200}"
+  mb=$(git -C "$ROOT" merge-base "$base" "$br" 2>/dev/null)
+  while IFS= read -r c; do
+    [ -z "$c" ] && continue
+    [ -n "$mb" ] && [ "$c" = "$mb" ] && break        # antes del merge-base BR no pudo entrar
+    c_tree=$(git -C "$ROOT" rev-parse --verify -q "$c^{tree}" 2>/dev/null) || { n=$((n+1)); [ "$n" -ge "$max" ] && break; continue; }
+    if mt_tree=$(git -C "$ROOT" merge-tree --write-tree "$c" "$br" 2>/dev/null); then   # exit≠0 (conflicto/git viejo) → ese commit NO cuenta
+      mt_tree=$(printf '%s\n' "$mt_tree" | head -1)
+      [ -n "$mt_tree" ] && [ "$mt_tree" = "$c_tree" ] && return 0
+    fi
+    n=$((n+1)); [ "$n" -ge "$max" ] && break
+  done < <(git -C "$ROOT" rev-list --first-parent --max-count="$max" "$base" 2>/dev/null)
+  return 1
+}
+
+# _bz_integrada_directa ROOT BR BASE [MODO] → 0 si BR está integrada a BASE por una señal POSITIVA DIRECTA
+# (a ancestro · e "Rama:" en el squash · d PR/MR mergeado · c patch-equivalente sin '+' · p presencia por
+# contenido SOLO si MODO=barrido). Sin (b)/upstream ni transitiva. Fija $BZ_RAZON con la letra al acertar (no
+# la toca al fallar). La comparten bz_es_zombie (BR→BASE) y el carril transitivo (t) para el 2º eslabón X→BASE
+# — UNA sola definición de "las señales de siempre", sin divergencia. MODO lo FIJA el llamador (el barrido pasa
+# "barrido"; proteger-arbol no pasa nada → (p) off).
 _bz_integrada_directa() {
-  local ROOT="$1" br="$2" base="$3" cherry _sq_ct _br_ct
+  local ROOT="$1" br="$2" base="$3" modo="${4:-}" cherry _sq_ct _br_ct
   git -C "$ROOT" merge-base --is-ancestor "$br" "$base" 2>/dev/null && { BZ_RAZON=a; return 0; }  # (a)
-  # (e) ACOTADA: el pie "Rama: <br>" está en la base, PERO solo vale si BR no avanzó tras ese squash
-  # — si no, (e) borraría los commits nuevos (reúso de la rama). Compara el committer-date del squash que la
-  # nombra vs el del commit MÁS NUEVO de BR ausente de BASE: si BR trae algo más nuevo → NO (e) (cae a (d),
-  # cuyo containment sí re-chequea el tip, y de ahí a (b)/conservar). Si no se puede fechar el squash →
-  # conservador: NO (e). Dirección SEGURA: (e) solo RETIRA falsos "integrada", nunca agrega.
+  # (e) ACOTADA: el pie "Rama: <br>" está en la base, PERO solo vale si BR no avanzó tras ese squash Y su
+  # CONTENIDO ya está en BASE. El committer-date NO prueba contención: un commit LOCAL hecho ANTES del squash
+  # (ct ≤ squash) pero NUNCA incluido en él (unpushed) la pasaba y (e) BORRABA trabajo único (C3, auditoría
+  # 2026-10-22). Por eso (e) exige AMBAS: (1) BR no trae nada más nuevo que el squash (committer-date, caza el
+  # REÚSO) Y (2) el CONTENIDO de BR ya vive en la historia de BASE (_bz_presencia_contenido, merge-tree
+  # squash-safe/offline, caza el commit LOCAL no integrado). Cualquiera que falle → NO (e) (cae a (d)/(c)/(p)/
+  # conservar). Dirección SEGURA: (e) solo RETIRA falsos "integrada", nunca agrega.
   if _sq_ct=$(_bz_squash_ct "$ROOT" "$br" "$base") && [ -n "$_sq_ct" ]; then
     _br_ct=$(git -C "$ROOT" log --format='%ct' "$br" --not "$base" 2>/dev/null | sort -nr | head -1)
-    if [ -z "$_br_ct" ] || [ "$_br_ct" -le "$_sq_ct" ]; then BZ_RAZON=e; return 0; fi                # (e offline)
+    if { [ -z "$_br_ct" ] || [ "$_br_ct" -le "$_sq_ct" ]; } && _bz_presencia_contenido "$ROOT" "$br" "$base"; then BZ_RAZON=e; return 0; fi  # (e offline, contención real)
   fi
   bz_pr_mergeado "$ROOT" "$br" && { BZ_RAZON=d; return 0; }                                          # (d)
   cherry=$(git -C "$ROOT" cherry "$base" "$br" 2>/dev/null)                                          # (c)
   if [ -n "$cherry" ] && ! printf '%s\n' "$cherry" | grep -q '^+'; then BZ_RAZON=c; return 0; fi
+  [ "$modo" = barrido ] && _bz_presencia_contenido "$ROOT" "$br" "$base" && { BZ_RAZON=p; return 0; } # (p) solo en el barrido
   return 1
 }
 
@@ -365,23 +418,23 @@ _bz_base_remota() {
 # al MISMO commit que BR — un hermano en el mismo tip NO es un intermediario que integró a BR (su propio
 # PR/señal no debe volver zombie a BR; eso lo conserva el carril (b)/vivo).
 _bz_integrada() {
-  local ROOT="$1" br="$2" base="$3" x brrev xrev
-  _bz_integrada_directa "$ROOT" "$br" "$base" && return 0   # (a)(e)(d)(c) directas BR→BASE
+  local ROOT="$1" br="$2" base="$3" modo="${4:-}" x brrev xrev
+  _bz_integrada_directa "$ROOT" "$br" "$base" "$modo" && return 0   # (a)(e)(d)(c)(p si barrido) directas BR→BASE
   brrev=$(git -C "$ROOT" rev-parse --verify -q "$br^{commit}" 2>/dev/null)
   while IFS= read -r x; do
     [ -z "$x" ] && continue
     { [ "$x" = "$br" ] || [ "$x" = "$base" ]; } && continue
     xrev=$(git -C "$ROOT" rev-parse --verify -q "$x^{commit}" 2>/dev/null)
     [ -n "$brrev" ] && [ "$xrev" = "$brrev" ] && continue
-    if _bz_integrada_directa "$ROOT" "$x" "$base"; then BZ_RAZON=t; return 0; fi
+    if _bz_integrada_directa "$ROOT" "$x" "$base" "$modo"; then BZ_RAZON=t; return 0; fi
   done < <(git -C "$ROOT" branch --contains "$br" --format='%(refname:short)' 2>/dev/null)
   return 1
 }
 
 bz_es_zombie() {
-  local ROOT="$1" br="$2" base="$3" up cherry baserem
+  local ROOT="$1" br="$2" base="$3" modo="${4:-}" up cherry baserem
   BZ_RAZON=""
-  _bz_integrada "$ROOT" "$br" "$base" && return 0   # (a)(e)(d)(c) directas o (t) transitiva contra base LOCAL
+  _bz_integrada "$ROOT" "$br" "$base" "$modo" && return 0   # (a)(e)(d)(c)(p si barrido) o (t) transitiva contra base LOCAL
   # (r) BASE REMOTA ADELANTADA — la <base> LOCAL puede estar atrasada respecto al remoto: hiciste `git fetch`
   # (origin/<base> ya trae el squash) pero NO `git pull` a tu <base> local. El patrón `git pull --ff-only &&
   # git branch -D <rama>` lo dispara porque el guard corre ANTES de que el pull adelante la base local. Si BR
@@ -389,7 +442,7 @@ bz_es_zombie() {
   # nada. SOLO lee refs locales (sin red); si origin/<base> no existe o también está atrasado, no matchea →
   # cae al tail (FRENA como hoy). NADA se afloja: es señal POSITIVA (el trabajo está, verificado, en la base
   # remota). Misma definición de "integrada" (directa+transitiva) que contra la base local.
-  if baserem=$(_bz_base_remota "$ROOT" "$base") && [ -n "$baserem" ] && _bz_integrada "$ROOT" "$br" "$baserem"; then
+  if baserem=$(_bz_base_remota "$ROOT" "$base") && [ -n "$baserem" ] && _bz_integrada "$ROOT" "$br" "$baserem" "$modo"; then
     BZ_RAZON=r; return 0
   fi
   # (b) remota borrada — NUNCA a ciegas. La ausencia de la remota NO prueba que la rama esté integrada
@@ -419,8 +472,10 @@ bz_es_zombie() {
 }
 
 # bz_protegida BR BASE [ACTUAL] [WT_RAMAS] → 0 si BR NUNCA debe tocarse destructivamente, pase lo que
-# pase (la base de integración, la rama actual, develop/main, cualquier mini-develop Develop* o guardada
-# a propósito keep/*, o checked-out en CUALQUIER worktree — WT_RAMAS son sus nombres, uno por línea).
+# pase (la base de integración, la rama actual, develop/main, cualquier mini-develop Develop*, una mini de
+# TEMA (epic/* epic-* integracion/* integracion-* — "valen como minis de tema con las mismas libertades",
+# norma de git) o guardada a propósito keep/*, o checked-out en CUALQUIER worktree — WT_RAMAS son sus
+# nombres, uno por línea).
 # 1 si no. Deja la RAZÓN en $BZ_PROT_RAZON: base_actual | convencion | worktree.
 #
 # UNA sola definición que consumen los DOS barredores (limpiar.sh ramas y limpiar.sh worktrees), igual que
@@ -434,7 +489,7 @@ bz_protegida() {
     BZ_PROT_RAZON=base_actual; return 0
   fi
   case "$br" in
-    develop|main|Develop*|keep/*) BZ_PROT_RAZON=convencion; return 0 ;;
+    develop|main|Develop*|keep/*|epic/*|epic-*|integracion/*|integracion-*) BZ_PROT_RAZON=convencion; return 0 ;;
   esac
   if [ -n "$wt_ramas" ] && printf '%s\n' "$wt_ramas" | grep -qxF "$br"; then
     BZ_PROT_RAZON=worktree; return 0

@@ -1,0 +1,24 @@
+name: gitleaks
+# Detección de secretos server-side (reemplaza al hook casero secret-scan, retirado 2026-10-19).
+# Regla de CI solo-gate: corre en push a develop/main y a mano (workflow_dispatch) — NUNCA en cada PR/ramita.
+# Las excepciones van en .gitleaksignore / .gitleaks.toml del repo (por huella/allowlist), nunca por palabras.
+on:
+  push:
+    branches: [develop, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # historia completa: gitleaks escanea los commits, no solo el árbol
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # gitleaks-action es gratis en repos de CUENTA PERSONAL (unjordi/cortex); una ORG necesitaría
+          # GITLEAKS_LICENSE. Si algún día cortex migra a una org, agregar el secret aquí.

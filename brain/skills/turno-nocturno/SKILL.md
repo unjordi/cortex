@@ -139,22 +139,35 @@ Un OK que solo vive en el chat se evapora al compactar (pasó en una noche real)
 sobrevivir la noche se escribe a disco, en el **contrato compartido**:
 
 `${CLAUDE_PROJECT_DIR}/.claude/memory/autorizaciones-vigentes.local.md`
-(los `*.local.md` ya van gitignored; `mkdir -p` si falta la carpeta)
+(los `*.local.md` ya van gitignored)
 
-Una línea por grant, **appendeada con `>>`** (no con un Edit):
+**⚠️ El grant lo deposita el USUARIO, NO Claude.** El hook `proteger-autorizaciones`
+(PreToolUse/{Bash,Edit,Write,MultiEdit}) **BLOQUEA** que el agente ESCRIBA ese archivo — por diseño: si
+Claude pudiera escribirlo, se AUTO-AUTORIZARÍA (elegiría la `cita` que quisiera de cualquier mensaje
+humano y merge-develop-guard la honraría sin el juez). El prefijo `!` corre el comando en el CLI **sin
+pasar por PreToolUse**, así que **solo el humano** puede depositar un grant.
+
+**Por eso el flujo es:** Claude CALCULA el `vence_epoch` y PRESENTA el one-liner ya armado; el **usuario**
+lo corre **él mismo** con `!` (un grant por línea, append con `>>`):
 
 ```
-- scope=merge-develop vence_epoch=<unix> vence="<legible>" cita="<frase TEXTUAL del usuario>" registrada=<ISO>
+! echo '- scope=merge-develop vence_epoch=<unix> vence="<legible>" cita="<frase TEXTUAL del usuario>" registrada=<ISO>' >> "${CLAUDE_PROJECT_DIR}/.claude/memory/autorizaciones-vigentes.local.md"
 ```
+
+(Si falta la carpeta, el usuario corre antes `! mkdir -p "${CLAUDE_PROJECT_DIR}/.claude/memory"`.)
+**Sin ese paso del usuario, el grant NO existe y el merge nocturno cae al JUEZ normal** (que buscará la
+cita del usuario en el contexto reciente — puede fallar tras compactaciones, que es justo lo que el grant
+durable evita). Claude NO puede saltarse esto: intentar escribir el archivo él mismo lo DENIEGA el hook.
 
 Reglas duras:
-- **Se escribe SOLO con OK explícito del usuario** — la `cita` son sus palabras LITERALES, no tu
-  paráfrasis. Sin cita textual, no hay grant.
+- **La `cita` son las palabras LITERALES del usuario**, no tu paráfrasis. Sin cita textual, no hay grant.
+  Claude solo ARMA el one-liner (con la cita exacta y el `vence_epoch` calculado); el usuario decide correrlo.
 - **"Hasta mañana" sin hora → vence a las 10:00 locales del día siguiente.**
 - **`scope=merge-develop` JAMÁS cubre `main`.** Un release a main no es delegable a un grant
   nocturno, punto.
-- **Poda las vencidas** (por `vence_epoch` contra la hora actual) cada vez que escribas el archivo.
-- Epoch portable GNU/BSD:
+- **Las vencidas quedan inertes** (merge-develop-guard las ignora por `vence_epoch` contra la hora
+  actual) — no hace falta podarlas para la seguridad; el usuario puede limpiarlas cuando quiera (otro `!`).
+- Epoch portable GNU/BSD que Claude calcula para armar el one-liner:
   ```bash
   # GNU (Linux / coreutils) con fallback BSD (macOS)
   V=$(date -d 'tomorrow 10:00' +%s 2>/dev/null \

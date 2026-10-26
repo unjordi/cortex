@@ -135,7 +135,7 @@ if ($jqExe) {
 & $bashExe -c "command -v jq >/dev/null 2>&1"
 if ($LASTEXITCODE -ne 0) {
   Write-Host "ADVERTENCIA: 'jq' no esta disponible en bash. Los hooks lo REQUIEREN (sin jq el"
-  Write-Host "  git-branch-guard falla abierto y el instalador no cablea el settings.json)."
+  Write-Host "  merge-develop-guard falla abierto y el instalador no cablea el settings.json)."
   Write-Host "  Instalalo: winget install jqlang.jq  (o choco/scoop install jq)"
 }
 
@@ -179,8 +179,13 @@ function Write-PSBlock() {
     $out = Get-PSBitingAliases $cmd.Source
     $edition = ''; $bite = ''
     foreach ($l in $out) {
-      if ($l -like 'EDITION`t*') { $edition = $l.Substring(8) }
-      elseif ($l -like 'BITE`t*') { $bite = $l.Substring(5) }
+      # El patron -like DEBE ir en comillas DOBLES: en comillas simples `t es un backtick+t LITERAL (PS no
+      # expande escapes ahi) y nunca casaba el TAB real que emite el probe (comillas dobles) -> $edition/$bite
+      # quedaban vacios (MEDIO auditoria 2026-10-22). Se parte por el PRIMER tab (robusto al largo del prefijo)
+      # y se limpia un posible \r final (CRLF).
+      $line = ([string]$l) -replace "`r$", ''
+      if ($line -like "EDITION`t*") { $edition = ($line -split "`t", 2)[1] }
+      elseif ($line -like "BITE`t*") { $bite = ($line -split "`t", 2)[1] }
     }
     if (-not $bite) { $bite = '(ningun alias sombrea un binario real)' }
     $lines += ('- {0} ({1}): {2}' -f $name, $edition, $bite)

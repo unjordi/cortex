@@ -4,13 +4,23 @@
 # (source=compact). NO bloquea: inyecta additionalContext con la rama, la norma de git y
 # la orden de leer la memoria antes de tocar código o declarar nada terminado.
 # Antídoto a "se me va la onda al cambiar de sesión/compu o cuando el sprint es largo".
-# Vive en <repo>/.claude/hooks (viaja por git) y se cablea en <repo>/.claude/settings.json.
+# Tier BOTH: viaja por-repo (<repo>/.claude/hooks, cableado en su settings.json) Y se instala global por
+# el bootstrap (dedupe: la copia del repo cede a la global). Rehidrata en TODA sesión que arranque DENTRO
+# de un repo git (brained o no); fuera de un repo git calla (gate abajo) — no es un "cerebro del repo" que aplique.
 # Genérico: sirve para cualquier stack (semilla plantillaRepoVacio). El aviso de MIGRACIÓN/paridad
 # NO vive aquí (es dominio del proyecto consumidor —p. ej. un repo .NET—, no del cerebro portable):
 # va en el sesion-inicio del propio repo consumidor, no en esta versión genérica.
 set -u
 
+# dedupe (tier both): si soy la copia del REPO y la copia GLOBAL existe, cedo — evita doble inyección
+# cuando el repo está brained Y hay bootstrap global. En un clon SIN bootstrap, la copia del repo corre.
+_cfgh="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks"; case "$0" in "$_cfgh/"*) : ;; *) [ -f "$_cfgh/$(basename "$0")" ] && exit 0 ;; esac
+
 ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+# Tier both ⇒ corre en TODA sesión, también en ~/Downloads y otras carpetas que NO son repo. El "cerebro
+# del repo" (rama, norma de git, ritual de memoria) solo aplica DENTRO de un repo git → fuera, calla
+# (rc 0, sin inyección). Antes, como tier repo, solo se cargaba en un repo; el gate repone esa condición.
+git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 MEM="$ROOT/.claude/memory"
 branch=$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "?")
 
@@ -22,13 +32,13 @@ case "$branch" in
   develop|main) lines+=("⚠️ Estás en una rama PROTEGIDA: no se commitea ni pushea aquí. Saca una ramita feat/… desde develop.");;
 esac
 lines+=("")
-lines+=("NORMA DE GIT (dura, la hace cumplir el hook git-branch-guard): NUNCA push a develop/main; todo va a ramitas (feat/fix/chore/docs) → MR → develop; main es release-only (normalmente lo promueve el humano en la web de GitLab; por CLI solo con OK súper-explícito, lo vigila merge-develop-guard).")
+lines+=("NORMA DE GIT (dura, la hace cumplir el hook merge-develop-guard): NUNCA push a develop/main; todo va a ramitas (feat/fix/chore/docs) → MR → develop; main es release-only (normalmente lo promueve el humano en la web de GitLab; por CLI solo con OK súper-explícito, lo vigila merge-develop-guard).")
 lines+=("→ FLUJO DE GIT: en una RAMITA de trabajo, commitea y pushea a la ramita LIBREMENTE, sin preguntar ('¿commiteo? ¿pusheo?' → no preguntes, hazlo). El ÚNICO punto donde te DETIENES a confirmar es CERRAR EL SLICE / integrar a develop: antes del MR (a) verifícalo tú — la verificación técnica que aplique a tu stack (build/tests/lint) verde + memoria al día (el hook Stop lo checa) y (b) el merge a develop exige confirmación EXPRESA del usuario (lo hace cumplir el hook merge-develop-guard). Release a main = decisión humana en la web.")
 lines+=("")
 lines+=("RITUAL ANTI-PÉRDIDA-DE-HILO:")
 lines+=("1) Lee .claude/memory/MEMORY.md (índice) y las memorias del proyecto que liste (dónde quedó el avance: hecho/pendiente/fuera-por-decisión).")
 lines+=("2) Si el repo tiene AGENTS.md (contrato de arquitectura), léelo antes de crear o modificar código.")
-lines+=("3) NO declares nada 'listo/en producción' sin la verificación técnica que aplique (build/tests/lint) citada + la memoria actualizada + confirmación del usuario — el hook Stop (dod-verificar) lo revisa y bloquea el cierre si falta.")
+lines+=("3) NO declares nada 'listo/en producción' sin la verificación técnica que aplique (build/tests/lint) + la memoria actualizada + confirmación del usuario. El hook Stop (dod-verificar) BLOQUEA un cierre declarado SIN esa confirmación/autorización del usuario; el build/tests/lint y la memoria los RECUERDA (no son lo que dispara el bloqueo).")
 
 # Resumen del estado (si el proyecto ya tiene un archivo de estado; tolera varios nombres de convención)
 for f in estado-proyecto estado-y-pendientes estado; do

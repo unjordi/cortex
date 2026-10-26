@@ -53,8 +53,10 @@ juicio, pero la traza mecánica del tramo vivo sí quedó). Es el mismo paso 0 q
 así que si ya lo corriste no lo repitas — pero si llegaste aquí SIN pasar por ahí, es tu primer movimiento:
 
 ```bash
-node "$(ls ~/.cortex/bin/checkpoint-mecanico.js ~/.local/bin/checkpoint-mecanico.js 2>/dev/null | head -1)" \
-     --self --ensure
+# SIN `ls` (un `ls` aliaseado a eza/color devuelve escapes ANSI → node → MODULE_NOT_FOUND; medido en cachy/zsh).
+for _ck in ~/.cortex/bin/checkpoint-mecanico.js ~/.local/bin/checkpoint-mecanico.js; do
+  [ -f "$_ck" ] && { node "$_ck" --self --ensure; break; }
+done
 cat .claude/memory/hilo-mental-actual.andamio.md
 ```
 
@@ -110,8 +112,10 @@ transcript por tu **`sid`** (NO por el cwd — en un worktree, o con varios mast
 mismo cwd, el slug del cwd apunta a OTRA sesión y reconstruyes basura con cara de evidencia):
 
 ```bash
-node "$(ls ~/.cortex/bin/checkpoint-mecanico.js ~/.local/bin/checkpoint-mecanico.js 2>/dev/null | head -1)" \
-     --self --ventana previa --out /tmp/andamio-previa.md
+# SIN `ls` (un `ls` aliaseado a eza/color devuelve escapes ANSI → node → MODULE_NOT_FOUND; medido en cachy/zsh).
+for _ck in ~/.cortex/bin/checkpoint-mecanico.js ~/.local/bin/checkpoint-mecanico.js; do
+  [ -f "$_ck" ] && { node "$_ck" --self --ventana previa --out /tmp/andamio-previa.md; break; }
+done
 cat /tmp/andamio-previa.md
 ```
 
@@ -128,8 +132,9 @@ aún falta el JUICIO fino de una decisión a medio cocinar, sube los mensajes co
 
 ```bash
 # transcript por SID (cross-slug): robusto a worktree y a varias sesiones en el mismo cwd.
-T=$(ls -t ~/.claude/projects/*/"$CLAUDE_CODE_SESSION_ID".jsonl 2>/dev/null | head -1)
-[ -z "$T" ] && { T=$(ls -t ~/.claude/projects/*/*.jsonl 2>/dev/null | head -1); echo "⚠️ sin sid: adivinando el .jsonl más reciente — PUEDE ser otra sesión"; }
+# `command ls` salta un `ls` aliaseado a eza/color (que mete escapes ANSI en la ruta; medido en cachy/zsh).
+T=$(command ls -t ~/.claude/projects/*/"$CLAUDE_CODE_SESSION_ID".jsonl 2>/dev/null | head -1)
+[ -z "$T" ] && { T=$(command ls -t ~/.claude/projects/*/*.jsonl 2>/dev/null | head -1); echo "⚠️ sin sid: adivinando el .jsonl más reciente — PUEDE ser otra sesión"; }
 # mensajes de USUARIO verbatim (array de bloques; descarta tool_result; filtra meta/compact/wrappers).
 # `tail -n` (NO -c: un corte a media línea hace que jq ABORTE el stream). Sube el 4000 si no alcanza el tramo.
 tail -n 4000 "$T" | jq -rc 'select(.type=="user" and (.isMeta//false|not) and (.isCompactSummary//false|not)) | .message.content | (if type=="string" then . else (map(select(.type=="text").text)|join(" ")) end) | select(. != "" and (startswith("<")|not) and (startswith("This session is being continued")|not) and (startswith("[Request interrupted")|not))' 2>/dev/null | tail -20

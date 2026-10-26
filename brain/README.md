@@ -62,11 +62,10 @@ Se dividen en **tiers** según su alcance (más el tier `retirado`, que no despl
 
 | Hook | Evento | Qué hace |
 |---|---|---|
-| `git-branch-guard.sh` | PreToolUse/Bash | Bloquea `git push`/merge a `develop`/`main` y redirige al flujo ramita→MR→develop. |
-| `merge-develop-guard.sh` | PreToolUse/Bash | **Candado ÚNICO del punto de merge a develop/main** (una sola resolución del destino para todos sus checks). Bloquea un `glab mr merge`/`gh pr merge` sin `--squash` **solo si el destino es `develop` CONFIRMADO** (la ramita colapsa a 1 commit limpio); `main` (release), ramas personales y destino indeterminado van libres de squash. Además exige confirmación EXPRESA antes de integrar a `develop` (en el contexto reciente O como autorización DURABLE en `.claude/memory/autorizaciones-vigentes.local.md` con vencimiento — la escribe `turno-nocturno`, sobrevive compactaciones, JAMÁS cubre `main`); autorización súper-explícita para un release a `main`. |
+| `merge-develop-guard.sh` | PreToolUse/Bash | **Candado ÚNICO de git: el punto de merge a develop/main + el PUSH directo a base** (una sola resolución del destino para todos sus checks). Como PASO 0 bloquea el `git push`/merge directo a `develop`/`main` y redirige a ramita→MR→develop (absorbió a `git-branch-guard`, 2026-10-21, misma lib). Bloquea un `glab mr merge`/`gh pr merge` sin `--squash` **solo si el destino es `develop` CONFIRMADO** (la ramita colapsa a 1 commit limpio); `main` (release), ramas personales y destino indeterminado van libres de squash. Además exige confirmación EXPRESA antes de integrar a `develop` (en el contexto reciente O como autorización DURABLE en `.claude/memory/autorizaciones-vigentes.local.md` con vencimiento — la escribe `turno-nocturno`, sobrevive compactaciones, JAMÁS cubre `main`); autorización súper-explícita para un release a `main`. |
+| `proteger-autorizaciones.sh` | PreToolUse/Bash\|Edit\|Write\|MultiEdit | **BLOQUEA (deny)** que el AGENTE ESCRIBA el archivo de grants durables `autorizaciones-vigentes*` (`.claude/memory/…local.md`). Cierra la AUTO-AUTORIZACIÓN: ese archivo es la vía por la que `merge-develop-guard` honra un merge a `develop` sin el juez; si el agente lo escribe, elige la subcadena-`cita` que quiera y se auto-autoriza. El CHOKEPOINT es la escritura: toda escritura del agente pasa por una tool (Bash/Edit/Write/MultiEdit) → se deniega; la del HUMANO con `!` la corre el CLI directo → NO pasa por PreToolUse → el humano SÍ escribe el grant. LEER (cat/grep) PASA. SIN escape por env (una perilla sería el bypass). Cubre `>`/`>>`/heredoc/`tee`/`sed -i`/`cp`/`mv`/`ln`/`install`/`rsync`/`dd of=`/intérprete-en-modo-escritura. Fail-open sin jq. |
 | `proteger-arbol.sh` | PreToolUse/Bash | Protege el árbol de trabajo compartido: bloquea que un agente de fan-out corra `git reset`/`checkout`/`rebase` en el árbol principal (orfanaría commits del orquestador). |
 | `proteger-fuente-cerebro.sh` | PreToolUse/Edit\|Write\|MultiEdit | AVISA (no bloquea, fail-open) al editar la copia INSTALADA de un hook/skill del cerebro cuando existe su FUENTE en el clon canónico (`~/.cortex` o `$CLAUDE_BRAIN_DIR`): la edición a la instalada se perdería en el próximo `install`/sync y no viajaría por git. Redirige a editar la fuente. Escape: `CLAUDE_SKIP_PROTEGER_FUENTE=1`. Su gemelo de detección tardía es el drift-check de `verificar-cerebro`. |
-| `secret-scan.sh` | PreToolUse/Bash | Bloquea un `git commit`/`git push` si lo que entra al repo trae un SECRETO (AWS/PEM/Anthropic/OpenAI/GitHub/GitLab/Slack/Google). Escanea también el **1er push de una rama nueva** (sin upstream) vs el merge-base con `develop`/`main`. Escapes: `--no-verify` / `CLAUDE_SKIP_SECRET_SCAN=1`. |
 | `limite-gasto.sh` | PreToolUse/Task | FRENO DURO: bloquea reclutar agentes cuando el gasto real rebasa un techo (`LIMITE_GASTO_OVERAGE_PCT` def 90 / `LIMITE_GASTO_5H_PCT` def off). Complementa al gate (que pregunta). |
 | `entorno-maquina-guard.sh` | PreToolUse/Bash | AVISA (no bloquea) si un `git commit` mete al `.claude/memory/` del repo algo específico-de-esta-máquina (un `entorno-maquina.md`, aliases personales, rutas de un `$HOME`, "Rosetta" sin condicional) — viajaría por git y mentiría al clonar en otra compu/OS. Eso vive SOLO en el entorno GLOBAL per-máquina (`~/.claude/entorno-maquina.md`, LEAN, @import); el repo deja lo portable/condicional. Mecanismo de la norma dura homónima. |
 | `no-bypass-deploy.sh` | PreToolUse/Bash | AVISA (no bloquea, fail-safe) cuando se corre A MANO el instalador/deploy de un proyecto en vez de su HERRAMIENTA OFICIAL: el cerebro/widget se actualiza con el **WIDGET** (su updater ⬆), nunca con `install-brain.sh`/`install.sh` a pelo; generalizado a cualquier install/deploy (`deploy.sh`, `make deploy`…). Correr el script crudo se salta backup/atomicidad/sello-de-versión/re-cableado/verificación. NO dispara en `--dry-run`/`--help`, ni en CI, ni sobre una mención entrecomillada. Mecanismo de la norma dura homónima. |
@@ -161,7 +160,7 @@ bash brain/test-brain.sh      # o: just test-brain
 al salir). Cubre: (a) `bash -n` de todos los hooks + `jq empty` de los JSON; (b) el gate de delegación
 (gratis/incluido/metered/desconocido, el ciclo gate→registrar→gate-silencioso y la transición
 dentro/fuera de la ventana, y el **coalescing de asks en fan-out** paralelo); (b1c) `merge-develop-guard`
-(checks de squash) develop-only con `glab` mockeado; (b2) `secret-scan` (incluido el 1er push de rama nueva); (b3b)
+(checks de squash) develop-only con `glab` mockeado; (b3b)
 `limpiar-worktrees` (base configurable + detección por `git cherry`); (b4) `dod-verificar` (cierre/QA-visual
 a ciegas, evasión por pregunta, edición por Bash); (b5) compactación: que `precompact` esté **RETIRADO** +
 `rehidratar-hilo` (inyección + gate de frescura); (b6) el watermark `aviso-contexto`; (b7) el dedupe del
@@ -170,8 +169,11 @@ doble-cableado; (c) idempotencia de
 `uninstall-brain.sh`.
 
 Los **jueces-Haiku** (`merge-develop-guard`, `dod-verificar`) se prueban en **dos capas**: (1)
-**DETERMINISTA**, corre SIEMPRE — el veredicto se mockea con `CLAUDE_MERGE_JUEZ_MOCK`/`CLAUDE_DOD_JUEZ_MOCK`
-(el MOCK cae al **PISO DETERMINISTA de main**, batería `piso-main`, que verifica el override sin red); (2)
+**DETERMINISTA**, corre SIEMPRE — SIN perilla de mock en producción (MEDIO auditoría 2026-10-22: una env de
+mock que forzara el veredicto sería un bypass; un agente podía setearla en la sesión). Los tests inyectan la
+respuesta del juez por un **`curl` FALSO por PATH** (+ `CLAUDE_CODE_OAUTH_TOKEN` dummy) o redefiniendo
+`_juez_llamar_api` in-proc, de modo que el **parseo por centinela + el VETO de cita + el PISO de main** siguen
+siendo los REALES (un stub del veredicto final los saltaría). batería `piso-main` verifica el override sin red; (2)
 **LIVE opt-in** contra el Haiku real —el JUICIO de qué frase autoriza—, que **requiere `curl` + `jq` + el token
 OAuth de suscripción** (`$CLAUDE_CODE_OAUTH_TOKEN` → `~/.claude/.credentials.json` → keychain macOS):
 ```sh

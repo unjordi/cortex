@@ -27,8 +27,9 @@ set -euo pipefail
 DIR="${CLAUDE_SESSIONS_DRIVE:-$HOME/.claude-sessions}"
 FORCE="${1:-}"
 [ -d "$DIR" ] || { echo "seed.sh: no existe la carpeta de sesiones '$DIR' (setea CLAUDE_SESSIONS_DRIVE, o crea ~/.claude-sessions)"; exit 1; }
-# El roster de masters no vive en un masters.json compartido (genera conflictos de Drive). Se DERIVA de: (1) los `masters-<host>.json` que cada máquina CURA A MANO y publica al Drive;
-# (2) el `masters.json` legacy, si todavía existe (compat); (3) los `<id>.meta.json`
+# Opción A (2026-10-14): el roster de masters ya NO vive en UN masters.json compartido (lo generaba conflictos
+# de Drive). Se DERIVA de: (1) los `masters-<host>.json` que cada máquina CURA A MANO y publica al Drive;
+# (2) el `masters.json` legacy, si todavía existe (compat durante la migración); (3) los `<id>.meta.json`
 # per-sid (proveniencia conflict-free que escribe el export) como RESPALDO para ids no listados a mano.
 if ! ls "$DIR"/masters*.json "$DIR"/*.meta.json >/dev/null 2>&1; then
   echo "seed.sh: no hay masters-*.json/masters.json ni <id>.meta.json en '$DIR' (nada que sembrar)"; exit 0
@@ -69,8 +70,13 @@ node -e '
   const fs=require("fs"),path=require("path"),dir=process.argv[1];
   const roster=new Map();   // id -> {id,target,name}  (curado gana: no se pisa si ya está)
   const files=fs.readdirSync(dir);
-  // (1)+(2) curado: masters-<host>.json y masters.json legacy
-  for(const f of files.filter(f=>/^masters(-.+)?\.json$/.test(f)).sort()){
+  // (1) curado por-host (masters-<host>.json). (2) el masters.json LEGACY PIERDE: solo se lee si NO hay
+  // ningún masters-<host>.json (compat de transición; con ids viejos puede sembrar sesiones muertas, así
+  // que en cuanto exista el primer per-host, el legacy se IGNORA — claudio). seed además salta todo id sin
+  // .gz fresco abajo, así que un id legacy sin respaldo tampoco se siembra.
+  const perHost = files.filter(f=>/^masters-.+\.json$/.test(f)).sort();
+  const rosterFiles = perHost.length ? perHost : files.filter(f=>f==="masters.json");
+  for(const f of rosterFiles){
     try{const m=JSON.parse(fs.readFileSync(path.join(dir,f),"utf8"));
       for(const e of (m.masters||[])) if(e&&e.id&&!roster.has(e.id)) roster.set(e.id,{id:e.id,target:e.target||"",name:e.name||e.id});
     }catch(_){}
@@ -83,15 +89,24 @@ node -e '
       roster.set(meta.id,{id:meta.id,target,name:meta.label||meta.id});
     }catch(_){}
   }
-  for(const e of roster.values()) console.log([e.id,e.target,e.name].join("\t"));
+  for(const e of roster.values()){
+    const hasMeta = fs.existsSync(path.join(dir, e.id+".meta.json")) ? "1" : "0";
+    console.log([e.id,e.target,e.name,hasMeta].join("\t"));
+  }
 ' "$DIR" \
-| while IFS=$'\t' read -r id target name; do
+| while IFS=$'\t' read -r id target name hasmeta; do
     if [ -z "$target" ]; then
       echo "· omito   ${name:-$id}: sin target (cúralo en masters-<host>.json o falta originCwd en su meta)"
       continue
     fi
     if [ ! -f "$DIR/$id.jsonl.gz" ]; then
-      echo "· omito   $name: sin .gz local (¿Drive terminó de bajar? ¿unidad montada?)"
+      # Un id del roster curado SIN .meta.json NI .gz no existe por ningún lado: es un FANTASMA (fixture
+      # viejo o entrada tecleada mal) → avisa fuerte en vez de sembrar/omitir en silencio (claudio).
+      if [ "${hasmeta:-1}" = 0 ]; then
+        echo "⚠ fantasma $name ($id): en un masters-<host>.json pero SIN .meta.json NI .gz en '$DIR' — id inexistente (¿fixture o entrada vieja?); quítalo del roster curado"
+      else
+        echo "· omito   $name: sin .gz local (¿Drive terminó de bajar? ¿unidad montada?)"
+      fi
       continue
     fi
     if repo="$(resolve_target "$target")"; then

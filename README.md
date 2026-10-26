@@ -78,9 +78,8 @@ El cerebro se ordena por *dureza*: arriba lo que te **bloquea** sin negociar; ab
 
 ```
 🔒 Hooks Forzosos — hooks que bloquean (deny) · no negociables
-├─ 🚧 git-branch-guard         push/merge a develop·main → denegado
-├─ 🔗 merge-develop-guard      MR a develop sin --squash o sin tu OK → denegado; a main exige OK súper-explícito
-├─ 🕵️  secret-scan             commit/push con un secreto → denegado
+├─ 🔗 merge-develop-guard      push directo a develop·main, o MR sin --squash/sin tu OK → denegado; a main exige OK súper-explícito
+├─ 🔏 proteger-autorizaciones  escritura del AGENTE al archivo de grants autorizaciones-vigentes* → denegada; solo el HUMANO lo escribe con `!` (cierra la auto-autorización del merge a develop)
 ├─ 💸 delegacion-gate          delegar al llegar al 90% de tu ventana 5h → pide tu OK
 ├─ 🛑 limite-gasto             sin ventana 5h Y sin overage (ambos agotados) → freno duro
 └─ 📁 por-repo · viajan en el .claude de cada repo
@@ -88,9 +87,9 @@ El cerebro se ordena por *dureza*: arriba lo que te **bloquea** sin negociar; ab
 
 🔔 Automático — inyectan / recuerdan (no bloquean)
 ├─ 🖥️  entorno-maquina-guard    commit de algo machine-specific (aliases/rutas de $HOME/Rosetta/entorno-maquina.md) al .claude/memory/ del repo → avisa
-├─ 🚧 no-bypass-deploy         correr el instalador/deploy a mano (install-brain.sh/deploy.sh) en vez de la herramienta oficial (el widget) → avisa (fail-safe: no --dry-run/--help/CI)
+├─ 🚧 no-bypass-deploy         correr el instalador/deploy a mano (install-brain.sh/deploy.sh, helm/kubectl apply -f, aun tras sudo/nohup/VAR=/source) en vez de la herramienta oficial (el widget) → avisa (fail-safe: no --dry-run/--help/CI)
 ├─ 🌳 proteger-arbol           git destructivo que orfanaría commits sin pushear → avisa (fan-out: usa worktree aislado)
-├─ 🛡️  proteger-fuente-cerebro  editar la copia INSTALADA de un hook/skill que tiene fuente en el clon → avisa (se perdería en el próximo sync) (GLOBAL)
+├─ 🛡️  proteger-fuente-cerebro  editar la copia INSTALADA de un hook/skill que tiene fuente en el clon → avisa (se perdería en el próximo sync); + un Edit a settings.json que decablea un hook del cerebro o agrega un escape de guard → avisa (tu propio candado) (GLOBAL)
 ├─ 🧹 barrer-ramas             al abrir sesión / al punto del merge barre en 2º plano ramas locales + remota huérfana + worktrees ya integrados (zombie squash-safe; throttle 24h) (GLOBAL)
 ├─ 💾 exportar-sesion-master   auto-export de las sesiones *-master a ~/.claude-sessions (o Drive); detached, sobrevive el cleanup de 30 días (GLOBAL)
 ├─ 🗂️ checkpoint-mecanico      PreCompact: extractor mecánico (streaming, 0 tokens) escribe el andamio del TRAMO VIVO a hilo-mental-actual.andamio.md (GLOBAL; el skill lo regenera con --self --ensure)
@@ -98,9 +97,8 @@ El cerebro se ordena por *dureza*: arriba lo que te **bloquea** sin negociar; ab
 ├─ 🧵 rehidratar-hilo          reinyecta hilo-mental-actual.md + el andamio (si es más fresco) al abrir/retomar/compactar (GLOBAL) — gate de frescura + edad
 ├─ 📈 aviso-contexto           al umbral ALTO del punto REAL de compact (80%/92% de autoCompactWindow o la ventana efectiva; % honesto, respeta autoCompactEnabled): VUELCA el checkpoint mecánico solito y ORDENA /checkpoint+/compact. No gotea (silencio bajo el umbral, 1 disparo + 1 escalada) (GLOBAL)
 ├─ 🧬 aviso-drift-cerebro      repo brained atrás de la fuente única (hooks/libs Y skills) → en tu mini-develop se AUTO-SINCRONIZA (apply+commit+push); en otra rama, avisa. ADEMÁS detecta el drift de la copia GLOBAL de skills (~/.claude/skills vs la fuente; warn-only, throttle propio). Al moverse el cerebro, NUDGE a correr la DUPLA (suficiencia+coherencia; contra la firma si hay AGENTS.md, si no sugiere instanciarla) (GLOBAL)
-└─ 📁 por-repo · viajan en el .claude de cada repo
-   ├─ 🧭 sesion-inicio            reinyecta rama + norma + memoria al abrir
-   └─ 🌾 recordar-cosechar        espejo automático del TaskList vivo → bloque fenced en estado-proyecto.md (determinista, sin LLM)
+├─ 🧭 sesion-inicio            reinyecta rama + norma + memoria al abrir (BOTH)
+└─ 🌾 recordar-cosechar        espejo automático del TaskList vivo → bloque fenced en estado-proyecto.md (determinista, sin LLM) (BOTH)
       (💤 precompact-volcar-estado se RETIRÓ: PreCompact no puede inyectar; lo cubren 💾 checkpoint + 🧵 rehidratar-hilo + 📈 aviso-contexto.
        recordar-dashboard/delegacion-reporte/recordar-orquestar/recordar-unificar-cerebro/hud-stale están retirados: su regla
        vive en brain/norms/global-claude-md.md; MANIFEST los lista `retirado`.)
@@ -261,10 +259,14 @@ El **timer impone el piso de 5 min** a nivel del OS (la API de Anthropic avisa s
 que es la única fuente de cadencia. El widget es una vista pura de `state.json`/`stats.json` (re-leída
 cada 10 s), salvo la pestaña Cerebro, que lee `~/.claude` directo para reflejar el cerebro.
 
-**Los porcentajes** salen del endpoint OAuth `/usage` (idénticos a `/usage`, `basis:"oauth"`); sin red
-o sin credenciales, caen a una estimación calibrada desde los transcripts locales vía
-[ccusage](https://github.com/ryoppippi/ccusage) (`basis:"cost"`). Los montos en dólares son costo
-**API-equivalente** (lo que pagarías por token), no tu factura — una señal de "cuánto me ahorra el plan".
+**Los porcentajes** salen del endpoint OAuth `/usage` (idénticos a `/usage`, `basis:"oauth"`). Si el
+fetch OAuth falla (red caída, login expirado, sin cuenta en el CLI), el estimado por costo **NUNCA**
+pisa una lectura real: el widget muestra la **última lectura oauth** marcada `stale:true` con su cuenta
+y antigüedad; si no hay lectura previa, dice "no hay dato" (no inventa). El estado de autenticación
+viaja en `state.json` (`auth.state` = `ok`/`expiring`/`expired`/`no_credentials`) para que el widget
+avise con botón de re-login en vez de dejar de funcionar en silencio. Los montos en dólares (vía
+[ccusage](https://github.com/ryoppippi/ccusage), solo en modo oauth) son costo **API-equivalente** (lo
+que pagarías por token), no tu factura — una señal de "cuánto me ahorra el plan".
 
 ## Opcional: el broker de terminal (apagado por defecto)
 

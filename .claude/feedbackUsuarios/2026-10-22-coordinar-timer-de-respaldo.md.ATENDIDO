@@ -1,0 +1,3 @@
+ATENDIDO 2026-10-22 (cortex-master) en fix/corpus-fp-bench, commit 42769a7:
+- coordinar-claudes SKILL.md §2: notify_when_idle avisa, no despierta → timer de respaldo (sleep 600 run_in_background).
+- §3: el transcript del master es la señal PRINCIPAL; screen hardcopy queda como complemento (puede salir en blanco bajo --remote-control). Título y description del frontmatter alineados.

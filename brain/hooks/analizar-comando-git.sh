@@ -1,6 +1,7 @@
 # analizar-comando-git.sh — LIB compartida (NO es un hook; se hace `source`). Razona sobre un comando
-# git/glab/gh para los git-guards (git-branch-guard · merge-develop-guard) →
-# UNA sola lógica, dejan de divergir (antídoto al drift). bash-3.2-safe. El consumidor verifica
+# git/glab/gh para el git-guard merge-develop-guard (que absorbió el chequeo de push/merge-directo
+# del antiguo git-branch-guard, 2026-10-21) → UNA sola lógica, deja de divergir (antídoto al drift).
+# bash-3.2-safe. El consumidor verifica
 # jq/git si los necesita. Vive junto a los hooks (como delegacion-comun.sh) → viaja en el mismo copy.
 # shellcheck shell=bash
 
@@ -67,10 +68,21 @@ acg_segmentos_ejecutables() {   # $1=cmd → texto con heredocs resueltos + comi
       }
       print
     }')
-  # Spans entrecomillados precedidos de un EJECUTOR (eval "…" · bash/sh/zsh/dash/ksh -c "…") → REINYECTA
-  # el contenido SIN comillas (es código). El resto de comillas (dato) las quita acg_despoja_comillas.
-  t=$(printf '%s' "$t" | sed -E 's/(^|[[:space:]])(eval|-c)[[:space:]]+"([^"]*)"/\1\2 \3/g')
-  t=$(printf '%s' "$t" | sed -E "s/(^|[[:space:]])(eval|-c)[[:space:]]+'([^']*)'/\1\2 \3/g")
+  # Spans entrecomillados precedidos de un EJECUTOR → REINYECTA el contenido SIN comillas (es código). El resto
+  # de comillas (dato) las quita acg_despoja_comillas. DOS ejecutores: (1) `eval "…"`; (2) un SHELL (bash/sh/
+  # zsh/dash/ksh, con ruta o env delante) con `-c` en CUALQUIER bundle de flags que termine en c (`-lc`,`-ec`,
+  # `-l -c`…). R4 #1 (auditoría 2026-10-23): antes solo casaba el token EXACTO `-c` → `bash -lc 'git push …'`,
+  # `sh -lc …`, `bash -ec …`, `env bash -lc …` EVADÍAN. Anclar a un SHELL (no un `grep -c` cualquiera) evita el
+  # FP de un `-c` de conteo. R5-3 (auditoría 2026-10-23, claudio): el flag-skip `([[:space:]]+-[A-Za-z]+)*` solo
+  # casaba bundles de flags CORTOS → `bash --noprofile -c`, `--norc`, `-o pipefail -c`, `-O extglob -c`, `-c --`
+  # EVADÍAN. Ahora el flag-skip reconoce: value-eaters cortos `-o/-O VALUE`, value-eaters largos
+  # `--rcfile/--init-file VALUE`, flags largos `--xxx`, bundles cortos `-xxx`, y un `--` opcional TRAS el `-c`
+  # (grupo 8) antes del código (grupo 9). (Residual conocido: `ssh host 'git push'` corre en el host REMOTO,
+  # fuera de alcance; un flag largo value-eater distinto de --rcfile/--init-file dejaría su valor sin consumir.)
+  t=$(printf '%s' "$t" | sed -E 's/(^|[[:space:]])eval[[:space:]]+"([^"]*)"/\1eval \2/g')
+  t=$(printf '%s' "$t" | sed -E "s/(^|[[:space:]])eval[[:space:]]+'([^']*)'/\1eval \2/g")
+  t=$(printf '%s' "$t" | sed -E 's/((^|[[:space:]])([^[:space:]]*\/)?(bash|sh|zsh|dash|ksh)(\.exe)?([[:space:]]+(-[oO][[:space:]]+[^[:space:]]+|--rcfile[[:space:]]+[^[:space:]]+|--init-file[[:space:]]+[^[:space:]]+|--[A-Za-z][A-Za-z0-9-]*|-[A-Za-z]+))*[[:space:]]+-[A-Za-z]*c)([[:space:]]+--)?[[:space:]]+"([^"]*)"/\1 \9/g')
+  t=$(printf '%s' "$t" | sed -E "s/((^|[[:space:]])([^[:space:]]*\/)?(bash|sh|zsh|dash|ksh)(\.exe)?([[:space:]]+(-[oO][[:space:]]+[^[:space:]]+|--rcfile[[:space:]]+[^[:space:]]+|--init-file[[:space:]]+[^[:space:]]+|--[A-Za-z][A-Za-z0-9-]*|-[A-Za-z]+))*[[:space:]]+-[A-Za-z]*c)([[:space:]]+--)?[[:space:]]+'([^']*)'/\1 \9/g")
   printf '%s\n' "$t"
 }
 
@@ -78,6 +90,33 @@ acg_segmentos_ejecutables() {   # $1=cmd → texto con heredocs resueltos + comi
 # commit / dato de un grep / doc NO dispara los guards (Fix #2 · H13), PERO ya no a ciegas: primero pasa
 # por acg_segmentos_ejecutables (arriba), que resuelve heredocs y reinyecta lo que un ejecutor SÍ corre.
 acg_despoja_comillas() { printf '%s' "$(acg_segmentos_ejecutables "$1")" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g"; }
+
+# Parte un comando en SUBCOMANDOS por ; && || & | — QUOTE-AWARE (R5-4, auditoría 2026-10-23, claudio): un
+# ;/&/| DENTRO de comillas ' o " NO parte. Antes un `awk '{gsub(/[;&|]/,"\n")}'` partía a ciegas →
+# `git push -o 'a;b' origin develop`, `--push-option='a|b'`, `git -c 'http.extraHeader=a;b' push …`,
+# `git -C 'dir;x' push …` quedaban cortados y el destino `develop` caía en un segmento que ya no era un
+# `git push` → EVADÍAN. Las comillas de un EJECUTOR (eval/-c) ya fueron reinyectadas por
+# acg_segmentos_ejecutables (sus separadores SÍ parten = subcomandos reales); las de DATO (-m '…') protegen
+# su separador. Sobre un texto YA despojado (sin comillas) es idéntico al gsub viejo. Portable BSD+GNU.
+# R6 (auditoría 2026-10-23, claudio — REGRESIÓN de R5-4): un backslash-escape `\"`/`\'` abría una comilla
+# FALSA y se tragaba el `&& git push` que seguía (`bash -c "cd \"/a b\" && git push origin develop"`,
+# `git commit -m "say \"hi" && git push origin develop`). FUERA de comilla SIMPLE (donde el shell trata el
+# `\` como literal, no como escape) un `\<char>` consume AMBOS literalmente → el `"`/`'` escapado NO alterna
+# el estado de comilla. Así el `&&` tras un `\"` vuelve a partir.
+acg_partir_subcomandos() {   # $1=texto → un subcomando por línea
+  printf '%s' "$1" | awk '{
+    out=""; q=""; n=length($0);
+    for(i=1;i<=n;i++){ c=substr($0,i,1);
+      if(c=="\\" && q!="s"){ out=out c substr($0,i+1,1); i++; continue }
+      if(q==""){
+        if(c=="\047"){q="s"; out=out c}
+        else if(c=="\""){q="d"; out=out c}
+        else if(c==";"||c=="&"||c=="|"){out=out "\n"}
+        else out=out c
+      } else if(q=="s"){ out=out c; if(c=="\047") q="" }
+      else { out=out c; if(c=="\"") q="" } }
+    print out }'
+}
 
 # ¿el comando contiene un `git commit`? (mismo ancla que acg_es_push — evita el drift de "grep sin
 # frontera" que ya divergió en 2 de los hooks que hacían su propia copia a mano).
@@ -171,11 +210,26 @@ acg_target_dir() {   # $1=cmd  $2=payload_cwd → imprime el dir objetivo
   # (1) -C <dir> del git (quote-aware; el `.*` codicioso toma el ÚLTIMO -C, normalmente el único)
   d=$(printf '%s' "$cmd" | sed -nE "s/.*(^|[^[:alnum:]])-C[[:space:]=]+(\"[^\"]*\"|'[^']*'|([^[:space:]\"']|\\\\.)+).*/\2/p" | head -1)
   d=$(printf '%s' "$d" | sed -E "s/^[\"']//; s/[\"']\$//")
-  if [ -n "$d" ]; then acg_expande_home "$d"; return 0; fi
+  d=$(acg_expande_home "$d")   # ~ y $HOME/${HOME} se expanden ANTES de juzgar opacidad
+  # Un -C/cd con valor OPACO (una sustitución de shell $VAR/$(..)/`..` que NO era $HOME/~) no es un dir
+  # resoluble en PreToolUse: se IGNORA y se cae a la siguiente precedencia (el cwd real), en vez de devolver un
+  # dir inexistente que daría DIR-IRRESOLUBLE y frenaría en falso. FP real (corpus 2026-10-08, axon #442): un
+  # `-C $M` de un comando LATERAL del compound —`gh pr merge … --repo org/x … ; git -C $M pull`— contaminaba el
+  # dir del merge, aunque el merge trae --repo LITERAL. (El SCOPING no se afloja: un comando SIN --repo literal
+  # cuyo cwd es opaco por un `cd $X &&` lo detecta acg_dir_opaco y GATEA — ver merge-develop-guard PASO 3b.)
+  case "$d" in *'$'*|*'`'*) d="" ;; esac
+  # `-C .` / `-C ./` = "el directorio ACTUAL" (equivale a sin -C) → NO es un dir distinto: se cae a la
+  # precedencia del cwd real (cd previo > payload_cwd > PROJECT_DIR), que es lo que el shell usaría. Sin esto,
+  # un `git -C . branch -D` resolvía el dir a `.` LITERAL (el cwd del PROCESO del hook, no el del comando) y la
+  # detección del repo objetivo fallaba → evasión (M5 R3 2026-10-23). Un `-C ./subdir` SÍ es un dir distinto y se conserva.
+  case "$d" in .|./) d="" ;; esac
+  if [ -n "$d" ]; then printf '%s' "$d"; return 0; fi
   # (2) cd/pushd <dir> en el segmento (quote-aware; el valor NO cruza ;&|)
   d=$(printf '%s' "$cmd" | sed -nE "s/.*(^|[^[:alnum:]])(cd|pushd)[[:space:]]+(\"[^\"]*\"|'[^']*'|([^[:space:]\"';&|]|\\\\.)+).*/\3/p" | head -1)
   d=$(printf '%s' "$d" | sed -E "s/^[\"']//; s/[\"']\$//")
-  if [ -n "$d" ]; then acg_expande_home "$d"; return 0; fi
+  d=$(acg_expande_home "$d")
+  case "$d" in *'$'*|*'`'*) d="" ;; esac
+  if [ -n "$d" ]; then printf '%s' "$d"; return 0; fi
   # (3) payload cwd  (4) CLAUDE_PROJECT_DIR  (5) '.'
   if [ -n "$pcwd" ]; then printf '%s' "$pcwd"; return 0; fi
   printf '%s' "${CLAUDE_PROJECT_DIR:-.}"
@@ -212,21 +266,89 @@ acg_repo_explicito() {   # $1=cmd(RAW, comillas intactas) → slug LITERAL | "OP
 # emitir un mensaje ACCIONABLE ("usa el slug LITERAL") en vez del genérico. Reusa acg_repo_explicito (==OPACO).
 acg_repo_opaco() { [ "$(acg_repo_explicito "$1")" = "OPACO" ]; }   # $1=cmd(RAW) → 0=--repo trae $VAR/backtick · 1=no
 
+# ¿el comando cambia el cwd a un valor OPACO (`cd $X && …` / `pushd \`…\``) ANTES de correr el merge-de-MR?
+# gh/glab merge corren en el cwd → un `cd` opaco mueve el merge a un repo que el guard NO puede identificar
+# (lee el string CRUDO). SIN un --repo LITERAL que fije el repo afectado, no se puede confirmar que el merge
+# cae en el repo PERSONAL del cwd de la sesión → el SCOPING debe GATEAR al juez (como el --repo opaco), nunca
+# asumir personal. Mira SOLO cd/pushd (no `-C`): `-C` es per-comando de git y NO cambia el cwd de un gh/glab
+# subsiguiente, así que un `-C $M` de un `git pull` LATERAL no debe gatear un merge con --repo literal (FP axon #442).
+acg_dir_opaco() {   # $1=cmd(RAW) → 0=hay un cd/pushd a $VAR/backtick · 1=no
+  local v
+  v=$(printf '%s' "$1" | sed -nE "s/.*(^|[^[:alnum:]])(cd|pushd)[[:space:]]+(\"[^\"]*\"|'[^']*'|([^[:space:]\"';&|]|\\\\.)+).*/\3/p" | head -1)
+  case "$v" in *'$'*|*'`'*) return 0 ;; esac
+  return 1
+}
+
 acg_target_remote() {   # $1=cmd  $2=payload_cwd → imprime "org/repo" | vacío
   local cmd="$1" pcwd="${2:-}" repo dir
   repo=$(acg_repo_explicito "$cmd")
-  # OPACO (--repo "$VAR": no sabemos a qué repo apunta) → NO es un slug usable; cae al remoto del dir
-  # objetivo, igual que si no hubiera --repo (M9: opaco ≠ ajeno).
   if [ -n "$repo" ] && [ "$repo" != "OPACO" ]; then printf '%s' "$repo"; return 0; fi
+  # --repo OPACO ($VAR): el guard lee el string CRUDO y NO sabe a qué repo apunta. NO caer al remoto del cwd —
+  # el merge afecta lo que $VAR nombra, NO el cwd, así que resolver el MR por el remoto del cwd sería el REPO
+  # EQUIVOCADO (podría colar un merge del repo del cwd como destino). Devuelve VACÍO → el destino sale
+  # DESCONOCIDO:REPO-VARIABLE → el juez decide (fail-safe), nunca se resuelve por el cwd. (Endurece M9 "opaco ≈
+  # cwd" → "opaco = irresoluble ⇒ al juez", por la decisión de unjordi #3/#4: el repo se resuelve por git, y un
+  # $VAR sin expandir no es resoluble.)
+  if [ "$repo" = "OPACO" ]; then printf ''; return 0; fi
   dir=$(acg_target_dir "$cmd" "$pcwd")
   git -C "$dir" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|https?://[^/]+/)##; s#\.git$##'
 }
 
 # ¿el comando contiene un `git push`?
-acg_es_push() { printf '%s' "$1" | grep -qE 'git[[:space:]]+push([[:space:]]|$)'; }
+# `git push` debe estar en POSICIÓN DE COMANDO: al inicio del segmento, o tras un prefijo que lo EJECUTA —
+# agrupación/subst `( $( { ` `` ` `` `, asignación `x=`, o wrappers `eval|sudo|env …|time|nice|nohup|command|
+# builtin|xargs|(ba)?sh -c`. NO como ARGUMENTO de un comando que NO lo ejecuta (`pgrep -af 'git push…'`,
+# `grep 'git push origin develop'`, `echo`): esas palabras no son consumibles por el prefijo → no casa.
+# Antes casaba en cualquier posición → FP de mención (corpus L145); anclar sin los ejecutores daba FN (eval/
+# bash -c/subshell evadían, tests M1/G3). El segmento llega normalizado (acg_normaliza_git_prefijo colapsa
+# `git -c/-C`). SEGURIDAD: un FN aquí = un push-a-base que se cuela, así que el prefijo cubre los ejecutores.
+# La asignación `VAR=valor` DEBE consumir su valor: sin eso, `FOO=1 git push`/`GIT_SSH_COMMAND=ssh git push`
+# rompían la adyacencia `VAR=…git` y evadían el PASO 0 (CRÍTICO C1, auditoría 2026-10-22). El valor es
+# `[^[:space:]$`()]*` (excluye `$`,backtick,`(`,`)`): así un valor que ABRE una command-subst —`x=$(git push)`—
+# NO se traga el `$(`, y el `git push` DE ADENTRO cae a la clase de char-class y SÍ se detecta (regresión del
+# primer fix, gbg G3). El espacio final es `[[:space:]]*` (opcional) para que el caso subst case igual. El valor
+# entrecomillado con espacios (`FOO="a b"`) ya lo neutraliza acg_despoja_comillas aguas arriba (el único caller,
+# acg_push_toca_base, despoja ANTES) → aquí basta el no-quote.
+# C2 (auditoría R3 2026-10-23): el regex de arriba era una LISTA CERRADA de envoltorios → `\git push`,
+# `/usr/bin/git push`, `timeout 30 git push`, `stdbuf/ionice/setsid/caffeinate/arch … git push` (wrappers NO
+# listados) y `FOO=a\ b git push` EVADÍAN el PASO 0 (un push a base que se cuela = FN, el peor error). Fix de
+# FONDO (no otra lista): recorre los tokens del segmento buscando `git` en POSICIÓN DE COMANDO. El basename
+# de-backslasheado de cada token revela `git` tras `\`, una ruta absoluta (`/usr/bin/git`) o un wrapper
+# arbitrario. Un token que precede a `git` y NO es una asignación/flag/`git` se trata como WRAPPER (lo salta y
+# sigue buscando) SALVO que sea un CONSUMIDOR DE DATOS conocido (echo/grep/printf/cat/awk/sed…): ahí `git push`
+# es un ARGUMENTO (dato), no un comando → no cuenta. Si el PRIMER `git` trae otro subcomando (`git commit -m …
+# git push`), el resto son SUS args → se corta ahí (no se re-detecta el `git push` entrecomillado, preserva H13
+# y la mención del corpus L145). El segmento llega despojado de comillas + normalizado (`git -C` colapsado) por
+# el caller. Fail-SAFE: ante un wrapper desconocido se SIGUE buscando git (sesga a DETECTAR, nunca a dejar pasar).
+acg_es_push() {
+  local seg base tok i n
+  local -a T
+  seg=$(printf '%s' "$1" | tr '(){}`' '     ')   # neutraliza agrupación/subshell → `git` tras `( { $(` queda token propio
+  IFS=' ' read -ra T <<< "$seg"
+  n=${#T[@]}; i=0
+  while [ "$i" -lt "$n" ]; do
+    tok="${T[$i]}"
+    case "$tok" in
+      ''|[A-Za-z_][A-Za-z0-9_]*=*) i=$((i+1)); continue ;;   # vacío o asignación VAR=val → prefijo, salta
+    esac
+    base="${tok##*/}"; base="${base#\\}"                      # basename sin `\` de escape ni ruta (→ `\git`,`/usr/bin/git`)
+    case "$base" in
+      git)
+        i=$((i+1))                                            # el siguiente token NO-flag debe ser `push`
+        while [ "$i" -lt "$n" ]; do case "${T[$i]}" in -*) i=$((i+1)) ;; *) break ;; esac; done
+        { [ "$i" -lt "$n" ] && [ "${T[$i]}" = push ]; } && return 0
+        return 1                                              # `git <otro-subcomando>` → el resto son SUS args, no otro comando
+        ;;
+      echo|printf|print|grep|egrep|fgrep|rg|ag|pgrep|pkill|cat|tac|nl|awk|sed|tee|less|more|head|tail|xxd|od|hexdump|strings|test|'['|:|true|false|yes)
+        return 1 ;;                                           # consumidor de DATOS → `git push` es argumento, no comando
+      *) i=$((i+1)) ;;                                        # wrapper arbitrario (o su arg posicional/flag) → sigue buscando git
+    esac
+  done
+  return 1
+}
 
 # acg_slug_de_dir(dir) → slug `org/repo` del remoto `origin` de un dir git (sin esquema ni `.git`), o vacío.
-acg_slug_de_dir() { git -C "$1" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|https?://[^/]+/)##; s#\.git$##'; }
+acg_slug_de_dir() { git -C "$1" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|ssh://[^/]+/|https?://[^/]+/)##; s#\.git$##'; }
 
 # acg_clon_local_de_slug(slug, dir-pista) → toplevel del CLON LOCAL cuyo origin==slug, o vacío.
 # El repo DESTINO de un `glab/gh … merge --repo <slug>` es el del SLUG, no el del cwd de la sesión —
@@ -241,7 +363,15 @@ acg_clon_local_de_slug() {   # $1=slug  $2=dir-pista → toplevel del clon | vac
   [ -n "$slug" ] && [ "$slug" != OPACO ] || return 1
   top=$(git -C "$pista" rev-parse --show-toplevel 2>/dev/null)
   if [ -n "$top" ] && [ "$(acg_slug_de_dir "$top")" = "$slug" ]; then printf '%s' "$top"; return 0; fi
-  parent=$(dirname "${top:-$pista}")
+  # H2 (revisión-1 2026-10-19): desde un WORKTREE, --show-toplevel es el worktree (vive en <repo>/.claude/
+  # worktrees/…), así que sus hermanos son otros worktrees, no los repos de ~/code/*. Los hermanos del repo
+  # viven junto al PRINCIPAL = dirname(git-common-dir) (git-common-dir = <principal>/.git). En un repo normal
+  # git-common-dir es `.git` relativo → main_top = top (comportamiento idéntico de antes).
+  local gcd main_top
+  gcd=$(git -C "$pista" rev-parse --git-common-dir 2>/dev/null)
+  case "$gcd" in /*) : ;; *) gcd="${top:-$pista}/$gcd" ;; esac
+  main_top=$(cd "$(dirname "$gcd")" 2>/dev/null && pwd)
+  parent=$(dirname "${main_top:-${top:-$pista}}")
   [ -d "$parent" ] || return 1
   for d in "$parent"/*/; do
     [ -d "$d" ] || continue
@@ -259,7 +389,7 @@ acg_clon_local_de_slug() {   # $1=slug  $2=dir-pista → toplevel del clon | vac
 # 272 (el id EQUIVOCADO, del `view`), no 273 (el `merge` real) → el DENY citaba el MR erróneo.
 acg_mrid() {
   local seg
-  seg=$(printf '%s' "$1" | awk '{gsub(/[;&|]/,"\n")}1' \
+  seg=$(acg_partir_subcomandos "$1" \
     | grep -E '(mr[[:space:]]+(merge|accept)|pr[[:space:]]+merge)' | tail -1)
   [ -n "$seg" ] || seg="$1"
   printf '%s' "$seg" | sed -E 's/.*(mr[[:space:]]+(merge|accept)|pr[[:space:]]+merge)[[:space:]]+//' | tr ' ' '\n' | grep -m1 -E '^#?[0-9]+$' | tr -d '#'
@@ -281,7 +411,11 @@ acg_push_destino_base() {
   # buscar la base; un destino de RAMA real (bare `develop`, `HEAD:develop`, `:refs/heads/develop`, `:develop`
   # de borrado) se conserva y SÍ bloquea (fail-closed: solo exime el tracking ref, nada más).
   local seg
-  seg=$(printf '%s' "$1" | sed -E 's#refs/remotes/[^[:space:]:]+##g')
+  # R5-4 (auditoría 2026-10-23): quita el VALOR de `-o`/`--push-option` ANTES de buscar la base. Sin esto, un
+  # `git push -o 'a;b' origin develop` (o `--push-option='a|b'`) deja —tras el `tr -d` de comillas de subq— un
+  # `;`/`|` del valor que TRUNCA el `[^;&|]*` de abajo antes de llegar a `develop` → EVADÍA. (Mismo strip que
+  # acg_push_sin_refspec:440; un `develop` que sea VALOR de -o no es el destino y se quita con razón.)
+  seg=$(printf '%s' "$1" | sed -E 's/(-o|--push-option)[[:space:]=]+[^[:space:]]+//g; s#refs/remotes/[^[:space:]:]+##g')
   printf '%s' "$seg" | grep -qE 'git[[:space:]]+push[^;&|]*[[:space:]:/+](main|master|develop)([[:space:]]|$|[)>&|;])'
 }
 
@@ -369,10 +503,18 @@ acg_push_toca_base() {   # $1=cmd  $2=payload_cwd(opcional)
   # PREVIO de la cadena) → la rama se evalúa contra el repo que el push REALMENTE toca, no el de la sesión.
   while IFS= read -r orig; do
     [ -n "$orig" ] || continue
+    # un segmento que (tras espacios) EMPIEZA con `#` es un COMENTARIO de shell → NO se ejecuta; saltarlo
+    # cierra el FP de `# git push origin develop` (una línea comentada). El split por newline acota el
+    # comentario a SU línea: un push real en otra línea es OTRO segmento y sí se evalúa. NO abre evasión — un
+    # segmento que empieza con `#` tampoco correría en el shell real (y el push de un push real nunca empieza con `#`).
+    printf '%s' "$orig" | grep -qE '^[[:space:]]*#' && continue
     sub=$(acg_normaliza_git_prefijo "$orig")   # A-03: colapsa `git -c/-C …` para no romper la adyacencia git+push
     subu=$(acg_sin_flag_repo "$(acg_despoja_comillas "$sub")")
     # rastrea un `cd/pushd <dir>` para los segmentos POSTERIORES de la cadena (aplica al push que le sigue)
-    if printf '%s' "$subu" | grep -qE '^[[:space:]]*(cd|pushd)[[:space:]]'; then cd_prefix="$orig"; fi
+    # El cd puede ir tras un keyword de shell (`do|then|else|elif|!`) o agrupación (`{`/`(`) en el mismo
+  # segmento — `for … do cd X && push`, `(cd X && push)` — no solo al inicio pelón; si no se reconoce, el
+  # push pelón siguiente se resuelve contra el cwd de la sesión (FP revisión-1 H1 2026-10-19).
+  if printf '%s' "$subu" | grep -qE '^[[:space:]]*((do|then|else|elif|!)[[:space:]]+|[({][[:space:]]*)*(cd|pushd)[[:space:]]'; then cd_prefix="$orig"; fi
     # rastrea un `git checkout/switch <rama>` PREVIO: un pelón posterior empuja a ESA rama, no a la de HEAD
     # antes del comando (FP corpus L109). Se guarda el spec; se resuelve contra el repo objetivo en el pelón.
     _cob=$(acg_checkout_rama "$subu"); [ -n "$_cob" ] && co_spec="$_cob"
@@ -403,7 +545,7 @@ acg_push_toca_base() {   # $1=cmd  $2=payload_cwd(opcional)
       esac
     fi
   done <<EOF
-$(acg_segmentos_ejecutables "$1" | awk '{gsub(/[;&|]/,"\n")}1')
+$(acg_partir_subcomandos "$(acg_segmentos_ejecutables "$1")")
 EOF
   return 1
 }
@@ -413,8 +555,8 @@ EOF
 # `cat > d.md <<EOF`) se evaluaría COMO SI fuera su propio subcomando, sin que el consumidor (`cat` vs
 # `bash`) fuera visible ya — el contexto de "a quién alimenta" se pierde en cuanto se parte por línea.
 
-# ¿el comando mergea un MR/PR nombrando develop·main como destino? (para el bloqueo de release-a-main
-# de git-branch-guard: mismo comportamiento de antes, pero sobre cmd sin comillas ni --repo → H11/H13).
+# ¿el comando mergea un MR/PR nombrando develop·main como destino? (para el PASO 0 de merge-develop-guard
+# —absorbido del antiguo git-branch-guard—: sobre cmd sin comillas ni --repo → H11/H13).
 acg_merge_menciona_base() {
   local u; u=$(acg_sin_flag_repo "$(acg_despoja_comillas "$1")")
   # El 1er POSICIONAL de `gh pr merge <arg>` / `glab mr merge <arg>` es el #/rama
@@ -455,7 +597,30 @@ acg_es_merge_mr() {
     printf '%s' "$head" | grep -qE '(^|[[:space:]])(--help|-h|--dry-run)([[:space:]]|$)' && continue
     return 0
   done <<EOF
-$(printf '%s' "$u" | awk '{gsub(/[;&|]/,"\n")}1')
+$(acg_partir_subcomandos "$u")
+EOF
+  return 1
+}
+
+# ¿el comando invoca REALMENTE cerrar-slice.sh para INTEGRAR (no --help/--dry-run, no citado/echo)? cerrar-slice
+# corre el `glab/gh … merge` POR DENTRO, así que el guard solo vería `bash cerrar-slice.sh …` y no correría el
+# juez de autorización (C2, auditoría 2026-10-22). cerrar-slice SOLO integra a develop (rehúsa cualquier otra
+# base), así que una invocación real suya se trata como un merge a develop. Mismo rigor anti-mención que
+# acg_es_merge_mr: recorre segmentos, salta emisores de texto, trunca en el 1er redirector, exige el basename
+# del script Y un --id (sin id el script aborta → no es un merge). --help/-h/--dry-run/-n NO mutan → no cuenta.
+acg_invoca_cerrar_slice() {
+  local u seg head
+  u=$(acg_despoja_comillas "$1")
+  while IFS= read -r seg; do
+    [ -n "$seg" ] || continue
+    printf '%s' "$seg" | grep -qE '^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*(echo|printf|print)([[:space:]]|$)' && continue
+    head=$(printf '%s' "$seg" | sed -E 's/[<>].*$//')
+    printf '%s' "$head" | grep -qE 'cerrar-slice\.sh([[:space:]]|$)' || continue
+    printf '%s' "$head" | grep -qE '(^|[[:space:]])(--help|-h|--dry-run|-n)([[:space:]]|$)' && continue
+    printf '%s' "$head" | grep -qE '(^|[[:space:]])--id([[:space:]]|=)' || continue
+    return 0
+  done <<EOF
+$(acg_partir_subcomandos "$u")
 EOF
   return 1
 }
@@ -638,194 +803,6 @@ acg_destino_de_mr() { acg__destino_de_mr_full "$1" "${2:-}" | sed -n '1p'; }
 # CACHE-DE-CREACION | DESCONOCIDO:<motivo>. Comparte caché con acg_destino_de_mr (cache-hit, sin 2ª llamada
 # de red). El consumidor la usa para decidir POLÍTICA (M4), no solo el valor del destino.
 acg_destino_conf() { acg__destino_de_mr_full "$1" "${2:-}" | sed -n '2p'; }
-
-# ── VALIDACIÓN DE LA CALIDAD DEL MENSAJE DE SQUASH (merge-develop-guard) ──────────────────────────────────
-# El squash-guard fuerza `--squash`, pero un squash con mensaje POBRE (título default de la plataforma
-# "Merge pull request #N", vacío o placeholder de una palabra) igual pierde el RESUMEN CURADO que exige
-# cerrar-slice. Estos helpers razonan sobre la FUENTE y la SUSTANCIA del mensaje. Pieza PURA/DETERMINISTA
-# (testeable sin red) salvo acg_mensaje_de_mr (API, mismo patrón que acg_destino_de_mr). bash-3.2-safe.
-
-# ¿De dónde sale el SUBJECT del squash? El mensaje puede venir EXPLÍCITO en el comando (verificable directo)
-# o AUTO-generarse server-side del título del MR/PR (verificable vía API). Clasifica en:
-#   LITERAL       — hay un flag de subject con un valor LITERAL en el comando (glab: --squash-message ·
-#                   gh: --subject/-t) → se valida directo (acg_msg_valor).
-#   UNVERIFICABLE — el valor del flag es una sustitución/variable ($(...)/`...`/${...}/$VAR) o el comando usa
-#                   gh --fill*/--body-file (subject derivado de commits/archivo) → NO verificable en
-#                   PreToolUse → el consumidor PASA (no forzamos, fail-open).
-#   AUTO          — no hay flag de subject → el squash tomará el TÍTULO del MR/PR → validable vía API.
-acg_msg_clasificar() {   # $1=cmd(RAW) → LITERAL | UNVERIFICABLE | AUTO
-  local raw="$1" u tool val
-  u=$(acg_sin_flag_repo "$(acg_despoja_comillas "$raw")")
-  if printf '%s' "$u" | grep -qE 'glab(\.exe)?[[:space:]]+mr'; then tool=glab; else tool=gh; fi
-  # gh --fill*/--body-file → subject/cuerpo derivado de commits o de un ARCHIVO → no verificable aquí.
-  if [ "$tool" = gh ] && printf '%s' "$u" | grep -qE '(^|[[:space:]])(--fill(-first|-verbose)?|--body-file|-F)([[:space:]]|=|$)'; then
-    printf 'UNVERIFICABLE'; return 0
-  fi
-  if [ "$tool" = glab ]; then
-    printf '%s' "$u" | grep -qE '(^|[[:space:]])--squash-message([[:space:]]|=)' || { printf 'AUTO'; return 0; }
-  else
-    printf '%s' "$u" | grep -qE '(^|[[:space:]])(--subject|-t)([[:space:]]|=)' || { printf 'AUTO'; return 0; }
-  fi
-  val=$(acg_msg_valor "$raw")
-  case "$val" in *'$('*|*'`'*|*'${'*|'$'*) printf 'UNVERIFICABLE'; return 0 ;; esac
-  printf 'LITERAL'; return 0
-}
-
-# Extrae el VALOR LITERAL del flag de subject del comando (quote-aware; comillas de envoltura removidas).
-# Opera sobre el RAW (comillas INTACTAS) para leer un valor entrecomillado con espacios. glab: --squash-message
-# · gh: --subject/-t. Devuelve vacío si no hay flag.
-acg_msg_valor() {   # $1=cmd(RAW) → valor literal | vacío
-  local raw tool v
-  # SLURP MULTILÍNEA: un `--squash-message "resumen\ncurado\ninline"`
-  # con SALTOS DE LÍNEA reales rompía el sed line-based — al ver solo la 1ª línea, el `"[^\"]*"` no hallaba la
-  # comilla de cierre y caía al bareword → truncaba el valor al 1er token → FP "superficial"/"pobre" que
-  # exigía la forma `$(cat archivo)`. Se colapsan los newlines a \001 (SOH, jamás en un mensaje real) para que
-  # sed vea UNA línea y case el valor entrecomillado COMPLETO; los \n se restauran al final. Un inline
-  # multilínea con SUSTANCIA pasa igual que uno de una línea.
-  raw=$(printf '%s' "$1" | tr '\n' '\001')
-  if printf '%s' "$(acg_despoja_comillas "$raw")" | grep -qE 'glab(\.exe)?[[:space:]]+mr'; then tool=glab; else tool=gh; fi
-  if [ "$tool" = glab ]; then
-    v=$(printf '%s' "$raw" | sed -nE "s/.*(^|[[:space:]])--squash-message([[:space:]]+|=)(\"[^\"]*\"|'[^']*'|([^[:space:]\"'])+).*/\3/p" | head -1)
-  else
-    v=$(printf '%s' "$raw" | sed -nE "s/.*(^|[[:space:]])(--subject|-t)([[:space:]]+|=)(\"[^\"]*\"|'[^']*'|([^[:space:]\"'])+).*/\4/p" | head -1)
-  fi
-  printf '%s' "$v" | sed -E "s/^[\"']//; s/[\"']\$//" | tr '\001' '\n'
-}
-
-# ¿el mensaje/subject de un squash es POBRE (sin sustancia) → hay que BLOQUEAR? Mide el SUBJECT (1ª línea).
-# POBRE (return 0 = "sí, bloquéalo") si:
-#   (a) el mensaje NO tiene NINGÚN carácter alfanumérico (vacío / solo espacios / solo puntuación);
-#   (b) el subject es un DEFAULT de plataforma: "Merge pull request …" (el caso NOMBRADO), "Merge branch …",
-#       "Merge remote-tracking branch …", "Merge request …", o "Merge #N"/"Merge !N";
-#   (c) el subject es UN SOLO TOKEN y mide < 12 caracteres no-espacio (placeholder: "wip"/"fix"/"update"/
-#       "hotfix"/"#5"). Un subject de ≥2 palabras NUNCA cae por (c) — solo (a)/(b).
-# En cualquier otro caso NO es pobre (return 1) → PASA. Umbrales DEFENDIBLES y de BAJO FP: (b) es near-zero
-# FP (nadie escribe eso como su resumen curado); (c) apunta SOLO a placeholders de una palabra (un resumen
-# real "el cambio neto y su porqué" es multi-palabra). Es un PISO anti-basura, NO una vara de calidad
-# (auditor=piso-no-meta): que el mensaje pase NO significa que sea bueno, solo que no es basura evidente.
-acg_msg_es_pobre() {   # $1=mensaje → 0=pobre(bloquear) · 1=ok(pasar)
-  local msg="$1" subject alnum words nonspace
-  subject=$(printf '%s\n' "$msg" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' | grep -m1 -v '^$')
-  alnum=$(printf '%s' "$msg" | tr -cd '[:alnum:]' | wc -c | tr -d '[:space:]')
-  [ "${alnum:-0}" -eq 0 ] && return 0                                                                   # (a)
-  printf '%s' "$subject" | grep -qiE '^merge (pull request|branch|remote-tracking branch|request)([[:space:]]|$)' && return 0   # (b)
-  printf '%s' "$subject" | grep -qiE '^merge [!#]?[0-9]+([[:space:]]|$)' && return 0                     # (b')
-  words=$(printf '%s' "$subject" | wc -w | tr -d '[:space:]')
-  nonspace=$(printf '%s' "$subject" | tr -d '[:space:]' | wc -c | tr -d '[:space:]')
-  [ "${words:-0}" -le 1 ] && [ "${nonspace:-0}" -lt 12 ] && return 0                                    # (c)
-  return 1
-}
-
-# ── VARA DE PROFUNDIDAD/TRAZABILIDAD/ANTI-EDITORIALIZACIÓN (solo el consumidor decide a qué FUENTE aplicar) ──
-# acg_msg_es_pobre es el PISO anti-basura (aplica a LITERAL y AUTO). Las funciones de ABAJO son la VARA
-# más alta que merge-develop-guard aplica SOLO al mensaje LITERAL (el que el agente TIPEÓ inline): un título
-# AUTO del MR es corto por naturaleza y no lo redactó el agente aquí → no se le exige rama ni ≥12 palabras.
-# El caso `--squash-message "$(cat resumen.md)"` es UNVERIFICABLE aguas arriba → nunca llega a estas varas
-# (fail-open ya documentado): por eso endurecen SOLO el literal inline, que es el camino desaconsejado.
-
-# (3a) ¿el resumen LITERAL es DEMASIADO SUPERFICIAL para describir un slice? Piso de PROFUNDIDAD: < 12
-# PALABRAS (un resumen del "cambio neto y su porqué" es multi-cláusula; un placeholder de 3-4 palabras no
-# lo es). Mide el mensaje COMPLETO (no solo el subject). return 0 = superficial (bloquear).
-acg_msg_es_superficial() {   # $1=mensaje → 0=superficial(bloquear) · 1=ok
-  local words
-  words=$(printf '%s' "$1" | wc -w | tr -d '[:space:]')
-  [ "${words:-0}" -lt 12 ]
-}
-
-# (2a) ¿al resumen LITERAL le falta TODO rastro de TRAZABILIDAD rama→commit? El squash BORRA el merge-commit
-# de la plataforma (que traía el #id del MR/PR) → sin un rastro en el propio mensaje, `git log develop` no
-# dice de qué ramita salió el commit. "Rastro" = un patrón de RAMA (feat/ fix/ chore/ hotfix/ docs/ seguido
-# del nombre) O un id de MR/PR (!123 / #456). return 0 = falta traza (bloquear).
-#   Precisión: solo se INVOCA sobre el LITERAL (el agente lo tipeó, puede añadir la línea `Rama:`/`MR:`); el
-#   patrón de rama exige la barra + ≥1 char de nombre (no casa un "fix" suelto), y el id exige [!#]+dígitos.
-# El set de prefijos reconocidos cubre los de conventional-commit de uso real
-# ("Rama: refactor/…"/"test/…"/"perf/…"/"ci/…"/"test(brain):"): si fuera más angosto, un resumen que SÍ
-# trae la rama (trazabilidad real) dispararía en falso "falta TRAZABILIDAD".
-# acg_cuerpo_resoluble(cmd, payload_cwd) → TEXTO del cuerpo/mensaje del squash cuando PROVIENE DE UN
-# ARCHIVO LEGIBLE; vacío si no se puede resolver (fail-open estricto: lo que no se puede leer, no se juzga).
-#
-# La exigencia de trazabilidad `Rama:`/`MR:` no puede evaluarse solo
-# sobre la clase LITERAL (mensaje tipeado inline). `--body-file`, `$(cat …)`, variables y `--fill` caen a
-# UNVERIFICABLE → exit 0, cero validación. Y el comando que el propio guard SUGIERE usa `--body "$(cat
-# resumen.md)"`: la forma recomendada por el guard era exactamente la que escapaba a su propio chequeo.
-# Consecuencia en
-# cadena: sin esa señal LOCAL y offline, detectar la integración depende de gh/glab, ausentes del PATH de
-# launchd — y varias ramas quedan indetectables para siempre. Aquí se resuelven de forma determinista los
-# dos casos que son el grueso del uso real; todo lo demás (una variable, una sustitución arbitraria, un
-# archivo ilegible) sigue pasando sin validar.
-acg_cuerpo_resoluble() {   # $1=cmd(RAW)  $2=cwd del payload (base de las rutas relativas)
-  local raw pcwd="${2:-}" ruta
-  raw=$(printf '%s' "$1" | tr '\n' '\001')
-  # (a) $(cat <ruta>) en cualquier flag de mensaje — la forma que el propio guard recomienda. Se exige una
-  #     sustitución SIMPLE: sin pipes, `;`, `&` ni un segundo comando dentro (si los hay, no se resuelve).
-  ruta=$(printf '%s' "$raw" | sed -nE 's/.*\$\(cat[[:space:]]+([^)|;&[:space:]]+)[[:space:]]*\).*/\1/p' | head -1)
-  # (b) --body-file / -F <ruta> (gh): el cuerpo vive en un archivo, punto.
-  [ -n "$ruta" ] || ruta=$(printf '%s' "$raw" | sed -nE 's/.*(^|[[:space:]])(--body-file|-F)[[:space:]=]+("[^"]*"|[^[:space:]]+).*/\3/p' | head -1)
-  [ -n "$ruta" ] || { printf ''; return 0; }
-  ruta="${ruta#\"}"; ruta="${ruta%\"}"; ruta="${ruta#\'}"; ruta="${ruta%\'}"
-  ruta="$(acg_expande_home "$ruta")"
-  case "$ruta" in /*) : ;; *) [ -n "$pcwd" ] && ruta="$pcwd/$ruta" ;; esac
-  { [ -f "$ruta" ] && [ -r "$ruta" ]; } || { printf ''; return 0; }
-  cat "$ruta" 2>/dev/null
-}
-
-acg_msg_falta_traza() {   # $1=mensaje → 0=falta traza(bloquear) · 1=trae traza(pasar)
-  printf '%s' "$1" | grep -qE '(^|[^A-Za-z0-9/])(feat|fix|chore|hotfix|docs|refactor|test|perf|ci|build|style|audit|revert)/[A-Za-z0-9._-]' && return 1
-  printf '%s' "$1" | grep -qE '[!#][0-9]+' && return 1
-  return 0
-}
-
-# (3b-DENY) ¿el mensaje EDITORIALIZA con marcadores INEQUÍVOCOS de proceso / memoria interna del asistente?
-# Estos hablan de CÓMO se llegó al código (deliberación, análisis, la sesión), no de QUÉ hace el código.
-# CRITERIO deny (near-zero FP): patrones que SOLO aparecen narrando el PROCESO — nadie los usa en un resumen
-# curado del cambio neto. Los AMBIGUOS ("se cambió/actualizó/corrigió" — pueden ser prosa legítima) NO van
-# aquí: se ADVIERTEN aparte (acg_msg_narra_acciones), no se bloquean. Stems ASCII (sin clases multibyte,
-# robusto BSD/GNU/locale): `decidi` casa "decidió"/"decidio"; `identific` "identificó"; `procedi` "procedió".
-acg_msg_editorializa() {   # $1=mensaje → 0=editorializa(bloquear) · 1=limpio
-  printf '%s' "$1" | grep -qiE 'tras[[:space:]]+analiz|se[[:space:]]+decidi|se[[:space:]]+identific|el[[:space:]]+asistente|en[[:space:]]+esta[[:space:]]+sesi|se[[:space:]]+procedi'
-}
-
-# (3a-ii/3b-WARN) ¿el mensaje NARRA una LISTA DE ACCIONES (pasado pasivo "se <verbo>") en vez del cambio
-# neto y su porqué? Señal: ≥2 cláusulas "se <verbo-de-acción>" (se cambió, se actualizó, se corrigió, se
-# agregó…). Es AMBIGUO — UNA sola cláusula así puede ser prosa legítima → NO se bloquea; ≥2 sugiere el
-# pegote de commits que el squash debía RESUMIR. El consumidor lo ADVIERTE (additionalContext), NUNCA deny:
-# precisión > agresividad. Stems ASCII + `-i`; grep -o cuenta cada ocurrencia.
-acg_msg_narra_acciones() {   # $1=mensaje → 0=parece lista de acciones(advertir) · 1=no
-  local n
-  n=$(printf '%s\n' "$1" | grep -oiE 'se[[:space:]]+(cambi|actualiz|corrig|agreg|elimin|modific|refactoriz|reemplaz|implement|ajust|arregl|borr|cre|mov|quit)[a-z]*' | grep -c . )
-  [ "${n:-0}" -ge 2 ]
-}
-
-# Resuelve el SUBJECT que el squash AUTO-generará server-side (caso AUTO): GitLab usa el TÍTULO del MR como
-# mensaje del squash; GitHub usa el TÍTULO del PR como subject. Mismo patrón que acg_destino_de_mr
-# (repo/tool/mrid por precedencia + timeout + caché por MR-id, con clave PROPIA "|msg" distinta a la de
-# destino). Devuelve el título por stdout (vacío si no se pudo resolver → el consumidor FAIL-OPEN: sin
-# título CONFIRMADO no bloquea). Requiere jq (sin jq devuelve vacío).
-acg_mensaje_de_mr() {   # $1=comando  $2=payload_cwd(opcional) → título del MR/PR | vacío
-  command -v jq >/dev/null 2>&1 || return 0
-  local raw="$1" pcwd="${2:-}" u tool repo mrid key cache titulo dir
-  u=$(acg_despoja_comillas "$raw")
-  if printf '%s' "$u" | grep -qE 'glab(\.exe)?[[:space:]]+mr'; then tool=glab; else tool=gh; fi
-  repo=$(acg_target_remote "$raw" "$pcwd")
-  dir=$(acg_target_dir "$raw" "$pcwd")   # mismo criterio que acg_destino_de_mr: consultar EN el dir objetivo
-  mrid=$(acg_mrid "$u")
-  [ -n "$mrid" ] || return 0
-  key=$(printf '%s' "${repo:-$dir}|${tool}|${mrid}|msg" | sed 's/[^A-Za-z0-9]/_/g')
-  cache="${TMPDIR:-/tmp}/acg-mrmsg-${key}"
-  # Mismo patrón sin-validar que el de destino -- misma
-  # defensa (uid+perm+TTL, acg__cache_confiable).
-  if [ -f "$cache" ] && acg__cache_confiable "$cache"; then cat "$cache"; return 0; fi
-  if [ "$tool" = glab ]; then
-    titulo=$(acg__run_en_dir "$dir" "$ACG_MR_TIMEOUT" glab api "projects/:id/merge_requests/$mrid" ${repo:+-R "$repo"} 2>/dev/null | jq -r '.title // empty' 2>/dev/null)
-  else
-    titulo=$(acg__run_en_dir "$dir" "$ACG_MR_TIMEOUT" gh pr view "$mrid" ${repo:+-R "$repo"} --json title -q .title 2>/dev/null)
-  fi
-  if [ -n "$titulo" ]; then
-    printf '%s' "$titulo" > "$cache" 2>/dev/null; chmod 600 "$cache" 2>/dev/null
-    printf '%s' "$titulo"
-  fi
-  return 0
-}
 
 # Lista de MR/PR ABIERTOS del repo, DIGERIBLE a un HINT de candidatos para el juez de merge (capa 3
 # "contexto de identificación"). UNA sola consulta (`glab mr list` / `gh pr list` según el remoto),

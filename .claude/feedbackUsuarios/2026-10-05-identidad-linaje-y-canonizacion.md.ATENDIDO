@@ -1,0 +1,7 @@
+ATENDIDO 2026-10-21 (cortex-master, rescate). Parte #2 (brain) HECHA: el @import NATIVO
+`@.claude/memory/conocimiento-propio.local.md` en el CLAUDE.md del repo (CLAUDE.md:73) REEMPLAZA la
+re-inyección del hook — aviso-drift-cerebro.sh declara "YA NO la re-inyecta este hook (B8, decisión
+unjordi 2026-10-14)"; canonizar-cerebro referencia conocimiento-propio en su molde.
+Parte #1 (el linaje del `conocimiento-propio.local.md` de CLAUDIO-master está desactualizado) es su
+archivo LOCAL (gitignored, no en git) → corrección de claudio-master en su propia máquina, fuera del
+alcance del brain.

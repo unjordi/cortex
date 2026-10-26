@@ -50,13 +50,11 @@
 # install-brain despliega las {global,both} globalmente y sincronizar-cerebro las {both} por-repo; el drift
 # de skills (per-repo y global) lo cubre aviso-drift-cerebro/drift-cerebro-comun. Este MANIFEST es SOLO hooks/libs.
 
-git-branch-guard         both    hook
 merge-develop-guard      both    hook
-secret-scan              both    hook
 entorno-maquina-guard    both    hook
 no-bypass-deploy         both    hook
+proteger-autorizaciones  both    hook
 analizar-comando-git     both    lib
-detectar-secretos        both    lib
 juez-comun               both    lib
 
 proteger-arbol           global  hook
@@ -84,9 +82,9 @@ contrato-hilo            global  lib
 checkpoint-mecanico-comun global lib
 
 dod-verificar            repo    hook
-sesion-inicio            repo    hook
-recordar-cosechar        repo    hook
-sincronizar-tasklist     repo    lib
+sesion-inicio            both    hook
+recordar-cosechar        both    hook
+sincronizar-tasklist     both    lib
 
 # ── LÁPIDAS (tier retirado) — ver header ──
 rama-vieja               retirado  hook  2026-09-15  avisar del síntoma no es el trabajo; el flujo lo gobiernan los git-guards
@@ -101,3 +99,6 @@ recordar-orquestar       retirado  hook  2026-09-18 puramente advisory; su regla
 recordar-unificar-cerebro retirado hook  2026-09-18 puramente advisory; su regla sube a norma "Modelo MINI-DEVELOP" en global-claude-md.md (unificar periódicamente vía canonizar-cerebro queda a disciplina)
 recordar-dashboard       retirado  hook  2026-09-18 puramente advisory; doc=realidad + dashboard ya son norma dura en global-claude-md.md, sin mecanismo por-push
 hud-stale                retirado  hook  2026-09-18 puramente advisory; su regla ya vive en la norma "Tu lista de TODOs es TU HUD" de global-claude-md.md
+secret-scan              retirado  hook  2026-10-19  reemplazado por gitleaks; unjordi autorizo retirar el control
+detectar-secretos        retirado  lib   2026-10-19  lib de secret-scan, retirada junto con el
+git-branch-guard         retirado  hook  2026-10-21  CONSOLIDADO en merge-develop-guard (chequeo de push a base + merge-local que nombra la base; misma lib analizar-comando-git, paridad 0-diffs medida)

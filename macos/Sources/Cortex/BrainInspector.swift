@@ -52,17 +52,19 @@ struct BrainState {
     /// DEBE coincidir con brain/hooks/MANIFEST {global,both}; lo verifica el drift-check del widget
     /// (test-brain.sh, chequeo e-widget). Al agregar/mover un hook en el MANIFEST, refleja aquí.
     static let knownGlobalHooks: Set<String> = [
-        "git-branch-guard", "merge-develop-guard",
-        "secret-scan", "proteger-arbol",
+        "merge-develop-guard",
+        "proteger-autorizaciones",
+        "proteger-arbol",
         "proteger-fuente-cerebro",
         "limite-gasto", "delegacion-gate", "delegacion-registrar",
         "rehidratar-hilo", "aviso-contexto", "aviso-drift-cerebro", "exportar-sesion-master", "checkpoint-mecanico", "barrer-ramas",
         "entorno-maquina-guard", "no-bypass-deploy",
+        "sesion-inicio", "recordar-cosechar",   // tier both desde 2026-10-21 (global por bootstrap + por-repo con dedupe)
     ]
     /// Hooks de tier repo (kind=hook): viajan por-repo, se cargan si la sesión INICIA en el repo.
     /// DEBE coincidir con brain/hooks/MANIFEST {repo} (lo verifica test-brain.sh).
     static let knownRepoHooks: Set<String> = [
-        "sesion-inicio", "dod-verificar", "recordar-cosechar",
+        "dod-verificar",
     ]
 
     /// # de piezas GLOBALES esperadas que FALTAN: hooks no (presentes+cableados) + normas + la skill.

@@ -208,7 +208,11 @@ Cero pérdida, cero pisada, cero abort.
 > **Por qué NO se resuelve abortando** (que es lo que hacía la regla genérica de T2): el conflicto se daría
 > en el 100% de las mudanzas normales, y **un gate que dispara siempre no es un gate, es un peaje** — el
 > operador aprende a saltárselo, que es peor que no tenerlo. La regla de abortar SIGUE VIGENTE para
-> identidad y autorizaciones, que es para lo que se escribió.
+> identidad y autorizaciones, que es para lo que se escribió. **Timing (MEDIO auditoría 2026-10-22):** ese
+> abort por conflicto T2 no-hilo ahora corre en un **preflight READ-ONLY ANTES del PUNTO DE NO RETORNO de
+> S4** (no solo en S5, que es posterior) — un conflicto detectado tarde dejaba la mudanza A MEDIAS
+> (transcript/masters.json/alias ya movidos, identidad sin depositar). S5 conserva su chequeo como defensa
+> en profundidad; los hilos NO disparan el preflight (se co-ubican).
 >
 > El `.andamio.md` **no viaja**: es VOLÁTIL-LOCAL y se REGENERA en el destino con
 > `checkpoint-mecanico.js --self --ensure` (lo corre el skill `checkpoint` en su paso 0). Transportar un

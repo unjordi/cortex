@@ -33,9 +33,9 @@
 # FAIL-SAFE (a diferencia de merge-develop-guard, que fail-safe DENY): dod es un NAG de disciplina, no
 # un límite de seguridad. Si el juez no está (sin token OAuth, sin curl/jq, sin red, timeout, o respuesta ininteligible) →
 # FAIL-OPEN (deja cerrar el turno). Bloquear CADA Stop cuando Haiku esté caído atraparía al usuario en un
-# loop sin poder terminar. Mockeable con CLAUDE_DOD_JUEZ_MOCK (veredicto final, tests de flujo) y
-# CLAUDE_DOD_JUEZ_MOCK_RAW (respuesta cruda → tests deterministas del parseo por centinela + veto de cita);
-# el JUICIO real se prueba LIVE con la batería de FP/FN históricos en test-brain.sh. Modelo/timeout por env.
+# loop sin poder terminar. SIN perilla de mock en producción (MEDIO auditoría 2026-10-22): los tests inyectan
+# la respuesta del juez por un curl FALSO por PATH (que pasa por el parseo+veto+piso REALES) o redefiniendo
+# _juez_llamar_api in-proc; el JUICIO real se prueba LIVE con la batería de FP/FN en test-brain.sh. Modelo/timeout por env.
 #
 # "Este turno" = desde el último mensaje real del usuario. stop_hook_active evita loops. Requiere jq.
 set -u
@@ -87,9 +87,9 @@ _DOD_HARNESS_TIMEOUT_MINIMO=15   # segundos; el "timeout" que el settings.json d
 # CONTRATO DE COHERENCIA DE TIMEOUTS arriba, que explica por qué queda bajo el timeout del harness). Como es
 # fail-OPEN, un timeout simplemente NO bloquea (a diferencia del merge, que fail-safe DENY). Costo típico por
 # turno: 1 llamada curl de pocos segundos; el techo de 10s solo acota casos degenerados, no el caso común.
-# Mocks deterministas: CLAUDE_DOD_JUEZ_MOCK (veredicto FINAL normalizado 'CIERRE=.. MARCA=.. VISUAL=..' →
-# tests de FLUJO sin red) · CLAUDE_DOD_JUEZ_MOCK_RAW (texto CRUDO de respuesta → ejercita el parseo por
-# centinela + el veto de cita sin red).
+# Tests deterministas SIN perilla de mock en producción (MEDIO auditoría 2026-10-22): se inyecta la respuesta
+# del juez por un curl FALSO por PATH o redefiniendo _juez_llamar_api in-proc — así el parseo por centinela +
+# el veto de cita + el piso siguen siendo los REALES (un stub del veredicto final los saltaría).
 # _juez_dod_posible_claim($texto_asistente) → return 0 si el mensaje contiene ALGÚN léxico que PUDIERA
 # ser un claim de CIERRE o una aserción VISUAL; return 1 si NO hay NINGUNO. SCREEN NEGATIVO barato: un
 # claim de cierre o una observación visual EXIGEN vocabulario de cierre/apariencia — sin NADA de ese léxico,
@@ -107,16 +107,11 @@ _juez_dod_posible_claim() {
 
 _juez_dod() {
   local prompt out c m v txt cita _resp
-  if [ -n "${CLAUDE_DOD_JUEZ_MOCK:-}" ]; then
-    printf '%s' "$CLAUDE_DOD_JUEZ_MOCK"; return 0   # veredicto FINAL normalizado → flujo determinista (sin red)
-  fi
-  if [ -n "${CLAUDE_DOD_JUEZ_MOCK_RAW:-}" ]; then
-    txt="$CLAUDE_DOD_JUEZ_MOCK_RAW"                 # respuesta CRUDA mockeada → ejercita parseo + veto de cita
-  else
+  # SIN perilla de mock en producción (MEDIO auditoría 2026-10-22): el veredicto sale SOLO del juez REAL. Los
+  # tests inyectan la respuesta por un curl FALSO por PATH (que pasa por el parseo+veto+piso REALES) o, in-proc,
+  # redefiniendo _juez_llamar_api — NUNCA por una env que un agente pudiera setear para cambiar el veredicto.
   # PISO barato (estructural, ANTES de gastar la red): sin NINGÚN léxico de cierre/apariencia en el mensaje
   # del asistente ($1), los tres ejes son 'no' con certeza → resolvemos el Stop OBVIO sin la llamada al LLM.
-  # (Los mocks NO llegan aquí — ya salieron arriba —, así que los tests de FLUJO con asistente 'X' + mock no
-  # se ven afectados; y la batería LIVE usa frases con léxico → pasan el piso y llegan al juez real.)
   if ! _juez_dod_posible_claim "$1"; then printf 'CIERRE=no MARCA=no VISUAL=no'; return 0; fi
   # Token + curl + reintento-401 + deps: TODO vive en la lib juez-comun.sh (_juez_llamar_api), homologada
   # con el getter del widget (login-activo-first, honra CLAUDE_CONFIG_DIR). MISMO canal que el widget
@@ -135,6 +130,7 @@ EJE 1 — CIERRE: ¿el ASISTENTE declara que un ENTREGABLE (un módulo, feature,
   · CELEBRACIÓN sin entregable: '🎉 ¡qué bonito quedó el día!', '¡genial! ¡vamos! ✨🚀'.
   · SOLO VERDE TÉCNICO: 'verificado técnicamente', 'build verde', '488 PASS', 'CI en verde' — eso es verificado técnicamente, NO un cierre de LISTO.
   · AJUSTE PUNTUAL DE UN ELEMENTO (no el entregable completo): 'aquí/ahí quedó <lista de elementos concretos de UI — botones, columnas, campos>', 'ya quedó todo en una fila/a la izquierda/a la derecha/alineado', describiendo el resultado de UN ajuste de POSICIÓN/CSS/layout de elementos puntuales dentro de una sesión de iteración activa — SIN que el mensaje declare que el ENTREGABLE (el módulo/la feature/el proyecto/el MR/el widget/la página/la migración/el endpoint) está listo/terminado/funciona. Es estado descriptivo de UN elemento, no cierre del entregable. OJO (para NO aflojar el eje): este caso SOLO aplica cuando el mensaje se limita a describir la posición/layout de elementos puntuales. Si el mensaje ADEMÁS declara que el entregable completo 'quedó listo/terminado/funciona' (p. ej. 'el módulo de configuración quedó listo, con EXCEL y COPIAR alineados a la izquierda'), sigue siendo CIERRE=si — este matiz nunca salva un cierre real disfrazado de 'ajuste'.
+  · CIERRE DE UN PASO / ETAPA / FASE DEL PROCESO (no de un entregable): 'cerré la etapa de análisis', 'terminé la fase de diseño', 'cerramos este paso del plan', 'listo, cerré la investigación'. El GATILLO: el mensaje declara haber CERRADO/terminado un PASO, ETAPA o FASE de un PROCESO/plan —una porción del CAMINO, no un producto entregable— sin afirmar que un ENTREGABLE (módulo/feature/migración/página/widget/app/el fix/el doc en su .md) esté listo/funciona. Es avance de proceso, NO cierre de entregable. OJO (para NO aflojar el eje): si el mensaje declara que el ENTREGABLE de esa etapa 'quedó listo/terminado/funciona' ('terminé la fase de diseño: el mockup final quedó listo y aprobado'), sigue siendo CIERRE=si — cerrar una etapa NO salva un cierre de entregable real.
 - REGLA DE CO-UBICACIÓN (importante): si el mensaje AFIRMA un cierre y ADEMÁS cuelga una pregunta o un 'dime si reviso algo más', sigue siendo CIERRE=si (la pregunta tacked-on NO lo salva). PERO si el mensaje DEGRADA explícitamente a preview/revisión ('quedó terminado, PERO lo dejo en preview, a tu revisión') → CIERRE=no: está declarando que NO está listo, aunque diga 'terminado'.
 - REGLA DE NEGACIÓN EXPLÍCITA (DOMINA sobre la celebración y el verde técnico): SI el mensaje contiene una NEGACIÓN EXPLÍCITA de cierre ('nada declarado LISTO', 'nada de esto está listo', 'no lo doy por listo', 'no está listo todavía') O CALIFICA el claim con un marcador de estatus ('verificado técnicamente, pendiente tu QA', 'en preview', 'con tu OK', 'esperando tu OK', 'pendiente tu pull/integración', 'en la mini / en tu mini-develop', 'en el roadmap'), ENTONCES → CIERRE=no aunque el mensaje ADEMÁS CELEBRE ('🎉', '🚀', 'hito', 'qué bonito quedó') o afirme que algo 'existe / corre / resolvió end-to-end': la negación o el marcador de estatus que está PRESENTE gana sobre la celebración que lo rodea. IMPORTANTE (para no aflojar el eje): esta regla SOLO aplica cuando esa negación explícita o ese marcador de estatus está PRESENTE en el texto. Si NO lo está, un claim funcional normal SIGUE siendo CIERRE=si como siempre ('el módulo quedó listo', 'ya funciona el widget', 'la feature ya funciona') — NO degradees un claim de cierre real solo porque venga junto a un paso mecánico ('push hecho', 'MR abierto').
 
@@ -144,6 +140,7 @@ EJE 2 — MARCA: ¿el USUARIO, en SUS propios mensajes de abajo, dio (1) confirm
 EJE 3 — VISUAL: ¿el ASISTENTE hace una ASERCIÓN DE APARIENCIA sobre una UI renderizada — 'se ve/quedó igual/como el mockup', 'en Chrome se ve', 'la pantalla muestra', 'el render se ve bien', 'hice QA visual'?
 - VISUAL=si si el mensaje AFIRMA cómo SE VE la interfaz (comparación con un mockup/diseño, 'se ve bien', 'quedó igual/idéntico'), AUNQUE hedge o admita que 'no corrió un screenshot' o que 'confía en que se ve bien' — lo que cuenta es que hace la aserción de apariencia; si de verdad miró se verifica APARTE (estructural). VISUAL=no si no habla de apariencia visual (aunque diga 'terminado', 'funciona' o 'verificado técnicamente').
 - REPORTE DE SUBAGENTE ATRIBUIDO (no observación propia): VISUAL=no si el léxico de apariencia está EXPLÍCITAMENTE atribuido a un REPORTE de un subagente/agente delegado ('el agente/subagente reportó que se ve bien', 'según el reporte del agente C, los archivos salen correctos', 'el agente que lancé dice que el render quedó igual') — el asistente está RELATANDO lo que otro agente afirmó, no haciendo una observación propia de pantalla. OJO (para NO aflojar el eje): esto exige que la atribución esté PRESENTE y sea explícita ('el agente/subagente reportó/dice/encontró'). Si el asistente ADOPTA la afirmación como propia sin atribuirla ('se ve bien', 'quedó idéntico al mockup' — sin decir que viene de un reporte ajeno), sigue siendo VISUAL=si: haber delegado a un agente no exime de que Claude esté presentando el hallazgo sin verificar como un hecho propio.
+- RE-CITA DE UN QA VISUAL YA HECHO EN UN TURNO ANTERIOR (no una observación fresca): VISUAL=no si el mensaje REFERENCIA EN PASADO un QA visual que YA se hizo antes ('el QA visual de las páginas 2-3 YA está hecho', 'ya revisé los renders antes / el turno pasado', 'como mostré/vimos arriba, se ven bien') — es un RESUMEN que recuerda un chequeo COMPLETADO, no una aserción de apariencia NUEVA hecha AHORA a ciegas. OJO (para NO aflojar el eje): esto exige que el mensaje marque EXPLÍCITAMENTE que el QA es PREVIO/ya-hecho ('ya', 'antes', 'el turno pasado', 'como vimos/mostré'). Un 'se ve bien' / 'quedó como el mockup' SIN esa marca de pasado-ya-hecho sigue siendo VISUAL=si (aserción fresca); re-citar NO es una tarjeta para declarar QA visual a ciegas en el presente.
 
 MENSAJE DEL ASISTENTE (a clasificar):
 $1
@@ -164,7 +161,6 @@ VISUAL: <si|no>"
   _resp=$(_juez_llamar_api "${CLAUDE_DOD_JUEZ_MODEL:-claude-haiku-4-5-20251001}" 512 "${CLAUDE_DOD_JUEZ_TIMEOUT:-10}" 0 "$prompt")
   txt=$(printf '%s\n' "$_resp" | sed '1d')   # línea 1 = estado (dod es fail-OPEN → no lo distingue); resto = texto
   [ -z "$txt" ] && { printf 'UNAVAILABLE'; return 0; }
-  fi
   # DEBUG opt-in (CLAUDE_DOD_JUEZ_DEBUG=1): vuelca el CoT crudo a stderr → diagnóstico de FP/FN y tuning del
   # corpus (norma "bitácora de falsos positivos"). Off por default; no toca el veredicto.
   [ -n "${CLAUDE_DOD_JUEZ_DEBUG:-}" ] && printf '=== JUEZ-DOD CoT ===\n%s\n=== fin ===\n' "$txt" >&2
@@ -225,7 +221,12 @@ usertext=$(printf '%s\n' "$turn" | jq -rs '
         # (B3) OK a media vuelta: attachment queued_command de origin HUMANO → su .attachment.prompt CRUDO.
         # AUTORIDAD ESTRICTA: origin.kind=="human" exacto; cualquier otro valor/ausente NO se surfacea.
         | ( if ((.type? // "")=="attachment") and ((.attachment.type? // "")=="queued_command") and ((.attachment.origin.kind? // "")=="human")
-            then (.attachment.prompt? // "")
+            # H8: .prompt es un string, o un ARRAY de bloques si el OK a media vuelta trae IMAGEN. Sin desarmar
+            # el array, el test("<system-reminder>") de abajo recibía un array → ABORTABA el jq → usertext VACÍO
+            # (dod no veía el OK → FP). Mismo tratamiento que acg_recent_intercalado (una sola doctrina).
+            then ( (.attachment.prompt? // "") as $p
+                   | if ($p|type)=="array" then ([ $p[] | select((.type?)=="text") | .text ] | join(" "))
+                     elif ($p|type)=="string" then $p else "" end )
             elif ((.message.role // .type)=="user") and ((.isMeta // false) != true)
             then
               # AskUserQuestion: el OK del usuario dado por el WIDGET llega como tool_result (texto vacío → se
@@ -242,6 +243,7 @@ usertext=$(printf '%s\n' "$turn" | jq -rs '
                           else (. // "") end)
                   end )
             else "" end )
+        | select(type=="string")                 # defensa: un no-string (array residual) abortaría el test() de abajo
         | select(. != "")
         | select(test("<system-reminder>") | not) ] | join("  ")' 2>/dev/null)
 

@@ -53,7 +53,16 @@ else
   unquoted=$(printf '%s' "$noheredoc" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g")
 fi
 # ¿git DESTRUCTIVO que mueve HEAD / descarta commits?
-printf '%s' "$unquoted" | grep -qE 'git[[:space:]]+(reset[[:space:]]+(--hard|--merge|--keep)|checkout[[:space:]]+(-f|--force)|rebase([[:space:]]|$)|branch[[:space:]]+-D)' || exit 0
+# `_bdel_re` reconoce un `git branch` de BORRADO en TODAS sus formas, con los flags en CUALQUIER ORDEN: un
+# short cluster con d/D en cualquier posición (`-D`·`-d`·`-df`·`-fd`·`-Df`·`-Dq`…) o el largo `--delete`, y
+# precedido de CUALQUIER otro flag (`--force --delete`, `--force -d` — M5 R3 2026-10-23: el ancla «flag justo
+# tras branch» perdía estas formas). El `(--?…[[:space:]]+)*` admite flags previos pero el grupo final EXIGE un
+# flag de BORRADO, así que un `git branch` sin borrado (`--list`, `--edit-description`, `-m`, `--set-upstream-to`)
+# NO casa → el pre-filtro admite EXACTAMENTE lo que el bloque de branch-delete abajo maneja-y-sale, sin caer al
+# path de orfandad (que avisaría en falso por los commits sin pushear de HEAD, ajenos a la rama borrada). El
+# `git -C <dir>` ya lo colapsa acg_normaliza_git_prefijo aguas arriba (línea 40).
+_bdel_re='branch[[:space:]]+((--?[A-Za-z][A-Za-z-]*[[:space:]]+)*)(-[A-Za-z]*[dD]|--delete)'
+printf '%s' "$unquoted" | grep -qE "git[[:space:]]+(reset[[:space:]]+(--hard|--merge|--keep)|checkout[[:space:]]+(-f|--force)|rebase([[:space:]]|\$)|$_bdel_re)" || exit 0
 
 # M2: DIR objetivo por la lib (-C > cd/pushd > cwd del payload > CLAUDE_PROJECT_DIR > '.'); antes las DOS
 # resoluciones de abajo iban siempre contra CLAUDE_PROJECT_DIR (el repo de la SESIÓN), ciego a un
@@ -71,8 +80,9 @@ fi
 # SQUASH/cherry-pick estando en una mini-develop con trabajo local. Aquí decidimos el riesgo REAL con
 # ramas-zombie.sh (misma "mergeada" TRIPLE que los barredores limpiar.sh ramas/worktrees: ancestro de la base
 # | equivalencia de parche squash/cherry | remota-gone sin commits únicos) → sin divergencia. Solo aplica
-# si el comando es SOLO branch -d/-D (sin reset/checkout/rebase, que sí mueven HEAD → peligro real abajo).
-if printf '%s' "$unquoted" | grep -qE 'git[[:space:]]+branch[[:space:]]+-[dD]' \
+# si el comando es SOLO branch -d/-D/-df/--delete… (sin reset/checkout/rebase, que sí mueven HEAD → peligro
+# real abajo). El gate usa el MISMO `_bdel_re` que el pre-filtro → toda forma de borrado entra y se maneja aquí.
+if printf '%s' "$unquoted" | grep -qE "git[[:space:]]+$_bdel_re" \
    && ! printf '%s' "$unquoted" | grep -qE 'git[[:space:]]+(reset[[:space:]]+--(hard|merge|keep)|checkout[[:space:]]+(-f|--force)|rebase([[:space:]]|$))'; then
   root=$(git -C "$TDIR" rev-parse --show-toplevel 2>/dev/null || true)
   zlib="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/ramas-zombie.sh"
@@ -80,19 +90,35 @@ if printf '%s' "$unquoted" | grep -qE 'git[[:space:]]+branch[[:space:]]+-[dD]' \
     # shellcheck source=/dev/null
     . "$zlib"
     base=$(bz_resolver_base "$root")
-    # tokens tras el -d/-D (hasta pipe/;/&); quita flags sueltos (-r/-f/-q…). Cada token puede ser un
+    # Los nombres de rama = todos los tokens tras `git branch` (hasta pipe/;/&) que NO son flags. Quitar TODO
+    # token que empieza con `-` deja los nombres sin importar la FORMA del borrado: `-D`/`-df`/`-fd`/`--delete`/
+    # `--delete --force`/`-d --force` (los flags `--force`/`-f` sueltos también caen). Cada token puede ser un
     # nombre exacto o un glob → se expande contra las ramas LOCALES reales con `git branch --list`.
-    toks=$(printf '%s' "$unquoted" \
-      | grep -oE 'git[[:space:]]+branch[[:space:]]+-[dD][A-Za-z]*[[:space:]]+[^|;&]+' \
-      | sed -E 's/.*branch[[:space:]]+-[dD][A-Za-z]*[[:space:]]+//' \
+    # Los nombres de rama pueden ir ENTRECOMILLADOS (`git branch -D 'feat/x'`, un glob `'oth*'`): el despoja de
+    # comillas que alimenta $unquoted VACÍA el span → el nombre se perdía y el aviso CALLABA (FP del corpus,
+    # R4 2026-10-23). Para los NOMBRES usamos los segmentos EJECUTABLES con las comillas quitadas como
+    # CARACTERES (no como spans) → el nombre sobrevive. El gate de arriba ya confirmó un `git branch -<del>`
+    # REAL en $unquoted, así que esto corre solo sobre un borrado real (un `echo "git branch -D x"` SOLO no
+    # llega aquí). Residual ACOTADO: un `echo "git branch -D fake" && git branch -D real` sumaría 'fake', pero
+    # solo AVISA si 'fake' fuera una rama real con trabajo sin integrar (raro; y esto AVISA, no bloquea).
+    if command -v acg_segmentos_ejecutables >/dev/null 2>&1 && command -v acg_normaliza_git_prefijo >/dev/null 2>&1; then
+      names_src=$(acg_segmentos_ejecutables "$(acg_normaliza_git_prefijo "$cmd")" | tr -d "'\"")
+    else
+      names_src=$(printf '%s' "$cmd" | tr -d "'\"")
+    fi
+    toks=$(printf '%s' "$names_src" \
+      | grep -oE 'git[[:space:]]+branch[[:space:]]+[^|;&]+' \
+      | sed -E 's/^git[[:space:]]+branch[[:space:]]+//' \
       | tr ' ' '\n' | grep -vE '^-')
-    # (c) compound `git merge <X> [&& …] git branch -D <X>`: una rama que ESTE MISMO comando acaba de
-    # mergear (a la rama actual) queda integrada en el acto → borrarla es seguro. Recoge los targets de
-    # cada `git merge` del comando (sin sus flags) y los trata como integrados, sin preguntarle a git
-    # (el merge aún no corrió — es PreToolUse). Cualquier otra rama sigue decidiéndose con bz_es_zombie.
-    merged=$(printf '%s' "$unquoted" \
-      | grep -oE 'git[[:space:]]+merge([[:space:]]+(--[A-Za-z][A-Za-z-]*|-[A-Za-z]))*[[:space:]]+[^|;&]+' \
-      | sed -E 's/.*merge([[:space:]]+(--[A-Za-z][A-Za-z-]*|-[A-Za-z]))*[[:space:]]+//' \
+    # (c) compound `git merge <X> && … && git branch -D <X>`: una rama que ESTE MISMO comando acaba de
+    # mergear (a la rama actual) queda integrada en el acto → borrarla es seguro. SOLO cuenta si el merge va
+    # encadenado por `&&` (que exige el ÉXITO del merge antes del -D). Con `;`/`||`/`&`/`|` el `-D` correría
+    # AUNQUE el merge CHOCARA (el `;`/`&` corren igual; el `||` corre JUSTO si falló) → borraría la rama sin
+    # integrar = PÉRDIDA DE DATOS (H7, revisión-4). Por eso el target de merge se captura SOLO si lo sigue un
+    # `&&`. (El merge aún no corrió —es PreToolUse—, pero el `&&` SÍ garantiza la condición en tiempo de shell.)
+    merged=$(printf '%s' "$names_src" \
+      | grep -oE 'git[[:space:]]+merge([[:space:]]+(--[A-Za-z][A-Za-z-]*|-[A-Za-z]))*[[:space:]]+[^|;&]+&&' \
+      | sed -E 's/.*merge([[:space:]]+(--[A-Za-z][A-Za-z-]*|-[A-Za-z]))*[[:space:]]+//; s/[[:space:]]*&&$//' \
       | tr ' ' '\n' | grep -vE '^-')
     riesgo=""
     while IFS= read -r tok; do
@@ -110,7 +136,7 @@ EOF
     # Si ninguna rama nombrada tiene trabajo PROPIO fuera de la base (todas zombies, o el glob no matcheó
     # nada) → borrado seguro → SILENCIO (mata el FP dominante). Si alguna SÍ → aviso ACOTADO a esa rama.
     if [ -n "$riesgo" ]; then
-      msg="AVISO (proteger-arbol): git branch -D borraría commits PROPIOS aún NO integrados a '$base' en:$riesgo (no están por ancestro ni por squash/cherry). Si es intencional, adelante; si no, intégralo/pushéalo antes de borrar."
+      msg="AVISO (proteger-arbol): este borrado de rama (git branch -d/-D/--delete) eliminaría commits PROPIOS aún NO integrados a '$base' en:$riesgo (no están por ancestro ni por squash/cherry). Si es intencional, adelante; si no, intégralo/pushéalo antes de borrar."
       jq -n --arg m "$msg" '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$m}}'
     fi
     exit 0
@@ -135,15 +161,17 @@ fi
 gd=$(git -C "$root" rev-parse --git-dir 2>/dev/null)
 gcd=$(git -C "$root" rev-parse --git-common-dir 2>/dev/null)
 
+# cur = rama actual; tgt = objetivo del reset/checkout destructivo (vacío = a HEAD, inocuo). Compartidos
+# por ambos caminos (worktree aislado y árbol principal).
+cur=$(git -C "$root" symbolic-ref --short -q HEAD 2>/dev/null)
+tgt=$(printf '%s' "$unquoted" | grep -oE 'git[[:space:]]+(reset[[:space:]]+--(hard|merge|keep)|checkout[[:space:]]+(-f|--force))[[:space:]]+[^[:space:]|;&]+' | awk '{print $NF}' | head -1)
+
 # H14: en un worktree AISLADO el DESASTRE que este hook vigila —orfanar los commits del ORQUESTADOR en
 # el árbol COMPARTIDO— es IMPOSIBLE: el aislado solo tiene SU propia rama. Y el workaround del bug de
 # harness H15 (el worktree nace en `origin/HEAD` viejo y el agente hace `git reset --hard <su rama
 # objetivo>` al arrancar) dispara un aviso SIEMPRE falso: los "orfanados" son el base RANCIO, no trabajo.
 # Feedback real (2026-07): 4 agentes de un fan-out lo dispararon, todos legítimos → desincentiva delegar.
 if [ "$gd" != "$gcd" ]; then
-  cur=$(git -C "$root" symbolic-ref --short -q HEAD 2>/dev/null)
-  # objetivo del reset/checkout destructivo (vacío = a HEAD, inocuo)
-  tgt=$(printf '%s' "$unquoted" | grep -oE 'git[[:space:]]+(reset[[:space:]]+--(hard|merge|keep)|checkout[[:space:]]+(-f|--force))[[:space:]]+[^[:space:]|;&]+' | awk '{print $NF}' | head -1)
   # aislado Y (sin objetivo | apunta a su propia rama / su upstream | a una base develop|main) → workaround
   # H15 / rebobinado a la propia rama → aviso falso → SUPRIME.
   if [ -z "$tgt" ] || [ "$tgt" = "$cur" ] || [ "$tgt" = "origin/$cur" ] \
@@ -155,6 +183,22 @@ if [ "$gd" != "$gcd" ]; then
   jq -n --arg m "$msg" '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$m}}'
   exit 0
 fi
+
+# L11: SYNC de la BASE local a su remoto (árbol principal). Estar parado EN develop|main y hacer
+# `git reset --hard origin/<esa misma base>` ALINEA el espejo local con origin. SOLO se suprime cuando es
+# LOSSLESS: el espejo local NO está ADELANTE de origin (`origin/<base>..<base>` == 0 → ff/no-op, nada único
+# que orfanar). PÉRDIDA DE DATOS (hueco MEDIO, claudio 2026-10-21): con un commit LOCAL por delante de origin,
+# ese reset lo ORFANA y el guard NO puede distinguir un bubble squash de trabajo real → AVISA como siempre.
+# ACOTADO: SOLO cuando cur ES la base, el target es su PROPIO origin/<base>, Y no hay nada adelante. Un feature
+# con `reset --hard origin/develop` (cur≠develop|main) o un `reset --hard HEAD~3` en develop (tgt≠origin/<cur>)
+# siguen avisando.
+case "$cur" in
+  develop|main)
+    if { [ "$tgt" = "origin/$cur" ] || [ "$tgt" = "refs/remotes/origin/$cur" ]; } \
+       && [ "$(git -C "$root" rev-list --count "origin/$cur..$cur" 2>/dev/null || echo 1)" = 0 ]; then
+      exit 0
+    fi ;;
+esac
 
 # Árbol PRINCIPAL (compartido): aquí SÍ está el peligro real → aviso completo.
 msg="AVISO (proteger-arbol): este git destructivo puede ORFANAR $n commit(s) sin pushear en el árbol PRINCIPAL (compartido). Si eres un AGENTE de fan-out: NO operes el árbol COMPARTIDO — trabaja en tu worktree aislado (isolation: worktree); si necesitas rebobinar, que lo haga el orquestador. Si es intencional (rebobinar a propósito) y ya lo pensaste, ignora este aviso. Lección real (2026-07): un agente reseteó HEAD en el árbol principal y orfanó un commit del orquestador."

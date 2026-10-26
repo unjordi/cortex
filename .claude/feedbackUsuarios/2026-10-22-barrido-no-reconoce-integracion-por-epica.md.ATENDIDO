@@ -1,0 +1,5 @@
+ATENDIDO 2026-10-22 (cortex-master) en fix/corpus-fp-bench:
+- Señal (p) por contenido con scan de historia first-parent: _bz_presencia_contenido (4e08680).
+- Bug del conteo --dry-run (SUCIOS contados como zombie): A.3 (1de5573).
+- Escritor multi-rama de cerrar-slice (un `Rama:` por sub-rama contenida): ae42310.
+Suite 1358·0. Verificado con tests que fallan contra el código viejo.

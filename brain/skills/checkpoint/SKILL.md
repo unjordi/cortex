@@ -91,8 +91,11 @@ del repo. El hilo los REFERENCIA; jamás los re-resume, porque re-resumir es jus
 0. **REGENERA el andamio mecánico y LÉELO (primer paso, ambos niveles).** Antes de escribir una sola
    línea del hilo:
    ```bash
-   node "$(ls ~/.local/bin/checkpoint-mecanico.js ~/.cortex/bin/checkpoint-mecanico.js 2>/dev/null | head -1)" \
-        --self --ensure          # regenera SOLO si quedó atrás del transcript; si no, dice "no-op"
+   # Resuelve el binario SIN `ls` (un `ls` aliaseado a eza/con color devuelve una línea con escapes ANSI en vez
+   # de la ruta → node recibe basura → MODULE_NOT_FOUND; medido en la cachy bajo zsh). for + [ -f ] es robusto.
+   for _ck in ~/.local/bin/checkpoint-mecanico.js ~/.cortex/bin/checkpoint-mecanico.js; do
+     [ -f "$_ck" ] && { node "$_ck" --self --ensure; break; }   # regenera SOLO si quedó atrás del transcript; si no, "no-op"
+   done
    cat .claude/memory/hilo-mental-actual.andamio.md
    ```
    **Corre este paso SIEMPRE, no solo cuando ya hubo un `PreCompact`:** el hook `checkpoint-mecanico`
@@ -180,10 +183,12 @@ del repo. El hilo los REFERENCIA; jamás los re-resume, porque re-resumir es jus
    **VERIFICA el contrato al terminar de escribir (paso mecánico, 1 comando).** El footer
    `> Última actualización: <AAAA-MM-DD> · rama <rama> · nivel <x>` no es decoración: `rehidratar-hilo`
    decide con él si tu hilo se reinyecta como VIGENTE o degradado a "⚠️ POSIBLEMENTE OBSOLETO": un footer
-   ausente o mal escrito presenta un hilo VIGENTE como obsoleto en cada rehidratado. Córrelo y arregla lo
-   que marque:
+   ausente o mal escrito presenta un hilo VIGENTE como obsoleto en cada rehidratado. El flag `fresco` ADEMÁS
+   comprueba que el hilo SE ESCRIBIÓ en ESTE volcado (mtime reciente): si tu `Write` del hilo FALLÓ y en disco
+   quedó el hilo de hace horas, este paso lo CAZA (error "NO se escribió en ESTE volcado") en vez de dar OK
+   sobre un hilo viejo — **NO declares el checkpoint hecho hasta que PASE.** Córrelo y arregla lo que marque:
    ```bash
-   . ~/.claude/hooks/contrato-hilo.sh && verificar_hilo .claude/memory/hilo-mental-actual.md
+   . ~/.claude/hooks/contrato-hilo.sh && verificar_hilo .claude/memory/hilo-mental-actual.md fresco
    ```
 
    **⏱️ El §SIGUIENTE/ESTADO abre el hilo; el 🗂️ ÁRBOL va JUSTO DESPUÉS (regla dura).** Lo PRIMERO del hilo

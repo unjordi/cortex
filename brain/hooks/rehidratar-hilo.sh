@@ -62,7 +62,13 @@ set -u
 # del subshell es el PID de ESTE script (no del subshell) → el hook se auto-mata al vencer el tope.
 _tope="${REHIDRATAR_TIMEOUT_S:-8}"; case "$_tope" in ''|*[!0-9]*) _tope=8 ;; esac
 if [ "$_tope" -gt 0 ]; then
-  ( sleep "$_tope"; kill -TERM "$$" 2>/dev/null ) &
+  # El watchdog NO debe heredar el stdio del hook (H11, revisión-7 2026-10-19). Si lo hereda, su `sleep`
+  # mantiene abierto el pipe de stdout hasta vencer el tope aunque el hook ya salió en milisegundos; el
+  # harness, que espera el EOF del stdio, se bloquea esos 8s en CADA arranque y CADA compact. Redirigir el
+  # subshell a /dev/null corta el lazo (EOF ~0.2s). El trap mata el subshell en la salida normal; su `sleep`
+  # hijo queda huérfano a lo sumo hasta vencer el tope, pero con stdio a /dev/null no retiene nada y se
+  # recoge solo (NO se usa `pkill -P`: imprime un aviso «Terminated» de job-control en stderr).
+  ( sleep "$_tope"; kill -TERM "$$" 2>/dev/null ) </dev/null >/dev/null 2>&1 &
   _wd=$!
   trap 'kill "$_wd" 2>/dev/null' EXIT
 fi
@@ -70,6 +76,43 @@ fi
 ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 HILO="$ROOT/.claude/memory/hilo-mental-actual.md"
 ANDAMIO="$ROOT/.claude/memory/hilo-mental-actual.andamio.md"
+
+# usa_sistema: la carpeta usa el sistema de memoria del cerebro si su `.claude/` trae algo MÁS que
+# `settings.local.json` [user 2026-10-22: "la decisión va justamente por la línea de solo crear estado
+# proyecto si ES un proyecto con algo más que un json"] — Claude Code crea un `.claude/settings.local.json`
+# en CUALQUIER carpeta donde se acepta un permiso, así que su sola presencia NO marca un proyecto. Con un
+# `.claude/` de proyecto y SIN estado-proyecto.md, lo SIEMBRA en el acto [user 2026-10-22: "quita la
+# condición. mejor que considere el caso en que no exista o incluso lo cree"] — decisión de unjordi sobre
+# la propuesta de claudio.
+# EXCEPCIÓN: el `.claude/` de CONFIG de Claude Code NO es un proyecto. Si ROOT es el $HOME, o su `.claude/`
+# ES el config dir (${CLAUDE_CONFIG_DIR:-$HOME/.claude}), NO se usa el sistema ni se siembra ahí (si no,
+# una sesión abierta en ~ sembraría estado-proyecto.md dentro de la config de Claude Code).
+# Idempotente y fail-open (una siembra fallida jamás rompe el arranque de sesión).
+_claude_es_proyecto() {
+  # ¿El `.claude/` trae algo además de settings.local.json? (un .claude/ con SOLO ese json lo creó Claude
+  # Code al aceptar un permiso — no es un proyecto con sistema de memoria del cerebro). Cuenta hidden también.
+  local d="$1" e
+  for e in "$d"/* "$d"/.[!.]*; do
+    [ -e "$e" ] || continue
+    [ "$(basename "$e")" = "settings.local.json" ] && continue
+    return 0
+  done
+  return 1
+}
+usa_sistema=0
+_cfgdir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+if [ -d "$ROOT/.claude" ] && [ "$ROOT" != "$HOME" ] && [ "$ROOT/.claude" != "$_cfgdir" ] \
+   && _claude_es_proyecto "$ROOT/.claude"; then
+  usa_sistema=1
+  if [ ! -f "$ROOT/.claude/memory/estado-proyecto.md" ]; then
+    mkdir -p "$ROOT/.claude/memory" 2>/dev/null \
+      && printf '%s\n' \
+           '# Estado del proyecto' '' \
+           '> Backlog durable del proyecto (sembrado por rehidratar-hilo al no existir). Qué sigue, qué se decidió.' \
+           '> El bloque espejo-tasklist lo mantiene recordar-cosechar; el skill /to-do re-siembra el HUD desde aquí.' '' \
+           '## 🧭 BACKLOG' > "$ROOT/.claude/memory/estado-proyecto.md" 2>/dev/null || true
+  fi
+fi
 
 # El CONTRATO del footer (`· rama <x>`) vive en UNA sola definición, compartida con el skill
 # `checkpoint` (que la corre al volcar) y con test-brain. Si la lib no está —un install viejo, o el
@@ -99,6 +142,23 @@ input=$(cat 2>/dev/null || true)
 source=$(printf '%s' "$input" | { jq -r '.source // "startup"' 2>/dev/null || echo startup; })
 sid_actual=$(printf '%s' "$input" | { jq -r '.session_id // ""' 2>/dev/null || echo ""; })
 
+# ── ORDEN de reconstruir-contexto (diseño 2026-10-19) ────────────────────────────────────────── ──
+# Tras un compact o un resume, el detalle real del tramo vivo pudo fundirse en el resumen, y el harness
+# CORTA esta misma salida a ~2 KB de preview — así que la reconstrucción no cabe en el hook: la hace la
+# sesión con sus tools. SOLO en source=compact|resume anteponemos como PRIMERA línea la orden de correr el
+# skill `reconstruir-contexto` antes de actuar/planear (excava andamio→backlog→transcript, por el sid). La
+# orden se antepone a CUALQUIER cosa que el hook emita —incluido el aviso de "sin hilo ni andamio", que es
+# justo donde más falta hace— y por ENCIMA del faro. startup/clear NO cambian (salida byte a byte la de
+# antes). El hook solo DA la orden; no reconstruye ni genera archivos.
+# [user: "después de un compact y también al retomar una sesión, plz. Basta con que el hook dé la orden.
+#  a lo que ya funciona PLZ no le muevas, que lo que ya hace el hook, se quede así"]
+_orden=""
+case "$source" in
+  compact|resume)
+    _orden="🛟 PRIMER ACTO (tras ${source}, ANTES de actuar o planear): corre el skill \`reconstruir-contexto\`. Reconstruye el hilo real del tramo que el resumen pudo fundir (excava andamio→backlog→transcript, resuelto por tu sid). Lo que sigue abajo es APOYO para ese paso, no lo sustituye."
+    ;;
+esac
+
 # Nota: este hook YA NO fija un "baseline de contexto". aviso-contexto.sh mide el llenado con los
 # TOKENS REALES del último `usage` del transcript, ANCLADOS al último /compact (un `isCompactSummary`
 # resetea el acumulado, sin bandas ni veredictos — es un reportero tonto) → no necesita un watermark
@@ -116,13 +176,27 @@ _no_vacio "$ANDAMIO" && hay_andamio=1
 # additionalContext pasivo) y apunta al transcript, que sí sobrevivió. Se emite solo cuando faltan LOS
 # DOS: con andamio presente no hace falta avisar de una pérdida que la máquina ya cubrió con evidencia.
 if [ "$hay_hilo" -eq 0 ] && [ "$hay_andamio" -eq 0 ]; then
-  if [ "$source" = "compact" ] && [ -f "$ROOT/.claude/memory/estado-proyecto.md" ]; then
+  # GATE DE SISTEMA (usa_sistema ya calculado arriba por la presencia de `.claude/`): en una carpeta que
+  # NO usa el sistema de memoria (sin `.claude/`), este hook CALLA — no estorba en carpetas ajenas. La
+  # orden de reconstruir-contexto es "para cuando más falta hace" (checkpoint falló) pero SOLO donde hay
+  # sistema: emitirla en cada --resume de cualquier carpeta pelona sería ruido, justo lo que el gate evita.
+  aviso=""
+  if [ "$source" = "compact" ] && [ "$usa_sistema" -eq 1 ]; then
     tp=$(printf '%s' "$input" | { jq -r '.transcript_path // empty' 2>/dev/null || echo ""; })
     aviso="⚠️ Compactaste SIN hilo mental fresco y SIN andamio (no existe ni .claude/memory/hilo-mental-actual.md ni su andamio mecánico). El detalle de la conversación se degradó en el resumen y NO hay volcado que lo recupere. Reconstruye del transcript${tp:+ ($tp)} + estado-proyecto.md/bitacora ANTES de seguir, y corre el skill checkpoint antes del próximo /compact para no repetirlo."
+  fi
+  # La orden se antepone al aviso (o va sola) SOLO si el repo usa el sistema; cualquiera puede estar vacío.
+  orden_aqui=""; [ "$usa_sistema" -eq 1 ] && orden_aqui="$_orden"
+  msg=""
+  if [ -n "$orden_aqui" ] && [ -n "$aviso" ]; then msg=$(printf '%s\n\n%s' "$orden_aqui" "$aviso")
+  elif [ -n "$orden_aqui" ]; then msg="$orden_aqui"
+  elif [ -n "$aviso" ]; then msg="$aviso"
+  fi
+  if [ -n "$msg" ]; then
     if command -v jq >/dev/null 2>&1; then
-      jq -n --arg m "$aviso" '{systemMessage:$m}'
+      jq -n --arg m "$msg" '{systemMessage:$m}'
     else
-      printf '%s\n' "$aviso"   # sin jq: cae a additionalContext pasivo (mejor que perderlo)
+      printf '%s\n' "$msg"   # sin jq: cae a additionalContext pasivo (mejor que perderlo)
     fi
   fi
   exit 0
@@ -280,6 +354,13 @@ if [ "$ctx_bytes" -gt "$budget" ] && [ "$hay_hilo" -eq 1 ]; then
 §SIGUIENTE / ESTADO (extracto del hilo — puede venir cortado; Read el archivo para el resto):
 ${sig}"
   ctx=$(printf '%s\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n%s' "$faro" "$ctx")
+fi
+
+# La ORDEN de reconstruir-contexto va como PRIMERÍSIMA línea (diseño 2026-10-19), por ENCIMA del faro
+# anti-truncado, para que caiga dentro del preview de ~2 KB del harness aun con un hilo grande. Solo en
+# compact/resume ($_orden no vacío); en startup/clear queda igual que antes (byte a byte).
+if [ -n "$_orden" ] && [ -n "$ctx" ]; then
+  ctx=$(printf '%s\n\n%s' "$_orden" "$ctx")
 fi
 
 # ¿ctx tiene algún carácter no-espacio? El `case`-glob es O(n); la expansión `${ctx//[[:space:]]/}` que

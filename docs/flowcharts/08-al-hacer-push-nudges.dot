@@ -1,10 +1,10 @@
 // 08 — Al hacer push: qué corre y qué quedó como DISCIPLINA (cortex)  ·  FUENTE editable (.dot)
 // Render:  dot -Tsvg 08-al-hacer-push-nudges.dot -o 08-al-hacer-push-nudges.svg
-// ZOOM del fan-out de 6 hooks (raíz común en 03 · CONVENCIONES §6) sobre el nudge (🔔, no bloquea)
+// ZOOM del fan-out de 4 hooks (raíz común en 03 · CONVENCIONES §6) sobre el nudge (🔔, no bloquea)
 // de un `git push`, más los PostToolUse del MISMO comando (CONVENCIONES §6): 📈 aviso-contexto
 // foregrounded aquí, con cross-ref por Nº de archivo a **03** para el detalle de 🧹 barrer-ramas. ESTE
 // nudge no bloquea, pero el MISMO push pasa además por los guards DENY-capaces del fan-out de 03
-// (🚧 git-branch-guard → ver 06 · 🕵️ secret-scan → ver 07): un gate explícito antes del terminal deja
+// (🔗 merge-develop-guard, PASO 0 = push directo a base → ver 06): un gate explícito antes del terminal deja
 // claro que PUSH_OK es "push que ningún guard DENY frenó", no un procede incondicional. Reconstruido
 // 2026-08-07 desde el CÓDIGO real (brain/hooks/recordar-dashboard.sh); ampliado tras
 // auditoría de coherencia para cubrir PostToolUse + la mutación real del push, y de nuevo tras la
@@ -29,17 +29,16 @@ digraph flujos {
     LEY_ARBOL [shape=none, margin=0, label=<
       <table border="0" cellborder="1" cellspacing="0" cellpadding="4" color="#5fa89e" bgcolor="#1b1712">
         <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>🔒 Hooks Forzosos</b></font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🚧 git-branch-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">push/merge a develop·main → denegado</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔗 merge-develop-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">MR a develop sin --squash o sin tu OK → denegado; a main exige OK súper-explícito</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🕵️ secret-scan</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">commit/push con un secreto → denegado</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔗 merge-develop-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">push directo a develop·main, o MR sin --squash/sin tu OK → denegado; a main exige OK súper-explícito</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔏 proteger-autorizaciones</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">escritura del AGENTE al archivo de grants autorizaciones-vigentes* → denegada; solo el HUMANO lo escribe con `!` (cierra la auto-autorización del merge a develop)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">💸 delegacion-gate</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">delegar al llegar al 90% de tu ventana 5h → pide tu OK</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🛑 limite-gasto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">sin ventana 5h Y sin overage (ambos agotados) → freno duro</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">✅ dod-verificar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cierre sin evidencia/OK → denegado; claim visual a ciegas (sin ver la pantalla) también</font></td></tr>
         <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>🔔 Automático</b></font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🖥️ entorno-maquina-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">commit de algo machine-specific (aliases/rutas de $HOME/Rosetta/entorno-maquina.md) al .claude/memory/ del repo → avisa</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🚧 no-bypass-deploy</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">correr el instalador/deploy a mano (install-brain.sh/deploy.sh) en vez de la herramienta oficial (el widget) → avisa (fail-safe: no --dry-run/--help/CI)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🚧 no-bypass-deploy</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">correr el instalador/deploy a mano (install-brain.sh/deploy.sh, helm/kubectl apply -f, aun tras sudo/nohup/VAR=/source) en vez de la herramienta oficial (el widget) → avisa (fail-safe: no --dry-run/--help/CI)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌳 proteger-arbol</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">git destructivo que orfanaría commits sin pushear → avisa (fan-out: usa worktree aislado)</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🛡️ proteger-fuente-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">editar la copia INSTALADA de un hook/skill que tiene fuente en el clon → avisa (se perdería en el próximo sync) (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🛡️ proteger-fuente-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">editar la copia INSTALADA de un hook/skill que tiene fuente en el clon → avisa (se perdería en el próximo sync); + un Edit a settings.json que decablea un hook del cerebro o agrega un escape de guard → avisa (tu propio candado) (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧹 barrer-ramas</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al abrir sesión / al punto del merge barre en 2º plano ramas locales + remota huérfana + worktrees ya integrados (zombie squash-safe; throttle 24h) (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">💾 exportar-sesion-master</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">auto-export de las sesiones *-master a ~/.claude-sessions (o Drive); detached, sobrevive el cleanup de 30 días (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🗂️ checkpoint-mecanico</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">PreCompact: extractor mecánico (streaming, 0 tokens) escribe el andamio del TRAMO VIVO a hilo-mental-actual.andamio.md (GLOBAL; el skill lo regenera con --self --ensure)</font></td></tr>
@@ -47,8 +46,8 @@ digraph flujos {
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧵 rehidratar-hilo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta hilo-mental-actual.md + el andamio (si es más fresco) al abrir/retomar/compactar (GLOBAL) — gate de frescura + edad</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📈 aviso-contexto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al umbral ALTO del punto REAL de compact (80%/92% de autoCompactWindow o la ventana efectiva; % honesto, respeta autoCompactEnabled): VUELCA el checkpoint mecánico solito y ORDENA /checkpoint+/compact. No gotea (silencio bajo el umbral, 1 disparo + 1 escalada) (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧬 aviso-drift-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">repo brained atrás de la fuente única (hooks/libs Y skills) → en tu mini-develop se AUTO-SINCRONIZA (apply+commit+push); en otra rama, avisa. ADEMÁS detecta el drift de la copia GLOBAL de skills (~/.claude/skills vs la fuente; warn-only, throttle propio). Al moverse el cerebro, NUDGE a correr la DUPLA (suficiencia+coherencia; contra la firma si hay AGENTS.md, si no sugiere instanciarla) (GLOBAL)</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧭 sesion-inicio</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta rama + norma + memoria al abrir</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌾 recordar-cosechar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">espejo automático del TaskList vivo → bloque fenced en estado-proyecto.md (determinista, sin LLM)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧭 sesion-inicio</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta rama + norma + memoria al abrir (BOTH)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌾 recordar-cosechar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">espejo automático del TaskList vivo → bloque fenced en estado-proyecto.md (determinista, sin LLM) (BOTH)</font></td></tr>
         <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>📜 Normas</b></font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎯 Definition of Done</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">verde técnico ≠ Done/Listo/Ya Quedó; exige QA o un OK explícito</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🪞 Doc &lt;= realidad</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cambió algo → su doc se actualiza en la tanda</font></td></tr>
@@ -94,7 +93,7 @@ digraph flujos {
 
   // ───────────────────────────────────── EL FLUJO ─────────────────────────────────────
   subgraph cluster_f0 {
-    label="08 · Al hacer push: PRE (📜 doc=realidad/dashboard, self-check puro — ya no hay hook aquí) + POST (🔔 aviso-contexto — ver 03 para barrer-ramas)   (ZOOM del fan-out de 6 de 03 · este NUDGE no bloquea; los guards DENY del mismo fan-out —🚧 git-branch-guard, 🕵️ secret-scan— viven en 06/07)";
+    label="08 · Al hacer push: PRE (📜 doc=realidad/dashboard, self-check puro — ya no hay hook aquí) + POST (🔔 aviso-contexto — ver 03 para barrer-ramas)   (ZOOM del fan-out de 03 · este NUDGE no bloquea; el guard DENY del mismo fan-out —🔗 merge-develop-guard (push directo a base + merge de MR)— vive en 06/07)";
     fontname="Times"; fontsize=14; fontcolor="#5fa89e";
     color="#5fa89e"; penwidth=1.6; style="rounded"; bgcolor="#1b1712";
 
@@ -124,11 +123,11 @@ digraph flujos {
     NADA [color="#7fb069", label="🟢 nada que actualizar"];
 
     // ── convergencia de los NUDGES (no bloquean) → pero el MISMO push sigue sujeto a los guards
-    //    DENY-capaces del fan-out de 03 (git-branch-guard, secret-scan) — CONVENCIONES §6 ──
+    //    DENY-capaz del fan-out de 03 (merge-develop-guard: PASO 0 push directo + gate de merge-de-MR) — CONVENCIONES §6 ──
     GATEQ [shape=diamond, fillcolor="#2b2622", color="#d97757",
-           label="¿algún guard DENY del MISMO fan-out lo frena?\n(🚧 git-branch-guard: push directo a develop/main → ver 06\n· 🕵️ secret-scan: secreto en el diff a pushear → ver 07)"];
+           label="¿el guard DENY del MISMO fan-out lo frena?\n(🔗 merge-develop-guard, PASO 0: push directo a develop/main → ver 06\n· mismo guard: merge de MR sin squash/OK → ver 06)"];
     DENY_STOP [fillcolor="#3a1414", color="#c62828", penwidth=3, fontcolor="#f2ede6",
-               label="🔴 DENY — el push NO procede\n(git-branch-guard o secret-scan lo rechazó; detalle en 06/07)"];
+               label="🔴 DENY — el push NO procede\n(merge-develop-guard lo rechazó en su PASO 0; detalle en 06)"];
 
     // ── terminal: ningún guard DENY del fan-out lo frenó → el push PROCEDE y ESCRIBE en el remoto ──
     PUSH_OK [fillcolor="#2b2622", color="#c62828", penwidth=3, fontcolor="#f2ede6",
@@ -139,7 +138,7 @@ digraph flujos {
     POST [fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
           label="PostToolUse sobre ese mismo Bash (push) — corre EN PARALELO"];
     CTX [color="#e08e45",
-         label="🔔📈 aviso-contexto\n🟠 reporta el watermark de contexto CRUDO (tokens · ventana · %)\nsolo al CRUZAR un escalón de +50K tokens (debounce, STEP=50000)\nsilencioso si no cruza escalón, repo sin .claude/memory, o sin jq/transcript"];
+         label="🔔📈 aviso-contexto (ver 02/05 para el flujo completo)\n🟠 mide TOKENS REALES del último `usage` vs GOV (=autoCompactWindow si auto-compact ON, si no la ventana del modelo)\nBANDAS como % de GOV: ALTO 80% · CRÍTICO 92% — debounce por BANDA (1 disparo + 1 escalada), se re-arma al bajar el ctx\nal cruzar: VUELCA el andamio MECÁNICO (0 tokens) y ORDENA /checkpoint + /compact · 2ª causa = CUOTA (5h 80/95, semanal 80)\nmodelo desconocido / sin ventana por evidencia / sin jq/transcript → CALLA (exit 0)"];
     POST_OTROS [style="rounded,filled", fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
                 label="+ 🔔🧹 barrer-ramas (Bash)\nno bloquea — detalle completo en 03"];
 

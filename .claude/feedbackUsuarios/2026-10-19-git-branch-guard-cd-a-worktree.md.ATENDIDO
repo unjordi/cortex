@@ -1,0 +1,1 @@
+ATENDIDO 2026-10-22 (triage): H1 (cd tras keyword do/then/else dentro de for) resuelto en analizar-comando-git.sh:419-422 (reconoce el prefijo de keyword/agrupación antes de cd|pushd) — parte del paquete git-branch-guard de la rama.

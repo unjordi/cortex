@@ -57,7 +57,31 @@ if ! bz_base_valida "$ROOT" "$base"; then
 fi
 bz_aviso="$(bz_aviso_base "$ROOT")"
 [ -n "$bz_aviso" ] && echo "  (aviso: $bz_aviso — Base: $base)"   # M-2
-es_zombie() { bz_es_zombie "$ROOT" "$1" "$base"; }  # $1 = rama
+es_zombie() { bz_es_zombie "$ROOT" "$1" "$base" barrido; }  # $1 = rama · modo=barrido → activa la señal (p) presencia-por-contenido
+
+# PROTECCIÓN ANTI-AGENTE-VIVO (GRAVE 2026-10-20, axon-master): un worktree de un agente que ARRANCA sale de
+# la base SIN commits propios todavía → por equivalencia de parche es INDISTINGUIBLE de "ya integrado" → el
+# barrido lo declaraba zombie y, con el árbol LIMPIO (agente entre ediciones), git lo BORRABA con el agente
+# dentro (25 turnos perdidos, EXIT_ENOENT). Fix MÍNIMO y sin aflojar nada: una rama SIN commits propios vs la
+# base (recién creada) + árbol LIMPIO es casi siempre un agente arrancando — o un worktree vacío inofensivo —
+# y NO hay nada integrado que limpiar (0 commits). Se RETIENE antes del veredicto de zombie (que no cambia).
+# El árbol SUCIO NO entra aquí: lo protege el camino SUCIO (git rehúsa el remove + anota el pendiente, C-3).
+# Los zombies REALES (con commits propios, patch-integrados) se barren igual que antes. NO se usa actividad
+# por mtime: retrasaría el barrido de un worktree recién mergeado y es un cambio de contrato fuera de alcance.
+_worktree_recien_nacido() {  # $1=wt $2=rama → 0 si PROTEGER (rama recién nacida de verdad + árbol limpio)
+  local wt="$1" br="$2" n rl
+  n=$(git -C "$ROOT" rev-list --count "$base..$br" 2>/dev/null)
+  case "$n" in ''|*[!0-9]*|0) [ "$n" = 0 ] || return 1 ;; *) return 1 ;; esac   # irresoluble o con commits propios → no
+  # REFLOG (claudio, regresión de 633a732): una rama integrada por FAST-FORWARD o MERGE-COMMIT también queda
+  # 0-ahead + limpia — MISMA huella por rev-list que un recién nacido — pero sus commits SÍ se hicieron en la
+  # rama, así que su reflog tiene entradas de TRABAJO ("commit:"/"merge:"/…) que un recién nacido (solo
+  # "branch: Created from …") NO tiene. El flujo mini-develop (ramita → mini con `git merge` LOCAL) cae justo
+  # aquí. Reflog VACÍO = logging off = NO es el caso del agente vivo (su repo lleva reflog) → no se protege.
+  rl=$(git -C "$ROOT" reflog show --format='%gs' "$br" 2>/dev/null)
+  [ -n "$rl" ] || return 1
+  printf '%s\n' "$rl" | grep -qE '^(commit|merge|rebase|cherry-pick|pull|am|revert)\b' && return 1   # hubo trabajo en la rama → integrada, no recién nacida
+  [ -z "$(git -C "$wt" status --porcelain 2>/dev/null)" ]   # solo si el árbol está LIMPIO (el sucio → camino SUCIO)
+}
 
 # _intentar_borrar WT — C-3: SIN --force primero (git rehúsa solo si hay cambios sin commitear/untracked).
 # Si rehúsa, NO se fuerza por defecto: se reporta sucio y se conserva. Con --purgar-sucios, se fuerza (opt-in
@@ -83,7 +107,7 @@ _intentar_borrar() {
   return 1
 }
 
-borrados=0; dejados=0; protegidas=0; sucios=0; indeterminados=0; detached=0; pend=""; wt=""
+borrados=0; dejados=0; protegidas=0; sucios=0; indeterminados=0; detached=0; activos=0; pend=""; wt=""
 while IFS= read -r line; do
   case "$line" in
     "worktree "*) wt="${line#worktree }" ;;
@@ -95,13 +119,22 @@ while IFS= read -r line; do
         echo "  PROTEGIDA (no se toca — $BZ_PROT_RAZON): $wt ($br)"
         continue
       fi
+      # GRAVE 2026-10-20: un worktree de rama RECIÉN NACIDA (0 commits propios) con árbol LIMPIO no se barre
+      # aunque parezca integrada por equivalencia de parche — sería borrarle el árbol a un agente que apenas
+      # arrancó. Va ANTES del veredicto de zombie, que no cambia (el árbol sucio cae al camino SUCIO).
+      if _worktree_recien_nacido "$wt" "$br"; then
+        activos=$((activos+1))
+        echo "  ACTIVO (no se toca — rama sin commits propios + árbol limpio: agente recién arrancado): $wt ($br)"
+        continue
+      fi
       if es_zombie "$br"; then
         if [ "$DRY" = 1 ]; then
-          # dry-run: previsualiza si el árbol está sucio (C-3) en vez de prometer un borrado que git rehusaría.
+          # dry-run: cuenta IGUAL que el modo real para que el RESUMEN cuadre. Un zombie con árbol SUCIO git
+          # rehusaría borrarlo (el real lo cuenta como 'sucio conservado', no 'zombie'); antes el dry-run lo
+          # sumaba a 'borrados' y el resumen mentía ("N zombie(s)" donde el real decía "N sucio(s)").
           n=$(git -C "$wt" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
-          if [ "${n:-0}" != 0 ]; then echo "  [dry] SUCIO (no se tocaría): $wt ($br) — $n archivo(s) sin commitear/untracked"
-          else echo "  [dry] zombie: $wt ($br)"; fi
-          borrados=$((borrados+1))
+          if [ "${n:-0}" != 0 ]; then echo "  [dry] SUCIO (no se tocaría): $wt ($br) — $n archivo(s) sin commitear/untracked"; sucios=$((sucios+1))
+          else echo "  [dry] zombie: $wt ($br)"; borrados=$((borrados+1)); fi
         else
           if _intentar_borrar "$wt"; then borrados=$((borrados+1)); echo "  borrado zombie: $wt ($br)"
           else
@@ -155,4 +188,4 @@ EOF_PEND
     fi
   fi
 fi
-echo "limpiar-worktrees: $borrados zombie(s), $dejados vivo(s) conservado(s), $protegidas protegido(s), $sucios sucio(s) conservado(s), $indeterminados indeterminado(s), $detached detached(s)."
+echo "limpiar-worktrees: $borrados zombie(s), $dejados vivo(s) conservado(s), $activos activo(s)/recién-nacido(s) conservado(s), $protegidas protegido(s), $sucios sucio(s) conservado(s), $indeterminados indeterminado(s), $detached detached(s)."
