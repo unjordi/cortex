@@ -53,9 +53,6 @@ fi
 n_espejados=$(espejar_tasklist "$payload" "$ROOT" 2>/dev/null || echo 0)
 case "$n_espejados" in ''|*[!0-9]*) n_espejados=0 ;; esac
 
-# ── NUDGE útil, ATADO al sync real: solo si de verdad espejó pendientes vivos este Stop ──────────── ──
-if [ "$n_espejados" -gt 0 ] && command -v jq >/dev/null 2>&1; then
-  msg="🔄 Actualicé el bloque durable de estado-proyecto.md con $n_espejados pendiente(s) de tu TaskList. El HUD en pantalla NO se refresca solo desde disco (el harness tiene la lista en memoria) → cuando convenga, RE-SINCRONIZA tu task-list desde la durable (skill \`to-do\` / lib \`sincronizar-tasklist.sh sembrar\`) para que el HUD quede al día. (La curación —decisiones, prioridades, contexto— va AFUERA del bloque espejo.)"
-  jq -n --arg m "$msg" '{systemMessage:$m}' 2>/dev/null || true
-fi
+# Sin aviso: el Stop copia el HUD vivo a la durable, así que el HUD ya está al día. La dirección inversa
+# (durable → HUD) la hace el skill `to-do` en los bordes de la sesión.
 exit 0

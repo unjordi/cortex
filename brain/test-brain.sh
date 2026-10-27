@@ -6320,10 +6320,12 @@ emh1=$(_em_hcksum "$EMFILE"); em "$EMSID" >/dev/null; emh2=$(_em_hcksum "$EMFILE
 #     "🔄 Actualicé el bloque durable…" en CADA Stop con ≥1 pendiente, aunque el archivo quedara idéntico)
 emout=$(em "$EMSID")
 [ -z "$emout" ] && ok "espejo: sin cambio en el bloque NO avisa" || bad "espejo: avisó sin que el bloque cambiara; got: $emout"
-# 1e: y la otra dirección — si el bloque SÍ cambia, avisa
+# 1e: si el bloque SÍ cambia, se actualiza y tampoco avisa: el Stop copia el HUD a la durable, así que el HUD ya
+#     está al día y no hay nada que re-sincronizar.
 printf '{"id":"13","subject":"Pendiente B","status":"pending"}' > "$EMHOME/.claude/tasks/$EMSID/13.json"
 emout=$(em "$EMSID")
-printf '%s' "$emout" | grep -q 'systemMessage' && ok "espejo: con el bloque cambiado SÍ avisa" || bad "espejo: el bloque cambió y no avisó; got: $emout"
+[ -z "$emout" ] && ok "espejo: con el bloque cambiado NO avisa" || bad "espejo: avisó al copiar el HUD a la durable; got: $emout"
+grep -q 'Pendiente B' "$EMREPO/.claude/memory/estado-proyecto.md" 2>/dev/null && ok "espejo: el bloque durable recibió el pendiente nuevo" || bad "espejo: el bloque no se actualizó"
 rm -f "$EMHOME/.claude/tasks/$EMSID/13.json"; em "$EMSID" >/dev/null
 
 # ── Caso 2 (BUG "+0"): session_id ROTADO — el sid del payload apunta a una carpeta VACÍA, las tareas
@@ -6359,12 +6361,12 @@ grep -q '#5 ' "$EMFILE_C3" && bad "espejo: #5 (ya completada) sigue listada tras
 [ "$(grep -c 'espejo-tasklist:start' "$EMFILE_C3")" = 1 ] && ok "espejo: exactamente UN bloque tras varios re-espejos (no duplica)" \
   || bad "espejo: se duplicó el bloque espejo"
 grep -q 'prosa curada' "$EMFILE_C3" && ok "espejo: preservó la prosa curada tras el re-espejo" || bad "espejo: pisó la prosa al re-espejar"
-# nudge ATADO al sync: al mover un pendiente vivo, el hook emite systemMessage (advisory, no bloquea)
+# sin nudge: al mover un pendiente vivo, el hook refleja el HUD a la durable en silencio
 printf '{"id":"21","subject":"Otra viva","status":"pending"}' > "$EMHOME3/.claude/tasks/$S3/21.json"
 em3_out=$(em3)
-{ printf '%s' "$em3_out" | grep -q 'systemMessage'; } \
-  && ok "nudge: el hook emite systemMessage cuando el espejo movió pendientes (atado al sync real)" \
-  || bad "nudge: no emitió el recordatorio tras un sync real"
+{ [ -z "$em3_out" ] && grep -q '#21' "$EMFILE_C3"; } \
+  && ok "espejo: mover un pendiente vivo actualiza el bloque sin emitir mensaje" \
+  || bad "espejo: el sync real emitió mensaje o no actualizó el bloque; got: $em3_out"
 
 # ── Caso 4 (anti-clobber): bloque no-vacío + carpeta resuelta VACÍA (sin fallback) → NO pisa con vacío. ──
 EMHOME4="$EMFIX/c4home"; EMREPO4="$EMFIX/c4repo"; S4="SESION4"
