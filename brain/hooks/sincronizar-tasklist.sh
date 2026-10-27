@@ -154,7 +154,7 @@ _stl_bloque_no_vacio() {
 
 # ----
 # ESPEJAR — json → bloque durable. Corre en el Stop. Imprime a stdout el nº de pendientes espejados
-# (0 si no escribió o escribió vacío). SIEMPRE devuelve 0.
+# (0 si no escribió, si escribió vacío o si el bloque quedó idéntico). SIEMPRE devuelve 0.
 # ----
 espejar_tasklist() {
   local payload="${1:-}" root="${2:-}"
@@ -228,7 +228,10 @@ espejar_tasklist() {
     # bloque DUPLICADO o marcador huérfano → fail-safe: NO tocar (no borrar lo curado)
     rm -f "$tmp"; printf 0; return 0
   fi
-  if cmp -s "$tmp" "$estado" 2>/dev/null; then rm -f "$tmp"; else mv -f "$tmp" "$estado" 2>/dev/null || rm -f "$tmp"; fi
+  # Sin cambio en el bloque no se reporta nada: el nudge del Stop está atado a este número, y devolver los
+  # pendientes aunque el archivo quedara idéntico lo repetía en cada Stop. Probado en test-brain.sh (b5g2 1d/1e).
+  if cmp -s "$tmp" "$estado" 2>/dev/null; then rm -f "$tmp"; printf 0; return 0; fi
+  mv -f "$tmp" "$estado" 2>/dev/null || { rm -f "$tmp"; printf 0; return 0; }
   printf '%s' "$n"
   return 0
 }
