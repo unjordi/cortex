@@ -6316,6 +6316,15 @@ grep -q 'prosa curada' "$EMFILE" && ok "espejo: preservó la prosa curada humana
 # 1c: idempotente (2ª corrida = mismo archivo)
 emh1=$(_em_hcksum "$EMFILE"); em "$EMSID" >/dev/null; emh2=$(_em_hcksum "$EMFILE")
 [ "$emh1" = "$emh2" ] && ok "espejo: idempotente (2ª corrida = mismo archivo)" || bad "espejo: no idempotente"
+# 1d: el AVISO sale solo cuando el bloque CAMBIÓ — una corrida que no cambia nada calla (antes repetía el
+#     "🔄 Actualicé el bloque durable…" en CADA Stop con ≥1 pendiente, aunque el archivo quedara idéntico)
+emout=$(em "$EMSID")
+[ -z "$emout" ] && ok "espejo: sin cambio en el bloque NO avisa" || bad "espejo: avisó sin que el bloque cambiara; got: $emout"
+# 1e: y la otra dirección — si el bloque SÍ cambia, avisa
+printf '{"id":"13","subject":"Pendiente B","status":"pending"}' > "$EMHOME/.claude/tasks/$EMSID/13.json"
+emout=$(em "$EMSID")
+printf '%s' "$emout" | grep -q 'systemMessage' && ok "espejo: con el bloque cambiado SÍ avisa" || bad "espejo: el bloque cambió y no avisó; got: $emout"
+rm -f "$EMHOME/.claude/tasks/$EMSID/13.json"; em "$EMSID" >/dev/null
 
 # ── Caso 2 (BUG "+0"): session_id ROTADO — el sid del payload apunta a una carpeta VACÍA, las tareas
 #    vivas están en OTRA carpeta reciente. El espejo debe reflejar las REALES, no "sin pendientes". ──
