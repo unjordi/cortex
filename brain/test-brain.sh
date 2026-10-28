@@ -9094,9 +9094,20 @@ eval "$(sed -n '/^_master_base()/,/^}/p' "$HOOKS/exportar-sesion-master.sh")"
 { [ "$(_master_base 'cortex-master (2)')" = "cortex-master" ] && [ "$(_master_base 'axon-master (10)')" = "axon-master" ]; } \
   && ok "exportar-sesion-master: reconoce '<x>-master (N)' como master → NAME BASE canónico (sin ' (N)')" \
   || bad "exportar-sesion-master: NO reconoce el '<x>-master (N)' del CLI (sigue perdiéndose el export en silencio)"
-{ [ "$(_master_base 'games-master')" = "games-master" ] && [ -z "$(_master_base 'cortex-developer')" ] && [ -z "$(_master_base 'cortex-master-xyz')" ]; } \
-  && ok "exportar-sesion-master: '<x>-master' pelado OK y NO-master ('developer' / '…-master-xyz') rechazado (ambas direcciones)" \
+{ [ "$(_master_base 'games-master')" = "games-master" ] && [ -z "$(_master_base 'cortex-developer')" ]; } \
+  && ok "exportar-sesion-master: '<x>-master' pelado OK y 'developer' (no-master) rechazado (ambas direcciones)" \
   || bad "exportar-sesion-master: _master_base mal clasifica el caso pelado o un no-master"
+# B-20: '<x>-master-<sufijo>' con sufijo ALFANUMÉRICO (p. ej. 'claudio-master-3000', la sesión PRINCIPAL de
+# unjordi) se exporta → base canónica; antes se perdía EN SILENCIO (A4 solo cubrió el ' (N)'). FALLA contra el
+# código viejo (devolvía vacío). El sufijo exige ser alfanumérico para NO tragarse un 'mi-master-plan.md'.
+{ [ "$(_master_base 'claudio-master-3000')" = "claudio-master-3000" ] \
+  && [ "$(_master_base 'claudio-master-3000 (2)')" = "claudio-master-3000" ] \
+  && [ "$(_master_base 'x-master-12 (3)')" = "x-master-12" ]; } \
+  && ok "exportar-sesion-master (B-20): '<x>-master-<sufijo alnum>' y su ' (N)' → se exportan con base canónica" \
+  || bad "exportar-sesion-master (B-20): el master con sufijo (incl. la sesión principal de unjordi) sigue perdiéndose en silencio"
+{ [ -z "$(_master_base 'mi-master-plan.md')" ] && [ -z "$(_master_base 'master')" ] && [ -z "$(_master_base 'masterclass')" ]; } \
+  && ok "exportar-sesion-master (B-20): sufijo no-alfanumérico ('plan.md'), 'master' pelado y 'masterclass' → NO master (no sobre-captura)" \
+  || bad "exportar-sesion-master (B-20): sobre-capturó un no-master (plan.md / master / masterclass)"
 { grep -qF '_master_base "$t"' "$HOOKS/exportar-sesion-master.sh" && ! grep -qE 'case "\$t" in \*-master\)' "$HOOKS/exportar-sesion-master.sh"; } \
   && ok "exportar-sesion-master: los puntos de reconocimiento cablean _master_base (no quedó el 'case *-master)' pelado viejo)" \
   || bad "exportar-sesion-master: quedó un 'case \$t in *-master)' pelado sin soporte del sufijo (N)"

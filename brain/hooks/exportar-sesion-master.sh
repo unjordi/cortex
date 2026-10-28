@@ -68,13 +68,22 @@ meta="$DRIVE/$sid.meta.json"   # fuente per-sid SIN contención (la escribe sess
 # ahora el 1er EXPORT en esos mismos eventos escribe el meta, y los Stops siguientes lo ven.)
 title=""
 is_master=0
-# ¿título de master? Acepta "<x>-master" Y el "<x>-master (N)" que el CLI pone al CONTINUAR una sesión como
-# duplicado — sin esto, ese master (p. ej. "cortex-master (2)") dejaba de exportarse EN SILENCIO. Devuelve el
-# NAME BASE canónico (sin el " (N)"), que es el mismo linaje; el archivo de export ya es por-sid, no por-name.
-_master_base() {  # $1=title → echo base si es master; nada si no
-  case "$1" in
-    *-master)         printf '%s' "$1" ;;
-    *-master\ \(*\))  printf '%s' "${1% (*}" ;;   # strip " (N)" → base
+# ¿título de master? Acepta "<x>-master", su duplicado "<x>-master (N)" que pone el CLI al CONTINUAR una
+# sesión, Y "<x>-master-<sufijo>" con un sufijo ALFANUMÉRICO propio (p. ej. "claudio-master-3000") — sin
+# esto, un master con sufijo (incluida la sesión PRINCIPAL de unjordi) dejaba de exportarse EN SILENCIO
+# (B-20). El sufijo exige ser alfanumérico para no tragarse un nombre de archivo tipo "mi-master-plan.md".
+# Devuelve el NAME BASE canónico (sin el " (N)"); el archivo de export ya es por-sid, no por-name.
+_master_base() {  # $1=title → echo base canónica si es master; nada si no
+  local t="$1" b sfx
+  case "$t" in *\ \(*\)) b="${t% (*}" ;; *) b="$t" ;; esac   # strip solo un " (N)" final
+  case "$b" in
+    *-master) printf '%s' "$b" ;;                            # <x>-master
+    *-master-*)                                              # <x>-master-<sufijo>: sufijo DEBE ser alfanumérico
+      sfx="${b##*-master-}"
+      case "$sfx" in
+        ''|*[!A-Za-z0-9]*) : ;;                             # vacío, o con algo no-alfanumérico (plan.md) → NO master
+        *) printf '%s' "$b" ;;
+      esac ;;
     *) : ;;
   esac
 }
@@ -87,7 +96,15 @@ if [ "$is_master" = 0 ]; then
   case "$event" in
     SessionEnd|PreCompact)
       t=$(grep -ao '"customTitle":"[^"]*"' "$tpath" 2>/dev/null | tail -1 | sed 's/.*:"//; s/"$//')
-      _b=$(_master_base "$t"); [ -n "$_b" ] && { title="$_b"; is_master=1; }
+      _b=$(_master_base "$t")
+      if [ -n "$_b" ]; then title="$_b"; is_master=1
+      else
+        # el título PARECE master (contiene -master) pero no casó el patrón → avisa UNA vez (no en silencio, B-20)
+        case "$t" in *-master*)
+          _nm="$DRIVE/.master-nomatch-$(printf '%s' "$t" | tr -c 'A-Za-z0-9' _)"
+          [ -f "$_nm" ] || { printf 'exportar-sesion-master: título "%s" parece master pero no casa el patrón (no se respalda; ¿sufijo no-alfanumérico?)\n' "$t" >&2; : > "$_nm" 2>/dev/null; }
+        ;; esac
+      fi
       ;;
     *) exit 0 ;;   # Stop u otro sin meta → salimos barato, sin escanear
   esac
