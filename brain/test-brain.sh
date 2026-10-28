@@ -40,6 +40,26 @@ trap cleanup EXIT
 
 echo "==> cortex test — \$HOME falso: $FAKEHOME"
 
+# ── Sandbox BIN (B-11 / patrón #4): un PATH = ESPEJO de /usr/bin:/bin pero SIN glab/gh, para los casos que
+# fijan PATH a /usr/bin:/bin. En Arch (cachy) glab/gh VIVEN en /usr/bin → acg/limpiar alcanzaban el glab REAL
+# y la suite se colgó 1.5h en un `timeout glab` real. Con el espejo-sin-glab, glab/gh quedan AUSENTES
+# (command -v falla → fail-safe determinista, sin red, sin cuelgue), preservando la disponibilidad de jq
+# POR-MÁQUINA (no se agrega jq: el espejo refleja lo que cada máquina tiene en /usr/bin:/bin, así cada caso se
+# comporta igual que hoy en esa máquina, solo sin el glab real) y sin estorbar los mocks ACG_EXTRA_BIN/FRONTBIN
+# (viven en dirs aparte). Úsese como `PATH="$SBIN"` donde antes iba `/usr/bin:/bin`.
+SBIN="$FAKEHOME/sandbox-bin"; mkdir -p "$SBIN"
+for _d in /usr/bin /bin; do
+  [ -d "$_d" ] || continue
+  for _f in "$_d"/*; do [ -e "$_f" ] && ln -sf "$_f" "$SBIN/$(basename "$_f")" 2>/dev/null; done
+done
+rm -f "$SBIN/glab" "$SBIN/gh" "$SBIN/glab.exe" "$SBIN/gh.exe"   # el PUNTO de B-11: glab/gh NO alcanzables desde este PATH
+# Verificación de sandbox: glab/gh NO deben resolverse bajo $SBIN (si están en /usr/bin, el espejo los habría
+# copiado y el rm los quita; este aserto FALLA en cachy contra el código viejo, donde PATH="$SBIN" sí traía glab).
+PATH="$SBIN" command -v glab >/dev/null 2>&1 && bad "B-11 sandbox: glab AÚN resoluble bajo \$SBIN (la suite puede colgarse en glab real)" || ok "B-11 sandbox: glab NO resoluble bajo \$SBIN (fail-safe determinista, sin cuelgue)"
+PATH="$SBIN" command -v gh   >/dev/null 2>&1 && bad "B-11 sandbox: gh AÚN resoluble bajo \$SBIN" || ok "B-11 sandbox: gh NO resoluble bajo \$SBIN"
+# ── sanidad: las utilidades que la lib/los scripts necesitan SÍ están en el espejo (si faltan, el espejo no sirve) ──
+for _u in git awk grep sed; do PATH="$SBIN" command -v "$_u" >/dev/null 2>&1 || bad "B-11 sandbox: falta '$_u' en \$SBIN (el espejo de /usr/bin:/bin no lo trajo)"; done
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (b) gate de delegación (\$HOME falso, snapshot de cuota de prueba) =="
@@ -1266,7 +1286,7 @@ M3ROOT=$(mktemp -d "${TMPDIR:-/tmp}/m3e2e.XXXXXX")
   key=$(printf '%s' "org/repo|glab|321" | sed 's/[^A-Za-z0-9]/_/g')
   echo "develop" > "$M3ROOT/acg-mrdest-creacion-${key}"
   chmod 600 "$M3ROOT/acg-mrdest-creacion-${key}"
-  out=$(PATH="/usr/bin:/bin" acg__destino_de_mr_full "glab mr merge 321 --yes" "$M3REPO" 2>/dev/null)
+  out=$(PATH="$SBIN" acg__destino_de_mr_full "glab mr merge 321 --yes" "$M3REPO" 2>/dev/null)
   case "$out" in *CACHE-DE-CREACION*) echo BAD ;; *) echo GOOD ;; esac
 ) | tail -1 | grep -q GOOD \
   && ok "H3: SIN ACG_CACHE_CREACION=1, ni siquiera un archivo 0600 PROPIO resuelve vía CACHE-DE-CREACION (canal apagado por default)" \
@@ -1279,7 +1299,7 @@ M3ROOT2=$(mktemp -d "${TMPDIR:-/tmp}/m3e2e2.XXXXXX")
   key=$(printf '%s' "org/repo|glab|322" | sed 's/[^A-Za-z0-9]/_/g')
   echo "develop" > "$M3ROOT2/acg-mrdest-creacion-${key}"
   chmod 600 "$M3ROOT2/acg-mrdest-creacion-${key}"
-  out=$(PATH="/usr/bin:/bin" ACG_CACHE_CREACION=1 acg__destino_de_mr_full "glab mr merge 322 --yes" "$M3REPO2" 2>/dev/null)
+  out=$(PATH="$SBIN" ACG_CACHE_CREACION=1 acg__destino_de_mr_full "glab mr merge 322 --yes" "$M3REPO2" 2>/dev/null)
   case "$out" in *CACHE-DE-CREACION*) echo GOOD ;; *) echo BAD ;; esac
 ) | tail -1 | grep -q GOOD \
   && ok "MEDIO: CON ACG_CACHE_CREACION=1 explícito + archivo 0600 propio → SÍ resuelve (el flag es opt-in, no está roto)" \
@@ -1301,7 +1321,7 @@ H1EROOT=$(mktemp -d "${TMPDIR:-/tmp}/h1e.XXXXXX")
   key=$(printf '%s' "org/proyecto|glab|5" | sed 's/[^A-Za-z0-9]/_/g')
   printf 'DevelopUnjordi\nAPI\n' > "$H1EROOT/acg-mrdest-${key}"
   chmod 666 "$H1EROOT/acg-mrdest-${key}"
-  out=$(PATH="/usr/bin:/bin" acg__destino_de_mr_full "glab mr merge 5 --yes" "$H1EREPO" 2>/dev/null)
+  out=$(PATH="$SBIN" acg__destino_de_mr_full "glab mr merge 5 --yes" "$H1EREPO" 2>/dev/null)
   case "$out" in *DevelopUnjordi*) echo BAD ;; *) echo GOOD ;; esac
 ) | tail -1 | grep -q GOOD \
   && ok "H1exec: caché plantado (perm 0666) con destino 'DevelopUnjordi' → IGNORADO (antes: bypass total del gate)" \
@@ -1315,7 +1335,7 @@ H1EROOT2=$(mktemp -d "${TMPDIR:-/tmp}/h1e2.XXXXXX")
   key=$(printf '%s' "org/proyecto|glab|6" | sed 's/[^A-Za-z0-9]/_/g')
   printf 'develop\nAPI\n' > "$H1EROOT2/acg-mrdest-${key}"
   chmod 600 "$H1EROOT2/acg-mrdest-${key}"
-  out=$(PATH="/usr/bin:/bin" acg__destino_de_mr_full "glab mr merge 6 --yes" "$H1EREPO2" 2>/dev/null)
+  out=$(PATH="$SBIN" acg__destino_de_mr_full "glab mr merge 6 --yes" "$H1EREPO2" 2>/dev/null)
   case "$out" in *develop*API*) echo GOOD ;; *) echo BAD ;; esac
 ) | tail -1 | grep -q GOOD \
   && ok "H1exec: caché legítimo (perm 0600, el que la propia lib escribe) → SIGUE sirviéndose (sin regresión de caching)" \
@@ -1330,7 +1350,7 @@ H1EROOT3=$(mktemp -d "${TMPDIR:-/tmp}/h1e3.XXXXXX")
   printf 'develop\nAPI\n' > "$H1EROOT3/acg-mrdest-${key}"
   chmod 600 "$H1EROOT3/acg-mrdest-${key}"
   touch -t 202001010000 "$H1EROOT3/acg-mrdest-${key}"
-  out=$(PATH="/usr/bin:/bin" acg__destino_de_mr_full "glab mr merge 7 --yes" "$H1EREPO3" 2>/dev/null)
+  out=$(PATH="$SBIN" acg__destino_de_mr_full "glab mr merge 7 --yes" "$H1EREPO3" 2>/dev/null)
   case "$out" in *develop*API*) echo BAD ;; *) echo GOOD ;; esac
 ) | tail -1 | grep -q GOOD \
   && ok "H1exec: caché VIEJO (mtime 2020, permisos correctos) → NO se confía (TTL, antes: eterno)" \
@@ -1346,7 +1366,7 @@ git -C "$H1EREPO4" remote add origin git@gitlab.com:org/proyecto.git >/dev/null 
 ( export TMPDIR="$H1EROOT4"; PATH="$H1EBIN:/usr/bin:/bin"; acg__destino_de_mr_full "glab mr merge 9 --yes" "$H1EREPO4" >/dev/null 2>&1 )
 key9=$(printf '%s' "org/proyecto|glab|9" | sed 's/[^A-Za-z0-9]/_/g')
 _perm9=$(stat -c '%a' "$H1EROOT4/acg-mrdest-${key9}" 2>/dev/null || stat -f '%Lp' "$H1EROOT4/acg-mrdest-${key9}" 2>/dev/null)   # GNU primero (en ubuntu `stat -f %Lp` da basura)
-out2=$(TMPDIR="$H1EROOT4" PATH="/usr/bin:/bin" acg__destino_de_mr_full "glab mr merge 9 --yes" "$H1EREPO4" 2>/dev/null)   # SIN glab en PATH -> debe ser cache-hit
+out2=$(TMPDIR="$H1EROOT4" PATH="$SBIN" acg__destino_de_mr_full "glab mr merge 9 --yes" "$H1EREPO4" 2>/dev/null)   # SIN glab en PATH -> debe ser cache-hit
 { [ "$_perm9" = "600" ] && case "$out2" in *develop*API*) true ;; *) false ;; esac; } \
   && ok "H1exec: round-trip escritura→lectura sigue funcionando (perm=$_perm9, chmod 600 en la escritura evita auto-invalidar el caché)" \
   || bad "H1exec: REGRESIÓN — la propia escritura del caché (perm=$_perm9) quedó ilegible para su propio lector; got: $out2"
@@ -1628,7 +1648,7 @@ dexp=$(PATH="$CMBIN:$PATH" CLAUDE_PROJECT_DIR="$CMREPO" bash -c '. "'"$HOOKS"'/a
   && ok "cmd (b): destino explícito (--target-branch main) GANA sobre la API (develop del stub) — sin red" || bad "cmd (b): el destino explícito no ganó sobre la API (got '$dexp')"
 # El fix real: resuelve el destino SIN gh/glab en el PATH (simula el subproceso launch-GUI).
 rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
-dnocli=$(env -i PATH="/usr/bin:/bin" ACG_PATH_AUGMENT=0 HOME="$CMHOME" bash -c '. "'"$HOOKS"'/analizar-comando-git.sh"; acg_destino_de_mr "gh pr merge 5 --base develop"')
+dnocli=$(env -i PATH="$SBIN" ACG_PATH_AUGMENT=0 HOME="$CMHOME" bash -c '. "'"$HOOKS"'/analizar-comando-git.sh"; acg_destino_de_mr "gh pr merge 5 --base develop"')
 [ "$dnocli" = develop ] \
   && ok "cmd (b): --base develop resuelve SIN gh/glab en el PATH (modo-falla launch-GUI) → develop" || bad "cmd (b): no resolvió el destino sin CLI en PATH (got '$dnocli')"
 # Fail-safe INTACTO: sin flag de destino Y sin gh/glab resoluble → vacío (el juez cae a su fail-SEGURO, NUNCA
@@ -1636,7 +1656,7 @@ dnocli=$(env -i PATH="/usr/bin:/bin" ACG_PATH_AUGMENT=0 HOME="$CMHOME" bash -c '
 # INDEPENDIENTE de la máquina (sin él, el augment re-agrega /opt/homebrew/bin en una Mac de dev y el test
 # mentiría). Con el augment activo (default), este mismo caso RESUELVE por API — es justo el fix del #78.
 rm -f /tmp/acg-mrdest-* "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null   # env -i UNSETea TMPDIR → la lib cachea en /tmp: límpialo también
-dfs=$(env -i PATH="/usr/bin:/bin" ACG_PATH_AUGMENT=0 HOME="$CMHOME" bash -c '. "'"$HOOKS"'/analizar-comando-git.sh"; acg_destino_de_mr "glab mr merge 88"')
+dfs=$(env -i PATH="$SBIN" ACG_PATH_AUGMENT=0 HOME="$CMHOME" bash -c '. "'"$HOOKS"'/analizar-comando-git.sh"; acg_destino_de_mr "glab mr merge 88"')
 [ -z "$dfs" ] \
   && ok "cmd (b) fail-safe: SIN flag y SIN gh/glab → destino vacío (el fail-safe del juez sigue frenando)" || bad "cmd (b) fail-safe: debía salir vacío sin destino resoluble (got '$dfs')"
 
@@ -1650,14 +1670,14 @@ AUGBIN="$FAKEHOME/augbin"; mkdir -p "$AUGBIN"
 printf '#!/usr/bin/env bash\necho '\''{"target_branch":"develop"}'\''\n' > "$AUGBIN/glab"; chmod +x "$AUGBIN/glab"
 # (FP-ya-no) sin flag de destino + glab AUSENTE del PATH mínimo PERO presente en ACG_EXTRA_BIN → el augment
 # lo halla → destino RESUELVE a develop (antes: vacío → fail-safe frenaba el merge legítimo del #78).
-daug=$(env -i PATH="/usr/bin:/bin" ACG_EXTRA_BIN="$AUGBIN" HOME="$CMHOME" bash -c '. "'"$HOOKS"'/analizar-comando-git.sh"; acg_destino_de_mr "glab mr merge 8801"')
+daug=$(env -i PATH="$SBIN" ACG_EXTRA_BIN="$AUGBIN" HOME="$CMHOME" bash -c '. "'"$HOOKS"'/analizar-comando-git.sh"; acg_destino_de_mr "glab mr merge 8801"')
 [ "$daug" = develop ] \
   && ok "PATH-augment (#78): glab en ACG_EXTRA_BIN (no en PATH) → destino RESUELVE a develop (rescate launch-GUI)" || bad "PATH-augment (#78): el augment no rescató el destino (got '$daug')"
 # (control) el MISMO caso con el augment DESACTIVADO → vacío (prueba que el rescate ES lo que resuelve, no otra
 # vía). MR-id DISTINTO (881): la lib cachea el destino por MR-id en /tmp (env -i UNSETea TMPDIR → el rm del
 # padre, que usa el TMPDIR real, no lo alcanza) — reusar el 88 tomaría el 'develop' cacheado por daug.
 rm -f /tmp/acg-mrdest-* "${TMPDIR:-/tmp}"/acg-mrdest-* 2>/dev/null
-dctl=$(env -i PATH="/usr/bin:/bin" ACG_EXTRA_BIN="$AUGBIN" ACG_PATH_AUGMENT=0 HOME="$CMHOME" bash -c '. "'"$HOOKS"'/analizar-comando-git.sh"; acg_destino_de_mr "glab mr merge 881"')
+dctl=$(env -i PATH="$SBIN" ACG_EXTRA_BIN="$AUGBIN" ACG_PATH_AUGMENT=0 HOME="$CMHOME" bash -c '. "'"$HOOKS"'/analizar-comando-git.sh"; acg_destino_de_mr "glab mr merge 881"')
 [ -z "$dctl" ] \
   && ok "PATH-augment control: augment OFF → destino vacío (confirma que el rescate es la causa)" || bad "PATH-augment control: destino no-vacío con augment OFF (got '$dctl')"
 # (ANTI-WEAKENING) un glab en el FRENTE del PATH GANA sobre los dirs del augment (append, JAMÁS prepend):
@@ -3708,7 +3728,7 @@ n_a4b=$(grep -c 'rama represada' "$A4REPO2/.claude/memory/bitacora.md")
 # sin foro que consultar, el reporte lo DICE en vez de inventar un estado
 : > "$A4REPO2/.claude/memory/.ramas-huerfanas-estado"
 : > "$A4REPO2/.claude/memory/bitacora.md"
-a4nd="$(cd "$A4REPO2" && CLAUDE_INTEGRACION_BASE=develop PATH=/usr/bin:/bin bash "$HOOKS/limpiar.sh" ramas --dry-run --no-fetch 2>&1)"
+a4nd="$(cd "$A4REPO2" && CLAUDE_INTEGRACION_BASE=develop PATH="$SBIN" bash "$HOOKS/limpiar.sh" ramas --dry-run --no-fetch 2>&1)"
 printf '%s' "$a4nd" | grep -q 'estado del PR desconocido' \
   && ok "FIX-5: sin gh/glab, el reporte DICE que no pudo consultar el foro (no inventa 'SIN PR')" \
   || bad "FIX-5: afirmó un estado de PR que no pudo consultar; got: $a4nd"
@@ -3949,7 +3969,7 @@ git -C "$EEREPO" checkout -q develop >/dev/null 2>&1
 git -C "$EEREPO" cherry develop feat/multi 2>/dev/null | grep -q '^+' \
   && ok "b3h(teeth): squash multi-commit → git cherry con '+' (sin (e)/(d) se conservaría)" \
   || bad "b3h(teeth): test mal armado"
-PATH=/usr/bin:/bin bz_es_zombie "$EEREPO" feat/multi develop \
+PATH="$SBIN" bz_es_zombie "$EEREPO" feat/multi develop \
   && ok "b3h: (e) 'Rama:' en el log de la base → ZOMBIE, SIN red y SIN gh/glab (PATH mínimo de launchd)" \
   || bad "b3h: (e) no podó el squash multi-commit con la línea 'Rama:' presente"
 [ "$BZ_RAZON" = e ] && ok "b3h: BZ_RAZON=e (señal local, no d/host)" || bad "b3h: BZ_RAZON inesperado; got: $BZ_RAZON"
@@ -3999,10 +4019,10 @@ DI_OID="$(git -C "$DIREPO" rev-parse feat/multi)"
 git -C "$DIREPO" checkout -q develop >/dev/null 2>&1
 git -C "$DIREPO" merge --squash feat/multi >/dev/null 2>&1; git -C "$DIREPO" commit -qm "squash sin convencion" >/dev/null 2>&1
 DICACHE="$DIROOT/prcache"; printf 'feat/multi\t%s\n' "$DI_OID" > "$DICACHE"
-diout="$(cd "$DIREPO" && PATH=/usr/bin:/bin bash "$HOOKS/limpiar.sh" ramas --dry-run --no-fetch 2>&1)"
+diout="$(cd "$DIREPO" && PATH="$SBIN" bash "$HOOKS/limpiar.sh" ramas --dry-run --no-fetch 2>&1)"
 printf '%s' "$diout" | grep -q 'borraría: feat/multi' && ok "b3i (2026-10-22): sin gh/glab pero con la señal (p) por CONTENIDO (modo=barrido) → feat/multi INTEGRADA y se poda (el contenido lo prueba offline; ya no queda INDETERMINADA)" || bad "b3i: (p) no reportó integrada sin gh/glab; got: $diout"
 printf '%s' "$diout" | grep -q 'CONSERVADA (trabajo sin integrar): feat/multi' && bad "b3i: afirmó 'trabajo sin integrar' cuando su contenido SÍ está en develop (mentira)" || ok "b3i: NO afirma 'trabajo sin integrar' a secas (su contenido está integrado)"
-diout2="$(cd "$DIREPO" && PATH=/usr/bin:/bin CLAUDE_BZ_PRCACHE="$DICACHE" bash "$HOOKS/limpiar.sh" ramas --dry-run --no-fetch 2>&1)"
+diout2="$(cd "$DIREPO" && PATH="$SBIN" CLAUDE_BZ_PRCACHE="$DICACHE" bash "$HOOKS/limpiar.sh" ramas --dry-run --no-fetch 2>&1)"
 printf '%s' "$diout2" | grep -q 'borraría: feat/multi' && ok "b3i: con el PR-cache inyectado (equivalente a tener gh/glab) → integrada, se poda" || bad "b3i: con PR-cache inyectado no podó feat/multi; got: $diout2"
 rm -rf "$DIROOT"
 
@@ -4213,7 +4233,7 @@ git -C "$A4BREPO" checkout -q develop >/dev/null 2>&1
 git -C "$A4BREPO" merge --squash feat/multi >/dev/null 2>&1; git -C "$A4BREPO" commit -qm "squash sin convencion" >/dev/null 2>&1
 git -C "$A4BREPO" worktree add -q "$A4BROOT/wt-multi" feat/multi >/dev/null 2>&1
 : > "$A4BREPO/.claude/memory/bitacora.md"
-( cd "$A4BREPO" && PATH=/usr/bin:/bin bash "$HOOKS/limpiar.sh" worktrees >/dev/null 2>&1 )
+( cd "$A4BREPO" && PATH="$SBIN" bash "$HOOKS/limpiar.sh" worktrees >/dev/null 2>&1 )
 grep -q 'worktrees pendientes' "$A4BREPO/.claude/memory/bitacora.md" 2>/dev/null && bad "b3n2: A-4 — escribió un pendiente FALSO para un veredicto INDETERMINADO" || ok "b3n2: A-4 — NO escribió pendiente para un veredicto indeterminado (no miente en la bitácora)"
 rm -rf "$A4BROOT"
 
