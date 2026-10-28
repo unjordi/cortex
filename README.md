@@ -114,7 +114,7 @@ El cerebro se ordena por *dureza*: arriba lo que te **bloquea** sin negociar; ab
 ├─ 🗂️ to-do                    carga la interfaz de tareas del harness desde el backlog durable (estado-proyecto.md)
 ├─ 💧 rehidratar-hilo          relee el HILO a mano (gemelo del hook; respaldo si un update del CLI rompe el auto-rehidratado)
 ├─ 🛟 reconstruir-contexto     RED DE EMERGENCIA cuando el checkpoint quedó pobre y /compact fundió el hilo: excava andamio→backlog→transcript y cierra re-volcando con checkpoint
-├─ 🗺️ diagramar                diagramas por destino: .dot→dot2yed→yEd (editar a mano) · Mermaid en .md versionado (verse en GitHub)
+├─ 🗺️ diagramar                diagramas por destino: draw.io por defecto (skill oficial drawio) · Mermaid en .md versionado (verse en GitHub)
 ├─ 🔬 auditar-proceso-algoritmo  auditor experto read-only (proceso industrial + algoritmo) → hallazgos priorizados; se alimenta de los flowcharts de diagramar
 ├─ 🩺 auditar-coherencia-cerebro fan-out read-only sobre el PROPIO cerebro (guards+flowcharts+doc): evasiones/huecos/drift, verificado por ejecución → loop hasta converger; modo-cerebro de auditar-proceso-algoritmo
 ├─ 🧪 auditar-suficiencia-operativa  ¿ALCANZA la doc para HACER el trabajo sin romper nada ni re-investigar? tareas reales ✅/⚠️/❌ con archivo:línea + RE-auditar tras arreglar
@@ -186,7 +186,7 @@ mismo árbol.
 
 Es **doc de record** (norma *doc = realidad*): si cambia un hook/norma/skill —alta, baja o cambio de
 lógica— se actualiza `mapa-cerebro.md` **en la misma tanda**, igual que este árbol y el conteo de
-checks de `test-brain.sh`. Para el mapa *editable a mano* (yEd) el flujo va por el skill `diagramar`;
+checks de `test-brain.sh`. Para el mapa *editable a mano* (draw.io, con `bin/dot2drawio.py`) el flujo va por el skill `diagramar`;
 `docs/mapa-flujos.dot` (maestro único en Graphviz) está retirado.
 
 ## Lo que lo hace vivo — se refleja, se cura, se actualiza

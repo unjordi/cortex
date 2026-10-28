@@ -7536,7 +7536,7 @@ CT2="$(find "$FAKEHOME2/.claude/projects" -name 'como-trabajar-con-*.md' -type f
 [ -f "$FAKEHOME2/.claude/skills/checkpoint/SKILL.md" ]   && ok "skill checkpoint instalada"   || bad "falta skill checkpoint"
 [ -f "$FAKEHOME2/.claude/skills/rehidratar-hilo/SKILL.md" ] && ok "skill rehidratar-hilo instalada (gemelo manual del hook)" || bad "falta skill rehidratar-hilo"
 [ -f "$FAKEHOME2/.claude/skills/turno-nocturno/SKILL.md" ] && ok "skill turno-nocturno instalada (protocolo del turno de noche)" || bad "falta skill turno-nocturno"
-[ -f "$FAKEHOME2/.claude/skills/diagramar/SKILL.md" ] && ok "skill diagramar instalada (dot2yed para editar · Mermaid para GitHub)" || bad "falta skill diagramar"
+[ -f "$FAKEHOME2/.claude/skills/diagramar/SKILL.md" ] && ok "skill diagramar instalada (draw.io por defecto · dot2drawio para mapas · Mermaid para GitHub)" || bad "falta skill diagramar"
 [ -f "$FAKEHOME2/.claude/skills/auditar-proceso-algoritmo/SKILL.md" ] && ok "skill auditar-proceso-algoritmo instalada (auditor experto read-only)" || bad "falta skill auditar-proceso-algoritmo"
 [ -f "$FAKEHOME2/.claude/hooks/rehidratar-hilo.sh" ]     && ok "hook rehidratar-hilo instalado" || bad "falta hook rehidratar-hilo"
 [ -f "$FAKEHOME2/.claude/hooks/aviso-contexto.sh" ]      && ok "hook aviso-contexto instalado"  || bad "falta hook aviso-contexto"

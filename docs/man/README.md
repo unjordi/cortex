@@ -12,6 +12,7 @@
 | [checkpoint-mecanico.md](checkpoint-mecanico.md) | Crea un checkpoint mecánico del estado del repo. |
 | [claude-session.md](claude-session.md) | Gestiona el transporte de sesiones de Claude Code por git. |
 | [cortex-term-broker.md](cortex-term-broker.md) | Lanza el broker de terminal de cortex. |
+| [dot2drawio.md](dot2drawio.md) | Convierte DOT de Graphviz a un .drawio editable en draw.io (layout y estilo preservados). |
 | [dot2yed.md](dot2yed.md) | Convierte DOT de Graphviz a GraphML editable en yEd. |
 | [migrar-term-broker.md](migrar-term-broker.md) | Migra la configuración del term-broker. |
 | [mmd2dot.md](mmd2dot.md) | Convierte erDiagram de Mermaid a Graphviz DOT. |

@@ -197,7 +197,7 @@
 <text xml:space="preserve" text-anchor="start" x="561.12" y="-1687.5" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🗺️ diagramar</text>
 <polygon fill="#1b1712" stroke="none" points="1175.12,-1678.75 1175.12,-1704.5 3327.88,-1704.5 3327.88,-1678.75 1175.12,-1678.75"/>
 <polygon fill="none" stroke="#5fa89e" points="1175.12,-1678.75 1175.12,-1704.5 3327.88,-1704.5 3327.88,-1678.75 1175.12,-1678.75"/>
-<text xml:space="preserve" text-anchor="start" x="1967.25" y="-1687.12" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">diagramas por destino: .dot→dot2yed→yEd (editar a mano) · Mermaid en .md versionado (verse en GitHub)</text>
+<text xml:space="preserve" text-anchor="start" x="1959.75" y="-1688.25" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">diagramas por destino: draw.io por defecto (skill oficial drawio) · Mermaid en .md versionado (verse en GitHub)</text>
 <polygon fill="#1b1712" stroke="none" points="16.12,-1653 16.12,-1678.75 1175.12,-1678.75 1175.12,-1653 16.12,-1653"/>
 <polygon fill="none" stroke="#5fa89e" points="16.12,-1653 16.12,-1678.75 1175.12,-1678.75 1175.12,-1653 16.12,-1653"/>
 <text xml:space="preserve" text-anchor="start" x="519.88" y="-1661.75" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🔬 auditar&#45;proceso&#45;algoritmo</text>
