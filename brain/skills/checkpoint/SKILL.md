@@ -308,6 +308,10 @@ Modelo:
 
 El detalle (diseño, plan, resuelto) NO va: ya viaja en el hilo.
 
+**Procedencia (regla dura):** en las instrucciones, solo va entre comillas el texto LITERAL del usuario;
+lo que tú relayes ahí sobrevive con la procedencia que traiga (no laves una inferencia tuya como cita
+suya). Es la misma regla de PROCEDENCIA del volcado, aplicada al borrador.
+
 ## El estándar: que ESCARBAR sea innecesario
 El hilo se escribe para que la siguiente instancia (tú mismo tras compactar, o un sucesor) NO tenga que
 releer las fuentes para reconstruir el modelo — le basta con LEER el hilo. Si al retomar hace falta
