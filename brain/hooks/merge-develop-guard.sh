@@ -557,15 +557,14 @@ _grant_cita_verificada() {   # $1 = línea de grant → 0 si su cita aparece en 
   cita=$(printf '%s' "$grant" | sed -n 's/.*cita="\([^"]*\)".*/\1/p')
   [ -n "$cita" ] || return 1
   # El piso de longitud (≥20) + el léxico de merge (C1/1f0608e) se RETIRARON (2026-10-23, FN flaggeado por
-  # unjordi): defendían contra el AGENTE escribiendo su propio grant con una cita trivial, pero ese vector lo
-  # cierra ahora `proteger-autorizaciones` (solo el HUMANO escribe autorizaciones-vigentes*). Con el agente
-  # fuera, el piso solo producía FALSOS NEGATIVOS: una autorización humana CORTA y real ('mergea a develop'=16,
+  # unjordi): solo producían FALSOS NEGATIVOS: una autorización humana CORTA y real ('mergea a develop'=16,
   # 'haz el merge a main'=19) quedaba por debajo de 20 y NO se honraba. Defensa que QUEDA: la cita aparece en
   # un mensaje HUMANO (no sidechain/tool_result/cross-session/isMeta, abajo) + la VENTANA DE TIMESTAMP.
-  # VENTANA (defensa en profundidad, FAIL-OPEN — la seguridad PRIMARIA es proteger-autorizaciones): el mensaje
+  # Claude escribe el grant cuando unjordi se lo pide (proteger-autorizaciones se retiró el 2026-10-28), así que
+  # esta verificación de la cita ES el control. VENTANA (FAIL-OPEN): el mensaje
   # citado no debe ser más viejo que 24h antes de que se ESCRIBIÓ el grant (registrada=) ni posterior a su
   # vencimiento. registrada ausente o fecha ilegible → NO se rechaza (rechazar por un timestamp ilegible
-  # reintroduciría FNs, y el agente igual no puede depositar el grant → el fail-open no abre ningún hueco).
+  # reintroduciría FNs; el modelo de amenaza es el error del agente, no la evasión).
   local _reg _rege _vence _tslo _tshi
   _vence=$(printf '%s' "$grant" | sed -n 's/.*vence_epoch=\([0-9]*\).*/\1/p')
   case "$_vence" in ''|*[!0-9]*) _tshi=-1 ;; *) _tshi="$_vence" ;; esac

@@ -57,7 +57,7 @@ metadata:
 > - 🟠 **B-02** hooks tier `repo` de repos PERSONALES sin vía de refresco; invariante de timeouts solo mira la copia del brain → juez con crédito 20s en harness de 15s (fail-open) en 5/6 copias. `drift-cerebro-comun.sh:80-108`; `test-brain.sh:5085-5100`. NO unjordi (re-siembra de repos ajenos = nota a sus buzones).
 > - 🟠 **B-03** aviso-drift decide la DIRECCIÓN del drift por mtime; su remedio puede destruir trabajo. Sellar el SHA de lo instalado (`~/.claude/.brain-source-sha`) y decidir por CONTENIDO vs `git log`. `drift-cerebro-comun.sh:289,346`, `install-brain.sh:412`. NO unjordi.
 > - 🟠 **B-04** merge-develop-guard no honra el grant permanente con cwd ≠ repo destino. `merge-develop-guard.sh:471-479,636`. **PRECISIÓN (decidido):** lookup extra en el `.claude/memory` de la sesión con `repos=` que nombre el slug, develop, veto de cita; main jamás.
-> - 🟠 **B-05** Claude escribe el grant cuando unjordi lo pide → **se RESUELVE con el retiro de `proteger-autorizaciones`** (ver Decisiones arriba).
+> - ✅ [hecho 2026-10-28, retiro] **B-05** Claude escribe el grant cuando unjordi lo pide → **se RESUELVE con el retiro de `proteger-autorizaciones`** (ver Decisiones arriba).
 > - 🟠 **B-06** dod-verificar: estatus de tooling interno cuyo QA es el dogfood → **RESUELTO por decisión** (el juez aplica la regla de como-trabajar). `dod-verificar.sh:128-133`.
 >
 > **MEDIO**
@@ -69,7 +69,7 @@ metadata:
 > - 🟡 **B-12** limpiar-worktrees «SUCIO» con 0 archivos en repos con submódulo. `limpiar-impl-worktrees.sh:99-110`. NO unjordi.
 > - 🟡 **B-13** aviso-drift escribe sobre `CLAUDE.local.md` TRACKEADO; conservar el respaldo `conocimiento-propio.md`. `aviso-drift-cerebro.sh:61,67-81`. NO unjordi.
 > - 🟡 **B-14** aviso-contexto: numerador inconsistente con `/context` (imágenes) [SIN VERIFICAR — diagnosticar con el transcript heimdall-net 2026-09-28]. NO unjordi.
-> - 🟡 **B-15** proteger-autorizaciones glob incluye el archivo de grants → **se RESUELVE con el retiro** (ver Decisiones arriba).
+> - ✅ [hecho 2026-10-28, retiro] **B-15** proteger-autorizaciones glob incluye el archivo de grants → **se RESUELVE con el retiro** (ver Decisiones arriba).
 > - 🟡 **B-16** bloqueos del clasificador → **solo la NORMA** (decidido). no-code/ya-cubierto.
 >
 > **BAJO** (todos NO unjordi)

@@ -37,7 +37,6 @@ public sealed class BrainState
     public static readonly HashSet<string> KnownGlobalHooks = new()
     {
         "merge-develop-guard",
-        "proteger-autorizaciones",
         "proteger-arbol",
         "proteger-fuente-cerebro",
         "limite-gasto", "delegacion-gate", "delegacion-registrar",
