@@ -159,3 +159,11 @@ type: project
 - A1 (en worktree, suite corriendo): grant autoescribible → anclar awk + _grant_cita_verificada (cita en mensaje HUMANO de transcript, filtro autoridad-humana jq; cerró el vector SendMessage/tool_result de claudio). Ripple: transcripts sembrados en b1f/cmd-cross/CRÍTICO-3.
 - PENDIENTE: A6 (macos cortex-fetch esquema equiv_*), MEDIOs claros, charts. Backlog en estado-proyecto (G).
 - 2026-10-23 · auditoría Sonnet MEDIOs (fix/corpus-fp-bench): cerrados 4 — no-bypass-deploy prefijos-ejecución+helm/kubectl+-h (044f6c7) y BAJO H17 ~/·$HOME (0b2af9b); sincronizar-tasklist fallback inequívoco + todo-completado + no-resucita (436905e); aviso-drift auto-push no arrastra WIP ni secretos (gate gitleaks, 610a1f7); limpiar-impl-flotilla lock-huérfano recuperable + dry-run read-only + case synced-local-wip/secret (b694337). Cada uno con test que falla vs el viejo. Suite 1450·0, nada pusheado. Siguen 10 MEDIOs + charts.
+- **[worktrees pendientes tras barrido]**
+  - worktree `agent-a7d223c08fc745e48` (rama `worktree-agent-a7d223c08fc745e48`) sin mergear a develop — retomar o cerrar.
+  - worktree `agent-af2737b0f23af361c` (rama `worktree-agent-af2737b0f23af361c`) sin mergear a develop — retomar o cerrar.
+  - worktree `despertar-mensaje` (rama `fix/despertar-mensaje`) sin mergear a develop — retomar o cerrar.
+  - worktree `A1-ci-shellcheck` (rama `fix/afinado-nucleo-2026-10`, YA integrada a develop) retenido por 3 archivo(s) sin commitear/untracked — revisar y limpiar; mientras siga sucio CONGELA esa rama y nadie la barrerá.
+  - worktree `corpus-bench` (rama `fix/corpus-fp-bench`) sin mergear a develop — retomar o cerrar.
+  - worktree `despertar-master` (rama `feat/despertar-master`) sin mergear a develop — retomar o cerrar.
+  - worktree `masters-json` (rama `feat/masters-json-local`) sin mergear a develop — retomar o cerrar.
