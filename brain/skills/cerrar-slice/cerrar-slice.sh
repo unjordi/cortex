@@ -160,7 +160,11 @@ if [ "$ABRIR" = 1 ]; then
   [ -z "$FORGE" ] && FORGE="$(_forge_por_origin)"
   case "$FORGE" in
     gh)   set -- gh pr create --base develop --head "$BRANCH" --fill ${REPO:+-R "$REPO"} ;;
-    glab) set -- glab mr create --source-branch "$BRANCH" --target-branch develop --fill --squash-before-merge --remove-source-branch --yes ${REPO:+-R "$REPO"} ;;
+    glab) # sin --fill: glab --fill PUSHEA el HEAD del cwd a --source-branch (el clon puede estar en otra rama).
+          git fetch -q origin "$BRANCH" 2>/dev/null || true
+          _tit="$(git log -1 --format=%s "origin/$BRANCH" 2>/dev/null)"; [ -n "$_tit" ] || _tit="$BRANCH"
+          _desc="$(git log -1 --format=%b "origin/$BRANCH" 2>/dev/null)"; [ -n "$_desc" ] || _desc="$_tit"
+          set -- glab mr create --source-branch "$BRANCH" --target-branch develop --title "$_tit" --description "$_desc" --squash-before-merge --remove-source-branch --yes ${REPO:+-R "$REPO"} ;;
     *)    _err "no pude decidir el forge por el origin de $(pwd); pásale --forge glab|gh." ;;
   esac
   printf 'cerrar-slice: (%s) %s\n' "$(pwd)" "$*" >&2
