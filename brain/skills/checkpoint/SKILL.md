@@ -295,16 +295,18 @@ checkpoint es **entregarle el comando armado** en un bloque de código, listo pa
 
     /compact <instrucciones>
 
-Las instrucciones las DERIVAS del volcado que acabas de escribir (no las inventes). Van, cortas:
-- el **marcador de estado**: hashes, ramas, qué está PROBADO y qué NO;
-- la **cola en orden** (lo que sigue);
-- las **citas textuales del usuario**, sin corregir erratas;
-- la **decisión abierta**.
+Una sola línea, en este orden:
+1. el **puntero**: «Lee `.claude/memory/hilo-mental-actual.md` COMPLETO.»;
+2. **En curso:** lo que está corriendo o a medias, con sus identificadores (id de la tarea en background,
+   ramas, hashes, PR/MR);
+3. **qué sigue** en cadena (`si X → Y → Z`);
+4. las **citas del usuario** que gobiernan lo que sigue, textuales, como `[user: "…"]`.
 
-Son **cortas a propósito**: COMPLEMENTAN el hilo en disco (`hilo-mental-actual.md`), no lo sustituyen —
-el CLI re-lee el `# Compact instructions` del `CLAUDE.md` y el hilo sobrevive aparte; estas instrucciones
-solo SESGAN el resumen hacia lo que no debe perderse (las instrucciones de `/compact` sí cambian el
-formato y el contenido del resumen).
+Modelo:
+
+    /compact Lee .claude/memory/hilo-mental-actual.md COMPLETO. En curso: suites (tarea bwtj8933h) de develop + fix/x (37ada1c); si no hay FAIL nuevos → PR+merge → install en Mac y cachy. Luego <master> en PAUSA [user: "detén al cortex después de esta ronda de merges plz"].
+
+El detalle (diseño, plan, resuelto) NO va: ya viaja en el hilo.
 
 **Procedencia (regla dura):** en las instrucciones, solo va entre comillas el texto LITERAL del usuario;
 lo que tú relayes ahí sobrevive con la procedencia que traiga (no laves una inferencia tuya como cita

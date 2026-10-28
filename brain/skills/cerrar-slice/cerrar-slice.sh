@@ -20,6 +20,7 @@
 #
 #   USO   cerrar-slice.sh --id <id> (--message-file <f> | --message "<txt>") [--forge glab|gh] [--repo <slug>]
 #                         [--branch <feat/…>] [--wait-ci] [--dry-run]
+#         cerrar-slice.sh --abrir --branch <feat/…> [--repo <slug>] [--forge glab|gh] [--dry-run]
 set -u
 
 _uso() { cat <<'USO'
@@ -37,6 +38,8 @@ cerrar-slice.sh — arma el merge de un slice a develop (squash, INMEDIATO, sin 
   --branch <feat/…>    nombre de la ramita (informativo; para el rastro si el mensaje no lo trae — NO lo inventa).
   --wait-ci            espera a que el pipeline/checks del MR estén en verde ANTES de mergear (acotado).
   --dry-run            imprime el comando exacto y NO lo ejecuta.
+  --abrir              en vez de mergear, ABRE el MR/PR de --branch hacia develop, ejecutando desde el clon local
+                       de --repo (aunque el cwd sea otro repo). No pide --id ni mensaje.
   -h|--help            esta ayuda.
 
 Reglas que hace cumplir (las mismas del guard merge-develop-guard):
@@ -48,6 +51,21 @@ USO
 }
 
 _err() { printf 'cerrar-slice: %s\n' "$1" >&2; exit 1; }
+
+# Decide el forge por el HOST del remoto origin, NO por "cuál CLI está instalada": en una Mac con glab
+# instalado, un repo de GitHub (como cortex) NO debe usar glab. github.com→gh · *gitlab*→glab · host
+# desconocido / sin origin → VACÍO (el llamador da un error claro; NO se adivina).
+_forge_por_origin() {
+  local url host
+  url="$(git remote get-url origin 2>/dev/null || true)"
+  [ -n "$url" ] || { printf ''; return 0; }
+  host="$(printf '%s' "$url" | sed -E 's#^[a-zA-Z][a-zA-Z0-9+.-]*://##; s#^[^@/]*@##; s#[:/].*$##')"
+  case "$host" in
+    github.com|*.github.com) printf 'gh' ;;
+    *gitlab*)                printf 'glab' ;;
+    *)                       printf '' ;;
+  esac
+}
 
 # Gate de gitleaks ANTES de integrar: escanea los commits del slice (origin/<base>..HEAD) y PARA si halla un
 # secreto (reemplaza al hook secret-scan, retirado 2026-10-19). Las excepciones son por HUELLA y explícitas —
@@ -65,9 +83,9 @@ _gitleaks_gate() {
   # H18: --repo a OTRO repo → el scan de `.` (cwd) sería el repo EQUIVOCADO. No podemos verificar
   # localmente → avisa y NO declara "limpio" (el CI de gitleaks es el backstop server-side).
   if [ -n "$REPO" ]; then
-    url="$(git remote get-url origin 2>/dev/null || true)"
+    url="$(git remote get-url origin 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"
     case "${url%.git}" in
-      *"$REPO"*) : ;;
+      *[/:]"$(printf '%s' "$REPO" | tr '[:upper:]' '[:lower:]')") : ;;
       *) printf 'cerrar-slice: ⚠️ --repo %s NO es el repo del directorio actual → el gate local de gitleaks escanearía otro repo; NO verifico aquí (el CI lo cubre). Para el gate local, córrelo desde el clon de %s.\n' "$REPO" "$REPO" >&2; return 0 ;;
     esac
   fi
@@ -107,7 +125,7 @@ _gitleaks_gate() {
 }
 
 # ── parseo de args ──
-ID=""; MSG=""; MSG_FILE=""; FORGE=""; REPO=""; BRANCH=""; WAIT_CI=0; DRY=0
+ID=""; MSG=""; MSG_FILE=""; FORGE=""; REPO=""; BRANCH=""; WAIT_CI=0; DRY=0; ABRIR=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --id)            ID="${2:-}"; shift 2 ;;
@@ -118,12 +136,37 @@ while [ $# -gt 0 ]; do
     --branch)        BRANCH="${2:-}"; shift 2 ;;
     --wait-ci)       WAIT_CI=1; shift ;;
     --dry-run)       DRY=1; shift ;;
+    --abrir)         ABRIR=1; shift ;;
     --auto|--auto-merge)
       _err "--auto/--auto-merge está PROHIBIDO: la integración a develop es INMEDIATA, nunca encolada (MWPS). Quítalo." ;;
     -h|--help)       _uso; exit 0 ;;
     *)               _err "opción desconocida: $1 (usa --help)" ;;
   esac
 done
+
+# ── --abrir: abre el MR/PR desde el clon de --repo (glab/gh fallan si el cwd es OTRO repo) ──
+if [ "$ABRIR" = 1 ]; then
+  [ -n "$BRANCH" ] || _err "--abrir necesita --branch <feat/…>."
+  case "$REPO" in *'$'*|*'`'*) _err "--repo trae una variable de shell sin expandir ('$REPO'): pásale el SLUG LITERAL." ;; esac
+  if [ -n "$REPO" ]; then
+    for _lib in "$(dirname "$0")/../../hooks/analizar-comando-git.sh" "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks/analizar-comando-git.sh"; do
+      [ -f "$_lib" ] && { . "$_lib"; break; }
+    done
+    command -v acg_clon_local_de_slug >/dev/null 2>&1 || _err "no encontré la lib analizar-comando-git.sh para ubicar el clon de $REPO."
+    _clon="$(acg_clon_local_de_slug "$REPO" .)" || _clon=""
+    [ -n "$_clon" ] || _err "no encontré un clon local de $REPO (ni el repo actual ni sus hermanos)."
+    cd "$_clon" || _err "no pude entrar a $_clon."
+  fi
+  [ -z "$FORGE" ] && FORGE="$(_forge_por_origin)"
+  case "$FORGE" in
+    gh)   set -- gh pr create --base develop --head "$BRANCH" --fill ${REPO:+-R "$REPO"} ;;
+    glab) set -- glab mr create --source-branch "$BRANCH" --target-branch develop --fill --squash-before-merge --remove-source-branch --yes ${REPO:+-R "$REPO"} ;;
+    *)    _err "no pude decidir el forge por el origin de $(pwd); pásale --forge glab|gh." ;;
+  esac
+  printf 'cerrar-slice: (%s) %s\n' "$(pwd)" "$*" >&2
+  [ "$DRY" = 1 ] && exit 0
+  exec "$@"
+fi
 
 [ -n "$ID" ] || _err "falta --id <id del MR/PR>."
 # el id debe ser un entero (sin # ni $VAR) — un valor opaco no se resuelve en el forge.
@@ -144,20 +187,6 @@ fi
 #    squash borra el merge-commit con el #id → el rastro «Rama:/MR:» debe vivir en el mensaje para que
 #    `git log develop` diga de qué ramita salió el commit; por eso lo agregamos nosotros si falta.
 _warn() { printf 'cerrar-slice: %s\n' "⚠️  $1" >&2; }
-# Decide el forge por el HOST del remoto origin, NO por "cuál CLI está instalada": en una Mac con glab
-# instalado, un repo de GitHub (como cortex) NO debe usar glab. github.com→gh · *gitlab*→glab · host
-# desconocido / sin origin → VACÍO (el llamador da un error claro; NO se adivina).
-_forge_por_origin() {
-  local url host
-  url="$(git remote get-url origin 2>/dev/null || true)"
-  [ -n "$url" ] || { printf ''; return 0; }
-  host="$(printf '%s' "$url" | sed -E 's#^[a-zA-Z][a-zA-Z0-9+.-]*://##; s#^[^@/]*@##; s#[:/].*$##')"
-  case "$host" in
-    github.com|*.github.com) printf 'gh' ;;
-    *gitlab*)                printf 'glab' ;;
-    *)                       printf '' ;;
-  esac
-}
 _fg="$FORGE"
 [ -z "$_fg" ] && _fg="$(_forge_por_origin)"
 # (a) líneas Rama: — una por CADA rama integrada en este merge: la FUENTE y toda SUB-RAMA CONTENIDA en ella

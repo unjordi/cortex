@@ -61,7 +61,7 @@ metadata:
 > - 🟠 **B-06** dod-verificar: estatus de tooling interno cuyo QA es el dogfood → **RESUELTO por decisión** (el juez aplica la regla de como-trabajar). `dod-verificar.sh:128-133`.
 >
 > **MEDIO**
-> - 🟡 **B-07** checkpoint: el borrador /compact es eco del hilo; `verificar_hilo` no mide bytes del §SIGUIENTE vs el preview 2KB. `checkpoint/SKILL.md:292-311`, `contrato-hilo.sh:19-81`. (= ítem «checkpoint borrador /compact» de Grupo 1). NO unjordi.
+> - ✅ [hecho 2026-10-28, sin test por pedido de unjordi] **B-07** checkpoint: el borrador /compact es eco del hilo; `verificar_hilo` no mide bytes del §SIGUIENTE vs el preview 2KB. `checkpoint/SKILL.md:292-311`, `contrato-hilo.sh:19-81`. (= ítem «checkpoint borrador /compact» de Grupo 1). NO unjordi.
 > - 🟡 **B-08** estado de proceso de los hooks viaja dentro del repo (`.contexto-aviso.d/`, `.ramas-huerfanas-estado`) → `~/.claude/state/<cksum-ROOT>/`. `aviso-contexto.sh:43-49`, `limpiar-impl-ramas.sh:125`. (= slice **A5** `fix/estado-fuera-de-repos`). NO unjordi.
 > - 🟡 **B-09** el barrido escribe la bitácora del WORKTREE donde corrió el merge + dice «sin mergear» de ramas que van a una épica. `limpiar-impl-worktrees.sh:38,46`, `limpiar-impl-ramas.sh:37-38`. NO unjordi. (comparte ruta con B-08).
 > - 🟡 **B-10** seed.sh: precedencia de host alfabética + target absoluto no resuelto + masters.json rancio. `seed.sh:44-60,75-80`; `publicar-roster.sh`. (= **A8/N8**, apoyado en decisión 2026-10-14). NO unjordi.
@@ -77,15 +77,15 @@ metadata:
 > - 🔵 **B-19** vigilar-master: COLGADO falso tras compact idle. `vigilar-master.sh:18`. (hoy solo fallback).
 > - 🔵 **B-20** exportar-sesion-master no exporta `claudio-master-3000` y falla mudo. `exportar-sesion-master.sh:74-80` (`_master_base`). (= **residuo de A4**).
 > - 🔵 **B-21** limpiar-ramas: el resumen de «remotas sin local» no cuadra. `limpiar-impl-ramas.sh:199-252`.
-> - 🔵 **B-22** cerrar-slice: gitleaks `--repo` casa por subcadena sin anclar/minúsculas. `cerrar-slice.sh:70`.
+> - ✅ [hecho 2026-10-28, sin test por pedido de unjordi] **B-22** cerrar-slice: gitleaks `--repo` casa por subcadena sin anclar/minúsculas. `cerrar-slice.sh:70`.
 > - 🔵 **B-23** widgets: «estimado local» con basis nulo + catálogo de agentes hardcodeado sin paridad. `QuotaModel.swift:445`,`limites.js:133`,`main.qml:2004`,`QuotaService.cs:198`,`main.qml:1213`,`catalogo-cerebro.js:85`.
 > - 🔵 **B-24** 4 copias de la norma de entorno con texto viejo «jamás en un repo». `PopoverView.swift:1405`,`main.qml:1041`,`PopupForm.cs:1997`,`como-trabajar-con-usuario.example-barebones.md:14`.
 > - 🔵 **B-25** limpieza «estrictamente utilitaria» 2ª pasada + comentario obsoleto `limpiar-impl-ramas.sh:22`.
 > - 🔵 **B-26** skill to-do: HUD en orden de la vista + 🔥 urgentes. (= **N6**; ya probado en axon, falta portar).
 > - 🔵 **B-27** coordinar-claudes: receta de /compact por screen en trozos de 200. `coordinar-claudes/SKILL.md:48`.
-> - 🔵 **B-28** `glab mr create --repo` desde otro cwd falla. `cerrar-slice.sh`, `SKILL.md:108`.
+> - ✅ [hecho 2026-10-28, sin test por pedido de unjordi] **B-28** `glab mr create --repo` desde otro cwd falla. `cerrar-slice.sh`, `SKILL.md:108`.
 > - 🔵 **B-29** cap de `description` >250 + dedup `@import aliases`. (= **A9**).
-> - 🔵 **B-30** entorno-maquina-guard: commit con pathspec avisa por lo staged ajeno. `entorno-maquina-guard.sh:58-64`.
+> - ✅ [hecho 2026-10-28, sin test por pedido de unjordi] **B-30** entorno-maquina-guard: commit con pathspec avisa por lo staged ajeno. `entorno-maquina-guard.sh:58-64`.
 > - 🔵 **B-31** persistir el hito «cortex se publica desde un repo nuevo» → sección «Siguiente hito» + ítems 📝. (registro).
 > - 🔵 **B-32** reconstruir-contexto: residuos sin verificar (tope tool_use + fixture). `test-brain.sh:11389`.
 > - 🔵 **B-33** control-gui-remota-por-ssh: texto roto + «Verificado» sin fecha. `win-ssh-screenshot.ps1:26`.
