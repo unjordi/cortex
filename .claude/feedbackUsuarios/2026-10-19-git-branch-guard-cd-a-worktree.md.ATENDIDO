@@ -1,1 +1,2 @@
 ATENDIDO 2026-10-22 (triage): H1 (cd tras keyword do/then/else dentro de for) resuelto en analizar-comando-git.sh:419-422 (reconoce el prefijo de keyword/agrupación antes de cd|pushd) — parte del paquete git-branch-guard de la rama.
+- 2026-10-27 · ATENDIDO por cortex-master (triage buzón 2026-10-27, verificado vs develop a218cd9): SUPERADO: git-branch-guard retirado; la lib que sobrevive ya resuelve `for…do cd wt` (sandbox `t1.sh`: rc=1 = no toca base)

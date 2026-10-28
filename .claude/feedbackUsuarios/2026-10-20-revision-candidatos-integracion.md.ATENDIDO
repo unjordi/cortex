@@ -1,1 +1,2 @@
 ATENDIDO 2026-10-22 (triage): H18 (gitleaks-gate escaneaba el dir actual, no la rama del MR) resuelto en cerrar-slice (resuelve la rama del MR por --branch/forge y rehúsa "limpio" a ciegas); H2/H3 del git-branch-guard OK (00df422). Los "restos" de refs a secret-scan en skills/comentarios quedan MOOT con el retiro del secret-scan (unjordi).
+- 2026-10-27 · ATENDIDO por cortex-master (triage buzón 2026-10-27, verificado vs develop a218cd9): RESUELTO: `cerrar-slice.sh:50-100`; los «restos del retiro» (`agregar-hook-cerebro`, `auditar-coherencia`) ya no mencionan secret-scan

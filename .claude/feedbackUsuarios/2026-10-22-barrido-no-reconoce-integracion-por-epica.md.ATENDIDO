@@ -3,3 +3,4 @@ ATENDIDO 2026-10-22 (cortex-master) en fix/corpus-fp-bench:
 - Bug del conteo --dry-run (SUCIOS contados como zombie): A.3 (1de5573).
 - Escritor multi-rama de cerrar-slice (un `Rama:` por sub-rama contenida): ae42310.
 Suite 1358·0. Verificado con tests que fallan contra el código viejo.
+- 2026-10-27 · ATENDIDO por cortex-master (triage buzón 2026-10-27, verificado vs develop a218cd9): RESUELTO: `ramas-zombie.sh:332-360` + `test-brain.sh:3869-3883`; un `Rama:` por sub-rama `test-brain.sh:4251-4266`; dry-run `limpiar-impl-worktrees.sh:131-137`

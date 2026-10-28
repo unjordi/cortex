@@ -2,3 +2,4 @@ ATENDIDO 2026-10-22 (cortex-master): el diseño se RESOLVIÓ por decisión de un
 - DÓNDE: el .claude/ del proyecto (Opción A con gate de proyecto: más que settings.local.json; nunca ~/.claude de config).
 - CREAR-vs-AVISAR: CREAR, vía rehidratar-hilo (af5a4f8), que es el ÚNICO auto-creador; recordar-cosechar queda NO-crea.
 La pregunta abierta (A/B/C) quedó contestada por unjordi: A-con-gate-de-proyecto.
+- 2026-10-27 · ATENDIDO por cortex-master (triage buzón 2026-10-27, verificado vs develop a218cd9): RESUELTO: Decidido 2026-10-22 (fila 75, `estado-proyecto-y-rehidratar`); implementado `rehidratar-hilo.sh:80-113`

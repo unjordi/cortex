@@ -1,1 +1,2 @@
 ATENDIDO 2026-10-22 (triage): H1 (for…do cd) en analizar-comando-git.sh:419-422; H2 (clon local desde worktree) y H3 (ssh://host:puerto) en 00df422 (verificado en revision-candidatos).
+- 2026-10-27 · ATENDIDO por cortex-master (triage buzón 2026-10-27, verificado vs develop a218cd9): RESUELTO: sandbox `t1.sh`; `analizar-comando-git.sh:368-371` (git-common-dir), `:351` (`ssh://[^/]+/`)

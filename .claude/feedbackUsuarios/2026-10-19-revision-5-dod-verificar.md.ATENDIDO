@@ -1,1 +1,2 @@
 ATENDIDO 2026-10-22 (triage): H8 (jq array con imagen tumbaba el usertext) en e0f81ac; H9 (cerrar etapa ≠ entregable) en el grupo-juez 214c1e1.
+- 2026-10-27 · ATENDIDO por cortex-master (triage buzón 2026-10-27, verificado vs develop a218cd9): RESUELTO: `dod-verificar.sh:221-229` (array), `:133` (etapa/fase)

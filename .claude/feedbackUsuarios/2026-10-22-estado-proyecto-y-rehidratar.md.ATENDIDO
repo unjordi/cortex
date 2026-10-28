@@ -2,3 +2,4 @@ ATENDIDO 2026-10-22 (cortex-master) en fix/corpus-fp-bench:
 - (1) estado-proyecto.md fuera de un repo se crea solo si la carpeta tiene un .claude/ de PROYECTO (algo más que settings.local.json); excluye ~/.claude de config y CLAUDE_CONFIG_DIR.
 - (2) rehidratar-hilo quitó la condición de estado-proyecto.md y lo SIEMBRA si .claude/ de proyecto existe.
 Commits 9c1b1a8 (inicial) + af5a4f8 (exclusión config + gate settings.local.json + atribución corregida). Tests ambas direcciones. Suite 1358·0.
+- 2026-10-27 · ATENDIDO por cortex-master (triage buzón 2026-10-27, verificado vs develop a218cd9): RESUELTO: `rehidratar-hilo.sh:80-113`
