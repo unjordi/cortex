@@ -2728,8 +2728,7 @@ printf '%s\n' "$(jq -nc --arg t "sí, $A1CITA" '{type:"user",message:{role:"user
 printf 'nota: ejemplo de un scope=merge-develop vence_epoch=%s cita="%s"\n' "$A1V" "$A1CITA" > "$A1AUTH"
 is_deny "$(a1run)" && ok "b1f-a1: línea de PROSA con 'scope=merge-develop' (no anclada) → NO se honra" || bad "b1f-a1: una mención en prosa se tomó por grant"
 # (6) FN flaggeado por unjordi (2026-10-23): una autorización humana CORTA y real debe honrarse. El piso
-#     ≥20 + léxico (C1/1f0608e) se RETIRÓ (ya no hace falta: proteger-autorizaciones cierra el vector de
-#     auto-escritura). "mergea a develop" = 16 chars → con el piso viejo DABA DENY; ahora honra. registrada=x
+#     ≥20 + léxico (C1/1f0608e) se RETIRÓ (solo daba falsos negativos). "mergea a develop" = 16 chars → con el piso viejo DABA DENY; ahora honra. registrada=x
 #     (no parsea) → la ventana de timestamp no aplica, aísla el test al piso. FALLA vs 1f0608e (rechazaba <20).
 printf '%s\n' "$(jq -nc '{type:"user",message:{role:"user",content:[{type:"text",text:"va, mergea a develop"}]}}')" > "$A1TX"
 printf -- '- scope=merge-develop vence_epoch=%s cita="mergea a develop" registrada=x\n' "$A1V" > "$A1AUTH"
@@ -2746,7 +2745,7 @@ printf '%s\n' "$(jq -nc --arg ts "$A1_OLDTS" '{type:"user",timestamp:$ts,message
 printf -- '- scope=merge-develop vence_epoch=%s cita="intégralo a develop" registrada=%s\n' "$A1V" "$A1_NOW" > "$A1AUTH"
 is_deny "$(a1run)" && ok "b1f-a1 (ventana c): cita solo en un mensaje de hace 2 días + registrada=AHORA → la ventana lo rechaza (>24h antes del grant) → NO honra" || bad "b1f-a1: la ventana de timestamp no rechazó una cita de un mensaje demasiado viejo"
 # (8) FAIL-OPEN de la ventana: MISMO mensaje viejo pero el grant SIN registrada → la ventana no aplica → honra.
-#     (la seguridad primaria es proteger-autorizaciones; rechazar por falta de registrada reintroduciría FNs.)
+#     (rechazar por falta de registrada reintroduciría FNs.)
 printf -- '- scope=merge-develop vence_epoch=%s cita="intégralo a develop"\n' "$A1V" > "$A1AUTH"
 ! is_deny "$(a1run)" && ok "b1f-a1 (ventana c, fail-open): mismo mensaje viejo pero grant SIN registrada → ventana no aplica → honra" || bad "b1f-a1: la ventana rechazó un grant sin registrada (debe ser fail-open)"
 # (6) scope=merge-develop-nunca (prefijo) → NO se honra.
@@ -2754,7 +2753,6 @@ printf -- '- scope=merge-develop-nunca vence_epoch=%s cita="%s"\n' "$A1V" "$A1CI
 is_deny "$(a1run)" && ok "b1f-a1: 'scope=merge-develop-nunca' (prefijo) → NO se honra" || bad "b1f-a1: el prefijo -nunca se tomó por scope=merge-develop"
 # ── C1 (R3) → REEMPLAZADO (2026-10-23): el piso ≥20 + léxico de merge de _grant_cita_verificada se RETIRÓ
 #    (producía FNs con autorizaciones humanas CORTAS y reales — flaggeado por unjordi; 'mergea a develop'=16).
-#    El vector que ese piso defendía (agente auto-escribiendo su grant) lo cierra ahora proteger-autorizaciones.
 #    La recency la aporta la VENTANA DE TIMESTAMP (probada arriba: msg viejo → rechazo; sin registrada →
 #    fail-open). (8)/(9) de abajo (filtro de subagente + control humano) SIGUEN vigentes sin cambio.
 # (7) cita CORTA real en un mensaje humano RECIENTE (dentro de la ventana) → HONRA (la que el piso ≥20 rechazaba). FALLA vs 1f0608e.
@@ -3137,142 +3135,13 @@ rm -rf "$PFFIX"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "== (proteger-autorizaciones) BLOQUEA la escritura del AGENTE al archivo de grants (auto-autorización A1) =="
-# Hueco A1 (auditoría 2026-10-22, CRÍTICO #2): el grant durable de merge-develop-guard lo podría ESCRIBIR el
-# propio agente → auto-autorización. El chokepoint es la ESCRITURA: toda escritura del agente pasa por una
-# tool (Bash/Edit/Write/MultiEdit) → se deniega; la del humano con `!` no pasa por PreToolUse. LEER pasa.
-PAHOOK="$HOOKS/proteger-autorizaciones.sh"
-# HOME AISLADO (#80): proteger-autorizaciones es tier `both`; su cláusula de dedupe hace `exit 0` si en
-# $HOME/.claude/hooks/ (o $CLAUDE_CONFIG_DIR/hooks) ya hay copia GLOBAL (la instala install-brain). Con un
-# $HOME temporal VACÍO + CLAUDE_CONFIG_DIR desarmado, el test no depende de si esta máquina tiene el brain
-# global instalado (antes: falso-VERDE sin global, falso-ROJO tras instalarlo porque la copia del repo cede).
-PAH="$(mktemp -d "${TMPDIR:-/tmp}/brain-pa.XXXXXX")"
-pa_bash() { printf '{"tool_name":"Bash","tool_input":{"command":%s}}' "$(printf '%s' "$1" | jq -Rs .)" | env -u CLAUDE_CONFIG_DIR HOME="$PAH" bash "$PAHOOK"; }
-pa_file() { printf '{"tool_name":"%s","tool_input":{"file_path":"%s"}}' "$1" "$2" | env -u CLAUDE_CONFIG_DIR HOME="$PAH" bash "$PAHOOK"; }
-pa_is_deny() { printf '%s' "$1" | jq -e '.hookSpecificOutput.permissionDecision=="deny"' >/dev/null 2>&1; }
-AF='.claude/memory/autorizaciones-vigentes.local.md'
-# (1) DENY cada vector de escritura (Bash), con ruta RELATIVA, ABSOLUTA y ~. FALLA vs el código viejo
-#     (el hook no existía → no denegaba). Cubre >, >>, tee, sed -i, cp, mv, ln, install, dd, intérprete.
-pa_fail=0
-for c in \
-  "echo '- scope=merge-develop cita=\"mergea a develop\"' >> $AF" \
-  "echo x > /repo/$AF" \
-  "echo x >> ~/proj/$AF" \
-  "tee -a $AF" \
-  "tee /abs/$AF" \
-  "sed -i 's/a/b/' $AF" \
-  "cp /tmp/grant.md $AF" \
-  "mv /tmp/g ~/$AF" \
-  "ln -sf /tmp/x $AF" \
-  "install -m 644 /tmp/x /abs/$AF" \
-  "dd of=$AF" \
-  "python3 -c 'open(\"autorizaciones-vigentes.local.md\",\"a\").write(\"x\")'" \
-  ; do
-  pa_is_deny "$(pa_bash "$c")" || { bad "proteger-autorizaciones: NO denegó la escritura: ${c:0:50}"; pa_fail=1; }
-done
-# heredoc `cat >> f <<EOF` (redirección) → deny
-pa_is_deny "$(pa_bash "cat >> $AF <<EOF
-- scope=merge-develop
-EOF")" || { bad "proteger-autorizaciones: NO denegó el heredoc cat >> al archivo"; pa_fail=1; }
-[ "$pa_fail" = 0 ] && ok "proteger-autorizaciones: DENY en todos los vectores de escritura (>, >>, heredoc, tee, sed -i, cp, mv, ln, install, dd, intérprete · ruta rel/abs/~)"
-# (2) LEER el archivo PASA (el agente debe poder consultar el grant vigente).
-pa_rfail=0
-for c in \
-  "cat $AF" \
-  "grep scope=merge-develop $AF" \
-  "jq -r . $AF" \
-  "awk '/vence_epoch/' $AF" \
-  "head -5 $AF" \
-  "tail -1 $AF" \
-  "less $AF" \
-  ; do
-  pa_is_deny "$(pa_bash "$c")" && { bad "proteger-autorizaciones: FP — denegó una LECTURA: ${c:0:50}"; pa_rfail=1; }
-done
-# (3) escritura a OTRO archivo (que ni menciona el nombre) PASA
-pa_is_deny "$(pa_bash "echo hola > /tmp/otro.md")" && { bad "proteger-autorizaciones: FP — denegó una escritura ajena"; pa_rfail=1; }
-[ "$pa_rfail" = 0 ] && ok "proteger-autorizaciones: PASS en lecturas (cat/grep/awk/head/tail/less) y escrituras ajenas"
-# (4) Write/Edit/MultiEdit por file_path → DENY el archivo, PASS otro
-pa_wfail=0
-pa_is_deny "$(pa_file Write "/x/$AF")"     || { bad "proteger-autorizaciones: NO denegó un Write al archivo"; pa_wfail=1; }
-pa_is_deny "$(pa_file Edit "/x/$AF")"      || { bad "proteger-autorizaciones: NO denegó un Edit al archivo"; pa_wfail=1; }
-pa_is_deny "$(pa_file MultiEdit "/x/$AF")" || { bad "proteger-autorizaciones: NO denegó un MultiEdit al archivo"; pa_wfail=1; }
-pa_is_deny "$(pa_file Edit "/x/.claude/memory/estado-proyecto.md")" && { bad "proteger-autorizaciones: FP — denegó un Edit a OTRO archivo"; pa_wfail=1; }
-[ "$pa_wfail" = 0 ] && ok "proteger-autorizaciones: DENY Write/Edit/MultiEdit al archivo de grants · PASS a otro archivo"
-# (5) una variante del nombre (autorizaciones-vigentes-2.md) también se protege (glob por prefijo)
-pa_is_deny "$(pa_bash "echo x > /r/.claude/memory/autorizaciones-vigentes-2.md")" \
-  && ok "proteger-autorizaciones: el glob por prefijo cubre variantes (autorizaciones-vigentes-2.md)" \
-  || bad "proteger-autorizaciones: no cubrió la variante autorizaciones-vigentes-2.md"
-# (6) FAIL-OPEN sin jq (PATH sin jq; bash por ruta absoluta) → NO deniega (no frena a ciegas)
-BASHBIN2="$(command -v bash)"
-o="$(printf '{"tool_name":"Bash","tool_input":{"command":"echo x >> %s"}}' "$AF" | env -u CLAUDE_CONFIG_DIR PATH="/nonexistent-dir" HOME="$PAH" "$BASHBIN2" "$PAHOOK")"
-[ -z "$o" ] && ok "proteger-autorizaciones: fail-open sin jq → silencio (no frena a ciegas)" || bad "proteger-autorizaciones: no falló abierto sin jq; got: $o"
-# (7) INDIRECCIÓN (MEDIO 2026-10-23, verificado por claudio): una variable/glob/split oculta el destino → los
-#     vectores DIRECTOS no lo ven. La regla conservadora (escritura-a-archivo + ambas mitades del nombre, o un
-#     glob sobre una mitad) los cierra. FALLAN vs f3378c1 (que dejaba PASAR las 4 formas).
-pa_ifail=0
-pa_is_deny "$(pa_bash "F=$AF; echo x >> \$F")"                              || { bad "proteger-autorizaciones: indirección por VARIABLE (F=path; >> \$F) evadió"; pa_ifail=1; }
-pa_is_deny "$(pa_bash "echo x >> .claude/memory/autoriz*")"                 || { bad "proteger-autorizaciones: indirección por GLOB (autoriz*) evadió"; pa_ifail=1; }
-pa_is_deny "$(pa_bash "n=autorizaciones; echo x >> .claude/memory/\$n-vigentes.local.md")" || { bad "proteger-autorizaciones: indirección por SPLIT (\$n-vigentes) evadió"; pa_ifail=1; }
-pa_is_deny "$(pa_bash "echo x >> \$(ls .claude/memory/autoriz*)")"          || { bad "proteger-autorizaciones: indirección por \$(ls autoriz*) evadió"; pa_ifail=1; }
-pa_is_deny "$(pa_bash "tee .claude/memory/autoriz*.local.md")"             || { bad "proteger-autorizaciones: tee a un glob autoriz* evadió"; pa_ifail=1; }
-[ "$pa_ifail" = 0 ] && ok "proteger-autorizaciones: INDIRECCIÓN (variable/glob/split/\$(ls)/tee-glob) → DENY (cierra la re-habilitación de auto-autorización)"
-# (8) controles anti-FP de la regla de indirección: una LECTURA (aunque mencione ambas mitades, con 2>/dev/null
-#     o pipe) PASA; una escritura con 'autoriz' pero SIN 'vigentes' ni glob PASA (no es el archivo de grants).
-pa_cfail=0
-pa_is_deny "$(pa_bash "grep -r 'autorizaciones vigentes' brain/ 2>/dev/null")" && { bad "proteger-autorizaciones: FP — grep de ambas mitades con 2>/dev/null (lectura) se denegó"; pa_cfail=1; }
-pa_is_deny "$(pa_bash "cat $AF > /dev/null 2>&1")"                            && { bad "proteger-autorizaciones: FP — cat … >/dev/null (lectura) se denegó"; pa_cfail=1; }
-pa_is_deny "$(pa_bash "echo autorizado > /tmp/status.txt")"                   && { bad "proteger-autorizaciones: FP — 'autoriz' sin 'vigentes' ni glob + write a otro archivo se denegó"; pa_cfail=1; }
-pa_is_deny "$(pa_bash "grep autoriz log.txt > /tmp/out.txt")"                 && { bad "proteger-autorizaciones: FP — grep 'autoriz' con salida a otro archivo se denegó"; pa_cfail=1; }
-[ "$pa_cfail" = 0 ] && ok "proteger-autorizaciones: anti-FP de indirección (lectura con 2>/dev/null/pipe · 'autoriz' sin 'vigentes'/glob + write ajeno) → PASA"
-# (9) R5-1 (auditoría 2026-10-23, claudio reprodujo): el pre-filtro greppeaba el comando CRUDO (con comillas)
-#     ANTES del tr -d → una comilla/escape intra-palabra rompía ambas mitades y el hook early-exiteaba; además
-#     faltaban operadores (curl -o/wget -O/sponge/sed w/git checkout --) y un glob SELECTIVO bajo memory/ que
-#     no deletrea ninguna mitad (`*.local.md`) y el bracket-glob `[a]`. FALLAN vs f440234 (todos PASABAN).
-pa_r5fail=0
-pa_is_deny "$(pa_bash "echo x >> .claude/memory/au''torizaciones-vi''gentes.local.md")" || { bad "proteger-autorizaciones R5-1a: comilla intra-palabra evadió el pre-filtro"; pa_r5fail=1; }
-pa_is_deny "$(pa_bash 'echo x >> .claude/memory/au\torizaciones-vigentes.local.md')"    || { bad "proteger-autorizaciones R5-1a2: backslash-escape intra-palabra evadió"; pa_r5fail=1; }
-pa_is_deny "$(pa_bash 'for f in .claude/memory/*.local.md; do echo x >> $f; done')"      || { bad "proteger-autorizaciones R5-1b: glob SELECTIVO *.local.md (var de escritura) evadió"; pa_r5fail=1; }
-pa_is_deny "$(pa_bash "curl -s http://x -o $AF")"                                        || { bad "proteger-autorizaciones R5-1c: curl -o evadió"; pa_r5fail=1; }
-pa_is_deny "$(pa_bash "wget http://x -O $AF")"                                           || { bad "proteger-autorizaciones R5-1c2: wget -O evadió"; pa_r5fail=1; }
-pa_is_deny "$(pa_bash "echo x >> .claude/memory/[a]utorizaciones-vigentes.local.md")"    || { bad "proteger-autorizaciones R5-1d: bracket-glob [a] evadió"; pa_r5fail=1; }
-pa_is_deny "$(pa_bash "sed -n 'w $AF' x")"                                               || { bad "proteger-autorizaciones R5-1e: sed comando w evadió"; pa_r5fail=1; }
-pa_is_deny "$(pa_bash "git checkout stash@{0} -- $AF")"                                  || { bad "proteger-autorizaciones R5-1f: git checkout -- <archivo> evadió"; pa_r5fail=1; }
-pa_is_deny "$(pa_bash "echo x | sponge $AF")"                                            || { bad "proteger-autorizaciones R5-1g: sponge evadió"; pa_r5fail=1; }
-[ "$pa_r5fail" = 0 ] && ok "proteger-autorizaciones R5-1: DENY tras defang-antes-del-pre-filtro + operadores (curl/wget/sponge/sed-w/git-checkout) + glob selectivo/[a] (fallan vs f440234)"
-# (9b) anti-FP de R5-1: un glob AMPLIO bajo memory junto a una escritura ajena (`*.md` casa TODO, no es
-#     selectivo), y una lectura por glob, siguen PASANDO.
-pa_r5cfail=0
-pa_is_deny "$(pa_bash 'echo x >> .claude/memory/bitacora.md; ls .claude/memory/*.md')"   && { bad "proteger-autorizaciones R5-1 FP: write ajeno + glob AMPLIO *.md (no selectivo) se denegó"; pa_r5cfail=1; }
-pa_is_deny "$(pa_bash 'for f in .claude/memory/*.md; do wc -l $f; done')"                 && { bad "proteger-autorizaciones R5-1 FP: lectura por glob (wc) se denegó"; pa_r5cfail=1; }
-pa_is_deny "$(pa_file Edit "/x/.claude/memory/conocimiento-propio.local.md")"             && { bad "proteger-autorizaciones R5-1 FP: Edit a OTRO .local.md se denegó"; pa_r5cfail=1; }
-[ "$pa_r5cfail" = 0 ] && ok "proteger-autorizaciones R5-1: anti-FP (glob amplio *.md + write ajeno · lectura por glob · otro .local.md) → PASA"
-# (10) R5-2 (auditoría 2026-10-23, claudio reprodujo): la regla de indirección (B) disparaba cuando el nombre
-#      aparecía en CUALQUIER PARTE (texto de -m/--body, una LECTURA cat grant|…>otro, un heredoc) y ->/=> se
-#      contaba como redirección. Ahora opera sobre los DESTINOS de escritura (`_destinos_escritura`, con $VAR
-#      resuelto) → el nombre fuera del destino NO dispara. FALLAN vs f440234/09a114e (todos DENEGABAN en falso).
-pa_r5b=0
-pa_is_deny "$(pa_bash "git commit -m 'grant vigentes: agente autoriz => deny'")" && { bad "proteger-autorizaciones R5-2 FP: git commit -m con => y ambas mitades en TEXTO se denegó"; pa_r5b=1; }
-pa_is_deny "$(pa_bash "cat $AF | head > /tmp/out.txt")"                           && { bad "proteger-autorizaciones R5-2 FP: LECTURA (cat grant | head > otro) se denegó"; pa_r5b=1; }
-pa_is_deny "$(pa_bash "grep -r autorizaciones-vigentes brain/ > /tmp/g.txt")"      && { bad "proteger-autorizaciones R5-2 FP: grep del nombre con salida a OTRO archivo se denegó"; pa_r5b=1; }
-pa_is_deny "$(pa_bash 'mv docs/autorizaciones-vigentes-notas.md docs/archivo/')"   && { bad "proteger-autorizaciones R5-2 FP: mv de un archivo AJENO (nombre en la FUENTE, no el destino) se denegó"; pa_r5b=1; }
-pa_is_deny "$(pa_bash 'x=$(cat .claude/memory/autorizaciones-vigentes.local.md); echo "$x" > /tmp/n.txt')" && { bad "proteger-autorizaciones R5-2 FP: lectura por \$() con write a OTRO archivo se denegó"; pa_r5b=1; }
-[ "$pa_r5b" = 0 ] && ok "proteger-autorizaciones R5-2: el nombre en TEXTO/-m/lectura/heredoc (no en el destino) ya NO da FP (destino-based, falla vs f440234)"
-# (10b) regresión: la indirección por DESTINO (variable/split/glob/\$(ls)) SIGUE DENY tras el refactor destino-based.
-pa_r5c=0
-pa_is_deny "$(pa_bash "F=$AF; echo x >> \$F")"                                    || { bad "proteger-autorizaciones R5-2 reg: F=; >>\$F dejó de denegar"; pa_r5c=1; }
-pa_is_deny "$(pa_bash 'echo x >> $(ls .claude/memory/autoriz*)')"                 || { bad "proteger-autorizaciones R5-2 reg: >> \$(ls autoriz*) dejó de denegar"; pa_r5c=1; }
-pa_is_deny "$(pa_bash "cp /tmp/x $AF")"                                           || { bad "proteger-autorizaciones R5-2 reg: cp con el grant de DESTINO dejó de denegar"; pa_r5c=1; }
-[ "$pa_r5c" = 0 ] && ok "proteger-autorizaciones R5-2: la indirección por DESTINO (variable/\$(ls)/cp-destino) sigue DENY"
-# (11) R6 BAJO 5 (auditoría 2026-10-23, claudio): _glob_memory_casa miraba TODO el comando → un glob bajo
-# memory que es la FUENTE de una LECTURA (`cat …/*.local.md > /tmp/todo`) o de un `cp …/*.local.md /tmp/bk/`
-# se denegaba EN FALSO. Ahora solo dispara si el glob es el DESTINO directo o alimenta una variable de
-# escritura. FALLA vs ae38530 (que denegaba). El for-loop (destino=$f) y el glob-destino-directo SIGUEN DENY.
-pa_r6=0
-pa_is_deny "$(pa_bash 'cat .claude/memory/*.local.md > /tmp/todo.txt')"      && { bad "proteger-autorizaciones R6-5: FP — cat de un glob (FUENTE) con salida a otro archivo se denegó"; pa_r6=1; }
-pa_is_deny "$(pa_bash 'cp .claude/memory/*.local.md /tmp/bk/')"              && { bad "proteger-autorizaciones R6-5: FP — cp DESDE un glob (FUENTE) a otro dir se denegó"; pa_r6=1; }
-pa_is_deny "$(pa_bash 'for f in .claude/memory/*.local.md; do echo x >> $f; done')" || { bad "proteger-autorizaciones R6-5: el for-loop (glob alimenta el destino \$f) dejó de denegar"; pa_r6=1; }
-pa_is_deny "$(pa_bash 'echo x >> .claude/memory/aut*.local.md')"            || { bad "proteger-autorizaciones R6-5: el glob SELECTIVO como DESTINO directo dejó de denegar"; pa_r6=1; }
-[ "$pa_r6" = 0 ] && ok "proteger-autorizaciones R6-5: glob bajo memory como FUENTE (cat/cp) → PASA; como DESTINO directo o alimentando \$var → DENY (falla vs ae38530)"
+echo "== (retiro) proteger-autorizaciones queda retirado: MANIFEST + sin archivo + sin matcher =="
+grep -Eq '^proteger-autorizaciones[[:space:]]+retirado[[:space:]]+hook' "$SCRIPT_DIR/hooks/MANIFEST" \
+  && ok "retiro: proteger-autorizaciones = retirado en el MANIFEST" || bad "retiro: proteger-autorizaciones no figura como retirado en el MANIFEST"
+[ ! -e "$SCRIPT_DIR/hooks/proteger-autorizaciones.sh" ] \
+  && ok "retiro: el hook ya no está en brain/hooks" || bad "retiro: brain/hooks/proteger-autorizaciones.sh sigue existiendo"
+! grep -q 'proteger-autorizaciones)' "$SCRIPT_DIR/install-brain.sh" "$SCRIPT_DIR/sincronizar-cerebro.sh" \
+  && ok "retiro: ni install-brain ni sincronizar-cerebro le asignan matcher" || bad "retiro: un instalador todavía cablea proteger-autorizaciones"
 
 echo "== (b3a3) verificar-cerebro: drift-check instalada-vs-fuente (idéntica→0; difiere→la lista; local→ignora) =="
 DVFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-dv.XXXXXX")"
@@ -8131,8 +8000,7 @@ limpiar|limpiar-impl-flotilla
 recordar-cosechar|sincronizar-tasklist
 recordar-cosechar|to-do
 sincronizar-tasklist|to-do
-merge-develop-guard|turno-nocturno
-merge-develop-guard|proteger-autorizaciones"
+merge-develop-guard|turno-nocturno"
 # auditar-coherencia-cerebro|auditar-proceso-algoritmo: FAMILIA declarada, no ciclo — proceso-algoritmo
 # es la METODOLOGÍA y apunta a secciones CONCRETAS de coherencia-cerebro (que es su modo-cerebro
 # empaquetado) donde vive el detalle; el contenido está en los dos lados, así que el lector no da vueltas.

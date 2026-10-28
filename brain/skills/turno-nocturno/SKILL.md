@@ -141,27 +141,19 @@ sobrevivir la noche se escribe a disco, en el **contrato compartido**:
 `${CLAUDE_PROJECT_DIR}/.claude/memory/autorizaciones-vigentes.local.md`
 (los `*.local.md` ya van gitignored)
 
-**⚠️ El grant lo deposita el USUARIO, NO Claude.** El hook `proteger-autorizaciones`
-(PreToolUse/{Bash,Edit,Write,MultiEdit}) **BLOQUEA** que el agente ESCRIBA ese archivo — por diseño: si
-Claude pudiera escribirlo, se AUTO-AUTORIZARÍA (elegiría la `cita` que quisiera de cualquier mensaje
-humano y merge-develop-guard la honraría sin el juez). El prefijo `!` corre el comando en el CLI **sin
-pasar por PreToolUse**, así que **solo el humano** puede depositar un grant.
-
-**Por eso el flujo es:** Claude CALCULA el `vence_epoch` y PRESENTA el one-liner ya armado; el **usuario**
-lo corre **él mismo** con `!` (un grant por línea, append con `>>`):
+**El grant lo escribe Claude cuando el usuario se lo pide** (decisión de unjordi 2026-10-26, `proteger-autorizaciones`
+retirado el 2026-10-28). Un grant por línea, append con `>>`:
 
 ```
-! echo '- scope=merge-develop vence_epoch=<unix> vence="<legible>" cita="<frase TEXTUAL del usuario>" registrada=<ISO>' >> "${CLAUDE_PROJECT_DIR}/.claude/memory/autorizaciones-vigentes.local.md"
+echo '- scope=merge-develop vence_epoch=<unix> vence="<legible>" cita="<frase TEXTUAL del usuario>" registrada=<ISO>' >> "${CLAUDE_PROJECT_DIR}/.claude/memory/autorizaciones-vigentes.local.md"
 ```
 
-(Si falta la carpeta, el usuario corre antes `! mkdir -p "${CLAUDE_PROJECT_DIR}/.claude/memory"`.)
-**Sin ese paso del usuario, el grant NO existe y el merge nocturno cae al JUEZ normal** (que buscará la
-cita del usuario en el contexto reciente — puede fallar tras compactaciones, que es justo lo que el grant
-durable evita). Claude NO puede saltarse esto: intentar escribir el archivo él mismo lo DENIEGA el hook.
+merge-develop-guard solo lo honra si la `cita` aparece en un mensaje HUMANO real, de no más de 24 h antes de
+`registrada`. Sin grant, el merge nocturno cae al JUEZ normal (que busca la cita en el contexto reciente y
+puede fallar tras compactaciones, que es lo que el grant durable evita).
 
 Reglas duras:
 - **La `cita` son las palabras LITERALES del usuario**, no tu paráfrasis. Sin cita textual, no hay grant.
-  Claude solo ARMA el one-liner (con la cita exacta y el `vence_epoch` calculado); el usuario decide correrlo.
 - **"Hasta mañana" sin hora → vence a las 10:00 locales del día siguiente.**
 - **`scope=merge-develop` JAMÁS cubre `main`.** Un release a main no es delegable a un grant
   nocturno, punto.
