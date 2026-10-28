@@ -546,88 +546,6 @@ if [ "$_ventana_sin_usuario" = 1 ] && [ -n "$tpath" ] && [ -f "$tpath" ]; then
   tail -n 6000 "$tpath" 2>/dev/null | grep -qE '"(role|type)"[[:space:]]*:[[:space:]]*"user"|"queued_command"' && _jq_fallo=1
 fi
 
-# A1 (auditoría 2026-10-22): el grant durable lo podría ESCRIBIR el propio agente (ningún guard frena la
-# escritura de autorizaciones-vigentes.local.md) → auto-autorización. Por eso un grant SOLO cuenta si su
-# `cita="…"` aparece LITERAL en un mensaje de USUARIO de algún transcript (~/.claude/projects o el de
-# CLAUDE_CONFIG_DIR). Sin cita verificable → el grant NO se honra → cae al juez (misma doctrina que el veto de
-# cita del juez: re-verificar en bash lo que una capa menos confiable afirma).
-_grant_cita_verificada() {   # $1 = línea de grant → 0 si su cita aparece en un mensaje de usuario HUMANO
-  local grant="$1" cita d f _cfgp _homep
-  command -v jq >/dev/null 2>&1 || return 1          # sin jq no se puede filtrar "humano" con rigor → no honra
-  cita=$(printf '%s' "$grant" | sed -n 's/.*cita="\([^"]*\)".*/\1/p')
-  [ -n "$cita" ] || return 1
-  # El piso de longitud (≥20) + el léxico de merge (C1/1f0608e) se RETIRARON (2026-10-23, FN flaggeado por
-  # unjordi): solo producían FALSOS NEGATIVOS: una autorización humana CORTA y real ('mergea a develop'=16,
-  # 'haz el merge a main'=19) quedaba por debajo de 20 y NO se honraba. Defensa que QUEDA: la cita aparece en
-  # un mensaje HUMANO (no sidechain/tool_result/cross-session/isMeta, abajo) + la VENTANA DE TIMESTAMP.
-  # Claude escribe el grant cuando unjordi se lo pide (proteger-autorizaciones se retiró el 2026-10-28), así que
-  # esta verificación de la cita ES el control. VENTANA (FAIL-OPEN): el mensaje
-  # citado no debe ser más viejo que 24h antes de que se ESCRIBIÓ el grant (registrada=) ni posterior a su
-  # vencimiento. registrada ausente o fecha ilegible → NO se rechaza (rechazar por un timestamp ilegible
-  # reintroduciría FNs; el modelo de amenaza es el error del agente, no la evasión).
-  local _reg _rege _vence _tslo _tshi
-  _vence=$(printf '%s' "$grant" | sed -n 's/.*vence_epoch=\([0-9]*\).*/\1/p')
-  case "$_vence" in ''|*[!0-9]*) _tshi=-1 ;; *) _tshi="$_vence" ;; esac
-  _reg=$(printf '%s' "$grant" | sed -n 's/.*registrada=\([^ ]*\).*/\1/p')
-  _rege=""
-  if [ -n "$_reg" ]; then
-    _rege=$(date -u -d "$_reg" +%s 2>/dev/null \
-            || date -u -j -f '%Y-%m-%dT%H:%M:%S' "$(printf '%s' "$_reg" | sed -E 's/\.[0-9]+//; s/[Zz]$//; s/[+-][0-9][0-9]:[0-9][0-9]$//')" +%s 2>/dev/null)
-  fi
-  case "$_rege" in ''|*[!0-9]*) _tslo=-1 ;; *) _tslo=$(( _rege - 86400 )) ;; esac
-  _cfgp="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects"; _homep="$HOME/.claude/projects"
-  for d in "$_cfgp" "$_homep"; do
-    [ -d "$d" ] || continue
-    # Solo jq-parsea los .jsonl que CONTIENEN la cita (grep pre-filtra, barato). AUTORIDAD HUMANA ESTRICTA
-    # (misma doctrina que acg_recent_intercalado del juez): un `"type":"user"` NO basta — también lo son los
-    # tool_result, los <cross-session-message> de otra sesión, los <task-notification>, los isMeta y el
-    # isCompactSummary → otra sesión fabricaría el grant por SendMessage. Solo cuenta un mensaje de usuario
-    # con texto HUMANO: type/role user, SIN isMeta/isCompactSummary, texto de bloques `text` (NO tool_result),
-    # que NO empiece con los wrappers inyectados (cross-session/task-notification/command-message/
-    # system-reminder/"This session is being continued"), y que contenga la cita.
-    while IFS= read -r f; do
-      [ -n "$f" ] || continue
-      jq -rs --arg cita "$cita" --argjson tslo "$_tslo" --argjson tshi "$_tshi" '
-        any(.[];
-          ( ((.type? // "") == "user") or ((.message.role? // "") == "user") )
-          and ((.isMeta // false) != true)
-          and ((.isCompactSummary // false) != true)
-          and ((.isSidechain // false) != true)   # C1 R3: un turno de SUBAGENTE (sidechain) lo escribe el AGENTE, no el humano → jamás autoriza
-          and (
-            ( if ((.type? // "") == "attachment")
-                   and ((.attachment.type? // "") == "queued_command")
-                   and ((.attachment.origin.kind? // "") == "human")
-                then ((.attachment.prompt? // "")
-                      | if type=="array" then ([ .[]|select(.type?=="text")|.text ]|join(" "))
-                        elif type=="string" then . else "" end)
-                else ((.message.content // .message // "")
-                      | if type=="array" then (map(if type=="string" then . elif (.type?=="text") then .text else "" end)|join(" "))
-                        elif type=="string" then . else "" end)
-              end ) as $t
-            | ($t|type)=="string" and ($t != "")
-            and ($t | test("^\\s*<(cross-session-message|task-notification|command-message|system-reminder)") | not)
-            and ($t | test("^\\s*This session is being continued") | not)
-            and ($t | contains($cita))
-          )
-          # VENTANA DE TIMESTAMP (fail-open): el mensaje citado no más viejo que 24h antes de registrada
-          # ($tslo) ni posterior a vence_epoch ($tshi). Sin registrada ($tslo<0) o timestamp ilegible ($mt
-          # null) → NO rechaza (el agente no puede escribir el grant, así que el fail-open no abre hueco).
-          and ( $tslo < 0
-                or ( (.timestamp? // "") as $tsraw
-                     | if ($tsraw|type)=="string" and ($tsraw != "")
-                       then ( ($tsraw | sub("\\.[0-9]+";"") | sub("([+-][0-9][0-9]:[0-9][0-9])$";"Z")
-                               | try fromdateiso8601 catch null) ) as $mt
-                             | ($mt == null) or ($mt >= $tslo and ($tshi < 0 or $mt < $tshi))
-                       else true end ) )
-        )' "$f" 2>/dev/null | grep -q true && return 0
-    done <<EOF
-$(grep -rlF -- "$cita" "$d" --include='*.jsonl' 2>/dev/null | grep -v '/subagents/')
-EOF
-    [ "$_cfgp" = "$_homep" ] && break   # dedupe cuando CLAUDE_CONFIG_DIR == ~/.claude
-  done
-  return 1
-}
-
 # Grant DURABLE (turno-nocturno): un OK persistido a disco cubre scope=merge-develop (NUNCA main). Fast-path
 # antes del LLM. SOLO se honra con destino CONFIRMADO 'develop' (con destino desconocido
 # SIEMPRE cae al juez, cuyo fail-safe es DENY — nunca cuela un release por un grant de develop).
@@ -641,7 +559,9 @@ if [ "$destino" = "develop" ]; then
     grant=$(awk -v now="$now_epoch" '/^([[:space:]]*-[[:space:]]+)?scope=merge-develop[[:space:]]/ && match($0, /vence_epoch=[0-9]+/) {
         if (substr($0, RSTART+12, RLENGTH-12) + 0 > now) { print; exit }
       }' "$AUTH_FILE" 2>/dev/null)
-    [ -n "$grant" ] && _grant_cita_verificada "$grant" && _salir_ok
+    # La cita del grant ya no se busca en los transcripts (unjordi, 2026-10-28): un grant permanente sobrevive a
+    # la conversación que lo originó. Lo que queda: línea anclada, vigente, destino develop confirmado.
+    [ -n "$grant" ] && _salir_ok
   fi
 fi
 

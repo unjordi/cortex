@@ -148,8 +148,8 @@ retirado el 2026-10-28). Un grant por línea, append con `>>`:
 echo '- scope=merge-develop vence_epoch=<unix> vence="<legible>" cita="<frase TEXTUAL del usuario>" registrada=<ISO>' >> "${CLAUDE_PROJECT_DIR}/.claude/memory/autorizaciones-vigentes.local.md"
 ```
 
-merge-develop-guard solo lo honra si la `cita` aparece en un mensaje HUMANO real, de no más de 24 h antes de
-`registrada`. Sin grant, el merge nocturno cae al JUEZ normal (que busca la cita en el contexto reciente y
+merge-develop-guard honra el grant vigente con destino develop confirmado; la cita queda como registro de
+quién lo autorizó (ya no se busca en los transcripts, 2026-10-28). Sin grant, el merge nocturno cae al JUEZ normal (que busca la cita en el contexto reciente y
 puede fallar tras compactaciones, que es lo que el grant durable evita).
 
 Reglas duras:
