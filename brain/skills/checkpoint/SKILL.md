@@ -295,14 +295,18 @@ checkpoint es **entregarle el comando armado** en un bloque de código, listo pa
 
     /compact <instrucciones>
 
-El hilo ya viaja solo: `rehidratar-hilo` lo reinyecta al retomar. Las instrucciones NO lo repiten
-(nada de hechos, decisiones, hashes ni citas que ya estén en el hilo); son **≤3 líneas**:
-- el **puntero**: «Lee `.claude/memory/hilo-mental-actual.md` COMPLETO»;
-- el **estado vivo EXTERNO** que el hilo no carga (una tarea en background con su id, un master esperando
-  respuesta, un proceso a medias que el resumen debe nombrar);
-- **qué NO hacer** al retomar, si hay riesgo concreto (p. ej. «no re-lances la suite, ya corre»).
+Una sola línea, en este orden:
+1. el **puntero**: «Lee `.claude/memory/hilo-mental-actual.md` COMPLETO.»;
+2. **En curso:** lo que está corriendo o a medias, con sus identificadores (id de la tarea en background,
+   ramas, hashes, PR/MR);
+3. **qué sigue** en cadena (`si X → Y → Z`);
+4. las **citas del usuario** que gobiernan lo que sigue, textuales, como `[user: "…"]`.
 
-Si no hay estado externo ni riesgo, el borrador es `/compact` **sin argumentos**: el hilo basta.
+Modelo:
+
+    /compact Lee .claude/memory/hilo-mental-actual.md COMPLETO. En curso: suites (tarea bwtj8933h) de develop + fix/x (37ada1c); si no hay FAIL nuevos → PR+merge → install en Mac y cachy. Luego <master> en PAUSA [user: "detén al cortex después de esta ronda de merges plz"].
+
+El detalle (diseño, plan, resuelto) NO va: ya viaja en el hilo.
 
 ## El estándar: que ESCARBAR sea innecesario
 El hilo se escribe para que la siguiente instancia (tú mismo tras compactar, o un sucesor) NO tenga que
