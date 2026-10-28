@@ -9837,6 +9837,31 @@ bash "$SYNCDC" "$G2C" --disable fantasma-inexistente --apply >/dev/null 2>&1
 cmp -s "$G2C/.claude/settings.json" "$G2C/settings.orig" \
   && ok "g2c: (c) un hook ausente deja el settings.json byte-idéntico (no-op)" || bad "g2c: (c) el no-op reescribió el archivo"
 rm -rf "$G2C"
+# (g2e) clean_status_message (unjordi 2026-10-28: "que se limpie cuando se sincroniza el cerebro"): el --apply
+# de sincronizar-cerebro quita el campo statusMessage RUIDOSO de la entrada de un hook DEL CEREBRO, pero NUNCA
+# toca el statusMessage de un hook AJENO al cerebro. Prueba la función real extraída (determinista, 2 direcciones).
+echo "== (g2e) sincronizar-cerebro: --apply limpia el statusMessage de un hook del cerebro, no el de uno ajeno =="
+eval "$(awk '/^clean_status_message\(\) \{/{f=1} f{print} f&&/^}/{exit}' "$SCRIPT_DIR/sincronizar-cerebro.sh")"
+G2E="$(mktemp -d "${TMPDIR:-/tmp}/brain-g2e.XXXXXX")"
+cat > "$G2E/settings.json" <<'JSON'
+{"hooks":{"Stop":[{"hooks":[
+  {"type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/dod-verificar.sh\"","statusMessage":"Cerebro: verificando LISTO…","shell":"bash"},
+  {"type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/mi-hook-propio.sh\"","statusMessage":"MI mensaje propio","shell":"bash"}
+]}]}}
+JSON
+clean_status_message "$G2E/settings.json" dod-verificar
+# (a) el hook DEL CEREBRO pierde su statusMessage
+! jq -e '.hooks.Stop[0].hooks[] | select(.command|test("dod-verificar")) | .statusMessage' "$G2E/settings.json" >/dev/null 2>&1 \
+  && ok "g2e: --apply retira el statusMessage de la entrada del cerebro (dod-verificar)" || bad "g2e: el statusMessage del cerebro sobrevivió"
+# (b) el hook AJENO conserva el suyo
+[ "$(jq -r '.hooks.Stop[0].hooks[] | select(.command|test("mi-hook-propio")) | .statusMessage' "$G2E/settings.json")" = "MI mensaje propio" ] \
+  && ok "g2e: NUNCA toca el statusMessage de un hook AJENO al cerebro (ambas direcciones)" || bad "g2e: tocó el statusMessage de un hook ajeno"
+# (c) no-op byte-idéntico si el hook citado no está (no ensucia mtime en un repo ya limpio)
+cp "$G2E/settings.json" "$G2E/orig"
+clean_status_message "$G2E/settings.json" hook-inexistente-del-cerebro
+cmp -s "$G2E/settings.json" "$G2E/orig" && ok "g2e: hook ausente → settings.json byte-idéntico (no-op)" || bad "g2e: el no-op reescribió el archivo"
+jq empty "$G2E/settings.json" 2>/dev/null && ok "g2e: settings.json sigue siendo JSON válido" || bad "g2e: settings.json quedó inválido"
+rm -rf "$G2E"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo "== (g3) install-brain: SIEMBRA en settings.json .env las env vars ACTIVAS del brain (no en la sesión) =="
