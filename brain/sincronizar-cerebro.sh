@@ -185,6 +185,26 @@ dewire_hook() {
   else rm -f "$tmp"; echo "  warn: no pude de-cablear ($base)"; fi
 }
 
+# Quita el campo .statusMessage SOLO de los hook-objects cuyo command cita <name>.sh (un hook DEL CEREBRO);
+# deja INTACTO el statusMessage de un hook AJENO al cerebro. Pedido de unjordi 2026-10-28: "que se limpie
+# cuando se sincroniza el cerebro" — era ruido cosmético que dod-verificar renderizaba en cada Stop. Idempotente:
+# solo reescribe si el contenido cambió (no ensucia mtime en un repo ya limpio).
+clean_status_message() {
+  local gset="$1" name="$2" tmp pat
+  pat="$name\\.sh"
+  command -v jq >/dev/null 2>&1 || return
+  [ -f "$gset" ] || return
+  tmp="$(mktemp)" || return
+  if jq --arg pat "$pat" '
+      if (.hooks|type)=="object" then
+        .hooks |= map_values( map( .hooks |= map(if ((.command // "")|test($pat)) then del(.statusMessage) else . end) ) )
+      else . end
+    ' "$gset" > "$tmp" 2>/dev/null && [ -s "$tmp" ]; then
+    if [ "$(jq -S . "$gset" 2>/dev/null)" = "$(jq -S . "$tmp" 2>/dev/null)" ]; then rm -f "$tmp"
+    else mv "$tmp" "$gset"; echo "    statusMessage limpiado de: $name"; fi
+  else rm -f "$tmp"; fi
+}
+
 # wired_in <settings.json> <nombre-hook>  → 0 si algún command del settings.json cita .../<nombre>.sh.
 # Base de la detección de CABLEADO FALTANTE (abajo). Sin jq NO podemos saberlo de forma fiable → damos
 # "cableado" (fail-open: no inflar el contador faltante) para no reportar falso drift.
@@ -377,6 +397,7 @@ while [ "$PRUNEONLY" != 1 ] && IFS='|' read -r name kind; do
         for pair in $evm; do
           register_hook "$DST_SET" "${pair%%|*}" "${pair#*|}" "bash \"\${CLAUDE_PROJECT_DIR}/.claude/hooks/$name.sh\"" "$name"
         done
+        clean_status_message "$DST_SET" "$name"   # limpia el statusMessage ruidoso de la entrada del cerebro (unjordi 2026-10-28)
       fi
       n_wire=$((n_wire+1))
     else
