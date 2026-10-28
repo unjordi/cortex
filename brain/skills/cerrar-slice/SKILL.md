@@ -107,6 +107,8 @@ mapea glab↔gh:
 git push -u origin feat/<tema>
 # glab: glab mr create --source-branch feat/<tema> --target-branch develop --squash-before-merge --remove-source-branch --title "…" --description "…" --yes
 # gh:   gh pr create --base develop --fill
+# o, desde CUALQUIER carpeta (glab/gh fallan si el cwd es otro repo):
+#   bash <ruta>/cerrar-slice.sh --abrir --branch feat/<tema> --repo <slug LITERAL>
 
 # … arma el resumen curado en resumen.md (ver abajo) …
 bash <ruta>/cerrar-slice.sh --id <id> --message-file resumen.md --wait-ci   # espera CI verde y mergea YA

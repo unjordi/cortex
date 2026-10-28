@@ -18,7 +18,8 @@
 #   hilo_edad_legible <segundos> → "2d 5h" / "3h 20m" / "45m"
 #   verificar_hilo <archivo> [fresco] → exit 0 si cumple el contrato; 1 e imprime los motivos. Con un 2º
 #                                  arg NO-vacío ("fresco") ADEMÁS exige que el archivo se haya ESCRITO en
-#                                  ESTE volcado (mtime < CONTRATO_HILO_FRESCO_MIN, def 10 min): el camino del
+#                                  ESTE volcado (mtime < CONTRATO_HILO_FRESCO_MIN, def 10 min) y que el §SIGUIENTE
+#                                  quepa en el preview (≤ CONTRATO_HILO_SIGUIENTE_MAX, def 900 B): el camino del
 #                                  ESCRITOR/checkpoint, para cazar un Write que falló y dejó el hilo VIEJO.
 #
 # CONTRATO DE USO: fail-open en el LECTOR (un hilo sin footer se lee igual, solo pierde el gate de rama),
@@ -87,6 +88,24 @@ verificar_hilo() {
       printf 'CONTRATO-HILO: %s NO se escribió en ESTE volcado — su mtime es de hace %s (≥ %s min).\n' "$_f" "$(hilo_edad_legible $((_now - _mt)))" "$_max" >&2
       printf '  ⇒ el Write del checkpoint pudo FALLAR y quedó el hilo VIEJO. NO declares el checkpoint hecho:\n' >&2
       printf '  re-escribe el hilo (Write) y reintenta la verificación.\n' >&2
+      _fallos=$((_fallos+1))
+    fi
+  fi
+  # §SIGUIENTE: si el bloque reinyectado supera el umbral, el harness deja solo ~2KB de preview (faro incluido);
+  # el §SIGUIENTE tiene que caber ahí completo. Máximo configurable con CONTRATO_HILO_SIGUIENTE_MAX (bytes).
+  if [ -n "$_fresco" ]; then
+    _sigmax="${CONTRATO_HILO_SIGUIENTE_MAX:-900}"
+    case "$_sigmax" in ''|*[!0-9]*) _sigmax=900 ;; esac
+    _sigb=$(awk '
+      /^#+[[:space:]]/ && tolower($0) ~ /siguiente|estado/ && !seen { seen=1; print; next }
+      seen && /^##[[:space:]]/ { exit }
+      seen { print }
+    ' "$_f" 2>/dev/null | wc -c | tr -d ' ')
+    if [ "${_sigb:-0}" -gt "$_sigmax" ]; then
+      printf 'CONTRATO-HILO: el §SIGUIENTE de %s mide %s bytes (máx %s) ⇒ en el preview de ~2KB del rehidratado
+' "$_f" "$_sigb" "$_sigmax" >&2
+      printf '  queda CORTADO. Recórtalo a 2-5 líneas (el detalle va en las secciones de abajo).
+' >&2
       _fallos=$((_fallos+1))
     fi
   fi

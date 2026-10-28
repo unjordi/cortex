@@ -61,6 +61,19 @@ printf '%s' "$unquoted" | grep -qE '(^|[[:space:]])(-a|--all|-[a-zA-Z]*a[a-zA-Z]
 [ "$allflag" = 1 ] && staged="$staged
 $(git -C "$dir" diff --name-only 2>/dev/null)"
 
+# `git commit … -- <rutas>` solo comitea esas rutas: lo staged fuera de ellas no entra (B-30).
+if printf '%s' "$unquoted" | grep -qE 'commit([[:space:]][^;&|]*)?[[:space:]]--([[:space:]]|$)'; then
+  rutas=$(printf '%s' "$cmd" | awk '{ i = 0; s = $0; while ((j = index(s, " -- ")) > 0) { i += j + 3; s = substr(s, j + 4) } if (i) print substr($0, i + 1) }' \
+    | sed -E 's/[;&|].*$//' | tr -d "'\"")
+  filtrado=""
+  for r in $rutas; do
+    r="${r#./}"; r="${r%/}"
+    filtrado="$filtrado
+$(printf '%s\n' "$staged" | awk -v r="$r" '$0 == r || index($0, r "/") == 1')"
+  done
+  staged="$filtrado"
+fi
+
 mem_files=$(printf '%s\n' "$staged" | grep -E '(^|/)\.claude/memory/[^/]*\.md$' | grep -v '\.local\.md$' | sort -u)
 [ -z "$mem_files" ] && exit 0
 

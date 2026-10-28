@@ -295,20 +295,14 @@ checkpoint es **entregarle el comando armado** en un bloque de código, listo pa
 
     /compact <instrucciones>
 
-Las instrucciones las DERIVAS del volcado que acabas de escribir (no las inventes). Van, cortas:
-- el **marcador de estado**: hashes, ramas, qué está PROBADO y qué NO;
-- la **cola en orden** (lo que sigue);
-- las **citas textuales del usuario**, sin corregir erratas;
-- la **decisión abierta**.
+El hilo ya viaja solo: `rehidratar-hilo` lo reinyecta al retomar. Las instrucciones NO lo repiten
+(nada de hechos, decisiones, hashes ni citas que ya estén en el hilo); son **≤3 líneas**:
+- el **puntero**: «Lee `.claude/memory/hilo-mental-actual.md` COMPLETO»;
+- el **estado vivo EXTERNO** que el hilo no carga (una tarea en background con su id, un master esperando
+  respuesta, un proceso a medias que el resumen debe nombrar);
+- **qué NO hacer** al retomar, si hay riesgo concreto (p. ej. «no re-lances la suite, ya corre»).
 
-Son **cortas a propósito**: COMPLEMENTAN el hilo en disco (`hilo-mental-actual.md`), no lo sustituyen —
-el CLI re-lee el `# Compact instructions` del `CLAUDE.md` y el hilo sobrevive aparte; estas instrucciones
-solo SESGAN el resumen hacia lo que no debe perderse (las instrucciones de `/compact` sí cambian el
-formato y el contenido del resumen).
-
-**Procedencia (regla dura):** en las instrucciones, solo va entre comillas el texto LITERAL del usuario;
-lo que tú relayes ahí sobrevive con la procedencia que traiga (no laves una inferencia tuya como cita
-suya). Es la misma regla de PROCEDENCIA del volcado, aplicada al borrador.
+Si no hay estado externo ni riesgo, el borrador es `/compact` **sin argumentos**: el hilo basta.
 
 ## El estándar: que ESCARBAR sea innecesario
 El hilo se escribe para que la siguiente instancia (tú mismo tras compactar, o un sucesor) NO tenga que
