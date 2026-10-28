@@ -295,13 +295,13 @@ public sealed class QuotaService
                 FiveHour = new Bucket
                 {
                     Percent = Round1(five),
-                    CostUsd = stats.Summary?.FiveHourCost,
+                    EquivSessionCostUsd = stats.Summary?.FiveHourCost,
                     ResetsAt = Isoz(usage.FiveHour?.ResetsAt),
                 },
                 Weekly = new Bucket
                 {
                     Percent = Round1(week),
-                    CostUsd = stats.Summary?.WeeklyCost,
+                    EquivWeeklyCostUsd = stats.Summary?.WeeklyCost,
                     ResetsAt = Isoz(usage.SevenDay?.ResetsAt) ?? NextMondayUtc(),
                 },
             };
