@@ -2166,14 +2166,14 @@ chmod +x "$JCFIX/anthropic_ok/curl"
 # viejos de esta sección que llaman ok/bad dentro del subshell y no incrementan el contador del padre).
 
 # (a) unidad — local OK: CLAUDE_JUEZ_LOCAL_MODEL seteado + Ollama 200 → estado OK + el content de Ollama.
-if ( export PATH="$JCFIX/local_ok:$PATH"; export CLAUDE_JUEZ_LOCAL_MODEL="qwen3-test"; unset CLAUDE_CODE_OAUTH_TOKEN CLAUDE_CONFIG_DIR
+if ( export HOME="$JCFIX/home"; export PATH="$JCFIX/local_ok:$PATH"; export CLAUDE_JUEZ_LOCAL_MODEL="qwen3-test"; unset CLAUDE_CODE_OAUTH_TOKEN CLAUDE_CONFIG_DIR
      . "$HOOKS/juez-comun.sh"
      out="$(_juez_llamar_api ignored-model 100 5 0 'prompt' 2>/dev/null)"; rc=$?
      [ "$rc" = 0 ] && printf '%s' "$out" | head -1 | grep -qx OK && printf '%s' "$out" | grep -q 'VEREDICTO: ALLOW' ); then
   ok "juez-comun (local a): CLAUDE_JUEZ_LOCAL_MODEL + Ollama 200 → estado OK + content de qwen (SIN token OAuth)"
 else bad "juez-comun (local a): backend local OK no devolvió OK+texto (rc=$?)"; fi
 # (b) unidad — local CAÍDO (CRÍTICO): Ollama no responde → UNAVAILABLE_NET + txt VACÍO + rc!=0 (fail preservado).
-if ( export PATH="$JCFIX/local_down:$PATH"; export CLAUDE_JUEZ_LOCAL_MODEL="qwen3-test"; unset CLAUDE_CODE_OAUTH_TOKEN CLAUDE_CONFIG_DIR
+if ( export HOME="$JCFIX/home"; export PATH="$JCFIX/local_down:$PATH"; export CLAUDE_JUEZ_LOCAL_MODEL="qwen3-test"; unset CLAUDE_CODE_OAUTH_TOKEN CLAUDE_CONFIG_DIR
      . "$HOOKS/juez-comun.sh"
      out="$(_juez_llamar_api ignored-model 100 5 0 'prompt' 2>/dev/null)"; rc=$?
      est="$(printf '%s' "$out" | head -1)"; txt="$(printf '%s' "$out" | sed '1d')"
@@ -2181,27 +2181,27 @@ if ( export PATH="$JCFIX/local_down:$PATH"; export CLAUDE_JUEZ_LOCAL_MODEL="qwen
   ok "juez-comun (local b): Ollama caído → UNAVAILABLE_NET + txt vacío + rc!=0 (fail-safe PRESERVADO; NO inventa OK)"
 else bad "juez-comun (local b): backend local caído NO preservó el fail-safe"; fi
 # (c) regresión — SIN la env local, el default Anthropic queda INTACTO (el branch nuevo no interfiere).
-if ( export PATH="$JCFIX/anthropic_ok:$PATH"; export CLAUDE_CODE_OAUTH_TOKEN="ENV_TOK"; unset CLAUDE_JUEZ_LOCAL_MODEL CLAUDE_CONFIG_DIR
+if ( export HOME="$JCFIX/home"; export PATH="$JCFIX/anthropic_ok:$PATH"; export CLAUDE_CODE_OAUTH_TOKEN="ENV_TOK"; unset CLAUDE_JUEZ_LOCAL_MODEL CLAUDE_CONFIG_DIR
      . "$HOOKS/juez-comun.sh"
      out="$(_juez_llamar_api claude-haiku-4-5 100 5 0 'prompt' 2>/dev/null)"
      printf '%s' "$out" | head -1 | grep -qx OK && printf '%s' "$out" | grep -q 'VEREDICTO: DEFAULT' ); then
   ok "juez-comun (local c): SIN CLAUDE_JUEZ_LOCAL_MODEL → default Anthropic/Haiku INTACTO (cero regresión)"
 else bad "juez-comun (local c): el branch local rompió el default Anthropic"; fi
 # (d) end-to-end merge — local OK con CITA+VEREDICTO reales → ALLOW (sin token: el local no lo necesita).
-if [ "$( ( export PATH="$JCFIX/local_ok:$PATH"; export CLAUDE_JUEZ_LOCAL_MODEL="qwen3-test"; unset CLAUDE_CODE_OAUTH_TOKEN CLAUDE_CONFIG_DIR
+if [ "$( ( export HOME="$JCFIX/home"; export PATH="$JCFIX/local_ok:$PATH"; export CLAUDE_JUEZ_LOCAL_MODEL="qwen3-test"; unset CLAUDE_CODE_OAUTH_TOKEN CLAUDE_CONFIG_DIR
      _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/merge-develop-guard.sh"; unset CLAUDE_MERGE_JUEZ_MOCK CLAUDE_MERGE_JUEZ_MOCK_RAW
      _juez_merge develop 240 'USUARIO: mergea el 240 a develop' ) )" = ALLOW ]; then
   ok "juez-comun (local d): merge vía backend LOCAL (Ollama OK) + cita real → ALLOW end-to-end"
 else bad "juez-comun (local d): el merge por backend local no dio ALLOW"; fi
 # (e) end-to-end merge — local CAÍDO → DENY/UNAVAILABLE (fail-SAFE): Ollama caído SIGUE bloqueando el merge.
-_gote="$( ( export PATH="$JCFIX/local_down:$PATH"; export CLAUDE_JUEZ_LOCAL_MODEL="qwen3-test"; unset CLAUDE_CODE_OAUTH_TOKEN CLAUDE_CONFIG_DIR
+_gote="$( ( export HOME="$JCFIX/home"; export PATH="$JCFIX/local_down:$PATH"; export CLAUDE_JUEZ_LOCAL_MODEL="qwen3-test"; unset CLAUDE_CODE_OAUTH_TOKEN CLAUDE_CONFIG_DIR
      _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/merge-develop-guard.sh"; unset CLAUDE_MERGE_JUEZ_MOCK CLAUDE_MERGE_JUEZ_MOCK_RAW
      _juez_merge develop 240 'USUARIO: mergea el 240 a develop' ) )"
 if [ "$_gote" != ALLOW ] && [ -n "$_gote" ]; then
   ok "juez-comun (local e): merge con Ollama CAÍDO → '$_gote' (fail-SAFE; NO abre el merge)"
 else bad "juez-comun (local e): merge con backend local caído NO fue fail-safe (got='$_gote')"; fi
 # (f) end-to-end dod — local CAÍDO → UNAVAILABLE → fail-OPEN (el nag deja cerrar el turno; no atrapa loop).
-if [ "$( ( export PATH="$JCFIX/local_down:$PATH"; export CLAUDE_JUEZ_LOCAL_MODEL="qwen3-test"; unset CLAUDE_CODE_OAUTH_TOKEN CLAUDE_CONFIG_DIR
+if [ "$( ( export HOME="$JCFIX/home"; export PATH="$JCFIX/local_down:$PATH"; export CLAUDE_JUEZ_LOCAL_MODEL="qwen3-test"; unset CLAUDE_CODE_OAUTH_TOKEN CLAUDE_CONFIG_DIR
      _CMD_DOD_SOURCE_ONLY=1 . "$HOOKS/dod-verificar.sh"; unset CLAUDE_DOD_JUEZ_MOCK CLAUDE_DOD_JUEZ_MOCK_RAW
      _juez_dod 'Listo, el módulo quedó terminado y funciona.' 'haz el cambio' ) )" = UNAVAILABLE ]; then
   ok "juez-comun (local f): dod con Ollama CAÍDO → UNAVAILABLE → fail-OPEN (nag, no candado)"
@@ -9780,6 +9780,52 @@ bash "$SYNCLP" "$G2BNL" --limpiar-personal --incluir-skills --apply >/dev/null 2
 [ -d "$G2BNL/.claude/skills/cerrar-slice" ] \
   && ok "g2b: --incluir-skills SIN ledger no toca nada (fail-closed: sin procedencia fiable)" || bad "g2b: ¡borró una skill sin ledger (procedencia no verificada)!"
 rm -rf "$G2BNL"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# (g2c) B-01 (CRÍTICO, triage buzón 2026-10-27): dewire_hook quita SOLO el comando que casa, NUNCA la
+# ENTRADA entera. Antes, retirar un hook que COMPARTÍA una entrada del settings con un hermano (p. ej.
+# Stop[0].hooks=[dod-verificar, recordar-cosechar]) se llevaba la entrada completa → el hermano quedaba
+# descableado y el settings podía quedar en {} (dod-verificar APAGADO en silencio). Driver: --disable
+# (el llamador directo de dewire_hook). Dos direcciones + colapso + no-op byte-idéntico.
+echo "== (g2c) dewire_hook (vía --disable): retira SOLO el comando, conserva el hermano de la MISMA entrada (B-01) =="
+SYNCDC="$SCRIPT_DIR/sincronizar-cerebro.sh"
+G2C="$(mktemp -d "${TMPDIR:-/tmp}/brain-g2c.XXXXXX")"; mkdir -p "$G2C/.claude/hooks"
+printf 'exit 0\n' > "$G2C/.claude/hooks/dod-verificar.sh"
+printf 'exit 0\n' > "$G2C/.claude/hooks/recordar-cosechar.sh"
+printf 'exit 0\n' > "$G2C/.claude/hooks/solo-pretool.sh"
+# Stop[0] comparte dos comandos en UNA entrada; PreToolUse[0] tiene un único comando (caso colapso).
+cat > "$G2C/.claude/settings.json" <<'JSON'
+{"hooks":{"Stop":[
+  {"hooks":[
+    {"type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/dod-verificar.sh\"","shell":"bash"},
+    {"type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/recordar-cosechar.sh\"","shell":"bash"}
+  ]}
+],"PreToolUse":[
+  {"matcher":"Bash","hooks":[{"type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/solo-pretool.sh\"","shell":"bash"}]}
+]}}
+JSON
+# (a) retirar recordar-cosechar → dod-verificar SIGUE cableado, recordar-cosechar NO, settings ≠ {}
+g2cout="$(bash "$SYNCDC" "$G2C" --disable recordar-cosechar --apply 2>/dev/null)"
+if jq -e '.hooks.Stop[0].hooks | map(.command) | any(test("dod-verificar"))' "$G2C/.claude/settings.json" >/dev/null 2>&1 \
+   && ! jq -e '[.. | .command? // empty] | any(test("recordar-cosechar"))' "$G2C/.claude/settings.json" >/dev/null 2>&1; then
+  ok "g2c: (a) el hermano dod-verificar SOBREVIVE cableado; recordar-cosechar retirado"
+else bad "g2c: (a) B-01 vivo — el settings quedó: $(cat "$G2C/.claude/settings.json")"; fi
+printf '%s' "$g2cout" | grep -q 'hermano(s) conservado(s): dod-verificar' \
+  && ok "g2c: (a) el resumen avisa del hermano conservado (señal de seguridad)" || bad "g2c: (a) el resumen no nombró el hermano conservado; got: $g2cout"
+# (b) retirar el ÚNICO comando de PreToolUse → entrada y evento desaparecen; Stop intacto
+bash "$SYNCDC" "$G2C" --disable solo-pretool --apply >/dev/null 2>&1
+if ! jq -e '.hooks.PreToolUse' "$G2C/.claude/settings.json" >/dev/null 2>&1 \
+   && jq -e '.hooks.Stop[0].hooks | any(.command|test("dod-verificar"))' "$G2C/.claude/settings.json" >/dev/null 2>&1; then
+  ok "g2c: (b) el único comando de una entrada → entrada+evento colapsan; otro evento intacto"
+else bad "g2c: (b) el colapso de entrada/evento falló: $(cat "$G2C/.claude/settings.json")"; fi
+jq empty "$G2C/.claude/settings.json" 2>/dev/null \
+  && ok "g2c: settings.json sigue siendo JSON válido tras los retiros" || bad "g2c: settings.json quedó inválido"
+# (c) hook AUSENTE → el archivo no se reescribe (byte a byte idéntico; no ensucia mtime en loops)
+cp "$G2C/.claude/settings.json" "$G2C/settings.orig"
+bash "$SYNCDC" "$G2C" --disable fantasma-inexistente --apply >/dev/null 2>&1
+cmp -s "$G2C/.claude/settings.json" "$G2C/settings.orig" \
+  && ok "g2c: (c) un hook ausente deja el settings.json byte-idéntico (no-op)" || bad "g2c: (c) el no-op reescribió el archivo"
+rm -rf "$G2C"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo "== (g3) install-brain: SIEMBRA en settings.json .env las env vars ACTIVAS del brain (no en la sesión) =="

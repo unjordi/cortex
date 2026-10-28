@@ -1,1 +1,2 @@
 ATENDIDO 2026-10-22 (triage): H7 (regla (c) debe exigir && entre merge y branch -D, no ;/||) en proteger-arbol.sh:90-96 (captura el merge SOLO si lo sigue &&).
+- 2026-10-27 · ATENDIDO por cortex-master (triage buzón 2026-10-27, verificado vs develop a218cd9): RESUELTO: `proteger-arbol.sh:113-121` (c) solo con `&&`

@@ -1,1 +1,2 @@
 ATENDIDO 2026-10-22 (triage): los 3 guards (no-bypass/entorno-maquina/delegacion-registrar) verificados en ambas direcciones (OK). RESIDUAL BAJO: H17 (no-bypass no reconoce ~/ ni $HOME/, falso NEGATIVO) → backlog E4.
+- 2026-10-27 · ATENDIDO por cortex-master (triage buzón 2026-10-27, verificado vs develop a218cd9): RESUELTO: `no-bypass-deploy.sh:93`; sandbox: `bash ~/x/install-brain.sh` avisa

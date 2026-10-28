@@ -146,18 +146,43 @@ register_hook() {
 # Event-agnóstico: recorre TODOS los eventos → cubre los hooks multi-evento del MANIFEST. Lo usan el
 # pruning de huérfanos/retirados y la opción --disable.
 dewire_hook() {
-  local gset="$1" base="$2" tmp
+  local gset="$1" base="$2" tmp hermanos pat
+  pat="$base\\.sh"   # separado del 'local' de arriba: bajo 'set -u' un 'local b=$2 p=$b' expande $b antes de asignarlo
   command -v jq >/dev/null 2>&1 || { echo "  warn: jq no está; quita a mano '$base' de $gset"; return; }
   [ -f "$gset" ] || return
+  # Hermanos conservados: comandos de OTROS hooks que compartían una entrada con el que se retira.
+  # Es la señal de seguridad que exige el reporte — sin ella el retiro apagaría un hook vecino en silencio.
+  hermanos=$(jq -r --arg pat "$pat" '
+      [ (.hooks // {}) | to_entries[] | .value[]?
+        | select(([.hooks[]?.command]|join(" "))|test($pat))     # entrada que contiene el comando a retirar
+        | .hooks[]? | (.command // "")
+        | select((test($pat))|not)                                # los comandos hermanos que NO casan
+        | sub(".*/(?<b>[^/\"]+)\\.sh.*"; "\(.b)") ]
+      | unique | join(", ")
+    ' "$gset" 2>/dev/null)
   tmp="$(mktemp)" || return
-  if jq --arg pat "$base\\.sh" '
+  # Retira SOLO el comando que casa (no la entrada entera): filtra .hooks de cada entrada y luego purga
+  # entradas y eventos que quedaron vacíos. Un hermano de la misma entrada (p. ej. dod-verificar junto a
+  # recordar-cosechar en Stop[0]) SOBREVIVE — antes se iba con la entrada y dejaba el settings en {}.
+  if jq --arg pat "$pat" '
       if (.hooks|type)=="object" then
         .hooks |= ( to_entries
-          | map(.value |= [ .[] | select((([.hooks[]?.command]|join(" "))|test($pat))|not) ])
+          | map(.value |= ( map(.hooks |= map(select((.command // "")|test($pat)|not)))
+                            | map(select((.hooks|type)=="array" and (.hooks|length)>0)) ))
           | map(select((.value|type)=="array" and (.value|length)>0)) | from_entries )
         | (if (.hooks|length)==0 then del(.hooks) else . end)
       else . end
-    ' "$gset" > "$tmp" 2>/dev/null && [ -s "$tmp" ]; then mv "$tmp" "$gset"; else rm -f "$tmp"; echo "  warn: no pude de-cablear ($base)"; fi
+    ' "$gset" > "$tmp" 2>/dev/null && [ -s "$tmp" ]; then
+    # Solo reescribe si el contenido cambió de verdad (normalizado): un hook AUSENTE deja el archivo
+    # intacto, sin tocar mtime ni formato (dewire corre en loops sobre muchos hooks; no ensuciar).
+    if [ "$(jq -S . "$gset" 2>/dev/null)" = "$(jq -S . "$tmp" 2>/dev/null)" ]; then
+      rm -f "$tmp"
+    else
+      mv "$tmp" "$gset"
+      echo "    cableado retirado de: $base"
+      [ -n "$hermanos" ] && echo "    hermano(s) conservado(s): $hermanos"
+    fi
+  else rm -f "$tmp"; echo "  warn: no pude de-cablear ($base)"; fi
 }
 
 # wired_in <settings.json> <nombre-hook>  → 0 si algún command del settings.json cita .../<nombre>.sh.

@@ -1,1 +1,2 @@
 ATENDIDO 2026-10-22 (triage): H4/H5 (juez + exención sync multilínea) en el grupo-juez 214c1e1 (prompt-tuning, valida LIVE); H2 (clon local en worktree) en 00df422.
+- 2026-10-27 · ATENDIDO por cortex-master (triage buzón 2026-10-27, verificado vs develop a218cd9): RESUELTO: H4: pre-filtro determinista RECHAZADO por unjordi (estado:19 «no confío nada en lo determinista»); H5 `merge-develop-guard.sh:398-406`
