@@ -41,7 +41,8 @@ tab rail on the left:
 
 - **Límites** — Sesión (5 h) and Semanal (7 d), each an animated progress bar,
   `%` used, "Se restablece en Xh" and "≈ $Y.YY (API equiv local)"; footer
-  shows `datos reales` (OAuth) or `estimado local` (ccusage fallback), the
+  shows `datos reales` (OAuth), `estimado local` (ccusage fallback) or
+  `sin dato` (no basis: the fetch had nothing to report), the
   5-minute refresh cadence, and how long ago it last updated.
 - **Resumen** — 9 stat cards (Sesiones, Mensajes, Tokens totales, Días
   activos, Racha actual, Racha más larga, Hora pico, Modelo favorito, Costo
@@ -81,6 +82,8 @@ Claude Code already stores (macOS Keychain entry `Claude Code-credentials`, or
 utilization percentages *and* their actual reset times (the weekly window is
 rolling, not calendar-aligned). When this works the snapshot is marked
 `"basis": "oauth"` and **matches `/usage` exactly** — no calibration involved.
+The endpoint calls the 7-day window `seven_day`; the snapshot stores it as
+`weekly`, the only name every consumer (widgets, hooks) reads.
 
 **Fallback: ccusage cost estimation** — used only when the endpoint is
 unreachable (offline, or no Claude Code credentials). The basis is

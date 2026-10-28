@@ -90,7 +90,7 @@ metadata:
 > - 🔵 **B-32** reconstruir-contexto: residuos sin verificar (tope tool_use + fixture). `test-brain.sh:11389`.
 > - 🔵 **B-33** control-gui-remota-por-ssh: texto roto + «Verificado» sin fecha. `win-ssh-screenshot.ps1:26`.
 > - 🔵 **B-34** revisar el hardcoding de dod-verificar (inventario constantes/léxico). `dod-verificar.sh:70-140`. (= parte 4 de tiers-hooks).
-> - 🔵 **B-35** `seven_day` vs `weekly` (nombre canónico + alias). `cortex-fetch:215,261,271`.
+> - ✅ [hecho 2026-10-28] **B-35** `seven_day` vs `weekly` (nombre canónico + alias). `cortex-fetch:215,261,271`.
 > - 🔵 **B-36** worktree `cortex-wt-quota` (8 archivos sin commit): confirmar si hace falta [SIN VERIFICAR].
 >
 > **Patrones transversales (raíz compartida — §5 de la nota):** (1) razonar sobre el AMBIENTE vs el SCOPE autoritativo (B-03/04/09/22/30/12/13) → UNA fn `{repo,clon,rama,rutas}` en `analizar-comando-git.sh` + lint que falle con `$PWD`/`show-toplevel` crudo; (2) estado de hooks dentro del repo (B-08/09) → helper `estado_dir()`; (3) los fixes no llegan a la flota (B-02/03); (4) pruebas que miden plomería/entorno real (B-11); (5) decisiones sin ítem durable (B-31/34); (6) guards que casan TEXTO vs el comando ejecutado (B-15/30) → `acg_segmentos_ejecutables` como única fuente.

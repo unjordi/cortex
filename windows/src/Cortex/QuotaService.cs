@@ -195,7 +195,7 @@ public sealed class QuotaService
             if (Snapshot == null) return "cargando…";
             if (Snapshot.Error is string e) return $"error: {e}";
             string account = Snapshot.AccountEmail
-                ?? (Snapshot.Basis == "oauth" ? "datos reales" : "estimado local");
+                ?? (Snapshot.Basis == "oauth" ? "datos reales" : Snapshot.Basis == "cost" ? "estimado local" : "sin dato");
             if (Snapshot.AccountMismatch)
                 return $"⚠ {account} no es la cuenta fijada · ⟳ 5 min + al reset 5h · act. hace: {Rel.CompactReset(Snapshot.UpdatedAt)}";
             return $"{account} · ⟳ 5 min + al reset 5h · últ. act. hace: {Rel.CompactReset(Snapshot.UpdatedAt)}";
