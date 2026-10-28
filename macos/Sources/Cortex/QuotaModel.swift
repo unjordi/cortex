@@ -27,6 +27,14 @@ struct ByModel: Codable {
 }
 
 /// Gasto REAL de bolsillo (dinero), ya normalizado (amount_minor/10^exponent).
+struct ExtraUsage: Codable {
+    let used_credits: Double?
+    let monthly_limit: Double?
+    let currency: String?
+    let utilization: Double?
+    let enabled: Bool?
+}
+
 struct Spend: Codable {
     let used: Double?
     let cap: Double?
@@ -50,6 +58,7 @@ struct Snapshot: Codable {
     let five_hour: Bucket?
     let weekly: Bucket?
     let spend: Spend?             // solo en oauth: dinero real de bolsillo
+    let extra_usage: ExtraUsage?  // solo en oauth: overage
 }
 
 /// Estado de autenticación del CLI de Claude, derivado por cortex-fetch (señales reales).

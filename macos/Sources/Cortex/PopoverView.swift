@@ -347,7 +347,7 @@ struct PopoverView: View {
 
             // Gasto REAL de bolsillo — distinto del "Costo API-equiv" (Resumen).
             if let spend = model.snapshot?.spend, spend.enabled == true {
-                spendSection(spend)
+                spendSection(spend, model.snapshot?.extra_usage)
             }
 
             Spacer(minLength: 0)
@@ -377,9 +377,9 @@ struct PopoverView: View {
         }
     }
 
-    /// Sección de GASTO REAL: dinero de bolsillo (spend).
+    /// Sección de GASTO REAL: dinero de bolsillo (spend) + overage (extra_usage).
     @ViewBuilder
-    private func spendSection(_ spend: Spend) -> some View {
+    private func spendSection(_ spend: Spend, _ extra: ExtraUsage?) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text("Gasto real").fontWeight(.bold)
@@ -390,14 +390,14 @@ struct PopoverView: View {
                     .foregroundStyle(pctColor(spend.percent))
             }
             ProgressBar(pct: spend.percent)
-            Text(spendCaption(spend))
+            Text(spendCaption(spend, extra))
                 .font(.caption)
                 .foregroundStyle(label.opacity(0.65))
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    private func spendCaption(_ spend: Spend) -> String {
+    private func spendCaption(_ spend: Spend, _ extra: ExtraUsage?) -> String {
         // Monto usado / tope (redundante con el headline a propósito).
         var s = "\(Fmt.money(spend.used, spend.currency)) / \(Fmt.money(spend.cap, spend.currency))"
         if let cur = spend.currency { s += " \(cur)" }
