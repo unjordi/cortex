@@ -442,7 +442,7 @@ final class QuotaModel: ObservableObject {
         if let err = loadError, snapshot == nil { return "error: \(err)" }
         guard let snap = snapshot else { return "cargando…" }
         if let err = snap.error { return "error: \(err)" }
-        let account = snap.account_email ?? (snap.basis == "oauth" ? "datos reales" : "estimado local")
+        let account = snap.account_email ?? (snap.basis == "oauth" ? "datos reales" : snap.basis == "cost" ? "estimado local" : "sin dato")
         // Marcador de "lectura preservada" (el fetch no pudo refrescar): distingue un dato reciente de
         // uno viejo que la edad sola no separa. Sirve al contrato "muestre la última con su staleness".
         let staleMark = isSnapshotStale ? " · ⏳ sin refrescar" : ""

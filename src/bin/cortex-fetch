@@ -212,6 +212,7 @@ NEXT_MONDAY="$(date -u -d "next Monday 00:00:00" +%Y-%m-%dT%H:%M:%SZ)"
 # week_start de precisión completa lo deriva jq de $week_reset - 7d.
 WEEK_RESET_EFF="$NEXT_MONDAY"
 if [[ -n "$USAGE_JSON" ]]; then
+  # La API llama `seven_day` a la ventana de 7 días; el snapshot la guarda como `weekly` (único nombre que leen los consumidores).
   _ow="$(jq -r '.seven_day.resets_at // empty' <<<"$USAGE_JSON" 2>/dev/null || true)"
   [[ -n "$_ow" ]] && WEEK_RESET_EFF="$_ow"
 fi

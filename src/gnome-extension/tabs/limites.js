@@ -130,7 +130,7 @@ export function build(ctx) {
         foot = ctx.snapshotError ? `error: ${ctx.snapshotError}` : 'cargando…';
     } else {
         const account = s.account_email ? s.account_email
-            : (s.basis === 'oauth' ? 'datos reales' : 'estimado local');
+            : (s.basis === 'oauth' ? 'datos reales' : s.basis === 'cost' ? 'estimado local' : 'sin dato');
         const staleMark = s.stale === true ? ' · ⏳ sin refrescar' : '';
         foot = `${mismatch ? '⚠ ' : ''}${account}${mismatch ? ' no es la cuenta fijada' : ''}` +
             ` · ⟳ 5 min + al reset 5h · act. ${F.relativeTime(s.updated_at)}${staleMark}`;

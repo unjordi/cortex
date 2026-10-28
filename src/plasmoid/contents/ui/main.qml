@@ -1998,7 +1998,7 @@ PlasmoidItem {
                         if (!root.snapshot) return "cargando…"
                         const account = root.snapshot.account_email
                             ? root.snapshot.account_email
-                            : (root.snapshot.basis === "oauth" ? "datos reales" : "estimado local")
+                            : (root.snapshot.basis === "oauth" ? "datos reales" : root.snapshot.basis === "cost" ? "estimado local" : "sin dato")
                         const staleMark = root.snapshot.stale === true ? " · ⏳ sin refrescar" : ""
                         if (root.snapshot.account_mismatch === true)
                             return "⚠ " + account + " no es la cuenta fijada · ⟳ 5 min + al reset 5h · act. " + root.relativeTime(root.snapshot.updated_at) + staleMark
