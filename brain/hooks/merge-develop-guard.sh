@@ -546,16 +546,19 @@ if [ "$_ventana_sin_usuario" = 1 ] && [ -n "$tpath" ] && [ -f "$tpath" ]; then
   # humano real y (b) attachments cuyo .attachment.type=="queued_command" con .prompt no vacío (el comando
   # humano encolado que el intercalado no vio porque su texto va en .attachment.prompt, no en .message.content).
   if command -v jq >/dev/null 2>&1; then
+    # test("[^[:space:]]") en vez de gsub(space;"")!="" : mismo veredicto ("hay algún no-espacio") pero CORTA
+    # al primer char no-espacio, sin reescribir el string entero — sobre los 6000 últimos renglones de un
+    # transcript de 171 MB (base64 grande) baja de ~14 s a ~0.01 s dentro del PreToolUse (hallazgo 4).
     _human_raw=$(tail -n 6000 "$tpath" 2>/dev/null | jq -rs '
       [ .[]? | select(
           ( ((.type=="user") or ((.message.role // "")=="user"))
             and ( (.message.content // .content) as $c
-                  | if ($c|type)=="string" then (($c|gsub("[[:space:]]";""))!="")
-                    elif ($c|type)=="array" then any($c[]?; (.type=="text") and (((.text//"")|gsub("[[:space:]]";""))!=""))
+                  | if ($c|type)=="string" then ($c|test("[^[:space:]]"))
+                    elif ($c|type)=="array" then any($c[]?; (.type=="text") and ((.text//"")|test("[^[:space:]]")))
                     else false end ) )
           or
           ( (.type=="attachment") and ((.attachment.type // "")=="queued_command")
-            and (((.attachment.prompt // "")|gsub("[[:space:]]";""))!="") )
+            and ((.attachment.prompt // "")|test("[^[:space:]]")) )
         )
       ] | length' 2>/dev/null)
     if [ -z "$_human_raw" ]; then
