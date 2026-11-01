@@ -4784,6 +4784,14 @@ mkdir -p "$LRR/.claude/hooks"; echo 'v1' > "$LRR/.claude/hooks/.brain-version"  
 cp -R "$SCRIPT_DIR/skills/cerrar-slice" "$LRR/.claude/skills/cerrar-slice" 2>/dev/null   # idéntica a la fuente → se retira
 cp -R "$SCRIPT_DIR/skills/checkpoint" "$LRR/.claude/skills/checkpoint" 2>/dev/null; echo 'EDIT LOCAL' >> "$LRR/.claude/skills/checkpoint/SKILL.md"  # modificada → se conserva
 mkdir -p "$LRR/.claude/skills/mi-skill-proyecto"; echo '# propia' > "$LRR/.claude/skills/mi-skill-proyecto/SKILL.md"  # del proyecto → se conserva
+# skill que es COPIA VIEJA del cerebro (= versión histórica en git, ≠ la fuente actual) → se retira por historia
+cp -R "$SCRIPT_DIR/skills/reconstruir-contexto" "$LRR/.claude/skills/reconstruir-contexto" 2>/dev/null
+_lr_cur=$(git -C "$SCRIPT_DIR/.." rev-parse "HEAD:brain/skills/reconstruir-contexto/SKILL.md" 2>/dev/null); _lr_old=""
+for _lr_c in $(git -C "$SCRIPT_DIR/.." log --all --format=%H -- brain/skills/reconstruir-contexto/SKILL.md 2>/dev/null); do
+  _lr_b=$(git -C "$SCRIPT_DIR/.." rev-parse "$_lr_c:brain/skills/reconstruir-contexto/SKILL.md" 2>/dev/null)
+  [ -n "$_lr_b" ] && [ "$_lr_b" != "$_lr_cur" ] && { _lr_old="$_lr_b"; break; }
+done
+[ -n "$_lr_old" ] && git -C "$SCRIPT_DIR/.." cat-file -p "$_lr_old" > "$LRR/.claude/skills/reconstruir-contexto/SKILL.md" 2>/dev/null
 echo 'BACKLOG proyecto' > "$LRR/.claude/memory/estado-proyecto.md"
 : > "$LRR/.claude/memory/.cuota-fetch-forzado"; : > "$LRR/.claude/memory/.ramas-huerfanas-estado"   # sellos viejos dentro del repo
 cp "$SCRIPT_DIR/hooks/dashboard_cerebro.template.md" "$LRR/.claude/hooks/dashboard_cerebro.template.md" 2>/dev/null   # artefacto NO-.sh del cerebro leakeado
@@ -4817,6 +4825,13 @@ fi
   && ok "--limpiar-repo: CONSERVA la skill del cerebro MODIFICADA (la reporta, no la borra)" || bad "--limpiar-repo: borró una skill del cerebro modificada localmente"
 [ -d "$LRR/.claude/skills/mi-skill-proyecto" ] \
   && ok "--limpiar-repo: conserva la skill PROPIA del proyecto" || bad "--limpiar-repo: borró una skill del proyecto"
+if [ -n "$_lr_old" ]; then
+  [ ! -d "$LRR/.claude/skills/reconstruir-contexto" ] \
+    && ok "--limpiar-repo: retira una skill que es COPIA VIEJA del cerebro (matchea una versión histórica, no la actual)" \
+    || bad "--limpiar-repo: dejó una skill-copia-vieja del cerebro como DIFIERE (no miró la historia)"
+else
+  echo "  SKIP --limpiar-repo: sin versión histórica distinta de reconstruir-contexto para el caso copia-vieja"
+fi
 grep -q 'BACKLOG proyecto' "$LRR/.claude/memory/estado-proyecto.md" 2>/dev/null \
   && ok "--limpiar-repo: NO toca la memoria/estado del proyecto" || bad "--limpiar-repo: tocó la memoria del proyecto"
 [ -z "$(find "$LRR/.claude/memory" -name '.cuota-fetch-forzado' -o -name '.ramas-huerfanas-estado' -o -name '.contexto-aviso*' 2>/dev/null)" ] \

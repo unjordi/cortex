@@ -107,6 +107,25 @@ _dewire_from_settings() {
     rm -f "$tmp"; return 1
   fi
 }
+# _skill_es_copia_del_cerebro <skd> <sk> → 0 si el skill-dir copiado <skd> es una copia del cerebro: igual a
+# la fuente ACTUAL, o cada archivo igual a ALGÚN blob HISTÓRICO de su misma ruta en brain/skills/<sk> (git de
+# cortex). 1 si algún archivo no casa ninguna versión (lo modificó el proyecto → se conserva). Un regenerable
+# viejo que difiere de la fuente actual pero sí fue del cerebro se reconoce por la historia y se retira.
+_skill_es_copia_del_cerebro() {
+  local skd="$1" sk="$2" gitroot rel h hist f
+  [ -d "$SRC_SKILLS/$sk" ] && diff -rq "$skd" "$SRC_SKILLS/$sk" >/dev/null 2>&1 && return 0
+  command -v git >/dev/null 2>&1 || return 1
+  gitroot="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null)" || return 1
+  [ -n "$gitroot" ] || return 1
+  while IFS= read -r f; do
+    rel="${f#"$skd"/}"
+    h="$(git hash-object "$f" 2>/dev/null)"; [ -n "$h" ] || return 1
+    hist="$(git -C "$gitroot" log --all --format=%H -- "brain/skills/$sk/$rel" 2>/dev/null \
+            | while IFS= read -r c; do git -C "$gitroot" rev-parse "$c:brain/skills/$sk/$rel" 2>/dev/null; done)"
+    printf '%s\n' "$hist" | grep -qxF "$h" || return 1
+  done < <(find "$skd" -type f)
+  return 0
+}
 
 # ── MODO --limpiar-repo [<root>] [--apply]: retira el cerebro POR-REPO de UN repo (migración "solo cerebro
 # global", 2026-11-01: el cerebro vive solo en global por máquina; ningún repo debe cargar copias de sus
@@ -189,12 +208,11 @@ if [ "$LIMPIAR_REPO" = 1 ]; then
     for sk in $(printf '%s\n%s\n' "$man_sk" "$led_sk" | sort -u); do
       [ -z "$sk" ] && continue
       skd="$rcd/skills/$sk"; [ -d "$skd" ] || continue
-      src_sk="$SRC_SKILLS/$sk"
-      if [ -d "$src_sk" ] && diff -rq "$skd" "$src_sk" >/dev/null 2>&1; then
+      if _skill_es_copia_del_cerebro "$skd" "$sk"; then
         tocado=1; echo "   [skill cerebro] $skd"
         if [ "$LIMPIAR_APPLY" = 1 ]; then mkdir -p "$bdir/skills" && cp -Rp "$skd" "$bdir/skills/" 2>/dev/null; rm -rf "$skd"; fi
       else
-        echo "   [skill DIFIERE o sin fuente — NO la toco, revísala a mano] $skd"
+        echo "   [skill DIFIERE de toda versión del cerebro — NO la toco, revísala a mano] $skd"
       fi
     done
   fi
