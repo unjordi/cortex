@@ -19,6 +19,10 @@ public sealed class PopupForm : Form
 {
     private readonly QuotaService _svc;
     private readonly Action _onRefresh;
+    // ⏻ Apagar: teardown LIMPIO (para el timer + quita el icono de bandeja + sale), no un Application.Exit
+    // pelón que dejaría un icono fantasma. En Windows el fetcher es IN-PROCESS (no hay agente externo tipo
+    // LaunchAgent/systemd timer), así que salir del proceso YA apaga todo; esto solo lo hace prolijo.
+    private readonly Action _onQuit;
     private int _tab;
     private int _hoverRail = -1;
     // Botón del pie del riel bajo el cursor: -1 ninguno · 0 ↻ refresh · 1 ⏻ quit. Espeja `_hoverRail`
@@ -121,10 +125,11 @@ public sealed class PopupForm : Form
         return list.ToArray();
     }
 
-    public PopupForm(QuotaService svc, Action onRefresh)
+    public PopupForm(QuotaService svc, Action onRefresh, Action onQuit)
     {
         _svc = svc;
         _onRefresh = onRefresh;
+        _onQuit = onQuit;
 
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
@@ -444,7 +449,7 @@ public sealed class PopupForm : Form
             });
             return;
         }
-        if (quitR.Contains(e.Location)) { Application.Exit(); }
+        if (quitR.Contains(e.Location)) { Hide(); _onQuit(); }
     }
 
     private void RailMouseMove(object? sender, MouseEventArgs e)

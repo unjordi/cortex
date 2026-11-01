@@ -42,7 +42,7 @@ internal static class Program
         Directory.CreateDirectory(dir);
         var svc = new QuotaService();
         svc.FetchAsync().GetAwaiter().GetResult();
-        using var popup = new PopupForm(svc, () => { }) { ShotMode = true };
+        using var popup = new PopupForm(svc, () => { }, () => { }) { ShotMode = true };
         popup.StartPosition = FormStartPosition.Manual;
         popup.Location = new Point(0, 0);
         popup.Show();
@@ -96,7 +96,7 @@ internal static class Program
 
         public TrayContext()
         {
-            _popup = new PopupForm(_svc, () => RunFetch(force: true));
+            _popup = new PopupForm(_svc, () => RunFetch(force: true), ExitApp);
 
             _tray = new NotifyIcon
             {
@@ -238,6 +238,13 @@ internal static class Program
             return menu;
         }
 
+        // Salir APAGA TODO. En Windows el fetcher es IN-PROCESS: el Timer de 10s de ESTE proceso dispara
+        // RunFetch → FetchAsync (HttpClient en C#; ccusage/npx son hijos one-shot awaited). NO hay agente
+        // externo recurrente (contrasta con macOS LaunchAgent / Linux systemd timer), así que parar el timer
+        // y terminar el proceso ES apagar el recolector — no queda nada corriendo con la GUI cerrada. Lo
+        // llaman tanto el menú "Salir" como el botón ⏻ del popup (que antes hacía Application.Exit pelón y
+        // dejaba el icono de bandeja fantasma). Abrir = autostart (clave Run) lanza el EXE y RunFetch(force)
+        // dispara la primera lectura → "cargar todo su herramiental".
         private void ExitApp()
         {
             _timer.Stop();
