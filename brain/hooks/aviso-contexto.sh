@@ -187,8 +187,17 @@ _fetch_ran_recently() {
   _fas=$(date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$_fa" +%s 2>/dev/null || date -u -d "$_fa" +%s 2>/dev/null || echo 0)
   [ "$_fas" -gt 0 ] 2>/dev/null && [ $(( $(date +%s) - _fas )) -lt 1800 ]
 }
+# 0 = el widget está APAGADO (el usuario lo cerró con ⏻): hay una marca junto al state.json que el widget
+# pone al salir y borra al abrir. Con el widget apagado NO hay fetcher que corra ni lectura que esperar →
+# no forzamos el fetch (rompería "apagar apaga todo", relanzando cortex-fetch cada 5 min) ni avisamos "sin datos".
+_widget_apagado() {
+  for _ap in "${XDG_CACHE_HOME:-$HOME/.cache}/cortex/apagado" "$HOME/Library/Caches/cortex/apagado"; do
+    [ -f "$_ap" ] && return 0
+  done
+  return 1
+}
 _find_snap
-if ! _snap_fresca; then
+if ! _snap_fresca && ! _widget_apagado; then
   # FORZAR cortex-fetch desprendido, con throttle de 5min (sello en MEM). El binario vive en
   # ~/.local/bin/cortex-fetch (macOS y Linux instalan ahí); override por env para tests/escape. NO se busca
   # en el PATH (evita que un hook aislado con HOME falso dispare el cortex-fetch REAL del usuario).
@@ -226,7 +235,7 @@ SINDATOS_STAMP="$AVISO_F.sindatos"
 fire_sindatos=0
 if _snap_fresca; then
   rm -f "$SINDATOS_STAMP" 2>/dev/null || true   # episodio cerrado (dato fresco) → re-arma para el próximo
-elif [ -n "${fetch_bin:-}" ] && _fetch_ran_recently; then
+elif [ -n "${fetch_bin:-}" ] && _fetch_ran_recently && ! _widget_apagado; then
   if [ ! -f "$SINDATOS_STAMP" ]; then fire_sindatos=1; : > "$SINDATOS_STAMP" 2>/dev/null || true; fi
 fi
 # Con snapshot FRESCO (de origen o recién forzado), computa las bandas de cuota con debounce por ventana.

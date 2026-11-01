@@ -19,10 +19,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // solo → sin esto, el fetch seguía corriendo cada 5 min con el widget "apagado" (unjordi: "cerré el
     // widget pero eso no liberó la Mac"). Salir lo saca con bootout; abrir lo vuelve a cargar con bootstrap.
     private let launchAgentLabel = "io.github.unjordi.cortex"
+    // El widget tiene su PROPIO LaunchAgent (RunAtLoad): sin desactivarlo, reiniciar la Mac lo relanza y su
+    // arranque vuelve a cargar el fetcher → "apagado" se deshacía en cada login. Salir con ⏻ desactiva AMBOS.
+    private let widgetAgentLabel = "io.github.unjordi.cortex.widget"
     private var launchAgentDomain: String { "gui/\(getuid())" }
     private var launchAgentPlistPath: String {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/LaunchAgents/\(launchAgentLabel).plist").path
+    }
+    // Marca de "apagado por el usuario" junto al state.json: aviso-contexto la lee para NO relanzar el
+    // cortex-fetch con el widget apagado. La pone ⏻, la quita el arranque de la app.
+    private var apagadoMarkerPath: String {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Caches/cortex/apagado").path
     }
 
     // The launchd agent refreshes every 5 min, but its StartInterval doesn't
@@ -54,12 +63,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover.behavior = .transient
         popover.contentSize = NSSize(width: 520, height: 420)
         popover.contentViewController = NSHostingController(
-            rootView: PopoverView(model: model, onRefresh: { [weak self] in self?.forceFetch() })
+            rootView: PopoverView(
+                model: model,
+                onRefresh: { [weak self] in self?.forceFetch() },
+                onQuit: { [weak self] in if let self { self.apagarYSalir() } else { NSApp.terminate(nil) } })
         )
 
-        // Abrir el widget = cargar TODO su herramiental: (re)carga el LaunchAgent del fetcher (quedó fuera
-        // si se salió con el botón de apagar) y dispara una lectura. bootout+bootstrap es idempotente y
-        // recarga el timer; RunAtLoad del plist hace la primera lectura, y el refresh() de abajo la pinta.
+        // Abrir el widget = cargar TODO su herramiental y DESHACER el apagado: re-habilita ambos LaunchAgents
+        // (⏻ los desactivó para que no revivieran al login), borra la marca de apagado (aviso-contexto vuelve
+        // a poder forzar el fetch) y (re)carga el LaunchAgent del fetcher. RunAtLoad hace la primera lectura.
+        runLaunchctl(["enable", "\(launchAgentDomain)/\(launchAgentLabel)"])
+        runLaunchctl(["enable", "\(launchAgentDomain)/\(widgetAgentLabel)"])
+        try? FileManager.default.removeItem(atPath: apagadoMarkerPath)
         reloadLaunchAgent()
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
@@ -77,6 +92,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // SIGTERM al /bin/bash del script; cortex-fetch tiene su propio candado del SO (no deja huérfanos
         // encimados). Límite honesto: un npx/ccusage hijo ya lanzado puede terminar su corrida actual.
         if let p = fetchProc, p.isRunning { p.terminate() }
+    }
+
+    /// Salir con ⏻ (distinto de un logout/reinicio, que entra por applicationWillTerminate): apaga TODO de
+    /// forma PERSISTENTE. `disable` de ambos LaunchAgents (si no, RunAtLoad los revive en el próximo login),
+    /// la marca de apagado (aviso-contexto no fuerza el fetch con ella) y luego terminate → el bootout y el
+    /// kill del fetch en curso los hace applicationWillTerminate. El disable NO va ahí: un logout no debe
+    /// dejar el widget apagado para siempre.
+    @objc func apagarYSalir() {
+        runLaunchctl(["disable", "\(launchAgentDomain)/\(launchAgentLabel)"])
+        runLaunchctl(["disable", "\(launchAgentDomain)/\(widgetAgentLabel)"])
+        try? FileManager.default.createDirectory(
+            atPath: (apagadoMarkerPath as NSString).deletingLastPathComponent,
+            withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: apagadoMarkerPath, contents: Data())
+        NSApp.terminate(nil)
     }
 
     /// Recarga el LaunchAgent del fetcher (bootout idempotente + bootstrap). Best-effort: un fallo de

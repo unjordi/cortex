@@ -6746,6 +6746,24 @@ is_silent "$(qrun sSDnw)" \
   || bad "b6-cuota (d.2): avisó «sin datos» en una máquina sin widget"
 # (el "un solo fetch con dos sesiones a la vez" lo garantiza el CANDADO de cortex-fetch —flock/lockf,
 #  verificado en el punto 1—, no el hook; no se re-prueba aquí con un mock sin candado.)
+# (7g/7h) WIDGET APAGADO: con la marca ~/.cache/cortex/apagado, aviso-contexto NO relanza el fetch (rompería
+#     "apagar apaga todo") NI avisa «sin datos» (sin widget corriendo no hay lectura que esperar). Falla vs el
+#     hook sin la marca (7a relanzaría, 7c avisaría).
+# (7g) marca apagado + fetched_at viejo (que en 7a relanzaría) → NO relanza
+rm -f "$QROOT/.claude/memory/.cuota-fetch-forzado" "$QFMARK"
+: > "$QCACHE/apagado"
+mksnapF "$QOLD" "$QOLD" 50; touch -t 202610210000 "$QCACHE/state.json"
+qrun sApg "$QFMOCK" >/dev/null
+[ ! -f "$QFMARK" ] \
+  && ok "b6-cuota (apagado): con la marca de apagado NO relanza el fetch aunque el dato esté viejo (apagar apaga todo)" \
+  || bad "b6-cuota (apagado): relanzó el fetch con el widget apagado"
+# (7h) marca apagado + fetched_at reciente (que en 7c avisaría «sin datos») → NO avisa
+rm -f "$QROOT/.claude/memory/.contexto-aviso.d/sApg2.sindatos"
+mksnapF "$QOLD" "$QF10" 50; touch -t 202610210000 "$QCACHE/state.json"
+is_silent "$(qrun sApg2 "$QFMOCK")" \
+  && ok "b6-cuota (apagado): con la marca de apagado NO avisa «sin datos» (sin widget no hay lectura que esperar)" \
+  || bad "b6-cuota (apagado): avisó «sin datos» con el widget apagado"
+rm -f "$QCACHE/apagado"
 rm -rf "$QHOME" "$(dirname "$QROOT")"
 
 echo ""

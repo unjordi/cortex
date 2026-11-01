@@ -8,6 +8,8 @@ struct PopoverView: View {
     @ObservedObject var model: QuotaModel
     /// Real fetch trigger (launches cortex-fetch, then reloads).
     var onRefresh: () -> Void
+    /// Apagar con ⏻: desactiva los LaunchAgents, pone la marca de apagado y sale (AppDelegate.apagarYSalir).
+    var onQuit: () -> Void = { NSApp.terminate(nil) }
 
     @State private var tab = 0
     /// Hoja del Cerebro actualmente expandida ("<tier>-<idx>"), o nil.
@@ -278,7 +280,7 @@ struct PopoverView: View {
                 .foregroundStyle(label.opacity(0.7))
                 .help("Actualizar ahora (datos + versión)")
 
-                Button(action: { NSApp.terminate(nil) }) {
+                Button(action: { onQuit() }) {
                     Image(systemName: "power").hoverHighlight()
                 }
                 .buttonStyle(.borderless)
