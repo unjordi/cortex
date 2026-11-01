@@ -18,7 +18,7 @@ FETCH="$(cd "$(dirname "$0")/../bin" && pwd)/cortex-fetch"
 PASS=0; FAIL=0
 chk(){ local lbl="$1" got="$2" exp="$3"; if [[ "$got" == "$exp" ]]; then PASS=$((PASS+1)); else FAIL=$((FAIL+1)); echo "  ✗ $lbl: got[$got] exp[$exp]"; fi; }
 
-SB="$(mktemp -d)"; CACHE="$SB/cache"; PROJ="$SB/home/.claude/projects"
+SB="$(mktemp -d)"; CACHE="$SB/cache"; PROJ="$SB/hm/.claude/projects"
 mkdir -p "$CACHE" "$PROJ/fa" "$PROJ/fb" "$PROJ/fc"
 trap 'rm -rf "$SB"' EXIT
 
@@ -27,16 +27,16 @@ trap 'rm -rf "$SB"' EXIT
 #     · DUPLICADO de msg_A1 (bloque de contenido repetido: cuenta como mensaje, NO re-suma tokens)
 #     · summary 23 (NO es mensaje, pero SÍ cuenta para PEAK por tener ts) · user SIN ts (mensaje, no ts).
 cat > "$PROJ/fa/s1.jsonl" <<'EOF'
-{"type":"user","timestamp":"2026-10-01T09:00:00Z","cwd":"/Users/u/code/projX"}
-{"type":"assistant","timestamp":"2026-10-01T09:30:00Z","message":{"id":"msg_A1","usage":{"input_tokens":100,"output_tokens":50}},"cwd":"/Users/u/code/projX/.claude/worktrees/wt1"}
-{"type":"assistant","timestamp":"2026-10-01T09:31:00Z","message":{"id":"msg_A1","usage":{"input_tokens":100,"output_tokens":50}},"cwd":"/Users/u/code/projX"}
+{"type":"user","timestamp":"2026-10-01T09:00:00Z","cwd":"/srv/u/code/projX"}
+{"type":"assistant","timestamp":"2026-10-01T09:30:00Z","message":{"id":"msg_A1","usage":{"input_tokens":100,"output_tokens":50}},"cwd":"/srv/u/code/projX/.claude/worktrees/wt1"}
+{"type":"assistant","timestamp":"2026-10-01T09:31:00Z","message":{"id":"msg_A1","usage":{"input_tokens":100,"output_tokens":50}},"cwd":"/srv/u/code/projX"}
 {"type":"summary","timestamp":"2026-10-01T23:30:00Z"}
-{"type":"user","cwd":"/Users/u/code/projX"}
+{"type":"user","cwd":"/srv/u/code/projX"}
 EOF
 # fb: assistant 15 msg_B1 (projY, 7/3) + assistant 23 msg_B2 (cwd /private/tmp -> soloTmp; el nombre de la
 #     carpeta sale de projY de B1, y los tokens de AMBOS se suman bajo esa carpeta).
 cat > "$PROJ/fb/s2.jsonl" <<'EOF'
-{"type":"assistant","timestamp":"2026-10-02T15:00:00Z","message":{"id":"msg_B1","usage":{"input_tokens":7,"output_tokens":3}},"cwd":"/Users/u/code/projY"}
+{"type":"assistant","timestamp":"2026-10-02T15:00:00Z","message":{"id":"msg_B1","usage":{"input_tokens":7,"output_tokens":3}},"cwd":"/srv/u/code/projY"}
 {"type":"assistant","timestamp":"2026-10-02T23:45:00Z","message":{"id":"msg_B2","usage":{"input_tokens":5,"output_tokens":1}},"cwd":"/private/tmp/efimero"}
 EOF
 # fc: user 02 + assistant 02 msg_C1 (SIN cwd -> nombre = último segmento del slug de la carpeta: "fc").
@@ -46,7 +46,7 @@ cat > "$PROJ/fc/s3.jsonl" <<'EOF'
 EOF
 
 # run(): HOME aislado a la fixture (ninguna versión toca ~/.claude real), caché aislado, offset 0.
-run(){ env HOME="$SB/home" CLAUDE_CONFIG_DIR= CORTEX_FETCH_CACHE_DIR="$CACHE" bash "$FETCH" --transcript-stats-json "$PROJ" 0 2>/dev/null; }
+run(){ env HOME="$SB/hm" CLAUDE_CONFIG_DIR= CORTEX_FETCH_CACHE_DIR="$CACHE" bash "$FETCH" --transcript-stats-json "$PROJ" 0 2>/dev/null; }
 scanned(){ cat "$CACHE/.transcripts.lastscan" 2>/dev/null; }
 projtok(){ printf '%s\n' "$1" | awk -F'\t' -v p="$2" '$1==p{print $3","$4}'; }
 
@@ -92,11 +92,11 @@ chk "4.projX-ausente" "$(projtok "$(jq -r .rows <<<"$J4")" projX)" ""
 #    carpeta). Dedup por archivo los contaría doble → este caso FALLA contra cabe96d. ──
 mkdir -p "$PROJ/gg"
 cat > "$PROJ/gg/g1.jsonl" <<'EOF'
-{"type":"assistant","timestamp":"2026-10-05T10:00:00Z","message":{"id":"msg_G1","usage":{"input_tokens":20,"output_tokens":10}},"cwd":"/Users/u/code/projG"}
+{"type":"assistant","timestamp":"2026-10-05T10:00:00Z","message":{"id":"msg_G1","usage":{"input_tokens":20,"output_tokens":10}},"cwd":"/srv/u/code/projG"}
 EOF
 cat > "$PROJ/gg/g2.jsonl" <<'EOF'
-{"type":"assistant","timestamp":"2026-10-05T10:00:00Z","message":{"id":"msg_G1","usage":{"input_tokens":20,"output_tokens":10}},"cwd":"/Users/u/code/projG"}
-{"type":"assistant","timestamp":"2026-10-05T11:00:00Z","message":{"id":"msg_G2","usage":{"input_tokens":3,"output_tokens":1}},"cwd":"/Users/u/code/projG"}
+{"type":"assistant","timestamp":"2026-10-05T10:00:00Z","message":{"id":"msg_G1","usage":{"input_tokens":20,"output_tokens":10}},"cwd":"/srv/u/code/projG"}
+{"type":"assistant","timestamp":"2026-10-05T11:00:00Z","message":{"id":"msg_G2","usage":{"input_tokens":3,"output_tokens":1}},"cwd":"/srv/u/code/projG"}
 EOF
 J5="$(run)"
 chk "5.projG-dedup-carpeta" "$(projtok "$(jq -r .rows <<<"$J5")" projG)" "23,11"   # G1 (20/10) UNA vez + G2 (3/1)
