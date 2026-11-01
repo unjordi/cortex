@@ -54,20 +54,16 @@ TMP_FILE="$CACHE_DIR/state.json.tmp"
 mkdir -p "$CACHE_DIR"
 
 # --- Candado: evita corridas ENCIMADAS (una corrida pesada aún viva cuando el
-# LaunchAgent dispara la siguiente cada 300s). Lock por mkdir (atómico, sin flock
-# que BSD no trae). Si el dueño sigue vivo -> salimos sin encimar; si el lock
-# quedó huérfano (dueño muerto), lo reclamamos. Lo libera el trap EXIT.
-LOCK_DIR="$CACHE_DIR/fetch.lock"
-if ! mkdir "$LOCK_DIR" 2>/dev/null; then
-  _lpid="$(cat "$LOCK_DIR/pid" 2>/dev/null || echo '')"
-  if [[ -n "$_lpid" ]] && kill -0 "$_lpid" 2>/dev/null; then
-    exit 0   # otra corrida en progreso — no encimar (la causa del calentón)
-  fi
-  rm -rf "$LOCK_DIR" 2>/dev/null || true
-  mkdir "$LOCK_DIR" 2>/dev/null || exit 0
+# LaunchAgent dispara la siguiente cada 300s = la causa del calentón). Usa el
+# primitivo del SO `lockf(1)` (BSD/macOS): lock exclusivo que el KERNEL suelta si
+# el proceso muere — sin reclamo de huérfanos ni race de check-then-delete. `-t 0`
+# = no esperar: si otra corrida lo tiene, lockf sale sin correr y no encimamos.
+# Nos re-exec UNA vez bajo lockf (sostiene el lock toda la corrida); el 2º paso
+# (CORTEX_FETCH_LOCKED) ya corre con el lock tomado. Escape de prueba: NO_LOCK.
+LOCK_FILE="$CACHE_DIR/fetch.lock"
+if [[ -z "${CORTEX_FETCH_LOCKED:-}" && -z "${CORTEX_FETCH_NO_LOCK:-}" ]]; then
+  exec env CORTEX_FETCH_LOCKED=1 /usr/bin/lockf -t 0 "$LOCK_FILE" "$0" "$@"
 fi
-echo $$ > "$LOCK_DIR/pid" 2>/dev/null || true
-trap 'rm -rf "$LOCK_DIR" 2>/dev/null || true' EXIT
 
 # --- transcript_stats: agregados de ~/.claude/projects, INCREMENTAL por archivo -
 # Cachea por .jsonl (mtime+tamaño) sus parciales en buckets UTC (offset-

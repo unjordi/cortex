@@ -45,19 +45,15 @@ TMP_FILE="$CACHE_DIR/state.json.tmp"
 mkdir -p "$CACHE_DIR"
 
 # --- Candado: evita corridas ENCIMADAS (una corrida pesada aún viva cuando el
-# timer dispara la siguiente). Lock por mkdir (atómico). Si el dueño sigue vivo
-# -> salimos sin encimar; si quedó huérfano, lo reclamamos. Lo libera el trap EXIT.
-LOCK_DIR="$CACHE_DIR/fetch.lock"
-if ! mkdir "$LOCK_DIR" 2>/dev/null; then
-  _lpid="$(cat "$LOCK_DIR/pid" 2>/dev/null || echo '')"
-  if [[ -n "$_lpid" ]] && kill -0 "$_lpid" 2>/dev/null; then
-    exit 0   # otra corrida en progreso — no encimar
-  fi
-  rm -rf "$LOCK_DIR" 2>/dev/null || true
-  mkdir "$LOCK_DIR" 2>/dev/null || exit 0
+# timer dispara la siguiente). Usa el primitivo del SO `flock(1)`: lock exclusivo
+# sobre un fd que el KERNEL suelta si el proceso muere — sin reclamo de huérfanos
+# ni race. `-n` = no esperar: si otra corrida lo tiene, salimos sin encimar. El fd
+# queda abierto toda la corrida (sostiene el lock). Escape de prueba: NO_LOCK.
+LOCK_FILE="$CACHE_DIR/fetch.lock"
+if [[ -z "${CORTEX_FETCH_NO_LOCK:-}" ]] && command -v flock >/dev/null 2>&1; then
+  exec 9>"$LOCK_FILE" || true
+  flock -n 9 || exit 0
 fi
-echo $$ > "$LOCK_DIR/pid" 2>/dev/null || true
-trap 'rm -rf "$LOCK_DIR" 2>/dev/null || true' EXIT
 
 # --- transcript_stats: agregados de ~/.claude/projects, INCREMENTAL por archivo -
 # Cachea por .jsonl (mtime+tamaño) sus parciales en buckets UTC (offset-
