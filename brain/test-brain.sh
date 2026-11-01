@@ -6686,6 +6686,37 @@ mksnap "$QOLD" 88 "2026-10-21T23:00:00Z" 9
 is_silent "$(qrun sN)" \
   && ok "b6-cuota: snapshot rancio + sin cortex-fetch → calla la cuota (sin widget), no cuelga ni inventa" \
   || bad "b6-cuota: habló con snapshot rancio y sin fetch disponible"
+# (7) GATE por fetched_at (corrección de unjordi 2026-11-01): el hook relanza cortex-fetch SOLO si el
+#     ÚLTIMO fetch corrió hace ≥30 min (por `fetched_at`, cuándo CORRIÓ, NO `updated_at`). Si corrió hace
+#     <30 min pero no trajo datos (stale, API caída) NO relanza → no maltrata la compu. Falla vs el hook viejo
+#     (que miraba updated_at/stale y relanzaba cada 5 min con la API caída).
+QFMARK="$QHOME/fetch-ran.marker"
+QFMOCK="$QHOME/fetch-mark.sh"
+cat > "$QFMOCK" <<MOCK
+#!/usr/bin/env bash
+touch "$QFMARK"
+printf '{"updated_at":"%s","fetched_at":"%s","stale":false,"five_hour":{"percent":77,"resets_at":"2026-10-21T21:00:00Z","is_active":true},"weekly":{"percent":9,"resets_at":"2026-10-28T14:00:00Z"}}\n' "\$(date -u +%Y-%m-%dT%H:%M:%SZ)" "\$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "\${XDG_CACHE_HOME}/cortex/state.json"
+MOCK
+chmod +x "$QFMOCK"
+# snapshot con fetched_at explícito + stale (la API cayó: corrió pero sin datos nuevos)
+mksnapF() { printf '{"updated_at":"%s","fetched_at":"%s","stale":true,"five_hour":{"percent":%s,"resets_at":"2026-10-21T21:00:00Z","is_active":true},"weekly":{"percent":9,"resets_at":"2026-10-28T14:00:00Z"}}\n' "$1" "$2" "$3" > "$QCACHE/state.json"; }
+QF10="$(date -u -v-10M +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '10 min ago' +%Y-%m-%dT%H:%M:%SZ)"
+# (7a) fetched_at hace 40 min (+ stale) → NO ha corrido en 30 min → SÍ relanza (1 vez)
+rm -f "$QROOT/.claude/memory/.cuota-fetch-forzado" "$QFMARK"
+mksnapF "$QOLD" "$QOLD" 50; touch -t 202610210000 "$QCACHE/state.json"
+qrun sFa "$QFMOCK" >/dev/null
+[ -f "$QFMARK" ] \
+  && ok "b6-cuota: fetched_at ≥30 min (no ha corrido) → relanza cortex-fetch (1 vez)" \
+  || bad "b6-cuota: no relanzó con fetched_at viejo"
+# (7b) fetched_at hace 10 min + stale (corrió pero la API cayó) → NO relanza (no maltrata la compu)
+rm -f "$QROOT/.claude/memory/.cuota-fetch-forzado" "$QFMARK"
+mksnapF "$QOLD" "$QF10" 50; touch -t 202610210000 "$QCACHE/state.json"
+qrun sFb "$QFMOCK" >/dev/null
+[ ! -f "$QFMARK" ] \
+  && ok "b6-cuota: fetched_at <30 min + stale (API caída) → NO relanza (previene el maltrato a la compu)" \
+  || bad "b6-cuota: relanzó pese a que el fetch corrió hace <30 min (maltrato)"
+# (el "un solo fetch con dos sesiones a la vez" lo garantiza el CANDADO de cortex-fetch —flock/lockf,
+#  verificado en el punto 1—, no el hook; no se re-prueba aquí con un mock sin candado.)
 rm -rf "$QHOME" "$(dirname "$QROOT")"
 
 echo ""

@@ -176,6 +176,17 @@ _snap_fresca() {  # 0 = fresca (updated_at <= 30min y no stale); 1 = rancia/ause
   _us=$(date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$_up" +%s 2>/dev/null || date -u -d "$_up" +%s 2>/dev/null || echo 0)
   [ "$_us" -gt 0 ] 2>/dev/null && [ $(( $(date +%s) - _us )) -le 1800 ]
 }
+# 0 = el ÚLTIMO fetch CORRIÓ hace <30 min → NO relanzar (aunque el dato sea rancio). Se decide por
+# `fetched_at` (cuándo CORRIÓ el fetch), NO por `updated_at` (cuándo hubo dato real): si el fetch corrió
+# recién pero no trajo datos (sin red, API caída, causa desconocida → stale:true), relanzar cada 5 min
+# maltrataría la compu. Distinguir "no ha corrido" (sin fetched_at → se lanza) de "corrió pero sin datos"
+# (fetched_at reciente → se reporta rancio y ya) es justo lo que lo previene. [user 2026-11-01]
+_fetch_ran_recently() {
+  [ -n "$_snap" ] || return 1   # sin snapshot → nunca corrió → SÍ se puede lanzar
+  _fa=$(jq -r '.fetched_at // empty' "$_snap" 2>/dev/null); [ -n "$_fa" ] || return 1
+  _fas=$(date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$_fa" +%s 2>/dev/null || date -u -d "$_fa" +%s 2>/dev/null || echo 0)
+  [ "$_fas" -gt 0 ] 2>/dev/null && [ $(( $(date +%s) - _fas )) -lt 1800 ]
+}
 _find_snap
 if ! _snap_fresca; then
   # FORZAR cortex-fetch desprendido, con throttle de 5min (sello en MEM). El binario vive en
@@ -190,7 +201,7 @@ if ! _snap_fresca; then
     _fs=$(_mtime "$force_stamp"); case "$_fs" in ''|*[!0-9]*) _fs=0;; esac
     [ "$_fs" -gt 0 ] && [ $(( $(date +%s) - _fs )) -lt 300 ] && throttled=1
   fi
-  if [ -n "$fetch_bin" ] && [ "$throttled" -eq 0 ]; then
+  if [ -n "$fetch_bin" ] && [ "$throttled" -eq 0 ] && ! _fetch_ran_recently; then
     : > "$force_stamp" 2>/dev/null || true
     _before=""; [ -n "$_snap" ] && _before=$(_mtime "$_snap")
     ( "$fetch_bin" ) </dev/null >/dev/null 2>&1 &     # DESPRENDIDO: no hereda el stdio del hook (H11)
