@@ -38,6 +38,8 @@ ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "limpiar-ramas: no e
 BITA="$ROOT/.claude/memory/bitacora.md"
 # shellcheck source=ramas-zombie.sh
 . "$(dirname "$0")/ramas-zombie.sh"
+# shellcheck source=estado-cerebro-comun.sh
+. "$(dirname "$0")/estado-cerebro-comun.sh" 2>/dev/null
 
 # fetch --prune: refresca los refs remotos (surface de las remotas ya borradas) para que la detección de
 # "remota borrada" sea fiel. Se puede saltar (--no-fetch) si estás offline o ya lo corriste.
@@ -124,7 +126,9 @@ HUERF_DIAS="${LIMPIAR_RAMAS_DIAS_HUERFANA:-14}"
 case "$HUERF_DIAS" in ''|*[!0-9]*) HUERF_DIAS=14 ;; esac
 # Estado de dedupe bajo ${CLAUDE_CONFIG_DIR:-~/.claude}/state/<cksum del ROOT>/, fuera del repo: no ensucia
 # el working tree.
-HUERF_ESTADO="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/state/$(printf '%s' "$ROOT" | cksum 2>/dev/null | awk '{print $1}')/.ramas-huerfanas-estado"
+_hstate="$(cortex_state_dir "$ROOT" 2>/dev/null)"
+[ -n "$_hstate" ] || _hstate="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/state/$(printf '%s' "$ROOT" | cksum 2>/dev/null | awk '{print $1}')"  # fallback si la lib no está
+HUERF_ESTADO="$_hstate/.ramas-huerfanas-estado"
 rm -f "$ROOT/.claude/memory/.ramas-huerfanas-estado" 2>/dev/null || true   # retira el sello que una versión anterior dejó dentro del repo
 huerf_ya_reportada() {  # $1=branch $2=sha -> 0 si ESA punta ya se reportó (no repetir en cada corrida)
   [ -f "$HUERF_ESTADO" ] || return 1

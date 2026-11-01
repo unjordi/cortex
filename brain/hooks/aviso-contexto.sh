@@ -39,7 +39,10 @@ MEM="$ROOT/.claude/memory"
 # Sellos de throttle/debounce bajo ${CLAUDE_CONFIG_DIR:-~/.claude}/state/<cksum del ROOT>/, fuera del repo:
 # no ensucian el working tree ni dependen de .gitignore. El andamio del checkpoint (↓, en $MEM) sí vive en
 # el repo: es un artefacto durable, no un sello.
-STATE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/state/$(printf '%s' "$ROOT" | cksum 2>/dev/null | awk '{print $1}')"
+# shellcheck source=estado-cerebro-comun.sh
+. "$(dirname "$0")/estado-cerebro-comun.sh" 2>/dev/null
+STATE="$(cortex_state_dir "$ROOT" 2>/dev/null)"
+[ -n "$STATE" ] || STATE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/state/$(printf '%s' "$ROOT" | cksum 2>/dev/null | awk '{print $1}')"  # fallback si la lib no está
 mkdir -p "$STATE" 2>/dev/null || true            # fail-open: sin dir escribible, los sellos degradan a sin-throttle
 rm -rf "$MEM/.contexto-aviso" "$MEM/.contexto-aviso.d" "$MEM/.cuota-fetch-forzado" 2>/dev/null || true  # retira el sello que una versión anterior dejó dentro del repo
 
