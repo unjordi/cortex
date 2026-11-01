@@ -9726,6 +9726,29 @@ SH
     ok "despertar-master: sesión IDLE se relanza (screen -dmS bar-master … --resume ccc)"
   else bad "despertar-master: NO relanzó una sesión idle — screen.log: $(cat "$SCREENLOG")"; fi
 
+  # sesión de FONDO: un master con mtime VIEJO (idle por mtime) pero con un proceso de fondo vivo cuyo
+  # ejecutable es el binario VERSIONADO (…/versions/<x.y.z>/…, basename ≠ claude) con --resume <id> →
+  # _pids_master lo detecta → --lista lo da VIVA y despertar NO relanza. `ps` se stubea; otro id no se toca.
+  mkdir -p "$PROJ/slug-bg"
+  printf '{"cwd":"%s","customTitle":"bg-master"}\n' "$DMROOT/repoC" > "$PROJ/slug-bg/bg.jsonl"
+  touch -t 202001010000 "$PROJ/slug-bg/bg.jsonl"   # viejo → idle por mtime (la señal de vida es el proceso)
+  PSBIN="$DMROOT/binps"; mkdir -p "$PSBIN"
+  cat > "$PSBIN/ps" <<'PSS'
+#!/usr/bin/env bash
+printf '%s\n' "55501 /Users/u/.local/state/claude/versions/2.0.14/bin/node --resume bg --remote-control bg-master"
+PSS
+  chmod +x "$PSBIN/ps"
+  _dmbg() { PATH="$PSBIN:$DMROOT/bin:$PATH" CLAUDE_PROJECTS_DIR="$PROJ" DESPERTAR_VIVA_MIN=15 DESPERTAR_ESPERA_S=0 bash "$DM" "$@" 2>&1; }
+  : > "$SCREENLOG"
+  Lbg="$(_dmbg --lista)"
+  printf '%s' "$Lbg" | grep -q 'bg-master .*viva' \
+    && ok "despertar-master: sesión de FONDO (ejecutable versionado + --resume) → VIVA aunque el mtime sea viejo" \
+    || bad "despertar-master: no detectó la sesión de fondo; got: $(printf '%s' "$Lbg" | grep bg-master)"
+  Vbg="$(_dmbg bg-master)"
+  { printf '%s' "$Vbg" | grep -qi 'VIVA' && ! grep -q 'bg-master' "$SCREENLOG"; } \
+    && ok "despertar-master: sesión de fondo VIVA no se relanza (screen NO invocado)" \
+    || bad "despertar-master: relanzó una sesión de fondo viva — screen.log: $(cat "$SCREENLOG")"
+
   # --mensaje: el prompt inicial va DESPUÉS de '--' (fin de opciones) → un mensaje que EMPIEZA con '-'
   # (lista markdown "- x", "--- Reporte ---") no se parsea como flag de claude (MEDIO auditoría 2026-10-22).
   : > "$SCREENLOG"; : > "$SESSF"   # bar-master vuelve a idle (sin señal de screen) para que relance
@@ -9735,6 +9758,14 @@ SH
   { grep -q 'bar-master' "$SCREENLOG" && grep -q ' -- ' "$SCREENLOG"; } \
     && ok "despertar-master --mensaje: el prompt va tras '--' (un mensaje con '-' no se parsea como flag)" \
     || bad "despertar-master --mensaje: falta el '--' antes del prompt — screen.log: $(cat "$SCREENLOG")"
+
+  # --mensaje … --no-esperar: ENTREGA el mensaje (screen con --) Y respeta el no-esperar (regresa por la rama
+  # "lanzada en screen", sin esperar la carga) — un dispatch que ignore el --no-esperar y espere falla aquí.
+  : > "$SCREENLOG"; : > "$SESSF"
+  Mne="$(_dm bar-master --mensaje "$DMROOT/msg.txt" --no-esperar)"
+  { grep -q ' -- ' "$SCREENLOG" && printf '%s' "$Mne" | grep -qi 'lanzada en screen'; } \
+    && ok "despertar-master --mensaje … --no-esperar: entrega el mensaje y respeta el no-esperar (no espera la carga)" \
+    || bad "despertar-master --mensaje … --no-esperar: no respetó el no-esperar o no entregó el mensaje — out: $Mne"
 
   # PROJECTS default honra CLAUDE_CONFIG_DIR (MEDIO 2026-10-22): SIN CLAUDE_PROJECTS_DIR y con HOME vacío,
   # encuentra los transcripts bajo $CLAUDE_CONFIG_DIR/projects (antes fijaba $HOME/.claude/projects).

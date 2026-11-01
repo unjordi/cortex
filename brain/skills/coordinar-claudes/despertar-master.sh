@@ -12,7 +12,7 @@
 #   despertar-master.sh --lista|-l      tabla: nombre · id · edad · estado (viva/idle) · cwd
 #   despertar-master.sh <nombre>        despierta ese master (o avisa que ya está vivo y NO lo relanza)
 #   despertar-master.sh <nombre> --no-esperar   lanza y regresa sin esperar a que cargue
-#   despertar-master.sh <nombre> --mensaje <archivo>   lo despierta y le entrega <archivo> como su primer
+#   despertar-master.sh <nombre> --mensaje <archivo> [--no-esperar]   lo despierta y le entrega <archivo> como su primer
 #                                       mensaje (prompt inicial del resume; no depende de teclear en la TUI)
 #   despertar-master.sh --cerrar <nombre>   cierra la sesión (proceso claude + screen) y verifica que cerró
 #   despertar-master.sh --curar         (re)genera el roster LOCAL ~/.claude/masters.json desde los
@@ -70,14 +70,16 @@ _resolver_cwd() {
 # mtime la cubre mientras se use (escribe su transcript) y el screen cubre las lanzadas por aquí.
 # Fail-open: sin screen/pgrep estas señales no aplican y manda el mtime.
 _screen_nombres() { screen -ls 2>/dev/null | sed -n 's/^[[:space:]]*[0-9][0-9]*\.\([^[:space:]]*\).*/\1/p'; }
-# _pids_master NOMBRE ID → PIDs de procesos `claude` retomados por id o por título.
-# Solo cuenta un proceso cuyo EJECUTABLE (argv[0]) es `claude`: así nunca se cuenta a sí mismo ni a un
-# bash/grep/script que lleve el patrón en su línea de comando. Usa ps: pgrep -f no ve los argumentos de
-# algunos procesos en macOS.
+# _pids_master NOMBRE ID → PIDs de sesiones de Claude retomadas por id o por título.
+# El EJECUTABLE (argv[0]) de una sesión de Claude es `claude`, el binario versionado (…/versions/<x.y.z>/…,
+# el caso de una sesión de FONDO) o `bg-pty-host`. Exigir además `--resume <id|nombre>` es el discriminador
+# que impide contarse a sí mismo o a un bash/grep/script que lleve el patrón (ni ps ni esta awk traen --resume).
+# Usa ps: pgrep -f no ve los argumentos de algunos procesos en macOS.
 _pids_master() {
   local name="$1" id="$2"
   ps -axo pid=,command= 2>/dev/null | awk -v id="${id:-@@}" -v name="$name" '
-    { exe=$2; sub(/.*\//, "", exe); if (exe != "claude") next
+    { p=$2; exe=p; sub(/.*\//, "", exe)
+      if (exe != "claude" && exe != "bg-pty-host" && p !~ /\/versions\//) next
       for (k=3; k<=NF; k++) if ($k ~ /^--resume/) {
         v=$k; sub(/^--resume=?/, "", v)
         if (v == "") for (m=k+1; m<=NF; m++) if ($m !~ /^--/) { v=$m; break }
@@ -290,8 +292,9 @@ case "${1:-}" in
     case "${2:-}" in
       --no-esperar) despertar "$1" no ;;
       "")           despertar "$1" si ;;
-      --mensaje)    [ -n "${3:-}" ] || { echo "[despertar-master] uso: <nombre> --mensaje <archivo>" >&2; exit 2; }
-                    VIVA_MIN=0; despertar "$1" si "$3" ;;   # edad 0: decide solo por proceso/screen
+      --mensaje)    [ -n "${3:-}" ] || { echo "[despertar-master] uso: <nombre> --mensaje <archivo> [--no-esperar]" >&2; exit 2; }
+                    _esp=si; [ "${4:-}" = "--no-esperar" ] && _esp=no   # --mensaje … --no-esperar: entrega y regresa
+                    VIVA_MIN=0; despertar "$1" "$_esp" "$3" ;;   # edad 0: decide solo por proceso/screen
       *)            echo "[despertar-master] argumento extra desconocido: $2" >&2; exit 2 ;;
     esac
     ;;
