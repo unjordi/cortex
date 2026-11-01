@@ -499,8 +499,9 @@ PlasmoidItem {
         checkUpdate()
     }
     // ⏸/⏵ PAUSAR / REANUDAR la recolección automática — NO es "apagar" (por eso NO lleva ícono de power).
-    // En macOS ⏻ = NSApp.terminate mata el proceso (la app de barra ES el widget Y el recolector). En KDE
-    // el plasmoide vive DENTRO de plasmashell y no puede matarse solo; lo que lo mantiene recolectando es
+    // En macOS ⏻ = NSApp.terminate cierra la GUI y ADEMÁS hace bootout del LaunchAgent del fetcher (son
+    // procesos SEPARADOS: la app de barra NO es el recolector) — "apagar apaga todo". En KDE el plasmoide
+    // vive DENTRO de plasmashell y no puede matarse solo; lo que lo mantiene recolectando es
     // el timer systemd de usuario (cortex.timer, cada 5 min → oneshot cortex.service = un fetch
     // a la API). Por eso el botón PAUSA/REANUDA ese timer, y su ícono lo dice honesto (media-playback-pause
     // cuando corre, media-playback-start cuando está pausado):
@@ -643,6 +644,18 @@ PlasmoidItem {
                 accountCheckSource.connectSource("bash -lc " + root.shq("jq -r '.oauthAccount.accountUuid // empty' \"${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json\" 2>/dev/null"))
             }
         }
+    }
+
+    // Abrir el widget = cargar TODO su herramiental (espeja reloadLaunchAgent() de AppDelegate.swift). El
+    // timer de systemd vive APARTE del plasmoide: no se reinicia solo al re-instanciarlo, así que si se pausó
+    // la recolección y luego se re-agregó el plasmoide, el timer quedaba PARADO mientras el plasmoide se creía
+    // corriendo. Al cargar: re-asegura el timer (start es idempotente si ya corría) y dispara una lectura. No
+    // hace falta bootstrap como en macOS: el timer no se "cierra" con el plasmoide. Un pause posterior NO re-
+    // instancia el plasmoide, así que esto no pisa una pausa deliberada (solo corre al abrir de verdad).
+    Component.onCompleted: {
+        powerRunner.connectSource("systemctl --user start cortex.timer")
+        root.collectionPaused = false
+        forceRefresh()
     }
 
     // ---------- Color / estado ----------
