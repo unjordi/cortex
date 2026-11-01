@@ -11614,6 +11614,35 @@ if [ "$(uname)" = "Linux" ]; then
   fi
 fi
 
+# cortex-fetch: agregados de transcripts INCREMENTALES por archivo (no releer los 3.1 GB
+# cada 5 min = el calentón de la Mac). La matriz vive en {macos,src}/pruebas/ para re-correrla directo.
+if [ "$(uname)" = "Darwin" ]; then
+  CFS_TEST="$SCRIPT_DIR/../macos/pruebas/cortex-fetch-stats.test.sh"
+  if [ -x "$CFS_TEST" ]; then
+    CFS_OUT="$(bash "$CFS_TEST" 2>&1)"
+    if [ $? -eq 0 ]; then
+      ok "cortex-fetch macOS: transcripts incrementales (caché por archivo, dedup, peak/day) ($(printf '%s' "$CFS_OUT" | grep -o 'PASS=[0-9]*'))"
+    else
+      bad "cortex-fetch macOS stats FALLÓ: $(printf '%s' "$CFS_OUT" | grep -E '✗|FAIL=' | tr '\n' ' ')"
+    fi
+  else
+    bad "cortex-fetch macOS stats: no encuentro $CFS_TEST"
+  fi
+fi
+if [ "$(uname)" = "Linux" ]; then
+  CFLS_TEST="$SCRIPT_DIR/../src/pruebas/cortex-fetch-stats.test.sh"
+  if [ -x "$CFLS_TEST" ]; then
+    CFLS_OUT="$(bash "$CFLS_TEST" 2>&1)"
+    if [ $? -eq 0 ]; then
+      ok "cortex-fetch Linux: transcripts incrementales (caché por archivo, dedup, peak/day) ($(printf '%s' "$CFLS_OUT" | grep -o 'PASS=[0-9]*'))"
+    else
+      bad "cortex-fetch Linux stats FALLÓ: $(printf '%s' "$CFLS_OUT" | grep -E '✗|FAIL=' | tr '\n' ' ')"
+    fi
+  else
+    bad "cortex-fetch Linux stats: no encuentro $CFLS_TEST"
+  fi
+fi
+
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (vj) install.sh SIEMPRE deja contents/version.json en el paquete YA instalado =="
