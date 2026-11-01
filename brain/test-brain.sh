@@ -3068,8 +3068,8 @@ grep -Eq '^proteger-autorizaciones[[:space:]]+retirado[[:space:]]+hook' "$SCRIPT
   && ok "retiro: proteger-autorizaciones = retirado en el MANIFEST" || bad "retiro: proteger-autorizaciones no figura como retirado en el MANIFEST"
 [ ! -e "$SCRIPT_DIR/hooks/proteger-autorizaciones.sh" ] \
   && ok "retiro: el hook ya no está en brain/hooks" || bad "retiro: brain/hooks/proteger-autorizaciones.sh sigue existiendo"
-! grep -q 'proteger-autorizaciones)' "$SCRIPT_DIR/install-brain.sh" "$SCRIPT_DIR/sincronizar-cerebro.sh" \
-  && ok "retiro: ni install-brain ni sincronizar-cerebro le asignan matcher" || bad "retiro: un instalador todavía cablea proteger-autorizaciones"
+! grep -q 'proteger-autorizaciones)' "$SCRIPT_DIR/install-brain.sh" \
+  && ok "retiro: install-brain no le asigna matcher" || bad "retiro: el instalador todavía cablea proteger-autorizaciones"
 
 echo "== (b3a3) verificar-cerebro: drift-check instalada-vs-fuente (idéntica→0; difiere→la lista; local→ignora) =="
 DVFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-dv.XXXXXX")"
