@@ -1583,6 +1583,16 @@ CMGOOD="$CMROOT/good.jsonl"; printf '%s\n' '{"type":"user","message":{"role":"us
 ! printf '%s' "$(cm_tx "glab mr merge 5 --yes $CMOK" "$CMGOOD")" | grep -qi 'no pude LEER' \
   && ok "proposal-2 control: transcript LIMPIO (juez DENY) → mensaje normal de develop, NO 'no pude LEER'" \
   || bad "proposal-2 control: un transcript limpio dio el mensaje de fallo de lectura"
+# fila 3 (2026-11-01): un transcript SOLO con tool_results (type:"user" pero content=tool_result, SIN ningún
+# mensaje humano) NO es "no pude leer" — es "no hay autorización". Falla vs el código viejo (que grepeaba
+# "type":"user" crudo y tomaba el tool_result como humano → decía "no pude leer").
+CMTOOL="$CMROOT/tool.jsonl"
+printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"salida de bash","tool_use_id":"t1"}]}}' > "$CMTOOL"
+printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"corrí el comando"}]}}' >> "$CMTOOL"
+out_tool="$(cm_tx "glab mr merge 5 --yes $CMOK" "$CMTOOL")"
+{ is_deny "$out_tool" && ! printf '%s' "$out_tool" | grep -qi 'no pude LEER'; } \
+  && ok "fila3: transcript SOLO con tool_results (sin humano) → NO 'no pude leer' (un tool_result no es mensaje humano)" \
+  || bad "fila3: tool_results-only dio 'no pude leer' → [$out_tool]"
 # H-R9-01: el binario Windows 'glab.exe mr merge' también se reconoce como merge.
 is_deny "$(cm 'glab.exe mr merge 5 --yes' DENY)" \
   && ok "cmd H-R9-01: 'glab.exe mr merge' reconocido como merge (Windows) → gateado" \

@@ -537,9 +537,27 @@ if [ "$_ventana_sin_usuario" = 1 ] && [ -n "$tpath" ] && [ -f "$tpath" ]; then
   _tp_lineas=$(wc -l < "$tpath" 2>/dev/null | tr -d '[:space:]')
   case "$_tp_lineas" in ''|*[!0-9]*) _tp_lineas=0 ;; esac
   [ "$_tp_lineas" -gt 6000 ] && _ventana_truncada=1
-  # Si la conversación parseada no trae USUARIO: pero la ventana CRUDA sí trae mensajes de usuario (role/type
-  # user, o un queued_command humano), el parseo del transcript falló — distinto de "no autorizaste".
-  tail -n 6000 "$tpath" 2>/dev/null | grep -qE '"(role|type)"[[:space:]]*:[[:space:]]*"user"|"queued_command"' && _jq_fallo=1
+  # "no pude LEER" SOLO si la ventana CRUDA trae un mensaje HUMANO real (texto, o un queued_command) que el
+  # parser no extrajo — distinto de "no autorizaste". Un `type/role:"user"` cuyo content es SOLO un
+  # tool_result NO cuenta (es salida de un tool, no humano): si todos los "user" son tool_results, no hubo
+  # autorización POSIBLE y el mensaje correcto es el de "definición de LISTO", no "no pude leer".
+  if command -v jq >/dev/null 2>&1; then
+    _human_raw=$(tail -n 6000 "$tpath" 2>/dev/null | jq -rs '
+      [ .[]? | select((.type=="user") or ((.message.role // "")=="user"))
+             | ((.message.content // .content) as $c
+                | if ($c|type)=="string" then ($c|gsub("[[:space:]]";"")|select(.!="")|1)
+                  elif ($c|type)=="array" then (select(any($c[]?; (.type=="text") and (((.text//"")|gsub("[[:space:]]";""))!=""))) | 1)
+                  else empty end)
+      ] | length' 2>/dev/null)
+    if [ -z "$_human_raw" ]; then
+      # jq no pudo parsear la ventana (línea malformada = posible parse real fallido) → heurístico crudo
+      tail -n 6000 "$tpath" 2>/dev/null | grep -qE '"(role|type)"[[:space:]]*:[[:space:]]*"user"|"queued_command"' && _jq_fallo=1
+    else
+      { [ "$_human_raw" != 0 ] || tail -n 6000 "$tpath" 2>/dev/null | grep -q '"queued_command"'; } && _jq_fallo=1
+    fi
+  else
+    tail -n 6000 "$tpath" 2>/dev/null | grep -qE '"(role|type)"[[:space:]]*:[[:space:]]*"user"|"queued_command"' && _jq_fallo=1
+  fi
 fi
 
 # Grant DURABLE (turno-nocturno): un OK persistido a disco cubre scope=merge-develop (NUNCA main). Fast-path
