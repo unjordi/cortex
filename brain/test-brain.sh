@@ -7168,6 +7168,10 @@ else
   wskills=$(for d in "$SCRIPT_DIR"/skills/*/; do [ -f "${d}SKILL.md" ] && basename "$d"; done | sort -u)
   # quoted tokens con al menos un guion (todos los hooks lo tienen → no captura keywords ni comentarios)
   qtok() { grep -oE '"[a-z][a-z0-9]*(-[a-z0-9]+)+"' | tr -d '"' | sort -u; }
+  # Extrae el literal de array desde la línea de la declaración hasta el primer `]`, inclusive en la misma
+  # línea: un set VACÍO (`= []`) corta ahí mismo. Un rango sed `/\[/,/\]/` no cierra en la misma línea y se
+  # traga código posterior (tokens ajenos). $1=patrón de la declaración, $2=archivo.
+  arrlit() { awk -v pat="$1" '$0 ~ pat {f=1} f { if (match($0, /\]/)) { print substr($0,1,RSTART-1); exit } print }' "$2"; }
   cmp_set() {  # label  what  got  want
     if [ "$3" = "$4" ]; then ok "drift-widget[$1]: $2 == MANIFEST"
     else bad "drift-widget[$1]: $2 DIFIERE de MANIFEST · sobran/faltan: $(comm -3 <(printf '%s\n' "$3") <(printf '%s\n' "$4") | tr '\t' '~' | tr '\n' ' ')"; fi
@@ -7189,8 +7193,8 @@ else
   # (macOS / Swift) known-sets en BrainInspector.swift · tiles en PopoverView.swift
   SW="$ROOT/macos/Sources/Cortex/BrainInspector.swift"; SWD="$ROOT/macos/Sources/Cortex/PopoverView.swift"
   if [ -f "$SW" ] && [ -f "$SWD" ]; then
-    cmp_set mac "known-global" "$(sed -n '/knownGlobalHooks: Set<String> = \[/,/\]/p' "$SW" | qtok)" "$mf_global"
-    cmp_set mac "known-repo"   "$(sed -n '/knownRepoHooks: Set<String> = \[/,/\]/p'   "$SW" | qtok)" "$mf_repo"
+    cmp_set mac "known-global" "$(arrlit 'knownGlobalHooks: Set<String> =' "$SW" | qtok)" "$mf_global"
+    cmp_set mac "known-repo"   "$(arrlit 'knownRepoHooks: Set<String> ='   "$SW" | qtok)" "$mf_repo"
     cover   mac "$SWD"
   else bad "drift-widget[mac]: no encuentro BrainInspector.swift / PopoverView.swift"; fi
   # (plasmoid / QML) known-sets y tiles en el mismo main.qml
@@ -9242,21 +9246,20 @@ if e2e bash "$E2ESH" paridad --src-repo "$E2ESRC" --dst-repo "$E2EDST" --bundle 
 else
   bad "(e2e) paridad: bloqueó un destino PERSONAL correcto: $(grep -E 'FALTA' "$E2EPAR" | head -2 | tr '\n' ' ')"
 fi
-grep -q 'destino PERSONAL' "$E2EPAR" \
-  && ok "(e2e) paridad: T4 DICE por qué no exige settings.json en un destino personal" \
-  || bad "(e2e) paridad: T4 no explica la bifurcación personal/compartido"
+grep -q 'install GLOBAL existe' "$E2EPAR" \
+  && ok "(e2e) paridad: T4 verifica el install GLOBAL (no exige settings.json por-repo: el cerebro vive solo en global)" \
+  || bad "(e2e) paridad: T4 no verifica el install GLOBAL"
 grep -qE '^  pend  secreta\.local\.md' "$E2EPAR" \
   && ok "(e2e) paridad: un T2 que viaja en el bundle es 'pend' (lo deposita S5), no un fallo" \
   || bad "(e2e) paridad: cuenta como FALTA un T2 que está en el bundle esperando a S5"
-# (2) la MISMA situación declarada COMPARTIDA y sin settings.json ⇒ BLOQUEA (ahí el correo sí hace falta)
+# (2) la marca repo-compartido NO altera paridad: el cerebro vive solo en global, ningún guard viaja por-repo;
+#     la marca solo gobierna el scoping de merge-develop-guard.
 touch "$E2EDST/.claude/repo-compartido"
 if e2e bash "$E2ESH" paridad --src-repo "$E2ESRC" --dst-repo "$E2EDST" --bundle "$E2EBUNDLE" \
      --t1 t1-migrada.md --t2-local secreta.local.md > "$E2EPAR" 2>&1; then
-  bad "(e2e) paridad: un destino COMPARTIDO sin settings.json pasó (un colega clonaría SIN guards)"
+  ok "(e2e) paridad: un destino COMPARTIDO sin settings.json por-repo PASA (la marca no exige guards por-repo)"
 else
-  grep -q 'se declara COMPARTIDO' "$E2EPAR" \
-    && ok "(e2e) paridad: un destino COMPARTIDO sin settings.json BLOQUEA (el correo de guards falta)" \
-    || bad "(e2e) paridad: bloqueó, pero no por la marca de repo compartido"
+  bad "(e2e) paridad: un destino COMPARTIDO bloqueó por falta de settings.json por-repo (regresión a la bifurcación retirada): $(grep -E 'FALTA' "$E2EPAR" | head -2 | tr '\n' ' ')"
 fi
 command rm -f "$E2EDST/.claude/repo-compartido"
 # (3) un T1 que sigue solo en el origen ⇒ FALTA de verdad
