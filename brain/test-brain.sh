@@ -3578,6 +3578,17 @@ f5nf="$(cd "$F5REPO" && HOME="$F5ROOT/home" CLAUDE_INTEGRACION_BASE=develop bash
 printf '%s' "$f5nf" | grep -q 'no pude actualizar origin' \
   && bad "b3-fetch: --no-fetch disparó el aviso de fallo (no se intentó el fetch)" \
   || ok "b3-fetch: --no-fetch no dispara el aviso de fallo (no se intentó)"
+# con una RAMA candidata + origin muerto, el ls-remote por rama NO cuelga (acotado por ConnectTimeout + tope):
+# la corrida entera completa en tiempo acotado. Sin el tope colgaba ~75s/rama (connect TCP por defecto).
+git -C "$F5REPO" checkout -q -b feat/candidata develop >/dev/null 2>&1
+printf 'c\n' > "$F5REPO/c.txt"; git -C "$F5REPO" add c.txt >/dev/null 2>&1; git -C "$F5REPO" commit -qm c >/dev/null 2>&1
+git -C "$F5REPO" checkout -q develop >/dev/null 2>&1
+_f5t0=$(date +%s)
+(cd "$F5REPO" && HOME="$F5ROOT/home" CLAUDE_INTEGRACION_BASE=develop LIMPIAR_RAMAS_FETCH_TIMEOUT=6 LIMPIAR_RAMAS_LS_REMOTE_TIMEOUT=6 bash "$HOOKS/limpiar.sh" ramas >/dev/null 2>&1)
+_f5dt=$(( $(date +%s) - _f5t0 ))
+[ "$_f5dt" -lt 40 ] \
+  && ok "b3-fetch: con rama candidata + origin muerto el barrido NO cuelga (${_f5dt}s < 40; ls-remote acotado)" \
+  || bad "b3-fetch: el barrido colgó (${_f5dt}s) — ls-remote sin tope por rama"
 rm -rf "$F5ROOT"
 
 # ─────────────────────────────────────────────────────────────────────────────

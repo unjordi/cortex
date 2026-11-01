@@ -47,20 +47,27 @@ BITA="$ROOT/.claude/memory/bitacora.md"
 # sesión gráfica (si SSH_AUTH_SOCK no viene en el entorno, cae al socket estándar del systemd user agent en
 # Linux). Si falla/expira NO se calla: fetch_ok=0 → el resumen lo dice y nombra cuántas ramas quedaron con
 # refs posiblemente viejas (se juzgan conservador, ninguna se borra por esa duda).
+# GIT_SSH_COMMAND se EXPORTA (no inline en el fetch): así el ConnectTimeout acota TAMBIÉN cada `ls-remote`
+# de abajo — un host muerto colgaba 75s por rama sin él. El ssh-agent de la sesión gráfica también.
+if [ -z "${SSH_AUTH_SOCK:-}" ] && [ -S "/run/user/$(id -u 2>/dev/null)/ssh-agent.socket" ]; then
+  export SSH_AUTH_SOCK="/run/user/$(id -u)/ssh-agent.socket"
+fi
+export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -o ConnectTimeout=8 -o BatchMode=yes}"
 FETCH_TIMEOUT="${LIMPIAR_RAMAS_FETCH_TIMEOUT:-20}"; case "$FETCH_TIMEOUT" in ''|*[!0-9]*) FETCH_TIMEOUT=20 ;; esac
+LS_REMOTE_TIMEOUT="${LIMPIAR_RAMAS_LS_REMOTE_TIMEOUT:-12}"; case "$LS_REMOTE_TIMEOUT" in ''|*[!0-9]*) LS_REMOTE_TIMEOUT=12 ;; esac
+# _git_acotado <segundos> <args git…> → corre git con tope duro; `exec` para que el kill del watchdog llegue
+# a GIT (sin exec mataría solo al subshell y git quedaría huérfano corriendo). stdout pasa; rc del git (o !=0 si se mató).
+_git_acotado() {
+  local _to="$1"; shift
+  ( exec git -C "$ROOT" "$@" ) & local _p=$!
+  ( sleep "$_to"; kill "$_p" 2>/dev/null ) >/dev/null 2>&1 & local _w=$!
+  wait "$_p" 2>/dev/null; local _rc=$?
+  kill "$_w" 2>/dev/null; wait "$_w" 2>/dev/null
+  return "$_rc"
+}
 fetch_ok=1
 if [ "$FETCH" = 1 ]; then
-  if [ -z "${SSH_AUTH_SOCK:-}" ] && [ -S "/run/user/$(id -u 2>/dev/null)/ssh-agent.socket" ]; then
-    export SSH_AUTH_SOCK="/run/user/$(id -u)/ssh-agent.socket"
-  fi
-  ( GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -o ConnectTimeout=8 -o BatchMode=yes}" \
-      git -C "$ROOT" fetch --all --prune -q ) >/dev/null 2>&1 &
-  _fpid=$!
-  ( sleep "$FETCH_TIMEOUT"; kill "$_fpid" 2>/dev/null ) >/dev/null 2>&1 &
-  _wpid=$!
-  wait "$_fpid" 2>/dev/null; fetch_rc=$?
-  kill "$_wpid" 2>/dev/null; wait "$_wpid" 2>/dev/null
-  [ "$fetch_rc" = 0 ] || fetch_ok=0
+  _git_acotado "$FETCH_TIMEOUT" fetch --all --prune -q >/dev/null 2>&1 || fetch_ok=0
 fi
 
 base="$(bz_resolver_base "$ROOT")"
@@ -103,7 +110,7 @@ _join() { [ -z "$2" ] && printf '%s' "$3" || printf '%s%s%s' "$2" "$1" "$3"; }
 barrer_remota() {  # $1 = rama zombie   $2 = nombre del remoto   $3 = SHA del tip LOCAL (antes de -D)
   local br="$1" remoto="$2" local_sha="$3" rout rc rsha
   [ -n "$remoto" ] || return 0
-  rout="$(git -C "$ROOT" ls-remote --heads "$remoto" "$br" 2>/dev/null)"; rc=$?
+  rout="$(_git_acotado "$LS_REMOTE_TIMEOUT" ls-remote --heads "$remoto" "$br" 2>/dev/null)"; rc=$?
   if [ "$rc" -ne 0 ]; then
     echo "  (remota $remoto/$br: no se pudo consultar — ¿sin red/permiso? NO se borra)"
     return 0
@@ -241,7 +248,7 @@ if [ "${LIMPIAR_RAMAS_SIN_REMOTAS:-0}" != 1 ]; then
           echo "  [dry] remota sin local, integrada (señal $BZ_RRAZON) → borraría: $rref"; rem_borradas=$((rem_borradas+1))
         else
           eval_sha="$(git -C "$ROOT" rev-parse "$rref" 2>/dev/null || true)"
-          live_out="$(git -C "$ROOT" ls-remote --heads "$remoto" "$br" 2>/dev/null)"; live_rc=$?
+          live_out="$(_git_acotado "$LS_REMOTE_TIMEOUT" ls-remote --heads "$remoto" "$br" 2>/dev/null)"; live_rc=$?
           live_sha="$(printf '%s' "$live_out" | awk '{print $1; exit}')"
           if [ "$live_rc" -ne 0 ]; then
             echo "  (remota $rref: no se pudo consultar — ¿sin red/permiso? NO se borra)"
