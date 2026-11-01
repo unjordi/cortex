@@ -31,8 +31,8 @@ reubicar-master.sh — genera el handoff ejecutable de una mudanza de brain-mast
   VERIFICAR  reubicar-master.sh verificar <handoff.sh>
   PARIDAD    reubicar-master.sh paridad --dst-repo <ruta> [--t1 <mem>]... [--t2-local <arch>]...
              [--bundle <tgz>] [--dst-protegido <subdir>] [--src-repo <ruta>]
-             G-PARITY: que lo del master este PRESENTE Y CORRECTO en el destino. T4 bifurca por la marca
-             `.claude/repo-compartido` (un repo PERSONAL no lleva guards por-repo, por norma dura), y con
+             G-PARITY: que lo del master este PRESENTE Y CORRECTO en el destino. T4 verifica el install
+             GLOBAL (el cerebro vive solo en global; ningun repo lleva guards por-repo), y con
              `--bundle` distingue "falta" de "esta en el bundle, lo deposita S5".
   CLASIFICAR reubicar-master.sh clasificar --src-repo <ruta> --dst-repo <ruta>
              La EVIDENCIA para la Decisión #2 (frontera T1↔T3): por cada memoria del origen, su propia
@@ -237,14 +237,11 @@ _verificar_handoff(){
 #
 # Dos puntos que solo se ven al CORRERLO:
 #
-#  (a) T4 NO puede exigir `.claude/settings.json` en TODO destino. La norma dura del cerebro dice
-#      «repo PERSONAL: memoria/skills SÍ, guards por-repo NUNCA» (sus guards salen del install GLOBAL +
-#      la cláusula de dedupe; una copia por-repo solo puede driftar). `cortex` no trae la marca
-#      `.claude/repo-compartido` ⇒ es PERSONAL y correctamente NO tiene `settings.json` — y el gate lo
-#      declaraba «lobotomía del cableado», empujando a crear justo la copia que la norma prohíbe. Dos
-#      piezas correctas por separado que se contradecían juntas. Ahora BIFURCA por la marca: la exige en
-#      COMPARTIDO (donde el brain por-repo es el CORREO de quien clona sin brain global) y en PERSONAL
-#      verifica que el install GLOBAL exista, que es de donde salen los candados.
+#  (a) T4 NO exige `.claude/settings.json` por-repo en NINGÚN destino. El cerebro vive SOLO en global
+#      (2026-11-01, "solo cerebro global"): ningún repo lleva guards por-repo — los candados del master
+#      salen del install GLOBAL. Un gate que exigiera `settings.json` por-repo empujaría a crear justo la
+#      copia que la norma prohíbe. Por eso T4 solo verifica que el install GLOBAL exista (de donde salen los
+#      candados); la marca `.claude/repo-compartido`, si está, solo gobierna el scoping de merge-develop-guard.
 #
 #  (b) Las filas de T2 solo son evaluables DESPUÉS de S5, que es quien deposita el bundle. Corrido antes
 #      —lo natural, porque el flujo lo pone tras S1/S2— reportaba «FALTA EN EL DESTINO» sobre archivos que
@@ -339,26 +336,18 @@ if [ "${1:-}" = paridad ]; then
   for m in ${_p_t2[@]+"${_p_t2[@]}"}; do _p_fila "$_p_srcm/$m" "$_p_dstm/$m" "$m" 1; done
   _p_fila "$_p_src/$_p_t2root" "$_p_dst/$_p_t2root" "$_p_t2root" 1
 
-  # ── T4 · CABLEADO. BIFURCA por la marca `.claude/repo-compartido` (norma dura del cerebro) ──────
-  if [ -e "$_p_dst/.claude/repo-compartido" ]; then
-    if [ -f "$_p_dst/.claude/settings.json" ]; then
-      printf '  ok    T4: destino COMPARTIDO y trae su .claude/settings.json (el CORREO de quien clona sin brain global)\n'
-    else
-      printf '  FALTA T4: el destino se declara COMPARTIDO (.claude/repo-compartido) y NO trae .claude/settings.json\n'
-      printf '            => un colega que clone quedaria SIN los guards creyendo que los tiene. Propagalo con sincronizar-cerebro.sh\n'
-      _p_fail=1
-    fi
+  # ── T4 · CABLEADO. El cerebro vive SOLO en global (2026-11-01): NINGUN repo lleva guards por-repo.
+  # Los candados del master salen del install GLOBAL; el repo destino no debe traer hooks del cerebro. ──
+  if [ -f "$HOME/.claude/settings.json" ]; then
+    printf '  ok    T4: el install GLOBAL existe (%s hook(s) cableado(s)) => el master despierta con sus candados\n' \
+      "$(jq '[.hooks // {} | .[] | .[]? | .hooks // [] | .[]] | length' "$HOME/.claude/settings.json" 2>/dev/null || echo '?')"
   else
-    printf '  ok    T4: destino PERSONAL (sin marca repo-compartido) => por norma NO lleva guards por-repo;\n'
-    printf '            sus candados salen del install GLOBAL, y exigir settings.json aqui crearia el drift que la norma prohibe.\n'
-    if [ -f "$HOME/.claude/settings.json" ]; then
-      printf '  ok    T4: y el install GLOBAL existe (%s hook(s) cableado(s))\n' \
-        "$(jq '[.hooks // {} | .[] | .[]? | .hooks // [] | .[]] | length' "$HOME/.claude/settings.json" 2>/dev/null || echo '?')"
-    else
-      printf '  FALTA T4: no hay ~/.claude/settings.json => en un destino PERSONAL el master despertaria SIN candados.\n'
-      printf '            => corre el bootstrap del cerebro en esta maquina.\n'; _p_fail=1
-    fi
+    printf '  FALTA T4: no hay ~/.claude/settings.json => el master despertaria SIN candados.\n'
+    printf '            => corre el bootstrap/install-brain del cerebro en esta maquina.\n'; _p_fail=1
   fi
+  # La marca `.claude/repo-compartido` (si existe) solo gobierna el scoping de merge-develop-guard, no el
+  # cerebro; no se exige settings.json por-repo. Si el destino trae copias viejas de hooks del cerebro,
+  # límpialas aparte con `install-brain --limpiar-repo` (no es parte de la mudanza del master).
   [ -f "$_p_dst/.claude/settings.local.json" ] \
     && printf '  ok    T4: settings.local.json presente (el outputStyle propio del master)\n' \
     || printf '  aviso T4: sin settings.local.json => el master despertara SIN su outputStyle (per-maquina, gitignored: se re-crea a mano)\n'

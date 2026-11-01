@@ -526,15 +526,12 @@ clasificada?, Decisión #2).
 
 **Tres cosas que solo se ven al EJECUTAR:**
 
-1. **T4 no puede exigir `.claude/settings.json` en TODO destino.** La norma dura del cerebro dice *«repo
-   PERSONAL: memoria/skills SÍ, guards por-repo NUNCA»* — sus candados salen del install GLOBAL + la
-   cláusula de dedupe, y una copia por-repo solo puede driftar. `cortex` **no** trae la marca
-   `.claude/repo-compartido` ⇒ es PERSONAL y correctamente no tiene `settings.json`; el gate lo declaraba
-   **lobotomía del cableado** y bloqueaba un destino correcto, empujando a crear justo la copia que la
-   norma prohíbe. **Dos piezas correctas por separado que se contradecían juntas** — la clase que la
-   pasada COLECTIVA de una auditoría debe cazar. Ahora **bifurca por la marca**: la exige en COMPARTIDO
-   (donde el brain por-repo es el CORREO de quien clona sin brain global) y en PERSONAL verifica que el
-   install GLOBAL exista.
+1. **T4 no exige `.claude/settings.json` por-repo en NINGÚN destino.** El cerebro vive **SOLO en global**
+   (2026-11-01, «solo cerebro global»): ningún repo lleva guards por-repo — los candados del master salen
+   del install GLOBAL. Un gate que exigiera `settings.json` por-repo (como el viejo, que declaraba
+   «lobotomía del cableado») empujaría a crear justo la copia que la norma prohíbe. Ahora T4 solo verifica
+   que **el install GLOBAL exista** (de donde salen los candados); la marca `.claude/repo-compartido`, si
+   está, solo gobierna el scoping de `merge-develop-guard`, no el cerebro.
 2. **Las filas de T2 solo son evaluables DESPUÉS de S5.** Corrido donde el flujo lo pone —tras S1/S2—
    reportaba `FALTA` sobre archivos que estaban en el bundle esperando su turno. Con `--bundle` los
    distingue; sin él, un T2 en tránsito se lee como pérdida.

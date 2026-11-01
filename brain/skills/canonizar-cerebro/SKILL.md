@@ -1,13 +1,13 @@
 ---
 name: canonizar-cerebro
-description: DUEÑO único del ciclo de vida del cerebro de un proyecto instanciado (cps, fluxcore, plantilladotnet…), con CUATRO modos sobre la MISMA maquinaria (el detector de firma `verificar-firma-canonica.sh` + el pull-del-canon `sincronizar-cerebro.sh --apply`). **Modo sembrar** — nace un cerebro nuevo, nativo en `<proyecto>/.claude/` (memoria/skills/settings), SIN symlinks. **Modo canonizar** — un cerebro instanciado drifteó (memorias sueltas sin prefijo, CLAUDE.md viejo, MEMORY.md plano): reprefija con `git mv`, dedup con rescate, reescribe CLAUDE.md+MEMORY.md a la firma-árbol, verifica 1:1. **Modo consolidar** — campaña amplia para dejarlo SÓLIDO y COMPACTO: la dupla de auditores → positivar → desinflar → loop de convergencia → cierre con la firma. **Modo reconciliar** — ritual SEMANAL que junta aprendizajes+memorias de las minis de los devs hacia develop sin perder atribución. Úsalo para CUALQUIER operación sobre el cerebro de un proyecto instanciado: sembrarlo, corregir su estructura, dejarlo compacto, o reconciliarlo entre devs.
+description: DUEÑO único del ciclo de vida del CEREBRO-DE-PROYECTO de un repo instanciado (cps, fluxcore, plantilladotnet…) — su MEMORIA, sus skills propias y la firma-árbol de su `CLAUDE.md`/`MEMORY.md`. (Los guards/hooks del cerebro NO viven por-repo: vienen del install GLOBAL por máquina; el cerebro por-repo se retiró 2026-11-01.) CUATRO modos sobre la MISMA maquinaria (el detector de firma `verificar-firma-canonica.sh`). **Modo sembrar** — nace un cerebro-de-proyecto nuevo, nativo en `<proyecto>/.claude/` (memoria/skills/CLAUDE.md/MEMORY.md), SIN symlinks ni copias de hooks. **Modo canonizar** — un cerebro-de-proyecto drifteó (memorias sueltas sin prefijo, CLAUDE.md viejo, MEMORY.md plano): reprefija con `git mv`, dedup con rescate, reescribe CLAUDE.md+MEMORY.md a la firma-árbol, verifica 1:1. **Modo consolidar** — campaña amplia para dejarlo SÓLIDO y COMPACTO: la dupla de auditores → positivar → desinflar → loop de convergencia → cierre con la firma. **Modo reconciliar** — ritual SEMANAL que junta aprendizajes+memorias de las minis de los devs hacia develop sin perder atribución. Úsalo para CUALQUIER operación sobre el cerebro-de-proyecto de un repo instanciado: sembrarlo, corregir su estructura, dejarlo compacto, o reconciliarlo entre devs.
 ---
 
 # Canonizar un cerebro — el dueño único del ciclo de vida (4 modos, 1 maquinaria)
 
 Un cerebro que cortex instancia (cps, fluxcore, plantilladotnet, los repos .NET del equipo) pasa por
 **cuatro operaciones** a lo largo de su vida, y las cuatro comparten la MISMA idea de "correcto" (la
-firma canónica) y la MISMA maquinaria (el detector + el pull-del-canon). Antes vivían como CUATRO
+firma canónica) y la MISMA maquinaria (el detector de firma). Antes vivían como CUATRO
 skills separados (`canonizar-cerebro`, `consolidar-cerebro`, `unificar-cerebro`,
 `claude-proyecto-autocontenido`) que divergían entre sí — dos de ellos llegaron a especificar la MISMA
 firma canónica con plantillas DISTINTAS. Este skill es el dueño único; los cuatro modos son:
@@ -22,9 +22,10 @@ firma canónica con plantillas DISTINTAS. Este skill es el dueño único; los cu
 **La maquinaria común** (evita que los 4 modos re-especifiquen "qué es correcto" cada uno a su manera):
 - **El detector de firma** — `brain/verificar-firma-canonica.sh [ruta] [--strict]` — verifica el 1:1 de
   la firma canónica (ver abajo). Lo corren canonizar (Paso 7, el gate) y consolidar (Fase 6, el cierre).
-- **El pull-del-canon** — `bash <cortex>/brain/sincronizar-cerebro.sh . --apply` — pone la copia por-repo
-  del cerebro CANÓNICO (hooks/libs/skills de tier `both`) al día desde la fuente única. Lo corren sembrar
-  (al nacer un repo) y reconciliar (Paso 1, para sacar el cerebro canónico del diff antes de subir memoria).
+- **(Retirado) el pull-del-canon:** antes `sincronizar-cerebro.sh --apply` bajaba la copia por-repo del
+  cerebro (hooks/libs/skills de tier `both`). Con «solo cerebro global» (2026-11-01) ya NO hay copia del
+  cerebro por-repo: los guards vienen del install GLOBAL. Lo que estos modos manejan es el CEREBRO-DE-PROYECTO
+  (memoria + skills propias + la firma `CLAUDE.md`/`MEMORY.md`), que sí vive en el repo y viaja por git.
 
 > **NO es un auto-mutador ciego.** Ningún modo reescribe cerebros automáticamente sin supervisión: el
 > humano revisa el diff antes de integrar (salvo el modo reconciliar, que sí integra por MR con OK
@@ -149,9 +150,9 @@ Tras escribirlo, **verifícalo de verdad**: `git check-ignore .claude/memory/x.l
 ruta (= ignorado). No te fíes de que "se ve bien".
 
 ### Sembrar un proyecto NUEVO (0 fricción)
-No hay nada que enlazar: crea `<proyecto>/.claude/{memory,skills}/`, un `CLAUDE.md`+`MEMORY.md` barebones
-(ver la firma canónica arriba), corre el pull-del-canon para traer los hooks/skills `both` del equipo
-(`bash <cortex>/brain/sincronizar-cerebro.sh . --apply`), y listo — se lee nativo desde el primer commit.
+No hay nada que enlazar: crea `<proyecto>/.claude/{memory,skills}/` y un `CLAUDE.md`+`MEMORY.md` barebones
+(ver la firma canónica arriba) — y listo, se lee nativo desde el primer commit. Los guards/hooks NO se
+copian al repo: vienen del install GLOBAL de la máquina (cerebro solo-global desde 2026-11-01).
 
 ### Sembrar sobre un cerebro DISPERSO (memoria a medias entre el global y el repo)
 Caso típico: el cerebro está partido entre `<repo>/.claude/memory/` (lo ya commiteado) y el global
@@ -482,11 +483,11 @@ qué, sin aplanar la voz, y sin tocar los guardrails delicados.
 > PROSA+cerebro (no hay `dotnet build`; el "verde" es `test-brain.sh` + lint de memoria) y su disparador
 > es *integrar la mini completa a develop*, no *terminar un slice*.
 
-> **Regla de oro que atraviesa todo el ritual:** los **hooks/settings/skills CANÓNICOS del brain se
-> rutean a `cortex`** (su MANIFEST es la fuente única) y bajan por `sincronizar-cerebro.sh` — el
-> pull-del-canon de la maquinaria común (arriba). **JAMÁS** viajan por el MR de la mini a develop. Lo que
-> sube por este MR es MEMORIA+APRENDIZAJES, no cerebro canónico. (Un MR de mini que toque
-> `.claude/hooks/*`/`settings.json`/`.brain-version` es un error de ruteo — sácalo en el Paso 1.)
+> **Regla de oro que atraviesa todo el ritual:** lo que sube por el MR de la mini es MEMORIA+APRENDIZAJES
+> del proyecto, **nunca** cerebro. Los guards/hooks del cerebro YA NO viven por-repo (install GLOBAL;
+> cerebro solo-global desde 2026-11-01). Si el diff de una mini toca `.claude/hooks/*`/el cableado de
+> hooks del cerebro en `settings.json`/`.brain-version`, son RESTOS del cerebro por-repo viejo — sácalos
+> con `install-brain --limpiar-repo` (Paso 1), no por este MR.
 
 ### Disparadores
 - Manual: invoca este modo (el run semanal designado, o cuando el usuario lo pide).
@@ -508,31 +509,32 @@ Clases:
 - **Notas atómicas / archivos propios** (un módulo, `estado-proyecto.md`, una decisión con ciclo
   propio) → van tal cual (raro que choquen).
 - **Índices** (`MEMORY.md`, `skills/README.md`) → **NO se editan a mano**: `merge=ours` + regen.
-- **CEREBRO canónico** (`.claude/hooks/*`, `settings.json`, `.brain-version`, skills-de-proceso del
-  brain, `aprendizajes-*-brain.md`) → **NO sube por este MR**; se resuelve en el Paso 1.
+- **RESTOS del cerebro por-repo** (`.claude/hooks/*` del cerebro, su cableado en `settings.json`,
+  `.brain-version`, `aprendizajes-*-brain.md`) → **NO suben por este MR**; se limpian en el Paso 1.
 
-### Paso 1 — Baja PRIMERO el brain canónico (sácalo del diff) — el pull-del-canon
-Antes de subir nada, sincroniza el cerebro canónico HACIA ABAJO en tu mini para que el diff quede
-LIMPIO de cerebro (es la maquinaria común descrita arriba):
+### Paso 1 — Saca los RESTOS del cerebro por-repo del diff
+El cerebro vive solo en global (2026-11-01). Si el delta trae copias viejas de hooks del cerebro, su
+cableado o el sello, límpialos para que el diff quede SOLO con memoria+aprendizajes del proyecto:
 
 ```
-bash <ruta-a-cortex>/brain/sincronizar-cerebro.sh . --apply
+bash <ruta-a-cortex>/brain/install-brain.sh --limpiar-repo .          # plan
+bash <ruta-a-cortex>/brain/install-brain.sh --limpiar-repo . --apply  # ejecuta (respalda; respeta skills propias)
 ```
 
-Esto pone la copia por-repo al día desde la fuente única. Los `aprendizajes-*-brain.md` (los que son
-del brain, no del proyecto) se **mueven a cortex**, no a develop. Tras este paso, el delta que
-queda para subir es SOLO memoria+aprendizajes del proyecto.
+Esto retira los hooks/libs del cerebro + su cableado + `.brain-version`, y las skills del cerebro cuyo
+contenido coincide con la fuente (una que DIFIERA se reporta, no se borra). NUNCA toca la memoria/estado
+ni las skills propias del proyecto. Los `aprendizajes-*-brain.md` (del brain, no del proyecto) se **mueven
+a cortex**, no a develop. Si no hay restos, este paso es no-op y pasas directo al Paso 2.
 
-> Si el sync destapa que la mini tenía **ediciones locales de cerebro canónico** (un hook modificado,
-> un exec-bit flipeado, una skill del brain borrada), eso NO se resuelve aquí subiéndolo: se enruta a
-> un MR contra `cortex`. Anótalo y sepáralo.
+> Si aparece una skill del brain con **ediciones locales** (difiere de la fuente), NO la subas por este MR:
+> enrútala a un MR contra `cortex`. Anótala y sepárala.
 
 ### Paso 2 — Resuelve por CLASE (sin curar todavía)
 - **Aprendizajes** → `merge=union`: se fusionan solos, no los toques a mano. (La curación es el Paso 3.)
 - **Notas atómicas / archivos propios** → tal cual; si dos devs crearon el mismo slug (add/add),
   renombra uno.
 - **Índices** → NO editar; `merge=ours` deja ganar a develop y el regen los rehace verídicos.
-- **Cerebro canónico** → ya salió del diff en el Paso 1.
+- **Restos del cerebro por-repo** → ya salieron del diff en el Paso 1.
 
 ### Paso 3 — CURACIÓN del log (el corazón del ritual)
 Sobre el `aprendizajes.md` ya juntado, haz DOS cosas. **Nunca reescribas prosa a ciegas** (norma
