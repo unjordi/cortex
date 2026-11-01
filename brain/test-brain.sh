@@ -3019,7 +3019,7 @@ o="$(printf '%s' "{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$PFH/c
 # (8) settings.json — AVISO DIRIGIDO (MEDIO auditoría 2026-10-22): editar TU PROPIO candado. Solo avisa si
 # el Edit (a) quita/cambia el cableado de un hook del MANIFEST, o (b) agrega un escape de guard; NO en toda
 # edición (permisos/env/tema legítimos → silencio). Falla vs el viejo (que no tenía el caso settings.json).
-printf 'merge-develop-guard both hook\nno-bypass-deploy both hook\n' > "$PFB/brain/hooks/MANIFEST"
+printf 'merge-develop-guard global hook\nno-bypass-deploy global hook\n' > "$PFB/brain/hooks/MANIFEST"
 pfset() {  # $1=old_string $2=new_string → additionalContext de un Edit a ~/.claude/settings.json
   jq -nc --arg f "$PFH/.claude/settings.json" --arg o "$1" --arg n "$2" '{tool_name:"Edit",tool_input:{file_path:$f,old_string:$o,new_string:$n}}' \
     | HOME="$PFH" CLAUDE_BRAIN_DIR="$PFB" bash "$HOOKS/proteger-fuente-cerebro.sh" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null
@@ -4372,9 +4372,8 @@ rm -rf "$M3ROOT"
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== (b3c) merge-develop-guard · PASO 0: bloquea push/merge REAL a main/develop, NO una MENCIÓN entrecomillada =="
-# HOME AISLADO SIN copia global del hook: si no, la cláusula de dedupe doble-cableado (la copia del
-# repo CEDE cuando existe ~/.claude/hooks/…) haría que el guard salga en silencio en una máquina con el
-# cerebro instalado globalmente → falso FAIL. (Igual que el gb() de b1d, que usa $GBHOME.)
+# HOME AISLADO (hermético): no hereda el ~/.claude real de la máquina de pruebas (settings/env/estado) —
+# el guard corre sobre un entorno limpio y predecible. (Igual que el gb() de b1d, que usa $GBHOME.)
 mkdir -p "$FAKEHOME/_nohooks/.claude"
 gbg() { printf '{"tool_input":{"command":%s}}' "$(printf '%s' "$1" | jq -Rs .)" | HOME="$FAKEHOME/_nohooks" bash "$HOOKS/merge-develop-guard.sh"; }
 is_deny   "$(gbg 'git push origin develop')"                              && ok "gbg: push real a develop → deny (dientes intactos)"           || bad "gbg: NO bloqueó un push real a develop"
@@ -6356,19 +6355,6 @@ rm -rf "$F1D"
 # (b6c) hud-stale: RETIRADO (puramente advisory, se ignoraba). Su regla ya vivía en
 # brain/norms/global-claude-md.md § "Tu lista de TODOs es TU HUD" — solo se retiró el hook.
 
-# ─────────────────────────────────────────────────────────────────────────────
-echo ""
-echo "== (b7) dedupe doble-cableado: la copia REPO cede si existe la GLOBAL; corre si no =="
-DDNO="$(mktemp -d "${TMPDIR:-/tmp}/brain-ddno.XXXXXX")"
-DDYES="$(mktemp -d "${TMPDIR:-/tmp}/brain-ddyes.XXXXXX")"; mkdir -p "$DDYES/.claude/hooks"
-cp "$HOOKS/merge-develop-guard.sh" "$DDYES/.claude/hooks/merge-develop-guard.sh"
-DDCMD='{"tool_name":"Bash","tool_input":{"command":"git push origin develop"}}'
-o="$(printf '%s' "$DDCMD" | HOME="$DDNO" bash "$HOOKS/merge-develop-guard.sh")"
-printf '%s' "$o" | grep -q '"deny"' && ok "dedupe: SIN copia global → la copia repo CORRE (bloquea push a develop)" || bad "dedupe: repo debía bloquear sin global; got: $o"
-o="$(printf '%s' "$DDCMD" | HOME="$DDYES" bash "$HOOKS/merge-develop-guard.sh")"
-is_silent "$o" && ok "dedupe: CON copia global → la copia repo CEDE (silencio; la global maneja)" || bad "dedupe: repo debía ceder con global; got: $o"
-rm -rf "$DDNO" "$DDYES"
-
 # (b8) recordar-dashboard: RETIRADO (puramente advisory, se ignoraba).
 # doc=realidad + dashboard ya son norma dura en brain/norms/global-claude-md.md (sin mecanismo por-push).
 
@@ -6519,7 +6505,7 @@ CT2="$(find "$FAKEHOME2/.claude/projects" -name 'como-trabajar-con-*.md' -type f
 [ -f "$FAKEHOME2/.claude/hooks/aviso-contexto.sh" ]      && ok "hook aviso-contexto instalado"  || bad "falta hook aviso-contexto"
 [ -f "$FAKEHOME2/.claude/hooks/delegacion-comun.sh" ]    && ok "lib delegacion-comun.sh instalada" || bad "falta lib delegacion-comun.sh"
 [ -f "$FAKEHOME2/.claude/hooks/analizar-comando-git.sh" ] && ok "lib analizar-comando-git.sh instalada" || bad "falta lib analizar-comando-git.sh"
-[ -f "$FAKEHOME2/.claude/hooks/juez-comun.sh" ] && ok "lib juez-comun.sh instalada (global, derivada del MANIFEST both/lib)" || bad "falta lib juez-comun.sh"
+[ -f "$FAKEHOME2/.claude/hooks/juez-comun.sh" ] && ok "lib juez-comun.sh instalada (global, derivada del MANIFEST global/lib)" || bad "falta lib juez-comun.sh"
 # sello de VERSIÓN del brain instalado en ~/.claude/.brain-version (lo lee el tab Cerebro del widget)
 # Contrato de 2 líneas: L1 = "<PREFIJO>.<count>" (PREFIJO = brain/VERSION seguido de '.' y dígitos);
 # L2 = fecha "YYYY-MM-DD". La versión auto-incrementa (count) → ya NO es igual a brain/VERSION.
@@ -6535,27 +6521,27 @@ else
   bad "~/.claude/.brain-version ausente o formato inválido (L1='$_l1' L2='$_l2'; esperaba '$_pref.<num>' + fecha)"
 fi
 
-# (c2) EL SET de .sh en ~/.claude/hooks == EXACTAMENTE {global,both} del MANIFEST (todos los kinds: hooks +
+# (c2) EL SET de .sh en ~/.claude/hooks == EXACTAMENTE {global} del MANIFEST (todos los kinds: hooks +
 # libs + scripts se copian ahí). Sin extras, sin repo-tier filtrado, con TODOS los esperados. Antes NO se
 # verificaba el CONJUNTO (e7 solo mira el CABLEADO, no los .sh físicos) → un repo-tier huérfano INERTE
 # (dod-verificar) o un extra pasaba invisible. Este es el hueco calibrador del audit de tests.
-_want="$(awk '$1!~/^#/ && NF>=3 && ($2=="global"||$2=="both"){print $1".sh"}' "$SCRIPT_DIR/hooks/MANIFEST" | sort)"
+_want="$(awk '$1!~/^#/ && NF>=3 && $2=="global"{print $1".sh"}' "$SCRIPT_DIR/hooks/MANIFEST" | sort)"
 _got="$(ls "$FAKEHOME2/.claude/hooks"/*.sh 2>/dev/null | xargs -n1 basename 2>/dev/null | sort)"
 if [ "$_want" = "$_got" ]; then
-  ok "set exacto: ~/.claude/hooks == {global,both} del MANIFEST ($(printf '%s\n' "$_want" | grep -c .) archivos, sin extras ni repo-tier)"
+  ok "set exacto: ~/.claude/hooks == {global} del MANIFEST ($(printf '%s\n' "$_want" | grep -c .) archivos, sin extras ni repo-tier)"
 else
   bad "set de ~/.claude/hooks NO casa el MANIFEST (< falta en disco / > sobra en disco):
 $(diff <(printf '%s\n' "$_want") <(printf '%s\n' "$_got") | grep -E '^[<>]')"
 fi
 
-# (c3) PODA (a2): un hook repo-tier filtrado al global se RETIRA; un {global,both} y un hook PROPIO del
-# usuario SOBREVIVEN (el caso del dod-verificar huérfano-inerte en el global).
-: > "$FAKEHOME2/.claude/hooks/dod-verificar.sh"     # repo-tier filtrado al global (huérfano inerte)
+# (c3) PODA de un RETIRADO en el global: un hook tier `retirado` (dod-verificar, lápida del MANIFEST) se
+# RETIRA del global; un {global} y un hook PROPIO del usuario SOBREVIVEN.
+: > "$FAKEHOME2/.claude/hooks/dod-verificar.sh"     # retirado (lápida del MANIFEST) instalado de una versión vieja
 : > "$FAKEHOME2/.claude/hooks/mi-hook-local.sh"     # hook PROPIO del usuario (NO del brain, NO en el MANIFEST)
 HOME="$FAKEHOME2" bash "$INSTALLER" >/dev/null 2>&1
-[ ! -f "$FAKEHOME2/.claude/hooks/dod-verificar.sh" ] && ok "poda (a2): retiró el hook repo-tier huérfano dod-verificar.sh del global" || bad "poda (a2): dejó dod-verificar.sh (repo-tier) en el global"
-[ -f "$FAKEHOME2/.claude/hooks/merge-develop-guard.sh" ] && ok "poda (a2): conservó el hook {both} merge-develop-guard.sh" || bad "poda (a2): borró un hook {global,both}"
-[ -f "$FAKEHOME2/.claude/hooks/mi-hook-local.sh" ] && ok "poda (a2): conservó el hook PROPIO del usuario (no lo toca)" || bad "poda (a2): borró un hook propio del usuario"
+[ ! -f "$FAKEHOME2/.claude/hooks/dod-verificar.sh" ] && ok "poda (a3): retiró el hook retirado dod-verificar.sh del global" || bad "poda (a3): dejó dod-verificar.sh (retirado) en el global"
+[ -f "$FAKEHOME2/.claude/hooks/merge-develop-guard.sh" ] && ok "poda (a3): conservó el hook {global} merge-develop-guard.sh" || bad "poda (a3): borró un hook {global}"
+[ -f "$FAKEHOME2/.claude/hooks/mi-hook-local.sh" ] && ok "poda (a3): conservó el hook PROPIO del usuario (no lo toca)" || bad "poda (a3): borró un hook propio del usuario"
 
 # C2: persist_env_active captura el VALOR ACTIVO de una env del brain en settings.json .env (no un
 # default). Un HOME fresco con CLAUDE_SESSIONS_DRIVE exportada al correr install-brain queda con ese
@@ -6595,12 +6581,12 @@ if [ -f "$SCRIPT_DIR/uninstall-brain.sh" ]; then
   { [ -f "$FAKEHOME2/.claude/hooks/merge-develop-guard.sh" ] && [ -d "$FAKEHOME2/.claude/skills/cerrar-slice" ]; } \
     && ok "A2: --dry-run es MODO plan → NO muta (hook + skill del brain siguen)" || bad "A2: --dry-run mutó el cerebro instalado"
   HOME="$FAKEHOME2" bash "$SCRIPT_DIR/uninstall-brain.sh" >/dev/null 2>&1
-  # SET COMPLETO {global,both} kind=hook derivado del MANIFEST (NO un subconjunto hardcodeado): así el test
+  # SET COMPLETO {global} kind=hook derivado del MANIFEST (NO un subconjunto hardcodeado): así el test
   # SÍ caza un BRAIN_PAT drifteado que haría que uninstall omitiera hooks y dejara cableados ZOMBIE. Un check
   # que solo mirara los hooks dentro del BRAIN_PAT viejo nunca detectaría el faltante.
-  _unpat="$(awk '$1!~/^#/ && NF>=3 && ($2=="global"||$2=="both") && $3=="hook"{print $1}' "$SCRIPT_DIR/hooks/MANIFEST" | sed 's/$/\\.sh/' | paste -sd'|' -)"
+  _unpat="$(awk '$1!~/^#/ && NF>=3 && $2=="global" && $3=="hook"{print $1}' "$SCRIPT_DIR/hooks/MANIFEST" | sed 's/$/\\.sh/' | paste -sd'|' -)"
   left="$(jq --arg pat "$_unpat" '[.hooks[]?[]? | select(([.hooks[]?.command]|join(" "))|test($pat))] | length' "$GSET2" 2>/dev/null)"
-  [ "${left:-x}" = "0" ] && ok "uninstall: 0 cableados del cerebro en settings.json (set COMPLETO {global,both} kind=hook — cazaría un BRAIN_PAT drifteado)" || bad "uninstall: quedan ${left:-?} cableados ZOMBIE (BRAIN_PAT no cubre todo el set del MANIFEST)"
+  [ "${left:-x}" = "0" ] && ok "uninstall: 0 cableados del cerebro en settings.json (set COMPLETO {global} kind=hook — cazaría un BRAIN_PAT drifteado)" || bad "uninstall: quedan ${left:-?} cableados ZOMBIE (BRAIN_PAT no cubre todo el set del MANIFEST)"
   grep -q 'BEGIN cortex' "$GCLAUDE2" && bad "uninstall: quedó el bloque de normas" || ok "uninstall: bloque de normas removido"
   [ -f "$FAKEHOME2/.claude/hooks/merge-develop-guard.sh" ] && bad "uninstall: quedó merge-develop-guard.sh" || ok "uninstall: hooks globales removidos"
   # (e) el @import de aliases + el artefacto GENERADO se limpian (inverso de d3)
@@ -6765,17 +6751,8 @@ if command -v jq >/dev/null 2>&1; then
 else
   echo "  SKIP ccd: sin jq para inspeccionar el comando del hook"
 fi
-# RUNTIME (claudio): con CLAUDE_CONFIG_DIR, la copia POR-REPO de un hook `both` debe CEDER a la global
-# instalada en $CLAUDE_CONFIG_DIR/hooks (si la dedupe mira la ruta vieja, DISPARA DOS VECES). La global ya
-# se instaló arriba en $CCDCFG. Monto un repo con la copia por-repo byte-idéntica y confirmo que CALLA.
-CCDREPO="$CCDHOME/unrepo"; mkdir -p "$CCDREPO/.claude/hooks"
-( cd "$CCDREPO" && git init -q && git config user.email t@t && git config user.name t \
-  && echo x > a && git add a && git commit -qm base ) >/dev/null 2>&1
-cp "$CCDCFG/hooks/sesion-inicio.sh" "$CCDREPO/.claude/hooks/sesion-inicio.sh"
-ccd_ded="$(printf '%s' '{"source":"startup"}' | HOME="$CCDHOME" CLAUDE_CONFIG_DIR="$CCDCFG" CLAUDE_PROJECT_DIR="$CCDREPO" bash "$CCDREPO/.claude/hooks/sesion-inicio.sh" 2>/dev/null)"
-[ -z "$ccd_ded" ] \
-  && ok "ccd: la copia POR-REPO de un hook both CEDE a la global en \$CLAUDE_CONFIG_DIR/hooks (un solo disparo)" \
-  || bad "ccd: la copia por-repo NO cedió con CLAUDE_CONFIG_DIR → DOBLE disparo (la dedupe miraba la ruta vieja)"
+# (La sub-prueba de dedupe POR-REPO se retiró con el cerebro por-repo 2026-11-01: ya no hay copias del
+#  cerebro por-repo ni cláusula de dedupe; el cerebro vive solo en global.)
 # agentes-costo.json: install lo escribe en $CLAUDE_CONFIG_DIR; delegacion-comun debe LEERLO del mismo dir.
 [ -f "$CCDCFG/agentes-costo.json" ] \
   && ok "ccd: install escribe agentes-costo.json en \$CLAUDE_CONFIG_DIR" \
@@ -7041,7 +7018,7 @@ else
   else
     bad "drift: install-brain NO deriva del MANIFEST (¿volvió a una lista hardcodeada?)"
   fi
-  # (4) PARIDAD derivada: cada {global,both} kind=hook del MANIFEST tiene su EVENTO en la tabla ev_de()
+  # (4) PARIDAD derivada: cada {global} kind=hook del MANIFEST tiene su EVENTO en la tabla ev_de()
   #     del instalador → se cablea. (El grep de 'WIRE_HOOKS=…awk…MANIFEST' se retiró: el EFECTO —install
   #     cabla exactamente lo del MANIFEST— ya lo mide e7, y la paridad de abajo caza el hook sin evento.)
   evblock="$(awk '/^ev_de\(\)/,/^}/' "$INSTALLER")"
@@ -7118,13 +7095,13 @@ echo "== (e3) drift-check WIDGET: el catálogo curado del widget coincide con el
 #   (1) los conjuntos known-global / known-repo que clasifican cada hook (si un hook NO está aquí,
 #       cae en la sección "OTROS" → drift real que ya nos mordió), y
 #   (2) los tiles de display (uno por hook/skill). Esta 3ª lista quedaba FUERA del drift-check e2.
-# Invariante: known-global == MANIFEST{global,both}·hook · known-repo == MANIFEST{repo}·hook ·
+# Invariante: known-global == MANIFEST{global}·hook · known-repo == MANIFEST{repo}·hook ·
 #             y todo hook del MANIFEST + toda skill de brain/skills tiene un tile en el archivo de display.
 ROOT="$SCRIPT_DIR/.."
 if [ ! -f "$MF" ]; then
   bad "drift-widget: falta el MANIFEST"
 else
-  mf_global=$(awk '$1!~/^#/ && NF>=3 && ($2=="global"||$2=="both") && $3=="hook"{print $1}' "$MF" | sort -u)
+  mf_global=$(awk '$1!~/^#/ && NF>=3 && $2=="global" && $3=="hook"{print $1}' "$MF" | sort -u)
   mf_repo=$(awk '$1!~/^#/ && NF>=3 && $2=="repo" && $3=="hook"{print $1}' "$MF" | sort -u)
   mf_hooks=$(printf '%s\n%s\n' "$mf_global" "$mf_repo" | grep -v '^$' | sort -u)
   wskills=$(for d in "$SCRIPT_DIR"/skills/*/; do [ -f "${d}SKILL.md" ] && basename "$d"; done | sort -u)
@@ -7349,10 +7326,10 @@ SKMF="$SCRIPT_DIR/skills/MANIFEST"; MFHK="$SCRIPT_DIR/hooks/MANIFEST"
 if [ ! -f "$SKMF" ] || [ ! -f "$MFHK" ]; then
   bad "parity-roster: falta el SKILLS-MANIFEST o el HOOKS-MANIFEST"
 else
-  # VIVOS que el widget DEBE mostrar: skills {global,both} ∪ hooks kind=hook no-retirados.
+  # VIVOS que el widget DEBE mostrar: skills {global} ∪ hooks kind=hook no-retirados.
   # RETIRADOS que el widget NUNCA debe mostrar: skills tier=retirado ∪ hooks tier=retirado (superset
   # inofensivo: incluye scripts/libs retirados, que el widget no lista jamás → no dan falso positivo).
-  sk_vivo=$(awk '$1!~/^#/ && ($2=="global"||$2=="both"){print $1}' "$SKMF" | sort -u)
+  sk_vivo=$(awk '$1!~/^#/ && $2=="global"{print $1}' "$SKMF" | sort -u)
   sk_ret=$( awk '$1!~/^#/ && $2=="retirado"{print $1}' "$SKMF" | sort -u)
   hk_vivo=$(awk '$1!~/^#/ && NF>=3 && $3=="hook" && $2!="retirado"{print $1}' "$MFHK" | sort -u)
   hk_ret=$( awk '$1!~/^#/ && $2=="retirado"{print $1}' "$MFHK" | sort -u)
@@ -7394,13 +7371,13 @@ wc_cuenta qml "$WROOT/src/plasmoid/contents/ui/main.qml"       "accountCheckSour
 wc_cuenta win "$WROOT/windows/src/Cortex/Program.cs"           "ActiveAccountUuid"  "_lastAccountCheck"
 
 # ─────────────────────────────────────────────────────────────────────────────
-echo "== (e7) FIX #3: install-brain DERIVA el cableado del MANIFEST y cablea EXACTAMENTE los {global,both} kind=hook (mismos hooks/eventos que el hardcode anterior) =="
+echo "== (e7) FIX #3: install-brain DERIVA el cableado del MANIFEST y cablea EXACTAMENTE los {global} kind=hook (mismos hooks/eventos que el hardcode anterior) =="
 E7H="$(mktemp -d "${TMPDIR:-/tmp}/brain-e7.XXXXXX")"
 HOME="$E7H" bash "$INSTALLER" >/dev/null 2>&1
 if [ -f "$E7H/.claude/settings.json" ]; then
   wired=$(jq -r '.hooks[]?[]?.hooks[]?.command' "$E7H/.claude/settings.json" 2>/dev/null | grep -oE '/[a-z-]+\.sh' | sed 's#/##; s#\.sh##' | sort -u)
-  want=$(awk '$1!~/^#/ && NF>=3 && ($2=="global"||$2=="both") && $3=="hook"{print $1}' "$MF" | sort -u)
-  if [ "$wired" = "$want" ]; then ok "e7: install-brain cablea EXACTAMENTE los {global,both} kind=hook del MANIFEST (ni de más ni de menos)"
+  want=$(awk '$1!~/^#/ && NF>=3 && $2=="global" && $3=="hook"{print $1}' "$MF" | sort -u)
+  if [ "$wired" = "$want" ]; then ok "e7: install-brain cablea EXACTAMENTE los {global} kind=hook del MANIFEST (ni de más ni de menos)"
   else bad "e7: el set cableado DIFIERE del MANIFEST · sobran/faltan: $(comm -3 <(printf '%s\n' "$wired") <(printf '%s\n' "$want") | tr '\t' '~' | tr '\n' ' ')"; fi
   # el EVENTO de cada uno es el correcto (los 4 grupos: Bash, Task, SessionStart sin-matcher, PostToolUse sin-matcher)
   ev_of() { jq -r --arg n "$1" '.hooks | to_entries[] | .key as $k | .value[] | select((([.hooks[]?.command]|join(" "))) | test("/"+$n+"\\.sh")) | ($k + "|" + (.matcher // ""))' "$E7H/.claude/settings.json"; }
@@ -7447,7 +7424,7 @@ grep -q 'mi-hook-usuario-e8' "$E8H/.claude/settings.json" 2>/dev/null \
   && ok "e7b: el cableado del hook propio del usuario SIGUE intacto en settings.json" \
   || bad "e7b: ¡install-brain de-cableó un hook ajeno del usuario!"
 [ -f "$E8H/.claude/hooks/merge-develop-guard.sh" ] \
-  && ok "e7b: un hook VIVO ({global,both}, p. ej. merge-develop-guard) SÍ se instaló normalmente" \
+  && ok "e7b: un hook VIVO ({global}, p. ej. merge-develop-guard) SÍ se instaló normalmente" \
   || bad "e7b: install-brain no instaló los hooks vivos junto con la poda de retirados"
 # Idempotencia: 2ª corrida sin nada que podar → sin el mensaje de poda, sin error, hook propio intacto.
 e8out2="$(HOME="$E8H" bash "$INSTALLER" 2>&1)"; e8rc2=$?
@@ -8028,7 +8005,7 @@ CSX="$(mktemp -d "${TMPDIR:-/tmp}/brain-csx.XXXXXX")"
 mkdir -p "$CSX/docs/flowcharts" "$CSX/brain/hooks"
 cp "$SCRIPT_DIR/../docs/flowcharts/verificar-charts-sync.sh" "$CSX/docs/flowcharts/"
 printf 'ev_de() {\n  case "$1" in\n    merge-develop-guard|entorno-maquina-guard|no-bypass-deploy|proteger-arbol) echo "PreToolUse|Bash" ;;\n  esac\n}\n' > "$CSX/brain/install-brain.sh"
-printf 'git-branch-guard retirado hook\nmerge-develop-guard both hook\n' > "$CSX/brain/hooks/MANIFEST"; : > "$CSX/brain/hooks/RETIRED"
+printf 'git-branch-guard retirado hook\nmerge-develop-guard global hook\n' > "$CSX/brain/hooks/MANIFEST"; : > "$CSX/brain/hooks/RETIRED"
 csx() { bash "$CSX/docs/flowcharts/verificar-charts-sync.sh" 2>&1; }
 # baseline LIMPIO del fixture: tabla con 2 charts que existen, conteo 4, sin retirados vivos → ✅
 printf '| N\xc2\xba | T |\n| 03 | git-guards (fan-out de 4) |\n| 07 | zoom |\n' > "$CSX/docs/flowcharts/CONVENCIONES.md"
@@ -8056,7 +8033,7 @@ rm -rf "$CSX"
 # ─────────────────────────────────────────────────────────────────────────────
 echo "== (g1) no-bypass-deploy: AVISA (no bloquea) al correr instalador/deploy a mano; PRECISO (silencio en dry-run/help/CI/mención) =="
 NBD="$HOOKS/no-bypass-deploy.sh"
-# HOME AISLADO (hermético): no-bypass-deploy es tier `both`; su cláusula de dedupe hace `exit 0` si en
+# HOME AISLADO (hermético): no-bypass-deploy es tier `global`; HOME aislado para no heredar settings reales si en
 # $HOME/.claude/hooks/ ya hay copia GLOBAL (la instala install-brain). Con un $HOME temporal VACÍO el test
 # no depende de si esta máquina tiene el brain global instalado — antes daba falso-VERDE (sin global) y
 # tras instalar el global daba falso-ROJO (la copia del repo cedía). Ver #80.
@@ -8161,9 +8138,8 @@ printf '%s' "$(nbd_ctx 'bash brain/install-brain.sh')" | grep -qi 'widget' \
 # -h ambiguo (MEDIO auditoría 2026-10-22): un deploy real con `-h <host>` ya NO se silencia como si fuera --help.
 [ -n "$(nbd_ctx './deploy.sh -h prod-host')" ] \
   && ok "g1: './deploy.sh -h prod-host' SÍ avisa (-h es --host, no --help)" || bad "g1: calló por -h (FN: -h tomado como --help)"
-# tier both → trae la cláusula de dedupe (la copia por-repo cede a la global) que HONRA CLAUDE_CONFIG_DIR
-{ grep -qF '_cfgh="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks"' "$NBD" && grep -qF 'case "$0" in "$_cfgh/"' "$NBD"; } \
-  && ok "g1: no-bypass-deploy trae la cláusula de dedupe que honra CLAUDE_CONFIG_DIR (tier both)" || bad "g1: falta/mal la cláusula de dedupe en un hook tier both"
+# (La aserción de la cláusula de dedupe se retiró: no-bypass-deploy es tier `global` desde 2026-11-01
+#  —el cerebro vive solo en global—, ya no lleva dedupe por-repo.)
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo "== (g3) install-brain: SIEMBRA en settings.json .env las env vars ACTIVAS del brain (no en la sesión) =="
@@ -9755,7 +9731,7 @@ echo ""
 echo "== (b-rc) reconstruir-contexto: red de emergencia cableada y ALCANZABLE =="
 # La slice entrega una RED DE EMERGENCIA (excavar contexto cuando un checkpoint quedó pobre y /compact
 # fundió el hilo). Su VALOR no es "el archivo existe" sino ser ALCANZABLE y CERRAR EL LAZO: registrada
-# `both` (viaja al clon sin brain global, justo donde más duele un hilo fundido), sus hermanas la apuntan,
+# `global` (se instala en ~/.claude/skills), sus hermanas la apuntan,
 # y ella apunta de vuelta a checkpoint/rehidratar-hilo. Una red registrada pero SIN enlaces, o con un
 # [[link]] COLGADO, se rompe en SILENCIO — nadie la encuentra en la emergencia. Esto lo caza; falla
 # entero contra el código pre-port (4ef2186^: ni skill, ni MANIFEST, ni cross-links).
@@ -9769,10 +9745,10 @@ RC_RH="$SCRIPT_DIR/skills/rehidratar-hilo/SKILL.md"
   && ok "reconstruir-contexto: SKILL.md presente con frontmatter name" \
   || bad "reconstruir-contexto: falta el SKILL.md o su frontmatter name"
 
-# (2) registrada `both` en el MANIFEST (si no, install-brain no la lleva al clon COMPARTIDO sin brain global)
-grep -qE '^reconstruir-contexto[[:space:]]+both[[:space:]]*$' "$RC_MF" \
-  && ok "reconstruir-contexto: declarada 'both' en skills/MANIFEST (viaja como CORREO)" \
-  || bad "reconstruir-contexto: FALTA su línea 'both' en skills/MANIFEST"
+# (2) registrada `global` en el MANIFEST (si no, install-brain no la instala)
+grep -qE '^reconstruir-contexto[[:space:]]+global[[:space:]]*$' "$RC_MF" \
+  && ok "reconstruir-contexto: declarada 'global' en skills/MANIFEST (se instala en ~/.claude/skills)" \
+  || bad "reconstruir-contexto: FALTA su línea 'global' en skills/MANIFEST"
 
 # (3) cross-link BIDIRECCIONAL: las hermanas la apuntan Y ella apunta de vuelta (cierra el lazo de recuperación)
 { grep -qF '[[reconstruir-contexto]]' "$RC_CK" \
@@ -9953,30 +9929,25 @@ fi
 rm -rf "$B1C"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# TIERS 2026-10-21: sesion-inicio y recordar-cosechar pasan a tier `both` → deben traer la cláusula de
-# dedupe (la copia del repo cede a la global) y estar mapeados en ev_de (o quedarían sin cablear global).
+# TIERS (2026-11-01, "solo cerebro global"): sesion-inicio y recordar-cosechar son tier `global` (ya NO
+# `both`/dedupe — el cerebro no viaja por-repo). Lo que se verifica: (B) corren DENTRO de un repo git,
+# (B2) CALLAN fuera de un repo git (gate git), (D) están mapeados en ev_de (o quedarían sin cablear global).
 echo ""
 TIERSHOME="$(mktemp -d)"; mkdir -p "$TIERSHOME/.claude/hooks"
-git -C "$TIERSHOME" init -q >/dev/null 2>&1   # repo git: sesion-inicio (both) solo inyecta DENTRO de un repo
-# (A) sesion-inicio: con la copia GLOBAL presente, la copia del REPO CEDE (salida vacía por la dedupe, que
-# corre ANTES del gate git). cd a un cwd VÁLIDO (como el bloque H18): una corrida larga puede dejar el cwd
-# de test-brain borrado por un mktemp previo → el `bash` del hook abortaría con getcwd antes de la dedupe.
-cp "$HOOKS/sesion-inicio.sh" "$TIERSHOME/.claude/hooks/sesion-inicio.sh"
-si_cede="$( cd "$TIERSHOME" && printf '%s' '{"source":"startup"}' | HOME="$TIERSHOME" CLAUDE_PROJECT_DIR="$TIERSHOME" bash "$HOOKS/sesion-inicio.sh" 2>&1)"
-[ -z "$si_cede" ] && ok "tiers: sesion-inicio (both) — copia REPO CEDE si la global existe (dedupe)" || bad "tiers: sesion-inicio copia REPO no cedió con global presente: ${si_cede:0:60}"
-# (B) sin copia global, DENTRO de un repo git → la copia CORRE (inyecta contexto, salida no vacía).
-rm -f "$TIERSHOME/.claude/hooks/sesion-inicio.sh"
+git -C "$TIERSHOME" init -q >/dev/null 2>&1   # repo git: sesion-inicio solo inyecta DENTRO de un repo
+# (B) DENTRO de un repo git → la copia CORRE (inyecta contexto, salida no vacía). cd a un cwd VÁLIDO: una
+# corrida larga puede dejar el cwd de test-brain borrado por un mktemp previo → el `bash` abortaría con getcwd.
 si_run="$( cd "$TIERSHOME" && printf '%s' '{"source":"startup"}' | HOME="$TIERSHOME" CLAUDE_PROJECT_DIR="$TIERSHOME" bash "$HOOKS/sesion-inicio.sh" 2>&1)"
-[ -n "$si_run" ] && ok "tiers: sesion-inicio — sin global, DENTRO de un repo git CORRE (inyecta contexto)" || bad "tiers: sesion-inicio no corrió dentro de un repo git sin copia global"
+[ -n "$si_run" ] && ok "tiers: sesion-inicio — DENTRO de un repo git CORRE (inyecta contexto)" || bad "tiers: sesion-inicio no corrió dentro de un repo git"
 rm -rf "$TIERSHOME"
 # (B2) FUERA de un repo git (carpeta cualquiera: ~, Downloads, Juegos…) → CALLA (rc 0, sin inyección del
-# bloque del repo). Revisión de claudio sobre 673ac46: como tier both corre en TODA sesión, no solo en un repo.
+# bloque del repo). Revisión de claudio sobre 673ac46: como hook global corre en TODA sesión, no solo en un repo.
 TIERSNOGIT="$(mktemp -d)"
 si_nogit="$( cd "$TIERSNOGIT" && printf '%s' '{"source":"startup"}' | HOME="$TIERSNOGIT" CLAUDE_PROJECT_DIR="$TIERSNOGIT" bash "$HOOKS/sesion-inicio.sh" 2>&1)"
-[ -z "$si_nogit" ] && ok "tiers: sesion-inicio (both) FUERA de un repo git → CALLA (no inyecta el bloque del repo)" || bad "tiers: sesion-inicio inyectó en una carpeta no-repo: ${si_nogit:0:60}"
+[ -z "$si_nogit" ] && ok "tiers: sesion-inicio FUERA de un repo git → CALLA (no inyecta el bloque del repo)" || bad "tiers: sesion-inicio inyectó en una carpeta no-repo: ${si_nogit:0:60}"
 rm -rf "$TIERSNOGIT"
 # (C) el grep verbatim de "recordar-cosechar trae la cláusula de dedupe" se retiró: el comportamiento del
-#     dedupe (la copia por-repo cede si existe la global) lo PRUEBAN los casos A/B de b7 corriendo el hook.
+#     dedupe se retiró con el cerebro por-repo (2026-11-01): ya no hay copias por-repo que cedan.
 # (D) ev_de de install-brain mapea ambos (si no, se instalan global pero NO se cablean).
 TIERS_EVDE="$(sed -n '/^ev_de() {/,/^}/p' "$SCRIPT_DIR/../brain/install-brain.sh")"
 ev_probe() { bash -c "$TIERS_EVDE"$'\n'"ev_de \"$1\""; }
