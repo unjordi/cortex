@@ -80,10 +80,14 @@ _dewire_from_settings() {
   jq empty "$sf" 2>/dev/null || return 1
   _settings_wires "$sf" "$pat" || return 0
   tmp="$(mktemp)" || return 1
+  # Filtra POR-COMANDO dentro de cada entrada (B-01): quita SOLO los comandos que citan el patrón y
+  # CONSERVA un hermano no-casante de la MISMA entrada; dropea la entrada si queda sin hooks, y el evento
+  # si queda sin entradas. (Antes filtraba por-entrada → un hermano ajeno en la misma entrada se perdía.)
   if jq --arg pat "$pat" '
       if (.hooks|type)=="object" then
         .hooks |= ( to_entries
-          | map(.value |= [ .[] | select((([.hooks[]?.command]|join(" "))|test($pat))|not) ])
+          | map(.value |= ( map(.hooks |= map(select((.command // "")|test($pat)|not)))
+                            | map(select((.hooks|type)=="array" and (.hooks|length)>0)) ))
           | map(select((.value|type)=="array" and (.value|length)>0)) | from_entries )
         | (if (.hooks|length)==0 then del(.hooks) else . end)
       else . end
