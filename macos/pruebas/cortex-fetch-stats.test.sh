@@ -86,5 +86,20 @@ chk "4.messages"  "$(jq -r .messages <<<"$J4")" "5"    # 8 - 4(fa) + 1(run3) = 5
 chk "4.10-01-ausente" "$(jq -r '.day_msg["2026-10-01"] // "null"' <<<"$J4")" "null"
 chk "4.projX-ausente" "$(projtok "$(jq -r .rows <<<"$J4")" projX)" ""
 
+# ── Run 5: DEDUP POR CARPETA (no por archivo). Una sesión forkeada/continuada copia
+#    historia con los MISMOS msg_id a otro .jsonl de la MISMA carpeta → sus tokens se
+#    cuentan UNA vez (como el código viejo, que deduplicaba con un seen[] compartido por
+#    carpeta). Dedup por archivo los contaría doble → este caso FALLA contra cabe96d. ──
+mkdir -p "$PROJ/gg"
+cat > "$PROJ/gg/g1.jsonl" <<'EOF'
+{"type":"assistant","timestamp":"2026-10-05T10:00:00Z","message":{"id":"msg_G1","usage":{"input_tokens":20,"output_tokens":10}},"cwd":"/Users/u/code/projG"}
+EOF
+cat > "$PROJ/gg/g2.jsonl" <<'EOF'
+{"type":"assistant","timestamp":"2026-10-05T10:00:00Z","message":{"id":"msg_G1","usage":{"input_tokens":20,"output_tokens":10}},"cwd":"/Users/u/code/projG"}
+{"type":"assistant","timestamp":"2026-10-05T11:00:00Z","message":{"id":"msg_G2","usage":{"input_tokens":3,"output_tokens":1}},"cwd":"/Users/u/code/projG"}
+EOF
+J5="$(run)"
+chk "5.projG-dedup-carpeta" "$(projtok "$(jq -r .rows <<<"$J5")" projG)" "23,11"   # G1 (20/10) UNA vez + G2 (3/1)
+
 echo "PASS=$PASS FAIL=$FAIL"
 [[ "$FAIL" -eq 0 ]]

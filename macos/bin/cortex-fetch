@@ -62,7 +62,14 @@ mkdir -p "$CACHE_DIR"
 # (CORTEX_FETCH_LOCKED) ya corre con el lock tomado. Escape de prueba: NO_LOCK.
 LOCK_FILE="$CACHE_DIR/fetch.lock"
 if [[ -z "${CORTEX_FETCH_LOCKED:-}" && -z "${CORTEX_FETCH_NO_LOCK:-}" ]]; then
-  exec env CORTEX_FETCH_LOCKED=1 /usr/bin/lockf -t 0 "$LOCK_FILE" "$0" "$@"
+  # Re-corre bajo lockf (sin exec, para mapear su código): -t 0 → si el lock está
+  # ocupado, lockf sale 75 (EX_TEMPFAIL) SIN correr → lo tratamos como "no encimar"
+  # y salimos 0 (que el ↻ del widget no lo lea como error). Invocamos con "$BASH" "$0"
+  # (no "$0" a secas) por si el llamador no respeta el bit de ejecución.
+  _lrc=0
+  env CORTEX_FETCH_LOCKED=1 /usr/bin/lockf -t 0 "$LOCK_FILE" "${BASH:-/bin/bash}" "$0" "$@" || _lrc=$?
+  [[ "$_lrc" -eq 75 ]] && exit 0
+  exit "$_lrc"
 fi
 
 # --- transcript_stats: agregados de ~/.claude/projects, INCREMENTAL por archivo -
@@ -75,6 +82,7 @@ fi
 transcript_stats() {
   local proj="$1" off="$2"
   local cache="$CACHE_DIR/transcripts.cache"
+  local cver="cfv2"   # versión del FORMATO del cache; súbela si cambian las líneas F/M/H/D/P/T
   SESSIONS=0; MESSAGES=0; PEAK_HOUR=-1; DAY_MSG_JSON="{}"; PROJECT_DAY_TSV=""
   [[ -d "$proj" ]] || return 0
 
@@ -88,7 +96,10 @@ transcript_stats() {
   local curf="$CACHE_DIR/.transcripts.cur.$$"
   : > "$keep"; : > "$rescan"
   printf '%s\n' "$cur" > "$curf"
-  [[ -f "$cache" ]] || : > "$cache"
+  # Guard de versión: si el cache es de un FORMATO viejo (tras un deploy que cambió las
+  # líneas T, etc.), se descarta para reconstruir — reusar bloques viejos los mal-parsearía.
+  local _hdr=""; [[ -f "$cache" ]] && IFS= read -r _hdr < "$cache" 2>/dev/null || true
+  [[ "$_hdr" == "#$cver" ]] || : > "$cache"
 
   # 2) partir cache vs inventario: reutiliza bloques sin cambio, lista a re-escanear.
   # Distingue los dos archivos por FILENAME (NO por FNR==NR: con el cache vacío en
@@ -145,7 +156,11 @@ transcript_stats() {
           inv=0; outv=0
           if (match(line,/"input_tokens":[0-9]+/)){s=substr(line,RSTART,RLENGTH);sub(/^"input_tokens":/,"",s);inv=s+0}
           if (match(line,/"output_tokens":[0-9]+/)){s=substr(line,RSTART,RLENGTH);sub(/^"output_tokens":/,"",s);outv=s+0}
-          TI[utcd SUBSEP utch]+=inv; TO[utcd SUBSEP utch]+=outv; TKEY[utcd SUBSEP utch]=1
+          # Guardamos el aporte de tokens POR msg_id (1ª ocurrencia en el archivo). El dedup
+          # DEFINITIVO es POR CARPETA y se hace en el combine: una sesión forkeada/continuada
+          # copia historia con los MISMOS msg_id a otro .jsonl de la misma carpeta -> dedup por
+          # archivo contaría doble. Por eso los parciales T llevan el msg_id crudo.
+          MID[id]=utcd SUBSEP utch SUBSEP inv SUBSEP outv
         }
         END{
           print "F\t" path "\t" mt "\t" sz
@@ -153,13 +168,14 @@ transcript_stats() {
           for (k in AH) print "H\t" k "\t" AH[k]
           for (k in DM){split(k,a,SUBSEP); print "D\t" a[1] "\t" a[2] "\t" DM[k]}
           print "P\t" folder "\t" bestName "\t" (bestDepth<0?-1:bestDepth) "\t" soloTmp
-          for (k in TKEY){split(k,a,SUBSEP); print "T\t" folder "\t" a[1] "\t" a[2] "\t" TI[k] "\t" (TO[k]+0)}
+          for (id2 in MID){split(MID[id2],t,SUBSEP); print "T\t" folder "\t" id2 "\t" t[1] "\t" t[2] "\t" t[3] "\t" (t[4]+0)}
         }' "$f" >> "$keep" 2>/dev/null || true
       scanned=$((scanned+1))
     done < "$rescan"
   fi
-  mv "$keep" "$cache" 2>/dev/null || true
-  rm -f "$rescan"
+  # Escribe el cache nuevo con el header de versión + los bloques (reusados + frescos).
+  { printf '#%s\n' "$cver"; cat "$keep"; } > "$cache" 2>/dev/null || true
+  rm -f "$keep" "$rescan"
   printf '%s\n' "$scanned" > "$CACHE_DIR/.transcripts.lastscan" 2>/dev/null || true
 
   # 4) combinar el cache (parciales) aplicando el offset local -> agregados finales
@@ -175,7 +191,7 @@ transcript_stats() {
     $1=="H"{ lh=(($2+0)+off+24)%24; LH[lh]+=$3+0; next }
     $1=="D"{ ld=localday($2,$3); DAY[ld]+=$4+0; next }
     $1=="P"{ f=$2; if (($4+0)>=0){ if (!(f in PDEP) || ($4+0)<PDEP[f]){PDEP[f]=$4+0; PNAME[f]=$3} } if (($5+0)==1) PSOLO[f]=1; next }
-    $1=="T"{ f=$2; ld=localday($3,$4); TIN[f SUBSEP ld]+=$5+0; TOUT[f SUBSEP ld]+=$6+0; TK[f SUBSEP ld]=1; next }
+    $1=="T"{ f=$2; mk=f SUBSEP $3; if (mk in TSEEN) next; TSEEN[mk]=1; ld=localday($4,$5); TIN[f SUBSEP ld]+=$6+0; TOUT[f SUBSEP ld]+=$7+0; TK[f SUBSEP ld]=1; next }
     END{
       print "MESSAGES\t" MSG
       m=-1; ph=-1; for(i=0;i<24;i++) if(LH[i]>m){m=LH[i];ph=i}
