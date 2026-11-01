@@ -3560,6 +3560,28 @@ rm -rf "$A4ROOT2"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "== (b3-fetch) fila 5: el fetch del barrido es ACOTADO y REPORTA el fallo (no se calla con refs viejas) =="
+# origin inalcanzable + timeout corto → el fetch falla rápido y el resumen lo DICE («no pude actualizar
+# origin … N ramas juzgadas con refs viejas»), en vez de proceder mudo. Falla vs el hook viejo (fetch con
+# 2>/dev/null y sin reporte). --no-fetch no debe disparar el aviso (no se intentó).
+F5ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-f5.XXXXXX")"; F5REPO="$F5ROOT/repo"; mkdir -p "$F5REPO/.claude/memory"
+printf '# bitacora\n' > "$F5REPO/.claude/memory/bitacora.md"
+git -C "$F5REPO" init -q >/dev/null 2>&1; git -C "$F5REPO" symbolic-ref HEAD refs/heads/develop >/dev/null 2>&1
+git -C "$F5REPO" config user.email t@t >/dev/null 2>&1; git -C "$F5REPO" config user.name t >/dev/null 2>&1
+printf 'base\n' > "$F5REPO/b.txt"; git -C "$F5REPO" add b.txt >/dev/null 2>&1; git -C "$F5REPO" commit -qm base >/dev/null 2>&1
+git -C "$F5REPO" remote add origin "ssh://git@10.255.255.1:22/nope.git" >/dev/null 2>&1   # IP no-ruteable → connect timeout
+f5out="$(cd "$F5REPO" && HOME="$F5ROOT/home" CLAUDE_INTEGRACION_BASE=develop LIMPIAR_RAMAS_FETCH_TIMEOUT=6 bash "$HOOKS/limpiar.sh" ramas 2>&1)"
+printf '%s' "$f5out" | grep -q 'no pude actualizar origin' \
+  && ok "b3-fetch: origin inalcanzable → el resumen REPORTA que no pudo actualizar (no se calla)" \
+  || bad "b3-fetch: no reportó el fallo del fetch; got: $(printf '%s' "$f5out" | tail -1)"
+f5nf="$(cd "$F5REPO" && HOME="$F5ROOT/home" CLAUDE_INTEGRACION_BASE=develop bash "$HOOKS/limpiar.sh" ramas --no-fetch 2>&1)"
+printf '%s' "$f5nf" | grep -q 'no pude actualizar origin' \
+  && bad "b3-fetch: --no-fetch disparó el aviso de fallo (no se intentó el fetch)" \
+  || ok "b3-fetch: --no-fetch no dispara el aviso de fallo (no se intentó)"
+rm -rf "$F5ROOT"
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "== (b3d) bz_resolver_base: AUTO-detecta la mini-develop (Develop<Usuario>) sin CLAUDE_INTEGRACION_BASE =="
 # En un repo con flujo mini-develop (rama personal DevelopUnjordi sacada de develop), un resolver que cayera
 # a `develop` por existir local vería las ramitas integradas a la MINI como "no integradas" y nunca las

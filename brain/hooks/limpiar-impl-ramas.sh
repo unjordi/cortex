@@ -43,7 +43,25 @@ BITA="$ROOT/.claude/memory/bitacora.md"
 
 # fetch --prune: refresca los refs remotos (surface de las remotas ya borradas) para que la detección de
 # "remota borrada" sea fiel. Se puede saltar (--no-fetch) si estás offline o ya lo corriste.
-[ "$FETCH" = 1 ] && git -C "$ROOT" fetch --all --prune -q 2>/dev/null
+# ACOTADO (timeout + ConnectTimeout + BatchMode: nunca cuelga ni pide contraseña) y con el ssh-agent de la
+# sesión gráfica (si SSH_AUTH_SOCK no viene en el entorno, cae al socket estándar del systemd user agent en
+# Linux). Si falla/expira NO se calla: fetch_ok=0 → el resumen lo dice y nombra cuántas ramas quedaron con
+# refs posiblemente viejas (se juzgan conservador, ninguna se borra por esa duda).
+FETCH_TIMEOUT="${LIMPIAR_RAMAS_FETCH_TIMEOUT:-20}"; case "$FETCH_TIMEOUT" in ''|*[!0-9]*) FETCH_TIMEOUT=20 ;; esac
+fetch_ok=1
+if [ "$FETCH" = 1 ]; then
+  if [ -z "${SSH_AUTH_SOCK:-}" ] && [ -S "/run/user/$(id -u 2>/dev/null)/ssh-agent.socket" ]; then
+    export SSH_AUTH_SOCK="/run/user/$(id -u)/ssh-agent.socket"
+  fi
+  ( GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -o ConnectTimeout=8 -o BatchMode=yes}" \
+      git -C "$ROOT" fetch --all --prune -q ) >/dev/null 2>&1 &
+  _fpid=$!
+  ( sleep "$FETCH_TIMEOUT"; kill "$_fpid" 2>/dev/null ) >/dev/null 2>&1 &
+  _wpid=$!
+  wait "$_fpid" 2>/dev/null; fetch_rc=$?
+  kill "$_wpid" 2>/dev/null; wait "$_wpid" 2>/dev/null
+  [ "$fetch_rc" = 0 ] || fetch_ok=0
+fi
 
 base="$(bz_resolver_base "$ROOT")"
 # sin una base que EXISTA, toda señal de integración falla muda y las ramas caen
@@ -260,4 +278,7 @@ resumen="$resumen. Remotas sin local: $rem_exam examinada(s) → $rem_borradas i
 [ "$rem_cons" -gt 0 ] && resumen="$resumen ($rem_cons_n)"
 [ "$rem_omit" -gt 0 ] && resumen="$resumen, $rem_omit protegida(s)"
 resumen="$resumen. Base: $base."
+# Si el fetch no pudo refrescar origin, DILO (no te quedes callado con refs viejas) y nombra cuántas ramas
+# se juzgaron contra refs posiblemente viejas (ninguna se borró por esa duda — el barrido conserva).
+[ "${fetch_ok:-1}" = 0 ] && resumen="$resumen ⚠️ no pude actualizar origin (sin red o timeout): $total rama(s) juzgadas con refs locales posiblemente viejas — ninguna se borró por esa duda; corre con red para un veredicto fiable."
 echo "$resumen"
