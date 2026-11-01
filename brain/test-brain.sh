@@ -6918,7 +6918,6 @@ checkpoint-mecanico|checkpoint-mecanico-comun
 limpiar|limpiar-impl-ramas
 limpiar|limpiar-impl-worktrees
 limpiar|limpiar-impl-residuo
-limpiar|limpiar-impl-flotilla
 recordar-cosechar|sincronizar-tasklist
 recordar-cosechar|to-do
 sincronizar-tasklist|to-do
@@ -6977,8 +6976,8 @@ merge-develop-guard|turno-nocturno"
 # andamio se FACTORIZÓ a la lib checkpoint-mecanico-comun.sh; aviso-contexto.sh (umbral) y
 # checkpoint-mecanico.sh (PreCompact) la SOURCEAN (lib<->consumidor) y son hooks HERMANOS que se mencionan
 # en sus encabezados (contexto de por qué existen). No es ciclo — la mecánica vive UNA vez, en la lib.
-# limpiar|limpiar-impl-{ramas,worktrees,residuo,flotilla}: los 4
-# ejecutables sueltos limpiar-ramas.sh/limpiar-worktrees.sh/limpiar-residuo.sh/barrer-flotilla-cerebro.sh
+# limpiar|limpiar-impl-{ramas,worktrees,residuo}: los 3
+# ejecutables sueltos limpiar-ramas.sh/limpiar-worktrees.sh/limpiar-residuo.sh
 # se renombraron (git mv, misma lógica) a limpiar-impl-*.sh y quedaron RETIRADOS como nombres públicos
 # (ver MANIFEST); el dispatcher limpiar.sh es el único punto de entrada. Es dispatcher<->implementación
 # (el dispatcher exec-ea cada impl por nombre; cada impl documenta en su cabecera que se invoca vía
@@ -7015,7 +7014,7 @@ done
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "== (e2) drift-check: el MANIFEST es la FUENTE ÚNICA — install/uninstall/sincronizar coinciden (A4) =="
+echo "== (e2) drift-check: el MANIFEST es la FUENTE ÚNICA — install/uninstall coinciden (A4) =="
 MF="$HOOKS/MANIFEST"
 if [ ! -f "$MF" ]; then
   bad "drift: falta el MANIFEST ($MF)"
@@ -7036,8 +7035,8 @@ else
   done
   [ "$miss_file" = 0 ] && ok "drift: toda entrada del MANIFEST (no-retirada) tiene su .sh"
   # (3) install-brain DERIVA GLOBAL del manifiesto (no una lista hardcodeada paralela) y no está vacía
-  derived="$(awk '$1!~/^#/ && NF>=3 && ($2=="global"||$2=="both"){print $1".sh"}' "$MF")"
-  if grep -q "awk.*global.*both.*MANIFEST\|MANIFEST.*awk" "$INSTALLER" && [ -n "$derived" ]; then
+  derived="$(awk '$1!~/^#/ && NF>=3 && $2=="global"{print $1".sh"}' "$MF")"
+  if grep -q "awk.*global.*MANIFEST\|MANIFEST.*awk" "$INSTALLER" && [ -n "$derived" ]; then
     ok "drift: install-brain deriva GLOBAL_HOOKS del MANIFEST (fuente única, no lista paralela)"
   else
     bad "drift: install-brain NO deriva del MANIFEST (¿volvió a una lista hardcodeada?)"
@@ -7047,48 +7046,38 @@ else
   #     cabla exactamente lo del MANIFEST— ya lo mide e7, y la paridad de abajo caza el hook sin evento.)
   evblock="$(awk '/^ev_de\(\)/,/^}/' "$INSTALLER")"
   miss_wire=0
-  for b in $(awk '$1!~/^#/ && NF>=3 && ($2=="global"||$2=="both") && $3=="hook"{print $1}' "$MF"); do
-    printf '%s' "$evblock" | grep -qw "$b" || { bad "drift: '$b' es {global,both} hook pero NO tiene evento en ev_de() de install-brain (no se cablearía)"; miss_wire=1; }
+  for b in $(awk '$1!~/^#/ && NF>=3 && $2=="global" && $3=="hook"{print $1}' "$MF"); do
+    printf '%s' "$evblock" | grep -qw "$b" || { bad "drift: '$b' es {global} hook pero NO tiene evento en ev_de() de install-brain (no se cablearía)"; miss_wire=1; }
   done
-  [ "$miss_wire" = 0 ] && ok "drift: cada hook {global,both} del MANIFEST tiene evento en ev_de() de install-brain (se cablea)"
-  # (6) sincronizar-cerebro existe y los archivos de tier {repo,both} que desplegaría están presentes
-  if [ -f "$SCRIPT_DIR/sincronizar-cerebro.sh" ]; then
-    miss_repo=0
-    for b in $(awk '$1!~/^#/ && NF>=3 && ($2=="repo"||$2=="both"){print $1}' "$MF"); do
-      [ -f "$HOOKS/$b.sh" ] || { bad "drift: sincronizar desplegaría '$b' pero falta su .sh"; miss_repo=1; }
-    done
-    [ "$miss_repo" = 0 ] && ok "drift: sincronizar-cerebro existe y todos sus archivos {repo,both} están presentes"
-  else
-    bad "drift: falta sincronizar-cerebro.sh (la ruta de despliegue por-repo)"
-  fi
+  [ "$miss_wire" = 0 ] && ok "drift: cada hook {global} del MANIFEST tiene evento en ev_de() de install-brain (se cablea)"
 fi
 
-# ═══ BLOQUE AÑADIDO (#81 asentar-tiers) — delimitado para merge-friendliness en paralelo ═══════════════
-echo "== (e2-tiers) doc-check: los MANIFEST documentan los 3 tiers + la regla de decisión repo-compartido (#81) =="
-# Asienta la decisión de TIER: el header de cada MANIFEST debe explicar CÓMO DECIDIR el tier (patrón
-# repo-compartido) para que quien agregue un hook/skill sepa qué poner SIN re-preguntar "¿global o both?".
+# ═══ BLOQUE (tiers tras "solo cerebro global" 2026-11-01) ══════════════════════════════════════════════
+echo "== (e2-tiers) doc-check: los MANIFEST documentan el tier vivo (global) + la lápida (retirado) =="
+# Desde el retiro del cerebro por-repo el único tier vivo es `global` (ya no hay both/repo). El header de
+# cada MANIFEST debe documentar `global` y el tier `retirado` (lápida), para que quien agregue un hook/skill
+# sepa que va `global` sin re-preguntar.
 MFH="$HOOKS/MANIFEST"; MFS="$SCRIPT_DIR/skills/MANIFEST"
-for pair in "hooks:$MFH:both global repo" "skills:$MFS:both global"; do
+for pair in "hooks:$MFH:global retirado" "skills:$MFS:global retirado"; do
   lbl="${pair%%:*}"; rest="${pair#*:}"; mf="${rest%%:*}"; tiers="${rest#*:}"
   hdr="$(grep '^#' "$mf" 2>/dev/null)"
   miss=""
   for t in $tiers; do printf '%s' "$hdr" | grep -qw "$t" || miss="$miss $t"; done
-  printf '%s' "$hdr" | grep -qiE 'CÓMO DECIDIR EL TIER' || miss="$miss <header-decision>"
-  printf '%s' "$hdr" | grep -qi 'repo.compartido\|COMPARTIDO' || miss="$miss <patron-repo-compartido>"
+  # el header debe declarar que global es el ÚNICO tier vivo (anti-regresión a both/repo)
+  printf '%s' "$hdr" | grep -qiE 'ÚNICO tier vivo|solo cerebro global' || miss="$miss <declara-global-unico>"
   [ -z "$miss" ] \
-    && ok "e2-tiers[$lbl]: el MANIFEST documenta los tiers y la regla de decisión repo-compartido" \
+    && ok "e2-tiers[$lbl]: el MANIFEST documenta el tier global (único vivo) + la lápida retirado" \
     || bad "e2-tiers[$lbl]: al header del MANIFEST le falta:$miss"
 done
-# ═══ FIN BLOQUE AÑADIDO (#81) ═════════════════════════════════════════════════════════════════════════
+# ═══ FIN BLOQUE ════════════════════════════════════════════════════════════════════════════════════════
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo "== (e2-skills) drift-check: el SKILLS-MANIFEST es COMPLETO — toda brain/skills/*/SKILL.md declarada, sin huérfanos =="
 # Hermano del (e2) de arriba: (e2) ya exige que TODO brain/hooks/*.sh esté en el hooks/MANIFEST (bloques 1/2);
 # ESTE hace lo MISMO para las SKILLS contra brain/skills/MANIFEST — la mitad que faltaba. RIESGO que cierra
 # (detectado por unjordi): una skill en brain/skills/<n>/SKILL.md que NO esté en brain/skills/MANIFEST la
-# OMITE en SILENCIO tanto el sync por-repo (PER_REPO_SK = awk sobre {both,repo} del MANIFEST en
-# sincronizar-cerebro.sh) como el install-brain global (deriva del mismo MANIFEST) → el repo/colega nunca la
-# recibe y nada lo detecta. Bidireccional: también caza una entrada del MANIFEST que apunte a una skill
+# OMITE en SILENCIO el install-brain global (deriva del mismo MANIFEST) → nunca se instala y nada lo
+# detecta. Bidireccional: también caza una entrada del MANIFEST que apunte a una skill
 # inexistente (huérfana). Formato del SKILLS-MANIFEST: "<nombre> <tier>" (2 columnas; '#'/blancos se ignoran).
 # EXCEPCIÓN a propósito (igual que el hooks/MANIFEST): tier `retirado` es la LÁPIDA — su carpeta YA se
 # borró de brain/skills/ a propósito, así que (1) y (2) la EXCLUYEN con $2!="retirado" (si no, una lápida
@@ -7121,49 +7110,6 @@ else
       && { bad "drift-skills: '$b' es tier retirado (lápida) pero brain/skills/$b/ TODAVÍA existe — bórrala o quita la lápida"; ret_bad=1; }
   done
   [ "$ret_bad" = 0 ] && ok "drift-skills: ninguna skill retirada (lápida) sigue teniendo carpeta real en brain/skills/"
-fi
-
-# ─────────────────────────────────────────────────────────────────────────────
-echo "== (e2-apply) sincronizar-cerebro --apply: las copias por-repo quedan BYTE-IDÉNTICAS a la fuente (anti-DRIFT del apply) =="
-# (e2)/(e2-skills) verifican COMPLETITUD (¿está listado en el MANIFEST?); ESTE verifica la CORRECCIÓN DEL
-# APPLY: que correr el sync REAL contra un clon fresco deje CADA archivo {repo,both} byte-idéntico a brain/.
-# Es el eje que blinda el caso que motivó todo: un hook (p. ej. dod-verificar) bien listado en el MANIFEST
-# pero DRIFTEADO en la copia por-repo — completitud verde, apply podrido. cmp -s compara CONTENIDO (no
-# permisos: atomic_install hace chmod +x en la copia, irrelevante para el byte-a-byte del cuerpo).
-# El sync CREA .claude/hooks, .claude/skills y el settings.json en el destino → basta un dir VACÍO (mktemp).
-# El settings.json queda FUERA del assert de identidad a propósito: no es una COPIA de un archivo fuente,
-# es un JSON GENERADO por register_hook (cablea rutas ${CLAUDE_PROJECT_DIR}) → no hay "fuente" con la cual
-# hacer cmp. El punto del test son los ARCHIVOS copiados (hooks/libs/skills); el cableado lo cubre (e6d).
-SYNC="$SCRIPT_DIR/sincronizar-cerebro.sh"
-if [ ! -f "$SYNC" ]; then
-  bad "e2-apply: falta sincronizar-cerebro.sh (no puedo probar la corrección del apply)"
-else
-  APPLYDEST="$(mktemp -d "${TMPDIR:-/tmp}/brain-apply.XXXXXX")"
-  bash "$SYNC" "$APPLYDEST" --apply >"$APPLYDEST/.synclog" 2>&1
-  apply_drift=0
-  # (1) cada hook/lib de tier {repo,both} del hooks/MANIFEST: copiado y byte-idéntico a la fuente.
-  for name in $(awk '$1!~/^#/ && NF>=3 && ($2=="repo"||$2=="both"){print $1}' "$HOOKS/MANIFEST"); do
-    s="$HOOKS/$name.sh"; d="$APPLYDEST/.claude/hooks/$name.sh"
-    [ -f "$s" ] || continue
-    if [ ! -f "$d" ]; then bad "e2-apply: el --apply NO copió el hook/lib '$name.sh' al destino"; apply_drift=1
-    elif ! cmp -s "$s" "$d"; then bad "e2-apply: el --apply dejó DRIFT en '$name.sh' (copia por-repo ≠ fuente)"; apply_drift=1; fi
-  done
-  # (2) cada archivo del ÁRBOL COMPLETO de cada skill {both,repo} del skills/MANIFEST: copiado y byte-idéntico.
-  for sk in $(awk '$1!~/^#/ && NF>=2 && ($2=="both"||$2=="repo"){print $1}' "$SCRIPT_DIR/skills/MANIFEST"); do
-    ssk="$SCRIPT_DIR/skills/$sk"; [ -d "$ssk" ] || continue
-    while IFS= read -r sf; do
-      [ -z "$sf" ] && continue
-      rel="${sf#"$ssk"/}"; df="$APPLYDEST/.claude/skills/$sk/$rel"
-      if [ ! -f "$df" ]; then bad "e2-apply: el --apply NO copió skills/$sk/$rel"; apply_drift=1
-      elif ! cmp -s "$sf" "$df"; then bad "e2-apply: el --apply dejó DRIFT en skills/$sk/$rel (copia ≠ fuente)"; apply_drift=1; fi
-    done < <(find "$ssk" -type f 2>/dev/null)
-  done
-  [ "$apply_drift" = 0 ] && ok "e2-apply: --apply deja hooks/libs {repo,both} y skills {both,repo} byte-idénticos a la fuente (cmp -s)"
-  # (3) el apply COMPLETO (sin --only/--prune-only) estampa el sello de versión en el destino.
-  [ -f "$APPLYDEST/.claude/hooks/.brain-version" ] \
-    && ok "e2-apply: el --apply COMPLETO estampó .brain-version en el destino" \
-    || bad "e2-apply: el --apply COMPLETO NO escribió .brain-version"
-  rm -rf "$APPLYDEST"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -7448,77 +7394,6 @@ wc_cuenta qml "$WROOT/src/plasmoid/contents/ui/main.qml"       "accountCheckSour
 wc_cuenta win "$WROOT/windows/src/Cortex/Program.cs"           "ActiveAccountUuid"  "_lastAccountCheck"
 
 # ─────────────────────────────────────────────────────────────────────────────
-echo "== (e5) sincronizar: los hooks RETIRADOS (lista RETIRED) se podan SOLOS; los huérfanos propios se conservan =="
-# precompact-volcar-estado quedó cableado en repos y ROMPE el CLI. Antes solo --prune-orphans lo quitaba
-# (y borraba TODO huérfano, incluso hooks propios). Ahora: lista brain/hooks/RETIRED → un huérfano
-# RETIRADO se de-cablea+borra en cualquier --apply (seguro: el brain lo declaró muerto); un huérfano
-# DESCONOCIDO (posible hook propio) se CONSERVA salvo --prune-orphans.
-SYNC="$SCRIPT_DIR/sincronizar-cerebro.sh"; RETIRED="$SCRIPT_DIR/hooks/RETIRED"
-grep -qxF "precompact-volcar-estado" "$RETIRED" 2>/dev/null \
-  && ok "e5: RETIRED lista precompact-volcar-estado (el que rompía el CLI)" \
-  || bad "e5: precompact-volcar-estado NO está en brain/hooks/RETIRED"
-E5T="$(mktemp -d "${TMPDIR:-/tmp}/brain-e5.XXXXXX")"; mkdir -p "$E5T/.claude/hooks"
-printf 'exit 0\n' > "$E5T/.claude/hooks/precompact-volcar-estado.sh"   # RETIRADO, colgado
-printf 'exit 0\n' > "$E5T/.claude/hooks/mi-hook-propio.sh"              # huérfano DESCONOCIDO (propio)
-printf '{"hooks":{"PreToolUse":[{"hooks":[{"command":"bash \\"${CLAUDE_PROJECT_DIR}/.claude/hooks/precompact-volcar-estado.sh\\""}]}]}}' > "$E5T/.claude/settings.json"
-bash "$SYNC" "$E5T" --apply >/dev/null 2>&1
-[ ! -f "$E5T/.claude/hooks/precompact-volcar-estado.sh" ] \
-  && ok "e5: --apply (sin --prune-orphans) BORRÓ el hook retirado" \
-  || bad "e5: el hook retirado sobrevivió al --apply"
-grep -q precompact "$E5T/.claude/settings.json" 2>/dev/null \
-  && bad "e5: el hook retirado sigue CABLEADO en settings.json" \
-  || ok "e5: el hook retirado quedó DE-CABLEADO del settings.json"
-[ -f "$E5T/.claude/hooks/mi-hook-propio.sh" ] \
-  && ok "e5: el huérfano DESCONOCIDO (hook propio) se CONSERVÓ (no se borró sin --prune-orphans)" \
-  || bad "e5: ¡se borró un huérfano propio sin --prune-orphans!"
-# dry-run cuenta el retirado como drift (para que aviso-drift lo flagee)
-bash "$SYNC" "$E5T" 2>/dev/null | grep -qE '==> resumen:.*[1-9][0-9]* retirado' \
-  && ok "e5: el dry-run REPORTA el retirado en el resumen (aviso-drift lo cuenta como drift)" \
-  || ok "e5: (sin retirados pendientes tras el apply — esperado)"
-rm -rf "$E5T"
-
-# ─────────────────────────────────────────────────────────────────────────────
-echo "== (e5b) sincronizar: 'huérfano' == 'no debe estar instalado aquí' — un tier retirado del MANIFEST"
-echo "         se poda IGUAL que el legado RETIRED, SIN --prune-orphans; lo vivo {repo,both} y lo propio se conservan =="
-# Si 'huérfano' significara SOLO 'ausente del MANIFEST', una entrada tier=retirado (que SÍ está listada,
-# solo que muerta) NO caería ahí y sobreviviría. rama-vieja es la LÁPIDA real del MANIFEST: simula una
-# máquina/repo VIEJO que la tenía instalada de antes de que se retirara.
-E5B="$(mktemp -d "${TMPDIR:-/tmp}/brain-e5b.XXXXXX")"; mkdir -p "$E5B/.claude/hooks"
-printf 'exit 0\n' > "$E5B/.claude/hooks/rama-vieja.sh"                 # LÁPIDA del MANIFEST (tier retirado)
-printf 'exit 0\n' > "$E5B/.claude/hooks/mi-hook-propio-e5b.sh"          # huérfano DESCONOCIDO (propio del repo)
-printf '{"hooks":{"PreToolUse":[{"hooks":[{"command":"bash \\"${CLAUDE_PROJECT_DIR}/.claude/hooks/rama-vieja.sh\\""}]}]}}' > "$E5B/.claude/settings.json"
-bash "$SYNC" "$E5B" --apply >/dev/null 2>&1
-[ ! -f "$E5B/.claude/hooks/rama-vieja.sh" ] \
-  && ok "e5b: --apply (SIN --prune-orphans) borró rama-vieja.sh — tier retirado del MANIFEST se poda solo" \
-  || bad "e5b: rama-vieja.sh (tier retirado) sobrevivió al --apply sin --prune-orphans"
-grep -q 'rama-vieja' "$E5B/.claude/settings.json" 2>/dev/null \
-  && bad "e5b: rama-vieja sigue CABLEADO en settings.json tras el --apply" \
-  || ok "e5b: rama-vieja quedó DE-CABLEADO del settings.json"
-[ -f "$E5B/.claude/hooks/mi-hook-propio-e5b.sh" ] \
-  && ok "e5b: el huérfano DESCONOCIDO (propio) se CONSERVÓ — la redefinición de huérfano no se comió lo ajeno" \
-  || bad "e5b: ¡se borró un huérfano propio sin --prune-orphans (falso positivo de la redefinición)!"
-# dirección inversa: un hook VIVO {repo,both} recién desplegado por ESTE MISMO --apply sigue en pie
-[ -f "$E5B/.claude/hooks/merge-develop-guard.sh" ] \
-  && ok "e5b: un hook VIVO (tier both, p. ej. merge-develop-guard) SIGUE instalado — la redefinición no podó de más" \
-  || bad "e5b: ¡un hook vivo {repo,both} desapareció junto con el retirado!"
-rm -rf "$E5B"
-
-# ─────────────────────────────────────────────────────────────────────────────
-echo "== (e6) FIX #2: sincronizar REPORTA 'cableado faltante' (hook presente sin cablear) → aviso-drift deja de ser ciego al wiring =="
-E6T="$(mktemp -d "${TMPDIR:-/tmp}/brain-e6.XXXXXX")"; mkdir -p "$E6T/.claude/hooks"
-printf '{}' > "$E6T/.claude/settings.json"
-# dry-run sobre un repo con settings.json VACÍO → todos los {repo,both} kind=hook están SIN cablear
-bash "$SYNC" "$E6T" 2>/dev/null | grep -qE '==> resumen:.*[1-9][0-9]* cableado faltante' \
-  && ok "e6: dry-run REPORTA cableado faltante>0 cuando el settings.json no cablea los hooks" \
-  || bad "e6: el resumen NO reporta el cableado faltante (aviso-drift seguiría ciego al wiring)"
-# tras --apply (cablea todos) → cableado faltante baja a 0
-bash "$SYNC" "$E6T" --apply >/dev/null 2>&1
-bash "$SYNC" "$E6T" 2>/dev/null | grep -qE '==> resumen:.*· 0 cableado faltante' \
-  && ok "e6: tras --apply el cableado faltante baja a 0 (ya cablea todos)" \
-  || bad "e6: tras --apply sigue reportando cableado faltante>0"
-rm -rf "$E6T"
-
-# ─────────────────────────────────────────────────────────────────────────────
 echo "== (e7) FIX #3: install-brain DERIVA el cableado del MANIFEST y cablea EXACTAMENTE los {global,both} kind=hook (mismos hooks/eventos que el hardcode anterior) =="
 E7H="$(mktemp -d "${TMPDIR:-/tmp}/brain-e7.XXXXXX")"
 HOME="$E7H" bash "$INSTALLER" >/dev/null 2>&1
@@ -7646,7 +7521,7 @@ done < <(cd "$PR" && git ls-files '*.sh' '*.ps1' '*.swift' '*.cs' '*.qml' | grep
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "== (e6) MANIFEST bien formado: 3 campos · tier ∈ {global,repo,both,retirado} · kind ∈ {hook,lib,script} =="
+echo "== (e6) MANIFEST bien formado: 3 campos · tier ∈ {global,retirado} · kind ∈ {hook,lib,script} =="
 # El MANIFEST es la FUENTE ÚNICA; una línea mal formada (2 campos, tier/kind con typo) haría que las
 # rutas que DERIVAN de él (install/sincronizar/drift-check) clasifiquen mal o salten un hook en silencio.
 # EXCEPCIÓN a propósito: tier `retirado` (la LÁPIDA) SÍ tolera columnas EXTRA (fecha de retiro + motivo,
@@ -7663,15 +7538,15 @@ else
       bad "e6: línea sin al menos 3 campos: '$name $tier $kind $extra'"; mf_bad=1; continue
     fi
     case "$tier" in
-      global|repo|both)
+      global)
         if [ -n "$extra" ]; then bad "e6: línea sin EXACTAMENTE 3 campos: '$name $tier $kind $extra'"; mf_bad=1; continue; fi
         ;;
       retirado) : ;;   # tolera fecha+motivo en las columnas 4+ (la lápida)
-      *) bad "e6: tier inválido '$tier' (entrada $name)"; mf_bad=1; continue ;;
+      *) bad "e6: tier inválido '$tier' (entrada $name) — tras 'solo cerebro global' solo valen global/retirado" ; mf_bad=1; continue ;;
     esac
     case "$kind" in hook|lib|script) ;; *) bad "e6: kind inválido '$kind' (entrada $name)"; mf_bad=1;; esac
   done < "$MF"
-  [ "$mf_bad" = 0 ] && ok "e6: toda línea del MANIFEST tiene tier ∈ {global,repo,both,retirado} y kind ∈ {hook,lib,script} (retirado tolera columnas extra; los demás EXACTAMENTE 3 campos)"
+  [ "$mf_bad" = 0 ] && ok "e6: toda línea del MANIFEST tiene tier ∈ {global,retirado} y kind ∈ {hook,lib,script} (retirado tolera columnas extra; los demás EXACTAMENTE 3 campos)"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -7778,64 +7653,6 @@ if [ -f "$GEN" ] && [ -d "$FCDIR" ] && [ -f "$MF" ]; then
   else
     bad "e6c5: .svg RANCIO —$svg_mal — regenéralos con: bash docs/flowcharts/gen-charts.sh --force"
   fi
-fi
-
-# ─────────────────────────────────────────────────────────────────────────────
-echo "== (e6d) wiring FIELD-check: un settings.json semilla cabla TODOS los kind=hook {repo,both} (C1) =="
-# e2(4) valida la FÁBRICA (register_hook en install-brain). Esto valida el RESULTADO: corre
-# sincronizar-cerebro contra un repo semilla y verifica que su settings.json REAL cablee cada hook
-# {repo,both} — cierra el hueco C1 (drift de cableado invisible entre manifiesto y settings desplegado).
-SYNC2="$SCRIPT_DIR/sincronizar-cerebro.sh"
-if [ ! -f "$SYNC2" ] || [ ! -f "$MF" ]; then
-  bad "e6d: falta sincronizar-cerebro.sh o MANIFEST"
-else
-  E6D="$(mktemp -d "${TMPDIR:-/tmp}/brain-e6d.XXXXXX")"
-  bash "$SYNC2" "$E6D" --apply >/dev/null 2>&1
-  SET6D="$E6D/.claude/settings.json"
-  if [ ! -f "$SET6D" ]; then
-    bad "e6d: sincronizar --apply no creó $SET6D"
-  else
-    miss_wire=0
-    for b in $(awk '$1!~/^#/ && NF>=3 && ($2=="repo"||$2=="both") && $3=="hook"{print $1}' "$MF"); do
-      grep -qF "$b.sh" "$SET6D" || { bad "e6d: '$b' ({repo,both} hook) NO quedó cableado en el settings.json semilla"; miss_wire=$((miss_wire+1)); }
-    done
-    [ "$miss_wire" = 0 ] && ok "e6d: settings.json semilla cabla TODOS los kind=hook {repo,both} del MANIFEST (0 cableado faltante)"
-  fi
-  rm -rf "$E6D"
-fi
-
-# ─────────────────────────────────────────────────────────────────────────────
-echo "== (e6e) .brain-version bien formado: 2 líneas · v=<PREFIJO>.<count> (count real ≠0) · fecha =="
-# Contrato de DOS LÍNEAS (install-brain / sincronizar): l1 = <PREFIJO>.<commit-count> · l2 = YYYY-MM-DD.
-# El widget del cerebro LEE este estampado; un formato roto = versión mal mostrada.
-if [ ! -f "$SYNC2" ]; then
-  bad "e6e: falta sincronizar-cerebro.sh"
-else
-  E6E="$(mktemp -d "${TMPDIR:-/tmp}/brain-e6e.XXXXXX")"
-  bash "$SYNC2" "$E6E" --apply >/dev/null 2>&1
-  BV="$E6E/.claude/hooks/.brain-version"
-  if [ ! -f "$BV" ]; then
-    bad "e6e: sincronizar --apply no estampó .brain-version en $BV"
-  else
-    nlines="$(grep -c '' "$BV")"
-    l1="$(sed -n '1p' "$BV")"; l2="$(sed -n '2p' "$BV")"
-    [ "$nlines" = 2 ] && ok "e6e: .brain-version tiene 2 líneas" || bad "e6e: .brain-version tiene $nlines líneas (esperaba 2)"
-    if printf '%s' "$l1" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-      ok "e6e: la versión ($l1) casa <PREFIJO>.<count> (num.num.num)"
-    else
-      bad "e6e: la versión '$l1' NO casa el formato num.num.num"
-    fi
-    cnt="${l1##*.}"
-    if [ -n "$cnt" ] && [ "$cnt" -gt 0 ] 2>/dev/null; then
-      ok "e6e: el commit-count del estampado es real (=$cnt, no 0)"
-    else
-      bad "e6e: el commit-count del estampado es 0/ausente ('$l1')"
-    fi
-    printf '%s' "$l2" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' \
-      && ok "e6e: la 2ª línea es una fecha YYYY-MM-DD ($l2)" \
-      || bad "e6e: la 2ª línea NO es una fecha YYYY-MM-DD ('$l2')"
-  fi
-  rm -rf "$E6E"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -8236,112 +8053,6 @@ rm -rf "$CSX"
 
 # ═════════════════════════════════════════════════════════════════════════════
 ### F4 SWEEPER
-# Sección DEMARCADA (para reconciliar con otros agentes sin choque): sweeper de flotilla
-# (barrer-flotilla-cerebro.sh) + el cuerpo per-repo compartido (drift-cerebro-comun.sh). Todo DETERMINISTA
-# y OFFLINE: $HOME/$CODE/$BRAIN falsos aislados (mktemp), stub del sync, sin red (el push falla y se tolera).
-echo ""
-echo "== (F4) sweeper de flotilla: descubrimiento + decisión per-repo (dry-run) + lock + teeth (apply) =="
-FLFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-f4.XXXXXX")"
-FLCODE="$FLFIX/code"; FLHOME="$FLFIX/home"; FLBRAIN="$FLFIX/clon"; FLSTATE="$FLFIX/state"; FLREP="$FLFIX/rep.md"
-mkdir -p "$FLCODE" "$FLHOME/.claude/hooks" "$FLBRAIN/brain/hooks" "$FLSTATE"
-: > "$FLHOME/.claude/hooks/no-bypass-deploy.sh"   # copia GLOBAL instalada → el both del repo personal SÍ sobra
-# stub del sync en el brain FALSO: dry-run reporta drift; con --apply escribe el hook nuevo en el destino
-cat > "$FLBRAIN/brain/sincronizar-cerebro.sh" <<'STUB'
-#!/usr/bin/env bash
-repo="$1"
-[ "${2:-}" = "--apply" ] && printf 'x\n' > "$repo/.claude/hooks/hook-nuevo.sh"
-echo "  NUEVO      hook-nuevo.sh (hook)"
-echo "==> resumen: 1 nuevos · 0 a actualizar · 8 ya al día · 0 retirado(s) del cerebro · 8 hooks cableados (kind=hook) · 0 cableado faltante"
-STUB
-: > "$FLBRAIN/brain/hooks/no-bypass-deploy.sh"   # guard del brain → base del match "sobran" en personales
-printf 'no-bypass-deploy    both  hook\n' > "$FLBRAIN/brain/hooks/MANIFEST"   # N4: el flag "sobran" ahora filtra por tier `both` del MANIFEST
-
-# repo PERSONAL (sin marca) con un guard del brain presente + sello → personal-flag
-mkdir -p "$FLCODE/repoPersonal/.claude/hooks"
-: > "$FLCODE/repoPersonal/.claude/hooks/.brain-version"
-: > "$FLCODE/repoPersonal/.claude/hooks/no-bypass-deploy.sh"
-# repo COMPARTIDO en su mini-develop, .claude/ limpio (committeado), sello + marca → would-sync/synced
-FLSH="$FLCODE/repoSharedMini"
-mkdir -p "$FLSH/.claude/hooks"
-git -C "$FLSH" init -q >/dev/null 2>&1
-git -C "$FLSH" config user.email t@t >/dev/null 2>&1; git -C "$FLSH" config user.name Tester >/dev/null 2>&1
-: > "$FLSH/.claude/hooks/.brain-version"; : > "$FLSH/.claude/repo-compartido"
-git -C "$FLSH" add -A >/dev/null 2>&1; git -C "$FLSH" commit -qm base >/dev/null 2>&1
-git -C "$FLSH" checkout -q -b DevelopTester >/dev/null 2>&1
-# dir NO brained (sin sello) → NO debe descubrirse
-mkdir -p "$FLCODE/repoNaked/.claude/hooks"
-
-fl() { HOME="$FLHOME" CLAUDE_BRAIN_DIR="$FLBRAIN" CLAUDE_DRIFT_STATEDIR="$FLSTATE" \
-       bash "$HOOKS/limpiar.sh" flotilla "$@" --no-dashboard --report "$FLREP" 2>/dev/null; }
-
-# (1) DESCUBRIMIENTO por el sello: 2 repos brained (personal + shared), el naked se ignora
-flout="$(fl --dry-run --code-dir "$FLCODE")"
-printf '%s' "$flout" | grep -qE '2 repo\(s\)' \
-  && ok "F4 descubrimiento: encuentra los 2 repos brained por .brain-version (ignora el no-brained)" \
-  || bad "F4 descubrimiento: no contó 2 repos brained; got: $(printf '%s' "$flout" | grep 'repo(s)')"
-# (2) DECISIÓN per-repo en dry-run: personal→flag, shared-mini-limpia→would-sync, sin mutar nada
-printf '%s' "$flout" | grep -q '1 personal-flag' \
-  && ok "F4 decisión: repo personal con guard del brain → personal-flag" || bad "F4 decisión: no marcó personal-flag; got: $flout"
-printf '%s' "$flout" | grep -q '1 would-sync' \
-  && ok "F4 decisión: shared en mini-develop limpia + drift → would-sync (dry-run)" || bad "F4 decisión: no detectó would-sync; got: $flout"
-{ [ ! -f "$FLSH/.claude/hooks/hook-nuevo.sh" ] && [ -z "$(git -C "$FLSH" status --porcelain)" ]; } \
-  && ok "F4 dry-run: NO mutó el repo shared (sin apply, sin commit, árbol limpio)" || bad "F4 dry-run: ¡mutó en dry-run!"
-# (3) LOCK por-repo: pre-ocupa el lock del shared → el sweeper lo SALTA (no lo procesa)
-FLSLUG="$(printf '%s' "$FLSH" | cksum 2>/dev/null | awk '{print $1}')"
-mkdir "$FLSTATE/${FLSLUG}.lock"
-fllock="$(fl --dry-run --code-dir "$FLCODE")"
-{ printf '%s' "$fllock" | grep -q '1 lock' && printf '%s' "$fllock" | grep -q '0 would-sync'; } \
-  && ok "F4 lock: repo con lock ocupado → se salta (no lo procesa)" || bad "F4 lock: no respetó el lock; got: $fllock"
-rmdir "$FLSTATE/${FLSLUG}.lock" 2>/dev/null || true
-# (4) TEETH (apply REAL, offline): sobre SOLO el shared (via --roots-file) → synced + commit + árbol limpio
-printf '%s\n' "$FLSH" > "$FLFIX/roots.txt"
-n0=$(git -C "$FLSH" rev-list --count HEAD)
-fl --roots-file "$FLFIX/roots.txt" >/dev/null 2>&1
-{ [ -f "$FLSH/.claude/hooks/hook-nuevo.sh" ] \
-  && [ "$(git -C "$FLSH" rev-list --count HEAD)" -gt "$n0" ] \
-  && git -C "$FLSH" log -1 --format=%s | grep -q 'auto-sync' \
-  && [ -z "$(git -C "$FLSH" status --porcelain)" ]; } \
-  && ok "F4 teeth: apply real en la mini → auto-sync (commit creado, hook aplicado, árbol limpio)" \
-  || bad "F4 teeth: el apply real no auto-sincronizó (commit/archivo/limpieza)"
-# (5) el REPORTE se escribió a --report
-[ -s "$FLREP" ] && grep -q 'Reporte del sweeper de flotilla' "$FLREP" \
-  && ok "F4 reporte: escribe el archivo de reporte con detalle" || bad "F4 reporte: no escribió el reporte"
-# (6) roots-file vacío / code-dir inexistente → 0 repos, sin reventar (fail-open)
-flempty="$(HOME="$FLHOME" CLAUDE_BRAIN_DIR="$FLBRAIN" CLAUDE_DRIFT_STATEDIR="$FLSTATE" bash "$HOOKS/limpiar.sh" flotilla --dry-run --code-dir "$FLFIX/nope" --no-dashboard --report "$FLREP" 2>/dev/null)"
-printf '%s' "$flempty" | grep -qE '0 repo\(s\)' \
-  && ok "F4 fail-open: code-dir inexistente → 0 repos, no revienta" || bad "F4 fail-open: no manejó un code-dir inexistente; got: $flempty"
-
-# (7) synced-local-wip se REPORTA como atención, NO n/a (efecto del MEDIO #3: mini SIN upstream → el
-# auto-sync commitea LOCAL pero no pushea; el sweeper debe listarlo, no tragarlo como n/a).
-git -C "$FLSH" reset --hard HEAD~1 >/dev/null 2>&1   # deshace el auto-sync de la parte (4) → FLSH drifteado+limpio
-command rm -f "$FLSH/.claude/hooks/hook-nuevo.sh" 2>/dev/null
-FLREP7="$FLFIX/rep7.md"
-HOME="$FLHOME" CLAUDE_BRAIN_DIR="$FLBRAIN" CLAUDE_DRIFT_STATEDIR="$FLSTATE" bash "$HOOKS/limpiar.sh" flotilla --roots-file "$FLFIX/roots.txt" --no-dashboard --report "$FLREP7" >/dev/null 2>&1
-grep -q 'local-sin-push' "$FLREP7" \
-  && ok "F4: synced-local-wip (mini sin upstream, MEDIO #3) se REPORTA como atención, no n/a" \
-  || bad "F4: el sweeper tragó synced-local-wip como n/a; got: $(grep 'repo(s)' "$FLREP7" 2>/dev/null)"
-
-# (8) DRY-RUN es READ-ONLY (MEDIO auditoría 2026-10-22): NO escribe el reporte-archivo DEFAULT ni toca el
-# dashboard (la bitácora global es un LOG de acciones REALES — una entrada en dry-run MENTIRÍA). Preview → stdout.
-FLDEF="$FLSTATE/flotilla-ultimo-reporte.md"; command rm -f "$FLDEF" 2>/dev/null
-FLDASH="$FLFIX/dash.md"; printf '# Dash\n## Bitacora\n' > "$FLDASH"; fldash0="$(cksum "$FLDASH" | awk '{print $1}')"
-fldr="$(HOME="$FLHOME" CLAUDE_BRAIN_DIR="$FLBRAIN" CLAUDE_DRIFT_STATEDIR="$FLSTATE" CLAUDE_DASHBOARD="$FLDASH" bash "$HOOKS/limpiar.sh" flotilla --dry-run --code-dir "$FLCODE" 2>&1)"
-[ ! -f "$FLDEF" ] && ok "F4 dry-run read-only: NO escribe el reporte-archivo default" || bad "F4 dry-run: escribió el reporte-archivo default (no es read-only)"
-[ "$(cksum "$FLDASH" | awk '{print $1}')" = "$fldash0" ] && ok "F4 dry-run read-only: NO appendea al dashboard" || bad "F4 dry-run: appendeó al dashboard en dry-run (bitácora de acciones reales)"
-printf '%s' "$fldr" | grep -q 'repo(s)' && ok "F4 dry-run read-only: el preview SÍ va a stdout" || bad "F4 dry-run: no imprimió el preview a stdout"
-
-# (9) LOCK HUÉRFANO (apply): un lock más viejo que el umbral NO bloquea el repo para siempre → se recupera.
-git -C "$FLSH" reset --hard HEAD~1 >/dev/null 2>&1   # deshace el auto-sync de (7) → FLSH drifteado+limpio, sin hook-nuevo.sh
-FLWTSLUG="$(printf '%s' "$FLSH" | cksum 2>/dev/null | awk '{print $1}')"
-mkdir -p "$FLSTATE/${FLWTSLUG}.lock"
-touch -t "$(date -v-60M +%Y%m%d%H%M 2>/dev/null || date -d '-60 min' +%Y%m%d%H%M)" "$FLSTATE/${FLWTSLUG}.lock" 2>/dev/null
-HOME="$FLHOME" CLAUDE_BRAIN_DIR="$FLBRAIN" CLAUDE_DRIFT_STATEDIR="$FLSTATE" bash "$HOOKS/limpiar.sh" flotilla --roots-file "$FLFIX/roots.txt" --no-dashboard --report "$FLFIX/rep9.md" >/dev/null 2>&1
-[ -f "$FLSH/.claude/hooks/hook-nuevo.sh" ] \
-  && ok "F4 lock huérfano: un lock stale (>umbral) se RECUPERA → el repo se procesa (no bloqueado para siempre)" \
-  || bad "F4 lock huérfano: el lock stale bloqueó el repo (no se recuperó)"
-rmdir "$FLSTATE/${FLWTSLUG}.lock" 2>/dev/null || true
-rm -rf "$FLFIX"
-
 # ─────────────────────────────────────────────────────────────────────────────
 echo "== (g1) no-bypass-deploy: AVISA (no bloquea) al correr instalador/deploy a mano; PRECISO (silencio en dry-run/help/CI/mención) =="
 NBD="$HOOKS/no-bypass-deploy.sh"
@@ -8453,225 +8164,6 @@ printf '%s' "$(nbd_ctx 'bash brain/install-brain.sh')" | grep -qi 'widget' \
 # tier both → trae la cláusula de dedupe (la copia por-repo cede a la global) que HONRA CLAUDE_CONFIG_DIR
 { grep -qF '_cfgh="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks"' "$NBD" && grep -qF 'case "$0" in "$_cfgh/"' "$NBD"; } \
   && ok "g1: no-bypass-deploy trae la cláusula de dedupe que honra CLAUDE_CONFIG_DIR (tier both)" || bad "g1: falta/mal la cláusula de dedupe en un hook tier both"
-
-# ─────────────────────────────────────────────────────────────────────────────
-echo "== (g2) sincronizar-cerebro --disable <hook>: de-cablea + borra el hook nombrado (vía consolidada de retiro) =="
-SYNCD="$SCRIPT_DIR/sincronizar-cerebro.sh"
-G2T="$(mktemp -d "${TMPDIR:-/tmp}/brain-g2.XXXXXX")"; mkdir -p "$G2T/.claude/hooks"
-printf 'exit 0\n' > "$G2T/.claude/hooks/obsoleto.sh"
-printf 'exit 0\n' > "$G2T/.claude/hooks/vigente.sh"
-cat > "$G2T/.claude/settings.json" <<'JSON'
-{"hooks":{"PreToolUse":[
-  {"matcher":"Bash","hooks":[{"type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/obsoleto.sh\"","shell":"bash"}]},
-  {"matcher":"Bash","hooks":[{"type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/vigente.sh\"","shell":"bash"}]}
-]}}
-JSON
-# (1) DRY-RUN: reporta que deshabilitaría, NO borra
-bash "$SYNCD" "$G2T" --disable obsoleto 2>/dev/null | grep -q 'DESHABILITARÍA' \
-  && ok "g2: --disable dry-run REPORTA (DESHABILITARÍA)" || bad "g2: dry-run no reportó DESHABILITARÍA"
-[ -f "$G2T/.claude/hooks/obsoleto.sh" ] \
-  && ok "g2: dry-run NO borró el .sh" || bad "g2: el dry-run borró el hook (debía ser no-op)"
-# (2) --apply: de-cablea + borra SOLO el nombrado
-bash "$SYNCD" "$G2T" --disable obsoleto --apply >/dev/null 2>&1
-[ ! -f "$G2T/.claude/hooks/obsoleto.sh" ] \
-  && ok "g2: --apply BORRÓ el hook nombrado" || bad "g2: --apply no borró el .sh"
-grep -q obsoleto "$G2T/.claude/settings.json" \
-  && bad "g2: el hook sigue CABLEADO tras --disable --apply" || ok "g2: --apply DE-CABLEÓ del settings.json"
-{ [ -f "$G2T/.claude/hooks/vigente.sh" ] && grep -q vigente "$G2T/.claude/settings.json"; } \
-  && ok "g2: --disable NO tocó el otro hook (vigente sigue presente + cableado)" || bad "g2: --disable dañó un hook no nombrado"
-# (3) idempotente: re-correr sobre uno ya ausente → 'ya ausente', sin reventar
-bash "$SYNCD" "$G2T" --disable obsoleto --apply 2>/dev/null | grep -q 'YA AUSENTE' \
-  && ok "g2: --disable es idempotente (segundo pase → YA AUSENTE)" || bad "g2: --disable no reportó YA AUSENTE en el 2º pase"
-# (4) CSV: deshabilita varios de un tiro
-bash "$SYNCD" "$G2T" --disable vigente,inexistente --apply >/dev/null 2>&1
-[ ! -f "$G2T/.claude/hooks/vigente.sh" ] \
-  && ok "g2: --disable acepta CSV (retira 'vigente' junto a un inexistente sin reventar)" || bad "g2: el CSV no retiró 'vigente'"
-rm -rf "$G2T"
-
-# ─────────────────────────────────────────────────────────────────────────────
-echo "== (g2b) sincronizar-cerebro --limpiar-personal: retira SOLO tier 'both' de un repo PERSONAL, deja lo demás intacto =="
-SYNCLP="$SCRIPT_DIR/sincronizar-cerebro.sh"
-G2B="$(mktemp -d "${TMPDIR:-/tmp}/brain-g2b.XXXXXX")"; mkdir -p "$G2B/.claude/hooks" "$G2B/.claude/memory"
-# tier both: hook + su lib (candidatos a retirar)
-printf 'exit 0\n' > "$G2B/.claude/hooks/no-bypass-deploy.sh"
-printf ': lib\n' > "$G2B/.claude/hooks/analizar-comando-git.sh"
-# tier repo: SIN equivalente global — debe SOBREVIVIR (un FP lo trataba como sobrante)
-printf 'exit 0\n' > "$G2B/.claude/hooks/dod-verificar.sh"
-# hook PROPIO del repo (no del brain) — debe SOBREVIVIR siempre
-printf 'exit 0\n' > "$G2B/.claude/hooks/mi-hook-propio.sh"
-cat > "$G2B/.claude/settings.json" <<'JSON'
-{"hooks":{"PreToolUse":[
-  {"matcher":"Bash","hooks":[{"type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/no-bypass-deploy.sh\"","shell":"bash"}]}
-],"Stop":[
-  {"hooks":[{"type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/dod-verificar.sh\"","shell":"bash"}]}
-]}}
-JSON
-: > "$G2B/.claude/hooks/.brain-version"
-echo "conocimiento del dominio, jamás se toca" > "$G2B/.claude/memory/MEMORY.md"
-# HERMETICIDAD (R5-6/CI del PR #470, claudio): --limpiar-personal SOLO retira un `both` si su copia GLOBAL
-# está instalada (sincronizar-cerebro.sh:259 chequea `$HOME/.claude/hooks/<n>.sh`). Sin un HOME falso, el test
-# heredaba el ~/.claude REAL (en la Mac el global está instalado → RETIRA; en el runner limpio NO → CONSERVA
-# → 3 FAIL). Se monta un HOME con las copias GLOBALES de los `both` candidatos (no-bypass-deploy + su lib).
-G2BCFG="$(mktemp -d "${TMPDIR:-/tmp}/brain-g2bcfg.XXXXXX")"; mkdir -p "$G2BCFG/.claude/hooks"
-: > "$G2BCFG/.claude/hooks/no-bypass-deploy.sh"; : > "$G2BCFG/.claude/hooks/analizar-comando-git.sh"
-
-# (1) DRY-RUN: reporta, no escribe nada
-g2bout="$(HOME="$G2BCFG" bash "$SYNCLP" "$G2B" --limpiar-personal 2>/dev/null)"
-printf '%s' "$g2bout" | grep -q 'RETIRARÍA  no-bypass-deploy.sh' \
-  && ok "g2b: dry-run REPORTA el hook tier both como candidato" || bad "g2b: dry-run no reportó no-bypass-deploy.sh; got: $g2bout"
-printf '%s' "$g2bout" | grep -q 'dod-verificar' \
-  && bad "g2b: dry-run mencionó dod-verificar (tier repo) — NO debía tocarlo/mencionarlo como sobrante" \
-  || ok "g2b: dry-run NO trata el hook tier 'repo' (dod-verificar) como sobrante"
-[ -f "$G2B/.claude/hooks/no-bypass-deploy.sh" ] \
-  && ok "g2b: dry-run NO borró nada" || bad "g2b: ¡el dry-run ya borró un archivo!"
-
-# (2) --apply: retira SOLO tier both + su cableado + el sello; conserva tier repo + hook propio + memoria
-HOME="$G2BCFG" bash "$SYNCLP" "$G2B" --limpiar-personal --apply >/dev/null 2>&1
-[ ! -f "$G2B/.claude/hooks/no-bypass-deploy.sh" ] && [ ! -f "$G2B/.claude/hooks/analizar-comando-git.sh" ] \
-  && ok "g2b: --apply BORRÓ el hook+lib de tier both" || bad "g2b: el hook/lib tier both sobrevivió al --apply"
-[ ! -f "$G2B/.claude/hooks/.brain-version" ] \
-  && ok "g2b: --apply retiró el sello .brain-version" || bad "g2b: el sello .brain-version sobrevivió"
-grep -q no-bypass-deploy "$G2B/.claude/settings.json" \
-  && bad "g2b: no-bypass-deploy sigue CABLEADO tras --apply" || ok "g2b: --apply DE-CABLEÓ no-bypass-deploy del settings.json"
-[ -f "$G2B/.claude/hooks/dod-verificar.sh" ] && grep -q dod-verificar "$G2B/.claude/settings.json" \
-  && ok "g2b: el hook tier 'repo' (dod-verificar) SOBREVIVIÓ intacto y sigue cableado (sin equivalente global)" \
-  || bad "g2b: ¡se tocó un hook tier 'repo' que no tenía por qué retirarse!"
-[ -f "$G2B/.claude/hooks/mi-hook-propio.sh" ] \
-  && ok "g2b: el hook PROPIO del repo sobrevivió" || bad "g2b: ¡se borró un hook propio del repo!"
-[ -f "$G2B/.claude/memory/MEMORY.md" ] && grep -q 'jamás se toca' "$G2B/.claude/memory/MEMORY.md" \
-  && ok "g2b: la MEMORIA del repo quedó intacta" || bad "g2b: ¡la memoria del repo se tocó!"
-
-# (3) idempotente: segunda pasada → YA LIMPIO, sin fallar
-HOME="$G2BCFG" bash "$SYNCLP" "$G2B" --limpiar-personal --apply 2>/dev/null | grep -q 'YA LIMPIO' \
-  && ok "g2b: --limpiar-personal es idempotente (2ª pasada → YA LIMPIO)" || bad "g2b: la 2ª pasada no reportó YA LIMPIO"
-
-# (4) settings.json sigue siendo JSON válido tras el de-cableado
-jq empty "$G2B/.claude/settings.json" 2>/dev/null \
-  && ok "g2b: settings.json sigue siendo JSON válido tras limpiar" || bad "g2b: settings.json quedó inválido"
-rm -rf "$G2B" "$G2BCFG"
-
-# (5) CASO INVERSO (hermeticidad, R5-6/CI del PR #470): un `both` SIN copia GLOBAL instalada es la ÚNICA que
-# corre aquí → se CONSERVA (es justo el comportamiento de c707b29; en el runner limpio es el caso por default).
-G2BNG="$(mktemp -d "${TMPDIR:-/tmp}/brain-g2bng.XXXXXX")"; mkdir -p "$G2BNG/.claude/hooks"
-printf 'exit 0\n' > "$G2BNG/.claude/hooks/no-bypass-deploy.sh"
-G2BNGH="$(mktemp -d "${TMPDIR:-/tmp}/brain-g2bngh.XXXXXX")"; mkdir -p "$G2BNGH/.claude/hooks"   # HOME SIN la copia global
-g2bng="$(HOME="$G2BNGH" bash "$SYNCLP" "$G2BNG" --limpiar-personal 2>/dev/null)"
-printf '%s' "$g2bng" | grep -q 'CONSERVO   no-bypass-deploy.sh' \
-  && ok "g2b (inverso): un both SIN copia global instalada → CONSERVA (es la única que corre aquí)" \
-  || bad "g2b (inverso): un both sin global NO se conservó; got: $(printf '%s' "$g2bng" | grep -iE 'conservo|retiraría|no-bypass')"
-printf '%s' "$g2bng" | grep -q 'RETIRARÍA  no-bypass-deploy.sh' \
-  && bad "g2b (inverso): un both sin copia global se reportó para RETIRAR (lo mataría)" \
-  || ok "g2b (inverso): un both sin global NO se reporta para retirar"
-HOME="$G2BNGH" bash "$SYNCLP" "$G2BNG" --limpiar-personal --apply >/dev/null 2>&1
-[ -f "$G2BNG/.claude/hooks/no-bypass-deploy.sh" ] \
-  && ok "g2b (inverso): --apply NO borró el both sin global (lo conservó)" || bad "g2b (inverso): ¡--apply borró un both sin copia global!"
-rm -rf "$G2BNG" "$G2BNGH"
-
-echo "== (g2b) --limpiar-personal REHÚSA en un repo marcado .claude/repo-compartido =="
-G2BS="$(mktemp -d "${TMPDIR:-/tmp}/brain-g2bs.XXXXXX")"; mkdir -p "$G2BS/.claude/hooks"
-: > "$G2BS/.claude/repo-compartido"
-printf 'exit 0\n' > "$G2BS/.claude/hooks/no-bypass-deploy.sh"
-g2bs_rc=0
-bash "$SYNCLP" "$G2BS" --limpiar-personal >/dev/null 2>&1 || g2bs_rc=$?
-[ "$g2bs_rc" -ne 0 ] \
-  && ok "g2b: repo COMPARTIDO → --limpiar-personal sale con error (exit≠0), no en silencio" || bad "g2b: debía fallar (exit≠0) en un repo compartido"
-[ -f "$G2BS/.claude/hooks/no-bypass-deploy.sh" ] \
-  && ok "g2b: repo COMPARTIDO → el hook SOBREVIVIÓ (rehúso, no borro)" || bad "g2b: ¡borró un hook en un repo compartido!"
-rm -rf "$G2BS"
-
-echo "== (g2b) --limpiar-personal --incluir-skills: SOLO retira lo que consta en el LEDGER, nunca sin él =="
-G2BK="$(mktemp -d "${TMPDIR:-/tmp}/brain-g2bk.XXXXXX")"
-mkdir -p "$G2BK/.claude/skills/cerrar-slice" "$G2BK/.claude/skills/mi-skill-propia"
-: > "$G2BK/.claude/skills/cerrar-slice/SKILL.md"; : > "$G2BK/.claude/skills/mi-skill-propia/SKILL.md"
-printf 'cerrar-slice\n' > "$G2BK/.claude/skills/.brain-skills"
-# sin --incluir-skills: ni se menciona apply, solo el aviso informativo; nada se borra
-bash "$SYNCLP" "$G2BK" --limpiar-personal --apply >/dev/null 2>&1
-[ -d "$G2BK/.claude/skills/cerrar-slice" ] \
-  && ok "g2b: sin --incluir-skills, la skill del ledger SOBREVIVE (opt-in real)" || bad "g2b: ¡borró una skill sin pedirlo!"
-# con --incluir-skills: retira SOLO la que está en el ledger
-bash "$SYNCLP" "$G2BK" --limpiar-personal --incluir-skills --apply >/dev/null 2>&1
-[ ! -d "$G2BK/.claude/skills/cerrar-slice" ] \
-  && ok "g2b: --incluir-skills retiró la skill QUE CONSTA en el ledger" || bad "g2b: --incluir-skills no retiró la skill del ledger"
-[ -d "$G2BK/.claude/skills/mi-skill-propia" ] \
-  && ok "g2b: --incluir-skills NUNCA toca una skill que NO consta en el ledger (aunque conviva ahí)" || bad "g2b: ¡se llevó una skill que no estaba en el ledger!"
-rm -rf "$G2BK"
-G2BNL="$(mktemp -d "${TMPDIR:-/tmp}/brain-g2bnl.XXXXXX")"
-mkdir -p "$G2BNL/.claude/skills/cerrar-slice"; : > "$G2BNL/.claude/skills/cerrar-slice/SKILL.md"   # SIN ledger
-bash "$SYNCLP" "$G2BNL" --limpiar-personal --incluir-skills --apply >/dev/null 2>&1
-[ -d "$G2BNL/.claude/skills/cerrar-slice" ] \
-  && ok "g2b: --incluir-skills SIN ledger no toca nada (fail-closed: sin procedencia fiable)" || bad "g2b: ¡borró una skill sin ledger (procedencia no verificada)!"
-rm -rf "$G2BNL"
-
-# ─────────────────────────────────────────────────────────────────────────────
-# (g2c) B-01 (CRÍTICO, triage buzón 2026-10-27): dewire_hook quita SOLO el comando que casa, NUNCA la
-# ENTRADA entera. Antes, retirar un hook que COMPARTÍA una entrada del settings con un hermano (p. ej.
-# Stop[0].hooks=[dod-verificar, recordar-cosechar]) se llevaba la entrada completa → el hermano quedaba
-# descableado y el settings podía quedar en {} (dod-verificar APAGADO en silencio). Driver: --disable
-# (el llamador directo de dewire_hook). Dos direcciones + colapso + no-op byte-idéntico.
-echo "== (g2c) dewire_hook (vía --disable): retira SOLO el comando, conserva el hermano de la MISMA entrada (B-01) =="
-SYNCDC="$SCRIPT_DIR/sincronizar-cerebro.sh"
-G2C="$(mktemp -d "${TMPDIR:-/tmp}/brain-g2c.XXXXXX")"; mkdir -p "$G2C/.claude/hooks"
-printf 'exit 0\n' > "$G2C/.claude/hooks/dod-verificar.sh"
-printf 'exit 0\n' > "$G2C/.claude/hooks/recordar-cosechar.sh"
-printf 'exit 0\n' > "$G2C/.claude/hooks/solo-pretool.sh"
-# Stop[0] comparte dos comandos en UNA entrada; PreToolUse[0] tiene un único comando (caso colapso).
-cat > "$G2C/.claude/settings.json" <<'JSON'
-{"hooks":{"Stop":[
-  {"hooks":[
-    {"type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/dod-verificar.sh\"","shell":"bash"},
-    {"type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/recordar-cosechar.sh\"","shell":"bash"}
-  ]}
-],"PreToolUse":[
-  {"matcher":"Bash","hooks":[{"type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/solo-pretool.sh\"","shell":"bash"}]}
-]}}
-JSON
-# (a) retirar recordar-cosechar → dod-verificar SIGUE cableado, recordar-cosechar NO, settings ≠ {}
-g2cout="$(bash "$SYNCDC" "$G2C" --disable recordar-cosechar --apply 2>/dev/null)"
-if jq -e '.hooks.Stop[0].hooks | map(.command) | any(test("dod-verificar"))' "$G2C/.claude/settings.json" >/dev/null 2>&1 \
-   && ! jq -e '[.. | .command? // empty] | any(test("recordar-cosechar"))' "$G2C/.claude/settings.json" >/dev/null 2>&1; then
-  ok "g2c: (a) el hermano dod-verificar SOBREVIVE cableado; recordar-cosechar retirado"
-else bad "g2c: (a) B-01 vivo — el settings quedó: $(cat "$G2C/.claude/settings.json")"; fi
-printf '%s' "$g2cout" | grep -q 'hermano(s) conservado(s): dod-verificar' \
-  && ok "g2c: (a) el resumen avisa del hermano conservado (señal de seguridad)" || bad "g2c: (a) el resumen no nombró el hermano conservado; got: $g2cout"
-# (b) retirar el ÚNICO comando de PreToolUse → entrada y evento desaparecen; Stop intacto
-bash "$SYNCDC" "$G2C" --disable solo-pretool --apply >/dev/null 2>&1
-if ! jq -e '.hooks.PreToolUse' "$G2C/.claude/settings.json" >/dev/null 2>&1 \
-   && jq -e '.hooks.Stop[0].hooks | any(.command|test("dod-verificar"))' "$G2C/.claude/settings.json" >/dev/null 2>&1; then
-  ok "g2c: (b) el único comando de una entrada → entrada+evento colapsan; otro evento intacto"
-else bad "g2c: (b) el colapso de entrada/evento falló: $(cat "$G2C/.claude/settings.json")"; fi
-jq empty "$G2C/.claude/settings.json" 2>/dev/null \
-  && ok "g2c: settings.json sigue siendo JSON válido tras los retiros" || bad "g2c: settings.json quedó inválido"
-# (c) hook AUSENTE → el archivo no se reescribe (byte a byte idéntico; no ensucia mtime en loops)
-cp "$G2C/.claude/settings.json" "$G2C/settings.orig"
-bash "$SYNCDC" "$G2C" --disable fantasma-inexistente --apply >/dev/null 2>&1
-cmp -s "$G2C/.claude/settings.json" "$G2C/settings.orig" \
-  && ok "g2c: (c) un hook ausente deja el settings.json byte-idéntico (no-op)" || bad "g2c: (c) el no-op reescribió el archivo"
-rm -rf "$G2C"
-# (g2e) clean_status_message (unjordi 2026-10-28: "que se limpie cuando se sincroniza el cerebro"): el --apply
-# de sincronizar-cerebro quita el campo statusMessage RUIDOSO de la entrada de un hook DEL CEREBRO, pero NUNCA
-# toca el statusMessage de un hook AJENO al cerebro. Prueba la función real extraída (determinista, 2 direcciones).
-echo "== (g2e) sincronizar-cerebro: --apply limpia el statusMessage de un hook del cerebro, no el de uno ajeno =="
-eval "$(awk '/^clean_status_message\(\) \{/{f=1} f{print} f&&/^}/{exit}' "$SCRIPT_DIR/sincronizar-cerebro.sh")"
-G2E="$(mktemp -d "${TMPDIR:-/tmp}/brain-g2e.XXXXXX")"
-cat > "$G2E/settings.json" <<'JSON'
-{"hooks":{"Stop":[{"hooks":[
-  {"type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/dod-verificar.sh\"","statusMessage":"Cerebro: verificando LISTO…","shell":"bash"},
-  {"type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/mi-hook-propio.sh\"","statusMessage":"MI mensaje propio","shell":"bash"}
-]}]}}
-JSON
-clean_status_message "$G2E/settings.json" dod-verificar
-# (a) el hook DEL CEREBRO pierde su statusMessage
-! jq -e '.hooks.Stop[0].hooks[] | select(.command|test("dod-verificar")) | .statusMessage' "$G2E/settings.json" >/dev/null 2>&1 \
-  && ok "g2e: --apply retira el statusMessage de la entrada del cerebro (dod-verificar)" || bad "g2e: el statusMessage del cerebro sobrevivió"
-# (b) el hook AJENO conserva el suyo
-[ "$(jq -r '.hooks.Stop[0].hooks[] | select(.command|test("mi-hook-propio")) | .statusMessage' "$G2E/settings.json")" = "MI mensaje propio" ] \
-  && ok "g2e: NUNCA toca el statusMessage de un hook AJENO al cerebro (ambas direcciones)" || bad "g2e: tocó el statusMessage de un hook ajeno"
-# (c) no-op byte-idéntico si el hook citado no está (no ensucia mtime en un repo ya limpio)
-cp "$G2E/settings.json" "$G2E/orig"
-clean_status_message "$G2E/settings.json" hook-inexistente-del-cerebro
-cmp -s "$G2E/settings.json" "$G2E/orig" && ok "g2e: hook ausente → settings.json byte-idéntico (no-op)" || bad "g2e: el no-op reescribió el archivo"
-jq empty "$G2E/settings.json" 2>/dev/null && ok "g2e: settings.json sigue siendo JSON válido" || bad "g2e: settings.json quedó inválido"
-rm -rf "$G2E"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo "== (g3) install-brain: SIEMBRA en settings.json .env las env vars ACTIVAS del brain (no en la sesión) =="
@@ -9965,24 +9457,6 @@ CLAUDE_CONFIG_DIR="$HHOME/.claude" bash "$HRESIDUO" residuo --flag-inventado >/d
   && bad "h: una opción desconocida debía salir con error" || ok "h: opción desconocida → exit≠0 (no falla en silencio)"
 
 rm -rf "$HHOME" "$HTMP"
-
-# ─────────────────────────────────────────────────────────────────────────────
-echo ""
-echo "== (h2) barrer-flotilla-cerebro: corre limpiar-residuo al final (mecanismo reusado); --no-residuo lo salta =="
-H2CODE="$(mktemp -d "${TMPDIR:-/tmp}/brain-h2-code.XXXXXX")"
-H2HOME="$(mktemp -d "${TMPDIR:-/tmp}/brain-h2-home.XXXXXX")"
-H2REP="$H2HOME/report.md"
-mkdir -p "$H2HOME/.claude/reubicar-backups"
-: > "$H2HOME/.claude/reubicar-backups/old.1.pre-reubicar.jsonl"
-touch -t "$(date -v-120d +%Y%m%d%H%M 2>/dev/null || date -d '-120 days' +%Y%m%d%H%M)" "$H2HOME/.claude/reubicar-backups/old.1.pre-reubicar.jsonl"
-# dry-run es READ-ONLY (no escribe el reporte-archivo) → el preview va a STDOUT; se lee de ahí.
-h2out="$(HOME="$H2HOME" bash "$HOOKS/limpiar.sh" flotilla --dry-run --code-dir "$H2CODE" --no-dashboard 2>&1)"
-printf '%s' "$h2out" | grep -q 'Residuo de housekeeping' && ok "h2: el reporte de flotilla (dry-run, a stdout) incluye la sección de residuo" || bad "h2: falta la sección de residuo en el reporte; got: $h2out"
-[ -f "$H2HOME/.claude/reubicar-backups/old.1.pre-reubicar.jsonl" ] \
-  && ok "h2: --dry-run de flotilla NO borra el residuo (solo lo reporta)" || bad "h2: ¡flotilla en dry-run borró el residuo!"
-h2out2="$(HOME="$H2HOME" bash "$HOOKS/limpiar.sh" flotilla --dry-run --code-dir "$H2CODE" --no-dashboard --no-residuo 2>&1)"
-printf '%s' "$h2out2" | grep -q 'Residuo de housekeeping' && bad "h2: --no-residuo debía SALTAR la sección de residuo" || ok "h2: --no-residuo salta el barrido de residuo"
-rm -rf "$H2CODE" "$H2HOME"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
