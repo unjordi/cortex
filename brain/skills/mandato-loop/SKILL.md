@@ -9,6 +9,7 @@ Un mandato de loop vive versionado en `docs/loop-<tema>.md` del repo, con la fra
 
 ## Cómo se redacta
 - Sin trazabilidad: ni citas, ni fechas, ni «decidido el…», ni números de PR de referencia. Se releen en cada vuelta y no ayudan. Las citas del usuario sirven para REDACTAR bien cada instrucción, en sus términos; la procedencia vive en la memoria y en el commit.
+- Lo mismo vale para los comentarios del código que entregue el loop: la plantilla los acota en PRUEBAS §4.
 - Sin «el LISTO lo da <usuario>»: el loop termina cuando el criterio se cumple medido, y lo que pide al usuario es revisar evidencia, no autorizar un cierre.
 - Lo que el loop debe hacer se escribe completo, no como puntero («§3 del doc», «según el estándar»): si es criterio, va el criterio.
 - Solo el trabajo del plan: nada de colas ajenas (buzón, triage) en un loop de épica; eso es otro loop.
@@ -24,7 +25,7 @@ FILAS (en este orden). Antes de tocar una, lee su detalle y escribe su caso de u
 2. …
 Lo que necesita al usuario (root, un modelo a bajar, una decisión de producto) no detiene el loop ni se pregunta a media corrida: se deja armado (comando exacto, recomendación escrita), se junta para el reporte y se sigue con la fila siguiente.
 
-LA ÉPICA ESTÁ TERMINADA cuando todas las filas están ✅ y su propósito se cumple en el sistema corriendo, medido por procesos y no por código. Cada fila está ✅ cuando su propio criterio de cierre se cumple, pasa sus pruebas, y TÚ ya realizaste la revisión semántica con los criterios de PRUEBAS §7, con calma y a detalle. El propósito de la épica —<propósito en una frase>— se mide con todo integrado y desplegado, porque ninguna fila lo mide sola: <el recorrido integrado, en cada perfil/escenario que importe, y qué pasa si falta una pieza>.
+LA ÉPICA ESTÁ TERMINADA cuando todas las filas están ✅ y su propósito se cumple en el sistema corriendo, medido por procesos y no por código. Cada fila está ✅ cuando su propio criterio de cierre se cumple, pasa sus pruebas, su diff no agrega comentarios fuera de §4, y TÚ ya realizaste la revisión semántica con los criterios de PRUEBAS §7, con calma y a detalle. El propósito de la épica —<propósito en una frase>— se mide con todo integrado y desplegado, porque ninguna fila lo mide sola: <el recorrido integrado, en cada perfil/escenario que importe, y qué pasa si falta una pieza>.
 Al llegar ahí, haz una revisión semántica de la épica completa y luego pruébala como se usa: con todo lo integrado y desplegado, <el uso real: p. ej. abrir la copia de un master en el harness donde trabaja>. No se mide como código ni es un examen de tecnicismos: interésate por su proyecto y platica de verdad con él; trabaja con él, como colega, en lo que está haciendo, y mientras tanto revisa en vivo que todo funcione <qué mirar>. No le escarbes las memorias antes para armarle preguntas con respuesta conocida. Lo que se rompa se vuelve fila nueva y la épica sigue abierta; lo que te entregue se conserva como prueba de integración.
 Si todo sale limpio, detén el loop y reporta:
 - por fila: qué se corrió para medir su CIERRA CUANDO y qué salió, y lo que encontró su revisión semántica;
@@ -34,7 +35,7 @@ Antes de eso, cada reporte dice qué filas faltan.
 
 CADA RONDA:
 0) Re-arma el loop antes de trabajar y corre el medidor de cuota: <umbral> ⇒ solo locales.
-1) Estado de lo delegado (<ps, logs, worktrees>). Lo que terminó: revísalo TÚ (diff, base, gates, el contraste de la misma prueba en el commit previo y el nuevo, corrida en vivo sobre una COPIA); si pasa, integra; si falla, corrígelo o anota el tropiezo en la bitácora de prompts y relanza con el prompt pulido. Nunca integres mientras un agente trabaja en el mismo árbol.
+1) Estado de lo delegado (<ps, logs, worktrees>). Lo que terminó: revísalo TÚ (diff, base, gates, el contraste de la misma prueba en el commit previo y el nuevo, corrida en vivo sobre una COPIA); si pasa, integra; si falla, corrígelo o anota el tropiezo en la bitácora de prompts y relanza con el prompt pulido. Nunca integres mientras un agente trabaja en el mismo árbol. Antes de commitear, lee una por una las líneas de comentario que agrega el diff (`git diff --cached -U0`) y deja solo lo que cumple §4; la historia que encuentres la mueves al mensaje del commit.
 2) Lanza la siguiente fila con su mandato literal (archivos, funciones, cambios exactos) y sus pruebas de aceptación ya escritas por ti; exígele la sección final «qué NO verifiqué y dónde está mi punto ciego»: esa sección dirige tu revisión.
 3) En la misma tanda de cada cierre concilia todos los tableros (<roadmap, estado-proyecto, lista de tareas>) antes de reportar.
 4) Lo que destape la fila entra como fila nueva del roadmap en esa misma ronda.
@@ -48,7 +49,7 @@ PRUEBAS (el detalle está en <estándar de pruebas del repo>):
 - §1 La prueba de una prueba: cada aserto puede fallar y falla contra el código viejo (revertido y corrido, no supuesto).
 - §2 Las siete firmas de rechazo: R1 no puede fallar · R2 mide el andamio, no el efecto · R3 el escenario no se montó · R4 mide el objeto equivocado · R5 el esperado quedó viejo · R6 el verde depende del entorno (lo que no corre dice SKIP) · R7 media prueba. Ningún aserto cuya respuesta correcta se pueda adivinar desde la pregunta.
 - §3 Lo que SÍ hace una prueba: efecto observable por el canal del usuario, las dos direcciones, escenario comprobado, esperado derivado, nombre honesto, dependencia declarada.
-- §4 Comentarios: tooling, no drama ni trazabilidad.
+- §4 Comentarios en el código: dicen qué hace el código, su contrato (entradas, salida, qué pasa al fallar) y, solo si no es obvio, el porqué en una o dos líneas justo donde se mete la pata, apuntando al test o guard que lo frena. No llevan citas ni nombres de personas, fechas, números de fila, hallazgo, nota, PR o commit, «antes…/ahora…», «corrección de…», ni la historia del incidente. Eso va en el mensaje del commit y en la memoria. Un comentario de más de tres líneas se parte o se va al doc.
 - §5 Al revisar una prueba existente: aislada y en la suite, veredicto por aserto (conservar · arreglar · retirar).
 - §6 Mecanismo: <qué caza el probe automático>; lo demás es criterio tuyo.
 - §7 Revisión semántica (una fila se cierra con esto, no con el verde):
@@ -66,5 +67,5 @@ HIGIENE MENTAL (el cerebro):
 - Un checkpoint cuenta solo si lo hizo el skill: editar hilo-mental-actual.md con Edit/Write o a mano no es checkpoint. Cierra cada uno con `. ~/.claude/hooks/contrato-hilo.sh && verificar_hilo .claude/memory/hilo-mental-actual.md fresco` y cita su salida en el reporte de la ronda.
 - Lo aprendido del trato con el usuario va a su como-trabajar global; lo del proyecto, a su memoria. HUD = esta cola de filas.
 
-REGLAS: <las duras del proyecto>. Código, comentarios y commits utilitarios. Todo valor elegible configurable. Nada de --no-verify. Sin paliativos que apaguen piezas: causa raíz medida. Pruebas solo sobre copias. Matar solo por PID. De noche (22:00–08:00) sin avisos sonoros ni diálogos de root. No te detengas a preguntar si sigues; con varias opciones válidas, elige, asienta el porqué y sigue.
+REGLAS: <las duras del proyecto>. Código y commits utilitarios; los comentarios, según PRUEBAS §4 (la historia va al commit, nunca al código). Todo valor elegible configurable. Nada de --no-verify. Sin paliativos que apaguen piezas: causa raíz medida. Pruebas solo sobre copias. Matar solo por PID. De noche (22:00–08:00) sin avisos sonoros ni diálogos de root. No te detengas a preguntar si sigues; con varias opciones válidas, elige, asienta el porqué y sigue.
 ```
