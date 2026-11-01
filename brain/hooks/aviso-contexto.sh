@@ -41,6 +41,7 @@ MEM="$ROOT/.claude/memory"
 # el repo: es un artefacto durable, no un sello.
 STATE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/state/$(printf '%s' "$ROOT" | cksum 2>/dev/null | awk '{print $1}')"
 mkdir -p "$STATE" 2>/dev/null || true            # fail-open: sin dir escribible, los sellos degradan a sin-throttle
+rm -rf "$MEM/.contexto-aviso" "$MEM/.contexto-aviso.d" "$MEM/.cuota-fetch-forzado" 2>/dev/null || true  # retira el sello que una versión anterior dejó dentro del repo
 
 # Stamp de debounce keyeado POR SESIÓN (no por repo): un stamp único por-repo hacía THRASH entre sesiones
 # concurrentes. Poda best-effort >14d. Fallback retro-compat: sin session_id → el archivo único de antes.

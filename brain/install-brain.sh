@@ -161,6 +161,13 @@ if [ "$LIMPIAR_REPO" = 1 ]; then
       if [ "$LIMPIAR_APPLY" = 1 ]; then cp -p "$_bv" "$bdir/" 2>/dev/null; rm -f "$_bv"; fi
     fi
   done
+  # 3b) sellos de throttle que una versión anterior dejó dentro del repo (hoy viven en ~/.claude/state/)
+  for _st in "$rcd/memory/.contexto-aviso" "$rcd/memory/.contexto-aviso.d" "$rcd/memory/.cuota-fetch-forzado" "$rcd/memory/.ramas-huerfanas-estado"; do
+    if [ -e "$_st" ]; then
+      tocado=1; echo "   [sello-viejo] $_st"
+      if [ "$LIMPIAR_APPLY" = 1 ]; then cp -R "$_st" "$bdir/" 2>/dev/null; rm -rf "$_st"; fi
+    fi
+  done
   # 4) skills del cerebro — SOLO candidatas (ledger .brain-skills o nombre en el MANIFEST) cuyo CONTENIDO
   #    coincide con la fuente; una que DIFIERA (o sin fuente) se REPORTA y NO se borra. Jamás toca skills del proyecto.
   if [ -d "$rcd/skills" ]; then

@@ -4779,6 +4779,7 @@ cp -R "$SCRIPT_DIR/skills/cerrar-slice" "$LRR/.claude/skills/cerrar-slice" 2>/de
 cp -R "$SCRIPT_DIR/skills/checkpoint" "$LRR/.claude/skills/checkpoint" 2>/dev/null; echo 'EDIT LOCAL' >> "$LRR/.claude/skills/checkpoint/SKILL.md"  # modificada → se conserva
 mkdir -p "$LRR/.claude/skills/mi-skill-proyecto"; echo '# propia' > "$LRR/.claude/skills/mi-skill-proyecto/SKILL.md"  # del proyecto → se conserva
 echo 'BACKLOG proyecto' > "$LRR/.claude/memory/estado-proyecto.md"
+: > "$LRR/.claude/memory/.cuota-fetch-forzado"; : > "$LRR/.claude/memory/.ramas-huerfanas-estado"   # sellos viejos dentro del repo
 # PLAN (dry-run): no muta
 HOME="$LRFIX/home" bash "$INSTALLER" --limpiar-repo "$LRR" >/dev/null 2>&1
 [ -f "$LRR/.claude/hooks/dod-verificar.sh" ] \
@@ -4807,6 +4808,8 @@ fi
   && ok "--limpiar-repo: conserva la skill PROPIA del proyecto" || bad "--limpiar-repo: borró una skill del proyecto"
 grep -q 'BACKLOG proyecto' "$LRR/.claude/memory/estado-proyecto.md" 2>/dev/null \
   && ok "--limpiar-repo: NO toca la memoria/estado del proyecto" || bad "--limpiar-repo: tocó la memoria del proyecto"
+[ -z "$(find "$LRR/.claude/memory" -name '.cuota-fetch-forzado' -o -name '.ramas-huerfanas-estado' -o -name '.contexto-aviso*' 2>/dev/null)" ] \
+  && ok "--limpiar-repo: retira los sellos de throttle viejos dentro del repo" || bad "--limpiar-repo: dejó sellos de throttle viejos"
 # B-01 (de-cableado por-COMANDO): una entrada MIXTA (hook del cerebro + ajeno en la MISMA .hooks array) →
 # de-cablea solo el del cerebro y CONSERVA el hermano ajeno (antes el filtro por-entrada se llevaba ambos).
 if command -v jq >/dev/null 2>&1; then
@@ -5603,6 +5606,16 @@ b6ef_root="$ACLAST"; b6ef_cks="$(printf '%s' "$b6ef_root" | cksum | awk '{print 
   && ok "b6-estado-fuera: el sello vive en \$HOME/.claude/state/<cksum del repo>" \
   || bad "b6-estado-fuera: no encontré el sello bajo \$HOME/.claude/state/"
 rm -rf "$(dirname "$b6ef_root")"
+# self-heal: un sello que una versión anterior dejó dentro del repo se retira al correr el hook
+b6sh_root="$(mktemp -d "${TMPDIR:-/tmp}/brain-ac.XXXXXX")/r"; mkdir -p "$b6sh_root/.claude/memory"
+: > "$b6sh_root/.claude/memory/.cuota-fetch-forzado"; : > "$b6sh_root/.claude/memory/.contexto-aviso"
+printf '%s\n' '{"type":"user","message":{"role":"user","content":"hola"}}' '{"message":{"usage":{"cache_read_input_tokens":820000}}}' > "$b6sh_root/t.jsonl"
+printf '%s' "{\"session_id\":\"sh\",\"transcript_path\":\"$b6sh_root/t.jsonl\"}" \
+  | env HOME="$ACHOME" CLAUDE_BRAIN_DIR="$BRAINREPO" AVISO_CONTEXTO_WINDOW_TOKENS=1000000 CLAUDE_PROJECT_DIR="$b6sh_root" bash "$HOOKS/aviso-contexto.sh" >/dev/null 2>&1
+[ -z "$(find "$b6sh_root/.claude/memory" -name '.contexto-aviso*' -o -name '.cuota-fetch-forzado' 2>/dev/null)" ] \
+  && ok "b6-estado-fuera: el hook retira el sello viejo que quedó dentro del repo (self-heal)" \
+  || bad "b6-estado-fuera: no retiró el sello viejo dentro del repo"
+rm -rf "$(dirname "$b6sh_root")"
 
 # ── (b6-staleness) anclaje al último /compact (FP post-compact) — vía emitir/callar ──
 ac_raw() { # $@ = líneas del transcript ; ventana 1M forzada, root fresco
@@ -9246,9 +9259,16 @@ if e2e bash "$E2ESH" paridad --src-repo "$E2ESRC" --dst-repo "$E2EDST" --bundle 
 else
   bad "(e2e) paridad: bloqueó un destino PERSONAL correcto: $(grep -E 'FALTA' "$E2EPAR" | head -2 | tr '\n' ' ')"
 fi
-grep -q 'install GLOBAL existe' "$E2EPAR" \
-  && ok "(e2e) paridad: T4 verifica el install GLOBAL (no exige settings.json por-repo: el cerebro vive solo en global)" \
-  || bad "(e2e) paridad: T4 no verifica el install GLOBAL"
+# T4 por EFECTO (exit code), dos direcciones: con install global (~/.claude/settings.json) paridad pasa —lo
+# probó (1)—; SIN él bloquea (el master despertaría sin candados). No se mide la redacción de la salida.
+mv "$E2EHOME/.claude/settings.json" "$E2EHOME/.claude/settings.json.off"
+if e2e bash "$E2ESH" paridad --src-repo "$E2ESRC" --dst-repo "$E2EDST" --bundle "$E2EBUNDLE" \
+     --t1 t1-migrada.md --t2-local secreta.local.md > "$E2EPAR" 2>&1; then
+  bad "(e2e) paridad: T4 pasó SIN install global — el master despertaría sin candados"
+else
+  ok "(e2e) paridad: T4 bloquea sin install global y pasa con él (efecto, dos direcciones)"
+fi
+mv "$E2EHOME/.claude/settings.json.off" "$E2EHOME/.claude/settings.json"
 grep -qE '^  pend  secreta\.local\.md' "$E2EPAR" \
   && ok "(e2e) paridad: un T2 que viaja en el bundle es 'pend' (lo deposita S5), no un fallo" \
   || bad "(e2e) paridad: cuenta como FALTA un T2 que está en el bundle esperando a S5"

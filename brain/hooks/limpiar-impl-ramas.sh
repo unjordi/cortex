@@ -125,6 +125,7 @@ case "$HUERF_DIAS" in ''|*[!0-9]*) HUERF_DIAS=14 ;; esac
 # Estado de dedupe bajo ${CLAUDE_CONFIG_DIR:-~/.claude}/state/<cksum del ROOT>/, fuera del repo: no ensucia
 # el working tree.
 HUERF_ESTADO="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/state/$(printf '%s' "$ROOT" | cksum 2>/dev/null | awk '{print $1}')/.ramas-huerfanas-estado"
+rm -f "$ROOT/.claude/memory/.ramas-huerfanas-estado" 2>/dev/null || true   # retira el sello que una versión anterior dejó dentro del repo
 huerf_ya_reportada() {  # $1=branch $2=sha -> 0 si ESA punta ya se reportó (no repetir en cada corrida)
   [ -f "$HUERF_ESTADO" ] || return 1
   grep -qxF "$(printf '%s\t%s' "$1" "$2")" "$HUERF_ESTADO" 2>/dev/null
