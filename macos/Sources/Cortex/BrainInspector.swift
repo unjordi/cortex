@@ -62,9 +62,7 @@ struct BrainState {
     ]
     /// Hooks de tier repo (kind=hook): viajan por-repo, se cargan si la sesión INICIA en el repo.
     /// DEBE coincidir con brain/hooks/MANIFEST {repo} (lo verifica test-brain.sh).
-    static let knownRepoHooks: Set<String> = [
-        "dod-verificar",
-    ]
+    static let knownRepoHooks: Set<String> = []
 
     /// # de piezas GLOBALES esperadas que FALTAN: hooks no (presentes+cableados) + normas + la skill.
     /// Espeja el criterio del recuadro de salud; alimenta el 🩹 del riel y de la píldora de la barra.

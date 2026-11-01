@@ -49,7 +49,6 @@ public sealed class BrainState
     /// DEBE coincidir con brain/hooks/MANIFEST {repo} (lo verifica test-brain.sh).
     public static readonly HashSet<string> KnownRepoHooks = new()
     {
-        "dod-verificar",
     };
 
     /// Los 4 rótulos de NORMA (pseudo-piezas de la pestaña, gobernadas por HasNorms). NO viven en el

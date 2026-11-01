@@ -80,9 +80,7 @@ El cerebro se ordena por *dureza*: arriba lo que te **bloquea** sin negociar; ab
 🔒 Hooks Forzosos — hooks que bloquean (deny) · no negociables
 ├─ 🔗 merge-develop-guard      push directo a develop·main, o MR sin --squash/sin tu OK → denegado; a main exige OK súper-explícito
 ├─ 💸 delegacion-gate          delegar al llegar al 90% de tu ventana 5h → pide tu OK
-├─ 🛑 limite-gasto             sin ventana 5h Y sin overage (ambos agotados) → freno duro
-└─ 📁 por-repo · viajan en el .claude de cada repo
-   └─ ✅ dod-verificar            cierre sin evidencia/OK → denegado; claim visual a ciegas (sin ver la pantalla) también
+└─ 🛑 limite-gasto             sin ventana 5h Y sin overage (ambos agotados) → freno duro
 
 🔔 Automático — inyectan / recuerdan (no bloquean)
 ├─ 🖥️  entorno-maquina-guard    commit de algo machine-specific (aliases/rutas de $HOME/Rosetta/entorno-maquina.md) al .claude/memory/ del repo → avisa

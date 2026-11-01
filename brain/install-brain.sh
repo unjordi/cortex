@@ -34,7 +34,7 @@
 # es GLOBAL/both para que aplique en TODA sesión/clon, también donde el repo no lo trae). Las lápidas
 # del MANIFEST de merge-squash-guard y confirmar-merge-develop los PODAN de máquinas donde quedaron instalados.
 # NO instala globales los hooks REPO-SCOPED restantes
-# (sesion-inicio, dod-verificar): esos viven en brain/hooks/ como FUENTE para
+# (sesion-inicio): esos viven en brain/hooks/ como FUENTE para
 # que cada repo los copie a su .claude/ y los cablee (se cargan solo si la sesión INICIA en el repo).
 #
 # OS-agnóstico: los hooks corren bajo bash en Mac/Linux/Windows(Git Bash). FAIL-SAFE sin jq (avisa;
@@ -104,7 +104,7 @@ for h in $GLOBAL_HOOKS; do
   fi
 done
 # ── (a2) PODA de hooks REPO-TIER filtrados al global ────────────────────────────────────────── ──
-# Un hook tier=repo (dod-verificar, sesion-inicio, …) NUNCA debe vivir en ~/.claude/hooks/: se cablea SOLO
+# Un hook tier=repo (sesion-inicio, …) NUNCA debe vivir en ~/.claude/hooks/: se cablea SOLO
 # per-repo (en <repo>/.claude/settings.json → ${CLAUDE_PROJECT_DIR}/.claude/hooks/), jamás global. Si uno se
 # FILTRÓ al global (era vieja, o un sincronizar-cerebro mal-apuntado a ~), queda de HUÉRFANO INERTE (nadie
 # lo cablea global) y CONFUNDE ("el script está pero no dispara"). install-brain no lo instala, pero antes
@@ -616,5 +616,5 @@ if [ "$(git config --global --get fetch.prune 2>/dev/null)" != "true" ]; then
 fi
 
 echo "listo: cerebro global instalado (hooks + cableado + skill + sello de versión + dashboard + entorno + como-trabajar + normas + aliases-activos)."
-echo "       Los hooks repo-scoped (sesion-inicio, dod-verificar) viven en"
+echo "       Los hooks repo-scoped (sesion-inicio) viven en"
 echo "       brain/hooks/ como fuente: cópialos al .claude/ de cada repo (se cargan al INICIAR ahí)."

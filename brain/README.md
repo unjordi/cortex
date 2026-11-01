@@ -91,7 +91,6 @@ la sesión INICIA en ese repo**.
 | Hook | Evento | Qué hace |
 |---|---|---|
 | `sesion-inicio.sh` | SessionStart | Reinyecta rama + norma de git + orden de leer la memoria al abrir/retomar sesión o tras compactar. (Complementa al global `rehidratar-hilo`: éste hace el hilo, aquél el ritual del proyecto.) |
-| `dod-verificar.sh` | Stop | Hace cumplir la **definición de LISTO**: bloquea declarar algo "listo/terminado/funciona" tras tocar código sin una marca CITADA de (1) QA confirmado por el usuario o (2) su OK expreso. Distingue estatus/pregunta de cierre (una pregunta co-ubicada NO salva un claim afirmado); cuenta como "código tocado" también la edición por Bash (`sed -i`/`patch`/redirección); detecta la tool de navegador por estructura del transcript (no por la palabra "screenshot"). Precisión (P2): un paso MECÁNICO del proceso ("checkpoint hecho", "push hecho", "MR abierto", "memoria actualizada") y la celebración sin entregable (🎉 standalone, interjecciones) NO disparan; fail-safe: si la frase mezcla paso mecánico y claim de entregable ("push hecho y la feature ya funciona"), el claim manda y bloquea. |
 | `recordar-cosechar.sh` | Stop | **ESPEJO automático e idempotente** del TaskList vivo → bloque fenced `<!-- espejo-tasklist -->` dentro de `.claude/memory/estado-proyecto.md` (serialización DURABLE del HUD que viaja por git). Determinista, SIN LLM; solo si el .md ya existe, no lo crea; solo toca ese bloque. Nunca bloquea. La maquinaria vive en la lib **`sincronizar-tasklist.sh`** (UN dueño; el skill `to-do` la EJECUTA para el sentido inverso bloque→HUD). **Sync bidireccional:** selección de carpeta robusta a la rotación de session_id, ANTI-CLOBBER (nunca pisa un bloque no-vacío con uno vacío) y reensamblado head/tail (sin `awk -v` multilínea, que falla en macOS). El NUDGE solo avisa cuando el sync movió ≥1 pendiente vivo. Regla quién-gana: durante la sesión manda el TaskList vivo (json→durable en el Stop); en los bordes (SessionStart/`/to-do`) manda la durable (el modelo re-siembra el HUD con las tools). **Ojo:** el harness NO re-renderiza el HUD si un proceso externo escribe los json → refrescar el HUD vivo solo es alcanzable vía el skill on-invoke, no por un hook. |
 
 > **`precompact-volcar-estado.sh` se RETIRÓ** (PreCompact no puede inyectar contexto ni pedir acción): compactar sin perder el hilo lo cubren el skill `checkpoint` (escribe el hilo) + `rehidratar-hilo` (lo relee, con gate de frescura) + el watermark `aviso-contexto` (avisa antes del auto-compact).
@@ -160,14 +159,13 @@ al salir). Cubre: (a) `bash -n` de todos los hooks + `jq empty` de los JSON; (b)
 (gratis/incluido/metered/desconocido, el ciclo gate→registrar→gate-silencioso y la transición
 dentro/fuera de la ventana, y el **coalescing de asks en fan-out** paralelo); (b1c) `merge-develop-guard`
 (checks de squash) develop-only con `glab` mockeado; (b3b)
-`limpiar-worktrees` (base configurable + detección por `git cherry`); (b4) `dod-verificar` (cierre/QA-visual
-a ciegas, evasión por pregunta, edición por Bash); (b5) compactación: que `precompact` esté **RETIRADO** +
+`limpiar-worktrees` (base configurable + detección por `git cherry`); (b5) compactación: que `precompact` esté **RETIRADO** +
 `rehidratar-hilo` (inyección + gate de frescura); (b6) el watermark `aviso-contexto`; (b7) el dedupe del
 doble-cableado; (c) idempotencia de
 `install-brain.sh` corrido 2× (cada hook 1× en `settings.json`, 1 solo bloque de normas) y limpieza por
 `uninstall-brain.sh`.
 
-Los **jueces-Haiku** (`merge-develop-guard`, `dod-verificar`) se prueban en **dos capas**: (1)
+El **juez-Haiku** (`merge-develop-guard`) se prueba en **dos capas**: (1)
 **DETERMINISTA**, corre SIEMPRE — SIN perilla de mock en producción (MEDIO auditoría 2026-10-22: una env de
 mock que forzara el veredicto sería un bypass; un agente podía setearla en la sesión). Los tests inyectan la
 respuesta del juez por un **`curl` FALSO por PATH** (+ `CLAUDE_CODE_OAUTH_TOKEN` dummy) o redefiniendo

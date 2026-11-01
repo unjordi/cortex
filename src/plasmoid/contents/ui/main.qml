@@ -1015,9 +1015,6 @@ PlasmoidItem {
                 { emoji: "🔗", name: "merge-develop-guard",    desc: "push directo a develop·main, o MR sin --squash/sin tu OK → denegado; a main exige OK súper-explícito",
                   event: "PreToolUse · Bash",
                   detail: "Candado ÚNICO de git. Como PASO 0 deniega el `git push`/merge directo a develop/main y te redirige a ramita→MR (absorbió a git-branch-guard, 2026-10-21). Un `gh pr merge`/`glab mr merge` a develop sin --squash se deniega, para que la ramita colapse a un commit curado; además busca tu OK explícito en el chat reciente antes de integrar. A main exige lenguaje de release ('hasta main', 'libera') y va SIN squash (conserva historia). Un 'sigue/avanza' NO cuenta como autorización." },
-                { emoji: "✅", name: "dod-verificar",          desc: "Def. of Done (ver Norma 🎯 DoD) sin build+tests+memoria → denegado",
-                  event: "Stop",
-                  detail: "Al cerrar el turno, si dijiste 'listo/en producción' tras tocar código fuente, exige evidencia de build+tests verdes y memoria al día, o bloquea el cierre." },
                 { emoji: "💸", name: "delegacion-gate",        desc: "reclutar agente con costo → pide tu consentimiento (puede negar)",
                   event: "PreToolUse · Task",
                   detail: "Al reclutar un agente calcula su nivel de costo (gratis/incluido/con costo, según tu ventana de 5h) y pide consentimiento mostrando tu cuota real. Puedes negar y el agente no corre." },
@@ -1201,7 +1198,7 @@ PlasmoidItem {
     // Catálogo conocido (mismos conjuntos que BrainState.knownGlobalHooks / knownRepoHooks del Swift).
     // DEBE coincidir con brain/hooks/MANIFEST; lo verifica el drift-check del widget (test-brain.sh).
     readonly property var brainGlobalHooks: ["merge-develop-guard","proteger-arbol","proteger-fuente-cerebro","limite-gasto","delegacion-gate","delegacion-registrar","rehidratar-hilo","aviso-contexto","aviso-drift-cerebro","exportar-sesion-master","checkpoint-mecanico","barrer-ramas","entorno-maquina-guard","no-bypass-deploy","sesion-inicio","recordar-cosechar"]
-    readonly property var brainRepoHooks:   ["dod-verificar"]
+    readonly property var brainRepoHooks:   []
     // Los 4 rótulos de NORMA (pseudo-piezas, gobernados por hasNorms). NO viven en el MANIFEST ni se
     // retiran como skills/hooks → enumerarlos es legítimo (no es la lista drift-prone).
     readonly property var brainNormNames:   ["Definition of Done","Doc <= realidad","Flujo de git","Costo de delegación"]

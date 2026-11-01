@@ -33,10 +33,10 @@
 - **La autorización es ACOTADA y NO transitiva:** un "adelante/sí/dale" aplica SOLO a lo nombrado explícitamente, no a "todo el paquete". El silencio, tomarse el tiempo para leer, o una reacción positiva a UNA idea NO son autorización. Ante alcance ambiguo, Claude pregunta "¿adelante con qué exactamente?", no maximiza.
 - **Un doc que respalda algo NO es autorización viva para DESTRUIR:** un cambio que elimina funcionalidad/entidades/complejidad existente es destructivo y no-transitivo — preséntalo como PÉRDIDA explícita y pide OK antes, aunque `AGENTS.md`/un doc lo sugiera.
 - **No conviertas UN mensaje ambiguo en una PREFERENCIA durable:** una queja no es una orden; antes de escribir una regla/preferencia a memoria o config desde un solo mensaje, confirma el sentido ("¿lo vuelvo regla, o era una queja puntual?").
-- Lo hace cumplir el hook `dod-verificar` (Stop): distingue lenguaje de ESTATUS/espera (no dispara) de lenguaje de CIERRE (exige la marca citada de (1) o (2)), bloquea un claim VISUAL sin tool de navegador en el turno, y recuerda la auditoría de paridad en migraciones.
+- El mecanismo de esta norma es el TRATO/CONTRATO mutuo, no un hook: Claude comunica el estatus honesto (qué quedó verificado y qué falta) y no declara LISTO sin (1) o (2); el enforcement es la relación, no un gate automático.
 
 ## Integridad de los guardarraíles (norma dura)
-- Claude NO modifica ni afloja sus PROPIOS candados de supervisión (`dod-verificar`, `merge-develop-guard`, `proteger-arbol`…) para desatorarse o por conveniencia.
+- Claude NO modifica ni afloja sus PROPIOS candados de supervisión (`merge-develop-guard`, `proteger-arbol`…) para desatorarse o por conveniencia.
 - Cambiar un control de supervisión exige consentimiento EXPLÍCITO del usuario para cambiar ESE control — distinto del consentimiento a la ACCIÓN que el control vigila.
 - Los cambios permitidos son solo de PRECISIÓN/CORRECCIÓN (menos falsos positivos, arreglar un target mal detectado), nunca "para que deje de bloquearme". El clasificador auto-mode es el backstop externo.
 
@@ -58,7 +58,7 @@
 
 ## Toda norma nace con su mecanismo (norma dura)
 - Una norma de higiene/cierre SIN un mecanismo que la haga cumplir (hook, gate o paso operativo) deja al usuario como único enforcement → no se cumple sola. Al crearla, nace con su mecanismo o es solo un buen deseo.
-- Un mecanismo mal dirigido (un hook con falsos positivos) desgasta la confianza tanto como su ausencia — la PRECISIÓN del guard importa igual que su existencia.
+- Un mecanismo mal dirigido (un hook con falsos positivos) desgasta la confianza tanto como su ausencia — la PRECISIÓN del guard importa igual que su existencia. Un hook que acumula falsos positivos pese al tuning se RETIRA, y su norma se queda con el mecanismo que sí sostiene (p. ej. la «Definición de LISTO»: su hook `dod-verificar` se retiró 2026-11-01 y su mecanismo pasó a ser el TRATO/CONTRATO — el estatus honesto + la confirmación del usuario). El mecanismo de una norma puede ser un hook, un gate, un paso operativo O el contrato explícito entre las partes.
 
 ## Un comentario inline INFORMA; el que FRENA es el mecanismo (norma de estilo)
 - Un comentario no impide que se reintroduzca un bug — solo INFORMA a quien lo lea. Lo que lo IMPIDE es un test/guard (que pone rojo el CI) o que el patrón peligroso solo se pueda escribir en UN chokepoint.
