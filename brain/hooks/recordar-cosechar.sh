@@ -21,10 +21,6 @@
 # Escape: CLAUDE_SKIP_RECORDAR_COSECHAR=1.
 set -u
 
-# dedupe (tier both): si soy la copia del REPO y la copia GLOBAL existe, cedo — evita doble disparo
-# cuando el repo está brained Y hay bootstrap global. En un clon SIN bootstrap, la copia del repo corre.
-_cfgh="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks"; case "$0" in "$_cfgh/"*) : ;; *) [ -f "$_cfgh/$(basename "$0")" ] && exit 0 ;; esac
-
 payload=$(cat 2>/dev/null || true)   # capturar stdin (contrato Stop trae session_id/transcript_path/stop_hook_active)
 
 [ "${CLAUDE_SKIP_RECORDAR_COSECHAR:-0}" = 1 ] && exit 0

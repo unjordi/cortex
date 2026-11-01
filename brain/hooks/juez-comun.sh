@@ -4,7 +4,7 @@
 # de dependencias. Separar la lógica aquí la hace testeable en aislado y ELIMINA la duplicación que tenían
 # ambos jueces — la misma cadena token/curl estaba copiada LITERAL en los dos, y uno hardcodeaba
 # `$HOME/.claude/.credentials.json` IGNORANDO `CLAUDE_CONFIG_DIR`. Mismo patrón que analizar-comando-git.sh
-# ↔ los git-guards (lib `both/lib`, sin cableado ni dedupe: cada juez sourcea la copia que está JUNTO a él).
+# ↔ los git-guards (lib `global/lib`, sin cableado: cada juez sourcea la copia que está JUNTO a él).
 # bash-3.2-safe. NUNCA loguea el valor del token (solo lo usa en el header Authorization).
 # shellcheck shell=bash
 #

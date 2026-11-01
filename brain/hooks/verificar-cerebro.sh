@@ -103,12 +103,12 @@ drift_scan() {  # $1=label  $2=dir-INSTALADA  $3=dir-FUENTE
     fi
   done < <(find "$idir" -type f 2>/dev/null)
   [ "$n" = 0 ] && okln "sin drift instalada-vs-fuente en $label"
-  [ "$n" -gt 0 ] && say "  · $label: $n archivo(s) con drift — edita la FUENTE y re-corre install-brain/sincronizar (no la copia instalada)"
+  [ "$n" -gt 0 ] && say "  · $label: $n archivo(s) con drift — edita la FUENTE y re-corre install-brain (no la copia instalada)"
 }
 say ""
 # Nota: el drift de skills GLOBAL también se detecta AUTOMÁTICAMENTE en cada SessionStart (aviso-drift-cerebro
 # → drift_skills_global, warn-only, throttle propio). Este doctor es el resumen A-DEMANDA (verboso: lista
-# completa + dirección de cada archivo); ambos comparten el criterio (fuente brain/skills, tier {global,both}).
+# completa + dirección de cada archivo); ambos comparten el criterio (fuente brain/skills, tier {global}).
 say "🔎 Drift instalada-vs-fuente (edits en vivo que el próximo install-brain borraría):"
 drift_scan hooks  "$HOOKS_DIR"  "$BRAIN_HOOKS"
 drift_scan skills "$SKILLS_DIR" "$BRAIN_SKILLS"

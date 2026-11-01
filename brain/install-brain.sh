@@ -4,8 +4,8 @@
 # la skill de cierre, el dashboard y las normas globales." Re-correrlo es SEGURO (idempotente).
 #
 # Instala GLOBAL (en ~/.claude, aplica a TODOS los repos de esta máquina):
-#   (a) HOOKS de tier {global, both} en ~/.claude/hooks/ — la LISTA se DERIVA de brain/hooks/MANIFEST
-#       (fuente única; ya no se cura a mano en paralelo con la copia por-repo). Incluye
+#   (a) HOOKS de tier {global} en ~/.claude/hooks/ — la LISTA se DERIVA de brain/hooks/MANIFEST
+#       (fuente única). Incluye
 #       merge-develop-guard,
 #       proteger-arbol (PreToolUse/Bash), delegacion-gate + limite-gasto (PreToolUse/Task),
 #       delegacion-registrar (PostToolUse/Task), rehidratar-hilo + aviso-contexto (SessionStart/
@@ -31,11 +31,8 @@
 #                          bootstrap (para las tunables que el dev elige). Ambos idempotentes.
 #
 # merge-develop-guard (candado del punto de merge a develop/main: squash + autorización con OK explícito;
-# es GLOBAL/both para que aplique en TODA sesión/clon, también donde el repo no lo trae). Las lápidas
-# del MANIFEST de merge-squash-guard y confirmar-merge-develop los PODAN de máquinas donde quedaron instalados.
-# NO instala globales los hooks REPO-SCOPED restantes
-# (sesion-inicio): esos viven en brain/hooks/ como FUENTE para
-# que cada repo los copie a su .claude/ y los cablee (se cargan solo si la sesión INICIA en el repo).
+# es GLOBAL para que aplique en TODA sesión de esta máquina). Las lápidas del MANIFEST de merge-squash-guard
+# y confirmar-merge-develop los PODAN de máquinas donde quedaron instalados.
 #
 # OS-agnóstico: los hooks corren bajo bash en Mac/Linux/Windows(Git Bash). FAIL-SAFE sin jq (avisa;
 # los hooks fallan ABIERTO — no bloquean — hasta que instales jq).
@@ -74,11 +71,10 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 # ── (a) Copiar hooks de tier global + la lib compartida ──
-# Los de tier {global, both} salen del MANIFEST (fuente única) → esta lista ya NO se cura a mano en
-# paralelo con la copia por-repo (antídoto a H2: dos listas divergían). El drift-check de test-brain
-# verifica que install/uninstall/sincronizar coincidan con el manifiesto.
+# Los de tier {global} salen del MANIFEST (fuente única) → esta lista ya NO se cura a mano (antídoto a H2:
+# dos listas divergían). El drift-check de test-brain verifica que install/uninstall coincidan con el manifiesto.
 if [ -f "$SRC_HOOKS/MANIFEST" ]; then
-  GLOBAL_HOOKS="$(awk '$1!~/^#/ && NF>=3 && ($2=="global"||$2=="both"){print $1".sh"}' "$SRC_HOOKS/MANIFEST")"
+  GLOBAL_HOOKS="$(awk '$1!~/^#/ && NF>=3 && $2=="global"{print $1".sh"}' "$SRC_HOOKS/MANIFEST")"
 else
   echo "warn: falta $SRC_HOOKS/MANIFEST; no puedo derivar la lista de hooks globales"; GLOBAL_HOOKS=""
 fi
@@ -103,19 +99,8 @@ for h in $GLOBAL_HOOKS; do
     echo "warn: falta el hook fuente $h"
   fi
 done
-# ── (a2) PODA de hooks REPO-TIER filtrados al global ────────────────────────────────────────── ──
-# Un hook tier=repo (sesion-inicio, …) NUNCA debe vivir en ~/.claude/hooks/: se cablea SOLO
-# per-repo (en <repo>/.claude/settings.json → ${CLAUDE_PROJECT_DIR}/.claude/hooks/), jamás global. Si uno se
-# FILTRÓ al global (era vieja, o un sincronizar-cerebro mal-apuntado a ~), queda de HUÉRFANO INERTE (nadie
-# lo cablea global) y CONFUNDE ("el script está pero no dispara"). install-brain no lo instala, pero antes
-# tampoco lo PODABA → ahora sí. SEGURO/ACOTADO: solo borra los que el MANIFEST declara tier=repo (esos por
-# definición no pueden ser propios del usuario ni {global,both}).
-if [ -f "$SRC_HOOKS/MANIFEST" ]; then
-  REPO_HOOKS="$(awk '$1!~/^#/ && NF>=3 && $2=="repo" && $3=="hook"{print $1".sh"}' "$SRC_HOOKS/MANIFEST")"
-  for rh in $REPO_HOOKS; do
-    [ -f "$HOOKS_DIR/$rh" ] && rm -f "$HOOKS_DIR/$rh" && echo "poda: retiré el hook repo-tier huérfano '$rh' del global $HOOKS_DIR (se cablea per-repo, nunca global)"
-  done
-fi
+# (El tier `repo` se retiró con el cerebro por-repo (2026-11-01): ya no hay hooks que vivan solo per-repo,
+#  así que no hay poda de repo-tier huérfano. La poda de lápidas `retirado` sigue abajo.)
 # ── (a3) PODA DE RETIRADOS (LÁPIDAS del MANIFEST) ───────────────────────────────────────────── ──
 # Un tier `retirado` es una LÁPIDA: el brain ya mató este hook (su .sh se borró de brain/hooks/), pero
 # quitar la entrada del MANIFEST NO alcanza para limpiar una máquina que YA lo tenía instalado — el .sh
@@ -204,7 +189,7 @@ register_hook() {
 }
 
 # Evento+matcher de cada hook GLOBAL a cablear. El MANIFEST declara tier/kind pero NO el evento →
-# esta tabla lo mapea (misma forma que ev_de() en sincronizar-cerebro.sh, que cubre los {repo,both}).
+# esta tabla lo mapea.
 # Matcher vacío ⇒ se omite la clave ⇒ casa TODAS las fuentes (SessionStart: startup/resume/compact/clear;
 # PostToolUse: toda tool). Al AGREGAR un hook global nuevo al MANIFEST: añádelo aquí — si falta, el loop
 # de abajo AVISA y el drift-check de test-brain (e2) FALLA (no se cablea en silencio).
@@ -215,7 +200,7 @@ ev_de() {
     limite-gasto|delegacion-gate) echo "PreToolUse|Task|Agent" ;;   # Task|Agent: el tool se renombró Agent (antes Task); casar AMBOS o el gate nunca dispara
     delegacion-registrar) echo "PostToolUse|Task|Agent" ;;
     rehidratar-hilo|aviso-drift-cerebro|sesion-inicio) echo "SessionStart|" ;;
-    recordar-cosechar) echo "Stop|" ;;       # tier both (2026-10-21): estado-proyecto.md "en todos lados" → global por bootstrap. Fail-open/no-op sin los archivos del proyecto.
+    recordar-cosechar) echo "Stop|" ;;       # estado-proyecto.md "en todos lados" → global por bootstrap. Fail-open/no-op sin los archivos del proyecto.
     aviso-contexto) echo "PostToolUse|" ;;   # casa TODA tool (sin matcher): mide el ctx para el volcado del checkpoint mecánico
     # barrer-ramas: DOBLE trigger del barrido — SessionStart (oportunista, throttled) + PostToolUse/Bash
     # (al punto de merge, detecta glab/gh merge vía acg_es_merge_mr). Multi-evento como exportar-sesion-master.
@@ -236,7 +221,7 @@ ev_de() {
 # latente: antes la COPIA se derivaba del MANIFEST pero el CABLEADO eran 16 register_hook a mano → un
 # hook global nuevo se copiaba pero no se cableaba). Los mismos hooks/eventos que antes; el evento sale
 # de ev_de(). El command conserva el literal `$HOME` (se expande al correr el hook, no aquí). ──
-WIRE_HOOKS="$(awk '$1!~/^#/ && NF>=3 && ($2=="global"||$2=="both") && $3=="hook"{print $1}' "$SRC_HOOKS/MANIFEST" 2>/dev/null)"
+WIRE_HOOKS="$(awk '$1!~/^#/ && NF>=3 && $2=="global" && $3=="hook"{print $1}' "$SRC_HOOKS/MANIFEST" 2>/dev/null)"
 wired_names=""
 unwired_names=""
 for h in $WIRE_HOOKS; do
@@ -266,15 +251,15 @@ else
   echo "ADVERTENCIA: hooks COPIADOS a $HOOKS_DIR pero NO CABLEADOS en $GSET (falta jq) — los guards NO disparan (fail-open) hasta que instales jq y re-corras. Esto NO es una instalación completa de guards."
 fi
 
-# ── (c) Skills genéricas del cerebro (cerrar-slice, checkpoint, …) — tier {global,both} del
+# ── (c) Skills genéricas del cerebro (cerrar-slice, checkpoint, …) — tier {global} del
 # brain/skills/MANIFEST (fuente única de tiers; hoy TODAS son `global`). Copia el ÁRBOL COMPLETO de cada
 # skill (no solo SKILL.md — algunas traen reference/ o bootstrap-claude.sh; el `cp -f SKILL.md` anterior los
 # DEJABA FUERA → aparecían como "falta"/drift eterno en verificar-cerebro y en el nuevo drift de skills).
 SKILLS_MANIFEST="$SRC_SKILLS/MANIFEST"
 if [ -d "$SRC_SKILLS" ]; then
-  # Nombres a instalar: del MANIFEST {global,both}; si no hay manifiesto, fallback = todas las carpetas.
+  # Nombres a instalar: del MANIFEST {global}; si no hay manifiesto, fallback = todas las carpetas.
   if [ -f "$SKILLS_MANIFEST" ]; then
-    _sk_names="$(awk '$1!~/^#/ && NF>=2 && ($2=="global"||$2=="both"){print $1}' "$SKILLS_MANIFEST")"
+    _sk_names="$(awk '$1!~/^#/ && NF>=2 && $2=="global"{print $1}' "$SKILLS_MANIFEST")"
   else
     _sk_names="$(for d in "$SRC_SKILLS"/*/; do [ -d "$d" ] && basename "$d"; done)"
   fi
@@ -309,7 +294,7 @@ fi
 # diferencia de que una skill NO tiene cableado en settings.json (es un folder markdown que se LEE, no un
 # script que se EJECUTE): aquí basta borrar la carpeta instalada, sin de-cablear nada. Sin esto, una
 # máquina que ya corrió install-brain ANTES del retiro se queda con la carpeta zombie para siempre — el
-# MANIFEST deja de listarla como global/both, pero nada la borra, y el listado de skills de CUALQUIER
+# MANIFEST deja de listarla como global, pero nada la borra, y el listado de skills de CUALQUIER
 # sesión en esa máquina sigue ofreciéndola junto a su reemplazo, sin señal de cuál es el dueño vigente
 # Idempotente (si la carpeta ya no está, no reporta nada) y lo DICE cuando sí actúa (nombre + motivo).
 if [ -f "$SKILLS_MANIFEST" ]; then

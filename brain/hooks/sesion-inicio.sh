@@ -4,22 +4,17 @@
 # (source=compact). NO bloquea: inyecta additionalContext con la rama, la norma de git y
 # la orden de leer la memoria antes de tocar código o declarar nada terminado.
 # Antídoto a "se me va la onda al cambiar de sesión/compu o cuando el sprint es largo".
-# Tier BOTH: viaja por-repo (<repo>/.claude/hooks, cableado en su settings.json) Y se instala global por
-# el bootstrap (dedupe: la copia del repo cede a la global). Rehidrata en TODA sesión que arranque DENTRO
-# de un repo git (brained o no); fuera de un repo git calla (gate abajo) — no es un "cerebro del repo" que aplique.
-# Genérico: sirve para cualquier stack (semilla plantillaRepoVacio). El aviso de MIGRACIÓN/paridad
-# NO vive aquí (es dominio del proyecto consumidor —p. ej. un repo .NET—, no del cerebro portable):
-# va en el sesion-inicio del propio repo consumidor, no en esta versión genérica.
+# Tier GLOBAL: lo instala el bootstrap en ~/.claude/hooks; corre en TODA sesión. Rehidrata en TODA sesión
+# que arranque DENTRO de un repo git; fuera de un repo git calla (gate abajo) — no es un "cerebro del repo"
+# que aplique. Genérico: sirve para cualquier stack (semilla plantillaRepoVacio). El aviso de
+# MIGRACIÓN/paridad NO vive aquí (es dominio del proyecto consumidor —p. ej. un repo .NET—, no del
+# cerebro portable): va en el sesion-inicio del propio repo consumidor, no en esta versión genérica.
 set -u
 
-# dedupe (tier both): si soy la copia del REPO y la copia GLOBAL existe, cedo — evita doble inyección
-# cuando el repo está brained Y hay bootstrap global. En un clon SIN bootstrap, la copia del repo corre.
-_cfgh="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks"; case "$0" in "$_cfgh/"*) : ;; *) [ -f "$_cfgh/$(basename "$0")" ] && exit 0 ;; esac
-
 ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
-# Tier both ⇒ corre en TODA sesión, también en ~/Downloads y otras carpetas que NO son repo. El "cerebro
+# Corre en TODA sesión (hook global), también en ~/Downloads y otras carpetas que NO son repo. El "cerebro
 # del repo" (rama, norma de git, ritual de memoria) solo aplica DENTRO de un repo git → fuera, calla
-# (rc 0, sin inyección). Antes, como tier repo, solo se cargaba en un repo; el gate repone esa condición.
+# (rc 0, sin inyección).
 git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 MEM="$ROOT/.claude/memory"
 branch=$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "?")
