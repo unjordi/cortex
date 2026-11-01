@@ -541,22 +541,30 @@ if [ "$_ventana_sin_usuario" = 1 ] && [ -n "$tpath" ] && [ -f "$tpath" ]; then
   # parser no extrajo — distinto de "no autorizaste". Un `type/role:"user"` cuyo content es SOLO un
   # tool_result NO cuenta (es salida de un tool, no humano): si todos los "user" son tool_results, no hubo
   # autorización POSIBLE y el mensaje correcto es el de "definición de LISTO", no "no pude leer".
+  # Lee la ESTRUCTURA, nunca el texto (un tool_result que CONTENGA "queued_command" —este guard, su test,
+  # esta nota— ya NO revive el falso "no pude leer"): cuenta, en el MISMO jq, (a) registros user con texto
+  # humano real y (b) attachments cuyo .attachment.type=="queued_command" con .prompt no vacío (el comando
+  # humano encolado que el intercalado no vio porque su texto va en .attachment.prompt, no en .message.content).
   if command -v jq >/dev/null 2>&1; then
     _human_raw=$(tail -n 6000 "$tpath" 2>/dev/null | jq -rs '
-      [ .[]? | select((.type=="user") or ((.message.role // "")=="user"))
-             | ((.message.content // .content) as $c
-                | if ($c|type)=="string" then ($c|gsub("[[:space:]]";"")|select(.!="")|1)
-                  elif ($c|type)=="array" then (select(any($c[]?; (.type=="text") and (((.text//"")|gsub("[[:space:]]";""))!=""))) | 1)
-                  else empty end)
+      [ .[]? | select(
+          ( ((.type=="user") or ((.message.role // "")=="user"))
+            and ( (.message.content // .content) as $c
+                  | if ($c|type)=="string" then (($c|gsub("[[:space:]]";""))!="")
+                    elif ($c|type)=="array" then any($c[]?; (.type=="text") and (((.text//"")|gsub("[[:space:]]";""))!=""))
+                    else false end ) )
+          or
+          ( (.type=="attachment") and ((.attachment.type // "")=="queued_command")
+            and (((.attachment.prompt // "")|gsub("[[:space:]]";""))!="") )
+        )
       ] | length' 2>/dev/null)
     if [ -z "$_human_raw" ]; then
-      # jq no pudo parsear la ventana (línea malformada = posible parse real fallido) → heurístico crudo
-      tail -n 6000 "$tpath" 2>/dev/null | grep -qE '"(role|type)"[[:space:]]*:[[:space:]]*"user"|"queued_command"' && _jq_fallo=1
-    else
-      { [ "$_human_raw" != 0 ] || tail -n 6000 "$tpath" 2>/dev/null | grep -q '"queued_command"'; } && _jq_fallo=1
+      _jq_fallo=1   # jq no pudo parsear la ventana (JSON malformado = parse REAL fallido): "no pude leer" HONESTO
+    elif [ "$_human_raw" != 0 ]; then
+      _jq_fallo=1   # hubo contenido HUMANO (texto de user o un queued_command) que el intercalado no surface-ó
     fi
   else
-    tail -n 6000 "$tpath" 2>/dev/null | grep -qE '"(role|type)"[[:space:]]*:[[:space:]]*"user"|"queued_command"' && _jq_fallo=1
+    _jq_fallo=1     # sin jq no hay lectura estructural posible → "no pude leer" es la verdad (no adivinar con texto)
   fi
 fi
 

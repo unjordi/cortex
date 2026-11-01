@@ -1593,6 +1593,17 @@ out_tool="$(cm_tx "glab mr merge 5 --yes $CMOK" "$CMTOOL")"
 { is_deny "$out_tool" && ! printf '%s' "$out_tool" | grep -qi 'no pude LEER'; } \
   && ok "fila3: transcript SOLO con tool_results (sin humano) → NO 'no pude leer' (un tool_result no es mensaje humano)" \
   || bad "fila3: tool_results-only dio 'no pude leer' → [$out_tool]"
+# hallazgo 5 (2026-11-01): un tool_result cuyo TEXTO contiene la cadena "queued_command" (p. ej. un grep/cat
+# de este guard, su test o la nota de revisión) NO debe revivir "no pude leer". El conteo de queued_command
+# sale de la ESTRUCTURA (.attachment.type), no de grepear el texto crudo. Falla vs el código viejo (que
+# grepeaba '"queued_command"' sobre la ventana cruda y lo tomaba como mensaje humano).
+CMQCTX="$CMROOT/qc-text.jsonl"
+printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"ran: grep -n \"queued_command\" merge-develop-guard.sh -> 3 hits","tool_use_id":"t9"}]}}' > "$CMQCTX"
+printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"ok"}]}}' >> "$CMQCTX"
+out_qctx="$(cm_tx "glab mr merge 5 --yes $CMOK" "$CMQCTX")"
+{ is_deny "$out_qctx" && ! printf '%s' "$out_qctx" | grep -qi 'no pude LEER'; } \
+  && ok "fila3/hallazgo5: 'queued_command' como TEXTO en un tool_result NO revive 'no pude leer' (se lee por estructura)" \
+  || bad "fila3/hallazgo5: el texto 'queued_command' revivió 'no pude leer' → [$out_qctx]"
 # H-R9-01: el binario Windows 'glab.exe mr merge' también se reconoce como merge.
 is_deny "$(cm 'glab.exe mr merge 5 --yes' DENY)" \
   && ok "cmd H-R9-01: 'glab.exe mr merge' reconocido como merge (Windows) → gateado" \
