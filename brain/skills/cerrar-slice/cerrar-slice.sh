@@ -80,13 +80,14 @@ _gitleaks_gate() {
   base="$(git rev-parse --verify -q origin/develop || git rev-parse --verify -q develop)" \
     || { printf 'cerrar-slice: no ubico origin/develop para el rango de gitleaks — omito el gate local (el CI lo cubre).\n' >&2; return 0; }
 
-  # H18: --repo a OTRO repo → el scan de `.` (cwd) sería el repo EQUIVOCADO. No podemos verificar
-  # localmente → avisa y NO declara "limpio" (el CI de gitleaks es el backstop server-side).
+  # Con --repo el flujo ya entró (cd) al clon local de ESE slug, así que el `.` de abajo ES el repo correcto.
+  # Esta comprobación queda como DEFENSA: si por lo que sea el cwd NO es el repo de --repo, avisa y NO declara
+  # "limpio" (el CI de gitleaks es el backstop server-side) en vez de escanear el repo equivocado.
   if [ -n "$REPO" ]; then
     url="$(git remote get-url origin 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"
     case "${url%.git}" in
       *[/:]"$(printf '%s' "$REPO" | tr '[:upper:]' '[:lower:]')") : ;;
-      *) printf 'cerrar-slice: ⚠️ --repo %s NO es el repo del directorio actual → el gate local de gitleaks escanearía otro repo; NO verifico aquí (el CI lo cubre). Para el gate local, córrelo desde el clon de %s.\n' "$REPO" "$REPO" >&2; return 0 ;;
+      *) printf 'cerrar-slice: ⚠️ el cwd no es el repo de --repo %s → el gate local de gitleaks escanearía otro repo; NO verifico aquí (el CI lo cubre).\n' "$REPO" >&2; return 0 ;;
     esac
   fi
 
@@ -184,6 +185,19 @@ if [ -n "$MSG_FILE" ]; then
   MSG="$(cat "$MSG_FILE")"
 fi
 [ -n "$MSG" ] || _err "falta el resumen del squash: pásalo con --message \"…\" o --message-file <f>."
+
+# Con --repo <slug>: el forge y el gate de gitleaks se deciden/corren DESDE el clon local de ESE slug, no del
+# cwd (que puede ser otro repo/forge). El MSG ya se leyó arriba (relativo al cwd original), así que entrar al
+# clon en este punto no rompe --message-file; gh/glab llevan -R <slug> y operan igual desde cualquier cwd.
+if [ -n "$REPO" ]; then
+  for _lib in "$(dirname "$0")/../../hooks/analizar-comando-git.sh" "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks/analizar-comando-git.sh"; do
+    [ -f "$_lib" ] && { . "$_lib"; break; }
+  done
+  command -v acg_clon_local_de_slug >/dev/null 2>&1 || _err "no encontré la lib analizar-comando-git.sh para ubicar el clon de $REPO."
+  _clon="$(acg_clon_local_de_slug "$REPO" .)" || _clon=""
+  [ -n "$_clon" ] || _err "no encontré un clon local de $REPO (ni el repo actual ni sus hermanos) — lo necesito para decidir el forge y correr el gate de gitleaks en el repo correcto."
+  cd "$_clon" || _err "no pude entrar a $_clon."
+fi
 
 # ── traza + sustancia del mensaje: AYUDA, no revisión (decisión unjordi 2026-10-21: el mensaje lo redacta
 #    quien mergea; el candado merge-develop-guard solo RECUERDA, no frena por la calidad). cerrar-slice ARMA la
