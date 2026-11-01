@@ -35,5 +35,11 @@ Se usó en merges anteriores a `unjordi/armada-rp6` (p. ej. #52, #53).
 
 Registrado también en `docs/guards-falsos-positivos.md`.
 
+## Segundo caso (mismo día): repo propio de Jordi
+`unjordi/PowerScripts` PR #253: permiso durable en `~/.claude/projects/-home-unjordi/memory/como-trabajar-con-unjordi.md` ("no me pidas permiso para los merges en MIS REPOS", 2026-10-13; nombra PowerScripts), re-citado textual en el turno. Frenó dos veces. Sugiere que el juez tampoco consulta el hub global de como-trabajar.
+
+## Tercer caso: frena por MENCIONAR el comando
+Un `printf '…' >> docs/guards-falsos-positivos.md` (y otro a esta nota) cuyo texto solo citaba el comando de merge también se frenó con el mismo mensaje. El juez debería mirar el comando que se ejecuta, no el texto que se escribe a un archivo.
+
 ## Estado
-Sin tocar el guard (no es mío). El PR #56 espera el OK puntual de Jordi.
+Sin tocar el guard (no es mío). El #56 se mergeó con el OK puntual de Jordi; el #253 espera el suyo.
