@@ -6715,6 +6715,35 @@ qrun sFb "$QFMOCK" >/dev/null
 [ ! -f "$QFMARK" ] \
   && ok "b6-cuota: fetched_at <30 min + stale (API caída) → NO relanza (previene el maltrato a la compu)" \
   || bad "b6-cuota: relanzó pese a que el fetch corrió hace <30 min (maltrato)"
+# (7c) (d.2) AVISO HONESTO «sin datos»: snapshot SIGUE rancio + HAY widget + fetched_at <30min (la lectura
+#      corrió pero falló: sin red/API caída). NO relanza (7b) pero AVISA honesto en vez de callar (callar
+#      dejaría ver "todo bien" con un dato viejo). Debounce 1 vez por EPISODIO; re-arma con dato fresco.
+rm -f "$QROOT/.claude/memory/.cuota-fetch-forzado" "$QFMARK" "$QROOT/.claude/memory/.contexto-aviso.d/sSD.sindatos"
+mksnapF "$QOLD" "$QF10" 50; touch -t 202610210000 "$QCACHE/state.json"
+qSD1="$(qrun sSD "$QFMOCK")"
+printf '%s' "$qSD1" | grep -qi 'sin datos: la última lectura' \
+  && ok "b6-cuota (d.2): rancio + widget + fetched_at <30min → AVISA «sin datos: la última lectura falló» (no calla)" \
+  || bad "b6-cuota (d.2): no avisó del dato stale; got: $qSD1"
+[ ! -f "$QFMARK" ] \
+  && ok "b6-cuota (d.2): el aviso «sin datos» NO relanza el fetch (no maltrata la compu)" \
+  || bad "b6-cuota (d.2): el aviso relanzó el fetch"
+# (7d) debounce: misma sesión, mismo episodio stale → silencio (no repite el aviso)
+is_silent "$(qrun sSD "$QFMOCK")" \
+  && ok "b6-cuota (d.2): mismo episodio stale → silencio (debounce 1×/episodio)" \
+  || bad "b6-cuota (d.2): repitió el aviso «sin datos» en el mismo episodio"
+# (7e) re-arma: vuelve un dato FRESCO (cierra el episodio, borra el stamp); luego stale otra vez → vuelve a avisar
+mksnap "$QNOW" 30 "2026-10-21T21:00:00Z" 9    # fresco + cuota baja → sin disparo, pero cierra el episodio stale
+qrun sSD "$QFMOCK" >/dev/null
+mksnapF "$QOLD" "$QF10" 50; touch -t 202610210000 "$QCACHE/state.json"
+printf '%s' "$(qrun sSD "$QFMOCK")" | grep -qi 'sin datos: la última lectura' \
+  && ok "b6-cuota (d.2): tras un dato fresco RE-ARMA → vuelve a avisar en el próximo episodio stale" \
+  || bad "b6-cuota (d.2): no re-armó el aviso tras el dato fresco"
+# (7f) máquina SIN widget: stale + fetched_at reciente pero sin cortex-fetch → NO avisa (nada que relanzar ni de qué informar), como hoy
+rm -f "$QROOT/.claude/memory/.contexto-aviso.d/sSDnw.sindatos"
+mksnapF "$QOLD" "$QF10" 50; touch -t 202610210000 "$QCACHE/state.json"
+is_silent "$(qrun sSDnw)" \
+  && ok "b6-cuota (d.2): sin widget (sin cortex-fetch) → calla aunque el dato esté stale (como hoy)" \
+  || bad "b6-cuota (d.2): avisó «sin datos» en una máquina sin widget"
 # (el "un solo fetch con dos sesiones a la vez" lo garantiza el CANDADO de cortex-fetch —flock/lockf,
 #  verificado en el punto 1—, no el hook; no se re-prueba aquí con un mock sin candado.)
 rm -rf "$QHOME" "$(dirname "$QROOT")"

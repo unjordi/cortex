@@ -216,6 +216,19 @@ if ! _snap_fresca; then
     done
   fi
 fi
+# ── (d.2) AVISO HONESTO «sin datos: la última lectura falló». Si tras el intento el snapshot SIGUE rancio
+#    PERO hay widget (fetch_bin) y el fetch CORRIÓ hace <30min (fetched_at reciente), la última lectura falló
+#    (sin red / API caída) — y a propósito NO relanzamos a cada rato (no maltratar la compu, punto 1). Callar
+#    dejaría ver "todo bien" con un dato viejo; este aviso lo dice honesto, que es justo la distinción que pidió
+#    unjordi ("distinguir no-ha-corrido de corrió-pero-sin-internet"). Debounce: 1 vez por EPISODIO stale — se
+#    re-arma cuando vuelve un dato fresco. Máquina SIN widget (sin fetch_bin / sin fetched_at) → calla, como hoy.
+SINDATOS_STAMP="$AVISO_F.sindatos"
+fire_sindatos=0
+if _snap_fresca; then
+  rm -f "$SINDATOS_STAMP" 2>/dev/null || true   # episodio cerrado (dato fresco) → re-arma para el próximo
+elif [ -n "${fetch_bin:-}" ] && _fetch_ran_recently; then
+  if [ ! -f "$SINDATOS_STAMP" ]; then fire_sindatos=1; : > "$SINDATOS_STAMP" 2>/dev/null || true; fi
+fi
 # Con snapshot FRESCO (de origen o recién forzado), computa las bandas de cuota con debounce por ventana.
 if _snap_fresca; then
   q5=$(jq -r '.five_hour.percent // empty'   "$_snap" 2>/dev/null)
@@ -246,7 +259,7 @@ if _snap_fresca; then
 fi
 
 # Nada que decir por NINGUNA causa → SILENCIO TOTAL.
-{ [ "$fire_ctx" -eq 1 ] || [ "$fire_quota" -eq 1 ]; } || exit 0
+{ [ "$fire_ctx" -eq 1 ] || [ "$fire_quota" -eq 1 ] || [ "$fire_sindatos" -eq 1 ]; } || exit 0
 
 # ── HACE: dispara el checkpoint MECÁNICO solo si disparó el CONTEXTO (compact inminente). En un disparo de
 #    cuota-sola el contexto puede estar bajo → no hay hilo que proteger todavía, no se vuelca el andamio.
@@ -308,6 +321,8 @@ quota_msg=""
 if [ -n "$quota_line" ]; then
   quota_msg="📈 Cuota —${quota_line}"
   [ "$fire_quota" -eq 1 ] && quota_msg="$quota_msg Pacea el ritmo si vas a seguir; el freno al delegar lo pone limite-gasto."
+elif [ "$fire_sindatos" -eq 1 ]; then
+  quota_msg="📈 Cuota — sin datos: la última lectura de cuota falló (sin red o API caída). El dato que ves es viejo. No relanzo el fetch a cada rato para no calentar la compu; reintentará solo."
 fi
 
 # Compone las líneas que haya (al menos una, garantizado por el exit de arriba).
