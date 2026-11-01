@@ -5,7 +5,8 @@ name: CI
 # pipeline falla y no se mergea.
 on:
   push:
-  pull_request:
+    branches: [develop, main]
+  workflow_dispatch:
 
 jobs:
   autovalidacion-cerebro:
