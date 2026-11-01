@@ -30,7 +30,7 @@ CRIT_PCT="${CRIT_PCT:-85}"
 # (vida ~8h, que Claude Code auto-refresca solo → no es señal de logout).
 AUTH_EXPIRING_HORAS="${CORTEX_AUTH_EXPIRING_HORAS:-72}"
 
-CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/cortex"
+CACHE_DIR="${CORTEX_FETCH_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/cortex}"
 # Config de Claude Code: honra CLAUDE_CONFIG_DIR (si está, el .claude vive ahí), si no ~/.claude.
 CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 # ~/.claude.json (cuenta + nombres de proyecto): bajo CLAUDE_CONFIG_DIR si vive ahí, si no en ~.
@@ -43,6 +43,156 @@ STATE_FILE="$CACHE_DIR/state.json"
 TMP_FILE="$CACHE_DIR/state.json.tmp"
 
 mkdir -p "$CACHE_DIR"
+
+# --- Candado: evita corridas ENCIMADAS (una corrida pesada aún viva cuando el
+# timer dispara la siguiente). Lock por mkdir (atómico). Si el dueño sigue vivo
+# -> salimos sin encimar; si quedó huérfano, lo reclamamos. Lo libera el trap EXIT.
+LOCK_DIR="$CACHE_DIR/fetch.lock"
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+  _lpid="$(cat "$LOCK_DIR/pid" 2>/dev/null || echo '')"
+  if [[ -n "$_lpid" ]] && kill -0 "$_lpid" 2>/dev/null; then
+    exit 0   # otra corrida en progreso — no encimar
+  fi
+  rm -rf "$LOCK_DIR" 2>/dev/null || true
+  mkdir "$LOCK_DIR" 2>/dev/null || exit 0
+fi
+echo $$ > "$LOCK_DIR/pid" 2>/dev/null || true
+trap 'rm -rf "$LOCK_DIR" 2>/dev/null || true' EXIT
+
+# --- transcript_stats: agregados de ~/.claude/projects, INCREMENTAL por archivo -
+# Cachea por .jsonl (mtime+tamaño) sus parciales en buckets UTC (offset-
+# independientes) y re-escanea SOLO los nuevos/cambiados. Antes se releían los GB
+# completos 4-5 veces por corrida. Fiel al código viejo: MESSAGES=líneas assistant|
+# user; PEAK=todas las líneas con timestamp; DAY_MSG=assistant|user con ts; tokens
+# por proyecto con dedup de msg_id. GNU stat (-c). bash moderno, pero código 3.2-safe.
+# Setea (globales): SESSIONS MESSAGES PEAK_HOUR DAY_MSG_JSON PROJECT_DAY_TSV
+transcript_stats() {
+  local proj="$1" off="$2"
+  local cache="$CACHE_DIR/transcripts.cache"
+  SESSIONS=0; MESSAGES=0; PEAK_HOUR=-1; DAY_MSG_JSON="{}"; PROJECT_DAY_TSV=""
+  [[ -d "$proj" ]] || return 0
+
+  local cur; cur="$(find "$proj" -name '*.jsonl' -type f -exec stat -c '%n	%Y	%s' {} + 2>/dev/null || true)"
+  [[ -n "$cur" ]] || return 0
+  SESSIONS=$(printf '%s\n' "$cur" | grep -c . || true)
+
+  local keep="$CACHE_DIR/.transcripts.keep.$$"
+  local rescan="$CACHE_DIR/.transcripts.rescan.$$"
+  local curf="$CACHE_DIR/.transcripts.cur.$$"
+  : > "$keep"; : > "$rescan"
+  printf '%s\n' "$cur" > "$curf"
+  [[ -f "$cache" ]] || : > "$cache"
+
+  awk -F'\t' -v keepf="$keep" -v rescanf="$rescan" -v cachef="$cache" '
+    FILENAME==cachef {
+      if ($1=="F") { p=$2; CMT[p]=$3; CSZ[p]=$4 }
+      BLK[p]=BLK[p] $0 "\n"
+      next
+    }
+    { if ($1=="") next
+      if (($1 in CMT) && CMT[$1]==$2 && CSZ[$1]==$3) printf "%s", BLK[$1] > keepf
+      else print $1 > rescanf }
+  ' "$cache" "$curf"
+  rm -f "$curf"
+
+  local scanned=0 f meta mt sz folder
+  if [[ -s "$rescan" ]]; then
+    while IFS= read -r f; do
+      [[ -n "$f" ]] || continue
+      meta="$(awk -F'\t' -v p="$f" '$1==p{print;exit}' <<<"$cur")"
+      mt="$(printf '%s' "$meta" | cut -f2)"; sz="$(printf '%s' "$meta" | cut -f3)"
+      folder="$(basename "$(dirname "$f")")"
+      awk -v path="$f" -v mt="$mt" -v sz="$sz" -v folder="$folder" '
+        BEGIN{ msg=0; soloTmp=0; bestDepth=-1; bestName="" }
+        {
+          line=$0
+          ismsg=(line ~ /"type":"(assistant|user)"/)
+          if (ismsg) msg++
+          haveTs=0
+          if (match(line, /"timestamp":"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}/)) {
+            tss=substr(line,RSTART+13,13); utcd=substr(tss,1,10); utch=substr(tss,12,2); haveTs=1
+          }
+          if (haveTs) AH[utch]++
+          if (ismsg && haveTs) DM[utcd SUBSEP utch]++
+          if (!match(line, /"id":"msg_[A-Za-z0-9]+"/)) next
+          id=substr(line,RSTART,RLENGTH)
+          if (id in seen) next
+          seen[id]=1
+          if (!haveTs) next
+          if (match(line, /"cwd":"[^"]*"/)) {
+            cwd=substr(line,RSTART+7,RLENGTH-8)
+            if (cwd ~ /^\/(private\/)?tmp\//) soloTmp=1
+            else {
+              gsub(/\\\\/,"/",cwd)
+              nn=split("/.claude/ /.git-worktrees/ /.worktrees/ /.cortex-wt/", wd, " ")
+              for(k=1;k<=nn;k++){ix=index(cwd,wd[k]); if(ix>0) cwd=substr(cwd,1,ix-1)}
+              sub(/[\/]+$/,"",cwd)
+              ndp=split(cwd,pp,"/"); b=(ndp>0?pp[ndp]:"")
+              if (b!="" && (bestDepth<0 || ndp<bestDepth)) { bestDepth=ndp; bestName=b }
+            }
+          }
+          inv=0; outv=0
+          if (match(line,/"input_tokens":[0-9]+/)){s=substr(line,RSTART,RLENGTH);sub(/^"input_tokens":/,"",s);inv=s+0}
+          if (match(line,/"output_tokens":[0-9]+/)){s=substr(line,RSTART,RLENGTH);sub(/^"output_tokens":/,"",s);outv=s+0}
+          TI[utcd SUBSEP utch]+=inv; TO[utcd SUBSEP utch]+=outv; TKEY[utcd SUBSEP utch]=1
+        }
+        END{
+          print "F\t" path "\t" mt "\t" sz
+          print "M\t" msg
+          for (k in AH) print "H\t" k "\t" AH[k]
+          for (k in DM){split(k,a,SUBSEP); print "D\t" a[1] "\t" a[2] "\t" DM[k]}
+          print "P\t" folder "\t" bestName "\t" (bestDepth<0?-1:bestDepth) "\t" soloTmp
+          for (k in TKEY){split(k,a,SUBSEP); print "T\t" folder "\t" a[1] "\t" a[2] "\t" TI[k] "\t" (TO[k]+0)}
+        }' "$f" >> "$keep" 2>/dev/null || true
+      scanned=$((scanned+1))
+    done < "$rescan"
+  fi
+  mv "$keep" "$cache" 2>/dev/null || true
+  rm -f "$rescan"
+  printf '%s\n' "$scanned" > "$CACHE_DIR/.transcripts.lastscan" 2>/dev/null || true
+
+  local rowsf="$CACHE_DIR/.transcripts.rows.$$" out
+  out="$(awk -v off="$off" -v rowsf="$rowsf" '
+    function isLeap(y){return (y%4==0&&y%100!=0)||(y%400==0)}
+    function dim(y,m,  a){split("31 28 31 30 31 30 31 31 30 31 30 31",a," ");return (m==2&&isLeap(y))?29:a[m]+0}
+    function shiftDay(y,m,d,delta,  nd,nm,ny){nd=d+delta;ny=y;nm=m; if(nd<1){nm=m-1;if(nm<1){nm=12;ny=y-1}nd=dim(ny,nm)} else if(nd>dim(y,m)){nd=1;nm=m+1;if(nm>12){nm=1;ny=y+1}} return sprintf("%04d-%02d-%02d",ny,nm,nd)}
+    function localday(utcd,utch,  y,mo,da,lh){y=substr(utcd,1,4)+0;mo=substr(utcd,6,2)+0;da=substr(utcd,9,2)+0;lh=(utch+0)+off; if(lh<0)return shiftDay(y,mo,da,-1); else if(lh>=24)return shiftDay(y,mo,da,1); else return sprintf("%04d-%02d-%02d",y,mo,da)}
+    function foldername(f,  ns,sp){ if ((f in PNAME)&&PNAME[f]!="") return PNAME[f]; if (f in PSOLO) return "(worktrees)"; ns=split(f,sp,"-"); return (ns>0?sp[ns]:f) }
+    BEGIN{ FS="\t"; MSG=0; for(i=0;i<24;i++) LH[i]=0 }
+    $1=="M"{ MSG+=$2+0; next }
+    $1=="H"{ lh=(($2+0)+off+24)%24; LH[lh]+=$3+0; next }
+    $1=="D"{ ld=localday($2,$3); DAY[ld]+=$4+0; next }
+    $1=="P"{ f=$2; if (($4+0)>=0){ if (!(f in PDEP) || ($4+0)<PDEP[f]){PDEP[f]=$4+0; PNAME[f]=$3} } if (($5+0)==1) PSOLO[f]=1; next }
+    $1=="T"{ f=$2; ld=localday($3,$4); TIN[f SUBSEP ld]+=$5+0; TOUT[f SUBSEP ld]+=$6+0; TK[f SUBSEP ld]=1; next }
+    END{
+      print "MESSAGES\t" MSG
+      m=-1; ph=-1; for(i=0;i<24;i++) if(LH[i]>m){m=LH[i];ph=i}
+      print "PEAK\t" ph
+      s="{"; first=1; for(d in DAY){ s=s (first?"":",") "\"" d "\":" DAY[d]; first=0 } s=s "}"
+      print "DMJSON\t" s
+      for (k in TK){ split(k,a,SUBSEP); print foldername(a[1]) "\t" a[2] "\t" TIN[k] "\t" (TOUT[k]+0) > rowsf }
+    }
+  ' "$cache")"
+  MESSAGES="$(printf '%s\n' "$out" | awk -F'\t' '$1=="MESSAGES"{print $2+0; exit}')"; [[ -n "$MESSAGES" ]] || MESSAGES=0
+  PEAK_HOUR="$(printf '%s\n' "$out" | awk -F'\t' '$1=="PEAK"{print $2+0; exit}')"; [[ -n "$PEAK_HOUR" ]] || PEAK_HOUR=-1
+  DAY_MSG_JSON="$(printf '%s\n' "$out" | awk -F'\t' '$1=="DMJSON"{print $2; exit}')"
+  jq -e . <<<"$DAY_MSG_JSON" >/dev/null 2>&1 || DAY_MSG_JSON="{}"
+  PROJECT_DAY_TSV="$(cat "$rowsf" 2>/dev/null || true)"
+  rm -f "$rowsf"
+}
+
+# Subcomando de prueba/diagnóstico: corre SOLO transcript_stats y emite JSON.
+# Uso: cortex-fetch --transcript-stats-json <projdir> [offset]
+if [[ "${1:-}" == "--transcript-stats-json" ]]; then
+  _z="$(date +%z)"; _off=$((10#${_z:1:2})); [[ "${_z:0:1}" == "-" ]] && _off=$((-_off))
+  [[ -n "${3:-}" ]] && _off="$3"
+  transcript_stats "${2:?uso: --transcript-stats-json <projdir> [offset]}" "$_off"
+  jq -n --argjson sessions "$SESSIONS" --argjson messages "$MESSAGES" \
+        --argjson peak "$PEAK_HOUR" --argjson dm "$DAY_MSG_JSON" \
+        --arg rows "$PROJECT_DAY_TSV" \
+        '{sessions:$sessions, messages:$messages, peak:$peak, day_msg:$dm, rows:$rows}'
+  exit 0
+fi
 
 # Carry forward the last known REAL (oauth) reset time when this run falls
 # back to cost-basis estimation — a guessed "next Monday" is wrong for
@@ -406,120 +556,20 @@ if [[ -n "$CCUSAGE" ]]; then
   jq -e . <<<"$DAILY_JSON" >/dev/null 2>&1 || DAILY_JSON=""
 fi
 if [[ -n "$DAILY_JSON" ]]; then
-  # --- Fase 2: sesiones, mensajes y hora pico desde transcripts crudos --------
-  # grep/awk (NO jq) porque ~/.claude/projects puede pesar cientos de MB.
+  # --- Fases 2-3: sesiones, mensajes, hora pico, msgs/día y uso por proyecto ---
+  # INCREMENTAL: transcript_stats() (arriba) cachea por archivo y re-escanea SOLO
+  # los .jsonl cambiados. ANTES aquí se releían los GB de ~/.claude/projects 4-5
+  # veces por corrida. Setea SESSIONS/MESSAGES/PEAK_HOUR/DAY_MSG_JSON/PROJECT_DAY_TSV.
   PROJ="$CLAUDE_DIR/projects"
-  SESSIONS=0; MESSAGES=0; PEAK_HOUR=-1; DAY_MSG_JSON="{}"
-  if [[ -d "$PROJ" ]]; then
-    SESSIONS=$(( $(find "$PROJ" -name '*.jsonl' 2>/dev/null | wc -l) ))
-    MESSAGES=$(grep -rcE '"type":"(assistant|user)"' "$PROJ" --include='*.jsonl' 2>/dev/null \
-               | awk -F: '{s+=$NF} END{print s+0}')
-    # offset local en horas (ej -0600 -> -6); base-10 forzada para evitar octal
-    Z=$(date +%z); SG=${Z:0:1}; HH=${Z:1:2}; OFF=$((10#$HH)); [[ "$SG" == "-" ]] && OFF=$((-OFF))
-    PEAK_HOUR=$(grep -rhoE '"timestamp":"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}' "$PROJ" --include='*.jsonl' 2>/dev/null \
-      | grep -oE 'T[0-9]{2}$' | tr -d 'T' \
-      | awk -v off="$OFF" 'BEGIN{m=-1;ph=-1} {h=($1+off+24)%24; c[h]++} END{for(i=0;i<24;i++) if(c[i]>m){m=c[i];ph=i}; print ph}')
-    [[ -z "$PEAK_HOUR" ]] && PEAK_HOUR=-1
-    # mensajes por DÍA local (para el filtro de rango del Resumen): user/assistant bucketizados.
-    DAY_MSG_JSON="$(grep -rhE '"type":"(assistant|user)"' "$PROJ" --include='*.jsonl' 2>/dev/null | awk -v off="$OFF" '
-      function isLeap(y){return (y%4==0&&y%100!=0)||(y%400==0)}
-      function dim(y,m,  a){split("31 28 31 30 31 30 31 31 30 31 30 31",a," "); return (m==2&&isLeap(y))?29:a[m]+0}
-      function shift(y,m,d,dl,  nd,nm,ny){nd=d+dl;ny=y;nm=m; if(nd<1){nm=m-1; if(nm<1){nm=12;ny=y-1} nd=dim(ny,nm)} else if(nd>dim(y,m)){nd=1;nm=m+1; if(nm>12){nm=1;ny=y+1}} return sprintf("%04d-%02d-%02d",ny,nm,nd)}
-      { if(match($0,/"timestamp":"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}/)){ts=substr($0,RSTART+13,13); y=substr(ts,1,4)+0;mo=substr(ts,6,2)+0;da=substr(ts,9,2)+0;hh=substr(ts,12,2)+0} else next
-        lh=hh+off; if(lh<0)dt=shift(y,mo,da,-1); else if(lh>=24)dt=shift(y,mo,da,1); else dt=sprintf("%04d-%02d-%02d",y,mo,da); M[dt]++ }
-      END{ printf "{"; first=1; for(d in M){ printf "%s\"%s\":%d",(first?"":","),d,M[d]; first=0 } printf "}" }
-    ')"
-    jq -e . <<<"$DAY_MSG_JSON" >/dev/null 2>&1 || DAY_MSG_JSON="{}"
-  fi
+  # offset local en horas (ej -0600 -> -6); base-10 forzada para evitar octal
+  Z=$(date +%z); SG=${Z:0:1}; HH=${Z:1:2}; OFF=$((10#$HH)); [[ "$SG" == "-" ]] && OFF=$((-OFF))
+  transcript_stats "$PROJ" "$OFF"
 
-  # --- Fase 3: uso por proyecto (carpeta ~/.claude/projects/<slug>) -----------
-  # ccusage no separa por proyecto (ni `daily` ni `session` traen la ruta) ->
-  # se agrega a mano desde los mismos jsonl crudos de fase 2. El nombre del
-  # proyecto se toma del "cwd" REAL que cada turno registra en su jsonl (la misma
-  # fuente que sessions-extract.js -> stats y la lista de sesiones coinciden):
-  #   · basename del cwd, tras colapsar cualquier subdir/worktree bajo ".claude/"
-  #     a la raíz del repo (p. ej. .../repo/.claude/worktrees/x -> "repo");
-  #   · un cwd efímero en /tmp o /private/tmp -> bucket "(worktrees)";
-  #   · si un turno no trajo cwd -> último segmento del slug (fallback).
-  # (ANTES: se agrupaba por el SLUG del directorio mapeado contra ~/.claude.json
-  #  .projects; fallaba porque el slug normaliza "_"/"." a "-" -> no casaba su
-  #  propio repo, y la entrada $HOME (slug "-home-<user>") era prefijo de TODO ->
-  #  colapsaba todos los proyectos en uno. El cwd real no sufre ninguna de las dos.)
-  # Un alias opcional (~/.claude/proyectos-alias.json) renombra el nombre final.
-  # Alias opcional: mapa {"<nombre>":"<alias>"}; tolera que no exista.
+  # Alias opcional de nombres de proyecto: mapa {"<nombre>":"<alias>"}; tolera que no exista.
   PROJECT_ALIAS_JSON="{}"
   if [[ -r "$CLAUDE_DIR/proyectos-alias.json" ]]; then
     PROJECT_ALIAS_JSON="$(jq -c '.' "$CLAUDE_DIR/proyectos-alias.json" 2>/dev/null || echo '{}')"
     jq -e . <<<"$PROJECT_ALIAS_JSON" >/dev/null 2>&1 || PROJECT_ALIAS_JSON="{}"
-  fi
-  PROJECT_DAY_TSV=""
-  if [[ -d "$PROJ" ]]; then
-    for d in "$PROJ"/*/; do
-      [[ -d "$d" ]] || continue
-      slug="$(basename "$d")"
-      # Bucket by LOCAL calendar day (same convention ccusage's daily/--breakdown
-      # uses) — the raw timestamp is UTC, so an hour near midnight can land on
-      # the previous/next local day. $OFF (local UTC offset, from fase 2 arriba)
-      # only ever shifts by one day either way, so a plain day rollover suffices.
-      PROJECT_DAY_TSV+="$( { grep -rh '"usage":{' "$d" --include='*.jsonl' 2>/dev/null || true; } | awk -v slug="$slug" -v off="$OFF" '
-        function isLeap(y) { return (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0) }
-        function daysInMonth(y, m,    dim) {
-          split("31 28 31 30 31 30 31 31 30 31 30 31", dim, " ")
-          if (m == 2 && isLeap(y)) return 29
-          return dim[m] + 0
-        }
-        function shiftDay(y, m, d, delta,   ny, nm, nd) {
-          nd = d + delta; ny = y; nm = m
-          if (nd < 1) {
-            nm = m - 1; if (nm < 1) { nm = 12; ny = y - 1 }
-            nd = daysInMonth(ny, nm)
-          } else if (nd > daysInMonth(y, m)) {
-            nd = 1; nm = m + 1; if (nm > 12) { nm = 1; ny = y + 1 }
-          }
-          return sprintf("%04d-%02d-%02d", ny, nm, nd)
-        }
-        # Cada carpeta ~/.claude/projects/<slug> ES UN proyecto (el cwd de ARRANQUE
-        # de sus sesiones) -> se agrega por DÍA dentro de la carpeta (no por cwd de
-        # cada turno, que puede ser un subdir o un worktree). El NOMBRE bonito del
-        # proyecto = basename del cwd más RAÍZ (menor profundidad) visto en la
-        # carpeta, tras colapsar lo que esté bajo ".claude/" y normalizar los
-        # backslashes de rutas Windows heredadas; si nunca hubo cwd, el slug.
-        BEGIN { ns = split(slug, sp, "-"); slugLast = (ns > 0 ? sp[ns] : slug); bestDepth = 1000000; bestName = ""; soloTmp = 0 }
-        {
-          # Claude Code logs one jsonl line per CONTENT BLOCK de un turno del
-          # asistente (thinking/tool_use/text), cada uno repitiendo el MISMO
-          # message.id y el MISMO usage acumulado — sin dedupe, una respuesta
-          # multi-bloque triplica el conteo de tokens.
-          if (match($0, /"id":"msg_[A-Za-z0-9]+"/)) { id = substr($0, RSTART, RLENGTH) } else next
-          if (id in seen) next
-          seen[id] = 1
-          if (match($0, /"timestamp":"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}/)) {
-            ts = substr($0, RSTART + 13, 13)
-            y = substr(ts,1,4) + 0; mo = substr(ts,6,2) + 0; da = substr(ts,9,2) + 0; hh = substr(ts,12,2) + 0
-          } else next
-          lh = hh + off
-          if (lh < 0)       date = shiftDay(y, mo, da, -1)
-          else if (lh >= 24) date = shiftDay(y, mo, da, 1)
-          else               date = sprintf("%04d-%02d-%02d", y, mo, da)
-          if (match($0, /"cwd":"[^"]*"/)) {
-            cwd = substr($0, RSTART + 7, RLENGTH - 8)
-            if (cwd ~ /^\/(private\/)?tmp\//) soloTmp = 1
-            else {
-              gsub(/\\\\/, "/", cwd)                 # rutas Windows heredadas: "\\" -> "/"
-              n = split("/.claude/ /.git-worktrees/ /.worktrees/ /.cortex-wt/", wd, " "); for (k = 1; k <= n; k++) { ix = index(cwd, wd[k]); if (ix > 0) cwd = substr(cwd, 1, ix - 1) }
-              sub(/[\/]+$/, "", cwd)
-              nd = split(cwd, pp, "/"); b = (nd > 0 ? pp[nd] : "")
-              if (b != "" && nd < bestDepth) { bestDepth = nd; bestName = b }
-            }
-          }
-          inv = 0; outv = 0
-          if (match($0, /"input_tokens":[0-9]+/))  { s = substr($0, RSTART, RLENGTH); sub(/^"input_tokens":/, "", s);  inv  = s + 0 }
-          if (match($0, /"output_tokens":[0-9]+/)) { s = substr($0, RSTART, RLENGTH); sub(/^"output_tokens":/, "", s); outv = s + 0 }
-          I[date] += inv; O[date] += outv
-        }
-        END { name = (bestName != "" ? bestName : (soloTmp ? "(worktrees)" : slugLast)); for (dt in I) printf "%s\t%s\t%d\t%d\n", name, dt, I[dt], O[dt] + 0 }
-      ')"$'\n'
-    done
   fi
   PROJECT_STATS_JSON='{"projects":[],"by_day":{}}'
   if [[ -n "${PROJECT_DAY_TSV// /}" ]]; then
