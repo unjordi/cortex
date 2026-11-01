@@ -4753,7 +4753,7 @@ echo '#dod' > "$LRR/.claude/hooks/dod-verificar.sh"                 # retirado d
 echo '#merge' > "$LRR/.claude/hooks/merge-develop-guard.sh"         # global del cerebro
 echo '#mio' > "$LRR/.claude/hooks/mi-hook-propio.sh"                # ajeno → se conserva
 printf '{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"bash \\"$CLAUDE_PROJECT_DIR/.claude/hooks/dod-verificar.sh\\""}]}],"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"bash \\"$CLAUDE_PROJECT_DIR/.claude/hooks/merge-develop-guard.sh\\""}]},{"matcher":"Bash","hooks":[{"type":"command","command":"bash \\"$CLAUDE_PROJECT_DIR/.claude/hooks/mi-hook-propio.sh\\""}]}]},"permissions":{"allow":["Bash(ls:*)"]}}' > "$LRR/.claude/settings.json"
-echo 'v1' > "$LRR/.claude/.brain-version"
+mkdir -p "$LRR/.claude/hooks"; echo 'v1' > "$LRR/.claude/hooks/.brain-version"   # ubicación REAL del sello (como plantilladotnet)
 cp -R "$SCRIPT_DIR/skills/cerrar-slice" "$LRR/.claude/skills/cerrar-slice" 2>/dev/null   # idéntica a la fuente → se retira
 cp -R "$SCRIPT_DIR/skills/checkpoint" "$LRR/.claude/skills/checkpoint" 2>/dev/null; echo 'EDIT LOCAL' >> "$LRR/.claude/skills/checkpoint/SKILL.md"  # modificada → se conserva
 mkdir -p "$LRR/.claude/skills/mi-skill-proyecto"; echo '# propia' > "$LRR/.claude/skills/mi-skill-proyecto/SKILL.md"  # del proyecto → se conserva
@@ -4769,8 +4769,8 @@ HOME="$LRFIX/home" bash "$INSTALLER" --limpiar-repo "$LRR" --apply >/dev/null 2>
   && ok "--limpiar-repo: retira los hooks del cerebro (.sh)" || bad "--limpiar-repo: no retiró los hooks del cerebro"
 [ -f "$LRR/.claude/hooks/mi-hook-propio.sh" ] \
   && ok "--limpiar-repo: conserva el hook AJENO" || bad "--limpiar-repo: borró el hook ajeno"
-[ ! -f "$LRR/.claude/.brain-version" ] \
-  && ok "--limpiar-repo: retira el sello .brain-version" || bad "--limpiar-repo: dejó .brain-version"
+[ ! -f "$LRR/.claude/hooks/.brain-version" ] \
+  && ok "--limpiar-repo: retira el sello .brain-version (de .claude/hooks/)" || bad "--limpiar-repo: dejó .brain-version"
 if command -v jq >/dev/null 2>&1; then
   jq -e '[.hooks[]?[]?.hooks[]?.command|select(test("dod-verificar|merge-develop-guard"))]|length==0' "$LRR/.claude/settings.json" >/dev/null 2>&1 \
     && ok "--limpiar-repo: de-cablea los hooks del cerebro de settings.json" || bad "--limpiar-repo: dejó cableado del cerebro"

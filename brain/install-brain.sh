@@ -143,11 +143,13 @@ if [ "$LIMPIAR_REPO" = 1 ]; then
       if [ "$LIMPIAR_APPLY" = 1 ]; then cp -p "$sf" "$bdir/$(basename "$sf")" 2>/dev/null; _dewire_from_settings "$sf" "$pat" || echo "   warn: no pude de-cablear $sf (¿JSON inválido?)"; fi
     fi
   done
-  # 3) sello .brain-version
-  if [ -f "$rcd/.brain-version" ]; then
-    tocado=1; echo "   [sello] $rcd/.brain-version"
-    if [ "$LIMPIAR_APPLY" = 1 ]; then cp -p "$rcd/.brain-version" "$bdir/" 2>/dev/null; rm -f "$rcd/.brain-version"; fi
-  fi
+  # 3) sello .brain-version (vive en .claude/hooks/.brain-version; algunos clones viejos lo tienen en .claude/)
+  for _bv in "$rcd/hooks/.brain-version" "$rcd/.brain-version"; do
+    if [ -f "$_bv" ]; then
+      tocado=1; echo "   [sello] $_bv"
+      if [ "$LIMPIAR_APPLY" = 1 ]; then cp -p "$_bv" "$bdir/" 2>/dev/null; rm -f "$_bv"; fi
+    fi
+  done
   # 4) skills del cerebro — SOLO candidatas (ledger .brain-skills o nombre en el MANIFEST) cuyo CONTENIDO
   #    coincide con la fuente; una que DIFIERA (o sin fuente) se REPORTA y NO se borra. Jamás toca skills del proyecto.
   if [ -d "$rcd/skills" ]; then
