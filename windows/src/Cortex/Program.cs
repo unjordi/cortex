@@ -242,8 +242,8 @@ internal static class Program
         // RunFetch → FetchAsync (HttpClient en C#; ccusage/npx son hijos one-shot awaited). NO hay agente
         // externo recurrente (contrasta con macOS LaunchAgent / Linux systemd timer), así que parar el timer
         // y terminar el proceso ES apagar el recolector — no queda nada corriendo con la GUI cerrada. Lo
-        // llaman tanto el menú "Salir" como el botón ⏻ del popup (que antes hacía Application.Exit pelón y
-        // dejaba el icono de bandeja fantasma). Abrir = autostart (clave Run) lanza el EXE y RunFetch(force)
+        // llaman tanto el menú "Salir" como el botón ⏻ del popup; limpia el icono de bandeja antes de salir
+        // (ExitThread) para no dejarlo fantasma. Abrir = autostart (clave Run) lanza el EXE y RunFetch(force)
         // dispara la primera lectura → "cargar todo su herramiental".
         private void ExitApp()
         {

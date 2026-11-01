@@ -15,9 +15,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// "apagar el widget apaga TODO", no solo cerrar la GUI. El fetch del LaunchAgent lo para el bootout.
     private var fetchProc: Process?
 
-    // LaunchAgent del fetcher de cuota (StartInterval 300s + RunAtLoad). Cerrar la GUI NO lo detiene por sí
-    // solo → sin esto, el fetch seguía corriendo cada 5 min con el widget "apagado" (unjordi: "cerré el
-    // widget pero eso no liberó la Mac"). Salir lo saca con bootout; abrir lo vuelve a cargar con bootstrap.
+    // LaunchAgent del fetcher de cuota (StartInterval 300s + RunAtLoad). Cerrar la GUI no lo detiene por sí
+    // solo; sin tocarlo el fetch seguiría corriendo cada 5 min con el widget "apagado". Salir lo saca con
+    // bootout; abrir lo vuelve a cargar con bootstrap.
     private let launchAgentLabel = "io.github.unjordi.cortex"
     // El widget tiene su PROPIO LaunchAgent (RunAtLoad): sin desactivarlo, reiniciar la Mac lo relanza y su
     // arranque vuelve a cargar el fetcher → "apagado" se deshacía en cada login. Salir con ⏻ desactiva AMBOS.

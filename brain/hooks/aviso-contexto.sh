@@ -180,7 +180,7 @@ _snap_fresca() {  # 0 = fresca (updated_at <= 30min y no stale); 1 = rancia/ause
 # `fetched_at` (cuándo CORRIÓ el fetch), NO por `updated_at` (cuándo hubo dato real): si el fetch corrió
 # recién pero no trajo datos (sin red, API caída, causa desconocida → stale:true), relanzar cada 5 min
 # maltrataría la compu. Distinguir "no ha corrido" (sin fetched_at → se lanza) de "corrió pero sin datos"
-# (fetched_at reciente → se reporta rancio y ya) es justo lo que lo previene. [user 2026-11-01]
+# (fetched_at reciente → se reporta rancio y ya) es justo lo que lo previene.
 _fetch_ran_recently() {
   [ -n "$_snap" ] || return 1   # sin snapshot → nunca corrió → SÍ se puede lanzar
   _fa=$(jq -r '.fetched_at // empty' "$_snap" 2>/dev/null); [ -n "$_fa" ] || return 1
