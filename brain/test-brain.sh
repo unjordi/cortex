@@ -4801,12 +4801,21 @@ grep -q 'BACKLOG proyecto' "$LRR/.claude/memory/estado-proyecto.md" 2>/dev/null 
 if command -v jq >/dev/null 2>&1; then
   LRSIB="$(mktemp -d "${TMPDIR:-/tmp}/brain-lrsib.XXXXXX")"; LRSR="$LRSIB/repo"; mkdir -p "$LRSR/.claude/hooks"
   echo '#dod' > "$LRSR/.claude/hooks/dod-verificar.sh"; echo '#mio' > "$LRSR/.claude/hooks/mi-hook.sh"
-  printf '{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"bash \\"$CLAUDE_PROJECT_DIR/.claude/hooks/dod-verificar.sh\\""},{"type":"command","command":"bash \\"$CLAUDE_PROJECT_DIR/.claude/hooks/mi-hook.sh\\""}]}]}}' > "$LRSR/.claude/settings.json"
+  # LOOKALIKE: nombre PROPIO del repo que TERMINA en el de un hook del cerebro (mi-merge-develop-guard.sh).
+  # Debe SOBREVIVIR (.sh + cableado): un regex `merge-develop-guard\.sh` sin anclar lo casaría y lo borraría;
+  # la lista EXACTA de basenames no. (Corrección de unjordi al hallazgo 1 — "mi-limpiar.sh se queda".)
+  echo '#look' > "$LRSR/.claude/hooks/mi-merge-develop-guard.sh"
+  printf '{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"bash \\"$CLAUDE_PROJECT_DIR/.claude/hooks/dod-verificar.sh\\""},{"type":"command","command":"bash \\"$CLAUDE_PROJECT_DIR/.claude/hooks/mi-hook.sh\\""}]}],"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"bash \\"$CLAUDE_PROJECT_DIR/.claude/hooks/mi-merge-develop-guard.sh\\""}]}]}}' > "$LRSR/.claude/settings.json"
   HOME="$LRSIB/home" bash "$INSTALLER" --limpiar-repo "$LRSR" --apply >/dev/null 2>&1
   { jq -e '[.hooks.Stop[]?.hooks[]?.command|select(test("dod-verificar"))]|length==0' "$LRSR/.claude/settings.json" >/dev/null 2>&1 \
     && jq -e '[.hooks.Stop[]?.hooks[]?.command|select(test("mi-hook"))]|length==1' "$LRSR/.claude/settings.json" >/dev/null 2>&1; } \
     && ok "--limpiar-repo (B-01): de-cablea el hook del cerebro y CONSERVA el hermano ajeno de la MISMA entrada" \
     || bad "--limpiar-repo (B-01): el de-cableado se llevó el hermano ajeno de la misma entrada"
+  # lookalike sobrevive: ni se borró el .sh ni se de-cableó (match por nombre EXACTO, no regex)
+  { [ -f "$LRSR/.claude/hooks/mi-merge-develop-guard.sh" ] \
+    && jq -e '[.hooks[]?[]?.hooks[]?.command|(scan("[^/\"\\s]+\\.sh"))|select(.=="mi-merge-develop-guard.sh")]|length==1' "$LRSR/.claude/settings.json" >/dev/null 2>&1; } \
+    && ok "--limpiar-repo (lista exacta): un hook PROPIO lookalike (mi-merge-develop-guard.sh) NO se toca" \
+    || bad "--limpiar-repo (lista exacta): borró/de-cableó un hook propio lookalike (regex sin anclar)"
   rm -rf "$LRSIB"
 fi
 rm -rf "$LRFIX"
@@ -6594,9 +6603,15 @@ if [ -f "$SCRIPT_DIR/uninstall-brain.sh" ]; then
   # SET COMPLETO {global} kind=hook derivado del MANIFEST (NO un subconjunto hardcodeado): así el test
   # SÍ caza un BRAIN_PAT drifteado que haría que uninstall omitiera hooks y dejara cableados ZOMBIE. Un check
   # que solo mirara los hooks dentro del BRAIN_PAT viejo nunca detectaría el faltante.
-  _unpat="$(awk '$1!~/^#/ && NF>=3 && $2=="global" && $3=="hook"{print $1}' "$SCRIPT_DIR/hooks/MANIFEST" | sed 's/$/\\.sh/' | paste -sd'|' -)"
-  left="$(jq --arg pat "$_unpat" '[.hooks[]?[]? | select(([.hooks[]?.command]|join(" "))|test($pat))] | length' "$GSET2" 2>/dev/null)"
-  [ "${left:-x}" = "0" ] && ok "uninstall: 0 cableados del cerebro en settings.json (set COMPLETO {global} kind=hook — cazaría un BRAIN_PAT drifteado)" || bad "uninstall: quedan ${left:-?} cableados ZOMBIE (BRAIN_PAT no cubre todo el set del MANIFEST)"
+  # Match por LISTA EXACTA de basenames (no regex): mismo criterio que _settings_wires del instalador (de
+  # cada command se extrae el basename .sh y se compara con el set del MANIFEST). Un regex `nombre\.sh` contaría
+  # un hook AJENO lookalike (mi-merge-develop-guard.sh) como "zombie" y fallaría en falso.
+  _unames=(); while IFS= read -r _uh; do [ -n "$_uh" ] && _unames+=("$_uh.sh"); done \
+    < <(awk '$1!~/^#/ && NF>=3 && $2=="global" && $3=="hook"{print $1}' "$SCRIPT_DIR/hooks/MANIFEST")
+  if [ "${#_unames[@]}" -gt 0 ]; then
+    left="$(jq '[.hooks[]?[]?.hooks[]? | select([(.command // "")|scan("[^/\"\\s]+\\.sh")] | any(. as $n | $ARGS.positional | index($n)))] | length' "$GSET2" --args "${_unames[@]}" 2>/dev/null)"
+  else left="?"; fi
+  [ "${left:-x}" = "0" ] && ok "uninstall: 0 cableados del cerebro en settings.json (set COMPLETO {global} kind=hook por nombre EXACTO — cazaría un BRAIN_PAT drifteado)" || bad "uninstall: quedan ${left:-?} cableados ZOMBIE (BRAIN_PAT no cubre todo el set del MANIFEST)"
   grep -q 'BEGIN cortex' "$GCLAUDE2" && bad "uninstall: quedó el bloque de normas" || ok "uninstall: bloque de normas removido"
   [ -f "$FAKEHOME2/.claude/hooks/merge-develop-guard.sh" ] && bad "uninstall: quedó merge-develop-guard.sh" || ok "uninstall: hooks globales removidos"
   # (e) el @import de aliases + el artefacto GENERADO se limpian (inverso de d3)

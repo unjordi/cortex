@@ -62,36 +62,46 @@ if [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then HOOK_CMD_BASE='$CLAUDE_CONFIG_DIR/hooks
 
 # ── Helpers de DE-CABLEADO de settings.json (reusables: los usa la poda de retirados de abajo Y el modo
 # --limpiar-repo). bash-3.2-safe. ──
-# _settings_wires <settings> <regex> → 0 si algún hook del archivo cita el patrón (regex tipo "(a|b)\.sh").
+# El match es por NOMBRE EXACTO (lista del MANIFEST), NO por regex (corrección de unjordi al hallazgo 1 de
+# claudio): de cada `command` se extrae el/los basename(s) `.sh` que invoca (`scan` toma lo que va tras el
+# último `/`) y solo casa si ese nombre está en la lista. Así un hook PROPIO del repo cuyo nombre TERMINE
+# igual (`mi-limpiar.sh`, `pre-sesion-inicio.sh`) NUNCA se de-cablea — un regex `limpiar\.sh` sí lo casaría.
+# _settings_wires <settings> <nombre.sh>... → 0 si algún hook del archivo invoca uno de esos basenames.
 _settings_wires() {
-  local sf="$1" pat="$2"
+  local sf="$1"; shift
   [ -f "$sf" ] || return 1
+  [ "$#" -gt 0 ] || return 1
   command -v jq >/dev/null 2>&1 || return 1
   jq empty "$sf" 2>/dev/null || return 1
-  jq -e --arg pat "$pat" 'any(.hooks[]?[]?; ([.hooks[]?.command]|join(" "))|test($pat))' "$sf" >/dev/null 2>&1
+  jq -e 'any(.hooks[]?[]?.hooks[]?;
+            [(.command // "") | scan("[^/\"\\s]+\\.sh")] | any(. as $n | $ARGS.positional | index($n)))' \
+    "$sf" --args "$@" >/dev/null 2>&1
 }
-# _dewire_from_settings <settings> <regex> → quita del archivo TODA entrada de hook cuyo command cite el
-# patrón; borra eventos/entradas que quedan vacíos; preserva el resto (nunca toca entradas ajenas). Escribe
-# solo si cambió. 0 ok (o nada que hacer), 1 error (JSON inválido / jq falló) sin tocar el archivo.
+# _dewire_from_settings <settings> <nombre.sh>... → quita POR-COMANDO los hooks que invocan uno de esos
+# basenames; borra eventos/entradas que quedan vacíos; preserva el resto (nunca toca entradas ni hermanos
+# ajenos). Escribe solo si cambió. 0 ok (o nada que hacer), 1 error (JSON inválido / jq falló) sin tocar.
 _dewire_from_settings() {
-  local sf="$1" pat="$2" tmp
+  local sf="$1"; shift
+  local tmp
   [ -f "$sf" ] || return 0
+  [ "$#" -gt 0 ] || return 0
   command -v jq >/dev/null 2>&1 || return 0
   jq empty "$sf" 2>/dev/null || return 1
-  _settings_wires "$sf" "$pat" || return 0
+  _settings_wires "$sf" "$@" || return 0
   tmp="$(mktemp)" || return 1
-  # Filtra POR-COMANDO dentro de cada entrada (B-01): quita SOLO los comandos que citan el patrón y
-  # CONSERVA un hermano no-casante de la MISMA entrada; dropea la entrada si queda sin hooks, y el evento
-  # si queda sin entradas. (Antes filtraba por-entrada → un hermano ajeno en la misma entrada se perdía.)
-  if jq --arg pat "$pat" '
+  # Filtra POR-COMANDO dentro de cada entrada (B-01): quita SOLO los comandos que invocan un nombre de la
+  # lista y CONSERVA un hermano no-casante de la MISMA entrada; dropea la entrada si queda sin hooks, y el
+  # evento si queda sin entradas. El match (basename exacto) es idéntico al de _settings_wires (def brain).
+  if jq '
+      def brain($c): [($c // "") | scan("[^/\"\\s]+\\.sh")] | any(. as $n | $ARGS.positional | index($n));
       if (.hooks|type)=="object" then
         .hooks |= ( to_entries
-          | map(.value |= ( map(.hooks |= map(select((.command // "")|test($pat)|not)))
+          | map(.value |= ( map(.hooks |= map(select(brain(.command)|not)))
                             | map(select((.hooks|type)=="array" and (.hooks|length)>0)) ))
           | map(select((.value|type)=="array" and (.value|length)>0)) | from_entries )
         | (if (.hooks|length)==0 then del(.hooks) else . end)
       else . end
-    ' "$sf" > "$tmp" 2>/dev/null && [ -s "$tmp" ]; then
+    ' "$sf" --args "$@" > "$tmp" 2>/dev/null && [ -s "$tmp" ]; then
     mv "$tmp" "$sf"; return 0
   else
     rm -f "$tmp"; return 1
@@ -135,12 +145,13 @@ if [ "$LIMPIAR_REPO" = 1 ]; then
       if [ "$LIMPIAR_APPLY" = 1 ]; then mkdir -p "$bdir/hooks" && cp -p "$f" "$bdir/hooks/" 2>/dev/null; rm -f "$f"; fi
     fi
   done
-  # 2) cableado en settings.json / settings.local.json
-  pat=""; for n in $brain_names; do pat="${pat:+$pat|}$n"; done; [ -n "$pat" ] && pat="($pat)\\.sh"
+  # 2) cableado en settings.json / settings.local.json — por LISTA EXACTA de nombres (no regex): un hook
+  # PROPIO del repo cuyo nombre TERMINE igual (mi-limpiar.sh, pre-sesion-inicio.sh) NO se de-cablea.
+  brain_sh=(); for n in $brain_names; do brain_sh+=("$n.sh"); done
   for sf in "$rcd/settings.json" "$rcd/settings.local.json"; do
-    if [ -n "$pat" ] && _settings_wires "$sf" "$pat"; then
+    if [ "${#brain_sh[@]}" -gt 0 ] && _settings_wires "$sf" "${brain_sh[@]}"; then
       tocado=1; echo "   [cableado] $sf cita hooks del cerebro"
-      if [ "$LIMPIAR_APPLY" = 1 ]; then cp -p "$sf" "$bdir/$(basename "$sf")" 2>/dev/null; _dewire_from_settings "$sf" "$pat" || echo "   warn: no pude de-cablear $sf (¿JSON inválido?)"; fi
+      if [ "$LIMPIAR_APPLY" = 1 ]; then cp -p "$sf" "$bdir/$(basename "$sf")" 2>/dev/null; _dewire_from_settings "$sf" "${brain_sh[@]}" || echo "   warn: no pude de-cablear $sf (¿JSON inválido?)"; fi
     fi
   done
   # 3) sello .brain-version (vive en .claude/hooks/.brain-version; algunos clones viejos lo tienen en .claude/)
@@ -240,8 +251,8 @@ if [ -n "$RETIRED_ENTRIES" ]; then
     if command -v jq >/dev/null 2>&1 && [ -f "$GSET" ]; then
       if ! jq empty "$GSET" 2>/dev/null; then
         echo "ERROR: $GSET es JSON INVÁLIDO — NO podo el cableado retirado de '$rname' para no arriesgar el archivo (settings corrupto te deja sin NINGÚN guard). Repáralo (jq . \"$GSET\") y re-corre." >&2
-      elif _settings_wires "$GSET" "$rname\\.sh"; then
-        if _dewire_from_settings "$GSET" "$rname\\.sh"; then podado_wire=1
+      elif _settings_wires "$GSET" "$rname.sh"; then
+        if _dewire_from_settings "$GSET" "$rname.sh"; then podado_wire=1
         else echo "warn: no pude de-cablear el hook retirado '$rname' de $GSET"; fi
       fi
     fi
