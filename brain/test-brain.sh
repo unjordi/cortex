@@ -5591,6 +5591,19 @@ ac_run 425000 "" '{"model":"opus"}'
   && ok "b6-escape-hatch: SIN forzar + modelo desconocido → SIN ventana → SILENCIO (distinto del override, que SÍ fija ventana por evidencia)" || bad "b6-escape-hatch: emitió sin ventana forzada ni modelo conocido; got: $ACMSG"
 rm -rf "$(dirname "$ACLAST")"
 
+# ── (b6-estado-fuera) los sellos de throttle van bajo $HOME/.claude/state/<cksum>, no dentro del repo ──
+# El canal del usuario es `git status` del repo: debe quedar limpio de sellos. FALLA contra la versión que
+# escribía en $ROOT/.claude/memory.
+ac_run 820000 1000000 ""
+b6ef_root="$ACLAST"; b6ef_cks="$(printf '%s' "$b6ef_root" | cksum | awk '{print $1}')"
+{ [ -n "$ACMSG" ] && [ -z "$(find "$b6ef_root/.claude" -name '.contexto-aviso*' -o -name '.cuota-fetch-forzado' 2>/dev/null)" ]; } \
+  && ok "b6-estado-fuera: con banda cruzada, el repo queda SIN sellos de throttle (git status limpio)" \
+  || bad "b6-estado-fuera: dejó un sello dentro del repo"
+[ -n "$(find "$ACHOME/.claude/state/$b6ef_cks" -type f 2>/dev/null)" ] \
+  && ok "b6-estado-fuera: el sello vive en \$HOME/.claude/state/<cksum del repo>" \
+  || bad "b6-estado-fuera: no encontré el sello bajo \$HOME/.claude/state/"
+rm -rf "$(dirname "$b6ef_root")"
+
 # ── (b6-staleness) anclaje al último /compact (FP post-compact) — vía emitir/callar ──
 ac_raw() { # $@ = líneas del transcript ; ventana 1M forzada, root fresco
   local root; root="$(mktemp -d "${TMPDIR:-/tmp}/brain-raw.XXXXXX")/r"; mkdir -p "$root/.claude/memory"
