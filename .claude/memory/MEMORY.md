@@ -69,6 +69,7 @@
 ├─ 🔩 ingenieria-inversa-gui-db-navegador  ingeniería inversa de app legacy GUI+BD: driving la UI vía navegador + diff de la BD antes/después = doc con evidencia real
 ├─ 📕 markdown-a-pdf                 convierte .md a PDF pulido y distribuible vía md-to-pdf (npx, sin instalar) con el gotcha de --css y QA visual real
 ├─ 🕹️ control-gui-remota-por-ssh     ver/operar una GUI remota por SSH sin VNC/RDP — screenshot/click/teclado DPI-aware; Windows·Linux·Mac completos (multi-monitor + captura por-ventana)
+├─ 🔁 mandato-loop                   el MOLDE para redactar un mandato de `/loop` de épica/lote (cómo se redacta + el bloque text con todas sus secciones)
 └─ 🌙 turno-nocturno           protocolo del turno de noche: eco del contrato, decide-dentro-de-la-cerca, grants durables a disco
 ```
 <!-- ARBOL:END -->
@@ -162,6 +163,7 @@ Reclutar un agente cuesta según su nivel (**gratis** local · **incluido** dent
 **Orquestación / delegación**
 - **`coordinar-claudes`** — coordina otras sesiones master desde una sesión coordinadora, hablando con ellas en nombre del usuario sin hacerse pasar por él: **despierta** (`despertar-master.sh`, resuelto desde los transcripts, no desde el `masters.json` que driftea; newest-per-name, no relanza una sesión viva) · **encarga** la cola completa (Remote Control o su screen) · **vigila** (`vigilar-master.sh` con Monitor: commit/turno-terminado/colgado/muerto) · **destraba** (colgado, turno terminado, tras un /compact) · **verifica** por commits y uso real, no por lo que reporta · **releva** los OKs del usuario (coordinar no es aprobar). Absorbió a `despertar-master` como su paso 1.
 - **`turno-nocturno`** — protocolo del turno de noche: eco del contrato, decide-dentro-de-la-cerca, grants durables a disco, checkpoint cada ~2h.
+- **`mandato-loop`** — el MOLDE con el que un master redacta un mandato de `/loop` de épica/lote (merge de arsenal `loop-epic-0.1` + axon `loop-cerebellum`/`loop-cierre-ab`, revisado con unjordi): «Cómo se redacta» (sin trazabilidad, sin «el LISTO lo da el usuario», criterio CIERRA-CUANDO por fila, nada de colas ajenas) + el bloque `text` completo (worktree por fila, FILAS, ÉPICA TERMINADA, CADA RONDA, DELEGACIÓN, PRUEBAS §1-7, HIGIENE MENTAL, REGLAS). NO es `turno-nocturno`.
 
 **Memorias / docs**
 - **`positivar-doc`** — reescribe answer-first: "ESTO SÍ" (método correcto) ANTES del "ESTO NO" (anti-patrón/gotcha); preserva el 100%.
