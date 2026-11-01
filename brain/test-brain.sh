@@ -4920,29 +4920,51 @@ n4b="$(pad | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null)"
   || bad "N4b: marcó un both sin global, o perdió el que sí tiene global; got: $n4b"
 rm -rf "$PADFIX"
 
-# ── --limpiar-personal (N4): CONSERVA una lib `both` que una repo-hook presente sourcea (juez-comun ← dod)
-# y un `both` sin copia GLOBAL instalada; RETIRARÍA un both con global y sin dependencia (no-bypass-deploy).
-# Usa el MANIFEST REAL del repo. HOME falso controlado (el global-exists mira $HOME/.claude/hooks). Dry-run.
-LPFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-lp.XXXXXX")"; mkdir -p "$LPFIX/.claude/hooks" "$LPFIX/home/.claude/hooks"
-printf '#!/usr/bin/env bash\n. "${BASH_SOURCE[0]%%/*}/juez-comun.sh"\n' > "$LPFIX/.claude/hooks/dod-verificar.sh"
-: > "$LPFIX/.claude/hooks/juez-comun.sh"
-: > "$LPFIX/.claude/hooks/no-bypass-deploy.sh"
-: > "$LPFIX/home/.claude/hooks/no-bypass-deploy.sh"   # global de no-bypass-deploy instalado → RETIRARÍA
-: > "$LPFIX/home/.claude/hooks/juez-comun.sh"          # global de juez instalado → cae al check de dependencia
-lpout="$(HOME="$LPFIX/home" bash "$SCRIPT_DIR/sincronizar-cerebro.sh" "$LPFIX" --limpiar-personal 2>&1)"
-printf '%s' "$lpout" | grep -qE 'CONSERVO +juez-comun' \
-  && ok "--limpiar-personal N4: CONSERVA juez-comun (lib both usada por dod-verificar presente)" \
-  || bad "--limpiar-personal N4: no conservó juez-comun; got: $(printf '%s' "$lpout" | grep -iE 'juez|conservo|retiraría')"
-printf '%s' "$lpout" | grep -qE 'RETIRARÍA +no-bypass-deploy' \
-  && ok "--limpiar-personal N4: RETIRARÍA no-bypass-deploy (both con global, sin dependencia)" \
-  || bad "--limpiar-personal N4: no retiraría no-bypass-deploy; got: $lpout"
-# dirección inversa: sin la copia GLOBAL de no-bypass-deploy → se CONSERVA (es la única que corre aquí)
-rm -f "$LPFIX/home/.claude/hooks/no-bypass-deploy.sh"
-lpout2="$(HOME="$LPFIX/home" bash "$SCRIPT_DIR/sincronizar-cerebro.sh" "$LPFIX" --limpiar-personal 2>&1)"
-printf '%s' "$lpout2" | grep -qE 'CONSERVO +no-bypass-deploy' \
-  && ok "--limpiar-personal N4b: CONSERVA no-bypass-deploy cuando su copia GLOBAL no está instalada" \
-  || bad "--limpiar-personal N4b: retiró un both sin global instalado (lo mataría); got: $(printf '%s' "$lpout2" | grep -iE 'git-branch|conservo|retiraría')"
-rm -rf "$LPFIX"
+# ── install-brain --limpiar-repo (retiro del cerebro por-repo; "solo cerebro global" 2026-11-01) ──
+# Retira de UN repo los hooks/libs del cerebro (.sh + cableado + .brain-version) y las skills del cerebro
+# cuyo CONTENIDO coincide con la fuente; CONSERVA todo lo ajeno (hook propio, permissions, skill del
+# proyecto, skill del cerebro MODIFICADA) y NO toca memoria/estado. Plan por default; muta con --apply.
+# Falla vs el install-brain viejo (que no conoce el flag → no limpia el repo). Usa el MANIFEST/skills REALES.
+LRFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-lr.XXXXXX")"; LRR="$LRFIX/repo"
+mkdir -p "$LRR/.claude/hooks" "$LRR/.claude/skills" "$LRR/.claude/memory"
+echo '#dod' > "$LRR/.claude/hooks/dod-verificar.sh"                 # retirado del cerebro
+echo '#merge' > "$LRR/.claude/hooks/merge-develop-guard.sh"         # global del cerebro
+echo '#mio' > "$LRR/.claude/hooks/mi-hook-propio.sh"                # ajeno → se conserva
+printf '{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"bash \\"$CLAUDE_PROJECT_DIR/.claude/hooks/dod-verificar.sh\\""}]}],"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"bash \\"$CLAUDE_PROJECT_DIR/.claude/hooks/merge-develop-guard.sh\\""}]},{"matcher":"Bash","hooks":[{"type":"command","command":"bash \\"$CLAUDE_PROJECT_DIR/.claude/hooks/mi-hook-propio.sh\\""}]}]},"permissions":{"allow":["Bash(ls:*)"]}}' > "$LRR/.claude/settings.json"
+echo 'v1' > "$LRR/.claude/.brain-version"
+cp -R "$SCRIPT_DIR/skills/cerrar-slice" "$LRR/.claude/skills/cerrar-slice" 2>/dev/null   # idéntica a la fuente → se retira
+cp -R "$SCRIPT_DIR/skills/checkpoint" "$LRR/.claude/skills/checkpoint" 2>/dev/null; echo 'EDIT LOCAL' >> "$LRR/.claude/skills/checkpoint/SKILL.md"  # modificada → se conserva
+mkdir -p "$LRR/.claude/skills/mi-skill-proyecto"; echo '# propia' > "$LRR/.claude/skills/mi-skill-proyecto/SKILL.md"  # del proyecto → se conserva
+echo 'BACKLOG proyecto' > "$LRR/.claude/memory/estado-proyecto.md"
+# PLAN (dry-run): no muta
+HOME="$LRFIX/home" bash "$INSTALLER" --limpiar-repo "$LRR" >/dev/null 2>&1
+[ -f "$LRR/.claude/hooks/dod-verificar.sh" ] \
+  && ok "--limpiar-repo: el PLAN (dry-run) no modifica nada" \
+  || bad "--limpiar-repo: el PLAN borró archivos (debía ser dry-run)"
+# APPLY
+HOME="$LRFIX/home" bash "$INSTALLER" --limpiar-repo "$LRR" --apply >/dev/null 2>&1
+{ [ ! -f "$LRR/.claude/hooks/dod-verificar.sh" ] && [ ! -f "$LRR/.claude/hooks/merge-develop-guard.sh" ]; } \
+  && ok "--limpiar-repo: retira los hooks del cerebro (.sh)" || bad "--limpiar-repo: no retiró los hooks del cerebro"
+[ -f "$LRR/.claude/hooks/mi-hook-propio.sh" ] \
+  && ok "--limpiar-repo: conserva el hook AJENO" || bad "--limpiar-repo: borró el hook ajeno"
+[ ! -f "$LRR/.claude/.brain-version" ] \
+  && ok "--limpiar-repo: retira el sello .brain-version" || bad "--limpiar-repo: dejó .brain-version"
+if command -v jq >/dev/null 2>&1; then
+  jq -e '[.hooks[]?[]?.hooks[]?.command|select(test("dod-verificar|merge-develop-guard"))]|length==0' "$LRR/.claude/settings.json" >/dev/null 2>&1 \
+    && ok "--limpiar-repo: de-cablea los hooks del cerebro de settings.json" || bad "--limpiar-repo: dejó cableado del cerebro"
+  { jq -e '[.hooks[]?[]?.hooks[]?.command|select(test("mi-hook-propio"))]|length==1' "$LRR/.claude/settings.json" >/dev/null 2>&1 \
+    && jq -e '.permissions.allow[0]=="Bash(ls:*)"' "$LRR/.claude/settings.json" >/dev/null 2>&1; } \
+    && ok "--limpiar-repo: conserva el cableado ajeno y los permissions" || bad "--limpiar-repo: tocó entradas ajenas de settings"
+fi
+[ ! -d "$LRR/.claude/skills/cerrar-slice" ] \
+  && ok "--limpiar-repo: retira la skill del cerebro IDÉNTICA a la fuente" || bad "--limpiar-repo: no retiró la skill del cerebro idéntica"
+[ -d "$LRR/.claude/skills/checkpoint" ] \
+  && ok "--limpiar-repo: CONSERVA la skill del cerebro MODIFICADA (la reporta, no la borra)" || bad "--limpiar-repo: borró una skill del cerebro modificada localmente"
+[ -d "$LRR/.claude/skills/mi-skill-proyecto" ] \
+  && ok "--limpiar-repo: conserva la skill PROPIA del proyecto" || bad "--limpiar-repo: borró una skill del proyecto"
+grep -q 'BACKLOG proyecto' "$LRR/.claude/memory/estado-proyecto.md" 2>/dev/null \
+  && ok "--limpiar-repo: NO toca la memoria/estado del proyecto" || bad "--limpiar-repo: tocó la memoria del proyecto"
+rm -rf "$LRFIX"
 
 # ── (b5c) aviso-drift v2: AUTO-APPLY en la mini-develop (Develop<Usuario>) · aviso en ramita ──
 AD2FIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-ad2.XXXXXX")"

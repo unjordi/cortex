@@ -60,6 +60,113 @@ GCLAUDE="$CLAUDE_DIR/CLAUDE.md"
 # CLAUDE_CONFIG_DIR puesto, los hooks viven en $CLAUDE_CONFIG_DIR/hooks y el comando debe apuntar ahí.
 if [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then HOOK_CMD_BASE='$CLAUDE_CONFIG_DIR/hooks'; else HOOK_CMD_BASE='$HOME/.claude/hooks'; fi
 
+# ── Helpers de DE-CABLEADO de settings.json (reusables: los usa la poda de retirados de abajo Y el modo
+# --limpiar-repo). bash-3.2-safe. ──
+# _settings_wires <settings> <regex> → 0 si algún hook del archivo cita el patrón (regex tipo "(a|b)\.sh").
+_settings_wires() {
+  local sf="$1" pat="$2"
+  [ -f "$sf" ] || return 1
+  command -v jq >/dev/null 2>&1 || return 1
+  jq empty "$sf" 2>/dev/null || return 1
+  jq -e --arg pat "$pat" 'any(.hooks[]?[]?; ([.hooks[]?.command]|join(" "))|test($pat))' "$sf" >/dev/null 2>&1
+}
+# _dewire_from_settings <settings> <regex> → quita del archivo TODA entrada de hook cuyo command cite el
+# patrón; borra eventos/entradas que quedan vacíos; preserva el resto (nunca toca entradas ajenas). Escribe
+# solo si cambió. 0 ok (o nada que hacer), 1 error (JSON inválido / jq falló) sin tocar el archivo.
+_dewire_from_settings() {
+  local sf="$1" pat="$2" tmp
+  [ -f "$sf" ] || return 0
+  command -v jq >/dev/null 2>&1 || return 0
+  jq empty "$sf" 2>/dev/null || return 1
+  _settings_wires "$sf" "$pat" || return 0
+  tmp="$(mktemp)" || return 1
+  if jq --arg pat "$pat" '
+      if (.hooks|type)=="object" then
+        .hooks |= ( to_entries
+          | map(.value |= [ .[] | select((([.hooks[]?.command]|join(" "))|test($pat))|not) ])
+          | map(select((.value|type)=="array" and (.value|length)>0)) | from_entries )
+        | (if (.hooks|length)==0 then del(.hooks) else . end)
+      else . end
+    ' "$sf" > "$tmp" 2>/dev/null && [ -s "$tmp" ]; then
+    mv "$tmp" "$sf"; return 0
+  else
+    rm -f "$tmp"; return 1
+  fi
+}
+
+# ── MODO --limpiar-repo [<root>] [--apply]: retira el cerebro POR-REPO de UN repo (migración "solo cerebro
+# global", 2026-11-01: el cerebro vive solo en global por máquina; ningún repo debe cargar copias de sus
+# hooks). Quita de <root>/.claude: los hooks/libs del cerebro (.sh + su cableado en settings.json/.local),
+# el sello .brain-version y las skills del cerebro — SOLO las del ledger .brain-skills o del MANIFEST cuyo
+# CONTENIDO coincide con la fuente (una que difiera se REPORTA, no se borra). NUNCA toca la memoria/estado
+# del proyecto ni sus skills propias. Default: PLAN (dry-run); muta solo con --apply (lo quitado va a un
+# respaldo en /tmp). Se corre en cada repo y se commitea por SU flujo de git.
+LIMPIAR_REPO=0; LIMPIAR_APPLY=0; LIMPIAR_ROOT=""
+for _a in "$@"; do
+  case "$_a" in
+    --limpiar-repo) LIMPIAR_REPO=1 ;;
+    --apply)        LIMPIAR_APPLY=1 ;;
+    --*)            : ;;
+    *) [ "$LIMPIAR_REPO" = 1 ] && [ -z "$LIMPIAR_ROOT" ] && LIMPIAR_ROOT="$_a" ;;
+  esac
+done
+if [ "$LIMPIAR_REPO" = 1 ]; then
+  root="${LIMPIAR_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+  rcd="$root/.claude"
+  if [ ! -d "$rcd" ]; then echo "limpiar-repo: $root no tiene .claude/ — nada que hacer"; exit 0; fi
+  if [ "$LIMPIAR_APPLY" = 1 ]; then modo="APLICA"; else modo="PLAN (dry-run; usa --apply para ejecutar)"; fi
+  echo "==> cortex --limpiar-repo [$modo]: retiro del cerebro por-repo en $root"
+  command -v jq >/dev/null 2>&1 || echo "   (sin jq: no puedo de-cablear settings.json; instala jq)"
+  # Nombres de hooks/libs del cerebro (TODO tier, kind hook+lib) del MANIFEST = lo que NO debe vivir por-repo.
+  brain_names=""
+  [ -f "$SRC_HOOKS/MANIFEST" ] && brain_names="$(awk '$1!~/^#/ && NF>=3 && ($3=="hook"||$3=="lib"){print $1}' "$SRC_HOOKS/MANIFEST")"
+  bdir=""
+  if [ "$LIMPIAR_APPLY" = 1 ]; then bdir="$(mktemp -d "/tmp/cortex-limpiar-repo-$(date +%Y%m%d-%H%M%S).XXXXXX")" && echo "   respaldo recuperable en: $bdir"; fi
+  tocado=0
+  # 1) hooks/libs .sh del cerebro copiados en <root>/.claude/hooks/
+  for n in $brain_names; do
+    f="$rcd/hooks/$n.sh"
+    if [ -f "$f" ]; then
+      tocado=1; echo "   [hook] $f"
+      if [ "$LIMPIAR_APPLY" = 1 ]; then mkdir -p "$bdir/hooks" && cp -p "$f" "$bdir/hooks/" 2>/dev/null; rm -f "$f"; fi
+    fi
+  done
+  # 2) cableado en settings.json / settings.local.json
+  pat=""; for n in $brain_names; do pat="${pat:+$pat|}$n"; done; [ -n "$pat" ] && pat="($pat)\\.sh"
+  for sf in "$rcd/settings.json" "$rcd/settings.local.json"; do
+    if [ -n "$pat" ] && _settings_wires "$sf" "$pat"; then
+      tocado=1; echo "   [cableado] $sf cita hooks del cerebro"
+      if [ "$LIMPIAR_APPLY" = 1 ]; then cp -p "$sf" "$bdir/$(basename "$sf")" 2>/dev/null; _dewire_from_settings "$sf" "$pat" || echo "   warn: no pude de-cablear $sf (¿JSON inválido?)"; fi
+    fi
+  done
+  # 3) sello .brain-version
+  if [ -f "$rcd/.brain-version" ]; then
+    tocado=1; echo "   [sello] $rcd/.brain-version"
+    if [ "$LIMPIAR_APPLY" = 1 ]; then cp -p "$rcd/.brain-version" "$bdir/" 2>/dev/null; rm -f "$rcd/.brain-version"; fi
+  fi
+  # 4) skills del cerebro — SOLO candidatas (ledger .brain-skills o nombre en el MANIFEST) cuyo CONTENIDO
+  #    coincide con la fuente; una que DIFIERA (o sin fuente) se REPORTA y NO se borra. Jamás toca skills del proyecto.
+  if [ -d "$rcd/skills" ]; then
+    man_sk=""; [ -f "$SRC_SKILLS/MANIFEST" ] && man_sk="$(awk '$1!~/^#/ && NF>=2{print $1}' "$SRC_SKILLS/MANIFEST")"
+    led_sk=""; [ -f "$rcd/skills/.brain-skills" ] && led_sk="$(grep -vE '^[[:space:]]*#|^[[:space:]]*$' "$rcd/skills/.brain-skills" 2>/dev/null)"
+    for sk in $(printf '%s\n%s\n' "$man_sk" "$led_sk" | sort -u); do
+      [ -z "$sk" ] && continue
+      skd="$rcd/skills/$sk"; [ -d "$skd" ] || continue
+      src_sk="$SRC_SKILLS/$sk"
+      if [ -d "$src_sk" ] && diff -rq "$skd" "$src_sk" >/dev/null 2>&1; then
+        tocado=1; echo "   [skill cerebro] $skd"
+        if [ "$LIMPIAR_APPLY" = 1 ]; then mkdir -p "$bdir/skills" && cp -Rp "$skd" "$bdir/skills/" 2>/dev/null; rm -rf "$skd"; fi
+      else
+        echo "   [skill DIFIERE o sin fuente — NO la toco, revísala a mano] $skd"
+      fi
+    done
+  fi
+  [ "$tocado" = 0 ] && echo "   nada del cerebro por-repo encontrado (ya está limpio)."
+  echo "   (la memoria/estado y las skills propias del proyecto NO se tocan)"
+  [ "$LIMPIAR_APPLY" = 1 ] || echo "   PLAN: nada se modificó. Re-corre con --apply (y commitea el cambio por el flujo del repo)."
+  exit 0
+fi
+
 echo "==> cortex: instalando cerebro global en $CLAUDE_DIR"
 mkdir -p "$HOOKS_DIR" "$SKILLS_DIR"
 
@@ -127,20 +234,9 @@ if [ -n "$RETIRED_ENTRIES" ]; then
     if command -v jq >/dev/null 2>&1 && [ -f "$GSET" ]; then
       if ! jq empty "$GSET" 2>/dev/null; then
         echo "ERROR: $GSET es JSON INVÁLIDO — NO podo el cableado retirado de '$rname' para no arriesgar el archivo (settings corrupto te deja sin NINGÚN guard). Repáralo (jq . \"$GSET\") y re-corre." >&2
-      elif jq -e --arg pat "/$rname\\.sh" 'any(.hooks[]?[]?; ([.hooks[]?.command] | join(" ")) | test($pat))' "$GSET" >/dev/null 2>&1; then
-        rtmp="$(mktemp)" || rtmp=""
-        if [ -n "$rtmp" ] && jq --arg pat "$rname\\.sh" '
-            if (.hooks|type)=="object" then
-              .hooks |= ( to_entries
-                | map(.value |= [ .[] | select((([.hooks[]?.command]|join(" "))|test($pat))|not) ])
-                | map(select((.value|type)=="array" and (.value|length)>0)) | from_entries )
-              | (if (.hooks|length)==0 then del(.hooks) else . end)
-            else . end
-          ' "$GSET" > "$rtmp" 2>/dev/null && [ -s "$rtmp" ]; then
-          mv "$rtmp" "$GSET"; podado_wire=1
-        else
-          rm -f "$rtmp"; echo "warn: no pude de-cablear el hook retirado '$rname' de $GSET"
-        fi
+      elif _settings_wires "$GSET" "$rname\\.sh"; then
+        if _dewire_from_settings "$GSET" "$rname\\.sh"; then podado_wire=1
+        else echo "warn: no pude de-cablear el hook retirado '$rname' de $GSET"; fi
       fi
     fi
     if [ "$podado_sh" = 1 ] || [ "$podado_wire" = 1 ]; then
