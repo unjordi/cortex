@@ -7047,22 +7047,31 @@ else
     [ -f "$HOOKS/$b.sh" ] || { bad "drift: el MANIFEST lista '$b' pero falta $HOOKS/$b.sh"; miss_file=1; }
   done
   [ "$miss_file" = 0 ] && ok "drift: toda entrada del MANIFEST (no-retirada) tiene su .sh"
-  # (3) install-brain DERIVA GLOBAL del manifiesto (no una lista hardcodeada paralela) y no está vacía
-  derived="$(awk '$1!~/^#/ && NF>=3 && $2=="global"{print $1".sh"}' "$MF")"
-  if grep -q "awk.*global.*MANIFEST\|MANIFEST.*awk" "$INSTALLER" && [ -n "$derived" ]; then
-    ok "drift: install-brain deriva GLOBAL_HOOKS del MANIFEST (fuente única, no lista paralela)"
-  else
-    bad "drift: install-brain NO deriva del MANIFEST (¿volvió a una lista hardcodeada?)"
-  fi
-  # (4) PARIDAD derivada: cada {global} kind=hook del MANIFEST tiene su EVENTO en la tabla ev_de()
-  #     del instalador → se cablea. (El grep de 'WIRE_HOOKS=…awk…MANIFEST' se retiró: el EFECTO —install
-  #     cabla exactamente lo del MANIFEST— ya lo mide e7, y la paridad de abajo caza el hook sin evento.)
-  evblock="$(awk '/^ev_de\(\)/,/^}/' "$INSTALLER")"
+  # (3) Que install-brain DERIVE el set GLOBAL del MANIFEST (no una lista paralela hardcodeada) se mide por
+  #     EFECTO, no grepeando el fuente: el test "set exacto" (FAKEHOME2, arriba) instala y compara
+  #     ~/.claude/hooks contra el {global} del MANIFEST byte a byte; e7 hace lo propio con el cableado. Aquí
+  #     solo queda la PARIDAD derivada de abajo (cada global hook resuelve a un evento), también por EFECTO.
+  # (4) PARIDAD derivada: cada {global} kind=hook del MANIFEST resuelve a un EVENTO en ev_de() del instalador
+  #     → se cablea. Se SOURCEA ev_de() real y se invoca (mide el EFECTO: la función devuelve algo); un
+  #     `grep -qw "$b"` sobre el bloque casaría por subcadena (los nombres llevan guion) y daría falso verde.
+  _evfn="$(awk '/^ev_de\(\)/,/^}/' "$INSTALLER")"
   miss_wire=0
-  for b in $(awk '$1!~/^#/ && NF>=3 && $2=="global" && $3=="hook"{print $1}' "$MF"); do
-    printf '%s' "$evblock" | grep -qw "$b" || { bad "drift: '$b' es {global} hook pero NO tiene evento en ev_de() de install-brain (no se cablearía)"; miss_wire=1; }
-  done
-  [ "$miss_wire" = 0 ] && ok "drift: cada hook {global} del MANIFEST tiene evento en ev_de() de install-brain (se cablea)"
+  if [ -n "$_evfn" ] && eval "$_evfn" 2>/dev/null && command -v ev_de >/dev/null 2>&1; then
+    _any_global=0
+    for b in $(awk '$1!~/^#/ && NF>=3 && $2=="global" && $3=="hook"{print $1}' "$MF"); do
+      _any_global=1
+      [ -n "$(ev_de "$b")" ] || { bad "drift: '$b' es {global} hook pero ev_de() de install-brain NO le da evento (no se cablearía)"; miss_wire=1; }
+    done
+    # anti-FP de la propia prueba: un nombre AJENO al MANIFEST debe dar evento VACÍO (confirma que ev_de
+    # distingue, no que devuelve algo para cualquier cosa)
+    [ -z "$(ev_de "no-existe-este-hook-xyz")" ] || { bad "drift: ev_de() devuelve evento para un hook INEXISTENTE (no discrimina)"; miss_wire=1; }
+    unset -f ev_de 2>/dev/null
+    { [ "$miss_wire" = 0 ] && [ "$_any_global" = 1 ]; } \
+      && ok "drift: cada hook {global} del MANIFEST resuelve a un evento en ev_de() (sourceada, por efecto)" \
+      || { [ "$_any_global" = 0 ] && bad "drift: el MANIFEST no tiene ningún {global} hook (¿vacío?)"; }
+  else
+    bad "drift: no pude sourcear ev_de() de install-brain para medir la paridad de cableado"
+  fi
 fi
 
 # ═══ BLOQUE (tiers tras "solo cerebro global" 2026-11-01) ══════════════════════════════════════════════
@@ -7075,12 +7084,15 @@ for pair in "hooks:$MFH:global retirado" "skills:$MFS:global retirado"; do
   lbl="${pair%%:*}"; rest="${pair#*:}"; mf="${rest%%:*}"; tiers="${rest#*:}"
   hdr="$(grep '^#' "$mf" 2>/dev/null)"
   miss=""
-  for t in $tiers; do printf '%s' "$hdr" | grep -qw "$t" || miss="$miss $t"; done
-  # el header debe declarar que global es el ÚNICO tier vivo (anti-regresión a both/repo)
-  printf '%s' "$hdr" | grep -qiE 'ÚNICO tier vivo|solo cerebro global' || miss="$miss <declara-global-unico>"
+  for t in $tiers; do printf '%s' "$hdr" | grep -qw "$t" || miss="$miss header-no-menciona:$t"; done
+  # "global es el ÚNICO tier vivo" se mide por EFECTO en el CUERPO del MANIFEST (no por una frase del header):
+  # anti-regresión a both/repo = CERO entradas vivas con esos tiers. Un header con la frase correcta pero una
+  # entrada both/repo colada pasaría el grep de redacción y fallaría ESTE.
+  _liveold="$(awk '$1!~/^#/ && NF>=2 && ($2=="both"||$2=="repo"){print $1"("$2")"}' "$mf" | paste -sd' ' -)"
+  [ -z "$_liveold" ] || miss="$miss cuerpo-tiene-tier-vivo-both/repo:[$_liveold]"
   [ -z "$miss" ] \
-    && ok "e2-tiers[$lbl]: el MANIFEST documenta el tier global (único vivo) + la lápida retirado" \
-    || bad "e2-tiers[$lbl]: al header del MANIFEST le falta:$miss"
+    && ok "e2-tiers[$lbl]: el MANIFEST documenta global+retirado y su cuerpo no tiene NINGUNA entrada viva both/repo (global es el único tier vivo)" \
+    || bad "e2-tiers[$lbl]:$miss"
 done
 # ═══ FIN BLOQUE ════════════════════════════════════════════════════════════════════════════════════════
 

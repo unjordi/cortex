@@ -714,5 +714,4 @@ if [ "$(git config --global --get fetch.prune 2>/dev/null)" != "true" ]; then
 fi
 
 echo "listo: cerebro global instalado (hooks + cableado + skill + sello de versión + dashboard + entorno + como-trabajar + normas + aliases-activos)."
-echo "       Los hooks repo-scoped (sesion-inicio) viven en"
-echo "       brain/hooks/ como fuente: cópialos al .claude/ de cada repo (se cargan al INICIAR ahí)."
+echo "       Todos los hooks del cerebro son GLOBALES (solo cerebro global por máquina): ningún hook viaja por-repo."
