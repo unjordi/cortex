@@ -145,6 +145,19 @@ if [ "$LIMPIAR_REPO" = 1 ]; then
       if [ "$LIMPIAR_APPLY" = 1 ]; then mkdir -p "$bdir/hooks" && cp -p "$f" "$bdir/hooks/" 2>/dev/null; rm -f "$f"; fi
     fi
   done
+  # 1b) artefactos NO-.sh del cerebro (MANIFEST, RETIRED, *.template.md, agentes-costo.json) que un sync
+  #     por-repo viejo copió a <root>/.claude/hooks/ — se reconocen por existir con el MISMO nombre en la fuente.
+  if [ -d "$SRC_HOOKS" ]; then
+    for sf_art in "$SRC_HOOKS"/*; do
+      [ -f "$sf_art" ] || continue
+      case "$sf_art" in *.sh) continue ;; esac
+      art="$rcd/hooks/$(basename "$sf_art")"
+      if [ -f "$art" ]; then
+        tocado=1; echo "   [artefacto] $art"
+        if [ "$LIMPIAR_APPLY" = 1 ]; then mkdir -p "$bdir/hooks" && cp -p "$art" "$bdir/hooks/" 2>/dev/null; rm -f "$art"; fi
+      fi
+    done
+  fi
   # 2) cableado en settings.json / settings.local.json — por LISTA EXACTA de nombres (no regex): un hook
   # PROPIO del repo cuyo nombre TERMINE igual (mi-limpiar.sh, pre-sesion-inicio.sh) NO se de-cablea.
   brain_sh=(); for n in $brain_names; do brain_sh+=("$n.sh"); done

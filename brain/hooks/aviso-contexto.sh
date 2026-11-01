@@ -187,7 +187,7 @@ _snap_fresca() {  # 0 = fresca (updated_at <= 30min y no stale); 1 = rancia/ause
 }
 _find_snap
 if ! _snap_fresca; then
-  # FORZAR cortex-fetch desprendido, con throttle de 5min (sello en MEM). El binario vive en
+  # FORZAR cortex-fetch desprendido, con throttle de 5min (sello en $STATE). El binario vive en
   # ~/.local/bin/cortex-fetch (macOS y Linux instalan ahí); override por env para tests/escape. NO se busca
   # en el PATH (evita que un hook aislado con HOME falso dispare el cortex-fetch REAL del usuario).
   fetch_bin=""

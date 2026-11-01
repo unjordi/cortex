@@ -4786,6 +4786,8 @@ cp -R "$SCRIPT_DIR/skills/checkpoint" "$LRR/.claude/skills/checkpoint" 2>/dev/nu
 mkdir -p "$LRR/.claude/skills/mi-skill-proyecto"; echo '# propia' > "$LRR/.claude/skills/mi-skill-proyecto/SKILL.md"  # del proyecto → se conserva
 echo 'BACKLOG proyecto' > "$LRR/.claude/memory/estado-proyecto.md"
 : > "$LRR/.claude/memory/.cuota-fetch-forzado"; : > "$LRR/.claude/memory/.ramas-huerfanas-estado"   # sellos viejos dentro del repo
+cp "$SCRIPT_DIR/hooks/dashboard_cerebro.template.md" "$LRR/.claude/hooks/dashboard_cerebro.template.md" 2>/dev/null   # artefacto NO-.sh del cerebro leakeado
+echo '# hook propio del repo' > "$LRR/.claude/hooks/notas-del-repo.md"   # NO-.sh ajeno (no existe en la fuente) → se conserva
 # PLAN (dry-run): no muta
 HOME="$LRFIX/home" bash "$INSTALLER" --limpiar-repo "$LRR" >/dev/null 2>&1
 [ -f "$LRR/.claude/hooks/dod-verificar.sh" ] \
@@ -4799,6 +4801,9 @@ HOME="$LRFIX/home" bash "$INSTALLER" --limpiar-repo "$LRR" --apply >/dev/null 2>
   && ok "--limpiar-repo: conserva el hook AJENO" || bad "--limpiar-repo: borró el hook ajeno"
 [ ! -f "$LRR/.claude/hooks/.brain-version" ] \
   && ok "--limpiar-repo: retira el sello .brain-version (de .claude/hooks/)" || bad "--limpiar-repo: dejó .brain-version"
+{ [ ! -f "$LRR/.claude/hooks/dashboard_cerebro.template.md" ] && [ -f "$LRR/.claude/hooks/notas-del-repo.md" ]; } \
+  && ok "--limpiar-repo: retira el artefacto NO-.sh del cerebro y conserva el NO-.sh ajeno del repo" \
+  || bad "--limpiar-repo: no retiró el artefacto del cerebro, o borró uno ajeno"
 if command -v jq >/dev/null 2>&1; then
   jq -e '[.hooks[]?[]?.hooks[]?.command|select(test("dod-verificar|merge-develop-guard"))]|length==0' "$LRR/.claude/settings.json" >/dev/null 2>&1 \
     && ok "--limpiar-repo: de-cablea los hooks del cerebro de settings.json" || bad "--limpiar-repo: dejó cableado del cerebro"

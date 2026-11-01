@@ -1,6 +1,6 @@
 ---
 name: mandato-loop
-description: El MOLDE con el que cualquier master redacta un mandato de `/loop` — la plantilla versionada del lote/épica (merge de arsenal `loop-epic-0.1` + axon `loop-cerebellum` + `loop-cierre-ab`, revisada sección por sección con unjordi). Úsalo cuando vayas a lanzar un `/loop` de épica/lote y necesites escribir su mandato: cómo se redacta (sin trazabilidad, sin «el LISTO lo da el usuario», criterio por fila, nada de colas ajenas) + el bloque `text` completo con todas sus secciones. NO es para `turno-nocturno` (ese es otro skill); esto es la plantilla del mandato en sí.
+description: El MOLDE con el que cualquier master redacta un mandato de `/loop` — la plantilla versionada del lote/épica. Úsalo cuando vayas a lanzar un `/loop` de épica/lote y necesites escribir su mandato: cómo se redacta (sin trazabilidad, sin «el LISTO lo da el usuario», criterio por fila, nada de colas ajenas) + el bloque `text` completo con todas sus secciones. NO es para `turno-nocturno` (ese es otro skill); esto es la plantilla del mandato en sí.
 ---
 
 # Plantilla de mandato de loop
