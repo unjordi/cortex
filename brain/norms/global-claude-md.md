@@ -152,23 +152,21 @@ git push -u origin feat/<tema>       # push SOLO a la ramita (idéntico en ambos
 - El ÚNICO cruce que exige confirmación expresa es integrar la mini (o cualquier rama) a `develop`/`main` por MR/PR — `develop` es integración COORDINADA, `main` es release.
 - Sembrado self-service: cada dev crea la suya UNA vez por repo con `sembrar-mini-develop.sh` (la crea desde `origin/develop`, la pushea y en GitLab la protege server-side push/merge=Developer, no borrable). Nadie siembra la mini de otro.
 - Las ramas temáticas de integración (`integracion/<sprint>`, `epic/<tema>`) valen como "minis de tema" con las mismas libertades.
-- Tu mini es donde el cerebro se auto-cura: `aviso-drift-cerebro`, al abrir sesión parado en tu mini con `.claude/` limpio, sincroniza la copia por-repo del cerebro (apply+commit+push a tu mini).
-- **Unificar hacia arriba (tu mini → develop) es disciplina, no hook**: cuando tu mini acumule aprendizajes/memorias de `.claude/` sin integrar a `develop` (varios archivos, o llevas días), corre `canonizar-cerebro` en modo reconciliar tú mismo — no esperes un aviso.
+- **Unificar hacia arriba (tu mini → develop) es disciplina, no hook**: cuando tu mini acumule aprendizajes/memorias de `.claude/` sin integrar a `develop` (varios archivos, o llevas días), corre `canonizar-cerebro` en modo reconciliar tú mismo — no esperes un aviso. (Esto es la MEMORIA del proyecto, que sí vive por-repo; el cerebro-guards vive solo en global.)
 - El folder de trabajo VISIBLE del dev vive SIEMPRE en su mini-develop (su superficie ESTABLE de QA). **Corolario para la IA (norma dura):** Claude trabaja en worktrees de FEATURE y MERGEA hacia la mini; NUNCA saca la mini-develop del dev en un worktree propio (una rama solo puede estar checked-out en UN worktree, y esa rama la posee el folder visible del dev). Para integrar: merge de la ramita → mini (local o por push) y el folder la ve.
 
-## Cerebro por-repo = CORREO: repo PERSONAL sin guards, repo COMPARTIDO con guards (norma dura)
-- El cerebro copiado en `.claude/` de un repo es un CORREO: existe SOLO para viajar por git a máquinas/personas que NO tienen el brain global. TU máquina no saca sus guards de esa copia — los saca del install GLOBAL + el DEDUPE (cada guard trae `case "$0" … exit 0` que hace ceder la copia por-repo a la global).
-- **Repo PERSONAL** (vive solo en tus máquinas, que ya tienen brain global): memoria/skills SÍ, guards por-repo NUNCA (el global+dedupe ya los cubre; una copia por-repo solo puede DRIFTAR). Si un personal tiene guards del brain, SOBRAN → quítalos (`.claude/hooks/*.sh` del brain + sus entradas en `settings.json`).
-- **Repo COMPARTIDO** (viaja a máquinas/personas sin brain): guards por-repo SÍ, en git. Se declara EXPLÍCITAMENTE con la marca `.claude/repo-compartido`. Default = personal (sin marca): conservador.
-- Mecanismo: `aviso-drift-cerebro` (SessionStart) bifurca por la marca — en COMPARTIDO mantiene el correo fresco (auto-sync en tu mini / avisa); en PERSONAL no auto-commitea y flaggea los guards que sobran (no los borra solo).
-- La limpieza la hace `sincronizar-cerebro.sh --limpiar-personal [--apply]`: REHÚSA si el repo está marcado `.claude/repo-compartido`, y retira SOLO los archivos de tier `both` + su cableado + el sello `.brain-version` — nunca los de tier `repo` (`dod-verificar`…) ni la memoria/skills. **Excepción N4 (2026-10-21):** una lib `both` que una hook tier=repo PRESENTE sourcea (p. ej. `juez-comun` ← `dod-verificar`, que la sourcea de su propio dir sin fallback global) se CONSERVA — quitarla rompería esa repo-hook; el aviso de `aviso-drift-cerebro` aplica la misma regla (no la lista como sobrante). `--incluir-skills` suma el retiro de skills, solo las que constan en el ledger `.claude/skills/.brain-skills` (opt-in, fail-closed).
+## El cerebro vive SOLO en global por máquina (norma dura)
+- Los guards/hooks/libs/skills del cerebro se instalan UNA vez por máquina (`bootstrap`/`install-brain`, en `~/.claude/`) y aplican a TODA sesión de esa máquina. **NO viajan por-repo:** un repo NO lleva copias de los hooks del cerebro ni su cableado en `.claude/settings.json`.
+- Lo que SÍ vive en el `.claude/` de cada repo es el PROYECTO: su memoria (`MEMORY.md`, `estado-proyecto.md`, `bitacora.md`, hilo), sus skills propias y su identidad (`conocimiento-propio.local.md`). Eso viaja por git; los guards del cerebro, no.
+- Motivo (unjordi 2026-11-01, "solo cerebro global"): todo el equipo tiene cortex instalado; mantener copias del cerebro por-repo solo DRIFTABA. Un clon en una máquina sin cortex simplemente no trae los guards — se instala cortex y listo.
+- Drift de la copia GLOBAL: `aviso-drift-cerebro` (SessionStart) avisa —warn-only— cuando `~/.claude/hooks|skills` o el bloque de normas de `~/.claude/CLAUDE.md` quedaron atrás de la fuente única o se editaron en vivo (se perderían en el próximo `install-brain`). Remedio: editar la FUENTE + re-correr `install-brain`.
 
-### Tiers de hooks/skills: cómo decidir (regla crisp)
-- Al AGREGAR un hook/skill, su TIER (en `brain/hooks/MANIFEST` / `brain/skills/MANIFEST`) se decide con el mismo patrón repo-compartido.
-- **`both`** — viaja por-repo EN GIT y se instala global por el bootstrap (el dedupe hace que la copia por-repo ceda a la global). Ponlo `both` SOLO si debe llegar a clones COMPARTIDOS con personas/máquinas sin brain global. Un hook `both` DEBE traer la cláusula de dedupe; una skill `both` no (es markdown que se lee).
-- **`global`** — solo vive en la máquina del dueño (que ya corrió el bootstrap). DEFAULT conservador: ante la duda, `global`.
-- **`repo`** — solo por-repo, se carga únicamente si la sesión INICIA en ese repo (p. ej. `dod-verificar`, `sesion-inicio`).
-- Corolario anti-drift: un repo PERSONAL nunca lleva guards por-repo; un COMPARTIDO se marca explícito con `.claude/repo-compartido` y ahí viajan los `both`.
+### La marca `.claude/repo-compartido` = repo COORDINADO (solo para el merge a develop)
+- Un repo CON la marca es COORDINADO: `merge-develop-guard` pide tu OK EXPRESO para integrar a `develop` por MR (la definición de LISTO en el punto del merge). Un repo SIN marca es PERSONAL → sus merges a `develop` van sin fricción (el día a día del modelo MINI-DEVELOP). `main` es release-only en TODOS, con o sin marca.
+- La marca YA NO tiene relación con el cerebro (que vive solo en global): su ÚNICA función hoy es ese scoping de autorización de merges. Viaja por git.
+
+### Tier de un hook/skill del cerebro: siempre `global`
+- Todo hook/lib/skill del cerebro es `global` (se instala en `~/.claude`, no viaja por-repo). Ya no existen los tiers `both` (viajaba por-repo EN GIT + global, con cláusula de dedupe) ni `repo` (solo por-repo): se retiraron con el cerebro por-repo. El `MANIFEST` solo tiene `global` (+ `retirado` como lápida de poda que `install-brain` usa para limpiar máquinas con una versión vieja).
 
 ## Consentimiento de costo de delegación (norma dura)
 - Reclutar un agente (Task/subagente) cuesta según su nivel: **gratis** (local), **incluido** (Claude dentro de la ventana de 5h, sin costo marginal) o **metered** (Claude en overage, API externa de pago, o desconocido).
