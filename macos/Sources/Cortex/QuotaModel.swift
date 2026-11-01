@@ -411,8 +411,11 @@ final class QuotaModel: ObservableObject {
         return snap.status ?? "error"
     }
 
-    var fivePct: Double? { snapshot?.five_hour?.percent }
-    var weekPct: Double? { snapshot?.weekly?.percent }
+    // % a MOSTRAR por ventana: nil si su reset ya pasó (el % cacheado es de ANTES del reset → "sin
+    // dato", nunca el valor viejo; una lectura fresca siempre trae resets_at futuro). Lo consumen la
+    // barra de menú (AppDelegate) y el tooltip — el popup aplica la misma regla en usageSection.
+    var fivePct: Double? { RelativeTime.isPast(snapshot?.five_hour?.resets_at) ? nil : snapshot?.five_hour?.percent }
+    var weekPct: Double? { RelativeTime.isPast(snapshot?.weekly?.resets_at) ? nil : snapshot?.weekly?.percent }
 
     /// Límites semanales acotados a UN modelo (weekly_scoped con modelo) — se
     /// renderizan dinámicamente, sin hardcodear modelos. Paralelo a main.qml.

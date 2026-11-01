@@ -411,7 +411,11 @@ struct PopoverView: View {
 
     @ViewBuilder
     private func usageSection(_ title: String, _ bucket: Bucket?) -> some View {
-        let pct = bucket?.percent
+        // Si el reset de la ventana YA pasó, el % cacheado es de ANTES del reset (ya no aplica):
+        // se muestra "sin dato" (NUNCA el % viejo ni su barra roja) hasta que llegue una lectura
+        // nueva — una lectura fresca siempre trae resets_at en el FUTURO. (Falla "mide mal al despertar".)
+        let resetPassed = RelativeTime.isPast(bucket?.resets_at)
+        let pct = resetPassed ? nil : bucket?.percent
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(title).fontWeight(.bold)
@@ -421,25 +425,26 @@ struct PopoverView: View {
                     .foregroundStyle(pctColor(pct))
             }
             ProgressBar(pct: pct)
-            Text(caption(bucket))
+            Text(caption(bucket, resetPassed))
                 .font(.caption)
                 .foregroundStyle(label.opacity(0.65))
         }
     }
 
-    /// "Se restablece en Nmin" (futuro) o "Se restableció hace Nmin · actualizando…" (ya pasó → el %
-    /// cacheado quedó viejo y el fetch disparado por el reset lo está poniendo al día).
+    /// "Se restablece en Nmin" (futuro) o "Se restableció hace Nmin · sin lectura nueva" (ya pasó → el %
+    /// cacheado es de antes del reset; NO se muestra, se espera una lectura posterior).
     private func resetLine(_ iso: String?) -> String {
         if RelativeTime.isPast(iso) {
-            return "Se restableció \(RelativeTime.relative(iso)) · actualizando…"
+            return "Se restableció \(RelativeTime.relative(iso)) · sin lectura nueva"
         }
         return "Se restablece \(RelativeTime.resetDetail(iso))"   // "en 4h 36min" / "el mié 7:59 a. m."
     }
 
-    private func caption(_ bucket: Bucket?) -> String {
+    private func caption(_ bucket: Bucket?, _ resetPassed: Bool = false) -> String {
         guard let bucket else { return "" }
         var s = resetLine(bucket.resets_at)
-        if let cost = bucket.equiv_session_cost_usd ?? bucket.equiv_weekly_cost_usd {
+        // Con el reset ya pasado no hay % vigente → tampoco mostramos su costo equiv (sería del ciclo viejo).
+        if !resetPassed, let cost = bucket.equiv_session_cost_usd ?? bucket.equiv_weekly_cost_usd {
             s += String(format: " · ≈ $%.2f (API equiv local)", cost)
         }
         return s
