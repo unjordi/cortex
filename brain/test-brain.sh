@@ -3425,6 +3425,7 @@ echo "== (b3c3) limpiar-ramas: REPORTA (nunca borra) las ramas REPRESADAS — vi
 # rama queda CONSERVADA (bz_es_zombie nunca la toca: tiene commits propios) y se acumula EN SILENCIO. La
 # clase nueva: reportar (jamás borrar) esas puntas viejas+sin-worktree a la bitácora, una sola vez.
 LR3ROOT="$(mktemp -d "${TMPDIR:-/tmp}/brain-lr3.XXXXXX")"; LR3REPO="$LR3ROOT/repo"; mkdir -p "$LR3REPO/.claude/memory"
+LR3HOME="$LR3ROOT/home"; mkdir -p "$LR3HOME/.claude"   # HOME aislado: el estado de dedupe vive en ~/.claude/state/<cksum>, no en el repo
 printf '# bitacora\n' > "$LR3REPO/.claude/memory/bitacora.md"
 git -C "$LR3REPO" init -q >/dev/null 2>&1
 git -C "$LR3REPO" symbolic-ref HEAD refs/heads/develop >/dev/null 2>&1
@@ -3444,7 +3445,7 @@ printf 'z\n' > "$LR3REPO/h.txt"; git -C "$LR3REPO" add h.txt >/dev/null 2>&1
 GIT_COMMITTER_DATE="@$OLDTS" git -C "$LR3REPO" commit -q -m "feature legítima vieja" --date "@$OLDTS" >/dev/null 2>&1
 git -C "$LR3REPO" checkout -q develop >/dev/null 2>&1
 
-lr3dry="$(cd "$LR3REPO" && CLAUDE_INTEGRACION_BASE=develop bash "$HOOKS/limpiar.sh" ramas --dry-run --no-fetch 2>&1)"
+lr3dry="$(cd "$LR3REPO" && HOME="$LR3HOME" CLAUDE_INTEGRACION_BASE=develop bash "$HOOKS/limpiar.sh" ramas --dry-run --no-fetch 2>&1)"
 printf '%s' "$lr3dry" | grep -q 'REPRESADA.*worktree-agent-oldstale' \
   && ok "b3c3: dry-run detecta la rama vieja sin integrar (worktree-agent-oldstale)" || bad "b3c3: no la detectó; got: $lr3dry"
 printf '%s' "$lr3dry" | grep -q 'worktree-agent-recent.*REPRESADA\|REPRESADA.*worktree-agent-recent' \
@@ -3452,7 +3453,7 @@ printf '%s' "$lr3dry" | grep -q 'worktree-agent-recent.*REPRESADA\|REPRESADA.*wo
 [ "$(cat "$LR3REPO/.claude/memory/bitacora.md")" = "$(printf '# bitacora')" ] \
   && ok "b3c3: dry-run NO escribe nada a la bitácora" || bad "b3c3: dry-run mutó la bitácora"
 
-( cd "$LR3REPO" && CLAUDE_INTEGRACION_BASE=develop bash "$HOOKS/limpiar.sh" ramas --no-fetch >/dev/null 2>&1 )
+( cd "$LR3REPO" && HOME="$LR3HOME" CLAUDE_INTEGRACION_BASE=develop bash "$HOOKS/limpiar.sh" ramas --no-fetch >/dev/null 2>&1 )
 git -C "$LR3REPO" rev-parse --verify -q refs/heads/worktree-agent-oldstale >/dev/null 2>&1 \
   && ok "b3c3: la rama represada NUNCA se borra (solo se reporta)" || bad "b3c3: ¡BORRÓ la rama represada! (pérdida de datos)"
 grep -q 'worktree-agent-oldstale' "$LR3REPO/.claude/memory/bitacora.md" \
@@ -3468,23 +3469,23 @@ grep -q 'feat/normal-vieja' "$LR3REPO/.claude/memory/bitacora.md" \
 # el patrón sigue disponible como FILTRO OPCIONAL (control de la otra dirección). El stamp de dedupe se
 # respalda y se restaura: sin eso, vaciarlo aquí haría que la corrida siguiente re-reportara y el aserto de
 # idempotencia de más abajo fallara por culpa del andamio, no del código.
-cp "$LR3REPO/.claude/memory/.ramas-huerfanas-estado" "$LR3ROOT/estado.bak" 2>/dev/null
-: > "$LR3REPO/.claude/memory/.ramas-huerfanas-estado"
-lr3filt="$(cd "$LR3REPO" && CLAUDE_INTEGRACION_BASE=develop LIMPIAR_RAMAS_PATRON_HUERFANA='worktree-agent-*' bash "$HOOKS/limpiar.sh" ramas --dry-run --no-fetch 2>&1)"
+LR3STATE="$(find "$LR3HOME/.claude/state" -name .ramas-huerfanas-estado 2>/dev/null | head -1)"
+[ -n "$LR3STATE" ] && { cp "$LR3STATE" "$LR3ROOT/estado.bak" 2>/dev/null; : > "$LR3STATE"; }
+lr3filt="$(cd "$LR3REPO" && HOME="$LR3HOME" CLAUDE_INTEGRACION_BASE=develop LIMPIAR_RAMAS_PATRON_HUERFANA='worktree-agent-*' bash "$HOOKS/limpiar.sh" ramas --dry-run --no-fetch 2>&1)"
 printf '%s' "$lr3filt" | grep -q 'REPRESADA.*feat/normal-vieja' \
   && bad "FIX-5: con el filtro de patrón puesto, feat/normal-vieja no debía reportarse" \
   || ok "FIX-5: LIMPIAR_RAMAS_PATRON_HUERFANA sigue acotando el reporte cuando se pide (filtro opcional)"
 printf '%s' "$lr3filt" | grep -q 'REPRESADA.*worktree-agent-oldstale' \
   && ok "FIX-5: y con el filtro puesto SÍ sigue reportando lo que matchea (el filtro no rompe nada)" \
   || bad "FIX-5: con el filtro puesto dejó de reportar hasta lo que matchea; got: $lr3filt"
-cp "$LR3ROOT/estado.bak" "$LR3REPO/.claude/memory/.ramas-huerfanas-estado" 2>/dev/null
+[ -n "$LR3STATE" ] && cp "$LR3ROOT/estado.bak" "$LR3STATE" 2>/dev/null
 n_lineas_antes="$(grep -c 'worktree-agent-oldstale' "$LR3REPO/.claude/memory/bitacora.md")"
-( cd "$LR3REPO" && CLAUDE_INTEGRACION_BASE=develop bash "$HOOKS/limpiar.sh" ramas --no-fetch >/dev/null 2>&1 )
+( cd "$LR3REPO" && HOME="$LR3HOME" CLAUDE_INTEGRACION_BASE=develop bash "$HOOKS/limpiar.sh" ramas --no-fetch >/dev/null 2>&1 )
 n_lineas_despues="$(grep -c 'worktree-agent-oldstale' "$LR3REPO/.claude/memory/bitacora.md")"
 [ "$n_lineas_antes" = "$n_lineas_despues" ] \
   && ok "b3c3: dedupe — una 2ª corrida NO repite el aviso de la misma punta" || bad "b3c3: repitió el aviso (spam de bitácora); antes=$n_lineas_antes después=$n_lineas_despues"
 # patrón/edad configurables
-lr3cfg="$(cd "$LR3REPO" && CLAUDE_INTEGRACION_BASE=develop LIMPIAR_RAMAS_DIAS_HUERFANA=999 bash "$HOOKS/limpiar.sh" ramas --dry-run --no-fetch 2>&1)"
+lr3cfg="$(cd "$LR3REPO" && HOME="$LR3HOME" CLAUDE_INTEGRACION_BASE=develop LIMPIAR_RAMAS_DIAS_HUERFANA=999 bash "$HOOKS/limpiar.sh" ramas --dry-run --no-fetch 2>&1)"
 printf '%s' "$lr3cfg" | grep -q 'REPRESADA' \
   && bad "b3c3: LIMPIAR_RAMAS_DIAS_HUERFANA=999 debía silenciar el aviso (nada es tan vieja)" \
   || ok "b3c3: LIMPIAR_RAMAS_DIAS_HUERFANA configurable (umbral alto → sin avisos)"
@@ -3499,6 +3500,7 @@ echo "== (b3c5) FIX-5 / A-4: DETECTOR DE REPRESA — la rama que envejece sin in
 # indistinguible de "sin PR" y se conserva mudo para siempre). Aquí no falló la escoba: falló el CIERRE, y
 # barrer mejor no abre un PR. El estado del PR se inyecta con CLAUDE_BZ_STCACHE (sin red).
 A4ROOT2="$(mktemp -d "${TMPDIR:-/tmp}/brain-a4r.XXXXXX")"; A4REPO2="$A4ROOT2/repo"; mkdir -p "$A4REPO2/.claude/memory"
+A4HOME2="$A4ROOT2/home"; mkdir -p "$A4HOME2/.claude"   # HOME aislado: el estado de dedupe vive en ~/.claude/state/<cksum>
 printf '# bitacora\n' > "$A4REPO2/.claude/memory/bitacora.md"
 git -C "$A4REPO2" init -q >/dev/null 2>&1
 git -C "$A4REPO2" symbolic-ref HEAD refs/heads/develop >/dev/null 2>&1
@@ -3519,7 +3521,7 @@ Rama: feat/integrada" >/dev/null 2>&1                         # señal (e): inte
 # mapa de estados inyectado (rama<TAB>ESTADO<TAB>id), como lo devolvería el foro
 A4ST="$A4ROOT2/estados.tsv"
 printf 'feat/cerrada\tCLOSED\t77\n' > "$A4ST"                 # feat/sinpr NO aparece → "SIN PR"
-a4out="$(cd "$A4REPO2" && CLAUDE_INTEGRACION_BASE=develop CLAUDE_BZ_STCACHE="$A4ST" bash "$HOOKS/limpiar.sh" ramas --no-fetch 2>&1)"
+a4out="$(cd "$A4REPO2" && HOME="$A4HOME2" CLAUDE_INTEGRACION_BASE=develop CLAUDE_BZ_STCACHE="$A4ST" bash "$HOOKS/limpiar.sh" ramas --no-fetch 2>&1)"
 # la integrada se barre; las otras dos NO se borran y AMBAS generan línea de bitácora con su motivo
 ! git -C "$A4REPO2" rev-parse --verify -q refs/heads/feat/integrada >/dev/null 2>&1 \
   && ok "FIX-5: la rama vieja pero INTEGRADA se barre (el detector no estorba al barrido)" \
@@ -3539,14 +3541,15 @@ grep -q 'feat/integrada' "$A4REPO2/.claude/memory/bitacora.md" \
   || ok "FIX-5: la integrada no ensucia el reporte de represas"
 # idempotencia: una 2ª corrida no duplica
 n_a4=$(grep -c 'rama represada' "$A4REPO2/.claude/memory/bitacora.md")
-( cd "$A4REPO2" && CLAUDE_INTEGRACION_BASE=develop CLAUDE_BZ_STCACHE="$A4ST" bash "$HOOKS/limpiar.sh" ramas --no-fetch >/dev/null 2>&1 )
+( cd "$A4REPO2" && HOME="$A4HOME2" CLAUDE_INTEGRACION_BASE=develop CLAUDE_BZ_STCACHE="$A4ST" bash "$HOOKS/limpiar.sh" ramas --no-fetch >/dev/null 2>&1 )
 n_a4b=$(grep -c 'rama represada' "$A4REPO2/.claude/memory/bitacora.md")
 [ "$n_a4" = "$n_a4b" ] && ok "FIX-5: dedupe por punta — la 2ª corrida no repite el aviso ($n_a4 líneas)" \
   || bad "FIX-5: duplicó el reporte ($n_a4 → $n_a4b)"
 # sin foro que consultar, el reporte lo DICE en vez de inventar un estado
-: > "$A4REPO2/.claude/memory/.ramas-huerfanas-estado"
+A4STATE="$(find "$A4HOME2/.claude/state" -name .ramas-huerfanas-estado 2>/dev/null | head -1)"
+[ -n "$A4STATE" ] && : > "$A4STATE"
 : > "$A4REPO2/.claude/memory/bitacora.md"
-a4nd="$(cd "$A4REPO2" && CLAUDE_INTEGRACION_BASE=develop PATH="$SBIN" bash "$HOOKS/limpiar.sh" ramas --dry-run --no-fetch 2>&1)"
+a4nd="$(cd "$A4REPO2" && HOME="$A4HOME2" CLAUDE_INTEGRACION_BASE=develop PATH="$SBIN" bash "$HOOKS/limpiar.sh" ramas --dry-run --no-fetch 2>&1)"
 printf '%s' "$a4nd" | grep -q 'estado del PR desconocido' \
   && ok "FIX-5: sin gh/glab, el reporte DICE que no pudo consultar el foro (no inventa 'SIN PR')" \
   || bad "FIX-5: afirmó un estado de PR que no pudo consultar; got: $a4nd"
