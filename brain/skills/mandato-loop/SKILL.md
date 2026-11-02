@@ -34,7 +34,7 @@ Si todo sale limpio, detén el loop y reporta:
 Antes de eso, cada reporte dice qué filas faltan.
 
 CADA RONDA:
-0) Re-arma el loop antes de trabajar y corre el medidor de cuota: <umbral> ⇒ solo locales.
+0) Re-arma el loop antes de trabajar y lee la cuota del snapshot del widget (macOS `~/Library/Caches/cortex/state.json`, Linux `~/.cache/cortex/state.json`): `jq '{h5: .five_hour.percent, h5_reset: .five_hour.resets_at, semana: .weekly.percent, semana_reset: .weekly.resets_at, updated_at}'`. 5h ≥ <umbral 5h> ⇒ solo locales; semanal ≥ <umbral semanal> ⇒ <qué se frena>; un `updated_at` de más de ~10 min ⇒ sin dato: trátalo como cuota alta.
 1) Estado de lo delegado (<ps, logs, worktrees>). Lo que terminó: revísalo TÚ (diff, base, gates, el contraste de la misma prueba en el commit previo y el nuevo, corrida en vivo sobre una COPIA); si pasa, integra; si falla, corrígelo o anota el tropiezo en la bitácora de prompts y relanza con el prompt pulido. Nunca integres mientras un agente trabaja en el mismo árbol. Antes de commitear, lee una por una las líneas de comentario que agrega el diff (`git diff --cached -U0`) y deja solo lo que cumple §4; la historia que encuentres la mueves al mensaje del commit.
 2) Lanza la siguiente fila con su mandato literal (archivos, funciones, cambios exactos) y sus pruebas de aceptación ya escritas por ti; exígele la sección final «qué NO verifiqué y dónde está mi punto ciego»: esa sección dirige tu revisión.
 3) En la misma tanda de cada cierre concilia todos los tableros (<roadmap, estado-proyecto, lista de tareas>) antes de reportar.
