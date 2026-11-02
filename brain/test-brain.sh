@@ -4200,6 +4200,41 @@ rm -rf "$CSB_BIN"
   && ok "b3cs: cerrar-slice.sh NO lee ninguna env de mock en producción (base/CI solo del forge)" \
   || bad "b3cs: cerrar-slice.sh aún lee una perilla de mock (BASE_MOCK/CI_MOCK) en producción"
 
+# (b3cs-clon) con --repo <slug>, el forge y el gate de gitleaks se deciden DESDE el clon local de ESE slug,
+# no del cwd (que puede ser otro repo/forge). Dos repos HERMANOS: el cwd en un forge, el --repo resuelto al
+# clon del otro. El comando de merge impreso debe nombrar el forge del CLON del slug, no el del cwd (desde un
+# cwd gitlab + --repo github → gh; inverso → glab).
+CSFC="$(mktemp -d "${TMPDIR:-/tmp}/csfc.XXXXXX")"
+CSFC_BIN="$(mktemp -d "${TMPDIR:-/tmp}/csfcbin.XXXXXX")"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$CSFC_BIN/gitleaks"; chmod +x "$CSFC_BIN/gitleaks"
+# gh FALSO: baseRefName=develop (base-check) y headRefName VACÍO — así el gate de gitleaks no resuelve rama del
+# forge y cae a base..HEAD de la rama actual (sin `git fetch` a la URL del origin, que colgaría offline).
+printf '#!/usr/bin/env bash\ncase "$*" in *baseRefName*) echo develop ;; esac\n' > "$CSFC_BIN/gh"; chmod +x "$CSFC_BIN/gh"
+# glab FALSO: target_branch=develop (base-check); SIN source_branch → rama del forge vacía (mismo motivo).
+printf '#!/usr/bin/env bash\necho %s\n' "'{\"target_branch\":\"develop\"}'" > "$CSFC_BIN/glab"; chmod +x "$CSFC_BIN/glab"
+# dos repos hermanos bajo $CSFC: uno con origin github (slug org/bar-gh), otro con origin gitlab (slug org/foo-gl).
+# Quedan parados en una ramita (no develop/HEAD) para que el gate escanee base..HEAD sin tocar red.
+_mk_clon() {  # $1=dir  $2=url-origin
+  git init -q "$CSFC/$1"; ( cd "$CSFC/$1"; git config user.email t@t; git config user.name t
+    git checkout -q -b develop; echo base > base.txt; git add base.txt; git commit -qm base
+    git remote add origin "$2"
+    git checkout -q -b feat/slice; echo s > s.txt; git add s.txt; git commit -qm s ) >/dev/null 2>&1
+}
+_mk_clon bar-gh 'https://github.com/org/bar-gh.git'
+_mk_clon foo-gl 'git@gitlab.com:org/foo-gl.git'
+CSFC_MSG="integro el slice con su cambio neto y su porque para la trazabilidad del squash en develop"
+# Caso A: cwd en el repo GITLAB, --repo = slug de GITHUB → el forge sale del clon github → gh pr merge.
+csfc_a="$(cd "$CSFC/foo-gl" && PATH="$CSFC_BIN:$PATH" bash "$CSMSG_SH" --id 7 --message "$CSFC_MSG" --repo org/bar-gh --dry-run 2>/dev/null)"
+{ printf '%s' "$csfc_a" | grep -q 'dry-run' && printf '%s' "$csfc_a" | grep -qE 'gh[[:space:]]+pr[[:space:]]+merge' && printf '%s' "$csfc_a" | grep -qE -- '-R[[:space:]]+org/bar-gh' && ! printf '%s' "$csfc_a" | grep -qE 'glab[[:space:]]+mr[[:space:]]+merge'; } \
+  && ok "b3cs-clon: cwd gitlab + --repo github → el forge se decide desde el CLON (gh pr merge -R org/bar-gh), no del cwd" \
+  || bad "b3cs-clon: no decidió gh desde el clon github; got: $(printf '%s' "$csfc_a" | tr '\n' '|')"
+# Caso B (inverso): cwd en el repo GITHUB, --repo = slug de GITLAB → glab mr merge.
+csfc_b="$(cd "$CSFC/bar-gh" && PATH="$CSFC_BIN:$PATH" bash "$CSMSG_SH" --id 8 --message "$CSFC_MSG" --repo org/foo-gl --dry-run 2>/dev/null)"
+{ printf '%s' "$csfc_b" | grep -q 'dry-run' && printf '%s' "$csfc_b" | grep -qE 'glab[[:space:]]+mr[[:space:]]+merge' && printf '%s' "$csfc_b" | grep -qE -- '-R[[:space:]]+org/foo-gl' && ! printf '%s' "$csfc_b" | grep -qE 'gh[[:space:]]+pr[[:space:]]+merge'; } \
+  && ok "b3cs-clon: cwd github + --repo gitlab → el forge se decide desde el CLON (glab mr merge -R org/foo-gl), no del cwd" \
+  || bad "b3cs-clon: no decidió glab desde el clon gitlab; got: $(printf '%s' "$csfc_b" | tr '\n' '|')"
+rm -rf "$CSFC" "$CSFC_BIN"
+
 # (b3cs-guard, C2 parte 1 auditoría 2026-10-22) el guard RECONOCE una invocación de cerrar-slice.sh como un
 # merge a develop (cerrar-slice corre el `glab/gh merge` POR DENTRO → el guard solo vería `bash cerrar-slice.sh`
 # y el juez NUNCA correría). En repo COMPARTIDO gatea el juez; en PERSONAL develop es libre; --dry-run/mención

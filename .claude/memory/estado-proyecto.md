@@ -92,6 +92,8 @@ metadata:
 > - 🔵 **B-34** revisar el hardcoding de dod-verificar (inventario constantes/léxico). `dod-verificar.sh:70-140`. (= parte 4 de tiers-hooks).
 > - ✅ [hecho 2026-10-28] **B-35** `seven_day` vs `weekly` (nombre canónico + alias). `cortex-fetch:215,261,271`.
 > - 🔵 **B-36** worktree `cortex-wt-quota` (8 archivos sin commit): confirmar si hace falta [SIN VERIFICAR].
+> - 🔵 **LOTE-F7-a** (BAJO · rev-fila7 claudio) cerrar-slice `--repo <slug>` sin clon local → error duro que impide el merge; con `--forge` explícito podría degradar a avisar que el gate local no corre y seguir (el CI de gitleaks es el backstop server-side). `cerrar-slice.sh:199`. NO unjordi.
+> - 🔵 **LOTE-F7-b** (BAJO · rev-fila7 claudio) si el mensaje trae un `Rama:` que NO coincide con la rama real, cerrar-slice agrega la real y deja AMBAS (`Rama: a … Rama: <real>`); debería corregir/avisar en vez de dejar las dos. `cerrar-slice.sh:223-255`. NO unjordi.
 >
 > **Patrones transversales (raíz compartida — §5 de la nota):** (1) razonar sobre el AMBIENTE vs el SCOPE autoritativo (B-03/04/09/22/30/12/13) → UNA fn `{repo,clon,rama,rutas}` en `analizar-comando-git.sh` + lint que falle con `$PWD`/`show-toplevel` crudo; (2) estado de hooks dentro del repo (B-08/09) → helper `estado_dir()`; (3) los fixes no llegan a la flota (B-02/03); (4) pruebas que miden plomería/entorno real (B-11); (5) decisiones sin ítem durable (B-31/34); (6) guards que casan TEXTO vs el comando ejecutado (B-15/30) → `acg_segmentos_ejecutables` como única fuente.
 
@@ -360,3 +362,14 @@ metadata:
 - **[control-gui-remota-por-ssh · paridad de screenshot]** (macOS `.sh` · Linux `.sh` · Windows `.ps1`): los 3 `*-ssh-screenshot.*` exponen `-Window` con la misma semántica (substring de título), caen a captura COMPLETA + aviso cuando no hallan la ventana, y REUSAN su `get-window-coordinates` (no duplican la enumeración de ventanas).
 - **[reubicar-master · rutas en Windows/Git-Bash]**: `_real()` resuelve con `cd + pwd -P` (bash), NO con `node realpathSync` sobre una ruta POSIX (node.exe rompe en Git Bash antes de traducir con cygpath); los slugs de origen/destino salen de la forma NATIVA (`_cwdform`), no de la POSIX.
 
+
+<!-- espejo-tasklist:start -->
+## 🔄 Pendientes — espejo automático del TaskList (NO editar a mano)
+> Lo mantiene el hook `recordar-cosechar` en cada Stop y lo re-siembra el skill `to-do` al arrancar. Es la
+> serialización DURABLE del HUD (viaja por git, sobrevive la rotación de session_id). La CURACIÓN
+> (decisiones, contexto, prioridades) va AFUERA de este bloque; aquí solo se espeja el estado.
+
+_(sin pendientes ni tareas en curso)_
+
+_(+0 completadas · generado automáticamente)_
+<!-- espejo-tasklist:end -->
