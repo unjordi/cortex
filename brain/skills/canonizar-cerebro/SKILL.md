@@ -22,10 +22,9 @@ firma canónica con plantillas DISTINTAS. Este skill es el dueño único; los cu
 **La maquinaria común** (evita que los 4 modos re-especifiquen "qué es correcto" cada uno a su manera):
 - **El detector de firma** — `brain/verificar-firma-canonica.sh [ruta] [--strict]` — verifica el 1:1 de
   la firma canónica (ver abajo). Lo corren canonizar (Paso 7, el gate) y consolidar (Fase 6, el cierre).
-- **(Retirado) el pull-del-canon:** antes `sincronizar-cerebro.sh --apply` bajaba la copia por-repo del
-  cerebro (hooks/libs/skills de tier `both`). Con «solo cerebro global» (2026-11-01) ya NO hay copia del
-  cerebro por-repo: los guards vienen del install GLOBAL. Lo que estos modos manejan es el CEREBRO-DE-PROYECTO
-  (memoria + skills propias + la firma `CLAUDE.md`/`MEMORY.md`), que sí vive en el repo y viaja por git.
+- **El cerebro vive SOLO en global:** los guards (hooks/libs) vienen del install GLOBAL, no de una copia
+  por-repo. Lo que estos modos manejan es el CEREBRO-DE-PROYECTO (memoria + skills propias + la firma
+  `CLAUDE.md`/`MEMORY.md`), que vive en el repo y viaja por git.
 
 > **NO es un auto-mutador ciego.** Ningún modo reescribe cerebros automáticamente sin supervisión: el
 > humano revisa el diff antes de integrar (salvo el modo reconciliar, que sí integra por MR con OK

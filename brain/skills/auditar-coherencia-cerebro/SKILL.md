@@ -62,7 +62,7 @@ ciegas.** Para el cerebro son:
 3. **El `brain/hooks/MANIFEST`** — la fuente única de tiers/eventos; el cableado DERIVA de aquí
    (`install-brain.sh` `ev_de()` + loop), no está hardcodeado. Los charts/afirmaciones se miden contra él.
 4. **El código real** que cada nodo/afirmación describe — los `.sh` de los hooks, la lib compartida,
-   `install-brain.sh`/`.ps1`, `sincronizar-cerebro.sh`. El auditor LEE la fuente, no la memoria.
+   `install-brain.sh`/`.ps1`. El auditor LEE la fuente, no la memoria.
 5. **Las normas que los guards HACEN CUMPLIR** — flujo de git (nunca push a develop/main; ramita→MR→
    develop con squash; main release-only con OK super-explícito) y la **definición de LISTO**. El auditor
    necesita saber QUÉ debe pasar para juzgar si el guard lo logra.
