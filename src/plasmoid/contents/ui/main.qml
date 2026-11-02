@@ -162,14 +162,32 @@ PlasmoidItem {
         id: pauseStateSource
         engine: "executable"
         connectedSources: []
+        property bool resuelto: false
         onNewData: function(source, data) {
+            // Espera la salida del comando (mismo gate exit-code+stdout que las demás fuentes del archivo).
+            if (!(data["exit code"] === 0 && data.stdout && ("" + data.stdout).trim() !== "")) return
             disconnectSource(source)
+            resuelto = true
             var paused = (("" + data.stdout).indexOf("PAUSED") !== -1)
             root.collectionPaused = paused
             if (!paused) {
                 powerRunner.connectSource("systemctl --user start cortex.timer")
                 forceRefresh()
             }
+        }
+    }
+
+    // Una conexión one-shot del engine executable a veces no entrega su onNewData al cargar (las demás fuentes
+    // del archivo son fiables porque un Timer/reload las re-conecta). Este Timer reintenta la lectura de la marca
+    // hasta que onNewData la resuelva, para que el arranque sea determinista.
+    Timer {
+        id: pauseStateTimer
+        interval: 600; repeat: true; running: true
+        property int intentos: 0
+        onTriggered: {
+            if (pauseStateSource.resuelto) { stop(); return }
+            if (intentos++ > 20) { stop(); return }
+            pauseStateSource.connectSource("test -f \"${XDG_CACHE_HOME:-$HOME/.cache}/cortex/apagado\" && echo PAUSED || echo RUNNING")
         }
     }
 
