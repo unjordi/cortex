@@ -22,7 +22,6 @@
 | [sessions-extract.md](sessions-extract.md) | Extrae todas las sesiones de un repo. |
 | [install-brain.md](install-brain.md) | Instala el cerebro global de Claude Code. |
 | [uninstall-brain.md](uninstall-brain.md) | Retira el cerebro global de Claude Code. |
-| [sincronizar-cerebro.md](sincronizar-cerebro.md) | Sincroniza el cerebro hacia un repo destino. |
 | [sembrar-mini-develop.md](sembrar-mini-develop.md) | Siembra una rama mini de trabajo desde develop. |
 | [nuevo-repo.md](nuevo-repo.md) | Crea un proyecto GitLab espejo del canónico. |
 | [proteger-ramas.md](proteger-ramas.md) | Protege las ramas de un proyecto GitLab. |

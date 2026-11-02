@@ -1017,9 +1017,6 @@ PlasmoidItem {
                 { emoji: "🔗", name: "merge-develop-guard",    desc: "push directo a develop·main, o MR sin --squash/sin tu OK → denegado; a main exige OK súper-explícito",
                   event: "PreToolUse · Bash",
                   detail: "Candado ÚNICO de git. Como PASO 0 deniega el `git push`/merge directo a develop/main y te redirige a ramita→MR (absorbió a git-branch-guard, 2026-10-21). Un `gh pr merge`/`glab mr merge` a develop sin --squash se deniega, para que la ramita colapse a un commit curado; además busca tu OK explícito en el chat reciente antes de integrar. A main exige lenguaje de release ('hasta main', 'libera') y va SIN squash (conserva historia). Un 'sigue/avanza' NO cuenta como autorización." },
-                { emoji: "✅", name: "dod-verificar",          desc: "Def. of Done (ver Norma 🎯 DoD) sin build+tests+memoria → denegado",
-                  event: "Stop",
-                  detail: "Al cerrar el turno, si dijiste 'listo/en producción' tras tocar código fuente, exige evidencia de build+tests verdes y memoria al día, o bloquea el cierre." },
                 { emoji: "💸", name: "delegacion-gate",        desc: "reclutar agente con costo → pide tu consentimiento (puede negar)",
                   event: "PreToolUse · Task",
                   detail: "Al reclutar un agente calcula su nivel de costo (gratis/incluido/con costo, según tu ventana de 5h) y pide consentimiento mostrando tu cuota real. Puedes negar y el agente no corre." },
@@ -1044,9 +1041,9 @@ PlasmoidItem {
                 { emoji: "🧵", name: "rehidratar-hilo",           desc: "al retomar/tras compactar reinyecta el hilo mental de la tarea",
                   event: "SessionStart",
                   detail: "Al abrir/retomar sesión o tras compactar, relee .claude/memory/hilo-mental-actual.md y lo reinyecta por additionalContext (canal fiable de SessionStart). Es la mitad 'leer' del par con el skill checkpoint (la mitad 'escribir'). Silencioso si el archivo no existe." },
-                { emoji: "♻️", name: "aviso-drift-cerebro",       desc: "la copia del cerebro por-repo quedó atrás de la fuente → aviso",
+                { emoji: "♻️", name: "aviso-drift-cerebro",       desc: "la copia GLOBAL del cerebro quedó atrás de la fuente → aviso",
                   event: "SessionStart",
-                  detail: "Al iniciar sesión en un repo con el cerebro por-repo instalado, compara esa copia contra la fuente única (sincronizar-cerebro.sh en dry-run, diff por contenido) y, si quedó atrás, avisa para que Claude proponga propagar por el flujo (ramita→MR). No escribe al árbol en repos compartidos. Throttle 6h si salió limpio." },
+                  detail: "Al iniciar sesión compara la copia GLOBAL instalada (~/.claude/hooks, skills y el bloque de normas de ~/.claude/CLAUDE.md) contra la fuente única y, si quedó atrás o se editó en vivo, avisa (warn-only) para portarlo a la fuente y re-correr install-brain. Throttle propio por frente, 6h si salió limpio. El cerebro ya no viaja por-repo (solo global)." },
                 { emoji: "🧹", name: "barrer-ramas",            desc: "barre ramas locales ya integradas (zombies squash-safe) en 2º plano",
                   event: "SessionStart",
                   detail: "Al iniciar sesión en un repo con remoto, y como mucho cada 24h, lanza limpiar-ramas.sh en segundo plano para borrar las ramas locales ya integradas (MR mergeado con --squash → remota borrada, o commits ya en la base por equivalencia de parche). Conserva todo trabajo sin integrar; nunca toca la actual/base/develop/main/Develop*/keep/*." },
@@ -1131,6 +1128,9 @@ PlasmoidItem {
                 { emoji: "🌙", name: "turno-nocturno", desc: "Claude trabaja solo de noche: contrato medible, decide-o-parquea, checkpoint c/2h",
                   event: "skill · opt-in",
                   detail: "Protocolo para dejar a Claude trabajando SOLO de noche: eco del contrato antes de empezar (alcance, criterio de cierre MEDIBLE, lo intocable, dónde queda visible el resultado), preflight de herramientas/quota, regla de decisión (dentro del alcance decide y sigue; fuera, parquea y brinca), autorización durable a disco y checkpoint cada ~2h." },
+                { emoji: "🔁", name: "mandato-loop", desc: "el MOLDE para redactar un mandato de /loop de épica/lote",
+                  event: "skill · opt-in",
+                  detail: "El molde con que un master redacta un mandato de /loop de épica/lote: «Cómo se redacta» (sin trazabilidad, sin «el LISTO lo da el usuario», criterio CIERRA-CUANDO por fila, nada de colas ajenas) + el bloque text completo (worktree por fila, FILAS, ÉPICA TERMINADA, CADA RONDA, DELEGACIÓN, PRUEBAS §1-7, HIGIENE MENTAL, REGLAS). NO es turno-nocturno." },
                 { emoji: "🎓", name: "investigar-dominio", desc: "ponte experto en un dominio (fan-out DOC-FIRST) → memorias durables + skills",
                   event: "skill · opt-in",
                   detail: "Ponerte al día como EXPERTO en un dominio/ecosistema maduro sin investigar al aire: delega un fan-out de agentes a barrer la documentación oficial + issues/foros de cada pieza (método DOC-FIRST), cosecha en DOS capas (memorias de investigación indexadas + skills reutilizables, con la capa profunda separada) y REVISA las decisiones actuales contra el conocimiento nuevo para no arrastrar deuda técnica. Trae plantilla-prompt pegable para encargárselo a otro Claude." },
@@ -1203,7 +1203,7 @@ PlasmoidItem {
     // Catálogo conocido (mismos conjuntos que BrainState.knownGlobalHooks / knownRepoHooks del Swift).
     // DEBE coincidir con brain/hooks/MANIFEST; lo verifica el drift-check del widget (test-brain.sh).
     readonly property var brainGlobalHooks: ["merge-develop-guard","proteger-arbol","proteger-fuente-cerebro","limite-gasto","delegacion-gate","delegacion-registrar","rehidratar-hilo","aviso-contexto","aviso-drift-cerebro","exportar-sesion-master","checkpoint-mecanico","barrer-ramas","entorno-maquina-guard","no-bypass-deploy","sesion-inicio","recordar-cosechar"]
-    readonly property var brainRepoHooks:   ["dod-verificar"]
+    readonly property var brainRepoHooks:   []
     // Los 4 rótulos de NORMA (pseudo-piezas, gobernados por hasNorms). NO viven en el MANIFEST ni se
     // retiran como skills/hooks → enumerarlos es legítimo (no es la lista drift-prone).
     readonly property var brainNormNames:   ["Definition of Done","Doc <= realidad","Flujo de git","Costo de delegación"]

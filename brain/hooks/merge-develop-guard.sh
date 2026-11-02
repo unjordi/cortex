@@ -253,10 +253,6 @@ _juez_merge() {   # $1=destino  $2=mrid  $3=mensajes  $4=hint(opcional) → impr
 # normal la var no está y el guard corre completo.
 [ "${_CMD_JUEZ_SOURCE_ONLY:-}" = "1" ] && return 0 2>/dev/null
 
-# dedupe doble-cableado: si soy la copia del REPO y la copia GLOBAL existe, cedo (la global maneja
-# esta invocación) → evita disparo doble (y doble llamada de red) en máquina con el cerebro global;
-# en un clon SIN bootstrap la del repo sí corre. NO-debilitante: sigue exigiendo squash + OK igual.
-_cfgh="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks"; case "$0" in "$_cfgh/"*) : ;; *) [ -f "$_cfgh/$(basename "$0")" ] && exit 0 ;; esac
 input=$(cat 2>/dev/null || true)
 
 # ── SIN jq (fail-SAFE, UNIÓN de los dos guards consolidados): sin jq no puedo parsear el comando ni resolver
@@ -541,9 +537,38 @@ if [ "$_ventana_sin_usuario" = 1 ] && [ -n "$tpath" ] && [ -f "$tpath" ]; then
   _tp_lineas=$(wc -l < "$tpath" 2>/dev/null | tr -d '[:space:]')
   case "$_tp_lineas" in ''|*[!0-9]*) _tp_lineas=0 ;; esac
   [ "$_tp_lineas" -gt 6000 ] && _ventana_truncada=1
-  # Si la conversación parseada no trae USUARIO: pero la ventana CRUDA sí trae mensajes de usuario (role/type
-  # user, o un queued_command humano), el parseo del transcript falló — distinto de "no autorizaste".
-  tail -n 6000 "$tpath" 2>/dev/null | grep -qE '"(role|type)"[[:space:]]*:[[:space:]]*"user"|"queued_command"' && _jq_fallo=1
+  # "no pude LEER" SOLO si la ventana CRUDA trae un mensaje HUMANO real (texto, o un queued_command) que el
+  # parser no extrajo — distinto de "no autorizaste". Un `type/role:"user"` cuyo content es SOLO un
+  # tool_result NO cuenta (es salida de un tool, no humano): si todos los "user" son tool_results, no hubo
+  # autorización POSIBLE y el mensaje correcto es el de "definición de LISTO", no "no pude leer".
+  # Lee la ESTRUCTURA, nunca el texto (un tool_result que CONTENGA "queued_command" —este guard, su test,
+  # esta nota— ya NO revive el falso "no pude leer"): cuenta, en el MISMO jq, (a) registros user con texto
+  # humano real y (b) attachments cuyo .attachment.type=="queued_command" con .prompt no vacío (el comando
+  # humano encolado que el intercalado no vio porque su texto va en .attachment.prompt, no en .message.content).
+  if command -v jq >/dev/null 2>&1; then
+    # test("[^[:space:]]") en vez de gsub(space;"")!="" : mismo veredicto ("hay algún no-espacio") pero CORTA
+    # al primer char no-espacio, sin reescribir el string entero — sobre los 6000 últimos renglones de un
+    # transcript de 171 MB (base64 grande) baja de ~14 s a ~0.01 s dentro del PreToolUse (hallazgo 4).
+    _human_raw=$(tail -n 6000 "$tpath" 2>/dev/null | jq -rs '
+      [ .[]? | select(
+          ( ((.type=="user") or ((.message.role // "")=="user"))
+            and ( (.message.content // .content) as $c
+                  | if ($c|type)=="string" then ($c|test("[^[:space:]]"))
+                    elif ($c|type)=="array" then any($c[]?; (.type=="text") and ((.text//"")|test("[^[:space:]]")))
+                    else false end ) )
+          or
+          ( (.type=="attachment") and ((.attachment.type // "")=="queued_command")
+            and ((.attachment.prompt // "")|test("[^[:space:]]")) )
+        )
+      ] | length' 2>/dev/null)
+    if [ -z "$_human_raw" ]; then
+      _jq_fallo=1   # jq no pudo parsear la ventana (JSON malformado = parse REAL fallido): "no pude leer" HONESTO
+    elif [ "$_human_raw" != 0 ]; then
+      _jq_fallo=1   # hubo contenido HUMANO (texto de user o un queued_command) que el intercalado no surface-ó
+    fi
+  else
+    _jq_fallo=1     # sin jq no hay lectura estructural posible → "no pude leer" es la verdad (no adivinar con texto)
+  fi
 fi
 
 # Grant DURABLE (turno-nocturno): un OK persistido a disco cubre scope=merge-develop (NUNCA main). Fast-path

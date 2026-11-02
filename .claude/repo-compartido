@@ -1,0 +1,11 @@
+# Marca: este es un repo COORDINADO (de equipo).
+#
+# Su sola presencia hace que `merge-develop-guard` (hook global del cerebro) pida tu OK EXPRESO
+# para integrar a `develop` por MR (la definición de LISTO en el punto del merge). Un repo SIN esta
+# marca es PERSONAL → sus merges a develop van sin fricción (el día a día del modelo MINI-DEVELOP).
+# Las ramas personales de integración `Develop<Usuario>` nunca pasan por el gate.
+# `main` es release-only en TODOS los repos, con o sin marca.
+#
+# NOTA (2026-11-01): esta marca YA NO tiene nada que ver con el "cerebro por-repo" (retirado: el
+# cerebro vive solo en global por máquina). Su ÚNICA función hoy es el scoping de autorización de
+# merges de arriba — "repo coordinado". Viaja por git.

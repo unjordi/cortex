@@ -123,7 +123,7 @@ src="$BRAIN_DIR/brain/$relsub"
 # Sin fuente correspondiente → skill/hook puramente local → NO es este error → silencio.
 [ -f "$src" ] || exit 0
 
-MSG="AVISO (proteger-fuente-cerebro): estás editando la copia INSTALADA del cerebro ($fp). Es REGENERABLE: el próximo install-brain la SOBRESCRIBE con la fuente y tu edición se PIERDE sin rastro. Edita la FUENTE en: $src — y propaga con install-brain (global) o sincronizar-cerebro.sh (por-repo). Corre verificar-cerebro para ver TODO el drift instalada-vs-fuente. (Esto AVISA, no bloquea: si de verdad es un tweak local desechable, ignóralo o exporta CLAUDE_SKIP_PROTEGER_FUENTE=1.)"
+MSG="AVISO (proteger-fuente-cerebro): estás editando la copia INSTALADA del cerebro ($fp). Es REGENERABLE: el próximo install-brain la SOBRESCRIBE con la fuente y tu edición se PIERDE sin rastro. Edita la FUENTE en: $src — y propaga con install-brain (global). Corre verificar-cerebro para ver TODO el drift instalada-vs-fuente. (Esto AVISA, no bloquea: si de verdad es un tweak local desechable, ignóralo o exporta CLAUDE_SKIP_PROTEGER_FUENTE=1.)"
 
 jq -n --arg m "$MSG" '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$m}}'
 exit 0

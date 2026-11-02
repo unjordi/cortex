@@ -58,13 +58,11 @@ struct BrainState {
         "limite-gasto", "delegacion-gate", "delegacion-registrar",
         "rehidratar-hilo", "aviso-contexto", "aviso-drift-cerebro", "exportar-sesion-master", "checkpoint-mecanico", "barrer-ramas",
         "entorno-maquina-guard", "no-bypass-deploy",
-        "sesion-inicio", "recordar-cosechar",   // tier both desde 2026-10-21 (global por bootstrap + por-repo con dedupe)
+        "sesion-inicio", "recordar-cosechar",   // tier global (antes both; el cerebro por-repo se retiró 2026-11-01)
     ]
-    /// Hooks de tier repo (kind=hook): viajan por-repo, se cargan si la sesión INICIA en el repo.
-    /// DEBE coincidir con brain/hooks/MANIFEST {repo} (lo verifica test-brain.sh).
-    static let knownRepoHooks: Set<String> = [
-        "dod-verificar",
-    ]
+    /// Ya no hay hooks tier `repo` (el cerebro por-repo se retiró 2026-11-01): conjunto vacío.
+    /// DEBE coincidir con brain/hooks/MANIFEST (sin tier repo) — lo verifica test-brain.sh.
+    static let knownRepoHooks: Set<String> = []
 
     /// # de piezas GLOBALES esperadas que FALTAN: hooks no (presentes+cableados) + normas + la skill.
     /// Espeja el criterio del recuadro de salud; alimenta el 🩹 del riel y de la píldora de la barra.

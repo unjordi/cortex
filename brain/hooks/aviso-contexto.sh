@@ -36,12 +36,21 @@ tp=$(printf '%s' "$input" | jq -r '.transcript_path // empty' 2>/dev/null)
 ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 MEM="$ROOT/.claude/memory"
 [ -d "$MEM" ] || exit 0                          # repo sin el sistema de memoria → no incumbe
+# Sellos de throttle/debounce bajo ${CLAUDE_CONFIG_DIR:-~/.claude}/state/<cksum del ROOT>/, fuera del repo:
+# no ensucian el working tree ni dependen de .gitignore. El andamio del checkpoint (↓, en $MEM) sí vive en
+# el repo: es un artefacto durable, no un sello.
+# shellcheck source=estado-cerebro-comun.sh
+. "$(dirname "$0")/estado-cerebro-comun.sh" 2>/dev/null
+STATE="$(cortex_state_dir "$ROOT" 2>/dev/null)"
+[ -n "$STATE" ] || STATE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/state/$(printf '%s' "$ROOT" | cksum 2>/dev/null | awk '{print $1}')"  # fallback si la lib no está
+mkdir -p "$STATE" 2>/dev/null || true            # fail-open: sin dir escribible, los sellos degradan a sin-throttle
+rm -rf "$MEM/.contexto-aviso" "$MEM/.contexto-aviso.d" "$MEM/.cuota-fetch-forzado" 2>/dev/null || true  # retira el sello que una versión anterior dejó dentro del repo
 
 # Stamp de debounce keyeado POR SESIÓN (no por repo): un stamp único por-repo hacía THRASH entre sesiones
 # concurrentes. Poda best-effort >14d. Fallback retro-compat: sin session_id → el archivo único de antes.
 sid=$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null | tr -c 'A-Za-z0-9_-' '_')
-AVISO_F="$MEM/.contexto-aviso"
-AVISO_D="$MEM/.contexto-aviso.d"
+AVISO_F="$STATE/.contexto-aviso"
+AVISO_D="$STATE/.contexto-aviso.d"
 if [ -n "$sid" ] && mkdir -p "$AVISO_D" 2>/dev/null; then
   find "$AVISO_D" -type f -mtime +14 -delete 2>/dev/null || true
   AVISO_F="$AVISO_D/$sid"
@@ -178,14 +187,14 @@ _snap_fresca() {  # 0 = fresca (updated_at <= 30min y no stale); 1 = rancia/ause
 }
 _find_snap
 if ! _snap_fresca; then
-  # FORZAR cortex-fetch desprendido, con throttle de 5min (sello en MEM). El binario vive en
+  # FORZAR cortex-fetch desprendido, con throttle de 5min (sello en $STATE). El binario vive en
   # ~/.local/bin/cortex-fetch (macOS y Linux instalan ahí); override por env para tests/escape. NO se busca
   # en el PATH (evita que un hook aislado con HOME falso dispare el cortex-fetch REAL del usuario).
   fetch_bin=""
   for b in "${AVISO_CUOTA_FETCH_CMD:-}" "$HOME/.local/bin/cortex-fetch"; do
     [ -n "$b" ] && [ -x "$b" ] && { fetch_bin="$b"; break; }
   done
-  force_stamp="$MEM/.cuota-fetch-forzado"; throttled=0
+  force_stamp="$STATE/.cuota-fetch-forzado"; throttled=0
   if [ -f "$force_stamp" ]; then
     _fs=$(_mtime "$force_stamp"); case "$_fs" in ''|*[!0-9]*) _fs=0;; esac
     [ "$_fs" -gt 0 ] && [ $(( $(date +%s) - _fs )) -lt 300 ] && throttled=1
