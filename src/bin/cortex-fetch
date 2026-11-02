@@ -56,9 +56,9 @@ if [[ -z "${CORTEX_FETCH_NO_LOCK:-}" ]] && command -v flock >/dev/null 2>&1; the
 fi
 
 # --- transcript_stats: agregados de ~/.claude/projects, INCREMENTAL por archivo -
-# Cachea por .jsonl (mtime+tamaño) sus parciales en buckets UTC (offset-
-# independientes) y re-escanea SOLO los nuevos/cambiados. Antes se releían los GB
-# completos 4-5 veces por corrida. Fiel al código viejo: MESSAGES=líneas assistant|
+# Cachea por .jsonl (mtime+tamaño+offset leído) sus parciales en buckets UTC y
+# re-escanea SOLO los nuevos/cambiados; de los que solo crecieron (los transcripts
+# de las sesiones abiertas), solo los bytes añadidos desde el offset. Fiel al código viejo: MESSAGES=líneas assistant|
 # user; PEAK=todas las líneas con timestamp; DAY_MSG=assistant|user con ts; tokens
 # por proyecto con dedup de msg_id. GNU stat (-c). bash moderno, pero código 3.2-safe.
 # Setea (globales): SESSIONS MESSAGES PEAK_HOUR DAY_MSG_JSON PROJECT_DAY_TSV
