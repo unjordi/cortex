@@ -6344,8 +6344,8 @@ grep -qE 'exit=[0-9]+ andamio=' "$M2BLOG" 2>/dev/null \
   || bad "m2b-log: node no registró su exit/andamio; got: $(cat "$M2BLOG" 2>/dev/null)"
 rm -rf "$(dirname "$M2BDIR")"
 
-# (m2b-lock) disparo con LOCK VIVO → el log registra 'omitido: lock' (no relanza y DICE por qué). FALLA contra
-# el código sin logging (que se omitía en silencio). El lock corta ANTES de correr node → determinista.
+# (m2b-lock) disparo con LOCK VIVO → el log registra 'omitido: lock' (no relanza y DICE por qué; sin este
+# logging el disparo se omitía en silencio). El lock corta ANTES de correr node → determinista.
 LKFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-cklock.XXXXXX")"
 mkdir -p "$LKFIX/home/.local/bin" "$LKFIX/mem"
 : > "$LKFIX/home/.local/bin/checkpoint-mecanico.js"   # extractor: solo se chequea -f (el lock corta antes de correrlo)
