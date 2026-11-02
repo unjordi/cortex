@@ -7840,35 +7840,35 @@ if [ -f "$GEN" ]; then
   fi
 fi
 
-# e6c5: el .svg es lo que la gente MIRA, y es una copia derivada más — con su propio drift. Al corregir los
-# .dot, los .svg commiteados pueden quedarse mostrando un hook ya retirado: el diagrama diría una cosa y su
-# fuente otra. NO se compara byte a byte contra un `dot` recién corrido (dos versiones de graphviz
-# serializan distinto y eso daría rojo espurio en CI): se comprueba lo que importa del resultado — que el
-# dibujo NOMBRE las piezas vivas y NINGUNA retirada. El `&#45;` es cómo graphviz escapa el guion en el SVG.
+# e6c5: el .svg es una copia DERIVADA del .dot — si alguien edita el .dot y olvida regenerar, el .svg queda
+# RANCIO (el dibujo dice algo distinto a su fuente). Se comprueba que el .svg sea el RENDER del .dot VIGENTE
+# comparando el TEXTO VISIBLE de los nodos: inmune a la versión de graphviz (cambia coordenadas/ids, NO el
+# texto de las etiquetas) porque se comparan los TOKENS de palabra ordenados, no los bytes. «retirado-como-
+# vivo» NO se decide aquí — es de f3 sobre el .dot (parser con marca de retiro por línea); un .svg rancio que
+# muestre un retirado vivo se caza porque su texto DIFIERE del render del .dot limpio.
 FCDIR="$SCRIPT_DIR/../docs/flowcharts"
-if [ -f "$GEN" ] && [ -d "$FCDIR" ] && [ -f "$MF" ]; then
-  # nombres que la leyenda canónica declara (1ª columna de cada fila de la tabla)
-  piezas=$(bash "$GEN" 2>/dev/null | sed -n 's/.*<font color="#f2ede6">[^ ]* \([^<]*\)<\/font>.*/\1/p' | sort -u)
-  retirados=$(awk '$1!~/^#/ && NF>=3 && $2=="retirado"{print $1}' "$MF")
+if command -v dot >/dev/null 2>&1 && [ -d "$FCDIR" ]; then
+  # texto visible del SVG → un token de palabra por línea, ordenado (robusto a coordenadas/orden/agrupación)
+  _svgtok() { sed 's/&#45;/-/g' | grep -oE '<text[^>]*>[^<]*</text>' | sed -E 's/<[^>]+>//g' | tr -s ' \t' '\n' | grep -v '^$' | LC_ALL=C sort; }
   svg_mal=""; svg_n=0
-  for sv in "$FCDIR"/[0-9]*.svg; do
-    [ -e "$sv" ] || continue
+  for f in "$FCDIR"/[0-9]*.dot; do
+    [ -e "$f" ] || continue
+    sv="${f%.dot}.svg"
+    [ -e "$sv" ] || { svg_mal="$svg_mal $(basename "$f"):sin-svg"; continue; }
     svg_n=$((svg_n+1))
-    plano=$(sed 's/&#45;/-/g' "$sv")
-    for pz in $piezas; do
-      printf '%s' "$plano" | grep -qF "$pz" || { svg_mal="$svg_mal $(basename "$sv"):falta-$pz"; break; }
-    done
-    for rt in $retirados; do
-      printf '%s' "$plano" | grep -qF "$rt" && svg_mal="$svg_mal $(basename "$sv"):retirado-$rt"
-    done
+    comp=$(_svgtok < "$sv")
+    fresh=$(dot -Tsvg "$f" 2>/dev/null | _svgtok)
+    [ "$comp" = "$fresh" ] || svg_mal="$svg_mal $(basename "$sv"):rancio"
   done
   if [ "$svg_n" -gt 0 ] && [ -z "$svg_mal" ]; then
-    ok "e6c5: los $svg_n .svg dibujan todas las piezas vivas y ninguna retirada"
+    ok "e6c5: los $svg_n .svg son el render VIGENTE de su .dot (texto idéntico; retirado-como-vivo lo cubre f3)"
   elif [ "$svg_n" = 0 ]; then
-    bad "e6c5: no encontré .svg en $FCDIR (¿se dejaron de commitear?)"
+    bad "e6c5: no encontré .dot/.svg en $FCDIR (¿se dejaron de commitear?)"
   else
-    bad "e6c5: .svg RANCIO —$svg_mal — regenéralos con: bash docs/flowcharts/gen-charts.sh --force"
+    bad "e6c5: .svg RANCIO (su texto ≠ el render del .dot) —$svg_mal — regenéralos con: bash docs/flowcharts/gen-charts.sh --force"
   fi
+else
+  echo "  SKIP e6c5: sin graphviz (dot) — el render-compare del .svg se prueba donde dot exista"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -8250,15 +8250,16 @@ csx() { bash "$CSX/docs/flowcharts/verificar-charts-sync.sh" 2>&1; }
 printf '| N\xc2\xba | T |\n| 03 | git-guards (fan-out de 4) |\n| 07 | zoom |\n' > "$CSX/docs/flowcharts/CONVENCIONES.md"
 printf 'digraph{ label="03 fan-out de 4"; }\n' > "$CSX/docs/flowcharts/03-x.dot"
 printf 'digraph{ label="07 raíz de 4"; }\n' > "$CSX/docs/flowcharts/07-y.dot"
+: > "$CSX/docs/flowcharts/03-x.drawio"; : > "$CSX/docs/flowcharts/07-y.drawio"   # Check 1b: cada .dot tiene su .drawio
 csx >/dev/null 2>&1 && ok "f3-fix: fixture LIMPIO (charts existen, conteo 4, sin retirados vivos) → ✅" || bad "f3-fix: el fixture limpio dio ❌ (el derivador de ev_de o los paths fallan)"
 # DRIFT A: chart FANTASMA (tabla lista 12, no hay 12-*.dot)
 printf '| 12 | orquestar |\n' >> "$CSX/docs/flowcharts/CONVENCIONES.md"
 csx | grep -q 'chart fantasma' && ok "f3-fix A: chart listado en CONVENCIONES sin su .dot → CAZA (chart fantasma)" || bad "f3-fix A: no cazó un chart fantasma"
 sed -i.bak '/| 12 |/d' "$CSX/docs/flowcharts/CONVENCIONES.md"
 # DRIFT B: conteo stale 'fan-out de 6' (≠ ev_de=4)
-printf 'digraph{ label="08 fan-out de 6"; }\n' > "$CSX/docs/flowcharts/08-z.dot"; printf '| 08 | x |\n' >> "$CSX/docs/flowcharts/CONVENCIONES.md"
+printf 'digraph{ label="08 fan-out de 6"; }\n' > "$CSX/docs/flowcharts/08-z.dot"; : > "$CSX/docs/flowcharts/08-z.drawio"; printf '| 08 | x |\n' >> "$CSX/docs/flowcharts/CONVENCIONES.md"
 csx | grep -q 'conteo del fan-out' && ok "f3-fix B: 'fan-out de 6' con ev_de=4 → CAZA el conteo stale" || bad "f3-fix B: no cazó el conteo stale del fan-out"
-rm -f "$CSX/docs/flowcharts/08-z.dot"; sed -i.bak '/| 08 |/d' "$CSX/docs/flowcharts/CONVENCIONES.md"
+rm -f "$CSX/docs/flowcharts/08-z.dot" "$CSX/docs/flowcharts/08-z.drawio"; sed -i.bak '/| 08 |/d' "$CSX/docs/flowcharts/CONVENCIONES.md"
 # DRIFT C: hook RETIRADO como VIVO (nodo, sin marca de retiro)
 printf 'digraph{ N [label="git-branch-guard frena el push directo"]; }\n' > "$CSX/docs/flowcharts/03-x.dot"
 csx | grep -q 'RETIRADO' && ok "f3-fix C: hook retirado nombrado como VIVO en un nodo → CAZA" || bad "f3-fix C: no cazó un hook retirado como vivo"

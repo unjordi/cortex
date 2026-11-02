@@ -344,29 +344,29 @@
 <!-- WORK -->
 <g id="node3" class="node">
 <title>WORK</title>
-<path fill="#232323" stroke="#8a8a8a" stroke-width="1.5" d="M4989,-2409.75C4989,-2409.75 4553,-2409.75 4553,-2409.75 4547,-2409.75 4541,-2403.75 4541,-2397.75 4541,-2397.75 4541,-2375.5 4541,-2375.5 4541,-2369.5 4547,-2363.5 4553,-2363.5 4553,-2363.5 4989,-2363.5 4989,-2363.5 4995,-2363.5 5001,-2369.5 5001,-2375.5 5001,-2375.5 5001,-2397.75 5001,-2397.75 5001,-2403.75 4995,-2409.75 4989,-2409.75"/>
-<text xml:space="preserve" text-anchor="middle" x="4771" y="-2394.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">corrida larga: muchos tool&#45;calls, el contexto se LLENA</text>
-<text xml:space="preserve" text-anchor="middle" x="4771" y="-2381.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">(el HILO —de qué íbamos AHORA, la decisión a medio cocinar, el siguiente paso—</text>
-<text xml:space="preserve" text-anchor="middle" x="4771" y="-2368.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">solo vive en el chat: FRÁGIL, se degrada en cada resumen)</text>
+<path fill="#232323" stroke="#8a8a8a" stroke-width="1.5" d="M4975,-2409.75C4975,-2409.75 4539,-2409.75 4539,-2409.75 4533,-2409.75 4527,-2403.75 4527,-2397.75 4527,-2397.75 4527,-2375.5 4527,-2375.5 4527,-2369.5 4533,-2363.5 4539,-2363.5 4539,-2363.5 4975,-2363.5 4975,-2363.5 4981,-2363.5 4987,-2369.5 4987,-2375.5 4987,-2375.5 4987,-2397.75 4987,-2397.75 4987,-2403.75 4981,-2409.75 4975,-2409.75"/>
+<text xml:space="preserve" text-anchor="middle" x="4757" y="-2394.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">corrida larga: muchos tool&#45;calls, el contexto se LLENA</text>
+<text xml:space="preserve" text-anchor="middle" x="4757" y="-2381.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">(el HILO —de qué íbamos AHORA, la decisión a medio cocinar, el siguiente paso—</text>
+<text xml:space="preserve" text-anchor="middle" x="4757" y="-2368.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">solo vive en el chat: FRÁGIL, se degrada en cada resumen)</text>
 </g>
 <!-- AVISO -->
 <g id="node4" class="node">
 <title>AVISO</title>
-<path fill="#2b2b2b" stroke="#e08e45" stroke-width="1.5" d="M4817.62,-1674.38C4817.62,-1674.38 3770.38,-1674.38 3770.38,-1674.38 3764.38,-1674.38 3758.38,-1668.38 3758.38,-1662.38 3758.38,-1662.38 3758.38,-1591.38 3758.38,-1591.38 3758.38,-1585.38 3764.38,-1579.38 3770.38,-1579.38 3770.38,-1579.38 4817.62,-1579.38 4817.62,-1579.38 4823.62,-1579.38 4829.62,-1585.38 4829.62,-1591.38 4829.62,-1591.38 4829.62,-1662.38 4829.62,-1662.38 4829.62,-1668.38 4823.62,-1674.38 4817.62,-1674.38"/>
-<text xml:space="preserve" text-anchor="middle" x="4294" y="-1658.97" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🔔📈 aviso&#45;contexto &#160;(PostToolUse · GLOBAL · tras CADA tool)</text>
-<text xml:space="preserve" text-anchor="middle" x="4294" y="-1643.22" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">métrica = TOKENS REALES del último `usage`, ANCLADO al último /compact (isCompactSummary → descarta el usage viejo pre&#45;compact)</text>
-<text xml:space="preserve" text-anchor="middle" x="4294" y="-1628.22" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">% HONESTO contra el punto REAL de compact (GOV): autoCompactWindow si el auto&#45;compact está ACTIVO, si no la ventana efectiva</text>
-<text xml:space="preserve" text-anchor="middle" x="4294" y="-1615.47" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">(marcador [1m] / 1M&#45;nativo opus&#45;4&#45;7/4&#45;8/5·sonnet&#45;5·fable&#45;5·mythos&#45;5 → 1M; si no 200K; auto&#45;corrige a 1M si ctx&gt;ventana). Respeta autoCompactEnabled=false (NO miente)</text>
-<text xml:space="preserve" text-anchor="middle" x="4294" y="-1600.47" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">NO GOTEA: silencio bajo el umbral · al cruzar ALTO (80% de GOV) DISPARA el checkpoint mecánico (andamio a disco, cero tokens) + ORDENA /checkpoint+/compact · 1 escalada al CRÍTICO (92%)</text>
-<text xml:space="preserve" text-anchor="middle" x="4294" y="-1587.72" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🟡 fail&#45;open silencioso: sin jq / sin transcript / sin usage fresco post&#45;compact → no emite nada · debounce por BANDA (per&#45;sesión), se re&#45;arma al compactar</text>
+<path fill="#2b2b2b" stroke="#e08e45" stroke-width="1.5" d="M4818,-1674.38C4818,-1674.38 3542,-1674.38 3542,-1674.38 3536,-1674.38 3530,-1668.38 3530,-1662.38 3530,-1662.38 3530,-1591.38 3530,-1591.38 3530,-1585.38 3536,-1579.38 3542,-1579.38 3542,-1579.38 4818,-1579.38 4818,-1579.38 4824,-1579.38 4830,-1585.38 4830,-1591.38 4830,-1591.38 4830,-1662.38 4830,-1662.38 4830,-1668.38 4824,-1674.38 4818,-1674.38"/>
+<text xml:space="preserve" text-anchor="middle" x="4180" y="-1658.97" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🔔📈 aviso&#45;contexto &#160;(PostToolUse · GLOBAL · tras CADA tool)</text>
+<text xml:space="preserve" text-anchor="middle" x="4180" y="-1643.22" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">métrica = TOKENS REALES del último `usage`, ANCLADO al último /compact (isCompactSummary → descarta el usage viejo pre&#45;compact)</text>
+<text xml:space="preserve" text-anchor="middle" x="4180" y="-1628.22" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">% HONESTO contra el punto REAL de compact (GOV): autoCompactWindow si el auto&#45;compact está ACTIVO, si no la ventana efectiva</text>
+<text xml:space="preserve" text-anchor="middle" x="4180" y="-1615.47" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">(marcador [1m] / 1M&#45;nativo opus&#45;4&#45;7/4&#45;8/5·sonnet&#45;5·fable&#45;5·mythos&#45;5 → 1M; modelo desconocido/sin ventana por evidencia → CALLA, NO inventa un default; auto&#45;corrige a 1M si ctx&gt;ventana). Respeta autoCompactEnabled=false (NO miente)</text>
+<text xml:space="preserve" text-anchor="middle" x="4180" y="-1600.47" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">NO GOTEA: silencio bajo el umbral · al cruzar ALTO (80% de GOV) DISPARA el checkpoint mecánico (andamio a disco, cero tokens) + ORDENA /checkpoint+/compact · 1 escalada al CRÍTICO (92%)</text>
+<text xml:space="preserve" text-anchor="middle" x="4180" y="-1587.72" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🟡 fail&#45;open silencioso: sin jq / sin transcript / sin usage fresco post&#45;compact → no emite nada · debounce por BANDA (per&#45;sesión), se re&#45;arma al compactar</text>
 </g>
 <!-- WORK&#45;&gt;AVISO -->
 <g id="edge2" class="edge">
 <title>WORK&#45;&gt;AVISO</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" d="M4767.77,-2362.82C4753.88,-2272.56 4691.63,-1935.66 4512,-1739 4490.44,-1715.39 4462.71,-1696.06 4434.31,-1680.54"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4436.18,-1677.56 4425.7,-1675.98 4432.9,-1683.75 4436.18,-1677.56"/>
-<text xml:space="preserve" text-anchor="middle" x="4556.96" y="-1752" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">PostToolUse</text>
-<text xml:space="preserve" text-anchor="middle" x="4556.96" y="-1740.75" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">vigila cada tool</text>
+<path fill="none" stroke="#d97757" stroke-width="1.4" d="M4751.29,-2362.83C4727.41,-2271.91 4627.38,-1930.78 4426,-1739 4400.85,-1715.04 4369.64,-1695.65 4337.98,-1680.17"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4339.69,-1677.11 4329.16,-1675.98 4336.69,-1683.43 4339.69,-1677.11"/>
+<text xml:space="preserve" text-anchor="middle" x="4472.49" y="-1752" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">PostToolUse</text>
+<text xml:space="preserve" text-anchor="middle" x="4472.49" y="-1740.75" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">vigila cada tool</text>
 </g>
 <!-- CHK -->
 <g id="node5" class="node">
@@ -379,7 +379,7 @@
 <!-- WORK&#45;&gt;CHK -->
 <g id="edge6" class="edge">
 <title>WORK&#45;&gt;CHK</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" stroke-dasharray="5,2" d="M4775.45,-2362.79C4792.94,-2270.99 4856,-1919.77 4856,-1627.88 4856,-1627.88 4856,-1627.88 4856,-1143.75 4856,-890.17 4806.94,-794.99 4619,-624.75 4606.06,-613.03 4590.97,-603.18 4575.1,-594.91"/>
+<path fill="none" stroke="#d97757" stroke-width="1.4" stroke-dasharray="5,2" d="M4762.18,-2362.83C4782.55,-2271.17 4856,-1920.42 4856,-1627.88 4856,-1627.88 4856,-1627.88 4856,-1143.75 4856,-890.17 4806.94,-794.99 4619,-624.75 4606.06,-613.03 4590.97,-603.18 4575.1,-594.91"/>
 <polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4576.99,-591.94 4566.47,-590.65 4573.88,-598.22 4576.99,-591.94"/>
 <text xml:space="preserve" text-anchor="middle" x="4901" y="-1247.25" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">o TÚ, proactivo</text>
 <text xml:space="preserve" text-anchor="middle" x="4901" y="-1236" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">(en una pausa / &gt;2h)</text>
@@ -394,7 +394,7 @@
 <!-- WORK&#45;&gt;COMPACT -->
 <g id="edge10" class="edge">
 <title>WORK&#45;&gt;COMPACT</title>
-<path fill="none" stroke="#c9a227" stroke-width="1.4" d="M4787.23,-2363.03C4849.42,-2274.2 5069,-1938.52 5069,-1627.88 5069,-1627.88 5069,-1627.88 5069,-1244.5 5069,-1169.24 5097.68,-1142.55 5064,-1075.25 5024.59,-996.51 4909,-1039.92 4909,-951.88 4909,-951.88 4909,-951.88 4909,-348.75 4909,-257.49 4826.05,-211 4733.02,-187.55"/>
+<path fill="none" stroke="#c9a227" stroke-width="1.4" d="M4774.22,-2362.85C4839.63,-2274 5069,-1940.16 5069,-1627.88 5069,-1627.88 5069,-1627.88 5069,-1244.5 5069,-1169.24 5097.68,-1142.55 5064,-1075.25 5024.59,-996.51 4909,-1039.92 4909,-951.88 4909,-951.88 4909,-951.88 4909,-348.75 4909,-257.49 4826.05,-211 4733.02,-187.55"/>
 <polygon fill="#c9a227" stroke="#c9a227" stroke-width="1.4" points="4733.94,-184.17 4723.39,-185.23 4732.3,-190.98 4733.94,-184.17"/>
 <text xml:space="preserve" text-anchor="middle" x="5130.71" y="-1044.38" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#c9a227">🟡 AUTO&#45;COMPACT sorpresa:</text>
 <text xml:space="preserve" text-anchor="middle" x="5130.71" y="-1030.12" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#c9a227">sin checkpoint previo (caso peligroso</text>
@@ -403,36 +403,36 @@
 <!-- AVISO&#45;&gt;WORK -->
 <g id="edge3" class="edge">
 <title>AVISO&#45;&gt;WORK</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" stroke-dasharray="5,2" d="M4323.43,-1674.89C4339.47,-1700.51 4359.69,-1732.76 4377.75,-1761.5 4519.99,-1987.85 4691.72,-2260.02 4750.28,-2352.8"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4747.27,-2354.59 4755.57,-2361.17 4753.19,-2350.85 4747.27,-2354.59"/>
-<text xml:space="preserve" text-anchor="middle" x="4441.88" y="-1752" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">bajo el umbral / misma banda</text>
-<text xml:space="preserve" text-anchor="middle" x="4441.88" y="-1740.75" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">(silencio — no gotea)</text>
+<path fill="none" stroke="#d97757" stroke-width="1.4" stroke-dasharray="5,2" d="M4215.89,-1675.01C4323.56,-1816.4 4641.93,-2234.5 4732.63,-2353.62"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4729.6,-2355.43 4738.45,-2361.26 4735.17,-2351.18 4729.6,-2355.43"/>
+<text xml:space="preserve" text-anchor="middle" x="4340.86" y="-1752" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">bajo el umbral / misma banda</text>
+<text xml:space="preserve" text-anchor="middle" x="4340.86" y="-1740.75" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">(silencio — no gotea)</text>
 </g>
 <!-- AVISO&#45;&gt;CHK -->
 <g id="edge5" class="edge">
 <title>AVISO&#45;&gt;CHK</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" stroke-dasharray="5,2" d="M4517.94,-1578.63C4588.31,-1549.7 4648,-1503.38 4648,-1429.5 4648,-1429.5 4648,-1429.5 4648,-727.75 4648,-669.13 4598.85,-626.74 4547.89,-598.53"/>
+<path fill="none" stroke="#d97757" stroke-width="1.4" stroke-dasharray="5,2" d="M4383.91,-1578.69C4510.03,-1543.37 4648,-1490.74 4648,-1429.5 4648,-1429.5 4648,-1429.5 4648,-727.75 4648,-669.13 4598.85,-626.74 4547.89,-598.53"/>
 <polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4549.68,-595.53 4539.21,-593.9 4546.39,-601.7 4549.68,-595.53"/>
 <text xml:space="preserve" text-anchor="middle" x="4738.75" y="-1140.88" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">ORDENA /checkpoint (prosa) + /compact</text>
 </g>
 <!-- NOPRE -->
 <g id="node8" class="node">
 <title>NOPRE</title>
-<path fill="#2b2b2b" stroke="#7fb069" stroke-width="2" d="M4562.25,-1472.25C4562.25,-1472.25 4025.75,-1472.25 4025.75,-1472.25 4019.75,-1472.25 4013.75,-1466.25 4013.75,-1460.25 4013.75,-1460.25 4013.75,-1396.75 4013.75,-1396.75 4013.75,-1390.75 4019.75,-1384.75 4025.75,-1384.75 4025.75,-1384.75 4562.25,-1384.75 4562.25,-1384.75 4568.25,-1384.75 4574.25,-1390.75 4574.25,-1396.75 4574.25,-1396.75 4574.25,-1460.25 4574.25,-1460.25 4574.25,-1466.25 4568.25,-1472.25 4562.25,-1472.25"/>
-<text xml:space="preserve" text-anchor="middle" x="4294" y="-1456.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🟢 checkpoint&#45;mecanico &#160;(PreCompact · GLOBAL, M2/X2 auditoría 2026&#45;09&#45;11)</text>
-<text xml:space="preserve" text-anchor="middle" x="4294" y="-1441.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">PreCompact SIGUE sin canal para inyectar contexto ni pedirte un turno (eso no cambió) —</text>
-<text xml:space="preserve" text-anchor="middle" x="4294" y="-1428.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">pero SÍ puede lanzar trabajo EXTERNO detached (mismo patrón que exportar&#45;sesion&#45;master):</text>
-<text xml:space="preserve" text-anchor="middle" x="4294" y="-1415.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">bin/checkpoint&#45;mecanico.js lee el transcript en streaming (memoria acotada) y escribe</text>
-<text xml:space="preserve" text-anchor="middle" x="4294" y="-1402.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">.claude/memory/hilo&#45;mental&#45;actual.andamio.md — árbol de archivos tocados, commits,</text>
-<text xml:space="preserve" text-anchor="middle" x="4294" y="-1390.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">citas TEXTUALES del usuario y métricas — CERO tokens de modelo. El checkpoint skill lo FUSIONA.</text>
+<path fill="#2b2b2b" stroke="#7fb069" stroke-width="2" d="M4448.25,-1472.25C4448.25,-1472.25 3911.75,-1472.25 3911.75,-1472.25 3905.75,-1472.25 3899.75,-1466.25 3899.75,-1460.25 3899.75,-1460.25 3899.75,-1396.75 3899.75,-1396.75 3899.75,-1390.75 3905.75,-1384.75 3911.75,-1384.75 3911.75,-1384.75 4448.25,-1384.75 4448.25,-1384.75 4454.25,-1384.75 4460.25,-1390.75 4460.25,-1396.75 4460.25,-1396.75 4460.25,-1460.25 4460.25,-1460.25 4460.25,-1466.25 4454.25,-1472.25 4448.25,-1472.25"/>
+<text xml:space="preserve" text-anchor="middle" x="4180" y="-1456.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🟢 checkpoint&#45;mecanico &#160;(PreCompact · GLOBAL, M2/X2 auditoría 2026&#45;09&#45;11)</text>
+<text xml:space="preserve" text-anchor="middle" x="4180" y="-1441.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">PreCompact SIGUE sin canal para inyectar contexto ni pedirte un turno (eso no cambió) —</text>
+<text xml:space="preserve" text-anchor="middle" x="4180" y="-1428.35" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">pero SÍ puede lanzar trabajo EXTERNO detached (mismo patrón que exportar&#45;sesion&#45;master):</text>
+<text xml:space="preserve" text-anchor="middle" x="4180" y="-1415.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">bin/checkpoint&#45;mecanico.js lee el transcript en streaming (memoria acotada) y escribe</text>
+<text xml:space="preserve" text-anchor="middle" x="4180" y="-1402.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">.claude/memory/hilo&#45;mental&#45;actual.andamio.md — árbol de archivos tocados, commits,</text>
+<text xml:space="preserve" text-anchor="middle" x="4180" y="-1390.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">citas TEXTUALES del usuario y métricas — CERO tokens de modelo. El checkpoint skill lo FUSIONA.</text>
 </g>
 <!-- AVISO&#45;&gt;NOPRE -->
 <g id="edge4" class="edge">
 <title>AVISO&#45;&gt;NOPRE</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" stroke-dasharray="5,2" d="M4294,-1578.84C4294,-1550.62 4294,-1514.57 4294,-1484.96"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4297.5,-1485.25 4294,-1475.25 4290.5,-1485.25 4297.5,-1485.25"/>
-<text xml:space="preserve" text-anchor="middle" x="4385.88" y="-1505.25" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">al umbral: DISPARA el andamio mecánico</text>
-<text xml:space="preserve" text-anchor="middle" x="4385.88" y="-1494" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">(mismo lanzador que PreCompact)</text>
+<path fill="none" stroke="#d97757" stroke-width="1.4" stroke-dasharray="5,2" d="M4180,-1578.84C4180,-1550.62 4180,-1514.57 4180,-1484.96"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4183.5,-1485.25 4180,-1475.25 4176.5,-1485.25 4183.5,-1485.25"/>
+<text xml:space="preserve" text-anchor="middle" x="4271.88" y="-1505.25" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">al umbral: DISPARA el andamio mecánico</text>
+<text xml:space="preserve" text-anchor="middle" x="4271.88" y="-1494" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">(mismo lanzador que PreCompact)</text>
 </g>
 <!-- DUMP -->
 <g id="node6" class="node">
@@ -461,8 +461,8 @@
 <!-- DUMP&#45;&gt;WORK -->
 <g id="edge9" class="edge">
 <title>DUMP&#45;&gt;WORK</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" stroke-dasharray="5,2" d="M4776.91,-410.7C4836.92,-440.56 4882,-485.27 4882,-552.25 4882,-834.62 4882,-834.62 4882,-834.62 4882,-932.68 4869.8,-958.09 4883,-1055.25 4892.86,-1127.82 4888.93,-1151.24 4926.25,-1214.25 4932.78,-1225.27 4941.6,-1222.64 4947,-1234.25 4961.08,-1264.54 4952,-1275.84 4952,-1309.25 4952,-1627.88 4952,-1627.88 4952,-1627.88 4952,-1914.72 4827.78,-2246.34 4785.16,-2351.69"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4781.94,-2350.31 4781.4,-2360.89 4788.42,-2352.95 4781.94,-2350.31"/>
+<path fill="none" stroke="#d97757" stroke-width="1.4" stroke-dasharray="5,2" d="M4776.91,-410.7C4836.92,-440.56 4882,-485.27 4882,-552.25 4882,-834.62 4882,-834.62 4882,-834.62 4882,-932.68 4869.8,-958.09 4883,-1055.25 4892.86,-1127.82 4888.93,-1151.24 4926.25,-1214.25 4932.78,-1225.27 4941.6,-1222.64 4947,-1234.25 4961.08,-1264.54 4952,-1275.84 4952,-1309.25 4952,-1627.88 4952,-1627.88 4952,-1627.88 4952,-1916.25 4817.9,-2247.44 4772.11,-2352.12"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4769.04,-2350.42 4768.2,-2360.99 4775.44,-2353.25 4769.04,-2350.42"/>
 <text xml:space="preserve" text-anchor="middle" x="4994.12" y="-1146.5" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">ligero: punto de retorno</text>
 <text xml:space="preserve" text-anchor="middle" x="4994.12" y="-1135.25" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">sigue la corrida (NO compacta)</text>
 </g>
@@ -477,8 +477,8 @@
 <!-- COMPACT&#45;&gt;NOPRE -->
 <g id="edge11" class="edge">
 <title>COMPACT&#45;&gt;NOPRE</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" d="M4328.42,-189.87C4274.43,-204.01 4215.47,-226.05 4169,-260.25 4064.3,-337.3 4042.38,-377.55 4004,-501.75 3990.49,-545.49 3972.29,-571.73 4004,-604.75 4041.89,-644.21 4450.88,-593.81 4496,-624.75 4524.56,-644.34 4517.14,-663.05 4527,-696.25 4551.36,-778.25 4511.27,-815.18 4559.25,-886 4568.82,-900.12 4583.59,-891.16 4592,-906 4596.07,-913.17 4595,-1015.37 4593,-1055.25 4589.44,-1126.18 4611.84,-1152.36 4577,-1214.25 4536.34,-1286.49 4460.08,-1341.76 4396.96,-1377.92"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4395.39,-1374.78 4388.39,-1382.74 4398.82,-1380.88 4395.39,-1374.78"/>
+<path fill="none" stroke="#d97757" stroke-width="1.4" d="M4328.42,-189.87C4274.43,-204.01 4215.47,-226.05 4169,-260.25 4064.3,-337.3 4042.38,-377.55 4004,-501.75 3990.49,-545.49 3972.32,-571.71 4004,-604.75 4040.64,-642.96 4433.82,-598.87 4480,-624.75 4585.85,-684.07 4490.79,-785.83 4559.25,-886 4569.09,-900.4 4584.37,-890.85 4593,-906 4626.97,-965.62 4610.7,-1155.65 4575,-1214.25 4525.86,-1294.9 4434.74,-1346.98 4352.39,-1379.47"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4351.14,-1376.2 4343.07,-1383.06 4353.66,-1382.73 4351.14,-1376.2"/>
 <text xml:space="preserve" text-anchor="middle" x="4600.12" y="-835.38" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">PreCompact</text>
 <text xml:space="preserve" text-anchor="middle" x="4600.12" y="-824.12" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">andamio mecánico</text>
 </g>
@@ -501,33 +501,33 @@
 <!-- SS -->
 <g id="node10" class="node">
 <title>SS</title>
-<path fill="#2b2622" stroke="#d97757" stroke-width="1.5" d="M4085.08,-1342.35C4085.08,-1342.35 3823.67,-1311.65 3823.67,-1311.65 3817.71,-1310.95 3817.71,-1309.55 3823.67,-1308.85 3823.67,-1308.85 4085.08,-1278.15 4085.08,-1278.15 4091.04,-1277.45 4102.96,-1277.45 4108.92,-1278.15 4108.92,-1278.15 4370.33,-1308.85 4370.33,-1308.85 4376.29,-1309.55 4376.29,-1310.95 4370.33,-1311.65 4370.33,-1311.65 4108.92,-1342.35 4108.92,-1342.35 4102.96,-1343.05 4091.04,-1343.05 4085.08,-1342.35"/>
-<text xml:space="preserve" text-anchor="middle" x="4097" y="-1311.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">SessionStart &#160;(source = compact / resume / startup)</text>
-<text xml:space="preserve" text-anchor="middle" x="4097" y="-1298.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">dispara los hooks de apertura (ver 02)</text>
+<path fill="#2b2622" stroke="#d97757" stroke-width="1.5" d="M3998.08,-1342.35C3998.08,-1342.35 3736.67,-1311.65 3736.67,-1311.65 3730.71,-1310.95 3730.71,-1309.55 3736.67,-1308.85 3736.67,-1308.85 3998.08,-1278.15 3998.08,-1278.15 4004.04,-1277.45 4015.96,-1277.45 4021.92,-1278.15 4021.92,-1278.15 4283.33,-1308.85 4283.33,-1308.85 4289.29,-1309.55 4289.29,-1310.95 4283.33,-1311.65 4283.33,-1311.65 4021.92,-1342.35 4021.92,-1342.35 4015.96,-1343.05 4004.04,-1343.05 3998.08,-1342.35"/>
+<text xml:space="preserve" text-anchor="middle" x="4010" y="-1311.6" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">SessionStart &#160;(source = compact / resume / startup)</text>
+<text xml:space="preserve" text-anchor="middle" x="4010" y="-1298.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">dispara los hooks de apertura (ver 02)</text>
 </g>
 <!-- NOPRE&#45;&gt;SS -->
 <g id="edge14" class="edge">
 <title>NOPRE&#45;&gt;SS</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" d="M4220.08,-1383.88C4198.23,-1370.99 4174.65,-1357.07 4154.03,-1344.9"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4156.08,-1342.05 4145.68,-1339.98 4152.52,-1348.08 4156.08,-1342.05"/>
+<path fill="none" stroke="#d97757" stroke-width="1.4" d="M4116.21,-1383.88C4098.1,-1371.5 4078.61,-1358.17 4061.34,-1346.36"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4063.43,-1343.55 4053.2,-1340.79 4059.48,-1349.32 4063.43,-1343.55"/>
 </g>
 <!-- CLAUDEMD&#45;&gt;SS -->
 <g id="edge13" class="edge">
 <title>CLAUDEMD&#45;&gt;SS</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" d="M3948.32,-68.91C3920.13,-82.63 3891.09,-102.62 3875,-130.75 3860.21,-156.6 3871.15,-168.22 3875,-197.75 3876.51,-209.35 3973.88,-597.43 3983,-604.75 4025.06,-638.51 4420.94,-598.4 4468,-624.75 4501.4,-643.45 4503.13,-660.2 4516,-696.25 4544.48,-776.03 4483.99,-817.63 4534,-886 4547.4,-904.32 4568.48,-887.06 4581,-906 4599.95,-934.66 4579.18,-1188.88 4556,-1214.25 4517.9,-1255.95 4386.12,-1280.37 4273.48,-1293.97"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4273.22,-1290.48 4263.7,-1295.13 4274.05,-1297.43 4273.22,-1290.48"/>
+<path fill="none" stroke="#d97757" stroke-width="1.4" d="M3948.32,-68.91C3920.13,-82.63 3891.09,-102.62 3875,-130.75 3860.21,-156.6 3871.15,-168.22 3875,-197.75 3876.51,-209.35 3973.88,-597.42 3983,-604.75 4023.21,-637.09 4399.95,-603.56 4447,-624.75 4457.07,-629.28 4511.39,-686.22 4516,-696.25 4551.4,-773.21 4483.99,-817.63 4534,-886 4547.4,-904.32 4568.48,-887.06 4581,-906 4603,-939.27 4583.27,-955.93 4581,-995.75 4578.22,-1044.54 4589.54,-1178.7 4556,-1214.25 4510.22,-1262.78 4353.79,-1286.61 4220.04,-1298.26"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4219.78,-1294.77 4210.11,-1299.1 4220.37,-1301.75 4219.78,-1294.77"/>
 </g>
 <!-- SINI -->
 <g id="node11" class="node">
 <title>SINI</title>
 <path fill="#2b2b2b" stroke="#e08e45" stroke-width="1.5" d="M3796.12,-1055.25C3796.12,-1055.25 3339.88,-1055.25 3339.88,-1055.25 3333.88,-1055.25 3327.88,-1049.25 3327.88,-1043.25 3327.88,-1043.25 3327.88,-1027.75 3327.88,-1027.75 3327.88,-1021.75 3333.88,-1015.75 3339.88,-1015.75 3339.88,-1015.75 3796.12,-1015.75 3796.12,-1015.75 3802.12,-1015.75 3808.12,-1021.75 3808.12,-1027.75 3808.12,-1027.75 3808.12,-1043.25 3808.12,-1043.25 3808.12,-1049.25 3802.12,-1055.25 3796.12,-1055.25"/>
-<text xml:space="preserve" text-anchor="middle" x="3568" y="-1039.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🔔🧭 sesion&#45;inicio &#160;(SessionStart · POR&#45;REPO)</text>
+<text xml:space="preserve" text-anchor="middle" x="3568" y="-1039.85" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🔔🧭 sesion&#45;inicio &#160;(SessionStart · GLOBAL)</text>
 <text xml:space="preserve" text-anchor="middle" x="3568" y="-1024.1" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🟠 reinyecta rama + NORMA de git + orden de leer MEMORY/estado&#45;proyecto/AGENTS</text>
 </g>
 <!-- SS&#45;&gt;SINI -->
 <g id="edge15" class="edge">
 <title>SS&#45;&gt;SINI</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" d="M3892.39,-1300.06C3658.22,-1287.39 3301.47,-1260.7 3260,-1214.25 3218.85,-1168.17 3219.13,-1121.58 3260,-1075.25 3265.94,-1068.52 3289.66,-1062.66 3321.5,-1057.69"/>
+<path fill="none" stroke="#d97757" stroke-width="1.4" d="M3821.25,-1298.17C3611.31,-1283.89 3296.64,-1255.82 3260,-1214.25 3219.15,-1167.9 3219.13,-1121.58 3260,-1075.25 3265.94,-1068.52 3289.66,-1062.66 3321.5,-1057.69"/>
 <polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="3321.61,-1061.21 3330.99,-1056.28 3320.58,-1054.28 3321.61,-1061.21"/>
 </g>
 <!-- REHID -->
@@ -542,9 +542,9 @@
 <!-- SS&#45;&gt;REHID -->
 <g id="edge16" class="edge">
 <title>SS&#45;&gt;REHID</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" d="M4063.21,-1280.02C4042.13,-1261.78 4014.06,-1237.5 3987.58,-1214.6"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="3990.14,-1212.18 3980.28,-1208.28 3985.56,-1217.47 3990.14,-1212.18"/>
-<text xml:space="preserve" text-anchor="middle" x="4080.12" y="-1241.62" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">misma SessionStart</text>
+<path fill="none" stroke="#d97757" stroke-width="1.4" d="M3990.81,-1278.5C3980.6,-1262.12 3967.54,-1241.19 3954.83,-1220.82"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="3957.82,-1218.99 3949.55,-1212.36 3951.88,-1222.7 3957.82,-1218.99"/>
+<text xml:space="preserve" text-anchor="middle" x="4021.26" y="-1241.62" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">misma SessionStart</text>
 </g>
 <!-- RESUME -->
 <g id="node19" class="node">
@@ -735,8 +735,8 @@
 <!-- BACK&#45;&gt;WORK -->
 <g id="edge32" class="edge">
 <title>BACK&#45;&gt;WORK</title>
-<path fill="none" stroke="#d97757" stroke-width="1.4" stroke-dasharray="5,2" d="M3363.25,-182.97C3317.69,-196.31 3268.45,-219.61 3240,-260.25 2989.09,-618.7 3219,-806.96 3219,-1244.5 3219,-1627.88 3219,-1627.88 3219,-1627.88 3219,-2203.58 4092,-2341.96 4528.5,-2375.17"/>
-<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4527.98,-2378.64 4538.21,-2375.9 4528.5,-2371.66 4527.98,-2378.64"/>
+<path fill="none" stroke="#d97757" stroke-width="1.4" stroke-dasharray="5,2" d="M3363.25,-182.97C3317.69,-196.31 3268.45,-219.61 3240,-260.25 2989.09,-618.7 3219,-806.96 3219,-1244.5 3219,-1627.88 3219,-1627.88 3219,-1627.88 3219,-2198.32 4080.91,-2339.34 4514.27,-2374.19"/>
+<polygon fill="#d97757" stroke="#d97757" stroke-width="1.4" points="4513.97,-2377.68 4524.22,-2374.98 4514.52,-2370.7 4513.97,-2377.68"/>
 <text xml:space="preserve" text-anchor="middle" x="3243.86" y="-1031.62" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#cfc8c0">continúa la corrida</text>
 </g>
 </g>
