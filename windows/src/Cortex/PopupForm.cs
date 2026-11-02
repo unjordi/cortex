@@ -512,7 +512,10 @@ public sealed class PopupForm : Form
     private int UsageSection(Graphics g, int pad, int y, string title, Bucket? bucket)
     {
         int w = _content.Width - pad * 2;
-        double? pct = bucket?.Percent;
+        // Si el reset de la ventana YA pasó, el % cacheado es de ANTES del reset → "sin dato" (nunca el
+        // valor viejo ni su barra). Una lectura fresca siempre trae resets_at futuro. (Falla al despertar.)
+        bool resetPassed = Rel.IsPast(bucket?.ResetsAt);
+        double? pct = resetPassed ? (double?)null : bucket?.Percent;
 
         using (var tFont = Px(12.5f, FontStyle.Bold))
         using (var tBrush = new SolidBrush(_fg))
@@ -547,27 +550,27 @@ public sealed class PopupForm : Form
         // caption
         using (var cFont = Px(10f, FontStyle.Regular))
         using (var cBrush = new SolidBrush(Blend(_bg, _fg, 0.65)))
-            g.DrawString(Caption(bucket), cFont, cBrush, pad, y);
+            g.DrawString(Caption(bucket, resetPassed), cFont, cBrush, pad, y);
         return y + Sc(20);
     }
 
-    private static string Caption(Bucket? bucket)
+    private static string Caption(Bucket? bucket, bool resetPassed = false)
     {
         if (bucket == null) return "";
         string s = ResetLine(bucket.ResetsAt);
+        // Con el reset ya pasado no hay % vigente → tampoco el costo equiv (sería del ciclo viejo).
         double? c = bucket.EquivSessionCostUsd ?? bucket.EquivWeeklyCostUsd;
-        if (c is double cd)
+        if (!resetPassed && c is double cd)
             s += $" · ≈ ${cd.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} (API equiv local)";
         return s;
     }
 
-    /// "Se restablece en Nmin" (futuro) o "Se restableció hace Nmin · actualizando…" (ya pasó → el %
-    /// cacheado quedó viejo y el fetch disparado por el reset lo está poniendo al día).
+    /// "Se restablece en Nmin" (futuro) o "Se restableció hace Nmin · sin lectura nueva" (ya pasó → el %
+    /// cacheado es de antes del reset; NO se muestra, se espera una lectura posterior).
     private static string ResetLine(string? iso)
     {
-        // Pasado → "Se restableció hace Nmin · actualizando…"; futuro → detalle útil "en 4h36m" / "mié@7:59".
         return Rel.IsPast(iso)
-            ? $"Se restableció {Rel.Relative(iso)} · actualizando…"
+            ? $"Se restableció {Rel.Relative(iso)} · sin lectura nueva"
             : $"Se restablece {Rel.ResetDetail(iso)}";
     }
 

@@ -158,8 +158,11 @@ public sealed class QuotaService
         }
     }
 
-    public double? FivePct => Snapshot?.FiveHour?.Percent;
-    public double? WeekPct => Snapshot?.Weekly?.Percent;
+    // % a MOSTRAR por ventana: null si su reset ya pasó (el % cacheado es de ANTES del reset → "sin
+    // dato", nunca el valor viejo). Lo consumen la bandeja (Program.cs) y el tooltip; el popup aplica
+    // la misma regla en UsageSection. Una lectura fresca siempre trae resets_at futuro.
+    public double? FivePct => Rel.IsPast(Snapshot?.FiveHour?.ResetsAt) ? (double?)null : Snapshot?.FiveHour?.Percent;
+    public double? WeekPct => Rel.IsPast(Snapshot?.Weekly?.ResetsAt) ? (double?)null : Snapshot?.Weekly?.Percent;
 
     public string Tooltip
     {

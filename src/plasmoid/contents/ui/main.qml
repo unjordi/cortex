@@ -658,8 +658,10 @@ PlasmoidItem {
         return "#e8884a"
     }
 
-    readonly property real fivePct: snapshot && snapshot.five_hour ? snapshot.five_hour.percent : -1
-    readonly property real weekPct: snapshot && snapshot.weekly    ? snapshot.weekly.percent    : -1
+    // -1 = "sin dato". Si el reset de la ventana YA pasó, el % cacheado es de ANTES del reset → -1
+    // (nunca el valor viejo ni su barra); una lectura fresca siempre trae resets_at futuro. (Falla al despertar.)
+    readonly property real fivePct: (snapshot && snapshot.five_hour && !isPast(snapshot.five_hour.resets_at)) ? snapshot.five_hour.percent : -1
+    readonly property real weekPct: (snapshot && snapshot.weekly    && !isPast(snapshot.weekly.resets_at))    ? snapshot.weekly.percent    : -1
 
     // true si el reset de la ventana 5h o semanal YA pasó (el % que se ve puede estar pegado en el
     // de la ventana anterior). Espeja QuotaModel.anyResetPassed del macOS.
@@ -3443,12 +3445,13 @@ PlasmoidItem {
             Layout.fillWidth: true; opacity: 0.65; font.pointSize: Kirigami.Theme.smallFont.pointSize
             text: {
                 if (!block) return ""
-                // Past-aware: si el resets_at ya pasó, el % puede estar pegado en el de la ventana
-                // anterior mientras llega el fetch → "Se restableció … · actualizando…". Espeja
-                // resetLine() de PopoverView.swift.
+                // Past-aware: si el resets_at YA pasó, el % cacheado es de ANTES del reset → no se
+                // muestra (el % y la barra ya van en -1); la leyenda dice "sin lectura nueva" y se
+                // omite el costo equiv (sería del ciclo viejo). Espeja resetLine() de PopoverView.swift.
                 let past = root.isPast(block.resets_at)
-                let s = past ? ("Se restableció " + root.relativeTime(block.resets_at) + " · actualizando…")
+                let s = past ? ("Se restableció " + root.relativeTime(block.resets_at) + " · sin lectura nueva")
                              : ("Se restablece " + root.resetDetail(block.resets_at))
+                if (past) return s
                 var c = block.equiv_session_cost_usd !== undefined && block.equiv_session_cost_usd !== null
                       ? block.equiv_session_cost_usd
                       : (block.equiv_weekly_cost_usd !== undefined && block.equiv_weekly_cost_usd !== null ? block.equiv_weekly_cost_usd : null)
@@ -3515,7 +3518,7 @@ PlasmoidItem {
     }
     toolTipSubText: snapshot && snapshot.five_hour
                     ? (isPast(snapshot.five_hour.resets_at)
-                       ? "sesión se restableció " + relativeTime(snapshot.five_hour.resets_at) + " · actualizando…"
+                       ? "sesión se restableció " + relativeTime(snapshot.five_hour.resets_at) + " · sin lectura nueva"
                        : "sesión se restablece " + relativeTime(snapshot.five_hour.resets_at)) : ""
 
     // ---------- Helpers ----------
