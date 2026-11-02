@@ -88,8 +88,11 @@ Cada flowchart incrusta DOS cosas dentro de un `subgraph cluster_leyenda`:
 ```
 
 ## 8. Fuente versionada (regla dura)
-Cada flowchart = `.dot` (fuente) + `.svg` (vista) en `docs/flowcharts/`; `.png`/`.graphml` regenerables → gitignored.
-Render de UNO: `dot -Tsvg archivo.dot -o archivo.svg`. Regenerar TODOS (rutina, checa graphviz): `bash docs/flowcharts/gen-charts.sh` (además avisa si algún chart quedó ignorado). ⚠️ **Trampa del catch-all**: `docs/flowcharts/*` está gitignored por default → un chart NUEVO se pierde en `git add` salvo que le agregues su línea `!` en `.gitignore`. Cambió el código que un chart describe → se actualiza el `.dot` **y su `.svg`** en la misma tanda (doc=realidad).
+Cada flowchart son TRES archivos versionados en `docs/flowcharts/`, todos derivados de UNA fuente:
+- **`.dot`** — la **FUENTE ÚNICA** (texto diffeable); es lo que se edita a mano y lo que leen gen-charts, gen-leyenda-arbol y test-brain.
+- **`.svg`** — la **VISTA** (graphviz, vectorial, ~100 KB) que se ve al navegar el repo.
+- **`.drawio`** — **EDITABLE en draw.io** (el estándar de diagramado); lo genera `bin/dot2drawio.py` desde el `.dot`, con el layout que calculó graphviz, para reacomodar a mano en draw.io. NO se edita como fuente: lo que se edita es el `.dot` y se regenera.
+Los TRES se regeneran JUNTOS desde el `.dot` con `bash docs/flowcharts/gen-charts.sh` (`--force` reconstruye todos; avisa si algún artefacto quedó ignorado) — así nunca driftean entre sí. Las exportaciones pesadas de draw.io (PNG/SVG de MBs) NO van a git; el `.svg` de graphviz es el viewable. `.png`/`.graphml` siguen siendo regenerables → gitignored. ⚠️ **Trampa del catch-all**: `docs/flowcharts/*` está gitignored por default → un chart NUEVO se pierde en `git add` salvo que le agregues su línea `!` en `.gitignore`. Cambió el código que un chart describe → se actualiza el `.dot` **y su `.svg`** en la misma tanda (doc=realidad).
 
 **Mecanismo anti-drift (doc=realidad verificable):** `bash docs/flowcharts/verificar-charts-sync.sh` (exit 0 = paridad; corre en `test-brain.sh` batería f3) verifica los charts contra el CÓDIGO: (1) esta tabla §9 ↔ los `.dot` reales (un chart listado sin archivo, o un `.dot` sin fila, da rojo — así se cazó el chart 12 fantasma); (2) ningún hook `retirado` del MANIFEST aparece como VIVO en un nodo (una mención en comentario `//` o con marca de retiro es historia legítima); (3) el conteo del fan-out PreToolUse/Bash citado en los charts (`fan-out de N` / `raíz de N`) == el real derivado de `ev_de` en `install-brain.sh`. Complementa a `gen-leyenda-arbol.sh --check` (drift de la LEYENDA incrustada) y `verificar-arbol-sync.sh` (catálogo del árbol).
 
