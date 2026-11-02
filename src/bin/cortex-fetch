@@ -65,7 +65,7 @@ fi
 transcript_stats() {
   local proj="$1" off="$2"
   local cache="$CACHE_DIR/transcripts.cache"
-  local cver="cfv2"   # versión del FORMATO del cache; súbela si cambian las líneas F/M/H/D/P/T
+  local cver="cfv3"   # versión del FORMATO del cache; súbela si cambian las líneas F/M/H/D/P/T
   SESSIONS=0; MESSAGES=0; PEAK_HOUR=-1; DAY_MSG_JSON="{}"; PROJECT_DAY_TSV=""
   [[ -d "$proj" ]] || return 0
 
@@ -83,29 +83,53 @@ transcript_stats() {
   local _hdr=""; [[ -f "$cache" ]] && IFS= read -r _hdr < "$cache" 2>/dev/null || true
   [[ "$_hdr" == "#$cver" ]] || : > "$cache"
 
-  awk -F'\t' -v keepf="$keep" -v rescanf="$rescan" -v cachef="$cache" '
-    FILENAME==cachef {
-      if ($1=="F") { p=$2; CMT[p]=$3; CSZ[p]=$4 }
-      BLK[p]=BLK[p] $0 "\n"
+  # 2) partir cache vs inventario: reutiliza bloques sin cambio y decide, por archivo, si se lee
+  # COMPLETO (nuevo, encogió, mismo tamaño con otro mtime) o solo lo AÑADIDO desde el offset leído
+  # (los .jsonl son append-only: los transcripts de las sesiones abiertas crecen en cada turno).
+  # Distingue los dos archivos por FILENAME (NO por FNR==NR: con el cache vacío en
+  # frío, FNR==NR trataría el inventario como cache y re-escanearía 0 archivos).
+  local growf="$CACHE_DIR/.transcripts.grow.$$"; : > "$growf"
+  # Dos pasadas por el cache en streaming (sin concatenar bloques en memoria: con un cache de MB
+  # eso es cuadrático en awk): 1ª solo lee las líneas F; luego el inventario decide por archivo;
+  # 2ª manda cada línea del cache a keep (sin cambio), a grow (solo creció) o la descarta.
+  awk -F'\t' -v keepf="$keep" -v rescanf="$rescan" -v growf="$growf" -v cachef="$cache" -v curf="$curf" '
+    FILENAME==cachef && !vicur {
+      if ($1=="F") { CMT[$2]=$3; CSZ[$2]=$4; COFF[$2]=$5; CFP[$2]=$6 }
       next
     }
-    { if ($1=="") next
-      if (($1 in CMT) && CMT[$1]==$2 && CSZ[$1]==$3) printf "%s", BLK[$1] > keepf
-      else print $1 > rescanf }
-  ' "$cache" "$curf"
+    FILENAME==curf {
+      vicur=1
+      if ($1=="") next
+      if (($1 in CMT) && CMT[$1]==$2 && CSZ[$1]==$3) { MODE[$1]="K"; next }
+      if (($1 in CMT) && ($3+0)>(CSZ[$1]+0) && (COFF[$1]+0)>0) {
+        MODE[$1]="G"; print $1 "\tGROW\t" COFF[$1] "\t" CFP[$1] "\t" $2 "\t" $3 > rescanf
+      } else print $1 "\tFULL\t0\t-\t" $2 "\t" $3 > rescanf
+      next
+    }
+    FILENAME==cachef {
+      if ($1=="F") { p=$2; m=MODE[p] }
+      if (m=="K") print > keepf
+      else if (m=="G" && $1!="F") print p "\t" $0 > growf
+    }
+  ' "$cache" "$curf" "$cache"
   rm -f "$curf"
 
-  local scanned=0 f meta mt sz folder
+  # 3) re-escanear SOLO los nuevos/cambiados; de los que solo crecieron, solo los bytes nuevos.
+  #    Huella del inicio (cksum de los primeros min(4096, offset) bytes): si no coincide, el
+  #    archivo se reescribió → lectura completa. Una línea final sin "\n" (a medio escribir) no
+  #    se procesa ni avanza el offset: se lee completa en la siguiente corrida.
+  local scanned=0 bytes=0 f mode off0 fp0 mt sz folder seg fpn len newoff
+  seg="$CACHE_DIR/.transcripts.seg.$$"
+  _huella(){ local n=$(( $2 < 4096 ? $2 : 4096 )); head -c "$n" "$1" 2>/dev/null | cksum | cut -d' ' -f1; }
   if [[ -s "$rescan" ]]; then
-    while IFS= read -r f; do
+    while IFS=$'\t' read -r f mode off0 fp0 mt sz; do
       [[ -n "$f" ]] || continue
-      meta="$(awk -F'\t' -v p="$f" '$1==p{print;exit}' <<<"$cur")"
-      mt="$(printf '%s' "$meta" | cut -f2)"; sz="$(printf '%s' "$meta" | cut -f3)"
+      if [[ "$mode" == "GROW" && "$(_huella "$f" "$off0")" != "$fp0" ]]; then mode=FULL; fi
+      [[ "$mode" == "FULL" ]] && off0=0
       folder="$(basename "$(dirname "$f")")"
-      awk -v path="$f" -v mt="$mt" -v sz="$sz" -v folder="$folder" '
-        BEGIN{ msg=0; soloTmp=0; bestDepth=-1; bestName="" }
-        {
-          line=$0
+      len=$(( sz - off0 )); (( len < 0 )) && len=0
+      tail -c +"$((off0+1))" "$f" 2>/dev/null | head -c "$len" | LC_ALL=C awk -v path="$f" -v mt="$mt" -v sz="$sz" -v off="$off0" -v L="$len" -v folder="$folder" '
+        function proc(line,  ismsg,haveTs,tss,utcd,utch,id,cwd,nn,wd,k,ix,ndp,pp,b,inv,outv,s) {
           ismsg=(line ~ /"type":"(assistant|user)"/)
           if (ismsg) msg++
           haveTs=0
@@ -114,11 +138,11 @@ transcript_stats() {
           }
           if (haveTs) AH[utch]++
           if (ismsg && haveTs) DM[utcd SUBSEP utch]++
-          if (!match(line, /"id":"msg_[A-Za-z0-9]+"/)) next
+          if (!match(line, /"id":"msg_[A-Za-z0-9]+"/)) return
           id=substr(line,RSTART,RLENGTH)
-          if (id in seen) next
+          if (id in seen) return
           seen[id]=1
-          if (!haveTs) next
+          if (!haveTs) return
           if (match(line, /"cwd":"[^"]*"/)) {
             cwd=substr(line,RSTART+7,RLENGTH-8)
             if (cwd ~ /^\/(private\/)?tmp\//) soloTmp=1
@@ -137,18 +161,31 @@ transcript_stats() {
           # Token POR msg_id (1ª ocurrencia); el dedup DEFINITIVO es POR CARPETA en el combine
           # (sesión forkeada/continuada copia los mismos msg_id a otro .jsonl de la carpeta).
           MID[id]=utcd SUBSEP utch SUBSEP inv SUBSEP outv
-        }
+                }
+        BEGIN{ msg=0; soloTmp=0; bestDepth=-1; bestName=""; consumed=0; have=0 }
+        { if (have) proc(prev); prev=$0; have=1; consumed+=length($0)+1 }
         END{
-          print "F\t" path "\t" mt "\t" sz
+          if (have) { if (consumed==L) proc(prev); else consumed-=length(prev)+1 }
+          print "F\t" path "\t" mt "\t" sz "\t" (off+consumed) "\t-"
           print "M\t" msg
           for (k in AH) print "H\t" k "\t" AH[k]
           for (k in DM){split(k,a,SUBSEP); print "D\t" a[1] "\t" a[2] "\t" DM[k]}
           print "P\t" folder "\t" bestName "\t" (bestDepth<0?-1:bestDepth) "\t" soloTmp
           for (id2 in MID){split(MID[id2],t,SUBSEP); print "T\t" folder "\t" id2 "\t" t[1] "\t" t[2] "\t" t[3] "\t" (t[4]+0)}
-        }' "$f" >> "$keep" 2>/dev/null || true
+        }' > "$seg" 2>/dev/null || true
+      newoff="$(awk -F'\t' 'NR==1{print $5+0; exit}' "$seg")"; [[ -n "$newoff" ]] || newoff=0
+      fpn="$(_huella "$f" "$newoff")"
+      {
+        printf 'F\t%s\t%s\t%s\t%s\t%s\n' "$f" "$mt" "$sz" "$newoff" "$fpn"
+        [[ "$mode" == "GROW" ]] && awk -F'\t' -v p="$f" 'index($0, p "\t")==1{print substr($0, length(p)+2)}' "$growf"
+        tail -n +2 "$seg"
+      } >> "$keep" 2>/dev/null || true
+      bytes=$(( bytes + newoff - off0 ))
       scanned=$((scanned+1))
     done < "$rescan"
   fi
+  rm -f "$seg" "$growf"
+  printf '%s\n' "$bytes" > "$CACHE_DIR/.transcripts.lastbytes" 2>/dev/null || true
   # Escribe el cache nuevo con el header de versión + los bloques (reusados + frescos).
   { printf '#%s\n' "$cver"; cat "$keep"; } > "$cache" 2>/dev/null || true
   rm -f "$keep" "$rescan"
