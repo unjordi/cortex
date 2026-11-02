@@ -238,7 +238,7 @@ _verificar_handoff(){
 # Dos puntos que solo se ven al CORRERLO:
 #
 #  (a) T4 NO exige `.claude/settings.json` por-repo en NINGÚN destino. El cerebro vive SOLO en global
-#      (2026-11-01, "solo cerebro global"): ningún repo lleva guards por-repo — los candados del master
+#      ningún repo lleva guards por-repo — los candados del master
 #      salen del install GLOBAL. Un gate que exigiera `settings.json` por-repo empujaría a crear justo la
 #      copia que la norma prohíbe. Por eso T4 solo verifica que el install GLOBAL exista (de donde salen los
 #      candados); la marca `.claude/repo-compartido`, si está, solo gobierna el scoping de merge-develop-guard.
@@ -336,7 +336,7 @@ if [ "${1:-}" = paridad ]; then
   for m in ${_p_t2[@]+"${_p_t2[@]}"}; do _p_fila "$_p_srcm/$m" "$_p_dstm/$m" "$m" 1; done
   _p_fila "$_p_src/$_p_t2root" "$_p_dst/$_p_t2root" "$_p_t2root" 1
 
-  # ── T4 · CABLEADO. El cerebro vive SOLO en global (2026-11-01): NINGUN repo lleva guards por-repo.
+  # ── T4 · CABLEADO. El cerebro vive SOLO en global: NINGUN repo lleva guards por-repo.
   # Los candados del master salen del install GLOBAL; el repo destino no debe traer hooks del cerebro. ──
   if [ -f "$HOME/.claude/settings.json" ]; then
     printf '  ok    T4: el install GLOBAL existe (%s hook(s) cableado(s)) => el master despierta con sus candados\n' \

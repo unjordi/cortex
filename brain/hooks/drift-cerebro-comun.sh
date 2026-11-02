@@ -4,7 +4,7 @@
 # de normas de ~/.claude/CLAUDE.md. Lo sourcea aviso-drift-cerebro.sh (SessionStart) para avisar, warn-only,
 # cuando la copia instalada quedó atrás de la fuente o se editó en vivo (se perdería en el próximo install-brain).
 #
-# El cerebro vive SOLO en global por máquina (decisión unjordi 2026-11-01 "solo cerebro global"): ya NO hay
+# El cerebro vive SOLO en global por máquina: ya NO hay
 # copias del cerebro POR-REPO, así que esta lib ya NO lleva el chequeo/auto-sync per-repo (`drift_chequea_repo`,
 # retirado con el cerebro por-repo). Solo quedan los detectores GLOBALES y `resolve_brain_dir`.
 # Cada detector imprime el mensaje humano si hay drift, NADA si está al día, y devuelve 0 SIEMPRE (fail-open).

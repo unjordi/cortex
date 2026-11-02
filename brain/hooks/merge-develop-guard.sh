@@ -548,7 +548,7 @@ if [ "$_ventana_sin_usuario" = 1 ] && [ -n "$tpath" ] && [ -f "$tpath" ]; then
   if command -v jq >/dev/null 2>&1; then
     # test("[^[:space:]]") en vez de gsub(space;"")!="" : mismo veredicto ("hay algún no-espacio") pero CORTA
     # al primer char no-espacio, sin reescribir el string entero — sobre los 6000 últimos renglones de un
-    # transcript de 171 MB (base64 grande) baja de ~14 s a ~0.01 s dentro del PreToolUse (hallazgo 4).
+    # transcript de 171 MB (base64 grande) baja de ~14 s a ~0.01 s dentro del PreToolUse.
     _human_raw=$(tail -n 6000 "$tpath" 2>/dev/null | jq -rs '
       [ .[]? | select(
           ( ((.type=="user") or ((.message.role // "")=="user"))

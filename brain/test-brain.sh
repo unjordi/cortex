@@ -1586,7 +1586,7 @@ CMGOOD="$CMROOT/good.jsonl"; printf '%s\n' '{"type":"user","message":{"role":"us
 ! printf '%s' "$(cm_tx "glab mr merge 5 --yes $CMOK" "$CMGOOD")" | grep -qi 'no pude LEER' \
   && ok "proposal-2 control: transcript LIMPIO (juez DENY) → mensaje normal de develop, NO 'no pude LEER'" \
   || bad "proposal-2 control: un transcript limpio dio el mensaje de fallo de lectura"
-# fila 3 (2026-11-01): un transcript SOLO con tool_results (type:"user" pero content=tool_result, SIN ningún
+# un transcript SOLO con tool_results (type:"user" pero content=tool_result, SIN ningún
 # mensaje humano) NO es "no pude leer" — es "no hay autorización". Falla vs el código viejo (que grepeaba
 # "type":"user" crudo y tomaba el tool_result como humano → decía "no pude leer").
 CMTOOL="$CMROOT/tool.jsonl"
@@ -1596,7 +1596,7 @@ out_tool="$(cm_tx "glab mr merge 5 --yes $CMOK" "$CMTOOL")"
 { is_deny "$out_tool" && ! printf '%s' "$out_tool" | grep -qi 'no pude LEER'; } \
   && ok "fila3: transcript SOLO con tool_results (sin humano) → NO 'no pude leer' (un tool_result no es mensaje humano)" \
   || bad "fila3: tool_results-only dio 'no pude leer' → [$out_tool]"
-# hallazgo 5 (2026-11-01): un tool_result cuyo TEXTO contiene la cadena "queued_command" (p. ej. un grep/cat
+# un tool_result cuyo TEXTO contiene la cadena "queued_command" (p. ej. un grep/cat
 # de este guard, su test o la nota de revisión) NO debe revivir "no pude leer". El conteo de queued_command
 # sale de la ESTRUCTURA (.attachment.type), no de grepear el texto crudo. Falla vs el código viejo (que
 # grepeaba '"queued_command"' sobre la ventana cruda y lo tomaba como mensaje humano).
@@ -4837,7 +4837,7 @@ b8m_run "$R4"
   || bad "b8-mig: CLAUDE.local.md quedó visible en git status (se colaría a un commit); pre_ign=$pre_ign"
 rm -rf "$B8M"
 
-# ── install-brain --limpiar-repo (retiro del cerebro por-repo; "solo cerebro global" 2026-11-01) ──
+# ── install-brain --limpiar-repo (retiro del cerebro por-repo) ──
 # Retira de UN repo los hooks/libs del cerebro (.sh + cableado + .brain-version) y las skills del cerebro
 # cuyo CONTENIDO coincide con la fuente; CONSERVA todo lo ajeno (hook propio, permissions, skill del
 # proyecto, skill del cerebro MODIFICADA) y NO toca memoria/estado. Plan por default; muta con --apply.
@@ -4911,7 +4911,7 @@ if command -v jq >/dev/null 2>&1; then
   echo '#dod' > "$LRSR/.claude/hooks/dod-verificar.sh"; echo '#mio' > "$LRSR/.claude/hooks/mi-hook.sh"
   # LOOKALIKE: nombre PROPIO del repo que TERMINA en el de un hook del cerebro (mi-merge-develop-guard.sh).
   # Debe SOBREVIVIR (.sh + cableado): un regex `merge-develop-guard\.sh` sin anclar lo casaría y lo borraría;
-  # la lista EXACTA de basenames no. (Corrección de unjordi al hallazgo 1 — "mi-limpiar.sh se queda".)
+  # la lista EXACTA de basenames no (un hook propio como "mi-limpiar.sh" se queda).
   echo '#look' > "$LRSR/.claude/hooks/mi-merge-develop-guard.sh"
   printf '{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"bash \\"$CLAUDE_PROJECT_DIR/.claude/hooks/dod-verificar.sh\\""},{"type":"command","command":"bash \\"$CLAUDE_PROJECT_DIR/.claude/hooks/mi-hook.sh\\""}]}],"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"bash \\"$CLAUDE_PROJECT_DIR/.claude/hooks/mi-merge-develop-guard.sh\\""}]}]}}' > "$LRSR/.claude/settings.json"
   HOME="$LRSIB/home" bash "$INSTALLER" --limpiar-repo "$LRSR" --apply >/dev/null 2>&1
@@ -5689,8 +5689,7 @@ ac_run 425000 "" '{"model":"opus"}'
 rm -rf "$(dirname "$ACLAST")"
 
 # ── (b6-estado-fuera) los sellos de throttle van bajo $HOME/.claude/state/<cksum>, no dentro del repo ──
-# El canal del usuario es `git status` del repo: debe quedar limpio de sellos. FALLA contra la versión que
-# escribía en $ROOT/.claude/memory.
+# El canal del usuario es `git status` del repo: debe quedar limpio de sellos.
 ac_run 820000 1000000 ""
 b6ef_root="$ACLAST"; b6ef_state="$( HOME="$ACHOME" cortex_state_dir "$b6ef_root" )"
 { [ -n "$ACMSG" ] && [ -z "$(find "$b6ef_root/.claude" -name '.contexto-aviso*' -o -name '.cuota-fetch-forzado' 2>/dev/null)" ]; } \
@@ -5815,7 +5814,7 @@ mksnap "$QOLD" 88 "2026-10-21T23:00:00Z" 9
 is_silent "$(qrun sN)" \
   && ok "b6-cuota: snapshot rancio + sin cortex-fetch → calla la cuota (sin widget), no cuelga ni inventa" \
   || bad "b6-cuota: habló con snapshot rancio y sin fetch disponible"
-# (7) GATE por fetched_at (corrección de unjordi 2026-11-01): el hook relanza cortex-fetch SOLO si el
+# (7) GATE por fetched_at: el hook relanza cortex-fetch SOLO si el
 #     ÚLTIMO fetch corrió hace ≥30 min (por `fetched_at`, cuándo CORRIÓ, NO `updated_at`). Si corrió hace
 #     <30 min pero no trajo datos (stale, API caída) NO relanza → no maltrata la compu. Falla vs el hook viejo
 #     (que miraba updated_at/stale y relanzaba cada 5 min con la API caída).
@@ -7000,7 +6999,7 @@ if command -v jq >/dev/null 2>&1; then
 else
   echo "  SKIP ccd: sin jq para inspeccionar el comando del hook"
 fi
-# (La sub-prueba de dedupe POR-REPO se retiró con el cerebro por-repo 2026-11-01: ya no hay copias del
+# (La sub-prueba de dedupe POR-REPO se retiró con el cerebro por-repo: ya no hay copias del
 #  cerebro por-repo ni cláusula de dedupe; el cerebro vive solo en global.)
 # agentes-costo.json: install lo escribe en $CLAUDE_CONFIG_DIR; delegacion-comun debe LEERLO del mismo dir.
 [ -f "$CCDCFG/agentes-costo.json" ] \
@@ -7261,7 +7260,7 @@ else
   fi
 fi
 
-# ═══ BLOQUE (tiers tras "solo cerebro global" 2026-11-01) ══════════════════════════════════════════════
+# ═══ BLOQUE (tiers tras "solo cerebro global") ══════════════════════════════════════════════
 echo "== (e2-tiers) doc-check: los MANIFEST documentan el tier vivo (global) + la lápida (retirado) =="
 # Desde el retiro del cerebro por-repo el único tier vivo es `global` (ya no hay both/repo). El header de
 # cada MANIFEST debe documentar `global` y el tier `retirado` (lápida), para que quien agregue un hook/skill
@@ -8378,7 +8377,7 @@ printf '%s' "$(nbd_ctx 'bash brain/install-brain.sh')" | grep -qi 'widget' \
 # -h ambiguo (MEDIO auditoría 2026-10-22): un deploy real con `-h <host>` ya NO se silencia como si fuera --help.
 [ -n "$(nbd_ctx './deploy.sh -h prod-host')" ] \
   && ok "g1: './deploy.sh -h prod-host' SÍ avisa (-h es --host, no --help)" || bad "g1: calló por -h (FN: -h tomado como --help)"
-# (La aserción de la cláusula de dedupe se retiró: no-bypass-deploy es tier `global` desde 2026-11-01
+# (La aserción de la cláusula de dedupe se retiró: no-bypass-deploy es tier `global`
 #  —el cerebro vive solo en global—, ya no lleva dedupe por-repo.)
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -10206,7 +10205,7 @@ fi
 rm -rf "$B1C"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# TIERS (2026-11-01, "solo cerebro global"): sesion-inicio y recordar-cosechar son tier `global` (ya NO
+# TIERS: sesion-inicio y recordar-cosechar son tier `global` (ya NO
 # `both`/dedupe — el cerebro no viaja por-repo). Lo que se verifica: (B) corren DENTRO de un repo git,
 # (B2) CALLAN fuera de un repo git (gate git), (D) están mapeados en ev_de (o quedarían sin cablear global).
 echo ""
@@ -10218,13 +10217,13 @@ si_run="$( cd "$TIERSHOME" && printf '%s' '{"source":"startup"}' | HOME="$TIERSH
 [ -n "$si_run" ] && ok "tiers: sesion-inicio — DENTRO de un repo git CORRE (inyecta contexto)" || bad "tiers: sesion-inicio no corrió dentro de un repo git"
 rm -rf "$TIERSHOME"
 # (B2) FUERA de un repo git (carpeta cualquiera: ~, Downloads, Juegos…) → CALLA (rc 0, sin inyección del
-# bloque del repo). Revisión de claudio sobre 673ac46: como hook global corre en TODA sesión, no solo en un repo.
+# bloque del repo). Como hook global corre en TODA sesión, no solo en un repo.
 TIERSNOGIT="$(mktemp -d)"
 si_nogit="$( cd "$TIERSNOGIT" && printf '%s' '{"source":"startup"}' | HOME="$TIERSNOGIT" CLAUDE_PROJECT_DIR="$TIERSNOGIT" bash "$HOOKS/sesion-inicio.sh" 2>&1)"
 [ -z "$si_nogit" ] && ok "tiers: sesion-inicio FUERA de un repo git → CALLA (no inyecta el bloque del repo)" || bad "tiers: sesion-inicio inyectó en una carpeta no-repo: ${si_nogit:0:60}"
 rm -rf "$TIERSNOGIT"
 # (C) el grep verbatim de "recordar-cosechar trae la cláusula de dedupe" se retiró: el comportamiento del
-#     dedupe se retiró con el cerebro por-repo (2026-11-01): ya no hay copias por-repo que cedan.
+#     dedupe se retiró con el cerebro por-repo: ya no hay copias por-repo que cedan.
 # (D) ev_de de install-brain mapea ambos (si no, se instalan global pero NO se cablean).
 TIERS_EVDE="$(sed -n '/^ev_de() {/,/^}/p' "$SCRIPT_DIR/../brain/install-brain.sh")"
 ev_probe() { bash -c "$TIERS_EVDE"$'\n'"ev_de \"$1\""; }
