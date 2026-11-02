@@ -1,9 +1,7 @@
 // 13 — Normas: el cimiento (cortex)  ·  FUENTE editable (.dot)
 // Render:  dot -Tsvg 13-normas-el-cimiento.dot -o 13-normas-el-cimiento.svg
 // El PORQUÉ: cada flujo de los charts anteriores hace cumplir una de estas normas (CLAUDE.md / brain/norms/).
-// 2026-09-07: agregadas 5 normas duras que faltaban (DECISION/CORREO/HERRAMIENTA/HUD/MAQUINA) — su
-// mecanismo YA vivía en la leyenda-árbol pero no tenían tarjeta en el cuerpo; el cluster ahora declara
-// explícito que es un SUBCONJUNTO curado, no el set completo (brain/norms/global-claude-md.md manda).
+// El cluster de normas es un SUBCONJUNTO curado, no el set completo (brain/norms/global-claude-md.md manda).
 // DOC ya NO dice "hecho cumplir en 08": recordar-dashboard es un nudge advisory, no un guard DENY.
 // Overhaul hooks 2026-09-18: recordar-dashboard, recordar-orquestar (parcial: ORQ sigue vía la norma
 // misma, sin hook), hud-stale y la mitad NUDGE de recordar-cosechar se RETIRARON (puramente advisory,
@@ -40,8 +38,8 @@ digraph flujos {
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧵 rehidratar-hilo</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta hilo-mental-actual.md + el andamio (si es más fresco) al abrir/retomar/compactar (GLOBAL) — gate de frescura + edad</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">📈 aviso-contexto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">al umbral ALTO del punto REAL de compact (80%/92% de autoCompactWindow o la ventana efectiva; % honesto, respeta autoCompactEnabled): VUELCA el checkpoint mecánico solito y ORDENA /checkpoint+/compact. No gotea (silencio bajo el umbral, 1 disparo + 1 escalada) (GLOBAL)</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧬 aviso-drift-cerebro</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">repo brained atrás de la fuente única (hooks/libs Y skills) → en tu mini-develop se AUTO-SINCRONIZA (apply+commit+push); en otra rama, avisa. ADEMÁS detecta el drift de la copia GLOBAL de skills (~/.claude/skills vs la fuente; warn-only, throttle propio). Al moverse el cerebro, NUDGE a correr la DUPLA (suficiencia+coherencia; contra la firma si hay AGENTS.md, si no sugiere instanciarla) (GLOBAL)</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧭 sesion-inicio</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta rama + norma + memoria al abrir (BOTH)</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌾 recordar-cosechar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">espejo automático del TaskList vivo → bloque fenced en estado-proyecto.md (determinista, sin LLM) (BOTH)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🧭 sesion-inicio</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">reinyecta rama + norma + memoria al abrir (GLOBAL)</font></td></tr>
+        <tr><td bgcolor="#1b1712"><font color="#f2ede6">🌾 recordar-cosechar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">espejo automático del TaskList vivo → bloque fenced en estado-proyecto.md (determinista, sin LLM) (GLOBAL)</font></td></tr>
         <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>📜 Normas</b></font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🎯 Definition of Done</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">verde técnico ≠ Done/Listo/Ya Quedó; exige QA o un OK explícito</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🪞 Doc &lt;= realidad</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cambió algo → su doc se actualiza en la tanda</font></td></tr>
@@ -100,7 +98,7 @@ digraph flujos {
     AISL [label="📜 🧱 Aislamiento de fan-out\ntodo agente que MUTA/commitea corre en worktree AISLADO,\nnunca en el árbol de trabajo compartido\n— hecho cumplir en 07 · 12"];
     MECA [label="📜 🧩 Toda norma nace con su mecanismo\nuna norma de higiene/cierre SIN hook/gate/paso operativo\n= el usuario es el único enforcement → no se cumple sola"];
     INTEG [color="#c9a227", penwidth=2,
-           label="🛡️📜 Integridad de los guardarraíles (norma SIN mecanismo LOCAL)\nClaude NO afloja sus propios candados de supervisión para desatorarse;\ncambiar un control exige el OK EXPLÍCITO a cambiar ESE control (≠ el OK a la acción).\nNO hay hook in-repo que lo imponga: es AUTODISCIPLINA; el enforcement es EXTERNO\n(el clasificador auto-mode = backstop) — aplica a dod 09 · confirmar/squash/branch 06 · proteger-arbol 07"];
+           label="🛡️📜 Integridad de los guardarraíles (norma SIN mecanismo LOCAL)\nClaude NO afloja sus propios candados de supervisión para desatorarse;\ncambiar un control exige el OK EXPLÍCITO a cambiar ESE control (≠ el OK a la acción).\nNO hay hook in-repo que lo imponga: es AUTODISCIPLINA; el enforcement es EXTERNO\n(el clasificador auto-mode = backstop) — aplica a merge-develop-guard 06 · proteger-arbol 07"];
     TMPL [label="📜 🧬 Al templatizar: DOMINIO vs regla genérica\nal derivar un template de un concreto, quita el dominio pero\nCONSERVA las reglas genéricas (diff PORTAR-vs-OK-EXCLUIDO)"];
 
     // ── 5 normas duras que faltaban: su mecanismo YA vive en la leyenda-árbol (familia 🔔 Automático)
