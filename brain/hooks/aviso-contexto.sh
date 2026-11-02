@@ -285,7 +285,7 @@ if [ "$fire_ctx" -eq 1 ] && [ -f "$_selfdir/checkpoint-mecanico-comun.sh" ]; the
   # shellcheck source=checkpoint-mecanico-comun.sh
   . "$_selfdir/checkpoint-mecanico-comun.sh"
   sid_raw=$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null)
-  disparar_checkpoint_mecanico "$sid_raw" "$tp" "$ROOT" "$MEM" "$_selfdir" || true
+  disparar_checkpoint_mecanico "$sid_raw" "$tp" "$ROOT" "$MEM" "$_selfdir" "aviso" || true
 fi
 
 # ── Mensaje: hasta DOS líneas (contexto + cuota). Dispare por lo que dispare, se incluyen AMBAS si están
@@ -314,10 +314,10 @@ if [ "$fire_ctx" -eq 1 ]; then
   fi
   if [ "$band" -ge 2 ]; then
     head="🚨 Contexto ~${pctw}% de ${den} (${ctxk}K) — RAYANDO el compact."
-    order="Ya volqué el andamio mecánico a hilo-mental-actual.andamio.md. CORRE /checkpoint (el hilo en prosa NECESITA modelo) y /compact YA: ${corte}."
+    order="Lancé el volcado del andamio mecánico a hilo-mental-actual.andamio.md (en 2º plano; su resultado queda en .checkpoint-mecanico.log). CORRE /checkpoint (el hilo en prosa NECESITA modelo) y /compact YA: ${corte}."
   else
     head="📊 Contexto ~${pctw}% de ${den} (${ctxk}K) — cerca del compact."
-    order="Volqué el andamio mecánico a hilo-mental-actual.andamio.md. Haz /checkpoint (el hilo en prosa NECESITA modelo) y considera /compact: ${corte}."
+    order="Lancé el volcado del andamio mecánico a hilo-mental-actual.andamio.md (en 2º plano; su resultado queda en .checkpoint-mecanico.log). Haz /checkpoint (el hilo en prosa NECESITA modelo) y considera /compact: ${corte}."
   fi
   # Dato extra sin mentir: cuando GOV = autoCompactWindow, la ventana del modelo va como referencia; cuando
   # GOV = la del modelo pero hay un ACW seteado con el auto-compact APAGADO, se aclara por qué ACW no gobierna.

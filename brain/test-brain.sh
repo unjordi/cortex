@@ -6332,7 +6332,31 @@ grep -q 'Andamio mecánico' "$M2BDIR/.claude/memory/hilo-mental-actual.andamio.m
 [ ! -f "$M2BDIR/.claude/memory/hilo-mental-actual.md" ] \
   && ok "m2b: el hook NUNCA toca hilo-mental-actual.md (solo el sidecar .andamio.md)" \
   || bad "m2b: el hook escribió/creó hilo-mental-actual.md — no debía tocarlo"
+# (m2b-log) el disparo deja RASTRO en .checkpoint-mecanico.log (fecha · invocador · sid · detalle): una línea
+# `lanzado` al disparar y, cuando node (background) termina, `exit=<n> andamio=<mtime>`.
+M2BLOG="$M2BDIR/.claude/memory/.checkpoint-mecanico.log"
+grep -q 'precompact · sid=m2b-test · lanzado' "$M2BLOG" 2>/dev/null \
+  && ok "m2b-log: el disparo registró 'lanzado' con invocador+sid en .checkpoint-mecanico.log" \
+  || bad "m2b-log: no quedó rastro de 'lanzado' en el log; got: $(cat "$M2BLOG" 2>/dev/null)"
+for _ in 1 2 3 4 5 6 7 8 9 10; do grep -q 'exit=' "$M2BLOG" 2>/dev/null && break; sleep 0.3; done
+grep -qE 'exit=[0-9]+ andamio=' "$M2BLOG" 2>/dev/null \
+  && ok "m2b-log: al terminar node, el log registró exit=<n> andamio=<mtime>" \
+  || bad "m2b-log: node no registró su exit/andamio; got: $(cat "$M2BLOG" 2>/dev/null)"
 rm -rf "$(dirname "$M2BDIR")"
+
+# (m2b-lock) disparo con LOCK VIVO → el log registra 'omitido: lock' (no relanza y DICE por qué; sin este
+# logging el disparo se omitía en silencio). El lock corta ANTES de correr node → determinista.
+LKFIX="$(mktemp -d "${TMPDIR:-/tmp}/brain-cklock.XXXXXX")"
+mkdir -p "$LKFIX/home/.local/bin" "$LKFIX/mem"
+: > "$LKFIX/home/.local/bin/checkpoint-mecanico.js"   # extractor: solo se chequea -f (el lock corta antes de correrlo)
+printf '{}' > "$LKFIX/t.jsonl"
+: > "$LKFIX/mem/.checkpoint-mecanico-lk.lock"          # lock FRESCO (vivo)
+( . "$HOOKS/checkpoint-mecanico-comun.sh"
+  HOME="$LKFIX/home" disparar_checkpoint_mecanico "lk" "$LKFIX/t.jsonl" "$LKFIX" "$LKFIX/mem" "" "aviso" )
+grep -q 'aviso · sid=lk · omitido: lock' "$LKFIX/mem/.checkpoint-mecanico.log" 2>/dev/null \
+  && ok "m2b-lock: lock vivo → el log registra 'omitido: lock' (ya no se omite en silencio)" \
+  || bad "m2b-lock: el lock vivo no dejó 'omitido: lock' en el log; got: $(cat "$LKFIX/mem/.checkpoint-mecanico.log" 2>/dev/null)"
+rm -rf "$LKFIX"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
