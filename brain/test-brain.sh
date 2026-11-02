@@ -7498,16 +7498,28 @@ done
 b="$(grep -c 'BEGIN cortex' "$GCLAUDE2" 2>/dev/null || echo 0)"
 e="$(grep -c 'END cortex'   "$GCLAUDE2" 2>/dev/null || echo 0)"
 { [ "$b" = "1" ] && [ "$e" = "1" ]; } && ok "CLAUDE.md: 1 solo bloque de normas (BEGIN/END)" || bad "CLAUDE.md: BEGIN=$b END=$e (esperaba 1/1)"
-# artefacto LEAN de aliases generado + @import cableado UNA sola vez (idempotente tras 2 installs)
+# aliases-activos.md RETIRADO: el instalador ya NO genera el artefacto ni cabla su @import.
 ART2="$FAKEHOME2/.claude/aliases-activos.md"
-[ -f "$ART2" ] && grep -q 'shells:posix:INICIO' "$ART2" \
-  && ok "aliases-activos.md generado con el bloque posix" || bad "falta aliases-activos.md o su bloque posix"
-grep -q 'GENERADO por install-brain' "$ART2" 2>/dev/null \
-  && ok "aliases-activos.md lleva el header answer-first (marca GENERADO)" || bad "aliases-activos.md sin header GENERADO"
-nimp="$(grep -c '^@aliases-activos.md' "$GCLAUDE2" 2>/dev/null || echo 0)"
-[ "$nimp" = "1" ] && ok "CLAUDE.md: @aliases-activos.md cableado 1× (idempotente)" || bad "CLAUDE.md: @import aparece ${nimp}× (esperaba 1)"
-nmrk="$(grep -c 'brain:import-aliases' "$GCLAUDE2" 2>/dev/null || echo 0)"
-[ "$nmrk" = "1" ] && ok "CLAUDE.md: marcador brain:import-aliases 1× (fuera del bloque BEGIN/END)" || bad "CLAUDE.md: marcador import-aliases ${nmrk}× (esperaba 1)"
+[ ! -f "$ART2" ] \
+  && ok "aliases-activos.md NO se genera (artefacto retirado)" || bad "el instalador aún genera aliases-activos.md"
+nimp="$(grep -c '^@aliases-activos.md' "$GCLAUDE2" 2>/dev/null || true)"
+[ "${nimp:-0}" = "0" ] && ok "CLAUDE.md: SIN @aliases-activos.md (no se cabla)" || bad "CLAUDE.md: @import de aliases-activos.md presente (${nimp}×)"
+nmrk="$(grep -c 'brain:import-aliases' "$GCLAUDE2" 2>/dev/null || true)"
+[ "${nmrk:-0}" = "0" ] && ok "CLAUDE.md: SIN marcador brain:import-aliases" || bad "CLAUDE.md: marcador import-aliases presente (${nmrk}×)"
+# RETIRO de una instalación anterior: un HOME con aliases-activos.md + su @import + contenido propio →
+# el instalador borra el archivo y quita SOLO su bloque @import, dejando el resto del CLAUDE.md intacto.
+FAKEHOME_AL="$(mktemp -d "${TMPDIR:-/tmp}/brain-al.XXXXXX")"; mkdir -p "$FAKEHOME_AL/.claude"
+printf '# mi CLAUDE personal\n\nmi linea 1\n\n<!-- brain:import-aliases — VISTA per-máquina de aliases que muerden; GENERADA, NO viaja por git -->\n@aliases-activos.md\n\nmi linea 2\n' > "$FAKEHOME_AL/.claude/CLAUDE.md"
+printf '<!-- GENERADO por install-brain -->\n# viejo\n' > "$FAKEHOME_AL/.claude/aliases-activos.md"
+HOME="$FAKEHOME_AL" bash "$INSTALLER" >/dev/null 2>&1
+{ [ ! -f "$FAKEHOME_AL/.claude/aliases-activos.md" ] \
+  && [ "$(grep -c '^@aliases-activos.md' "$FAKEHOME_AL/.claude/CLAUDE.md" 2>/dev/null || true)" = "0" ] \
+  && [ "$(grep -c 'brain:import-aliases' "$FAKEHOME_AL/.claude/CLAUDE.md" 2>/dev/null || true)" = "0" ] \
+  && grep -q '^mi linea 1$' "$FAKEHOME_AL/.claude/CLAUDE.md" \
+  && grep -q '^mi linea 2$' "$FAKEHOME_AL/.claude/CLAUDE.md"; } \
+  && ok "fila9 RETIRO: el instalador borra aliases-activos.md + su @import y deja intacto el resto del CLAUDE.md" \
+  || bad "fila9 RETIRO: no retiró el artefacto/@import o tocó el resto; got: $(grep -nE 'aliases|mi linea' "$FAKEHOME_AL/.claude/CLAUDE.md" 2>/dev/null | tr '\n' '|')"
+rm -rf "$FAKEHOME_AL"
 # entorno de máquina = ~/.claude/entorno-maquina.md LEAN (fuente única) + @import 1×; NO nace la copia vieja en el slug
 ENT2="$FAKEHOME2/.claude/entorno-maquina.md"
 { [ -f "$ENT2" ] && grep -q 'LEAN, FUENTE ÚNICA' "$ENT2" && grep -q 'detectado-por-bootstrap:INICIO' "$ENT2"; } \

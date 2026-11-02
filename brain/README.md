@@ -15,8 +15,8 @@ no puede cablear `settings.json`.
 
 ```
 brain/
-├── install-brain.sh      # instalador GLOBAL idempotente (hooks + cableado + skill + dashboard + normas + aliases-activos)
-├── install-brain.ps1     # lanzador Windows: verifica bash+jq, detecta aliases de PowerShell (nativo) y delega en install-brain.sh
+├── install-brain.sh      # instalador GLOBAL idempotente (hooks + cableado + skill + dashboard + normas)
+├── install-brain.ps1     # lanzador Windows: verifica bash+jq y delega en install-brain.sh
 ├── uninstall-brain.sh    # inverso EXACTO del instalador (idempotente)
 ├── test-brain.sh         # pruebas versionadas y repetibles (contra un $HOME falso aislado)
 ├── README.md             # este archivo
@@ -26,13 +26,12 @@ brain/
 └── norms/global-claude-md.md  # bloque de normas que se inyecta en ~/.claude/CLAUDE.md
 ```
 
-**Artefacto LEAN de aliases (`~/.claude/aliases-activos.md`, GENERADO per-máquina).** El instalador detecta,
-cross-OS/cross-shell, los aliases/funciones que **sombrean un binario real** (POSIX: `brain/lib/detectar-shells.sh`
-enumera zsh/bash/fish instalados; PowerShell: detector nativo en `install-brain.ps1`) y escribe una vista
-answer-first (el ESCAPE `command <cmd>` primero) en `~/.claude/aliases-activos.md`. El `CLAUDE.md` global la
-importa con `@aliases-activos.md` (@import recursivo → siempre en contexto, sin costar líneas). Es GENERADA y NO
-viaja por git (entorno de máquina = global). En Windows los bloques `<!-- shells:posix -->` y `<!-- shells:powershell -->`
-coexisten sin pisarse.
+**Aliases que muerden comandos → `~/.claude/entorno-maquina.md`.** El instalador detecta, cross-shell, los
+aliases/funciones que **sombrean un binario real** (`brain/lib/detectar-shells.sh` enumera zsh/bash/fish
+instalados) y los escribe en el bloque `detectado-por-bootstrap` de `~/.claude/entorno-maquina.md` (que el
+`CLAUDE.md` global ya importa), con el ESCAPE answer-first (`command <cmd>`). El artefacto separado
+`aliases-activos.md` + su `@import` se RETIRARON: eran una copia redundante; el instalador borra el archivo y
+quita su `@import` del `CLAUDE.md` global si una instalación anterior los dejó.
 
 ## Hooks vs skills — por qué unos bloquean y otros no
 
