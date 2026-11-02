@@ -2091,7 +2091,7 @@ mkdir -p "$JCFIX/secexp"; printf '#!/usr/bin/env bash\nprintf %%s '\''{"claudeAi
 # (a · #2) BARRIDO DE CANALES: el llavero da un token VENCIDO (401) → _juez_llamar_api prueba el SIGUIENTE canal
 # (env), que es VÁLIDO → 200 → OK. Antes re-resolvía el MISMO canal (llavero) → quedaba EXPIRED para siempre.
 (
-  export PATH="$JCFIX/curl401:$JCFIX/secexp:$PATH"; export CLAUDE_CODE_OAUTH_TOKEN="VALID_ENV_TOK"; unset CLAUDE_CONFIG_DIR
+  export PATH="$JCFIX/curl401:$JCFIX/secexp:$PATH"; export CLAUDE_CODE_OAUTH_TOKEN="VALID_ENV_TOK"; unset CLAUDE_CONFIG_DIR; export HOME="$JCFIX/home"   # HOME aislado: el canal de token "archivo" ($HOME/.claude/.credentials.json) NO debe leer el real (§5) ni agregar un 3er canal
   export JC_VALID_TOK="VALID_ENV_TOK"; export JC_CURL_CTR="$JCFIX/ctr_a"; : > "$JC_CURL_CTR"
   export JC_CURL_BODY200='{"content":[{"text":"VEREDICTO: ALLOW"}]}'
   . "$HOOKS/juez-comun.sh"
@@ -2104,7 +2104,7 @@ mkdir -p "$JCFIX/secexp"; printf '#!/usr/bin/env bash\nprintf %%s '\''{"claudeAi
 # (a2 · #2 invariante) llavero VÁLIDO + env viejo → usa el LLAVERO (1 sola llamada; el env ni se toca). El
 # invariante "login-activo-first / el llavero gana" (test de arriba) se preserva — el env solo entra si el 1º es rechazado.
 (
-  export PATH="$JCFIX/curl401:$JCFIX/withsec:$PATH"; export CLAUDE_CODE_OAUTH_TOKEN="OLD_ENV_TOK"; unset CLAUDE_CONFIG_DIR
+  export PATH="$JCFIX/curl401:$JCFIX/withsec:$PATH"; export CLAUDE_CODE_OAUTH_TOKEN="OLD_ENV_TOK"; unset CLAUDE_CONFIG_DIR; export HOME="$JCFIX/home"
   export JC_VALID_TOK="KEYCHAIN_TOK"; export JC_CURL_CTR="$JCFIX/ctr_a2"; : > "$JC_CURL_CTR"
   export JC_CURL_BODY200='{"content":[{"text":"VEREDICTO: ALLOW"}]}'
   . "$HOOKS/juez-comun.sh"
@@ -2116,7 +2116,7 @@ mkdir -p "$JCFIX/secexp"; printf '#!/usr/bin/env bash\nprintf %%s '\''{"claudeAi
 )
 # (a3 · #2) TODOS los canales con token pero TODOS 401 → EXPIRED (no NOTOKEN; hubo credenciales, todas vencidas).
 (
-  export PATH="$JCFIX/curl401:$JCFIX/secexp:$PATH"; export CLAUDE_CODE_OAUTH_TOKEN="OTRO_VENCIDO"; unset CLAUDE_CONFIG_DIR
+  export PATH="$JCFIX/curl401:$JCFIX/secexp:$PATH"; export CLAUDE_CODE_OAUTH_TOKEN="OTRO_VENCIDO"; unset CLAUDE_CONFIG_DIR; export HOME="$JCFIX/home"
   export JC_VALID_TOK="NINGUNO_CASA"; : > "$JCFIX/ctr_a3"; export JC_CURL_CTR="$JCFIX/ctr_a3"
   export JC_CURL_BODY200='{"content":[{"text":"x"}]}'
   . "$HOOKS/juez-comun.sh"
@@ -2127,7 +2127,7 @@ mkdir -p "$JCFIX/secexp"; printf '#!/usr/bin/env bash\nprintf %%s '\''{"claudeAi
 )
 # (a · #2 end-to-end merge): llavero vencido → env válido → el merge juez responde ALLOW con cita real.
 (
-  export PATH="$JCFIX/curl401:$JCFIX/secexp:$PATH"; export CLAUDE_CODE_OAUTH_TOKEN="VALID_ENV_TOK"; unset CLAUDE_CONFIG_DIR
+  export PATH="$JCFIX/curl401:$JCFIX/secexp:$PATH"; export CLAUDE_CODE_OAUTH_TOKEN="VALID_ENV_TOK"; unset CLAUDE_CONFIG_DIR; export HOME="$JCFIX/home"
   export JC_VALID_TOK="VALID_ENV_TOK"; unset JC_CURL_CTR
   export JC_CURL_BODY200='{"content":[{"text":"CITA: mergea el 240 a develop\nVEREDICTO: ALLOW"}]}'
   _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/merge-develop-guard.sh"
@@ -3114,7 +3114,7 @@ printf 'solo-local\n'    > "$DVH/.claude/hooks/gamma.sh"                      # 
 dvout2="$(dv)"
 printf '%s' "$dvout2" | grep -q 'drift instalada≠fuente (hooks): beta.sh' \
   && ok "verificar-cerebro drift: instalada que difiere → la LISTA" || bad "verificar-cerebro drift: no listó beta.sh; got: $dvout2"
-printf '%s' "$dvout2" | grep -q 'beta.sh.*M.S NUEVA' \
+printf '%s' "$dvout2" | grep -q 'beta.sh.*MÁS NUEVA' \
   && ok "verificar-cerebro drift: distingue dirección (instalada más nueva → portar a la fuente)" || bad "verificar-cerebro drift: no marcó la dirección; got: $dvout2"
 printf '%s' "$dvout2" | grep -q 'gamma.sh' \
   && bad "verificar-cerebro drift: reportó un archivo LOCAL sin fuente (falso positivo); got: $dvout2" \
@@ -6815,9 +6815,9 @@ if [ -f "$SCRIPT_DIR/uninstall-brain.sh" ]; then
   # M4 (auditoría R3 2026-10-23): el bloque (e2) @import de entorno-maquina mutaba CLAUDE.md INCLUSO en --dry-run
   # (hacía `mv` directo, sin pasar por `_run`). Hash de CLAUDE.md ANTES/DESPUÉS del dry-run: deben ser IGUALES.
   # FALLA contra 7fab8aa (donde el dry-run removía el @import). Se corre ANTES del uninstall REAL.
-  _m4_h1="$(shasum "$GCLAUDE2" 2>/dev/null | awk '{print $1}')"
+  _m4_h1="$(cksum "$GCLAUDE2" 2>/dev/null | awk '{print $1"-"$2}')"   # cksum: portable (shasum es macOS-only; en Linux no existe → hash vacío → falso «MUTÓ»)
   HOME="$FAKEHOME2" bash "$SCRIPT_DIR/uninstall-brain.sh" --dry-run >/dev/null 2>&1
-  _m4_h2="$(shasum "$GCLAUDE2" 2>/dev/null | awk '{print $1}')"
+  _m4_h2="$(cksum "$GCLAUDE2" 2>/dev/null | awk '{print $1"-"$2}')"
   { [ -n "$_m4_h1" ] && [ "$_m4_h1" = "$_m4_h2" ]; } \
     && ok "A2/M4: --dry-run NO muta CLAUDE.md (el bloque @import de entorno respeta DRY — hash intacto)" \
     || bad "A2/M4: --dry-run MUTÓ CLAUDE.md (el bloque (e2) @import no respetó DRY; $_m4_h1 → $_m4_h2)"
