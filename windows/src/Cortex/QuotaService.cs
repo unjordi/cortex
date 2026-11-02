@@ -41,6 +41,9 @@ public sealed class QuotaService
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                      "cortex");
     public static string StateFile => Path.Combine(CacheDir, "state.json");
+    // Marca de "apagado por el usuario" (⏻). La escribe ExitApp si el autostart estaba activo (para quitar la
+    // clave Run y que el apagado sobreviva el reinicio) y la borra el arranque al restaurar el autostart.
+    public static string ApagadoMarker => Path.Combine(CacheDir, "apagado");
     public static string StatsFile => Path.Combine(CacheDir, "stats.json");
     /// stats-global.json — vista fusionada de todas las máquinas (sync (e)); mismo dir del cache.
     public static string StatsGlobalFile => Path.Combine(CacheDir, "stats-global.json");

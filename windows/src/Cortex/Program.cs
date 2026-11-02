@@ -42,7 +42,7 @@ internal static class Program
         Directory.CreateDirectory(dir);
         var svc = new QuotaService();
         svc.FetchAsync().GetAwaiter().GetResult();
-        using var popup = new PopupForm(svc, () => { }) { ShotMode = true };
+        using var popup = new PopupForm(svc, () => { }, () => { }) { ShotMode = true };
         popup.StartPosition = FormStartPosition.Manual;
         popup.Location = new Point(0, 0);
         popup.Show();
@@ -96,7 +96,15 @@ internal static class Program
 
         public TrayContext()
         {
-            _popup = new PopupForm(_svc, () => RunFetch(force: true));
+            _popup = new PopupForm(_svc, () => RunFetch(force: true), ExitApp);
+
+            // Abrir la app a mano RESTAURA el autostart que ⏻ quitó para sobrevivir el reinicio (apagado = Run
+            // key fuera). La marca dice que ⏻ lo apagó con el autostart activo; al abrir se re-activa y se borra.
+            if (File.Exists(QuotaService.ApagadoMarker))
+            {
+                SetAutostart(true);
+                try { File.Delete(QuotaService.ApagadoMarker); } catch { }
+            }
 
             _tray = new NotifyIcon
             {
@@ -238,8 +246,27 @@ internal static class Program
             return menu;
         }
 
+        // Salir APAGA TODO. En Windows el fetcher es IN-PROCESS: el Timer de 10s de ESTE proceso dispara
+        // RunFetch → FetchAsync (HttpClient en C#; ccusage/npx son hijos one-shot awaited). NO hay agente
+        // externo recurrente (contrasta con macOS LaunchAgent / Linux systemd timer), así que parar el timer
+        // y terminar el proceso ES apagar el recolector — no queda nada corriendo con la GUI cerrada. Lo
+        // llaman tanto el menú "Salir" como el botón ⏻ del popup; limpia el icono de bandeja antes de salir
+        // (ExitThread) para no dejarlo fantasma. Para que el apagado SOBREVIVA el reinicio quita la clave Run
+        // del autostart (si estaba activa) y deja una marca; abrir la app a mano la restaura (ver ctor).
         private void ExitApp()
         {
+            // Si el autostart estaba activo, ⏻ lo QUITA (clave Run) para que el apagado sobreviva el reinicio
+            // —si no, el login relanza el EXE y vuelve a prender todo— y deja la marca para restaurarlo al abrir.
+            if (IsAutostart())
+            {
+                try
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(QuotaService.ApagadoMarker)!);
+                    File.WriteAllText(QuotaService.ApagadoMarker, "");
+                }
+                catch { }
+                SetAutostart(false);
+            }
             _timer.Stop();
             _tray.Visible = false;
             _tray.Icon?.Dispose();

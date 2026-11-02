@@ -1,0 +1,43 @@
+# ATENDIDO — apagar el widget apaga TODO (3 plataformas + aviso sin-datos)
+
+Fecha de cierre técnico: 2026-11-01 · cortex-master · rama `fix/apagar-widget-apaga-todo` (va en el LOTE, sin PR por-fix)
+
+## Qué se hizo (verificado técnicamente — compila/pasa; QA de USO = unjordi tras deploy manual)
+
+- **(a) macOS** (`cfcdc02`, AppDelegate.swift): el botón ⏻ (NSApp.terminate) ahora, en `applicationWillTerminate`,
+  hace `launchctl bootout gui/501/io.github.unjordi.cortex` (para el StartInterval de 5 min + SIGTERMea el job del
+  agente) y mata el `Process` del fetch que lanzó la app. En `applicationDidFinishLaunching` recarga el agente
+  (`bootout` idempotente + `bootstrap`; el `RunAtLoad` del plist dispara la lectura) + el `refresh()` existente.
+  Antes: terminate cerraba la GUI pero el LaunchAgent seguía fetcheando (la queja de unjordi). `swift build` OK.
+  Target verificado read-only: `gui/501`, label y plist correctos.
+
+- **(b) KDE** (`3966389`, plasmoid main.qml): el plasmoide ya paraba el timer+service al pausar
+  (`systemctl --user stop cortex.timer cortex.service`), pero NADA lo arrancaba al CARGAR → si se pausaba y se
+  re-agregaba el plasmoide, el timer quedaba parado con el plasmoide creyéndose corriendo. `Component.onCompleted`
+  ahora espeja `reloadLaunchAgent()`: `systemctl --user start cortex.timer` (idempotente) + `forceRefresh` (lectura).
+  No pisa una pausa deliberada (un pause no re-instancia el plasmoide). qmllint sin errores (solo warnings de imports
+  de módulos Plasma ausentes en la Mac). El plasmoide NO puede matarse solo (vive en plasmashell) → "apagar" = parar
+  el timer, que es justo lo que hace el toggle.
+
+- **(c) Windows** (`d7c9a3c`, PopupForm.cs + Program.cs): el fetcher es IN-PROCESS (Timer de 10s → RunFetch →
+  FetchAsync en C#; sin agente externo tipo LaunchAgent/systemd) → salir del proceso YA apaga todo por arquitectura.
+  El botón ⏻ hacía `Application.Exit()` pelón (dejaba icono de bandeja fantasma); ahora pasa por `ExitApp` (mismo
+  teardown limpio que el menú "Salir": para el timer, quita el icono, sale). Abrir = autostart (clave Run) +
+  `RunFetch(force)` dispara la primera lectura. `dotnet build` 0/0.
+
+- **(d.2) aviso «sin datos»** (`6c29fd9`, brain/hooks/aviso-contexto.sh): cuando el snapshot sigue rancio + hay
+  widget + el fetch corrió hace <30min (fetched_at reciente = la lectura corrió pero falló), el hook AVISA
+  «sin datos: la última lectura falló» en vez de callar. Debounce 1×/episodio stale, re-arma con dato fresco.
+  Es la distinción no-ha-corrido vs corrió-sin-internet que pidió unjordi. Tests b6-cuota (d.2) 7c-7f (fallan vs
+  el hook viejo c0592a4; verificados standalone 5/5).
+
+## Prueba de caso de uso (abrir → fetch periódico; salir → 0 procesos cortex; reabrir → vuelve todo)
+- **Automatizado:** aviso-contexto (d.2) — test-brain b6-cuota 7c-7f.
+- **De USO (lo hace unjordi tras el deploy manual, por plataforma):**
+  - macOS: con el widget abierto, `launchctl print gui/501/io.github.unjordi.cortex` → running/idle; pulsar ⏻;
+    luego el mismo print → el agente ya no está + `pgrep` de cortex-fetch = 0; reabrir → el agente vuelve y hay lectura.
+  - KDE (cachy): `systemctl --user status cortex.timer` activo; pausar → inactivo + sin cortex-fetch; re-agregar el
+    plasmoide → timer activo y lectura fresca.
+  - Windows: Salir/⏻ → sin icono fantasma y sin proceso Cortex; reabrir → icono + primera lectura.
+
+Deploy = MANUAL (la vía oficial aquí). Todo en el LOTE, sin PR por-fix.

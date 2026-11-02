@@ -5812,6 +5812,84 @@ mksnap "$QOLD" 88 "2026-10-21T23:00:00Z" 9
 is_silent "$(qrun sN)" \
   && ok "b6-cuota: snapshot rancio + sin cortex-fetch → calla la cuota (sin widget), no cuelga ni inventa" \
   || bad "b6-cuota: habló con snapshot rancio y sin fetch disponible"
+# (7) GATE por fetched_at (corrección de unjordi 2026-11-01): el hook relanza cortex-fetch SOLO si el
+#     ÚLTIMO fetch corrió hace ≥30 min (por `fetched_at`, cuándo CORRIÓ, NO `updated_at`). Si corrió hace
+#     <30 min pero no trajo datos (stale, API caída) NO relanza → no maltrata la compu. Falla vs el hook viejo
+#     (que miraba updated_at/stale y relanzaba cada 5 min con la API caída).
+QFMARK="$QHOME/fetch-ran.marker"
+QFMOCK="$QHOME/fetch-mark.sh"
+cat > "$QFMOCK" <<MOCK
+#!/usr/bin/env bash
+touch "$QFMARK"
+printf '{"updated_at":"%s","fetched_at":"%s","stale":false,"five_hour":{"percent":77,"resets_at":"2026-10-21T21:00:00Z","is_active":true},"weekly":{"percent":9,"resets_at":"2026-10-28T14:00:00Z"}}\n' "\$(date -u +%Y-%m-%dT%H:%M:%SZ)" "\$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "\${XDG_CACHE_HOME}/cortex/state.json"
+MOCK
+chmod +x "$QFMOCK"
+# snapshot con fetched_at explícito + stale (la API cayó: corrió pero sin datos nuevos)
+mksnapF() { printf '{"updated_at":"%s","fetched_at":"%s","stale":true,"five_hour":{"percent":%s,"resets_at":"2026-10-21T21:00:00Z","is_active":true},"weekly":{"percent":9,"resets_at":"2026-10-28T14:00:00Z"}}\n' "$1" "$2" "$3" > "$QCACHE/state.json"; }
+QF10="$(date -u -v-10M +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '10 min ago' +%Y-%m-%dT%H:%M:%SZ)"
+# (7a) fetched_at hace 40 min (+ stale) → NO ha corrido en 30 min → SÍ relanza (1 vez)
+rm -f "$QROOT/.claude/memory/.cuota-fetch-forzado" "$QFMARK"
+mksnapF "$QOLD" "$QOLD" 50; touch -t 202610210000 "$QCACHE/state.json"
+qrun sFa "$QFMOCK" >/dev/null
+[ -f "$QFMARK" ] \
+  && ok "b6-cuota: fetched_at ≥30 min (no ha corrido) → relanza cortex-fetch (1 vez)" \
+  || bad "b6-cuota: no relanzó con fetched_at viejo"
+# (7b) fetched_at hace 10 min + stale (corrió pero la API cayó) → NO relanza (no maltrata la compu)
+rm -f "$QROOT/.claude/memory/.cuota-fetch-forzado" "$QFMARK"
+mksnapF "$QOLD" "$QF10" 50; touch -t 202610210000 "$QCACHE/state.json"
+qrun sFb "$QFMOCK" >/dev/null
+[ ! -f "$QFMARK" ] \
+  && ok "b6-cuota: fetched_at <30 min + stale (API caída) → NO relanza (previene el maltrato a la compu)" \
+  || bad "b6-cuota: relanzó pese a que el fetch corrió hace <30 min (maltrato)"
+# (7c) (d.2) AVISO HONESTO «sin datos»: snapshot SIGUE rancio + HAY widget + fetched_at <30min (la lectura
+#      corrió pero falló: sin red/API caída). NO relanza (7b) pero AVISA honesto en vez de callar (callar
+#      dejaría ver "todo bien" con un dato viejo). Debounce 1 vez por EPISODIO; re-arma con dato fresco.
+rm -f "$QROOT/.claude/memory/.cuota-fetch-forzado" "$QFMARK" "$QROOT/.claude/memory/.contexto-aviso.d/sSD.sindatos"
+mksnapF "$QOLD" "$QF10" 50; touch -t 202610210000 "$QCACHE/state.json"
+qSD1="$(qrun sSD "$QFMOCK")"
+printf '%s' "$qSD1" | grep -qi 'sin datos: la última lectura' \
+  && ok "b6-cuota (d.2): rancio + widget + fetched_at <30min → AVISA «sin datos: la última lectura falló» (no calla)" \
+  || bad "b6-cuota (d.2): no avisó del dato stale; got: $qSD1"
+[ ! -f "$QFMARK" ] \
+  && ok "b6-cuota (d.2): el aviso «sin datos» NO relanza el fetch (no maltrata la compu)" \
+  || bad "b6-cuota (d.2): el aviso relanzó el fetch"
+# (7d) debounce: misma sesión, mismo episodio stale → silencio (no repite el aviso)
+is_silent "$(qrun sSD "$QFMOCK")" \
+  && ok "b6-cuota (d.2): mismo episodio stale → silencio (debounce 1×/episodio)" \
+  || bad "b6-cuota (d.2): repitió el aviso «sin datos» en el mismo episodio"
+# (7e) re-arma: vuelve un dato FRESCO (cierra el episodio, borra el stamp); luego stale otra vez → vuelve a avisar
+mksnap "$QNOW" 30 "2026-10-21T21:00:00Z" 9    # fresco + cuota baja → sin disparo, pero cierra el episodio stale
+qrun sSD "$QFMOCK" >/dev/null
+mksnapF "$QOLD" "$QF10" 50; touch -t 202610210000 "$QCACHE/state.json"
+printf '%s' "$(qrun sSD "$QFMOCK")" | grep -qi 'sin datos: la última lectura' \
+  && ok "b6-cuota (d.2): tras un dato fresco RE-ARMA → vuelve a avisar en el próximo episodio stale" \
+  || bad "b6-cuota (d.2): no re-armó el aviso tras el dato fresco"
+# (7f) máquina SIN widget: stale + fetched_at reciente pero sin cortex-fetch → NO avisa (nada que relanzar ni de qué informar), como hoy
+rm -f "$QROOT/.claude/memory/.contexto-aviso.d/sSDnw.sindatos"
+mksnapF "$QOLD" "$QF10" 50; touch -t 202610210000 "$QCACHE/state.json"
+is_silent "$(qrun sSDnw)" \
+  && ok "b6-cuota (d.2): sin widget (sin cortex-fetch) → calla aunque el dato esté stale (como hoy)" \
+  || bad "b6-cuota (d.2): avisó «sin datos» en una máquina sin widget"
+# (el "un solo fetch con dos sesiones a la vez" lo garantiza el CANDADO de cortex-fetch —flock/lockf,
+#  verificado en el punto 1—, no el hook; no se re-prueba aquí con un mock sin candado.)
+# (7g/7h) WIDGET APAGADO: con la marca ~/.cache/cortex/apagado, aviso-contexto NO relanza el fetch (rompería
+#     "apagar apaga todo") NI avisa «sin datos» (sin widget corriendo no hay lectura que esperar). Falla vs el
+#     hook sin la marca (7a relanzaría, 7c avisaría).
+# (7g) marca apagado + fetched_at viejo (que en 7a relanzaría) → NO relanza
+rm -f "$QROOT/.claude/memory/.cuota-fetch-forzado" "$QFMARK"
+: > "$QCACHE/apagado"
+mksnapF "$QOLD" "$QOLD" 50; touch -t 202610210000 "$QCACHE/state.json"
+qrun sApg "$QFMOCK" >/dev/null
+[ ! -f "$QFMARK" ] \
+  && ok "b6-cuota (apagado): con la marca de apagado NO relanza el fetch aunque el dato esté viejo (apagar apaga todo)" \
+  || bad "b6-cuota (apagado): relanzó el fetch con el widget apagado"
+# (7h) marca apagado + fetched_at reciente (que en 7c avisaría «sin datos») → NO avisa
+rm -f "$QROOT/.claude/memory/.contexto-aviso.d/sApg2.sindatos"
+mksnapF "$QOLD" "$QF10" 50; touch -t 202610210000 "$QCACHE/state.json"
+is_silent "$(qrun sApg2 "$QFMOCK")" \
+  && ok "b6-cuota (apagado): con la marca de apagado NO avisa «sin datos» (sin widget no hay lectura que esperar)" \
+  || bad "b6-cuota (apagado): avisó «sin datos» con el widget apagado"
+rm -f "$QCACHE/apagado"
 rm -rf "$QHOME" "$(dirname "$QROOT")"
 
 echo ""

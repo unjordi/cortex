@@ -155,6 +155,24 @@ PlasmoidItem {
         onNewData: function(source, data) { disconnectSource(source) }
     }
 
+    // Lee la marca de apagado al arrancar (lo dispara el Component.onCompleted único de abajo): collectionPaused
+    // sobrevive el reinicio de plasmashell. Si NO está apagado, re-asegura el timer y trae una lectura; si está
+    // apagado, deja el timer parado y la pausa puesta.
+    P5Support.DataSource {
+        id: pauseStateSource
+        engine: "executable"
+        connectedSources: []
+        onNewData: function(source, data) {
+            disconnectSource(source)
+            var paused = (("" + data.stdout).indexOf("PAUSED") !== -1)
+            root.collectionPaused = paused
+            if (!paused) {
+                powerRunner.connectSource("systemctl --user start cortex.timer")
+                forceRefresh()
+            }
+        }
+    }
+
     // Runner del botón "Re-loguear en Claude": abre konsole con el flujo oficial de login (abre el
     // navegador). Fire-and-forget como powerRunner. Mismo mandato que relogin() de PopoverView.swift.
     P5Support.DataSource {
@@ -499,24 +517,26 @@ PlasmoidItem {
         checkUpdate()
     }
     // ⏸/⏵ PAUSAR / REANUDAR la recolección automática — NO es "apagar" (por eso NO lleva ícono de power).
-    // En macOS ⏻ = NSApp.terminate mata el proceso (la app de barra ES el widget Y el recolector). En KDE
-    // el plasmoide vive DENTRO de plasmashell y no puede matarse solo; lo que lo mantiene recolectando es
+    // En macOS ⏻ = NSApp.terminate cierra la GUI y ADEMÁS hace bootout del LaunchAgent del fetcher (son
+    // procesos SEPARADOS: la app de barra NO es el recolector) — "apagar apaga todo". En KDE el plasmoide
+    // vive DENTRO de plasmashell y no puede matarse solo; lo que lo mantiene recolectando es
     // el timer systemd de usuario (cortex.timer, cada 5 min → oneshot cortex.service = un fetch
     // a la API). Por eso el botón PAUSA/REANUDA ese timer, y su ícono lo dice honesto (media-playback-pause
     // cuando corre, media-playback-start cuando está pausado):
-    //   · PAUSAR: `systemctl --user stop` del timer (+ el service por si hay un fetch en vuelo). El widget
-    //     se queda con el último snapshot en caché y deja de gastar cuota. Reversible.
-    //   · REANUDAR: `systemctl --user start` del timer + un forceRefresh (trae dato fresco al instante).
-    // NO se hace `disable` a propósito: al re-loguear el timer vuelve por WantedBy=timers.target.
-    // `collectionPaused` es estado de SESIÓN (refleja la última acción del usuario en este arranque del
-    // plasmoide); no consulta systemctl en vivo — suficiente para el caso común (timer corriendo).
+    //   · PAUSAR: `systemctl --user disable --now` del timer (+ stop del service por si hay un fetch en
+    //     vuelo) + una marca ~/.cache/cortex/apagado. `disable` hace que la pausa SOBREVIVA al relogin (si
+    //     solo se hiciera `stop`, WantedBy=timers.target lo revive al re-loguear). La marca la lee
+    //     aviso-contexto para no forzar el fetch con el widget apagado.
+    //   · REANUDAR: `systemctl --user enable --now` + borra la marca + forceRefresh (dato fresco al instante).
+    // `collectionPaused` arranca leyendo la marca (Component.onCompleted) → el estado de pausa sobrevive el
+    // reinicio de plasmashell, no se re-inicia en false cada arranque.
     property bool collectionPaused: false
     function pauseCollection() {
-        powerRunner.connectSource("systemctl --user stop cortex.timer cortex.service")
+        powerRunner.connectSource("systemctl --user disable --now cortex.timer; systemctl --user stop cortex.service; mkdir -p \"${XDG_CACHE_HOME:-$HOME/.cache}/cortex\"; : > \"${XDG_CACHE_HOME:-$HOME/.cache}/cortex/apagado\"")
         root.collectionPaused = true
     }
     function resumeCollection() {
-        powerRunner.connectSource("systemctl --user start cortex.timer")
+        powerRunner.connectSource("systemctl --user enable --now cortex.timer; rm -f \"${XDG_CACHE_HOME:-$HOME/.cache}/cortex/apagado\"")
         root.collectionPaused = false
         forceRefresh()   // reanuda el ciclo de 5 min y además trae dato fresco YA
     }
@@ -643,6 +663,15 @@ PlasmoidItem {
                 accountCheckSource.connectSource("bash -lc " + root.shq("jq -r '.oauthAccount.accountUuid // empty' \"${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json\" 2>/dev/null"))
             }
         }
+    }
+
+    // Abrir el widget = cargar TODO su herramiental (espeja reloadLaunchAgent() de AppDelegate.swift). El
+    // El timer de systemd vive APARTE del plasmoide: no se reinicia solo al re-instanciarlo. Al cargar, lee la
+    // marca de apagado (pauseStateSource): si NO está apagado, re-asegura el timer y dispara una lectura; si lo
+    // está, respeta la pausa (timer parado, collectionPaused=true) para que sobreviva el reinicio de plasmashell.
+    // UN solo Component.onCompleted en el raíz: dos en el mismo objeto hacen que el plasmoide no cargue.
+    Component.onCompleted: {
+        pauseStateSource.connectSource("test -f \"${XDG_CACHE_HOME:-$HOME/.cache}/cortex/apagado\" && echo PAUSED || echo RUNNING")
     }
 
     // ---------- Color / estado ----------

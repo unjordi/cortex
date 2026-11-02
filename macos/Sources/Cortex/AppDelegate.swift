@@ -11,6 +11,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let model = QuotaModel()
     private var timer: Timer?
     private var fetching = false
+    /// El fetch EN CURSO lanzado por la propia app (runFetch). Se guarda para poder matarlo al Salir —
+    /// "apagar el widget apaga TODO", no solo cerrar la GUI. El fetch del LaunchAgent lo para el bootout.
+    private var fetchProc: Process?
+
+    // LaunchAgent del fetcher de cuota (StartInterval 300s + RunAtLoad). Cerrar la GUI no lo detiene por sí
+    // solo; sin tocarlo el fetch seguiría corriendo cada 5 min con el widget "apagado". Salir lo saca con
+    // bootout; abrir lo vuelve a cargar con bootstrap.
+    private let launchAgentLabel = "io.github.unjordi.cortex"
+    // El widget tiene su PROPIO LaunchAgent (RunAtLoad): sin desactivarlo, reiniciar la Mac lo relanza y su
+    // arranque vuelve a cargar el fetcher → "apagado" se deshacía en cada login. Salir con ⏻ desactiva AMBOS.
+    private let widgetAgentLabel = "io.github.unjordi.cortex.widget"
+    private var launchAgentDomain: String { "gui/\(getuid())" }
+    private var launchAgentPlistPath: String {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/LaunchAgents/\(launchAgentLabel).plist").path
+    }
+    // Marca de "apagado por el usuario" junto al state.json: aviso-contexto la lee para NO relanzar el
+    // cortex-fetch con el widget apagado. La pone ⏻, la quita el arranque de la app.
+    private var apagadoMarkerPath: String {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Caches/cortex/apagado").path
+    }
 
     // The launchd agent refreshes every 5 min, but its StartInterval doesn't
     // reliably catch up after the machine sleeps. If the cache is older than
@@ -41,13 +63,68 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover.behavior = .transient
         popover.contentSize = NSSize(width: 520, height: 420)
         popover.contentViewController = NSHostingController(
-            rootView: PopoverView(model: model, onRefresh: { [weak self] in self?.forceFetch() })
+            rootView: PopoverView(
+                model: model,
+                onRefresh: { [weak self] in self?.forceFetch() },
+                onQuit: { [weak self] in if let self { self.apagarYSalir() } else { NSApp.terminate(nil) } })
         )
 
+        // Abrir el widget = cargar TODO su herramiental y DESHACER el apagado: re-habilita ambos LaunchAgents
+        // (⏻ los desactivó para que no revivieran al login), borra la marca de apagado (aviso-contexto vuelve
+        // a poder forzar el fetch) y (re)carga el LaunchAgent del fetcher. RunAtLoad hace la primera lectura.
+        runLaunchctl(["enable", "\(launchAgentDomain)/\(launchAgentLabel)"])
+        runLaunchctl(["enable", "\(launchAgentDomain)/\(widgetAgentLabel)"])
+        try? FileManager.default.removeItem(atPath: apagadoMarkerPath)
+        reloadLaunchAgent()
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
             self?.refresh()
         }
+    }
+
+    /// Salir del widget APAGA TODO: saca el LaunchAgent del fetcher (para el timer de 5 min y manda SIGTERM
+    /// a su fetch en curso) y mata el fetch que lanzó la propia app. Sin esto, "cerrar" dejaba el fetcher
+    /// corriendo cada 5 min y recalentando la Mac. Síncrono: el bootout es rápido y debe correr antes de morir.
+    func applicationWillTerminate(_ notification: Notification) {
+        // bootout: detiene el StartInterval y SIGTERMea el job del agente si está corriendo ahora.
+        runLaunchctl(["bootout", "\(launchAgentDomain)/\(launchAgentLabel)"])
+        // Fetch en curso lanzado por la app (raro al salir, pero el contrato pide matarlo). terminate() =
+        // SIGTERM al /bin/bash del script; cortex-fetch tiene su propio candado del SO (no deja huérfanos
+        // encimados). Límite honesto: un npx/ccusage hijo ya lanzado puede terminar su corrida actual.
+        if let p = fetchProc, p.isRunning { p.terminate() }
+    }
+
+    /// Salir con ⏻ (distinto de un logout/reinicio, que entra por applicationWillTerminate): apaga TODO de
+    /// forma PERSISTENTE. `disable` de ambos LaunchAgents (si no, RunAtLoad los revive en el próximo login),
+    /// la marca de apagado (aviso-contexto no fuerza el fetch con ella) y luego terminate → el bootout y el
+    /// kill del fetch en curso los hace applicationWillTerminate. El disable NO va ahí: un logout no debe
+    /// dejar el widget apagado para siempre.
+    @objc func apagarYSalir() {
+        runLaunchctl(["disable", "\(launchAgentDomain)/\(launchAgentLabel)"])
+        runLaunchctl(["disable", "\(launchAgentDomain)/\(widgetAgentLabel)"])
+        try? FileManager.default.createDirectory(
+            atPath: (apagadoMarkerPath as NSString).deletingLastPathComponent,
+            withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: apagadoMarkerPath, contents: Data())
+        NSApp.terminate(nil)
+    }
+
+    /// Recarga el LaunchAgent del fetcher (bootout idempotente + bootstrap). Best-effort: un fallo de
+    /// launchctl NO debe tumbar el arranque del widget.
+    private func reloadLaunchAgent() {
+        guard FileManager.default.fileExists(atPath: launchAgentPlistPath) else { return }
+        runLaunchctl(["bootout", "\(launchAgentDomain)/\(launchAgentLabel)"])   // puede fallar si no estaba cargado → OK
+        runLaunchctl(["bootstrap", launchAgentDomain, launchAgentPlistPath])
+    }
+
+    /// Corre /bin/launchctl con los argumentos dados, síncrono, tragándose cualquier error (best-effort).
+    private func runLaunchctl(_ args: [String]) {
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        proc.arguments = args
+        proc.standardOutput = FileHandle.nullDevice
+        proc.standardError = FileHandle.nullDevice
+        do { try proc.run(); proc.waitUntilExit() } catch { /* best-effort */ }
     }
 
     private func refresh() {
@@ -115,10 +192,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         proc.terminationHandler = { [weak self] _ in
             DispatchQueue.main.async {
                 self?.fetching = false
+                self?.fetchProc = nil
                 self?.refresh()
             }
         }
-        do { try proc.run() } catch { fetching = false }
+        do { try proc.run(); fetchProc = proc } catch { fetching = false }
     }
 
     @objc private func togglePopover() {
