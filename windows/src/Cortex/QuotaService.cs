@@ -196,9 +196,48 @@ public sealed class QuotaService
             if (Snapshot.Error is string e) return $"error: {e}";
             string account = Snapshot.AccountEmail
                 ?? (Snapshot.Basis == "oauth" ? "datos reales" : Snapshot.Basis == "cost" ? "estimado local" : "sin dato");
+            // Marca de "lectura preservada" (el fetch no pudo refrescar): distingue un dato reciente de
+            // uno viejo que la edad sola no separa. Espeja staleMark de QuotaModel.swift.
+            string staleMark = IsSnapshotStale ? " · ⏳ sin refrescar" : "";
             if (Snapshot.AccountMismatch)
-                return $"⚠ {account} no es la cuenta fijada · ⟳ 5 min + al reset 5h · act. hace: {Rel.CompactReset(Snapshot.UpdatedAt)}";
-            return $"{account} · ⟳ 5 min + al reset 5h · últ. act. hace: {Rel.CompactReset(Snapshot.UpdatedAt)}";
+                return $"⚠ {account} no es la cuenta fijada · ⟳ 5 min + al reset 5h · act. hace: {Rel.CompactReset(Snapshot.UpdatedAt)}{staleMark}";
+            return $"{account} · ⟳ 5 min + al reset 5h · últ. act. hace: {Rel.CompactReset(Snapshot.UpdatedAt)}{staleMark}";
+        }
+    }
+
+    /// Estado del login según cortex-fetch: "ok"|"expiring"|"expired"|"no_credentials".
+    public string AuthState => Snapshot?.Auth?.State ?? "ok";
+
+    /// La lectura mostrada es PRESERVADA (el fetch no pudo refrescar).
+    public bool IsSnapshotStale => Snapshot?.Stale == true;
+
+    /// Cuenta a reloguear (prefill de --email): la del bloque auth, o la del snapshot. null si vacía.
+    public string? ReloginAccount
+    {
+        get
+        {
+            var a = Snapshot?.Auth?.AccountEmail ?? Snapshot?.AccountEmail;
+            return string.IsNullOrEmpty(a) ? null : a;
+        }
+    }
+
+    /// Aviso de autenticación para la UI, o null si el login está OK. Espeja authNotice de QuotaModel.swift:
+    /// Offer ⇒ mostrar el botón de re-login; Hard ⇒ problema duro (rojo) vs por-vencer (ámbar).
+    public (string Message, bool Offer, bool Hard)? AuthNotice
+    {
+        get
+        {
+            switch (AuthState)
+            {
+                case "no_credentials":
+                    return ("No hay cuenta en el CLI de Claude — el widget no puede leer tu cuota.", true, true);
+                case "expired":
+                    return ("El login de Claude expiró — re-loguéate para seguir viendo tu cuota.", true, true);
+                case "expiring":
+                    return ($"Tu login de Claude expira {Rel.Relative(Snapshot?.Auth?.ExpiresAt)} — re-loguéate pronto.", true, false);
+                default:
+                    return null;
+            }
         }
     }
 

@@ -43,6 +43,17 @@ public sealed class Snapshot
     [JsonPropertyName("error")]         public string? Error { get; set; }
     [JsonPropertyName("five_hour")]     public Bucket? FiveHour { get; set; }
     [JsonPropertyName("weekly")]        public Bucket? Weekly { get; set; }
+    // True cuando la lectura es PRESERVADA (el fetch no pudo refrescar) → se marca "⏳ sin refrescar".
+    [JsonPropertyName("stale")]         public bool? Stale { get; set; }
+    [JsonPropertyName("auth")]          public AuthInfo? Auth { get; set; }
+}
+
+/// Estado del login que escribe cortex-fetch. State: "ok"|"expiring"|"expired"|"no_credentials".
+public sealed class AuthInfo
+{
+    [JsonPropertyName("state")]         public string? State { get; set; }
+    [JsonPropertyName("expires_at")]    public string? ExpiresAt { get; set; }
+    [JsonPropertyName("account_email")] public string? AccountEmail { get; set; }
 }
 
 // ---------------------------------------------------------------------------
