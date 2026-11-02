@@ -1,10 +1,9 @@
 // 01 — Instalación / actualización del cerebro (cortex)  ·  FUENTE editable (Graphviz .dot)
-// Render:  dot -Tsvg 01-instalacion-actualizacion-del-cerebro.dot -o 01-instalacion-actualizacion-del-cerebro.svg
-// Rehecho 2026-07-29 contra el estado REAL del código (MANIFEST + install-brain.sh + sincronizar-cerebro.sh
-// + aviso-drift-cerebro.sh + docs/autoupdate.md). Sustituye al 01 obsoleto que pintaba como "[futuro]/hueco"
-// cosas que YA existen. Convención de color = CONVENCIONES.md (🔴=DENY · 🚧=hueco/deuda · ⚠=escribe git).
-// Estado a 2026-07-30 (develop con #209 mergeado): DRIFT_CIEGO/DRIFT_STAGE (#209) y WID_ATOM (install-brain
-// atomic_install) quedaron RESUELTOS (🟢); el único 🚧 vigente es BOOT_INV, en la PLANTILLA (fuera de este repo).
+// Render:  gen-charts.sh → .svg (vista, graphviz) + .drawio (editable en draw.io). Ver CONVENCIONES.md.
+// Dibuja el estado REAL del código (MANIFEST + install-brain.sh + aviso-drift-cerebro.sh). El cerebro vive
+// SOLO en global: NO hay propagación por-repo (sincronizar-cerebro y los tiers both/repo se retiraron);
+// una copia por-repo vieja se retira con install-brain.sh --limpiar-repo.
+// Convención de color = CONVENCIONES.md (🔴=DENY · 🚧=hueco/deuda · ⚠=escribe git).
 digraph flujos {
   graph [bgcolor="#1b1712", rankdir=TB, fontname="Helvetica", splines=true,
          nodesep=0.35, ranksep=0.55, pad=0.25];
@@ -83,7 +82,7 @@ digraph flujos {
 
   // ───────────────────────────────────── EL PROCESO ─────────────────────────────────────
   subgraph cluster_f8 {
-    label="01 · Instalación / actualización del cerebro   (bootstrap.sh · install-brain · sincronizar-cerebro · bootstrap-claude · aviso-drift · widget ⬆)";
+    label="01 · Instalación / actualización del cerebro   (bootstrap.sh · install-brain · bootstrap-claude · aviso-drift GLOBAL · widget ⬆)   —   el cerebro vive SOLO en global";
     fontname="Times"; fontsize=14; fontcolor="#5fa89e";
     color="#5fa89e"; penwidth=1.6; style="rounded"; bgcolor="#1b1712";
 
@@ -92,7 +91,7 @@ digraph flujos {
 
     // MANIFEST como FUENTE ÚNICA — de aquí DERIVAN las dos rutas de despliegue.
     MANIF    [color="#7fb069",
-              label="🟢  brain/hooks/MANIFEST = FUENTE ÚNICA\ndeclara por hook su TIER {global|repo|both} + KIND {hook|lib|script}.\nDe aquí DERIVAN las 2 rutas de despliegue y el drift-check de test-brain\n(antídoto a las 2 listas curadas por separado que divergían)"];
+              label="🟢  brain/hooks/MANIFEST = FUENTE ÚNICA\ndeclara por hook su TIER {global} + KIND {hook|lib|script} (un tier `retirado` es una lápida).\nDe aquí DERIVA la lista de despliegue GLOBAL y el drift-check de test-brain\n(antídoto a las 2 listas curadas por separado que divergían). Ya no hay tiers por-repo (both/repo)."];
 
     AMBITO   [shape=diamond, fillcolor="#2b2622", color="#d97757", label="¿ámbito?"];
 
@@ -101,40 +100,27 @@ digraph flujos {
     GBOOT    [color="#c0392b", penwidth=3,
               label="⚠ ESCRIBE git · 🟢  bootstrap.sh — ENTRADA REAL en máquina fresca Y VÍA OFICIAL\npara ACTUALIZAR (bootstrap.sh:9 'Idempotente: re-correrlo solo actualiza')\n(curl -fsSL …/bootstrap.sh | bash): instala prereqs con el gestor del OS (git/jq/node;\nen macOS exige brew+Xcode CLT) + clona o `git checkout -B main origin/main` para\nALINEAR el clon a origin/main en ~/.cortex (fuerza-alinea, descarta rama/commits\nleftover — mismo comando que WID_ACT; `CLAUDE_BRAIN_REF=<rama>` instala otra rama, p. ej. develop en QA) + `mv`/`git remote set-url` si migra clones\nviejos claude-brain→cortex + despacha a ./install.sh (Linux/KDE) o macos/install.sh\n(macOS) — en el flujo de bootstrap, install-brain.sh es el instalador INTERNO que esos\nwrappers invocan (correrlo a pelo NO es el flujo normal — pero como self-heal DIRECTO sí, ver GUPD).\nTambién es el manualUpdateHint que ofrece el widget."];
     GINST    [color="#7fb069",
-              label="🟢  install-brain.sh (instalador INTERNO, invocado por los wrappers de arriba)\nHONRA CLAUDE_CONFIG_DIR (el override de Claude Code para ~/.claude): CLAUDE_DIR=${CLAUDE_CONFIG_DIR:-$HOME/.claude}\n→ hooks/skills/settings.json/.brain-version viven AHÍ, no hardcodeados a ~/.claude.\nDERIVA de brain/hooks/MANIFEST la lista {global,both} → copia hooks+libs a $CLAUDE_DIR/hooks,\ny de brain/skills/MANIFEST → copia skills a $CLAUDE_DIR/skills, cablea settings.json (incl. env defaults:\nOpus 4.8 + autocompact 70%) — el comando cableado usa $CLAUDE_CONFIG_DIR/hooks cuando el override está puesto\n(si no, $HOME/.claude/hooks), siembra dashboard + normas + entorno-maquina.md LEAN (@import en CLAUDE.md),\ngenera aliases-activos.md (@import en CLAUDE.md), setea git config --global fetch.prune,\ny ESTAMPA $CLAUDE_DIR/.brain-version (sello de versión — YA EXISTE, lo lee el widget).\nlo envuelven wrappers GEMELOS por OS: ./install.sh (Linux/KDE: +daemon systemd+plasmoide)\ny macos/install.sh (macOS: +daemon launchd+.app, baja el precompilado o compila fallback).\nrequiere jq: SIN jq no cablea settings.json y los guards quedan fail-open (no bloquean)"];
+              label="🟢  install-brain.sh (instalador INTERNO, invocado por los wrappers de arriba)\nHONRA CLAUDE_CONFIG_DIR (el override de Claude Code para ~/.claude): CLAUDE_DIR=${CLAUDE_CONFIG_DIR:-$HOME/.claude}\n→ hooks/skills/settings.json/.brain-version viven AHÍ, no hardcodeados a ~/.claude.\nDERIVA de brain/hooks/MANIFEST la lista {global} → copia hooks+libs a $CLAUDE_DIR/hooks,\ny de brain/skills/MANIFEST → copia skills a $CLAUDE_DIR/skills, cablea settings.json (incl. env defaults:\nOpus 4.8 + autocompact 70%) — el comando cableado usa $CLAUDE_CONFIG_DIR/hooks cuando el override está puesto\n(si no, $HOME/.claude/hooks), siembra dashboard + normas + entorno-maquina.md LEAN (@import en CLAUDE.md),\nDES-CABLA de settings.json cualquier hook marcado `retirado` en el MANIFEST (sin tocar entradas ajenas),\nsetea git config --global fetch.prune, y ESTAMPA $CLAUDE_DIR/.brain-version (sello de versión, lo lee el widget).\nlo envuelven wrappers GEMELOS por OS: ./install.sh (Linux/KDE: +daemon systemd+plasmoide)\ny macos/install.sh (macOS: +daemon launchd+.app, baja el precompilado o compila fallback).\nrequiere jq: SIN jq no cablea settings.json y los guards quedan fail-open (no bloquean)"];
     GUPD     [color="#7fb069",
               label="🟢  self-heal LOCAL: re-correr install-brain.sh DIRECTO (`bash ~/.cortex/brain/install-brain.sh`, sin pasar por bootstrap/widget)\nidempotente: refresca hooks, re-cablea, REEMPLAZA el bloque de normas en su lugar,\nre-estampa .brain-version — pero NO hace git fetch/pull (rev-list = lectura, sello de\nversión; `git config --global fetch.prune true` = write idempotente a ~/.gitconfig):\nre-aplica el clon TAL COMO ESTÁ, NO trae commits nuevos. ⚠️ Dispara 🟠 no-bypass-deploy\n(avisa, no bloquea). Legítimo solo si el clon ya está al día o eres tú quien desarrolla\nen el clon (equivalente al botón «Curar cerebro global» del widget); para traer versión\nNUEVA usa bootstrap.sh (GBOOT) o el ⬆ del widget (WID) — no este atajo"];
     GLIVE    [color="#7fb069", label="🟢  cerebro GLOBAL vivo en la máquina\n(aplica a TODOS los repos)"];
     GWIRE    [color="#7fb069",
-              label="🟢  install-brain ahora DERIVA la COPIA *y* el CABLEADO del MANIFEST (ev_de + loop),\nno una lista register_hook hardcodeada → agregar un hook global al MANIFEST lo copia\nY lo cablea. test-brain e6b FALLA si el set PreToolUse/Bash diverge del esperado.\nRESUELTO (refactor MANIFEST-derivado + e6b, en develop 2026-07-30)"];
+              label="🟢  install-brain DERIVA la COPIA *y* el CABLEADO del MANIFEST (ev_de + loop),\nno una lista register_hook hardcodeada → agregar un hook global al MANIFEST lo copia\nY lo cablea. test-brain e6b FALLA si el set PreToolUse/Bash diverge del esperado."];
 
-    // ── Ruta B: POR-REPO (clon / repo consumidor) ──
-    RTIPO    [shape=diamond, fillcolor="#2b2622", color="#d97757", label="POR-REPO:\n¿repo nuevo o existente?"];
+    // ── Ruta B: POR-REPO = SOLO la memoria + skills del proyecto (los guards vienen del install GLOBAL) ──
+    RTIPO    [shape=diamond, fillcolor="#2b2622", color="#d97757", label="POR-REPO:\n¿repo nuevo, existente, o con cerebro por-repo VIEJO?"];
     CLON     [color="#7fb069",
-              label="🟢  repo NUEVO desde la plantilla\nel clon TRAE .claude/ (hooks+settings+skills+memoria) por git — el tooling VIAJA\nen el repo. Los hooks tier `both` (declarados en el MANIFEST) viajan por-repo y YA están\ncableados"];
+              label="🟢  repo NUEVO: su .claude/ trae por git la MEMORIA del proyecto + sus skills propias.\nLos guards (hooks/libs) NO viajan por-repo — vienen del install GLOBAL de esta máquina\n(el cerebro vive solo en global). El repo-compartido marca sigue existiendo, pero para el\ngate de merge-develop-guard (ver 06), no para propagar el cerebro."];
     APLICA   [color="#9e9e9e", style="rounded,filled,dashed",
-              label="🚧  repo EXISTENTE: sembrar .claude/ sigue siendo MANUAL (no scriptado).\naplicar-plantilla-a-proyecto NO copia .claude/ — es un playbook de UI/arquitectura\nque ASUME el cerebro ya presente (hueco moderado, aún vigente)"];
+              label="🚧  repo EXISTENTE sin cerebro: sembrar .claude/ (memoria + skills) sigue siendo MANUAL.\naplicar-plantilla-a-proyecto es un playbook de UI/arquitectura que ASUME el cerebro ya presente."];
     BOOT     [color="#e08e45",
               label="🟠  bootstrap-claude.sh  (UNA vez tras clonar — script one-shot, NO un hook)\nsymlinkea la memoria + siembra dashboard + norma doc=realidad + verifica jq"];
-    BOOT_INV [color="#9e9e9e", style="rounded,filled,dashed",
-              label="🚧  DRIFT INVERSO (vigente en repos CONSUMIDORES, fuera de cortex): el\nbootstrap-claude.sh de la plantilla hace `cp -f` INCONDICIONAL de solo 3 de los 6 `both`\n→ un clon con plantilla VIEJA PISA los globales con versiones stale (corto vs el MANIFEST).\n→ que el bootstrap invoque install-brain (que YA deriva del MANIFEST). Pendiente en la plantilla."];
 
-    // ── Ruta C: ACTUALIZAR una copia POR-REPO ya instalada (esto era el viejo 🔴 HUECO — hoy RESUELTO) ──
-    CUPD     [shape=diamond, fillcolor="#2b2622", color="#d97757",
-              label="el brain EVOLUCIONÓ: ¿cómo se actualizan\nlos .claude/ de un repo YA instalado?"];
-    SYNC     [color="#7fb069",
-              label="🟢  sincronizar-cerebro.sh  (YA EXISTE, resuelve el viejo HUECO)\nFUENTE ÚNICA = MANIFEST; despliega por-repo {repo,both}, diff-aware (NO cp -f ciego),\nCABLEA settings.json, ESTAMPA .brain-version (solo en sync COMPLETO), PODA hooks\nRETIRED. DRY-RUN por default; --apply escribe; --only / --prune-orphans"];
+    // ── Ruta C: MIGRACIÓN «solo cerebro global» + drift de la copia GLOBAL ──
+    MIGRA    [color="#7fb069",
+              label="🟢  MIGRACIÓN «solo cerebro global»: install-brain.sh --limpiar-repo <root> [--apply]\nretira de un repo que AÚN tiene el cerebro por-repo viejo: los hooks/libs del MANIFEST,\nel sello .brain-version, los artefactos RETIRED y las skills del cerebro (solo las del ledger\n.brain-skills o del MANIFEST, por CONTENIDO). DRY-RUN por default; --apply escribe con respaldo\nrecuperable en /tmp. La MEMORIA del proyecto y las skills propias del repo se conservan."];
     DRIFT    [color="#7fb069",
-              label="🔔🧬  aviso-drift-cerebro.sh  (SessionStart · GLOBAL) — es también pieza de 02\ncorre sincronizar en DRY-RUN (diff por CONTENIDO); si la copia por-repo quedó atrás →\nBIFURCA por la marca .claude/repo-compartido (REDISEÑO #46, ver drift_chequea_repo)\nTAMBIÉN en CADA SessionStart (ANTES del throttle per-repo): reinyecta\nconocimiento-propio.md (identidad del repo, imborrable) + avisa drift de la copia\nGLOBAL de skills (~/.claude/skills vs fuente; warn-only, throttle propio) (ver 02)\n📜 → 🌿 Flujo de git (en repo compartido «actualizar» = por ramita→MR)"];
-    CSHARE   [shape=diamond, fillcolor="#2b2622", color="#d97757", label="¿.claude/repo-compartido\n(la marca)?"];
-    DRIFT_SHARED [color="#c0392b", penwidth=3,
-              label="⚠ ESCRIBE git · 🟢  COMPARTIDO (con la marca): el brain por-repo es CORREO para clones/colegas\nSIN brain global → en mini-develop (Develop*) con .claude/ limpio: apply+commit+push SOLO;\nsi no aplica limpio, AVISA para propagar por ramita→MR"];
-    DRIFT_PERSONAL [color="#7fb069",
-              label="🟢  PERSONAL (DEFAULT, sin la marca): guards por-repo NUNCA hacen falta\n(esta máquina ya los saca del install GLOBAL + dedupe) → NO auto-commit/push;\nFLAGGEA los guards del brain que SOBRAN para que los quites. Memoria/skills intactos."];
-    DRIFT_CIEGO [color="#7fb069",
-              label="🟢  aviso-drift YA VE el drift de CABLEADO: cuenta también el wiring FALTANTE\n(«N cableado faltante») → ya no reporta «al día» con hooks presentes-SIN-cablear.\nRESUELTO en #209 (en develop, 2026-07-30)"];
-    DRIFT_STAGE [color="#7fb069",
-              label="🟢  el AUTO-APPLY ahora hace `git add -A .claude/` (hooks + settings.json + podas)\n→ el cambio de cableado SÍ se commitea y el árbol queda limpio.\nRESUELTO en #209 (en develop, 2026-07-30)"];
+              label="🔔🧬  aviso-drift-cerebro.sh  (SessionStart · GLOBAL) — es también pieza de 02\navisa SOLO el drift de la copia GLOBAL del cerebro vs la fuente ~/.cortex, en tres frentes:\nhooks/libs (~/.claude/hooks), skills (~/.claude/skills) y el bloque de normas de ~/.claude/CLAUDE.md.\nSi una quedó atrás o se editó en vivo → avisa portar el cambio a la fuente + re-correr install-brain.\nWarn-only, throttle propio por frente. Ya NO chequea ni auto-sincroniza copias por-repo (se retiraron)."];
 
     // ── Ruta D: UPDATER del widget (⬆) ──
     WID      [color="#7fb069",
@@ -151,8 +137,7 @@ digraph flujos {
 
     // Aristas del flujo
     IN -> AMBITO;
-    MANIF -> GINST [style=dashed, label="deriva {global,both}"];
-    MANIF -> SYNC  [style=dashed, label="deriva {repo,both}"];
+    MANIF -> GINST [style=dashed, label="deriva {global}"];
 
     AMBITO -> GVEZ  [label="global"];
     AMBITO -> RTIPO [label="por-repo"];
@@ -167,28 +152,20 @@ digraph flujos {
 
     RTIPO -> CLON   [label="nuevo"];
     RTIPO -> APLICA [label="existente"];
+    RTIPO -> MIGRA  [label="con cerebro por-repo viejo"];
     CLON  -> BOOT;
     APLICA -> BOOT;
-    BOOT -> BOOT_INV [style=dashed, label="defecto conocido"];
 
-    GLIVE -> CUPD [label="con el tiempo…"];
-    BOOT  -> CUPD [label="con el tiempo…"];
-    CUPD -> SYNC  [label="a mano / CI"];
-    CUPD -> DRIFT [label="al iniciar sesión"];
-    SYNC -> DRIFT_CIEGO [style=dashed];
-    DRIFT -> CSHARE;
-    CSHARE -> DRIFT_SHARED   [label="COMPARTIDO"];
-    CSHARE -> DRIFT_PERSONAL [label="PERSONAL (default)"];
-    DRIFT_SHARED -> DRIFT_CIEGO;
-    DRIFT_SHARED -> DRIFT_STAGE;
+    GLIVE -> DRIFT [label="al iniciar sesión\n(aviso-drift GLOBAL)"];
+    BOOT  -> DRIFT [label="al iniciar sesión"];
 
     WID -> WID_ACT;
     WID_ACT -> WID_ASSET [label="reinstala"];
     WID_ASSET -> WID_ATOM;
 
-    DRIFT_CIEGO -> NORMA [style=dashed];
-    BOOT_INV -> NORMA    [style=dashed];
-    WID_ATOM -> NORMA    [style=dashed];
-    GWIRE -> NORMA       [style=dashed];
+    DRIFT -> NORMA    [style=dashed];
+    MIGRA -> NORMA    [style=dashed];
+    WID_ATOM -> NORMA [style=dashed];
+    GWIRE -> NORMA    [style=dashed];
   }
 }

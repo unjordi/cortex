@@ -36,6 +36,13 @@ for n in $dot_nums; do
   printf '%s\n' "$tabla_nums" | grep -qx "$n" || { echo "❌ existe $FC/$n-*.dot pero CONVENCIONES §9 no lo lista (chart huérfano; agrégalo a la tabla)"; fail=1; }
 done
 
+# ── Check 1b: cada NN-*.dot tiene su .drawio (editable en draw.io, lo genera gen-charts.sh desde el .dot) ──
+for f in "$FC"/[0-9][0-9]-*.dot; do
+  [ -e "$f" ] || continue
+  d="${f%.dot}.drawio"
+  [ -f "$d" ] || { echo "❌ existe $f pero falta su ${d##*/} (editable en draw.io; corre gen-charts.sh para generarlo)"; fail=1; }
+done
+
 # ── Check 2: ningún chart nombra un hook RETIRADO como VIVO (mismo patrón que verificar-firma-canonica #11) ──
 # Retirados = MANIFEST tier=retirado ∪ RETIRED. Una mención en un COMENTARIO // o CON marca de retiro en la
 # misma línea es HISTORIA legítima (lápida); solo un nodo VIVO que lo nombre sin marca es drift.

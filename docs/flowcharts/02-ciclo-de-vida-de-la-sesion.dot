@@ -1,12 +1,9 @@
 // 02 — Ciclo de vida de la sesión (cortex)  ·  FUENTE editable (Graphviz .dot)
 // Render:  dot -Tsvg 02-ciclo-de-vida-de-la-sesion.dot -o 02-ciclo-de-vida-de-la-sesion.svg
-// Completado 2026-07-29: el esqueleto ya era bueno; se AÑADEN los 2 hooks de SessionStart que faltaban
-// y que MUTAN git (aviso-drift-cerebro, barrer-ramas), el estado de CIERRE de sesión y la LEYENDA.
-// Corregido 2026-09-07 (hallazgos de auditoría): SessionStart cablea varios hooks reales —
-// install-brain.sh (ev_de → SessionStart): rehidratar-hilo, aviso-drift-cerebro, barrer-ramas
-// (GLOBALES) + sesion-inicio (POR-REPO, tier "repo" del MANIFEST).
-// Overhaul hooks 2026-09-18: hud-stale y recordar-unificar-cerebro se RETIRARON (puramente advisory,
-// medido: ignorados) — su regla subió a norma en brain/norms/global-claude-md.md.
+// Dibuja el estado REAL del código: SessionStart abanica 4 hooks GLOBALES (install-brain.sh ev_de):
+// sesion-inicio, rehidratar-hilo, aviso-drift-cerebro y barrer-ramas. De ellos solo barrer-ramas MUTA git
+// (branch -d detached); aviso-drift es warn-only + cabla el @import de identidad en CLAUDE.local.md (local).
+// El cerebro vive SOLO en global (sin tier por-repo). Convención de color = CONVENCIONES.md.
 digraph flujos {
   graph [bgcolor="#1b1712", rankdir=TB, fontname="Helvetica", splines=true,
          nodesep=0.35, ranksep=0.55, pad=0.25];
@@ -85,7 +82,7 @@ digraph flujos {
 
   // ───────────────────────────────────── EL CICLO ─────────────────────────────────────
   subgraph cluster_f0 {
-    label="02 · Ciclo de vida de la sesión   (bootstrap 1× · SessionStart cablea 4 hooks (3 globales + 1 por-repo) · 💾 checkpoint vuelca el hilo · 🔔 aviso-contexto = reportero del watermark de contexto · SessionEnd)";
+    label="02 · Ciclo de vida de la sesión   (bootstrap 1× · SessionStart abanica 4 hooks GLOBALES · 💾 checkpoint vuelca el hilo · 🔔 aviso-contexto = reportero del watermark de contexto · SessionEnd)";
     fontname="Times"; fontsize=14; fontcolor="#5fa89e";
     color="#5fa89e"; penwidth=1.6; style="rounded"; bgcolor="#1b1712";
 
@@ -104,21 +101,19 @@ digraph flujos {
     SESSTART [shape=box, style="rounded,filled", fillcolor="#2b2622", color="#5fa89e", fontcolor="#5fa89e",
             label="⬜  evento SessionStart\nsource: startup / resume / compact / clear / fork\nabanica 4 hooks EN PARALELO, sin orden garantizado"];
 
-    // ── SessionStart: los CUATRO hooks reales (3 GLOBALES vía install-brain.sh ev_de + 1 POR-REPO: sesion-inicio) ──
+    // ── SessionStart: los CUATRO hooks reales (todos GLOBALES vía install-brain.sh ev_de) ──
     START  [color="#e08e45",
-            label="🔔🧭  sesion-inicio  (SessionStart · POR-REPO)"];
+            label="🔔🧭  sesion-inicio  (SessionStart · GLOBAL)"];
     INJECT [color="#e08e45",
             label="🟠  inyecta additionalContext: rama actual + NORMA de git\n+ ritual anti-hilo (lee MEMORY.md + AGENTS.md; NO declares LISTO sin evidencia)\n+ avisa si lo que ves es de otra rama (P16)\n📜 → 🌿 Flujo de git · 🎯 Def. de LISTO"];
     REHID  [color="#e08e45",
             label="🔔🧵  rehidratar-hilo  (SessionStart · GLOBAL)\nreinyecta hilo-mental-actual.md si existe → el HILO vuelve\n+ GATE DE FRESCURA — la RAMA es la señal fuerte, no un OR con la edad:\n  rama del hilo ≠ rama actual → «⚠️ posiblemente OBSOLETO»\n  rama COINCIDE → vigente SIN IMPORTAR la edad (una sesión de 13h en la misma rama sigue viva, FMEA A8)\n  rama INDETERMINADA (sin git / sin línea de rama en el hilo) → cae al proxy mtime>HILO_STALE_HORAS (12h)\n(YA NO fija baseline de contexto: aviso-contexto mide tokens reales anclados al /compact)"];
 
     // ── LOS DOS QUE FALTABAN — y MUTAN git (borde rojo grueso) ──
-    DRIFT  [color="#c0392b", penwidth=3,
-            label="⚠ ESCRIBE git (condicional) · 🔔🧬  aviso-drift-cerebro  (SessionStart · GLOBAL)\nen TODO SessionStart, ANTES del throttle: re-inyecta conocimiento-propio.md (identidad del repo,\nimborrable) + avisa drift de la copia GLOBAL de skills (throttle propio) + avisa migración\n~/.claude-brain→~/.cortex si el clon quedó con el nombre viejo. El chequeo PER-REPO de drift\nva THROTTLEADO a AVISO_DRIFT_HORAS (default 6h, solo cachea resultados LIMPIOS) y corre\nsincronizar-cerebro en DRY-RUN (diff por contenido vs ~/.cortex). REDISEÑO #46 bifurca por la\nmarca .claude/repo-compartido:\n  repo COMPARTIDO (tiene la marca) + rama Develop* + .claude/ LIMPIO → --apply + commit + PUSH SOLO\n  repo PERSONAL (SIN la marca, el DEFAULT) → NUNCA auto-commit/push; solo FLAGGEA guards que sobran\nFAIL-OPEN SIEMPRE: sin clon canónico ~/.cortex / repo no-brained / cualquier error del sync → silencio;\nsin jq → degrada a printf plano (igual que sesion-inicio/rehidratar-hilo, NO como aviso-contexto que queda mudo)\n↳ es la pieza de SESIÓN del flujo de PROPAGACIÓN del cerebro (ver 01)"];
+    DRIFT  [color="#e08e45",
+            label="🔔🧬  aviso-drift-cerebro  (SessionStart · GLOBAL)\nen TODO SessionStart: cabla el @import de identidad (conocimiento-propio.local.md) en CLAUDE.local.md\n(local, gitignored — no toca el CLAUDE.md del equipo) + avisa SOLO el drift de la copia GLOBAL del cerebro\nvs ~/.cortex en 3 frentes (hooks/libs, skills, bloque de normas de ~/.claude/CLAUDE.md), con throttle propio\npor frente (AVISO_DRIFT_HORAS, 6h, solo cachea LIMPIOS) + avisa migrar un clon viejo claude-brain→.cortex\n+ nudge de la DUPLA (suficiencia+coherencia). Ya NO chequea ni auto-sincroniza copias por-repo (se retiraron)\n→ no commitea ni pushea. FAIL-OPEN: sin clon ~/.cortex / repo no-brained / cualquier error → silencio;\nsin jq → printf plano. Es la pieza de SESIÓN del drift del cerebro GLOBAL (ver 01)"];
     BARRER [color="#c0392b", penwidth=3,
             label="⚠ ESCRIBE git · 🔔🧹  barrer-ramas  (SessionStart · GLOBAL)\nthrottle 24h; lanza limpiar.sh ramas DETACHED (nohup) que hace `git branch -D` (FORCE: `-d`\nrehusaría una rama SQUASHEADA por no quedar de ancestro) de ramas ZOMBIE, definidas por la lib\nramas-zombie.sh (bz_es_zombie, modo BARRIDO activa la señal (p) presencia-por-CONTENIDO merge-tree\nsquash-safe): ancestro de la base · PR/MR mergeado en el host (gh/glab) · equivalencia de parche\n(git cherry sin +) · remota borrada sin commits propios · pie `Rama:` del squash (acotado) ·\ntransitiva · base remota adelantada. CONSERVA todo lo NO integrado (bz_protegida);\nNUNCA toca actual/base/develop/main/Develop*/keep/* ni ramas checked-out en un worktree"];
-    RACE   [color="#c9a227",
-            label="🟡  co-disparo: aviso-drift (commit/push) y barrer-ramas (branch -d, detached)\nen el MISMO SessionStart sobre el MISMO .git → posible choque en index.lock/ref-locks\n(el proceso detached amplía la ventana). Supuesto de independencia sin serializar"];
 
     // ── Decisiones de sesion-inicio ──
     PROT   [shape=diamond, fillcolor="#2b2622", color="#d97757", label="¿rama = develop/main?"];
@@ -145,12 +140,10 @@ digraph flujos {
     BOOT -> SESSTART;
 
     // Los 4 hooks son PARES que cuelgan del EVENTO SessionStart, no unos de otros (sin orden garantizado)
-    SESSTART -> START  [label="par 1/4 (por-repo)"];
+    SESSTART -> START  [label="par 1/4 (global)"];
     SESSTART -> REHID  [label="par 2/4 (global)"];
-    SESSTART -> DRIFT  [label="par 3/4 (global) ⚠"];
+    SESSTART -> DRIFT  [label="par 3/4 (global)"];
     SESSTART -> BARRER [label="par 4/4 (global) ⚠"];
-    DRIFT -> RACE   [style=dashed];
-    BARRER -> RACE  [style=dashed];
 
     // sesion-inicio (START) es UNO de los 6 pares; su lógica INTERNA (no el fan-out) sigue este spine:
     START -> INJECT;
@@ -166,7 +159,7 @@ digraph flujos {
     READY -> AVISO [label="durante la corrida\n(vigila cada tool)"];
     READY -> CHECK [label="o TÚ en una pausa\n(proactivo)"];
     AVISO -> CHECK [label="cruza la banda ALTA (80% de GOV) →\nvuelca el andamio + ORDENA /checkpoint + /compact\n(TÚ corres el hilo en prosa + compactas)"];
-    CHECK -> SESSTART [label="/compact o auto-compact →\nSessionStart source=compact:\nRE-DISPARA LOS 4 hooks (no solo rehidratar-hilo),\nincl. ⚠ aviso-drift (auto-sync commit+push en tu\nmini-develop) y ⚠ barrer-ramas (branch -d detached)"];
+    CHECK -> SESSTART [label="/compact o auto-compact →\nSessionStart source=compact:\nRE-DISPARA LOS 4 hooks (no solo rehidratar-hilo),\nincl. 🔔 aviso-drift (avisa drift GLOBAL) y\n⚠ barrer-ramas (branch -d detached)"];
     REHID -> READY [label="hilo restaurado →\nsigue sin perderlo"];
 
     READY -> END [label="cierras / Stop / compacta"];
