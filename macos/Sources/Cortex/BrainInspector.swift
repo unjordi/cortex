@@ -58,9 +58,9 @@ struct BrainState {
         "limite-gasto", "delegacion-gate", "delegacion-registrar",
         "rehidratar-hilo", "aviso-contexto", "aviso-drift-cerebro", "exportar-sesion-master", "checkpoint-mecanico", "barrer-ramas",
         "entorno-maquina-guard", "no-bypass-deploy",
-        "sesion-inicio", "recordar-cosechar",   // tier global (antes both; el cerebro por-repo se retiró 2026-11-01)
+        "sesion-inicio", "recordar-cosechar",   // tier global
     ]
-    /// Ya no hay hooks tier `repo` (el cerebro por-repo se retiró 2026-11-01): conjunto vacío.
+    /// Ya no hay hooks tier `repo` (el cerebro por-repo se retiró): conjunto vacío.
     /// DEBE coincidir con brain/hooks/MANIFEST (sin tier repo) — lo verifica test-brain.sh.
     static let knownRepoHooks: Set<String> = []
 

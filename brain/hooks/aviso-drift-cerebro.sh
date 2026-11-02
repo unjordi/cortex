@@ -5,7 +5,7 @@
 # per-MÁQUINA: skills (~/.claude/skills), hooks/libs (~/.claude/hooks) y el bloque de normas de
 # ~/.claude/CLAUDE.md, cada uno con su propio throttle. Delega la detección a drift-cerebro-comun.sh.
 #
-# El cerebro vive SOLO en global por máquina (decisión unjordi 2026-11-01 "solo cerebro global"): ya NO hay
+# El cerebro vive SOLO en global por máquina: ya NO hay
 # copias del cerebro POR-REPO, así que este hook ya NO chequea ni auto-sincroniza una copia por-repo (eso
 # se retiró con el cerebro por-repo). Lo que queda es el aviso de drift de la copia GLOBAL vs la fuente —
 # el equivalente AUTOMÁTICO del doctor verificar-cerebro — más el cableado del @import de identidad (B8).

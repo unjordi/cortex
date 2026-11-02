@@ -62,8 +62,8 @@ if [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then HOOK_CMD_BASE='$CLAUDE_CONFIG_DIR/hooks
 
 # ── Helpers de DE-CABLEADO de settings.json (reusables: los usa la poda de retirados de abajo Y el modo
 # --limpiar-repo). bash-3.2-safe. ──
-# El match es por NOMBRE EXACTO (lista del MANIFEST), NO por regex (corrección de unjordi al hallazgo 1 de
-# claudio): de cada `command` se extrae el/los basename(s) `.sh` que invoca (`scan` toma lo que va tras el
+# El match es por NOMBRE EXACTO (lista del MANIFEST), NO por regex: de cada `command` se extrae el/los
+# basename(s) `.sh` que invoca (`scan` toma lo que va tras el
 # último `/`) y solo casa si ese nombre está en la lista. Así un hook PROPIO del repo cuyo nombre TERMINE
 # igual (`mi-limpiar.sh`, `pre-sesion-inicio.sh`) NUNCA se de-cablea — un regex `limpiar\.sh` sí lo casaría.
 # _settings_wires <settings> <nombre.sh>... → 0 si algún hook del archivo invoca uno de esos basenames.
@@ -128,7 +128,7 @@ _skill_es_copia_del_cerebro() {
 }
 
 # ── MODO --limpiar-repo [<root>] [--apply]: retira el cerebro POR-REPO de UN repo (migración "solo cerebro
-# global", 2026-11-01: el cerebro vive solo en global por máquina; ningún repo debe cargar copias de sus
+# global": el cerebro vive solo en global por máquina; ningún repo debe cargar copias de sus
 # hooks). Quita de <root>/.claude: los hooks/libs del cerebro (.sh + su cableado en settings.json/.local),
 # el sello .brain-version y las skills del cerebro — SOLO las del ledger .brain-skills o del MANIFEST cuyo
 # CONTENIDO coincide con la fuente (una que difiera se REPORTA, no se borra). NUNCA toca la memoria/estado
@@ -261,7 +261,7 @@ for h in $GLOBAL_HOOKS; do
     echo "warn: falta el hook fuente $h"
   fi
 done
-# (El tier `repo` se retiró con el cerebro por-repo (2026-11-01): ya no hay hooks que vivan solo per-repo,
+# (El tier `repo` se retiró con el cerebro por-repo: ya no hay hooks que vivan solo per-repo,
 #  así que no hay poda de repo-tier huérfano. La poda de lápidas `retirado` sigue abajo.)
 # ── (a3) PODA DE RETIRADOS (LÁPIDAS del MANIFEST) ───────────────────────────────────────────── ──
 # Un tier `retirado` es una LÁPIDA: el brain ya mató este hook (su .sh se borró de brain/hooks/), pero
