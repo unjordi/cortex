@@ -101,5 +101,37 @@ EOF
 J5="$(run)"
 chk "5.projG-dedup-carpeta" "$(projtok "$(jq -r .rows <<<"$J5")" projG)" "23,11"   # G1 (20/10) UNA vez + G2 (3/1)
 
+# ── Run 6: un archivo que solo CRECE (transcript de una sesión abierta) se lee desde el offset:
+#    solo los bytes añadidos, y el agregado es idéntico al de una lectura completa en frío. ──
+frio(){ local c; c="$(mktemp -d)"; env HOME="$SB/hm" CLAUDE_CONFIG_DIR= CORTEX_FETCH_CACHE_DIR="$c" bash "$FETCH" --transcript-stats-json "$PROJ" 0 2>/dev/null; rm -rf "$c"; }
+lastbytes(){ cat "$CACHE/.transcripts.lastbytes" 2>/dev/null; }
+ADD='{"type":"assistant","timestamp":"2026-10-05T12:00:00Z","message":{"id":"msg_G1","usage":{"input_tokens":20,"output_tokens":10}},"cwd":"/srv/u/code/projG"}
+{"type":"assistant","timestamp":"2026-10-05T13:00:00Z","message":{"id":"msg_G3","usage":{"input_tokens":4,"output_tokens":2}},"cwd":"/srv/u/code/projG"}'
+printf '%s\n' "$ADD" >> "$PROJ/gg/g2.jsonl"
+J6="$(run)"
+chk "6.scanned-1"      "$(scanned)" "1"
+chk "6.solo-lo-nuevo"  "$(lastbytes)" "$(( ${#ADD} + 1 ))"
+chk "6.projG"          "$(projtok "$(jq -r .rows <<<"$J6")" projG)" "27,13"   # G1 sigue contando UNA vez; +G3
+chk "6.igual-a-frio"   "$(jq -S . <<<"$J6")" "$(frio | jq -S .)"
+
+# ── Run 7: una línea a medio escribir (sin "\n") no se cuenta ni avanza el offset; al
+#    completarse se cuenta UNA vez. ──
+P1='{"type":"user","timestamp":"2026-10-05T14:00:00Z",'
+printf '%s' "$P1" >> "$PROJ/gg/g2.jsonl"
+J7a="$(run)"
+chk "7.parcial-no-cuenta" "$(jq -r .messages <<<"$J7a")" "$(jq -r .messages <<<"$J6")"
+chk "7.parcial-0-bytes"   "$(lastbytes)" "0"
+printf '%s\n' '"cwd":"/srv/u/code/projG"}' >> "$PROJ/gg/g2.jsonl"
+J7b="$(run)"
+chk "7.completa-cuenta-1" "$(jq -r .messages <<<"$J7b")" "$(( $(jq -r .messages <<<"$J6") + 1 ))"
+chk "7.igual-a-frio"      "$(jq -S . <<<"$J7b")" "$(frio | jq -S .)"
+
+# ── Run 8: si el INICIO del archivo cambia (reescritura) y además crece, se lee completo. ──
+{ printf '%s\n' '{"type":"user","timestamp":"2026-10-06T08:00:00Z","cwd":"/srv/u/code/projG"}'; cat "$PROJ/gg/g2.jsonl"; } > "$SB/g2.new"
+mv "$SB/g2.new" "$PROJ/gg/g2.jsonl"
+J8="$(run)"
+chk "8.lectura-completa" "$(lastbytes)" "$(stat -f %z "$PROJ/gg/g2.jsonl")"
+chk "8.igual-a-frio"     "$(jq -S . <<<"$J8")" "$(frio | jq -S .)"
+
 echo "PASS=$PASS FAIL=$FAIL"
 [[ "$FAIL" -eq 0 ]]
