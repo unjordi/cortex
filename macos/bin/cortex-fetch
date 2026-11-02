@@ -400,15 +400,11 @@ ccusage_json() {
 }
 
 BLOCKS_JSON=""
-WEEKLY_JSON=""
 if [[ -n "$CCUSAGE" ]]; then
   BLOCKS_JSON="$(ccusage_json blocks --json --active)"
   # BSD date: 8 days ago, compact YYYYMMDD.
-  SINCE="$(date -u -v-8d +%Y%m%d)"
-  WEEKLY_JSON="$(ccusage_json weekly --json --since "$SINCE")"
   # Discard anything that isn't valid JSON so jq --argjson can't blow up.
   jq -e . <<<"$BLOCKS_JSON" >/dev/null 2>&1 || BLOCKS_JSON=""
-  jq -e . <<<"$WEEKLY_JSON" >/dev/null 2>&1 || WEEKLY_JSON=""
 fi
 
 NOW_ISO="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -434,9 +430,19 @@ if [[ -n "$USAGE_JSON" ]]; then
   [[ -n "$_ow" ]] && WEEK_RESET_EFF="$_ow"
 fi
 REAL_WEEK_START="$(date -u -j -v-7d -f "%Y-%m-%d" "${WEEK_RESET_EFF:0:10}" +%Y-%m-%d)"
+# Historial diario completo (pestañas Resumen/Modelos) en UNA llamada a ccusage; la semana
+# sale de filtrarlo por fecha (mismas cifras que `daily --since`, sin otra pasada por los transcripts).
+DAILY_JSON=""
 WEEKLY_DAILY_JSON=""
 if [[ -n "$CCUSAGE" ]]; then
-  WEEKLY_DAILY_JSON="$(ccusage_json daily --json --since "${REAL_WEEK_START//-/}")"
+  DAILY_JSON="$(ccusage_json daily --json --breakdown)"
+  jq -e . <<<"$DAILY_JSON" >/dev/null 2>&1 || DAILY_JSON=""
+  if [[ -n "$DAILY_JSON" ]]; then
+    WEEKLY_DAILY_JSON="$(jq -c --arg s "$REAL_WEEK_START" '{daily: [.daily[]? | select((.date // .period) >= $s)]}' <<<"$DAILY_JSON" 2>/dev/null || true)"
+  else
+    WEEKLY_DAILY_JSON="$(ccusage_json daily --json --since "${REAL_WEEK_START//-/}")"
+    jq -e . <<<"$WEEKLY_DAILY_JSON" >/dev/null 2>&1 || WEEKLY_DAILY_JSON=""
+  fi
   jq -e . <<<"$WEEKLY_DAILY_JSON" >/dev/null 2>&1 || WEEKLY_DAILY_JSON=""
 fi
 
@@ -453,7 +459,6 @@ if [[ -n "$USAGE_JSON" ]]; then
 jq -n \
   --argjson usage "${USAGE_JSON:-null}" \
   --argjson blocks "${BLOCKS_JSON:-null}" \
-  --argjson weekly "${WEEKLY_JSON:-null}" \
   --argjson weekly_daily "${WEEKLY_DAILY_JSON:-null}" \
   --arg ts "$NOW_ISO" \
   --arg cur_week "$CURRENT_MONDAY" \
@@ -479,7 +484,6 @@ jq -n \
   def isoz: sub("\\.[0-9]+"; "") | sub("\\+00:00$"; "Z");
 
   ($blocks.blocks[0] // null) as $blk
-  | ([$weekly.weekly[]? | select((.week // .period) == $cur_week)] | first) as $wk
   | (if $blocks != null then round2(if $blk then ($blk.costUSD // 0) else 0 end) else null end) as $five_cost
   | (if $weekly_daily != null then round2(($weekly_daily.daily // []) | map(.totalCost // 0) | add // 0) else null end) as $week_cost
   | (if $usage != null then ($usage.five_hour.utilization | numor(0))
@@ -522,7 +526,7 @@ jq -n \
         is_active: (if $blk != null then ($blk.isActive // false) else true end),
         models: (if $blk != null then ($blk.models // []) else [] end)
       } else null end),
-      weekly: (if ($usage != null or $weekly != null or $weekly_daily != null) then {
+      weekly: (if ($usage != null or $weekly_daily != null) then {
         percent: round1($week_pct),
         equiv_weekly_cost_usd: $week_cost,
         cost_cap: $week_cap,
@@ -615,11 +619,6 @@ fi
 # --- Stats para las pestañas Resumen / Modelos (ccusage local) ---------------
 # Datos LOCALES de Claude Code de esta máquina (no la cuenta global de claude.ai).
 # Se escriben aparte en stats.json para no inflar el state.json de límites.
-DAILY_JSON=""
-if [[ -n "$CCUSAGE" ]]; then
-  DAILY_JSON="$(ccusage_json daily --json --breakdown)"
-  jq -e . <<<"$DAILY_JSON" >/dev/null 2>&1 || DAILY_JSON=""
-fi
 if [[ -n "$DAILY_JSON" ]]; then
   # --- Fases 2-3: sesiones, mensajes, hora pico, msgs/día y uso por proyecto ---
   # INCREMENTAL: transcript_stats() (arriba) cachea por archivo y re-escanea SOLO
