@@ -88,6 +88,9 @@ public sealed class PopupForm : Form
     // respaldo que resetea el estado si el update no completó (p. ej. ff abortado → app sigue viva).
     private Rectangle _updateHit = Rectangle.Empty;
     private System.Windows.Forms.Timer? _updateFallback;
+    // Banner de AVISO DE LOGIN de la pestaña Límites (vencido/sin-cuenta/por-vencer): zona clicable del
+    // botón "Re-loguear en Claude" (coords de pantalla; Límites no scrollea → hit-test con e.Location).
+    private Rectangle _authHit = Rectangle.Empty;
 
     // logical → device scale (PerMonitorV2); all metrics below are in logical px.
     private float S => DeviceDpi / 96f;
@@ -498,10 +501,60 @@ public sealed class PopupForm : Form
 
     // ----- Tab 0: Límites -----
 
+    /// Banner de aviso de login (espeja authNotice de QuotaModel.swift y el QML): pastilla roja (problema
+    /// duro: vencido / sin cuenta) o ámbar (por vencer), con el mensaje y, si Offer, el botón
+    /// "Re-loguear en Claude" cuya zona clicable se registra en _authHit. Sin aviso → no pinta nada.
+    private int PaintAuthNotice(Graphics g, int pad, int right, int y)
+    {
+        _authHit = Rectangle.Empty;
+        var n = _svc.AuthNotice;
+        if (n is null) return y;
+        var (msg, offer, hard) = n.Value;
+
+        Color tint = hard ? Fmt.Hex(Fmt.Danger) : _accent;
+        int inner = Sc(9), iconW = Sc(20);
+        int boxW = right - pad;
+
+        using var msgFont = Px(10f, FontStyle.Regular);
+        int textW = boxW - inner * 2 - iconW;
+        float msgH = g.MeasureString(msg, msgFont, textW).Height;
+
+        int btnH = offer ? Sc(22) : 0;
+        int btnGap = offer ? Sc(8) : 0;
+        int boxH = inner + (int)Math.Ceiling(msgH) + btnGap + btnH + inner;
+        var box = new Rectangle(pad, y, boxW, boxH);
+
+        using (var bx = new SolidBrush(Color.FromArgb(31, tint)))
+            FillRounded(g, bx, box, Sc(8));
+
+        int cx = pad + inner, cy = y + inner;
+        using (var icF = PxFont("Segoe UI Emoji", 10.5f, FontStyle.Regular))
+        using (var icB = new SolidBrush(tint))
+            g.DrawString(hard ? "⚠" : "⏳", icF, icB, cx, cy - Sc(1));
+        using (var tb = new SolidBrush(_fg))
+            g.DrawString(msg, msgFont, tb, new RectangleF(cx + iconW, cy, textW, msgH + Sc(2)));
+
+        if (offer)
+        {
+            string label = "Re-loguear en Claude";
+            using var btnFont = Px(10f, FontStyle.Bold);
+            int bw = (int)g.MeasureString(label, btnFont).Width + Sc(18);
+            var btn = new Rectangle(pad + inner, cy + (int)Math.Ceiling(msgH) + btnGap, bw, btnH);
+            using (var bb = new SolidBrush(tint))
+                FillRounded(g, bb, btn, Sc(6));
+            using (var lb = new SolidBrush(Color.White))
+                g.DrawString(label, btnFont, lb, btn,
+                    new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center });
+            _authHit = btn;
+        }
+        return y + boxH + Sc(12);
+    }
+
     private void PaintLimites(Graphics g, int pad)
     {
         int y = SectionTitle(g, pad, pad, "Límites de uso");
 
+        y = PaintAuthNotice(g, pad, _content.Width - pad, y);
         y = UsageSection(g, pad, y, "Sesión (5 h)", _svc.Snapshot?.FiveHour);
         y += Sc(14);
         y = UsageSection(g, pad, y, "Semanal (7 d)", _svc.Snapshot?.Weekly);
@@ -1651,6 +1704,9 @@ public sealed class PopupForm : Form
         }
         if (e.Button != MouseButtons.Left) return;
 
+        // Botón "Re-loguear en Claude" del banner de aviso de login (pestaña Límites, no scrollea).
+        if (_tab == 0 && !_authHit.IsEmpty && _authHit.Contains(e.Location)) { Relogin(); return; }
+
         // Footer de rango (tabs 1..4).
         if (_tab is 1 or 2 or 3 or TabChats)
             foreach (var (idx, rect) in _rangeHits)
@@ -1752,6 +1808,39 @@ public sealed class PopupForm : Form
                 UseShellExecute = true,
                 WorkingDirectory = Directory.Exists(cwd) ? cwd
                     : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            };
+            c.ArgumentList.Add("/k"); c.ArgumentList.Add(cmd);
+            Process.Start(c);
+        }
+        catch { /* no se pudo abrir terminal */ }
+    }
+
+    /// Abre una terminal con el flujo oficial de re-login (abre el navegador): `claude auth login
+    /// --claudeai [--email <cuenta>]`. Espeja relogin() de PopoverView.swift y el reloginRunner del QML.
+    /// Mismo patrón de terminal que ResumeSession (wt.exe → cmd.exe). La cuenta se valida como email.
+    private void Relogin()
+    {
+        string cmd = "claude auth login --claudeai";
+        var acct = _svc.ReloginAccount;
+        if (acct != null && System.Text.RegularExpressions.Regex.IsMatch(acct,
+                @"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$"))
+            cmd += $" --email {acct}";
+
+        try
+        {
+            var wt = new ProcessStartInfo { FileName = "wt.exe", UseShellExecute = true };
+            wt.ArgumentList.Add("cmd"); wt.ArgumentList.Add("/k"); wt.ArgumentList.Add(cmd);
+            if (Process.Start(wt) != null) return;
+        }
+        catch { /* wt no está → cae a cmd */ }
+
+        try
+        {
+            var c = new ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                UseShellExecute = true,
+                WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             };
             c.ArgumentList.Add("/k"); c.ArgumentList.Add(cmd);
             Process.Start(c);
