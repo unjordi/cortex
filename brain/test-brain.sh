@@ -7840,39 +7840,35 @@ if [ -f "$GEN" ]; then
   fi
 fi
 
-# e6c5: el .svg es lo que la gente MIRA, y es una copia derivada más — con su propio drift. Al corregir los
-# .dot, los .svg commiteados pueden quedarse mostrando un hook ya retirado: el diagrama diría una cosa y su
-# fuente otra. NO se compara byte a byte contra un `dot` recién corrido (dos versiones de graphviz
-# serializan distinto y eso daría rojo espurio en CI): se comprueba lo que importa del resultado — que el
-# dibujo NOMBRE las piezas vivas y NINGUNA retirada. El `&#45;` es cómo graphviz escapa el guion en el SVG.
+# e6c5: el .svg es una copia DERIVADA del .dot — si alguien edita el .dot y olvida regenerar, el .svg queda
+# RANCIO (el dibujo dice algo distinto a su fuente). Se comprueba que el .svg sea el RENDER del .dot VIGENTE
+# comparando el TEXTO VISIBLE de los nodos: inmune a la versión de graphviz (cambia coordenadas/ids, NO el
+# texto de las etiquetas) porque se comparan los TOKENS de palabra ordenados, no los bytes. «retirado-como-
+# vivo» NO se decide aquí — es de f3 sobre el .dot (parser con marca de retiro por línea); un .svg rancio que
+# muestre un retirado vivo se caza porque su texto DIFIERE del render del .dot limpio.
 FCDIR="$SCRIPT_DIR/../docs/flowcharts"
-if [ -f "$GEN" ] && [ -d "$FCDIR" ] && [ -f "$MF" ]; then
-  # nombres que la leyenda canónica declara (1ª columna de cada fila de la tabla)
-  piezas=$(bash "$GEN" 2>/dev/null | sed -n 's/.*<font color="#f2ede6">[^ ]* \([^<]*\)<\/font>.*/\1/p' | sort -u)
-  retirados=$(awk '$1!~/^#/ && NF>=3 && $2=="retirado"{print $1}' "$MF")
+if command -v dot >/dev/null 2>&1 && [ -d "$FCDIR" ]; then
+  # texto visible del SVG → un token de palabra por línea, ordenado (robusto a coordenadas/orden/agrupación)
+  _svgtok() { sed 's/&#45;/-/g' | grep -oE '<text[^>]*>[^<]*</text>' | sed -E 's/<[^>]+>//g' | tr -s ' \t' '\n' | grep -v '^$' | LC_ALL=C sort; }
   svg_mal=""; svg_n=0
-  for sv in "$FCDIR"/[0-9]*.svg; do
-    [ -e "$sv" ] || continue
+  for f in "$FCDIR"/[0-9]*.dot; do
+    [ -e "$f" ] || continue
+    sv="${f%.dot}.svg"
+    [ -e "$sv" ] || { svg_mal="$svg_mal $(basename "$f"):sin-svg"; continue; }
     svg_n=$((svg_n+1))
-    plano=$(sed 's/&#45;/-/g' "$sv")
-    for pz in $piezas; do
-      printf '%s' "$plano" | grep -qF "$pz" || { svg_mal="$svg_mal $(basename "$sv"):falta-$pz"; break; }
-    done
-    for rt in $retirados; do
-      printf '%s' "$plano" | grep -qF "$rt" || continue
-      # el .svg NOMBRA un retirado: OK si es MENCIÓN DE RETIRO (el dibujo trae un marcador de retiro). Un
-      # .svg STALE que lo muestre VIVO no traería ese marcador → se sigue flaggeando (patrón #11).
-      printf '%s' "$plano" | grep -qiE 'se retir|retirad|ya no|jubil|absorb|reemplaz|l[áa]pida|🪦' && continue
-      svg_mal="$svg_mal $(basename "$sv"):retirado-$rt"
-    done
+    comp=$(_svgtok < "$sv")
+    fresh=$(dot -Tsvg "$f" 2>/dev/null | _svgtok)
+    [ "$comp" = "$fresh" ] || svg_mal="$svg_mal $(basename "$sv"):rancio"
   done
   if [ "$svg_n" -gt 0 ] && [ -z "$svg_mal" ]; then
-    ok "e6c5: los $svg_n .svg dibujan todas las piezas vivas y ninguna retirada"
+    ok "e6c5: los $svg_n .svg son el render VIGENTE de su .dot (texto idéntico; retirado-como-vivo lo cubre f3)"
   elif [ "$svg_n" = 0 ]; then
-    bad "e6c5: no encontré .svg en $FCDIR (¿se dejaron de commitear?)"
+    bad "e6c5: no encontré .dot/.svg en $FCDIR (¿se dejaron de commitear?)"
   else
-    bad "e6c5: .svg RANCIO —$svg_mal — regenéralos con: bash docs/flowcharts/gen-charts.sh --force"
+    bad "e6c5: .svg RANCIO (su texto ≠ el render del .dot) —$svg_mal — regenéralos con: bash docs/flowcharts/gen-charts.sh --force"
   fi
+else
+  echo "  SKIP e6c5: sin graphviz (dot) — el render-compare del .svg se prueba donde dot exista"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
