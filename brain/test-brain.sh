@@ -7859,7 +7859,11 @@ if [ -f "$GEN" ] && [ -d "$FCDIR" ] && [ -f "$MF" ]; then
       printf '%s' "$plano" | grep -qF "$pz" || { svg_mal="$svg_mal $(basename "$sv"):falta-$pz"; break; }
     done
     for rt in $retirados; do
-      printf '%s' "$plano" | grep -qF "$rt" && svg_mal="$svg_mal $(basename "$sv"):retirado-$rt"
+      printf '%s' "$plano" | grep -qF "$rt" || continue
+      # el .svg NOMBRA un retirado: OK si es MENCIÓN DE RETIRO (el dibujo trae un marcador de retiro). Un
+      # .svg STALE que lo muestre VIVO no traería ese marcador → se sigue flaggeando (patrón #11).
+      printf '%s' "$plano" | grep -qiE 'se retir|retirad|ya no|jubil|absorb|reemplaz|l[áa]pida|🪦' && continue
+      svg_mal="$svg_mal $(basename "$sv"):retirado-$rt"
     done
   done
   if [ "$svg_n" -gt 0 ] && [ -z "$svg_mal" ]; then
@@ -8250,15 +8254,16 @@ csx() { bash "$CSX/docs/flowcharts/verificar-charts-sync.sh" 2>&1; }
 printf '| N\xc2\xba | T |\n| 03 | git-guards (fan-out de 4) |\n| 07 | zoom |\n' > "$CSX/docs/flowcharts/CONVENCIONES.md"
 printf 'digraph{ label="03 fan-out de 4"; }\n' > "$CSX/docs/flowcharts/03-x.dot"
 printf 'digraph{ label="07 raíz de 4"; }\n' > "$CSX/docs/flowcharts/07-y.dot"
+: > "$CSX/docs/flowcharts/03-x.drawio"; : > "$CSX/docs/flowcharts/07-y.drawio"   # Check 1b: cada .dot tiene su .drawio
 csx >/dev/null 2>&1 && ok "f3-fix: fixture LIMPIO (charts existen, conteo 4, sin retirados vivos) → ✅" || bad "f3-fix: el fixture limpio dio ❌ (el derivador de ev_de o los paths fallan)"
 # DRIFT A: chart FANTASMA (tabla lista 12, no hay 12-*.dot)
 printf '| 12 | orquestar |\n' >> "$CSX/docs/flowcharts/CONVENCIONES.md"
 csx | grep -q 'chart fantasma' && ok "f3-fix A: chart listado en CONVENCIONES sin su .dot → CAZA (chart fantasma)" || bad "f3-fix A: no cazó un chart fantasma"
 sed -i.bak '/| 12 |/d' "$CSX/docs/flowcharts/CONVENCIONES.md"
 # DRIFT B: conteo stale 'fan-out de 6' (≠ ev_de=4)
-printf 'digraph{ label="08 fan-out de 6"; }\n' > "$CSX/docs/flowcharts/08-z.dot"; printf '| 08 | x |\n' >> "$CSX/docs/flowcharts/CONVENCIONES.md"
+printf 'digraph{ label="08 fan-out de 6"; }\n' > "$CSX/docs/flowcharts/08-z.dot"; : > "$CSX/docs/flowcharts/08-z.drawio"; printf '| 08 | x |\n' >> "$CSX/docs/flowcharts/CONVENCIONES.md"
 csx | grep -q 'conteo del fan-out' && ok "f3-fix B: 'fan-out de 6' con ev_de=4 → CAZA el conteo stale" || bad "f3-fix B: no cazó el conteo stale del fan-out"
-rm -f "$CSX/docs/flowcharts/08-z.dot"; sed -i.bak '/| 08 |/d' "$CSX/docs/flowcharts/CONVENCIONES.md"
+rm -f "$CSX/docs/flowcharts/08-z.dot" "$CSX/docs/flowcharts/08-z.drawio"; sed -i.bak '/| 08 |/d' "$CSX/docs/flowcharts/CONVENCIONES.md"
 # DRIFT C: hook RETIRADO como VIVO (nodo, sin marca de retiro)
 printf 'digraph{ N [label="git-branch-guard frena el push directo"]; }\n' > "$CSX/docs/flowcharts/03-x.dot"
 csx | grep -q 'RETIRADO' && ok "f3-fix C: hook retirado nombrado como VIVO en un nodo → CAZA" || bad "f3-fix C: no cazó un hook retirado como vivo"
