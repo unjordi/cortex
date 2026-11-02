@@ -46,7 +46,8 @@ Reglas que hace cumplir (las mismas del guard merge-develop-guard):
   · SIEMPRE --squash (a develop = 1 commit limpio por slice).
   · NUNCA --auto/--auto-merge (merge YA, no encolado en MWPS sin testigo).
   · SIEMPRE borra la rama de origen (--remove-source-branch / --delete-branch).
-  · El mensaje DEBE traer traza: una línea "Rama: <…>" y una "MR:/PR: !<id>" (o #<id>), y ≥12 palabras.
+  · Traza rama→commit en el mensaje ("Rama: <…>" + "MR:/PR: !<id>"/#<id>): si falta, cerrar-slice la AGREGA
+    sola (del --branch/el forge). Un mensaje de <12 palabras solo AVISA; el guard ya no bloquea por el mensaje.
 USO
 }
 
