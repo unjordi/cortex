@@ -28,7 +28,6 @@ digraph flujos {
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🔗 merge-develop-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">push directo a develop·main, o MR sin --squash/sin tu OK → denegado; a main exige OK súper-explícito</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">💸 delegacion-gate</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">delegar al llegar al 90% de tu ventana 5h → pide tu OK</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🛑 limite-gasto</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">sin ventana 5h Y sin overage (ambos agotados) → freno duro</font></td></tr>
-        <tr><td bgcolor="#1b1712"><font color="#f2ede6">✅ dod-verificar</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">cierre sin evidencia/OK → denegado; claim visual a ciegas (sin ver la pantalla) también</font></td></tr>
         <tr><td colspan="2" bgcolor="#2b2622"><font color="#d97757"><b>🔔 Automático</b></font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🖥️ entorno-maquina-guard</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">commit de algo machine-specific (aliases/rutas de $HOME/Rosetta/entorno-maquina.md) al .claude/memory/ del repo → avisa</font></td></tr>
         <tr><td bgcolor="#1b1712"><font color="#f2ede6">🚧 no-bypass-deploy</font></td><td bgcolor="#1b1712"><font color="#cfc8c0">correr el instalador/deploy a mano (install-brain.sh/deploy.sh, helm/kubectl apply -f, aun tras sudo/nohup/VAR=/source) en vez de la herramienta oficial (el widget) → avisa (fail-safe: no --dry-run/--help/CI)</font></td></tr>
@@ -115,7 +114,7 @@ digraph flujos {
     HUD [color="#9e9e9e", style="dashed,filled", fillcolor="#232323",
          label="📜 🔀 Tu lista de TODOs es TU HUD — mantenla fresca\nscratch de sesión (no el backlog durable); resetéala al cambiar de rama/proyecto\nsi diverge del backlog, MANDA estado-proyecto.md\n— SIN hook: anti-drift por tu propio juicio (ver 02)"];
     CORREO [color="#e08e45",
-            label="📜 🧬 Cerebro por-repo = CORREO\nrepo PERSONAL: memoria/skills sí, guards por-repo NUNCA (los saca el global+dedupe);\nrepo COMPARTIDO (marca .claude/repo-compartido): guards por-repo SÍ, en git\n— mantenido fresco / avisado en 01 · 02 (🔔🧬 aviso-drift-cerebro)"];
+            label="📜 🧬 El cerebro vive SOLO en global\nlos guards (hooks/libs) vienen del install GLOBAL; NO hay copia por-repo\nlo que viaja por git en cada repo es la MEMORIA del proyecto + sus skills propias\n— drift de la copia GLOBAL avisado en 01 · 02 (🔔🧬 aviso-drift-cerebro)"];
 
     // Layout: filas de ~3, con aristas invisibles; INTEG «protege» a los candados que nombra.
     LISTO -> GIT -> DOC [style=invis];
