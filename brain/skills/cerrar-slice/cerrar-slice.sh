@@ -88,7 +88,7 @@ _gitleaks_gate() {
     url="$(git remote get-url origin 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"
     case "${url%.git}" in
       *[/:]"$(printf '%s' "$REPO" | tr '[:upper:]' '[:lower:]')") : ;;
-      *) printf 'cerrar-slice: ⚠️ el cwd no es el repo de --repo %s → el gate local de gitleaks escanearía otro repo; NO verifico aquí (el CI lo cubre).\n' "$REPO" >&2; return 0 ;;
+      *) printf 'cerrar-slice: ⚠️ --repo %s no es el repo del directorio actual → el gate local de gitleaks escanearía otro repo; NO verifico aquí (el CI lo cubre).\n' "$REPO" >&2; return 0 ;;
     esac
   fi
 
@@ -196,8 +196,15 @@ if [ -n "$REPO" ]; then
   done
   command -v acg_clon_local_de_slug >/dev/null 2>&1 || _err "no encontré la lib analizar-comando-git.sh para ubicar el clon de $REPO."
   _clon="$(acg_clon_local_de_slug "$REPO" .)" || _clon=""
-  [ -n "$_clon" ] || _err "no encontré un clon local de $REPO (ni el repo actual ni sus hermanos) — lo necesito para decidir el forge y correr el gate de gitleaks en el repo correcto."
-  cd "$_clon" || _err "no pude entrar a $_clon."
+  if [ -n "$_clon" ]; then
+    cd "$_clon" || _err "no pude entrar a $_clon."
+  elif [ -n "$FORGE" ]; then
+    # Sin clon local pero con --forge explícito: el forge ya está dado y el merge usa -R <slug> desde cualquier
+    # cwd; el gate local de gitleaks no tiene dónde correr → se omite (lo cubre el CI server-side).
+    printf 'cerrar-slice: ⚠️  no hay clon local de %s; con --forge %s sigo (el merge usa -R %s). El gate local de gitleaks se omite — lo cubre el CI.\n' "$REPO" "$FORGE" "$REPO" >&2
+  else
+    _err "no encontré un clon local de $REPO (ni el repo actual ni sus hermanos) y no me diste --forge → no puedo decidir el forge. Pásame --forge glab|gh, o corre desde un clon local de $REPO."
+  fi
 fi
 
 # ── traza + sustancia del mensaje: AYUDA, no revisión (decisión unjordi 2026-10-21: el mensaje lo redacta
