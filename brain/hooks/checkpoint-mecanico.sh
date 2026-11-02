@@ -39,5 +39,5 @@ _selfdir="$(dirname "$0")"
 [ -f "$_selfdir/checkpoint-mecanico-comun.sh" ] || exit 0   # sin la lib → fail-open silencioso
 . "$_selfdir/checkpoint-mecanico-comun.sh"
 
-disparar_checkpoint_mecanico "$sid" "$tpath" "$ROOT" "$MEM" "$_selfdir"
+disparar_checkpoint_mecanico "$sid" "$tpath" "$ROOT" "$MEM" "$_selfdir" "precompact"
 exit 0
