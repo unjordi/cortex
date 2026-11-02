@@ -45,7 +45,7 @@ SRC_NORMS="$SCRIPT_DIR/norms"
 SRC_LIB="$SCRIPT_DIR/lib"
 
 # Lib de INSTALACIÓN (no es un hook): detección cross-shell de aliases que muerden binarios reales, para
-# el bloque detectado de ~/.claude/entorno-maquina.md y el artefacto LEAN ~/.claude/aliases-activos.md (@import).
+# el bloque detectado-por-bootstrap de ~/.claude/entorno-maquina.md.
 # Fail-safe: si falta, se degrada (las funciones ds_* no existen → los usos van guardados con command -v).
 # shellcheck source=lib/detectar-shells.sh
 [ -f "$SRC_LIB/detectar-shells.sh" ] && . "$SRC_LIB/detectar-shells.sh"
@@ -579,7 +579,7 @@ det_shell_path="${SHELL:-}"; det_shell="$(basename "${det_shell_path:-sh}")"
 # Aliases que MUERDEN: detección CROSS-SHELL (zsh/bash/fish INSTALADOS) vía la lib detectar-shells.sh,
 # filtrando a los que SOMBREAN un binario real (no una lista fija). Antes: solo login shell + lista fija
 # de 5 (ls/rm/cp/mv/grep) → se le escapaban `mkdir -p`, `vi`→nvim, y todo lo de fish/otro shell. Fail-safe:
-# si la lib no cargó, cae a una nota mínima. La MISMA detección alimenta el artefacto LEAN (abajo, d3).
+# si la lib no cargó, cae a una nota mínima.
 if command -v ds_render_posix_bullets >/dev/null 2>&1; then
   alias_block="$(ds_render_posix_bullets 2>/dev/null || true)"
 else
@@ -599,7 +599,7 @@ if [ -n "$blk" ]; then
     printf '## Detectado por el bootstrap (%s)\n' "$(date +%Y-%m-%d 2>/dev/null || echo '?')"
     printf -- '- **OS / arch:** `%s`\n' "$det_os"
     printf -- '- **Shell de login:** `%s` (`%s`)\n' "$det_shell" "${det_shell_path:-?}"
-    printf -- '- **Aliases que muerden comandos** (salta con `command <cmd>` — NUNCA `/bin/<cmd>`: la ruta varía por OS y `rg`/`eza`/etc. no están en `/bin`; en fish `\\<cmd>` tampoco salta una función). Vista LEAN siempre-en-contexto: `~/.claude/aliases-activos.md` (@import):\n'
+    printf -- '- **Aliases que muerden comandos** (salta con `command <cmd>` — NUNCA `/bin/<cmd>`: la ruta varía por OS y `rg`/`eza`/etc. no están en `/bin`; en fish `\\<cmd>` tampoco salta una función):\n'
     printf '%s\n' "$alias_block" | sed 's/^/  /'
     printf -- '- **Tools clave (presencia):**\n'
     printf '%b' "$tool_bullets"
@@ -612,7 +612,7 @@ if [ -z "$blk" ]; then
 elif [ ! -f "$ENTORNO" ]; then
   mkdir -p "$(dirname "$ENTORNO")"
   {
-    printf '# Entorno de ESTA máquina — LEAN, FUENTE ÚNICA (aliases: ver `aliases-activos.md`)\n'
+    printf '# Entorno de ESTA máquina — LEAN, FUENTE ÚNICA\n'
     printf '<!-- LEAN — MANTENER ASÍ: un hecho/regla por línea, seco, en presente. NADA de drama, citas,\n'
     printf '     fechas, nombres, "caso real…", trazabilidad ("antes era…"). Conserva TODO dato técnico\n'
     printf '     (comando/ruta/flag/valor/gotcha); corta solo prosa y justificación larga. Per-máquina: NO\n'
@@ -693,39 +693,31 @@ else
   echo "ok: normas globales del cerebro agregadas a $GCLAUDE"
 fi
 
-# ── (d3) Artefacto LEAN de aliases + @import en el CLAUDE.md global ──
-# El entorno curado vive en ~/.claude/entorno-maquina.md (arriba). Este es la VISTA DERIVADA LEAN de aliases,
-# answer-first (el ESCAPE primero), pensada para estar SIEMPRE en contexto vía `@import` recursivo del
-# CLAUDE.md — sin costarle líneas al propio CLAUDE.md. Es GENERADO per-máquina → NO viaja por git.
-# En Windows el .ps1 ya escribió el bloque `<!-- shells:powershell -->` ANTES de delegar aquí; esta lib
-# sólo (re)escribe el bloque `<!-- shells:posix -->` → ambos coexisten sin pisarse. Fail-safe: sin la lib,
-# se omite (no rompe la instalación).
+# ── (d3) RETIRO del artefacto LEAN de aliases + su @import ──
+# Los aliases que muerden ya viven en ~/.claude/entorno-maquina.md (bloque detectado-por-bootstrap, arriba),
+# que está en contexto por su propio @import. El artefacto separado aliases-activos.md + su @import eran una
+# copia redundante → se retiran: se borra el archivo y se quita su línea @import del CLAUDE.md global (con la
+# misma GUARDA anti-truncado: un CLAUDE.md con BEGIN sin END NO se toca, para no arriesgar la sección personal).
 ART="$CLAUDE_DIR/aliases-activos.md"
-if command -v ds_render_posix >/dev/null 2>&1; then
-  ds_ensure_artifact_header "$ART"
-  if ds_render_posix 2>/dev/null | ds_upsert_block "$ART" posix; then
-    echo "ok: artefacto LEAN de aliases (re)generado en $ART (bloque posix)"
+[ -f "$ART" ] && { rm -f "$ART"; echo "ok: retirado el artefacto LEAN de aliases ($ART)"; }
+if [ -f "$GCLAUDE" ] && grep -q 'brain:import-aliases' "$GCLAUDE" 2>/dev/null; then
+  if grep -q 'BEGIN cortex' "$GCLAUDE" 2>/dev/null && ! grep -q 'END cortex' "$GCLAUDE" 2>/dev/null; then
+    echo "warn: $GCLAUDE tiene BEGIN sin END — NO retiro el @import de aliases (no toco un archivo en estado peligroso). Ciérralo y re-corre."
   else
-    echo "warn: no pude generar el bloque posix de $ART"
+    tmp="$(mktemp)" || tmp=""
+    # Quita el comentario marcador 'brain:import-aliases' y la línea '@aliases-activos.md' que le sigue.
+    if [ -n "$tmp" ] && awk '
+        /brain:import-aliases/ { skipnext=1; next }
+        skipnext==1 && /^@aliases-activos\.md[[:space:]]*$/ { skipnext=0; next }
+        { skipnext=0; print }
+      ' "$GCLAUDE" > "$tmp" && [ -s "$tmp" ]; then
+      cp "$GCLAUDE" "$GCLAUDE.bak" 2>/dev/null || true
+      mv "$tmp" "$GCLAUDE"
+      echo "ok: retirado el @import de aliases-activos.md de $GCLAUDE (respaldo en $GCLAUDE.bak)"
+    else
+      rm -f "$tmp"; echo "warn: no pude retirar el @import de aliases de $GCLAUDE"
+    fi
   fi
-  # Cablear el @import idempotente, FUERA del bloque BEGIN/END cortex (que se regenera): su propio
-  # marcador. Claude Code procesa @imports recursivos → el artefacto queda siempre en contexto.
-  # GUARDA anti-truncado (misma que el bloque de normas): un CLAUDE.md con BEGIN sin END está en estado
-  # PELIGROSO → NO lo tocamos (ni para appendear el @import), para no arriesgar la sección personal.
-  if [ -f "$GCLAUDE" ] && grep -q 'BEGIN cortex' "$GCLAUDE" 2>/dev/null && ! grep -q 'END cortex' "$GCLAUDE" 2>/dev/null; then
-    echo "warn: $GCLAUDE tiene BEGIN sin END — NO cablo el @import (no toco un archivo en estado peligroso). Ciérralo y re-corre."
-  elif [ -f "$GCLAUDE" ] && grep -q 'brain:import-aliases' "$GCLAUDE" 2>/dev/null; then
-    echo "ok: @import de aliases-activos.md ya cableado en $GCLAUDE (idempotente)"
-  else
-    {
-      [ -f "$GCLAUDE" ] && printf '\n'
-      printf '<!-- brain:import-aliases — VISTA per-máquina de aliases que muerden; GENERADA, NO viaja por git -->\n'
-      printf '@aliases-activos.md\n'
-    } >> "$GCLAUDE"
-    echo "ok: @import de aliases-activos.md cableado en $GCLAUDE (siempre en contexto)"
-  fi
-else
-  echo "warn: lib detectar-shells.sh no disponible; omito el artefacto LEAN de aliases y su @import"
 fi
 
 # @import del entorno LEAN (d2), idempotente con marcador propio. Si el CLAUDE.md ya trae un
@@ -751,5 +743,5 @@ if [ "$(git config --global --get fetch.prune 2>/dev/null)" != "true" ]; then
   git config --global fetch.prune true 2>/dev/null && echo "ok: git config --global fetch.prune=true (ramas remotas borradas se limpian solas al hacer fetch)"
 fi
 
-echo "listo: cerebro global instalado (hooks + cableado + skill + sello de versión + dashboard + entorno + como-trabajar + normas + aliases-activos)."
+echo "listo: cerebro global instalado (hooks + cableado + skill + sello de versión + dashboard + entorno + como-trabajar + normas)."
 echo "       Todos los hooks del cerebro son GLOBALES (solo cerebro global por máquina): ningún hook viaja por-repo."
