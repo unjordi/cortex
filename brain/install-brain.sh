@@ -4,8 +4,8 @@
 # la skill de cierre, el dashboard y las normas globales." Re-correrlo es SEGURO (idempotente).
 #
 # Instala GLOBAL (en ~/.claude, aplica a TODOS los repos de esta máquina):
-#   (a) HOOKS de tier {global, both} en ~/.claude/hooks/ — la LISTA se DERIVA de brain/hooks/MANIFEST
-#       (fuente única; ya no se cura a mano en paralelo con la copia por-repo). Incluye
+#   (a) HOOKS de tier {global} en ~/.claude/hooks/ — la LISTA se DERIVA de brain/hooks/MANIFEST
+#       (fuente única). Incluye
 #       merge-develop-guard,
 #       proteger-arbol (PreToolUse/Bash), delegacion-gate + limite-gasto (PreToolUse/Task),
 #       delegacion-registrar (PostToolUse/Task), rehidratar-hilo + aviso-contexto (SessionStart/
@@ -31,11 +31,8 @@
 #                          bootstrap (para las tunables que el dev elige). Ambos idempotentes.
 #
 # merge-develop-guard (candado del punto de merge a develop/main: squash + autorización con OK explícito;
-# es GLOBAL/both para que aplique en TODA sesión/clon, también donde el repo no lo trae). Las lápidas
-# del MANIFEST de merge-squash-guard y confirmar-merge-develop los PODAN de máquinas donde quedaron instalados.
-# NO instala globales los hooks REPO-SCOPED restantes
-# (sesion-inicio, dod-verificar): esos viven en brain/hooks/ como FUENTE para
-# que cada repo los copie a su .claude/ y los cablee (se cargan solo si la sesión INICIA en el repo).
+# es GLOBAL para que aplique en TODA sesión de esta máquina). Las lápidas del MANIFEST de merge-squash-guard
+# y confirmar-merge-develop los PODAN de máquinas donde quedaron instalados.
 #
 # OS-agnóstico: los hooks corren bajo bash en Mac/Linux/Windows(Git Bash). FAIL-SAFE sin jq (avisa;
 # los hooks fallan ABIERTO — no bloquean — hasta que instales jq).
@@ -48,7 +45,7 @@ SRC_NORMS="$SCRIPT_DIR/norms"
 SRC_LIB="$SCRIPT_DIR/lib"
 
 # Lib de INSTALACIÓN (no es un hook): detección cross-shell de aliases que muerden binarios reales, para
-# el bloque detectado de ~/.claude/entorno-maquina.md y el artefacto LEAN ~/.claude/aliases-activos.md (@import).
+# el bloque detectado-por-bootstrap de ~/.claude/entorno-maquina.md.
 # Fail-safe: si falta, se degrada (las funciones ds_* no existen → los usos van guardados con command -v).
 # shellcheck source=lib/detectar-shells.sh
 [ -f "$SRC_LIB/detectar-shells.sh" ] && . "$SRC_LIB/detectar-shells.sh"
@@ -63,6 +60,168 @@ GCLAUDE="$CLAUDE_DIR/CLAUDE.md"
 # CLAUDE_CONFIG_DIR puesto, los hooks viven en $CLAUDE_CONFIG_DIR/hooks y el comando debe apuntar ahí.
 if [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then HOOK_CMD_BASE='$CLAUDE_CONFIG_DIR/hooks'; else HOOK_CMD_BASE='$HOME/.claude/hooks'; fi
 
+# ── Helpers de DE-CABLEADO de settings.json (reusables: los usa la poda de retirados de abajo Y el modo
+# --limpiar-repo). bash-3.2-safe. ──
+# El match es por NOMBRE EXACTO (lista del MANIFEST), NO por regex: de cada `command` se extrae el/los
+# basename(s) `.sh` que invoca (`scan` toma lo que va tras el
+# último `/`) y solo casa si ese nombre está en la lista. Así un hook PROPIO del repo cuyo nombre TERMINE
+# igual (`mi-limpiar.sh`, `pre-sesion-inicio.sh`) NUNCA se de-cablea — un regex `limpiar\.sh` sí lo casaría.
+# _settings_wires <settings> <nombre.sh>... → 0 si algún hook del archivo invoca uno de esos basenames.
+_settings_wires() {
+  local sf="$1"; shift
+  [ -f "$sf" ] || return 1
+  [ "$#" -gt 0 ] || return 1
+  command -v jq >/dev/null 2>&1 || return 1
+  jq empty "$sf" 2>/dev/null || return 1
+  jq -e 'any(.hooks[]?[]?.hooks[]?;
+            [(.command // "") | scan("[^/\"\\s]+\\.sh")] | any(. as $n | $ARGS.positional | index($n)))' \
+    "$sf" --args "$@" >/dev/null 2>&1
+}
+# _dewire_from_settings <settings> <nombre.sh>... → quita POR-COMANDO los hooks que invocan uno de esos
+# basenames; borra eventos/entradas que quedan vacíos; preserva el resto (nunca toca entradas ni hermanos
+# ajenos). Escribe solo si cambió. 0 ok (o nada que hacer), 1 error (JSON inválido / jq falló) sin tocar.
+_dewire_from_settings() {
+  local sf="$1"; shift
+  local tmp
+  [ -f "$sf" ] || return 0
+  [ "$#" -gt 0 ] || return 0
+  command -v jq >/dev/null 2>&1 || return 0
+  jq empty "$sf" 2>/dev/null || return 1
+  _settings_wires "$sf" "$@" || return 0
+  tmp="$(mktemp)" || return 1
+  # Filtra POR-COMANDO dentro de cada entrada (B-01): quita SOLO los comandos que invocan un nombre de la
+  # lista y CONSERVA un hermano no-casante de la MISMA entrada; dropea la entrada si queda sin hooks, y el
+  # evento si queda sin entradas. El match (basename exacto) es idéntico al de _settings_wires (def brain).
+  if jq '
+      def brain($c): [($c // "") | scan("[^/\"\\s]+\\.sh")] | any(. as $n | $ARGS.positional | index($n));
+      if (.hooks|type)=="object" then
+        .hooks |= ( to_entries
+          | map(.value |= ( map(.hooks |= map(select(brain(.command)|not)))
+                            | map(select((.hooks|type)=="array" and (.hooks|length)>0)) ))
+          | map(select((.value|type)=="array" and (.value|length)>0)) | from_entries )
+        | (if (.hooks|length)==0 then del(.hooks) else . end)
+      else . end
+    ' "$sf" --args "$@" > "$tmp" 2>/dev/null && [ -s "$tmp" ]; then
+    mv "$tmp" "$sf"; return 0
+  else
+    rm -f "$tmp"; return 1
+  fi
+}
+# _skill_es_copia_del_cerebro <skd> <sk> → 0 si el skill-dir copiado <skd> es una copia del cerebro: igual a
+# la fuente ACTUAL, o cada archivo igual a ALGÚN blob HISTÓRICO de su misma ruta en brain/skills/<sk> (git de
+# cortex). 1 si algún archivo no casa ninguna versión (lo modificó el proyecto → se conserva). Un regenerable
+# viejo que difiere de la fuente actual pero sí fue del cerebro se reconoce por la historia y se retira.
+_skill_es_copia_del_cerebro() {
+  local skd="$1" sk="$2" gitroot rel h hist f
+  [ -d "$SRC_SKILLS/$sk" ] && diff -rq "$skd" "$SRC_SKILLS/$sk" >/dev/null 2>&1 && return 0
+  command -v git >/dev/null 2>&1 || return 1
+  gitroot="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null)" || return 1
+  [ -n "$gitroot" ] || return 1
+  while IFS= read -r f; do
+    rel="${f#"$skd"/}"
+    h="$(git hash-object "$f" 2>/dev/null)"; [ -n "$h" ] || return 1
+    hist="$(git -C "$gitroot" log --all --format=%H -- "brain/skills/$sk/$rel" 2>/dev/null \
+            | while IFS= read -r c; do git -C "$gitroot" rev-parse "$c:brain/skills/$sk/$rel" 2>/dev/null; done)"
+    printf '%s\n' "$hist" | grep -qxF "$h" || return 1
+  done < <(find "$skd" -type f)
+  return 0
+}
+
+# ── MODO --limpiar-repo [<root>] [--apply]: retira el cerebro POR-REPO de UN repo (migración "solo cerebro
+# global": el cerebro vive solo en global por máquina; ningún repo debe cargar copias de sus
+# hooks). Quita de <root>/.claude: los hooks/libs del cerebro (.sh + su cableado en settings.json/.local),
+# el sello .brain-version y las skills del cerebro — SOLO las del ledger .brain-skills o del MANIFEST cuyo
+# CONTENIDO coincide con la fuente (una que difiera se REPORTA, no se borra). NUNCA toca la memoria/estado
+# del proyecto ni sus skills propias. Default: PLAN (dry-run); muta solo con --apply (lo quitado va a un
+# respaldo en /tmp). Se corre en cada repo y se commitea por SU flujo de git.
+LIMPIAR_REPO=0; LIMPIAR_APPLY=0; LIMPIAR_ROOT=""
+for _a in "$@"; do
+  case "$_a" in
+    --limpiar-repo) LIMPIAR_REPO=1 ;;
+    --apply)        LIMPIAR_APPLY=1 ;;
+    --*)            : ;;
+    *) [ "$LIMPIAR_REPO" = 1 ] && [ -z "$LIMPIAR_ROOT" ] && LIMPIAR_ROOT="$_a" ;;
+  esac
+done
+if [ "$LIMPIAR_REPO" = 1 ]; then
+  root="${LIMPIAR_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+  rcd="$root/.claude"
+  if [ ! -d "$rcd" ]; then echo "limpiar-repo: $root no tiene .claude/ — nada que hacer"; exit 0; fi
+  if [ "$LIMPIAR_APPLY" = 1 ]; then modo="APLICA"; else modo="PLAN (dry-run; usa --apply para ejecutar)"; fi
+  echo "==> cortex --limpiar-repo [$modo]: retiro del cerebro por-repo en $root"
+  command -v jq >/dev/null 2>&1 || echo "   (sin jq: no puedo de-cablear settings.json; instala jq)"
+  # Nombres de hooks/libs del cerebro (TODO tier, kind hook+lib) del MANIFEST = lo que NO debe vivir por-repo.
+  brain_names=""
+  [ -f "$SRC_HOOKS/MANIFEST" ] && brain_names="$(awk '$1!~/^#/ && NF>=3 && ($3=="hook"||$3=="lib"){print $1}' "$SRC_HOOKS/MANIFEST")"
+  bdir=""
+  if [ "$LIMPIAR_APPLY" = 1 ]; then bdir="$(mktemp -d "/tmp/cortex-limpiar-repo-$(date +%Y%m%d-%H%M%S).XXXXXX")" && echo "   respaldo recuperable en: $bdir"; fi
+  tocado=0
+  # 1) hooks/libs .sh del cerebro copiados en <root>/.claude/hooks/
+  for n in $brain_names; do
+    f="$rcd/hooks/$n.sh"
+    if [ -f "$f" ]; then
+      tocado=1; echo "   [hook] $f"
+      if [ "$LIMPIAR_APPLY" = 1 ]; then mkdir -p "$bdir/hooks" && cp -p "$f" "$bdir/hooks/" 2>/dev/null; rm -f "$f"; fi
+    fi
+  done
+  # 1b) artefactos NO-.sh del cerebro (MANIFEST, RETIRED, *.template.md, agentes-costo.json) que un sync
+  #     por-repo viejo copió a <root>/.claude/hooks/ — se reconocen por existir con el MISMO nombre en la fuente.
+  if [ -d "$SRC_HOOKS" ]; then
+    for sf_art in "$SRC_HOOKS"/*; do
+      [ -f "$sf_art" ] || continue
+      case "$sf_art" in *.sh) continue ;; esac
+      art="$rcd/hooks/$(basename "$sf_art")"
+      if [ -f "$art" ]; then
+        tocado=1; echo "   [artefacto] $art"
+        if [ "$LIMPIAR_APPLY" = 1 ]; then mkdir -p "$bdir/hooks" && cp -p "$art" "$bdir/hooks/" 2>/dev/null; rm -f "$art"; fi
+      fi
+    done
+  fi
+  # 2) cableado en settings.json / settings.local.json — por LISTA EXACTA de nombres (no regex): un hook
+  # PROPIO del repo cuyo nombre TERMINE igual (mi-limpiar.sh, pre-sesion-inicio.sh) NO se de-cablea.
+  brain_sh=(); for n in $brain_names; do brain_sh+=("$n.sh"); done
+  for sf in "$rcd/settings.json" "$rcd/settings.local.json"; do
+    if [ "${#brain_sh[@]}" -gt 0 ] && _settings_wires "$sf" "${brain_sh[@]}"; then
+      tocado=1; echo "   [cableado] $sf cita hooks del cerebro"
+      if [ "$LIMPIAR_APPLY" = 1 ]; then cp -p "$sf" "$bdir/$(basename "$sf")" 2>/dev/null; _dewire_from_settings "$sf" "${brain_sh[@]}" || echo "   warn: no pude de-cablear $sf (¿JSON inválido?)"; fi
+    fi
+  done
+  # 3) sello .brain-version (vive en .claude/hooks/.brain-version; algunos clones viejos lo tienen en .claude/)
+  for _bv in "$rcd/hooks/.brain-version" "$rcd/.brain-version"; do
+    if [ -f "$_bv" ]; then
+      tocado=1; echo "   [sello] $_bv"
+      if [ "$LIMPIAR_APPLY" = 1 ]; then cp -p "$_bv" "$bdir/" 2>/dev/null; rm -f "$_bv"; fi
+    fi
+  done
+  # 3b) sellos de throttle que una versión anterior dejó dentro del repo (hoy viven en ~/.claude/state/)
+  for _st in "$rcd/memory/.contexto-aviso" "$rcd/memory/.contexto-aviso.d" "$rcd/memory/.cuota-fetch-forzado" "$rcd/memory/.ramas-huerfanas-estado"; do
+    if [ -e "$_st" ]; then
+      tocado=1; echo "   [sello-viejo] $_st"
+      if [ "$LIMPIAR_APPLY" = 1 ]; then cp -R "$_st" "$bdir/" 2>/dev/null; rm -rf "$_st"; fi
+    fi
+  done
+  # 4) skills del cerebro — SOLO candidatas (ledger .brain-skills o nombre en el MANIFEST) cuyo CONTENIDO
+  #    coincide con la fuente; una que DIFIERA (o sin fuente) se REPORTA y NO se borra. Jamás toca skills del proyecto.
+  if [ -d "$rcd/skills" ]; then
+    man_sk=""; [ -f "$SRC_SKILLS/MANIFEST" ] && man_sk="$(awk '$1!~/^#/ && NF>=2{print $1}' "$SRC_SKILLS/MANIFEST")"
+    led_sk=""; [ -f "$rcd/skills/.brain-skills" ] && led_sk="$(grep -vE '^[[:space:]]*#|^[[:space:]]*$' "$rcd/skills/.brain-skills" 2>/dev/null)"
+    for sk in $(printf '%s\n%s\n' "$man_sk" "$led_sk" | sort -u); do
+      [ -z "$sk" ] && continue
+      skd="$rcd/skills/$sk"; [ -d "$skd" ] || continue
+      if _skill_es_copia_del_cerebro "$skd" "$sk"; then
+        tocado=1; echo "   [skill cerebro] $skd"
+        if [ "$LIMPIAR_APPLY" = 1 ]; then mkdir -p "$bdir/skills" && cp -Rp "$skd" "$bdir/skills/" 2>/dev/null; rm -rf "$skd"; fi
+      else
+        echo "   [skill DIFIERE de toda versión del cerebro — NO la toco, revísala a mano] $skd"
+      fi
+    done
+  fi
+  [ "$tocado" = 0 ] && echo "   nada del cerebro por-repo encontrado (ya está limpio)."
+  echo "   (la memoria/estado y las skills propias del proyecto NO se tocan)"
+  [ "$LIMPIAR_APPLY" = 1 ] || echo "   PLAN: nada se modificó. Re-corre con --apply (y commitea el cambio por el flujo del repo)."
+  exit 0
+fi
+
 echo "==> cortex: instalando cerebro global en $CLAUDE_DIR"
 mkdir -p "$HOOKS_DIR" "$SKILLS_DIR"
 
@@ -74,11 +233,10 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 # ── (a) Copiar hooks de tier global + la lib compartida ──
-# Los de tier {global, both} salen del MANIFEST (fuente única) → esta lista ya NO se cura a mano en
-# paralelo con la copia por-repo (antídoto a H2: dos listas divergían). El drift-check de test-brain
-# verifica que install/uninstall/sincronizar coincidan con el manifiesto.
+# Los de tier {global} salen del MANIFEST (fuente única) → esta lista ya NO se cura a mano (antídoto a H2:
+# dos listas divergían). El drift-check de test-brain verifica que install/uninstall coincidan con el manifiesto.
 if [ -f "$SRC_HOOKS/MANIFEST" ]; then
-  GLOBAL_HOOKS="$(awk '$1!~/^#/ && NF>=3 && ($2=="global"||$2=="both"){print $1".sh"}' "$SRC_HOOKS/MANIFEST")"
+  GLOBAL_HOOKS="$(awk '$1!~/^#/ && NF>=3 && $2=="global"{print $1".sh"}' "$SRC_HOOKS/MANIFEST")"
 else
   echo "warn: falta $SRC_HOOKS/MANIFEST; no puedo derivar la lista de hooks globales"; GLOBAL_HOOKS=""
 fi
@@ -103,19 +261,8 @@ for h in $GLOBAL_HOOKS; do
     echo "warn: falta el hook fuente $h"
   fi
 done
-# ── (a2) PODA de hooks REPO-TIER filtrados al global ────────────────────────────────────────── ──
-# Un hook tier=repo (dod-verificar, sesion-inicio, …) NUNCA debe vivir en ~/.claude/hooks/: se cablea SOLO
-# per-repo (en <repo>/.claude/settings.json → ${CLAUDE_PROJECT_DIR}/.claude/hooks/), jamás global. Si uno se
-# FILTRÓ al global (era vieja, o un sincronizar-cerebro mal-apuntado a ~), queda de HUÉRFANO INERTE (nadie
-# lo cablea global) y CONFUNDE ("el script está pero no dispara"). install-brain no lo instala, pero antes
-# tampoco lo PODABA → ahora sí. SEGURO/ACOTADO: solo borra los que el MANIFEST declara tier=repo (esos por
-# definición no pueden ser propios del usuario ni {global,both}).
-if [ -f "$SRC_HOOKS/MANIFEST" ]; then
-  REPO_HOOKS="$(awk '$1!~/^#/ && NF>=3 && $2=="repo" && $3=="hook"{print $1".sh"}' "$SRC_HOOKS/MANIFEST")"
-  for rh in $REPO_HOOKS; do
-    [ -f "$HOOKS_DIR/$rh" ] && rm -f "$HOOKS_DIR/$rh" && echo "poda: retiré el hook repo-tier huérfano '$rh' del global $HOOKS_DIR (se cablea per-repo, nunca global)"
-  done
-fi
+# (El tier `repo` se retiró con el cerebro por-repo: ya no hay hooks que vivan solo per-repo,
+#  así que no hay poda de repo-tier huérfano. La poda de lápidas `retirado` sigue abajo.)
 # ── (a3) PODA DE RETIRADOS (LÁPIDAS del MANIFEST) ───────────────────────────────────────────── ──
 # Un tier `retirado` es una LÁPIDA: el brain ya mató este hook (su .sh se borró de brain/hooks/), pero
 # quitar la entrada del MANIFEST NO alcanza para limpiar una máquina que YA lo tenía instalado — el .sh
@@ -142,20 +289,9 @@ if [ -n "$RETIRED_ENTRIES" ]; then
     if command -v jq >/dev/null 2>&1 && [ -f "$GSET" ]; then
       if ! jq empty "$GSET" 2>/dev/null; then
         echo "ERROR: $GSET es JSON INVÁLIDO — NO podo el cableado retirado de '$rname' para no arriesgar el archivo (settings corrupto te deja sin NINGÚN guard). Repáralo (jq . \"$GSET\") y re-corre." >&2
-      elif jq -e --arg pat "/$rname\\.sh" 'any(.hooks[]?[]?; ([.hooks[]?.command] | join(" ")) | test($pat))' "$GSET" >/dev/null 2>&1; then
-        rtmp="$(mktemp)" || rtmp=""
-        if [ -n "$rtmp" ] && jq --arg pat "$rname\\.sh" '
-            if (.hooks|type)=="object" then
-              .hooks |= ( to_entries
-                | map(.value |= [ .[] | select((([.hooks[]?.command]|join(" "))|test($pat))|not) ])
-                | map(select((.value|type)=="array" and (.value|length)>0)) | from_entries )
-              | (if (.hooks|length)==0 then del(.hooks) else . end)
-            else . end
-          ' "$GSET" > "$rtmp" 2>/dev/null && [ -s "$rtmp" ]; then
-          mv "$rtmp" "$GSET"; podado_wire=1
-        else
-          rm -f "$rtmp"; echo "warn: no pude de-cablear el hook retirado '$rname' de $GSET"
-        fi
+      elif _settings_wires "$GSET" "$rname.sh"; then
+        if _dewire_from_settings "$GSET" "$rname.sh"; then podado_wire=1
+        else echo "warn: no pude de-cablear el hook retirado '$rname' de $GSET"; fi
       fi
     fi
     if [ "$podado_sh" = 1 ] || [ "$podado_wire" = 1 ]; then
@@ -204,7 +340,7 @@ register_hook() {
 }
 
 # Evento+matcher de cada hook GLOBAL a cablear. El MANIFEST declara tier/kind pero NO el evento →
-# esta tabla lo mapea (misma forma que ev_de() en sincronizar-cerebro.sh, que cubre los {repo,both}).
+# esta tabla lo mapea.
 # Matcher vacío ⇒ se omite la clave ⇒ casa TODAS las fuentes (SessionStart: startup/resume/compact/clear;
 # PostToolUse: toda tool). Al AGREGAR un hook global nuevo al MANIFEST: añádelo aquí — si falta, el loop
 # de abajo AVISA y el drift-check de test-brain (e2) FALLA (no se cablea en silencio).
@@ -215,7 +351,7 @@ ev_de() {
     limite-gasto|delegacion-gate) echo "PreToolUse|Task|Agent" ;;   # Task|Agent: el tool se renombró Agent (antes Task); casar AMBOS o el gate nunca dispara
     delegacion-registrar) echo "PostToolUse|Task|Agent" ;;
     rehidratar-hilo|aviso-drift-cerebro|sesion-inicio) echo "SessionStart|" ;;
-    recordar-cosechar) echo "Stop|" ;;       # tier both (2026-10-21): estado-proyecto.md "en todos lados" → global por bootstrap. Fail-open/no-op sin los archivos del proyecto.
+    recordar-cosechar) echo "Stop|" ;;       # estado-proyecto.md "en todos lados" → global por bootstrap. Fail-open/no-op sin los archivos del proyecto.
     aviso-contexto) echo "PostToolUse|" ;;   # casa TODA tool (sin matcher): mide el ctx para el volcado del checkpoint mecánico
     # barrer-ramas: DOBLE trigger del barrido — SessionStart (oportunista, throttled) + PostToolUse/Bash
     # (al punto de merge, detecta glab/gh merge vía acg_es_merge_mr). Multi-evento como exportar-sesion-master.
@@ -236,7 +372,7 @@ ev_de() {
 # latente: antes la COPIA se derivaba del MANIFEST pero el CABLEADO eran 16 register_hook a mano → un
 # hook global nuevo se copiaba pero no se cableaba). Los mismos hooks/eventos que antes; el evento sale
 # de ev_de(). El command conserva el literal `$HOME` (se expande al correr el hook, no aquí). ──
-WIRE_HOOKS="$(awk '$1!~/^#/ && NF>=3 && ($2=="global"||$2=="both") && $3=="hook"{print $1}' "$SRC_HOOKS/MANIFEST" 2>/dev/null)"
+WIRE_HOOKS="$(awk '$1!~/^#/ && NF>=3 && $2=="global" && $3=="hook"{print $1}' "$SRC_HOOKS/MANIFEST" 2>/dev/null)"
 wired_names=""
 unwired_names=""
 for h in $WIRE_HOOKS; do
@@ -266,15 +402,15 @@ else
   echo "ADVERTENCIA: hooks COPIADOS a $HOOKS_DIR pero NO CABLEADOS en $GSET (falta jq) — los guards NO disparan (fail-open) hasta que instales jq y re-corras. Esto NO es una instalación completa de guards."
 fi
 
-# ── (c) Skills genéricas del cerebro (cerrar-slice, checkpoint, …) — tier {global,both} del
+# ── (c) Skills genéricas del cerebro (cerrar-slice, checkpoint, …) — tier {global} del
 # brain/skills/MANIFEST (fuente única de tiers; hoy TODAS son `global`). Copia el ÁRBOL COMPLETO de cada
 # skill (no solo SKILL.md — algunas traen reference/ o bootstrap-claude.sh; el `cp -f SKILL.md` anterior los
 # DEJABA FUERA → aparecían como "falta"/drift eterno en verificar-cerebro y en el nuevo drift de skills).
 SKILLS_MANIFEST="$SRC_SKILLS/MANIFEST"
 if [ -d "$SRC_SKILLS" ]; then
-  # Nombres a instalar: del MANIFEST {global,both}; si no hay manifiesto, fallback = todas las carpetas.
+  # Nombres a instalar: del MANIFEST {global}; si no hay manifiesto, fallback = todas las carpetas.
   if [ -f "$SKILLS_MANIFEST" ]; then
-    _sk_names="$(awk '$1!~/^#/ && NF>=2 && ($2=="global"||$2=="both"){print $1}' "$SKILLS_MANIFEST")"
+    _sk_names="$(awk '$1!~/^#/ && NF>=2 && $2=="global"{print $1}' "$SKILLS_MANIFEST")"
   else
     _sk_names="$(for d in "$SRC_SKILLS"/*/; do [ -d "$d" ] && basename "$d"; done)"
   fi
@@ -309,7 +445,7 @@ fi
 # diferencia de que una skill NO tiene cableado en settings.json (es un folder markdown que se LEE, no un
 # script que se EJECUTE): aquí basta borrar la carpeta instalada, sin de-cablear nada. Sin esto, una
 # máquina que ya corrió install-brain ANTES del retiro se queda con la carpeta zombie para siempre — el
-# MANIFEST deja de listarla como global/both, pero nada la borra, y el listado de skills de CUALQUIER
+# MANIFEST deja de listarla como global, pero nada la borra, y el listado de skills de CUALQUIER
 # sesión en esa máquina sigue ofreciéndola junto a su reemplazo, sin señal de cuál es el dueño vigente
 # Idempotente (si la carpeta ya no está, no reporta nada) y lo DICE cuando sí actúa (nombre + motivo).
 if [ -f "$SKILLS_MANIFEST" ]; then
@@ -443,7 +579,7 @@ det_shell_path="${SHELL:-}"; det_shell="$(basename "${det_shell_path:-sh}")"
 # Aliases que MUERDEN: detección CROSS-SHELL (zsh/bash/fish INSTALADOS) vía la lib detectar-shells.sh,
 # filtrando a los que SOMBREAN un binario real (no una lista fija). Antes: solo login shell + lista fija
 # de 5 (ls/rm/cp/mv/grep) → se le escapaban `mkdir -p`, `vi`→nvim, y todo lo de fish/otro shell. Fail-safe:
-# si la lib no cargó, cae a una nota mínima. La MISMA detección alimenta el artefacto LEAN (abajo, d3).
+# si la lib no cargó, cae a una nota mínima.
 if command -v ds_render_posix_bullets >/dev/null 2>&1; then
   alias_block="$(ds_render_posix_bullets 2>/dev/null || true)"
 else
@@ -463,7 +599,7 @@ if [ -n "$blk" ]; then
     printf '## Detectado por el bootstrap (%s)\n' "$(date +%Y-%m-%d 2>/dev/null || echo '?')"
     printf -- '- **OS / arch:** `%s`\n' "$det_os"
     printf -- '- **Shell de login:** `%s` (`%s`)\n' "$det_shell" "${det_shell_path:-?}"
-    printf -- '- **Aliases que muerden comandos** (salta con `command <cmd>` — NUNCA `/bin/<cmd>`: la ruta varía por OS y `rg`/`eza`/etc. no están en `/bin`; en fish `\\<cmd>` tampoco salta una función). Vista LEAN siempre-en-contexto: `~/.claude/aliases-activos.md` (@import):\n'
+    printf -- '- **Aliases que muerden comandos** (salta con `command <cmd>` — NUNCA `/bin/<cmd>`: la ruta varía por OS y `rg`/`eza`/etc. no están en `/bin`; en fish `\\<cmd>` tampoco salta una función):\n'
     printf '%s\n' "$alias_block" | sed 's/^/  /'
     printf -- '- **Tools clave (presencia):**\n'
     printf '%b' "$tool_bullets"
@@ -476,7 +612,7 @@ if [ -z "$blk" ]; then
 elif [ ! -f "$ENTORNO" ]; then
   mkdir -p "$(dirname "$ENTORNO")"
   {
-    printf '# Entorno de ESTA máquina — LEAN, FUENTE ÚNICA (aliases: ver `aliases-activos.md`)\n'
+    printf '# Entorno de ESTA máquina — LEAN, FUENTE ÚNICA\n'
     printf '<!-- LEAN — MANTENER ASÍ: un hecho/regla por línea, seco, en presente. NADA de drama, citas,\n'
     printf '     fechas, nombres, "caso real…", trazabilidad ("antes era…"). Conserva TODO dato técnico\n'
     printf '     (comando/ruta/flag/valor/gotcha); corta solo prosa y justificación larga. Per-máquina: NO\n'
@@ -557,39 +693,31 @@ else
   echo "ok: normas globales del cerebro agregadas a $GCLAUDE"
 fi
 
-# ── (d3) Artefacto LEAN de aliases + @import en el CLAUDE.md global ──
-# El entorno curado vive en ~/.claude/entorno-maquina.md (arriba). Este es la VISTA DERIVADA LEAN de aliases,
-# answer-first (el ESCAPE primero), pensada para estar SIEMPRE en contexto vía `@import` recursivo del
-# CLAUDE.md — sin costarle líneas al propio CLAUDE.md. Es GENERADO per-máquina → NO viaja por git.
-# En Windows el .ps1 ya escribió el bloque `<!-- shells:powershell -->` ANTES de delegar aquí; esta lib
-# sólo (re)escribe el bloque `<!-- shells:posix -->` → ambos coexisten sin pisarse. Fail-safe: sin la lib,
-# se omite (no rompe la instalación).
+# ── (d3) RETIRO del artefacto LEAN de aliases + su @import ──
+# Los aliases que muerden ya viven en ~/.claude/entorno-maquina.md (bloque detectado-por-bootstrap, arriba),
+# que está en contexto por su propio @import. El artefacto separado aliases-activos.md + su @import eran una
+# copia redundante → se retiran: se borra el archivo y se quita su línea @import del CLAUDE.md global (con la
+# misma GUARDA anti-truncado: un CLAUDE.md con BEGIN sin END NO se toca, para no arriesgar la sección personal).
 ART="$CLAUDE_DIR/aliases-activos.md"
-if command -v ds_render_posix >/dev/null 2>&1; then
-  ds_ensure_artifact_header "$ART"
-  if ds_render_posix 2>/dev/null | ds_upsert_block "$ART" posix; then
-    echo "ok: artefacto LEAN de aliases (re)generado en $ART (bloque posix)"
+[ -f "$ART" ] && { rm -f "$ART"; echo "ok: retirado el artefacto LEAN de aliases ($ART)"; }
+if [ -f "$GCLAUDE" ] && grep -q 'brain:import-aliases' "$GCLAUDE" 2>/dev/null; then
+  if grep -q 'BEGIN cortex' "$GCLAUDE" 2>/dev/null && ! grep -q 'END cortex' "$GCLAUDE" 2>/dev/null; then
+    echo "warn: $GCLAUDE tiene BEGIN sin END — NO retiro el @import de aliases (no toco un archivo en estado peligroso). Ciérralo y re-corre."
   else
-    echo "warn: no pude generar el bloque posix de $ART"
+    tmp="$(mktemp)" || tmp=""
+    # Quita el comentario marcador 'brain:import-aliases' y la línea '@aliases-activos.md' que le sigue.
+    if [ -n "$tmp" ] && awk '
+        /brain:import-aliases/ { skipnext=1; next }
+        skipnext==1 && /^@aliases-activos\.md[[:space:]]*$/ { skipnext=0; next }
+        { skipnext=0; print }
+      ' "$GCLAUDE" > "$tmp" && [ -s "$tmp" ]; then
+      cp "$GCLAUDE" "$GCLAUDE.bak" 2>/dev/null || true
+      mv "$tmp" "$GCLAUDE"
+      echo "ok: retirado el @import de aliases-activos.md de $GCLAUDE (respaldo en $GCLAUDE.bak)"
+    else
+      rm -f "$tmp"; echo "warn: no pude retirar el @import de aliases de $GCLAUDE"
+    fi
   fi
-  # Cablear el @import idempotente, FUERA del bloque BEGIN/END cortex (que se regenera): su propio
-  # marcador. Claude Code procesa @imports recursivos → el artefacto queda siempre en contexto.
-  # GUARDA anti-truncado (misma que el bloque de normas): un CLAUDE.md con BEGIN sin END está en estado
-  # PELIGROSO → NO lo tocamos (ni para appendear el @import), para no arriesgar la sección personal.
-  if [ -f "$GCLAUDE" ] && grep -q 'BEGIN cortex' "$GCLAUDE" 2>/dev/null && ! grep -q 'END cortex' "$GCLAUDE" 2>/dev/null; then
-    echo "warn: $GCLAUDE tiene BEGIN sin END — NO cablo el @import (no toco un archivo en estado peligroso). Ciérralo y re-corre."
-  elif [ -f "$GCLAUDE" ] && grep -q 'brain:import-aliases' "$GCLAUDE" 2>/dev/null; then
-    echo "ok: @import de aliases-activos.md ya cableado en $GCLAUDE (idempotente)"
-  else
-    {
-      [ -f "$GCLAUDE" ] && printf '\n'
-      printf '<!-- brain:import-aliases — VISTA per-máquina de aliases que muerden; GENERADA, NO viaja por git -->\n'
-      printf '@aliases-activos.md\n'
-    } >> "$GCLAUDE"
-    echo "ok: @import de aliases-activos.md cableado en $GCLAUDE (siempre en contexto)"
-  fi
-else
-  echo "warn: lib detectar-shells.sh no disponible; omito el artefacto LEAN de aliases y su @import"
 fi
 
 # @import del entorno LEAN (d2), idempotente con marcador propio. Si el CLAUDE.md ya trae un
@@ -615,6 +743,5 @@ if [ "$(git config --global --get fetch.prune 2>/dev/null)" != "true" ]; then
   git config --global fetch.prune true 2>/dev/null && echo "ok: git config --global fetch.prune=true (ramas remotas borradas se limpian solas al hacer fetch)"
 fi
 
-echo "listo: cerebro global instalado (hooks + cableado + skill + sello de versión + dashboard + entorno + como-trabajar + normas + aliases-activos)."
-echo "       Los hooks repo-scoped (sesion-inicio, dod-verificar) viven en"
-echo "       brain/hooks/ como fuente: cópialos al .claude/ de cada repo (se cargan al INICIAR ahí)."
+echo "listo: cerebro global instalado (hooks + cableado + skill + sello de versión + dashboard + entorno + como-trabajar + normas)."
+echo "       Todos los hooks del cerebro son GLOBALES (solo cerebro global por máquina): ningún hook viaja por-repo."

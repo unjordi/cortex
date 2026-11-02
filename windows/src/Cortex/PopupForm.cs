@@ -19,6 +19,10 @@ public sealed class PopupForm : Form
 {
     private readonly QuotaService _svc;
     private readonly Action _onRefresh;
+    // ⏻ Apagar: teardown LIMPIO (para el timer + quita el icono de bandeja + sale), no un Application.Exit
+    // pelón que dejaría un icono fantasma. En Windows el fetcher es IN-PROCESS (no hay agente externo tipo
+    // LaunchAgent/systemd timer), así que salir del proceso YA apaga todo; esto solo lo hace prolijo.
+    private readonly Action _onQuit;
     private int _tab;
     private int _hoverRail = -1;
     // Botón del pie del riel bajo el cursor: -1 ninguno · 0 ↻ refresh · 1 ⏻ quit. Espeja `_hoverRail`
@@ -84,6 +88,9 @@ public sealed class PopupForm : Form
     // respaldo que resetea el estado si el update no completó (p. ej. ff abortado → app sigue viva).
     private Rectangle _updateHit = Rectangle.Empty;
     private System.Windows.Forms.Timer? _updateFallback;
+    // Banner de AVISO DE LOGIN de la pestaña Límites (vencido/sin-cuenta/por-vencer): zona clicable del
+    // botón "Re-loguear en Claude" (coords de pantalla; Límites no scrollea → hit-test con e.Location).
+    private Rectangle _authHit = Rectangle.Empty;
 
     // logical → device scale (PerMonitorV2); all metrics below are in logical px.
     private float S => DeviceDpi / 96f;
@@ -121,10 +128,11 @@ public sealed class PopupForm : Form
         return list.ToArray();
     }
 
-    public PopupForm(QuotaService svc, Action onRefresh)
+    public PopupForm(QuotaService svc, Action onRefresh, Action onQuit)
     {
         _svc = svc;
         _onRefresh = onRefresh;
+        _onQuit = onQuit;
 
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
@@ -444,7 +452,7 @@ public sealed class PopupForm : Form
             });
             return;
         }
-        if (quitR.Contains(e.Location)) { Application.Exit(); }
+        if (quitR.Contains(e.Location)) { Hide(); _onQuit(); }
     }
 
     private void RailMouseMove(object? sender, MouseEventArgs e)
@@ -493,10 +501,60 @@ public sealed class PopupForm : Form
 
     // ----- Tab 0: Límites -----
 
+    /// Banner de aviso de login (espeja authNotice de QuotaModel.swift y el QML): pastilla roja (problema
+    /// duro: vencido / sin cuenta) o ámbar (por vencer), con el mensaje y, si Offer, el botón
+    /// "Re-loguear en Claude" cuya zona clicable se registra en _authHit. Sin aviso → no pinta nada.
+    private int PaintAuthNotice(Graphics g, int pad, int right, int y)
+    {
+        _authHit = Rectangle.Empty;
+        var n = _svc.AuthNotice;
+        if (n is null) return y;
+        var (msg, offer, hard) = n.Value;
+
+        Color tint = hard ? Fmt.Hex(Fmt.Danger) : _accent;
+        int inner = Sc(9), iconW = Sc(20);
+        int boxW = right - pad;
+
+        using var msgFont = Px(10f, FontStyle.Regular);
+        int textW = boxW - inner * 2 - iconW;
+        float msgH = g.MeasureString(msg, msgFont, textW).Height;
+
+        int btnH = offer ? Sc(22) : 0;
+        int btnGap = offer ? Sc(8) : 0;
+        int boxH = inner + (int)Math.Ceiling(msgH) + btnGap + btnH + inner;
+        var box = new Rectangle(pad, y, boxW, boxH);
+
+        using (var bx = new SolidBrush(Color.FromArgb(31, tint)))
+            FillRounded(g, bx, box, Sc(8));
+
+        int cx = pad + inner, cy = y + inner;
+        using (var icF = PxFont("Segoe UI Emoji", 10.5f, FontStyle.Regular))
+        using (var icB = new SolidBrush(tint))
+            g.DrawString(hard ? "⚠" : "⏳", icF, icB, cx, cy - Sc(1));
+        using (var tb = new SolidBrush(_fg))
+            g.DrawString(msg, msgFont, tb, new RectangleF(cx + iconW, cy, textW, msgH + Sc(2)));
+
+        if (offer)
+        {
+            string label = "Re-loguear en Claude";
+            using var btnFont = Px(10f, FontStyle.Bold);
+            int bw = (int)g.MeasureString(label, btnFont).Width + Sc(18);
+            var btn = new Rectangle(pad + inner, cy + (int)Math.Ceiling(msgH) + btnGap, bw, btnH);
+            using (var bb = new SolidBrush(tint))
+                FillRounded(g, bb, btn, Sc(6));
+            using (var lb = new SolidBrush(Color.White))
+                g.DrawString(label, btnFont, lb, btn,
+                    new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center });
+            _authHit = btn;
+        }
+        return y + boxH + Sc(12);
+    }
+
     private void PaintLimites(Graphics g, int pad)
     {
         int y = SectionTitle(g, pad, pad, "Límites de uso");
 
+        y = PaintAuthNotice(g, pad, _content.Width - pad, y);
         y = UsageSection(g, pad, y, "Sesión (5 h)", _svc.Snapshot?.FiveHour);
         y += Sc(14);
         y = UsageSection(g, pad, y, "Semanal (7 d)", _svc.Snapshot?.Weekly);
@@ -512,7 +570,10 @@ public sealed class PopupForm : Form
     private int UsageSection(Graphics g, int pad, int y, string title, Bucket? bucket)
     {
         int w = _content.Width - pad * 2;
-        double? pct = bucket?.Percent;
+        // Si el reset de la ventana YA pasó, el % cacheado es de ANTES del reset → "sin dato" (nunca el
+        // valor viejo ni su barra). Una lectura fresca siempre trae resets_at futuro. (Falla al despertar.)
+        bool resetPassed = Rel.IsPast(bucket?.ResetsAt);
+        double? pct = resetPassed ? (double?)null : bucket?.Percent;
 
         using (var tFont = Px(12.5f, FontStyle.Bold))
         using (var tBrush = new SolidBrush(_fg))
@@ -547,27 +608,27 @@ public sealed class PopupForm : Form
         // caption
         using (var cFont = Px(10f, FontStyle.Regular))
         using (var cBrush = new SolidBrush(Blend(_bg, _fg, 0.65)))
-            g.DrawString(Caption(bucket), cFont, cBrush, pad, y);
+            g.DrawString(Caption(bucket, resetPassed), cFont, cBrush, pad, y);
         return y + Sc(20);
     }
 
-    private static string Caption(Bucket? bucket)
+    private static string Caption(Bucket? bucket, bool resetPassed = false)
     {
         if (bucket == null) return "";
         string s = ResetLine(bucket.ResetsAt);
+        // Con el reset ya pasado no hay % vigente → tampoco el costo equiv (sería del ciclo viejo).
         double? c = bucket.EquivSessionCostUsd ?? bucket.EquivWeeklyCostUsd;
-        if (c is double cd)
+        if (!resetPassed && c is double cd)
             s += $" · ≈ ${cd.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} (API equiv local)";
         return s;
     }
 
-    /// "Se restablece en Nmin" (futuro) o "Se restableció hace Nmin · actualizando…" (ya pasó → el %
-    /// cacheado quedó viejo y el fetch disparado por el reset lo está poniendo al día).
+    /// "Se restablece en Nmin" (futuro) o "Se restableció hace Nmin · sin lectura nueva" (ya pasó → el %
+    /// cacheado es de antes del reset; NO se muestra, se espera una lectura posterior).
     private static string ResetLine(string? iso)
     {
-        // Pasado → "Se restableció hace Nmin · actualizando…"; futuro → detalle útil "en 4h36m" / "mié@7:59".
         return Rel.IsPast(iso)
-            ? $"Se restableció {Rel.Relative(iso)} · actualizando…"
+            ? $"Se restableció {Rel.Relative(iso)} · sin lectura nueva"
             : $"Se restablece {Rel.ResetDetail(iso)}";
     }
 
@@ -1643,6 +1704,9 @@ public sealed class PopupForm : Form
         }
         if (e.Button != MouseButtons.Left) return;
 
+        // Botón "Re-loguear en Claude" del banner de aviso de login (pestaña Límites, no scrollea).
+        if (_tab == 0 && !_authHit.IsEmpty && _authHit.Contains(e.Location)) { Relogin(); return; }
+
         // Footer de rango (tabs 1..4).
         if (_tab is 1 or 2 or 3 or TabChats)
             foreach (var (idx, rect) in _rangeHits)
@@ -1744,6 +1808,39 @@ public sealed class PopupForm : Form
                 UseShellExecute = true,
                 WorkingDirectory = Directory.Exists(cwd) ? cwd
                     : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            };
+            c.ArgumentList.Add("/k"); c.ArgumentList.Add(cmd);
+            Process.Start(c);
+        }
+        catch { /* no se pudo abrir terminal */ }
+    }
+
+    /// Abre una terminal con el flujo oficial de re-login (abre el navegador): `claude auth login
+    /// --claudeai [--email <cuenta>]`. Espeja relogin() de PopoverView.swift y el reloginRunner del QML.
+    /// Mismo patrón de terminal que ResumeSession (wt.exe → cmd.exe). La cuenta se valida como email.
+    private void Relogin()
+    {
+        string cmd = "claude auth login --claudeai";
+        var acct = _svc.ReloginAccount;
+        if (acct != null && System.Text.RegularExpressions.Regex.IsMatch(acct,
+                @"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$"))
+            cmd += $" --email {acct}";
+
+        try
+        {
+            var wt = new ProcessStartInfo { FileName = "wt.exe", UseShellExecute = true };
+            wt.ArgumentList.Add("cmd"); wt.ArgumentList.Add("/k"); wt.ArgumentList.Add(cmd);
+            if (Process.Start(wt) != null) return;
+        }
+        catch { /* wt no está → cae a cmd */ }
+
+        try
+        {
+            var c = new ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                UseShellExecute = true,
+                WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             };
             c.ArgumentList.Add("/k"); c.ArgumentList.Add(cmd);
             Process.Start(c);
@@ -1974,9 +2071,6 @@ public sealed class PopupForm : Form
             new("🔗", "merge-develop-guard", "push directo a develop·main, o MR sin --squash/sin tu OK → denegado; a main exige OK súper-explícito",
                 "PreToolUse · Bash",
                 "Candado ÚNICO de git. Como PASO 0 deniega el `git push`/merge directo a develop/main y te redirige a ramita→MR (absorbió a git-branch-guard, 2026-10-21). Un `gh pr merge`/`glab mr merge` a develop sin --squash se deniega, para que la ramita colapse a un commit curado; además busca tu OK explícito en el chat reciente antes de integrar. A main exige lenguaje de release ('hasta main', 'libera') y va SIN squash (conserva historia). Un 'sigue/avanza' NO cuenta como autorización."),
-            new("✅", "dod-verificar", "Def. of Done (ver Norma 🎯 DoD) sin build+tests+memoria → denegado",
-                "Stop",
-                "Al cerrar el turno, si dijiste 'listo/en producción' tras tocar código fuente, exige evidencia de build+tests verdes y memoria al día, o bloquea el cierre."),
             new("💸", "delegacion-gate", "reclutar agente con costo → pide tu consentimiento (puede negar)",
                 "PreToolUse · Task",
                 "Al reclutar un agente calcula su nivel de costo (gratis/incluido/con costo, según tu ventana de 5h) y pide consentimiento mostrando tu cuota real. Puedes negar y el agente no corre."),
@@ -1998,9 +2092,9 @@ public sealed class PopupForm : Form
             new("🧵", "rehidratar-hilo", "al retomar/tras compactar reinyecta el hilo mental de la tarea",
                 "SessionStart",
                 "Al abrir/retomar sesión o tras compactar, relee .claude/memory/hilo-mental-actual.md y lo reinyecta por additionalContext (canal fiable de SessionStart). Es la mitad 'leer' del par con el skill checkpoint (la mitad 'escribir'). Silencioso si el archivo no existe."),
-            new("♻️", "aviso-drift-cerebro", "la copia del cerebro por-repo quedó atrás de la fuente → aviso",
+            new("♻️", "aviso-drift-cerebro", "la copia GLOBAL del cerebro quedó atrás de la fuente → aviso",
                 "SessionStart",
-                "Al iniciar sesión en un repo con el cerebro por-repo instalado, compara esa copia contra la fuente única (sincronizar-cerebro.sh en dry-run, diff por contenido) y, si quedó atrás, avisa para que Claude proponga propagar por el flujo (ramita→MR). No escribe al árbol en repos compartidos. Throttle 6h si salió limpio."),
+                "Al iniciar sesión compara la copia GLOBAL instalada (~/.claude/hooks, skills y el bloque de normas de ~/.claude/CLAUDE.md) contra la fuente única y, si quedó atrás o se editó en vivo, avisa (warn-only) para portarlo a la fuente y re-correr install-brain. Throttle propio por frente, 6h si salió limpio. El cerebro ya no viaja por-repo (solo global)."),
             new("💾", "exportar-sesion-master", "auto-export de las sesiones *-master a ~/.claude-sessions (o Drive vía CLAUDE_SESSIONS_DRIVE); detached, sobrevive el cleanup de 30 días",
                 "Stop + SessionEnd + PreCompact",
                 "Sin exportar a mano: al final de cada turno (Stop, con debounce ~20 min/sesión), en salida limpia (SessionEnd, donde detecta/registra un master nuevo por su título *-master) y justo antes de compactar (PreCompact), re-exporta el .gz de las sesiones *-master a ~/.claude-sessions (o al Drive de CLAUDE_SESSIONS_DRIVE) para poder --resume la MISMA conversación en otra máquina. Corre detached en 2º plano y sobrevive el cleanup de 30 días de Claude Code."),
@@ -2079,6 +2173,9 @@ public sealed class PopupForm : Form
             new("🌙", "turno-nocturno", "Claude trabaja solo de noche: contrato medible, decide-o-parquea, checkpoint c/2h",
                 "skill · opt-in",
                 "Protocolo para dejar a Claude trabajando SOLO de noche: eco del contrato antes de empezar (alcance, criterio de cierre MEDIBLE, lo intocable, dónde queda visible el resultado), preflight de herramientas/quota, regla de decisión (dentro del alcance decide y sigue; fuera, parquea y brinca), autorización durable a disco y checkpoint cada ~2h."),
+            new("🔁", "mandato-loop", "el MOLDE para redactar un mandato de /loop de épica/lote",
+                "skill · opt-in",
+                "El molde con que un master redacta un mandato de /loop de épica/lote: «Cómo se redacta» (sin trazabilidad, sin «el LISTO lo da el usuario», criterio CIERRA-CUANDO por fila, nada de colas ajenas) + el bloque text completo (worktree por fila, FILAS, ÉPICA TERMINADA, CADA RONDA, DELEGACIÓN, PRUEBAS §1-7, HIGIENE MENTAL, REGLAS). NO es turno-nocturno."),
             new("🎓", "investigar-dominio", "ponte experto en un dominio (fan-out DOC-FIRST) → memorias durables + skills",
                 "skill · opt-in",
                 "Ponerte al día como EXPERTO en un dominio/ecosistema maduro sin investigar al aire: delega un fan-out de agentes a barrer la documentación oficial + issues/foros de cada pieza (método DOC-FIRST), cosecha en DOS capas (memorias de investigación indexadas + skills reutilizables, con la capa profunda separada) y REVISA las decisiones actuales contra el conocimiento nuevo para no arrastrar deuda técnica. Trae plantilla-prompt pegable para encargárselo a otro Claude."),

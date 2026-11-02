@@ -1,0 +1,1 @@
+Atendida por el lote (cortex-master, 2026-11-01). Fila 7 CERRADA: cerrar-slice --repo decide forge+gitleaks desde el clon local del slug; test b3cs-clon (falla vs a77e243^). Commit 0ba9277. Los 2 BAJOS → backlog LOTE-F7-a (slug sin clon = error duro) y LOTE-F7-b (traza Rama: duplicada).

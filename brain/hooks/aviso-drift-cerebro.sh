@@ -1,28 +1,18 @@
 #!/usr/bin/env bash
-# aviso-drift-cerebro.sh — SessionStart hook (tier GLOBAL). Al INICIAR sesión en un repo que tiene el
-# cerebro POR-REPO instalado (sello .brain-version o el hook repo-scoped clásico), compara esa copia
-# contra la FUENTE ÚNICA local (el clon de instalación ~/.cortex, o $CLAUDE_BRAIN_DIR) usando
-# sincronizar-cerebro.sh en DRY-RUN (diff-aware por CONTENIDO — comparar versiones NO sirve: VERSION
-# no se bumpea por cambio) y, si la copia quedó ATRÁS, INYECTA un aviso ruidoso vía additionalContext.
+# aviso-drift-cerebro.sh — SessionStart hook (tier GLOBAL). Avisa —warn-only— cuando la copia GLOBAL del
+# cerebro de ESTA máquina quedó ATRÁS de la FUENTE única local (el clon de instalación ~/.cortex, o
+# $CLAUDE_BRAIN_DIR) o se editó en vivo (se perdería en el próximo install-brain). Chequea tres frentes
+# per-MÁQUINA: skills (~/.claude/skills), hooks/libs (~/.claude/hooks) y el bloque de normas de
+# ~/.claude/CLAUDE.md, cada uno con su propio throttle. Delega la detección a drift-cerebro-comun.sh.
 #
-# BIFURCA por la marca `.claude/repo-compartido`:
-# - COMPARTIDO (tiene la marca): el brain por-repo es un CORREO que viaja por git a quien NO tiene brain
-#   global (colegas/clones) → hay que mantenerlo fresco. Comportamiento de siempre: detecta drift, auto-
-#   apply+commit+push en tu mini-develop con .claude/ limpio, o AVISA para propagar por el flujo.
-# - PERSONAL (sin la marca, el DEFAULT): guards por-repo NUNCA (tu máquina los saca del install GLOBAL +
-#   dedupe; una copia por-repo solo drifta/estorba). NO auto-commit/push; si el repo tiene guards del brain
-#   que SOBRAN, los FLAGGEA para quitar (opción B; no los borra solos). La memoria/skills son suyos, no se tocan.
-# Norma: "repo personal = memoria/skills, NUNCA guards por-repo" (en global-claude-md.md).
+# El cerebro vive SOLO en global por máquina: ya NO hay
+# copias del cerebro POR-REPO, así que este hook ya NO chequea ni auto-sincroniza una copia por-repo (eso
+# se retiró con el cerebro por-repo). Lo que queda es el aviso de drift de la copia GLOBAL vs la fuente —
+# el equivalente AUTOMÁTICO del doctor verificar-cerebro — más el cableado del @import de identidad (B8).
 #
-# Hook global de inicio de sesión que revisa que el local y el global sean el mismo y actualiza el local si no.
-# (a) el comparador es el DIFF real, no la versión; (b) en repos COMPARTIDOS "actualizar el local" = commit por ramita→MR, así que este hook NO escribe NADA al
-# árbol (un write silencioso ensuciaría el working tree y se mezclaría a commits de feature): DETECTA
-# y AVISA para que Claude proponga la propagación por el flujo.
-#
-# Throttle: si el último chequeo de ESTE repo salió LIMPIO, no se re-chequea por AVISO_DRIFT_HORAS
-# (default 6; stamp en ~/.claude/memory/.drift-cerebro/). Un chequeo CON drift no se cachea → avisa en
-# cada inicio de sesión hasta que se propague (esa insistencia es el punto).
-# Fail-open SIEMPRE: sin clon canónico / repo no-brained / cualquier error del sync → silencio.
+# Throttle: cada frente global solo se re-chequea cada AVISO_DRIFT_HORAS (default 6; stamps en
+# ~/.claude/memory/.drift-cerebro/). Un chequeo CON drift NO se cachea → insiste cada sesión hasta portarlo
+# a la fuente. Fail-open SIEMPRE: sin clon canónico / cualquier error → silencio.
 #
 # RECORDATORIO DE LA DUPLA: cuando el cerebro de este repo CAMBIA (auto-sync) o está por
 # hacerlo (drift), es el momento de "¿la realidad sigue cumpliendo la firma?" → el aviso añade un nudge a
@@ -43,9 +33,7 @@
 # --continue or --resume (source = resume or fork)").
 set -u
 
-# CUERPO PER-REPO compartido con el SWEEPER de flotilla (limpiar.sh flotilla, antes barrer-flotilla-cerebro.sh): la decisión de
-# drift + el auto-apply viven en la lib drift_chequea_repo → UNA sola implementación (cero drift entre
-# el fast-path interactivo de aquí y el batch del sweeper). Ver drift-cerebro-comun.sh.
+# Los detectores de drift de la copia GLOBAL (skills/hooks/normas) viven en la lib drift-cerebro-comun.sh.
 # shellcheck source=drift-cerebro-comun.sh
 . "$(dirname "$0")/drift-cerebro-comun.sh"
 
@@ -116,14 +104,9 @@ $part"
   exit 0
 }
 
-# Throttle por repo (solo cachea chequeos LIMPIOS). Es un concern INTERACTIVO — el sweeper batch de
-# flotilla NO usa este throttle (corre 1×/día con su propio lock por-repo). Va ANTES de delegar: un
-# chequeo limpio reciente evita re-correr el sync. (La identidad ya NO depende de esto: la carga el
-# @import nativo del CLAUDE.md, no este hook — ver B8 arriba. Un chequeo limpio throttleado => silencio.)
+# Cada frente de drift global (skills/hooks/normas/migración) lleva su PROPIO throttle (stamps abajo).
 horas="${AVISO_DRIFT_HORAS:-6}"; case "$horas" in ''|*[!0-9]*) horas=6;; esac
 stampdir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/memory/.drift-cerebro"; mkdir -p "$stampdir" 2>/dev/null || true
-slug=$(printf '%s' "$ROOT" | cksum 2>/dev/null | awk '{print $1}')
-stamp="$stampdir/${slug:-0}"
 now=$(date +%s)
 
 # ── DRIFT DE SKILLS GLOBAL (per-máquina) — con su PROPIO throttle (independiente del per-repo). Warn-only.
@@ -207,30 +190,6 @@ curl -fsSL https://raw.githubusercontent.com/unjordi/cortex/main/bootstrap.sh | 
   printf '%s' "$now" > "$mig_stamp" 2>/dev/null || true
 fi
 
-if [ -f "$stamp" ]; then
-  last=$(cat "$stamp" 2>/dev/null || echo 0)
-  case "$last" in ''|*[!0-9]*) last=0;; esac
-  [ $(( now - last )) -lt $(( horas * 3600 )) ] && emit_and_exit ""
-fi
-
-# ── Delegación al CUERPO PER-REPO COMPARTIDO (drift-cerebro-comun.sh). Hace TODO el chequeo per-repo
-# (brained? · fuente? · #46 personal/compartido · drift · C2 anti-regresión · auto-apply+commit+push en la
-# mini-develop) y devuelve STATUS + mensaje. El THROTTLE (arriba) es responsabilidad de ESTE hook
-# interactivo — el cuerpo compartido no lo conoce (el sweeper batch no lo usa).
-# Auto-apply REAL (no dry-run): en la mini-develop, si procede, sincroniza solo. Ver la lib para el detalle.
-_res=$(drift_chequea_repo "$ROOT")
-_status=$(printf '%s\n' "$_res" | head -1 | sed -n 's/^STATUS=//p')
-_msg=$(printf '%s\n' "$_res" | sed '1d')
-
-# Cachea SOLO los chequeos genuinamente LIMPIOS (personal sano o compartido al día). El flag de guards
-# sobrantes, el drift y el auto-sync NO se cachean (insisten / ya mutaron); "unknown" (sync sin resumen)
-# tampoco → reintenta la próxima sesión en vez de sellar un error transitorio como "al día".
-case "$_status" in
-  clean|personal-clean) printf '%s' "$now" > "$stamp" 2>/dev/null || true ;;
-esac
-
-# Emite: los estados silenciosos → silencio (salvo avisos per-máquina de drift global); los ruidosos, el msg.
-case "$_status" in
-  not-brained|no-source|unknown|clean|personal-clean) emit_and_exit "" ;;
-  *) emit_and_exit "$_msg" ;;
-esac
+# Emite los avisos de drift GLOBAL (skills/hooks/normas/migración) si los hay; si no, silencio. Ya NO hay
+# chequeo per-repo (el cerebro vive solo en global; el cerebro por-repo se retiró).
+emit_and_exit ""

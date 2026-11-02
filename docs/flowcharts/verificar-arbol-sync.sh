@@ -33,12 +33,15 @@ KNOWN_PENDING=""
 
 # Extrae los NOMBRES de skill de la familia 💡 de un archivo con el bloque de árbol (README o MEMORY.md).
 arbol_skills() {
-  awk '
+  # LC_ALL=C + alternación (├|└): un bracket de clase con caracteres multibyte ([├└]) matchea 0 líneas en
+  # gawk bajo locale C (LANG vacío, p. ej. ssh no-interactivo en Linux). La alternación byte-exacta corre igual
+  # en BSD y GNU awk y en cualquier locale.
+  LC_ALL=C awk '
     /💡 Skills/ { s=1; next }
     s && /^```/ { exit }
-    s && /^[├└]─/ {
+    s && /^(├|└)─/ {
       line=$0
-      sub(/^[├└]─[[:space:]]*/, "", line)               # quita el conector
+      sub(/^(├|└)─[[:space:]]*/, "", line)               # quita el conector
       sub(/^[^[:space:]]+[[:space:]]+/, "", line)        # quita el emoji (1er campo)
       split(line, a, /[[:space:]]/); if (a[1] != "") print a[1]   # 1er token = nombre del skill
     }
@@ -52,12 +55,13 @@ arbol_skills() {
 # label "📁 por-repo…" NO es un hook → se descarta explícitamente; (c) para de capturar en "📜 Normas"
 # (así una sola pasada cubre 🔒+🔔 sin colarse a Normas/Skills).
 arbol_hooks() {
-  awk '
+  # LC_ALL=C + alternación (├|└): ver nota en arbol_skills (el bracket multibyte matchea 0 en locale C).
+  LC_ALL=C awk '
     /🔒 Hooks Forzosos/ { s=1; next }
     s && /📜 Normas/ { exit }
     s {
       line=$0
-      n=sub(/^[[:space:]]*[├└]─[[:space:]]*/, "", line)   # quita espacio-inicial + conector (indentado o no)
+      n=sub(/^[[:space:]]*(├|└)─[[:space:]]*/, "", line)   # quita espacio-inicial + conector (indentado o no)
       if (n == 0) next                                    # no era un bullet (encabezado de familia, nota entre paréntesis…)
       if (line ~ /^📁/) next                               # el label "por-repo" no es un hook
       sub(/^[^[:space:]]+[[:space:]]+/, "", line)          # quita el emoji (1er campo)

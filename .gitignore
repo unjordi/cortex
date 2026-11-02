@@ -73,6 +73,9 @@ docs/flowcharts/*
 !docs/flowcharts/13-normas-el-cimiento.svg
 !docs/flowcharts/14-referencia-lib-skill-de-stack.dot
 !docs/flowcharts/14-referencia-lib-skill-de-stack.svg
+# El .drawio EDITABLE de cada chart (gen-charts.sh lo genera del .dot con dot2drawio, junto al .svg): glob,
+# un artefacto por chart. El trap del catch-all para un chart NUEVO sigue vigente por sus líneas !...dot/.svg.
+!docs/flowcharts/[0-9][0-9]-*.drawio
 # El generador de la leyenda (lee el árbol del README → subgraph .dot) y las CONVENCIONES son FUENTE, se versionan.
 !docs/flowcharts/gen-leyenda-arbol.sh
 !docs/flowcharts/CONVENCIONES.md

@@ -46,7 +46,8 @@ Reglas que hace cumplir (las mismas del guard merge-develop-guard):
   · SIEMPRE --squash (a develop = 1 commit limpio por slice).
   · NUNCA --auto/--auto-merge (merge YA, no encolado en MWPS sin testigo).
   · SIEMPRE borra la rama de origen (--remove-source-branch / --delete-branch).
-  · El mensaje DEBE traer traza: una línea "Rama: <…>" y una "MR:/PR: !<id>" (o #<id>), y ≥12 palabras.
+  · Traza rama→commit en el mensaje ("Rama: <…>" + "MR:/PR: !<id>"/#<id>): si falta, cerrar-slice la AGREGA
+    sola (del --branch/el forge). Un mensaje de <12 palabras solo AVISA; el guard ya no bloquea por el mensaje.
 USO
 }
 
@@ -80,13 +81,14 @@ _gitleaks_gate() {
   base="$(git rev-parse --verify -q origin/develop || git rev-parse --verify -q develop)" \
     || { printf 'cerrar-slice: no ubico origin/develop para el rango de gitleaks — omito el gate local (el CI lo cubre).\n' >&2; return 0; }
 
-  # H18: --repo a OTRO repo → el scan de `.` (cwd) sería el repo EQUIVOCADO. No podemos verificar
-  # localmente → avisa y NO declara "limpio" (el CI de gitleaks es el backstop server-side).
+  # Con --repo el flujo ya entró (cd) al clon local de ESE slug, así que el `.` de abajo ES el repo correcto.
+  # Esta comprobación queda como DEFENSA: si por lo que sea el cwd NO es el repo de --repo, avisa y NO declara
+  # "limpio" (el CI de gitleaks es el backstop server-side) en vez de escanear el repo equivocado.
   if [ -n "$REPO" ]; then
     url="$(git remote get-url origin 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"
     case "${url%.git}" in
       *[/:]"$(printf '%s' "$REPO" | tr '[:upper:]' '[:lower:]')") : ;;
-      *) printf 'cerrar-slice: ⚠️ --repo %s NO es el repo del directorio actual → el gate local de gitleaks escanearía otro repo; NO verifico aquí (el CI lo cubre). Para el gate local, córrelo desde el clon de %s.\n' "$REPO" "$REPO" >&2; return 0 ;;
+      *) printf 'cerrar-slice: ⚠️ --repo %s no es el repo del directorio actual → el gate local de gitleaks escanearía otro repo; NO verifico aquí (el CI lo cubre).\n' "$REPO" >&2; return 0 ;;
     esac
   fi
 
@@ -184,6 +186,26 @@ if [ -n "$MSG_FILE" ]; then
   MSG="$(cat "$MSG_FILE")"
 fi
 [ -n "$MSG" ] || _err "falta el resumen del squash: pásalo con --message \"…\" o --message-file <f>."
+
+# Con --repo <slug>: el forge y el gate de gitleaks se deciden/corren DESDE el clon local de ESE slug, no del
+# cwd (que puede ser otro repo/forge). El MSG ya se leyó arriba (relativo al cwd original), así que entrar al
+# clon en este punto no rompe --message-file; gh/glab llevan -R <slug> y operan igual desde cualquier cwd.
+if [ -n "$REPO" ]; then
+  for _lib in "$(dirname "$0")/../../hooks/analizar-comando-git.sh" "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks/analizar-comando-git.sh"; do
+    [ -f "$_lib" ] && { . "$_lib"; break; }
+  done
+  command -v acg_clon_local_de_slug >/dev/null 2>&1 || _err "no encontré la lib analizar-comando-git.sh para ubicar el clon de $REPO."
+  _clon="$(acg_clon_local_de_slug "$REPO" .)" || _clon=""
+  if [ -n "$_clon" ]; then
+    cd "$_clon" || _err "no pude entrar a $_clon."
+  elif [ -n "$FORGE" ]; then
+    # Sin clon local pero con --forge explícito: el forge ya está dado y el merge usa -R <slug> desde cualquier
+    # cwd; el gate local de gitleaks no tiene dónde correr → se omite (lo cubre el CI server-side).
+    printf 'cerrar-slice: ⚠️  no hay clon local de %s; con --forge %s sigo (el merge usa -R %s). El gate local de gitleaks se omite — lo cubre el CI.\n' "$REPO" "$FORGE" "$REPO" >&2
+  else
+    _err "no encontré un clon local de $REPO (ni el repo actual ni sus hermanos) y no me diste --forge → no puedo decidir el forge. Pásame --forge glab|gh, o corre desde un clon local de $REPO."
+  fi
+fi
 
 # ── traza + sustancia del mensaje: AYUDA, no revisión (decisión unjordi 2026-10-21: el mensaje lo redacta
 #    quien mergea; el candado merge-develop-guard solo RECUERDA, no frena por la calidad). cerrar-slice ARMA la

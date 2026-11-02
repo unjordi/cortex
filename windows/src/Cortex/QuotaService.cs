@@ -41,6 +41,9 @@ public sealed class QuotaService
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                      "cortex");
     public static string StateFile => Path.Combine(CacheDir, "state.json");
+    // Marca de "apagado por el usuario" (⏻). La escribe ExitApp si el autostart estaba activo (para quitar la
+    // clave Run y que el apagado sobreviva el reinicio) y la borra el arranque al restaurar el autostart.
+    public static string ApagadoMarker => Path.Combine(CacheDir, "apagado");
     public static string StatsFile => Path.Combine(CacheDir, "stats.json");
     /// stats-global.json — vista fusionada de todas las máquinas (sync (e)); mismo dir del cache.
     public static string StatsGlobalFile => Path.Combine(CacheDir, "stats-global.json");
@@ -158,8 +161,11 @@ public sealed class QuotaService
         }
     }
 
-    public double? FivePct => Snapshot?.FiveHour?.Percent;
-    public double? WeekPct => Snapshot?.Weekly?.Percent;
+    // % a MOSTRAR por ventana: null si su reset ya pasó (el % cacheado es de ANTES del reset → "sin
+    // dato", nunca el valor viejo). Lo consumen la bandeja (Program.cs) y el tooltip; el popup aplica
+    // la misma regla en UsageSection. Una lectura fresca siempre trae resets_at futuro.
+    public double? FivePct => Rel.IsPast(Snapshot?.FiveHour?.ResetsAt) ? (double?)null : Snapshot?.FiveHour?.Percent;
+    public double? WeekPct => Rel.IsPast(Snapshot?.Weekly?.ResetsAt) ? (double?)null : Snapshot?.Weekly?.Percent;
 
     public string Tooltip
     {
@@ -196,9 +202,48 @@ public sealed class QuotaService
             if (Snapshot.Error is string e) return $"error: {e}";
             string account = Snapshot.AccountEmail
                 ?? (Snapshot.Basis == "oauth" ? "datos reales" : Snapshot.Basis == "cost" ? "estimado local" : "sin dato");
+            // Marca de "lectura preservada" (el fetch no pudo refrescar): distingue un dato reciente de
+            // uno viejo que la edad sola no separa. Espeja staleMark de QuotaModel.swift.
+            string staleMark = IsSnapshotStale ? " · ⏳ sin refrescar" : "";
             if (Snapshot.AccountMismatch)
-                return $"⚠ {account} no es la cuenta fijada · ⟳ 5 min + al reset 5h · act. hace: {Rel.CompactReset(Snapshot.UpdatedAt)}";
-            return $"{account} · ⟳ 5 min + al reset 5h · últ. act. hace: {Rel.CompactReset(Snapshot.UpdatedAt)}";
+                return $"⚠ {account} no es la cuenta fijada · ⟳ 5 min + al reset 5h · act. hace: {Rel.CompactReset(Snapshot.UpdatedAt)}{staleMark}";
+            return $"{account} · ⟳ 5 min + al reset 5h · últ. act. hace: {Rel.CompactReset(Snapshot.UpdatedAt)}{staleMark}";
+        }
+    }
+
+    /// Estado del login según cortex-fetch: "ok"|"expiring"|"expired"|"no_credentials".
+    public string AuthState => Snapshot?.Auth?.State ?? "ok";
+
+    /// La lectura mostrada es PRESERVADA (el fetch no pudo refrescar).
+    public bool IsSnapshotStale => Snapshot?.Stale == true;
+
+    /// Cuenta a reloguear (prefill de --email): la del bloque auth, o la del snapshot. null si vacía.
+    public string? ReloginAccount
+    {
+        get
+        {
+            var a = Snapshot?.Auth?.AccountEmail ?? Snapshot?.AccountEmail;
+            return string.IsNullOrEmpty(a) ? null : a;
+        }
+    }
+
+    /// Aviso de autenticación para la UI, o null si el login está OK. Espeja authNotice de QuotaModel.swift:
+    /// Offer ⇒ mostrar el botón de re-login; Hard ⇒ problema duro (rojo) vs por-vencer (ámbar).
+    public (string Message, bool Offer, bool Hard)? AuthNotice
+    {
+        get
+        {
+            switch (AuthState)
+            {
+                case "no_credentials":
+                    return ("No hay cuenta en el CLI de Claude — el widget no puede leer tu cuota.", true, true);
+                case "expired":
+                    return ("El login de Claude expiró — re-loguéate para seguir viendo tu cuota.", true, true);
+                case "expiring":
+                    return ($"Tu login de Claude expira {Rel.Relative(Snapshot?.Auth?.ExpiresAt)} — re-loguéate pronto.", true, false);
+                default:
+                    return null;
+            }
         }
     }
 

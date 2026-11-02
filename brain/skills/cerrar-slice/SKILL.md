@@ -8,7 +8,8 @@ description: Ejecuta el ritual de CIERRE de un slice — verifica (build/tests/l
 Encapsula la **"definición de terminado" con evidencia** y el **flujo de git**. Lo refuerzan los hooks
 **Stop** (`dod-verificar`, bloquea "listo" sin evidencia) y **merge-develop-guard** (candado ÚNICO de git:
 su PASO 0 bloquea el push/merge directo a develop/main —absorbió `git-branch-guard` el 2026-10-21—, y en el
-punto de merge exige `--squash` + un mensaje con sustancia y tu OK expreso antes de integrar — consolida los
+punto de merge exige `--squash` + el borrado de la rama + tu OK expreso antes de integrar (ya NO valida la
+sustancia del mensaje — solo la RECUERDA) — consolida los
 antiguos `merge-squash-guard` + `confirmar-merge-develop`). El dashboard + doc=realidad (Paso 2 de aquí) NO tiene hook que lo recuerde
 — es self-check tuyo antes
 de pushear. Sigue el orden — no te saltes pasos. Versión **genérica** (agnóstica de stack): sirve para
@@ -149,13 +150,14 @@ Escríbelo como un **resumen curado en prosa**: título Conventional en español
 
 **Incluye la TRAZABILIDAD rama→commit (2a).** El squash BORRA el merge-commit de la plataforma (que traía
 el `#id` del MR/PR) → sin un rastro en el propio mensaje, un `git log develop` no dice de qué ramita salió
-cada commit. Por eso el cuerpo **DEBE** incluir una línea `Rama: <nombre-rama>` y una `MR/PR: !<id>` (o
-`#<id>`). `merge-develop-guard` (y `cerrar-slice.sh`) bloquean un `--squash-message` que no traiga ese rastro.
+cada commit. Por eso el cuerpo lleva una línea `Rama: <nombre-rama>` y una `MR/PR: !<id>` (o `#<id>`): si
+falta, `cerrar-slice.sh` la **AGREGA sola** (del `--branch`/el forge) y `merge-develop-guard` solo la RECUERDA
+— ninguno bloquea el merge por el mensaje.
 
 **Describe el CÓDIGO, no el PROCESO (sin editorializar).** El resumen dice *qué hace el código ahora* y
 *por qué*, **no** cómo llegaste a él. Nada de "se decidió / tras analizar / el asistente notó que / se
-identificó que / en esta sesión / se procedió a" — eso es memoria interna del proceso, no el cambio neto
-(el hook lo bloquea). Y evita el **pegote de acciones** ("se cambió X. Se actualizó Y. Se corrigió Z."):
+identificó que / en esta sesión / se procedió a" — eso es memoria interna del proceso, no el cambio neto.
+Y evita el **pegote de acciones** ("se cambió X. Se actualizó Y. Se corrigió Z."):
 es la lista de commits que el squash debía RESUMIR, no un resumen.
 - ❌ *"Se analizó el middleware y se decidió reemplazar la validación de tokens."* → habla del PROCESO.
 - ✅ *"El middleware ahora valida el claim `exp` contra el reloj del servidor en lugar del cliente,

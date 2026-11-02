@@ -20,7 +20,7 @@ Un `install-brain.sh` y tu máquina queda con el candado puesto. Idempotente y a
 
 |  |  |  |  |
 |:--|:--|:--|:--|
-| **17** · hooks globales | **4** · hooks por-repo | **450+** · checks verdes | **3** · plataformas |
+| **16** · hooks globales | **16** · skills | **450+** · checks verdes | **3** · plataformas |
 
 > El cerebro **no es propietario**: no trae skills de proyecto (ni .NET, ni repos de empresa) — solo
 > hooks agnósticos, normas y una skill genérica `cerrar-slice` que cualquier proyecto puede adoptar.
@@ -80,9 +80,7 @@ El cerebro se ordena por *dureza*: arriba lo que te **bloquea** sin negociar; ab
 🔒 Hooks Forzosos — hooks que bloquean (deny) · no negociables
 ├─ 🔗 merge-develop-guard      push directo a develop·main, o MR sin --squash/sin tu OK → denegado; a main exige OK súper-explícito
 ├─ 💸 delegacion-gate          delegar al llegar al 90% de tu ventana 5h → pide tu OK
-├─ 🛑 limite-gasto             sin ventana 5h Y sin overage (ambos agotados) → freno duro
-└─ 📁 por-repo · viajan en el .claude de cada repo
-   └─ ✅ dod-verificar            cierre sin evidencia/OK → denegado; claim visual a ciegas (sin ver la pantalla) también
+└─ 🛑 limite-gasto             sin ventana 5h Y sin overage (ambos agotados) → freno duro
 
 🔔 Automático — inyectan / recuerdan (no bloquean)
 ├─ 🖥️  entorno-maquina-guard    commit de algo machine-specific (aliases/rutas de $HOME/Rosetta/entorno-maquina.md) al .claude/memory/ del repo → avisa
@@ -95,7 +93,7 @@ El cerebro se ordena por *dureza*: arriba lo que te **bloquea** sin negociar; ab
 ├─ 📝 delegacion-registrar     materializa el "pregunta una sola vez"
 ├─ 🧵 rehidratar-hilo          reinyecta hilo-mental-actual.md + el andamio (si es más fresco) al abrir/retomar/compactar (GLOBAL) — gate de frescura + edad
 ├─ 📈 aviso-contexto           al umbral ALTO del punto REAL de compact (80%/92% de autoCompactWindow o la ventana efectiva; % honesto, respeta autoCompactEnabled): VUELCA el checkpoint mecánico solito y ORDENA /checkpoint+/compact. No gotea (silencio bajo el umbral, 1 disparo + 1 escalada) (GLOBAL)
-├─ 🧬 aviso-drift-cerebro      repo brained atrás de la fuente única (hooks/libs Y skills) → en tu mini-develop se AUTO-SINCRONIZA (apply+commit+push); en otra rama, avisa. ADEMÁS detecta el drift de la copia GLOBAL de skills (~/.claude/skills vs la fuente; warn-only, throttle propio). Al moverse el cerebro, NUDGE a correr la DUPLA (suficiencia+coherencia; contra la firma si hay AGENTS.md, si no sugiere instanciarla) (GLOBAL)
+├─ 🧬 aviso-drift-cerebro      la copia GLOBAL del cerebro (hooks/libs/skills + el bloque de normas de ~/.claude/CLAUDE.md) quedó atrás de la fuente o se editó en vivo → aviso (warn-only, throttle propio por frente). El cerebro ya no viaja por-repo (solo global). Al moverse el cerebro, NUDGE a correr la DUPLA (suficiencia+coherencia; contra la firma si hay AGENTS.md, si no sugiere instanciarla) (GLOBAL)
 ├─ 🧭 sesion-inicio            reinyecta rama + norma + memoria al abrir (BOTH)
 └─ 🌾 recordar-cosechar        espejo automático del TaskList vivo → bloque fenced en estado-proyecto.md (determinista, sin LLM) (BOTH)
       (💤 precompact-volcar-estado se RETIRÓ: PreCompact no puede inyectar; lo cubren 💾 checkpoint + 🧵 rehidratar-hilo + 📈 aviso-contexto.
@@ -130,26 +128,28 @@ El cerebro se ordena por *dureza*: arriba lo que te **bloquea** sin negociar; ab
 ├─ 🔩 ingenieria-inversa-gui-db-navegador  ingeniería inversa de app legacy GUI+BD: driving la UI vía navegador + diff de la BD antes/después = doc con evidencia real
 ├─ 📕 markdown-a-pdf                 convierte .md a PDF pulido y distribuible vía md-to-pdf (npx, sin instalar) con el gotcha de --css y QA visual real
 ├─ 🕹️ control-gui-remota-por-ssh     ver/operar una GUI remota por SSH sin VNC/RDP — screenshot/click/teclado DPI-aware; Windows·Linux·Mac completos (multi-monitor + captura por-ventana)
+├─ 🔁 mandato-loop                   el MOLDE para redactar un mandato de `/loop` de épica/lote (cómo se redacta + el bloque text con todas sus secciones)
 └─ 🌙 turno-nocturno           protocolo del turno de noche: eco del contrato, decide-dentro-de-la-cerca, grants durables a disco
 ```
 
-Los hooks **por-repo** son fuente en [`brain/hooks/`](brain/hooks/) que cada repo copia a su propio
-`.claude/` y cablea en su `settings.json` — se cargan solo cuando una sesión *inicia* en ese repo. Las
-**skills** siguen el mismo modelo de tiers en su propio [`brain/skills/MANIFEST`](brain/skills/MANIFEST)
-(`global` = solo `~/.claude/skills`; `both` = además viaja por-repo como CORREO en repos compartidos):
-`sincronizar-cerebro.sh` las despliega por-repo (árbol completo, diff-aware, prune por ledger que jamás
-toca skills propias del repo) y `aviso-drift-cerebro` detecta su drift igual que el de los hooks.
+El cerebro vive **SOLO en global por máquina** (decisión 2026-11-01, "solo cerebro global"): los
+hooks/libs/skills se instalan una vez con `install-brain.sh` en `~/.claude/` y aplican a TODA sesión de
+esa máquina. **NO viajan por-repo** — un repo no lleva copias de los hooks del cerebro ni su cableado en
+`.claude/settings.json`. Lo que sí vive en el `.claude/` de cada repo es el PROYECTO (su memoria, estado,
+bitácora, hilo, skills propias e identidad); eso viaja por git, los guards no. `aviso-drift-cerebro`
+avisa —warn-only— cuando la copia GLOBAL instalada quedó atrás de la fuente o se editó en vivo.
 
-Cuando el repo es **PERSONAL** (sin la marca `.claude/repo-compartido`), `aviso-drift-cerebro` FLAGGEA
-los guards del brain que sobran ahí (el global+dedupe de tu máquina ya los cubre) pero, a propósito, NO
-los borra solo. `sincronizar-cerebro.sh --limpiar-personal [--apply]` es la limpieza real: REHÚSA si el
-repo está marcado `.claude/repo-compartido`, y retira SOLO los archivos de tier `both` (el único
-redundante con el install global) + su cableado en `settings.json` + el sello `.brain-version` —
-NUNCA los de tier `repo` (sin equivalente global; siguen haciendo falta ahí, personal o no) ni la
-memoria/skills del repo, que son suyos. `--incluir-skills` extiende el retiro a las skills del brain
-por-repo, pero solo las que constan en el ledger `.claude/skills/.brain-skills` (la procedencia exacta
-de lo que este mismo sync desplegó); sin ledger, no toca ninguna. DRY-RUN por default, como el resto
-del script.
+La marca `.claude/repo-compartido` sobrevive pero con un **solo** rol: declara un repo COORDINADO para
+que `merge-develop-guard` pida tu OK al integrar a `develop` (un repo sin la marca es PERSONAL y mergea
+`develop` sin fricción). Ya no tiene que ver con el cerebro.
+
+Para migrar un repo que todavía trae copias viejas del cerebro (antes de "solo cerebro global"),
+`install-brain.sh --limpiar-repo [<root>] [--apply]` las retira de ESE repo: los hooks/libs del cerebro
+(`.sh` + su cableado en `settings.json`/`.local`), el sello `.brain-version` y las skills del cerebro —
+SOLO las del ledger `.claude/skills/.brain-skills` o del MANIFEST cuyo CONTENIDO coincide con la fuente
+(una que difiera se REPORTA, no se borra). NUNCA toca entradas ajenas (hook propio, permissions), las
+skills propias del proyecto ni la memoria/estado. DRY-RUN por default; con `--apply` muta y respalda lo
+quitado. Se corre en cada repo y se commitea por SU flujo de git.
 
 El cerebro **se autoprueba**: [`brain/test-brain.sh`](brain/test-brain.sh) corre cientos de checks (el número exacto lo imprime la suite) contra un
 `$HOME` aislado, y la CI repite `bash -n` + `jq empty` + `shellcheck` en cada push. Tras un fan-out,
@@ -173,8 +173,8 @@ del residuo de housekeeping que nadie más podaba (queja real, 2026-09: *"qué p
 detrás... no todo eran ramas con worktree"*): los respaldos del skill de mudanza (`reubicar-backups/`,
 antes SIN poda alguna), los logs/stamps de `barrer-ramas` acumulados por repo visitado, y las cachés de
 corta vida de `analizar-comando-git`. Retención **por EDAD, nunca por cantidad** (un respaldo existe
-para recuperar un desastre; podar "los primeros N" botaría el único bueno tras una ráfaga). Corre como
-parte de `limpiar.sh flotilla` (reusa su programación diaria) o standalone con `--dry-run` para previsualizar.
+para recuperar un desastre; podar "los primeros N" botaría el único bueno tras una ráfaga). Corre
+standalone con `--dry-run` para previsualizar, o enganchado a un programado (LaunchAgent/cron) de housekeeping.
 
 ### 🗺️ El mapa del cerebro — fuente de verdad visual
 
@@ -301,9 +301,9 @@ depender de en qué te toque trabajar.
 
 ## Contribuir al cerebro
 
-Las piezas por dentro (los tiers de hooks —`global`/`repo`/`both`, más el tier `retirado` que marca
-una LÁPIDA en el MANIFEST para que install-brain/sincronizar-cerebro la poden de las máquinas que la
-tenían instalada— cómo probarlas, instalar/desinstalar el cerebro suelto) viven en
+Las piezas por dentro (el tier `global` de cada hook —el único vivo: el cerebro vive solo en global—
+más el tier `retirado` que marca una LÁPIDA en el MANIFEST para que install-brain pode de las máquinas
+que la tenían instalada— cómo probarlas, instalar/desinstalar el cerebro suelto) viven en
 **[`brain/README.md`](brain/README.md)** — la doc para contribuidores. Sumar un
 guardrail o cortar un release está documentado en las skills del repo:
 [`agregar-hook-cerebro`](.claude/skills/agregar-hook-cerebro/SKILL.md) y

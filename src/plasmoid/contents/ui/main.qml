@@ -155,6 +155,24 @@ PlasmoidItem {
         onNewData: function(source, data) { disconnectSource(source) }
     }
 
+    // Lee la marca de apagado al arrancar (lo dispara el Component.onCompleted único de abajo): collectionPaused
+    // sobrevive el reinicio de plasmashell. Si NO está apagado, re-asegura el timer y trae una lectura; si está
+    // apagado, deja el timer parado y la pausa puesta.
+    P5Support.DataSource {
+        id: pauseStateSource
+        engine: "executable"
+        connectedSources: []
+        onNewData: function(source, data) {
+            disconnectSource(source)
+            var paused = (("" + data.stdout).indexOf("PAUSED") !== -1)
+            root.collectionPaused = paused
+            if (!paused) {
+                powerRunner.connectSource("systemctl --user start cortex.timer")
+                forceRefresh()
+            }
+        }
+    }
+
     // Runner del botón "Re-loguear en Claude": abre konsole con el flujo oficial de login (abre el
     // navegador). Fire-and-forget como powerRunner. Mismo mandato que relogin() de PopoverView.swift.
     P5Support.DataSource {
@@ -499,24 +517,26 @@ PlasmoidItem {
         checkUpdate()
     }
     // ⏸/⏵ PAUSAR / REANUDAR la recolección automática — NO es "apagar" (por eso NO lleva ícono de power).
-    // En macOS ⏻ = NSApp.terminate mata el proceso (la app de barra ES el widget Y el recolector). En KDE
-    // el plasmoide vive DENTRO de plasmashell y no puede matarse solo; lo que lo mantiene recolectando es
+    // En macOS ⏻ = NSApp.terminate cierra la GUI y ADEMÁS hace bootout del LaunchAgent del fetcher (son
+    // procesos SEPARADOS: la app de barra NO es el recolector) — "apagar apaga todo". En KDE el plasmoide
+    // vive DENTRO de plasmashell y no puede matarse solo; lo que lo mantiene recolectando es
     // el timer systemd de usuario (cortex.timer, cada 5 min → oneshot cortex.service = un fetch
     // a la API). Por eso el botón PAUSA/REANUDA ese timer, y su ícono lo dice honesto (media-playback-pause
     // cuando corre, media-playback-start cuando está pausado):
-    //   · PAUSAR: `systemctl --user stop` del timer (+ el service por si hay un fetch en vuelo). El widget
-    //     se queda con el último snapshot en caché y deja de gastar cuota. Reversible.
-    //   · REANUDAR: `systemctl --user start` del timer + un forceRefresh (trae dato fresco al instante).
-    // NO se hace `disable` a propósito: al re-loguear el timer vuelve por WantedBy=timers.target.
-    // `collectionPaused` es estado de SESIÓN (refleja la última acción del usuario en este arranque del
-    // plasmoide); no consulta systemctl en vivo — suficiente para el caso común (timer corriendo).
+    //   · PAUSAR: `systemctl --user disable --now` del timer (+ stop del service por si hay un fetch en
+    //     vuelo) + una marca ~/.cache/cortex/apagado. `disable` hace que la pausa SOBREVIVA al relogin (si
+    //     solo se hiciera `stop`, WantedBy=timers.target lo revive al re-loguear). La marca la lee
+    //     aviso-contexto para no forzar el fetch con el widget apagado.
+    //   · REANUDAR: `systemctl --user enable --now` + borra la marca + forceRefresh (dato fresco al instante).
+    // `collectionPaused` arranca leyendo la marca (Component.onCompleted) → el estado de pausa sobrevive el
+    // reinicio de plasmashell, no se re-inicia en false cada arranque.
     property bool collectionPaused: false
     function pauseCollection() {
-        powerRunner.connectSource("systemctl --user stop cortex.timer cortex.service")
+        powerRunner.connectSource("systemctl --user disable --now cortex.timer; systemctl --user stop cortex.service; mkdir -p \"${XDG_CACHE_HOME:-$HOME/.cache}/cortex\"; : > \"${XDG_CACHE_HOME:-$HOME/.cache}/cortex/apagado\"")
         root.collectionPaused = true
     }
     function resumeCollection() {
-        powerRunner.connectSource("systemctl --user start cortex.timer")
+        powerRunner.connectSource("systemctl --user enable --now cortex.timer; rm -f \"${XDG_CACHE_HOME:-$HOME/.cache}/cortex/apagado\"")
         root.collectionPaused = false
         forceRefresh()   // reanuda el ciclo de 5 min y además trae dato fresco YA
     }
@@ -645,6 +665,15 @@ PlasmoidItem {
         }
     }
 
+    // Abrir el widget = cargar TODO su herramiental (espeja reloadLaunchAgent() de AppDelegate.swift). El
+    // El timer de systemd vive APARTE del plasmoide: no se reinicia solo al re-instanciarlo. Al cargar, lee la
+    // marca de apagado (pauseStateSource): si NO está apagado, re-asegura el timer y dispara una lectura; si lo
+    // está, respeta la pausa (timer parado, collectionPaused=true) para que sobreviva el reinicio de plasmashell.
+    // UN solo Component.onCompleted en el raíz: dos en el mismo objeto hacen que el plasmoide no cargue.
+    Component.onCompleted: {
+        pauseStateSource.connectSource("test -f \"${XDG_CACHE_HOME:-$HOME/.cache}/cortex/apagado\" && echo PAUSED || echo RUNNING")
+    }
+
     // ---------- Color / estado ----------
     readonly property string statusKey: {
         if (snapshotError !== "" || snapshot === null) return "error"
@@ -658,8 +687,10 @@ PlasmoidItem {
         return "#e8884a"
     }
 
-    readonly property real fivePct: snapshot && snapshot.five_hour ? snapshot.five_hour.percent : -1
-    readonly property real weekPct: snapshot && snapshot.weekly    ? snapshot.weekly.percent    : -1
+    // -1 = "sin dato". Si el reset de la ventana YA pasó, el % cacheado es de ANTES del reset → -1
+    // (nunca el valor viejo ni su barra); una lectura fresca siempre trae resets_at futuro. (Falla al despertar.)
+    readonly property real fivePct: (snapshot && snapshot.five_hour && !isPast(snapshot.five_hour.resets_at)) ? snapshot.five_hour.percent : -1
+    readonly property real weekPct: (snapshot && snapshot.weekly    && !isPast(snapshot.weekly.resets_at))    ? snapshot.weekly.percent    : -1
 
     // true si el reset de la ventana 5h o semanal YA pasó (el % que se ve puede estar pegado en el
     // de la ventana anterior). Espeja QuotaModel.anyResetPassed del macOS.
@@ -1015,9 +1046,6 @@ PlasmoidItem {
                 { emoji: "🔗", name: "merge-develop-guard",    desc: "push directo a develop·main, o MR sin --squash/sin tu OK → denegado; a main exige OK súper-explícito",
                   event: "PreToolUse · Bash",
                   detail: "Candado ÚNICO de git. Como PASO 0 deniega el `git push`/merge directo a develop/main y te redirige a ramita→MR (absorbió a git-branch-guard, 2026-10-21). Un `gh pr merge`/`glab mr merge` a develop sin --squash se deniega, para que la ramita colapse a un commit curado; además busca tu OK explícito en el chat reciente antes de integrar. A main exige lenguaje de release ('hasta main', 'libera') y va SIN squash (conserva historia). Un 'sigue/avanza' NO cuenta como autorización." },
-                { emoji: "✅", name: "dod-verificar",          desc: "Def. of Done (ver Norma 🎯 DoD) sin build+tests+memoria → denegado",
-                  event: "Stop",
-                  detail: "Al cerrar el turno, si dijiste 'listo/en producción' tras tocar código fuente, exige evidencia de build+tests verdes y memoria al día, o bloquea el cierre." },
                 { emoji: "💸", name: "delegacion-gate",        desc: "reclutar agente con costo → pide tu consentimiento (puede negar)",
                   event: "PreToolUse · Task",
                   detail: "Al reclutar un agente calcula su nivel de costo (gratis/incluido/con costo, según tu ventana de 5h) y pide consentimiento mostrando tu cuota real. Puedes negar y el agente no corre." },
@@ -1042,9 +1070,9 @@ PlasmoidItem {
                 { emoji: "🧵", name: "rehidratar-hilo",           desc: "al retomar/tras compactar reinyecta el hilo mental de la tarea",
                   event: "SessionStart",
                   detail: "Al abrir/retomar sesión o tras compactar, relee .claude/memory/hilo-mental-actual.md y lo reinyecta por additionalContext (canal fiable de SessionStart). Es la mitad 'leer' del par con el skill checkpoint (la mitad 'escribir'). Silencioso si el archivo no existe." },
-                { emoji: "♻️", name: "aviso-drift-cerebro",       desc: "la copia del cerebro por-repo quedó atrás de la fuente → aviso",
+                { emoji: "♻️", name: "aviso-drift-cerebro",       desc: "la copia GLOBAL del cerebro quedó atrás de la fuente → aviso",
                   event: "SessionStart",
-                  detail: "Al iniciar sesión en un repo con el cerebro por-repo instalado, compara esa copia contra la fuente única (sincronizar-cerebro.sh en dry-run, diff por contenido) y, si quedó atrás, avisa para que Claude proponga propagar por el flujo (ramita→MR). No escribe al árbol en repos compartidos. Throttle 6h si salió limpio." },
+                  detail: "Al iniciar sesión compara la copia GLOBAL instalada (~/.claude/hooks, skills y el bloque de normas de ~/.claude/CLAUDE.md) contra la fuente única y, si quedó atrás o se editó en vivo, avisa (warn-only) para portarlo a la fuente y re-correr install-brain. Throttle propio por frente, 6h si salió limpio. El cerebro ya no viaja por-repo (solo global)." },
                 { emoji: "🧹", name: "barrer-ramas",            desc: "barre ramas locales ya integradas (zombies squash-safe) en 2º plano",
                   event: "SessionStart",
                   detail: "Al iniciar sesión en un repo con remoto, y como mucho cada 24h, lanza limpiar-ramas.sh en segundo plano para borrar las ramas locales ya integradas (MR mergeado con --squash → remota borrada, o commits ya en la base por equivalencia de parche). Conserva todo trabajo sin integrar; nunca toca la actual/base/develop/main/Develop*/keep/*." },
@@ -1129,6 +1157,9 @@ PlasmoidItem {
                 { emoji: "🌙", name: "turno-nocturno", desc: "Claude trabaja solo de noche: contrato medible, decide-o-parquea, checkpoint c/2h",
                   event: "skill · opt-in",
                   detail: "Protocolo para dejar a Claude trabajando SOLO de noche: eco del contrato antes de empezar (alcance, criterio de cierre MEDIBLE, lo intocable, dónde queda visible el resultado), preflight de herramientas/quota, regla de decisión (dentro del alcance decide y sigue; fuera, parquea y brinca), autorización durable a disco y checkpoint cada ~2h." },
+                { emoji: "🔁", name: "mandato-loop", desc: "el MOLDE para redactar un mandato de /loop de épica/lote",
+                  event: "skill · opt-in",
+                  detail: "El molde con que un master redacta un mandato de /loop de épica/lote: «Cómo se redacta» (sin trazabilidad, sin «el LISTO lo da el usuario», criterio CIERRA-CUANDO por fila, nada de colas ajenas) + el bloque text completo (worktree por fila, FILAS, ÉPICA TERMINADA, CADA RONDA, DELEGACIÓN, PRUEBAS §1-7, HIGIENE MENTAL, REGLAS). NO es turno-nocturno." },
                 { emoji: "🎓", name: "investigar-dominio", desc: "ponte experto en un dominio (fan-out DOC-FIRST) → memorias durables + skills",
                   event: "skill · opt-in",
                   detail: "Ponerte al día como EXPERTO en un dominio/ecosistema maduro sin investigar al aire: delega un fan-out de agentes a barrer la documentación oficial + issues/foros de cada pieza (método DOC-FIRST), cosecha en DOS capas (memorias de investigación indexadas + skills reutilizables, con la capa profunda separada) y REVISA las decisiones actuales contra el conocimiento nuevo para no arrastrar deuda técnica. Trae plantilla-prompt pegable para encargárselo a otro Claude." },
@@ -1201,7 +1232,7 @@ PlasmoidItem {
     // Catálogo conocido (mismos conjuntos que BrainState.knownGlobalHooks / knownRepoHooks del Swift).
     // DEBE coincidir con brain/hooks/MANIFEST; lo verifica el drift-check del widget (test-brain.sh).
     readonly property var brainGlobalHooks: ["merge-develop-guard","proteger-arbol","proteger-fuente-cerebro","limite-gasto","delegacion-gate","delegacion-registrar","rehidratar-hilo","aviso-contexto","aviso-drift-cerebro","exportar-sesion-master","checkpoint-mecanico","barrer-ramas","entorno-maquina-guard","no-bypass-deploy","sesion-inicio","recordar-cosechar"]
-    readonly property var brainRepoHooks:   ["dod-verificar"]
+    readonly property var brainRepoHooks:   []
     // Los 4 rótulos de NORMA (pseudo-piezas, gobernados por hasNorms). NO viven en el MANIFEST ni se
     // retiran como skills/hooks → enumerarlos es legítimo (no es la lista drift-prone).
     readonly property var brainNormNames:   ["Definition of Done","Doc <= realidad","Flujo de git","Costo de delegación"]
@@ -3443,12 +3474,13 @@ PlasmoidItem {
             Layout.fillWidth: true; opacity: 0.65; font.pointSize: Kirigami.Theme.smallFont.pointSize
             text: {
                 if (!block) return ""
-                // Past-aware: si el resets_at ya pasó, el % puede estar pegado en el de la ventana
-                // anterior mientras llega el fetch → "Se restableció … · actualizando…". Espeja
-                // resetLine() de PopoverView.swift.
+                // Past-aware: si el resets_at YA pasó, el % cacheado es de ANTES del reset → no se
+                // muestra (el % y la barra ya van en -1); la leyenda dice "sin lectura nueva" y se
+                // omite el costo equiv (sería del ciclo viejo). Espeja resetLine() de PopoverView.swift.
                 let past = root.isPast(block.resets_at)
-                let s = past ? ("Se restableció " + root.relativeTime(block.resets_at) + " · actualizando…")
+                let s = past ? ("Se restableció " + root.relativeTime(block.resets_at) + " · sin lectura nueva")
                              : ("Se restablece " + root.resetDetail(block.resets_at))
+                if (past) return s
                 var c = block.equiv_session_cost_usd !== undefined && block.equiv_session_cost_usd !== null
                       ? block.equiv_session_cost_usd
                       : (block.equiv_weekly_cost_usd !== undefined && block.equiv_weekly_cost_usd !== null ? block.equiv_weekly_cost_usd : null)
@@ -3515,7 +3547,7 @@ PlasmoidItem {
     }
     toolTipSubText: snapshot && snapshot.five_hour
                     ? (isPast(snapshot.five_hour.resets_at)
-                       ? "sesión se restableció " + relativeTime(snapshot.five_hour.resets_at) + " · actualizando…"
+                       ? "sesión se restableció " + relativeTime(snapshot.five_hour.resets_at) + " · sin lectura nueva"
                        : "sesión se restablece " + relativeTime(snapshot.five_hour.resets_at)) : ""
 
     // ---------- Helpers ----------

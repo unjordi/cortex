@@ -15,8 +15,8 @@ no puede cablear `settings.json`.
 
 ```
 brain/
-├── install-brain.sh      # instalador GLOBAL idempotente (hooks + cableado + skill + dashboard + normas + aliases-activos)
-├── install-brain.ps1     # lanzador Windows: verifica bash+jq, detecta aliases de PowerShell (nativo) y delega en install-brain.sh
+├── install-brain.sh      # instalador GLOBAL idempotente (hooks + cableado + skill + dashboard + normas)
+├── install-brain.ps1     # lanzador Windows: verifica bash+jq y delega en install-brain.sh
 ├── uninstall-brain.sh    # inverso EXACTO del instalador (idempotente)
 ├── test-brain.sh         # pruebas versionadas y repetibles (contra un $HOME falso aislado)
 ├── README.md             # este archivo
@@ -26,13 +26,12 @@ brain/
 └── norms/global-claude-md.md  # bloque de normas que se inyecta en ~/.claude/CLAUDE.md
 ```
 
-**Artefacto LEAN de aliases (`~/.claude/aliases-activos.md`, GENERADO per-máquina).** El instalador detecta,
-cross-OS/cross-shell, los aliases/funciones que **sombrean un binario real** (POSIX: `brain/lib/detectar-shells.sh`
-enumera zsh/bash/fish instalados; PowerShell: detector nativo en `install-brain.ps1`) y escribe una vista
-answer-first (el ESCAPE `command <cmd>` primero) en `~/.claude/aliases-activos.md`. El `CLAUDE.md` global la
-importa con `@aliases-activos.md` (@import recursivo → siempre en contexto, sin costar líneas). Es GENERADA y NO
-viaja por git (entorno de máquina = global). En Windows los bloques `<!-- shells:posix -->` y `<!-- shells:powershell -->`
-coexisten sin pisarse.
+**Aliases que muerden comandos → `~/.claude/entorno-maquina.md`.** El instalador detecta, cross-shell, los
+aliases/funciones que **sombrean un binario real** (`brain/lib/detectar-shells.sh` enumera zsh/bash/fish
+instalados) y los escribe en el bloque `detectado-por-bootstrap` de `~/.claude/entorno-maquina.md` (que el
+`CLAUDE.md` global ya importa), con el ESCAPE answer-first (`command <cmd>`). El artefacto separado
+`aliases-activos.md` + su `@import` se RETIRARON: eran una copia redundante; el instalador borra el archivo y
+quita su `@import` del `CLAUDE.md` global si una instalación anterior los dejó.
 
 ## Hooks vs skills — por qué unos bloquean y otros no
 
@@ -71,8 +70,7 @@ Se dividen en **tiers** según su alcance (más el tier `retirado`, que no despl
 | `rehidratar-hilo.sh` | SessionStart | **El LECTOR de los DOS artefactos de continuidad.** (1) REINYECTA `.claude/memory/hilo-mental-actual.md` (el hilo mental, que escribe el skill `checkpoint`) con su **gate de frescura**: si es de otra rama —o la rama es indeterminada y pasó de `HILO_STALE_HORAS` (def 12 h)— degrada el encabezado a "⚠️ posiblemente OBSOLETO"; el encabezado reporta **siempre la EDAD** del volcado, porque en una rama PERMANENTE la rama nunca cambia y el gate daría FRESCO por construcción (la edad es DATO, no veredicto). (2) Si `hilo-mental-actual.andamio.md` es **MÁS FRESCO que el hilo** (o no hay hilo), inyecta **también el andamio**, con encabezado propio y etiquetado como EVIDENCIA mecánica — nunca como juicio; acotado a `ANDAMIO_MAX_LINEAS` (def 140) con puntero al resto, y marcado **"DE OTRA SESIÓN"** si su `sid` no es el de esta sesión (tras una mudanza, el andamio del repo destino es del stream que ya vivía ahí). Si el hilo es más fresco, solo lo MENCIONA. Silencioso si no hay ninguno de los dos. El contrato del footer lo comparte con el escritor vía la lib `contrato-hilo.sh`. |
 | `contrato-hilo.sh` (lib) | — | **El CONTRATO del hilo, en UNA definición.** El footer `> Última actualización: <AAAA-MM-DD> · rama <rama> · nivel <x>` no es decoración: con él `rehidratar-hilo` decide vigencia. La lib expone `hilo_rama` / `hilo_fecha` / `hilo_edad_legible` / `verificar_hilo`; el hook la SOURCEA (con fallback inline si falta: fail-open) y el skill `checkpoint` la corre al volcar (fail-loud). Sin el footer, un hilo vigente se presenta como "OBSOLETO". |
 | `aviso-contexto.sh` | PostToolUse | **Reportero TONTO del llenado de contexto** (dato, sin veredicto): lee los TOKENS REALES del último `usage` del transcript, ANCLADOS al último `/compact` (un `isCompactSummary` resetea el acumulado → sin falsos "está llenísimo" heredados del tramo anterior) y reporta `ctx`, el % de la ventana y el % libre. **Debounce por escalones RELATIVOS a la ventana** (5% de la ventana; 1% a partir del 85%, que es donde la resolución importa) — con escalones absolutos de 50 K quedaba ~20 puntos CIEGO justo antes del auto-compact en ventanas de 200 K. El % libre va **sin clamp**: puede salir negativo, y eso ES el dato (saturado en 0, el 95% y el 99% eran indistinguibles). No recomienda un curso: la decisión es del lector. |
-| `aviso-drift-cerebro.sh` | SessionStart | Anti-drift: al iniciar sesión en un repo brained compara su copia por-repo vs la fuente única (dry-run de `sincronizar-cerebro`, diff por contenido). **Parado en TU mini-develop (`Develop<Usuario>`) con `.claude/` limpio → AUTO-SINCRONIZA (apply+commit+push a tu mini)**; en cualquier otra rama solo AVISA (la propagación va por ramita→MR). Throttle 6h en chequeos limpios. **El cuerpo per-repo vive en la lib `drift-cerebro-comun.sh` (`drift_chequea_repo`)**, compartida con el sweeper de flotilla (abajo) → una sola implementación, cero drift. Punto ciego: solo ve el repo de ARRANQUE → la cobertura de N repos la da el sweeper. |
-| `barrer-flotilla-cerebro.sh` (script, no cableado) | cron/LaunchAgent 1×/día | **SWEEPER de la FLOTILLA:** recorre TODOS los repos brained de `~/code` (autodescubrimiento por el sello `.claude/hooks/.brain-version`) y aplica la MISMA `drift_chequea_repo` que el hook — auto-sincroniza los COMPARTIDOS parados en su mini-develop con `.claude/` limpio y fuente no stale; el resto lo deja en un REPORTE (`~/.claude/memory/.drift-cerebro/flotilla-ultimo-reporte.md`) + una línea a la bitácora del dashboard. Lock por-repo (mkdir en `.drift-cerebro/`). Antídoto al punto ciego de cobertura del hook (MegaFlux se pudrió a drift porque nadie abría sesión ahí). Preview: `--dry-run`. Agéndalo con el LaunchAgent de ejemplo `macos/launchd/com.local.drift-flotilla.plist` (NO se instala solo — config de máquina) o la skill `schedule`. **Además** corre al final (best-effort, `--no-residuo` para saltarlo) el script `limpiar-residuo` (housekeeping global, ver abajo) — reusa esta MISMA programación diaria en vez de inventar una nueva. |
+| `aviso-drift-cerebro.sh` | SessionStart | Anti-drift de la copia **GLOBAL** del cerebro: al iniciar sesión compara `~/.claude/{hooks,skills}` y el bloque de normas de `~/.claude/CLAUDE.md` vs la fuente única (`drift-cerebro-comun.sh`: `drift_hooks_global`/`drift_skills_global`/`drift_norms_global`), cada frente con su throttle (def 6h en limpios). Si una copia quedó atrás o se editó en vivo → AVISA (warn-only) con el remedio: portar a la FUENTE + re-correr `install-brain`. **El cerebro ya no viaja por-repo (solo global, 2026-11-01)** → este hook ya NO chequea ni auto-sincroniza una copia por-repo (ese `drift_chequea_repo` se retiró). Conserva el cableado del `@import` de identidad (B8). |
 | `exportar-sesion-master.sh` | Stop 🔔 Automático · SessionEnd · PreCompact | **Auto-export de las sesiones `*-master`:** exporta el transcript comprimido a la CARPETA DE SESIONES (`~/.claude-sessions` por default; `$CLAUDE_SESSIONS_DRIVE` para apuntarla a una nube y que las sesiones VIAJEN entre máquinas) → sobrevive el cleanup de 30 días de Claude Code. Gatillos Stop(debounce)+SessionEnd+PreCompact; el export corre DETACHED (nohup + lock por-sid) → no se ahoga en los transcripts grandes (transcripts de cientos de MB). El MOTOR (`session-export.js`) lo aporta el brain; la mitad "sembrar" es `brain/sesiones-master/seed.sh`. |
 | `checkpoint-mecanico.sh` | PreCompact 🔔 Automático | **El 80% del checkpoint a CERO tokens de modelo:** en el MISMO evento que `exportar-sesion-master` (mismo `transcript_path`), corre DETACHED (nohup + lock por-sid) el extractor `bin/checkpoint-mecanico.js` — lee el transcript en streaming (memoria acotada, medido ~130-190 MB de pico sobre un transcript de 756 MB) y saca, sin criterio: archivos tocados (Write/Edit/NotebookEdit), skills invocadas, mensajes de **`git commit` en TODAS las formas que la norma del equipo obliga** (`-m`, `-F -`+heredoc, `-F <archivo>` con marca honesta de "no recuperable") **y las integraciones por squash del foro** (`gh pr merge --subject`, `glab mr merge --squash-message`) — deduplicadas, y sin colar como commit real la prosa/código que solo MENCIONA un patrón de commit (exige arrancar tras un separador de shell), ramas/cwds vistos, los archivos escritos **desde Bash** (redirección/`tee`, heurística declarada aparte — en modo auto casi nada pasa por Write/Edit: medido 0 vs 45 en el tramo vivo de un master real; descarta destinos con una variable `$VAR` sin expandir en vez de inventar la ruta) y los últimos mensajes del usuario VERBATIM, **filtrando la plomería del harness** (`<local-command-*>`, `<task-notification>`, `<command-name>`, `<system-reminder>`, `## Context Usage`, `/compact` pelón) para no atribuirle al usuario lo que no dijo. El top de comandos **excluye de verdad** la navegación/inspección (`cd`, `ls`, `grep`…) y las asignaciones de variable sin comando encadenado (despojando la asignación antes de clasificar). La CLAVE deja de ser "los 2 primeros tokens desde el inicio": un `cd <repo> &&`/`cd <repo>;` inicial (87 de 101 comandos del tramo medido) y los envoltorios `sudo`/`timeout N`/`command`/`env`/`nohup` se SALTAN antes de tomarla (`saltarCdEncadenado`/`despojarEnvoltorios`) — sin ellos, el primer token era casi siempre `cd` y `esNavegacion` descartaba la línea ENTERA, dejando un top honesto pero VACÍO de significado (4 entradas genéricas: dos invocaciones de intérprete, `mkdir -p`, `df -h`); la clave ahora toma la herramienta + hasta 2 tokens de subcomando (`tomarClaveConSubcomando`, corta en la primera flag/número/cadena-citada/operador) para que `gh pr merge`/`gh pr view`/`gh pr checks` no colapsen en una sola entrada. El top de escrituras-por-bash sigue priorizando el repo sobre `/tmp` sin ocultarlo del todo (tope: nunca más temporales que señal real), y descarta el cierre de una etiqueta (`<tag>/algo</tag>`) leído como redirección más la puntuación de cierre ajena (`archivo.md",`) pegada al destino, para no partir el conteo del mismo archivo en dos entradas. Los encabezados **"top N de M"** (escrituras Write/Edit, escrituras-por-bash, comandos) usan el largo REAL de lo renderizado, nunca `TOP_N` a secas. **Su ventana es el TRAMO VIVO** (desde la última frontera de `/compact`): con el archivo entero, los top-N los ganaba el trabajo VIEJO Y TERMINADO por volumen acumulado; lo histórico se cuenta aparte y etiquetado. Escribe (atómico, tmp+rename) `.claude/memory/hilo-mental-actual.andamio.md` — un SIDECAR que el skill `checkpoint` fusiona; nunca pisa `hilo-mental-actual.md` (eso lo sigue escribiendo el modelo, con juicio). El hook **no es el único productor**: el skill lo regenera con `checkpoint-mecanico.js --self --ensure` (la mayoría de los checkpoints NO vienen de un compact). `--self` YA NO falla cerrado por `CLAUDE_CODE_CHILD_SESSION` (medido: esa variable vale `1` también en el hilo principal, no distingue padre de hijo); en su lugar hace una VERIFICACIÓN POSITIVA por filesystem (sidecar de sub-agente más fresco que el transcript resuelto) y AVISA sin bloquear cuando la encuentra. |
 | `barrer-ramas.sh` | SessionStart + PostToolUse/Bash 🔔 Automático | Da TRIGGER al barrido de ramas locales + worktrees ya integrados por DOS vías que comparten `limpiar-ramas.sh` **y** `limpiar-worktrees.sh` (mismo trigger, mismo detach): **(A) SessionStart** — al abrir sesión, ≤1× por `BARRER_RAMAS_HORAS` (def 24), backstop oportunista; **(B) PostToolUse/Bash AL PUNTO DE MERGE** — justo tras un `glab mr merge\|accept` / `gh pr merge` (lo detecta `acg_es_merge_mr`), que es cuando nace el zombie (squash → remota borrada → local `: gone`); debounce corto `BARRER_RAMAS_MERGE_DEBOUNCE` (def 30s) para no relanzar en una ráfaga. Ambas lanzan EN SEGUNDO PLANO, CONSERVAN todo trabajo sin integrar y NUNCA tocan la actual/base/`develop`/`main`/`Develop*`/`keep/*`; `limpiar-ramas` además borra la **rama REMOTA huérfana** que un squash-merge dejó colgando (fail-open sin red). Vías INDEPENDIENTES (B no toca el throttle de A → A sigue de backstop). Es el MECANISMO que dispara a los `script` `limpiar-ramas`/`limpiar-worktrees` (que nadie más ejecutaba → ramas y worktrees squasheados se acumulaban). |
@@ -83,19 +81,19 @@ Se dividen en **tiers** según su alcance (más el tier `retirado`, que no despl
 Config del gate: **`hooks/agentes-costo.json`** (se copia a `~/.claude/`). Clasifica agentes por
 regex y fija el umbral de ventana (`umbral_ventana_pct`, def 95).
 
-### Tier REPO-SCOPED (fuente en `hooks/`; NO se instalan globales)
+### Antes repo-scoped/both, ahora GLOBAL (retiro del cerebro por-repo, 2026-11-01)
 
-Cada repo los copia a su propio `.claude/` y los cablea en su `settings.json` — se cargan **solo si
-la sesión INICIA en ese repo**.
+`sesion-inicio` y `recordar-cosechar` eran tier `both`/`repo` (viajaban por-repo); con "solo cerebro
+global" pasan a `global` — se instalan en `~/.claude/hooks` como el resto y corren en toda sesión (dentro
+de un repo git; fuera callan).
 
 | Hook | Evento | Qué hace |
 |---|---|---|
 | `sesion-inicio.sh` | SessionStart | Reinyecta rama + norma de git + orden de leer la memoria al abrir/retomar sesión o tras compactar. (Complementa al global `rehidratar-hilo`: éste hace el hilo, aquél el ritual del proyecto.) |
-| `dod-verificar.sh` | Stop | Hace cumplir la **definición de LISTO**: bloquea declarar algo "listo/terminado/funciona" tras tocar código sin una marca CITADA de (1) QA confirmado por el usuario o (2) su OK expreso. Distingue estatus/pregunta de cierre (una pregunta co-ubicada NO salva un claim afirmado); cuenta como "código tocado" también la edición por Bash (`sed -i`/`patch`/redirección); detecta la tool de navegador por estructura del transcript (no por la palabra "screenshot"). Precisión (P2): un paso MECÁNICO del proceso ("checkpoint hecho", "push hecho", "MR abierto", "memoria actualizada") y la celebración sin entregable (🎉 standalone, interjecciones) NO disparan; fail-safe: si la frase mezcla paso mecánico y claim de entregable ("push hecho y la feature ya funciona"), el claim manda y bloquea. |
 | `recordar-cosechar.sh` | Stop | **ESPEJO automático e idempotente** del TaskList vivo → bloque fenced `<!-- espejo-tasklist -->` dentro de `.claude/memory/estado-proyecto.md` (serialización DURABLE del HUD que viaja por git). Determinista, SIN LLM; solo si el .md ya existe, no lo crea; solo toca ese bloque. Nunca bloquea. La maquinaria vive en la lib **`sincronizar-tasklist.sh`** (UN dueño; el skill `to-do` la EJECUTA para el sentido inverso bloque→HUD). **Sync bidireccional:** selección de carpeta robusta a la rotación de session_id, ANTI-CLOBBER (nunca pisa un bloque no-vacío con uno vacío) y reensamblado head/tail (sin `awk -v` multilínea, que falla en macOS). El NUDGE solo avisa cuando el sync movió ≥1 pendiente vivo. Regla quién-gana: durante la sesión manda el TaskList vivo (json→durable en el Stop); en los bordes (SessionStart/`/to-do`) manda la durable (el modelo re-siembra el HUD con las tools). **Ojo:** el harness NO re-renderiza el HUD si un proceso externo escribe los json → refrescar el HUD vivo solo es alcanzable vía el skill on-invoke, no por un hook. |
 
 > **`precompact-volcar-estado.sh` se RETIRÓ** (PreCompact no puede inyectar contexto ni pedir acción): compactar sin perder el hilo lo cubren el skill `checkpoint` (escribe el hilo) + `rehidratar-hilo` (lo relee, con gate de frescura) + el watermark `aviso-contexto` (avisa antes del auto-compact).
-> **5 hooks puramente advisory están retirados** — `recordar-dashboard`, `delegacion-reporte`, `recordar-orquestar`, `hud-stale`, `recordar-unificar-cerebro`. Su regla no se perdió: subió a norma en `brain/norms/global-claude-md.md` (secciones "Documentación = reflejo de la realidad", "Delegar a agentes", "Tu lista de TODOs es TU HUD", "Modelo MINI-DEVELOP"). MANIFEST los lista tier `retirado` (con motivo y fecha) para que `install-brain`/`sincronizar-cerebro` los podan de máquinas/repos viejos.
+> **5 hooks puramente advisory están retirados** — `recordar-dashboard`, `delegacion-reporte`, `recordar-orquestar`, `hud-stale`, `recordar-unificar-cerebro`. Su regla no se perdió: subió a norma en `brain/norms/global-claude-md.md` (secciones "Documentación = reflejo de la realidad", "Delegar a agentes", "Tu lista de TODOs es TU HUD", "Modelo MINI-DEVELOP"). MANIFEST los lista tier `retirado` (con motivo y fecha) para que `install-brain` los pode de máquinas viejas (y de repos con copias viejas vía `install-brain --limpiar-repo`).
 
 > **`rama-vieja.sh` está retirado:** avisar del síntoma (una ramita rezagada) no es el trabajo —
 > lo correcto es que los git-guards gobiernen el flujo para que no se acumulen ramas rezagadas en primer
@@ -116,12 +114,11 @@ real que motivó este tier). Con `retirado`:
 - **`install-brain.sh`** deriva la lista de retirados y, por cada uno, borra su `~/.claude/hooks/<n>.sh`
   y de-cablea SOLO esa entrada de `settings.json` — idempotente, conservador con hooks ajenos, y lo DICE
   cuando actúa (con el nombre y el motivo).
-- **`sincronizar-cerebro.sh`** trata un `retirado` como huérfano PODABLE por-repo en cualquier `--apply`
-  (sin necesitar `--prune-orphans`): "huérfano" dejó de significar solo "ausente del manifiesto" y pasó a
-  significar "no debe estar instalado aquí" — un tier `retirado` cae ahí aunque SÍ esté listado.
+- **`install-brain.sh --limpiar-repo`** usa la MISMA lista de retirados (y el resto de nombres del cerebro)
+  para limpiar un repo que trae copias viejas por-repo: de-cablea + borra el `.sh` + el sello, sin tocar lo ajeno.
 - **Todo lector que clasifica por tier** (el widget, `verificar-cerebro.sh`, `drift-cerebro-comun.sh`, los
-  drift-checks de `test-brain.sh`) filtra por tier EXPLÍCITO ({global,both}/{repo,both}/etc.), así que un
-  `retirado` no se cuela como hook vivo por construcción — no requieren cambio al agregar una lápida.
+  drift-checks de `test-brain.sh`) filtra por tier EXPLÍCITO ({global}), así que un `retirado` no se cuela
+  como hook vivo por construcción — no requieren cambio al agregar una lápida.
 
 ## Modelo de costo de delegación (3 niveles + ventana + consentimiento)
 
@@ -160,14 +157,13 @@ al salir). Cubre: (a) `bash -n` de todos los hooks + `jq empty` de los JSON; (b)
 (gratis/incluido/metered/desconocido, el ciclo gate→registrar→gate-silencioso y la transición
 dentro/fuera de la ventana, y el **coalescing de asks en fan-out** paralelo); (b1c) `merge-develop-guard`
 (checks de squash) develop-only con `glab` mockeado; (b3b)
-`limpiar-worktrees` (base configurable + detección por `git cherry`); (b4) `dod-verificar` (cierre/QA-visual
-a ciegas, evasión por pregunta, edición por Bash); (b5) compactación: que `precompact` esté **RETIRADO** +
+`limpiar-worktrees` (base configurable + detección por `git cherry`); (b5) compactación: que `precompact` esté **RETIRADO** +
 `rehidratar-hilo` (inyección + gate de frescura); (b6) el watermark `aviso-contexto`; (b7) el dedupe del
 doble-cableado; (c) idempotencia de
 `install-brain.sh` corrido 2× (cada hook 1× en `settings.json`, 1 solo bloque de normas) y limpieza por
 `uninstall-brain.sh`.
 
-Los **jueces-Haiku** (`merge-develop-guard`, `dod-verificar`) se prueban en **dos capas**: (1)
+El **juez-Haiku** (`merge-develop-guard`) se prueba en **dos capas**: (1)
 **DETERMINISTA**, corre SIEMPRE — SIN perilla de mock en producción (MEDIO auditoría 2026-10-22: una env de
 mock que forzara el veredicto sería un bypass; un agente podía setearla en la sesión). Los tests inyectan la
 respuesta del juez por un **`curl` FALSO por PATH** (+ `CLAUDE_CODE_OAUTH_TOKEN` dummy) o redefiniendo
