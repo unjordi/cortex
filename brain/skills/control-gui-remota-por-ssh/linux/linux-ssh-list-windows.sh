@@ -7,7 +7,7 @@
 # necesita sesion grafica, pero NO dispara el permiso EIS de KWin (ese permiso es solo para
 # INPUT sintetico -- click/tecla/mouse; listar ventanas es una consulta, no un control).
 #
-# LIMITE REAL (verificado 2026-09-18 en cachy, KDE Wayland): xdotool/XWayland SOLO ve ventanas
+# LIMITE REAL (verificado, KDE Wayland): xdotool/XWayland SOLO ve ventanas
 # X11 y apps XWayland (Steam, apps legacy). Las apps WAYLAND NATIVAS (la mayoria del escritorio
 # moderno: Firefox nativo, apps GTK4/Qt6-Wayland, la barra de tareas de KDE) NO aparecen en esta
 # lista -- el compositor no las expone por XWayland. Para esas, el screenshot es la unica via

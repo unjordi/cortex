@@ -60,7 +60,8 @@ CABLEADO** (ver §Gate #44 y §Preguntas abiertas).
   + `CONVENCIONES.md`, y el `brain/hooks/MANIFEST` (fuente única de tiers/eventos).
 - **Salida:** hallazgos priorizados; en la dimensión de guards se verifican **por EJECUCIÓN** en sandbox
   (CONFIRMADO vs PLAUSIBLE). A petición, itera fix→re-auditar hasta CONVERGER (cada fix con su test).
-- **Composición:** fan-out READ-ONLY (usa `orquestar-fanout`). Deriva metodología de
+- **Composición:** agentes READ-ONLY según la norma «Delegar a agentes: UNO secuencial por default»
+  (uno por default; en paralelo solo si se justifica). Deriva metodología de
   `auditar-proceso-algoritmo` (modo B). **Debería** correr `verificar-firma-canonica.sh` como sub-check
   determinista (gate #44) — ver §Gate #44: hoy ese cableado NO existe en su SKILL.md.
 

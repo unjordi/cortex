@@ -8,11 +8,11 @@
 - Cuando cambia algo (config aplicada, decisión revertida, ruta, comportamiento real), actualiza la doc que lo describe en la MISMA tanda — README, memoria, dashboard, comentarios. No preguntes "¿actualizo la doc?": hazlo.
 - Una doc que miente es peor que no tener doc. El orden SIEMPRE es **revisar el estado real → editar**, no al revés.
 - Antes de cerrar un cambio, pregúntate *¿esto vive en MÁS de un lugar?* (doc duplicada, README y su UI, varias plataformas, un ejemplo, un diagrama, un valor repetido) y rastrea las otras copias (p. ej. un `grep` del valor viejo). Una sola copia desincronizada YA es una doc que miente.
-- **Antes de un `git push`, revisa dos cosas TÚ MISMO** (overhaul hooks 2026-09-18: `recordar-dashboard` era puramente advisory — medido: ignorado — se retiró; sin recordatorio automático por-push): (1) el Dashboard del cerebro (`dashboard_cerebro.md`, memoria GLOBAL de esta máquina) — appendea a su Bitácora con `>>`; (2) si los commits a pushear tocan un hook/skill/feature/estructura SIN tocar su doc (README, árbol del cerebro, memoria), actualízala en la MISMA tanda.
+- **Antes de un `git push`, revisa dos cosas TÚ MISMO** (no hay recordatorio automático por-push): (1) el Dashboard del cerebro (`dashboard_cerebro.md`, memoria GLOBAL de esta máquina) — appendea a su Bitácora con `>>`; (2) si los commits a pushear tocan un hook/skill/feature/estructura SIN tocar su doc (README, árbol del cerebro, memoria), actualízala en la MISMA tanda.
 
-## El entorno de MÁQUINA vive GLOBAL, jamás en un repo (norma dura)
+## El entorno de MÁQUINA vive GLOBAL, jamás en el repo de un proyecto ni en tu slug (norma dura)
 - El entorno de MÁQUINA (OS, shell, aliases, rutas personales de un `$HOME`, runtime local Docker/BD/certs) es específico de UNA instancia; en un repo viajaría por git y mentiría al clonar en otra compu u otro OS.
-- Vive SOLO en la memoria GLOBAL per-máquina (`~/.claude/projects/-Users-<user>/memory/entorno-esta-maquina.md`), que NO viaja por git; la siembra `install-brain`/`bootstrap-claude` detectando la config real, y Claude la mantiene.
+- Vive SOLO en `~/.claude/entorno-maquina.md` (LEAN, FUENTE ÚNICA, siempre en contexto vía `@import` del CLAUDE.md global), que NO viaja por git; la siembra `install-brain`/`bootstrap-claude` detectando la config real, y Claude la mantiene en formato LEAN. No hay copia detallada en la memoria del slug.
 - Un repo documenta solo cómo correr EL PROYECTO de forma portable o CONDICIONAL ("si Apple Silicon: `platform: linux/amd64`"; "en Windows usa Git Bash") — nunca afirmando lo personal-de-instancia como universal.
 - Nómbralos por lo que son (`correr-en-local.md`, `requisitos.md`); un `entorno-maquina.md` dentro del `.claude/memory/` de un repo es la trampa misma — lo AVISA el guard `entorno-maquina-guard`.
 
@@ -33,10 +33,10 @@
 - **La autorización es ACOTADA y NO transitiva:** un "adelante/sí/dale" aplica SOLO a lo nombrado explícitamente, no a "todo el paquete". El silencio, tomarse el tiempo para leer, o una reacción positiva a UNA idea NO son autorización. Ante alcance ambiguo, Claude pregunta "¿adelante con qué exactamente?", no maximiza.
 - **Un doc que respalda algo NO es autorización viva para DESTRUIR:** un cambio que elimina funcionalidad/entidades/complejidad existente es destructivo y no-transitivo — preséntalo como PÉRDIDA explícita y pide OK antes, aunque `AGENTS.md`/un doc lo sugiera.
 - **No conviertas UN mensaje ambiguo en una PREFERENCIA durable:** una queja no es una orden; antes de escribir una regla/preferencia a memoria o config desde un solo mensaje, confirma el sentido ("¿lo vuelvo regla, o era una queja puntual?").
-- Lo hace cumplir el hook `dod-verificar` (Stop): distingue lenguaje de ESTATUS/espera (no dispara) de lenguaje de CIERRE (exige la marca citada de (1) o (2)), bloquea un claim VISUAL sin tool de navegador en el turno, y recuerda la auditoría de paridad en migraciones.
+- El mecanismo de esta norma es el TRATO/CONTRATO mutuo, no un hook: Claude comunica el estatus honesto (qué quedó verificado y qué falta) y no declara LISTO sin (1) o (2); el enforcement es la relación, no un gate automático.
 
 ## Integridad de los guardarraíles (norma dura)
-- Claude NO modifica ni afloja sus PROPIOS candados de supervisión (`dod-verificar`, `merge-develop-guard`, `git-branch-guard`, `proteger-arbol`…) para desatorarse o por conveniencia.
+- Claude NO modifica ni afloja sus PROPIOS candados de supervisión (`merge-develop-guard`, `proteger-arbol`…) para desatorarse o por conveniencia.
 - Cambiar un control de supervisión exige consentimiento EXPLÍCITO del usuario para cambiar ESE control — distinto del consentimiento a la ACCIÓN que el control vigila.
 - Los cambios permitidos son solo de PRECISIÓN/CORRECCIÓN (menos falsos positivos, arreglar un target mal detectado), nunca "para que deje de bloquearme". El clasificador auto-mode es el backstop externo.
 
@@ -46,7 +46,7 @@
 - Aplica igual a una autorización *blanket* con vigencia explícita ("autorizo todos los merges a develop hasta mañana 10am"): mientras esté vigente, se re-cita sin escrúpulo.
 
 ### NUNCA ofrezcas "el clic en la web" como escape de un juez que frena en CLI (norma dura)
-- Cuando un guard/juez frena una acción por CLI (`merge-develop-guard`, `git-branch-guard`…), la respuesta correcta es UNA de dos: **(1) ARREGLAR** lo que el juez señala (dar el resumen de squash, citar el OK real y vigente, corregir el target mal detectado), o **(2) PEDIR** el OK claro que exige.
+- Cuando un guard/juez frena una acción por CLI (`merge-develop-guard`…), la respuesta correcta es UNA de dos: **(1) ARREGLAR** lo que el juez señala (citar el OK real y vigente, usar el slug literal, corregir el target mal detectado), o **(2) PEDIR** el OK claro que exige.
 - JAMÁS la salida es "mergéalo tú en la web de GitLab/GitHub": es un **vein-popper** — enruta a la persona ALREDEDOR del control y vacía de sentido al juez. Aplica a CUALQUIER juez que frene en CLI.
 - La única mención legítima de la web es DESCRIPTIVA de un flujo que el usuario YA eligió (p. ej. el release `develop→main` que por convención hace el humano en la web) — nunca como salida para desatorar a Claude.
 
@@ -58,7 +58,7 @@
 
 ## Toda norma nace con su mecanismo (norma dura)
 - Una norma de higiene/cierre SIN un mecanismo que la haga cumplir (hook, gate o paso operativo) deja al usuario como único enforcement → no se cumple sola. Al crearla, nace con su mecanismo o es solo un buen deseo.
-- Un mecanismo mal dirigido (un hook con falsos positivos) desgasta la confianza tanto como su ausencia — la PRECISIÓN del guard importa igual que su existencia.
+- Un mecanismo mal dirigido (un hook con falsos positivos) desgasta la confianza tanto como su ausencia — la PRECISIÓN del guard importa igual que su existencia. Un hook que acumula falsos positivos pese al tuning se RETIRA, y su norma se queda con el mecanismo que sí sostiene (p. ej. la «Definición de LISTO»: su hook `dod-verificar` se retiró 2026-11-01 y su mecanismo pasó a ser el TRATO/CONTRATO — el estatus honesto + la confirmación del usuario). El mecanismo de una norma puede ser un hook, un gate, un paso operativo O el contrato explícito entre las partes.
 
 ## Un comentario inline INFORMA; el que FRENA es el mecanismo (norma de estilo)
 - Un comentario no impide que se reintroduzca un bug — solo INFORMA a quien lo lea. Lo que lo IMPIDE es un test/guard (que pone rojo el CI) o que el patrón peligroso solo se pueda escribir en UN chokepoint.
@@ -79,11 +79,12 @@
 
 ## Ninguna DECISIÓN se queda solo en el chat (norma dura)
 - Cuando se TOMA una decisión (de diseño, de datos, de alcance), se persiste a memoria durable EN EL MISMO TURNO — con fecha y contexto (qué se decidió y por qué) — en `estado-proyecto.md`, la nota del tema o el doc de decisiones que aplique. Una decisión que solo vive en el chat revive como "pendiente fantasma" tras una compactación.
-- **Al cerrar un turno con trabajo sustantivo, revisa TÚ (sin que nadie te lo recuerde)** (el NUDGE INCONDICIONAL viejo de `recordar-cosechar` era puramente advisory — medido: ignorado — se retiró en el overhaul hooks 2026-09-18; el rediseño 2026-09-18 lo restauró ATADO al sync REAL: el hook solo avisa cuando el espejo movió ≥1 pendiente vivo, no en cada Stop): ¿aprendiste algo DURABLE que no cosechaste (`cerrar-slice` §5, que absorbió el retirado `cosechar-sesion`)? ¿el backlog durable (`estado-proyecto.md` fuera del bloque espejo, o `bitacora.md`) refleja lo que avanzaste/decidiste? Si no, ciérralo antes de terminar el turno. Recuerda el ruteo: el TRATO personal (cómo tratar a la PERSONA, no el trabajo) NO va al inbox `aprendizajes.md` ni a un `feedback-*.md` per-repo — va al archivo GLOBAL `como-trabajar-con-<user>.md`.
-- **El ESPEJO del TaskList evolucionó a SYNC BIDIRECCIONAL** (rediseño 2026-09-18, lib `sincronizar-tasklist.sh`): el bloque `<!-- espejo-tasklist -->` de `estado-proyecto.md` es la serialización DURABLE del HUD que viaja por git. Quién-gana: **durante la sesión manda el TaskList vivo** (el Stop lo refleja al durable, robusto a la rotación de session_id, sin pisar con vacío); **en los bordes (SessionStart / `/to-do`) manda la durable** — el modelo re-siembra el HUD con las tools (`TaskCreate/TaskUpdate`), única vía que refresca el HUD vivo porque el harness NO re-renderiza si un proceso externo escribe los json.
+- **Al cerrar un turno con trabajo sustantivo, revisa TÚ (sin que nadie te lo recuerde)** (el hook `recordar-cosechar` solo refleja el HUD a la durable, en silencio): ¿aprendiste algo DURABLE que no cosechaste (`cerrar-slice` §5)? ¿el backlog durable (`estado-proyecto.md` fuera del bloque espejo, o `bitacora.md`) refleja lo que avanzaste/decidiste? Si no, ciérralo antes de terminar el turno. Recuerda el ruteo: el TRATO personal (cómo tratar a la PERSONA, no el trabajo) NO va al inbox `aprendizajes.md` ni a un `feedback-*.md` per-repo — va al archivo GLOBAL `como-trabajar-con-<user>.md`.
+- **El ESPEJO del TaskList es SYNC BIDIRECCIONAL** (lib `sincronizar-tasklist.sh`): el bloque `<!-- espejo-tasklist -->` de `estado-proyecto.md` es la serialización DURABLE del HUD que viaja por git. Quién-gana: **durante la sesión manda el TaskList vivo** (el Stop lo refleja al durable, robusto a la rotación de session_id, sin pisar con vacío); **en los bordes (SessionStart / `/to-do`) manda la durable** — el modelo re-siembra el HUD con las tools (`TaskCreate/TaskUpdate`), única vía que refresca el HUD vivo porque el harness NO re-renderiza si un proceso externo escribe los json.
 
-## Recupera de tu contexto vivo; EXCAVA/verifica solo lo que NO tienes (norma dura)
-- EXCAVA solo cuando la respuesta NO está en tu contexto vivo — post-compact, sesión anterior, algo genuinamente desconocido (incluye barrer qué ya existe ANTES de construir: skills, memorias, scripts, código previo, para construir SOBRE ello y no desde cero).
+## No re-midas lo del contexto vivo; y cuando SÍ midas, el comando mínimo (norma dura)
+- **No re-medir lo del contexto vivo, y cuando sí mida, el comando mínimo, sin teatro de echos ni subcomandos apilados.**
+- EXCAVA/mide solo cuando la respuesta NO está en tu contexto vivo — post-compact, sesión anterior, estado externo del harness, algo genuinamente desconocido (incluye barrer qué ya existe ANTES de construir: skills, memorias, scripts, código previo, para construir SOBRE ello y no desde cero).
 - Si es de ESTA sesión (lo acabas de hacer, está en el hilo) o algo que el usuario acaba de afirmar → responde desde ahí; re-escarbar contexto vivo es churn y desconfianza.
 - Verificar aplica a ASEVERAR lo incierto, no a recuperar lo que ya tienes.
 
@@ -107,7 +108,7 @@
 - **TODOS los push van a ramitas** (`feat/…`, `fix/…`, `chore/…`, `docs/…`), sacadas de `develop`.
 - La ramita se integra a `develop` por el MERGE de un MR/PR server-side; nunca tocas `develop`/`main` con push local. A `main` se llega igual: MR/PR desde `develop`.
 - El tamaño del equipo SOLO decide si hay revisión, NO si hay push: **1–3 devs** → MR/PR con AUTO-MERGE al instante; **≥4 devs** → el MR/PR se revisa antes de mergear.
-- Al integrar a `develop` se SQUASHEA (un commit limpio y curado por slice) — lo exige `merge-develop-guard`. Los releases `develop→main` van SIN squash (conservan historia).
+- Al integrar a `develop` se SQUASHEA — `merge-develop-guard` exige el `--squash` (chequeo DETERMINISTA del flag) y que la rama de origen se borre (`--delete-branch`/`--remove-source-branch`), pero la CALIDAD del mensaje NO se valida: el guard muestra un **RECORDATORIO** (no freno) de redactar el squash-message A MANO con el **cambio neto + su porqué + las líneas `Rama: <feat/…>` y `MR/PR: !<id>`** (la trazabilidad rama→commit — el squash borra el merge-commit que traía el #id). Los releases `develop→main` van SIN squash (conservan historia).
 - **`main` es RELEASE-ONLY:** promover `develop→main` es un release DELIBERADO que el usuario pide explícitamente, jamás automático ni por un chore/docs/memoria. Si no dijo "release"/"a main", te quedas en `develop`. El release a main por CLI exige autorización SUPER explícita (`merge-develop-guard`); un `mergea` genérico no lo autoriza.
 
 ```bash
@@ -122,36 +123,50 @@ git push -u origin feat/<tema>       # push SOLO a la ramita (idéntico en ambos
 | abrir PR/MR | `gh pr create --base develop --fill` | `glab mr create --target-branch develop --fill` |
 | mergear a develop (INMEDIATO + squash) | `gh pr merge --squash` | `glab mr merge --squash` |
 
-- **A `develop`/`main` NUNCA `--auto`/`--auto-merge`:** encolan el merge (Merge-When-Pipeline-Succeeds) para dispararse solos SIN testigo y rompen la garantía de `merge-develop-guard` (que exige tu OK en el INSTANTE del merge, y protege los releases cableados por CI/CD). El merge a develop es DELIBERADO e INMEDIATO: espera pipeline verde y mergea YA. `--auto-merge` solo es cómodo en tu mini-develop (ramita → mini, que no pasa por candado).
-- **MANUAL DE USO del candado — invoca merges con valores LITERALES:** `merge-develop-guard` lee el STRING CRUDO en PreToolUse; un `--repo "$R"` (variable de shell sin expandir) o un `cd &&` compound le impiden resolver el destino y frena. Pásale el SLUG LITERAL (`--repo org/grupo/repo`), sin `$VAR` ni `cd &&`. Mejor aún: usa `cerrar-slice.sh` (arma el comando correcto con valores literales).
+- **A `develop`/`main` el merge es DELIBERADO e INMEDIATO** (espera pipeline verde y mergea YA, con tu OK en el instante): el `--auto`/`--auto-merge` encola el merge (Merge-When-Pipeline-Succeeds) para dispararse solo más tarde, lo que diluye ese "en el instante". `merge-develop-guard` YA NO lo prohíbe de forma determinista (freno retirado 2026-10-21): el auto-merge a develop/main lo gobierna el **juez de autorización** como cualquier merge (tu OK → pasa; sin OK → frena). `--auto-merge` es cómodo en tu mini-develop (ramita → mini, que no pasa por candado).
+- **MANUAL DE USO del candado — prefiere valores LITERALES:** `merge-develop-guard` resuelve el repo/destino POR GIT en el dir real (y preguntándole a gh/glab con los mismos args); un `--repo "$R"` (variable sin expandir) o un `cd $X &&`/`-C $VAR` a un dir OPACO no se resuelven desde el string CRUDO, así que el guard los trata como destino INCIERTO y **cae al juez** (ya NO es un freno determinista aparte — retirado 2026-10-21). Pásale igual el SLUG LITERAL (`--repo org/grupo/repo`) para que resuelva sin pasar por el juez (un `-C $M` LITERAL o de un comando lateral ya no estorba). Mejor aún: usa `cerrar-slice.sh` (arma el comando con valores literales).
 - Diffs de flag: `--base` ↔ `--target-branch`, PR ↔ MR; el `git push` es idéntico. La receta canónica completa (esperar el pipeline verde, el `--squash-message` curado con trazabilidad rama→commit, el borrado de rama y el porqué del SIN `--auto`) vive en `cerrar-slice §4` y su script `cerrar-slice.sh` — no la dupliques.
-- Enforced por: ramas protegidas server-side + `git-branch-guard` y `merge-develop-guard` (candado ÚNICO del punto de merge: squash + autorización — consolida los antiguos `merge-squash-guard` + `confirmar-merge-develop`).
+- Enforced por: ramas protegidas server-side + `merge-develop-guard` (candado ÚNICO de git: su PASO 0 frena el push/merge DIRECTO a develop·main —absorbió `git-branch-guard` el 2026-10-21—, y el punto de merge hace cumplir squash + autorización — consolida los antiguos `merge-squash-guard` + `confirmar-merge-develop`).
 - El gate NO es "no puedes": con tu OK EXPLÍCITO, `merge-develop-guard` deja que Claude mergee `develop` por CLI (con `--squash`), SIN clics en la web.
 - Repos SIN los hooks del template (p. ej. uno personal): Claude cae en el clasificador auto-mode genérico → más fricción en git. Al tocar uno así: siémbrale `develop` + los hooks del template, o documenta qué acciones esperar bloqueadas.
 - **Bajo SQUASH, `git cherry`/`git branch -d`/`git branch --merged` MIENTEN en su NEGATIVO:** el squash colapsa los N commits de la ramita en un commit nuevo → la rama no queda de ancestro y sus commits no tienen equivalente por hash, así que dan un falso "no integrada" sobre trabajo que SÍ entró. `git cherry` vale SOLO en su POSITIVO (ningún `+` ⇒ los parches ya están en la base, residuo squash-safe); su negativo no prueba nada. Para "¿ya entró esta rama?" hay dos métodos válidos: `limpiar.sh ramas` (señales POSITIVAS squash-safe — ancestro · la línea `Rama: <rama>` del squash · el PR/MR mergeado · equivalencia de parche sin `+`) o el ESTADO del PR/MR en el foro (`gh pr view --json state` / `glab mr view`: `MERGED` es la verdad).
+
+- **CI solo en develop/main + un gate antes del merge (todos los repos):** el pipeline NO corre por push a ramitas ni por eventos de MR/PR. Corre en develop, main, tags y UNA vez como gate manual antes de mergear a develop. En GitLab, todo `.gitlab-ci.yml` lleva este `workflow:` idéntico (más `- if: $CI_PIPELINE_SOURCE == "schedule"` solo si el repo tiene un programado activo):
+  ```yaml
+  workflow:
+    rules:
+      - if: $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api"
+      - if: $CI_COMMIT_BRANCH == "develop"
+      - if: $CI_COMMIT_BRANCH == "main"
+      - if: $CI_COMMIT_TAG
+  ```
+  Los jobs de CD (subir imagen, desplegar) llevan su propia regla de solo develop/main; los de CI no llevan reglas. En GitHub: `on: push: branches: [develop, main]` + `workflow_dispatch`. Secuencia de cierre: push normal (nunca `-o ci.skip`: deja el MR pegado a un pipeline skipped) → gate (`glab ci run -b <rama>` / `gh workflow run`) → merge.
+
+## Detección de secretos: gitleaks en CI + local antes de cada push (norma dura)
+- **Todo repo que operemos lleva `gitleaks`**, en dos puntos: (1) en su **CI** — GitLab: el template `Secret-Detection` (`include: template: Jobs/Secret-Detection.gitlab-ci.yml`); GitHub: `gitleaks/gitleaks-action` — y (2) **local ANTES de cada push** (lo corre `cerrar-slice.sh`: `gitleaks git --log-opts=<base>..HEAD`, o equivalente sobre el rango que sube; si encuentra algo, PARA y no pushea).
+- **Las excepciones son EXPLÍCITAS y por-huella, nunca por palabras:** van en `.gitleaksignore` (fingerprint exacto) o `.gitleaks.toml` (`allowlist` con regex/paths acotados) DEL REPO, versionadas y revisables. ❌ marcar "seguro" por una subcadena tipo `PRUEBA`/`dummy` (así se coló un secreto real en el hook casero que gitleaks reemplaza — H6 2026-10-19).
+- **Reemplaza al hook casero `secret-scan`/`detectar-secretos`** (retirado del cerebro el 2026-10-19, con OK explícito de unjordi): un escáner mantenido por la comunidad, con reglas amplias y server-side, en vez de una lib de patrones propia. El cerebro ya NO instala ese hook; el instalador lo DESINSTALA de las máquinas que lo tenían.
 
 ## Modelo MINI-DEVELOP (iterar sin fricción — INSTITUCIONAL en repos compartidos)
 - El día a día vive en tu rama personal de integración ("mini-develop"), convención `Develop<Usuario>` (p. ej. `DevelopAna`), sacada de `develop`. Ahí iteras horas/días sin permiso: ramitas → tu mini con `git merge` LOCAL o MR con auto-merge (ninguno pasa por candado).
 - El ÚNICO cruce que exige confirmación expresa es integrar la mini (o cualquier rama) a `develop`/`main` por MR/PR — `develop` es integración COORDINADA, `main` es release.
 - Sembrado self-service: cada dev crea la suya UNA vez por repo con `sembrar-mini-develop.sh` (la crea desde `origin/develop`, la pushea y en GitLab la protege server-side push/merge=Developer, no borrable). Nadie siembra la mini de otro.
 - Las ramas temáticas de integración (`integracion/<sprint>`, `epic/<tema>`) valen como "minis de tema" con las mismas libertades.
-- Tu mini es donde el cerebro se auto-cura: `aviso-drift-cerebro`, al abrir sesión parado en tu mini con `.claude/` limpio, sincroniza la copia por-repo del cerebro (apply+commit+push a tu mini).
-- **Unificar hacia arriba (tu mini → develop) es disciplina, no hook** (overhaul hooks 2026-09-18: `recordar-unificar-cerebro` era puramente advisory — medido: ignorado — se retiró): cuando tu mini acumule aprendizajes/memorias de `.claude/` sin integrar a `develop` (varios archivos, o llevas días), corre `canonizar-cerebro` en modo reconciliar tú mismo — no esperes un aviso.
+- **Unificar hacia arriba (tu mini → develop) es disciplina, no hook**: cuando tu mini acumule aprendizajes/memorias de `.claude/` sin integrar a `develop` (varios archivos, o llevas días), corre `canonizar-cerebro` en modo reconciliar tú mismo — no esperes un aviso. (Esto es la MEMORIA del proyecto, que sí vive por-repo; el cerebro-guards vive solo en global.)
 - El folder de trabajo VISIBLE del dev vive SIEMPRE en su mini-develop (su superficie ESTABLE de QA). **Corolario para la IA (norma dura):** Claude trabaja en worktrees de FEATURE y MERGEA hacia la mini; NUNCA saca la mini-develop del dev en un worktree propio (una rama solo puede estar checked-out en UN worktree, y esa rama la posee el folder visible del dev). Para integrar: merge de la ramita → mini (local o por push) y el folder la ve.
 
-## Cerebro por-repo = CORREO: repo PERSONAL sin guards, repo COMPARTIDO con guards (norma dura)
-- El cerebro copiado en `.claude/` de un repo es un CORREO: existe SOLO para viajar por git a máquinas/personas que NO tienen el brain global. TU máquina no saca sus guards de esa copia — los saca del install GLOBAL + el DEDUPE (cada guard trae `case "$0" … exit 0` que hace ceder la copia por-repo a la global).
-- **Repo PERSONAL** (vive solo en tus máquinas, que ya tienen brain global): memoria/skills SÍ, guards por-repo NUNCA (el global+dedupe ya los cubre; una copia por-repo solo puede DRIFTAR). Si un personal tiene guards del brain, SOBRAN → quítalos (`.claude/hooks/*.sh` del brain + sus entradas en `settings.json`).
-- **Repo COMPARTIDO** (viaja a máquinas/personas sin brain): guards por-repo SÍ, en git. Se declara EXPLÍCITAMENTE con la marca `.claude/repo-compartido`. Default = personal (sin marca): conservador.
-- Mecanismo: `aviso-drift-cerebro` (SessionStart) bifurca por la marca — en COMPARTIDO mantiene el correo fresco (auto-sync en tu mini / avisa); en PERSONAL no auto-commitea y flaggea los guards que sobran (no los borra solo).
-- La limpieza la hace `sincronizar-cerebro.sh --limpiar-personal [--apply]`: REHÚSA si el repo está marcado `.claude/repo-compartido`, y retira SOLO los archivos de tier `both` + su cableado + el sello `.brain-version` — nunca los de tier `repo` (`dod-verificar`, `sesion-inicio`…) ni la memoria/skills. `--incluir-skills` suma el retiro de skills, solo las que constan en el ledger `.claude/skills/.brain-skills` (opt-in, fail-closed).
+## El cerebro vive SOLO en global por máquina (norma dura)
+- Los guards/hooks/libs/skills del cerebro se instalan UNA vez por máquina (`bootstrap`/`install-brain`, en `~/.claude/`) y aplican a TODA sesión de esa máquina. **NO viajan por-repo:** un repo NO lleva copias de los hooks del cerebro ni su cableado en `.claude/settings.json`.
+- Lo que SÍ vive en el `.claude/` de cada repo es el PROYECTO: su memoria (`MEMORY.md`, `estado-proyecto.md`, `bitacora.md`, hilo), sus skills propias y su identidad (`conocimiento-propio.local.md`). Eso viaja por git; los guards del cerebro, no.
+- Motivo (unjordi 2026-11-01, "solo cerebro global"): todo el equipo tiene cortex instalado; mantener copias del cerebro por-repo solo DRIFTABA. Un clon en una máquina sin cortex simplemente no trae los guards — se instala cortex y listo.
+- Drift de la copia GLOBAL: `aviso-drift-cerebro` (SessionStart) avisa —warn-only— cuando `~/.claude/hooks|skills` o el bloque de normas de `~/.claude/CLAUDE.md` quedaron atrás de la fuente única o se editaron en vivo (se perderían en el próximo `install-brain`). Remedio: editar la FUENTE + re-correr `install-brain`.
 
-### Tiers de hooks/skills: cómo decidir (regla crisp)
-- Al AGREGAR un hook/skill, su TIER (en `brain/hooks/MANIFEST` / `brain/skills/MANIFEST`) se decide con el mismo patrón repo-compartido.
-- **`both`** — viaja por-repo EN GIT y se instala global por el bootstrap (el dedupe hace que la copia por-repo ceda a la global). Ponlo `both` SOLO si debe llegar a clones COMPARTIDOS con personas/máquinas sin brain global. Un hook `both` DEBE traer la cláusula de dedupe; una skill `both` no (es markdown que se lee).
-- **`global`** — solo vive en la máquina del dueño (que ya corrió el bootstrap). DEFAULT conservador: ante la duda, `global`.
-- **`repo`** — solo por-repo, se carga únicamente si la sesión INICIA en ese repo (p. ej. `dod-verificar`, `sesion-inicio`).
-- Corolario anti-drift: un repo PERSONAL nunca lleva guards por-repo; un COMPARTIDO se marca explícito con `.claude/repo-compartido` y ahí viajan los `both`.
+### La marca `.claude/repo-compartido` = repo COORDINADO (solo para el merge a develop)
+- Un repo CON la marca es COORDINADO: `merge-develop-guard` pide tu OK EXPRESO para integrar a `develop` por MR (la definición de LISTO en el punto del merge). Un repo SIN marca es PERSONAL → sus merges a `develop` van sin fricción (el día a día del modelo MINI-DEVELOP). `main` es release-only en TODOS, con o sin marca.
+- La marca YA NO tiene relación con el cerebro (que vive solo en global): su ÚNICA función hoy es ese scoping de autorización de merges. Viaja por git.
+
+### Tier de un hook/skill del cerebro: siempre `global`
+- Todo hook/lib/skill del cerebro es `global` (se instala en `~/.claude`, no viaja por-repo). Ya no existen los tiers `both` (viajaba por-repo EN GIT + global, con cláusula de dedupe) ni `repo` (solo por-repo): se retiraron con el cerebro por-repo. El `MANIFEST` solo tiene `global` (+ `retirado` como lápida de poda que `install-brain` usa para limpiar máquinas con una versión vieja).
 
 ## Consentimiento de costo de delegación (norma dura)
 - Reclutar un agente (Task/subagente) cuesta según su nivel: **gratis** (local), **incluido** (Claude dentro de la ventana de 5h, sin costo marginal) o **metered** (Claude en overage, API externa de pago, o desconocido).
@@ -162,24 +177,36 @@ git push -u origin feat/<tema>       # push SOLO a la ramita (idéntico en ambos
 - No relates el reporte de un agente/subagente al usuario como verdad, ni construyas encima, sin haber verificado sus afirmaciones concretas contra la realidad tú mismo. Lo verificado se relata como verificado; lo no verificado se etiqueta "según el agente, sin verificar aún".
 - Un reporte de agente es una AFIRMACIÓN, no un hecho: puede confabular, sobre-afirmar ("verificado ✓") o equivocarse en un detalle — y solo revisando ves CÓMO tropezó (la señal de qué refinar en el próximo prompt).
 - El caso REBUILD/REEMPLAZO (un agente reescribe un doc/config "desde cero") falla por OMISIÓN SILENCIOSA, no por afirmar de más: nada que verificar porque no hay "✓" — exige el DIFF DE PRESERVACIÓN (viejo→nuevo) antes de aplicar el reemplazo.
-- Mecanismo/detalle operativo (el bucle de verificación barato-vs-caro, CONFIRMADO/CORREGIDO/REFUTADO, el diff de preservación) vive en `orquestar-fanout`.
+- El cómo (muestras contra el repo, CONFIRMADO/CORREGIDO/REFUTADO, diff de preservación) vive en la norma «Delegar a agentes».
 
-## Orquesta: delega lo paralelizable y quédate disponible (norma de estilo)
-- Cuando el trabajo tiene varias piezas independientes, NO las implementes EN SERIE tú solo: delégalas a agentes en paralelo (worktrees/ramas disjuntas) y quédate en el loop como orquestador (revisando diffs, armando los MR, haciendo QA, disponible al usuario). Con volumen paralelizable, el default es fan-out + supervisión. (Respeta el gate de costo.)
-- Señal de desvío: llevas rato implementando en serie y el usuario tuvo que pedirte que volvieras a delegar. Sin hook que lo cuente (overhaul hooks 2026-09-18: `recordar-orquestar` era puramente advisory — medido: ignorado — se retiró): nota TÚ el patrón "llevo N cambios seguidos sin delegar nada" — si lo que queda es paralelizable, para y arma el fan-out.
-- **Aislamiento (regla dura):** todo agente de fan-out que MUTE archivos o COMMITEE corre en un worktree AISLADO (`isolation: "worktree"`), NUNCA en el árbol compartido/principal (ese es del orquestador/humano) — un agente que corre `git reset`/`checkout`/`rebase` ahí puede orfanar los commits del orquestador. Si un ítem no se puede aislar, lo hace el orquestador. Lo respalda `proteger-arbol`.
-- **Reporte sin niñera (skill `orquestar-fanout`):** NO monitorees a los agentes a mano ni actualices el estado al final; el cierre de cada agente es automático — appenda su avance al FINAL de `bitacora.md` (con `>>`, no un Edit) y actualiza el ítem en `estado-proyecto.md` (el backlog vivo = fuente de verdad).
-- Dos archivos, roles claros, cero redundancia: bitácora = *qué pasó* (appendan los agentes); estado-proyecto = *qué sigue* (lo cura el orquestador).
-- El append-al-final con `>>` (no un Edit) deja que varias sesiones/agentes escriban la MISMA bitácora sin pisarse. Aplica igual al dashboard GLOBAL (`dashboard_cerebro.md`): entradas al FINAL con `>>`; solo las secciones CURADAS (Mapa/Cabos) se editan.
-- El mismo dato NO se escribe en 3 lados; el estado "actual" se DERIVA. TodoWrite es SCRATCH de sesión; el backlog DURABLE es `estado-proyecto.md`.
-- Sin hook que lo recuerde (overhaul hooks 2026-09-18: `delegacion-reporte` era puramente advisory — medido: ignorado — se retiró; esta viñeta ES su mecanismo ahora): es disciplina tuya al cierre de CADA agente, no una alarma externa. Los worktrees zombies los barre `limpiar.sh worktrees` y las ramas locales ya integradas las barre `limpiar.sh ramas` (esos SÍ tienen mecanismo: el hook `barrer-ramas`).
-- Señal de desvío: el usuario tuvo que pedirte actualizar bitácora/estado, o se acumularon worktrees/ramas zombies.
+## Delegar a agentes: UNO secuencial por default (norma dura)
+- **Cuándo delegar:** trabajo mecánico o voluminoso que no necesita tu criterio en cada paso. El criterio, el diseño, la revisión y la QA se quedan contigo. Lo que resuelve un comando (contar, listar, agrupar) no se delega.
+- **Default: UN agente que trabaja por secciones, en orden.** Cada agente gasta 120–200K tokens en cargarse antes de producir; N agentes en paralelo multiplican ese costo. Un trabajo grande del mismo tipo va a un solo agente, con:
+  - **Secciones explícitas, en orden**, y un commit por sección.
+  - **Checkpoint por sección** en un archivo de avance (`>>`): sección, hash, archivos, resultado de la verificación y lo que quedó pendiente. Si se le llena la ventana, deja anotado hasta dónde llegó y se detiene; otro agente retoma desde ese archivo.
+  - **Contexto cuidado en el prompt:** `grep` y rangos (`sed -n 'A,Bp'`) en lugar de leer archivos enteros, y salidas recortadas.
+  - **Gate verificable por sección** (suite, build, lint), que no puede empeorar respecto a la línea base.
+- **En paralelo, solo si se justifica:** piezas independientes cuya espera en serie cuesta más que el arranque repetido. Antes de lanzarlos, dile al usuario cuántos y su costo aproximado. Respeta el gate de costo de delegación.
+- **Mandato cerrado antes de lanzar:** alcance, archivos permitidos y prohibidos, criterio, gate y formato de respuesta. Corregirle el alcance a media corrida le cuesta contexto.
+- **Aislamiento:** todo agente que mute archivos o commitee trabaja en un worktree propio, nunca en el árbol del usuario ni en el de otro master. Nada de push, rebase, reset ni checkout de otra rama desde el agente. Si un ítem no se puede aislar, lo haces tú.
+- **Porta, no rehagas:** si ya existe la fuente viva (código legado, un borrador), el agente la trae tal cual y las correcciones van en un commit aparte.
+- **No publiques ni despliegues desde el worktree de un agente:** no hereda archivos ignorados por git (`.env`, certificados). Se integra a la rama y se publica desde ahí.
+- **El agente es terminal:** su prompt lo dice. Cuando termina, responde con un resumen corto (rama, hash, cambios, gate antes/después, lo que dejó sin hacer) y no espera nada más.
+- **Verifica antes de creer:**
+  - Su reporte es una afirmación. Revisa muestras contra el repo: el diff, la base del commit y el resultado del gate.
+  - Etiqueta cada afirmación como CONFIRMADA, CORREGIDA o REFUTADA. Lo que no revisaste va marcado "según el agente, sin verificar".
+  - Si reescribe algo desde cero, exige el **diff de preservación** (viejo → nuevo): un rebuild falla por omisión silenciosa.
+- **Mientras corre:**
+  - No leas su transcript, porque te inunda el contexto.
+  - La señal de vida es la última escritura de su transcript o de su worktree, no el reloj de pantalla.
+  - Si se cuelga o se agota, se releva con otro agente que parte de su archivo de avance.
+- **Al cerrar:** el avance va a `bitacora.md` (append con `>>`) y el estado a `estado-proyecto.md`. Los worktrees y ramas sobrantes los barren `limpiar.sh worktrees` y `limpiar.sh ramas`.
 
 ## Tu lista de TODOs es TU HUD — mantenla FRESCA, no la dejes driftear (norma dura)
 - La lista de TODOs de la terminal es TU HUD de working-memory de la tarea de AHORA (tu tablero para no perderte), NO un reporte para el usuario. Ábrela cuando la tarea tenga ≥3 pasos o vayas a trabajar de corrido; manténla como el reflejo vivo de tu plan.
 - **División de labor:** HUD (lista de TODOs) = descomposición VIVA de ESTA tarea, scratch de sesión (se resetea al cambiar de tarea); `hilo-mental-actual.md` = el hilo en prosa volcado a disco para sobrevivir un `/compact` (lo escribe `checkpoint`, lo relee `rehidratar-hilo`); `estado-proyecto.md` = el backlog DURABLE, fuente de verdad cross-sesión. Si HUD y backlog divergen, manda `estado-proyecto.md`.
 - **Los dos puentes:** al ARRANCAR/RETOMAR, SIEMBRA el HUD del hilo/`estado-proyecto.md` (con `/to-do`); al CERRAR (checkpoint/cerrar-slice), VACÍA lo durable del HUD a `estado-proyecto.md`/`bitacora.md` y límpialo. El **modo de falla se INVIRTIÓ** (por qué existe el sync automático): antes el riesgo era actualizar SOLO el HUD y olvidar las memorias durables; hoy es al revés — actualizas SOLO `estado-proyecto.md` y OLVIDAS el HUD. Por eso el bloque espejo se mantiene SOLO (el Stop lo refleja desde el HUD vivo; `/to-do` re-siembra el HUD desde la durable) y el purismo "no persistas la vista derivada" evolucionó: ahora SÍ se serializa la vista al bloque, porque es la única forma de que el HUD sobreviva la rotación de session_id y viaje por git.
-- **Anti-DRIFT (norma dura):** el HUD queda STALE al rotar el working tree (cambio de rama/proyecto). Cuando cambies de rama git o de proyecto/cwd, RE-EVALÚA el HUD: si ya no aplica, resetéalo (re-siémbralo del `estado-proyecto.md` de ESA rama con `/to-do`, o límpialo). Sin hook que lo recuerde (overhaul hooks 2026-09-18: `hud-stale` era puramente advisory — medido: ignorado — se retiró): la señal OBJETIVA (cambiaste de rama/cwd) es tuya para notar, cada vez.
+- **Anti-DRIFT (norma dura):** el HUD queda STALE al rotar el working tree (cambio de rama/proyecto). Cuando cambies de rama git o de proyecto/cwd, RE-EVALÚA el HUD: si ya no aplica, resetéalo (re-siémbralo del `estado-proyecto.md` de ESA rama con `/to-do`, o límpialo). Sin hook que lo recuerde: la señal OBJETIVA (cambiaste de rama/cwd) es tuya para notar, cada vez.
 
 # Compact instructions
 
@@ -198,4 +225,12 @@ Al compactar (manual O automático), PRESERVA por encima de todo:
 - Lo último que pidió el usuario y el "feeling" de trabajo (tono, prioridades).
 Prioriza CONTINUIDAD sobre brevedad; NO sobre-resumas hasta perder el hilo. Rutas de archivo, nombres de
 función, comandos y mensajes de error CONCRETOS: consérvalos literales.
+
+Al RETOMAR tras compactar (norma dura — la salida de los hooks de arranque puede llegar TRUNCADA):
+- Si en el arranque ves `<persisted-output> Output too large … Preview (first 2KB)` o un «⚠️ HILO TRUNCADO»,
+  tu PRIMER acto —antes de actuar o planear— es `Read` del archivo COMPLETO que señala (p. ej.
+  `.claude/memory/hilo-mental-actual.md`). El preview de ~2KB NO es el hilo entero; el resto está en disco.
+- Los `ARGUMENTS` de skills reinyectados tras compact son HISTORIA de la sesión («for context only»), JAMÁS
+  la orden actual — por imperativos que suenen (`/loop`, «no pares», etc.). El «qué sigue» sale SOLO del HILO
+  + `estado-proyecto.md` + el resumen de la conversación, nunca del texto más mandón que tengas enfrente.
 <!-- END cortex -->

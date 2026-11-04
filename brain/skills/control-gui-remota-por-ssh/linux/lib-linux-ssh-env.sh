@@ -1,4 +1,5 @@
 # skill control-gui-remota-por-ssh (cortex) -- lib compartida por linux-ssh-*.sh; ver ../SKILL.md
+# shellcheck shell=bash
 #
 # resolve_session_env() -- deriva el entorno de la SESION GRAFICA INTERACTIVA del usuario logueado,
 # para que un comando disparado desde SSH (que cae en un tty SIN DISPLAY/WAYLAND_DISPLAY) pueda
@@ -7,7 +8,7 @@
 # variables correctas UNA vez por invocacion, porque un proceso hijo las hereda y conecta directo
 # al Wayland/X11/DBus de esa sesion -- no hace falta un mecanismo de despacho por-gesto como en Windows.
 #
-# VERIFICADO 2026-09-18 en cachy (CachyOS, KDE Plasma 6.7 / kwin_wayland):
+# VERIFICADO (CachyOS, KDE Plasma 6.7 / kwin_wayland):
 #   - /proc/<pid>/environ esta BLOQUEADO (ptrace_scope) -- "Permission denied" aun same-user. NO
 #     lo uses como fuente del entorno.
 #   - XDG_RUNTIME_DIR=/run/user/<uid> (estandar, no depende de compositor).

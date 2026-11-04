@@ -1,0 +1,1 @@
+- 2026-10-22 · checkpoint-mecanico.js --self --ensure (andamio de cortex) truena con error de Node en la cachy; el /checkpoint de axon-master siguió sin andamio.

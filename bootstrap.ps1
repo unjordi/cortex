@@ -14,7 +14,7 @@ $ErrorActionPreference = 'Stop'
 # tenga ExecutionPolicy Restricted/AllSigned. Este script corre via `iex` (una CADENA, que la policy no
 # frena), pero invocar un ARCHIVO .ps1 con `&` SI esta sujeto a la policy -> lo ponemos en Bypass SOLO
 # para ESTE proceso (no toca la config global de la maquina, no persiste). Fix de raiz del gotcha
-# "running scripts is disabled on this system" (caso real del onboarding, 2026-07-10).
+# "running scripts is disabled on this system".
 try { Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force } catch {}
 
 $repo = 'https://github.com/unjordi/cortex'

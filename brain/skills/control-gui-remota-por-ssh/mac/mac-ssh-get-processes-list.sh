@@ -6,7 +6,7 @@
 # NO necesita sesion de consola: corre directo en la sesion SSH (`ps`). Gemelo de
 # win-ssh-get-processes-list.ps1 / linux-ssh-get-processes-list.sh.
 #
-# ADAPTACION (verificada 2026-09-18 LOCAL): a diferencia de Linux, el `comm` de macOS suele ser la
+# ADAPTACION (verificada): a diferencia de Linux, el `comm` de macOS suele ser la
 # RUTA COMPLETA al ejecutable (`/Applications/Foo.app/Contents/MacOS/Foo`) y esa ruta PUEDE traer
 # ESPACIOS (nombres de carpeta como "Application Support") -- un parseo por columnas fijas con
 # `comm` primero rompe ahi (columnas se corren). Por eso este script pone PID/RSS/CPU primero

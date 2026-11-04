@@ -10,7 +10,7 @@
 1. [Flujo de git y sus guards](#1-flujo-de-git-y-sus-guards) — ramita → mini-develop → develop → main, y qué guard vigila cada cruce.
 2. [Ciclo del hilo / contexto](#2-ciclo-del-hilo--contexto) — checkpoint → compact → rehidratar, con `aviso-contexto` y la rama de auto-sync de `aviso-drift-cerebro`.
 3. [Delegación y fan-out](#3-delegación-y-fan-out) — gate de costo, freno duro, worktree aislado y cierre automático.
-4. [Tiers del MANIFEST](#4-tiers-del-manifest--dónde-se-instala-cada-pieza) — global / repo / both, y por cuál ruta llega cada pieza.
+4. [Tiers del MANIFEST](#4-tiers-del-manifest--dónde-se-instala-cada-pieza) — `global` (único vivo) + `retirado`; el cerebro vive solo en global.
 
 ---
 
@@ -40,24 +40,16 @@ flowchart LR
     MINI -->|"MR deliberado<br/>OK EXPLÍCITO del usuario<br/>con --squash, sin --auto-merge"| DEVELOP
     DEVELOP -->|"MR de RELEASE<br/>OK SÚPER-explícito<br/>SIN squash (conserva historia)"| MAIN
 
-    GBG["🚧 git-branch-guard<br/>push/merge directo a develop·main<br/>→ DENEGADO, redirige a ramita"]
-    MDG["🔗 merge-develop-guard<br/>MR a develop sin --squash o sin OK expreso → DENEGADO<br/>target-aware: develop pide OK normal,<br/>main exige marca de RELEASE + SIN squash<br/>(consolida los antiguos merge-squash-guard + confirmar-merge-develop)"]
-    SS["🕵️ secret-scan<br/>commit/push con secreto → DENEGADO"]
+    MDG["🔗 merge-develop-guard<br/>PASO 0: push/merge DIRECTO a develop·main → DENEGADO, redirige a ramita<br/>(absorbió git-branch-guard el 2026-10-21)<br/>+ MR a develop sin --squash o sin OK expreso → DENEGADO<br/>target-aware: develop pide OK normal,<br/>main exige marca de RELEASE + SIN squash<br/>(consolida los antiguos merge-squash-guard + confirmar-merge-develop)"]
     EMG["🖥️ entorno-maquina-guard<br/>commit de algo machine-specific<br/>al .claude/memory/ del repo → AVISA"]
     LIB["📚 lib analizar-comando-git.sh<br/>(lógica compartida: qué comando toca una base)"]
 
-    GBG -.->|vigila| DEVELOP
-    GBG -.->|vigila| MAIN
     MDG -.->|vigila el MR + candado del cruce| DEVELOP
     MDG -.->|candado súper-explícito, sin squash| MAIN
-    SS -.->|escanea lo que ENTRA| RAMITA
     EMG -.->|escanea lo que ENTRA al commit| RAMITA
-    LIB -.-> GBG
     LIB -.-> MDG
 
-    style GBG fill:#7f1d1d,color:#fff
     style MDG fill:#7f1d1d,color:#fff
-    style SS fill:#7f1d1d,color:#fff
     style EMG fill:#78350f,color:#fff
     style LIB fill:#374151,color:#fff
 ```
@@ -114,9 +106,10 @@ flowchart TB
     style SYNC fill:#14532d,color:#fff
 ```
 
-**El par escritura/lectura:** `checkpoint` escribe · `rehidratar-hilo` lee. `dod-verificar`
-(Stop, por-repo) cierra el ciclo del turno: un claim de CIERRE sin evidencia/OK — o un claim
-visual a ciegas — se deniega ahí.
+**El par escritura/lectura:** `checkpoint` escribe · `rehidratar-hilo` lee. El cierre del turno
+(la «Definición de LISTO») ya NO lo hace cumplir un hook: `dod-verificar` se retiró el 2026-11-01
+(>230 FP del corpus) — hoy es una NORMA cuyo mecanismo es el TRATO/CONTRATO (estatus honesto + la
+confirmación/OK del usuario). En el punto del merge sí lo hace cumplir `merge-develop-guard`.
 
 ---
 
@@ -155,57 +148,45 @@ flowchart TB
     style LR fill:#374151,color:#fff
 ```
 
-El estilo de orquestación (fan-out + supervisión, 2 archivos de estado sin redundancia) lo guía
-el skill `orquestar-fanout`; la lib `delegacion-comun.sh` comparte la lógica de gate/registro.
-El gate de costo es el **freno** (evita runaways); el **empuje** hacia delegar y el **reporte sin
-niñera** al cerrar un agente (appendear bitácora `>>` + actualizar `estado-proyecto.md` + limpiar
-worktree) ya NO son hooks (`recordar-orquestar`/`delegacion-reporte` se retiraron —puramente
-advisory, medido: ignorados—): viven como **norma que Claude se autoimpone** ("Orquesta: delega lo
-paralelizable y quédate disponible" en `brain/norms/global-claude-md.md`), reforzada por el skill
-`orquestar-fanout`.
+El estilo de delegación (UN agente SECUENCIAL por default, paralelo solo si se justifica con el costo
+dicho antes; 2 archivos de estado sin redundancia) lo fija la norma **«Delegar a agentes: UNO
+secuencial por default»** de `brain/norms/global-claude-md.md` (absorbió al retirado skill
+`orquestar-fanout`); la lib `delegacion-comun.sh` comparte la lógica de gate/registro. El gate de
+costo es el **freno** (evita runaways); el **empuje** hacia delegar y el **cierre sin niñera** de un
+agente (appendear bitácora `>>` + actualizar `estado-proyecto.md` + limpiar worktree) son DISCIPLINA
+del máster, no hooks (`recordar-orquestar`/`delegacion-reporte` se retiraron; su regla vive en esa
+norma).
 
 ---
 
 ## 4. Tiers del MANIFEST — dónde se instala cada pieza
 
 [`brain/hooks/MANIFEST`](../brain/hooks/MANIFEST) es la **fuente única**: declara tier (dónde) y
-kind (cómo) de cada pieza, y de ahí **derivan** las dos rutas de instalación y el drift-check de
-`test-brain.sh` — no hay listas curadas por separado que puedan divergir. Las **skills** tienen su propio
-[`brain/skills/MANIFEST`](../brain/skills/MANIFEST) con el mismo modelo (`global` / `both`): install-brain
-las despliega globalmente (árbol completo) y `sincronizar-cerebro.sh` despliega las `both` por-repo, con el
-mismo drift-check. El drift de skills lo vigila `aviso-drift-cerebro` — per-repo (vía el resumen del sync,
-misma bifurcación `.claude/repo-compartido`) y global (`~/.claude/skills` vs la fuente, warn-only).
+kind (cómo) de cada pieza, y de ahí **deriva** la instalación GLOBAL y el drift-check de `test-brain.sh`
+— no hay listas curadas por separado que puedan divergir. Desde el retiro del cerebro por-repo
+(2026-11-01, "solo cerebro global") el **único tier vivo es `global`**: todo hook/lib/skill se instala en
+`~/.claude` y no viaja por-repo (ya no existen `both`/`repo`). Las **skills** tienen su propio
+[`brain/skills/MANIFEST`](../brain/skills/MANIFEST) (todas `global`). El drift de la copia GLOBAL
+(hooks/skills/normas vs la fuente) lo vigila `aviso-drift-cerebro`, warn-only.
 
 ```mermaid
 flowchart LR
     MANIFEST["📜 brain/hooks/MANIFEST<br/>fuente ÚNICA: tier + kind por pieza"]
 
     subgraph tiers["Tiers declarados"]
-        BOTH["tier <b>both</b> — global + por-repo<br/>(con cláusula de dedupe:<br/>la copia del repo cede a la global)<br/><br/>hooks: git-branch-guard ·<br/>merge-develop-guard · secret-scan ·<br/>entorno-maquina-guard · no-bypass-deploy<br/>libs: analizar-comando-git ·<br/>detectar-secretos · juez-comun"]
-        GLOBAL["tier <b>global</b> — solo ~/.claude<br/><br/>hooks: proteger-arbol · proteger-fuente-cerebro ·<br/>limite-gasto · rehidratar-hilo ·<br/>aviso-contexto · aviso-drift-cerebro ·<br/>exportar-sesion-master · checkpoint-mecanico ·<br/>barrer-ramas · delegacion-gate · delegacion-registrar<br/>libs: delegacion-comun · ramas-zombie · drift-cerebro-comun ·<br/>contrato-hilo · checkpoint-mecanico-comun<br/>scripts: limpiar (worktrees/ramas/residuo/flotilla) ·<br/>verificar-cerebro · cementerio"]
-        REPO["tier <b>repo</b> — solo &lt;repo&gt;/.claude<br/>(se cargan si la sesión INICIA ahí)<br/><br/>hooks: dod-verificar · sesion-inicio · recordar-cosechar"]
-        RETIRADO["🪦 tier <b>retirado</b> — LÁPIDA, no despliega nada<br/>(fecha + motivo en columnas 4+)<br/><br/>hooks: rama-vieja · merge-squash-guard ·<br/>confirmar-merge-develop · delegacion-reporte ·<br/>recordar-orquestar · recordar-unificar-cerebro ·<br/>recordar-dashboard · hud-stale<br/>scripts: limpiar-ramas · limpiar-worktrees ·<br/>limpiar-residuo · barrer-flotilla-cerebro<br/>(consolidados en limpiar.sh, ver MANIFEST)"]
+        GLOBAL["tier <b>global</b> — ÚNICO vivo, solo ~/.claude<br/><br/>hooks: merge-develop-guard · entorno-maquina-guard ·<br/>no-bypass-deploy · proteger-arbol · proteger-fuente-cerebro ·<br/>limite-gasto · rehidratar-hilo · aviso-contexto ·<br/>aviso-drift-cerebro · exportar-sesion-master · checkpoint-mecanico ·<br/>barrer-ramas · delegacion-gate · delegacion-registrar ·<br/>sesion-inicio · recordar-cosechar<br/>libs: analizar-comando-git · juez-comun · delegacion-comun ·<br/>ramas-zombie · drift-cerebro-comun · contrato-hilo ·<br/>checkpoint-mecanico-comun · sincronizar-tasklist<br/>scripts: limpiar (worktrees/ramas/residuo) ·<br/>verificar-cerebro · cementerio"]
+        RETIRADO["🪦 tier <b>retirado</b> — LÁPIDA, no despliega nada<br/>(fecha + motivo en columnas 4+)<br/><br/>hooks: dod-verificar · git-branch-guard · merge-squash-guard ·<br/>confirmar-merge-develop · proteger-autorizaciones · rama-vieja ·<br/>secret-scan · delegacion-reporte · recordar-orquestar ·<br/>recordar-unificar-cerebro · recordar-dashboard · hud-stale<br/>scripts: limpiar-ramas/worktrees/residuo ·<br/>barrer-flotilla-cerebro · limpiar-impl-flotilla<br/>(ver MANIFEST por el motivo de cada una)"]
     end
 
-    subgraph destinos["Destinos"]
-        GDIR["🏠 ~/.claude/hooks + settings.json<br/>instala: brain/install-brain.sh<br/>(vía bootstrap / install.sh)<br/>+ skills {global,both} en ~/.claude/skills<br/>(árbol completo; tier por brain/skills/MANIFEST)"]
-        RDIR["📁 &lt;repo&gt;/.claude/hooks + skills + settings.json<br/>despliega: brain/sincronizar-cerebro.sh<br/>(hooks/libs {repo,both} + skills {both};<br/>diff-aware; viaja por git al equipo)"]
-    end
+    GDIR["🏠 ~/.claude/hooks + settings.json<br/>instala: brain/install-brain.sh<br/>(vía bootstrap / install.sh)<br/>+ skills {global} en ~/.claude/skills (árbol completo)"]
 
-    TEST["🧪 brain/test-brain.sh<br/>drift-check (e2): ambas rutas<br/>DEBEN coincidir con el MANIFEST"]
+    TEST["🧪 brain/test-brain.sh<br/>drift-check (e2): lo instalado<br/>DEBE coincidir con el MANIFEST"]
 
-    MANIFEST --> BOTH
     MANIFEST --> GLOBAL
-    MANIFEST --> REPO
     MANIFEST --> RETIRADO
-    BOTH -->|"install-brain.sh"| GDIR
-    BOTH -->|"sincronizar-cerebro.sh"| RDIR
     GLOBAL -->|"install-brain.sh"| GDIR
-    REPO -->|"sincronizar-cerebro.sh"| RDIR
-    RETIRADO -.->|"install-brain.sh PODA<br/>(borra .sh + de-cablea)"| GDIR
-    RETIRADO -.->|"sincronizar-cerebro.sh PODA<br/>(huérfano por retiro, sin --prune-orphans)"| RDIR
+    RETIRADO -.->|"install-brain.sh PODA<br/>(borra .sh + de-cablea; --limpiar-repo para un repo con copia vieja)"| GDIR
     TEST -.->|verifica| GDIR
-    TEST -.->|verifica| RDIR
     TEST -.->|contra| MANIFEST
 
     style MANIFEST fill:#1e3a5f,color:#fff

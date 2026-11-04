@@ -7,7 +7,7 @@
 # Idempotente, OS-agnóstico (bash), FAIL-SAFE: sin jq o sin snapshot fresco → metered → pregunta.
 set -u
 input=$(cat 2>/dev/null || true)
-CONS="$HOME/.claude/delegacion-consentimiento.json"
+CONS="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/delegacion-consentimiento.json"
 
 ask() { jq -n --arg r "$1" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}'; exit 0; }
 

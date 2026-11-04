@@ -20,6 +20,7 @@
 #
 #   USO   cerrar-slice.sh --id <id> (--message-file <f> | --message "<txt>") [--forge glab|gh] [--repo <slug>]
 #                         [--branch <feat/…>] [--wait-ci] [--dry-run]
+#         cerrar-slice.sh --abrir --branch <feat/…> [--repo <slug>] [--forge glab|gh] [--dry-run]
 set -u
 
 _uso() { cat <<'USO'
@@ -31,25 +32,102 @@ cerrar-slice.sh — arma el merge de un slice a develop (squash, INMEDIATO, sin 
   --id <id>            id del MR (glab) / PR (gh) a integrar. REQUERIDO.
   --message-file <f>   archivo con el resumen curado del squash (recomendado: --message "$(cat f)" queda inline).
   --message "<txt>"    resumen curado inline (alternativa a --message-file).
-  --forge glab|gh      forge a usar. Default: autodetecta (glab/gh en PATH + remoto origin); si ambos, glab.
+  --forge glab|gh      forge a usar. Default: autodetecta por el HOST del remoto origin (github.com→gh,
+                       *gitlab*→glab); host desconocido o sin origin → error (no adivina por la CLI instalada).
   --repo <slug>        org/grupo/repo LITERAL (no una $VAR). Se pasa a glab -R / gh -R.
   --branch <feat/…>    nombre de la ramita (informativo; para el rastro si el mensaje no lo trae — NO lo inventa).
   --wait-ci            espera a que el pipeline/checks del MR estén en verde ANTES de mergear (acotado).
   --dry-run            imprime el comando exacto y NO lo ejecuta.
+  --abrir              en vez de mergear, ABRE el MR/PR de --branch hacia develop, ejecutando desde el clon local
+                       de --repo (aunque el cwd sea otro repo). No pide --id ni mensaje.
   -h|--help            esta ayuda.
 
 Reglas que hace cumplir (las mismas del guard merge-develop-guard):
   · SIEMPRE --squash (a develop = 1 commit limpio por slice).
   · NUNCA --auto/--auto-merge (merge YA, no encolado en MWPS sin testigo).
   · SIEMPRE borra la rama de origen (--remove-source-branch / --delete-branch).
-  · El mensaje DEBE traer traza: una línea "Rama: <…>" y una "MR:/PR: !<id>" (o #<id>), y ≥12 palabras.
+  · Traza rama→commit en el mensaje ("Rama: <…>" + "MR:/PR: !<id>"/#<id>): si falta, cerrar-slice la AGREGA
+    sola (del --branch/el forge). Un mensaje de <12 palabras solo AVISA; el guard ya no bloquea por el mensaje.
 USO
 }
 
 _err() { printf 'cerrar-slice: %s\n' "$1" >&2; exit 1; }
 
+# Decide el forge por el HOST del remoto origin, NO por "cuál CLI está instalada": en una Mac con glab
+# instalado, un repo de GitHub (como cortex) NO debe usar glab. github.com→gh · *gitlab*→glab · host
+# desconocido / sin origin → VACÍO (el llamador da un error claro; NO se adivina).
+_forge_por_origin() {
+  local url host
+  url="$(git remote get-url origin 2>/dev/null || true)"
+  [ -n "$url" ] || { printf ''; return 0; }
+  host="$(printf '%s' "$url" | sed -E 's#^[a-zA-Z][a-zA-Z0-9+.-]*://##; s#^[^@/]*@##; s#[:/].*$##')"
+  case "$host" in
+    github.com|*.github.com) printf 'gh' ;;
+    *gitlab*)                printf 'glab' ;;
+    *)                       printf '' ;;
+  esac
+}
+
+# Gate de gitleaks ANTES de integrar: escanea los commits del slice (origin/<base>..HEAD) y PARA si halla un
+# secreto (reemplaza al hook secret-scan, retirado 2026-10-19). Las excepciones son por HUELLA y explícitas —
+# `.gitleaksignore`/`.gitleaks.toml` del repo, que gitleaks lee solo—, NUNCA por palabra. Sin gitleaks
+# instalado: avisa fuerte y NO bloquea (el CI de gitleaks es el backstop server-side).
+_gitleaks_gate() {
+  local base rng out head cur url
+  if ! command -v gitleaks >/dev/null 2>&1; then
+    printf 'cerrar-slice: ⚠️ gitleaks NO instalado — sin gate local de secretos (el CI lo corre server-side). Instálalo: brew install gitleaks · apt install gitleaks.\n' >&2
+    return 0
+  fi
+  base="$(git rev-parse --verify -q origin/develop || git rev-parse --verify -q develop)" \
+    || { printf 'cerrar-slice: no ubico origin/develop para el rango de gitleaks — omito el gate local (el CI lo cubre).\n' >&2; return 0; }
+
+  # Con --repo el flujo ya entró (cd) al clon local de ESE slug, así que el `.` de abajo ES el repo correcto.
+  # Esta comprobación queda como DEFENSA: si por lo que sea el cwd NO es el repo de --repo, avisa y NO declara
+  # "limpio" (el CI de gitleaks es el backstop server-side) en vez de escanear el repo equivocado.
+  if [ -n "$REPO" ]; then
+    url="$(git remote get-url origin 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"
+    case "${url%.git}" in
+      *[/:]"$(printf '%s' "$REPO" | tr '[:upper:]' '[:lower:]')") : ;;
+      *) printf 'cerrar-slice: ⚠️ --repo %s no es el repo del directorio actual → el gate local de gitleaks escanearía otro repo; NO verifico aquí (el CI lo cubre).\n' "$REPO" >&2; return 0 ;;
+    esac
+  fi
+
+  # H18 (FP 2026-10-20): escanea la RAMA DEL MR (lo que de verdad se integra), no el HEAD del cwd — que
+  # puede ser develop/la mini/otra rama si cerrar-slice se corre SIN estar parado en la ramita → "limpio"
+  # en falso. Resuelve la rama por --branch o por el forge; fetch + escanea origin/<base>..origin/<rama>.
+  head="$BRANCH"
+  if [ -z "$head" ]; then
+    if [ "$FORGE" = gh ]; then
+      head="$(gh pr view "$ID" ${REPO:+-R "$REPO"} --json headRefName -q .headRefName 2>/dev/null || true)"
+    else
+      head="$(glab mr view "$ID" ${REPO:+-R "$REPO"} -F json 2>/dev/null | jq -r '.source_branch // empty' 2>/dev/null || true)"
+    fi
+  fi
+  if [ -n "$head" ]; then
+    git fetch -q origin "$head" 2>/dev/null || true
+    if   git rev-parse --verify -q "origin/$head" >/dev/null 2>&1; then rng="${base}..origin/$head"
+    elif git rev-parse --verify -q "$head"        >/dev/null 2>&1; then rng="${base}..$head"
+    else head=""   # la rama no está ni local ni en origin → cae al fallback de abajo
+    fi
+  fi
+  if [ -z "$head" ]; then
+    cur="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo HEAD)"
+    case "$cur" in
+      develop|main|HEAD)
+        _err "no pude resolver la rama del MR #$ID (sin --branch y sin poder leerla de $FORGE) y estás parado en '$cur', NO en la ramita → no puedo escanear los commits que se integrarán y NO declaro 'limpio' a ciegas. Párate en la ramita del MR, pásame --branch <feat/…>, o confía en el CI de gitleaks (backstop server-side)." ;;
+      *) rng="${base}..HEAD" ;;   # parado EN una ramita → su HEAD sí es lo que se integra
+    esac
+  fi
+
+  if ! out="$(gitleaks git . --log-opts="$rng" --redact --no-banner 2>&1)"; then
+    printf '%s\n' "$out" | tail -20 >&2
+    _err "gitleaks detectó un posible SECRETO en los commits del slice ($rng). NO integro. Saca el secreto (rótalo si ya se commiteó) o, si es un FALSO POSITIVO, agrégalo por HUELLA a .gitleaksignore/.gitleaks.toml y reintenta — nunca lo marques por palabra."
+  fi
+  printf 'cerrar-slice: gitleaks limpio en %s.\n' "$rng" >&2
+}
+
 # ── parseo de args ──
-ID=""; MSG=""; MSG_FILE=""; FORGE=""; REPO=""; BRANCH=""; WAIT_CI=0; DRY=0
+ID=""; MSG=""; MSG_FILE=""; FORGE=""; REPO=""; BRANCH=""; WAIT_CI=0; DRY=0; ABRIR=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --id)            ID="${2:-}"; shift 2 ;;
@@ -60,12 +138,41 @@ while [ $# -gt 0 ]; do
     --branch)        BRANCH="${2:-}"; shift 2 ;;
     --wait-ci)       WAIT_CI=1; shift ;;
     --dry-run)       DRY=1; shift ;;
+    --abrir)         ABRIR=1; shift ;;
     --auto|--auto-merge)
       _err "--auto/--auto-merge está PROHIBIDO: la integración a develop es INMEDIATA, nunca encolada (MWPS). Quítalo." ;;
     -h|--help)       _uso; exit 0 ;;
     *)               _err "opción desconocida: $1 (usa --help)" ;;
   esac
 done
+
+# ── --abrir: abre el MR/PR desde el clon de --repo (glab/gh fallan si el cwd es OTRO repo) ──
+if [ "$ABRIR" = 1 ]; then
+  [ -n "$BRANCH" ] || _err "--abrir necesita --branch <feat/…>."
+  case "$REPO" in *'$'*|*'`'*) _err "--repo trae una variable de shell sin expandir ('$REPO'): pásale el SLUG LITERAL." ;; esac
+  if [ -n "$REPO" ]; then
+    for _lib in "$(dirname "$0")/../../hooks/analizar-comando-git.sh" "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks/analizar-comando-git.sh"; do
+      [ -f "$_lib" ] && { . "$_lib"; break; }
+    done
+    command -v acg_clon_local_de_slug >/dev/null 2>&1 || _err "no encontré la lib analizar-comando-git.sh para ubicar el clon de $REPO."
+    _clon="$(acg_clon_local_de_slug "$REPO" .)" || _clon=""
+    [ -n "$_clon" ] || _err "no encontré un clon local de $REPO (ni el repo actual ni sus hermanos)."
+    cd "$_clon" || _err "no pude entrar a $_clon."
+  fi
+  [ -z "$FORGE" ] && FORGE="$(_forge_por_origin)"
+  case "$FORGE" in
+    gh)   set -- gh pr create --base develop --head "$BRANCH" --fill ${REPO:+-R "$REPO"} ;;
+    glab) # sin --fill: glab --fill PUSHEA el HEAD del cwd a --source-branch (el clon puede estar en otra rama).
+          git fetch -q origin "$BRANCH" 2>/dev/null || true
+          _tit="$(git log -1 --format=%s "origin/$BRANCH" 2>/dev/null)"; [ -n "$_tit" ] || _tit="$BRANCH"
+          _desc="$(git log -1 --format=%b "origin/$BRANCH" 2>/dev/null)"; [ -n "$_desc" ] || _desc="$_tit"
+          set -- glab mr create --source-branch "$BRANCH" --target-branch develop --title "$_tit" --description "$_desc" --squash-before-merge --remove-source-branch --yes ${REPO:+-R "$REPO"} ;;
+    *)    _err "no pude decidir el forge por el origin de $(pwd); pásale --forge glab|gh." ;;
+  esac
+  printf 'cerrar-slice: (%s) %s\n' "$(pwd)" "$*" >&2
+  [ "$DRY" = 1 ] && exit 0
+  exec "$@"
+fi
 
 [ -n "$ID" ] || _err "falta --id <id del MR/PR>."
 # el id debe ser un entero (sin # ni $VAR) — un valor opaco no se resuelve en el forge.
@@ -80,37 +187,184 @@ if [ -n "$MSG_FILE" ]; then
 fi
 [ -n "$MSG" ] || _err "falta el resumen del squash: pásalo con --message \"…\" o --message-file <f>."
 
-# ── validación del mensaje (los mismos pisos del guard: rastro + sustancia) ──
-# traza rama→commit: una línea Rama: <…> Y una MR:/PR:/!id/#id. El squash BORRA el merge-commit con el #id →
-# sin este rastro, `git log develop` no dice de qué ramita salió el commit.
-printf '%s' "$MSG" | grep -qiE '(^|[[:space:]])rama[[:space:]]*:[[:space:]]*[^[:space:]]' \
-  || _err "al resumen le falta la línea de traza \"Rama: <feat/…>\". (El squash borra el merge-commit con el #id → el rastro debe vivir en el mensaje.)"
-printf '%s' "$MSG" | grep -qiE '((mr|pr)[[:space:]]*:[[:space:]]*[!#]?[0-9]+|[!#][0-9]+)' \
-  || _err "al resumen le falta la referencia al MR/PR (\"MR: !<id>\" o \"PR: #<id>\")."
-# sustancia mínima: ≥12 palabras (un resumen de una línea no cuenta el cambio neto y su porqué).
-_nwords=$(printf '%s' "$MSG" | tr -s '[:space:]' '\n' | grep -c '[^[:space:]]' || true)
-[ "${_nwords:-0}" -ge 12 ] || _err "el resumen es DEMASIADO CORTO ($_nwords palabras): escríbelo en prosa (el cambio neto y su porqué), ≥12 palabras."
-
-# ── forge: autodetecta si no se dio ──
-if [ -z "$FORGE" ]; then
-  if command -v glab >/dev/null 2>&1; then FORGE=glab
-  elif command -v gh >/dev/null 2>&1; then FORGE=gh
-  else _err "no encuentro glab ni gh en el PATH; instala uno o pásalo con --forge."
+# Con --repo <slug>: el forge y el gate de gitleaks se deciden/corren DESDE el clon local de ESE slug, no del
+# cwd (que puede ser otro repo/forge). El MSG ya se leyó arriba (relativo al cwd original), así que entrar al
+# clon en este punto no rompe --message-file; gh/glab llevan -R <slug> y operan igual desde cualquier cwd.
+if [ -n "$REPO" ]; then
+  for _lib in "$(dirname "$0")/../../hooks/analizar-comando-git.sh" "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks/analizar-comando-git.sh"; do
+    [ -f "$_lib" ] && { . "$_lib"; break; }
+  done
+  command -v acg_clon_local_de_slug >/dev/null 2>&1 || _err "no encontré la lib analizar-comando-git.sh para ubicar el clon de $REPO."
+  _clon="$(acg_clon_local_de_slug "$REPO" .)" || _clon=""
+  if [ -n "$_clon" ]; then
+    cd "$_clon" || _err "no pude entrar a $_clon."
+  elif [ -n "$FORGE" ]; then
+    # Sin clon local pero con --forge explícito: el forge ya está dado y el merge usa -R <slug> desde cualquier
+    # cwd; el gate local de gitleaks no tiene dónde correr → se omite (lo cubre el CI server-side).
+    printf 'cerrar-slice: ⚠️  no hay clon local de %s; con --forge %s sigo (el merge usa -R %s). El gate local de gitleaks se omite — lo cubre el CI.\n' "$REPO" "$FORGE" "$REPO" >&2
+  else
+    _err "no encontré un clon local de $REPO (ni el repo actual ni sus hermanos) y no me diste --forge → no puedo decidir el forge. Pásame --forge glab|gh, o corre desde un clon local de $REPO."
   fi
+fi
+
+# ── traza + sustancia del mensaje: AYUDA, no revisión (decisión unjordi 2026-10-21: el mensaje lo redacta
+#    quien mergea; el candado merge-develop-guard solo RECUERDA, no frena por la calidad). cerrar-slice ARMA la
+#    traza rama→commit si el redactor la omitió y ADVIERTE la sustancia, pero NUNCA aborta por el mensaje. El
+#    squash borra el merge-commit con el #id → el rastro «Rama:/MR:» debe vivir en el mensaje para que
+#    `git log develop` diga de qué ramita salió el commit; por eso lo agregamos nosotros si falta.
+_warn() { printf 'cerrar-slice: %s\n' "⚠️  $1" >&2; }
+_fg="$FORGE"
+[ -z "$_fg" ] && _fg="$(_forge_por_origin)"
+# (a) líneas Rama: — una por CADA rama integrada en este merge: la FUENTE y toda SUB-RAMA CONTENIDA en ella
+#     (tip ancestro de la fuente y NO de la base develop). ramas-zombie ya LEE múltiples `Rama:`; el ESCRITOR
+#     era el eslabón roto (cerrar-slice solo nombraba la contenedora → las sub-ramas que entraron DENTRO de
+#     una épica/integración quedaban "vivas" para siempre; medido 2026-10-22, 19 ramas). Se agrega SOLO la que
+#     FALTE en el mensaje (no duplica las que el redactor ya puso). La señal por contenido de ramas-zombie es
+#     la red para lo YA mergeado sin estas líneas.
+_rama="$BRANCH"
+if [ -z "$_rama" ] && [ "$_fg" = glab ]; then _rama="$(glab mr view "$ID" ${REPO:+-R "$REPO"} -F json 2>/dev/null | jq -r '.source_branch // empty' 2>/dev/null || true)"; fi
+if [ -z "$_rama" ] && [ "$_fg" = gh ];   then _rama="$(gh pr view "$ID" ${REPO:+-R "$REPO"} --json headRefName -q .headRefName 2>/dev/null || true)"; fi
+[ -z "$_rama" ] && _rama="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+_fuente=""
+[ -n "$_rama" ] && [ "$_rama" != HEAD ] && _fuente="$(git rev-parse --verify -q "refs/heads/$_rama" 2>/dev/null || git rev-parse --verify -q "refs/remotes/origin/$_rama" 2>/dev/null || true)"
+if [ -n "$_fuente" ]; then
+  # fuente RESUELTA localmente → el conjunto CONTENIDO se puede computar: la fuente + cada rama cuyo tip es
+  # ancestro de la fuente y NO de la base (= entró DENTRO de la fuente, no estaba ya en develop).
+  _base="$(git rev-parse --verify -q origin/develop 2>/dev/null || git rev-parse --verify -q develop 2>/dev/null || true)"
+  _contenidas="$_rama"
+  if [ -n "$_base" ]; then
+    while IFS=' ' read -r _bn _bt; do
+      [ -n "$_bn" ] && [ -n "$_bt" ] || continue
+      _nn="${_bn#origin/}"
+      case "$_nn" in develop|main|HEAD|"$_rama") continue ;; esac
+      case " $_contenidas " in *" $_nn "*) continue ;; esac
+      git merge-base --is-ancestor "$_bt" "$_fuente" 2>/dev/null || continue   # tip contenido en la fuente
+      git merge-base --is-ancestor "$_bt" "$_base"   2>/dev/null && continue   # … pero YA en develop → no es de este merge
+      _contenidas="$_contenidas $_nn"
+    done <<EOF
+$(git for-each-ref --format='%(refname:short) %(objectname)' refs/heads refs/remotes/origin 2>/dev/null)
+EOF
+  fi
+  # TODOS los nombres ya presentes: una línea `Rama:` puede traer VARIAS ramas (coma/espacio: `Rama: a, b`) y
+  # el marcador puede ir MID-LINE (la convención del SKILL lo permite: «…replay de 30 s. Rama: fix/x · MR: !1»).
+  # Antes se tomaba solo el 1er token CON su coma (`a,`), anclado a inicio de línea → ni `a` (quedaba `a,`) ni
+  # `b`, ni un `Rama:` mid-line se reconocían → se RE-agregaban (traza duplicada). Ahora: quita TODO hasta el
+  # `Rama:` (donde esté), parte por coma y espacio, deja los tokens. (Prosa tras un «Rama:» que no sea una rama
+  # cae en _ya pero es inofensivo: a lo más NO re-agrega una rama homónima, caso irreal.)
+  # R5-7 (auditoría 2026-10-23, claudio): `[Rr]ama` con FRONTERA de palabra ((^|[^A-Za-z]) antes) — el regex
+  # voraz casaba la "rama" DENTRO de "progRAMA:"/"diagRAMA:"/"panoRAMA:" y tomaba su cola por nombres de rama.
+  _ya="$(printf '%s\n' "$MSG" | sed -nE 's/.*(^|[^A-Za-z])[Rr]ama[[:space:]]*:[[:space:]]*//p' | tr ',' ' ' | tr -s '[:space:]' '\n' | grep -v '^$' | tr '\n' ' ')"
+  _added=""
+  for _c in $_contenidas; do
+    case " $_ya " in *" $_c "*) continue ;; esac
+    MSG="$(printf '%s\nRama: %s' "$MSG" "$_c")"; _added="$_added $_c"
+  done
+  [ -n "$_added" ] && _warn "agregué traza «Rama:» para:${_added} (la fuente y sus sub-ramas contenidas); revísalas."
+else
+  # fuente NO resuelta localmente (solo del forge, o desconocida) → no se puede computar containment:
+  # comportamiento clásico (nombrar la fuente, o avisar) SOLO si el mensaje no trae ya una línea Rama:.
+  if ! printf '%s' "$MSG" | grep -qiE '(^|[[:space:]])rama[[:space:]]*:[[:space:]]*[^[:space:]]'; then
+    if [ -n "$_rama" ] && [ "$_rama" != HEAD ]; then MSG="$(printf '%s\nRama: %s' "$MSG" "$_rama")"; _warn "agregué la traza «Rama: ${_rama}» (faltaba en el resumen); revísala."
+    else _warn "al resumen le falta «Rama: <feat/…>» y no pude resolver la rama — agrégala a mano (sin ella, 'git log develop' no dice de qué ramita salió el commit)."; fi
+  fi
+fi
+# (b) ref MR/PR — si falta, se ARMA con el --id (entero literal ya validado).
+if ! printf '%s' "$MSG" | grep -qiE '((mr|pr)[[:space:]]*:[[:space:]]*[!#]?[0-9]+|[!#][0-9]+)'; then
+  if [ "$_fg" = gh ]; then MSG="$(printf '%s\nPR: #%s' "$MSG" "$ID")"; _warn "agregué la referencia «PR: #${ID}» (faltaba)."
+  else MSG="$(printf '%s\nMR: !%s' "$MSG" "$ID")"; _warn "agregué la referencia «MR: !${ID}» (faltaba)."; fi
+fi
+# (c) sustancia: ADVIERTE si <12 palabras (NO aborta — tú decides si el resumen cuenta el cambio neto y su porqué).
+_nwords=$(printf '%s' "$MSG" | tr -s '[:space:]' '\n' | grep -c '[^[:space:]]' || true)
+[ "${_nwords:-0}" -ge 12 ] || _warn "el resumen es CORTO ($_nwords palabras): idealmente cuenta el cambio neto y su porqué en prosa. No bloqueo."
+
+# ── forge: autodetecta por el HOST del origin si no se dio (no por "cuál CLI está instalada") ──
+if [ -z "$FORGE" ]; then
+  FORGE="$(_forge_por_origin)"
+  [ -n "$FORGE" ] || _err "no pude decidir el forge por el host del remoto origin ($(git remote get-url origin 2>/dev/null || echo 'sin origin')): no es github.com ni *gitlab*. Pásalo con --forge glab|gh."
 fi
 case "$FORGE" in glab|gh) : ;; *) _err "--forge debe ser glab o gh (dado: '$FORGE')." ;; esac
 command -v "$FORGE" >/dev/null 2>&1 || _err "'$FORGE' no está en el PATH."
 
-# ── espera de CI (opcional, acotada) ──
-if [ "$WAIT_CI" = 1 ]; then
-  echo "cerrar-slice: esperando el pipeline/checks en verde antes de mergear…" >&2
-  if [ "$FORGE" = glab ]; then
-    glab ci status ${BRANCH:+--branch "$BRANCH"} ${REPO:+-R "$REPO"} 2>/dev/null || \
-      echo "cerrar-slice: aviso — no pude leer el estado de CI (sigo; revísalo tú)." >&2
+# ── base del MR/PR: cerrar-slice SOLO integra a DEVELOP (con squash). Un release develop→main es OTRO acto,
+#    deliberado y SIN squash. El forge mergea al destino que el MR DECLARA (este script no lo fija), así que un
+#    MR que apunta a main con `--squash --remove-source-branch` HARÍA el release aplastando la historia y
+#    borrando la rama. Se resuelve el destino y se ABORTA si no es develop (C2, auditoría 2026-10-22). Base
+#    IRRESOLUBLE (red/token/ID) → ABORTA (no mergeo a ciegas a un destino que no puedo verificar), igual que el
+#    gate de CI (INDET → aborta). SIN perilla de mock en producción (MEDIO auditoría 2026-10-22): la base sale
+#    SOLO del forge; los tests inyectan un gh/glab FALSO por PATH (que responde el baseRefName/target_branch).
+_pr_base_branch() {
+  if [ "$FORGE" = gh ]; then
+    gh pr view "$ID" ${REPO:+-R "$REPO"} --json baseRefName -q .baseRefName 2>/dev/null
   else
-    gh pr checks "$ID" ${REPO:+-R "$REPO"} 2>/dev/null || \
-      echo "cerrar-slice: aviso — no pude leer los checks (sigo; revísalos tú)." >&2
+    glab mr view "$ID" ${REPO:+-R "$REPO"} -F json 2>/dev/null | jq -r '.target_branch // empty' 2>/dev/null
   fi
+}
+_base_dst="$(_pr_base_branch | sed -n '1p' | tr -d '[:space:]')"
+case "$_base_dst" in
+  develop) : ;;   # el ÚNICO destino que cerrar-slice integra
+  '')          _err "no pude verificar la base del #$ID (API/red/token/ID). NO mergeo a ciegas: cerrar-slice SOLO integra a develop; deja el forge legible (--repo/--forge, red/token) y reintenta." ;;
+  main|master) _err "el #$ID apunta a '$_base_dst' — eso es un RELEASE (develop→main), OTRO acto deliberado y SIN squash. cerrar-slice SOLO integra a develop; usa el flujo de release, no este script." ;;
+  *)           _err "el #$ID apunta a '$_base_dst', no a develop. cerrar-slice SOLO integra a develop." ;;
+esac
+
+# ── espera de CI (opcional, acotada) — DECIDE por el ESTADO REAL del CI, no por el exit-code ──
+# Causa del FP viejo: corría el chequeo 1× y ante CUALQUIER exit≠0 decía "sigo; revísalo tú" y mergeaba —
+# confundía 4 casos (sin-CI / pendiente / rojo / no-pude-leer) en "procede". Ahora normaliza a UN veredicto
+# y actúa: SINCI/VERDE → mergea · ROJO → ABORTA · PENDIENTE → espera (acotado) · INDET → ABORTA (no mergea a
+# ciegas bajo --wait-ci; un problema de entorno NO se vuelve silencio). Sin --wait-ci, el comportamiento no cambia.
+_ci_veredicto() {
+  # SIN perilla de mock en producción (MEDIO auditoría 2026-10-22): el veredicto sale SOLO del estado REAL del
+  # forge; los tests ejercitan esta función con un gh/glab FALSO por PATH (unit-test por extracción, o stub en PATH).
+  if [ "$FORGE" = gh ]; then
+    local out
+    out="$(gh pr checks "$ID" ${REPO:+-R "$REPO"} --json bucket 2>/dev/null)"
+    if printf '%s' "$out" | jq -e 'type=="array"' >/dev/null 2>&1; then
+      case "$out" in '[]') echo SINCI; return 0 ;; esac            # arreglo vacío = sin checks configurados
+      if printf '%s' "$out" | jq -e 'any(.[]; .bucket=="fail" or .bucket=="cancel")' >/dev/null 2>&1; then echo ROJO; return 0; fi
+      if printf '%s' "$out" | jq -e 'any(.[]; .bucket=="pending")' >/dev/null 2>&1; then echo PENDIENTE; return 0; fi
+      echo VERDE; return 0                                         # resto = pass/skipping
+    fi
+    # sin JSON parseable: distingue "no hay checks" (sin-CI, se puede mergear) de un error real (INDET)
+    gh pr checks "$ID" ${REPO:+-R "$REPO"} 2>&1 | grep -qi 'no checks' && { echo SINCI; return 0; }
+    echo INDET; return 0
+  else
+    # glab: el estado del pipeline del MR sale de su JSON (.pipeline.status); .pipeline null = sin pipeline.
+    # Si glab FALLA (sin red/token/ID malo) su salida NO es un objeto JSON → un
+    # `jq … // "NONE"` daría "" → SINCI → mergearía A CIEGAS. Igual que el carril gh, se valida el
+    # JSON ANTES: sin objeto parseable → INDET (un fallo de ENTORNO no se vuelve "procede"); SINCI SOLO con
+    # JSON válido y `.pipeline == null` (pipeline no configurado).
+    local out st
+    out="$(glab mr view "$ID" ${REPO:+-R "$REPO"} -F json 2>/dev/null)"
+    if ! printf '%s' "$out" | jq -e 'type=="object"' >/dev/null 2>&1; then echo INDET; return 0; fi
+    if printf '%s' "$out" | jq -e '.pipeline == null' >/dev/null 2>&1; then echo SINCI; return 0; fi
+    st="$(printf '%s' "$out" | jq -r '.pipeline.status // ""' 2>/dev/null)"
+    case "$st" in
+      success|skipped|manual)                                    echo VERDE ;;
+      failed|canceled)                                           echo ROJO ;;
+      created|pending|running|waiting_for_resource|preparing|scheduled) echo PENDIENTE ;;
+      *)                                                         echo INDET ;;
+    esac
+  fi
+}
+_gitleaks_gate   # secretos ANTES de integrar (para si halla; .gitleaksignore/.gitleaks.toml = excepción por huella)
+
+if [ "$WAIT_CI" = 1 ]; then
+  echo "cerrar-slice: --wait-ci — comprobando el CI del #$ID antes de mergear…" >&2
+  _ci_max="${CERRAR_SLICE_CI_TIMEOUT:-600}"; _ci_step="${CERRAR_SLICE_CI_POLL:-15}"; _ci_slept=0
+  while :; do
+    _v="$(_ci_veredicto)"
+    case "$_v" in
+      SINCI) echo "cerrar-slice: el MR/repo no tiene pipeline/checks → nada que esperar, procedo." >&2; break ;;
+      VERDE) echo "cerrar-slice: CI en verde → procedo al merge." >&2; break ;;
+      ROJO)  _err "el CI del #$ID está en ROJO (un check falló/se canceló). NO mergeo bajo --wait-ci: arréglalo y reintenta." ;;
+      INDET) _err "no pude determinar el estado del CI del #$ID (API/red/token). NO mergeo a ciegas bajo --wait-ci: deja que el CI sea legible (red/token) y reintenta." ;;
+      PENDIENTE)
+        [ "$_ci_slept" -ge "$_ci_max" ] && _err "el CI del #$ID sigue PENDIENTE tras ${_ci_max}s. NO mergeo bajo --wait-ci: espera a que termine y reintenta."
+        echo "cerrar-slice: CI pendiente… reintento en ${_ci_step}s (llevo ${_ci_slept}s/${_ci_max}s)." >&2
+        sleep "$_ci_step"; _ci_slept=$((_ci_slept + _ci_step)) ;;
+      *) _err "veredicto de CI inesperado ('$_v') — no mergeo bajo --wait-ci." ;;
+    esac
+  done
 fi
 
 # ── arma el comando de merge (recetas GEMELAS glab↔gh) y lo corre INMEDIATO, SIN --auto ──

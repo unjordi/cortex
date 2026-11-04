@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# cosechar-aprendizaje.sh — MAQUINARIA DETERMINISTA de la cosecha (antes el skill separado
-# `cosechar-sesion`, retirado 2026-09-17: su JUICIO vive ahora en `cerrar-slice/SKILL.md` §5, este
+# cosechar-aprendizaje.sh — MAQUINARIA DETERMINISTA de la cosecha (el JUICIO vive en `cerrar-slice/SKILL.md` §5; este
 # script es la parte MECÁNICA que invoca). Appendea UN bloque bien formado al FINAL de un
 # `aprendizajes.md` (inbox append-only, `merge=union` → varias sesiones/ramas lo escriben sin pisarse).
 #

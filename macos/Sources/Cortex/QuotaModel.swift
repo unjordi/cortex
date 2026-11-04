@@ -6,32 +6,27 @@ import SwiftUI
 /// One usage bucket (5-hour block or weekly), as written by cortex-fetch.
 struct Bucket: Codable {
     let percent: Double?
-    let cost_usd: Double?
-    let cost_cap: Double?
+    let equiv_session_cost_usd: Double?
+    let equiv_weekly_cost_usd: Double?
+    let session_tokens_used: Double?
+    let weekly_tokens_used: Double?
     let resets_at: String?
+    let week_start: String?
+    let is_active: Bool?
+    let models: [String]?
+    let severity: String?
+    let by_model: [ByModel]?
 }
 
-/// Un límite acotado en el tiempo de `.limits[]` (session/weekly_all/weekly_scoped).
-/// Solo presente en basis=="oauth"; los scoped traen `model` (display_name).
-struct LimitEntry: Codable {
-    let kind: String?
-    let model: String?        // scope.model.display_name, o nil si no es scoped
+/// Un límite por-modelo acotado en el tiempo (weekly_scoped), dentro de weekly.by_model.
+struct ByModel: Codable {
+    let model: String?
     let percent: Double?
     let resets_at: String?
     let severity: String?
-    let is_active: Bool?
 }
 
 /// Gasto REAL de bolsillo (dinero), ya normalizado (amount_minor/10^exponent).
-struct Spend: Codable {
-    let used: Double?
-    let cap: Double?
-    let currency: String?
-    let percent: Double?
-    let enabled: Bool?
-}
-
-/// Overage (créditos de sobreuso).
 struct ExtraUsage: Codable {
     let used_credits: Double?
     let monthly_limit: Double?
@@ -40,20 +35,38 @@ struct ExtraUsage: Codable {
     let enabled: Bool?
 }
 
+struct Spend: Codable {
+    let used: Double?
+    let cap: Double?
+    let currency: String?
+    let percent: Double?
+    let enabled: Bool?
+}
+
 /// The full state.json snapshot.
 struct Snapshot: Codable {
-    let updated_at: String?
+    let updated_at: String?       // tiempo de la lectura REAL (en una preservada, el del dato viejo)
+    let fetched_at: String?       // cuándo corrió ESTE fetch (= updated_at salvo en una lectura preservada)
+    let stale: Bool?              // true = lectura preservada (el fetch no pudo refrescar) o "no hay dato"
     let status: String?
-    let basis: String?          // "oauth" (datos reales) | "cost" (estimado local)
+    let basis: String?            // "oauth" (datos reales) | null (no hay dato); "cost" retirado
+    let auth: Auth?               // estado de autenticación (login) — para avisos + re-login
     let account_email: String?
     let account_uuid: String?
     let account_mismatch: Bool?   // cuenta fijada ≠ cuenta activa (guardia de identidad)
     let error: String?
     let five_hour: Bucket?
     let weekly: Bucket?
-    let limits: [LimitEntry]?     // solo en oauth; la GUI filtra los weekly_scoped
     let spend: Spend?             // solo en oauth: dinero real de bolsillo
     let extra_usage: ExtraUsage?  // solo en oauth: overage
+}
+
+/// Estado de autenticación del CLI de Claude, derivado por cortex-fetch (señales reales).
+struct Auth: Codable {
+    let state: String?            // "ok" | "expiring" | "expired" | "no_credentials"
+    let expires_at: String?       // ISO de expiración del refresh token (para "expira el …")
+    let account_email: String?    // cuenta a reloguear (prefill de --email)
+    let account_uuid: String?
 }
 
 // MARK: - stats.json (uso local vía ccusage)
@@ -398,13 +411,16 @@ final class QuotaModel: ObservableObject {
         return snap.status ?? "error"
     }
 
-    var fivePct: Double? { snapshot?.five_hour?.percent }
-    var weekPct: Double? { snapshot?.weekly?.percent }
+    // % a MOSTRAR por ventana: nil si su reset ya pasó (el % cacheado es de ANTES del reset → "sin
+    // dato", nunca el valor viejo; una lectura fresca siempre trae resets_at futuro). Lo consumen la
+    // barra de menú (AppDelegate) y el tooltip — el popup aplica la misma regla en usageSection.
+    var fivePct: Double? { RelativeTime.isPast(snapshot?.five_hour?.resets_at) ? nil : snapshot?.five_hour?.percent }
+    var weekPct: Double? { RelativeTime.isPast(snapshot?.weekly?.resets_at) ? nil : snapshot?.weekly?.percent }
 
     /// Límites semanales acotados a UN modelo (weekly_scoped con modelo) — se
     /// renderizan dinámicamente, sin hardcodear modelos. Paralelo a main.qml.
-    var scopedLimits: [LimitEntry] {
-        (snapshot?.limits ?? []).filter { $0.kind == "weekly_scoped" && $0.model != nil }
+    var scopedLimits: [ByModel] {
+        snapshot?.weekly?.by_model ?? []
     }
 
     /// Tooltip mirroring toolTipMainText: "Claude: 5h N% · 7d M%".
@@ -438,11 +454,39 @@ final class QuotaModel: ObservableObject {
         if let err = loadError, snapshot == nil { return "error: \(err)" }
         guard let snap = snapshot else { return "cargando…" }
         if let err = snap.error { return "error: \(err)" }
-        let account = snap.account_email ?? (snap.basis == "oauth" ? "datos reales" : "estimado local")
+        let account = snap.account_email ?? (snap.basis == "oauth" ? "datos reales" : snap.basis == "cost" ? "estimado local" : "sin dato")
+        // Marcador de "lectura preservada" (el fetch no pudo refrescar): distingue un dato reciente de
+        // uno viejo que la edad sola no separa. Sirve al contrato "muestre la última con su staleness".
+        let staleMark = isSnapshotStale ? " · ⏳ sin refrescar" : ""
         if snap.account_mismatch == true {
-            return "⚠ \(account) no es la cuenta fijada · ⟳ 5 min + al reset 5h · act. hace: \(RelativeTime.compactReset(snap.updated_at))"
+            return "⚠ \(account) no es la cuenta fijada · ⟳ 5 min + al reset 5h · act. hace: \(RelativeTime.compactReset(snap.updated_at))\(staleMark)"
         }
-        return "\(account) · ⟳ 5 min + al reset 5h · últ. act. hace: \(RelativeTime.compactReset(snap.updated_at))"
+        return "\(account) · ⟳ 5 min + al reset 5h · últ. act. hace: \(RelativeTime.compactReset(snap.updated_at))\(staleMark)"
+    }
+
+    // MARK: - estado de autenticación (login) ------------------------------------------------
+
+    /// Estado del login según cortex-fetch: "ok" | "expiring" | "expired" | "no_credentials".
+    var authState: String { snapshot?.auth?.state ?? "ok" }
+    /// La lectura mostrada es PRESERVADA (el fetch no pudo refrescar) o es "no hay dato".
+    var isSnapshotStale: Bool { snapshot?.stale == true }
+    /// Cuenta a reloguear (prefill de --email): la del bloque auth, o la del snapshot.
+    var reloginAccount: String? {
+        let a = snapshot?.auth?.account_email ?? snapshot?.account_email
+        return (a?.isEmpty == false) ? a : nil
+    }
+    /// Aviso de autenticación para la UI, o nil si el login está OK. `offerRelogin` ⇒ mostrar el botón.
+    var authNotice: (message: String, offerRelogin: Bool)? {
+        switch authState {
+        case "no_credentials":
+            return ("No hay cuenta en el CLI de Claude — el widget no puede leer tu cuota.", true)
+        case "expired":
+            return ("El login de Claude expiró — re-loguéate para seguir viendo tu cuota.", true)
+        case "expiring":
+            return ("Tu login de Claude expira \(RelativeTime.relative(snapshot?.auth?.expires_at)) — re-loguéate pronto.", true)
+        default:
+            return nil
+        }
     }
 
     // MARK: - stats-derived helpers

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # verificar-cerebro.sh — DOCTOR de instalación por-máquina del cerebro (cortex). Standalone
 # (kind=script): NO se cablea; se corre A MANO. Confirma que ESTA máquina tiene el cerebro instalado
-# y CABLEADO de verdad — antídoto al caso "las instancias de Carlitos/Chunito dejaron de avisar del
+# y CABLEADO de verdad — antídoto al caso "una instancia dejó de avisar del
 # compact/checkpoint": un hook global (aviso-contexto, barrer-ramas, rehidratar-hilo…) SOLO actúa si
 # (1) su .sh está en ~/.claude/hooks, (2) está cableado en ~/.claude/settings.json y (3) jq está en el
 # PATH (sin jq los hooks fallan ABIERTO: no bloquean ni avisan). Este doctor verifica las tres contra
@@ -21,8 +21,8 @@ okln()  { [ "$QUIET" = 1 ] || printf '  \xe2\x9c\x93 %s\n' "$1"; }
 badln() { fail=1; printf '  \xe2\x9c\x97 %s\n' "$1"; }   # las FALLAS siempre se imprimen (aun en --quiet)
 warnln(){ [ "$QUIET" = 1 ] || printf '  \xe2\x9a\xa0 %s\n' "$1"; }  # avisos (drift): NO tumban el exit (diagnóstico)
 
-HOOKS_DIR="$HOME/.claude/hooks"
-GSET="$HOME/.claude/settings.json"
+HOOKS_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks"
+GSET="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"
 SELFDIR="$(cd "$(dirname "$0")" && pwd)"
 # resolve_brain_dir() vive en drift-cerebro-comun.sh (misma carpeta, fuente y una vez instalado) — mismo
 # orden/fallback que los widgets (#322): $CLAUDE_BRAIN_DIR → ~/.cortex → ~/.claude-brain. Si la lib no
@@ -83,7 +83,7 @@ fi
 # LOUD en tiempo real es el guard proteger-fuente-cerebro; esto es el resumen a-demanda.
 BRAIN_HOOKS="$BRAIN_DIR/brain/hooks"
 BRAIN_SKILLS="$BRAIN_DIR/brain/skills"
-SKILLS_DIR="$HOME/.claude/skills"
+SKILLS_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills"
 drift_scan() {  # $1=label  $2=dir-INSTALADA  $3=dir-FUENTE
   local label="$1" idir="$2" sdir="$3" inst rel src n=0
   [ -d "$idir" ] || return 0
@@ -103,12 +103,12 @@ drift_scan() {  # $1=label  $2=dir-INSTALADA  $3=dir-FUENTE
     fi
   done < <(find "$idir" -type f 2>/dev/null)
   [ "$n" = 0 ] && okln "sin drift instalada-vs-fuente en $label"
-  [ "$n" -gt 0 ] && say "  · $label: $n archivo(s) con drift — edita la FUENTE y re-corre install-brain/sincronizar (no la copia instalada)"
+  [ "$n" -gt 0 ] && say "  · $label: $n archivo(s) con drift — edita la FUENTE y re-corre install-brain (no la copia instalada)"
 }
 say ""
 # Nota: el drift de skills GLOBAL también se detecta AUTOMÁTICAMENTE en cada SessionStart (aviso-drift-cerebro
 # → drift_skills_global, warn-only, throttle propio). Este doctor es el resumen A-DEMANDA (verboso: lista
-# completa + dirección de cada archivo); ambos comparten el criterio (fuente brain/skills, tier {global,both}).
+# completa + dirección de cada archivo); ambos comparten el criterio (fuente brain/skills, tier {global}).
 say "🔎 Drift instalada-vs-fuente (edits en vivo que el próximo install-brain borraría):"
 drift_scan hooks  "$HOOKS_DIR"  "$BRAIN_HOOKS"
 drift_scan skills "$SKILLS_DIR" "$BRAIN_SKILLS"

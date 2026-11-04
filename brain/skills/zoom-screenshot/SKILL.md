@@ -5,7 +5,6 @@ description: Leer/transcribir capturas de pantalla cuyo texto fino es ilegible a
 
 # Leer/ampliar capturas para transcribir UIs
 
-Técnica validada el 2026-06-26 (transcribir todos los menús de Configuración de Steam).
 
 ## El problema
 La herramienta Read **reduce** la imagen a un presupuesto de píxeles fijo. Una captura alta/hi-res (p.ej. 1077×1389 o 3440×1440) se ve borrosa y el texto fino es **ilegible**. Ampliar la imagen ENTERA NO ayuda (Read la vuelve a reducir). La solución es **RECORTAR** (menos área = más resolución efectiva por píxel mostrado).

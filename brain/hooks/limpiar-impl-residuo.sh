@@ -2,11 +2,8 @@
 # limpiar-impl-residuo.sh — barre el RESIDUO de housekeeping que ni `limpiar.sh ramas`/`limpiar.sh
 # worktrees` (ramas y worktrees git) ni `limpiar.sh flotilla` (drift de cerebro) tocan: archivos que el
 # propio cerebro va dejando atrás con el uso normal, sin ningún techo. Invócalo vía `limpiar.sh residuo`
-# — es implementación interna del dispatcher `limpiar.sh` (antes el ejecutable suelto
-# `limpiar-residuo.sh`, retirado 2026-09-17, ver MANIFEST). Queja real de unjordi (2026-09):
-# "qué pasa con lo que deja detrás... no todo eran ramas con worktree". Medido en vivo: 178MB en
-# session-move-backups (ese lo poda session-move.js, por CANTIDAD), reubicar-backups SIN poda alguna,
-# 17 logs de barrer-ramas acumulados, cachés de analizar-comando-git en $TMPDIR.
+# — es implementación interna del dispatcher `limpiar.sh`. Cubre: session-move-backups (lo poda
+# session-move.js, por CANTIDAD), reubicar-backups, logs de barrer-ramas, cachés de analizar-comando-git en $TMPDIR.
 #
 # RETENCIÓN POR EDAD, NUNCA POR CANTIDAD (regla dura de esta clase de residuo): un respaldo existe
 # precisamente para recuperar un desastre — podar "los primeros N" descartaría el más viejo aunque sea

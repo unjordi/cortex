@@ -4,9 +4,8 @@
 # y CONSERVA las que tienen trabajo sin integrar) y, después, las REMOTAS SIN CONTRAPARTE LOCAL. Antídoto
 # ESTRUCTURAL a la acumulación de ramas squasheadas: el squash rompe la detección de "mergeada" de
 # `git branch -d` (la rama no queda de ancestro) y `fetch --prune` NO borra ramas locales → nadie las
-# barría y se acumulaban (un caso real: 60+ en un repo). Invócalo vía `limpiar.sh ramas` — es
-# implementación interna del dispatcher `limpiar.sh` (antes el ejecutable suelto `limpiar-ramas.sh`,
-# retirado 2026-09-17, ver MANIFEST).
+# barría y se acumulaban. Invócalo vía `limpiar.sh ramas` — es
+# implementación interna del dispatcher `limpiar.sh`.
 #   uso: limpiar.sh ramas [--dry-run] [--no-fetch]   (desde cualquier lugar del repo)
 #
 # C-2 — SEGUNDA PASADA (remotas sin local): una rama viva en `origin` cuya local ya no existe era INVISIBLE
@@ -22,7 +21,7 @@
 # multi-commit no-emparejable ni confirmable por el host). NUNCA toca la rama actual, la base de
 # integración, develop/main, las mini-develop (Develop*) ni keep/*.
 #
-# A-1 (auditoría 2026-09-11, "no silent caps"): el resumen antes solo contaba borradas/conservadas y las
+# el resumen antes solo contaba borradas/conservadas y las
 # protegidas desaparecían sin dejar rastro (`continue` antes de contar) — invitaba a leer N+M como el
 # universo cuando en realidad podía haber más ramas protegidas fuera de la vista. Ahora se examinan TODAS
 # y las omitidas se cuentan y NOMBRAN con su motivo en el resumen final.
@@ -39,13 +38,40 @@ ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "limpiar-ramas: no e
 BITA="$ROOT/.claude/memory/bitacora.md"
 # shellcheck source=ramas-zombie.sh
 . "$(dirname "$0")/ramas-zombie.sh"
+# shellcheck source=estado-cerebro-comun.sh
+. "$(dirname "$0")/estado-cerebro-comun.sh" 2>/dev/null
 
 # fetch --prune: refresca los refs remotos (surface de las remotas ya borradas) para que la detección de
 # "remota borrada" sea fiel. Se puede saltar (--no-fetch) si estás offline o ya lo corriste.
-[ "$FETCH" = 1 ] && git -C "$ROOT" fetch --all --prune -q 2>/dev/null
+# ACOTADO (timeout + ConnectTimeout + BatchMode: nunca cuelga ni pide contraseña) y con el ssh-agent de la
+# sesión gráfica (si SSH_AUTH_SOCK no viene en el entorno, cae al socket estándar del systemd user agent en
+# Linux). Si falla/expira NO se calla: fetch_ok=0 → el resumen lo dice y nombra cuántas ramas quedaron con
+# refs posiblemente viejas (se juzgan conservador, ninguna se borra por esa duda).
+# GIT_SSH_COMMAND se EXPORTA (no inline en el fetch): así el ConnectTimeout acota TAMBIÉN cada `ls-remote`
+# de abajo — un host muerto colgaba 75s por rama sin él. El ssh-agent de la sesión gráfica también.
+if [ -z "${SSH_AUTH_SOCK:-}" ] && [ -S "/run/user/$(id -u 2>/dev/null)/ssh-agent.socket" ]; then
+  export SSH_AUTH_SOCK="/run/user/$(id -u)/ssh-agent.socket"
+fi
+export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -o ConnectTimeout=8 -o BatchMode=yes}"
+FETCH_TIMEOUT="${LIMPIAR_RAMAS_FETCH_TIMEOUT:-20}"; case "$FETCH_TIMEOUT" in ''|*[!0-9]*) FETCH_TIMEOUT=20 ;; esac
+LS_REMOTE_TIMEOUT="${LIMPIAR_RAMAS_LS_REMOTE_TIMEOUT:-12}"; case "$LS_REMOTE_TIMEOUT" in ''|*[!0-9]*) LS_REMOTE_TIMEOUT=12 ;; esac
+# _git_acotado <segundos> <args git…> → corre git con tope duro; `exec` para que el kill del watchdog llegue
+# a GIT (sin exec mataría solo al subshell y git quedaría huérfano corriendo). stdout pasa; rc del git (o !=0 si se mató).
+_git_acotado() {
+  local _to="$1"; shift
+  ( exec git -C "$ROOT" "$@" ) & local _p=$!
+  ( sleep "$_to"; kill "$_p" 2>/dev/null ) >/dev/null 2>&1 & local _w=$!
+  wait "$_p" 2>/dev/null; local _rc=$?
+  kill "$_w" 2>/dev/null; wait "$_w" 2>/dev/null
+  return "$_rc"
+}
+fetch_ok=1
+if [ "$FETCH" = 1 ]; then
+  _git_acotado "$FETCH_TIMEOUT" fetch --all --prune -q >/dev/null 2>&1 || fetch_ok=0
+fi
 
 base="$(bz_resolver_base "$ROOT")"
-# C-3 (dictamen 2026-09-17): sin una base que EXISTA, toda señal de integración falla muda y las ramas caen
+# sin una base que EXISTA, toda señal de integración falla muda y las ramas caen
 # a la señal (b) — la destructiva. Abortar es la única lectura correcta de "no sé contra qué comparar".
 if ! bz_base_valida "$ROOT" "$base"; then
   echo "limpiar-ramas: base de integración irresoluble ('$base') — NO se barre nada. Crea la base o exporta CLAUDE_INTEGRACION_BASE con una rama que exista, y reintenta." >&2
@@ -75,7 +101,7 @@ _join() { [ -z "$2" ] && printf '%s' "$3" || printf '%s%s%s' "$2" "$1" "$3"; }
 # MR squash-mergeado SIN --delete-branch/--remove-source-branch deja la remota huérfana; las señales
 # a/e/d/c de bz_es_zombie declaran zombie CON la remota todavía presente → aquí se cierra ese hueco.
 #
-# C-1 (auditoría 2026-09-11, PÉRDIDA DE DATOS): antes se decidía con `ls-remote --exit-code` — que solo
+# antes se decidía con `ls-remote --exit-code` — que solo
 # pregunta si la remota EXISTE, no QUÉ TIENE. Si la remota va adelante del tip local (un colega siguió
 # trabajando en esa rama tras el squash, o simplemente estás atrasado), el push --delete borraba SU
 # trabajo. Ahora se exige CONTAINMENT: el SHA remoto debe ser ANCESTRO del tip LOCAL (capturado ANTES del
@@ -84,7 +110,7 @@ _join() { [ -z "$2" ] && printf '%s' "$3" || printf '%s%s%s' "$2" "$1" "$3"; }
 barrer_remota() {  # $1 = rama zombie   $2 = nombre del remoto   $3 = SHA del tip LOCAL (antes de -D)
   local br="$1" remoto="$2" local_sha="$3" rout rc rsha
   [ -n "$remoto" ] || return 0
-  rout="$(git -C "$ROOT" ls-remote --heads "$remoto" "$br" 2>/dev/null)"; rc=$?
+  rout="$(_git_acotado "$LS_REMOTE_TIMEOUT" ls-remote --heads "$remoto" "$br" 2>/dev/null)"; rc=$?
   if [ "$rc" -ne 0 ]; then
     echo "  (remota $remoto/$br: no se pudo consultar — ¿sin red/permiso? NO se borra)"
     return 0
@@ -105,8 +131,8 @@ barrer_remota() {  # $1 = rama zombie   $2 = nombre del remoto   $3 = SHA del ti
   fi
 }
 
-# ── DETECTOR DE REPRESA: AVISO (NUNCA borra) de ramas que envejecen SIN integrarse ─────────────────
-# A-4 (dictamen higiene de ramas 2026-09-17): recorriendo el ciclo actor por actor, la transición
+# ── DETECTOR DE REPRESA: AVISO (NUNCA borra) de ramas que envejecen SIN integrarse ─────────── ──
+# recorriendo el ciclo actor por actor, la transición
 # "rama pusheada → PR abierto" no la vigila NADIE — la rama se queda en `origin` sin PR y nadie lo nota.
 # Tampoco un "PR cerrado SIN mergear": `bz_pr_mergeado` solo mira `--state merged`, así que un PR CLOSED es
 # indistinguible de "sin PR" y se conserva mudo para siempre. Aquí no falló la escoba: falló el CIERRE, y
@@ -123,7 +149,12 @@ barrer_remota() {  # $1 = rama zombie   $2 = nombre del remoto   $3 = SHA del ti
 HUERF_PATRON="${LIMPIAR_RAMAS_PATRON_HUERFANA:-*}"
 HUERF_DIAS="${LIMPIAR_RAMAS_DIAS_HUERFANA:-14}"
 case "$HUERF_DIAS" in ''|*[!0-9]*) HUERF_DIAS=14 ;; esac
-HUERF_ESTADO="$ROOT/.claude/memory/.ramas-huerfanas-estado"
+# Estado de dedupe bajo ${CLAUDE_CONFIG_DIR:-~/.claude}/state/<cksum del ROOT>/, fuera del repo: no ensucia
+# el working tree.
+_hstate="$(cortex_state_dir "$ROOT" 2>/dev/null)"
+[ -n "$_hstate" ] || _hstate="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/state/$(printf '%s' "$ROOT" | cksum 2>/dev/null | awk '{print $1}')"  # fallback si la lib no está
+HUERF_ESTADO="$_hstate/.ramas-huerfanas-estado"
+rm -f "$ROOT/.claude/memory/.ramas-huerfanas-estado" 2>/dev/null || true   # retira el sello que una versión anterior dejó dentro del repo
 huerf_ya_reportada() {  # $1=branch $2=sha -> 0 si ESA punta ya se reportó (no repetir en cada corrida)
   [ -f "$HUERF_ESTADO" ] || return 1
   grep -qxF "$(printf '%s\t%s' "$1" "$2")" "$HUERF_ESTADO" 2>/dev/null
@@ -162,7 +193,7 @@ while IFS= read -r br; do
     esac
     continue
   fi
-  if bz_es_zombie "$ROOT" "$br" "$base"; then
+  if bz_es_zombie "$ROOT" "$br" "$base" barrido; then   # modo=barrido → activa la señal (p) presencia-por-contenido
     remoto_pre="$(rama_remoto "$br")"
     local_sha="$(git -C "$ROOT" rev-parse "$br" 2>/dev/null || true)"
     if [ "$DRY" = 1 ]; then
@@ -184,8 +215,8 @@ while IFS= read -r br; do
   fi
 done < <(git -C "$ROOT" for-each-ref --format='%(refname:short)' refs/heads 2>/dev/null)
 
-# ── SEGUNDA PASADA: ramas REMOTAS sin contraparte LOCAL ─────────────────────────────────────────────
-# C-2 (dictamen higiene de ramas 2026-09-17, CAUSA RAÍZ #2 del reguero): el bucle de arriba recorre solo
+# ── SEGUNDA PASADA: ramas REMOTAS sin contraparte LOCAL ─────────────────────────────────────── ──
+# el bucle de arriba recorre solo
 # `refs/heads`, así que una rama que vive en `origin` y NO tiene rama local no se examina, no se barre y
 # ni siquiera sale en el resumen como omitida — es invisible incluso para el reporte de "no silent caps".
 # Medido: 12 de las 23 ramas de `origin` eran de esa clase (8 ya integradas + 4 con trabajo represado).
@@ -217,7 +248,7 @@ if [ "${LIMPIAR_RAMAS_SIN_REMOTAS:-0}" != 1 ]; then
           echo "  [dry] remota sin local, integrada (señal $BZ_RRAZON) → borraría: $rref"; rem_borradas=$((rem_borradas+1))
         else
           eval_sha="$(git -C "$ROOT" rev-parse "$rref" 2>/dev/null || true)"
-          live_out="$(git -C "$ROOT" ls-remote --heads "$remoto" "$br" 2>/dev/null)"; live_rc=$?
+          live_out="$(_git_acotado "$LS_REMOTE_TIMEOUT" ls-remote --heads "$remoto" "$br" 2>/dev/null)"; live_rc=$?
           live_sha="$(printf '%s' "$live_out" | awk '{print $1; exit}')"
           if [ "$live_rc" -ne 0 ]; then
             echo "  (remota $rref: no se pudo consultar — ¿sin red/permiso? NO se borra)"
@@ -254,4 +285,7 @@ resumen="$resumen. Remotas sin local: $rem_exam examinada(s) → $rem_borradas i
 [ "$rem_cons" -gt 0 ] && resumen="$resumen ($rem_cons_n)"
 [ "$rem_omit" -gt 0 ] && resumen="$resumen, $rem_omit protegida(s)"
 resumen="$resumen. Base: $base."
+# Si el fetch no pudo refrescar origin, DILO (no te quedes callado con refs viejas) y nombra cuántas ramas
+# se juzgaron contra refs posiblemente viejas (ninguna se borró por esa duda — el barrido conserva).
+[ "${fetch_ok:-1}" = 0 ] && resumen="$resumen ⚠️ no pude actualizar origin (sin red o timeout): $total rama(s) juzgadas con refs locales posiblemente viejas — ninguna se borró por esa duda; corre con red para un veredicto fiable."
 echo "$resumen"

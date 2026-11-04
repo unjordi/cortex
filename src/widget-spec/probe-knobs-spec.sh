@@ -4,9 +4,6 @@
 # La norma nace con su mecanismo: el spec solo sirve de fuente única si NO se puede agregar una
 # variable de entorno al broker sin darle su entrada de GUI. Esto lo hace cumplir: barre las
 # AXON_TERM_BROKER_* que el código REALMENTE lee y falla si alguna no está en el spec.
-#
-# El caso que lo motiva ya ocurrió: AXON_TERM_BROKER_WS_BACKPRESSURE_DEADLINE_MS entró con el
-# endurecimiento del 2026-09-09 y ninguna GUI se enteró — porque no había nada que lo notara.
 set -u
 cd "$(dirname "$0")/../.." || exit 1
 
@@ -112,7 +109,7 @@ for g in $grupos_declarados; do
 done
 
 # Unicidad de las claves @grupo: dos filas con la misma clave harían que la GUI pinte ese grupo dos
-# veces y que el mapa de títulos sobrescriba en silencio (hallazgo de la 7ª tupla auditora, 2026-09-09).
+# veces y que el mapa de títulos sobrescriba en silencio.
 dups="$(awk -F'\t' '$1 == "@grupo" { print $2 }' "$SPEC" | sort | uniq -d)"
 if [ -z "$dups" ]; then ok "las claves @grupo son únicas (ningún grupo declarado dos veces)"
 else for d in $dups; do no "la clave @grupo «$d» está declarada MÁS de una vez (la GUI la pintaría duplicada)"; done; fi

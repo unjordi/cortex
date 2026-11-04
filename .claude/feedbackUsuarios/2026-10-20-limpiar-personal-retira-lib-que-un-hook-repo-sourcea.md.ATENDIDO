@@ -1,0 +1,7 @@
+ATENDIDO 2026-10-21 por claudio-master (develop-side, commits 9336cc1 + c707b29), confirmado al traer el rescate B.
+
+Corrección de mi triage inicial (cortex-master): mi análisis estático vio `dod-verificar.sh:49` sourceando `juez-comun.sh` sin fallback + los tiers (juez-comun=both, dod-verificar=repo) y lo marqué CONFIRMADO. Pero claudio CORRIÓ `sincronizar-cerebro.sh --limpiar-personal` sobre una copia de cachy:~/code/axon/.claude y midió el comportamiento REAL:
+- sin hooks globales instalados → CONSERVA juez-comun ("la usa un hook tier=repo presente") y los 3 both ("su copia GLOBAL no está instalada").
+- con globales → retira SOLO sesion-inicio/recordar-cosechar/sincronizar-tasklist, nunca juez-comun ni dod-verificar.
+
+El tool ya tiene la protección de dependencia (salida (a) de la nota). La medición corriendo supersede el análisis estático. No deja el hook mudo.

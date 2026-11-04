@@ -9,11 +9,8 @@ Las memorias se inflan solas: cada sesión appendea contexto, cada investigació
 que se descartó sigue ahí ocupando espacio junto a lo vigente. El resultado es un archivo que **nadie
 lee completo** — y una memoria que no se lee no sirve.
 
-> **El encargo que originó este skill** (unjordi, 2026-07-30, sobre un árbol de 2,759 líneas):
-> *"¿puedes revisar que las memorias no estén infladas con menciones a conocimiento deprecated o que
-> ya se desmintió? Sí queremos las lecciones y los gotchas en memoria, pero **no a medio tutorial**,
-> ni queremos leer **3 párrafos de la historia de cómo aprendimos** que sí o sí van juntos los vdf con
-> su archivo hermano…"* + *"y las lápidas van AL FINAL"*.
+> **Criterio:** las memorias conservan las lecciones y los gotchas, **no a medio tutorial** ni con
+> **párrafos de la historia de cómo se aprendió**; las lápidas van AL FINAL.
 > Resultado de esa pasada: **−21% de líneas, −26% de palabras, 0 lecciones perdidas.**
 
 ## Las DOS reglas que hacen todo el trabajo
@@ -38,7 +35,7 @@ Lo acuña el helper `cementerio.sh add` (determinista: mismo texto = mismo ID = 
 ```bash
 # desde dentro del repo — arg1 = qué murió, arg2 = detalle (cuándo · reemplazo / por qué no re-proponer):
 cementerio.sh add "Mito «Steam randomiza los appids al abrir»" \
-  "DESCARTADO 2026-07-29 — la causa real era un vdf truncado. El appid es determinista: crc32(Exe+AppName)."
+  "DESCARTADO <fecha> — la causa real era un vdf truncado. El appid es determinista: crc32(Exe+AppName)."
 # → imprime (🪦#ab12cd34e): la REFERENCIA para pegar inline donde el punto necesite la advertencia
 ```
 
@@ -78,7 +75,7 @@ por git**; en un repo compartido, además, expone trato personal). Cuando te top
    comillas vs `[INFER]`, norma `feedback-no-atribuir-mis-ideas-al-usuario`). Si el punto YA es una
    norma UNIVERSAL del brain (doc=realidad, definición de LISTO, flujo de git, probar-el-flujo-completo,
    autorización acotada…), **REFERÉNCIALA con el sabor personal — NO la copies.** Molde: las 5 secciones
-   de `como-trabajar-con-unjordi.md`.
+   de `como-trabajar-con-<usuario>.md`.
 2. **Elimina del repo la mención migrada**; si el `feedback-*.md` queda vacío, **bórralo** y quita su
    línea de `MEMORY.md`. (Esto NO es cementerio: no es un mito descartado, es conocimiento que se MUDA
    a su hogar correcto.)

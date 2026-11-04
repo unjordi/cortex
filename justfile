@@ -46,11 +46,10 @@ reload-plasmashell:
 
 # Run the plasmoid standalone for debugging
 #
-# ⚠️ TRAMPA (medida en vivo 2026-09-09): la superficie de plasmoidviewer NO REPINTA cuando su
+# ⚠️ TRAMPA: la superficie de plasmoidviewer NO REPINTA cuando su
 # ventana no tiene el foco. Una captura de pantalla te devuelve el PRIMER frame pintado, para
 # siempre — así que un estado que llega 1 s después de abrir (cualquier DataSource "executable")
-# se ve eternamente en su texto de "cargando…" aunque el dato ya esté. Cuesta caro: se puede
-# perseguir un bug de binding que no existe.
+# se ve eternamente en su texto de "cargando…" aunque el dato ya esté.
 #   · Cómo distinguirlo: mete un contador con un `Timer { interval: 500; repeat: true }` en el
 #     label que estés mirando. Si sigue en t=0 al cabo de unos segundos, el frame está congelado
 #     y la captura NO es un oráculo válido.

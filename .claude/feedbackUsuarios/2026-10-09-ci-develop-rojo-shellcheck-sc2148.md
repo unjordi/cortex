@@ -1,0 +1,1 @@
+- 2026-10-09 · CI de develop ROJO desde al menos 4f95b84 (6 corridas seguidas): shellcheck SC2148 (sin shebang) en brain/skills/control-gui-remota-por-ssh/linux/lib-linux-ssh-env.sh y mac/lib-mac-ssh-env.sh. Como el paso de shellcheck falla primero, los pasos siguientes del job (test-brain) no corren en CI. Fix: shebang o '# shellcheck shell=bash' en las dos libs.

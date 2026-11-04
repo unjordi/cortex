@@ -37,7 +37,7 @@ mienta ("esto está bien" sin haberlo comprobado) es peor que uno que no exista.
 
 **Cuidado con el invariante que un grep textual verifica.** Si la regla se satisface editando
 un MENSAJE en vez de arreglando el código, no es un invariante: es un acuerdo de caballeros con
-el linter. Caso medido: una regla del proyecto ("ningún mutador fuera del punto único") se
+el linter. Ejemplo: una regla del proyecto ("ningún mutador fuera del punto único") se
 verificaba con un grep de texto; alguien degradó un mensaje real de error para que el grep
 pasara, y el check siguió en verde. Al escribir o revisar un check mecánico, pregúntate si lo
 que mide es COMPORTAMIENTO o STRING — y si es lo segundo, busca una señal que no se pueda
@@ -52,13 +52,13 @@ sáltala sin gastar tokens en ella.
 
 **Lee cada afirmación de la doc/comentario contra el código que tiene AL LADO, no solo contra
 el módulo en general.** La contradicción más cara suele estar a tres líneas, no en otro
-archivo. Casos medidos: un comentario decía *"el ensayo no ejecuta nada, solo LEE el
+archivo. Ejemplos: un comentario decía *"el ensayo no ejecuta nada, solo LEE el
 archivo"* tres líneas arriba del código que lo ESCRIBÍA; una especificación seguía afirmando
 que el modo de ensayo "coloca el archivo" y llamaba a gatearlo "mejora opcional, no
 bloqueante" — justo lo que la propia auditoría clasificó después como crítico.
 
 **Un contrato escrito en una cabecera se verifica contra TODOS sus consumidores, no contra el
-primero que revises.** Caso medido: la cabecera de una librería documentaba el comportamiento
+primero que revises.** Ejemplo: la cabecera de una librería documentaba el comportamiento
 ante fallo de sus dos consumidores, y uno de ellos ya no lo cumplía porque un cambio anterior
 le había retirado esa ruta de salida — la doc conservaba lo que el código ya había
 abandonado. Si el invariante habla de "todo consumidor de X", localiza a TODOS antes de
@@ -77,9 +77,9 @@ evidencia en vez de acomodarlo" — en una tanda medida, esa corrección mejoró
 media docena de veces.
 
 **Pasada barata y sistemática: definido ≠ invocado.** Es el hallazgo semántico más rentable
-medido hasta ahora. Por cada función de verificación/validación que el código o la doc
+Por cada función de verificación/validación que el código o la doc
 DECLARE, cuenta sus invocaciones reales con un `grep` desde el camino de ejecución — no
-asumas que "existe" significa "corre". Caso medido: un producto declaraba verificar su
+asumas que "existe" significa "corre". Ejemplo: un producto declaraba verificar su
 instalación con once predicados; seis existían y NUNCA se llamaban (una sola aparición: su
 propia definición) — y eran justo los que medían el EFECTO real (el archivo quedó colocado,
 sobrevive al reinicio, el nombre resuelve, el servicio subió), mientras los cinco que sí
@@ -88,7 +88,7 @@ comprobado que la maquinaria se instaló, no que hiciera su trabajo. Una funció
 aparición (su propia definición) es código muerto que la doc presenta como garantía.
 
 **Y cuando SÍ se invocan, verifica que no den falsos negativos (o positivos) sistemáticos.**
-Un verificador que siempre falla miente igual que uno que siempre pasa. Caso medido: los tres
+Un verificador que siempre falla miente igual que uno que siempre pasa. Ejemplo: los tres
 predicados vivos de ese mismo producto fallaban siempre — uno buscaba una unidad de systemd
 sin su sufijo `.service` (así crea el symlink el propio systemd), otro exigía un campo vacío
 por diseño en los timers monotónicos que el producto instala, el tercero rechazaba el estado
@@ -97,7 +97,7 @@ falla en uno que había escrito su log 47 segundos antes. Corre el predicado con
 SABES que debe pasar, no solo contra el que debe fallar.
 
 **De qué fuente se fía cada decisión, y si esa fuente puede ser falsificada, estar vacía o
-venir del exterior.** Patrón transversal medido en tres arreglos distintos del mismo sistema,
+venir del exterior.** Patrón transversal en arreglos de un mismo sistema,
 los tres etiquetados como "mejora de precisión" y los tres abriendo un agujero: uno leía el
 JSON crudo del payload (un campo de DESCRIPCIÓN entraba al detector y bloqueaba comandos
 legítimos), otro se apoyaba en la palabra del propio LLM sin re-verificarla de forma

@@ -73,11 +73,16 @@ docs/flowcharts/*
 !docs/flowcharts/13-normas-el-cimiento.svg
 !docs/flowcharts/14-referencia-lib-skill-de-stack.dot
 !docs/flowcharts/14-referencia-lib-skill-de-stack.svg
+# El .drawio EDITABLE de cada chart (gen-charts.sh lo genera del .dot con dot2drawio, junto al .svg): glob,
+# un artefacto por chart. El trap del catch-all para un chart NUEVO sigue vigente por sus líneas !...dot/.svg.
+!docs/flowcharts/[0-9][0-9]-*.drawio
 # El generador de la leyenda (lee el árbol del README → subgraph .dot) y las CONVENCIONES son FUENTE, se versionan.
 !docs/flowcharts/gen-leyenda-arbol.sh
 !docs/flowcharts/CONVENCIONES.md
 # El parity-check del árbol (README ↔ MEMORY.md ↔ brain/skills/) es MECANISMO durable — lo corre test-brain.sh/CI, debe viajar.
 !docs/flowcharts/verificar-arbol-sync.sh
+# Parity-check de los FLOWCHARTS vs el código (CONVENCIONES §9 ↔ .dot · retirados-como-vivos · conteo del fan-out).
+!docs/flowcharts/verificar-charts-sync.sh
 # El generador de charts (regenera TODOS los .svg desde sus .dot) es la RUTINA durable de doc=realidad de los flowcharts.
 !docs/flowcharts/gen-charts.sh
 
@@ -100,3 +105,9 @@ CLAUDE.local.md
 # de PreCompact en CADA repo con el cerebro. El andamio en sí lo cubre el patrón de familia hilo-mental-*;
 # éstos NO caen ahí y quedaban como untracked permanente (y el .log puede llevar rutas de la máquina).
 .claude/memory/.checkpoint-mecanico*
+# Estado PROCESO de otros hooks que escriben en .claude/memory/ de CADA repo (ídem: untracked permanente,
+# ensucia 24+ repos). aviso-contexto → debounce por banda/sesión (.contexto-aviso + .contexto-aviso.d/);
+# barrer-ramas → stamp del último barrido (.ramas-huerfanas-estado). (El ignore universal a TODOS los repos
+# aún necesita un sembrador — ver backlog A5; esto cubre cortex ya.)
+.claude/memory/.contexto-aviso*
+.claude/memory/.ramas-huerfanas-estado

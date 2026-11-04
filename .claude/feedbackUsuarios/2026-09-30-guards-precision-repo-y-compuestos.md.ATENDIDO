@@ -1,0 +1,8 @@
+ATENDIDO 2026-10-21 (cortex-master, rescate). Las 3 fallas de precisión, resueltas:
+#1 (grant en el repo EQUIVOCADO con --repo) → B4/B: acg_clon_local_de_slug mapea el slug a su clon
+   local (git remote get-url origin==slug) y ESE es el TARGET_ROOT del grant/marca.
+#2 (menciones CITADAS en printf/heredoc tratadas como comandos) → acg_despoja_comillas +
+   acg_segmentos_ejecutables (los casos A del banco mdg pasan: printf/heredoc que citan el merge).
+#3 (proteger-arbol evalúa `git merge X && … && branch -D X` antes del merge) → H7 (el merged-&&
+   reconoce que X se integra en el acto) + L186 (un `gh pr merge … ; … ; branch -D` con `;` AVISA por
+   diseño, el `;` no garantiza el merge en PreToolUse). Bancos verdes.

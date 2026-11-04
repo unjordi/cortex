@@ -16,7 +16,7 @@ bash brain/install-brain.sh
 ```
 
 ## Notas
-- Requiere `jq` en el PATH: sin él los hooks (git-branch-guard, gate de delegación) fallan ABIERTO y no se puede cablear `settings.json` (avisa, no bloquea).
+- Requiere `jq` en el PATH: sin él los hooks (merge-develop-guard, gate de delegación) fallan ABIERTO y no se puede cablear `settings.json` (avisa, no bloquea).
 - Escribe en `~/.claude/` (hooks, skills, settings.json, CLAUDE.md) y en la memoria global del HOME. No toca el repo actual.
 - Los hooks repo-scoped (sesion-inicio, dod-verificar) NO se instalan globales: viven en `brain/hooks/` como fuente para que cada repo los copie a su `.claude/`.
 - OS-agnóstico (Mac/Linux/Windows Git Bash). Fail-safe sin jq.

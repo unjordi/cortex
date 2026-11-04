@@ -11,15 +11,13 @@ description: Auditar una doc/cerebro por SUFICIENCIA OPERATIVA (¿puede un agent
 > ser inútil** — todo verdadero, nada accionable, el conocimiento disperso en 19 archivos sin una rutina.
 > Esta skill audita lo segundo.
 
-## Por qué existe (caso real, games-master 2026-07-30)
-Tras un día enorme de cambios, dos auditorías de coherencia ya habían dado *"el cerebro TIENE SENTIDO, sin
-contradicciones estructurales"*. Se hizo entonces una pasada de **suficiencia** y salieron **5 huecos que la
-coherencia no ve**, uno de ellos el más importante del día:
+## Qué hallazgos aporta que la coherencia no ve
+Un cerebro sin contradicciones estructurales puede tener, en una pasada de **suficiencia**, huecos como:
 - **NO existía ninguna rutina de mantenimiento.** Todo era verdad y estaba escrito… y disperso. Nadie sabía
-  qué correr, cada cuándo, ni cómo verificar. → nació un skill `mantener-el-setup`.
+  qué correr, cada cuándo, ni cómo verificar. → falta una skill de mantenimiento del setup.
 - Un **mecanismo automático (un timer) documentado SOLO en la bitácora** — que es *log*, no *doc*. Nadie sabría
   que existe. **Lección: lo que vive solo en el log, no existe operativamente.**
-- Un **README que mentía** por omisión (listaba 2 máquinas de 3).
+- Un **README que mentía** por omisión (p. ej. listaba 2 máquinas de 3).
 - Un **truco crítico presente en un skill y ausente en su hermano** (asimetría entre docs gemelos).
 - Falsos positivos en los propios detectores, que habrían gritado en cada auditoría futura.
 
@@ -42,7 +40,7 @@ No audites "los archivos": audita **las tareas**. Sácalas de estas 4 canteras:
 - **Saber qué NO tocar**: lo ya resuelto y confirmado por QA.
 - **Mantenerlo al día sin que se lo pidan**: ¿hay rutina + chequeo de salud **con valores esperados**?
 
-### 2bis. Si la tarea es un instalador/despliegue: el ENSAYO (`--dry-run`) es tarea APARTE (medido, sep-2026)
+### 2bis. Si la tarea es un instalador/despliegue: el ENSAYO (`--dry-run`) es tarea APARTE 
 Un modo de previsualización no viene gratis — auditarlo es tres preguntas, no una:
 - **¿Anuncia lo que va a RETIRAR, con rutas?** Un `--dry-run` que solo dice "Instalaría…" en una máquina con
   una generación anterior completa (scripts, daemons, logs, un marcador en `/etc/hosts`) es consentimiento a
@@ -108,7 +106,7 @@ sobrevivieron una limpieza propia). Guarda el prompt literal: si lo cambias, cam
 4. **Qué quedó LIMPIO**, explícito (para saber qué NO tocar).
 5. **El riesgo #1 restante:** si mañana algo se rompe por documentación, ¿qué sería?
 
-## El prompt del auditor (pegable — destilado de la corrida DUPLA, 2026-07-31)
+## El prompt del auditor (pegable)
 Delega con `Task`/subagente `general-purpose`. Adapta el target, conserva la ESENCIA:
 
 > Eres un AUDITOR DE **SUFICIENCIA OPERATIVA** (read-only). NO auditas "los archivos", auditas si ALGUIEN
@@ -133,10 +131,9 @@ Delega con `Task`/subagente `general-purpose`. Adapta el target, conserva la ESE
 - **`auditar-coherencia-cerebro` — la OTRA mitad de la DUPLA; va CONMIGO en todo cambio a doc/sistema.** Yo
   audito si es OPERABLE (¿alguien nuevo puede HACER las tareas sin romper ni re-investigar?); ella si es
   CONSISTENTE (¿se contradice? ¿los guards se evaden? ¿la doc miente vs el código?). **Lentes disjuntas —
-  ninguna caza lo de la otra** → córrelas JUNTAS, hasta 0 CRÍTICO/ALTO/MEDIO (los BAJOS se triagean). El FMEA
-  `auditar-proceso-algoritmo` es un TERCER eje (¿el algoritmo/flujo es correcto?): se SUMA cuando la capacidad
+  ninguna caza lo de la otra** → córrelas JUNTAS, hasta 0 CRÍTICO/ALTO/MEDIO (los BAJOS se triagean). `auditar-proceso-algoritmo` es un TERCER eje (¿el algoritmo/flujo es correcto?): se SUMA cuando la capacidad
   audita lógica, no solo docs.
-- `orquestar-fanout` — su bucle de verificación es "no creerle a un agente su 'listo'" (esta skill lo aplica al auditor mismo).
+- La norma «Delegar a agentes» (verifica antes de creer) — su bucle de verificación es "no creerle a un agente su 'listo'" (esta skill lo aplica al auditor mismo).
 - `positivar-doc` (skill **global**, no vive en `brain/skills`) — answer-first: un doc suficiente pero enterrado sigue fallando la prueba.
 - `cerrar-slice` (§5, cosecha) / `checkpoint` — de dónde salen las tareas: lo que pasó hoy.
 - Memoria global `feedback_re-auditar-tras-arreglar` — la norma de la 2ª pasada.

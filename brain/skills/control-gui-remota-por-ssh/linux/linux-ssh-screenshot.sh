@@ -9,22 +9,21 @@
 # compositor: spectacle (KDE) > grim (wlroots: Sway/Hyprland) > gnome-screenshot (GNOME) >
 # `import -window root` de ImageMagick (fallback X11/XWayland puro).
 #
-# VERIFICADO 2026-09-18 en cachy (CachyOS, KDE Plasma 6.7 Wayland, `spectacle`): PNG real de
+# VERIFICADO (CachyOS, KDE Plasma 6.7 Wayland, `spectacle`): PNG real de
 # 1920x1080, ~200KB, mostrando el escritorio real (no negro, no truncado). No hizo falta ningun
 # equivalente a SetProcessDPIAware() de Windows -- Wayland/X11 entregan la resolucion FISICA tal
 # cual (a diferencia de Windows con escalado, que sin el fix trunca a la escala logica).
 #
-# MULTI-MONITOR (QA en vivo 2026-09-18, paridad con win-ssh-screenshot.ps1 que agarra el
-# VirtualScreen completo): a diferencia de macOS (donde `screencapture` SIN flags agarra SOLO la
+# MULTI-MONITOR: a diferencia de macOS (donde `screencapture` SIN flags agarra SOLO la
 # pantalla principal -- ver el gotcha correspondiente en mac-ssh-screenshot.sh), en Linux el modo
 # DEFAULT de las 4 herramientas de este script YA es "todo el escritorio, todos los monitores,
 # UNA sola imagen cosida" -- no una adaptacion nueva, es como cada una se comporta de fabrica:
 #   - spectacle: `-f/--fullscreen` ("Capture the entire desktop") es el DEFAULT documentado --
-#     confirmado por `spectacle --help` en cachy 2026-09-18, y es el flag que este script ya usaba.
+#     confirmado por `spectacle --help` en la máquina de prueba, y es el flag que este script ya usaba.
 #   - grim: sin `-o <output>`, captura TODAS las salidas compuestas en una imagen.
 #   - gnome-screenshot / `import -window root`: capturan la pantalla X11 completa (todas las
 #     salidas bajo el mismo screen X11 con RandR, el layout estandar moderno).
-# OJO -- LIMITE DE ESTA VERIFICACION: `cachy` (la maquina de prueba) solo tiene UN monitor fisico
+# OJO -- LIMITE DE ESTA VERIFICACION: la máquina de prueba (la maquina de prueba) solo tiene UN monitor fisico
 # conectado (`kscreen-doctor -o` -> un solo Output HDMI-A-1) -- no se pudo confirmar VISUALMENTE
 # que dos o mas monitores reales queden cosidos en una sola imagen, solo que el flag/comportamiento
 # default de cada herramienta esta documentado para hacerlo. Cuando alguien lo use contra una
@@ -43,8 +42,8 @@
 # `wlr-randr`/`swaymsg -t get_outputs` (wlroots). Mecanismo por herramienta:
 #   - grim: nativo, `grim -o <output>` (sin recorte, la salida ES esa pantalla).
 #   - spectacle (KDE, SIN flag nativo por-output): captura completa + RECORTE con ImageMagick
-#     (`convert`) usando la geometria de `kscreen-doctor -o` para ESE output. VERIFICADO 2026-09-18
-#     en cachy con su UNICO output (HDMI-A-1): el recorte coincidio exacto con la imagen completa
+#     (`convert`) usando la geometria de `kscreen-doctor -o` para ESE output. VERIFICADO
+#     en la máquina de prueba con su UNICO output (HDMI-A-1): el recorte coincidio exacto con la imagen completa
 #     (mismo tamano) -- confirma que el parseo de geometria + `convert -crop` funciona, aunque no
 #     hubo un SEGUNDO monitor real para probar que descarta el resto.
 #   - gnome-screenshot / import: SIN mecanismo por-output conocido en este kit -- cae a pantalla
@@ -54,8 +53,7 @@
 # FOCO, no una busqueda por titulo. En grim/gnome-screenshot/import queda SIN CONFIRMAR -- cae a
 # pantalla completa con un aviso.
 #
-# `-Window "titulo"` (agregado 2026-09-18, PARIDAD con el `-Window` de Windows/Mac -- misma
-# semantica: substring del titulo, mismo fallback si no se halla): REUSA el MISMO mecanismo que
+# `-Window "titulo"`: REUSA el MISMO mecanismo que
 # `linux-ssh-get-window-coordinates.sh` (`xdotool search --name` para resolver titulo->window-id,
 # `xdotool getwindowgeometry --shell` para el rectangulo X,Y,W,H) -- no se reimplementa la busqueda.
 # Con el window-id + rectangulo ya resueltos, la CAPTURA en si prueba, en orden, el mecanismo mas
@@ -71,7 +69,7 @@
 # Igual que `-ActiveWindow`, esto SOLO alcanza ventanas X11/XWayland (limite ya documentado de
 # `list-windows`/`get-window-coordinates` -- xdotool no ve Wayland nativo).
 #
-# VERIFICADO 2026-09-18 EN VIVO en cachy (KDE Plasma 6.7 Wayland; `import` presente, `grim`
+# VERIFICADO (KDE Plasma 6.7 Wayland; `import` presente, `grim`
 # AUSENTE -- via PRIMARIA de verdad ejercitada): las ventanas XWayland de Steam en esa maquina
 # resultaron estar TODAS `IsUnMapped` (confirmado con `xwininfo` -- geometria reportada pero nada
 # realmente en pantalla, por eso una primera prueba contra ellas dio PNG de 10x10 basura-entra-

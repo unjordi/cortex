@@ -7,7 +7,7 @@
 # los elementos de UI (botones, campos, checkboxes) de una ventana con su posicion/tamano -- mas
 # cercano al UI-Automation de Windows que lo que ofrece X11/XWayland en Linux.
 #
-# VERIFICADO 2026-09-18 LOCAL (solo el MECANISMO, sin una ventana de prueba abierta con controles
+# VERIFICADO (solo el MECANISMO, sin una ventana de prueba abierta con controles
 # variados en el momento): la consulta AppleScript de "UI elements of window" es la via estandar
 # documentada por Apple/usada por herramientas de automatizacion Mac -- no se ejecuto contra una
 # ventana con botones reales en esta pasada.

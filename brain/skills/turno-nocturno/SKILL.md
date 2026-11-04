@@ -139,22 +139,27 @@ Un OK que solo vive en el chat se evapora al compactar (pasó en una noche real)
 sobrevivir la noche se escribe a disco, en el **contrato compartido**:
 
 `${CLAUDE_PROJECT_DIR}/.claude/memory/autorizaciones-vigentes.local.md`
-(los `*.local.md` ya van gitignored; `mkdir -p` si falta la carpeta)
+(los `*.local.md` ya van gitignored)
 
-Una línea por grant, **appendeada con `>>`** (no con un Edit):
+**El grant lo escribe Claude cuando el usuario se lo pide** (decisión de unjordi 2026-10-26, `proteger-autorizaciones`
+retirado el 2026-10-28). Un grant por línea, append con `>>`:
 
 ```
-- scope=merge-develop vence_epoch=<unix> vence="<legible>" cita="<frase TEXTUAL del usuario>" registrada=<ISO>
+echo '- scope=merge-develop vence_epoch=<unix> vence="<legible>" cita="<frase TEXTUAL del usuario>" registrada=<ISO>' >> "${CLAUDE_PROJECT_DIR}/.claude/memory/autorizaciones-vigentes.local.md"
 ```
+
+merge-develop-guard honra el grant vigente con destino develop confirmado; la cita queda como registro de
+quién lo autorizó (ya no se busca en los transcripts, 2026-10-28). Sin grant, el merge nocturno cae al JUEZ normal (que busca la cita en el contexto reciente y
+puede fallar tras compactaciones, que es lo que el grant durable evita).
 
 Reglas duras:
-- **Se escribe SOLO con OK explícito del usuario** — la `cita` son sus palabras LITERALES, no tu
-  paráfrasis. Sin cita textual, no hay grant.
+- **La `cita` son las palabras LITERALES del usuario**, no tu paráfrasis. Sin cita textual, no hay grant.
 - **"Hasta mañana" sin hora → vence a las 10:00 locales del día siguiente.**
 - **`scope=merge-develop` JAMÁS cubre `main`.** Un release a main no es delegable a un grant
   nocturno, punto.
-- **Poda las vencidas** (por `vence_epoch` contra la hora actual) cada vez que escribas el archivo.
-- Epoch portable GNU/BSD:
+- **Las vencidas quedan inertes** (merge-develop-guard las ignora por `vence_epoch` contra la hora
+  actual) — no hace falta podarlas para la seguridad; el usuario puede limpiarlas cuando quiera (otro `!`).
+- Epoch portable GNU/BSD que Claude calcula para armar el one-liner:
   ```bash
   # GNU (Linux / coreutils) con fallback BSD (macOS)
   V=$(date -d 'tomorrow 10:00' +%s 2>/dev/null \

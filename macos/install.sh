@@ -15,7 +15,7 @@
 # paridad con el .exe de Windows; si la descarga falla, compila desde fuente como fallback. Si el
 # asset SÍ baja pero su 'build-sha' (del body del release) queda detrás del HEAD del clon (el runner
 # de release-macos.yml aún no reconstruyó), y hay Xcode CLT disponible, también cae a compilar desde
-# fuente en vez de instalar el asset rancio (ver C4, docs/reaudit-ola1-2026-09-01.md).
+# fuente en vez de instalar el asset rancio.
 
 set -euo pipefail
 
@@ -60,7 +60,7 @@ for arg in "$@"; do
   esac
 done
 
-# --- "Borra el previo por completo" (regla 2026-07-15) -----------------------------------------
+# --- "Borra el previo por completo" ------------------------------------------------------------
 # El rebrand claude-quota -> cortex NO migra ni conserva nada del install viejo: lo ELIMINA y
 # reinstala limpio. Idempotente y fail-safe: si nada viejo existe, cada paso es un no-op silencioso.
 OLD_LABEL="io.github.unjordi.claude-quota"
@@ -207,8 +207,8 @@ if [[ -f "$ICNS" && -f "$ROOT/set-icon.swift" ]] && command -v swift >/dev/null 
 fi
 
 # --- CLI `claude` + PATH (el widget MIDE a claude; sin él no hay qué medir) --------------------
-# Espeja la lógica de install.ps1 (fix #67, Windows): si `claude` no está en el PATH pero YA existe
-# en ~/.local/bin (caso real de Felipe), solo hay que exponer el PATH; si no existe, se instala con
+# Espeja la lógica de install.ps1: si `claude` no está en el PATH pero YA existe
+# en ~/.local/bin, solo hay que exponer el PATH; si no existe, se instala con
 # el instalador nativo (mismo origen que claude.ai/install.ps1 de Windows). Sáltalo con --no-claude-code.
 if [[ "$SKIP_CLAUDE_CODE" -eq 0 ]]; then
   if command -v claude >/dev/null 2>&1; then
@@ -302,7 +302,7 @@ if [[ "$SKIP_APP" -eq 0 ]]; then
     # release-macos.yml aún no reconstruyó tras el último push a main (mismo build-sha que ese
     # workflow escribe en el body de 'macos-latest' — ver .github/workflows/release-macos.yml).
     # Paridad de INTENCIÓN con windows/install.ps1 (asset==HEAD → asset; si no → build), extendida
-    # aquí a un fallback REAL a --build (Windows solo avisa, ver docs/reaudit-ola1-2026-09-01.md).
+    # aquí a un fallback REAL a --build (Windows solo avisa).
     if [[ "$got_app" -eq 1 ]]; then
       REL_BODY="$(curl -fsSL -H 'Accept: application/vnd.github+json' -H 'User-Agent: cortex' \
         "https://api.github.com/repos/unjordi/cortex/releases/tags/macos-latest" 2>/dev/null | jq -r '.body // empty' 2>/dev/null || true)"
@@ -331,10 +331,8 @@ if [[ "$SKIP_APP" -eq 0 ]]; then
   fi
 
   echo "==> Registrando AUTOARRANQUE (LaunchAgent del widget) + (re)lanzando"
-  # El widget arranca EN CADA LOGIN vía su propio LaunchAgent (RunAtLoad + open). Antes solo se
-  # abría una vez aquí y el autoarranque quedaba "agrégalo a mano a Login Items" → tras un reboot
-  # el widget NO volvía (bug real, 2026-07-18). launchd es scriptable e idempotente; un login item
-  # vía System Events exigiría permiso de Automation (prompt de TCC) — por eso NO se usa.
+  # El widget arranca EN CADA LOGIN vía su propio LaunchAgent (RunAtLoad + open). launchd es
+  # scriptable e idempotente; un login item vía System Events exigiría permiso de Automation (TCC).
   WIDGET_LABEL="$LABEL.widget"
   WIDGET_PLIST="$HOME/Library/LaunchAgents/$WIDGET_LABEL.plist"
   cat > "$WIDGET_PLIST" <<PLIST
@@ -348,8 +346,8 @@ if [[ "$SKIP_APP" -eq 0 ]]; then
   <key>RunAtLoad</key><true/>
 </dict></plist>
 PLIST
-  # Matar la instancia VIEJA antes de relanzar: macOS no hot-swappea el binario — sin esto, tras
-  # actualizar seguías viendo el widget anterior en memoria (bug real, 2026-07-15).
+  # Matar la instancia VIEJA antes de relanzar: macOS no hot-swappea el binario (seguiría corriendo
+  # la versión anterior en memoria).
   pkill -f "$APP_NAME.app/Contents/MacOS/" 2>/dev/null || true
   launchctl bootout "gui/$(id -u)/$WIDGET_LABEL" 2>/dev/null || true
   # bootstrap con RunAtLoad → lo abre AHORA y en cada login. Fallback: open directo.

@@ -11,10 +11,23 @@ namespace Cortex;
 public sealed class Bucket
 {
     [JsonPropertyName("percent")]    public double? Percent { get; set; }
-    [JsonPropertyName("cost_usd")]   public double? CostUsd { get; set; }
-    [JsonPropertyName("cost_cap")]   public double? CostCap { get; set; }
-    [JsonPropertyName("tokens_used")] public double? TokensUsed { get; set; }
+    [JsonPropertyName("equiv_session_cost_usd")] public double? EquivSessionCostUsd { get; set; }
+    [JsonPropertyName("equiv_weekly_cost_usd")]  public double? EquivWeeklyCostUsd { get; set; }
+    [JsonPropertyName("session_tokens_used")]    public double? SessionTokensUsed { get; set; }
+    [JsonPropertyName("weekly_tokens_used")]     public double? WeeklyTokensUsed { get; set; }
+    [JsonPropertyName("severity")]   public string? Severity { get; set; }
     [JsonPropertyName("resets_at")]  public string? ResetsAt { get; set; }
+    [JsonPropertyName("week_start")] public string? WeekStart { get; set; }
+    [JsonPropertyName("by_model")]   public List<ByModelEntry>? ByModel { get; set; }
+}
+
+/// <summary>Per-model weekly scoped limit entry (weekly.by_model[]).</summary>
+public sealed class ByModelEntry
+{
+    [JsonPropertyName("model")]    public string? Model { get; set; }
+    [JsonPropertyName("percent")]  public double? Percent { get; set; }
+    [JsonPropertyName("resets_at")] public string? ResetsAt { get; set; }
+    [JsonPropertyName("severity")] public string? Severity { get; set; }
 }
 
 /// <summary>The full state.json snapshot.</summary>
@@ -30,6 +43,17 @@ public sealed class Snapshot
     [JsonPropertyName("error")]         public string? Error { get; set; }
     [JsonPropertyName("five_hour")]     public Bucket? FiveHour { get; set; }
     [JsonPropertyName("weekly")]        public Bucket? Weekly { get; set; }
+    // True cuando la lectura es PRESERVADA (el fetch no pudo refrescar) → se marca "⏳ sin refrescar".
+    [JsonPropertyName("stale")]         public bool? Stale { get; set; }
+    [JsonPropertyName("auth")]          public AuthInfo? Auth { get; set; }
+}
+
+/// Estado del login que escribe cortex-fetch. State: "ok"|"expiring"|"expired"|"no_credentials".
+public sealed class AuthInfo
+{
+    [JsonPropertyName("state")]         public string? State { get; set; }
+    [JsonPropertyName("expires_at")]    public string? ExpiresAt { get; set; }
+    [JsonPropertyName("account_email")] public string? AccountEmail { get; set; }
 }
 
 // ---------------------------------------------------------------------------

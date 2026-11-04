@@ -1,13 +1,13 @@
 ---
 name: canonizar-cerebro
-description: DUEÑO único del ciclo de vida del cerebro de un proyecto instanciado (cps, fluxcore, plantilladotnet…), con CUATRO modos sobre la MISMA maquinaria (el detector de firma `verificar-firma-canonica.sh` + el pull-del-canon `sincronizar-cerebro.sh --apply`). **Modo sembrar** — nace un cerebro nuevo, nativo en `<proyecto>/.claude/` (memoria/skills/settings), SIN symlinks. **Modo canonizar** — un cerebro instanciado drifteó (memorias sueltas sin prefijo, CLAUDE.md viejo, MEMORY.md plano): reprefija con `git mv`, dedup con rescate, reescribe CLAUDE.md+MEMORY.md a la firma-árbol, verifica 1:1. **Modo consolidar** — campaña amplia para dejarlo SÓLIDO y COMPACTO: la dupla de auditores → positivar → desinflar → loop de convergencia → cierre con la firma. **Modo reconciliar** — ritual SEMANAL que junta aprendizajes+memorias de las minis de los devs hacia develop sin perder atribución. Úsalo para CUALQUIER operación sobre el cerebro de un proyecto instanciado: sembrarlo, corregir su estructura, dejarlo compacto, o reconciliarlo entre devs.
+description: DUEÑO único del ciclo de vida del CEREBRO-DE-PROYECTO de un repo instanciado (cps, fluxcore, plantilladotnet…) — su MEMORIA, sus skills propias y la firma-árbol de su `CLAUDE.md`/`MEMORY.md`. (Los guards/hooks del cerebro NO viven por-repo: vienen del install GLOBAL por máquina; el cerebro por-repo se retiró 2026-11-01.) CUATRO modos sobre la MISMA maquinaria (el detector de firma `verificar-firma-canonica.sh`). **Modo sembrar** — nace un cerebro-de-proyecto nuevo, nativo en `<proyecto>/.claude/` (memoria/skills/CLAUDE.md/MEMORY.md), SIN symlinks ni copias de hooks. **Modo canonizar** — un cerebro-de-proyecto drifteó (memorias sueltas sin prefijo, CLAUDE.md viejo, MEMORY.md plano): reprefija con `git mv`, dedup con rescate, reescribe CLAUDE.md+MEMORY.md a la firma-árbol, verifica 1:1. **Modo consolidar** — campaña amplia para dejarlo SÓLIDO y COMPACTO: la dupla de auditores → positivar → desinflar → loop de convergencia → cierre con la firma. **Modo reconciliar** — ritual SEMANAL que junta aprendizajes+memorias de las minis de los devs hacia develop sin perder atribución. Úsalo para CUALQUIER operación sobre el cerebro-de-proyecto de un repo instanciado: sembrarlo, corregir su estructura, dejarlo compacto, o reconciliarlo entre devs.
 ---
 
 # Canonizar un cerebro — el dueño único del ciclo de vida (4 modos, 1 maquinaria)
 
 Un cerebro que cortex instancia (cps, fluxcore, plantilladotnet, los repos .NET del equipo) pasa por
 **cuatro operaciones** a lo largo de su vida, y las cuatro comparten la MISMA idea de "correcto" (la
-firma canónica) y la MISMA maquinaria (el detector + el pull-del-canon). Antes vivían como CUATRO
+firma canónica) y la MISMA maquinaria (el detector de firma). Antes vivían como CUATRO
 skills separados (`canonizar-cerebro`, `consolidar-cerebro`, `unificar-cerebro`,
 `claude-proyecto-autocontenido`) que divergían entre sí — dos de ellos llegaron a especificar la MISMA
 firma canónica con plantillas DISTINTAS. Este skill es el dueño único; los cuatro modos son:
@@ -22,9 +22,9 @@ firma canónica con plantillas DISTINTAS. Este skill es el dueño único; los cu
 **La maquinaria común** (evita que los 4 modos re-especifiquen "qué es correcto" cada uno a su manera):
 - **El detector de firma** — `brain/verificar-firma-canonica.sh [ruta] [--strict]` — verifica el 1:1 de
   la firma canónica (ver abajo). Lo corren canonizar (Paso 7, el gate) y consolidar (Fase 6, el cierre).
-- **El pull-del-canon** — `bash <cortex>/brain/sincronizar-cerebro.sh . --apply` — pone la copia por-repo
-  del cerebro CANÓNICO (hooks/libs/skills de tier `both`) al día desde la fuente única. Lo corren sembrar
-  (al nacer un repo) y reconciliar (Paso 1, para sacar el cerebro canónico del diff antes de subir memoria).
+- **El cerebro vive SOLO en global:** los guards (hooks/libs) vienen del install GLOBAL, no de una copia
+  por-repo. Lo que estos modos manejan es el CEREBRO-DE-PROYECTO (memoria + skills propias + la firma
+  `CLAUDE.md`/`MEMORY.md`), que vive en el repo y viaja por git.
 
 > **NO es un auto-mutador ciego.** Ningún modo reescribe cerebros automáticamente sin supervisión: el
 > humano revisa el diff antes de integrar (salvo el modo reconciliar, que sí integra por MR con OK
@@ -43,6 +43,12 @@ del cortex. **Instancias canónicas de referencia:** `cps` y `fluxcore` (su `CLA
   `🎯 Misión/identidad → 🧠 Antes de construir → 📁 Dónde va cada cosa → 🖋️ LA FIRMA (árbol de
   capacidades→artefactos, DENTRO de un bloque cercado ```) → 🛡️ Reglas duras → @import MEMORY.md`.
   ATEMPORAL (gradiente de estabilidad = como `main`): cero fechas, cero "RESUELTO/al día".
+  **Identidad del master:** junto al `@import MEMORY.md`, el molde incluye
+  `@.claude/memory/conocimiento-propio.local.md` — la identidad por-master (gitignored per-máquina),
+  cargada con el `@` NATIVO. Es TOLERANTE a su ausencia (un `@import` a un archivo que no existe no
+  truena ni inventa: en un clon de otro dev simplemente no aporta nada), así que viaja en el CLAUDE.md
+  compartido sin romper a quien no tiene el archivo. Reemplaza la re-inyección que hacía el hook
+  `aviso-drift-cerebro` (su retiro del hook es un paso aparte, cuando el `@` esté propagado).
 - **`MEMORY.md`** = **detalle 1:1** de la FIRMA + índice de memorias **agrupado POR PREFIJO**
   (`dom-` dominio · `dev-` desarrollo/infra · `ux-` diseño · `qa-` calidad · **núcleo** sin prefijo:
   `estado-proyecto` · `bitacora` · `aprendizajes` · `backlog-<tema>` · `hilo-mental-actual` ·
@@ -98,12 +104,9 @@ del cortex. **Instancias canónicas de referencia:** `cps` y `fluxcore` (su `CLA
 ---
 
 ## MODO SEMBRAR — el cerebro nace NATIVO, sin symlinks
-> ⚠️ **CERO SYMLINKS (decisión dura de unjordi, 2026-09-08: "NO quiero symlinks en ningún lado" — "son un
-> pinche bug que no logro que dejen de propagar").** Este modo reemplaza al viejo skill
-> `claude-proyecto-autocontenido`, que PRESCRIBÍA un symlink `~/.claude/projects/<slug>/memory` →
-> `<repo>/.claude/memory`. Ese diseño quedó RETIRADO: los symlinks cuelgan al mover/borrar/renombrar el
-> repo (rompían `/to-do` y cuanto leyera `.claude/memory`) y proliferaron (15 basura medidos en una sola
-> máquina). **No lo repitas.** El criterio vigente es el de abajo.
+> ⚠️ **CERO SYMLINKS.** Nada de symlink `~/.claude/projects/<slug>/memory` → `<repo>/.claude/memory`:
+> los symlinks cuelgan al mover/borrar/renombrar el repo (rompen `/to-do` y cuanto lea
+> `.claude/memory`) y proliferan. El criterio es el de abajo.
 
 **El criterio (en una frase).** El cerebro de Claude Code de cada proyecto vive **NATIVO** en la carpeta
 del proyecto (`<proyecto>/.claude/{memory,skills,settings.json}`), leído directamente desde el `cwd` —
@@ -146,9 +149,9 @@ Tras escribirlo, **verifícalo de verdad**: `git check-ignore .claude/memory/x.l
 ruta (= ignorado). No te fíes de que "se ve bien".
 
 ### Sembrar un proyecto NUEVO (0 fricción)
-No hay nada que enlazar: crea `<proyecto>/.claude/{memory,skills}/`, un `CLAUDE.md`+`MEMORY.md` barebones
-(ver la firma canónica arriba), corre el pull-del-canon para traer los hooks/skills `both` del equipo
-(`bash <cortex>/brain/sincronizar-cerebro.sh . --apply`), y listo — se lee nativo desde el primer commit.
+No hay nada que enlazar: crea `<proyecto>/.claude/{memory,skills}/` y un `CLAUDE.md`+`MEMORY.md` barebones
+(ver la firma canónica arriba) — y listo, se lee nativo desde el primer commit. Los guards/hooks NO se
+copian al repo: vienen del install GLOBAL de la máquina (cerebro solo-global desde 2026-11-01).
 
 ### Sembrar sobre un cerebro DISPERSO (memoria a medias entre el global y el repo)
 Caso típico: el cerebro está partido entre `<repo>/.claude/memory/` (lo ya commiteado) y el global
@@ -174,8 +177,8 @@ fusionar hacia el repo, NUNCA enlazar**:
    ESTE repo → de-proyecto; si solo describe el gusto/entorno de una persona → transversal. Ante duda
    real, pregúntale al dueño en vez de adivinar.
 3. **Fusiona hacia el repo con RECONCILIACIÓN, no solo dedup.** Si dos `MEMORY.md` listan cosas distintas,
-   únelos; si dos memorias AFIRMAN cosas DISTINTAS del mismo objeto (visto en vivo: un `MEMORY.md` decía
-   repo `unjordi/scripts`, otro `unjordi/PowerScripts`), no arrastres ambas — resuelve el conflicto con el
+   únelos; si dos memorias AFIRMAN cosas DISTINTAS del mismo objeto (p. ej. un `MEMORY.md` dice
+   repo `<usuario>/scripts`, otro `<usuario>/PowerScripts`), no arrastres ambas — resuelve el conflicto con el
    dueño. Deduplica con `diff -q`; lo que sobre va a una `.trash/`, nunca `rm` a ciegas.
 4. **No hace falta symlink ni bootstrap.** Una vez movidos los archivos reales al repo, el cerebro YA se
    lee nativo desde el `cwd`. El `~/.claude/projects/<slug>/` de esa máquina se queda con sus transcripts
@@ -207,7 +210,7 @@ fusionar hacia el repo, NUNCA enlazar**:
   solo la migración a la firma canónica. Puede invocarse SOLO (drift puramente estructural) o como el
   cierre de aquel.
 - Tras cambiar los guards/hooks del cerebro globalmente: la prosa del `CLAUDE.md` de los instanciados
-  queda stale (nombra un hook retirado) → canonizar la mata por construcción.
+  queda stale (nombra un hook que ya no existe) → canonizar la mata por construcción.
 
 ### Procedimiento (destilado del prototipo fluxcore)
 
@@ -234,7 +237,7 @@ procedencias, valores irrepetibles), y `git rm` la fuente. Registra en el commit
 
 #### 4 · Reescribe `CLAUDE.md` a la firma-árbol
 Sigue la secuencia obligatoria. El **árbol va DENTRO de un bloque cercado** ``` (si no, colapsa a prosa
-en todo render). En el árbol, **nombra los guards BREVE** (`git-branch-guard, merge-develop-guard, …`) —
+en todo render). En el árbol, **nombra los guards BREVE** (`merge-develop-guard, proteger-arbol, …`) —
 esto **mata la prosa de guards stale por construcción**. ATEMPORAL: sin fechas ni estado. La arquitectura
 NO va aquí: apunta a `AGENTS.md` si existe.
 
@@ -295,8 +298,7 @@ Tiene su batería en `brain/test-brain.sh` (bloque `g5`: cerebro bueno/malo/no-i
 ## MODO CONSOLIDAR — dejar el cerebro SÓLIDO y COMPACTO (campaña amplia)
 Este modo NO reinventa nada: **encadena skills atómicas que ya existen** en una campaña con orden,
 cerca y criterio de cierre. Es el "cómo llevamos un cerebro de abrumador a cómodo consigo mismo" —
-destilado de dos casos vivos (games-master, que quedó notoriamente compacto con +6 memorias nuevas y
-aún así más chico que su gemelo; y cps, un repo .NET grande que convergió en 5 rondas de auditoría).
+destilado de campañas reales.
 
 > **El DOLOR que lo originó (el north-star).** *"ya me cansé de pasar 5 horas configurando en loop cada
 > vez que quiero jugar media hora"* + *"si yo me abrumo… no me imagino tú que lees todos esos archivos
@@ -318,7 +320,7 @@ aún así más chico que su gemelo; y cps, un repo .NET grande que convergió en
 - [[diagramar]] — alimenta al FMEA con los flowcharts (leyenda + normas) que necesita como "zapatos".
 - [[positivar-doc]] — answer-first: "ESTO SÍ" antes de "ESTO NO".
 - [[desinflar-memorias]] — colapsar narrativa a lección + mitos descartados al `cementerio.md` (por ID).
-- [[orquestar-fanout]] — fan-out sin niñera (worktrees aislados, 2 archivos de estado) + su bucle de
+- la norma «Delegar a agentes» — fan-out sin niñera (worktrees aislados, 2 archivos de estado) + su bucle de
   verificación (no creerle el "listo" a un agente).
 - [[checkpoint]] — volcar el hilo antes de compactar (crítico en corridas de N rondas).
 - [[cerrar-slice]] — el cierre por ramita → MR → mini-develop con `--squash`.
@@ -351,21 +353,21 @@ coherentes entre sí prometiendo un candado que NO existía — coherencia perfe
 coherencia no ve eso; la suficiencia sí."* Y al revés: un cerebro de recetas buenas que se contradicen
 pasa la prueba de suficiencia archivo por archivo. **Ninguna caza lo de la otra.**
 
-**Contrato de reporte** (de [[orquestar-fanout]]): cada auditor escribe su dictamen a un `.md` durable
+**Contrato de reporte** (de la norma «Delegar a agentes»): cada auditor escribe su dictamen a un `.md` durable
 (`AUDITOR-COH-r<N>.md`, `AUDITOR-SUF-r<N>.md`) y responde SOLO ~3 líneas al orquestador (veredicto +
 conteo, hallazgos en bullets, ruta). Así no infla el contexto del orquestador.
 
 ### FASE 2 — VERIFICAR los hallazgos (no creer el reporte del agente)
-Usa el **bucle de verificación** de [[orquestar-fanout]]: **espera a tener AMBOS dictámenes antes de
+Usa el **bucle de verificación** de la norma «Delegar a agentes»: **espera a tener AMBOS dictámenes antes de
 editar** (no muevas el piso a media auditoría), y **verifica read-only cada hallazgo contra el código/
 realidad** — no lo relates como verdad. El **cross-check entre lentes es donde se cazan los FALSOS
-POSITIVOS**: en cps, suficiencia marcó `detectar-secretos.sh` como "hook huérfano" → coherencia lo REFUTÓ
-por ejecución (es una LIB `source`-ada, no un hook) = FP anotado, no tocado. Con 4-6 informes, haz el
+POSITIVOS**: p. ej. suficiencia marca `analizar-comando-git.sh` como "hook huérfano" → coherencia lo REFUTA
+por ejecución (es una LIB `source`-ada por los git-guards, no un hook) = FP anotado, no tocado. Con 4-6 informes, haz el
 cross-check ANTES de sintetizar.
 > **Si un agente REEMPLAZA un doc** (un rebuild de la firma/README/config, no contenido nuevo — típico en
-> el modo canonizar): corre el **DIFF DE PRESERVACIÓN** de [[orquestar-fanout]] — `diff` viejo→nuevo y
+> el modo canonizar): corre el **DIFF DE PRESERVACIÓN** de la norma «Delegar a agentes» — `diff` viejo→nuevo y
 > clasifica lo que SOLTÓ (basura temporal botada bien **vs** conocimiento real que hay que preservar/reubicar).
-> Un rebuild falla por OMISIÓN silenciosa, no por afirmar de más (caso real: un rebuild botó una corrección que
+> Un rebuild falla por OMISIÓN silenciosa, no por afirmar de más (p. ej. un rebuild que bota una corrección que
 > vivía SOLO en ese archivo).
 
 ### FASE 3 — CONSOLIDAR / ORGANIZAR (positivar → desinflar → dedup)
@@ -383,13 +385,13 @@ el diff. El grueso del "quedar compacto":
    líneas EN SU LUGAR**; los mitos desmentidos se mudan al **`cementerio.md`** del cerebro (una lápida =
    una línea con su ID `🪦#<id>`, vía `cementerio.sh add`), dejando en la memoria solo la ref `(🪦#<id>)`
    donde haga falta. NO se corta: advertencias destructivas, comandos, decisiones con su porqué,
-   datos irrepetibles. Recortes reales: cps `estado-proyecto` 896→460 (−49%), **0 lecciones perdidas**.
+   datos irrepetibles.
 3. **Un CANÓNICO + PUNTEROS** por dato/tema repetido: una memoria "manda", las hermanas se deducen a un
    puntero. Un dato NO vive en 3 lados; el estado "actual" se DERIVA.
 4. **Índice answer-first y SIN DRIFT:** un solo **entry-point operativo** (el doc que traiga reglas +
    router de skills — es `AGENTS.md` en games-master, el `MEMORY.md`-índice en cps; ver Fase 6), answer-first,
    con "LEE ESTO ANTES DE HACER NADA" arriba y los punteros al detalle. El router refleja las skills REALES
-   (N=N). En cps el índice MENTÍA (clúster ETL invisible desde la puerta) → reconstruido 35/35.
+   (N=N).
 5. **Matar el mito en TODAS sus copias:** tras corregir el canónico, `grep` del término viejo por TODO
    el cerebro vivo (incluido `MEMORY.md`) — una sola copia desincronizada ya es doc que miente.
 6. **Reubicar lo genérico/ajeno FUERA del cerebro del proyecto** (lo transversal → global; lo de
@@ -405,7 +407,6 @@ prompt, cambias el examen (guarda el prompt literal en un `.md`). **No autodecla
   agotado (real): *"ya es nitpicking, se ve que el auditor se aburrió"*.
 - El loop no es ceremonia: en un caso el re-auditor cazó un bug que el **propio orquestador** introdujo
   (un gate colocado DESPUÉS de mutar el estado).
-- Trayectoria real cps SUF: 1C/2A → 1C/3A → 0C/2A → 0C/1M → 0C/0A (5 rondas); coherencia convergió antes.
 
 ### FASE 5 (opcional) — EL TERCER EJE: FMEA, cuando hay LÓGICA de riesgo
 La dupla es **doc-orientada** ("¿se puede operar?" / "¿se contradice/miente?"); **ninguna pregunta
@@ -447,10 +448,10 @@ mutua de LISTO). Los parqueados quedan visibles en el **dictamen durable** (repo
 hallazgo se queda solo en el chat**, aunque solo se atienda un subconjunto.
 
 ### GOTCHAS del modo consolidar (destilados de las corridas reales)
-- **git-branch-guard, FP sobre texto de commit:** dispara sobre `git push origin develop` **dentro de un
-  mensaje de commit multilínea** (no un push real). Workaround: escribe el mensaje con Write y commitea
-  con `git commit -F <archivo>`. (La lib `analizar-comando-git.sh` ignora menciones entrecomilladas, pero
-  un heredoc multilínea la evade.)
+- **merge-develop-guard (PASO 0), FP sobre texto de commit:** dispara sobre `git push origin develop` **dentro
+  de un mensaje de commit multilínea** (no un push real). Workaround: escribe el mensaje con Write y commitea
+  con `git commit -F <archivo>`. (La lib `analizar-comando-git.sh` —que usa el PASO 0 que absorbió al antiguo
+  git-branch-guard— ignora menciones entrecomilladas, pero un heredoc multilínea la evade.)
 - **Verifica el hallazgo con OJOS, no con el primer grep:** un `grep -E` con `\|` (en vez de `|` real)
   devolvió falsos "FALTA"; un "DESCARTADO" en la línea siguiente hizo declarar un mito "presente". El FP
   del propio detector a veces **destapa un hueco REAL de doc** — aprovéchalo, no lo descartes ciego.
@@ -481,16 +482,15 @@ qué, sin aplanar la voz, y sin tocar los guardrails delicados.
 > PROSA+cerebro (no hay `dotnet build`; el "verde" es `test-brain.sh` + lint de memoria) y su disparador
 > es *integrar la mini completa a develop*, no *terminar un slice*.
 
-> **Regla de oro que atraviesa todo el ritual:** los **hooks/settings/skills CANÓNICOS del brain se
-> rutean a `cortex`** (su MANIFEST es la fuente única) y bajan por `sincronizar-cerebro.sh` — el
-> pull-del-canon de la maquinaria común (arriba). **JAMÁS** viajan por el MR de la mini a develop. Lo que
-> sube por este MR es MEMORIA+APRENDIZAJES, no cerebro canónico. (Un MR de mini que toque
-> `.claude/hooks/*`/`settings.json`/`.brain-version` es un error de ruteo — sácalo en el Paso 1.)
+> **Regla de oro que atraviesa todo el ritual:** lo que sube por el MR de la mini es MEMORIA+APRENDIZAJES
+> del proyecto, **nunca** cerebro. Los guards/hooks del cerebro YA NO viven por-repo (install GLOBAL;
+> cerebro solo-global desde 2026-11-01). Si el diff de una mini toca `.claude/hooks/*`/el cableado de
+> hooks del cerebro en `settings.json`/`.brain-version`, son RESTOS del cerebro por-repo viejo — sácalos
+> con `install-brain --limpiar-repo` (Paso 1), no por este MR.
 
 ### Disparadores
 - Manual: invoca este modo (el run semanal designado, o cuando el usuario lo pide).
-- DISCIPLINA tuya, sin hook que lo recuerde (`recordar-unificar-cerebro` se retiró, overhaul hooks
-  2026-09-18, puramente advisory): cuando el delta de `.claude/` de tu rama vs `origin/develop` acumule
+- DISCIPLINA tuya, sin hook que lo recuerde: cuando el delta de `.claude/` de tu rama vs `origin/develop` acumule
   ≥5 archivos o >7 días sin unificar, córrelo.
 - Encadenado desde `cerrar-slice` cuando la cosecha de un slice cae en `.claude/`.
 
@@ -508,31 +508,32 @@ Clases:
 - **Notas atómicas / archivos propios** (un módulo, `estado-proyecto.md`, una decisión con ciclo
   propio) → van tal cual (raro que choquen).
 - **Índices** (`MEMORY.md`, `skills/README.md`) → **NO se editan a mano**: `merge=ours` + regen.
-- **CEREBRO canónico** (`.claude/hooks/*`, `settings.json`, `.brain-version`, skills-de-proceso del
-  brain, `aprendizajes-*-brain.md`) → **NO sube por este MR**; se resuelve en el Paso 1.
+- **RESTOS del cerebro por-repo** (`.claude/hooks/*` del cerebro, su cableado en `settings.json`,
+  `.brain-version`, `aprendizajes-*-brain.md`) → **NO suben por este MR**; se limpian en el Paso 1.
 
-### Paso 1 — Baja PRIMERO el brain canónico (sácalo del diff) — el pull-del-canon
-Antes de subir nada, sincroniza el cerebro canónico HACIA ABAJO en tu mini para que el diff quede
-LIMPIO de cerebro (es la maquinaria común descrita arriba):
+### Paso 1 — Saca los RESTOS del cerebro por-repo del diff
+El cerebro vive solo en global (2026-11-01). Si el delta trae copias viejas de hooks del cerebro, su
+cableado o el sello, límpialos para que el diff quede SOLO con memoria+aprendizajes del proyecto:
 
 ```
-bash <ruta-a-cortex>/brain/sincronizar-cerebro.sh . --apply
+bash <ruta-a-cortex>/brain/install-brain.sh --limpiar-repo .          # plan
+bash <ruta-a-cortex>/brain/install-brain.sh --limpiar-repo . --apply  # ejecuta (respalda; respeta skills propias)
 ```
 
-Esto pone la copia por-repo al día desde la fuente única. Los `aprendizajes-*-brain.md` (los que son
-del brain, no del proyecto) se **mueven a cortex**, no a develop. Tras este paso, el delta que
-queda para subir es SOLO memoria+aprendizajes del proyecto.
+Esto retira los hooks/libs del cerebro + su cableado + `.brain-version`, y las skills del cerebro cuyo
+contenido coincide con la fuente (una que DIFIERA se reporta, no se borra). NUNCA toca la memoria/estado
+ni las skills propias del proyecto. Los `aprendizajes-*-brain.md` (del brain, no del proyecto) se **mueven
+a cortex**, no a develop. Si no hay restos, este paso es no-op y pasas directo al Paso 2.
 
-> Si el sync destapa que la mini tenía **ediciones locales de cerebro canónico** (un hook modificado,
-> un exec-bit flipeado, una skill del brain borrada), eso NO se resuelve aquí subiéndolo: se enruta a
-> un MR contra `cortex`. Anótalo y sepáralo.
+> Si aparece una skill del brain con **ediciones locales** (difiere de la fuente), NO la subas por este MR:
+> enrútala a un MR contra `cortex`. Anótala y sepárala.
 
 ### Paso 2 — Resuelve por CLASE (sin curar todavía)
 - **Aprendizajes** → `merge=union`: se fusionan solos, no los toques a mano. (La curación es el Paso 3.)
 - **Notas atómicas / archivos propios** → tal cual; si dos devs crearon el mismo slug (add/add),
   renombra uno.
 - **Índices** → NO editar; `merge=ours` deja ganar a develop y el regen los rehace verídicos.
-- **Cerebro canónico** → ya salió del diff en el Paso 1.
+- **Restos del cerebro por-repo** → ya salieron del diff en el Paso 1.
 
 ### Paso 3 — CURACIÓN del log (el corazón del ritual)
 Sobre el `aprendizajes.md` ya juntado, haz DOS cosas. **Nunca reescribas prosa a ciegas** (norma
@@ -560,7 +561,7 @@ promueve:
   Preferencias), **con procedencia** (cita literal entre comillas vs `[INFER]`) y **REFERENCIANDO** las
   normas universales del brain — sin copiarlas. Distínguelo del TRATO **SOBRE OTRO dev** (`sobre:
   <handle>`): ése se queda en el inbox del equipo (así viaja a su máquina). Molde canónico:
-  `como-trabajar-con-unjordi.md`.
+  `como-trabajar-con-<usuario>.md`.
 - → **archivo propio** si creció a un tema autocontenido (`modulo-x.md`).
 Al graduar, deja en el inbox una marca de que se movió (o retíralo si ya vive íntegro en su hogar) —
 pero eso es EDICIÓN curada y deliberada, distinta del append ciego que hace `cerrar-slice` §5.

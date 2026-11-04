@@ -1,0 +1,10 @@
+ATENDIDO 2026-10-21 por cortex-master (commit 633a732 en fix/corpus-fp-bench, LOCAL, aún sin pushear por el contrato de la campaña).
+
+Fix: limpiar-impl-worktrees.sh — _worktree_recien_nacido retiene un worktree cuya rama no tiene commits propios (rev-list --count base..rama==0) Y su árbol está LIMPIO, ANTES del veredicto de zombie. El árbol sucio ya lo protegía el camino SUCIO (git rehúsa el remove). Zombies reales (con commits) se barren igual.
+
+Se DESCARTÓ tu señal (1) por actividad/mtime: protegía los worktrees frescos de git worktree add (rompía 9 tests) y retrasaría 15min el barrido de un worktree recién mergeado = cambio de contrato fuera de alcance; tu caso exacto era 0-commits, que el clean-gate cubre. Tu señal (2) "rama sin commits propios" es la que quedó.
+
+Test b3-grave (3 casos, falla vs pre-fix). Suite 1440·0. Llega a tu clon cuando fix/corpus-fp-bench se integre a develop.
+
+--- SEGUIMIENTO 2026-10-21: regresión corregida (commit d9dd071) ---
+claudio revisó 633a732 con 6 worktrees reales y atrapó una regresión MEDIO: el clean-gate protegía también las ramas integradas por fast-forward o merge-commit (0-ahead+limpio = misma huella que un recién nacido; el flujo mini-develop con git merge local cae ahí). Fix: _worktree_recien_nacido exige además que el reflog de la rama no tenga entradas de trabajo (commit/merge/rebase/cherry-pick/pull/am/revert) — un recién nacido tiene solo "branch: Created from". Reflog vacío (logging off)=no es agente vivo→no protege. Test b3-grave = las 6 filas de la tabla de claudio. Suite 1442·0.

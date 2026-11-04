@@ -76,7 +76,7 @@ send_literal() {
     local text="$1"
     [ -z "$text" ] && return
     # cliclick t: PRIMERO: en macOS 26 `System Events keystroke "con espacios"` DESCARTA los espacios
-    # (verificado 2026-09-18, aislado: "a b c" -> "abc"). cliclick los teclea bien. Solo si no hay
+    # (verificado, aislado: "a b c" -> "abc"). cliclick los teclea bien. Solo si no hay
     # cliclick se cae al keystroke de osascript (que sirve para texto sin espacios).
     if mac_dispatch command -v cliclick >/dev/null 2>&1; then
         mac_dispatch cliclick -w 0 "t:$text"

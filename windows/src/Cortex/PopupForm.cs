@@ -19,6 +19,10 @@ public sealed class PopupForm : Form
 {
     private readonly QuotaService _svc;
     private readonly Action _onRefresh;
+    // ⏻ Apagar: teardown LIMPIO (para el timer + quita el icono de bandeja + sale), no un Application.Exit
+    // pelón que dejaría un icono fantasma. En Windows el fetcher es IN-PROCESS (no hay agente externo tipo
+    // LaunchAgent/systemd timer), así que salir del proceso YA apaga todo; esto solo lo hace prolijo.
+    private readonly Action _onQuit;
     private int _tab;
     private int _hoverRail = -1;
     // Botón del pie del riel bajo el cursor: -1 ninguno · 0 ↻ refresh · 1 ⏻ quit. Espeja `_hoverRail`
@@ -84,6 +88,9 @@ public sealed class PopupForm : Form
     // respaldo que resetea el estado si el update no completó (p. ej. ff abortado → app sigue viva).
     private Rectangle _updateHit = Rectangle.Empty;
     private System.Windows.Forms.Timer? _updateFallback;
+    // Banner de AVISO DE LOGIN de la pestaña Límites (vencido/sin-cuenta/por-vencer): zona clicable del
+    // botón "Re-loguear en Claude" (coords de pantalla; Límites no scrollea → hit-test con e.Location).
+    private Rectangle _authHit = Rectangle.Empty;
 
     // logical → device scale (PerMonitorV2); all metrics below are in logical px.
     private float S => DeviceDpi / 96f;
@@ -121,10 +128,11 @@ public sealed class PopupForm : Form
         return list.ToArray();
     }
 
-    public PopupForm(QuotaService svc, Action onRefresh)
+    public PopupForm(QuotaService svc, Action onRefresh, Action onQuit)
     {
         _svc = svc;
         _onRefresh = onRefresh;
+        _onQuit = onQuit;
 
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
@@ -444,7 +452,7 @@ public sealed class PopupForm : Form
             });
             return;
         }
-        if (quitR.Contains(e.Location)) { Application.Exit(); }
+        if (quitR.Contains(e.Location)) { Hide(); _onQuit(); }
     }
 
     private void RailMouseMove(object? sender, MouseEventArgs e)
@@ -493,10 +501,60 @@ public sealed class PopupForm : Form
 
     // ----- Tab 0: Límites -----
 
+    /// Banner de aviso de login (espeja authNotice de QuotaModel.swift y el QML): pastilla roja (problema
+    /// duro: vencido / sin cuenta) o ámbar (por vencer), con el mensaje y, si Offer, el botón
+    /// "Re-loguear en Claude" cuya zona clicable se registra en _authHit. Sin aviso → no pinta nada.
+    private int PaintAuthNotice(Graphics g, int pad, int right, int y)
+    {
+        _authHit = Rectangle.Empty;
+        var n = _svc.AuthNotice;
+        if (n is null) return y;
+        var (msg, offer, hard) = n.Value;
+
+        Color tint = hard ? Fmt.Hex(Fmt.Danger) : _accent;
+        int inner = Sc(9), iconW = Sc(20);
+        int boxW = right - pad;
+
+        using var msgFont = Px(10f, FontStyle.Regular);
+        int textW = boxW - inner * 2 - iconW;
+        float msgH = g.MeasureString(msg, msgFont, textW).Height;
+
+        int btnH = offer ? Sc(22) : 0;
+        int btnGap = offer ? Sc(8) : 0;
+        int boxH = inner + (int)Math.Ceiling(msgH) + btnGap + btnH + inner;
+        var box = new Rectangle(pad, y, boxW, boxH);
+
+        using (var bx = new SolidBrush(Color.FromArgb(31, tint)))
+            FillRounded(g, bx, box, Sc(8));
+
+        int cx = pad + inner, cy = y + inner;
+        using (var icF = PxFont("Segoe UI Emoji", 10.5f, FontStyle.Regular))
+        using (var icB = new SolidBrush(tint))
+            g.DrawString(hard ? "⚠" : "⏳", icF, icB, cx, cy - Sc(1));
+        using (var tb = new SolidBrush(_fg))
+            g.DrawString(msg, msgFont, tb, new RectangleF(cx + iconW, cy, textW, msgH + Sc(2)));
+
+        if (offer)
+        {
+            string label = "Re-loguear en Claude";
+            using var btnFont = Px(10f, FontStyle.Bold);
+            int bw = (int)g.MeasureString(label, btnFont).Width + Sc(18);
+            var btn = new Rectangle(pad + inner, cy + (int)Math.Ceiling(msgH) + btnGap, bw, btnH);
+            using (var bb = new SolidBrush(tint))
+                FillRounded(g, bb, btn, Sc(6));
+            using (var lb = new SolidBrush(Color.White))
+                g.DrawString(label, btnFont, lb, btn,
+                    new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center });
+            _authHit = btn;
+        }
+        return y + boxH + Sc(12);
+    }
+
     private void PaintLimites(Graphics g, int pad)
     {
         int y = SectionTitle(g, pad, pad, "Límites de uso");
 
+        y = PaintAuthNotice(g, pad, _content.Width - pad, y);
         y = UsageSection(g, pad, y, "Sesión (5 h)", _svc.Snapshot?.FiveHour);
         y += Sc(14);
         y = UsageSection(g, pad, y, "Semanal (7 d)", _svc.Snapshot?.Weekly);
@@ -512,7 +570,10 @@ public sealed class PopupForm : Form
     private int UsageSection(Graphics g, int pad, int y, string title, Bucket? bucket)
     {
         int w = _content.Width - pad * 2;
-        double? pct = bucket?.Percent;
+        // Si el reset de la ventana YA pasó, el % cacheado es de ANTES del reset → "sin dato" (nunca el
+        // valor viejo ni su barra). Una lectura fresca siempre trae resets_at futuro. (Falla al despertar.)
+        bool resetPassed = Rel.IsPast(bucket?.ResetsAt);
+        double? pct = resetPassed ? (double?)null : bucket?.Percent;
 
         using (var tFont = Px(12.5f, FontStyle.Bold))
         using (var tBrush = new SolidBrush(_fg))
@@ -547,26 +608,27 @@ public sealed class PopupForm : Form
         // caption
         using (var cFont = Px(10f, FontStyle.Regular))
         using (var cBrush = new SolidBrush(Blend(_bg, _fg, 0.65)))
-            g.DrawString(Caption(bucket), cFont, cBrush, pad, y);
+            g.DrawString(Caption(bucket, resetPassed), cFont, cBrush, pad, y);
         return y + Sc(20);
     }
 
-    private static string Caption(Bucket? bucket)
+    private static string Caption(Bucket? bucket, bool resetPassed = false)
     {
         if (bucket == null) return "";
         string s = ResetLine(bucket.ResetsAt);
-        if (bucket.CostUsd is double c)
-            s += $" · ≈ ${c.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} (API equiv local)";
+        // Con el reset ya pasado no hay % vigente → tampoco el costo equiv (sería del ciclo viejo).
+        double? c = bucket.EquivSessionCostUsd ?? bucket.EquivWeeklyCostUsd;
+        if (!resetPassed && c is double cd)
+            s += $" · ≈ ${cd.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} (API equiv local)";
         return s;
     }
 
-    /// "Se restablece en Nmin" (futuro) o "Se restableció hace Nmin · actualizando…" (ya pasó → el %
-    /// cacheado quedó viejo y el fetch disparado por el reset lo está poniendo al día).
+    /// "Se restablece en Nmin" (futuro) o "Se restableció hace Nmin · sin lectura nueva" (ya pasó → el %
+    /// cacheado es de antes del reset; NO se muestra, se espera una lectura posterior).
     private static string ResetLine(string? iso)
     {
-        // Pasado → "Se restableció hace Nmin · actualizando…"; futuro → detalle útil "en 4h36m" / "mié@7:59".
         return Rel.IsPast(iso)
-            ? $"Se restableció {Rel.Relative(iso)} · actualizando…"
+            ? $"Se restableció {Rel.Relative(iso)} · sin lectura nueva"
             : $"Se restablece {Rel.ResetDetail(iso)}";
     }
 
@@ -1642,6 +1704,9 @@ public sealed class PopupForm : Form
         }
         if (e.Button != MouseButtons.Left) return;
 
+        // Botón "Re-loguear en Claude" del banner de aviso de login (pestaña Límites, no scrollea).
+        if (_tab == 0 && !_authHit.IsEmpty && _authHit.Contains(e.Location)) { Relogin(); return; }
+
         // Footer de rango (tabs 1..4).
         if (_tab is 1 or 2 or 3 or TabChats)
             foreach (var (idx, rect) in _rangeHits)
@@ -1743,6 +1808,39 @@ public sealed class PopupForm : Form
                 UseShellExecute = true,
                 WorkingDirectory = Directory.Exists(cwd) ? cwd
                     : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            };
+            c.ArgumentList.Add("/k"); c.ArgumentList.Add(cmd);
+            Process.Start(c);
+        }
+        catch { /* no se pudo abrir terminal */ }
+    }
+
+    /// Abre una terminal con el flujo oficial de re-login (abre el navegador): `claude auth login
+    /// --claudeai [--email <cuenta>]`. Espeja relogin() de PopoverView.swift y el reloginRunner del QML.
+    /// Mismo patrón de terminal que ResumeSession (wt.exe → cmd.exe). La cuenta se valida como email.
+    private void Relogin()
+    {
+        string cmd = "claude auth login --claudeai";
+        var acct = _svc.ReloginAccount;
+        if (acct != null && System.Text.RegularExpressions.Regex.IsMatch(acct,
+                @"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$"))
+            cmd += $" --email {acct}";
+
+        try
+        {
+            var wt = new ProcessStartInfo { FileName = "wt.exe", UseShellExecute = true };
+            wt.ArgumentList.Add("cmd"); wt.ArgumentList.Add("/k"); wt.ArgumentList.Add(cmd);
+            if (Process.Start(wt) != null) return;
+        }
+        catch { /* wt no está → cae a cmd */ }
+
+        try
+        {
+            var c = new ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                UseShellExecute = true,
+                WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             };
             c.ArgumentList.Add("/k"); c.ArgumentList.Add(cmd);
             Process.Start(c);
@@ -1970,18 +2068,9 @@ public sealed class PopupForm : Form
     [
         new("🔒", "Hooks Forzosos", Fmt.Hex("#cf5a49"), "hooks que bloquean (deny) — no negociables",
         [
-            new("🚧", "git-branch-guard", "push/merge a develop·main → denegado, te redirige a ramita→MR",
+            new("🔗", "merge-develop-guard", "push directo a develop·main, o MR sin --squash/sin tu OK → denegado; a main exige OK súper-explícito",
                 "PreToolUse · Bash",
-                "Escanea cada comando: si ve un `git push` o un merge que apunte a develop/main, lo deniega y te recuerda el flujo ramita→MR. Sin jq falla ABIERTO (no bloquea)."),
-            new("🔗", "merge-develop-guard", "MR a develop sin --squash o sin tu OK → denegado; a main exige OK súper-explícito",
-                "PreToolUse · Bash",
-                "Candado ÚNICO del punto de merge (2026-09-17, consolida a los antiguos merge-squash-guard + confirmar-merge-develop). Un `gh pr merge`/`glab mr merge` a develop sin --squash se deniega, para que la ramita colapse a un commit curado; además busca tu OK explícito en el chat reciente antes de integrar. A main exige lenguaje de release ('hasta main', 'libera') y va SIN squash (conserva historia). Un 'sigue/avanza' NO cuenta como autorización."),
-            new("🕵️", "secret-scan", "commit/push con un secreto → denegado",
-                "PreToolUse · Bash",
-                "Escanea lo que ENTRA al repo (staged en commit, saliente en push) buscando llaves/tokens/claves privadas de formato inconfundible (AWS, PEM, Anthropic, OpenAI, GitHub, GitLab, Slack, Google). Si aparece uno → bloquea: una credencial pusheada queda comprometida aunque la borres. Escape: --no-verify."),
-            new("✅", "dod-verificar", "Def. of Done (ver Norma 🎯 DoD) sin build+tests+memoria → denegado",
-                "Stop",
-                "Al cerrar el turno, si dijiste 'listo/en producción' tras tocar código fuente, exige evidencia de build+tests verdes y memoria al día, o bloquea el cierre."),
+                "Candado ÚNICO de git. Como PASO 0 deniega el `git push`/merge directo a develop/main y te redirige a ramita→MR (absorbió a git-branch-guard, 2026-10-21). Un `gh pr merge`/`glab mr merge` a develop sin --squash se deniega, para que la ramita colapse a un commit curado; además busca tu OK explícito en el chat reciente antes de integrar. A main exige lenguaje de release ('hasta main', 'libera') y va SIN squash (conserva historia). Un 'sigue/avanza' NO cuenta como autorización."),
             new("💸", "delegacion-gate", "reclutar agente con costo → pide tu consentimiento (puede negar)",
                 "PreToolUse · Task",
                 "Al reclutar un agente calcula su nivel de costo (gratis/incluido/con costo, según tu ventana de 5h) y pide consentimiento mostrando tu cuota real. Puedes negar y el agente no corre."),
@@ -1996,16 +2085,16 @@ public sealed class PopupForm : Form
                 "Al abrir/retomar sesión o tras compactar, reinyecta la rama actual, la norma de git y la orden de leer MEMORY/estado. Antídoto a 'se me va la onda al cambiar de sesión o compu'."),
             new("🖥️", "entorno-maquina-guard", "commit de algo machine-specific al .claude/memory/ del repo → aviso",
                 "PreToolUse · Bash",
-                "Mecanismo de la norma 'el entorno de MÁQUINA vive GLOBAL, jamás en un repo': si un `git commit` mete al .claude/memory/ del repo algo específico-de-esta-máquina (un entorno-maquina.md, aliases personales, rutas de tu $HOME, 'Rosetta' sin condicional) avisa —no bloquea—, porque viaja por git y miente al clonar en otra compu/OS. Eso vive SOLO en la memoria GLOBAL per-máquina (entorno-esta-maquina.md); el repo deja lo portable/condicional."),
+                "Mecanismo de la norma 'el entorno de MÁQUINA vive GLOBAL, jamás en un repo': si un `git commit` mete al .claude/memory/ del repo algo específico-de-esta-máquina (un entorno-maquina.md, aliases personales, rutas de tu $HOME, 'Rosetta' sin condicional) avisa —no bloquea—, porque viaja por git y miente al clonar en otra compu/OS. Eso vive SOLO en el entorno GLOBAL per-máquina (~/.claude/entorno-maquina.md); el repo deja lo portable/condicional."),
             new("📝", "delegacion-registrar", "registra el consentimiento (materializa el “pregunta 1×”)",
                 "PostToolUse · Task",
                 "Tras un consentimiento aprobado lo registra para no volver a preguntar (1× por máquina o por workflow, según el nivel de costo). Materializa el 'pregunta una sola vez'."),
             new("🧵", "rehidratar-hilo", "al retomar/tras compactar reinyecta el hilo mental de la tarea",
                 "SessionStart",
                 "Al abrir/retomar sesión o tras compactar, relee .claude/memory/hilo-mental-actual.md y lo reinyecta por additionalContext (canal fiable de SessionStart). Es la mitad 'leer' del par con el skill checkpoint (la mitad 'escribir'). Silencioso si el archivo no existe."),
-            new("♻️", "aviso-drift-cerebro", "la copia del cerebro por-repo quedó atrás de la fuente → aviso",
+            new("♻️", "aviso-drift-cerebro", "la copia GLOBAL del cerebro quedó atrás de la fuente → aviso",
                 "SessionStart",
-                "Al iniciar sesión en un repo con el cerebro por-repo instalado, compara esa copia contra la fuente única (sincronizar-cerebro.sh en dry-run, diff por contenido) y, si quedó atrás, avisa para que Claude proponga propagar por el flujo (ramita→MR). No escribe al árbol en repos compartidos. Throttle 6h si salió limpio."),
+                "Al iniciar sesión compara la copia GLOBAL instalada (~/.claude/hooks, skills y el bloque de normas de ~/.claude/CLAUDE.md) contra la fuente única y, si quedó atrás o se editó en vivo, avisa (warn-only) para portarlo a la fuente y re-correr install-brain. Throttle propio por frente, 6h si salió limpio. El cerebro ya no viaja por-repo (solo global)."),
             new("💾", "exportar-sesion-master", "auto-export de las sesiones *-master a ~/.claude-sessions (o Drive vía CLAUDE_SESSIONS_DRIVE); detached, sobrevive el cleanup de 30 días",
                 "Stop + SessionEnd + PreCompact",
                 "Sin exportar a mano: al final de cada turno (Stop, con debounce ~20 min/sesión), en salida limpia (SessionEnd, donde detecta/registra un master nuevo por su título *-master) y justo antes de compactar (PreCompact), re-exporta el .gz de las sesiones *-master a ~/.claude-sessions (o al Drive de CLAUDE_SESSIONS_DRIVE) para poder --resume la MISMA conversación en otra máquina. Corre detached en 2º plano y sobrevive el cleanup de 30 días de Claude Code."),
@@ -2017,13 +2106,13 @@ public sealed class PopupForm : Form
                 "Al iniciar sesión en un repo con remoto, y como mucho cada 24h, lanza limpiar-ramas.sh en segundo plano para borrar las ramas locales ya integradas (MR mergeado con --squash → remota borrada, o commits ya en la base por equivalencia de parche). Conserva todo trabajo sin integrar; nunca toca la actual/base/develop/main/Develop*/keep/*."),
             new("🧺", "recordar-cosechar", "espejo automático del TaskList vivo al backlog durable (estado-proyecto.md)",
                 "Stop",
-                "Al terminar un turno, vuelca los PENDIENTES del TaskList vivo de la sesión a un bloque fenced dentro de .claude/memory/estado-proyecto.md (determinista, sin LLM; solo si el .md ya existe). Idempotente y silencioso. El nudge de cosecha/backlog que traía antes se retiró (overhaul hooks 2026-09-18, puramente advisory) — esa disciplina queda en la norma global, no en un hook."),
+                "Al terminar un turno, vuelca los PENDIENTES del TaskList vivo de la sesión a un bloque fenced dentro de .claude/memory/estado-proyecto.md (determinista, sin LLM; solo si el .md ya existe). Idempotente y silencioso."),
             new("⏳", "aviso-contexto", "el contexto se está llenando → ordena checkpoint y propón /compact",
                 "PostToolUse",
-                "Vigila cuánto creció el contexto desde el último /compact y, al cruzar bandas por debajo del auto-compact, inyecta un aviso escalado (heads-up → checkpoint ahora → inminente) para volcar el hilo con checkpoint y compactar proactivamente. Convierte el auto-compact-sorpresa en caso raro."),
+                "Vigila cuánto creció el contexto desde el último /compact y, al cruzar bandas por debajo del auto-compact, inyecta un aviso escalado (heads-up → checkpoint ahora → inminente) para volcar el hilo con checkpoint y compactar proactivamente."),
             new("🌳", "proteger-arbol", "git destructivo que orfanaría commits sin pushear → aviso (no bloquea)",
                 "PreToolUse · Bash",
-                "Antes de un git destructivo (reset --hard, rebase, checkout -f, branch -D) que podría orfanar commits sin pushear en el árbol de trabajo, avisa —no bloquea. Antídoto a un caso real: un agente de fan-out reseteó HEAD en el árbol compartido y dejó huérfano un commit del orquestador."),
+                "Antes de un git destructivo (reset --hard, rebase, checkout -f, branch -D) que podría orfanar commits sin pushear en el árbol de trabajo, avisa —no bloquea."),
             new("🧬", "proteger-fuente-cerebro", "editas la copia INSTALADA del cerebro (regenerable) → aviso",
                 "PreToolUse · Edit/Write/MultiEdit",
                 "Al editar una skill/hook bajo ~/.claude/skills|hooks que TIENE fuente en el clon canónico (brain/skills|hooks), avisa —no bloquea— que esa copia es REGENERABLE: el próximo install-brain la sobrescribe y la edición muere sin rastro. Redirige a editar la FUENTE y propagar con install-brain/sincronizar. Si no hay fuente (skill/hook puramente local), calla. Corre verificar-cerebro para el drift completo instalada-vs-fuente."),
@@ -2054,6 +2143,9 @@ public sealed class PopupForm : Form
             new("🗂️", "to-do", "carga la interfaz de tareas del harness desde el backlog durable (estado-proyecto.md)",
                 "skill · opt-in",
                 "El skill de to-dos/backlog. Con /to-do carga la interfaz de tareas del harness poblada AL VUELO desde el backlog durable (estado-proyecto.md) —sin pedirla a mano cada vez— y cura tareas con higiene durable: título = el QUÉ, estatus en su CAMPO (no incrustado en el texto), fechas ABSOLUTAS (nunca 'hoy'). Separación dura: la task-list del harness es SCRATCH de sesión; la fuente de verdad es estado-proyecto.md."),
+            new("🛟", "reconstruir-contexto", "red de emergencia: reconstruye el hilo cuando el checkpoint quedó pobre y /compact fundió el detalle",
+                "skill · opt-in",
+                "Cuando retomas y el hilo mental quedó inútil (checkpoint pobre/ausente + un /compact que fundió el detalle real), EXCAVA en orden barato→caro: andamio mecánico → backlog durable (estado-proyecto/bitácora) → transcript .jsonl acotado, y cierra re-volcando un hilo bueno con checkpoint. Es la red de emergencia del par checkpoint/rehidratar-hilo para cuando ESE par falló."),
             new("📦", "cerrar-slice", "build+tests+memoria al día + MR con resumen curado por slice",
                 "skill · opt-in",
                 "Ritual de cierre de un slice: build+tests verdes, memoria al día (bitácora), MR con resumen curado en prosa, y el Paso 5 de cosechar lo genérico de vuelta al cerebro global."),
@@ -2066,9 +2158,6 @@ public sealed class PopupForm : Form
             new("🩺", "auditar-coherencia-cerebro", "fan-out READ-ONLY sobre el propio cerebro: evasiones/huecos/drift → loop hasta converger",
                 "skill · opt-in",
                 "Lanza un fan-out de auditores READ-ONLY sobre la COHERENCIA del propio cerebro (guards+flowcharts+doc): ¿se evade un guard? ¿un flowchart miente vs el código? ¿doc desincronizada? Cada guard se audita POR EJECUCIÓN en un sandbox (no solo lectura). Con OK, itera fix→re-auditar (cada hallazgo con su test) hasta CONVERGER. Es el modo-cerebro de auditar-proceso-algoritmo, empaquetado."),
-            new("🐝", "orquestar-fanout", "fan-out de agentes sin niñera (estado en 2 archivos + contrato de reporte)",
-                "skill · opt-in",
-                "Orquestar trabajo paralelizable en varios agentes SIN niñera: asigna ítems autocontenidos del backlog y, al terminar cada agente, su avance queda registrado (bitácora) y su worktree limpio automáticamente. Modelo de estado sin redundancia: estado-proyecto = backlog vivo, bitácora = pasado append-only."),
             new("🧪", "auditar-suficiencia-operativa", "¿ALCANZA la doc para HACER el trabajo? tareas reales ✅/⚠️/❌ + re-auditar tras arreglar",
                 "skill · opt-in",
                 "Audita una doc/cerebro por SUFICIENCIA OPERATIVA, no por coherencia: enumera las tareas reales que alguien tendrá que hacer y las califica ✅/⚠️/❌ con archivo:línea. Exige RE-AUDITAR con el prompt idéntico tras arreglar los hallazgos, porque los arreglos introducen contradicciones nuevas."),
@@ -2077,13 +2166,16 @@ public sealed class PopupForm : Form
                 "Auditoría SEMÁNTICA de código: verifica que el mecanismo haga lo que queremos que haga (intención de negocio), no solo que compile y pase tests. Capa 1 = checks bash deterministas (scripts/auditor-semantico/, gratis, corre en CI); Capa 2 = re-verifica cada invariante de invariantes-semanticos.yml con criterio LLM + revisión abierta de bugs. Motor genérico (viaja del template); checks/.yml los afina cada repo a su stack/dominio. Cosecha lo hallado: lo mecánico → check nuevo, lo no-determinista → manifiesto."),
             new("📐", "canonizar-cerebro", "lleva un cerebro instanciado drifteado a la firma-árbol canónica (reprefija, reescribe CLAUDE+MEMORY, verifica 1:1)",
                 "skill · opt-in",
-                "Lleva el cerebro de un proyecto INSTANCIADO (cps, fluxcore, plantilladotnet) a la firma-árbol canónica cuando drifteó: memorias sueltas sin prefijo, CLAUDE.md viejo con guards retirados, MEMORY.md plano. Reclasifica cada memoria a su prefijo (dom-/dev-/ux-/qa- + núcleo) con git mv (historia intacta), dedup con RESCATE de datos únicos, reescribe CLAUDE.md a firma-árbol y MEMORY.md a índice-por-prefijo, y verifica el 1:1 con verificar-firma-canonica.sh (el detector del GATE del auditor). Humano-en-el-loop, no auto-mutador ciego."),
+                "Lleva el cerebro de un proyecto INSTANCIADO (cps, fluxcore, plantilladotnet) a la firma-árbol canónica cuando drifteó: memorias sueltas sin prefijo, CLAUDE.md desactualizado, MEMORY.md plano. Reclasifica cada memoria a su prefijo (dom-/dev-/ux-/qa- + núcleo) con git mv (historia intacta), dedup con RESCATE de datos únicos, reescribe CLAUDE.md a firma-árbol y MEMORY.md a índice-por-prefijo, y verifica el 1:1 con verificar-firma-canonica.sh (el detector del GATE del auditor). Humano-en-el-loop, no auto-mutador ciego."),
             new("🪶", "desinflar-memorias", "adelgaza memorias sin perder lecciones: narrativa → 1 línea, mitos → ⚰️ Lápidas al final",
                 "skill · opt-in",
                 "Desinfla un árbol de memorias inflado de narrativa, tutoriales y conocimiento ya desmentido SIN perder ninguna lección: cada tirada de historia se colapsa a su lección en 1-2 líneas EN SU LUGAR, y los mitos descartados se comprimen a una línea y se mudan a una sección ⚰️ Lápidas AL FINAL del archivo (si los borras, el siguiente agente los re-descubre). No toca la bitácora ni el hilo: son append-only por diseño."),
             new("🌙", "turno-nocturno", "Claude trabaja solo de noche: contrato medible, decide-o-parquea, checkpoint c/2h",
                 "skill · opt-in",
                 "Protocolo para dejar a Claude trabajando SOLO de noche: eco del contrato antes de empezar (alcance, criterio de cierre MEDIBLE, lo intocable, dónde queda visible el resultado), preflight de herramientas/quota, regla de decisión (dentro del alcance decide y sigue; fuera, parquea y brinca), autorización durable a disco y checkpoint cada ~2h."),
+            new("🔁", "mandato-loop", "el MOLDE para redactar un mandato de /loop de épica/lote",
+                "skill · opt-in",
+                "El molde con que un master redacta un mandato de /loop de épica/lote: «Cómo se redacta» (sin trazabilidad, sin «el LISTO lo da el usuario», criterio CIERRA-CUANDO por fila, nada de colas ajenas) + el bloque text completo (worktree por fila, FILAS, ÉPICA TERMINADA, CADA RONDA, DELEGACIÓN, PRUEBAS §1-7, HIGIENE MENTAL, REGLAS). NO es turno-nocturno."),
             new("🎓", "investigar-dominio", "ponte experto en un dominio (fan-out DOC-FIRST) → memorias durables + skills",
                 "skill · opt-in",
                 "Ponerte al día como EXPERTO en un dominio/ecosistema maduro sin investigar al aire: delega un fan-out de agentes a barrer la documentación oficial + issues/foros de cada pieza (método DOC-FIRST), cosecha en DOS capas (memorias de investigación indexadas + skills reutilizables, con la capa profunda separada) y REVISA las decisiones actuales contra el conocimiento nuevo para no arrastrar deuda técnica. Trae plantilla-prompt pegable para encargárselo a otro Claude."),
@@ -2101,13 +2193,16 @@ public sealed class PopupForm : Form
                 "Método REUSABLE (independiente de app/dominio) para hacer ingeniería inversa de un sistema legacy con GUI + base de datos: driving la UI real vía navegador (claude-in-chrome u otro plugin) mientras se diffea el estado (BD y/o filesystem/config) antes/después de cada acción → documentación con evidencia real en vez de suposición. Incluye el estándar de DIFF COMPLETO ('indistinguible de la GUI'): fingerprint de TODA la BD antes/después para atrapar cualquier tabla tocada, no solo las candidatas. Requiere navegador con automatización, un visor web de la máquina donde corre la GUI y acceso directo a la BD/filesystem."),
             new("📕", "markdown-a-pdf", "convierte .md a PDF pulido y distribuible vía md-to-pdf (npx, sin instalar) con QA visual real",
                 "skill · opt-in",
-                "Convertir uno o varios .md a PDF pulido y distribuible (doc técnica, reportes, cualquier entregable que un humano abra fuera del chat) usando md-to-pdf vía npx, sin instalar nada. Incluye el gotcha real que borra TODO el formato (--stylesheet reemplaza el tema default en vez de sumarse — usa --css para overrides), el CSS que evita que las tablas se corten feo entre páginas y el loop de QA visual obligatorio (leer cada página generada, no asumir que renderizó bien)."),
-            new("🕹️", "control-gui-remota-por-ssh", "ver/operar una GUI remota por SSH sin VNC/RDP — screenshot/click/teclado DPI-aware; Windows·Linux·Mac completos (2026-09-18)",
+                "Convertir uno o varios .md a PDF pulido y distribuible (doc técnica, reportes, cualquier entregable que un humano abra fuera del chat) usando md-to-pdf vía npx, sin instalar nada. Incluye el gotcha que borra TODO el formato (--stylesheet reemplaza el tema default en vez de sumarse; usa --css para overrides), el CSS que evita que las tablas se corten entre páginas y el loop de QA visual obligatorio (leer cada página generada, no asumir que renderizó bien)."),
+            new("🕹️", "control-gui-remota-por-ssh", "ver/operar una GUI remota por SSH sin VNC/RDP — screenshot/click/teclado DPI-aware; Windows·Linux·Mac",
                 "skill · opt-in",
-                "Ver y operar el escritorio de una máquina remota por SSH puro (sin VNC/RDP): screenshot, clicks, teclado, inspección de ventanas/controles, portapapeles, lanzar/cerrar apps y procesos. Resuelve los dos problemas duros: el aislamiento de logon-session (se despacha cada gesto a la sesión interactiva con una tarea programada) y el DPI-awareness (sin fijarlo, el screenshot sale truncado y los clicks se desvían). Windows: 15 scripts completos y verificados en hardware real. Linux: 13 scripts completos (verificados en cachy KDE/Wayland 2026-09-18); macOS: 13 scripts completos (verificados local 2026-09-18); multi-monitor + captura por-ventana en los tres."),
+                "Ver y operar el escritorio de una máquina remota por SSH puro (sin VNC/RDP): screenshot, clicks, teclado, inspección de ventanas/controles, portapapeles, lanzar/cerrar apps y procesos. Resuelve los dos problemas duros: el aislamiento de logon-session (se despacha cada gesto a la sesión interactiva con una tarea programada) y el DPI-awareness (sin fijarlo, el screenshot sale truncado y los clicks se desvían). Windows: 15 scripts. Linux (KDE/Wayland): 13 scripts. macOS: 13 scripts. Multi-monitor y captura por-ventana en los tres."),
             new("🚚", "reubicar-master", "mover un master —cerebro+sesión— a otra casa/subfolder-repo git, sin lobotomía ni tail",
                 "skill · opt-in",
                 "Muda una sesión master COMPLETA de Claude Code a otro repo (caso canónico: los brain-master a cortex) sin dejar nada a medias: transcript re-anclado + cwd reescrito, cerebro del master migrado por su canal correcto, slug global y TODAS las referencias (masters.json target por-id, alias, symlink memory) corregidas de forma ATÓMICA, residuo quirúrgico barrido y doc=realidad. Úsala cuando un --resume cae en un folder muerto, un master quedó a medias (residuo + resume roto), o quieres consolidar los dos brain-master (Mac + Cachy) en cortex sin lobotomizarlos, sin fuga a un repo público ni duplicado divergente. Hermana de claude-proyecto-autocontenido (esa define DÓNDE vive el cerebro; ésta lo MUEVE de casa)."),
+            new("🛰️", "coordinar-claudes", "coordina otros masters: despertar · encargar · vigilar · verificar · relevar OKs",
+                "skill · opt-in",
+                "Coordina otras sesiones master de Claude Code desde una sesión coordinadora, hablándoles en nombre del usuario sin hacerse pasar por él. Ciclo: DESPIERTA (despertar-master.sh las resuelve desde los transcripts —último customTitle = nombre, último cwd = dónde resumir, mtime = vida; gana el más reciente por nombre y una sesión viva NO se relanza— NO desde el masters.json que driftea) · ENCARGA la cola completa por Remote Control o su screen · VIGILA con vigilar-master.sh + Monitor (COMMIT / TURNO-TERMINADO / COLGADO / MUERTO) · DESTRABA (colgado, turno terminado con cola, tras un /compact) · VERIFICA por commits y uso real, no por lo que reporta · RELEVA los OKs del usuario (coordinar no es aprobar). Absorbió a despertar-master como su paso 1. NO crea masters, no los muda de repo (eso es reubicar-master) ni siembra sesiones entre máquinas."),
         ]),
     ];
 

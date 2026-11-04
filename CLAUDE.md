@@ -44,6 +44,7 @@ Lo que necesitas saber para trabajar aquí:
 📁 .claude/skills/ ─ skills para OPERAR este repo · agregar-hook-cerebro · cortex-widget · cambiar-icono · publicar-widget
 📁 .claude/memory/ ─ MEMORY.md (árbol + detalle, @import) + notas de desarrollo · *.local.md personales
    └─ 🛑 cortex NO cablea sus guards por-repo (no hay .claude/hooks/ ni settings.json): corren por la instalación GLOBAL (install-brain.sh) desde brain/hooks/
+📁 .claude/feedbackUsuarios/ ─ buzón de reportes de los claudes (`AAAA-MM-DD-<slug>.md`) — 📬 REVISA si tiene archivos nuevos en cada session start
 📁 brain/ ─ el PRODUCTO que viaja a los clones (hooks · skills · scripts · test-brain.sh) — 🛑 NO mutar desde una pasada de cerebro
 📁 docs/ ─ flowcharts + checks (verificar-arbol-sync.sh · gen-leyenda-arbol.sh) · investigaciones · …
 📁 src/ · macos/ · windows/ ─ los 3 widgets de cuota (los brainTiers espejan el árbol del README)
@@ -57,12 +58,16 @@ Lo que necesitas saber para trabajar aquí:
 ## 🛡️ Reglas duras
 
 - 🧬 **Dualidad `.claude/` vs `brain/`.** `.claude/` es el cerebro operativo de ESTE repo; `brain/` es el producto que viaja a los clones. Consolidar/positivar/desinflar/reestructurar toca SOLO `.claude/` + la raíz (`CLAUDE.md`, `README.md`, `docs/`). 🛑 Leer `brain/` es lícito; **mutarlo desde una pasada de cerebro NO** — un cambio ahí viaja a todas las máquinas. Detalle → `MEMORY.md`.
-- 🌿 **Flujo de git.** Nunca `git push` a `develop`/`main`; ramita → MR → develop con `--squash`; `main` es **release-only** (promoción deliberada, con OK súper-explícito). Lo hacen cumplir git-branch-guard + merge-squash-guard + confirmar-merge-develop.
+- 🌿 **Flujo de git.** Nunca `git push` a `develop`/`main`; ramita → MR → develop con `--squash`; `main` es **release-only** (promoción deliberada, con OK súper-explícito). Lo hace cumplir merge-develop-guard (candado ÚNICO de git: su PASO 0 frena el push/merge directo a base —absorbió `git-branch-guard` el 2026-10-21— y el punto de merge consolida squash + autorización, 2026-09-17).
 - 🔒 **Integridad de los guardarraíles.** No aflojes tus propios candados de supervisión para desatorarte; los cambios permitidos son de **PRECISIÓN**, con OK explícito para ESE control. Detalle → `MEMORY.md`.
 - 🪞 **Doc = realidad.** Cambió algo → su doc en la MISMA tanda. El árbol vive en varios catálogos (README fuente ↔ `MEMORY.md` ↔ 3 brainTiers de los widgets) + `verificar-arbol-sync.sh`; sincronízalos juntos.
 
 ---
 
-**⚙️ Auto-carga (`@import` de Claude Code):** el core estable del cerebro, siempre en contexto.
+**⚙️ Auto-carga (`@import` de Claude Code):** el core estable del cerebro, siempre en contexto. La
+**identidad** por-master (`conocimiento-propio.local.md`, gitignored per-máquina) se carga con el `@`
+NATIVO — tolerante a su ausencia (medido 2026-10-14: un `@import` a un archivo ausente no truena ni
+inventa contenido). Reemplaza la vieja re-inyección del hook `aviso-drift-cerebro`.
 
 @.claude/memory/MEMORY.md
+@.claude/memory/conocimiento-propio.local.md

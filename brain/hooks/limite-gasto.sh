@@ -22,7 +22,17 @@ for c in "${XDG_CACHE_HOME:-$HOME/.cache}/cortex/state.json" "$HOME/Library/Cach
   [ -f "$c" ] && { snap="$c"; break; }
 done
 [ -z "$snap" ] && exit 0
-[ -n "$(find "$snap" -mmin +30 2>/dev/null)" ] && exit 0   # rancio → no frena
+# Frescura por updated_at (tiempo de la lectura REAL), NO por mtime: el daemon reescribe el archivo
+# cada run aunque PRESERVE una lectura vieja (stale), así que el mtime quedaría siempre fresco y
+# ocultaría una lectura rancia. updated_at es viejo en una lectura preservada y =ahora en una fresca.
+# Sin updated_at (schema viejo) cae al mtime. Rancio (>30 min) o edad no parseable → no frena.
+_upd=$(jq -r '.updated_at // empty' "$snap" 2>/dev/null)
+if [ -n "$_upd" ]; then
+  _us=$(date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$_upd" +%s 2>/dev/null || date -u -d "$_upd" +%s 2>/dev/null || echo 0)
+  { [ "$_us" -gt 0 ] 2>/dev/null && [ $(( $(date +%s) - _us )) -le 1800 ]; } || exit 0
+else
+  [ -n "$(find "$snap" -mmin +30 2>/dev/null)" ] && exit 0
+fi
 
 five_pct=$(jq -r '.five_hour.percent // empty' "$snap" 2>/dev/null)
 over_util=$(jq -r '.extra_usage.utilization // empty' "$snap" 2>/dev/null)

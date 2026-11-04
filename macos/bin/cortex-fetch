@@ -35,7 +35,12 @@ WEEKLY_CAP_USD="${WEEKLY_CAP_USD:-9000}"
 WARN_PCT="${WARN_PCT:-60}"
 CRIT_PCT="${CRIT_PCT:-85}"
 
-CACHE_DIR="$HOME/Library/Caches/cortex"
+# Ventana (horas) para avisar "el login ya va a expirar" ANTES de que se rompa.
+# Se mide sobre el REFRESH token (vida larga ~30 días), no el access token
+# (vida ~8h, que Claude Code auto-refresca solo → no es señal de logout).
+AUTH_EXPIRING_HORAS="${CORTEX_AUTH_EXPIRING_HORAS:-72}"
+
+CACHE_DIR="${CORTEX_FETCH_CACHE_DIR:-$HOME/Library/Caches/cortex}"
 # Config de Claude Code: honra CLAUDE_CONFIG_DIR (si está, el .claude vive ahí), si no ~/.claude.
 CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 if [[ -n "${CLAUDE_CONFIG_DIR:-}" && -r "$CLAUDE_CONFIG_DIR/.claude.json" ]]; then
@@ -48,6 +53,211 @@ TMP_FILE="$CACHE_DIR/state.json.tmp"
 
 mkdir -p "$CACHE_DIR"
 
+# --- Candado: evita corridas ENCIMADAS (una corrida pesada aún viva cuando el
+# LaunchAgent dispara la siguiente cada 300s = la causa del calentón). Usa el
+# primitivo del SO `lockf(1)` (BSD/macOS): lock exclusivo que el KERNEL suelta si
+# el proceso muere — sin reclamo de huérfanos ni race de check-then-delete. `-t 0`
+# = no esperar: si otra corrida lo tiene, lockf sale sin correr y no encimamos.
+# Nos re-exec UNA vez bajo lockf (sostiene el lock toda la corrida); el 2º paso
+# (CORTEX_FETCH_LOCKED) ya corre con el lock tomado. Escape de prueba: NO_LOCK.
+LOCK_FILE="$CACHE_DIR/fetch.lock"
+if [[ -z "${CORTEX_FETCH_LOCKED:-}" && -z "${CORTEX_FETCH_NO_LOCK:-}" ]]; then
+  # Re-corre bajo lockf (sin exec, para mapear su código): -t 0 → si el lock está
+  # ocupado, lockf sale 75 (EX_TEMPFAIL) SIN correr → lo tratamos como "no encimar"
+  # y salimos 0 (que el ↻ del widget no lo lea como error). Invocamos con "$BASH" "$0"
+  # (no "$0" a secas) por si el llamador no respeta el bit de ejecución.
+  _lrc=0
+  env CORTEX_FETCH_LOCKED=1 /usr/bin/lockf -t 0 "$LOCK_FILE" "${BASH:-/bin/bash}" "$0" "$@" || _lrc=$?
+  [[ "$_lrc" -eq 75 ]] && exit 0
+  exit "$_lrc"
+fi
+
+# --- transcript_stats: agregados de ~/.claude/projects, INCREMENTAL por archivo -
+# Cachea por .jsonl (mtime+tamaño+offset leído) sus parciales en buckets UTC y
+# re-escanea SOLO los nuevos/cambiados; de los que solo crecieron (los transcripts
+# de las sesiones abiertas), solo los bytes añadidos desde el offset.
+# Fiel al código viejo: MESSAGES=líneas assistant|user; PEAK=todas las líneas con
+# timestamp; DAY_MSG=assistant|user con ts; tokens por proyecto con dedup de msg_id.
+# Setea (globales): SESSIONS MESSAGES PEAK_HOUR DAY_MSG_JSON PROJECT_DAY_TSV
+transcript_stats() {
+  local proj="$1" off="$2"
+  local cache="$CACHE_DIR/transcripts.cache"
+  local cver="cfv3"   # versión del FORMATO del cache; súbela si cambian las líneas F/M/H/D/P/T
+  SESSIONS=0; MESSAGES=0; PEAK_HOUR=-1; DAY_MSG_JSON="{}"; PROJECT_DAY_TSV=""
+  [[ -d "$proj" ]] || return 0
+
+  # 1) inventario actual: path<TAB>mtime<TAB>size (UN solo stat-pass, barato)
+  local cur; cur="$(find "$proj" -name '*.jsonl' -type f -exec stat -f '%N	%m	%z' {} + 2>/dev/null || true)"
+  [[ -n "$cur" ]] || return 0
+  SESSIONS=$(printf '%s\n' "$cur" | grep -c . || true)
+
+  local keep="$CACHE_DIR/.transcripts.keep.$$"
+  local rescan="$CACHE_DIR/.transcripts.rescan.$$"
+  local curf="$CACHE_DIR/.transcripts.cur.$$"
+  : > "$keep"; : > "$rescan"
+  printf '%s\n' "$cur" > "$curf"
+  # Guard de versión: si el cache es de un FORMATO viejo (tras un deploy que cambió las
+  # líneas T, etc.), se descarta para reconstruir — reusar bloques viejos los mal-parsearía.
+  local _hdr=""; [[ -f "$cache" ]] && IFS= read -r _hdr < "$cache" 2>/dev/null || true
+  [[ "$_hdr" == "#$cver" ]] || : > "$cache"
+
+  # 2) partir cache vs inventario: reutiliza bloques sin cambio y decide, por archivo, si se lee
+  # COMPLETO (nuevo, encogió, mismo tamaño con otro mtime) o solo lo AÑADIDO desde el offset leído
+  # (los .jsonl son append-only: los transcripts de las sesiones abiertas crecen en cada turno).
+  # Distingue los dos archivos por FILENAME (NO por FNR==NR: con el cache vacío en
+  # frío, FNR==NR trataría el inventario como cache y re-escanearía 0 archivos).
+  local growf="$CACHE_DIR/.transcripts.grow.$$"; : > "$growf"
+  # Dos pasadas por el cache en streaming (sin concatenar bloques en memoria: con un cache de MB
+  # eso es cuadrático en awk): 1ª solo lee las líneas F; luego el inventario decide por archivo;
+  # 2ª manda cada línea del cache a keep (sin cambio), a grow (solo creció) o la descarta.
+  awk -F'\t' -v keepf="$keep" -v rescanf="$rescan" -v growf="$growf" -v cachef="$cache" -v curf="$curf" '
+    FILENAME==cachef && !vicur {
+      if ($1=="F") { CMT[$2]=$3; CSZ[$2]=$4; COFF[$2]=$5; CFP[$2]=$6 }
+      next
+    }
+    FILENAME==curf {
+      vicur=1
+      if ($1=="") next
+      if (($1 in CMT) && CMT[$1]==$2 && CSZ[$1]==$3) { MODE[$1]="K"; next }
+      if (($1 in CMT) && ($3+0)>(CSZ[$1]+0) && (COFF[$1]+0)>0) {
+        MODE[$1]="G"; print $1 "\tGROW\t" COFF[$1] "\t" CFP[$1] "\t" $2 "\t" $3 > rescanf
+      } else print $1 "\tFULL\t0\t-\t" $2 "\t" $3 > rescanf
+      next
+    }
+    FILENAME==cachef {
+      if ($1=="F") { p=$2; m=MODE[p] }
+      if (m=="K") print > keepf
+      else if (m=="G" && $1!="F") print p "\t" $0 > growf
+    }
+  ' "$cache" "$curf" "$cache"
+  rm -f "$curf"
+
+  # 3) re-escanear SOLO los nuevos/cambiados; de los que solo crecieron, solo los bytes nuevos.
+  #    Huella del inicio (cksum de los primeros min(4096, offset) bytes): si no coincide, el
+  #    archivo se reescribió → lectura completa. Una línea final sin "\n" (a medio escribir) no
+  #    se procesa ni avanza el offset: se lee completa en la siguiente corrida.
+  local scanned=0 bytes=0 f mode off0 fp0 mt sz folder seg fpn len newoff
+  seg="$CACHE_DIR/.transcripts.seg.$$"
+  _huella(){ local n=$(( $2 < 4096 ? $2 : 4096 )); head -c "$n" "$1" 2>/dev/null | cksum | cut -d' ' -f1; }
+  if [[ -s "$rescan" ]]; then
+    while IFS=$'\t' read -r f mode off0 fp0 mt sz; do
+      [[ -n "$f" ]] || continue
+      if [[ "$mode" == "GROW" && "$(_huella "$f" "$off0")" != "$fp0" ]]; then mode=FULL; fi
+      [[ "$mode" == "FULL" ]] && off0=0
+      folder="$(basename "$(dirname "$f")")"
+      len=$(( sz - off0 )); (( len < 0 )) && len=0
+      tail -c +"$((off0+1))" "$f" 2>/dev/null | head -c "$len" | LC_ALL=C awk -v path="$f" -v mt="$mt" -v sz="$sz" -v off="$off0" -v L="$len" -v folder="$folder" '
+        function proc(line,  ismsg,haveTs,tss,utcd,utch,id,cwd,nn,wd,k,ix,ndp,pp,b,inv,outv,s) {
+          ismsg=(line ~ /"type":"(assistant|user)"/)
+          if (ismsg) msg++
+          haveTs=0
+          if (match(line, /"timestamp":"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}/)) {
+            tss=substr(line,RSTART+13,13); utcd=substr(tss,1,10); utch=substr(tss,12,2); haveTs=1
+          }
+          if (haveTs) AH[utch]++
+          if (ismsg && haveTs) DM[utcd SUBSEP utch]++
+          if (!match(line, /"id":"msg_[A-Za-z0-9]+"/)) return
+          id=substr(line,RSTART,RLENGTH)
+          if (id in seen) return
+          seen[id]=1
+          if (!haveTs) return
+          if (match(line, /"cwd":"[^"]*"/)) {
+            cwd=substr(line,RSTART+7,RLENGTH-8)
+            if (cwd ~ /^\/(private\/)?tmp\//) soloTmp=1
+            else {
+              gsub(/\\\\/,"/",cwd)
+              nn=split("/.claude/ /.git-worktrees/ /.worktrees/ /.cortex-wt/", wd, " ")
+              for(k=1;k<=nn;k++){ix=index(cwd,wd[k]); if(ix>0) cwd=substr(cwd,1,ix-1)}
+              sub(/[\/]+$/,"",cwd)
+              ndp=split(cwd,pp,"/"); b=(ndp>0?pp[ndp]:"")
+              if (b!="" && (bestDepth<0 || ndp<bestDepth)) { bestDepth=ndp; bestName=b }
+            }
+          }
+          inv=0; outv=0
+          if (match(line,/"input_tokens":[0-9]+/)){s=substr(line,RSTART,RLENGTH);sub(/^"input_tokens":/,"",s);inv=s+0}
+          if (match(line,/"output_tokens":[0-9]+/)){s=substr(line,RSTART,RLENGTH);sub(/^"output_tokens":/,"",s);outv=s+0}
+          # Guardamos el aporte de tokens POR msg_id (1ª ocurrencia en el archivo). El dedup
+          # DEFINITIVO es POR CARPETA y se hace en el combine: una sesión forkeada/continuada
+          # copia historia con los MISMOS msg_id a otro .jsonl de la misma carpeta -> dedup por
+          # archivo contaría doble. Por eso los parciales T llevan el msg_id crudo.
+          MID[id]=utcd SUBSEP utch SUBSEP inv SUBSEP outv
+                }
+        BEGIN{ msg=0; soloTmp=0; bestDepth=-1; bestName=""; consumed=0; have=0 }
+        { if (have) proc(prev); prev=$0; have=1; consumed+=length($0)+1 }
+        END{
+          if (have) { if (consumed==L) proc(prev); else consumed-=length(prev)+1 }
+          print "F\t" path "\t" mt "\t" sz "\t" (off+consumed) "\t-"
+          print "M\t" msg
+          for (k in AH) print "H\t" k "\t" AH[k]
+          for (k in DM){split(k,a,SUBSEP); print "D\t" a[1] "\t" a[2] "\t" DM[k]}
+          print "P\t" folder "\t" bestName "\t" (bestDepth<0?-1:bestDepth) "\t" soloTmp
+          for (id2 in MID){split(MID[id2],t,SUBSEP); print "T\t" folder "\t" id2 "\t" t[1] "\t" t[2] "\t" t[3] "\t" (t[4]+0)}
+        }' > "$seg" 2>/dev/null || true
+      newoff="$(awk -F'\t' 'NR==1{print $5+0; exit}' "$seg")"; [[ -n "$newoff" ]] || newoff=0
+      fpn="$(_huella "$f" "$newoff")"
+      {
+        printf 'F\t%s\t%s\t%s\t%s\t%s\n' "$f" "$mt" "$sz" "$newoff" "$fpn"
+        [[ "$mode" == "GROW" ]] && awk -F'\t' -v p="$f" 'index($0, p "\t")==1{print substr($0, length(p)+2)}' "$growf"
+        tail -n +2 "$seg"
+      } >> "$keep" 2>/dev/null || true
+      bytes=$(( bytes + newoff - off0 ))
+      scanned=$((scanned+1))
+    done < "$rescan"
+  fi
+  rm -f "$seg" "$growf"
+  printf '%s\n' "$bytes" > "$CACHE_DIR/.transcripts.lastbytes" 2>/dev/null || true
+  # Escribe el cache nuevo con el header de versión + los bloques (reusados + frescos).
+  { printf '#%s\n' "$cver"; cat "$keep"; } > "$cache" 2>/dev/null || true
+  rm -f "$keep" "$rescan"
+  printf '%s\n' "$scanned" > "$CACHE_DIR/.transcripts.lastscan" 2>/dev/null || true
+
+  # 4) combinar el cache (parciales) aplicando el offset local -> agregados finales
+  local rowsf="$CACHE_DIR/.transcripts.rows.$$" out
+  out="$(awk -v off="$off" -v rowsf="$rowsf" '
+    function isLeap(y){return (y%4==0&&y%100!=0)||(y%400==0)}
+    function dim(y,m,  a){split("31 28 31 30 31 30 31 31 30 31 30 31",a," ");return (m==2&&isLeap(y))?29:a[m]+0}
+    function shiftDay(y,m,d,delta,  nd,nm,ny){nd=d+delta;ny=y;nm=m; if(nd<1){nm=m-1;if(nm<1){nm=12;ny=y-1}nd=dim(ny,nm)} else if(nd>dim(y,m)){nd=1;nm=m+1;if(nm>12){nm=1;ny=y+1}} return sprintf("%04d-%02d-%02d",ny,nm,nd)}
+    function localday(utcd,utch,  y,mo,da,lh){y=substr(utcd,1,4)+0;mo=substr(utcd,6,2)+0;da=substr(utcd,9,2)+0;lh=(utch+0)+off; if(lh<0)return shiftDay(y,mo,da,-1); else if(lh>=24)return shiftDay(y,mo,da,1); else return sprintf("%04d-%02d-%02d",y,mo,da)}
+    function foldername(f,  ns,sp){ if ((f in PNAME)&&PNAME[f]!="") return PNAME[f]; if (f in PSOLO) return "(worktrees)"; ns=split(f,sp,"-"); return (ns>0?sp[ns]:f) }
+    BEGIN{ FS="\t"; MSG=0; for(i=0;i<24;i++) LH[i]=0 }
+    $1=="M"{ MSG+=$2+0; next }
+    $1=="H"{ lh=(($2+0)+off+24)%24; LH[lh]+=$3+0; next }
+    $1=="D"{ ld=localday($2,$3); DAY[ld]+=$4+0; next }
+    $1=="P"{ f=$2; if (($4+0)>=0){ if (!(f in PDEP) || ($4+0)<PDEP[f]){PDEP[f]=$4+0; PNAME[f]=$3} } if (($5+0)==1) PSOLO[f]=1; next }
+    $1=="T"{ f=$2; mk=f SUBSEP $3; if (mk in TSEEN) next; TSEEN[mk]=1; ld=localday($4,$5); TIN[f SUBSEP ld]+=$6+0; TOUT[f SUBSEP ld]+=$7+0; TK[f SUBSEP ld]=1; next }
+    END{
+      print "MESSAGES\t" MSG
+      m=-1; ph=-1; for(i=0;i<24;i++) if(LH[i]>m){m=LH[i];ph=i}
+      print "PEAK\t" ph
+      s="{"; first=1; for(d in DAY){ s=s (first?"":",") "\"" d "\":" DAY[d]; first=0 } s=s "}"
+      print "DMJSON\t" s
+      for (k in TK){ split(k,a,SUBSEP); print foldername(a[1]) "\t" a[2] "\t" TIN[k] "\t" (TOUT[k]+0) > rowsf }
+    }
+  ' "$cache")"
+  MESSAGES="$(printf '%s\n' "$out" | awk -F'\t' '$1=="MESSAGES"{print $2+0; exit}')"; [[ -n "$MESSAGES" ]] || MESSAGES=0
+  PEAK_HOUR="$(printf '%s\n' "$out" | awk -F'\t' '$1=="PEAK"{print $2+0; exit}')"; [[ -n "$PEAK_HOUR" ]] || PEAK_HOUR=-1
+  DAY_MSG_JSON="$(printf '%s\n' "$out" | awk -F'\t' '$1=="DMJSON"{print $2; exit}')"
+  jq -e . <<<"$DAY_MSG_JSON" >/dev/null 2>&1 || DAY_MSG_JSON="{}"
+  PROJECT_DAY_TSV="$(cat "$rowsf" 2>/dev/null || true)"
+  rm -f "$rowsf"
+}
+
+# Subcomando de prueba/diagnóstico: corre SOLO transcript_stats y emite los
+# agregados como JSON (sin OAuth/ccusage). Uso: cortex-fetch --transcript-stats-json <projdir> [offset]
+if [[ "${1:-}" == "--transcript-stats-json" ]]; then
+  _z="$(date +%z)"; _off=$((10#${_z:1:2})); [[ "${_z:0:1}" == "-" ]] && _off=$((-_off))
+  [[ -n "${3:-}" ]] && _off="$3"
+  transcript_stats "${2:?uso: --transcript-stats-json <projdir> [offset]}" "$_off"
+  # transcript_stats SIEMPRE deja estas 5 vars con un valor válido (0/-1/{}/"" por
+  # defecto), así que se usan directo — nada de ${x:-{}} (bash lo malparsea: el
+  # default sería "{" y el "}" quedaría literal -> JSON inválido a --argjson).
+  jq -n --argjson sessions "$SESSIONS" --argjson messages "$MESSAGES" \
+        --argjson peak "$PEAK_HOUR" --argjson dm "$DAY_MSG_JSON" \
+        --arg rows "$PROJECT_DAY_TSV" \
+        '{sessions:$sessions, messages:$messages, peak:$peak, day_msg:$dm, rows:$rows}'
+  exit 0
+fi
+
 # Carry forward the last known REAL (oauth) reset time when this run falls
 # back to cost-basis estimation — a guessed "next Monday" is wrong for
 # accounts whose actual rolling weekly window doesn't land on Monday.
@@ -58,34 +268,30 @@ if [[ -r "$STATE_FILE" ]] && [[ "$(jq -r '.basis // empty' "$STATE_FILE" 2>/dev/
   PREV_FIVE_RESET="$(jq -r '.five_hour.resets_at // empty' "$STATE_FILE" 2>/dev/null || true)"
 fi
 
-write_error() {
-  local msg="$1"
-  jq -n --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg err "$msg" '{
-    updated_at: $ts,
-    status: "error",
-    error: $err,
-    five_hour: null,
-    weekly: null
-  }' > "$TMP_FILE"
-  mv "$TMP_FILE" "$STATE_FILE"
-}
-
 # --- Primary: the OAuth usage endpoint /usage itself reads -------------------
 
-# Claude Code's OAuth token: el LOGIN ACTIVO primero (llavero de macOS, luego el archivo de
-# credenciales); CLAUDE_CODE_OAUTH_TOKEN solo como FALLBACK headless.
-oauth_token() {
-  # Preferimos el LOGIN ACTIVO para que el widget refleje la cuenta con la que estás logueado AHORA:
-  # el token del llavero (o del .credentials.json) rota en cada `claude login`/`logout`. Llavero
-  # primero, luego el archivo.
-  local creds=""
-  creds="$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null || true)"
-  if [[ -z "$creds" && -r "$CLAUDE_DIR/.credentials.json" ]]; then
-    creds="$(<"$CLAUDE_DIR/.credentials.json")"
+# Credenciales del LOGIN ACTIVO leídas UNA vez (llavero de macOS, luego el archivo): de aquí salen
+# tanto el access token como el refreshTokenExpiresAt (señal de "el login va a expirar"). El token
+# rota en cada `claude login`/`logout`, por eso preferimos el login activo sobre el env headless.
+CREDS_JSON=""
+# Seam de prueba (test-only; default intacto si no está seteado): overridea las credenciales para ejercitar
+# los estados de auth sin tocar el llavero. Seteado-pero-vacío = sin credenciales. #6 (auditoría R4 2026-10-23):
+# el seam se aplica ANTES de `security` — si está seteado NO se llama al llavero real (antes se aplicaba DESPUÉS,
+# así que aun en prueba se leía el llavero de la Mac).
+if [[ -n "${CORTEX_FETCH_CREDS_JSON+x}" ]]; then
+  CREDS_JSON="$CORTEX_FETCH_CREDS_JSON"
+else
+  CREDS_JSON="$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null || true)"
+  if [[ -z "$CREDS_JSON" && -r "$CLAUDE_DIR/.credentials.json" ]]; then
+    CREDS_JSON="$(<"$CLAUDE_DIR/.credentials.json")"
   fi
-  if [[ -n "$creds" ]]; then
+fi
+
+# Claude Code's OAuth token: del login activo (CREDS_JSON); CLAUDE_CODE_OAUTH_TOKEN solo FALLBACK headless.
+oauth_token() {
+  if [[ -n "$CREDS_JSON" ]]; then
     local tok
-    tok="$(jq -er '.claudeAiOauth.accessToken // empty' <<<"$creds" 2>/dev/null || true)"
+    tok="$(jq -er '.claudeAiOauth.accessToken // empty' <<<"$CREDS_JSON" 2>/dev/null || true)"
     [[ -n "$tok" ]] && { printf '%s' "$tok"; return 0; }
   fi
   # FALLBACK headless: CLAUDE_CODE_OAUTH_TOKEN (token de larga vida de `claude setup-token`) SOLO si no
@@ -94,6 +300,9 @@ oauth_token() {
   [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]] && { printf '%s' "$CLAUDE_CODE_OAUTH_TOKEN"; return 0; }
   return 1
 }
+
+# Epoch-ms de expiración del REFRESH token (vida larga). Vacío si no hay credenciales legibles.
+REFRESH_EXP_MS="$(jq -r '.claudeAiOauth.refreshTokenExpiresAt // empty' <<<"$CREDS_JSON" 2>/dev/null || true)"
 
 # The account email (display only), from Claude Code's own local config —
 # not part of the OAuth token, so read separately and best-effort.
@@ -116,16 +325,53 @@ if [[ -n "$ACCOUNT_PIN" && "$ACCOUNT_PIN" != "$ACCOUNT_UUID" && "$ACCOUNT_PIN" !
   ACCOUNT_MISMATCH=true
 fi
 
+TOKEN="$(oauth_token 2>/dev/null || true)"
 USAGE_JSON=""
-if TOKEN="$(oauth_token 2>/dev/null)" && [[ -n "$TOKEN" ]]; then
-  USAGE_JSON="$(curl -fsS -m 15 "https://api.anthropic.com/api/oauth/usage" \
+HTTP_CODE=""
+if [[ -n "${CORTEX_FETCH_HTTP+x}" && -n "$TOKEN" ]]; then
+  # Seam de prueba (test-only): simula la respuesta del endpoint sin red. HTTP_CODE forzado;
+  # cuerpo desde CORTEX_FETCH_USAGE_FIXTURE. Gated por TOKEN como el fetch real (sin token no hay
+  # consulta). No cambia nada si no está seteado.
+  HTTP_CODE="$CORTEX_FETCH_HTTP"
+  BODY="${CORTEX_FETCH_USAGE_FIXTURE:-}"
+  if [[ "$HTTP_CODE" == "200" ]] && jq -e '.five_hour.utilization != null' <<<"$BODY" >/dev/null 2>&1; then
+    USAGE_JSON="$BODY"
+  fi
+elif [[ -n "$TOKEN" ]]; then
+  # -w anexa el código HTTP en su propia línea tras el cuerpo: así distinguimos un 401/403
+  # (token rechazado → login expirado) de un fallo de RED (código vacío → transitorio).
+  RESP="$(curl -sS -m 15 -w $'\n%{http_code}' "https://api.anthropic.com/api/oauth/usage" \
     -H "Authorization: Bearer $TOKEN" \
     -H "anthropic-beta: oauth-2025-04-20" 2>/dev/null || true)"
-  # Sanity check: must be JSON carrying the 5-hour utilization.
-  if ! jq -e '.five_hour.utilization != null' <<<"$USAGE_JSON" >/dev/null 2>&1; then
-    USAGE_JSON=""
+  HTTP_CODE="${RESP##*$'\n'}"
+  BODY="${RESP%$'\n'*}"
+  # Sanity check: 200 + JSON con la utilización de 5h. Cualquier otra cosa NO es una lectura real.
+  if [[ "$HTTP_CODE" == "200" ]] && jq -e '.five_hour.utilization != null' <<<"$BODY" >/dev/null 2>&1; then
+    USAGE_JSON="$BODY"
   fi
 fi
+
+# --- Estado de AUTENTICACIÓN (viaja en state.json para widget + hooks) --------
+# Señales REALES, no el access token de vida corta: sin token → no_credentials;
+# 401/403 → expired (rechazado); refresh token vencido → expired; refresh token
+# dentro de la ventana → expiring; si no, ok. Un fallo de RED (código vacío) NO
+# grita "expired": conserva ok/expiring según el refresh token.
+NOW_MS=$(( $(date +%s) * 1000 ))
+EXPIRING_MS=$(( AUTH_EXPIRING_HORAS * 3600 * 1000 ))
+if [[ -z "$TOKEN" ]]; then
+  AUTH_STATE="no_credentials"
+elif [[ "$HTTP_CODE" == "401" || "$HTTP_CODE" == "403" ]]; then
+  AUTH_STATE="expired"
+elif [[ -n "$REFRESH_EXP_MS" ]] && (( REFRESH_EXP_MS <= NOW_MS )); then
+  AUTH_STATE="expired"
+elif [[ -n "$REFRESH_EXP_MS" ]] && (( REFRESH_EXP_MS <= NOW_MS + EXPIRING_MS )); then
+  AUTH_STATE="expiring"
+else
+  AUTH_STATE="ok"
+fi
+# ISO de expiración del refresh token (para el aviso "expira el <fecha>"). BSD date -r <epoch-s>.
+AUTH_EXPIRES_AT=""
+[[ -n "$REFRESH_EXP_MS" ]] && AUTH_EXPIRES_AT="$(date -u -r $(( REFRESH_EXP_MS / 1000 )) +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)"
 
 # --- Secondary: ccusage (cost enrichment, and fallback percentages) ----------
 
@@ -140,6 +386,8 @@ resolve_ccusage() {
 }
 
 CCUSAGE="$(resolve_ccusage || true)"
+# Seam de prueba (test-only): salta ccusage para pruebas herméticas/rápidas. Default intacto.
+[[ -n "${CORTEX_FETCH_NO_CCUSAGE:-}" ]] && CCUSAGE=""
 
 # Live pricing first: the bundled --offline table lags new models, whose
 # tokens are then costed at $0 — silently deflating both the $ enrichment
@@ -152,20 +400,11 @@ ccusage_json() {
 }
 
 BLOCKS_JSON=""
-WEEKLY_JSON=""
 if [[ -n "$CCUSAGE" ]]; then
   BLOCKS_JSON="$(ccusage_json blocks --json --active)"
   # BSD date: 8 days ago, compact YYYYMMDD.
-  SINCE="$(date -u -v-8d +%Y%m%d)"
-  WEEKLY_JSON="$(ccusage_json weekly --json --since "$SINCE")"
   # Discard anything that isn't valid JSON so jq --argjson can't blow up.
   jq -e . <<<"$BLOCKS_JSON" >/dev/null 2>&1 || BLOCKS_JSON=""
-  jq -e . <<<"$WEEKLY_JSON" >/dev/null 2>&1 || WEEKLY_JSON=""
-fi
-
-if [[ -z "$USAGE_JSON" && -z "$BLOCKS_JSON" && -z "$WEEKLY_JSON" ]]; then
-  write_error "no data: OAuth usage endpoint unreachable and ccusage returned nothing"
-  exit 0
 fi
 
 NOW_ISO="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -178,15 +417,49 @@ CURRENT_MONDAY="$(date -u -v-$((DOW - 1))d +%Y-%m-%d)"
 DAYS_AHEAD=$(( 8 - DOW ))
 NEXT_MONDAY="$(date -u -v+"${DAYS_AHEAD}"d -v0H -v0M -v0S +%Y-%m-%dT%H:%M:%SZ)"
 
+# A6 (auditoría 2026-10-22): esquema CANÓNICO (igual que src/bin/cortex-fetch Linux). La ventana semanal REAL
+# es rolling-7d = [week_reset-7d, ahora]: en oauth week_reset = seven_day.resets_at REAL (rolling, NO el lunes —
+# usar CURRENT_MONDAY inflaba la ventana ~2.5d, bug auditoría 2026-10-22); en fallback, NEXT_MONDAY. Se consulta
+# ccusage `daily --since` y se SUMAN los días (el bucket semanal-lunes WEEKLY_JSON daba cost/tokens idénticos a
+# la sesión). QuotaModel.swift + delegacion-comun.sh leen equiv_session_cost_usd/session_tokens_used/
+# equiv_weekly_cost_usd/weekly_tokens_used/week_start. day-granular aquí (ccusage `daily --since` es por día);
+# el week_start de precisión completa lo deriva jq de $week_reset - 7d.
+WEEK_RESET_EFF="$NEXT_MONDAY"
+if [[ -n "$USAGE_JSON" ]]; then
+  _ow="$(jq -r '.seven_day.resets_at // empty' <<<"$USAGE_JSON" 2>/dev/null || true)"
+  [[ -n "$_ow" ]] && WEEK_RESET_EFF="$_ow"
+fi
+REAL_WEEK_START="$(date -u -j -v-7d -f "%Y-%m-%d" "${WEEK_RESET_EFF:0:10}" +%Y-%m-%d)"
+# Historial diario completo (pestañas Resumen/Modelos) en UNA llamada a ccusage; la semana
+# sale de filtrarlo por fecha (mismas cifras que `daily --since`, sin otra pasada por los transcripts).
+DAILY_JSON=""
+WEEKLY_DAILY_JSON=""
+if [[ -n "$CCUSAGE" ]]; then
+  DAILY_JSON="$(ccusage_json daily --json --breakdown)"
+  jq -e . <<<"$DAILY_JSON" >/dev/null 2>&1 || DAILY_JSON=""
+  if [[ -n "$DAILY_JSON" ]]; then
+    WEEKLY_DAILY_JSON="$(jq -c --arg s "$REAL_WEEK_START" '{daily: [.daily[]? | select((.date // .period) >= $s)]}' <<<"$DAILY_JSON" 2>/dev/null || true)"
+  else
+    WEEKLY_DAILY_JSON="$(ccusage_json daily --json --since "${REAL_WEEK_START//-/}")"
+    jq -e . <<<"$WEEKLY_DAILY_JSON" >/dev/null 2>&1 || WEEKLY_DAILY_JSON=""
+  fi
+  jq -e . <<<"$WEEKLY_DAILY_JSON" >/dev/null 2>&1 || WEEKLY_DAILY_JSON=""
+fi
+
 # Discard carried-forward resets once they've actually passed (ISO-8601 "Z"
 # timestamps sort lexically, so a plain string compare works here).
 [[ -n "$PREV_WEEK_RESET" && "$PREV_WEEK_RESET" > "$NOW_ISO" ]] || PREV_WEEK_RESET=""
 [[ -n "$PREV_FIVE_RESET" && "$PREV_FIVE_RESET" > "$NOW_ISO" ]] || PREV_FIVE_RESET=""
 
+# --- DECISIÓN DE ESCRITURA (contrato Jordi 2026-10-21) ------------------------
+# oauth FRESCO → snapshot oauth (abajo). oauth FALLA + hay lectura oauth previa →
+# PRESERVAR la previa marcada stale (el estimado por costo NUNCA pisa una lectura
+# real). oauth FALLA + sin previa → "no hay dato" con el estado de auth (NO inventa).
+if [[ -n "$USAGE_JSON" ]]; then
 jq -n \
   --argjson usage "${USAGE_JSON:-null}" \
   --argjson blocks "${BLOCKS_JSON:-null}" \
-  --argjson weekly "${WEEKLY_JSON:-null}" \
+  --argjson weekly_daily "${WEEKLY_DAILY_JSON:-null}" \
   --arg ts "$NOW_ISO" \
   --arg cur_week "$CURRENT_MONDAY" \
   --arg next_monday "$NEXT_MONDAY" \
@@ -194,6 +467,8 @@ jq -n \
   --arg prev_five_reset "$PREV_FIVE_RESET" \
   --arg email "$ACCOUNT_EMAIL" \
   --arg account_uuid "$ACCOUNT_UUID" \
+  --arg auth_state "$AUTH_STATE" \
+  --arg auth_expires "$AUTH_EXPIRES_AT" \
   --argjson account_mismatch "$ACCOUNT_MISMATCH" \
   --argjson five_cap "$FIVE_HOUR_CAP_USD" \
   --argjson week_cap "$WEEKLY_CAP_USD" \
@@ -202,16 +477,18 @@ jq -n \
   def pct(used; cap): if cap > 0 then (used * 100 / cap) else 0 end;
   def round1(x): (x * 10 | floor) / 10;
   def round2(x): (x * 100 | floor) / 100;
+  # Coacción robusta a número: null/no-numérico → el default d; una cadena "50" → 50 (algunos campos del
+  # endpoint llegan como string). Evita que un utilization string se propague como texto a los cálculos.
+  def numor(d): if . == null then d elif type == "number" then . elif type == "string" then (try tonumber catch d) else d end;
   # "2026-06-10T00:00:00.070837+00:00" -> "2026-06-10T00:00:00Z"
   def isoz: sub("\\.[0-9]+"; "") | sub("\\+00:00$"; "Z");
 
   ($blocks.blocks[0] // null) as $blk
-  | ([$weekly.weekly[]? | select((.week // .period) == $cur_week)] | first) as $wk
   | (if $blocks != null then round2(if $blk then ($blk.costUSD // 0) else 0 end) else null end) as $five_cost
-  | (if $weekly != null then round2(if $wk then ($wk.totalCost // 0) else 0 end) else null end) as $week_cost
-  | (if $usage != null then ($usage.five_hour.utilization // 0)
+  | (if $weekly_daily != null then round2(($weekly_daily.daily // []) | map(.totalCost // 0) | add // 0) else null end) as $week_cost
+  | (if $usage != null then ($usage.five_hour.utilization | numor(0))
      else pct($five_cost // 0; $five_cap) end) as $five_pct
-  | (if $usage != null then ($usage.seven_day.utilization // 0)
+  | (if $usage != null then ($usage.seven_day.utilization | numor(0))
      else pct($week_cost // 0; $week_cap) end) as $week_pct
   | ([$five_pct, $week_pct] | max) as $max_pct
   | (if $max_pct >= $crit then "crit"
@@ -226,28 +503,36 @@ jq -n \
      else $next_monday end) as $week_reset
   | {
       updated_at: $ts,
+      fetched_at: $ts,
+      stale: false,
       status: $status,
       basis: (if $usage != null then "oauth" else "cost" end),
+      auth: {
+        state: $auth_state,
+        expires_at: (if $auth_expires != "" then $auth_expires else null end),
+        account_email: (if $email != "" then $email else null end),
+        account_uuid: (if $account_uuid != "" then $account_uuid else null end)
+      },
       account_email: (if $email != "" then $email else null end),
       account_uuid: (if $account_uuid != "" then $account_uuid else null end),
       account_mismatch: $account_mismatch,
       error: null,
       five_hour: (if ($usage != null or $blocks != null) then {
         percent: round1($five_pct),
-        cost_usd: $five_cost,
+        equiv_session_cost_usd: $five_cost,
         cost_cap: $five_cap,
-        tokens_used: (if $blk != null then ($blk.totalTokens // 0) else null end),
+        session_tokens_used: (if $blk != null then ($blk.totalTokens // 0) else null end),
         resets_at: $five_reset,
         is_active: (if $blk != null then ($blk.isActive // false) else true end),
         models: (if $blk != null then ($blk.models // []) else [] end)
       } else null end),
-      weekly: (if ($usage != null or $weekly != null) then {
+      weekly: (if ($usage != null or $weekly_daily != null) then {
         percent: round1($week_pct),
-        cost_usd: $week_cost,
+        equiv_weekly_cost_usd: $week_cost,
         cost_cap: $week_cap,
-        tokens_used: (if $wk != null then ($wk.totalTokens // 0) else null end),
+        weekly_tokens_used: (if $weekly_daily != null then (($weekly_daily.daily // []) | map(.totalTokens // 0) | add // 0) else null end),
         resets_at: $week_reset,
-        week_start: (if $wk != null then ($wk.week // $wk.period) else null end)
+        week_start: (try ($week_reset | fromdateiso8601 - 604800 | todateiso8601) catch null)
       } else null end),
       # --- Solo en modo oauth: la API expone más de lo que la GUI mostraba -----
       # limites por-modelo acotados en el tiempo (weekly_scoped con scope.model),
@@ -263,8 +548,8 @@ jq -n \
           } ]
         else null end),
       spend: (if ($usage != null and $usage.spend != null) then {
-        used: (if $usage.spend.used != null then ($usage.spend.used.amount_minor / pow(10; $usage.spend.used.exponent)) else null end),
-        cap:  (if $usage.spend.limit != null then ($usage.spend.limit.amount_minor / pow(10; $usage.spend.limit.exponent)) else null end),
+        used: (if $usage.spend.used != null then (try ($usage.spend.used.amount_minor / pow(10; $usage.spend.used.exponent)) catch null) else null end),
+        cap:  (if $usage.spend.limit != null then (try ($usage.spend.limit.amount_minor / pow(10; $usage.spend.limit.exponent)) catch null) else null end),
         currency: ($usage.spend.used.currency // $usage.spend.limit.currency // null),
         percent: ($usage.spend.percent // null),
         enabled: ($usage.spend.enabled // false)
@@ -278,140 +563,89 @@ jq -n \
       } else null end)
     }
 ' > "$TMP_FILE"
-
 mv "$TMP_FILE" "$STATE_FILE"
+
+else
+  # --- oauth NO disponible: preservar la última lectura real, o "no hay dato" ---
+  case "$AUTH_STATE" in
+    no_credentials) REASON="no hay cuenta logueada en el CLI de Claude" ;;
+    expired)        REASON="el login de Claude expiró — re-loguéate" ;;
+    *)              REASON="no se pudo contactar el endpoint OAuth (red); mostrando la última lectura real" ;;
+  esac
+  if [[ -r "$STATE_FILE" ]] && [[ "$(jq -r '.basis // empty' "$STATE_FILE" 2>/dev/null || true)" == "oauth" ]]; then
+    # PRESERVAR: conserva números+cuenta+updated_at de la lectura real; solo la marca stale,
+    # refresca el estado de auth (ACTUAL aunque los números sean viejos), sella fetched_at=ahora
+    # y anota el error. El estimado por costo NO entra. La edad la calcula el lector sobre updated_at.
+    jq --arg now "$NOW_ISO" --arg reason "$REASON" \
+       --arg auth_state "$AUTH_STATE" --arg auth_expires "$AUTH_EXPIRES_AT" \
+       --arg email "$ACCOUNT_EMAIL" --arg account_uuid "$ACCOUNT_UUID" '
+       .stale = true
+       | .fetched_at = $now
+       | .error = $reason
+       | .auth = {
+           state: $auth_state,
+           expires_at: (if $auth_expires != "" then $auth_expires else null end),
+           account_email: (if $email != "" then $email else .account_email end),
+           account_uuid: (if $account_uuid != "" then $account_uuid else null end)
+         }
+       ' "$STATE_FILE" > "$TMP_FILE"
+    mv "$TMP_FILE" "$STATE_FILE"
+  else
+    # SIN lectura previa real → "no hay dato" HONESTO con el estado de auth (el widget muestra el
+    # aviso + botón de re-login). NO se inventa un estimado por costo.
+    jq -n --arg now "$NOW_ISO" --arg reason "$REASON" \
+       --arg auth_state "$AUTH_STATE" --arg auth_expires "$AUTH_EXPIRES_AT" \
+       --arg email "$ACCOUNT_EMAIL" --arg account_uuid "$ACCOUNT_UUID" '{
+         updated_at: $now,
+         fetched_at: $now,
+         stale: true,
+         status: "error",
+         basis: null,
+         error: $reason,
+         auth: {
+           state: $auth_state,
+           expires_at: (if $auth_expires != "" then $auth_expires else null end),
+           account_email: (if $email != "" then $email else null end),
+           account_uuid: (if $account_uuid != "" then $account_uuid else null end)
+         },
+         account_email: null,
+         five_hour: null,
+         weekly: null
+       }' > "$TMP_FILE"
+    mv "$TMP_FILE" "$STATE_FILE"
+  fi
+fi
 
 # --- Stats para las pestañas Resumen / Modelos (ccusage local) ---------------
 # Datos LOCALES de Claude Code de esta máquina (no la cuenta global de claude.ai).
 # Se escriben aparte en stats.json para no inflar el state.json de límites.
-DAILY_JSON=""
-if [[ -n "$CCUSAGE" ]]; then
-  DAILY_JSON="$(ccusage_json daily --json --breakdown)"
-  jq -e . <<<"$DAILY_JSON" >/dev/null 2>&1 || DAILY_JSON=""
-fi
 if [[ -n "$DAILY_JSON" ]]; then
-  # --- Fase 2: sesiones, mensajes y hora pico desde transcripts crudos --------
-  # grep/awk (NO jq) porque ~/.claude/projects puede pesar cientos de MB.
-  # BSD grep (macOS) soporta -r/-c/-h/-o/-E/--include igual que GNU grep.
+  # --- Fases 2-3: sesiones, mensajes, hora pico, msgs/día y uso por proyecto ---
+  # INCREMENTAL: transcript_stats() (arriba) cachea por archivo y re-escanea SOLO
+  # los .jsonl cambiados. ANTES aquí se releían los 3.1 GB de ~/.claude/projects
+  # 4-5 veces por corrida (>60s de awk al 100% y corridas que se encimaban = el
+  # calentón de la Mac). Setea SESSIONS/MESSAGES/PEAK_HOUR/DAY_MSG_JSON/PROJECT_DAY_TSV.
   PROJ="$CLAUDE_DIR/projects"
-  SESSIONS=0; MESSAGES=0; PEAK_HOUR=-1; DAY_MSG_JSON="{}"
-  if [[ -d "$PROJ" ]]; then
-    SESSIONS=$(( $(find "$PROJ" -name '*.jsonl' 2>/dev/null | wc -l) ))
-    MESSAGES=$(grep -rcE '"type":"(assistant|user)"' "$PROJ" --include='*.jsonl' 2>/dev/null \
-               | awk -F: '{s+=$NF} END{print s+0}')
-    # offset local en horas (ej -0600 -> -6); base-10 forzada para evitar octal
-    Z=$(date +%z); SG=${Z:0:1}; HH=${Z:1:2}; OFF=$((10#$HH)); [[ "$SG" == "-" ]] && OFF=$((-OFF))
-    PEAK_HOUR=$(grep -rhoE '"timestamp":"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}' "$PROJ" --include='*.jsonl' 2>/dev/null \
-      | grep -oE 'T[0-9]{2}$' | tr -d 'T' \
-      | awk -v off="$OFF" 'BEGIN{m=-1;ph=-1} {h=($1+off+24)%24; c[h]++} END{for(i=0;i<24;i++) if(c[i]>m){m=c[i];ph=i}; print ph}')
-    [[ -z "$PEAK_HOUR" ]] && PEAK_HOUR=-1
-    # mensajes por DÍA local (para el filtro de rango del Resumen): user/assistant bucketizados.
-    DAY_MSG_JSON="$(grep -rhE '"type":"(assistant|user)"' "$PROJ" --include='*.jsonl' 2>/dev/null | awk -v off="$OFF" '
-      function isLeap(y){return (y%4==0&&y%100!=0)||(y%400==0)}
-      function dim(y,m,  a){split("31 28 31 30 31 30 31 31 30 31 30 31",a," "); return (m==2&&isLeap(y))?29:a[m]+0}
-      function shift(y,m,d,dl,  nd,nm,ny){nd=d+dl;ny=y;nm=m; if(nd<1){nm=m-1; if(nm<1){nm=12;ny=y-1} nd=dim(ny,nm)} else if(nd>dim(y,m)){nd=1;nm=m+1; if(nm>12){nm=1;ny=y+1}} return sprintf("%04d-%02d-%02d",ny,nm,nd)}
-      { if(match($0,/"timestamp":"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}/)){ts=substr($0,RSTART+13,13); y=substr(ts,1,4)+0;mo=substr(ts,6,2)+0;da=substr(ts,9,2)+0;hh=substr(ts,12,2)+0} else next
-        lh=hh+off; if(lh<0)dt=shift(y,mo,da,-1); else if(lh>=24)dt=shift(y,mo,da,1); else dt=sprintf("%04d-%02d-%02d",y,mo,da); M[dt]++ }
-      END{ printf "{"; first=1; for(d in M){ printf "%s\"%s\":%d",(first?"":","),d,M[d]; first=0 } printf "}" }
-    ')"
-    jq -e . <<<"$DAY_MSG_JSON" >/dev/null 2>&1 || DAY_MSG_JSON="{}"
-  fi
+  # offset local en horas (ej -0600 -> -6); base-10 forzada para evitar octal
+  Z=$(date +%z); SG=${Z:0:1}; HH=${Z:1:2}; OFF=$((10#$HH)); [[ "$SG" == "-" ]] && OFF=$((-OFF))
+  transcript_stats "$PROJ" "$OFF"
 
-  # --- Fase 3: uso por proyecto (carpeta ~/.claude/projects/<slug>) -----------
-  # ccusage no separa por proyecto (ni `daily` ni `session` traen la ruta) ->
-  # se agrega a mano desde los mismos jsonl crudos de fase 2, por directorio.
-  # El slug de Claude Code (path con "/" -> "-") se NORMALIZA a un nombre de
-  # proyecto canónico: un subdir/worktree BAJO un repo conocido se fusiona con
-  # su raíz (longest-prefix contra las rutas reales de ~/.claude.json .projects),
-  # los worktrees efímeros (/private/tmp, /tmp) caen a un bucket "(worktrees)",
-  # y lo que no casa usa el último segmento del slug (no el path completo feo).
-  # Un alias opcional (~/.claude/proyectos-alias.json) renombra el canónico.
-  #  $PROJECT_REPOS_JSON: [{slug,name}] de cada repo real conocido.
-  PROJECT_REPOS_JSON="[]"
-  if [[ -r "$CLAUDE_JSON" ]]; then
-    PROJECT_REPOS_JSON="$(jq -c '
-      [(.projects // {}) | keys[] | {slug: gsub("/"; "-"), name: (split("/") | last)}]
-    ' "$CLAUDE_JSON" 2>/dev/null || echo '[]')"
-    jq -e . <<<"$PROJECT_REPOS_JSON" >/dev/null 2>&1 || PROJECT_REPOS_JSON="[]"
-  fi
-  # Alias opcional: mapa {"<nombre-canónico>":"<alias>"}; tolera que no exista.
+  # Alias opcional de nombres de proyecto: mapa {"<nombre>":"<alias>"}; tolera que no exista.
   PROJECT_ALIAS_JSON="{}"
   if [[ -r "$CLAUDE_DIR/proyectos-alias.json" ]]; then
     PROJECT_ALIAS_JSON="$(jq -c '.' "$CLAUDE_DIR/proyectos-alias.json" 2>/dev/null || echo '{}')"
     jq -e . <<<"$PROJECT_ALIAS_JSON" >/dev/null 2>&1 || PROJECT_ALIAS_JSON="{}"
   fi
-  PROJECT_DAY_TSV=""
-  if [[ -d "$PROJ" ]]; then
-    for d in "$PROJ"/*/; do
-      [[ -d "$d" ]] || continue
-      slug="$(basename "$d")"
-      # Bucket by LOCAL calendar day (same convention ccusage's daily/--breakdown
-      # uses) — the raw timestamp is UTC, so an hour near midnight can land on
-      # the previous/next local day. $OFF (local UTC offset, from fase 2 arriba)
-      # only ever shifts by one day either way, so a plain day rollover suffices.
-      PROJECT_DAY_TSV+="$( { grep -rh '"usage":{' "$d" --include='*.jsonl' 2>/dev/null || true; } | awk -v slug="$slug" -v off="$OFF" '
-        function isLeap(y) { return (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0) }
-        function daysInMonth(y, m,    dim) {
-          split("31 28 31 30 31 30 31 31 30 31 30 31", dim, " ")
-          if (m == 2 && isLeap(y)) return 29
-          return dim[m] + 0
-        }
-        function shiftDay(y, m, d, delta,   ny, nm, nd) {
-          nd = d + delta; ny = y; nm = m
-          if (nd < 1) {
-            nm = m - 1; if (nm < 1) { nm = 12; ny = y - 1 }
-            nd = daysInMonth(ny, nm)
-          } else if (nd > daysInMonth(y, m)) {
-            nd = 1; nm = m + 1; if (nm > 12) { nm = 1; ny = y + 1 }
-          }
-          return sprintf("%04d-%02d-%02d", ny, nm, nd)
-        }
-        {
-          # Claude Code logs one jsonl line per CONTENT BLOCK of an assistant
-          # turn (thinking/tool_use/text), each repeating the SAME message.id
-          # and the SAME cumulative usage — dedupe by id or a multi-block reply
-          # triples its token count.
-          if (match($0, /"id":"msg_[A-Za-z0-9]+"/)) { id = substr($0, RSTART, RLENGTH) } else next
-          if (id in seen) next
-          seen[id] = 1
-          if (match($0, /"timestamp":"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}/)) {
-            ts = substr($0, RSTART + 13, 13)
-            y = substr(ts,1,4) + 0; mo = substr(ts,6,2) + 0; da = substr(ts,9,2) + 0; hh = substr(ts,12,2) + 0
-          } else next
-          lh = hh + off
-          if (lh < 0)       date = shiftDay(y, mo, da, -1)
-          else if (lh >= 24) date = shiftDay(y, mo, da, 1)
-          else               date = sprintf("%04d-%02d-%02d", y, mo, da)
-          inv = 0; outv = 0
-          if (match($0, /"input_tokens":[0-9]+/))  { s = substr($0, RSTART, RLENGTH); sub(/^"input_tokens":/, "", s);  inv  = s + 0 }
-          if (match($0, /"output_tokens":[0-9]+/)) { s = substr($0, RSTART, RLENGTH); sub(/^"output_tokens":/, "", s); outv = s + 0 }
-          I[date] += inv; O[date] += outv
-        }
-        END { for (dt in I) printf "%s\t%s\t%d\t%d\n", slug, dt, I[dt], O[dt] + 0 }
-      ')"$'\n'
-    done
-  fi
   PROJECT_STATS_JSON='{"projects":[],"by_day":{}}'
   if [[ -n "${PROJECT_DAY_TSV// /}" ]]; then
     PROJECT_STATS_JSON="$(printf '%s' "$PROJECT_DAY_TSV" | jq -R -s \
-        --argjson repos "$PROJECT_REPOS_JSON" --argjson aliases "$PROJECT_ALIAS_JSON" '
-      # Nombre canónico de un slug de proyecto:
-      #  1) (o extiende) un repo conocido -> nombre del repo raíz (longest-prefix
-      #     con frontera de segmento: slug == repo.slug o empieza con repo.slug+"-");
-      #  2) worktree efímero (-private-tmp-*, -tmp-*) -> bucket "(worktrees)";
-      #  3) si no casa -> último segmento del slug (no el path completo).
-      # Luego aplica el alias opcional sobre ese nombre canónico.
-      def canon($slug):
-        ( [ $repos[] | select(.slug as $rs | ($slug == $rs or ($slug | startswith($rs + "-")))) ]
-            | max_by(.slug | length) ) as $repo
-        | (if $repo != null then $repo.name
-           elif ($slug | test("^-(private-)?tmp-")) then "(worktrees)"
-           else ($slug | split("-") | last)
-           end) as $base
-        | ($aliases[$base] // $base);
+        --argjson aliases "$PROJECT_ALIAS_JSON" '
+      # La 1ª columna del TSV YA es el nombre del proyecto (basename del cwd real,
+      # calculado en el awk de arriba); aquí solo se aplica el alias opcional y se
+      # agrega por proyecto y por día.
       (split("\n") | map(select(length > 0) | split("\t"))
-        | map({slug: .[0], date: .[1], in_tok: (.[2]|tonumber), out_tok: (.[3]|tonumber)})
-        | map(. + {name: canon(.slug)})
+        | map({name: ($aliases[.[0]] // .[0]), date: .[1],
+               in_tok: (.[2]|tonumber), out_tok: (.[3]|tonumber)})
       ) as $rows
       | ($rows | group_by(.name)
           | map({project: .[0].name, in_tok: (map(.in_tok) | add), out_tok: (map(.out_tok) | add)})

@@ -1,87 +1,90 @@
 #!/usr/bin/env bash
-# aviso-drift-cerebro.sh — SessionStart hook (tier GLOBAL). Al INICIAR sesión en un repo que tiene el
-# cerebro POR-REPO instalado (sello .brain-version o el hook repo-scoped clásico), compara esa copia
-# contra la FUENTE ÚNICA local (el clon de instalación ~/.cortex, o $CLAUDE_BRAIN_DIR) usando
-# sincronizar-cerebro.sh en DRY-RUN (diff-aware por CONTENIDO — comparar versiones NO sirve: VERSION
-# no se bumpea por cambio) y, si la copia quedó ATRÁS, INYECTA un aviso ruidoso vía additionalContext.
+# aviso-drift-cerebro.sh — SessionStart hook (tier GLOBAL). Avisa —warn-only— cuando la copia GLOBAL del
+# cerebro de ESTA máquina quedó ATRÁS de la FUENTE única local (el clon de instalación ~/.cortex, o
+# $CLAUDE_BRAIN_DIR) o se editó en vivo (se perdería en el próximo install-brain). Chequea tres frentes
+# per-MÁQUINA: skills (~/.claude/skills), hooks/libs (~/.claude/hooks) y el bloque de normas de
+# ~/.claude/CLAUDE.md, cada uno con su propio throttle. Delega la detección a drift-cerebro-comun.sh.
 #
-# REDISEÑO #46 (unjordi + gemelo cachy, 2026-08-05) — BIFURCA por la marca `.claude/repo-compartido`:
-# - COMPARTIDO (tiene la marca): el brain por-repo es un CORREO que viaja por git a quien NO tiene brain
-#   global (colegas/clones) → hay que mantenerlo fresco. Comportamiento de siempre: detecta drift, auto-
-#   apply+commit+push en tu mini-develop con .claude/ limpio, o AVISA para propagar por el flujo.
-# - PERSONAL (sin la marca, el DEFAULT): guards por-repo NUNCA (tu máquina los saca del install GLOBAL +
-#   dedupe; una copia por-repo solo drifta/estorba). NO auto-commit/push; si el repo tiene guards del brain
-#   que SOBRAN, los FLAGGEA para quitar (opción B; no los borra solos). La memoria/skills son suyos, no se tocan.
-# Norma que nace con esto: "repo personal = memoria/skills, NUNCA guards por-repo" (en global-claude-md.md).
-# Diseño completo: memoria [[diseno-rediseno-auto-sync-46]].
+# El cerebro vive SOLO en global por máquina: ya NO hay
+# copias del cerebro POR-REPO, así que este hook ya NO chequea ni auto-sincroniza una copia por-repo (eso
+# se retiró con el cerebro por-repo). Lo que queda es el aviso de drift de la copia GLOBAL vs la fuente —
+# el equivalente AUTOMÁTICO del doctor verificar-cerebro — más el cableado del @import de identidad (B8).
 #
-# Diseño de unjordi (2026-07-18): "es tan sencillo como poner un hook en el global para que en el
-# inicio de sesión revise que el local y global sean el mismo y actualice el local si no" — con dos
-# matices acordados en la misma conversación: (a) el comparador es el DIFF real, no la versión; (b) en
-# repos COMPARTIDOS "actualizar el local" = commit por ramita→MR, así que este hook NO escribe NADA al
-# árbol (un write silencioso ensuciaría el working tree y se mezclaría a commits de feature): DETECTA
-# y AVISA para que Claude proponga la propagación por el flujo. Evidencia de necesidad: MegaFlux
-# acumuló 9 archivos de drift porque nadie corría el sync (detectado 2026-07-18).
+# Throttle: cada frente global solo se re-chequea cada AVISO_DRIFT_HORAS (default 6; stamps en
+# ~/.claude/memory/.drift-cerebro/). Un chequeo CON drift NO se cachea → insiste cada sesión hasta portarlo
+# a la fuente. Fail-open SIEMPRE: sin clon canónico / cualquier error → silencio.
 #
-# Throttle: si el último chequeo de ESTE repo salió LIMPIO, no se re-chequea por AVISO_DRIFT_HORAS
-# (default 6; stamp en ~/.claude/memory/.drift-cerebro/). Un chequeo CON drift no se cachea → avisa en
-# cada inicio de sesión hasta que se propague (esa insistencia es el punto).
-# Fail-open SIEMPRE: sin clon canónico / repo no-brained / cualquier error del sync → silencio.
-#
-# RECORDATORIO DE LA DUPLA (2026-07-31): cuando el cerebro de este repo CAMBIA (auto-sync) o está por
+# RECORDATORIO DE LA DUPLA: cuando el cerebro de este repo CAMBIA (auto-sync) o está por
 # hacerlo (drift), es el momento de "¿la realidad sigue cumpliendo la firma?" → el aviso añade un nudge a
 # correr la DUPLA de auditores (suficiencia + coherencia, van juntas). Se cuelga de ESTE hook (que ya corre
 # SessionStart + ya llama a sincronizar + ya sabe cuándo el cerebro se movió) en vez de un hook nuevo.
 # BIFURCA por el esquema firma+detalle: si el repo tiene AGENTS.md instanciado → "audita CONTRA la firma";
 # si NO → la dupla igual funciona (suficiencia deriva su lista; coherencia caza contradicciones) y se sugiere
-# instanciar el esquema. NUNCA lo asume — la mayoría de los repos aún no tienen firma=TOC (hoy solo games-master).
+# instanciar el esquema. NUNCA lo asume: no todo repo tiene firma=TOC.
 #
-# CUÁNDO CORRE (verificado 2026-07-31 vs doc oficial de hooks + evidencia real — NO re-investigar):
+# CUÁNDO CORRE:
 # SessionStart dispara con source ∈ {startup, resume, clear, compact, fork} — NO solo en arranque
 # fresco. En particular `claude --resume`/`--continue` → source="resume", y cada `/compact` (auto o
 # manual) → source="compact", LO DISPARAN. Este hook se cablea SIN matcher → corre en TODOS esos
-# source (la doc no lo jura literal para el matcher omitido, pero el commit real que este hook genera
-# — "chore(cerebro): auto-sync de la copia por-repo (aviso-drift, …)" — lo DEMUESTRA empíricamente).
+# source.
 # Importa porque el flujo real es casi todo --resume + sesiones largas que compactan: la auto-sync se
 # re-chequea en cada resume Y en cada compactación, sin depender de abrir claudes frescos.
 # Doc: code.claude.com/docs/en/hooks (tabla SessionStart + "Hooks can be re-run on resume with
 # --continue or --resume (source = resume or fork)").
 set -u
 
-# CUERPO PER-REPO compartido con el SWEEPER de flotilla (limpiar.sh flotilla, antes barrer-flotilla-cerebro.sh): la decisión de
-# drift + el auto-apply viven en la lib drift_chequea_repo → UNA sola implementación (cero drift entre
-# el fast-path interactivo de aquí y el batch del sweeper). Ver drift-cerebro-comun.sh.
+# Los detectores de drift de la copia GLOBAL (skills/hooks/normas) viven en la lib drift-cerebro-comun.sh.
 # shellcheck source=drift-cerebro-comun.sh
 . "$(dirname "$0")/drift-cerebro-comun.sh"
 
 ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 cat >/dev/null 2>&1 || true   # drenar stdin (contrato SessionStart)
 
-# ── CONOCIMIENTO PROPIO (per-repo, imborrable) ──────────────────────────────────────────────────────
-# Si el repo tiene .claude/memory/conocimiento-propio.md, se RE-INYECTA en CADA SessionStart
-# (fresh/resume/compact) — ANTES del throttle y del drift, para que la identidad del proyecto vuelva
-# SIEMPRE (no dependa de que haya drift ni del cache de 6h). Es PER-REPO: cada repo tiene el suyo (o
-# ninguno) → "cada sesión con una personalidad ligeramente distinta"; este hook es GLOBAL y solo lo
-# SURFACE si el archivo existe (no lo propaga ni lo asume universal). Diseño de unjordi (2026-07-31):
-# "asienta ese conocimiento propio amarrado al mismo hook" — el que ya dispara fiable en resume/compact,
-# para que "el conocimiento más básico que tienes sobre ti mismo no se te pueda borrar".
-SELF=""
-# Prefiere la variante PERSONAL/LOCAL (.local.md → gitignored: no viaja al repo público ni al de un
-# colega); cae a la .md por si un repo quiere una identidad COMPARTIDA versionada. Primero que exista gana.
-for _self_file in "$ROOT/.claude/memory/conocimiento-propio.local.md" "$ROOT/.claude/memory/conocimiento-propio.md"; do
-  [ -f "$_self_file" ] && { SELF="$(cat "$_self_file" 2>/dev/null || true)"; break; }
-done
+# ── B8 MIGRACIÓN: cablea el @import de identidad (reemplazo de la re-inyección retirada en B8) ─────────
+# Medido en plantilladotnet (claudio-master) y axon (axon-master): tenían conocimiento-propio PERO NINGÚN
+# @import → sin esto, tras B8 arrancarían SIN identidad. Idempotente, al CLAUDE.local.md (gitignored → en un
+# repo COMPARTIDO NO mete un @import per-usuario al CLAUDE.md del equipo). Solo actúa si HAY identidad y NO
+# hay ya un @import de ella en ningún CLAUDE*.md. (El @import toma efecto la PRÓXIMA sesión del repo.)
+_self_md="$ROOT/.claude/memory/conocimiento-propio.local.md"
+if [ -f "$_self_md" ]; then
+  _ya_import=0
+  for _f in "$ROOT/CLAUDE.md" "$ROOT/CLAUDE.local.md" "$ROOT/.claude/CLAUDE.md"; do
+    [ -f "$_f" ] && grep -qE '^@.*conocimiento-propio' "$_f" && { _ya_import=1; break; }
+  done
+  if [ "$_ya_import" = 0 ]; then
+    # Hueco (medido por claudio en axon): si CLAUDE.local.md NO está gitignoreado, crearlo lo deja untracked
+    # → un `git add -A` lo colaría al commit. Antes de escribir, si git NO lo ignora ya, lo agrega a
+    # .git/info/exclude (per-CLON, local — NO toca el .gitignore versionado del equipo). git-common-dir para
+    # que un worktree escriba en el exclude COMPARTIDO del repo.
+    if ! git -C "$ROOT" check-ignore -q CLAUDE.local.md 2>/dev/null; then
+      _gci=$(git -C "$ROOT" rev-parse --git-common-dir 2>/dev/null)
+      if [ -n "$_gci" ]; then
+        case "$_gci" in /*) ;; *) _gci="$ROOT/$_gci" ;; esac
+        mkdir -p "$_gci/info" 2>/dev/null || true
+        grep -qxF 'CLAUDE.local.md' "$_gci/info/exclude" 2>/dev/null || printf '%s\n' 'CLAUDE.local.md' >> "$_gci/info/exclude" 2>/dev/null || true
+      fi
+    fi
+    [ -f "$ROOT/CLAUDE.local.md" ] || printf '%s\n' '# Overrides locales de Claude Code (gitignored, per-máquina).' > "$ROOT/CLAUDE.local.md" 2>/dev/null || true
+    printf '%s\n' '@.claude/memory/conocimiento-propio.local.md' >> "$ROOT/CLAUDE.local.md" 2>/dev/null || true
+  fi
+fi
 
-# emit_and_exit [contexto-de-drift] — emite additionalContext UNA sola vez, anteponiendo el conocimiento
-# propio (si existe) al contexto de drift/auto-sync (si lo hay). Sin ninguno de los dos → silencio.
+# ── IDENTIDAD (conocimiento-propio) — YA NO la re-inyecta este hook (B8, decisión unjordi 2026-10-14) ──
+# El `@import` NATIVO de `conocimiento-propio.local.md` en el CLAUDE.md del repo (cableado en ef754d6) la
+# carga en CADA SessionStart (fresh/resume/compact) y tolera su ausencia — reemplaza la re-inyección que
+# este hook hacía, que con el @import presente la DUPLICABA en contexto. Este hook ya solo surface el drift
+# y el auto-sync. (Un repo cuyo CLAUDE.md aún no tenga el @import adopta la línea; no es cosa de este hook.)
+
+# emit_and_exit [contexto-de-drift] — emite additionalContext UNA sola vez con el contexto de drift/auto-sync
+# (si lo hay) + los avisos per-máquina. Sin ninguno → silencio.
 emit_and_exit() {
   local extra="${1:-}" out="" part sep=""
-  # Une (en orden, saltando vacíos): SELF (identidad) · $extra (drift/auto-sync per-repo) · GLOBAL_SK_WARN
-  # (drift de la copia GLOBAL de skills) · GLOBAL_HOOK_WARN (drift de la copia GLOBAL de hooks/libs) ·
-  # GLOBAL_NORMS_WARN (drift del bloque de normas en ~/.claude/CLAUDE.md) · MIGRACION_WARN (huella local de
-  # clon sin migrar). Los cuatro últimos viajan en TODOS los exit paths (incluso el throttle per-repo
-  # fresco): son concerns per-MÁQUINA con su PROPIO throttle, no dependen del drift del repo actual.
-  for part in "$SELF" "$extra" "${GLOBAL_SK_WARN:-}" "${GLOBAL_HOOK_WARN:-}" "${GLOBAL_NORMS_WARN:-}" "${MIGRACION_WARN:-}"; do
+  # Une (en orden, saltando vacíos): $extra (drift/auto-sync per-repo) · GLOBAL_SK_WARN (drift de la copia
+  # GLOBAL de skills) · GLOBAL_HOOK_WARN (drift de la copia GLOBAL de hooks/libs) · GLOBAL_NORMS_WARN (drift
+  # del bloque de normas en ~/.claude/CLAUDE.md) · MIGRACION_WARN (huella local de clon sin migrar). Los
+  # cuatro últimos viajan en TODOS los exit paths (incluso el throttle per-repo fresco): son concerns
+  # per-MÁQUINA con su PROPIO throttle, no dependen del drift del repo actual.
+  for part in "$extra" "${GLOBAL_SK_WARN:-}" "${GLOBAL_HOOK_WARN:-}" "${GLOBAL_NORMS_WARN:-}" "${MIGRACION_WARN:-}"; do
     [ -z "$part" ] && continue
     if [ -z "$out" ]; then out="$part"; else
       out="$out
@@ -101,15 +104,9 @@ $part"
   exit 0
 }
 
-# Throttle por repo (solo cachea chequeos LIMPIOS). Es un concern INTERACTIVO — el sweeper batch de
-# flotilla NO usa este throttle (corre 1×/día con su propio lock por-repo). Va ANTES de delegar: un
-# chequeo limpio reciente evita re-correr el sync, pero la IDENTIDAD (conocimiento-propio) SIGUE
-# surface-ándose (emit_and_exit "" abajo la incluye si existe) — la identidad es imborrable, no depende
-# del drift ni del cache.
+# Cada frente de drift global (skills/hooks/normas/migración) lleva su PROPIO throttle (stamps abajo).
 horas="${AVISO_DRIFT_HORAS:-6}"; case "$horas" in ''|*[!0-9]*) horas=6;; esac
-stampdir="$HOME/.claude/memory/.drift-cerebro"; mkdir -p "$stampdir" 2>/dev/null || true
-slug=$(printf '%s' "$ROOT" | cksum 2>/dev/null | awk '{print $1}')
-stamp="$stampdir/${slug:-0}"
+stampdir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/memory/.drift-cerebro"; mkdir -p "$stampdir" 2>/dev/null || true
 now=$(date +%s)
 
 # ── DRIFT DE SKILLS GLOBAL (per-máquina) — con su PROPIO throttle (independiente del per-repo). Warn-only.
@@ -152,10 +149,8 @@ if [ "$hk_skip" = 0 ]; then
 fi
 
 # ── DRIFT DE NORMAS GLOBAL (per-máquina) — con su PROPIO throttle (independiente de skills/hooks). Warn-only.
-# Antídoto al ALTO-2 de la auditoría de suficiencia operativa (2026-09-18): install-brain §(e) SÍ refresca
-# el bloque de normas en ~/.claude/CLAUDE.md en cada re-corrida, pero nada avisaba que hacía falta
-# re-correrlo — confirmado en vivo, la norma seguía citando `recordar-dashboard` (ya retirado) pese a que
-# la fuente ya traía el texto correcto. Solo re-chequea cada AVISO_DRIFT_HORAS; un resultado CON drift NO
+# install-brain §(e) refresca el bloque de normas en ~/.claude/CLAUDE.md en cada re-corrida; este aviso
+# indica cuándo hace falta re-correrlo. Solo re-chequea cada AVISO_DRIFT_HORAS; un resultado CON drift NO
 # se cachea (insiste hasta que re-corras install-brain).
 GLOBAL_NORMS_WARN=""
 nm_stamp="$stampdir/.normas-global"
@@ -172,12 +167,12 @@ if [ "$nm_skip" = 0 ]; then
   fi
 fi
 
-# ── HUELLA LOCAL DE MÁQUINA SIN MIGRAR (rename #312 claude-brain→cortex) — SOLO test -d LOCAL, JAMÁS red
+# ── HUELLA LOCAL DE MÁQUINA SIN MIGRAR (renombre claude-brain→cortex) — SOLO test -d LOCAL, JAMÁS red
 # (nunca `git fetch`/llamada de red: esto es un nudge advisory, no un chequeo de versión). Si el clon de
 # instalación sigue bajo el nombre VIEJO (~/.claude-brain con su .git) y el nuevo (~/.cortex) NO existe,
-# esta máquina es la población en limbo del rename (auditoría 2026-08-29, C1/AUTOSYNC): el resolver bash
-# YA tiene el fallback (resolve_brain_dir, C2) así que autosync/verificación/protección de fuente siguen
-# vivos aquí, pero el WIDGET viejo puede seguir atascado sin self-update (build vieja sin #322) → sugiere
+# esta máquina no migró el renombre: el resolver bash
+# tiene el fallback (resolve_brain_dir) así que autosync/verificación/protección de fuente siguen
+# vivos aquí, pero el WIDGET viejo puede seguir atascado sin self-update (build vieja) → sugiere
 # re-instalar con el one-liner del bootstrap para cerrar el loop de una vez. Throttle propio ~1×/día
 # (independiente de AVISO_DRIFT_HORAS: esto no cambia con el drift del repo). Fail-open, nunca bloquea.
 MIGRACION_WARN=""
@@ -195,30 +190,6 @@ curl -fsSL https://raw.githubusercontent.com/unjordi/cortex/main/bootstrap.sh | 
   printf '%s' "$now" > "$mig_stamp" 2>/dev/null || true
 fi
 
-if [ -f "$stamp" ]; then
-  last=$(cat "$stamp" 2>/dev/null || echo 0)
-  case "$last" in ''|*[!0-9]*) last=0;; esac
-  [ $(( now - last )) -lt $(( horas * 3600 )) ] && emit_and_exit ""
-fi
-
-# ── Delegación al CUERPO PER-REPO COMPARTIDO (drift-cerebro-comun.sh). Hace TODO el chequeo per-repo
-# (brained? · fuente? · #46 personal/compartido · drift · C2 anti-regresión · auto-apply+commit+push en la
-# mini-develop) y devuelve STATUS + mensaje. El THROTTLE (arriba) y la IDENTIDAD (conocimiento-propio) son
-# responsabilidad de ESTE hook interactivo — el cuerpo compartido no las conoce (el sweeper batch no las usa).
-# Auto-apply REAL (no dry-run): en la mini-develop, si procede, sincroniza solo. Ver la lib para el detalle.
-_res=$(drift_chequea_repo "$ROOT")
-_status=$(printf '%s\n' "$_res" | head -1 | sed -n 's/^STATUS=//p')
-_msg=$(printf '%s\n' "$_res" | sed '1d')
-
-# Cachea SOLO los chequeos genuinamente LIMPIOS (personal sano o compartido al día). El flag de guards
-# sobrantes, el drift y el auto-sync NO se cachean (insisten / ya mutaron); "unknown" (sync sin resumen)
-# tampoco → reintenta la próxima sesión en vez de sellar un error transitorio como "al día".
-case "$_status" in
-  clean|personal-clean) printf '%s' "$now" > "$stamp" 2>/dev/null || true ;;
-esac
-
-# Emite: los estados silenciosos solo surface-an la IDENTIDAD (si existe); los ruidosos, identidad + msg.
-case "$_status" in
-  not-brained|no-source|unknown|clean|personal-clean) emit_and_exit "" ;;
-  *) emit_and_exit "$_msg" ;;
-esac
+# Emite los avisos de drift GLOBAL (skills/hooks/normas/migración) si los hay; si no, silencio. Ya NO hay
+# chequeo per-repo (el cerebro vive solo en global; el cerebro por-repo se retiró).
+emit_and_exit ""

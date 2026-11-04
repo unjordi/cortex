@@ -75,6 +75,17 @@ if command -v kpackagetool6 >/dev/null 2>&1; then
   kpackagetool6 -t Plasma/Applet -r "$PLASMOID_ID" 2>/dev/null || true
 fi
 
+echo "==> Removing GNOME Shell extension (if any)"
+GNOME_EXT_UUID="cortex@unjordi.github.io"
+rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/gnome-shell/extensions/$GNOME_EXT_UUID"
+if command -v gsettings >/dev/null 2>&1; then
+  _enabled="$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || true)"
+  if [[ "$_enabled" == *"'$GNOME_EXT_UUID'"* ]]; then
+    _new="$(printf '%s' "$_enabled" | sed -e "s/, '$GNOME_EXT_UUID'//" -e "s/'$GNOME_EXT_UUID', //" -e "s/'$GNOME_EXT_UUID'//")"
+    gsettings set org.gnome.shell enabled-extensions "$_new" 2>/dev/null || true
+  fi
+fi
+
 echo "==> Removing cache"
 rm -rf "$HOME/.cache/cortex"
 

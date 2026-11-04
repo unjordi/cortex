@@ -3,7 +3,7 @@
  * Fuente ÚNICA (no divergir): la usan session-move.js (mover entre slugs, local→local),
  * session-export.js (embarcar una sesión al repo) y session-import.js (sembrarla en otra máquina).
  *
- * Modelo de almacenamiento (verificado 2026-07-23 leyendo el CLI v2.1.218):
+ * Modelo de almacenamiento (según el CLI):
  *   - Cada sesión es UN archivo `~/.claude/projects/<slug>/<sessionId>.jsonl`.
  *   - El <slug> se DERIVA del cwd absoluto: cada carácter no-alfanumérico -> '-'
  *     (ej. "/Users/u/code/cps" -> "-Users-u-code-cps"). El slug NO vive dentro del jsonl,
@@ -58,12 +58,19 @@ function slugFromCwd(cwd) { return cwd.replace(/[^a-zA-Z0-9]/g, '-'); }
 // intacta: la traducción vive SOLO en la rama win32.
 // Lanza Error si la ruta es vacía o intraducible; si simplemente NO EXISTE la devuelve resuelta
 // lexicográficamente, y que exista o no lo juzga el llamador con `cwdExists`.
+// Traduce las formas Git Bash/MSYS/Cygwin/WSL (`/c/..`, `/cygdrive/c/..`, `/mnt/c/..`) a la forma
+// nativa `C:\..`. Pura (sin fs ni platform), para poder ejercitarla con entrada real→salida esperada
+// en CUALQUIER host. Una ruta que no matchea se devuelve intacta.
+function win32DriveTranslate(s) {
+  const m = /^\/(?:cygdrive\/|mnt\/)?([A-Za-z])(\/.*)?$/.exec(s);
+  return m ? m[1].toUpperCase() + ':' + ((m[2] || '/').replace(/\//g, '\\')) : s;
+}
+
 function normalizeCwd(p) {
   if (typeof p !== 'string' || !p.trim()) throw new Error('ruta de proyecto vacía');
   let s = p.trim();
   if (process.platform === 'win32') {
-    const m = /^\/(?:cygdrive\/|mnt\/)?([A-Za-z])(\/.*)?$/.exec(s);
-    if (m) s = m[1].toUpperCase() + ':' + ((m[2] || '/').replace(/\//g, '\\'));
+    s = win32DriveTranslate(s);
   } else if (/^[A-Za-z]:[\\/]/.test(s) || s.startsWith('\\\\')) {
     throw new Error('la ruta "' + p + '" es de estilo Windows y esta máquina es ' + process.platform
       + ': no puedo resolverla ni derivar el slug que usaría el harness. Pásame la ruta LOCAL del'
@@ -161,7 +168,7 @@ function transformLine(piece, toCwd) {
 
 // ── SIDECAR de sesión (~/.claude/projects/<slug>/<sessionId>/: subagents/, tool-results/, workflows/) ──
 // El harness lo deriva de (slug ACTUAL, sessionId) — NO vive dentro del .jsonl, así que mover solo el
-// transcript lo deja huérfano en el slug viejo (medido: hasta 163 transcripts de subagente, ~109 MB).
+// transcript lo deja huérfano en el slug viejo.
 // Estos tres helpers le dan al SIDECAR la MISMA disciplina que `rewriteTranscriptStream` le da al
 // transcript: copia a un temporal, verifica por CARDINALIDAD (mismo nº de archivos a ambos lados) y
 // SOLO ENTONCES publica+borra — nunca un `mv`/`rename` directo del directorio, que en un filesystem
@@ -518,8 +525,8 @@ function sessionAliases() {
 // `sesiones-alias.json` es un mapa COMPARTIDO por todos los masters de la máquina, y escribirlo es un
 // read-modify-write: la escritura atómica (tmp+rename) evita un archivo a medias, pero NO evita que dos
 // escritores concurrentes se pisen — el que lee primero y escribe después borra la clave del otro, en
-// silencio y sin que nada lo asevere. Con dos masters vivos (medido 2026-09-10: una mudanza y un
-// `databases-master` trabajando a la vez) el riesgo es real y ASIMÉTRICO: quien no está mirando pierde
+// silencio y sin que nada lo asevere. Con dos masters vivos (p. ej. una mudanza y otro master
+// trabajando a la vez) el riesgo es real y ASIMÉTRICO: quien no está mirando pierde
 // su alias sin enterarse.
 // `mkdir` es la primitiva atómica en POSIX y en NTFS — el MISMO idioma que ya usa el ecosistema para
 // `masters.json` (el hook de export y el skill reubicar-master), con reciclado del huérfano a los 5 min
@@ -607,7 +614,7 @@ function _writeAliasSinLock(id, label, f) {
 module.exports = {
   MAX_TEXT_BYTES,
   claudeBase, projectsDir,
-  slugFromCwd, normalizeCwd, cwdExists, slugForRepo,
+  slugFromCwd, normalizeCwd, cwdExists, slugForRepo, win32DriveTranslate,
   findSession, rewriteCwd, transformLine, topLevelString,
   readTranscriptText, scanTranscriptFile, rewriteTranscriptStream,
   listFilesRecursive, copyDirRecursive, removeDirRecursive,

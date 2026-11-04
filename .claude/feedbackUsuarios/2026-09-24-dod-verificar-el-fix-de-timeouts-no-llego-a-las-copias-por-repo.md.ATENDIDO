@@ -1,0 +1,4 @@
+# ATENDIDO — muere con el retiro de dod-verificar (2026-11-01)
+
+El hook `dod-verificar` se retiró del cerebro (unjordi lo autorizó directo: >230 FP del corpus, 30 FP de tuning propios). La «Definición de LISTO» se queda como NORMA, con su mecanismo = el trato/contrato (no un hook). Este FP/pendiente ya no aplica: no hay hook que arreglar.
+Rama del retiro: fix/retiro-dod-verificar (va en el LOTE).

@@ -1,0 +1,1 @@
+ATENDIDO 2026-10-22 (triage): H11 (watchdog de rehidratar-hilo no hereda stdio, EOF <1s) resuelto; la Nota-sección-9 (reubicar escribe masters.json) resuelta por el roster LOCAL (b2abe80). RESIDUAL BAJO: H12 (un master con sufijo propio claudio-master-3000 no se exporta) → backlog E4.

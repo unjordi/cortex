@@ -12,7 +12,7 @@ BIN="$(swift build -c release --package-path "$ROOT" --show-bin-path)/Cortex"
 
 # Regenera SIEMPRE el ícono desde el SVG (assets/icon.svg). Es barato (rsvg) y CRÍTICO: si solo se
 # regenerara "cuando falta", un build/AppIcon.icns rancio (p. ej. el medidor de una versión anterior)
-# se quedaría pegado y se instalaría el ícono viejo — bug real del rebrand a Cortex. Si make-icon
+# se quedaría pegado y se instalaría el ícono viejo. Si make-icon
 # falla (sin rsvg) y hay un .icns previo, se usa ese; si no hay ninguno, se aborta abajo.
 ICNS="$ROOT/build/AppIcon.icns"
 "$ROOT/make-icon.sh" >&2 || [[ -f "$ICNS" ]] || { echo "make-app: no pude generar el ícono y no hay uno previo" >&2; exit 1; }

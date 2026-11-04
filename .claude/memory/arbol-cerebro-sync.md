@@ -10,8 +10,15 @@ espejarse.**
 1. **README** raíz — el bloque de árbol de texto (` ``` ` con conectores `├─`/`└─`). **FUENTE del árbol.**
 2. **MEMORY.md** (`.claude/memory/`, auto-cargado por `@import` del CLAUDE.md) — el mismo árbol, entre `<!-- ARBOL:START/END -->`. El CLAUDE.md ahora es la FIRMA de capacidades; el árbol de instalación bajó aquí (se lee vía @import al iniciar).
 3. **macOS** — `macos/Sources/Cortex/PopoverView.swift`, propiedad `brainTiers`.
-4. **Linux** — `src/plasmoid/contents/ui/main.qml`, propiedad `brainTiers`.
+4. **Linux** — `src/plasmoid/contents/ui/main.qml`, propiedad `brainTiers`. **Lo comparten KDE y GNOME.**
 5. **Windows** — `windows/src/Cortex/PopupForm.cs`, `BrainTiers`.
+
+> **GNOME = 6.º CONSUMIDOR, no 6.ª copia.** La extensión (`src/gnome-extension/`) NO trae catálogo propio:
+> `lib/catalogo-cerebro.js` (`parseQml`) LEE `brainTiers` + `brainGlobalHooks`/`brainRepoHooks`/`brainNormNames`
+> del `main.qml` del plasmoide (instalado como `plasmoid-main.qml` en la raíz de la extensión; en desarrollo,
+> `../plasmoid/contents/ui/main.qml`). Editar el catálogo de Linux = editar `main.qml`; GNOME lo toma solo.
+> Si cambias la FORMA del `brainTiers` (no solo su contenido), `verificar-arbol-sync.sh` (check 5, requiere
+> node) se pone rojo hasta que el parser lo entienda.
 
 > **Parcialmente VERIFICADO (2026-08-01):** `docs/flowcharts/verificar-arbol-sync.sh` (corre en `test-brain.sh`/CI)
 > compara la familia 💡 Skills de **README ↔ MEMORY.md ↔ `brain/skills/`** y FALLA si driftean — ese eje ya no
@@ -26,6 +33,9 @@ Cada GUI decide "installed/absent/…" por el **nombre** de la pieza. Si cambias
 **"ausente" (rojo)** por no casar:
 - macOS: `status(_:_:)` en `PopoverView.swift` (el `case "Definition of Done", "Doc <= realidad", …`).
 - Linux: el `if (name === …)` de estado en `main.qml` (junto a la definición de status por pieza).
+- GNOME: `status()`/`isLive()`/`health()` en `src/gnome-extension/lib/catalogo-cerebro.js` — port 1:1 de
+  `brainStatus`/`isBrainLive`/`brainTotal` del QML, pero los NOMBRES (hooks y normas) los lee del QML, así que
+  renombrar una norma en `main.qml` no rompe GNOME. Si cambias la LÓGICA de estado del QML, pórtala ahí.
 - Windows: `BrainState.StatusOf(name)` en `BrainInspector.cs` (el `switch` de los 4 nombres de norma).
 - Los hooks se casan por `knownGlobalHooks`/`knownRepoHooks` (por basename, no por el name mostrado)
   → renombrar el TEXTO de un hook no rompe su estado; renombrar una NORMA sí.

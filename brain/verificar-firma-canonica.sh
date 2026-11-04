@@ -64,7 +64,7 @@ if [ -f "$TARGET/brain/hooks/MANIFEST" ] && [ -f "$TARGET/docs/flowcharts/verifi
   exit 0
 fi
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────────────────────────────  ──
 # (A) CLAUDE.md = firma-árbol con TODAS sus secciones + el @import de MEMORY.md
 echo ""
 echo "== (A) CLAUDE.md = firma-árbol =="
@@ -86,7 +86,7 @@ else
   else
     fail "CLAUDE.md sin el @import de .claude/memory/MEMORY.md — MEMORY.md no se auto-cargaría."
   fi
-  # El árbol de la firma DEBE ir cercado con fence de código (si no colapsa a prosa — lección games).
+  # El árbol de la firma DEBE ir cercado con fence de código (si no colapsa a prosa).
   if grep -q '^```' "$CLAUDEMD"; then
     info 'hay bloque cercado (fence ```) — el árbol de la firma no colapsa a prosa'
   else
@@ -94,7 +94,7 @@ else
   fi
 fi
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────────────────────────────  ──
 # (B) MEMORY.md existe y agrupa el índice POR PREFIJO
 echo ""
 echo "== (B) MEMORY.md = índice por prefijo =="
@@ -107,15 +107,16 @@ else
     || warn "MEMORY.md no parece agrupar por prefijo (no menciona dom-/dev-) — ¿índice plano?"
 fi
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────────────────────────────  ──
 # (C) Memorias PREFIJADAS (dom-/dev-/ux-/qa-) o del NÚCLEO
 echo ""
 echo "== (C) memorias prefijadas o núcleo =="
 if [ ! -d "$MEMDIR" ]; then
   fail "no existe .claude/memory/ en $TARGET"
 else
-  # Núcleo = memorias sin prefijo permitidas (estado/backlog/bitácora/aprendizajes/cómo-trabajar/hilo/cementerio/MEMORY).
-  NUCLEO_RE='^(estado-proyecto|bitacora|aprendizajes|como-trabajar-.+|backlog-.*|hilo-mental-actual|cementerio|MEMORY)$'
+  # Núcleo = memorias sin prefijo permitidas (estado/backlog/bitácora/aprendizajes/cómo-trabajar/hilo + su andamio/overflow/
+  # autorizaciones-vigentes/cementerio/MEMORY). El andamio lo genera checkpoint-mecanico; el overflow, la regla del skill checkpoint.
+  NUCLEO_RE='^(estado-proyecto|bitacora|aprendizajes|como-trabajar-.+|backlog-.*|hilo-mental-actual(\.andamio|-overflow)?|autorizaciones-vigentes|cementerio|MEMORY)$'
   PREFIX_RE='^(dom|dev|ux|qa)-'
   unpref=0
   while IFS= read -r f; do
@@ -130,7 +131,7 @@ else
   [ "$unpref" -eq 0 ] && info "todas las memorias están prefijadas o son del núcleo."
 fi
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────────────────────────────  ──
 # (D) Invariante 1:1  ·  cada memoria indexada  +  cada enlace resuelve a archivo real
 echo ""
 echo "== (D) 1:1 MEMORY.md ↔ archivos =="
@@ -174,26 +175,36 @@ else
   info "(D) omitido: falta MEMORY.md o .claude/memory/."
 fi
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────────────────────────────  ──
 # (E) Nombres de hook STALE / RETIRADOS en la prosa (CLAUDE.md + MEMORY.md)
 echo ""
 echo "== (E) sin nombres de hook retirados en la prosa =="
-# Denylist PRECISA de hooks que el cerebro RETIRÓ: si aparecen en la prosa, la doc miente.
-# (Baja tasa de FP a propósito: NO adivinamos "todo lo que parezca hook", solo lo confirmado-retirado.)
-RETIRED_HOOKS="precompact-volcar-estado"
+# Denylist de hooks RETIRADOS: se DERIVA del clon (fuente única), no hardcodeada (MEDIO auditoría
+# 2026-10-22: la lista fija 'precompact-volcar-estado' driftaba del MANIFEST, que marca `retirado` a 15
+# hooks —git-branch-guard, secret-scan, merge-squash-guard…—). Union de las DOS listas canónicas del clon
+# donde vive este script: la 2ª columna `retirado` del MANIFEST + el archivo RETIRED. Fallback al seed.
+_MANIFEST="$(dirname "$0")/hooks/MANIFEST"; _RETFILE="$(dirname "$0")/hooks/RETIRED"
+RETIRED_HOOKS=""
+[ -f "$_MANIFEST" ] && RETIRED_HOOKS="$RETIRED_HOOKS $(awk '$1!~/^#/ && $2=="retirado"{print $1}' "$_MANIFEST" 2>/dev/null)"
+[ -f "$_RETFILE" ]  && RETIRED_HOOKS="$RETIRED_HOOKS $(grep -vE '^[[:space:]]*(#|$)' "$_RETFILE" 2>/dev/null)"
+RETIRED_HOOKS=$(printf '%s\n' $RETIRED_HOOKS | grep -E '^[A-Za-z0-9_-]+$' | sort -u | tr '\n' ' ')
+[ -n "$RETIRED_HOOKS" ] || RETIRED_HOOKS="precompact-volcar-estado"
+# Warn SOLO en una línea que menciona el hook SIN marca de retiro (lo trata como si siguiera VIVO). Una
+# nota de retiro legítima ("X se RETIRÓ / absorbió / consolidó / reemplazó / 🪦 / lápida") NO es stale.
+_RET_MARK='retir|jubil|absorb|consolid|reemplaz|deprecat|🪦|l[áa]pida'
 stale=0
 for doc in "$CLAUDEMD" "$MEMMD"; do
   [ -f "$doc" ] || continue
   for h in $RETIRED_HOOKS; do
-    if grep -qF "$h" "$doc"; then
-      warn "hook RETIRADO nombrado en $(basename "$doc"): '$h' — la prosa quedó stale (ya no existe ese guard)."
+    if grep -F "$h" "$doc" 2>/dev/null | grep -viqE "$_RET_MARK"; then
+      warn "hook RETIRADO '$h' nombrado SIN marca de retiro en $(basename "$doc") — la prosa lo trata como si siguiera vivo (stale)."
       stale=$((stale+1))
     fi
   done
 done
-[ "$stale" -eq 0 ] && info "sin menciones a hooks retirados conocidos."
+[ "$stale" -eq 0 ] && info "sin menciones VIVAS a hooks retirados (denylist derivada del MANIFEST + RETIRED del clon)."
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────────────────────────────  ──
 echo ""
 verdict="ok"
 [ "$WARN" -gt 0 ] && verdict="drift"

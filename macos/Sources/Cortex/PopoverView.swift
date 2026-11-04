@@ -8,6 +8,8 @@ struct PopoverView: View {
     @ObservedObject var model: QuotaModel
     /// Real fetch trigger (launches cortex-fetch, then reloads).
     var onRefresh: () -> Void
+    /// Apagar con ⏻: desactiva los LaunchAgents, pone la marca de apagado y sale (AppDelegate.apagarYSalir).
+    var onQuit: () -> Void = { NSApp.terminate(nil) }
 
     @State private var tab = 0
     /// Hoja del Cerebro actualmente expandida ("<tier>-<idx>"), o nil.
@@ -278,7 +280,7 @@ struct PopoverView: View {
                 .foregroundStyle(label.opacity(0.7))
                 .help("Actualizar ahora (datos + versión)")
 
-                Button(action: { NSApp.terminate(nil) }) {
+                Button(action: { onQuit() }) {
                     Image(systemName: "power").hoverHighlight()
                 }
                 .buttonStyle(.borderless)
@@ -330,6 +332,7 @@ struct PopoverView: View {
     private var limitsTab: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Límites de uso").font(.headline)
+            authBanner
             usageSection("Sesión (5 h)", model.snapshot?.five_hour)
             usageSection("Semanal (7 d)", model.snapshot?.weekly)
 
@@ -410,7 +413,11 @@ struct PopoverView: View {
 
     @ViewBuilder
     private func usageSection(_ title: String, _ bucket: Bucket?) -> some View {
-        let pct = bucket?.percent
+        // Si el reset de la ventana YA pasó, el % cacheado es de ANTES del reset (ya no aplica):
+        // se muestra "sin dato" (NUNCA el % viejo ni su barra roja) hasta que llegue una lectura
+        // nueva — una lectura fresca siempre trae resets_at en el FUTURO. (Falla "mide mal al despertar".)
+        let resetPassed = RelativeTime.isPast(bucket?.resets_at)
+        let pct = resetPassed ? nil : bucket?.percent
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(title).fontWeight(.bold)
@@ -420,25 +427,26 @@ struct PopoverView: View {
                     .foregroundStyle(pctColor(pct))
             }
             ProgressBar(pct: pct)
-            Text(caption(bucket))
+            Text(caption(bucket, resetPassed))
                 .font(.caption)
                 .foregroundStyle(label.opacity(0.65))
         }
     }
 
-    /// "Se restablece en Nmin" (futuro) o "Se restableció hace Nmin · actualizando…" (ya pasó → el %
-    /// cacheado quedó viejo y el fetch disparado por el reset lo está poniendo al día).
+    /// "Se restablece en Nmin" (futuro) o "Se restableció hace Nmin · sin lectura nueva" (ya pasó → el %
+    /// cacheado es de antes del reset; NO se muestra, se espera una lectura posterior).
     private func resetLine(_ iso: String?) -> String {
         if RelativeTime.isPast(iso) {
-            return "Se restableció \(RelativeTime.relative(iso)) · actualizando…"
+            return "Se restableció \(RelativeTime.relative(iso)) · sin lectura nueva"
         }
         return "Se restablece \(RelativeTime.resetDetail(iso))"   // "en 4h 36min" / "el mié 7:59 a. m."
     }
 
-    private func caption(_ bucket: Bucket?) -> String {
+    private func caption(_ bucket: Bucket?, _ resetPassed: Bool = false) -> String {
         guard let bucket else { return "" }
         var s = resetLine(bucket.resets_at)
-        if let cost = bucket.cost_usd {
+        // Con el reset ya pasado no hay % vigente → tampoco mostramos su costo equiv (sería del ciclo viejo).
+        if !resetPassed, let cost = bucket.equiv_session_cost_usd ?? bucket.equiv_weekly_cost_usd {
             s += String(format: " · ≈ $%.2f (API equiv local)", cost)
         }
         return s
@@ -667,6 +675,51 @@ struct PopoverView: View {
                 }
             }
         }
+    }
+
+    /// Banner de aviso de autenticación (login por-expirar / expirado / sin cuenta) con botón de re-login.
+    /// Nil-silencioso: no aparece si el login está OK (authNotice == nil).
+    @ViewBuilder private var authBanner: some View {
+        if let notice = model.authNotice {
+            let isHard = model.authState == "expired" || model.authState == "no_credentials"
+            let tint = Color(hex: isHard ? "#dc3545" : "#e8884a")
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: isHard ? "exclamationmark.triangle.fill" : "clock.badge.exclamationmark")
+                        .foregroundStyle(tint)
+                    Text(notice.message)
+                        .font(.caption)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if notice.offerRelogin {
+                    Button(action: { relogin(model.reloginAccount) }) {
+                        Text("Re-loguear en Claude").font(.caption).fontWeight(.medium)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(tint)
+                    .controlSize(.small)
+                }
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(tint.opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
+    /// Abre Terminal.app y corre el flujo oficial de re-login (abre el navegador): `claude auth login
+    /// --claudeai [--email <cuenta>]`. Mismo patrón que `resume` (Terminal vía osascript, reusa shQuote/appleEscape).
+    private func relogin(_ account: String?) {
+        var cmd = "claude auth login --claudeai"
+        if let a = account, isPlausibleEmail(a) { cmd += " --email \(shQuote(a))" }
+        let osa = "tell application \"Terminal\"\nactivate\ndo script \"\(appleEscape(cmd))\"\nend tell"
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        proc.arguments = ["-e", osa]
+        try? proc.run()
+    }
+    private func isPlausibleEmail(_ s: String) -> Bool {
+        s.range(of: "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$", options: .regularExpression) != nil
     }
 
     /// Abre Terminal.app y resume la sesión: `cd <cwd> && claude --resume <id>`.
@@ -1331,18 +1384,9 @@ struct PopoverView: View {
                 emoji: "🔒", title: "Hooks Forzosos", color: Color(hex: "#cf5a49"),
                 subtitle: "hooks que bloquean (deny) — no negociables",
                 items: [
-                    BrainItem("🚧", "git-branch-guard", "push/merge a develop·main → denegado, te redirige a ramita→MR",
+                    BrainItem("🔗", "merge-develop-guard", "push directo a develop·main, o MR sin --squash/sin tu OK → denegado; a main exige OK súper-explícito",
                               "PreToolUse · Bash",
-                              "Escanea cada comando: si ve un `git push` o un merge que apunte a develop/main, lo deniega y te recuerda el flujo ramita→MR. Sin jq falla ABIERTO (no bloquea)."),
-                    BrainItem("🔗", "merge-develop-guard", "MR a develop sin --squash o sin tu OK → denegado; a main exige OK súper-explícito",
-                              "PreToolUse · Bash",
-                              "Candado ÚNICO del punto de merge (2026-09-17, consolida a los antiguos merge-squash-guard + confirmar-merge-develop). Un `gh pr merge`/`glab mr merge` a develop sin --squash se deniega, para que la ramita colapse a un commit curado; además busca tu OK explícito en el chat reciente antes de integrar. A main exige lenguaje de release ('hasta main', 'libera') y va SIN squash (conserva historia). Un 'sigue/avanza' NO cuenta como autorización."),
-                    BrainItem("🕵️", "secret-scan", "commit/push con un secreto → denegado",
-                              "PreToolUse · Bash",
-                              "Escanea lo que ENTRA al repo (staged en commit, saliente en push) buscando llaves/tokens/claves privadas de formato inconfundible (AWS, PEM, Anthropic, OpenAI, GitHub, GitLab, Slack, Google). Si aparece uno → bloquea: una credencial pusheada queda comprometida aunque la borres. Escape: --no-verify."),
-                    BrainItem("✅", "dod-verificar", "Def. of Done (ver Norma 🎯 DoD) sin build+tests+memoria → denegado",
-                              "Stop",
-                              "Al cerrar el turno, si dijiste 'listo/en producción' tras tocar código fuente, exige evidencia de build+tests verdes y memoria al día, o bloquea el cierre."),
+                              "Candado ÚNICO de git. Como PASO 0 deniega el `git push`/merge directo a develop/main y te redirige a ramita→MR (absorbió a git-branch-guard, 2026-10-21). Un `gh pr merge`/`glab mr merge` a develop sin --squash se deniega, para que la ramita colapse a un commit curado; además busca tu OK explícito en el chat reciente antes de integrar. A main exige lenguaje de release ('hasta main', 'libera') y va SIN squash (conserva historia). Un 'sigue/avanza' NO cuenta como autorización."),
                     BrainItem("💸", "delegacion-gate", "reclutar agente con costo → pide tu consentimiento (puede negar)",
                               "PreToolUse · Task",
                               "Al reclutar un agente calcula su nivel de costo (gratis/incluido/con costo, según tu ventana de 5h) y pide consentimiento mostrando tu cuota real. Puedes negar y el agente no corre."),
@@ -1359,16 +1403,16 @@ struct PopoverView: View {
                               "Al abrir/retomar sesión o tras compactar, reinyecta la rama actual, la norma de git y la orden de leer MEMORY/estado. Antídoto a 'se me va la onda al cambiar de sesión o compu'."),
                     BrainItem("🖥️", "entorno-maquina-guard", "commit de algo machine-specific al .claude/memory/ del repo → aviso",
                               "PreToolUse · Bash",
-                              "Mecanismo de la norma 'el entorno de MÁQUINA vive GLOBAL, jamás en un repo': si un `git commit` mete al .claude/memory/ del repo algo específico-de-esta-máquina (un entorno-maquina.md, aliases personales, rutas de tu $HOME, 'Rosetta' sin condicional) avisa —no bloquea—, porque viaja por git y miente al clonar en otra compu/OS. Eso vive SOLO en la memoria GLOBAL per-máquina (entorno-esta-maquina.md); el repo deja lo portable/condicional."),
+                              "Mecanismo de la norma 'el entorno de MÁQUINA vive GLOBAL, jamás en un repo': si un `git commit` mete al .claude/memory/ del repo algo específico-de-esta-máquina (un entorno-maquina.md, aliases personales, rutas de tu $HOME, 'Rosetta' sin condicional) avisa —no bloquea—, porque viaja por git y miente al clonar en otra compu/OS. Eso vive SOLO en el entorno GLOBAL per-máquina (~/.claude/entorno-maquina.md); el repo deja lo portable/condicional."),
                     BrainItem("📝", "delegacion-registrar", "registra el consentimiento (materializa el “pregunta 1×”)",
                               "PostToolUse · Task",
                               "Tras un consentimiento aprobado lo registra para no volver a preguntar (1× por máquina o por workflow, según el nivel de costo). Materializa el 'pregunta una sola vez'."),
                     BrainItem("🧵", "rehidratar-hilo", "al retomar/tras compactar reinyecta el hilo mental de la tarea",
                               "SessionStart",
                               "Al abrir/retomar sesión o tras compactar, relee .claude/memory/hilo-mental-actual.md y lo reinyecta por additionalContext (canal fiable de SessionStart). Es la mitad 'leer' del par con el skill checkpoint (la mitad 'escribir'). Silencioso si el archivo no existe."),
-                    BrainItem("♻️", "aviso-drift-cerebro", "la copia del cerebro por-repo quedó atrás de la fuente → aviso",
+                    BrainItem("♻️", "aviso-drift-cerebro", "la copia GLOBAL del cerebro quedó atrás de la fuente → aviso",
                               "SessionStart",
-                              "Al iniciar sesión en un repo con el cerebro por-repo instalado, compara esa copia contra la fuente única (sincronizar-cerebro.sh en dry-run, diff por contenido) y, si quedó atrás, avisa para que Claude proponga propagar por el flujo (ramita→MR). No escribe al árbol en repos compartidos. Throttle 6h si salió limpio."),
+                              "Al iniciar sesión compara la copia GLOBAL instalada (~/.claude/hooks, skills y el bloque de normas de ~/.claude/CLAUDE.md) contra la fuente única y, si quedó atrás o se editó en vivo, avisa (warn-only) para portarlo a la fuente y re-correr install-brain. Throttle propio por frente, 6h si salió limpio. El cerebro ya no viaja por-repo (solo global)."),
                     BrainItem("💾", "exportar-sesion-master", "auto-export de las sesiones *-master a ~/.claude-sessions (o Drive vía CLAUDE_SESSIONS_DRIVE); detached, sobrevive el cleanup de 30 días",
                               "Stop · SessionEnd · PreCompact",
                               "Re-exporta el .gz de las sesiones *-master a ~/.claude-sessions (o el Drive vía CLAUDE_SESSIONS_DRIVE) para que la MISMA conversación se resuma en cualquier compu. 3 gatillos: Stop (backbone, con debounce ~20 min/sesión → mantiene la master fresca aunque nunca cierre limpio), SessionEnd (estado final + detecta/registra un master nuevo) y PreCompact (bonus, justo antes de compactar). Corre detached: sobrevive el cleanup de 30 días de las sesiones."),
@@ -1380,13 +1424,13 @@ struct PopoverView: View {
                               "Al iniciar sesión en un repo con remoto, y como mucho cada 24h, lanza limpiar-ramas.sh en segundo plano para borrar las ramas locales ya integradas (MR mergeado con --squash → remota borrada, o commits ya en la base por equivalencia de parche). Conserva todo trabajo sin integrar; nunca toca la actual/base/develop/main/Develop*/keep/*."),
                     BrainItem("🧺", "recordar-cosechar", "espejo automático del TaskList vivo al backlog durable (estado-proyecto.md)",
                               "Stop",
-                              "Al terminar un turno, vuelca los PENDIENTES del TaskList vivo de la sesión a un bloque fenced dentro de .claude/memory/estado-proyecto.md (determinista, sin LLM; solo si el .md ya existe). Idempotente y silencioso. El nudge de cosecha/backlog que traía antes se retiró (overhaul hooks 2026-09-18, puramente advisory) — esa disciplina queda en la norma global, no en un hook."),
+                              "Al terminar un turno, vuelca los PENDIENTES del TaskList vivo de la sesión a un bloque fenced dentro de .claude/memory/estado-proyecto.md (determinista, sin LLM; solo si el .md ya existe). Idempotente y silencioso."),
                     BrainItem("⏳", "aviso-contexto", "el contexto se está llenando → ordena checkpoint y propón /compact",
                               "PostToolUse",
-                              "Vigila cuánto creció el contexto desde el último /compact y, al cruzar bandas por debajo del auto-compact, inyecta un aviso escalado (heads-up → checkpoint ahora → inminente) para volcar el hilo con checkpoint y compactar proactivamente. Convierte el auto-compact-sorpresa en caso raro."),
+                              "Vigila cuánto creció el contexto desde el último /compact y, al cruzar bandas por debajo del auto-compact, inyecta un aviso escalado (heads-up → checkpoint ahora → inminente) para volcar el hilo con checkpoint y compactar proactivamente."),
                     BrainItem("🌳", "proteger-arbol", "git destructivo que orfanaría commits sin pushear → aviso (no bloquea)",
                               "PreToolUse · Bash",
-                              "Antes de un git destructivo (reset --hard, rebase, checkout -f, branch -D) que podría orfanar commits sin pushear en el árbol de trabajo, avisa —no bloquea. Antídoto a un caso real: un agente de fan-out reseteó HEAD en el árbol compartido y dejó huérfano un commit del orquestador."),
+                              "Antes de un git destructivo (reset --hard, rebase, checkout -f, branch -D) que podría orfanar commits sin pushear en el árbol de trabajo, avisa —no bloquea."),
                     BrainItem("🧬", "proteger-fuente-cerebro", "editas la copia INSTALADA del cerebro (regenerable) → aviso",
                               "PreToolUse · Edit/Write/MultiEdit",
                               "Al editar una skill/hook bajo ~/.claude/skills|hooks que TIENE fuente en el clon canónico (brain/skills|hooks), avisa —no bloquea— que esa copia es REGENERABLE: el próximo install-brain la sobrescribe y la edición muere sin rastro. Redirige a editar la FUENTE y propagar con install-brain/sincronizar. Si no hay fuente (skill/hook puramente local), calla. Corre verificar-cerebro para el drift completo instalada-vs-fuente."),
@@ -1421,6 +1465,9 @@ struct PopoverView: View {
                     BrainItem("🗂️", "to-do", "carga la interfaz de tareas del harness desde el backlog durable (estado-proyecto.md)",
                               "skill · opt-in",
                               "El skill de to-dos/backlog. Con /to-do carga la interfaz de tareas del harness poblada AL VUELO desde el backlog durable (estado-proyecto.md) —sin pedirla a mano cada vez— y cura tareas con higiene durable: título = el QUÉ, estatus en su CAMPO (no incrustado en el texto), fechas ABSOLUTAS (nunca 'hoy'). Separación dura: la task-list del harness es SCRATCH de sesión; la fuente de verdad es estado-proyecto.md."),
+                    BrainItem("🛟", "reconstruir-contexto", "red de emergencia: reconstruye el hilo cuando el checkpoint quedó pobre y /compact fundió el detalle",
+                              "skill · opt-in",
+                              "Cuando retomas y el hilo mental quedó inútil (checkpoint pobre/ausente + un /compact que fundió el detalle real), EXCAVA en orden barato→caro: andamio mecánico → backlog durable (estado-proyecto/bitácora) → transcript .jsonl acotado, y cierra re-volcando un hilo bueno con checkpoint. Es la red de emergencia del par checkpoint/rehidratar-hilo para cuando ESE par falló."),
                     BrainItem("📦", "cerrar-slice", "build+tests+memoria al día + MR con resumen curado por slice",
                               "skill · opt-in",
                               "Ritual de cierre de un slice: build+tests verdes, memoria al día (bitácora), MR con resumen curado en prosa, y el Paso 5 de cosechar lo genérico de vuelta al cerebro global."),
@@ -1433,9 +1480,6 @@ struct PopoverView: View {
                     BrainItem("🩺", "auditar-coherencia-cerebro", "fan-out READ-ONLY sobre el propio cerebro: evasiones/huecos/drift → loop hasta converger",
                               "skill · opt-in",
                               "Lanza un fan-out de auditores READ-ONLY sobre la COHERENCIA del propio cerebro (guards+flowcharts+doc): ¿se evade un guard? ¿un flowchart miente vs el código? ¿doc desincronizada? Cada guard se audita POR EJECUCIÓN en un sandbox (no solo lectura). Con OK, itera fix→re-auditar (cada hallazgo con su test) hasta CONVERGER. Es el modo-cerebro de auditar-proceso-algoritmo, empaquetado."),
-                    BrainItem("🐝", "orquestar-fanout", "fan-out de agentes sin niñera (estado en 2 archivos + contrato de reporte)",
-                              "skill · opt-in",
-                              "Orquestar trabajo paralelizable en varios agentes SIN niñera: asigna ítems autocontenidos del backlog y, al terminar cada agente, su avance queda registrado (bitácora) y su worktree limpio automáticamente. Modelo de estado sin redundancia: estado-proyecto = backlog vivo, bitácora = pasado append-only."),
                     BrainItem("🧪", "auditar-suficiencia-operativa", "¿ALCANZA la doc para HACER el trabajo? tareas reales ✅/⚠️/❌ + re-auditar tras arreglar",
                               "skill · opt-in",
                               "Audita una doc/cerebro por SUFICIENCIA OPERATIVA, no por coherencia: enumera las tareas reales que alguien tendrá que hacer y las califica ✅/⚠️/❌ con archivo:línea. Exige RE-AUDITAR con el prompt idéntico tras arreglar los hallazgos, porque los arreglos introducen contradicciones nuevas."),
@@ -1444,13 +1488,16 @@ struct PopoverView: View {
                               "Auditoría SEMÁNTICA de código: verifica que el mecanismo haga lo que queremos que haga (intención de negocio), no solo que compile y pase tests. Capa 1 = checks bash deterministas (scripts/auditor-semantico/, gratis, corre en CI); Capa 2 = re-verifica cada invariante de invariantes-semanticos.yml con criterio LLM + revisión abierta de bugs. Motor genérico (viaja del template); checks/.yml los afina cada repo a su stack/dominio. Cosecha lo hallado: lo mecánico → check nuevo, lo no-determinista → manifiesto."),
                     BrainItem("📐", "canonizar-cerebro", "lleva un cerebro instanciado drifteado a la firma-árbol canónica (reprefija, reescribe CLAUDE+MEMORY, verifica 1:1)",
                               "skill · opt-in",
-                              "Lleva el cerebro de un proyecto INSTANCIADO (cps, fluxcore, plantilladotnet) a la firma-árbol canónica cuando drifteó: memorias sueltas sin prefijo, CLAUDE.md viejo con guards retirados, MEMORY.md plano. Reclasifica cada memoria a su prefijo (dom-/dev-/ux-/qa- + núcleo) con git mv (historia intacta), dedup con RESCATE de datos únicos, reescribe CLAUDE.md a firma-árbol y MEMORY.md a índice-por-prefijo, y verifica el 1:1 con verificar-firma-canonica.sh (el detector del GATE del auditor). Humano-en-el-loop, no auto-mutador ciego."),
+                              "Lleva el cerebro de un proyecto INSTANCIADO (cps, fluxcore, plantilladotnet) a la firma-árbol canónica cuando drifteó: memorias sueltas sin prefijo, CLAUDE.md desactualizado, MEMORY.md plano. Reclasifica cada memoria a su prefijo (dom-/dev-/ux-/qa- + núcleo) con git mv (historia intacta), dedup con RESCATE de datos únicos, reescribe CLAUDE.md a firma-árbol y MEMORY.md a índice-por-prefijo, y verifica el 1:1 con verificar-firma-canonica.sh (el detector del GATE del auditor). Humano-en-el-loop, no auto-mutador ciego."),
                     BrainItem("🪶", "desinflar-memorias", "adelgaza memorias sin perder lecciones: narrativa → 1 línea, mitos → ⚰️ Lápidas al final",
                               "skill · opt-in",
                               "Desinfla un árbol de memorias inflado de narrativa, tutoriales y conocimiento ya desmentido SIN perder ninguna lección: cada tirada de historia se colapsa a su lección en 1-2 líneas EN SU LUGAR, y los mitos descartados se comprimen a una línea y se mudan a una sección ⚰️ Lápidas AL FINAL del archivo (si los borras, el siguiente agente los re-descubre). No toca la bitácora ni el hilo: son append-only por diseño."),
                     BrainItem("🌙", "turno-nocturno", "Claude trabaja solo de noche: contrato medible, decide-o-parquea, checkpoint c/2h",
                               "skill · opt-in",
                               "Protocolo para dejar a Claude trabajando SOLO de noche: eco del contrato antes de empezar (alcance, criterio de cierre MEDIBLE, lo intocable, dónde queda visible el resultado), preflight de herramientas/quota, regla de decisión (dentro del alcance decide y sigue; fuera, parquea y brinca), autorización durable a disco y checkpoint cada ~2h."),
+                    BrainItem("🔁", "mandato-loop", "el MOLDE para redactar un mandato de /loop de épica/lote",
+                              "skill · opt-in",
+                              "El molde con que un master redacta un mandato de /loop de épica/lote: «Cómo se redacta» (sin trazabilidad, sin «el LISTO lo da el usuario», criterio CIERRA-CUANDO por fila, nada de colas ajenas) + el bloque text completo (worktree por fila, FILAS, ÉPICA TERMINADA, CADA RONDA, DELEGACIÓN, PRUEBAS §1-7, HIGIENE MENTAL, REGLAS). NO es turno-nocturno."),
                     BrainItem("🎓", "investigar-dominio", "ponte experto en un dominio (fan-out DOC-FIRST) → memorias durables + skills",
                               "skill · opt-in",
                               "Ponerte al día como EXPERTO en un dominio/ecosistema maduro sin investigar al aire: delega un fan-out de agentes a barrer la documentación oficial + issues/foros de cada pieza (método DOC-FIRST), cosecha en DOS capas (memorias de investigación indexadas + skills reutilizables, con la capa profunda separada) y REVISA las decisiones actuales contra el conocimiento nuevo para no arrastrar deuda técnica. Trae plantilla-prompt pegable para encargárselo a otro Claude."),
@@ -1468,13 +1515,16 @@ struct PopoverView: View {
                               "Método REUSABLE (independiente de app/dominio) para hacer ingeniería inversa de un sistema legacy con GUI + base de datos: driving la UI real vía navegador (claude-in-chrome u otro plugin) mientras se diffea el estado (BD y/o filesystem/config) antes/después de cada acción → documentación con evidencia real en vez de suposición. Incluye el estándar de DIFF COMPLETO ('indistinguible de la GUI'): fingerprint de TODA la BD antes/después para atrapar cualquier tabla tocada, no solo las candidatas. Requiere navegador con automatización, un visor web de la máquina donde corre la GUI y acceso directo a la BD/filesystem."),
                     BrainItem("📕", "markdown-a-pdf", "convierte .md a PDF pulido y distribuible vía md-to-pdf (npx, sin instalar) con QA visual real",
                               "skill · opt-in",
-                              "Convertir uno o varios .md a PDF pulido y distribuible (doc técnica, reportes, cualquier entregable que un humano abra fuera del chat) usando md-to-pdf vía npx, sin instalar nada. Incluye el gotcha real que borra TODO el formato (--stylesheet reemplaza el tema default en vez de sumarse — usa --css para overrides), el CSS que evita que las tablas se corten feo entre páginas y el loop de QA visual obligatorio (leer cada página generada, no asumir que renderizó bien)."),
-                    BrainItem("🕹️", "control-gui-remota-por-ssh", "ver/operar una GUI remota por SSH sin VNC/RDP — screenshot/click/teclado DPI-aware; Windows·Linux·Mac completos (2026-09-18)",
+                              "Convertir uno o varios .md a PDF pulido y distribuible (doc técnica, reportes, cualquier entregable que un humano abra fuera del chat) usando md-to-pdf vía npx, sin instalar nada. Incluye el gotcha que borra TODO el formato (--stylesheet reemplaza el tema default en vez de sumarse; usa --css para overrides), el CSS que evita que las tablas se corten entre páginas y el loop de QA visual obligatorio (leer cada página generada, no asumir que renderizó bien)."),
+                    BrainItem("🕹️", "control-gui-remota-por-ssh", "ver/operar una GUI remota por SSH sin VNC/RDP — screenshot/click/teclado DPI-aware; Windows·Linux·Mac",
                               "skill · opt-in",
-                              "Ver y operar el escritorio de una máquina remota por SSH puro (sin VNC/RDP): screenshot, clicks, teclado, inspección de ventanas/controles, portapapeles, lanzar/cerrar apps y procesos. Resuelve los dos problemas duros: el aislamiento de logon-session (se despacha cada gesto a la sesión interactiva con una tarea programada) y el DPI-awareness (sin fijarlo, el screenshot sale truncado y los clicks se desvían). Windows: 15 scripts completos y verificados en hardware real. Linux: 13 scripts completos (verificados en cachy KDE/Wayland 2026-09-18); macOS: 13 scripts completos (verificados local 2026-09-18); multi-monitor + captura por-ventana en los tres."),
+                              "Ver y operar el escritorio de una máquina remota por SSH puro (sin VNC/RDP): screenshot, clicks, teclado, inspección de ventanas/controles, portapapeles, lanzar/cerrar apps y procesos. Resuelve los dos problemas duros: el aislamiento de logon-session (se despacha cada gesto a la sesión interactiva con una tarea programada) y el DPI-awareness (sin fijarlo, el screenshot sale truncado y los clicks se desvían). Windows: 15 scripts. Linux (KDE/Wayland): 13 scripts. macOS: 13 scripts. Multi-monitor y captura por-ventana en los tres."),
                     BrainItem("🚚", "reubicar-master", "mover un master —cerebro+sesión— a otra casa/subfolder-repo git, sin lobotomía ni tail",
                               "skill · opt-in",
                               "Muda una sesión master COMPLETA de Claude Code a otro repo (caso canónico: los brain-master a cortex) sin dejar nada a medias: transcript re-anclado + cwd reescrito, cerebro del master migrado por su canal correcto, slug global y TODAS las referencias (masters.json target por-id, alias, symlink memory) corregidas de forma ATÓMICA, residuo quirúrgico barrido y doc=realidad. Úsala cuando un --resume cae en un folder muerto, un master quedó a medias (residuo + resume roto), o quieres consolidar los dos brain-master (Mac + Cachy) en cortex sin lobotomizarlos, sin fuga a un repo público ni duplicado divergente. Hermana de claude-proyecto-autocontenido (esa define DÓNDE vive el cerebro; ésta lo MUEVE de casa)."),
+                    BrainItem("🛰️", "coordinar-claudes", "coordina otros masters: despertar · encargar · vigilar · verificar · relevar OKs",
+                              "skill · opt-in",
+                              "Coordina otras sesiones master de Claude Code desde una sesión coordinadora, hablándoles en nombre del usuario sin hacerse pasar por él. Ciclo: DESPIERTA (despertar-master.sh las resuelve desde los transcripts —último customTitle = nombre, último cwd = dónde resumir, mtime = vida; gana el más reciente por nombre y una sesión viva NO se relanza— NO desde el masters.json que driftea) · ENCARGA la cola completa por Remote Control o su screen · VIGILA con vigilar-master.sh + Monitor (COMMIT / TURNO-TERMINADO / COLGADO / MUERTO) · DESTRABA (colgado, turno terminado con cola, tras un /compact) · VERIFICA por commits y uso real, no por lo que reporta · RELEVA los OKs del usuario (coordinar no es aprobar). Absorbió a despertar-master como su paso 1. NO crea masters, no los muda de repo (eso es reubicar-master) ni siembra sesiones entre máquinas."),
                 ]),
         ]
     }

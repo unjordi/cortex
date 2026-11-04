@@ -12,10 +12,8 @@ de algoritmos** (¿la lógica que implementa el flujo es correcta, completa, efi
 cases, off-by-one, estados imposibles, complejidad escondida?). El auditor **AUDITA, NO modifica**:
 su entregable son **hallazgos priorizados**, no un diff.
 
-> **Por qué existe.** Este patrón se usó suelto ≥3 veces con la misma esencia (cps: auditar el flujo
-> de manejo de proyectos de la app de logística; el propio cerebro: barrerlo por inconsistencias y
-> huecos; fluxcore: paridad vs el estándar de la plantilla) y **nunca tuvo casa durable** — cada vez
-> se re-improvisaba el prompt. Aquí queda destilado. Es hermano de [[diagramar]]: **primero diagramas
+> **Para qué.** Patrón reutilizable (auditar un flujo de negocio, barrer el propio cerebro por
+> inconsistencias y huecos, paridad vs un estándar) con el prompt ya destilado. Es hermano de [[diagramar]]: **primero diagramas
 > el proceso con calidad, luego se lo das al auditor** — sin el mapa, el análisis no sale fino.
 
 ## Cuándo usarlo
@@ -44,8 +42,8 @@ El auditor es tan bueno como lo que le des. En orden de impacto:
    que el auditor razone sobre entradas concretas, no solo en abstracto.
 
 ## Los dos modos
-- **(A) Flujo de una APP** — audita un flujo de negocio/algoritmo concreto de una aplicación (el caso
-  cps: manejo de proyectos, asignación de insumos a operaciones). Entrada: flowcharts del flujo +
+- **(A) Flujo de una APP** — audita un flujo de negocio/algoritmo concreto de una aplicación (p. ej.
+  manejo de proyectos, asignación de insumos a operaciones). Entrada: flowcharts del flujo +
   dominio + datos de estrés.
 - **(B) Un SISTEMA / el propio cerebro** — barre un sistema entero por **inconsistencias y huecos**
   (el caso brain: hooks/skills/normas/docs que se contradicen o dejan ramas sin cubrir). Entrada: el
@@ -86,9 +84,8 @@ Delega con `Task`/subagente. Persona y encargo (adáptalo al target, conserva la
 ## Reglas duras
 - **Se audita LA MÁQUINA, no el manual.** Si el target tiene maquinaria EJECUTABLE, el auditor la EJECUTA
   (sandbox) y mide la CAPACIDAD de sus dependencias instaladas — no su descripción. Y **el entregable
-  prioriza MECANISMO sobre prosa**: lo que se pueda volver código/gate/test se entrega así. Detalle, con el
-  caso que lo destiló (3 rondas de auditoría que engordaron un manual mientras la máquina seguía sin
-  arrancar): [[auditar-coherencia-cerebro]] → «Regla de oro» y «El ENTREGABLE del auditor».
+  prioriza MECANISMO sobre prosa**: lo que se pueda volver código/gate/test se entrega así. Detalle:
+  [[auditar-coherencia-cerebro]] → «Regla de oro» y «El ENTREGABLE del auditor».
 - **Read-only de verdad.** El auditor no muta archivos ni commitea. Corre sin worktree de escritura;
   si necesitara reproducir algo que muta estado, lo aísla — pero por defecto solo LEE y razona.
 - **Consentimiento de costo.** Reclutar el agente pasa por el gate de delegación (`delegacion-gate`):
@@ -99,14 +96,12 @@ Delega con `Task`/subagente. Persona y encargo (adáptalo al target, conserva la
 - **El auditor NO declara LISTO.** Su dictamen es insumo; el cierre sigue exigiendo tu QA o tu
   autorización expresa (definición de LISTO). Un flujo "auditado sin hallazgos graves" es *verificado*,
   no *confirmado*.
-- **Fan-out si el target es grande.** Si son varios flujos/módulos independientes, lanza un auditor por
-  pieza en paralelo (ver [[orquestar-fanout]]) en vez de uno serial gigante.
+- **Target grande: un auditor por secciones.** Si son varios flujos/módulos, el auditor los recorre uno a
+  uno con checkpoint por pieza; en paralelo solo si se justifica (norma «Delegar a agentes»).
 
-## Lo que un banco VERDE no prueba (corpus medido, sep-2026)
+## Lo que un banco VERDE no prueba
 
-Destilado de dos sistemas auditados el mismo día: un cerebro con **1232 asertos en verde** que tenía dos
-críticos vivos, y un toolkit con **seis bancos en verde** al que tres lentes le encontraron **18 hallazgos,
-cuatro de ellos críticos**. En ambos, el arnés bendecía la mecánica **sin llegar nunca a la intención**.
+Un arnés en verde puede bendecir la mecánica **sin llegar nunca a la intención**.
 Cuando audites una suite, busca estas seis formas antes que ninguna otra:
 
 - **El fixture INVENTA la realidad.** Los mocks emitían valores que la herramienta real **nunca produce**:

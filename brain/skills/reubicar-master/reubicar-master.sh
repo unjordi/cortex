@@ -16,13 +16,11 @@
 # toca el transcript, ni masters.json, ni el repo destino. Los pasos destructivos viven EN el handoff,
 # que corre otra sesión con la objetivo cerrada (invariante «nadie se auto-mueve», §6 del SKILL).
 #
-# POR QUÉ ES UN SCRIPT Y NO UN BLOQUE DE MARKDOWN (2026-09-10, hallazgo de la primera mudanza real):
-# cuando el generador vivía como bloque en el SKILL.md, el operador tenía que extraerlo, poblar los
-# parámetros y SOURCEAR el preludio en la MISMA shell, en ese orden — dependencias invisibles que el
-# generador no verificaba. Un `source` dentro de un pipe (que no persiste) produjo un handoff con el
-# preludio SIN embeber: 473 líneas, `bash -n` impecable, certificado como «handoff OK», y muerto en
-# `DST_CWD: unbound variable` al primer arranque. En un proceso el orden no se puede equivocar, y el
-# candado nuevo (`_verificar_handoff`) exige el preludio EMBEBIDO byte a byte.
+# POR QUÉ ES UN SCRIPT Y NO UN BLOQUE DE MARKDOWN: un bloque obliga al operador a poblar los parámetros y
+# SOURCEAR el preludio en la MISMA shell, en ese orden. Un `source` dentro de un pipe (que no persiste)
+# produce un handoff con el preludio SIN embeber: `bash -n` impecable y muerto en
+# `DST_CWD: unbound variable`. En un proceso el orden no se puede equivocar, y el
+# candado (`_verificar_handoff`) exige el preludio EMBEBIDO byte a byte.
 set -euo pipefail
 umask 077
 
@@ -33,8 +31,8 @@ reubicar-master.sh — genera el handoff ejecutable de una mudanza de brain-mast
   VERIFICAR  reubicar-master.sh verificar <handoff.sh>
   PARIDAD    reubicar-master.sh paridad --dst-repo <ruta> [--t1 <mem>]... [--t2-local <arch>]...
              [--bundle <tgz>] [--dst-protegido <subdir>] [--src-repo <ruta>]
-             G-PARITY: que lo del master este PRESENTE Y CORRECTO en el destino. T4 bifurca por la marca
-             `.claude/repo-compartido` (un repo PERSONAL no lleva guards por-repo, por norma dura), y con
+             G-PARITY: que lo del master este PRESENTE Y CORRECTO en el destino. T4 verifica el install
+             GLOBAL (el cerebro vive solo en global; ningun repo lleva guards por-repo), y con
              `--bundle` distingue "falta" de "esta en el bundle, lo deposita S5".
   CLASIFICAR reubicar-master.sh clasificar --src-repo <ruta> --dst-repo <ruta>
              La EVIDENCIA para la Decisión #2 (frontera T1↔T3): por cada memoria del origen, su propia
@@ -163,7 +161,7 @@ _verificar_handoff(){
     ' "$H" "$P" || _fallo_candado \
       "el PRELUDIO no está embebido TEXTUALMENTE en el handoff" \
       "preludio: $P" \
-      "Es el fallo del 2026-09-10: el 'cat' de concatenación recibió una ruta vacía y el handoff salió" \
+      "Causa típica: el 'cat' de concatenación recibió una ruta vacía y el handoff salió" \
       "sin helpers ni derivadas — sintaxis perfecta y muerto en 'DST_CWD: unbound variable'."
     # y la lista de símbolos se verifica contra el preludio REAL: si un símbolo de la lista ya no existe
     # en el preludio, la lista driftó y hay que arreglarla — no seguir creyéndole.
@@ -183,7 +181,7 @@ _verificar_handoff(){
   [ -z "$faltan" ] || _fallo_candado \
     "el handoff no define lo que el PRELUDIO aporta ⇒ moriría en la primera variable" \
     "símbolos ausentes:$faltan" \
-    "Causa típica: el preludio no se embebió (ver el hallazgo del 2026-09-10 en la cabecera del script)."
+    "Causa típica: el preludio no se embebió (ver la cabecera del script)."
 
   # ── (2) parámetros horneados + marcadores de paso en línea EJECUTABLE ───────────────────────────
   faltan=""
@@ -195,7 +193,7 @@ _verificar_handoff(){
 
   # Las líneas no comentadas se materializan UNA vez a un archivo y se grepean ahí: `grep -v … | grep -q`
   # cierra el pipe al primer match, el `grep -v` de arriba muere con SIGPIPE y bajo `pipefail` el candado
-  # fallaría EN FALSO sobre un handoff correcto (medido).
+  # fallaría EN FALSO sobre un handoff correcto.
   nocom="$(mktemp)"
   grep -vE '^[[:space:]]*#' "$H" > "$nocom" || true
   faltan=""
@@ -237,16 +235,13 @@ _verificar_handoff(){
 # nunca vivió en el origen— un `diff` contra un archivo ausente falla siempre y el gate bloquearía un
 # destino COMPLETO.
 #
-# Dos correcciones que salieron de CORRERLO de verdad el 2026-09-10, y que la versión en markdown traía:
+# Dos puntos que solo se ven al CORRERLO:
 #
-#  (a) T4 NO puede exigir `.claude/settings.json` en TODO destino. La norma dura del cerebro dice
-#      «repo PERSONAL: memoria/skills SÍ, guards por-repo NUNCA» (sus guards salen del install GLOBAL +
-#      la cláusula de dedupe; una copia por-repo solo puede driftar). `cortex` no trae la marca
-#      `.claude/repo-compartido` ⇒ es PERSONAL y correctamente NO tiene `settings.json` — y el gate lo
-#      declaraba «lobotomía del cableado», empujando a crear justo la copia que la norma prohíbe. Dos
-#      piezas correctas por separado que se contradecían juntas. Ahora BIFURCA por la marca: la exige en
-#      COMPARTIDO (donde el brain por-repo es el CORREO de quien clona sin brain global) y en PERSONAL
-#      verifica que el install GLOBAL exista, que es de donde salen los candados.
+#  (a) T4 NO exige `.claude/settings.json` por-repo en NINGÚN destino. El cerebro vive SOLO en global
+#      ningún repo lleva guards por-repo — los candados del master
+#      salen del install GLOBAL. Un gate que exigiera `settings.json` por-repo empujaría a crear justo la
+#      copia que la norma prohíbe. Por eso T4 solo verifica que el install GLOBAL exista (de donde salen los
+#      candados); la marca `.claude/repo-compartido`, si está, solo gobierna el scoping de merge-develop-guard.
 #
 #  (b) Las filas de T2 solo son evaluables DESPUÉS de S5, que es quien deposita el bundle. Corrido antes
 #      —lo natural, porque el flujo lo pone tras S1/S2— reportaba «FALTA EN EL DESTINO» sobre archivos que
@@ -341,26 +336,18 @@ if [ "${1:-}" = paridad ]; then
   for m in ${_p_t2[@]+"${_p_t2[@]}"}; do _p_fila "$_p_srcm/$m" "$_p_dstm/$m" "$m" 1; done
   _p_fila "$_p_src/$_p_t2root" "$_p_dst/$_p_t2root" "$_p_t2root" 1
 
-  # ── T4 · CABLEADO. BIFURCA por la marca `.claude/repo-compartido` (norma dura del cerebro) ──────
-  if [ -e "$_p_dst/.claude/repo-compartido" ]; then
-    if [ -f "$_p_dst/.claude/settings.json" ]; then
-      printf '  ok    T4: destino COMPARTIDO y trae su .claude/settings.json (el CORREO de quien clona sin brain global)\n'
-    else
-      printf '  FALTA T4: el destino se declara COMPARTIDO (.claude/repo-compartido) y NO trae .claude/settings.json\n'
-      printf '            => un colega que clone quedaria SIN los guards creyendo que los tiene. Propagalo con sincronizar-cerebro.sh\n'
-      _p_fail=1
-    fi
+  # ── T4 · CABLEADO. El cerebro vive SOLO en global: NINGUN repo lleva guards por-repo.
+  # Los candados del master salen del install GLOBAL; el repo destino no debe traer hooks del cerebro. ──
+  if [ -f "$HOME/.claude/settings.json" ]; then
+    printf '  ok    T4: el install GLOBAL existe (%s hook(s) cableado(s)) => el master despierta con sus candados\n' \
+      "$(jq '[.hooks // {} | .[] | .[]? | .hooks // [] | .[]] | length' "$HOME/.claude/settings.json" 2>/dev/null || echo '?')"
   else
-    printf '  ok    T4: destino PERSONAL (sin marca repo-compartido) => por norma NO lleva guards por-repo;\n'
-    printf '            sus candados salen del install GLOBAL, y exigir settings.json aqui crearia el drift que la norma prohibe.\n'
-    if [ -f "$HOME/.claude/settings.json" ]; then
-      printf '  ok    T4: y el install GLOBAL existe (%s hook(s) cableado(s))\n' \
-        "$(jq '[.hooks // {} | .[] | .[]? | .hooks // [] | .[]] | length' "$HOME/.claude/settings.json" 2>/dev/null || echo '?')"
-    else
-      printf '  FALTA T4: no hay ~/.claude/settings.json => en un destino PERSONAL el master despertaria SIN candados.\n'
-      printf '            => corre el bootstrap del cerebro en esta maquina.\n'; _p_fail=1
-    fi
+    printf '  FALTA T4: no hay ~/.claude/settings.json => el master despertaria SIN candados.\n'
+    printf '            => corre el bootstrap/install-brain del cerebro en esta maquina.\n'; _p_fail=1
   fi
+  # La marca `.claude/repo-compartido` (si existe) solo gobierna el scoping de merge-develop-guard, no el
+  # cerebro; no se exige settings.json por-repo. Si el destino trae copias viejas de hooks del cerebro,
+  # límpialas aparte con `install-brain --limpiar-repo` (no es parte de la mudanza del master).
   [ -f "$_p_dst/.claude/settings.local.json" ] \
     && printf '  ok    T4: settings.local.json presente (el outputStyle propio del master)\n' \
     || printf '  aviso T4: sin settings.local.json => el master despertara SIN su outputStyle (per-maquina, gitignored: se re-crea a mano)\n'
@@ -376,12 +363,8 @@ fi
 # ══════════════════════════════════════════════════════════════════════════════════════════════════
 # SUBCOMANDO `clasificar` — la EVIDENCIA para la Decisión #2, no un veredicto
 # ══════════════════════════════════════════════════════════════════════════════════════════════════
-# Reemplaza al "comando de descubrimiento" que §7 #2 traía antes: un `grep -rilEv` de seis palabras de
-# stack (`plantilladotnet|.NET|blazor|dapper|EF Core|webapi|migracion-ef`) sobre las memorias del origen.
-# MEDIDO el 2026-09-10 en la mudanza real: devolvió **44 de 43** archivos — incluido el propio MEMORY.md —
-# porque "no menciona blazor" no es una señal de PROPIEDAD: casi ninguna memoria menciona el stack, ni las
-# de otro proyecto ni las de trato personal. Un descubrimiento que no descarta nada no descubre nada, y
-# empujaba al operador a inventar el corte de memoria (que es exactamente lo que pasó).
+# Un `grep -v` por palabras del stack sobre las memorias del origen NO sirve como descubrimiento:
+# "no menciona blazor" no es una señal de PROPIEDAD, y empuja al operador a inventar el corte de memoria.
 #
 # Las señales que SÍ hablan de propiedad, y que este subcomando pone en una tabla:
 #   · el `description:` que la memoria trae de sí misma (dice de QUÉ es, en sus palabras);
@@ -482,7 +465,7 @@ fi
 # ══════════════════════════════════════════════════════════════════════════════════════════════════
 # Ninguno tiene un default engañoso. `DRIVE` no tiene fallback: un default que apunta a la ruta de OTRA
 # máquina no ayuda, miente — y CLAUDE_SESSIONS_DRIVE vive en el bloque `env` de ~/.claude/settings.json,
-# así que en el shell plano que este skill prescribe está VACÍA (medido).
+# así que en el shell plano que este skill prescribe está VACÍA.
 ID="${ID:-}"
 DST_REPO="${DST_REPO:-}"
 MASTER_NAME="${MASTER_NAME:-}"
@@ -625,15 +608,15 @@ esac
   "  (el hook de auto-export usa OTRO fallback — \$HOME/.claude-sessions — así que si no la exportas," \
   "   el operador y el mecanismo pueden apuntar a Drives DISTINTOS sin que nada lo note)"
 [ -d "$DRIVE" ] || _abort "PREFLIGHT: el Drive no está montado/sincronizado: $DRIVE"
-MJ="$DRIVE/masters.json"
-[ -f "$MJ" ] || _abort "PREFLIGHT: no hay masters.json en $DRIVE (¿Drive a medio sincronizar?)"
-jq -e . "$MJ" >/dev/null 2>&1 || _abort "PREFLIGHT: $MJ no es JSON válido (¿copia-en-conflicto a medias?)"
-for _cc in "$DRIVE"/masters*.json; do
-  [ -e "$_cc" ] || continue
-  [ "$_cc" = "$MJ" ] && continue
-  _abort "PREFLIGHT: copia-en-conflicto de Drive presente: $_cc" \
-         "  masters.json es UN archivo compartido ⇒ reconcilia a mano ANTES de correr (Decisión #6)"
-done
+# Opción A (2026-10-14): el ROSTER vive LOCAL (~/.claude/masters.json, honra CLAUDE_CONFIG_DIR), NO en el
+# Drive compartido — nadie escribe el compartido (eliminaba los conflictos de sync y el drift entre masters).
+# reubicar hace su UPSERT en el roster LOCAL; el $DRIVE sigue siendo para los RESPALDOS de la sesión
+# (.jsonl.gz / .meta.json). Si el roster local no existe aún (máquina nueva), se crea vacío. El masters.json
+# COMPARTIDO del Drive, si existe, es legacy de SOLO LECTURA — este script ya no lo toca.
+MJ="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/masters.json"
+mkdir -p "$(dirname "$MJ")" 2>/dev/null || true
+[ -f "$MJ" ] || printf '{"masters":[]}\n' > "$MJ"
+jq -e . "$MJ" >/dev/null 2>&1 || _abort "PREFLIGHT: el roster local $MJ no es JSON válido (arréglalo o bórralo para re-crearlo)"
 
 # ── PREFLIGHT de BIN (resuelto como seed.sh, no asumido en ~/code/cortex) ───────────────
 BIN=""
@@ -646,9 +629,8 @@ done
 
 # ── PREFLIGHT de CAPACIDAD de la maquinaria (se mide lo que el guion INVOCA, no su versión) ─────────
 # El BIN resuelto puede ser un cortex INSTALADO más viejo que este skill, y el skill lo descubriría a
-# media mutación. MEDIDO el 2026-09-10 sobre la mudanza real: `~/.local/bin` llevaba 3 días atrás y NO
-# tenía NI `--git-branch` NI `rewriteTranscriptStream` — las dos cosas que S4 invoca DESPUÉS del punto de
-# no retorno. El handoff habría movido 152 MB de transcript y reventado al re-anclar.
+# media mutación. Un `~/.local/bin` viejo puede no tener
+# `--git-branch` ni `rewriteTranscriptStream` — lo que S4 invoca DESPUÉS del punto de no retorno.
 # Se mide CAPACIDAD (que no caduca) y no fechas ni SHAs: un SHA distinto puede ser inofensivo, y uno
 # idéntico puede seguir sin la función. El sello LIB_SHA del handoff es complementario — avisa de un
 # CAMBIO entre generar y correr; esto exige la capacidad, y falla CERRADO.
@@ -690,7 +672,7 @@ HOME_CWD="$(_cwdform "$(_real "$HOME")")"
 _slug(){ node -e 'process.stdout.write(require(process.argv[1]).slugFromCwd(process.argv[2]))' "$BIN/session-lib.js" "$1"; }
 OLD_SLUG="$(_slug "$SRC_CWD")"          # ojo: suele ser COMPARTIDO por cientos de sesiones
 NEW_SLUG="$(_slug "$DST_CWD")"
-PROJ="$HOME/.claude/projects"
+PROJ="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects"   # honra CLAUDE_CONFIG_DIR (MEDIO 2026-10-22); antes fijaba $HOME
 JSONL="$PROJ/$OLD_SLUG/$ID.jsonl"
 NEW_JSONL="$PROJ/$NEW_SLUG/$ID.jsonl"
 GLOBAL_MEM="$PROJ/$(_slug "$HOME_CWD")/memory"   # cerebro de MÁQUINA
@@ -805,16 +787,16 @@ fi
 #     barrido del origen, el `.jsonl` del destino y el depósito T2 en el repo destino se pisan con lo que
 #     esa sesión escriba — y el daemon transitorio CUENTA, porque arrastra el PWD de quien lo lanzó y
 #     puede sembrar un transcript justo en el slug nuevo.
-#   · AVISA (no bloquea) por las de OTROS slugs. Los dos artefactos COMPARTIDOS que quedan —`masters.json`
-#     y el mapa de alias— se escriben BAJO LOCK (`mkdir`, con reciclado del huérfano) por todo lo que pasa
+#   · AVISA (no bloquea) por las de OTROS slugs. Los dos artefactos de registro —el roster LOCAL
+#     `~/.claude/masters.json` (Opción A: ya no el compartido del Drive) y el mapa de alias— pueden tener
+#     varios escritores locales concurrentes, así que se escriben BAJO LOCK (`mkdir`, con reciclado del huérfano) por todo lo que pasa
 #     por la lib, y todo lo demás que el guion toca está scopeado a $ID. **La relajación es sólida SOLO
 #     por ese lock**, y por eso el preflight de capacidad EXIGE `aliasLockPath`: una lib vieja sin lock no
 #     llega hasta aquí. Excepción conocida (§10 del skill): el widget de Plasma escribe el mapa desde QML
 #     sin la lib ⇒ sin lock; por eso `_postcondiciones` asevera además que ningún alias AJENO se perdió —
 #     el lock ata a quien pasa por la lib, la aserción caza a quien no.
 #   · REUBICAR_QUIESCE_ESTRICTO=1 restaura el todo-o-nada (cero sesiones vivas en la máquina).
-# Medido el 2026-09-10: con un `databases-master` trabajando en otro repo, el gate viejo bloqueaba una
-# mudanza que no tenía forma de tocarlo, y el humano tenía que interrumpir su trabajo por un proxy.
+# El gate mide por artefacto: otro master trabajando en otro repo no bloquea la mudanza.
 echo "── G-QUIESCE ──"
 QUIESCE_MIN="${REUBICAR_QUIESCE_MIN:-5}"
 _ref="$(mktemp)"
@@ -953,10 +935,8 @@ _postcondiciones(){
 # ── RE-ANCLAJE de REPARACIÓN · UNA sola definición, la usan S4 (si el move no dejó el par bueno) y S7
 #    (si el resume lo contaminó). Va por `rewriteTranscriptStream` de la MISMA lib que usa el move:
 #    STREAMING con memoria ACOTADA por la ventana de retención, no `readFileSync` del archivo completo.
-#    Medido: el pico lo fija `holdBytes`, NO el tamaño del archivo (mismo pico sobre 107 MB y 428 MB;
-#    con 32 MiB de ventana ≈ 320 MB de pico). Leer el transcript completo a un string costaba 1.73 GiB
-#    sobre un archivo de 429 MB — y este paso corre DESPUÉS del punto de no retorno, que es justo donde
-#    una excepción por memoria es catastrófica.
+#    El pico lo fija `holdBytes`, NO el tamaño del archivo. Este paso corre DESPUÉS del punto de no
+#    retorno, donde una excepción por memoria es catastrófica.
 #    Escribe a un temporal del MISMO dir y publica con rename; preserva el modo y la última línea cortada.
 #    `gitBranchRewritten` vuelve en 0 si el último evento con `cwd` quedó FUERA de la ventana ⇒ se
 #    propaga como fallo (exit 3) para que NO se declare reparado lo que no se reparó.
@@ -1074,7 +1054,7 @@ else
   [ -f "$DRIVE/.export-$ID.lock" ] && _abort "BLOQUEO G-LIVENESS: auto-export detached en vuelo (el hook exporta en background)" || true
   echo "  ok: $TGT_FILE frío hace ${_age}m"
   # SIN techo de tamaño: todo el camino que toca el transcript va en STREAMING con memoria ACOTADA
-  # (medido: el pico lo fija la ventana de retención, no el archivo — ver §9). Lo único que ESCALA con
+  # (el pico lo fija la ventana de retención, no el archivo — ver §9). Lo único que ESCALA con
   # el tamaño es el DISCO: el move escribe la copia completa del destino ANTES de borrar el origen.
   _sz="$(_size "$TGT_FILE")"
   echo "  transcript: $_sz bytes ⇒ necesitas ~$(( _sz / 1024 / 1024 * 4 )) MB libres en el filesystem de"
@@ -1098,6 +1078,37 @@ else
   echo "  (ya movido: el export de esta corrida no aplica; el .gz previo sigue siendo la capa 3)"
 fi
 
+# ── PREFLIGHT T2 (MEDIO auditoría 2026-10-22) ────────────────────────────────────────────────────
+# El conflicto T2 que ABORTA se detectaba SOLO en S5, DESPUÉS del PUNTO DE NO RETORNO de S4 → un
+# conflicto dejaba la mudanza A MEDIAS (refs/transcript/masters.json/alias ya movidos, identidad NO
+# depositada). Se adelanta el MISMO chequeo (READ-ONLY) a AQUÍ, antes de cruzar S4: si un archivo T2
+# NO-hilo difiere en el destino, aborta mientras TODO sigue reversible. El depósito real sigue en S5
+# (que conserva su propio chequeo como defensa en profundidad). Los hilos NO cuentan (se co-ubican en S5).
+# >>> PREFLIGHT-T2-BLOCK (extraíble para test) >>>
+if [ "$YA_MOVIDO" -eq 0 ] && [ -f "$DRIVE/$ID.brain-local.tgz" ]; then
+  echo "── preflight T2 (conflicto ANTES del punto de no retorno) ──"
+  _pt2="$(mktemp -d)"; tar -C "$_pt2" -xzf "$DRIVE/$ID.brain-local.tgz"
+  find "$_pt2" -type f -print > "$_pt2.lista"
+  _pdst_de(){ if [ "$1" = "$T2_ROOT" ]; then printf '%s' "$DST_POSIX/$T2_ROOT"; else printf '%s' "$DST/memory/$1"; fi; }
+  _p_es_hilo(){ case "${1##*/}" in hilo-mental-*) return 0 ;; *) return 1 ;; esac; }
+  _pconf=0
+  while IFS= read -r _pp; do
+    _pf="${_pp#$_pt2/}"; _pd="$(_pdst_de "$_pf")"
+    if [ -e "$_pd" ] && ! diff -q "$_pp" "$_pd" >/dev/null 2>&1 && ! _p_es_hilo "$_pf"; then
+      echo "    CONFLICTO T2 (preflight): '$_pf' existe DISTINTO en el destino"
+      echo "      destino: $_pd"; echo "      bundle : $_pp"
+      _pconf=1
+    fi
+  done < "$_pt2.lista"
+  rm -rf "$_pt2" "$_pt2.lista"
+  if [ "$_pconf" -eq 1 ]; then
+    _abort "ABORTO preflight-T2: un archivo T2 (identidad/autorizaciones) difiere en el destino y es gitignored (git NO lo recupera)." \
+           "  Reconcilia a mano (diff + merge en el destino) y re-corre. Nada se ha mutado aún (estás ANTES del PUNTO DE NO RETORNO de S4)."
+  fi
+  echo "  ok: sin conflictos T2 no-hilo (los hilos se co-ubican en S5) ⇒ seguro cruzar S4"
+fi
+# <<< PREFLIGHT-T2-BLOCK <<<
+
 # ── S4 · bloque ININTERRUMPIDO. Todo lo verificable se hizo ARRIBA; de aquí en adelante el diseño
 #    es "no abortar donde continuar es inofensivo, y abortar solo donde es obligatorio", dejando
 #    siempre el paso alcanzado en $ST para que la reanudación sea por ESTADO y no por adivinanza. ─
@@ -1108,9 +1119,9 @@ if [ "$YA_MOVIDO" -eq 0 ]; then
   # SOLO poda *.jsonl.bak (conserva 10), así que esta copia no se recicla nunca.
   BK="$HOME/.claude/reubicar-backups/$ID.$(date +%s).pre-reubicar.jsonl"
   cp -f "$TGT_FILE" "$BK"
-  cp -f "$MJ" "$DRIVE/masters.json.pre-reubicar-$ID.bak"
+  cp -f "$MJ" "$MJ.pre-reubicar-$ID.bak"   # respaldo del roster LOCAL, junto a él (Opción A: ya no al Drive)
   LIN_ANTES="$(wc -l < "$TGT_FILE" | tr -d ' ')"
-  echo "  respaldos: $BK  ·  $DRIVE/masters.json.pre-reubicar-$ID.bak  ·  $LIN_ANTES líneas de origen"
+  echo "  respaldos: $BK  ·  $MJ.pre-reubicar-$ID.bak  ·  $LIN_ANTES líneas de origen"
   echo "S4:pre-move" > "$ST"
   echo "  ⚠ PUNTO DE NO RETORNO: session-move.js copia al slug nuevo y hace unlink del origen."
   # `--git-branch` normaliza el gitBranch del ÚLTIMO evento con cwd en la MISMA pasada en streaming del
@@ -1157,7 +1168,7 @@ fi
 echo "  cwd de primer nivel: $uniq_n valor/es · último par: $(_ultimo_par "$NEW_JSONL")"
 
 # S4-2c · el modo del transcript. El move CONSERVA el modo del ORIGEN, y el origen puede venir fuera de
-# convención (verificado 2026-09-08: 1 de 131 en 644 donde el resto del slug está en 600) ⇒ se normaliza
+# convención ⇒ se normaliza
 # aquí. En Windows/NTFS es no-op y la postcondición se declara informativa en vez de fingirse.
 echo "  S4-2c · chmod 600"
 chmod 600 "$NEW_JSONL" 2>/dev/null || true
@@ -1184,7 +1195,7 @@ if ! jq --arg id "$ID" --arg t "$TARGET" --arg n "$NOMBRE_FINAL" '
   rm -f "$_tmpm"; rmdir "$_mjlock" 2>/dev/null || true
   echo "S4:jq-masters-FALLO" > "$ST"
   _abort "ABORTO: el fix de masters.json FALLÓ (jq). El transcript YA está movido." \
-         "  Respaldo del registro: $DRIVE/masters.json.pre-reubicar-$ID.bak" \
+         "  Respaldo del registro: $MJ.pre-reubicar-$ID.bak" \
          "  Re-corre este script (detecta el estado y continúa)."
 fi
 mv -f "$_tmpm" "$MJ"
@@ -1218,8 +1229,7 @@ if [ -f "$TGZ" ]; then
   # ── El HILO no es identidad: su llave es (repo × stream), no (master) ──────────────────────────
   # `conocimiento-propio` y `autorizaciones-vigentes` son del MASTER: hay UNA copia buena y que difiera
   # es una anomalía que un humano debe reconciliar. El `hilo-mental-actual.md` NO: cada repo tiene el
-  # suyo, el master escribe uno DISTINTO en cada repo donde trabaja (medido: 70 escrituras al de cortex
-  # y 61 al de plantilladotnet, el MISMO master) y el destino casi siempre llega con uno propio y vivo.
+  # suyo, el master escribe uno DISTINTO en cada repo donde trabaja y el destino casi siempre llega con uno propio y vivo.
   # Tratarlo como identidad convertía la mudanza en un merge manual de un archivo VOLÁTIL en el 100% de
   # los casos normales — un gate que dispara siempre no es un gate, es un peaje. Se CO-UBICA: el destino
   # conserva el suyo, el del master aterriza al lado con el nombre del master, y el PRIMER checkpoint
@@ -1278,8 +1288,7 @@ for _f in "$T2_ROOT" $(for m in ${T2_LOCAL[@]+"${T2_LOCAL[@]}"}; do printf '.cla
 done
 # barrido QUIRÚRGICO del slug COMPARTIDO: SOLO el <id>.jsonl. NUNCA el 'memory' del slug.
 [ -f "$PROJ/$OLD_SLUG/$ID.jsonl" ] && rm -f "$PROJ/$OLD_SLUG/$ID.jsonl" || true
-# ⛔ NO se crea symlink 'memory' en el slug NUEVO — decisión de unjordi (2026-09-08, textual):
-#   "QUIERO QUE ESTO QUEDE SIN SIMLINKS. PUNTO" · "son un pinche bug que no logro que dejen de propagar"
+# ⛔ NO se crea symlink 'memory' en el slug NUEVO.
 # Si el bootstrap ya lo sembró, se RETIRA (solo el enlace: sin -r y sin slash final).
 [ -L "$PROJ/$NEW_SLUG/memory" ] && { rm "$PROJ/$NEW_SLUG/memory"; echo "    retirado el symlink 'memory' del slug nuevo"; } || true
 if [ -e "$PROJ/$OLD_SLUG/memory" ]; then

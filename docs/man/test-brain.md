@@ -3,7 +3,7 @@
 **Sinopsis:** `bash brain/test-brain.sh`
 
 ## Qué hace
-Corre los self-tests del cerebro (hooks, guards de squash, delegación, etc.) en un `$HOME` falso aislado, sin tocar nada de `~/.claude` real. Verifica el comportamiento de los hooks (git-branch-guard, merge-squash-guard, gate de delegación, etc.).
+Corre los self-tests del cerebro (hooks, guards de squash, delegación, etc.) en un `$HOME` falso aislado, sin tocar nada de `~/.claude` real. Verifica el comportamiento de los hooks (merge-develop-guard, proteger-arbol, gate de delegación, etc.).
 
 ## Opciones / argumentos
 | flag / arg | qué hace |

@@ -7,7 +7,7 @@
 # con estado sin guardar puede perder trabajo del usuario -> usa -WhatIf primero si dudas. Gemelo
 # de win-ssh-kill-process.ps1.
 #
-# GOTCHA REAL (verificado 2026-09-18 en cachy): `pgrep -f` matchea el CMDLINE COMPLETO, no el
+# GOTCHA REAL (verificado): `pgrep -f` matchea el CMDLINE COMPLETO, no el
 # nombre del proceso -- un `-Name firefox` con `pgrep -f` matcheo tambien la propia sesion de shell
 # que estaba corriendo el comando de prueba (¡`zsh`/`bash` trae "firefox" en su propio argv porque
 # ESE ERA el comando que se estaba corriendo!). Mismo patron que el ya documentado para `pkill -f`

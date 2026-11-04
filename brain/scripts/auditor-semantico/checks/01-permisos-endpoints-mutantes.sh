@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # 01-permisos-endpoints-mutantes.sh
 #
-# Hallazgo que lo originó: auditoría de MegaFlux (2026-07-15) — todos los endpoints
-# mutantes revisados SÍ estaban gateados, pero es justo el tipo de regresión silenciosa
+# Riesgo: todos los endpoints mutantes deben estar gateados; es el tipo de regresión silenciosa
 # que un unit test no atrapa (el test mockea el service, no pasa por el pipeline HTTP
 # de autorización) y que rompe seguridad si alguien copia-pega un controller nuevo sin
 # el atributo.
@@ -14,8 +13,7 @@
 # Heurística de líneas: acumula el bloque de atributos que precede a cada firma de método
 # y exige que contenga "[Authorize(Policy". Reconoce TAMBIÉN el patrón de policy a nivel de
 # CLASE (un solo `[Authorize(Policy=...)]` para todo el controller, en vez de uno por método
-# — igual de válido; confirmado real en MegaFlux/RolesController, 2026-07-15, que generaba
-# 3 falsos positivos hasta que se agregó este reconocimiento): si el atributo aparece ANTES
+# — igual de válido): si el atributo aparece ANTES
 # de la línea `class ... : ControllerBase`, se asume que cubre TODOS los métodos del archivo
 # y no se exige nada por método.
 set -uo pipefail

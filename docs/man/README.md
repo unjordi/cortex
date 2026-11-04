@@ -12,6 +12,7 @@
 | [checkpoint-mecanico.md](checkpoint-mecanico.md) | Crea un checkpoint mecánico del estado del repo. |
 | [claude-session.md](claude-session.md) | Gestiona el transporte de sesiones de Claude Code por git. |
 | [cortex-term-broker.md](cortex-term-broker.md) | Lanza el broker de terminal de cortex. |
+| [dot2drawio.md](dot2drawio.md) | Convierte DOT de Graphviz a un .drawio editable en draw.io (layout y estilo preservados). |
 | [dot2yed.md](dot2yed.md) | Convierte DOT de Graphviz a GraphML editable en yEd. |
 | [migrar-term-broker.md](migrar-term-broker.md) | Migra la configuración del term-broker. |
 | [mmd2dot.md](mmd2dot.md) | Convierte erDiagram de Mermaid a Graphviz DOT. |
@@ -21,7 +22,6 @@
 | [sessions-extract.md](sessions-extract.md) | Extrae todas las sesiones de un repo. |
 | [install-brain.md](install-brain.md) | Instala el cerebro global de Claude Code. |
 | [uninstall-brain.md](uninstall-brain.md) | Retira el cerebro global de Claude Code. |
-| [sincronizar-cerebro.md](sincronizar-cerebro.md) | Sincroniza el cerebro hacia un repo destino. |
 | [sembrar-mini-develop.md](sembrar-mini-develop.md) | Siembra una rama mini de trabajo desde develop. |
 | [nuevo-repo.md](nuevo-repo.md) | Crea un proyecto GitLab espejo del canónico. |
 | [proteger-ramas.md](proteger-ramas.md) | Protege las ramas de un proyecto GitLab. |
