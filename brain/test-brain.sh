@@ -1142,6 +1142,23 @@ acg_push_toca_base "git push origin feat/x ; git push -o 'c;d' origin develop" \
 acg_push_toca_base "git push -o 'a;b' origin feat/x" \
   && bad "R5-4 control: FP — push a RAMITA con -o quoted se tomó por base" \
   || ok "R5-4 control: 'git push -o \"a;b\" origin feat/x' (ramita) → NO gatea"
+# ── R5-4b: el pelón se cuenta sobre el segmento con el texto entrecomillado como _Q_, no vaciado. Vaciarlo
+# hacía que `-o` se comiera el remoto y un push a ramita parado EN develop se tomara por pelón (FP que solo
+# veía el CI, que corre parado en develop). Repo propio en develop: el resultado no depende del clon. ──
+R54B="$(mktemp -d "${TMPDIR:-/tmp}/brain-r54b.XXXXXX")"
+git -C "$R54B" init -q >/dev/null 2>&1; git -C "$R54B" config user.email t@t; git -C "$R54B" config user.name t
+git -C "$R54B" commit -q --allow-empty -m init >/dev/null 2>&1; git -C "$R54B" branch -M develop >/dev/null 2>&1
+for _r54b in "git push -o 'a;b' origin feat/x" "git push -o 'a b' origin feat/x" 'git push origin "feat/x"'; do
+  acg_push_toca_base "$_r54b" "$R54B" \
+    && bad "R5-4b: FP — parado en develop, '$_r54b' (ramita) se tomó por pelón" \
+    || ok "R5-4b: parado en develop, '$_r54b' (ramita) → NO gatea"
+done
+for _r54b in "git push -o 'a b'" "git push -o 'a;b' origin" "git push --push-option='x y' origin"; do
+  acg_push_toca_base "$_r54b" "$R54B" \
+    && ok "R5-4b: parado en develop, '$_r54b' (pelón) → GATEA" \
+    || bad "R5-4b: FN — parado en develop, el pelón '$_r54b' se coló"
+done
+rm -rf "$R54B"
 # ── R6 (auditoría 2026-10-23, claudio — REGRESIÓN de R5-4): acg_partir_subcomandos no trataba el BACKSLASH →
 # un `\"`/`\'` escapado abría una comilla FALSA y se tragaba el `&& git push` que seguía. FALLA vs ae38530
 # (evadía); contra f440234 SÍ detectaba (el gsub ciego partía por el `&`). Fuera de comilla simple, un

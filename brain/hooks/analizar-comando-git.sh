@@ -90,6 +90,9 @@ acg_segmentos_ejecutables() {   # $1=cmd → texto con heredocs resueltos + comi
 # commit / dato de un grep / doc NO dispara los guards (Fix #2 · H13), PERO ya no a ciegas: primero pasa
 # por acg_segmentos_ejecutables (arriba), que resuelve heredocs y reinyecta lo que un ejecutor SÍ corre.
 acg_despoja_comillas() { printf '%s' "$(acg_segmentos_ejecutables "$1")" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g"; }
+# Como acg_despoja_comillas, pero deja la marca _Q_ en lugar del texto entrecomillado: para contar posicionales,
+# un `-o 'a;b'` o un `origin "feat/x"` conserva su token (vaciarlo hacía que `-o` se comiera el remoto).
+acg_comillas_a_marca() { printf '%s' "$(acg_segmentos_ejecutables "$1")" | sed "s/'[^']*'/_Q_/g; s/\"[^\"]*\"/_Q_/g"; }
 
 # Parte un comando en SUBCOMANDOS por ; && || & | — QUOTE-AWARE (R5-4, auditoría 2026-10-23, claudio): un
 # ;/&/| DENTRO de comillas ' o " NO parte. Antes un `awk '{gsub(/[;&|]/,"\n")}'` partía a ciegas →
@@ -527,7 +530,7 @@ acg_push_toca_base() {   # $1=cmd  $2=payload_cwd(opcional)
     # (comillas intactas) ANTES de `acg_push_sin_refspec` porque un refspec opaco SÍ cuenta como refspec
     # (posargs=1) y nunca entraría a la rama pelón de abajo — quedaría silenciosamente sin cubrir.
     acg_push_destino_opaco "$sub" && return 0
-    if acg_push_sin_refspec "$subu"; then
+    if acg_push_sin_refspec "$(acg_sin_flag_repo "$(acg_comillas_a_marca "$sub")")"; then
       dir=$(acg_target_dir "$cd_prefix $orig" "$pcwd")   # -C del segmento > cd previo > cwd > PROJECT_DIR
       # Si un checkout/switch PREVIO cambió de rama, el pelón empuja a ESA rama (no a la de HEAD antes del
       # comando). NUEVA (-b/-c) es rama por definición; POSIC solo se cree si es una rama LOCAL real (si no
