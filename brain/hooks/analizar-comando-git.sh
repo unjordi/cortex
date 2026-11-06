@@ -807,6 +807,42 @@ acg_destino_de_mr() { acg__destino_de_mr_full "$1" "${2:-}" | sed -n '1p'; }
 # de red). El consumidor la usa para decidir POLÍTICA (M4), no solo el valor del destino.
 acg_destino_conf() { acg__destino_de_mr_full "$1" "${2:-}" | sed -n '2p'; }
 
+# acg_origen_de_mr: la rama de ORIGEN (source/head) del MR — mirror de acg_destino_de_mr, consulta propia por
+# API (glab: .source_branch · gh: --json headRefName) con su propio caché por (repo,tool,mrid). La usa el
+# guard para NO exigir BORRAR una rama de INTEGRACIÓN PERSONAL (mini-develop/integracion/epic) al integrarla
+# a develop. Vacío = irresoluble (sin jq/binario/red/timeout/sin-mrid/destino-explícito) → el consumidor
+# mantiene la exigencia actual (fail-safe).
+acg_origen_de_mr() {
+  local raw="$1" pcwd="${2:-}" u tool repo mrid key cache dir out
+  command -v jq >/dev/null 2>&1 || { printf ''; return 0; }
+  dir=$(acg_target_dir "$raw" "$pcwd"); { [ -n "$dir" ] && [ -d "$dir" ]; } || { printf ''; return 0; }
+  u=$(acg_despoja_comillas "$raw")
+  if printf '%s' "$u" | grep -qE 'glab(\.exe)?[[:space:]]+mr'; then tool=glab; else tool=gh; fi
+  mrid=$(acg_mrid "$u"); [ -n "$mrid" ] || { printf ''; return 0; }
+  repo=$(acg_target_remote "$raw" "$pcwd")
+  key=$(printf '%s' "${repo:-$dir}|${tool}|${mrid}" | sed 's/[^A-Za-z0-9]/_/g')
+  cache="${TMPDIR:-/tmp}/acg-mrorigen-${key}"
+  if [ -f "$cache" ] && acg__cache_confiable "$cache"; then cat "$cache"; return 0; fi
+  command -v "$tool" >/dev/null 2>&1 || { printf ''; return 0; }
+  if [ "$tool" = glab ]; then
+    out=$(acg__run_en_dir "$dir" "$ACG_MR_TIMEOUT" glab api "projects/:id/merge_requests/$mrid" ${repo:+-R "$repo"} 2>/dev/null | jq -r '.source_branch // empty' 2>/dev/null)
+  else
+    out=$(acg__run_en_dir "$dir" "$ACG_MR_TIMEOUT" gh pr view "$mrid" ${repo:+-R "$repo"} --json headRefName -q .headRefName 2>/dev/null)
+  fi
+  [ -n "$out" ] || { printf ''; return 0; }
+  printf '%s' "$out" > "$cache" 2>/dev/null; chmod 600 "$cache" 2>/dev/null
+  printf '%s' "$out"
+}
+
+# ¿la rama es de INTEGRACIÓN PERSONAL (NO se borra al integrarla a develop)? Convención mini-develop
+# (Develop<Usuario>) + las «minis de tema» integracion/* y epic/*.
+acg_es_rama_integracion() {
+  case "$1" in
+    Develop[A-Z]*|integracion/*|epic/*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # Lista de MR/PR ABIERTOS del repo, DIGERIBLE a un HINT de candidatos para el juez de merge (capa 3
 # "contexto de identificación"). UNA sola consulta (`glab mr list` / `gh pr list` según el remoto),
 # acotada por timeout y CACHEADA por repo en TMPDIR (clave distinta a la de acg_destino_de_mr). Sirve
