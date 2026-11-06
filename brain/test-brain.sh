@@ -5982,6 +5982,41 @@ rm -f "$QCACHE/apagado"
 rm -rf "$QHOME" "$(dirname "$QROOT")"
 
 echo ""
+echo "== (fck) forzar-checkpoint: Stop hook que BLOQUEA 1× al cruzar el 92% de GOV (decisión unjordi 2026-11-06) =="
+# GOV = autoCompactWindow (1000) con el auto-compact ACTIVO → % directo. Modelo listado (opus-4-8) para que
+# mc_medir tenga ventana. Estos asertos FALLAN contra el código de hoy (no existe el hook). Comparte la
+# medición con aviso-contexto vía medir-contexto.sh.
+FCKH="$(mktemp -d "${TMPDIR:-/tmp}/brain-fck.XXXXXX")"; FCKCFG="$FCKH/cfg"; FCKREPO="$FCKH/repo"
+mkdir -p "$FCKCFG" "$FCKREPO/.claude/memory"
+printf '{"autoCompactWindow":1000,"model":"claude-opus-4-8"}\n' > "$FCKCFG/settings.json"
+fck_tx() { printf '{"message":{"model":"claude-opus-4-8","usage":{"input_tokens":%s,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}\n' "$1" > "$FCKREPO/tx.jsonl"; }
+fck_run() { printf '{"transcript_path":"%s","session_id":"%s"}' "$FCKREPO/tx.jsonl" "$1" \
+  | CLAUDE_CONFIG_DIR="$FCKCFG" CLAUDE_PROJECT_DIR="$FCKREPO" bash "$HOOKS/forzar-checkpoint.sh"; }
+fck_dec() { [ -n "$1" ] || { echo none; return; }; printf '%s' "$1" | jq -r '.decision // "none"' 2>/dev/null; }
+# (1) cruce 93% (930/1000) con sesión fresca → block + orden de /checkpoint
+fck_tx 930; O1="$(fck_run fckA)"
+{ [ "$(fck_dec "$O1")" = block ] && printf '%s' "$O1" | jq -r '.reason // ""' | grep -q '/checkpoint'; } \
+  && ok "fck (1): cruce 92% → decision:block + orden de /checkpoint" \
+  || bad "fck (1): no bloqueó al cruzar el 92%; got: $O1"
+# (2) debajo del 92% (850/1000=85%) con sesión fresca → nada
+fck_tx 850; O2="$(fck_run fckB)"
+[ "$(fck_dec "$O2")" = none ] \
+  && ok "fck (2): 85% (debajo del 92%) → no bloquea" \
+  || bad "fck (2): bloqueó debajo del umbral; got: $O2"
+# (3) MISMO cruce otra vez (misma sesión que (1), sigue 93%) → no 2× (debounce por-cruce, corta el loop)
+fck_tx 930; O3="$(fck_run fckA)"
+[ "$(fck_dec "$O3")" = none ] \
+  && ok "fck (3): mismo cruce otra vez → NO bloquea 2× (debounce por-cruce = sin loop de Stop)" \
+  || bad "fck (3): bloqueó dos veces el mismo cruce (loop); got: $O3"
+# (4) re-arma tras compact: la sesión de (1)(3) baja a 50% (compact) → nada; vuelve a 93% → bloquea otra vez
+fck_tx 500; fck_run fckA >/dev/null 2>&1          # baja → re-arma el stamp
+fck_tx 930; O4="$(fck_run fckA)"
+[ "$(fck_dec "$O4")" = block ] \
+  && ok "fck (4): tras bajar (compact) y volver a cruzar → bloquea otra vez (re-arma)" \
+  || bad "fck (4): no re-detonó tras el re-arm; got: $O4"
+rm -rf "$FCKH"
+
+echo ""
 echo "== (m2) checkpoint-mecanico.js: extractor MECÁNICO en streaming (M2, auditoría 2026-09-11) =="
 # El 80% de un checkpoint COMPLETO a CERO tokens de modelo. TEST CONTRA LA FALLA: memoria acotada (RSS
 # reportado por el propio proceso, no proporcional a un archivo de decenas de MB), reset del ctxTokens en
@@ -7231,6 +7266,9 @@ limpiar|limpiar-impl-residuo
 recordar-cosechar|sincronizar-tasklist
 recordar-cosechar|to-do
 sincronizar-tasklist|to-do
+aviso-contexto|medir-contexto
+forzar-checkpoint|medir-contexto
+aviso-contexto|forzar-checkpoint
 merge-develop-guard|turno-nocturno"
 # auditar-coherencia-cerebro|auditar-proceso-algoritmo: FAMILIA declarada, no ciclo — proceso-algoritmo
 # es la METODOLOGÍA y apunta a secciones CONCRETAS de coherencia-cerebro (que es su modo-cerebro

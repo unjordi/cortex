@@ -53,6 +53,7 @@ proteger-fuente-cerebro  global  hook
 limite-gasto             global  hook
 rehidratar-hilo          global  hook
 aviso-contexto           global  hook
+forzar-checkpoint        global  hook
 aviso-drift-cerebro      global  hook
 exportar-sesion-master   global  hook
 checkpoint-mecanico      global  hook
@@ -71,6 +72,7 @@ drift-cerebro-comun      global  lib
 contrato-hilo            global  lib
 checkpoint-mecanico-comun global lib
 estado-cerebro-comun     global  lib
+medir-contexto           global  lib
 
 sesion-inicio            global  hook
 recordar-cosechar        global  hook
