@@ -1940,6 +1940,49 @@ USUARIO: ok gracias')" = DENY ] \
     || bad "M5-bis: REGRESIÓN — sin declarar inferencia, el piso dejó de aplicar (default dejó de ser conservador)"
 )
 
+# ── COTA DE DÍA del grant de REPO (determinista, develop) · «repo + develop, todo el día CDMX» ──
+# Un OK que NO nombra el id del MR es un grant de REPO; el usuario lo acotó al MISMO DÍA (hora CDMX). La cita
+# del ALLOW debe apoyarse en una línea USUARIO: de HOY CDMX (re-verificación en bash, no en el LLM). Un OK que
+# SÍ nombra el id es DIRECTO → sin cota. El LLM se inyecta in-proc (ALLOW + CITA = 1ª línea USUARIO: del prompt)
+# para ejercitar la capa determinista por el camino REAL (parse+veto+cota). Estos asertos FALLAN contra el
+# código viejo (que no tenía cota de día → ALLOW aunque la cita fuera de ayer).
+( _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/merge-develop-guard.sh"
+  _juez_llamar_api() { local c; c=$(printf '%s\n' "$5" | grep -iE '^[[:space:]]*USUARIO:' | head -1 | sed -E 's/^[[:space:]]*USUARIO:[[:space:]]*//I'); printf 'OK\nCITA: %s\nVEREDICTO: ALLOW' "$c"; }
+  DIATX=$(mktemp)
+  _ts_hoy=$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
+  _ts_ayer=$(date -u -v-2d +%Y-%m-%dT12:00:00.000Z 2>/dev/null || date -u -d '2 days ago' +%Y-%m-%dT12:00:00.000Z)
+  _mk_tx() { printf '{"type":"user","timestamp":"%s","message":{"role":"user","content":[{"type":"text","text":"%s"}]}}\n' "$1" "$2" > "$DIATX"; }
+  RG='hacer el merge de pisamrpclaude hasta develop'   # grant de REPO: no nombra el id (86)
+  # pj: _juez_merge destino mrid mensajes hint repo transcript
+  pj() { _juez_merge "$1" "$2" "$3" "" "$4" "$5"; }
+  # (1) grant de repo + cita de HOY → ALLOW
+  _mk_tx "$_ts_hoy" "$RG"
+  [ "$(pj develop 86 "USUARIO: $RG" pisamrpclaude "$DIATX")" = ALLOW ] \
+    && ok "cota-dia (1): grant de repo (sin id) + cita de HOY CDMX → ALLOW" \
+    || bad "cota-dia (1): frenó un grant de repo del MISMO día"
+  # (2) MISMO grant pero la cita es de AYER → DENY (la cota de día override; falla contra el código viejo)
+  _mk_tx "$_ts_ayer" "$RG"
+  [ "$(pj develop 86 "USUARIO: $RG" pisamrpclaude "$DIATX")" = DENY ] \
+    && ok "cota-dia (2): grant de repo cuya cita es de AYER → DENY (cota de día)" \
+    || bad "cota-dia (2): dejó pasar un grant de repo de un día anterior (no acotó el día)"
+  # (3) OK DIRECTO (la cita nombra el id 86) con transcript de AYER → ALLOW (sin cota de día; comportamiento directo intacto)
+  _mk_tx "$_ts_ayer" "mergea el 86 a develop"
+  [ "$(pj develop 86 'USUARIO: mergea el 86 a develop' pisamrpclaude "$DIATX")" = ALLOW ] \
+    && ok "cota-dia (3): OK que nombra el id (directo) → sin cota de día (ALLOW aun con transcript de ayer)" \
+    || bad "cota-dia (3): la cota de día tocó un OK directo que nombra el id"
+  # (4) grant de repo SIN transcript ($6 vacío) → no hay fecha que verificar → no aplica la cota (en producción
+  #     ese camino ya habría DENY en el piso barato por ventana sin USUARIO; aquí sólo se comprueba el SKIP).
+  [ "$(pj develop 86 "USUARIO: $RG" pisamrpclaude '')" = ALLOW ] \
+    && ok "cota-dia (4): sin transcript (6o arg vacio) -> la cota no aplica (skip; produccion ya DENY en el piso barato)" \
+    || bad "cota-dia (4): sin transcript la cota frenó en falso"
+  # (5) grant de repo a MAIN → la cota NO es la que decide: el piso de main manda (sin lenguaje de release → DENY)
+  _mk_tx "$_ts_hoy" "$RG"
+  [ "$(pj main 86 "USUARIO: $RG" pisamrpclaude "$DIATX")" = DENY ] \
+    && ok "cota-dia (5): grant de repo a MAIN sin lenguaje de release → DENY (la cota es develop-scoped; el piso de main manda)" \
+    || bad "cota-dia (5): un grant de repo coló a main"
+  rm -f "$DIATX"
+)
+
 # ── VETO DE CITA VERIFICADA + PARSEO POR CENTINELA (capa 1+2, DETERMINISTA sin red) ──
 # CLAUDE_MERGE_JUEZ_MOCK_RAW inyecta el TEXTO CRUDO de respuesta del LLM → ejercita el parseo del centinela
 # 'VEREDICTO:' (tail -1) y el veto determinista de cita (la CITA de un ALLOW debe existir VERBATIM en una
