@@ -942,6 +942,7 @@ acg_recent_intercalado() {  # $1=ruta del transcript .jsonl → imprime la conve
   tail -n 6000 "$1" 2>/dev/null | jq -rs '
     [ .[]
       | select((.isMeta // false) != true)                # descarta META/inyectados (no son del usuario)
+      | select((.isCompactSummary // false) != true)      # el resumen de un /compact es role:user pero lo escribió el MODELO (parafrasea autorizaciones) → NO es el usuario
       | ( if (.type == "attachment")
              and ((.attachment.type? // "") == "queued_command")
              and ((.attachment.origin.kind? // "") == "human")
@@ -993,6 +994,7 @@ acg_tiene_user_fechado() {
   local n
   n=$(tail -n 6000 "$1" 2>/dev/null | jq -rs '
     [ .[] | select((.isMeta // false) != true)
+      | select((.isCompactSummary // false) != true)      # un resumen de /compact no cuenta como línea USUARIO fechada
       | select(((.message.role // .type) == "user") or ((.type) == "attachment" and ((.attachment.type? // "") == "queued_command")))
       | select((.timestamp // "") != "") ] | length' 2>/dev/null)
   case "$n" in ''|0) return 1 ;; *) return 0 ;; esac
@@ -1005,6 +1007,7 @@ acg_user_lineas_hoy_cdmx() {
     (now - $off | strftime("%Y-%m-%d")) as $hoy
     | .[]
     | select((.isMeta // false) != true)
+    | select((.isCompactSummary // false) != true)      # SEGURIDAD: el resumen de un /compact es role:user pero lo escribió el MODELO (parafrasea «unjordi autorizó…») → jamás cuenta como autorización del usuario
     | select((.timestamp // "") != "")
     | select( (try ((.timestamp | sub("\\.[0-9]+Z$";"Z") | fromdateiso8601) - $off | strftime("%Y-%m-%d")) catch "") == $hoy )
     | ( if (.type == "attachment")

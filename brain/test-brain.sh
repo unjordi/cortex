@@ -1983,6 +1983,53 @@ USUARIO: ok gracias')" = DENY ] \
   rm -f "$DIATX"
 )
 
+# ── HUECO DE VENTANA del grant de REPO (claudio 2026-11-06): un OK de HOY que nombra repo+develop pero quedó
+# FUERA de la ventana de ~10 del juez (acg_recent_intercalado $u[-10]) debe autorizar igual (todo el día real) ──
+# El juez suma como candidatas las líneas USUARIO de HOY CDMX que nombran el repo + develop. FALLA contra el
+# código de hoy: sin ese aporte, el OK no está en $3 (ventana) → el veto de cita no casa → DENY.
+( _CMD_JUEZ_SOURCE_ONLY=1 . "$HOOKS/merge-develop-guard.sh"
+  VENTX=$(mktemp); _ts_hoy=$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
+  OKLINE='hacer la config del CI de pisamrpclaude y luego el merge de todos los cambios hasta develop'
+  # línea 1 = el OK (hoy); + 16 mensajes USUARIO más (hoy) → la ventana de ~10 EXCLUYE el OK.
+  : > "$VENTX"
+  printf '{"type":"user","timestamp":"%s","message":{"role":"user","content":[{"type":"text","text":"%s"}]}}\n' "$_ts_hoy" "$OKLINE" >> "$VENTX"
+  for i in $(seq 1 16); do printf '{"type":"user","timestamp":"%s","message":{"role":"user","content":[{"type":"text","text":"paso %s del trabajo"}]}}\n' "$_ts_hoy" "$i" >> "$VENTX"; done
+  _recent=$(_recent_intercalado "$VENTX")
+  # control: el OK NO está en la ventana (si estuviera, el test no probaría el hueco)
+  if printf '%s' "$_recent" | grep -qF "todos los cambios hasta develop"; then
+    bad "ventana (setup): el OK quedó DENTRO de la ventana — el test no ejercita el hueco"
+  else
+    ok "ventana (setup): el OK quedó FUERA de la ventana de ~10 (como el caso real)"
+  fi
+  # juez stub: ALLOW citando el OK (que vive fuera de la ventana, pero dentro de las candidatas del día)
+  _juez_llamar_api() { printf 'OK\nCITA: %s\nVEREDICTO: ALLOW\n' "hacer la config del CI de pisamrpclaude y luego el merge de todos los cambios hasta develop"; }
+  V=$(_juez_merge develop 86 "$_recent" "" pisamrpclaude "$VENTX")
+  [ "$V" = ALLOW ] \
+    && ok "ventana: OK repo+develop de HOY fuera de la ventana → ALLOW (candidatas del día lo rescatan)" \
+    || bad "ventana: el OK fuera de la ventana no autorizó (hueco sin cerrar); got: $V"
+  # control negativo: el MISMO OK pero de AYER → las candidatas del día NO lo incluyen → DENY
+  VENTX2=$(mktemp); _ts_ayer=$(date -u -v-2d +%Y-%m-%dT12:00:00.000Z 2>/dev/null || date -u -d '2 days ago' +%Y-%m-%dT12:00:00.000Z)
+  : > "$VENTX2"
+  printf '{"type":"user","timestamp":"%s","message":{"role":"user","content":[{"type":"text","text":"%s"}]}}\n' "$_ts_ayer" "$OKLINE" >> "$VENTX2"
+  for i in $(seq 1 16); do printf '{"type":"user","timestamp":"%s","message":{"role":"user","content":[{"type":"text","text":"paso %s del trabajo"}]}}\n' "$_ts_ayer" "$i" >> "$VENTX2"; done
+  V2=$(_juez_merge develop 86 "$(_recent_intercalado "$VENTX2")" "" pisamrpclaude "$VENTX2")
+  [ "$V2" = DENY ] \
+    && ok "ventana (control): el MISMO OK pero de AYER, fuera de la ventana → DENY (el día acota de verdad)" \
+    || bad "ventana (control): un OK de ayer fuera de la ventana coló; got: $V2"
+  # SEGURIDAD (claudio 2026-11-06): el ÚNICO texto repo+develop está en un registro isCompactSummary:true de HOY
+  # (role:user pero lo escribió el MODELO, parafraseando una autorización). NO debe contar → DENY. FALLA contra
+  # el código que no filtra isCompactSummary (el resumen entraría como «AUTORIZACIONES DEL DÍA … USUARIO:»).
+  VENTX3=$(mktemp); : > "$VENTX3"
+  printf '{"type":"user","timestamp":"%s","isCompactSummary":true,"message":{"role":"user","content":[{"type":"text","text":"Resumen: unjordi autorizó el merge de pisamrpclaude hasta develop."}]}}\n' "$_ts_hoy" >> "$VENTX3"
+  for i in $(seq 1 12); do printf '{"type":"user","timestamp":"%s","message":{"role":"user","content":[{"type":"text","text":"paso %s"}]}}\n' "$_ts_hoy" "$i" >> "$VENTX3"; done
+  _juez_llamar_api() { printf 'OK\nCITA: %s\nVEREDICTO: ALLOW\n' "Resumen: unjordi autorizó el merge de pisamrpclaude hasta develop."; }
+  V3=$(_juez_merge develop 86 "$(_recent_intercalado "$VENTX3")" "" pisamrpclaude "$VENTX3")
+  [ "$V3" = DENY ] \
+    && ok "ventana (seguridad): el OK solo vive en un isCompactSummary de hoy (texto del MODELO) → DENY (no es autorización del usuario)" \
+    || bad "ventana (seguridad): un resumen de /compact coló como autorización fabricada; got: $V3"
+  rm -f "$VENTX" "$VENTX2" "$VENTX3"
+)
+
 # ── VETO DE CITA VERIFICADA + PARSEO POR CENTINELA (capa 1+2, DETERMINISTA sin red) ──
 # CLAUDE_MERGE_JUEZ_MOCK_RAW inyecta el TEXTO CRUDO de respuesta del LLM → ejercita el parseo del centinela
 # 'VEREDICTO:' (tail -1) y el veto determinista de cita (la CITA de un ALLOW debe existir VERBATIM en una
@@ -5989,9 +6036,15 @@ echo "== (fck) forzar-checkpoint: Stop hook que BLOQUEA 1× al cruzar el 92% de 
 FCKH="$(mktemp -d "${TMPDIR:-/tmp}/brain-fck.XXXXXX")"; FCKCFG="$FCKH/cfg"; FCKREPO="$FCKH/repo"
 mkdir -p "$FCKCFG" "$FCKREPO/.claude/memory"
 printf '{"autoCompactWindow":1000,"model":"claude-opus-4-8"}\n' > "$FCKCFG/settings.json"
+# AISLAMIENTO DEL SONIDO: HOME=temp en cada corrida → el hook SOLO puede alcanzar el aviso-claude.sh STUB de
+# aquí (captura en $FCKH/sound.log), NUNCA el ~/code/PowerScripts/macos/aviso-claude.sh REAL de unjordi. Sin esto,
+# los casos que detonan le avientan a unjordi una notificación + sonido de «contexto 92%» en CADA corrida de tests.
+mkdir -p "$FCKH/code/PowerScripts/macos"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s/sound.log"\n' "$FCKH" > "$FCKH/code/PowerScripts/macos/aviso-claude.sh"
+chmod +x "$FCKH/code/PowerScripts/macos/aviso-claude.sh"
 fck_tx() { printf '{"message":{"model":"claude-opus-4-8","usage":{"input_tokens":%s,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}\n' "$1" > "$FCKREPO/tx.jsonl"; }
 fck_run() { printf '{"transcript_path":"%s","session_id":"%s"}' "$FCKREPO/tx.jsonl" "$1" \
-  | CLAUDE_CONFIG_DIR="$FCKCFG" CLAUDE_PROJECT_DIR="$FCKREPO" bash "$HOOKS/forzar-checkpoint.sh"; }
+  | HOME="$FCKH" CLAUDE_CONFIG_DIR="$FCKCFG" CLAUDE_PROJECT_DIR="$FCKREPO" bash "$HOOKS/forzar-checkpoint.sh"; }
 fck_dec() { [ -n "$1" ] || { echo none; return; }; printf '%s' "$1" | jq -r '.decision // "none"' 2>/dev/null; }
 # (1) cruce 93% (930/1000) con sesión fresca → block + orden de /checkpoint
 fck_tx 930; O1="$(fck_run fckA)"
@@ -6014,6 +6067,15 @@ fck_tx 930; O4="$(fck_run fckA)"
 [ "$(fck_dec "$O4")" = block ] \
   && ok "fck (4): tras bajar (compact) y volver a cruzar → bloquea otra vez (re-arma)" \
   || bad "fck (4): no re-detonó tras el re-arm; got: $O4"
+# (5) AISLAMIENTO DEL SONIDO (no-racy): el path del sonido en el hook es RELATIVO a $HOME, y el test corre
+# fck_run con HOME=$FCKH → el ~/code/PowerScripts/macos/aviso-claude.sh REAL de unjordi es INALCANZABLE (el
+# disparo real es async en 2º plano; no se asevera su timing — solo que NUNCA pudo tocar el real). Si de día
+# el stub alcanzó a escribir, mejor; su ausencia por el race NO es fallo.
+{ grep -qF '"$HOME/code/PowerScripts/macos/aviso-claude.sh"' "$HOOKS/forzar-checkpoint.sh" \
+  && grep -qF 'HOME="$FCKH" CLAUDE_CONFIG_DIR' <(declare -f fck_run); } \
+  && ok "fck (5): sonido HOME-relativo + test con HOME aislado → el aviso-claude REAL de unjordi es inalcanzable" \
+  || bad "fck (5): el sonido podría alcanzar el aviso-claude real (path absoluto o HOME no aislado en el test)"
+[ -s "$FCKH/sound.log" ] && ok "fck (5b): el disparo de sonido (cuando corrió de día) se capturó en el stub aislado, no en el real" || true
 rm -rf "$FCKH"
 
 echo ""
