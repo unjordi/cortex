@@ -977,6 +977,60 @@ acg_recent_intercalado() {  # $1=ruta del transcript .jsonl → imprime la conve
     | join("\n")' 2>/dev/null   # conversación intercalada, del más viejo al más nuevo, marcada por rol
 }
 
+# acg_user_lineas_hoy_cdmx $transcript → imprime el TEXTO de cada mensaje USUARIO cuyo timestamp cae en el
+# día de HOY en hora CDMX (UTC-6 fijo), una línea por mensaje (espacios colapsados). MISMA extracción de
+# texto que acg_recent_intercalado (queued_command humano + message.content; descarta META/system-reminder/
+# tool-result). Vacío si no hay jq/archivo. Lo usa el juez para ACOTAR al DÍA una autorización de REPO (un OK
+# que no nombra el id del MR): la cita del ALLOW debe apoyarse en una de estas líneas (re-verificación en bash,
+# no confiada al LLM). fromdateiso8601 NO acepta fracciones de segundo → se strippean antes.
+# acg_tiene_user_fechado $transcript → 0 si HAY ≥1 registro USUARIO (o queued_command humano) con .timestamp no
+# vacío = transcript DATABLE (producción: Claude Code fecha cada registro). 1 si ninguno trae timestamp (fixture
+# de test / transcript malformado) → el consumidor SALTA la cota de día (no hay fecha que verificar). Que la
+# cota se salte sin timestamps NO es un hueco: la amenaza es inyección en el CONTENIDO, no forjar el transcript.
+acg_tiene_user_fechado() {
+  [ -n "${1:-}" ] && [ -f "$1" ] || return 1
+  command -v jq >/dev/null 2>&1 || return 1
+  local n
+  n=$(tail -n 6000 "$1" 2>/dev/null | jq -rs '
+    [ .[] | select((.isMeta // false) != true)
+      | select(((.message.role // .type) == "user") or ((.type) == "attachment" and ((.attachment.type? // "") == "queued_command")))
+      | select((.timestamp // "") != "") ] | length' 2>/dev/null)
+  case "$n" in ''|0) return 1 ;; *) return 0 ;; esac
+}
+
+acg_user_lineas_hoy_cdmx() {
+  [ -n "${1:-}" ] && [ -f "$1" ] || return 0
+  command -v jq >/dev/null 2>&1 || return 0
+  tail -n 6000 "$1" 2>/dev/null | jq -rs --argjson off 21600 '
+    (now - $off | strftime("%Y-%m-%d")) as $hoy
+    | .[]
+    | select((.isMeta // false) != true)
+    | select((.timestamp // "") != "")
+    | select( (try ((.timestamp | sub("\\.[0-9]+Z$";"Z") | fromdateiso8601) - $off | strftime("%Y-%m-%d")) catch "") == $hoy )
+    | ( if (.type == "attachment")
+           and ((.attachment.type? // "") == "queued_command")
+           and ((.attachment.origin.kind? // "") == "human")
+        then ( (.attachment.prompt? // "") as $p
+               | if ($p|type) == "array"
+                 then ([ $p[] | select((.type?) == "text") | .text ] | join(" "))
+                 elif ($p|type) == "string" then $p
+                 else "" end )
+        else "" end ) as $qc
+    | { role: (if $qc != "" then "user" else (.message.role // .type) end),
+        text: ( if $qc != "" then $qc else
+                ((.message.content // [.message])
+                  | if type=="array"
+                    then (map(if type=="string" then . elif (.type? == "text") then .text else "" end) | join(" "))
+                    else (. // "") end)
+                end ) }
+    | select(.role == "user")
+    | select((.text|type) == "string")
+    | select(.text != "")
+    | select(.text | test("<system-reminder>") | not)
+    | (.text | gsub("\\s+";" "))
+  ' 2>/dev/null
+}
+
 # ¿Hay lenguaje EXPLÍCITO de release (release/libera/a main/a master) en ALGUNA línea 'USUARIO:' de la
 # ventana? Tokens ANCLADOS a límite de palabra (portable BSD+GNU): 'liber' no casa en "deliberada"/
 # "libertad", 'a main' no casa en "a maintenance". Fuente ÚNICA para el PISO de main de confirmar-merge-
