@@ -75,8 +75,21 @@ _lexico_release_en_ventana() { acg_lexico_release "$@"; }
 # respuesta del juez por un curl FALSO por PATH o redefiniendo _juez_llamar_api in-proc — así el parseo por
 # centinela + el VETO de cita + el PISO de main siguen siendo los REALES (un stub del veredicto final los saltaría).
 _juez_merge_uno() {   # $1=destino $2=mrid $3=mensajes $4=hint $5=repo $6=transcript → ALLOW|DENY|UNAVAILABLE_* — UN voto
-  local prompt out txt hint cita temp _resp _estado _cand repo tp
+  local prompt out txt hint cita temp _resp _estado _cand repo tp _dia_repo _dia_block
   hint="${4:-}"; repo="${5:-}"; tp="${6:-}"   # $5/$6 opcionales (los tests llaman con 3 args; sin ellos, set -u)
+  # HUECO DE VENTANA del grant-de-repo (claudio 2026-11-06): el juez solo ve los ~10 últimos USUARIO
+  # (acg_recent_intercalado, $u[-10]); un OK de HOY que nombra el repo+develop pero quedó MÁS atrás nunca entra
+  # → la cota de día (que opera sobre la CITA del ALLOW) ni se alcanza. Para destino develop, suma como
+  # candidatas las líneas USUARIO de HOY CDMX que nombran ESTE repo ($5) Y develop — así «todo el día» es real
+  # aunque el OK esté fuera de la ventana de 10. Bounded: HOY + nombra repo + nombra develop (lo demás lo juzga
+  # el LLM; el veto re-verifica la cita contra estas mismas líneas; la cota de día ya está satisfecha = son de hoy).
+  _dia_repo=""; _dia_block=""
+  if [ "$1" = develop ] && [ -n "$repo" ] && [ -n "$tp" ] && command -v acg_user_lineas_hoy_cdmx >/dev/null 2>&1; then
+    _dia_repo=$(acg_user_lineas_hoy_cdmx "$tp" 2>/dev/null | grep -iFw -- "$repo" 2>/dev/null | grep -iE 'develop' 2>/dev/null)
+    [ -n "$_dia_repo" ] && _dia_block="
+AUTORIZACIONES DEL DÍA (líneas USUARIO: de HOY, hora CDMX, que nombran el repo '$repo' y develop — son del MISMO USUARIO y cuentan como autorización IGUAL que la conversación de arriba, aunque hayan quedado fuera de los últimos turnos; aplica la misma regla del grant-de-repo):
+$(printf '%s\n' "$_dia_repo" | sed 's/^/USUARIO: /')"
+  fi
   # Temperatura EFECTIVA de ESTA llamada. Default 0 (gate reproducible, comportamiento de UNA llamada INTACTO).
   # Solo el dispatcher de voto múltiple (_juez_merge, VOTES≥2) la sube vía _JUEZ_TEMP; una llamada suelta la deja en 0.
   temp="${_JUEZ_TEMP:-0}"
@@ -120,6 +133,7 @@ $hint
 
 Conversación reciente (del más viejo al más nuevo):
 $3
+$_dia_block
 
 PROTOCOLO DE RESPUESTA — razona BREVE (2-5 pasos: (1) destino autoritativo (2) ¿instrucción del USUARIO? (3) ¿a qué MR aplica? ¿un solo candidato? (4) si main, ¿lenguaje de release del USUARIO?), y termina así:
 - Si tu veredicto es ALLOW, incluye ANTES del veredicto una línea con la CITA VERBATIM de la línea USUARIO: en que se apoya la autorización, copiada TAL CUAL aparece:
@@ -162,7 +176,9 @@ VEREDICTO: DENY"
       out=DENY
     else
       # Candidatas = SOLO líneas USUARIO: (jamás ASISTENTE), sin el prefijo de rol → texto crudo del usuario.
-      _cand=$(printf '%s\n' "$3" | grep -iE '^[[:space:]]*USUARIO:' | sed -E 's/^[[:space:]]*USUARIO:[[:space:]]*//I')
+      # + las AUTORIZACIONES DEL DÍA (grant-de-repo fuera de la ventana de 10): ya son líneas USUARIO de HOY
+      # CDMX que nombran repo+develop → la cita del ALLOW puede apoyarse en ellas (y la cota de día abajo pasa).
+      _cand=$(printf '%s\n' "$3" | grep -iE '^[[:space:]]*USUARIO:' | sed -E 's/^[[:space:]]*USUARIO:[[:space:]]*//I'; [ -n "$_dia_repo" ] && printf '%s\n' "$_dia_repo")
       _juez_cita_casa "$cita" "$_cand" || out=DENY
     fi
   fi
