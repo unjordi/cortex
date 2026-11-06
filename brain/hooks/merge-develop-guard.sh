@@ -426,15 +426,25 @@ if [ "$_sq_aplica" = 1 ]; then
     # develop); el RECORDATORIO del contenido del mensaje también. Un irresoluble-con-squash pasa sin recordatorio.
     if [ "$destino" = develop ]; then
       _rehaz=$(_rehaz_sugerido "$cmd")
-      # EXIGE borrar la rama de origen (--remove-source-branch glab / --delete-branch gh). Sobre cmd DESPOJADO.
+      # Borrado de la rama de origen. Sobre cmd DESPOJADO. El origen (rama source del MR) se resuelve por la
+      # MISMA consulta al forge que el destino. Una rama de INTEGRACIÓN PERSONAL (mini-develop Develop<Usuario>,
+      # integracion/*, epic/*) NO se borra: se sigue trabajando en ella → ahí se FRENA si el flag viene puesto.
+      # Para una ramita (feat/…) o un origen irresoluble (fail-safe) se EXIGE el flag, como siempre.
       _cmd_del=$(acg_despoja_comillas "$cmd")
       if printf '%s' "$_cmd_del" | grep -qE 'gh(\.exe)?[[:space:]]+pr'; then
         _flag_del='(--delete-branch([[:space:]]|=|$)|(^|[[:space:]])-d([[:space:]]|$))'; _flag_nom='--delete-branch'
       else
         _flag_del='(--remove-source-branch([[:space:]]|=|$)|(^|[[:space:]])-d([[:space:]]|$))'; _flag_nom='--remove-source-branch'
       fi
-      if ! printf '%s' "$_cmd_del" | grep -qE "$_flag_del"; then
-        _deny_json "FLUJO DE GIT (ley interna): al integrar a develop, la rama de origen se BORRA en el mismo acto — falta $_flag_nom. Sin él la rama queda colgando en el remoto y nadie la vuelve a mirar: de ahí sale la acumulación de ramas viejas en origin. Rehaz el merge con: $_rehaz  — (a main/release y a tus ramas personales no se te exige nada de esto). Receta completa: brain/skills/cerrar-slice/cerrar-slice.sh."
+      _tiene_del=0; printf '%s' "$_cmd_del" | grep -qE "$_flag_del" && _tiene_del=1
+      _origen=$(acg_origen_de_mr "$cmd" "$pcwd")
+      if acg_es_rama_integracion "$_origen"; then
+        if [ "$_tiene_del" = 1 ]; then
+          _deny_json "FLUJO DE GIT: NO borres la rama de origen '$_origen' al integrarla a develop — es tu rama de INTEGRACIÓN PERSONAL (mini-develop Develop<Usuario>, integracion/* o epic/*), de la que sigues trabajando. Quita $_flag_nom del merge."
+          exit 0
+        fi
+      elif [ "$_tiene_del" = 0 ]; then
+        _deny_json "FLUJO DE GIT (ley interna): al integrar a develop, la rama de origen se BORRA en el mismo acto — falta $_flag_nom. Sin él la rama queda colgando en el remoto y nadie la vuelve a mirar: de ahí sale la acumulación de ramas viejas en origin. Rehaz el merge con: $_rehaz  — (a main/release, o cuando el origen es tu mini/integracion/epic, la rama de origen NO se borra). Receta completa: brain/skills/cerrar-slice/cerrar-slice.sh."
         exit 0
       fi
       # El CONTENIDO del squash-message ya NO se valida de forma determinista (decisión de unjordi 2026-10-21:

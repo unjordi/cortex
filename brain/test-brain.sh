@@ -563,7 +563,34 @@ mock_gh_full develop ""; out="$(msj 'gh pr merge 96 --squash --subject "corrige 
 is_deny "$out" && ok "FIX-4: una mención ENTRECOMILLADA de --delete-branch no cuenta como el flag (H6)" \
   || bad "FIX-4: se dejó engañar por la mención del flag dentro de una cadena; got: $out"
 
-rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* "${TMPDIR:-/tmp}"/acg-mrmsg-* 2>/dev/null
+# ── (b1c5) el borrado de la rama de origen NO se exige si el ORIGEN es una rama de integración personal ──
+echo ""
+echo "== (b1c5) merge-develop-guard: no exijas borrar la mini-develop (Develop<Usuario>/integracion/epic) al integrarla a develop =="
+rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* "${TMPDIR:-/tmp}"/acg-mrorigen-* "${TMPDIR:-/tmp}"/acg-mrmsg-* 2>/dev/null
+# stub glab que emite TARGET (destino) y SOURCE (origen) del MR — el guard resuelve ambos por la misma consulta.
+mock_glab_src() { printf '#!/usr/bin/env bash\necho '\''{"target_branch":"%s","source_branch":"%s"}'\''\n' "$1" "$2" > "$MSBIN/glab"; chmod +x "$MSBIN/glab"; }
+# (1) origen = mini-develop, SIN --remove-source-branch -> pasa (hoy: deny). FALLA contra el código viejo.
+mock_glab_src develop DevelopUnjordi; out="$(msj 'glab mr merge 120 --squash --squash-message "integra la mini a develop. Rama: DevelopUnjordi"')"
+{ ! is_deny "$out"; } \
+  && ok "b1c5 (1): origen=DevelopUnjordi a develop SIN --remove-source-branch -> pasa (la mini no se borra)" \
+  || bad "b1c5 (1): exigió borrar la mini-develop; got: $out"
+# (2) origen = mini-develop, CON --remove-source-branch -> deny «la mini no se borra». FALLA contra el viejo (pasaba).
+mock_glab_src develop DevelopUnjordi; out="$(msj 'glab mr merge 121 --squash --remove-source-branch --squash-message "integra la mini. Rama: DevelopUnjordi"')"
+{ is_deny "$out" && printf '%s' "$out" | grep -qi 'NO borres la rama de origen'; } \
+  && ok "b1c5 (2): origen=DevelopUnjordi CON --remove-source-branch -> deny (la mini no se borra)" \
+  || bad "b1c5 (2): no frenó el borrado de la mini; got: $out"
+# (3) origen = ramita feat/x, SIN el flag -> deny como siempre (la regla sigue viva para las ramitas).
+mock_glab_src develop feat/x; out="$(msj 'glab mr merge 122 --squash --squash-message "corrige el IVA. Rama: feat/x"')"
+{ is_deny "$out" && printf '%s' "$out" | grep -q -- '--remove-source-branch'; } \
+  && ok "b1c5 (3): origen=feat/x a develop SIN el flag -> deny (la regla sigue viva para ramitas)" \
+  || bad "b1c5 (3): dejó pasar una ramita sin borrar su rama; got: $out"
+# (4) origen IRRESOLUBLE (glab sin source_branch), SIN el flag -> deny (fail-safe: se mantiene la exigencia).
+mock_glab_full develop ""; out="$(msj 'glab mr merge 123 --squash --squash-message "cambios varios. Rama: ?"')"
+{ is_deny "$out" && printf '%s' "$out" | grep -q -- '--remove-source-branch'; } \
+  && ok "b1c5 (4): origen IRRESOLUBLE (glab sin source_branch) SIN el flag -> deny (fail-safe: se exige)" \
+  || bad "b1c5 (4): con origen irresoluble no cayó al fail-safe; got: $out"
+
+rm -f "${TMPDIR:-/tmp}"/acg-mrdest-* "${TMPDIR:-/tmp}"/acg-mrorigen-* "${TMPDIR:-/tmp}"/acg-mrmsg-* 2>/dev/null
 rm -rf "$MSBIN"
 
 # ─────────────────────────────────────────────────────────────────────────────
