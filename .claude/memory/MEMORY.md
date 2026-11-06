@@ -21,7 +21,8 @@
 🔒 Hooks Forzosos — hooks que bloquean (deny) · no negociables
 ├─ 🔗 merge-develop-guard      push directo a develop·main, o MR sin --squash/sin tu OK → denegado; a main exige OK súper-explícito
 ├─ 💸 delegacion-gate          delegar al llegar al 90% de tu ventana 5h → pide tu OK
-└─ 🛑 limite-gasto             sin ventana 5h Y sin overage (ambos agotados) → freno duro
+├─ 🛑 limite-gasto             sin ventana 5h Y sin overage (ambos agotados) → freno duro
+└─ 🧵 forzar-checkpoint        Stop: al CRUZAR el 92% de GOV bloquea el cierre del turno 1× y ORDENA /checkpoint COMPLETO (+ visible + sonoro); re-arma tras compact (GLOBAL)
 
 🔔 Automático — inyectan / recuerdan (no bloquean)
 ├─ 🖥️  entorno-maquina-guard    commit de algo machine-specific (aliases/rutas de $HOME/Rosetta/entorno-maquina.md) al .claude/memory/ del repo → avisa
@@ -96,6 +97,9 @@ Consentimiento de COSTO al reclutar un agente (tool Task). Clasifica el nivel v�
 
 ### 🔒 🛑 `limite-gasto`  ·  PreToolUse/Task · deny
 FRENO DURO (a diferencia del gate que pregunta): BLOQUEA reclutar un agente SOLO en la condición COMBINADA **AND** (`limite-gasto.sh:48`) — ventana de 5h AGOTADA (`five_hour.percent >= LIMITE_GASTO_5H_PCT`, def **99**) **Y** overage SIN holgura (deshabilitado, o topado, o `utilization >= LIMITE_GASTO_OVERAGE_PCT`, def **100**). Razón: sin cupo del plan ni saldo, el agente moriría a medias. Lee el `state.json` del daemon de cuota (`$XDG_CACHE_HOME/cortex/state.json` o el path de macOS, `:21-24`). CLAVE — NO frena por overage solo (con ventana fresca, overage 100% no para; trabajas cubierto por el plan) ni por ventana agotada sola (ahí delegacion-gate PREGUNTA y tú decides). Sin escape hatch explícito; el mensaje sugiere (a) esperar reset, (b) subir tope/meter saldo, (c) hacerlo sin delegar. Fail-**open** (`:16`,`:24`,`:25`): sin jq, sin snapshot, o snapshot **rancio (>30 min)** → no bloquea (nunca frena a ciegas). Gotcha: "habilitado sin dato de util" se asume CON holgura (`:38-45`) → no frena a ciegas.
+
+### 🔒 🧵 `forzar-checkpoint`  ·  Stop · block (1× por cruce)
+MECANISMO de la nota `2026-11-06-aviso-contexto-ignorado`: `aviso-contexto` solo inyecta `additionalContext` (orden PASIVA) → un master metido en su tarea la ignora y el usuario no la ve; el auto-compact se traga el `/checkpoint` tecleado tarde. **Decisión de unjordi:** al CRUZAR el **CRIT_PCT (92%)** de **GOV** (el punto REAL de compact) el Stop **detona UNA vez, SIN condiciones**: `decision:block` + `reason` que ORDENA «correr /checkpoint COMPLETO antes de cualquier otra cosa» + `systemMessage` VISIBLE para el usuario + **sonido en la Mac** (aviso-claude.sh / chime, fuera de 22:00–08:00). NO verifica que el hilo se haya escrito, NO tiene tope, NO hace loop. **Debounce por-CRUCE** (stamp PROPIO `.forzar-checkpoint[.d/<sid>]`, guarda la última banda): detona solo al subir de banda 0→1; ya en banda 1 (mismo cruce) → `exit 0` (ESO corta el loop de Stop); al bajar ctx tras un compact (band 0) el stamp se re-arma → el próximo cruce re-detona. **Stamp SEPARADO del de aviso-contexto** a propósito: si lo compartiera, el PostToolUse cruzaría primero y el Stop creería «ya detonado» → nunca bloquearía. **Medición COMPARTIDA** con aviso-contexto vía la lib `medir-contexto.sh` (`mc_medir` → `mc_ctx`/`mc_gov`/…; fuente ÚNICA → no divergen). Solo el hilo PRINCIPAL. **Fail-open silencioso** sin jq/transcript/usage/ventana (= aviso-contexto: sin medición no se sabe si estás al 92% → bloquear a ciegas sería peor). Umbral configurable por `AVISO_CONTEXTO_CRIT_PCT` (reusa el de aviso-contexto). Batería `forzar-checkpoint` (4 casos: cruce→block · debajo→nada · 2× el mismo cruce→nada · re-arma tras compact). Convive con los otros Stop (exportar-sesion-master, recordar-cosechar — ninguno bloquea; `dod-verificar` se retiró 2026-11-01). Tier **global**.
 
 ## 🔔 Automático — inyectan / recuerdan (no bloquean)
 

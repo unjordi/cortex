@@ -1051,7 +1051,10 @@ PlasmoidItem {
                   detail: "Al reclutar un agente calcula su nivel de costo (gratis/incluido/con costo, según tu ventana de 5h) y pide consentimiento mostrando tu cuota real. Puedes negar y el agente no corre." },
                 { emoji: "🛑", name: "limite-gasto",           desc: "reclutar agente con el gasto pasado del techo → denegado",
                   event: "PreToolUse · Task",
-                  detail: "Freno DURO (distinto del gate que pregunta): si el gasto real ya rebasó un techo configurable (sobreuso o ventana 5h), bloquea reclutar más agentes para que un workflow desbocado no siga quemando dinero. Techo por env (LIMITE_GASTO_OVERAGE_PCT / LIMITE_GASTO_5H_PCT)." }
+                  detail: "Freno DURO (distinto del gate que pregunta): si el gasto real ya rebasó un techo configurable (sobreuso o ventana 5h), bloquea reclutar más agentes para que un workflow desbocado no siga quemando dinero. Techo por env (LIMITE_GASTO_OVERAGE_PCT / LIMITE_GASTO_5H_PCT)." },
+                { emoji: "🧵", name: "forzar-checkpoint",      desc: "contexto al 92% → bloquea el cierre del turno hasta que hagas /checkpoint",
+                  event: "Stop",
+                  detail: "Al cruzar el 92% del punto real de compact, el Stop bloquea el cierre del turno UNA vez y ordena correr /checkpoint COMPLETO (con aviso visible y sonoro en la Mac), para que el volcado del hilo no se lo trague el auto-compact. Re-arma tras compactar." }
             ]
         },
         {
@@ -1231,7 +1234,7 @@ PlasmoidItem {
 
     // Catálogo conocido (mismos conjuntos que BrainState.knownGlobalHooks / knownRepoHooks del Swift).
     // DEBE coincidir con brain/hooks/MANIFEST; lo verifica el drift-check del widget (test-brain.sh).
-    readonly property var brainGlobalHooks: ["merge-develop-guard","proteger-arbol","proteger-fuente-cerebro","limite-gasto","delegacion-gate","delegacion-registrar","rehidratar-hilo","aviso-contexto","aviso-drift-cerebro","exportar-sesion-master","checkpoint-mecanico","barrer-ramas","entorno-maquina-guard","no-bypass-deploy","sesion-inicio","recordar-cosechar"]
+    readonly property var brainGlobalHooks: ["merge-develop-guard","proteger-arbol","proteger-fuente-cerebro","forzar-checkpoint","limite-gasto","delegacion-gate","delegacion-registrar","rehidratar-hilo","aviso-contexto","aviso-drift-cerebro","exportar-sesion-master","checkpoint-mecanico","barrer-ramas","entorno-maquina-guard","no-bypass-deploy","sesion-inicio","recordar-cosechar"]
     readonly property var brainRepoHooks:   []
     // Los 4 rótulos de NORMA (pseudo-piezas, gobernados por hasNorms). NO viven en el MANIFEST ni se
     // retiran como skills/hooks → enumerarlos es legítimo (no es la lista drift-prone).

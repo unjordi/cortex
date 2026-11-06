@@ -1393,6 +1393,9 @@ struct PopoverView: View {
                     BrainItem("🛑", "limite-gasto", "reclutar agente con el gasto pasado del techo → denegado",
                               "PreToolUse · Task",
                               "Freno DURO (distinto del gate que pregunta): si el gasto real ya rebasó un techo configurable (sobreuso o ventana 5h), bloquea reclutar más agentes para que un workflow desbocado no siga quemando dinero. Techo por env (LIMITE_GASTO_OVERAGE_PCT / LIMITE_GASTO_5H_PCT)."),
+                    BrainItem("🧵", "forzar-checkpoint", "contexto al 92% → bloquea el cierre del turno hasta que hagas /checkpoint",
+                              "Stop",
+                              "Al cruzar el 92% del punto real de compact, el Stop bloquea el cierre del turno UNA vez y ordena correr /checkpoint COMPLETO (con aviso visible y sonoro en la Mac), para que el volcado del hilo no se lo trague el auto-compact. Re-arma tras compactar."),
                 ]),
             BrainTier(
                 emoji: "🔔", title: "Automático", color: accent,

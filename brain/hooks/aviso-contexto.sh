@@ -56,89 +56,14 @@ if [ -n "$sid" ] && mkdir -p "$AVISO_D" 2>/dev/null; then
   AVISO_F="$AVISO_D/$sid"
 fi
 
-# Tokens de contexto ACTUALES = último `usage`, ANCLADO al último /compact. Un `isCompactSummary:true`
-# RESETEA el acumulado: descarta todo usage previo al boundary (justo tras compactar, el usage grande
-# PRE-compact de la llamada interna de resumen NO se cuela como "contexto vivo"). Si aún no hay usage
-# DESPUÉS del boundary → null → fail-open (silencio), en vez de gritar el tamaño viejo en falso.
-ctx=$(tail -n 400 "$tp" 2>/dev/null | jq -rRn '
-    reduce (inputs | fromjson?) as $o (null;
-        if   ($o.isCompactSummary == true) then null      # boundary de /compact → descarta lo previo
-        elif ($o.isSidechain == true)      then .         # subagente → no cuenta al hilo principal
-        elif ($o.message.usage)            then ($o.message.usage
-              | (.input_tokens // 0) + (.cache_creation_input_tokens // 0) + (.cache_read_input_tokens // 0))
-        else . end)
-    // empty
-  ' 2>/dev/null | tr -cd '0-9')
-[ -n "$ctx" ] || exit 0                          # sin usage fresco (post-compact) aún → fail-open
-
-# Ventana del MODELO: SOLO por EVIDENCIA — override explícito `AVISO_CONTEXTO_WINDOW_TOKENS`, marcador
-# "[1m]", o un modelo con ventana real LISTADA. Modelo desconocido → NO hay ventana (silencio), NUNCA un
-# default inventado. Precedencia settings: user < proyecto < local.
-WINDOW="${AVISO_CONTEXTO_WINDOW_TOKENS:-}"
-case "$WINDOW" in
-  ''|*[!0-9]*)
-    model=""
-    for s in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" "$ROOT/.claude/settings.json" "$ROOT/.claude/settings.local.json"; do
-      [ -f "$s" ] || continue
-      m=$(jq -r '.model // empty' "$s" 2>/dev/null)
-      [ -n "$m" ] && model="$m"
-    done
-    # MODELO DE RUNTIME del transcript (el que REALMENTE genera) — GANA sobre settings.json. El modelo elegido
-    # en runtime (p. ej. Opus 5.5) NO queda escrito en settings.json → sin esto, model="" → desconocido. El
-    # transcript lo trae en .message.model (último mensaje no-sidechain). fromjson? = robusto a líneas malas.
-    # SALTA modelos "<…>" (p. ej. "<synthetic>": límite de sesión / errores de API / interrupciones) para no
-    # tapar el último modelo REAL anterior (un "<synthetic>" propio se leería como desconocido → silencio).
-    tpm=$(tail -n 400 "$tp" 2>/dev/null | jq -rRn '
-        reduce (inputs | fromjson?) as $o (null;
-            if ($o.isSidechain == true) then .
-            else (($o.message.model // $o.model) as $m
-                  | if ($m != null and ($m | startswith("<") | not)) then $m else . end)
-            end)
-        // empty' 2>/dev/null)
-    [ -n "$tpm" ] && model="$tpm"
-    case "$model" in
-      *'[1m]'*)                                                      WINDOW=1000000 ;;
-      *opus-4-7*|*opus-4-8*|*opus-5*|*sonnet-5*|*fable-5*|*mythos-5*) WINDOW=1000000 ;;
-      *)                                                             WINDOW="" ;;   # desconocido/vacío/<synthetic> → NO inventar ventana
-    esac
-    ;;
-esac
-# Sin ventana por EVIDENCIA (ni override, ni marcador [1m], ni modelo listado; modelo desconocido/vacío/
-# <synthetic>): NO inventamos un número — fail-open SILENCIOSO, igual que sin jq/usage (no hay default de ventana).
-case "$WINDOW" in ''|*[!0-9]*) exit 0 ;; esac
-# AUTO-CORRECCIÓN por invariante FÍSICO: si ctx > ventana detectada (de [1m]/modelo listado), promueve a 1M.
-[ "$ctx" -gt "$WINDOW" ] 2>/dev/null && WINDOW=1000000
-
-# autoCompactWindow: leído de settings.json (user < proyecto < local).
-ACW="no seteado"
-for s in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" "$ROOT/.claude/settings.json" "$ROOT/.claude/settings.local.json"; do
-  [ -f "$s" ] || continue
-  acw=$(jq -r '.autoCompactWindow // empty' "$s" 2>/dev/null)
-  [ -n "$acw" ] && ACW="$acw"
-done
-
-# autoCompactEnabled: default true; solo `false` explícito (o el env DISABLE_AUTO_COMPACT) desactiva el
-# auto-compact. Precedencia user < proyecto < local; null/ausente NO override.
-ac_enabled=true
-for s in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" "$ROOT/.claude/settings.json" "$ROOT/.claude/settings.local.json"; do
-  [ -f "$s" ] || continue
-  e=$(jq -r 'if .autoCompactEnabled == null then empty else (.autoCompactEnabled|tostring) end' "$s" 2>/dev/null)
-  [ -n "$e" ] && ac_enabled="$e"
-done
-case "${DISABLE_AUTO_COMPACT:-}" in ''|0|false|FALSE|no|NO) : ;; *) ac_enabled=false ;; esac
-
-# VENTANA GOBERNANTE (GOV) = el punto REAL donde compacta, contra el que se mide el %. El auto-compact
-# dispara al acercarse a autoCompactWindow, NO a la ventana del modelo → el denominador es ACW cuando el
-# auto-compact está ACTIVO y ACW es número válido; si no (no seteado / desactivado / override manual), la
-# ventana del modelo. El override manual AVISO_CONTEXTO_WINDOW_TOKENS (ya en WINDOW) gana sobre ACW.
-acw_num=""
-case "$ACW" in ''|*[!0-9]*) : ;; *) [ "$ACW" -gt 0 ] 2>/dev/null && acw_num="$ACW" ;; esac
-forced=""
-case "${AVISO_CONTEXTO_WINDOW_TOKENS:-}" in ''|*[!0-9]*) : ;; *) forced=1 ;; esac
-GOV="$WINDOW"; govsrc="model"
-if [ -z "$forced" ] && [ "$ac_enabled" = "true" ] && [ -n "$acw_num" ]; then
-  GOV="$acw_num"; govsrc="acw"
-fi
+# MEDICIÓN de ctx + GOV: en la lib COMPARTIDA medir-contexto.sh (fuente ÚNICA, la misma que usa el Stop hook
+# forzar-checkpoint → no pueden divergir). Setea mc_ctx/mc_window/mc_acw/mc_ac_enabled/mc_gov/mc_govsrc; return
+# 1 = fail-open (sin usage fresco o sin ventana por evidencia) → silencio, igual que antes.
+# shellcheck source=medir-contexto.sh
+. "$(dirname "$0")/medir-contexto.sh" 2>/dev/null
+command -v mc_medir >/dev/null 2>&1 || exit 0     # sin la lib, fail-open silencioso (nunca medir a ciegas)
+mc_medir "$tp" "$ROOT" || exit 0
+ctx="$mc_ctx"; WINDOW="$mc_window"; ACW="$mc_acw"; ac_enabled="$mc_ac_enabled"; GOV="$mc_gov"; govsrc="$mc_govsrc"; acw_num="$mc_acw_num"
 
 # ── BANDA por umbral ALTO/CRÍTICO relativo a GOV (el punto REAL de compact) ─────────────────── ──
 # NO se gotea por-5%: silencio bajo ALTO; UN disparo al cruzar ALTO; UNA escalada al cruzar CRÍTICO. Los

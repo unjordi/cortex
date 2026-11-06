@@ -353,6 +353,7 @@ ev_de() {
     rehidratar-hilo|aviso-drift-cerebro|sesion-inicio) echo "SessionStart|" ;;
     recordar-cosechar) echo "Stop|" ;;       # estado-proyecto.md "en todos lados" → global por bootstrap. Fail-open/no-op sin los archivos del proyecto.
     aviso-contexto) echo "PostToolUse|" ;;   # casa TODA tool (sin matcher): mide el ctx para el volcado del checkpoint mecánico
+    forzar-checkpoint) echo "Stop|" ;;       # Stop: al CRUZAR el 92% de GOV bloquea el cierre del turno hasta hacer /checkpoint (comparte la medición de aviso-contexto vía medir-contexto.sh)
     # barrer-ramas: DOBLE trigger del barrido — SessionStart (oportunista, throttled) + PostToolUse/Bash
     # (al punto de merge, detecta glab/gh merge vía acg_es_merge_mr). Multi-evento como exportar-sesion-master.
     barrer-ramas) echo "SessionStart| PostToolUse|Bash" ;;
