@@ -624,8 +624,15 @@ if [ "$destino" = "develop" ]; then
     # Anclado al INICIO de una LÍNEA DE GRANT (`scope=merge-develop ` al inicio, con `- ` opcional) + espacio
     # tras `merge-develop`: una mención en prosa/comentario o un prefijo `scope=merge-develop-nunca` NO cuenta
     # (antes `/scope=merge-develop/` casaba en cualquier posición de cualquier línea).
-    grant=$(awk -v now="$now_epoch" '/^([[:space:]]*-[[:space:]]+)?scope=merge-develop[[:space:]]/ && match($0, /vence_epoch=[0-9]+/) {
-        if (substr($0, RSTART+12, RLENGTH-12) + 0 > now) { print; exit }
+    # Un grant CON vence_epoch vale solo si NO venció. Un grant SIN vence_epoch es un STANDING permanente (sin
+    # caducidad) y vale siempre: unjordi lo escribe para "mis repos: no preguntes el merge a develop" (corpus
+    # 2026-10-07/09-20 — antes un grant sin vence_epoch se IGNORABA y frenaba un merge autorizado). Equivale a
+    # un vence_epoch lejano, que YA funcionaba; solo cambia la sintaxis. NUNCA toca main: el gate destino=develop
+    # de arriba lo garantiza. Un vence_epoch VENCIDO NO se promueve a permanente (respeta la caducidad explícita).
+    grant=$(awk -v now="$now_epoch" '/^([[:space:]]*-[[:space:]]+)?scope=merge-develop[[:space:]]/ {
+        if (match($0, /vence_epoch=[0-9]+/)) {
+          if (substr($0, RSTART+12, RLENGTH-12) + 0 > now) { print; exit }
+        } else { print; exit }
       }' "$AUTH_FILE" 2>/dev/null)
     # La cita del grant ya no se busca en los transcripts (unjordi, 2026-10-28): un grant permanente sobrevive a
     # la conversación que lo originó. Lo que queda: línea anclada, vigente, destino develop confirmado.
