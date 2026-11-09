@@ -766,6 +766,15 @@ is_silent "$(gbxB 'git checkout -b feat/nueva && git push' "$BASE")" && ok "gbg 
 is_silent "$(gbxB 'git switch -c otra && git push' "$BASE")"      && ok "gbg G7: 'git switch -c otra && git push' → silencio" || bad "gbg G7: FP — switch -c+push bloqueó"
 printf '%s' "$(gbxB 'git checkout develop && git push' "$BASE")"  | grep -q '"deny"' && ok "gbg G7: 'git checkout develop && git push' → deny (el checkout a BASE sigue bloqueando)" || bad "gbg G7: FN — checkout develop+push se coló"
 printf '%s' "$(gbxB 'git checkout no-existe.txt && git push' "$BASE")" | grep -q '"deny"' && ok "gbg G7: checkout de NO-rama (archivo) + push en develop → deny (fallback a HEAD, no FN)" || bad "gbg G7: FN — checkout de no-rama abrió un hueco (no cayó a HEAD)"
+# G7-DWIM (FP corpus L295, 2026-11-07): 'git checkout <rama>' donde <rama> es una rama de SEGUIMIENTO remota (no
+# local aún) hace DWIM — git crea la local desde origin/<rama> y cambia a ella → el push pelón va a ESA rama. El
+# fail-safe viejo solo reconocía ramas LOCALES, así que caía a acg_rama_actual=HEAD (develop) y FRENABA («el guard
+# juzgó con la rama actual develop»). Seguridad intacta: una BASE resuelta por la remota SIGUE bloqueando.
+_DWH="$(git -C "$BASE" rev-parse HEAD)"
+git -C "$BASE" update-ref refs/remotes/origin/docs/dwim "$_DWH" >/dev/null 2>&1   # rama de seguimiento, SIN rama local
+git -C "$BASE" update-ref refs/remotes/origin/main      "$_DWH" >/dev/null 2>&1   # base 'main' solo como remota (control)
+is_silent "$(gbxB 'git checkout docs/dwim && git push' "$BASE")"  && ok "gbg G7-DWIM: 'git checkout <rama-remota DWIM> && git push' → silencio (resuelve contra docs/dwim, no HEAD=develop; FP L295)" || bad "gbg G7-DWIM: FP — checkout de rama remota+push cayó a HEAD (develop) y frenó"
+printf '%s' "$(gbxB 'git checkout main && git push' "$BASE")"     | grep -q '"deny"' && ok "gbg G7-DWIM: 'git checkout main (solo remota) && git push' → deny (una BASE resuelta por la remota sigue bloqueando)" || bad "gbg G7-DWIM: FN — una BASE remota-only + push abrió un hueco"
 # G8 (#9 tuning): master = alias de main en repos legacy → base protegida. Explícito y pelón (repo en master).
 git -C "$FEAT2" checkout -q -B master >/dev/null 2>&1   # reusa FEAT2 como repo-en-master
 printf '%s' "$(gbx 'git push origin master')"          | grep -q '"deny"' && ok "gbg G8: 'git push origin master' → deny (master es base protegida)" || bad "gbg G8: push explícito a master se coló"
@@ -2788,11 +2797,23 @@ printf -- '- scope=merge-develop vence_epoch=%s vence="ayer" cita="autorizo hast
 is_deny "$(cm 'glab mr merge 62 --squash --yes' DENY)" \
   && ok "cmd b1f: grant VENCIDO → deny (no se estira)" \
   || bad "cmd b1f: un grant vencido dejó pasar el merge"
-# (3) línea malformada (sin vence_epoch) → freno normal (fail-safe).
-printf -- '- scope=merge-develop cita="sin vencimiento"\n' > "$AUTHF"
-is_deny "$(cm 'glab mr merge 63 --squash --yes' DENY)" \
-  && ok "cmd b1f: grant malformado (sin vence_epoch) → deny (fail-safe)" \
-  || bad "cmd b1f: una línea malformada dejó pasar el merge"
+# (3) grant SIN vence_epoch = STANDING PERMANENTE (sin caducidad) → HONRADO (destino develop). Antes se trataba
+#     como "malformado" y DENY; ahora un grant permanente del usuario ("mis repos: no preguntes el merge a
+#     develop", corpus 2026-10-07/09-20) pasa — equivale a un vence_epoch lejano, que YA pasaba, pero sin la
+#     gimnasia del epoch. NUNCA toca main ((5) abajo). FALLA contra el código viejo (que exigía vence_epoch).
+printf -- '- scope=merge-develop cita="autorizo los merges a develop en este repo, sin vencimiento" registrada=2026-11-09\n' > "$AUTHF"
+o_b1f3="$(cm "glab mr merge 63 $SQOK --yes" DENY)"
+{ ! is_deny "$o_b1f3" && printf '%s' "$o_b1f3" | grep -q 'recordatorio, no freno'; } \
+  && ok "cmd b1f: grant STANDING sin vence_epoch (permanente) → merge a develop pasa (+ recordatorio A2; antes era DENY)" \
+  || bad "cmd b1f: un grant permanente sin vence_epoch NO destrabó el merge a develop; got: $o_b1f3"
+# (3b) SEGURIDAD: un grant sin vence_epoch a destino MAIN NO pasa (el grant jamás cubre main — ver (5)); se prueba
+#      en (5) con el grant con epoch, pero reforzamos que "permanente" no cambia esa frontera.
+printf -- '- scope=merge-develop cita="permanente, sin vencimiento"\n' > "$AUTHF"
+mock_cm_glab main
+is_deny "$(cm 'glab mr merge 63b --yes' DENY)" \
+  && ok "cmd b1f: grant STANDING sin vence_epoch + destino MAIN → deny (main JAMÁS lo cubre un grant, permanente incluido)" \
+  || bad "cmd b1f: un grant permanente coló un merge a MAIN"
+mock_cm_glab develop
 # (4) EL MÁS IMPORTANTE: grant vigente pero destino MAIN → sigue exigiendo release súper-explícito.
 printf -- '- scope=merge-develop vence_epoch=%s vence="+1h" cita="autorizo todos los merges a develop" registrada=hoy\n' "$(( $(date +%s) + 3600 ))" > "$AUTHF"
 mock_cm_glab main

@@ -486,6 +486,14 @@ EOF
   [ -n "$posname" ] && printf 'POSIC %s' "$posname"
 }
 
+# ¿existe una rama de SEGUIMIENTO remota <remote>/<name>? Para el DWIM de `git checkout <name>`: si el nombre
+# no es rama LOCAL pero SÍ existe como origin/<name> (o de cualquier remoto), git lo CREA y cambia a esa rama
+# (no es un restore de archivo). name con '/' permitido. Solo lee refs locales (sin red). bash-3.2-safe.
+acg__rama_remota_existe() {   # $1=dir $2=name → 0=sí
+  git -C "$1" for-each-ref --format='%(refname)' refs/remotes 2>/dev/null \
+    | sed -E 's#^refs/remotes/[^/]+/##' | grep -qxF "$2"
+}
+
 # ¿el comando EMPUJARÍA a develop/main? — explícito (nombra la rama) O pelón cuando el repo OBJETIVO está
 # en develop/main. Opera sobre el cmd SIN comillas ni --repo para la detección; el dir objetivo se resuelve
 # CON comillas (acg_target_dir). Cierra H1 (+ H11/H13) y el FN cross-repo (pelón a OTRO repo en base).
@@ -533,13 +541,18 @@ acg_push_toca_base() {   # $1=cmd  $2=payload_cwd(opcional)
     if acg_push_sin_refspec "$(acg_sin_flag_repo "$(acg_comillas_a_marca "$sub")")"; then
       dir=$(acg_target_dir "$cd_prefix $orig" "$pcwd")   # -C del segmento > cd previo > cwd > PROJECT_DIR
       # Si un checkout/switch PREVIO cambió de rama, el pelón empuja a ESA rama (no a la de HEAD antes del
-      # comando). NUEVA (-b/-c) es rama por definición; POSIC solo se cree si es una rama LOCAL real (si no
-      # —un archivo, un typo— cae a acg_rama_actual: fail-safe, si HEAD es base sigue bloqueando).
+      # comando). NUEVA (-b/-c) es rama por definición; POSIC cambia de rama si el nombre es una rama LOCAL real
+      # O una REMOTA de seguimiento (DWIM: `git checkout docs/x` con origin/docs/x la crea y cambia a ella —
+      # FP corpus L295 «el guard juzgó con la rama actual develop» porque la rama aún no era ref local). Si el
+      # nombre NO es rama en ningún lado (un archivo/typo → `git checkout <file>` RESTAURA sin mover HEAD) cae a
+      # acg_rama_actual: fail-safe, si HEAD es base sigue bloqueando. Un nombre de BASE (develop) resuelto por la
+      # remota sigue bloqueando abajo (seguridad intacta).
       rama=""
       case "$co_spec" in
         "NUEVA "*) rama="${co_spec#NUEVA }" ;;
         "POSIC "*) _cob="${co_spec#POSIC }"
-                   git -C "$dir" rev-parse --verify --quiet "refs/heads/$_cob" >/dev/null 2>&1 && rama="$_cob" ;;
+                   if git -C "$dir" rev-parse --verify --quiet "refs/heads/$_cob" >/dev/null 2>&1; then rama="$_cob"
+                   elif acg__rama_remota_existe "$dir" "$_cob"; then rama="$_cob"; fi ;;
       esac
       [ -n "$rama" ] || rama=$(acg_rama_actual "$dir")
       case "$rama" in
