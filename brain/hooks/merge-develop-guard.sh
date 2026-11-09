@@ -221,12 +221,11 @@ VEREDICTO: DENY"
   if { [ "$1" = "main" ] || [ "$1" = "master" ] \
        || { [ -z "$1" ] && ! { acg_lexico_develop_explicito "$3" && ! acg_lexico_main_amplio "$3"; }; }; } \
      && [ "$out" = "ALLOW" ]; then
-    # tokens ANCLADOS a límite de palabra ([^[:alpha:]], portable BSD+GNU): 'liber' NO casa en
-    # "deliberada"/"libertad" (liber[aeo] + frontera previa), 'a main' NO casa en "a maintenance"
-    # (frontera posterior tras main) — cierra el falso NEGATIVO del piso. "promover a main" lo cubre
-    # '(a|hacia) main'; no se usa un 'promov.* .*main' con `.*` desacoplado porque puentearía un 'promueve'
-    # cualquiera con un 'main' suelto de otra frase (falso negativo).
-    _lexico_release_en_ventana "$3" || out=DENY
+    # M8 (auditoría 2026-11-09): el release afirmativo debe estar ANCLADO a ESTE MR ($2) y NO ser una negación —
+    # un "libera a main el PR 390" (otro MR) o un "todavía NO hagas el release" ya NO satisfacen el piso. Tokens
+    # ANCLADOS a límite de palabra ([^[:alpha:]], portable BSD+GNU): 'liber' NO casa en "deliberada"/"libertad",
+    # 'a main' NO casa en "a maintenance". (La variante por-MR con polaridad vive en la lib compartida.)
+    acg_lexico_release_afirmativo_para_mr "$3" "$2" || out=DENY
   fi
   [ -n "$out" ] && printf '%s' "$out" || printf 'UNAVAILABLE'
 }
@@ -392,9 +391,12 @@ _es_cerrar_slice=0
 acg_invoca_cerrar_slice "$cmd" && _es_cerrar_slice=1
 [ "$_es_cerrar_slice" = 1 ] || acg_es_merge_mr "$cmd" || exit 0
 
-# ── PASO 2 — DESTINO: UNA sola resolución, compartida por TODOS los checks (caché por MR-id + timeout interno
-#    → 1 llamada de red, no 2 como cuando eran dos hooks). Vacío = irresoluble (el fail-policy lo aplica cada check).
-destino=$(acg_destino_de_mr "$cmd" "$pcwd")
+# ── PASO 2 — DESTINO: UNA sola resolución (destino + CONFIANZA), compartida por TODOS los checks. A3 (auditoría
+#    2026-11-09): sin caché en disco, acg__destino_de_mr_full se llama UNA vez y se capturan sus DOS líneas aquí
+#    (antes destino y _conf eran 2 subshells que el caché dedupeaba → 1 llamada de red, no 2). Vacío = irresoluble.
+_dmr_full=$(acg__destino_de_mr_full "$cmd" "$pcwd")
+destino=$(printf '%s\n' "$_dmr_full" | sed -n '1p')
+_conf_dmr=$(printf '%s\n' "$_dmr_full" | sed -n '2p')
 # cerrar-slice SOLO integra a develop (su propio check de base rehúsa otra cosa) → destino fijo develop para el juez.
 [ "$_es_cerrar_slice" = 1 ] && destino=develop
 
@@ -446,7 +448,9 @@ _es_sync_upstream_autorizado() {   # $1=cmd(RAW)  $2=transcript → 0=exento del
 # ── PASO 3a — CHECK DETERMINISTA: SQUASH (heredado de merge-squash-guard). Develop-scoped + fail-safe cuando el
 #    destino es irresoluble (exige squash salvo release explícito). Aplica a TODO repo (el viejo squash-guard
 #    NUNCA gateó por la marca de compartido) → corre ANTES del scoping de compartido. VIOLACIÓN → DENY (fail-fast).
-SQUASH_RE='(--squash([[:space:]]|=|$)|(^|[[:space:]])-s([[:space:]]|$))'
+# M7 (auditoría 2026-11-09): el `=` NO cuenta como presencia a secas — `--squash=false`/`=0` DESHABILITA el
+# squash y no debe satisfacer la regla. Cuenta: `--squash` pelón, `--squash ` o `--squash=<truthy>` (true/1/yes/on).
+SQUASH_RE='(--squash([[:space:]]|$)|--squash=(true|1|yes|on)([[:space:]]|$)|(^|[[:space:]])-s([[:space:]]|$))'
 _sq_aplica=0
 if [ "$_es_cerrar_slice" = 1 ]; then :   # C2: cerrar-slice GARANTIZA --squash y --delete-branch por dentro → el check determinista sobre `bash cerrar-slice.sh` (sin esos flags en el comando) lo denegaría EN FALSO. Cae directo al juez de auth.
 elif [ "$destino" = develop ]; then _sq_aplica=1
@@ -464,10 +468,11 @@ if [ "$_sq_aplica" = 1 ]; then
       # integracion/*, epic/*) NO se borra: se sigue trabajando en ella → ahí se FRENA si el flag viene puesto.
       # Para una ramita (feat/…) o un origen irresoluble (fail-safe) se EXIGE el flag, como siempre.
       _cmd_del=$(acg_despoja_comillas "$cmd")
+      # M7: `=false`/`=0` deshabilita el flag → no cuenta como borrado (igual que --squash arriba).
       if printf '%s' "$_cmd_del" | grep -qE 'gh(\.exe)?[[:space:]]+pr'; then
-        _flag_del='(--delete-branch([[:space:]]|=|$)|(^|[[:space:]])-d([[:space:]]|$))'; _flag_nom='--delete-branch'
+        _flag_del='(--delete-branch([[:space:]]|$)|--delete-branch=(true|1|yes|on)([[:space:]]|$)|(^|[[:space:]])-d([[:space:]]|$))'; _flag_nom='--delete-branch'
       else
-        _flag_del='(--remove-source-branch([[:space:]]|=|$)|(^|[[:space:]])-d([[:space:]]|$))'; _flag_nom='--remove-source-branch'
+        _flag_del='(--remove-source-branch([[:space:]]|$)|--remove-source-branch=(true|1|yes|on)([[:space:]]|$)|(^|[[:space:]])-d([[:space:]]|$))'; _flag_nom='--remove-source-branch'
       fi
       _tiene_del=0; printf '%s' "$_cmd_del" | grep -qE "$_flag_del" && _tiene_del=1
       _origen=$(acg_origen_de_mr "$cmd" "$pcwd")
@@ -516,6 +521,14 @@ _explicit_repo=$(acg_repo_explicito "$cmd")
 if [ -n "$_explicit_repo" ] && [ "$_explicit_repo" != OPACO ]; then
   _clon_slug=$(acg_clon_local_de_slug "$_explicit_repo" "$TARGET_ROOT")
   [ -n "$_clon_slug" ] && TARGET_ROOT="$_clon_slug"
+fi
+# M3 (auditoría 2026-11-09): el grant durable solo vale si el TARGET_ROOT es DE VERDAD el repo del merge. Con
+# `--repo <slug>` el TARGET_ROOT solo es correcto si se resolvió al clon cuyo origin==slug (arriba); si se quedó
+# en el cwd (slug OPACO, o sin clon local de ese slug), el grant del cwd autorizaría el merge de OTRO repo → NO.
+_grant_root_ok=1
+if [ -n "$_explicit_repo" ]; then
+  _troot_slug=$(git -C "$TARGET_ROOT" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|https?://[^/]+/)##; s#\.git$##')
+  [ "$_explicit_repo" = "$_troot_slug" ] || _grant_root_ok=0
 fi
 _es_personal=0
 if [ "$_explicit_repo" = "OPACO" ] || acg_dir_opaco "$cmd"; then
@@ -617,21 +630,25 @@ fi
 # Grant DURABLE (turno-nocturno): un OK persistido a disco cubre scope=merge-develop (NUNCA main). Fast-path
 # antes del LLM. SOLO se honra con destino CONFIRMADO 'develop' (con destino desconocido
 # SIEMPRE cae al juez, cuyo fail-safe es DENY — nunca cuela un release por un grant de develop).
-if [ "$destino" = "develop" ]; then
+if [ "$destino" = "develop" ] && [ "${_grant_root_ok:-1}" = 1 ]; then   # M3: el grant solo si TARGET_ROOT ES el repo del merge
   AUTH_FILE="$TARGET_ROOT/.claude/memory/autorizaciones-vigentes.local.md"
   if [ -f "$AUTH_FILE" ]; then
     now_epoch=$(date +%s)
-    # Anclado al INICIO de una LÍNEA DE GRANT (`scope=merge-develop ` al inicio, con `- ` opcional) + espacio
-    # tras `merge-develop`: una mención en prosa/comentario o un prefijo `scope=merge-develop-nunca` NO cuenta
-    # (antes `/scope=merge-develop/` casaba en cualquier posición de cualquier línea).
-    # Un grant CON vence_epoch vale solo si NO venció. Un grant SIN vence_epoch es un STANDING permanente (sin
-    # caducidad) y vale siempre: unjordi lo escribe para "mis repos: no preguntes el merge a develop" (corpus
-    # 2026-10-07/09-20 — antes un grant sin vence_epoch se IGNORABA y frenaba un merge autorizado). Equivale a
-    # un vence_epoch lejano, que YA funcionaba; solo cambia la sintaxis. NUNCA toca main: el gate destino=develop
-    # de arriba lo garantiza. Un vence_epoch VENCIDO NO se promueve a permanente (respeta la caducidad explícita).
-    grant=$(awk -v now="$now_epoch" '/^([[:space:]]*-[[:space:]]+)?scope=merge-develop[[:space:]]/ {
+    # Anclado al INICIO de una LÍNEA DE GRANT (`scope=merge-develop` al inicio, con `- ` opcional) seguido de
+    # ESPACIO o FIN DE LÍNEA (M5, auditoría 2026-11-09): un `scope=merge-develop` PELÓN (sin nada después — la
+    # forma natural del grant permanente) ya se honra; un prefijo `scope=merge-develop-nunca`/`-BLANKET` (sufijo
+    # con `-`) NO cuenta (no es la forma canónica; ambiguo frente a una negación). Una mención en prosa tampoco.
+    # Un grant CON `vence_epoch=<int>` vale solo si NO venció. SIN campo de caducidad = STANDING permanente (sin
+    # vencimiento): unjordi lo escribe para "mis repos: no preguntes el merge a develop" (corpus 2026-10-07/09-20).
+    # M5 fail-closed: un CAMPO de caducidad MAL ESCRITO (`vence_epoch: 123` con `:`, `vence=2025-01-01`) NO se
+    # promueve a permanente — una fecha que el humano puso es una fecha, no "para siempre": se trata como vencida.
+    # NUNCA toca main: el gate destino=develop de arriba lo garantiza. ("vence" solo cuenta como CAMPO —al inicio o
+    # tras espacio, con `=`/`:`—, no una mención en la prosa de la cita.)
+    grant=$(awk -v now="$now_epoch" '/^([[:space:]]*-[[:space:]]+)?scope=merge-develop([[:space:]]|$)/ {
         if (match($0, /vence_epoch=[0-9]+/)) {
           if (substr($0, RSTART+12, RLENGTH-12) + 0 > now) { print; exit }
+        } else if ($0 ~ /(^|[ \t])vence(_epoch)?[=:]/) {
+          # campo de caducidad presente pero NO es un vence_epoch=<int> válido → fail-closed, no honrar
         } else { print; exit }
       }' "$AUTH_FILE" 2>/dev/null)
     # La cita del grant ya no se busca en los transcripts (unjordi, 2026-10-28): un grant permanente sobrevive a
@@ -679,9 +696,9 @@ elif [ "$destino" = "develop" ]; then
 Recuerda: verde técnico != LISTO; 'sigue/avanza' NO autoriza el merge a develop."
 else
   # destino DESCONOCIDO: si la causa es de ENTORNO o de FORMA del comando, repetir la autorización NO la arregla.
-  # acg_destino_conf declara el MOTIVO real; REPO-VARIABLE ($R/backtick en --repo) trae su propio mensaje
-  # accionable ("usa el slug LITERAL").
-  _conf=$(acg_destino_conf "$cmd" "$pcwd")
+  # El MOTIVO real ya viene en la 2ª línea capturada en PASO 2 (_conf_dmr, A3: sin 2ª consulta); REPO-VARIABLE
+  # ($R/backtick en --repo) trae su propio mensaje accionable ("usa el slug LITERAL").
+  _conf="$_conf_dmr"
   _motivo="${_conf#DESCONOCIDO:}"
   if [ "$_motivo" = "REPO-VARIABLE" ]; then
     r="FRENO (definición de LISTO): no puedo confirmar el destino${_mr_cita}: el guard lee el string CRUDO y tu --repo trae una VARIABLE de shell (\$…) sin expandir → no resuelvo a qué repo apunta. Reintenta con el SLUG LITERAL (p. ej. --repo org/grupo/repo), sin \$VAR ni un 'cd &&' compound. Repetir la autorización NO destraba esto — es de FORMA del comando, no de permiso. Mientras tanto, itera en tu mini/rama con 'git merge' LOCAL (no pasa por este candado)."

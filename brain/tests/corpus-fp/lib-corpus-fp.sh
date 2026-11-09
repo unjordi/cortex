@@ -23,17 +23,32 @@ CFP_BROKEN=()          # controles positivos que no frenaron (harness roto)
 # cfp_fakehome → imprime un HOME temporal vacío (sin ~/.claude/hooks) para neutralizar el dedupe.
 cfp_fakehome() { local h; h=$(mktemp -d "${TMPDIR:-/tmp}/cfp-home.XXXXXX"); printf '%s' "$h"; }
 
+# cfp_mockbin → dir con stubs de curl/security para que NINGUNA corrida alcance la API real ni el llavero.
+# M10 (auditoría 2026-11-09): el banco corría con el PATH HEREDADO → el juez de merge podía sacar el token del
+# llavero (security) y llamar a api.anthropic.com (curl). Con el PATH restringido a este dir + /usr/bin:/bin,
+# ACG_PATH_AUGMENT=0 (no re-agrega /opt/homebrew/bin donde viven gh/glab/curl reales) y el token vacío, el juez
+# queda UNAVAILABLE → DENY (el banco prueba DETECCIÓN de FP, no el veredicto del LLM; un merge real → fail-safe).
+# (La vieja perilla CLAUDE_MERGE_JUEZ_MOCK/_RAW que exportaban los correr-*.sh ya NO la lee el guard —retirada
+# 2026-10-22—; es inerte, y con este sandbox tampoco puede colar un ALLOW sin pasar por el veto de cita real.)
+cfp_mockbin() {
+  local b; b=$(mktemp -d "${TMPDIR:-/tmp}/cfp-bin.XXXXXX")
+  printf '#!/usr/bin/env bash\nexit 1\n' > "$b/curl"; printf '#!/usr/bin/env bash\nexit 1\n' > "$b/security"
+  chmod +x "$b/curl" "$b/security"; printf '%s' "$b"
+}
+
 # cfp_run_guard <guard.sh> <cmd> <cwd> → corre el guard con el JSON del hook; imprime "DENY" o "PASS".
 # Neutraliza el dedupe (HOME falso) y pasa cwd en el payload (como el harness real).
 cfp_run_guard() {
-  local guard="$1" cmd="$2" cwd="${3:-}" fh out
-  fh=$(cfp_fakehome)
+  local guard="$1" cmd="$2" cwd="${3:-}" fh mb out
+  fh=$(cfp_fakehome); mb=$(cfp_mockbin)
   # CFP_ENV = asignaciones extra "K=V K2=V2" (sin espacios en los valores); CFP_MODE=aviso → "dispara" = stdout
   # con additionalContext (guards de AVISO); default = deny.
   # CFP_TX = ruta de un transcript .jsonl → viaja como transcript_path (guards que leen la conversación).
+  # M10: PATH restringido al sandbox (stubs curl/security) + ACG_PATH_AUGMENT=0 + token vacío → el banco NUNCA
+  # alcanza la API real ni el llavero (ver cfp_mockbin). jq vive en /usr/bin; gh/glab reales quedan fuera (no se augmenta).
   out=$(jq -nc --arg c "$cmd" --arg d "$cwd" --arg t "${CFP_TX:-}" '{tool_input:{command:$c},cwd:$d} + (if $t != "" then {transcript_path:$t} else {} end)' \
-        | env HOME="$fh" CLAUDE_PROJECT_DIR="$cwd" ${CFP_ENV:-} bash "$guard" 2>/dev/null)
-  rm -rf "$fh"
+        | env HOME="$fh" CLAUDE_PROJECT_DIR="$cwd" PATH="$mb:/usr/bin:/bin" ACG_PATH_AUGMENT=0 CLAUDE_CODE_OAUTH_TOKEN= ${CFP_ENV:-} bash "$guard" 2>/dev/null)
+  rm -rf "$fh" "$mb"
   if [ "${CFP_MODE:-deny}" = aviso ]; then
     if printf '%s' "$out" | grep -q 'additionalContext'; then printf 'DENY'; else printf 'PASS'; fi
   elif [ "${CFP_MODE:-deny}" = block ]; then   # hooks Stop: bloquean con {decision:"block"}
