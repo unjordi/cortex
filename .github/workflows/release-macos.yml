@@ -1,23 +1,14 @@
 name: Release macOS app
 
-# Cierra el circulo "nosotros subimos -> los demas reciben" para macOS (paridad con release-windows.yml).
-#
-# En CADA avance de 'main' se reconstruye + publica el asset .app de macOS (POLITICA 2026-07-26, sin
-# filtro de paths) -> 'macos-latest' NUNCA queda rancio respecto al sha de main. El dedupe-guard de
-# abajo evita recompilar en el runner macOS (el caro) si el .app de ese sha ya esta publicado, asi el
-# costo queda acotado. Porque: con el filtro de paths anterior, cuando main avanzaba SIN tocar
-# macos/**/brain/**/assets/**, el CI no reconstruia y el asset quedaba viejo; el auto-update bajaba
-# SIEMPRE ese .app rancio pero chequeaba contra commits/main = loop infinito de "actualiza". El
-# instalador (macos/install.sh) baja ese .app -> instala SIN Xcode/Swift (paridad con el
-# Cortex.exe de Windows). Fallback: compilar desde fuente (macos/install.sh --build, o si la
-# descarga falla). Se puede disparar a mano (workflow_dispatch).
+# Publica el asset .app de macOS en el release rolling 'macos-latest' (el que baja macos/install.sh).
+# La vía normal es macos/publicar-release.sh desde una Mac (mismo resultado, mismo build-sha); este workflow
+# queda para correrlo a mano (workflow_dispatch) cuando haya runner macOS disponible. El dedupe-guard de
+# abajo salta la compilación si el .app de ese sha ya está publicado.
 #
 # Nota: el .app queda ad-hoc signed (sin cuenta de desarrollador Apple), asi que al bajarlo el
 # instalador le quita el atributo com.apple.quarantine (si no, Gatekeeper lo bloquea).
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
