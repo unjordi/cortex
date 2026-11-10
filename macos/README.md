@@ -111,7 +111,8 @@ this figure ~10×, so a heavy week can read as hundreds of API-equivalent dollar
 - **macOS 13+** (built and tested on macOS 26 / Apple silicon).
 - **Xcode command-line tools** (`swift`) — **solo si compilas desde fuente** (`--build`). Por default el
   instalador BAJA el `.app` precompilado del release `macos-latest` (SIN Xcode/Swift), igual que el `.exe`
-  de Windows.
+  de Windows. Ese `.app` se publica desde una Mac con `bash macos/publicar-release.sh` tras cada release a
+  `main` (compila `origin/main` y no hace nada si ya está publicado).
 - **`jq`** for JSON normalization (`brew install jq`).
 - **Node.js** (`npm`/`npx`) to install `ccusage`. The installer runs
   `npm i -g ccusage` for you; if you already have `ccusage` on `PATH` it's used
