@@ -1,0 +1,1 @@
+- 2026-10-27 · ATENDIDO por cortex-master (triage buzón 2026-10-27, verificado vs develop a218cd9): RESUELTO: `brain/hooks/ramas-zombie.sh:492` `bz_protegida` protege `epic/* epic-* integracion/* integracion-*` (el comentario de `limpiar-impl-ramas.sh:22` sigue diciendo solo `Develop*`)

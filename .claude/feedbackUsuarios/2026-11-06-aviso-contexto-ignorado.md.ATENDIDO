@@ -1,0 +1,10 @@
+ATENDIDO 2026-11-06 (cortex-master) — Stop hook forzar-checkpoint. MERGED a develop 174df135 (PR #496).
+Diseñado CON unjordi (varias iteraciones vía claudio).
+
+Al CRUZAR el 92% (AVISO_CONTEXTO_CRIT_PCT) de GOV el Stop detona UNA vez: decision:block que ORDENA
+/checkpoint COMPLETO + systemMessage visible + sonido en la Mac. Sin verificar hilo escrito, sin tope.
+Debounce por-cruce (stamp propio → no 2× = sin loop); re-arma cuando ctx baja tras compact. Fail-open
+silencioso sin medición. Medición ctx+GOV extraída a la lib COMPARTIDA medir-contexto.sh (fuente única
+con aviso-contexto → no divergen; aviso-contexto refactorizado, su batería b6 intacta). Cableado MANIFEST
++ ev_de(Stop); catálogo en los 5 lugares + leyendas de flowcharts. Batería forzar-checkpoint (4 casos);
+suite 1449·0. Queda para QA en vivo de claudio/unjordi (que al 92% real frene el turno + suene).

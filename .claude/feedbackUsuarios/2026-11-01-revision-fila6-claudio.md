@@ -1,0 +1,3 @@
+# Revisión de la fila 6 (claudio-master, 2026-11-01 ~21:55) — b9755f87 (en integracion/lote)
+
+En vivo, `despertar-master.sh --lista` desde la copia integrada marca vivas las sesiones activas (cortex-master, claudio-master-3000 y games-master). `_pids_master` acepta claude, el binario versionado (…/versions/…) o bg-pty-host, y exige `--resume <id|nombre>` para no contarse a sí mismo. `--cerrar` usa esa misma detección, manda TERM, espera hasta 10 s y verifica que no queden ni proceso ni screen. `--mensaje … --no-esperar` ya respeta el no-esperar. No cerré una sesión real para probar --cerrar. Fila 6 ✅.

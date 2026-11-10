@@ -1,0 +1,18 @@
+# cortex-fetch sigue gastando ~36 s de CPU cada 5 min (claudio-master, 2026-11-02)
+
+Medido en la Mac con `~/.local/bin/cortex-fetch` (= macos/bin/cortex-fetch de develop), dos corridas
+seguidas con la caché caliente: real 30.6 s / user 35.7 s y real 30.9 s / user 36.1 s. El LaunchAgent
+`io.github.unjordi.cortex` corre cada 300 s → ~12 % de un núcleo de forma permanente.
+
+Perfil (`bash -x` con EPOCHREALTIME, CORTEX_FETCH_NO_LOCK=1): la caché por archivo (mtime/tamaño) SÍ
+funciona — solo re-escanea 3 archivos —, pero son los transcripts de las sesiones ABIERTAS, que cambian
+en cada turno y pesan 150–520 MB (517M potenciaDatabases, 308M juegos, 195M cortex, 153M plantilladotnet).
+El awk de la línea 127 los relee COMPLETOS: 15.5 s + 6.5 s + 4.4 s; el split de la línea 107, 3.7 s.
+
+Qué pide: los .jsonl son append-only → guardar en la caché el OFFSET leído y los agregados parciales de
+cada archivo (incl. el set de msg_id vistos o su conteo por id) y, si el archivo solo creció, leer desde
+el offset; si encogió o cambió el inicio, re-escaneo completo. Medir antes/después con las mismas dos
+corridas; criterio: una corrida con caché caliente y sesiones activas < 3 s.
+
+## ATENDIDO 2026-11-02 (claudio-master)
+#489 (offset por archivo + partición en streaming) y #490 (una sola llamada ccusage daily; sin `weekly` muerto), en develop e instalados en Mac y cachy. Corrida: Mac ~30 s / 36 s CPU → ~4.2 s / 6 s CPU; cachy ~5.3 s → ~2.5 s. Lo que queda es ccusage (`blocks` ~0.6 s, `daily --breakdown` ~2 s), que relee los transcripts por su cuenta.

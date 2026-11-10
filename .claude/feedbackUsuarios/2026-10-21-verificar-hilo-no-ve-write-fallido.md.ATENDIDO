@@ -1,0 +1,1 @@
+- 2026-10-21 · ATENDIDO por cortex-master: 42bdcfa (verificar_hilo con flag fresco: exige mtime < CONTRATO_HILO_FRESCO_MIN; el skill checkpoint lo pasa). Verificado por claudio corriendo (hilo viejo → rc 1, fresco → 0, lector sin flag → 0). Local en fix/corpus-fp-bench, pendiente de integrar en el bloque.
