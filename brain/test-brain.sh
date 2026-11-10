@@ -6093,7 +6093,7 @@ rm -f "$QCACHE/apagado"
 rm -rf "$QHOME" "$(dirname "$QROOT")"
 
 echo ""
-echo "== (fck) forzar-checkpoint: Stop hook que BLOQUEA 1× al cruzar el 92% de GOV (decisión unjordi 2026-11-06) =="
+echo "== (fck) forzar-checkpoint: Stop hook que frena al cruzar el 92% de GOV hasta que se invoque la skill checkpoint =="
 # GOV = autoCompactWindow (1000) con el auto-compact ACTIVO → % directo. Modelo listado (opus-4-8) para que
 # mc_medir tenga ventana. Estos asertos FALLAN contra el código de hoy (no existe el hook). Comparte la
 # medición con aviso-contexto vía medir-contexto.sh.
@@ -6112,19 +6112,58 @@ fck_run() { printf '{"transcript_path":"%s","session_id":"%s"}' "$FCKREPO/tx.jso
 fck_dec() { [ -n "$1" ] || { echo none; return; }; printf '%s' "$1" | jq -r '.decision // "none"' 2>/dev/null; }
 # (1) cruce 93% (930/1000) con sesión fresca → block + orden de /checkpoint
 fck_tx 930; O1="$(fck_run fckA)"
-{ [ "$(fck_dec "$O1")" = block ] && printf '%s' "$O1" | jq -r '.reason // ""' | grep -q '/checkpoint'; } \
-  && ok "fck (1): cruce 92% → decision:block + orden de /checkpoint" \
+{ [ "$(fck_dec "$O1")" = block ] && printf '%s' "$O1" | jq -r '.reason // ""' | grep -q 'skill=checkpoint'; } \
+  && ok "fck (1): cruce 92% → decision:block + orden de invocar la skill checkpoint" \
   || bad "fck (1): no bloqueó al cruzar el 92%; got: $O1"
 # (2) debajo del 92% (850/1000=85%) con sesión fresca → nada
 fck_tx 850; O2="$(fck_run fckB)"
 [ "$(fck_dec "$O2")" = none ] \
   && ok "fck (2): 85% (debajo del 92%) → no bloquea" \
   || bad "fck (2): bloqueó debajo del umbral; got: $O2"
-# (3) MISMO cruce otra vez (misma sesión que (1), sigue 93%) → no 2× (debounce por-cruce, corta el loop)
+# (3) MISMO cruce otra vez SIN haber invocado la skill → vuelve a frenar (freno 2 de 3)
 fck_tx 930; O3="$(fck_run fckA)"
-[ "$(fck_dec "$O3")" = none ] \
-  && ok "fck (3): mismo cruce otra vez → NO bloquea 2× (debounce por-cruce = sin loop de Stop)" \
-  || bad "fck (3): bloqueó dos veces el mismo cruce (loop); got: $O3"
+{ [ "$(fck_dec "$O3")" = block ] && printf '%s' "$O3" | jq -r '.reason' | grep -q 'freno 2 de 3'; } \
+  && ok "fck (3): mismo cruce sin skill checkpoint → frena otra vez (freno 2 de 3)" \
+  || bad "fck (3): dejó pasar el cruce sin que se invocara la skill; got: $O3"
+fck_add() { printf '{"type":"assistant","message":{"model":"claude-opus-4-8","usage":{"input_tokens":930,"cache_creation_input_tokens":0,"cache_read_input_tokens":0},"content":[%s]}}\n' "$1" >> "$FCKREPO/tx.jsonl"; }
+# (3b) editar el hilo a mano y appendear a la bitácora NO cuenta → sigue frenando
+fck_tx 930; fck_run fckC >/dev/null
+fck_add '{"type":"tool_use","name":"Edit","input":{"file_path":".claude/memory/hilo-mental-actual.md"}},{"type":"tool_use","name":"Bash","input":{"command":"echo x >> .claude/memory/bitacora.md"}}'
+O3b="$(fck_run fckC)"
+[ "$(fck_dec "$O3b")" = block ] \
+  && ok "fck (3b): editar el hilo y la bitácora sin la skill → sigue frenando" \
+  || bad "fck (3b): una edición suelta del hilo satisfizo el freno; got: $O3b"
+# (3c) la skill checkpoint invocada después del freno → deja pasar, y el cruce queda atendido
+fck_add '{"type":"tool_use","name":"Skill","input":{"skill":"checkpoint"}}'
+O3c="$(fck_run fckC)"; O3c2="$(fck_run fckC)"
+{ [ "$(fck_dec "$O3c")" = none ] && [ "$(fck_dec "$O3c2")" = none ]; } \
+  && ok "fck (3c): Skill checkpoint tras el freno → deja pasar y no vuelve a frenar el mismo cruce" \
+  || bad "fck (3c): siguió frenando con la skill invocada; got: $O3c / $O3c2"
+# (3d) una invocación de la skill ANTERIOR al freno no cuenta
+fck_tx 930; fck_add '{"type":"tool_use","name":"Skill","input":{"skill":"checkpoint"}}'
+fck_run fckD >/dev/null; O3d="$(fck_run fckD)"
+[ "$(fck_dec "$O3d")" = block ] \
+  && ok "fck (3d): skill checkpoint de ANTES del freno no lo satisface" \
+  || bad "fck (3d): contó una invocación previa al freno; got: $O3d"
+# (3e) /checkpoint tecleado por el usuario o un /compact después del freno también lo satisfacen
+fck_tx 930; fck_run fckE >/dev/null
+printf '{"type":"user","message":{"role":"user","content":"<command-name>/checkpoint</command-name>"}}\n' >> "$FCKREPO/tx.jsonl"
+O3e="$(fck_run fckE)"
+fck_tx 930; fck_run fckF >/dev/null
+printf '{"type":"user","isCompactSummary":true,"message":{"role":"user","content":"resumen"}}\n' >> "$FCKREPO/tx.jsonl"
+fck_add '{"type":"text","text":"sigo"}'; O3f="$(fck_run fckF)"
+{ [ "$(fck_dec "$O3e")" = none ] && [ "$(fck_dec "$O3f")" = none ]; } \
+  && ok "fck (3e): /checkpoint tecleado o /compact tras el freno → deja pasar" \
+  || bad "fck (3e): no reconoció /checkpoint tecleado o el compact; got: $O3e / $O3f"
+# (3f) tope: con FORZAR_CHECKPOINT_MAX_FRENOS=2, el 3er Stop sin skill avisa sin frenar y el 4º calla
+fck_tx 930
+fck_cap() { printf '{"transcript_path":"%s","session_id":"fckG"}' "$FCKREPO/tx.jsonl" \
+  | FORZAR_CHECKPOINT_MAX_FRENOS=2 HOME="$FCKH" CLAUDE_CONFIG_DIR="$FCKCFG" CLAUDE_PROJECT_DIR="$FCKREPO" bash "$HOOKS/forzar-checkpoint.sh"; }
+G1="$(fck_cap)"; G2="$(fck_cap)"; G3="$(fck_cap)"; G4="$(fck_cap)"
+{ [ "$(fck_dec "$G1")" = block ] && [ "$(fck_dec "$G2")" = block ] && [ "$(fck_dec "$G3")" = none ] \
+  && printf '%s' "$G3" | jq -r '.systemMessage // ""' | grep -q 'dejo de frenar' && [ -z "$G4" ]; } \
+  && ok "fck (3f): al tope configurable avisa sin frenar y no encierra la sesión" \
+  || bad "fck (3f): el tope no funcionó; got: $G1 | $G2 | $G3 | $G4"
 # (4) re-arma tras compact: la sesión de (1)(3) baja a 50% (compact) → nada; vuelve a 93% → bloquea otra vez
 fck_tx 500; fck_run fckA >/dev/null 2>&1          # baja → re-arma el stamp
 fck_tx 930; O4="$(fck_run fckA)"
