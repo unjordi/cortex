@@ -40,6 +40,7 @@ public sealed class BrainState
         "proteger-arbol",
         "proteger-fuente-cerebro",
         "forzar-checkpoint",
+        "fondo-por-tiempo",
         "limite-gasto", "delegacion-gate", "delegacion-registrar",
         "rehidratar-hilo", "aviso-contexto", "aviso-drift-cerebro", "exportar-sesion-master", "checkpoint-mecanico", "barrer-ramas",
         "entorno-maquina-guard", "no-bypass-deploy",

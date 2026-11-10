@@ -84,6 +84,7 @@ El cerebro se ordena por *dureza*: arriba lo que te **bloquea** sin negociar; ab
 └─ 🧵 forzar-checkpoint        Stop: al CRUZAR el 92% de GOV frena el cierre del turno hasta que se invoque la skill checkpoint (tope configurable; + visible + sonoro); re-arma tras compact (GLOBAL)
 
 🔔 Automático — inyectan / recuerdan (no bloquean)
+├─ ⏳ fondo-por-tiempo         comando Bash en primer plano que tarda más de 15 s (CLAUDE_FONDO_MS) → pasa solo al fondo y avisa al terminar (GLOBAL)
 ├─ 🖥️  entorno-maquina-guard    commit de algo machine-specific (aliases/rutas de $HOME/Rosetta/entorno-maquina.md) al .claude/memory/ del repo → avisa
 ├─ 🚧 no-bypass-deploy         correr el instalador/deploy a mano (install-brain.sh/deploy.sh, helm/kubectl apply -f, aun tras sudo/nohup/VAR=/source) en vez de la herramienta oficial (el widget) → avisa (fail-safe: no --dry-run/--help/CI)
 ├─ 🌳 proteger-arbol           git destructivo que orfanaría commits sin pushear → avisa (fan-out: usa worktree aislado)
