@@ -1,0 +1,7 @@
+# ATENDIDO — fix(checkpoint-mecanico): el disparo deja rastro en .checkpoint-mecanico.log
+
+Rama fix/checkpoint-mecanico-log (commits 326fbaf8 + ef30b518, desde develop). Suite 1430·0.
+- disparar_checkpoint_mecanico: una línea por evento (fecha·invocador·sid) — los 7 return-0 dejan `omitido: <motivo>`, el subshell de node deja `exit=<n> andamio=<mtime>` al terminar; rotación (últimas 200 si >400).
+- 6º arg = invocador: aviso-contexto pasa "aviso", checkpoint-mecanico.sh pasa "precompact".
+- aviso-contexto: «Lancé el volcado … (en 2º plano)» en vez de «volqué» (no afirma efecto no comprobado).
+- tests m2b-log + m2b-lock (lock vivo → `omitido: lock`); verificado que fallan vs el código sin logging.

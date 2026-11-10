@@ -1,0 +1,11 @@
+ATENDIDO 2026-11-06 (cortex-master) — el BARRIDO de los repos lo ejecuta claudio-master directo (unjordi:
+«arregla directamente los cerebros de todos mis masters»), con `install-brain.sh --limpiar-repo <root> --apply`
+(herramienta viva; sincronizar-cerebro.sh está retirado), worktree por repo → merge a cada mini. plantilladotnet
+ya quedó.
+
+Parte CORTEX verificada por cortex-master: install-brain normal / bootstrap / aviso-drift NO re-siembran el
+cerebro por-repo → una poda se QUEDA (no se deshace en el próximo install). El prune VIVE en --limpiar-repo.
+
+PARQUEADO (si unjordi lo quiere luego): self-healing en aviso-drift-cerebro que DETECTE residuo del cerebro
+por-repo al abrir sesión y lo pode (A auto-commit) o avise+confirme (B, warn-only) — para que el retiro se
+auto-cure a futuro sin toque manual. Registrado en estado-proyecto (campaña PRECISIÓN/retiro).

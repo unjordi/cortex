@@ -1,0 +1,9 @@
+ATENDIDO 2026-11-06 (cortex-master) — merge-develop-guard, paso 3a (borrado de la rama de origen).
+Rama fix/merge-guard-mini-no-borrar (desde develop).
+
+Fix de PRECISIÓN: el freno de --remove-source-branch/--delete-branch a develop ahora mira la rama de
+ORIGEN del MR. Origen de INTEGRACIÓN PERSONAL (acg_es_rama_integracion: Develop<Usuario>, integracion/*,
+epic/*) → NO se exige borrarla, y se FRENA con «NO borres la rama de origen» si el flag viene puesto.
+Ramita (feat/…) u origen irresoluble → se mantiene la exigencia (fail-safe). Origen resuelto por
+acg_origen_de_mr (mirror de acg_destino_de_mr: glab .source_branch · gh headRefName, caché acg-mrorigen-*).
+Batería b1c5 (4 casos); suite 1440·0. Casos (1)/(2) fallan contra el viejo; (3)/(4) controles squash-safe.

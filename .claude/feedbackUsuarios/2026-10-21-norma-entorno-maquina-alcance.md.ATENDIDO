@@ -1,0 +1,2 @@
+Atendido 2026-10-21 (cortex-master): norma reescrita a "jamás en el repo de un proyecto ni en tu slug" (canónico + guard + install-brain + MEMORY + flowchart regen) → commit c2d5664 en fix/corpus-fp-bench.
+- 2026-10-27 · RESIDUO (triage buzón): residuo abierto → B-24 (Norma/guard/install OK (c2d5664) pero siguen 4 copias viejas: `macos/Sources/Cortex/PopoverView.swift:1405`, `src/plasmoid/contents/ui/main.qml:1041`, `windows/src/Cortex/PopupForm.cs:1997`, `como-trabajar-con-usuario.example-barebones.md:14`)

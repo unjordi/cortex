@@ -1,0 +1,1 @@
+- 2026-10-27 · ATENDIDO por cortex-master (triage buzón 2026-10-27, verificado vs develop a218cd9): RESUELTO: `rehidratar-hilo.sh:56-65` watchdog 8 s fail-open (stdio a /dev/null)
