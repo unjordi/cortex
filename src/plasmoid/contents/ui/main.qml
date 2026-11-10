@@ -1070,15 +1070,18 @@ PlasmoidItem {
                 { emoji: "🛑", name: "limite-gasto",           desc: "reclutar agente con el gasto pasado del techo → denegado",
                   event: "PreToolUse · Task",
                   detail: "Freno DURO (distinto del gate que pregunta): si el gasto real ya rebasó un techo configurable (sobreuso o ventana 5h), bloquea reclutar más agentes para que un workflow desbocado no siga quemando dinero. Techo por env (LIMITE_GASTO_OVERAGE_PCT / LIMITE_GASTO_5H_PCT)." },
-                { emoji: "🧵", name: "forzar-checkpoint",      desc: "contexto al 92% → bloquea el cierre del turno hasta que hagas /checkpoint",
+                { emoji: "🧵", name: "forzar-checkpoint",      desc: "contexto al 92% → frena el cierre del turno hasta que se invoque la skill checkpoint",
                   event: "Stop",
-                  detail: "Al cruzar el 92% del punto real de compact, el Stop bloquea el cierre del turno UNA vez y ordena correr /checkpoint COMPLETO (con aviso visible y sonoro en la Mac), para que el volcado del hilo no se lo trague el auto-compact. Re-arma tras compactar." }
+                  detail: "Al cruzar el 92% del punto real de compact, el Stop frena el cierre del turno y ordena invocar la skill checkpoint (con aviso visible y sonoro en la Mac). Sigue frenando hasta que la skill aparezca en el transcript (editar el hilo a mano no cuenta), con tope de 3 frenos (FORZAR_CHECKPOINT_MAX_FRENOS). Re-arma tras compactar." }
             ]
         },
         {
             emoji: "🔔", title: "Automático", color: "#e8884a",
             subtitle: "hooks que inyectan / recuerdan — no bloquean",
             items: [
+                { emoji: "⏳", name: "fondo-por-tiempo",          desc: "comando Bash que tarda más de 15 s → pasa solo al fondo",
+                  event: "PreToolUse · Bash",
+                  detail: "Baja el timeout de cada llamada Bash en primer plano a CLAUDE_FONDO_MS (15000 ms). Lo que no termina en ese tiempo lo pasa Claude Code al fondo y avisa al terminar, así la sesión no se queda bloqueada esperando un comando largo. No toca las llamadas que ya van al fondo ni las que piden menos tiempo." },
                 { emoji: "🧭", name: "sesion-inicio",             desc: "al abrir/retomar reinyecta rama + norma de git + orden de leer memoria",
                   event: "SessionStart",
                   detail: "Al abrir/retomar sesión o tras compactar, reinyecta la rama actual, la norma de git y la orden de leer MEMORY/estado. Antídoto a 'se me va la onda al cambiar de sesión o compu'." },
@@ -1252,7 +1255,7 @@ PlasmoidItem {
 
     // Catálogo conocido (mismos conjuntos que BrainState.knownGlobalHooks / knownRepoHooks del Swift).
     // DEBE coincidir con brain/hooks/MANIFEST; lo verifica el drift-check del widget (test-brain.sh).
-    readonly property var brainGlobalHooks: ["merge-develop-guard","proteger-arbol","proteger-fuente-cerebro","forzar-checkpoint","limite-gasto","delegacion-gate","delegacion-registrar","rehidratar-hilo","aviso-contexto","aviso-drift-cerebro","exportar-sesion-master","checkpoint-mecanico","barrer-ramas","entorno-maquina-guard","no-bypass-deploy","sesion-inicio","recordar-cosechar"]
+    readonly property var brainGlobalHooks: ["merge-develop-guard","proteger-arbol","proteger-fuente-cerebro","forzar-checkpoint","fondo-por-tiempo","limite-gasto","delegacion-gate","delegacion-registrar","rehidratar-hilo","aviso-contexto","aviso-drift-cerebro","exportar-sesion-master","checkpoint-mecanico","barrer-ramas","entorno-maquina-guard","no-bypass-deploy","sesion-inicio","recordar-cosechar"]
     readonly property var brainRepoHooks:   []
     // Los 4 rótulos de NORMA (pseudo-piezas, gobernados por hasNorms). NO viven en el MANIFEST ni se
     // retiran como skills/hooks → enumerarlos es legítimo (no es la lista drift-prone).
