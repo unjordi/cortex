@@ -96,7 +96,7 @@
  * andamio al redactar el hilo real.
  *
  * Uso:
- *   node checkpoint-mecanico.js <transcript.jsonl> --out <andamio.md> [--repo-root <path>] [--n-msgs 12]
+ *   node checkpoint-mecanico.js <transcript.jsonl> --out <andamio.md> [--repo-root <path>] [--n-msgs 12] [--n-asist 15]
  *   node checkpoint-mecanico.js --self [--ensure] [--out <andamio.md>]     ← lo invoca el SKILL
  *   [--ventana viva|previa|todo] [--json]
  * Con --json (o sin --out) imprime el resumen crudo a stdout (para el hook/log).
@@ -115,11 +115,12 @@ try { sessionLib = require(path.join(__dirname, 'session-lib.js')); } catch (_) 
 const MAX_LINE_CHARS = 64 * 1024 * 1024;
 const TOP_N = 10;
 const DEFAULT_N_MSGS = 12;
+const DEFAULT_N_ASIST = 15;   // respuestas del asistente en `--ventana previa`
 const ANDAMIO_REL = path.join('.claude', 'memory', 'hilo-mental-actual.andamio.md');
 
 function parseArgs(argv) {
   const o = {
-    file: null, out: null, json: false, repoRoot: null, nMsgs: DEFAULT_N_MSGS,
+    file: null, out: null, json: false, repoRoot: null, nMsgs: DEFAULT_N_MSGS, nAsist: DEFAULT_N_ASIST,
     ventana: 'viva', self: false, ensure: false,
   };
   const rest = [];
@@ -129,6 +130,7 @@ function parseArgs(argv) {
     else if (a === '--json') o.json = true;
     else if (a === '--repo-root') o.repoRoot = argv[++i];
     else if (a === '--n-msgs') o.nMsgs = parseInt(argv[++i], 10) || DEFAULT_N_MSGS;
+    else if (a === '--n-asist') o.nAsist = parseInt(argv[++i], 10) || DEFAULT_N_ASIST;
     else if (a === '--ventana') { const v = argv[++i]; o.ventana = (v === 'todo' || v === 'previa') ? v : 'viva'; }
     else if (a === '--self') o.self = true;
     else if (a === '--ensure') o.ensure = true;
@@ -495,12 +497,18 @@ function extraer(file, nMsgs, opts) {
     commits: [], cwds: new Set(), ramas: new Set(),
     ctxTokens: null,
     mensajesUsuario: [], // ring buffer acotado a nMsgs
+    mensajesAsistente: [], // texto que el asistente le escribió al usuario; ring buffer acotado a nAsist
     // Lo HISTÓRICO (tramos ya compactados) se CUENTA aparte y se etiqueta; nunca se fusiona con lo vivo.
     previos: { tramos: 0, commits: 0, escrituras: 0, mensajes: 0, ramas: new Set(), cwds: new Set() },
     // `--ventana previa`: SNAPSHOT con CONTENIDO (no solo conteos) del ÚLTIMO tramo cerrado = el que estaba
     // VIVO justo antes del último /compact. Es lo que un reconstruir-contexto necesita: tras un compact el
     // tramo vivo tiene 2 mensajes ("reconstruye tu contexto"); lo perdido vive en ESTE tramo previo.
     tramoPrevio: null,
+  };
+  const nAsist = (opts && opts.nAsist) || DEFAULT_N_ASIST;
+  const pushAsist = (texto, ts) => {
+    R.mensajesAsistente.push({ ts: ts || null, texto: texto.length > 4000 ? texto.slice(0, 4000) : texto });
+    if (R.mensajesAsistente.length > nAsist) R.mensajesAsistente.shift();
   };
   const pushMsg = (texto, ts) => {
     R.mensajesUsuario.push({ ts: ts || null, texto });
@@ -520,10 +528,11 @@ function extraer(file, nMsgs, opts) {
       escrituras: new Map(R.escrituras), bashEscrituras: new Map(R.bashEscrituras),
       skills: new Map(R.skills), comandos: new Map(R.comandos),
       commits: R.commits.slice(), mensajesUsuario: R.mensajesUsuario.slice(),
+      mensajesAsistente: R.mensajesAsistente.slice(),
       ramas: new Set(R.ramas), cwds: new Set(R.cwds), lineasVivas: R.lineasVivas,
     };
     R.escrituras.clear(); R.bashEscrituras.clear(); R.skills.clear(); R.comandos.clear();
-    R.commits.length = 0; R.mensajesUsuario.length = 0;
+    R.commits.length = 0; R.mensajesUsuario.length = 0; R.mensajesAsistente.length = 0;
     R.ramas.clear(); R.cwds.clear();
     R.lineasVivas = 0;
   };
@@ -566,6 +575,14 @@ function extraer(file, nMsgs, opts) {
         if (tb) texto = tb.text;
       }
       if (texto && !isNoisyUserText(texto)) pushMsg(texto, o.timestamp || null);
+    }
+
+    // Lo que el asistente le ESCRIBIÓ al usuario (bloques de texto; sin tool_use ni pensamiento). Fuera los
+    // subagentes (isSidechain): su texto no es la conversación de esta sesión.
+    if (o.type === 'assistant' && o.isSidechain !== true && o.message && Array.isArray(o.message.content)) {
+      const texto = o.message.content.filter((b) => b && b.type === 'text' && typeof b.text === 'string')
+        .map((b) => b.text).join('\n').trim();
+      if (texto) pushAsist(texto, o.timestamp || null);
     }
 
     // tool_use del ASISTENTE: escrituras, skills, comandos bash + commits.
@@ -622,6 +639,7 @@ function extraer(file, nMsgs, opts) {
       R.escrituras = R.tramoPrevio.escrituras; R.bashEscrituras = R.tramoPrevio.bashEscrituras;
       R.skills = R.tramoPrevio.skills; R.comandos = R.tramoPrevio.comandos;
       R.commits = R.tramoPrevio.commits; R.mensajesUsuario = R.tramoPrevio.mensajesUsuario;
+      R.mensajesAsistente = R.tramoPrevio.mensajesAsistente;
       R.ramas = R.tramoPrevio.ramas; R.cwds = R.tramoPrevio.cwds;
       R.lineasVivas = R.tramoPrevio.lineasVivas;
       R.previaDisponible = true;
@@ -718,6 +736,16 @@ function renderAndamio(meta, r, ctxRepo, avisoSubagente) {
   }
   if (!r.mensajesUsuario.length) lines.push('- (ninguno)');
   lines.push('');
+  // Solo en `--ventana previa`: es lo que el /compact fundió de lo que el asistente razonó, decidió y reportó.
+  if (r.ventana === 'previa') {
+    lines.push(`## Últimas ${r.mensajesAsistente.length} respuestas del asistente en el tramo (lo que razonó, decidió y reportó)`);
+    for (const m of r.mensajesAsistente) {
+      const t = m.texto.length > 1500 ? m.texto.slice(0, 1500) + '…[truncado]' : m.texto;
+      lines.push(`- ${m.ts ? `(${m.ts}) ` : ''}${t.replace(/\n+/g, ' ⏎ ')}`);
+    }
+    if (!r.mensajesAsistente.length) lines.push('- (ninguna)');
+    lines.push('');
+  }
   return lines.join('\n');
 }
 
@@ -810,7 +838,7 @@ function main() {
   }
   if (!o.file) {
     morir(2, 'uso: checkpoint-mecanico.js <transcript.jsonl> [--out <andamio.md>] [--repo-root <path>]\n'
-      + '                                 [--n-msgs N] [--ventana viva|previa|todo] [--json]\n'
+      + '                                 [--n-msgs N] [--n-asist N] [--ventana viva|previa|todo] [--json]\n'
       + '     checkpoint-mecanico.js --self [--ensure] [--out <andamio.md>]');
   }
   if (!fs.existsSync(o.file)) morir(1, `no existe: ${o.file}`);
@@ -836,7 +864,7 @@ function main() {
 
   const t0 = Date.now();
   const meta = metaBarata(o.file);
-  const r = extraer(o.file, o.nMsgs, { ventana: o.ventana });
+  const r = extraer(o.file, o.nMsgs, { ventana: o.ventana, nAsist: o.nAsist });
   const ms = Date.now() - t0;
 
   const md = renderAndamio(meta, r, o.repoRoot, avisoSubagente);

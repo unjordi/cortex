@@ -6212,6 +6212,34 @@ node -e '
 ' "$CKPT_MEC" "$M2FIX" \
   && ok "m2p: --ventana previa extrae el tramo ANTES del último /compact (msg+commit), y --ventana viva sigue trayendo solo el vivo" \
   || bad "m2p: --ventana previa no aisló el tramo previo (o contaminó el vivo)"
+# ── (m2pa) `--ventana previa` trae también lo que el ASISTENTE le escribió al usuario en el tramo que el
+#    /compact fundió (sus decisiones y reportes), sin subagentes (isSidechain) ni tool_use; la ventana viva no
+#    lo muestra. Falla contra el código viejo: no existía `mensajesAsistente` ni su sección en el render.
+M2AFIX="$M2DIR/fixture-asistente.jsonl"
+node -e '
+  const fs=require("fs"); const L=o=>fs.appendFileSync(process.argv[1], JSON.stringify(o)+"\n");
+  L({type:"user",message:{role:"user",content:"revisa las vistas de pedidos"}});
+  L({type:"assistant",message:{role:"assistant",content:[{type:"text",text:"Decidí abrir la fila 29: vwVentasPedidos perdió paridad con el backlog."}]}});
+  L({type:"assistant",isSidechain:true,message:{role:"assistant",content:[{type:"text",text:"texto de un subagente"}]}});
+  L({type:"assistant",message:{role:"assistant",content:[{type:"tool_use",name:"Bash",input:{command:"ls"}}]}});
+  L({type:"user",isCompactSummary:true,message:{role:"user",content:"resumen sintetico"}});
+  L({type:"assistant",message:{role:"assistant",content:[{type:"text",text:"respuesta tras el compact"}]}});
+' "$M2AFIX"
+node -e '
+  const {extraer}=require(process.argv[1]);
+  const prev=extraer(process.argv[2],12,{ventana:"previa"}); const viva=extraer(process.argv[2],12,{ventana:"viva"});
+  const p=prev.mensajesAsistente.map(m=>m.texto), v=viva.mensajesAsistente.map(m=>m.texto);
+  if (JSON.stringify(p)!==JSON.stringify(["Decidí abrir la fila 29: vwVentasPedidos perdió paridad con el backlog."])) { console.error("previa="+JSON.stringify(p)); process.exit(1); }
+  if (JSON.stringify(v)!==JSON.stringify(["respuesta tras el compact"])) { console.error("viva="+JSON.stringify(v)); process.exit(1); }
+' "$CKPT_MEC" "$M2AFIX" \
+  && ok "m2pa: --ventana previa trae lo que el asistente escribió antes del /compact (sin subagentes ni tool_use)" \
+  || bad "m2pa: --ventana previa no trae (o contamina) las respuestas del asistente"
+M2AOUT="$M2DIR/andamio-asistente.md"
+node "$CKPT_MEC" "$M2AFIX" --ventana previa --out "$M2AOUT" >/dev/null 2>&1
+node "$CKPT_MEC" "$M2AFIX" --ventana viva --out "$M2DIR/andamio-asistente-viva.md" >/dev/null 2>&1
+{ grep -q "Decidí abrir la fila 29" "$M2AOUT" && ! grep -q "respuestas del asistente" "$M2DIR/andamio-asistente-viva.md"; } \
+  && ok "m2pa: el andamio de --ventana previa muestra esas respuestas; el de la ventana viva no agrega la sección" \
+  || bad "m2pa: el render no muestra las respuestas del asistente en previa (o las mete en viva)"
 # ── (m2p) filtro de ruido del harness: un user line que es <task-notification> o isMeta NO se surfacea
 #    como mensaje del usuario (findings 5/10 del reporte: el recipe a mano del skill los colaba; el parser no).
 M2NOISE="$M2DIR/noise.jsonl"
