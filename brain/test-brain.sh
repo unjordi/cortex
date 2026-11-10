@@ -8127,7 +8127,7 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-echo "== (e6b) install-brain: EXACTAMENTE 4 hooks en PreToolUse/Bash + aviso-contexto en PostToolUse (sin matcher) =="
+echo "== (e6b) install-brain: EXACTAMENTE 5 hooks en PreToolUse/Bash + aviso-contexto en PostToolUse (sin matcher) =="
 # El fan-out de guards sobre Bash es un set CERRADO de 4 (rama-vieja se RETIRÓ — tier `retirado` en el
 # MANIFEST; merge-squash-guard + confirmar-merge-develop se fusionaron en merge-develop-guard, y
 # git-branch-guard se consolidó en él como su PASO 0 el 2026-10-21; recordar-dashboard se retiró, puramente
@@ -8135,11 +8135,11 @@ echo "== (e6b) install-brain: EXACTAMENTE 4 hooks en PreToolUse/Bash + aviso-con
 # se DERIVA del MANIFEST vía ev_de() en install-brain.sh → verificamos ese mapeo (no líneas register_hook
 # literales: el instalador las colapsó a un loop). Si alguien agrega/quita un guard de Bash del mapeo,
 # este test lo caza.
-want_bash="merge-develop-guard entorno-maquina-guard no-bypass-deploy proteger-arbol"
+want_bash="merge-develop-guard entorno-maquina-guard no-bypass-deploy proteger-arbol fondo-por-tiempo"
 want_bash_sorted="$(printf '%s\n' $want_bash | sort | tr '\n' ' ' | sed 's/ *$//')"
 got_bash="$(grep -E '\) *echo *"PreToolUse\|Bash"' "$INSTALLER" | sed -E 's/\).*//' | tr '|' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -vE '^$' | sort | tr '\n' ' ' | sed 's/ *$//')"
 if [ "$got_bash" = "$want_bash_sorted" ]; then
-  ok "e6b: ev_de() mapea EXACTAMENTE los 4 guards de PreToolUse/Bash"
+  ok "e6b: ev_de() mapea EXACTAMENTE los 5 hooks de PreToolUse/Bash"
 else
   bad "e6b: el set PreToolUse/Bash de ev_de() cambió · got:[$got_bash] want:[$want_bash_sorted]"
 fi
