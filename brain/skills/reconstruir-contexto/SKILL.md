@@ -1,6 +1,6 @@
 ---
 name: reconstruir-contexto
-description: RED DE EMERGENCIA para cuando un checkpoint quedó mal hecho (hilo pobre/incompleto/ausente) y un /compact fundió el detalle real de la sesión — el caso en que [[rehidratar-hilo]] no basta porque el hilo que relee es inútil. Da el orden MECÁNICO de excavación, de lo más barato/fresco a lo más caro: (1) regenerar+leer el ANDAMIO mecánico del tramo vivo, (2) las fuentes durables del repo del TEMA (estado-proyecto → bitácora → overflow), (3) el TRAMO PREVIO del transcript (lo que el /compact fundió) vía el andamio con `--ventana previa`, (4) re-volcar un hilo-mental BUENO ya reconstruido con [[checkpoint]]. Úsalo cuando retomas y el hilo está pobre/ausente/stale, o simplemente "no sé en qué iba" — antes de improvisar o confabular con seguridad.
+description: RED DE EMERGENCIA para cuando un checkpoint quedó mal hecho (hilo pobre/incompleto/ausente) y un /compact fundió el detalle real de la sesión — el caso en que [[rehidratar-hilo]] no basta porque el hilo que relee es inútil. Da el orden MECÁNICO de excavación, de lo más barato/fresco a lo más caro: (1) regenerar+leer el ANDAMIO mecánico del tramo vivo, (2) las fuentes durables del repo del TEMA (estado-proyecto → bitácora → overflow), (3) el TRAMO PREVIO del transcript (lo que el /compact fundió: los mensajes del usuario y TUS respuestas) vía el andamio con `--ventana previa`, (4) re-volcar un hilo-mental BUENO ya reconstruido con [[checkpoint]]. Úsalo cuando retomas y el hilo está pobre/ausente/stale, o simplemente "no sé en qué iba" — antes de improvisar o confabular con seguridad.
 ---
 
 # Reconstruir contexto — cuando el hilo se fundió y `rehidratar-hilo` no alcanza
@@ -119,12 +119,14 @@ done
 cat /tmp/andamio-previa.md
 ```
 
-Esto te da del tramo que el compact fundió: tus últimos mensajes **VERBATIM** (para `[user: "…"]` sin
-fabricar), los archivos tocados, los comandos y commits — con el **ruido del harness YA filtrado**
+Esto te da del tramo que el compact fundió: los últimos mensajes del usuario **VERBATIM** (para `[user: "…"]` sin
+fabricar), **tus propias respuestas** de ese tramo (lo que razonaste, decidiste y le reportaste; las 15 últimas,
+`--n-asist N` para más), los archivos tocados, los comandos y commits — con el **ruido del harness YA filtrado**
 (`<task-notification>`, `<system-reminder>`, el resumen sintético del propio `/compact`, saludos) y el
 **transcript resuelto por `sid`** (el `--self` barre todos los slugs por id; no el `ls -t` que elegiría la
-sesión escrita más reciente). Si el andamio previa ya te reubica, **para aquí** y salta al paso 4. (Si
-aún falta el JUICIO fino de una decisión a medio cocinar, sube los mensajes con `--n-msgs 20`.)
+sesión escrita más reciente). Tus respuestas son la fuente del JUICIO: qué decidiste, qué concluiste, qué
+quedó a medio camino; el usuario solo te dice qué pidió. Si el andamio previa ya te reubica, **para aquí** y
+salta al paso 4. (Si aún falta, sube `--n-asist 30` y `--n-msgs 20`.)
 
 **Último recurso — a mano, SOLO si el parser NO está** (un clon COMPARTIDO sin el brain global, donde
 `checkpoint-mecanico.js` no se instaló: es tier `global`). Lee el `.jsonl` directo, SIEMPRE acotado
@@ -138,6 +140,8 @@ T=$(command ls -t ~/.claude/projects/*/"$CLAUDE_CODE_SESSION_ID".jsonl 2>/dev/nu
 # mensajes de USUARIO verbatim (array de bloques; descarta tool_result; filtra meta/compact/wrappers).
 # `tail -n` (NO -c: un corte a media línea hace que jq ABORTE el stream). Sube el 4000 si no alcanza el tramo.
 tail -n 4000 "$T" | jq -rc 'select(.type=="user" and (.isMeta//false|not) and (.isCompactSummary//false|not)) | .message.content | (if type=="string" then . else (map(select(.type=="text").text)|join(" ")) end) | select(. != "" and (startswith("<")|not) and (startswith("This session is being continued")|not) and (startswith("[Request interrupted")|not))' 2>/dev/null | tail -20
+# TUS respuestas (texto que le escribiste al usuario; sin subagentes ni tool_use), recortadas a 1500 caracteres.
+tail -n 4000 "$T" | jq -rc 'select(.type=="assistant" and (.isSidechain//false|not)) | [.message.content[]? | select(.type=="text").text] | join(" ") | select(. != "") | .[0:1500]' 2>/dev/null | tail -15
 ```
 
 (El parser hace esto MEJOR —esquema conocido, filtro de ruido, resolución por sid, sin cap de bytes—; esta
@@ -154,8 +158,8 @@ la tarea es sustantiva) para dejarlo en disco:
   tooling relevante.
 - **En qué estamos** — el QUÉ del paso 2 (ítem del backlog) + el DÓNDE QUEDÓ (último commit/PR de la
   bitácora).
-- **Decisión abierta / siguiente paso** — el JUICIO fino que solo el paso 3 pudo dar: la última decisión
-  a medio cocinar, con su procedencia (`[user: "…"]` si la cita es textual del transcript, `[INFER-mío]`
+- **Decisión abierta / siguiente paso** — el JUICIO fino que solo el paso 3 pudo dar (sale de tus propias
+  respuestas del tramo, no solo de lo que pidió el usuario): la última decisión a medio cocinar, con su procedencia (`[user: "…"]` si la cita es textual del transcript, `[INFER-mío]`
   si la estás infiriendo del patrón de archivos tocados — **nunca disfraces una inferencia de cita**).
 - **Hilos sueltos** — cualquier cabo que el andamio o la bitácora mencionen sin resolver.
 

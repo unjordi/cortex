@@ -1,0 +1,17 @@
+ATENDIDO 2026-11-06 (cortex-master) — merge-develop-guard juez, OK previo al MR. MERGED a develop 7bdd3fd6 (PR #495).
+
+Mecanismo «repo + develop, todo el día» (decidido CON unjordi vía claudio): el prompt recibe el repo_name;
+un OK del USUARIO que nombra ESE repo o el trabajo + develop autoriza sus MR hacia develop aunque sea previo,
+sin id y con varios abiertos. «merge todo a develop» sin repo no cuenta. Cota de día re-verificada en BASH
+(acg_user_lineas_hoy_cdmx: timestamp-6h == hoy CDMX; acg_tiene_user_fechado salta la cota en fixtures sin
+timestamp). Cita que nombra el id = OK directo, sin cota. Develop-scoped (a main manda el piso de release).
+Batería cota-dia (5 casos); suite 1445·0. Reemplazó la vieja regla «SOLO #N / nombra cuál» que unjordi descartó.
+
+SEGUIMIENTO 2026-11-06 — HUECO DE VENTANA cerrado. MERGED a develop 62033d45 (PR #497).
+El #495 no cubría el caso real (OK a 16+ msgs → fuera de la ventana de ~10 del juez). Fix: para destino
+develop el juez suma al prompt + al veto las líneas USUARIO de HOY CDMX que nombran repo+develop
+(acg_user_lineas_hoy_cdmx | grep -Fw repo | grep develop). + SEGURIDAD: filtra isCompactSummary en las 3
+funciones (un resumen de /compact es role:user pero lo escribió el MODELO → no es autorización; cerró también
+el hueco pre-existente de acg_recent_intercalado). + 2 fixes de #496 (test fck aísla HOME; comentario install-brain).
+Baterías ventana (hoy fuera-de-ventana→ALLOW, control ayer→DENY, seguridad isCompactSummary→DENY) + fck(5).
+Suite 1454·0. Pendientes clase D aparte: grants STANDING sin vence_epoch, grant durable no cubre gh pr merge.

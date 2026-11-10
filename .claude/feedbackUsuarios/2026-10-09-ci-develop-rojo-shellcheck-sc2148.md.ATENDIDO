@@ -1,0 +1,1 @@
+- 2026-10-27 · ATENDIDO por cortex-master (triage buzón 2026-10-27, verificado vs develop a218cd9): RESUELTO: `control-gui-remota-por-ssh/{linux/lib-linux-ssh-env.sh,mac/lib-mac-ssh-env.sh}:2` `# shellcheck shell=bash`

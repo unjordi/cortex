@@ -1,0 +1,2 @@
+Atendido 2026-10-21 (cortex-master): GNOME fallback notify-send + marcador staleness en 3 footers + quitado hasQuotaData → commit d4ccfd1 en fix/corpus-fp-bench. swift build/qmllint/node verdes.
+- 2026-10-27 · RESIDUO (triage buzón): residuo abierto → B-23 (`.ATENDIDO` d4ccfd1; residuo: etiqueta «estimado local» con `basis` nulo: `QuotaModel.swift:445`, `limites.js:133`, `main.qml:2004`, `QuotaService.cs:198`)

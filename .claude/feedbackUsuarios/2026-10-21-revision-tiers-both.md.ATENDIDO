@@ -1,0 +1,2 @@
+Atendido 2026-10-21 (cortex-master): #1 sesion-inicio no-git → f8714a2; #2 both sin global instalado no sobra → este commit. Ambos con test de 2 direcciones. Suite 1418·0.
+- 2026-10-27 · RESIDUO (triage buzón): residuo abierto → B-22 (Todo RESUELTO salvo gitleaks `--repo`: `cerrar-slice.sh:70` `case "${url%.git}" in *"$REPO"*)` subcadena sin anclar ni minúsculas)
