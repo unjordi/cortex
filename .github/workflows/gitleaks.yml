@@ -1,7 +1,7 @@
 name: gitleaks
-# Detección de secretos server-side (reemplaza al hook casero secret-scan, retirado 2026-10-19).
-# Regla de CI solo-gate: corre en push a develop/main y a mano (workflow_dispatch) — NUNCA en cada PR/ramita.
-# Las excepciones van en .gitleaksignore / .gitleaks.toml del repo (por huella/allowlist), nunca por palabras.
+# Detección de secretos server-side. Corre en push a develop/main y a mano (workflow_dispatch), nunca en cada
+# PR/ramita. Escanea SOLO lo nuevo: en un push, los commits de ese push; a mano, lo que la rama agrega sobre
+# develop. Las excepciones van por huella en .gitleaksignore (reglas extra en .gitleaks.toml).
 on:
   push:
     branches: [develop, main]
@@ -16,9 +16,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # historia completa: gitleaks escanea los commits, no solo el árbol
-      - uses: gitleaks/gitleaks-action@v2
+          fetch-depth: 0
+      - name: Rango a escanear
+        id: rango
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # gitleaks-action es gratis en repos de CUENTA PERSONAL (unjordi/cortex); una ORG necesitaría
-          # GITLEAKS_LICENSE. Si algún día cortex migra a una org, agregar el secret aquí.
+          ANTES: ${{ github.event.before }}
+        run: |
+          if [ "${{ github.event_name }}" = push ] && [ -n "$ANTES" ] && git cat-file -e "$ANTES^{commit}" 2>/dev/null; then
+            echo "rango=$ANTES..$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = push ]; then
+            echo "rango=$GITHUB_SHA~1..$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          else
+            echo "rango=origin/develop..$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          fi
+      - name: gitleaks
+        run: |
+          echo "[gitleaks] rango: ${{ steps.rango.outputs.rango }}"
+          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz | tar -xz gitleaks
+          ./gitleaks git --no-banner --redact --log-opts="${{ steps.rango.outputs.rango }}" .
