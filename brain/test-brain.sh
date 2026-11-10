@@ -6182,6 +6182,26 @@ fck_tx 930; O4="$(fck_run fckA)"
 rm -rf "$FCKH"
 
 echo ""
+echo "== (fpt) fondo-por-tiempo: baja el timeout de Bash en primer plano para que lo largo pase solo al fondo =="
+fpt() { printf '%s' "$1" | env ${2:+CLAUDE_FONDO_MS=$2} bash "$HOOKS/fondo-por-tiempo.sh"; }
+fpt_to() { printf '%s' "$1" | jq -r '.hookSpecificOutput.updatedInput.timeout // "none"' 2>/dev/null || echo none; }
+F1="$(fpt '{"tool_input":{"command":"sleep 30","timeout":60000,"description":"d"}}')"
+{ [ "$(fpt_to "$F1")" = 15000 ] && [ "$(printf '%s' "$F1" | jq -r '.hookSpecificOutput.updatedInput.command')" = "sleep 30" ] \
+  && [ "$(printf '%s' "$F1" | jq -r '.hookSpecificOutput.updatedInput.description')" = d ]; } \
+  && ok "fpt (1): timeout de 60 s → 15 s, conservando comando y descripción" \
+  || bad "fpt (1): no bajó el timeout o perdió campos; got: $F1"
+F2="$(fpt '{"tool_input":{"command":"x"}}')"
+[ "$(fpt_to "$F2")" = 15000 ] && ok "fpt (2): sin timeout explícito → 15 s" || bad "fpt (2): got: $F2"
+F3="$(fpt '{"tool_input":{"command":"x","run_in_background":true,"timeout":60000}}')"
+[ -z "$F3" ] && ok "fpt (3): llamada que ya va al fondo → no se toca" || bad "fpt (3): tocó una llamada en fondo; got: $F3"
+F4="$(fpt '{"tool_input":{"command":"x","timeout":5000}}')"
+[ -z "$F4" ] && ok "fpt (4): timeout menor que el umbral → no se sube" || bad "fpt (4): got: $F4"
+F5="$(fpt '{"tool_input":{"command":"x"}}' 30000)"; F6="$(fpt '{"tool_input":{"command":"x"}}' abc)"
+{ [ "$(fpt_to "$F5")" = 30000 ] && [ "$(fpt_to "$F6")" = 15000 ]; } \
+  && ok "fpt (5): CLAUDE_FONDO_MS configurable; valor inválido → 15 s" \
+  || bad "fpt (5): got: $F5 / $F6"
+
+echo ""
 echo "== (m2) checkpoint-mecanico.js: extractor MECÁNICO en streaming (M2, auditoría 2026-09-11) =="
 # El 80% de un checkpoint COMPLETO a CERO tokens de modelo. TEST CONTRA LA FALLA: memoria acotada (RSS
 # reportado por el propio proceso, no proporcional a un archivo de decenas de MB), reset del ctxTokens en
