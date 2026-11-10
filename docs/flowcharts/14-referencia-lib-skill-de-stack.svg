@@ -50,7 +50,7 @@
 <text xml:space="preserve" text-anchor="start" x="542.12" y="-1677" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#f2ede6">🧵 forzar&#45;checkpoint</text>
 <polygon fill="#1b1712" stroke="none" points="1174.88,-1668.25 1174.88,-1694 3194.12,-1694 3194.12,-1668.25 1174.88,-1668.25"/>
 <polygon fill="none" stroke="#5fa89e" points="1174.88,-1668.25 1174.88,-1694 3194.12,-1694 3194.12,-1668.25 1174.88,-1668.25"/>
-<text xml:space="preserve" text-anchor="start" x="1775.75" y="-1677.75" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">Stop: al CRUZAR el 92% de GOV bloquea el cierre del turno 1× y ORDENA /checkpoint COMPLETO (+ visible + sonoro); re&#45;arma tras compact (GLOBAL)</text>
+<text xml:space="preserve" text-anchor="start" x="1734.88" y="-1677.75" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#cfc8c0">Stop: al CRUZAR el 92% de GOV frena el cierre del turno hasta que se invoque la skill checkpoint (tope configurable; + visible + sonoro); re&#45;arma tras compact (GLOBAL)</text>
 <polygon fill="#2b2622" stroke="none" points="15.88,-1642.5 15.88,-1668.25 3194.12,-1668.25 3194.12,-1642.5 15.88,-1642.5"/>
 <polygon fill="none" stroke="#5fa89e" points="15.88,-1642.5 15.88,-1668.25 3194.12,-1668.25 3194.12,-1642.5 15.88,-1642.5"/>
 <text xml:space="preserve" text-anchor="start" x="1564.88" y="-1652.85" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="12.00" fill="#d97757">🔔 Automático</text>

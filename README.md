@@ -81,7 +81,7 @@ El cerebro se ordena por *dureza*: arriba lo que te **bloquea** sin negociar; ab
 ├─ 🔗 merge-develop-guard      push directo a develop·main, o MR sin --squash/sin tu OK → denegado; a main exige OK súper-explícito
 ├─ 💸 delegacion-gate          delegar al llegar al 90% de tu ventana 5h → pide tu OK
 ├─ 🛑 limite-gasto             sin ventana 5h Y sin overage (ambos agotados) → freno duro
-└─ 🧵 forzar-checkpoint        Stop: al CRUZAR el 92% de GOV bloquea el cierre del turno 1× y ORDENA /checkpoint COMPLETO (+ visible + sonoro); re-arma tras compact (GLOBAL)
+└─ 🧵 forzar-checkpoint        Stop: al CRUZAR el 92% de GOV frena el cierre del turno hasta que se invoque la skill checkpoint (tope configurable; + visible + sonoro); re-arma tras compact (GLOBAL)
 
 🔔 Automático — inyectan / recuerdan (no bloquean)
 ├─ 🖥️  entorno-maquina-guard    commit de algo machine-specific (aliases/rutas de $HOME/Rosetta/entorno-maquina.md) al .claude/memory/ del repo → avisa
