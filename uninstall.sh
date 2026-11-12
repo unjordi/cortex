@@ -32,6 +32,7 @@ fi
 
 echo "==> Stopping and disabling timer"
 systemctl --user disable --now cortex.timer 2>/dev/null || true
+systemctl --user disable --now claude-token-refresh.timer 2>/dev/null || true
 
 # Broker de terminal (si estaba instalado con --con-term-broker). Idempotente/fail-safe: si nunca se
 # instaló, todo esto es no-op. Se retira SIEMPRE, sin bandera aparte: desinstalar es desinstalar.
@@ -65,6 +66,8 @@ fi
 echo "==> Removing systemd user units"
 rm -f "$HOME/.config/systemd/user/cortex.timer"
 rm -f "$HOME/.config/systemd/user/cortex.service"
+rm -f "$HOME/.config/systemd/user/claude-token-refresh.timer"
+rm -f "$HOME/.config/systemd/user/claude-token-refresh.service"
 systemctl --user daemon-reload || true
 
 echo "==> Removing fetch script"

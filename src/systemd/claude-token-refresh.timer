@@ -1,0 +1,15 @@
+[Unit]
+Description=Refresh the Claude access token at boot and every 6h (access token lasts ~24h)
+Documentation=https://github.com/unjordi/cortex
+
+[Timer]
+# Access token lives ~24h; refreshing every 6h (+ shortly after boot) keeps a wide margin even if a
+# couple of runs are missed (laptop asleep). Persistent catches up a missed run after the machine wakes.
+OnBootSec=1min
+OnUnitActiveSec=6h
+AccuracySec=1min
+Persistent=true
+Unit=claude-token-refresh.service
+
+[Install]
+WantedBy=timers.target

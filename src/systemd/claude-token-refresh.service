@@ -1,0 +1,16 @@
+[Unit]
+Description=Refresh the Claude access token so the widget and git guard keep a live token
+Documentation=https://github.com/unjordi/cortex
+
+[Service]
+Type=oneshot
+# WHY: the short-lived access token in ~/.claude/.credentials.json expires in ~24h. A GUI / VS Code
+# user who never opens `claude` in a terminal never refreshes it, so cortex-fetch reports "login
+# expired" (widget shows no quota) and merge-develop-guard loses the token it feeds the judge.
+# KEY: run with CLAUDE_CODE_OAUTH_TOKEN UNSET. When that env var is set, `claude` uses
+# authMethod=oauth_token and ignores the file; unset, it uses the claude.ai file login and
+# `claude auth status` refreshes the access token from the long-lived refresh token. No inference,
+# no interactive login. (bash -lc = login shell so `claude` is on PATH, mirroring cortex's token.conf.)
+ExecStart=/bin/bash -lc "env -u CLAUDE_CODE_OAUTH_TOKEN claude auth status >/dev/null"
+TimeoutStartSec=60
+Nice=10

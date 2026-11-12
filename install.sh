@@ -502,12 +502,18 @@ fi
 echo "==> Installing systemd user units -> $UNIT_DEST"
 install -D -m 0644 "$UNIT_SRC/cortex.service" "$UNIT_DEST/cortex.service"
 install -D -m 0644 "$UNIT_SRC/cortex.timer"   "$UNIT_DEST/cortex.timer"
+# Keeps ~/.claude/.credentials.json fresh so a GUI/VS Code user's access token never silently expires
+# (see the unit header). Without this the widget shows "login expired" every ~24h and the merge guard
+# loses its token. Harmless if the user auths with a different method — the refresh is a no-op.
+install -D -m 0644 "$UNIT_SRC/claude-token-refresh.service" "$UNIT_DEST/claude-token-refresh.service"
+install -D -m 0644 "$UNIT_SRC/claude-token-refresh.timer"   "$UNIT_DEST/claude-token-refresh.timer"
 
 echo "==> Reloading systemd user manager"
 systemctl --user daemon-reload
 
 echo "==> Enabling timer"
 systemctl --user enable --now cortex.timer
+systemctl --user enable --now claude-token-refresh.timer
 
 # Broker de terminal: ÚNICO punto de entrada, y solo con la bandera. Sin --con-term-broker aquí no
 # pasa nada (ni archivos, ni unidad, ni token) — es el camino por DEFAULT y el que más importa.
