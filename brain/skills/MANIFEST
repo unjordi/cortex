@@ -39,6 +39,7 @@ control-gui-remota-por-ssh       global
 coordinar-claudes                global
 desinflar-memorias               global
 diagramar                        global
+estandar-pruebas                 global
 ingenieria-inversa-gui-db-navegador  global
 investigar-dominio               global
 mandato-loop                     global

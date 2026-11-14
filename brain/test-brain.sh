@@ -7435,6 +7435,7 @@ echo "== (e) sin referencias circulares NUEVAS entre elementos del cerebro =="
 # hooks-hermanos). Un par NUEVO fuera de aqui = posible referencia circular -> revisalo (peor que una
 # contradiccion). El test COMPUTA los pares en cada corrida, no depende de contarlos a mano.
 CE_ALLOW="analizar-comando-git|merge-develop-guard
+cerrar-slice|estandar-pruebas
 juez-comun|merge-develop-guard
 dod-verificar|juez-comun
 cerrar-slice|dod-verificar
@@ -7548,6 +7549,9 @@ merge-develop-guard|turno-nocturno"
 # sincronizar-tasklist.sh; el hook recordar-cosechar.sh la SOURCEA (lib<->consumidor) y el skill to-do la
 # EJECUTA para el sentido inverso. Hook y skill se mencionan en sus cabeceras (dos disparadores de la MISMA
 # lógica: Stop→durable / /to-do→HUD). No es ciclo — la lógica no rebota, vive en la lib.
+# cerrar-slice|estandar-pruebas: la regla de pruebas vive UNA vez en estandar-pruebas; cerrar-slice es su punto
+# de ejecución (corre la pasada y trae contraprueba.sh) y el estándar lo nombra como el lugar donde corre. Es
+# regla<->punto de ejecución; el contenido no rebota.
 # checkpoint|reconstruir-contexto y reconstruir-contexto|rehidratar-hilo: la red de emergencia es HERMANA
 # del par checkpoint/rehidratar-hilo (como
 # checkpoint|rehidratar-hilo arriba) — cada hermana enruta a reconstruir-contexto para el caso en que el
@@ -10612,7 +10616,7 @@ else
     git add cfg.txt; git commit -q -m cfg; git push -q origin feat/leak
     git checkout -q develop ) >/dev/null 2>&1
   H18WORK="$H18LAB/work"
-  H18FN="$(sed -n '/^_gitleaks_gate() {/,/^}/p' "$SCRIPT_DIR/skills/cerrar-slice/cerrar-slice.sh")"
+  H18FN="$(sed -n '/^_repo_es_cwd() {/,/^}/p;/^_rango_slice() {/,/^}/p;/^_gitleaks_gate() {/,/^}/p' "$SCRIPT_DIR/skills/cerrar-slice/cerrar-slice.sh")"
   # corre el gate extraído en el repo-lab con los globals dados; _err → GATE_ERR + exit 7
   h18run() { ( cd "$H18WORK"; REPO="$2" BRANCH="$1" FORGE="glab" ID="1" bash -c '_err(){ printf "GATE_ERR\n" >&2; exit 7; }
 '"$H18FN"'
@@ -10641,6 +10645,42 @@ _gitleaks_gate' 2>&1; printf 'RC=%s\n' "$?" ); }
     || bad "H18: cross-repo no manejado (dijo limpio o no avisó): $o"
   rm -rf "$H18LAB"
 fi
+
+# Gate de contraprueba de cerrar-slice: si el slice AGREGA pruebas, el mensaje cita su contraprueba.
+echo ""
+CPGLAB="$(mktemp -d)"
+( set -e; cd "$CPGLAB"
+  git init -q --bare origin.git
+  git clone -q origin.git work; cd work
+  git config user.email t@t; git config user.name t
+  git commit -q --allow-empty -m seed; git branch -M develop; git push -q origin develop
+  git checkout -q -b feat/con-prueba
+  mkdir -p tests; printf 'exit 0\n' > tests/test-nuevo.sh; printf 'x\n' > lib.sh
+  git add .; git commit -q -m prueba; git push -q origin feat/con-prueba
+  git checkout -q -b feat/sin-prueba develop
+  printf 'y\n' > lib.sh; git add .; git commit -q -m codigo; git push -q origin feat/sin-prueba
+  git checkout -q develop ) >/dev/null 2>&1
+CPGFN="$(sed -n '/^CS_PATRON_PRUEBA=/p;/^_repo_es_cwd() {/,/^}/p;/^_rango_slice() {/,/^}/p;/^_contraprueba_gate() {/,/^}/p' "$SCRIPT_DIR/skills/cerrar-slice/cerrar-slice.sh")"
+cpgrun() { ( cd "$CPGLAB/work"; BRANCH="$1" MSG="$2" REPO="" FORGE="glab" ID="1" bash -c '_err(){ printf "GATE_ERR %s\n" "$*" >&2; exit 7; }
+'"$CPGFN"'
+_contraprueba_gate' 2>&1; printf 'RC=%s\n' "$?" ); }
+o="$(cpgrun feat/con-prueba 'feat: algo
+Rama: feat/con-prueba')"
+{ printf '%s' "$o" | grep -q GATE_ERR && printf '%s' "$o" | grep -q 'tests/test-nuevo.sh'; } \
+  && ok "contraprueba-gate: slice con prueba nueva y sin cita → frena y nombra la prueba" \
+  || bad "contraprueba-gate: no frenó un slice con prueba nueva sin cita: $o"
+o="$(cpgrun feat/con-prueba 'feat: algo
+Contraprueba: tests/test-nuevo.sh — FAIL en el aserto 1 contra develop
+Rama: feat/con-prueba')"
+{ printf '%s' "$o" | grep -q 'RC=0' && ! printf '%s' "$o" | grep -q GATE_ERR; } \
+  && ok "contraprueba-gate: slice con prueba nueva y su cita → pasa" \
+  || bad "contraprueba-gate: frenó un slice que sí cita su contraprueba: $o"
+o="$(cpgrun feat/sin-prueba 'feat: solo código
+Rama: feat/sin-prueba')"
+{ printf '%s' "$o" | grep -q 'RC=0' && ! printf '%s' "$o" | grep -q GATE_ERR; } \
+  && ok "contraprueba-gate: slice sin pruebas nuevas → no exige cita" \
+  || bad "contraprueba-gate: exigió cita a un slice sin pruebas nuevas: $o"
+rm -rf "$CPGLAB"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # cortex-fetch: estados de auth + preservación de la última lectura real (contrato 2026-10-21).
@@ -10795,6 +10835,40 @@ if [ -f "$CACHE/state.json" ]; then
 else
   echo "  SKIP (b1c): no hay $CACHE/state.json para verificar weekly.week_start"
 fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "== (contraprueba) una prueba nueva tiene que fallar contra la base =="
+# Repo de prueba: la base tiene suma() con el bug (resta) y HEAD lo arregla. test-suma.sh mide el efecto
+# (suma 2 3 = 5); test-taut.sh no puede fallar. contraprueba.sh corre cada una contra la base.
+CPB_SH="$SCRIPT_DIR/skills/cerrar-slice/contraprueba.sh"
+CPB="$(mktemp -d "${TMPDIR:-/tmp}/tb-contraprueba.XXXXXX")"
+(
+  cd "$CPB" && git init -q && git config user.email t@t && git config user.name t \
+  && printf 'suma() { echo $(( $1 - $2 )); }\n' > lib.sh && git add lib.sh && git commit -qm base \
+  && git tag base \
+  && printf 'suma() { echo $(( $1 + $2 )); }\n' > lib.sh && git commit -qam arreglo \
+  && printf '. ./lib.sh\n[ "$(suma 2 3)" = 5 ]\n' > test-suma.sh \
+  && printf '. ./lib.sh\n[ 1 = 1 ]\n' > test-taut.sh
+) >/dev/null 2>&1
+( cd "$CPB" && bash test-suma.sh ) \
+  && ok "contraprueba: escenario montado (test-suma.sh pasa contra el arreglo)" \
+  || bad "contraprueba: el escenario no se montó (test-suma.sh no pasa ni contra el arreglo)"
+o="$(bash "$CPB_SH" --repo "$CPB" --base base --cmd 'bash test-suma.sh' -- test-suma.sh 2>&1)"; rc=$?
+[ "$rc" = 0 ] && printf '%s' "$o" | grep -q "FALLA contra base" \
+  && ok "contraprueba: la prueba que mide el efecto falla contra la base (sale 0 y lo dice)" \
+  || bad "contraprueba: la prueba buena no se vio fallar contra la base (rc=$rc): $o"
+o="$(bash "$CPB_SH" --repo "$CPB" --base base --cmd 'bash test-taut.sh' -- test-taut.sh 2>&1)"; rc=$?
+[ "$rc" = 1 ] && printf '%s' "$o" | grep -q "PASA contra base" \
+  && ok "contraprueba: la prueba que no puede fallar se rechaza (sale 1)" \
+  || bad "contraprueba: la tautología no se rechazó (rc=$rc): $o"
+o="$(bash "$CPB_SH" --repo "$CPB" --base base --cmd 'true' -- no-existe.sh 2>&1)"; rc=$?
+[ "$rc" = 2 ] && ok "contraprueba: un archivo de prueba inexistente es error de uso (sale 2)" \
+  || bad "contraprueba: archivo inexistente rc=$rc (esperaba 2): $o"
+[ "$(git -C "$CPB" worktree list | wc -l | tr -d ' ')" = 1 ] \
+  && ok "contraprueba: no deja worktrees montados" \
+  || bad "contraprueba: dejó worktrees: $(git -C "$CPB" worktree list)"
+rm -rf "$CPB"
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""

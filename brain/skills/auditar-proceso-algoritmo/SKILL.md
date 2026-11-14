@@ -101,31 +101,10 @@ Delega con `Task`/subagente. Persona y encargo (adáptalo al target, conserva la
 
 ## Lo que un banco VERDE no prueba
 
-Un arnés en verde puede bendecir la mecánica **sin llegar nunca a la intención**.
-Cuando audites una suite, busca estas seis formas antes que ninguna otra:
-
-- **El fixture INVENTA la realidad.** Los mocks emitían valores que la herramienta real **nunca produce**:
-  un timer monotónico con hora de calendario, un LaunchDaemon ocioso marcado `running`, un nombre de unidad
-  que ya traía su sufijo, un `wg show <nombre lógico>` que el binario no soporta. **No simplificaron la
-  realidad: la fabricaron**, y por eso el verde no significaba nada. → *Cuando se mockea una herramienta, el
-  valor se CAPTURA de su salida real (`systemctl show`, `launchctl print`), no se escribe a mano.*
-- **El caso benigno no prueba el caso peligroso.** El banco probaba el `.conf` **ya en su sitio** — el único
-  camino que no copia — y así no vio un `--dry-run` que **sobrescribía la config de un túnel vivo**. Lo
-  mismo con la concurrencia: probaba dos actores sobre un lock **huérfano** y nunca contra un **dueño vivo**
-  (con un esperador, cero violaciones; con dos, violación siempre). → *Pregunta siempre qué escenario
-  monta el test, y si es el que duele.*
-- **El escenario de prueba monta lo que producción NO monta.** Todos los bancos llamaban a mano una función
-  de setup que `main()` **nunca invocaba**; el producto real salía inerte desde el primer tick y el banco
-  seguía verde. → *Un test que prepara el mundo a mano prueba el mundo preparado a mano.*
-- **La regresión anclada a una referencia MÓVIL se auto-desactiva.** Cuatro bancos comparaban contra `HEAD`:
-  en cuanto avanza la rama, la prueba deja de ver rojo **para siempre**, y la doc seguía citándolas como
-  evidencia de que "el banco sí ve rojo". → *Las regresiones se anclan a SHA fijo.*
-- **El banco que muere a media corrida y sale 0.** Sin imprimir un solo FAIL: indistinguible de un verde.
-  → *Toda suite necesita un centinela (`trap EXIT`) que distinga "terminé" de "me morí".*
-- **Definido ≠ cableado.** Seis de once predicados de verificación existían y **nadie los invocaba** — y
-  eran justo los que medían el EFECTO (el archivo quedó, sobrevive al reboot, el nombre resuelve, el túnel
-  subió); los que sí corrían medían el **registro del scheduler**. → *Verifica que el mecanismo esté
-  INVOCADO desde el camino real, no que exista.*
+Al auditar una suite, aplica el skill `estandar-pruebas`: sus firmas de rechazo (§2) y las reglas de escritura
+(§3, §5) incluyen las formas en que un banco verde bendice la mecánica sin llegar a la intención (fixture
+inventado, caso benigno, escenario que producción no monta, regresión anclada a una rama móvil, batería que
+muere y sale 0, definido ≠ cableado).
 
 ## Cuándo el defecto no es el defecto: sospecha del NIVEL DE ABSTRACCIÓN
 

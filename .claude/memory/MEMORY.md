@@ -56,6 +56,7 @@
 ├─ 💧 rehidratar-hilo          relee el HILO a mano (gemelo del hook; respaldo si un update del CLI rompe el auto-rehidratado)
 ├─ 🛟 reconstruir-contexto     RED DE EMERGENCIA cuando el checkpoint quedó pobre y /compact fundió el hilo: excava andamio→backlog→transcript y cierra re-volcando con checkpoint
 ├─ 🗺️ diagramar                diagramas por destino: .dot→dot2yed→yEd (editar a mano) · Mermaid en .md versionado (verse en GitHub)
+├─ 🧪 estandar-pruebas         estándar único de pruebas: firmas R1–R8, contraprueba, revisión semántica de CADA ítem, pasada de limpieza
 ├─ 🔬 auditar-proceso-algoritmo  auditor experto read-only (proceso industrial + algoritmo) → hallazgos priorizados; se alimenta de los flowcharts de diagramar
 ├─ 🩺 auditar-coherencia-cerebro fan-out read-only sobre el PROPIO cerebro (guards+flowcharts+doc): evasiones/huecos/drift, verificado por ejecución → loop hasta converger
 ├─ 🧪 auditar-suficiencia-operativa  ¿ALCANZA la doc para HACER el trabajo sin romper nada ni re-investigar? tareas reales ✅/⚠️/❌ + RE-auditar tras arreglar
@@ -180,6 +181,7 @@ Reclutar un agente cuesta según su nivel (**gratis** local · **incluido** dent
 
 **Diagramas / visual**
 - **`diagramar`** — diagrama según su DESTINO: `.dot`→`dot2yed`→yEd (editar a mano) · Mermaid en `.md` versionado (verse en GitHub). Un diagrama entregable nunca queda como widget efímero.
+- **`estandar-pruebas`** — el estándar único de pruebas de todos los proyectos (firmas R1–R8, prueba desde el caso de uso, revisión semántica de CADA ítem, pasada de limpieza en cerrar-slice y al cierre de épica); mecanismo `cerrar-slice/contraprueba.sh`.
 - **`zoom-screenshot`** — leer/transcribir capturas cuyo texto fino es ilegible entero: recorta y amplía regiones con ffmpeg antes de leer.
 
 ## 📚 Conocimiento de desarrollo de este repo (widget + brain)

@@ -96,6 +96,7 @@
 - Cubre las dos direcciones: probar solo que algo rechaza lo inválido es media prueba; prueba también que acepta lo válido.
 - El setup que falla en silencio deja el aserto probando el caso vacío (pasa siempre): comprueba que tu escenario se montó antes de aseverar sobre él.
 - Al agregar cobertura, comprueba que tu test FALLA contra el código viejo, no solo que pasa contra el nuevo.
+- El detalle (firmas de rechazo, cómo se escribe y se revisa una prueba, la revisión semántica de CADA ítem y la pasada de limpieza) vive en el skill `estandar-pruebas`, el único para todos los proyectos. Su mecanismo: la pasada corre en `cerrar-slice` y al cierre de cada épica.
 
 ## Al templatizar: DOMINIO vs regla genérica (norma dura)
 - Al derivar un TEMPLATE de un proyecto concreto (o al genericizar), distingue mecánicamente lo de DOMINIO (quitar) de la REGLA GENÉRICA (conservar) — un diff *PORTAR-vs-OK-EXCLUIDO* como método por defecto. Un template que al quitar el dominio también pierde reglas genéricas queda a medias.
