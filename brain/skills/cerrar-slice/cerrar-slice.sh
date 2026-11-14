@@ -68,35 +68,26 @@ _forge_por_origin() {
   esac
 }
 
-# Gate de gitleaks ANTES de integrar: escanea los commits del slice (origin/<base>..HEAD) y PARA si halla un
-# secreto (reemplaza al hook secret-scan, retirado 2026-10-19). Las excepciones son por HUELLA y explícitas —
-# `.gitleaksignore`/`.gitleaks.toml` del repo, que gitleaks lee solo—, NUNCA por palabra. Sin gitleaks
-# instalado: avisa fuerte y NO bloquea (el CI de gitleaks es el backstop server-side).
-_gitleaks_gate() {
-  local base rng out head cur url
-  if ! command -v gitleaks >/dev/null 2>&1; then
-    printf 'cerrar-slice: ⚠️ gitleaks NO instalado — sin gate local de secretos (el CI lo corre server-side). Instálalo: brew install gitleaks · apt install gitleaks.\n' >&2
-    return 0
-  fi
-  base="$(git rev-parse --verify -q origin/develop || git rev-parse --verify -q develop)" \
-    || { printf 'cerrar-slice: no ubico origin/develop para el rango de gitleaks — omito el gate local (el CI lo cubre).\n' >&2; return 0; }
+# _repo_es_cwd: 0 si el cwd es el clon de --repo (o no hay --repo). Con --repo el flujo ya entró (cd) al clon
+# local de ESE slug; esto es DEFENSA: un gate no declara "limpio" sobre el repo equivocado.
+_repo_es_cwd() {
+  local url
+  [ -n "$REPO" ] || return 0
+  url="$(git remote get-url origin 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"
+  case "${url%.git}" in
+    *[/:]"$(printf '%s' "$REPO" | tr '[:upper:]' '[:lower:]')") return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
-  # Con --repo el flujo ya entró (cd) al clon local de ESE slug, así que el `.` de abajo ES el repo correcto.
-  # Esta comprobación queda como DEFENSA: si por lo que sea el cwd NO es el repo de --repo, avisa y NO declara
-  # "limpio" (el CI de gitleaks es el backstop server-side) en vez de escanear el repo equivocado.
-  if [ -n "$REPO" ]; then
-    url="$(git remote get-url origin 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"
-    case "${url%.git}" in
-      *[/:]"$(printf '%s' "$REPO" | tr '[:upper:]' '[:lower:]')") : ;;
-      *) printf 'cerrar-slice: ⚠️ --repo %s no es el repo del directorio actual → el gate local de gitleaks escanearía otro repo; NO verifico aquí (el CI lo cubre).\n' "$REPO" >&2; return 0 ;;
-    esac
-  fi
-
-  # H18 (FP 2026-10-20): escanea la RAMA DEL MR (lo que de verdad se integra), no el HEAD del cwd — que
-  # puede ser develop/la mini/otra rama si cerrar-slice se corre SIN estar parado en la ramita → "limpio"
-  # en falso. Resuelve la rama por --branch o por el forge; fetch + escanea origin/<base>..origin/<rama>.
+# _rango_slice: imprime el rango de commits que de verdad se integran, <base>..<rama del MR>. La rama sale de
+# --branch o del forge (no del HEAD del cwd, que puede ser develop/la mini); parado EN una ramita sin poder
+# resolverla, su HEAD. Vacío si no hay base o si el cwd es develop/main/HEAD sin rama resoluble.
+_rango_slice() {
+  local base head cur
+  base="$(git rev-parse --verify -q origin/develop || git rev-parse --verify -q develop)" || return 0
   head="$BRANCH"
-  if [ -z "$head" ]; then
+  if [ -z "$head" ] && [ -n "$ID" ]; then
     if [ "$FORGE" = gh ]; then
       head="$(gh pr view "$ID" ${REPO:+-R "$REPO"} --json headRefName -q .headRefName 2>/dev/null || true)"
     else
@@ -105,25 +96,50 @@ _gitleaks_gate() {
   fi
   if [ -n "$head" ]; then
     git fetch -q origin "$head" 2>/dev/null || true
-    if   git rev-parse --verify -q "origin/$head" >/dev/null 2>&1; then rng="${base}..origin/$head"
-    elif git rev-parse --verify -q "$head"        >/dev/null 2>&1; then rng="${base}..$head"
-    else head=""   # la rama no está ni local ni en origin → cae al fallback de abajo
+    if   git rev-parse --verify -q "origin/$head" >/dev/null 2>&1; then printf '%s..origin/%s' "$base" "$head"; return 0
+    elif git rev-parse --verify -q "$head"        >/dev/null 2>&1; then printf '%s..%s' "$base" "$head"; return 0
     fi
   fi
-  if [ -z "$head" ]; then
-    cur="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo HEAD)"
-    case "$cur" in
-      develop|main|HEAD)
-        _err "no pude resolver la rama del MR #$ID (sin --branch y sin poder leerla de $FORGE) y estás parado en '$cur', NO en la ramita → no puedo escanear los commits que se integrarán y NO declaro 'limpio' a ciegas. Párate en la ramita del MR, pásame --branch <feat/…>, o confía en el CI de gitleaks (backstop server-side)." ;;
-      *) rng="${base}..HEAD" ;;   # parado EN una ramita → su HEAD sí es lo que se integra
-    esac
-  fi
+  cur="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo HEAD)"
+  case "$cur" in develop|main|HEAD) return 0 ;; *) printf '%s..HEAD' "$base" ;; esac
+}
 
+# Gate de gitleaks ANTES de integrar: escanea los commits del slice y PARA si halla un secreto. Las excepciones
+# son por HUELLA y explícitas —`.gitleaksignore`/`.gitleaks.toml` del repo, que gitleaks lee solo—, NUNCA por
+# palabra. Sin gitleaks instalado: avisa fuerte y NO bloquea (el CI de gitleaks es el backstop server-side).
+_gitleaks_gate() {
+  local rng out
+  if ! command -v gitleaks >/dev/null 2>&1; then
+    printf 'cerrar-slice: ⚠️ gitleaks NO instalado — sin gate local de secretos (el CI lo corre server-side). Instálalo: brew install gitleaks · apt install gitleaks.\n' >&2
+    return 0
+  fi
+  git rev-parse --verify -q origin/develop >/dev/null 2>&1 || git rev-parse --verify -q develop >/dev/null 2>&1 \
+    || { printf 'cerrar-slice: no ubico origin/develop para el rango de gitleaks — omito el gate local (el CI lo cubre).\n' >&2; return 0; }
+  _repo_es_cwd || { printf 'cerrar-slice: ⚠️ --repo %s no es el repo del directorio actual → el gate local de gitleaks escanearía otro repo; NO verifico aquí (el CI lo cubre).\n' "$REPO" >&2; return 0; }
+  rng="$(_rango_slice)"
+  [ -n "$rng" ] || _err "no pude resolver la rama del MR #$ID (sin --branch y sin poder leerla de $FORGE) y estás parado en '$(git rev-parse --abbrev-ref HEAD 2>/dev/null)', NO en la ramita → no puedo escanear los commits que se integrarán y NO declaro 'limpio' a ciegas. Párate en la ramita del MR, pásame --branch <feat/…>, o confía en el CI de gitleaks (backstop server-side)."
   if ! out="$(gitleaks git . --log-opts="$rng" --redact --no-banner 2>&1)"; then
     printf '%s\n' "$out" | tail -20 >&2
     _err "gitleaks detectó un posible SECRETO en los commits del slice ($rng). NO integro. Saca el secreto (rótalo si ya se commiteó) o, si es un FALSO POSITIVO, agrégalo por HUELLA a .gitleaksignore/.gitleaks.toml y reintenta — nunca lo marques por palabra."
   fi
   printf 'cerrar-slice: gitleaks limpio en %s.\n' "$rng" >&2
+}
+
+# Gate de contraprueba (skill estandar-pruebas §1): si el slice AGREGA archivos de prueba, el mensaje del squash
+# trae al menos una línea `Contraprueba: <cita>` con el rojo contra la base que dio contraprueba.sh. Sin rango
+# resoluble o sin pruebas nuevas no exige nada (el gate de gitleaks ya frena el caso sin rama).
+CS_PATRON_PRUEBA='(^|/)(tests?|__tests__|spec)/|(^|/)test-[^/]*\.(sh|ps1)$|Tests?\.cs$|[._-](test|spec)\.[A-Za-z0-9]+$|_test\.(go|py)$|(^|/)test_[^/]*\.py$'
+_contraprueba_gate() {
+  local rng nuevas
+  _repo_es_cwd || return 0
+  rng="$(_rango_slice)"; [ -n "$rng" ] || return 0
+  nuevas="$(git diff --name-only --diff-filter=A "$rng" 2>/dev/null | grep -E "$CS_PATRON_PRUEBA" || true)"
+  [ -n "$nuevas" ] || return 0
+  if ! printf '%s\n' "$MSG" | grep -qE '^[[:space:]]*Contraprueba:[[:space:]]*[^[:space:]]'; then
+    printf '%s\n' "$nuevas" | sed 's/^/  · /' >&2
+    _err "el slice agrega pruebas (arriba) y el mensaje no trae su contraprueba. Córrelas contra la base con contraprueba.sh (junto a este script) y agrega al mensaje una línea por cita: «Contraprueba: <archivo> — FAIL en <aserto> contra develop» (skill estandar-pruebas §1)."
+  fi
+  printf 'cerrar-slice: contraprueba citada para las pruebas nuevas del slice.\n' >&2
 }
 
 # ── parseo de args ──
@@ -347,6 +363,7 @@ _ci_veredicto() {
   fi
 }
 _gitleaks_gate   # secretos ANTES de integrar (para si halla; .gitleaksignore/.gitleaks.toml = excepción por huella)
+_contraprueba_gate   # pruebas nuevas del slice ⇒ el mensaje cita su rojo contra la base
 
 if [ "$WAIT_CI" = 1 ]; then
   echo "cerrar-slice: --wait-ci — comprobando el CI del #$ID antes de mergear…" >&2

@@ -115,6 +115,7 @@ El cerebro se ordena por *dureza*: arriba lo que te **bloquea** sin negociar; ab
 ├─ 💧 rehidratar-hilo          relee el HILO a mano (gemelo del hook; respaldo si un update del CLI rompe el auto-rehidratado)
 ├─ 🛟 reconstruir-contexto     RED DE EMERGENCIA cuando el checkpoint quedó pobre y /compact fundió el hilo: excava andamio→backlog→transcript y cierra re-volcando con checkpoint
 ├─ 🗺️ diagramar                diagramas por destino: draw.io por defecto (skill oficial drawio) · Mermaid en .md versionado (verse en GitHub)
+├─ 🧪 estandar-pruebas         estándar único de pruebas: firmas R1–R8, contraprueba, revisión semántica de CADA ítem, pasada de limpieza
 ├─ 🔬 auditar-proceso-algoritmo  auditor experto read-only (proceso industrial + algoritmo) → hallazgos priorizados; se alimenta de los flowcharts de diagramar
 ├─ 🩺 auditar-coherencia-cerebro fan-out read-only sobre el PROPIO cerebro (guards+flowcharts+doc): evasiones/huecos/drift, verificado por ejecución → loop hasta converger; modo-cerebro de auditar-proceso-algoritmo
 ├─ 🧪 auditar-suficiencia-operativa  ¿ALCANZA la doc para HACER el trabajo sin romper nada ni re-investigar? tareas reales ✅/⚠️/❌ con archivo:línea + RE-auditar tras arreglar

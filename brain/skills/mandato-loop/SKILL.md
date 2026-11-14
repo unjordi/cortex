@@ -44,7 +44,7 @@ DELEGACIÓN: el diseño de cada fila, sus pruebas de aceptación, la revisión y
 
 MÁQUINAS (si aplica): qué corre dónde, cómo viajan los commits entre ellas; lo que no pueda correrse se anota «pendiente en <máquina>», nunca verde.
 
-PRUEBAS (el detalle está en <estándar de pruebas del repo>):
+PRUEBAS (el detalle está en el skill `estandar-pruebas`; el repo solo agrega su mecanismo y sus casos en <doc de pruebas del repo>):
 - Las de aceptación las construyes tú antes de lanzar un agente, junto con su mandato.
 - §1 La prueba de una prueba: cada aserto puede fallar y falla contra el código viejo (revertido y corrido, no supuesto).
 - §2 Las siete firmas de rechazo: R1 no puede fallar · R2 mide el andamio, no el efecto · R3 el escenario no se montó · R4 mide el objeto equivocado · R5 el esperado quedó viejo · R6 el verde depende del entorno (lo que no corre dice SKIP) · R7 media prueba. Ningún aserto cuya respuesta correcta se pueda adivinar desde la pregunta.
@@ -52,12 +52,13 @@ PRUEBAS (el detalle está en <estándar de pruebas del repo>):
 - §4 Comentarios en el código: dicen qué hace el código, su contrato (entradas, salida, qué pasa al fallar) y, solo si no es obvio, el porqué en una o dos líneas justo donde se mete la pata, apuntando al test o guard que lo frena. No llevan citas ni nombres de personas, fechas, números de fila, hallazgo, nota, PR o commit, «antes…/ahora…», «corrección de…», ni la historia del incidente. Eso va en el mensaje del commit y en la memoria. Un comentario de más de tres líneas se parte o se va al doc.
 - §5 Al revisar una prueba existente: aislada y en la suite, veredicto por aserto (conservar · arreglar · retirar).
 - §6 Mecanismo: <qué caza el probe automático>; lo demás es criterio tuyo.
-- §7 Revisión semántica (una fila se cierra con esto, no con el verde):
+- §7 Revisión semántica de CADA ítem (cada fila, cada prueba nueva y cada hallazgo se cierra con la suya, escrita junto al ítem; la de la épica va aparte, encima, nunca en su lugar):
   §7.1 Vuelve al porqué: lee el origen de la fila y pregúntate si ese problema ya no podría repetirse. Úsala en vivo, con modelo real sobre una copia, como la usaría quien la pidió; si para entender la salida hay que excavar, no está resuelta aunque pase.
   §7.2 Busca las formas de fallar que la prueba no fija: ¿se recupera?, ¿castiga de más?, ¿qué pasa con la variante parecida en las palabras pero no en el sentido? Lo que encuentres se vuelve caso nuevo.
   §7.3 Mira qué le hace al resto: corre en vivo los recorridos vecinos que el cambio puede tocar y compara con antes.
   §7.4 Revisa el diseño contra la arquitectura: capa correcta, sin un segundo mecanismo para lo mismo, salida accionable, valores configurables.
   §7.5 Si al relatar el cierre hay que matizar, todavía no está.
+- §8 La pasada de limpieza (`estandar-pruebas` §9: re-verificar lo cerrado · prueba por prueba · revisión semántica del código) corre en cada cierre de slice sobre lo que toca y al cerrar la épica sobre toda ella; sus hallazgos se resuelven antes del merge.
 
 HIGIENE MENTAL (el cerebro):
 - Cada ronda: checkpoint LIGERO con el skill /checkpoint (no de memoria). Antes de sobrescribir hilo-mental-actual.md, léelo y conserva lo vivo que no sepas por qué desapareció; sube todo pendiente/decisión durable a estado-proyecto.md y una línea a bitacora.md con >>.

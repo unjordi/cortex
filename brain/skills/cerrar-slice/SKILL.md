@@ -35,6 +35,17 @@ queda con el JUICIO (¿está LISTO? ¿el mensaje cuenta el cambio neto?); el scr
   ("esto borra X que costó Y") y pide su OK ANTES de ejecutarlo/cerrarlo.
 - **QA de NO-REGRESIÓN visual.** Tras tocar un layout/estilo COMPARTIDO, re-verifica los 2-3 ajustes
   previos del mismo componente: un fix de layout puede romper otro que ya estaba bien.
+- **Pasada de pruebas del slice** (skill `estandar-pruebas` §9, acotada a lo que toca el slice; al cerrar una
+  épica, sobre toda ella), con su doc de salida y un veredicto por ítem:
+  1. **Re-verifica lo que el slice declara cerrado**: qué prueba lo cierra y si mide lo que ve el usuario.
+  2. **Audita cada prueba nueva o tocada** (§7). Para cada prueba nueva, **cita su rojo contra la base**
+     con `contraprueba.sh --base origin/<base> --cmd '<comando de pruebas>' -- <archivos de prueba nuevos>`
+     (junto a este SKILL.md): monta la base en un worktree temporal, le pone encima las pruebas nuevas y exige
+     que fallen. Sin esa cita la prueba no cuenta; si pasa contra la base, es R1 o no tiene contraprueba.
+     La cita va en el mensaje del squash, una línea `Contraprueba: <archivo> — FAIL en <aserto> contra develop`
+     por prueba: `cerrar-slice.sh` no integra un slice que agrega pruebas sin esa línea.
+  3. **Revisión semántica de CADA ítem** (§8): cada fila, prueba y hallazgo del slice con la suya, escrita
+     junto al ítem. Los hallazgos se resuelven aquí, antes del merge.
 - Recuerda: **verde técnico ≠ LISTO.** Es *verificado técnicamente*: peldaño necesario, insuficiente
   para declarar LISTO (falta (1) confirmación funcional del usuario o (2) su autorización expresa).
 
