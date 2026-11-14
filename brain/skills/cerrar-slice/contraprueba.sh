@@ -39,7 +39,7 @@ for f in "$@"; do
   cp "$RAIZ/$rel" "$WT/$rel"
 done
 
-( cd "$WT" && bash -c "$CMD" ) > "$TMP/salida" 2>&1
+( cd "$WT" && bash -o pipefail -c "$CMD" ) > "$TMP/salida" 2>&1   # pipefail: un `| tail` no esconde el rojo
 rc=$?
 if [[ $rc -eq 0 ]]; then
   echo "[contraprueba] PASA contra $BASE ($COMMIT): la prueba no separa el código viejo del nuevo."
