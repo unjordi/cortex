@@ -10862,6 +10862,10 @@ o="$(bash "$CPB_SH" --repo "$CPB" --base base --cmd 'bash test-taut.sh' -- test-
 [ "$rc" = 1 ] && printf '%s' "$o" | grep -q "PASA contra base" \
   && ok "contraprueba: la prueba que no puede fallar se rechaza (sale 1)" \
   || bad "contraprueba: la tautología no se rechazó (rc=$rc): $o"
+o="$(bash "$CPB_SH" --repo "$CPB" --base base --cmd 'bash test-suma.sh | tail -n 5' -- test-suma.sh 2>&1)"; rc=$?
+[ "$rc" = 0 ] && printf '%s' "$o" | grep -q "FALLA contra base" \
+  && ok "contraprueba: un comando con tubería no esconde el rojo de la prueba" \
+  || bad "contraprueba: la tubería del comando escondió el rojo (rc=$rc): $o"
 o="$(bash "$CPB_SH" --repo "$CPB" --base base --cmd 'true' -- no-existe.sh 2>&1)"; rc=$?
 [ "$rc" = 2 ] && ok "contraprueba: un archivo de prueba inexistente es error de uso (sale 2)" \
   || bad "contraprueba: archivo inexistente rc=$rc (esperaba 2): $o"
