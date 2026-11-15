@@ -15,9 +15,10 @@ Un aserto entra solo si pasa las dos:
 2. **Falla contra el código viejo.** Revertido y corrido, no supuesto; la salida se cita («con develop se pierde 4 de 4»).
 
 ## 2 · Firmas de rechazo
-Si una prueba calza con alguna, se arregla o se retira.
+La pregunta base: imagina el cambio de código que haría fallar la prueba. ¿Alguien lo notaría (un usuario, un operador, otro sistema, la seguridad del servidor)? Si solo falla cuando alguien edita a propósito un texto, un nombre o un detalle interno, es plomería y sale.
+Si una prueba calza con alguna firma, se arregla o se retira.
 - **R1 · No puede fallar.** Compara un valor consigo mismo o con algo derivado de sus entradas; grepea un patrón que siempre está; el oráculo es «el mejor de N candidatos» (casi cualquier salida acierta); una métrica agregada que pasa por construcción (IoU de máscaras, «no está en negro», «el archivo tiene tamaño»).
-- **R2 · Mide el andamio, no el efecto.** Que el archivo existe, que la función se llamó, que el mock recibió la llamada, que salió 0, que el log trae cierta línea, que compila, que el «hola mundo» arranca, que el módulo vive en tal carpeta.
+- **R2 · Mide el andamio, no el efecto.** Que el archivo existe, que la función se llamó, que el mock recibió la llamada, que salió 0, que el log trae cierta línea, que compila, que el «hola mundo» arranca, que el módulo vive en tal carpeta. También: una constante comparada con su propio texto, un método privado probado por reflexión, una propiedad que solo refleja la configuración que la prueba acaba de poner, la forma del fixture (cuántas filas trae), el comportamiento del framework (`Enum.Parse`, `ToString`) y el valor que devuelve el propio fake.
 - **R3 · El escenario no se montó.** El setup falló en silencio (la entrada nunca llegó, el estado no cargó, el servicio no respondió, el bucle no corrió) y el aserto prueba el caso vacío.
 - **R4 · Mide el objeto equivocado.** El número es real pero no es del sujeto: el proceso de la prueba en vez del medido; un modelo en vez de la pantalla; un oráculo que recalcula con la misma fórmula que el código probado (da igual con o sin el cambio).
 - **R5 · El esperado quedó viejo o inventado.** Igualdad exacta contra un mensaje o un default que evoluciona a propósito; un fixture escrito a mano con valores que la herramienta real nunca produce.
@@ -40,6 +41,7 @@ Si una prueba calza con alguna, se arregla o se retira.
 12. **Las configuraciones que cambian el estado viajan juntas**: guardar y cargar, medir y comparar, con la misma opción; la prueba lo fija.
 13. **Regresiones ancladas a un SHA fijo**, nunca a una rama que se mueve.
 14. **Una contraprueba por interruptor**: cada cosa que se protege tiene su contraprueba propia, no una que apaga tres cosas.
+15. **Sin pruebas de casos extremos**: un mecanismo que solo corre en un evento raro (subir la versión de un esquema, un montaje en `/`) no lleva prueba propia, ni se registra como faltante en una pasada.
 
 ## 4 · Fallas silenciosas: el log como contrato
 Todo lo que el sistema descarta o degrada (filas, texturas, claves inválidas, reintentos, mensajes) deja un contador o un aviso, con un interruptor para provocarlo, y las pruebas de efecto fallan si el contador no está en 0. Así un verde no esconde una degradación.
@@ -60,6 +62,11 @@ En orden, con veredicto **por aserto**:
 3. Busca las firmas de §2. Para R3, comprueba explícitamente que el escenario se montó.
 4. Dictamina: **CONSERVAR** · **ARREGLAR** (qué aserto y con qué) · **RETIRAR** (qué deja de cubrirse; si lo que cubría importa, lo que falta es una prueba de caso de uso).
 5. Lo que sobrevive queda con su nombre corregido si prometía más de lo que mide.
+
+Las zonas grises entre funcionalidad y plomería (§2) las decide quien revisa, como parte de la revisión semántica. Guías:
+- **Texto generado que consume otro sistema** (sudoers, reglas de rsyslog, un instalador): funcional si asevera una regla (qué se permite y qué no); plomería si asevera formato o presencia.
+- **Constante compartida entre dos lugares**: funcional si asevera que ambos coinciden (el instalador usa la ruta del código); plomería si compara la constante con su texto.
+- **Cableado**: funcional si observa el efecto (no se disparó nada); plomería si solo lee la bandera que lo decide.
 
 ## 8 · Revisión semántica de CADA ítem
 Cada ítem que se cierra —cada fila del plan, cada prueba nueva o arreglada, cada hallazgo resuelto— lleva **su propia** revisión semántica, hecha por quien revisa (no por quien lo construyó) y escrita junto al ítem con su resultado. Un verde no cierra un ítem; esto sí. La revisión de la épica completa (§9) va aparte y encima de las de cada ítem, nunca en su lugar.
