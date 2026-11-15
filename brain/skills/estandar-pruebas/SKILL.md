@@ -24,7 +24,10 @@ Si una prueba calza con alguna firma, se arregla o se retira.
 - **R5 · El esperado quedó viejo o inventado.** Igualdad exacta contra un mensaje o un default que evoluciona a propósito; un fixture escrito a mano con valores que la herramienta real nunca produce.
 - **R6 · El verde depende del entorno.** Pasa porque aquí hay un servicio vivo, un modelo cargado, una ruta o una sesión ssh. Lo que no se puede correr dice SKIP, nunca OK.
 - **R7 · Media prueba.** Solo una dirección: rechaza lo inválido pero no comprueba que acepta lo válido, o al revés.
-- **R8 · Repetida.** Ejercita lo mismo que otra (un segundo corredor de la batería, el mismo caso con el mismo insumo). Cuesta tiempo y finge cobertura.
+- **R8 · Repetida.** Ejercita lo mismo que otra (un segundo corredor de la batería, el mismo caso con el mismo insumo). Cuesta tiempo y finge cobertura. Formas concretas:
+  - **Casos de una teoría que caen en la misma rama del código.** `""` junto a `null` o `"   "` cuando el código hace `IsNullOrWhiteSpace`; `12x`, `x12` y `-5` cuando la regla es «solo dígitos»; un valor intermedio entre dos fronteras. Cada caso se queda solo si llega a una regla que ningún otro valor de la lista ejercita. Los elementos de un conjunto (cada carácter prohibido, cada lista con su propio punto de llamada) sí cuentan como reglas distintas.
+  - **La misma regla probada en varias capas.** Se prueba completa en la clase de la función que la implementa; en las otras capas basta un caso que confirme el cableado. Lo que solo vivía en la otra capa se muda a la casa de la regla antes de quitarlo.
+  - **Una prueba subsumida por otra del mismo escenario.** Tres «no hay X, Y, Z» cuando otra asevera que hay exactamente uno; una prueba con un usuario que repite la de dos.
 
 ## 3 · Cómo se escribe una prueba nueva
 1. **Empieza por el caso de uso**: quién hace qué y qué debe obtener. Si no cabe en una línea, todavía no sabes qué probar.
