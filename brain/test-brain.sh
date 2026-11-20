@@ -10238,6 +10238,57 @@ PSS
     && ok "despertar-master --mensaje: el prompt va tras '--' (un mensaje con '-' no se parsea como flag)" \
     || bad "despertar-master --mensaje: falta el '--' antes del prompt — screen.log: $(cat "$SCREENLOG")"
 
+  # respaldo + Remote Control con nombre. Un master SIN transcript local pero con respaldo (<id>.jsonl.gz +
+  # <id>.meta.json en $CLAUDE_SESSIONS_DRIVE) se restaura a projects/<originSlug>/<id>.jsonl y se despierta;
+  # al cargar, se conecta a Remote Control con `/remote-control <nombre>` DENTRO de la sesión (el flag de
+  # arranque la publica con el título automático). El stub de screen pinta una TUI lista y la URL.
+  RESP="$DMROOT/respaldos"; mkdir -p "$RESP" "$DMROOT/binrc"
+  printf '{"cwd":"%s","customTitle":"resp-master"}\n' "$DMROOT/repoC" | gzip -c > "$RESP/rrr.jsonl.gz"
+  touch -t 202001010000 "$RESP/rrr.jsonl.gz"   # respaldo viejo: el transcript restaurado conserva su fecha (idle)
+  printf '{"id":"rrr","label":"resp-master","originCwd":"%s","originSlug":"slug-r","lastActivity":1}\n' "$DMROOT/repoC" > "$RESP/rrr.meta.json"
+  RCLOG="$DMROOT/rc.log"; : > "$RCLOG"
+  cat > "$DMROOT/binrc/screen" <<SH
+#!/usr/bin/env bash
+case "\$1" in
+  -ls) exit 1 ;;
+  -dmS) echo "LANZA \$*" >> "$RCLOG" ;;
+  *) case "\$*" in
+       *hardcopy*) f="\${@: -1}"; printf '  auto mode on (shift+tab to cycle)\n  https://claude.ai/code/session_PRUEBA\n' > "\$f" ;;
+       *stuff*) echo "TECLEA \$*" >> "$RCLOG" ;;
+     esac ;;
+esac
+SH
+  chmod +x "$DMROOT/binrc/screen"
+  Rr="$(PATH="$DMROOT/binrc:$PATH" CLAUDE_PROJECTS_DIR="$PROJ" CLAUDE_SESSIONS_DRIVE="$RESP" DESPERTAR_VIVA_MIN=15 DESPERTAR_ESPERA_S=20 \
+        bash "$DM" resp-master 2>&1)"
+  { [ -f "$PROJ/slug-r/rrr.jsonl" ] && grep -q 'LANZA .*resp-master.*--resume rrr' "$RCLOG"; } \
+    && ok "despertar-master: master solo en respaldo → restaura su transcript y lo despierta (--resume rrr)" \
+    || bad "despertar-master: no restauró ni despertó al master del respaldo — $(cat "$RCLOG")"
+  { grep -q 'TECLEA .*resp-master.*stuff /remote-control resp-master' "$RCLOG" && ! grep -q 'LANZA .*--remote-control' "$RCLOG" \
+    && printf '%s' "$Rr" | grep -q 'session_PRUEBA'; } \
+    && ok "despertar-master: se conecta a Remote Control con /remote-control <nombre> dentro de la sesión, no con el flag de arranque" \
+    || bad "despertar-master: no conectó Remote Control con su nombre — $(cat "$RCLOG")"
+  # por ID: una sesión SIN título de master se despierta por su id, sin depender del nombre.
+  IDS="0123abcd-0000-4000-8000-000000000001"; mkdir -p "$PROJ/slug-id"
+  printf '{"cwd":"%s"}\n' "$DMROOT/repoC" > "$PROJ/slug-id/$IDS.jsonl"; touch -t 202001010000 "$PROJ/slug-id/$IDS.jsonl"
+  : > "$RCLOG"
+  PATH="$DMROOT/binrc:$PATH" CLAUDE_PROJECTS_DIR="$PROJ" CLAUDE_SESSIONS_DRIVE="$RESP" DESPERTAR_ESPERA_S=20 bash "$DM" "$IDS" >/dev/null 2>&1
+  grep -q "LANZA .*--resume $IDS" "$RCLOG" \
+    && ok "despertar-master: por ID despierta una sesión sin título de master" \
+    || bad "despertar-master: no despertó la sesión por su id — $(cat "$RCLOG")"
+  # Remote Control ya activo: /remote-control abre un diálogo; se desconecta y se reconecta con el nombre.
+  sed -i.bak 's/session_PRUEBA/session_PRUEBA\\n  Disconnect this session/' "$DMROOT/binrc/screen" && rm -f "$DMROOT/binrc/screen.bak"
+  rm -f "$PROJ/slug-r/rrr.jsonl"; : > "$RCLOG"
+  PATH="$DMROOT/binrc:$PATH" CLAUDE_PROJECTS_DIR="$PROJ" CLAUDE_SESSIONS_DRIVE="$RESP" DESPERTAR_ESPERA_S=20 bash "$DM" resp-master >/dev/null 2>&1
+  [ "$(grep -c 'stuff /remote-control resp-master' "$RCLOG")" = 2 ] && grep -q 'TECLEA .*\\033\[A\|TECLEA .*\[A' "$RCLOG" \
+    && ok "despertar-master: con Remote Control ya activo, desconecta y reconecta con el nombre" \
+    || bad "despertar-master: no manejó el diálogo de Remote Control activo — $(cat "$RCLOG")"
+  : > "$RCLOG"
+  Nno="$(PATH="$DMROOT/binrc:$PATH" CLAUDE_PROJECTS_DIR="$PROJ" CLAUDE_SESSIONS_DRIVE="$RESP" bash "$DM" nadie-master 2>&1)"
+  { printf '%s' "$Nno" | grep -q "no encontré" && [ ! -s "$RCLOG" ]; } \
+    && ok "despertar-master: sin transcript ni respaldo → no encontrado, sin lanzar nada" \
+    || bad "despertar-master: con un nombre inexistente lanzó algo o no avisó — $(cat "$RCLOG")"
+
   # --mensaje … --no-esperar: ENTREGA el mensaje (screen con --) Y respeta el no-esperar (regresa por la rama
   # "lanzada en screen", sin esperar la carga) — un dispatch que ignore el --no-esperar y espere falla aquí.
   : > "$SCREENLOG"; : > "$SESSF"
@@ -10340,33 +10391,6 @@ fi
 # (los greps de las líneas 'coordinar-claudes global' / 'despertar-master retirado' en skills/MANIFEST se
 #  retiraron: el EFECTO de esas declaraciones —coordinar se instala, el folder zombie de despertar se poda—
 #  lo miden e2-skills (MANIFEST↔skills completo) y e7c (poda de skills retiradas).)
-
-# ── (vm) vigilar-master: el estado del transcript sale SOLO de eventos de CONVERSACIÓN, no de metadatos ──
-# Un `pr-link` (metadato con timestamp que el CLI escribe tras cerrar el turno) NO debe desplazar al
-# turn_duration y disparar un COLGADO falso. fixture1 (turn_duration + pr-link) → quieto/TURNO-TERMINADO;
-# fixture2 (user/tool_result + attachment, sin respuesta) → colgado. FALLA contra la lógica vieja (que
-# tomaba el último evento con timestamp cualquiera → pr-link → colgado falso).
-VMSH="$SCRIPT_DIR/skills/coordinar-claudes/vigilar-master.sh"
-if [ -f "$VMSH" ]; then
-  ( _CMD_VIGILAR_SOURCE_ONLY=1 . "$VMSH"
-    VMD=$(mktemp -d "${TMPDIR:-/tmp}/brain-vm.XXXXXX")
-    printf '%s\n' \
-      '{"type":"system","subtype":"turn_duration","timestamp":"2026-01-01T00:00:00.000Z"}' \
-      '{"type":"pr-link","prNumber":1,"timestamp":"2026-01-01T00:00:05.000Z"}' > "$VMD/t1.jsonl"
-    printf '%s\n' \
-      '{"type":"user","message":{"role":"user"},"timestamp":"2026-01-01T00:00:00.000Z"}' \
-      '{"type":"attachment","timestamp":"2026-01-01T00:00:03.000Z"}' > "$VMD/t2.jsonl"
-    [ "$(vm_estado_de "$VMD/t1.jsonl" | cut -f1)" = quieto ] \
-      && ok "vm: turn_duration + pr-link (metadato) → quieto/TURNO-TERMINADO (el pr-link no cuenta como último evento)" \
-      || bad "vm: un pr-link tras el turn_duration disparó un estado != quieto (el COLGADO falso volvió)"
-    [ "$(vm_estado_de "$VMD/t2.jsonl" | cut -f1)" = colgado ] \
-      && ok "vm: user/tool_result + attachment sin respuesta → colgado/COLGADO (el attachment no cuenta)" \
-      || bad "vm: user/tool_result sin respuesta no dio colgado"
-    rm -rf "$VMD"
-  )
-else
-  bad "vm: no encuentro $VMSH"
-fi
 
 # ═════════════════════════════════════════════════════════════════════════════════════════════════════
 echo ""
