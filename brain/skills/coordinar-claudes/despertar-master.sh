@@ -10,7 +10,8 @@
 # Modos:
 #   despertar-master.sh                 lista los masters (igual que --lista)
 #   despertar-master.sh --lista|-l      tabla: nombre · id · edad · estado (viva/idle) · cwd
-#   despertar-master.sh <nombre>        despierta ese master (o avisa que ya está vivo y NO lo relanza)
+#   despertar-master.sh <nombre|id>     despierta ese master (o avisa que ya está vivo y NO lo relanza); con el id
+#                                       de sesión no depende del título: lo usa tal cual (transcript o respaldo)
 #   despertar-master.sh <nombre> --no-esperar   lanza y regresa sin esperar a que cargue
 #   despertar-master.sh <nombre> --mensaje <archivo> [--no-esperar]   lo despierta y le entrega <archivo> como su primer
 #                                       mensaje (prompt inicial del resume; no depende de teclear en la TUI)
@@ -20,15 +21,18 @@
 #   despertar-master.sh --help|-h       esta ayuda
 #
 # Overrides: $DESPERTAR_VIVA_MIN (min para considerar viva una sesión, def 15) ·
-#            $DESPERTAR_ESPERA_S (seg a esperar la carga tras lanzar, def 240) ·
-#            $CLAUDE_PROJECTS_DIR (carpeta de transcripts, def ${CLAUDE_CONFIG_DIR:-~/.claude}/projects).
+#            $DESPERTAR_ESPERA_S (seg a esperar la carga tras lanzar, def 600: un transcript grande tarda minutos) ·
+#            $CLAUDE_PROJECTS_DIR (carpeta de transcripts, def ${CLAUDE_CONFIG_DIR:-~/.claude}/projects) ·
+#            $CLAUDE_SESSIONS_DRIVE (respaldos <id>.jsonl.gz + <id>.meta.json; def ~/claude-sessions): si un
+#            master no tiene transcript local, se restaura de ahí antes de despertarlo.
 set -u
 
 VIVA_MIN="${DESPERTAR_VIVA_MIN:-15}"
-ESPERA_S="${DESPERTAR_ESPERA_S:-240}"
+ESPERA_S="${DESPERTAR_ESPERA_S:-600}"
 # Default honra CLAUDE_CONFIG_DIR (Claude Code reubica TODO su estado ahí, incluidos projects/) — antes
 # fijaba $HOME/.claude/projects y no veía los transcripts con un CLAUDE_CONFIG_DIR custom (MEDIO 2026-10-22).
 PROJECTS="${CLAUDE_PROJECTS_DIR:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects}"
+RESPALDOS="${CLAUDE_SESSIONS_DRIVE:-$HOME/claude-sessions}"
 
 # ── helpers de lectura del transcript ────────────────────────────────────────────────────────────
 # mtime epoch PORTABLE: GNU `stat -c %Y` PRIMERO (falla LIMPIO en BSD, sin ensuciar stdout), luego BSD
@@ -116,9 +120,23 @@ _enumerar() {
 # una fila por NOMBRE: la del transcript MÁS RECIENTE (primera aparición, porque _enumerar va newest-first).
 _tabla() { _enumerar | awk -F'\t' '!seen[$2]++'; }
 
+# fila de un master por NOMBRE (el transcript más reciente con ese título) o por ID de sesión (ese transcript,
+# tenga o no título de master; el nombre para screen y Remote Control sale de su título o, sin él, del id).
+_fila() {
+  local q="$1" f t
+  case "$q" in
+    [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]-*)
+      f="$(ls -t "$PROJECTS"/*/"$q".jsonl 2>/dev/null | head -1)"
+      [ -n "$f" ] || return 0
+      t="$(_titulo "$f")"; [ -n "$t" ] || t="$q"
+      printf '%s\t%s\t%s\t%s\t%s\n' "$(_edad_min "$f")" "$t" "$q" "$(_resolver_cwd "$(_cwd "$f")")" "$f" ;;
+    *) _tabla | awk -F'\t' -v n="$q" '$2==n {print; exit}' ;;
+  esac
+}
+
 # ── modos ────────────────────────────────────────────────────────────────────────────────────────
 uso() {
-  sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 listar() {
@@ -143,26 +161,74 @@ _pantalla() {
   rm -f "$f" 2>/dev/null
 }
 
-# espera hasta ESPERA_S a que la sesión relanzada pinte su URL de sesión (la devuelve) o pida confiar
-# el folder (lo reporta). Devuelve 0+URL, 2+"TRUST", o 1 (timeout).
-_esperar_carga() {
+# espera hasta ESPERA_S a que la sesión relanzada esté lista para recibir comandos y la conecta a Remote
+# Control CON SU NOMBRE (`/remote-control <nombre>` dentro de la sesión; el flag de arranque la publica con
+# el título automático de la conversación). Imprime la URL de la sesión. 0 = conectada · 2 = pide confiar
+# en el folder · 1 = no cargó a tiempo.
+_conectar_rc() {
   local nombre="$1" fin out url
   fin=$(( $(date +%s) + ESPERA_S ))
-  while [ "$(date +%s)" -lt "$fin" ]; do
-    sleep 4
+  while :; do
     out="$(_pantalla "$nombre")"
-    url="$(printf '%s' "$out" | grep -ao 'https://claude.ai/code/session_[A-Za-z0-9_]*' | tail -1)"
-    if [ -n "$url" ]; then printf '%s' "$url"; return 0; fi
     case "$out" in
       *"trust this folder"*|*"Do you trust"*|*"trust the files"*) return 2 ;;
+      *"shift+tab"*|*"? for shortcuts"*) break ;;
     esac
+    [ "$(date +%s)" -lt "$fin" ] || return 1
+    sleep 4
   done
-  return 1
+  screen -S "$nombre" -p 0 -X stuff "/remote-control $nombre"; sleep 1
+  screen -S "$nombre" -p 0 -X stuff $'\r'; sleep 3
+  # Remote Control ya activo: el comando abre un diálogo (Disconnect / Show QR / Continue, con Continue
+  # seleccionado). Se desconecta y se vuelve a conectar, ya con el nombre.
+  case "$(_pantalla "$nombre")" in
+    *"Disconnect this session"*)
+      screen -S "$nombre" -p 0 -X stuff $'\033[A'; sleep 0.5; screen -S "$nombre" -p 0 -X stuff $'\033[A'; sleep 0.5
+      screen -S "$nombre" -p 0 -X stuff $'\r'; sleep 3
+      screen -S "$nombre" -p 0 -X stuff "/remote-control $nombre"; sleep 1
+      screen -S "$nombre" -p 0 -X stuff $'\r' ;;
+  esac
+  while :; do
+    out="$(_pantalla "$nombre")"
+    url="$(printf '%s' "$out" | grep -ao 'https://claude.ai/code/session_[A-Za-z0-9_]*' | tail -1)"
+    [ -n "$url" ] && { printf '%s' "$url"; return 0; }
+    [ "$(date +%s)" -lt "$fin" ] || return 1
+    sleep 4
+  done
+}
+
+# restaura el transcript de <nombre> desde su respaldo más reciente (meta.label == nombre, mayor
+# lastActivity) a $PROJECTS/<originSlug>/<id>.jsonl, atómico y con la fecha del respaldo (para que no parezca
+# viva). 0 = restaurado o ya estaba · 1 = no hay respaldo utilizable.
+_restaurar_respaldo() {
+  local nombre="$1" m lab act best="" bestact=0 id slug cwd gz dest
+  for m in "$RESPALDOS"/*.meta.json; do
+    [ -f "$m" ] || continue
+    lab="$(grep -o '"label": *"[^"]*"' "$m" | head -1 | sed 's/.*: *"//; s/"$//')"
+    [ "$lab" = "$nombre" ] || [ "$(basename "$m" .meta.json)" = "$nombre" ] || continue
+    act="$(grep -o '"lastActivity": *[0-9]*' "$m" | grep -o '[0-9]*$')"
+    [ "${act:-0}" -gt "$bestact" ] 2>/dev/null && { best="$m"; bestact="${act:-0}"; }
+  done
+  [ -n "$best" ] || return 1
+  id="$(grep -o '"id": *"[^"]*"' "$best" | head -1 | sed 's/.*: *"//; s/"$//')"
+  slug="$(grep -o '"originSlug": *"[^"]*"' "$best" | head -1 | sed 's/.*: *"//; s/"$//')"
+  cwd="$(grep -o '"originCwd": *"[^"]*"' "$best" | head -1 | sed 's/.*: *"//; s/"$//')"
+  gz="${best%.meta.json}.jsonl.gz"; dest="$PROJECTS/$slug/$id.jsonl"
+  [ -f "$dest" ] && return 0
+  [ -f "$gz" ] && [ -n "$id" ] && [ -n "$slug" ] || { echo "[despertar-master] el respaldo de '$nombre' está incompleto: $best" >&2; return 1; }
+  [ -d "$cwd" ] || { echo "[despertar-master] el respaldo de '$nombre' es de una ruta que no existe aquí: $cwd" >&2; return 1; }
+  mkdir -p "$PROJECTS/$slug" && gzip -dc "$gz" > "$dest.part.$$" && chmod 600 "$dest.part.$$" \
+    && touch -r "$gz" "$dest.part.$$" && mv "$dest.part.$$" "$dest" \
+    || { rm -f "$dest.part.$$"; echo "[despertar-master] no pude restaurar el respaldo de '$nombre'" >&2; return 1; }
+  echo "[despertar-master] '$nombre' no tenía transcript local: restaurado de $gz"
 }
 
 despertar() {
   local nombre="$1" esperar="${2:-si}" msgf="${3:-}" row edad t id cwd inner
-  row="$(_tabla | awk -F'\t' -v n="$nombre" '$2==n {print; exit}')"
+  row="$(_fila "$nombre")"
+  if [ -z "$row" ] && _restaurar_respaldo "$nombre"; then
+    row="$(_fila "$nombre")"
+  fi
   if [ -z "$row" ]; then
     echo "[despertar-master] no encontré un master llamado '$nombre'." >&2
     echo "Masters disponibles:" >&2
@@ -188,7 +254,7 @@ EOF
   # Limpia TODO CLAUDE* heredado antes de lanzar: si el hijo hereda CLAUDECODE/CLAUDE_PID se cree anidado
   # y NO guarda transcript. El claude hijo re-lee su settings.json, así que desechar los CLAUDE* es seguro.
   inner="for v in \$(compgen -e 2>/dev/null | grep '^CLAUDE' 2>/dev/null); do unset \"\$v\"; done; "
-  inner="$inner cd $(printf '%q' "$cwd") && exec claude --resume $(printf '%q' "$id") --remote-control $(printf '%q' "$t")"
+  inner="$inner cd $(printf '%q' "$cwd") && exec claude --resume $(printf '%q' "$id")"
   if [ -n "$msgf" ]; then
     [ -f "$msgf" ] || { echo "[despertar-master] no existe el archivo del mensaje: $msgf" >&2; return 1; }
     # `--` ANTES del prompt: fin de opciones. Sin él, un mensaje que EMPIEZA con '-' (una lista markdown
@@ -199,16 +265,17 @@ EOF
   screen -dmS "$t" bash -lc "$inner"
 
   if [ "$esperar" = "no" ]; then
-    echo "   lanzada en screen '$t'. Revisa con: screen -r $t   (o -X hardcopy -p 0 -h)"
+    ( _conectar_rc "$t" >/dev/null 2>&1 & )
+    echo "   lanzada en screen '$t'; se conecta a Remote Control como '$t' en cuanto cargue. Revisa con: screen -r $t"
     return 0
   fi
 
   local res rc
-  res="$(_esperar_carga "$t")"; rc=$?
+  res="$(_conectar_rc "$t")"; rc=$?
   case "$rc" in
-    0) echo "   ✅ '$t' cargó. URL de sesión: $res" ;;
-    2) echo "   ⚠️ '$t' pide CONFIAR el folder. Entra con 'screen -r $t', acepta (↓ + Enter / 'y'), y re-chequea." ;;
-    *) echo "   ⏳ '$t' no pintó su URL en ${ESPERA_S}s (un transcript grande tarda; arsenal-master ~4 min). Revisa: screen -r $t" ;;
+    0) echo "   ✅ '$t' cargó y está en Remote Control con su nombre: $res" ;;
+    2) echo "   ⚠️ '$t' pide CONFIAR el folder. Entra con 'screen -r $t', acepta (↓ + Enter / 'y') y conéctala: /remote-control $t" ;;
+    *) echo "   ⏳ '$t' no cargó en ${ESPERA_S}s (un transcript grande tarda minutos). Cuando cargue: screen -S $t -p 0 -X stuff '/remote-control $t' y Enter" ;;
   esac
 }
 
