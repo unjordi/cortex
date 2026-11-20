@@ -21,7 +21,9 @@
 #
 # Overrides: $DESPERTAR_VIVA_MIN (min para considerar viva una sesión, def 15) ·
 #            $DESPERTAR_ESPERA_S (seg a esperar la carga tras lanzar, def 240) ·
-#            $CLAUDE_PROJECTS_DIR (carpeta de transcripts, def ${CLAUDE_CONFIG_DIR:-~/.claude}/projects).
+#            $CLAUDE_PROJECTS_DIR (carpeta de transcripts, def ${CLAUDE_CONFIG_DIR:-~/.claude}/projects) ·
+#            $CLAUDE_SESSIONS_DRIVE (respaldos <id>.jsonl.gz + <id>.meta.json que deja exportar-sesion-master.sh;
+#            si el master no tiene transcript local, se restaura de ahí antes de despertarlo).
 set -u
 
 VIVA_MIN="${DESPERTAR_VIVA_MIN:-15}"
@@ -29,6 +31,7 @@ ESPERA_S="${DESPERTAR_ESPERA_S:-240}"
 # Default honra CLAUDE_CONFIG_DIR (Claude Code reubica TODO su estado ahí, incluidos projects/) — antes
 # fijaba $HOME/.claude/projects y no veía los transcripts con un CLAUDE_CONFIG_DIR custom (MEDIO 2026-10-22).
 PROJECTS="${CLAUDE_PROJECTS_DIR:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects}"
+RESPALDOS="${CLAUDE_SESSIONS_DRIVE:-$HOME/claude-sessions}"
 
 # ── helpers de lectura del transcript ────────────────────────────────────────────────────────────
 # mtime epoch PORTABLE: GNU `stat -c %Y` PRIMERO (falla LIMPIO en BSD, sin ensuciar stdout), luego BSD
@@ -160,9 +163,37 @@ _esperar_carga() {
   return 1
 }
 
+# restaura el transcript de <nombre> desde su respaldo más reciente (meta.label == nombre, mayor lastActivity)
+# a $PROJECTS/<originSlug>/<id>.jsonl, de forma atómica. 0 = restaurado o ya estaba; 1 = no hay respaldo.
+_restaurar_respaldo() {
+  local nombre="$1" m lab act best="" bestact=0 id slug cwd gz dest
+  for m in "$RESPALDOS"/*.meta.json; do
+    [ -f "$m" ] || continue
+    lab="$(grep -o '"label": *"[^"]*"' "$m" | head -1 | sed 's/.*: *"//; s/"$//')"
+    [ "$lab" = "$nombre" ] || continue
+    act="$(grep -o '"lastActivity": *[0-9]*' "$m" | grep -o '[0-9]*$')"
+    [ "${act:-0}" -gt "$bestact" ] 2>/dev/null && { best="$m"; bestact="${act:-0}"; }
+  done
+  [ -n "$best" ] || return 1
+  id="$(grep -o '"id": *"[^"]*"' "$best" | head -1 | sed 's/.*: *"//; s/"$//')"
+  slug="$(grep -o '"originSlug": *"[^"]*"' "$best" | head -1 | sed 's/.*: *"//; s/"$//')"
+  cwd="$(grep -o '"originCwd": *"[^"]*"' "$best" | head -1 | sed 's/.*: *"//; s/"$//')"
+  gz="${best%.meta.json}.jsonl.gz"
+  dest="$PROJECTS/$slug/$id.jsonl"
+  [ -f "$dest" ] && return 0
+  [ -f "$gz" ] && [ -n "$id" ] && [ -n "$slug" ] || { echo "[despertar-master] el respaldo de '$nombre' está incompleto: $best" >&2; return 1; }
+  [ -d "$cwd" ] || { echo "[despertar-master] el respaldo de '$nombre' es de otra ruta que no existe aquí: $cwd" >&2; return 1; }
+  mkdir -p "$PROJECTS/$slug" && gzip -dc "$gz" > "$dest.part.$$" && chmod 600 "$dest.part.$$" && touch -r "$gz" "$dest.part.$$" && mv "$dest.part.$$" "$dest" \
+    || { rm -f "$dest.part.$$"; echo "[despertar-master] no pude restaurar el respaldo de '$nombre'" >&2; return 1; }
+  echo "[despertar-master] '$nombre' no tenía transcript local: restaurado de $gz"
+}
+
 despertar() {
   local nombre="$1" esperar="${2:-si}" msgf="${3:-}" row edad t id cwd inner
   row="$(_tabla | awk -F'\t' -v n="$nombre" '$2==n {print; exit}')"
+  if [ -z "$row" ] && _restaurar_respaldo "$nombre"; then
+    row="$(_tabla | awk -F'\t' -v n="$nombre" '$2==n {print; exit}')"
+  fi
   if [ -z "$row" ]; then
     echo "[despertar-master] no encontré un master llamado '$nombre'." >&2
     echo "Masters disponibles:" >&2
@@ -188,7 +219,7 @@ EOF
   # Limpia TODO CLAUDE* heredado antes de lanzar: si el hijo hereda CLAUDECODE/CLAUDE_PID se cree anidado
   # y NO guarda transcript. El claude hijo re-lee su settings.json, así que desechar los CLAUDE* es seguro.
   inner="for v in \$(compgen -e 2>/dev/null | grep '^CLAUDE' 2>/dev/null); do unset \"\$v\"; done; "
-  inner="$inner cd $(printf '%q' "$cwd") && exec claude --resume $(printf '%q' "$id") --remote-control $(printf '%q' "$t")"
+  inner="$inner cd $(printf '%q' "$cwd") && exec claude --resume $(printf '%q' "$id") --name $(printf '%q' "$t") --remote-control $(printf '%q' "$t")"
   if [ -n "$msgf" ]; then
     [ -f "$msgf" ] || { echo "[despertar-master] no existe el archivo del mensaje: $msgf" >&2; return 1; }
     # `--` ANTES del prompt: fin de opciones. Sin él, un mensaje que EMPIEZA con '-' (una lista markdown

@@ -10238,6 +10238,25 @@ PSS
     && ok "despertar-master --mensaje: el prompt va tras '--' (un mensaje con '-' no se parsea como flag)" \
     || bad "despertar-master --mensaje: falta el '--' antes del prompt — screen.log: $(cat "$SCREENLOG")"
 
+  # respaldo: un master SIN transcript local pero con respaldo (<id>.jsonl.gz + <id>.meta.json, como los deja
+  # exportar-sesion-master.sh) se restaura a projects/<originSlug>/<id>.jsonl y se despierta; sin respaldo, no.
+  RESP="$DMROOT/respaldos"; mkdir -p "$RESP"
+  printf '{"cwd":"%s","customTitle":"resp-master"}\n' "$DMROOT/repoC" | gzip -c > "$RESP/rrr.jsonl.gz"
+  touch -t 202001010000 "$RESP/rrr.jsonl.gz"   # respaldo viejo: el transcript restaurado conserva su fecha (idle)
+  printf '{"id":"rrr","label":"resp-master","originCwd":"%s","originSlug":"slug-r","lastActivity":1}\n' "$DMROOT/repoC" > "$RESP/rrr.meta.json"
+  : > "$SCREENLOG"; : > "$SESSF"
+  PATH="$DMROOT/bin:$PATH" CLAUDE_PROJECTS_DIR="$PROJ" CLAUDE_SESSIONS_DRIVE="$RESP" DESPERTAR_VIVA_MIN=15 DESPERTAR_ESPERA_S=0 \
+    bash "$DM" resp-master --no-esperar >/dev/null 2>&1
+  { [ -f "$PROJ/slug-r/rrr.jsonl" ] && grep -q 'resp-master' "$SCREENLOG" && grep -q 'rrr' "$SCREENLOG"; } \
+    && grep -q -- '--name resp-master' "$SCREENLOG" \
+    && ok "despertar-master: master solo en respaldo → restaura su transcript y lo despierta con su nombre (--resume rrr --name)" \
+    || bad "despertar-master: no restauró ni despertó al master del respaldo — screen.log: $(cat "$SCREENLOG")"
+  : > "$SCREENLOG"
+  Nno="$(PATH="$DMROOT/bin:$PATH" CLAUDE_PROJECTS_DIR="$PROJ" CLAUDE_SESSIONS_DRIVE="$RESP" bash "$DM" nadie-master --no-esperar 2>&1)"
+  { printf '%s' "$Nno" | grep -q "no encontré" && [ ! -s "$SCREENLOG" ]; } \
+    && ok "despertar-master: sin transcript ni respaldo → no encontrado, sin lanzar nada" \
+    || bad "despertar-master: con un nombre inexistente lanzó algo o no avisó — $(cat "$SCREENLOG")"
+
   # --mensaje … --no-esperar: ENTREGA el mensaje (screen con --) Y respeta el no-esperar (regresa por la rama
   # "lanzada en screen", sin esperar la carga) — un dispatch que ignore el --no-esperar y espere falla aquí.
   : > "$SCREENLOG"; : > "$SESSF"
