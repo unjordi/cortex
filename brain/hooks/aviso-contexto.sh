@@ -239,10 +239,10 @@ if [ "$fire_ctx" -eq 1 ]; then
   fi
   if [ "$band" -ge 2 ]; then
     head="🚨 Contexto ~${pctw}% de ${den} (${ctxk}K) — RAYANDO el compact."
-    order="Lancé el volcado del andamio mecánico a hilo-mental-actual.andamio.md (en 2º plano; su resultado queda en .checkpoint-mecanico.log). CORRE /checkpoint (el hilo en prosa NECESITA modelo) y /compact YA: ${corte}."
+    order="Lancé el volcado del andamio mecánico a hilo-mental-actual.andamio.md (en 2º plano; su resultado queda en .checkpoint-mecanico.log). CORRE /checkpoint (el hilo en prosa NECESITA modelo) y /compact YA: ${corte}. Deja el \`/compact <instrucciones>\` en el texto de tu respuesta, en un bloque de código (dentro de una pregunta no se puede copiar); luego pregúntale con AskUserQuestion si compacta ya y detente."
   else
     head="📊 Contexto ~${pctw}% de ${den} (${ctxk}K) — cerca del compact."
-    order="Lancé el volcado del andamio mecánico a hilo-mental-actual.andamio.md (en 2º plano; su resultado queda en .checkpoint-mecanico.log). Haz /checkpoint (el hilo en prosa NECESITA modelo) y considera /compact: ${corte}."
+    order="Lancé el volcado del andamio mecánico a hilo-mental-actual.andamio.md (en 2º plano; su resultado queda en .checkpoint-mecanico.log). Haz /checkpoint (el hilo en prosa NECESITA modelo) y considera /compact: ${corte}. Deja el \`/compact <instrucciones>\` en el texto de tu respuesta, en un bloque de código (dentro de una pregunta no se puede copiar); luego pregúntale con AskUserQuestion si compacta ya y detente."
   fi
   # Dato extra sin mentir: cuando GOV = autoCompactWindow, la ventana del modelo va como referencia; cuando
   # GOV = la del modelo pero hay un ACW seteado con el auto-compact APAGADO, se aclara por qué ACW no gobierna.
