@@ -23,7 +23,7 @@
 #   - grim: sin `-o <output>`, captura TODAS las salidas compuestas en una imagen.
 #   - gnome-screenshot / `import -window root`: capturan la pantalla X11 completa (todas las
 #     salidas bajo el mismo screen X11 con RandR, el layout estandar moderno).
-# OJO -- LIMITE DE ESTA VERIFICACION: la máquina de prueba (la maquina de prueba) solo tiene UN monitor fisico
+# OJO -- LIMITE DE ESTA VERIFICACION: la máquina de prueba solo tiene UN monitor fisico
 # conectado (`kscreen-doctor -o` -> un solo Output HDMI-A-1) -- no se pudo confirmar VISUALMENTE
 # que dos o mas monitores reales queden cosidos en una sola imagen, solo que el flag/comportamiento
 # default de cada herramienta esta documentado para hacerlo. Cuando alguien lo use contra una

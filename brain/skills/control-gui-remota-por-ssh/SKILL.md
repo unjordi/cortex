@@ -5,16 +5,12 @@ description: Ver y operar la GUI de escritorio de una máquina remota usando SOL
 
 # Control de GUI remota por SSH
 
-> El kit `win-ssh-*` está verificado en hardware real manejando una estación Windows
-> sin noVNC disponible, solo por SSH. El kit `linux-ssh-*` está verificado en vivo
-> contra una máquina de prueba (CachyOS, KDE Plasma 6.7/Wayland) — screenshot, list-windows, launch, kill-process
-> y clipboard confirmados de punta a punta; send-click/send-keys quedan construidos y correctos
-> pero bloqueados en ESA máquina por un permiso pendiente de un humano (ver gotcha EIS más abajo).
-> El kit `mac-ssh-*` está verificado LOCAL en esta Mac — screenshot, clipboard,
-> get-processes-list, kill-process y list-windows confirmados; send-click/send-keys tienen el
-> primitivo (cliclick/System Events) confirmado sin error, sin un click en vivo sobre UI real para
-> no interferir con la sesión del usuario. Es una capacidad GENÉRICA del cerebro — cualquier
-> sesión/máquina del equipo la tiene, sin depender de qué repo o proyecto la necesitó primero.
+> `win-ssh-*`: [VERIFICADO en vivo] contra una estación Windows solo por SSH.
+> `linux-ssh-*`: [VERIFICADO en vivo] contra una máquina de prueba (CachyOS, KDE Plasma 6.7/Wayland): screenshot, list-windows, launch,
+> kill-process y clipboard; send-click/send-keys quedan bloqueados en esa máquina por el permiso EIS de KWin (ver más abajo).
+> `mac-ssh-*`: [VERIFICADO local] en macOS 26.6.2: screenshot, clipboard, get-processes-list, kill-process y list-windows;
+> send-click/send-keys con el primitivo (cliclick/System Events) confirmado sin error, sin click en vivo sobre UI real.
+> Capacidad GENÉRICA del cerebro: la tiene cualquier sesión/máquina del equipo.
 
 ## Cuándo usar esto
 Cuando la única vía de acceso a una máquina remota es una **sesión de terminal (SSH)** — no hay
@@ -70,12 +66,12 @@ clásicos — ver gotcha abajo).
 
 ## Windows — COMPLETO, verificado en hardware real
 15 scripts en [`win/`](win/), patrón `win-ssh-{acción}.ps1`, todos despachando a la sesión
-interactiva vía `schtasks /IT` y DPI-aware donde aplica. **Verificados**
-contra una estación Windows real por SSH (no simulado).
+interactiva vía `schtasks /IT` y DPI-aware donde aplica. [VERIFICADO en vivo] contra una estación Windows real por SSH.
+Parámetros comunes: `-User dominio\usuario` (default: el de la consola, vía `quser`), `-WorkDir` (default `C:\GuiSshWork`), `-WaitMs`; `get-processes-list` acepta `-Top N` (default 40).
 
 | Script | Qué hace |
 |---|---|
-| `win-ssh-screenshot.ps1` | Captura la pantalla (DPI-aware, VirtualScreen completo, multi-monitor). `-Window "título"` para SOLO esa ventana (`PrintWindow` nativo, reusa la técnica Find() de `get-window-coordinates`) — agregado 2026-09-18, **SIN CONFIRMAR en HW real** (solo parse-check de sintaxis). `-B64` la imprime en base64. |
+| `win-ssh-screenshot.ps1` | Captura la pantalla (DPI-aware, VirtualScreen completo, multi-monitor). `-Window "título"` (substring, case-insensitive) para SOLO esa ventana (`PrintWindow` nativo, reusa la técnica Find() de `get-window-coordinates`) [SIN CONFIRMAR en HW real: solo parse-check de sintaxis]. `-B64` la imprime en base64. |
 | `win-ssh-send-click.ps1` | Click izq/der por coordenada `-X -Y` (`-Button right`, `-Double`, `-Window` para enfocar antes). |
 | `win-ssh-send-double-click.ps1` | Doble-click por coordenada (abrir iconos/listas). |
 | `win-ssh-send-keys.ps1` | Teclea `-Keys "texto{ENTER}"` (SendKeys: `{TAB}`,`^a`,`%{F4}`…); `-ClickX/-ClickY` enfoca por clic + teclea en el MISMO proceso (evita perder foco entre un click y un send-keys separados). |
@@ -91,7 +87,7 @@ contra una estación Windows real por SSH (no simulado).
 | `win-ssh-get-processes-list.ps1` | Lista procesos (top-N por RAM). NO necesita sesión interactiva. `-Name`, `-Csv`. |
 | `win-ssh-kill-process.ps1` | Mata por `-Name`/`-Id` (`-WhatIf` primero si dudas). NO necesita sesión interactiva. |
 
-Notas de límites (ya conocidas, no las re-descubras):
+Límites:
 - `read-text`/`get-window-coordinates` ven controles **Win32 clásicos** (apps clásicas/Delphi SÍ).
   Apps **UWP** y **TaskDialogs modernos** no exponen hijos clásicos → para su texto usa **`read-uia`**;
   para lo visual, el screenshot.
@@ -138,7 +134,7 @@ python3 -c "import re,base64;open('s.png','wb').write(base64.b64decode(''.join(r
 `screenshot` para ver / `read-uia`\|`read-text` para leer un mensaje → `get-window-coordinates` para
 el centro del botón → `send-click` ahí → `screenshot` para confirmar.
 
-### Gotchas de Windows (ya resueltos, no los re-descubras)
+### Gotchas de Windows
 - `schtasks /tr` **sin comillas internas** alrededor del `.ps1` (si no, truena "no se encuentra el
   archivo"); la carpeta de trabajo **sin espacios** (los scripts usan `C:\GuiSshWork` por defecto,
   ajústala a una carpeta real sin espacios en la máquina remota).
@@ -153,28 +149,24 @@ el centro del botón → `send-click` ahí → `screenshot` para confirmar.
 - Ventanas maximizadas que se traslapan (una hija sobre su padre) pueden hacer que un clic pensado
   para "cerrar la hija" aterrice en el botón de cerrar del PADRE — verifica con
   `get-window-coordinates`/`read-uia -WithRect` el rectángulo exacto antes de clickear a ciegas.
-- **`win-ssh-screenshot.ps1 -Window "título"` queda SIN CONFIRMAR en hardware
-  real** — solo pasó el parse-check de sintaxis (`pwsh -NoProfile`, en una Mac). Usa `PrintWindow`
-  nativo del HWND hallado por título (misma técnica `EnumWindows`+`GetWindowText` que
-  `win-ssh-get-window-coordinates.ps1`, repetida dentro del cuerpo despachado — cada gesto de este
-  kit corre como su propia tarea `/IT` independiente, no comparten proceso). Cae al VirtualScreen
-  completo si el título no se encuentra o `PrintWindow` falla (ventana minimizada/sin superficie).
-  Verifícalo la primera vez que corra contra una estación Windows real y actualiza esta nota.
+- **`win-ssh-screenshot.ps1 -Window "título"`** [SIN CONFIRMAR en hardware real: solo parse-check de sintaxis con `pwsh -NoProfile`]. Usa `PrintWindow`
+  nativo del HWND hallado por título (`EnumWindows`+`GetWindowText`, como `win-ssh-get-window-coordinates.ps1`; cada gesto corre como su propia tarea `/IT`,
+  no comparten proceso). Cae al VirtualScreen completo si el título no se encuentra o `PrintWindow` falla (ventana minimizada/sin superficie).
 
 ## Linux — COMPLETO, verificado en vivo (KDE Wayland)
-13 scripts en [`linux/`](linux/), patrón `linux-ssh-{acción}.ps1` → `.sh`, gemelos estructurales de
+13 scripts en [`linux/`](linux/), patrón `linux-ssh-{acción}.sh`, gemelos estructurales de
 `win-ssh-*` (mismos nombres de flag: `-X -Y`, `-Window`, `-Csv`, `-WhatIf`…). Comparten
 `linux/lib-linux-ssh-env.sh` (adaptación documentada respecto a Windows: como UN proceso hace todo
 el gesto de punta a punta — a diferencia de Windows, que despacha CADA gesto como una tarea
 independiente — una lib compartida de detección de entorno no genera drift entre 13 copias).
-**Verificado** contra una máquina de prueba (CachyOS, KDE Plasma 6.7, `kwin_wayland`).
+[VERIFICADO en vivo] contra una máquina de prueba (CachyOS, KDE Plasma 6.7, `kwin_wayland`).
 
 | Script | Qué hace | Verificado en vivo |
 |---|---|---|
-| `linux-ssh-screenshot.sh` | Captura la pantalla (spectacle\|grim\|gnome-screenshot\|import, según compositor). Default = escritorio COMPLETO (todos los monitores, paridad con el VirtualScreen de Windows). `-Display <output>` (por nombre, ej. `HDMI-A-1`) para UN monitor. `-ActiveWindow` (solo spectacle/KDE) para la ventana con foco. `-Window "título"` para SOLO esa ventana. `-B64`. | ✅ default 1920×1080 no-negro; ✅ `-Display HDMI-A-1` recortó igual al único output real; ✅ `-Display FAKE-99` cayó a pantalla completa con aviso; ✅ `-ActiveWindow` capturó SOLO el diálogo con foco (594×314, contenido distinto) — máquina de prueba con 1 solo monitor físico, cosido de 2+ reales sin confirmar visual; ✅ `-Window "QA Window Test"` (ventana X11 real `xmessage`, lanzada para la prueba) dio un PNG de EXACTAMENTE 182×52 == el rectángulo real de `xdotool getwindowgeometry`, no el escritorio completo; ✅ título inexistente cae a pantalla completa con aviso |
+| `linux-ssh-screenshot.sh` | Captura la pantalla (spectacle\|grim\|gnome-screenshot\|import, según compositor). Default = escritorio COMPLETO (todos los monitores, paridad con el VirtualScreen de Windows). `-Display <output>` (por nombre, ej. `HDMI-A-1`) para UN monitor. `-ActiveWindow` (solo spectacle/KDE) para la ventana con foco. `-Window "título"` (reusa xdotool de `get-window-coordinates`; vía `import -window <id>`; `grim` ausente en la máquina de prueba) para SOLO esa ventana. `-B64`. | ✅ default 1920×1080 no-negro; ✅ `-Display HDMI-A-1` recortó igual al único output real; ✅ `-Display FAKE-99` cayó a pantalla completa con aviso; ✅ `-ActiveWindow` capturó SOLO el diálogo con foco (594×314, contenido distinto) — máquina de prueba con 1 solo monitor físico, cosido de 2+ reales sin confirmar visual; ✅ `-Window "QA Window Test"` (ventana X11 real `xmessage`, lanzada para la prueba) dio un PNG de EXACTAMENTE 182×52 == el rectángulo real de `xdotool getwindowgeometry`, no el escritorio completo; ✅ título inexistente cae a pantalla completa con aviso |
 | `linux-ssh-list-windows.sh` | Lista ventanas visibles vía `xdotool search` (solo X11/XWayland — ver límite abajo). `-Filter`, `-Csv`. | ✅ enumeró ventanas reales de la sesión |
 | `linux-ssh-get-window-coordinates.sh` | Rectángulo + CENTRO de una ventana por título (solo nivel-ventana, ver paridad parcial). | Construido, mecanismo = list-windows |
-| `linux-ssh-launch.sh` | Lanza una app en la sesión gráfica (`setsid`+entorno resuelto, sin mecanismo de despacho por-gesto — ver script). | ✅ abrió Kate real en pantalla (PID vivo + screenshot lo confirmó) |
+| `linux-ssh-launch.sh` | Lanza una app en la sesión gráfica (`-Path`, `-Args`; `setsid`+entorno resuelto, sin mecanismo de despacho por-gesto — ver script). | ✅ abrió Kate real en pantalla (PID vivo + screenshot lo confirmó) |
 | `linux-ssh-send-click.sh` | Click izq/der por coordenada `-X -Y` vía `xdotool` (`-Button right`, `-Double`, `-Window`). | Construido; bloqueado en la máquina de prueba por el permiso EIS de KWin (ver gotcha) |
 | `linux-ssh-send-double-click.sh` | Atajo de send-click `-Double`. | Mismo mecanismo que send-click |
 | `linux-ssh-send-keys.sh` | Teclea `-Keys "texto{ENTER}"` (mini-lenguaje adaptado de SendKeys) vía `xdotool key/type`. `-ClickX/-ClickY`. | Construido; mismo gotcha EIS que send-click |
@@ -182,7 +174,7 @@ independiente — una lib compartida de detección de entorno no genera drift en
 | `linux-ssh-maximize-window.sh` | Maximiza/restaura/minimiza (`-State`) una ventana por título. | Construido |
 | `linux-ssh-close-window.sh` | Cierre GRACIOSO (`xdotool windowclose`) por título. | Construido |
 | `linux-ssh-clipboard.sh` | `-Get` lee / `-Set "texto"` escribe el portapapeles (`wl-copy`/`wl-paste`, fallback `xclip`/`xsel`). | ✅ round-trip set→get confirmado, sin permiso EIS de por medio |
-| `linux-ssh-get-processes-list.sh` | Lista procesos (top-N por RSS). NO necesita sesión gráfica. `-Name`, `-Csv`. | ✅ listó procesos reales |
+| `linux-ssh-get-processes-list.sh` | Lista procesos (top-N por RSS). NO necesita sesión gráfica. `-Name`, `-Top`, `-Csv`. | ✅ listó procesos reales |
 | `linux-ssh-kill-process.sh` | Mata por `-Name`/`-Id` (`-WhatIf` primero). NO necesita sesión gráfica. | ✅ mató un proceso real (Kate) tras confirmar con `-WhatIf` |
 
 ### Recetas de invocación (Linux — mucho más simple que Windows: los `.sh` no necesitan base64/EncodedCommand)
@@ -199,8 +191,8 @@ scp -i "$KEY" "$STA":/tmp/gui-ssh/s.png .    # luego ábrelo/léelo con la tool 
 ```
 > Primer uso: resuelve el permiso EIS de KWin (abajo) para el INPUT sintético (click/tecla). Screenshot/list/mover-ventana no lo necesitan.
 
-### GOTCHA REAL Y CRÍTICO: el permiso EIS de KWin (Wayland) para input sintético
-**Verificado.** La PRIMERA vez que `xdotool` intenta mover el mouse o mandar una
+### El permiso EIS de KWin (Wayland) para input sintético
+[VERIFICADO] La PRIMERA vez que `xdotool` intenta mover el mouse o mandar una
 tecla en una sesión KDE Plasma/Wayland, KWin dispara un diálogo GRÁFICO — *"Control remoto: xdotool
 está solicitando controlar dispositivos de entrada" → Permitir/Denegar* — que solo un humano frente
 a la consola real puede resolver. Es el análogo Linux/Wayland exacto al permiso TCC de Accesibilidad
@@ -208,11 +200,8 @@ de macOS: una PRECONDICIÓN de una sola vez, no un bug del script. Hasta que se 
 - El evento se **descarta en silencio** — `xdotool` sale con **exit 0 de todas formas** (protocolo
   fire-and-forget, no espera la decisión del diálogo). **El exit code NUNCA es evidencia de que el
   click/tecla aterrizó** — verifica SIEMPRE con un screenshot antes/después.
-- El diálogo NO tiene timeout corto: quedó pendiente varios minutos en la prueba real sin cerrarse
-  solo.
-- Existe un atajo de configuración para el DUEÑO de la máquina (no algo que este kit haga solo, por
-  ser un cambio de seguridad — de hecho el guard de permisos de Claude Code bloqueó el intento de
-  aplicarlo por SSH durante esta verificación, correctamente):
+- El diálogo NO tiene timeout corto (quedó pendiente varios minutos sin cerrarse solo).
+- Atajo de configuración para el DUEÑO de la máquina (cambio de seguridad: el kit no lo aplica solo):
   `kwriteconfig6 --file kwinrc --group Xwayland --key XwaylandEisNoPromptApps "xdotool"` +
   `qdbus6 org.kde.KWin /KWin reconfigure` — pre-autoriza `xdotool` sin volver a preguntar. Decisión
   del dueño de la máquina, no del script.
@@ -220,8 +209,8 @@ de macOS: una PRECONDICIÓN de una sola vez, no un bug del script. Hasta que se 
   ventanas, mover/redimensionar ventanas y el portapapeles NO pasan por este gate — verificado que
   funcionan igual sin haber resuelto el diálogo pendiente.
 
-### Límite real: xdotool/XWayland SOLO ve apps X11/XWayland, no Wayland nativas
-**Verificado:** al lanzar Kate (app Qt6/KDE nativa-Wayland) con `linux-ssh-launch.sh`, la
+### Límite: xdotool/XWayland SOLO ve apps X11/XWayland, no Wayland nativas
+[VERIFICADO] Al lanzar Kate (app Qt6/KDE nativa-Wayland) con `linux-ssh-launch.sh`, la
 ventana abrió de verdad en pantalla (confirmado por screenshot) pero **`linux-ssh-list-windows.sh` no
 la vio** — el compositor no la expone por XWayland. En cambio, apps que SÍ corren vía XWayland
 (Steam y su navegador embebido, en la máquina de prueba) sí aparecen. No es un bug: es un límite
@@ -236,22 +225,20 @@ solo alcanzan ventanas X11/XWayland.
 - **`pgrep -f` auto-matchea su propio invocador**: un `-Name firefox` con `pgrep -f` matcheó también
   la shell que estaba corriendo el comando de PRUEBA (su propio argv contenía "firefox" porque ESE
   era el comando). `linux-ssh-kill-process.sh` usa `pgrep` SIN `-f` (matchea por `comm`, nombre
-  corto) — mismo patrón ya documentado para `pkill -f` en la memoria del equipo, ahora confirmado
-  también en `pgrep`.
+  corto) — mismo patrón que `pkill -f`.
 - **`/proc/<pid>/environ` está bloqueado** (ptrace_scope) incluso same-user — el entorno de la
   sesión gráfica se deriva de rutas estándar (`XDG_RUNTIME_DIR`, sockets en ese dir) + el cmdline del
   compositor (legible por `ps` aunque `/proc/environ` no lo sea). Ver `lib-linux-ssh-env.sh`.
-- **DPI-awareness: NO hizo falta.** A diferencia de Windows, Wayland/X11 entregan resolución FÍSICA
+- **DPI-awareness: no hace falta.** A diferencia de Windows, Wayland/X11 entregan resolución FÍSICA
   tal cual — el screenshot verificado salió a resolución completa sin ningún equivalente a
   `SetProcessDPIAware()`.
-- **Multi-monitor:** a diferencia de
+- **Multi-monitor (ver cabecera de `linux-ssh-screenshot.sh`):** a diferencia de
   macOS, el modo default de spectacle/grim/gnome-screenshot/import YA es "todo el escritorio
   cosido en una imagen" — no hizo falta ninguna adaptación para el caso default. Lo que SÍ se
   agregó fue `-Display <output>` (recorte vía `kscreen-doctor`+`convert` en spectacle/KDE, nativo
-  en grim) y `-ActiveWindow` (solo spectacle). la máquina de prueba solo tiene 1 monitor físico — el recorte
-  por-output se verificó mecánicamente (coincidió exacto con la imagen completa) pero el cosido
-  visual de 2+ monitores reales queda sin confirmar.
-- **`xdotool` puede reportar geometría de una ventana `IsUnMapped`** (`-Window`): las ventanas XWayland de Steam en la máquina de prueba (`steamwebhelper`,
+  en grim) y `-ActiveWindow` (solo spectacle). La máquina de prueba solo tiene 1 monitor físico: el recorte
+  por-output coincide con la imagen completa; el cosido de 2+ monitores reales [SIN CONFIRMAR].
+- **`xdotool` puede reportar geometría de una ventana `IsUnMapped`**: las ventanas XWayland de Steam en la máquina de prueba (`steamwebhelper`,
   `Steam`) tienen `id`/geometría consultables aunque `xwininfo` las marque `Map State: IsUnMapped`
   (no están realmente en pantalla) — capturarlas da un PNG minúsculo/basura, no porque el script
   falle sino porque no hay nada que capturar. No es un bug de `linux-ssh-screenshot.sh` ni de
@@ -262,16 +249,13 @@ solo alcanzan ventanas X11/XWayland.
 ### Paridad parcial documentada (no oculta)
 - **`get-window-coordinates`** en Linux da el rectángulo/centro de la VENTANA, no de cada CONTROL
   individual (botón/checkbox) como su gemelo Windows — GTK/Qt dibujan sus widgets dentro de una sola
-  X-window, sin "hijos" enumerables por API de ventanas. El equivalente real sería AT-SPI
-  (accessibility bus) — SIN CONFIRMAR, queda como trabajo futuro si hace falta precisión por-control.
+  X-window, sin "hijos" enumerables por API de ventanas. El equivalente sería AT-SPI (accessibility bus): no implementado.
 - **`read-text`/`read-uia` NO se portaron.** Windows los resuelve vía Win32 controls / UI Automation;
-  Linux no tiene un mecanismo genérico equivalente sin AT-SPI (no garantizado instalado). En vez de
-  fingir una implementación endeble, quedan explícitamente FUERA — usa el screenshot.
+  Linux no tiene un mecanismo genérico equivalente sin AT-SPI (no garantizado instalado): quedan FUERA — usa el screenshot.
 
-## macOS — COMPLETO, verificado LOCAL (pendiente sesión SSH genuina)
+## macOS — COMPLETO, verificado LOCAL (sesión SSH genuina sin confirmar)
 13 scripts en [`mac/`](mac/), patrón `mac-ssh-{acción}.sh`, gemelos estructurales de `win-ssh-*`.
-Comparten `mac/lib-mac-ssh-env.sh` (`mac_console_user`/`mac_dispatch`). **Verificado LOCAL** en una Mac (macOS 26.6.2) — ejecutando los scripts de verdad, no solo revisando
-sintaxis.
+Comparten `mac/lib-mac-ssh-env.sh` (`mac_console_user`/`mac_dispatch`). [VERIFICADO local] en macOS 26.6.2 ejecutando los scripts.
 
 ### Recetas de invocación (macOS — igual de simple que Linux: `.sh` sin base64, `scp` para el screenshot)
 Mismos parámetros: `$STA` (`usuario@ip`), `$KEY`, `-J "$JUMP"` si hay salto.
@@ -285,11 +269,12 @@ ssh -i "$KEY" "$STA" "bash /tmp/gui-ssh/mac-ssh-list-windows.sh -Filter MiApp"
 # 3) Traer el screenshot por scp (default multi-pantalla → s-1.png, s-2.png…)
 scp -i "$KEY" "$STA":/tmp/gui-ssh/'s*.png' .
 ```
+> Los scripts por ventana `close-window`, `get-window-coordinates`, `move-window`, `maximize-window` y `launch` se dirigen por `-App <nombre de app>` (`get-window-coordinates` acepta además `-Window`); `screenshot` y `send-*` usan `-Window`.
 > Precondición de una sola vez: permiso TCC (Grabación de pantalla + Accesibilidad) concedido por GUI en la Mac destino, igual que el EIS de KWin en Linux.
 
 | Script | Qué hace | Verificado |
 |---|---|---|
-| `mac-ssh-screenshot.sh` | Captura la pantalla (`screencapture -x`). Default = TODAS las pantallas, 1 archivo c/u (paridad adaptada con el VirtualScreen de Windows — ver gotcha multi-monitor). `-Display N` para UNA pantalla por número. `-Window "título"` para una ventana (vía `position`/`size` de System Events + `screencapture -R<x,y,w,h>` — fix 2026-09-18, ver gotcha -Window). `-B64`. | ✅ 3 pantallas REALES (Retina 2992×1934 + 2 externas 3440×1440 c/u), 3 PNG distintos con contenido genuinamente distinto; ✅ `-Display 2` dio la externa correcta; ✅ `-Window "claudio-master"` (ventana Alacritty real en monitor externo izquierdo, offset NEGATIVO) dio un PNG de exactamente 1135×825 (== bounds de la ventana, no la pantalla completa); ✅ título inexistente cae a pantalla principal con aviso |
+| `mac-ssh-screenshot.sh` | Captura la pantalla (`screencapture -x`). Default = TODAS las pantallas, 1 archivo c/u (paridad adaptada con el VirtualScreen de Windows — ver gotcha multi-monitor). `-Display N` para UNA pantalla por número. `-Window "título"` para una ventana (vía `position`/`size` de System Events + `screencapture -R<x,y,w,h>`, ver gotcha -Window). `-B64`. | ✅ 3 pantallas REALES (Retina 2992×1934 + 2 externas 3440×1440 c/u), 3 PNG distintos con contenido genuinamente distinto; ✅ `-Display 2` dio la externa correcta; ✅ `-Window "claudio-master"` (ventana Alacritty real en monitor externo izquierdo, offset NEGATIVO) dio un PNG de exactamente 1135×825 (== bounds de la ventana, no la pantalla completa); ✅ título inexistente cae a pantalla principal con aviso |
 | `mac-ssh-clipboard.sh` | `-Get`/`-Set "texto"` vía `pbcopy`/`pbpaste` — SIN permiso TCC de por medio. | ✅ round-trip set→get confirmado |
 | `mac-ssh-list-windows.sh` | Enumera procesos+ventanas (nombre, rect) vía `System Events`. `-Filter`, `-Csv`. | ✅ enumeró procesos reales; ventanas probado contra proceso sin ventana abierta (lista vacía correcta) |
 | `mac-ssh-get-processes-list.sh` | Lista procesos (top-N por RSS). NO necesita sesión de consola. `-Name`, `-Csv`. | ✅ listó procesos reales (fix real: ver gotcha `basename`/comm-con-espacios) |
@@ -297,7 +282,7 @@ scp -i "$KEY" "$STA":/tmp/gui-ssh/'s*.png' .
 | `mac-ssh-launch.sh` | Lanza una app (`open -a "<App>"` o `-Path` a `.app`/URL/archivo). `-Args`. | Construido sobre el mismo `mac_dispatch` ya verificado (screenshot/clipboard) |
 | `mac-ssh-send-click.sh` | Click izq/der por coordenada `-X -Y` vía `cliclick` (`-Button right`, `-Double`, `-Window`). | Primitivo `cliclick` confirmado sin error; sin click en vivo sobre UI real (ver nota) |
 | `mac-ssh-send-double-click.sh` | Atajo de send-click `-Double`. | Mismo mecanismo que send-click |
-| `mac-ssh-send-keys.sh` | Teclea `-Keys "texto{ENTER}"` (mini-lenguaje + `#`=Cmd, adaptación Mac) — texto literal vía `cliclick t:` (fix: `System Events keystroke` DESCARTA espacios, ver gotcha), teclas especiales/combos vía `key code`/`keystroke using`. | ✅ QA en vivo del usuario: funciona, espacios incluidos |
+| `mac-ssh-send-keys.sh` | Teclea `-Keys "texto{ENTER}"` (mini-lenguaje + `#`=Cmd, adaptación Mac) — texto literal vía `cliclick t:` (`System Events keystroke` DESCARTA espacios, ver gotcha), teclas especiales/combos vía `key code`/`keystroke using`. | ✅ QA en vivo del usuario: funciona, espacios incluidos |
 | `mac-ssh-get-window-coordinates.sh` | Rectángulo + CENTRO de cada CONTROL de una ventana (mejor paridad que Linux: Accessibility API expone UI elements). | Mecanismo estándar de Apple; no probado contra ventana con controles variados en esta pasada |
 | `mac-ssh-move-window.sh` | Mueve/redimensiona la ventana de una app `-X -Y [-W -H]` vía `System Events`. | Construido sobre el mismo primitivo que get-window-coordinates |
 | `mac-ssh-maximize-window.sh` | Maximiza (aproximado a bounds de pantalla)/restaura/minimiza (`-State`) por app. | Construido |
@@ -308,12 +293,8 @@ scp -i "$KEY" "$STA":/tmp/gui-ssh/'s*.png' .
 **"Accesibilidad"**, concedidos UNA VEZ al proceso que los invoca (Terminal/sshd/lo que despache el
 comando) vía System Settings → Privacidad y seguridad. No hay `tccutil` que lo pre-autorice para un
 proceso lanzado por SSH — mismo patrón que la excepción de Red Local de macOS 26 ya documentada en
-la memoria de máquina. **En esta Mac ambos permisos YA estaban concedidos** al proceso que corrió las
-pruebas (por eso todo lo de arriba salió ✅ real) — el gap real de esta pasada es que **no se pudo
-confirmar el caso de una sesión SSH genuina contra un proceso SIN el permiso ya concedido**: hacerlo
-exigía agregar una llave a `~/.ssh/authorized_keys` de esta misma Mac para loopback SSH, y el guard de
-permisos de Claude Code bloqueó esa acción por tocar autorización SSH (correctamente — es un cambio
-de seguridad). Queda como la única precondición pendiente de verificar en una sesión SSH real.
+la memoria de máquina. En la Mac de prueba ambos permisos ya estaban concedidos al proceso que corrió los scripts.
+[SIN CONFIRMAR] el caso de una sesión SSH genuina contra un proceso sin el permiso concedido (exige una llave en `~/.ssh/authorized_keys` para loopback SSH).
 
 ### Otros gotchas verificados
 - **El verbo AppleScript `System Events click at {x,y}` NO es confiable** — falló con error -25200 en
@@ -331,31 +312,22 @@ de seguridad). Queda como la única precondición pendiente de verificar en una 
 - **DPI-awareness: NO hace falta.** macOS trabaja en puntos (independiente de la densidad Retina)
   para `cliclick`/`System Events`/`screencapture` — confirmado con el screenshot real (2992×1934
   nativo, sin truncar).
-- **`launchctl asuser`** (el mecanismo previsto para despachar a la sesión de consola cuando quien
-  invoca NO es esa sesión) queda implementado en `mac_dispatch()` pero **SIN CONFIRMAR en un SSH
-  genuino** en esta pasada — ver precondición TCC arriba para el porqué. La primera vez que uses el
-  kit contra una sesión SSH real, verifícalo y actualiza esta nota con el resultado.
-- **`System Events keystroke "texto con espacios"` DESCARTA los espacios** (macOS 26.6.2: `"a b c"` salía `"abc"`) — aislado, pasa igual por
-  `mac_dispatch`/`launchctl asuser` directo, así que es el verbo `keystroke`, no el despacho.
+- **`launchctl asuser`** (despacho a la sesión de consola cuando quien invoca NO es esa sesión) está implementado en `mac_dispatch()` [SIN CONFIRMAR en un SSH genuino].
+- **`System Events keystroke "texto con espacios"` DESCARTA los espacios** (macOS 26.6.2: `"a b c"` sale `"abc"`); pasa igual por
+  `mac_dispatch`/`launchctl asuser` directo: es el verbo `keystroke`, no el despacho.
   `mac-ssh-send-keys.sh` usa `cliclick t:` para texto literal (sí teclea espacios); `keystroke`
   queda solo para teclas especiales/combos (`key code`, `keystroke ... using {modificador down}`).
-- **Multi-monitor:** a diferencia de
+- **Multi-monitor (ver cabecera de `mac-ssh-screenshot.sh`):** a diferencia de
   Linux, `screencapture -x archivo.png` SIN flags captura SOLO la pantalla PRINCIPAL — confirmado
   en esta Mac (3 pantallas reales: Retina integrada + 2 externas) que el default daba exactamente
   lo mismo que `-D 1`. macOS no tiene forma nativa de coser 2+ monitores en una sola imagen — el
   default de `mac-ssh-screenshot.sh` ahora captura TODAS las pantallas, una imagen POR pantalla
   (`-1.png`, `-2.png`...), confirmado con las 3 pantallas reales de esta Mac (resoluciones y
   contenido distintos en cada archivo, no duplicados).
-- **`-Window` via `id of window` (System Events) NO sirve en esta macOS (26.6.2)** — `System Events` no expone
-  la propiedad `id` de una ventana genérica de accesibilidad (confirmado con `get properties of
-  window 1`, que no la lista; pedirla explícito truena `-1728`). Fix: se cambió a `position`+`size`
-  (que SÍ son accesibles) + `screencapture -R<x,y,w,h>` (recorte por región en vez de por windowid)
-  — funciona igual con coordenadas NEGATIVAS (ventana en un monitor a la izquierda del principal).
-  Ver cabecera de `mac-ssh-screenshot.sh` para el detalle; VERIFICADO con una ventana real en un
-  monitor externo (offset -3440), PNG de dimensiones exactas.
+- **`-Window` por `id of window` (System Events) NO sirve en macOS 26.6.2:** `System Events` no expone la propiedad `id` de una ventana genérica
+  (`get properties of window 1` no la lista; pedirla truena `-1728`). `-Window` usa `position`+`size` (accesibles) + `screencapture -R<x,y,w,h>`,
+  también con coordenadas NEGATIVAS (monitor a la izquierda del principal). [VERIFICADO] con una ventana real en un monitor externo (offset -3440): PNG de dimensiones exactas.
 
 ### Paridad parcial documentada (no oculta)
-- **`read-text`/`read-uia` NO se portaron** (ni en Linux ni en Mac) — en Mac SÍ sería técnicamente
-  viable vía Accessibility API (`value`/`title` de los UI elements, el mismo mecanismo que
-  `get-window-coordinates` ya usa para posición/tamaño), pero no se construyó en esta pasada para
-  mantener el mismo corte de alcance que Linux. Candidato de trabajo futuro, no un hueco escondido.
+- **`read-text`/`read-uia` NO se portaron** (ni en Linux ni en Mac). En Mac sería viable vía Accessibility API (`value`/`title` de los UI elements, el mecanismo que
+  `get-window-coordinates` ya usa para posición/tamaño); no implementado.
