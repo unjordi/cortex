@@ -6183,7 +6183,8 @@ rm -rf "$FCKH"
 
 echo ""
 echo "== (fpt) fondo-por-tiempo: baja el timeout de Bash en primer plano para que lo largo pase solo al fondo =="
-fpt() { printf '%s' "$1" | env ${2:+CLAUDE_FONDO_MS=$2} bash "$HOOKS/fondo-por-tiempo.sh"; }
+# Corre el hook con un entorno controlado: $2 = CLAUDE_FONDO_MS, $3 = BASH_DEFAULT_TIMEOUT_MS (vacío = sin la variable).
+fpt() { printf '%s' "$1" | env -u CLAUDE_FONDO_MS -u BASH_DEFAULT_TIMEOUT_MS ${2:+CLAUDE_FONDO_MS=$2} ${3:+BASH_DEFAULT_TIMEOUT_MS=$3} bash "$HOOKS/fondo-por-tiempo.sh"; }
 fpt_to() { printf '%s' "$1" | jq -r '.hookSpecificOutput.updatedInput.timeout // "none"' 2>/dev/null || echo none; }
 F1="$(fpt '{"tool_input":{"command":"sleep 30","timeout":60000,"description":"d"}}')"
 { [ "$(fpt_to "$F1")" = 15000 ] && [ "$(printf '%s' "$F1" | jq -r '.hookSpecificOutput.updatedInput.command')" = "sleep 30" ] \
@@ -6200,6 +6201,13 @@ F5="$(fpt '{"tool_input":{"command":"x"}}' 30000)"; F6="$(fpt '{"tool_input":{"c
 { [ "$(fpt_to "$F5")" = 30000 ] && [ "$(fpt_to "$F6")" = 15000 ]; } \
   && ok "fpt (5): CLAUDE_FONDO_MS configurable; valor inválido → 15 s" \
   || bad "fpt (5): got: $F5 / $F6"
+# Un Bash sin timeout nace con BASH_DEFAULT_TIMEOUT_MS: si ya cabe en el umbral, el hook no reescribe la llamada
+# (reescribirla deja al clasificador de auto mode sin veredicto); si no cabe, la baja como siempre.
+F7="$(fpt '{"tool_input":{"command":"x"}}' "" 15000)"; F8="$(fpt '{"tool_input":{"command":"x"}}' "" 60000)"
+F9="$(fpt '{"tool_input":{"command":"x","timeout":60000}}' "" 15000)"; F10="$(fpt '{"tool_input":{"command":"x"}}' "" abc)"
+{ [ -z "$F7" ] && [ "$(fpt_to "$F8")" = 15000 ] && [ "$(fpt_to "$F9")" = 15000 ] && [ "$(fpt_to "$F10")" = 15000 ]; } \
+  && ok "fpt (6): sin timeout y default de 15 s → no se reescribe; default de 60 s, timeout explícito de 60 s o default inválido → 15 s" \
+  || bad "fpt (6): got: [$F7] / $F8 / $F9 / $F10"
 
 echo ""
 echo "== (m2) checkpoint-mecanico.js: extractor MECÁNICO en streaming (M2, auditoría 2026-09-11) =="
