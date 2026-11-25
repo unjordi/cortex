@@ -90,6 +90,16 @@ para que no quede apuntando a un tema ya terminado.
   de su Bitácora con `>>` (no con un Edit) — así no chocas con las otras sesiones de Claude que tocan ese
   archivo a la vez. Ajusta Mapa/Infra/Cabos (secciones curadas, con Edit) solo si cambió el layout de
   repos/memoria/proyectos.
+- **El cerebro del repo sigue canónico y legible.** Corre `bash ~/.cortex/brain/verificar-firma-canonica.sh <repo> --strict`
+  y deja **0 fail** antes del merge. Si el slice tocó `MEMORY.md`, `CLAUDE.md` o una memoria, **léelos completos** y
+  revisa lo que el verificador no mide: cada renglón del índice con título humano (el nombre del archivo solo en el
+  enlace), una sola idea por renglón que diga de qué trata la memoria y cuándo abrirla (no su contenido), sin fechas,
+  «RESUELTO» ni lápidas (eso va a `bitacora.md`), marcas explicadas; `CLAUDE.md` atemporal y sin `@import` del backlog
+  (`estado-proyecto.md` se lee bajo demanda). Lo que se mueve no se pierde: la historia va a la bitácora.
+- **Los permisos siguen diciendo la verdad.** Si el slice cambió un hecho que describe la configuración de permisos y
+  auto mode del equipo (servidores, qué es producción, rutas, repos, flujos autorizados) o necesita un permiso nuevo,
+  actualiza en la MISMA tanda el script o archivo versionado que la escribe (no `settings.json` a mano) y avisa a quien
+  lo corre. Un permiso que miente frena a los Claudes igual que uno que falta.
 - **(fan-out)** limpia los worktrees zombies con `limpiar.sh worktrees` (deja anotado el pendiente de
   los que sigan vivos).
 
