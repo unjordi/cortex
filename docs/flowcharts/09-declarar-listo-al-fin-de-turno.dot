@@ -93,7 +93,7 @@ digraph flujos {
     CLAIMQ [shape=diamond, fillcolor="#2b2622", color="#d97757",
             label="¿afirma un CIERRE (LISTO/terminado/funciona/quedó/a la par/\nde punta a punta) o la APARIENCIA de una UI?"];
     ESTATUS [color="#7fb069",
-             label="🟢 es ESTATUS/espera, no un cierre → comunícalo tal cual y sigue\n«en preview · a tu revisión · verificado técnicamente · pendiente de tu QA»\n(un DOWNGRADE explícito —«quedó, PERO lo dejo a tu revisión»— cae aquí)"];
+             label="🟢 es ESTATUS/espera, no un cierre → comunícalo tal cual y sigue\n«en preview · a tu revisión · verificado técnicamente»\n(un DOWNGRADE explícito —«quedó, PERO lo dejo a tu revisión»— cae aquí)"];
 
     VISUALQ [shape=diamond, fillcolor="#2b2622", color="#d97757",
              label="¿afirma la APARIENCIA de una UI (se ve · como el mockup · en Chrome · la pantalla muestra…)\nSIN haberla mirado ESTE turno (tool de navegador/screenshot/Read de una imagen rasterizada)\nY SIN que el usuario la haya confirmado?"];
@@ -105,7 +105,7 @@ digraph flujos {
     LISTO [color="#7fb069", penwidth=2,
            label="🟢 LISTO — hay (1) o (2). Comunica el estatus inequívoco.\nverde técnico (build/tests/lint + memoria al día) es un PELDAÑO, NO el candado (varía por stack)"];
     NOLISTO [color="#c0392b", penwidth=2,
-             label="🔴 NO declares LISTO — verde técnico ≠ LISTO.\nSin (1) ni (2): da el estatus honesto («verificado técnicamente, pendiente de tu QA») y espera.\nMIGRACIÓN: la prueba acordada es AUDITORÍA DE PARIDAD, no build+tests"];
+             label="🔴 NO declares LISTO — verde técnico ≠ LISTO.\nSin (1) ni (2): da el estatus honesto («verificado técnicamente») y espera.\nMIGRACIÓN: la prueba acordada es AUDITORÍA DE PARIDAD, no build+tests"];
 
     MECAN [shape=note, fillcolor="#232323", color="#8a8a8a", fontcolor="#cfc8c0",
            label="📝 el cumplimiento es el CONTRATO/trato, no un hook de Stop:\ndod-verificar (Stop) se retiró → al DECLARAR, el enforcement es el estatus honesto de arriba.\nAl INTEGRAR a develop/main, merge-develop-guard exige (1)/(2) por CLI (ver chart 06)."];
