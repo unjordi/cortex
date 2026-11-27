@@ -33,7 +33,7 @@ lines+=("")
 lines+=("RITUAL ANTI-PÉRDIDA-DE-HILO:")
 lines+=("1) Lee .claude/memory/MEMORY.md (índice) y las memorias del proyecto que liste (dónde quedó el avance: hecho/pendiente/fuera-por-decisión).")
 lines+=("2) Si el repo tiene AGENTS.md (contrato de arquitectura), léelo antes de crear o modificar código.")
-lines+=("3) NO declares nada 'listo/en producción' sin la verificación técnica que aplique (build/tests/lint) + la memoria actualizada + confirmación del usuario. La «Definición de LISTO» es NORMA y su mecanismo es el TRATO/CONTRATO (no un hook): comunica el estatus honesto —qué quedó verificado y qué falta— y no declares cierre sin (1) QA del usuario o (2) su OK expreso.")
+lines+=("3) Al cerrar un entregable, di si quedó terminado en lo técnico (verificación que aplique + memoria al día) o presentable para un usuario: así lo define la «Definición de LISTO». LISTO se declara solo con (1) QA del usuario o (2) su OK expreso; nunca va como coletilla.")
 
 # Resumen del estado (si el proyecto ya tiene un archivo de estado; tolera varios nombres de convención)
 for f in estado-proyecto estado-y-pendientes estado; do

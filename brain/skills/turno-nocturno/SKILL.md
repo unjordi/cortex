@@ -209,8 +209,8 @@ Lo primero que el usuario lee al despertar. Formato:
 - **Decisiones provisionales nocturnas** marcadas como tales, con su porqué en una línea — invítalo a
   revisarlas, no las entierres.
 - **Parqueados** con su pregunta ya redactada (contestable con un sí/no).
-- **Lenguaje de estatus honesto** (definición de LISTO): "verificado técnicamente", "en preview",
-  "pendiente de tu QA" — nada quedó "listo" porque el usuario dormía; lo declara él.
+- **Estatus** (definición de LISTO): "verificado técnicamente" o "en preview" — nada quedó "listo"
+  porque el usuario dormía; lo declara él.
 
 ## 10. Qué NO es
 

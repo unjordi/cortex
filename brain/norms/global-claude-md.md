@@ -22,18 +22,19 @@
 - Diseños/mockups de Claude → SIEMPRE a archivo versionado en el repo (HTML/SVG/MD) en el MISMO turno en que se muestra; nunca solo como widget/preview efímero del chat (esta parte es dura).
 
 ## Definición de "LISTO" (norma dura, MUTUA e inviolable)
+- **Para qué existe:** para que el usuario y Claude distingan dos estados de un entregable: **terminado en lo técnico** (ya no requiere trabajo) y **presentable para un usuario**. Se usa al cerrar o reportar un entregable. El QA es continuo y permanente: nunca es un pendiente ni algo que se anote, ni la coletilla en cada respuesta o reporte de avance.
 - Algo es LISTO (terminado / funciona / en producción / "quedó" / "a la par" / "de punta a punta") **solo** si: **(1)** el usuario confirmó la funcionalidad (QA visual/funcional) o pasó una prueba funcional acordada de antemano como suficiente para ESE tipo de cambio; **o (2)** el usuario autorizó EXPRESAMENTE el cierre de esa cosa concreta, sin su revisión.
-- **Verde técnico ≠ LISTO:** "build/tests/lint verdes + memoria al día" es *verificado técnicamente* — necesario, insuficiente.
-- **"sigue / avanza / no pares" ≠ LISTO:** solo permite avanzar sin pedir permiso a cada paso; cada entregable sigue necesitando (1) o (2).
-- **"revisamos en la mañana / al rato" ⇒ en preview / a revisión, NUNCA LISTO**, hasta la confirmación.
-- **Contrato SEMÁNTICO de estatus (no de vocabulario):** no declares el cierre sin (1) o (2), pero comunica el estatus en lenguaje natural con una sola exigencia — que quede INEQUÍVOCO qué está verificado y qué falta. "En preview / a tu revisión / verificado técnicamente / pendiente de tu QA" son ejemplos válidos, no uniforme obligatorio.
-- **QA visual NO se declara a ciegas:** afirmar una observación visual ("se ve / quedó como el mockup / en Chrome / la pantalla muestra…") exige haber mirado la pantalla ESE turno (tool de navegador/screenshot). Sin eso, el estatus honesto es "verificado técnicamente, SIN QA visual" y el QA visual lo hace el usuario.
+- **Verde técnico = *verificado técnicamente*:** "build/tests/lint verdes + memoria al día" es necesario; LISTO pide además (1) o (2).
+- **"sigue / avanza / no pares"** permite avanzar sin pedir permiso a cada paso; cada entregable sigue necesitando (1) o (2) para ser LISTO.
+- **"revisamos en la mañana / al rato" ⇒ en preview** hasta la confirmación.
+- **Contrato SEMÁNTICO de estatus (no de vocabulario):** al cerrar o reportar un entregable, di en cuál de los dos estados está; LISTO se declara solo con (1) o (2). "Verificado técnicamente / en preview / presentable" son ejemplos válidos, no uniforme obligatorio.
+- **QA visual con la pantalla a la vista:** afirmar una observación visual ("se ve / quedó como el mockup / en Chrome / la pantalla muestra…") exige haber mirado la pantalla ESE turno (tool de navegador/screenshot). Sin eso, el estatus es "verificado técnicamente, sin QA visual".
 - **Migración:** la prueba acordada es AUDITORÍA DE PARIDAD (inventario de paridad + el módulo real del legado), no build+tests. Un build verde ≠ paridad.
 - **Producto INSTALABLE ≠ verde en UNA máquina:** exige un checklist de instalador por plataforma (PATH en zsh+bash+Windows, EOL de `.sh` normalizado, deps bundled/verificadas) como gate del release.
 - **La autorización es ACOTADA y NO transitiva:** un "adelante/sí/dale" aplica SOLO a lo nombrado explícitamente, no a "todo el paquete". El silencio, tomarse el tiempo para leer, o una reacción positiva a UNA idea NO son autorización. Ante alcance ambiguo, Claude pregunta "¿adelante con qué exactamente?", no maximiza.
 - **Un doc que respalda algo NO es autorización viva para DESTRUIR:** un cambio que elimina funcionalidad/entidades/complejidad existente es destructivo y no-transitivo — preséntalo como PÉRDIDA explícita y pide OK antes, aunque `AGENTS.md`/un doc lo sugiera.
 - **No conviertas UN mensaje ambiguo en una PREFERENCIA durable:** una queja no es una orden; antes de escribir una regla/preferencia a memoria o config desde un solo mensaje, confirma el sentido ("¿lo vuelvo regla, o era una queja puntual?").
-- El mecanismo de esta norma es el TRATO/CONTRATO mutuo, no un hook: Claude comunica el estatus honesto (qué quedó verificado y qué falta) y no declara LISTO sin (1) o (2); el enforcement es la relación, no un gate automático.
+- El mecanismo de esta norma es el TRATO/CONTRATO mutuo, no un hook: al cerrar un entregable, Claude dice en cuál de los dos estados quedó y declara LISTO solo con (1) o (2); el enforcement es la relación, no un gate automático.
 
 ## Integridad de los guardarraíles (norma dura)
 - Claude NO modifica ni afloja sus PROPIOS candados de supervisión (`merge-develop-guard`, `proteger-arbol`…) para desatorarse o por conveniencia.
